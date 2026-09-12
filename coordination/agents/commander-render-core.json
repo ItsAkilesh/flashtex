@@ -14,23 +14,23 @@
     "rust",
     "rendering"
   ],
-  "code_revision": "9ce5e9e04ae3a4733e2cc19853eef7712f5102e2",
+  "code_revision": "a5e7fa7c026193e04ca3acf69207d5ef562013b5",
   "eta_minutes": {
     "likely": 3,
     "optimistic": 1,
     "pessimistic": 5
   },
   "machine": "linux-primary",
-  "main_integrated_through": "b14d242804e11b1b27eccf5f1857921a3c21a99f",
-  "next_action": "Owner review of exact text spacing and encoding limitations; no authoritative repin",
+  "main_integrated_through": "a5e7fa7c026193e04ca3acf69207d5ef562013b5",
+  "next_action": "Owner correct script evidence and run matching pixel/extraction gates; root reviews compiler/bounds",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "Modified 9aa plus cumulative Text builds; six actual probes expose silent spacing/ligature profile gaps",
+  "summary": "Reviewed Text owner65ce; targeted metrics fixes evidenced, script unchanged claim disproved by own pair",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T15:49:47Z",
+  "updated_utc": "2026-09-12T16:37:17Z",
   "usage": {
-    "evidence": "Offline release build passed; six original source/GID/span assertions passed; exact outputs and source hashes retained",
-    "status": "Existing OpenAI session; no paid tools or descendants"
+    "evidence": "Nine declared hashes match; five baseline JSON frames match f261; superscript baseline delta122743 ticks",
+    "status": "Read-only existing peer artifacts; no build/provider/descendant"
   }
 }

@@ -1,3 +1,15 @@
+# Current handoff override — September12, after main e43d26f2
+
+Older task rows below are HISTORICAL. Read [current pending transfer](kabir-transfer-pending.md) first. Kabir Claude has accepted in branch commander/handover-claude at8de83969; final exact parent/supervisor session readiness still requested. Astra remains active until explicit quiesced handoff. Dispatcher moves to Mac Git/GitHub supervision; Linux Astra publisher1099831 will stop under publication lock at final fence, never remain dual writer. See GH2#5647074024 for exact answers/tooling requirements.
+
+Current root: be426 cumulative unadopted compiler handoff (104 owner tests,72 HW1 diagnostics), audit8ed and rendererf261 actual Text profile gaps are integrated main e8db97be. Root bounded runner925590b9 has pending final corrections and runtime review. Existing renderer provides Text owner handoff and delta r5 review a5e7fa7c, integratedf1f1f21e. Mac Text-gap a946 owns producer fixes; no duplicate Linux implementation. R5 isolated implementation permitted with real writer/accounting/residency/pixel gates, no activation.
+
+Fresh Jaysen census16:07:53UTC:15 engineering children plus parent=16 sessions, exact owner-reported IDs GH2#5647048391. Maintain target. Danielb40 stale; actual recovery request GH23#5647020094 unanswered. Kabirbc737/4f430 fresh compiler work reports77 diagnostics/35 symbols; engineering publication is separate from final Commander authority. FT002 remains Kabir-owned, may delegate under existing authorized capacity.
+
+No whole-PDF reference byte equality acceptance. Pixel-perfect rendered fidelity, page geometry/fonts/glyph placement priority; raw resource/protocol hashes remain integrity checks. No new purchases or permission bypass. All historical compiler benchmarks terminal; no paid calls pending from root. Final process/journal audit will be published at quiescence. Use /home scratch; /tmp user quota nearly full. Exactly3 retained local engineers, no new Astra workers.
+
+---
+
 # Commander recovery checkpoint
 
 Updated 2026-09-12T12:18:54.421102+00:00. This replaces stale pending lists; historical detail remains in Git and product evidence.

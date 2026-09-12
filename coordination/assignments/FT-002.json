@@ -9,15 +9,15 @@
   "branch": "agent/claude/compiler-foundation",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "e67fe2a5e4346632056a5308268a41bb39e4ec7b",
-  "objective": "Consume reviewed exact-base candidate preserving numbering labels source spans macro arguments and incremental-clean equality",
+  "input_main_sha": "35f5ad4c07f35fa8a6312143834346608d5a3114",
+  "objective": "PRIORITY successor readiness completion: explicit authorization GH1#5647097898 to install/test deterministic launchd read-only standby supervisor (control infrastructure, NOT new engineering/paid agent). Publish plist/script hashes, exact servicePID/poll/shell-survival/authority-refusal evidence or exact blocker. ACK standby boundary GH2#5647125681; no global grants/corrections until Astra explicit quiescence. Parent claude/session_01Xd5Hmwh5GHNTiAmHUJ1MZu accepted. Defer unrelated bookkeeping. Text-only root8b againstbc737 waits your overlap/base ACK.",
   "owned_paths": [
     "crates/compiler"
   ],
-  "revision": 17,
+  "revision": 19,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-002",
   "timebox_minutes": 45,
-  "updated_utc": "2026-09-12T15:38:00Z"
+  "updated_utc": "2026-09-12T16:36:08.240545+00:00"
 }

@@ -7,7 +7,7 @@ User keeps three local engineers plus Commander. Do not restart drained workers.
 
 Worktree: /home/natkarri/flashtex-preview-performance
 Branch: agent/commander-preview-performance/preview-performance
-Current assignment read from origin/main: FT048r42, Text candidate acceptance.
+Current assignment read from origin/main: FT048r43, Text candidate acceptance and current-base reconciliation.
 Owned paths: preview-controller/edit-ledger. Authoritative compiler remains fenced;
 all compiler changes are isolated scratch and published patch handoffs. No local
 Claude billing route is approved; never use local Max/OAuth/extra usage.
@@ -58,3 +58,20 @@ Do not describe remote agents as running without fresh session evidence.
 Use direct Git under observed Cursor-quota fallback with truthful Astra author,
 Implementation-Agent/Commit-Executor trailers and local GitHub user sixnat as
 coauthor. Never force-push or rewrite peer history.
+
+## Latest checkpoint: current-base Text reconciliation
+
+Bounded protocol runner e975f38f reviewed fc393c95 and integrated main805777e4;
+8 lifecycle tests and ten exact real compiler replies passed before this checkpoint.
+No active local subprocess remains.
+
+Text-only isolated reconciliation for compiler bc737126 is in
+docs/handoffs/text-bc737-reconciliation: three source files plus seven-test fixture,
+forward/reverse apply checks and four exact result hashes, preserving existing
+symbols/delimiter code. No combination build yet. Commander requested owner base
+fence via GH1#5647108963; await reply before implementation/builds and switch to
+review if Kabir already owns an active Text implementation.
+
+Kabir Claude has acknowledged session identity and Git readiness; current Astra
+Commander remains active pending session-independent supervision proof. Toolchain
+reply GH2#5647074687 is published. Root does not own authority transfer.

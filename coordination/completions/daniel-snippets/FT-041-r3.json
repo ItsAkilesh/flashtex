@@ -1,0 +1,76 @@
+{
+  "agent_id": "daniel-snippets",
+  "archived_utc": "2026-09-12T16:38:51Z",
+  "assignment": {
+    "acceptance": [
+      "Meaningful tests and strict Rust lint pass with bounded malformed/Unicode inputs",
+      "Preserve exact source/revision and resource identities; no implicit approximation or parity claim",
+      "Do not edit peer compiler/native/layout files; publish typed adapter contract and exact tested SHA"
+    ],
+    "agent_id": "daniel-snippets",
+    "allocation_id": "daniel-claude20x-shared",
+    "branch": "agent/daniel-snippets/editor-snippets",
+    "deadline_utc": null,
+    "dependencies": [],
+    "input_main_sha": "ad4d89c5a43c67496ec0cffafa5541859c6064b1",
+    "objective": "Guarded snippet insertion: bounded adversarial and stale-identity acceptance tests",
+    "owned_paths": [
+      "crates/editor-snippets"
+    ],
+    "revision": 3,
+    "schema_version": 1,
+    "state": "assigned",
+    "task_id": "FT-041",
+    "timebox_minutes": 30,
+    "updated_utc": "2026-09-12T09:39:24Z"
+  },
+  "report": {
+    "agent_id": "daniel-snippets",
+    "allocation_id": "daniel-claude20x-shared",
+    "assignment_acknowledgements": {
+      "FT-041": {
+        "acknowledged_utc": "2026-09-12T16:32:49Z",
+        "adaptation": "Implemented rev 3 as two new integration test files only (tests/adversarial_bounds.rs, tests/stale_identity_acceptance.rs); no src/ file changed. Merged origin/main first (fast merge, no conflicts in owned paths) before implementation and final verification.",
+        "main_sha": "967703ebb4e8140feaf4db02d27cb3ac63c573f6",
+        "revision": 3
+      }
+    },
+    "branch": "agent/daniel-snippets/editor-snippets",
+    "capabilities": [
+      "rust",
+      "editor-snippets",
+      "text-editing-primitives"
+    ],
+    "code_revision": "9e9f9b4ca0284ca026094099dd590d2516e8ebb7",
+    "eta_minutes": {
+      "likely": 0,
+      "optimistic": 0,
+      "pessimistic": 0
+    },
+    "machine": "mac-m5pro-dq222",
+    "main_integrated_through": "967703ebb4e8140feaf4db02d27cb3ac63c573f6",
+    "next_action": "Await Commander integration; no follow-up work identified for FT-041 rev 3",
+    "reviewed_peers": {
+      "origin/main": "967703ebb4e8140feaf4db02d27cb3ac63c573f6"
+    },
+    "schema_version": 1,
+    "state": "ready_for_integration",
+    "summary": "crates/editor-snippets rev 3: two new integration test files, no production code changed. tests/adversarial_bounds.rs drives the full parse -> expand_with -> SnippetPlan::compute pipeline through every limits.rs bound as a boundary pair (exactly-at-limit ok, one-past a typed error): input bytes/InputTooLarge, nesting depth/NestingTooDeep, placeholder index/PlaceholderIndexTooLarge, distinct placeholders/TooManyPlaceholders, occurrences/TooManyOccurrences, output bytes/OutputTooLarge (via an override, so the source itself stays small); plus unbalanced/escaped braces, a trailing dollar sign, mutual self-reference, a caret past end of document, an inverted selection, and a caret mid-character in multi-byte text (each asserted against the exact PlanError/SnippetError variant, with the mid-character case also proving the valid boundary just before it still succeeds). tests/stale_identity_acceptance.rs specifies SnippetPlan/DocumentId staleness as the full revision x content 2x2 matrix (Fresh only when both match; RevisionMismatch when only revision differs; ContentMismatch when only bytes differ -- the case a naive revision-only check misses; RevisionMismatch, not a third variant, when both differ, since revision is checked first), restated once more directly against DocumentId::compare. Rev 1 (linked edits, tab order, UTF-8 structural safety) and rev 2 (SnippetPlan staleness/anchors) untouched; SnippetPlan still exposes no mutating method. 41 rev-1 + 17 rev-2 plan + 15 new adversarial + 5 new stale-identity tests + 2 doc-tests = 80 total, all passing; cargo clippy --all-targets -D warnings clean; cargo fmt --check clean.",
+    "tool": "Claude Code on Claude Max 20x",
+    "updated_utc": "2026-09-12T16:32:49Z",
+    "usage": {
+      "evidence": "Runs on the user's Claude Max 20x subscription; no token/usage metering exposed to this agent; no purchases or overages made",
+      "status": "unknown"
+    }
+  },
+  "report_age_seconds": 362,
+  "report_path": "coordination/agents/daniel-snippets.json",
+  "review_required": true,
+  "revision": 3,
+  "schema_version": 1,
+  "stale_completion": false,
+  "state": "reported_ready",
+  "task_id": "FT-041",
+  "worker_branch": "agent/daniel-snippets/editor-snippets",
+  "worker_report_sha": "36330f07a630450e106f495794501da3ab3a3f1c"
+}
