@@ -1,6 +1,6 @@
 # mac-completion handoff — revision-bound completion metadata
 
-- Updated UTC: 2026-09-12T10:02Z
+- Updated UTC: 2026-09-12T10:48Z
 - Agent / parent / machine alias: `mac-completion` (Claude Code subagent) /
   parent `mac-claude-a` / `mac-m1max-a`
 - Task / acceptance gate / owned paths: lane "Consume bounded revision-bound
@@ -11,15 +11,35 @@
   `apps/mac/Tests/FlashTeXMacTests/CompletionTests.swift`, this handoff and
   `coordination/agents/mac-completion.json`.
 - Branch / code revision / main integrated through:
-  `agent/mac-completion/vocabulary` (from `origin/agent/mac-claude-a/mac-shell`
-  `40d53b7`; earlier lane branches `revision-bound` and `live-helper` are
-  merged there) / see `coordination/agents/mac-completion.json`
+  `agent/mac-completion/snippets` (from `origin/agent/mac-claude-a/mac-shell`
+  `6f4ee94`; earlier lane branches `revision-bound`, `live-helper` and
+  `vocabulary` are merged there) / see `coordination/agents/mac-completion.json`
   `code_revision` / main as merged into mac-shell.
 - State: ready for integration (core lane and both follow-ups implemented and
   tested; parent-side wiring reported below, not applied). Context usage of
   this session cannot be read exactly by the agent; it is well below the
   compaction thresholds in docs/context-checkpoints.md at this checkpoint.
 - Ready behavior and evidence:
+  - Snippets (`Completion.Snippet`, `Suggestion.snippet`, `insertSnippet`):
+    accepting `\begin{env` inserts `env}\n<indent>\n<indent>\end{env}` with
+    the caret on the middle line and the current line's indentation; `\end{…}`
+    and the `\e` closers stay exact; vocabulary commands with braced arguments
+    insert their shape with the caret in the first braces (`\section{|}`,
+    `\frac{|}{}`, `\newcommand{|}{}`; optionals dropped); a project override
+    of a builtin inserts the bare name. `\label{` offers one candidate:
+    `sec:` + kebab-case of the enclosing `\section`/`\subsection` title
+    (control words/braces dropped, any-script letters lowercased), unique
+    against the document's labels and the index's labels at the bound
+    revision (`-2`, `-3`, …). One undo step through the real view
+    (`breakUndoCoalescing` → `shouldChangeText` → `replaceCharacters` →
+    `didChangeText`): ⌘Z removes exactly the snippet and keeps the typed
+    token; redo restores. Never fires while marked text exists (IME guards
+    kept; composing closes the list). Timing tests
+    (`testCompletionOnOneMegabyteBufferIsFast`,
+    `testKeystrokeThroughOpenListOnDemoTexDoesNotScanOnMain`) now report
+    best-of-N and `XCTSkip` naming the 1-minute load average when it exceeds
+    20, after their functional checks ran (coordinator request; observed
+    failures at load 30–85 from other lanes).
   - Static vocabulary (`Completion.Vocabulary`): the `\` list is exactly the
     compiler's documented set on main — 18 commands from
     `crates/compiler/README.md` "Supported commands", `\frac`/`\sqrt` and the
@@ -194,16 +214,15 @@
   and project-index README read on main and reflected in the decoder shape,
   bounds and the "lexical, not TeX semantics" wording of details.
 - Validation commands / results / artifact paths:
-  `cd apps/mac && swift test --filter CompletionTests` → 21/21;
+  `cd apps/mac && swift test --filter CompletionTests` → 25 (2 timing skips
+  under load);
   `FLASHTEX_COMPILER=… FLASHTEX_PREVIEW_CONTROLLER=… swift test --filter
   CompletionLiveHelperTests` → 1/1 (5 consecutive runs); full suite with
-  `FLASHTEX_COMPILER/PDF/BRIDGE/EDIT_LEDGER/PREVIEW_CONTROLLER` set → 382
-  tests, 0 failures, 9 env-gated skips from other lanes (DocumentFiles helper
-  ×3, ExactPDFExport, NearbyReferenceClient, NearbyView screenshots,
-  ProposalPreview ×3), 109 s under load average ~60 from other lanes. The
-  pre-existing 1 MB-buffer timing test (bound 20 ms) failed twice under that
-  load (26–47 ms) and passed in the full run (9.0/5.5 ms); it is unchanged by
-  this lane. Timing lines are printed by
+  `FLASHTEX_COMPILER/PDF/BRIDGE/EDIT_LEDGER/PREVIEW_CONTROLLER` set → 460
+  tests, 0 failures, 13 skips (11 env-gated from other lanes + the two
+  load-gated timing bounds at load average 72–76), 113 s; the same suite
+  passed 460/0 with 11 skips minutes earlier when the timing bounds were
+  still enforced (best 1 MB scan 9.3/5.7 ms under load). Timing lines are printed by
   `testCandidateComputationOnDemoTexStaysUnderTwoMilliseconds` and
   `testKeystrokeThroughOpenListOnDemoTexDoesNotScanOnMain`.
 - Exact deadline UTC / remaining time / integration reserve: per
@@ -227,7 +246,7 @@
   - Binding is exact-revision (`==`), not "not older": metadata newer than
     the text is not the text's either.
 - Exact next action or command: parent merges
-  `agent/mac-completion/vocabulary` into mac-shell; Commander integration.
+  `agent/mac-completion/snippets` into mac-shell; Commander integration.
 - Resume reading list: this file, `apps/mac/Sources/FlashTeXMac/Completion.swift`
   header comments, `crates/preview-controller/STDIO.md` (complete/navigate),
   `crates/project-index/README.md`.
