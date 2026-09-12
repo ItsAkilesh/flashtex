@@ -1,5 +1,22 @@
 # Project source index
 
+`citation_metadata(snapshot, key)` inspects bounded bibliography values locally.
+Records retain entry/key, field-name/expression, and atom UTF8 source spans.
+Braced and quoted literals preserve internal braces and TeX text; decimal atoms
+and `#` concatenation are supported. Bare identifiers resolve only against unique,
+ASCII-case-insensitive project `@string` declarations. There are no implicit month
+macros, declaration-order semantics, TeX expansion, or bibliography formatting.
+This is an IDE inspection convention, not BibTeX engine output.
+
+Missing keys, bibitems without metadata, duplicate definitions, malformed records,
+and incomplete values have separate states. Duplicate fields invalidate the record;
+missing, duplicate, malformed, cyclic, or over-limit macros produce no successful
+partial value. Field failures conservatively exclude the rest of that record;
+the outer scanner resumes only at a safely delimited following entry. Limits are
+128 fields, 256 atoms per expression, 128 nested groups, 32 macro levels, 4096
+expansion atom visits per field and 256 KiB of expanded bytes per field, in
+addition to the existing document/entry limits. All queries require a fresh snapshot.
+
 Original, dependency-free Rust library for lexical LaTeX navigation and prefix
 completion. It accepts source strings from its caller and never reads project files,
 expands macros, invokes a compiler, resolves packages, or modifies a native UI.

@@ -3,6 +3,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::time::Instant;
 
 mod bibliography;
+mod bibliography_values;
+pub use bibliography_values::*;
 
 pub const MAX_DOCUMENT_BYTES: usize = 8 * 1024 * 1024;
 const MAX_GROUP_BYTES: usize = 64 * 1024;
@@ -197,6 +199,7 @@ struct Document {
     source: String,
     symbols: Vec<Symbol>,
     diagnostics: Vec<Diagnostic>,
+    records: Vec<BibliographyRecord>,
 }
 
 pub struct ProjectIndex {
@@ -315,8 +318,11 @@ impl ProjectIndex {
             });
         }
         let lexical_started = Instant::now();
-        let (symbols, diagnostics) = match kind {
-            DocumentKind::Latex => scan(file, revision, source),
+        let (symbols, diagnostics, records) = match kind {
+            DocumentKind::Latex => {
+                let (symbols, diagnostics) = scan(file, revision, source);
+                (symbols, diagnostics, Vec::new())
+            }
             DocumentKind::Bibliography => bibliography::scan(file, revision, source),
         };
         let lexical_elapsed_nanos = lexical_started.elapsed().as_nanos();
@@ -331,6 +337,7 @@ impl ProjectIndex {
                     source: source.to_owned(),
                     symbols,
                     diagnostics,
+                    records,
                 }),
             );
         self.last_revisions.insert(file.to_owned(), revision);
@@ -661,6 +668,15 @@ impl ProjectIndex {
             candidate.occurrences.push(symbol.source);
         }
         Ok(candidates.into_values().take(limit).collect())
+    }
+
+    pub fn citation_metadata(
+        &self,
+        snapshot: &VersionSnapshot,
+        key: &str,
+    ) -> Result<CitationMetadata, IndexError> {
+        self.check(snapshot)?;
+        Ok(bibliography_values::resolve(self, key))
     }
 }
 

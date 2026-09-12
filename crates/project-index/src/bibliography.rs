@@ -88,9 +88,14 @@ fn entry_end(
     )
 }
 
-pub(super) fn scan(file: &str, revision: u64, source: &str) -> (Vec<Symbol>, Vec<Diagnostic>) {
+pub(super) fn scan(
+    file: &str,
+    revision: u64,
+    source: &str,
+) -> (Vec<Symbol>, Vec<Diagnostic>, Vec<super::BibliographyRecord>) {
     let mut symbols = Vec::new();
     let mut diagnostics = Vec::new();
+    let mut records = Vec::new();
     let mut cursor = 0;
     while cursor < source.len() {
         cursor = trivia(source, cursor);
@@ -112,6 +117,7 @@ pub(super) fn scan(file: &str, revision: u64, source: &str) -> (Vec<Symbol>, Vec
         let entry_start = cursor;
         let metadata = ["comment", "preamble", "string"].contains(&kind.as_str());
         let mut body_start = open + 1;
+        let mut key = None;
         if !metadata {
             let start = trivia(source, body_start);
             let mut end = start;
@@ -133,6 +139,7 @@ pub(super) fn scan(file: &str, revision: u64, source: &str) -> (Vec<Symbol>, Vec
                     kind: SymbolKind::CitationDefinition,
                     source: span(file, revision, start, end),
                 });
+                key = Some(span(file, revision, start, end));
                 body_start = comma + 1;
             } else {
                 diagnostics.push(Diagnostic { message: "Invalid or over-limit bibliography key; expected a literal key followed by comma".into(), source: span(file, revision, entry_start, open + 1) });
@@ -151,7 +158,25 @@ pub(super) fn scan(file: &str, revision: u64, source: &str) -> (Vec<Symbol>, Vec
                 source: span(file, revision, entry_start, open + 1),
             });
         }
+        if key.is_some() || kind == "string" {
+            let record = super::bibliography_values::parse(
+                file,
+                revision,
+                source,
+                super::bibliography_values::RecordBounds {
+                    kind,
+                    key,
+                    start: entry_start,
+                    body_start,
+                    end: after,
+                    body_end: if issue.is_none() { after - 1 } else { after },
+                    closed: issue.is_none(),
+                },
+            );
+            diagnostics.extend(record.diagnostics.clone());
+            records.push(record);
+        }
         cursor = after;
     }
-    (symbols, diagnostics)
+    (symbols, diagnostics, records)
 }
