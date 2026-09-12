@@ -1,7 +1,23 @@
-Agent / task / branch: mac-font-engine (Claude Code subagent, parent mac-claude-a, mac-m1max-a) / FT-018 rev 2 (rev 1 complete) / agent/mac-font-engine/tex-fonts
+Agent / task / branch: mac-font-engine (Claude Code subagent, parent mac-claude-a, mac-m1max-a) / FT-018 rev 3 (rev 1, rev 2 complete) / agent/mac-font-engine/tex-fonts
 State: ready for integration (library only; follow-ups listed)
 Owned paths: crates/font-engine/**, coordination/mac-font-engine.md, coordination/agents/mac-font-engine.json
-Main integrated through: 36e501e (merged into the branch at the rev 2 start; a77e697 was rev 2's input main)
+Main integrated through: 4d2ec1c (merged at the rev 3 start; d783fbe was rev 3's input main)
+
+Rev 3 ready behavior (all acceptance items):
+- One shared metric source: adapters::paragraph (FontMetricsSource for any
+  Face + glyph_run -> GlyphRun::from_shaped), adapters::pdf
+  (to_pdf_embedded_subset -> flashtex_pdf::embed::EmbeddedSubset),
+  adapters::math (MathFontMetrics from OpenType MATH), adapters::preview
+  (face_metrics.json). Optional path deps on the sibling crates on main behind
+  default features; engine-only build with --no-default-features.
+- Visual corpus quantified: docs/consumers.md. Paragraph shaped route, PDF
+  /W+TJ and CoreText drawing of exported positions: 0.0000 pt and 0 differing
+  px on all 8 corpus lines; paragraph char route +0.336 pt on the ffi/ffl line
+  (char->char ligature contract); compiler's Times table -0.02..-42.7 pt
+  (different font until it adopts the adapter). tools/preview_positions_check.swift.
+- Unsupported shaping fails explicitly: Error::UnsupportedScript (rev 1) and
+  new Error::UnsupportedFeature when a requested feature meets an unsupported
+  lookup type (default on; Arial Unicode MarkToLigature test).
 
 Rev 2 ready behavior (all acceptance items):
 - Licensed pinned fonts: fonts/manifest.json (font-resources descriptor/licence
@@ -63,9 +79,10 @@ face index), ORIGINAL glyph ids in shaping output, clusters with byte ranges and
 text, renumbering only inside embed with an explicit map, unit conversions,
 missing/unsupported reporting, bounded resolution.
 
-Validation: `cargo test` 57 passed (8 unit, 14 Core14, 9 Latin Modern, 6 pinned,
-18 TrueType; + 2 compile_fail doctests; font-file tests skip with a message if
-absent); clippy and fmt clean. Round-trip/render results in README.
+Validation: `cargo test` 63 passed (8 unit, 14 Core14, 9 Latin Modern, 6 pinned,
+18 TrueType, 6 adapters; + 2 compile_fail doctests; font-file tests skip with a
+message if absent); clippy and fmt clean; --no-default-features builds.
+Round-trip/render results in README; corpus evidence in docs/consumers.md.
 CoreText comparison (examples/compare_coretext.swift, macOS 26.3.1): TrueType
 and Latin Modern plain advances 0.0000 pt delta on the same file; Latin Modern
 shaped lines (kerning + ligatures) 0.0000 pt delta; Core 14 tables vs Apple's
@@ -76,8 +93,10 @@ fractionRuleThickness 40, radicalKernAfterDegree -556 verified independently.
 
 Needs from others: Commander review of the proposed ABI; PDF crate owner to
 decide whether crates/pdf delegates subsetting/embedding here.
-Next action: rev 2 complete; follow-ups on request (CFF subsetting, MathVariants,
-MarkToMark, per-run language tags, font-resources accepting opentype-cff).
+Next action: rev 3 complete. Consumer-side adoption is theirs: compiler ->
+glyph_run, Mac shell -> face_metrics.json + CTFontDrawGlyphs, pdf writer ->
+cluster CIDs + ActualText. Follow-ups here on request: CFF subsetting,
+MathVariants, MarkToMark, per-run language tags, kern/lig suppression input.
 
 Peer revisions reviewed and adaptations:
 - de1020c (compiler metrics.rs): identical AFM widths; kept an independent
@@ -97,4 +116,4 @@ repository configuration unchanged. d0c64cf's Claude-Session trailer URL is
 truncated (typo); the correct session is the one on every other commit.
 Neither rewritten (published history).
 Resource: allocation claude-mac20x-font-engine; shared Max quota unknown.
-Updated: 2026-09-12T07:40:00Z
+Updated: 2026-09-12T08:35:00Z

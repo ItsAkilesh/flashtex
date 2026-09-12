@@ -17,7 +17,7 @@ standard PDF fonts.
 
 ```sh
 cd crates/font-engine
-cargo test            # 57 tests + 2 compile_fail doctests; font-file tests skip with a message if a file is absent
+cargo test            # 63 tests + 2 compile_fail doctests; font-file tests skip with a message if a file is absent
 cargo clippy --all-targets
 swift examples/compare_coretext.swift   # macOS: CoreText cross-check (see "Engine comparison")
 ```
@@ -187,6 +187,23 @@ Results on macOS 26.3.1 (2026-09-12), 12 pt:
 `/CIDFontType0C` for the bare `CFF ` table is the subtype CoreGraphics accepts
 (PDF worker's finding); `/Type1C` is wrong for a CIDFont and the whole-sfnt
 `/OpenType` route is no longer used.
+
+## Consumer adapters (rev 3)
+
+`adapters::paragraph` (`FontMetricsSource` + `glyph_run`), `adapters::pdf`
+(`to_pdf_embedded_subset`), `adapters::math` (`MathFontMetrics` from `MATH`)
+and `adapters::preview` (`face_metrics.json`) let compiler layout, PDF, math
+and the native preview read one `Face`. The sibling crates are optional path
+dependencies behind the default features `paragraph`, `math`, `pdf`. Evidence
+and the remaining per-consumer gaps are quantified in
+[`docs/consumers.md`](docs/consumers.md): on the visual corpus, paragraph
+(shaped route), PDF `/W`+`TJ` and CoreText drawing of the exported positions
+all agree with the engine to 0.0000 pt and 0 differing pixels.
+
+Unsupported lookup types met by a *requested* feature are an error by default
+(`ShapeOptions::fail_on_unsupported_lookups`, `Error::UnsupportedFeature`) —
+for example Arial Unicode's MarkToLigature lookups when an unattached mark is
+shaped — never a silent approximation.
 
 ## Proposed ABI (non-authoritative until Commander accepts)
 
@@ -376,7 +393,7 @@ output: run the script; the table above is the 2026-09-12 run.
 
 ## Tests
 
-`cargo test` — 57 tests (+ 2 `compile_fail` doctests):
+`cargo test` — 63 tests (+ 2 `compile_fail` doctests):
 
 * unit (8): SHA-256 vectors; Core 14 values equal to compiler `metrics.rs`;
   synthetic gid round trip for all seven faces; AFM kerning; stable identity;
