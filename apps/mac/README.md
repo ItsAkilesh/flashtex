@@ -19,8 +19,9 @@ FLASHTEX_REPO=$(git rev-parse --show-toplevel) .build/debug/FlashTeXMac
 
 The app locates `protocol/fixtures/` via `FLASHTEX_REPO`, the working directory,
 the bundle path, or the source path; `File > Open Compile Result Fixture…` (⌘O)
-loads another `compile_result` JSON, with a sibling `compile-request.json` used to
-seed the editor when present. `⌘R` reloads.
+loads another `compile_result` JSON, with a sibling `compile-request.json` (or
+`<name>-request.json` for a `<name>-result.json`) used to seed the editor when
+present. `⌘R` reloads.
 
 ## Behavior
 
@@ -33,6 +34,11 @@ seed the editor when present. `⌘R` reloads.
   a UTF-16 `NSRange` (`String.nsRange(utf8Bytes:)`). Offsets that are out of range,
   reversed, or inside a multi-byte scalar are rejected with a footer message rather
   than applied. Unknown item `kind`s decode as `.unknown` and are skipped.
+- Caret sync (source→preview): text items whose `source` range contains the
+  editor caret (UTF-16 caret → UTF-8 byte via `String.utf8ByteRange(of:)`,
+  `CaretSync.itemsContaining`) get a secondary highlight (15% accent fill +
+  underline) on every page. Empty ranges match only an exactly equal byte. The
+  preview does not auto-scroll to the highlighted item.
 - Dark preview toggle in the toolbar (page and text colors only).
 - Worker transport: `File > Attach Worker Executable…` (⌘K) launches a process
   speaking runtime v1 JSON Lines on stdin/stdout; `Compile` (⌘B) sends the current
@@ -51,12 +57,24 @@ seed the editor when present. `⌘R` reloads.
   context or, when the destination was deleted/ambiguous, reselection is required.
   See `Samples/capture-proposal.json`. No network or Grok call is involved here.
 
+## Samples
+
+`Samples/multipage-result.json` + `multipage-request.json` (⌘O on the result):
+two pages, nine text items with byte-exact source ranges into a `main.tex` that
+contains non-ASCII words ("naïve", "Résumé") so UTF-8 and UTF-16 offsets differ,
+plus one error diagnostic with a source range and recovery text and one warning
+with null source/recovery. Use it for manual click-to-source, caret-sync, and
+diagnostics checks beyond the one-line contract fixture.
+
 ## Targets
 
 - `FlashTeXProtocol` — Codable models for runtime v1 and byte-offset conversion.
 - `FlashTeXMac` — the app.
-- Tests (19): anchor/rebase/reselection logic, review flow with duplicate
-  suppression, capture fixture decoding; plus fixture decoding, version/type rejection, unknown kinds, UTF-8→UTF-16
+- Tests (24): anchor/rebase/reselection logic, review flow with duplicate
+  suppression, capture fixture decoding; caret sync (multi-page sample slices
+  byte-exactly, `itemsContaining` boundaries incl. inside a multi-byte scalar,
+  `ShellModel.caretByte`/`caretItems`, sibling request discovery); plus fixture
+  decoding, version/type rejection, unknown kinds, UTF-8→UTF-16
   conversion with multi-byte scalars, `ShellModel` load/navigate/stale behavior,
   line splitting/encoding, and a round trip through `Tests/.../fake_worker.py`
   (a Python test double, not a compiler) including error/garbage/exit paths and
@@ -66,6 +84,7 @@ seed the editor when present. `⌘R` reloads.
 
 - No real Rust worker exists yet (FT-002/FT-005); the transport is exercised only
   against the Python test double.
-- No PDF export, no image/line items (not in v1), no reverse (source→preview) sync.
+- No PDF export, no image/line items (not in v1). Caret sync highlights only;
+  it does not scroll the preview to an off-screen item.
 - Screen capture of the running app was not possible from the agent's terminal
   (no Screen Recording permission); visual click behavior needs a human check.

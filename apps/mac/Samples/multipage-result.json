@@ -1,0 +1,153 @@
+{
+  "protocol_version": 1,
+  "id": "sample-multipage-1",
+  "type": "compile_result",
+  "payload": {
+    "project_id": "demo",
+    "revision": 1,
+    "status": "recovered",
+    "pages": [
+      {
+        "number": 1,
+        "width_pt": 612,
+        "height_pt": 792,
+        "items": [
+          {
+            "kind": "text",
+            "text": "Introduction",
+            "x_pt": 72,
+            "baseline_y_pt": 96,
+            "font_size_pt": 17,
+            "source": {
+              "path": "main.tex",
+              "start_byte": 50,
+              "end_byte": 62
+            }
+          },
+          {
+            "kind": "text",
+            "text": "A",
+            "x_pt": 72,
+            "baseline_y_pt": 130,
+            "font_size_pt": 12,
+            "source": {
+              "path": "main.tex",
+              "start_byte": 64,
+              "end_byte": 65
+            }
+          },
+          {
+            "kind": "text",
+            "text": "naïve",
+            "x_pt": 84,
+            "baseline_y_pt": 130,
+            "font_size_pt": 12,
+            "source": {
+              "path": "main.tex",
+              "start_byte": 66,
+              "end_byte": 72
+            }
+          },
+          {
+            "kind": "text",
+            "text": "approach",
+            "x_pt": 122,
+            "baseline_y_pt": 130,
+            "font_size_pt": 12,
+            "source": {
+              "path": "main.tex",
+              "start_byte": 73,
+              "end_byte": 81
+            }
+          },
+          {
+            "kind": "text",
+            "text": "fails.",
+            "x_pt": 176,
+            "baseline_y_pt": 130,
+            "font_size_pt": 12,
+            "source": {
+              "path": "main.tex",
+              "start_byte": 82,
+              "end_byte": 88
+            }
+          }
+        ]
+      },
+      {
+        "number": 2,
+        "width_pt": 612,
+        "height_pt": 792,
+        "items": [
+          {
+            "kind": "text",
+            "text": "Method",
+            "x_pt": 72,
+            "baseline_y_pt": 96,
+            "font_size_pt": 17,
+            "source": {
+              "path": "main.tex",
+              "start_byte": 107,
+              "end_byte": 113
+            }
+          },
+          {
+            "kind": "text",
+            "text": "Résumé",
+            "x_pt": 72,
+            "baseline_y_pt": 130,
+            "font_size_pt": 12,
+            "source": {
+              "path": "main.tex",
+              "start_byte": 115,
+              "end_byte": 123
+            }
+          },
+          {
+            "kind": "text",
+            "text": "of the steps.",
+            "x_pt": 120,
+            "baseline_y_pt": 130,
+            "font_size_pt": 12,
+            "source": {
+              "path": "main.tex",
+              "start_byte": 124,
+              "end_byte": 137
+            }
+          },
+          {
+            "kind": "text",
+            "text": "oops",
+            "x_pt": 72,
+            "baseline_y_pt": 150,
+            "font_size_pt": 12,
+            "source": {
+              "path": "main.tex",
+              "start_byte": 165,
+              "end_byte": 169
+            }
+          }
+        ]
+      }
+    ],
+    "diagnostics": [
+      {
+        "severity": "error",
+        "message": "Missing } inserted for \\textbf.",
+        "source": {
+          "path": "main.tex",
+          "start_byte": 157,
+          "end_byte": 169
+        },
+        "recovery": "Closed the group at end of paragraph and rendered its contents in bold."
+      },
+      {
+        "severity": "warning",
+        "message": "Overfull \\hbox on page 2.",
+        "source": null,
+        "recovery": null
+      }
+    ],
+    "pdf_path": null
+  }
+}
