@@ -23,6 +23,7 @@ pub mod attribution {
     use std::sync::atomic::{AtomicBool, AtomicU64, Ordering::Relaxed};
     use std::time::Instant;
     static COUNT: AtomicBool = AtomicBool::new(false);
+    static REPARSE: AtomicBool = AtomicBool::new(false);
     static CALLS: AtomicU64 = AtomicU64::new(0);
     static BYTES: AtomicU64 = AtomicU64::new(0);
     static CASE: AtomicU64 = AtomicU64::new(0);
@@ -48,6 +49,8 @@ pub mod attribution {
     pub fn context(case: u64, sample: u64, count: bool) {
         CASE.store(case, Relaxed); SAMPLE.store(sample, Relaxed); COUNT.store(count, Relaxed);
     }
+    pub fn select_reparse(value: bool) { REPARSE.store(value, Relaxed); }
+    pub fn reparse() -> bool { REPARSE.load(Relaxed) }
     pub struct Mark(Instant, u64, u64);
     #[derive(serde::Serialize)]
     pub struct Phase { name: &'static str, ns: u128, allocation_calls: u64, requested_bytes: u64 }
@@ -56,7 +59,7 @@ pub mod attribution {
         Phase { name, ns: mark.0.elapsed().as_nanos(), allocation_calls: CALLS.load(Relaxed)-mark.1, requested_bytes: BYTES.load(Relaxed)-mark.2 }
     }
     pub fn emit(phases: &[Phase]) {
-        eprintln!("BIND_PROFILE {}", serde_json::json!({"case":CASE.load(Relaxed),"sample":SAMPLE.load(Relaxed),"counted":COUNT.load(Relaxed),"phases":phases}));
+        eprintln!("BIND_PROFILE {}", serde_json::json!({"case":CASE.load(Relaxed),"sample":SAMPLE.load(Relaxed),"counted":COUNT.load(Relaxed),"reparse":REPARSE.load(Relaxed),"phases":phases}));
     }
 }
 '''
@@ -71,6 +74,7 @@ fn attribution_only() {
         (include_bytes!("fixtures/helper-raw-f5524794/step-1.candidate.jsonl").as_slice(),include_bytes!("fixtures/helper-raw-f5524794/step-1.metadata.json").as_slice()),
         (include_bytes!("fixtures/helper-raw-f5524794/step-2.candidate.jsonl").as_slice(),include_bytes!("fixtures/helper-raw-f5524794/step-2.metadata.json").as_slice()),
     ].into_iter().enumerate() {
+        if std::env::var("PROFILE_CASE").ok().and_then(|s| s.parse::<usize>().ok()).is_some_and(|selected| selected!=index) { continue; }
         let event: Value=serde_json::from_slice(raw).unwrap();
         let metadata: Value=serde_json::from_slice(meta).unwrap(); let c=&metadata["current"];
         let current=CurrentHelper {
@@ -80,10 +84,16 @@ fn attribution_only() {
         };
         let resources=resources(&event["payload"]["display_list"]); let result=serde_json::to_vec(&metadata["result"]).unwrap(); let caps=caps();
         for sample in 0..23 {
-            attribution::context(index as u64,sample,counted);
-            let bound=bind(raw,&result,&current,&caps,&resources).unwrap();
-            let mark=attribution::begin(); drop(bound);
-            attribution::emit(&[attribution::finish(mark,"bound_drop")]);
+            let branches: &[bool] = if std::env::var("PROFILE_PAIR_REPARSE").ok().as_deref()==Some("1") {
+                if sample%2==0 { &[false,true] } else { &[true,false] }
+            } else { &[false] };
+            for &reparse in branches {
+                attribution::context(index as u64,sample,counted);
+                attribution::select_reparse(reparse);
+                let bound=bind(raw,&result,&current,&caps,&resources).unwrap();
+                let mark=attribution::begin(); drop(bound);
+                attribution::emit(&[attribution::finish(mark,"bound_drop")]);
+            }
         }
     }
 }
@@ -101,7 +111,7 @@ def replace_once(text, old, new):
     return text.replace(old,new,1)
 
 def main():
-    ap=argparse.ArgumentParser(); ap.add_argument('--report',type=Path,required=True); ap.add_argument('--base',default=BASE); args=ap.parse_args()
+    ap=argparse.ArgumentParser(); ap.add_argument('--report',type=Path,required=True); ap.add_argument('--base',default=BASE); ap.add_argument('--case',type=int,choices=range(3)); ap.add_argument('--pair-reparse',action='store_true'); args=ap.parse_args()
     root=Path(__file__).resolve().parents[3]
     base=command(['git','rev-parse',args.base],root).stdout.decode().strip()
     archive=command(['git','archive',base,*['crates/'+c for c in CRATES]],root).stdout
@@ -119,24 +129,36 @@ def main():
         s=replace_once(s,'    let value: RawHelperEvent =', '    phases.push(attribution::finish(mark,"'+preflight+'"));\n    let mark = attribution::begin();\n    let value: RawHelperEvent =')
         s=replace_once(s,'    let p = &value.payload;', '    phases.push(attribution::finish(mark,"typed_wrapper_decode"));\n    let mark = attribution::begin();\n    let p = &value.payload;')
         s=replace_once(s,'    let bytes = p.display_list.get().as_bytes();', '    phases.push(attribution::finish(mark,"policy_source_snapshot"));\n    let mark = attribution::begin();\n    let bytes = p.display_list.get().as_bytes();')
-        s=replace_once(s,'    let display = PipelineCff::bind(bytes, capabilities, &documents, resources)?;', '    phases.push(attribution::finish(mark,"pipeline_pair"));\n    let mark = attribution::begin();\n    let display = PipelineCff::bind(bytes, capabilities, &documents, resources)?;\n    phases.push(attribution::finish(mark,"pipeline_resource_bind"));\n    let mark = attribution::begin();\n    drop(value);\n    phases.push(attribution::finish(mark,"typed_wrapper_drop"));\n    attribution::emit(&phases);')
+        old_call = '    let display = PipelineCff::bind(bytes, capabilities, &documents, resources)?;'
+        retained_call = '    let display = PipelineCff::bind_paired(paired, capabilities, &documents, resources)?;'
+        call = retained_call if retained_call in s else old_call
+        if args.pair_reparse and call != retained_call: raise RuntimeError('paired control needs the retained-token implementation')
+        measured_call = call
+        if args.pair_reparse:
+            measured_call = """    let display = if attribution::reparse() {
+        let display = PipelineCff::bind(bytes, capabilities, &documents, resources)?;
+        drop(paired); // Legacy first parsed envelope cleanup is included in this phase.
+        display
+    } else { PipelineCff::bind_paired(paired, capabilities, &documents, resources)? };"""
+        s=replace_once(s,call,'    phases.push(attribution::finish(mark,"pipeline_pair"));\n    let mark = attribution::begin();\n'+measured_call+'\n    phases.push(attribution::finish(mark,"pipeline_resource_bind"));\n    let mark = attribution::begin();\n    drop(value);\n    phases.push(attribution::finish(mark,"typed_wrapper_drop"));\n    attribution::emit(&phases);')
         s+='\n'+PROFILE; p.write_text(s)
         t=tmp/'crates/rendering-core/tests/helper_candidate.rs'; t.write_text(t.read_text()+TEST)
         cargo=['cargo','test','--release','--manifest-path','crates/rendering-core/Cargo.toml','--test','helper_candidate']
         command(cargo+['--no-run'],tmp,env,timeout=300)
         records=[]
         for count in ['0','1']:
-            result=command(cargo+['--','--ignored','--exact','attribution_only','--nocapture','--test-threads=1'],tmp,dict(env,PROFILE_COUNT_ALLOCATIONS=count))
+            result=command(cargo+['--','--ignored','--exact','attribution_only','--nocapture','--test-threads=1'],tmp,dict(env,PROFILE_COUNT_ALLOCATIONS=count,PROFILE_PAIR_REPARSE='1' if args.pair_reparse else '0',PROFILE_CASE='' if args.case is None else str(args.case)))
             for line in result.stderr.decode().splitlines():
                 if line.startswith('BIND_PROFILE '): records.append(json.loads(line[len('BIND_PROFILE '):]))
         summary=[]
-        for case in range(3):
-            for name in [preflight,'typed_wrapper_decode','policy_source_snapshot','pipeline_pair','pipeline_resource_bind','typed_wrapper_drop','bound_drop']:
-                timing=[p for r in records if r['case']==case and not r['counted'] and r['sample']>=3 for p in r['phases'] if p['name']==name]
-                alloc=[p for r in records if r['case']==case and r['counted'] and r['sample']>=3 for p in r['phases'] if p['name']==name]
-                if len(timing)!=20 or len(alloc)!=20: raise RuntimeError('incomplete samples')
-                summary.append({'case':case,'phase':name,'samples':20,'median_ns':statistics.median(p['ns'] for p in timing),'min_ns':min(p['ns'] for p in timing),'max_ns':max(p['ns'] for p in timing),'median_allocation_calls':statistics.median(p['allocation_calls'] for p in alloc),'median_requested_bytes':statistics.median(p['requested_bytes'] for p in alloc)})
-        report={'format':'flashtex-binder-attribution-v1','base_commit':base,'preflight_kind':preflight,'original_helper_source_sha256':sha(original.encode()),'instrumented_helper_source_sha256':sha(s.encode()),'script_sha256':sha(Path(__file__).read_bytes()),'archive_sha256':sha(archive),'rustc':command(['rustc','--version'],root).stdout.decode().strip(),'cargo':command(['cargo','--version'],root).stdout.decode().strip(),'scope':'Instrumented release binder phases on existing actual raw helper captures; 3 warmups +20samples per mode. Timing counter updates disabled. Allocations are requested capacity, not retained memory/RSS. Phase timers exclude profiling output; no native or production speedup claim.','summary':summary,'samples':records}
+        for case in range(3) if args.case is None else [args.case]:
+            for reparse in [False,True] if args.pair_reparse else [False]:
+                for name in [preflight,'typed_wrapper_decode','policy_source_snapshot','pipeline_pair','pipeline_resource_bind','typed_wrapper_drop','bound_drop']:
+                    timing=[p for r in records if r['case']==case and r['reparse']==reparse and not r['counted'] and r['sample']>=3 for p in r['phases'] if p['name']==name]
+                    alloc=[p for r in records if r['case']==case and r['reparse']==reparse and r['counted'] and r['sample']>=3 for p in r['phases'] if p['name']==name]
+                    if len(timing)!=20 or len(alloc)!=20: raise RuntimeError('incomplete samples')
+                    summary.append({'case':case,'reparse_control':reparse,'phase':name,'samples':20,'median_ns':statistics.median(p['ns'] for p in timing),'min_ns':min(p['ns'] for p in timing),'max_ns':max(p['ns'] for p in timing),'median_allocation_calls':statistics.median(p['allocation_calls'] for p in alloc),'median_requested_bytes':statistics.median(p['requested_bytes'] for p in alloc)})
+        report={'format':'flashtex-binder-attribution-v1','base_commit':base,'preflight_kind':preflight,'paired_reparse_control':args.pair_reparse,'original_helper_source_sha256':sha(original.encode()),'instrumented_helper_source_sha256':sha(s.encode()),'script_sha256':sha(Path(__file__).read_bytes()),'archive_sha256':sha(archive),'rustc':command(['rustc','--version'],root).stdout.decode().strip(),'cargo':command(['cargo','--version'],root).stdout.decode().strip(),'scope':'Instrumented release binder phases on existing actual raw helper captures; 3 warmups +20samples per mode. Timing counter updates disabled. Allocations are requested capacity, not retained memory/RSS. Phase timers exclude profiling output. Paired mode alternates reparse/reuse in one process and includes legacy parsed-envelope cleanup in resource phase. No native or production speedup claim.','summary':summary,'samples':records}
         args.report.parent.mkdir(parents=True,exist_ok=True); args.report.write_text(json.dumps(report,indent=2)+'\n')
         print(json.dumps({'report':str(args.report),'summaries':summary}))
 

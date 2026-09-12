@@ -30,6 +30,29 @@ impl PipelineCff {
         let Message::DisplayList(list) = parse(bytes)?.message else {
             return Err(ValidationError("display list required".into()));
         };
+        Self::bind_list(list, bytes, capabilities, documents, resources)
+    }
+    /// Consume a private paired proof instead of parsing the same bytes again.
+    /// Pairing is not resource authority: all profile/source/font checks below run.
+    pub(crate) fn bind_paired(
+        paired: pipeline_frame::PairedDisplay<'_>,
+        capabilities: &Capabilities,
+        documents: &BTreeMap<String, SourceSnapshot>,
+        resources: &BTreeMap<String, Arc<CffFontResource>>,
+    ) -> Result<Self> {
+        let (envelope, bytes) = paired.into_parts();
+        let Message::DisplayList(list) = envelope.message else {
+            return Err(ValidationError("display list required".into()));
+        };
+        Self::bind_list(list, bytes, capabilities, documents, resources)
+    }
+    fn bind_list(
+        list: DisplayList,
+        bytes: &[u8],
+        capabilities: &Capabilities,
+        documents: &BTreeMap<String, SourceSnapshot>,
+        resources: &BTreeMap<String, Arc<CffFontResource>>,
+    ) -> Result<Self> {
         list.validate_profile(capabilities, true)?;
         for d in &list.documents {
             let source = documents

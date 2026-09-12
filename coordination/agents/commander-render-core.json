@@ -3,10 +3,10 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-023": {
-      "acknowledged_utc": "2026-09-12T12:04:24Z",
-      "adaptation": "Read3b0fa70e FT023r13. Attribute existing f552 raw helper binder phases/allocation before any replacement, preserve GH32 finite/depth/duplicate/current resource gates; coordinate measurement windows.",
-      "main_sha": "3b0fa70e1bb55e31d013828a54ba3416ad47e8e2",
-      "revision": 13
+      "acknowledged_utc": "2026-09-12T12:29:02Z",
+      "adaptation": "Read837db900 FT023r14. Remove proven duplicate sibling parsing with a private consumed token binding exact original bytes to parsed Envelope; preserve current source/export guards and immutable verified resource snapshot semantics. No registry API invention/global cache.",
+      "main_sha": "837db9000ca75de76bf538c040c59f06d875494e",
+      "revision": 14
     }
   },
   "branch": "agent/commander-render-core/rendering-core",
@@ -14,23 +14,23 @@
     "rust",
     "rendering"
   ],
-  "code_revision": "02da05688d8f931698b9c2f0f8be85acb2d05536",
+  "code_revision": "21ce1756cdbc68b76fb4509c504e61817445e899",
   "eta_minutes": {
     "likely": 3,
     "optimistic": 1,
     "pessimistic": 5
   },
   "machine": "linux-primary",
-  "main_integrated_through": "3040a0ce37256999db73ac73fd7b9df693aad1a1",
-  "next_action": "Commander integration of tested visitor/evidence. Remaining pair+resource parsing costs exceed new preflight; future reuse must preserve complete source/resource authority. No native activation.",
+  "main_integrated_through": "6c22fe809178c26b947f322c7a475f1e0db3bacd",
+  "next_action": "Commander integration of tested parse-reuse and evidence. Pairing remains main measured allocation stage; no global cache, new registry API or native switch. Await next bounded consumer task.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "accepted",
-  "summary": "FT023r13 complete: equivalent serde preflight02da0568 measured0 allocations on3actual raw captures; removes up to11.85MB requested capacity. Five original PDFs and reference outcomes unchanged.",
+  "summary": "FT023r14 complete: private consumed paired token21ce1756 removes duplicate sibling parse. Paired resource validation allocations46332\u2192898 and requested capacity12.08\u21921.31MB; source/resource authority unchanged.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T12:25:32Z",
+  "updated_utc": "2026-09-12T12:41:45Z",
   "usage": {
-    "evidence": "172 Rust tests/2ignored and strict Clippy pass;6Python tests pass.138 candidate measured bindings; all nonpreflight allocation medians unchanged. Five replay PDF/raster/text hashes exact baseline equality; existing0/602/1244/979/337 reference gaps retained. No RSS or calibrated speedup claim.",
-    "status": "Hosted OpenAI only; no providers or descendants; quota telemetry unavailable. Candidate18856 and replay76868 terminal; runtime owner has released measurement window."
+    "evidence": "173 Rust tests/2ignored, strictClippy and6Python tests pass. Same-process alternating one-capture experiment92bindings; resource phase21.00\u21922.04ms instrumented only, other allocation medians unchanged. All five original PDF/raster/text/validity results unchanged; prior reference gaps remain.",
+    "status": "Hosted OpenAI only; no providers or descendants; quota/context telemetry and native compaction control unavailable. Jobs75642 and29353 terminal; concise durable handoff in own report/docs."
   }
 }

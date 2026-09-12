@@ -564,3 +564,66 @@ fn actual_raw_prototype_three_states_reach_strict_export_without_reencoding() {
         assert_eq!(pdf_sha, case["strict_consumer_pdf_sha256"]);
     }
 }
+
+#[test]
+fn consumed_pair_preserves_legacy_resource_refusals_and_retained_source_guard() {
+    let (event, result, current, _) =
+        fixture(include_bytes!("fixtures/runtime-candidates/step-1.json"));
+    let resources = resources(&event["payload"]["display_list"]);
+    let documents = current
+        .sources
+        .iter()
+        .map(|(path, source)| {
+            (
+                path.clone(),
+                SourceSnapshot {
+                    revision: current.compile_revision,
+                    text: source.text.clone(),
+                },
+            )
+        })
+        .collect();
+    let mut wrong_digest = event.clone();
+    wrong_digest["payload"]["display_list"]["payload"]["fonts"][0]["sha256"] =
+        "0".repeat(64).into();
+    let mut wrong_gid = event.clone();
+    wrong_gid["payload"]["display_list"]["payload"]["pages"][0]["items"][0]["glyphs"][0]["gid"] =
+        65535.into();
+    let mut wrong_source = event.clone();
+    wrong_source["payload"]["display_list"]["payload"]["documents"][0]["sha256"] =
+        "0".repeat(64).into();
+    let empty_resources = BTreeMap::new();
+    for (candidate, available, accepted) in [
+        (&event, &resources, true),
+        (&event, &empty_resources, false),
+        (&wrong_digest, &resources, false),
+        (&wrong_gid, &resources, false),
+        (&wrong_source, &resources, false),
+    ] {
+        let bytes = serde_json::to_vec(candidate).unwrap();
+        let sibling = serde_json::to_vec(&candidate["payload"]["display_list"]).unwrap();
+        let legacy = pipeline_frame::pair(&result, Some(&sibling), true)
+            .and_then(|_| PipelineCff::bind(&sibling, &caps(), &documents, available));
+        let reused = bind(&bytes, &result, &current, &caps(), available);
+        assert_eq!(legacy.is_ok(), accepted);
+        assert_eq!(reused.is_ok(), accepted);
+        if let (Ok(legacy), Ok(reused)) = (legacy, reused) {
+            assert_eq!(
+                digest(&legacy.export_searchable(8 * 1024 * 1024).unwrap().bytes),
+                digest(
+                    &reused
+                        .export_searchable(&current, 8 * 1024 * 1024)
+                        .unwrap()
+                        .bytes
+                ),
+            );
+            let mut stale = current.clone();
+            stale.sources.get_mut("main.tex").unwrap().text.push('x');
+            assert!(reused.export_searchable(&stale, 8 * 1024 * 1024).is_err());
+            stale = current.clone();
+            stale.membership_generation += 2; // A→B→A source content still has a newer epoch.
+            assert!(reused.export_searchable(&stale, 8 * 1024 * 1024).is_err());
+            assert!(reused.export_searchable(&current, 8 * 1024 * 1024).is_ok());
+        }
+    }
+}
