@@ -595,7 +595,11 @@ final class BridgeRecoveryTests: XCTestCase {
             XCTAssertEqual(model.activeText, after, "inserted exactly once")
             XCTAssertEqual(bridge.durable?.text, after)
             let st = try await bridge.status(captureId: captureId)
-            XCTAssertEqual(st.applied?.newRevision, model.editorRevision, captureId)
+            // With the parent's onRevisionFloor hook the reconciled ledger may raise the
+            // editor revision past the revision the bridge recorded at application; the
+            // applied revision is never ahead of the editor.
+            XCTAssertNotNil(st.applied?.newRevision, captureId)
+            XCTAssertLessThanOrEqual(st.applied?.newRevision ?? Int.max, model.editorRevision, captureId)
             // The bridge snapshot is current again: a pin at the live revision succeeds.
             model.caretUTF16 = 0
             model.pinAnchorAtCaret()

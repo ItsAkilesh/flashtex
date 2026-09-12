@@ -190,6 +190,7 @@ What works offline (no key, no network — verified with `RealBridgeTests`):
   pending receipts whose text differs from the buffer is adopted into the editor
   as one undoable operation; without pending receipts the buffer replaces the
   stored text (`replace_document`).
+- Automatic relaunch: an abnormal exit of the bridge or the edit-ledger helper is relaunched with the same store after 0.2/1/3 s, at most 3 times per minute per helper, never after a clean exit or detach; the same reconciliation then runs against the live buffer (ledger realigned, pending receipts settled through `recovery_import`, document reopened, pinned destination re-pinned identically or dropped with a note). A capture or receipt in flight at the crash is shown as `uncertain` and settled exactly once; a capture the bridge never acknowledged may be resubmitted with the same ID.
 
 ### Edit ledger helper (durable document transaction)
 
