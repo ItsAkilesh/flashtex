@@ -245,10 +245,7 @@ impl<T: Send + Sync + 'static> Scheduler<T> {
         match &job.state {
             State::RecoveryRequired(RecoveryReason::QueuedAwaitingAuthorization) => (),
             State::RecoveryRequired(RecoveryReason::ProviderMayHaveCompleted)
-                if authorization == ResumeAuthorization::ReconciledPossibleProviderCompletion =>
-            {
-                ()
-            }
+                if authorization == ResumeAuthorization::ReconciledPossibleProviderCompletion => {}
             _ => return Err(Error::RecoveryAuthorizationRequired),
         }
         job.expected = context.clone();
