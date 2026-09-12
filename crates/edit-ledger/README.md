@@ -67,7 +67,7 @@ cargo clippy --manifest-path crates/edit-ledger/Cargo.toml --all-targets --offli
 cargo build --manifest-path crates/edit-ledger/Cargo.toml --release --offline
 ```
 
-Validation: 40 library tests and three subprocess tests pass on Linux. They
+Validation: 41 library tests and seven integration tests pass on Linux. They
 exercise UTF-8 interiors and bad ranges, all snapshot guards, persisted replay,
 undo with durable deduplication, before/after-rename I/O failures, failed receipt
 confirmation, corrupted/unreadable journals, competing handles, stale snapshots,
@@ -94,6 +94,9 @@ one reply slot, so a stalled/dropped reply reader cannot block other admitted
 commands. Dropping a reply does not cancel an accepted transaction: export and
 reconcile durable state before retrying. Dropping the last service handle closes
 admission; its worker finishes accepted work and releases the store lock.
+Use `shutdown()` and poll `ShutdownWatch::is_stopped()` to prove cleanup is
+finished before attaching another session to that directory. Every cloned handle
+must close first; checking the flag never blocks on I/O.
 
 Replies include ledger-local `session_id`, monotonic execution `sequence`,
 `document_revision`, `document_sha256`, and `command_succeeded`. Native consumers
@@ -109,6 +112,13 @@ The library caps capacity at 16 and retains at most the configured outstanding
 request/reply count internally. Caller-owned collected replies are the caller's
 responsibility. Tests cover capacity, frames, omitted payloads, startup errors,
 distinct sessions, and competing stale edits with revision-aware replies.
+The multi-session stress fixture runs four simultaneous document services with
+four writers each: 160 guarded groups persist exactly once under contention,
+with explicit stale-revision retries and reopen checks. The checked-in
+`tests/fixtures/native-undo-restart.json` drives a real helper process killed
+after durable undo: restart recovers source, pending capture receipt and redo,
+and duplicate capture/undo requests remain harmless. This exercises the adapter
+protocol on Linux, not a native view or Xcode runtime.
 
 ## Durable grouped editing and undo/redo
 

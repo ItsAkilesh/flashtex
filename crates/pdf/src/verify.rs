@@ -168,7 +168,9 @@ pub fn placements(content: &[u8]) -> Result<Vec<Placement>, String> {
             let name = parts.next().unwrap_or("");
             let name = name
                 .strip_prefix('/')
-                .filter(|n| *n == "F1" || *n == "F2" || *n == "F3")
+                .filter(|n| {
+                    n.len() > 1 && n.starts_with('F') && n[1..].bytes().all(|b| b.is_ascii_digit())
+                })
                 .ok_or_else(|| format!("unexpected font resource {name}"))?;
             let size = parts
                 .next()

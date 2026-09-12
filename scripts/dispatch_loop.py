@@ -19,6 +19,22 @@ from types import SimpleNamespace
 import coord
 
 
+def fetch_origin(root):
+    """Retry only a read-only fetch ref-CAS race with another linked worktree.
+
+    Never retry publication, auth failures, arbitrary locks, or pending paid calls.
+    """
+    for attempt in range(3):
+        try:
+            return coord.git(root, 'fetch', 'origin', '--prune')
+        except RuntimeError as exc:
+            message = str(exc)
+            if (attempt == 2 or "cannot lock ref 'refs/remotes/origin/" not in message
+                    or ' but expected ' not in message or ' is at ' not in message):
+                raise
+            time.sleep(0.1 * (attempt + 1))
+
+
 @contextmanager
 def dispatcher_lock(root):
     folder = coord.local_state(root)
@@ -44,6 +60,24 @@ def list_of_text(value, field):
     if not isinstance(value, list) or not value or any(not isinstance(s, str) or not s.strip() for s in value):
         raise ValueError(field + ' must be a nonempty list of strings')
     return value
+
+
+def partition_owned_plans(plans, assignments):
+    """A conflicting lane stays blocked without stopping unrelated workers."""
+    accepted, skipped = [], []
+    for plan in plans:
+        task_args = plan['args']
+        conflicts = []
+        for other in assignments.values():
+            if other['task_id'] != task_args.task and other.get('state') not in ('cancelled', 'integrated', 'verified'):
+                if any(coord.overlaps(a, b) for a in task_args.path for b in other['owned_paths']):
+                    conflicts.append(other['task_id'])
+        if conflicts:
+            skipped.append({'task': task_args.task, 'reason': 'ownership remains reserved',
+                            'conflicting_tasks': sorted(conflicts), 'needs_commander_review': True})
+        else:
+            accepted.append(plan)
+    return accepted, skipped
 
 
 def plan_step(root, queue_path, queue, assignments, now, stale_seconds):
@@ -163,24 +197,37 @@ def scan_once(root, args):
         coord.branch(root, 'commander')
         if coord.git(root, 'status', '--porcelain'):
             raise RuntimeError('Commander worktree is dirty; preserving work and stopping')
-        coord.git(root, 'fetch', 'origin', '--prune')
+        fetch_origin(root)
         baseline = coord.git(root, 'rev-parse', 'origin/main')
         require_authority(root, args, baseline)
         if coord.git(root, 'rev-parse', 'HEAD') != baseline:
             if coord.run(['git', 'merge-base', '--is-ancestor', 'HEAD', baseline], cwd=root, check=False).returncode:
                 raise RuntimeError('Commander HEAD must exactly match current origin/main or be a clean ancestor before dispatch')
             coord.git(root, 'merge', '--ff-only', 'origin/main')
+        control = {}
         control_path = 'coordination/control.json'
         if not coord.run(['git', 'cat-file', '-e', baseline + ':' + control_path], cwd=root, check=False).returncode:
             control = coord.peer_json(root, baseline, control_path)
             if control.get('state') == 'user_stopped':
                 return {'prepared': [], 'skipped': [], 'published': False, 'paths': [],
                         'baseline_main': baseline, 'stopped': True, 'reason': control['state']}
+        cooldown = {}
+        cooldown_path = 'coordination/cooldown.json'
+        if not coord.run(['git', 'cat-file', '-e', baseline + ':' + cooldown_path], cwd=root, check=False).returncode:
+            cooldown = coord.peer_json(root, baseline, cooldown_path)
         assignments = main_records(root, 'coordination/assignments')
         queues = main_records(root, 'coordination/queues')
         plans, skipped = [], []
         now = datetime.now(timezone.utc)
         for path, queue in sorted(queues.items()):
+            if (cooldown and now < coord.parse_time(cooldown['resume_utc'])
+                    and queue.get('agent_id', '').startswith(('mac-', 'orchestrator-jaysen'))):
+                skipped.append({'queue': path, 'reason': 'Jaysen cooldown: heavy automatic dispatch paused; only explicit small tasks'})
+                continue
+
+            if queue.get('agent_id') in control.get('paused_agents', []):
+                skipped.append({'queue': path, 'reason': 'worker paused by explicit user staffing limit'})
+                continue
             try:
                 plan, reason = plan_step(root, path, queue, assignments, now, args.stale_seconds)
             except DispatchAuthorizationError:
@@ -192,13 +239,9 @@ def scan_once(root, args):
                 plans.append(plan)
             else:
                 skipped.append({'queue': path, 'reason': reason})
-        # Validate inter-task ownership before any mutation. coord.dispatch checks it again.
-        for plan in plans:
-            task_args = plan['args']
-            for other in assignments.values():
-                if other['task_id'] != task_args.task and other.get('state') not in ['cancelled', 'integrated', 'verified']:
-                    if any(coord.overlaps(a, b) for a in task_args.path for b in other['owned_paths']):
-                        raise ValueError('next task overlaps active ownership: ' + other['task_id'])
+        # Preserve conflicting ownership but keep unrelated queues progressing.
+        plans, ownership_skips = partition_owned_plans(plans, assignments)
+        skipped.extend(ownership_skips)
         paths = []
         for plan in plans:
             coord.dispatch(root, plan['args'])
@@ -222,7 +265,7 @@ def scan_once(root, args):
         coord.publish(root, SimpleNamespace(allocation=args.allocation, implementation='Codex Astra dispatcher',
                       direct_agent_commit=getattr(args, 'direct_agent_commit', False),
                       message='coord: dispatch next queued worker assignments', timeout=args.timeout))
-        coord.git(root, 'fetch', 'origin', '--prune')
+        fetch_origin(root)
         if coord.git(root, 'rev-parse', 'origin/main') != baseline:
             raise RuntimeError('main changed during publication; task branch preserved, integration required')
         if coord.run(['git', 'merge-base', '--is-ancestor', baseline, 'HEAD'], cwd=root, check=False).returncode:

@@ -67,7 +67,17 @@ def changed_paths(root):
     return sorted(set(p for p in tracked + new if p))
 
 
+def paused_by_user(root, agent):
+    path = 'coordination/control.json'
+    if coord.run(['git', 'cat-file', '-e', 'origin/main:' + path], cwd=root, check=False).returncode:
+        return False
+    control = coord.peer_json(root, 'origin/main', path)
+    return agent in control.get('paused_agents', [])
+
+
 def cycle(root, args, fleet, state_path, state):
+    if paused_by_user(root, args.id):
+        return 'paused_by_user'
     assignment = assignment_for(fleet, args.id)
     if not assignment:
         return 'waiting_for_assignment'
@@ -197,7 +207,7 @@ def main():
             while True:
                 fleet = coord.checkpoint(root, emit=False)
                 control = coord.peer_json(root, 'origin/main', 'coordination/control.json')
-                if control.get('state') == 'user_stopped':
+                if control.get('state') == 'user_stopped' or args.id in control.get('paused_agents', []):
                     print('Project stop/completion control received; worker stopped.', flush=True)
                     break
                 selected = assignment_for(fleet, args.id)

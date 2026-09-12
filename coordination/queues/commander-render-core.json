@@ -5,8 +5,8 @@
   "next_index": 0,
   "steps": [
     {
-      "name": "Validated font-resources adapter",
-      "objective": "Validated font-resources adapter",
+      "name": "Multi-font generation replacement invalidates stale leases while retained frames stay immutable",
+      "objective": "Multi-font generation replacement invalidates stale leases while retained frames stay immutable",
       "owned_paths": [
         "crates/rendering-core"
       ],
@@ -15,12 +15,12 @@
         "Publish truthful execution provenance and exact tested SHA",
         "No native integration or PDF parity claim without measured evidence"
       ],
-      "timebox_minutes": 30,
-      "allocation_id": "hosted-openai-product"
+      "allocation_id": "hosted-openai-product",
+      "timebox_minutes": 30
     },
     {
-      "name": "Selection and revision-safe retained page cache",
-      "objective": "Selection and revision-safe retained page cache",
+      "name": "Bounded source-aware hit testing across shaped font changes with exact cluster provenance",
+      "objective": "Bounded source-aware hit testing across shaped font changes with exact cluster provenance",
       "owned_paths": [
         "crates/rendering-core"
       ],
@@ -29,8 +29,8 @@
         "Publish truthful execution provenance and exact tested SHA",
         "No native integration or PDF parity claim without measured evidence"
       ],
-      "timebox_minutes": 30,
-      "allocation_id": "hosted-openai-product"
+      "allocation_id": "hosted-openai-product",
+      "timebox_minutes": 30
     }
   ]
 }

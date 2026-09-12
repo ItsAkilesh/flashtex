@@ -42,6 +42,11 @@ pub struct ShapeOptions {
     /// When no GSUB ligature applies, map `ff`, `fi`, `fl`, `ffi`, `ffl` through
     /// the cmap (U+FB00..U+FB04). Always used by Core 14 faces.
     pub cmap_ligature_fallback: bool,
+    /// Fail with [`Error::UnsupportedFeature`] when a requested feature
+    /// (`kerning` → `kern`, `ligatures` → `liga`, `compose_marks` → `mark`)
+    /// depends on a lookup type this engine skipped in this font, instead of
+    /// returning partially shaped text with only a note.
+    pub fail_on_unsupported_lookups: bool,
 }
 
 impl Default for ShapeOptions {
@@ -51,6 +56,7 @@ impl Default for ShapeOptions {
             kerning: true,
             compose_marks: true,
             cmap_ligature_fallback: true,
+            fail_on_unsupported_lookups: true,
         }
     }
 }
@@ -62,6 +68,7 @@ impl ShapeOptions {
         kerning: false,
         compose_marks: false,
         cmap_ligature_fallback: false,
+        fail_on_unsupported_lookups: false,
     };
 }
 
@@ -197,6 +204,32 @@ pub fn unsupported_reason(ch: char) -> Option<&'static str> {
 
 /// Shapes `text` with `face`. See the module docs for the pipeline.
 pub fn shape(face: &dyn Face, text: &str, opts: &ShapeOptions) -> Result<Shaped, Error> {
+    let unsupported_for = |feature: &str| -> Option<Error> {
+        if !opts.fail_on_unsupported_lookups {
+            return None;
+        }
+        face.unsupported()
+            .iter()
+            .find(|u| u.feature == feature)
+            .map(|u| Error::UnsupportedFeature {
+                table: u.table,
+                feature: u.feature,
+                detail: u.detail.clone(),
+            })
+    };
+    // Pair features are exercised by any text of two or more scalars.
+    if text.chars().nth(1).is_some() {
+        if opts.kerning
+            && let Some(e) = unsupported_for("kern")
+        {
+            return Err(e);
+        }
+        if opts.ligatures
+            && let Some(e) = unsupported_for("liga")
+        {
+            return Err(e);
+        }
+    }
     let notdef_advance = i32::from(face.advance(GlyphId::NOTDEF).unwrap_or(0));
     let mut clusters: Vec<Cluster> = Vec::new();
     let mut missing = Vec::new();
@@ -247,6 +280,12 @@ pub fn shape(face: &dyn Face, text: &str, opts: &ShapeOptions) -> Result<Shaped,
             }
             if !last.glyphs.is_empty() {
                 // Attach as a zero-advance mark glyph (or missing).
+                // A mark that could not be composed exercises the `mark`
+                // feature; refuse rather than approximate when the font's
+                // mark lookups are of a kind this engine does not apply.
+                if let Some(e) = unsupported_for("mark") {
+                    return Err(e);
+                }
                 let base_adv = last.glyphs.last().map_or(0, |g| g.advance);
                 let base_gid = last.glyphs[0].gid;
                 match face.glyph_id(ch) {

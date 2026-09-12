@@ -1,35 +1,36 @@
 {
-  "schema_version": 1,
   "agent_id": "bridge-context-jobs",
+  "allocation_id": "hosted-openai-product",
+  "assignment_acknowledgements": {
+    "FT-022": {
+      "acknowledged_utc": "2026-09-12T06:25:28Z",
+      "adaptation": "Reviewed exact r3 main assignment. Existing bridge adapter completed at296f16e; ongoing explicit orchestrator task adds durable review inbox and filtered navigation, preserving controller exact-edit approval boundary. No CLI/core writes.",
+      "main_sha": "3730c236086204a603de7c55ecc77584c5999080",
+      "revision": 3
+    }
+  },
   "branch": "agent/bridge-context/conversion-jobs",
-  "machine": "linux-primary",
-  "tool": "Codex Astra hosted /root/bridge_context",
   "capabilities": [
     "rust",
     "conversion-jobs",
     "bridge-journal"
   ],
-  "allocation_id": "hosted-openai-product",
-  "state": "ready_for_integration",
-  "updated_utc": "2026-09-12T06:11:54.150257+00:00",
-  "assignment_acknowledgements": {
-    "FT-022": {
-      "revision": 2,
-      "acknowledged_utc": "2026-09-12T06:08:08.930252+00:00",
-      "main_sha": "ae3f4de96282e7ea2c60aa268ed5f0b09c664e06",
-      "adaptation": "Progress/backpressure already published2d90e01; continue explicit orchestrator instruction for typed bounded native command/event API and multi-project ledger-handoff tests. No repeated implementation of completed stage."
-    }
-  },
-  "summary": "FT022r2 typed bounded background API and real ledger/multi-project tests complete. Admission, durable intent, proposal-ready and recovery remain distinct; unavailable context revokes exposed status.",
-  "usage": {
-    "status": "Hosted OpenAI quota unknown; no paid provider calls or Cursor retry. Direct Git fallback authorized.",
-    "evidence": "28 all-features/all-targets tests passed, strict Clippy and fmt passed. Actual bridge/edit-ledger owner reopen and receipt replay tested; no provider calls/native parity claim."
-  },
+  "code_revision": "c1d403b021648bf8010f27bdf9937809c50be0c3",
   "eta_minutes": {
     "optimistic": 0,
     "likely": 0,
     "pessimistic": 0
   },
-  "next_action": "Integrate exact code_revision; native/bridge CLI transport remains explicit later assignment. Preserve no ambiguous retry guarantee.",
-  "code_revision": "bdfa2fa13745b5a147337a31c050601b29418a95"
+  "machine": "linux-primary",
+  "main_integrated_through": "fed1739a3b415b772eeea048166b3ff3ced0f94e",
+  "next_action": "Integrate exact code revision. Controller must validate ReviewIntentHandoff against actual current context then separately obtain approval for exact PreparedEdit; inbox never prepares/applies source.",
+  "schema_version": 1,
+  "state": "ready_for_integration",
+  "summary": "Durable bounded review inbox, explicit accept-for-preparation/reject decisions, revocable handoffs, project filtering/navigation and bounded events complete. Root controller exact PreparedEdit approval remains separate.",
+  "tool": "Codex Astra hosted /root/bridge_context",
+  "updated_utc": "2026-09-12T06:27:06.468455+00:00",
+  "usage": {
+    "evidence": "39 all-feature/all-target tests, strict Clippy, fmt passed. Includes native durable-proposal admission, reopened decisions, corruption/storage failure, cancellation, stale context and event backpressure. No provider calls.",
+    "status": "Hosted OpenAI quota unknown; no paid provider calls or Cursor retry. Direct Git fallback authorized."
+  }
 }

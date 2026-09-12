@@ -3,10 +3,10 @@
   "allocation_id": "openai-kabir-plus-ft002",
   "assignment_acknowledgements": {
     "FT-002": {
-      "acknowledged_utc": "2026-09-12T05:15:58Z",
-      "adaptation": "Accepted FT-002 revision 3 (stage 3: dependency-aware invalidation and cached reuse) at input main 60ceb5c, allocation openai-kabir-plus-ft002-stage3. Groundwork already exists: a Session with byte-diff block reuse and ReuseStats was built on this machine during stage 2 and deliberately NOT merged, because its own equivalence test caught real drift between its private copy of the layout engine and the real one once math landed. Stage 3 makes that fix in scope: layout.rs will be refactored into a resumable cursor so there is one layout engine, then reuse drives it. Macro definitions are state, so a macro change must invalidate every dependent block - that is the dependency-aware part of this revision and goes beyond the earlier byte-diff prototype.",
-      "main_sha": "342e1e029f80e7a5b472ad202ae87d597274127b",
-      "revision": 3
+      "acknowledged_utc": "2026-09-12T07:40:44Z",
+      "adaptation": "Accepted FT-002 rev 7: standing compiler bottleneck repair at 5KB/50KB/500KB with p50/p95/p99, superlinear hot-path removal, and proof that incremental equals clean. Directly relevant precedent on this branch: rev 6 re-measurement already caught a quadratic reuse lookup that had pushed a one-word edit to 178 ms p95, so the superlinear risk is real and measured, not hypothetical. Open issue #21 reports a valid 500KB project exceeding the runtime output frame limit, which is the same scale boundary this revision targets; will read and address it as part of this work.",
+      "main_sha": "7fea005b0611e2cc565ec38b9a705eff7cc4532c",
+      "revision": 7
     }
   },
   "branch": "agent/claude/compiler-foundation",
@@ -16,29 +16,29 @@
     "cursor-commit",
     "coordination"
   ],
-  "code_revision": "dfd66984201acff4e2b9de2501345a3b91ec18d5",
+  "code_revision": "63f2988c94df178b297ad9a922a2e10a88edc0e2",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
     "pessimistic": 0
   },
   "machine": "mac-m5pro-kabir",
-  "main_integrated_through": "5a30ec12700dee17f074459cc89ddc8de4b9153d",
-  "next_action": "Commander decision needed on expansion provenance, see below. Otherwise available for dispatch.",
+  "main_integrated_through": "70e4aabc579bb7783187cb397b81857200a4de53",
+  "next_action": "Available for dispatch. Remaining known bottleneck is that every keystroke still reparses the whole document; incremental parsing would be the next structural step.",
   "reviewed_peers": {
     "origin/main": {
-      "adaptation": "Open question for the corpus owner: the included-file case expects visible_text at main.tex 49..70, the \\input invocation range. This implementation attributes included text to the INCLUDED file instead, so that expectation is now uncovered (8/9 rather than 9/9). The corpus README calls expansion provenance an open contract design decision and forbids fabricating per-glyph provenance, so I did not bend either way. My reasoning: clicking Included cafe in the preview should open parts/section.tex at those bytes, not jump to the \\input line in main.tex. If the corpus owner wants invocation-site attribution instead, say so and I will change it.",
-      "reviewed_utc": "2026-09-12T05:56:32Z",
-      "sha": "5a30ec12700dee17f074459cc89ddc8de4b9153d"
+      "adaptation": "I chased the wrong suspect twice before measuring properly. I first indexed the reuse candidate lookup and then made candidate shifting lazy, which together bought only 474->420 ms. Measuring the parse share showed parse was 402 of the 420 ms, so the reuse machinery was never the problem. The actual cause was that every macro invocation removed its token and then spliced the expansion into the gap, moving the token tail twice per invocation.",
+      "reviewed_utc": "2026-09-12T07:59:11Z",
+      "sha": "7fea005b0611e2cc565ec38b9a705eff7cc4532c"
     }
   },
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "Multi-file project support complete: \\input and \\include resolve against the supplied documents, with caller-scope semantics, cycle detection and per-file source attribution. Corpus moved from 7 to 9 cases ok. 59 tests pass. Finished the work myself after the Codex allocation hit its usage limit mid-task and left the tree not compiling.",
+  "summary": "FT-002 rev 7 delivered: scaling benchmark at 5KB/50KB/500KB with p50/p95/p99 and input+binary hashes, and a 14x speedup from removing a quadratic in the parser. A 500KB one-word edit went from 420.606 ms to 29.401 ms p95 and scaling is now approximately linear. Incremental equals clean full build at all three sizes.",
   "tool": "Codex",
-  "updated_utc": "2026-09-12T05:56:32Z",
+  "updated_utc": "2026-09-12T07:59:11Z",
   "usage": {
-    "evidence": "cargo test 59 pass; clippy -D warnings clean; fmt clean; harness 21/21; corpus 9 ok / 5 recovered, up from 7/7; verified by hand that included items report parts/section.tex with offsets slicing that file, including multi-byte cafe. at 9..15",
-    "status": "Codex hit its ChatGPT Plus usage limit mid-task (resets 04:18 local). Remaining work completed directly without Codex."
+    "evidence": "scaling_bench prints sha256 of each input and the binary; one-word edit p95 5KB 0.801->0.551 ms, 50KB 7.402->2.541 ms, 500KB 420.606->29.401 ms; parse at 500KB 402.586->12.254 ms; 14 suites pass; clippy -D warnings clean; fmt clean; harness 21/21; pinned byte-exact fixtures unchanged, proving output identical",
+    "status": "Codex hit its usage limit three times and did no work this revision; all of it written directly"
   }
 }

@@ -1,3 +1,37 @@
+> LATEST USER OVERRIDE: Jaysen cooldown is lifted immediately. Restore the
+> prepared15 independent engineering lanes NOW after verifying usable route.
+> Daniel retains transferred heavy paths. Old08:21 wait instructions below are
+> superseded. Never duplicate an already running session or purchase usage.
+
+> LATEST USER STAFFING RESET: this host now has SEVEN active total: sole Astra
+> Commander plus SIX product engineers (root assistant-context, font-resources,
+> rendering-core, conversion-jobs, project-index, edit-ledger). The three paused
+> product agents are explicitly reactivated in their preserved worktrees. This
+> supersedes all older local4/paused3 wording below. No additional remote expansion
+> follows from this change; Daniel/Jaysen existing explicit allocations continue.
+> User reports plan reset; do not invent a numeric remaining balance or new funds.
+
+> LATEST COOLDOWN: until 2026-09-12T08:21:08Z Jaysen heavy work is suspended;
+> Daniel may take exact fenced handoffs after registration/ACK. Jaysen small tasks
+> may use his existing remaining usage credits, explicitly authorized for this
+> machine only. At that time both machines receive independent full queues,
+> subject to verified usable routes/reset; no purchases or duplicate ownership.
+> Commander remains linux-primary while usable; fallback is dynamically selected
+> from fresh verified comparable remaining capacity, never fixed to Jaysen.
+
+> ADDITIONAL USER AUTHORIZATION: Daniel's new Claude20x machine is allocated16
+> engineering lanes FT030–045 (registration pending), without reducing other
+> staffing. This is the explicit Daniel-only remote expansion exception. Existing
+> billing restrictions, local4 cap and paused workers remain unchanged.
+
+> LATEST STAFFING OVERRIDE: this computer has FOUR active agents total: sole
+> commander orchestrator-astra, root preview-controller, compiler_corpus fonts,
+> supervisor_api_review rendering. Bridge-context, project-index and edit-ledger
+> agents are paused; preserve all dirty/published work. Never revive or replace
+> them automatically and do not compensate by increasing staffing elsewhere.
+> This overrides older six-engineer staffing text below. Other authorization
+> and explicit-user-stop-only project continuity remain unchanged.
+
 # FlashTeX: required agent collaboration protocol
 
 These instructions apply to all work in this repository, across agents, computers,
@@ -18,12 +52,20 @@ authorized. Actual platform denials, missing authentication, and unapproved bill
 remain blockers to report; never claim they have been bypassed or granted remotely.
 Read `docs/autonomous-workers.md` for the executable startup and task loop.
 
+## Designated standby exception
+
+The user additionally authorized ONE NEW Opus standby on Jaysen mac-m1max-a,
+`orchestrator-jaysen-opus`, as a candidate for eventual Commander takeover after verified
+termination and stopped publishers. It stays read-only while Astra is active;
+this does not increase engineering staffing or revive paused agents. Read
+[the exact revival prompt and operational gaps](docs/commander-failover.md).
+
 ## Command and dispatch
 
 Current sole orchestrator: **orchestrator-astra**, hosted agent handle
 `/root/runtime_validator`, on linux-primary, explicitly selected by the user.
 All organizational work, resources, queues and global integration belong to this
-role. The six hosted Astra engineers perform product work only. The root agent
+role. The three active hosted product engineers perform product work only. The root agent
 continues product engineering and does not concurrently write main/control files.
 Read `coordination/authority.json` before every global mutation; obsolete role names
 below are historical. Sol explicitly handed over after stopping publication jobs.
@@ -45,9 +87,11 @@ The protocol is executable: read `docs/coordination-cli.md` and use
 and reports live in `coordination/agents/<id>.json`; published assignments live in
 `coordination/assignments/<task>.json` on main. Fetch/display never counts as review.
 Use `ack` and `report --review ... --adaptation ...` after actually reading changes.
-Use `publish` for guarded Cursor execution of staged commits and task-branch pushes.
-Workers without authenticated Cursor may submit patches via a repository issue
-for Commander/Cursor to commit; do not create non-Cursor commits as a workaround.
+Use `publish` for guarded staged commits and task-branch pushes. After an observed
+Cursor usage limit, the explicit user override below permits direct current-agent
+Git commits with truthful provenance and the authenticated local user as coauthor.
+Do not wait for exhausted Cursor quota. Other missing-authentication cases must
+use an already-authorized execution route or publish a concrete recovery blocker.
 
 There is exactly one active Commander. A successor may claim command only after
 either (a) the current Commander publishes an explicit quiesced handoff naming that
@@ -130,8 +174,9 @@ authority and bridge recovery publication attempts. Product work and publication
 continue through direct-agent Git execution under this user authorization.
 
 
-New agent-generated commits use the project automation identity:
-`Cursor <cursor@flashtex.invalid>`. This is a project label with a deliberately
+Commits actually executed by Cursor use the project automation identity
+`Cursor <cursor@flashtex.invalid>` (except the Mac primary-author rule below).
+Direct fallback commits use the actual implementing agent identity. This is a project label with a deliberately
 non-deliverable address, not a verified Cursor employee or vendor account.
 Use repository-local configuration or per-command identity; do not change global
 Git identity or rewrite existing commits.
@@ -141,7 +186,7 @@ Git identity or rewrite existing commits.
 that everything committed and pushed from this computer carries the user as the
 primary Git author, using the repository's configured `user.name`/`user.email`
 (`jay3332`). Do not set the Cursor author on commits from this machine. The
-Cursor rules above still apply unchanged on every other machine, and the
-truthful trailers below are still required here: name the implementing agent,
+The all-computer direct fallback remains available after an observed Cursor limit;
+truthful trailers are still required here: name the implementing agent,
 name the actual commit executor, and add `Co-authored-by: Cursor
 <cursoragent@cursor.com>` only when Cursor CLI actually executed the commit.

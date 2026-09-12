@@ -1,0 +1,36 @@
+{
+  "agent_id": "commander-assistant-context",
+  "next_index": 2,
+  "schema_version": 1,
+  "steps": [
+    {
+      "acceptance": [
+        "Exact source revision/digest and UTF8 range guards reject stale context",
+        "Bounded multi-document prompt and response proposals preserve explicit user intent",
+        "No credentials, model calls or automatic edits; meaningful tests and strict lint pass"
+      ],
+      "allocation_id": "hosted-openai-product",
+      "name": "Subprocess interleaving/cancel/expiry and no replay after terminal response",
+      "objective": "Subprocess interleaving/cancel/expiry and no replay after terminal response",
+      "owned_paths": [
+        "crates/assistant-context"
+      ],
+      "timebox_minutes": 30
+    },
+    {
+      "acceptance": [
+        "Exact source revision/digest and UTF8 range guards reject stale context",
+        "Bounded multi-document prompt and response proposals preserve explicit user intent",
+        "No credentials, model calls or automatic edits; meaningful tests and strict lint pass"
+      ],
+      "allocation_id": "hosted-openai-product",
+      "name": "Native helper context registry recovery contract and bounded resource diagnostics",
+      "objective": "Native helper context registry recovery contract and bounded resource diagnostics",
+      "owned_paths": [
+        "crates/assistant-context"
+      ],
+      "timebox_minutes": 30
+    }
+  ],
+  "task_id": "FT-029"
+}

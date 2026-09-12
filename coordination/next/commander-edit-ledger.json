@@ -3,8 +3,8 @@
   "assignment_path": "coordination/assignments/FT-026.json",
   "branch": "agent/mac-contract-review/edit-ledger",
   "previous_report_sha": "eb42eba5a5506a69ce1d0d842d65c9143ae9182a",
-  "revision": 3,
+  "revision": 4,
   "schema_version": 1,
   "task_id": "FT-026",
-  "updated_utc": "2026-09-12T06:14:06Z"
+  "updated_utc": "2026-09-12T08:18:56.142617+00:00"
 }

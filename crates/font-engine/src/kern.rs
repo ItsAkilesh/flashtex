@@ -56,6 +56,7 @@ impl KernTable {
             } else {
                 out.unsupported.push(Unsupported {
                     table: "kern",
+                    feature: "kern",
                     detail: format!(
                         "subtable format {format} coverage 0x{coverage:04X} not applied"
                     ),

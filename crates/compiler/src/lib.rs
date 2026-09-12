@@ -10,14 +10,13 @@
 //! revision, per `docs/contracts/runtime-v1.md`.
 
 pub mod diagnostics;
+pub mod export;
 pub mod incremental;
 pub mod json;
 pub mod layout;
 pub mod lexer;
 pub mod math;
-pub mod metrics;
 pub mod parser;
-pub mod pdf;
 pub mod protocol;
 
 /// Stable identity of one document in a compile request.

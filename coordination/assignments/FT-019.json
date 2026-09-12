@@ -9,15 +9,18 @@
   "branch": "agent/mac-paragraph-layout/linebreak",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "df9e26e44a74b4322f86bcbcfe0cf2312afaece0",
-  "objective": "Add paragraph spacing, baseline grid, widow/orphan control and deterministic page breaking, then compare page geometry to declared TeX oracles.",
+  "input_main_sha": "baa3b9f8053f7516f9a1404182a415a249a64b12",
+  "objective": "Exact paragraph linebreak and glue/penalty convergence",
   "owned_paths": [
     "crates/paragraph-layout"
   ],
-  "revision": 3,
+  "revision": 4,
   "schema_version": 1,
-  "state": "assigned",
+  "state": "cancelled",
   "task_id": "FT-019",
   "timebox_minutes": 45,
-  "updated_utc": "2026-09-12T06:27:23Z"
+  "updated_utc": "2026-09-12T06:42:27Z",
+  "transfer_to": "FT-030",
+  "resume_rule": "Do not resume these owned files after cooldown; ownership is transferred to Daniel until explicit return",
+  "cancellation_reason": "User-authorized ownership transfer to Daniel during Jaysen quota cooldown; old work preserved, old worker must not resume these paths"
 }

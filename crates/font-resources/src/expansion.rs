@@ -12,7 +12,7 @@ impl Coordinate {
     pub fn shift(&self) -> u32 {
         self.shift
     }
-    fn new(mut n: i128, mut shift: u32) -> Result<Self> {
+    pub(crate) fn new(mut n: i128, mut shift: u32) -> Result<Self> {
         if shift > 96 {
             return Err(invalid("coordinate precision budget"));
         }
@@ -37,7 +37,7 @@ impl Coordinate {
             shift: 0,
         }
     }
-    fn add(self, rhs: Self) -> Result<Self> {
+    pub(crate) fn add(self, rhs: Self) -> Result<Self> {
         let shift = self.shift.max(rhs.shift);
         let a = self
             .numerator
@@ -51,6 +51,16 @@ impl Coordinate {
             a.checked_add(b)
                 .ok_or_else(|| invalid("coordinate overflow"))?,
             shift,
+        )
+    }
+    pub(crate) fn multiply(self, rhs: Self) -> Result<Self> {
+        Self::new(
+            self.numerator
+                .checked_mul(rhs.numerator)
+                .ok_or_else(|| invalid("coordinate product overflow"))?,
+            self.shift
+                .checked_add(rhs.shift)
+                .ok_or_else(|| invalid("coordinate precision overflow"))?,
         )
     }
     fn subtract(self, rhs: Self) -> Result<Self> {
@@ -98,8 +108,77 @@ pub struct ExpandedOutline {
 }
 const MAX_NODES: usize = 4096;
 const MAX_POINTS: usize = 1_000_000;
+/// Caller-selected tie behavior; not a TrueType instruction-engine rounding state.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GridTieRule {
+    AwayFromZero,
+    TowardPositive,
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CompositeDeviceGrid {
+    pub ppem_x: u32,
+    pub ppem_y: u32,
+    pub tie_rule: GridTieRule,
+}
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeviceExpandedOutline {
+    pub outline: ExpandedOutline,
+    pub grid: CompositeDeviceGrid,
+    pub units_per_em: u32,
+}
+impl CompositeDeviceGrid {
+    fn validate(self) -> Result<()> {
+        if self.ppem_x == 0 || self.ppem_y == 0 || self.ppem_x > 65536 || self.ppem_y > 65536 {
+            return Err(invalid("composite device ppem outside1..65536"));
+        }
+        Ok(())
+    }
+    fn round(self, value: Coordinate, ppem: u32, upem: u32) -> Result<Coordinate> {
+        let pixels = crate::cff::Rational::new(value.numerator(), 1i128 << value.shift())?
+            .checked_mul(crate::cff::Rational::new(ppem as i128, upem as i128)?)?;
+        let n = pixels.numerator();
+        let d = pixels.denominator();
+        let base = n.div_euclid(d);
+        let remainder = n.rem_euclid(d);
+        let above = remainder > d - remainder;
+        let tie = remainder == d - remainder;
+        let increment = above || tie && (self.tie_rule == GridTieRule::TowardPositive || n >= 0);
+        let rounded = base
+            .checked_add(i128::from(increment))
+            .ok_or_else(|| invalid("composite grid rounding overflow"))?;
+        let design = crate::cff::Rational::new(rounded, 1)?
+            .checked_mul(crate::cff::Rational::new(upem as i128, ppem as i128)?)?;
+        let denominator = design.denominator() as u128;
+        if !denominator.is_power_of_two() {
+            return Err(Error::UnsupportedFont(
+                "rounded composite offset outside exact dyadic outline profile".into(),
+            ));
+        }
+        Coordinate::new(design.numerator(), denominator.trailing_zeros())
+    }
+}
 impl FontResource {
+    pub fn expanded_outline_with_grid(
+        &self,
+        gid: u16,
+        grid: CompositeDeviceGrid,
+    ) -> Result<DeviceExpandedOutline> {
+        grid.validate()?;
+        let units_per_em = self.descriptor().units_per_em;
+        Ok(DeviceExpandedOutline {
+            outline: self.expand_policy(gid, Some((grid, units_per_em)))?,
+            grid,
+            units_per_em,
+        })
+    }
     pub fn expanded_outline(&self, gid: u16) -> Result<ExpandedOutline> {
+        self.expand_policy(gid, None)
+    }
+    fn expand_policy(
+        &self,
+        gid: u16,
+        grid: Option<(CompositeDeviceGrid, u32)>,
+    ) -> Result<ExpandedOutline> {
         let fetch = |id: u16| -> Result<&[u8]> {
             if id as u32 >= self.descriptor().glyph_count {
                 return Err(invalid("glyph ID outside font"));
@@ -117,7 +196,7 @@ impl FontResource {
             glyf.get(offset(id as usize)?..offset(id as usize + 1)?)
                 .ok_or_else(|| invalid("glyph extent"))
         };
-        let raw = expand(gid, &fetch, &mut Vec::new(), &mut 0, &mut 0)?;
+        let raw = expand_policy(gid, &fetch, &mut Vec::new(), &mut 0, &mut 0, grid)?;
         Ok(ExpandedOutline {
             font_id: self.descriptor().font_id.clone(),
             font_sha256: self.descriptor().sha256.clone(),
@@ -135,12 +214,23 @@ struct Raw {
     ends: Vec<u32>,
     instances: Vec<GlyphInstance>,
 }
+#[cfg(test)]
 fn expand<'a>(
     gid: u16,
     fetch: &impl Fn(u16) -> Result<&'a [u8]>,
     stack: &mut Vec<u16>,
     nodes: &mut usize,
     total_points: &mut usize,
+) -> Result<Raw> {
+    expand_policy(gid, fetch, stack, nodes, total_points, None)
+}
+fn expand_policy<'a>(
+    gid: u16,
+    fetch: &impl Fn(u16) -> Result<&'a [u8]>,
+    stack: &mut Vec<u16>,
+    nodes: &mut usize,
+    total_points: &mut usize,
+    grid: Option<(CompositeDeviceGrid, u32)>,
 ) -> Result<Raw> {
     if stack.len() > crate::MAX_COMPOSITE_DEPTH || stack.contains(&gid) {
         return Err(invalid("composite cycle/depth"));
@@ -227,24 +317,28 @@ fn expand<'a>(
                 on_curve: p.on_curve,
             })
         };
-        let child = expand(child, fetch, stack, nodes, total_points)?;
+        let child = expand_policy(child, fetch, stack, nodes, total_points, grid)?;
         let offset = if xy {
             let mut offset = ExactPoint {
                 x: Coordinate::from_integer(x),
                 y: Coordinate::from_integer(y),
                 on_curve: true,
             };
-            if flags & 4 != 0 && (x != 0 || y != 0) {
-                return Err(Error::UnsupportedFont(
-                    "grid-rounded composite offsets require hinting policy".into(),
-                ));
-            }
             if flags & 0x800 != 0 {
                 offset = transform(offset)?;
             } else if flags & 0x1000 == 0 && m != [16384, 0, 0, 16384] && (x != 0 || y != 0) {
                 return Err(Error::UnsupportedFont(
                     "ambiguous default scaled composite offset".into(),
                 ));
+            }
+            if flags & 4 != 0 && (offset.x.numerator() != 0 || offset.y.numerator() != 0) {
+                let (policy, upem) = grid.ok_or_else(|| {
+                    Error::UnsupportedFont(
+                        "grid-rounded composite offsets require explicit device grid".into(),
+                    )
+                })?;
+                offset.x = policy.round(offset.x, policy.ppem_x, upem)?;
+                offset.y = policy.round(offset.y, policy.ppem_y, upem)?;
             }
             offset
         } else {
@@ -349,6 +443,29 @@ mod tests {
                 Err(e) => panic!("gid{gid}: {e}"),
             }
         }
+        let grid = Some((
+            CompositeDeviceGrid {
+                ppem_x: 16,
+                ppem_y: 16,
+                tie_rule: GridTieRule::AwayFromZero,
+            },
+            u16_at(table(b"head"), 18).unwrap() as u32,
+        ));
+        let mut device_accepted = 0;
+        let mut device_errors = std::collections::BTreeMap::new();
+        for gid in 0..parsed.glyphs as u16 {
+            match expand_policy(gid, &fetch, &mut Vec::new(), &mut 0, &mut 0, grid) {
+                Ok(_) => device_accepted += 1,
+                Err(e) => *device_errors.entry(e.to_string()).or_insert(0) += 1,
+            }
+        }
+        if crate::sha256(&bytes)
+            == "76d04c18ea243f426b7de1f3ad208e927008f961dc5945e5aad352d0dfde8ee8"
+        {
+            assert_eq!((accepted, device_accepted), (1679, 2620));
+            assert!(device_errors.is_empty());
+        }
+        eprintln!("ppem16 device_accepted={device_accepted} device_errors={device_errors:?}");
         eprintln!(
             "fontSHA={} expanded={accepted} unsupported={unsupported:?}",
             crate::sha256(&bytes)
@@ -449,5 +566,89 @@ mod tests {
             Coordinate::new(11, 1).unwrap()
         );
         assert!(run(&[simple(), component(0, 11, 10, 0, &[8192])], 1).is_err());
+    }
+    #[test]
+    fn device_rounding_signed_half_boundaries() {
+        let grid = CompositeDeviceGrid {
+            ppem_x: 16,
+            ppem_y: 16,
+            tie_rule: GridTieRule::AwayFromZero,
+        };
+        for (input, expected) in [
+            (63, 0),
+            (64, 128),
+            (65, 128),
+            (-63, 0),
+            (-64, -128),
+            (-65, -128),
+        ] {
+            assert_eq!(
+                grid.round(Coordinate::from_integer(input), 16, 2048)
+                    .unwrap(),
+                Coordinate::from_integer(expected)
+            );
+        }
+        let positive = CompositeDeviceGrid {
+            tie_rule: GridTieRule::TowardPositive,
+            ..grid
+        };
+        assert_eq!(
+            positive
+                .round(Coordinate::from_integer(-64), 16, 2048)
+                .unwrap(),
+            Coordinate::from_integer(0)
+        );
+        assert!(grid.round(Coordinate::from_integer(100), 12, 2048).is_err());
+        assert!(CompositeDeviceGrid { ppem_x: 0, ..grid }
+            .validate()
+            .is_err());
+    }
+    #[test]
+    fn device_scaled_offsets_and_nested_assembly_provenance() {
+        let grid = Some((
+            CompositeDeviceGrid {
+                ppem_x: 16,
+                ppem_y: 16,
+                tie_rule: GridTieRule::AwayFromZero,
+            },
+            2048,
+        ));
+        let run = |g: &[Vec<u8>], id| {
+            expand_policy(
+                id,
+                &|id| Ok(g[id as usize].as_slice()),
+                &mut Vec::new(),
+                &mut 0,
+                &mut 0,
+                grid,
+            )
+        };
+        let scaled = run(&[simple(), component(0, 0x80f, 64, -64, &[8192])], 1).unwrap();
+        assert_eq!(scaled.points[0].x, Coordinate::new(1, 1).unwrap());
+        let unscaled = run(&[simple(), component(0, 0x100f, 64, -64, &[8192])], 1).unwrap();
+        assert_eq!(unscaled.points[0].x, Coordinate::new(257, 1).unwrap());
+        assert_eq!(unscaled.points[0].y, Coordinate::from_integer(-127));
+        let nested = run(
+            &[
+                simple(),
+                component(0, 7, 64, 0, &[]),
+                component(1, 0x100b, 0, 0, &[8192]),
+            ],
+            2,
+        )
+        .unwrap();
+        assert_eq!(nested.points[0].x, Coordinate::new(129, 1).unwrap());
+        assert_eq!(
+            nested
+                .instances
+                .iter()
+                .map(|g| g.glyph_id)
+                .collect::<Vec<_>>(),
+            vec![2, 1, 0]
+        );
+        let mut attachment = component(0, 35, 0, 0, &[]);
+        attachment.extend(&component(0, 5, 0, 0, &[])[10..]);
+        let attached = run(&[simple(), attachment], 1).unwrap();
+        assert_eq!(attached.points[0], attached.points[1]); // round flag ignored for point attachment
     }
 }

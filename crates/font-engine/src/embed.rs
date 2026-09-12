@@ -5,9 +5,9 @@
 //! * `glyf` faces: a deterministic subset (`CIDFontType2`, `/FontFile2`);
 //!   CIDs are SUBSET ids and [`PdfFontProgram::glyph_map`] /
 //!   [`PdfFontProgram::cid`] translate shaping output (original ids).
-//! * `CFF ` faces (Latin Modern): the WHOLE program (`CIDFontType0`,
-//!   `/FontFile3` `/Subtype /OpenType`); CIDs equal original glyph ids, so
-//!   `glyph_map` is the identity on the used glyphs. CFF subsetting is a
+//! * `CFF ` faces (Latin Modern): the whole `CFF ` table (`CIDFontType0`,
+//!   `/FontFile3` `/Subtype /CIDFontType0C`); CIDs equal original glyph ids,
+//!   so `glyph_map` is the identity on the used glyphs. CFF subsetting is a
 //!   later follow-up and is stated as such.
 
 use std::collections::BTreeMap;
@@ -116,7 +116,7 @@ impl EmbedPlan {
                     (
                         map,
                         widths,
-                        FontFile::OpenTypeProgram(face.program().to_vec()),
+                        FontFile::Cff(face.cff_table().map(<[u8]>::to_vec).unwrap_or_default()),
                         face.postscript_name().to_string(),
                         "CIDFontType0",
                         None,
@@ -185,15 +185,27 @@ pub enum CidToGid {
 pub enum FontFile {
     /// `/FontFile2`: a glyf subset produced by [`crate::subset::subset`].
     TrueTypeSubset(Vec<u8>),
-    /// `/FontFile3` with `/Subtype /OpenType`: the complete OpenType (CFF)
-    /// program, unsubsetted.
-    OpenTypeProgram(Vec<u8>),
+    /// `/FontFile3` `/Subtype /CIDFontType0C`: the bare `CFF ` table of the
+    /// OpenType program, unsubsetted. CoreGraphics renders a non-CID-keyed CFF
+    /// under this subtype with CIDs used directly as glyph indices (PDF
+    /// 32000-1 9.7.4.2); `/Subtype /OpenType` with the whole sfnt is the
+    /// alternative, and `/Type1C` is wrong for a CIDFont (finding from the
+    /// PDF worker, adopted here).
+    Cff(Vec<u8>),
 }
 
 impl FontFile {
     pub fn bytes(&self) -> &[u8] {
         match self {
-            FontFile::TrueTypeSubset(b) | FontFile::OpenTypeProgram(b) => b,
+            FontFile::TrueTypeSubset(b) | FontFile::Cff(b) => b,
+        }
+    }
+
+    /// `/FontDescriptor` stream key and, for `/FontFile3`, its `/Subtype`.
+    pub fn stream_key(&self) -> (&'static str, Option<&'static str>) {
+        match self {
+            FontFile::TrueTypeSubset(_) => ("FontFile2", None),
+            FontFile::Cff(_) => ("FontFile3", Some("CIDFontType0C")),
         }
     }
 }
