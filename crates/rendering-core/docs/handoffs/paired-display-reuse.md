@@ -33,3 +33,25 @@ first-envelope cleanup is included in its resource phase. The mode exists only i
 the generated measurement copy; there is no production environment switch.
 Any allocation/timing claim requires its completed report. No native or visual
 parity claim follows from this measurement.
+
+## Paired observation
+
+On the existing 1,150,821-byte capture, 20 measured samples per branch/mode
+(plus 3 warmups) show resource-binding allocation calls 46,332→898 and requested
+capacity 12,081,545→1,313,397 bytes. Every other phase's allocation medians are
+unchanged. Instrumented resource-phase medians are 21.00→2.04 ms, with redundant
+first-envelope cleanup included in the legacy branch. These measurements do not
+claim RSS reduction or whole-helper/native paint latency. Full samples and exact
+source/tool hashes: `tools/evidence/paired-binding-attribution.json`; bounded
+comparison: `tools/evidence/paired-allocation-comparison.json` (crate-relative).
+
+173 Rust tests (2 explicitly ignored) and strict all-target Clippy pass before
+measurement. The existing three actual raw-helper PDFs retain their pinned hashes.
+
+The source/dependency guard was deliberately rebased to 21ce1756 and all five
+established producer/reference fixtures replayed. PDF hashes, raster hashes,
+extracted-text results and text-comparison validity exactly match the prior Syntax
+checkpoint. Existing reference pixel differences remain 0/602/1244/979/337, including
+the explicit display-math ToUnicode oracle limitation. Expected exit 3 records
+those prior reference gaps; it is not a new parse-reuse regression. Evidence:
+`tools/evidence/paired-five-fixtures.json` relative to crate root.
