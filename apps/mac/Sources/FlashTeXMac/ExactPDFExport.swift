@@ -101,28 +101,26 @@ extension ShellModel {
         panel.nameFieldStringValue = "\(frame.list.projectId)-r\(frame.list.revision)-exact.pdf"
         panel.message = "Export the v2 display list through flashtex-pdf-exact from-v2 (exact glyphs by original GID, embedded font programs)"
         guard panel.runModal() == .OK, let out = panel.url else { return }
-        exportPDFExact(listURL: listURL, tool: tool, to: out)
+        // The panel already asked about overwriting: whatever is on disk now is
+        // what the user approved. Any later change is refused (ExportSession).
+        exportPDFExact(listURL: listURL, tool: tool, destination: .recordingCurrentDisk(out))
     }
 
-    /// Non-interactive core (tests, automation). Reports on the main actor.
+    /// Non-interactive core (tests, automation) in the pre-session shape:
+    /// the destination as found on disk right now is taken as approved, the
+    /// run goes through `exportSession` (sibling temp file, atomic replace,
+    /// cancel/timeout by pid), and `captureNote` reports on the main actor.
+    /// `Outcome` is nil when the tool could not be launched or was cancelled/
+    /// timed out (see `ExportSession.Report` for the full state).
     func exportPDFExact(listURL: URL, tool: URL, to out: URL, completion: (@MainActor (ExactPDFExport.Outcome?) -> Void)? = nil) {
-        captureNote = "Exporting exact PDF…"
-        let fontDirs = ExactPDFExport.fontDirectories()
-        Task.detached {
-            let result: Result<ExactPDFExport.Outcome, Error> = Result { try ExactPDFExport.run(tool: tool, list: listURL, out: out, fontDirs: fontDirs) }
-            await MainActor.run {
-                switch result {
-                case .success(let o) where o.succeeded:
-                    self.captureNote = "Exported exact PDF (\(o.bytes) bytes) to \(out.path)"
-                    completion?(o)
-                case .success(let o):
-                    let why = (o.stderr + o.stdout).trimmingCharacters(in: .whitespacesAndNewlines)
-                    self.captureNote = "Exact export refused (exit \(o.exitCode)): \(why.isEmpty ? "no message" : why)"
-                    completion?(o)
-                case .failure(let e):
-                    self.captureNote = "Exact export failed to run: \(e.localizedDescription)"
-                    completion?(nil)
-                }
+        exportPDFExact(listURL: listURL, tool: tool, destination: .recordingCurrentDisk(out)) { report in
+            switch report.state {
+            case .succeeded(let bytes, _):
+                completion?(ExactPDFExport.Outcome(exitCode: 0, stdout: report.stdout, stderr: report.stderr, bytes: bytes))
+            case .failed where report.exitCode != nil:
+                completion?(ExactPDFExport.Outcome(exitCode: report.exitCode ?? -1, stdout: report.stdout, stderr: report.stderr, bytes: 0))
+            default:
+                completion?(nil)
             }
         }
     }
