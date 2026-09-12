@@ -234,6 +234,19 @@ impl MathParser<'_> {
                         }],
                     };
                 }
+                // A bare `&` reaches here only outside a tabular alignment
+                // context: `grid_environment` (matrices, `cases`, `array`, …)
+                // and the parser's `align`/`gather` row-splitting both consume
+                // their own `&` tokens before ever calling into this list, so
+                // one seen here is always misplaced.
+                TokenKind::Word(ref word) if word == "&" => {
+                    self.i += 1;
+                    self.diagnostics.push(Diagnostic::error(
+                        "misplaced alignment tab character &",
+                        Some(token.span),
+                        Some("ignored the stray alignment tab and continued".into()),
+                    ));
+                }
                 TokenKind::Superscript | TokenKind::Subscript => {
                     self.i += 1;
                     let script = self.script_argument(token.span);
@@ -1946,6 +1959,30 @@ mod parse_tests {
             })
             .collect();
         assert_eq!(glyphs, ["(", "x", ")"]);
+    }
+
+    #[test]
+    fn bare_ampersand_outside_alignment_is_diagnosed() {
+        // Reference-corpus negative fixture `error-extra-math-align`: a `&`
+        // in ordinary (non-tabular) math used to pass through silently as a
+        // literal symbol. `grid_environment` (matrices, `cases`, `array`)
+        // and the parser's align/gather row-splitting both consume their own
+        // `&` before it ever reaches this list, so one seen here is always a
+        // misplaced alignment tab.
+        let mut diagnostics = Vec::new();
+        let tokens = crate::lexer::tokenize("a & b");
+        let list = parse_tokens(&tokens, &mut diagnostics);
+        assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+        assert!(diagnostics[0].message.contains("misplaced alignment tab"));
+        let glyphs: Vec<&str> = list
+            .atoms
+            .iter()
+            .map(|atom| match &atom.nucleus {
+                Nucleus::Symbol(text) => text.as_str(),
+                other => panic!("expected symbol, got {other:?}"),
+            })
+            .collect();
+        assert_eq!(glyphs, ["a", "b"], "the stray & is dropped, not typeset");
     }
 
     #[test]

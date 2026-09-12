@@ -468,6 +468,13 @@ fn shift_inlines(
                 page: *page,
                 span: mapped_span(*span, changes, deltas)?,
             }),
+            Inline::HFill { span } => Some(Inline::HFill {
+                span: mapped_span(*span, changes, deltas)?,
+            }),
+            Inline::HSpace { pt, span } => Some(Inline::HSpace {
+                pt: *pt,
+                span: mapped_span(*span, changes, deltas)?,
+            }),
         })
         .collect()
 }
@@ -617,6 +624,8 @@ fn block_signature(block: &Block) -> BlockSignature {
         Inline::MathRows { span, .. } => *span,
         Inline::Label { span, .. } => *span,
         Inline::Reference { span, .. } => *span,
+        Inline::HFill { span } => *span,
+        Inline::HSpace { span, .. } => *span,
     };
     let first = inlines.first().map(span_of);
     let last = inlines.last().map(span_of);
@@ -653,6 +662,8 @@ fn shifted_signature(
         Inline::MathRows { span, .. } => *span,
         Inline::Label { span, .. } => *span,
         Inline::Reference { span, .. } => *span,
+        Inline::HFill { span } => *span,
+        Inline::HSpace { span, .. } => *span,
     };
     let first = inlines.first().map(span_of);
     let last = inlines.last().map(span_of);
@@ -838,5 +849,23 @@ mod tests {
         eprintln!("constraint ReuseStats: {:?}", result.stats);
         assert!(result.stats.full_recompile);
         assert_byte_identical_to_full(&result, text, constraints);
+    }
+
+    #[test]
+    fn reused_hfill_block_keeps_its_resolved_right_edge() {
+        let result = compile_edit(
+            "left\\hfill right\n\nTail.",
+            "left\\hfill right\n\nTail changed.",
+        );
+        assert!(result.stats.blocks_reused >= 1, "{:?}", result.stats);
+        let right = result
+            .output
+            .pages
+            .iter()
+            .flat_map(|page| &page.items)
+            .find(|item| item.text == "right")
+            .expect("right-hand text");
+        let width = layout::text_width("right", 12.0, layout::Font::TimesRoman);
+        assert!((right.x_pt + width - 540.0).abs() < 0.02);
     }
 }
