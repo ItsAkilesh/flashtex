@@ -1,9 +1,10 @@
 {
-  "schema_version": 1,
   "agent_id": "commander-font-resources",
-  "task_id": "FT-024",
-  "revision": 1,
-  "branch": "agent/commander-corpus/font-resources",
   "assignment_path": "coordination/assignments/FT-024.json",
-  "updated_utc": "2026-09-12T05:59:24.973775+00:00"
+  "branch": "agent/commander-corpus/font-resources",
+  "previous_report_sha": "d643b6ec5aa63a1ce2b9ce97ab5292baf5205b5c",
+  "revision": 3,
+  "schema_version": 1,
+  "task_id": "FT-024",
+  "updated_utc": "2026-09-12T06:04:38Z"
 }
