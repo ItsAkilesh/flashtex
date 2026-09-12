@@ -14,7 +14,7 @@
     "rust",
     "rendering"
   ],
-  "code_revision": "c158f4eb8c81551bdc9683075e0b03fb9b8c523f",
+  "code_revision": "a45e71b0ec92ba99dd089988ee6f87ac3c58aada",
   "eta_minutes": {
     "likely": 15,
     "optimistic": 5,
@@ -22,15 +22,15 @@
   },
   "machine": "linux-primary",
   "main_integrated_through": "c158f4eb8c81551bdc9683075e0b03fb9b8c523f",
-  "next_action": "Use exact b898cfc LMmath asset/license for one bounded actual math producer/reference investigation; no substitute font or parity assumptions.",
+  "next_action": "Await next bounded acceptance gap assignment; keep plain single-command baseline and math visual mismatch separate. No new source-text policy refusal justified by tested Greek/fraction/root mappings.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "Single pinned fail-closed original/reference runner implemented and executed: accepted full rooted-assets pipeline replay, refused missingassets, unknown unpinnedtool.",
+  "summary": "Replayed actual inline math with exact Mac b898cfc LM Math and rooted official metrics. Immutable multi-font export reproduces actual PDF; equal linear extraction,602pixel raster mismatch recorded.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T10:24:52Z",
+  "updated_utc": "2026-09-12T10:30:59Z",
   "usage": {
-    "evidence": "Final runner accepted zero-diagnostic untouched65dbe7d\u2192registry\u2192ownerPDF\u2192reference; exacttext and144DPIpixels. Negative statuses2/4 verified. Sources/tools/assets pinned; twojob offline disposable build. First /tmp build failure recovered using repositorytarget scratch; no calls pending.",
+    "evidence": "158tests and strictclippy pass. Actual math PDFf8a9c140aae5a96a7c0f3b0d673636f20347a1c24518a7c5df9d69c98b48068a. Poppler26.01 text matches pdflatex reference;144DPI1224x1584 differs602pixels. Zero diagnostics, exact font/resource/source hashes pinned. Runner negative missingasset gate still refuses after scoped example guard. No pending calls.",
     "status": "Hosted OpenAI only; no providers or descendants. Context telemetry/native compaction unavailable."
   }
 }
