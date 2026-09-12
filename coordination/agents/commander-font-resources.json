@@ -13,7 +13,7 @@
   "capabilities": [
     "rust-font-resources"
   ],
-  "code_revision": "73a030b9b46e5ed36ecdeed9b486bd1551d2727b",
+  "code_revision": "31bf6e6399c08a54028792b3f18c79feb84f0fce",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
@@ -21,13 +21,13 @@
   },
   "machine": "linux-primary",
   "main_integrated_through": "89629b712a30f9afe82115e923c47ce05d2be1fe",
-  "next_action": "Renderer cache semantics sent; boundary run and boundmapping followup complete. Ready next assigned product task.",
+  "next_action": "Renderer handoff sent; task fallback complete. Ready next assigned product stage.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "Published73a030b exact TFM left/right boundary run handling plus BoundTfmFont/BoundCffTfmFont suppression adapters.97tests/clippy pass. Invisible sentinels preserve8bitmapping/inputintervals, signedkerns/retention/advance; combined65536step cap catchescycles. Real licensedec-lmr10 fi/AV pass but has no boundaryprogram; boundary evidence explicitlysynthetic. No peer/provider calls.",
+  "summary": "Published31bf6e6 authorized VF dependency fallback: no realVF special fixture found, specials remain unsupported.98tests/clippy pass. Rooted licensedVF/TFM assets bind explicit registrygeneration/encoding/localIDs; missing/cycles/checksum/hash/license/symlink/budget checks, immutable existingResourceGraph expansion/sourcechain. Synthetic evidence only; CFFphysical endpoints unsupported in existinggraph.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T07:57:10Z",
+  "updated_utc": "2026-09-12T08:02:55Z",
   "usage": {
     "evidence": "crates/font-resources/README.md; test suite; installed font SHA pinned.",
     "status": "Hosted allocation; no external provider calls; account remainder unknown."
