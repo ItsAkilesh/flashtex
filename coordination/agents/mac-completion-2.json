@@ -1,0 +1,36 @@
+{
+  "agent_id": "mac-completion-2",
+  "allocation_id": "claude-mac20x-completion-2",
+  "assignment_acknowledgements": {},
+  "branch": "agent/mac-completion-2/latency",
+  "capabilities": [
+    "swift",
+    "appkit",
+    "completion"
+  ],
+  "code_revision": "cd58fc2e",
+  "eta_minutes": {
+    "likely": 60,
+    "optimistic": 45,
+    "pessimistic": 90
+  },
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "c11c005",
+  "next_action": "Coverage audit written; build best-of-N pickup/keyboard latency harness, measure, optimise popup update path, evidence",
+  "reviewed_peers": {
+    "origin/agent/mac-claude-a/mac-shell": {
+      "adaptation": "Started from cd58fc2e; existing CompletionTests/CompletionLiveHelperTests coverage listed in coordination/mac-completion-2.md",
+      "reviewed_utc": "2026-09-12T12:10:00Z",
+      "sha": "cd58fc2e"
+    }
+  },
+  "schema_version": 1,
+  "state": "in_progress",
+  "summary": "Completion pickup/keyboard latency + stale-context cancellation (issue #2 item 7); audit done, harness next",
+  "tool": "Claude Code subagent (parent mac-claude-a)",
+  "updated_utc": "2026-09-12T12:10:00Z",
+  "usage": {
+    "evidence": "none yet",
+    "status": "Shared Claude Max quota with parent mac-claude-a; no purchases"
+  }
+}
