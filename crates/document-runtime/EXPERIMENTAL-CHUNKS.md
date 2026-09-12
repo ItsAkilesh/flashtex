@@ -63,3 +63,16 @@ equal to the original. These are offline prototype measurements, not a native
 latency improvement claim. Both retain the entire completed page set; the typed
 consumer avoids the extra full JSON byte-buffer/parse on completion. Peak RSS,
 producer streaming and final native acceptance remain unmeasured/unimplemented.
+
+## Separate-process memory observation
+
+The example's optional second argument is `strings`, `pages`, or `both` (default).
+Run each mode separately under `/usr/bin/time -f 'max_rss_kib=%M'` to avoid one
+prototype's retained allocations affecting the other's process high-water mark.
+On the same301-page fixture, Linux reported247,840KiB for strings and237,736KiB
+for pages; exact output equality passed in both. Corresponding packing/validation
+times were114.47ms and100.79ms. This is one paired observation, not a statistical
+memory benchmark. Both processes retain the full source JSON and parsed reference
+for equality checking; the numbers must not be represented as consumer-only RSS.
+The roughly10MiB reduction is consistent with eliminating the extra full JSON
+byte buffer, but allocator behavior was not independently profiled.
