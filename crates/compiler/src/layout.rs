@@ -478,6 +478,20 @@ impl LayoutCursor {
         self.x += w + word_space(size, font);
     }
 
+    /// Explicit horizontal glue (`\quad`/`\qquad` in text mode): no glyph is
+    /// placed, so there is nothing to draw, only `x` to advance. Mirrors TeX's
+    /// discardable glue at a line break: if the glue would overflow the
+    /// measure, the line breaks instead and the glue is dropped rather than
+    /// carried onto the new line.
+    fn text_glue(&mut self, em: f64, size: f64) {
+        let width = em * size;
+        if self.x > self.left_edge() && self.x + width > self.right_edge() {
+            self.newline(size);
+            return;
+        }
+        self.x += width;
+    }
+
     fn ensure_extents(&mut self, ascent: f64, descent: f64) {
         if ascent > self.line_ascent {
             let shift = ascent - self.line_ascent;
@@ -825,15 +839,21 @@ impl LayoutCursor {
         &self.diagnostics[start..]
     }
 
-    pub fn into_pages(self) -> Vec<Page> {
+    pub fn into_pages(mut self) -> Vec<Page> {
+        // A trailing `\hfill` on the document's very last line has no
+        // following block to trigger `newline`'s resolution, so give it one
+        // last chance here. Idempotent when nothing is pending.
+        self.resolve_hfill();
         self.pages
     }
 
-    pub fn into_pages_and_diagnostics(self) -> (Vec<Page>, Vec<Diagnostic>) {
+    pub fn into_pages_and_diagnostics(mut self) -> (Vec<Page>, Vec<Diagnostic>) {
+        self.resolve_hfill();
         (self.pages, self.diagnostics)
     }
 
-    fn into_result(self) -> (Vec<Page>, BTreeMap<String, ReferenceValue>, Vec<Diagnostic>) {
+    fn into_result(mut self) -> (Vec<Page>, BTreeMap<String, ReferenceValue>, Vec<Diagnostic>) {
+        self.resolve_hfill();
         (self.pages, self.collected_labels, self.diagnostics)
     }
 }
@@ -954,6 +974,7 @@ fn emit(c: &mut LayoutCursor, inlines: &[Inline], size: f64, font: Font) {
                 c.place(text.clone(), size, *span, style_font(*style))
             }
             Inline::LineBreak { .. } => c.newline(size),
+            Inline::TextGlue { em, .. } => c.text_glue(*em, size),
             Inline::Math {
                 list,
                 display,

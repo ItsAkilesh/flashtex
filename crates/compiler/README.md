@@ -144,8 +144,10 @@ Required, outstanding — this is a foundation, not a LaTeX implementation:
 `\sl`, `\tt`, `\rm`, `\sf`,
 `\begin`/`\end` for `document`, `equation`, `figure`, `itemize`, and
 `enumerate` (plus the amsmath displays `alignat`, `flalign` and `multline`,
-starred or not; `multline` numbers only its last line), `\item`, `\par`, `\\`,
-`\listfiles`, and `\noindent`. Macro
+starred or not; `multline` numbers only its last line), `\item`, `\par`,
+`\hfill`, `\hfil`, `\hspace{<dimen>}`, `\hspace*{<dimen>}`, `\\`,
+`\listfiles`, `\noindent`, `\quad`, `\qquad`, `\bigskip`, `\medskip`, and
+`\smallskip`. Macro
 argument counts are decimal integers from 0 through 9, and replacement
 parameters are `#1` through `#9`. Paragraphs are separated by blank lines.
 `%` begins a comment. Any other command produces an explicit "not supported by
@@ -156,6 +158,39 @@ package version banners, and this compiler has no log stream to write them to,
 so silently doing nothing is the honest behaviour rather than a fabricated log.
 `\noindent` is likewise always a no-op: no paragraph in this layout model is
 ever given a first-line indent, so there is no indent for it to suppress.
+
+`\hfill`/`\hfil` are real infinite-stretch horizontal glue: they push the rest
+of the current line to the right margin, and multiple fills on one line share
+the leftover width equally, resolved once the line is known to be complete
+(`layout::LayoutCursor::resolve_hfill`). `\hfil` is not distinguished from
+`\hfill` by TeX's fil/fill stretch order — this layout has only one order of
+infinite glue, an accepted simplification. `\hspace{<dimen>}`/`\hspace*{<dimen>}`
+insert a fixed, non-stretching space instead; both forms behave identically
+here since this layout never discards glue at a line break (the one place real
+TeX treats the starred and unstarred forms differently). A dimension is a
+number followed by `pt`, `em`, `ex`, `in`, `cm`, `mm`, or `bp`
+(`parser::parse_dimen_pt`); `em`/`ex` are relative to the compiler's fixed body
+size, and `ex` uses the common approximation of half an em. `\hfill`/`\hfil`
+inside heading, caption, or `\textbf`-style content (which reaches the page
+through `inlines_from_tokens` rather than `command`'s ordinary dispatch) are
+supported, since that is exactly where `\problem{...}{...}`-style macros put
+them; `\hspace` in that same position is not yet, since it needs a following
+brace argument that function does not consume.
+
+An unsupported command's diagnostic always survives, but a directly following
+`{...}` argument is now sometimes also skipped rather than typeset as text: see
+the recovery-policy comment on `parser::unsupported` for the exact,
+conservative rule (a fixed short list of known-arity commands, or content that
+looks like a bare dimension or a two-or-more-letter lowercase keyword). A
+prose argument to a genuinely unknown command is never swallowed by this.
+
+`\quad` and `\qquad` insert explicit horizontal glue of 1em/2em of the current
+body text size in running text (they are also recognised inside math, where
+they behave the same way). `\bigskip`, `\medskip`, and `\smallskip` end the
+current paragraph and add 12pt/6pt/3pt of vertical space, plain TeX's
+conventional flat amounts; this layout model has no rubber lengths, so their
+usual `plus`/`minus` stretch and shrink are honestly dropped rather than
+approximated.
 
 ## Macro expansion and source mapping
 
