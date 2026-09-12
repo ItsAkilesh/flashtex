@@ -29,6 +29,22 @@ class BoundedProbeTests(unittest.TestCase):
             with self.assertRaises(ProcessLookupError):
                 os.kill(pid, 0)
 
+    def test_existing_output_cannot_reuse_a_stale_success(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'result.json').write_text('old success')
+            with self.assertRaises(FileExistsError):
+                run('/missing-worker', '/missing-input', '/missing-reference', root)
+            self.assertEqual((root / 'result.json').read_text(), 'old success')
+
+    def test_nonfinite_timeout_is_rejected_before_startup(self):
+        with tempfile.TemporaryDirectory() as directory:
+            for value in [float('nan'), float('inf'), -1.0, 0.0]:
+                with self.assertRaises(ValueError):
+                    run('/missing-worker', '/missing-input', '/missing-reference',
+                        Path(directory) / 'output', timeout=value)
+                self.assertFalse((Path(directory) / 'output').exists())
+
     def test_partial_response_times_out_and_reaps_worker(self):
         self.exercise('sys.stdin.readline()\nsys.stdout.write("{"); sys.stdout.flush()\ntime.sleep(60)\n',
                       error=TimeoutError)

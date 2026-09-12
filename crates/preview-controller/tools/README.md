@@ -10,13 +10,15 @@ not a producer sibling-frame or native rendering harness.
 
 Required options: `--binary`, `--requests`, `--expected`, `--output`.
 Optional: `--timeout` seconds (default30), `--max-reply` bytes (default16MiB).
-Use a new output directory to retain earlier evidence. Partial captured replies
+The output directory must be new; existing directories are refused to prevent stale
+success artifacts from a prior run. Nonfinite or nonpositive timeouts are rejected. Partial captured replies
 and stderr remain on failure; result.json is written only after successful checks.
 Historical benchmark files/results are unchanged and used their archived script.
 
 Validation: four real-child tests cover a partial response stall, a worker that
 never reads its request, oversized partial output, and two valid replies. Every
-case verifies child termination. The actual optimized Text compiler also passes
+case verifies child termination. Two additional tests check reused-directory and
+invalid-timeout refusal before worker startup. The actual optimized Text compiler also passes
 all ten recorded text-session request/response comparisons through this probe.
 
 Run: `python3 -m unittest discover -s crates/preview-controller/tools -p test_bounded_protocol_probe.py -v`.

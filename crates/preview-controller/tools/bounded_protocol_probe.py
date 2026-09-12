@@ -1,6 +1,7 @@
 """Measure complete JSONL exchanges with bounded I/O and child cleanup."""
 import argparse
 import json
+import math
 import os
 from pathlib import Path
 import selectors
@@ -49,10 +50,10 @@ def exchange(process, request, timeout, max_reply):
 
 def run(binary, requests, expected, output, timeout=30.0, max_reply=16 * 1024 * 1024):
     output = Path(output)
-    output.mkdir(exist_ok=True)
     rows = []
-    if timeout <= 0 or max_reply <= 0:
-        raise ValueError("timeout and reply bound must be positive")
+    if not math.isfinite(timeout) or timeout <= 0 or max_reply <= 0:
+        raise ValueError("timeout must be finite and positive; reply bound must be positive")
+    output.mkdir(exist_ok=False)
     with open(requests, 'rb') as inputs, open(expected, 'rb') as references, \
             open(output / 'stderr.txt', 'wb') as errors, \
             open(output / 'response.jsonl', 'wb') as captured:
