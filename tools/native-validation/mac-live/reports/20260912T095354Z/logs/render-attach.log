@@ -1,0 +1,7 @@
+    PASS bundled flashtex-render present -- /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/35b4e121df7fafd509ec51ce949343f5c8fa320a/a
+    PASS app launched flashtex-render with preview face latin-modern (FLASHTEX_LOG 'preview face: latin-modern') -- seen after 0.109 s
+    PASS flashtex-render attached (status line) -- seen after 0.109 s
+    PASS first compile through flashtex-render painted (revision 1: ok) -- seen after 0.216 s
+    PASS flashtex-render child process under the app pid -- pids ['14724']
+    PASS app still running after the wait (not activated) -- exit None
+render-attach: 6 passed, 0 failed

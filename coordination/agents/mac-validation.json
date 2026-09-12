@@ -2,21 +2,21 @@
   "agent_id": "mac-validation",
   "allocation_id": "claude-mac20x-validation",
   "assignment_acknowledgements": {},
-  "branch": "agent/mac-validation/mac-live",
+  "branch": "agent/mac-validation/mac-live-2",
   "capabilities": [
     "xcode",
     "validation",
     "python"
   ],
-  "code_revision": "1c5047505f4ede22dd1679247ef03386bc51171f",
+  "code_revision": "40d53b784876d128b7d54f5a10438c71d7b1b756",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
     "pessimistic": 0
   },
   "machine": "mac-m1max-a",
-  "main_integrated_through": "6b43a3a1ae8697697a3fb338909bc973db0c1e02",
-  "next_action": "Re-run tools/native-validation/mac-live/run.sh after each integration of apps/mac or the helper crates; compare reports",
+  "main_integrated_through": "277a0910811fdb27bd156ecd92b92b50f277c750",
+  "next_action": "Re-run tools/native-validation/mac-live/run.sh after each integration; investigate what kills FlashTeXMac bench instances on this Mac",
   "reviewed_peers": {
     "origin/agent/mac-claude-a/mac-shell": {
       "adaptation": "Runner builds from whatever these refs are at run time (recorded in env.json); read the preview-controller attach path and launch-check/make-app scripts; no product source edited",
@@ -31,11 +31,11 @@
   },
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "tools/native-validation/mac-live: independent acceptance runner (helpers from pinned origin/main clone, app from mac-shell, typing bench on compiler + preview-controller routes, make-app + launch-check with FLASHTEX_NO_ACTIVATE=1, packaged capture cycle with provider_disabled refusal, offline fixture proposal, ledger apply, compile, flashtex-pdf --verify); committed report under reports/<UTC>.md",
+  "summary": "mac-live-2: acceptance runner extended with flashtex-render + flashtex-pdf-exact bundled routes (headless render attach, from-v2 exact export read back through PDFKit), render as a bench producer, uptime/load-aware latency gating; report 20260912T095354Z PASS 163/163 against main 1d25ed0 (compiler e75741e) and mac-shell 35b4e12",
   "tool": "Claude Code subagent (parent mac-claude-a)",
-  "updated_utc": "2026-09-12T09:05:18Z",
+  "updated_utc": "2026-09-12T10:01:30Z",
   "usage": {
-    "evidence": "tools/native-validation/mac-live/reports/",
+    "evidence": "tools/native-validation/mac-live/reports/20260912T095354Z.md",
     "status": "Shared Claude Max quota via parent mac-claude-a; no purchases; no paid network calls"
   }
 }
