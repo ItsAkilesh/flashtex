@@ -62,6 +62,24 @@ def list_of_text(value, field):
     return value
 
 
+def partition_owned_plans(plans, assignments):
+    """A conflicting lane stays blocked without stopping unrelated workers."""
+    accepted, skipped = [], []
+    for plan in plans:
+        task_args = plan['args']
+        conflicts = []
+        for other in assignments.values():
+            if other['task_id'] != task_args.task and other.get('state') not in ('cancelled', 'integrated', 'verified'):
+                if any(coord.overlaps(a, b) for a in task_args.path for b in other['owned_paths']):
+                    conflicts.append(other['task_id'])
+        if conflicts:
+            skipped.append({'task': task_args.task, 'reason': 'ownership remains reserved',
+                            'conflicting_tasks': sorted(conflicts), 'needs_commander_review': True})
+        else:
+            accepted.append(plan)
+    return accepted, skipped
+
+
 def plan_step(root, queue_path, queue, assignments, now, stale_seconds):
     agent = coord.identifier(queue['agent_id'])
     if Path(queue_path).stem != agent:
@@ -221,13 +239,9 @@ def scan_once(root, args):
                 plans.append(plan)
             else:
                 skipped.append({'queue': path, 'reason': reason})
-        # Validate inter-task ownership before any mutation. coord.dispatch checks it again.
-        for plan in plans:
-            task_args = plan['args']
-            for other in assignments.values():
-                if other['task_id'] != task_args.task and other.get('state') not in ['cancelled', 'integrated', 'verified']:
-                    if any(coord.overlaps(a, b) for a in task_args.path for b in other['owned_paths']):
-                        raise ValueError('next task overlaps active ownership: ' + other['task_id'])
+        # Preserve conflicting ownership but keep unrelated queues progressing.
+        plans, ownership_skips = partition_owned_plans(plans, assignments)
+        skipped.extend(ownership_skips)
         paths = []
         for plan in plans:
             coord.dispatch(root, plan['args'])
