@@ -13,17 +13,17 @@
   "capabilities": [
     "Preview helper serialization and latency"
   ],
-  "code_revision": "db2d2ce4da64f9354e932b820b4906d9b6e8b91f",
+  "code_revision": "72af2d43594d4a472a1193ef2c0ab49ee9bc3397",
   "eta_minutes": null,
   "machine": "linux-primary",
   "main_integrated_through": "7af10301cee94abdb263f868dfa5bf99a4b181c1",
-  "next_action": "One same-input scale100 phase attribution after Commander correctness gates terminate; choose optimization from stage evidence, not aggregate receipts.",
+  "next_action": "Investigate avoidable helper serialization cost preserving exact frames; coordinate runtime parse ownership with FT049.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "FT048r7: consumed unchanged2f2a78e7/5d12255f runtime profile; helper exposes source-bound scalar display_transport diagnostics once per request/revision/epoch. Large-frame real helper test verifies single profile,finite stage timings and intact edit recovery; strictlintpass.",
+  "summary": "FT048r7 actual repeat100 profile replay passes exact direct v1/v2 and durable reopen; parsing largest measured display stage, no native latency claim.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T11:28:14Z",
+  "updated_utc": "2026-09-12T11:34:06Z",
   "usage": {
     "status": "unknown"
   }
