@@ -68,7 +68,7 @@ fn published_producer_negotiates_source_bound_candidates() {
         assert_eq!(result["payload"]["status"], expected, "{mode}");
         assert_eq!(candidate.is_some(), mode == "requested");
         assert!(session.is_alive());
-        reports.push(serde_json::json!({"mode":mode,"result":result,"candidate":candidate,"transport_acceptance":true,"rendering_validation":"not performed"}));
+        reports.push(serde_json::json!({"mode":mode,"result":result,"candidate":candidate,"transport_acceptance":true,"rendering_validation":"not performed","display_profile":session.last_display_profile()}));
     }
     if let Ok(path) = std::env::var("FLASHTEX_REPLAY_OUTPUT") {
         std::fs::write(path, serde_json::to_vec_pretty(&reports).unwrap()).unwrap();
@@ -214,5 +214,80 @@ fn take_real_candidate(s: &mut Session) -> flashtex_document_runtime::UntrustedD
         }
         assert!(s.is_alive() && start.elapsed() < Duration::from_secs(10));
         thread::sleep(Duration::from_millis(2));
+    }
+}
+
+#[test]
+#[ignore = "requires exact published producer/assets; run tools/replay_display_producer.py"]
+fn actual_incremental_producer_fresh_and_persistent_runtime_equivalence() {
+    let binary = std::env::var("FLASHTEX_REPLAY_PRODUCER").unwrap();
+    let cases: serde_json::Value = serde_json::from_str(include_str!(
+        "../fixtures/display-incremental-requests.json"
+    ))
+    .unwrap();
+    let mut report = vec![];
+    for limit in [None, Some("2500")] {
+        let spawn = || {
+            let mut c = Command::new(&binary);
+            c.env_remove("FLASHTEX_MAX_REPLY_BYTES");
+            if let Some(limit) = limit {
+                c.env("FLASHTEX_MAX_REPLY_BYTES", limit);
+            }
+            let mut s = Session::spawn_command(c, Limits::default()).unwrap();
+            s.set_display_candidates_enabled(true).unwrap();
+            s
+        };
+        let mut persistent = spawn();
+        for case in cases.as_array().unwrap() {
+            let r = &case["request"];
+            let p = &r["payload"];
+            let request = Request {
+                id: r["id"].as_str().unwrap().into(),
+                project_id: p["project_id"].as_str().unwrap().into(),
+                revision: p["revision"].as_u64().unwrap(),
+                entry_path: p["entry_path"].as_str().unwrap().into(),
+                documents: p["documents"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|d| Document {
+                        path: d["path"].as_str().unwrap().into(),
+                        text: d["text"].as_str().unwrap().into(),
+                    })
+                    .collect(),
+            };
+            let collect = |s: &mut Session| {
+                s.submit_with_capabilities(request.clone(), vec!["display-list-v2".into()])
+                    .unwrap();
+                let events = wait_preview(s, request.revision);
+                let result = events
+                    .into_iter()
+                    .find_map(|e| {
+                        if let Event::Preview { result, .. } = e {
+                            Some(result)
+                        } else {
+                            None
+                        }
+                    })
+                    .unwrap();
+                let accepted = result["payload"]["status"] != "failed"
+                    && result["payload"]["layout_capabilities"]
+                        .as_array()
+                        .is_some_and(|caps| caps.iter().any(|c| c == "display-list-v2"));
+                let candidate = accepted.then(|| take_real_candidate(s).into_envelope());
+                serde_json::json!({"result":result,"candidate":candidate})
+            };
+            let warm = collect(&mut persistent);
+            let cold = collect(&mut spawn());
+            assert_eq!(warm, cold, "{} limit {:?}", case["case_id"], limit);
+            report.push(serde_json::json!({"case_id":case["case_id"],"reply_limit":limit,"fresh_persistent_equal":true,"response":warm}));
+        }
+    }
+    if let Ok(path) = std::env::var("FLASHTEX_REPLAY_OUTPUT") {
+        std::fs::write(
+            std::path::Path::new(&path).with_file_name("incremental.json"),
+            serde_json::to_vec_pretty(&report).unwrap(),
+        )
+        .unwrap();
     }
 }

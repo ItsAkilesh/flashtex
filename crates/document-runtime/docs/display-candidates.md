@@ -98,3 +98,53 @@ are unchanged. The real replay similarly waits for previews/candidates rather th
 assuming a particular compile duration. Test failures are retained by the runner
 before it returns an error. No production boundary defect was established by these
 test scheduling failures.
+
+## Incremental producer cache acceptance
+
+Exact published6e696616cca27a6bff19d88f7e0fd51e64458e81 was built unchanged from its
+archive. The initial debug build failed with Disk quota exceeded while writing
+font-resources and pipeline metadata. Only that task's failed448MB target was
+removed. The successful retry disabled debug symbols and incremental build files;
+its binary/build environment hashes are recorded. The older65dbe7d binary was
+left untouched. This resource constraint is not a producer source failure.
+
+`display-incremental-requests.json` covers six states: initial paragraphs, a UTF8
+comment shifting following source byte offsets, an edited first paragraph, unchanged
+text at a new revision, explicit style change, and original text restored. The
+runtime compares fresh and persistent response Values in both requested and2500-byte
+producer budget modes. The harness also independently compares actual direct
+fresh/persistent stdout bytes:144806 requested bytes and9867 bounded bytes match
+exactly across this sequence. All source hashes/revisions pass runtime binding.
+
+The11pt style case returns a recovered `tfm_missing` warning: ec-lmr10.tfm is
+absent from the supplied root and the producer explicitly reports using OpenType
+advances. The harness performs no substitution or metadata repair; under2500 bytes it
+returns a failed v1 reply. Other bounded cases decline v2 and recover; normal12pt
+cases return ok with one sibling. This faithfully records current producer behavior,
+not broad font compatibility. The four negotiation and cancellation probes also
+pass on this producer. No cache hit count or throughput claim is inferred from
+output equality; this is a bounded correctness test under shared machine load.
+
+## Scalar display-stage observability
+
+`last_display_profile()` returns the last current candidate's
+`DisplayResponseProfile`: request/project/revision, Session-local display epoch,
+framed response byte count, JSON parse, raw decode-queue wait, decoded-frame owner
+wait, and source-binding validation milliseconds. Source binding includes raw UTF8
+hashing and document correlation; it excludes native/core font/render validation,
+helper serialization/admission and paint. No document text is included. Durations
+are observations, not calibrated compiler CPU or end-to-end latency measurements.
+
+The profile survives moving its candidate so helpers can observe eventless display
+work. Submit, close, policy reset and failure clear it. Stale/cancelled/old-epoch
+siblings never update it. Existing v1 `last_profile()` and Event/wire fields remain
+unchanged. A new Session begins with no display profile; epoch values are meaningful
+only alongside the caller's session identity. Tests cover exact current identity,
+scalar finite values, candidate take, supersession, same-mode epoch reset and failure.
+
+`benchmarks/display-profile-6e69661/profile.json` pins one actual observation using
+the already verified producer/assets: requested4434 framed bytes reported parsing
+0.167284ms and source binding0.021131ms, with separate queue/owner waits. Legacy,
+declined and failed cases have no display profile. This tiny single sample just
+shows the previously hidden phase is observable; it does not justify optimization
+or establish native responsiveness.

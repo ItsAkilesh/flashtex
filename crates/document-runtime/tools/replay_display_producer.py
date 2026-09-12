@@ -17,7 +17,7 @@ with tarfile.open(fileobj=io.BytesIO(archive)) as tar:
  for member in files:
   if (tree/member.name).read_bytes()!=tar.extractfile(member).read():raise RuntimeError('source mismatch: '+member.name)
 cargo=str(pathlib.Path.home()/'.cargo/bin/cargo');manifest=tree/'crates/render-pipeline/Cargo.toml'
-build=[cargo,'build','--offline','--manifest-path',str(manifest),'--bin','flashtex-render','--quiet'];run(build)
+build=[cargo,'build','--offline','--manifest-path',str(manifest),'--bin','flashtex-render','--quiet'];build_env=dict(os.environ,CARGO_PROFILE_DEV_DEBUG='0',CARGO_INCREMENTAL='0');built=subprocess.run(build,env=build_env,capture_output=True);(out/'build.log').write_bytes(built.stdout+built.stderr);built.check_returncode()
 binary=manifest.parent/'target/debug/flashtex-render'
 assets=[]
 for folder in [pathlib.Path(a.font_dir),pathlib.Path(a.tfm_dir)]:
@@ -38,6 +38,17 @@ for mode,limit in [('requested',None),('legacy',None),('declined','1500'),('fail
  raw=run([str(binary)],input=wire,env=case_env,timeout=20)
  (out/(mode+'.request.jsonl')).write_bytes(wire);(out/(mode+'.stdout.jsonl')).write_bytes(raw.stdout);(out/(mode+'.stderr')).write_bytes(raw.stderr)
  raw_evidence.append({'mode':mode,'request_sha256':sha(wire),'stdout_sha256':sha(raw.stdout),'stderr_sha256':sha(raw.stderr),'reply_limit':limit})
+incremental_fixture=repo/'crates/document-runtime/fixtures/display-incremental-requests.json'
+incremental=json.loads(incremental_fixture.read_text());incremental_raw=[]
+for name,limit in [('requested',None),('bounded','2500')]:
+ case_env=dict(env);case_env.pop('FLASHTEX_MAX_REPLY_BYTES',None)
+ if limit is not None:case_env['FLASHTEX_MAX_REPLY_BYTES']=limit
+ inputs=[(json.dumps(case['request'])+'\n').encode() for case in incremental]
+ fresh=b''.join(run([str(binary)],input=wire,env=case_env,timeout=20).stdout for wire in inputs)
+ persistent=run([str(binary)],input=b''.join(inputs),env=case_env,timeout=30).stdout
+ (out/('incremental-'+name+'.fresh.jsonl')).write_bytes(fresh);(out/('incremental-'+name+'.persistent.jsonl')).write_bytes(persistent)
+ if fresh!=persistent:raise RuntimeError('fresh/persistent raw byte mismatch: '+name)
+ incremental_raw.append({'mode':name,'reply_limit':limit,'byte_equal':True,'sha256':sha(fresh),'bytes':len(fresh)})
 report=json.loads((out/'runtime.json').read_text());font_hashes={entry['sha256'] for entry in assets}
 for case in report:
  raw_lines=[json.loads(line) for line in (out/(case['mode']+'.stdout.jsonl')).read_bytes().splitlines()]
@@ -46,5 +57,5 @@ for case in report:
  if candidate:
   for font in candidate['payload']['fonts']:
    if font['sha256'] not in font_hashes:raise RuntimeError('producer font raw SHA not found in supplied assets')
-evidence={'producer_sha':exact,'raw_cases':raw_evidence,'fixture_sha256':sha(fixture_path.read_bytes()),'archive_sha256':sha(archive),'verified_source_files':len(files),'binary_sha256':sha(binary.read_bytes()),'build_command':build,'test_command':test,'assets':assets,'runtime_evidence_sha256':sha((out/'runtime.json').read_bytes()),'lifecycle_evidence_sha256':sha((out/'lifecycle.json').read_bytes()),'rendering_validation':'not performed','native_latency':'not measured'}
+evidence={'producer_sha':exact,'incremental_raw':incremental_raw,'incremental_fixture_sha256':sha(incremental_fixture.read_bytes()),'incremental_evidence_sha256':sha((out/'incremental.json').read_bytes()),'raw_cases':raw_evidence,'fixture_sha256':sha(fixture_path.read_bytes()),'archive_sha256':sha(archive),'verified_source_files':len(files),'binary_sha256':sha(binary.read_bytes()),'build_command':build,'build_environment':{'CARGO_PROFILE_DEV_DEBUG':'0','CARGO_INCREMENTAL':'0'},'test_command':test,'assets':assets,'runtime_evidence_sha256':sha((out/'runtime.json').read_bytes()),'lifecycle_evidence_sha256':sha((out/'lifecycle.json').read_bytes()),'rendering_validation':'not performed','native_latency':'not measured'}
 (out/'provenance.json').write_text(json.dumps(evidence,indent=2)+'\n');print(out)
