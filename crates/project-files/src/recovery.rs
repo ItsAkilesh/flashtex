@@ -13,11 +13,13 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use crate::json::Json;
 use crate::path::ProjectPath;
-use crate::save::{Expected, SaveError, SaveReceipt, save_atomic, write_atomic};
+use crate::save::{DEFAULT_READ_LIMIT, Expected, ProjectLock, ProjectRoot, SaveError, SaveReceipt};
 use crate::sha256::{Digest, hex, parse_hex, sha256, sha256_hex};
 
 pub const RECOVERY_DIR: &str = ".flashtex/recovery";
 const SCHEMA_VERSION: u64 = 1;
+/// Journal entries larger than this are treated as unreadable.
+const JOURNAL_READ_LIMIT: u64 = 64 * 1024 * 1024;
 
 /// One journaled buffer.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -93,35 +95,44 @@ pub struct Listing {
     pub entries: Vec<RecoveryEntry>,
     pub malformed: Vec<(PathBuf, String)>,
 }
-
-#[derive(Debug, Clone)]
-pub struct RecoveryJournal {
-    root: PathBuf,
+/// Journal bound to an open [`ProjectRoot`]. Reads go through the rooted,
+/// symlink-refusing reader; writes and removals require the project lock.
+#[derive(Debug, Clone, Copy)]
+pub struct RecoveryJournal<'r> {
+    root: &'r ProjectRoot,
 }
 
-impl RecoveryJournal {
-    pub fn new(root: &Path) -> Self {
-        Self {
-            root: root.to_path_buf(),
-        }
+impl<'r> RecoveryJournal<'r> {
+    pub fn new(root: &'r ProjectRoot) -> Self {
+        Self { root }
     }
 
-    pub fn root(&self) -> &Path {
-        &self.root
+    pub fn root(&self) -> &'r ProjectRoot {
+        self.root
     }
 
     pub fn dir(&self) -> PathBuf {
-        self.root.join(RECOVERY_DIR)
+        self.root.path().join(RECOVERY_DIR)
+    }
+
+    /// Project-relative journal path for `path`.
+    pub fn journal_path(&self, path: &ProjectPath) -> ProjectPath {
+        ProjectPath::normalize(&format!(
+            "{RECOVERY_DIR}/{}.json",
+            sha256_hex(path.as_str().as_bytes())
+        ))
+        .expect("journal path is a fixed relative path")
     }
 
     pub fn journal_file(&self, path: &ProjectPath) -> PathBuf {
-        self.dir()
-            .join(format!("{}.json", sha256_hex(path.as_str().as_bytes())))
+        self.journal_path(path).to_os_path(self.root.path())
     }
 
-    /// Atomically records `text` for `path`. Replaces any previous entry.
+    /// Atomically records `text` for `path` under the project lock.
+    /// Replaces any previous entry.
     pub fn record(
         &self,
+        lock: &ProjectLock<'_>,
         path: &ProjectPath,
         text: &str,
         base_sha256: Option<Digest>,
@@ -139,54 +150,64 @@ impl RecoveryJournal {
             .insert("text_sha256", hex(&text_sha256))
             .insert("base_sha256", base_sha256.as_ref().map(hex))
             .insert("saved_at_unix_ms", millis);
-        let file = self.journal_file(path);
-        write_atomic(&file, doc.to_string_compact().as_bytes())?;
+        let journal_path = self.journal_path(path);
+        lock.save(
+            &journal_path,
+            doc.to_string_compact().as_bytes(),
+            Expected::Any,
+            true,
+        )?;
         Ok(RecoveryEntry {
             path: path.clone(),
             text: text.to_string(),
             text_sha256,
             base_sha256,
             saved_at: UNIX_EPOCH + Duration::from_millis(millis),
-            journal_file: file,
+            journal_file: self.journal_file(path),
         })
+    }
+
+    fn read_entry(
+        &self,
+        journal_path: &ProjectPath,
+    ) -> Result<Option<RecoveryEntry>, RecoveryError> {
+        let file = journal_path.to_os_path(self.root.path());
+        match self.root.read(journal_path, JOURNAL_READ_LIMIT)? {
+            Some(read) => parse_entry(&file, &read.bytes).map(Some),
+            None => Ok(None),
+        }
     }
 
     /// Loads the entry for `path`, if any.
     pub fn load(&self, path: &ProjectPath) -> Result<Option<RecoveryEntry>, RecoveryError> {
-        let file = self.journal_file(path);
-        match fs::read(&file) {
-            Ok(bytes) => parse_entry(&file, &bytes).map(Some),
-            Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
-            Err(e) => Err(e.into()),
-        }
+        self.read_entry(&self.journal_path(path))
     }
 
     /// Lists all entries. Files that are not valid entries are reported, not
-    /// deleted.
+    /// deleted. Directory listing uses the OS path; each file is then read
+    /// through the rooted reader.
     pub fn list(&self) -> Result<Listing, RecoveryError> {
         let mut listing = Listing::default();
-        let dir = self.dir();
-        let read_dir = match fs::read_dir(&dir) {
+        let read_dir = match fs::read_dir(self.dir()) {
             Ok(r) => r,
             Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(listing),
             Err(e) => return Err(e.into()),
         };
         for entry in read_dir {
             let entry = entry?;
-            let file = entry.path();
-            let is_json = file.extension().is_some_and(|e| e == "json");
-            let is_temp = file
-                .file_name()
-                .and_then(|n| n.to_str())
-                .is_some_and(|n| n.starts_with('.'));
-            if !is_json || is_temp || !entry.file_type()?.is_file() {
+            let Some(name) = entry.file_name().to_str().map(str::to_string) else {
+                continue;
+            };
+            if name.starts_with('.') || !name.ends_with(".json") {
                 continue;
             }
-            match fs::read(&file)
-                .map_err(RecoveryError::from)
-                .and_then(|b| parse_entry(&file, &b))
-            {
-                Ok(e) => listing.entries.push(e),
+            let Ok(journal_path) = ProjectPath::normalize(&format!("{RECOVERY_DIR}/{name}")) else {
+                continue;
+            };
+            let file = entry.path();
+            match self.read_entry(&journal_path) {
+                Ok(Some(e)) => listing.entries.push(e),
+                Ok(None) => {}
                 Err(RecoveryError::Malformed { file, message }) => {
                     listing.malformed.push((file, message))
                 }
@@ -200,9 +221,9 @@ impl RecoveryJournal {
 
     /// Compares the current on-disk file with the entry's base and text.
     pub fn check(&self, entry: &RecoveryEntry) -> Result<RestoreCheck, RecoveryError> {
-        let current = match fs::read(entry.path.to_os_path(&self.root)) {
-            Ok(bytes) => {
-                let h = sha256(&bytes);
+        let current = match self.root.read(&entry.path, DEFAULT_READ_LIMIT)? {
+            Some(read) => {
+                let h = read.sha256;
                 if h == entry.text_sha256 {
                     CurrentState::MatchesJournal
                 } else if Some(h) == entry.base_sha256 {
@@ -211,8 +232,7 @@ impl RecoveryJournal {
                     CurrentState::Diverged(h)
                 }
             }
-            Err(e) if e.kind() == io::ErrorKind::NotFound => CurrentState::Missing,
-            Err(e) => return Err(e.into()),
+            None => CurrentState::Missing,
         };
         let safe = match current {
             CurrentState::MatchesBase | CurrentState::MatchesJournal => true,
@@ -222,37 +242,38 @@ impl RecoveryJournal {
         Ok(RestoreCheck { current, safe })
     }
 
-    /// Writes the journaled text to the project file with the same conflict
-    /// rules as [`save_atomic`]: the disk must still match the recorded base
-    /// (or be absent for a new file) unless `force`. On success the entry is
-    /// discarded. A file that already equals the journal text is treated as
-    /// restored without rewriting.
+    /// Writes the journaled text to the project file under the lock with the
+    /// same conflict rules as [`ProjectLock::save`]: the disk must still
+    /// match the recorded base (or be absent for a new file) unless `force`.
+    /// On success the entry is discarded. A file that already equals the
+    /// journal text is treated as restored without rewriting.
     pub fn restore_to_disk(
         &self,
+        lock: &ProjectLock<'_>,
         entry: &RecoveryEntry,
         force: bool,
     ) -> Result<Option<SaveReceipt>, RecoveryError> {
         let check = self.check(entry)?;
         if check.current == CurrentState::MatchesJournal {
-            self.discard(&entry.path)?;
+            self.discard(lock, &entry.path)?;
             return Ok(None);
         }
         let expected = match entry.base_sha256 {
             Some(h) => Expected::Hash(h),
             None => Expected::NewFile,
         };
-        let receipt = save_atomic(&self.root, &entry.path, &entry.text, expected, force)?;
-        self.discard(&entry.path)?;
+        let receipt = lock.save(&entry.path, entry.text.as_bytes(), expected, force)?;
+        self.discard(lock, &entry.path)?;
         Ok(Some(receipt))
     }
 
     /// Removes the entry for `path`. Returns whether one existed.
-    pub fn discard(&self, path: &ProjectPath) -> Result<bool, RecoveryError> {
-        match fs::remove_file(self.journal_file(path)) {
-            Ok(()) => Ok(true),
-            Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(false),
-            Err(e) => Err(e.into()),
-        }
+    pub fn discard(
+        &self,
+        lock: &ProjectLock<'_>,
+        path: &ProjectPath,
+    ) -> Result<bool, RecoveryError> {
+        Ok(lock.remove(&self.journal_path(path))?)
     }
 }
 
