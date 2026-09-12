@@ -72,11 +72,11 @@ mod error;
 mod preview;
 mod root;
 
-pub use apply::{apply_import, ImportAction, ImportDecision, ImportOutcome};
+pub use apply::{ImportAction, ImportDecision, ImportOutcome, apply_import};
 pub use bundle::{
-    build_bundle, build_bundle_with_limits, Bundle, BundleEntry, BundleFile, BundleLimits,
-    DEFAULT_MAX_ENTRIES, DEFAULT_MAX_TOTAL_BYTES,
+    Bundle, BundleEntry, BundleFile, BundleLimits, DEFAULT_MAX_ENTRIES, DEFAULT_MAX_TOTAL_BYTES,
+    build_bundle, build_bundle_with_limits,
 };
 pub use error::BundleError;
-pub use preview::{preview_import, FileOutcome, FilePreview, ImportPreview};
-pub use root::{validate_relative_path, ProjectRoot, RootedFile, DEFAULT_FILE_LIMIT};
+pub use preview::{FileOutcome, FilePreview, ImportPreview, preview_import};
+pub use root::{DEFAULT_FILE_LIMIT, ProjectRoot, RootedFile, validate_relative_path};

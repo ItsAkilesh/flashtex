@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
-use flashtex_project_files::{Digest, PathError, ProjectPath, Refused, SaveError};
 use flashtex_project_files::ProjectRoot as FilesRoot;
+use flashtex_project_files::{Digest, PathError, ProjectPath, Refused, SaveError};
 
 use crate::error::BundleError;
 
@@ -178,9 +178,9 @@ fn map_path_error(raw: &str, err: PathError) -> BundleError {
         PathError::Empty => BundleError::EmptyPath,
         PathError::Absolute => BundleError::AbsolutePath(raw.to_string()),
         PathError::EscapesRoot => BundleError::PathTraversal(raw.to_string()),
-        PathError::ForbiddenCharacter(c) => BundleError::MalformedPath(format!(
-            "{raw:?}: contains forbidden character {c:?}"
-        )),
+        PathError::ForbiddenCharacter(c) => {
+            BundleError::MalformedPath(format!("{raw:?}: contains forbidden character {c:?}"))
+        }
     }
 }
 
@@ -192,9 +192,9 @@ fn map_save_error(raw: &str, err: SaveError) -> BundleError {
         SaveError::Refused(Refused::EscapesRoot { .. }) => {
             BundleError::PathTraversal(raw.to_string())
         }
-        SaveError::Refused(Refused::NotADirectory { component }) => BundleError::MalformedPath(
-            format!("{raw:?}: {component:?} is not a directory"),
-        ),
+        SaveError::Refused(Refused::NotADirectory { component }) => {
+            BundleError::MalformedPath(format!("{raw:?}: {component:?} is not a directory"))
+        }
         SaveError::Refused(Refused::NotARegularFile { .. }) => {
             BundleError::NotAFile(raw.to_string())
         }
@@ -206,9 +206,9 @@ fn map_save_error(raw: &str, err: SaveError) -> BundleError {
         SaveError::Refused(Refused::LockUnavailable { .. }) => {
             BundleError::Io(format!("{raw}: project lock unavailable"))
         }
-        SaveError::Refused(Refused::Unsupported) => {
-            BundleError::Io(format!("{raw}: rooted file operations unsupported on this platform"))
-        }
+        SaveError::Refused(Refused::Unsupported) => BundleError::Io(format!(
+            "{raw}: rooted file operations unsupported on this platform"
+        )),
         SaveError::Io(e) => BundleError::Io(format!("{raw}: {e}")),
         SaveError::DirectorySync(e) => {
             BundleError::Io(format!("{raw}: directory fsync failed after rename: {e}"))

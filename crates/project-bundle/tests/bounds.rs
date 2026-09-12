@@ -5,7 +5,7 @@ mod common;
 
 use common::TempDir;
 use flashtex_project_bundle::{
-    build_bundle_with_limits, BundleEntry, BundleError, BundleLimits, ProjectRoot,
+    BundleEntry, BundleError, BundleLimits, ProjectRoot, build_bundle_with_limits,
 };
 
 #[test]

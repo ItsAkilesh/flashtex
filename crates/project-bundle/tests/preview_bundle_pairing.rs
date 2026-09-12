@@ -16,8 +16,8 @@ use std::collections::HashMap;
 
 use common::TempDir;
 use flashtex_project_bundle::{
-    apply_import, build_bundle, preview_import, BundleEntry, BundleError, ImportDecision,
-    ProjectRoot,
+    BundleEntry, BundleError, ImportDecision, ProjectRoot, apply_import, build_bundle,
+    preview_import,
 };
 
 #[test]
@@ -43,10 +43,7 @@ fn preview_naming_a_path_the_bundle_lacks_is_a_typed_error_not_a_panic() {
     let narrow = build_bundle(&src_root, &[BundleEntry::new("a.tex")]).unwrap();
 
     let err = apply_import(&narrow, &preview, &dst_root, &HashMap::new()).unwrap_err();
-    assert_eq!(
-        err,
-        BundleError::PreviewBundleMismatch("m.tex".to_string())
-    );
+    assert_eq!(err, BundleError::PreviewBundleMismatch("m.tex".to_string()));
 
     // "a.tex" sorts before "m.tex", so it is the file the pre-fix panic
     // left committed. The check now runs before the batch starts, so
@@ -104,6 +101,9 @@ fn a_matched_bundle_and_preview_still_apply_normally() {
     decisions.insert("m.tex".to_string(), ImportDecision::Skip);
     let outcomes = apply_import(&bundle, &preview, &dst_root, &decisions).unwrap();
     assert_eq!(outcomes.len(), 2);
-    assert_eq!(std::fs::read(dst.path().join("a.tex")).unwrap(), b"content a");
+    assert_eq!(
+        std::fs::read(dst.path().join("a.tex")).unwrap(),
+        b"content a"
+    );
     assert!(!dst.path().join("m.tex").exists());
 }

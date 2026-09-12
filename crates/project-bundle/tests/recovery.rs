@@ -17,8 +17,8 @@ use std::collections::HashMap;
 
 use common::TempDir;
 use flashtex_project_bundle::{
-    apply_import, build_bundle, preview_import, BundleEntry, BundleError, ImportDecision,
-    ProjectRoot,
+    BundleEntry, BundleError, ImportDecision, ProjectRoot, apply_import, build_bundle,
+    preview_import,
 };
 
 /// Three new files, sorted by path (the order `apply_import` processes
@@ -215,7 +215,10 @@ fn rollback_removes_the_file_but_leaves_the_directory_it_created() {
 
     let bundle = build_bundle(
         &src_root,
-        &[BundleEntry::new("chapters/a.tex"), BundleEntry::new("z.tex")],
+        &[
+            BundleEntry::new("chapters/a.tex"),
+            BundleEntry::new("z.tex"),
+        ],
     )
     .unwrap();
     let preview = preview_import(&bundle, &dst_root).unwrap();
@@ -241,7 +244,9 @@ fn rollback_removes_the_file_but_leaves_the_directory_it_created() {
         "documented residue: the created directory is not removed"
     );
     assert_eq!(
-        std::fs::read_dir(dst.path().join("chapters")).unwrap().count(),
+        std::fs::read_dir(dst.path().join("chapters"))
+            .unwrap()
+            .count(),
         0,
         "and it is empty"
     );

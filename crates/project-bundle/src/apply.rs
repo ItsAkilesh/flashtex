@@ -12,7 +12,7 @@ use flashtex_project_files::{Digest, Expected, ProjectLock};
 use crate::bundle::{Bundle, BundleFile};
 use crate::error::BundleError;
 use crate::preview::{FileOutcome, ImportPreview};
-use crate::root::{is_reserved, map_write_error, ProjectRoot};
+use crate::root::{ProjectRoot, is_reserved, map_write_error};
 
 /// What the caller wants done with one previewed file.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -301,11 +301,19 @@ fn roll_back(
     failures
 }
 
-fn undo_one(target: &ProjectRoot, lock: &ProjectLock<'_>, path: &str, undo: Undo) -> Result<(), String> {
+fn undo_one(
+    target: &ProjectRoot,
+    lock: &ProjectLock<'_>,
+    path: &str,
+    undo: Undo,
+) -> Result<(), String> {
     let normalized = ProjectRoot::normalize(path).map_err(|e| e.to_string())?;
     match undo {
         Undo::Remove { written_sha256 } => {
-            match target.read_rooted_optional(path).map_err(|e| e.to_string())? {
+            match target
+                .read_rooted_optional(path)
+                .map_err(|e| e.to_string())?
+            {
                 None => Ok(()), // already gone; the rollback goal is met
                 Some(current) if current.sha256 == written_sha256 => lock
                     .remove(&normalized)

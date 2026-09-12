@@ -5,12 +5,15 @@
 mod common;
 
 use common::TempDir;
-use flashtex_project_bundle::{build_bundle, BundleEntry, ProjectRoot};
+use flashtex_project_bundle::{BundleEntry, ProjectRoot, build_bundle};
 
 #[test]
 fn unlisted_sibling_file_never_appears_in_bundle() {
     let dir = TempDir::new("no-discovery");
-    dir.write("main.tex", b"\\documentclass{article}\\begin{document}\\end{document}");
+    dir.write(
+        "main.tex",
+        b"\\documentclass{article}\\begin{document}\\end{document}",
+    );
     // A sibling that a directory-walking implementation would happily pick
     // up (same directory, same extension, alphabetically adjacent).
     dir.write("main2.tex", b"should never be bundled");

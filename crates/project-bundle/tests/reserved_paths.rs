@@ -20,8 +20,8 @@ use std::collections::HashMap;
 
 use common::TempDir;
 use flashtex_project_bundle::{
-    apply_import, build_bundle, preview_import, BundleEntry, BundleError, ImportDecision,
-    ProjectRoot,
+    BundleEntry, BundleError, ImportDecision, ProjectRoot, apply_import, build_bundle,
+    preview_import,
 };
 
 /// The exact mechanism the reservation exists to prevent, characterized
@@ -81,10 +81,7 @@ fn importing_over_the_project_lock_file_is_refused_before_any_write() {
     let preview = preview_import(&bundle, &dst_root).unwrap();
 
     let mut decisions = HashMap::new();
-    decisions.insert(
-        ".flashtex/project.lock".to_string(),
-        ImportDecision::Write,
-    );
+    decisions.insert(".flashtex/project.lock".to_string(), ImportDecision::Write);
     let err = apply_import(&bundle, &preview, &dst_root, &decisions).unwrap_err();
     assert_eq!(
         err,
@@ -150,5 +147,8 @@ fn a_path_merely_resembling_the_control_directory_is_still_importable() {
     .unwrap();
     let preview = preview_import(&bundle, &dst_root).unwrap();
     apply_import(&bundle, &preview, &dst_root, &HashMap::new()).unwrap();
-    assert_eq!(std::fs::read(dst.path().join(".flashtexrc")).unwrap(), b"config");
+    assert_eq!(
+        std::fs::read(dst.path().join(".flashtexrc")).unwrap(),
+        b"config"
+    );
 }

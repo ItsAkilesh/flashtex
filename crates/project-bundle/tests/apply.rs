@@ -8,8 +8,8 @@ use std::collections::HashMap;
 
 use common::TempDir;
 use flashtex_project_bundle::{
-    apply_import, build_bundle, preview_import, BundleEntry, BundleError, ImportAction,
-    ImportDecision, ProjectRoot,
+    BundleEntry, BundleError, ImportAction, ImportDecision, ProjectRoot, apply_import,
+    build_bundle, preview_import,
 };
 
 fn setup() -> (TempDir, ProjectRoot, TempDir, ProjectRoot) {
@@ -44,7 +44,10 @@ fn conflict_with_no_decision_is_a_typed_error_and_nothing_is_written() {
     // No decision at all for "changed.tex", the one conflict.
     let decisions = HashMap::new();
     let err = apply_import(&bundle, &preview, &dst_root, &decisions).unwrap_err();
-    assert_eq!(err, BundleError::OverwriteNotDecided("changed.tex".to_string()));
+    assert_eq!(
+        err,
+        BundleError::OverwriteNotDecided("changed.tex".to_string())
+    );
 
     // Nothing was written: the omission must not act as partial progress.
     assert_eq!(
@@ -58,7 +61,10 @@ fn explicit_skip_on_a_conflict_leaves_the_target_untouched() {
     let (_src, src_root, dst, dst_root) = setup();
     let bundle = build_bundle(
         &src_root,
-        &[BundleEntry::new("same.tex"), BundleEntry::new("changed.tex")],
+        &[
+            BundleEntry::new("same.tex"),
+            BundleEntry::new("changed.tex"),
+        ],
     )
     .unwrap();
     let preview = preview_import(&bundle, &dst_root).unwrap();
@@ -171,7 +177,10 @@ fn concurrently_created_new_file_is_refused_not_clobbered() {
     dst.write("new.tex", b"created meanwhile");
 
     let outcome = apply_import(&bundle, &preview, &dst_root, &HashMap::new()).unwrap_err();
-    assert!(matches!(outcome, BundleError::ConcurrentModification { .. }));
+    assert!(matches!(
+        outcome,
+        BundleError::ConcurrentModification { .. }
+    ));
     assert_eq!(
         std::fs::read(dst.path().join("new.tex")).unwrap(),
         b"created meanwhile"

@@ -13,7 +13,7 @@
 mod common;
 
 use common::TempDir;
-use flashtex_project_bundle::{build_bundle, BundleEntry, BundleError, ProjectRoot};
+use flashtex_project_bundle::{BundleEntry, BundleError, ProjectRoot, build_bundle};
 
 #[test]
 fn empty_path_is_rejected() {
@@ -176,5 +176,11 @@ fn unicode_normalization_collision_is_rejected_not_silently_admitted() {
 
     let entries = [BundleEntry::new(nfc.clone()), BundleEntry::new(nfd.clone())];
     let err = build_bundle(&root, &entries).unwrap_err();
-    assert_eq!(err, BundleError::AmbiguousPath { first: nfc, second: nfd });
+    assert_eq!(
+        err,
+        BundleError::AmbiguousPath {
+            first: nfc,
+            second: nfd
+        }
+    );
 }

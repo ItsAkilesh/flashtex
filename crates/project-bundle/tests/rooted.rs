@@ -51,7 +51,9 @@ fn dot_dot_traversal_is_rejected_even_when_target_does_not_exist() {
     // it" — it must fire before any filesystem lookup.
     let dir = TempDir::new("rooted-dotdot-missing");
     let root = ProjectRoot::new(dir.path()).unwrap();
-    let err = root.read_rooted("../nonexistent-should-never-be-touched").unwrap_err();
+    let err = root
+        .read_rooted("../nonexistent-should-never-be-touched")
+        .unwrap_err();
     assert!(matches!(err, BundleError::PathTraversal(_)));
 }
 

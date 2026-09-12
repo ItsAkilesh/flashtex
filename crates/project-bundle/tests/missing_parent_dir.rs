@@ -17,8 +17,7 @@ use std::collections::HashMap;
 
 use common::TempDir;
 use flashtex_project_bundle::{
-    apply_import, build_bundle, preview_import, BundleEntry, BundleError, FileOutcome,
-    ProjectRoot,
+    BundleEntry, BundleError, FileOutcome, ProjectRoot, apply_import, build_bundle, preview_import,
 };
 
 #[test]

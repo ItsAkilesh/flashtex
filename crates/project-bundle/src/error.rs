@@ -155,10 +155,9 @@ impl fmt::Display for BundleError {
                 f,
                 "{path:?} is {size} bytes, over the {limit}-byte per-file limit"
             ),
-            BundleError::TooManyEntries { limit, actual } => write!(
-                f,
-                "{actual} entries exceeds the {limit}-entry bundle limit"
-            ),
+            BundleError::TooManyEntries { limit, actual } => {
+                write!(f, "{actual} entries exceeds the {limit}-entry bundle limit")
+            }
             BundleError::TotalBytesExceeded { limit, actual } => write!(
                 f,
                 "bundle total {actual} bytes exceeds the {limit}-byte limit"

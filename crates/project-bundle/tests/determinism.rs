@@ -5,7 +5,7 @@
 mod common;
 
 use common::TempDir;
-use flashtex_project_bundle::{build_bundle, BundleEntry, ProjectRoot};
+use flashtex_project_bundle::{BundleEntry, ProjectRoot, build_bundle};
 
 fn sample_root() -> TempDir {
     let dir = TempDir::new("determinism");

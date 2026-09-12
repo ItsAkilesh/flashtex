@@ -7,12 +7,15 @@ use std::time::{Duration, SystemTime};
 
 use common::TempDir;
 use flashtex_project_bundle::{
-    build_bundle, preview_import, BundleEntry, FileOutcome, ProjectRoot,
+    BundleEntry, FileOutcome, ProjectRoot, build_bundle, preview_import,
 };
 
 fn snapshot(dir: &std::path::Path) -> Vec<(String, u64, SystemTime)> {
     fn walk(dir: &std::path::Path, prefix: &str, out: &mut Vec<(String, u64, SystemTime)>) {
-        let mut entries: Vec<_> = std::fs::read_dir(dir).unwrap().map(|e| e.unwrap()).collect();
+        let mut entries: Vec<_> = std::fs::read_dir(dir)
+            .unwrap()
+            .map(|e| e.unwrap())
+            .collect();
         entries.sort_by_key(|e| e.file_name());
         for entry in entries {
             let meta = entry.metadata().unwrap();
@@ -55,7 +58,14 @@ fn preview_classifies_new_unchanged_and_conflicting_files() {
     let preview = preview_import(&bundle, &dst_root).unwrap();
     assert_eq!(preview.files.len(), 3);
 
-    let outcome = |path: &str| preview.files.iter().find(|f| f.path == path).unwrap().outcome;
+    let outcome = |path: &str| {
+        preview
+            .files
+            .iter()
+            .find(|f| f.path == path)
+            .unwrap()
+            .outcome
+    };
     assert!(matches!(outcome("new.tex"), FileOutcome::New));
     assert!(matches!(outcome("same.tex"), FileOutcome::Unchanged { .. }));
     match outcome("changed.tex") {
