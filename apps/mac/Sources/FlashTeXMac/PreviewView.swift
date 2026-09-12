@@ -11,14 +11,25 @@ struct PreviewView: View {
     var caretItems: [Int: Set<Int>] = [:]
     let onSelect: (RuntimeV1.SourceRange?, String?) -> Void
 
+    /// First page holding a caret item, or nil; drives page-level auto-scroll.
+    private var caretPage: Int? { caretItems.filter { !$0.value.isEmpty }.keys.min() }
+
     var body: some View {
-        ScrollView([.vertical, .horizontal]) {
-            VStack(spacing: 24) {
-                ForEach(result.pages, id: \.number) { page in
-                    PageView(page: page, dark: dark, caretItems: caretItems[page.number] ?? [], onSelect: onSelect)
+        ScrollViewReader { proxy in
+            ScrollView([.vertical, .horizontal]) {
+                VStack(spacing: 24) {
+                    ForEach(result.pages, id: \.number) { page in
+                        PageView(page: page, dark: dark, caretItems: caretItems[page.number] ?? [], onSelect: onSelect)
+                            .id(page.number)
+                    }
                 }
+                .padding(24)
             }
-            .padding(24)
+            .onChange(of: caretPage) { _, page in
+                // Page-level only: keeps the page under the caret in view when the
+                // editor moves across pages; no scrolling within a page.
+                if let page { withAnimation { proxy.scrollTo(page, anchor: .top) } }
+            }
         }
         .background(dark ? Color(white: 0.12) : Color(nsColor: .windowBackgroundColor))
     }

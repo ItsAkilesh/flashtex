@@ -177,7 +177,7 @@ spans are exact. Reported to the fixture owner (Commander, FT-001).
 - PDF export draws only what the contract's text items describe; it is not a
   TeX-engine PDF and has no compiler-produced `pdf_path` behind it. A result with
   zero pages exports one blank page (a PDF must have at least one).
-- No image/line items (not in v1). Caret sync highlights only; it does not
-  scroll the preview to an off-screen item.
+- No image/line items (not in v1). Caret sync highlights items and scrolls to
+  the page under the caret, not to the item within the page.
 - Screen capture of the running app was not possible from the agent's terminal
   (no Screen Recording permission); visual click behavior needs a human check.
