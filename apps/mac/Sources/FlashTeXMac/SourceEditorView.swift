@@ -372,9 +372,13 @@ struct SourceEditorView: NSViewRepresentable {
             guard window.length > 0 else { return }
             for key in keys { lm.removeTemporaryAttribute(key, forCharacterRange: window) }
             let warningAttrs = attributes(for: .warning), errorAttrs = attributes(for: .error)
-            for severity in [RuntimeV1.Severity.warning, .error] {
-                let base = severity == .error ? errorAttrs : warningAttrs
-                for mark in marks where mark.severity == severity {
+            // Gaps (FlashTeX does not implement this) go first so a real
+            // error or warning wins over their grey underline.
+            let gapAttrs: [NSAttributedString.Key: Any] = [.underlineStyle: NSUnderlineStyle.single.rawValue | NSUnderlineStyle.patternDot.rawValue,
+                                                            .underlineColor: NSColor.tertiaryLabelColor]
+            for severity in [RuntimeV1.Severity?.none, .warning, .error] {
+                let base = severity == .error ? errorAttrs : severity == .warning ? warningAttrs : gapAttrs
+                for mark in marks where (severity == nil) == EditorDiagnostics.isGap(mark.message) && (severity == nil || mark.severity == severity) {
                     let r = mark.nsRange
                     guard r.location >= 0, r.length > 0, NSMaxRange(r) <= length else { continue }
                     let clipped = NSIntersectionRange(r, window)
