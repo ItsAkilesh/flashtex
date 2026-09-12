@@ -5,6 +5,24 @@ use std::{
     thread,
     time::{Duration, Instant},
 };
+fn replay_session(command: Command) -> Session {
+    if std::env::var_os("FLASHTEX_RAW_REPLAY").is_some() {
+        Session::spawn_command_raw_display_prototype(command, Limits::default()).unwrap()
+    } else {
+        Session::spawn_command(command, Limits::default()).unwrap()
+    }
+}
+fn replay_candidate(s: &mut Session) -> Option<serde_json::Value> {
+    if std::env::var_os("FLASHTEX_RAW_REPLAY").is_some() {
+        s.take_current_raw_display_candidate().map(|c| {
+            // Evidence keeps exact opaque bytes in addition to semantic comparison.
+            serde_json::json!({"raw":c.raw().get(),"envelope":serde_json::from_str::<serde_json::Value>(c.raw().get()).unwrap()})
+        })
+    } else {
+        s.take_current_display_candidate()
+            .map(|c| c.into_envelope())
+    }
+}
 #[test]
 #[ignore = "requires exact published producer/assets; run tools/replay_display_producer.py"]
 fn published_producer_negotiates_source_bound_candidates() {
@@ -24,7 +42,7 @@ fn published_producer_negotiates_source_bound_candidates() {
         if let Some(limit) = limit {
             command.env("FLASHTEX_MAX_REPLY_BYTES", limit);
         }
-        let mut session = Session::spawn_command(command, Limits::default()).unwrap();
+        let mut session = replay_session(command);
         session.set_display_candidates_enabled(requested).unwrap();
         session
             .submit_with_capabilities(
@@ -56,8 +74,8 @@ fn published_producer_negotiates_source_bound_candidates() {
                     _ => {}
                 }
             }
-            if let Some(c) = session.take_current_display_candidate() {
-                candidate = Some(c.into_envelope());
+            if let Some(c) = replay_candidate(&mut session) {
+                candidate = Some(c);
             }
             if result.is_some() && (mode != "requested" || candidate.is_some()) {
                 break;
@@ -236,7 +254,7 @@ fn actual_incremental_producer_fresh_and_persistent_runtime_equivalence() {
             if let Some(limit) = limit {
                 c.env("FLASHTEX_MAX_REPLY_BYTES", limit);
             }
-            let mut s = Session::spawn_command(c, Limits::default()).unwrap();
+            let mut s = replay_session(c);
             s.set_display_candidates_enabled(true).unwrap();
             s
         };
@@ -277,7 +295,17 @@ fn actual_incremental_producer_fresh_and_persistent_runtime_equivalence() {
                     && result["payload"]["layout_capabilities"]
                         .as_array()
                         .is_some_and(|caps| caps.iter().any(|c| c == "display-list-v2"));
-                let candidate = accepted.then(|| take_real_candidate(s).into_envelope());
+                let candidate = accepted.then(|| {
+                    let start = Instant::now();
+                    loop {
+                        s.poll();
+                        if let Some(c) = replay_candidate(s) {
+                            break c;
+                        }
+                        assert!(s.is_alive() && start.elapsed() < Duration::from_secs(10));
+                        thread::sleep(Duration::from_millis(2));
+                    }
+                });
                 serde_json::json!({"result":result,"candidate":candidate})
             };
             let warm = collect(&mut persistent);
@@ -310,5 +338,73 @@ fn actual_incremental_producer_fresh_and_persistent_runtime_equivalence() {
             serde_json::to_vec_pretty(&report).unwrap(),
         )
         .unwrap();
+    }
+}
+
+#[test]
+#[ignore = "requires verified published producer and pinned assets"]
+fn actual_raw_cancelled_request_then_changed_source_budget() {
+    let binary = std::env::var("FLASHTEX_REPLAY_PRODUCER").unwrap();
+    let fixture: serde_json::Value =
+        serde_json::from_str(include_str!("../fixtures/display-producer-request.json")).unwrap();
+    let source = fixture["payload"]["documents"][0]["text"].as_str().unwrap();
+    let mut command = Command::new(binary);
+    command.env_remove("FLASHTEX_MAX_REPLY_BYTES");
+    let mut s = Session::spawn_command_raw_display_prototype(command, Limits::default()).unwrap();
+    s.set_display_candidates_enabled(true).unwrap();
+    let mut request = Request {
+        id: "cancel-1".into(),
+        project_id: "p".into(),
+        revision: 1,
+        entry_path: "main.tex".into(),
+        documents: vec![Document {
+            path: "main.tex".into(),
+            text: source.into(),
+        }],
+    };
+    s.submit_with_capabilities(request.clone(), vec!["display-list-v2".into()])
+        .unwrap();
+    s.close_project("p").unwrap();
+    request.id = "changed-2".into();
+    request.revision = 2;
+    request.documents.push(Document {
+        path: "chapters/東京-longer-context.tex".into(),
+        text: "Additional source snapshot.".into(),
+    });
+    s.submit_with_capabilities(request.clone(), vec!["display-list-v2".into()])
+        .unwrap();
+    let mut events = vec![];
+    let start = Instant::now();
+    let candidate = loop {
+        events.extend(s.poll());
+        assert!(
+            !events.iter().any(|e| matches!(e, Event::Failed { .. })),
+            "{events:?}"
+        );
+        if let Some(c) = s.take_current_raw_display_candidate() {
+            break c;
+        }
+        assert!(s.is_alive() && start.elapsed() < Duration::from_secs(10));
+        thread::sleep(Duration::from_millis(2));
+    };
+    assert_eq!(candidate.request_id(), "changed-2");
+    assert_eq!(candidate.sources().len(), 2);
+    assert!(!events
+        .iter()
+        .any(|e| matches!(e, Event::Preview { revision: 1, .. })));
+    for d in &request.documents {
+        let binding = candidate
+            .sources()
+            .iter()
+            .find(|b| b.path == d.path)
+            .unwrap();
+        assert_eq!(
+            binding.sha256,
+            flashtex_project_files::sha256_hex(d.text.as_bytes())
+        );
+        assert_eq!(binding.byte_length, d.text.len());
+    }
+    if let Ok(path) = std::env::var("FLASHTEX_REPLAY_OUTPUT") {
+        std::fs::write(std::path::Path::new(&path).with_file_name("raw-cancel.json"),serde_json::to_vec_pretty(&serde_json::json!({"cancelled_preview_suppressed":true,"changed_document_count":2,"exact_source_binding":true,"raw_candidate":candidate.raw().get()})).unwrap()).unwrap();
     }
 }
