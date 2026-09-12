@@ -769,3 +769,5 @@ pub mod mixed_replay;
 pub mod residency;
 
 pub mod cff_run;
+
+pub mod geometry_diff;

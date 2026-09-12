@@ -3,10 +3,10 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-023": {
-      "acknowledged_utc": "2026-09-12T06:48:21Z",
-      "adaptation": "Read current published mixed quadratic/cubic/rule assignment. Implementing only rendering-core opt-in exact batch and replay APIs; stable primitive/source identity, strict byte and command budgets, no legacy wire activation.",
-      "main_sha": "1b17778ba97f638b8e8e003e16e6f8ee77b68b20",
-      "revision": 2
+      "acknowledged_utc": "2026-09-12T07:21:50Z",
+      "adaptation": "Read exact revision3 geometry-diff assignment. Implemented bounded exact comparison of validated mixed/display inputs with stable IDs, raw hashes, mismatch categories and undecided equality on truncation/unsupported; no production/native activation.",
+      "main_sha": "2fd302675040308c2b07d346c07389a051518979",
+      "revision": 3
     }
   },
   "branch": "agent/commander-render-core/rendering-core",
@@ -14,7 +14,7 @@
     "rust",
     "rendering"
   ],
-  "code_revision": "3c880b09a277f1610812839ecc47cb005aff3c99",
+  "code_revision": "bf6da8a0537f45e1573876d93edd9238080557a7",
   "eta_minutes": {
     "likely": 20,
     "optimistic": 10,
@@ -22,15 +22,15 @@
   },
   "machine": "linux-primary",
   "main_integrated_through": "63a93717865920014d15fa113102698572494976",
-  "next_action": "Publish pinned replay checkpoint and continue next assigned product task.",
+  "next_action": "Merge published font arithmetic2f770fd unchanged and regression-check exact CFF placement/cache outputs.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "Pinned real STIX named-glyph plus synthetic TFM run replay implemented; direct/cached encoding equivalence and bounded exact evidence output verified. 104 Rust tests pass.",
+  "summary": "Bounded exact geometry-diff API/CLI implemented with raw hashes, stable identity, categorized differences and exact rational deltas. 110 Rust tests pass.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T07:10:47Z",
+  "updated_utc": "2026-09-12T07:21:50Z",
   "usage": {
-    "evidence": "104 Rust tests and strict all-target clippy pass. Pinned font/license probe: A GID3,48 commands,6346 bytes SHA f0210698b7d382171727f4768b3fb437a2fb6f2a63ccb492df603dae096e42e1; synthetic TFM, no native/TeX oracle.",
+    "evidence": "110 Rust tests and strict all-target clippy pass. CLI identical mixed input yields equal=true after141nodes. Truncation/unsupported comparisons return equal=null. FT023revision3 ACKed.",
     "status": "Hosted OpenAI authorized; no external provider calls or purchases."
   }
 }

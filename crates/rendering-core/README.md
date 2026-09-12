@@ -302,3 +302,24 @@ for cold and warm runs. SHA256:
 gaps. No matched distribution TFM/encoding pair or TeX rounding/native/PDF oracle
 is claimed. The synthetic name-mapping test also compares direct and cached
 resolved encodings, preserving independent TFM and outline advances.
+
+`geometry_diff` compares two validated mixed fixtures or two display-list-v2
+envelopes with an explicit capability offer. Reports retain raw input/offer hashes,
+page and stable primitive identity, original values and exact right-minus-left
+rational deltas where representable. Categories distinguish resources/GIDs,
+advances/positions, baselines/rules, provenance and membership/order changes. It
+does not align pages, normalize geometry, substitute fonts or apply tolerances.
+Mixed and display formats are not assumed directly equivalent.
+
+```sh
+cargo run --manifest-path crates/rendering-core/Cargo.toml --example geometry_diff -- \
+  left.json right.json [--offer capabilities.json]
+```
+
+CLI exit codes: 0 for complete equality, 1 for complete differences, 2 for an
+incomplete/unsupported comparison. API limits bound traversal, difference count
+and serialized report bytes. `equal` is null whenever truncated or unsupported,
+including exact delta arithmetic that exceeds its i128/u128 representation budget.
+Source/font bytes are not verified by comparison, and equality is not a visual
+or reference-engine parity claim. Identical illustrative mixed inputs visit 141
+comparison nodes and produce an empty complete difference report.

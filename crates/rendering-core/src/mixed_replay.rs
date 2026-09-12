@@ -512,3 +512,7 @@ impl<'de> serde::Deserialize<'de> for StrictValue {
         deserializer.deserialize_any(Visitor)
     }
 }
+
+pub(crate) fn parse_unique(bytes: &[u8]) -> std::result::Result<Value, serde_json::Error> {
+    serde_json::from_slice::<StrictValue>(bytes).map(|v| v.0)
+}
