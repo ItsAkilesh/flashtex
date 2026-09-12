@@ -439,6 +439,40 @@ pub fn string(s: &str) -> String {
 // Reading
 // ---------------------------------------------------------------------------
 
+/// Maximum recursion depth for the raw JSON parser's `value`/`array`/`object`
+/// (any bracket or brace nesting in the input text).
+///
+/// Reproduced on the reference machine (see issue #46): 20,000 levels of
+/// nested arrays parsed cleanly; 50,000 levels overflowed the stack and
+/// aborted the process (`fatal runtime error: stack overflow, aborting`,
+/// exit 134 — not a catchable panic). 1,000 is comfortably above any
+/// legitimate document (a hand-authored or generated display list has no
+/// business nesting brackets anywhere near that deep) and comfortably below
+/// both the observed 20,000-safe depth (20x margin) and the 50,000-abort
+/// depth (50x margin), leaving headroom for machines with a smaller default
+/// thread stack than the one used to measure the crash.
+const MAX_JSON_DEPTH: usize = 1000;
+
+/// Maximum recursion depth for the schema-level `read_items`/`read_item`
+/// "group" nesting, tracked independently of [`MAX_JSON_DEPTH`].
+///
+/// The reviewer's reproduction also drove a stack-overflow abort through
+/// [`read_display_list`] directly, via nested `"group"` items, at the same
+/// depth as the raw-JSON case. In principle a document that already parses
+/// (and therefore already satisfies [`MAX_JSON_DEPTH`]) cannot produce a
+/// `Value` tree deeper than that bound, so this check should never be the
+/// one that fires in practice — but it is deliberately independent (not
+/// derived from the parser's counter) so the guarantee does not rely on
+/// exactly mirroring the parser's internal bookkeeping, per the issue's
+/// instruction to bound every recursion site it names, not just the generic
+/// `value` path. 200 levels is far beyond any real display list's group
+/// nesting (clip/opacity grouping in practice is at most a handful of
+/// levels deep) while each group level costs two [`MAX_JSON_DEPTH`] units
+/// (one for the item object, one for its `items` array), so 200 group
+/// levels (~402 raw units) sits well clear of the raw parser's own ceiling
+/// and remains independently reachable and testable.
+const MAX_GROUP_DEPTH: usize = 200;
+
 /// A parse or schema error with a short message.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct JsonError(pub String);
@@ -541,6 +575,7 @@ pub fn parse(text: &str) -> Result<Value, JsonError> {
     let mut p = Parser {
         bytes: text.as_bytes(),
         pos: 0,
+        depth: 0,
     };
     p.skip_ws();
     let v = p.value()?;
@@ -554,9 +589,26 @@ pub fn parse(text: &str) -> Result<Value, JsonError> {
 struct Parser<'a> {
     bytes: &'a [u8],
     pos: usize,
+    /// Current `array`/`object` nesting depth; see [`MAX_JSON_DEPTH`].
+    depth: usize,
 }
 
 impl Parser<'_> {
+    /// Enters one level of `array`/`object` nesting, or returns a typed
+    /// error instead of recursing further. Must be paired with decrementing
+    /// `self.depth` once the corresponding `array`/`object` call returns
+    /// (both success and error paths — see callers).
+    fn enter_nesting(&mut self) -> Result<(), JsonError> {
+        self.depth += 1;
+        if self.depth > MAX_JSON_DEPTH {
+            return Err(JsonError(format!(
+                "exceeded maximum JSON nesting depth of {MAX_JSON_DEPTH} at byte {}",
+                self.pos
+            )));
+        }
+        Ok(())
+    }
+
     fn skip_ws(&mut self) {
         while self.pos < self.bytes.len()
             && matches!(self.bytes[self.pos], b' ' | b'\n' | b'\r' | b'\t')
@@ -703,64 +755,74 @@ impl Parser<'_> {
     }
 
     fn array(&mut self) -> Result<Value, JsonError> {
-        self.expect(b'[')?;
-        let mut items = Vec::new();
-        self.skip_ws();
-        if self.peek() == Some(b']') {
-            self.pos += 1;
-            return Ok(Value::Array(items));
-        }
-        loop {
+        self.enter_nesting()?;
+        let result = (|| {
+            self.expect(b'[')?;
+            let mut items = Vec::new();
             self.skip_ws();
-            items.push(self.value()?);
-            self.skip_ws();
-            match self.peek() {
-                Some(b',') => self.pos += 1,
-                Some(b']') => {
-                    self.pos += 1;
-                    return Ok(Value::Array(items));
-                }
-                _ => {
-                    return Err(JsonError(format!(
-                        "expected ',' or ']' at byte {}",
-                        self.pos
-                    )));
+            if self.peek() == Some(b']') {
+                self.pos += 1;
+                return Ok(Value::Array(items));
+            }
+            loop {
+                self.skip_ws();
+                items.push(self.value()?);
+                self.skip_ws();
+                match self.peek() {
+                    Some(b',') => self.pos += 1,
+                    Some(b']') => {
+                        self.pos += 1;
+                        return Ok(Value::Array(items));
+                    }
+                    _ => {
+                        return Err(JsonError(format!(
+                            "expected ',' or ']' at byte {}",
+                            self.pos
+                        )));
+                    }
                 }
             }
-        }
+        })();
+        self.depth -= 1;
+        result
     }
 
     fn object(&mut self) -> Result<Value, JsonError> {
-        self.expect(b'{')?;
-        let mut fields = Vec::new();
-        self.skip_ws();
-        if self.peek() == Some(b'}') {
-            self.pos += 1;
-            return Ok(Value::Object(fields));
-        }
-        loop {
+        self.enter_nesting()?;
+        let result = (|| {
+            self.expect(b'{')?;
+            let mut fields = Vec::new();
             self.skip_ws();
-            let key = self.string()?;
-            self.skip_ws();
-            self.expect(b':')?;
-            self.skip_ws();
-            let v = self.value()?;
-            fields.push((key, v));
-            self.skip_ws();
-            match self.peek() {
-                Some(b',') => self.pos += 1,
-                Some(b'}') => {
-                    self.pos += 1;
-                    return Ok(Value::Object(fields));
-                }
-                _ => {
-                    return Err(JsonError(format!(
-                        "expected ',' or '}}' at byte {}",
-                        self.pos
-                    )));
+            if self.peek() == Some(b'}') {
+                self.pos += 1;
+                return Ok(Value::Object(fields));
+            }
+            loop {
+                self.skip_ws();
+                let key = self.string()?;
+                self.skip_ws();
+                self.expect(b':')?;
+                self.skip_ws();
+                let v = self.value()?;
+                fields.push((key, v));
+                self.skip_ws();
+                match self.peek() {
+                    Some(b',') => self.pos += 1,
+                    Some(b'}') => {
+                        self.pos += 1;
+                        return Ok(Value::Object(fields));
+                    }
+                    _ => {
+                        return Err(JsonError(format!(
+                            "expected ',' or '}}' at byte {}",
+                            self.pos
+                        )));
+                    }
                 }
             }
-        }
+        })();
+        self.depth -= 1;
+        result
     }
 }
 
