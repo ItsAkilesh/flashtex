@@ -1,21 +1,34 @@
 {
   "agent_id": "commander",
-  "allocation_id": "commander-orch-002",
-  "assignment_acknowledgements": {},
-  "branch": "agent/commander/coordination-tools",
+  "allocation_id": "openai-commander-bridge",
+  "assignment_acknowledgements": {
+    "FT-007": {
+      "acknowledged_utc": "2026-09-12T04:27:41Z",
+      "adaptation": "Astra owns Rust bridge and transfer-v1. Sol owns orchestration and main publication; bridge work will publish its own task branch for Sol integration.",
+      "main_sha": "09031efa9feca80d7a34e29b0b6fc41d43c509c4",
+      "revision": 1
+    }
+  },
+  "branch": "agent/commander/capture-bridge",
   "capabilities": [
     "coordination",
-    "git"
+    "git",
+    "rust",
+    "linux"
   ],
-  "code_revision": "b932149f800f42f5690a150117a236208e00fb80",
+  "code_revision": "ba89c9abcecd2471373a0c12243df74112bb4fa5",
+  "deliverable_docs": [
+    "docs/contracts/transfer-v1.md",
+    "crates/bridge/README.md"
+  ],
   "eta_minutes": {
-    "likely": 6,
-    "optimistic": 3,
-    "pessimistic": 12
+    "likely": 60,
+    "optimistic": 30,
+    "pessimistic": 120
   },
   "machine": "linux-primary",
-  "main_integrated_through": "b932149f800f42f5690a150117a236208e00fb80",
-  "next_action": "Publish integration helper; integrate reviewed Kabir inventory using actual Cursor merge",
+  "main_integrated_through": "25a92a9c591a92a3d49071e536ecf8f129112c24",
+  "next_action": "Publish verified regression fix, hand to Sol integration; implement local Claude supervisor while native consumers integrate bridge.",
   "reviewed_peers": {
     "origin/main": {
       "adaptation": "All three assignments now authoritative; preserve their separate owned paths and integrate independently",
@@ -25,11 +38,11 @@
   },
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "Coordination and merge tooling: 22 tests pass; three product assignments published, acknowledgements pending",
+  "summary": "FT-007 checkpoint plus GH7 restart anchor binding fix: captures persist original project/path/revision/range/source hash; reused IDs cannot redirect insertion.",
   "tool": "Codex",
-  "updated_utc": "2026-09-12T03:55:11Z",
+  "updated_utc": "2026-09-12T04:49:18Z",
   "usage": {
-    "evidence": "One additional hosted review; Cursor dispatch commit b932149 completed; no Claude calls",
-    "status": "unknown"
+    "evidence": "cargo test:16 passed (13 library integration,3 CLI), including restart rebinding of project/path/range/source and safe exact restoration.",
+    "status": "Hosted OpenAI authorized; exact quota unknown. No Claude or Grok inference; actual Cursor first bridge commit ba89c9."
   }
 }
