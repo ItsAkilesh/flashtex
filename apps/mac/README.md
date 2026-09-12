@@ -50,12 +50,20 @@ seed the editor when present. `⌘R` reloads.
   insert twice. If the buffer changed since pinning, the anchor is rebased by its
   context or, when the destination was deleted/ambiguous, reselection is required.
   See `Samples/capture-proposal.json`. No network or Grok call is involved here.
+- PDF export: `File > Export PDF…` (⌘⇧E) writes the current preview with
+  CoreGraphics/CoreText (`PDFExport.swift`): one PDF page per `pages` entry at
+  `width_pt` × `height_pt`, each text item in Times at `font_size_pt` with its
+  baseline exactly `baseline_y_pt` from the top (flipped to PDF's bottom-left
+  origin). It exports the layout the Rust compiler reported, not a TeX-engine
+  PDF: no fonts beyond Times, no images/lines, no links or metadata. The dark
+  toggle only changes page/text colors. Disabled when no result is loaded.
 
 ## Targets
 
 - `FlashTeXProtocol` — Codable models for runtime v1 and byte-offset conversion.
 - `FlashTeXMac` — the app.
-- Tests (19): anchor/rebase/reselection logic, review flow with duplicate
+- Tests (22): PDF export (fixture → 612×792 page containing the item text,
+  two-page synthetic sizes, unknown-kind skipping, page-less result); anchor/rebase/reselection logic, review flow with duplicate
   suppression, capture fixture decoding; plus fixture decoding, version/type rejection, unknown kinds, UTF-8→UTF-16
   conversion with multi-byte scalars, `ShellModel` load/navigate/stale behavior,
   line splitting/encoding, and a round trip through `Tests/.../fake_worker.py`
@@ -66,6 +74,9 @@ seed the editor when present. `⌘R` reloads.
 
 - No real Rust worker exists yet (FT-002/FT-005); the transport is exercised only
   against the Python test double.
-- No PDF export, no image/line items (not in v1), no reverse (source→preview) sync.
+- PDF export draws only what the contract's text items describe; it is not a
+  TeX-engine PDF and has no compiler-produced `pdf_path` behind it. A result with
+  zero pages exports one blank page (a PDF must have at least one).
+- No image/line items (not in v1), no reverse (source→preview) sync.
 - Screen capture of the running app was not possible from the agent's terminal
   (no Screen Recording permission); visual click behavior needs a human check.

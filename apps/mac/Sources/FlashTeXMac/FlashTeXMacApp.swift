@@ -23,6 +23,9 @@ struct FlashTeXMacApp: App {
                     .keyboardShortcut("o")
                 Button("Reload Fixture") { model.reloadFixture() }
                     .keyboardShortcut("r")
+                Button("Export PDF…") { model.exportPDF() }
+                    .keyboardShortcut("e", modifiers: [.command, .shift])
+                    .disabled(model.result == nil)
                 Divider()
                 Button("Attach Worker Executable…") { model.attachWorkerPanel() }
                     .keyboardShortcut("k")
