@@ -38,6 +38,26 @@ Use `publish` for guarded Cursor execution of staged commits and task-branch pus
 Workers without authenticated Cursor may submit patches via a repository issue
 for Commander/Cursor to commit; do not create non-Cursor commits as a workaround.
 
+There is exactly one active Commander. A successor may claim command only after
+either (a) the current Commander publishes an explicit quiesced handoff naming that
+successor and confirms its publication/integration jobs are stopped, or (b) the
+successor independently verifies the exact Commander process/session terminated
+and every Commander publication/dispatch/integration job is stopped. Silence, a
+missed heartbeat, stale Git state, timeout, quota suspicion, or network failure is
+never proof the Commander is offline. The successor fetches and pins current main,
+selects one leader identity, publishes an atomic non-force authority claim, and
+rereads that claim immediately before every main/control write. An old Commander
+that resumes must reread authority and remain quiesced unless explicitly handed
+command again. See `docs/autonomous-workers.md`.
+
+Every blocked worker opens a GitHub recovery issue with task/revision, exact branch
+and SHA, failing command, non-secret error, process state, resource state, and any
+possibly in-flight call. The Commander triages each open recovery issue, assigns
+one or more eligible non-overlapping resolvers after rereading every machine's
+latest resource report, verifies the fix, and only then closes the issue. A comment
+or task row is not proof that a local worker started; require an ACK plus actual
+PID/session or equivalent live-process evidence.
+
 ## Current Claude Max authorization
 
 The user explicitly requested more tasks and subagents on the 20x Claude Max plan

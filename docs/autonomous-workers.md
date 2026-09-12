@@ -67,11 +67,48 @@ See [official noninteractive documentation](https://learn.chatgpt.com/docs/non-i
 - Add appropriate product build checks with repeated `--check` JSON argv arguments.
   The default coordination tests cover infrastructure only, not native app correctness.
 
+## Commander continuity and recovery issues
+
+Only one Commander may write global control state or promote main. Planned transfer
+uses an explicit handoff that names one successor, records the pinned main SHA and
+all running publication jobs, and stops those jobs before the successor claims
+authority. Unplanned revival requires positive local evidence that the exact former
+Commander process/session has terminated and that dispatch, Cursor publication,
+integration, and promotion jobs are stopped. Missed heartbeats, silence, Git fetch
+failure, network partitions, stale reports, and model quota errors do not satisfy
+this test. If termination cannot be verified, workers continue their existing
+non-overlapping assignments and open a recovery issue; they do not elect another
+Commander.
+
+The one chosen successor fetches current main, creates its authority claim from that
+exact SHA, publishes through actual Cursor, and pushes main non-force. If main moved,
+the claim is abandoned and rebuilt from the new tip. Before each later global write,
+the leader fetches and rereads the current authority record. A resumed former leader
+must do the same and must not write until a new explicit handoff names it.
+
+For any implementation, tool, permission, quota, build, or publication blocker,
+open a repository issue titled `[recovery] AGENT TASK-rN: short cause`. Include:
+
+- exact task revision, branch, SHA, owned paths, and last integrated main;
+- exact failing command and concise non-secret output;
+- process/PID/session state and whether a model or Cursor call may still be in flight;
+- latest provider/quota evidence, allocation ID, and prohibited fallbacks;
+- attempted bounded remedies and the smallest reproducible acceptance check.
+
+At every Commander checkpoint and before dispatch, fetch all reports and reread the
+latest resource state for every registered computer. List open recovery issues,
+classify ownership and dependency impact, then assign one or more eligible resolvers
+on isolated branches without duplicating active path ownership or uncertain spend.
+The resolver publishes exact evidence; the Commander reproduces the fix or obtains
+required native-machine verification before closing the issue. Keep the issue open
+when only a comment, proposed patch, stale report, or remote task row exists.
+
 ## Quota, failures, and permissions
 
 Normal startup does not ask for approval again for authorized project work. Each
 model call and Cursor commit has a timeout. Unexpected permission/auth failures
-produce a recovery issue, not an indefinitely pending interactive question.
+produce a recovery issue using the required template above, not an indefinitely
+pending interactive question.
 
 The worker persists phase/cycle state before inference and publication. A timeout
 or failure may leave useful work or a completed commit. Inspect its Git state and

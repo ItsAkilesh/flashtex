@@ -1,24 +1,23 @@
 {
   "acceptance": [
-    "Prove actual Rust output changes when source changes",
-    "Delayed older responses cannot replace newer output",
-    "Report measured edit-to-preview latency and native build command",
-    "After source edits, do not navigate with stale byte offsets unless a validated edit mapping rebases them; cover this in tests"
+    "Build with Xcode and test Unicode click-to-source navigation",
+    "Dark preview changes viewing only; document export appearance remains controlled by LaTeX",
+    "Show recovery diagnostics alongside available preview without hiding errors"
   ],
   "agent_id": "mac-claude-a",
-  "allocation_id": "claude-mac20x-shell-stage2",
+  "allocation_id": "claude-mac20x-shell-stage3",
   "branch": "agent/mac-claude-a/mac-shell",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "25a92a9c591a92a3d49071e536ecf8f129112c24",
-  "objective": "Connect the Mac app to the original Rust runtime over runtime-v1 JSONLines. Add debounced edits, revision ordering, cancellation/coalescing, and clear build status. Original compiler arrival may lag: implement and test the real subprocess transport now using a clearly labeled protocol test child; switch to crates/compiler when available. Preserve existing dark preview and Unicode navigation.",
+  "input_main_sha": "09031efa9feca80d7a34e29b0b6fc41d43c509c4",
+  "objective": "Improve native source editing, UTF-8 navigation, dark preview with white exported document, keyboard shortcuts, and diagnostic presentation. Use real Rust output when available; label fixtures explicitly.",
   "owned_paths": [
     "apps/mac"
   ],
-  "revision": 2,
+  "revision": 3,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-003",
   "timebox_minutes": 45,
-  "updated_utc": "2026-09-12T04:21:55Z"
+  "updated_utc": "2026-09-12T04:30:26Z"
 }

@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "commander_id": "orchestrator-sol",
+  "machine": "linux-primary",
+  "authority_state": "active",
+  "claim_mode": "explicit_quiesced_handoff",
+  "predecessor": "primary-codex-root",
+  "predecessor_main_writes_quiesced": true,
+  "claim_base_main": "a528ef9b0478033b77c158a7d7946ab2acc558c4",
+  "dispatch_service": "flashtex-dispatch.service",
+  "dispatch_service_pid_at_claim": 195402,
+  "publication_rule": "Before each main/control write, fetch and reread this record; only commander_id may write unless a newer non-force claim is authoritative.",
+  "revival_rule": "Require explicit quiesced handoff or positive exact process/session termination plus stopped publication jobs; silence, timeout, stale heartbeat, quota error, and network failure are insufficient.",
+  "updated_utc": "2026-09-12T04:38:12Z"
+}

@@ -1,0 +1,35 @@
+{
+  "agent_id": "commander-corpus",
+  "allocation_id": "openai-commander-corpus",
+  "assignment_acknowledgements": {
+    "FT-011": {
+      "acknowledged_utc": "2026-09-12T04:21:23Z",
+      "adaptation": "Own only tests/tex-corpus; create semantic targets with UTF-8 source ranges and explicit unverified support labels; no compiler internals modified.",
+      "main_sha": "25a92a9c591a92a3d49071e536ecf8f129112c24",
+      "revision": 1
+    }
+  },
+  "branch": "agent/commander-corpus/compatibility-fixtures",
+  "capabilities": [
+    "compiler-fixtures"
+  ],
+  "code_revision": "25a92a9c591a92a3d49071e536ecf8f129112c24",
+  "eta_minutes": {
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 5
+  },
+  "machine": "linux-primary",
+  "main_integrated_through": "25a92a9c591a92a3d49071e536ecf8f129112c24",
+  "next_action": "Commander review and actual Cursor commit; compiler owner can consume emitted requests and record semantic results separately.",
+  "reviewed_peers": {},
+  "schema_version": 1,
+  "state": "ready_for_integration",
+  "summary": "FT-011: 14 original TeX compatibility/recovery projects, 25 exact UTF-8 source witnesses, manifest validator and runtime-v1 request emitter. All engine support explicitly required_unverified.",
+  "tool": "Codex",
+  "updated_utc": "2026-09-12T04:24:46Z",
+  "usage": {
+    "evidence": "python3 tests/tex-corpus/validate.py: 14 cases/25 witnesses; python3 -m unittest discover -s tests/tex-corpus -v: 6 passed; included-file emitted request JSON round-trip passed.",
+    "status": "unknown"
+  }
+}
