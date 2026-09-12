@@ -467,6 +467,8 @@ fn shift_placed(
                     baseline_y_pt: placed.item.baseline_y_pt,
                     font_size_pt: placed.item.font_size_pt,
                     span: mapped_span(placed.item.span, changes, deltas)?,
+                    font: placed.item.font,
+                    rule: placed.item.rule,
                 },
             })
         })

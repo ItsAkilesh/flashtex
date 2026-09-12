@@ -8,8 +8,9 @@ use crate::diagnostics::{Diagnostic, Severity};
 use crate::incremental::Session;
 use crate::json::{self, str_, Value};
 use crate::layout::{LayoutConstraints, Page};
+use crate::metrics::Font;
 use crate::parser::SourceDocument;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::{self, BufRead};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
@@ -18,12 +19,12 @@ pub const PROTOCOL_VERSION: i64 = 1;
 /// Documented maximum accepted line size. Oversized payloads are rejected.
 pub const MAX_LINE_BYTES: usize = 8 * 1024 * 1024;
 
-/// Most documents kept warm at once. A worker can be asked to compile any number
-/// of projects over its lifetime, so the cache is bounded and evicts the
-/// least-recently-used document rather than retaining every text it has ever seen.
+/// Most document/capability modes kept warm at once. A worker can be asked to
+/// compile any number of projects over its lifetime, so the cache is bounded and
+/// evicts the least-recently-used mode rather than retaining every one ever seen.
 const MAX_WARM_SESSIONS: usize = 8;
 
-type WarmSessions = HashMap<(String, String), (u64, Session)>;
+type WarmSessions = HashMap<(String, String, AcceptedCapabilities), (u64, Session)>;
 static SESSIONS: OnceLock<Mutex<WarmSessions>> = OnceLock::new();
 static SESSION_TICK: AtomicU64 = AtomicU64::new(0);
 
@@ -195,7 +196,134 @@ fn result_envelope(id: &str, payload: Value) -> Value {
 /// `paths` is indexed by `DocumentId`. Each item reports the file its bytes
 /// actually live in, so click-to-source navigation opens the right file in a
 /// multi-file project instead of always pointing at the entry document.
-fn pages_json(pages: &[Page], paths: &[&str]) -> Value {
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+struct AcceptedCapabilities {
+    rules_v1: bool,
+    font_hints_v1: bool,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct NegotiatedCapabilities {
+    request_field_present: bool,
+    accepted: Vec<String>,
+    enabled: AcceptedCapabilities,
+}
+
+fn negotiate_layout_capabilities(payload: &Value) -> Result<NegotiatedCapabilities, Diagnostic> {
+    let Some(value) = payload.get("layout_capabilities") else {
+        return Ok(NegotiatedCapabilities::default());
+    };
+    let Some(items) = value.as_arr() else {
+        return Err(Diagnostic::error(
+            "layout_capabilities must be a list",
+            None,
+            None,
+        ));
+    };
+    if items.len() > 16 {
+        return Err(Diagnostic::error(
+            "layout_capabilities must contain at most 16 entries",
+            None,
+            None,
+        ));
+    }
+
+    let mut seen = HashSet::new();
+    let mut negotiated = NegotiatedCapabilities {
+        request_field_present: true,
+        ..NegotiatedCapabilities::default()
+    };
+    for item in items {
+        let Some(capability) = item.as_str() else {
+            return Err(Diagnostic::error(
+                "every layout_capabilities entry must be a string",
+                None,
+                None,
+            ));
+        };
+        if capability.is_empty() {
+            return Err(Diagnostic::error(
+                "layout_capabilities entries must not be empty",
+                None,
+                None,
+            ));
+        }
+        if capability.len() > 64 {
+            return Err(Diagnostic::error(
+                "layout_capabilities entries must be at most 64 UTF-8 bytes",
+                None,
+                None,
+            ));
+        }
+        if !seen.insert(capability) {
+            return Err(Diagnostic::error(
+                format!("duplicate layout capability {capability:?}"),
+                None,
+                None,
+            ));
+        }
+
+        match capability {
+            "rules-v1" => {
+                negotiated.enabled.rules_v1 = true;
+                negotiated.accepted.push(capability.to_string());
+            }
+            "font-hints-v1" => {
+                negotiated.enabled.font_hints_v1 = true;
+                negotiated.accepted.push(capability.to_string());
+            }
+            _ => {}
+        }
+    }
+    Ok(negotiated)
+}
+
+fn add_accepted_capabilities(payload: &mut Value, capabilities: &NegotiatedCapabilities) {
+    if capabilities.request_field_present {
+        payload.set(
+            "layout_capabilities",
+            Value::Arr(
+                capabilities
+                    .accepted
+                    .iter()
+                    .map(|capability| str_(capability.clone()))
+                    .collect(),
+            ),
+        );
+    }
+}
+
+fn font_json(font: Font) -> Value {
+    let (family, weight, style) = match font {
+        Font::TimesRoman => ("Times-Roman", "normal", "normal"),
+        Font::TimesBold => ("Times-Bold", "bold", "normal"),
+        Font::TimesItalic => ("Times-Italic", "normal", "italic"),
+        Font::Helvetica => ("Helvetica", "normal", "normal"),
+        Font::Courier => ("Courier", "normal", "normal"),
+    };
+    debug_assert!(!family.is_empty() && family.len() <= 128);
+    debug_assert!(!family.chars().any(char::is_control));
+    let mut value = Value::obj();
+    value.set("family", str_(family));
+    value.set("weight", str_(weight));
+    value.set("style", str_(style));
+    value
+}
+
+fn valid_page_unit(value: f64) -> bool {
+    value.is_finite() && value.abs() <= 1_000_000.0
+}
+
+fn valid_rule_geometry(x_pt: f64, rule: crate::layout::RuleGeometry) -> bool {
+    valid_page_unit(x_pt)
+        && valid_page_unit(rule.y_pt)
+        && valid_page_unit(rule.width_pt)
+        && rule.width_pt > 0.0
+        && valid_page_unit(rule.height_pt)
+        && rule.height_pt > 0.0
+}
+
+fn pages_json(pages: &[Page], paths: &[&str], capabilities: &AcceptedCapabilities) -> Value {
     Value::Arr(
         pages
             .iter()
@@ -218,11 +346,25 @@ fn pages_json(pages: &[Page], paths: &[&str]) -> Value {
                                 src.set("start_byte", Value::Num(it.span.start as f64));
                                 src.set("end_byte", Value::Num(it.span.end as f64));
                                 let mut i = Value::obj();
-                                i.set("kind", str_("text"));
-                                i.set("text", str_(it.text.clone()));
-                                i.set("x_pt", Value::Num(it.x_pt));
-                                i.set("baseline_y_pt", Value::Num(it.baseline_y_pt));
-                                i.set("font_size_pt", Value::Num(it.font_size_pt));
+                                let negotiated_rule =
+                                    if capabilities.rules_v1 { it.rule } else { None };
+                                if let Some(rule) = negotiated_rule {
+                                    debug_assert!(valid_rule_geometry(it.x_pt, rule));
+                                    i.set("kind", str_("rule"));
+                                    i.set("x_pt", Value::Num(it.x_pt));
+                                    i.set("y_pt", Value::Num(rule.y_pt));
+                                    i.set("width_pt", Value::Num(rule.width_pt));
+                                    i.set("height_pt", Value::Num(rule.height_pt));
+                                } else {
+                                    i.set("kind", str_("text"));
+                                    i.set("text", str_(it.text.clone()));
+                                    i.set("x_pt", Value::Num(it.x_pt));
+                                    i.set("baseline_y_pt", Value::Num(it.baseline_y_pt));
+                                    i.set("font_size_pt", Value::Num(it.font_size_pt));
+                                    if capabilities.font_hints_v1 {
+                                        i.set("font", font_json(it.font));
+                                    }
+                                }
                                 i.set("source", src);
                                 i
                             })
@@ -235,7 +377,14 @@ fn pages_json(pages: &[Page], paths: &[&str]) -> Value {
     )
 }
 
-fn failed(id: &str, project_id: &str, revision: i64, diags: Vec<Diagnostic>, path: &str) -> Value {
+fn failed(
+    id: &str,
+    project_id: &str,
+    revision: i64,
+    diags: Vec<Diagnostic>,
+    path: &str,
+    capabilities: Option<&NegotiatedCapabilities>,
+) -> Value {
     let mut payload = Value::obj();
     payload.set("project_id", str_(project_id));
     payload.set("revision", Value::Num(revision as f64));
@@ -246,6 +395,9 @@ fn failed(id: &str, project_id: &str, revision: i64, diags: Vec<Diagnostic>, pat
         Value::Arr(diags.iter().map(|d| d.to_json(path)).collect()),
     );
     payload.set("pdf_path", Value::Null);
+    if let Some(capabilities) = capabilities {
+        add_accepted_capabilities(&mut payload, capabilities);
+    }
     result_envelope(id, payload)
 }
 
@@ -264,6 +416,12 @@ fn compile(id: &str, payload: &Value) -> Value {
         .and_then(|v| v.as_str())
         .unwrap_or("")
         .to_string();
+    let capabilities = match negotiate_layout_capabilities(payload) {
+        Ok(capabilities) => capabilities,
+        Err(diag) => {
+            return failed(id, &project_id, revision, vec![diag], &entry, None);
+        }
+    };
 
     let empty = Vec::new();
     let docs = payload
@@ -281,7 +439,14 @@ fn compile(id: &str, payload: &Value) -> Value {
                 span: None,
                 recovery: None,
             };
-            return failed(id, &project_id, revision, vec![diag], p);
+            return failed(
+                id,
+                &project_id,
+                revision,
+                vec![diag],
+                p,
+                Some(&capabilities),
+            );
         }
     }
     if !entry.is_empty() && !path_is_safe(&entry) {
@@ -294,7 +459,14 @@ fn compile(id: &str, payload: &Value) -> Value {
             span: None,
             recovery: None,
         };
-        return failed(id, &project_id, revision, vec![diag], &entry);
+        return failed(
+            id,
+            &project_id,
+            revision,
+            vec![diag],
+            &entry,
+            Some(&capabilities),
+        );
     }
 
     // Every supplied document participates: \input resolves against this set, and
@@ -333,7 +505,14 @@ fn compile(id: &str, payload: &Value) -> Value {
                 span: None,
                 recovery: None,
             };
-            return failed(id, &project_id, revision, vec![diag], &entry);
+            return failed(
+                id,
+                &project_id,
+                revision,
+                vec![diag],
+                &entry,
+                Some(&capabilities),
+            );
         }
     };
 
@@ -344,7 +523,7 @@ fn compile(id: &str, payload: &Value) -> Value {
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     let tick = SESSION_TICK.fetch_add(1, Ordering::Relaxed);
-    let key = (project_id.clone(), path.clone());
+    let key = (project_id.clone(), path.clone(), capabilities.enabled);
     if !sessions.contains_key(&key) && sessions.len() >= MAX_WARM_SESSIONS {
         // Evict the least recently used document. Dropping a session only costs
         // the next compile of that document its reuse; it never changes output,
@@ -374,6 +553,34 @@ fn compile(id: &str, payload: &Value) -> Value {
     let pages = incremental.output.pages;
     let mut diags = incremental.output.diagnostics;
 
+    if capabilities.enabled.rules_v1 {
+        for page in &pages {
+            for item in &page.items {
+                if let Some(rule) = item.rule {
+                    if !valid_rule_geometry(item.x_pt, rule) {
+                        let diag = Diagnostic::error(
+                            "fraction rule geometry exceeds the runtime-v1 page-unit bounds",
+                            Some(item.span),
+                            None,
+                        );
+                        let source_path = project
+                            .get(item.span.document.0)
+                            .map(|(path, _)| path.as_str())
+                            .unwrap_or(path.as_str());
+                        return failed(
+                            id,
+                            &project_id,
+                            revision,
+                            vec![diag],
+                            source_path,
+                            Some(&capabilities),
+                        );
+                    }
+                }
+            }
+        }
+    }
+
     // Status describes this compilation. Export warnings are added afterwards so
     // a perfectly valid document containing a fraction is not downgraded to
     // "recovered" for a limitation of a different pipeline stage.
@@ -393,6 +600,9 @@ fn compile(id: &str, payload: &Value) -> Value {
     let mut first_span = None;
     for page in &pages {
         for item in &page.items {
+            if capabilities.enabled.rules_v1 && item.rule.is_some() {
+                continue;
+            }
             for c in crate::export::unrepresentable(&item.text) {
                 if !offenders.contains(&c) {
                     offenders.push(c);
@@ -420,11 +630,12 @@ fn compile(id: &str, payload: &Value) -> Value {
     p.set("project_id", str_(project_id));
     p.set("revision", Value::Num(revision as f64));
     p.set("status", str_(status));
-    p.set("pages", pages_json(&pages, &paths));
+    p.set("pages", pages_json(&pages, &paths, &capabilities.enabled));
     p.set(
         "diagnostics",
         Value::Arr(diags.iter().map(|d| d.to_json_with_paths(&paths)).collect()),
     );
     p.set("pdf_path", Value::Null);
+    add_accepted_capabilities(&mut p, &capabilities);
     result_envelope(id, p)
 }

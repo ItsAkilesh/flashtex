@@ -47,6 +47,16 @@ pub struct MathItem {
     pub baseline: f64,
     pub size: f64,
     pub span: Span,
+    /// A real rectangular rule represented alongside the legacy text fallback.
+    /// Coordinates are relative to the surrounding math baseline.
+    pub rule: Option<MathRule>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct MathRule {
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -411,6 +421,7 @@ fn layout_nucleus(atom: &MathAtom, size: f64, root_size: f64, level: usize) -> M
                 baseline: 0.0,
                 size,
                 span: atom.span,
+                rule: None,
             }],
             width: glyph_width(text, size),
             ascent: size,
@@ -428,6 +439,7 @@ fn layout_nucleus(atom: &MathAtom, size: f64, root_size: f64, level: usize) -> M
                     baseline: 0.0,
                     size,
                     span: atom.span,
+                    rule: None,
                 },
             );
             b.width += radical_width;
@@ -464,6 +476,11 @@ fn layout_nucleus(atom: &MathAtom, size: f64, root_size: f64, level: usize) -> M
                 baseline: axis + rule / 2.0,
                 size: child_size,
                 span: atom.span,
+                rule: Some(MathRule {
+                    y: axis - rule / 2.0,
+                    width,
+                    height: rule,
+                }),
             });
             items.extend(den.items);
             MathBox {

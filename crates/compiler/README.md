@@ -7,6 +7,31 @@ the build is offline and deterministic, and the JSON transport is hand-written.
 Speaks runtime protocol v1 (`docs/contracts/runtime-v1.md`) over JSON Lines on
 stdin/stdout.
 
+## Negotiated layout capabilities
+
+A compile request may add `payload.layout_capabilities`. It must be a
+duplicate-free list of at most 16 non-empty strings, each at most 64 UTF-8
+bytes. Unknown names are ignored for acceptance; malformed fields are rejected
+with an explicit diagnostic. A `compile_result` echoes only supported names
+that were requested, in request order. When the request field is omitted, the
+response field is also omitted and the base runtime-v1 output is unchanged.
+Negotiation is per request, and warm incremental sessions are isolated by the
+accepted capability set.
+
+This revision supports:
+
+- `rules-v1`: fractions use an opaque black `rule` item with top-left `x_pt`
+  and `y_pt`, positive `width_pt` and `height_pt`, and the source range of the
+  generating `\frac` command. Without this capability, the legacy U+2500 text
+  approximation remains and produces the existing PDF-export warning.
+- `font-hints-v1`: every text item adds a `font` object containing the family,
+  `normal` or `bold` weight, and `normal` or `italic` style selected by layout.
+  Current body text reports Times-Roman and headings report Times-Bold.
+
+This additive extension is not rendering-v2 activation or a claim of exact
+LaTeX PDF identity. Font hints do not identify font bytes, glyph IDs, shaping,
+encoding, or exact advances.
+
 ```sh
 cd crates/compiler
 cargo test
@@ -135,14 +160,13 @@ from the font are wired in.
 One item is emitted per word rather than per line. That keeps each item's source
 span exact, which is what click-to-source navigation (FT-003) needs.
 
-## Two deliberate representation choices
+## Negotiated representation and source attribution
 
-**Fraction rules are drawn as text.** runtime-v1 defines only a `text` item and
-says line and path item types "will be added by contract revision; do not
-independently invent them". So the fraction bar is emitted as box-drawing
-characters in a text item rather than an invented rule item. It is positioned
-correctly and it is honest about the contract; it should become a real rule item
-when the contract gains one, and the Commander owns that revision.
+**Fraction rules retain a legacy route.** A client that negotiates `rules-v1`
+receives a typed rectangle and no box-drawing fraction glyph. An old client, or
+one that does not request the capability, still receives the original text item
+and its explicit export-approximation warning. Typed rule paint order is its
+position in the page's item list.
 
 **Substituted glyphs span their source command.** `\alpha` emits an item whose
 text is the Greek letter but whose span covers `\alpha` in the source, six bytes.

@@ -64,6 +64,17 @@ pub struct TextItem {
     pub baseline_y_pt: f64,
     pub font_size_pt: f64,
     pub span: Span,
+    /// The face actually used to measure and lay out this item.
+    pub font: Font,
+    /// Typed geometry for an item that has a legacy text fallback.
+    pub rule: Option<RuleGeometry>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct RuleGeometry {
+    pub y_pt: f64,
+    pub width_pt: f64,
+    pub height_pt: f64,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -189,6 +200,7 @@ impl LayoutCursor {
     }
 
     fn place(&mut self, text: String, size: f64, span: Span) {
+        let font = font_for_size(size);
         let w = glyph_width(&text, size);
         if self.x > MARGIN_PT && self.x + w > self.right_edge() {
             self.newline(size);
@@ -200,6 +212,8 @@ impl LayoutCursor {
             baseline_y_pt: round2(self.y),
             font_size_pt: size,
             span,
+            font,
+            rule: None,
         };
         self.pages
             .last_mut()
@@ -232,12 +246,19 @@ impl LayoutCursor {
         let base_y = self.y;
         let page = self.pages.last_mut().expect("at least one page");
         for item in b.items {
+            let rule = item.rule.map(|rule| RuleGeometry {
+                y_pt: round2(base_y + rule.y),
+                width_pt: round2(rule.width),
+                height_pt: round2(rule.height),
+            });
             page.items.push(TextItem {
                 text: item.text,
                 x_pt: round2(base_x + item.x),
                 baseline_y_pt: round2(base_y + item.baseline),
                 font_size_pt: item.size,
                 span: item.span,
+                font: Font::TimesRoman,
+                rule,
             });
         }
         self.x += b.width + metrics::advance_width(font_for_size(size), ' ', size);
@@ -266,6 +287,8 @@ impl LayoutCursor {
                 baseline_y_pt: round2(self.y),
                 font_size_pt: size,
                 span,
+                font: font_for_size(size),
+                rule: None,
             });
         }
         self.newline(self.constraints.font_size_pt);
