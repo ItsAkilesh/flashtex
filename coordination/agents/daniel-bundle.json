@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "agent_id": "daniel-bundle",
+  "machine": "mac-m5pro-dq222",
+  "tool": "Claude Code on Claude Max 20x",
+  "capabilities": ["rust", "security", "filesystem", "project-bundle"],
+  "branch": "agent/daniel-bundle/project-bundle",
+  "state": "ready_for_integration",
+  "summary": "crates/project-bundle rev2: ProjectRoot rewritten as a thin adapter over flashtex_project_files' openat(O_NOFOLLOW) rooted reader (no gap found vs rev1's proven traversal/absolute/symlink-escape rejection; reuse is strictly stronger, with two deliberate tightenings/relaxations documented, not regressions); new preview_import (read-only, full SHA-256 both sides, New/Unchanged/Conflict) and apply_import (writes a Conflict only on explicit ImportDecision::Write, absent decision is a typed OverwriteNotDecided error, races refused as ConcurrentModification via Expected::Hash/NewFile compare-and-swap, force never used); build_bundle_with_limits caps entry count and total bytes with typed errors. 43 tests (42 integration + 1 doctest), 0 failed; clippy clean.",
+  "next_action": "Await Commander integration; no consumer crate depends on flashtex-project-bundle yet",
+  "eta_minutes": {
+    "optimistic": 0,
+    "likely": 0,
+    "pessimistic": 0
+  },
+  "allocation_id": "daniel-claude20x-shared",
+  "usage": {
+    "status": "unknown",
+    "evidence": "Shared Claude Max 20x subscription allocation; no purchases or overages; live plan consumption not exposed to this agent"
+  },
+  "reviewed_peers": {
+    "origin/main": "e5901797e8a7ebdd8d714ecdee6793e1097515a9"
+  },
+  "assignment_acknowledgements": {
+    "FT-043": {
+      "acknowledged_utc": "2026-09-12T09:31:51Z",
+      "revision": 2,
+      "main_sha": "e5901797e8a7ebdd8d714ecdee6793e1097515a9",
+      "adaptation": "Reused flashtex_project_files::ProjectRoot (openat/O_NOFOLLOW rooted reader) in place of rev1's canonicalize-based rooting after verifying it preserves (and exceeds) rev1's traversal/absolute-path/symlink-escape rejection; kept two deliberate behavior changes (dot/empty-segment normalization instead of hard rejection, every symlink refused instead of only escaping ones) as tightenings, not gaps, and updated tests accordingly. Added preview_import (no-write, full-hash New/Unchanged/Conflict classification) and apply_import (typed OverwriteNotDecided on an undecided conflict, ConcurrentModification on a race, no force anywhere), plus build_bundle_with_limits for entry-count/total-byte bounds."
+    }
+  },
+  "updated_utc": "2026-09-12T09:31:51Z",
+  "code_revision": "ddd445d421dae99f80c9bed37e253b3c6c69c82e",
+  "main_integrated_through": "e5901797e8a7ebdd8d714ecdee6793e1097515a9"
+}
