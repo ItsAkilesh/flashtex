@@ -1,0 +1,32 @@
+{
+  "agent_id": "commander-assistant-context",
+  "allocation_id": "hosted-openai-product",
+  "assignment_acknowledgements": {
+    "FT-029": {
+      "acknowledged_utc": "2026-09-12T07:30:01Z",
+      "adaptation": "Existing root slot moved to isolated assistant-context crate; exact request/source binding and bounded unexecuted proposals, no inference calls.",
+      "main_sha": "53fee3012b2902ca05bd31766defa515b3044cec",
+      "revision": 1
+    }
+  },
+  "branch": "agent/commander/assistant-context",
+  "capabilities": [
+    "rust",
+    "diagnostic-context"
+  ],
+  "code_revision": "f522cf185f93e67e350ad4590d58afd6c66bc1e7",
+  "eta_minutes": null,
+  "machine": "linux-primary",
+  "main_integrated_through": "f522cf185f93e67e350ad4590d58afd6c66bc1e7",
+  "next_action": "Publish crate contract; add immutable payload handling and cancellation/request lifecycle integration.",
+  "reviewed_peers": {},
+  "schema_version": 1,
+  "state": "in_progress",
+  "summary": "Bounded source/request/digest-bound explanation context and response proposals implemented.4tests including actual compiler diagnostics and strict clippy pass.",
+  "tool": "Codex GPT-6 Astra",
+  "updated_utc": "2026-09-12T07:30:47Z",
+  "usage": {
+    "evidence": "unknown",
+    "status": "Same hosted root Astra slot; no provider calls, credentials, new workers or extra spend."
+  }
+}
