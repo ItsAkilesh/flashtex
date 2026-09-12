@@ -1,0 +1,25 @@
+{
+  "agent_id": "mac-preferences",
+  "allocation_id": "claude-mac20x-preferences",
+  "assignment_acknowledgements": {},
+  "branch": "agent/mac-preferences/editor",
+  "capabilities": [
+    "swift",
+    "appkit",
+    "swiftui"
+  ],
+  "code_revision": "580d27db379a3c0178788c46458075b26f9b47d7",
+  "eta_minutes": null,
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "3ac69c3ed109fa0902af39f4e2187d572a61c075",
+  "next_action": "Await and acknowledge assignment",
+  "reviewed_peers": {},
+  "schema_version": 1,
+  "state": "registered",
+  "summary": "Available for Commander assignment",
+  "tool": "Claude Code subagent (parent mac-claude-a)",
+  "updated_utc": "2026-09-12T10:51:31Z",
+  "usage": {
+    "status": "unknown"
+  }
+}
