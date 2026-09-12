@@ -131,3 +131,137 @@ them as plain file replacements, then verified independently.
 - I could not obtain the "exact dirty patch/base" for any unpublished
   work beyond commit `57cbc44` — only what's actually pushed to
   `origin/agent/mac-math-layout/math-boxes` was available to inspect.
+
+## Revision 3 update — 2026-09-12
+
+Objective: exercise indexed roots, delimiters and script geometry with
+explicit metric inputs and clean-rebuild equivalence, and coordinate the
+source-breaking `Nucleus::Radical` API (revision 1 turned it from
+`Radical(MathList)` into a struct variant with an optional `degree`) with
+every in-repo consumer.
+
+### Consumer-impact analysis: `Nucleus::Radical(MathList)` → `Nucleus::Radical { radicand, degree }`
+
+Repo-wide search for every construct/match site and every crate that could
+depend on this shape (worktree merged to `origin/main` at
+`8e7546dfb4721c780036f03c21b14e6002062142` before this analysis):
+
+```
+grep -rln "flashtex-math-layout" --include=Cargo.toml .
+  → crates/font-engine/Cargo.toml   (only Cargo-level dependent in the repo)
+  → crates/math-layout/Cargo.toml   (itself)
+
+grep -rln "Nucleus::Radical\|Atom::sqrt\|Atom::root\|::Radical(" --include=*.rs .
+  → crates/math-layout/{tests/golden.rs,src/layout.rs,src/fixtures.rs,src/mathlist.rs}  (owned)
+  → crates/compiler/src/math.rs, crates/compiler/src/incremental.rs  (see below)
+```
+
+1. **`crates/font-engine`** (feature `math`, on by default: `default =
+   ["paragraph", "math", "pdf"]`). This is the repo's only Cargo dependent
+   on `flashtex-math-layout`. Its adapter,
+   `crates/font-engine/src/adapters/math.rs`, only *implements*
+   `MathFontMetrics` (the metrics-*provider* side of the interface) — it
+   never constructs or matches `Nucleus`, `Atom`, or `MathList` anywhere
+   (`grep -n "Nucleus\|MathList\|Atom::" crates/font-engine/src crates/font-engine/tests`
+   returns nothing). **Not affected.** Confirmed by rebuilding it in this
+   session: `cargo build --features math` in `crates/font-engine` is clean
+   at the tested SHA below.
+
+2. **`crates/rendering-core`** depends on `flashtex-font-engine` only as a
+   *dev*-dependency (tests/examples), and its own source
+   (`registry_binding/math/*.rs` included — the module newly merged in from
+   `origin/main` in this revision) uses only shaping types
+   (`Face`, `ShapeOptions`, `TrueTypeFace`, `GlyphId`), never
+   `math-layout`'s `Nucleus`/`Atom`/`MathList`
+   (`grep -rn "Nucleus\|Radical" crates/rendering-core/src` is empty).
+   It has no Cargo dependency on `flashtex-math-layout` at all. **Not
+   affected.**
+
+3. **`crates/compiler`** has its *own*, independently-defined `Nucleus` /
+   `MathAtom` / `MathList` types in `crates/compiler/src/math.rs`
+   (`pub enum Nucleus { Symbol(String), Fraction {..}, Radical(MathList) }`)
+   — this is where the earlier grep hits on `Nucleus::Radical(...)` came
+   from (`math.rs:267,443,577,617`, `incremental.rs:463-464`). Verified:
+   `crates/compiler/Cargo.toml` has **no** dependency on
+   `flashtex-math-layout` (`grep -n "math-layout" crates/compiler/Cargo.toml`
+   is empty). The name collision is coincidental — this is a separate,
+   parallel math model the compiler built before/independent of this crate;
+   it does not import or reference `flashtex_math_layout::mathlist::Nucleus`
+   anywhere. **Not affected today.** Flagging for whoever eventually
+   integrates the compiler with this crate: if that integration ever
+   replaces `compiler`'s local `Nucleus::Radical(MathList)` with this
+   crate's type, the owner would change every one of those 5 call sites
+   from `Nucleus::Radical(body)` to
+   `Nucleus::Radical { radicand: body, degree: None }` (construction, e.g.
+   `math.rs:267`) or add a `degree` arm when matching (destructuring, e.g.
+   `math.rs:443,577,617`, `incremental.rs:463`) — same before/after shape as
+   this crate's own `layout.rs`/`fixtures.rs` migration. That integration is
+   not proposed or scheduled by anything I can see; this is a heads-up, not
+   a claim that compiler is broken.
+
+4. **`apps/mac`** (Swift): the only "sqrt"/"radical" hits are a comment and
+   a string list of LaTeX macro names in `Completion.swift` (autocomplete),
+   with no build or runtime coupling to this Rust enum. **Not affected.**
+
+**Conclusion: no in-repo consumer requires any change for the
+`Nucleus::Radical` struct-variant shape.** No peer file was edited.
+
+### Indexed roots, delimiters, script geometry — explicit metric inputs
+
+Added `crates/math-layout/tests/explicit_metrics.rs` (4 new tests) with a
+from-scratch, fully-literal `MathFontMetrics` implementation (`Metrics`):
+every glyph width/height/depth/italic, every delimiter and radical size
+chain, and every `MathParams` field the exercised paths read are hand-picked
+numbers written directly in the test, not values produced by
+`CmMathMetrics`/TFM parsing or by the layout engine itself. Each test's
+doc comment re-derives the expected geometry by hand from those literals
+against the cited TeXbook Appendix G rule, mirroring `tests/golden.rs`'s
+existing convention but against a synthetic provider instead of the CM
+adapter:
+
+- `indexed_root_degree_and_rule_geometry_from_explicit_metrics` — Rule 11 +
+  LaTeX's `\r@@t`: degree placement/raise (`0.6*(h(z)-d(z))`), the 5mu/−10mu
+  kerns, and the overbar rule's exact thickness/position relative to the
+  chosen radical sign.
+- `delimiter_sizing_against_explicit_metrics` — Rule 19: a two-size
+  delimiter chain per bracket where the small variant is provably too
+  short (`wanted` computed from an explicit tall/deep body glyph) so the
+  large variant is proven to be the one actually chosen and axis-centred.
+- `both_scripts_on_non_bare_nucleus_exercise_the_rule_18e_clearance` — Rule
+  18d/e superscript+subscript together on a **`Nucleus::List` (non-bare-char)
+  nucleus**, chosen so both stages of the Rule 18e clearance correction
+  fire (the existing golden-test coverage of "both scripts" uses a bare
+  character nucleus, a different code path: `is_char` seeds shift_up/down
+  at 0 instead of from the nucleus box's own height/depth minus
+  `sup_drop`/`sub_drop`).
+
+### Clean-rebuild equivalence
+
+`clean_rebuild_from_scratch_is_byte_identical`: builds the same formula
+from two independently-called constructors (never `.clone()`), against two
+independently-constructed metrics-provider instances, and asserts
+`layout_with_report`/`positioned_runs` outputs are equal *and* compares the
+`f64` bit patterns of every dimension/position via `.to_bits()` (stricter
+than `PartialEq`, which cannot distinguish `0.0`/`-0.0` and treats `NaN` as
+unequal to itself) across all four styles, plus 25 additional from-scratch
+rebuilds compared against the first. `flashtex_math_layout` holds no
+`HashMap`/cache/global/thread-local state anywhere
+(`grep -rn "HashMap\|HashSet\|Cache\|static mut\|thread_local" crates/math-layout/src`
+is empty), so this pins the existing purity down as an explicit, tested
+contract.
+
+### Verification (this session)
+
+- `cargo test` in `crates/math-layout`: **38 passed, 0 failed** (7 unit +
+  27 `golden.rs`, the pre-existing 34, plus 4 new in `explicit_metrics.rs`).
+- `cargo clippy --all-targets -- -D warnings` in `crates/math-layout`:
+  clean.
+- `cargo build --features math` in `crates/font-engine`: clean (consumer
+  re-verification, see above).
+- Tested/published SHA: see `coordination/agents/daniel-footnotes.json`.
+
+### Unfinished
+
+- The revision-1 salvage items already listed above as not-ported (visual
+  oracle harness, docs) remain not ported; out of scope for this revision.
+- No new geometry rules beyond the four objective items were touched.
