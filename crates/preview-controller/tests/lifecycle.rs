@@ -878,3 +878,55 @@ fn edit_admission_tracks_queued_supersession_and_failed_admission() {
     );
     controller.close().unwrap();
 }
+
+#[test]
+fn grouped_encoding_refusal_preserves_source_and_permanent_retry() {
+    use flashtex_preview_controller::HistoryAction;
+    for metadata in [false, true] {
+        let dir = tempfile::tempdir().unwrap();
+        let limits = Limits {
+            max_frame: 512,
+            ..Limits::default()
+        };
+        let mut controller = Controller::new(
+            "p".into(),
+            "main.tex".into(),
+            vec![store(dir.path())],
+            command(dir.path(), ECHO),
+            limits,
+        )
+        .unwrap();
+        let doc = controller.document("main.tex").unwrap().clone();
+        let command: flashtex_edit_ledger::history::GroupedEdit = serde_json::from_value(serde_json::json!({"command_id":"large-group","expected_revision":doc.revision,"expected_sha256":doc.source_sha256,"label":"large replacement","edits":[{"start_byte":0,"end_byte":doc.text.len(),"removed_text":doc.text,"replacement":"x".repeat(2048)}]})).unwrap();
+        for replayed in [false, true] {
+            if metadata {
+                let result = controller
+                    .apply_group_metadata("main.tex", command.clone())
+                    .unwrap();
+                assert!(result.compile_admission.is_none());
+                assert!(result.preview_error.is_some());
+                assert_eq!(result.history.command_revision, 2);
+                assert_eq!(result.history.replayed_command, replayed);
+            } else {
+                let result = controller
+                    .apply_history("main.tex", HistoryAction::Group(command.clone()))
+                    .unwrap();
+                assert!(result.source.compile_admission.is_none());
+                assert!(result.source.preview_error.is_some());
+                assert_eq!(result.history.command_revision, 2);
+                assert_eq!(result.history.replayed_command, replayed);
+            }
+            assert_eq!(controller.document("main.tex").unwrap().revision, 2);
+            assert_eq!(
+                controller.document("main.tex").unwrap().text,
+                "x".repeat(2048)
+            );
+        }
+        controller.close().unwrap();
+        drop(controller);
+        assert_eq!(
+            store(dir.path()).document().unwrap().unwrap().text,
+            "x".repeat(2048)
+        );
+    }
+}

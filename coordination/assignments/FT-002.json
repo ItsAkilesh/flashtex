@@ -9,15 +9,15 @@
   "branch": "agent/claude/compiler-foundation",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "89eee175dc6aec657bb3d6cbdb4bd11c47ac0d3c",
-  "objective": "Review exact-base isolated HW1 starred-section handoff 846ff03d and GH38 diagnostic preservation; only existing compiler owner may adopt after relevant gates",
+  "input_main_sha": "7c332dca8982ecaf5370db446ceca187e3f1f380",
+  "objective": "Review and adopt bounded HW1 starred-heading GH38 and membership GH40 handoffs through existing compiler ownership after relevant gates",
   "owned_paths": [
     "crates/compiler"
   ],
-  "revision": 15,
+  "revision": 16,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-002",
   "timebox_minutes": 45,
-  "updated_utc": "2026-09-12T14:44:47.424074+00:00"
+  "updated_utc": "2026-09-12T15:08:26.375824+00:00"
 }

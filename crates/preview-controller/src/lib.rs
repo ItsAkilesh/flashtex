@@ -326,14 +326,6 @@ impl Controller {
             result.map(|_| ()).map_err(|e| e.to_string())
         }
     }
-    fn finish_saved_index(
-        &mut self,
-        indexed: Result<(), String>,
-        started: Instant,
-    ) -> (Option<String>, f64) {
-        let (error, elapsed, _) = self.finish_saved_index_with_admission(indexed, started);
-        (error, elapsed)
-    }
     fn finish_saved_index_with_admission(
         &mut self,
         indexed: Result<(), String>,

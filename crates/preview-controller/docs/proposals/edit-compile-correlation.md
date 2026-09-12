@@ -42,3 +42,5 @@ identity separately from any new compile. No latency or paint claim follows from
 admission timestamps or acknowledgement receipt.
 
 Validation follow-up: actual stdio helper plus child producer test confirms both full and metadata edit ACK identities equal their later preview identities. An extra compile before editing deliberately separates durable source revision from compile generation. Existing held-child lifecycle test covers queued supersession; offline and encoding-refusal tests retain saved source with null admission.
+
+Grouped extension published ac0a860e: apply_group full/metadata ACKs now carry the same typed receipt. Actual held-child tests distinguish permanent command revision2, current source revision3 and fresh retry compile identity. A subsequent encoding-refusal test covers both modes and exact retries: source stays durable at revision2, receipt replay remains true, no compile identity is fabricated, and reopened source matches. Undo/redo and reviewed apply wire correlation remain outside this extension.

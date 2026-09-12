@@ -4,8 +4,8 @@
   "schema_version": 1,
   "steps": [
     {
-      "name": "Extend operation-local typed compile admission to apply_group full and metadata ACKs, separating permanent command receipt from fresh compile admission and preserving null failure semantics",
-      "objective": "Extend operation-local typed compile admission to apply_group full and metadata ACKs, separating permanent command receipt from fresh compile admission and preserving null failure semantics",
+      "name": "Prepare isolated exact-base vee and Rightarrow compiler command/export candidate using verified Adobe and downstream mappings; preserve unsupported mid setminus Longrightarrow diagnostics",
+      "objective": "Prepare isolated exact-base vee and Rightarrow compiler command/export candidate using verified Adobe and downstream mappings; preserve unsupported mid setminus Longrightarrow diagnostics",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"
@@ -19,8 +19,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Verify exact retry at later document revision reports durable command revision separately from newly admitted compile identity",
-      "objective": "Verify exact retry at later document revision reports durable command revision separately from newly admitted compile identity",
+      "name": "Archive exact standalone source request outputs and binary before combined build; audit exact seven command diagnostic removals",
+      "objective": "Archive exact standalone source request outputs and binary before combined build; audit exact seven command diagnostic removals",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"
@@ -34,8 +34,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Publish group-only additive contract and failure durability tests; undo redo and native activation remain separately scoped",
-      "objective": "Publish group-only additive contract and failure durability tests; undo redo and native activation remain separately scoped",
+      "name": "Publish reproducible combined patch for existing compiler owner with remaining HW1 gaps explicit; no authoritative adoption or native parity claim",
+      "objective": "Publish reproducible combined patch for existing compiler owner with remaining HW1 gaps explicit; no authoritative adoption or native parity claim",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"

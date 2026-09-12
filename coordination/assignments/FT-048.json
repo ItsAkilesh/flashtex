@@ -9,16 +9,16 @@
   "branch": "agent/commander-preview-performance/preview-performance",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "11671e5390f676fbd896f23859b8fbea3e276954",
-  "objective": "Extend operation-local typed compile admission to apply_group full and metadata ACKs, separating permanent command receipt from fresh compile admission and preserving null failure semantics",
+  "input_main_sha": "8f6ce14bb126d8fbff54dcbafb5a85b9691ab4ba",
+  "objective": "Prepare isolated exact-base vee and Rightarrow compiler command/export candidate using verified Adobe and downstream mappings; preserve unsupported mid setminus Longrightarrow diagnostics",
   "owned_paths": [
     "crates/preview-controller",
     "crates/edit-ledger"
   ],
-  "revision": 37,
+  "revision": 40,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-048",
   "timebox_minutes": 40,
-  "updated_utc": "2026-09-12T14:57:45.703718+00:00"
+  "updated_utc": "2026-09-12T15:18:24.032767+00:00"
 }

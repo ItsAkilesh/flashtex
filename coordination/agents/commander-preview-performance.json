@@ -13,23 +13,23 @@
   "capabilities": [
     "Preview helper serialization and latency"
   ],
-  "code_revision": "3014ade297a420655c796a3c03c8b3b919171da6",
+  "code_revision": "97a15831b4b7010a880c9456cda1a01f4935c2fc",
   "eta_minutes": {
     "likely": 20,
     "optimistic": 10,
     "pessimistic": 40
   },
   "machine": "linux-primary",
-  "main_integrated_through": "e196bdfaaf5e40729e6423768da75cb58857af3a",
-  "next_action": "Commander/native owner review; preserve history/group scope and proceed next eligible assigned helper improvement.",
+  "main_integrated_through": "e90b75a3e7646ae152fdfb36323b7f8cb8b0649a",
+  "next_action": "Commander/compiler owner integration; next assigned compatibility task after verified renderer mapping.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "Published3014ade2 full/metadata edit admission IDs and actual discarded generation.47lifecycle/stdio pass,3ignored; strictlint. Added actual child wire ACK-to-preview mapping with distinct source/compile revisions, pass.",
+  "summary": "Threecandidate97a15831 gate95tests/strictlint and84HW1diagnostics; exactbasecombinedpatch now freshly applies and all7changedfiles match tested source bytes.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T14:56:48Z",
+  "updated_utc": "2026-09-12T15:15:09Z",
   "usage": {
-    "evidence": "3014ade2; tests/stdio.rs full_and_metadata_edit_admissions_match_wire_previews",
-    "status": "Retained hosted engineer; no paid calls or active tests; quota unknown."
+    "evidence": "97a15831; hw1-quantifiers/combined-apply-check.json",
+    "status": "Retained hosted engineer; no paid calls; quota unknown; no active jobs."
   }
 }
