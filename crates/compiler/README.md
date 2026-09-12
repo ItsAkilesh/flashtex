@@ -72,6 +72,20 @@ Implemented and tested:
   are enabled. Every shaping cluster retains the exact input byte range and text.
   Literal cluster-relative ranges are translated back into the originating
   document, while generated macro text keeps its real invocation span.
+- TeX's classic text-mode input ligatures are converted before layout: a
+  double backtick or a double apostrophe becomes a curly double quote, a lone
+  backtick or apostrophe becomes a curly single quote (a lone apostrophe is
+  always the right-hand form, exactly as plain typing behaves), three hyphens
+  become an em dash, two hyphens become an en dash, and an exclamation or
+  question mark followed by a backtick becomes the inverted exclamation or
+  question mark. Conversion runs on ordinary text words only — math is parsed
+  through an entirely separate path and is never touched, and this milestone
+  has no verbatim, `\texttt`, or `\ttfamily` state to exclude in the first
+  place. A converted word's item keeps its exact original source span; only
+  its rendered text changes, the same rule already used for a
+  command-substituted glyph such as `\alpha`. All eight resulting codepoints
+  (curly quotes, en/em dash, inverted `!`/`?`) have Times-Roman AFM widths and
+  encode to WinAnsi, so none of this produces a new PDF-export warning.
 - Greedy line breaking and page breaking onto 612×792 pt pages.
 - Inline math (`$...$`) and display math (`$$...$$` and `\[...\]`), including
   nested fractions, square roots, superscripts, and subscripts.

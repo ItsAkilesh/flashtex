@@ -8,7 +8,7 @@
 use std::collections::{BTreeMap, HashMap};
 
 use crate::diagnostics::Diagnostic;
-use crate::lexer::{tokenize, tokenize_document, Token, TokenKind};
+use crate::lexer::{apply_text_ligatures, tokenize, tokenize_document, Token, TokenKind};
 use crate::math::{self, MathList};
 use crate::{DocumentId, Span};
 
@@ -317,7 +317,7 @@ impl P<'_> {
                     self.i += 1;
                     if render {
                         para.push(Inline::Text {
-                            text: word,
+                            text: apply_text_ligatures(&word),
                             span: tok.span,
                         });
                     }
@@ -1493,7 +1493,7 @@ impl P<'_> {
         for input in expanded {
             match input.token.kind {
                 TokenKind::Word(text) => content.push(Inline::Text {
-                    text,
+                    text: apply_text_ligatures(&text),
                     span: input.token.span,
                 }),
                 TokenKind::LineBreak => content.push(Inline::LineBreak {
@@ -1806,6 +1806,46 @@ mod tests {
         assert!(items.iter().any(|item| item.text == "Problem"));
         assert!(items.iter().any(|item| item.text == "Body"));
         assert!(!items.iter().any(|item| item.text == "*"));
+    }
+
+    #[test]
+    fn tex_input_ligatures_convert_in_ordinary_text() {
+        // The exact shape found in fixtures/real-world/hw1/HW1.tex: a ligature
+        // pair straddling a word boundary and one embedded inside a single
+        // compound word with no surrounding whitespace.
+        let source = "``Quoted'' and a turn---after dash, don't stop.\n";
+        let (parsed, items) = items(source);
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        let texts: Vec<&str> = items.iter().map(|item| item.text.as_str()).collect();
+        assert!(texts.contains(&"\u{201C}Quoted\u{201D}"), "{texts:?}");
+        assert!(texts.contains(&"turn\u{2014}after"), "{texts:?}");
+        assert!(texts.iter().any(|t| t.contains('\u{2019}')), "{texts:?}");
+    }
+
+    #[test]
+    fn tex_input_ligatures_convert_in_headings_and_text_style_arguments() {
+        let source = "\\section{Notes---Continued}\n\\textbf{can't---won't}\n";
+        let (parsed, items) = items(source);
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        let texts: Vec<&str> = items.iter().map(|item| item.text.as_str()).collect();
+        assert!(texts.iter().any(|t| t.contains('\u{2014}')), "{texts:?}");
+        assert!(
+            texts.iter().any(|t| t.contains('\u{2019}')),
+            "expected a converted apostrophe in {texts:?}"
+        );
+    }
+
+    #[test]
+    fn tex_input_ligatures_never_apply_inside_math() {
+        // Math is parsed through an entirely separate path (`math::parse_tokens`)
+        // that this function is never wired into; a literal double-hyphen inside
+        // `$...$` must stay two literal hyphens, never an en dash.
+        let source = "Text. $a--b$ more text.\n";
+        let (parsed, items) = items(source);
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        assert!(!items.iter().any(|item| item.text.contains('\u{2013}')));
+        assert!(!items.iter().any(|item| item.text.contains('\u{2014}')));
+        assert!(items.iter().any(|item| item.text == "-"));
     }
 
     #[test]
