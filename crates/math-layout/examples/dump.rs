@@ -25,7 +25,14 @@ fn dump(b: &MathBox, depth: usize, m: &dyn MathFontMetrics) {
         ),
         BoxKind::Rule => println!("{pad}\\rule{dims}"),
         BoxKind::Kern => println!("{pad}\\kern{:.5}", b.width),
-        BoxKind::Glue { mu } => println!("{pad}\\glue{:.5} ({mu}mu)", b.width),
+        BoxKind::Glue {
+            mu,
+            stretch,
+            shrink,
+        } => println!(
+            "{pad}\\glue{:.5} plus {stretch:.5} minus {shrink:.5} ({mu}mu)",
+            b.width
+        ),
         BoxKind::HBox(children) | BoxKind::VBox(children) => {
             let kind = if matches!(b.kind, BoxKind::HBox(_)) {
                 "hbox"

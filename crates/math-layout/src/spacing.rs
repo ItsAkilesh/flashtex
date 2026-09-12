@@ -1,6 +1,7 @@
 //! Inter-atom spacing (TeXbook chapter 18, the 8×8 table; Appendix G Rule 20).
 
 use crate::mathlist::AtomClass;
+use crate::metrics::MuGlue;
 use crate::style::Style;
 
 /// The amount of space between two adjacent atoms.
@@ -9,20 +10,32 @@ pub enum Space {
     None,
     /// `\thinmuskip` = 3mu.
     Thin,
-    /// `\medmuskip` = 4mu (plus 2mu minus 4mu; stretch is ignored here).
+    /// `\medmuskip` = 4mu plus 2mu minus 4mu.
     Medium,
-    /// `\thickmuskip` = 5mu (plus 5mu; stretch is ignored here).
+    /// `\thickmuskip` = 5mu plus 5mu.
     Thick,
 }
 
 impl Space {
     /// The natural width in mu.
     pub fn mu(self) -> f64 {
-        match self {
-            Space::None => 0.0,
-            Space::Thin => 3.0,
-            Space::Medium => 4.0,
-            Space::Thick => 5.0,
+        self.glue().width
+    }
+
+    /// The full glue specification of plain.tex / LaTeX (`fontmath.ltx`):
+    /// `\thinmuskip=3mu`, `\medmuskip=4mu plus 2mu minus 4mu`,
+    /// `\thickmuskip=5mu plus 5mu`.
+    pub fn glue(self) -> MuGlue {
+        let (width, stretch, shrink) = match self {
+            Space::None => (0.0, 0.0, 0.0),
+            Space::Thin => (3.0, 0.0, 0.0),
+            Space::Medium => (4.0, 2.0, 4.0),
+            Space::Thick => (5.0, 5.0, 0.0),
+        };
+        MuGlue {
+            width,
+            stretch,
+            shrink,
         }
     }
 }

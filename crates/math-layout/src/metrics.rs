@@ -90,15 +90,78 @@ pub struct MathParams {
     pub delimiter_shortfall: f64,
 }
 
+/// A math glue specification in mu (`\thinmuskip` = `3mu`, `\medmuskip` =
+/// `4mu plus 2mu minus 4mu`, `\thickmuskip` = `5mu plus 5mu`), before it is
+/// converted to points against the current style's `mu`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct MuGlue {
+    pub width: f64,
+    pub stretch: f64,
+    pub shrink: f64,
+}
+
+/// The same glue converted to points (finite stretch/shrink orders only).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct PtGlue {
+    pub width: f64,
+    pub stretch: f64,
+    pub shrink: f64,
+}
+
 impl MathParams {
-    /// One math unit: 1/18 of the family-2 quad at this size (TeXbook ch. 18).
-    ///
-    /// TeX computes `cur_mu = x_over_n(math_quad, 18)` in scaled points with
-    /// truncation, which is why `\medmuskip` (4mu) is 2.22217pt in a 10pt
-    /// document rather than 2.22222pt; the same truncation is applied here.
+    /// One math unit in scaled points: `cur_mu = x_over_n(math_quad, 18)`
+    /// (tex.web §703), i.e. the family-2 quad at this size divided by 18 with
+    /// truncation. For cmsy10 at 10pt the quad is 655361sp, so 1mu = 36408sp
+    /// and `\medmuskip` (4mu) is 145632sp = 2.22217pt, exactly as pdfTeX
+    /// prints it, rather than 2.22222pt.
+    pub fn mu_sp(&self) -> i64 {
+        let quad_sp = (self.quad * 65536.0).round() as i64;
+        x_over_n(quad_sp, 18).0
+    }
+
+    /// One math unit in points (`mu_sp / 65536`).
     pub fn mu(&self) -> f64 {
-        let quad_sp = (self.quad * 65536.0).round();
-        (quad_sp / 18.0).trunc() / 65536.0
+        self.mu_sp() as f64 / 65536.0
+    }
+
+    /// tex.web §716 `math_glue`: a mu glue specification scaled by `mu_sp`
+    /// with TeX's integer arithmetic. With `n, f = x_over_n(cur_mu, 65536)`
+    /// every component `v` (in mu, as a scaled integer) becomes
+    /// `mu_mult(v) = nx_plus_y(n, v, xn_over_d(v, f, 65536))`, so for a 10pt
+    /// document `3mu` = 109224sp = 1.66663pt, `4mu` = 145632sp = 2.22217pt,
+    /// `5mu` = 182040sp = 2.77771pt — the values `\showbox` prints.
+    pub fn math_glue(&self, g: MuGlue) -> PtGlue {
+        let (n, f) = x_over_n(self.mu_sp(), 65536);
+        let mu_mult = |v_mu: f64| -> f64 {
+            let v = (v_mu * 65536.0).round() as i64;
+            let scaled = n * v + xn_over_d(v, f, 65536);
+            scaled as f64 / 65536.0
+        };
+        PtGlue {
+            width: mu_mult(g.width),
+            stretch: mu_mult(g.stretch),
+            shrink: mu_mult(g.shrink),
+        }
+    }
+}
+
+/// tex.web §106 `x_over_n`: truncating division with the remainder carrying
+/// the sign of `x` (TeX's `remainder` global).
+pub fn x_over_n(x: i64, n: i64) -> (i64, i64) {
+    if x >= 0 {
+        (x / n, x % n)
+    } else {
+        (-((-x) / n), -((-x) % n))
+    }
+}
+
+/// tex.web §107 `xn_over_d`: `x * n / d` with truncation toward zero and no
+/// intermediate overflow (i64 suffices for the magnitudes TeX allows).
+pub fn xn_over_d(x: i64, n: i64, d: i64) -> i64 {
+    if x >= 0 {
+        x * n / d
+    } else {
+        -((-x) * n / d)
     }
 }
 

@@ -189,6 +189,59 @@ impl CmMathMetrics {
         })
     }
 
+    /// The sizes `var_delimiter` visits from `size` upwards: the current
+    /// size, then every larger one (`z := z + s + 16; repeat z := z - 16`).
+    fn sizes_from(size: SizeClass) -> &'static [SizeClass] {
+        match size {
+            SizeClass::Text => &[SizeClass::Text],
+            SizeClass::Script => &[SizeClass::Script, SizeClass::Text],
+            SizeClass::ScriptScript => &[
+                SizeClass::ScriptScript,
+                SizeClass::Script,
+                SizeClass::Text,
+            ],
+        }
+    }
+
+    /// The `var_delimiter` search list: the small character `(family, code)`
+    /// at `size` and each larger size, then the family-3 chain from `large`
+    /// at the same sizes. A font already visited at the same point size is
+    /// skipped (family 3 is fixed at 10pt, so its chain appears once).
+    fn search_sizes(
+        &self,
+        family: Family,
+        code: u8,
+        large: u8,
+        ch: char,
+        size: SizeClass,
+        out: &mut Vec<Glyph>,
+    ) {
+        let mut seen: Vec<(FontId, u64)> = Vec::new();
+        let mut first_visit = |font_id: FontId, at: f64| {
+            let key = (font_id, at.to_bits());
+            if seen.contains(&key) {
+                false
+            } else {
+                seen.push(key);
+                true
+            }
+        };
+        for &z in Self::sizes_from(size) {
+            let (_, font_id, at) = self.font(family, z);
+            if first_visit(font_id, at)
+                && let Some(g) = self.make_glyph(family, code, ch, z)
+            {
+                out.push(g);
+            }
+        }
+        for &z in Self::sizes_from(size) {
+            let (_, font_id, at) = self.font(Family::Extension, z);
+            if first_visit(font_id, at) {
+                self.extension_chain(large, ch, z, out);
+            }
+        }
+    }
+
     /// Follows the `next_larger` chain in family 3 starting at `code`,
     /// stopping before the extensible recipe.
     fn extension_chain(&self, code: u8, ch: char, size: SizeClass, out: &mut Vec<Glyph>) {
@@ -446,24 +499,22 @@ impl MathFontMetrics for CmMathMetrics {
         Some(glyph_from(larger, font_id, ch, at))
     }
 
+    /// tex.web §707: the small character is tried in the current size's font
+    /// first, then in each larger size (script → text), and then the large
+    /// character's chain in the same order. Delimiters in script style
+    /// therefore start with cmr7/cmsy7, then cmr10/cmsy10, then cmex10.
     fn delimiter_sizes(&self, ch: char, size: SizeClass) -> Vec<Glyph> {
         let mut out = Vec::new();
         let Some(((family, code), large)) = delimiter_slot(ch) else {
             return out;
         };
-        if let Some(g) = self.make_glyph(family, code, ch, size) {
-            out.push(g);
-        }
-        self.extension_chain(large, ch, size, &mut out);
+        self.search_sizes(family, code, large, ch, size, &mut out);
         out
     }
 
     fn radical_sizes(&self, size: SizeClass) -> Vec<Glyph> {
         let mut out = Vec::new();
-        if let Some(g) = self.make_glyph(Family::Symbol, 0x70, '\u{221A}', size) {
-            out.push(g);
-        }
-        self.extension_chain(0x70, '\u{221A}', size, &mut out);
+        self.search_sizes(Family::Symbol, 0x70, 0x70, '\u{221A}', size, &mut out);
         out
     }
 

@@ -93,17 +93,23 @@ impl Engine<'_> {
     }
 
     /// `mlist_to_hlist`: box every atom, then insert spacing (Rule 20).
+    ///
+    /// The glue between two atoms is `\thinmuskip`/`\medmuskip`/`\thickmuskip`
+    /// converted with `math_glue` against the `mu` of the style in force at
+    /// that point (tex.web §766: `cur_mu` is recomputed at every style
+    /// change), including its stretch and shrink.
     fn list(&mut self, list: &MathList, style: Style) -> MathBox {
         let classes = effective_classes(&list.atoms);
-        let mu = self.params(style).mu();
+        let p = self.params(style);
         let mut items: Vec<MathBox> = Vec::with_capacity(list.atoms.len() * 2);
         let mut prev: Option<AtomClass> = None;
         for (atom, class) in list.atoms.iter().zip(classes) {
             let b = self.atom(atom, class, style);
-            if let Some(p) = prev {
-                let space = between(p, class, style);
+            if let Some(prev_class) = prev {
+                let space = between(prev_class, class, style);
                 if space != Space::None {
-                    items.push(MathBox::glue(space.mu() * mu, space.mu()));
+                    let g = p.math_glue(space.glue());
+                    items.push(MathBox::glue_with(g.width, space.mu(), g.stretch, g.shrink));
                 }
             }
             items.push(b);
@@ -536,8 +542,13 @@ impl Engine<'_> {
         ])
     }
 
-    /// `var_delimiter` without its final axis shift: the first glyph in
-    /// `sizes` at least `wanted` tall, else the largest (reported).
+    /// `var_delimiter` (tex.web §706) without its final axis shift. `sizes`
+    /// is the provider's search order — the small character at the current
+    /// size, then at each larger size, then the large character's `next
+    /// larger` chain — and the first glyph whose `h + d ≥ wanted` is taken.
+    /// Otherwise the extensible recipe is stacked when there is one; failing
+    /// that TeX's "best so far" is used: the first glyph with the largest
+    /// `h + d` (`if h + d > w`), and the shortfall is reported.
     fn var_delimiter(
         &mut self,
         sizes: &[Glyph],
@@ -545,16 +556,22 @@ impl Engine<'_> {
         wanted: f64,
         on_missing: impl FnOnce(f64, f64) -> Limitation,
     ) -> Option<MathBox> {
-        if let Some(chosen) = sizes.iter().find(|g| g.total_height() >= wanted) {
-            let mut b = MathBox::glyph(chosen);
-            // `char_box` widths include the italic correction.
-            b.width += chosen.italic;
-            return Some(b);
+        let mut best: Option<&Glyph> = None;
+        for g in sizes {
+            if best.is_none_or(|b| g.total_height() > b.total_height()) {
+                best = Some(g);
+            }
+            if g.total_height() >= wanted {
+                let mut b = MathBox::glyph(g);
+                // `char_box` widths include the italic correction.
+                b.width += g.italic;
+                return Some(b);
+            }
         }
         if let Some(recipe) = extensible {
             return Some(stack_extensible(&recipe, wanted));
         }
-        let chosen = sizes.last()?;
+        let chosen = best?;
         self.limitations
             .push(on_missing(wanted, chosen.total_height()));
         let mut b = MathBox::glyph(chosen);
@@ -742,9 +759,7 @@ impl Engine<'_> {
     ) -> MathBox {
         let p = self.params(style);
         let inner = self.clean_box(body, style);
-        let a = p.axis_height;
-        let delta1 = (inner.height - a).max(inner.depth + a);
-        let wanted = (delta1 * 2.0 * p.delimiter_factor).max(2.0 * delta1 - p.delimiter_shortfall);
+        let wanted = left_right_size(&p, inner.height, inner.depth);
         let open = self.left_right_delimiter(left, wanted, style, &p);
         let close = self.left_right_delimiter(right, wanted, style, &p);
         MathBox::hlist(vec![open, inner, close])
@@ -776,6 +791,29 @@ impl Engine<'_> {
             }
         }
     }
+}
+
+/// tex.web §762 (`make_left_right`), in scaled points: with `δ₁` the larger
+/// distance of the body's top or bottom from the axis,
+/// `δ = max((δ₁ div 500) · \delimiterfactor, 2δ₁ − \delimitershortfall)`.
+/// The `div 500` is an integer division, so the result differs from
+/// `2δ₁ · 0.901` by up to one part in 500·901 sp — reproduced here so the
+/// size threshold that picks a delimiter is TeX's own.
+pub fn left_right_size(p: &MathParams, max_h: f64, max_d: f64) -> f64 {
+    let sp = |v: f64| (v * 65536.0).round() as i64;
+    let axis = sp(p.axis_height);
+    let delta2 = sp(max_d) + axis;
+    let mut delta1 = sp(max_h) + sp(max_d) - delta2;
+    if delta2 > delta1 {
+        delta1 = delta2;
+    }
+    let factor = (p.delimiter_factor * 1000.0).round() as i64;
+    let mut delta = (delta1 / 500) * factor;
+    let delta2 = delta1 + delta1 - sp(p.delimiter_shortfall);
+    if delta < delta2 {
+        delta = delta2;
+    }
+    delta as f64 / 65536.0
 }
 
 /// `overbar(b, k, t)`: vpack(kern t, rule t, kern k, b); baseline of `b`.

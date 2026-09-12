@@ -19,6 +19,8 @@ pub mod fixtures;
 #[doc(hidden)]
 pub mod json;
 pub mod layout;
+pub mod lm;
+pub mod lm_math;
 pub mod mathlist;
 pub mod metrics;
 pub mod spacing;
@@ -32,7 +34,9 @@ pub use boxes::{
 pub use cm::CmMathMetrics;
 pub use layout::{Layout, Limitation, layout, layout_with_report};
 pub use mathlist::{Atom, AtomClass, Limits, MathList, Nucleus};
-pub use metrics::{FontId, Glyph, MathFontMetrics, MathParams, OpenTypeMathConstants, SizeClass};
+pub use metrics::{
+    FontId, Glyph, MathFontMetrics, MathParams, MuGlue, OpenTypeMathConstants, PtGlue, SizeClass,
+};
 pub use spacing::{Space, between};
 pub use style::{Style, StyleLevel};
 pub use times::TimesApproxMetrics;

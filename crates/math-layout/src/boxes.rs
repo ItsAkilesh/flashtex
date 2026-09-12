@@ -28,8 +28,10 @@ pub enum BoxKind {
     VBox(Vec<Child>),
     /// Horizontal space with no ink (italic corrections, script space, …).
     Kern,
-    /// Inter-atom spacing glue; carries its mu value for line breaking later.
-    Glue { mu: f64 },
+    /// Inter-atom spacing glue at its natural width; `stretch`/`shrink` are
+    /// the finite glue components in pt (tex.web §716 `math_glue`) and `mu`
+    /// the natural width in mu, for a line breaker that sets the line.
+    Glue { mu: f64, stretch: f64, shrink: f64 },
 }
 
 /// A child box positioned inside a container.
@@ -72,8 +74,17 @@ impl MathBox {
     }
 
     pub fn glue(width: f64, mu: f64) -> MathBox {
+        MathBox::glue_with(width, mu, 0.0, 0.0)
+    }
+
+    /// Glue with finite stretch and shrink in pt.
+    pub fn glue_with(width: f64, mu: f64, stretch: f64, shrink: f64) -> MathBox {
         MathBox {
-            kind: BoxKind::Glue { mu },
+            kind: BoxKind::Glue {
+                mu,
+                stretch,
+                shrink,
+            },
             width,
             height: 0.0,
             depth: 0.0,
