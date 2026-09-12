@@ -53,6 +53,16 @@ impl Coordinate {
             shift,
         )
     }
+    pub(crate) fn multiply(self, rhs: Self) -> Result<Self> {
+        Self::new(
+            self.numerator
+                .checked_mul(rhs.numerator)
+                .ok_or_else(|| invalid("coordinate product overflow"))?,
+            self.shift
+                .checked_add(rhs.shift)
+                .ok_or_else(|| invalid("coordinate precision overflow"))?,
+        )
+    }
     fn subtract(self, rhs: Self) -> Result<Self> {
         self.add(Self::new(
             rhs.numerator
