@@ -183,10 +183,13 @@ else
   printf '[helpers] reused %s\n' "$HELPER_SRC" >> "$COMMANDS"
 fi
 HELPER_HEAD="$(git -C "$HELPER_SRC" rev-parse HEAD 2>/dev/null || echo unknown)"
-HELPER_CLEAN="$(git -C "$HELPER_SRC" status --porcelain 2>/dev/null | wc -l | tr -d ' ')"
-python3 - "$RUN_DIR/helpers.json" "$HELPER_SRC" "$MAIN_REF" "$MAIN_SHA" "$HELPERS_OK" "$LIB" "$HELPER_HEAD" "$HELPER_CLEAN" "${CRATES[@]}" <<'PY'
+# Anything cargo rewrote in the pinned tree (a stale committed Cargo.lock, for
+# instance) is recorded verbatim: the tree must otherwise stay exactly main.
+HELPER_DIRTY="$(git -C "$HELPER_SRC" status --porcelain 2>/dev/null)"
+HELPER_CLEAN="$(printf '%s' "$HELPER_DIRTY" | grep -c . || true)"
+python3 - "$RUN_DIR/helpers.json" "$HELPER_SRC" "$MAIN_REF" "$MAIN_SHA" "$HELPERS_OK" "$LIB" "$HELPER_HEAD" "$HELPER_CLEAN" "$HELPER_DIRTY" "${CRATES[@]}" <<'PY'
 import json, os, sys
-out, src, ref, sha, ok, lib, head, dirty = sys.argv[1:9]; crates = sys.argv[9:]
+out, src, ref, sha, ok, lib, head, dirty, dirty_list = sys.argv[1:10]; crates = sys.argv[10:]
 sys.path.insert(0, lib)
 from hashes import describe
 bins = {}
@@ -195,7 +198,7 @@ for c in crates:
     d.update({"crate": "crates/" + c, "git_sha": sha})
     bins["flashtex-" + c] = d
 json.dump({"ref": ref, "sha": sha, "built_ok": ok == "1", "scratch_clone": src, "scratch_head": head,
-           "scratch_dirty_entries": int(dirty), "binaries": bins}, open(out, "w"), indent=1, sort_keys=True)
+           "scratch_dirty_entries": int(dirty), "scratch_dirty_status": dirty_list.splitlines(), "binaries": bins}, open(out, "w"), indent=1, sort_keys=True)
 PY
 for c in "${CRATES[@]}"; do [[ -x "$(helper_path "$c")" ]] && note "flashtex-$c $(sha256 "$(helper_path "$c")")"; done
 [[ "$HELPER_HEAD" == "$MAIN_SHA" ]] || { note "helpers scratch clone HEAD $HELPER_HEAD != $MAIN_SHA"; HELPERS_OK=0; }

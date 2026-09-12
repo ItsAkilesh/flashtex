@@ -60,7 +60,7 @@ def main():
 
     # ---------------------------------------------------------------- builds
     sec = "build"
-    gate(sec, "helpers built from %s (pinned clone HEAD %s, %s dirty entries)" % (helpers.get("ref"), (helpers.get("scratch_head") or "?")[:7], helpers.get("scratch_dirty_entries")), helpers.get("built_ok") and all(b.get("sha256") for b in helpers.get("binaries", {}).values()),
+    gate(sec, "helpers built from %s (pinned clone HEAD %s; entries cargo rewrote while building: %s)" % (helpers.get("ref"), (helpers.get("scratch_head") or "?")[:7], ", ".join(x.strip() for x in helpers.get("scratch_dirty_status", [])) or "none"), helpers.get("built_ok") and all(b.get("sha256") for b in helpers.get("binaries", {}).values()),
          ", ".join("%s=%s" % (k, (v.get("sha256") or "missing")[:12]) for k, v in sorted(helpers.get("binaries", {}).items())))
     gate(sec, "app built (release) from %s" % app.get("branch"), app.get("built_ok"), (app.get("sha256") or "missing")[:12])
     bth = th.get("bundle", {}).get("gates", {})
