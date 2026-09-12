@@ -22,8 +22,58 @@ use flashtex_font_engine::resolve::FontSearch;
 use flashtex_font_engine::truetype::{Outlines, TrueTypeFace};
 use flashtex_font_engine::{sha256, Face};
 
+use flashtex_font_resources::required_tfm::{Manifest as RequiredManifest, MetricAsset, RequiredMetrics};
+use flashtex_project_files::ProjectRoot;
+
 use crate::cff::{self, Cff};
 use crate::tfm::Tfm;
+
+/// The 12 pt metric set pdfLaTeX+`lmodern` lays the reference documents
+/// out with, pinned to the official Latin Modern 2.004 release
+/// (font-resources `fixtures/lm-required-metrics-provenance.json`):
+/// `ec-lmr12` for text and `rm-lmr12/8/6` for the math roman family, plus
+/// the GUST font licence next to them. They are read through
+/// font-resources' rooted, digest-bound `RequiredMetrics::load` from the
+/// TeX Live `texmf-dist` tree; a missing or mismatched file is a blocking
+/// diagnostic, never a silent switch to OpenType metrics.
+pub const REQUIRED_TFMS: [(&str, &str); 4] = [
+    ("ec-lmr12.tfm", "299021120f0a29ef61278a2363903bd8defbb8faaade458eb79067342aecb56f"),
+    ("rm-lmr12.tfm", "9d4e3d8e39a41b93d91f79c1c47d2297efb7b1af220b94860693c08361f227aa"),
+    ("rm-lmr8.tfm", "80bcbfd844d2310ac1d3bead45aee25e91b1a4a0a60ff1771959b9a1e90ec1a2"),
+    ("rm-lmr6.tfm", "eb0bfdf8db3ae1409639fac9c88f84923872500d882d9ff8dc37aff445c723fe"),
+];
+pub const REQUIRED_TFM_DIR: &str = "fonts/tfm/public/lm";
+pub const REQUIRED_LICENSE: (&str, &str) = (
+    "doc/fonts/lm/GUST-FONT-LICENSE.TXT",
+    "49ea6cb9257bbee0a3979c48a774cd221550ac1c20c95549efe45fc99cc18050",
+);
+
+fn required_manifest() -> RequiredManifest {
+    RequiredManifest {
+        schema_version: 1,
+        metrics: REQUIRED_TFMS
+            .iter()
+            .map(|(file, sha)| MetricAsset {
+                path: format!("{REQUIRED_TFM_DIR}/{file}"),
+                sha256: (*sha).to_string(),
+                license_path: REQUIRED_LICENSE.0.to_string(),
+                license_sha256: REQUIRED_LICENSE.1.to_string(),
+            })
+            .collect(),
+    }
+}
+
+/// Why a TFM is not attached to a face.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TfmStatus {
+    /// Loaded (digest-bound for the required set, parsed for the others).
+    Loaded,
+    /// A required 12 pt asset could not be loaded: blocking.
+    RequiredUnavailable(String),
+    /// A non-required TFM was not found or did not parse: the face uses
+    /// its OpenType metrics and the typesetter warns.
+    Missing(String),
+}
 use crate::ids::GlyphId;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -148,9 +198,14 @@ pub enum FaceKind {
 
 /// A loaded face plus the identity fields the display list publishes.
 pub struct LoadedFace {
-    /// Content-addressed id used on the wire: the SHA-256 hex of the program
-    /// (font-engine's `FontId::content_sha256`).
+    /// Content-addressed id used on the wire: the SHA-256 hex of the RAW
+    /// font file bytes (what `fonts[].sha256` of rendering-v2 and
+    /// font-resources' digest checks mean). font-engine's own
+    /// `FontId::content_sha256` hashes bytes ‖ face_index and is kept in
+    /// `engine_id` for diagnostics only.
     pub font_id: String,
+    /// font-engine's identity (SHA-256 of bytes ‖ big-endian face index).
+    pub engine_id: String,
     /// Stable human-readable name (file stem or Core 14 name), for
     /// diagnostics and tests only.
     pub name: String,
@@ -169,6 +224,7 @@ pub struct LoadedFace {
     pub tfm: Option<Rc<Tfm>>,
     /// Why no TFM is attached (reported once by the typesetter).
     pub tfm_missing: Option<String>,
+    pub tfm_status: TfmStatus,
     bounds_cache: RefCell<BTreeMap<u16, Bounds>>,
 }
 
@@ -268,6 +324,10 @@ pub struct FontSet {
     /// File names that failed to load, with the reason (reported once).
     failures: RefCell<BTreeMap<String, String>>,
     tfm_dirs: Vec<PathBuf>,
+    /// The required 12 pt set, loaded once on first use.
+    required: RefCell<Option<Result<Rc<RequiredMetrics>, String>>>,
+    /// Non-required TFMs parsed so far, by file name.
+    tfms: RefCell<BTreeMap<String, Result<Rc<Tfm>, String>>>,
 }
 
 pub struct Resolved {
@@ -319,7 +379,79 @@ impl FontSet {
             by_name: RefCell::new(BTreeMap::new()),
             failures: RefCell::new(BTreeMap::new()),
             tfm_dirs,
+            required: RefCell::new(None),
+            tfms: RefCell::new(BTreeMap::new()),
         }
+    }
+
+    /// The `texmf-dist` roots implied by the TFM directories
+    /// (`<root>/fonts/tfm/public/lm`).
+    fn texmf_roots(&self) -> Vec<PathBuf> {
+        self.tfm_dirs
+            .iter()
+            .filter_map(|d| {
+                let s = d.to_string_lossy();
+                s.strip_suffix(&format!("/{REQUIRED_TFM_DIR}")).map(PathBuf::from)
+            })
+            .collect()
+    }
+
+    /// The required 12 pt metrics (see [`REQUIRED_TFMS`]), loaded through
+    /// font-resources from the first `texmf-dist` root that satisfies the
+    /// whole manifest. `Err` names what failed.
+    pub fn required_metrics(&self) -> Result<Rc<RequiredMetrics>, String> {
+        if let Some(r) = &*self.required.borrow() {
+            return r.clone();
+        }
+        let manifest = required_manifest();
+        let roots = self.texmf_roots();
+        let mut errors = Vec::new();
+        let mut result = Err(String::new());
+        for root in &roots {
+            match ProjectRoot::open(root) {
+                Ok(pr) => match RequiredMetrics::load(&pr, &manifest) {
+                    Ok(m) => {
+                        result = Ok(Rc::new(m));
+                        break;
+                    }
+                    Err(e) => errors.push(format!("{}: {e:?}", root.display())),
+                },
+                Err(e) => errors.push(format!("{}: {e:?}", root.display())),
+            }
+        }
+        if result.is_err() {
+            result = Err(if roots.is_empty() {
+                format!("no texmf-dist root among the TFM directories ({})", self.tfm_dirs.iter().map(|d| d.display().to_string()).collect::<Vec<_>>().join(", "))
+            } else {
+                errors.join("; ")
+            });
+        }
+        *self.required.borrow_mut() = Some(result.clone());
+        result
+    }
+
+    /// A TFM by file name: the digest-bound required set when it holds
+    /// the file, else the search directories through the shared parser.
+    pub fn tfm(&self, file: &str) -> Result<Rc<Tfm>, TfmStatus> {
+        if REQUIRED_TFMS.iter().any(|(f, _)| *f == file) {
+            let set = self.required_metrics().map_err(TfmStatus::RequiredUnavailable)?;
+            let (_, t) = set
+                .get(&format!("{REQUIRED_TFM_DIR}/{file}"))
+                .map_err(|e| TfmStatus::RequiredUnavailable(format!("{e:?}")))?;
+            return Ok(Rc::new(Tfm::from_shared(t.clone())));
+        }
+        if let Some(r) = self.tfms.borrow().get(file) {
+            return r.clone().map_err(TfmStatus::Missing);
+        }
+        let r = match self.tfm_dirs.iter().map(|d| d.join(file)).find(|p| p.is_file()) {
+            Some(p) => Tfm::load(&p).map(Rc::new),
+            None => Err(format!(
+                "{file} not found in {}",
+                self.tfm_dirs.iter().map(|d| d.display().to_string()).collect::<Vec<_>>().join(", ")
+            )),
+        };
+        self.tfms.borrow_mut().insert(file.to_string(), r.clone());
+        r.map_err(TfmStatus::Missing)
     }
 
     pub fn dirs(&self) -> &[PathBuf] {
@@ -458,6 +590,7 @@ impl FontSet {
         let sha = f.id().content_sha256;
         let loaded = LoadedFace {
             font_id: sha256::hex(&sha),
+            engine_id: sha256::hex(&sha),
             name: name.clone(),
             sha256: sha,
             byte_length: 0,
@@ -469,6 +602,7 @@ impl FontSet {
             kind: FaceKind::Core14(f),
             tfm: None,
             tfm_missing: None,
+            tfm_status: TfmStatus::Missing("Core 14 face: AFM metrics".into()),
             bounds_cache: RefCell::new(BTreeMap::new()),
         };
         self.insert(name, loaded)
@@ -516,26 +650,26 @@ impl FontSet {
                 return Err(fail("glyf outlines are not used by this pipeline (Latin Modern is CFF)".into()));
             }
         };
-        let sha = face.id().content_sha256;
-        let (tfm, tfm_missing) = match latin_modern_tfm(&name) {
-            Some(tfm_file) => match self.tfm_dirs.iter().map(|d| d.join(&tfm_file)).find(|p| p.is_file()) {
-                Some(p) => match Tfm::load(&p) {
-                    Ok(t) if t.has_boundary() => (None, Some(format!("{tfm_file} declares a boundary character program, which this reader does not run"))),
-                    Ok(t) => (Some(Rc::new(t)), None),
-                    Err(e) => (None, Some(e)),
-                },
-                None => (
-                    None,
-                    Some(format!(
-                        "{tfm_file} not found in {}",
-                        self.tfm_dirs.iter().map(|d| d.display().to_string()).collect::<Vec<_>>().join(", ")
-                    )),
-                ),
+        // The published digest is over the raw file bytes; the engine's id
+        // (bytes ‖ face index) is a different value and is not the resource
+        // digest rendering-core / font-resources verify.
+        let sha = sha256::digest(face.program());
+        let engine_id = sha256::hex(&face.id().content_sha256);
+        let (tfm, tfm_missing, tfm_status) = match latin_modern_tfm(&name) {
+            Some(tfm_file) => match self.tfm(&tfm_file) {
+                Ok(t) => (Some(t), None, TfmStatus::Loaded),
+                Err(TfmStatus::RequiredUnavailable(e)) => {
+                    let msg = format!("required metric asset {tfm_file}: {e}");
+                    (None, Some(msg.clone()), TfmStatus::RequiredUnavailable(msg))
+                }
+                Err(TfmStatus::Missing(e)) => (None, Some(e.clone()), TfmStatus::Missing(e)),
+                Err(TfmStatus::Loaded) => unreachable!(),
             },
-            None => (None, None),
+            None => (None, None, TfmStatus::Missing("no TFM pairs with this file".into())),
         };
         let loaded = LoadedFace {
             font_id: sha256::hex(&sha),
+            engine_id,
             name: name.clone(),
             sha256: sha,
             byte_length: face.program().len() as u64,
@@ -547,6 +681,7 @@ impl FontSet {
             kind: FaceKind::Otf { face, cff },
             tfm,
             tfm_missing,
+            tfm_status,
             bounds_cache: RefCell::new(BTreeMap::new()),
         };
         Ok(self.insert(name, loaded))

@@ -72,6 +72,9 @@ pub struct Shaped {
     /// Set when the shaper refused the text (unsupported script); the
     /// clusters are then empty and nothing is typeset for it.
     pub refused: Option<String>,
+    /// The TFM interpreter's error for this text, when it had one: the run
+    /// was then shaped by the font program instead, and the caller reports it.
+    pub tfm_error: Option<String>,
 }
 
 impl Shaped {
@@ -113,20 +116,30 @@ impl Shaper {
 
 fn shape_uncached(face: &Rc<LoadedFace>, text: &str) -> Shaped {
     if let Some(tfm) = &face.tfm {
-        if let Some(s) = shape_tfm(face, tfm, text) {
-            return s;
+        match shape_tfm(face, tfm, text) {
+            Ok(Some(s)) => return s,
+            Ok(None) => {}
+            Err(e) => {
+                let mut s = shape_otf(face, text);
+                s.tfm_error = Some(e.to_string());
+                return s;
+            }
         }
     }
     shape_otf(face, text)
 }
 
-/// TFM shaping; `None` when a character has no T1 slot (the caller then
-/// shapes through the font program and its own metrics).
-fn shape_tfm(face: &Rc<LoadedFace>, tfm: &Tfm, text: &str) -> Option<Shaped> {
+/// TFM shaping; `Ok(None)` when a character has no T1 slot (the caller then
+/// shapes through the font program and its own metrics); `Err` propagates
+/// the shared interpreter's errors (malformed program, run budget).
+fn shape_tfm(face: &Rc<LoadedFace>, tfm: &Tfm, text: &str) -> Result<Option<Shaped>, crate::tfm::TfmError> {
     let chars: Vec<(usize, char)> = text.char_indices().collect();
     let mut codes = Vec::with_capacity(chars.len());
     for (_, c) in &chars {
-        codes.push(EncodingCode::for_char(*c, Encoding::T1)?.0);
+        let Some(code) = EncodingCode::for_char(*c, Encoding::T1) else {
+            return Ok(None);
+        };
+        codes.push(code.0);
     }
     let end_of = |i: usize| -> usize { chars.get(i).map_or(text.len(), |(b, _)| *b) };
     let mut clusters = Vec::new();
@@ -135,11 +148,35 @@ fn shape_tfm(face: &Rc<LoadedFace>, tfm: &Tfm, text: &str) -> Option<Shaped> {
     let mut y_min = 0i32;
     let mut height = 0i32;
     let mut depth = 0i32;
-    for g in tfm.ligkern(&codes) {
-        let m = tfm.metrics(g.code)?;
+    let run = tfm.ligkern(&codes)?;
+    if run.leading_kern != 0 {
+        // A left-boundary kern: an explicit advance before the first
+        // character, attributed to an empty range at the text start.
+        clusters.push(SCluster {
+            glyphs: vec![SGlyph {
+                gid: GlyphId(0),
+                advance: run.leading_kern,
+                italic: 0,
+                x_offset: 0,
+                y_offset: 0,
+                y_max: 0,
+                y_min: 0,
+                x_max: 0,
+                empty: true,
+            }],
+            text_range: 0..0,
+            text: String::new(),
+        });
+    }
+    for g in run.glyphs {
+        let Some(m) = tfm.metrics(g.code) else {
+            return Err(crate::tfm::TfmError(format!("code {:#04x} has no metrics", g.code)));
+        };
         let range = end_of(g.input.0)..end_of(g.input.1);
         let ctext = text[range.clone()].to_string();
-        let ch = EncodingCode(g.code).to_char(Encoding::T1)?;
+        let Some(ch) = EncodingCode(g.code).to_char(Encoding::T1) else {
+            return Err(crate::tfm::TfmError(format!("ligature program produced undeclared T1 slot {:#04x}", g.code)));
+        };
         let gid = match face.face().glyph_id(ch) {
             Some(gid) => gid,
             None => {
@@ -172,7 +209,7 @@ fn shape_tfm(face: &Rc<LoadedFace>, tfm: &Tfm, text: &str) -> Option<Shaped> {
     }
     let _ = (y_max, y_min);
     let width_units: i64 = clusters.iter().map(SCluster::advance_units).sum();
-    Some(Shaped {
+    Ok(Some(Shaped {
         face: face.clone(),
         text: text.to_string(),
         clusters,
@@ -183,7 +220,8 @@ fn shape_tfm(face: &Rc<LoadedFace>, tfm: &Tfm, text: &str) -> Option<Shaped> {
         depth_units: depth,
         missing,
         refused: None,
-    })
+        tfm_error: None,
+    }))
 }
 
 fn shape_otf(face: &Rc<LoadedFace>, text: &str) -> Shaped {
@@ -246,6 +284,7 @@ fn shape_otf(face: &Rc<LoadedFace>, text: &str) -> Shaped {
         depth_units: -y_min,
         missing,
         refused,
+        tfm_error: None,
     }
 }
 

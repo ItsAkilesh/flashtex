@@ -204,6 +204,18 @@ fn v2_envelope_has_the_contract_shape_and_content_addressed_fonts() {
         assert_eq!(f.get("sha256").and_then(|v| v.as_str()), Some(id));
         assert_eq!(f.get("format").and_then(|v| v.as_str()), Some("opentype-cff"));
     }
+    // `sha256` is the digest of the RAW file bytes (what rendering-core and
+    // font-resources verify), not font-engine's bytes||face_index id.
+    for f in &r.v2.fonts {
+        let path = f.path.as_ref().expect("loaded from a file");
+        let bytes = std::fs::read(path).unwrap();
+        let raw = flashtex_font_engine::sha256::hex(&flashtex_font_engine::sha256::digest(&bytes));
+        assert_eq!(f.sha256, raw, "{}", path);
+        assert_eq!(f.byte_length, bytes.len() as u64);
+        let mut with_index = bytes.clone();
+        with_index.extend_from_slice(&0u32.to_be_bytes());
+        assert_ne!(f.sha256, flashtex_font_engine::sha256::hex(&flashtex_font_engine::sha256::digest(&with_index)), "engine id is not the resource digest");
+    }
     let feats = p.get("required_features").and_then(|v| v.as_arr()).unwrap();
     assert!(feats.iter().any(|f| f.as_str() == Some("rule")));
     let docs = p.get("documents").and_then(|v| v.as_arr()).unwrap();

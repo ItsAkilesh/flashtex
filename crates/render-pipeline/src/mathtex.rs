@@ -17,7 +17,6 @@
 //! `.notdef`.
 
 use std::cell::RefCell;
-use std::path::PathBuf;
 use std::rc::Rc;
 
 use flashtex_math_layout::cm::{self, CmMathMetrics, Family};
@@ -25,7 +24,7 @@ use flashtex_math_layout::cm_tfm;
 use flashtex_math_layout::metrics::Extensible;
 use flashtex_math_layout::{FontId as MathFontId, Glyph, MathFontMetrics, MathParams, SizeClass};
 
-use crate::fonts::LoadedFace;
+use crate::fonts::{FontSet, LoadedFace, TfmStatus};
 use crate::mathfont::{MathFonts, MathSizes};
 use crate::tfm::Tfm;
 
@@ -34,6 +33,9 @@ pub struct TexMathMetrics {
     sizes: MathSizes,
     /// `rm-lmr*` at text/script/scriptscript, when installed.
     roman: [Option<Rc<Tfm>>; 3],
+    /// Why a roman TFM is absent (the first failure), blocking when it is
+    /// a required asset.
+    roman_status: Option<TfmStatus>,
     /// The OpenType face drawn (Latin Modern Math) and its variant table.
     otf: Rc<MathFonts>,
     unmapped: RefCell<Vec<(String, u8, char)>>,
@@ -41,8 +43,9 @@ pub struct TexMathMetrics {
 
 impl TexMathMetrics {
     /// `base` is the document's body size (10/11/12). `otf` supplies the
-    /// glyph program; `tfm_dirs` are probed for `rm-lmr<d>.tfm`.
-    pub fn new(base: u32, otf: Rc<MathFonts>, tfm_dirs: &[PathBuf]) -> TexMathMetrics {
+    /// glyph program; `fonts` supplies `rm-lmr<d>.tfm` (digest-bound for
+    /// the 12 pt set).
+    pub fn new(base: u32, otf: Rc<MathFonts>, fonts: &FontSet) -> TexMathMetrics {
         let (cm, roman_names) = match base {
             10 => (CmMathMetrics::latex_10pt(), ["rm-lmr10", "rm-lmr7", "rm-lmr5"]),
             11 => (
@@ -66,19 +69,32 @@ impl TexMathMetrics {
             script: cm.sizes[1],
             script_script: cm.sizes[2],
         };
-        let load = |name: &str| -> Option<Rc<Tfm>> {
-            let file = format!("{name}.tfm");
-            let p = tfm_dirs.iter().map(|d| d.join(&file)).find(|p| p.is_file())?;
-            Tfm::load(&p).ok().map(Rc::new)
+        let mut roman_status = None;
+        let mut load = |name: &str| -> Option<Rc<Tfm>> {
+            match fonts.tfm(&format!("{name}.tfm")) {
+                Ok(t) => Some(t),
+                Err(status) => {
+                    if roman_status.is_none() {
+                        roman_status = Some(status);
+                    }
+                    None
+                }
+            }
         };
         let roman = [load(roman_names[0]), load(roman_names[1]), load(roman_names[2])];
         TexMathMetrics {
             cm,
             sizes,
             roman,
+            roman_status,
             otf,
             unmapped: RefCell::new(Vec::new()),
         }
+    }
+
+    /// The first roman-TFM failure, if any.
+    pub fn roman_status(&self) -> Option<&TfmStatus> {
+        self.roman_status.as_ref()
     }
 
     pub fn sizes(&self) -> MathSizes {

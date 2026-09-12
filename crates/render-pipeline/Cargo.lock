@@ -107,6 +107,7 @@ dependencies = [
  "flashtex-math-layout",
  "flashtex-paragraph-layout",
  "flashtex-pdf",
+ "flashtex-project-files",
 ]
 
 [[package]]

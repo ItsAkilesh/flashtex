@@ -13,7 +13,9 @@ because the siblings depend on each other by `../<name>` path.
 
 | Directory | Branch | Commit | Owner |
 | --- | --- | --- | --- |
-| `compiler` | `main` | `7adb021` (crates/compiler last changed by `9026d8a`) | compiler lead |
+| `compiler` | `main` | `745f327` (crates/compiler last changed by `75c8018`) | compiler lead |
+| `font-resources` | `agent/commander-corpus/font-resources` | `cb4ff5f` (shared TFM reader `tfm.rs`/`tfm_run.rs`, `required_tfm.rs`) | commander-corpus |
+| `project-files` | same as font-resources | `cb4ff5f` (`ProjectRoot` for the rooted TFM reads) | project-files owner |
 | `font-engine` | `agent/mac-font-engine/tex-fonts` | `f418238` | mac-font-engine |
 | `paragraph-layout` | `agent/mac-paragraph-layout/linebreak` | `70209e2` | mac-paragraph-layout |
 | `math-layout` | `agent/mac-math-layout/math-boxes` | `db90047` | mac-math-layout |
@@ -24,8 +26,13 @@ because the siblings depend on each other by `../<name>` path.
 default, which is why those three siblings must be present under their plain
 names next to it.
 
+`font-resources` brings `serde`, `serde_json` and `sha2` from the registry
+(the first external crates in this build); everything else is path-only.
+
 **Delete this directory and point `Cargo.toml` path dependencies at
 `../<name>` once the siblings are integrated on `main`** (`main` currently
 carries older revisions of font-engine, paragraph-layout, math-layout and
-pdf than the pins above). Nothing binary is vendored; Latin Modern is read
-from the local TeX Live installation at run time, never committed.
+pdf than the pins above). Nothing binary is vendored; Latin Modern's OTFs
+and TFMs are read from the local TeX Live installation at run time, never
+committed; the 12 pt TFM set is digest-bound to the official Latin Modern
+2.004 release (`REQUIRED_TFMS` in `src/fonts.rs`).

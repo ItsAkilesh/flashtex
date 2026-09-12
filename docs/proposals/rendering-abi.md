@@ -27,7 +27,7 @@ with `render_format:"display-list-v2"`, `coordinate_unit:"bp_2pow20"`,
 | `rule` | `{x, top, width, height, paint, provenance}`; top-left, positive dimensions; math-layout's fraction/radical rules | conforms |
 | provenance | `Sources[{path,start_byte,end_byte}]` per cluster into the declared document revisions (multi-file `\input` keeps each cluster's own path); `Synthetic(reason)` reserved, currently unused | conforms |
 | `documents[]` | `{path, revision, sha256, byte_length}` of the exact request text | conforms |
-| `fonts[]` | `{font_id, sha256, byte_length, format, face_index:0, units_per_em, glyph_count, postscript_name, path}` where `font_id == sha256` of the file bytes | **deviates**: `format` is `"opentype-cff"` for Latin Modern (Roman and Math); Times is `"core14-afm"` with `byte_length: 0` (metrics only, no glyph bytes — the schema requires ≥ 1); `path` is an extra field the schema does not list |
+| `fonts[]` | `{font_id, sha256, byte_length, format, face_index:0, units_per_em, glyph_count, postscript_name}` where `font_id == sha256` = SHA-256 of the raw file bytes (font-engine's bytes‖face_index id is kept separately as `engine_id`, not published) | **deviates**: `format` is `"opentype-cff"` for Latin Modern (Roman and Math); Times is `"core14-afm"` with `byte_length: 0` (metrics only, no glyph bytes — the schema requires ≥ 1) |
 | `required_features` | `glyph_run`, `rule` (when present), `rgba-srgb`, `cluster-actualtext`; `static-truetype` only if such a font is used (never, today) | **deviates**: rendering-core marks `static-truetype` as used by every glyph run |
 | diagnostics | `{severity, code, message, sources[], recovery}`; codes are identifiers | conforms |
 
@@ -43,9 +43,9 @@ font profile is the single blocking deviation.
    product's default face — exists only as OpenType CFF and Type 1. Glyph
    ids are the CFF charset order, which is the OTF's glyph order, so
    original-GID semantics are unchanged.
-2. Allow an optional `path` (or move it to the resource manifest, as
-   font-resources already separates paths from descriptors) — the pipeline
-   emits it so a local consumer can locate the bytes without a transport.
+2. Resource location stays out of the envelope (font-resources separates
+   paths from descriptors); the pipeline's `FontResource.path` is a local
+   convenience for `--pdf` and tests only.
 3. Metric-only fonts: either allow `format: "core14-afm"` with
    `byte_length: 0`, or the pipeline drops Times entirely once Latin Modern
    is bundled with the app. Preference: drop Times.

@@ -240,16 +240,32 @@ impl<'a> Context<'a> {
                 ),
             );
         }
-        if let Some(reason) = &r.face.tfm_missing {
-            let src = self.source(span);
-            self.report_once(
-                format!("tfm:{}", r.face.name),
-                Diagnostic::warning(
-                    "tfm_missing",
-                    format!("{}: {reason}; OpenType advances are used instead of TeX's metrics", r.face.name),
-                    vec![src],
-                ),
-            );
+        match &r.face.tfm_status {
+            crate::fonts::TfmStatus::Loaded => {}
+            crate::fonts::TfmStatus::RequiredUnavailable(reason) => {
+                let src = self.source(span);
+                self.report_once(
+                    format!("tfm:{}", r.face.name),
+                    Diagnostic::error(
+                        "required_metrics_unavailable",
+                        format!("{}: {reason}; the pinned Latin Modern 2.004 metrics are required for this size, OpenType advances were used and the layout is not the reference geometry", r.face.name),
+                        vec![src],
+                    ),
+                );
+            }
+            crate::fonts::TfmStatus::Missing(_) => {
+                if let Some(reason) = &r.face.tfm_missing {
+                    let src = self.source(span);
+                    self.report_once(
+                        format!("tfm:{}", r.face.name),
+                        Diagnostic::warning(
+                            "tfm_missing",
+                            format!("{}: {reason}; OpenType advances are used instead of TeX's metrics", r.face.name),
+                            vec![src],
+                        ),
+                    );
+                }
+            }
         }
         r.face
     }
@@ -279,19 +295,30 @@ impl<'a> Context<'a> {
                     flashtex_document_style::BaseSize::Pt11 => 11,
                     flashtex_document_style::BaseSize::Pt12 => 12,
                 };
-                let tex = TexMathMetrics::new(base, m.clone(), self.fonts.tfm_dirs());
+                let tex = TexMathMetrics::new(base, m.clone(), self.fonts);
                 let provider = if tex.roman_available() {
                     MathProvider::Tex(Rc::new(tex))
                 } else {
                     let src = self.source(span);
-                    self.report_once(
-                        "math:no-tfm".into(),
-                        Diagnostic::warning(
-                            "math_metrics_opentype",
-                            String::from("rm-lmr*.tfm not found; math is laid out with the OpenType MATH table instead of TeX's metrics"),
+                    let diag = match tex.roman_status() {
+                        Some(crate::fonts::TfmStatus::RequiredUnavailable(e)) => Diagnostic::error(
+                            "required_metrics_unavailable",
+                            format!("math roman metrics: {e}; math is laid out with the OpenType MATH table and is not the reference geometry"),
                             vec![src],
                         ),
-                    );
+                        other => Diagnostic::warning(
+                            "math_metrics_opentype",
+                            format!(
+                                "rm-lmr*.tfm unavailable ({}); math is laid out with the OpenType MATH table instead of TeX's metrics",
+                                match other {
+                                    Some(crate::fonts::TfmStatus::Missing(m)) => m.clone(),
+                                    _ => "not found".into(),
+                                }
+                            ),
+                            vec![src],
+                        ),
+                    };
+                    self.report_once("math:no-tfm".into(), diag);
                     MathProvider::Otf(m)
                 };
                 self.math_fonts = Some(provider.clone());
@@ -353,6 +380,17 @@ impl<'a> Context<'a> {
         let span = seg_span(seg)?;
         let face = self.face(seg.style, size, span);
         let shaped = self.shaper.shape(&face, &seg.text);
+        if let Some(e) = &shaped.tfm_error {
+            let src = self.source(span);
+            self.report_once(
+                format!("tfmrun:{}:{e}", face.name),
+                Diagnostic::warning(
+                    "tfm_run_error",
+                    format!("{}: TFM ligature/kern program failed for {:?} ({e}); OpenType metrics used for this word", face.name, seg.text),
+                    vec![src],
+                ),
+            );
+        }
         if let Some(reason) = &shaped.refused {
             let src = self.source(span);
             self.diagnostics.push(Diagnostic::error("unsupported_script", format!("cannot shape {:?}: {reason}", seg.text), vec![src]));

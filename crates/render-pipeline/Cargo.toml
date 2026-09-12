@@ -13,10 +13,11 @@ path = "src/lib.rs"
 name = "flashtex-render"
 path = "src/bin/flashtex-render.rs"
 
-# Zero external crates. Every dependency is a pinned mirror of a sibling task
-# branch under vendor/ (see vendor/VENDORING.md) so this crate builds from a
-# `git archive` of this directory alone, which is how the visual-oracle
-# harness builds it. Repoint these at ../<name> once the siblings merge.
+# Every sibling dependency is a pinned mirror under vendor/ (see
+# vendor/VENDORING.md) so this crate builds from a `git archive` of this
+# directory alone, which is how the visual-oracle harness builds it; the only
+# registry crates are font-resources' serde/serde_json/sha2. Repoint these at
+# ../<name> once the siblings merge.
 [dependencies]
 flashtex-compiler = { path = "vendor/compiler" }
 flashtex-font-engine = { path = "vendor/font-engine" }
@@ -25,3 +26,4 @@ flashtex-math-layout = { path = "vendor/math-layout" }
 flashtex-document-style = { path = "vendor/document-style" }
 flashtex-pdf = { path = "vendor/pdf" }
 flashtex-font-resources = { path = "vendor/font-resources" }
+flashtex-project-files = { path = "vendor/project-files" }
