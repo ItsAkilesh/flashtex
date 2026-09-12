@@ -61,3 +61,28 @@ The profiler now accepts an explicit `--base` commit and labels Value versus
 Syntax preflight separately. Its default still reproduces the original3040a0ce
 baseline. A candidate performance claim requires a separate completed report;
 unit tests alone do not prove allocation or latency improvement.
+
+## Measured candidate result
+
+Candidate 02da0568 completes the same 138 instrumented bindings. All measured
+Syntax preflights request zero allocations/capacity, removing 31,787 / 64,487 /
+100,500 calls and 3,690,626 / 7,534,526 / 11,849,804 requested bytes from the three
+captures. Every other phase's allocation-call/capacity median is exactly unchanged.
+These are cumulative requests, not retained-memory or RSS measurements. Escaped
+strings can require serde scratch storage; zero allocation is scoped to the three
+captured inputs, not arbitrary JSON.
+
+Observed candidate preflight medians are 0.92 / 2.01 / 3.54 ms. Old and new timing
+passes were separate instrumented processes; other phase times also vary. Do not
+present their difference as a calibrated whole-binder or native speedup. The
+allocation reduction is the robust measured result. See
+`tools/evidence/syntax-binding-attribution.json` and
+`tools/evidence/syntax-allocation-comparison.json` relative to crate root.
+
+The production source/dependency guard was deliberately rebased to tested 02da0568
+and all five established producer/reference fixtures replayed. Original PDF
+hashes, raster hashes and extraction outcomes exactly match the b797b21a baseline.
+Reference pixel differences remain 0 / 602 / 1244 / 979 / 337; display-math reference
+ToUnicode remains an explicit oracle limitation. The expected exit 3 therefore
+records existing reference gaps, not a new output regression. Evidence:
+`tools/evidence/syntax-five-fixtures.json` relative to crate root.

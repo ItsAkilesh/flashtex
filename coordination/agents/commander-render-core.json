@@ -14,23 +14,23 @@
     "rust",
     "rendering"
   ],
-  "code_revision": "0d7db229f25244ad8ac5e6962c14790a668c6382",
+  "code_revision": "02da05688d8f931698b9c2f0f8be85acb2d05536",
   "eta_minutes": {
-    "likely": 10,
-    "optimistic": 4,
-    "pessimistic": 18
+    "likely": 3,
+    "optimistic": 1,
+    "pessimistic": 5
   },
   "machine": "linux-primary",
   "main_integrated_through": "3040a0ce37256999db73ac73fd7b9df693aad1a1",
-  "next_action": "Publish tested candidate; measure same3 raw captures with explicit candidate base, then rerun existing five-fixture baseline because production validation changed. Preserve all typed source/resource gates.",
+  "next_action": "Commander integration of tested visitor/evidence. Remaining pair+resource parsing costs exceed new preflight; future reuse must preserve complete source/resource authority. No native activation.",
   "reviewed_peers": {},
   "schema_version": 1,
-  "state": "in_progress",
-  "summary": "FT023r13 equivalent serde Syntax visitor replaces only initial Value preflight; narrow unchanged runtime7817e4e8 reuse, no peer edits.",
+  "state": "accepted",
+  "summary": "FT023r13 complete: equivalent serde preflight02da0568 measured0 allocations on3actual raw captures; removes up to11.85MB requested capacity. Five original PDFs and reference outcomes unchanged.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T12:18:21Z",
+  "updated_utc": "2026-09-12T12:25:32Z",
   "usage": {
-    "evidence": "172 rendering tests pass, 2 ignored; strict all-target Clippy pass. Old Value equivalence covers numeric/depth/Unicode/UTF8 boundary cases. Three raw captures retain pinned PDFs and malformed/stale refusals. No measured candidate improvement claimed yet.",
-    "status": "Hosted OpenAI only; no providers or descendants; quota telemetry unavailable. Candidate tests terminal; measurement not started."
+    "evidence": "172 Rust tests/2ignored and strict Clippy pass;6Python tests pass.138 candidate measured bindings; all nonpreflight allocation medians unchanged. Five replay PDF/raster/text hashes exact baseline equality; existing0/602/1244/979/337 reference gaps retained. No RSS or calibrated speedup claim.",
+    "status": "Hosted OpenAI only; no providers or descendants; quota telemetry unavailable. Candidate18856 and replay76868 terminal; runtime owner has released measurement window."
   }
 }
