@@ -1,36 +1,36 @@
 {
-  "schema_version": 1,
   "agent_id": "commander-assistant-context",
-  "task_id": "FT-029",
-  "next_index": 0,
+  "next_index": 1,
+  "schema_version": 1,
   "steps": [
     {
+      "acceptance": [
+        "Exact source revision/digest and UTF8 range guards reject stale context",
+        "Bounded multi-document prompt and response proposals preserve explicit user intent",
+        "No credentials, model calls or automatic edits; meaningful tests and strict lint pass"
+      ],
+      "allocation_id": "hosted-openai-product",
       "name": "Bind explanatory proposals to selected diagnostics and explicit reviewed edit destinations",
       "objective": "Bind explanatory proposals to selected diagnostics and explicit reviewed edit destinations",
       "owned_paths": [
         "crates/assistant-context"
       ],
+      "timebox_minutes": 30
+    },
+    {
       "acceptance": [
         "Exact source revision/digest and UTF8 range guards reject stale context",
         "Bounded multi-document prompt and response proposals preserve explicit user intent",
         "No credentials, model calls or automatic edits; meaningful tests and strict lint pass"
       ],
       "allocation_id": "hosted-openai-product",
-      "timebox_minutes": 30
-    },
-    {
       "name": "Expose native-consumable bounded context and proposal JSON with real compiler diagnostic fixtures",
       "objective": "Expose native-consumable bounded context and proposal JSON with real compiler diagnostic fixtures",
       "owned_paths": [
         "crates/assistant-context"
       ],
-      "acceptance": [
-        "Exact source revision/digest and UTF8 range guards reject stale context",
-        "Bounded multi-document prompt and response proposals preserve explicit user intent",
-        "No credentials, model calls or automatic edits; meaningful tests and strict lint pass"
-      ],
-      "allocation_id": "hosted-openai-product",
       "timebox_minutes": 30
     }
-  ]
+  ],
+  "task_id": "FT-029"
 }
