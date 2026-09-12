@@ -2,11 +2,11 @@
 
 Offline corpus of 63 short snippets (9 expected outputs from tests/grok-corpus/cases plus common homework forms), each wrapped in article+amsmath+amssymb and compiled through the flashtex-compiler JSON Lines CLI. A snippet counts as rendering when it compiles with 0 error diagnostics (warnings listed; package-recognition and U+2500 rule-fallback warnings omitted). Reproduce: build crates/compiler, then `python3 coordination/daniel-grok-coverage.py`.
 
-Summary: before 16/63, after batch 1 38/63, after batch 2 46/63.
+Summary: before 16/63, after batch 1 38/63, after batch 2 46/63, after display limits 46/63 (visual), after stacking/infix 48/63.
 
-## After batch 2
+## Current (after stacking/infix batch)
 
-0-error snippets: 46/63
+0-error snippets: 48/63
 
 | # | snippet | status | errors | diagnostics (first 3) |
 |---|---|---|---|---|
@@ -71,8 +71,8 @@ Summary: before 16/63, after batch 1 38/63, after batch 2 46/63.
 | 59 | `ell-hbar` | recovered | 2 | \ell is not supported in math mode; \hbar is not supported in math mode |
 | 60 | `cdot-dots-matrix` | recovered | 3 | \vdots is not supported in math mode; \ddots is not supported in math mode; \vdots is not supported in math mode |
 | 61 | `ne-neq` | recovered | 3 | \ll is not supported in math mode; \gg is not supported in math mode; \simeq is not supported in math mode |
-| 62 | `frac-pm-sqrt-choose` | recovered | 1 | \choose is not supported in math mode |
-| 63 | `stackrel-overset` | recovered | 3 | \overset is not supported in math mode; \stackrel is not supported in math mode; \underset is not supported in math mode |
+| 62 | `frac-pm-sqrt-choose` | recovered | 0 |  |
+| 63 | `stackrel-overset` | recovered | 0 |  |
 
 ## Before (origin/main + amsmath lane, f05b4cef)
 

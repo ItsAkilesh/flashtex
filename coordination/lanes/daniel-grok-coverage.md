@@ -24,3 +24,8 @@
 - Per updated user instruction the log now lives here (coordination/lanes/daniel-grok-coverage.md) in log-only commits; checkpoints also go to GitHub issue #52.
 - Active branch: agent/daniel-grok-coverage/compiler-clean (worktree /Users/dqi26/ft-wt-grok-coverage-clean). Uncommitted product changes: none.
 - In progress next: \overset/\underset/\stackrel (new stacked nucleus) and \choose/\over infix forms in crates/compiler/src/math.rs.
+
+## 2026-09-12T19:54Z  batch 4 committed
+- Product commit ef53bbdf (crates/compiler math.rs, incremental.rs, README): Nucleus::Stacked for \overset/\stackrel/\underset; infix \choose/\over in list_inner.
+- Tests: cargo test -q 107 passed 0 failed; clippy 0; fmt clean. Coverage 48/63.
+- Next: merge origin/main, push, issue #52 checkpoint; stop by 20:30Z.
