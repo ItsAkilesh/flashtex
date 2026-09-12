@@ -3,10 +3,10 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-023": {
-      "acknowledged_utc": "2026-09-12T12:56:02.314604+00:00",
-      "adaptation": "Read actual FT023r15. Private validated PipelineCff PageIndex with fresh CurrentHelper guard; no inferred caret mapping/native activation. GH34 existing official10pt asset handoff is authorized bounded followup.",
-      "main_sha": "eb5ae874fdb8b2fde2dfbc0fe11aebc272b0fe26",
-      "revision": 15
+      "acknowledged_utc": "2026-09-12T13:16:34.309615+00:00",
+      "adaptation": "Read exact FT023r17. Bounded read-only pinned bundle asset verifier, isolated official asset stage and malformed/missing cases only; no native discovery claims.",
+      "main_sha": "291849d7d5ab67781d1c681f50ebc328fd8a996c",
+      "revision": 17
     }
   },
   "branch": "agent/commander-render-core/rendering-core",
@@ -14,23 +14,23 @@
     "rust",
     "rendering"
   ],
-  "code_revision": "e10e22bc34b4f3c38c64a62800296127b4f5cb8f",
+  "code_revision": "f576ac11002f3ad64ddbf4172aba7d95d912dbbf",
   "eta_minutes": {
     "likely": 2,
     "optimistic": 1,
     "pessimistic": 3
   },
   "machine": "linux-primary",
-  "main_integrated_through": "b7dedddf0708b5a7525aea1d68b13dfb37832213",
-  "next_action": "Commander integration; actual chapter hit and all3source identity acceptance published, await next bounded consumer task.",
+  "main_integrated_through": "9d8931d5f948416ca9c7e915da47808b3f9fe10e",
+  "next_action": "Commander route exact patches to existing packaging/pipeline owners; require their appliedSHA/buildidentity and nohostTeX native acceptance.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "accepted",
-  "summary": "Actual corrected eca6ab25 multi-document capture accepted without repair; original recovered e680d2ef preserved.",
+  "summary": "GH36 candidate patches prepared only in owned handoff: rooted official asset staging via existing verifier and producer bundle discovery after explicit TFM overrides.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T13:02:07Z",
+  "updated_utc": "2026-09-12T13:21:46Z",
   "usage": {
-    "evidence": "13 focused helper tests +strictClippy pass. Six byte-identical request pairs: control6recovered, verified6ok/nodiag. Rawbody exact; chapter hit/current searchable export pass; stale chapter/bibliography/membership refuse. No native/reference parity claim.",
-    "status": "Hosted OpenAI only; no providers/descendants. No context telemetry/native compaction control. All checks terminal; exact branch retained."
+    "evidence": "Exactaf155e59/f762f82a gitapplychecks and bashsyntax pass; isolatedstaging9assetsverified, missing10pt refuses. Override ordering checked structurally, no native execution claim. patch-manifest and patch-check-evidence record hashes.",
+    "status": "Hosted OpenAI only; no descendants/providers. Scratch-only git/shell/Python checks terminal; no native or Rust builds. Context telemetry/native compaction unavailable."
   }
 }

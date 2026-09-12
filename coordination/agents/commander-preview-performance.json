@@ -3,27 +3,27 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-048": {
-      "acknowledged_utc": "2026-09-12T13:02:57Z",
-      "adaptation": "One50KB actual visible typing pair, full edit vs grouped metadata; UTF8 comment beforeeditedvisiblebyte range, sameproducer/assets/finalsource, preview and reopened equality, bytes and phaseobservations only.",
-      "main_sha": "e7134a3392d86b051de476cfad50cea7fc540c57",
-      "revision": 19
+      "acknowledged_utc": "2026-09-12T13:07:58Z",
+      "adaptation": "Releasehelper built from58d27314 Rusttree, olddebug/release preserved. Same50KBfixture and pinneddebugproducer; optional transparent capture supplies actualstdin for independentproducer releaseverification. Preserve diagnosticphase vs native/captureoverhead distinction.",
+      "main_sha": "ef1a964ecf851c10ffb44f16d212de21e0e1675e",
+      "revision": 20
     }
   },
   "branch": "agent/commander-preview-performance/preview-performance",
   "capabilities": [
     "Preview helper serialization and latency"
   ],
-  "code_revision": "eca6ab2582e18dc65ef759b4d39f8ec6502df777",
+  "code_revision": "53c0c71d1fc35e8bafe0473c60f4eaf277833482",
   "eta_minutes": null,
   "machine": "linux-primary",
-  "main_integrated_through": "e09e1f409d6c15b1be4c64a5bf4538c0866735a5",
-  "next_action": "Commander integrate; GH21 existing latency tracker owns phase profiling, GH35 duplicate observation to consolidate.",
+  "main_integrated_through": "58d27314c83cbc62fa20e81dd1f5532a82849fef",
+  "next_action": "Commander integrate with runtimeproducerreleaseverification; nativepackaging and widerlatencyacceptance remain separate.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "FT048r19 actual50KBtyping pair verifies full-source vs compactgroup identical currentpreview and durable source with major request/ACK byte reduction.",
+  "summary": "FT048r20 releasehelper+independentlyverifiedreleaseproducer50KBpair delivers currentframes77.53/80.33ms with exactprioroutputs/source.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T13:05:01Z",
+  "updated_utc": "2026-09-12T13:12:54Z",
   "usage": {
     "status": "unknown"
   }
