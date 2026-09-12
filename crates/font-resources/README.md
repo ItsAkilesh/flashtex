@@ -346,3 +346,15 @@ payload/bookkeeping, with explicit oversize bypass and zero-budget operation.
 The shared name index has its separate 16MiB bound; caller-retained Arc references
 and allocator-wide memory are outside cache ownership. No shaping or native render
 performance claim follows from an encoding cache hit.
+
+Type2 arithmetic follows Adobe Technical Note5177 sections4.4–4.6:
+https://adobe-type-tools.github.io/font-tech-notes/pdfs/5177.Type2.pdf
+The original decoder now supports exact add/subtract/multiply, absolute/negation,
+logic/comparison/ifelse, dup/exch/index/roll/drop, and 32 transient slots shared only
+within one glyph and its subroutines. Reads before writes fail. Division accepts
+exact dyadic quotients and sqrt accepts exact dyadic roots; non-dyadic quotients,
+irrational roots and random return `UnsupportedFont`, never approximate geometry.
+The existing Coordinate profile remains unchanged. Checked numeric overflow,
+invalid indices, zero division, operand underflow, 48-stack and 100000-instruction
+budgets fail explicitly. Subroutine cycle/depth limits remain active. This is not
+an emulation of device arithmetic rounding, hinting, or a raster-fidelity claim.
