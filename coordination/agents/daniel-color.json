@@ -6,7 +6,7 @@
   "capabilities": ["rust", "parsing", "color"],
   "branch": "agent/daniel-color/color-expressions",
   "state": "ready_for_integration",
-  "summary": "crates/color-expressions rev3: adversarial-bounds test suite in src/parser.rs and src/lib.rs (paren/negation/mix-chain depth and 512-byte cap right at and one past each bound, percentage 0/100/101/huge-overflow, unterminated paren, empty model component list, wrong component count for every model, out-of-range and leading-minus components, lone '!'/',' separators, multi-byte characters at length/depth boundaries), every case asserting an exact ColorExprError variant, never just is_err(); plus a new tests/identity_regressions.rs pinning 16 resolve(...) calls to literal, hand-derived Color values (plain name, negation, 0/25/50/75/100% mixes, mix-against-white, nested/negated parens, a 3-term chain, literal-vs-named equivalence, CMYK-cross-variant), none produced by calling this crate's own resolver. 92 unit + 16 integration + 1 doctest = 109 tests pass; cargo clippy --all-targets -- -D warnings clean. Handoff states explicitly which xcolor behaviours are syntax-compatible (names, -negate, !mix, parens) vs not implemented/not parity-tested (xcolor colour tables, hue-aware negate, HTML/RGB255/hsb models, non-integer or >100 weights, any numeric comparison against real xcolor output).",
+  "summary": "crates/color-expressions rev4: new tests/vector_graphics_consumer.rs (5 tests) hands resolved expressions (RGB mix, CMYK/gray literals, resolve_paint alpha, a negated mix through a custom palette) to flashtex-vector-graphics's own real downstream types (Item::Rule/PathFill/PathStroke in a DisplayList) and its pdf::content_stream, asserting exact hand-derived PDF operator bytes (rg/G/k, ExtGState ca/CA) survive unchanged. Grepped every crates/*/Cargo.toml: only color-expressions and vector-graphics itself depend on flashtex-vector-graphics; crates/pdf (Paint{rgb:Option<[Decimal;3]>}) and crates/rendering-core (JSON paint{r,g,b,a}) have zero dependency edge and incompatible, non-convertible colour types, so the fixture stops at vector-graphics's own painter surface, per that crate's own 'proposal for later consumer integration, not wired into crates/pdf yet' doc comment, confirmed structurally not just quoted. Measured rev-3's prose gaps: base_palette() covers 9 of xcolor's 19 base named colours (black, blue, cyan, gray, green, magenta, red, white, yellow), missing 10 by name (brown, darkgray, lightgray, lime, olive, orange, pink, purple, teal, violet); the model:components literal accepts 3 of xcolor's 14 documented colour-model identifiers (gray, rgb, cmyk, all core), rejecting the other 11 by name (cmy, hsb, RGB, HTML, HSB, Gray, Hsb, tHsb, wave, named, ps), case-sensitive exact match. No grammar/semantics changed. 92 unit + 16 identity + 5 consumer-fixture + 1 doctest = 114 tests pass; cargo clippy --all-targets -- -D warnings clean.",
   "next_action": "Await Commander integration; no further work planned this revision",
   "eta_minutes": {
     "optimistic": 0,
@@ -19,17 +19,17 @@
     "evidence": "Shared Claude Max 20x subscription quota on mac-m5pro-dq222; no purchases or overages made or requested"
   },
   "reviewed_peers": {
-    "origin/main": "967703ebb4e8140feaf4db02d27cb3ac63c573f6"
+    "origin/main": "abbe88a5275b89d99357815846de3cbe76a91810"
   },
   "assignment_acknowledgements": {
     "FT-035": {
-      "acknowledged_utc": "2026-09-12T16:30:07Z",
-      "revision": 3,
-      "main_sha": "967703ebb4e8140feaf4db02d27cb3ac63c573f6",
-      "adaptation": "Interpreted 'adversarial bounds' as one exact-variant assert_eq! per hostile shape listed in the assignment (deep parens/negation/mix-chain at and past MAX_DEPTH, input at and past the 512-byte cap, percentage 0/100/101/huge-overflow, unterminated paren, empty component list, wrong component count, out-of-range components, lone separator, multi-byte-at-boundary), added in src/parser.rs and src/lib.rs. Interpreted 'exact identity regressions' as a dedicated tests/identity_regressions.rs pinning resolve(...) output to hand-derived literal Color constants, following rev2's discipline of never deriving expectations by calling this crate's own resolver (one dyadic-fraction correction made mid-work after 1.0-0.8 proved not exactly 0.2 in f64). Because 'invalid UTF-8' cannot reach this crate's public &str-only API without unsafe code, substituted the closest constructible adjacent attack (multi-byte characters sitting exactly on length/depth scanning boundaries) and said so explicitly rather than silently skipping the case. Wrote an explicit compatibility statement in coordination/daniel-color.md naming which xcolor behaviours are and are not implemented, since this crate has never been numerically compared against real xcolor/LaTeX output and does not claim to be."
+      "acknowledged_utc": "2026-09-12T16:54:40Z",
+      "revision": 4,
+      "main_sha": "abbe88a5275b89d99357815846de3cbe76a91810",
+      "adaptation": "Interpreted 'existing consumer integration fixture' literally: searched for a consumer that actually exists today rather than assuming crates/pdf or crates/rendering-core wire into this crate's dependency, found neither does (grep of every crates/*/Cargo.toml for flashtex-vector-graphics), and built the fixture against the boundary that does exist (vector-graphics's own Item/DisplayList/pdf::content_stream), stating the narrower-than-assumed stopping point explicitly in both the test file's module doc and coordination/daniel-color.md rather than silently building a fixture against a dependency that isn't there. Interpreted 'measured unsupported gaps' as replacing rev-3's prose xcolor-compatibility bullets with counted, named enumerations for the two genuinely countable items (base named-colour coverage and colour-model acceptance), cross-checked xcolor's base-colour list and colour-model classification (core/integer/decimal/pseudo, 14 total) against two independent primary-source fetches (xcolor.dtx via GitHub raw, corroborating tutorial pages) before counting rather than reciting from memory, and left the two non-enumerable rev-3 gaps (hue-aware negation, non-integer/>100 weights) restated at their existing precise scope since they are single behaviours, not sets. Kept rev-2/rev-3 fixtures, adversarial bounds, and identity regressions passing unchanged; added no new production code, only tests and documentation, since the objective was measurement and boundary-proof, not new capability."
     }
   },
-  "updated_utc": "2026-09-12T16:30:07Z",
-  "code_revision": "40240984a998d4e17ca0a6cf61b1d6c8f742523b",
-  "main_integrated_through": "967703ebb4e8140feaf4db02d27cb3ac63c573f6"
+  "updated_utc": "2026-09-12T16:54:40Z",
+  "code_revision": "d7f90563c9ed2536b21802cb706cb883ff58858f",
+  "main_integrated_through": "abbe88a5275b89d99357815846de3cbe76a91810"
 }

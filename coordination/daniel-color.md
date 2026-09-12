@@ -1,9 +1,135 @@
 # daniel-color handoff
 
-Agent / task / branch: daniel-color / FT-035 (revision 3) original bounded
+Agent / task / branch: daniel-color / FT-035 (revision 4) original bounded
 xcolor-style colour-expression parser / `agent/daniel-color/color-expressions`
 
 State: ready for integration (standalone crate; nothing else on main touched)
+
+## Revision 4: existing consumer integration fixture + measured unsupported gaps
+
+Revision 4's objective: build an integration fixture against a *real*
+already-wired downstream boundary (not a hypothetical one), and replace
+revision 3's prose "we don't implement X" compatibility statement with
+counted, named gaps for the two items that are actually countable (the
+named-colour table and the colour-model set).
+
+### 1. Existing consumer integration fixture — and exactly where it stops
+
+New `crates/color-expressions/tests/vector_graphics_consumer.rs` (5 tests).
+First, the boundary search: this crate already resolves into
+`flashtex_vector_graphics::Color`/`Paint`, so the question was who actually
+paints with those types. Grepping every `crates/*/Cargo.toml` for
+`flashtex-vector-graphics` finds exactly **two** dependents: this crate and
+`vector-graphics` itself. `crates/pdf` and `crates/rendering-core` — the two
+crates that actually write PDF bytes — have **zero** Cargo dependency edge
+to `flashtex-vector-graphics`, and each already has its own, different,
+non-interconvertible colour representation that nothing today converts
+to/from `flashtex_vector_graphics::Color`:
+
+- `crates/pdf/src/v2.rs`: `Paint { rgb: Option<[Decimal; 3]> }` — fixed-point
+  decimal, RGB-only, no gray/CMYK case.
+- `crates/rendering-core/src/pdf_stream.rs` and `.../src/mixed.rs`: a JSON
+  `paint` object shaped `{"r":_,"g":_,"b":_,"a":_}` under a hard-coded
+  `"color_space":"srgb"`.
+
+This matches what `crates/vector-graphics/src/lib.rs`'s own module doc
+already says: it is "a proposal for later consumer integration
+(rendering-v2, after ABI agreement) ... nothing here is wired into the
+compiler, the Mac shell, or `crates/pdf` yet" — confirmed structurally here,
+not just taken on faith from the comment.
+
+So the honest fixture is this: prove resolved `Color`/`Paint` values survive
+unchanged through `vector-graphics`'s own real painter-facing surface —
+`Item::Rule`/`PathFill`/`PathStroke` inside a `DisplayList`, fed to
+`pdf::content_stream` (the function that actually emits PDF content-stream
+operator bytes: `rg`/`RG`, `g`/`G`, `k`/`K`, `/GSn gs` with `ca`/`CA`). It
+cannot prove more than that — there is no code path today by which a value
+this crate resolves reaches an actual `crates/pdf`-written file or a
+`crates/rendering-core` display list, because neither crate consumes this
+dependency chain at all. That is the boundary's actual stopping point, not
+a simplification for this handoff.
+
+Five tests, every expected string/value hand-derived from `pdf.rs`'s own
+documented `num()` (3 decimals, trailing zeros trimmed) and flip
+(`bottom = H - y - height`) rules — never produced by calling this crate's
+own resolver:
+
+- `resolved_rgb_mix_survives_into_a_real_pdf_fill_operator`: `red!50!blue`
+  -> `Rgb(0.5,0,0.5)` -> `Rule` in a 100x100pt page -> `content_stream` ->
+  `"0.5 0 0.5 rg\n0 50 50 50 re f\n"`.
+- `resolved_cmyk_literal_survives_into_a_real_pdf_fill_operator`:
+  `cmyk:0.25,0.5,0.75,1` -> `"0.25 0.5 0.75 1 k\n10 40 30 40 re f\n"`.
+- `resolved_gray_literal_survives_into_a_real_pdf_stroke_operator`:
+  `gray:0.5` through a `PathStroke` (not a fill) -> the uppercase stroke
+  operator, `"0.5 G\n2 w\n10 190 m\n100 150 l\nS\n"`.
+- `resolved_alpha_survives_into_a_real_pdf_ext_g_state`: `resolve_paint`'s
+  straight alpha specifically (not the colour) -> a real `ExtGState{name:
+  "GS0", alpha: 0.3}` and its `"<< /Type /ExtGState /ca 0.3 /CA 0.3 >>"`
+  dictionary.
+- `resolved_negated_mix_through_custom_palette_survives_the_boundary`: a
+  composed expression (`-brandA!50!brandB`) through a non-base, custom
+  `Palette` -> `Rgb(0.125, 0.5, 0.875)` -> the same real fill path, proving
+  the boundary holds for composed expressions, not just single literals.
+
+### 2. Measured unsupported gaps
+
+Revision 3 listed these as prose ("xcolor's named colour tables", "HTML,
+RGB255 and hsb models") without counting them. Measured here instead, from
+xcolor's own documented base-colour list and colour-model classification
+(both independently confirmed from xcolor's manual/source, not guessed):
+
+**Named colours** — xcolor's base set (available with *no* package option
+loaded) is exactly 19 names: `black, blue, brown, cyan, darkgray, gray,
+green, lightgray, lime, magenta, olive, orange, pink, purple, red, teal,
+violet, white, yellow`. This crate's `base_palette()` has 9 entries.
+
+| Covered — 9 of 19 | Missing by name — 10 of 19 |
+|---|---|
+| black, blue, cyan, gray, green, magenta, red, white, yellow | brown, darkgray, lightgray, lime, olive, orange, pink, purple, teal, violet |
+
+So `base_palette()` covers **9/19 (47%)** of xcolor's base names and is
+missing the other 10, named above. (This compares only xcolor's *base* set
+with no options; the `dvipsnames`/`svgnames`/`x11names` option tables add
+several hundred further names this crate covers none of — a different,
+much larger gap, not counted into the 19/9/10 figures above so the
+comparison stays apples-to-apples.)
+
+**Colour models** — xcolor documents 14 named colour-model identifiers
+across four categories:
+
+| Category | Models | Count |
+|---|---|---|
+| Core (`0..1` float, used for calculation) | `gray, rgb, cmy, cmyk, hsb` | 5 |
+| Integer (finite-integer input, converted into a core model) | `RGB, HTML, HSB, Gray` | 4 |
+| Decimal (special-purpose float variants of `hsb`/spectral) | `Hsb, tHsb, wave` | 3 |
+| Pseudo (one-directional, "calculation-averse") | `named, ps` | 2 |
+| **Total** | | **14** |
+
+This crate's `model:components` literal syntax accepts exactly **3 of the
+14** — `gray`, `rgb`, `cmyk` — all three from the core category, matching
+exactly the three variants `flashtex_vector_graphics::Color` has. It
+rejects the other **11**, every one as `ColorExprError::UnsupportedColorModel`
+with no partial or approximate handling: `cmy`, `hsb` (core); `RGB`, `HTML`,
+`HSB`, `Gray` (integer); `Hsb`, `tHsb`, `wave` (decimal); `named`, `ps`
+(pseudo). Model matching is exact-string, case-sensitive: `RGB:255,0,0` and
+`Gray:8` are rejected as unrecognised names distinct from this crate's own
+lowercase `rgb`/`gray`, never treated as case-insensitive spellings of the
+accepted ones. (This crate's bare `Name(String)` atom — plain palette
+lookup like `red` — is a different mechanism from xcolor's `named`
+pseudo-model, xcolor's own colour-table-aliasing device; the two are not
+being conflated or claimed equivalent here.)
+
+**Everything else revision 3 listed** is one specific behaviour each, not a
+countable set, so it is restated at its exact existing scope rather than
+re-measured: hue-aware `-color` negation (this crate's negation is a plain
+per-channel `1 - x` complement, never HSB-based hue rotation — see
+`expr::negate`); non-integer or out-of-`0..=100` mix weights (`left!pct!right`
+requires `pct` to be an integer in `0..=100`, always `InvalidPercentage`
+otherwise — xcolor additionally accepts decimal weights and, via its
+extended syntax, weights outside `0..100`).
+
+No grammar or semantics changed this revision — only the new integration
+fixture, this measured write-up, and `coordination/agents/daniel-color.json`.
 
 ## Revision 3: adversarial bounds + exact identity regressions
 
@@ -110,6 +236,11 @@ exactly `0.2` in `f64`; see the comment on
 `identity_cmyk_literal_negated_by_channel`.
 
 ### Compatibility statement (explicit, per this revision's objective)
+
+**Superseded in part by revision 4 above**: the named-colour-table and
+colour-model bullets below are now measured with exact counts and names in
+the "Measured unsupported gaps" section under revision 4. Kept here
+unchanged for the historical record of what revision 3 actually said.
 
 This crate is not `xcolor` and this revision does not change that. Stated
 plainly, what is and is not implemented against real xcolor behaviour:
@@ -344,14 +475,11 @@ correct byte offset, never a panic — see `unicode_symbol_is_a_typed_error_not_
 
 - `cd crates/color-expressions && cargo build` — succeeds.
 - `cargo test` — 92 unit tests (`src/`) + 16 integration tests
-  (`tests/identity_regressions.rs`) + 1 doctest = 109, all pass. Up from 64
-  in revision 2 (63 unit + 1 doctest): revision 3 adds +29 unit tests in
-  `src/parser.rs`/`src/lib.rs` for adversarial bounds (boundary-exact and
-  one-past for every depth/length/percentage bound, unterminated
-  parenthesis, empty component lists, lone separators, out-of-range/
-  malformed components, multi-byte-at-boundary cases) plus the new
-  16-test `identity_regressions.rs` file pinning exact resolved `Color`
-  values for a representative expression set.
+  (`tests/identity_regressions.rs`) + 5 integration tests
+  (`tests/vector_graphics_consumer.rs`, new in revision 4) + 1 doctest =
+  114, all pass. Revision 3 was 109 (92 + 16 + 1 doctest); revision 4 adds
+  only the 5 consumer-fixture tests plus this measured write-up — no
+  grammar/semantics change.
 - `cargo clippy --all-targets -- -D warnings` — clean, zero warnings.
 - Toolchain: `cargo 1.98.1`, edition 2024, matching sibling crates
   (`flashtex-vector-graphics`, `flashtex-font-engine`, etc.).
@@ -395,4 +523,4 @@ racing the ack record.
   where a `Palette` gets populated from (e.g. document-level colour
   definitions) and calls `resolve`/`resolve_paint`.
 
-Updated: 2026-09-12 (revision 3)
+Updated: 2026-09-12 (revision 4)
