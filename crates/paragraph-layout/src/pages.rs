@@ -349,28 +349,26 @@ pub fn layout_pages(blocks: &[ParagraphBlock], params: &PageParams) -> Pages {
         if block.keep_with_next && !c.page_empty() {
             let mut needed = c.count_fitting(&block.lines, 0);
             let mut ok = needed == n;
-            if ok {
-                if let Some(next) = blocks.get(i + 1) {
-                    // Simulate placing this block, its skips, and the next block.
-                    let mut sim = Cursor {
-                        params,
-                        pages: vec![new_page(0, params)],
-                        overflow: Vec::new(),
-                        last_baseline: c.last_baseline,
-                        prev_depth: c.prev_depth,
-                        pending_skip: c.pending_skip,
-                        placed_on_page: 0,
-                    };
-                    for li in 0..n {
-                        sim.place(i, &block.lines, li);
-                    }
-                    sim.skip(&block.space_after);
-                    sim.skip(&next.space_before);
-                    sim.skip(&params.parskip);
-                    let want = params.club_lines.min(next.lines.lines.len());
-                    needed = sim.count_fitting(&next.lines, 0);
-                    ok = needed >= want;
+            if ok && let Some(next) = blocks.get(i + 1) {
+                // Simulate placing this block, its skips, and the next block.
+                let mut sim = Cursor {
+                    params,
+                    pages: vec![new_page(0, params)],
+                    overflow: Vec::new(),
+                    last_baseline: c.last_baseline,
+                    prev_depth: c.prev_depth,
+                    pending_skip: c.pending_skip,
+                    placed_on_page: 0,
+                };
+                for li in 0..n {
+                    sim.place(i, &block.lines, li);
                 }
+                sim.skip(&block.space_after);
+                sim.skip(&next.space_before);
+                sim.skip(&params.parskip);
+                let want = params.club_lines.min(next.lines.lines.len());
+                needed = sim.count_fitting(&next.lines, 0);
+                ok = needed >= want;
             }
             if !ok {
                 c.new_page();
@@ -429,7 +427,12 @@ impl Cursor<'_> {
     fn placed_on_page_for(&self, para: usize, li: usize) -> usize {
         self.pages
             .last()
-            .map(|p| p.lines.iter().filter(|l| l.paragraph == para && l.line < li).count())
+            .map(|p| {
+                p.lines
+                    .iter()
+                    .filter(|l| l.paragraph == para && l.line < li)
+                    .count()
+            })
             .unwrap_or(0)
     }
 }

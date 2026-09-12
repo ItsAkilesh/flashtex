@@ -154,7 +154,11 @@ fn paragraphs() -> Vec<Vec<Item>> {
     vec![
         build(&[Seg(Core14Times::BOLD, LARGE, "Wrapping and accents")]),
         build(&[
-            Seg(Core14Times::ROMAN, BODY, "A naïve reader at the café expects the layout to follow the source.\nThe "),
+            Seg(
+                Core14Times::ROMAN,
+                BODY,
+                "A naïve reader at the café expects the layout to follow the source.\nThe ",
+            ),
             Seg(Core14Times::BOLD, BODY, "bold phrase"),
             Seg(Core14Times::ROMAN, BODY, " and the "),
             Seg(Core14Times::ITALIC, BODY, "emphasised phrase"),
@@ -180,8 +184,13 @@ struct Placed {
 }
 
 fn run(algorithm: Algorithm) -> (Vec<Placed>, Vec<Lines>) {
-    let params = LineBreakParams::article_12pt_letter_1in().with_width(HSIZE).ragged();
-    let params = LineBreakParams { algorithm, ..params };
+    let params = LineBreakParams::article_12pt_letter_1in()
+        .with_width(HSIZE)
+        .ragged();
+    let params = LineBreakParams {
+        algorithm,
+        ..params
+    };
     let paras = paragraphs();
     let mut blocks = Vec::new();
     let mut all_lines = Vec::new();
@@ -196,13 +205,22 @@ fn run(algorithm: Algorithm) -> (Vec<Placed>, Vec<Lines>) {
     }
     let page_params = PageParams::article_12pt_letter_1in_tex_pt();
     let pages = layout_pages(&blocks, &page_params);
-    assert_eq!(pages.pages.len(), 1, "wrap-sample fits on one page in pdflatex");
+    assert_eq!(
+        pages.pages.len(),
+        1,
+        "wrap-sample fits on one page in pdflatex"
+    );
     assert!(pages.overflow.is_empty());
     let mut placed = Vec::new();
     let mut last_line: Option<f64> = None;
     for r in &pages.pages[0].runs {
         // Descent used by PDFKit's glyph box = font descender at the run size.
-        let desc = if r.font == Core14Times::BOLD.font_id() { 205.0 } else { 217.0 } * r.size / 1000.0;
+        let desc = if r.font == Core14Times::BOLD.font_id() {
+            205.0
+        } else {
+            217.0
+        } * r.size
+            / 1000.0;
         let line_start = last_line != Some(r.baseline_y);
         last_line = Some(r.baseline_y);
         placed.push(Placed {
@@ -223,10 +241,22 @@ struct Summary {
 }
 
 fn summarize(placed: &[Placed], verbose: bool) -> Summary {
-    assert_eq!(placed.len(), ORACLE.len(), "word count must equal the oracle's 102 words");
-    let mut s = Summary { line_start_matches: 0, dx_mean: 0.0, dx_max: 0.0, dy_mean: 0.0, dy_max: 0.0 };
+    assert_eq!(
+        placed.len(),
+        ORACLE.len(),
+        "word count must equal the oracle's 102 words"
+    );
+    let mut s = Summary {
+        line_start_matches: 0,
+        dx_mean: 0.0,
+        dx_max: 0.0,
+        dy_mean: 0.0,
+        dy_max: 0.0,
+    };
     if verbose {
-        println!("| word | oracle x | ours x | dx | oracle bottom | ours bottom | dy | line start o/u |");
+        println!(
+            "| word | oracle x | ours x | dx | oracle bottom | ours bottom | dy | line start o/u |"
+        );
         println!("|---|---|---|---|---|---|---|---|");
     }
     for (p, (word, ox, ob, ostart)) in placed.iter().zip(ORACLE) {

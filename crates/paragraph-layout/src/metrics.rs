@@ -38,6 +38,13 @@ impl FontId {
         FontId(out)
     }
 
+    /// Lower-case hex of the 32 bytes — the form rendering-core's
+    /// `FontResource.sha256` and rendering-v2 manifests use when the identity
+    /// is a real content hash.
+    pub fn to_hex(&self) -> String {
+        self.0.iter().map(|b| format!("{b:02x}")).collect()
+    }
+
     /// The identity as a lossy string (for diagnostics and golden tests).
     pub fn label(&self) -> String {
         let end = self.0.iter().position(|&b| b == 0).unwrap_or(32);

@@ -255,7 +255,12 @@ fn prefix_sums(items: &[Item]) -> Prefix {
     let n = items.len();
     let mut p = Prefix {
         width: vec![0.0; n + 1],
-        stretch: [vec![0.0; n + 1], vec![0.0; n + 1], vec![0.0; n + 1], vec![0.0; n + 1]],
+        stretch: [
+            vec![0.0; n + 1],
+            vec![0.0; n + 1],
+            vec![0.0; n + 1],
+            vec![0.0; n + 1],
+        ],
         shrink: vec![0.0; n + 1],
     };
     for (i, it) in items.iter().enumerate() {
@@ -273,8 +278,8 @@ fn prefix_sums(items: &[Item]) -> Prefix {
             Item::Penalty(_) => {}
         }
         p.width[i + 1] = p.width[i] + w;
-        for o in 0..4 {
-            p.stretch[o][i + 1] = p.stretch[o][i] + st[o];
+        for (o, s) in st.iter().enumerate() {
+            p.stretch[o][i + 1] = p.stretch[o][i] + s;
         }
         p.shrink[i + 1] = p.shrink[i] + sh;
     }
@@ -370,8 +375,8 @@ fn measure(
         natural += h.width;
     }
     let mut stretch = [0.0; 4];
-    for o in 0..4 {
-        stretch[o] = p.stretch[o][brk] - p.stretch[o][start];
+    for (o, s) in stretch.iter_mut().enumerate() {
+        *s = p.stretch[o][brk] - p.stretch[o][start];
     }
     stretch[order_idx(left.stretch_order)] += left.stretch;
     stretch[order_idx(right.stretch_order)] += right.stretch;
@@ -499,7 +504,12 @@ fn total_fit_pass(
                 // would empty the active list with nothing feasible found for
                 // this break, accept it anyway with zero ("artificial") demerits
                 // and let the line be overfull/underfull rather than fail.
-                if final_pass && deactivate && minimum == f64::INFINITY && k == n_active - 1 && survivors.is_empty() {
+                if final_pass
+                    && deactivate
+                    && minimum == f64::INFINITY
+                    && k == n_active - 1
+                    && survivors.is_empty()
+                {
                     artificial = true;
                 } else {
                     if !deactivate {
@@ -513,7 +523,11 @@ fn total_fit_pass(
                 0.0
             } else {
                 let mut d = params.line_penalty + m.badness;
-                d = if d.abs() >= 10_000.0 { 100_000_000.0 } else { d * d };
+                d = if d.abs() >= 10_000.0 {
+                    100_000_000.0
+                } else {
+                    d * d
+                };
                 if pen > 0 {
                     d += f64::from(pen) * f64::from(pen);
                 } else if pen > FORCED_BREAK {
@@ -550,26 +564,26 @@ fn total_fit_pass(
         active = survivors;
         if minimum < f64::INFINITY {
             for (c, cand) in best.iter().enumerate() {
-                if let Some((total, a, ratio, bad)) = *cand {
-                    if total <= minimum + params.adj_demerits {
-                        let fitness = match c {
-                            0 => Fitness::VeryLoose,
-                            1 => Fitness::Loose,
-                            2 => Fitness::Decent,
-                            _ => Fitness::Tight,
-                        };
-                        arena.push(Node {
-                            pos: Some(b),
-                            line: arena[a].line + 1,
-                            fitness,
-                            demerits: total,
-                            prev: Some(a),
-                            ratio,
-                            badness: bad,
-                            hyphenated: flagged,
-                        });
-                        active.push(arena.len() - 1);
-                    }
+                if let Some((total, a, ratio, bad)) = *cand
+                    && total <= minimum + params.adj_demerits
+                {
+                    let fitness = match c {
+                        0 => Fitness::VeryLoose,
+                        1 => Fitness::Loose,
+                        2 => Fitness::Decent,
+                        _ => Fitness::Tight,
+                    };
+                    arena.push(Node {
+                        pos: Some(b),
+                        line: arena[a].line + 1,
+                        fitness,
+                        demerits: total,
+                        prev: Some(a),
+                        ratio,
+                        badness: bad,
+                        hyphenated: flagged,
+                    });
+                    active.push(arena.len() - 1);
                 }
             }
         }
@@ -636,12 +650,10 @@ fn first_fit(items: &[Item], p: &Prefix, params: &LineBreakParams) -> Chosen {
             let m = measure(items, p, params, start, b, line_no, 0.0);
             let fits = m.natural <= m.target + 1e-9;
             if forced {
-                if !fits {
-                    if let Some(lb) = last_legal {
-                        // Overflow before a forced break: cut at the last legal
-                        // point first, then honour the forced break.
-                        cut(lb, &mut line_no, &mut breaks, &mut start);
-                    }
+                if !fits && let Some(lb) = last_legal {
+                    // Overflow before a forced break: cut at the last legal
+                    // point first, then honour the forced break.
+                    cut(lb, &mut line_no, &mut breaks, &mut start);
                 }
                 cut(b, &mut line_no, &mut breaks, &mut start);
                 last_legal = None;
@@ -689,7 +701,8 @@ fn push_break(breaks: &mut Vec<BreakPoint>, items: &[Item], at: usize, m: &Measu
 /// appended internally so no content is ever dropped.
 pub fn layout_paragraph(items: &[Item], params: &LineBreakParams) -> Lines {
     let owned;
-    let items: &[Item] = if matches!(items.last(), Some(Item::Penalty(p)) if p.value <= FORCED_BREAK) {
+    let items: &[Item] = if matches!(items.last(), Some(Item::Penalty(p)) if p.value <= FORCED_BREAK)
+    {
         items
     } else {
         let mut v = items.to_vec();
@@ -705,22 +718,38 @@ pub fn layout_paragraph(items: &[Item], params: &LineBreakParams) -> Lines {
         Algorithm::TotalFit => {
             let has_emergency = params.emergency_stretch > 0.0;
             let mut result = None;
-            if params.pretolerance >= 0.0 {
-                if let Some(c) = total_fit_pass(items, &p, params, params.pretolerance, false, 0.0, false) {
-                    result = Some((c, 1u8));
-                }
+            if params.pretolerance >= 0.0
+                && let Some(c) =
+                    total_fit_pass(items, &p, params, params.pretolerance, false, 0.0, false)
+            {
+                result = Some((c, 1u8));
             }
-            if result.is_none() {
-                if let Some(c) = total_fit_pass(items, &p, params, params.tolerance, true, 0.0, !has_emergency) {
-                    result = Some((c, 2u8));
-                }
+            if result.is_none()
+                && let Some(c) = total_fit_pass(
+                    items,
+                    &p,
+                    params,
+                    params.tolerance,
+                    true,
+                    0.0,
+                    !has_emergency,
+                )
+            {
+                result = Some((c, 2u8));
             }
-            if result.is_none() && has_emergency {
-                if let Some(c) =
-                    total_fit_pass(items, &p, params, params.tolerance, true, params.emergency_stretch, true)
-                {
-                    result = Some((c, 3u8));
-                }
+            if result.is_none()
+                && has_emergency
+                && let Some(c) = total_fit_pass(
+                    items,
+                    &p,
+                    params,
+                    params.tolerance,
+                    true,
+                    params.emergency_stretch,
+                    true,
+                )
+            {
+                result = Some((c, 3u8));
             }
             result.expect("final pass always yields a break sequence")
         }
@@ -730,7 +759,11 @@ pub fn layout_paragraph(items: &[Item], params: &LineBreakParams) -> Lines {
         1 => params.pretolerance,
         _ => params.tolerance,
     };
-    let extra = if pass == 3 { params.emergency_stretch } else { 0.0 };
+    let extra = if pass == 3 {
+        params.emergency_stretch
+    } else {
+        0.0
+    };
 
     // Position lines.
     let mut lines = Vec::with_capacity(chosen.breaks.len());
@@ -788,7 +821,14 @@ pub fn layout_paragraph(items: &[Item], params: &LineBreakParams) -> Lines {
     }
 }
 
-fn set_line(items: &[Item], params: &LineBreakParams, start: usize, brk: usize, index: usize, m: &Measure) -> Line {
+fn set_line(
+    items: &[Item],
+    params: &LineBreakParams,
+    start: usize,
+    brk: usize,
+    index: usize,
+    m: &Measure,
+) -> Line {
     let right = params.effective_right_skip();
     let r = if m.ratio < -1.0 { -1.0 } else { m.ratio };
     let set_glue = |g: &Glue| -> f64 {

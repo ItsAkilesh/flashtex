@@ -14,18 +14,34 @@
     "rust",
     "typesetting"
   ],
-  "code_revision": "9da7e48148d91872dc0514119e1a04568ebfcb51",
-  "eta_minutes": null,
+  "code_revision": "d9841ec461a53a7504f27167dd340be9611b154e",
+  "eta_minutes": {
+    "likely": 5,
+    "optimistic": 0,
+    "pessimistic": 15
+  },
   "machine": "mac-m1max-a",
   "main_integrated_through": "9da7e48148d91872dc0514119e1a04568ebfcb51",
-  "next_action": "Await and acknowledge assignment",
-  "reviewed_peers": {},
+  "next_action": "Await Commander review; available for follow-ups (pattern hyphenator, parshape, per-char heights).",
+  "reviewed_peers": {
+    "origin/agent/mac-font-engine/tex-fonts": {
+      "adaptation": "main: compiler layout.rs still greedy (1.2 spacing, 6pt gap) with de1020c metrics; paragraph-layout is the proposed replacement, no overlap; added FontId::to_hex for rendering-core hex sha256. FT-018: FontId [u8;32] matches content_sha256; added ShapedGlyph/GlyphRun::from_shaped; adapter documented, not stacked on the unmerged branch.",
+      "reviewed_utc": "2026-09-12T06:08:14Z",
+      "sha": "6a20750efd70e67fe061c321c2cb7ebc99c4b043"
+    },
+    "origin/main": {
+      "adaptation": "main: compiler layout.rs still greedy (1.2 spacing, 6pt gap) with de1020c metrics; paragraph-layout is the proposed replacement, no overlap; added FontId::to_hex for rendering-core hex sha256. FT-018: FontId [u8;32] matches content_sha256; added ShapedGlyph/GlyphRun::from_shaped; adapter documented, not stacked on the unmerged branch.",
+      "reviewed_utc": "2026-09-12T06:08:14Z",
+      "sha": "ae3f4de96282e7ea2c60aa268ed5f0b09c664e06"
+    }
+  },
   "schema_version": 1,
-  "state": "accepted",
-  "summary": "Available for Commander assignment",
+  "state": "ready_for_integration",
+  "summary": "Checkpoint 2: 24 tests (7 unit, 15 golden with hand-derived numbers, 2 pdflatex oracle: 102/102 line starts, mean|dx| 0.001 bp), README (API, TeX defaults, coordinates, limits, integration note), docs/comparison.md, GlyphRun::from_shaped for FT-018 output, clippy clean.",
   "tool": "Claude Code subagent (parent mac-claude-a)",
-  "updated_utc": "2026-09-12T05:38:12Z",
+  "updated_utc": "2026-09-12T06:08:14Z",
   "usage": {
-    "status": "unknown"
+    "evidence": "cargo test: 24 passed; cargo clippy --all-targets: 0 warnings",
+    "status": "Claude Max 20x shared quota; remaining unknown"
   }
 }

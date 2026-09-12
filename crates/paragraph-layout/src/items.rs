@@ -193,7 +193,13 @@ impl<'h> ParagraphBuilder<'h> {
 
     /// Appends text starting at source byte `source_start`. Whitespace becomes
     /// interword glue; each maximal non-space chunk is a word.
-    pub fn text(&mut self, font: &dyn FontMetricsSource, size: f64, text: &str, source_start: usize) {
+    pub fn text(
+        &mut self,
+        font: &dyn FontMetricsSource,
+        size: f64,
+        text: &str,
+        source_start: usize,
+    ) {
         let bytes = text.as_bytes();
         let mut i = 0;
         while i < bytes.len() {
@@ -215,15 +221,20 @@ impl<'h> ParagraphBuilder<'h> {
 
     /// Appends one word (no whitespace), applying kerns, ligatures and the
     /// hyphenator. `\-` markers are consulted through the hyphenator.
-    pub fn word(&mut self, font: &dyn FontMetricsSource, size: f64, word: &str, source_start: usize) {
+    pub fn word(
+        &mut self,
+        font: &dyn FontMetricsSource,
+        size: f64,
+        word: &str,
+        source_start: usize,
+    ) {
         let points = self.hyphenator.hyphenate(word);
         let mut frag_start = 0;
-        for (idx, p) in points.iter().enumerate() {
+        for p in &points {
             let frag = &word[frag_start..p.offset];
             self.fragment(font, size, frag, source_start + frag_start);
             // The discretionary: hyphen glyph shown only if the line breaks here.
-            let hyphen = shape_run(font, size, "-", source_start + p.offset, None);
-            let mut hyphen = hyphen;
+            let mut hyphen = shape_run(font, size, "-", source_start + p.offset);
             // The hyphen's cluster is the marker bytes (empty for automatic points).
             for g in &mut hyphen.glyphs {
                 g.cluster = source_start + p.offset..source_start + p.offset + p.marker_len;
@@ -241,26 +252,31 @@ impl<'h> ParagraphBuilder<'h> {
                 automatic: p.automatic,
             }));
             frag_start = p.offset + p.marker_len;
-            let _ = idx;
         }
         self.fragment(font, size, &word[frag_start..], source_start + frag_start);
     }
 
-    fn fragment(&mut self, font: &dyn FontMetricsSource, size: f64, frag: &str, source_start: usize) {
+    fn fragment(
+        &mut self,
+        font: &dyn FontMetricsSource,
+        size: f64,
+        frag: &str,
+        source_start: usize,
+    ) {
         if frag.is_empty() {
             return;
         }
         let first = frag.chars().next().unwrap();
         // Kern across a builder-call or discretionary boundary in the same font.
-        if let Some((prev, id)) = self.last_char {
-            if id == font.font_id() {
-                let k = font.kern(prev, first) * size / font.units_per_em();
-                if k != 0.0 {
-                    self.items.push(Item::kern(k));
-                }
+        if let Some((prev, id)) = self.last_char
+            && id == font.font_id()
+        {
+            let k = font.kern(prev, first) * size / font.units_per_em();
+            if k != 0.0 {
+                self.items.push(Item::kern(k));
             }
         }
-        let run = shape_run(font, size, frag, source_start, None);
+        let run = shape_run(font, size, frag, source_start);
         let last_char = frag.chars().last().unwrap();
         self.update_space_factor(frag);
         self.last_char = Some((last_char, font.font_id()));
@@ -281,14 +297,22 @@ impl<'h> ParagraphBuilder<'h> {
             if code == 0 {
                 continue;
             }
-            self.space_factor = if code > 1000 && self.space_factor < 1000 { 1000 } else { code };
+            self.space_factor = if code > 1000 && self.space_factor < 1000 {
+                1000
+            } else {
+                code
+            };
         }
     }
 
     /// Appends interword glue for `font`, honouring the current space factor.
     pub fn space(&mut self, font: &dyn FontMetricsSource, size: f64, source: Range<usize>) {
         let scale = size / font.units_per_em();
-        let f = if self.french_spacing { 1000 } else { self.space_factor };
+        let f = if self.french_spacing {
+            1000
+        } else {
+            self.space_factor
+        };
         let mut width = font.space() * scale;
         if f >= 2000 {
             width += font.extra_space() * scale;
@@ -345,34 +369,85 @@ impl<'h> ParagraphBuilder<'h> {
     }
 }
 
+/// One already-shaped glyph as produced by a font engine (FT-018
+/// `font_engine::shape::Glyph` + its cluster): original glyph id, advance in
+/// font units, and the source byte range of its cluster.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ShapedGlyph {
+    pub gid: u32,
+    /// Advance in font units, kerning already applied (pen movement).
+    pub advance_units: i64,
+    /// Source byte range of the cluster this glyph belongs to.
+    pub cluster: Range<usize>,
+}
+
+impl GlyphRun {
+    /// Builds a box from font-engine output without re-measuring anything:
+    /// `advance_units` are taken as the pen movement (kerning is already in
+    /// them, so [`Glyph::kern`] is 0), glyph ids and clusters pass through
+    /// unchanged, and the run's height/depth come from the engine's vertical
+    /// metrics. `font` is the engine's content-addressed identity.
+    pub fn from_shaped(
+        font: FontId,
+        size: f64,
+        units_per_em: f64,
+        ascender_units: f64,
+        descender_units: f64,
+        glyphs: &[ShapedGlyph],
+        source: Range<usize>,
+    ) -> GlyphRun {
+        let scale = size / units_per_em;
+        let mut width = 0.0;
+        let glyphs: Vec<Glyph> = glyphs
+            .iter()
+            .map(|g| {
+                let advance = g.advance_units as f64 * scale;
+                width += advance;
+                Glyph {
+                    gid: g.gid,
+                    advance,
+                    kern: 0.0,
+                    cluster: g.cluster.clone(),
+                }
+            })
+            .collect();
+        GlyphRun {
+            font,
+            size,
+            glyphs,
+            width,
+            height: ascender_units * scale,
+            depth: -descender_units * scale,
+            source,
+        }
+    }
+}
+
 /// Shapes `text` (no whitespace) into one run: ligatures, per-glyph advances,
-/// intra-run kerns and byte clusters. `first_kern_from` lets the caller kern
-/// the first glyph against a preceding character of the same font.
+/// intra-run kerns and byte clusters.
 pub fn shape_run(
     font: &dyn FontMetricsSource,
     size: f64,
     text: &str,
     source_start: usize,
-    first_kern_from: Option<char>,
 ) -> GlyphRun {
     let scale = size / font.units_per_em();
     // Collect (char, byte range) with ligature substitution.
     let mut chars: Vec<(char, Range<usize>)> = Vec::new();
     for (i, ch) in text.char_indices() {
         let r = source_start + i..source_start + i + ch.len_utf8();
-        if let Some((prev, prev_r)) = chars.last() {
-            if let Some(lig) = font.ligature(*prev, ch) {
-                let merged = prev_r.start..r.end;
-                chars.pop();
-                chars.push((lig.result, merged));
-                continue;
-            }
+        if let Some((prev, prev_r)) = chars.last()
+            && let Some(lig) = font.ligature(*prev, ch)
+        {
+            let merged = prev_r.start..r.end;
+            chars.pop();
+            chars.push((lig.result, merged));
+            continue;
         }
         chars.push((ch, r));
     }
     let mut glyphs = Vec::with_capacity(chars.len());
     let mut width = 0.0;
-    let _ = first_kern_from;
     for (idx, (ch, cluster)) in chars.iter().enumerate() {
         let advance = font.advance(*ch) * scale;
         let kern = match chars.get(idx + 1) {
@@ -407,11 +482,11 @@ mod tests {
     #[test]
     fn shaping_applies_kerns_and_ligatures() {
         // "AV" at 1000pt: A 722 + V 722 - 135 kern = 1309.
-        let run = shape_run(&Core14Times::ROMAN, 1000.0, "AV", 0, None);
+        let run = shape_run(&Core14Times::ROMAN, 1000.0, "AV", 0);
         assert_eq!(run.width, 1309.0);
         assert_eq!(run.glyphs[0].kern, -135.0);
         // "fi" collapses into one glyph of width 556 covering bytes 0..2.
-        let run = shape_run(&Core14Times::ROMAN, 1000.0, "fi", 10, None);
+        let run = shape_run(&Core14Times::ROMAN, 1000.0, "fi", 10);
         assert_eq!(run.glyphs.len(), 1);
         assert_eq!(run.glyphs[0].cluster, 10..12);
         assert_eq!(run.width, 556.0);

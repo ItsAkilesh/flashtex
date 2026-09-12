@@ -14,10 +14,13 @@ pub mod metrics;
 pub mod pages;
 
 pub use hyphenate::{ExplicitDiscretionary, HyphenationPoint, Hyphenator, NoHyphenation};
-pub use items::{FORCED_BREAK, Glue, GlueOrder, Glyph, GlyphRun, INFINITE_PENALTY, Item, Kern, ParagraphBuilder, Penalty};
+pub use items::{
+    FORCED_BREAK, Glue, GlueOrder, Glyph, GlyphRun, INFINITE_PENALTY, Item, Kern, ParagraphBuilder,
+    Penalty, ShapedGlyph, shape_run,
+};
 pub use linebreak::{
-    Algorithm, BreakMode, BreakPoint, Fitness, Line, LineBreakParams, Lines, Overfull, PositionedGlyph, PositionedRun,
-    Stats, layout_paragraph,
+    Algorithm, BreakMode, BreakPoint, Fitness, Line, LineBreakParams, Lines, Overfull,
+    PositionedGlyph, PositionedRun, Stats, layout_paragraph,
 };
 pub use metrics::{FontId, FontMetricsSource, Ligature};
 pub use pages::{Page, PageOverflow, PageParams, Pages, ParagraphBlock, PlacedLine, layout_pages};
