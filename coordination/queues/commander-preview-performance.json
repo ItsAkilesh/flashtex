@@ -1,37 +1,52 @@
 {
   "agent_id": "commander-preview-performance",
-  "next_index": 0,
+  "next_index": 1,
   "schema_version": 1,
   "steps": [
     {
-      "name": "Exact immutable-origin snapshot identity and bounded retention/cancellation tests",
-      "objective": "Exact immutable-origin snapshot identity and bounded retention/cancellation tests",
-      "owned_paths": [
-        "crates/preview-controller",
-        "crates/document-runtime"
-      ],
       "acceptance": [
-        "Meaningful tests and strict lint pass",
-        "Publish truthful execution provenance and exact tested SHA",
-        "No native integration or PDF parity claim without measured evidence"
+        "Preserve full/metadata and permanent-command semantics, exact source hashes and currentness",
+        "No runtime/producer/native changes or unrelated benchmark sweep",
+        "No optimization claim without concrete measured or ownership proof"
       ],
       "allocation_id": "hosted-openai-product",
-      "timebox_minutes": 30
+      "name": "Audit owned edit/index/submit source allocations for a concrete material opportunity",
+      "objective": "Audit owned edit/index/submit source allocations for a concrete material opportunity",
+      "owned_paths": [
+        "crates/preview-controller",
+        "crates/edit-ledger"
+      ],
+      "timebox_minutes": 40
     },
     {
-      "name": "Opt-in controller consumption and burst-progress evidence with strict default and source-action refusal",
-      "objective": "Opt-in controller consumption and burst-progress evidence with strict default and source-action refusal",
-      "owned_paths": [
-        "crates/preview-controller",
-        "crates/document-runtime"
-      ],
       "acceptance": [
-        "Meaningful tests and strict lint pass",
-        "Publish truthful execution provenance and exact tested SHA",
-        "No native integration or PDF parity claim without measured evidence"
+        "Preserve full/metadata and permanent-command semantics, exact source hashes and currentness",
+        "No runtime/producer/native changes or unrelated benchmark sweep",
+        "No optimization claim without concrete measured or ownership proof"
       ],
       "allocation_id": "hosted-openai-product",
-      "timebox_minutes": 30
+      "name": "Implement justified ownership improvement with exact durable/source/receipt equivalence gates",
+      "objective": "Implement justified ownership improvement with exact durable/source/receipt equivalence gates",
+      "owned_paths": [
+        "crates/preview-controller",
+        "crates/edit-ledger"
+      ],
+      "timebox_minutes": 40
+    },
+    {
+      "acceptance": [
+        "Preserve full/metadata and permanent-command semantics, exact source hashes and currentness",
+        "No runtime/producer/native changes or unrelated benchmark sweep",
+        "No optimization claim without concrete measured or ownership proof"
+      ],
+      "allocation_id": "hosted-openai-product",
+      "name": "Publish bounded evidence and hand off to successor; no native timing claim",
+      "objective": "Publish bounded evidence and hand off to successor; no native timing claim",
+      "owned_paths": [
+        "crates/preview-controller",
+        "crates/edit-ledger"
+      ],
+      "timebox_minutes": 40
     }
   ],
   "task_id": "FT-048"

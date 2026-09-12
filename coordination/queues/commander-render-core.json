@@ -1,36 +1,47 @@
 {
-  "schema_version": 1,
   "agent_id": "commander-render-core",
-  "task_id": "FT-023",
-  "next_index": 0,
+  "next_index": 1,
+  "schema_version": 1,
   "steps": [
     {
-      "name": "Exact PDF consumer integration: bounded adversarial and stale-identity acceptance tests",
-      "objective": "Exact PDF consumer integration: bounded adversarial and stale-identity acceptance tests",
+      "acceptance": [
+        "Meaningful bounded tests and strict lint pass; exact identities and typed unsupported outcomes preserved",
+        "No new worker/provider/native activation, copied reference implementation or unsupported parity claim"
+      ],
+      "allocation_id": "hosted-openai-product",
+      "name": "Review actual published native conformance8844fb59 and delta r4 0569b74 with explicit request-versus-current authority and allocation bounds",
+      "objective": "Review actual published native conformance8844fb59 and delta r4 0569b74 with explicit request-versus-current authority and allocation bounds",
       "owned_paths": [
         "crates/rendering-core"
       ],
-      "acceptance": [
-        "Meaningful tests and strict lint pass",
-        "Publish truthful execution provenance and exact tested SHA",
-        "No native integration or PDF parity claim without measured evidence"
-      ],
-      "allocation_id": "hosted-openai-product",
-      "timebox_minutes": 30
+      "timebox_minutes": 40
     },
     {
-      "name": "Exact PDF consumer integration: actual existing consumer fixture and exact measured limitations",
-      "objective": "Exact PDF consumer integration: actual existing consumer fixture and exact measured limitations",
+      "acceptance": [
+        "Meaningful bounded tests and strict lint pass; exact identities and typed unsupported outcomes preserved",
+        "No new worker/provider/native activation, copied reference implementation or unsupported parity claim"
+      ],
+      "allocation_id": "hosted-openai-product",
+      "name": "Verify original refusal scenarios and distinguish owner native tests from local source/vector review",
+      "objective": "Verify original refusal scenarios and distinguish owner native tests from local source/vector review",
       "owned_paths": [
         "crates/rendering-core"
       ],
+      "timebox_minutes": 40
+    },
+    {
       "acceptance": [
-        "Meaningful tests and strict lint pass",
-        "Publish truthful execution provenance and exact tested SHA",
-        "No native integration or PDF parity claim without measured evidence"
+        "Meaningful bounded tests and strict lint pass; exact identities and typed unsupported outcomes preserved",
+        "No new worker/provider/native activation, copied reference implementation or unsupported parity claim"
       ],
       "allocation_id": "hosted-openai-product",
-      "timebox_minutes": 30
+      "name": "Publish bounded adoption blockers or acceptance without wire activation or duplicated native edits",
+      "objective": "Publish bounded adoption blockers or acceptance without wire activation or duplicated native edits",
+      "owned_paths": [
+        "crates/rendering-core"
+      ],
+      "timebox_minutes": 40
     }
-  ]
+  ],
+  "task_id": "FT-023"
 }
