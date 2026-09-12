@@ -11,10 +11,12 @@
 //!   so no `f64` is involved in a coordinate.
 //! - Each `glyph_run` glyph carries its original glyph id and an absolute
 //!   origin; the origin is authoritative and advances are never added again
-//!   (rendering-v2 proposal). A glyph joins the previous glyph's string only
-//!   when its origin equals the previous origin plus the font's own `hmtx`
-//!   advance at that size (checked exactly in integer ticks); otherwise it
-//!   gets its own `Tm`. Either way the written position is the envelope's.
+//!   (rendering-v2 proposal). A glyph continues the previous glyph's `TJ`
+//!   segment when the gap between its origin and the natural advance is an
+//!   exactly representable adjustment in thousandths of text space (zero:
+//!   same string; non-zero: a `TJ` number, the pdfTeX shape); otherwise it
+//!   gets its own `Tm`. Either way the replayed position is the envelope's
+//!   origin exactly (`exact::glyph_positions`, tested).
 //! - Fonts are content-addressed (`font_id` = SHA-256 of the program) and
 //!   the envelope carries no path, so the bytes are resolved by hashing
 //!   candidate files (`--font-dir`, `FLASHTEX_FONT_DIRS`, `FLASHTEX_LM_DIR`,
@@ -90,8 +92,11 @@ pub struct V2Report {
     pub glyphs: usize,
     pub runs: usize,
     pub rules: usize,
-    /// Glyphs that continued the previous string (origin = previous + hmtx advance).
+    /// Glyphs that continued the previous string at the natural advance.
     pub joined_glyphs: usize,
+    /// Glyphs that continued the previous segment with an exact `TJ`
+    /// adjustment.
+    pub kerned_glyphs: usize,
     pub diagnostics: Vec<String>,
     pub notes: Vec<String>,
 }
@@ -341,7 +346,6 @@ pub fn from_v2(envelope: &str, options: &V2Options) -> Result<(ExactDocument, V2
         gid: u16,
         origin_x: i128,
         y_pdf: i128,
-        advance_x: i128,
         advance_y: i128,
     }
     enum Pending {
@@ -438,11 +442,13 @@ pub fn from_v2(envelope: &str, options: &V2Options) -> Result<(ExactDocument, V2
                             }
                         }
                         u.gids.insert(gid);
+                        // advance_x is validated but not used: absolute origins are
+                        // authoritative and advances must not be added again.
+                        let _ = advance_x;
                         glyphs.push(Glyph {
                             gid,
                             origin_x,
                             y_pdf: height - baseline_y,
-                            advance_x,
                             advance_y,
                         });
                         report.glyphs += 1;
@@ -615,23 +621,38 @@ pub fn from_v2(envelope: &str, options: &V2Options) -> Result<(ExactDocument, V2
             let mut placed = Vec::with_capacity(glyphs.len());
             let mut prev: Option<&Glyph> = None;
             for g in &glyphs {
-                let joins = prev.is_some_and(|p| {
-                    let hmtx = font.advance(p.gid) as i128;
-                    p.y_pdf == g.y_pdf
-                        && p.advance_y == 0
-                        && (p.origin_x + p.advance_x) == g.origin_x
-                        && p.advance_x * upem == hmtx * size_ticks
+                // Continue the previous glyph's segment when the gap between
+                // the envelope origin and the natural advance is an exactly
+                // representable TJ adjustment: with `w` the /W width
+                // (adv*1000/upem) the viewer places this glyph at
+                // prev + (w - n)/1000 * size, so n = w - 1000*delta/size.
+                let adjust: Option<Option<Decimal>> = prev.and_then(|p| {
+                    if p.y_pdf != g.y_pdf || p.advance_y != 0 {
+                        return None;
+                    }
+                    let adv = font.advance(p.gid) as i128;
+                    let delta = g.origin_x - p.origin_x;
+                    // n = (adv*1000*size - 1000*delta*upem) / (upem*size)
+                    let num = adv * 1000 * size_ticks - 1000 * delta * upem;
+                    let den = (upem * size_ticks) as u128;
+                    if num == 0 {
+                        return Some(None);
+                    }
+                    Decimal::from_ratio(num, den, 20).map(Some)
                 });
-                if joins {
-                    report.joined_glyphs += 1;
+                match adjust {
+                    Some(None) => report.joined_glyphs += 1,
+                    Some(Some(_)) => report.kerned_glyphs += 1,
+                    None => {}
                 }
                 placed.push(PlacedGlyph {
                     gid: g.gid,
-                    origin: if joins {
+                    origin: if adjust.is_some() {
                         None
                     } else {
                         Some((bp(g.origin_x)?, bp(g.y_pdf)?))
                     },
+                    adjust: adjust.flatten(),
                 });
                 prev = Some(g);
             }

@@ -132,14 +132,17 @@ fn sample_document() -> ExactDocument {
             PlacedGlyph {
                 gid: 1,
                 origin: Some((d("72"), d("700.12345"))),
+                adjust: None,
             },
             PlacedGlyph {
                 gid: 3,
                 origin: None,
+                adjust: None,
             },
             PlacedGlyph {
                 gid: 5,
                 origin: Some((d("100.5"), d("700.12345"))),
+                adjust: None,
             },
         ],
     };
@@ -622,6 +625,7 @@ fn latin_modern_cff_subset_preserves_gids_and_renders_in_coregraphics() {
                 } else {
                     None
                 },
+                adjust: None,
             })
             .collect(),
     };
