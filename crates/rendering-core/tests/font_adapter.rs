@@ -179,6 +179,15 @@ fn immutable_collection_matches_exact_descriptor_and_license_record() {
             .embedding_permission,
         EmbeddingPermission::Unknown
     );
+    let prepared =
+        flashtex_rendering_core::outlines::PreparedOutlines::new(&list, &capabilities, &collection)
+            .unwrap();
+    let glyph = prepared.glyph(1, 0, 0).unwrap();
+    assert_eq!(glyph.original_gid, 1);
+    assert_eq!(glyph.sources[0].end_byte, 10);
+    assert!(!glyph.hinting_applied);
+    assert!(glyph.commands.is_empty()); // Synthetic fixture has empty glyph outlines.
+    assert!(prepared.glyph(1, 0, 99).is_err());
     list.fonts[0].postscript_name = "different".into();
     assert!(validate_with_collection(&list, &capabilities, &documents, &collection).is_err());
 }
