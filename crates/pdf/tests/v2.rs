@@ -104,7 +104,10 @@ fn real_pipeline_envelope_exports_glyphs_by_original_gid_at_exact_positions() {
     assert_eq!(used.len(), 18);
     for (i, &gid) in std::iter::once(&0u16).chain(used.iter()).enumerate() {
         assert_eq!(sub.charset_entry(i as u16), Some(gid));
-        assert_eq!(sub.charstring(i as u16), src_cff.charstring(gid));
+        assert_eq!(
+            sub.expanded_charstring(i as u16).unwrap(),
+            src_cff.expanded_charstring(gid).unwrap()
+        );
     }
     let tu = exact::parse_to_unicode(cid.to_unicode_verbatim.as_deref().unwrap()).unwrap();
     assert_eq!(tu.get(&62).map(String::as_str), Some("H"));

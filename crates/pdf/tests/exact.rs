@@ -577,11 +577,33 @@ fn latin_modern_cff_subset_preserves_gids_and_renders_in_coregraphics() {
     assert_eq!(sub.glyph_count() as usize, set.len() + 1);
     for (new, &old) in std::iter::once(&0u16).chain(set.iter()).enumerate() {
         assert_eq!(sub.charset_entry(new as u16), Some(old));
-        assert_eq!(sub.charstring(new as u16), cff.charstring(old));
+        // Subroutines are pruned and renumbered, so the raw charstring may
+        // differ in its call operands; the inlined outline program may not.
+        assert_eq!(
+            sub.expanded_charstring(new as u16).unwrap(),
+            cff.expanded_charstring(old).unwrap(),
+            "glyph {old} outline identical after subsetting"
+        );
+    }
+    // Every retained glyph's raw charstring is identical to the source when
+    // the subroutine INDEXes are copied whole (the unpruned form).
+    let whole = cff
+        .subset_with(
+            &set,
+            flashtex_pdf::cff::SubsetOptions { prune_subrs: false },
+        )
+        .unwrap();
+    let whole_parsed = CffFont::parse(&whole.bytes).unwrap();
+    for (new, &old) in std::iter::once(&0u16).chain(set.iter()).enumerate() {
+        assert_eq!(whole_parsed.charstring(new as u16), cff.charstring(old));
     }
     assert!(
-        cid.program.bytes().len() < font.cff_table().unwrap().len() / 2,
-        "subset is materially smaller"
+        cid.program.bytes().len() < whole.bytes.len() / 2
+            && whole.bytes.len() < font.cff_table().unwrap().len() / 2,
+        "pruned {} < whole-subr {} < table {}",
+        cid.program.bytes().len(),
+        whole.bytes.len(),
+        font.cff_table().unwrap().len()
     );
     // Identity is bounded and deterministic.
     let (again, _, _) = ExactFont::cid_from_opentype(&font, &set, BTreeMap::new()).unwrap();
