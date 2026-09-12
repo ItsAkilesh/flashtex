@@ -184,6 +184,14 @@ mod tests {
         )
     }
     fn server(status: u16, body: String) -> (String, std::thread::JoinHandle<Value>) {
+        server_mode(status, body, false, Duration::ZERO)
+    }
+    fn server_mode(
+        status: u16,
+        body: String,
+        chunked: bool,
+        delay: Duration,
+    ) -> (String, std::thread::JoinHandle<Value>) {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let endpoint = format!("http://{}/", listener.local_addr().unwrap());
         let handle = std::thread::spawn(move || {
@@ -206,12 +214,12 @@ mod tests {
             assert!(length <= 256 * 1024);
             let mut bytes = vec![0; length];
             reader.read_exact(&mut bytes).unwrap();
-            write!(
-                socket,
-                "HTTP/1.1 {status} Test\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
-                body.len()
-            )
-            .unwrap();
+            std::thread::sleep(delay);
+            if chunked {
+                let _ = write!(socket, "HTTP/1.1 {status} Test\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n{:x}\r\n{body}\r\n0\r\n\r\n", body.len());
+            } else {
+                let _ = write!(socket, "HTTP/1.1 {status} Test\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len());
+            }
             serde_json::from_slice(&bytes).unwrap()
         });
         (endpoint, handle)
@@ -270,5 +278,47 @@ mod tests {
         }
         assert!(GrokClient::new("secret\n".into(), "test".into(), Duration::from_secs(1)).is_err());
         assert!(GrokClient::new("secret".into(), "".into(), Duration::from_secs(1)).is_err());
+    }
+    #[test]
+    fn delayed_chunked_and_cancelled_responses_are_bounded() {
+        let (bound, docs) = context();
+        let proposal =
+            json!({"context_id":bound.payload().context_id,"explanation":"Explain","edits":[]});
+        let response = json!({"status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":proposal.to_string()}]}]}).to_string();
+        let client =
+            GrokClient::new("dummy".into(), "test".into(), Duration::from_millis(50)).unwrap();
+        let (endpoint, handle) =
+            server_mode(200, response.clone(), false, Duration::from_millis(200));
+        let start = std::time::Instant::now();
+        let error = client.request_at(&endpoint, &bound, &docs).err().unwrap();
+        assert!(error.contains("timeout"), "{error}");
+        assert!(start.elapsed() < Duration::from_secs(1));
+        handle.join().unwrap();
+        let client =
+            GrokClient::new("dummy".into(), "test".into(), Duration::from_secs(2)).unwrap();
+        let (endpoint, handle) = server_mode(200, "x".repeat(512 * 1024 + 1), true, Duration::ZERO);
+        assert!(client
+            .request_at(&endpoint, &bound, &docs)
+            .err()
+            .unwrap()
+            .contains("exceeds"));
+        handle.join().unwrap();
+        let mut registry = crate::ExplanationRegistry::new("cancel_http".into(), 1, 2).unwrap();
+        let (flight_context, _) = context();
+        let id = registry
+            .submit(flight_context, &docs, Duration::from_secs(2))
+            .unwrap();
+        let context_id = bound.payload().context_id.clone();
+        let (endpoint, handle) = server_mode(200, response, true, Duration::from_millis(20));
+        let worker =
+            std::thread::spawn(move || client.request_at(&endpoint, &bound, &docs).unwrap());
+        assert!(registry.cancel(&id));
+        let reply = worker.join().unwrap();
+        handle.join().unwrap();
+        let (_, current) = context();
+        assert!(registry
+            .receive(&id, &context_id, reply.untrusted_bytes(), &current)
+            .is_err());
+        assert_eq!(registry.state(&id), Some(crate::FlightState::Cancelled));
     }
 }

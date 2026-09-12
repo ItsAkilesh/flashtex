@@ -14,23 +14,23 @@
     "rust",
     "diagnostic-context"
   ],
-  "code_revision": "7ebd242d100256f5de1749c1a058d1c586f17e43",
+  "code_revision": "45e74852045f8cde6d6a875224dfc8a7e8eed54b",
   "eta_minutes": {
-    "likely": 20,
+    "likely": 25,
     "optimistic": 10,
-    "pessimistic": 35
+    "pessimistic": 45
   },
   "machine": "linux-primary",
   "main_integrated_through": "94c76ee510e7bf043ef6e9a02ffc287581dd921e",
-  "next_action": "Add delayed/chunked HTTP and cancellation-flight tests; native consumption remains unimplemented.",
+  "next_action": "Commander to assign native consumer boundary or typed provider workflow integration; transport checkpoint ready.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "Optional Grok Responses text transport with explicit caller key/model, bounded HTTP, no retries/proxies/redirects and untrusted reply validation.16 tests incl local HTTP and real compiler; strict all-feature clippy pass.",
+  "summary": "Delayed/chunked Grok HTTP tests pass; timeout bounds, size bounds without Content-Length and late successful reply rejected after registry cancellation.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T08:02:50Z",
+  "updated_utc": "2026-09-12T08:04:55Z",
   "usage": {
-    "evidence": "cargo test features grok include-ignored16passed; all-features all-targets clippy passed",
-    "status": "Hosted OpenAI; local dummy HTTP only; no paid inference."
+    "evidence": "3 Grok tests passed; strict all-targets all-features clippy passed; previous14 core tests unchanged",
+    "status": "Hosted OpenAI and local dummy HTTP only; no paid calls."
   }
 }

@@ -160,3 +160,8 @@ Contract references checked September12,2026:
 [xAI Responses](https://docs.x.ai/developers/rest-api-reference/inference/responses),
 [structured outputs](https://docs.x.ai/developers/model-capabilities/text/structured-outputs).
 Local HTTP fixtures use dummy credentials and are not evidence of live Grok success.
+
+Additional local HTTP coverage exercises delayed responses, chunked bodies without
+Content-Length, oversized chunked output, and a successful reply arriving after
+registry cancellation. These validate timeout/size/lifecycle behavior without
+calling xAI; they do not prove server-side cancellation or live model accuracy.
