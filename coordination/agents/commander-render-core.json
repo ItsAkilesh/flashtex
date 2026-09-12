@@ -14,23 +14,23 @@
     "rust",
     "rendering"
   ],
-  "code_revision": "bba26e82de5a55dc78a45870d0d73bec6ffadea8",
+  "code_revision": "6e8ef9d2afb8b7fc70472ddaa4892b99c6b03880",
   "eta_minutes": {
     "likely": 3,
     "optimistic": 1,
     "pessimistic": 5
   },
   "machine": "linux-primary",
-  "main_integrated_through": "bba26e82de5a55dc78a45870d0d73bec6ffadea8",
-  "next_action": "Commander/native owners resolve delta blockers and D4/D5 scoped contract wording; await bounded next task.",
+  "main_integrated_through": "6e8ef9d2afb8b7fc70472ddaa4892b99c6b03880",
+  "next_action": "Commander handles scoped issue closure; await next bounded consumer task.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "Published exact delta r2 blockers and reviewed native3162b89 actual helper exchange: five candidates/no errors; GH31 ancestry and same-byte CGFont load verified by source.",
+  "summary": "GH31 closure recommended for original mutation bug: current native23596ffb retains exact fix/tests, owner52/52 zero-skip report distinguished from source verification.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T14:49:39Z",
+  "updated_utc": "2026-09-12T14:52:25Z",
   "usage": {
-    "evidence": "crates/rendering-core/docs/handoffs/native-evidence/helper-3162b89/review.json",
-    "status": "Existing OpenAI only; no builds/native runs/providers/descendants."
+    "evidence": "crates/rendering-core/docs/handoffs/native-evidence/helper-3162b89/README.md",
+    "status": "Existing OpenAI only; read-only Git/GH evidence, no native rerun/build/provider/descendant."
   }
 }

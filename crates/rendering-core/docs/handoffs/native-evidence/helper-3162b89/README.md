@@ -13,3 +13,17 @@ Producer `9aaec57a` has an explicit `core14-afm` path with byte_length=0, no fil
 Recovery remains route-specific: strict Rust helper pairing gates v1 diagnostic codes/severity, while searchable CFF export checks v2 error severity. Native V2Loader decodes/prepares frames and the view displays their diagnostics; that source path is not the strict Rust diagnostic policy. Do not standardize the policies merely by documenting them as equivalent. Owner-native recovery acceptance requires its exact route and fixtures.
 
 The exchange does not prove bundle-only font discovery or override precedence, large-frame recovery, broad reference fidelity, GUI export safety or sub-200ms responsiveness. Those remain separate evidence scopes. The parent's reported 8 MiB versus 16 MiB frame failure and larger-frame paint rejection are retained limitations, not resolved by this small successful exchange.
+
+## GH31 closure recommendation
+
+The original same-path mutation before first resolve is addressed. Freshly fetched native parent `23596ffb8d967ced6c09e4a9aa5e0e8c0eb78b2e` contains fix `a9b55af746a829ae8158dac3fcfc9c09e811150b`; its `GlyphRunRenderer.swift` and `V2FontStoreIdentityTests.swift` are unchanged from the reviewed `3162b89`.
+
+Exact tests in `V2FontStoreIdentityTests`:
+
+- `testChangedBytesAfterDiscoveryAreRefusedBeforeCGFontConstruction`: appending a zero byte still produces a CoreGraphics-loadable font with unchanged glyph count/UPEM/PostScript name; resolution refuses both lookup hash spellings, then restoring original bytes resolves, proving refused bytes were not cached.
+- `testVerifiedCGFontStaysImmutableAfterTheFileChanges`: verified cached CGFont remains the same object after mutation, including the historical lookup alias.
+- `testUnknownHashAndLengthMismatchStayRefused`: retains explicit unavailable/mismatch failures.
+
+Owner issue 31 comment `5646532909` and pinned `coordination/mac-helper-display.md` report these three tests within the filtered **52/52, zero skips** Mac run on the applied route tree (load 6–8). These execution results are owner-reported; no standalone raw XCTest transcript was located in this bounded review and no test was rerun here. Test source SHA-256 is `2a3d5a853f47fa00ca80892bde96eb8a42c67cc61ecb21c68b1bedc68579435e`; actual vendored LM10 fixture SHA is `1aa18cfefa58132c52ce5de70db1fd1154201c19cd2b2cdaffba4906a33e6852`. Both were independently checked from the current parent Git tree. The test can skip if its asset is absent, but the recorded run reports zero skips and that exact asset is present.
+
+Recommend Commander closure for the original mutation bug. This does not close unrelated performance or raw-versus-salted protocol policy work, certify all native acceptance, or claim that the native store removed its historical alias. The store's remaining alias does not bypass authentication of the actual bytes used to construct CGFont.
