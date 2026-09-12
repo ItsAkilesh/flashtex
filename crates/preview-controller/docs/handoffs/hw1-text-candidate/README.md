@@ -29,3 +29,15 @@ build is included here. Existing text_glyph uses a per-character path rather tha
 a complete shaped text run. Compiler tests for spaces/braces do not establish
 producer fidelity for those inputs. Before adoption the producer needs correct
 space/encoding support or explicit unsupported diagnostics for unverified inputs.
+
+## Source-navigation follow-up
+
+Two added tests pass: macro-generated text points exactly to its invocation, and
+text in an included chapter keeps exact chapter byte spans through entry edits,
+UTF-8 chapter edits, document-order reversal and content changes. Every project
+step compares complete incremental pages and diagnostics with a clean compile.
+Six current math_text tests plus 97 other tests give 103 distinct passing tests;
+this is not the sum of repeated runs. New tests and strict lint pass; the updated
+cumulative patch applies cleanly and matches all ten current source hashes.
+Only test code changed after the original binary/HW1 capture, which remains
+identified by its preserved executable hash. Native click handling is untested.

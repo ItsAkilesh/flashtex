@@ -456,7 +456,7 @@
                              denominator,
 --- /dev/null
 +++ b/crates/compiler/tests/math_text.rs
-@@ -0,0 +1,102 @@
+@@ -0,0 +1,169 @@
 +use flashtex_compiler::{
 +    incremental::{compile_full, LayoutConstraints, Session},
 +    layout::Font,
@@ -557,5 +557,72 @@
 +            assert_eq!(item.font, Font::TimesRoman);
 +            assert!(item.font_size_pt < 12.0);
 +        }
++    }
++}
++
++#[test]
++fn macro_text_points_to_invocation_not_definition() {
++    let source = r"\newcommand{\labeltext}{\text{and}}é $x_{\labeltext}$";
++    let output = compile_full(source, LayoutConstraints::default());
++    assert!(output.diagnostics.is_empty());
++    let item = output
++        .pages
++        .iter()
++        .flat_map(|p| &p.items)
++        .find(|i| i.text == "and")
++        .unwrap();
++    let start = source.rfind(r"\labeltext").unwrap();
++    assert_eq!(
++        item.span,
++        flashtex_compiler::Span::new(start, start + r"\labeltext".len())
++    );
++}
++
++#[test]
++fn multi_document_text_navigation_tracks_edits_and_document_order() {
++    use flashtex_compiler::{incremental::compile_full_project, parser::SourceDocument};
++    let mut session = Session::new();
++    for (entry, chapter, reverse) in [
++        (r"\input{chapter}", r"$x_{\text{and}}$", false),
++        (r"é \input{chapter}", r"$x_{\text{and}}$", false),
++        (r"é \input{chapter}", r"é $x_{\text{and}}$", false),
++        (r"é \input{chapter}", r"é $x_{\text{and}}$", true),
++        (r"é \input{chapter}", r"é $x_{\text{a b}}$", true),
++    ] {
++        let mut documents = vec![
++            SourceDocument {
++                path: "main.tex",
++                text: entry,
++            },
++            SourceDocument {
++                path: "chapter.tex",
++                text: chapter,
++            },
++        ];
++        if reverse {
++            documents.reverse();
++        }
++        let clean = compile_full_project(&documents, "main.tex", LayoutConstraints::default());
++        let incremental =
++            session.compile_project(&documents, "main.tex", LayoutConstraints::default());
++        assert_eq!(clean.pages, incremental.output.pages);
++        assert_eq!(clean.diagnostics, incremental.output.diagnostics);
++        assert!(clean.diagnostics.is_empty(), "{:?}", clean.diagnostics);
++        let item = clean
++            .pages
++            .iter()
++            .flat_map(|p| &p.items)
++            .find(|i| i.text == "and" || i.text == "a b")
++            .unwrap();
++        assert_eq!(documents[item.span.document.0].path, "chapter.tex");
++        let raw = &chapter[item.span.start..item.span.end];
++        assert_eq!(
++            raw,
++            if item.text == "and" {
++                r"\text{and}"
++            } else {
++                r"\text{a b}"
++            }
++        );
 +    }
 +}
