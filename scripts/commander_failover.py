@@ -3,6 +3,7 @@
 
 A terminal receipt is evidence for a separately reviewed, serialized authority
 claim; this program never launches a model, kills the Commander, or claims main.
+An explicitly configured dispatcher can stop only after exact process death.
 Linux process identity is PID + boot ID + start ticks. Quota with a live process
 remains blocked. The actual hosted quota-to-terminal adapter is not implemented.
 """
@@ -12,6 +13,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import tempfile
 import time
 
 
@@ -113,6 +115,24 @@ def evaluate(config, authority, observed, services, journals, processes):
             'limitations': 'Local observation only. Revalidate authority and independently review witness before a non-force claim. Live-process quota exhaustion is not terminal evidence.'}
 
 
+def quiesce_after_terminal(config, authority, observed, stop):
+    """Stop only the explicitly named dispatcher after exact process death.
+
+    Does not stop the hosting process or arbitrary jobs; remaining jobs/journals
+    keep the witness blocked. A changed authority prevents this old monitor acting.
+    """
+    if (config.get('allow_dispatcher_stop_after_process_exit') is not True
+            or authority.get('commander_id') != config['predecessor_id']
+            or authority.get('authority_state') != 'active'
+            or not terminal(config['process'], observed)):
+        return False
+    for unit in config['publisher_services']:
+        if unit != 'flashtex-dispatch.service':
+            raise ValueError('unreviewed service stop target')
+        stop(unit)
+    return True
+
+
 def inspect(config, root):
     def git(*args):
         return subprocess.check_output(['git', *args], cwd=root, text=True, timeout=30).strip()
@@ -120,6 +140,10 @@ def inspect(config, root):
     common = Path(git('rev-parse', '--git-common-dir'))
     if not common.is_absolute():
         common = (root / common).resolve()
+    observed = process_identity(config['process']['pid'])
+    quiesce_after_terminal(config, authority, observed,
+        lambda unit: subprocess.run(['systemctl', '--user', 'stop', unit],
+                                    capture_output=True, timeout=15, check=True))
     services = []
     for unit in config['publisher_services']:
         p = subprocess.run(['systemctl', '--user', 'show', unit, '-p', 'ActiveState', '-p', 'MainPID'],
@@ -130,6 +154,56 @@ def inspect(config, root):
                       journal_blockers(common), publication_processes())
     result['observed_main_sha'] = git('rev-parse', 'origin/main')
     return result
+
+
+def publish_terminal_receipt(config, result, root, journal):
+    """One deterministic witness-branch commit, never an authority/main write.
+
+    A pending journal is never retried automatically, including uncertain push.
+    The designated successor must inspect and reconcile that exact branch.
+    """
+    if result.get('state') != 'terminal_quiescent_observed':
+        return None
+    if journal.exists():
+        old = json.loads(journal.read_text())
+        if old.get('state') == 'published':
+            return old.get('commit')
+        raise RuntimeError('terminal receipt publication pending; reconcile instead of retrying')
+    branch = config['witness_branch']
+    if not branch.startswith('agent/orchestrator-witness/') or '..' in branch:
+        raise ValueError('invalid witness branch')
+    def git(*args, cwd=root):
+        return subprocess.check_output(['git', *args], cwd=cwd, text=True, stderr=subprocess.PIPE, timeout=45).strip()
+    git('check-ref-format', 'refs/heads/' + branch)
+    git('fetch', 'origin')
+    base = git('rev-parse', 'origin/main')
+    if base != result['observed_main_sha']:
+        raise RuntimeError('main changed since terminal observation; reobserve before receipt')
+    authority = json.loads(git('show', base + ':coordination/authority.json'))
+    if authority.get('commander_id') != config['predecessor_id'] or authority.get('authority_state') != 'active':
+        raise RuntimeError('authority changed before witness publication')
+    record = {'state': 'pending', 'branch': branch, 'base': base}
+    journal.write_text(json.dumps(record) + '\n')
+    folder = Path(tempfile.mkdtemp(prefix='flashtex-terminal-witness-'))
+    git('worktree', 'add', '--detach', str(folder), base)
+    relative = 'coordination/failover/witness-linux.json'
+    target = folder / relative
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(json.dumps(result, indent=2) + '\n')
+    git('add', '--', relative, cwd=folder)
+    body = ('Observe terminal Commander and stopped publication jobs\n\n'
+            'Implementation-Agent: Codex Astra\n'
+            'Commit-Executor: commander_failover.py deterministic local witness\n'
+            'Co-authored-by: ' + config['witness_coauthor'])
+    git('-c', 'user.name=FlashTeX Witness', '-c', 'user.email=witness@flashtex.invalid',
+        'commit', '-m', body, cwd=folder)
+    commit = git('rev-parse', 'HEAD', cwd=folder)
+    record.update(commit=commit, worktree=str(folder))
+    journal.write_text(json.dumps(record) + '\n')
+    git('push', 'origin', 'HEAD:refs/heads/' + branch, cwd=folder)
+    record['state'] = 'published'
+    journal.write_text(json.dumps(record) + '\n')
+    return commit
 
 
 def main():
@@ -146,6 +220,11 @@ def main():
     while True:
         try:
             result = inspect(config, args.repo)
+            if config.get('publish_terminal_receipt') is True:
+                receipt = publish_terminal_receipt(config, result, args.repo,
+                                                   args.output.with_suffix('.publication.json'))
+                if receipt:
+                    result['witness_commit'] = receipt
         except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as exc:
             result = {'state': 'blocked', 'claim_authorized': False, 'error': type(exc).__name__}
         args.output.parent.mkdir(parents=True, exist_ok=True)

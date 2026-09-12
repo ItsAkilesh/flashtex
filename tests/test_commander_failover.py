@@ -45,3 +45,74 @@ class FailoverTests(unittest.TestCase):
             config['process'][key] = value
             with self.assertRaises(ValueError):
                 f.evaluate(config, self.authority, None, self.services, [], [])
+
+    def test_dispatcher_stop_requires_terminal_identity_and_current_authority(self):
+        config = dict(self.config, publisher_services=['flashtex-dispatch.service'],
+                      allow_dispatcher_stop_after_process_exit=True)
+        calls = []
+        self.assertFalse(f.quiesce_after_terminal(config, self.authority, dict(self.pin, state='S'), calls.append))
+        self.assertEqual(calls, [])
+        self.assertFalse(f.quiesce_after_terminal(config, {'commander_id': 'other'}, None, calls.append))
+        self.assertEqual(calls, [])
+        self.assertTrue(f.quiesce_after_terminal(config, self.authority, None, calls.append))
+        self.assertEqual(calls, ['flashtex-dispatch.service'])
+
+    def test_unreviewed_service_cannot_be_stopped(self):
+        config = dict(self.config, publisher_services=['unrelated.service'],
+                      allow_dispatcher_stop_after_process_exit=True)
+        with self.assertRaises(ValueError):
+            f.quiesce_after_terminal(config, self.authority, None, lambda _: self.fail('must not stop'))
+
+    def test_active_witness_never_attempts_publication(self):
+        self.assertIsNone(f.publish_terminal_receipt({}, {'state': 'blocked'}, Path('/missing'), Path('/missing/journal')))
+
+    def test_pending_receipt_never_replays_an_uncertain_push(self):
+        import tempfile
+        import json
+        with tempfile.TemporaryDirectory() as folder:
+            journal = Path(folder) / 'pending.json'
+            journal.write_text(json.dumps({'state': 'pending'}))
+            with self.assertRaisesRegex(RuntimeError, 'reconcile'):
+                f.publish_terminal_receipt({}, {'state': 'terminal_quiescent_observed'}, Path(folder), journal)
+
+    def test_published_receipt_is_idempotent_without_git(self):
+        import tempfile
+        import json
+        with tempfile.TemporaryDirectory() as folder:
+            journal = Path(folder) / 'done.json'
+            journal.write_text(json.dumps({'state': 'published', 'commit': 'abc'}))
+            self.assertEqual(f.publish_terminal_receipt({}, {'state': 'terminal_quiescent_observed'}, Path(folder), journal), 'abc')
+
+    def test_terminal_receipt_pushes_only_its_dedicated_branch(self):
+        import tempfile
+        import json
+        import subprocess
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            remote, repo = root / 'remote.git', root / 'repo'
+            def git(*args, cwd=root):
+                return subprocess.check_output(['git', *args], cwd=cwd, text=True, stderr=subprocess.PIPE).strip()
+            git('init', '--bare', str(remote))
+            git('clone', str(remote), str(repo))
+            git('config', 'user.name', 'Fixture', cwd=repo)
+            git('config', 'user.email', 'fixture@example.invalid', cwd=repo)
+            (repo / 'coordination').mkdir()
+            (repo / 'coordination/authority.json').write_text(json.dumps(self.authority))
+            git('add', '.', cwd=repo)
+            git('commit', '-m', 'fixture', cwd=repo)
+            git('push', 'origin', 'HEAD:main', cwd=repo)
+            git('fetch', 'origin', cwd=repo)
+            base = git('rev-parse', 'origin/main', cwd=repo)
+            config = dict(self.config, witness_branch='agent/orchestrator-witness/test',
+                          witness_coauthor='Fixture <fixture@example.invalid>')
+            result = f.evaluate(config, self.authority, None, self.services, [], [])
+            result['observed_main_sha'] = base
+            journal = root / 'publication.json'
+            commit = f.publish_terminal_receipt(config, result, repo, journal)
+            self.assertEqual(git('rev-parse', 'refs/heads/main', cwd=remote), base)
+            self.assertEqual(git('rev-parse', 'refs/heads/agent/orchestrator-witness/test', cwd=remote), commit)
+            self.assertEqual(git('diff-tree', '--no-commit-id', '--name-only', '-r', commit, cwd=repo),
+                             'coordination/failover/witness-linux.json')
+            self.assertEqual(f.publish_terminal_receipt(config, result, repo, journal), commit)
+            worktree = json.loads(journal.read_text())['worktree']
+            git('worktree', 'remove', worktree, cwd=repo)
