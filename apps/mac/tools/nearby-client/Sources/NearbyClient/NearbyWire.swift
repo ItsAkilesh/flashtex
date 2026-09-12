@@ -150,6 +150,10 @@ public enum NearbyWire {
     /// Backpressure (proposal §4 receive caps): the session stays open; wait
     /// for outstanding acknowledgements, then retry the *same* capture.
     public static let backpressureErrorCodes: Set<String> = ["too_many_in_flight", "inbox_full"]
+    /// The Mac's user set this companion to view-only (pairs.json v3
+    /// `permission`): session stays open, pairing intact, no re-pair and no
+    /// new capture — the same capture is accepted once the permission changes.
+    public static let permissionErrorCodes: Set<String> = ["capture_not_permitted"]
     /// The Mac refused this capture's content or identity; retrying the same
     /// bytes can only repeat the refusal. Build a new capture (new id, valid
     /// image, current destination) instead. The first line is the listener's

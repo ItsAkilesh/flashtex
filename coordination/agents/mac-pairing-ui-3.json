@@ -1,0 +1,38 @@
+{
+  "agent_id": "mac-pairing-ui-3",
+  "allocation_id": "claude-mac20x-pairing-ui-3",
+  "assignment_acknowledgements": {},
+  "branch": "agent/mac-pairing-ui-3/qr-permissions",
+  "capabilities": [
+    "swift",
+    "appkit",
+    "swiftui",
+    "coreimage",
+    "network-framework"
+  ],
+  "code_revision": "755b980d",
+  "eta_minutes": {
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 0
+  },
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "486b759c",
+  "next_action": "Handed back to parent mac-claude-a: merge agent/mac-pairing-ui-3/qr-permissions into mac-shell",
+  "reviewed_peers": {
+    "origin/agent/mac-claude-a/mac-shell": {
+      "adaptation": "Merged forward cleanly (no overlap with apps/mac nearby/pairing files); lane test classes re-run 67/67 on the merged tree",
+      "reviewed_utc": "2026-09-12T14:31:00Z",
+      "sha": "9ba9851c"
+    }
+  },
+  "schema_version": 1,
+  "state": "done",
+  "summary": "Pairing UI follow-ups: QR bootstrap payload (CoreImage) + copy/VoiceOver pairs; per-companion permissions (pairs.json v3) with capture_not_permitted refused at the listener and mapped by the reference client",
+  "tool": "Claude Code subagent (parent mac-claude-a)",
+  "updated_utc": "2026-09-12T14:32:00Z",
+  "usage": {
+    "evidence": "coordination/mac-pairing-ui-3.md test counts (PairingQRTests 4/4, CompanionPermissionTests 3/3, nearby-client 50/50)",
+    "status": "Shared Claude Max quota with parent mac-claude-a; no purchases; one quota cut at ~17:25Z resumed 14:25Z local"
+  }
+}

@@ -66,6 +66,27 @@ Mac persistence: `~/Library/Application Support/FlashTeX/pairs.json`, mode
 Not the Keychain (see §6). "Forget" removes the record, restarts the listener
 without that key, and closes that companion's live session.
 
+Schema v2 added the optional per-record `generation`; v3 adds the per-record
+`permission` (`"captures"` | `"view_only"`, upgraded from older files as
+`"captures"`, the behaviour they had). A `view_only` companion still pairs,
+reconnects and reads the destination; every `capture_submit` on that pairing
+is refused with `capture_not_permitted` (session stays open, nothing is
+remembered for dedup, nothing reaches the inbox) until the Mac's user changes
+the pop-up in the Nearby Companion window. The listener reads the store on
+each capture, so the change needs no restart. The reference client treats
+the code as its own class (`needsPermission`: not `needsRepair`, not a new
+capture, not retried; exit 6).
+
+QR bootstrap: beside the six-digit code the window shows a CoreImage
+`CIQRCodeGenerator` image (level M) of
+`flashtex-nearby://pair?v=1&code=<6 digits>&salt=<32 hex>&fp=<16 hex>&name=<Mac name>`
+— exactly the inputs `nearby-client pair` takes (`--qr <decoded text>`
+replaces `--code`, `--mac <fp>` and `--salt`; an explicit `--code`/`--mac`
+must agree with it, `fp` must match `salt`). The code is also copyable
+("Copy code", ⌘C on the focused code) as bare digits; VoiceOver reads it
+grouped in pairs ("1 2, 3 4, 5 6"). Nothing in the QR is secret beyond the
+code already displayed next to it; `protocol_version` stays 1.
+
 ## 3. Transport
 
 TCP + TLS via Network.framework, parameters fixed on both sides:
@@ -193,7 +214,8 @@ bootstrap session had not yet said hello; a close follows), `unsupported_version
 `image_too_large`, `invalid_image`, `unknown_type`, `line_too_long`,
 `frame_timeout`, `hello_timeout`,
 `too_many_in_flight`, `inbox_full`, `too_many_sessions`, `revision_mismatch`,
-`capture_id_conflict`, `unavailable`. Codes are additive to the ones listed
+`capture_id_conflict`, `capture_not_permitted` (§2: view-only companion;
+session stays open, pairing intact), `unavailable`. Codes are additive to the ones listed
 before; the nearby `protocol_version` stays 1 (no existing message changed).
 `frame_timeout`/`hello_timeout` are followed by a close; a companion treats
 them like any other close (reconnect with backoff, re-send the same capture).

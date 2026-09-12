@@ -168,6 +168,15 @@ protocol PairingConfirmer: AnyObject {
     func notePairSeen(pairId: String)
     /// An accepted (acknowledged) capture from a paired session.
     func noteCapture(pairId: String, captureId: String)
+    /// Per-companion permission (pairs.json v3): false refuses every
+    /// `capture_submit` of the pairing with `capture_not_permitted`, session
+    /// kept open. Consulted per capture so a change in the window applies
+    /// without restarting the listener.
+    func capturesPermitted(pairId: String) -> Bool
+}
+
+extension PairingConfirmer {
+    func capturesPermitted(pairId: String) -> Bool { true }
 }
 
 // MARK: - receive limits and accounting
@@ -944,6 +953,15 @@ final class NearbySession {
         let p = v.envelope.payload
         let captureId = p.captureId
         let pair = pairId ?? ""
+        // Permission first, before dedup memory: a companion set to view-only
+        // after an accepted capture is refused on its retry as well, and
+        // nothing of a refused capture is remembered.
+        if let pairing, !pair.isEmpty, !pairing.capturesPermitted(pairId: pair) {
+            release()
+            refuse(id: id, captureId: captureId, code: CompanionPermission.refusalCode,
+                   message: CompanionPermission.refusalMessage(pairId: pair), emit: emit)
+            return
+        }
         if let known = memory.lookup(pairId: pair, captureId: captureId) {
             guard known.baseRevision == p.baseRevision else {
                 release()

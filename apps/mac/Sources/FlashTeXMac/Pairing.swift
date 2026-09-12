@@ -92,6 +92,35 @@ enum Pairing {
     }
 }
 
+/// Per-companion permission, persisted with the pairing record and checked by
+/// the listener on every `capture_submit`. A `viewOnly` companion still pairs,
+/// reconnects and reads the destination; its captures are refused with
+/// `capture_not_permitted` (session kept open) until the Mac changes it.
+enum CompanionPermission: String, Codable, CaseIterable, Identifiable {
+    case captures
+    case viewOnly = "view_only"
+    var id: String { rawValue }
+    var allowsCaptures: Bool { self == .captures }
+    /// Pop-up title in the Nearby Companion window.
+    var title: String {
+        switch self {
+        case .captures: return "Captures allowed"
+        case .viewOnly: return "View only"
+        }
+    }
+    /// Spoken with the device row.
+    var spoken: String {
+        switch self {
+        case .captures: return "captures allowed"
+        case .viewOnly: return "view only, captures refused"
+        }
+    }
+    static let refusalCode = "capture_not_permitted"
+    static func refusalMessage(pairId: String) -> String {
+        "companion \(pairId) is view-only on this Mac; change its permission in Nearby Companion to accept captures"
+    }
+}
+
 /// One paired companion. `psk` is the long-term key (base64, 32 bytes).
 /// String conversion never includes the key: interpolating a record into a
 /// log line or an error message yields `pairId`, name and timestamps only.
@@ -110,13 +139,20 @@ struct PairRecord: Codable, Equatable, Identifiable, CustomStringConvertible, Cu
     var captureCount: Int? = nil
     var lastCaptureAt: Date? = nil
     var lastCaptureId: String? = nil
+    /// What this companion may do (pairs.json v3, key `permission`). Records
+    /// from v1/v2 files decode with nil and are upgraded to the explicit
+    /// `captures` value they behaved as; `effectivePermission` is what the
+    /// listener enforces.
+    var permission: CompanionPermission? = nil
     var id: String { pairId }
     enum CodingKeys: String, CodingKey {
         case pairId = "pair_id", psk, companionName = "companion_name"
         case createdAt = "created_at", lastSeenAt = "last_seen_at", generation
         case captureCount = "capture_count", lastCaptureAt = "last_capture_at", lastCaptureId = "last_capture_id"
+        case permission
     }
     var pskData: Data? { Data(base64Encoded: psk) }
+    var effectivePermission: CompanionPermission { permission ?? .captures }
 
     var description: String {
         "PairRecord(\(pairId) “\(companionName)” created \(Pairing.stamp(createdAt))"
@@ -134,7 +170,7 @@ final class PairStore {
     /// a newer build (`version > schemaVersion`) is left untouched and the store
     /// starts empty with `loadError` set; an older version is upgraded in
     /// memory by `upgrade(_:)` and rewritten on the next persist.
-    static let schemaVersion = 2 // v2: per-record optional `generation`; v1 records decode with nil
+    static let schemaVersion = 3 // v2: per-record optional `generation`; v3: per-record `permission` (v1/v2 records decode with nil)
 
     struct File: Codable {
         var version: Int
@@ -212,10 +248,14 @@ final class PairStore {
         return .success((f, .loaded(version: header.version)))
     }
 
-    /// Schema upgrades, oldest first. Version 1 is current; this is where a
-    /// future version 2 (e.g. per-record pairing generation) rewrites older files.
+    /// Schema upgrades, oldest first. v1→v2 added the optional per-record
+    /// `generation` (nothing to rewrite); v2→v3 writes the explicit
+    /// `permission` every older record behaved as (`captures`).
     static func upgrade(_ old: File) -> File {
         var f = old
+        if f.version < 3 {
+            for i in f.pairs.indices where f.pairs[i].permission == nil { f.pairs[i].permission = .captures }
+        }
         f.version = schemaVersion
         return f
     }
@@ -248,6 +288,23 @@ final class PairStore {
             file.pairs[i].lastSeenAt = Date()
             _ = try? persist()
         }
+    }
+
+    /// Changes what a companion may do; persisted at once (pairs.json v3).
+    @discardableResult
+    func setPermission(pairId: String, _ permission: CompanionPermission) -> Bool {
+        lock.withLock {
+            guard loadError == nil, let i = file.pairs.firstIndex(where: { $0.pairId == pairId }) else { return false }
+            file.pairs[i].permission = permission
+            return (try? persist()) != nil
+        }
+    }
+
+    /// The listener's check for one `capture_submit`. A pairing the store does
+    /// not hold could not have authenticated with a long-term key, so it is
+    /// not refused here (bare-listener tests, bootstrap sessions mid-confirm).
+    func capturesPermitted(pairId: String) -> Bool {
+        lock.withLock { file.pairs.first { $0.pairId == pairId }?.effectivePermission.allowsCaptures ?? true }
     }
 
     /// Records one accepted capture on the pairing's bounded summary
@@ -296,8 +353,19 @@ extension Pairing {
         }.joined(separator: " ")
     }
 
-    /// One digit per word ("1 2 3 4 5 6") so VoiceOver spells the code.
-    static func spokenCode(_ code: String) -> String { code.map(String.init).joined(separator: " ") }
+    /// One digit per word, grouped in pairs with a pause between the groups
+    /// ("1 2, 3 4, 5 6") so VoiceOver spells the code the way it is typed.
+    static func spokenCode(_ code: String) -> String {
+        stride(from: 0, to: code.count, by: 2).map { i -> String in
+            let s = code.index(code.startIndex, offsetBy: i)
+            let e = code.index(s, offsetBy: 2, limitedBy: code.endIndex) ?? code.endIndex
+            return code[s..<e].map(String.init).joined(separator: " ")
+        }.joined(separator: ", ")
+    }
+
+    /// What "Copy code" and ⌘C on the code put on the pasteboard: the digits
+    /// without the display spacing, ready to paste into the companion.
+    static func clipboardCode(_ code: String) -> String { code.filter(\.isNumber) }
 }
 
 // MARK: - pairing flow state machine
@@ -766,7 +834,7 @@ extension PairingFlow.Phase {
     /// countdown churn, so VoiceOver does not re-announce every second.
     func accessibilityValue(now: Date = Date()) -> String {
         switch self {
-        case .codeShown(let a): return "Code \(Pairing.spokenCode(a.code)). Enter it on the companion."
+        case .codeShown(let a): return "Code \(Pairing.spokenCode(a.code)). Enter it on the companion, or scan the QR code."
         case .verifying: return "A companion connected; waiting for its hello."
         case .interrupted(let a, _, let detail):
             return a.isExpired(at: now) ? "\(detail). The code has expired." : "\(detail). Code \(Pairing.spokenCode(a.code)) is still valid."
@@ -838,6 +906,7 @@ extension PairingFlow.Phase {
 enum PairingAccessibility {
     static func deviceRow(_ r: PairRecord, connected: Bool) -> (label: String, value: String) {
         var value = connected ? "Connected." : "Not connected."
+        value += " Permission: \(r.effectivePermission.spoken)."
         value += " Paired \(r.createdAt.formatted(date: .abbreviated, time: .shortened))."
         if let seen = r.lastSeenAt { value += " Last seen \(seen.formatted(date: .abbreviated, time: .shortened))." }
         return ("Companion \(r.companionName), pair id \(r.pairId)", value)

@@ -86,6 +86,9 @@ final class PairingCoordinator: PairingConfirmer {
 
     func notePairSeen(pairId: String) { store.touch(pairId: pairId) }
     func noteCapture(pairId: String, captureId: String) { store.recordCapture(pairId: pairId, captureId: captureId) }
+    /// Read from the store on every capture (listener queue), so the window's
+    /// pop-up applies to the next `capture_submit` without a restart.
+    func capturesPermitted(pairId: String) -> Bool { store.capturesPermitted(pairId: pairId) }
 }
 
 /// UI-facing state for the nearby listener: advertising, port, pairing code,
@@ -366,6 +369,20 @@ final class NearbyState: ObservableObject {
     }
 
     func refreshPairs() { pairs = store.pairs }
+
+    /// Changes a companion's permission (persisted in pairs.json v3). Takes
+    /// effect on that companion's next `capture_submit`; live sessions stay
+    /// open either way. A receive already in flight is not interrupted.
+    func setPermission(pairId: String, _ permission: CompanionPermission) {
+        guard let record = store.pair(id: pairId) else { return }
+        guard record.effectivePermission != permission else { return }
+        guard store.setPermission(pairId: pairId, permission) else {
+            note("could not persist permission for \(pairId)")
+            return
+        }
+        pairs = store.pairs
+        note("\(record.companionName) (\(pairId)) permission: \(permission.rawValue)")
+    }
 
     /// Activity summaries for the window, keyed by pair_id; never includes the key.
     var activity: [String: PairActivity] {
