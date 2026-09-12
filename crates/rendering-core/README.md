@@ -121,3 +121,113 @@ Local LiberationSans `A` probe: original GID 36, 17 points, two contours and
 17 placed path commands; exact font hash recorded above. Supplied installed license
 SHA256 was `93fed46019c38bbe566b479d22148e2e8a1e85ada614accb0211c37b2c61c19b`.
 No glyph shaping, hint execution, raster painting or reference-TeX parity is claimed.
+
+`glyph_cache::GlyphPathCache` retains immutable expanded quadratic paths by font
+SHA256, face, original GID and `UnhintedExactComponentsV1` policy. Font aliases share
+geometry only when the actual bytes match. LRU limits bound entry count and retained
+path/component payload estimates; map/allocator overhead and caller-held Arcs are
+additional memory. Unsupported/font-error results and oversized-path budget failures
+remain explicit cached outcomes, preventing repeated expansion attempts.
+`PreparedOutlines::glyph_cached` applies each glyph's exact size/origin after lookup.
+
+The developer outline probe now reports expansion-cache measurements separately.
+One local debug-build LiberationSans `A` run measured one cold expansion at 59,456ns
+and 1,000 cache lookups totaling 901,476ns (one expansion, 1,000 hits). These are
+single-run font-cache observations, not native paint or edit-to-preview latency.
+
+`batch::PreparedBatchSource` verifies immutable font descriptors and source snapshots
+once, then creates atomic consumer-neutral page batches. Batches preserve glyph/rule
+paint order, sRGB paint, exact quadratic commands and source/synthetic provenance.
+The canonical rectangular clip is intersected with the page; `None` in the returned
+`visible_clip` means empty. Consumers must apply that clip when painting curves.
+Glyph ink is never culled using source hit boxes. Operation/path limits fail the
+whole batch explicitly; immutable cached expansions remain reusable on retry.
+Collection validation uses loader-owned verified bytes without copying or reparsing
+fonts. This adapter does not activate runtime-v2 or establish native paint parity.
+
+`tex_adapter` binds original 8-bit TFM codes through the font loader's explicit
+encoding manifest. Physical and virtual runs retain original GIDs, font/TFM hashes,
+exact metrics/kerns and original input intervals. VF rules convert their lower-left
+reference to the page's top-edge convention. Callers explicitly select
+`ExactRationalNoTexRounding`; exact rational values never imply TeX scaled-point
+rounding. Unsupported virtual commands, .notdef, absent bindings and arithmetic
+budgets fail explicitly.
+
+`EncodedRun::batch` emits existing unhinted exact quadratic draw batches using only
+loader-bound immutable fonts and supplied logical UTF-8/source interval mappings.
+Source snapshots must match declared revision/digest. Internal batch conversion preserves rational origins/sizes through exact checked
+quadratic placement; `ExactRule` retains fractional virtual-rule bounds. No Unicode inference, interval
+interpolation, implicit rounding or production runtime activation occurs. Flat/VF
+equivalence fixtures are original synthetic data, not a reference-TeX oracle.
+
+`graph_cache::GraphCache` immutably borrows one fully declared resource graph and
+caches exact nested packets by resource hash key and encoded character. A cache
+cannot be reassigned to another graph: file hashes alone do not identify encoding
+declarations or virtual local-font bindings. Cached packets retain the complete
+root-to-leaf source chain. LRU entry/payload limits and explicit cached unsupported
+resource or oversize outcomes bound retained work; loader limits bound expansion
+separately. Payload figures exclude map/allocator overhead and externally held Arcs.
+Tests explicitly distinguish identical font/TFM hashes with different encodings.
+
+`place_path_exact` accepts checked rational font sizes and origins, retaining exact
+quadratic coordinates with bounded i128/u128 arithmetic. `ExactClip` supports exact
+intersection and half-open membership; `batch_with_exact_clip` returns an
+`ExactDrawBatch` whose exact clip is authoritative for the consumer. Curves remain
+unflattened, and the original integer wire schema is unchanged. Overflow is an
+explicit error. Tests cover fractional glyph origins/scales, VF rule bounds, clips,
+precision exhaustion and integral-path equivalence.
+
+`tex_adapter::nested_run` consumes cached nested graph packets and verifies every
+physical placement against a supplied font/TFM/encoding binding. It produces the
+same exact `EncodedRun` API, retaining encoded input intervals and rational nested
+scale/offset/rule geometry. `NestedRun::source_chains()` is indexed by the original
+run operation index. Prefer `NestedRun::batch`, which attaches the correct chain
+to each retained primitive by stable item/glyph identity after culling. Missing or conflicting bindings fail before any partial run is
+returned. Synthetic tests compare flat and two-level virtual glyph/rule runs and
+verify that differing encoding declarations cannot be substituted at this boundary.
+
+`TracedBatch` keeps source chains attached to primitives, so vector reordering does
+not relabel provenance. Primitive identity is scoped by project, revision and page;
+`PrimitiveId` retains original item/glyph indices rather than output-vector indices.
+The nested run and chain storage are immutable behind accessors. An adversarial
+fixture culls an initial rule, keeps a glyph and later rule, reorders the retained
+primitives, then applies a fractional clip that removes the later rule. Every
+retained chain still points to its original virtual-font command.
+
+`cubic::CffConsumer` is a separate opt-in CFF1 consumer. It verifies an explicitly
+supplied raw table digest and encapsulates parsed dictionaries immutably. The
+font loader applies exact FontMatrix into font/text space; this adapter then
+scales once and flips the baseline into exact page coordinates. Cubic controls
+remain cubic. Callers supply `HintPolicy` explicitly; `Unhinted` retains validated
+hint metadata while `hinting_applied` remains false. CID/CFF2 and other unsupported
+loader operations remain explicit failures. Original GID zero is rejected.
+
+```sh
+cargo run --manifest-path crates/rendering-core/Cargo.toml --example cff_probe -- /path/to/raw-table.cff
+```
+
+An offline installed STIXTwoText-Regular probe retained 55,177 exact commands across
+2,220 non-.notdef glyphs, with zero rejected placements and one skipped .notdef.
+CFF table SHA256: `c5d11bab6a95e75a568e1b72fd30fdd5e4c95abe68a72f02c0c4329ee948b532`;
+containing installed OTF SHA256: `c4864ca6ec071c2d31d0d8309001faa1ee3517fffb53a31a405a697b71f52ca1`.
+The probe used rational size 10,485,761/3 ticks and origin (1/2, 7/4). This verifies
+decoding/placement only. OpenType selection, license binding, shaping, rasterization
+and native/PDF acceptance remain upstream or downstream gates. No font file is
+copied into the repository and no display-list wire primitive is activated.
+
+`mixed::MixedBatch` combines validated upstream traced primitives with explicitly
+selected immutable CFF replacements. It preserves quadratic/cubic/rule distinctions,
+paint order, stable primitive identity and attached source chains. Each primitive
+retains the exact intersection of page, caller and source clips. Repeated identities,
+stale project/revision/page context and attempted rule-to-glyph replacement fail.
+CFF glyph selection is explicit; this API does not perform shaping or infer that
+a replacement glyph represents the upstream logical text.
+
+Construction enforces total command count and a strict serialized-byte cap through
+a bounded writer, returning no partial batch on failure. `fixture_bytes()` uses
+`flashtex-internal-mixed-v1`, a separate opt-in consumer fixture format. Rational
+coordinates use decimal numerator/denominator strings so JSON consumers cannot
+round large integers. These limits bound encoded payload, not total process RSS or
+font-loader transient allocations. Legacy rendering wire and hinting flags remain
+unchanged. Tests combine explicit synthetic quadratic geometry with parsed original
+CFF fixture curves, plus exact byte-boundary, command-budget and culling checks.

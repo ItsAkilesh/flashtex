@@ -1,0 +1,84 @@
+{
+  "agent_id": "mac-math-layout",
+  "archived_utc": "2026-09-12T06:30:37Z",
+  "assignment": {
+    "acceptance": [
+      "Golden tests cover nested and extensible constructs",
+      "No flattened fraction or fake rule glyph",
+      "Reference geometry deltas are measured"
+    ],
+    "agent_id": "mac-math-layout",
+    "allocation_id": "claude-mac20x-math-layout-stage2",
+    "branch": "agent/mac-math-layout/math-boxes",
+    "deadline_utc": null,
+    "dependencies": [],
+    "input_main_sha": "0a3d8e22fe4abc5cf15c39cce889aaa125f38bb6",
+    "objective": "Add operators, accents, extensible delimiters, nested styles and font-derived math constants with explicit glyph/rule geometry.",
+    "owned_paths": [
+      "crates/math-layout"
+    ],
+    "revision": 2,
+    "schema_version": 1,
+    "state": "assigned",
+    "task_id": "FT-020",
+    "timebox_minutes": 45,
+    "updated_utc": "2026-09-12T06:12:26Z"
+  },
+  "report": {
+    "agent_id": "mac-math-layout",
+    "allocation_id": "claude-mac20x-math-layout",
+    "assignment_acknowledgements": {
+      "FT-020": {
+        "acknowledged_utc": "2026-09-12T06:18:28Z",
+        "adaptation": "Accepted FT-020 rev 2: extensible delimiters/radicals from cmex10 TFM recipes as stacked Glyph boxes, \\overline/\\underline rules, accents over scripted bases, \\lim-style text operators, style overrides, no-fake-rule assertions, and three new oracle expressions; OpenType MathVariants via a trait method with TFM-only implementation unless font-engine exposes it.",
+        "main_sha": "09b5e3b36475cab31bef8061317401935d571063",
+        "revision": 2
+      }
+    },
+    "branch": "agent/mac-math-layout/math-boxes",
+    "capabilities": [
+      "rust",
+      "math"
+    ],
+    "code_revision": "3e1d5d24cfab428848dd37cda8504fa4ec9e0db4",
+    "eta_minutes": {
+      "likely": 5,
+      "optimistic": 0,
+      "pessimistic": 10
+    },
+    "machine": "mac-m1max-a",
+    "main_integrated_through": "09b5e3b36475cab31bef8061317401935d571063",
+    "next_action": "Final report to parent; MathFontMetrics on FT-018 Face and OpenType MathVariants once exposed",
+    "reviewed_peers": {
+      "origin/agent/mac-font-engine/tex-fonts": {
+        "adaptation": "font-engine parses MathConstants but not MathVariants; TFM-only extensible path shipped behind trait hooks, MathVariants requested in README",
+        "reviewed_utc": "2026-09-12T06:29:52Z",
+        "sha": "dca990c74c6d11fa3dc30e7a5e2b9e8c08b05803"
+      },
+      "origin/main": {
+        "adaptation": "main integrated rev-1 math-layout commits unchanged and published FT-020 rev 2; merging main into the branch, no conflicts",
+        "reviewed_utc": "2026-09-12T06:30:03Z",
+        "sha": "a949f5b773a1bc7f1be7ae2d79581856af88a97b"
+      }
+    },
+    "schema_version": 1,
+    "state": "ready_for_integration",
+    "summary": "FT-020 rev 2 implemented: extensible delimiters/radicals (TFM recipes as stacked glyph boxes), sqrt degree, overline/underline rules, text operators with limits per style, style overrides, scripted-base accents; 34 tests; stage-2 oracle comparison within 0.003 bp",
+    "tool": "Claude Code subagent (parent mac-claude-a)",
+    "updated_utc": "2026-09-12T06:30:03Z",
+    "usage": {
+      "evidence": "cargo test 34 passed; docs/comparison.md stage 2 max deviation 0.003 bp vs pdfTeX 1.40.29 incl. extensible pieces",
+      "status": "unknown"
+    }
+  },
+  "report_age_seconds": 33,
+  "report_path": "coordination/agents/mac-math-layout.json",
+  "review_required": true,
+  "revision": 2,
+  "schema_version": 1,
+  "stale_completion": false,
+  "state": "reported_ready",
+  "task_id": "FT-020",
+  "worker_branch": "agent/mac-math-layout/math-boxes",
+  "worker_report_sha": "d5d092c11aa583c8ffef04a12b362357b2b7aeb5"
+}

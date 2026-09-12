@@ -9,15 +9,15 @@
   "branch": "agent/mac-font-engine/tex-fonts",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "d783fbe9249642379aa965a749901a85a7784d3a",
-  "objective": "Provide adapters and evidence so compiler layout, native preview and PDF use identical font identity, advances, clusters and glyph mapping.",
+  "input_main_sha": "1654e8ac0ecf5aff20ac17316a6e698bf3bda119",
+  "objective": "Bind exact TFM8bitencoding to declared original font GIDs",
   "owned_paths": [
     "crates/font-engine"
   ],
-  "revision": 3,
+  "revision": 4,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-018",
   "timebox_minutes": 45,
-  "updated_utc": "2026-09-12T06:27:58Z"
+  "updated_utc": "2026-09-12T06:39:21Z"
 }

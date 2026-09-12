@@ -3,31 +3,31 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-024": {
-      "acknowledged_utc": "2026-09-12T06:08:59Z",
-      "adaptation": "Composite transform stage already satisfied by 74c3682 and point attachments by 60aa3ed. Latest direct Commander assignment adds original TFM parser and bounded ligature/kern interpretation; no repeated outline work.",
-      "main_sha": "56c003f8f82dee63507205f69f4d3b8c353442e0",
-      "revision": 3
+      "acknowledged_utc": "2026-09-12T06:47:16Z",
+      "adaptation": "Proceed with current authorized CFF regression evidence and immutable full-font/table identity cache. Prior unhinted/flex/matrix stage already published at569fe9c; no repeated implementation.",
+      "main_sha": "13ee88dff72631bf2bc7a7f9f9d1f3a966a13fc6",
+      "revision": 5
     }
   },
   "branch": "agent/commander-corpus/font-resources",
   "capabilities": [
     "rust-font-resources"
   ],
-  "code_revision": "bea66c762860dbab23616c43b1f1a65b1235717e",
+  "code_revision": "061555f7ae2f51872cb4f303e6c8a0cb637e9587",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
     "pessimistic": 0
   },
   "machine": "linux-primary",
-  "main_integrated_through": "d643b6ec5aa63a1ce2b9ce97ab5292baf5205b5c",
-  "next_action": "Mac font-engine supplies real licensed TFM/encoding/font-name mapping evidence; integrate adapter without Unicode/GID casts.",
+  "main_integrated_through": "8cf7304f4c5d46733a6c8b6c648761038526610d",
+  "next_action": "Rendering-core adapts shared Arc outcomes and validated table-range binding; visual/native/hinted oracle gates remain pending.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "Explicit TFM encoding map and original-GID/metrics run adapter published; 49 tests and strict clippy pass. Hash/face-bound declarations, explicit Notdef and missing mapping errors.",
+  "summary": "Immutable full-font/CFF outline cache and pinned STIX evidence published; 79 normal tests, opt-in 2221-glyph replay and strict clippy pass. Warm replay 0.251ms; no native latency or parity claim.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T06:11:55Z",
+  "updated_utc": "2026-09-12T06:50:59Z",
   "usage": {
     "evidence": "crates/font-resources/README.md; test suite; installed font SHA pinned.",
     "status": "Hosted allocation; no external provider calls; account remainder unknown."

@@ -1,67 +1,19 @@
 use flashtex_rendering_core::{font_adapter::*, *};
 use std::collections::BTreeMap;
 // Original synthetic empty-outline sfnt from font-resources16dab88 tests; no visual claim.
-fn be16(data: &mut [u8], at: usize, n: u16) {
-    data[at..at + 2].copy_from_slice(&n.to_be_bytes());
-}
-fn be32(data: &mut [u8], at: usize, n: u32) {
-    data[at..at + 4].copy_from_slice(&n.to_be_bytes());
-}
-fn fixture() -> Vec<u8> {
-    let mut tables = BTreeMap::new();
-    let mut head = vec![0; 54];
-    be32(&mut head, 0, 0x00010000);
-    be32(&mut head, 12, 0x5f0f3cf5);
-    be16(&mut head, 18, 1000);
-    tables.insert(*b"head", head);
-    let mut maxp = vec![0; 32];
-    be32(&mut maxp, 0, 0x00010000);
-    be16(&mut maxp, 4, 3);
-    tables.insert(*b"maxp", maxp);
-    tables.insert(*b"loca", vec![0; 8]);
-    tables.insert(*b"glyf", vec![]);
-    let mut hhea = vec![0; 36];
-    be32(&mut hhea, 0, 0x00010000);
-    be16(&mut hhea, 34, 2);
-    tables.insert(*b"hhea", hhea);
-    tables.insert(*b"hmtx", vec![0; 10]);
-    let mut name = vec![0; 18];
-    be16(&mut name, 2, 1);
-    be16(&mut name, 4, 18);
-    be16(&mut name, 6, 3);
-    be16(&mut name, 8, 1);
-    be16(&mut name, 10, 0x0409);
-    be16(&mut name, 12, 6);
-    be16(&mut name, 14, 12);
-    for ch in "FTTest".encode_utf16() {
-        name.extend_from_slice(&ch.to_be_bytes());
-    }
-    tables.insert(*b"name", name);
-    let mut bytes = vec![0; 12 + tables.len() * 16];
-    be32(&mut bytes, 0, 0x00010000);
-    be16(&mut bytes, 4, tables.len() as u16);
-    for (index, (tag, data)) in tables.into_iter().enumerate() {
-        while !bytes.len().is_multiple_of(4) {
-            bytes.push(0);
-        }
-        let start = bytes.len();
-        let at = 12 + index * 16;
-        bytes[at..at + 4].copy_from_slice(&tag);
-        be32(&mut bytes, at + 8, start as u32);
-        be32(&mut bytes, at + 12, data.len() as u32);
-        bytes.extend_from_slice(&data);
-    }
-    bytes
-}
+#[path = "support/font_fixture.rs"]
+mod font_fixture;
+use font_fixture::fixture;
 
 #[test]
 fn real_loader_validates_original_sfnt_metadata_through_adapter() {
-    let bytes = fixture();
-    let metadata = StaticTrueTypeLoader
-        .validate_static_truetype(&bytes)
-        .unwrap();
-    assert_eq!(metadata.units_per_em, 1000);
-    assert_eq!(metadata.glyph_count, 3);
+    for bytes in [fixture(), font_fixture::triangle_fixture()] {
+        let metadata = StaticTrueTypeLoader
+            .validate_static_truetype(&bytes)
+            .unwrap();
+        assert_eq!(metadata.units_per_em, 1000);
+        assert_eq!(metadata.glyph_count, 3);
+    }
 }
 #[test]
 fn adapter_rejects_malformed_and_non_truetype_without_fallback() {
@@ -188,6 +140,12 @@ fn immutable_collection_matches_exact_descriptor_and_license_record() {
     assert!(!glyph.hinting_applied);
     assert!(glyph.commands.is_empty()); // Synthetic fixture has empty glyph outlines.
     assert!(prepared.glyph(1, 0, 99).is_err());
+    let mut cache = flashtex_rendering_core::glyph_cache::GlyphPathCache::new(8, 10000).unwrap();
+    let first = prepared.glyph_cached(1, 0, 0, &mut cache).unwrap();
+    let second = prepared.glyph_cached(1, 0, 0, &mut cache).unwrap();
+    assert_eq!(first.commands, second.commands);
+    assert_eq!(first.original_gid, glyph.original_gid);
+    assert_eq!(cache.stats().hits, 1);
     list.fonts[0].postscript_name = "different".into();
     assert!(validate_with_collection(&list, &capabilities, &documents, &collection).is_err());
 }

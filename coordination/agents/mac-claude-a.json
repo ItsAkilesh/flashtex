@@ -16,15 +16,15 @@
     "rust",
     "macos-simulators"
   ],
-  "code_revision": "abccbd6c92b3c27e8d48a50cb89174f8b02eddb1",
+  "code_revision": "f1bf50a9151e3a018ab3c64e4008483f9f9251cb",
   "eta_minutes": {
-    "likely": 60,
-    "optimistic": 30,
-    "pessimistic": 120
+    "likely": 120,
+    "optimistic": 60,
+    "pessimistic": 240
   },
   "machine": "mac-m1max-a",
-  "main_integrated_through": "87d20e8fa3c80bffcb223a503dc5da0f4784eb58",
-  "next_action": "Packaged demo evidence run; bundle bridge+ledger",
+  "main_integrated_through": "a949f5b773a1bc7f1be7ae2d79581856af88a97b",
+  "next_action": "Gate 3 flip; integrate pipeline/preview-v2/typing-bench; rev 5 evidence rerun on MacTeX",
   "reviewed_peers": {
     "origin/agent/aarush-macbook/companion-capture": {
       "adaptation": "Peer cannot run xcodebuild; will verify their branch from this Mac. No contract change.",
@@ -47,18 +47,18 @@
       "sha": "25a92a9c591a92a3d49071e536ecf8f129112c24"
     },
     "origin/main": {
-      "adaptation": "rev 5 dispatched; children assigned",
-      "reviewed_utc": "2026-09-12T06:17:21Z",
-      "sha": "87d20e8fa3c80bffcb223a503dc5da0f4784eb58"
+      "adaptation": "Commander kept compiler-expert role on Kabir; rules/font contract authoritative; transcript gate cab39a2 to be run by gate-3 worker",
+      "reviewed_utc": "2026-09-12T07:01:08Z",
+      "sha": "462fb27d8cf1f8defe9a03a1be89a405619cccd7"
     }
   },
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "FT-003 rev 5 accepted; rev 4 ready at b18ed2f (136/136)",
+  "summary": "FT-003 rev 5: candidate f1bf50a (167/167 real-binary tests; #19 fixed; capabilities gate 2; LM vendored); 8 workers relaunched/added; MacTeX installing",
   "tool": "Claude Code",
-  "updated_utc": "2026-09-12T06:17:21Z",
+  "updated_utc": "2026-09-12T07:01:08Z",
   "usage": {
-    "evidence": "Claude Max 20x; no purchases",
+    "evidence": "Claude Max 20x; no purchases; Codex on hold",
     "status": "unknown"
   }
 }

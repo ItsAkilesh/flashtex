@@ -45,15 +45,56 @@ open out.pdf
   mathematical operators listed in `src/encoding.rs`. Because the runs share one
   text object, the viewer advances between them with the real base-14 widths;
   this crate ships no width tables.
-- **Fraction rules.** The FT-002 compiler has no rule primitive in runtime-v1, so
-  it emits a fraction bar as a text item consisting only of U+2500 (`─`) repeated
-  N times, each assumed 0.5 em wide, with the item's baseline at the bar's bottom
-  edge and thickness 0.06 em of the parent size (the item itself is set at 0.7 of
-  the parent). Such items are rendered as filled rectangles (`x y w h re f`) of
-  width `N × 0.5 × font_size_pt` and thickness `0.06/0.7 × font_size_pt`, never
-  as glyphs and with no warning. Convention: *compiler emits fraction rules as
-  U+2500 runs; rendered as rules.* A real rule item type in runtime-v1 would
-  replace this and is Commander's call.
+- **Negotiated layout capabilities**
+  (`docs/contracts/runtime-v1-layout-capabilities.md`). `payload.layout_capabilities`
+  on the `compile_result` is the accepted set (≤16 unique strings, each ≤64
+  bytes). Its presence switches the writer to the *negotiated route*:
+  - `rules-v1`: items `{"kind":"rule","x_pt","y_pt","width_pt","height_pt","source"}`
+    give the rectangle's **top-left** corner in page space (y downward) and
+    positive, finite dimensions (magnitudes ≤ 1,000,000). They are drawn as
+    `x (height_pt - y_pt - height_pt) width_pt height_pt re f`, opaque black,
+    in item order (paint order). A `rule` item when `rules-v1` is not in the
+    accepted set is an error naming its source range; so is a `rule` on the
+    legacy route.
+  - `font-hints-v1`: text items may carry `font:{family,weight,style}`
+    (see "Font hints" below). A hint when `font-hints-v1` is not accepted is
+    an error.
+  - Any other item kind under negotiation is an error naming the kind and its
+    `path:start-end` source range. Nothing is skipped silently.
+  - On the negotiated route U+2500 is ordinary text (it is not in any of the
+    fonts here, so it becomes `?` with a warning); typed rules replace it.
+- **Legacy route** (no `layout_capabilities`): only `text` items are defined.
+  Unknown kinds are skipped with a warning naming them (documented legacy
+  behaviour); `rule` is still an error. **Legacy fraction rules:** the FT-002
+  compiler emits a fraction bar as a text item consisting only of U+2500 (`─`)
+  repeated N times, each assumed 0.5 em wide, with the item's baseline at the
+  bar's bottom edge and thickness 0.06 em of the parent size (the item itself
+  is set at 0.7 of the parent). Such items are rendered as filled rectangles
+  of width `N × 0.5 × font_size_pt` and thickness `0.06/0.7 × font_size_pt`.
+  **This is an approximation:** width and thickness are inferred from the font
+  size, not measured, and it exists only on the legacy route. `rules-v1`
+  carries the real geometry.
+- **Font hints (`font-hints-v1`).** Each hinted text item is resolved to a face:
+  - `Latin Modern*` / `LMRoman*` → `lmroman10-{regular,bold,italic,bolditalic}.otf`
+    from the Latin Modern directory (the embedded document font's directory
+    when it is LM, else the first `auto` candidate that exists,
+    `FLASHTEX_LM_DIR` first). Each used face is embedded as **its own** whole
+    CFF font object (`/F4`, `/F5`, …), with its own `/W` and ToUnicode; a
+    document using regular, bold, and italic therefore carries three CFF
+    tables (about 250 KB with all four LM Roman faces).
+  - `Times*` → base-14 `Times-Roman` (`/F1`), `Times-Bold`, `Times-Italic`,
+    `Times-BoldItalic` (extra `/Fn` objects, not embedded).
+  - Anything else → substituted by the document face at the requested
+    weight/style (Latin Modern when LM is the document face, else the Times
+    variant) and reported once per distinct hint:
+    `font "Palatino" (italic) substituted by 'Latin Modern Roman italic';
+    requested metrics were not preserved`. A Latin Modern hint with no LM
+    installation is substituted by the Times variant, also with a warning.
+  - Fallback inside a hinted run is the same as for the document face:
+    embedded face → Symbol → Times → `?`, or Times variant → Symbol →
+    document embedded font → `?`.
+  - Hints only fix style intent; they carry no font bytes, GIDs, or advances,
+    so this is not byte/pixel parity (the contract says the same).
 - `(`, `)`, and `\` are escaped in literal strings.
 - **Font embedding (opt-in).** `RenderOptions { embed_font }`, `--embed-font
   PATH|auto`, or `FLASHTEX_UNICODE_FONT` embed a subset of a Unicode TrueType
@@ -214,7 +255,21 @@ dark mode. `tests/render.rs::export_is_white_and_theme_independent` guards this.
 
 ## Verification performed
 
-- `cargo test`: 39 tests (19 unit, 20 integration) covering the fixture's page
+Layout capabilities: the contract's rule example (`x 72, y 84, w 24, h 0.5`)
+renders as `72 707.5 24 0.5 re f` before the following text (paint order);
+a rule without `rules-v1` (negotiated or legacy) and an unknown `image` kind
+under negotiation are errors naming `main.tex:0-11` / `fig.tex:3-9`; zero,
+negative, and >1e6 geometry is rejected. Times hints produce `/F4`
+Times-Bold, `/F5` Times-Italic, `/F6` Times-BoldItalic objects and a single
+`Helvetica … substituted by 'Times-Bold'` warning; LM hints with LM as the
+document face produce three whole-CFF font objects (`LMRoman10-Regular`,
+`-Bold`, `-Italic`; 22 objects total) whose ToUnicode maps decode each run,
+with `Palatino` reported as substituted by Latin Modern italic. Rasterised on
+macOS, `Regular Bold Italic BoldItalic` show the four LM faces, `Times-Bold`
+the base-14 bold, and a typed rule draws the bar of a stacked fraction; PDFKit
+extracts the text. Legacy fixtures render byte-identically to before.
+
+- `cargo test`: 45 tests (20 unit, 25 integration) covering the fixture's page
   count and MediaBox, a two-page synthetic result with distinct page sizes,
   multiline placement (every `Td` equals `(x_pt, height_pt - baseline_y_pt)`),
   WinAnsi encoding (`é` is byte `0xE9`, `—` is `0x97`), unrepresentable

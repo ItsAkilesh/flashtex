@@ -54,21 +54,49 @@ final class FontHintResolutionTests: XCTestCase {
         }
     }
 
-    func testLatinModernFamilyUsesRegisteredMastersOrReportsSubstitution() {
-        let hint = Hint(family: "Latin Modern Roman", weight: .bold, style: .italic)
-        let resolved = PreviewFonts.resolve(hint: hint, size: 12)
-        if PreviewFonts.latinModernRegistered {
-            XCTAssertEqual(resolved, .init(postScriptName: "LMRoman12-BoldItalic", substitution: nil))
-            XCTAssertEqual(PreviewFonts.resolve(hint: Hint(family: "Latin Modern Roman"), size: 10).postScriptName, "LMRoman10-Regular")
-            XCTAssertEqual(PreviewFonts.resolve(hint: Hint(family: "Latin Modern Roman", weight: .bold), size: 24).postScriptName, "LMRoman12-Bold", "17 master has only Regular")
-            XCTAssertEqual(PreviewFonts.resolve(hint: Hint(family: "Latin Modern Roman"), size: 24).postScriptName, "LMRoman17-Regular")
-        } else {
-            // Not installed here: fall back to Times at the requested weight/style and SAY so.
-            XCTAssertEqual(resolved.postScriptName, "Times-BoldItalic")
-            let sub = resolved.substitution
-            XCTAssertEqual(sub?.family, "Latin Modern Roman")
-            XCTAssertEqual(sub?.usedFace, "Times-BoldItalic")
-            XCTAssertEqual(sub?.description, "font substituted: Latin Modern Roman bold italic → Times-BoldItalic")
+    /// Latin Modern is vendored in apps/mac/Fonts (registered from the repo copy
+    /// in tests, from the bundle's Fonts/ in the app), so an LM hint resolves to
+    /// the real LM master at the requested weight/style with NO substitution.
+    func testBundledLatinModernBoldHintResolvesToLMRoman12BoldWithoutSubstitution() {
+        XCTAssertTrue(PreviewFonts.latinModernRegistered, "apps/mac/Fonts ships lmroman*.otf; registration must not depend on TeX")
+        let bold = PreviewFonts.resolve(hint: Hint(family: "Latin Modern Roman", weight: .bold), size: 12)
+        XCTAssertEqual(bold, .init(postScriptName: "LMRoman12-Bold", substitution: nil))
+        // CoreText really has that face (not a fallback that merely keeps the name).
+        let font = CTFontCreateWithName(bold.postScriptName as CFString, 12, nil)
+        XCTAssertEqual(CTFontCopyPostScriptName(font) as String, "LMRoman12-Bold")
+        XCTAssertEqual(CTFontCopyFamilyName(font) as String, "Latin Modern Roman")
+        XCTAssertEqual(PreviewFonts.resolve(hint: Hint(family: "Latin Modern Roman", weight: .bold, style: .italic), size: 12),
+                       .init(postScriptName: "LMRoman12-BoldItalic", substitution: nil))
+        XCTAssertEqual(PreviewFonts.resolve(hint: Hint(family: "Latin Modern Roman"), size: 10).postScriptName, "LMRoman10-Regular")
+        XCTAssertEqual(PreviewFonts.resolve(hint: Hint(family: "Latin Modern Roman", weight: .bold), size: 24).postScriptName, "LMRoman12-Bold", "17 master has only Regular")
+        XCTAssertEqual(PreviewFonts.resolve(hint: Hint(family: "Latin Modern Roman"), size: 24).postScriptName, "LMRoman17-Regular")
+        for family in ["lmroman10-regular", "Computer Modern", "LM Roman", "latin modern roman"] {
+            XCTAssertNil(PreviewFonts.resolve(hint: Hint(family: family, weight: .bold), size: 12).substitution, family)
+        }
+        // A result made only of LM hints therefore carries no substitution notes.
+        let result = RuntimeV1.CompileResult(projectId: "p", revision: 1, status: .ok, pages: [
+            .init(number: 1, widthPt: 100, heightPt: 100, items: [
+                .text(.init(text: "x", xPt: 0, baselineYPt: 10, fontSizePt: 12, source: nil, font: Hint(family: "Latin Modern Roman", weight: .bold)))])],
+            diagnostics: [], pdfPath: nil, layoutCapabilities: ["font-hints-v1"])
+        XCTAssertEqual(PreviewFonts.substitutions(in: result), [])
+    }
+
+    /// The Rust compiler names hint families after the Core-14 face it measured
+    /// with (`Times-Bold`, `Times-Italic`, `Helvetica`, `Courier`); those are
+    /// honored with the hint's own weight/style and are not substitutions.
+    func testCompilerCore14FaceNamesResolveWithoutSubstitution() {
+        XCTAssertEqual(PreviewFonts.resolve(hint: Hint(family: "Times-Bold", weight: .bold), size: 17), .init(postScriptName: "Times-Bold", substitution: nil))
+        XCTAssertEqual(PreviewFonts.resolve(hint: Hint(family: "Times-Italic", style: .italic), size: 12).postScriptName, "Times-Italic")
+        XCTAssertEqual(PreviewFonts.resolve(hint: Hint(family: "Times-BoldItalic", weight: .bold, style: .italic), size: 12).postScriptName, "Times-BoldItalic")
+        XCTAssertEqual(PreviewFonts.resolve(hint: Hint(family: "Helvetica"), size: 12), .init(postScriptName: "Helvetica", substitution: nil))
+        XCTAssertEqual(PreviewFonts.resolve(hint: Hint(family: "Helvetica", weight: .bold, style: .italic), size: 12).postScriptName, "Helvetica-BoldOblique")
+        XCTAssertEqual(PreviewFonts.resolve(hint: Hint(family: "Courier", weight: .bold), size: 12), .init(postScriptName: "Courier-Bold", substitution: nil))
+        XCTAssertEqual(PreviewFonts.resolve(hint: Hint(family: "Courier-Oblique", style: .italic), size: 12).postScriptName, "Courier-Oblique")
+        // Every Core-14 face named here exists in CoreText on macOS.
+        for name in ["Times-Roman", "Times-Bold", "Times-Italic", "Times-BoldItalic", "Helvetica", "Helvetica-Bold",
+                     "Helvetica-Oblique", "Helvetica-BoldOblique", "Courier", "Courier-Bold", "Courier-Oblique", "Courier-BoldOblique"] {
+            let font = CTFontCreateWithName(name as CFString, 12, nil)
+            XCTAssertEqual(CTFontCopyPostScriptName(font) as String, name)
         }
     }
 
@@ -174,14 +202,10 @@ final class ShellLayoutNegotiationTests: XCTestCase {
         XCTAssertFalse(model.isFixture)
         XCTAssertEqual(model.negotiation, .init(requested: Self.extended + ["future-v9"], accepted: Self.extended))
         XCTAssertEqual(model.acceptedLayoutCapabilities, Self.extended)
-        // The unknown capability is reported, never guessed. When Latin Modern is
-        // not registered on this machine the hinted face is honestly reported as
-        // substituted too, so only assert the note we control here.
-        XCTAssertTrue(model.capabilityNotes.contains("capability future-v9 not accepted by the worker"), "\(model.capabilityNotes)")
-        if PreviewFonts.latinModernRegistered {
-            XCTAssertEqual(model.capabilityNotes, ["capability future-v9 not accepted by the worker"])
-        }
-        XCTAssertTrue(model.fontSubstitutions.isEmpty || !PreviewFonts.latinModernRegistered, "LM is registered but reported as substituted: \(model.fontSubstitutions)")
+        // The unknown capability is reported, never guessed. Latin Modern is
+        // bundled (apps/mac/Fonts), so the LM bold hint is honored, not substituted.
+        XCTAssertEqual(model.capabilityNotes, ["capability future-v9 not accepted by the worker"])
+        XCTAssertEqual(model.fontSubstitutions, [], "bundled LM must not be reported as substituted")
         guard case .text(let t) = result.pages[0].items[0], case .rule(let r) = result.pages[0].items[1] else { return XCTFail("\(result.pages[0].items)") }
         XCTAssertEqual(t.font, .init(family: "Latin Modern Roman", weight: .bold, style: .normal))
         XCTAssertEqual(r.yPt, 90); XCTAssertEqual(r.widthPt, 24)
@@ -283,9 +307,11 @@ final class ShellLayoutNegotiationTests: XCTestCase {
         }
         XCTAssertEqual(seen.map(\.revision), seen.map(\.revision).sorted())
 
-        // Coalesced switch: a legacy request is in flight when the setting flips to
-        // extended; the queued follow-up must go out extended and the in-flight
-        // reply must be bound to the legacy request it answered.
+        // Mode switch while a request is in flight: a legacy (slow) request is
+        // pending when the setting flips to extended. The switch does not wait
+        // behind the in-flight request — it goes out at once under a new id —
+        // and the legacy reply, arriving later, is superseded: valid, logged,
+        // never applied (check_runtime.py classifies it `stale_ignore`).
         var applied: [(revision: Int?, negotiation: LayoutNegotiation)] = []
         let sink = model.$negotiation.dropFirst().sink { applied.append((model.result?.revision, $0)) }
         defer { sink.cancel() }
@@ -293,14 +319,70 @@ final class ShellLayoutNegotiationTests: XCTestCase {
         model.updateActiveText("%caps\n%slow\nin flight legacy\n")
         model.compile()
         let legacyRevision = model.editorRevision
+        let legacyID = try XCTUnwrap(model.latestRequestID)
         XCTAssertEqual(model.inFlightRevision, legacyRevision)
         model.requestedLayoutCapabilities = Self.extended
         model.updateActiveText("%caps\nqueued extended\n")
         let extendedRevision = model.editorRevision
-        model.compile() // coalesced: goes out when the legacy reply returns
-        try await waitUntil { model.result?.revision == extendedRevision && model.inFlightRevision == nil }
-        XCTAssertEqual(applied.map(\.revision), [legacyRevision, extendedRevision])
-        XCTAssertEqual(applied.map(\.negotiation), [.legacy, .init(requested: Self.extended, accepted: Self.extended)])
+        model.compile() // capability switch: sent immediately, not coalesced
+        let extendedID = try XCTUnwrap(model.latestRequestID)
+        XCTAssertNotEqual(extendedID, legacyID)
+        XCTAssertEqual(model.inFlightRequests.count, 2, "both requests are in flight")
+        XCTAssertEqual(model.inFlightRevision, extendedRevision)
+        try await waitUntil { model.inFlightRequests.isEmpty }
+        XCTAssertEqual(model.result?.revision, extendedRevision)
+        XCTAssertNil(model.inFlightRevision)
+        XCTAssertEqual(applied.map(\.revision), [extendedRevision], "the superseded legacy reply is never applied")
+        XCTAssertEqual(applied.map(\.negotiation), [.init(requested: Self.extended, accepted: Self.extended)])
+        XCTAssertTrue(model.workerLog.contains { $0.contains("ignored stale compile_result \(legacyID)") && $0.contains("superseded by \(extendedID)") }, "\(model.workerLog.suffix(4))")
+        model.detachWorker()
+    }
+
+    func testCapabilitySwitchReRequestsTheSameRevisionAndSupersedesTheOlderReply() async throws {
+        // No edit between the two requests: the revision must not change (the
+        // buffers did not), yet a new id goes out and the reply is bound to it.
+        let model = attachedModel(capabilities: [])
+        try await compileAndWait(model, "%caps\nsame revision\n")
+        let revision = model.editorRevision
+        let legacyID = try XCTUnwrap(model.resultID)
+        XCTAssertEqual(model.negotiation, .legacy)
+        model.requestedLayoutCapabilities = Self.extended
+        model.compile()
+        XCTAssertEqual(model.inFlightRevision, revision, "mode switch re-requests the same revision")
+        XCTAssertNotEqual(model.latestRequestID, legacyID)
+        try await waitUntil { model.inFlightRevision == nil }
+        XCTAssertEqual(model.result?.revision, revision)
+        XCTAssertEqual(model.negotiation, .init(requested: Self.extended, accepted: Self.extended))
+        XCTAssertNotEqual(model.resultID, legacyID)
+        // Unchanged buffers and set: nothing is sent.
+        let before = model.latestRequestID
+        model.compile()
+        XCTAssertEqual(model.latestRequestID, before)
+        XCTAssertNil(model.inFlightRevision)
+
+        // Auto-compile treats the switch like an edit: the request goes out by itself.
+        model.autoCompile = true
+        model.requestedLayoutCapabilities = ["rules-v1"]
+        XCTAssertEqual(model.inFlightRevision, revision)
+        try await waitUntil { model.inFlightRevision == nil }
+        XCTAssertEqual(model.negotiation, .init(requested: ["rules-v1"], accepted: ["rules-v1"]))
+        model.autoCompile = false
+
+        // Async same-revision switch: the slow legacy reply for the older id
+        // arrives after the extended request was sent → superseded, not applied.
+        model.requestedLayoutCapabilities = []
+        model.updateActiveText("%caps\n%slow\nasync switch\n")
+        model.compile()
+        let slowID = try XCTUnwrap(model.latestRequestID)
+        model.requestedLayoutCapabilities = Self.extended
+        model.compile()
+        let switchID = try XCTUnwrap(model.latestRequestID)
+        XCTAssertEqual(model.inFlightRequests[slowID]?.revision, model.inFlightRequests[switchID]?.revision)
+        try await waitUntil { model.inFlightRequests.isEmpty }
+        XCTAssertEqual(model.resultID, switchID)
+        XCTAssertEqual(model.negotiation, .init(requested: Self.extended, accepted: Self.extended))
+        XCTAssertTrue(model.workerLog.contains { $0.contains("ignored stale compile_result \(slowID)") })
+        XCTAssertFalse(model.workerStatus.contains("violation"), model.workerStatus)
         model.detachWorker()
     }
 

@@ -7,6 +7,31 @@ the build is offline and deterministic, and the JSON transport is hand-written.
 Speaks runtime protocol v1 (`docs/contracts/runtime-v1.md`) over JSON Lines on
 stdin/stdout.
 
+## Negotiated layout capabilities
+
+A compile request may add `payload.layout_capabilities`. It must be a
+duplicate-free list of at most 16 non-empty strings, each at most 64 UTF-8
+bytes. Unknown names are ignored for acceptance; malformed fields are rejected
+with an explicit diagnostic. A `compile_result` echoes only supported names
+that were requested, in request order. When the request field is omitted, the
+response field is also omitted and the base runtime-v1 output is unchanged.
+Negotiation is per request, and warm incremental sessions are isolated by the
+accepted capability set.
+
+This revision supports:
+
+- `rules-v1`: fractions use an opaque black `rule` item with top-left `x_pt`
+  and `y_pt`, positive `width_pt` and `height_pt`, and the source range of the
+  generating `\frac` command. Without this capability, the legacy U+2500 text
+  approximation remains and produces the existing PDF-export warning.
+- `font-hints-v1`: every text item adds a `font` object containing the family,
+  `normal` or `bold` weight, and `normal` or `italic` style selected by layout.
+  Current body text reports Times-Roman and headings report Times-Bold.
+
+This additive extension is not rendering-v2 activation or a claim of exact
+LaTeX PDF identity. Font hints do not identify font bytes, glyph IDs, shaping,
+encoding, or exact advances.
+
 ```sh
 cd crates/compiler
 cargo test
@@ -40,6 +65,17 @@ Implemented and tested:
 - Greedy line breaking and page breaking onto 612×792 pt pages.
 - Inline math (`$...$`) and display math (`$$...$$` and `\[...\]`), including
   nested fractions, square roots, superscripts, and subscripts.
+- Numbered `\section{...}` and `\subsection{...}` headings, numbered display
+  equations (`$$...$$`, `\[...\]`, and `\begin{equation}...\end{equation}`),
+  and LaTeX-style subsection reset when a section advances.
+- `\label{key}`, `\ref{key}`, and `\pageref{key}` with forward-reference and
+  page-number convergence (at most five layout passes). Undefined references
+  render `??`; duplicate labels warn and the later definition wins.
+- `\begin{figure}...\caption{...}\label{key}...\end{figure}` with centred,
+  numbered `Figure N: ...` captions. Figure bodies may contain supported text
+  and math, but this milestone does not load images or place floating objects.
+- `\begin{itemize}...\item...\end{itemize}` and
+  `\begin{enumerate}...\item...\end{enumerate}` with bullet and decimal markers.
 - `compile` → `compile_result`, and `error` envelopes for unknown protocol
   versions, unknown message types, and malformed JSON.
 - Rejection of absolute paths and parent traversal in document paths.
@@ -54,9 +90,12 @@ Required, outstanding — this is a foundation, not a LaTeX implementation:
   `\left`/`\right` delimiter sizing, real math-font parameters, and operator
   spacing classes are not implemented.
 - Package declarations are recognised but packages are not loaded: package
-  commands, TikZ, bibliography support, and cross-references remain missing.
-- Environments generally are not implemented. Only `document` controls the
-  preamble/body boundary; other environments warn and typeset as plain text.
+  commands, TikZ, bibliographies, and `\cite` remain missing.
+- Image loading (`\includegraphics`), tables, and float placement remain
+  missing. `\includegraphics` emits an explicit unsupported diagnostic; a
+  `figure` is laid out in source order and is not a real LaTeX float.
+- Environments other than `document`, `equation`, `figure`, `itemize`, and
+  `enumerate` warn and typeset as plain text.
 - No PDF output. `pdf_path` is always `null`, as the contract permits for now.
 - Only the entry document is compiled. Multi-document projects produce a warning
   rather than silently compiling part of the project.
@@ -68,9 +107,10 @@ Required, outstanding — this is a foundation, not a LaTeX implementation:
 `\documentclass[options]{class}`, `\usepackage[options]{a,b,c}`,
 `\newcommand{\name}{body}`, `\newcommand{\name}[n]{body}`,
 `\renewcommand{\name}{body}`, `\renewcommand{\name}[n]{body}`,
-`\section`, `\subsection`, `\textbf`, `\emph`, `\textit`,
-`\begin`/`\end` (only `document` controls rendering; other environments
-warn and typeset their body as plain text), `\par`, and `\\`. Macro
+`\section{...}`, `\subsection{...}`, `\label{key}`, `\ref{key}`,
+`\pageref{key}`, `\caption{...}`, `\textbf`, `\emph`, `\textit`,
+`\begin`/`\end` for `document`, `equation`, `figure`, `itemize`, and
+`enumerate`, `\item`, `\par`, and `\\`. Macro
 argument counts are decimal integers from 0 through 9, and replacement
 parameters are `#1` through `#9`. Paragraphs are separated by blank lines.
 `%` begins a comment. Any other command produces an explicit "not supported by
@@ -120,21 +160,22 @@ from the font are wired in.
 One item is emitted per word rather than per line. That keeps each item's source
 span exact, which is what click-to-source navigation (FT-003) needs.
 
-## Two deliberate representation choices
+## Negotiated representation and source attribution
 
-**Fraction rules are drawn as text.** runtime-v1 defines only a `text` item and
-says line and path item types "will be added by contract revision; do not
-independently invent them". So the fraction bar is emitted as box-drawing
-characters in a text item rather than an invented rule item. It is positioned
-correctly and it is honest about the contract; it should become a real rule item
-when the contract gains one, and the Commander owns that revision.
+**Fraction rules retain a legacy route.** A client that negotiates `rules-v1`
+receives a typed rectangle and no box-drawing fraction glyph. An old client, or
+one that does not request the capability, still receives the original text item
+and its explicit export-approximation warning. Typed rule paint order is its
+position in the page's item list.
 
 **Substituted glyphs span their source command.** `\alpha` emits an item whose
 text is the Greek letter but whose span covers `\alpha` in the source, six bytes.
-So for these items the span does not slice back to the item's text, unlike
-ordinary words. That is deliberate: source navigation must land on the command
-the author typed. The ordinary-text invariant — every word item's span slices
-back to exactly that word — is unchanged and still asserted by the test suite.
+Generated section, equation, figure, and list numbers follow the same rule: their
+spans cover the `\section`, display delimiter/`\begin`, `\caption`, or `\item`
+command that produced them. For these items the span does not slice back to the
+item's text, unlike ordinary words. That is deliberate: source navigation must
+land on the command the author typed. The ordinary-text invariant — every
+ordinary word item's span slices back to exactly that word — is unchanged.
 
 ## Recovery behaviour
 
@@ -163,6 +204,13 @@ must also force a full rebuild if introduced. An exactly unchanged snapshot may
 return its already-produced output, including diagnostics, because no execution
 or layout result can differ.
 
+Counters are embedded in parsed counter-bearing blocks, so changed incoming
+counter values invalidate those blocks and geometry invalidates affected suffixes.
+Labels and references are more global: any changed snapshot containing either is
+laid out conservatively from scratch and passed through the bounded convergence
+loop. This intentionally sacrifices reuse to keep every incremental result
+byte-identical to a clean build.
+
 ## Measured incremental latency
 
 Measured on `mac-m5pro-kabir` on 2026-09-12 with:
@@ -178,14 +226,24 @@ Fifty samples produced these actual compiler-only measurements:
 
 | Case | Actual latency | Reuse |
 |---|---:|---:|
-| First cold compile | 35.522 ms | 0 / 500 blocks |
-| Cold compile | median 20.034 ms, p95 21.518 ms | 0 / 500 blocks |
-| Warm unchanged | median 0.639 ms, p95 0.710 ms | 500 / 500 blocks |
-| One-word edit in paragraph 250 | median 21.079 ms, p95 22.578 ms | 499 / 500 blocks |
-| Global macro-definition edit | median 21.219 ms, p95 22.682 ms | 0 / 500 blocks |
+| First cold compile | 37.490 ms | 0 / 500 blocks |
+| Cold compile | median 26.613 ms, p95 27.366 ms | 0 / 500 blocks |
+| Warm unchanged | median 0.784 ms, p95 0.933 ms | 500 / 500 blocks |
+| One-word edit in paragraph 250 | median 29.092 ms, p95 29.678 ms | 499 / 500 blocks |
+| Global macro-definition edit | median 29.014 ms, p95 29.643 ms | 0 / 500 blocks |
+
+These numbers were re-measured after cross-references, figures and multi-file
+support landed. The earlier figures in this table were stale, and re-measuring
+caught a real regression: the reuse lookup shifted a cached block once per
+comparison rather than once, which is quadratic, and a one-word edit had reached
+178 ms p95 — six times slower than a full cold compile despite reusing 499 of 500
+blocks. Hoisting the shift out of the inner scan restored it to 29.678 ms.
+
+Cold compilation is genuinely slower than before (27 ms against 21 ms); that is
+the real cost of the convergence pass and multi-file handling, not a regression.
 
 The measured compiler work is below the 200 ms ordinary warm-edit target; the
-one-word edit p95 is 22.578 ms, leaving 177.422 ms of that budget. This is not an
+one-word edit p95 is 29.678 ms, leaving 170.322 ms of that budget. This is not an
 end-to-end keystroke-to-visible measurement: scheduling, JSON transfer, native UI
 drawing, and artifact publication are excluded, so the full product target still
 requires integration measurement. The benchmark intentionally does not claim a

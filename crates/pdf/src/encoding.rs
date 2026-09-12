@@ -21,26 +21,32 @@ pub enum Font {
     Times,
     /// Symbol with its built-in encoding, resource `/F2`.
     Symbol,
-    /// The embedded TrueType subset (Identity-H, two bytes per glyph),
+    /// The document's embedded font (Identity-H, two bytes per glyph),
     /// resource `/F3`. Only present when embedding was requested.
     Embedded,
+    /// An additional face selected by a `font-hints-v1` hint: either another
+    /// base-14 Times variant (WinAnsi, one byte per glyph) or another embedded
+    /// face (two bytes per glyph). Resource `/F4`, `/F5`, … in allocation order;
+    /// the writer knows which kind each slot is.
+    Extra(u8),
 }
 
 impl Font {
-    pub fn resource_name(self) -> &'static str {
+    pub fn resource_name(self) -> String {
         match self {
-            Font::Times => "F1",
-            Font::Symbol => "F2",
-            Font::Embedded => "F3",
+            Font::Times => "F1".into(),
+            Font::Symbol => "F2".into(),
+            Font::Embedded => "F3".into(),
+            Font::Extra(n) => format!("F{}", 4 + n as usize),
         }
     }
 
-    /// Base-14 name; the embedded font's name is per document.
+    /// Base-14 name; the embedded fonts' names are per document.
     pub fn base_font(self) -> &'static str {
         match self {
             Font::Times => "Times-Roman",
             Font::Symbol => "Symbol",
-            Font::Embedded => "(embedded)",
+            Font::Embedded | Font::Extra(_) => "(per document)",
         }
     }
 }
@@ -288,19 +294,63 @@ pub fn encode_face(
     embedded: Option<&dyn Fn(char) -> Option<u16>>,
     face: Face,
 ) -> Encoded {
+    let primary = match face {
+        Face::Times => Font::Times,
+        Face::Embedded => Font::Embedded,
+    };
+    encode_runs(
+        text,
+        &Faces {
+            face,
+            primary,
+            primary_lookup: embedded,
+            fallback_lookup: embedded,
+        },
+    )
+}
+
+/// The fonts available to one text item.
+pub struct Faces<'a> {
+    /// Lookup order (see [`Face`]).
+    pub face: Face,
+    /// The primary font's resource: a Times variant (WinAnsi bytes) when
+    /// `face` is [`Face::Times`], an embedded face (glyph ids) when
+    /// [`Face::Embedded`].
+    pub primary: Font,
+    /// Glyph lookup for the primary font when it is embedded.
+    pub primary_lookup: Option<&'a dyn Fn(char) -> Option<u16>>,
+    /// Glyph lookup for the document's embedded font (`/F3`), used as the
+    /// last resort when `face` is [`Face::Times`].
+    pub fallback_lookup: Option<&'a dyn Fn(char) -> Option<u16>>,
+}
+
+/// Splits `text` into font runs for the given faces.
+pub fn encode_runs(text: &str, faces: &Faces<'_>) -> Encoded {
     let mut runs: Vec<Run> = Vec::new();
     let mut unrepresentable = Vec::new();
     for c in text.chars() {
-        let embedded_run = || {
-            embedded
-                .and_then(|f| f(c))
-                .map(|gid| (Font::Embedded, gid.to_be_bytes().to_vec()))
-        };
-        let times_run = || winansi_byte(c).map(|b| (Font::Times, vec![b]));
         let symbol_run = || symbol_byte(c).map(|b| (Font::Symbol, vec![b]));
-        let found = match face {
-            Face::Times => times_run().or_else(symbol_run).or_else(embedded_run),
-            Face::Embedded => embedded_run().or_else(symbol_run).or_else(times_run),
+        let found = match faces.face {
+            Face::Times => {
+                let primary_run = || winansi_byte(c).map(|b| (faces.primary, vec![b]));
+                let embedded_run = || {
+                    faces
+                        .fallback_lookup
+                        .and_then(|f| f(c))
+                        .map(|gid| (Font::Embedded, gid.to_be_bytes().to_vec()))
+                };
+                primary_run().or_else(symbol_run).or_else(embedded_run)
+            }
+            Face::Embedded => {
+                let primary_run = || {
+                    faces
+                        .primary_lookup
+                        .and_then(|f| f(c))
+                        .map(|gid| (faces.primary, gid.to_be_bytes().to_vec()))
+                };
+                let times_run = || winansi_byte(c).map(|b| (Font::Times, vec![b]));
+                primary_run().or_else(symbol_run).or_else(times_run)
+            }
         };
         let (font, bytes): (Font, Vec<u8>) = match found {
             Some(run) => run,
