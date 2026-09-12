@@ -9,15 +9,15 @@
   "branch": "agent/claude/compiler-foundation",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "47bb0e8028cf846adaeb998b0ea7431e48a50731",
-  "objective": "Resolve measured reference fixture parser gaps: bounded left/right math delimiters and missing nu Greek control word, preserving source ranges, typed unsupported export and exact incremental-clean equality.",
+  "input_main_sha": "1d25ed009e7007b65258d4b684421cb9aadc59c2",
+  "objective": "Validate exact incremental-clean and bounded malformed delimiter/Greek fixture behavior with the existing render pipeline consumer",
   "owned_paths": [
     "crates/compiler"
   ],
-  "revision": 12,
+  "revision": 13,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-002",
   "timebox_minutes": 45,
-  "updated_utc": "2026-09-12T09:48:50.695736+00:00"
+  "updated_utc": "2026-09-12T09:54:41Z"
 }
