@@ -227,3 +227,34 @@ fn left_right_paints_the_variant_of_the_selected_cmex_size() {
     let (_, _, top_s, bottom_s) = sum[0];
     assert!((top_s + 8.0).abs() < 0.4 && (bottom_s - 2.0).abs() < 0.4, "text \\sum ink {top_s:.2}..{bottom_s:.2} pt from the baseline; TeX: -8.0..+2.0");
 }
+
+/// Symbols with no Computer Modern slot (`\mathbb`, `\setminus`,
+/// `\Longrightarrow`, `\aleph`) are drawn from Latin Modern Math through
+/// `OTF_FALLBACK_FONT`, whose id lies above the `\text` run range: the
+/// painter must not look them up as run glyphs (they were silently
+/// dropped). The math minus is U+2212, not the text hyphen.
+#[test]
+fn cm_less_symbols_are_painted_from_latin_modern_math() {
+    if !lm_available() {
+        eprintln!("skipping: Latin Modern not installed");
+        return;
+    }
+    let r = render_one(&doc("A $\\mathbb{Z}\\aleph$ $\\mathbb{R}\\setminus\\mathbb{Q}$ $x\\Longrightarrow y$ $10 - x$ B"));
+    let runs: Vec<(String, u16)> = r.v2.pages[0]
+        .items
+        .iter()
+        .filter_map(|it| match it {
+            Item::GlyphRun(run) => Some((run.text.clone(), run.glyphs[0].gid)),
+            _ => None,
+        })
+        .collect();
+    let texts: Vec<&str> = runs.iter().map(|(t, _)| t.as_str()).collect();
+    assert!(texts.contains(&"ℤℵ"), "\\mathbb{{Z}}\\aleph dropped: {texts:?}");
+    assert!(texts.contains(&"ℝ∖ℚ"), "\\mathbb{{R}}\\setminus\\mathbb{{Q}} dropped: {texts:?}");
+    assert!(texts.contains(&"x⟹y"), "\\Longrightarrow dropped: {texts:?}");
+    // The run text keeps the source's ASCII hyphen; the painted glyph is
+    // Latin Modern Math's U+2212 (gid 2615 in the pinned font 6075562b…),
+    // not its text hyphen (gid 14).
+    let minus = runs.iter().find(|(t, _)| t.starts_with('-')).expect("the minus run");
+    assert_eq!(minus.1, 2615, "math minus should paint U+2212: {runs:?}");
+}
