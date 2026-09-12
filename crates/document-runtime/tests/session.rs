@@ -206,3 +206,116 @@ fn fake_session(path: std::path::PathBuf, limits: Limits) -> Result<Session, Str
     command.arg(path);
     Session::spawn_command(command, limits)
 }
+
+#[test]
+#[cfg(unix)]
+fn oversized_and_truncated_frames_fail_then_fresh_session_recovers() {
+    for body in [
+        "import sys\nsys.stdin.readline()\nsys.stdout.write('x'*1025);sys.stdout.flush()",
+        "import sys\nsys.stdin.readline()\nsys.stdout.write('{}');sys.stdout.flush()",
+    ] {
+        let (_dir, path) = executable(body);
+        let mut failed = fake_session(
+            path,
+            Limits {
+                max_frame: 1024,
+                ..Limits::default()
+            },
+        )
+        .unwrap();
+        failed.submit(request(1)).unwrap();
+        let events = collect_until(&mut failed, |events| {
+            events
+                .iter()
+                .any(|event| matches!(event, Event::Failed { .. }))
+        });
+        assert_eq!(events.len(), 1);
+        assert!(!failed.is_alive());
+        assert!(failed.submit(request(2)).is_err());
+        let (_recovered_dir, path) = executable(ECHO);
+        let mut recovered = fake_session(path, Limits::default()).unwrap();
+        recovered.submit(request(2)).unwrap();
+        let events = collect_until(&mut recovered, |events| {
+            events
+                .iter()
+                .any(|event| matches!(event, Event::Preview { revision: 2, .. }))
+        });
+        assert_eq!(events.len(), 1);
+    }
+}
+
+#[test]
+#[cfg(unix)]
+fn project_revisions_are_independent_and_queued_projects_are_not_lost() {
+    let (_dir, path) = executable(ECHO);
+    let mut session = fake_session(path, Limits::default()).unwrap();
+    session.submit(request(10)).unwrap();
+    let mut second = request(1);
+    second.project_id = "other".into();
+    second.id = "other-1".into();
+    session.submit(second).unwrap();
+    session.submit(request(11)).unwrap();
+    let events = collect_until(&mut session, |events| {
+        events
+            .iter()
+            .filter(|event| matches!(event, Event::Preview { .. }))
+            .count()
+            == 2
+    });
+    let projects: Vec<_> = events
+        .iter()
+        .filter_map(|event| match event {
+            Event::Preview {
+                project_id,
+                revision,
+                ..
+            } => Some((project_id.as_str(), *revision)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(projects, vec![("other", 1), ("p", 11)]);
+    assert!(events
+        .iter()
+        .any(|event| matches!(event, Event::Stale { revision: 10, .. })));
+}
+
+#[test]
+#[cfg(unix)]
+fn closing_project_cancels_once_and_reclaims_slot_without_showing_old_result() {
+    let (_dir, path) = executable(ECHO);
+    let mut session = fake_session(
+        path,
+        Limits {
+            max_projects: 1,
+            ..Limits::default()
+        },
+    )
+    .unwrap();
+    session.submit(request(1)).unwrap();
+    session.submit(request(2)).unwrap();
+    session.close_project("p").unwrap();
+    session.close_project("p").unwrap();
+    let mut reopened = request(0);
+    reopened.id = "reopened".into();
+    session.submit(reopened).unwrap();
+    let events = collect_until(&mut session, |events| {
+        events
+            .iter()
+            .any(|event| matches!(event, Event::Preview { revision: 0, .. }))
+    });
+    assert_eq!(events.len(), 3);
+    assert_eq!(
+        events
+            .iter()
+            .filter(|event| matches!(event, Event::Cancelled { .. }))
+            .count(),
+        2
+    );
+    assert!(!events
+        .iter()
+        .any(|event| matches!(event, Event::Stale { .. } | Event::Failed { .. })));
+    session.close_project("p").unwrap();
+    let mut other = request(1);
+    other.project_id = "other".into();
+    session.submit(other).unwrap();
+}

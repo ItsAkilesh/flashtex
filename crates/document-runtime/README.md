@@ -58,3 +58,11 @@ correctly. Compiler execution, pipe transport and polling are reported together
 because runtime-v1 has no trusted compiler-only timing field. This harness does not
 produce or compare reference PDFs and does not measure UI painting. For rigorous
 performance evidence use a release compiler and substantially larger workloads.
+
+Call `close_project(project_id)` when the app closes a project to reclaim its
+capacity and emit `Cancelled` exactly once for accepted active/queued work. Poll
+pending events first if backpressure rejects the close. A cancelled in-flight wire
+request is drained and checked before dispatch resumes; its result is never shown.
+A reopened project can start a new revision sequence using a distinct live request
+ID. A hung cancelled compiler still reaches the ordinary timeout and requires a
+fresh session. This avoids silently treating cancellation as process interruption.

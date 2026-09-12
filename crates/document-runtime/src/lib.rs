@@ -44,6 +44,9 @@ impl Default for Limits {
 }
 #[derive(Debug)]
 pub enum Event {
+    Cancelled {
+        id: String,
+    },
     Superseded {
         id: String,
         by_id: String,
@@ -67,6 +70,7 @@ pub enum Event {
     },
 }
 struct Pending {
+    cancelled: bool,
     request: Request,
     bytes: Vec<u8>,
     queued: Instant,
@@ -227,12 +231,41 @@ impl Session {
             (request.revision, request.id.clone()),
         );
         self.queue.push_back(Pending {
+            cancelled: false,
             request,
             bytes,
             queued: Instant::now(),
             sent: None,
         });
         self.dispatch();
+        Ok(())
+    }
+    /// Release a closed project's slot and explicitly cancel accepted work.
+    /// An in-flight wire request is still drained before another is dispatched.
+    pub fn close_project(&mut self, project_id: &str) -> Result<(), String> {
+        if self.events.len() >= self.limits.max_pending_events {
+            return Err("poll pending events before closing projects".into());
+        }
+        self.latest.remove(project_id);
+        if let Some(active) = self.active.as_mut() {
+            if active.request.project_id == project_id && !active.cancelled {
+                active.cancelled = true;
+                self.events.push_back(Event::Cancelled {
+                    id: active.request.id.clone(),
+                });
+            }
+        }
+        let mut retained = VecDeque::new();
+        for pending in self.queue.drain(..) {
+            if pending.request.project_id == project_id {
+                self.events.push_back(Event::Cancelled {
+                    id: pending.request.id,
+                });
+            } else {
+                retained.push_back(pending);
+            }
+        }
+        self.queue = retained;
         Ok(())
     }
     fn dispatch(&mut self) {
@@ -257,7 +290,7 @@ impl Session {
     }
     fn fail(&mut self, reason: &str) {
         self.process.take();
-        if let Some(p) = self.active.take() {
+        if let Some(p) = self.active.take().filter(|p| !p.cancelled) {
             self.events.push_back(Event::Failed {
                 id: p.request.id,
                 reason: reason.into(),
@@ -291,6 +324,10 @@ impl Session {
                         }
                     };
                     let pending = self.active.take().unwrap();
+                    if pending.cancelled {
+                        self.dispatch();
+                        continue;
+                    }
                     let sent = pending.sent.unwrap();
                     let now = Instant::now();
                     if self
