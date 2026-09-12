@@ -79,6 +79,21 @@ pub enum Block {
     FigureCaption {
         content: Vec<Inline>,
     },
+    /// A paragraph inside `center`, `flushleft`, `flushright`, `quote` or
+    /// `quotation`.
+    Styled {
+        style: ParagraphStyle,
+        content: Vec<Inline>,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ParagraphStyle {
+    Center,
+    FlushRight,
+    FlushLeft,
+    /// `quote`/`quotation`: both margins indented.
+    Quote,
 }
 
 /// A macro definition actually consulted while producing one block.
@@ -209,6 +224,7 @@ pub fn parse_project(documents: &[SourceDocument<'_>], entry_path: &str) -> Pars
         current_counter: None,
         seen_labels: HashMap::new(),
         list_stack: Vec::new(),
+        paragraph_styles: Vec::new(),
         document_global_state: false,
     };
     let blocks = p.document();
@@ -266,6 +282,7 @@ struct P<'a> {
     current_counter: Option<String>,
     seen_labels: HashMap<String, Span>,
     list_stack: Vec<(String, u32)>,
+    paragraph_styles: Vec<ParagraphStyle>,
     document_global_state: bool,
 }
 
@@ -307,6 +324,9 @@ impl P<'_> {
                 }
                 TokenKind::LineBreak => {
                     self.i += 1;
+                    // `\\[<length>]`: the vertical space is not modelled, but the
+                    // argument must not be typeset as text.
+                    self.skip_line_break_length();
                     if render {
                         para.push(Inline::LineBreak { span: tok.span });
                     }
@@ -888,6 +908,9 @@ impl P<'_> {
                 self.in_body = true;
             } else if environment == "figure" && self.in_body {
                 self.flush_paragraph(blocks, para);
+            } else if let (Some(style), true) = (paragraph_style(&environment), self.in_body) {
+                self.flush_paragraph(blocks, para);
+                self.paragraph_styles.push(style);
             } else if matches!(environment.as_str(), "itemize" | "enumerate") && self.in_body {
                 self.flush_paragraph(blocks, para);
                 self.list_stack.push((environment.clone(), 0));
@@ -922,7 +945,10 @@ impl P<'_> {
                 Some("ignored the stray \\end".into()),
             )),
         }
-        if matches!(environment.as_str(), "itemize" | "enumerate") {
+        if paragraph_style(&environment).is_some() && self.in_body {
+            self.flush_paragraph(blocks, para);
+            self.paragraph_styles.pop();
+        } else if matches!(environment.as_str(), "itemize" | "enumerate") {
             self.flush_paragraph(blocks, para);
             self.list_stack.pop();
         } else if environment == "figure" {
@@ -1534,9 +1560,40 @@ impl P<'_> {
 
     fn flush_paragraph(&mut self, blocks: &mut Vec<Block>, paragraph: &mut Vec<Inline>) {
         if !paragraph.is_empty() {
-            blocks.push(Block::Paragraph(std::mem::take(paragraph)));
+            let content = std::mem::take(paragraph);
+            blocks.push(match self.paragraph_styles.last() {
+                Some(&style) => Block::Styled { style, content },
+                None => Block::Paragraph(content),
+            });
             self.finish_block_dependencies();
         }
+    }
+
+    /// Drops a `[<length>]` that directly follows `\\`, keeping any text glued
+    /// to it (`\\[3pt]Next`) as the remainder of the word.
+    fn skip_line_break_length(&mut self) {
+        let Some(input) = self.t.get_mut(self.i) else {
+            return;
+        };
+        let TokenKind::Word(word) = &input.token.kind else {
+            return;
+        };
+        if !word.starts_with('[') {
+            return;
+        }
+        let Some(close) = word.find(']') else {
+            return;
+        };
+        let rest = word[close + 1..].to_string();
+        if rest.is_empty() {
+            self.i += 1;
+            return;
+        }
+        let span = input.token.span;
+        if span.end - span.start == word.len() {
+            input.token.span = Span::in_document(span.document, span.start + close + 1, span.end);
+        }
+        input.token.kind = TokenKind::Word(rest);
     }
 
     fn skip_spaces(&mut self) {
@@ -1629,6 +1686,16 @@ fn token_text(tokens: &[InputToken]) -> String {
         }
     }
     result
+}
+
+fn paragraph_style(environment: &str) -> Option<ParagraphStyle> {
+    match environment {
+        "center" => Some(ParagraphStyle::Center),
+        "flushright" => Some(ParagraphStyle::FlushRight),
+        "flushleft" => Some(ParagraphStyle::FlushLeft),
+        "quote" | "quotation" => Some(ParagraphStyle::Quote),
+        _ => None,
+    }
 }
 
 fn environment_end_at(
@@ -1934,5 +2001,30 @@ mod tests {
         let cs: Vec<_> = items.iter().filter(|i| i.text == "c").collect();
         assert!(a.x_pt > cs[0].x_pt, "right-aligned column");
         assert_eq!(at("b").x_pt, at("d").x_pt);
+    }
+
+    #[test]
+    fn center_and_quote_align_their_paragraphs() {
+        let source = "Plain.\n\\begin{center}Title\\\\[3pt]Subtitle words\\end{center}\n\\begin{quote}Quoted.\\end{quote}\nAfter.";
+        let (parsed, items) = items(source);
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        assert!(matches!(
+            parsed.blocks[1],
+            Block::Styled {
+                style: ParagraphStyle::Center,
+                ..
+            }
+        ));
+        let at = |text: &str| items.iter().find(|i| i.text == text).unwrap();
+        assert!(!items.iter().any(|i| i.text.contains("3pt")));
+        let page_centre = crate::layout::PAGE_WIDTH_PT / 2.0;
+        assert!((at("Title").x_pt - page_centre).abs() < 40.0);
+        assert!(at("Subtitle").x_pt > crate::layout::MARGIN_PT + 100.0);
+        assert_eq!(
+            at("Quoted.").x_pt,
+            crate::layout::MARGIN_PT + crate::layout::QUOTE_INDENT_PT
+        );
+        assert_eq!(at("After.").x_pt, crate::layout::MARGIN_PT);
+        assert_eq!(at("Plain.").x_pt, crate::layout::MARGIN_PT);
     }
 }

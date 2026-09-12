@@ -11,7 +11,7 @@
 use crate::diagnostics::Diagnostic;
 use crate::export::{self, ExportFont};
 use crate::math::{self, MathBox};
-use crate::parser::{Block, Inline, MathRow};
+use crate::parser::{Block, Inline, MathRow, ParagraphStyle};
 use crate::Span;
 use flashtex_font_engine::core14::Core14;
 use flashtex_font_engine::shape::{shape, ShapeOptions, Shaped};
@@ -27,6 +27,8 @@ pub const MARGIN_PT: f64 = 72.0;
 pub const BODY_SIZE_PT: f64 = 12.0;
 pub const LINE_SPACING: f64 = 1.2;
 pub const PARAGRAPH_GAP_PT: f64 = 6.0;
+/// `quote` margins: LaTeX's `\leftmargini` (2.5em at 10pt).
+pub const QUOTE_INDENT_PT: f64 = 25.0;
 /// amsmath `\jot`: extra gap between rows of a multi-row display. Measured
 /// against pdflatex (12pt article + amsmath): row gap = `\baselineskip` + 3pt.
 pub const JOT_PT: f64 = 3.0;
@@ -266,6 +268,8 @@ pub struct LayoutCursor {
     collected_labels: BTreeMap<String, ReferenceValue>,
     emit_heading_numbers: bool,
     diagnostics: Vec<Diagnostic>,
+    /// Active only while rendering a `Block::Styled` paragraph.
+    style: Option<ParagraphStyle>,
 }
 
 impl LayoutCursor {
@@ -296,15 +300,45 @@ impl LayoutCursor {
             collected_labels: BTreeMap::new(),
             emit_heading_numbers,
             diagnostics: Vec::new(),
+            style: None,
         }
     }
 
     fn right_edge(&self) -> f64 {
-        MARGIN_PT + self.constraints.measure_pt
+        MARGIN_PT + self.constraints.measure_pt - self.indent()
+    }
+
+    fn left_edge(&self) -> f64 {
+        MARGIN_PT + self.indent()
+    }
+
+    fn indent(&self) -> f64 {
+        if self.style == Some(ParagraphStyle::Quote) {
+            QUOTE_INDENT_PT
+        } else {
+            0.0
+        }
+    }
+
+    /// Shift the current line for `center`/`flushright` before it is closed.
+    fn align_current_line(&mut self) {
+        let factor = match self.style {
+            Some(ParagraphStyle::Center) => 0.5,
+            Some(ParagraphStyle::FlushRight) => 1.0,
+            _ => return,
+        };
+        let line_end = self.x - word_space(self.constraints.font_size_pt, Font::TimesRoman);
+        let shift = ((self.right_edge() - line_end) * factor).max(0.0);
+        if let Some(page) = self.pages.last_mut() {
+            for item in page.items.iter_mut().skip(self.line_start) {
+                item.x_pt = round2(item.x_pt + shift);
+            }
+        }
     }
 
     fn newline(&mut self, size: f64) {
-        self.x = MARGIN_PT;
+        self.align_current_line();
+        self.x = self.left_edge();
         self.y += self.line_descent + size;
         self.line_ascent = size;
         self.line_descent = size * (LINE_SPACING - 1.0);
@@ -322,13 +356,13 @@ impl LayoutCursor {
     }
 
     fn vertical_gap(&mut self, gap: f64) {
-        self.x = MARGIN_PT;
+        self.x = self.left_edge();
         self.y += gap;
     }
 
     fn place(&mut self, text: String, size: f64, span: Span, font: Font) {
         let (w, span) = shaped_width(&text, size, font, span, &mut self.diagnostics);
-        if self.x > MARGIN_PT && self.x + w > self.right_edge() {
+        if self.x > self.left_edge() && self.x + w > self.right_edge() {
             self.newline(size);
         }
         self.ensure_extents(size, size * (LINE_SPACING - 1.0));
@@ -364,7 +398,7 @@ impl LayoutCursor {
     }
 
     fn place_math(&mut self, b: MathBox, size: f64) {
-        if self.x > MARGIN_PT && self.x + b.width > self.right_edge() {
+        if self.x > self.left_edge() && self.x + b.width > self.right_edge() {
             self.newline(size);
         }
         self.ensure_extents(b.ascent, b.descent);
@@ -392,6 +426,8 @@ impl LayoutCursor {
     }
 
     fn display_math(&mut self, b: MathBox, size: f64, number: Option<(&str, Span)>) {
+        // Displays centre themselves; line alignment must not move them again.
+        let style = self.style.take();
         if self.x > MARGIN_PT
             || self
                 .pages
@@ -408,6 +444,7 @@ impl LayoutCursor {
         }
         self.newline(self.constraints.font_size_pt);
         self.vertical_gap(PARAGRAPH_GAP_PT);
+        self.style = style;
     }
 
     fn place_equation_number(&mut self, number: &str, span: Span, size: f64) {
@@ -430,6 +467,8 @@ impl LayoutCursor {
     /// one; `align` cells alternate right/left alignment against column widths
     /// shared by every row, and the whole block is centred.
     fn display_rows(&mut self, rows: &[MathRow], aligned: bool, size: f64) {
+        // Displays centre themselves; line alignment must not move them again.
+        let style = self.style.take();
         if self.x > MARGIN_PT
             || self
                 .pages
@@ -491,6 +530,7 @@ impl LayoutCursor {
         }
         self.newline(self.constraints.font_size_pt);
         self.vertical_gap(PARAGRAPH_GAP_PT);
+        self.style = style;
     }
 
     /// Apply the inter-block spacing and return the state used as a cache key.
@@ -514,7 +554,7 @@ impl LayoutCursor {
                     self.vertical_gap(PARAGRAPH_GAP_PT * 2.0);
                 }
             }
-            Block::FigureCaption { .. } => {
+            Block::FigureCaption { .. } | Block::Styled { .. } => {
                 if !self.first_block {
                     self.newline(body_size);
                     self.vertical_gap(PARAGRAPH_GAP_PT);
@@ -531,6 +571,13 @@ impl LayoutCursor {
         let body_size = self.constraints.font_size_pt;
         match block {
             Block::Paragraph(inlines) => emit(self, inlines, body_size, Font::TimesRoman),
+            Block::Styled { style, content } => {
+                self.style = Some(*style);
+                self.x = self.left_edge();
+                emit(self, content, body_size, Font::TimesRoman);
+                self.align_current_line();
+                self.style = None;
+            }
             Block::Heading {
                 level,
                 number,
@@ -731,7 +778,9 @@ fn visit_references(blocks: &[Block], visitor: &mut impl FnMut(&str, Span)) {
     for block in blocks {
         let inlines = match block {
             Block::Paragraph(inlines) => inlines,
-            Block::Heading { content, .. } | Block::FigureCaption { content } => content,
+            Block::Heading { content, .. }
+            | Block::FigureCaption { content }
+            | Block::Styled { content, .. } => content,
         };
         for inline in inlines {
             if let Inline::Reference { key, span, .. } = inline {

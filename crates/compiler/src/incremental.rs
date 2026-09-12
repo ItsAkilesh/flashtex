@@ -392,6 +392,10 @@ fn shift_block(block: &Block, changes: &[ChangedBytes], deltas: &[isize]) -> Opt
         Block::FigureCaption { content } => Block::FigureCaption {
             content: shift_inlines(content, changes, deltas)?,
         },
+        Block::Styled { style, content } => Block::Styled {
+            style: *style,
+            content: shift_inlines(content, changes, deltas)?,
+        },
     })
 }
 
@@ -581,6 +585,7 @@ fn block_signature(block: &Block) -> BlockSignature {
         Block::Paragraph(inlines) => inlines,
         Block::Heading { content, .. } => content,
         Block::FigureCaption { content } => content,
+        Block::Styled { content, .. } => content,
     };
     let span_of = |inline: &Inline| match inline {
         Inline::Text { span, .. } => *span,
@@ -615,6 +620,7 @@ fn shifted_signature(
         Block::Paragraph(inlines) => inlines,
         Block::Heading { content, .. } => content,
         Block::FigureCaption { content } => content,
+        Block::Styled { content, .. } => content,
     };
     let span_of = |inline: &Inline| match inline {
         Inline::Text { span, .. } => *span,
