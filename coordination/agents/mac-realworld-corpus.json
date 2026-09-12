@@ -1,0 +1,44 @@
+{
+  "agent_id": "mac-realworld-corpus",
+  "allocation_id": "claude-mac20x-realworld-corpus",
+  "assignment_acknowledgements": {
+    "commander-ruling-issue-2": "ACK 2026-09-12T14:35Z: HW1.tex/HW1-reference.pdf byte-immutable (regeneration stored separately as reference-mactex2026.pdf with its own SHA + pdflatex version); every ranked gap mapped to compiler / math-layout / render-pipeline; no second parser layer suggested; \\subsection* inside \\problem pinned to rank 1 with exact diagnostic and spans"
+  },
+  "branch": "agent/mac-realworld-corpus/corpus",
+  "capabilities": [
+    "python-stdlib",
+    "latex",
+    "mactex-oracle",
+    "ghostscript-raster"
+  ],
+  "code_revision": "TBD-at-commit",
+  "eta_minutes": {
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 5
+  },
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "daa541e3",
+  "next_action": "Parent merges agent/mac-realworld-corpus/corpus into mac-shell; Commander pastes docs/evidence/real-world-corpus-2026-09-12T144246Z/report.md 'Paste-ready queue items' into queues; render-pipeline/paragraph-layout owners take the trailing-\\\\ panic reproduction in tools/real-world-corpus/README.md",
+  "reviewed_peers": {
+    "origin/agent/mac-claude-a/mac-shell": {
+      "adaptation": "Branched from daa541e3; reused ExactPDFExport.swift's `from-v2 LIST --out PDF --font-dir` invocation for the render PDF route and typing-bench's git-archive scratch build pattern for the pinned flashtex-render 9aaec57a; no parent-retained Swift file touched, no crate edited",
+      "reviewed_utc": "2026-09-12T14:30:00Z",
+      "sha": "daa541e3"
+    },
+    "origin/agent/mac-render-pipeline/unified": {
+      "adaptation": "Built flashtex-render at 9aaec57a from a git archive into an ignored scratch dir; harness records its sha256 and provenance note; its trailing-line-break panic (vendor/paragraph-layout/src/linebreak.rs:988) is reported with a 4-line reproduction, not patched",
+      "reviewed_utc": "2026-09-12T14:38:00Z",
+      "sha": "9aaec57a"
+    }
+  },
+  "schema_version": 1,
+  "state": "ready_for_integration",
+  "summary": "Real-world corpus acceptance harness tools/real-world-corpus/run.py (stdlib): 8 fixtures (user HW1 + 7 written documents: two-column article, amsthm lecture notes, CV, letter, \\input+thebibliography, math sheet, unicode/CJK) each with a MacTeX 2026 reference (SHA + pdflatex version in reference.json); runs flashtex-compiler and flashtex-render@9aaec57a over runtime-v1, PDFs via flashtex-pdf-exact from-v2 / flashtex-pdf, 144 dpi PGM pixel diff via gs (pdftoppm absent), tokenizer-derived per-construct table (253 constructs, 1489 occurrences), ranked top-30 diagnostics with owner crate and spans, producer-crash reproduction; evidence committed with uptime; 6 unit tests",
+  "tool": "Claude Code subagent (parent mac-claude-a)",
+  "updated_utc": "2026-09-12T14:43:00Z",
+  "usage": {
+    "evidence": "python3 -m unittest tools/real-world-corpus 6/6 OK; harness run at 1-min load 4.04 (docs/evidence/real-world-corpus-2026-09-12T144246Z); all 8 fixtures compile with MacTeX (0 LaTeX warnings, 0 overfull); every producer result is `recovered` (compiler 8/8, render 6/8 + 2 panics); no swift build needed (no Swift changes)",
+    "status": "Shared Claude Max quota with parent mac-claude-a; no purchases"
+  }
+}
