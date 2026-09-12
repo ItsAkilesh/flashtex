@@ -165,6 +165,12 @@ for f in compile-result.json compile-request.json; do
     echo "make-app.sh: warning: missing fixture $FIXTURES_DIR/$f" >&2
   fi
 done
+if [[ -d "$MAC_DIR/Fonts" ]]; then
+  # Latin Modern (GUST FL) so the app never depends on a TeX installation.
+  mkdir -p "$RESOURCES_DIR/Fonts"
+  cp "$MAC_DIR/Fonts/"*.otf "$MAC_DIR/Fonts/"*.TXT "$MAC_DIR/Fonts/README.md" "$RESOURCES_DIR/Fonts/"
+  echo "    bundled $(ls "$RESOURCES_DIR/Fonts"/*.otf | wc -l | tr -d ' ') Latin Modern faces"
+fi
 if [[ -d "$MAC_DIR/Samples" ]]; then
   cp -R "$MAC_DIR/Samples/." "$SAMPLES_DIR/"
 fi

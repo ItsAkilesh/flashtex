@@ -174,7 +174,13 @@ final class ShellLayoutNegotiationTests: XCTestCase {
         XCTAssertFalse(model.isFixture)
         XCTAssertEqual(model.negotiation, .init(requested: Self.extended + ["future-v9"], accepted: Self.extended))
         XCTAssertEqual(model.acceptedLayoutCapabilities, Self.extended)
-        XCTAssertEqual(model.capabilityNotes, ["capability future-v9 not accepted by the worker"], "unknown capability is reported, never guessed")
+        // The unknown capability is reported, never guessed. When Latin Modern is
+        // not registered on this machine the hinted face is honestly reported as
+        // substituted too, so only assert the note we control here.
+        XCTAssertTrue(model.capabilityNotes.contains("capability future-v9 not accepted by the worker"), "\(model.capabilityNotes)")
+        if PreviewFonts.latinModernRegistered {
+            XCTAssertEqual(model.capabilityNotes, ["capability future-v9 not accepted by the worker"])
+        }
         XCTAssertTrue(model.fontSubstitutions.isEmpty || !PreviewFonts.latinModernRegistered, "LM is registered but reported as substituted: \(model.fontSubstitutions)")
         guard case .text(let t) = result.pages[0].items[0], case .rule(let r) = result.pages[0].items[1] else { return XCTFail("\(result.pages[0].items)") }
         XCTAssertEqual(t.font, .init(family: "Latin Modern Roman", weight: .bold, style: .normal))

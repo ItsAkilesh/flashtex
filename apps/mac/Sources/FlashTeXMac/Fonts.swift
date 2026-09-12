@@ -13,6 +13,9 @@ enum PreviewFonts {
     static let latinModernSearchPaths: [String] = [
         ProcessInfo.processInfo.environment["FLASHTEX_LM_DIR"],
         Bundle.main.resourceURL?.appendingPathComponent("Fonts").path,
+        // Repository copy (apps/mac/Fonts) for development and tests.
+        URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().appendingPathComponent("Fonts").path,
         "/usr/local/texlive/2026basic/texmf-dist/fonts/opentype/public/lm",
         "/usr/local/texlive/2026/texmf-dist/fonts/opentype/public/lm",
         "/Library/TeX/Root/texmf-dist/fonts/opentype/public/lm",
