@@ -846,3 +846,39 @@ fn generated_literal_plan_applies_as_one_durable_group_and_retries_exactly() {
         "α α original"
     );
 }
+
+#[test]
+fn history_status_binds_labels_and_limits_to_current_source_without_text() {
+    use flashtex_edit_ledger::history::{
+        MAX_HISTORY_BYTES, MAX_HISTORY_COMMAND_IDS, MAX_HISTORY_ENTRIES,
+    };
+    let dir = tempfile::tempdir().unwrap();
+    let mut client = Client::start(dir.path());
+    client.send("status", "history_status", json!({"path":"main.tex"}));
+    let before = client.reply("status")["payload"].clone();
+    assert_eq!(before["document"]["revision"], 1);
+    assert!(before["document"].get("text").is_none());
+    assert_eq!(
+        before["limits"],
+        json!({"history_bytes":MAX_HISTORY_BYTES,"history_entries":MAX_HISTORY_ENTRIES,"permanent_command_ids":MAX_HISTORY_COMMAND_IDS})
+    );
+    client.send("edit", "edit", json!({"path":"main.tex","expected_revision":1,"expected_sha256":before["document"]["source_sha256"],"text":"α next"}));
+    assert_eq!(client.reply("edit")["type"], "result");
+    client.send("status", "history_status", json!({"path":"main.tex"}));
+    let after = client.reply("status")["payload"].clone();
+    assert_eq!(after["document"]["revision"], 2);
+    assert_eq!(after["history"]["undo_labels"].as_array().unwrap().len(), 1);
+    client.send("undo", "undo", json!({"path":"main.tex","command":{"command_id":"status-undo","expected_revision":after["document"]["revision"],"expected_sha256":after["document"]["source_sha256"]}}));
+    assert_eq!(
+        client.reply("undo")["payload"]["history"]["document"]["text"],
+        "α original"
+    );
+    client.send("status", "history_status", json!({"path":"main.tex"}));
+    let undone = client.reply("status")["payload"].clone();
+    assert_eq!(undone["document"]["revision"], 3);
+    assert_eq!(undone["history"]["permanent_command_ids"], 1);
+    assert_eq!(
+        undone["history"]["redo_labels"].as_array().unwrap().len(),
+        1
+    );
+}

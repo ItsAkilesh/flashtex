@@ -13,17 +13,17 @@
   "capabilities": [
     "Preview helper serialization and latency"
   ],
-  "code_revision": "3db162f7ae95bb40bf5972b8ae5567b5911ee31e",
+  "code_revision": "8374bff61bc4aeaa42c2ce8ca9811cb430cb0388",
   "eta_minutes": null,
   "machine": "linux-primary",
   "main_integrated_through": "a885b394b50175690cd98965ec6c9c02b5ff03e2",
-  "next_action": "Coordinate native source-plan adoption with Commander and take next helper gap; do not duplicate runtime sibling-forwarding owner.",
+  "next_action": "Hand additive history metadata to existing native history owner; resume next assigned helper work.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "Generated proposal application/recovery regression passes: stale refusal, two Unicode edits as one group, exact retry after helper kill/reopen, conflicting reused ID refused, grouped undo. Native contract documents per-file outcomes and separate export/approval.",
+  "summary": "History status now returns same-turn document revision/hash and actual ledger capacity limits without source text, enabling native guarded undo without extra document fetch. Real helper undo/status regression and strict Clippy pass.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T10:51:10Z",
+  "updated_utc": "2026-09-12T10:52:57Z",
   "usage": {
     "status": "unknown"
   }

@@ -67,7 +67,13 @@ completion vocabulary yet.
 
 Durable editor history uses the shared ledger implementation:
 
-- `history_status`: `{path}` returns undo/redo labels and retention usage.
+- `history_status`: `{path}` returns undo/redo labels and retention usage in
+  `history`, with a same-owner-turn `document:{project_id,path,revision,source_sha256}`
+  (no source text) and `limits:{history_bytes,history_entries,permanent_command_ids}`.
+  Use the returned revision/hash for guarded undo/redo; a later source edit can
+  still cause refusal. Limits are actual ledger constants, not a promise that a
+  proposed edit fits: history byte cost depends on before/after source. Permanent
+  command IDs have their own limit and are not released by clearing undo history.
 - `undo` / `redo`: `{path, command:{command_id, expected_revision,
   expected_sha256}}`. Command IDs must be unique for a new action and reused
   unchanged when retrying that same action after uncertain delivery.

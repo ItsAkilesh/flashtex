@@ -594,7 +594,21 @@ fn handle(
                 json!({"exported":true,"path":receipt.path.as_str(),"sha256":receipt.sha256_hex(),"bytes":receipt.bytes}),
             )
         }
-        "history_status" => Ok(json!({"history":controller.history_status(string(p,"path")?)?})),
+        "history_status" => {
+            use flashtex_edit_ledger::history::{
+                MAX_HISTORY_BYTES, MAX_HISTORY_COMMAND_IDS, MAX_HISTORY_ENTRIES,
+            };
+            let path = string(p, "path")?;
+            let history = controller.history_status(path)?;
+            let document = controller.document(path)?;
+            // Both reads occur on the same owner turn; callers can use this exact
+            // revision/hash for a later guarded undo, without fetching full text.
+            Ok(json!({"history":history,
+                "document":{"project_id":document.project_id,"path":document.path,
+                    "revision":document.revision,"source_sha256":document.source_sha256},
+                "limits":{"history_bytes":MAX_HISTORY_BYTES,"history_entries":MAX_HISTORY_ENTRIES,
+                    "permanent_command_ids":MAX_HISTORY_COMMAND_IDS}}))
+        }
         "apply_group" | "undo" | "redo" => {
             let command = p["command"].clone();
             let action = match request["type"].as_str().unwrap() {
