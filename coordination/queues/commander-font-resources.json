@@ -1,33 +1,33 @@
 {
   "agent_id": "commander-font-resources",
-  "next_index": 0,
+  "next_index": 1,
   "schema_version": 1,
   "steps": [
     {
+      "acceptance": [
+        "Focused regression tests and strict lint pass",
+        "Publish exact tested source revision and honest consumer limitations"
+      ],
+      "allocation_id": "hosted-openai-product",
       "name": "Bounded immutable CFF outline cache keyed resource identity, glyph and HintPolicy",
       "objective": "Bounded immutable CFF outline cache keyed resource identity, glyph and HintPolicy",
       "owned_paths": [
         "crates/font-resources"
       ],
+      "timebox_minutes": 30
+    },
+    {
       "acceptance": [
         "Focused regression tests and strict lint pass",
         "Publish exact tested source revision and honest consumer limitations"
       ],
-      "timebox_minutes": 30,
-      "allocation_id": "hosted-openai-product"
-    },
-    {
+      "allocation_id": "hosted-openai-product",
       "name": "Measure cached original outline replay and explicitly inventory unsupported CFF behavior",
       "objective": "Measure cached original outline replay and explicitly inventory unsupported CFF behavior",
       "owned_paths": [
         "crates/font-resources"
       ],
-      "acceptance": [
-        "Focused regression tests and strict lint pass",
-        "Publish exact tested source revision and honest consumer limitations"
-      ],
-      "timebox_minutes": 30,
-      "allocation_id": "hosted-openai-product"
+      "timebox_minutes": 30
     }
   ],
   "task_id": "FT-024"

@@ -1,23 +1,22 @@
 {
   "acceptance": [
-    "Meaningful tests and strict lint pass",
-    "Publish truthful execution provenance and exact tested SHA",
-    "No native integration or PDF parity claim without measured evidence"
+    "Focused regression tests and strict lint pass",
+    "Publish exact tested source revision and honest consumer limitations"
   ],
   "agent_id": "commander-font-resources",
   "allocation_id": "hosted-openai-product",
   "branch": "agent/commander-corpus/font-resources",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "cab39a20278914747f92ee703f6da40a26b72a93",
-  "objective": "Harden CFF hint-mask/subroutine/matrix parsing with real licensed-font regression evidence",
+  "input_main_sha": "cfdda8b312adcec7551bd5990b24975f041b22a7",
+  "objective": "Bounded immutable CFF outline cache keyed resource identity, glyph and HintPolicy",
   "owned_paths": [
     "crates/font-resources"
   ],
-  "revision": 5,
+  "revision": 6,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-024",
   "timebox_minutes": 30,
-  "updated_utc": "2026-09-12T06:46:32Z"
+  "updated_utc": "2026-09-12T06:54:08Z"
 }
