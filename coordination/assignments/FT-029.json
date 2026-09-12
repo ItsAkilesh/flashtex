@@ -9,15 +9,15 @@
   "branch": "agent/commander/assistant-context",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "608eb4685a8144d8a54343b2788f6447d6549718",
-  "objective": "Bind explanatory proposals to selected diagnostics and explicit reviewed edit destinations",
+  "input_main_sha": "cdc47170f4aa7990d8a8de8ff80482a555f98a86",
+  "objective": "Bounded native assistant request lifecycle with exact context routing, cancellation and stale revocation",
   "owned_paths": [
     "crates/assistant-context"
   ],
-  "revision": 2,
+  "revision": 3,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-029",
   "timebox_minutes": 30,
-  "updated_utc": "2026-09-12T07:47:39Z"
+  "updated_utc": "2026-09-12T07:52:57.718501+00:00"
 }

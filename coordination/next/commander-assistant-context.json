@@ -3,8 +3,8 @@
   "assignment_path": "coordination/assignments/FT-029.json",
   "branch": "agent/commander/assistant-context",
   "previous_report_sha": "94c76ee510e7bf043ef6e9a02ffc287581dd921e",
-  "revision": 2,
+  "revision": 3,
   "schema_version": 1,
   "task_id": "FT-029",
-  "updated_utc": "2026-09-12T07:47:39Z"
+  "updated_utc": "2026-09-12T07:52:57.718501+00:00"
 }

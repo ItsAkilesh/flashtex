@@ -8,15 +8,15 @@
   "branch": "agent/commander-corpus/font-resources",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "608eb4685a8144d8a54343b2788f6447d6549718",
-  "objective": "Validate licensed-font shaped cluster/GID/resource equivalence",
+  "input_main_sha": "cdc47170f4aa7990d8a8de8ff80482a555f98a86",
+  "objective": "Implement exact TFM boundary ligature/kern programs with bounded execution and source intervals",
   "owned_paths": [
     "crates/font-resources"
   ],
-  "revision": 8,
+  "revision": 9,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-024",
   "timebox_minutes": 30,
-  "updated_utc": "2026-09-12T07:47:39Z"
+  "updated_utc": "2026-09-12T07:52:57.718501+00:00"
 }
