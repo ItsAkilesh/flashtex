@@ -9,7 +9,7 @@
     "swift",
     "network-framework"
   ],
-  "code_revision": "HEAD of agent/mac-nearby-client-2/fixtures (d436438 current task, 9e3a5e78 follow-up 1, follow-up 2 on top)",
+  "code_revision": "ec026d4d (d436438 current task, 9e3a5e78 follow-up 1, ec026d4d follow-up 2)",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,

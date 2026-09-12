@@ -53,7 +53,7 @@ Follow-up 2 (HEAD): `Sources/NearbyClient/NearbyDoctor.swift` + CLI `doctor` (`N
 ## Checkpoint (durable)
 
 - Branch `agent/mac-nearby-client-2/fixtures` (pushed), base cd58fc2e; consumed main c11c005 (via mac-shell). Worktree `.claude/worktrees/agent-a4b2202c482239b72`.
-- Commits: d436438 (current task), 9e3a5e78 (follow-up 1), HEAD (follow-up 2).
+- Commits: d436438 (current task), 9e3a5e78 (follow-up 1), ec026d4d (follow-up 2); this checkpoint commit on top.
 - Dirty files after HEAD: none. No background jobs. No parent-retained file touched (no diffs to request).
 - Next: parent reviews the branch diff against `origin/agent/mac-claude-a/mac-shell` and merges; optional full `swift test` in apps/mac with real helpers when load < 15.
 - Decisions: fixtures normalise volatile fields (envelope ids, nonce, proof) to stable placeholders so a replay compares by shape; base64 of the 1×1 PNG is kept verbatim; `doctor` reuses the `send` exit-code table so scripts can treat both alike.
