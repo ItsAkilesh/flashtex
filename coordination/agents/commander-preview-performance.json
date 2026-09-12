@@ -13,23 +13,23 @@
   "capabilities": [
     "Preview helper serialization and latency"
   ],
-  "code_revision": "518a2ce3ad7d4058828c4057495a562fcc757c69",
+  "code_revision": "846ff03d5275e144202cb566f9d8e2e5dfb2092a",
   "eta_minutes": {
     "likely": 30,
     "optimistic": 15,
     "pessimistic": 60
   },
   "machine": "linux-primary",
-  "main_integrated_through": "f4fd96ff3e2d1808bbc7abb9fdf86980406d87d6",
-  "next_action": "Independent audit and isolated exact-base HW1 starred-section candidate under helper handoff; preserve compiler ownership.",
+  "main_integrated_through": "518a2ce3ad7d4058828c4057495a562fcc757c69",
+  "next_action": "Commander integration review; inspect producer reply-cap environment for bounded helper startup/restart fix.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "Published 518a2ce3: unchanged9aa producer347 through frozen298 helper; three full snapshots match direct v1/v2 and raw bytes, accepted without diagnostics; reopen exact.",
+  "summary": "GH38 corrected isolated starred-heading patch846ff03d: actual immutableHW1 119 to112 diagnostics, preserving all14 unsupported title commands. Final41library+50integration pass;3ignored; strictlint pass.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T14:34:26Z",
+  "updated_utc": "2026-09-12T14:44:20Z",
   "usage": {
-    "evidence": "518a2ce3; crates/preview-controller/benchmarks/helper-9aa-three-state/provenance.json",
-    "status": "Hosted retained engineer; no paid calls; quota unknown."
+    "evidence": "crates/preview-controller/docs/handoffs/hw1-starred-sections;846ff03d",
+    "status": "Retained hosted engineer; no paid calls; quota unknown; all local test processes terminal."
   }
 }
