@@ -151,7 +151,7 @@ a braced math list, including `x^{a_b}` and `\frac{a^2}{b_1}`.
 The named symbols `\alpha`, `\beta`, `\gamma`, `\delta`, `\theta`, `\lambda`,
 `\mu`, `\pi`, `\sigma`, `\phi`, `\omega`, `\times`, `\div`, `\pm`, `\leq`,
 `\geq`, `\neq`, `\approx`, `\cdot`, `\infty`, `\sum`, `\int`, `\in`, `\forall`,
-`\exists`, `\vee`, `\Rightarrow`, and `\mid` map to Unicode.
+`\exists`, `\vee`, `\Rightarrow`, `\mid`, and `\Longrightarrow` map to Unicode.
 The corresponding Unicode glyph must exist in the Symbol face selected by the
 export mapping; ordinary math letters and digits use Times-Roman. Unknown math
 commands produce an explicit diagnostic naming the command and are rendered

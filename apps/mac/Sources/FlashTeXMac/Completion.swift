@@ -143,7 +143,7 @@ enum Completion {
             ("alpha", "α"), ("beta", "β"), ("gamma", "γ"), ("delta", "δ"), ("theta", "θ"), ("lambda", "λ"), ("mu", "μ"),
             ("pi", "π"), ("sigma", "σ"), ("phi", "φ"), ("omega", "ω"), ("times", "×"), ("div", "÷"), ("pm", "±"),
             ("leq", "≤"), ("geq", "≥"), ("neq", "≠"), ("approx", "≈"), ("cdot", "·"), ("infty", "∞"), ("sum", "∑"), ("int", "∫"),
-            ("in", "∈"), ("forall", "∀"), ("exists", "∃"), ("vee", "∨"), ("Rightarrow", "⇒"), ("mid", "∣"),
+            ("in", "∈"), ("forall", "∀"), ("exists", "∃"), ("vee", "∨"), ("Rightarrow", "⇒"), ("mid", "∣"), ("Longrightarrow", "⇒"),
         ]
 
         /// Environments the README names for `\begin`/`\end`.
