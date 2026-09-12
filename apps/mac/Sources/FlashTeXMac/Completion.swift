@@ -1556,6 +1556,27 @@ final class CompletingTextView: NSTextView {
     private var lastCaret: NSRange?
     private var storageObserver: NSObjectProtocol?
 
+    // Editor-intelligence hooks (SourceEditorView's coordinator sets them; EditorIntelligence.swift).
+    /// ⌘-click on a character index; return true to consume the click.
+    var commandClickHandler: ((Int) -> Bool)?
+    /// Draws under the text (current-line band) after the background.
+    var backgroundDecorator: ((NSRect) -> Void)?
+
+    override func mouseDown(with event: NSEvent) {
+        if event.modifierFlags.contains(.command), !event.modifierFlags.contains(.shift), event.clickCount == 1,
+           let handler = commandClickHandler, !hasMarkedText() {
+            let point = convert(event.locationInWindow, from: nil)
+            let index = characterIndexForInsertion(at: point)
+            if index >= 0, index < (textStorage?.length ?? 0), handler(index) { return }
+        }
+        super.mouseDown(with: event)
+    }
+
+    override func drawBackground(in rect: NSRect) {
+        super.drawBackground(in: rect)
+        backgroundDecorator?(rect)
+    }
+
     /// Scroll view + text view pair, like `NSTextView.scrollableTextView()`
     /// but with this subclass as the document view.
     static func scrollable() -> NSScrollView {

@@ -1,0 +1,37 @@
+{
+  "agent_id": "mac-syntax-highlight",
+  "allocation_id": "claude-mac20x-syntax-highlight",
+  "assignment_acknowledgements": {},
+  "branch": "agent/mac-syntax-highlight/editor",
+  "capabilities": [
+    "swift",
+    "appkit",
+    "textkit",
+    "editor"
+  ],
+  "code_revision": "772dd32a",
+  "eta_minutes": {
+    "likely": 30,
+    "optimistic": 20,
+    "pessimistic": 60
+  },
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "abbe88a5",
+  "next_action": "Commit 2 (gutter, hover quick-info, ⌘-click definition routing, Return auto-indent/\\end closing, current line) after regression suites; package the app and capture light/dark HW1 screenshots into docs/evidence/mac-syntax-highlight-2026-09-12/; completion popup kind icons + documentation line if time remains",
+  "reviewed_peers": {
+    "origin/agent/mac-claude-a/mac-shell": {
+      "adaptation": "Branched from 5918282d; SourceEditorView.swift (granted) gains a SyntaxPainter/gutter/hover/⌘-click coordinator; Completion.swift gains two presentation hooks (commandClickHandler, backgroundDecorator) only; ContentView/ShellModel untouched — hooks for the parent listed in the final report",
+      "reviewed_utc": "2026-09-12T22:05:00Z",
+      "sha": "5918282d"
+    }
+  },
+  "schema_version": 1,
+  "state": "implementing",
+  "summary": "LaTeX syntax highlighting for the Mac source editor: UTF-16 lexer + per-line mode table (incremental re-lex of the changed lines only), painted as layout-manager temporary .foregroundColor attributes over the visible window (storage/undo/binding untouched, IME-safe); dynamic light/dark colours. Editor intelligence: line-number gutter with error/warning markers, hover quick-info popover (command docs, label/cite keys, diagnostics), ⌘-click definition targets routed to the owner, Return auto-indent with \\begin{env} closing (behind the auto-close preference), current-line band.",
+  "tool": "Claude Code subagent (parent mac-claude-a, Fable)",
+  "updated_utc": "2026-09-12T22:05:00Z",
+  "usage": {
+    "evidence": "apps/mac swift test --filter SyntaxHighlighterTests 16/16 (560 KB keystroke re-lex 0.03–0.08 ms CPU debug, reset 105 ms, load 10–11); EditorIntelligenceTests 9/9; SourceEditorView/IME/LargeDocument/Completion/Preferences suites 80/80 after commit 1",
+    "status": "Shared Claude Max quota with parent mac-claude-a; no purchases"
+  }
+}
