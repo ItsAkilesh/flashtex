@@ -108,25 +108,60 @@ enum PreviewFonts {
     }
 
     /// Families that map to the Core-14 Times faces.
-    static func isTimesFamily(_ family: String) -> Bool {
-        let f = family.lowercased().trimmingCharacters(in: .whitespaces)
-        return f == "times" || f == "times new roman" || f == "times-roman" || f == "times roman" || f == "timesnewroman"
+    static func isTimesFamily(_ family: String) -> Bool { core14Family(family) == .times }
+
+    /// The three Core-14 text families macOS ships (`Times-Roman`, `Helvetica`,
+    /// `Courier` with their Bold/Italic-or-Oblique faces). `flashtex-compiler`
+    /// names its hint families after the Core-14 *face* it measured with
+    /// (`Times-Bold`, `Times-Italic`, …); the face suffix is accepted as an alias
+    /// of the family and the hint's own weight/style pick the face.
+    enum Core14Family: String { case times, helvetica, courier }
+
+    static func core14Family(_ family: String) -> Core14Family? {
+        var f = family.lowercased().trimmingCharacters(in: .whitespaces)
+        for suffix in ["-bolditalic", "-boldoblique", "-bold", "-italic", "-oblique", "-roman"] where f.hasSuffix(suffix) {
+            f = String(f.dropLast(suffix.count)); break
+        }
+        switch f {
+        case "times", "times new roman", "times roman", "timesnewroman": return .times
+        case "helvetica", "helvetica neue", "arial": return .helvetica
+        case "courier", "courier new": return .courier
+        default: return nil
+        }
+    }
+
+    /// Core-14 PostScript face for a family at the requested weight/style.
+    static func core14PostScriptName(_ family: Core14Family, bold: Bool, italic: Bool) -> String {
+        switch family {
+        case .times: return postScriptName(face: .times, size: 10, bold: bold, italic: italic)
+        case .helvetica, .courier:
+            let base = family == .helvetica ? "Helvetica" : "Courier"
+            switch (bold, italic) {
+            case (false, false): return base
+            case (true, false): return base + "-Bold"
+            case (false, true): return base + "-Oblique"
+            case (true, true): return base + "-BoldOblique"
+            }
+        }
     }
 
     /// Resolves an explicit `font-hints-v1` hint to a PostScript face. Latin
     /// Modern families use the registered LM masters (weight/style honored);
-    /// Times families use the Core-14 Times faces; anything else — or Latin
-    /// Modern when it is not registered on this machine — falls back to Times
-    /// with the requested weight/style and is reported as a substitution.
-    /// A nil hint is legacy selection (`postScriptName(size:)`), never a substitution.
+    /// Core-14 families (Times, Helvetica, Courier) use their Core-14 faces;
+    /// anything else — or Latin Modern when it is not registered on this
+    /// machine — falls back to Times with the requested weight/style and is
+    /// reported as a substitution. A nil hint is legacy selection
+    /// (`postScriptName(size:)`), never a substitution.
     static func resolve(hint: RuntimeV1.PageItem.FontHint?, size: Double) -> Resolved {
         guard let hint else { return Resolved(postScriptName: postScriptName(size: size), substitution: nil) }
         let bold = hint.weight == .bold, italic = hint.style == .italic
         if isLatinModernFamily(hint.family), latinModernRegistered {
             return Resolved(postScriptName: postScriptName(face: .latinModern, size: size, bold: bold, italic: italic), substitution: nil)
         }
+        if let family = core14Family(hint.family) {
+            return Resolved(postScriptName: core14PostScriptName(family, bold: bold, italic: italic), substitution: nil)
+        }
         let times = postScriptName(face: .times, size: size, bold: bold, italic: italic)
-        if isTimesFamily(hint.family) { return Resolved(postScriptName: times, substitution: nil) }
         return Resolved(postScriptName: times,
                         substitution: Substitution(family: hint.family, weight: hint.weight, style: hint.style, usedFace: times))
     }
