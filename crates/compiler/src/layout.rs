@@ -261,6 +261,10 @@ pub struct FlowState {
     line_ascent: f64,
     line_descent: f64,
     trailing_line_items: usize,
+    /// See `LayoutCursor::content_end`. Without this, resuming from a cached
+    /// fragment would leave `content_end` stale, so a reused block's first
+    /// glued item (`space_before: false`) could rewind to the wrong `x`.
+    content_end: f64,
 }
 
 impl FlowState {
@@ -271,6 +275,7 @@ impl FlowState {
             && self.line_ascent.to_bits() == other.line_ascent.to_bits()
             && self.line_descent.to_bits() == other.line_descent.to_bits()
             && self.trailing_line_items == other.trailing_line_items
+            && self.content_end.to_bits() == other.content_end.to_bits()
     }
 }
 
@@ -454,6 +459,7 @@ impl LayoutCursor {
     /// creates a new page rather than only doing so past the bottom margin.
     fn force_page_break(&mut self) {
         self.x = MARGIN_PT;
+        self.content_end = self.x;
         let n = self.pages.len() as u32 + 1;
         self.pages.push(Page {
             number: n,
@@ -465,7 +471,16 @@ impl LayoutCursor {
         self.line_start = 0;
     }
 
-    fn place(&mut self, text: String, size: f64, span: Span, font: Font) {
+    /// `space_before` is false when the source glued this run directly
+    /// against whatever came before it (no space token, no paragraph
+    /// start) — a math boundary or a macro-argument splice such as
+    /// `\normalfont[#2 points]`. Placing then rewinds to `content_end`,
+    /// discarding the previous item's eagerly reserved trailing space,
+    /// exactly as `hspace` already does for `\hspace{<dimen>}`.
+    fn place(&mut self, text: String, size: f64, span: Span, font: Font, space_before: bool) {
+        if !space_before {
+            self.x = self.content_end;
+        }
         let (w, span) = shaped_width(&text, size, font, span, &mut self.diagnostics);
         if self.x > self.left_edge() && self.x + w > self.right_edge() {
             self.newline(size);
@@ -517,7 +532,12 @@ impl LayoutCursor {
         self.line_descent = self.line_descent.max(descent);
     }
 
-    fn place_math(&mut self, b: MathBox, size: f64) {
+    /// See `place` for what `space_before` means and why rewinding to
+    /// `content_end` is the correct way to honour it.
+    fn place_math(&mut self, b: MathBox, size: f64, space_before: bool) {
+        if !space_before {
+            self.x = self.content_end;
+        }
         if self.x > self.left_edge() && self.x + b.width > self.right_edge() {
             self.newline(size);
         }
@@ -559,7 +579,7 @@ impl LayoutCursor {
         }
         self.vertical_gap(PARAGRAPH_GAP_PT);
         self.x = MARGIN_PT + (self.right_edge() - MARGIN_PT - b.width).max(0.0) / 2.0;
-        self.place_math(b, size);
+        self.place_math(b, size, true);
         if let Some((number, span)) = number {
             self.place_equation_number(number, span, size);
         }
@@ -633,7 +653,7 @@ impl LayoutCursor {
                     } else {
                         column_x
                     };
-                    self.place_math(b, size);
+                    self.place_math(b, size, true);
                     column_x += width + if column % 2 == 1 { gap } else { 0.0 };
                 }
             } else {
@@ -641,7 +661,7 @@ impl LayoutCursor {
                 self.x = MARGIN_PT + (measure - width).max(0.0) / 2.0;
                 for b in cells {
                     let next = self.x + b.width;
-                    self.place_math(b, size);
+                    self.place_math(b, size, true);
                     self.x = next;
                 }
             }
@@ -711,7 +731,14 @@ impl LayoutCursor {
             Block::Paragraph(inlines) => emit(self, inlines, body_size, Font::TimesRoman),
             Block::Styled { style, content } => {
                 self.style = Some(*style);
+                // `left_edge()` depends on `self.style` (the `quote` indent),
+                // which just changed, so `content_end` — synced to the old
+                // margin by `prepare_block`'s `newline` — must move with it.
+                // Otherwise this block's first item, if glued to what
+                // precedes it in the source (`space_before: false`), would
+                // rewind past the indent to the stale, unindented position.
                 self.x = self.left_edge();
+                self.content_end = self.x;
                 emit(self, content, body_size, Font::TimesRoman);
                 self.resolve_hfill();
                 self.align_current_line();
@@ -729,6 +756,7 @@ impl LayoutCursor {
                         heading_size(*level, body_size),
                         *number_span,
                         Font::TimesBold,
+                        true,
                     );
                 }
                 emit(
@@ -807,6 +835,7 @@ impl LayoutCursor {
             line_ascent: self.line_ascent,
             line_descent: self.line_descent,
             trailing_line_items: self.pages[page_index].items.len() - self.line_start,
+            content_end: self.content_end,
         }
     }
 
@@ -832,6 +861,7 @@ impl LayoutCursor {
                 .push(placed_item.item.clone());
         }
         self.x = end.x;
+        self.content_end = end.content_end;
         self.y = end.y;
         self.line_ascent = end.line_ascent;
         self.line_descent = end.line_descent;
@@ -981,9 +1011,12 @@ pub(crate) fn style_font(style: TextStyle) -> Font {
 fn emit(c: &mut LayoutCursor, inlines: &[Inline], size: f64, font: Font) {
     for inline in inlines {
         match inline {
-            Inline::Text { text, span, style } => {
-                c.place(text.clone(), size, *span, style_font(*style))
-            }
+            Inline::Text {
+                text,
+                span,
+                style,
+                space_before,
+            } => c.place(text.clone(), size, *span, style_font(*style), *space_before),
             Inline::LineBreak { .. } => c.newline(size),
             Inline::TextGlue { em, .. } => c.text_glue(*em, size),
             Inline::Math {
@@ -992,6 +1025,7 @@ fn emit(c: &mut LayoutCursor, inlines: &[Inline], size: f64, font: Font) {
                 number,
                 number_span,
                 span,
+                space_before,
             } => {
                 let b = if *display {
                     math::layout_display(list, size, &mut c.diagnostics)
@@ -1008,7 +1042,7 @@ fn emit(c: &mut LayoutCursor, inlines: &[Inline], size: f64, font: Font) {
                             .or_else(|| number.as_deref().map(|number| (number, *span))),
                     );
                 } else {
-                    c.place_math(b, size);
+                    c.place_math(b, size, *space_before);
                 }
             }
             Inline::MathRows { rows, aligned, .. } => c.display_rows(rows, *aligned, size),
@@ -1032,7 +1066,7 @@ fn emit(c: &mut LayoutCursor, inlines: &[Inline], size: f64, font: Font) {
                         }
                     },
                 );
-                c.place(text, size, *span, font);
+                c.place(text, size, *span, font, true);
             }
             Inline::HFill { .. } => c.mark_hfill(),
             Inline::HSpace { pt, .. } => c.hspace(*pt),

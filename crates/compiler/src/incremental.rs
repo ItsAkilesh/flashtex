@@ -414,10 +414,16 @@ fn shift_inlines(
     inlines
         .iter()
         .map(|inline| match inline {
-            Inline::Text { text, span, style } => Some(Inline::Text {
+            Inline::Text {
+                text,
+                span,
+                style,
+                space_before,
+            } => Some(Inline::Text {
                 style: *style,
                 text: text.clone(),
                 span: mapped_span(*span, changes, deltas)?,
+                space_before: *space_before,
             }),
             Inline::LineBreak { span } => Some(Inline::LineBreak {
                 span: mapped_span(*span, changes, deltas)?,
@@ -432,6 +438,7 @@ fn shift_inlines(
                 number,
                 number_span,
                 span,
+                space_before,
             } => Some(Inline::Math {
                 list: shift_math_list(list, changes, deltas)?,
                 display: *display,
@@ -441,6 +448,7 @@ fn shift_inlines(
                     None => None,
                 },
                 span: mapped_span(*span, changes, deltas)?,
+                space_before: *space_before,
             }),
             Inline::MathRows {
                 rows,

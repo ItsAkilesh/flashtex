@@ -181,6 +181,31 @@ pub fn tokenize_document(text: &str, document: DocumentId) -> Vec<Token> {
                             kind: TokenKind::Command(name),
                             span: Span::in_document(document, start, end),
                         });
+                        // Real TeX enters a "skip blanks" state after a control
+                        // word and silently discards the whitespace that
+                        // follows — `\normalfont[4 points]` and `\normalfont
+                        // [4 points]` typeset identically. A blank line still
+                        // starts a new paragraph exactly as it would anywhere
+                        // else, so only a run with fewer than two newlines is
+                        // swallowed; this does not apply to a control
+                        // *symbol* like `\ ` (control space, tokenized above
+                        // as an ordinary `Word`) or `\\` (line break).
+                        let mut lookahead = it.clone();
+                        let mut newlines = 0;
+                        let mut swallowed = false;
+                        while let Some(&(_, w)) = lookahead.peek() {
+                            if !w.is_whitespace() {
+                                break;
+                            }
+                            if w == '\n' {
+                                newlines += 1;
+                            }
+                            lookahead.next();
+                            swallowed = true;
+                        }
+                        if swallowed && newlines < 2 {
+                            it = lookahead;
+                        }
                     }
                     Some(&(j, '[')) | Some(&(j, ']')) => {
                         let open = matches!(it.peek(), Some((_, '[')));
@@ -292,9 +317,12 @@ mod tests {
 
     #[test]
     fn command_and_linebreak_are_distinguished() {
+        // The single space after the control word `\section` is swallowed
+        // (TeX's "skip blanks" state), so it never becomes its own token.
         let toks = tokenize("\\section \\\\");
         assert_eq!(toks[0].kind, TokenKind::Command("section".into()));
-        assert_eq!(toks[2].kind, TokenKind::LineBreak);
+        assert_eq!(toks[1].kind, TokenKind::LineBreak);
+        assert_eq!(toks.len(), 2);
     }
 
     #[test]
