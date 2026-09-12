@@ -18,23 +18,23 @@
     "latex-oracle",
     "commit-execution"
   ],
-  "code_revision": "1dec0efcf6d073c10cade377de05634787cea9e6",
+  "code_revision": "577324427eed56a63e6ab0eea47f575bddd6b4a5",
   "eta_minutes": {
-    "likely": 15,
-    "optimistic": 5,
-    "pessimistic": 40
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 0
   },
   "machine": "mac-m5pro-dq222",
-  "main_integrated_through": "780f1458c125d9702b994ab9df377aed96a1113f",
-  "next_action": "Verify and publish FT-045, then re-checkpoint and adapt.",
+  "main_integrated_through": "b1cf8b929851a4459123fb6fc868b1ed502c6d89",
+  "next_action": "Awaiting Commander integration of the 16 lane branches. Outstanding: daniel-new.json lane list is stale for FT-030/031/032.",
   "reviewed_peers": {
-    "origin/main": "780f1458c125d9702b994ab9df377aed96a1113f"
+    "origin/main": "b1cf8b929851a4459123fb6fc868b1ed502c6d89"
   },
   "schema_version": 1,
-  "state": "in_progress",
-  "summary": "All 16 lanes FT-030..FT-045 dispatched, each in its own git worktree owning exactly one crate. 15 complete, independently verified and published, 488 tests passing and 0 failing; 1 running. No lane dropped, queued indefinitely, or merged into another. Every commit authored d-q222, no AI attribution.",
+  "state": "ready_for_integration",
+  "summary": "All 16 lanes FT-030..FT-045 complete, independently verified and published: 547 tests passing, 0 failing, clippy clean with warnings denied on every lane. Each ran in its own git worktree owning exactly one crate; none dropped, queued indefinitely or merged into another. Every commit authored d-q222 with no AI attribution.",
   "tool": "Claude Code on Claude Max 20x",
-  "updated_utc": "2026-09-12T09:06:45Z",
+  "updated_utc": "2026-09-12T09:08:50Z",
   "usage": {
     "evidence": "Claude Max 20x, organizationRateLimitTier default_claude_max_20x, hasExtraUsageEnabled=false, so no overage, purchase or API fallback is possible from this machine. Live quota is not readable non-interactively: /usage is an interactive slash command and no CLI subcommand prints it. Unknown is not zero.",
     "status": "unknown"

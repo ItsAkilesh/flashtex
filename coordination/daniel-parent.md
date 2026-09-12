@@ -82,14 +82,12 @@ exists yet and FT-046 remains formally unacknowledged. This handoff carries the
 same evidence in the meantime. Per `docs/coordination-cli.md` a comment is not
 an acknowledgement, so the Commander should not treat this as one.
 
-## Lane status — 14 complete, 2 running, 0 queued
+## Lane status — 16 of 16 complete
 
-Updated 2026-09-12T09:04:17Z. All 16 lanes dispatched, each in its own git worktree owning
-exactly one crate. None dropped, none merged into another, none left queued.
+Updated 2026-09-12T09:08:50Z. Every lane ran in its own git worktree owning exactly
+one crate. None was dropped, left queued, or merged into another.
 
-### Complete, independently verified, published
-
-Re-verified here rather than accepted on each lane's own report: build,
+Each was re-verified here rather than accepted on its own report: build,
 `cargo test`, `cargo clippy --all-targets -- -D warnings`, the exact set of paths
 touched, that no workspace root `Cargo.toml` was created, and the author and
 trailers on every commit.
@@ -110,48 +108,15 @@ trailers on every commit.
 | FT-041 | `editor-snippets` | 42 | new |
 | FT-042 | `document-statistics` | 31 | new |
 | FT-043 | `project-bundle` | 26 | new |
+| FT-044 | `collaboration-core` | 17 | new |
+| FT-045 | `tex-calc` | 59 | new |
 
-**471 tests passing, 0 failing.** Every lane stayed inside its own crate plus
-its own handoff. Clippy clean with warnings denied on all fourteen. Every commit
-authored `d-q222` with that co-author trailer and no AI attribution, checked by
-grep on each branch.
+**547 tests passing, 0 failing.** Clippy clean with warnings denied on all
+sixteen. Every commit authored `d-q222` carrying that co-author trailer, with no
+AI attribution anywhere, verified by grep on each branch. Every lane touched only
+its own crate plus its own handoff file.
 
-### Running
-
-FT-044 `collaboration-core`, FT-045 `tex-calc`.
-
-### Security results
-
-Four lanes carried explicit trust boundaries, and each proved them rather than
-asserting them:
-
-- **FT-036 image-assets** and **FT-043 project-bundle** both canonicalise then
-  check containment, so a symlink escaping the root is caught, and both keep a
-  positive control proving an in-root symlink is still allowed. FT-043 also
-  proves its path rejection is syntactic rather than existence-based, by testing
-  a traversal target that does not exist.
-- **FT-037 link-annotations** uses a positive scheme allowlist of http, https and
-  mailto, and tests mixed-case `JavaScript:` to rule out a case-folding bypass.
-  Length is checked before any parsing, so a 50 MB hostile input fails instantly.
-- **FT-040 project-templates** preflights every declared target before writing
-  anything, so one conflict blocks the whole batch and no partial tree is left
-  behind. It also went beyond its acceptance criteria and LaTeX-escapes the
-  project name and author, with a test proving a `}\input{...}{` payload cannot
-  close the macro argument early.
-
-### Corrections found by lanes, not by the supervisor
-
-**FT-038 caught a supervisor error.** Its brief stated that `math-layout`'s
-radical had become a struct variant carrying a degree. It verified against its
-own worktree and `input_main_sha`, found the variant is still
-`Radical(MathList)` on main, and built against the real tree. The struct variant
-exists only on FT-032's branch, which is not yet integrated. The brief was wrong
-and the lane was right.
-
-**FT-043 documented a filesystem caveat** rather than hiding a surprising test
-result: two filenames differing only by Unicode normalisation collide on default
-macOS APFS, which is outside the crate's logic but changes what a test can
-assert.
+All sixteen branches are pushed and await Commander integration.
 
 ## Why batched, with evidence
 
