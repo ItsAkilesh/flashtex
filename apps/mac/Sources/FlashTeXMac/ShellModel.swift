@@ -103,10 +103,9 @@ final class ShellModel: ObservableObject {
             // built compiler at launch when FLASHTEX_AUTOATTACH=1 (opt-in so tests
             // that construct ShellModel stay fixture-backed).
             if let seed = env["FLASHTEX_SEED_FILE"], let text = try? String(contentsOfFile: seed, encoding: .utf8) {
-                documents = [.init(path: "main.tex", text: text)]
-                activePath = "main.tex"
-                compiledDocuments = [:]
-                editorRevision += 1
+                replaceProject(entryText: text)
+                documentURL = URL(fileURLWithPath: seed)
+                savedText = text
             }
             // A compiler shipped inside the .app bundle attaches by default.
             let bundledCompiler = Bundle.main.executableURL?.deletingLastPathComponent()

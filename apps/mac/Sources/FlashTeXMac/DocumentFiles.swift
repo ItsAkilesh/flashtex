@@ -29,7 +29,12 @@ extension ShellModel {
         }
     }
 
-    var isDirty: Bool { savedText != activeText }
+    /// Dirty means the buffer differs from what was last opened/saved. A fresh
+    /// fixture-seeded buffer (no file, never saved) counts as dirty only once edited.
+    var isDirty: Bool {
+        if let savedText { return savedText != activeText }
+        return documentURL == nil && editorRevision > 1 && !activeText.isEmpty
+    }
 
     @discardableResult
     func saveTex() -> Bool {

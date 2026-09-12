@@ -5,6 +5,24 @@ import SwiftUI
 /// accessory-style process with no Dock icon and, when launched from a
 /// non-GUI context, no visible window. Force a regular, activated app.
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    /// Set by the App so quitting can check for unsaved edits.
+    weak var model: ShellModel?
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard let model, model.isDirty, model.documentURL != nil || !model.activeText.isEmpty else { return .terminateNow }
+        let alert = NSAlert()
+        alert.messageText = "Save changes to \(model.documentURL?.lastPathComponent ?? "the unsaved buffer")?"
+        alert.informativeText = "Your edits since the last save will be lost if you don't save."
+        alert.addButton(withTitle: "Save")
+        alert.addButton(withTitle: "Don't Save")
+        alert.addButton(withTitle: "Cancel")
+        switch alert.runModal() {
+        case .alertFirstButtonReturn: return model.saveTex() ? .terminateNow : .terminateCancel
+        case .alertSecondButtonReturn: return .terminateNow
+        default: return .terminateCancel
+        }
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
@@ -24,6 +42,7 @@ struct FlashTeXMacApp: App {
             ContentView()
                 .environmentObject(model)
                 .frame(minWidth: 900, minHeight: 560)
+                .onAppear { appDelegate.model = model }
         }
         .commands {
             CommandGroup(after: .pasteboard) {
