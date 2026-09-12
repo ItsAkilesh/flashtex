@@ -1,6 +1,6 @@
 {
   "agent_id": "commander-runtime-display",
-  "next_index": 2,
+  "next_index": 1,
   "schema_version": 1,
   "steps": [
     {
@@ -12,8 +12,8 @@
         "Publish bounded candidate API for existing helper owner; if deep validation is deferred, the type and contract must remain explicitly untrusted until existing native/core validator accepts it"
       ],
       "allocation_id": "hosted-openai-product",
-      "name": "Audit aggregate queued source and encoded request residency across projects under existing admission limits",
-      "objective": "Audit aggregate queued source and encoded request residency across projects under existing admission limits",
+      "name": "Inspect and deterministically verify timeout close and joined shutdown when child stops reading admitted request stdin",
+      "objective": "Inspect and deterministically verify timeout close and joined shutdown when child stops reading admitted request stdin",
       "owned_paths": [
         "crates/document-runtime"
       ],
@@ -28,8 +28,8 @@
         "Publish bounded candidate API for existing helper owner; if deep validation is deferred, the type and contract must remain explicitly untrusted until existing native/core validator accepts it"
       ],
       "allocation_id": "hosted-openai-product",
-      "name": "Verify deterministic supersede cancel close and failed-admission accounting without retaining discarded source",
-      "objective": "Verify deterministic supersede cancel close and failed-admission accounting without retaining discarded source",
+      "name": "Verify near-limit request writer and child processes are reaped without false preview success or unbounded retained buffers",
+      "objective": "Verify near-limit request writer and child processes are reaped without false preview success or unbounded retained buffers",
       "owned_paths": [
         "crates/document-runtime"
       ],
@@ -44,8 +44,8 @@
         "Publish bounded candidate API for existing helper owner; if deep validation is deferred, the type and contract must remain explicitly untrusted until existing native/core validator accepts it"
       ],
       "allocation_id": "hosted-openai-product",
-      "name": "Implement only justified bounded residency reduction preserving default admission fairness and exact source identity",
-      "objective": "Implement only justified bounded residency reduction preserving default admission fairness and exact source identity",
+      "name": "Implement only demonstrated writer lifecycle correction preserving queue and frame defaults with exact failure recovery tests",
+      "objective": "Implement only demonstrated writer lifecycle correction preserving queue and frame defaults with exact failure recovery tests",
       "owned_paths": [
         "crates/document-runtime"
       ],

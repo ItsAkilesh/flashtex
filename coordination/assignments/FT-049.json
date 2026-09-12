@@ -11,15 +11,15 @@
   "branch": "agent/commander-runtime-display/display-runtime",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "2bd701089917c0a75faa26b7250962783e425d30",
-  "objective": "Verify deterministic supersede cancel close and failed-admission accounting without retaining discarded source",
+  "input_main_sha": "2bdee9e7d9ec9d7283f75c05bb1bd7f63e30e6d5",
+  "objective": "Inspect and deterministically verify timeout close and joined shutdown when child stops reading admitted request stdin",
   "owned_paths": [
     "crates/document-runtime"
   ],
-  "revision": 14,
+  "revision": 15,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-049",
   "timebox_minutes": 40,
-  "updated_utc": "2026-09-12T12:34:23Z"
+  "updated_utc": "2026-09-12T12:34:42.495086+00:00"
 }
