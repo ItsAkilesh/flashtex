@@ -3,27 +3,27 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-048": {
-      "acknowledged_utc": "2026-09-12T08:58:02Z",
-      "adaptation": "Isolated preview-controller ownership; remove verified nested Value copies preserving exact wire shape, durability and bounded backpressure.",
-      "main_sha": "f2ea364efc4329512dc143ad9d7eab89d833604c",
-      "revision": 1
+      "acknowledged_utc": "2026-09-12T09:18:15Z",
+      "adaptation": "Current main merged; exclusive document-runtime and preview-controller scope. Prototype bounded opt-in historical completion side channel with immutable identity; no Event::Preview semantics or native wire activation change.",
+      "main_sha": "e5901797e8a7ebdd8d714ecdee6793e1097515a9",
+      "revision": 3
     }
   },
   "branch": "agent/commander-preview-performance/preview-performance",
   "capabilities": [
     "Preview helper serialization and latency"
   ],
-  "code_revision": "3a0c8e90c28ede52a8f80962656ebec784f3d9ab",
+  "code_revision": "c07f7ba69f18038821c406309e99080675c33b78",
   "eta_minutes": null,
   "machine": "linux-primary",
-  "main_integrated_through": "7956d37b7be6c5dc2ba28dfcc8ad56b60e5c9b4c",
-  "next_action": "Commander integrate output-bound fix; request native helper remeasurement and continue measured pipeline improvement.",
+  "main_integrated_through": "e5901797e8a7ebdd8d714ecdee6793e1097515a9",
+  "next_action": "Native parent remeasure integratedcompiler/helper on sameMac; await snapshot protocol agreement while maintainingstrictdefault.",
   "reviewed_peers": {},
   "schema_version": 1,
-  "state": "ready_for_integration",
-  "summary": "FT048 fixes16MiB JSONL newline overrun and oversized-error allocation retention; boundedrequestedbuffer growth.37suite tests plus new fallbackallocation test pass(38totalcoverage),strictalltargetlint.",
+  "state": "in_progress",
+  "summary": "Samehelper50KB30msburst serializerbaseline1currentpreview\u2192candidate12,40/40durableACKs,2exactcleanfinals/reopens. Final90.477\u219243.166ms;8stale candidateframes remain,no perkeystroke/nativeclaim.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T09:09:53Z",
+  "updated_utc": "2026-09-12T09:37:15Z",
   "usage": {
     "status": "unknown"
   }

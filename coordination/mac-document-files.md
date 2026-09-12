@@ -1,6 +1,6 @@
 # mac-document-files handoff
 
-- Updated UTC: 2026-09-12T08:50Z
+- Updated UTC: 2026-09-12T09:40Z
 - Agent / parent / machine alias: mac-document-files (Claude Code subagent) /
   mac-claude-a / mac-m1max-a
 - Task / acceptance gate / owned paths: issue #2 dispatch lane "Consume rooted
@@ -19,6 +19,33 @@
   `crates/project-files/src/bin/flashtex-project-files.rs`,
   `crates/project-files/tests/helper_bin.rs`, README section "JSON Lines
   helper". Original owner `mac-project-files` is done/idle; parent to route.
+- Refill lane (coordinator, after the parent's `controllerSave`): branch
+  `agent/mac-document-files/reload` from mac-shell 40d53b7, origin/main
+  02de116 merged cleanly. Ready: `prepareReload()` → `ReloadReview` (disk
+  snapshot read through the rooted helper or directly; bytes before/after,
+  +added/−removed lines as a line-multiset summary, dirty notice, route,
+  pinned hash); `confirmReload(review, dirty:) async` imports exactly that
+  snapshot — through the controller's `reload {expected_revision,
+  expected_sha256, expected_disk_sha256, user_approved:true}` when attached
+  and ready (document adopted inside the reply waiter: durable state, editor
+  revision mapping, buffer via `updateActiveText`, baseline; never submitted
+  back; refusals leave the buffer untouched), else a direct re-read refused
+  if the hash moved. `reloadFromDiskReviewed` (no modal),
+  `reloadFromDiskInteractive` (summary modal), `resolveConflictPanel` shows
+  the summary and disables Reload when nothing is readable; sync
+  `reloadFromDisk` is direct-only and refuses to bypass a controller.
+  `refreshDiskStatus() async` maps onto `controllerFileStatus` (`file_status`)
+  comparing the disk hash with the editor's own baseline (typed-but-unexported
+  edits are not an external change; `matches_source` falls back to the durable
+  hash since the parent client only exposes `disk_sha256`), else
+  `checkDiskStatus()`; conflict/notice mapping shared. Evidence: full suite
+  384 pass / 6 env-gated skips / 0 failures with real compiler, pdf, bridge,
+  edit-ledger, preview-controller (built from merged main) and project-files;
+  `DocumentFilesControllerTests` (real controller: status unchanged/modified/
+  deleted, review pinned, refused after a later change, imported with preview
+  bound, recoverable buffer, sync reload refused) and 2 new direct tests.
+  Not applied (parent-owned): menu/activation wiring and a one-line
+  `controllerFileStatus` hash fallback — exact diffs in the final report.
 - Branch / code revision / main integrated through:
   `agent/mac-document-files/rooted-helper` (from
   `origin/agent/mac-claude-a/mac-shell` 6b43a3a) / see JSON `code_revision` /

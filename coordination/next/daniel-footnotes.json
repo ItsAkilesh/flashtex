@@ -1,10 +1,10 @@
 {
-  "schema_version": 1,
   "agent_id": "daniel-footnotes",
-  "task_id": "FT-032",
-  "revision": 3,
-  "branch": "agent/daniel-footnotes/footnote-layout",
   "assignment_path": "coordination/assignments/FT-032.json",
-  "updated_utc": "2026-09-12T09:02:36.189558+00:00",
-  "instruction": "Continue released Jaysen math-layout heavy work. Parent reported old worker terminal after spend limit. Inspect published WIP ac3bf0b and request exact dirty patch/base before reconstructing unpublished changes. WIP is not integration-ready. Own crates/math-layout exclusively under this transfer; existing agent name is retained to keep Daniel16 slots."
+  "branch": "agent/daniel-footnotes/footnote-layout",
+  "previous_report_sha": "9bbdd74a33cb6d5d465141b2cbfc38c53cc874fd",
+  "revision": 4,
+  "schema_version": 1,
+  "task_id": "FT-032",
+  "updated_utc": "2026-09-12T09:56:20Z"
 }
