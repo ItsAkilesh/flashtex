@@ -19,12 +19,25 @@ final class ShellModelTests: XCTestCase {
         XCTAssertEqual(sel.nsRange, NSRange(location: 0, length: 14))
         XCTAssertEqual((model.activeText as NSString).substring(with: sel.nsRange), "Hello FlashTeX")
 
-        // Editing bumps the revision; navigation still works but is flagged stale.
+        // Editing bumps the revision. An edit inside the item's span refuses navigation
+        // (stale offsets are never applied); an edit after it is rebased.
         model.updateActiveText("Héllo FlashTeX.\n")
         XCTAssertTrue(model.previewIsStale)
-        model.navigate(to: item.source)
-        XCTAssertEqual(model.selection?.nsRange, NSRange(location: 0, length: 13)) // é is 2 bytes, 1 UTF-16 unit
-        XCTAssertTrue(model.navigationNote?.contains("mapping may be off") == true)
+        let selBefore = model.selection
+        model.navigate(to: item.source!, expectedText: item.text)
+        XCTAssertEqual(model.selection, selBefore)
+        XCTAssertTrue(model.navigationNote?.contains("recompile to navigate") == true, model.navigationNote ?? "")
+        model.updateActiveText("Hello FlashTeX. Appended\n")
+        model.navigate(to: item.source!, expectedText: nil)
+        XCTAssertEqual(model.selection?.nsRange, NSRange(location: 0, length: 14))
+        model.updateActiveText("Prefix! Hello FlashTeX.\n")
+        // The contract fixture's item text ("Hello FlashTeX.") is one byte longer than
+        // its range (0..<14), so expected-text verification would (correctly) refuse;
+        // navigate without it here. Reported to the fixture owner.
+        model.navigate(to: item.source!, expectedText: nil)
+        XCTAssertEqual(model.selection?.nsRange, NSRange(location: 8, length: 14), model.navigationNote ?? "nil")
+        XCTAssertTrue(model.navigationNote?.contains("rebased") == true, model.navigationNote ?? "nil")
+        model.updateActiveText("Hello FlashTeX.\n") // back to the compiled text
 
         // Invalid ranges are reported, not applied.
         let before = model.selection
@@ -46,10 +59,13 @@ final class ShellModelWorkerTests: XCTestCase {
         model.attachWorker(at: WorkerClientTests.python, arguments: [WorkerClientTests.fakeWorker.path])
         XCTAssertTrue(model.workerAttached)
 
+        model.autoCompile = false
         model.updateActiveText("Second draft\n") // editorRevision 2
         model.compile()
         XCTAssertEqual(model.inFlightRevision, 2)
         try await waitUntil { model.inFlightRevision == nil }
+        XCTAssertNotNil(model.lastLatencyMs)
+        XCTAssertEqual(model.compiledDocuments["main.tex"], "Second draft\n")
         XCTAssertFalse(model.isFixture)
         XCTAssertEqual(model.result?.revision, 2)
         XCTAssertFalse(model.previewIsStale)
@@ -66,6 +82,21 @@ final class ShellModelWorkerTests: XCTestCase {
         XCTAssertEqual(model.result?.status, .ok)
         model.detachWorker()
         XCTAssertFalse(model.workerAttached)
+    }
+
+    func testAutoCompileDebouncesAndCoalescesEdits() async throws {
+        let model = ShellModel()
+        model.attachWorker(at: WorkerClientTests.python, arguments: [WorkerClientTests.fakeWorker.path])
+        model.autoCompile = true
+        // Burst of edits: only the last buffer should end up compiled, and never out of order.
+        for i in 1...5 { model.updateActiveText("draft \(i)\n") }
+        let finalRevision = model.editorRevision
+        try await waitUntil(timeout: 10) { model.result?.revision == finalRevision && model.inFlightRevision == nil }
+        guard case .text(let item) = model.result!.pages[0].items[0] else { return XCTFail() }
+        XCTAssertEqual(item.text, "draft 5")
+        XCTAssertLessThanOrEqual(model.latenciesMs.count, 2, "burst coalesced into at most two requests, got \(model.latenciesMs.count)")
+        XCTAssertFalse(model.previewIsStale)
+        model.detachWorker()
     }
 
     private func waitUntil(timeout: TimeInterval = 10, _ cond: () -> Bool) async throws {

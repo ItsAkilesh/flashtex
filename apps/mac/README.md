@@ -40,6 +40,16 @@ present. `⌘R` reloads.
   underline) on every page. Empty ranges match only an exactly equal byte. The
   preview does not auto-scroll to the highlighted item.
 - Dark preview toggle in the toolbar (page and text colors only).
+- Stale offsets are never applied. Each `compile_result` remembers the exact
+  document text it was produced for; after edits, a span is rebased through the
+  common prefix/suffix of old vs new text (`SourceMapping`), verified against the
+  item's text when known, and refused ("recompile to navigate") if it overlaps the
+  edited region. Multiple edits collapse conservatively.
+- Auto-compile (toolbar toggle, default on when a worker is attached): edits are
+  debounced 250 ms and coalesced — one request in flight, the newest buffer goes
+  out when it returns. Latency (send→result) is shown in the banner with a median.
+  Measured with the FT-002 compiler on an M1 Max: 0.5–9 ms per request; a 10-edit
+  burst coalesced into 2 requests (`RealCompilerTests`).
 - Worker transport: `File > Attach Built Compiler` (⌘⇧K) finds `$FLASHTEX_COMPILER`
   or `crates/compiler/target/{release,debug}/flashtex-compiler` under the repo;
   `File > Attach Worker Executable…` (⌘K) launches a process
@@ -79,7 +89,8 @@ diagnostics checks beyond the one-line contract fixture.
 
 - `FlashTeXProtocol` — Codable models for runtime v1 and byte-offset conversion.
 - `FlashTeXMac` — the app.
-- Tests (28): PDF export (fixture → 612×792 page containing the item text,
+- Tests (34): source mapping (shift/refuse/multi-byte/expected-text), stale
+  navigation refusal and rebase, auto-compile debounce/coalescing, latency; PDF export (fixture → 612×792 page containing the item text,
   two-page synthetic sizes, unknown-kind skipping, page-less result); anchor/rebase/reselection logic, review flow with duplicate
   suppression, capture fixture decoding; caret sync (multi-page sample slices
   byte-exactly, `itemsContaining` boundaries incl. inside a multi-byte scalar,
@@ -90,6 +101,12 @@ diagnostics checks beyond the one-line contract fixture.
   line splitting/encoding, and a round trip through `Tests/.../fake_worker.py`
   (a Python test double, not a compiler) including error/garbage/exit paths and
   the stale-revision guard.
+
+## Known upstream issue
+
+`protocol/fixtures/compile-result.json` item text is `"Hello FlashTeX."` (15
+bytes) but its source range is `0..<14` (`"Hello FlashTeX"`). The real compiler's
+spans are exact. Reported to the fixture owner (Commander, FT-001).
 
 ## Not done
 

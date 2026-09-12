@@ -49,6 +49,35 @@ final class RealCompilerTests: XCTestCase {
             XCTAssertFalse(model.navigationNote?.contains("not a valid range") == true, model.navigationNote ?? "")
         }
 
+        // Edit after the compiled text: spans before the edit still navigate (rebased and
+        // verified against item text); an edit inside a span refuses navigation.
+        let firstItems: [RuntimeV1.PageItem.TextItem] = result.pages.flatMap { $0.items }.compactMap { if case .text(let t) = $0 { t } else { nil } }
+        let hello = try XCTUnwrap(firstItems.first { $0.text == "Hello" })
+        let second = try XCTUnwrap(firstItems.first { $0.text == "Second" })
+        model.autoCompile = false
+        model.updateActiveText(source.replacingOccurrences(of: "Second paragraph.", with: "Edited paragraph."))
+        model.navigate(to: hello.source!, expectedText: hello.text)
+        XCTAssertEqual((model.activeText as NSString).substring(with: model.selection!.nsRange), "Hello")
+        let before = model.selection
+        model.navigate(to: second.source!, expectedText: second.text)
+        XCTAssertEqual(model.selection, before, "span inside the edited region must not navigate")
+        XCTAssertTrue(model.navigationNote?.contains("recompile") == true)
+        model.updateActiveText("PREFIX " + source)
+        model.navigate(to: second.source!, expectedText: second.text)
+        XCTAssertEqual((model.activeText as NSString).substring(with: model.selection!.nsRange), "Second", "rebased across a prefix insertion")
+
+        // Latency sample for the report (auto-compile burst, coalesced).
+        model.autoCompile = true
+        for i in 0..<10 {
+            model.updateActiveText(source + "\nline \(i)\n")
+            try await Task.sleep(nanoseconds: 60_000_000)
+        }
+        try await waitUntil { model.inFlightRevision == nil && model.result?.revision == model.editorRevision }
+        let lat = model.latenciesMs.sorted()
+        print("REAL-COMPILER LATENCY ms: n=\(lat.count) min=\(lat.first ?? 0) median=\(model.medianLatencyMs ?? 0) max=\(lat.last ?? 0)")
+        XCTAssertFalse(lat.isEmpty)
+        model.autoCompile = false
+
         // A second revision replaces the first; a repeat of the older one would be ignored.
         model.updateActiveText("Only one word\n")
         model.compile()

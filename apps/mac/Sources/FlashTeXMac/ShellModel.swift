@@ -38,6 +38,16 @@ final class ShellModel: ObservableObject {
     @Published var workerLog: [String] = []
     private var worker: WorkerClient?
     private var nextRequestID = 1
+    /// Text each document had when the current `result` was produced, so stale
+    /// byte offsets can be rebased (or refused) after edits.
+    private(set) var compiledDocuments: [String: String] = [:]
+    private var inFlightRequests: [String: (documents: [RuntimeV1.Document], sentAt: Date)] = [:]
+    @Published var autoCompile = true
+    @Published private(set) var lastLatencyMs: Double?
+    @Published private(set) var latenciesMs: [Double] = []
+    private var debounce: DispatchWorkItem?
+    private var compileQueued = false
+    static let debounceInterval: TimeInterval = 0.25
     /// Revision of the compile request currently in flight (nil if idle).
     @Published private(set) var inFlightRevision: Int?
     /// Revision the editor buffer corresponds to. Bumps on every edit so the
@@ -48,6 +58,11 @@ final class ShellModel: ObservableObject {
 
     var isFixture: Bool { previewSource == .fixture }
     var previewIsStale: Bool { (result?.revision ?? editorRevision) != editorRevision }
+    var medianLatencyMs: Double? {
+        guard !latenciesMs.isEmpty else { return nil }
+        let sorted = latenciesMs.sorted()
+        return sorted[sorted.count / 2]
+    }
     var workerAttached: Bool { worker?.isRunning == true }
 
     var activeText: String {
@@ -102,8 +117,10 @@ final class ShellModel: ObservableObject {
                 documents = req.payload.documents
                 activePath = req.payload.entryPath
                 editorRevision = req.payload.revision
-            } else if documents.isEmpty {
-                documents = [.init(path: "main.tex", text: "")]
+                compiledDocuments = Dictionary(uniqueKeysWithValues: req.payload.documents.map { ($0.path, $0.text) })
+            } else {
+                if documents.isEmpty { documents = [.init(path: "main.tex", text: "")] }
+                compiledDocuments = [:]
             }
             selection = nil
             navigationNote = nil
@@ -143,6 +160,15 @@ final class ShellModel: ObservableObject {
         guard documents[i].text != text else { return }
         documents[i].text = text
         editorRevision += 1
+        scheduleAutoCompile()
+    }
+
+    private func scheduleAutoCompile() {
+        guard autoCompile, workerAttached else { return }
+        debounce?.cancel()
+        let item = DispatchWorkItem { [weak self] in self?.compile() }
+        debounce = item
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.debounceInterval, execute: item)
     }
 
     // MARK: navigation (preview -> source)
@@ -154,18 +180,37 @@ final class ShellModel: ObservableObject {
             navigationNote = "This item has no source mapping."
             return
         }
+        navigate(to: source, expectedText: nil)
+    }
+
+    /// `expectedText` (an item's text) lets a rebased range be verified.
+    func navigate(to source: RuntimeV1.SourceRange, expectedText: String?) {
         guard let doc = documents.first(where: { $0.path == source.path }) else {
             navigationNote = "No open document named \(source.path)."
             return
         }
-        guard let ns = doc.text.nsRange(utf8Bytes: source) else {
-            navigationNote = "Bytes \(source.startByte)..<\(source.endByte) are not a valid range in \(source.path) (buffer is \(doc.text.utf8.count) bytes)."
+        var target = source
+        var rebasedNote = ""
+        if let compiled = compiledDocuments[source.path], compiled != doc.text {
+            guard let mapped = SourceMapping.rebase(source, from: compiled, to: doc.text, expectedText: expectedText) else {
+                navigationNote = "Source for this item was edited since revision \(result?.revision ?? 0); recompile to navigate."
+                return
+            }
+            if mapped != source {
+                rebasedNote = " (rebased from \(source.startByte)..<\(source.endByte) across edits)"
+            }
+            target = mapped
+        } else if compiledDocuments[source.path] == nil, previewIsStale {
+            navigationNote = "Buffer edited since revision \(result?.revision ?? 0) and no compiled text is recorded; recompile to navigate."
+            return
+        }
+        guard let ns = doc.text.nsRange(utf8Bytes: target) else {
+            navigationNote = "Bytes \(target.startByte)..<\(target.endByte) are not a valid range in \(source.path) (buffer is \(doc.text.utf8.count) bytes)."
             return
         }
         activePath = source.path
         selection = .init(path: source.path, nsRange: ns, token: (selection?.token ?? 0) + 1)
-        navigationNote = "Selected \(source.path) bytes \(source.startByte)..<\(source.endByte) → UTF-16 \(ns.location)..<\(ns.location + ns.length)"
-            + (previewIsStale ? " (buffer edited since revision \(result?.revision ?? 0); mapping may be off)" : "")
+        navigationNote = "Selected \(source.path) bytes \(target.startByte)..<\(target.endByte) → UTF-16 \(ns.location)..<\(ns.location + ns.length)" + rebasedNote
     }
 
     // MARK: worker transport (runtime v1 JSON Lines)
@@ -218,9 +263,12 @@ final class ShellModel: ObservableObject {
     }
 
     func detachWorker() {
+        debounce?.cancel()
         worker?.terminate()
         worker = nil
+        inFlightRequests.removeAll()
         inFlightRevision = nil
+        compileQueued = false
         if previewSource != .fixture { workerStatus = "no worker attached" }
     }
 
@@ -230,6 +278,13 @@ final class ShellModel: ObservableObject {
             workerStatus = "no worker attached"
             return
         }
+        debounce?.cancel()
+        if inFlightRevision != nil {
+            // Coalesce: one request in flight; the newest buffer goes out when it returns.
+            compileQueued = true
+            return
+        }
+        if let current = result, previewSource != .fixture, current.revision == editorRevision { return }
         let id = "mac-\(nextRequestID)"
         nextRequestID += 1
         let request = RuntimeV1.CompileRequest(
@@ -239,6 +294,7 @@ final class ShellModel: ObservableObject {
             documents: documents)
         do {
             try worker.send(request, id: id)
+            inFlightRequests[id] = (documents, Date())
             inFlightRevision = editorRevision
             workerStatus = "compiling revision \(editorRevision) (\(id))…"
         } catch {
@@ -260,11 +316,26 @@ final class ShellModel: ObservableObject {
             result = incoming
             resultID = env.id
             previewSource = .worker(worker?.executable.lastPathComponent ?? "worker")
+            var latencyText = ""
+            if let sent = inFlightRequests.removeValue(forKey: env.id) {
+                compiledDocuments = Dictionary(uniqueKeysWithValues: sent.documents.map { ($0.path, $0.text) })
+                let ms = Date().timeIntervalSince(sent.sentAt) * 1000
+                lastLatencyMs = ms
+                latenciesMs.append(ms)
+                if latenciesMs.count > 100 { latenciesMs.removeFirst(latenciesMs.count - 100) }
+                latencyText = String(format: " in %.0f ms", ms)
+            }
             if inFlightRevision == incoming.revision { inFlightRevision = nil }
-            workerStatus = "revision \(incoming.revision): \(incoming.status.rawValue), \(incoming.diagnostics.count) diagnostics"
+            workerStatus = "revision \(incoming.revision): \(incoming.status.rawValue), \(incoming.diagnostics.count) diagnostics\(latencyText)"
             selection = nil
+            if compileQueued {
+                compileQueued = false
+                if editorRevision != incoming.revision { compile() }
+            }
         case .error(let id, let message):
+            inFlightRequests.removeValue(forKey: id)
             inFlightRevision = nil
+            compileQueued = false
             workerStatus = "worker error for \(id): \(message)"
             log("error \(id): \(message)")
         case .protocolViolation(let message):
@@ -273,7 +344,9 @@ final class ShellModel: ObservableObject {
         case .stderr(let text):
             log(text.trimmingCharacters(in: .whitespacesAndNewlines))
         case .exited(let code):
+            inFlightRequests.removeAll()
             inFlightRevision = nil
+            compileQueued = false
             workerStatus = "worker exited (\(code))"
             log("worker exited with status \(code)")
             worker = nil

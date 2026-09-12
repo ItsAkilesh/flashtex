@@ -17,6 +17,7 @@ struct ContentView: View {
         }
         .toolbar {
             ToolbarItem { Toggle("Dark preview", isOn: $model.darkPreview).toggleStyle(.switch) }
+            ToolbarItem { Toggle("Auto-compile", isOn: $model.autoCompile).toggleStyle(.switch).disabled(!model.workerAttached) }
             ToolbarItem { Button("Reload fixture") { model.reloadFixture() } }
             ToolbarItem {
                 Button("Compile", systemImage: "hammer") { model.compile() }
@@ -39,9 +40,13 @@ struct ContentView: View {
                 if model.inFlightRevision != nil {
                     ProgressView().controlSize(.small)
                 }
+                if let ms = model.lastLatencyMs, let med = model.medianLatencyMs {
+                    Text(String(format: "latency %.0f ms (median %.0f over %d)", ms, med, model.latenciesMs.count))
+                        .font(.caption).foregroundStyle(.secondary)
+                }
                 if model.previewIsStale {
                     Text(model.workerAttached
-                         ? "editor at revision \(model.editorRevision) — press ⌘B to compile"
+                         ? (model.autoCompile ? "editor at revision \(model.editorRevision) — compiling…" : "editor at revision \(model.editorRevision) — press ⌘B to compile")
                          : "editor at revision \(model.editorRevision) — preview not recompiled (no worker attached)")
                         .foregroundStyle(.orange)
                 }
@@ -128,7 +133,10 @@ struct ContentView: View {
     private var previewPane: some View {
         VStack(spacing: 0) {
             if let result = model.result {
-                PreviewView(result: result, dark: model.darkPreview, caretItems: model.caretItems) { model.navigate(to: $0) }
+                PreviewView(result: result, dark: model.darkPreview, caretItems: model.caretItems) { source, text in
+                    guard let source else { model.navigationNote = "This item has no source mapping."; return }
+                    model.navigate(to: source, expectedText: text)
+                }
                 if !result.diagnostics.isEmpty {
                     Divider()
                     diagnosticsList(result.diagnostics)

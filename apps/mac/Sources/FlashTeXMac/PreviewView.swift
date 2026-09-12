@@ -9,7 +9,7 @@ struct PreviewView: View {
     let dark: Bool
     /// Items under the editor caret, `page number -> item indices` (see `CaretSync`).
     var caretItems: [Int: Set<Int>] = [:]
-    let onSelect: (RuntimeV1.SourceRange?) -> Void
+    let onSelect: (RuntimeV1.SourceRange?, String?) -> Void
 
     var body: some View {
         ScrollView([.vertical, .horizontal]) {
@@ -28,7 +28,7 @@ private struct PageView: View {
     let page: RuntimeV1.Page
     let dark: Bool
     var caretItems: Set<Int> = []
-    let onSelect: (RuntimeV1.SourceRange?) -> Void
+    let onSelect: (RuntimeV1.SourceRange?, String?) -> Void
 
     /// Fixed display scale: 1pt = 1 screen point at 100%.
     private let scale: CGFloat = 1.0
@@ -52,14 +52,14 @@ private struct HitTestCanvas: View {
     let scale: CGFloat
     /// Indices into `page.items` to mark as containing the editor caret.
     var caretItems: Set<Int> = []
-    let onSelect: (RuntimeV1.SourceRange?) -> Void
+    let onSelect: (RuntimeV1.SourceRange?, String?) -> Void
 
-    @State private var hitRects: [(CGRect, RuntimeV1.SourceRange?)] = []
+    @State private var hitRects: [(CGRect, RuntimeV1.SourceRange?, String)] = []
     @State private var hover: Int?
 
     var body: some View {
         Canvas { context, _ in
-            var rects: [(CGRect, RuntimeV1.SourceRange?)] = []
+            var rects: [(CGRect, RuntimeV1.SourceRange?, String)] = []
             for (index, item) in page.items.enumerated() {
                 guard case .text(let t) = item else { continue }
                 let font = Font.system(size: t.fontSizePt * scale, design: .serif)
@@ -85,7 +85,7 @@ private struct HitTestCanvas: View {
                                  with: .color(Color.accentColor.opacity(0.25)))
                 }
                 context.draw(resolved, at: origin, anchor: .topLeading)
-                rects.append((rect, t.source))
+                rects.append((rect, t.source, t.text))
             }
             DispatchQueue.main.async { hitRects = rects }
         }
@@ -98,7 +98,7 @@ private struct HitTestCanvas: View {
         }
         .onTapGesture { location in
             if let hit = hitRects.first(where: { $0.0.contains(location) }) {
-                onSelect(hit.1)
+                onSelect(hit.1, hit.2)
             }
         }
     }
