@@ -231,3 +231,21 @@ round large integers. These limits bound encoded payload, not total process RSS 
 font-loader transient allocations. Legacy rendering wire and hinting flags remain
 unchanged. Tests combine explicit synthetic quadratic geometry with parsed original
 CFF fixture curves, plus exact byte-boundary, command-budget and culling checks.
+
+`mixed_replay::ReplayBatch` validates the internal fixture and converts its paths
+back to typed exact consumer geometry. It rejects duplicate keys recursively,
+unknown fields/primitives, mismatched command kinds, noncanonical rationals,
+invalid clips and altered total command counts. Full metadata remains available
+for lossless canonical replay. The replay does not verify referenced font/source
+bytes, and never marks a fixture paintable.
+
+```sh
+cargo run --manifest-path crates/rendering-core/Cargo.toml --example replay_mixed -- \
+  crates/rendering-core/tests/fixtures/synthetic-mixed.json
+```
+
+The checked-in illustrative fixture has three primitives and five commands;
+canonical output is 1,932 bytes with SHA256
+`aaa78b395c8740a53bb4c363076b0b4263c159287097f943c61591def2f8e7ff`.
+Tests also roundtrip numerators beyond 2^100 through typed geometry without float
+conversion, retaining exact source metadata and primitive identity.

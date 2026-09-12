@@ -283,3 +283,90 @@ fn fractional_rule_clip_culling_never_relabels_the_remaining_primitives() {
     assert_eq!(batch.primitives()[1].source_chain[0].character, 66);
     assert_eq!(batch.primitives()[1].identity.item_index, 1);
 }
+#[test]
+fn replay_keeps_large_rational_coordinates_and_metadata_exact() {
+    use flashtex_rendering_core::mixed_replay::*;
+    let mut source = fixture();
+    let c = cff();
+    let exact = r((1i128 << 100) + 1, (1u128 << 90) + 1);
+    let DrawOperation::Glyph { path, .. } = &mut source.primitives[0].operation else {
+        panic!()
+    };
+    path.commands[0] = PlacedPathCommand::MoveTo(OutlinePoint {
+        x: exact,
+        y: r(1, 7),
+    });
+    let batch = MixedBatch::build(context(), &inputs(&source, &c), MixedLimits::default()).unwrap();
+    let replay = ReplayBatch::parse(batch.fixture_bytes(), MixedLimits::default()).unwrap();
+    assert_eq!(replay.command_count(), batch.command_count());
+    let ReplayGeometry::Quadratic(commands) = &replay.primitives()[0].geometry else {
+        panic!()
+    };
+    assert_eq!(
+        commands[0],
+        ReplayCommand::Move(OutlinePoint {
+            x: exact,
+            y: r(1, 7)
+        })
+    );
+    let canonical = replay.canonical_bytes().unwrap();
+    let again = ReplayBatch::parse(&canonical, MixedLimits::default()).unwrap();
+    assert_eq!(again.primitives(), replay.primitives());
+    assert_eq!(again.metadata(), replay.metadata());
+    assert_eq!(again.canonical_bytes().unwrap(), canonical);
+}
+#[test]
+fn replay_rejects_unknown_primitives_commands_duplicate_keys_and_noncanonical_rationals() {
+    use flashtex_rendering_core::mixed_replay::ReplayBatch;
+    let source = fixture();
+    let c = cff();
+    let batch = MixedBatch::build(context(), &inputs(&source, &c), MixedLimits::default()).unwrap();
+    let original: serde_json::Value = serde_json::from_slice(batch.fixture_bytes()).unwrap();
+    for mode in 0..5 {
+        let mut value = original.clone();
+        match mode {
+            0 => value["primitives"][0]["geometry"]["kind"] = "image".into(),
+            1 => value["primitives"][0]["geometry"]["commands"][0][0] = "cubic".into(),
+            2 => {
+                value["primitives"][0]["geometry"]["commands"][0][1][0] =
+                    serde_json::json!(["2", "6"])
+            }
+            3 => value["primitives"][0]["extra"] = true.into(),
+            _ => value["commands"] = 0.into(),
+        };
+        assert!(
+            ReplayBatch::parse(&serde_json::to_vec(&value).unwrap(), MixedLimits::default())
+                .is_err(),
+            "{mode}"
+        );
+    }
+    let duplicate = String::from_utf8(batch.fixture_bytes().to_vec())
+        .unwrap()
+        .replacen("\"page\":1", "\"page\":2,\"page\":1", 1);
+    assert!(ReplayBatch::parse(duplicate.as_bytes(), MixedLimits::default()).is_err());
+    assert!(matches!(
+        ReplayBatch::parse(
+            batch.fixture_bytes(),
+            MixedLimits {
+                max_serialized_bytes: batch.fixture_bytes().len() - 1,
+                ..MixedLimits::default()
+            }
+        ),
+        Err(MixedError::Budget)
+    ));
+}
+#[test]
+fn checked_in_illustrative_mixed_fixture_replays_all_primitive_types() {
+    use flashtex_rendering_core::mixed_replay::*;
+    let replay = ReplayBatch::parse(
+        include_bytes!("fixtures/synthetic-mixed.json"),
+        MixedLimits::default(),
+    )
+    .unwrap();
+    assert_eq!(replay.primitives().len(), 3);
+    assert_eq!(replay.command_count(), 5);
+    let canonical = replay.canonical_bytes().unwrap();
+    let next = ReplayBatch::parse(&canonical, MixedLimits::default()).unwrap();
+    assert_eq!(replay.primitives(), next.primitives());
+    assert_eq!(replay.metadata(), next.metadata());
+}
