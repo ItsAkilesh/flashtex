@@ -1074,9 +1074,15 @@ impl P<'_> {
                     }
                 }
                 _ => {
-                    match token.kind {
+                    // Nested groups and environments (`cases`, `pmatrix`)
+                    // own their `\\` and `&`.
+                    match &token.kind {
                         TokenKind::LBrace => depth += 1,
+                        TokenKind::Command(command) if command == "begin" => depth += 1,
                         TokenKind::RBrace => depth = depth.saturating_sub(1),
+                        TokenKind::Command(command) if command == "end" => {
+                            depth = depth.saturating_sub(1)
+                        }
                         _ => {}
                     }
                     row.0
@@ -1856,5 +1862,27 @@ mod tests {
             items.iter().map(|i| i.text.as_str()).collect::<Vec<_>>(),
             ["a", "=", "b"]
         );
+    }
+
+    #[test]
+    fn math_grid_environments_lay_out_cells_in_rows_and_columns() {
+        let source = "\\[ f = \\begin{cases} x & x \\geq 0 \\\\ -y & y < 0 \\end{cases} \\]\n\\begin{gather*}\\begin{pmatrix} 1 & 2 \\\\ 3 & 4 \\end{pmatrix}\\end{gather*}\n\\[\\begin{array}{rl} a & b,\\\\[2pt] cc & d \\end{array}\\]";
+        let (parsed, items) = items(source);
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        let at = |text: &str| items.iter().find(|i| i.text == text).unwrap();
+        // cases: left brace only, two rows, second column shared.
+        assert!(items.iter().any(|i| i.text == "{"));
+        assert!(at("≥").baseline_y_pt < at("<").baseline_y_pt);
+        // pmatrix: fences and a 2x2 grid.
+        assert!(items.iter().any(|i| i.text == "(") && items.iter().any(|i| i.text == ")"));
+        assert_eq!(at("1").baseline_y_pt, at("2").baseline_y_pt);
+        assert_eq!(at("1").x_pt, at("3").x_pt);
+        assert!(at("3").baseline_y_pt > at("1").baseline_y_pt);
+        // array {rl}: right-aligned first column, `[2pt]` consumed.
+        assert!(!items.iter().any(|i| i.text == "p" || i.text == "t"));
+        let a = at("a");
+        let cs: Vec<_> = items.iter().filter(|i| i.text == "c").collect();
+        assert!(a.x_pt > cs[0].x_pt, "right-aligned column");
+        assert_eq!(at("b").x_pt, at("d").x_pt);
     }
 }

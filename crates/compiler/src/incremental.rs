@@ -485,6 +485,24 @@ fn shift_math_list(
                         Nucleus::Radical(list) => {
                             Nucleus::Radical(shift_math_list(list, changes, deltas)?)
                         }
+                        Nucleus::Matrix {
+                            rows,
+                            columns,
+                            left,
+                            right,
+                        } => Nucleus::Matrix {
+                            rows: rows
+                                .iter()
+                                .map(|row| {
+                                    row.iter()
+                                        .map(|cell| shift_math_list(cell, changes, deltas))
+                                        .collect::<Option<Vec<_>>>()
+                                })
+                                .collect::<Option<Vec<_>>>()?,
+                            columns: columns.clone(),
+                            left: left.clone(),
+                            right: right.clone(),
+                        },
                     },
                     span: mapped_span(atom.span, changes, deltas)?,
                     // An absent script stays absent; a present one that cannot be
