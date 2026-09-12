@@ -3,10 +3,10 @@
   "allocation_id": "openai-mac-plus-ft003",
   "assignment_acknowledgements": {
     "FT-003": {
-      "acknowledged_utc": "2026-09-12T04:02:02Z",
-      "adaptation": "Accepted FT-003 rev 1 on agent/mac-claude-a/mac-shell. User explicitly directed this Claude Code session to implement it and to run until the orchestrator says stop, overriding the openai-mac-plus-ft003 Codex-only note; user also set jay3332 as primary commit author on mac-m1max-a (AGENTS.md machine exception, main d685879). Shell reads protocol v1 compile-result fixture; source ranges are UTF-8 bytes converted to Swift indices.",
-      "main_sha": "d6858792737c0980cccaec5db835075e94a1ebc9",
-      "revision": 1
+      "acknowledged_utc": "2026-09-12T04:30:04Z",
+      "adaptation": "Accepted FT-003 rev 2 (Live compiler integration) at input main 25a92a9; delivered at fd2a26e: real subprocess transport (Python test double clearly labeled + real crates/compiler 29221d8 via RealCompilerTests), stale-guard for older responses, debounced auto-compile with coalescing, edit mapping that refuses stale offsets unless rebased, measured latency 0.5-9 ms/request. Children mac-pdf (FT-009) and mac-validation (FT-010) running in worktrees.",
+      "main_sha": "09031efa9feca80d7a34e29b0b6fc41d43c509c4",
+      "revision": 2
     }
   },
   "branch": "agent/mac-claude-a/mac-shell",
@@ -16,15 +16,15 @@
     "rust",
     "macos-simulators"
   ],
-  "code_revision": "d1ac666d0b05eaa5eea45ece8ab050d9c46681c9",
+  "code_revision": "fd2a26e5deea9151138d8c59e9c7bc8b757f3334",
   "eta_minutes": {
-    "likely": 45,
-    "optimistic": 30,
-    "pessimistic": 70
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 0
   },
   "machine": "mac-m1max-a",
   "main_integrated_through": "d6858792737c0980cccaec5db835075e94a1ebc9",
-  "next_action": "Edit mapping for stale offsets, debounced auto-compile, latency measurement (queue step 0 remainder)",
+  "next_action": "Queue step 1 Native editor and preview quality; collect mac-pdf/mac-validation; register children via coord.py",
   "reviewed_peers": {
     "origin/agent/aarush-macbook/companion-capture": {
       "adaptation": "Peer cannot run xcodebuild; will verify their branch from this Mac. No contract change.",
@@ -42,18 +42,18 @@
       "sha": "25a92a9c591a92a3d49071e536ecf8f129112c24"
     },
     "origin/main": {
-      "adaptation": "Main unchanged; FT-002 ack on origin/agent/claude/compiler-foundation 25fe5c479e4177474ed06281bca7ce4dc992c533 has no code impact",
-      "reviewed_utc": "2026-09-12T04:07:53Z",
-      "sha": "d6858792737c0980cccaec5db835075e94a1ebc9"
+      "adaptation": "Main 09031ef dispatches FT-003 rev 2 = the step just completed; FT-007 is Commander-owned; fixture compile-result.json text/range mismatch reported",
+      "reviewed_utc": "2026-09-12T04:30:04Z",
+      "sha": "09031efa9feca80d7a34e29b0b6fc41d43c509c4"
     }
   },
   "schema_version": 1,
-  "state": "in_progress",
-  "summary": "apps/mac: shell+transport+capture insertion+real-compiler e2e+PDF export+caret sync, 28/28 tests, xcodebuild OK; companion build verification published (pbxproj corrupt); supervising mac-pdf/mac-validation",
+  "state": "ready_for_integration",
+  "summary": "FT-003 rev 2 complete at fd2a26e: real JSONLines transport, revision ordering, debounce/coalescing, stale-offset refusal with validated rebase, latency 0.5-9ms; 34/34 tests with real compiler; xcodebuild OK; PDF export + caret sync merged",
   "tool": "Claude Code",
-  "updated_utc": "2026-09-12T04:24:53Z",
+  "updated_utc": "2026-09-12T04:30:04Z",
   "usage": {
-    "evidence": "Claude Max session per user and Commander (25a92a9) authorization; subagents share the same quota; no API spend",
+    "evidence": "Claude Max 20x per user + CMD-006; 4 subagents run so far; no purchases",
     "status": "unknown"
   }
 }
