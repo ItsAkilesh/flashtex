@@ -3,17 +3,17 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-027": {
-      "acknowledged_utc": "2026-09-12T06:48:42Z",
-      "adaptation": "Reviewed rooted save d92db37; Linux 47 tests pass. Implementing source-checked export and helper regressions; next explicit disk reconciliation.",
-      "main_sha": "1b17778ba97f638b8e8e003e16e6f8ee77b68b20",
-      "revision": 5
+      "acknowledged_utc": "2026-09-12T06:57:08Z",
+      "adaptation": "Narrow additive replace_membership API implemented in current worktree only; paused index worktree untouched. Preserve revision watermarks and monotonic membership generation.",
+      "main_sha": "7adb02158256181b82de419c0a5f80025576c49b",
+      "revision": 6
     }
   },
   "branch": "agent/commander/preview-controller",
   "capabilities": [
     "rust"
   ],
-  "code_revision": "d2901b5b22efa289a3a71c577ae31c8f5698e463",
+  "code_revision": "61d29a0222925c311d697a62940744fa9db4a534",
   "eta_minutes": {
     "likely": 20,
     "optimistic": 10,
@@ -21,15 +21,15 @@
   },
   "machine": "linux-primary",
   "main_integrated_through": "00321006a7b16391117258420f853e303fa27dac",
-  "next_action": "Publish reload contract to native owner; continue project discovery and source synchronization integration.",
+  "next_action": "Publish membership; helper operation integration tests and bounded project status followup.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "Guarded external reload implemented; 28 controller/helper tests including original compiler pass, strict clippy passes. Dirty source retained in undo across restart.",
+  "summary": "Dynamic rooted open/detach/reopen implemented; 31 controller tests and 66 index tests pass, both strict clippy pass. Added single blocked output write timeout regression.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T06:51:21Z",
+  "updated_utc": "2026-09-12T06:57:08Z",
   "usage": {
     "evidence": "unknown",
-    "status": "Existing hosted Astra only; no paid API calls or staffing changes."
+    "status": "Existing hosted Astra only; no added agents or API calls."
   }
 }

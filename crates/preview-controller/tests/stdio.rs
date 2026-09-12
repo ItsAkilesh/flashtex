@@ -245,6 +245,15 @@ fn undo_retry_after_helper_kill_is_idempotent_and_redo_remains_available() {
 
 #[test]
 fn stalled_output_reader_causes_bounded_failure_instead_of_unlimited_queueing() {
+    stalled_reader(40);
+}
+
+#[test]
+fn single_stalled_reply_times_out_without_filling_output_queue() {
+    stalled_reader(1);
+}
+
+fn stalled_reader(requests: usize) {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("store");
     {
@@ -280,7 +289,7 @@ fn stalled_output_reader_causes_bounded_failure_instead_of_unlimited_queueing() 
     );
     // Keep stdout open but deliberately stop draining it. Each document reply is
     // larger than the OS pipe; bounded helper output admission must stop work.
-    for id in 0..40 {
+    for id in 0..requests {
         let line = json!({"protocol_version":1,"session_id":"session1","id":format!("r{id}"),"type":"document","payload":{"path":"main.tex"}});
         if writeln!(client.input.as_mut().unwrap(), "{line}").is_err() {
             break;

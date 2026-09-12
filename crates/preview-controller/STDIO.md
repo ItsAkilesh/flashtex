@@ -129,3 +129,18 @@ It returns document and separate preview status just like `edit`. A lost reply
 requires reading `document` before retry; the old revision will be refused after
 a successful reload. `user_approved` is a client responsibility, not proof of a
 human action. Native UI must show the changes before confirming replacement.
+
+`snapshot` additionally returns `membership_generation`. `open_document` and
+`detach_document` require `{path,source_versions,membership_generation}` matching
+that snapshot. Open imports an existing rooted UTF-8 file or restores its retained
+private ledger, and returns `document`, current versions/generation and separate
+preview status. Detach excludes a non-entry document for this session and returns
+those membership fields with `document:null`. It never deletes a disk file or
+ledger. Project restart restores all retained documents; persistent exclusions are
+not implemented. Each membership change invalidates pending previews and index
+snapshots. New includes are not yet discovered automatically after an edit.
+
+A reply blocked in the output writer for two seconds terminates the helper even
+when the output queue has not filled. The actor checks this deadline between
+operations; it does not interrupt a filesystem call. Recover durable source after
+uncertain delivery instead of assuming that the last operation was rejected.
