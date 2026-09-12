@@ -1222,6 +1222,8 @@ final class CompletionPopup: NSPanel, NSTableViewDataSource, NSTableViewDelegate
 
     /// The table's selected row, for tests and evidence.
     var selectedRow: Int { table.selectedRow }
+    /// The list's table, for accessibility read-back in tests.
+    var accessibilityTable: NSTableView { table }
 
     /// Shows (or refreshes) the list under `caretRect`. While the panel is
     /// already on screen for the same parent, only what changed is touched:
@@ -1375,7 +1377,7 @@ extension Completion.Kind {
 
 /// `NSTextView` with its own completion session: candidates are computed off
 /// the main thread by `CompletionScheduler`, shown in `CompletionPopup`, and
-/// chosen with ↑/↓, inserted with Return/Tab, dismissed with Esc. Any caret
+/// chosen with ↑/↓ or Tab/⇧Tab, inserted with Return/Enter, dismissed with Esc. Any caret
 /// move or text change that is not the user's own typing through the list
 /// closes the session and cancels in-flight work. Esc and ⌃Space open the
 /// list. Rust metadata (`compileResult`, `accept(projectIndex:)`) is used only
@@ -1636,7 +1638,8 @@ final class CompletingTextView: NSTextView {
         switch event.keyCode {
         case 125: moveSelection(by: 1) // ↓
         case 126: moveSelection(by: -1) // ↑
-        case 36, 76, 48: acceptSelectedCompletion() // Return, Enter, Tab
+        case 48: moveSelection(by: event.modifierFlags.contains(.shift) ? -1 : 1) // Tab next, ⇧Tab previous (wrapping)
+        case 36, 76: acceptSelectedCompletion() // Return, Enter
         case 53: scheduler.cancel(); close(.escape) // Esc
         case 123, 124, 115, 119, 116, 121: // ←, →, Home, End, Page Up/Down leave the token
             close(.caretMoved)

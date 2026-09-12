@@ -1,5 +1,6 @@
 import SwiftUI
 import XCTest
+import FlashTeXAccessibility
 @testable import FlashTeXProtocol
 @testable import FlashTeXMac
 
@@ -936,8 +937,13 @@ final class CompletionTests: XCTestCase {
         // Esc with no list open is AppKit's `complete:` binding: it opens the list.
         key(tv, "\u{1B}", code: 53)
         try await waitUntil("popup via Esc") { tv.session != nil }
-        // Tab inserts too; ← closes (the caret leaves the token).
+        // Tab chooses the next candidate (never inserts a tab); Enter inserts; ← closes (the caret leaves the token).
         key(tv, "\t", code: 48)
+        XCTAssertEqual(tv.string, "\\begin{document}\nx \\s", "Tab moved the choice, the text is untouched")
+        XCTAssertEqual(tv.session?.selected?.label, "\\subsection{...}")
+        key(tv, "\t", code: 48, flags: .shift)
+        XCTAssertEqual(tv.session?.selected?.label, "\\section{...}")
+        key(tv, "\u{3}", code: 76) // Enter (keypad)
         XCTAssertEqual(tv.string, "\\begin{document}\nx \\section{}")
         XCTAssertNil(tv.session)
         tv.string = "\\begin{document}\nx \\s"
@@ -994,6 +1000,89 @@ final class CompletionTests: XCTestCase {
         try await waitUntil("bound popup") { tv.session != nil }
         XCTAssertEqual(tv.session?.metadataRevision, 8)
         key(tv, "\u{1B}", code: 53)
+    }
+
+    /// Keyboard-only traversal of the open list: Tab / ⇧Tab walk the rows
+    /// (wrapping) exactly like ↓ / ↑ while the editor keeps first responder,
+    /// its caret and its text; Return inserts the walked-to candidate. What
+    /// VoiceOver reads is read back through NSAccessibility from the real
+    /// popup: the table is "Completions" with the shared help text (which
+    /// names Tab and Shift-Tab), each row's cell describes "candidate, kind,
+    /// origin", the selected row follows the choice, and the announcement for
+    /// the choice leads with "n of m".
+    @MainActor
+    func testTabAndShiftTabTraverseTheListWithVoiceOverLabels() async throws {
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 600, height: 400), styleMask: [.titled], backing: .buffered, defer: false)
+        let scroll = CompletingTextView.scrollable()
+        scroll.frame = window.contentView!.bounds
+        window.contentView!.addSubview(scroll)
+        let tv = try XCTUnwrap(scroll.documentView as? CompletingTextView)
+        window.orderFrontRegardless() // never makeKey
+        window.makeFirstResponder(tv)
+        defer { window.orderOut(nil) }
+        tv.string = "\\begin{document}\nx \\s"
+        let end = (tv.string as NSString).length
+        tv.setSelectedRange(NSRange(location: end, length: 0))
+        key(tv, " ", code: 49, flags: .control)
+        try await waitUntil("popup") { tv.session != nil }
+        let items = try XCTUnwrap(tv.session?.items)
+        let labels = items.map(\.label)
+        XCTAssertEqual(labels.count, 5)
+        let popup = tv.completionPopup
+        let table = popup.accessibilityTable
+        XCTAssertEqual(table.accessibilityLabel(), CompletionAccessibility.listLabel)
+        XCTAssertEqual(table.accessibilityHelp(), CompletionAccessibility.listHelp)
+        XCTAssertTrue(CompletionAccessibility.listHelp.contains("Tab and Shift-Tab choose"), CompletionAccessibility.listHelp)
+        XCTAssertTrue(AccessibilityCommand.completionList.entry.shortcuts.contains("Tab"))
+        XCTAssertTrue(AccessibilityCommand.completionList.entry.shortcuts.contains("⇧Tab"))
+
+        // Tab walks down and wraps to the top; ⇧Tab walks up and wraps to the bottom.
+        var walked: [String] = []
+        for _ in 0..<labels.count {
+            key(tv, "\t", code: 48)
+            walked.append(try XCTUnwrap(tv.session?.selected?.label))
+        }
+        XCTAssertEqual(walked, Array(labels[1...]) + [labels[0]])
+        XCTAssertEqual(tv.session?.selectedIndex, 0)
+        key(tv, "\t", code: 48, flags: .shift)
+        key(tv, "\t", code: 48, flags: .shift)
+        XCTAssertEqual(tv.session?.selectedIndex, 3)
+        XCTAssertEqual(popup.selectedRow, 3)
+        XCTAssertTrue(window.firstResponder === tv, "the list never takes the keyboard")
+        XCTAssertFalse(popup.isKeyWindow)
+        XCTAssertEqual(tv.selectedRange(), NSRange(location: end, length: 0), "choosing never moves the caret")
+        XCTAssertEqual(tv.string, "\\begin{document}\nx \\s", "no tab character was inserted")
+
+        // Read back what VoiceOver gets from the real popup (legacy attribute
+        // API: AppKit answers a table's children with private row proxies).
+        popup.contentView?.layoutSubtreeIfNeeded()
+        table.display()
+        func legacy(_ o: AnyObject?, _ a: NSAccessibility.Attribute) -> Any? { (o as? NSObject)?.accessibilityAttributeValue(a) }
+        let children = (table.accessibilityChildren() as? [AnyObject]) ?? []
+        let axRows = children.filter { (legacy($0, .role) as? String) == NSAccessibility.Role.row.rawValue }
+        XCTAssertEqual(axRows.count, labels.count)
+        for (i, row) in axRows.enumerated() {
+            let cells = (legacy(row, .children) as? [AnyObject]) ?? []
+            XCTAssertEqual(cells.count, 1, "row \(i)")
+            XCTAssertEqual(legacy(cells.first, .description) as? String, CompletionPopup.spokenLabel(items[i]), "row \(i)")
+            XCTAssertEqual(legacy(row, .index) as? Int, i)
+        }
+        let selectedRows = (legacy(table, .selectedRows) as? [AnyObject]) ?? []
+        XCTAssertEqual(selectedRows.count, 1)
+        XCTAssertEqual(selectedRows.first.flatMap { legacy($0, .index) as? Int }, 3)
+        let announcement = CompletionAccessibility.selectionAnnouncement(index: 3, total: labels.count, label: items[3].label,
+                                                                          kind: items[3].kind.accessibilityKind, detail: items[3].detail)
+        XCTAssertTrue(announcement.hasPrefix("4 of 5: \(labels[3]), command, "), announcement)
+
+        // Return inserts the walked-to candidate over the token and closes.
+        key(tv, "\r", code: 36)
+        XCTAssertEqual(tv.string, "\\begin{document}\nx " + items[3].insertText)
+        XCTAssertNil(tv.session)
+        XCTAssertFalse(popup.isVisible)
+        XCTAssertEqual(tv.lastCloseReason, .accepted)
+        // With no list open, Tab is the editor's own tab again.
+        key(tv, "\t", code: 48)
+        XCTAssertTrue(tv.string.hasSuffix("\t"), "\(tv.string)")
     }
 
     @MainActor
