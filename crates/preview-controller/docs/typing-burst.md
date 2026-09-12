@@ -82,3 +82,29 @@ pair within the same captured producer stream. All seven original historical
 results pass this audit; altered result IDs and compile revisions are rejected.
 `correlation-review.json` records this later verification separately; original
 measurement provenance and captured bytes remain unchanged.
+
+## Separate-process sender (next experiment harness)
+
+The harness now uses `scheduled_sender.py` rather than a receiver-process Python
+thread. It inherits only the helper input descriptor, reads pre-encoded commands,
+and records actual send/write-completion times on the shared monotonic clock.
+The parent flushes before launch and sends no commands until this process exits.
+A 200ms startup lead is not a scheduling guarantee; lateness must still be reported.
+
+An absolute 30-second child deadline bounds waits and pipe backpressure. Writes
+use at most PIPE_BUF bytes after writability, with one writer for the burst.
+Parent cancellation and finish-timeout kill and reap the child, and normal cleanup
+stops it before closing the helper. The parent's input descriptor remains usable
+for subsequent receipt checks. No descriptor blocking flags are changed.
+
+Five process lifecycle tests cover ordered original bytes, reuse of the parent's
+writer, a closed reader, undrained-pipe deadline, cancellation and completion-timeout
+reaping. These are harness checks, not a new compiler/native timing measurement.
+The original archived threaded captures and their provenance remain unchanged.
+
+Independent review added sender-failure polling before/after reads and on read
+failure, so a recorded child error replaces a generic receiver timeout. Config and
+result files are retained in the capture's sender directory, including failures.
+Nested cleanup guarantees helper shutdown and event-file closure even if sender
+cleanup raises. A forcibly killed parent is not an immediate child-death guarantee:
+the child still has its absolute deadline; that case is not claimed by these tests.

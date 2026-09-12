@@ -8,9 +8,9 @@ import os
 from pathlib import Path
 import subprocess
 import tempfile
-import threading
 import time
 from helper_replay import Client, snapshot_after_initial_preview
+from scheduled_sender import ScheduledSender
 
 
 def sha(data): return hashlib.sha256(data).hexdigest()
@@ -69,6 +69,7 @@ def main():
         states.append(before[:offset]+replacement+before[offset+1:])
     wires=[json.dumps(r,ensure_ascii=False,separators=(',',':')).encode()+b'\n' for r in requests]
     out=Path(args.output).resolve();out.mkdir(exist_ok=False);(out/'producer').mkdir()
+    (out/'sender').mkdir()
     (out/'requests.jsonl').write_bytes(b''.join(wires));(out/'initial.tex').write_text(source);(out/'final.tex').write_text(states[-1])
     os.environ['FLASHTEX_CAPTURE_DIRECTORY']=str(out/'producer')
     os.environ['FLASHTEX_CAPTURE_PRODUCER']=str(Path(args.producer).resolve())
@@ -76,11 +77,17 @@ def main():
         root=Path(temp);(root/'project').mkdir();(root/'private').mkdir();(root/'project/main.tex').write_text(source)
         config=root/'config.json';config.write_text(json.dumps(dict(session_id='benchmark',project_id='p',entry_path='main.tex',project_root=str(root/'project'),private_ledger_root=str(root/'private'),compiler_path=str(Path(__file__).with_name('producer_capture_proxy.py').resolve()),diagnostic_timings=True)))
         client=Client(args.helper,config,capture_wire=True,capture_diagnostics=True)
-        sender=None;events=(out/'events.jsonl').open('wb');sends=[];send_errors=[];acks={};previews=[];historical=[]
+        sender=None;events=(out/'events.jsonl').open('wb');sends=[];acks={};previews=[];historical=[]
         experiment_deadline = None
         def read():
             assert experiment_deadline is None or time.monotonic() < experiment_deadline, 'overall experiment deadline'
-            event,received=client.read();
+            if sender:sender.check_failure()
+            try:
+                event,received=client.read()
+            except Exception:
+                if sender:sender.check_failure()
+                raise
+            if sender:sender.check_failure()
             assert experiment_deadline is None or received < experiment_deadline, 'overall experiment deadline'
             events.write(client.last_wire);events.flush()
             return event,received
@@ -94,17 +101,11 @@ def main():
                 client.send('historical-enable','configure_completed_snapshots',dict(capability='completed-snapshots-v1',enabled=True))
                 enabled=reply('historical-enable')
                 assert enabled['type']=='result' and enabled['payload']['enabled'] is True
-            t0=time.monotonic()
+            # Record real send times; startup lateness remains visible in evidence.
+            t0=time.monotonic()+.2
             experiment_deadline=t0+30
-            def send():
-                try:
-                    for i,wire in enumerate(wires):
-                        due=t0+i*.030
-                        time.sleep(max(0,due-time.monotonic()))
-                        sent=time.monotonic();client.proc.stdin.write(wire);client.proc.stdin.flush()
-                        sends.append(dict(id=requests[i]['id'],target_ms=i*30,sent_ms=(sent-t0)*1000,flush_ms=(time.monotonic()-t0)*1000))
-                except Exception as error:send_errors.append(repr(error))
-            sender=threading.Thread(target=send);sender.start()
+            client.proc.stdin.flush()
+            sender=ScheduledSender(client.proc.stdin.fileno(),wires,out/'sender',t0)
             final=None
             while len(acks)<20 or final is None:
                 event,received=read();p=event.get('payload',{})
@@ -135,7 +136,9 @@ def main():
                     previews.append(dict(received_ms=(received-t0)*1000,revision=revision,
                         latest_ack_revision=max([a['revision'] for a in acks.values()],default=1)))
                     if revision==21:final=p
-            sender.join(timeout=2);assert not sender.is_alive() and not send_errors and len(sends)==20
+            sends=sender.finish(timeout=2)
+            assert len(sends)==20
+            for record in sends:record['id']=requests[record.pop('index')]['id']
             measured_done=time.monotonic()
             final_preview_received_ms=next(p['received_ms'] for p in previews if p['revision']==21)
             assert final['result']['payload']['status']=='ok'
@@ -155,8 +158,11 @@ def main():
             client.send('conflict','apply_group',conflict);assert reply('conflict')['type']=='error'
             (out/'diagnostics.json').write_text(json.dumps(client.diagnostics(),indent=2)+'\n')
         finally:
-            client.stop();events.close()
-            if sender:sender.join(timeout=2)
+            try:
+                if sender:sender.stop()
+            finally:
+                try:client.stop()
+                finally:events.close()
         reopened=Client(args.helper,config)
         try:
             durable=snapshot_after_initial_preview(reopened)
@@ -175,11 +181,11 @@ def main():
             if json.loads(line).get('payload',{}).get('kind')=='completed_snapshot']
         verify_historical_results(out/'producer', delivered, states)
     summary=dict(helper_sha256=sha(Path(args.helper).read_bytes()),producer_sha256=evidence['binary_sha256'],assets=evidence['assets'],
-        historical_opt_in=args.historical,historical=historical,sends=sends,acks=acks,previews=previews,final_revision=21,source_sha256=sha(states[-1].encode()),
+        sender_mode='separate-process',historical_opt_in=args.historical,historical=historical,sends=sends,acks=acks,previews=previews,final_revision=21,source_sha256=sha(states[-1].encode()),
         post_last_send_preview_ms=final_preview_received_ms-sends[-1]['sent_ms'],
         measured_until_ms=(measured_done-t0)*1000,target_interval_ms=30,
         scope='one20edit burst with observed send schedule, release components and transparent captureproxy; later receipts/conflict/reopen/cleancompile excluded from measured burst; no native or worstcase bound',
-        scripts={p.name:sha(p.read_bytes()) for p in [Path(__file__),Path(__file__).with_name('helper_replay.py'),Path(__file__).with_name('producer_capture_proxy.py')]},
+        scripts={p.name:sha(p.read_bytes()) for p in [Path(__file__),Path(__file__).with_name('helper_replay.py'),Path(__file__).with_name('producer_capture_proxy.py'),Path(__file__).with_name('scheduled_sender.py')]},
         artifacts={str(p.relative_to(out)):sha(p.read_bytes()) for p in out.rglob('*') if p.is_file()})
     (out/'provenance.json').write_text(json.dumps(summary,indent=2)+'\n')
     print(json.dumps(dict(ack_count=len(acks),preview_count=len(previews),historical_count=len(historical),historical_revisions=[h['revision'] for h in historical],preview_revisions=[p['revision'] for p in previews],post_last_send_preview_ms=summary['post_last_send_preview_ms'],send_ms=[s['sent_ms'] for s in sends])))
