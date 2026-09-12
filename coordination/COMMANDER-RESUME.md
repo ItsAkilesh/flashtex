@@ -55,3 +55,9 @@ Current rootFT048r13 source-free history status implementation, runtimeFT049r15 
 ## Source-free history integration
 
 Productd53c5073 integrated after full ledger suite, four metadata helper tests and both strict lints passed (75754 terminal, /tmp/flashtex-history-status-integration.log). Existing full APIs wrap shared status mutation and clone only when full result requested; metadata helper borrows authoritative document. Exact durable bytes and retries unchanged in paired owner acceptance. RootFT048r14 now GH33 diagnostic/readiness and bounded test reader cleanup; preserve deadlines and unresolved original cause. Renderer21ce1756 duplicate-parse reuse candidate measured, actual five-fixture replay pending. Runtime stopped-reader test candidate awaiting final publication.
+
+## Paired display and GH33 integration
+
+21ce1756/b7dedddf private immutable paired envelope reuse integrated with894b393f GH33 bounded test-reader cleanup/progress. Corrected integration21373 passed actual large-result, optional expansion, ten helper candidate tests and both lints; first98940 invocation omitted required compiler environment and failed setup, not product. Logs /tmp/flashtex-paired-gh33-corrected.log and original setup log preserved. Owner173 rendering tests and exact five-fixture hashes unchanged. GH33 original cause remains unproven; no deadline relaxation.
+
+Pending9f28baeb owned edit text move,106bca6e repeated lifecycle evidence. Next root/runtime coordinated actual multi-document explicit bibliography helper capture (distinct editor/compile revisions); avoid modeled capture claims. RendererFT023r15 exact current-guarded hit lookup reuses validated PipelineCff and existing geometry, no source_actions/native activation.
