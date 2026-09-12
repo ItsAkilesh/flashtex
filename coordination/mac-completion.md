@@ -1,6 +1,6 @@
 # mac-completion handoff — revision-bound completion metadata
 
-- Updated UTC: 2026-09-12T08:58Z
+- Updated UTC: 2026-09-12T09:16Z
 - Agent / parent / machine alias: `mac-completion` (Claude Code subagent) /
   parent `mac-claude-a` / `mac-m1max-a`
 - Task / acceptance gate / owned paths: lane "Consume bounded revision-bound
@@ -11,16 +11,32 @@
   `apps/mac/Tests/FlashTeXMacTests/CompletionTests.swift`, this handoff and
   `coordination/agents/mac-completion.json`.
 - Branch / code revision / main integrated through:
-  `agent/mac-completion/revision-bound` (from
-  `origin/agent/mac-claude-a/mac-shell` at `6b43a3a`) / see
-  `coordination/agents/mac-completion.json` `code_revision` / branch base
-  contains main through `2fd3026`; main `ad9fec2` reviewed (coordination-only
-  commits since the base).
+  `agent/mac-completion/live-helper` (from `origin/agent/mac-claude-a/mac-shell`
+  `d8baed6`, which already merged the first lane branch
+  `agent/mac-completion/revision-bound` at `4d358e5` with the parent diffs
+  applied) / see `coordination/agents/mac-completion.json` `code_revision` /
+  main as merged into mac-shell.
 - State: ready for integration (core lane and both follow-ups implemented and
   tested; parent-side wiring reported below, not applied). Context usage of
   this session cannot be read exactly by the agent; it is well below the
   compaction thresholds in docs/context-checkpoints.md at this checkpoint.
 - Ready behavior and evidence:
+  - Live helper end-to-end (`CompletionLiveHelperTests`, env-gated like
+    `PreviewControllerTests`): real `flashtex-preview-controller` + compiler
+    behind `ShellModel`, `SourceEditorView` hosted in a window, real
+    `CompletingTextView` list. After the first preview the parent's fetcher
+    binds index metadata to the editor revision; `\ref{` shows `sec:intro`,
+    `\cite{` shows `knuth84` (declared as `\bibitem[Knu84]{knuth84}`, which
+    only the index sees), `\my` shows `\myterm` with "declared in main.tex ·
+    N uses · revision R". Stale refusal: a query naming the previous snapshot
+    is answered "source versions changed" and discarded (bound metadata
+    unchanged, logged); an edit after the request leaves the held metadata
+    unbound until the next preview rebinds it. Measured request → bound
+    metadata: 22–24 ms for the first snapshot (behind the initial compile in
+    the helper's queue), 1.1–1.3 ms after a rebinding edit; probe edits racing
+    the helper produced 2 refused queries per run (reported, never shown).
+    5 consecutive passes after fixing two test-side races (waiting on
+    compile-result binding instead of index binding).
   - What main provides (read on `origin/main` `ad9fec2`): runtime-v1
     `compile_result` has no completion vocabulary — only `revision` and
     diagnostics that name commands (`\X is not supported …`), references
@@ -79,15 +95,9 @@
     scan 0.88–0.98 ms. 1 MB buffer sync scan (pre-existing test): words
     8.5 ms, commands 5.4 ms — the popup path never runs that on main.
 - Incomplete behavior / blockers / needs from others:
-  - The app does not pass the editor revision to the text view yet, so in
-    the running app `editorRevision` is nil and no compile-result metadata
-    binds (candidates come from the document text alone; nothing stale is
-    ever shown). Parent-retained diff below enables binding.
-  - No live project-index channel yet: `ProjectIndexCompletionFetcher` is
-    exercised on the documented wire shape with a fake `send`; the helper
-    route exists in the parent's `ShellModel+Controller.swift` and the diff
-    below routes its frames through the fetcher. Not run against the real
-    helper from this lane (the ShellModel wiring is parent-owned).
+  - Under continuous typing the index vocabulary is always one preview
+    behind and refused until the next preview (by design); the direct-worker
+    route has no index, so only compile-result diagnostics bind there.
   - VoiceOver label "Completions" is set on the popup table but not verified
     with VoiceOver.
   - No app screenshot evidence: opening the list needs keystrokes into the
@@ -100,8 +110,8 @@
     `CompletionScheduler`, `CompletionSession`, `CompletionPopup`,
     `ProjectIndexCompletionFetcher` (drives the helper's `complete` op per
     category and merges the bounded replies into one bound `Metadata`).
-  - Exact diffs needed in parent-retained files (not applied; branch tip
-    contains the merged `mac-shell` `b973b89` so line context is current):
+  - Parent-side diffs (applied by the parent in mac-shell `4d358e5`; kept
+    here for the record):
 
     `apps/mac/Sources/FlashTeXMac/ShellModel.swift` (class body, next to
     `controllerState`):
@@ -167,10 +177,11 @@
   bounds and the "lexical, not TeX semantics" wording of details.
 - Validation commands / results / artifact paths:
   `cd apps/mac && swift test --filter CompletionTests` → 20/20;
-  `FLASHTEX_COMPILER=… FLASHTEX_PDF=… FLASHTEX_BRIDGE=… FLASHTEX_EDIT_LEDGER=…
-  FLASHTEX_PREVIEW_CONTROLLER=… swift test` (release worker binaries from the
-  main checkout) → 217 tests, 0 failures, 31.1 s (after merging mac-shell
-  `b973b89`). Timing lines are printed by
+  `FLASHTEX_COMPILER=… FLASHTEX_PREVIEW_CONTROLLER=… swift test --filter
+  CompletionLiveHelperTests` → 1/1 (5 consecutive runs); full suite with
+  `FLASHTEX_COMPILER/PDF/BRIDGE/EDIT_LEDGER/PREVIEW_CONTROLLER` set → 307
+  tests, 0 failures, 4 env-gated skips from other lanes (DocumentFiles helper,
+  NearbyView screenshots), 51 s. Timing lines are printed by
   `testCandidateComputationOnDemoTexStaysUnderTwoMilliseconds` and
   `testKeystrokeThroughOpenListOnDemoTexDoesNotScanOnMain`.
 - Exact deadline UTC / remaining time / integration reserve: per
@@ -193,9 +204,8 @@
     show kind/detail text.
   - Binding is exact-revision (`==`), not "not older": metadata newer than
     the text is not the text's either.
-- Exact next action or command: parent applies the diffs above and runs
-  `swift test` with `FLASHTEX_PREVIEW_CONTROLLER` set to see index-backed
-  `\cite{`/`\ref{` items in the app; Commander integration of the branch.
+- Exact next action or command: parent merges
+  `agent/mac-completion/live-helper` into mac-shell; Commander integration.
 - Resume reading list: this file, `apps/mac/Sources/FlashTeXMac/Completion.swift`
   header comments, `crates/preview-controller/STDIO.md` (complete/navigate),
   `crates/project-index/README.md`.

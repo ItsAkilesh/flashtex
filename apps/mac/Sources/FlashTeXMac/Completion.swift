@@ -735,6 +735,8 @@ final class ProjectIndexCompletionFetcher {
         let sourceVersions: [String: Int]
         let editorRevision: Int
         var merged: Completion.Metadata?
+        /// `MonotonicClock` stamp of `request`, for request → metadata latency.
+        var requestedNs: UInt64 = 0
     }
 
     enum Outcome: Equatable {
@@ -750,6 +752,8 @@ final class ProjectIndexCompletionFetcher {
 
     private(set) var query: Query?
     private(set) var refusals = 0
+    /// Request → complete metadata wall time of the last completed query.
+    private(set) var lastLatencyMs: Double?
 
     /// Sends one `complete` per category with an empty prefix and the maximum
     /// limit (100), naming the exact `sourceVersions` the preview was compiled
@@ -764,7 +768,8 @@ final class ProjectIndexCompletionFetcher {
             guard let id = try? send("complete", payload) else { query = nil; return }
             outstanding[id] = kind
         }
-        query = Query(outstanding: outstanding, sourceVersions: sourceVersions, editorRevision: editorRevision, merged: nil)
+        query = Query(outstanding: outstanding, sourceVersions: sourceVersions, editorRevision: editorRevision, merged: nil,
+                      requestedNs: MonotonicClock.nowNs())
     }
 
     /// A `result` frame. The payload is the helper's JSON object; it is
@@ -784,6 +789,7 @@ final class ProjectIndexCompletionFetcher {
         q.merged = q.merged.flatMap { $0.merged(with: metadata) } ?? metadata
         if q.outstanding.isEmpty, let merged = q.merged {
             query = nil
+            lastLatencyMs = Double(MonotonicClock.nowNs() - q.requestedNs) / 1e6
             return .complete(merged)
         }
         query = q
