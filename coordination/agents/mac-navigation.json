@@ -1,0 +1,40 @@
+{
+  "agent_id": "mac-navigation",
+  "allocation_id": "claude-mac20x-navigation",
+  "assignment_acknowledgements": {},
+  "branch": "agent/mac-navigation/exact",
+  "capabilities": [
+    "swift",
+    "macos"
+  ],
+  "code_revision": "8feec0d8f22d4c80aea1fdec5d633dfe95bfc8d8",
+  "eta_minutes": {
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 30
+  },
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "c9f1b9edbc872085949da89a7d3e4875ce17cd54",
+  "next_action": "Parent applies the ShellModel diff and merges into mac-shell; compiler owner: duplicated source span on PDF-export glyph warnings (all point at the first offending item)",
+  "reviewed_peers": {
+    "origin/agent/mac-claude-a/mac-shell": {
+      "adaptation": "Merged both; adopted editorMarkReport/currentDiagnosticID for goToDiagnostic per the editor-diagnostics lane diff and extended it across open documents; no contract change",
+      "reviewed_utc": "2026-09-12T08:56:26Z",
+      "sha": "71675cd668b9116d8a1fb6cad0624dff7c2b3218"
+    },
+    "origin/main": {
+      "adaptation": "Merged both; adopted editorMarkReport/currentDiagnosticID for goToDiagnostic per the editor-diagnostics lane diff and extended it across open documents; no contract change",
+      "reviewed_utc": "2026-09-12T08:56:26Z",
+      "sha": "c9f1b9edbc872085949da89a7d3e4875ce17cd54"
+    }
+  },
+  "schema_version": 1,
+  "state": "ready_for_integration",
+  "summary": "Exact source-preview navigation on agent/mac-navigation/exact: navigateExactly (byte-exact staleness with edited-bytes note, cluster-whole selection, document switching, caret follow), cross-document label/ref, goToDiagnostic via EditorDiagnostics marks continuing into other open documents, CaretSync.Index O(log n) (10k items: 1.16 us/query vs 3.0 ms scan, debug build). swift test with real workers: 222 tests, 1 skipped (preview-controller helper), 0 failures. Parent ShellModel diff (navigate -> navigateExactly, caretItems -> exactCaretItems, caretByte -> CaretSync.byteOffset) trial-applied: 222/0 failures; reverted, listed in coordination/mac-navigation.md",
+  "tool": "Claude Code subagent (parent mac-claude-a)",
+  "updated_utc": "2026-09-12T08:56:26Z",
+  "usage": {
+    "evidence": "coordination/mac-navigation.md validation section; CaretSyncIndexTests.testTenThousandItemsQueryIsLogarithmic prints the timing line",
+    "status": "shared Claude Max 20x quota with parent mac-claude-a; no purchases; totals unknown"
+  }
+}

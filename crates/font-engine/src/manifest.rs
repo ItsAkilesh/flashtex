@@ -779,3 +779,93 @@ mod tests {
         assert!(relative_path("/etc/a.otf").is_err());
     }
 }
+
+// ------------------------------------------------ TFM encoding manifest
+
+/// Mirrors `flashtex_font_resources::encoding::EncodingManifest`
+/// (`fixtures/tfm/ec-lmr10.encoding.json`). Read-only here; the binding
+/// logic lives in font-resources.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EncodingManifest {
+    pub tfm_sha256: String,
+    pub font_sha256: String,
+    pub face_index: u32,
+    /// (code, glyph name)
+    pub encoding: Vec<(u8, String)>,
+    /// (glyph name, original glyph id)
+    pub declared_glyphs: Vec<(String, u16)>,
+}
+
+impl EncodingManifest {
+    pub fn from_json(text: &str) -> Result<EncodingManifest, Error> {
+        let mut p = Parser {
+            b: text.as_bytes(),
+            i: 0,
+        };
+        let Json::Obj(root) = p.value()? else {
+            return Err(Error::Malformed("encoding manifest: root".into()));
+        };
+        expect_keys(
+            &root,
+            &[
+                "tfm_sha256",
+                "font_sha256",
+                "face_index",
+                "encoding",
+                "declared_glyphs",
+            ],
+            "encoding manifest",
+        )?;
+        let mut encoding = Vec::new();
+        let Json::Arr(items) = get(&root, "encoding")? else {
+            return Err(Error::Malformed("encoding must be an array".into()));
+        };
+        for it in items {
+            let Json::Obj(o) = it else {
+                return Err(Error::Malformed("encoding entry".into()));
+            };
+            expect_keys(o, &["code", "glyph_name"], "encoding entry")?;
+            let code = get_u64(o, "code")?;
+            if code > 255 {
+                return Err(Error::Malformed(format!("encoding code {code} > 255")));
+            }
+            encoding.push((code as u8, get_str(o, "glyph_name")?));
+        }
+        let mut declared_glyphs = Vec::new();
+        let Json::Arr(items) = get(&root, "declared_glyphs")? else {
+            return Err(Error::Malformed("declared_glyphs must be an array".into()));
+        };
+        for it in items {
+            let Json::Obj(o) = it else {
+                return Err(Error::Malformed("declared glyph entry".into()));
+            };
+            expect_keys(o, &["glyph_name", "glyph_id"], "declared glyph")?;
+            let gid = get_u64(o, "glyph_id")?;
+            if gid > 0xFFFF {
+                return Err(Error::Malformed(format!("glyph_id {gid} > 65535")));
+            }
+            declared_glyphs.push((get_str(o, "glyph_name")?, gid as u16));
+        }
+        Ok(EncodingManifest {
+            tfm_sha256: get_str(&root, "tfm_sha256")?,
+            font_sha256: get_str(&root, "font_sha256")?,
+            face_index: get_u64(&root, "face_index")? as u32,
+            encoding,
+            declared_glyphs,
+        })
+    }
+
+    pub fn glyph_id_of_name(&self, name: &str) -> Option<u16> {
+        self.declared_glyphs
+            .iter()
+            .find(|(n, _)| n == name)
+            .map(|(_, g)| *g)
+    }
+
+    pub fn name_of_code(&self, code: u8) -> Option<&str> {
+        self.encoding
+            .iter()
+            .find(|(c, _)| *c == code)
+            .map(|(_, n)| n.as_str())
+    }
+}

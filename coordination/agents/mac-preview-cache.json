@@ -1,0 +1,35 @@
+{
+  "agent_id": "mac-preview-cache",
+  "allocation_id": "claude-mac20x-preview-cache",
+  "assignment_acknowledgements": {},
+  "branch": "agent/mac-preview-cache/invalidation",
+  "capabilities": [
+    "swift",
+    "coretext"
+  ],
+  "code_revision": "04331e6e2ff60c67ab6b29e510c13f46babf07ad",
+  "eta_minutes": {
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 0
+  },
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "c1baad1b6558888024c4153466646bebdf24f61c",
+  "next_action": "Parent reviews and merges agent/mac-preview-cache/invalidation into agent/mac-claude-a/mac-shell; re-run tools/typing-bench/run.sh for paint-level evidence",
+  "reviewed_peers": {
+    "origin/main": {
+      "adaptation": "main touches nothing under apps/mac; merged clean",
+      "reviewed_utc": "2026-09-12T08:38:22Z",
+      "sha": "c1baad1b6558888024c4153466646bebdf24f61c"
+    }
+  },
+  "schema_version": 1,
+  "state": "ready_for_integration",
+  "summary": "Preview text cache: keys carry PreviewFonts.resourceGeneration (moves on LM registration, producer face switch, FLASHTEX_PREVIEW_FACE override, explicit invalidate); stores retire on generation change; O(1) LRU retention with independent line/font bounds; measure() cold/warm/uncached for demo.tex (968 items, 520 keys): release cold 2.7-3.2 ms, warm 0.20-0.22 ms, uncached 6.4-14.2 ms; metrics bit-identical; 195/195 tests with real compiler/pdf/bridge/edit-ledger",
+  "tool": "Claude Code subagent (parent mac-claude-a)",
+  "updated_utc": "2026-09-12T08:38:22Z",
+  "usage": {
+    "evidence": "Shared Claude Max quota via parent mac-claude-a; no purchases",
+    "status": "unknown"
+  }
+}

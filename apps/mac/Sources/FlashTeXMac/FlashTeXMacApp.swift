@@ -17,7 +17,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         alert.addButton(withTitle: "Don't Save")
         alert.addButton(withTitle: "Cancel")
         switch alert.runModal() {
-        case .alertFirstButtonReturn: return model.saveTex() ? .terminateNow : .terminateCancel
+        case .alertFirstButtonReturn:
+            if model.saveTex() { return .terminateNow }
+            // The rooted save helper reported an on-disk conflict: resolve it first.
+            if model.files.conflict != nil { model.resolveConflictPanel() }
+            return model.isDirty ? .terminateCancel : .terminateNow
         case .alertSecondButtonReturn: return .terminateNow
         default: return .terminateCancel
         }
@@ -28,6 +32,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// a compile result that arrived in 1 ms waited a whole turn to be applied
     /// (measured with tools/typing-bench: fixture keystroke->paint p50 80 ms).
     private var liveActivity: NSObjectProtocol?
+
+    /// Coming back to the app rechecks the document on disk (external edits
+    /// become an explicit conflict state, never a silent overwrite).
+    func applicationDidBecomeActive(_ notification: Notification) { _ = model?.checkDiskStatus() }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
@@ -59,7 +67,11 @@ struct FlashTeXMacApp: App {
             ContentView()
                 .environment(model)
                 .frame(minWidth: 900, minHeight: 560)
-                .onAppear { appDelegate.model = model; nearby.attach(sink: model, destinations: model); TypingBench.shared.install(model: model) }
+                .onAppear {
+                    appDelegate.model = model; nearby.attach(sink: model, destinations: model); TypingBench.shared.install(model: model)
+                    // Automation: open a secondary window at launch for evidence captures.
+                    if ProcessInfo.processInfo.environment["FLASHTEX_OPEN_WINDOW"] == "nearby" { openWindow(id: "nearby") }
+                }
         }
         .commands {
             NavigationCommands(model: model) // Navigation.swift
@@ -92,8 +104,10 @@ struct FlashTeXMacApp: App {
             CommandGroup(replacing: .newItem) {
                 Button("Open LaTeX File…") { model.openTexPanel() }
                     .keyboardShortcut("o")
-                Button("Save") { model.saveTex() }
+                Button("Save") { model.saveTexInteractive() }
                     .keyboardShortcut("s")
+                Button("Resolve On-Disk Conflict…") { model.resolveConflictPanel() }
+                    .disabled(model.files.conflict == nil)
                 Button("Save As…") { model.saveTexAs() }
                     .keyboardShortcut("s", modifiers: [.command, .shift])
                 Divider()

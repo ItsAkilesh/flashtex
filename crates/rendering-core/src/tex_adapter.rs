@@ -111,6 +111,12 @@ pub struct RunScale {
     policy: MetricPolicy,
 }
 impl RunScale {
+    pub fn exact_size(self) -> OutlineCoordinate {
+        self.size.0
+    }
+    pub fn policy(self) -> MetricPolicy {
+        self.policy
+    }
     pub fn canonical(size: Tick, policy: MetricPolicy) -> Result<Self> {
         size.positive()?;
         Ok(Self {
@@ -595,6 +601,11 @@ pub fn nested_run<'a>(
     use flashtex_font_resources::vf_graph::{NestedPlacement, ResourceKey};
     let (root_tfm, vf_sha256) = match root {
         ResourceKey::Physical { tfm_sha256, .. } => (tfm_sha256, None),
+        ResourceKey::CffPhysical { .. } => {
+            return Err(AdapterError::UnsupportedFont(
+                "use explicit mixed registry nested consumer for CFF endpoints".into(),
+            ))
+        }
         ResourceKey::Virtual {
             tfm_sha256,
             vf_sha256,

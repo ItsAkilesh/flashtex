@@ -32,7 +32,12 @@ final class NearbyListener {
         var port: UInt16? = nil
         var advertisement: Advertisement? = nil
         var loopbackOnly = false
-        var maxLineBytes = NearbyV1.maxLineBytes
+        /// Receive caps (frame, image, in-flight bytes, sessions, connections).
+        var limits = NearbyReceiveLimits()
+        var maxLineBytes: Int {
+            get { limits.maxLineBytes }
+            set { limits.maxLineBytes = newValue }
+        }
     }
 
     enum Event: Equatable {
@@ -42,6 +47,11 @@ final class NearbyListener {
         case connectionOpened
         case hello(pairId: String, companionName: String, bootstrap: Bool)
         case capture(captureId: String)
+        /// A capture refused with an explicit `error` reply (validation, a
+        /// cap, a revision mismatch, or the sink's own refusal).
+        case captureRefused(identity: String?, captureId: String?, code: String, message: String)
+        /// A retry of an accepted capture: acknowledged again, not re-delivered.
+        case captureDuplicate(identity: String?, captureId: String)
         case connectionClosed(identity: String?, reason: String)
     }
 
@@ -62,12 +72,19 @@ final class NearbyListener {
     /// Recent `pair_id:nonce` values (bounded); a repeat is refused.
     private var recentNonces: [String] = []
     static let rememberedNonces = 256
+    /// Listener-wide in-flight bytes and sessions per peer; shared with the
+    /// replacement listener on restart so the caps survive a PSK table change.
+    private(set) var budget: NearbyReceiveBudget
+    /// Off-queue JSON/base64/image work; concurrency is bounded by the budget.
+    private let decodeQueue: DispatchQueue
 
     init(configuration: Configuration, sink: CaptureSink?, destinations: DestinationProvider?,
          pairing: PairingConfirmer?, queue: DispatchQueue = DispatchQueue(label: "flashtex.nearby"),
          events: @escaping (Event) -> Void) {
         self.configuration = configuration
         self.queue = queue
+        self.budget = NearbyReceiveBudget(limits: configuration.limits)
+        self.decodeQueue = DispatchQueue(label: "flashtex.nearby.decode", qos: .utility, attributes: .concurrent)
         queue.setSpecific(key: Self.queueKey, value: true)
         self.sink = sink
         self.destinations = destinations
@@ -156,6 +173,13 @@ final class NearbyListener {
         }
         listener.newConnectionHandler = { [weak self] nw in
             guard let self else { nw.cancel(); return }
+            // Unauthenticated peers get no application bytes, so the cap is
+            // a close plus an event rather than an error envelope.
+            guard self.connections.count < self.configuration.limits.maxConnections else {
+                nw.cancel()
+                self.events(.connectionClosed(identity: nil, reason: "too many connections (\(self.configuration.limits.maxConnections))"))
+                return
+            }
             let c = Connection(nw, owner: self)
             self.connections[ObjectIdentifier(c)] = c
             c.start()
@@ -216,8 +240,13 @@ final class NearbyListener {
             }
             other.connections.removeAll()
             recentNonces = other.recentNonces
+            budget = other.budget
+            budget.limits = configuration.limits
         }
     }
+
+    /// Bytes accepted from every session and not yet acknowledged.
+    var inboxBytesInFlight: Int { budget.inboxBytesInFlight }
 
     fileprivate func forget(_ c: Connection) { connections.removeValue(forKey: ObjectIdentifier(c)) }
 
@@ -277,6 +306,12 @@ final class NearbyListener {
             }
             session = NearbySession(keys: owner.configuration.psks, macName: owner.configuration.macName,
                                     sink: owner.sink, destinations: owner.destinations, pairing: owner.pairing,
+                                    limits: owner.configuration.limits, budget: owner.budget,
+                                    decodeQueue: owner.decodeQueue,
+                                    onStateQueue: { [weak self] work in
+                                        guard let self, let owner = self.owner else { work(); return }
+                                        owner.onQueue(work)
+                                    },
                                     acceptNonce: { [weak self] key in self?.owner?.acceptNonce(key) ?? false }) { [weak self] e in
                 guard let self else { return }
                 switch e {
@@ -284,6 +319,10 @@ final class NearbyListener {
                     self.identity = p
                     self.owner?.emitEvent(.hello(pairId: p, companionName: n, bootstrap: b))
                 case .capture(let id): self.owner?.emitEvent(.capture(captureId: id))
+                case .refused(let id, let code, let message):
+                    self.owner?.emitEvent(.captureRefused(identity: self.identity, captureId: id, code: code, message: message))
+                case .duplicate(let id):
+                    self.owner?.emitEvent(.captureDuplicate(identity: self.identity, captureId: id))
                 case .violation: break
                 }
             }
@@ -353,6 +392,7 @@ final class NearbyListener {
                 closing = true
                 reportClosed(reason)
             }
+            session?.end()
             owner?.forget(self)
         }
 

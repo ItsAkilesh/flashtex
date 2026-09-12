@@ -220,3 +220,80 @@ Full consumers lose notifications; dropped-delivery counts and immutable view
 snapshots support resynchronization. Persistence uncertainty emits a distinct event
 and makes view reads fail until reopen. Thirty-nine tests, strict Clippy and
 formatting pass, including actual native-ready snapshot admission into this inbox.
+
+### Review expiry and recovery
+
+Review cards optionally receive a caller-clock deadline with `set_expiry` before
+any decision; a deadline can only be shortened. Use `open_at`, `decide_at`, and
+`validate_handoff_at` with one consistent clock domain (for example persisted Unix
+seconds). These entry points durably run bounded `expire_due` before recovery or
+acceptance. The clock-free methods remain for controllers that explicitly run
+expiry themselves. No background wall-clock timer is implied. Expired cards clear
+current selection, revoke existing handoffs and remain expired across restart or
+clock rollback; explicit retirement retains the existing replay tombstone.
+
+Context revocation is sticky, including changes to included-document hashes with
+an unchanged destination revision. Returning to an earlier hash cannot revive a
+previous acceptance. After restoring native document snapshots, call
+`refresh_from_bridge` before using a recovered card. Missing context also durably
+revokes it; a new capture/conversion is required. This does not mutate the capture
+journal, prepared edits, receipts or source. `AcceptForPreparation` continues to
+require a separate exact-`PreparedEdit` review/approval in the controller.
+
+### Native review JSONL helper
+
+Build `cargo build --features bridge-integration --bin flashtex-review-inbox`.
+Run `flashtex-review-inbox PRIVATE_INBOX_DIRECTORY`. This exclusive-lock process
+only stores review metadata. It never calls a provider, prepares an edit, writes
+source, or treats a review intention as approval of an exact PreparedEdit.
+
+Every UTF-8 JSON request must end with a newline:
+
+```json
+{"protocol_version":1,"id":"request-1","now":1730000000,"type":"snapshot","payload":null}
+```
+
+`now` is mandatory in the caller's consistent persisted-clock domain. All commands
+run durable expiry first, including the first request after restart. Response
+`type` is `review_result` or `review_error`, echoing the ID for valid requests;
+errors carry `payload.code`. Malformed envelopes have null ID. Additive command
+names apply to this review helper, not the existing capture transfer endpoint.
+
+Commands and payloads:
+
+- `snapshot`: null; returns bounded persisted cards, generation and selection.
+- `select`: `{capture_id: string|null}`.
+- `admit_ready`: `{status: StatusSnapshot}` from the trusted local native adapter.
+- `update_context`: `{capture_id, context: ContextIdentity}`; controller must
+  provide actual current context before any recovered decision/handoff.
+- `decide`: `{decision: DecisionRequest}`; returns preparation/rejection intent.
+- `validate_handoff`: `{handoff: ReviewIntentHandoff, context: ContextIdentity}`;
+  success means `valid_for_preparation_only`, never exact-edit approval.
+- `set_expiry`: `{capture_id, expires_at}`; deadlines already due expire immediately.
+- `expire`: null; returns current durable generation.
+- `cancel` / `retire`: `{capture_id}`.
+
+This is a trusted local IPC interface, not authenticated network admission. A
+client-supplied context or proposal-ready status is not independently attested.
+The native controller must derive these from the actual bridge. Startup invalid
+journal/lock errors exit nonzero with stderr; request persistence uncertainty
+returns `recovery_required`. Reopen and reconcile before further decisions.
+
+#### Background I/O and deadline supervision
+
+Host the process on a background I/O actor, never the UI thread. Use one in-flight
+command and a bounded queue (suggested 32), capped at 512 KiB per newline-delimited
+request and 1 MiB per response. The helper retains at most 64 cards and 512 KiB of
+journal JSON; oversize input is drained to the next newline without retaining it.
+Invalid/partial EOF frames cannot execute; clean EOF exits and releases the lock.
+Responses flush individually; the host must continuously drain stdout and stderr.
+
+The helper deliberately serializes filesystem transactions. Its OS reads, writes
+and fsync may block; no hard filesystem deadline is claimed. The host should use
+an explicit monotonic request deadline (suggested five seconds), stop admission
+on timeout, terminate and reap the exact child before reopening its directory.
+A timeout is an ambiguous durable outcome, not evidence of rollback. Recover via
+snapshot and the original decision ID; never mint a new decision or apply source
+automatically to compensate for a missing response. Request IDs are correlation
+IDs, not a durable deduplication ledger. No unbounded retries or background
+provider work are started by this helper.

@@ -35,6 +35,7 @@ impl GsubLigatures {
             if lk.lookup_type != 4 {
                 out.unsupported.push(Unsupported {
                     table: "GSUB",
+                    feature: "liga",
                     detail: format!(
                         "liga lookup {} is type {} (only LigatureSubst type 4 is applied)",
                         lk.index, lk.lookup_type

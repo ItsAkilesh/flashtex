@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "agent_id": "daniel-tables",
+  "task_id": "FT-030",
+  "next_index": 0,
+  "steps": [
+    {
+      "name": "Pinned paragraph compatibility and break geometry: adversarial bounds and exact identity regressions",
+      "objective": "Pinned paragraph compatibility and break geometry: adversarial bounds and exact identity regressions",
+      "owned_paths": [
+        "crates/paragraph-layout"
+      ],
+      "acceptance": [
+        "Meaningful tests and strict Rust lint pass with bounded malformed/Unicode inputs",
+        "Preserve exact source/revision and resource identities; no implicit approximation or parity claim",
+        "Do not edit peer compiler/native/layout files; publish typed adapter contract and exact tested SHA",
+        "Register Daniel machine and exact assignment ACK/session before working",
+        "Preserve old WIP and test before publication; no automatic return of paths at cooldown end"
+      ],
+      "allocation_id": "daniel-claude20x-shared",
+      "timebox_minutes": 30
+    },
+    {
+      "name": "Pinned paragraph compatibility and break geometry: existing consumer integration fixture and measured unsupported gaps",
+      "objective": "Pinned paragraph compatibility and break geometry: existing consumer integration fixture and measured unsupported gaps",
+      "owned_paths": [
+        "crates/paragraph-layout"
+      ],
+      "acceptance": [
+        "Meaningful tests and strict Rust lint pass with bounded malformed/Unicode inputs",
+        "Preserve exact source/revision and resource identities; no implicit approximation or parity claim",
+        "Do not edit peer compiler/native/layout files; publish typed adapter contract and exact tested SHA",
+        "Register Daniel machine and exact assignment ACK/session before working",
+        "Preserve old WIP and test before publication; no automatic return of paths at cooldown end"
+      ],
+      "allocation_id": "daniel-claude20x-shared",
+      "timebox_minutes": 30
+    }
+  ]
+}

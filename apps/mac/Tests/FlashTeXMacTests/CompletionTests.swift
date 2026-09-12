@@ -209,6 +209,678 @@ final class CompletionTests: XCTestCase {
         XCTAssertFalse(Completion.suggestions(in: "\\x \\", caretUTF16: 4, result: empty).isEmpty)
     }
 
+    // MARK: revision-bound metadata (runtime-v1 result and project-index reply)
+
+    private func result(revision: Int, _ messages: [String]) -> RuntimeV1.CompileResult {
+        RuntimeV1.CompileResult(projectId: "p", revision: revision, status: .recovered, pages: [],
+                                diagnostics: messages.map { .init(severity: .warning, message: $0, source: nil, recovery: nil) },
+                                pdfPath: nil)
+    }
+
+    /// Wire shape of `crates/preview-controller/STDIO.md` `complete` replies.
+    private func indexReply(versions: [String: Int], names: [(String, defs: Int, occ: Int, truncated: Bool)]) -> Data {
+        let items = names.map { n -> [String: Any] in
+            func loc(_ i: Int) -> [String: Any] { ["path": i % 2 == 0 ? "main.tex" : "parts/body.tex", "revision": versions["main.tex"] ?? 1, "start_byte": i * 10, "end_byte": i * 10 + 3] }
+            return ["name": n.0, "definitions": (0..<n.defs).map(loc), "occurrences": (0..<n.occ).map(loc), "locations_truncated": n.truncated]
+        }
+        return try! JSONSerialization.data(withJSONObject: ["source_versions": versions, "completions": items])
+    }
+
+    func testMetadataFromCompileResultParsesDiagnosticsAndCaps() {
+        let r = result(revision: 7, [
+            "\\newpage is not supported by this compiler version; unrestricted TeX math mode is not implemented",
+            "\\newpage duplicate mention is ignored",
+            "undefined reference 'eq:missing'",
+            "environment 'align' is not implemented; its body is typeset as plain text",
+            "packages amsmath are recognised but not implemented",
+            "\\", // no name
+        ])
+        let m = Completion.Metadata.from(r)
+        XCTAssertEqual(m.origin, .compileResult(projectId: "p"))
+        XCTAssertEqual(m.revision, 7)
+        XCTAssertEqual(m.diagnosticsByCommand, ["newpage": r.diagnostics[0].message])
+        XCTAssertEqual(m.unresolvedReferences, ["eq:missing"])
+        XCTAssertEqual(m.diagnosticsByEnvironment, ["align": r.diagnostics[3].message])
+        XCTAssertFalse(m.truncated)
+        XCTAssertTrue(m.labels.isEmpty && m.citations.isEmpty && m.commands.isEmpty, "runtime-v1 carries no vocabulary")
+
+        // Caps: at most 256 entries, 512-character messages.
+        let long = "\\big " + String(repeating: "x", count: 2_000)
+        let many = result(revision: 1, (0..<300).map { "undefined reference 'k\($0)'" } + [long])
+        let capped = Completion.Metadata.from(many)
+        XCTAssertEqual(capped.unresolvedReferences.count, Completion.Metadata.Limits.maxDiagnostics)
+        XCTAssertTrue(capped.truncated)
+        XCTAssertNil(capped.diagnosticsByCommand["big"], "dropped by the entry cap")
+        let one = Completion.Metadata.from(result(revision: 1, [long]))
+        XCTAssertEqual(one.diagnosticsByCommand["big"]?.count, Completion.Metadata.Limits.maxMessageCharacters + 1)
+        XCTAssertTrue(one.diagnosticsByCommand["big"]!.hasSuffix("…"))
+    }
+
+    func testProjectIndexReplyDecodesIsBoundedAndRefusesStaleVersions() throws {
+        let versions = ["main.tex": 4, "parts/body.tex": 2]
+        let data = indexReply(versions: versions, names: [("sec:intro", 1, 3, false), ("sec:dup", 2, 0, true), ("sec:unresolved", 0, 1, false)])
+        let m = try Completion.Metadata.decodeProjectIndexReply(data, category: .reference, editorRevision: 9, expectedSourceVersions: versions)
+        XCTAssertEqual(m.origin, .projectIndex(sourceVersions: versions))
+        XCTAssertEqual(m.revision, 9)
+        XCTAssertEqual(m.labels.map(\.name), ["sec:intro", "sec:dup", "sec:unresolved"])
+        XCTAssertEqual(m.labels[0], .init(name: "sec:intro", definitions: 1, occurrences: 3, locationsTruncated: false, definedIn: "main.tex"))
+        XCTAssertEqual(m.labels[1].definitions, 2)
+        XCTAssertTrue(m.labels[1].locationsTruncated)
+        XCTAssertNil(m.labels[2].definedIn)
+        XCTAssertEqual(m.labels[0].detail(noun: "defined", revision: 9), "defined in main.tex · 3 uses · revision 9")
+        XCTAssertEqual(m.labels[1].detail(noun: "defined", revision: 9), "defined in main.tex (+1 more) · revision 9")
+        XCTAssertEqual(m.labels[2].detail(noun: "defined", revision: 9), "unresolved in the project index · 1 use · revision 9")
+        XCTAssertFalse(m.truncated)
+
+        // Other categories land in their own list; unknown categories are refused.
+        let cites = try Completion.Metadata.decodeProjectIndexReply(indexReply(versions: versions, names: [("knuth84", 1, 2, false)]),
+                                                                    category: .citation, editorRevision: 9, expectedSourceVersions: versions)
+        XCTAssertEqual(cites.citations.map(\.name), ["knuth84"])
+        XCTAssertTrue(cites.labels.isEmpty)
+        XCTAssertThrowsError(try Completion.Metadata.decodeProjectIndexReply(data, category: .word, editorRevision: 9, expectedSourceVersions: versions))
+
+        // A reply for another snapshot is stale: refused, never partially used.
+        XCTAssertThrowsError(try Completion.Metadata.decodeProjectIndexReply(data, category: .reference, editorRevision: 9,
+                                                                             expectedSourceVersions: ["main.tex": 5, "parts/body.tex": 2])) { error in
+            XCTAssertEqual(error as? Completion.Metadata.DecodeError,
+                           .staleSourceVersions(expected: ["main.tex": 5, "parts/body.tex": 2], got: versions))
+        }
+        // Bounds: item count, name bytes, reply bytes, malformed JSON.
+        let big = indexReply(versions: versions, names: (0..<150).map { ("l\($0)", 1, 0, false) } + [(String(repeating: "n", count: 5_000), 1, 0, false)])
+        let bounded = try Completion.Metadata.decodeProjectIndexReply(big, category: .reference, editorRevision: 1, expectedSourceVersions: versions)
+        XCTAssertEqual(bounded.labels.count, Completion.Metadata.Limits.maxItemsPerCategory)
+        XCTAssertTrue(bounded.truncated)
+        let longName = indexReply(versions: versions, names: [(String(repeating: "n", count: 5_000), 1, 0, false), ("ok", 1, 0, false)])
+        let dropped = try Completion.Metadata.decodeProjectIndexReply(longName, category: .reference, editorRevision: 1, expectedSourceVersions: versions)
+        XCTAssertEqual(dropped.labels.map(\.name), ["ok"])
+        XCTAssertTrue(dropped.truncated)
+        let huge = Data(count: Completion.Metadata.Limits.maxReplyBytes + 1)
+        XCTAssertThrowsError(try Completion.Metadata.decodeProjectIndexReply(huge, category: .reference, editorRevision: 1, expectedSourceVersions: versions)) {
+            XCTAssertEqual($0 as? Completion.Metadata.DecodeError, .tooLarge(bytes: huge.count))
+        }
+        XCTAssertThrowsError(try Completion.Metadata.decodeProjectIndexReply(Data("{".utf8), category: .reference, editorRevision: 1, expectedSourceVersions: versions))
+    }
+
+    func testMetadataBindsOnlyToItsRevisionAndMergesSameRevision() throws {
+        let compiled = Completion.Metadata.from(result(revision: 3, ["undefined reference 'eq:a'"]))
+        XCTAssertNil(compiled.bound(to: nil), "unknown editor revision binds nothing")
+        XCTAssertNil(compiled.bound(to: 4), "older metadata than the caret's revision is refused")
+        XCTAssertNil(compiled.bound(to: 2), "metadata newer than the text is not this text's either")
+        XCTAssertEqual(compiled.bound(to: 3), compiled)
+
+        let versions = ["main.tex": 1]
+        let index3 = try Completion.Metadata.decodeProjectIndexReply(indexReply(versions: versions, names: [("eq:b", 1, 1, false)]),
+                                                                     category: .reference, editorRevision: 3, expectedSourceVersions: versions)
+        let index4 = try Completion.Metadata.decodeProjectIndexReply(indexReply(versions: versions, names: [("eq:c", 1, 1, false)]),
+                                                                     category: .reference, editorRevision: 4, expectedSourceVersions: versions)
+        XCTAssertNil(compiled.merged(with: index4), "metadata never straddles revisions")
+        let merged = try XCTUnwrap(compiled.merged(with: index3))
+        XCTAssertEqual(merged.revision, 3)
+        XCTAssertEqual(merged.labels.map(\.name), ["eq:b"])
+        XCTAssertEqual(merged.unresolvedReferences, ["eq:a"])
+        XCTAssertEqual(merged.origin, compiled.origin, "the receiver's origin is kept")
+    }
+
+    func testMetadataContributesProjectLabelsCitationsDeclaredCommandsAndDiagnostics() throws {
+        let versions = ["main.tex": 1, "parts/body.tex": 1]
+        let labelMeta = try Completion.Metadata.decodeProjectIndexReply(indexReply(versions: versions, names: [("fig:river", 1, 2, false)]),
+                                                                     category: .reference, editorRevision: 5, expectedSourceVersions: versions)
+        let cites = try Completion.Metadata.decodeProjectIndexReply(indexReply(versions: versions, names: [("knuth84", 1, 1, false), ("lamport94", 0, 1, false)]),
+                                                                    category: .citation, editorRevision: 5, expectedSourceVersions: versions)
+        let cmds = try Completion.Metadata.decodeProjectIndexReply(indexReply(versions: versions, names: [("newterm", 1, 4, false), ("section", 1, 0, false)]),
+                                                                   category: .command, editorRevision: 5, expectedSourceVersions: versions)
+        let compiled = Completion.Metadata.from(result(revision: 5, [
+            "undefined reference 'fig:local'",
+            "environment 'itemize' is not implemented; its body is typeset as plain text",
+            "\\newpage is not supported by this compiler version; unrestricted TeX math mode is not implemented",
+        ]))
+        let m = try XCTUnwrap(labelMeta.merged(with: cites)?.merged(with: cmds)?.merged(with: compiled))
+
+        // References: document labels first (with the compiler's verdict), then project-wide ones.
+        let ref = "\\label{fig:local}\\newpage \\begin{itemize} \\ref{fi"
+        let refs = Completion.suggestions(in: ref, caretUTF16: (ref as NSString).length, metadata: m)
+        XCTAssertEqual(labels(refs), ["fig:local", "fig:river"])
+        XCTAssertEqual(refs[0].detail, "\\label in this document — undefined when revision 5 compiled")
+        XCTAssertEqual(refs[1].detail, "defined in main.tex · 2 uses · revision 5")
+        XCTAssertEqual(refs[1].insertText, "fig:river}")
+
+        // Citations: `\bibitem` keys in the document, then project-index keys (unresolved ones say so).
+        let cite = "\\bibitem{local01} text \\citep{"
+        let c = Completion.suggestions(in: cite, caretUTF16: (cite as NSString).length, metadata: m)
+        XCTAssertEqual(labels(c), ["local01", "knuth84", "lamport94"])
+        XCTAssertTrue(c.allSatisfy { $0.kind == .citation })
+        XCTAssertEqual(c[0].detail, "\\bibitem in this document")
+        XCTAssertEqual(c[2].detail, "unresolved in the project index · 1 use · revision 5")
+        XCTAssertEqual(c[1].insertText, "knuth84}")
+        XCTAssertTrue(Completion.suggestions(in: cite, caretUTF16: (cite as NSString).length, metadata: nil).map(\.label) == ["local01"])
+        for command in Completion.citationCommands {
+            let t = "\\\(command){kn"
+            XCTAssertEqual(labels(Completion.suggestions(in: t, caretUTF16: (t as NSString).length, metadata: m)), ["knuth84"], command)
+        }
+
+        // Commands: declared project commands after the supported list, deduplicated
+        // against it; unsupported document commands carry the bound diagnostic.
+        let cmd = ref + "g} \\ne"
+        let s = Completion.suggestions(in: cmd, caretUTF16: (cmd as NSString).length, metadata: m)
+        XCTAssertEqual(labels(s), ["\\neq", "\\newterm", "\\newpage"])
+        XCTAssertEqual(s[1].detail, "declared in main.tex · 4 uses · revision 5")
+        XCTAssertTrue(s[2].detail.hasSuffix(compiled.diagnosticsByCommand["newpage"]!))
+        let sec = "x \\sec"
+        XCTAssertEqual(Completion.suggestions(in: sec, caretUTF16: 6, metadata: m).map(\.label), ["\\section"], "a declared name already supported is listed once")
+
+        // Environments carry the compiler's diagnostic for that revision.
+        let env = ref + "g} \\begin{it"
+        let e = Completion.suggestions(in: env, caretUTF16: (env as NSString).length, metadata: m)
+        XCTAssertEqual(labels(e), ["itemize"])
+        XCTAssertEqual(e[0].detail, "seen in this document — environment 'itemize' is not implemented; its body is typeset as plain text")
+    }
+
+    @MainActor
+    func testTextViewRefusesMetadataNotBoundToItsEditorRevision() throws {
+        let scroll = CompletingTextView.scrollable()
+        let tv = try XCTUnwrap(scroll.documentView as? CompletingTextView)
+        let text = "\\newpage \\ne"
+        tv.string = text
+        tv.setSelectedRange(NSRange(location: (text as NSString).length, length: 0))
+        tv.compileResult = result(revision: 3, ["\\newpage is not supported by this compiler version"])
+        XCTAssertEqual(tv.resultMetadata?.revision, 3)
+
+        func newpageDetail() -> String? {
+            Completion.suggestions(in: tv.string, caretUTF16: tv.selectedRange().location, metadata: tv.boundMetadata)
+                .first { $0.label == "\\newpage" }?.detail
+        }
+        // Unknown editor revision: nothing binds.
+        XCTAssertNil(tv.editorRevision)
+        XCTAssertNil(tv.boundMetadata)
+        XCTAssertEqual(newpageDetail(), "not supported by this compiler version")
+        // Editor moved on since the result was compiled: refused.
+        tv.editorRevision = 4
+        XCTAssertNil(tv.boundMetadata)
+        XCTAssertEqual(newpageDetail(), "not supported by this compiler version")
+        // Exact revision: bound and shown.
+        tv.editorRevision = 3
+        XCTAssertEqual(tv.boundMetadata?.revision, 3)
+        XCTAssertEqual(newpageDetail(), "not supported by this compiler version — \\newpage is not supported by this compiler version")
+        // The synchronous AppKit path binds the same way.
+        var index = 0
+        XCTAssertEqual(tv.completions(forPartialWordRange: tv.rangeForUserCompletion, indexOfSelectedItem: &index), ["\\neq", "\\newpage"])
+
+        // Project-index metadata: older than the held one is refused; equal merges; newer replaces.
+        let versions = ["main.tex": 1]
+        let at3 = try Completion.Metadata.decodeProjectIndexReply(indexReply(versions: versions, names: [("newterm", 1, 0, false)]),
+                                                                  category: .command, editorRevision: 3, expectedSourceVersions: versions)
+        let at2 = try Completion.Metadata.decodeProjectIndexReply(indexReply(versions: versions, names: [("older", 1, 0, false)]),
+                                                                  category: .command, editorRevision: 2, expectedSourceVersions: versions)
+        let cites3 = try Completion.Metadata.decodeProjectIndexReply(indexReply(versions: versions, names: [("k", 1, 0, false)]),
+                                                                     category: .citation, editorRevision: 3, expectedSourceVersions: versions)
+        XCTAssertTrue(tv.accept(projectIndex: at3))
+        XCTAssertFalse(tv.accept(projectIndex: at2))
+        XCTAssertTrue(tv.accept(projectIndex: cites3))
+        XCTAssertEqual(tv.projectIndexMetadata?.commands.map(\.name), ["newterm"])
+        XCTAssertEqual(tv.projectIndexMetadata?.citations.map(\.name), ["k"])
+        XCTAssertEqual(tv.completions(forPartialWordRange: tv.rangeForUserCompletion, indexOfSelectedItem: &index), ["\\neq", "\\newterm", "\\newpage"])
+        XCTAssertEqual(tv.boundMetadata?.diagnosticsByCommand.count, 1, "compile-result and index metadata merge at the bound revision")
+        tv.editorRevision = 4
+        XCTAssertNil(tv.boundMetadata)
+        XCTAssertEqual(tv.completions(forPartialWordRange: tv.rangeForUserCompletion, indexOfSelectedItem: &index), ["\\neq", "\\newpage"])
+        let at5 = try Completion.Metadata.decodeProjectIndexReply(indexReply(versions: versions, names: [("newer", 1, 0, false)]),
+                                                                  category: .command, editorRevision: 5, expectedSourceVersions: versions)
+        XCTAssertTrue(tv.accept(projectIndex: at5))
+        XCTAssertEqual(tv.projectIndexMetadata?.commands.map(\.name), ["newer"], "a newer revision replaces the held metadata")
+    }
+
+    @MainActor
+    func testFetcherQueriesThreeCategoriesAndRefusesStaleOrFailedReplies() throws {
+        let fetcher = ProjectIndexCompletionFetcher()
+        var sent: [(id: String, type: String, payload: [String: Any])] = []
+        var next = 1
+        let send: (String, [String: Any]) throws -> String = { type, payload in
+            defer { next += 1 }
+            let id = "pc-\(next)"
+            sent.append((id, type, payload))
+            return id
+        }
+        let versions = ["main.tex": 3, "parts/body.tex": 1]
+        fetcher.request(sourceVersions: versions, editorRevision: 12, send: send)
+        XCTAssertEqual(sent.map(\.type), ["complete", "complete", "complete"])
+        XCTAssertEqual(sent.map { $0.payload["category"] as? String }, ["label", "citation", "command"])
+        for s in sent {
+            XCTAssertEqual(s.payload["source_versions"] as? [String: Int], versions)
+            XCTAssertEqual(s.payload["prefix"] as? String, "")
+            XCTAssertEqual(s.payload["limit"] as? Int, 100)
+        }
+        XCTAssertEqual(fetcher.query?.outstanding.count, 3)
+        XCTAssertEqual(fetcher.handle(resultID: "other", payload: [:]), .notMine)
+        XCTAssertEqual(fetcher.handle(errorID: "other", message: "x"), .notMine)
+        XCTAssertEqual(fetcher.handle(errorID: nil, message: "x"), .notMine)
+
+        func reply(_ names: [String], versions: [String: Int]) -> [String: Any] {
+            try! JSONSerialization.jsonObject(with: indexReply(versions: versions, names: names.map { ($0, 1, 2, false) })) as! [String: Any]
+        }
+        // Replies arrive in any order; the query completes when all three are in.
+        XCTAssertEqual(fetcher.handle(resultID: "pc-3", payload: reply(["mycmd"], versions: versions)), .pending)
+        XCTAssertEqual(fetcher.handle(resultID: "pc-1", payload: reply(["sec:a"], versions: versions)), .pending)
+        guard case .complete(let m) = fetcher.handle(resultID: "pc-2", payload: reply(["knuth84"], versions: versions)) else {
+            return XCTFail("expected complete")
+        }
+        XCTAssertEqual(m.revision, 12)
+        XCTAssertEqual(m.labels.map(\.name), ["sec:a"])
+        XCTAssertEqual(m.citations.map(\.name), ["knuth84"])
+        XCTAssertEqual(m.commands.map(\.name), ["mycmd"])
+        XCTAssertEqual(m.origin, .projectIndex(sourceVersions: versions))
+        XCTAssertNil(fetcher.query)
+        XCTAssertEqual(fetcher.handle(resultID: "pc-2", payload: [:]), .notMine, "a finished query accepts nothing more")
+
+        // A reply for other source versions discards the whole query.
+        fetcher.request(sourceVersions: versions, editorRevision: 13, send: send)
+        XCTAssertEqual(fetcher.handle(resultID: "pc-4", payload: reply(["sec:a"], versions: versions)), .pending)
+        guard case .refused = fetcher.handle(resultID: "pc-5", payload: reply(["k"], versions: ["main.tex": 4, "parts/body.tex": 1])) else {
+            return XCTFail("expected refusal")
+        }
+        XCTAssertNil(fetcher.query)
+        XCTAssertEqual(fetcher.handle(resultID: "pc-6", payload: reply(["mycmd"], versions: versions)), .notMine)
+        XCTAssertEqual(fetcher.refusals, 1)
+
+        // The helper's own error ("source versions changed") discards it too.
+        fetcher.request(sourceVersions: versions, editorRevision: 14, send: send)
+        XCTAssertEqual(fetcher.handle(errorID: "pc-8", message: "source versions changed; refresh snapshot before querying"),
+                       .refused("helper error for pc-8: source versions changed; refresh snapshot before querying"))
+        XCTAssertNil(fetcher.query)
+        // A newer request supersedes an outstanding one.
+        fetcher.request(sourceVersions: versions, editorRevision: 15, send: send)
+        fetcher.request(sourceVersions: versions, editorRevision: 16, send: send)
+        XCTAssertEqual(fetcher.handle(resultID: "pc-10", payload: reply(["x"], versions: versions)), .notMine)
+        XCTAssertEqual(fetcher.query?.editorRevision, 16)
+        // A send failure leaves no query behind.
+        fetcher.request(sourceVersions: versions, editorRevision: 17) { _, _ in throw CocoaError(.fileWriteUnknown) }
+        XCTAssertNil(fetcher.query)
+    }
+
+    // MARK: cancellation and stale refusal
+
+    /// Holds jobs until the test runs them, so caret moves and job completion
+    /// interleave deterministically.
+    @MainActor
+    final class ManualExecutor {
+        var jobs: [@Sendable () -> Void] = []
+        var run: CompletionScheduler.Executor { { [self] job in jobs.append(job) } }
+        func runAll() { let j = jobs; jobs = []; j.forEach { $0() } }
+    }
+
+    /// Runs the main run loop until `cond` holds (scheduler delivery is a
+    /// run-loop block, not a dispatch).
+    @MainActor
+    private func spin(_ what: String, timeout: TimeInterval = 5, until cond: () -> Bool) {
+        let deadline = Date().addingTimeInterval(timeout)
+        while !cond(), Date() < deadline {
+            RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.005))
+        }
+        XCTAssertTrue(cond(), "timed out waiting for \(what)")
+    }
+
+    @MainActor
+    func testSchedulerRefusesCancelledAndSupersededOutcomes() {
+        let exec = ManualExecutor()
+        let scheduler = CompletionScheduler(executor: exec.run)
+        var delivered: [CompletionScheduler.Outcome] = []
+        let req = CompletionScheduler.Request(text: "\\begin{document} \\se", caretUTF16: 20, metadata: nil)
+
+        // 1. Explicit cancellation before the job ran: the job is marked, computes nothing, and is refused.
+        let g1 = scheduler.schedule(req) { delivered.append($0) }
+        XCTAssertEqual(g1, 1)
+        scheduler.cancel()
+        XCTAssertEqual(scheduler.generation, 2)
+        XCTAssertEqual(exec.jobs.count, 1)
+        exec.runAll()
+        spin("refusal") { scheduler.statistics.refusedStale == 1 }
+        XCTAssertTrue(delivered.isEmpty)
+        XCTAssertEqual(scheduler.statistics, .init(scheduled: 1, delivered: 0, refusedStale: 1, cancelled: 1))
+
+        // 2. A newer request supersedes the pending one: only the newest outcome is delivered.
+        scheduler.schedule(req) { delivered.append($0) }
+        let g3 = scheduler.schedule(.init(text: "x \\sub", caretUTF16: 6, metadata: nil)) { delivered.append($0) }
+        XCTAssertEqual(exec.jobs.count, 2)
+        exec.runAll()
+        spin("delivery") { scheduler.statistics.delivered == 1 }
+        spin("second refusal") { scheduler.statistics.refusedStale == 2 }
+        XCTAssertEqual(delivered.count, 1)
+        XCTAssertEqual(delivered[0].generation, g3)
+        XCTAssertEqual(delivered[0].items.map(\.label), ["\\subsection"])
+        XCTAssertEqual(delivered[0].range, NSRange(location: 2, length: 4))
+        XCTAssertEqual(delivered[0].caretUTF16, 6)
+        XCTAssertNil(scheduler.pending)
+        XCTAssertEqual(scheduler.statistics, .init(scheduled: 3, delivered: 1, refusedStale: 2, cancelled: 2))
+
+        // 3. Cancellation after the job computed but before delivery ran: still refused.
+        scheduler.schedule(req) { delivered.append($0) }
+        exec.runAll() // computed; the run-loop delivery block is queued
+        scheduler.cancel()
+        spin("late refusal") { scheduler.statistics.refusedStale == 3 }
+        XCTAssertEqual(delivered.count, 1)
+        // 4. Cancelling with nothing pending only advances the generation.
+        let before = scheduler.statistics
+        scheduler.cancel()
+        XCTAssertEqual(scheduler.statistics, before)
+    }
+
+    @MainActor
+    func testTextViewCancelsOnCaretMoveTextChangeAndResign() throws {
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 600, height: 400), styleMask: [.titled], backing: .buffered, defer: false)
+        let scroll = CompletingTextView.scrollable()
+        scroll.frame = window.contentView!.bounds
+        window.contentView!.addSubview(scroll)
+        let tv = try XCTUnwrap(scroll.documentView as? CompletingTextView)
+        let exec = ManualExecutor()
+        tv.scheduler = CompletionScheduler(executor: exec.run)
+        window.orderFrontRegardless() // never makeKey
+        window.makeFirstResponder(tv)
+        defer { window.orderOut(nil) }
+        tv.string = "\\begin{document}\nx \\s"
+        let end = (tv.string as NSString).length
+        tv.setSelectedRange(NSRange(location: end, length: 0))
+
+        // Caret moves while the scan is pending: the job is cancelled and its outcome refused.
+        tv.requestCompletion()
+        XCTAssertEqual(exec.jobs.count, 1)
+        tv.setSelectedRange(NSRange(location: 2, length: 0))
+        XCTAssertEqual(tv.scheduler.statistics.cancelled, 1)
+        exec.runAll()
+        spin("refusal") { tv.scheduler.statistics.refusedStale == 1 }
+        XCTAssertNil(tv.session)
+
+        // Text changes while pending: same.
+        tv.setSelectedRange(NSRange(location: end, length: 0))
+        tv.requestCompletion()
+        tv.insertText("x", replacementRange: NSRange(location: 0, length: 0))
+        XCTAssertEqual(tv.scheduler.statistics.cancelled, 2)
+        exec.runAll()
+        spin("refusal 2") { tv.scheduler.statistics.refusedStale == 2 }
+        XCTAssertNil(tv.session)
+        XCTAssertEqual(tv.string, "x\\begin{document}\nx \\s")
+
+        // Open a session, then move the caret: closed with the reason, popup gone.
+        let caret = (tv.string as NSString).length
+        tv.setSelectedRange(NSRange(location: caret, length: 0))
+        tv.requestCompletion()
+        exec.runAll()
+        spin("session") { tv.session != nil }
+        XCTAssertEqual(tv.session?.items.map(\.label), ["\\section", "\\subsection", "\\sqrt", "\\sigma", "\\sum"])
+        XCTAssertEqual(tv.session?.range, NSRange(location: caret - 2, length: 2))
+        XCTAssertNil(tv.session?.metadataRevision, "no metadata was bound")
+        tv.setSelectedRange(NSRange(location: 0, length: 0))
+        XCTAssertNil(tv.session)
+        XCTAssertEqual(tv.lastCloseReason, .caretMoved)
+
+        // Open again, then replace the text programmatically (no didChangeText): closed.
+        tv.setSelectedRange(NSRange(location: caret, length: 0))
+        tv.requestCompletion()
+        exec.runAll()
+        spin("session 2") { tv.session != nil }
+        tv.textStorage?.replaceCharacters(in: NSRange(location: 0, length: 1), with: "yy")
+        XCTAssertNil(tv.session)
+        XCTAssertEqual(tv.lastCloseReason, .textChanged)
+
+        // An outcome for a stale generation never opens a session even if it is
+        // the caret's position: the session generation must match the scheduler's.
+        let c2 = (tv.string as NSString).length
+        tv.setSelectedRange(NSRange(location: c2, length: 0))
+        tv.requestCompletion()
+        exec.runAll()
+        spin("session 3") { tv.session != nil }
+        let generation = try XCTUnwrap(tv.session?.generation)
+        XCTAssertEqual(generation, tv.scheduler.generation)
+        // Accepting after the text changed underneath (flag off, so the view sees it) is refused.
+        tv.textStorage?.replaceCharacters(in: NSRange(location: 0, length: 0), with: "z")
+        XCTAssertNil(tv.session)
+        tv.acceptSelectedCompletion()
+        XCTAssertEqual(tv.string, "zyy\\begin{document}\nx \\s", "nothing was inserted")
+
+        // Losing first responder closes the list.
+        tv.setSelectedRange(NSRange(location: (tv.string as NSString).length, length: 0))
+        tv.requestCompletion()
+        exec.runAll()
+        spin("session 4") { tv.session != nil }
+        window.makeFirstResponder(nil)
+        XCTAssertNil(tv.session)
+        XCTAssertEqual(tv.lastCloseReason, .resignedFirstResponder)
+    }
+
+    // MARK: keyboard acceptance through the real text view
+
+    @MainActor
+    private func key(_ tv: NSTextView, _ chars: String, code: UInt16, flags: NSEvent.ModifierFlags = []) {
+        let e = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: flags, timestamp: ProcessInfo.processInfo.systemUptime,
+                                 windowNumber: tv.window?.windowNumber ?? 0, context: nil, characters: chars,
+                                 charactersIgnoringModifiers: chars, isARepeat: false, keyCode: code)!
+        tv.keyDown(with: e)
+    }
+
+    @MainActor
+    private func waitUntil(_ what: String, timeout: TimeInterval = 10, _ cond: @escaping @MainActor () -> Bool) async throws {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if cond() { return }
+            try await Task.sleep(nanoseconds: 5_000_000)
+        }
+        XCTFail("timed out waiting for \(what)")
+    }
+
+    @MainActor
+    func testKeyboardChoosesInsertsAndClosesThroughTheRealTextView() async throws {
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 600, height: 400), styleMask: [.titled], backing: .buffered, defer: false)
+        let scroll = CompletingTextView.scrollable()
+        scroll.frame = window.contentView!.bounds
+        window.contentView!.addSubview(scroll)
+        let tv = try XCTUnwrap(scroll.documentView as? CompletingTextView)
+        window.orderFrontRegardless() // never makeKey: the test must not steal focus
+        window.makeFirstResponder(tv)
+        defer { window.orderOut(nil) }
+        tv.allowsUndo = true
+        tv.string = "\\begin{document}\nx \\s"
+        let end = (tv.string as NSString).length
+        tv.setSelectedRange(NSRange(location: end, length: 0))
+
+        // ⌃Space opens the list (computed off-main, delivered on the run loop).
+        key(tv, " ", code: 49, flags: .control)
+        XCTAssertNil(tv.session, "the keystroke path enqueues; it does not scan")
+        try await waitUntil("popup") { tv.session != nil }
+        XCTAssertEqual(tv.session?.items.map(\.label), ["\\section", "\\subsection", "\\sqrt", "\\sigma", "\\sum"])
+        XCTAssertEqual(tv.session?.selectedIndex, 0)
+        XCTAssertEqual(tv.string, "\\begin{document}\nx \\s", "opening the list never edits the text")
+
+        // ↓ ↓ ↑ choose; the text and caret are untouched while choosing.
+        key(tv, "\u{F701}", code: 125)
+        key(tv, "\u{F701}", code: 125)
+        XCTAssertEqual(tv.session?.selected?.label, "\\sqrt")
+        key(tv, "\u{F700}", code: 126)
+        XCTAssertEqual(tv.session?.selected?.label, "\\subsection")
+        XCTAssertEqual(tv.selectedRange(), NSRange(location: end, length: 0))
+        // ↑ from the top wraps to the bottom.
+        key(tv, "\u{F700}", code: 126); key(tv, "\u{F700}", code: 126)
+        XCTAssertEqual(tv.session?.selected?.label, "\\sum")
+        key(tv, "\u{F701}", code: 125)
+        XCTAssertEqual(tv.session?.selected?.label, "\\section")
+
+        // Typing through the list narrows it and keeps the chosen item when it survives.
+        key(tv, "\u{F701}", code: 125) // \subsection
+        key(tv, "u", code: 32)
+        XCTAssertEqual(tv.string, "\\begin{document}\nx \\su")
+        try await waitUntil("narrowed") { tv.session?.items.count == 2 }
+        XCTAssertEqual(tv.session?.items.map(\.label), ["\\subsection", "\\sum"])
+        XCTAssertEqual(tv.session?.selected?.label, "\\subsection")
+        XCTAssertEqual(tv.session?.range, NSRange(location: end - 2, length: 3))
+        // Delete widens it again.
+        key(tv, "\u{7F}", code: 51)
+        XCTAssertEqual(tv.string, "\\begin{document}\nx \\s")
+        try await waitUntil("widened") { tv.session?.items.count == 5 }
+        XCTAssertEqual(tv.session?.selected?.label, "\\subsection")
+
+        // Return inserts the chosen item over the partial token, as one undoable edit, and closes.
+        key(tv, "\r", code: 36)
+        XCTAssertEqual(tv.string, "\\begin{document}\nx \\subsection")
+        XCTAssertEqual(tv.selectedRange(), NSRange(location: (tv.string as NSString).length, length: 0))
+        XCTAssertNil(tv.session)
+        XCTAssertEqual(tv.lastCloseReason, .accepted)
+        XCTAssertEqual(tv.undoManager?.canUndo, true)
+
+        // Esc closes without inserting, and a late outcome cannot reopen the list.
+        tv.string = "\\begin{document}\nx \\s"
+        tv.setSelectedRange(NSRange(location: end, length: 0))
+        key(tv, " ", code: 49, flags: .control)
+        try await waitUntil("popup 2") { tv.session != nil }
+        key(tv, "\u{1B}", code: 53)
+        XCTAssertNil(tv.session)
+        XCTAssertEqual(tv.lastCloseReason, .escape)
+        XCTAssertEqual(tv.string, "\\begin{document}\nx \\s")
+        try await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertNil(tv.session)
+
+        // Esc with no list open is AppKit's `complete:` binding: it opens the list.
+        key(tv, "\u{1B}", code: 53)
+        try await waitUntil("popup via Esc") { tv.session != nil }
+        // Tab inserts too; ← closes (the caret leaves the token).
+        key(tv, "\t", code: 48)
+        XCTAssertEqual(tv.string, "\\begin{document}\nx \\section")
+        XCTAssertNil(tv.session)
+        tv.string = "\\begin{document}\nx \\s"
+        tv.setSelectedRange(NSRange(location: end, length: 0))
+        key(tv, " ", code: 49, flags: .control)
+        try await waitUntil("popup 3") { tv.session != nil }
+        key(tv, "\u{F702}", code: 123)
+        XCTAssertNil(tv.session)
+        XCTAssertEqual(tv.lastCloseReason, .caretMoved)
+        XCTAssertEqual(tv.selectedRange(), NSRange(location: end - 1, length: 0), "the arrow key still moved the caret")
+
+        // Typing a character that ends the token closes the list (no candidates).
+        tv.setSelectedRange(NSRange(location: end, length: 0))
+        key(tv, " ", code: 49, flags: .control)
+        try await waitUntil("popup 4") { tv.session != nil }
+        key(tv, " ", code: 49)
+        XCTAssertEqual(tv.string, "\\begin{document}\nx \\s ")
+        try await waitUntil("closed by space") { tv.session == nil }
+        XCTAssertEqual(tv.lastCloseReason, .noCandidates)
+        XCTAssertEqual(tv.scheduler.statistics.refusedStale, 0, "every delivered outcome was current")
+        // Mouse: a click chooses a row, a double-click accepts it; the popup is a
+        // non-activating child window that cannot become key.
+        tv.string = "\\begin{document}\nx \\s"
+        tv.setSelectedRange(NSRange(location: end, length: 0))
+        key(tv, " ", code: 49, flags: .control)
+        try await waitUntil("popup 5") { tv.session != nil }
+        let popup = tv.completionPopup
+        XCTAssertTrue(popup.isVisible)
+        XCTAssertFalse(popup.canBecomeKey)
+        XCTAssertTrue(popup.parent === window)
+        XCTAssertEqual(popup.items.count, 5)
+        popup.click(row: 2)
+        XCTAssertEqual(tv.session?.selected?.label, "\\sqrt")
+        popup.click(row: 9) // out of range: ignored
+        XCTAssertEqual(tv.session?.selectedIndex, 2)
+        popup.click(row: 3, double: true)
+        XCTAssertEqual(tv.string, "\\begin{document}\nx \\sigma")
+        XCTAssertNil(tv.session)
+        XCTAssertFalse(popup.isVisible)
+        // ⌘-shortcuts with the list open act on the editor (undo) and close the list.
+        tv.string = "\\begin{document}\nx \\s"
+        tv.setSelectedRange(NSRange(location: end, length: 0))
+        key(tv, " ", code: 49, flags: .control)
+        try await waitUntil("popup 6") { tv.session != nil }
+        key(tv, "a", code: 0, flags: .command)
+        XCTAssertNil(tv.session)
+        XCTAssertEqual(tv.lastCloseReason, .caretMoved)
+        // The session reports the metadata revision it was bound to.
+        tv.compileResult = result(revision: 8, [])
+        tv.editorRevision = 8
+        tv.string = "x \\s"
+        tv.setSelectedRange(NSRange(location: 4, length: 0))
+        key(tv, " ", code: 49, flags: .control)
+        try await waitUntil("bound popup") { tv.session != nil }
+        XCTAssertEqual(tv.session?.metadataRevision, 8)
+        key(tv, "\u{1B}", code: 53)
+    }
+
+    // MARK: keystroke path cost on the sample document
+
+    private static let demo: String = {
+        let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().appendingPathComponent("Samples/demo.tex")
+        return try! String(contentsOf: url, encoding: .utf8)
+    }()
+
+    /// The synchronous candidate scan on `Samples/demo.tex` stays under 2 ms on
+    /// the main thread in every context (the popup computes off-main anyway).
+    @MainActor
+    func testCandidateComputationOnDemoTexStaysUnderTwoMilliseconds() throws {
+        let demo = Self.demo
+        XCTAssertGreaterThan(demo.utf8.count, 5_000)
+        let ns = demo as NSString
+        let endDoc = ns.range(of: "\\end{document}")
+        XCTAssertNotEqual(endDoc.location, NSNotFound)
+        let metadata = Completion.Metadata.from(result(revision: 1, ["undefined reference 'x'"]))
+        // Contexts: command, word, environment, reference — inserted before `\end{document}`.
+        let cases: [(String, String)] = [("command", "\\se"), ("word", "not"), ("environment", "\\begin{do"), ("reference", "\\ref{se")]
+        var report: [String] = []
+        for (name, insert) in cases {
+            let text = ns.replacingCharacters(in: NSRange(location: endDoc.location, length: 0), with: insert + "\n")
+            let caret = endDoc.location + (insert as NSString).length
+            if name != "reference" { // demo.tex has no labels
+                XCTAssertFalse(Completion.suggestions(in: text, caretUTF16: caret, metadata: metadata).isEmpty, name)
+            }
+            var best = Double.infinity, total = 0.0
+            let iterations = 50
+            for _ in 0..<iterations {
+                let t0 = MonotonicClock.nowNs()
+                _ = Completion.completionRange(in: text, caretUTF16: caret)
+                _ = Completion.suggestions(in: text, caretUTF16: caret, metadata: metadata)
+                let ms = Double(MonotonicClock.nowNs() - t0) / 1e6
+                best = min(best, ms); total += ms
+            }
+            let avg = total / Double(iterations)
+            report.append("\(name) avg \(String(format: "%.3f", avg)) ms best \(String(format: "%.3f", best)) ms")
+            XCTAssertLessThan(avg, 2, "\(name) completion on demo.tex (\(text.utf8.count) B) averaged \(avg) ms")
+        }
+        print("completion on demo.tex (\(demo.utf8.count) B, main thread, avg of 50): " + report.joined(separator: "; "))
+    }
+
+    /// With the list open, each keystroke on demo.tex costs the editor's own
+    /// insertion plus a text copy and an enqueue; the scan runs off-main.
+    @MainActor
+    func testKeystrokeThroughOpenListOnDemoTexDoesNotScanOnMain() async throws {
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 600, height: 400), styleMask: [.titled], backing: .buffered, defer: false)
+        let scroll = CompletingTextView.scrollable()
+        scroll.frame = window.contentView!.bounds
+        window.contentView!.addSubview(scroll)
+        let tv = try XCTUnwrap(scroll.documentView as? CompletingTextView)
+        window.orderFrontRegardless()
+        window.makeFirstResponder(tv)
+        defer { window.orderOut(nil) }
+        let demo = Self.demo as NSString
+        let endDoc = demo.range(of: "\\end{document}").location
+        tv.string = demo.replacingCharacters(in: NSRange(location: endDoc, length: 0), with: "\\s\n")
+        tv.setSelectedRange(NSRange(location: endDoc + 2, length: 0))
+        key(tv, " ", code: 49, flags: .control)
+        try await waitUntil("popup") { tv.session != nil }
+        let firstCompute = try XCTUnwrap(tv.lastOutcome?.computeMs)
+
+        var keystrokeMs: [Double] = []
+        let letters: [(String, UInt16)] = [("u", 32), ("b", 11), ("s", 1), ("e", 14), ("c", 8)]
+        for (ch, code) in letters {
+            let before = tv.scheduler.statistics.scheduled
+            let t0 = MonotonicClock.nowNs()
+            key(tv, ch, code: code)
+            keystrokeMs.append(Double(MonotonicClock.nowNs() - t0) / 1e6)
+            XCTAssertEqual(tv.scheduler.statistics.scheduled, before + 1, "the keystroke enqueued exactly one scan")
+            XCTAssertNotNil(tv.session, "the list stays open while the scan runs")
+            let expected = "\\s" + letters.prefix(keystrokeMs.count).map(\.0).joined()
+            try await waitUntil("narrowed to \(expected)") { tv.session?.range.length == (expected as NSString).length && tv.session?.items.first?.label == "\\subsection" }
+        }
+        let maxKeystroke = keystrokeMs.max()!
+        print("keystroke through open list on demo.tex: max \(String(format: "%.3f", maxKeystroke)) ms, all \(keystrokeMs.map { String(format: "%.3f", $0) }); first off-main scan \(String(format: "%.3f", firstCompute)) ms; last \(String(format: "%.3f", tv.lastOutcome?.computeMs ?? -1)) ms")
+        XCTAssertLessThan(maxKeystroke, 20, "keystroke path with the list open (includes AppKit layout of the insertion)")
+        key(tv, "\r", code: 36)
+        XCTAssertTrue(tv.string.contains("\\subsection\n\\end{document}"))
+        XCTAssertNil(tv.session)
+    }
+
     // MARK: performance
 
     /// Completion on a ~1 MB buffer. The measured average is printed so it can

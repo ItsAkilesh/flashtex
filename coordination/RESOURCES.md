@@ -1,3 +1,18 @@
+> LATEST USER STAFFING OVERRIDE: retain THREE Astra engineers (root runtime
+> performance, font-resources, rendering-core) plus the sole Commander. Bridge,
+> project-index and edit-ledger may finish their current task, then STOP. Their
+> queues are paused; do not restart, replace or reallocate them. This supersedes
+> every older local seven-agent reset below. Remote staffing remains unchanged.
+
+## Latest local staffing reset
+
+User explicitly reports plan reset and requests6 Astra engineers plus Commander.
+Actual tool roster confirmed7 running after reactivating the preserved bridge,
+index and ledger handles. Numeric remaining allowance remains unknown; existing
+hosted route only, no new purchases or API funding implied. Local cap is7 total.
+Daniel16 and timed Jaysen15 remain separately authorized; no additional remote
+expansion. All three resumed workers keep exclusive product paths and dirty state.
+
 > LATEST STAFFING OVERRIDE: this computer has FOUR active agents total: sole
 > commander orchestrator-astra, root preview-controller, compiler_corpus fonts,
 > supervisor_api_review rendering. Bridge-context, project-index and edit-ledger
@@ -284,3 +299,31 @@ Grant `openai-commander-supervisor` covers one bounded hosted OpenAI engineering
 task, FT-016, to implement and test the deterministic Claude supervisor. It does
 not authorize Claude inference; all supervisor tests use isolated test doubles.
 Usage/cost is unknown under the existing Commander account authorization.
+
+## Observed Linux quota telemetry — 2026-09-12T07:23:22.588442+00:00
+
+Current Codex rollout token_count reports plan_type=pro, primary used_percent=68.0
+(window10080 minutes), credits.has_credits=false, credits.balance=0, and
+rate_limit_reached_type=null. This is provider-reported window telemetry, not a
+dollar balance or proof that a future call is authorized. All retained local
+slots share this account; do not sum their snapshots as separate resources.
+Transient model-capacity errors on font/render resolved on one same-slot retry
+(GH22); no model, billing route or staffing increase occurred. Jaysen standby
+FT028 is the explicit sole new standby exception; Mac ACK/session remains pending.
+
+## Explicit Daniel addition
+
+The user authorized an ADDITIONAL Daniel Claude20x machine with at least as many
+engineering agents as current Jaysen, without reducing other staffing/tasks.
+Reserve16 engineering lanes FT030–045 plus a local supervising parent. Last
+explicit Jaysen census was15 engineers; newer report lists5 spend-limit
+terminations and lacks a full active census. Daniel active count is ZERO VERIFIED
+until registration/ACK/session evidence arrives. See machines/daniel-new.json.
+This is an explicit exception to no remote expansion for Daniel only; local4
+cap and paused workers remain unchanged. Shared existing plan allowance only,
+no overages/purchases or unverified API fallback.
+
+Jaysen07:31UTC report: five workers terminated by HTTP429 monthly spend limit,
+reported reset4:20am America/New_York; parent/render-pipeline/visual-oracle remain
+reported active, standby setup completed on its branch. Treat reset as reported,
+not permission to purchase or proof quota has renewed. Dirty WIP stays preserved.

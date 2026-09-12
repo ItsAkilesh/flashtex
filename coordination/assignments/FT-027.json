@@ -14,13 +14,14 @@
   "objective": "Experimental bounded page assembly with provisional revision-tagged page events and atomic final completion",
   "owned_paths": [
     "crates/preview-controller",
-    "crates/document-runtime",
-    "crates/project-index"
+    "crates/document-runtime"
   ],
   "revision": 7,
   "schema_version": 1,
-  "state": "assigned",
+  "state": "integrated",
   "task_id": "FT-027",
   "timebox_minutes": 30,
-  "updated_utc": "2026-09-12T07:19:21.938673+00:00"
+  "updated_utc": "2026-09-12T07:26:21.086531+00:00",
+  "ownership_note": "Temporary root membership API completed and integrated; index ownership returned to reactivatedFT025",
+  "integration_evidence": "Main cdc4717 includes published runtime/controller through41602c0; runtime ownership passes to FT047."
 }

@@ -5,27 +5,29 @@
   "next_index": 0,
   "steps": [
     {
-      "name": "Consume latest font arithmetic/device context with exact cache identities",
-      "objective": "Consume latest font arithmetic/device context with exact cache identities",
+      "name": "Bind explicit MATH device correction context into existing metrics replay",
+      "objective": "Bind explicit MATH device correction context into existing metrics replay",
       "owned_paths": [
         "crates/rendering-core"
       ],
       "acceptance": [
-        "Meaningful bounded behavior tests and strict lint pass",
-        "Preserve exact identities; publish measured evidence and unsupported gates"
+        "Meaningful tests and strict lint pass",
+        "Publish truthful execution provenance and exact tested SHA",
+        "No native integration or PDF parity claim without measured evidence"
       ],
       "allocation_id": "hosted-openai-product",
       "timebox_minutes": 30
     },
     {
-      "name": "Export reproducible mismatch records for pinned reference comparison and closure tracking",
-      "objective": "Export reproducible mismatch records for pinned reference comparison and closure tracking",
+      "name": "Exact cached/direct mixed math replay with stale source and resource refusal",
+      "objective": "Exact cached/direct mixed math replay with stale source and resource refusal",
       "owned_paths": [
         "crates/rendering-core"
       ],
       "acceptance": [
-        "Meaningful bounded behavior tests and strict lint pass",
-        "Preserve exact identities; publish measured evidence and unsupported gates"
+        "Meaningful tests and strict lint pass",
+        "Publish truthful execution provenance and exact tested SHA",
+        "No native integration or PDF parity claim without measured evidence"
       ],
       "allocation_id": "hosted-openai-product",
       "timebox_minutes": 30
