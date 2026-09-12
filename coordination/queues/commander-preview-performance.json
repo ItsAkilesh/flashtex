@@ -4,8 +4,8 @@
   "schema_version": 1,
   "steps": [
     {
-      "name": "Extend opt-in metadata acknowledgements to existing undo and redo commands preserving default full responses",
-      "objective": "Extend opt-in metadata acknowledgements to existing undo and redo commands preserving default full responses",
+      "name": "Factor source-free ledger history command status to avoid full document clone for metadata group undo and redo while preserving legacy APIs",
+      "objective": "Factor source-free ledger history command status to avoid full document clone for metadata group undo and redo while preserving legacy APIs",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"
@@ -19,8 +19,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Verify undo redo retries after later edits conflict and unread acknowledgement reopen with distinct command and current identities",
-      "objective": "Verify undo redo retries after later edits conflict and unread acknowledgement reopen with distinct command and current identities",
+      "name": "Verify identical durable bytes command receipts retries undo redo and cold reopen across full and compact paths",
+      "objective": "Verify identical durable bytes command receipts retries undo redo and cold reopen across full and compact paths",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"
@@ -34,8 +34,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Measure bounded compact history response and document native reconciliation contract without ledger format or default changes",
-      "objective": "Measure bounded compact history response and document native reconciliation contract without ledger format or default changes",
+      "name": "Measure one500KB history response allocation or clone cost and document exact remaining copies without native latency claims",
+      "objective": "Measure one500KB history response allocation or clone cost and document exact remaining copies without native latency claims",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"
