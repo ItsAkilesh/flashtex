@@ -1,0 +1,30 @@
+{
+  "agent_id": "daniel-parent",
+  "allocation_id": "daniel-claude20x-shared",
+  "assignment_acknowledgements": {
+    "FT-046": {
+      "acknowledged_utc": "2026-09-12T08:41:30Z",
+      "adaptation": "Machine registered as mac-m5pro-dq222: Apple M5 Pro, 18 cores, 48 GB, macOS 26.6.2. Toolchain verified green after repair: Rust 1.98.1 with 17/17 crates building and 772 tests, 191 Python tests, Xcode 26.6 with 167 Swift tests, pdflatex. Route is the Claude Max 20x plan with hasExtraUsageEnabled=false, so no overage or purchase is possible; quota is the only limit and is unreadable non-interactively. No secret values recorded. DEFECT: coordination/machines/daniel-new.json lane list is stale for FT-030/031/032, naming table-layout/float-layout/footnote-layout while the authoritative assignments transfer paragraph-layout/font-engine/math-layout from cancelled FT-019/018/020. Assignments treated as authoritative. Commander should correct the lane list. CONCURRENCY: lanes are run in batches rather than 16 simultaneously. Evidence, not caution: WIP commit bad0666 records a Claude 429 spend-limit termination that lost uncompiled work on crates/paragraph-layout, and daniel-new.json records 5 spend-limited terminations with no current census while stating that 16 is a reservation, not a liveness claim. Sixteen simultaneous sessions would reproduce that failure and strand work mid-flight. Batching serves the objective of 16 completed lanes. Actual live count is reported separately at every checkpoint, as acceptance requires.",
+      "main_sha": "3423970b300e878062f2a124fb8004545626200b",
+      "revision": 1
+    }
+  },
+  "branch": "agent/daniel-parent/supervisor",
+  "capabilities": [
+    "rust",
+    "swift",
+    "xcode",
+    "python",
+    "latex-oracle",
+    "commit-execution"
+  ],
+  "code_revision": "d09d258f7f4d3d6c4bd48b71cdb5dee7ea639f2e",
+  "eta_minutes": {
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 0
+  },
+  "machine": "mac-m5pro-dq222",
+  "main_integrated_through": "3423970b300e878062f2a124fb8004545626200b",
+  "next_action": "Run FT-030/031/032 transfer lanes in isolated worktrees, then the 13 greenfield lanes in batches."
+}
