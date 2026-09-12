@@ -1253,7 +1253,35 @@ impl P<'_> {
                 TokenKind::LineBreak => content.push(Inline::LineBreak {
                     span: input.token.span,
                 }),
-                _ => {}
+                // Issue #38: this arm used to be `_ => {}`, which silently
+                // discarded every command token inside a parsed title. On the
+                // HW1 source that lost fourteen unsupported-command diagnostics
+                // for \hfill and \normalfont: the author was told nothing, and
+                // the baseline diagnostic count dropped from 119 to 98 when only
+                // seven starred-brace errors should have disappeared.
+                //
+                // A command that is not supported must say so wherever it
+                // appears, including inside a section title.
+                TokenKind::Command(name) => {
+                    if !BUILT_INS.contains(&name.as_str()) {
+                        self.unsupported(&name, input.token.span);
+                    }
+                }
+                // Everything else carries no content of its own here: whitespace,
+                // comments, the braces that delimited this group, and the math
+                // and script markers, which are legal in a title and handled by
+                // the caller. Math in a section title is ordinary LaTeX and must
+                // not be reported as a problem.
+                TokenKind::Space
+                | TokenKind::ParBreak
+                | TokenKind::Comment
+                | TokenKind::LBrace
+                | TokenKind::RBrace
+                | TokenKind::MathShift
+                | TokenKind::DisplayMathOpen
+                | TokenKind::DisplayMathClose
+                | TokenKind::Superscript
+                | TokenKind::Subscript => {}
             }
         }
         content

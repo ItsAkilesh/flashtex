@@ -190,3 +190,67 @@ fn deep_delimiter_nesting_is_bounded_not_a_crash() {
         assert_spans_slice(&reply, &text);
     }
 }
+
+/// GH38: a command that is not supported must say so wherever it appears,
+/// including inside a section title. This arm used to be a silent drop, which
+/// lost fourteen diagnostics on the HW1 source.
+#[test]
+fn unsupported_commands_inside_a_title_are_still_diagnosed() {
+    let text = "\\section{Title \\hfill with \\normalfont commands}\nBody.\n";
+    let reply = compile("gh38-title", text);
+    let msgs = messages(&reply);
+    assert!(
+        msgs.iter().any(|m| m.contains("\\hfill")),
+        "\\hfill in a title was dropped silently: {msgs:?}"
+    );
+    assert!(
+        msgs.iter().any(|m| m.contains("\\normalfont")),
+        "\\normalfont in a title was dropped silently: {msgs:?}"
+    );
+    // The title must still typeset the words around the unsupported commands.
+    let out = rendered(&reply);
+    assert!(
+        out.contains("Title") && out.contains("commands"),
+        "title text lost: {out:?}"
+    );
+    assert_spans_slice(&reply, text);
+}
+
+/// Math in a section title is ordinary LaTeX and must NOT be reported as a
+/// problem. Guarding the fix above from over-reaching.
+#[test]
+fn math_inside_a_title_is_not_reported_as_unsupported() {
+    let text = "\\section{Measured $x^2$ heading}\nBody.\n";
+    let reply = compile("gh38-title-math", text);
+    let msgs = messages(&reply);
+    assert!(
+        !msgs
+            .iter()
+            .any(|m| m.contains("math is not supported inside")),
+        "legal math in a title was reported as a problem: {msgs:?}"
+    );
+    assert_spans_slice(&reply, text);
+}
+
+/// GH40: the HW1 set-membership commands must render, and must be exportable,
+/// adding no new diagnostics of their own.
+#[test]
+fn set_membership_commands_render_and_export_cleanly() {
+    let text = "$\\in \\ni \\notin \\subset \\subseteq \\supset \\supseteq \\cup \\cap \\emptyset \\forall \\exists$\n";
+    let reply = compile("gh40-membership", text);
+    assert_eq!(
+        status(&reply),
+        "ok",
+        "membership commands should need no recovery"
+    );
+    assert_eq!(
+        rendered(&reply),
+        "\u{2208} \u{220B} \u{2209} \u{2282} \u{2286} \u{2283} \u{2287} \u{222A} \u{2229} \u{2205} \u{2200} \u{2203}"
+    );
+    assert!(
+        messages(&reply).is_empty(),
+        "membership commands introduced diagnostics: {:?}",
+        messages(&reply)
+    );
+    assert_spans_slice(&reply, text);
+}

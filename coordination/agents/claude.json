@@ -3,10 +3,10 @@
   "allocation_id": "openai-kabir-plus-ft002",
   "assignment_acknowledgements": {
     "FT-002": {
-      "acknowledged_utc": "2026-09-12T09:50:43Z",
-      "adaptation": "Accepted FT-002 rev 12: bounded \\left and \\right math delimiters and the missing \\nu control word, from reference fixtures 13 and 14. Scope is explicitly narrow: remove only demonstrated parser blockers, bound nesting, recover from malformed delimiters, preserve UTF-8 source ranges and the existing font and glyph mapping gates, and assert nothing about raw PDF or native parity. The export adapter already has a guard test that fails if a math symbol lacks a decided export outcome, so adding \\nu forces its Symbol encoding at the same time.",
-      "main_sha": "9e05acdbf9fa7e1825d67cb03570a69a387bf833",
-      "revision": 12
+      "acknowledged_utc": "2026-09-12T15:35:45Z",
+      "adaptation": "Accepted FT-002 rev 16 at input main 7c332dc: adopt the GH38 starred-heading and GH40 membership handoffs through existing compiler ownership. Acknowledged late: revisions 13, 14 and 15 were missed because my board watcher died silently after I launched it with a bare ampersand instead of a tracked background task. The watcher is now a supervised background task and is confirmed running. Revisions 13-15 are not separately recoverable because coordination/assignments/FT-002.json holds only the current revision; if any of their content was not folded into 16, the Commander should say so and I will pick it up.",
+      "main_sha": "e67fe2a5e4346632056a5308268a41bb39e4ec7b",
+      "revision": 16
     }
   },
   "branch": "agent/claude/compiler-foundation",
@@ -16,7 +16,7 @@
     "cursor-commit",
     "coordination"
   ],
-  "code_revision": "a6a732cf27beab808f31b6cb5cd0101a3d28d621",
+  "code_revision": "ce5bf48e618d01b5244c9ed6a41fa3aa47826828",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
@@ -24,21 +24,21 @@
   },
   "machine": "mac-m5pro-kabir",
   "main_integrated_through": "4425d9d77b747db69c1f04c493b363bd3a467f4e",
-  "next_action": "Watcher armed for rev 13.",
+  "next_action": "Watcher confirmed running as a supervised task; armed for rev 17.",
   "reviewed_peers": {
     "origin/main": {
-      "adaptation": "Found a correctness bug beyond the missing feature: \\left was previously typeset as the literal text backslash-left into rendered output, so the command name leaked onto the page rather than being interpreted. A test now asserts no command name appears in rendered output. Scope kept narrow as the revision requires: no math, paragraph or font crate edits, and no raw PDF or native parity assertion.",
-      "reviewed_utc": "2026-09-12T09:54:34Z",
-      "sha": "1d25ed009e7007b65258d4b684421cb9aadc59c2"
+      "adaptation": "My first attempt at GH38 over-reached: I also diagnosed math shifts inside titles, which broke an existing test because math in a section title is ordinary LaTeX. Narrowed the fix to unsupported commands only, which is what the issue actually reports, and added a guard test asserting legal math in a title is never reported as a problem. Revisions 13 to 15 were missed entirely because my board watcher died silently; it is now a supervised background task and verified running.",
+      "reviewed_utc": "2026-09-12T15:37:39Z",
+      "sha": "e67fe2a5e4346632056a5308268a41bb39e4ec7b"
     }
   },
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "FT-002 rev 12 delivered: \\left and \\right delimiters parsed with bounded nesting and malformed-input recovery, and the missing \\nu control word added to both the math table and the export adapter. 17 suites pass.",
+  "summary": "FT-002 rev 16 delivered: GH38 silent diagnostic drop inside section titles fixed, and GH40 set-membership commands added to both the math table and the Symbol export encoding. All twelve membership commands now render with zero diagnostics. 17 suites pass.",
   "tool": "Codex",
-  "updated_utc": "2026-09-12T09:54:34Z",
+  "updated_utc": "2026-09-12T15:37:39Z",
   "usage": {
-    "evidence": "Balanced \\left(\\frac{a}{b}\\right) renders ( a rule b ) with no unsupported diagnostic; \\nu renders Greek nu and is exportable via Symbol 0x6E; unmatched \\left and stray \\right each recover with an explicit diagnostic and still typeset; nesting tested at 8, 64, 200 and 2000 pairs without crashing; every test asserts spans slice their source; 17 suites pass; clippy -D warnings clean; fmt clean",
+    "evidence": "GH38: hfill and normalfont inside a section title now produce explicit diagnostics where the arm was previously a silent drop, and the title still typesets. GH40: in, ni, notin, subset, subseteq, supset, supseteq, cup, cap, emptyset, forall, exists all render as the correct glyphs with zero diagnostics and are exportable through Adobe Symbol encoding. 17 suites pass, clippy -D warnings clean, fmt clean.",
     "status": "Written directly; no Codex worker"
   }
 }

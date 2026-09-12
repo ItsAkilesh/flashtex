@@ -458,6 +458,12 @@ pub const COMMAND_GLYPHS: &[(&str, &str)] = &[
     ("subseteq", "\u{2286}"),
     ("perp", "\u{22A5}"),
     ("angle", "\u{2220}"),
+    ("ni", "\u{220B}"),
+    ("notin", "\u{2209}"),
+    ("supset", "\u{2283}"),
+    ("supseteq", "\u{2287}"),
+    ("cup", "\u{222A}"),
+    ("cap", "\u{2229}"),
 ];
 
 /// The rule character used to draw fraction bars.

@@ -92,6 +92,12 @@ const SYMBOL_ENCODING: &[(char, u8)] = &[
     ('\u{2286}', 0xCD), // subseteq
     ('\u{22A5}', 0x5E), // perp
     ('\u{2220}', 0xD0), // angle
+    ('\u{220B}', 0x27), // ni
+    ('\u{2209}', 0xCF), // notin
+    ('\u{2283}', 0xC9), // supset
+    ('\u{2287}', 0xCA), // supseteq
+    ('\u{222A}', 0xC8), // cup
+    ('\u{2229}', 0xC7), // cap
 ];
 
 /// WinAnsiEncoding's 0x80..0x9F block, which is NOT Latin-1.
