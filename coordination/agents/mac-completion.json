@@ -1,0 +1,36 @@
+{
+  "agent_id": "mac-completion",
+  "allocation_id": "claude-mac20x-completion",
+  "assignment_acknowledgements": {},
+  "branch": "agent/mac-completion/revision-bound",
+  "capabilities": [
+    "swift",
+    "appkit",
+    "completion"
+  ],
+  "code_revision": "5fc80d078e2e5bdc2ae759790fc453d8b2fe0812",
+  "eta_minutes": {
+    "likely": 40,
+    "optimistic": 20,
+    "pessimistic": 90
+  },
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "2fd302675040308c2b07d346c07389a051518979",
+  "next_action": "Follow-ups: double-click accept in popup, handoff doc, evidence; parent diff for SourceEditorView/ContentView to pass editorRevision",
+  "reviewed_peers": {
+    "origin/main": {
+      "adaptation": "origin/main has no runtime-v1 completion field; the preview-controller STDIO complete op is the only documented channel. Decoder targets that reply shape and its source_versions binding; app wiring of the helper is reported to the parent, not applied",
+      "reviewed_utc": "2026-09-12T08:45:37Z",
+      "sha": "b1f158c4a3ab1301fc9d2340b36705ab21432bbb"
+    }
+  },
+  "schema_version": 1,
+  "state": "in_progress",
+  "summary": "Completion.swift: revision-bound Rust metadata (runtime-v1 result + preview-controller complete reply decoder, bounded), off-main CompletionScheduler with cancellation/stale refusal, owned keyboard-driven list; 19 CompletionTests incl. hosted-window keyboard acceptance; 195 Mac tests pass",
+  "tool": "Claude Code subagent (parent mac-claude-a)",
+  "updated_utc": "2026-09-12T08:45:37Z",
+  "usage": {
+    "evidence": "apps/mac: swift test 195/195 with real worker binaries; demo.tex sync scan 0.024-0.031 ms; keystroke through open list max 1.96 ms",
+    "status": "Shared Claude Max quota with parent mac-claude-a; no purchases"
+  }
+}
