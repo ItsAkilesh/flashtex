@@ -157,13 +157,6 @@ pub enum Frame {
     Under,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Frame {
-    Box,
-    Over,
-    Under,
-}
-
 /// Math-mode environments implemented as grids: (name, default column
 /// alignment repeated for every column, left fence, right fence).
 const GRID_ENVIRONMENTS: &[(&str, char, &str, &str)] = &[
@@ -1479,27 +1472,6 @@ fn layout_nucleus(
                     .0
                 }
             },
-            ascent: size,
-            descent: 0.2 * size,
-        },
-        Nucleus::Bold(text) => MathBox {
-            items: vec![MathItem {
-                font: Some(crate::layout::Font::TimesBold),
-                text: text.clone(),
-                x: 0.0,
-                baseline: 0.0,
-                size,
-                span: atom.span,
-                rule: None,
-            }],
-            width: crate::layout::shaped_width(
-                text,
-                size,
-                crate::layout::Font::TimesBold,
-                atom.span,
-                diagnostics,
-            )
-            .0,
             ascent: size,
             descent: 0.2 * size,
         },
