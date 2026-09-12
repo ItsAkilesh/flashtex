@@ -516,6 +516,44 @@ fn validate_reply(bytes: &[u8], r: &Request, requested: &[String]) -> Result<Val
     let v: Value = serde_json::from_slice(bytes).map_err(|_| "compiler returned malformed JSON")?;
     validate_reply_value(v, r, requested)
 }
+// Gather common text fields in one traversal; preserve absence separately for source/font.
+struct DisplayFields<'a> {
+    kind: &'a Value,
+    text: &'a Value,
+    font_size: &'a Value,
+    x: &'a Value,
+    baseline: &'a Value,
+    source: Option<&'a Value>,
+    font: Option<&'a Value>,
+}
+impl<'a> DisplayFields<'a> {
+    fn read(item: &'a Value) -> Self {
+        let mut fields = Self {
+            kind: &Value::Null,
+            text: &Value::Null,
+            font_size: &Value::Null,
+            x: &Value::Null,
+            baseline: &Value::Null,
+            source: None,
+            font: None,
+        };
+        if let Some(object) = item.as_object() {
+            for (key, value) in object {
+                match key.as_str() {
+                    "kind" => fields.kind = value,
+                    "text" => fields.text = value,
+                    "font_size_pt" => fields.font_size = value,
+                    "x_pt" => fields.x = value,
+                    "baseline_y_pt" => fields.baseline = value,
+                    "source" => fields.source = Some(value),
+                    "font" => fields.font = Some(value),
+                    _ => (),
+                }
+            }
+        }
+        fields
+    }
+}
 fn validate_reply_value(v: Value, r: &Request, requested: &[String]) -> Result<Value, String> {
     if v["protocol_version"] != 1
         || v["id"] != r.id
@@ -593,7 +631,8 @@ fn validate_reply_value(v: Value, r: &Request, requested: &[String]) -> Result<V
             return Err("invalid page geometry".into());
         }
         for item in page["items"].as_array().ok_or("missing page items")? {
-            if item["kind"] == "rule" {
+            let fields = DisplayFields::read(item);
+            if fields.kind == "rule" {
                 if !accepted.iter().any(|cap| cap == "rules-v1")
                     || !["x_pt", "y_pt"].iter().all(|key| {
                         item[*key]
@@ -612,7 +651,7 @@ fn validate_reply_value(v: Value, r: &Request, requested: &[String]) -> Result<V
                 span(&item["source"])?;
                 continue;
             }
-            if let Some(font) = item.get("font") {
+            if let Some(font) = fields.font {
                 if !accepted.iter().any(|cap| cap == "font-hints-v1")
                     || !font["family"].as_str().is_some_and(|name| {
                         !name.is_empty() && name.len() <= 128 && !name.chars().any(char::is_control)
@@ -623,19 +662,20 @@ fn validate_reply_value(v: Value, r: &Request, requested: &[String]) -> Result<V
                     return Err("unrequested or malformed font hint".into());
                 }
             }
-            if item["kind"] != "text"
-                || !item["text"].is_string()
-                || !item["font_size_pt"]
+            if fields.kind != "text"
+                || !fields.text.is_string()
+                || !fields
+                    .font_size
                     .as_f64()
                     .is_some_and(|n| n.is_finite() && n > 0.0)
-                || !["x_pt", "baseline_y_pt"]
+                || ![fields.x, fields.baseline]
                     .iter()
-                    .all(|key| item[*key].as_f64().is_some_and(f64::is_finite))
-                || item.get("source").is_none()
+                    .all(|value| value.as_f64().is_some_and(f64::is_finite))
+                || fields.source.is_none()
             {
                 return Err("unsupported or malformed display item".into());
             }
-            span(&item["source"])?;
+            span(fields.source.unwrap())?;
         }
     }
     Ok(v)
