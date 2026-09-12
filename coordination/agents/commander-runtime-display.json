@@ -3,27 +3,27 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-049": {
-      "acknowledged_utc": "2026-09-12T12:43:47Z",
-      "adaptation": "30 sequential normal/stopped Value/raw sessions restore4FD/2thread/emptychild baseline after three I/O terminal witnesses and child reaping. No production change or accumulation demonstrated; complete per-cycle evidence preserved.",
-      "main_sha": "fec22f105a028313962b69fa155b0621e3faf247",
-      "revision": 17
+      "acknowledged_utc": "2026-09-12T12:49:23Z",
+      "adaptation": "Exact helper contract9f28 reviewed with no runtime API gap. Root preparing actual capture; independent proxy review identified parent-death race and pre-forward log semantics, sent localized fix without peer edits. Await published capture for runtime verification.",
+      "main_sha": "a7388f6966f047b39403d6b2196179a95f1ad17f",
+      "revision": 19
     }
   },
   "branch": "agent/commander-runtime-display/display-runtime",
   "capabilities": [
     "rust-runtime"
   ],
-  "code_revision": "106bca6ec3f2855a85faa023a66c6f07085d7d61",
+  "code_revision": "c4178a54dccf4bf5a94c151c759fa18cb3096462",
   "eta_minutes": null,
   "machine": "linux-primary",
   "main_integrated_through": "0333be37e546273b6bcbe30a1f0745ad8a5e93c5",
-  "next_action": "Commander integration review. All probe/build processes terminal. Clean checkpoint after report publication; docs/blocked-writer.md and benchmarks/session-cycles contain scope, exact PIDs and counters. No RSS/all-production-thread-join/worst-case-time claim.",
+  "next_action": "Commander integration review. All test/build processes terminal; clean after report publication. Capture recovered tfm_missing remains unchanged; asset availability sent separately. Docs preserve proxy review/correction and log-before-forward limitations. No fresh helper/producer execution or native parity claim in this replay.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "FT049 r17 product106bca6e:30 sequential normal/stopped-reader Value/raw cycles restore baseline4FD/2thread/emptychild after writer/stdout/stderr witnesses, decoder join and PID reaping. No accumulation demonstrated; production unchanged.49 ordinary tests pass/10 opt-in ignored;30-cycle gate and strict lint pass.",
+  "summary": "FT049 r19 product c4178a54: independent exact-byte replay of actual helper capture e680d2ef passes all six requests, v1/raw equality, unequal editor/compile revisions, bibliography metadata, restart and stale5/current6. All capture hashes and77 assets verified.49 ordinary tests pass/11 opt-in ignored; explicit capture gate and strict lint pass. No runtime API gap or production change.",
   "tool": "codex",
-  "updated_utc": "2026-09-12T12:44:10Z",
+  "updated_utc": "2026-09-12T12:56:49Z",
   "usage": {
     "status": "unknown"
   }
