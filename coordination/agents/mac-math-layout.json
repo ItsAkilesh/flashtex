@@ -1,12 +1,12 @@
 {
   "agent_id": "mac-math-layout",
-  "allocation_id": "claude-mac20x-math-layout",
+  "allocation_id": "claude-mac20x-math-layout-stage3",
   "assignment_acknowledgements": {
     "FT-020": {
-      "acknowledged_utc": "2026-09-12T06:32:17Z",
-      "adaptation": "Accepted FT-020 rev 3: declare a math visual corpus (fixtures/visual, >=10 cases) wired to the mac-visual-oracle harness via tools/run_visual.sh, corpus-wide structural gate with thresholds and --regress, runtime-v1 compile_result emission with rules-v1/font-hints-v1 and a PDF-vs-CoreText box check, tuning only where the corpus shows deltas, explicit unsupported list.",
-      "main_sha": "0b7076ad9f3b8b8ac8e9e7f80960c97af2c8e7b3",
-      "revision": 3
+      "acknowledged_utc": "2026-09-12T07:17:34Z",
+      "adaptation": "Accepted FT-020 rev 4 (exact TeX math spacing and size-dependent symbol metrics): sp-exact math_glue (thin/med/thick with stretch/shrink, mu_mult truncation), integer-exact make_left_right (delta1 div 500 * 901, shortfall), multi-size var_delimiter search (current size then larger, best-so-far), per-style CM fontdimens vs Latin Modern Math MathConstants matrix from the local latinmodern-math.otf (sha 6075562b), display operator variants via TFM next-larger (MathVariants still requested from FT-018), >=5 new corpus cases gated structurally where a pin exists and marked oracle pending otherwise (no pdflatex on this machine), unsupported list kept explicit.",
+      "main_sha": "41b7fde5cea8cdbc6145075a3d9cf4b22debf4e0",
+      "revision": 4
     }
   },
   "branch": "agent/mac-math-layout/math-boxes",
@@ -46,10 +46,10 @@
     }
   },
   "schema_version": 1,
-  "state": "ready_for_integration",
-  "summary": "FT-020 rev 3: 15-case declared math visual corpus; structural gate 15/15 vs pinned pdfTeX geometry (max 0.0055 bp, --regress clean); preview/PDF box parity 15/15 (PDF writer 0.00096 pt, CoreText 0.00000 pt, tol 0.05 pt); tools/run_visual.sh drives harness db18236 + crates/pdf 4bd8c2e; raster references NOT regenerable (no pdflatex on this machine, stated in the evidence); explicit unsupported table in README",
+  "state": "in_progress",
+  "summary": "FT-020 rev 4 acknowledged; implementing exact spacing glue, integer-exact delimiter sizing, multi-size delimiter search, CM-vs-LM param matrix, new corpus cases",
   "tool": "Claude Code subagent (parent mac-claude-a)",
-  "updated_utc": "2026-09-12T07:08:25Z",
+  "updated_utc": "2026-09-12T07:17:34Z",
   "usage": {
     "evidence": "crates/math-layout/docs/visual-evidence/20260912T070234Z; docs/comparison.md stage 3; cargo test 37 passed, clippy clean",
     "status": "unknown from this session (Claude Max 20x on mac-m1max-a, allocation claude-mac20x-math-layout)"
