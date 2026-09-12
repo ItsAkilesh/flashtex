@@ -25,6 +25,7 @@ from typing import Any
 PROJECT = Path("apps/companion/FlashTeXCompanion.xcodeproj/project.pbxproj")
 PAYLOAD = Path("apps/companion/FlashTeXCompanion/Models/CapturePayload.swift")
 VALIDATOR = Path("apps/companion/FlashTeXCompanion/Services/ImageValidator.swift")
+CAPTURE_FIXTURE = Path("protocol/fixtures/capture-submission.json")
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 JPEG_SIGNATURE = b"\xff\xd8\xff"
 
@@ -105,6 +106,22 @@ def source_mime_findings(payload_source: str, validator_source: str) -> list[str
     return findings
 
 
+def fixture_mime_findings(fixture: Path) -> list[str]:
+    """Validate declared MIME type against decoded bytes in a capture fixture."""
+    try:
+        image = json.loads(fixture.read_text(encoding="utf-8"))["payload"]["image"]
+        declared = image["mime_type"]
+        data = base64.b64decode(image["data_base64"], validate=True)
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
+        return [f"invalid capture fixture: {error}"]
+    actual = detected_mime(data)
+    if actual is None:
+        return ["capture fixture has an unknown image signature"]
+    if actual != declared:
+        return [f"capture fixture declares {declared} but bytes are {actual}"]
+    return []
+
+
 def validate_tree(source: Path, xcodebuild: str, build: bool) -> dict[str, Any]:
     project = source / PROJECT
     payload = source / PAYLOAD
@@ -115,6 +132,7 @@ def validate_tree(source: Path, xcodebuild: str, build: bool) -> dict[str, Any]:
         "pbx_findings": [],
         "test_target_findings": [],
         "mime_findings": [],
+        "fixture_mime_findings": [],
         "commands": [],
     }
     if not project.exists():
@@ -127,6 +145,11 @@ def validate_tree(source: Path, xcodebuild: str, build: bool) -> dict[str, Any]:
         result["mime_findings"] = source_mime_findings(
             payload.read_text(encoding="utf-8"), validator.read_text(encoding="utf-8")
         )
+    fixture = source / CAPTURE_FIXTURE
+    if fixture.exists():
+        result["fixture_mime_findings"] = fixture_mime_findings(fixture)
+    else:
+        result["fixture_mime_findings"] = ["capture fixture missing"]
     project_bundle = project.parent
     result["commands"].append(run([xcodebuild, "-list", "-project", str(project_bundle)]))
     if result["commands"][-1]["exit_code"] == 0:

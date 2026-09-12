@@ -2,6 +2,7 @@ import importlib.util
 from pathlib import Path
 import tempfile
 import unittest
+import json
 from unittest.mock import patch
 
 
@@ -41,6 +42,18 @@ class CompanionValidationTests(unittest.TestCase):
             'image.jpegData(compressionQuality: 0.85)',
         )
         self.assertEqual(findings, ["validator may produce JPEG but envelope always serializes PNG with image/png"])
+
+    def test_validates_declared_fixture_mime_against_bytes(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            fixture = Path(temporary) / "capture.json"
+            fixture.write_text(json.dumps({"payload": {"image": {
+                "mime_type": "image/jpeg",
+                "data_base64": "iVBORw0KGgo="
+            }}}))
+            self.assertEqual(
+                check_companion.fixture_mime_findings(fixture),
+                ["capture fixture declares image/jpeg but bytes are image/png"],
+            )
 
     def test_uses_xcodeproj_bundle_for_xcodebuild(self):
         with tempfile.TemporaryDirectory() as temporary:

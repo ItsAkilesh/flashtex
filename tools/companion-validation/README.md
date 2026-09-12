@@ -16,7 +16,8 @@ The output directory receives `report.json` and the binary-safe Git diff
 `companion-project-repair.patch`. The report records the exact command and exit
 code for Xcode project loading and the optional unsigned simulator-SDK build. It
 also detects PBX object definitions that were inserted into reference lists, the
-absence of an XCTest target, and the current JPEG/PNG serialization mismatch.
+absence of an XCTest target, the current JPEG/PNG serialization mismatch, and
+whether the runtime capture fixture's base64 bytes match its declared MIME type.
 
 Run the harness unit tests with:
 
