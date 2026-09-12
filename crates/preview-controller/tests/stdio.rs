@@ -785,3 +785,64 @@ fn rooted_bibliography_plans_survive_typed_attach_edit_and_reopen() {
         "@article{old,title={Durable}}"
     );
 }
+
+#[test]
+fn generated_literal_plan_applies_as_one_durable_group_and_retries_exactly() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut client = Client::start(dir.path());
+    let proposal = |client: &mut Client| {
+        client.send("snapshot", "snapshot", json!({}));
+        let mut request = client.reply("snapshot")["payload"].clone();
+        request["literal"] = json!("α");
+        request["replacement"] = json!("βγ");
+        request["max_matches"] = json!(100);
+        request["max_work"] = json!(100000);
+        request["max_bytes"] = json!(100000);
+        client.send("proposal", "plan_literal_replacement", request);
+        let response = client.reply("proposal");
+        assert_eq!(response["type"], "result", "{response}");
+        response["payload"]["plan"].clone()
+    };
+    let prepare_group = |plan: &Value, doc: &Value, id: &str| {
+        // Native conversion must preserve exact decimal-string values. This test
+        // exercises the real exported proposal, not independently invented edits.
+        let edits: Vec<_> = plan["edits"].as_array().unwrap().iter().map(|edit| {
+            assert_eq!(edit["file"], "main.tex");
+            assert_eq!(edit["revision"].as_str().unwrap().parse::<u64>().unwrap(), doc["revision"].as_u64().unwrap());
+            json!({"start_byte":edit["start_byte"].as_str().unwrap().parse::<u64>().unwrap(),"end_byte":edit["end_byte"].as_str().unwrap().parse::<u64>().unwrap(),"removed_text":edit["expected_text"],"replacement":edit["replacement"]})
+        }).collect();
+        json!({"path":"main.tex","command":{"command_id":id,"expected_revision":doc["revision"],"expected_sha256":doc["source_sha256"],"label":"Replace reviewed matches","edits":edits}})
+    };
+    let old = proposal(&mut client);
+    client.send("doc", "document", json!({"path":"main.tex"}));
+    let doc = client.reply("doc")["payload"]["document"].clone();
+    let stale = prepare_group(&old, &doc, "stale-plan");
+    client.send("typing", "edit", json!({"path":"main.tex","expected_revision":doc["revision"],"expected_sha256":doc["source_sha256"],"text":"α α original"}));
+    assert_eq!(client.reply("typing")["type"], "result");
+    client.send("stale", "apply_group", stale);
+    assert_eq!(client.reply("stale")["type"], "error");
+    let fresh = proposal(&mut client);
+    client.send("doc", "document", json!({"path":"main.tex"}));
+    let doc = client.reply("doc")["payload"]["document"].clone();
+    let approved = prepare_group(&fresh, &doc, "approved-plan");
+    assert_eq!(approved["command"]["edits"].as_array().unwrap().len(), 2);
+    client.send("apply", "apply_group", approved.clone());
+    let applied = client.reply("apply")["payload"]["history"].clone();
+    assert_eq!(applied["document"]["text"], "βγ βγ original");
+    assert_eq!(applied["replayed_command"], false);
+    drop(client);
+    let mut client = Client::start(dir.path());
+    client.send("retry", "apply_group", approved.clone());
+    let retry = client.reply("retry")["payload"]["history"].clone();
+    assert_eq!(retry["replayed_command"], true);
+    assert_eq!(retry["document"], applied["document"]);
+    let mut changed = approved;
+    changed["command"]["edits"][0]["replacement"] = json!("tampered");
+    client.send("conflict", "apply_group", changed);
+    assert_eq!(client.reply("conflict")["type"], "error");
+    client.send("undo", "undo", json!({"path":"main.tex","command":{"command_id":"undo-plan","expected_revision":retry["document"]["revision"],"expected_sha256":retry["document"]["source_sha256"]}}));
+    assert_eq!(
+        client.reply("undo")["payload"]["history"]["document"]["text"],
+        "α α original"
+    );
+}

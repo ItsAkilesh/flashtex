@@ -13,17 +13,17 @@
   "capabilities": [
     "Preview helper serialization and latency"
   ],
-  "code_revision": "b4802cf1a11823e3651e283d3bfb3cbd0df32847",
+  "code_revision": "3db162f7ae95bb40bf5972b8ae5567b5911ee31e",
   "eta_minutes": null,
   "machine": "linux-primary",
   "main_integrated_through": "a885b394b50175690cd98965ec6c9c02b5ff03e2",
-  "next_action": "Review and document native proposal-to-approval mapping; exercise existing apply_group refusal and recovery with actual generated plans. No automatic cross-document application.",
+  "next_action": "Coordinate native source-plan adoption with Commander and take next helper gap; do not duplicate runtime sibling-forwarding owner.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "FT048r5 rooted bibliography lifecycle implemented: explicit import, typed attach, preserved kinds across edits/history/membership, reopen with app-supplied declarations. 56 tests including all explicit original compiler checks pass, strict Clippy clean.",
+  "summary": "Generated proposal application/recovery regression passes: stale refusal, two Unicode edits as one group, exact retry after helper kill/reopen, conflicting reused ID refused, grouped undo. Native contract documents per-file outcomes and separate export/approval.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T10:48:56Z",
+  "updated_utc": "2026-09-12T10:51:10Z",
   "usage": {
     "status": "unknown"
   }

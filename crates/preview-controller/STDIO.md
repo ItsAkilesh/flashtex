@@ -178,3 +178,12 @@ or tokens. It does not alter protocol stdout. Consumers enabling this option mus
 drain stderr; normal callers should leave it off. The replay driver's `--phases`
 option captures these records in a temporary file and bounds the parsed capture
 at1MiB. Timing records are attribution data, not latency guarantees.
+
+### Reviewed source plans
+
+`plan_literal_replacement`, `plan_citation_rename`, and
+`plan_citation_rename_at` export bounded read-only plans from the shared index.
+They require the complete `source_versions` and `membership_generation` snapshot.
+See [source-plans.md](docs/source-plans.md) for request fields, exact integer
+conversion, explicit bibliography declarations, and the review/application/retry
+contract. Native application is separate; multi-document application is not atomic.
