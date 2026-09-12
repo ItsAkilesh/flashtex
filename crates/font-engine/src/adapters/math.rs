@@ -23,32 +23,58 @@ use flashtex_math_layout::metrics::{
     FontId, Glyph, MathFontMetrics, MathParams, OpenTypeMathConstants, SizeClass,
 };
 
-use crate::math::MathConstants;
+use crate::math::{MathConstants, MathTable};
 use crate::truetype::{Outlines, TrueTypeFace};
 use crate::{Face, GlyphId};
 
 /// A `MATH` face plus the text-size it is used at.
+///
+/// `face`, `text_size_pt`, and `font_id` are deliberately private:
+/// [`OpenTypeMathFace::new`] is the only way to build one, so every live
+/// `OpenTypeMathFace` is guaranteed to wrap a face that actually has a
+/// `MATH` table. If the fields were `pub`, a caller could assemble an
+/// `OpenTypeMathFace { face, text_size_pt, font_id }` struct literal
+/// directly with a face that has no `MATH` table, skipping `new`'s
+/// `face.math()?` check entirely — every method that reads MATH constants
+/// (`size_pt`, `opentype_constants`, ...) would then panic with "checked
+/// in new" via `.expect(...)`, in both debug and release, since `.expect`
+/// panics regardless of build profile.
+///
+/// No accessor is exposed for any of the three fields: nothing outside
+/// this module reads them directly today, and adding one would just
+/// reopen part of the bypass this fix closes.
 pub struct OpenTypeMathFace<'a> {
-    pub face: &'a TrueTypeFace,
+    face: &'a TrueTypeFace,
     /// Text size in points; script sizes derive from the MATH percentages.
-    pub text_size_pt: f64,
+    text_size_pt: f64,
     /// The opaque id handed to the layout crate for this face.
-    pub font_id: FontId,
+    font_id: FontId,
+    /// The face's `MATH` table, captured once at construction instead of
+    /// re-derived (and re-unwrapped) from `face` on every call. Beyond
+    /// closing the field-bypass above, this also retires the
+    /// `.expect("checked in new")` that used to live in [`Self::constants`]:
+    /// that `.expect` was safe only because a *different* function (`new`)
+    /// had checked it, which is exactly the kind of distant coupling that
+    /// breaks silently if either function ever changes independently.
+    /// Storing the already-validated reference removes the recheck (and
+    /// the panic) altogether — there is no fallible step left to guard.
+    math: &'a MathTable,
 }
 
 impl<'a> OpenTypeMathFace<'a> {
     /// Fails (returns `None`) when the face has no `MATH` table.
     pub fn new(face: &'a TrueTypeFace, text_size_pt: f64, font_id: FontId) -> Option<Self> {
-        face.math()?;
+        let math = face.math()?;
         Some(OpenTypeMathFace {
             face,
             text_size_pt,
             font_id,
+            math,
         })
     }
 
     fn constants(&self) -> &MathConstants {
-        &self.face.math().expect("checked in new").constants
+        &self.math.constants
     }
 
     pub fn size_pt(&self, size: SizeClass) -> f64 {
@@ -139,7 +165,7 @@ impl<'a> OpenTypeMathFace<'a> {
         let at = self.size_pt(size);
         let scale = at / f64::from(self.face.units_per_em());
         let width = f64::from(self.face.advance(gid).ok()?) * scale;
-        let italic = f64::from(self.face.math()?.italics_correction(gid)) * scale;
+        let italic = f64::from(self.math.italics_correction(gid)) * scale;
         let (h, d) = self.extents_units(gid, ch);
         Some(Glyph {
             font_id: self.font_id,

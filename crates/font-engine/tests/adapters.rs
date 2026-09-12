@@ -202,6 +202,39 @@ fn math_adapter_derives_tex_parameters_from_latin_modern_math() {
     );
 }
 
+/// Regression test for a defect where `OpenTypeMathFace`'s fields being
+/// `pub` let a caller build one via an
+/// `OpenTypeMathFace { face, text_size_pt, font_id }` struct literal with
+/// a face that has no `MATH` table, skipping `new`'s `face.math()?` check
+/// entirely. Every method that reads MATH constants (`size_pt`,
+/// `opentype_constants`, ...) then panicked with "checked in new" via
+/// `.expect(...)` -- in both debug and release, since `.expect` panics
+/// regardless of build profile.
+///
+/// The struct literal above no longer compiles from outside
+/// `adapters::math` (uncomment it locally to see "error: cannot construct
+/// `OpenTypeMathFace<'_>` with struct literal syntax due to private
+/// fields"), so `OpenTypeMathFace::new` is the only way to build one, and
+/// this exact MATH-less face must come back as `None`, never a value that
+/// could reach the old panic.
+#[test]
+fn math_face_without_math_table_cannot_be_bypassed_into_existence() {
+    let Some(set) = pinned() else { return };
+    let roman = set.face("lm.roman10.regular").unwrap();
+
+    // let bypassed = OpenTypeMathFace {
+    //     face: roman,
+    //     text_size_pt: 10.0,
+    //     font_id: MathFontId(1),
+    // }; // <- no longer compiles: `face`, `text_size_pt`, `font_id`, and
+    //        `math` are all private.
+
+    assert!(
+        OpenTypeMathFace::new(roman, 10.0, MathFontId(1)).is_none(),
+        "a face with no MATH table must never yield an OpenTypeMathFace"
+    );
+}
+
 #[test]
 fn preview_export_is_deterministic_and_carries_positions() {
     let times = Core14Face::new(Core14::TimesRoman);
