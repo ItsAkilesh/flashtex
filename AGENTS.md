@@ -1,3 +1,25 @@
+## Context compaction at natural checkpoints
+
+Latest explicit user policy: at a natural checkpoint, compact when actual context
+usage exceeds 80%; at 60–80%, compact when much of the retained context is irrelevant.
+Use reliable runtime telemetry and supported native compaction controls. If usage
+telemetry or a compaction command is unavailable, state that limitation; never
+invent percentages, force a session restart, or treat compaction as agent failure.
+
+Before compaction save a durable checkpoint containing task ID/revision, exact
+branch and worktree, current changes and dirty files, tested SHAs and evidence,
+pending commands/publication journals/messages, next steps, ownership boundaries,
+current staffing and billing restrictions. After compaction read that checkpoint,
+current authority and assignments, reconcile any pending operation, and continue
+without replaying uncertain paid calls or publications. Leads must propagate this
+policy to their existing children. Do not reactivate drained workers just to compact.
+
+> LATEST USER STAFFING OVERRIDE: retain THREE Astra engineers (root runtime
+> performance, font-resources, rendering-core) plus the sole Commander. Bridge,
+> project-index and edit-ledger may finish their current task, then STOP. Their
+> queues are paused; do not restart, replace or reallocate them. This supersedes
+> every older local seven-agent reset below. Remote staffing remains unchanged.
+
 > LATEST USER OVERRIDE: Jaysen cooldown is lifted immediately. Restore the
 > prepared15 independent engineering lanes NOW after verifying usable route.
 > Daniel retains transferred heavy paths. Old08:21 wait instructions below are

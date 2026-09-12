@@ -85,7 +85,9 @@ fn run(binary: &Path, limits: Limits) -> Result<(), String> {
         };
         let id = request.id.clone();
         let warm_started = Instant::now();
-        warm.submit(request.clone())?;
+        let cloned = request.clone();
+        let request_clone_ms = warm_started.elapsed().as_secs_f64() * 1000.0;
+        warm.submit(cloned)?;
         let (persistent, timing) = response(&mut warm)?;
         let warm_observed_ms = warm_started.elapsed().as_secs_f64() * 1000.0;
         let cold_started = Instant::now();
@@ -101,6 +103,8 @@ fn run(binary: &Path, limits: Limits) -> Result<(), String> {
             "compiler_status":persistent["payload"]["status"],
             "pages":persistent["payload"]["pages"].as_array().map(Vec::len),
             "diagnostics":persistent["payload"]["diagnostics"].as_array().map(Vec::len),
+            "runtime_profile":warm.last_profile(),
+            "request_clone_ms":request_clone_ms,
             "warm_queue_ms":timing[0], "warm_compiler_transport_poll_ms":timing[1],
             "warm_total_ms":timing[2], "warm_call_to_result_ms":warm_observed_ms,
             "fresh_launch_to_result_ms":fresh_observed_ms})

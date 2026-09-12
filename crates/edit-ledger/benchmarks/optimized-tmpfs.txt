@@ -1,0 +1,33 @@
+
+running 1 test
+BENCH {"document_bytes":5000,"metrics":{"atomic_write_sync":{"max_us":851.271,"median_us":513.903,"samples":16},"checkpoint_encode":{"max_us":3984.272,"median_us":3219.03,"samples":16},"checkpoint_rotate":{"max_us":31253.075,"median_us":28615.769,"samples":16},"edit":{"max_us":4717.129,"median_us":3654.892,"samples":16},"state_clone":{"max_us":280.697,"median_us":153.697,"samples":16},"state_serialize":{"max_us":1183.628,"median_us":769.891,"samples":16},"state_validate":{"max_us":959.633,"median_us":796.845,"samples":16},"undo":{"max_us":3804.199,"median_us":2477.233,"samples":16}},"restart_state_exact":true,"retained_history":8,"source_sha256":"c59d3c0480cc2d71d8f646e735e92da65450311eec46e81a5db8c7e6e8a92054","store_bytes":101329}
+BENCH {"document_bytes":50000,"metrics":{"atomic_write_sync":{"max_us":3173.363,"median_us":2248.683,"samples":16},"checkpoint_encode":{"max_us":29179.255,"median_us":21614.842,"samples":16},"checkpoint_rotate":{"max_us":214151.766,"median_us":182863.684,"samples":16},"edit":{"max_us":35591.086,"median_us":25350.703,"samples":16},"state_clone":{"max_us":2173.466,"median_us":518.681,"samples":16},"state_serialize":{"max_us":7026.478,"median_us":5327.33,"samples":16},"state_validate":{"max_us":7911.665,"median_us":5374.668,"samples":16},"undo":{"max_us":22035.692,"median_us":15595.719,"samples":16}},"restart_state_exact":true,"retained_history":8,"source_sha256":"9483d1c3ad73c1fcfe3260e5fdecbd9a70966a2cf2cd8b95c59d691e46790149","store_bytes":866329}
+BENCH {"document_bytes":500000,"metrics":{"atomic_write_sync":{"max_us":5188.031,"median_us":2156.631,"samples":16},"checkpoint_encode":{"max_us":25716.24,"median_us":17994.131,"samples":16},"checkpoint_rotate":{"max_us":235587.313,"median_us":139157.42,"samples":16},"edit":{"max_us":61509.354,"median_us":22739.67,"samples":16},"state_clone":{"max_us":1611.723,"median_us":596.233,"samples":16},"state_serialize":{"max_us":7209.88,"median_us":6337.754,"samples":16},"state_validate":{"max_us":6722.63,"median_us":4837.752,"samples":16},"undo":{"max_us":32170.789,"median_us":13969.108,"samples":16}},"restart_state_exact":true,"retained_history":8,"source_sha256":"c7adf6280412b3f9acbd4759796fdb295f7894b4a2a7a9d3412b3c72d2434442","store_bytes":8516329}
+test cost_benchmark::durable_cost_matrix ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 55 filtered out; finished in 15.89s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s

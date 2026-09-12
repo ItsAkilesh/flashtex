@@ -16,8 +16,9 @@
   ],
   "revision": 5,
   "schema_version": 1,
-  "state": "assigned",
+  "state": "integrated",
   "task_id": "FT-029",
   "timebox_minutes": 30,
-  "updated_utc": "2026-09-12T08:02:58Z"
+  "updated_utc": "2026-09-12T08:02:58Z",
+  "integration_evidence": "Assistant checkpoint c93bf0d integrated with27 tests including pinned compiler, local HTTP and subprocess; strict all-feature Clippy. Root continues FT047 runtime performance."
 }

@@ -1,5 +1,5 @@
 //! Literal text operations, independent of parsed symbols or TeX semantics.
-use super::{span, IndexError, ProjectIndex, SourceSpan, VersionSnapshot};
+use super::{span, IndexError, ProjectIndex, SourceSpan, TextEdit, VersionSnapshot};
 use std::collections::BTreeSet;
 
 pub const MAX_SEARCH_QUERY_BYTES: usize = 64 * 1024;
@@ -44,6 +44,15 @@ pub struct SearchResult {
     pub work_used: usize,
 }
 
+/// Review data only. Caller must explicitly approve and transactionally apply edits.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LiteralReplacementPlan {
+    pub search: SearchResult,
+    pub replacement: String,
+    /// Canonical file/byte order; apply in reverse byte order within each file.
+    pub edits: Vec<TextEdit>,
+}
+
 struct Budget<F> {
     remaining: usize,
     used: usize,
@@ -64,6 +73,60 @@ impl<F: FnMut() -> bool> Budget<F> {
 }
 
 impl ProjectIndex {
+    /// Rejects partial, stale, or altered result sets. Never mutates indexed documents.
+    pub fn plan_literal_replacement(
+        &self,
+        search: &SearchResult,
+        replacement: &str,
+    ) -> Result<LiteralReplacementPlan, IndexError> {
+        self.check(&search.snapshot)?;
+        if search.termination != SearchTermination::Complete {
+            return Err(IndexError::IncompleteSearch);
+        }
+        let text_bytes = search
+            .request
+            .literal
+            .len()
+            .checked_add(replacement.len())
+            .and_then(|bytes| bytes.checked_mul(search.matches.len()));
+        if replacement.len() > MAX_REPLACEMENT_PLAN_TEXT_BYTES
+            || text_bytes.is_none_or(|bytes| bytes > MAX_REPLACEMENT_PLAN_TEXT_BYTES)
+        {
+            return Err(IndexError::ReplacementPlanTooLarge);
+        }
+        let expected = self.search_literal(&search.snapshot, &search.request, || false)?;
+        if expected != *search {
+            return Err(IndexError::InvalidSearchPlan);
+        }
+        let edits = search
+            .matches
+            .iter()
+            .map(|source| TextEdit {
+                source: source.clone(),
+                expected_text: search.request.literal.clone(),
+                replacement: replacement.into(),
+            })
+            .collect();
+        Ok(LiteralReplacementPlan {
+            search: search.clone(),
+            replacement: replacement.into(),
+            edits,
+        })
+    }
+
+    /// Validates against this exact snapshot immediately before caller-approved application.
+    /// This validates consistency, not user intent or authorization.
+    pub fn validate_literal_replacement_plan(
+        &self,
+        plan: &LiteralReplacementPlan,
+    ) -> Result<(), IndexError> {
+        let expected = self.plan_literal_replacement(&plan.search, &plan.replacement)?;
+        if expected != *plan {
+            return Err(IndexError::InvalidSearchPlan);
+        }
+        Ok(())
+    }
+
     /// Case-sensitive UTF8 literal search; no regex, normalization or parser filtering.
     /// Cancellation is checked before each byte comparison; callback must not block.
     pub fn search_literal<F: FnMut() -> bool>(
