@@ -6,6 +6,7 @@ import PencilKit
 struct DrawingCanvasView: View {
     @Environment(CaptureStore.self) private var store
     @State private var canvasView = PKCanvasView()
+    @State private var strokeCount = 0
     @State private var instructions: String = ""
     @State private var showInstructionsField = false
 
@@ -18,7 +19,7 @@ struct DrawingCanvasView: View {
 
             // Canvas — white, full-width, prominent
             ZStack(alignment: .topTrailing) {
-                PencilCanvasRepresentable(canvasView: $canvasView)
+                PencilCanvasRepresentable(canvasView: $canvasView, strokeCount: $strokeCount)
                     .background(Color.white)
                     .clipShape(RoundedRectangle(cornerRadius: 12))
                     .shadow(color: .black.opacity(0.08), radius: 4, x: 0, y: 2)
@@ -26,8 +27,8 @@ struct DrawingCanvasView: View {
                     .padding(.vertical, 8)
 
                 // Stroke count badge
-                if !canvasView.drawing.strokes.isEmpty {
-                    Text("\(canvasView.drawing.strokes.count)")
+                if strokeCount > 0 {
+                    Text("\(strokeCount)")
                         .font(.caption2.monospacedDigit())
                         .foregroundStyle(.secondary)
                         .padding(6)
@@ -67,13 +68,13 @@ struct DrawingCanvasView: View {
                     Image(systemName: "trash")
                 }
                 .buttonStyle(.bordered)
-                .disabled(canvasView.drawing.strokes.isEmpty)
+                .disabled(strokeCount == 0)
 
                 Button(action: undoStroke) {
                     Image(systemName: "arrow.uturn.backward")
                 }
                 .buttonStyle(.bordered)
-                .disabled(canvasView.drawing.strokes.isEmpty)
+                .disabled(strokeCount == 0)
 
                 // Instructions toggle
                 Button(action: { withAnimation { showInstructionsField.toggle() } }) {
@@ -89,7 +90,7 @@ struct DrawingCanvasView: View {
                         .font(.headline)
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(canvasView.drawing.strokes.isEmpty)
+                .disabled(strokeCount == 0)
             }
             .padding(.horizontal, 16)
             .padding(.bottom, 8)
@@ -100,6 +101,7 @@ struct DrawingCanvasView: View {
 
     private func clearCanvas() {
         canvasView.drawing = PKDrawing()
+        strokeCount = 0
     }
 
     private func undoStroke() {
@@ -107,6 +109,7 @@ struct DrawingCanvasView: View {
         guard !strokes.isEmpty else { return }
         strokes.removeLast()
         canvasView.drawing = PKDrawing(strokes: Array(strokes))
+        strokeCount = strokes.count
     }
 
     private func captureDrawing() {
@@ -162,12 +165,14 @@ struct DestinationStrip: View {
 /// UIKit wrapper for PKCanvasView with persistent PKToolPicker.
 struct PencilCanvasRepresentable: UIViewRepresentable {
     @Binding var canvasView: PKCanvasView
+    @Binding var strokeCount: Int
 
     func makeUIView(context: Context) -> PKCanvasView {
         canvasView.drawingPolicy = .anyInput
         canvasView.tool = PKInkingTool(.pen, color: .black, width: 3)
         canvasView.backgroundColor = .white
         canvasView.isOpaque = true
+        canvasView.delegate = context.coordinator
 
         let picker = PKToolPicker()
         picker.setVisible(true, forFirstResponder: canvasView)
@@ -179,9 +184,18 @@ struct PencilCanvasRepresentable: UIViewRepresentable {
     }
 
     func updateUIView(_ uiView: PKCanvasView, context: Context) {}
-    func makeCoordinator() -> Coordinator { Coordinator() }
+    func makeCoordinator() -> Coordinator { Coordinator(strokeCount: $strokeCount) }
 
-    class Coordinator {
+    class Coordinator: NSObject, PKCanvasViewDelegate {
+        private var strokeCount: Binding<Int>
         var toolPicker: PKToolPicker?
+
+        init(strokeCount: Binding<Int>) {
+            self.strokeCount = strokeCount
+        }
+
+        func canvasViewDrawingDidChange(_ canvasView: PKCanvasView) {
+            strokeCount.wrappedValue = canvasView.drawing.strokes.count
+        }
     }
 }
