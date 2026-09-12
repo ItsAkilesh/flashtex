@@ -2,6 +2,14 @@
 
 Updated 2026-09-12T11:06:33.760495+00:00, baseline main 2d68926cf1cb7c311b633ff05724eeee2d278ac1. Historical detail remains in Git and committed evidence; this file records current handoff state.
 
+## Latest verified checkpoint (supersedes older pending lists below)
+
+Main e4c9252d integrates runtime b9240b0 and helper ccd474f4, including c47139ff observable-condition sibling test repair. Original parallel short-wall-deadline failures are retained; repaired default-parallel runtime, serial runtime, full real-compiler helper suite and strict lints pass. Full-size optional-output refusal/stall recovery passed. Main0aac2b7f integrates font5c89501 and rendering4ca51d94 with combined font/render suites+lints, actual pinned PFB and Python gates. Helper candidate adapter accepts real producer/runtime/helper fixtures without metadata repair; native mode stays OFF.
+
+Current formal assignments: FT023r10 subsetter consumer (unchanged mac-pdf20e5277, existing five fixtures), FT049r4 independent incremental producer6e69661 acceptance, FT048 helper measurements/diagnostics. Same four handles running; drained three and Sol remain completed. Renderer/runtime correctness builds active in their own worktrees; no Commander build sessions remain. Pending evidence-only runtime9e4117fb lifecycle and root34742219 scaling/decline harness; review/merge next. New additive runtime display-stage profiling approved after correctness checkpoint, no helper-owned runtime edits.
+
+Latest remote structured Jaysen10:55:23 reports9children+parent, target15; parent tip7ccbd7e9 at11:06. Danielb40e994 unchanged, no fresh live census. Issue2comment5645542186 requests existing queue pickup/census and announces tested main; previous5645530349 routes native helper/source-plan/history acceptance. Services remain active PIDs1099831/752107; do not restart absent terminal proof. No active global publication uncertainty.
+
 ## Authority and staffing
 
 Sole Commander is `/root/runtime_validator`, orchestrator-astra. `/root` is a product engineer/user-facing relay, not a second global writer. Exactly four local slots: Commander, root helper/ledger engineer, existing `/root/compiler_corpus` handle NOW runtime-display engineer, and `/root/supervisor_api_review` renderer. No new agent was spawned for the role transfer.
