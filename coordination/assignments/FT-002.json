@@ -1,23 +1,23 @@
 {
   "acceptance": [
-    "Corpus macro, scope, comments/escapes, and include cases improve without losing any passing check",
-    "Included output preserves exact source file identity and UTF-8 byte ranges",
-    "Compiler and PDF paths share one layout/font representation or document a tested adapter"
+    "Cold/warm/edit measurements use pinned corpus inputs and compare exact clean output",
+    "Crash/restart and malformed-repair sequences preserve deterministic state and diagnostics",
+    "Every remaining unsupported corpus feature is explicit with a reproducible case"
   ],
   "agent_id": "claude",
-  "allocation_id": "openai-kabir-plus-ft002-stage4",
+  "allocation_id": "openai-kabir-plus-ft002-stage5",
   "branch": "agent/claude/compiler-foundation",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "81f02dc739a650a6a704157bf96eadeb5d13c392",
-  "objective": "Integrate the four Kabir child streams: reusable incremental state, scoped macro expansion, project-relative multifile dependencies, and independent equivalence/performance evidence. Resolve issues #8 and #9 without duplicating layout or silently substituting unsupported glyphs.",
+  "input_main_sha": "ac170976d00cb5e8549c17542522608ad35c98ac",
+  "objective": "Harden incremental restart/recovery and run the pinned corpus non-regression gate across the integrated compiler, recording supported, failed, unsupported, and unverified behavior honestly.",
   "owned_paths": [
     "crates/compiler"
   ],
-  "revision": 4,
+  "revision": 5,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-002",
   "timebox_minutes": 45,
-  "updated_utc": "2026-09-12T05:41:35Z"
+  "updated_utc": "2026-09-12T06:22:39Z"
 }
