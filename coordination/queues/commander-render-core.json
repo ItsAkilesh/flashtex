@@ -4,8 +4,8 @@
   "schema_version": 1,
   "steps": [
     {
-      "name": "Audit latest published native font and metric packaging against verified10pt12pt and math resource lookup without Swift changes",
-      "objective": "Audit latest published native font and metric packaging against verified10pt12pt and math resource lookup without Swift changes",
+      "name": "Prepare minimal GH36 packaging and discovery patch against exact published owner sources in owned handoff only",
+      "objective": "Prepare minimal GH36 packaging and discovery patch against exact published owner sources in owned handoff only",
       "owned_paths": [
         "crates/rendering-core"
       ],
@@ -17,8 +17,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Distinguish packaged assets from external TeX fallback and identify only demonstrated default installation gaps",
-      "objective": "Distinguish packaged assets from external TeX fallback and identify only demonstrated default installation gaps",
+      "name": "Verify patch applies to pinned source and reuses manifest verifier without overwriting explicit user resource overrides",
+      "objective": "Verify patch applies to pinned source and reuses manifest verifier without overwriting explicit user resource overrides",
       "owned_paths": [
         "crates/rendering-core"
       ],
@@ -30,8 +30,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Publish exact asset hash lookup coverage and bounded native-owner handoff without native execution or parity claims",
-      "objective": "Publish exact asset hash lookup coverage and bounded native-owner handoff without native execution or parity claims",
+      "name": "Publish native owner nohostTeX app-bundle acceptance command and limitations without authoritative native edits",
+      "objective": "Publish native owner nohostTeX app-bundle acceptance command and limitations without authoritative native edits",
       "owned_paths": [
         "crates/rendering-core"
       ],

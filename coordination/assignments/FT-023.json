@@ -8,15 +8,15 @@
   "branch": "agent/commander-render-core/rendering-core",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "0d0e2cce744b57cf4ebf1478dd12dc2f23b4f308",
-  "objective": "Audit latest published native font and metric packaging against verified10pt12pt and math resource lookup without Swift changes",
+  "input_main_sha": "367aba68e2ee689cca8db4da2a8427d82f3de72b",
+  "objective": "Prepare minimal GH36 packaging and discovery patch against exact published owner sources in owned handoff only",
   "owned_paths": [
     "crates/rendering-core"
   ],
-  "revision": 16,
+  "revision": 18,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-023",
   "timebox_minutes": 40,
-  "updated_utc": "2026-09-12T13:07:20.713348+00:00"
+  "updated_utc": "2026-09-12T13:19:41.800162+00:00"
 }

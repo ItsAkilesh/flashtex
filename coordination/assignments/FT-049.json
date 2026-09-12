@@ -11,15 +11,15 @@
   "branch": "agent/commander-runtime-display/display-runtime",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "0d0e2cce744b57cf4ebf1478dd12dc2f23b4f308",
-  "objective": "Build untouched pinned65dbe7d producer release in isolated artifact target preserving debug binaries and source provenance",
+  "input_main_sha": "291849d7d5ab67781d1c681f50ebc328fd8a996c",
+  "objective": "Independently audit actual sustained grouped typing request ordering revision hashes and permanent receipts from published helper capture",
   "owned_paths": [
     "crates/document-runtime"
   ],
-  "revision": 23,
+  "revision": 25,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-049",
   "timebox_minutes": 40,
-  "updated_utc": "2026-09-12T13:07:20.711612+00:00"
+  "updated_utc": "2026-09-12T13:15:49.023748+00:00"
 }

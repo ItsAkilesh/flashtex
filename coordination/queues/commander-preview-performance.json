@@ -4,8 +4,8 @@
   "schema_version": 1,
   "steps": [
     {
-      "name": "Prepare current release helper for same50KBtyping GH21 phase attribution preserving debug evidence and exact source workload",
-      "objective": "Prepare current release helper for same50KBtyping GH21 phase attribution preserving debug evidence and exact source workload",
+      "name": "Trace completed intermediate compiler generations to stale notifications in the existing sustained typing capture",
+      "objective": "Trace completed intermediate compiler generations to stale notifications in the existing sustained typing capture",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"
@@ -19,8 +19,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Verify release helper final output source receipts and reopen against existing debug capture using pinned producer release",
-      "objective": "Verify release helper final output source receipts and reopen against existing debug capture using pinned producer release",
+      "name": "Measure one explicit completed-snapshots opt-in burst with exact origin tokens and separate historical and current counts",
+      "objective": "Measure one explicit completed-snapshots opt-in burst with exact origin tokens and separate historical and current counts",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"
@@ -34,8 +34,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Record one release phase-attributed sample with request ACK compiler and frame costs without native or universal latency claims",
-      "objective": "Record one release phase-attributed sample with request ACK compiler and frame costs without native or universal latency claims",
+      "name": "Verify source authority final clean preview durable reopen and receipt retry while preserving default OFF and report limitations",
+      "objective": "Verify source authority final clean preview durable reopen and receipt retry while preserving default OFF and report limitations",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"

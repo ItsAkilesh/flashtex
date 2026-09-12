@@ -9,16 +9,16 @@
   "branch": "agent/commander-preview-performance/preview-performance",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "0d0e2cce744b57cf4ebf1478dd12dc2f23b4f308",
-  "objective": "Prepare current release helper for same50KBtyping GH21 phase attribution preserving debug evidence and exact source workload",
+  "input_main_sha": "ff5e0cd7ddad4e8ca82977fb0bfee35309a48f58",
+  "objective": "Trace completed intermediate compiler generations to stale notifications in the existing sustained typing capture",
   "owned_paths": [
     "crates/preview-controller",
     "crates/edit-ledger"
   ],
-  "revision": 20,
+  "revision": 22,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-048",
   "timebox_minutes": 40,
-  "updated_utc": "2026-09-12T13:07:20.708949+00:00"
+  "updated_utc": "2026-09-12T13:24:35.346350+00:00"
 }
