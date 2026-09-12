@@ -816,6 +816,13 @@ def build_report(entries, prov, evidence, thresholds_result, regress_result, arg
             L.append(f"- reused from run `{run}` ({ver}): {len(keys)} pairs — the PDF stored in `evidence/{run}/references/` was reused after its "
                      "recorded fixture SHA-256 and preamble matched; raster and word boxes re-derived by this run's rasterizer; the engine "
                      "version above is the one that produced that PDF, not a binary present on this machine")
+        vr = refs.get("vs_recorded")
+        if vr:
+            sm = vr.get("summary", {})
+            L.append(f"- live renders vs previously recorded references ({vr.get('recorded_run')}, {vr.get('recorded_distribution')}): "
+                     f"{sm.get('pairs')} pairs, rasters pixel-identical at {args.dpi:g} DPI for {sm.get('raster_identical')} of them "
+                     f"(max differing px {sm.get('max_differing_px')}); PDF bytes identical for {sm.get('pdf_identical')} "
+                     f"(differences are CreationDate/ModDate, trailer /ID and compressed-stream bytes only); details in `{vr.get('file')}`")
         if refs.get("unavailable"):
             L.append(f"- **reference unavailable** (reported, not failed): {len(refs['unavailable'])} pairs")
             for u in refs["unavailable"][:24]:

@@ -3,7 +3,7 @@
 Agent / task / branch: `mac-visual-oracle` (Claude Code subagent, parent `mac-claude-a`,
 machine `mac-m1max-a`) / FT-017 rev 2 (acked 06:30Z, input main 41c4616) /
 `agent/mac-visual-oracle/reference-raster`
-State: in progress — rev 2 code complete and self-tested; full corpus run in progress (see Validation)
+State: ready for integration (rev 2 delivered; evidence with live MacTeX oracles and with reused references)
 Owned paths: `tests/visual-corpus/harness/`, `tests/visual-corpus/evidence/`,
 `coordination/mac-visual-oracle.md`, `coordination/agents/mac-visual-oracle.json`
 Main integrated through: a949f5b773a1bc7f1be7ae2d79581856af88a97b (merge b45bd17)
@@ -11,11 +11,11 @@ Main integrated through: a949f5b773a1bc7f1be7ae2d79581856af88a97b (merge b45bd17
 ## Session note (resumed after an accidental stop)
 
 The previous worker session was stopped by the user mid-run; its work was preserved as
-78b9a64 (untested). Between that session and this one **BasicTeX was removed** from this
-Mac (MacTeX install pending the user's sudo): `pdflatex`/`xelatex`/`lualatex` are absent.
-The oracle renders the stopped run had produced (18 fixtures × 6 oracle variants, TeX Live
-2026 BasicTeX) survived in the session scratchpad and are now stored durably in the
-repository so the harness keeps working without an engine (see "Reference reuse").
+78b9a64 (untested). Between that session and this one BasicTeX was removed from this Mac, so
+the harness first gained a reference-reuse path (evidence run 20260912T065946Z, every oracle PDF
+reused from the stopped run's renders); the coordinator then installed **MacTeX 2026 full**
+(`/usr/local/texlive/2026`, tlmgr r78301; `/Library/TeX/texbin` → its bin dir) and the corpus was
+re-run with live oracles (evidence run 20260912T072838Z, the primary rev 2 evidence).
 
 ## Ready behavior (rev 2)
 
@@ -69,15 +69,20 @@ repository so the harness keeps working without an engine (see "Reference reuse"
 
 ## Incomplete behavior
 
-- No oracle can be rendered fresh on this machine until MacTeX is installed; every reference
-  in the rev 2 evidence run is reused from 20260912T064032Z (stated per entry).
-- Native SwiftUI preview capture was not run this session (rev 1 route unchanged; 1x display
-  upsampling limitation still applies).
-- `reference-profile.json` (raw PDF SHA-256 pins) was pinned in rev 1 for 9 fixtures × main/de1020c;
-  the 9 new fixtures and the `pipeline` build are reported as unpinned. Not re-pinned here
-  because a pin is a baseline, not a pass; Commander may ask for an explicit `--pin-profile`.
-- The `main` build at run time was 462fb27 (origin/main moved during the session); the run
-  reports the SHA it actually built.
+- Native SwiftUI preview capture was not run this session (rev 1 route unchanged; the 1x-display
+  upsampling limitation still applies; the native gate column reads "unavailable").
+- `reference-profile.json` (raw PDF SHA-256 pins) is still the rev 1 pin (9 fixtures × main/de1020c);
+  the 9 new fixtures and `pipeline` are reported "unpinned"; `main` differs because its SHA moved.
+  Not re-pinned here: a pin is a baseline, not a pass — Commander may request `--pin-profile`.
+- Labels `main` and `pipeline` track moving branch tips (main 462fb27 → 5f9f4ec, pipeline
+  7094ef7 → c000dad between the two runs); the `--regress` diagnostic therefore flags the label,
+  not a harness change: 40 (run 065946Z, all `main`) and 48 (run 072838Z, all `pipeline`) entries
+  "worse" vs the previous run, `de1020c` never. Pin exact SHAs with `--compiler-ref` for a true
+  regression check.
+- Registration is translation-only (scale assumed 1); the correlation candidate is accepted only
+  when it lowers mean|Δ| and is labelled `weak`/`moderate`/`strong` by the fraction of error it
+  explains. Weak/moderate large shifts (e.g. 03-section-heading dy 54 pt, 11%) are coincidental
+  line alignments, not offsets — read them as "no reliable global offset".
 
 ## Interface changes and required consumer actions
 
@@ -88,16 +93,39 @@ None to runtime contracts. Harness CLI: `--reference-from` added to `render_refe
 
 ## Validation
 
-- `selftest.py --rasterize <built rasterize>`: PASS (18 checks).
-- `render_reference.sh` without any engine: all 108 pairs reused from 20260912T064032Z
-  (fixture SHA + preamble verified), 0 unavailable.
-- Evidence run: `tests/visual-corpus/evidence/20260912T065946Z` (in progress at this
-  checkpoint; numbers in the next update).
+- `selftest.py --rasterize <built rasterize>`: PASS (18 checks; run after every diff.py change).
+- Run 20260912T065946Z (no engine installed): all 108 reference pairs reused from
+  20260912T064032Z after fixture-SHA + preamble checks, 0 unavailable; 648 entries, 0 skipped;
+  276 PNGs, none > 300 KB.
+- Run 20260912T072838Z (MacTeX 2026 full, live): 108/108 oracle renders exit 0 (pdfTeX 1.40.29,
+  XeTeX 0.999998, LuaHBTeX 1.24.0 — same versions as BasicTeX), new reference store written;
+  648 entries, 0 skipped; 276 PNGs ≤ 300 KB; compilers main@5f9f4ec, de1020c, pipeline@c000dad
+  all built.
+- **Live vs recorded references** (`072838Z/reference-vs-recorded.json`): 108/108 pairs
+  pixel-identical at 144 DPI (max differing px 0); 0/108 PDFs byte-identical — differences are
+  CreationDate/ModDate, trailer /ID and compressed object-stream bytes only. The recorded
+  BasicTeX references were therefore a faithful stand-in; the MacTeX provenance is now the
+  primary one and the reuse path stays as fallback.
+- Exact gates (acceptance): export vs preview-equivalent DIFFERENT on all 54 fixture/compiler
+  pairs (as in rev 1), native unavailable, PDF bytes = pin only for de1020c on the 9 pinned
+  fixtures. Diagnostics: 4 threshold failures (pdflatex vs de1020c on 10/12/15/16 — long
+  wrapping text, greedy unjustified breaking).
+- Registration vs rendering error, pdflatex-lm oracle, export side, page 1 (mean|Δ| raw → after
+  registration; shift pt; confidence):
+  - 17-apostrophes: de1020c 0.862 → 0.862, shift (0,0) none — the residual is rendering error
+    (quotesingle vs quoteright glyphs, mean word |dx| 44.6 pt); pipeline 0.674 → 0.631, shift
+    (−0.5,0) moderate 6%; pipeline word sequence = oracle, mean |dx| 0.02 pt.
+  - 09-mixed-document: de1020c 2.252 → 1.901, shift (−0.5,39.5) moderate 16% (display box SSIM₈
+    0.381 → 0.528); pipeline 1.859 → 1.609, shift (0,−16.5) moderate 13%.
+  - 18-ligatures: de1020c 1.315, correlation candidate (−18.5,0) REJECTED (would raise the error)
+    → shift 0, all rendering error (ligature advance widths); pipeline 0.976, shift 0.
+  - 02-wrapping-paragraph: de1020c 7.786, candidate (−8.5,−14.5) rejected; pipeline 4.547 (raw
+    SSIM₈ 0.937 vs de1020c 0.862) — line breaking, not offset.
 
 ## Needs from others
 
-- User: MacTeX install (sudo) to render fresh oracles again; the harness then writes a new
-  reference store automatically.
+- None blocking. Commander: say whether `reference-profile.json` should be re-pinned to the
+  18-fixture corpus, and whether `pipeline` should be pinned to a SHA rather than the branch tip.
 
 ## Resource state
 
@@ -106,18 +134,20 @@ None to runtime contracts. Harness CLI: `--reference-from` added to `render_refe
 
 ## Next action
 
-Finish the evidence run, push it, update this handoff with registration-vs-rendering numbers,
-report to Commander via `coord.py report`.
+Await Commander review. Next if assigned: Retina native capture route, scale-aware registration
+for native captures, per-line region metrics, merge origin/main into this branch.
 
 ## Peer revisions reviewed and adaptations
 
-- `origin/agent/mac-render-pipeline/unified` 7094ef7 (resume checkpoint; "drop
-  out-of-ownership harness snapshot"): crate `crates/render-pipeline` builds with
-  `cargo build --release` from a `git archive` of the whole `crates/` tree; added as the
-  `pipeline` compiler label. Its binary is `flashtex-render` with the same JSON Lines interface.
-- `origin/main` 462fb27 at run time: `crates/compiler` changed in 17 files since a949f5b
-  (integrated base); it builds and is compared as `main`. The harness consumes only the
+- `origin/agent/mac-render-pipeline/unified` 7094ef7 → c000dad ("secnumdepth option and
+  \setcounter{secnumdepth} parsing"): `crates/render-pipeline` builds from a `git archive` of
+  the whole `crates/` tree; compared as `pipeline` (binary `flashtex-render`, same JSON Lines
+  interface). Finding for its owner: against the Latin Modern oracle it reproduces the word
+  sequence of 17-apostrophes exactly (mean |dx| 0.02 pt) and halves the raw error of de1020c on
+  02-wrapping-paragraph; display-math boxes remain the weakest region (SSIM₈ 0.37–0.53).
+- `origin/main` 462fb27 / 5f9f4ec at run time: `crates/compiler` changed in 17 files since
+  a949f5b (integrated base); it builds and is compared as `main`. The harness consumes only the
   runtime-v1 compile_result and U+2500 rule convention, both still present; a full merge of
   main into this branch is deferred to the next clean checkpoint.
 
-Updated: 2026-09-12T07:10Z
+Updated: 2026-09-12T07:42Z
