@@ -32,12 +32,12 @@ const SOURCE_CASES: &[SourceCase] = &[
     },
     SourceCase {
         name: "mismatched end",
-        input: r"Visible \begin{quote}body\end{itemize} Tail.",
-        message: r"does not match \begin{quote}",
+        input: r"Visible \begin{tabbing}body\end{itemize} Tail.",
+        message: r"does not match \begin{tabbing}",
     },
     SourceCase {
         name: "stray end",
-        input: r"Visible \end{quote} Tail.",
+        input: r"Visible \end{tabbing} Tail.",
         message: r"no matching \begin",
     },
     SourceCase {
@@ -65,8 +65,8 @@ const SOURCE_CASES: &[SourceCase] = &[
     },
     SourceCase {
         name: "unimplemented environment",
-        input: r"Visible \begin{quote}body\end{quote} Tail.",
-        message: "environment 'quote' is not implemented",
+        input: r"Visible \begin{tabbing}body\end{tabbing} Tail.",
+        message: "environment 'tabbing' is not implemented",
     },
     SourceCase {
         name: "missing required command argument",
