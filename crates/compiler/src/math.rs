@@ -15,6 +15,11 @@ pub const SUBSCRIPT_LOWER_EM: f64 = 0.2;
 pub const MATH_AXIS_EM: f64 = 0.25;
 pub const FRACTION_GAP_EM: f64 = 0.16;
 pub const FRACTION_RULE_EM: f64 = 0.06;
+/// Symbol.afm `radical` (C 214): ink right edge 515 and top 917, per 1000 em.
+pub const RADICAL_INK_RIGHT_EM: f64 = 0.515;
+pub const RADICAL_TOP_EM: f64 = 0.917;
+/// Symbol.afm `radicalex` (C 96), the vinculum extender: y 881..917.
+pub const RADICALEX_THICKNESS_EM: f64 = 0.036;
 pub const MATRIX_COLUMN_GAP_EM: f64 = 1.0;
 pub const MATRIX_ROW_GAP_EM: f64 = 0.3;
 pub const QUAD_EM: f64 = 1.0;
@@ -1611,7 +1616,27 @@ fn layout_nucleus(
                     rule: None,
                 },
             );
+            // The vinculum, as Symbol's own `radicalex` extender draws it: from
+            // the radical's ink edge over the whole body, top-aligned with the
+            // radical glyph. Neither the sign nor the bar grows for tall bodies.
+            let vinculum_x = RADICAL_INK_RIGHT_EM * size;
+            let vinculum_height = RADICALEX_THICKNESS_EM * size;
+            let vinculum_y = -RADICAL_TOP_EM * size;
+            b.items.push(MathItem {
+                font: None,
+                text: FRACTION_RULE_CHAR.to_string(),
+                x: vinculum_x,
+                baseline: vinculum_y + vinculum_height,
+                size,
+                span: atom.span,
+                rule: Some(MathRule {
+                    y: vinculum_y,
+                    width: radical_width - vinculum_x + b.width,
+                    height: vinculum_height,
+                }),
+            });
             b.width += radical_width;
+            b.ascent = b.ascent.max(RADICAL_TOP_EM * size);
             b
         }
         Nucleus::Fraction {
@@ -2097,12 +2122,36 @@ mod parse_tests {
         assert!(nuclei.contains(&&Nucleus::Text("(2)".into())));
         let laid = layout(&list, 12.0, &mut diagnostics);
         assert!(diagnostics.is_empty(), "{diagnostics:?}");
-        // The box contributes four real rules and the overline one, beside
-        // the binomial's none.
+        // The box contributes four real rules, the overline one and the
+        // radical's vinculum one, beside the binomial's none.
         assert_eq!(
             laid.items.iter().filter(|item| item.rule.is_some()).count(),
-            5
+            6
         );
+    }
+
+    #[test]
+    fn sqrt_draws_its_vinculum_over_the_whole_body() {
+        let mut diagnostics = Vec::new();
+        let tokens = crate::lexer::tokenize(r"\sqrt{10-x}");
+        let list = parse_tokens(&tokens, &mut diagnostics);
+        let size = 10.0;
+        let laid = layout(&list, size, &mut diagnostics);
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
+        let rules: Vec<_> = laid.items.iter().filter(|i| i.rule.is_some()).collect();
+        assert_eq!(rules.len(), 1, "exactly one vinculum");
+        let bar = rules[0].rule.unwrap();
+        let x_item = laid.items.iter().find(|i| i.text == "x").unwrap();
+        // Starts at the radical's ink edge and reaches the end of the body.
+        assert!((rules[0].x - RADICAL_INK_RIGHT_EM * size).abs() < 1e-9);
+        assert!((rules[0].x + bar.width - laid.width).abs() < 1e-9);
+        assert!(
+            rules[0].x + bar.width > x_item.x,
+            "covers the last body glyph"
+        );
+        // Top-aligned with the radical glyph at Symbol's radicalex thickness.
+        assert!((bar.y + RADICAL_TOP_EM * size).abs() < 1e-9);
+        assert!((bar.height - RADICALEX_THICKNESS_EM * size).abs() < 1e-9);
     }
 
     #[test]
