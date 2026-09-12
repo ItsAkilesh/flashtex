@@ -56,7 +56,7 @@ pairs with it through the real `NearbyClient` code over loopback.
 
 | file | what it shows | source |
 |---|---|---|
-| `simctl-*-canvas-drawing.png`, `simctl-*-canvas-drawn.png` | PencilKit canvas while/after three finger drags draw a triangle ("3 strokes"), "Connected to Runner Mac", destination `dest-tikz @ main.tex rev 3` from `hello_ack` | `xcrun simctl io <udid> screenshot` from the host during the test (rotated 270° to landscape) |
+| `simctl-191101Z-capture-prepared.png` | full landscape screen (results-14 run, 19:11:01Z): triangle drawn by three finger drags ("3 strokes"), "Connected to Runner Mac", destination `dest-tikz @ main.tex rev 3` from `hello_ack`, draft line `cap-… 32721 PNG bytes 1636×640`, Discard / Send to Mac buttons, "Captures (1)" | `xcrun simctl io <udid> screenshot` from the host during the test (rotated 270° to landscape) |
 | `10-canvas-drawn.png`, `11-capture-prepared.png`, `12-capture-received.png` | same run: drawn → Prepare (draft line with PNG byte count and pixel size) → Send → status row "received — Mac inbox, not journaled (durable:false)" with the echoed `capture_received capture_id=… durable=false has_proposal=false applied=false` | XCTAttachment (`app.screenshot()`; note the runner frames landscape content in a portrait canvas, so the right edge is cropped — the simctl frames are the full screen) |
 | `13-capture-discarded.png` | Prepare → Discard: "discarded before sending"; the runner asserted the Mac received nothing | XCTAttachment |
 | `14-sample-image-prepared.png`, `15-sample-image-received.png` | bundled `sample-capture.png` (photo-picker stand-in; the simulator has no camera) → Prepare → Send → receipt; the runner asserted a structurally valid PNG arrived | XCTAttachment |
