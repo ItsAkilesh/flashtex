@@ -3,27 +3,27 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-048": {
-      "acknowledged_utc": "2026-09-12T13:35:41Z",
-      "adaptation": "Separate-process sender implementation with bounded pipe writes and deterministic lifecycle checks; original captures preserved and no new timing run.",
-      "main_sha": "8caf94141ae366e7c47639af7c974ec4c50b7490",
-      "revision": 23
+      "acknowledged_utc": "2026-09-12T13:39:38Z",
+      "adaptation": "Commander-approved one controlled processsender pair after six lifecycle tests and explicit runtime/renderer quiet confirmations; both terminalPASS.",
+      "main_sha": "d34865e807f3fa327ae9c26bc814101e123956a7",
+      "revision": 24
     }
   },
   "branch": "agent/commander-preview-performance/preview-performance",
   "capabilities": [
     "Preview helper serialization and latency"
   ],
-  "code_revision": "8d913d2a3db241417c071709ca7c9fa857778fd8",
+  "code_revision": "f240daecda41e955a90ff0fc9fb75f78bbf75566",
   "eta_minutes": null,
   "machine": "linux-primary",
-  "main_integrated_through": "8d913d2a3db241417c071709ca7c9fa857778fd8",
-  "next_action": "Address independent sender lifecycle review before any controlled comparative typing run.",
+  "main_integrated_through": "f240daecda41e955a90ff0fc9fb75f78bbf75566",
+  "next_action": "Independent original artifact audit; then profile remaining receiver/output cost before choosing product optimization.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "FT048r23 separate-process sender implemented; five lifecycle tests pass, independent review pending.",
+  "summary": "FT048r24 processsender pair captured; current final80.34ms and historical141.40ms postlastsend, maxsendlateness below0.11ms; exact final/source/receipt gates pass.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T13:35:41Z",
+  "updated_utc": "2026-09-12T13:39:39Z",
   "usage": {
     "status": "unknown"
   }

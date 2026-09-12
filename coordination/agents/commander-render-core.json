@@ -3,10 +3,10 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-023": {
-      "revision": 19,
-      "main_sha": "620c349ccfa3796201290300a77c558024a1ffd3",
       "acknowledged_utc": "2026-09-12T13:35:53.670040+00:00",
-      "adaptation": "Read FT023r19. Bound current native evidence review to exact published SHAs; no native execution or speculative patch."
+      "adaptation": "Read FT023r19. Bound current native evidence review to exact published SHAs; no native execution or speculative patch.",
+      "main_sha": "620c349ccfa3796201290300a77c558024a1ffd3",
+      "revision": 19
     }
   },
   "branch": "agent/commander-render-core/rendering-core",
@@ -14,23 +14,23 @@
     "rust",
     "rendering"
   ],
-  "code_revision": "4dba31c78bd88e4d8a8391d05fd7979fdff9de84",
+  "code_revision": "290b7c664895f1688229ab6152053ce5f4e2611d",
   "eta_minutes": {
-    "likely": 2,
+    "likely": 3,
     "optimistic": 1,
-    "pessimistic": 3
+    "pessimistic": 5
   },
   "machine": "linux-primary",
-  "main_integrated_through": "aef15f20a676289e6a7b6d8116cc18ce48337c5d",
-  "next_action": "Commander route GH31 integration/native test provenance and GH36 actual package/nohostTeX artifacts; no new owner or speculativepatch.",
+  "main_integrated_through": "a177cc3c99eb0a70e59045d421aa1bf330354a3b",
+  "next_action": "Review actual builtproducer+sealedstage feasibility with existing assets. GH36 requires nohostTeX/override evidence; do not blindly apply oldproducerpatch.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "accepted",
-  "summary": "FT023r19 native evidence review4dba31c7: older230gate run does not establish current rawhelper/noTeX route;2.9scurrentpaint limitation retained. GH31a9b55af7 source fix matches handoff, not integratede50f.",
+  "summary": "Native followup290b7c66 corrects census interval and handoff-vs-adoption; new authoritativeproducer0b09be57 included7ca34cec implements rooted/flat metric discovery.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T13:35:53Z",
+  "updated_utc": "2026-09-12T13:39:12Z",
   "usage": {
-    "evidence": "Pinned report5a13599 actually app7ccbd7e9/helpers1884986f/render6e696616. Controller useslegacycompiler. Historical60KB30ms currentp952900ms vs firstp95258ms, latencynotgated. GH31readonceSHAcheckedbeforeCGFont; ownertestsinspectedonly. GH36branchabsentatfetch.",
-    "status": "Hosted OpenAI only; no providers/descendants. Read-only Git/gh source review, no native/build/test jobs. Context telemetry/native compaction unavailable."
+    "evidence": "Clock correction5646213168 recorded;4timeoutsload121 and passes80-94 remainnonisolated. Exactnewfonts.rs hash pinned. TFMenvoverrides precede paths, but requiredloader alltexmfroots beforeflatdirs; nextactualconsumerprobe needed. Packagingrefabsent.",
+    "status": "Hosted OpenAI only; no providers/descendants. Docs-only source review, no jobs or nativecalls. Context telemetry/native compaction unavailable."
   }
 }
