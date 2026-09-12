@@ -13,6 +13,83 @@ struct Client {
     output: Receiver<Value>,
 }
 #[test]
+fn metadata_edit_ack_preserves_large_source_recovery_and_default_response() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut client = Client::start(dir.path());
+    client.send("before", "document", json!({"path":"main.tex"}));
+    let before = client.reply("before")["payload"]["document"].clone();
+    client.send(
+        "invalid",
+        "edit",
+        json!({"path":"main.tex","expected_revision":1,
+        "expected_sha256":before["source_sha256"],"text":"must not save","response_mode":true}),
+    );
+    assert_eq!(client.reply("invalid")["type"], "error");
+    client.send("unchanged", "document", json!({"path":"main.tex"}));
+    assert_eq!(client.reply("unchanged")["payload"]["document"], before);
+    let text = "α".repeat(250_000);
+    let request = json!({"path":"main.tex","expected_revision":1,
+        "expected_sha256":before["source_sha256"],"text":text,"response_mode":"metadata"});
+    client.send("save", "edit", request.clone());
+    let ack = client.reply("save");
+    assert_eq!(ack["type"], "result");
+    assert_eq!(ack["payload"]["response_mode"], "metadata");
+    let metadata = ack["payload"]["document"].clone();
+    assert!(metadata.get("text").is_none());
+    assert_eq!(metadata["project_id"], "p");
+    assert_eq!(metadata["path"], "main.tex");
+    assert_eq!(metadata["revision"], 2);
+    assert_eq!(metadata["byte_length"], 500_000);
+    assert!(serde_json::to_vec(&ack).unwrap().len() < 1024);
+    drop(client);
+    let mut client = Client::start(dir.path());
+    client.send("recovered", "document", json!({"path":"main.tex"}));
+    let recovered = client.reply("recovered")["payload"]["document"].clone();
+    assert_eq!(recovered["text"], text);
+    assert_eq!(recovered["source_sha256"], metadata["source_sha256"]);
+    assert_eq!(recovered["revision"], 2);
+    client.send("save", "edit", request);
+    assert_eq!(client.reply("save")["type"], "error");
+    client.send(
+        "full",
+        "edit",
+        json!({"path":"main.tex","expected_revision":2,
+        "expected_sha256":metadata["source_sha256"],"text":"default full response"}),
+    );
+    let full = client.reply("full");
+    assert_eq!(full["payload"]["document"]["text"], "default full response");
+    assert_eq!(full["payload"]["document"]["revision"], 3);
+}
+#[test]
+fn unread_metadata_ack_reopens_source_and_stale_retry_does_not_apply_twice() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut client = Client::start(dir.path());
+    client.send("before", "document", json!({"path":"main.tex"}));
+    let before = client.reply("before")["payload"]["document"].clone();
+    let request = json!({"path":"main.tex","expected_revision":1,
+        "expected_sha256":before["source_sha256"],"text":"metadata acknowledgement not consumed",
+        "response_mode":"metadata"});
+    client.send("unread", "edit", request.clone());
+    let deadline = std::time::Instant::now() + Duration::from_secs(3);
+    loop {
+        let persisted: Value = serde_json::from_slice(&std::fs::read(dir.path().join("store/document.json")).unwrap()).unwrap();
+        if persisted["document"]["revision"] == 2 { break; }
+        assert!(std::time::Instant::now() < deadline);
+        thread::sleep(Duration::from_millis(2));
+    }
+    // The application's reply receiver has deliberately not consumed the ACK.
+    drop(client);
+    let mut client = Client::start(dir.path());
+    client.send("recovered", "document", json!({"path":"main.tex"}));
+    let recovered = client.reply("recovered")["payload"]["document"].clone();
+    assert_eq!(recovered["revision"], 2);
+    assert_eq!(recovered["text"], request["text"]);
+    client.send("unread", "edit", request);
+    assert_eq!(client.reply("unread")["type"], "error");
+    client.send("after", "document", json!({"path":"main.tex"}));
+    assert_eq!(client.reply("after")["payload"]["document"], recovered);
+}
+#[test]
 fn invalid_display_transport_is_rejected_before_source_import() {
     let dir = tempfile::tempdir().unwrap();
     let private = dir.path().join("must-not-be-created");
