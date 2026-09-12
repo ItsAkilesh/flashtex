@@ -13,17 +13,17 @@
   "capabilities": [
     "Preview helper serialization and latency"
   ],
-  "code_revision": "4db4a7a94a06f9873c1bb2148f567054fce12b3c",
+  "code_revision": "8e6eac652e65d6e928cadd09bc6246316be9eba0",
   "eta_minutes": null,
   "machine": "linux-primary",
-  "main_integrated_through": "7956d37b7be6c5dc2ba28dfcc8ad56b60e5c9b4c",
-  "next_action": "Commander route50KBturnaroundgap tocompiler owners; continue measured helper work afterintegration/nativefeedback.",
+  "main_integrated_through": "4db4a7a94a06f9873c1bb2148f567054fce12b3c",
+  "next_action": "Commander coordinate runtime/native interface ownership before implementation; continue compiler throughput work separately.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "FT048 burstdriver3cases60durableACKs,3exactcleanfinals/reopens.5KB30ms20previews;50KB30ms1preview(11stale8superseded),final91ms.Continuouspreview requirement stillfails50KBfasttyping despitecorrectcoalescing.",
+  "summary": "FT048 completed-snapshot proposal prepared from actual burst evidence; identifies missing runtime stale-result API, immutable origin binding, bounded queues and native source-action gates. No default behavior changed or feature activated.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T09:13:50Z",
+  "updated_utc": "2026-09-12T09:16:03Z",
   "usage": {
     "status": "unknown"
   }
