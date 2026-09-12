@@ -378,3 +378,27 @@ font/license pins and exact warm-cache placement for a Unicode source slice.
 The observed pinned run has 11 glyphs/clusters, 165 commands and advance
 9762243491/600 canonical ticks. This demonstrates consumer consistency, not
 reference shaping completeness, TeX metrics, hinting or native visual parity.
+
+`PlacedShapedRun::replay_bytes` produces `flashtex-internal-shaped-v1` offline
+fixtures with exact rational geometry, both font identities, source revision/hash,
+shaping options/notes, full cluster coverage (including empty clusters), original
+GIDs and stable primitive IDs. `shaped_replay::ShapedReplay::parse` rejects
+unknown fields/commands, duplicate JSON keys, noncanonical fractions, malformed
+cluster coverage, inconsistent exact metric placement and exceeded limits.
+`verify_source(path, snapshot)` separately checks current source contents and
+revision; parsing alone cannot verify font bytes, the shape cache key's provenance,
+or the truth of externally supplied outline geometry.
+
+The geometry-diff CLI accepts these fixtures directly. It preserves raw input
+hashes, reports exact rational changes and refuses equality claims on truncated
+reports. `tests/fixtures/synthetic-shaped.json` is an original synthetic-font
+fixture containing `A`, `é` and an invisible zero-width-space cluster, not a real
+font rendering reference. It can be regenerated with
+`FLASHTEX_RECORD_SHAPED_FIXTURE=1 cargo test --offline --manifest-path
+crates/rendering-core/Cargo.toml --test shaped_run`.
+
+The pinned STIX probe also verifies source-aware replay, explicit warm-cache hit
+status and 100 identical placement/serialization repetitions. Timings are labelled
+as local debug measurements; they exclude native painting and are not a preview
+latency claim. Replay includes the shaping implementation cache key, so a source
+revision may legitimately change the replay hash without changing geometry.

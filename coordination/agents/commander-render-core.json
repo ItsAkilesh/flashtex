@@ -14,7 +14,7 @@
     "rust",
     "rendering"
   ],
-  "code_revision": "0cdce332aaea06327eaa05d35628592aac86873d",
+  "code_revision": "4d1248237fc9883c5edc61dc2cf98a5c90d62eb8",
   "eta_minutes": {
     "likely": 15,
     "optimistic": 5,
@@ -22,15 +22,15 @@
   },
   "machine": "linux-primary",
   "main_integrated_through": "cb19024b34762f82c1ed609ff740bb880040139a",
-  "next_action": "Await next assigned rendering-core product increment; current checkpoint ready for integration.",
+  "next_action": "Next rendering-core product assignment after published replay checkpoint.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "Exact original-engine shaped-run consumer implemented and tested for identity-bound TrueType and CFF resources.",
+  "summary": "Exact shaped-run replay and geometry-diff integration complete; malformed and stale fixtures reject.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T07:40:44Z",
+  "updated_utc": "2026-09-12T07:48:21Z",
   "usage": {
-    "evidence": "119 Rust tests and strict all-target clippy pass. Synthetic UTF8/empty clusters, exact fractional placement, stale-source/resource rejection and atomic budgets. Pinned STIX 11 glyphs, 165 commands, exact advance 9762243491/600 and warm-cache command equality. Peer 767ea70 merged unchanged, retaining font-engine f418238 ancestry. No wire/native activation.",
-    "status": "Existing hosted OpenAI allocation only; no paid auxiliary provider calls."
+    "evidence": "123 Rust tests, strict all-target clippy and actual geometry-diff CLI pass. Pinned STIX replay 27951 bytes SHA 19d16580b3342bc1af03c44a4bc9046c529b3e74c29fb1fa0af9f5d46b320234; 11 verified warm hits and 100 identical replays. Debug sample cold placement 757121ns, warm 324294ns, 100 placement+serialization iterations 152082236ns; not paint latency. Font/source evidence boundaries remain explicit.",
+    "status": "Hosted OpenAI allocation only; no auxiliary paid calls or new agents."
   }
 }

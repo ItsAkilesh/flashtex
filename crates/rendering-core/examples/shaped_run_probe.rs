@@ -83,8 +83,52 @@ fn main() -> Result<(), Box<dyn Error>> {
         )
         .map_err(|e| format!("{e:?}"))
     };
+    let started = std::time::Instant::now();
     let a = prepare()?;
+    let cold_ns = started.elapsed().as_nanos();
+    let started = std::time::Instant::now();
     let b = prepare()?;
+    let warm_ns = started.elapsed().as_nanos();
+    let a_bytes = a.replay_bytes(1024 * 1024)?;
+    let b_bytes = b.replay_bytes(1024 * 1024)?;
+    assert_eq!(a_bytes, b_bytes);
+    let replay =
+        flashtex_rendering_core::shaped_replay::ShapedReplay::parse(&a_bytes, Default::default())?;
+    replay.verify_source("main.tex", &snapshot)?;
+    assert_eq!(replay.canonical_bytes(1024 * 1024)?, a_bytes);
+    let left = flashtex_rendering_core::geometry_diff::ValidatedGeometry::shaped(&a_bytes)?;
+    let right = flashtex_rendering_core::geometry_diff::ValidatedGeometry::shaped(&b_bytes)?;
+    assert_eq!(
+        flashtex_rendering_core::geometry_diff::compare(&left, &right, Default::default())?.equal,
+        Some(true)
+    );
+    println!("replay_sha256={} replay_bytes={} cold_placement_ns={} warm_placement_ns={} measurement=debug_single_run_not_paint_latency",digest(&a_bytes),a_bytes.len(),cold_ns,warm_ns);
+    let mut verified_warm_hits = 0;
+    for g in a.glyphs() {
+        let result = resource
+            .place_cached(
+                g.original_gid,
+                HintPolicy::Unhinted,
+                placement.size,
+                g.origin,
+                10000,
+            )
+            .map_err(|e| format!("{e:?}"))?;
+        assert_eq!(
+            result.cache_status,
+            flashtex_font_resources::cff::CacheStatus::Hit
+        );
+        let ShapedGeometry::Cubic(original) = &g.geometry else {
+            panic!()
+        };
+        assert_eq!(result.outline.commands, original.commands);
+        verified_warm_hits += 1;
+    }
+    let started = std::time::Instant::now();
+    for _ in 0..100 {
+        assert_eq!(prepare()?.replay_bytes(1024 * 1024)?, a_bytes);
+    }
+    println!("verified_warm_hits={} replay_iterations=100 placement_plus_serialization_ns={} exact_replay_equal=true",verified_warm_hits,started.elapsed().as_nanos());
     let expected = placement.size.checked_multiply(r(
         run.shaped().advance_units() as i128,
         run.shaped().units_per_em as u128,

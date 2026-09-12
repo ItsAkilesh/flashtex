@@ -6,6 +6,7 @@ use serde_json::{json, Value};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum InputKind {
+    Shaped,
     Device,
     Mixed,
     Display,
@@ -17,6 +18,19 @@ pub struct ValidatedGeometry {
     value: Value,
 }
 impl ValidatedGeometry {
+    pub fn shaped(bytes: &[u8]) -> Result<Self> {
+        let replay = crate::shaped_replay::ShapedReplay::parse(
+            bytes,
+            crate::shaped_replay::ReplayLimits::default(),
+        )?;
+        Ok(Self {
+            kind: InputKind::Shaped,
+            raw_sha256: digest(bytes),
+            offer_sha256: None,
+            value: replay.metadata().clone(),
+        })
+    }
+
     pub fn device(bytes: &[u8]) -> Result<Self> {
         Ok(Self {
             kind: InputKind::Device,
