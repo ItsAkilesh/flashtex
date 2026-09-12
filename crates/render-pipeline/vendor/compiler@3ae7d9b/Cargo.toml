@@ -1,0 +1,16 @@
+[package]
+name = "flashtex-compiler"
+version = "0.1.0"
+edition = "2021"
+description = "Original FlashTeX compiler foundation: lexing, a finite LaTeX subset, layout, and the runtime-v1 JSON Lines transport."
+publish = false
+
+[lib]
+name = "flashtex_compiler"
+path = "src/lib.rs"
+
+[[bin]]
+name = "flashtex-compiler"
+path = "src/main.rs"
+
+[dependencies]

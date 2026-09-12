@@ -2,7 +2,7 @@
 name = "flashtex-render-pipeline"
 version = "0.1.0"
 edition = "2021"
-description = "Original FlashTeX rendering pipeline: compiler parse tree -> styled blocks -> shaping -> Knuth-Plass line breaking -> math boxes -> pages -> display list v2 + runtime-v1 fallback."
+description = "Original FlashTeX rendering pipeline: compiler parse tree -> styled blocks -> font-engine shaping -> Knuth-Plass line breaking (paragraph-layout) -> Appendix G math boxes (math-layout) -> pages -> display list v2 + runtime-v1 fallback."
 publish = false
 
 [lib]
@@ -13,8 +13,14 @@ path = "src/lib.rs"
 name = "flashtex-render"
 path = "src/bin/flashtex-render.rs"
 
-# Zero external crates. Path dependencies on sibling crates only; the exact
-# sibling revisions built against are pinned in README.md.
+# Zero external crates. Every dependency is a pinned mirror of a sibling task
+# branch under vendor/ (see vendor/VENDORING.md) so this crate builds from a
+# `git archive` of this directory alone, which is how the visual-oracle
+# harness builds it. Repoint these at ../<name> once the siblings merge.
 [dependencies]
-flashtex-compiler = { path = "../compiler" }
-flashtex-font-engine = { path = "../font-engine" }
+flashtex-compiler = { path = "vendor/compiler@3ae7d9b" }
+flashtex-font-engine = { path = "vendor/font-engine@d0c64cf" }
+flashtex-paragraph-layout = { path = "vendor/paragraph-layout@7af5c05" }
+flashtex-math-layout = { path = "vendor/math-layout@2b7c7d5" }
+flashtex-document-style = { path = "vendor/document-style@bfc980d" }
+flashtex-pdf = { path = "vendor/pdf@52b3711" }

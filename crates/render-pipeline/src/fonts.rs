@@ -1,12 +1,15 @@
 //! Font set: bounded resolution of the faces the pipeline may use, with
 //! content-addressed identity for the display list.
 //!
-//! Default document face is Latin Modern (LaTeX's default, GUST Font
-//! License, CFF OpenType) with the size-to-optical-design mapping of
-//! `t1lmr.fd`; Times (Adobe Core 14 metrics through font-engine) is used only
-//! when the document selects it (`\usepackage{times}` / `mathptmx`).
-//! Resolution is bounded: an explicit directory list is probed for explicit
-//! file names; nothing is scanned or substituted silently.
+//! Default document face is Latin Modern (LaTeX's default look: Computer
+//! Modern outlines, GUST Font License, OpenType CFF) with the
+//! size-to-optical-design mapping of `t1lmr.fd`; Times (Adobe Core 14
+//! metrics through font-engine) is used only when the document selects it
+//! (`\usepackage{times}` / `mathptmx`). Resolution is bounded: an explicit
+//! directory list is probed for explicit file names (font-engine's
+//! `FontSearch`); nothing is scanned or substituted silently — a missing
+//! Latin Modern file is a diagnostic and a `.notdef`-free failure, not a
+//! silent Times.
 
 use std::cell::RefCell;
 use std::collections::BTreeMap;
@@ -14,9 +17,13 @@ use std::path::PathBuf;
 use std::rc::Rc;
 
 use flashtex_font_engine::core14::{Core14, Core14Face};
-use flashtex_font_engine::{sha256, Face, GlyphId};
+use flashtex_font_engine::math::MathTable;
+use flashtex_font_engine::resolve::FontSearch;
+use flashtex_font_engine::truetype::{Outlines, TrueTypeFace};
+use flashtex_font_engine::{sha256, Face};
 
-use crate::otf::{Bounds, OtfFace};
+use crate::cff::{self, Cff};
+use crate::ids::GlyphId;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Family {
@@ -29,49 +36,79 @@ pub enum Family {
 pub enum Role {
     /// Text face (roman/bold/italic per the style).
     Text { bold: bool, italic: bool },
-    /// Math symbols and operators (LM Math, or Core 14 Symbol for Times).
-    MathSymbols,
+    /// Math letters, symbols and operators: Latin Modern Math (`MATH`
+    /// table) for both families, because `\usepackage{times}` leaves math
+    /// in Computer Modern.
+    Math,
 }
 
-/// Default search directories, probed in order. Only explicit file names are
-/// opened. `FLASHTEX_FONT_DIRS` (colon separated) is prepended when set.
+/// Default search directories, probed in order for explicit file names.
+/// `FLASHTEX_FONT_DIRS` (colon separated) is prepended when set.
 pub const DEFAULT_FONT_DIRS: [&str; 2] = [
     "/usr/local/texlive/2026basic/texmf-dist/fonts/opentype/public/lm",
     "/usr/local/texlive/2026basic/texmf-dist/fonts/opentype/public/lm-math",
 ];
 
+/// Glyph extents in font units: `[x_min, y_min, x_max, y_max]`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Bounds {
+    pub x_min: i32,
+    pub y_min: i32,
+    pub x_max: i32,
+    pub y_max: i32,
+    /// No marking contours (space and friends).
+    pub empty: bool,
+}
+
 pub enum FaceKind {
-    Otf(OtfFace),
+    /// An OpenType program parsed by font-engine plus this crate's CFF
+    /// charstring reader for glyph bounds.
+    Otf { face: TrueTypeFace, cff: Cff },
     Core14(Core14Face),
 }
 
 /// A loaded face plus the identity fields the display list publishes.
 pub struct LoadedFace {
-    /// Stable human-readable id, e.g. `lmroman12-regular` or `Times-Roman`.
+    /// Content-addressed id used on the wire: the SHA-256 hex of the program
+    /// (font-engine's `FontId::content_sha256`).
     pub font_id: String,
+    /// Stable human-readable name (file stem or Core 14 name), for
+    /// diagnostics and tests only.
+    pub name: String,
     pub kind: FaceKind,
-    pub sha256_hex: String,
+    pub sha256: [u8; 32],
     pub byte_length: u64,
     pub units_per_em: u32,
     pub glyph_count: u32,
     pub postscript_name: String,
-    /// `opentype-cff` (Latin Modern) or `core14-afm` (metrics only).
+    /// `opentype-cff` (Latin Modern), `static-truetype` (glyf) or
+    /// `core14-afm` (metrics only, no program).
     pub format: &'static str,
+    pub path: Option<PathBuf>,
+    bounds_cache: RefCell<BTreeMap<u16, Bounds>>,
 }
 
 impl LoadedFace {
     pub fn face(&self) -> &dyn Face {
         match &self.kind {
-            FaceKind::Otf(f) => f,
+            FaceKind::Otf { face, .. } => face,
             FaceKind::Core14(f) => f,
         }
     }
 
-    pub fn program(&self) -> Option<&[u8]> {
+    pub fn otf(&self) -> Option<&TrueTypeFace> {
         match &self.kind {
-            FaceKind::Otf(f) => Some(f.program()),
+            FaceKind::Otf { face, .. } => Some(face),
             FaceKind::Core14(_) => None,
         }
+    }
+
+    pub fn program(&self) -> Option<&[u8]> {
+        self.otf().map(TrueTypeFace::program)
+    }
+
+    pub fn math(&self) -> Option<&MathTable> {
+        self.otf().and_then(TrueTypeFace::math)
     }
 
     /// Font-unit value in points at `size_pt`.
@@ -79,12 +116,38 @@ impl LoadedFace {
         units as f64 * size_pt / f64::from(self.units_per_em)
     }
 
-    /// Glyph extents in font units. CFF faces use real outlines; Core 14
-    /// faces (no outlines available) use class-based AFM approximations,
-    /// which is stated in README.
+    /// paragraph-layout's opaque 32-byte identity: the content hash itself.
+    pub fn layout_id(&self) -> flashtex_paragraph_layout::FontId {
+        flashtex_paragraph_layout::FontId(self.sha256)
+    }
+
+    /// Glyph extents in font units. CFF faces use the real charstring
+    /// bounds; Core 14 faces (no outlines available) use class-based
+    /// approximations from the AFM header, stated in README.
     pub fn bounds(&self, gid: GlyphId, ch: Option<char>) -> Bounds {
-        match &self.kind {
-            FaceKind::Otf(f) => f.bounds(gid).unwrap_or_default(),
+        if let Some(b) = self.bounds_cache.borrow().get(&gid.0) {
+            return *b;
+        }
+        let b = match &self.kind {
+            FaceKind::Otf { face, cff } => {
+                let bb = face
+                    .cff_table()
+                    .and_then(|t| cff.glyph_bbox(t, gid.0).ok())
+                    .and_then(|(bb, _)| cff::round_bbox(bb));
+                match bb {
+                    Some([x0, y0, x1, y1]) => Bounds {
+                        x_min: x0,
+                        y_min: y0,
+                        x_max: x1,
+                        y_max: y1,
+                        empty: false,
+                    },
+                    None => Bounds {
+                        empty: true,
+                        ..Bounds::default()
+                    },
+                }
+            }
             FaceKind::Core14(f) => {
                 let h = f.which().header();
                 let adv = i32::from(f.advance(gid).unwrap_or(0));
@@ -97,6 +160,7 @@ impl LoadedFace {
                     Some(c) if c.is_lowercase() => (0, i32::from(h.x_height)),
                     Some(c) if "+=<>-".contains(c) => (100, 500),
                     Some(c) if c == '.' => (0, 100),
+                    Some(' ') => (0, 0),
                     _ => (i32::from(h.descender), i32::from(h.ascender)),
                 };
                 Bounds {
@@ -104,24 +168,34 @@ impl LoadedFace {
                     y_min,
                     x_max: adv,
                     y_max,
-                    empty: false,
+                    empty: ch == Some(' '),
                 }
             }
-        }
+        };
+        self.bounds_cache.borrow_mut().insert(gid.0, b);
+        b
     }
 }
 
 pub struct FontSet {
-    dirs: Vec<PathBuf>,
+    search: FontSearch,
     faces: RefCell<Vec<Rc<LoadedFace>>>,
-    by_id: RefCell<BTreeMap<String, usize>>,
+    by_name: RefCell<BTreeMap<String, usize>>,
     /// File names that failed to load, with the reason (reported once).
     failures: RefCell<BTreeMap<String, String>>,
 }
 
+pub struct Resolved {
+    pub face: Rc<LoadedFace>,
+    /// Set when the requested Latin Modern file was unavailable. The face
+    /// returned is then Times, and the caller must publish this reason as
+    /// an error diagnostic: the output is not the requested document.
+    pub substituted: Option<String>,
+}
+
 impl FontSet {
-    /// Bounded search list: `FLASHTEX_FONT_DIRS` entries first, then the
-    /// TeX Live defaults, then any explicit extra directories.
+    /// Bounded search list: `FLASHTEX_FONT_DIRS` entries first, then any
+    /// explicit extra directories, then the TeX Live defaults.
     pub fn with_default_dirs(extra: &[PathBuf]) -> FontSet {
         let mut dirs: Vec<PathBuf> = Vec::new();
         if let Ok(v) = std::env::var("FLASHTEX_FONT_DIRS") {
@@ -133,42 +207,46 @@ impl FontSet {
     }
 
     pub fn new(dirs: Vec<PathBuf>) -> FontSet {
+        let mut search = FontSearch::new();
+        for d in dirs {
+            search = search.with_dir(d);
+        }
         FontSet {
-            dirs,
+            search,
             faces: RefCell::new(Vec::new()),
-            by_id: RefCell::new(BTreeMap::new()),
+            by_name: RefCell::new(BTreeMap::new()),
             failures: RefCell::new(BTreeMap::new()),
         }
     }
 
     pub fn dirs(&self) -> &[PathBuf] {
-        &self.dirs
+        self.search.dirs()
     }
 
-    /// Every face loaded so far, in load order (the display-list resource
-    /// table is emitted from this, restricted to faces actually used).
+    /// Every face loaded so far, in load order.
     pub fn loaded(&self) -> Vec<Rc<LoadedFace>> {
         self.faces.borrow().clone()
     }
 
     pub fn failures(&self) -> Vec<(String, String)> {
-        self.failures
-            .borrow()
-            .iter()
-            .map(|(k, v)| (k.clone(), v.clone()))
-            .collect()
+        self.failures.borrow().iter().map(|(k, v)| (k.clone(), v.clone())).collect()
     }
 
-    pub fn by_id(&self, id: &str) -> Option<Rc<LoadedFace>> {
-        let idx = *self.by_id.borrow().get(id)?;
+    pub fn by_name(&self, name: &str) -> Option<Rc<LoadedFace>> {
+        let idx = *self.by_name.borrow().get(name)?;
         self.faces.borrow().get(idx).cloned()
     }
 
-    /// Latin Modern optical-size file for a text role, per `t1lmr.fd`.
-    pub fn latin_modern_file(role: Role, size_pt: f64) -> Option<String> {
+    pub fn by_font_id(&self, font_id: &str) -> Option<Rc<LoadedFace>> {
+        self.faces.borrow().iter().find(|f| f.font_id == font_id).cloned()
+    }
+
+    /// Latin Modern optical-size file for a role, per `t1lmr.fd` (the
+    /// design-size boundaries LaTeX uses for `ec-lmr*`).
+    pub fn latin_modern_file(role: Role, size_pt: f64) -> String {
         let s = size_pt;
-        Some(match role {
-            Role::MathSymbols => "latinmodern-math.otf".to_string(),
+        match role {
+            Role::Math => "latinmodern-math.otf".to_string(),
             Role::Text { bold: false, italic: false } => {
                 let d = if s < 5.5 {
                     5
@@ -222,12 +300,12 @@ impl FontSet {
                 format!("lmroman{d}-italic.otf")
             }
             Role::Text { bold: true, italic: true } => "lmroman10-bolditalic.otf".to_string(),
-        })
+        }
     }
 
     fn core14_for(role: Role) -> Core14 {
         match role {
-            Role::MathSymbols => Core14::Symbol,
+            Role::Math => Core14::Symbol,
             Role::Text { bold: false, italic: false } => Core14::TimesRoman,
             Role::Text { bold: true, italic: false } => Core14::TimesBold,
             Role::Text { bold: false, italic: true } => Core14::TimesItalic,
@@ -236,16 +314,14 @@ impl FontSet {
     }
 
     /// Resolves (and loads once) the face for `family`/`role` at `size_pt`.
-    /// Latin Modern failures fall back to Times *with an explicit error
-    /// string returned alongside*, so callers report the substitution.
     pub fn resolve(&self, family: Family, role: Role, size_pt: f64) -> Resolved {
-        match family {
-            Family::Times => Resolved {
+        match (family, role) {
+            (Family::Times, Role::Text { .. }) => Resolved {
                 face: self.core14(Self::core14_for(role)),
                 substituted: None,
             },
-            Family::LatinModern => {
-                let file = Self::latin_modern_file(role, size_pt).expect("role has a file");
+            (_, _) => {
+                let file = Self::latin_modern_file(role, size_pt);
                 match self.otf(&file) {
                     Ok(f) => Resolved {
                         face: f,
@@ -262,77 +338,151 @@ impl FontSet {
 
     fn core14(&self, which: Core14) -> Rc<LoadedFace> {
         let f = Core14Face::new(which);
-        let id = f.postscript_name().to_string();
-        if let Some(existing) = self.by_id(&id) {
+        let name = f.postscript_name().to_string();
+        if let Some(existing) = self.by_name(&name) {
             return existing;
         }
+        let sha = f.id().content_sha256;
         let loaded = LoadedFace {
-            font_id: id.clone(),
-            sha256_hex: sha256::hex(&f.id().content_sha256),
+            font_id: sha256::hex(&sha),
+            name: name.clone(),
+            sha256: sha,
             byte_length: 0,
             units_per_em: u32::from(f.units_per_em()),
             glyph_count: u32::from(f.num_glyphs()),
             postscript_name: f.postscript_name().to_string(),
             format: "core14-afm",
+            path: None,
             kind: FaceKind::Core14(f),
+            bounds_cache: RefCell::new(BTreeMap::new()),
         };
-        self.insert(id, loaded)
+        self.insert(name, loaded)
     }
 
-    fn otf(&self, file: &str) -> Result<Rc<LoadedFace>, String> {
-        let id = file.trim_end_matches(".otf").to_string();
-        if let Some(existing) = self.by_id(&id) {
+    /// Loads an explicit file name from the bounded search list.
+    pub fn otf(&self, file: &str) -> Result<Rc<LoadedFace>, String> {
+        let name = file.trim_end_matches(".otf").trim_end_matches(".ttf").to_string();
+        if let Some(existing) = self.by_name(&name) {
             return Ok(existing);
         }
         if let Some(reason) = self.failures.borrow().get(file) {
             return Err(reason.clone());
         }
-        let path = self
-            .dirs
-            .iter()
-            .map(|d| d.join(file))
-            .find(|p| p.is_file())
-            .ok_or_else(|| format!("not found in {} search director{}", self.dirs.len(), if self.dirs.len() == 1 { "y" } else { "ies" }));
-        let path = match path {
-            Ok(p) => p,
-            Err(reason) => {
-                self.failures.borrow_mut().insert(file.to_string(), reason.clone());
-                return Err(reason);
+        let fail = |reason: String| -> String {
+            self.failures.borrow_mut().insert(file.to_string(), reason.clone());
+            reason
+        };
+        let Some(path) = self.search.find(file) else {
+            let n = self.search.dirs().len();
+            return Err(fail(format!(
+                "not found in {n} search director{}: {}",
+                if n == 1 { "y" } else { "ies" },
+                self.search.dirs().iter().map(|d| d.display().to_string()).collect::<Vec<_>>().join(", ")
+            )));
+        };
+        let face = match self.search.load(file, 0) {
+            Ok(f) => f,
+            Err(e) => return Err(fail(e.to_string())),
+        };
+        let (format, cff) = match face.outlines() {
+            Outlines::Cff => {
+                let table = face.cff_table().ok_or_else(|| fail("OTTO face without CFF table".into()))?;
+                let cff = Cff::parse(table).map_err(|e| fail(format!("CFF: {e}")))?;
+                if cff.num_glyphs() != usize::from(face.num_glyphs()) {
+                    return Err(fail(format!(
+                        "CFF has {} charstrings but maxp says {}",
+                        cff.num_glyphs(),
+                        face.num_glyphs()
+                    )));
+                }
+                ("opentype-cff", cff)
+            }
+            Outlines::Glyf => {
+                return Err(fail("glyf outlines are not used by this pipeline (Latin Modern is CFF)".into()));
             }
         };
-        match OtfFace::load(&path) {
-            Ok(f) => {
-                let loaded = LoadedFace {
-                    font_id: id.clone(),
-                    sha256_hex: sha256::hex(&f.id().content_sha256),
-                    byte_length: f.program().len() as u64,
-                    units_per_em: u32::from(f.units_per_em()),
-                    glyph_count: u32::from(f.num_glyphs()),
-                    postscript_name: f.postscript_name().to_string(),
-                    format: "opentype-cff",
-                    kind: FaceKind::Otf(f),
-                };
-                Ok(self.insert(id, loaded))
-            }
-            Err(e) => {
-                let reason = e.to_string();
-                self.failures.borrow_mut().insert(file.to_string(), reason.clone());
-                Err(reason)
-            }
-        }
+        let sha = face.id().content_sha256;
+        let loaded = LoadedFace {
+            font_id: sha256::hex(&sha),
+            name: name.clone(),
+            sha256: sha,
+            byte_length: face.program().len() as u64,
+            units_per_em: u32::from(face.units_per_em()),
+            glyph_count: u32::from(face.num_glyphs()),
+            postscript_name: face.postscript_name().to_string(),
+            format,
+            path: Some(path),
+            kind: FaceKind::Otf { face, cff },
+            bounds_cache: RefCell::new(BTreeMap::new()),
+        };
+        Ok(self.insert(name, loaded))
     }
 
-    fn insert(&self, id: String, loaded: LoadedFace) -> Rc<LoadedFace> {
+    fn insert(&self, name: String, loaded: LoadedFace) -> Rc<LoadedFace> {
         let rc = Rc::new(loaded);
         let mut faces = self.faces.borrow_mut();
-        self.by_id.borrow_mut().insert(id, faces.len());
+        self.by_name.borrow_mut().insert(name, faces.len());
         faces.push(rc.clone());
         rc
     }
 }
 
-pub struct Resolved {
-    pub face: Rc<LoadedFace>,
-    /// Set when the requested face was unavailable and Times stood in.
-    pub substituted: Option<String>,
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    pub fn lm_available() -> bool {
+        DEFAULT_FONT_DIRS.iter().any(|d| std::path::Path::new(d).join("lmroman10-regular.otf").is_file())
+    }
+
+    #[test]
+    fn optical_sizes_follow_t1lmr_fd() {
+        assert_eq!(FontSet::latin_modern_file(Role::Text { bold: false, italic: false }, 12.0), "lmroman12-regular.otf");
+        assert_eq!(FontSet::latin_modern_file(Role::Text { bold: false, italic: false }, 10.0), "lmroman10-regular.otf");
+        assert_eq!(FontSet::latin_modern_file(Role::Text { bold: false, italic: false }, 17.28), "lmroman17-regular.otf");
+        assert_eq!(FontSet::latin_modern_file(Role::Text { bold: true, italic: false }, 14.4), "lmroman12-bold.otf");
+        assert_eq!(FontSet::latin_modern_file(Role::Text { bold: false, italic: false }, 8.0), "lmroman8-regular.otf");
+    }
+
+    #[test]
+    fn latin_modern_glyph_bounds_match_the_design() {
+        if !lm_available() {
+            eprintln!("skipping: Latin Modern not installed");
+            return;
+        }
+        let set = FontSet::with_default_dirs(&[]);
+        let r = set.resolve(Family::LatinModern, Role::Text { bold: false, italic: false }, 10.0);
+        assert!(r.substituted.is_none());
+        let f = r.face;
+        assert_eq!(f.format, "opentype-cff");
+        assert_eq!(f.units_per_em, 1000);
+        let x = f.face().glyph_id('x').unwrap();
+        let b = f.bounds(x, Some('x'));
+        // Computer Modern x-height is 430.55 units (lmr10 TFM fontdimen 5).
+        assert!((b.y_max - 431).abs() <= 2, "x y_max {}", b.y_max);
+        assert_eq!(b.y_min, 0);
+        let h = f.face().glyph_id('H').unwrap();
+        let hb = f.bounds(h, Some('H'));
+        // Cap height 683.33 units in lmr10.
+        assert!((hb.y_max - 683).abs() <= 2, "H y_max {}", hb.y_max);
+        let p = f.face().glyph_id('p').unwrap();
+        let pb = f.bounds(p, Some('p'));
+        // Descender depth 194.44 units.
+        assert!((pb.y_min + 194).abs() <= 2, "p y_min {}", pb.y_min);
+        let sp = f.face().glyph_id(' ').unwrap();
+        assert!(f.bounds(sp, Some(' ')).empty);
+        // Ids are content hashes, distinct per file.
+        let b12 = set.resolve(Family::LatinModern, Role::Text { bold: false, italic: false }, 12.0).face;
+        assert_ne!(f.font_id, b12.font_id);
+        assert_eq!(f.font_id.len(), 64);
+    }
+
+    #[test]
+    fn missing_latin_modern_is_reported_not_silent() {
+        let set = FontSet::new(vec![PathBuf::from("/nonexistent/flashtex-fonts")]);
+        let r = set.resolve(Family::LatinModern, Role::Text { bold: false, italic: false }, 10.0);
+        assert!(r.substituted.is_some());
+        assert_eq!(r.face.format, "core14-afm");
+        assert_eq!(set.failures().len(), 1);
+    }
 }

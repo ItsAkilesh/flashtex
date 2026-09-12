@@ -1,0 +1,1005 @@
+//! Paragraph assembly, math boxes, pages, and the v2 display list.
+//!
+//! Words are shaped through font-engine and become `paragraph-layout` boxes
+//! (`GlyphRun::from_shaped`, one per styled segment: advances in font units
+//! with kerning folded in, original glyph ids, source-byte clusters).
+//! Interword glue follows TeX's space factor and the face's `\fontdimen`s.
+//! Inline math is laid out by `math-layout` (Appendix G) and enters the
+//! horizontal list as one unbreakable box; a display equation is a
+//! one-line block between `\abovedisplayskip`/`\belowdisplayskip`. Line
+//! breaking is `paragraph-layout`'s total-fit Knuth–Plass; page breaking is
+//! its `layout_pages` (TeX interline glue, `\topskip`, club/widow lines,
+//! `\raggedbottom`). This module keeps a record per box so every placed run
+//! maps back to its document, bytes, glyph extents and math box.
+
+use std::collections::{BTreeMap, BTreeSet};
+use std::ops::Range;
+use std::rc::Rc;
+
+use flashtex_compiler::parser::SourceDocument;
+use flashtex_compiler::{DocumentId, Span};
+use flashtex_font_engine::sha256;
+use flashtex_math_layout as ml;
+use flashtex_paragraph_layout as pl;
+
+use crate::adapter::{self, Block, Doc, Item as AItem, ParaPart, TextStyle};
+use crate::display::{
+    self, Caret, Cluster, Diagnostic, DisplayList, DocumentResource, FontResource, Glyph, GlyphRun, Paint, Provenance,
+    Rect, Rule, SourceRange, Tick,
+};
+use crate::fonts::{Family, FontSet, LoadedFace, Role};
+use crate::mathfont::{MathFonts, MathSizes};
+use crate::params;
+use crate::shape::Shaper;
+use crate::style::Stylesheet;
+
+/// paragraph-layout identity of a math box (never a real font hash: real
+/// ids are SHA-256 digests, this is a labelled sentinel).
+const MATH_SENTINEL: pl::FontId = pl::FontId::from_label("flashtex:math-box");
+
+#[derive(Debug, Clone)]
+pub struct GlyphRec {
+    pub gid: u16,
+    pub x_offset_units: i32,
+    pub y_offset_units: i32,
+    pub y_max_units: i32,
+    pub y_min_units: i32,
+    pub empty: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct ClusterRec {
+    /// Byte range into the run text.
+    pub text_range: Range<usize>,
+    pub span: Span,
+    /// Glyph indices (into the run) belonging to this cluster.
+    pub glyphs: Range<usize>,
+}
+
+pub enum BoxRec {
+    Text {
+        face: Rc<LoadedFace>,
+        size: f64,
+        text: String,
+        style: TextStyle,
+        clusters: Vec<ClusterRec>,
+        glyphs: Vec<GlyphRec>,
+        /// Box height/depth in points (max glyph extents).
+        height: f64,
+        depth: f64,
+    },
+    Math(usize),
+}
+
+pub struct MathRec {
+    pub root: ml::MathBox,
+    pub span: Span,
+    pub face: Rc<LoadedFace>,
+}
+
+/// One vertical-list block as given to paragraph-layout, plus the map from
+/// its item indices to box records.
+pub struct BuiltBlock {
+    pub block: pl::ParagraphBlock,
+    /// The horizontal list the block's lines index into.
+    pub items: Vec<pl::Item>,
+    pub recs: Vec<Option<usize>>,
+}
+
+pub struct Laid {
+    pub blocks: Vec<BuiltBlock>,
+    pub pages: pl::Pages,
+    pub recs: Vec<BoxRec>,
+    pub maths: Vec<MathRec>,
+}
+
+pub struct Context<'a> {
+    fonts: &'a FontSet,
+    style: &'a Stylesheet,
+    paths: &'a [&'a str],
+    shaper: Shaper,
+    diagnostics: Vec<Diagnostic>,
+    recs: Vec<BoxRec>,
+    maths: Vec<MathRec>,
+    math_fonts: Option<Rc<MathFonts>>,
+    math_unavailable: bool,
+    reported: BTreeSet<String>,
+}
+
+impl<'a> Context<'a> {
+    pub fn new(fonts: &'a FontSet, style: &'a Stylesheet, paths: &'a [&'a str]) -> Context<'a> {
+        Context {
+            fonts,
+            style,
+            paths,
+            shaper: Shaper::new(),
+            diagnostics: Vec::new(),
+            recs: Vec::new(),
+            maths: Vec::new(),
+            math_fonts: None,
+            math_unavailable: false,
+            reported: BTreeSet::new(),
+        }
+    }
+
+    pub fn take_diagnostics(&mut self) -> Vec<Diagnostic> {
+        std::mem::take(&mut self.diagnostics)
+    }
+
+    fn source(&self, span: Span) -> SourceRange {
+        SourceRange {
+            path: self.paths.get(span.document.0).copied().unwrap_or("").to_string(),
+            start_byte: span.start,
+            end_byte: span.end,
+        }
+    }
+
+    fn report_once(&mut self, key: String, d: Diagnostic) {
+        if self.reported.insert(key) {
+            self.diagnostics.push(d);
+        }
+    }
+
+    fn face(&mut self, style: TextStyle, size: f64, span: Span) -> Rc<LoadedFace> {
+        let r = self.fonts.resolve(
+            self.style.family,
+            Role::Text {
+                bold: style.bold,
+                italic: style.italic,
+            },
+            size,
+        );
+        if let Some(reason) = r.substituted {
+            let src = self.source(span);
+            self.report_once(
+                format!("subst:{reason}"),
+                Diagnostic::error(
+                    "font_unavailable",
+                    format!("Latin Modern face unavailable ({reason}); Times metrics substituted, output is not the requested document"),
+                    vec![src],
+                ),
+            );
+        }
+        r.face
+    }
+
+    fn math_fonts(&mut self, span: Span) -> Option<Rc<MathFonts>> {
+        if let Some(m) = &self.math_fonts {
+            return Some(m.clone());
+        }
+        if self.math_unavailable {
+            return None;
+        }
+        let r = self.fonts.resolve(self.style.family, Role::Math, self.style.body_size_pt);
+        let sizes = MathSizes {
+            text: self.style.body_size_pt,
+            script: self.style.script_size_pt,
+            script_script: self.style.scriptscript_size_pt,
+        };
+        match (r.substituted, MathFonts::new(r.face, sizes)) {
+            (None, Some(m)) => {
+                let m = Rc::new(m);
+                self.math_fonts = Some(m.clone());
+                Some(m)
+            }
+            (subst, _) => {
+                let src = self.source(span);
+                let reason = subst.unwrap_or_else(|| "face has no MATH table".into());
+                self.diagnostics.push(Diagnostic::error(
+                    "math_font_unavailable",
+                    format!("Latin Modern Math unavailable ({reason}); math is not typeset"),
+                    vec![src],
+                ));
+                self.math_unavailable = true;
+                None
+            }
+        }
+    }
+
+    /// Interword glue for the face/style at `size` with TeX's space factor.
+    fn space_glue(&self, style: TextStyle, size: f64, factor: u32) -> pl::Glue {
+        let design = design_size(self.style.family, size);
+        let p = params::text_params(self.style.family, style.bold, style.italic, design).at(size);
+        let f = f64::from(factor.max(1));
+        let mut width = p.space;
+        if factor >= 2000 {
+            width += p.extra_space;
+        }
+        pl::Glue::finite(width, p.stretch * f / 1000.0, p.shrink * 1000.0 / f)
+    }
+
+    /// Shapes one styled segment into a box record and a paragraph-layout box.
+    fn text_box(&mut self, seg: &adapter::Segment, size: f64) -> Option<(pl::GlyphRun, usize)> {
+        let span = seg_span(seg)?;
+        let face = self.face(seg.style, size, span);
+        let shaped = self.shaper.shape(&face, &seg.text);
+        if let Some(reason) = &shaped.refused {
+            let src = self.source(span);
+            self.diagnostics.push(Diagnostic::error("unsupported_script", format!("cannot shape {:?}: {reason}", seg.text), vec![src]));
+            return None;
+        }
+        for (ch, off) in &shaped.missing {
+            let ch_src = seg
+                .chars
+                .get(seg.text[..*off].chars().count())
+                .map(|c| c.span())
+                .unwrap_or(span);
+            let src = self.source(ch_src);
+            self.report_once(
+                format!("missing:{}:{}", face.font_id, ch),
+                Diagnostic::warning(
+                    "missing_glyph",
+                    format!("U+{:04X} '{}' has no glyph in {}; nothing drawn for it", *ch as u32, ch, face.name),
+                    vec![src],
+                ),
+            );
+        }
+        let mut glyphs = Vec::new();
+        let mut recs = Vec::new();
+        let mut clusters = Vec::new();
+        let byte_to_char: Vec<usize> = {
+            let mut v = vec![0usize; seg.text.len() + 1];
+            for (ci, (bi, _)) in seg.text.char_indices().enumerate() {
+                v[bi] = ci;
+            }
+            v[seg.text.len()] = seg.text.chars().count();
+            v
+        };
+        for c in &shaped.clusters {
+            let first = seg.chars.get(byte_to_char[c.text_range.start]).copied()?;
+            let last_char_index = byte_to_char[c.text_range.end].saturating_sub(1);
+            let last = seg.chars.get(last_char_index).copied().unwrap_or(first);
+            let cspan = Span::in_document(first.document, first.start.min(last.start), first.end.max(last.end));
+            let g0 = glyphs.len();
+            for g in &c.glyphs {
+                glyphs.push(pl::ShapedGlyph {
+                    gid: u32::from(g.gid.0),
+                    advance_units: i64::from(g.advance),
+                    cluster: cspan.start..cspan.end,
+                });
+                recs.push(GlyphRec {
+                    gid: g.gid.0,
+                    x_offset_units: g.x_offset,
+                    y_offset_units: g.y_offset,
+                    y_max_units: g.y_max,
+                    y_min_units: g.y_min,
+                    empty: g.empty,
+                });
+            }
+            clusters.push(ClusterRec {
+                text_range: c.text_range.clone(),
+                span: cspan,
+                glyphs: g0..glyphs.len(),
+            });
+        }
+        if glyphs.is_empty() {
+            return None;
+        }
+        let run = pl::GlyphRun::from_shaped(
+            face.layout_id(),
+            size,
+            f64::from(face.units_per_em),
+            f64::from(shaped.height_units),
+            -f64::from(shaped.depth_units),
+            &glyphs,
+            span.start..span.end,
+        );
+        let height = run.height;
+        let depth = run.depth;
+        self.recs.push(BoxRec::Text {
+            face,
+            size,
+            text: seg.text.clone(),
+            style: seg.style,
+            clusters,
+            glyphs: recs,
+            height,
+            depth,
+        });
+        Some((run, self.recs.len() - 1))
+    }
+
+    fn math_box(&mut self, list: &flashtex_compiler::math::MathList, span: Span, display: bool) -> Option<usize> {
+        let fonts = self.math_fonts(span)?;
+        let ml_list = convert_math(list);
+        let style = if display { ml::Style::DISPLAY } else { ml::Style::TEXT };
+        let laid = ml::layout_with_report(&ml_list, style, &*fonts);
+        for ch in fonts.take_missing() {
+            let src = self.source(span);
+            self.report_once(
+                format!("mathmissing:{ch}"),
+                Diagnostic::warning("missing_glyph", format!("U+{:04X} '{}' has no glyph in {}", ch as u32, ch, fonts.face().name), vec![src]),
+            );
+        }
+        for l in laid.limitations {
+            let src = self.source(span);
+            let msg = match l {
+                ml::Limitation::MissingGlyph(c) => format!("no math glyph for '{c}'; empty box used"),
+                ml::Limitation::DelimiterTooSmall { ch, wanted, used } => {
+                    format!("delimiter '{ch}' wanted {wanted:.2}pt, largest variant {used:.2}pt used")
+                }
+                ml::Limitation::RadicalTooSmall { wanted, used } => format!("radical wanted {wanted:.2}pt, largest {used:.2}pt used"),
+                ml::Limitation::MissingAccent(c) => format!("unknown accent '{c}'"),
+            };
+            self.report_once(format!("mathlim:{msg}"), Diagnostic::warning("math_limitation", msg, vec![src]));
+        }
+        self.maths.push(MathRec {
+            root: laid.root,
+            span,
+            face: fonts.face().clone(),
+        });
+        let idx = self.maths.len() - 1;
+        self.recs.push(BoxRec::Math(idx));
+        Some(self.recs.len() - 1)
+    }
+
+    /// Builds a horizontal list. Returns paragraph-layout items and the
+    /// per-item box record.
+    fn hlist(&mut self, items: &[AItem], size: f64, base: TextStyle) -> (Vec<pl::Item>, Vec<Option<usize>>) {
+        let mut out: Vec<pl::Item> = Vec::new();
+        let mut recs: Vec<Option<usize>> = Vec::new();
+        let push = |out: &mut Vec<pl::Item>, recs: &mut Vec<Option<usize>>, item: pl::Item, rec: Option<usize>| {
+            out.push(item);
+            recs.push(rec);
+        };
+        for item in items {
+            match item {
+                AItem::Word(w) => {
+                    for seg in &w.segments {
+                        let seg = adapter::Segment {
+                            text: seg.text.clone(),
+                            chars: seg.chars.clone(),
+                            style: TextStyle {
+                                bold: seg.style.bold || base.bold,
+                                italic: seg.style.italic || base.italic,
+                            },
+                        };
+                        if let Some((run, rec)) = self.text_box(&seg, size) {
+                            push(&mut out, &mut recs, pl::Item::Box(run), Some(rec));
+                        }
+                    }
+                }
+                AItem::Space { style, factor, no_break } => {
+                    let style = TextStyle {
+                        bold: style.bold || base.bold,
+                        italic: style.italic || base.italic,
+                    };
+                    if *no_break {
+                        push(&mut out, &mut recs, pl::Item::penalty(pl::INFINITE_PENALTY), None);
+                    }
+                    let glue = self.space_glue(style, size, *factor);
+                    push(&mut out, &mut recs, pl::Item::Glue(glue), None);
+                }
+                AItem::Math { list, span } => {
+                    if let Some(rec) = self.math_box(list, *span, false) {
+                        let BoxRec::Math(mi) = &self.recs[rec] else { unreachable!() };
+                        let root = &self.maths[*mi].root;
+                        let run = math_run(root, size, *span);
+                        push(&mut out, &mut recs, pl::Item::Box(run), Some(rec));
+                    }
+                }
+                AItem::LineBreak => {
+                    push(&mut out, &mut recs, pl::Item::Glue(pl::Glue::fil()), None);
+                    push(&mut out, &mut recs, pl::Item::penalty(pl::FORCED_BREAK), None);
+                }
+            }
+        }
+        // TeX's paragraph end: drop trailing glue, then
+        // \penalty10000 \parfillskip \penalty-10000.
+        while matches!(out.last(), Some(pl::Item::Glue(_))) {
+            out.pop();
+            recs.pop();
+        }
+        push(&mut out, &mut recs, pl::Item::penalty(pl::INFINITE_PENALTY), None);
+        push(&mut out, &mut recs, pl::Item::Glue(pl::Glue::fil()), None);
+        push(&mut out, &mut recs, pl::Item::penalty(pl::FORCED_BREAK), None);
+        (out, recs)
+    }
+
+    fn line_params(&self, indent: bool, baselineskip: f64) -> pl::LineBreakParams {
+        let s = self.style;
+        pl::LineBreakParams {
+            line_width: s.text_width_pt,
+            mode: pl::BreakMode::Justified,
+            algorithm: pl::Algorithm::TotalFit,
+            pretolerance: s.pretolerance,
+            tolerance: s.tolerance,
+            emergency_stretch: 0.0,
+            line_penalty: s.linepenalty,
+            adj_demerits: s.adjdemerits,
+            double_hyphen_demerits: 10_000.0,
+            final_hyphen_demerits: 5_000.0,
+            parindent: if indent { s.parindent_pt } else { 0.0 },
+            left_skip: pl::Glue::fixed(0.0),
+            right_skip: pl::Glue::fixed(0.0),
+            baselineskip,
+            lineskip: s.lineskip_pt,
+            lineskiplimit: s.lineskiplimit_pt,
+        }
+    }
+
+    fn paragraph_block(&mut self, items: &[AItem], indent: bool) -> Option<BuiltBlock> {
+        let size = self.style.body_size_pt;
+        let (list, recs) = self.hlist(items, size, TextStyle::default());
+        if !list.iter().any(|i| matches!(i, pl::Item::Box(_))) {
+            return None;
+        }
+        let lines = pl::layout_paragraph(&list, &self.line_params(indent, self.style.baselineskip_pt));
+        self.report_overfull(&lines, &list, &recs);
+        Some(BuiltBlock {
+            block: pl::ParagraphBlock::body(lines),
+            items: list,
+            recs,
+        })
+    }
+
+    fn heading_block(&mut self, level: u8, items: &[AItem]) -> Option<BuiltBlock> {
+        let h = self.style.heading(level);
+        let (list, recs) = self.hlist(
+            items,
+            h.size_pt,
+            TextStyle {
+                bold: h.bold,
+                italic: false,
+            },
+        );
+        if !list.iter().any(|i| matches!(i, pl::Item::Box(_))) {
+            return None;
+        }
+        let lines = pl::layout_paragraph(&list, &self.line_params(false, h.baselineskip_pt));
+        self.report_overfull(&lines, &list, &recs);
+        // The heading paragraph carries its own \baselineskip; paragraph-layout
+        // applies one page-wide value, so the difference is folded into the
+        // before-skip (exact unless \lineskip takes over). Requested sibling
+        // API: per-block baselineskip.
+        let mut before = h.before;
+        before.natural += h.baselineskip_pt - self.style.baselineskip_pt;
+        Some(BuiltBlock {
+            block: pl::ParagraphBlock {
+                lines,
+                space_before: before.glue(),
+                space_after: h.after.glue(),
+                keep_with_next: true,
+            },
+            items: list,
+            recs,
+        })
+    }
+
+    fn display_block(&mut self, list: &flashtex_compiler::math::MathList, span: Span) -> Option<BuiltBlock> {
+        let rec = self.math_box(list, span, true)?;
+        let BoxRec::Math(mi) = &self.recs[rec] else { unreachable!() };
+        let root = &self.maths[*mi].root;
+        let size = self.style.body_size_pt;
+        let run = math_run(root, size, span);
+        let width = run.width;
+        let (height, depth) = (run.height, run.depth);
+        let x = ((self.style.text_width_pt - width) / 2.0).max(0.0);
+        let positioned = pl::PositionedRun {
+            x,
+            baseline_y: height,
+            width,
+            font: run.font,
+            size: run.size,
+            glyphs: Vec::new(),
+            source: run.source.clone(),
+            is_hyphen: false,
+        };
+        let line = pl::Line {
+            index: 0,
+            runs: vec![positioned],
+            baseline_y: height,
+            height,
+            depth,
+            natural_width: width,
+            set_width: self.style.text_width_pt,
+            ratio: 0.0,
+            badness: 0.0,
+            items: 0..1,
+            hyphenated: false,
+        };
+        let lines = pl::Lines {
+            lines: vec![line],
+            breaks: Vec::new(),
+            stats: pl::Stats {
+                algorithm: pl::Algorithm::TotalFit,
+                lines: 1,
+                pass: 1,
+                total_demerits: 0.0,
+                overfull: Vec::new(),
+                underfull: Vec::new(),
+                hyphenated_lines: 0,
+            },
+            height: height + depth,
+        };
+        if width > self.style.text_width_pt + 1e-6 {
+            let src = self.source(span);
+            self.diagnostics.push(Diagnostic::warning(
+                "overfull_display",
+                format!("display is {:.2}pt wider than the text width", width - self.style.text_width_pt),
+                vec![src],
+            ));
+        }
+        Some(BuiltBlock {
+            block: pl::ParagraphBlock {
+                lines,
+                space_before: self.style.abovedisplayskip.glue(),
+                space_after: self.style.belowdisplayskip.glue(),
+                keep_with_next: false,
+            },
+            items: vec![pl::Item::Box(run)],
+            recs: vec![Some(rec)],
+        })
+    }
+
+    fn report_overfull(&mut self, lines: &pl::Lines, list: &[pl::Item], recs: &[Option<usize>]) {
+        for o in &lines.stats.overfull {
+            let line = &lines.lines[o.line];
+            let span = line
+                .items
+                .clone()
+                .filter_map(|i| recs.get(i).copied().flatten())
+                .filter_map(|r| match &self.recs[r] {
+                    BoxRec::Text { clusters, .. } => clusters.first().map(|c| c.span),
+                    BoxRec::Math(m) => Some(self.maths[*m].span),
+                })
+                .next();
+            let _ = list;
+            let src = span.map(|s| vec![self.source(s)]).unwrap_or_default();
+            self.diagnostics.push(Diagnostic::warning(
+                "overfull_hbox",
+                format!("overfull line: {:.2}pt too wide (no hyphenation available)", o.excess),
+                src,
+            ));
+        }
+    }
+}
+
+fn design_size(family: Family, size: f64) -> u32 {
+    match family {
+        Family::Times => 10,
+        Family::LatinModern => {
+            if size < 8.5 {
+                8
+            } else if size < 11.0 {
+                10
+            } else if size < 15.0 {
+                12
+            } else {
+                17
+            }
+        }
+    }
+}
+
+fn seg_span(seg: &adapter::Segment) -> Option<Span> {
+    let first = seg.chars.first()?;
+    let last = seg.chars.last()?;
+    Some(Span::in_document(first.document, first.start.min(last.start), first.end.max(last.end)))
+}
+
+fn math_run(root: &ml::MathBox, size: f64, span: Span) -> pl::GlyphRun {
+    pl::GlyphRun {
+        font: MATH_SENTINEL,
+        size,
+        glyphs: Vec::new(),
+        width: root.width,
+        height: root.height,
+        depth: root.depth,
+        source: span.start..span.end,
+    }
+}
+
+/// Compiler math list -> math-layout list. Symbols are single characters
+/// with plain.tex's default classification; an unsupported `\command` the
+/// compiler kept literally is spelled out as ordinary atoms.
+pub fn convert_math(list: &flashtex_compiler::math::MathList) -> ml::MathList {
+    use flashtex_compiler::math::Nucleus as N;
+    let mut atoms = Vec::new();
+    for a in &list.atoms {
+        let mut out: Vec<ml::Atom> = match &a.nucleus {
+            N::Symbol(s) => {
+                let mut chars = s.chars();
+                match (chars.next(), chars.next()) {
+                    (Some(c), None) => vec![ml::Atom::symbol(c)],
+                    (Some(_), Some(_)) => {
+                        // Multi-character symbol (e.g. a literal "\foo"): the
+                        // characters as upright ordinary atoms.
+                        vec![ml::Atom::group(ml::MathList::new(s.chars().map(ml::Atom::ord).collect()))]
+                    }
+                    (None, _) => vec![ml::Atom::new(ml::AtomClass::Ord, ml::Nucleus::Empty)],
+                }
+            }
+            N::Fraction { numerator, denominator } => vec![ml::Atom::frac(convert_math(numerator), convert_math(denominator))],
+            N::Radical(r) => vec![ml::Atom::sqrt(convert_math(r))],
+        };
+        if let Some(last) = out.last_mut() {
+            if let Some(sup) = &a.superscript {
+                last.superscript = Some(convert_math(sup));
+            }
+            if let Some(sub) = &a.subscript {
+                last.subscript = Some(convert_math(sub));
+            }
+        }
+        atoms.extend(out);
+    }
+    ml::MathList::new(atoms)
+}
+
+/// Lays out every block of `doc` onto pages.
+pub fn build(ctx: &mut Context, doc: &Doc) -> Laid {
+    let mut blocks: Vec<BuiltBlock> = Vec::new();
+    for block in &doc.blocks {
+        match block {
+            Block::Heading { level, items } => {
+                if let Some(b) = ctx.heading_block(*level, items) {
+                    blocks.push(b);
+                }
+            }
+            Block::Paragraph { parts, indent } => {
+                let mut first = true;
+                for part in parts {
+                    match part {
+                        ParaPart::Lines(items) => {
+                            if let Some(b) = ctx.paragraph_block(items, *indent && first) {
+                                blocks.push(b);
+                            }
+                        }
+                        ParaPart::Display { list, span } => {
+                            if let Some(b) = ctx.display_block(list, *span) {
+                                blocks.push(b);
+                            }
+                        }
+                    }
+                    first = false;
+                }
+            }
+        }
+    }
+    let s = ctx.style;
+    let params = pl::PageParams {
+        page_width: s.page_width_pt,
+        page_height: s.page_height_pt,
+        margin_top: s.text_y_pt,
+        margin_bottom: s.page_height_pt - s.text_y_pt - s.text_height_pt,
+        margin_left: s.text_x_pt,
+        margin_right: s.page_width_pt - s.text_x_pt - s.text_width_pt,
+        topskip: s.topskip_pt,
+        max_depth: s.maxdepth_pt,
+        parskip: s.parskip.glue(),
+        baselineskip: s.baselineskip_pt,
+        lineskip: s.lineskip_pt,
+        lineskiplimit: s.lineskiplimit_pt,
+        baseline_grid: None,
+        club_lines: 2,
+        widow_lines: 2,
+    };
+    let pl_blocks: Vec<pl::ParagraphBlock> = blocks.iter().map(|b| b.block.clone()).collect();
+    let pages = pl::layout_pages(&pl_blocks, &params);
+    for o in &pages.overflow {
+        let span = blocks
+            .get(o.paragraph)
+            .and_then(|b| b.recs.iter().flatten().next().copied())
+            .and_then(|r| match &ctx.recs[r] {
+                BoxRec::Text { clusters, .. } => clusters.first().map(|c| c.span),
+                BoxRec::Math(m) => Some(ctx.maths[*m].span),
+            });
+        let src = span.map(|sp| vec![ctx.source(sp)]).unwrap_or_default();
+        ctx.diagnostics.push(Diagnostic::warning(
+            "overfull_vbox",
+            format!("page {}: a line extends {:.2}pt past the text area", o.page, o.bottom - o.limit),
+            src,
+        ));
+    }
+    Laid {
+        blocks,
+        pages,
+        recs: std::mem::take(&mut ctx.recs),
+        maths: std::mem::take(&mut ctx.maths),
+    }
+}
+
+/// Converts the placed pages into the display list.
+pub fn assemble(
+    project_id: &str,
+    revision: u64,
+    documents: &[SourceDocument<'_>],
+    style: &Stylesheet,
+    _fonts: &FontSet,
+    laid: Laid,
+    diagnostics: Vec<Diagnostic>,
+) -> DisplayList {
+    let paths: Vec<&str> = documents.iter().map(|d| d.path).collect();
+    let source_of = |span: Span| SourceRange {
+        path: paths.get(span.document.0).copied().unwrap_or("").to_string(),
+        start_byte: span.start,
+        end_byte: span.end,
+    };
+    let mut used: BTreeMap<String, Rc<LoadedFace>> = BTreeMap::new();
+    let mut pages = Vec::new();
+    for page in &laid.pages.pages {
+        let mut items: Vec<display::Item> = Vec::new();
+        let mut runs = page.runs.iter();
+        for placed in &page.lines {
+            let block = &laid.blocks[placed.paragraph];
+            let line = &block.block.lines.lines[placed.line];
+            // Boxes of this line in item order pair with its runs in order.
+            let boxes: Vec<usize> = line
+                .items
+                .clone()
+                .filter(|i| matches!(block.items.get(*i), Some(pl::Item::Box(_))))
+                .filter_map(|i| block.recs.get(i).copied().flatten())
+                .collect();
+            let n = line.runs.len();
+            let line_runs: Vec<&pl::PositionedRun> = runs.by_ref().take(n).collect();
+            let mut bi = 0usize;
+            for run in line_runs {
+                if run.is_hyphen {
+                    continue;
+                }
+                let Some(&rec) = boxes.get(bi) else { break };
+                bi += 1;
+                match &laid.recs[rec] {
+                    BoxRec::Text {
+                        face,
+                        size,
+                        text,
+                        clusters,
+                        glyphs,
+                        height,
+                        depth,
+                        ..
+                    } => {
+                        used.entry(face.font_id.clone()).or_insert_with(|| face.clone());
+                        if let Some(item) = text_item(run, face, *size, text, clusters, glyphs, *height, *depth, &source_of) {
+                            items.push(item);
+                        }
+                    }
+                    BoxRec::Math(mi) => {
+                        let m = &laid.maths[*mi];
+                        used.entry(m.face.font_id.clone()).or_insert_with(|| m.face.clone());
+                        math_items(run, m, &source_of, &mut items);
+                    }
+                }
+            }
+        }
+        pages.push(display::Page {
+            number: page.number,
+            width: Tick::from_tex_pt(page.width),
+            height: Tick::from_tex_pt(page.height),
+            items,
+        });
+    }
+    let fonts = used
+        .values()
+        .map(|f| FontResource {
+            font_id: f.font_id.clone(),
+            sha256: f.font_id.clone(),
+            byte_length: f.byte_length,
+            format: f.format.to_string(),
+            face_index: 0,
+            units_per_em: f.units_per_em,
+            glyph_count: f.glyph_count,
+            postscript_name: f.postscript_name.clone(),
+            path: f.path.as_ref().map(|p| p.display().to_string()),
+        })
+        .collect();
+    let docs = documents
+        .iter()
+        .map(|d| DocumentResource {
+            path: d.path.to_string(),
+            revision,
+            sha256: sha256::hex(&sha256::digest(d.text.as_bytes())),
+            byte_length: d.text.len() as u64,
+        })
+        .collect();
+    let _ = style;
+    DisplayList {
+        project_id: project_id.to_string(),
+        revision,
+        documents: docs,
+        fonts,
+        pages,
+        diagnostics,
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn text_item(
+    run: &pl::PositionedRun,
+    face: &Rc<LoadedFace>,
+    size: f64,
+    text: &str,
+    clusters: &[ClusterRec],
+    recs: &[GlyphRec],
+    height: f64,
+    depth: f64,
+    source_of: &dyn Fn(Span) -> SourceRange,
+) -> Option<display::Item> {
+    let baseline = run.baseline_y;
+    let top = Tick::from_tex_pt(baseline - height);
+    let box_height = Tick::from_tex_pt(height + depth);
+    let mut glyphs = Vec::with_capacity(run.glyphs.len());
+    let mut origins = Vec::with_capacity(run.glyphs.len());
+    for (i, g) in run.glyphs.iter().enumerate() {
+        let rec = recs.get(i)?;
+        let x = run.x + g.x_offset + face.pt(i64::from(rec.x_offset_units), size);
+        let y = baseline - face.pt(i64::from(rec.y_offset_units), size);
+        origins.push((run.x + g.x_offset, g.advance));
+        if rec.gid == 0 {
+            continue;
+        }
+        let cluster = clusters.iter().position(|c| c.glyphs.contains(&i)).unwrap_or(0) as u32;
+        glyphs.push(Glyph {
+            gid: rec.gid,
+            origin_x: Tick::from_tex_pt(x),
+            baseline_y: Tick::from_tex_pt(y),
+            advance_x: Tick::from_tex_pt(g.advance),
+            advance_y: Tick(0),
+            cluster,
+        });
+    }
+    if glyphs.is_empty() {
+        return None;
+    }
+    let last_index = clusters.len().saturating_sub(1);
+    let out_clusters = clusters
+        .iter()
+        .enumerate()
+        .map(|(ci, c)| {
+            let (x0, x1) = match (origins.get(c.glyphs.start), origins.get(c.glyphs.end.saturating_sub(1))) {
+                (Some(a), Some(b)) => (a.0, b.0 + b.1),
+                _ => (run.x, run.x),
+            };
+            let mut carets = vec![Caret {
+                text_byte: c.text_range.start,
+                x: Tick::from_tex_pt(x0),
+                top,
+                height: box_height,
+            }];
+            if ci == last_index {
+                carets.push(Caret {
+                    text_byte: c.text_range.end,
+                    x: Tick::from_tex_pt(x1),
+                    top,
+                    height: box_height,
+                });
+            }
+            Cluster {
+                text_start_byte: c.text_range.start,
+                text_end_byte: c.text_range.end,
+                hit_rects: vec![Rect {
+                    x: Tick::from_tex_pt(x0),
+                    top,
+                    width: Tick::from_tex_pt(x1 - x0),
+                    height: box_height,
+                }],
+                carets,
+                provenance: Provenance::Sources(vec![source_of(c.span)]),
+            }
+        })
+        .collect();
+    Some(display::Item::GlyphRun(GlyphRun {
+        font_id: face.font_id.clone(),
+        font_size: Tick::from_tex_pt(size),
+        text: text.to_string(),
+        glyphs,
+        clusters: out_clusters,
+        paint: Paint::BLACK,
+        role: display::RunRole::Text,
+    }))
+}
+
+fn math_items(run: &pl::PositionedRun, m: &MathRec, source_of: &dyn Fn(Span) -> SourceRange, items: &mut Vec<display::Item>) {
+    let flat = ml::positioned_runs(&m.root, (run.x, run.baseline_y - m.root.height));
+    let src = source_of(m.span);
+    // Group consecutive glyphs of one size into a run; each glyph is a cluster.
+    let mut current: Option<GlyphRun> = None;
+    let flush = |current: &mut Option<GlyphRun>, items: &mut Vec<display::Item>| {
+        if let Some(r) = current.take() {
+            if !r.glyphs.is_empty() {
+                items.push(display::Item::GlyphRun(r));
+            }
+        }
+    };
+    for g in &flat.glyphs {
+        if g.gid == 0 {
+            continue;
+        }
+        let size_tick = Tick::from_tex_pt(g.size);
+        if current.as_ref().is_some_and(|r| r.font_size != size_tick) {
+            flush(&mut current, items);
+        }
+        let r = current.get_or_insert_with(|| GlyphRun {
+            font_id: m.face.font_id.clone(),
+            font_size: size_tick,
+            text: String::new(),
+            glyphs: Vec::new(),
+            clusters: Vec::new(),
+            paint: Paint::BLACK,
+            role: display::RunRole::Math,
+        });
+        let b = m.face.bounds(crate::ids::GlyphId(g.gid), Some(g.ch));
+        let adv = m.face.pt(i64::from(m.face.face().advance(crate::ids::GlyphId(g.gid)).unwrap_or(0)), g.size);
+        let (h, d) = if b.empty {
+            (0.0, 0.0)
+        } else {
+            (m.face.pt(i64::from(b.y_max), g.size), m.face.pt(-i64::from(b.y_min), g.size))
+        };
+        let start = r.text.len();
+        r.text.push(g.ch);
+        let ci = r.clusters.len() as u32;
+        let top = Tick::from_tex_pt(g.baseline_y - h);
+        let hh = Tick::from_tex_pt((h + d).max(0.01));
+        r.glyphs.push(Glyph {
+            gid: g.gid,
+            origin_x: Tick::from_tex_pt(g.x),
+            baseline_y: Tick::from_tex_pt(g.baseline_y),
+            advance_x: Tick::from_tex_pt(adv),
+            advance_y: Tick(0),
+            cluster: ci,
+        });
+        r.clusters.push(Cluster {
+            text_start_byte: start,
+            text_end_byte: r.text.len(),
+            hit_rects: vec![Rect {
+                x: Tick::from_tex_pt(g.x),
+                top,
+                width: Tick::from_tex_pt(adv),
+                height: hh,
+            }],
+            carets: vec![Caret {
+                text_byte: start,
+                x: Tick::from_tex_pt(g.x),
+                top,
+                height: hh,
+            }],
+            provenance: Provenance::Sources(vec![src.clone()]),
+        });
+    }
+    flush(&mut current, items);
+    for rule in &flat.rules {
+        if rule.w <= 0.0 || rule.h <= 0.0 {
+            continue;
+        }
+        items.push(display::Item::Rule(Rule {
+            x: Tick::from_tex_pt(rule.x),
+            top: Tick::from_tex_pt(rule.y),
+            width: Tick::from_tex_pt(rule.w).max(Tick(1)),
+            height: Tick::from_tex_pt(rule.h).max(Tick(1)),
+            paint: Paint::BLACK,
+            provenance: Provenance::Sources(vec![src.clone()]),
+        }));
+    }
+}
+
+impl Tick {
+    fn max(self, other: Tick) -> Tick {
+        if self.0 >= other.0 {
+            self
+        } else {
+            other
+        }
+    }
+}
+
+/// Which documents a laid-out page references (for tests).
+pub fn documents_referenced(list: &DisplayList) -> BTreeSet<DocumentId> {
+    let mut out = BTreeSet::new();
+    for p in &list.pages {
+        for it in &p.items {
+            if let display::Item::GlyphRun(r) = it {
+                for c in &r.clusters {
+                    if let Provenance::Sources(s) = &c.provenance {
+                        for s in s {
+                            if let Some(i) = list.documents.iter().position(|d| d.path == s.path) {
+                                out.insert(DocumentId(i));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    out
+}

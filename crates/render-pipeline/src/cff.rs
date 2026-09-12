@@ -2,14 +2,28 @@
 //! interpreter to compute per-glyph bounding boxes (control-point bounds,
 //! which contain the curve) and advance widths. No rasterization.
 //!
-//! TEMPORARY SHIM: font-engine 07fa9fe has no CFF support at all. Glyph
+//! font-engine d0c64cf parses `OTTO` faces and exposes the raw `CFF ` table
+//! (`TrueTypeFace::cff_table`) but derives no glyph bounds for it. Glyph
 //! heights and depths drive TeX line boxes, math shifts, radical rules and
-//! hit rectangles, so the pipeline needs them for Latin Modern (CFF). Remove
-//! when font-engine exposes glyph bounds for `OTTO` faces.
+//! hit rectangles, so the pipeline computes them here. Requested font-engine
+//! API: `Face::glyph_bounds(gid)` (see docs/proposals/rendering-abi.md);
+//! delete this file when it lands.
 
 use flashtex_font_engine::Error;
 
-use crate::otl::{u16_at, u32_at};
+pub(crate) fn u16_at(b: &[u8], at: usize) -> Result<u16, Error> {
+    match b.get(at..at + 2) {
+        Some(s) => Ok(u16::from_be_bytes([s[0], s[1]])),
+        None => Err(Error::Malformed(format!("read of 2 bytes at {at} past end ({})", b.len()))),
+    }
+}
+
+pub(crate) fn u32_at(b: &[u8], at: usize) -> Result<u32, Error> {
+    match b.get(at..at + 4) {
+        Some(s) => Ok(u32::from_be_bytes([s[0], s[1], s[2], s[3]])),
+        None => Err(Error::Malformed(format!("read of 4 bytes at {at} past end ({})", b.len()))),
+    }
+}
 
 /// Font-unit bounding box `[x_min, y_min, x_max, y_max]`; `None` for an empty
 /// glyph (no marking contours).
@@ -258,7 +272,7 @@ impl Cff {
 
     /// Bounding box of `gid` in font units, plus the charstring's advance
     /// width if it declares one (`None` = defaultWidthX).
-    pub fn glyph_bbox(&self, data: &[u8], gid: u16) -> Result<(BBox, Option<f64>), Error> {
+    pub fn glyph_bbox(&self, data: &[u8], gid: u16) -> Result<(Option<[f64; 4]>, Option<f64>), Error> {
         let (s, e) = *self
             .char_strings
             .get(usize::from(gid))

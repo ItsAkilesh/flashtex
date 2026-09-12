@@ -12,7 +12,9 @@
 
 use flashtex_compiler::math::MathList;
 use flashtex_compiler::parser::{Block as CBlock, Inline, Parsed};
-use flashtex_compiler::Span;
+use flashtex_compiler::{DocumentId, Span};
+
+use flashtex_document_style::{Geometry, Pt};
 
 use crate::display::Diagnostic;
 use crate::style::Stylesheet;
@@ -27,8 +29,15 @@ pub struct TextStyle {
 /// One output character and the source bytes it came from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CharSrc {
+    pub document: DocumentId,
     pub start: usize,
     pub end: usize,
+}
+
+impl CharSrc {
+    pub fn span(&self) -> Span {
+        Span::in_document(self.document, self.start, self.end)
+    }
 }
 
 /// A maximal run of characters in one style with no interword space.
@@ -46,10 +55,13 @@ pub struct Word {
 }
 
 impl Word {
+    /// Smallest span covering every character of the word, in the document
+    /// of its first character (a word never straddles two documents).
     pub fn span(&self) -> Span {
+        let document = self.segments.iter().flat_map(|s| s.chars.iter()).map(|c| c.document).next().unwrap_or_default();
         let start = self.segments.iter().flat_map(|s| s.chars.iter()).map(|c| c.start).min().unwrap_or(0);
         let end = self.segments.iter().flat_map(|s| s.chars.iter()).map(|c| c.end).max().unwrap_or(0);
-        Span::new(start, end)
+        Span::in_document(document, start, end)
     }
     pub fn text(&self) -> String {
         self.segments.iter().map(|s| s.text.as_str()).collect()
@@ -86,23 +98,40 @@ pub struct Doc {
     pub diagnostics: Vec<Diagnostic>,
 }
 
-/// Builds the block model for `source` from the compiler's parse result.
-pub fn adapt(source: &str, parsed: &Parsed, options: &RenderOptions) -> Doc {
-    let class_options = class_options(source).unwrap_or_else(|| options.default_class_options.clone());
+/// Builds the block model from the compiler's parse result. `texts` is
+/// indexed by `DocumentId`; `entry` is the root document's index.
+pub fn adapt(texts: &[&str], entry: usize, parsed: &Parsed, options: &RenderOptions) -> Doc {
+    let source = texts.get(entry).copied().unwrap_or("");
+    let explicit_class = class_options(source);
+    let class_options = explicit_class.clone().unwrap_or_else(|| options.default_class_options.clone());
     let size = class_size(&class_options);
-    let parindent = parindent(source, size).or(options.default_parindent_pt).unwrap_or(match size {
-        12 => 18.0,
-        11 => 17.0,
+    // LaTeX's own \parindent (size1x.clo) applies when the document declares a
+    // class; body-only input keeps the compiler's implicit 0pt.
+    let latex_parindent = match size {
+        12 => 17.62482,
+        11 => 16.5,
         _ => 15.0,
+    };
+    let parindent = parindent(source, size).unwrap_or(if explicit_class.is_some() {
+        latex_parindent
+    } else {
+        options.default_parindent_pt
     });
-    let style = Stylesheet::from_document(&class_options, &parsed.packages, parindent);
-    let styles = style_intervals(source);
+    // Body-only input inherits the compiler's implicit preamble (1in margins);
+    // a declared class uses article's own margins unless geometry says otherwise.
+    let geometry = match package_options(source, "geometry") {
+        Some(opts) => Some(Stylesheet::geometry_from_options(&opts)),
+        None if explicit_class.is_none() => Some(Geometry::margin(Pt::inches(1.0))),
+        None => None,
+    };
+    let style = Stylesheet::from_document(&class_options, &parsed.packages, geometry, parindent);
+    let styles: Vec<Vec<(usize, usize, StyleKind)>> = texts.iter().map(|t| style_intervals(t)).collect();
     let mut blocks = Vec::new();
     let mut after_heading = false;
     for block in &parsed.blocks {
         match block {
             CBlock::Heading { level, content } => {
-                let items = items_from_inlines(source, content, &styles);
+                let items = items_from_inlines(texts, content, &styles);
                 blocks.push(Block::Heading {
                     level: *level,
                     items,
@@ -110,7 +139,7 @@ pub fn adapt(source: &str, parsed: &Parsed, options: &RenderOptions) -> Doc {
                 after_heading = true;
             }
             CBlock::Paragraph(inlines) => {
-                let items = items_from_inlines(source, inlines, &styles);
+                let items = items_from_inlines(texts, inlines, &styles);
                 let mut parts = Vec::new();
                 let mut current = Vec::new();
                 for item in items {
@@ -147,6 +176,31 @@ pub fn adapt(source: &str, parsed: &Parsed, options: &RenderOptions) -> Doc {
 
 fn is_display(inlines: &[Inline], span: Span) -> bool {
     inlines.iter().any(|i| matches!(i, Inline::Math { display: true, span: s, .. } if *s == span))
+}
+
+/// Options of `\usepackage[opts]{name}`, if the package is loaded.
+pub fn package_options(source: &str, name: &str) -> Option<String> {
+    let mut from = 0;
+    while let Some(at) = find_command(&source[from..], "usepackage") {
+        let abs = from + at;
+        let rest = source[abs + "\\usepackage".len()..].trim_start();
+        let (opts, rest) = match rest.strip_prefix('[') {
+            Some(inner) => {
+                let end = inner.find(']')?;
+                (inner[..end].to_string(), inner[end + 1..].trim_start())
+            }
+            None => (String::new(), rest),
+        };
+        if let Some(arg) = rest.strip_prefix('{') {
+            if let Some(end) = arg.find('}') {
+                if arg[..end].split(',').any(|p| p.trim() == name) {
+                    return Some(opts);
+                }
+            }
+        }
+        from = abs + 1;
+    }
+    None
 }
 
 /// `\documentclass[opts]{...}` options, if the source has a class line.
@@ -413,12 +467,16 @@ fn accent(mark: char, base: char) -> Option<char> {
 }
 
 /// Converts the compiler inlines into words, spaces, math and line breaks.
-fn items_from_inlines(source: &str, inlines: &[Inline], styles: &[(usize, usize, StyleKind)]) -> Vec<Item> {
+/// `texts` and `styles` are indexed by `DocumentId`.
+fn items_from_inlines(texts: &[&str], inlines: &[Inline], styles: &[Vec<(usize, usize, StyleKind)>]) -> Vec<Item> {
     let mut items: Vec<Item> = Vec::new();
     let mut prev_end: Option<usize> = None;
     let mut prev_span: Option<Span> = None;
     let mut factor = 1000u32;
     let mut pending_accent: Option<(char, CharSrc)> = None;
+    let text_of = |d: DocumentId| -> &str { texts.get(d.0).copied().unwrap_or("") };
+    let no_styles: Vec<(usize, usize, StyleKind)> = Vec::new();
+    let styles_of = |d: DocumentId| -> &[(usize, usize, StyleKind)] { styles.get(d.0).map_or(&no_styles[..], |v| &v[..]) };
 
     // Emits an interword space if the source between `prev` and `span` had one.
     let space_between = |prev_end: Option<usize>, prev_span: Option<Span>, span: Span| -> bool {
@@ -429,8 +487,13 @@ fn items_from_inlines(source: &str, inlines: &[Inline], styles: &[(usize, usize,
                     // Same macro invocation span for both tokens: separate
                     // word tokens in a replacement text were space-separated.
                     true
+                } else if ps.document != span.document {
+                    // Crossing an \input boundary: TeX reads the newline that
+                    // ends the \input line as a space.
+                    true
                 } else if pe <= span.start {
-                    gap_has_space(&source[pe..span.start])
+                    let src = text_of(span.document);
+                    src.get(pe..span.start).is_some_and(gap_has_space)
                 } else {
                     false
                 }
@@ -464,11 +527,12 @@ fn items_from_inlines(source: &str, inlines: &[Inline], styles: &[(usize, usize,
                 factor = 1000;
             }
             Inline::Text { text, span } => {
+                let source = text_of(span.document);
                 let is_accent = span.end - span.start == 2
                     && source.as_bytes().get(span.start) == Some(&b'\\')
                     && text.chars().count() == 1
                     && "\"'`^~=.".contains(text.as_str());
-                let style = style_at(styles, span.start);
+                let style = style_at(styles_of(span.document), span.start);
                 let has_space = space_between(prev_end, prev_span, *span);
                 if has_space {
                     items.push(Item::Space {
@@ -482,6 +546,7 @@ fn items_from_inlines(source: &str, inlines: &[Inline], styles: &[(usize, usize,
                     pending_accent = Some((
                         text.chars().next().unwrap(),
                         CharSrc {
+                            document: span.document,
                             start: span.start,
                             end: span.end,
                         },
@@ -497,11 +562,13 @@ fn items_from_inlines(source: &str, inlines: &[Inline], styles: &[(usize, usize,
                 for (offset, ch) in text.char_indices() {
                     let src = if exact {
                         CharSrc {
+                            document: span.document,
                             start: span.start + offset,
                             end: span.start + offset + ch.len_utf8(),
                         }
                     } else {
                         CharSrc {
+                            document: span.document,
                             start: span.start,
                             end: span.end,
                         }
@@ -514,6 +581,7 @@ fn items_from_inlines(source: &str, inlines: &[Inline], styles: &[(usize, usize,
                             chars[0] = (
                                 composed,
                                 CharSrc {
+                                    document: fsrc.document,
                                     start: msrc.start,
                                     end: fsrc.end,
                                 },
@@ -524,7 +592,7 @@ fn items_from_inlines(source: &str, inlines: &[Inline], styles: &[(usize, usize,
                 let chars = tex_ligatures(chars);
                 // `~` is an unbreakable space.
                 let mut run: Vec<(char, CharSrc)> = Vec::new();
-                let mut flush = |run: &mut Vec<(char, CharSrc)>, items: &mut Vec<Item>, factor: &mut u32| {
+                let flush = |run: &mut Vec<(char, CharSrc)>, items: &mut Vec<Item>, factor: &mut u32| {
                     if run.is_empty() {
                         return;
                     }
@@ -579,7 +647,11 @@ fn push_segment(items: &mut Vec<Item>, text: String, chars: Vec<CharSrc>, style:
 }
 
 /// TeX input ligatures of T1-encoded text: `--` `---` ` `` `` `''` `'`.
+/// Each is the T1 slot the font's ligature program would select, resolved
+/// to a character through the declared encoding table (never a cast).
 fn tex_ligatures(chars: Vec<(char, CharSrc)>) -> Vec<(char, CharSrc)> {
+    use crate::ids::{Encoding, EncodingCode};
+    let t1 = |code: EncodingCode| -> char { code.to_char(Encoding::T1).expect("declared T1 slot") };
     let mut out: Vec<(char, CharSrc)> = Vec::with_capacity(chars.len());
     let mut i = 0;
     while i < chars.len() {
@@ -590,31 +662,29 @@ fn tex_ligatures(chars: Vec<(char, CharSrc)>) -> Vec<(char, CharSrc)> {
             (
                 ch,
                 CharSrc {
+                    document: s.document,
                     start: s.start,
                     end: chars[i + n - 1].1.end,
                 },
             )
         };
         if c == '-' && next == Some('-') && next2 == Some('-') {
-            out.push(merged(3, '\u{2014}'));
+            out.push(merged(3, t1(EncodingCode::T1_EMDASH)));
             i += 3;
         } else if c == '-' && next == Some('-') {
-            out.push(merged(2, '\u{2013}'));
+            out.push(merged(2, t1(EncodingCode::T1_ENDASH)));
             i += 2;
         } else if c == '`' && next == Some('`') {
-            out.push(merged(2, '\u{201C}'));
+            out.push(merged(2, t1(EncodingCode::T1_QUOTEDBLLEFT)));
             i += 2;
         } else if c == '\'' && next == Some('\'') {
-            out.push(merged(2, '\u{201D}'));
+            out.push(merged(2, t1(EncodingCode::T1_QUOTEDBLRIGHT)));
             i += 2;
         } else if c == '`' {
-            out.push((
-                '\u{2018}',
-                s,
-            ));
+            out.push((t1(EncodingCode::T1_QUOTELEFT), s));
             i += 1;
         } else if c == '\'' {
-            out.push(('\u{2019}', s));
+            out.push((t1(EncodingCode::T1_QUOTERIGHT), s));
             i += 1;
         } else {
             out.push((c, s));
@@ -630,7 +700,7 @@ mod tests {
 
     fn items(src: &str) -> Vec<Item> {
         let parsed = flashtex_compiler::parser::parse(src);
-        let doc = adapt(src, &parsed, &RenderOptions::default());
+        let doc = adapt(&[src], 0, &parsed, &RenderOptions::default());
         match &doc.blocks[0] {
             Block::Paragraph { parts, .. } => match &parts[0] {
                 ParaPart::Lines(items) => items.clone(),
@@ -702,9 +772,13 @@ mod tests {
         let src = "\\documentclass[12pt]{article}\n\\setlength{\\parindent}{0pt}\n\\begin{document}x\\end{document}";
         assert_eq!(class_options(src).as_deref(), Some("12pt"));
         assert_eq!(parindent(src, 12), Some(0.0));
-        let doc = adapt(src, &flashtex_compiler::parser::parse(src), &RenderOptions::default());
+        let doc = adapt(&[src], 0, &flashtex_compiler::parser::parse(src), &RenderOptions::default());
         assert_eq!(doc.style.body_size_pt, 12.0);
         assert_eq!(doc.style.parindent_pt, 0.0);
+        let src2 = "\\documentclass{article}\n\\begin{document}x\\end{document}";
+        let doc2 = adapt(&[src2], 0, &flashtex_compiler::parser::parse(src2), &RenderOptions::default());
+        assert_eq!(doc2.style.body_size_pt, 10.0);
+        assert_eq!(doc2.style.parindent_pt, 15.0);
     }
 
     #[test]

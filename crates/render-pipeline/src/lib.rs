@@ -1,74 +1,92 @@
 //! FlashTeX render pipeline.
 //!
 //! Original Rust implementation: compiler parse tree -> styled blocks ->
-//! font-engine shaping (kerning + ligatures) -> Knuth–Plass line breaking ->
-//! TeX Appendix G math boxes -> page builder -> display list v2 (glyph runs +
-//! explicit rules) -> runtime-v1 fallback items. No TeX engine is invoked.
-//! See README.md for scope, sibling pins, shims and limitations.
+//! font-engine shaping (kerning + ligatures, source-byte clusters) ->
+//! paragraph-layout Knuth–Plass line breaking and page breaking ->
+//! math-layout Appendix G boxes with explicit rules -> display list v2
+//! (glyph runs + rules, content-addressed fonts, original glyph ids) ->
+//! runtime-v1 `compile_result` fallback. No TeX engine is invoked at any
+//! point. See README.md for scope, sibling pins and limitations.
 
 pub mod adapter;
 pub mod cff;
 pub mod display;
 pub mod fonts;
-pub mod linebreak;
-pub mod mathlayout;
-pub mod otf;
-pub mod otl;
-pub mod pages;
+pub mod ids;
+pub mod mathfont;
 pub mod params;
 pub mod pdf;
 pub mod protocol;
 pub mod shape;
 pub mod style;
+pub mod typeset;
 pub mod v1;
 
 pub use display::DisplayList;
 pub use fonts::FontSet;
 pub use style::Stylesheet;
 
-/// Everything `render` produces.
+use flashtex_compiler::parser::SourceDocument;
+
+/// Everything `render` produces. The runtime-v1 payload is derived per
+/// request by `v1::fallback` because it depends on negotiated capabilities.
 pub struct Rendered {
     /// Display list v2 (the authoritative geometry).
     pub v2: DisplayList,
-    /// runtime-v1 `compile_result` payload derived from `v2`.
-    pub v1: v1::V1Payload,
+    /// Wall-clock milliseconds spent in `render` (parse + layout + output).
+    pub elapsed_ms: f64,
 }
 
 /// Options that runtime-v1 cannot carry and the compiler does not expose.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct RenderOptions {
-    /// Defaults applied when the source has no `\documentclass` (e.g. the
-    /// visual-oracle harness sends body-only documents): class options such
-    /// as `12pt`.
+    /// Class options assumed when the source has no `\documentclass` (the
+    /// visual-oracle harness and the Mac app send body-only documents). The
+    /// FlashTeX compiler's implicit preamble is `12pt`, US Letter, 1in
+    /// margins, `\parindent 0pt`; that is the default here too.
     pub default_class_options: String,
-    /// `\parindent` when the source does not set it (points).
-    pub default_parindent_pt: Option<f64>,
-    /// Emit the proposed optional `font` field on v1 text items.
-    pub v1_font_hints: bool,
+    /// `\parindent` when the source sets neither a class nor the length.
+    pub default_parindent_pt: f64,
 }
 
-/// Renders one document. `path` is the project-relative source path used in
-/// every source range; `revision` is echoed into the display list.
+impl Default for RenderOptions {
+    fn default() -> Self {
+        RenderOptions {
+            default_class_options: "12pt".into(),
+            default_parindent_pt: 0.0,
+        }
+    }
+}
+
+/// Renders one project. `documents` are indexed by the compiler's
+/// `DocumentId`; `entry_path` selects the root (the first document when
+/// absent). `revision` is echoed into both outputs.
 pub fn render(
-    path: &str,
-    text: &str,
+    documents: &[SourceDocument<'_>],
+    entry_path: &str,
     revision: u64,
     project_id: &str,
     fonts: &FontSet,
     options: &RenderOptions,
 ) -> Rendered {
-    let parsed = flashtex_compiler::parser::parse(text);
-    let doc = adapter::adapt(text, &parsed, options);
+    let started = std::time::Instant::now();
+    let parsed = flashtex_compiler::parser::parse_project(documents, entry_path);
+    let texts: Vec<&str> = documents.iter().map(|d| d.text).collect();
+    let paths: Vec<&str> = documents.iter().map(|d| d.path).collect();
+    let entry_index = documents.iter().position(|d| d.path == entry_path).unwrap_or(0);
+    let doc = adapter::adapt(&texts, entry_index, &parsed, options);
     let mut diagnostics: Vec<display::Diagnostic> = parsed
         .diagnostics
         .iter()
-        .map(|d| display::Diagnostic::from_compiler(d, path))
+        .map(|d| display::Diagnostic::from_compiler(d, &paths))
         .collect();
     diagnostics.extend(doc.diagnostics.iter().cloned());
-    let mut ctx = pages::Context::new(fonts, &doc.style, path);
-    let laid = pages::build(&mut ctx, &doc);
-    diagnostics.extend(ctx.diagnostics.drain(..));
-    let v2 = display::assemble(project_id, revision, path, text, &doc.style, fonts, laid, diagnostics);
-    let v1 = v1::fallback(&v2, options.v1_font_hints);
-    Rendered { v2, v1 }
+    let mut ctx = typeset::Context::new(fonts, &doc.style, &paths);
+    let laid = typeset::build(&mut ctx, &doc);
+    diagnostics.extend(ctx.take_diagnostics());
+    let v2 = typeset::assemble(project_id, revision, documents, &doc.style, fonts, laid, diagnostics);
+    Rendered {
+        v2,
+        elapsed_ms: started.elapsed().as_secs_f64() * 1000.0,
+    }
 }

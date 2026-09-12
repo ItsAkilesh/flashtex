@@ -1,0 +1,251 @@
+//! Panic hunting.
+//!
+//! A panic in the compiler is the worst failure the product can have: the worker
+//! dies mid-keystroke and the author's preview stops responding. Recovery
+//! diagnostics only help if the process survives to emit them.
+//!
+//! These tests do not check that output is *correct* — the acceptance and
+//! recovery suites do that. They check that no input, however malformed, takes
+//! the process down or makes a span that cannot be sliced.
+
+use flashtex_compiler::incremental::Session;
+use flashtex_compiler::json::{self, Value};
+use flashtex_compiler::layout::LayoutConstraints;
+use flashtex_compiler::protocol::handle_line;
+use flashtex_compiler::{layout, parser};
+
+/// Deterministic xorshift: a fixed seed means a failure is always reproducible.
+struct Rng(u64);
+impl Rng {
+    fn next(&mut self) -> u64 {
+        let mut x = self.0;
+        x ^= x << 13;
+        x ^= x >> 7;
+        x ^= x << 17;
+        self.0 = x;
+        x
+    }
+    fn below(&mut self, n: usize) -> usize {
+        (self.next() % n as u64) as usize
+    }
+}
+
+/// Fragments chosen to collide: openers without closers, math shifts, macro
+/// definitions, multi-byte characters, and the commands that take arguments.
+const FRAGMENTS: &[&str] = &[
+    "{",
+    "}",
+    "$",
+    "$$",
+    "\\",
+    "\\\\",
+    "%",
+    "#1",
+    "^",
+    "_",
+    "&",
+    "~",
+    "\\section",
+    "\\section{",
+    "\\subsection{x}",
+    "\\textbf{",
+    "\\emph{}",
+    "\\begin{document}",
+    "\\end{document}",
+    "\\begin{align}",
+    "\\end{equation}",
+    "\\newcommand",
+    "\\newcommand{\\a}",
+    "\\newcommand{\\a}[9]{#9}",
+    "\\a",
+    "\\renewcommand{\\a}{\\a}",
+    "\\frac",
+    "\\frac{1}",
+    "\\sqrt{",
+    "\\alpha",
+    "\\documentclass",
+    "\\documentclass{}",
+    "\\usepackage{}",
+    "\\input{x}",
+    "héllo",
+    "naïve",
+    "café",
+    "日本語",
+    "\u{1F600}",
+    "a\u{0301}",
+    "word",
+    " ",
+    "\n",
+    "\n\n",
+    "\n\n\n",
+    "x^2",
+    "x_{i}",
+    "$x",
+    "${",
+    "}$",
+];
+
+fn fuzz_source(rng: &mut Rng, pieces: usize) -> String {
+    let mut s = String::new();
+    for _ in 0..pieces {
+        s.push_str(FRAGMENTS[rng.below(FRAGMENTS.len())]);
+    }
+    s
+}
+
+/// Every span the compiler emits must be sliceable from the text it describes.
+/// A span on a non-character boundary would panic the moment anyone navigated to
+/// it, so assert it here rather than discovering it in the editor.
+fn assert_spans_slice(text: &str, blocks: &[parser::Block]) {
+    for page in layout::layout(blocks) {
+        for item in page.items {
+            let (a, b) = (item.span.start, item.span.end);
+            assert!(a <= b, "inverted span {a}..{b} for {:?}", item.text);
+            assert!(b <= text.len(), "span {a}..{b} past end {}", text.len());
+            assert!(
+                text.is_char_boundary(a) && text.is_char_boundary(b),
+                "span {a}..{b} is not on a character boundary in {text:?}"
+            );
+            let _ = &text[a..b];
+        }
+    }
+}
+
+#[test]
+fn no_generated_source_panics_the_parser_or_layout() {
+    let mut rng = Rng(0x5EED_1234_ABCD_0001);
+    for case in 0..3000 {
+        let pieces = 1 + rng.below(24);
+        let text = fuzz_source(&mut rng, pieces);
+        let parsed = parser::parse(&text);
+        assert_spans_slice(&text, &parsed.blocks);
+        for d in &parsed.diagnostics {
+            if let Some(s) = d.span {
+                assert!(
+                    text.is_char_boundary(s.start) && text.is_char_boundary(s.end),
+                    "case {case}: diagnostic span off a boundary in {text:?}"
+                );
+                let _ = &text[s.start..s.end];
+            }
+        }
+    }
+}
+
+#[test]
+fn no_generated_source_panics_incremental_reuse() {
+    // Reuse is where state persists across inputs, so it is where a bad
+    // interaction is most likely to hide.
+    let mut rng = Rng(0xC0FF_EE00_1234_5678);
+    let mut session = Session::new();
+    let constraints = LayoutConstraints::default();
+    let mut previous = String::new();
+    for _ in 0..600 {
+        let pieces = 1 + rng.below(16);
+        let text = fuzz_source(&mut rng, pieces);
+        let result = session.compile(&text, constraints);
+        // Whatever reuse decided, it must still equal a clean build.
+        let full = flashtex_compiler::incremental::compile_full(&text, constraints);
+        assert_eq!(
+            format!("{:#?}", result.output),
+            format!("{full:#?}"),
+            "incremental diverged from clean build\nprevious: {previous:?}\ncurrent: {text:?}"
+        );
+        previous = text;
+    }
+}
+
+#[test]
+fn no_malformed_request_line_panics_the_transport() {
+    let mut rng = Rng(0xDEAD_BEEF_0000_0007);
+    let shards = [
+        "{",
+        "}",
+        "[",
+        "]",
+        "\"",
+        ":",
+        ",",
+        "null",
+        "true",
+        "1e999",
+        "-",
+        "\\u",
+        "\"protocol_version\"",
+        "\"id\"",
+        "\"type\"",
+        "\"payload\"",
+        "\"compile\"",
+        "\"documents\"",
+        "\"text\"",
+        "\"path\"",
+        "\u{1F600}",
+        "\\\"",
+        "0".repeat(40).leak(),
+    ];
+    for _ in 0..4000 {
+        let mut line = String::new();
+        for _ in 0..1 + rng.below(18) {
+            line.push_str(shards[rng.below(shards.len())]);
+        }
+        // Must return a reply and must never panic.
+        let out = handle_line(&line);
+        assert!(!out.is_empty(), "empty reply for {line:?}");
+        let parsed = json::parse(&out).expect("every reply must be valid JSON");
+        assert!(
+            matches!(
+                parsed.get("type").and_then(|t| t.as_str()),
+                Some("error") | Some("compile_result")
+            ),
+            "unexpected reply type for {line:?}: {out}"
+        );
+    }
+}
+
+#[test]
+fn deeply_nested_input_does_not_blow_the_stack() {
+    // Unbounded recursion on nesting is a classic parser crash.
+    for depth in [64usize, 512, 4096, 20_000] {
+        let text = format!("{}x{}", "{".repeat(depth), "}".repeat(depth));
+        let parsed = parser::parse(&text);
+        assert_spans_slice(&text, &parsed.blocks);
+
+        let math = format!(
+            "${}x{}$",
+            "\\frac{".repeat(depth.min(2000)),
+            "}{1}".repeat(depth.min(2000))
+        );
+        let parsed = parser::parse(&math);
+        assert_spans_slice(&math, &parsed.blocks);
+    }
+}
+
+#[test]
+fn a_request_is_answered_even_when_the_document_is_pathological() {
+    for text in [
+        "\\newcommand{\\a}{\\a}\\a\n",
+        "\\newcommand{\\a}[1]{\\a{#1}}\\a{x}\n",
+        &"$".repeat(5000),
+        &"{".repeat(10_000),
+        &"\\section{".repeat(500),
+        "\u{FEFF}\\section{bom}\n",
+        "\0\0\0 nulls \0\n",
+    ] {
+        let mut doc = Value::obj();
+        doc.set("path", json::str_("m.tex"));
+        doc.set("text", json::str_(text.to_string()));
+        let mut payload = Value::obj();
+        payload.set("project_id", json::str_("fuzz"));
+        payload.set("revision", Value::Num(1.0));
+        payload.set("entry_path", json::str_("m.tex"));
+        payload.set("documents", Value::Arr(vec![doc]));
+        let mut env = Value::obj();
+        env.set("protocol_version", Value::Num(1.0));
+        env.set("id", json::str_("p"));
+        env.set("type", json::str_("compile"));
+        env.set("payload", payload);
+
+        let out = handle_line(&json::write(&env));
+        let parsed = json::parse(&out).expect("reply must be valid JSON");
+        assert_eq!(parsed.get("id").and_then(|v| v.as_str()), Some("p"));
+    }
+}
