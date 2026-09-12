@@ -1,0 +1,1762 @@
+{
+  "compiler": "/Users/jay3332/Projects/flashtex/crates/compiler/target/release/flashtex-compiler",
+  "compiler_sha256": "1d615ef71e59435a45846aaf5b763d4e17589e6ce5ee1b55d4a47859c1c98238",
+  "compiler_source_revision_caller_supplied": "unknown",
+  "manifest_sha256": "0e7321eaf71e94d329cf0b2ce7decd58ee1be01d19d3aa65a39738caa48d231a",
+  "edits_sha256": "77903dc74cb4497465c890519bc6d813336f24ee8b5edcff0a7a6367fa37880c",
+  "comparison": "complete raw reply bytes, including JSONL terminator; no normalization",
+  "scope": "warm/clean consistency only; no TeX support, PDF parity or latency claim",
+  "timeout_seconds_per_worker": 20,
+  "results": [
+    {
+      "warm": {
+        "returncode": 0,
+        "timeout": false,
+        "seconds": 0.007,
+        "requests_sha256": "18ebddf670e52298d66eaa3dfce6c33a1bae9c5314fa6abb17107a40bc25928a",
+        "stdout_sha256": "90140c37c0494db7988aa5fc8cbf77a3b6dd334d0f8cf46ad8aee14f7fa5dd2e",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "problems": []
+      },
+      "comparisons": [
+        {
+          "state": "edited",
+          "clean": {
+            "returncode": 0,
+            "timeout": false,
+            "seconds": 0.005,
+            "requests_sha256": "42bc1fc24222692e4e2a25e7def5fba7272b96ef69326d13de0959b718784600",
+            "stdout_sha256": "f589f3a9b391232802dd14c30abefe808220a20be9ff075b05d901671148971e",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "problems": []
+          },
+          "equal": true,
+          "difference": null
+        },
+        {
+          "state": "undo",
+          "clean": {
+            "returncode": 0,
+            "timeout": false,
+            "seconds": 0.01,
+            "requests_sha256": "ca8ed73bcf75047d4cc6e2d8d7c7cab27a1cb2b129863f6c7665322495b79df0",
+            "stdout_sha256": "510753dd6a74abf2940d15ee53f6cbf4093fe33741f25a3c4433b40edeae2523",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "problems": []
+          },
+          "equal": true,
+          "difference": null
+        },
+        {
+          "state": "reapplied",
+          "clean": {
+            "returncode": 0,
+            "timeout": false,
+            "seconds": 0.005,
+            "requests_sha256": "3f901c88e667f7070bebe98c01da6823678129773dc30c8978d65af2af9c62b5",
+            "stdout_sha256": "3960d71ccb68b76a6de04acb5e5b1884b04470d9da9544487aff61164644ef92",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "problems": []
+          },
+          "equal": true,
+          "difference": null
+        }
+      ],
+      "status": "byte-exact",
+      "case": "hw1-blackboard-macros",
+      "profile": "legacy",
+      "purpose": "A preamble macro edit changes every dependent blackboard use, including nested scripts, without changing the explicit alphabet row.",
+      "source_hashes": {
+        "main.tex": "f12a58284dade0aa1410d1f357c0abc480d4acea61b66762a6c9929620ca2766"
+      }
+    },
+    {
+      "warm": {
+        "returncode": 0,
+        "timeout": false,
+        "seconds": 0.006,
+        "requests_sha256": "25b72100f79e3904c51af711b6279787dc85e9eeca8f888bd828c25b65f1de1c",
+        "stdout_sha256": "7a38551051a358544796856c6ade717daa075ea072af8ce56053dfb8b2857279",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "problems": []
+      },
+      "comparisons": [
+        {
+          "state": "edited",
+          "clean": {
+            "returncode": 0,
+            "timeout": false,
+            "seconds": 0.005,
+            "requests_sha256": "6f921930b990b26a93d3adba55bfbf7885a794f174cba9394f72189032ad2fbf",
+            "stdout_sha256": "f669c28feceb621fadc04439a5370eca8d7240ee13fd916f22a8facc990ccd4b",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "problems": []
+          },
+          "equal": true,
+          "difference": null
+        },
+        {
+          "state": "undo",
+          "clean": {
+            "returncode": 0,
+            "timeout": false,
+            "seconds": 0.004,
+            "requests_sha256": "10f5dbfccafe05c82a8503df207e180ba7fc6cff55d94a16111cea4cc6ff657c",
+            "stdout_sha256": "ee262fc047ca810455424818f11b10065cfc16ff9d212cb695c710f65771dbae",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "problems": []
+          },
+          "equal": true,
+          "difference": null
+        },
+        {
+          "state": "reapplied",
+          "clean": {
+            "returncode": 0,
+            "timeout": false,
+            "seconds": 0.004,
+            "requests_sha256": "f44e2a7bff96ade7f4a3e6e9fcb8384775364ff93d1430afecf63446a10e62e7",
+            "stdout_sha256": "e9952941e4f579c6b480f1dda3f9e370f3342551ddcc2312272fc3db2d9a4aca",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "problems": []
+          },
+          "equal": true,
+          "difference": null
+        }
+      ],
+      "status": "byte-exact",
+      "case": "hw1-blackboard-macros",
+      "profile": "typed",
+      "purpose": "A preamble macro edit changes every dependent blackboard use, including nested scripts, without changing the explicit alphabet row.",
+      "source_hashes": {
+        "main.tex": "f12a58284dade0aa1410d1f357c0abc480d4acea61b66762a6c9929620ca2766"
+      }
+    },
+    {
+      "warm": {
+        "returncode": 0,
+        "timeout": false,
+        "seconds": 0.006,
+        "requests_sha256": "a68f7be8126a78b082e6c41fe320b4407e4f7defa1aceec1e32055b15a31c8f4",
+        "stdout_sha256": "eb62e93db307c2df657f7aeb41dec0ef39f3dee45ab613b577062f4b5d360d2a",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "problems": []
+      },
+      "comparisons": [
+        {
+          "state": "edited",
+          "clean": {
+            "returncode": 0,
+            "timeout": false,
+            "seconds": 0.004,
+            "requests_sha256": "4709d7b859b603dce1b1e510f5386818e3cd41cfd344fd5cbce5571e150ea8f5",
+            "stdout_sha256": "71634317d4cee16f12014224bbdfc586968ba04d6393ca9ca7f0d5929b959f00",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "problems": []
+          },
+          "equal": true,
+          "difference": null
+        },
+        {
+          "state": "undo",
+          "clean": {
+            "returncode": 0,
+            "timeout": false,
+            "seconds": 0.005,
+            "requests_sha256": "decc5b7c866ebde86054880bc8142399f3790589185703f84e2ecb24d06175a2",
+            "stdout_sha256": "feaae1f4d6427a4cc119b1276a1e00e1dfd5aa6d8d4d542a65356153c5feae92",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "problems": []
+          },
+          "equal": true,
+          "difference": null
+        },
+        {
+          "state": "reapplied",
+          "clean": {
+            "returncode": 0,
+            "timeout": false,
+            "seconds": 0.004,
+            "requests_sha256": "ef3fc0541d0748b5a4cd45084445ab3ae3f55952fe51a1f71a69527a9de4f2c5",
+            "stdout_sha256": "5a50f30b7767dc17bc98dc2a4695b909cf6e2699c09eb81c34df55aad7798bb5",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "problems": []
+          },
+          "equal": true,
+          "difference": null
+        }
+      ],
+      "status": "byte-exact",
+      "case": "hw1-array-cases",
+      "profile": "legacy",
+      "purpose": "Changing column alignment moves cells while preserving row gaps, vertical rule, adjacent cases and the later array.",
+      "source_hashes": {
+        "main.tex": "9d8127eecf56471bc660133547c2c7072f60d3e5014a864397e7f5a0b69d1fb5"
+      }
+    },
+    {
+      "warm": {
+        "returncode": 0,
+        "timeout": false,
+        "seconds": 0.007,
+        "requests_sha256": "6d8cb4a0163fb41629bc609b010a3807ed198d7a25d297256a1348bc345d0a2d",
+        "stdout_sha256": "e347ed4fa8dadabe1bf2981d0eab0c5502a0d36130be3943d9017ddcd03c8f33",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "problems": []
+      },
+      "comparisons": [
+        {
+          "state": "edited",
+          "clean": {
+            "returncode": 0,
+            "timeout": false,
+            "seconds": 0.005,
+            "requests_sha256": "3589fc788e707be2ae14ac04add814571839e4be021654e4aee162f7eb6bedde",
+            "stdout_sha256": "9b2ca01072ab02aab90b8ef2180e1544582825aced35dfaf25306a424b1fddd7",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "problems": []
+          },
+          "equal": true,
+          "difference": null
+        },
+        {
+          "state": "undo",
+          "clean": {
+            "returncode": 0,
+            "timeout": false,
+            "seconds": 0.006,
+            "requests_sha256": "f9d67df647bf16fc060aba8c4fc4d0c3e0fefb91c276f98d55820d2421599041",
+            "stdout_sha256": "5f6b689911e3900281d9096f290bc826500371c4c12f299f0d9b2cd7f6254a29",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "problems": []
+          },
+          "equal": true,
+          "difference": null
+        },
+        {
+          "state": "reapplied",
+          "clean": {
+            "returncode": 0,
+            "timeout": false,
+            "seconds": 0.005,
+            "requests_sha256": "c99ddf331ef02cd677609bb215c2bf24450ce5c15099e83b4aba53e0f3e82bc8",
+            "stdout_sha256": "0732f34f36c8b87212d891950c17162e6ecfa16993086aa8a9796e479c8373cb",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "problems": []
+          },
+          "equal": true,
+          "difference": null
+        }
+      ],
+      "status": "byte-exact",
+      "case": "hw1-array-cases",
+      "profile": "typed",
+      "purpose": "Changing column alignment moves cells while preserving row gaps, vertical rule, adjacent cases and the later array.",
+      "source_hashes": {
+        "main.tex": "9d8127eecf56471bc660133547c2c7072f60d3e5014a864397e7f5a0b69d1fb5"
+      }
+    },
+    {
+      "warm": {
+        "returncode": 0,
+        "timeout": false,
+        "seconds": 0.006,
+        "requests_sha256": "b52afd1dd524d83559e8274802728552ee0465cdfad8ef7986f57879e91d3ad1",
+        "stdout_sha256": "9ed7e1f8094c811ac6a19034504843f5ef2e7495815a4ff239b8424237824f6d",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "problems": []
+      },
+      "comparisons": [
+        {
+          "state": "edited",
+          "clean": {
+            "returncode": 0,
+            "timeout": false,
+            "seconds": 0.005,
+            "requests_sha256": "a0c0fb414d597ccbd5e2fd4a1d01c26467aa60129df3c5497e58ade287b77a41",
+            "stdout_sha256": "9e83b5f0082ad9819a7fb4a2d210dbd29d02c7a59f31638877648f6733fe6884",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "problems": []
+          },
+          "equal": true,
+          "difference": null
+        },
+        {
+          "state": "undo",
+          "clean": {
+            "returncode": 0,
+            "timeout": false,
+            "seconds": 0.005,
+            "requests_sha256": "d6ae4afb1062c523da60f38fc2e8410cf96d3a44a8685fae4fdce5696915e411",
+            "stdout_sha256": "1f2e18dea54a0b6c4bda0386da417cdfae7e51d29d814b08717198997fb2eaf7",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "problems": []
+          },
+          "equal": true,
+          "difference": null
+        },
+        {
+          "state": "reapplied",
+          "clean": {
+            "returncode": 0,
+            "timeout": false,
+            "seconds": 0.005,
+            "requests_sha256": "a24e47bc1cd27860902d771ff0060a6f4d792b78c8e1d21605620bb67ba5b089",
+            "stdout_sha256": "a80f16fb2c4bce36161a886283890e5268a4115b9fe00e600b8cd5e6cc40b94f",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "problems": []
+          },
+          "equal": true,
+          "difference": null
+        }
+      ],
+      "status": "byte-exact",
+      "case": "hw1-delimiters-kerns",
+      "profile": "legacy",
+      "purpose": "An explicit math-space edit increases only the selected gap; the delimiter and other spacing rows remain unchanged.",
+      "source_hashes": {
+        "main.tex": "e2a7151d24e66b22b4b85e322a4dcf676d9715a3b07b2efbbd60d8c82852d26d"
+      }
+    },
+    {
+      "warm": {
+        "returncode": 0,
+        "timeout": false,
+        "seconds": 0.006,
+        "requests_sha256": "779527e413f9af8251339b17f543967e6fbe7d03ed8455955bb3d23f1fd6d6aa",
+        "stdout_sha256": "a2bcc48305ed43f3e6c51f01c3fe45f5d8d8393ebbf054ad2848a6bc6a15b095",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "problems": []
+      },
+      "comparisons": [
+        {
+          "state": "edited",
+          "clean": {
+            "returncode": 0,
+            "timeout": false,
+            "seconds": 0.005,
+            "requests_sha256": "a5d6eeaac8fae28164a31005eb5a723f1cabe102952aa146069d226019cc36c1",
+            "stdout_sha256": "861fb990f8f5ea7a0148b162b3bd95b63853539db19881e994b22d3ce66fee7f",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "problems": []
+          },
+          "equal": true,
+          "difference": null
+        },
+        {
+          "state": "undo",
+          "clean": {
+            "returncode": 0,
+            "timeout": false,
+            "seconds": 0.01,
+            "requests_sha256": "81d4f034f31c969422228f97a922956de73029c767be61f1827c42a20c2570e8",
+            "stdout_sha256": "3307fde036df54f6fa563f3def1b54c752754823190ed8b15581885d604895d2",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "problems": []
+          },
+          "equal": true,
+          "difference": null
+        },
+        {
+          "state": "reapplied",
+          "clean": {
+            "returncode": 0,
+            "timeout": false,
+            "seconds": 0.005,
+            "requests_sha256": "c50e59365be6c5ad8f3dc48e14afd53bf009c4df6b1774a3bb8dc9f57de93bdc",
+            "stdout_sha256": "0d876bccdc0cbb02a237bb710fb2e647d93e98a7d00ce5c5f8b4404312c5c31c",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "problems": []
+          },
+          "equal": true,
+          "difference": null
+        }
+      ],
+      "status": "byte-exact",
+      "case": "hw1-delimiters-kerns",
+      "profile": "typed",
+      "purpose": "An explicit math-space edit increases only the selected gap; the delimiter and other spacing rows remain unchanged.",
+      "source_hashes": {
+        "main.tex": "e2a7151d24e66b22b4b85e322a4dcf676d9715a3b07b2efbbd60d8c82852d26d"
+      }
+    },
+    {
+      "warm": {
+        "returncode": 0,
+        "timeout": false,
+        "seconds": 0.005,
+        "requests_sha256": "f7f37ca11dd928f571a9e5478810b4f9b1a30406b9002371bfbfa068dbd0f74c",
+        "stdout_sha256": "2626cdec680f11e8759f711f5d5c84ad52406beb1c0b6b8fd34523c8aed46f3d",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "problems": []
+      },
+      "comparisons": [
+        {
+          "state": "edited",
+          "clean": {
+            "returncode": 0,
+            "timeout": false,
+            "seconds": 0.004,
+            "requests_sha256": "994854dd9dc4e2b8054d0d1e82cbea14b67f003494d670d857f0242b5ec0ec79",
+            "stdout_sha256": "988e5859b932778906e1df2ee4fca272e23b92bb8e353f1a0a20fe54fece6a4d",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "problems": []
+          },
+          "equal": true,
+          "difference": null
+        },
+        {
+          "state": "undo",
+          "clean": {
+            "returncode": 0,
+            "timeout": false,
+            "seconds": 0.004,
+            "requests_sha256": "fe826589134b7200de09e86943f763a9b0fd329fbfca9898fe1e30ba94e9273e",
+            "stdout_sha256": "0bd3937e268be4f482ed6f5cfeb69aa868e23c38bf8eae751aa119ace456fb50",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "problems": []
+          },
+          "equal": true,
+          "difference": null
+        },
+        {
+          "state": "reapplied",
+          "clean": {
+            "returncode": 0,
+            "timeout": false,
+            "seconds": 0.004,
+            "requests_sha256": "6da714c0f63dd22ff6439a6839643687634d7ed57f601e8a695b121da6a53a64",
+            "stdout_sha256": "9e75b9933d31bb703ef7d8082c87661ffe19e7e29aea91c90ec9850a22c92f8b",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "problems": []
+          },
+          "equal": true,
+          "difference": null
+        }
+      ],
+      "status": "byte-exact",
+      "case": "hw1-title-size-scope",
+      "profile": "legacy",
+      "purpose": "A scoped title size edit invalidates its geometry and downstream vertical positions without leaking small size into body text.",
+      "source_hashes": {
+        "main.tex": "bf1a5cfea78e102a377851063a3ed38f1ce2075d2508b3f0faae360587ee6360"
+      }
+    },
+    {
+      "warm": {
+        "returncode": 0,
+        "timeout": false,
+        "seconds": 0.005,
+        "requests_sha256": "d0e46e16f9e470cfe22431076932bab6d374c270df375b48a7bb8cbc124a988c",
+        "stdout_sha256": "754035c99a528a93e48752aaa26de5870c7eb56a8d55112211ec5f7f90d5ee12",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "problems": []
+      },
+      "comparisons": [
+        {
+          "state": "edited",
+          "clean": {
+            "returncode": 0,
+            "timeout": false,
+            "seconds": 0.007,
+            "requests_sha256": "8a614423c9cbf083118fff62181d55d6878911d2b5bcd274209cfbffaaf60e1d",
+            "stdout_sha256": "b2bb57cbf40d38babbfa4366d04e6b6d63ee742ecd92b962e3ce98ad80950152",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "problems": []
+          },
+          "equal": true,
+          "difference": null
+        },
+        {
+          "state": "undo",
+          "clean": {
+            "returncode": 0,
+            "timeout": false,
+            "seconds": 0.004,
+            "requests_sha256": "0ab282e4f1862a5732ff5d82767eedd3c39fbebd30c02dc25fd2e2f989e889aa",
+            "stdout_sha256": "882b7d1f888e2b2b6cbf018da3d76ad0122594a2e0f168d1fc895522d7815a8b",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "problems": []
+          },
+          "equal": true,
+          "difference": null
+        },
+        {
+          "state": "reapplied",
+          "clean": {
+            "returncode": 0,
+            "timeout": false,
+            "seconds": 0.004,
+            "requests_sha256": "8c9c5aa422ea1139045bac99bae366e03c9f7a219b1d965018dcfef676ca8c63",
+            "stdout_sha256": "5d2b24bcf07a577ad67dcd5bdf1338362e6ec89cb4056d6c3419cb52b720e032",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "problems": []
+          },
+          "equal": true,
+          "difference": null
+        }
+      ],
+      "status": "byte-exact",
+      "case": "hw1-title-size-scope",
+      "profile": "typed",
+      "purpose": "A scoped title size edit invalidates its geometry and downstream vertical positions without leaking small size into body text.",
+      "source_hashes": {
+        "main.tex": "bf1a5cfea78e102a377851063a3ed38f1ce2075d2508b3f0faae360587ee6360"
+      }
+    },
+    {
+      "warm": {
+        "returncode": 0,
+        "timeout": false,
+        "seconds": 0.006,
+        "requests_sha256": "c460a5fc8cfcca5a952d040d111b167f42ceed2b6c1e5c3bacc9ccff4a6ba436",
+        "stdout_sha256": "c9f367585942c6fadde06224ceb0cfc838d9bbc0096cab4997acb4db697035ab",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "problems": []
+      },
+      "comparisons": [
+        {
+          "state": "edited",
+          "clean": {
+            "returncode": 0,
+            "timeout": false,
+            "seconds": 0.004,
+            "requests_sha256": "e464b1ed91b574ea4af44e6d78b56e8a2f9cd69bd95210f85d92254e54a5aac2",
+            "stdout_sha256": "76d2506c7bf793d9901a5431b969134aac79712b36b8eff448170b8bd0727a3d",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "problems": []
+          },
+          "equal": true,
+          "difference": null
+        },
+        {
+          "state": "undo",
+          "clean": {
+            "returncode": 0,
+            "timeout": false,
+            "seconds": 0.004,
+            "requests_sha256": "596d203b32f4bc65652b30c4f6e3d1689cd3ef283d8330f4a9f2fbf5e601eb14",
+            "stdout_sha256": "5107cf772bd760d12c048dbc28ea5dedb8492ced1210618db519c2a768933f61",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "problems": []
+          },
+          "equal": true,
+          "difference": null
+        },
+        {
+          "state": "reapplied",
+          "clean": {
+            "returncode": 0,
+            "timeout": false,
+            "seconds": 0.004,
+            "requests_sha256": "e39c6f492f4b8e4fa2c90b533f3b4b3ac75a96458e5a602755fe3d2aeeaf56fa",
+            "stdout_sha256": "1f6a520eca11f9963522d20f44112173082e13eaa050255360302026b5fbbff9",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "problems": []
+          },
+          "equal": true,
+          "difference": null
+        }
+      ],
+      "status": "byte-exact",
+      "case": "hw1-paragraph-registers",
+      "profile": "legacy",
+      "purpose": "A preamble paragraph-glue edit propagates through later paragraphs; the local override still applies, then restores the new outer value.",
+      "source_hashes": {
+        "main.tex": "092eed611741250a55360bdea7785a22badf9bff5bb7fa66ebf13cc500b0e7f1"
+      }
+    },
+    {
+      "warm": {
+        "returncode": 0,
+        "timeout": false,
+        "seconds": 0.005,
+        "requests_sha256": "806b30f493867bb6a44a9b8b8e6a71f975019af328e7cd329dfbc9f1adf92759",
+        "stdout_sha256": "3266231df8ba9c35af8742ace8a8bd2a5817a9971279bf0f277dfe6e5b53112c",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "problems": []
+      },
+      "comparisons": [
+        {
+          "state": "edited",
+          "clean": {
+            "returncode": 0,
+            "timeout": false,
+            "seconds": 0.004,
+            "requests_sha256": "c713dfe3ec5021d65da0bf2b9815d38d59ba15dff480e429de6984ace79686d0",
+            "stdout_sha256": "c04759a73307d49bebebc69e9760816f159f1d547085748840c53aa74e9373aa",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "problems": []
+          },
+          "equal": true,
+          "difference": null
+        },
+        {
+          "state": "undo",
+          "clean": {
+            "returncode": 0,
+            "timeout": false,
+            "seconds": 0.004,
+            "requests_sha256": "3f636ded1cb30c9f821264697bde175dd381a66643a75a98d9a45d7a87446ee1",
+            "stdout_sha256": "1f0974db501d4e1bc3e403a91e48e4dacb2df5770a9b0f5416321111a91b1561",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "problems": []
+          },
+          "equal": true,
+          "difference": null
+        },
+        {
+          "state": "reapplied",
+          "clean": {
+            "returncode": 0,
+            "timeout": false,
+            "seconds": 0.004,
+            "requests_sha256": "627ecab9b08ab18a8bf0cd9ab9f48dbfea0d2039de26f119db37e72298d015bb",
+            "stdout_sha256": "518fd92599e96118ca9988a9ac268de4a1fe76312e039640e9ebcd2cbb9940b2",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "problems": []
+          },
+          "equal": true,
+          "difference": null
+        }
+      ],
+      "status": "byte-exact",
+      "case": "hw1-paragraph-registers",
+      "profile": "typed",
+      "purpose": "A preamble paragraph-glue edit propagates through later paragraphs; the local override still applies, then restores the new outer value.",
+      "source_hashes": {
+        "main.tex": "092eed611741250a55360bdea7785a22badf9bff5bb7fa66ebf13cc500b0e7f1"
+      }
+    },
+    {
+      "warm": {
+        "returncode": 0,
+        "timeout": false,
+        "seconds": 0.008,
+        "requests_sha256": "644c7876fe20397ac3acd88dd2cbce28088604e8ea1a806fc8abb7b4d1b54211",
+        "stdout_sha256": "325e94b0c27f8d1620c4683d790a841b795e59aee71a78e7b782a1d71ee835dc",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "problems": []
+      },
+      "comparisons": [
+        {
+          "state": "edited",
+          "clean": {
+            "returncode": 0,
+            "timeout": false,
+            "seconds": 0.004,
+            "requests_sha256": "eeeeca83868a064f92350a1788382f6dcc00bae975be2158fa2acb210fe6428f",
+            "stdout_sha256": "52ec834ff645ac28ec3cdd509fbbd0c2134732ee39b337b06b4b20eada8315c3",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "problems": []
+          },
+          "equal": true,
+          "difference": null
+        },
+        {
+          "state": "undo",
+          "clean": {
+            "returncode": 0,
+            "timeout": false,
+            "seconds": 0.004,
+            "requests_sha256": "5c5a0fd3e8a00ba52018ba69460e704e433e7af5be9880143c1ffa7dcddb8cdc",
+            "stdout_sha256": "f13e8c7cd9dd354a61a48ca2d63dab0dd150c4e80a241c16489d9fa427607122",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "problems": []
+          },
+          "equal": true,
+          "difference": null
+        },
+        {
+          "state": "reapplied",
+          "clean": {
+            "returncode": 0,
+            "timeout": false,
+            "seconds": 0.007,
+            "requests_sha256": "2bafc556c42c73626926bd2b0eebab7c20525326301155773ee333b80fd59f84",
+            "stdout_sha256": "a5ee66dc2c8cca181e176652325944b9b82e6bb64c69dbcbd155e65289f91d93",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "problems": []
+          },
+          "equal": true,
+          "difference": null
+        }
+      ],
+      "status": "byte-exact",
+      "case": "hw1-heading-hfill",
+      "profile": "legacy",
+      "purpose": "Changing fill to fixed space in a shared heading macro changes both points-label positions but preserves unrelated body and quote fill glue.",
+      "source_hashes": {
+        "main.tex": "2b5bdf77ec86f538ddaedffba6a647f16939dbfcbfd2c8c20e809aaee10b1abd"
+      }
+    },
+    {
+      "warm": {
+        "returncode": 0,
+        "timeout": false,
+        "seconds": 0.005,
+        "requests_sha256": "635a8fda79a33cf1d4449319662a977891ac37abbb35ecf08a2a5b529e1802c5",
+        "stdout_sha256": "47965c5729876a72f6cad08faa0bcc1aee05cda0f239676ce59aa96a1e516bcd",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "problems": []
+      },
+      "comparisons": [
+        {
+          "state": "edited",
+          "clean": {
+            "returncode": 0,
+            "timeout": false,
+            "seconds": 0.006,
+            "requests_sha256": "a0e0275707c4d435460b1670fc624610741dbfd1ab5ce364ed81c54316096d6b",
+            "stdout_sha256": "c596798713f2351c68cd0cf08a7781103114d7d3b9538fa89001dc3a0bc8f428",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "problems": []
+          },
+          "equal": true,
+          "difference": null
+        },
+        {
+          "state": "undo",
+          "clean": {
+            "returncode": 0,
+            "timeout": false,
+            "seconds": 0.005,
+            "requests_sha256": "0b21ec0f4dcbb0de491133ce4fb6d9ec74a992ff4d7e5b657be73771fedaec9b",
+            "stdout_sha256": "7752e8c8c450f9590c9aa59801d4aade813647b897663d1710ad7358753f7150",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "problems": []
+          },
+          "equal": true,
+          "difference": null
+        },
+        {
+          "state": "reapplied",
+          "clean": {
+            "returncode": 0,
+            "timeout": false,
+            "seconds": 0.005,
+            "requests_sha256": "76f9b8e606612c1a9542f374438f509020950ebd457b5e5aeb49cf04d8b3ec56",
+            "stdout_sha256": "a481c187fe3aa8e58b95026c0d14c40e3f205e22fe9cfc9c4f54a0699cc32ad5",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "problems": []
+          },
+          "equal": true,
+          "difference": null
+        }
+      ],
+      "status": "byte-exact",
+      "case": "hw1-heading-hfill",
+      "profile": "typed",
+      "purpose": "Changing fill to fixed space in a shared heading macro changes both points-label positions but preserves unrelated body and quote fill glue.",
+      "source_hashes": {
+        "main.tex": "2b5bdf77ec86f538ddaedffba6a647f16939dbfcbfd2c8c20e809aaee10b1abd"
+      }
+    },
+    {
+      "warm": {
+        "returncode": 0,
+        "timeout": false,
+        "seconds": 0.005,
+        "requests_sha256": "34c12ba91d6c03363fc97f301805ac2c3fb817e1a262d8ca24e70a7a6561a8b2",
+        "stdout_sha256": "4320f858fd399d8a53fc50fb994ccd6d2dce65cedd67a84d9fe415ba15bc7467",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "problems": []
+      },
+      "comparisons": [
+        {
+          "state": "edited",
+          "clean": {
+            "returncode": 0,
+            "timeout": false,
+            "seconds": 0.004,
+            "requests_sha256": "abe1db996e5591caa71ee1b6646420f1e32cc89ec5bda2cbfe36787b021e4868",
+            "stdout_sha256": "78ff0e54ad485cd83e6ae3efe4c6e02256acb7f72c67015f76b7aa20f1ed4641",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "problems": []
+          },
+          "equal": true,
+          "difference": null
+        },
+        {
+          "state": "undo",
+          "clean": {
+            "returncode": 0,
+            "timeout": false,
+            "seconds": 0.01,
+            "requests_sha256": "4e721fa46ddb1360b84ddcfd3707e5ef267944c1f219d67104c10484876ecf31",
+            "stdout_sha256": "113fac2ac0e4c86cf697cfbe7493719e321d8e0bc92ca0e2a37defbc0368eb62",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "problems": []
+          },
+          "equal": true,
+          "difference": null
+        },
+        {
+          "state": "reapplied",
+          "clean": {
+            "returncode": 0,
+            "timeout": false,
+            "seconds": 0.004,
+            "requests_sha256": "82ea008d1dcd5598f2d982c82cb1c1f8dc9cb1ae403405a9e4cc055df5ab388a",
+            "stdout_sha256": "566f047fc2d3ed73aa8f92cb923ce1c7fc107d9b6d388a8fe8325c12104fffac",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "problems": []
+          },
+          "equal": true,
+          "difference": null
+        }
+      ],
+      "status": "byte-exact",
+      "case": "tex-expansion-arguments",
+      "profile": "legacy",
+      "purpose": "Earlier macro change must affect dynamic expansion but preserve edef snapshot.",
+      "source_hashes": {
+        "main.tex": "884356ead9cc328cf4e79594555896aa3274039410af7eb81bfbf2e69f2859b7"
+      }
+    },
+    {
+      "warm": {
+        "returncode": 0,
+        "timeout": false,
+        "seconds": 0.005,
+        "requests_sha256": "a41256c8cbd07ce409b467f6be935b98f7c11438bcdf475743617e772b43329a",
+        "stdout_sha256": "2ce0086fe7bb5b7f2887bfcca3cdd3d1b35f50d9b173fb81b121b5d55ad5ab02",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "problems": []
+      },
+      "comparisons": [
+        {
+          "state": "edited",
+          "clean": {
+            "returncode": 0,
+            "timeout": false,
+            "seconds": 0.004,
+            "requests_sha256": "43dc4acb5be0611d21f08d4433065a5517641246c9bfcf09b61500ba99002450",
+            "stdout_sha256": "c17aa39c898a147c80cd7e7ae4c2a3ace55e2712507960253a520d3ab77e9539",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "problems": []
+          },
+          "equal": true,
+          "difference": null
+        },
+        {
+          "state": "undo",
+          "clean": {
+            "returncode": 0,
+            "timeout": false,
+            "seconds": 0.004,
+            "requests_sha256": "badd4fef97393952516287114bc38d61807403627f8a71f17f3583820783339a",
+            "stdout_sha256": "d5a182ba921b4c4d76b16a8ce8ad29da545cb92b583b2977f2c7faea5ec4b310",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "problems": []
+          },
+          "equal": true,
+          "difference": null
+        },
+        {
+          "state": "reapplied",
+          "clean": {
+            "returncode": 0,
+            "timeout": false,
+            "seconds": 0.004,
+            "requests_sha256": "432b06633fb1427973e8839d18f263d86631f72a7f6afafe5476a4cdfe34c1e9",
+            "stdout_sha256": "d4ef69dcf355f5638ae348ece9a48ced7feb501aa807e0dc3ffd1218662a5c40",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "problems": []
+          },
+          "equal": true,
+          "difference": null
+        }
+      ],
+      "status": "byte-exact",
+      "case": "tex-expansion-arguments",
+      "profile": "typed",
+      "purpose": "Earlier macro change must affect dynamic expansion but preserve edef snapshot.",
+      "source_hashes": {
+        "main.tex": "884356ead9cc328cf4e79594555896aa3274039410af7eb81bfbf2e69f2859b7"
+      }
+    },
+    {
+      "warm": {
+        "returncode": 0,
+        "timeout": false,
+        "seconds": 0.005,
+        "requests_sha256": "1437c939b2e4926e03bae51d3b89fc8cdbbaf6a3c9f7dcd2419defe6e36ad361",
+        "stdout_sha256": "ac9a3a1d34ab478eb17611bda99110f37d74ef36fe7afd68d0ed91754c4a69b3",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "problems": []
+      },
+      "comparisons": [
+        {
+          "state": "edited",
+          "clean": {
+            "returncode": 0,
+            "timeout": false,
+            "seconds": 0.004,
+            "requests_sha256": "9366b158ac6dd01f1d4fdc9b8c67e360288a56aeb465da40a3a4fc91ccdd1e91",
+            "stdout_sha256": "3fc48b82e7adb99fa746397c74b26f1342575403a0ff629bb717e6186dd12f35",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "problems": []
+          },
+          "equal": true,
+          "difference": null
+        },
+        {
+          "state": "undo",
+          "clean": {
+            "returncode": 0,
+            "timeout": false,
+            "seconds": 0.005,
+            "requests_sha256": "6436d59549403b2decb1cd2da2eeb9c75fb037f714be15dd0189b285fd38a13c",
+            "stdout_sha256": "10200aef989f190d1d8a030644a20e773721953a6fb2a95505a1366c0f9a4202",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "problems": []
+          },
+          "equal": true,
+          "difference": null
+        },
+        {
+          "state": "reapplied",
+          "clean": {
+            "returncode": 0,
+            "timeout": false,
+            "seconds": 0.005,
+            "requests_sha256": "1f22411e0461bb801733fa57c5090ca51eaa0a89ca9478c5f68d6eefe72a39cf",
+            "stdout_sha256": "b39976aef56b2e2a7470c912dbebb781b97f3a69e0615de4c444ff2b2225b593",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "problems": []
+          },
+          "equal": true,
+          "difference": null
+        }
+      ],
+      "status": "byte-exact",
+      "case": "tex-scope-registers",
+      "profile": "legacy",
+      "purpose": "Initial register mutation changes later arithmetic and branch selection.",
+      "source_hashes": {
+        "main.tex": "753b30af0b348c7e967dfa255218359abdc83b8ce21921c782a89b257de3ff96"
+      }
+    },
+    {
+      "warm": {
+        "returncode": 0,
+        "timeout": false,
+        "seconds": 0.005,
+        "requests_sha256": "533292eb7ace2aaafce6bc68230127cf5dd2f9c7f1ca315766b8b0039aeaf76b",
+        "stdout_sha256": "1c606b3f151fbc1959c867c0d180ab30faa84d8e3dde7073208505621a30a808",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "problems": []
+      },
+      "comparisons": [
+        {
+          "state": "edited",
+          "clean": {
+            "returncode": 0,
+            "timeout": false,
+            "seconds": 0.004,
+            "requests_sha256": "b28dc7ea57a56443f7d41eee7854db723f6427dab3b375eea7f2b1de09299e96",
+            "stdout_sha256": "70913b3bbc55f1c80a3829b83628b9938761745543cfb41cd51db73da41f5036",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "problems": []
+          },
+          "equal": true,
+          "difference": null
+        },
+        {
+          "state": "undo",
+          "clean": {
+            "returncode": 0,
+            "timeout": false,
+            "seconds": 0.01,
+            "requests_sha256": "5f5d36bfd2ec8c4da887b5cac7dd309227a7dfa93825b88b1a62189e89613144",
+            "stdout_sha256": "ff42601ca42bb06b2720f4941806ba0e598c6763f735b5fb1820336d54252376",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "problems": []
+          },
+          "equal": true,
+          "difference": null
+        },
+        {
+          "state": "reapplied",
+          "clean": {
+            "returncode": 0,
+            "timeout": false,
+            "seconds": 0.004,
+            "requests_sha256": "29ccd099134184476c65e935a5a86aa2cd9ecfc722af548a7bb275ad206b9dee",
+            "stdout_sha256": "02a4f6eaf0393b8a93c81db55c095b47491b59a419695669d1a9f397a303422b",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "problems": []
+          },
+          "equal": true,
+          "difference": null
+        }
+      ],
+      "status": "byte-exact",
+      "case": "tex-scope-registers",
+      "profile": "typed",
+      "purpose": "Initial register mutation changes later arithmetic and branch selection.",
+      "source_hashes": {
+        "main.tex": "753b30af0b348c7e967dfa255218359abdc83b8ce21921c782a89b257de3ff96"
+      }
+    },
+    {
+      "warm": {
+        "returncode": 0,
+        "timeout": false,
+        "seconds": 0.005,
+        "requests_sha256": "555bf8091fda52f281471fcedeffd526e2ffc6edea2caec6e876eb02d5b0c857",
+        "stdout_sha256": "a29235b6f681435d908f717eff934130100340392176e6fff38c437bd34aedfc",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "problems": []
+      },
+      "comparisons": [
+        {
+          "state": "edited",
+          "clean": {
+            "returncode": 0,
+            "timeout": false,
+            "seconds": 0.004,
+            "requests_sha256": "8f2319bfe66ac46d43a0539ab25613e66d48afc4d30d33108c5583512d904571",
+            "stdout_sha256": "ac61dbc6144b5db66d2aa7982223bfd1b1d7757617d3f364dfd9445e8201d97b",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "problems": []
+          },
+          "equal": true,
+          "difference": null
+        },
+        {
+          "state": "undo",
+          "clean": {
+            "returncode": 0,
+            "timeout": false,
+            "seconds": 0.004,
+            "requests_sha256": "abc5de4ba70d5bb87e0d2cabfbdd9c220e376e114e69975cbb74a112fbf8a7a1",
+            "stdout_sha256": "a701aadb00c5fa4aedd36042f0375a10b31b61e458148de6c0f646eaef92e709",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "problems": []
+          },
+          "equal": true,
+          "difference": null
+        },
+        {
+          "state": "reapplied",
+          "clean": {
+            "returncode": 0,
+            "timeout": false,
+            "seconds": 0.004,
+            "requests_sha256": "2596340ebefe8ec92735829796c168d4b5592979ea34ed597fd6070770ed4369",
+            "stdout_sha256": "fa0f5862d1ce0fcb291dda3ad2b27d04f037022457386f79310d4b50796cb164",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "problems": []
+          },
+          "equal": true,
+          "difference": null
+        }
+      ],
+      "status": "byte-exact",
+      "case": "math-align-points",
+      "profile": "legacy",
+      "purpose": "Longer left-hand side shifts a shared alignment column.",
+      "source_hashes": {
+        "main.tex": "07fda2a1316d73d6c449e1fc854a588c182c8eec997017513b1b4bdbdf887c70"
+      }
+    },
+    {
+      "warm": {
+        "returncode": 0,
+        "timeout": false,
+        "seconds": 0.005,
+        "requests_sha256": "29212c7bf3cc49172c54e245fd5e66dc9b409110c47af0523bce95881b590562",
+        "stdout_sha256": "c1f4003748b88e69d2cdc48849b081236efb4305ac95f3d1f95ef3c61aa6946a",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "problems": []
+      },
+      "comparisons": [
+        {
+          "state": "edited",
+          "clean": {
+            "returncode": 0,
+            "timeout": false,
+            "seconds": 0.004,
+            "requests_sha256": "0825505b7b4f49ecaaf1ff580adb47ec825d69ecb1f0a91f9aaae3d110aa25eb",
+            "stdout_sha256": "d3413627e9f342e964c1d3628d3161e300e480bfe22c6320c584b7ff7cc88cfe",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "problems": []
+          },
+          "equal": true,
+          "difference": null
+        },
+        {
+          "state": "undo",
+          "clean": {
+            "returncode": 0,
+            "timeout": false,
+            "seconds": 0.005,
+            "requests_sha256": "09399de296f97e4f5e0ea0a2273f31b2b469a4c7daa2d9ebb89ce78d853da8d9",
+            "stdout_sha256": "6b9dd4f52d2992342cf6d41805b7ccb80968131f52d0db6f0e366e552c0e2520",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "problems": []
+          },
+          "equal": true,
+          "difference": null
+        },
+        {
+          "state": "reapplied",
+          "clean": {
+            "returncode": 0,
+            "timeout": false,
+            "seconds": 0.006,
+            "requests_sha256": "2adfe0c31f7ee75c36c477edebfc0e3254f0d99bbc365f7eb290302460566c89",
+            "stdout_sha256": "d3562dea24a9c833a4ab43063fa4815a20c04a6ca9b8e4c676ab780a4efc453f",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "problems": []
+          },
+          "equal": true,
+          "difference": null
+        }
+      ],
+      "status": "byte-exact",
+      "case": "math-align-points",
+      "profile": "typed",
+      "purpose": "Longer left-hand side shifts a shared alignment column.",
+      "source_hashes": {
+        "main.tex": "07fda2a1316d73d6c449e1fc854a588c182c8eec997017513b1b4bdbdf887c70"
+      }
+    },
+    {
+      "warm": {
+        "returncode": 0,
+        "timeout": false,
+        "seconds": 0.005,
+        "requests_sha256": "682fbfbab17d756eaf2d33c6abbdc91d74808d42aa8933f302af66767eb139be",
+        "stdout_sha256": "fa02868edb00ad832cc2f2e94a4e48b0ed368620f6cd39dbd32ca8153e343c3d",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "problems": []
+      },
+      "comparisons": [
+        {
+          "state": "edited",
+          "clean": {
+            "returncode": 0,
+            "timeout": false,
+            "seconds": 0.004,
+            "requests_sha256": "a467de67a97fe072924e402965427ae69f2ec0df925948eb822ca79ef826e9a0",
+            "stdout_sha256": "98e085f24d2453a7bbfc32a76acbdf43991362865be9e9919e84632cb543c6ab",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "problems": []
+          },
+          "equal": true,
+          "difference": null
+        },
+        {
+          "state": "undo",
+          "clean": {
+            "returncode": 0,
+            "timeout": false,
+            "seconds": 0.011,
+            "requests_sha256": "038bb490099532906684b016b73ab95589c5a188b06e656bccf63105b7b6c0d9",
+            "stdout_sha256": "674fb4e43f4cfbe02b6b9951f73c4d906245ea2e753d080a5818252a2c3a8d1e",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "problems": []
+          },
+          "equal": true,
+          "difference": null
+        },
+        {
+          "state": "reapplied",
+          "clean": {
+            "returncode": 0,
+            "timeout": false,
+            "seconds": 0.004,
+            "requests_sha256": "3ddbce749a0812f501e54cf3ec9c97e860461e65d56fca3cdf7b3baa36af2f77",
+            "stdout_sha256": "cac5a7d053f998bf145ee79ed5723ac854a6b1a11bcc1745c38637c89588e773",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "problems": []
+          },
+          "equal": true,
+          "difference": null
+        }
+      ],
+      "status": "byte-exact",
+      "case": "project-input-package",
+      "profile": "legacy",
+      "purpose": "Included definition invalidates later consuming file.",
+      "source_hashes": {
+        "chapters/one.tex": "f9753498a8dc07ac28288f5833f5ea722cc84ef7812d1a017051abf87090c2ae",
+        "chapters/two.tex": "51f0418e2cce806d3a876646d135865aa0cf7955e8fc09fe4a431ed6c929be3d",
+        "localstyle.sty": "3fa85c0ba0ba3a5b86255feebbad3b1f2bd3de166028363f404ff40fb805d502",
+        "main.tex": "a474d836aa98229a132e27fb983dc639c92e6864895b2a7b25a974dd638de659"
+      }
+    },
+    {
+      "warm": {
+        "returncode": 0,
+        "timeout": false,
+        "seconds": 0.004,
+        "requests_sha256": "81d187e973c06533dcb188aa21fc1cc5b2e2a0089c37f73f47f4ba788c84b527",
+        "stdout_sha256": "090baeff020083d6f48694e5e6f2f8a2a774c71267dbd50da17ada81c7a085b9",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "problems": []
+      },
+      "comparisons": [
+        {
+          "state": "edited",
+          "clean": {
+            "returncode": 0,
+            "timeout": false,
+            "seconds": 0.004,
+            "requests_sha256": "695f7c53390282aeee497a9e4b2b71b2cbe70c878a932a883d0a9f8d4bfc096c",
+            "stdout_sha256": "f2b0cd80bea5c746143aa1b3ff9431a060870ad0d8a479c9fc54bf27f228489f",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "problems": []
+          },
+          "equal": true,
+          "difference": null
+        },
+        {
+          "state": "undo",
+          "clean": {
+            "returncode": 0,
+            "timeout": false,
+            "seconds": 0.004,
+            "requests_sha256": "8b07e1629e5f58b5108c64d1f86ec0b59a368aadbd7c3684d4e97e772bfad609",
+            "stdout_sha256": "97b81d4ea2173c0e100f34e0ff2976e3d2dbbf9a7a767c6caabe0dc871c2d1f7",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "problems": []
+          },
+          "equal": true,
+          "difference": null
+        },
+        {
+          "state": "reapplied",
+          "clean": {
+            "returncode": 0,
+            "timeout": false,
+            "seconds": 0.004,
+            "requests_sha256": "67417cad72ad4f26532c14faa8e7325fceb3c22414857104ed1cce6edd4ddb9a",
+            "stdout_sha256": "bb0e5a4ae0c0ea0b2be99309cad17e00b2fe6f51850c982954dee7090822aa0d",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "problems": []
+          },
+          "equal": true,
+          "difference": null
+        }
+      ],
+      "status": "byte-exact",
+      "case": "project-input-package",
+      "profile": "typed",
+      "purpose": "Included definition invalidates later consuming file.",
+      "source_hashes": {
+        "chapters/one.tex": "f9753498a8dc07ac28288f5833f5ea722cc84ef7812d1a017051abf87090c2ae",
+        "chapters/two.tex": "51f0418e2cce806d3a876646d135865aa0cf7955e8fc09fe4a431ed6c929be3d",
+        "localstyle.sty": "3fa85c0ba0ba3a5b86255feebbad3b1f2bd3de166028363f404ff40fb805d502",
+        "main.tex": "a474d836aa98229a132e27fb983dc639c92e6864895b2a7b25a974dd638de659"
+      }
+    },
+    {
+      "warm": {
+        "returncode": 0,
+        "timeout": false,
+        "seconds": 0.005,
+        "requests_sha256": "43aff4a122283df1f8300ef618ecbc238da13f3516de089a4d8e4535da690b31",
+        "stdout_sha256": "12e776e990b840a564d41bfa210a37189f40bf5e9de4d49d66009efddcdd8edd",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "problems": []
+      },
+      "comparisons": [
+        {
+          "state": "edited",
+          "clean": {
+            "returncode": 0,
+            "timeout": false,
+            "seconds": 0.004,
+            "requests_sha256": "64aba8d6953d0b0ac386c888b5fae74b88f860da2f896eecdd2a5c1b973ed1b8",
+            "stdout_sha256": "c6f426c3b68365cb0134aab0661fbd51ce406e3a1993914cf4c24f29fee82ab5",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "problems": []
+          },
+          "equal": true,
+          "difference": null
+        },
+        {
+          "state": "undo",
+          "clean": {
+            "returncode": 0,
+            "timeout": false,
+            "seconds": 0.005,
+            "requests_sha256": "0433426cba5443a885dad7caca4c892b73f5bb5a77db124402b8012f90d1adfe",
+            "stdout_sha256": "a6a7b7c64d7e55933f30f2ebd6650320bd6bdee54c139f6509ffa0cac0626f35",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "problems": []
+          },
+          "equal": true,
+          "difference": null
+        },
+        {
+          "state": "reapplied",
+          "clean": {
+            "returncode": 0,
+            "timeout": false,
+            "seconds": 0.005,
+            "requests_sha256": "f41f3268b4479845f15f6f7bc0fcef55fd4f35b4446df2704e6a1b5f43ea9f8b",
+            "stdout_sha256": "e3c12a2b75592dcb5e5be38839d9d702b12e9cc9e2677db1c509ad395e5236a7",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "problems": []
+          },
+          "equal": true,
+          "difference": null
+        }
+      ],
+      "status": "byte-exact",
+      "case": "pgfplots-functions-data",
+      "profile": "legacy",
+      "purpose": "Non-TeX data edit invalidates graph geometry.",
+      "source_hashes": {
+        "data.tsv": "d49000fbc771648a58f5c31eb17cc5570cd56471d82745b677bc2d871fa26ce4",
+        "main.tex": "acb71da135e5d5f9e9729c16adff405498f09a33a8d20549bed4099174036ff6"
+      }
+    },
+    {
+      "warm": {
+        "returncode": 0,
+        "timeout": false,
+        "seconds": 0.01,
+        "requests_sha256": "122073348cd411964705eaa7aef651767d53548e770811aecb06a1723fdab0ef",
+        "stdout_sha256": "46fee43fc8e2b7b5a1b787fc90e36cd049df6c3d227792fe3172da042159aaa6",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "problems": []
+      },
+      "comparisons": [
+        {
+          "state": "edited",
+          "clean": {
+            "returncode": 0,
+            "timeout": false,
+            "seconds": 0.009,
+            "requests_sha256": "987d78f588daa1ed8b58284d8097fee1a182143b6c931574af27425c2ae02a68",
+            "stdout_sha256": "7e40a561f320ace7a3209db4a9010e844b4a2efe50c683b8302ba8829d502ee6",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "problems": []
+          },
+          "equal": true,
+          "difference": null
+        },
+        {
+          "state": "undo",
+          "clean": {
+            "returncode": 0,
+            "timeout": false,
+            "seconds": 0.009,
+            "requests_sha256": "03c70b5a52d4e89f3b2b0a6736ffd9703701f75e4c8a5d1717f85c633c958e53",
+            "stdout_sha256": "bcd4e211dac63032eb2adab20d52ec86ea2fececad8d9ccf0c344a6877f5734b",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "problems": []
+          },
+          "equal": true,
+          "difference": null
+        },
+        {
+          "state": "reapplied",
+          "clean": {
+            "returncode": 0,
+            "timeout": false,
+            "seconds": 0.005,
+            "requests_sha256": "232743d85fe7646e50cc3cc44542ccfc3ddc8c7e9f534976b2626d16906d490a",
+            "stdout_sha256": "db7e7f1bb7323154a9bae9a5bc5e0c267e6e265f1127a79464354e420488b2ac",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "problems": []
+          },
+          "equal": true,
+          "difference": null
+        }
+      ],
+      "status": "byte-exact",
+      "case": "pgfplots-functions-data",
+      "profile": "typed",
+      "purpose": "Non-TeX data edit invalidates graph geometry.",
+      "source_hashes": {
+        "data.tsv": "d49000fbc771648a58f5c31eb17cc5570cd56471d82745b677bc2d871fa26ce4",
+        "main.tex": "acb71da135e5d5f9e9729c16adff405498f09a33a8d20549bed4099174036ff6"
+      }
+    },
+    {
+      "warm": {
+        "returncode": 0,
+        "timeout": false,
+        "seconds": 0.01,
+        "requests_sha256": "d52932984faa2787fc21c251b6b9b23ec6934a1cc4d294ebf76b07dcaccb30e9",
+        "stdout_sha256": "db48dc93dc26b1c1455bf6fd13547199ef46be91764e256aa95d9b5a6e76ab5f",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "problems": []
+      },
+      "comparisons": [
+        {
+          "state": "edited",
+          "clean": {
+            "returncode": 0,
+            "timeout": false,
+            "seconds": 0.012,
+            "requests_sha256": "ad4096b0a27f414dc6fe286b3080026f8223279bfce50126052a88efe17ba761",
+            "stdout_sha256": "9e4d812b58f0e5fc64de926a0dae7d3941be24306cc091bd749efce5a89a97a1",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "problems": []
+          },
+          "equal": true,
+          "difference": null
+        },
+        {
+          "state": "undo",
+          "clean": {
+            "returncode": 0,
+            "timeout": false,
+            "seconds": 0.005,
+            "requests_sha256": "e121084fd42166a1c88425efad9201dd470df4b41f257edeba313ea9b58fb974",
+            "stdout_sha256": "ee9fb86a788eead2dda911210a4fd8d742d87247c35619ad1d0f3efed046f3cb",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "problems": []
+          },
+          "equal": true,
+          "difference": null
+        },
+        {
+          "state": "reapplied",
+          "clean": {
+            "returncode": 0,
+            "timeout": false,
+            "seconds": 0.006,
+            "requests_sha256": "4d8c2d472913e4336d5944d74cf6ec80dd7e333d0430a7ff2d6608a60fa8e588",
+            "stdout_sha256": "a84535dfb85e587b6fe2cc33a12115826109d157138771fda725f9decba335f5",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "problems": []
+          },
+          "equal": true,
+          "difference": null
+        }
+      ],
+      "status": "byte-exact",
+      "case": "math-radicals-delimiters",
+      "profile": "legacy",
+      "purpose": "Taller radicand changes radical sizing and positioning.",
+      "source_hashes": {
+        "main.tex": "26d066f4f32809fff2524972d93fe63d9086cd246c381cafa64a55cd3e987e3d"
+      }
+    },
+    {
+      "warm": {
+        "returncode": 0,
+        "timeout": false,
+        "seconds": 0.008,
+        "requests_sha256": "b3f5ebb56c6496e484738742339676e2249398e40fe3182f6c6d6514aaf66d74",
+        "stdout_sha256": "5dbca0d074abc30bbad3c4df608555867f0a6d46c2cd3750d6186403e0b8089b",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "problems": []
+      },
+      "comparisons": [
+        {
+          "state": "edited",
+          "clean": {
+            "returncode": 0,
+            "timeout": false,
+            "seconds": 0.006,
+            "requests_sha256": "edaddd2c19c6a7375b95c9cfa7119b4bbdc7bad912a74fcf210ada71912a0312",
+            "stdout_sha256": "93ec48024c26480cc679a872e00af46bca4017426bcd69a677cace9edd53376e",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "problems": []
+          },
+          "equal": true,
+          "difference": null
+        },
+        {
+          "state": "undo",
+          "clean": {
+            "returncode": 0,
+            "timeout": false,
+            "seconds": 0.008,
+            "requests_sha256": "314d2c1152af35aa13a8f4c9f045bd0f52079f8664cb1a5a988007e5f49f24eb",
+            "stdout_sha256": "0c29cb8d415b3b4ad0a2770cf476358f1f188726071b80769d9c9955fc6d0e9d",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "problems": []
+          },
+          "equal": true,
+          "difference": null
+        },
+        {
+          "state": "reapplied",
+          "clean": {
+            "returncode": 0,
+            "timeout": false,
+            "seconds": 0.008,
+            "requests_sha256": "5772f9cdb5a057088c0b20e281e3cce4232cc98681c6af267e6dc6ed61794e08",
+            "stdout_sha256": "f22830e129ad0bb237dacd76415811d0a25933c2269933f085f2e2557bee24a3",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "problems": []
+          },
+          "equal": true,
+          "difference": null
+        }
+      ],
+      "status": "byte-exact",
+      "case": "math-radicals-delimiters",
+      "profile": "typed",
+      "purpose": "Taller radicand changes radical sizing and positioning.",
+      "source_hashes": {
+        "main.tex": "26d066f4f32809fff2524972d93fe63d9086cd246c381cafa64a55cd3e987e3d"
+      }
+    },
+    {
+      "warm": {
+        "returncode": 0,
+        "timeout": false,
+        "seconds": 0.006,
+        "requests_sha256": "ad48dadbe817b752a5f07999843e75f286015abeccb6a434c07005d721939baf",
+        "stdout_sha256": "972ccccacee7d8b8033091e5e68638c9ef6c61c9d1a9a554e3eccc387d8bfe19",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "problems": []
+      },
+      "comparisons": [
+        {
+          "state": "edited",
+          "clean": {
+            "returncode": 0,
+            "timeout": false,
+            "seconds": 0.007,
+            "requests_sha256": "3b3ed7af936409a47c07a26176644e335c209e01fc76821ca756ae3cac3d6745",
+            "stdout_sha256": "453c988d55ec9c7f104e3d3c4b1c603effb96f43e6ec033fca7dfbde1ff5bdb8",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "problems": []
+          },
+          "equal": true,
+          "difference": null
+        },
+        {
+          "state": "undo",
+          "clean": {
+            "returncode": 0,
+            "timeout": false,
+            "seconds": 0.014,
+            "requests_sha256": "6ffd3e05d1540faa135cc0c0f3f00ded31e0ebecae7b8218ef2120fd23eb59a5",
+            "stdout_sha256": "608ee4b0365b8c3f3ddb91ff47830023dca69c1045080537f1e10aa502706b36",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "problems": []
+          },
+          "equal": true,
+          "difference": null
+        },
+        {
+          "state": "reapplied",
+          "clean": {
+            "returncode": 0,
+            "timeout": false,
+            "seconds": 0.007,
+            "requests_sha256": "3b26dbfeb64b6e82d14c249d326958c84f40fd1a6d3c7cba5818179a9abd315a",
+            "stdout_sha256": "a7cb61c808b5653b7331f58922747cc2321614c42aa7130b6b2612ada9c3e611",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "problems": []
+          },
+          "equal": true,
+          "difference": null
+        }
+      ],
+      "status": "byte-exact",
+      "case": "project-book-include",
+      "profile": "legacy",
+      "purpose": "Include selection changes pages; warm aux-state and clean builds must be distinguished.",
+      "source_hashes": {
+        "chapters/one.tex": "662ec4b02a5639e1f9382b2eed4ac6ddf7f1b50777cfb217ce769717db3cfbce",
+        "chapters/two.tex": "bec7236f521db3940cd73352833e3c34ab0c97694350d19ad1637e9ae5b33c7d",
+        "main.tex": "96fa84d3e4130e855f02469e2f1834ba273c86b84d9fbed43a25bde787c86771"
+      }
+    },
+    {
+      "warm": {
+        "returncode": 0,
+        "timeout": false,
+        "seconds": 0.005,
+        "requests_sha256": "10dc3022f9c319fa04d02755345443e28c2ad9fa9b4d74082bc4dc60d9508ff3",
+        "stdout_sha256": "67996581b31ce6015d0f5c5b0227192780ad919991cb2efeef7830fa5910c492",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "problems": []
+      },
+      "comparisons": [
+        {
+          "state": "edited",
+          "clean": {
+            "returncode": 0,
+            "timeout": false,
+            "seconds": 0.005,
+            "requests_sha256": "8ec534480e69f2740c0ec50d833051ec266f5682bedf6bc49df6cb7bc09a25af",
+            "stdout_sha256": "4ca2c8eb5d0af3c1aaef1297e94cdb1c331ad37a844ff0b69d6741ce8af29fe6",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "problems": []
+          },
+          "equal": true,
+          "difference": null
+        },
+        {
+          "state": "undo",
+          "clean": {
+            "returncode": 0,
+            "timeout": false,
+            "seconds": 0.005,
+            "requests_sha256": "de1646d45a7e16db27b0bf875530763b764ae05370ffa66cee290be7ad5c8a22",
+            "stdout_sha256": "1690be73c26ac369025ba98b25e3d61be76703d4a98cf49dff01adf6cb0dbe87",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "problems": []
+          },
+          "equal": true,
+          "difference": null
+        },
+        {
+          "state": "reapplied",
+          "clean": {
+            "returncode": 0,
+            "timeout": false,
+            "seconds": 0.006,
+            "requests_sha256": "6f8c512368a39ca374c62fc0c1d933a6cc9e79c66168382755f00b56eca76846",
+            "stdout_sha256": "231e0052063afaa8e5f7b16e29f45a5e3379378f70597a585f1de9301c1c7dba",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "problems": []
+          },
+          "equal": true,
+          "difference": null
+        }
+      ],
+      "status": "byte-exact",
+      "case": "project-book-include",
+      "profile": "typed",
+      "purpose": "Include selection changes pages; warm aux-state and clean builds must be distinguished.",
+      "source_hashes": {
+        "chapters/one.tex": "662ec4b02a5639e1f9382b2eed4ac6ddf7f1b50777cfb217ce769717db3cfbce",
+        "chapters/two.tex": "bec7236f521db3940cd73352833e3c34ab0c97694350d19ad1637e9ae5b33c7d",
+        "main.tex": "96fa84d3e4130e855f02469e2f1834ba273c86b84d9fbed43a25bde787c86771"
+      }
+    },
+    {
+      "warm": {
+        "returncode": 0,
+        "timeout": false,
+        "seconds": 0.004,
+        "requests_sha256": "cd2b985b24792cfce7792925895a7a423ad96fa48f844185c97a55da09547e9f",
+        "stdout_sha256": "2c8299eeb2dffdb05ae0ae512a7a35e1cdc5fe3bcef72558380377dbb7fd2b60",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "problems": []
+      },
+      "comparisons": [
+        {
+          "state": "edited",
+          "clean": {
+            "returncode": 0,
+            "timeout": false,
+            "seconds": 0.008,
+            "requests_sha256": "7baab92143ab9131031ddd4bebf7d89aad5e1c6a1b435b81d5beaeb1a4d6271a",
+            "stdout_sha256": "dfc6eb183e9e7d88f6261271df7a369d456db8b1f434a6550b507b22c387b9fb",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "problems": []
+          },
+          "equal": true,
+          "difference": null
+        },
+        {
+          "state": "undo",
+          "clean": {
+            "returncode": 0,
+            "timeout": false,
+            "seconds": 0.005,
+            "requests_sha256": "7bcbb636626e379a5fabc2c0fed49e56a1a7cbca09a84ffc5a1ba6f90725cfc8",
+            "stdout_sha256": "11820608bf65f38a2c745414bc01f65b36c8428b48720ff1adb6595b887f3b85",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "problems": []
+          },
+          "equal": true,
+          "difference": null
+        },
+        {
+          "state": "reapplied",
+          "clean": {
+            "returncode": 0,
+            "timeout": false,
+            "seconds": 0.005,
+            "requests_sha256": "91c6516b2436aade35a8bf4ffdf29c2642ea35fcf2ed9730da8141a7a27ac05d",
+            "stdout_sha256": "108cfebc8063854e87bb5d49015f887a1cfc55c2df3ec0cfa0a7a26541cc13ce",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "problems": []
+          },
+          "equal": true,
+          "difference": null
+        }
+      ],
+      "status": "byte-exact",
+      "case": "error-double-superscript",
+      "profile": "legacy",
+      "purpose": "Repair must clear stale diagnostic and render valid nested script.",
+      "source_hashes": {
+        "main.tex": "99e7b51092b597570da105c970358f12403f70ab41a0ff9909a2a95fd8005af0"
+      }
+    },
+    {
+      "warm": {
+        "returncode": 0,
+        "timeout": false,
+        "seconds": 0.004,
+        "requests_sha256": "29ef7b0ccc980e066cb275243fecd41b1e300a3a9040e1671a56b00d7cef8528",
+        "stdout_sha256": "e939eb9ed5216f3d942c1d5178a7df01ff625dca61e92a31a15ab1a5ecd7779b",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "problems": []
+      },
+      "comparisons": [
+        {
+          "state": "edited",
+          "clean": {
+            "returncode": 0,
+            "timeout": false,
+            "seconds": 0.004,
+            "requests_sha256": "4595f71c08dcfe231d2418a22009c76cc7fd8638b7688dba2e3ab1ea2d0f9f7d",
+            "stdout_sha256": "93ecde0f52e8fd4d9d020a28fdc74117e3c777db677e29b42ddeef0fbef2926f",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "problems": []
+          },
+          "equal": true,
+          "difference": null
+        },
+        {
+          "state": "undo",
+          "clean": {
+            "returncode": 0,
+            "timeout": false,
+            "seconds": 0.005,
+            "requests_sha256": "77badb0c209bb96fa97b45dc178f2571d2ed10af81ae9826abd6c99df88453c1",
+            "stdout_sha256": "bd6e75461c0155dbc868ec2736377f43ad8b09f5e8dd4f15e709b5596ed100ed",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "problems": []
+          },
+          "equal": true,
+          "difference": null
+        },
+        {
+          "state": "reapplied",
+          "clean": {
+            "returncode": 0,
+            "timeout": false,
+            "seconds": 0.004,
+            "requests_sha256": "b637d67f98fced41694cd87b01983e225160e0b5e40933420a7b1f60a36658a3",
+            "stdout_sha256": "56bca23ff2e1eaaa108a5c6eb8646ec737f430dac08a4f1fdb8ceccfc31e49ec",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "problems": []
+          },
+          "equal": true,
+          "difference": null
+        }
+      ],
+      "status": "byte-exact",
+      "case": "error-double-superscript",
+      "profile": "typed",
+      "purpose": "Repair must clear stale diagnostic and render valid nested script.",
+      "source_hashes": {
+        "main.tex": "99e7b51092b597570da105c970358f12403f70ab41a0ff9909a2a95fd8005af0"
+      }
+    }
+  ],
+  "compiler_sha256_after_run": "1d615ef71e59435a45846aaf5b763d4e17589e6ce5ee1b55d4a47859c1c98238",
+  "compiler_unchanged": true
+}
