@@ -246,9 +246,15 @@ final class BundledFacesTests: XCTestCase {
             try Self.request(id: "small-12pt", revision: 2, tex: "\\documentclass[12pt]{article}\n\\begin{document}\nBody $x_{1_{2}} + \\frac{1}{2}$.\n\\end{document}\n"),
             try Self.request(id: "small-11pt", revision: 3, tex: "\\documentclass[11pt]{article}\n\\begin{document}\nBody. {\\footnotesize footnote \\textbf{bold} \\textit{italic}} {\\scriptsize script} {\\tiny tiny \\textbf{bold}}\n\\end{document}\n"),
         ]
+        // The committed homework (11 pt article: sub/superscripts set in 8 pt)
+        // is what exercises Roman8; a checkout whose HW1.tex is a stub cannot,
+        // so its shape goes into the message rather than a misleading verdict.
         let hw1 = Self.repoRoot.appendingPathComponent("fixtures/real-world/hw1/HW1.tex")
+        var hw1Shape = "HW1.tex not readable at \(hw1.path)"
         if let tex = try? String(contentsOf: hw1, encoding: .utf8) {
             requests.append(try Self.request(id: "hw1", revision: 4, tex: tex))
+            let lines = tex.split(separator: "\n", omittingEmptySubsequences: false).count
+            hw1Shape = "HW1.tex is \(lines) lines / \(tex.utf8.count) bytes" + (tex.contains("\\documentclass[11pt]{article}") ? "" : " and is NOT the committed 11 pt homework")
         }
 
         let vendored = try runProducer(render, fontDir: Self.fontsDir.path, home: home, requests: requests)
@@ -271,7 +277,7 @@ final class BundledFacesTests: XCTestCase {
                       "12 pt optical script must report missing Roman8: \(removed.missing)")
         if requests.count == 4 {
             XCTAssertTrue(removed.missing.contains { $0.id == "hw1" && ($0.message.contains("lmroman8-regular.otf") || $0.message.hasPrefix("lmr8:")) },
-                          "HW1 must report missing Roman8 (the pdf-2 finding): \(removed.missing)")
+                          "HW1 must report missing Roman8 (the pdf-2 finding): \(removed.missing); \(hw1Shape)")
         }
     }
 }

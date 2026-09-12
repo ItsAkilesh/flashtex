@@ -2269,9 +2269,9 @@ mod accent_tests {
     }
 
     /// The measurement the task brief asked for: `\hat{A}`'s horizontal
-    /// offset in this compiler. See the `layout_accent` doc comment for why
-    /// a Computer Modern skew correction does not belong on an upright
-    /// Times-Roman "A".
+    /// offset in this compiler. The math variable "A" is Times-Italic; the
+    /// accent is still centred symmetrically, with no italic skew correction
+    /// (a known limitation: TeX shifts accents right over slanted letters).
     #[test]
     fn hat_a_centers_symmetrically_with_no_skew_term() {
         let size = 10.0;
@@ -2284,7 +2284,7 @@ mod accent_tests {
         let a_width = crate::layout::shaped_width(
             "A",
             size,
-            crate::layout::Font::TimesRoman,
+            crate::layout::Font::TimesItalic,
             a_item.span,
             &mut d,
         )
@@ -2304,10 +2304,10 @@ mod accent_tests {
             "expected symmetric centering dx {expected_dx}, got {}",
             accent_item.x - a_item.x
         );
-        // At 10pt the real Times-Roman metrics produce ~1.945pt.
+        // At 10pt Times-Italic A (611) and the circumflex (333) give ~1.39pt.
         assert!(
-            (expected_dx - 1.945).abs() < 0.01,
-            "expected ~1.945pt at 10pt, got {expected_dx}"
+            (expected_dx - 1.39).abs() < 0.01,
+            "expected ~1.39pt at 10pt, got {expected_dx}"
         );
     }
 

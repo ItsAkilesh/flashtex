@@ -19,10 +19,17 @@ final class CompletionTests: XCTestCase {
         let text = "Hello \\se"
         let s = Completion.suggestions(in: text, caretUTF16: (text as NSString).length, result: nil)
         // The label shows the argument shape; the inserted text is the command alone.
-        XCTAssertEqual(labels(s), ["\\section{...}"])
-        XCTAssertEqual(s.first?.kind, .command)
+        // Text-mode entries precede math ones (table order); nothing is spelled `se`.
+        XCTAssertEqual(labels(s), ["\\section{...}", "\\setlist[list]{options}", "\\sec", "\\setminus"])
+        XCTAssertTrue(s.allSatisfy { $0.kind == .command && $0.insertText.hasPrefix("\\se") })
         XCTAssertEqual(s.first?.insertText, "\\section")
         XCTAssertEqual(s.first?.detail, "numbered section heading")
+        XCTAssertEqual(s.map(\.detail).suffix(2), ["math · upright named operator", "math · symbol ∖"])
+
+        // The command spelled exactly as typed ranks first; the rest keep table order.
+        XCTAssertEqual(labels(Completion.suggestions(in: "x \\sec", caretUTF16: 6, result: nil)), ["\\sec", "\\section{...}"])
+        XCTAssertEqual(labels(Completion.suggestions(in: "x \\it", caretUTF16: 5, result: nil)), ["\\it", "\\itshape", "\\item"])
+        XCTAssertEqual(labels(Completion.suggestions(in: "x \\sub", caretUTF16: 6, result: nil)), ["\\subsection{...}", "\\subset", "\\subseteq"])
 
         // A lone backslash lists every supported command (capped at 12).
         let all = Completion.suggestions(in: "x \\", caretUTF16: 3, result: nil)
@@ -37,14 +44,20 @@ final class CompletionTests: XCTestCase {
 
         // Math commands say so and show the glyph the compiler renders.
         let math = Completion.suggestions(in: "$\\al", caretUTF16: 4, result: nil)
-        XCTAssertEqual(labels(math), ["\\alpha"])
-        XCTAssertEqual(math.first?.detail, "math · symbol α")
+        XCTAssertEqual(labels(math), ["\\alpha", "\\aleph"], "COMMAND_GLYPHS order")
+        XCTAssertEqual(math.map(\.detail), ["math · symbol α", "math · symbol ℵ"])
         XCTAssertEqual(Completion.Vocabulary.symbols.count, 112)
         XCTAssertGreaterThan(Completion.Vocabulary.entries.count, Completion.Vocabulary.symbols.count)
+        // Math-only commands are marked once, by the `math ·` prefix of `Entry.detail`.
         let frac = Completion.suggestions(in: "\\fr", caretUTF16: 3, result: nil)
         XCTAssertEqual(labels(frac), ["\\frac{num}{den}"])
         XCTAssertEqual(frac.first?.insertText, "\\frac")
-        XCTAssertEqual(frac.first?.detail, "math · fraction; math mode only")
+        XCTAssertEqual(frac.first?.detail, "math · fraction")
+        XCTAssertTrue(Completion.Vocabulary.entries.allSatisfy { !$0.description.contains("math mode only") },
+                      "the mode is stated by the detail prefix, never repeated in the description")
+        XCTAssertTrue(Completion.Vocabulary.entries.allSatisfy { ($0.mode == .math) == $0.detail.hasPrefix("math · ") })
+        // `\quad`/`\qquad` work in text and math; they are text entries (no `math ·` prefix).
+        XCTAssertEqual(Completion.suggestions(in: "\\qq", caretUTF16: 3, result: nil).first?.detail, "2em of horizontal space, in text or math")
 
         // No suggestions for a non-matching prefix or a caret with nothing before it.
         XCTAssertTrue(Completion.suggestions(in: "\\zzz", caretUTF16: 4, result: nil).isEmpty)
@@ -73,15 +86,21 @@ final class CompletionTests: XCTestCase {
     func testUnclosedEnvironmentSuggestsEndFirst() {
         let text = "\\begin{document}\n\\begin{itemize}\n\\item a\n\\e"
         let s = Completion.suggestions(in: text, caretUTF16: (text as NSString).length, result: nil)
-        XCTAssertEqual(Array(labels(s).prefix(4)), ["\\end{itemize}", "\\end{document}", "\\emph{...}", "\\end{env}"])
+        // Innermost closer first, then the vocabulary's `e` commands in table
+        // order (text entries, then math entries).
+        XCTAssertEqual(Array(labels(s).prefix(6)), ["\\end{itemize}", "\\end{document}", "\\emph{...}", "\\em", "\\end{env}", "\\exp"])
+        XCTAssertTrue(s.dropFirst(5).allSatisfy { $0.detail.hasPrefix("math · ") }, "\(labels(s))")
         XCTAssertEqual(s[0].kind, .environment)
         XCTAssertEqual(s[0].detail, "closes \\begin{itemize} at byte 17")
         XCTAssertEqual(s[0].insertText, "\\end{itemize}")
 
-        // Once itemize is closed only document remains open.
+        // Once itemize is closed only document remains open; the exact `\end`
+        // spelling still ranks behind the closer it would have to name.
         let closed = text + "nd{itemize}\n\\en"
         let s2 = Completion.suggestions(in: closed, caretUTF16: (closed as NSString).length, result: nil)
         XCTAssertEqual(labels(s2), ["\\end{document}", "\\end{env}"])
+        let typed = closed + "d"
+        XCTAssertEqual(labels(Completion.suggestions(in: typed, caretUTF16: (typed as NSString).length, result: nil)), ["\\end{document}", "\\end{env}"])
 
         // Inside `\end{` the open environments come first, then known/seen names.
         let inBrace = "\\begin{document}\\begin{itemize}\\end{"
@@ -117,10 +136,12 @@ final class CompletionTests: XCTestCase {
         XCTAssertEqual(labels(s3), ["\\usepackage[options]{a,b,c}"])
         XCTAssertTrue(Completion.suggestions(in: "\\zzq", caretUTF16: 4, result: nil).isEmpty)
 
-        // A custom supported list replaces the default.
+        // A custom supported list replaces the default; commands typed in the
+        // document that it does not name are still listed after it, marked.
         let s4 = Completion.suggestions(in: text, caretUTF16: (text as NSString).length, result: nil, supported: ["newpage"])
-        XCTAssertEqual(labels(s4), ["\\newpage"])
+        XCTAssertEqual(labels(s4), ["\\newpage", "\\newwidget"])
         XCTAssertEqual(s4[0].detail, "force a page break")
+        XCTAssertEqual(s4[1].detail, "not supported by the compiler")
     }
 
     func testReferencesSuggestLabels() {
@@ -179,7 +200,9 @@ final class CompletionTests: XCTestCase {
         XCTAssertEqual(tv.rangeForUserCompletion, NSRange(location: end - 3, length: 3))
         var index = -1
         let items = tv.completions(forPartialWordRange: tv.rangeForUserCompletion, indexOfSelectedItem: &index)
-        XCTAssertEqual(items, ["\\section"])
+        // AppKit's list carries the insert texts (no argument shapes), in the pure function's order.
+        XCTAssertEqual(items, ["\\section", "\\setlist", "\\sec", "\\setminus"])
+        XCTAssertEqual(items, Completion.suggestions(in: tv.string, caretUTF16: end, result: nil).map(\.insertText))
         XCTAssertEqual(index, 0)
         // `\e` offers the unclosed environment first.
         tv.string = "\\begin{document}\n\\e"
@@ -235,13 +258,14 @@ final class CompletionTests: XCTestCase {
         for plain in ["item", "par", "\\", "alpha", "int"] { XCTAssertNil(v[plain]?.snippet, plain) }
         // Suggestions carry the shape; a project override of a builtin does not
         // (the macro's arguments are unknown).
-        let s = Completion.suggestions(in: "x \\sec", caretUTF16: 6, metadata: nil)
+        let s = Completion.suggestions(in: "x \\sect", caretUTF16: 7, metadata: nil)
         XCTAssertEqual(s.first?.snippet, .init(text: "\\section{}", caretUTF16: 9))
         XCTAssertEqual(s.first?.insertText, "\\section")
+        XCTAssertNil(Completion.suggestions(in: "x \\sec", caretUTF16: 6, metadata: nil).first?.snippet, "\\sec (exact) takes no argument")
         let versions = ["main.tex": 1]
         let m = try! Completion.Metadata.decodeProjectIndexReply(indexReply(versions: versions, names: [("section", 1, 0, false)]),
                                                                  category: .command, editorRevision: 1, expectedSourceVersions: versions)
-        XCTAssertNil(Completion.suggestions(in: "x \\sec", caretUTF16: 6, metadata: m).first?.snippet)
+        XCTAssertNil(Completion.suggestions(in: "x \\sect", caretUTF16: 7, metadata: m).first?.snippet)
     }
 
     func testEnvironmentSnippetKeepsIndentationAndClosingStaysExact() {
@@ -327,13 +351,19 @@ final class CompletionTests: XCTestCase {
     }
 
     /// The static table is generated from `crates/compiler/README.md` ("Supported
-    /// commands", "Supported math"), `src/math.rs` (`COMMAND_GLYPHS`) and the
-    /// `\input`/`\include` arm of `src/parser.rs`. This parses those files from
-    /// the repository, so a compiler change that is not mirrored here fails.
+    /// commands", "Supported math"), `src/math.rs` (`COMMAND_GLYPHS`,
+    /// `OPERATOR_NAMES`, the `command_atom` arms) and the text-mode dispatch
+    /// arms of `src/parser.rs`. This parses those files from the repository, so
+    /// a compiler change that is not mirrored here fails.
     func testStaticVocabularyMatchesTheCompilerDocs() throws {
         let compiler = Self.repoRoot.appendingPathComponent("crates/compiler")
         let readme = try String(contentsOf: compiler.appendingPathComponent("README.md"), encoding: .utf8)
-        let commands = try section("Supported commands", of: readme)
+        let commandsSection = try section("Supported commands", of: readme)
+        // The section's leading paragraph is the exhaustive list; the prose
+        // after it explains behaviour and quotes user macros (`\problem{...}`)
+        // that are not compiler commands.
+        let commands = String(commandsSection.drop { $0 == "\n" }).components(separatedBy: "\n\n")[0]
+        XCTAssertTrue(commands.hasSuffix("never silent output."), "the leading paragraph ends with the fallback rule: \(commands.suffix(60))")
         let math = try section("Supported math", of: readme)
         // Each backtick span documents one construct; the command is its first `\name`.
         func documentedCommands(_ text: String) -> [String] {
@@ -347,14 +377,16 @@ final class CompletionTests: XCTestCase {
         let readmeCommands = documentedCommands(commands)
         let readmeMath = documentedCommands(math)
         let readmeEnvironments = matches("`([a-z]+)`", in: commands).map { $0[1] }
-        XCTAssertEqual(readmeCommands.count, 43, "\(readmeCommands)")
+        XCTAssertEqual(readmeCommands.count, 51, "\(readmeCommands)")
         XCTAssertTrue(readmeCommands.contains("\\"), "the README lists `\\\\` (line break)")
+        XCTAssertFalse(readmeCommands.contains("problem"), "a user macro quoted in the prose is not a command")
+        XCTAssertEqual(readmeEnvironments.count, 9, "\(readmeEnvironments)")
 
         let table = Completion.Vocabulary.entries
         XCTAssertEqual(table.filter { $0.source == .readmeCommands }.map(\.name).sorted(), readmeCommands.sorted(),
                        "README 'Supported commands' drifted from Completion.Vocabulary")
         XCTAssertTrue(Set(readmeEnvironments).isSubset(of: Set(Completion.Vocabulary.environments)),
-                      "every environment advertised in the README must complete")
+                      "every environment advertised in the README must complete: \(readmeEnvironments)")
         XCTAssertEqual(Set(table.map(\.name)).count, table.count, "no duplicate names")
         for e in table {
             XCTAssertFalse(e.description.isEmpty, e.name)
@@ -367,7 +399,11 @@ final class CompletionTests: XCTestCase {
         let glyphs = matches("\\(\"([A-Za-z]+)\", \"([^\"]+)\"\\)", in: String(mathRS[glyphBlock...].prefix { $0 != "]" })).map { ($0[1], $0[2]) }
         XCTAssertEqual(glyphs.map(\.0), Completion.Vocabulary.symbols.map(\.0), "src/math.rs COMMAND_GLYPHS names drifted")
         XCTAssertEqual(glyphs.map(\.1), Completion.Vocabulary.symbols.map(\.1), "src/math.rs COMMAND_GLYPHS glyphs drifted")
-        XCTAssertTrue(Set(glyphs.map(\.0)).isSubset(of: Set(readmeMath)), "every emitted symbol must be documented")
+        // Every emitted symbol should be documented. The README (compiler crate,
+        // not this lane's to edit) currently omits six; the list is exact so a
+        // README fix or a new omission both surface here.
+        XCTAssertEqual(glyphs.map(\.0).filter { !readmeMath.contains($0) }, ["in", "forall", "exists", "vee", "Rightarrow", "mid"],
+                       "COMMAND_GLYPHS symbols missing from README 'Supported math' changed")
         for (name, glyph) in glyphs {
             XCTAssertEqual(Completion.Vocabulary.byName[name]?.glyph, glyph)
             XCTAssertEqual(Completion.Vocabulary.byName[name]?.mode, .math)
@@ -411,9 +447,12 @@ final class CompletionTests: XCTestCase {
         let dispatchStart = try XCTUnwrap(parser.range(of: "        match name {\n            \"documentclass\"")).lowerBound
         let dispatch = parser[dispatchStart...].prefix { _ in true }
         let dispatchEnd = try XCTUnwrap(dispatch.range(of: "other => self.unsupported(other, span)")).lowerBound
-        let arms = matches("^\\s*((?:\"[a-z]+\"\\s*\\|\\s*)*\"[a-z]+\")\\s*=>", in: String(dispatch[..<dispatchEnd]), options: [.anchorsMatchLines])
-            .flatMap { matches("\"([a-z]+)\"", in: $0[1]).map { $0[1] } }
-        XCTAssertFalse(arms.isEmpty)
+        // Arm groups may span lines (`"tiny" | … | "large"\n | "Large" … =>`)
+        // and carry capitals (`\Huge`); nested `match name` arms repeat names.
+        let armGroups = matches("^\\s*((?:\"[A-Za-z]+\"\\s*\\|\\s*)*\"[A-Za-z]+\")\\s*=>", in: String(dispatch[..<dispatchEnd]), options: [.anchorsMatchLines])
+        var arms: [String] = []
+        for name in armGroups.flatMap({ matches("\"([A-Za-z]+)\"", in: $0[1]).map { $0[1] } }) where !arms.contains(name) { arms.append(name) }
+        XCTAssertTrue(arms.contains("Huge") && arms.contains("bigskip") && arms.contains("input"), "\(arms)")
         let diagnosticOnlyArms = ["includegraphics"]
         for arm in diagnosticOnlyArms {
             XCTAssertTrue(unsupportedMD.contains("\\\(arm)"), "\(arm) must be listed in UNSUPPORTED.md")
@@ -422,10 +461,21 @@ final class CompletionTests: XCTestCase {
         for arm in arms where !diagnosticOnlyArms.contains(arm) {
             XCTAssertNotNil(Completion.Vocabulary.byName[arm], "parser arm \\\(arm) is missing from Completion.Vocabulary")
         }
+        XCTAssertEqual(Completion.Vocabulary.fontSizes, arms.filter { Completion.Vocabulary.byName[$0]?.description.hasPrefix("accepted size declaration") == true },
+                       "the font-size declaration arm drifted")
+        // Conversely every parser-only entry is backed by a text-mode arm, so
+        // removed compiler support cannot leave a stale item.
         let parserOnly = table.filter { $0.source == .parserArm }.map(\.name)
-        XCTAssertEqual(parserOnly, ["setlist", "input", "include", "hfill", "hfil", "hspace", "vspace", "hrule", "newpage", "pagestyle"])
+        XCTAssertEqual(parserOnly, ["setlist", "input", "include", "vspace", "hrule", "newpage", "pagestyle"] + Completion.Vocabulary.fontSizes)
         XCTAssertTrue(parser.contains("\"input\" | \"include\" => self.include("), "the parser arm the parser-only entries cite")
-        for name in parserOnly { XCTAssertFalse(readmeCommands.contains(name), "\(name) is not in the README paragraph; move its source if that changes") }
+        for name in parserOnly {
+            XCTAssertTrue(arms.contains(name), "stale parser-only completion \\\(name)")
+            XCTAssertFalse(readmeCommands.contains(name), "\(name) is not in the README paragraph; move its source if that changes")
+        }
+        // Every text-mode entry that is neither documented nor parser-only is a math structure or symbol.
+        for entry in table where entry.mode == .text {
+            XCTAssertTrue(entry.source == .readmeCommands || entry.source == .parserArm, entry.name)
+        }
     }
 
     // MARK: revision-bound metadata (runtime-v1 result and project-index reply)
@@ -588,12 +638,13 @@ final class CompletionTests: XCTestCase {
         XCTAssertEqual(s.first { $0.label == "\\newwidget" }?.detail, "not supported by the compiler — " + compiled.diagnosticsByCommand["newwidget"]!)
         // A project `\newcommand` with a builtin's name wins over the static entry:
         // listed once, without the builtin's argument shape, saying so.
+        // The builtin `\sec` is spelled exactly as typed, so it still ranks first.
         let sec = "x \\sec"
         let declared = Completion.suggestions(in: sec, caretUTF16: 6, metadata: m)
-        XCTAssertEqual(declared.map(\.label), ["\\section"])
-        XCTAssertEqual(declared[0].insertText, "\\section")
-        XCTAssertEqual(declared[0].detail, "declared in main.tex · revision 5 · overrides the builtin")
-        XCTAssertEqual(Completion.suggestions(in: sec, caretUTF16: 6, metadata: nil).map(\.label), ["\\section{...}"])
+        XCTAssertEqual(declared.map(\.label), ["\\sec", "\\section"])
+        XCTAssertEqual(declared[1].insertText, "\\section")
+        XCTAssertEqual(declared[1].detail, "declared in main.tex · revision 5 · overrides the builtin")
+        XCTAssertEqual(Completion.suggestions(in: sec, caretUTF16: 6, metadata: nil).map(\.label), ["\\sec", "\\section{...}"])
 
         // Supported environments say so; others seen in the document carry
         // the compiler's diagnostic for that revision.
@@ -870,7 +921,7 @@ final class CompletionTests: XCTestCase {
         spin("second refusal") { scheduler.statistics.refusedStale == 2 }
         XCTAssertEqual(delivered.count, 1)
         XCTAssertEqual(delivered[0].generation, g3)
-        XCTAssertEqual(delivered[0].items.map(\.label), ["\\subsection{...}"])
+        XCTAssertEqual(delivered[0].items.map(\.label), ["\\subsection{...}", "\\subset", "\\subseteq"])
         XCTAssertEqual(delivered[0].range, NSRange(location: 2, length: 4))
         XCTAssertEqual(delivered[0].caretUTF16, 6)
         XCTAssertNil(scheduler.pending)
@@ -929,7 +980,10 @@ final class CompletionTests: XCTestCase {
         tv.requestCompletion()
         exec.runAll()
         spin("session") { tv.session != nil }
-        XCTAssertEqual(tv.session?.items.map(\.label), ["\\section{...}", "\\subsection{...}", "\\sqrt{x}", "\\sigma", "\\sum"])
+        // `\s` overflows the cap; the session shows exactly the pure function's list.
+        XCTAssertEqual(tv.session?.items.count, Completion.maxSuggestions)
+        XCTAssertEqual(tv.session?.items.map(\.label).prefix(2), ["\\section{...}", "\\subsection{...}"])
+        XCTAssertEqual(tv.session?.items, Completion.suggestions(in: tv.string, caretUTF16: caret, metadata: nil))
         XCTAssertEqual(tv.session?.range, NSRange(location: caret - 2, length: 2))
         XCTAssertNil(tv.session?.metadataRevision, "no metadata was bound")
         tv.setSelectedRange(NSRange(location: 0, length: 0))
@@ -1001,7 +1055,11 @@ final class CompletionTests: XCTestCase {
         window.makeFirstResponder(tv)
         defer { window.orderOut(nil) }
         tv.allowsUndo = true
-        tv.string = "\\begin{document}\nx \\s"
+        // `\su` lists seven vocabulary commands, under the cap, so narrowing
+        // and widening have exact counts: the text entry, then the operator,
+        // then the symbols in COMMAND_GLYPHS order.
+        let suItems = ["\\subsection{...}", "\\sup", "\\subset", "\\subseteq", "\\supset", "\\supseteq", "\\sum"]
+        tv.string = "\\begin{document}\nx \\su"
         let end = (tv.string as NSString).length
         tv.setSelectedRange(NSRange(location: end, length: 0))
 
@@ -1009,35 +1067,37 @@ final class CompletionTests: XCTestCase {
         key(tv, " ", code: 49, flags: .control)
         XCTAssertNil(tv.session, "the keystroke path enqueues; it does not scan")
         try await waitUntil("popup") { tv.session != nil }
-        XCTAssertEqual(tv.session?.items.map(\.label), ["\\section{...}", "\\subsection{...}", "\\sqrt{x}", "\\sigma", "\\sum"])
+        XCTAssertEqual(tv.session?.items.map(\.label), suItems)
         XCTAssertEqual(tv.session?.selectedIndex, 0)
-        XCTAssertEqual(tv.string, "\\begin{document}\nx \\s", "opening the list never edits the text")
+        XCTAssertEqual(tv.string, "\\begin{document}\nx \\su", "opening the list never edits the text")
 
         // ↓ ↓ ↑ choose; the text and caret are untouched while choosing.
         key(tv, "\u{F701}", code: 125)
         key(tv, "\u{F701}", code: 125)
-        XCTAssertEqual(tv.session?.selected?.label, "\\sqrt{x}")
+        XCTAssertEqual(tv.session?.selected?.label, "\\subset")
         key(tv, "\u{F700}", code: 126)
-        XCTAssertEqual(tv.session?.selected?.label, "\\subsection{...}")
+        XCTAssertEqual(tv.session?.selected?.label, "\\sup")
         XCTAssertEqual(tv.selectedRange(), NSRange(location: end, length: 0))
         // ↑ from the top wraps to the bottom.
         key(tv, "\u{F700}", code: 126); key(tv, "\u{F700}", code: 126)
         XCTAssertEqual(tv.session?.selected?.label, "\\sum")
         key(tv, "\u{F701}", code: 125)
-        XCTAssertEqual(tv.session?.selected?.label, "\\section{...}")
+        XCTAssertEqual(tv.session?.selected?.label, "\\subsection{...}")
 
         // Typing through the list narrows it and keeps the chosen item when it survives.
-        key(tv, "\u{F701}", code: 125) // \subsection
-        key(tv, "u", code: 32)
-        XCTAssertEqual(tv.string, "\\begin{document}\nx \\su")
-        try await waitUntil("narrowed") { tv.session?.items.count == 2 }
-        XCTAssertEqual(tv.session?.items.map(\.label), ["\\subsection{...}", "\\sum"])
-        XCTAssertEqual(tv.session?.selected?.label, "\\subsection{...}")
-        XCTAssertEqual(tv.session?.range, NSRange(location: end - 2, length: 3))
+        key(tv, "\u{F701}", code: 125); key(tv, "\u{F701}", code: 125) // \subset
+        key(tv, "b", code: 11)
+        XCTAssertEqual(tv.string, "\\begin{document}\nx \\sub")
+        try await waitUntil("narrowed") { tv.session?.items.count == 3 }
+        XCTAssertEqual(tv.session?.items.map(\.label), ["\\subsection{...}", "\\subset", "\\subseteq"])
+        XCTAssertEqual(tv.session?.selected?.label, "\\subset")
+        XCTAssertEqual(tv.session?.range, NSRange(location: end - 3, length: 4))
         // Delete widens it again.
         key(tv, "\u{7F}", code: 51)
-        XCTAssertEqual(tv.string, "\\begin{document}\nx \\s")
-        try await waitUntil("widened") { tv.session?.items.count == 5 }
+        XCTAssertEqual(tv.string, "\\begin{document}\nx \\su")
+        try await waitUntil("widened") { tv.session?.items.count == suItems.count }
+        XCTAssertEqual(tv.session?.selected?.label, "\\subset")
+        key(tv, "\u{F700}", code: 126); key(tv, "\u{F700}", code: 126)
         XCTAssertEqual(tv.session?.selected?.label, "\\subsection{...}")
 
         // Return inserts the chosen item over the partial token (its argument
@@ -1050,14 +1110,14 @@ final class CompletionTests: XCTestCase {
         XCTAssertEqual(tv.undoManager?.canUndo, true)
 
         // Esc closes without inserting, and a late outcome cannot reopen the list.
-        tv.string = "\\begin{document}\nx \\s"
+        tv.string = "\\begin{document}\nx \\su"
         tv.setSelectedRange(NSRange(location: end, length: 0))
         key(tv, " ", code: 49, flags: .control)
         try await waitUntil("popup 2") { tv.session != nil }
         key(tv, "\u{1B}", code: 53)
         XCTAssertNil(tv.session)
         XCTAssertEqual(tv.lastCloseReason, .escape)
-        XCTAssertEqual(tv.string, "\\begin{document}\nx \\s")
+        XCTAssertEqual(tv.string, "\\begin{document}\nx \\su")
         try await Task.sleep(nanoseconds: 50_000_000)
         XCTAssertNil(tv.session)
 
@@ -1066,14 +1126,14 @@ final class CompletionTests: XCTestCase {
         try await waitUntil("popup via Esc") { tv.session != nil }
         // Tab chooses the next candidate (never inserts a tab); Enter inserts; ← closes (the caret leaves the token).
         key(tv, "\t", code: 48)
-        XCTAssertEqual(tv.string, "\\begin{document}\nx \\s", "Tab moved the choice, the text is untouched")
-        XCTAssertEqual(tv.session?.selected?.label, "\\subsection{...}")
+        XCTAssertEqual(tv.string, "\\begin{document}\nx \\su", "Tab moved the choice, the text is untouched")
+        XCTAssertEqual(tv.session?.selected?.label, "\\sup")
         key(tv, "\t", code: 48, flags: .shift)
-        XCTAssertEqual(tv.session?.selected?.label, "\\section{...}")
+        XCTAssertEqual(tv.session?.selected?.label, "\\subsection{...}")
         key(tv, "\u{3}", code: 76) // Enter (keypad)
-        XCTAssertEqual(tv.string, "\\begin{document}\nx \\section{}")
+        XCTAssertEqual(tv.string, "\\begin{document}\nx \\subsection{}")
         XCTAssertNil(tv.session)
-        tv.string = "\\begin{document}\nx \\s"
+        tv.string = "\\begin{document}\nx \\su"
         tv.setSelectedRange(NSRange(location: end, length: 0))
         key(tv, " ", code: 49, flags: .control)
         try await waitUntil("popup 3") { tv.session != nil }
@@ -1087,13 +1147,13 @@ final class CompletionTests: XCTestCase {
         key(tv, " ", code: 49, flags: .control)
         try await waitUntil("popup 4") { tv.session != nil }
         key(tv, " ", code: 49)
-        XCTAssertEqual(tv.string, "\\begin{document}\nx \\s ")
+        XCTAssertEqual(tv.string, "\\begin{document}\nx \\su ")
         try await waitUntil("closed by space") { tv.session == nil }
         XCTAssertEqual(tv.lastCloseReason, .noCandidates)
         XCTAssertEqual(tv.scheduler.statistics.refusedStale, 0, "every delivered outcome was current")
         // Mouse: a click chooses a row, a double-click accepts it; the popup is a
         // non-activating child window that cannot become key.
-        tv.string = "\\begin{document}\nx \\s"
+        tv.string = "\\begin{document}\nx \\su"
         tv.setSelectedRange(NSRange(location: end, length: 0))
         key(tv, " ", code: 49, flags: .control)
         try await waitUntil("popup 5") { tv.session != nil }
@@ -1101,17 +1161,17 @@ final class CompletionTests: XCTestCase {
         XCTAssertTrue(popup.isVisible)
         XCTAssertFalse(popup.canBecomeKey)
         XCTAssertTrue(popup.parent === window)
-        XCTAssertEqual(popup.items.count, 5)
+        XCTAssertEqual(popup.items.count, suItems.count)
         popup.click(row: 2)
-        XCTAssertEqual(tv.session?.selected?.label, "\\sqrt{x}")
+        XCTAssertEqual(tv.session?.selected?.label, "\\subset")
         popup.click(row: 9) // out of range: ignored
         XCTAssertEqual(tv.session?.selectedIndex, 2)
         popup.click(row: 3, double: true)
-        XCTAssertEqual(tv.string, "\\begin{document}\nx \\sigma")
+        XCTAssertEqual(tv.string, "\\begin{document}\nx \\subseteq")
         XCTAssertNil(tv.session)
         XCTAssertFalse(popup.isVisible)
         // ⌘-shortcuts with the list open act on the editor (undo) and close the list.
-        tv.string = "\\begin{document}\nx \\s"
+        tv.string = "\\begin{document}\nx \\su"
         tv.setSelectedRange(NSRange(location: end, length: 0))
         key(tv, " ", code: 49, flags: .control)
         try await waitUntil("popup 6") { tv.session != nil }
@@ -1147,14 +1207,15 @@ final class CompletionTests: XCTestCase {
         window.orderFrontRegardless() // never makeKey
         window.makeFirstResponder(tv)
         defer { window.orderOut(nil) }
-        tv.string = "\\begin{document}\nx \\s"
+        tv.string = "\\begin{document}\nx \\su"
         let end = (tv.string as NSString).length
         tv.setSelectedRange(NSRange(location: end, length: 0))
         key(tv, " ", code: 49, flags: .control)
         try await waitUntil("popup") { tv.session != nil }
         let items = try XCTUnwrap(tv.session?.items)
         let labels = items.map(\.label)
-        XCTAssertEqual(labels.count, 5)
+        XCTAssertEqual(labels, ["\\subsection{...}", "\\sup", "\\subset", "\\subseteq", "\\supset", "\\supseteq", "\\sum"])
+        let back = labels.count - 2 // where two ⇧Tab from the top land
         let popup = tv.completionPopup
         let table = popup.accessibilityTable
         XCTAssertEqual(table.accessibilityLabel(), CompletionAccessibility.listLabel)
@@ -1173,12 +1234,12 @@ final class CompletionTests: XCTestCase {
         XCTAssertEqual(tv.session?.selectedIndex, 0)
         key(tv, "\t", code: 48, flags: .shift)
         key(tv, "\t", code: 48, flags: .shift)
-        XCTAssertEqual(tv.session?.selectedIndex, 3)
-        XCTAssertEqual(popup.selectedRow, 3)
+        XCTAssertEqual(tv.session?.selectedIndex, back)
+        XCTAssertEqual(popup.selectedRow, back)
         XCTAssertTrue(window.firstResponder === tv, "the list never takes the keyboard")
         XCTAssertFalse(popup.isKeyWindow)
         XCTAssertEqual(tv.selectedRange(), NSRange(location: end, length: 0), "choosing never moves the caret")
-        XCTAssertEqual(tv.string, "\\begin{document}\nx \\s", "no tab character was inserted")
+        XCTAssertEqual(tv.string, "\\begin{document}\nx \\su", "no tab character was inserted")
 
         // Read back what VoiceOver gets from the real popup (legacy attribute
         // API: AppKit answers a table's children with private row proxies).
@@ -1196,14 +1257,14 @@ final class CompletionTests: XCTestCase {
         }
         let selectedRows = (legacy(table, .selectedRows) as? [AnyObject]) ?? []
         XCTAssertEqual(selectedRows.count, 1)
-        XCTAssertEqual(selectedRows.first.flatMap { legacy($0, .index) as? Int }, 3)
-        let announcement = CompletionAccessibility.selectionAnnouncement(index: 3, total: labels.count, label: items[3].label,
-                                                                          kind: items[3].kind.accessibilityKind, detail: items[3].detail)
-        XCTAssertTrue(announcement.hasPrefix("4 of 5: \(labels[3]), command, "), announcement)
+        XCTAssertEqual(selectedRows.first.flatMap { legacy($0, .index) as? Int }, back)
+        let announcement = CompletionAccessibility.selectionAnnouncement(index: back, total: labels.count, label: items[back].label,
+                                                                          kind: items[back].kind.accessibilityKind, detail: items[back].detail)
+        XCTAssertTrue(announcement.hasPrefix("6 of 7: \(labels[back]), command, "), announcement)
 
         // Return inserts the walked-to candidate over the token and closes.
         key(tv, "\r", code: 36)
-        XCTAssertEqual(tv.string, "\\begin{document}\nx " + items[3].insertText)
+        XCTAssertEqual(tv.string, "\\begin{document}\nx " + items[back].insertText)
         XCTAssertNil(tv.session)
         XCTAssertFalse(popup.isVisible)
         XCTAssertEqual(tv.lastCloseReason, .accepted)

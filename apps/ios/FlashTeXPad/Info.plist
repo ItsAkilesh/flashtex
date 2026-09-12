@@ -42,6 +42,8 @@
 	<true/>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>FlashTeXPad connects to your Mac running FlashTeX on the local network (nearby-v1 TLS-PSK).</string>
+	<key>NSCameraUsageDescription</key>
+	<string>FlashTeXPad scans the pairing QR code shown by FlashTeX on your Mac.</string>
 	<key>NSBonjourServices</key>
 	<array>
 		<string>_flashtex._tcp</string>

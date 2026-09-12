@@ -47,6 +47,7 @@ struct ContentView: View {
         .navigationSplitViewStyle(.balanced)
         .toolbar { WorkspaceToolbar(openWindow: openWindow) }
         .sheet(isPresented: $model.commandPaletteShown) { CommandPalette().environment(model) }
+        .grokAssistantSheet() // Ask Grok (GrokAssistantView.swift)
     }
 }
 
@@ -129,6 +130,9 @@ private struct WorkspaceToolbar: ToolbarContent {
                 .help("Export PDF… (⌘⇧E), via Rust writer (⌘⌥E), or exact from the v2 display list (File menu)")
             Button { openWindow(id: "nearby") } label: { Label("Nearby", systemImage: "ipad.and.iphone") }
                 .help("Nearby Companion… (Edit, ⌘⇧N): pair an iPad/iPhone to send captures")
+            Button { model.askGrok() } label: { Label("Ask Grok", systemImage: "sparkles") }
+                .help("Ask Grok… (Edit, ⌘⌥G): explain or edit the selection (or the document) through the assistant helper; nothing is applied until you choose Apply")
+                .accessibilityIdentifier("toolbar.ask-grok")
             Toggle(isOn: $model.problemsVisible) {
                 let n = model.displayedDiagnostics.count
                 Label(n > 0 ? "Problems \(n)" : "Problems", systemImage: n > 0 ? "exclamationmark.triangle.fill" : "exclamationmark.triangle")
@@ -315,8 +319,10 @@ private struct PreviewHeader: View {
             if let r = model.result {
                 Text(sourceName).font(.caption).lineLimit(1)
                     .help("result id \(model.resultID ?? "?") · project \(r.projectId) · revision \(r.revision) · pdf: \(r.pdfPath ?? "none")")
-                Text(r.status.rawValue).font(.caption.bold()).foregroundStyle(statusColor(r.status))
-                if r.status == .recovered {
+                if model.previewDebugStatus {
+                    Text(r.status.rawValue).font(.caption.bold()).foregroundStyle(statusColor(r.status))
+                }
+                if r.status == .recovered && model.previewDebugStatus {
                     Text("provisional rendering").font(.caption).foregroundStyle(.orange).lineLimit(1).fixedSize()
                         .help("recovered: preview shown with provisional rendering")
                 }
@@ -384,6 +390,9 @@ private struct PreviewHeader: View {
 /// exact-export progress control while one runs.
 private struct StatusBar: View {
     @Environment(ShellModel.self) var model
+    /// Whether the next explanation would go to Grok (xAI): re-read when the
+    /// Grok preferences or the Keychain item change (GrokPreferences.didChange).
+    @State private var grokStatus = GrokStatusPill.current()
 
     var body: some View {
         HStack(spacing: 12) {
@@ -399,6 +408,13 @@ private struct StatusBar: View {
             }
             Label(route, systemImage: routeIcon)
                 .help(model.isFixture ? "Not a real compile." : (model.controllerAttached ? model.controllerStatus : model.workerStatus))
+            Label(grokStatus.text, systemImage: grokStatus.on ? "sparkles" : "sparkles.slash")
+                .foregroundStyle(grokStatus.on ? Color.primary : Color.secondary)
+                .help(grokStatus.help)
+                .accessibilityIdentifier("status.grok")
+                .onReceive(NotificationCenter.default.publisher(for: GrokPreferences.didChange).receive(on: DispatchQueue.main)) { _ in
+                    grokStatus = GrokStatusPill.current()
+                }
             let diags = model.displayedDiagnostics
             if !diags.isEmpty {
                 let (errors, warnings, gaps) = EditorDiagnostics.counts(diags)

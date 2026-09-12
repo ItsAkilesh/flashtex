@@ -37,7 +37,16 @@ final class ShellModel {
     var problemsSeverityFilter: RuntimeV1.Severity?
     var commandPaletteShown = false
     let problemsPanel = DiagnosticsPanelState()
-    var previewV2 = ProcessInfo.processInfo.environment["FLASHTEX_PREVIEW_V2"] == "1" // experimental v2 pane (PreviewV2View.swift)
+    /// Ask Grok on the live document (ShellModel+GrokAssistant.swift, GrokAssistantView.swift).
+    @ObservationIgnored let grokAssistant = GrokAssistant()
+    /// The display-list-v2 pane (PreviewV2View.swift) is the default; `FLASHTEX_PREVIEW_V2=0` selects the v1 pane.
+    var previewV2 = ProcessInfo.processInfo.environment["FLASHTEX_PREVIEW_V2"] != "0"
+    /// Preview debug status (compile status word, "provisional rendering", v2 frame/font identity line,
+    /// display-list diagnostics under the pages): off by default; View > Show Preview Debug Status.
+    var previewDebugStatus = UserDefaults.standard.bool(forKey: ShellModel.previewDebugStatusKey) {
+        didSet { UserDefaults.standard.set(previewDebugStatus, forKey: ShellModel.previewDebugStatusKey) }
+    }
+    static let previewDebugStatusKey = "FlashTeX.Preview.v1.debugStatus"
     /// Preview zoom multiplier over the fit-to-width scale (PreviewZoom.swift); persisted.
     var previewZoom: CGFloat = PreviewZoom.load(.standard) {
         didSet { let c = PreviewZoom.clamped(previewZoom); if c != previewZoom { previewZoom = c } else { PreviewZoom.store(c, in: .standard) } }

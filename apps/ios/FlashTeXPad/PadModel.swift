@@ -55,11 +55,26 @@ final class PadModel: ObservableObject {
     let queue: CaptureQueue
     @Published var captures: [CaptureRecord] = []
 
-    init(link: MacLink = MacLink(store: try? PairFile(url: PairFile.defaultURL()))) {
+    /// Production: pairings in the Keychain (`KeychainPairStore`), drafts /
+    /// receipts / outcomes in Application Support (`CaptureStore`). Tests pass
+    /// their own link (no Keychain) and, when persistence is under test, a
+    /// store in a temporary directory. `-flashtexpad-fresh` (UI tests) wipes
+    /// both so a run never sees a previous run's captures or pairing.
+    init(link: MacLink? = nil, captureStore: CaptureStore? = nil) {
+        let fresh = ProcessInfo.processInfo.arguments.contains("-flashtexpad-fresh")
+        let production = link == nil
+        let link = link ?? {
+            let keychain = KeychainPairStore()
+            if fresh { try? keychain.removeAll() }
+            return MacLink(store: keychain)
+        }()
+        let store: CaptureStore? = captureStore ?? (production ? CaptureStore() : nil)
+        if fresh { store?.wipe() }
         self.link = link
-        self.queue = CaptureQueue(link: link)
+        self.queue = CaptureQueue(link: link, store: store)
+        self.captures = queue.records
         link.onTranscript = { [weak self] line in Task { @MainActor in self?.transcript.append(line) } }
-        if let p = link.store?.pairs.last { pairedMac = p; linkStatus = "stored pairing: \(p.macName) (\(p.pairId))" }
+        if let p = link.store?.pairs.last { pairedMac = p; linkStatus = "stored pairing: \(p.macName) (\(p.pairId)) — reconnect with the stored key" }
     }
 
     // MARK: captures
@@ -78,6 +93,43 @@ final class PadModel: ObservableObject {
         await queue.send(id)
         captures = queue.records
         destination = link.destination
+        if queue.shouldPoll(id) { pollOutcome(id) }
+    }
+
+    // MARK: outcome polling (additive capture_status)
+
+    /// Polls `capture_status` every `pollInterval` until the Mac reports a
+    /// final state, says it cannot answer, or `maxPolls` is reached. One task
+    /// per capture; a relaunch resumes it for every received, non-final record.
+    var pollInterval: TimeInterval = 2
+    var maxPolls = 150
+    private var pollers: [String: Task<Void, Never>] = [:]
+
+    func pollOutcome(_ id: String) {
+        pollers[id]?.cancel()
+        pollers[id] = Task { [weak self] in
+            guard let self else { return }
+            var n = 0
+            while !Task.isCancelled, n < self.maxPolls, self.queue.shouldPoll(id) {
+                n += 1
+                await self.queue.refreshOutcome(id)
+                self.captures = self.queue.records
+                if !self.queue.shouldPoll(id) { break }
+                try? await Task.sleep(nanoseconds: UInt64(self.pollInterval * 1_000_000_000))
+            }
+            self.pollers[id] = nil
+        }
+    }
+
+    /// One immediate probe (the list's Refresh button / tests).
+    func refreshOutcome(_ id: String) async {
+        await queue.refreshOutcome(id)
+        captures = queue.records
+    }
+
+    /// After (re)connecting: resume polling for captures still awaiting an outcome.
+    func resumeOutcomePolling() {
+        for r in queue.records where queue.shouldPoll(r.id) && pollers[r.id] == nil { pollOutcome(r.id) }
     }
 
     /// Test/automation hook: `-flashtexpad-test-mac host:port:saltHex:fp:code`
@@ -227,7 +279,39 @@ final class PadModel: ObservableObject {
             pairedMac = pair
             destination = link.destination
             linkStatus = "paired with \(pair.macName) (\(pair.pairId)); connected"
+            resumeOutcomePolling()
         } catch { linkError = "\(error)"; linkStatus = "pairing failed" }
+    }
+
+    func forgetPairing() {
+        if let p = pairedMac { try? link.store?.remove(fingerprint: p.fingerprint) }
+        link.disconnect()
+        pairedMac = nil
+        linkStatus = "not paired"
+    }
+
+    /// QR pairing: the Mac's `flashtex-nearby://pair?v=1&code&salt&fp&name`
+    /// (scanned with VisionKit, or pasted). Host/port typed when Bonjour
+    /// cannot find the Mac (the simulator has no camera and, in tests, no
+    /// advertising listener).
+    @discardableResult
+    func pair(bootstrapText: String, host: String, port: String) async -> Bool {
+        linkError = nil
+        let payload: NearbyBootstrapPayload
+        do { payload = try NearbyBootstrapPayload.parse(bootstrapText) } catch { linkError = "QR payload: \(error)"; linkStatus = "pairing failed"; return false }
+        let h = host.trimmingCharacters(in: .whitespaces)
+        let p = UInt16(port.trimmingCharacters(in: .whitespaces))
+        if !h.isEmpty, !port.isEmpty, p == nil { linkError = "port must be a number"; return false }
+        linkStatus = h.isEmpty ? "pairing with \(payload.macName) (browsing Bonjour for fp \(payload.fingerprint))…" : "pairing with \(payload.macName)…"
+        do {
+            let pair = try await link.pair(bootstrap: payload, host: h.isEmpty ? nil : h, port: h.isEmpty ? nil : p,
+                                           companionName: "FlashTeXPad (\(UIDevice.current.name))")
+            pairedMac = pair
+            destination = link.destination
+            linkStatus = "paired with \(pair.macName) (\(pair.pairId)); connected"
+            resumeOutcomePolling()
+            return true
+        } catch { linkError = "\(error)"; linkStatus = "pairing failed"; return false }
     }
 
     func reconnect(host: String, port: String) async {
@@ -238,6 +322,7 @@ final class PadModel: ObservableObject {
             try await link.connect(host: host, port: p, pair: pair)
             destination = link.destination
             linkStatus = "connected to \(pair.macName)"
+            resumeOutcomePolling()
         } catch { linkError = "\(error)"; linkStatus = "connect failed" }
     }
 

@@ -1,0 +1,62 @@
+{
+  "apply" : {
+    "pending_edit" : "{54, 31} 59 bytes",
+    "state" : "applied(\"Applied review 799fe7bd (assistant-799fe7bd…) as one undoable edit (⌘Z "
+  },
+  "compile" : {
+    "diagnostics" : 0,
+    "request_id" : "mac-1",
+    "revision" : 2,
+    "status" : "ok"
+  },
+  "compile_after_apply" : {
+    "diagnostics" : [
+      "environment 'align*' is not implemented; its body is typeset as plain text",
+      "math script marker used outside math mode",
+      "math script marker used outside math mode",
+      "math script marker used outside math mode"
+    ],
+    "status" : "recovered"
+  },
+  "coverage_note" : null,
+  "credential" : "key present (Keychain)",
+  "elapsed_s" : 5.9190449714660645,
+  "model" : "grok-4.20-0309-non-reasoning",
+  "provider_timeout_s" : 30,
+  "reply" : {
+    "edits" : [
+      {
+        "end" : 85,
+        "relocated" : true,
+        "removed_bytes" : 31,
+        "replacement" : "\\begin{align*}\n  (a+b)^2 &= a^2 + 2ab + b^2 \\\\\n\\end{align*}",
+        "replacement_bytes" : 59,
+        "start" : 54
+      }
+    ],
+    "explanation_bytes" : 208,
+    "explanation_head" : "The displayed equation has been converted to an `align*` environment (with alignment point added at the equals sign) using only the bytes inside the user selection. No other changes were made to the d",
+    "notes" : [
+
+    ],
+    "review_id_prefix" : "799fe7bd"
+  },
+  "request" : {
+    "context_line" : "Selection: line 4 of main.tex",
+    "instruction_bytes" : 248,
+    "related_paths" : [
+      "main.tex"
+    ],
+    "selected_diagnostics" : [
+
+    ]
+  },
+  "stages" : [
+    "probe",
+    "prepare",
+    "provider",
+    "review"
+  ],
+  "state" : "ready(FlashTeXMac.GrokAssistant.Reply(contextId: \"efa539a78f",
+  "utc" : "2026-09-12T22:10:11Z"
+}

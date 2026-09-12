@@ -1,0 +1,36 @@
+{
+  "agent_id": "mac-completion-sync",
+  "allocation_id": "claude-mac20x-completion-sync",
+  "assignment_acknowledgements": {},
+  "branch": "agent/mac-completion-sync/tests",
+  "capabilities": [
+    "swift",
+    "appkit",
+    "xctest"
+  ],
+  "code_revision": "6de0549e6c57683eff37c1e268cd63b45e2cb0c6",
+  "eta_minutes": {
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 5
+  },
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "738714a917eae1c7bfa241f35c640b0aecc5b74d",
+  "next_action": "Parent merges agent/mac-completion-sync/tests (6de0549e) into agent/mac-claude-a/mac-shell; compiler crate owner may document \\in \\forall \\exists \\vee \\Rightarrow \\mid in README 'Supported math' and then trim the pinned gap list in testStaticVocabularyMatchesTheCompilerDocs",
+  "reviewed_peers": {
+    "agent/mac-claude-a/mac-shell": {
+      "adaptation": "Based on the parent's local tip 624fcb14 (origin was behind at 8d1ab8e2); it contains main f803a711 (Codex vocabulary sync) and main 738714a9 (font-size no-op arm), which the vocabulary and drift test now mirror",
+      "reviewed_utc": "2026-09-12T21:26:00Z",
+      "sha": "624fcb14"
+    }
+  },
+  "schema_version": 1,
+  "state": "ready_for_integration",
+  "summary": "CompletionTests green against the synchronized vocabulary: \\hfill/\\hfil/\\hspace/\\quad/\\qquad/\\bigskip/\\medskip/\\smallskip sourced from the README list paragraph, \\tiny..\\Huge parser-only entries, exact-match-first ranking within the vocabulary; drift test parses the README leading paragraph only, checks capitalised multi-line parser arms, pins the six README math omissions; keyboard/Tab/popup tests use the seven-candidate \\su fixture",
+  "tool": "Claude Code subagent (parent mac-claude-a)",
+  "updated_utc": "2026-09-12T21:26:00Z",
+  "usage": {
+    "evidence": "swift test --filter CompletionTests: 27 tests, 0 failures, 2 load-gated skips (1-min load 66.7 > 20); --filter EditorIntelligenceTests: 10/10; no CommandDocsTests class exists; full swift test not run (1-min load 53-77 > 15)",
+    "status": "Shared Claude Max quota with parent mac-claude-a; no purchases"
+  }
+}

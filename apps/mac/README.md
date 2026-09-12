@@ -801,6 +801,7 @@ explain that nothing is loaded.
 | ⌘⇧I | Open capture proposal… (review sheet; ⏎ approves, inserts one undoable edit) |
 | ⌘⇧U | Submit sample capture… (PNG/JPEG → `capture_submit` through the attached bridge) |
 | ⌘⇧G | Convert capture (`capture_convert` for the latest received capture) |
+| ⌘⌥G | Ask Grok… (Edit; also the toolbar's Ask Grok button and "Fix with Grok" on a Problems row): instruction over the selection or the whole document, sent with the last compile's bound context to Grok (xAI) through the assistant helper; explanation plus the proposed edit as a before/after diff, Apply = one undoable edit, Copy, Esc closes |
 | ⌘⇧N | Nearby Companion… (advertise, pairing code, paired devices, received captures; Return shows or resumes a pairing code, Esc cancels it or dismisses a banner, Tab walks Advertise → pairing controls → Forget → Clear; the step indicator, status row and every transition are VoiceOver text) |
 | Edit > Rename Citation… | Rename citation window (reviewed `plan_citation_rename` across the project → one `apply_group`; also in the toolbar) |
 | ⌘⇧P | Command palette (View; also the toolbar's Commands button): every command in this table with its menu and shortcut; type to filter, ↑/↓ choose, Return runs, Esc closes |

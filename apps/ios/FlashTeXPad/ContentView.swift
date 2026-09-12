@@ -296,11 +296,47 @@ struct MacLinkPanel: View {
     @State private var macName = "Mac"
     @State private var code = ""
     @State private var instructions = "Transcribe this capture"
+    @State private var qrText = ""
+    @State private var scanning = false
 
     var body: some View {
         Form {
-            Section("Nearby-v1 pairing (apps/mac/docs/nearby-v1-proposal.md §2, §7)") {
-                Text("Enter what the Mac's Nearby window shows (Edit > Nearby Companion… > Show Pairing Code): host/port, TXT salt and fp, and the code. Bonjour browsing is available through NearbyBrowser; this slice takes the values typed to keep the simulator run deterministic.")
+            Section("Link") {
+                Text(model.linkStatus).accessibilityIdentifier("link.status")
+                if let e = model.linkError { Text(e).foregroundStyle(.red).accessibilityIdentifier("link.error") }
+                if let p = model.pairedMac {
+                    Text("Stored in the Keychain (this iPad only): \(p.macName) fp=\(p.fingerprint) pair_id=\(p.pairId), paired \(p.pairedAt.formatted(date: .abbreviated, time: .shortened))")
+                        .font(.caption.monospaced()).foregroundStyle(.secondary).accessibilityIdentifier("pair.stored")
+                }
+            }
+            Section("Pair by QR (the Mac's Nearby window shows it beside the code)") {
+                Text("Scan the Mac's QR (flashtex-nearby://pair?v=1&code&salt&fp&name) with the camera, or paste its text. The Mac is found by Bonjour (fp); if that fails — the simulator has no camera and no Bonjour listener in tests — type its host and port below.")
+                    .font(.caption).foregroundStyle(.secondary)
+                HStack {
+                    if PairingScannerView.isAvailable {
+                        Button { scanning = true } label: { Label("Scan QR…", systemImage: "qrcode.viewfinder") }.buttonStyle(.bordered)
+                    } else {
+                        Text("Camera scanner unavailable on this device (VisionKit DataScanner not supported here) — paste the payload instead.")
+                            .font(.caption).foregroundStyle(.secondary).accessibilityIdentifier("pair.qr.unavailable")
+                    }
+                }
+                TextField("flashtex-nearby://pair?v=1&code=…&salt=…&fp=…&name=…", text: $qrText, axis: .vertical)
+                    .font(.caption.monospaced()).accessibilityIdentifier("pair.qr.text")
+                HStack {
+                    Button("Paste") { if let t = UIPasteboard.general.string { qrText = t } }.buttonStyle(.bordered)
+                    Button("Pair from payload") { Task { await model.pair(bootstrapText: qrText, host: host, port: port) } }
+                        .buttonStyle(.borderedProminent).disabled(qrText.isEmpty).accessibilityIdentifier("pair.qr.go")
+                }
+            }
+            .sheet(isPresented: $scanning) {
+                NavigationStack {
+                    PairingScannerView { text in qrText = text; scanning = false; Task { await model.pair(bootstrapText: text, host: host, port: port) } }
+                        .navigationTitle("Scan the Mac's pairing QR")
+                        .toolbar { Button("Cancel") { scanning = false } }
+                }
+            }
+            Section("Nearby-v1 pairing by typed code (apps/mac/docs/nearby-v1-proposal.md §2, §7)") {
+                Text("Or enter what the Mac's Nearby window shows (Edit > Nearby Companion… > Show Pairing Code): host/port, TXT salt and fp, and the code.")
                     .font(.caption).foregroundStyle(.secondary)
                 TextField("Host", text: $host).accessibilityIdentifier("pair.host")
                 TextField("Port", text: $port).keyboardType(.numberPad).accessibilityIdentifier("pair.port")
@@ -313,9 +349,9 @@ struct MacLinkPanel: View {
                         .buttonStyle(.borderedProminent).accessibilityIdentifier("pair.go")
                     Button("Reconnect with stored key") { Task { await model.reconnect(host: host, port: port) } }.disabled(model.pairedMac == nil)
                     Button("Disconnect") { model.disconnect() }
+                    Button("Forget pairing", role: .destructive) { model.forgetPairing() }.disabled(model.pairedMac == nil)
                 }
-                Text(model.linkStatus).accessibilityIdentifier("link.status")
-                if let e = model.linkError { Text(e).foregroundStyle(.red).accessibilityIdentifier("link.error") }
+
             }
             Section("Destination (hello_ack / destination_query)") {
                 if let d = model.destination {
@@ -331,7 +367,7 @@ struct MacLinkPanel: View {
                     Text(verbatim: "capture_received \(r.captureId) durable=\(r.durable) has_proposal=\(r.hasProposal) applied=\(r.applied)")
                         .font(.caption.monospaced()).accessibilityIdentifier("capture.receipt")
                 }
-                Text("The Mac converts and reviews on its side; nearby-v1 returns only this receipt (§6).").font(.caption).foregroundStyle(.secondary)
+                Text("The Mac converts and reviews on its side; the receipt is followed by capture_status polling on the Capture screen.").font(.caption).foregroundStyle(.secondary)
             }
             Section("Wire transcript (keys and image bytes redacted)") {
                 ForEach(model.transcript) { l in
