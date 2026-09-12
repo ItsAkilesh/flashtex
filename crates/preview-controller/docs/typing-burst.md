@@ -305,3 +305,24 @@ No additional workload was run while making this change.
 Snapshot status starts with captured=false until a positional read succeeds. An
 earlier failure leaving empty saved bytes therefore does not imply an empty stderr
 stream; the status explicitly records that no snapshot was taken.
+
+## Correctness gate passes; full transport trace remains incomplete
+
+`typing-burst-positional-correctness` preserves process77486, the single approved
+correctness run after snapshot repair (harness e2072fe3, unchanged29810763 helper
+and1587245d producer). All20 edits, current21, five source-bound historical frames,
+permanent-ID retries/conflict refusal, exact durable reopen, and clean final direct
+compilation passed. Normal original provenance and raw reopen evidence are retained
+with archive hashes. Both producer PIDs were absent afterward.
+
+The strict transport reviewer refused this run's complete-trace claim: its live
+raw diagnostic snapshot ends mid-record, and a received frame lacks terminal writer
+coverage. Status says captured=true, partial_tail=true, truncated=false,
+non_json=false. This is explicitly a correctness pass with incomplete transport
+attribution, not a benchmark failure hidden as success or a complete performance
+measurement. The analyzer was not weakened and no additional run was made.
+
+The next diagnostic improvement is to retain the diagnostic descriptor across
+helper termination and snapshot after its writer stops, with bounded cleanup tests.
+A previous live snapshot remains separate evidence. Neither this pass nor the
+snapshot repair establishes the causes of earlier58242 or68918 failures.
