@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Launches a packaged FlashTeX.app, confirms it actually opened a window,
-# confirms the bundled flashtex-compiler attached as a child process, kills
-# that child to exercise worker-crash recovery, and asserts the app itself
-# survives. See "Limitation" below for what this script cannot verify.
+# confirms the bundled flashtex-compiler attached (via FLASHTEX_LOG status
+# lines and as a child process), kills that child to exercise worker-crash
+# recovery, and asserts the app itself survives and logs the recovery.
 #
 # Usage: apps/mac/scripts/launch-check.sh [--app <path to .app>] [--evidence <file>]
 set -euo pipefail
@@ -44,10 +44,29 @@ step() { echo "==> $1"; REPORT_LINES+=("" "## $1" ""); }
 note() { echo "    $1"; REPORT_LINES+=("- $1"); }
 fail() { echo "    FAIL: $1" >&2; REPORT_LINES+=("- FAIL: $1"); }
 
+# Polls $LOG_FILE for a literal substring for up to $2 seconds.
+wait_for_log() {
+  local pattern="$1" timeout="$2" waited=0
+  while (( waited < timeout )); do
+    if [[ -f "$LOG_FILE" ]] && grep -qF "$pattern" "$LOG_FILE" 2>/dev/null; then
+      return 0
+    fi
+    sleep 1
+    waited=$((waited + 1))
+  done
+  return 1
+}
+
+# All scratch files for this run live in one directory so a single `rm -rf`
+# cleans up everything (macOS mktemp only substitutes a trailing run of X's,
+# so templates need a real trailing XXXXXX with no suffix after it).
+WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/flashtex-launch-check.XXXXXX")"
+trap 'rm -rf "$WORK_DIR"' EXIT
+
 # --- 1. Compile a tiny CGWindowList probe on the fly -----------------------
 # `pid` -> exit 0 if that pid owns an on-screen window, else 1.
-PROBE_SRC="$(mktemp "${TMPDIR:-/tmp}/flashtex-window-probe.XXXXXX").swift"
-PROBE_BIN="${PROBE_SRC%.swift}.bin"
+PROBE_SRC="$WORK_DIR/probe.swift"
+PROBE_BIN="$WORK_DIR/probe"
 cat > "$PROBE_SRC" <<'SWIFT'
 import CoreGraphics
 import Foundation
@@ -67,25 +86,26 @@ exit(owned ? 0 : 1)
 SWIFT
 
 step "Compiling CGWindowList window-probe"
-if swiftc -O "$PROBE_SRC" -o "$PROBE_BIN" 2>/tmp/flashtex-probe-build.log; then
+if swiftc -O "$PROBE_SRC" -o "$PROBE_BIN" 2>"$WORK_DIR/probe-build.log"; then
   note "probe compiled at $PROBE_BIN"
 else
-  note "probe failed to compile (see /tmp/flashtex-probe-build.log); window check will be skipped"
+  note "probe failed to compile (see $WORK_DIR/probe-build.log); window check will be skipped"
   PROBE_BIN=""
 fi
-rm -f "$PROBE_SRC"
 
 # --- 2. Launch --------------------------------------------------------------
 COMPILER_IN_BUNDLE="$APP_DIR/Contents/MacOS/flashtex-compiler"
+LOG_FILE="$WORK_DIR/flashtex.log"
+: > "$LOG_FILE"
 step "Launching $APP_DIR"
 pkill -x FlashTeX >/dev/null 2>&1 || true
 sleep 1
 if [[ -x "$COMPILER_IN_BUNDLE" ]]; then
-  open --env FLASHTEX_AUTOATTACH=1 "$APP_DIR"
-  note "bundled flashtex-compiler present; launched with FLASHTEX_AUTOATTACH=1"
+  open --env FLASHTEX_AUTOATTACH=1 --env "FLASHTEX_LOG=$LOG_FILE" "$APP_DIR"
+  note "bundled flashtex-compiler present; launched with FLASHTEX_AUTOATTACH=1 FLASHTEX_LOG=$LOG_FILE"
 else
-  open "$APP_DIR"
-  note "no bundled flashtex-compiler in $APP_DIR/Contents/MacOS; rebuild with 'make-app.sh --compiler <path>' to exercise the attach/kill checks below"
+  open --env "FLASHTEX_LOG=$LOG_FILE" "$APP_DIR"
+  note "no bundled flashtex-compiler in $APP_DIR/Contents/MacOS; rebuild with 'make-app.sh --compiler <path>' to exercise the attach/kill/log checks below"
 fi
 
 APP_PID=""
@@ -111,7 +131,6 @@ if [[ -n "$PROBE_BIN" ]]; then
     fi
     sleep 1
   done
-  rm -f "$PROBE_BIN"
 else
   sleep 3
 fi
@@ -121,7 +140,7 @@ else
   note "window not confirmed via CGWindowList (probe unavailable, headless session, or timed out)"
 fi
 
-# --- 4. Confirm the bundled compiler attached (child process) --------------
+# --- 4. Confirm the bundled compiler attached (log + child process) --------
 COMPILER_PID=""
 if [[ -x "$COMPILER_IN_BUNDLE" ]]; then
   step "Checking for a flashtex-compiler child of pid $APP_PID"
@@ -135,9 +154,23 @@ if [[ -x "$COMPILER_IN_BUNDLE" ]]; then
   else
     fail "no flashtex-compiler child process found under pid $APP_PID within 5s"
   fi
+
+  step "Checking FLASHTEX_LOG for an 'attached:' status line"
+  if wait_for_log "status: attached:" 10; then
+    note "log shows an 'attached:' status line within 10s"
+  else
+    fail "no 'status: attached:' line in $LOG_FILE within 10s"
+  fi
+
+  step "Checking FLASHTEX_LOG for 'revision 1: ok' (auto-compile completed)"
+  if wait_for_log "revision 1: ok" 10; then
+    note "log shows 'revision 1: ok' within 10s"
+  else
+    fail "no 'revision 1: ok' line in $LOG_FILE within 10s"
+  fi
 fi
 
-# --- 5. Kill the compiler child and assert the app survives ----------------
+# --- 5. Kill the compiler child and assert the app survives and logs it ----
 if [[ -n "$COMPILER_PID" ]]; then
   step "Killing flashtex-compiler (pid $COMPILER_PID) and checking app survival"
   kill "$COMPILER_PID"
@@ -150,7 +183,13 @@ if [[ -n "$COMPILER_PID" ]]; then
   if ! kill -0 "$COMPILER_PID" 2>/dev/null; then
     note "flashtex-compiler (pid $COMPILER_PID) confirmed gone"
   fi
-  note "LIMITATION: ShellModel's worker-exited status (\"worker exited (<code>)\") is an in-memory @Published SwiftUI string with no file or stdout sink (confirmed: no FLASHTEX_LOG support and no print() calls in apps/mac/Sources/FlashTeXMac), and reading it via UI scripting needs Accessibility/Screen-Recording permission this environment does not have (\"osascript ... System Events ...\" fails with -1728, not allowed assistive access, when tried against this app). This script can therefore only confirm the app's *process* survives its worker's death, not that its UI banner says \"worker exited\"; a human (or an Accessibility-authorized run) should confirm the banner text separately. Per the task instructions, no FLASHTEX_LOG plumbing was added to the app for this, since the app does not already support it and adding it is Swift-source work outside this worker's ownership (apps/mac/scripts/**, apps/mac/docs/packaging.md, docs/evidence/**)."
+
+  step "Checking FLASHTEX_LOG for a 'worker exited (' status line"
+  if wait_for_log "worker exited (" 5; then
+    note "log shows a 'worker exited (' status line within 5s"
+  else
+    fail "no 'worker exited (' line in $LOG_FILE within 5s"
+  fi
 fi
 
 # --- 6. Quit -----------------------------------------------------------------
@@ -171,6 +210,12 @@ if [[ -n "$EVIDENCE_FILE" ]]; then
     echo "Compiler bundled: $([[ -x "$COMPILER_IN_BUNDLE" ]] && echo yes || echo no)"
     echo
     printf '%s\n' "${REPORT_LINES[@]}"
+    echo
+    echo "## FLASHTEX_LOG ($LOG_FILE)"
+    echo
+    echo '```'
+    cat "$LOG_FILE" 2>/dev/null || echo "(log file missing or empty)"
+    echo '```'
   } > "$EVIDENCE_FILE"
   echo "==> Evidence written to $EVIDENCE_FILE"
 fi
