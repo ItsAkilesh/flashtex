@@ -14,7 +14,7 @@
     "rust",
     "source-navigation"
   ],
-  "code_revision": "bd6c2605d0b8fa1b7978cccc0a4af0f90c6dc4c6",
+  "code_revision": "978bd9b55d13bfcc00bbbd5a3dc6d44b3deefe18",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
@@ -22,15 +22,15 @@
   },
   "machine": "linux-primary",
   "main_integrated_through": "579a58c71ce296bd7277b84fd20e2c6bc383d0da",
-  "next_action": "Orchestrator integration and native consumer wiring; validate exact snapshots and obtain explicit caller approval before application.",
+  "next_action": "Orchestrator integration and native consumer wiring; explicit user approval and transactional application remain caller responsibilities.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "Published bounded literal search, guarded multi-document replacement proposals, and versioned bounded JSON serialization with native-consumable schema/example. 73 Rust tests pass; no automatic document mutation.",
+  "summary": "Published guarded citation-key rename plans across declared bibliography records and indexed cite uses, plus bounded native JSON proposal serialization with explicit citation_key_rename kind. 79 Rust tests pass.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T08:20:37Z",
+  "updated_utc": "2026-09-12T08:26:34Z",
   "usage": {
-    "evidence": "73 offline Rust tests pass; strict Clippy and fmt/diff checks pass. Python independently decoded example JSON and verified escaped text, exact u64 revision and UTF8 spans; optional jsonschema unavailable, no install attempted. Stale/malformed/overlapping/tampered plans rejected.",
+    "evidence": "79 offline Rust tests pass; strict Clippy, formatting and diff checks pass. Multi-file Unicode plans, duplicate/malformed/collision refusal, comment/verbatim preservation, stale/partial/tampered/overlapping guards and byte-limited wire tested. Python independently decoded native example with exact u64 revision and kind/envelope fields.",
     "status": "unknown"
   }
 }
