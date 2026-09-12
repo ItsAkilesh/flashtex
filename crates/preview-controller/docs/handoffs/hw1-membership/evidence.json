@@ -4,6 +4,11 @@
     "candidate.patch": "155f306cff8c74fb044ea4570688a4970bb2766a2ceadb28cf5c154cd0d6ea32",
     "tests.log": "0dfa7229a03e33921b7126b90fce585ad4046886965ade2c5928fe35f3de46ca",
     "hw1.jsonl": "d01fdc2d11c738c825129e10677edfedd6075d504d1f4f1174752dd0859dc01d",
-    "README.md": "0d0c799b106ce9b50540a0bf7c337c894654c71e9ddd7b92720248eb77b9cb61"
-  }
+    "README.md": "b5976034996ed076d36aaaf1009d9342e3c333d94f234d031b87662db2b7d049",
+    "combined-tests.log": "64ef27c56230dd3d8a2336769f1b428bb6e34bfa59cead5670f317e835fa39e0",
+    "combined-clippy.log": "da0e8f455273f77ba7ed5518e4d21090df4151f6d7a31d1ca59ad45aeb231fd3",
+    "hw1-combined.jsonl": "7370d9fdecedd1025c19ab55bde071c62ce4e2974796dc81cc50b45b9f59a03e",
+    "combined-evidence.json": "2eca9f3a608e40938c3a9625eba7160f89cdc2dfa5ea177a3cd1731f6d8c73ee"
+  },
+  "combined_tests_passed": 93
 }
