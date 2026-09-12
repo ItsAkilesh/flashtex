@@ -1,5 +1,6 @@
 import SwiftUI
 import XCTest
+import FlashTeXAccessibility
 @testable import FlashTeXProtocol
 @testable import FlashTeXMac
 
@@ -539,7 +540,8 @@ final class CompletionTests: XCTestCase {
         XCTAssertEqual(labels(c), ["local01", "knuth84", "lamport94"])
         XCTAssertTrue(c.allSatisfy { $0.kind == .citation })
         XCTAssertEqual(c[0].detail, "\\bibitem in this document")
-        XCTAssertEqual(c[2].detail, "unresolved in the project index · 1 use · revision 5")
+        XCTAssertEqual(c[2].detail, "cited but not defined in a declared bibliography source · 1 use · revision 5")
+        XCTAssertEqual(c[1].detail, "defined in main.tex (kind not reported by this helper) · 1 use · revision 5", "no snapshot kinds bound here")
         XCTAssertEqual(c[1].insertText, "knuth84}")
         XCTAssertTrue(Completion.suggestions(in: cite, caretUTF16: (cite as NSString).length, metadata: nil).map(\.label) == ["local01"])
         for command in Completion.citationCommands {
@@ -626,8 +628,77 @@ final class CompletionTests: XCTestCase {
         XCTAssertEqual(tv.projectIndexMetadata?.commands.map(\.name), ["newer"], "a newer revision replaces the held metadata")
     }
 
+    /// `\cite{` states where each index key comes from using only the kinds
+    /// the helper declared for the same snapshot: a record in a declared
+    /// bibliography ranks first, a `\bibitem` in a LaTeX source next, a key
+    /// whose path has no reported kind says so (never a guess from ".bib"),
+    /// and a cited-but-undefined key says how to declare the bibliography.
+    func testCitationCompletionUsesDeclaredKindsAndNeverInfersThem() throws {
+        let versions = ["main.tex": 3, "refs.bib": 1]
+        func citations(_ items: [(String, path: String?, defs: Int)]) throws -> Completion.Metadata {
+            let payload: [String: Any] = ["source_versions": versions, "completions": items.map { i -> [String: Any] in
+                let loc: [String: Any] = ["path": i.path ?? "", "revision": 1, "start_byte": 0, "end_byte": 3]
+                return ["name": i.0, "definitions": Array(repeating: loc, count: i.defs), "occurrences": [loc, loc], "locations_truncated": false]
+            }]
+            return try Completion.Metadata.decodeProjectIndexReply(JSONSerialization.data(withJSONObject: payload), category: .citation,
+                                                                   editorRevision: 9, expectedSourceVersions: versions)
+        }
+        func snapshot(_ kinds: [String: String]?) throws -> Completion.Metadata {
+            var payload: [String: Any] = ["project_id": "p", "source_versions": versions, "membership_generation": 2]
+            if let kinds { payload["document_kinds"] = kinds }
+            return try Completion.Metadata.decodeProjectIndexSnapshot(JSONSerialization.data(withJSONObject: payload), editorRevision: 9,
+                                                                      expectedSourceVersions: versions)
+        }
+        let keys = try citations([("aaa-missing", nil, 0), ("lamport94", "main.tex", 1), ("knuth84", "refs.bib", 1), ("mystery", "notes.bib", 1)])
+        let text = "\\bibitem{local} x \\cite{"
+        let caret = (text as NSString).length
+
+        // Kinds declared: refs.bib is a bibliography, main.tex is LaTeX, notes.bib was not reported.
+        let declared = try XCTUnwrap(keys.merged(with: snapshot(["main.tex": "latex", "refs.bib": "bibliography"])))
+        XCTAssertEqual(declared.declaredBibliographies, ["refs.bib"])
+        XCTAssertEqual(declared.isDeclaredBibliography("refs.bib"), true)
+        XCTAssertEqual(declared.isDeclaredBibliography("main.tex"), false)
+        XCTAssertNil(declared.isDeclaredBibliography("notes.bib"), "a path without a reported kind is unknown, not a .bib by name")
+        let s1 = Completion.suggestions(in: text, caretUTF16: caret, metadata: declared)
+        XCTAssertEqual(labels(s1), ["local", "knuth84", "lamport94", "mystery", "aaa-missing"])
+        XCTAssertEqual(s1[0].detail, "\\bibitem in this document")
+        XCTAssertEqual(s1[1].detail, "record in refs.bib (declared bibliography) · 2 uses · revision 9")
+        XCTAssertEqual(s1[2].detail, "\\bibitem in main.tex · 2 uses · revision 9")
+        XCTAssertEqual(s1[3].detail, "defined in notes.bib (kind not reported by this helper) · 2 uses · revision 9")
+        XCTAssertEqual(s1[4].detail, "cited but not defined in a declared bibliography source · 2 uses · revision 9")
+        XCTAssertTrue(s1.allSatisfy { $0.kind == .citation && $0.insertText == $0.label + "}" })
+
+        // Kinds reported, nothing declared: every defined key is a \bibitem or unknown; the
+        // unresolved key says where to declare the .bib.
+        let none = try XCTUnwrap(keys.merged(with: snapshot(["main.tex": "latex", "refs.bib": "latex"])))
+        XCTAssertEqual(none.declaredBibliographies, [])
+        let s2 = Completion.suggestions(in: text, caretUTF16: caret, metadata: none)
+        XCTAssertEqual(labels(s2), ["local", "lamport94", "knuth84", "mystery", "aaa-missing"])
+        XCTAssertEqual(s2[2].detail, "\\bibitem in refs.bib · 2 uses · revision 9", "refs.bib is a LaTeX source until it is declared")
+        XCTAssertEqual(s2[4].detail, "cited but not defined in a declared bibliography source (none declared: Project > Document Kinds) · 2 uses · revision 9")
+
+        // No kinds bound at all (older helper without document_kinds, or none requested).
+        XCTAssertNil(try snapshot(nil).documentKinds)
+        let s3 = Completion.suggestions(in: text, caretUTF16: caret, metadata: keys)
+        XCTAssertEqual(labels(s3), ["local", "lamport94", "knuth84", "mystery", "aaa-missing"])
+        XCTAssertEqual(s3[1].detail, "defined in main.tex (kind not reported by this helper) · 2 uses · revision 9")
+        XCTAssertEqual(s3[2].detail, "defined in refs.bib (kind not reported by this helper) · 2 uses · revision 9")
+        XCTAssertEqual(s3[4].detail, "cited but not defined in a declared bibliography source · 2 uses · revision 9")
+
+        // Kinds never straddle revisions or snapshots.
+        XCTAssertNil(keys.merged(with: try Completion.Metadata.decodeProjectIndexSnapshot(
+            JSONSerialization.data(withJSONObject: ["source_versions": versions, "document_kinds": [:]] as [String: Any]),
+            editorRevision: 10, expectedSourceVersions: versions)))
+        XCTAssertThrowsError(try Completion.Metadata.decodeProjectIndexSnapshot(
+            JSONSerialization.data(withJSONObject: ["source_versions": ["main.tex": 4, "refs.bib": 1], "document_kinds": [:]] as [String: Any]),
+            editorRevision: 9, expectedSourceVersions: versions))
+        // Kinds merge with the same-revision compile result and survive a category merge.
+        let withResult = try XCTUnwrap(declared.merged(with: Completion.Metadata.from(result(revision: 9, []))))
+        XCTAssertEqual(withResult.declaredBibliographies, ["refs.bib"])
+    }
+
     @MainActor
-    func testFetcherQueriesThreeCategoriesAndRefusesStaleOrFailedReplies() throws {
+    func testFetcherQueriesThreeCategoriesPlusKindsAndRefusesStaleOrFailedReplies() throws {
         let fetcher = ProjectIndexCompletionFetcher()
         var sent: [(id: String, type: String, payload: [String: Any])] = []
         var next = 1
@@ -639,14 +710,15 @@ final class CompletionTests: XCTestCase {
         }
         let versions = ["main.tex": 3, "parts/body.tex": 1]
         fetcher.request(sourceVersions: versions, editorRevision: 12, send: send)
-        XCTAssertEqual(sent.map(\.type), ["complete", "complete", "complete"])
-        XCTAssertEqual(sent.map { $0.payload["category"] as? String }, ["label", "citation", "command"])
-        for s in sent {
+        XCTAssertEqual(sent.map(\.type), ["complete", "complete", "complete", "snapshot"])
+        XCTAssertEqual(sent.prefix(3).map { $0.payload["category"] as? String }, ["label", "citation", "command"])
+        for s in sent.prefix(3) {
             XCTAssertEqual(s.payload["source_versions"] as? [String: Int], versions)
             XCTAssertEqual(s.payload["prefix"] as? String, "")
             XCTAssertEqual(s.payload["limit"] as? Int, 100)
         }
-        XCTAssertEqual(fetcher.query?.outstanding.count, 3)
+        XCTAssertTrue(sent[3].payload.isEmpty, "snapshot takes no arguments")
+        XCTAssertEqual(fetcher.query?.outstanding.count, 4)
         XCTAssertEqual(fetcher.handle(resultID: "other", payload: [:]), .notMine)
         XCTAssertEqual(fetcher.handle(errorID: "other", message: "x"), .notMine)
         XCTAssertEqual(fetcher.handle(errorID: nil, message: "x"), .notMine)
@@ -654,8 +726,14 @@ final class CompletionTests: XCTestCase {
         func reply(_ names: [String], versions: [String: Int]) -> [String: Any] {
             try! JSONSerialization.jsonObject(with: indexReply(versions: versions, names: names.map { ($0, 1, 2, false) })) as! [String: Any]
         }
-        // Replies arrive in any order; the query completes when all three are in.
+        func snapshot(_ versions: [String: Int], kinds: [String: String]?) -> [String: Any] {
+            var p: [String: Any] = ["project_id": "p", "source_versions": versions, "membership_generation": 1]
+            if let kinds { p["document_kinds"] = kinds }
+            return p
+        }
+        // Replies arrive in any order; the query completes when all four are in.
         XCTAssertEqual(fetcher.handle(resultID: "pc-3", payload: reply(["mycmd"], versions: versions)), .pending)
+        XCTAssertEqual(fetcher.handle(resultID: "pc-4", payload: snapshot(versions, kinds: ["main.tex": "latex", "parts/body.tex": "latex", "refs.bib": "bibliography"])), .pending)
         XCTAssertEqual(fetcher.handle(resultID: "pc-1", payload: reply(["sec:a"], versions: versions)), .pending)
         guard case .complete(let m) = fetcher.handle(resultID: "pc-2", payload: reply(["knuth84"], versions: versions)) else {
             return XCTFail("expected complete")
@@ -665,28 +743,49 @@ final class CompletionTests: XCTestCase {
         XCTAssertEqual(m.citations.map(\.name), ["knuth84"])
         XCTAssertEqual(m.commands.map(\.name), ["mycmd"])
         XCTAssertEqual(m.origin, .projectIndex(sourceVersions: versions))
+        XCTAssertEqual(m.documentKinds, ["main.tex": "latex", "parts/body.tex": "latex", "refs.bib": "bibliography"])
+        XCTAssertEqual(m.declaredBibliographies, ["refs.bib"])
         XCTAssertNil(fetcher.query)
         XCTAssertEqual(fetcher.handle(resultID: "pc-2", payload: [:]), .notMine, "a finished query accepts nothing more")
 
         // A reply for other source versions discards the whole query.
         fetcher.request(sourceVersions: versions, editorRevision: 13, send: send)
-        XCTAssertEqual(fetcher.handle(resultID: "pc-4", payload: reply(["sec:a"], versions: versions)), .pending)
-        guard case .refused = fetcher.handle(resultID: "pc-5", payload: reply(["k"], versions: ["main.tex": 4, "parts/body.tex": 1])) else {
+        XCTAssertEqual(fetcher.handle(resultID: "pc-5", payload: reply(["sec:a"], versions: versions)), .pending)
+        guard case .refused = fetcher.handle(resultID: "pc-6", payload: reply(["k"], versions: ["main.tex": 4, "parts/body.tex": 1])) else {
             return XCTFail("expected refusal")
         }
         XCTAssertNil(fetcher.query)
-        XCTAssertEqual(fetcher.handle(resultID: "pc-6", payload: reply(["mycmd"], versions: versions)), .notMine)
+        XCTAssertEqual(fetcher.handle(resultID: "pc-7", payload: reply(["mycmd"], versions: versions)), .notMine)
         XCTAssertEqual(fetcher.refusals, 1)
+        // A snapshot for other source versions, or with an unknown kind, discards it too;
+        // a snapshot without document_kinds (older helper) binds no kinds.
+        fetcher.request(sourceVersions: versions, editorRevision: 13, send: send)
+        guard case .refused = fetcher.handle(resultID: "pc-12", payload: snapshot(["main.tex": 4, "parts/body.tex": 1], kinds: [:])) else {
+            return XCTFail("expected stale snapshot refusal")
+        }
+        fetcher.request(sourceVersions: versions, editorRevision: 13, send: send)
+        guard case .refused(let why) = fetcher.handle(resultID: "pc-16", payload: snapshot(versions, kinds: ["x.bib": "bibtex"])) else {
+            return XCTFail("expected unknown kind refusal")
+        }
+        XCTAssertTrue(why.contains("unknown document kind bibtex"), why)
+        fetcher.request(sourceVersions: versions, editorRevision: 13, send: send)
+        XCTAssertEqual(fetcher.handle(resultID: "pc-20", payload: snapshot(versions, kinds: nil)), .pending)
+        XCTAssertNil(fetcher.query?.merged?.documentKinds)
+        XCTAssertEqual(fetcher.refusals, 3)
+        for id in ["pc-17", "pc-18"] { XCTAssertEqual(fetcher.handle(resultID: id, payload: reply(["n"], versions: versions)), .pending) }
+        guard case .complete(let noKinds) = fetcher.handle(resultID: "pc-19", payload: reply(["n"], versions: versions)) else { return XCTFail("complete") }
+        XCTAssertNil(noKinds.documentKinds)
+        XCTAssertNil(noKinds.declaredBibliographies)
 
         // The helper's own error ("source versions changed") discards it too.
         fetcher.request(sourceVersions: versions, editorRevision: 14, send: send)
-        XCTAssertEqual(fetcher.handle(errorID: "pc-8", message: "source versions changed; refresh snapshot before querying"),
-                       .refused("helper error for pc-8: source versions changed; refresh snapshot before querying"))
+        XCTAssertEqual(fetcher.handle(errorID: "pc-22", message: "source versions changed; refresh snapshot before querying"),
+                       .refused("helper error for pc-22: source versions changed; refresh snapshot before querying"))
         XCTAssertNil(fetcher.query)
         // A newer request supersedes an outstanding one.
         fetcher.request(sourceVersions: versions, editorRevision: 15, send: send)
         fetcher.request(sourceVersions: versions, editorRevision: 16, send: send)
-        XCTAssertEqual(fetcher.handle(resultID: "pc-10", payload: reply(["x"], versions: versions)), .notMine)
+        XCTAssertEqual(fetcher.handle(resultID: "pc-26", payload: reply(["x"], versions: versions)), .notMine)
         XCTAssertEqual(fetcher.query?.editorRevision, 16)
         // A send failure leaves no query behind.
         fetcher.request(sourceVersions: versions, editorRevision: 17) { _, _ in throw CocoaError(.fileWriteUnknown) }
@@ -936,8 +1035,13 @@ final class CompletionTests: XCTestCase {
         // Esc with no list open is AppKit's `complete:` binding: it opens the list.
         key(tv, "\u{1B}", code: 53)
         try await waitUntil("popup via Esc") { tv.session != nil }
-        // Tab inserts too; ← closes (the caret leaves the token).
+        // Tab chooses the next candidate (never inserts a tab); Enter inserts; ← closes (the caret leaves the token).
         key(tv, "\t", code: 48)
+        XCTAssertEqual(tv.string, "\\begin{document}\nx \\s", "Tab moved the choice, the text is untouched")
+        XCTAssertEqual(tv.session?.selected?.label, "\\subsection{...}")
+        key(tv, "\t", code: 48, flags: .shift)
+        XCTAssertEqual(tv.session?.selected?.label, "\\section{...}")
+        key(tv, "\u{3}", code: 76) // Enter (keypad)
         XCTAssertEqual(tv.string, "\\begin{document}\nx \\section{}")
         XCTAssertNil(tv.session)
         tv.string = "\\begin{document}\nx \\s"
@@ -994,6 +1098,89 @@ final class CompletionTests: XCTestCase {
         try await waitUntil("bound popup") { tv.session != nil }
         XCTAssertEqual(tv.session?.metadataRevision, 8)
         key(tv, "\u{1B}", code: 53)
+    }
+
+    /// Keyboard-only traversal of the open list: Tab / ⇧Tab walk the rows
+    /// (wrapping) exactly like ↓ / ↑ while the editor keeps first responder,
+    /// its caret and its text; Return inserts the walked-to candidate. What
+    /// VoiceOver reads is read back through NSAccessibility from the real
+    /// popup: the table is "Completions" with the shared help text (which
+    /// names Tab and Shift-Tab), each row's cell describes "candidate, kind,
+    /// origin", the selected row follows the choice, and the announcement for
+    /// the choice leads with "n of m".
+    @MainActor
+    func testTabAndShiftTabTraverseTheListWithVoiceOverLabels() async throws {
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 600, height: 400), styleMask: [.titled], backing: .buffered, defer: false)
+        let scroll = CompletingTextView.scrollable()
+        scroll.frame = window.contentView!.bounds
+        window.contentView!.addSubview(scroll)
+        let tv = try XCTUnwrap(scroll.documentView as? CompletingTextView)
+        window.orderFrontRegardless() // never makeKey
+        window.makeFirstResponder(tv)
+        defer { window.orderOut(nil) }
+        tv.string = "\\begin{document}\nx \\s"
+        let end = (tv.string as NSString).length
+        tv.setSelectedRange(NSRange(location: end, length: 0))
+        key(tv, " ", code: 49, flags: .control)
+        try await waitUntil("popup") { tv.session != nil }
+        let items = try XCTUnwrap(tv.session?.items)
+        let labels = items.map(\.label)
+        XCTAssertEqual(labels.count, 5)
+        let popup = tv.completionPopup
+        let table = popup.accessibilityTable
+        XCTAssertEqual(table.accessibilityLabel(), CompletionAccessibility.listLabel)
+        XCTAssertEqual(table.accessibilityHelp(), CompletionAccessibility.listHelp)
+        XCTAssertTrue(CompletionAccessibility.listHelp.contains("Tab and Shift-Tab choose"), CompletionAccessibility.listHelp)
+        XCTAssertTrue(AccessibilityCommand.completionList.entry.shortcuts.contains("Tab"))
+        XCTAssertTrue(AccessibilityCommand.completionList.entry.shortcuts.contains("⇧Tab"))
+
+        // Tab walks down and wraps to the top; ⇧Tab walks up and wraps to the bottom.
+        var walked: [String] = []
+        for _ in 0..<labels.count {
+            key(tv, "\t", code: 48)
+            walked.append(try XCTUnwrap(tv.session?.selected?.label))
+        }
+        XCTAssertEqual(walked, Array(labels[1...]) + [labels[0]])
+        XCTAssertEqual(tv.session?.selectedIndex, 0)
+        key(tv, "\t", code: 48, flags: .shift)
+        key(tv, "\t", code: 48, flags: .shift)
+        XCTAssertEqual(tv.session?.selectedIndex, 3)
+        XCTAssertEqual(popup.selectedRow, 3)
+        XCTAssertTrue(window.firstResponder === tv, "the list never takes the keyboard")
+        XCTAssertFalse(popup.isKeyWindow)
+        XCTAssertEqual(tv.selectedRange(), NSRange(location: end, length: 0), "choosing never moves the caret")
+        XCTAssertEqual(tv.string, "\\begin{document}\nx \\s", "no tab character was inserted")
+
+        // Read back what VoiceOver gets from the real popup (legacy attribute
+        // API: AppKit answers a table's children with private row proxies).
+        popup.contentView?.layoutSubtreeIfNeeded()
+        table.display()
+        func legacy(_ o: AnyObject?, _ a: NSAccessibility.Attribute) -> Any? { (o as? NSObject)?.accessibilityAttributeValue(a) }
+        let children = (table.accessibilityChildren() as? [AnyObject]) ?? []
+        let axRows = children.filter { (legacy($0, .role) as? String) == NSAccessibility.Role.row.rawValue }
+        XCTAssertEqual(axRows.count, labels.count)
+        for (i, row) in axRows.enumerated() {
+            let cells = (legacy(row, .children) as? [AnyObject]) ?? []
+            XCTAssertEqual(cells.count, 1, "row \(i)")
+            XCTAssertEqual(legacy(cells.first, .description) as? String, CompletionPopup.spokenLabel(items[i]), "row \(i)")
+            XCTAssertEqual(legacy(row, .index) as? Int, i)
+        }
+        let selectedRows = (legacy(table, .selectedRows) as? [AnyObject]) ?? []
+        XCTAssertEqual(selectedRows.count, 1)
+        XCTAssertEqual(selectedRows.first.flatMap { legacy($0, .index) as? Int }, 3)
+        let announcement = CompletionAccessibility.selectionAnnouncement(index: 3, total: labels.count, label: items[3].label,
+                                                                          kind: items[3].kind.accessibilityKind, detail: items[3].detail)
+        XCTAssertTrue(announcement.hasPrefix("4 of 5: \(labels[3]), command, "), announcement)
+
+        // Return inserts the walked-to candidate over the token and closes.
+        key(tv, "\r", code: 36)
+        XCTAssertEqual(tv.string, "\\begin{document}\nx " + items[3].insertText)
+        XCTAssertNil(tv.session)
+        XCTAssertFalse(popup.isVisible)
+        XCTAssertEqual(tv.lastCloseReason, .accepted)
+        // With no list open, Tab is the editor's own tab again.
+        key(tv, "\t", code: 48)
+        XCTAssertTrue(tv.string.hasSuffix("\t"), "\(tv.string)")
     }
 
     @MainActor
@@ -1255,6 +1442,15 @@ final class CompletionLiveHelperTests: XCTestCase {
         tv.keyDown(with: e)
     }
 
+    /// Same as `waitUntil` with 0.2 ms slices, for timing a delivery.
+    private func waitTight(_ what: String, timeout: TimeInterval = 20, _ cond: () -> Bool) async throws {
+        let start = Date()
+        while !cond() {
+            if Date().timeIntervalSince(start) > timeout { XCTFail("timed out waiting for \(what)"); return }
+            try await Task.sleep(nanoseconds: 200_000)
+        }
+    }
+
     /// Inserts `insert` before `\end{document}`, opens the list for it through
     /// the real view, returns the delivered items and removes the probe again.
     private func popupSession(_ tv: CompletingTextView, model: ShellModel, insert: String) async throws -> CompletionSession {
@@ -1347,10 +1543,44 @@ final class CompletionLiveHelperTests: XCTestCase {
         XCTAssertEqual(refs.items.first?.kind, .reference)
         let cites = try await popupSession(tv, model: model, insert: "\\cite{")
         XCTAssertEqual(cites.items.map(\.label), ["knuth84"])
-        XCTAssertEqual(cites.items.first?.detail, "defined in main.tex · \(metadata.citations[0].occurrences) use\(metadata.citations[0].occurrences == 1 ? "" : "s") · revision \(cites.metadataRevision ?? -1)")
+        // main.tex is a LaTeX source (the helper's snapshot says so; nothing is declared as a bibliography here).
+        XCTAssertEqual(metadata.documentKinds, ["main.tex": "latex"])
+        XCTAssertEqual(metadata.declaredBibliographies, [])
+        XCTAssertEqual(cites.items.first?.detail, "\\bibitem in main.tex · \(metadata.citations[0].occurrences) use\(metadata.citations[0].occurrences == 1 ? "" : "s") · revision \(cites.metadataRevision ?? -1)")
         let cmds = try await popupSession(tv, model: model, insert: "\\my")
         XCTAssertEqual(cmds.items.map(\.label), ["\\myterm"])
         XCTAssertEqual(cmds.items.first?.detail, "declared in main.tex · \(myterm.occurrences) use\(myterm.occurrences == 1 ? "" : "s") · revision \(cmds.metadataRevision ?? -1)")
+        // Pickup through the real route, best of N: with index metadata bound
+        // to the caret's revision, ⌃Space on `\cite{` → list showing the key
+        // only the index knows. Timed from the keystroke to the session, run
+        // loop turning in 0.2 ms slices; printed with the load it ran under.
+        var pickupMs: [Double] = []
+        var boundMs: [Double] = []
+        for _ in 0..<10 {
+            let ns = tv.string as NSString
+            let at = ns.range(of: "\\end{document}").location
+            tv.setSelectedRange(NSRange(location: at, length: 0))
+            let edited = MonotonicClock.nowNs()
+            tv.insertText("\\cite{", replacementRange: NSRange(location: at, length: 0))
+            try await waitUntil("model text") { model.activeText == tv.string }
+            try await waitTight("index metadata for the probe revision") { tv.projectIndexMetadata?.revision == model.editorRevision && tv.editorRevision == model.editorRevision }
+            boundMs.append(Double(MonotonicClock.nowNs() - edited) / 1e6)
+            let t0 = MonotonicClock.nowNs()
+            key(tv, " ", code: 49, flags: .control)
+            try await waitTight("popup") { tv.session != nil }
+            pickupMs.append(Double(MonotonicClock.nowNs() - t0) / 1e6)
+            XCTAssertEqual(tv.session?.items.map(\.label), ["knuth84"])
+            XCTAssertEqual(tv.session?.metadataRevision, model.editorRevision)
+            key(tv, "\u{1B}", code: 53)
+            tv.insertText("", replacementRange: NSRange(location: at, length: 6))
+            try await waitUntil("model text restored") { model.activeText == tv.string }
+        }
+        let load = CompletionTests.loadAverage1
+        func summary(_ v: [Double], _ f: String) -> String {
+            "best \(String(format: f, v.min()!)) / median \(String(format: f, v.sorted()[v.count / 2])) / max \(String(format: f, v.max()!)) ms"
+        }
+        print("live helper: \\cite{ pickup (⌃Space → list with the index key, best of \(pickupMs.count), 1-min load \(String(format: "%.1f", load))): "
+              + summary(pickupMs, "%.2f") + "; edit → index metadata bound (helper compile + 3 complete replies + snapshot): " + summary(boundMs, "%.1f"))
         // Probe edits raced the helper's snapshot: any query answered after the
         // next edit was refused as stale rather than shown (count reported).
         let racedRefusals = model.completionFetcher.refusals
@@ -1384,5 +1614,74 @@ final class CompletionLiveHelperTests: XCTestCase {
         try await waitUntil("view rebound") { tv.projectIndexMetadata?.revision == model.editorRevision }
         XCTAssertEqual(tv.boundMetadata?.citations.map(\.name), ["knuth84"])
         print("live helper: rebound after edit in \(String(format: "%.1f", model.completionFetcher.lastLatencyMs ?? -1)) ms (request → metadata)")
+    }
+
+    /// `\cite{` through the real helper with a bibliography declared through
+    /// Document Kinds: before the declaration the key cited in main.tex is
+    /// offered as unresolved (with the hint to declare the .bib, since the
+    /// snapshot says nothing is declared); after `declareBibliography` the
+    /// same key is a "record in refs.bib (declared bibliography)" and ranks
+    /// first. `refs.bib` is never read as a bibliography because of its name:
+    /// the kind comes from the helper's `document_kinds` for that snapshot.
+    func testCiteCompletionUsesTheDeclaredBibliographyKind() async throws {
+        guard let helper = PreviewControllerTests.helper, FileManager.default.isExecutableFile(atPath: helper.path),
+              ShellModel.locateCompiler() != nil else {
+            throw XCTSkip("set FLASHTEX_PREVIEW_CONTROLLER and FLASHTEX_COMPILER to built binaries")
+        }
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("pc-cite-kinds-\(UUID().uuidString)")
+        let dir = root.appendingPathComponent("project")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let tex = dir.appendingPathComponent("main.tex")
+        try "\\begin{document}\nMain cites \\cite{knuth84} and \\cite{lamport94}.\n\\bibitem{lamport94} Lamport.\n\\end{document}\n"
+            .write(to: tex, atomically: true, encoding: .utf8)
+        try "@book{knuth84,\n  author = {Donald E. Knuth},\n  title = {The {\\TeX}book},\n  year = 1984\n}\n"
+            .write(to: dir.appendingPathComponent("refs.bib"), atomically: true, encoding: .utf8)
+        setenv("FLASHTEX_CONTROLLER_LEDGER_ROOT", root.appendingPathComponent("ledger").path, 1)
+        defer { unsetenv("FLASHTEX_CONTROLLER_LEDGER_ROOT") }
+
+        let model = ShellModel()
+        model.autoCompile = true
+        XCTAssertEqual(model.openTex(at: tex), .opened)
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 800, height: 500), styleMask: [.titled], backing: .buffered, defer: false)
+        window.contentView = NSHostingView(rootView: Host(model: model))
+        window.orderFrontRegardless() // never makeKey
+        defer { window.orderOut(nil); model.detachController() }
+        try await waitUntil("hosted editor") { TypingBenchDriver.findTextView(in: [window.contentView!]) != nil }
+        let tv = try XCTUnwrap(TypingBenchDriver.findTextView(in: [window.contentView!]) as? CompletingTextView)
+        window.makeFirstResponder(tv)
+        model.attachController(at: helper)
+        try await waitUntil("first preview") { model.result?.revision == model.editorRevision && model.inFlightRevision == nil }
+        try await waitUntil("bound metadata") { model.completionMetadata?.revision == model.editorRevision }
+
+        // Nothing declared: the snapshot reports only main.tex as latex.
+        let before = try XCTUnwrap(model.completionMetadata)
+        XCTAssertEqual(before.documentKinds, ["main.tex": "latex"])
+        XCTAssertEqual(before.declaredBibliographies, [])
+        let unresolved = try await popupSession(tv, model: model, insert: "\\cite{")
+        XCTAssertEqual(unresolved.items.map(\.label), ["lamport94", "knuth84"], "\\bibitem first, the cited-but-undefined key last")
+        XCTAssertEqual(unresolved.items[0].detail, "\\bibitem in this document")
+        XCTAssertTrue(unresolved.items[1].detail.hasPrefix("cited but not defined in a declared bibliography source (none declared: Project > Document Kinds) · "),
+                      unresolved.items[1].detail)
+
+        // Declare refs.bib through Document Kinds (the helper's typed open).
+        let declared = await model.documentKinds.declareBibliography("refs.bib")
+        XCTAssertEqual(declared, .declared(path: "refs.bib"), model.documentKinds.status)
+        XCTAssertEqual(model.documentKinds.bibliographyPaths, ["refs.bib"])
+        // The next preview (the probe edit's) carries a vocabulary snapshot with the kinds.
+        let resolved = try await popupSession(tv, model: model, insert: "\\cite{")
+        let after = try XCTUnwrap(model.completionMetadata)
+        XCTAssertEqual(after.documentKinds, ["main.tex": "latex", "refs.bib": "bibliography"])
+        XCTAssertEqual(after.declaredBibliographies, ["refs.bib"])
+        XCTAssertEqual(after.citations.first { $0.name == "knuth84" }?.definedIn, "refs.bib")
+        XCTAssertEqual(resolved.items.map(\.label), ["lamport94", "knuth84"])
+        let knuth = try XCTUnwrap(resolved.items.first { $0.label == "knuth84" })
+        XCTAssertTrue(knuth.detail.hasPrefix("record in refs.bib (declared bibliography) · "), knuth.detail)
+        XCTAssertTrue(knuth.detail.hasSuffix("· revision \(resolved.metadataRevision ?? -1)"), knuth.detail)
+        // A prefix that only the declared record matches lists just it.
+        let kn = try await popupSession(tv, model: model, insert: "\\cite{kn")
+        XCTAssertEqual(kn.items.map(\.label), ["knuth84"])
+        XCTAssertEqual(kn.items.first?.kind, .citation)
+        print("live helper: declared-bibliography cite completion — before: \(unresolved.items.map(\.detail)); after: \(resolved.items.map(\.detail))")
     }
 }

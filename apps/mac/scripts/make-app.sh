@@ -217,11 +217,17 @@ BUNDLE_TEXMF_ROOT="${FLASHTEX_BUNDLE_TEXMF_ROOT:-$MAC_DIR/Fonts/texmf}"
 BUNDLE_TEXMF_TOOL="$SCRIPT_DIR/bundle-texmf.py"
 [[ -f "$BUNDLE_TEXMF_TOOL" ]] || die "missing $BUNDLE_TEXMF_TOOL"
 [[ -d "$BUNDLE_TEXMF_ROOT" ]] || die "pinned bundle metrics root not found: $BUNDLE_TEXMF_ROOT (vendored apps/mac/Fonts/texmf, or set FLASHTEX_BUNDLE_TEXMF_ROOT to a verified official LM 2.004 texmf root)"
-TEXMF_PREFLIGHT="$(python3 "$BUNDLE_TEXMF_TOOL" check "$BUNDLE_TEXMF_ROOT" 2>&1)" || {
+# The OpenType faces: the three Commander-pinned files plus every other Latin
+# Modern Roman master/style the render pipeline can request, pinned in
+# Fonts/SUPPLEMENTARY-FACES.json. An unpinned .otf in the directory refuses
+# packaging, as does any hash/length drift.
+BUNDLE_FONTS_DIR="${FLASHTEX_BUNDLE_FONTS_DIR:-$MAC_DIR/Fonts}"
+[[ -d "$BUNDLE_FONTS_DIR" ]] || die "pinned bundle fonts directory not found: $BUNDLE_FONTS_DIR (vendored apps/mac/Fonts, or set FLASHTEX_BUNDLE_FONTS_DIR to a directory holding the pinned Latin Modern OTFs)"
+TEXMF_PREFLIGHT="$(python3 "$BUNDLE_TEXMF_TOOL" check "$BUNDLE_TEXMF_ROOT" "$BUNDLE_FONTS_DIR" 2>&1)" || {
   printf '%s\n' "$TEXMF_PREFLIGHT" | grep -E '"(path|status|reason)"' | sed 's/^/    /' >&2
-  die "pinned bundle metric refused under $BUNDLE_TEXMF_ROOT (hash/length mismatch or missing; see above). Nothing is downloaded and the host TeX tree is never used."
+  die "pinned bundle metric refused under $BUNDLE_TEXMF_ROOT, or a Latin Modern face refused/unpinned under $BUNDLE_FONTS_DIR (hash/length mismatch, missing, symlink, or an .otf no pin lists; see above). Nothing is downloaded and the host TeX tree is never used."
 }
-echo "==> Pinned rooted TFM metrics verified under $BUNDLE_TEXMF_ROOT ($(( $(grep -c '"status": "verified"' <<< "$TEXMF_PREFLIGHT") - 1 )) entries)"
+echo "==> Pinned rooted TFM metrics and Latin Modern faces verified under $BUNDLE_TEXMF_ROOT / $BUNDLE_FONTS_DIR ($(( $(grep -c '"status": "verified"' <<< "$TEXMF_PREFLIGHT") - 1 )) entries)"
 
 # Resolves the short git SHA of the repo that CONTAINS $1 (the resolved source
 # path of a bundled binary, before it is copied into the bundle) — never the
@@ -298,26 +304,29 @@ for f in compile-result.json compile-request.json; do
     echo "make-app.sh: warning: missing fixture $FIXTURES_DIR/$f" >&2
   fi
 done
-if [[ -d "$MAC_DIR/Fonts" ]]; then
-  # Latin Modern (GUST FL) so the app never depends on a TeX installation.
-  mkdir -p "$RESOURCES_DIR/Fonts"
-  cp "$MAC_DIR/Fonts/"*.otf "$MAC_DIR/Fonts/"*.TXT "$MAC_DIR/Fonts/README.md" "$RESOURCES_DIR/Fonts/"
-  echo "    bundled $(ls "$RESOURCES_DIR/Fonts"/*.otf | wc -l | tr -d ' ') Latin Modern faces"
-fi
+# Latin Modern (GUST FL) so the app never depends on a TeX installation: the
+# license, README and faces pin are copied here; the .otf faces themselves are
+# staged only through the hash-verified path below (never a blind copy).
+mkdir -p "$RESOURCES_DIR/Fonts"
+cp "$BUNDLE_FONTS_DIR/"*.TXT "$RESOURCES_DIR/Fonts/"
+[[ -f "$MAC_DIR/Fonts/README.md" ]] && cp "$MAC_DIR/Fonts/README.md" "$RESOURCES_DIR/Fonts/"
+[[ -f "$BUNDLE_FONTS_DIR/SUPPLEMENTARY-FACES.json" ]] && cp "$BUNDLE_FONTS_DIR/SUPPLEMENTARY-FACES.json" "$RESOURCES_DIR/Fonts/"
 if [[ -d "$MAC_DIR/Samples" ]]; then
   cp -R "$MAC_DIR/Samples/." "$SAMPLES_DIR/"
 fi
 
-# --- Pinned rooted TFM metrics (GH36; before signing, no download/host TeX) --
-# Re-verifies each source file, copies it to Contents/Resources/texmf/…, then
-# runs crates/rendering-core/tools/verify_bundle_resources.py over the whole
-# Resources directory (3 OTFs + 5 TFMs + license). Refuses signing otherwise.
-echo "==> Staging pinned rooted TFM metrics into Contents/Resources/texmf (source: $BUNDLE_TEXMF_ROOT)"
-RESOURCES_COMPONENT_JSON="$(python3 "$BUNDLE_TEXMF_TOOL" stage "$BUNDLE_TEXMF_ROOT" "$RESOURCES_DIR" "$RESOURCES_DIR/resource-coverage.json" 2>&1)" || {
+# --- Pinned rooted TFM metrics + faces (GH36; before signing, no download/host TeX)
+# Re-verifies each source file, copies it to Contents/Resources/texmf/… or
+# Contents/Resources/Fonts/, then runs
+# crates/rendering-core/tools/verify_bundle_resources.py over the whole
+# Resources directory (3 OTFs + 5 TFMs + license) and re-verifies every
+# supplementary copy. Refuses signing otherwise.
+echo "==> Staging pinned rooted TFM metrics and faces into Contents/Resources (sources: $BUNDLE_TEXMF_ROOT, $BUNDLE_FONTS_DIR)"
+RESOURCES_COMPONENT_JSON="$(python3 "$BUNDLE_TEXMF_TOOL" stage "$BUNDLE_TEXMF_ROOT" "$RESOURCES_DIR" "$RESOURCES_DIR/resource-coverage.json" "$BUNDLE_FONTS_DIR" 2>&1)" || {
   printf '%s\n' "$RESOURCES_COMPONENT_JSON" | grep -E '"(path|status|reason)"' | sed 's/^/    /' >&2
   die "pinned bundle resources failed verification; refusing to sign $APP_DIR"
 }
-echo "    verified $(find "$RESOURCES_DIR/texmf" -type f | wc -l | tr -d ' ') rooted metric/license files + 3 pinned faces; report at Contents/Resources/resource-coverage.json"
+echo "    verified $(find "$RESOURCES_DIR/texmf" -type f | wc -l | tr -d ' ') rooted metric/license files + $(ls "$RESOURCES_DIR/Fonts"/*.otf | wc -l | tr -d ' ') pinned Latin Modern faces; report at Contents/Resources/resource-coverage.json"
 
 # --- Helpers -----------------------------------------------------------------
 echo "==> Locating built Rust binaries (helper root: $HELPER_ROOT)"

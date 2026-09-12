@@ -280,7 +280,13 @@ final class DocumentKinds {
                 : "bibliography: \(bib.joined(separator: ", ")) (membership g\(generation ?? -1))"
             return true
         case .failure(let e):
-            status = "helper snapshot failed: \(e.message)"
+            // A refresh that was in flight when the controller was detached
+            // fails with "helper exited"; the kinds are then simply gone.
+            if !model.controllerAttached {
+                kinds = [:]; generation = nil; status = "no preview controller attached"
+            } else {
+                status = "helper snapshot failed: \(e.message)"
+            }
             return false
         }
     }

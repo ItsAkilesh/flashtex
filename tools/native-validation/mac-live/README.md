@@ -143,8 +143,44 @@ Gates fail the run; targets are reported only.
 | launch-check informational | on-screen window confirmed (CGWindowList); child re-attached after kill (the shell has no auto-relaunch) |
 | capture-cycle | every driver check (durable receipt, duplicate/conflict, `provider_disabled`, `proposal_missing`, journal survives SIGKILL, reject terminal, `capture_missing`, ledger receipt + identical retry + pending receipt + survives SIGKILL, compile ok/recovered with >= 1 page, `flashtex-pdf --verify` exit 0, PDF header/trailer, PDF page objects == compiled pages); no provider enablement |
 
+## Typing latency on the packaged app, attributed per stage (mac-validation-4)
+
+`lib/typing_attribution.py` executes the bundle's `Contents/MacOS/FlashTeX`
+directly (never `open`; `FLASHTEX_NO_ACTIVATE=1`) through the shell's own
+typing bench on four routes — `v1` (bundled `flashtex-compiler`, PreviewView),
+`v1-render` (bundled `flashtex-render` painting v1), `v2` (bundled
+`flashtex-render` + `FLASHTEX_PREVIEW_V2=1`, PreviewV2View) and `controller`
+(bundled `flashtex-preview-controller` owning the ledger + bundled compiler) —
+for seeds `fixture`, `demo`, `hw1` (`fixtures/real-world/hw1/HW1.tex`),
+`render27` (the render-pipeline lane's 27-page `tests/incremental.rs
+document(40)` fixture, reproduced) and `body60k`. Every painted revision's
+keystroke -> paint time is split over the bench timeline log lines (emitted by
+the shell under `TypingBench.isBenchActive`): key->send, producer wall (send ->
+last decoded line, minus decode), reader decode, main-queue hop, apply, the
+`preview-v2:` prepare / preraster / deliver / publish stages, and paint; the
+helper route's client logs no decode/hop lines, so its answer is one
+`helper` stage. Decoded lines carry no revision and the next request is sent
+before the v2 sibling is decoded, so lines are claimed by the consumer event
+that follows them (`compile: applied revision r` -> v1 line, `preview-v2:
+preparing/coalesced (revision r)` -> sibling). Producer CPU is sampled from
+the child processes (`ps -o cputime`, twice a second; last sample / results).
+Each cell waits for a quiet machine, records the 1-minute load before/after
+and `uptime`, and is marked load-affected above `--load-limit` (never hidden).
+`--report <dir>` renders `attribution.md`; `run.sh` now packages the preview
+controller too (`make-app.sh --controller`) so the bundle carries the helper
+route. `quiet-window.sh --app <FlashTeX.app>` runs every cell unattended, one
+analyzer invocation per cell, each after the load fell below `--quiet-load`
+(default 8, up to `--quiet-wait` s) with no other FlashTeX process alive,
+appending `uptime` before/after each cell to `<out>/uptime.log`; re-running
+with the same `--out` resumes (cells with a summary are skipped).
+
 ## Layout
 
+- `lib/typing_attribution.py` — packaged-app per-stage typing attribution
+  (cells, log parsing, Markdown report); `quiet-window.sh` — unattended
+  quiet-window driver for it; `reports/attribution-<UTC>/` — its evidence
+  (`attribution.md/json`, per cell `.json` summary, `.attribution.json` per
+  painted revision, `.log` timeline, `uptime.log`).
 - `run.sh` — orchestrator; `lib/report.py` — report + gates; `lib/launch_summary.py`
   — parses launch-check evidence; `lib/capture_cycle.py` — packaged capture
   cycle; `lib/app_features.py` — headless render-pipeline attach and exact

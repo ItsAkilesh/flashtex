@@ -1,0 +1,1873 @@
+2026-09-12T16:46:57Z	status: no worker attached
+2026-09-12T16:46:57Z	status: attached: flashtex-preview-controller
+2026-09-12T16:46:57Z	launched /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/fb16d07d1e0d062a59188fb267e98227a33c2d28/apps/mac/build/FlashTeX.app/Contents/MacOS/flashtex-preview-controller for /var/folders/_0/d71mvr2d4_177qkm0506xl200000gn/T/flashtex-project-8CA3F5E1-F3CB-4207-A511-12C2E083D21C (ledger /private/tmp/claude-501/-Users-jay3332-Projects-flashtex/e30fd4a4-f46a-4c3f-a28c-cbb8617b4425/scratchpad/mv4/attrib-work2/controller-hw1-30ms/ledger)
+2026-09-12T16:46:57Z	controller ready: compiler frames ≤ 8 MiB, helper output ≤ 16 MiB
+2026-09-12T16:46:57Z	ignored controller preview preview-1: versions ["main.tex": 1] unknown to this session
+2026-09-12T16:46:57Z	bench: waiting for attach + first paint (200 keystrokes, 30.0 ms)
+2026-09-12T16:46:58Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:58Z	status: revision 2: recovered, 119 diagnostics in 17 ms (durable r1)
+2026-09-12T16:46:58Z	paint: revision 2 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T16:46:58Z	paint: revision 2 at 107855193909625 (covers 0 keystrokes, redrawn false)
+2026-09-12T16:46:58Z	bench: typing 200 keystrokes at UTF-16 offset 5111 every 30.0 ms
+2026-09-12T16:46:58Z	paint: revision 2 at 107855426673375 (covers 0 keystrokes, redrawn true)
+2026-09-12T16:46:58Z	keystroke: revision 3 at 107855428387125 (delegate 107855431382500, revision 107855431668750)
+2026-09-12T16:46:58Z	compile: sending revision 3 at 107855431757416
+2026-09-12T16:46:58Z	durable: r2 for revision 3 at 107855513223583
+2026-09-12T16:46:58Z	controller release: preview preview-4 is the admitted compile (generation 4, durable r2) (in flight revision 3)
+2026-09-12T16:46:58Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:58Z	compile: applied revision 3 at 107855515100708
+2026-09-12T16:46:58Z	status: revision 3: recovered, 119 diagnostics in 26 ms (durable r2)
+2026-09-12T16:46:58Z	bridge: attached: flashtex-bridge
+2026-09-12T16:46:58Z	paint: revision 3 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T16:46:58Z	paint: revision 3 at 107855597949416 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:46:58Z	keystroke: revision 4 at 107855616372416 (delegate 107855617680708, revision 107855618187916)
+2026-09-12T16:46:58Z	compile: sending revision 4 at 107855618254125
+2026-09-12T16:46:58Z	durable: r3 for revision 4 at 107855659660291
+2026-09-12T16:46:58Z	keystroke: revision 5 at 107855700967666 (delegate 107855701750208, revision 107855702211833)
+2026-09-12T16:46:58Z	controller release: preview preview-5 is the admitted compile (generation 5, durable r3) (in flight revision 4)
+2026-09-12T16:46:58Z	compile: sending revision 5 at 107855754455375
+2026-09-12T16:46:58Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:58Z	compile: applied revision 4 at 107855756216375
+2026-09-12T16:46:58Z	status: revision 4: recovered, 119 diagnostics in 65 ms (durable r3)
+2026-09-12T16:46:58Z	bridge: attached: flashtex-bridge
+2026-09-12T16:46:58Z	bridge: bridge exited (1); relaunching in 0.2 s
+2026-09-12T16:46:58Z	durable: r4 for revision 5 at 107855821640375
+2026-09-12T16:46:58Z	completion metadata refused: helper error for pc-14: source versions changed; refresh snapshot before querying
+2026-09-12T16:46:58Z	controller error pc-15: source versions changed; refresh snapshot before querying
+2026-09-12T16:46:58Z	controller error pc-16: source versions changed; refresh snapshot before querying
+2026-09-12T16:46:58Z	controller release: preview preview-6 is the admitted compile (generation 6, durable r4) (in flight revision 5)
+2026-09-12T16:46:58Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:58Z	compile: applied revision 5 at 107855823499583
+2026-09-12T16:46:58Z	status: revision 5: recovered, 119 diagnostics in 30 ms (durable r4)
+2026-09-12T16:46:58Z	paint: revision 5 redrew 1/2 pages
+2026-09-12T16:46:58Z	paint: revision 5 at 107855904741208 (covers 2 keystrokes, redrawn true)
+2026-09-12T16:46:58Z	keystroke: revision 6 at 107855930728416 (delegate 107855931389500, revision 107855931871375)
+2026-09-12T16:46:58Z	compile: sending revision 6 at 107855931931375
+2026-09-12T16:46:58Z	durable: r5 for revision 6 at 107855973450791
+2026-09-12T16:46:58Z	controller release: preview preview-7 is the admitted compile (generation 7, durable r5) (in flight revision 6)
+2026-09-12T16:46:58Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:58Z	compile: applied revision 6 at 107855975259333
+2026-09-12T16:46:58Z	status: revision 6: recovered, 119 diagnostics in 29 ms (durable r5)
+2026-09-12T16:46:59Z	bridge: bridge exited (1); relaunching in 0.2 s
+2026-09-12T16:46:59Z	paint: revision 6 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T16:46:59Z	paint: revision 6 at 107856044942291 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:46:59Z	keystroke: revision 7 at 107856069048166 (delegate 107856069829541, revision 107856070282625)
+2026-09-12T16:46:59Z	compile: sending revision 7 at 107856070334958
+2026-09-12T16:46:59Z	bridge: bridge exited (1); relaunching in 0.2 s · durable document diverged from the editor (store at revision 3, edit based on 6); reattach to reconcile
+2026-09-12T16:46:59Z	durable: r6 for revision 7 at 107856130482041
+2026-09-12T16:46:59Z	controller release: preview preview-8 is the admitted compile (generation 8, durable r6) (in flight revision 7)
+2026-09-12T16:46:59Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:59Z	compile: applied revision 7 at 107856132372791
+2026-09-12T16:46:59Z	status: revision 7: recovered, 119 diagnostics in 22 ms (durable r6)
+2026-09-12T16:46:59Z	bridge: relaunched flashtex-bridge; reconciling… · durable document diverged from the editor (store at revision 3, edit based on 6); reattach to reconcile
+2026-09-12T16:46:59Z	paint: revision 7 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T16:46:59Z	paint: revision 7 at 107856206155875 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:46:59Z	keystroke: revision 8 at 107856234622250 (delegate 107856235361708, revision 107856235826583)
+2026-09-12T16:46:59Z	compile: sending revision 8 at 107856235881875
+2026-09-12T16:46:59Z	durable: r7 for revision 8 at 107856293070000
+2026-09-12T16:46:59Z	controller release: preview preview-9 is the admitted compile (generation 9, durable r7) (in flight revision 8)
+2026-09-12T16:46:59Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:59Z	compile: applied revision 8 at 107856294923416
+2026-09-12T16:46:59Z	status: revision 8: recovered, 119 diagnostics in 30 ms (durable r7)
+2026-09-12T16:46:59Z	bridge: relaunched flashtex-bridge; reconciling… · durable document diverged from the editor (store at revision 3, edit based on 6); reattach to reconcile
+2026-09-12T16:46:59Z	paint: revision 8 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T16:46:59Z	paint: revision 8 at 107856395825083 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:46:59Z	keystroke: revision 9 at 107856396053625 (delegate 107856396779583, revision 107856397263625)
+2026-09-12T16:46:59Z	compile: sending revision 9 at 107856397312083
+2026-09-12T16:46:59Z	bridge: relaunched flashtex-bridge; reconciling… · durable document diverged from the editor (store at revision 3, edit based on 6); reattach to reconcile
+2026-09-12T16:46:59Z	bridge: bridge exited (1); relaunching in 1.0 s · durable document diverged from the editor (store at revision 3, edit based on 6); reattach to reconcile
+2026-09-12T16:46:59Z	bridge: bridge exited (1); relaunching in 1.0 s · durable document diverged from the editor (store at revision 3, edit based on 6); reattach to reconcile
+2026-09-12T16:46:59Z	bridge: bridge exited (1); relaunching in 1.0 s · durable document diverged from the editor (store at revision 3, edit based on 6); reattach to reconcile
+2026-09-12T16:46:59Z	durable: r8 for revision 9 at 107856438596500
+2026-09-12T16:46:59Z	controller release: preview preview-10 is the admitted compile (generation 10, durable r8) (in flight revision 9)
+2026-09-12T16:46:59Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:59Z	compile: applied revision 9 at 107856440416166
+2026-09-12T16:46:59Z	status: revision 9: recovered, 119 diagnostics in 27 ms (durable r8)
+2026-09-12T16:46:59Z	bridge: bridge exited (1); relaunching in 1.0 s · durable document diverged from the editor (store at revision 3, edit based on 6); reattach to reconcile
+2026-09-12T16:46:59Z	paint: revision 9 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T16:46:59Z	paint: revision 9 at 107856512073958 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:46:59Z	keystroke: revision 10 at 107856533743958 (delegate 107856534464541, revision 107856534878125)
+2026-09-12T16:46:59Z	compile: sending revision 10 at 107856534935375
+2026-09-12T16:46:59Z	durable: r9 for revision 10 at 107856587464708
+2026-09-12T16:46:59Z	controller release: preview preview-11 is the admitted compile (generation 11, durable r9) (in flight revision 10)
+2026-09-12T16:46:59Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:59Z	compile: applied revision 10 at 107856589094916
+2026-09-12T16:46:59Z	status: revision 10: recovered, 119 diagnostics in 22 ms (durable r9)
+2026-09-12T16:46:59Z	paint: revision 10 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T16:46:59Z	paint: revision 10 at 107856683796458 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:46:59Z	keystroke: revision 11 at 107856684118208 (delegate 107856684789083, revision 107856687062625)
+2026-09-12T16:46:59Z	compile: sending revision 11 at 107856687147666
+2026-09-12T16:46:59Z	durable: r10 for revision 11 at 107856741246750
+2026-09-12T16:46:59Z	controller release: preview preview-12 is the admitted compile (generation 12, durable r10) (in flight revision 11)
+2026-09-12T16:46:59Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:59Z	compile: applied revision 11 at 107856743089958
+2026-09-12T16:46:59Z	status: revision 11: recovered, 119 diagnostics in 22 ms (durable r10)
+2026-09-12T16:46:59Z	paint: revision 11 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T16:46:59Z	paint: revision 11 at 107856839665500 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:46:59Z	keystroke: revision 12 at 107856839953625 (delegate 107856840728375, revision 107856841187250)
+2026-09-12T16:46:59Z	compile: sending revision 12 at 107856841225125
+2026-09-12T16:46:59Z	durable: r11 for revision 12 at 107856897170666
+2026-09-12T16:46:59Z	controller release: preview preview-13 is the admitted compile (generation 13, durable r11) (in flight revision 12)
+2026-09-12T16:46:59Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:59Z	compile: applied revision 12 at 107856899066208
+2026-09-12T16:46:59Z	status: revision 12: recovered, 119 diagnostics in 27 ms (durable r11)
+2026-09-12T16:46:59Z	paint: revision 12 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T16:46:59Z	paint: revision 12 at 107856996231416 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:46:59Z	keystroke: revision 13 at 107856996629166 (delegate 107856997357541, revision 107856997828416)
+2026-09-12T16:46:59Z	compile: sending revision 13 at 107856997869416
+2026-09-12T16:47:00Z	durable: r12 for revision 13 at 107857037562625
+2026-09-12T16:47:00Z	keystroke: revision 14 at 107857037880750 (delegate 107857038598625, revision 107857039052916)
+2026-09-12T16:47:00Z	controller release: preview preview-14 is the admitted compile (generation 14, durable r12) (in flight revision 13)
+2026-09-12T16:47:00Z	compile: sending revision 14 at 107857078709875
+2026-09-12T16:47:00Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:00Z	compile: applied revision 13 at 107857080610625
+2026-09-12T16:47:00Z	status: revision 13: recovered, 119 diagnostics in 60 ms (durable r12)
+2026-09-12T16:47:00Z	durable: r13 for revision 14 at 107857167947375
+2026-09-12T16:47:00Z	completion metadata refused: helper error for pc-59: source versions changed; refresh snapshot before querying
+2026-09-12T16:47:00Z	controller error pc-60: source versions changed; refresh snapshot before querying
+2026-09-12T16:47:00Z	controller error pc-61: source versions changed; refresh snapshot before querying
+2026-09-12T16:47:00Z	paint: revision 13 redrew 1/2 pages
+2026-09-12T16:47:00Z	paint: revision 13 at 107857168120291 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:00Z	controller release: preview preview-15 is the admitted compile (generation 15, durable r13) (in flight revision 14)
+2026-09-12T16:47:00Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:00Z	compile: applied revision 14 at 107857171288500
+2026-09-12T16:47:00Z	status: revision 14: recovered, 119 diagnostics in 42 ms (durable r13)
+2026-09-12T16:47:00Z	paint: revision 14 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T16:47:00Z	paint: revision 14 at 107857274242333 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:00Z	keystroke: revision 15 at 107857274418666 (delegate 107857275145833, revision 107857275611166)
+2026-09-12T16:47:00Z	compile: sending revision 15 at 107857275648541
+2026-09-12T16:47:00Z	durable: r14 for revision 15 at 107857332582083
+2026-09-12T16:47:00Z	keystroke: revision 16 at 107857333261708 (delegate 107857333958416, revision 107857334413125)
+2026-09-12T16:47:00Z	controller release: preview preview-16 is the admitted compile (generation 16, durable r14) (in flight revision 15)
+2026-09-12T16:47:00Z	compile: sending revision 16 at 107857380558083
+2026-09-12T16:47:00Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:00Z	compile: applied revision 15 at 107857382338875
+2026-09-12T16:47:00Z	status: revision 15: recovered, 119 diagnostics in 38 ms (durable r14)
+2026-09-12T16:47:00Z	durable: r15 for revision 16 at 107857446584666
+2026-09-12T16:47:00Z	completion metadata refused: helper error for pc-69: source versions changed; refresh snapshot before querying
+2026-09-12T16:47:00Z	controller error pc-70: source versions changed; refresh snapshot before querying
+2026-09-12T16:47:00Z	controller error pc-71: source versions changed; refresh snapshot before querying
+2026-09-12T16:47:00Z	paint: revision 15 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T16:47:00Z	paint: revision 15 at 107857446762541 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:47:00Z	keystroke: revision 17 at 107857448311791 (delegate 107857449017208, revision 107857449462458)
+2026-09-12T16:47:00Z	controller release: preview preview-17 is the admitted compile (generation 17, durable r15) (in flight revision 16)
+2026-09-12T16:47:00Z	compile: sending revision 17 at 107857491658083
+2026-09-12T16:47:00Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:00Z	compile: applied revision 16 at 107857493414041
+2026-09-12T16:47:00Z	status: revision 16: recovered, 119 diagnostics in 55 ms (durable r15)
+2026-09-12T16:47:00Z	durable: r16 for revision 17 at 107857557212916
+2026-09-12T16:47:00Z	completion metadata refused: helper error for pc-73: source versions changed; refresh snapshot before querying
+2026-09-12T16:47:00Z	controller error pc-74: source versions changed; refresh snapshot before querying
+2026-09-12T16:47:00Z	controller error pc-75: source versions changed; refresh snapshot before querying
+2026-09-12T16:47:00Z	controller release: preview preview-18 is the admitted compile (generation 18, durable r16) (in flight revision 17)
+2026-09-12T16:47:00Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:00Z	compile: applied revision 17 at 107857559057791
+2026-09-12T16:47:00Z	status: revision 17: recovered, 119 diagnostics in 28 ms (durable r16)
+2026-09-12T16:47:00Z	bridge: relaunched flashtex-bridge; reconciling… · durable document diverged from the editor (store at revision 3, edit based on 6); reattach to reconcile
+2026-09-12T16:47:00Z	paint: revision 16 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T16:47:00Z	paint: revision 16 at 107857560331250 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:47:00Z	paint: revision 17 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T16:47:00Z	paint: revision 17 at 107857642973375 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:47:00Z	keystroke: revision 18 at 107857643002875 (delegate 107857643695916, revision 107857644148083)
+2026-09-12T16:47:00Z	compile: sending revision 18 at 107857644182166
+2026-09-12T16:47:00Z	durable: r17 for revision 18 at 107857682896958
+2026-09-12T16:47:00Z	controller release: preview preview-19 is the admitted compile (generation 19, durable r17) (in flight revision 18)
+2026-09-12T16:47:00Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:00Z	compile: applied revision 18 at 107857704690166
+2026-09-12T16:47:00Z	status: revision 18: recovered, 119 diagnostics in 33 ms (durable r17)
+2026-09-12T16:47:00Z	paint: revision 18 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T16:47:00Z	paint: revision 18 at 107857803478375 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:00Z	keystroke: revision 19 at 107857803658333 (delegate 107857804441458, revision 107857804907500)
+2026-09-12T16:47:00Z	compile: sending revision 19 at 107857804947125
+2026-09-12T16:47:00Z	bridge: relaunched flashtex-bridge; reconciling… · durable document diverged from the editor (store at revision 3, edit based on 6); reattach to reconcile
+2026-09-12T16:47:00Z	bridge: bridge exited (1); relaunching in 3.0 s · durable document diverged from the editor (store at revision 3, edit based on 6); reattach to reconcile
+2026-09-12T16:47:00Z	bridge: bridge exited (1); relaunching in 3.0 s · durable document diverged from the editor (store at revision 3, edit based on 6); reattach to reconcile
+2026-09-12T16:47:00Z	bridge: bridge exited (1); relaunching in 3.0 s · durable document diverged from the editor (store at revision 3, edit based on 6); reattach to reconcile
+2026-09-12T16:47:00Z	durable: r18 for revision 19 at 107857849161041
+2026-09-12T16:47:00Z	controller release: preview preview-20 is the admitted compile (generation 20, durable r18) (in flight revision 19)
+2026-09-12T16:47:00Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:00Z	compile: applied revision 19 at 107857850973541
+2026-09-12T16:47:00Z	status: revision 19: recovered, 119 diagnostics in 26 ms (durable r18)
+2026-09-12T16:47:00Z	paint: revision 19 redrew 1/2 pages
+2026-09-12T16:47:00Z	paint: revision 19 at 107857941933125 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:00Z	keystroke: revision 20 at 107857946681166 (delegate 107857947443000, revision 107857947892208)
+2026-09-12T16:47:00Z	compile: sending revision 20 at 107857947940833
+2026-09-12T16:47:00Z	durable: r19 for revision 20 at 107857991301250
+2026-09-12T16:47:00Z	controller release: preview preview-21 is the admitted compile (generation 21, durable r19) (in flight revision 20)
+2026-09-12T16:47:00Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:00Z	compile: applied revision 20 at 107857993115416
+2026-09-12T16:47:00Z	status: revision 20: recovered, 119 diagnostics in 21 ms (durable r19)
+2026-09-12T16:47:01Z	paint: revision 20 redrew 1/2 pages
+2026-09-12T16:47:01Z	paint: revision 20 at 107858083394208 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:01Z	keystroke: revision 21 at 107858088610958 (delegate 107858089303708, revision 107858089761875)
+2026-09-12T16:47:01Z	compile: sending revision 21 at 107858089813916
+2026-09-12T16:47:01Z	durable: r20 for revision 21 at 107858146262083
+2026-09-12T16:47:01Z	controller release: preview preview-22 is the admitted compile (generation 22, durable r20) (in flight revision 21)
+2026-09-12T16:47:01Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:01Z	compile: applied revision 21 at 107858148122416
+2026-09-12T16:47:01Z	status: revision 21: recovered, 119 diagnostics in 33 ms (durable r20)
+2026-09-12T16:47:01Z	paint: revision 21 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T16:47:01Z	paint: revision 21 at 107858241412750 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:47:01Z	keystroke: revision 22 at 107858241759958 (delegate 107858242530541, revision 107858242995333)
+2026-09-12T16:47:01Z	compile: sending revision 22 at 107858243038791
+2026-09-12T16:47:01Z	durable: r21 for revision 22 at 107858297551916
+2026-09-12T16:47:01Z	controller release: preview preview-23 is the admitted compile (generation 23, durable r21) (in flight revision 22)
+2026-09-12T16:47:01Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:01Z	compile: applied revision 22 at 107858299411125
+2026-09-12T16:47:01Z	status: revision 22: recovered, 119 diagnostics in 24 ms (durable r21)
+2026-09-12T16:47:01Z	paint: revision 22 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T16:47:01Z	paint: revision 22 at 107858398438583 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:01Z	keystroke: revision 23 at 107858399190083 (delegate 107858399940666, revision 107858400395041)
+2026-09-12T16:47:01Z	compile: sending revision 23 at 107858400443041
+2026-09-12T16:47:01Z	durable: r22 for revision 23 at 107858455847500
+2026-09-12T16:47:01Z	controller release: preview preview-24 is the admitted compile (generation 24, durable r22) (in flight revision 23)
+2026-09-12T16:47:01Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:01Z	compile: applied revision 23 at 107858457741375
+2026-09-12T16:47:01Z	status: revision 23: recovered, 119 diagnostics in 25 ms (durable r22)
+2026-09-12T16:47:01Z	paint: revision 23 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T16:47:01Z	paint: revision 23 at 107858554171208 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:01Z	keystroke: revision 24 at 107858554337166 (delegate 107858555120083, revision 107858555590750)
+2026-09-12T16:47:01Z	compile: sending revision 24 at 107858555633291
+2026-09-12T16:47:01Z	durable: r23 for revision 24 at 107858595361250
+2026-09-12T16:47:01Z	controller release: preview preview-25 is the admitted compile (generation 25, durable r23) (in flight revision 24)
+2026-09-12T16:47:01Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:01Z	compile: applied revision 24 at 107858597338291
+2026-09-12T16:47:01Z	status: revision 24: recovered, 119 diagnostics in 20 ms (durable r23)
+2026-09-12T16:47:01Z	paint: revision 24 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T16:47:01Z	paint: revision 24 at 107858664701958 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:47:01Z	keystroke: revision 25 at 107858669601375 (delegate 107858670309541, revision 107858670709166)
+2026-09-12T16:47:01Z	compile: sending revision 25 at 107858670757750
+2026-09-12T16:47:01Z	durable: r24 for revision 25 at 107858704903958
+2026-09-12T16:47:01Z	controller release: preview preview-26 is the admitted compile (generation 26, durable r24) (in flight revision 25)
+2026-09-12T16:47:01Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:01Z	compile: applied revision 25 at 107858706516708
+2026-09-12T16:47:01Z	status: revision 25: recovered, 119 diagnostics in 20 ms (durable r24)
+2026-09-12T16:47:01Z	paint: revision 25 redrew 1/2 pages
+2026-09-12T16:47:01Z	paint: revision 25 at 107858781808958 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:01Z	keystroke: revision 26 at 107858786408708 (delegate 107858787157375, revision 107858787603125)
+2026-09-12T16:47:01Z	compile: sending revision 26 at 107858787649916
+2026-09-12T16:47:01Z	durable: r25 for revision 26 at 107858839463750
+2026-09-12T16:47:01Z	controller release: preview preview-27 is the admitted compile (generation 27, durable r25) (in flight revision 26)
+2026-09-12T16:47:01Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:01Z	compile: applied revision 26 at 107858841289541
+2026-09-12T16:47:01Z	status: revision 26: recovered, 119 diagnostics in 25 ms (durable r25)
+2026-09-12T16:47:01Z	paint: revision 26 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T16:47:01Z	paint: revision 26 at 107858930109416 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:01Z	keystroke: revision 27 at 107858930308000 (delegate 107858931096750, revision 107858931558583)
+2026-09-12T16:47:01Z	compile: sending revision 27 at 107858931598125
+2026-09-12T16:47:01Z	durable: r26 for revision 27 at 107858986052208
+2026-09-12T16:47:01Z	controller release: preview preview-28 is the admitted compile (generation 28, durable r26) (in flight revision 27)
+2026-09-12T16:47:01Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:01Z	compile: applied revision 27 at 107858987924666
+2026-09-12T16:47:01Z	status: revision 27: recovered, 119 diagnostics in 21 ms (durable r26)
+2026-09-12T16:47:02Z	paint: revision 27 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T16:47:02Z	paint: revision 27 at 107859075808875 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:02Z	keystroke: revision 28 at 107859076007958 (delegate 107859076875041, revision 107859077276375)
+2026-09-12T16:47:02Z	compile: sending revision 28 at 107859077319708
+2026-09-12T16:47:02Z	durable: r27 for revision 28 at 107859126055500
+2026-09-12T16:47:02Z	controller release: preview preview-29 is the admitted compile (generation 29, durable r27) (in flight revision 28)
+2026-09-12T16:47:02Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:02Z	compile: applied revision 28 at 107859127675708
+2026-09-12T16:47:02Z	status: revision 28: recovered, 119 diagnostics in 22 ms (durable r27)
+2026-09-12T16:47:02Z	paint: revision 28 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T16:47:02Z	paint: revision 28 at 107859188580541 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:47:02Z	keystroke: revision 29 at 107859191545375 (delegate 107859192175041, revision 107859192561250)
+2026-09-12T16:47:02Z	compile: sending revision 29 at 107859192602625
+2026-09-12T16:47:02Z	durable: r28 for revision 29 at 107859226332625
+2026-09-12T16:47:02Z	controller release: preview preview-30 is the admitted compile (generation 30, durable r28) (in flight revision 29)
+2026-09-12T16:47:02Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:02Z	compile: applied revision 29 at 107859227894666
+2026-09-12T16:47:02Z	status: revision 29: recovered, 119 diagnostics in 21 ms (durable r28)
+2026-09-12T16:47:02Z	paint: revision 29 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T16:47:02Z	paint: revision 29 at 107859285729916 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:47:02Z	keystroke: revision 30 at 107859313351333 (delegate 107859314036083, revision 107859314405416)
+2026-09-12T16:47:02Z	compile: sending revision 30 at 107859314462458
+2026-09-12T16:47:02Z	durable: r29 for revision 30 at 107859344723125
+2026-09-12T16:47:02Z	controller release: preview preview-31 is the admitted compile (generation 31, durable r29) (in flight revision 30)
+2026-09-12T16:47:02Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:02Z	compile: applied revision 30 at 107859346159875
+2026-09-12T16:47:02Z	status: revision 30: recovered, 119 diagnostics in 17 ms (durable r29)
+2026-09-12T16:47:02Z	paint: revision 30 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T16:47:02Z	paint: revision 30 at 107859398760458 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:47:02Z	keystroke: revision 31 at 107859410469291 (delegate 107859411107083, revision 107859411461333)
+2026-09-12T16:47:02Z	compile: sending revision 31 at 107859411509750
+2026-09-12T16:47:02Z	durable: r30 for revision 31 at 107859453222000
+2026-09-12T16:47:02Z	controller release: preview preview-32 is the admitted compile (generation 32, durable r30) (in flight revision 31)
+2026-09-12T16:47:02Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:02Z	compile: applied revision 31 at 107859454642125
+2026-09-12T16:47:02Z	status: revision 31: recovered, 119 diagnostics in 18 ms (durable r30)
+2026-09-12T16:47:02Z	paint: revision 31 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T16:47:02Z	paint: revision 31 at 107859506233875 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:47:02Z	keystroke: revision 32 at 107859528606583 (delegate 107859529223958, revision 107859529545458)
+2026-09-12T16:47:02Z	compile: sending revision 32 at 107859529585500
+2026-09-12T16:47:02Z	durable: r31 for revision 32 at 107859556393041
+2026-09-12T16:47:02Z	controller release: preview preview-33 is the admitted compile (generation 33, durable r31) (in flight revision 32)
+2026-09-12T16:47:02Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:02Z	compile: applied revision 32 at 107859557711791
+2026-09-12T16:47:02Z	status: revision 32: recovered, 119 diagnostics in 19 ms (durable r31)
+2026-09-12T16:47:02Z	paint: revision 32 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T16:47:02Z	paint: revision 32 at 107859607389500 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:47:02Z	keystroke: revision 33 at 107859622888708 (delegate 107859623527250, revision 107859623864416)
+2026-09-12T16:47:02Z	compile: sending revision 33 at 107859623907333
+2026-09-12T16:47:02Z	durable: r32 for revision 33 at 107859663096625
+2026-09-12T16:47:02Z	controller release: preview preview-34 is the admitted compile (generation 34, durable r32) (in flight revision 33)
+2026-09-12T16:47:02Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:02Z	compile: applied revision 33 at 107859664439916
+2026-09-12T16:47:02Z	status: revision 33: recovered, 119 diagnostics in 19 ms (durable r32)
+2026-09-12T16:47:02Z	paint: revision 33 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T16:47:02Z	paint: revision 33 at 107859713378666 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:47:02Z	keystroke: revision 34 at 107859732822083 (delegate 107859733403416, revision 107859733725916)
+2026-09-12T16:47:02Z	compile: sending revision 34 at 107859733767875
+2026-09-12T16:47:02Z	durable: r33 for revision 34 at 107859771915500
+2026-09-12T16:47:02Z	controller release: preview preview-35 is the admitted compile (generation 35, durable r33) (in flight revision 34)
+2026-09-12T16:47:02Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:02Z	compile: applied revision 34 at 107859773186958
+2026-09-12T16:47:02Z	status: revision 34: recovered, 119 diagnostics in 23 ms (durable r33)
+2026-09-12T16:47:02Z	paint: revision 34 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T16:47:02Z	paint: revision 34 at 107859823080500 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:47:02Z	keystroke: revision 35 at 107859842064583 (delegate 107859842635708, revision 107859842997916)
+2026-09-12T16:47:02Z	compile: sending revision 35 at 107859843040250
+2026-09-12T16:47:02Z	durable: r34 for revision 35 at 107859882722916
+2026-09-12T16:47:02Z	controller release: preview preview-36 is the admitted compile (generation 36, durable r34) (in flight revision 35)
+2026-09-12T16:47:02Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:02Z	compile: applied revision 35 at 107859884063375
+2026-09-12T16:47:02Z	status: revision 35: recovered, 119 diagnostics in 19 ms (durable r34)
+2026-09-12T16:47:02Z	paint: revision 35 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T16:47:02Z	paint: revision 35 at 107859955293000 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:02Z	keystroke: revision 36 at 107859955389541 (delegate 107859956013833, revision 107859956372416)
+2026-09-12T16:47:02Z	compile: sending revision 36 at 107859956397291
+2026-09-12T16:47:02Z	durable: r35 for revision 36 at 107859986144875
+2026-09-12T16:47:02Z	keystroke: revision 37 at 107859986277333 (delegate 107859986928041, revision 107859987288750)
+2026-09-12T16:47:02Z	controller release: preview preview-37 is the admitted compile (generation 37, durable r35) (in flight revision 36)
+2026-09-12T16:47:02Z	compile: sending revision 37 at 107860018463583
+2026-09-12T16:47:02Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:02Z	compile: applied revision 36 at 107860019835958
+2026-09-12T16:47:02Z	status: revision 36: recovered, 119 diagnostics in 32 ms (durable r35)
+2026-09-12T16:47:03Z	durable: r36 for revision 37 at 107860092667458
+2026-09-12T16:47:03Z	completion metadata refused: helper error for pc-171: source versions changed; refresh snapshot before querying
+2026-09-12T16:47:03Z	controller error pc-172: source versions changed; refresh snapshot before querying
+2026-09-12T16:47:03Z	controller error pc-173: source versions changed; refresh snapshot before querying
+2026-09-12T16:47:03Z	paint: revision 36 redrew 1/2 pages
+2026-09-12T16:47:03Z	paint: revision 36 at 107860092812833 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:03Z	controller release: preview preview-38 is the admitted compile (generation 38, durable r36) (in flight revision 37)
+2026-09-12T16:47:03Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:03Z	compile: applied revision 37 at 107860094313791
+2026-09-12T16:47:03Z	status: revision 37: recovered, 119 diagnostics in 22 ms (durable r36)
+2026-09-12T16:47:03Z	keystroke: revision 38 at 107860155857458 (delegate 107860156582041, revision 107860156971958)
+2026-09-12T16:47:03Z	compile: sending revision 38 at 107860157021541
+2026-09-12T16:47:03Z	paint: revision 37 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T16:47:03Z	paint: revision 37 at 107860157508541 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:47:03Z	durable: r37 for revision 38 at 107860191126458
+2026-09-12T16:47:03Z	controller release: preview preview-39 is the admitted compile (generation 39, durable r37) (in flight revision 38)
+2026-09-12T16:47:03Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:03Z	compile: applied revision 38 at 107860212954125
+2026-09-12T16:47:03Z	status: revision 38: recovered, 119 diagnostics in 25 ms (durable r37)
+2026-09-12T16:47:03Z	paint: revision 38 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T16:47:03Z	paint: revision 38 at 107860312788166 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:03Z	keystroke: revision 39 at 107860312828166 (delegate 107860313925916, revision 107860314381333)
+2026-09-12T16:47:03Z	compile: sending revision 39 at 107860314420458
+2026-09-12T16:47:03Z	durable: r38 for revision 39 at 107860372154083
+2026-09-12T16:47:03Z	keystroke: revision 40 at 107860372330833 (delegate 107860373104125, revision 107860373562750)
+2026-09-12T16:47:03Z	controller release: preview preview-40 is the admitted compile (generation 40, durable r38) (in flight revision 39)
+2026-09-12T16:47:03Z	compile: sending revision 40 at 107860412628166
+2026-09-12T16:47:03Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:03Z	compile: applied revision 39 at 107860414415208
+2026-09-12T16:47:03Z	status: revision 39: recovered, 119 diagnostics in 52 ms (durable r38)
+2026-09-12T16:47:03Z	durable: r39 for revision 40 at 107860480988708
+2026-09-12T16:47:03Z	completion metadata refused: helper error for pc-185: source versions changed; refresh snapshot before querying
+2026-09-12T16:47:03Z	controller error pc-186: source versions changed; refresh snapshot before querying
+2026-09-12T16:47:03Z	controller error pc-187: source versions changed; refresh snapshot before querying
+2026-09-12T16:47:03Z	controller release: preview preview-41 is the admitted compile (generation 41, durable r39) (in flight revision 40)
+2026-09-12T16:47:03Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:03Z	compile: applied revision 40 at 107860483183375
+2026-09-12T16:47:03Z	status: revision 40: recovered, 119 diagnostics in 25 ms (durable r39)
+2026-09-12T16:47:03Z	paint: revision 39 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T16:47:03Z	paint: revision 39 at 107860483537208 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:47:03Z	keystroke: revision 41 at 107860566799125 (delegate 107860567767000, revision 107860568292875)
+2026-09-12T16:47:03Z	compile: sending revision 41 at 107860568364000
+2026-09-12T16:47:03Z	paint: revision 40 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T16:47:03Z	paint: revision 40 at 107860569135833 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:47:03Z	durable: r40 for revision 41 at 107860610709833
+2026-09-12T16:47:03Z	controller release: preview preview-42 is the admitted compile (generation 42, durable r40) (in flight revision 41)
+2026-09-12T16:47:03Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:03Z	compile: applied revision 41 at 107860640571041
+2026-09-12T16:47:03Z	status: revision 41: recovered, 119 diagnostics in 38 ms (durable r40)
+2026-09-12T16:47:03Z	paint: revision 41 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T16:47:03Z	paint: revision 41 at 107860754382041 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:03Z	keystroke: revision 42 at 107860754492625 (delegate 107860755412041, revision 107860755957625)
+2026-09-12T16:47:03Z	compile: sending revision 42 at 107860756005875
+2026-09-12T16:47:03Z	durable: r41 for revision 42 at 107860799042083
+2026-09-12T16:47:03Z	controller release: preview preview-43 is the admitted compile (generation 43, durable r41) (in flight revision 42)
+2026-09-12T16:47:03Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:03Z	compile: applied revision 42 at 107860800972875
+2026-09-12T16:47:03Z	status: revision 42: recovered, 119 diagnostics in 26 ms (durable r41)
+2026-09-12T16:47:03Z	paint: revision 42 redrew 1/2 pages
+2026-09-12T16:47:03Z	paint: revision 42 at 107860899410458 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:03Z	keystroke: revision 43 at 107860904489541 (delegate 107860905259000, revision 107860905709000)
+2026-09-12T16:47:03Z	compile: sending revision 43 at 107860905759333
+2026-09-12T16:47:03Z	durable: r42 for revision 43 at 107860948637916
+2026-09-12T16:47:03Z	controller release: preview preview-44 is the admitted compile (generation 44, durable r42) (in flight revision 43)
+2026-09-12T16:47:03Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:03Z	compile: applied revision 43 at 107860950454041
+2026-09-12T16:47:03Z	status: revision 43: recovered, 119 diagnostics in 27 ms (durable r42)
+2026-09-12T16:47:04Z	paint: revision 43 redrew 1/2 pages
+2026-09-12T16:47:04Z	paint: revision 43 at 107861048295291 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:04Z	keystroke: revision 44 at 107861053113541 (delegate 107861053950500, revision 107861054419875)
+2026-09-12T16:47:04Z	compile: sending revision 44 at 107861054477541
+2026-09-12T16:47:04Z	bridge: relaunched flashtex-bridge; reconciling… · durable document diverged from the editor (store at revision 3, edit based on 6); reattach to reconcile
+2026-09-12T16:47:04Z	durable: r43 for revision 44 at 107861098633125
+2026-09-12T16:47:04Z	keystroke: revision 45 at 107861116445541 (delegate 107861117284875, revision 107861117753083)
+2026-09-12T16:47:04Z	controller release: preview preview-45 is the admitted compile (generation 45, durable r43) (in flight revision 44)
+2026-09-12T16:47:04Z	compile: sending revision 45 at 107861172960916
+2026-09-12T16:47:04Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:04Z	compile: applied revision 44 at 107861175043708
+2026-09-12T16:47:04Z	status: revision 44: recovered, 119 diagnostics in 47 ms (durable r43)
+2026-09-12T16:47:04Z	durable: r44 for revision 45 at 107861241505250
+2026-09-12T16:47:04Z	completion metadata refused: helper error for pc-209: source versions changed; refresh snapshot before querying
+2026-09-12T16:47:04Z	controller error pc-210: source versions changed; refresh snapshot before querying
+2026-09-12T16:47:04Z	controller error pc-211: source versions changed; refresh snapshot before querying
+2026-09-12T16:47:04Z	controller release: preview preview-46 is the admitted compile (generation 46, durable r44) (in flight revision 45)
+2026-09-12T16:47:04Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:04Z	compile: applied revision 45 at 107861243355791
+2026-09-12T16:47:04Z	status: revision 45: recovered, 119 diagnostics in 27 ms (durable r44)
+2026-09-12T16:47:04Z	paint: revision 45 redrew 1/2 pages
+2026-09-12T16:47:04Z	paint: revision 45 at 107861319102958 (covers 2 keystrokes, redrawn true)
+2026-09-12T16:47:04Z	keystroke: revision 46 at 107861319183625 (delegate 107861320025125, revision 107861320489041)
+2026-09-12T16:47:04Z	compile: sending revision 46 at 107861320532541
+2026-09-12T16:47:04Z	durable: r45 for revision 46 at 107861385525500
+2026-09-12T16:47:04Z	controller release: preview preview-47 is the admitted compile (generation 47, durable r45) (in flight revision 46)
+2026-09-12T16:47:04Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:04Z	compile: applied revision 46 at 107861387303458
+2026-09-12T16:47:04Z	status: revision 46: recovered, 119 diagnostics in 31 ms (durable r45)
+2026-09-12T16:47:04Z	paint: revision 46 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T16:47:04Z	paint: revision 46 at 107861475869125 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:47:04Z	keystroke: revision 47 at 107861483772041 (delegate 107861484574250, revision 107861485061875)
+2026-09-12T16:47:04Z	compile: sending revision 47 at 107861485118625
+2026-09-12T16:47:04Z	durable: r46 for revision 47 at 107861523247750
+2026-09-12T16:47:04Z	controller release: preview preview-48 is the admitted compile (generation 48, durable r46) (in flight revision 47)
+2026-09-12T16:47:04Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:04Z	compile: applied revision 47 at 107861525027416
+2026-09-12T16:47:04Z	status: revision 47: recovered, 119 diagnostics in 21 ms (durable r46)
+2026-09-12T16:47:04Z	paint: revision 47 redrew 1/2 pages
+2026-09-12T16:47:04Z	paint: revision 47 at 107861587077458 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:04Z	keystroke: revision 48 at 107861613560666 (delegate 107861614369041, revision 107861614814166)
+2026-09-12T16:47:04Z	compile: sending revision 48 at 107861614871416
+2026-09-12T16:47:04Z	durable: r47 for revision 48 at 107861653154083
+2026-09-12T16:47:04Z	controller release: preview preview-49 is the admitted compile (generation 49, durable r47) (in flight revision 48)
+2026-09-12T16:47:04Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:04Z	compile: applied revision 48 at 107861654935166
+2026-09-12T16:47:04Z	status: revision 48: recovered, 119 diagnostics in 20 ms (durable r47)
+2026-09-12T16:47:04Z	bridge: bridge exited (1); not relaunched: 3 relaunches in the last minute — Edit > Attach Capture Bridge to retry · durable document diverged from the editor (store at revision 3, edit based on 6); reattach to reconcile
+2026-09-12T16:47:04Z	bridge: bridge exited (1); not relaunched: 3 relaunches in the last minute — Edit > Attach Capture Bridge to retry · durable document diverged from the editor (store at revision 3, edit based on 6); reattach to reconcile
+2026-09-12T16:47:04Z	bridge: bridge exited (1); not relaunched: 3 relaunches in the last minute — Edit > Attach Capture Bridge to retry · durable document diverged from the editor (store at revision 3, edit based on 6); reattach to reconcile
+2026-09-12T16:47:04Z	paint: revision 48 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T16:47:04Z	paint: revision 48 at 107861724586333 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:47:04Z	keystroke: revision 49 at 107861728637500 (delegate 107861729446833, revision 107861729921958)
+2026-09-12T16:47:04Z	compile: sending revision 49 at 107861729977250
+2026-09-12T16:47:04Z	durable: r48 for revision 49 at 107861766779583
+2026-09-12T16:47:04Z	controller release: preview preview-50 is the admitted compile (generation 50, durable r48) (in flight revision 49)
+2026-09-12T16:47:04Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:04Z	compile: applied revision 49 at 107861768444416
+2026-09-12T16:47:04Z	status: revision 49: recovered, 119 diagnostics in 19 ms (durable r48)
+2026-09-12T16:47:04Z	paint: revision 49 redrew 1/2 pages
+2026-09-12T16:47:04Z	paint: revision 49 at 107861846376041 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:04Z	keystroke: revision 50 at 107861850477458 (delegate 107861851185791, revision 107861851596500)
+2026-09-12T16:47:04Z	compile: sending revision 50 at 107861851646791
+2026-09-12T16:47:04Z	durable: r49 for revision 50 at 107861901462125
+2026-09-12T16:47:04Z	controller release: preview preview-51 is the admitted compile (generation 51, durable r49) (in flight revision 50)
+2026-09-12T16:47:04Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:04Z	compile: applied revision 50 at 107861903117750
+2026-09-12T16:47:04Z	status: revision 50: recovered, 119 diagnostics in 21 ms (durable r49)
+2026-09-12T16:47:04Z	paint: revision 50 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T16:47:04Z	paint: revision 50 at 107861985078625 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:47:04Z	keystroke: revision 51 at 107861985186750 (delegate 107861986042666, revision 107861986483208)
+2026-09-12T16:47:04Z	compile: sending revision 51 at 107861986522708
+2026-09-12T16:47:05Z	durable: r50 for revision 51 at 107862035438791
+2026-09-12T16:47:05Z	controller release: preview preview-52 is the admitted compile (generation 52, durable r50) (in flight revision 51)
+2026-09-12T16:47:05Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:05Z	compile: applied revision 51 at 107862037073208
+2026-09-12T16:47:05Z	status: revision 51: recovered, 119 diagnostics in 20 ms (durable r50)
+2026-09-12T16:47:05Z	paint: revision 51 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T16:47:05Z	paint: revision 51 at 107862097734125 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:47:05Z	keystroke: revision 52 at 107862121167666 (delegate 107862121841958, revision 107862122235916)
+2026-09-12T16:47:05Z	compile: sending revision 52 at 107862122281333
+2026-09-12T16:47:05Z	durable: r51 for revision 52 at 107862156250000
+2026-09-12T16:47:05Z	controller release: preview preview-53 is the admitted compile (generation 53, durable r51) (in flight revision 52)
+2026-09-12T16:47:05Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:05Z	compile: applied revision 52 at 107862157872250
+2026-09-12T16:47:05Z	status: revision 52: recovered, 119 diagnostics in 20 ms (durable r51)
+2026-09-12T16:47:05Z	paint: revision 52 needed 2 extra turn(s); drew 1/2 pages
+2026-09-12T16:47:05Z	paint: revision 52 at 107862236549416 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:05Z	keystroke: revision 53 at 107862236623708 (delegate 107862237413708, revision 107862237820958)
+2026-09-12T16:47:05Z	compile: sending revision 53 at 107862237856000
+2026-09-12T16:47:05Z	durable: r52 for revision 53 at 107862271565916
+2026-09-12T16:47:05Z	controller release: preview preview-54 is the admitted compile (generation 54, durable r52) (in flight revision 53)
+2026-09-12T16:47:05Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:05Z	compile: applied revision 53 at 107862291354916
+2026-09-12T16:47:05Z	status: revision 53: recovered, 119 diagnostics in 20 ms (durable r52)
+2026-09-12T16:47:05Z	paint: revision 53 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T16:47:05Z	paint: revision 53 at 107862387154958 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:05Z	keystroke: revision 54 at 107862387188458 (delegate 107862388025000, revision 107862388500875)
+2026-09-12T16:47:05Z	compile: sending revision 54 at 107862388539333
+2026-09-12T16:47:05Z	durable: r53 for revision 54 at 107862427234500
+2026-09-12T16:47:05Z	controller release: preview preview-55 is the admitted compile (generation 55, durable r53) (in flight revision 54)
+2026-09-12T16:47:05Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:05Z	compile: applied revision 54 at 107862429144250
+2026-09-12T16:47:05Z	status: revision 54: recovered, 119 diagnostics in 28 ms (durable r53)
+2026-09-12T16:47:05Z	paint: revision 54 redrew 1/2 pages
+2026-09-12T16:47:05Z	paint: revision 54 at 107862492769916 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:05Z	keystroke: revision 55 at 107862526097000 (delegate 107862526894666, revision 107862527352208)
+2026-09-12T16:47:05Z	compile: sending revision 55 at 107862527410166
+2026-09-12T16:47:05Z	durable: r54 for revision 55 at 107862583311458
+2026-09-12T16:47:05Z	controller release: preview preview-56 is the admitted compile (generation 56, durable r54) (in flight revision 55)
+2026-09-12T16:47:05Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:05Z	compile: applied revision 55 at 107862585162541
+2026-09-12T16:47:05Z	status: revision 55: recovered, 119 diagnostics in 21 ms (durable r54)
+2026-09-12T16:47:05Z	paint: revision 55 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T16:47:05Z	paint: revision 55 at 107862655046208 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:47:05Z	keystroke: revision 56 at 107862682136583 (delegate 107862683009583, revision 107862683467625)
+2026-09-12T16:47:05Z	compile: sending revision 56 at 107862683523208
+2026-09-12T16:47:05Z	durable: r55 for revision 56 at 107862739511875
+2026-09-12T16:47:05Z	controller release: preview preview-57 is the admitted compile (generation 57, durable r55) (in flight revision 56)
+2026-09-12T16:47:05Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:05Z	compile: applied revision 56 at 107862741386083
+2026-09-12T16:47:05Z	status: revision 56: recovered, 119 diagnostics in 24 ms (durable r55)
+2026-09-12T16:47:05Z	paint: revision 56 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T16:47:05Z	paint: revision 56 at 107862839429083 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:05Z	keystroke: revision 57 at 107862839566541 (delegate 107862840456625, revision 107862840915708)
+2026-09-12T16:47:05Z	compile: sending revision 57 at 107862840951083
+2026-09-12T16:47:05Z	durable: r56 for revision 57 at 107862895044791
+2026-09-12T16:47:05Z	controller release: preview preview-58 is the admitted compile (generation 58, durable r56) (in flight revision 57)
+2026-09-12T16:47:05Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:05Z	compile: applied revision 57 at 107862896905791
+2026-09-12T16:47:05Z	status: revision 57: recovered, 119 diagnostics in 26 ms (durable r56)
+2026-09-12T16:47:05Z	paint: revision 57 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T16:47:05Z	paint: revision 57 at 107862964450833 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:47:05Z	keystroke: revision 58 at 107862987711583 (delegate 107862988383458, revision 107862988782291)
+2026-09-12T16:47:05Z	compile: sending revision 58 at 107862988826041
+2026-09-12T16:47:05Z	durable: r57 for revision 58 at 107863022159666
+2026-09-12T16:47:05Z	controller release: preview preview-59 is the admitted compile (generation 59, durable r57) (in flight revision 58)
+2026-09-12T16:47:05Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:05Z	compile: applied revision 58 at 107863023738833
+2026-09-12T16:47:05Z	status: revision 58: recovered, 119 diagnostics in 22 ms (durable r57)
+2026-09-12T16:47:06Z	paint: revision 58 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T16:47:06Z	paint: revision 58 at 107863101126416 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:47:06Z	keystroke: revision 59 at 107863101188583 (delegate 107863101913958, revision 107863102311375)
+2026-09-12T16:47:06Z	compile: sending revision 59 at 107863102342083
+2026-09-12T16:47:06Z	durable: r58 for revision 59 at 107863136317750
+2026-09-12T16:47:06Z	controller release: preview preview-60 is the admitted compile (generation 60, durable r58) (in flight revision 59)
+2026-09-12T16:47:06Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:06Z	compile: applied revision 59 at 107863137955750
+2026-09-12T16:47:06Z	status: revision 59: recovered, 119 diagnostics in 22 ms (durable r58)
+2026-09-12T16:47:06Z	paint: revision 59 redrew 1/2 pages
+2026-09-12T16:47:06Z	paint: revision 59 at 107863213957625 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:06Z	keystroke: revision 60 at 107863218107250 (delegate 107863219039125, revision 107863219439666)
+2026-09-12T16:47:06Z	compile: sending revision 60 at 107863219490208
+2026-09-12T16:47:06Z	durable: r59 for revision 60 at 107863253178250
+2026-09-12T16:47:06Z	controller release: preview preview-61 is the admitted compile (generation 61, durable r59) (in flight revision 60)
+2026-09-12T16:47:06Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:06Z	compile: applied revision 60 at 107863254854541
+2026-09-12T16:47:06Z	status: revision 60: recovered, 119 diagnostics in 21 ms (durable r59)
+2026-09-12T16:47:06Z	paint: revision 60 redrew 1/2 pages
+2026-09-12T16:47:06Z	paint: revision 60 at 107863329548000 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:06Z	keystroke: revision 61 at 107863333219750 (delegate 107863333876958, revision 107863334229416)
+2026-09-12T16:47:06Z	compile: sending revision 61 at 107863334270250
+2026-09-12T16:47:06Z	durable: r60 for revision 61 at 107863364244000
+2026-09-12T16:47:06Z	controller release: preview preview-62 is the admitted compile (generation 62, durable r60) (in flight revision 61)
+2026-09-12T16:47:06Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:06Z	compile: applied revision 61 at 107863365692500
+2026-09-12T16:47:06Z	status: revision 61: recovered, 119 diagnostics in 19 ms (durable r60)
+2026-09-12T16:47:06Z	paint: revision 61 redrew 1/2 pages
+2026-09-12T16:47:06Z	paint: revision 61 at 107863433001791 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:06Z	keystroke: revision 62 at 107863437075166 (delegate 107863437730875, revision 107863438084166)
+2026-09-12T16:47:06Z	compile: sending revision 62 at 107863438129541
+2026-09-12T16:47:06Z	durable: r61 for revision 62 at 107863467999000
+2026-09-12T16:47:06Z	controller release: preview preview-63 is the admitted compile (generation 63, durable r61) (in flight revision 62)
+2026-09-12T16:47:06Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:06Z	compile: applied revision 62 at 107863469503500
+2026-09-12T16:47:06Z	status: revision 62: recovered, 119 diagnostics in 21 ms (durable r61)
+2026-09-12T16:47:06Z	paint: revision 62 redrew 1/2 pages
+2026-09-12T16:47:06Z	paint: revision 62 at 107863534789208 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:06Z	keystroke: revision 63 at 107863538105083 (delegate 107863538662000, revision 107863538980541)
+2026-09-12T16:47:06Z	compile: sending revision 63 at 107863539008083
+2026-09-12T16:47:06Z	durable: r62 for revision 63 at 107863566081416
+2026-09-12T16:47:06Z	controller release: preview preview-64 is the admitted compile (generation 64, durable r62) (in flight revision 63)
+2026-09-12T16:47:06Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:06Z	compile: applied revision 63 at 107863567318083
+2026-09-12T16:47:06Z	status: revision 63: recovered, 119 diagnostics in 19 ms (durable r62)
+2026-09-12T16:47:06Z	paint: revision 63 redrew 1/2 pages
+2026-09-12T16:47:06Z	paint: revision 63 at 107863630503458 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:06Z	keystroke: revision 64 at 107863633895375 (delegate 107863634531666, revision 107863634883041)
+2026-09-12T16:47:06Z	compile: sending revision 64 at 107863634928125
+2026-09-12T16:47:06Z	durable: r63 for revision 64 at 107863662410458
+2026-09-12T16:47:06Z	controller release: preview preview-65 is the admitted compile (generation 65, durable r63) (in flight revision 64)
+2026-09-12T16:47:06Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:06Z	compile: applied revision 64 at 107863663715125
+2026-09-12T16:47:06Z	status: revision 64: recovered, 119 diagnostics in 20 ms (durable r63)
+2026-09-12T16:47:06Z	paint: revision 64 redrew 1/2 pages
+2026-09-12T16:47:06Z	paint: revision 64 at 107863726940791 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:06Z	keystroke: revision 65 at 107863730248750 (delegate 107863730787000, revision 107863731100875)
+2026-09-12T16:47:06Z	compile: sending revision 65 at 107863731130458
+2026-09-12T16:47:06Z	durable: r64 for revision 65 at 107863757878208
+2026-09-12T16:47:06Z	controller release: preview preview-66 is the admitted compile (generation 66, durable r64) (in flight revision 65)
+2026-09-12T16:47:06Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:06Z	compile: applied revision 65 at 107863759170958
+2026-09-12T16:47:06Z	status: revision 65: recovered, 119 diagnostics in 21 ms (durable r64)
+2026-09-12T16:47:06Z	paint: revision 65 redrew 1/2 pages
+2026-09-12T16:47:06Z	paint: revision 65 at 107863817934666 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:06Z	keystroke: revision 66 at 107863821317250 (delegate 107863821886208, revision 107863822198458)
+2026-09-12T16:47:06Z	compile: sending revision 66 at 107863822227666
+2026-09-12T16:47:06Z	durable: r65 for revision 66 at 107863849143166
+2026-09-12T16:47:06Z	controller release: preview preview-67 is the admitted compile (generation 67, durable r65) (in flight revision 66)
+2026-09-12T16:47:06Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:06Z	compile: applied revision 66 at 107863850415500
+2026-09-12T16:47:06Z	status: revision 66: recovered, 119 diagnostics in 21 ms (durable r65)
+2026-09-12T16:47:06Z	paint: revision 66 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T16:47:06Z	paint: revision 66 at 107863911095666 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:47:06Z	keystroke: revision 67 at 107863911149583 (delegate 107863911775916, revision 107863912121416)
+2026-09-12T16:47:06Z	compile: sending revision 67 at 107863912145000
+2026-09-12T16:47:06Z	durable: r66 for revision 67 at 107863938442250
+2026-09-12T16:47:06Z	controller release: preview preview-68 is the admitted compile (generation 68, durable r66) (in flight revision 67)
+2026-09-12T16:47:06Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:06Z	compile: applied revision 67 at 107863939614708
+2026-09-12T16:47:06Z	status: revision 67: recovered, 119 diagnostics in 19 ms (durable r66)
+2026-09-12T16:47:06Z	paint: revision 67 redrew 1/2 pages
+2026-09-12T16:47:06Z	paint: revision 67 at 107863995274375 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:06Z	keystroke: revision 68 at 107863997519750 (delegate 107863998112416, revision 107863998398208)
+2026-09-12T16:47:06Z	compile: sending revision 68 at 107863998434750
+2026-09-12T16:47:06Z	durable: r67 for revision 68 at 107864022568750
+2026-09-12T16:47:06Z	controller release: preview preview-69 is the admitted compile (generation 69, durable r67) (in flight revision 68)
+2026-09-12T16:47:06Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:06Z	compile: applied revision 68 at 107864023821291
+2026-09-12T16:47:06Z	status: revision 68: recovered, 119 diagnostics in 20 ms (durable r67)
+2026-09-12T16:47:07Z	paint: revision 68 redrew 1/2 pages
+2026-09-12T16:47:07Z	paint: revision 68 at 107864081488166 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:07Z	keystroke: revision 69 at 107864084790583 (delegate 107864085416375, revision 107864085758166)
+2026-09-12T16:47:07Z	compile: sending revision 69 at 107864085804958
+2026-09-12T16:47:07Z	durable: r68 for revision 69 at 107864110701500
+2026-09-12T16:47:07Z	controller release: preview preview-70 is the admitted compile (generation 70, durable r68) (in flight revision 69)
+2026-09-12T16:47:07Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:07Z	compile: applied revision 69 at 107864111917375
+2026-09-12T16:47:07Z	status: revision 69: recovered, 119 diagnostics in 18 ms (durable r68)
+2026-09-12T16:47:07Z	paint: revision 69 redrew 1/2 pages
+2026-09-12T16:47:07Z	paint: revision 69 at 107864168246458 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:07Z	keystroke: revision 70 at 107864171278166 (delegate 107864171805666, revision 107864172094375)
+2026-09-12T16:47:07Z	compile: sending revision 70 at 107864172120916
+2026-09-12T16:47:07Z	durable: r69 for revision 70 at 107864195876041
+2026-09-12T16:47:07Z	controller release: preview preview-71 is the admitted compile (generation 71, durable r69) (in flight revision 70)
+2026-09-12T16:47:07Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:07Z	compile: applied revision 70 at 107864197018208
+2026-09-12T16:47:07Z	status: revision 70: recovered, 119 diagnostics in 19 ms (durable r69)
+2026-09-12T16:47:07Z	paint: revision 70 redrew 1/2 pages
+2026-09-12T16:47:07Z	paint: revision 70 at 107864250521708 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:07Z	keystroke: revision 71 at 107864253631208 (delegate 107864254178291, revision 107864254468291)
+2026-09-12T16:47:07Z	compile: sending revision 71 at 107864254497458
+2026-09-12T16:47:07Z	durable: r70 for revision 71 at 107864279468208
+2026-09-12T16:47:07Z	controller release: preview preview-72 is the admitted compile (generation 72, durable r70) (in flight revision 71)
+2026-09-12T16:47:07Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:07Z	compile: applied revision 71 at 107864280594333
+2026-09-12T16:47:07Z	status: revision 71: recovered, 119 diagnostics in 17 ms (durable r70)
+2026-09-12T16:47:07Z	paint: revision 71 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T16:47:07Z	paint: revision 71 at 107864337038166 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:47:07Z	keystroke: revision 72 at 107864337080333 (delegate 107864337616041, revision 107864337909500)
+2026-09-12T16:47:07Z	compile: sending revision 72 at 107864337927583
+2026-09-12T16:47:07Z	durable: r71 for revision 72 at 107864362337708
+2026-09-12T16:47:07Z	controller release: preview preview-73 is the admitted compile (generation 73, durable r71) (in flight revision 72)
+2026-09-12T16:47:07Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:07Z	compile: applied revision 72 at 107864363485125
+2026-09-12T16:47:07Z	status: revision 72: recovered, 119 diagnostics in 20 ms (durable r71)
+2026-09-12T16:47:07Z	paint: revision 72 redrew 1/2 pages
+2026-09-12T16:47:07Z	paint: revision 72 at 107864418440500 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:07Z	keystroke: revision 73 at 107864421445333 (delegate 107864421976333, revision 107864422263375)
+2026-09-12T16:47:07Z	compile: sending revision 73 at 107864422289000
+2026-09-12T16:47:07Z	durable: r72 for revision 73 at 107864447007750
+2026-09-12T16:47:07Z	controller release: preview preview-74 is the admitted compile (generation 74, durable r72) (in flight revision 73)
+2026-09-12T16:47:07Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:07Z	compile: applied revision 73 at 107864448149833
+2026-09-12T16:47:07Z	status: revision 73: recovered, 119 diagnostics in 18 ms (durable r72)
+2026-09-12T16:47:07Z	paint: revision 73 redrew 1/2 pages
+2026-09-12T16:47:07Z	paint: revision 73 at 107864503758916 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:07Z	keystroke: revision 74 at 107864506042833 (delegate 107864506640333, revision 107864506924583)
+2026-09-12T16:47:07Z	compile: sending revision 74 at 107864506950375
+2026-09-12T16:47:07Z	durable: r73 for revision 74 at 107864530582500
+2026-09-12T16:47:07Z	controller release: preview preview-75 is the admitted compile (generation 75, durable r73) (in flight revision 74)
+2026-09-12T16:47:07Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:07Z	compile: applied revision 74 at 107864531711833
+2026-09-12T16:47:07Z	status: revision 74: recovered, 119 diagnostics in 19 ms (durable r73)
+2026-09-12T16:47:07Z	paint: revision 74 redrew 1/2 pages
+2026-09-12T16:47:07Z	paint: revision 74 at 107864588411375 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:07Z	keystroke: revision 75 at 107864591636208 (delegate 107864592241541, revision 107864592539125)
+2026-09-12T16:47:07Z	compile: sending revision 75 at 107864592574791
+2026-09-12T16:47:07Z	durable: r74 for revision 75 at 107864616819583
+2026-09-12T16:47:07Z	controller release: preview preview-76 is the admitted compile (generation 76, durable r74) (in flight revision 75)
+2026-09-12T16:47:07Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:07Z	compile: applied revision 75 at 107864629576166
+2026-09-12T16:47:07Z	status: revision 75: recovered, 119 diagnostics in 22 ms (durable r74)
+2026-09-12T16:47:07Z	paint: revision 75 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T16:47:07Z	paint: revision 75 at 107864697052000 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:07Z	keystroke: revision 76 at 107864697157875 (delegate 107864697853250, revision 107864698184958)
+2026-09-12T16:47:07Z	compile: sending revision 76 at 107864698208916
+2026-09-12T16:47:07Z	durable: r75 for revision 76 at 107864739064458
+2026-09-12T16:47:07Z	controller release: preview preview-77 is the admitted compile (generation 77, durable r75) (in flight revision 76)
+2026-09-12T16:47:07Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:07Z	compile: applied revision 76 at 107864740411708
+2026-09-12T16:47:07Z	status: revision 76: recovered, 119 diagnostics in 23 ms (durable r75)
+2026-09-12T16:47:07Z	paint: revision 76 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T16:47:07Z	paint: revision 76 at 107864816448708 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:07Z	keystroke: revision 77 at 107864816540916 (delegate 107864817188875, revision 107864817530625)
+2026-09-12T16:47:07Z	compile: sending revision 77 at 107864817558166
+2026-09-12T16:47:07Z	durable: r76 for revision 77 at 107864857127208
+2026-09-12T16:47:07Z	keystroke: revision 78 at 107864857496291 (delegate 107864858136000, revision 107864858471666)
+2026-09-12T16:47:07Z	controller release: preview preview-78 is the admitted compile (generation 78, durable r76) (in flight revision 77)
+2026-09-12T16:47:07Z	compile: sending revision 78 at 107864893426833
+2026-09-12T16:47:07Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:07Z	compile: applied revision 77 at 107864894686333
+2026-09-12T16:47:07Z	status: revision 77: recovered, 119 diagnostics in 48 ms (durable r76)
+2026-09-12T16:47:07Z	durable: r77 for revision 78 at 107864943921333
+2026-09-12T16:47:07Z	completion metadata refused: helper error for pc-369: source versions changed; refresh snapshot before querying
+2026-09-12T16:47:07Z	controller error pc-370: source versions changed; refresh snapshot before querying
+2026-09-12T16:47:07Z	controller error pc-371: source versions changed; refresh snapshot before querying
+2026-09-12T16:47:07Z	controller release: preview preview-79 is the admitted compile (generation 79, durable r77) (in flight revision 78)
+2026-09-12T16:47:07Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:07Z	compile: applied revision 78 at 107864945254583
+2026-09-12T16:47:07Z	status: revision 78: recovered, 119 diagnostics in 22 ms (durable r77)
+2026-09-12T16:47:07Z	paint: revision 78 redrew 1/2 pages
+2026-09-12T16:47:07Z	paint: revision 78 at 107865001554750 (covers 2 keystrokes, redrawn true)
+2026-09-12T16:47:08Z	keystroke: revision 79 at 107865030017125 (delegate 107865030797791, revision 107865031167916)
+2026-09-12T16:47:08Z	compile: sending revision 79 at 107865031215541
+2026-09-12T16:47:08Z	durable: r78 for revision 79 at 107865062136750
+2026-09-12T16:47:08Z	controller release: preview preview-80 is the admitted compile (generation 80, durable r78) (in flight revision 79)
+2026-09-12T16:47:08Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:08Z	compile: applied revision 79 at 107865063536958
+2026-09-12T16:47:08Z	status: revision 79: recovered, 119 diagnostics in 24 ms (durable r78)
+2026-09-12T16:47:08Z	keystroke: revision 80 at 107865063794291 (delegate 107865064490500, revision 107865064873625)
+2026-09-12T16:47:08Z	compile: sending revision 80 at 107865064923083
+2026-09-12T16:47:08Z	durable: r79 for revision 80 at 107865125969333
+2026-09-12T16:47:08Z	controller release: preview preview-81 is the admitted compile (generation 81, durable r79) (in flight revision 80)
+2026-09-12T16:47:08Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:08Z	compile: applied revision 80 at 107865127954083
+2026-09-12T16:47:08Z	status: revision 80: recovered, 119 diagnostics in 21 ms (durable r79)
+2026-09-12T16:47:08Z	keystroke: revision 81 at 107865187782541 (delegate 107865188730541, revision 107865189155875)
+2026-09-12T16:47:08Z	compile: sending revision 81 at 107865189210750
+2026-09-12T16:47:08Z	paint: revision 80 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T16:47:08Z	paint: revision 80 at 107865191736875 (covers 2 keystrokes, redrawn false)
+2026-09-12T16:47:08Z	durable: r80 for revision 81 at 107865223961250
+2026-09-12T16:47:08Z	controller release: preview preview-82 is the admitted compile (generation 82, durable r80) (in flight revision 81)
+2026-09-12T16:47:08Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:08Z	compile: applied revision 81 at 107865225546875
+2026-09-12T16:47:08Z	status: revision 81: recovered, 119 diagnostics in 20 ms (durable r80)
+2026-09-12T16:47:08Z	paint: revision 81 redrew 1/2 pages
+2026-09-12T16:47:08Z	paint: revision 81 at 107865306737791 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:08Z	keystroke: revision 82 at 107865311257416 (delegate 107865312077666, revision 107865312522083)
+2026-09-12T16:47:08Z	compile: sending revision 82 at 107865312569375
+2026-09-12T16:47:08Z	durable: r81 for revision 82 at 107865367619208
+2026-09-12T16:47:08Z	controller release: preview preview-83 is the admitted compile (generation 83, durable r81) (in flight revision 82)
+2026-09-12T16:47:08Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:08Z	compile: applied revision 82 at 107865369430125
+2026-09-12T16:47:08Z	status: revision 82: recovered, 119 diagnostics in 29 ms (durable r81)
+2026-09-12T16:47:08Z	paint: revision 82 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T16:47:08Z	paint: revision 82 at 107865460652125 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:47:08Z	keystroke: revision 83 at 107865460773125 (delegate 107865461738125, revision 107865462194500)
+2026-09-12T16:47:08Z	compile: sending revision 83 at 107865462242333
+2026-09-12T16:47:08Z	durable: r82 for revision 83 at 107865518761291
+2026-09-12T16:47:08Z	controller release: preview preview-84 is the admitted compile (generation 84, durable r82) (in flight revision 83)
+2026-09-12T16:47:08Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:08Z	compile: applied revision 83 at 107865520622583
+2026-09-12T16:47:08Z	status: revision 83: recovered, 119 diagnostics in 29 ms (durable r82)
+2026-09-12T16:47:08Z	paint: revision 83 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T16:47:08Z	paint: revision 83 at 107865589919958 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:47:08Z	keystroke: revision 84 at 107865593295958 (delegate 107865594196166, revision 107865594646708)
+2026-09-12T16:47:08Z	compile: sending revision 84 at 107865594693666
+2026-09-12T16:47:08Z	durable: r83 for revision 84 at 107865633388416
+2026-09-12T16:47:08Z	controller release: preview preview-85 is the admitted compile (generation 85, durable r83) (in flight revision 84)
+2026-09-12T16:47:08Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:08Z	compile: applied revision 84 at 107865635199666
+2026-09-12T16:47:08Z	status: revision 84: recovered, 119 diagnostics in 24 ms (durable r83)
+2026-09-12T16:47:08Z	paint: revision 84 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T16:47:08Z	paint: revision 84 at 107865703763333 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:47:08Z	keystroke: revision 85 at 107865731560250 (delegate 107865732950166, revision 107865733432666)
+2026-09-12T16:47:08Z	compile: sending revision 85 at 107865733491000
+2026-09-12T16:47:08Z	durable: r84 for revision 85 at 107865790031833
+2026-09-12T16:47:08Z	controller release: preview preview-86 is the admitted compile (generation 86, durable r84) (in flight revision 85)
+2026-09-12T16:47:08Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:08Z	compile: applied revision 85 at 107865791886541
+2026-09-12T16:47:08Z	status: revision 85: recovered, 119 diagnostics in 27 ms (durable r84)
+2026-09-12T16:47:08Z	paint: revision 85 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T16:47:08Z	paint: revision 85 at 107865894102958 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:08Z	keystroke: revision 86 at 107865894214750 (delegate 107865895275458, revision 107865895734875)
+2026-09-12T16:47:08Z	compile: sending revision 86 at 107865895782166
+2026-09-12T16:47:08Z	durable: r85 for revision 86 at 107865957450125
+2026-09-12T16:47:08Z	controller release: preview preview-87 is the admitted compile (generation 87, durable r85) (in flight revision 86)
+2026-09-12T16:47:08Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:08Z	compile: applied revision 86 at 107865959363333
+2026-09-12T16:47:08Z	status: revision 86: recovered, 119 diagnostics in 25 ms (durable r85)
+2026-09-12T16:47:09Z	paint: revision 86 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T16:47:09Z	paint: revision 86 at 107866030617000 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:47:09Z	keystroke: revision 87 at 107866033987666 (delegate 107866035147041, revision 107866035645041)
+2026-09-12T16:47:09Z	compile: sending revision 87 at 107866035715083
+2026-09-12T16:47:09Z	durable: r86 for revision 87 at 107866077985291
+2026-09-12T16:47:09Z	controller release: preview preview-88 is the admitted compile (generation 88, durable r86) (in flight revision 87)
+2026-09-12T16:47:09Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:09Z	compile: applied revision 87 at 107866081062333
+2026-09-12T16:47:09Z	status: revision 87: recovered, 119 diagnostics in 22 ms (durable r86)
+2026-09-12T16:47:09Z	paint: revision 87 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T16:47:09Z	paint: revision 87 at 107866156650666 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:47:09Z	keystroke: revision 88 at 107866185893750 (delegate 107866186807375, revision 107866187262958)
+2026-09-12T16:47:09Z	compile: sending revision 88 at 107866187313375
+2026-09-12T16:47:09Z	durable: r87 for revision 88 at 107866250181041
+2026-09-12T16:47:09Z	controller release: preview preview-89 is the admitted compile (generation 89, durable r87) (in flight revision 88)
+2026-09-12T16:47:09Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:09Z	compile: applied revision 88 at 107866252088500
+2026-09-12T16:47:09Z	status: revision 88: recovered, 119 diagnostics in 28 ms (durable r87)
+2026-09-12T16:47:09Z	paint: revision 88 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T16:47:09Z	paint: revision 88 at 107866346713916 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:47:09Z	keystroke: revision 89 at 107866346833916 (delegate 107866347809416, revision 107866348332333)
+2026-09-12T16:47:09Z	compile: sending revision 89 at 107866348365208
+2026-09-12T16:47:09Z	durable: r88 for revision 89 at 107866407253791
+2026-09-12T16:47:09Z	controller release: preview preview-90 is the admitted compile (generation 90, durable r88) (in flight revision 89)
+2026-09-12T16:47:09Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:09Z	compile: applied revision 89 at 107866409083000
+2026-09-12T16:47:09Z	status: revision 89: recovered, 119 diagnostics in 24 ms (durable r88)
+2026-09-12T16:47:09Z	paint: revision 89 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T16:47:09Z	paint: revision 89 at 107866508695208 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:09Z	keystroke: revision 90 at 107866508942500 (delegate 107866509788083, revision 107866510243041)
+2026-09-12T16:47:09Z	compile: sending revision 90 at 107866510282208
+2026-09-12T16:47:09Z	durable: r89 for revision 90 at 107866577942458
+2026-09-12T16:47:09Z	controller release: preview preview-91 is the admitted compile (generation 91, durable r89) (in flight revision 90)
+2026-09-12T16:47:09Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:09Z	compile: applied revision 90 at 107866579824750
+2026-09-12T16:47:09Z	status: revision 90: recovered, 119 diagnostics in 29 ms (durable r89)
+2026-09-12T16:47:09Z	paint: revision 90 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T16:47:09Z	paint: revision 90 at 107866681216416 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:09Z	keystroke: revision 91 at 107866681356375 (delegate 107866682268708, revision 107866682734083)
+2026-09-12T16:47:09Z	compile: sending revision 91 at 107866682770958
+2026-09-12T16:47:09Z	durable: r90 for revision 91 at 107866741905291
+2026-09-12T16:47:09Z	controller release: preview preview-92 is the admitted compile (generation 92, durable r90) (in flight revision 91)
+2026-09-12T16:47:09Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:09Z	compile: applied revision 91 at 107866744069083
+2026-09-12T16:47:09Z	status: revision 91: recovered, 119 diagnostics in 28 ms (durable r90)
+2026-09-12T16:47:09Z	paint: revision 91 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T16:47:09Z	paint: revision 91 at 107866853822791 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:09Z	keystroke: revision 92 at 107866853989458 (delegate 107866854940416, revision 107866855395333)
+2026-09-12T16:47:09Z	compile: sending revision 92 at 107866855431208
+2026-09-12T16:47:09Z	durable: r91 for revision 92 at 107866897947000
+2026-09-12T16:47:09Z	controller release: preview preview-93 is the admitted compile (generation 93, durable r91) (in flight revision 92)
+2026-09-12T16:47:09Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:09Z	compile: applied revision 92 at 107866900545333
+2026-09-12T16:47:09Z	status: revision 92: recovered, 119 diagnostics in 30 ms (durable r91)
+2026-09-12T16:47:09Z	paint: revision 92 needed 2 extra turn(s); drew 1/2 pages
+2026-09-12T16:47:09Z	paint: revision 92 at 107866992791500 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:09Z	keystroke: revision 93 at 107866992877958 (delegate 107866993876166, revision 107866994409500)
+2026-09-12T16:47:09Z	compile: sending revision 93 at 107866994454958
+2026-09-12T16:47:10Z	durable: r92 for revision 93 at 107867054226375
+2026-09-12T16:47:10Z	keystroke: revision 94 at 107867054601833 (delegate 107867055495791, revision 107867055954416)
+2026-09-12T16:47:10Z	keystroke: revision 95 at 107867095404125 (delegate 107867096292125, revision 107867096743875)
+2026-09-12T16:47:10Z	controller release: preview preview-94 is the admitted compile (generation 94, durable r92) (in flight revision 93)
+2026-09-12T16:47:10Z	compile: sending revision 95 at 107867097044708
+2026-09-12T16:47:10Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:10Z	compile: applied revision 93 at 107867098745791
+2026-09-12T16:47:10Z	status: revision 93: recovered, 119 diagnostics in 75 ms (durable r92)
+2026-09-12T16:47:10Z	durable: r93 for revision 95 at 107867164389375
+2026-09-12T16:47:10Z	completion metadata refused: helper error for pc-445: source versions changed; refresh snapshot before querying
+2026-09-12T16:47:10Z	controller error pc-446: source versions changed; refresh snapshot before querying
+2026-09-12T16:47:10Z	controller error pc-447: source versions changed; refresh snapshot before querying
+2026-09-12T16:47:10Z	controller release: preview preview-95 is the admitted compile (generation 95, durable r93) (in flight revision 95)
+2026-09-12T16:47:10Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:10Z	compile: applied revision 95 at 107867166246000
+2026-09-12T16:47:10Z	status: revision 95: recovered, 119 diagnostics in 37 ms (durable r93)
+2026-09-12T16:47:10Z	paint: revision 95 redrew 1/2 pages
+2026-09-12T16:47:10Z	paint: revision 95 at 107867261838666 (covers 3 keystrokes, redrawn true)
+2026-09-12T16:47:10Z	keystroke: revision 96 at 107867266360375 (delegate 107867267184541, revision 107867267634125)
+2026-09-12T16:47:10Z	compile: sending revision 96 at 107867267684500
+2026-09-12T16:47:10Z	durable: r94 for revision 96 at 107867306833041
+2026-09-12T16:47:10Z	controller release: preview preview-96 is the admitted compile (generation 96, durable r94) (in flight revision 96)
+2026-09-12T16:47:10Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:10Z	compile: applied revision 96 at 107867308910916
+2026-09-12T16:47:10Z	status: revision 96: recovered, 119 diagnostics in 25 ms (durable r94)
+2026-09-12T16:47:10Z	paint: revision 96 redrew 1/2 pages
+2026-09-12T16:47:10Z	paint: revision 96 at 107867373446250 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:10Z	keystroke: revision 97 at 107867406387208 (delegate 107867407269291, revision 107867407730125)
+2026-09-12T16:47:10Z	compile: sending revision 97 at 107867407792041
+2026-09-12T16:47:10Z	durable: r95 for revision 97 at 107867447599500
+2026-09-12T16:47:10Z	keystroke: revision 98 at 107867447743083 (delegate 107867448601166, revision 107867449052291)
+2026-09-12T16:47:10Z	controller release: preview preview-97 is the admitted compile (generation 97, durable r95) (in flight revision 97)
+2026-09-12T16:47:10Z	compile: sending revision 98 at 107867487844333
+2026-09-12T16:47:10Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:10Z	compile: applied revision 97 at 107867489643375
+2026-09-12T16:47:10Z	status: revision 97: recovered, 119 diagnostics in 47 ms (durable r95)
+2026-09-12T16:47:10Z	keystroke: revision 99 at 107867555923500 (delegate 107867556872250, revision 107867557392375)
+2026-09-12T16:47:10Z	durable: r96 for revision 98 at 107867557723500
+2026-09-12T16:47:10Z	completion metadata refused: helper error for pc-457: source versions changed; refresh snapshot before querying
+2026-09-12T16:47:10Z	controller error pc-458: source versions changed; refresh snapshot before querying
+2026-09-12T16:47:10Z	controller error pc-459: source versions changed; refresh snapshot before querying
+2026-09-12T16:47:10Z	paint: revision 97 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T16:47:10Z	paint: revision 97 at 107867558143708 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:47:10Z	controller release: preview preview-98 is the admitted compile (generation 98, durable r96) (in flight revision 98)
+2026-09-12T16:47:10Z	compile: sending revision 99 at 107867599132291
+2026-09-12T16:47:10Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:10Z	compile: applied revision 98 at 107867601011666
+2026-09-12T16:47:10Z	status: revision 98: recovered, 119 diagnostics in 44 ms (durable r96)
+2026-09-12T16:47:10Z	paint: revision 98 redrew 1/3 pages
+2026-09-12T16:47:10Z	paint: revision 98 at 107867699723458 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:10Z	durable: r97 for revision 99 at 107867699765333
+2026-09-12T16:47:10Z	completion metadata refused: helper error for pc-461: source versions changed; refresh snapshot before querying
+2026-09-12T16:47:10Z	controller error pc-462: source versions changed; refresh snapshot before querying
+2026-09-12T16:47:10Z	controller error pc-463: source versions changed; refresh snapshot before querying
+2026-09-12T16:47:10Z	controller release: preview preview-99 is the admitted compile (generation 99, durable r97) (in flight revision 99)
+2026-09-12T16:47:10Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:10Z	compile: applied revision 99 at 107867701595416
+2026-09-12T16:47:10Z	status: revision 99: recovered, 119 diagnostics in 33 ms (durable r97)
+2026-09-12T16:47:10Z	paint: revision 99 needed 1 extra turn(s); drew 1/3 pages
+2026-09-12T16:47:10Z	paint: revision 99 at 107867801158958 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:10Z	keystroke: revision 100 at 107867801248541 (delegate 107867802221750, revision 107867802684416)
+2026-09-12T16:47:10Z	compile: sending revision 100 at 107867802720708
+2026-09-12T16:47:10Z	durable: r98 for revision 100 at 107867859629291
+2026-09-12T16:47:10Z	controller release: preview preview-100 is the admitted compile (generation 100, durable r98) (in flight revision 100)
+2026-09-12T16:47:10Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:10Z	compile: applied revision 100 at 107867861472958
+2026-09-12T16:47:10Z	status: revision 100: recovered, 119 diagnostics in 26 ms (durable r98)
+2026-09-12T16:47:10Z	paint: revision 100 needed 1 extra turn(s); drew 1/3 pages
+2026-09-12T16:47:10Z	paint: revision 100 at 107867961647333 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:10Z	keystroke: revision 101 at 107867961770833 (delegate 107867964915750, revision 107867965377458)
+2026-09-12T16:47:10Z	compile: sending revision 101 at 107867965422708
+2026-09-12T16:47:10Z	durable: r99 for revision 101 at 107868020526208
+2026-09-12T16:47:10Z	controller release: preview preview-101 is the admitted compile (generation 101, durable r99) (in flight revision 101)
+2026-09-12T16:47:10Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:10Z	compile: applied revision 101 at 107868022383458
+2026-09-12T16:47:10Z	status: revision 101: recovered, 119 diagnostics in 25 ms (durable r99)
+2026-09-12T16:47:11Z	paint: revision 101 needed 1 extra turn(s); drew 1/3 pages
+2026-09-12T16:47:11Z	paint: revision 101 at 107868116332500 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:11Z	keystroke: revision 102 at 107868116445291 (delegate 107868117406750, revision 107868117870000)
+2026-09-12T16:47:11Z	compile: sending revision 102 at 107868117909833
+2026-09-12T16:47:11Z	durable: r100 for revision 102 at 107868176081750
+2026-09-12T16:47:11Z	controller release: preview preview-102 is the admitted compile (generation 102, durable r100) (in flight revision 102)
+2026-09-12T16:47:11Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:11Z	compile: applied revision 102 at 107868177932166
+2026-09-12T16:47:11Z	status: revision 102: recovered, 119 diagnostics in 31 ms (durable r100)
+2026-09-12T16:47:11Z	paint: revision 102 needed 1 extra turn(s); drew 1/3 pages
+2026-09-12T16:47:11Z	paint: revision 102 at 107868278466000 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:11Z	keystroke: revision 103 at 107868278572416 (delegate 107868279699083, revision 107868280160541)
+2026-09-12T16:47:11Z	compile: sending revision 103 at 107868280211583
+2026-09-12T16:47:11Z	durable: r101 for revision 103 at 107868323456291
+2026-09-12T16:47:11Z	keystroke: revision 104 at 107868323601958 (delegate 107868324497416, revision 107868324950583)
+2026-09-12T16:47:11Z	controller release: preview preview-103 is the admitted compile (generation 103, durable r101) (in flight revision 103)
+2026-09-12T16:47:11Z	compile: sending revision 104 at 107868363644708
+2026-09-12T16:47:11Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:11Z	compile: applied revision 103 at 107868365498625
+2026-09-12T16:47:11Z	status: revision 103: recovered, 119 diagnostics in 37 ms (durable r101)
+2026-09-12T16:47:11Z	durable: r102 for revision 104 at 107868448064416
+2026-09-12T16:47:11Z	completion metadata refused: helper error for pc-485: source versions changed; refresh snapshot before querying
+2026-09-12T16:47:11Z	controller error pc-486: source versions changed; refresh snapshot before querying
+2026-09-12T16:47:11Z	controller error pc-487: source versions changed; refresh snapshot before querying
+2026-09-12T16:47:11Z	controller release: preview preview-104 is the admitted compile (generation 104, durable r102) (in flight revision 104)
+2026-09-12T16:47:11Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:11Z	compile: applied revision 104 at 107868450149333
+2026-09-12T16:47:11Z	status: revision 104: recovered, 119 diagnostics in 23 ms (durable r102)
+2026-09-12T16:47:11Z	paint: revision 104 needed 1 extra turn(s); drew 1/3 pages
+2026-09-12T16:47:11Z	paint: revision 104 at 107868547176375 (covers 2 keystrokes, redrawn true)
+2026-09-12T16:47:11Z	keystroke: revision 105 at 107868547209916 (delegate 107868548166708, revision 107868548628791)
+2026-09-12T16:47:11Z	compile: sending revision 105 at 107868548655000
+2026-09-12T16:47:11Z	durable: r103 for revision 105 at 107868587992500
+2026-09-12T16:47:11Z	keystroke: revision 106 at 107868588147458 (delegate 107868588999166, revision 107868589453083)
+2026-09-12T16:47:11Z	controller release: preview preview-105 is the admitted compile (generation 105, durable r103) (in flight revision 105)
+2026-09-12T16:47:11Z	compile: sending revision 106 at 107868628506708
+2026-09-12T16:47:11Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:11Z	compile: applied revision 105 at 107868630358250
+2026-09-12T16:47:11Z	status: revision 105: recovered, 119 diagnostics in 41 ms (durable r103)
+2026-09-12T16:47:11Z	durable: r104 for revision 106 at 107868690612875
+2026-09-12T16:47:11Z	completion metadata refused: helper error for pc-494: source versions changed; refresh snapshot before querying
+2026-09-12T16:47:11Z	controller error pc-495: source versions changed; refresh snapshot before querying
+2026-09-12T16:47:11Z	controller error pc-496: source versions changed; refresh snapshot before querying
+2026-09-12T16:47:11Z	controller release: preview preview-106 is the admitted compile (generation 106, durable r104) (in flight revision 106)
+2026-09-12T16:47:11Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:11Z	compile: applied revision 106 at 107868692469416
+2026-09-12T16:47:11Z	status: revision 106: recovered, 119 diagnostics in 26 ms (durable r104)
+2026-09-12T16:47:11Z	paint: revision 105 needed 2 extra turn(s); drew 0/3 pages
+2026-09-12T16:47:11Z	paint: revision 105 at 107868692797666 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:47:11Z	keystroke: revision 107 at 107868767026166 (delegate 107868767964416, revision 107868768421333)
+2026-09-12T16:47:11Z	compile: sending revision 107 at 107868768476583
+2026-09-12T16:47:11Z	paint: revision 106 needed 2 extra turn(s); drew 0/3 pages
+2026-09-12T16:47:11Z	paint: revision 106 at 107868769031625 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:47:11Z	durable: r105 for revision 107 at 107868810386458
+2026-09-12T16:47:11Z	keystroke: revision 108 at 107868837104166 (delegate 107868838085208, revision 107868838554333)
+2026-09-12T16:47:11Z	controller release: preview preview-107 is the admitted compile (generation 107, durable r105) (in flight revision 107)
+2026-09-12T16:47:11Z	compile: sending revision 108 at 107868880727833
+2026-09-12T16:47:11Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:11Z	compile: applied revision 107 at 107868882618250
+2026-09-12T16:47:11Z	status: revision 107: recovered, 119 diagnostics in 42 ms (durable r105)
+2026-09-12T16:47:11Z	durable: r106 for revision 108 at 107868969515000
+2026-09-12T16:47:11Z	completion metadata refused: helper error for pc-505: source versions changed; refresh snapshot before querying
+2026-09-12T16:47:11Z	controller error pc-506: source versions changed; refresh snapshot before querying
+2026-09-12T16:47:11Z	controller error pc-507: source versions changed; refresh snapshot before querying
+2026-09-12T16:47:11Z	paint: revision 107 redrew 1/3 pages
+2026-09-12T16:47:11Z	paint: revision 107 at 107868969683833 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:11Z	controller release: preview preview-108 is the admitted compile (generation 108, durable r106) (in flight revision 108)
+2026-09-12T16:47:11Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:11Z	compile: applied revision 108 at 107868971464791
+2026-09-12T16:47:11Z	status: revision 108: recovered, 119 diagnostics in 34 ms (durable r106)
+2026-09-12T16:47:12Z	paint: revision 108 needed 1 extra turn(s); drew 1/3 pages
+2026-09-12T16:47:12Z	paint: revision 108 at 107869066001791 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:12Z	keystroke: revision 109 at 107869066089750 (delegate 107869067395166, revision 107869067678541)
+2026-09-12T16:47:12Z	compile: sending revision 109 at 107869067725333
+2026-09-12T16:47:12Z	durable: r107 for revision 109 at 107869122363250
+2026-09-12T16:47:12Z	keystroke: revision 110 at 107869122876541 (delegate 107869123723750, revision 107869124154000)
+2026-09-12T16:47:12Z	controller release: preview preview-109 is the admitted compile (generation 109, durable r107) (in flight revision 109)
+2026-09-12T16:47:12Z	compile: sending revision 110 at 107869171511416
+2026-09-12T16:47:12Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:12Z	compile: applied revision 109 at 107869173203333
+2026-09-12T16:47:12Z	status: revision 109: recovered, 119 diagnostics in 55 ms (durable r107)
+2026-09-12T16:47:12Z	durable: r108 for revision 110 at 107869235689666
+2026-09-12T16:47:12Z	completion metadata refused: helper error for pc-514: source versions changed; refresh snapshot before querying
+2026-09-12T16:47:12Z	controller error pc-515: source versions changed; refresh snapshot before querying
+2026-09-12T16:47:12Z	controller error pc-516: source versions changed; refresh snapshot before querying
+2026-09-12T16:47:12Z	controller release: preview preview-110 is the admitted compile (generation 110, durable r108) (in flight revision 110)
+2026-09-12T16:47:12Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:12Z	compile: applied revision 110 at 107869237564000
+2026-09-12T16:47:12Z	status: revision 110: recovered, 119 diagnostics in 28 ms (durable r108)
+2026-09-12T16:47:12Z	paint: revision 110 redrew 1/3 pages
+2026-09-12T16:47:12Z	paint: revision 110 at 107869315935625 (covers 2 keystrokes, redrawn true)
+2026-09-12T16:47:12Z	keystroke: revision 111 at 107869352956416 (delegate 107869353945208, revision 107869354405458)
+2026-09-12T16:47:12Z	compile: sending revision 111 at 107869354457083
+2026-09-12T16:47:12Z	durable: r109 for revision 111 at 107869392945083
+2026-09-12T16:47:12Z	controller release: preview preview-111 is the admitted compile (generation 111, durable r109) (in flight revision 111)
+2026-09-12T16:47:12Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:12Z	compile: applied revision 111 at 107869394744333
+2026-09-12T16:47:12Z	status: revision 111: recovered, 119 diagnostics in 25 ms (durable r109)
+2026-09-12T16:47:12Z	paint: revision 111 redrew 1/3 pages
+2026-09-12T16:47:12Z	paint: revision 111 at 107869451684250 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:12Z	keystroke: revision 112 at 107869484530958 (delegate 107869485429875, revision 107869485899291)
+2026-09-12T16:47:12Z	compile: sending revision 112 at 107869485959500
+2026-09-12T16:47:12Z	durable: r110 for revision 112 at 107869524480708
+2026-09-12T16:47:12Z	controller release: preview preview-112 is the admitted compile (generation 112, durable r110) (in flight revision 112)
+2026-09-12T16:47:12Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:12Z	compile: applied revision 112 at 107869526295625
+2026-09-12T16:47:12Z	status: revision 112: recovered, 119 diagnostics in 21 ms (durable r110)
+2026-09-12T16:47:12Z	paint: revision 112 needed 2 extra turn(s); drew 0/3 pages
+2026-09-12T16:47:12Z	paint: revision 112 at 107869612489583 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:47:12Z	keystroke: revision 113 at 107869619980791 (delegate 107869620845791, revision 107869621299041)
+2026-09-12T16:47:12Z	compile: sending revision 113 at 107869621346291
+2026-09-12T16:47:12Z	durable: r111 for revision 113 at 107869660370500
+2026-09-12T16:47:12Z	controller release: preview preview-113 is the admitted compile (generation 113, durable r111) (in flight revision 113)
+2026-09-12T16:47:12Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:12Z	compile: applied revision 113 at 107869662342916
+2026-09-12T16:47:12Z	status: revision 113: recovered, 119 diagnostics in 20 ms (durable r111)
+2026-09-12T16:47:12Z	paint: revision 113 redrew 1/3 pages
+2026-09-12T16:47:12Z	paint: revision 113 at 107869727832208 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:12Z	keystroke: revision 114 at 107869756673000 (delegate 107869757525041, revision 107869757986375)
+2026-09-12T16:47:12Z	compile: sending revision 114 at 107869758048833
+2026-09-12T16:47:12Z	durable: r112 for revision 114 at 107869799536583
+2026-09-12T16:47:12Z	controller release: preview preview-114 is the admitted compile (generation 114, durable r112) (in flight revision 114)
+2026-09-12T16:47:12Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:12Z	compile: applied revision 114 at 107869801631166
+2026-09-12T16:47:12Z	status: revision 114: recovered, 119 diagnostics in 24 ms (durable r112)
+2026-09-12T16:47:12Z	paint: revision 114 needed 2 extra turn(s); drew 0/3 pages
+2026-09-12T16:47:12Z	paint: revision 114 at 107869878569166 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:47:12Z	keystroke: revision 115 at 107869881902458 (delegate 107869882884458, revision 107869883337541)
+2026-09-12T16:47:12Z	compile: sending revision 115 at 107869883391791
+2026-09-12T16:47:12Z	durable: r113 for revision 115 at 107869924998125
+2026-09-12T16:47:12Z	controller release: preview preview-115 is the admitted compile (generation 115, durable r113) (in flight revision 115)
+2026-09-12T16:47:12Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:12Z	compile: applied revision 115 at 107869927093958
+2026-09-12T16:47:12Z	status: revision 115: recovered, 119 diagnostics in 23 ms (durable r113)
+2026-09-12T16:47:12Z	paint: revision 115 redrew 1/3 pages
+2026-09-12T16:47:12Z	paint: revision 115 at 107870021267208 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:13Z	keystroke: revision 116 at 107870025896291 (delegate 107870026776541, revision 107870027234791)
+2026-09-12T16:47:13Z	compile: sending revision 116 at 107870027282916
+2026-09-12T16:47:13Z	durable: r114 for revision 116 at 107870089869916
+2026-09-12T16:47:13Z	controller release: preview preview-116 is the admitted compile (generation 116, durable r114) (in flight revision 116)
+2026-09-12T16:47:13Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:13Z	compile: applied revision 116 at 107870091853166
+2026-09-12T16:47:13Z	status: revision 116: recovered, 119 diagnostics in 23 ms (durable r114)
+2026-09-12T16:47:13Z	paint: revision 116 needed 1 extra turn(s); drew 1/3 pages
+2026-09-12T16:47:13Z	paint: revision 116 at 107870195419458 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:13Z	keystroke: revision 117 at 107870195537791 (delegate 107870196496333, revision 107870196966416)
+2026-09-12T16:47:13Z	compile: sending revision 117 at 107870197002458
+2026-09-12T16:47:13Z	durable: r115 for revision 117 at 107870239490166
+2026-09-12T16:47:13Z	keystroke: revision 118 at 107870239662041 (delegate 107870240605916, revision 107870241098625)
+2026-09-12T16:47:13Z	controller release: preview preview-117 is the admitted compile (generation 117, durable r115) (in flight revision 117)
+2026-09-12T16:47:13Z	compile: sending revision 118 at 107870288011875
+2026-09-12T16:47:13Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:13Z	compile: applied revision 117 at 107870289894958
+2026-09-12T16:47:13Z	status: revision 117: recovered, 119 diagnostics in 63 ms (durable r115)
+2026-09-12T16:47:13Z	paint: revision 117 redrew 1/3 pages
+2026-09-12T16:47:13Z	paint: revision 117 at 107870378635958 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:13Z	durable: r116 for revision 118 at 107870378673708
+2026-09-12T16:47:13Z	completion metadata refused: helper error for pc-548: source versions changed; refresh snapshot before querying
+2026-09-12T16:47:13Z	controller error pc-549: source versions changed; refresh snapshot before querying
+2026-09-12T16:47:13Z	controller error pc-550: source versions changed; refresh snapshot before querying
+2026-09-12T16:47:13Z	controller release: preview preview-118 is the admitted compile (generation 118, durable r116) (in flight revision 118)
+2026-09-12T16:47:13Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:13Z	compile: applied revision 118 at 107870380539958
+2026-09-12T16:47:13Z	status: revision 118: recovered, 119 diagnostics in 44 ms (durable r116)
+2026-09-12T16:47:13Z	keystroke: revision 119 at 107870454857958 (delegate 107870455848000, revision 107870456308958)
+2026-09-12T16:47:13Z	compile: sending revision 119 at 107870456374791
+2026-09-12T16:47:13Z	paint: revision 118 needed 2 extra turn(s); drew 0/3 pages
+2026-09-12T16:47:13Z	paint: revision 118 at 107870457046416 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:47:13Z	durable: r117 for revision 119 at 107870496368125
+2026-09-12T16:47:13Z	controller release: preview preview-119 is the admitted compile (generation 119, durable r117) (in flight revision 119)
+2026-09-12T16:47:13Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:13Z	compile: applied revision 119 at 107870498146125
+2026-09-12T16:47:13Z	status: revision 119: recovered, 119 diagnostics in 22 ms (durable r117)
+2026-09-12T16:47:13Z	paint: revision 119 needed 2 extra turn(s); drew 0/3 pages
+2026-09-12T16:47:13Z	paint: revision 119 at 107870567950291 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:47:13Z	keystroke: revision 120 at 107870594525375 (delegate 107870595450791, revision 107870595907250)
+2026-09-12T16:47:13Z	compile: sending revision 120 at 107870595963291
+2026-09-12T16:47:13Z	durable: r118 for revision 120 at 107870634399250
+2026-09-12T16:47:13Z	controller release: preview preview-120 is the admitted compile (generation 120, durable r118) (in flight revision 120)
+2026-09-12T16:47:13Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:13Z	compile: applied revision 120 at 107870636265000
+2026-09-12T16:47:13Z	status: revision 120: recovered, 119 diagnostics in 26 ms (durable r118)
+2026-09-12T16:47:13Z	paint: revision 120 needed 2 extra turn(s); drew 0/3 pages
+2026-09-12T16:47:13Z	paint: revision 120 at 107870705140708 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:47:13Z	keystroke: revision 121 at 107870722792791 (delegate 107870723777291, revision 107870724243541)
+2026-09-12T16:47:13Z	compile: sending revision 121 at 107870724301125
+2026-09-12T16:47:13Z	durable: r119 for revision 121 at 107870779545458
+2026-09-12T16:47:13Z	controller release: preview preview-121 is the admitted compile (generation 121, durable r119) (in flight revision 121)
+2026-09-12T16:47:13Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:13Z	compile: applied revision 121 at 107870784104041
+2026-09-12T16:47:13Z	status: revision 121: recovered, 119 diagnostics in 23 ms (durable r119)
+2026-09-12T16:47:13Z	paint: revision 121 needed 2 extra turn(s); drew 0/3 pages
+2026-09-12T16:47:13Z	paint: revision 121 at 107870856331041 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:47:13Z	keystroke: revision 122 at 107870884481250 (delegate 107870885478750, revision 107870885942083)
+2026-09-12T16:47:13Z	compile: sending revision 122 at 107870885996541
+2026-09-12T16:47:13Z	durable: r120 for revision 122 at 107870947118833
+2026-09-12T16:47:13Z	controller release: preview preview-122 is the admitted compile (generation 122, durable r120) (in flight revision 122)
+2026-09-12T16:47:13Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:13Z	compile: applied revision 122 at 107870949009791
+2026-09-12T16:47:13Z	status: revision 122: recovered, 119 diagnostics in 26 ms (durable r120)
+2026-09-12T16:47:14Z	paint: revision 122 needed 2 extra turn(s); drew 0/3 pages
+2026-09-12T16:47:14Z	paint: revision 122 at 107871045261125 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:47:14Z	keystroke: revision 123 at 107871045383875 (delegate 107871046371875, revision 107871046832333)
+2026-09-12T16:47:14Z	compile: sending revision 123 at 107871046871541
+2026-09-12T16:47:14Z	durable: r121 for revision 123 at 107871087506666
+2026-09-12T16:47:14Z	controller release: preview preview-123 is the admitted compile (generation 123, durable r121) (in flight revision 123)
+2026-09-12T16:47:14Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:14Z	compile: applied revision 123 at 107871089376875
+2026-09-12T16:47:14Z	status: revision 123: recovered, 119 diagnostics in 27 ms (durable r121)
+2026-09-12T16:47:14Z	paint: revision 123 needed 2 extra turn(s); drew 0/3 pages
+2026-09-12T16:47:14Z	paint: revision 123 at 107871165349916 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:47:14Z	keystroke: revision 124 at 107871168721666 (delegate 107871169694000, revision 107871170142458)
+2026-09-12T16:47:14Z	compile: sending revision 124 at 107871170197666
+2026-09-12T16:47:14Z	durable: r122 for revision 124 at 107871212946500
+2026-09-12T16:47:14Z	controller release: preview preview-124 is the admitted compile (generation 124, durable r122) (in flight revision 124)
+2026-09-12T16:47:14Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:14Z	compile: applied revision 124 at 107871215076791
+2026-09-12T16:47:14Z	status: revision 124: recovered, 119 diagnostics in 26 ms (durable r122)
+2026-09-12T16:47:14Z	paint: revision 124 redrew 1/3 pages
+2026-09-12T16:47:14Z	paint: revision 124 at 107871311288125 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:14Z	keystroke: revision 125 at 107871316381208 (delegate 107871317465375, revision 107871318003166)
+2026-09-12T16:47:14Z	compile: sending revision 125 at 107871318060500
+2026-09-12T16:47:14Z	durable: r123 for revision 125 at 107871376872041
+2026-09-12T16:47:14Z	controller release: preview preview-125 is the admitted compile (generation 125, durable r123) (in flight revision 125)
+2026-09-12T16:47:14Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:14Z	compile: applied revision 125 at 107871378720583
+2026-09-12T16:47:14Z	status: revision 125: recovered, 119 diagnostics in 25 ms (durable r123)
+2026-09-12T16:47:14Z	paint: revision 125 needed 1 extra turn(s); drew 1/3 pages
+2026-09-12T16:47:14Z	paint: revision 125 at 107871505869750 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:14Z	keystroke: revision 126 at 107871505991375 (delegate 107871506959708, revision 107871507423958)
+2026-09-12T16:47:14Z	compile: sending revision 126 at 107871507465333
+2026-09-12T16:47:14Z	durable: r124 for revision 126 at 107871573485708
+2026-09-12T16:47:14Z	controller release: preview preview-126 is the admitted compile (generation 126, durable r124) (in flight revision 126)
+2026-09-12T16:47:14Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:14Z	compile: applied revision 126 at 107871575381208
+2026-09-12T16:47:14Z	status: revision 126: recovered, 119 diagnostics in 26 ms (durable r124)
+2026-09-12T16:47:14Z	paint: revision 126 needed 2 extra turn(s); drew 0/3 pages
+2026-09-12T16:47:14Z	paint: revision 126 at 107871676201000 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:47:14Z	keystroke: revision 127 at 107871676328875 (delegate 107871677394625, revision 107871677930708)
+2026-09-12T16:47:14Z	compile: sending revision 127 at 107871677973000
+2026-09-12T16:47:14Z	durable: r125 for revision 127 at 107871741618791
+2026-09-12T16:47:14Z	controller release: preview preview-127 is the admitted compile (generation 127, durable r125) (in flight revision 127)
+2026-09-12T16:47:14Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:14Z	compile: applied revision 127 at 107871743722416
+2026-09-12T16:47:14Z	status: revision 127: recovered, 119 diagnostics in 24 ms (durable r125)
+2026-09-12T16:47:14Z	paint: revision 127 needed 1 extra turn(s); drew 1/3 pages
+2026-09-12T16:47:14Z	paint: revision 127 at 107871842052833 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:14Z	keystroke: revision 128 at 107871842164625 (delegate 107871843094500, revision 107871843558541)
+2026-09-12T16:47:14Z	compile: sending revision 128 at 107871843601291
+2026-09-12T16:47:14Z	durable: r126 for revision 128 at 107871903841958
+2026-09-12T16:47:14Z	controller release: preview preview-128 is the admitted compile (generation 128, durable r126) (in flight revision 128)
+2026-09-12T16:47:14Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:14Z	compile: applied revision 128 at 107871905714500
+2026-09-12T16:47:14Z	status: revision 128: recovered, 119 diagnostics in 23 ms (durable r126)
+2026-09-12T16:47:14Z	paint: revision 128 needed 1 extra turn(s); drew 1/3 pages
+2026-09-12T16:47:14Z	paint: revision 128 at 107872009086625 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:14Z	keystroke: revision 129 at 107872009203375 (delegate 107872010214166, revision 107872010756125)
+2026-09-12T16:47:14Z	compile: sending revision 129 at 107872010799958
+2026-09-12T16:47:15Z	durable: r127 for revision 129 at 107872070425291
+2026-09-12T16:47:15Z	controller release: preview preview-129 is the admitted compile (generation 129, durable r127) (in flight revision 129)
+2026-09-12T16:47:15Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:15Z	compile: applied revision 129 at 107872072313041
+2026-09-12T16:47:15Z	status: revision 129: recovered, 119 diagnostics in 31 ms (durable r127)
+2026-09-12T16:47:15Z	paint: revision 129 needed 1 extra turn(s); drew 1/3 pages
+2026-09-12T16:47:15Z	paint: revision 129 at 107872171847875 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:15Z	keystroke: revision 130 at 107872171965875 (delegate 107872172985625, revision 107872173451875)
+2026-09-12T16:47:15Z	compile: sending revision 130 at 107872173493833
+2026-09-12T16:47:15Z	durable: r128 for revision 130 at 107872229463916
+2026-09-12T16:47:15Z	keystroke: revision 131 at 107872229910833 (delegate 107872230771583, revision 107872231228750)
+2026-09-12T16:47:15Z	controller release: preview preview-130 is the admitted compile (generation 130, durable r128) (in flight revision 130)
+2026-09-12T16:47:15Z	compile: sending revision 131 at 107872293150041
+2026-09-12T16:47:15Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:15Z	compile: applied revision 130 at 107872297373416
+2026-09-12T16:47:15Z	status: revision 130: recovered, 119 diagnostics in 41 ms (durable r128)
+2026-09-12T16:47:15Z	durable: r129 for revision 131 at 107872364378708
+2026-09-12T16:47:15Z	completion metadata refused: helper error for pc-612: source versions changed; refresh snapshot before querying
+2026-09-12T16:47:15Z	controller error pc-613: source versions changed; refresh snapshot before querying
+2026-09-12T16:47:15Z	controller error pc-614: source versions changed; refresh snapshot before querying
+2026-09-12T16:47:15Z	controller release: preview preview-131 is the admitted compile (generation 131, durable r129) (in flight revision 131)
+2026-09-12T16:47:15Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:15Z	compile: applied revision 131 at 107872366266333
+2026-09-12T16:47:15Z	status: revision 131: recovered, 119 diagnostics in 28 ms (durable r129)
+2026-09-12T16:47:15Z	paint: revision 131 redrew 1/3 pages
+2026-09-12T16:47:15Z	paint: revision 131 at 107872439231791 (covers 2 keystrokes, redrawn true)
+2026-09-12T16:47:15Z	keystroke: revision 132 at 107872476929833 (delegate 107872477909250, revision 107872478374458)
+2026-09-12T16:47:15Z	compile: sending revision 132 at 107872478431541
+2026-09-12T16:47:15Z	durable: r130 for revision 132 at 107872521923791
+2026-09-12T16:47:15Z	controller release: preview preview-132 is the admitted compile (generation 132, durable r130) (in flight revision 132)
+2026-09-12T16:47:15Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:15Z	compile: applied revision 132 at 107872524028958
+2026-09-12T16:47:15Z	status: revision 132: recovered, 119 diagnostics in 27 ms (durable r130)
+2026-09-12T16:47:15Z	paint: revision 132 redrew 1/3 pages
+2026-09-12T16:47:15Z	paint: revision 132 at 107872593463375 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:15Z	keystroke: revision 133 at 107872631810208 (delegate 107872632689375, revision 107872633150208)
+2026-09-12T16:47:15Z	compile: sending revision 133 at 107872633210083
+2026-09-12T16:47:15Z	durable: r131 for revision 133 at 107872675235375
+2026-09-12T16:47:15Z	controller release: preview preview-133 is the admitted compile (generation 133, durable r131) (in flight revision 133)
+2026-09-12T16:47:15Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:15Z	compile: applied revision 133 at 107872677108416
+2026-09-12T16:47:15Z	status: revision 133: recovered, 119 diagnostics in 30 ms (durable r131)
+2026-09-12T16:47:15Z	paint: revision 133 needed 2 extra turn(s); drew 0/3 pages
+2026-09-12T16:47:15Z	paint: revision 133 at 107872779168000 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:47:15Z	keystroke: revision 134 at 107872788387166 (delegate 107872789633375, revision 107872790146500)
+2026-09-12T16:47:15Z	compile: sending revision 134 at 107872790208000
+2026-09-12T16:47:15Z	durable: r132 for revision 134 at 107872831622583
+2026-09-12T16:47:15Z	controller release: preview preview-134 is the admitted compile (generation 134, durable r132) (in flight revision 134)
+2026-09-12T16:47:15Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:15Z	compile: applied revision 134 at 107872833537250
+2026-09-12T16:47:15Z	status: revision 134: recovered, 119 diagnostics in 27 ms (durable r132)
+2026-09-12T16:47:15Z	paint: revision 134 redrew 1/3 pages
+2026-09-12T16:47:15Z	paint: revision 134 at 107872893240666 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:15Z	keystroke: revision 135 at 107872922948541 (delegate 107872923849250, revision 107872924320458)
+2026-09-12T16:47:15Z	compile: sending revision 135 at 107872924383625
+2026-09-12T16:47:15Z	durable: r133 for revision 135 at 107872964340375
+2026-09-12T16:47:15Z	controller release: preview preview-135 is the admitted compile (generation 135, durable r133) (in flight revision 135)
+2026-09-12T16:47:15Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:15Z	compile: applied revision 135 at 107872966147375
+2026-09-12T16:47:15Z	status: revision 135: recovered, 119 diagnostics in 27 ms (durable r133)
+2026-09-12T16:47:16Z	paint: revision 135 needed 2 extra turn(s); drew 0/3 pages
+2026-09-12T16:47:16Z	paint: revision 135 at 107873034639541 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:47:16Z	keystroke: revision 136 at 107873038045916 (delegate 107873038989916, revision 107873039463875)
+2026-09-12T16:47:16Z	compile: sending revision 136 at 107873039517541
+2026-09-12T16:47:16Z	durable: r134 for revision 136 at 107873081461583
+2026-09-12T16:47:16Z	controller release: preview preview-136 is the admitted compile (generation 136, durable r134) (in flight revision 136)
+2026-09-12T16:47:16Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:16Z	compile: applied revision 136 at 107873083293125
+2026-09-12T16:47:16Z	status: revision 136: recovered, 119 diagnostics in 25 ms (durable r134)
+2026-09-12T16:47:16Z	paint: revision 136 redrew 1/3 pages
+2026-09-12T16:47:16Z	paint: revision 136 at 107873171108166 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:16Z	keystroke: revision 137 at 107873175710416 (delegate 107873176639375, revision 107873177093583)
+2026-09-12T16:47:16Z	compile: sending revision 137 at 107873177145916
+2026-09-12T16:47:16Z	durable: r135 for revision 137 at 107873240633083
+2026-09-12T16:47:16Z	controller release: preview preview-137 is the admitted compile (generation 137, durable r135) (in flight revision 137)
+2026-09-12T16:47:16Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:16Z	compile: applied revision 137 at 107873242783583
+2026-09-12T16:47:16Z	status: revision 137: recovered, 119 diagnostics in 26 ms (durable r135)
+2026-09-12T16:47:16Z	paint: revision 137 needed 1 extra turn(s); drew 1/3 pages
+2026-09-12T16:47:16Z	paint: revision 137 at 107873350318208 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:16Z	keystroke: revision 138 at 107873350442000 (delegate 107873351399500, revision 107873351885750)
+2026-09-12T16:47:16Z	compile: sending revision 138 at 107873351927041
+2026-09-12T16:47:16Z	durable: r136 for revision 138 at 107873407432791
+2026-09-12T16:47:16Z	controller release: preview preview-138 is the admitted compile (generation 138, durable r136) (in flight revision 138)
+2026-09-12T16:47:16Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:16Z	compile: applied revision 138 at 107873409308875
+2026-09-12T16:47:16Z	status: revision 138: recovered, 119 diagnostics in 25 ms (durable r136)
+2026-09-12T16:47:16Z	paint: revision 138 needed 1 extra turn(s); drew 1/3 pages
+2026-09-12T16:47:16Z	paint: revision 138 at 107873507212125 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:16Z	keystroke: revision 139 at 107873507325333 (delegate 107873508259208, revision 107873508721500)
+2026-09-12T16:47:16Z	compile: sending revision 139 at 107873508751666
+2026-09-12T16:47:16Z	durable: r137 for revision 139 at 107873564549500
+2026-09-12T16:47:16Z	controller release: preview preview-139 is the admitted compile (generation 139, durable r137) (in flight revision 139)
+2026-09-12T16:47:16Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:16Z	compile: applied revision 139 at 107873566441375
+2026-09-12T16:47:16Z	status: revision 139: recovered, 119 diagnostics in 31 ms (durable r137)
+2026-09-12T16:47:16Z	paint: revision 139 needed 2 extra turn(s); drew 0/3 pages
+2026-09-12T16:47:16Z	paint: revision 139 at 107873670846791 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:47:16Z	keystroke: revision 140 at 107873670969625 (delegate 107873672097083, revision 107873672632458)
+2026-09-12T16:47:16Z	compile: sending revision 140 at 107873672678125
+2026-09-12T16:47:16Z	durable: r138 for revision 140 at 107873735627041
+2026-09-12T16:47:16Z	controller release: preview preview-140 is the admitted compile (generation 140, durable r138) (in flight revision 140)
+2026-09-12T16:47:16Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:16Z	compile: applied revision 140 at 107873737516083
+2026-09-12T16:47:16Z	status: revision 140: recovered, 119 diagnostics in 27 ms (durable r138)
+2026-09-12T16:47:16Z	paint: revision 140 needed 1 extra turn(s); drew 1/3 pages
+2026-09-12T16:47:16Z	paint: revision 140 at 107873842188750 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:16Z	keystroke: revision 141 at 107873842305125 (delegate 107873843279958, revision 107873843745333)
+2026-09-12T16:47:16Z	compile: sending revision 141 at 107873843787833
+2026-09-12T16:47:16Z	durable: r139 for revision 141 at 107873905722375
+2026-09-12T16:47:16Z	controller release: preview preview-141 is the admitted compile (generation 141, durable r139) (in flight revision 141)
+2026-09-12T16:47:16Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:16Z	compile: applied revision 141 at 107873907614708
+2026-09-12T16:47:16Z	status: revision 141: recovered, 119 diagnostics in 25 ms (durable r139)
+2026-09-12T16:47:16Z	paint: revision 141 needed 1 extra turn(s); drew 1/3 pages
+2026-09-12T16:47:16Z	paint: revision 141 at 107874004312000 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:16Z	keystroke: revision 142 at 107874004447708 (delegate 107874005609208, revision 107874006151791)
+2026-09-12T16:47:16Z	compile: sending revision 142 at 107874006204125
+2026-09-12T16:47:17Z	durable: r140 for revision 142 at 107874065555375
+2026-09-12T16:47:17Z	controller release: preview preview-142 is the admitted compile (generation 142, durable r140) (in flight revision 142)
+2026-09-12T16:47:17Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:17Z	compile: applied revision 142 at 107874067435625
+2026-09-12T16:47:17Z	status: revision 142: recovered, 119 diagnostics in 27 ms (durable r140)
+2026-09-12T16:47:17Z	paint: revision 142 needed 1 extra turn(s); drew 1/3 pages
+2026-09-12T16:47:17Z	paint: revision 142 at 107874167601833 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:17Z	keystroke: revision 143 at 107874167718166 (delegate 107874168816041, revision 107874169308833)
+2026-09-12T16:47:17Z	compile: sending revision 143 at 107874169363958
+2026-09-12T16:47:17Z	durable: r141 for revision 143 at 107874228402333
+2026-09-12T16:47:17Z	controller release: preview preview-143 is the admitted compile (generation 143, durable r141) (in flight revision 143)
+2026-09-12T16:47:17Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:17Z	compile: applied revision 143 at 107874230578708
+2026-09-12T16:47:17Z	status: revision 143: recovered, 119 diagnostics in 33 ms (durable r141)
+2026-09-12T16:47:17Z	paint: revision 143 needed 1 extra turn(s); drew 1/3 pages
+2026-09-12T16:47:17Z	paint: revision 143 at 107874335437958 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:17Z	keystroke: revision 144 at 107874335553125 (delegate 107874336617875, revision 107874337087166)
+2026-09-12T16:47:17Z	compile: sending revision 144 at 107874337124916
+2026-09-12T16:47:17Z	durable: r142 for revision 144 at 107874396937666
+2026-09-12T16:47:17Z	controller release: preview preview-144 is the admitted compile (generation 144, durable r142) (in flight revision 144)
+2026-09-12T16:47:17Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:17Z	compile: applied revision 144 at 107874398822375
+2026-09-12T16:47:17Z	status: revision 144: recovered, 119 diagnostics in 28 ms (durable r142)
+2026-09-12T16:47:17Z	paint: revision 144 needed 2 extra turn(s); drew 0/3 pages
+2026-09-12T16:47:17Z	paint: revision 144 at 107874471679541 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:47:17Z	keystroke: revision 145 at 107874475158416 (delegate 107874476111458, revision 107874476559041)
+2026-09-12T16:47:17Z	compile: sending revision 145 at 107874476607791
+2026-09-12T16:47:17Z	durable: r143 for revision 145 at 107874516434791
+2026-09-12T16:47:17Z	controller release: preview preview-145 is the admitted compile (generation 145, durable r143) (in flight revision 145)
+2026-09-12T16:47:17Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:17Z	compile: applied revision 145 at 107874518300625
+2026-09-12T16:47:17Z	status: revision 145: recovered, 119 diagnostics in 25 ms (durable r143)
+2026-09-12T16:47:17Z	paint: revision 145 needed 2 extra turn(s); drew 0/3 pages
+2026-09-12T16:47:17Z	paint: revision 145 at 107874591055041 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:47:17Z	keystroke: revision 146 at 107874616880583 (delegate 107874617826875, revision 107874618289416)
+2026-09-12T16:47:17Z	compile: sending revision 146 at 107874618345458
+2026-09-12T16:47:17Z	durable: r144 for revision 146 at 107874676752583
+2026-09-12T16:47:17Z	controller release: preview preview-146 is the admitted compile (generation 146, durable r144) (in flight revision 146)
+2026-09-12T16:47:17Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:17Z	compile: applied revision 146 at 107874678640291
+2026-09-12T16:47:17Z	status: revision 146: recovered, 119 diagnostics in 26 ms (durable r144)
+2026-09-12T16:47:17Z	paint: revision 146 needed 1 extra turn(s); drew 1/3 pages
+2026-09-12T16:47:17Z	paint: revision 146 at 107874783346375 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:17Z	keystroke: revision 147 at 107874783469541 (delegate 107874784464625, revision 107874784927750)
+2026-09-12T16:47:17Z	compile: sending revision 147 at 107874784969833
+2026-09-12T16:47:17Z	durable: r145 for revision 147 at 107874840657125
+2026-09-12T16:47:17Z	controller release: preview preview-147 is the admitted compile (generation 147, durable r145) (in flight revision 147)
+2026-09-12T16:47:17Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:17Z	compile: applied revision 147 at 107874842538041
+2026-09-12T16:47:17Z	status: revision 147: recovered, 119 diagnostics in 27 ms (durable r145)
+2026-09-12T16:47:17Z	paint: revision 147 needed 1 extra turn(s); drew 1/3 pages
+2026-09-12T16:47:17Z	paint: revision 147 at 107874948160125 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:17Z	keystroke: revision 148 at 107874948303833 (delegate 107874949265833, revision 107874949736458)
+2026-09-12T16:47:17Z	compile: sending revision 148 at 107874949767333
+2026-09-12T16:47:17Z	durable: r146 for revision 148 at 107875009460750
+2026-09-12T16:47:17Z	controller release: preview preview-148 is the admitted compile (generation 148, durable r146) (in flight revision 148)
+2026-09-12T16:47:17Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:17Z	compile: applied revision 148 at 107875011367375
+2026-09-12T16:47:17Z	status: revision 148: recovered, 119 diagnostics in 21 ms (durable r146)
+2026-09-12T16:47:18Z	paint: revision 148 needed 1 extra turn(s); drew 1/3 pages
+2026-09-12T16:47:18Z	paint: revision 148 at 107875108987833 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:18Z	keystroke: revision 149 at 107875109111125 (delegate 107875110191500, revision 107875110730625)
+2026-09-12T16:47:18Z	compile: sending revision 149 at 107875110776458
+2026-09-12T16:47:18Z	durable: r147 for revision 149 at 107875179332416
+2026-09-12T16:47:18Z	controller release: preview preview-149 is the admitted compile (generation 149, durable r147) (in flight revision 149)
+2026-09-12T16:47:18Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:18Z	compile: applied revision 149 at 107875181503916
+2026-09-12T16:47:18Z	status: revision 149: recovered, 119 diagnostics in 24 ms (durable r147)
+2026-09-12T16:47:18Z	paint: revision 149 needed 1 extra turn(s); drew 1/3 pages
+2026-09-12T16:47:18Z	paint: revision 149 at 107875286851791 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:18Z	keystroke: revision 150 at 107875286981000 (delegate 107875288060958, revision 107875288601875)
+2026-09-12T16:47:18Z	compile: sending revision 150 at 107875288646000
+2026-09-12T16:47:18Z	durable: r148 for revision 150 at 107875328536416
+2026-09-12T16:47:18Z	controller release: preview preview-150 is the admitted compile (generation 150, durable r148) (in flight revision 150)
+2026-09-12T16:47:18Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:18Z	compile: applied revision 150 at 107875330370041
+2026-09-12T16:47:18Z	status: revision 150: recovered, 119 diagnostics in 26 ms (durable r148)
+2026-09-12T16:47:18Z	paint: revision 150 needed 2 extra turn(s); drew 0/3 pages
+2026-09-12T16:47:18Z	paint: revision 150 at 107875410074375 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:47:18Z	keystroke: revision 151 at 107875413751750 (delegate 107875414783375, revision 107875415237750)
+2026-09-12T16:47:18Z	compile: sending revision 151 at 107875415289583
+2026-09-12T16:47:18Z	durable: r149 for revision 151 at 107875454688458
+2026-09-12T16:47:18Z	controller release: preview preview-151 is the admitted compile (generation 151, durable r149) (in flight revision 151)
+2026-09-12T16:47:18Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:18Z	compile: applied revision 151 at 107875456534583
+2026-09-12T16:47:18Z	status: revision 151: recovered, 119 diagnostics in 26 ms (durable r149)
+2026-09-12T16:47:18Z	paint: revision 151 redrew 1/3 pages
+2026-09-12T16:47:18Z	paint: revision 151 at 107875550357541 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:18Z	keystroke: revision 152 at 107875554902333 (delegate 107875555823250, revision 107875556277250)
+2026-09-12T16:47:18Z	compile: sending revision 152 at 107875556328333
+2026-09-12T16:47:18Z	durable: r150 for revision 152 at 107875616003458
+2026-09-12T16:47:18Z	controller release: preview preview-152 is the admitted compile (generation 152, durable r150) (in flight revision 152)
+2026-09-12T16:47:18Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:18Z	compile: applied revision 152 at 107875620381708
+2026-09-12T16:47:18Z	status: revision 152: recovered, 119 diagnostics in 24 ms (durable r150)
+2026-09-12T16:47:18Z	paint: revision 152 needed 1 extra turn(s); drew 1/3 pages
+2026-09-12T16:47:18Z	paint: revision 152 at 107875728853041 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:18Z	keystroke: revision 153 at 107875728981208 (delegate 107875730231541, revision 107875730777708)
+2026-09-12T16:47:18Z	compile: sending revision 153 at 107875730851833
+2026-09-12T16:47:18Z	durable: r151 for revision 153 at 107875776105041
+2026-09-12T16:47:18Z	controller release: preview preview-153 is the admitted compile (generation 153, durable r151) (in flight revision 153)
+2026-09-12T16:47:18Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:18Z	compile: applied revision 153 at 107875777942750
+2026-09-12T16:47:18Z	status: revision 153: recovered, 119 diagnostics in 24 ms (durable r151)
+2026-09-12T16:47:18Z	paint: revision 153 needed 2 extra turn(s); drew 0/3 pages
+2026-09-12T16:47:18Z	paint: revision 153 at 107875857860791 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:47:18Z	keystroke: revision 154 at 107875861190375 (delegate 107875862188291, revision 107875862640041)
+2026-09-12T16:47:18Z	compile: sending revision 154 at 107875862687291
+2026-09-12T16:47:18Z	durable: r152 for revision 154 at 107875900959625
+2026-09-12T16:47:18Z	controller release: preview preview-154 is the admitted compile (generation 154, durable r152) (in flight revision 154)
+2026-09-12T16:47:18Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:18Z	compile: applied revision 154 at 107875902781916
+2026-09-12T16:47:18Z	status: revision 154: recovered, 119 diagnostics in 26 ms (durable r152)
+2026-09-12T16:47:18Z	paint: revision 154 redrew 1/3 pages
+2026-09-12T16:47:18Z	paint: revision 154 at 107876000006500 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:18Z	keystroke: revision 155 at 107876004618375 (delegate 107876005531583, revision 107876006011708)
+2026-09-12T16:47:18Z	compile: sending revision 155 at 107876006068541
+2026-09-12T16:47:19Z	durable: r153 for revision 155 at 107876045523625
+2026-09-12T16:47:19Z	controller release: preview preview-155 is the admitted compile (generation 155, durable r153) (in flight revision 155)
+2026-09-12T16:47:19Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:19Z	compile: applied revision 155 at 107876064767166
+2026-09-12T16:47:19Z	status: revision 155: recovered, 119 diagnostics in 28 ms (durable r153)
+2026-09-12T16:47:19Z	paint: revision 155 needed 2 extra turn(s); drew 0/3 pages
+2026-09-12T16:47:19Z	paint: revision 155 at 107876138181291 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:47:19Z	keystroke: revision 156 at 107876141716458 (delegate 107876142747625, revision 107876143210000)
+2026-09-12T16:47:19Z	compile: sending revision 156 at 107876143266250
+2026-09-12T16:47:19Z	durable: r154 for revision 156 at 107876181207125
+2026-09-12T16:47:19Z	controller release: preview preview-156 is the admitted compile (generation 156, durable r154) (in flight revision 156)
+2026-09-12T16:47:19Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:19Z	compile: applied revision 156 at 107876206755166
+2026-09-12T16:47:19Z	status: revision 156: recovered, 119 diagnostics in 34 ms (durable r154)
+2026-09-12T16:47:19Z	paint: revision 156 needed 2 extra turn(s); drew 0/3 pages
+2026-09-12T16:47:19Z	paint: revision 156 at 107876288409000 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:47:19Z	keystroke: revision 157 at 107876292104833 (delegate 107876293193458, revision 107876293709750)
+2026-09-12T16:47:19Z	compile: sending revision 157 at 107876293765375
+2026-09-12T16:47:19Z	durable: r155 for revision 157 at 107876332552041
+2026-09-12T16:47:19Z	controller release: preview preview-157 is the admitted compile (generation 157, durable r155) (in flight revision 157)
+2026-09-12T16:47:19Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:19Z	compile: applied revision 157 at 107876352965500
+2026-09-12T16:47:19Z	status: revision 157: recovered, 119 diagnostics in 35 ms (durable r155)
+2026-09-12T16:47:19Z	paint: revision 157 needed 1 extra turn(s); drew 1/3 pages
+2026-09-12T16:47:19Z	paint: revision 157 at 107876452081541 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:19Z	keystroke: revision 158 at 107876452174875 (delegate 107876453238625, revision 107876453714541)
+2026-09-12T16:47:19Z	compile: sending revision 158 at 107876453765416
+2026-09-12T16:47:19Z	durable: r156 for revision 158 at 107876512592791
+2026-09-12T16:47:19Z	controller release: preview preview-158 is the admitted compile (generation 158, durable r156) (in flight revision 158)
+2026-09-12T16:47:19Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:19Z	compile: applied revision 158 at 107876514438458
+2026-09-12T16:47:19Z	status: revision 158: recovered, 119 diagnostics in 28 ms (durable r156)
+2026-09-12T16:47:19Z	paint: revision 158 needed 2 extra turn(s); drew 0/3 pages
+2026-09-12T16:47:19Z	paint: revision 158 at 107876590065458 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:47:19Z	keystroke: revision 159 at 107876593456000 (delegate 107876594434250, revision 107876594916708)
+2026-09-12T16:47:19Z	compile: sending revision 159 at 107876594973083
+2026-09-12T16:47:19Z	durable: r157 for revision 159 at 107876639303541
+2026-09-12T16:47:19Z	controller release: preview preview-159 is the admitted compile (generation 159, durable r157) (in flight revision 159)
+2026-09-12T16:47:19Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:19Z	compile: applied revision 159 at 107876641159583
+2026-09-12T16:47:19Z	status: revision 159: recovered, 119 diagnostics in 26 ms (durable r157)
+2026-09-12T16:47:19Z	paint: revision 159 needed 2 extra turn(s); drew 0/3 pages
+2026-09-12T16:47:19Z	paint: revision 159 at 107876717706666 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:47:19Z	keystroke: revision 160 at 107876744242500 (delegate 107876748756958, revision 107876749223708)
+2026-09-12T16:47:19Z	compile: sending revision 160 at 107876749284625
+2026-09-12T16:47:19Z	durable: r158 for revision 160 at 107876806347333
+2026-09-12T16:47:19Z	controller release: preview preview-160 is the admitted compile (generation 160, durable r158) (in flight revision 160)
+2026-09-12T16:47:19Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:19Z	compile: applied revision 160 at 107876808222541
+2026-09-12T16:47:19Z	status: revision 160: recovered, 119 diagnostics in 23 ms (durable r158)
+2026-09-12T16:47:19Z	paint: revision 160 needed 2 extra turn(s); drew 0/3 pages
+2026-09-12T16:47:19Z	paint: revision 160 at 107876906005791 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:47:19Z	keystroke: revision 161 at 107876906104708 (delegate 107876907239166, revision 107876907700583)
+2026-09-12T16:47:19Z	compile: sending revision 161 at 107876907747708
+2026-09-12T16:47:19Z	durable: r159 for revision 161 at 107876967838708
+2026-09-12T16:47:19Z	controller release: preview preview-161 is the admitted compile (generation 161, durable r159) (in flight revision 161)
+2026-09-12T16:47:19Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:19Z	compile: applied revision 161 at 107876970385125
+2026-09-12T16:47:19Z	status: revision 161: recovered, 119 diagnostics in 36 ms (durable r159)
+2026-09-12T16:47:20Z	paint: revision 161 needed 1 extra turn(s); drew 1/3 pages
+2026-09-12T16:47:20Z	paint: revision 161 at 107877067929041 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:20Z	keystroke: revision 162 at 107877068275916 (delegate 107877069257541, revision 107877069730541)
+2026-09-12T16:47:20Z	compile: sending revision 162 at 107877069768458
+2026-09-12T16:47:20Z	durable: r160 for revision 162 at 107877128014208
+2026-09-12T16:47:20Z	controller release: preview preview-162 is the admitted compile (generation 162, durable r160) (in flight revision 162)
+2026-09-12T16:47:20Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:20Z	compile: applied revision 162 at 107877130875250
+2026-09-12T16:47:20Z	status: revision 162: recovered, 119 diagnostics in 30 ms (durable r160)
+2026-09-12T16:47:20Z	paint: revision 162 needed 2 extra turn(s); drew 0/3 pages
+2026-09-12T16:47:20Z	paint: revision 162 at 107877206136250 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:47:20Z	keystroke: revision 163 at 107877209681625 (delegate 107877210709708, revision 107877211165750)
+2026-09-12T16:47:20Z	compile: sending revision 163 at 107877211216000
+2026-09-12T16:47:20Z	durable: r161 for revision 163 at 107877249970833
+2026-09-12T16:47:20Z	controller release: preview preview-163 is the admitted compile (generation 163, durable r161) (in flight revision 163)
+2026-09-12T16:47:20Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:20Z	compile: applied revision 163 at 107877251809708
+2026-09-12T16:47:20Z	status: revision 163: recovered, 119 diagnostics in 26 ms (durable r161)
+2026-09-12T16:47:20Z	paint: revision 163 needed 2 extra turn(s); drew 1/3 pages
+2026-09-12T16:47:20Z	paint: revision 163 at 107877356554583 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:20Z	keystroke: revision 164 at 107877356719708 (delegate 107877357669666, revision 107877358137833)
+2026-09-12T16:47:20Z	compile: sending revision 164 at 107877358175833
+2026-09-12T16:47:20Z	durable: r162 for revision 164 at 107877413219291
+2026-09-12T16:47:20Z	controller release: preview preview-164 is the admitted compile (generation 164, durable r162) (in flight revision 164)
+2026-09-12T16:47:20Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:20Z	compile: applied revision 164 at 107877415095041
+2026-09-12T16:47:20Z	status: revision 164: recovered, 119 diagnostics in 27 ms (durable r162)
+2026-09-12T16:47:20Z	paint: revision 164 needed 1 extra turn(s); drew 1/3 pages
+2026-09-12T16:47:20Z	paint: revision 164 at 107877516660333 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:20Z	keystroke: revision 165 at 107877517034041 (delegate 107877517986041, revision 107877518464375)
+2026-09-12T16:47:20Z	compile: sending revision 165 at 107877518516125
+2026-09-12T16:47:20Z	durable: r163 for revision 165 at 107877577809791
+2026-09-12T16:47:20Z	controller release: preview preview-165 is the admitted compile (generation 165, durable r163) (in flight revision 165)
+2026-09-12T16:47:20Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:20Z	compile: applied revision 165 at 107877579698958
+2026-09-12T16:47:20Z	status: revision 165: recovered, 119 diagnostics in 25 ms (durable r163)
+2026-09-12T16:47:20Z	paint: revision 165 needed 1 extra turn(s); drew 1/3 pages
+2026-09-12T16:47:20Z	paint: revision 165 at 107877684126041 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:20Z	keystroke: revision 166 at 107877684488125 (delegate 107877685596666, revision 107877686093833)
+2026-09-12T16:47:20Z	compile: sending revision 166 at 107877686152375
+2026-09-12T16:47:20Z	durable: r164 for revision 166 at 107877757676708
+2026-09-12T16:47:20Z	controller release: preview preview-166 is the admitted compile (generation 166, durable r164) (in flight revision 166)
+2026-09-12T16:47:20Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:20Z	compile: applied revision 166 at 107877759558166
+2026-09-12T16:47:20Z	status: revision 166: recovered, 119 diagnostics in 28 ms (durable r164)
+2026-09-12T16:47:20Z	paint: revision 166 needed 2 extra turn(s); drew 0/3 pages
+2026-09-12T16:47:20Z	paint: revision 166 at 107877839761166 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:47:20Z	keystroke: revision 167 at 107877843751833 (delegate 107877844842541, revision 107877845298875)
+2026-09-12T16:47:20Z	compile: sending revision 167 at 107877845349625
+2026-09-12T16:47:20Z	durable: r165 for revision 167 at 107877889313791
+2026-09-12T16:47:20Z	controller release: preview preview-167 is the admitted compile (generation 167, durable r165) (in flight revision 167)
+2026-09-12T16:47:20Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:20Z	compile: applied revision 167 at 107877891162250
+2026-09-12T16:47:20Z	status: revision 167: recovered, 119 diagnostics in 27 ms (durable r165)
+2026-09-12T16:47:20Z	paint: revision 167 needed 2 extra turn(s); drew 1/3 pages
+2026-09-12T16:47:20Z	paint: revision 167 at 107877993655208 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:20Z	keystroke: revision 168 at 107877993839375 (delegate 107877994777125, revision 107877995968958)
+2026-09-12T16:47:20Z	compile: sending revision 168 at 107877996034916
+2026-09-12T16:47:21Z	durable: r166 for revision 168 at 107878035890666
+2026-09-12T16:47:21Z	controller release: preview preview-168 is the admitted compile (generation 168, durable r166) (in flight revision 168)
+2026-09-12T16:47:21Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:21Z	compile: applied revision 168 at 107878038038958
+2026-09-12T16:47:21Z	status: revision 168: recovered, 119 diagnostics in 27 ms (durable r166)
+2026-09-12T16:47:21Z	paint: revision 168 needed 2 extra turn(s); drew 1/3 pages
+2026-09-12T16:47:21Z	paint: revision 168 at 107878129343291 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:21Z	keystroke: revision 169 at 107878129533000 (delegate 107878130507041, revision 107878130973750)
+2026-09-12T16:47:21Z	compile: sending revision 169 at 107878131015458
+2026-09-12T16:47:21Z	durable: r167 for revision 169 at 107878172068625
+2026-09-12T16:47:21Z	controller release: preview preview-169 is the admitted compile (generation 169, durable r167) (in flight revision 169)
+2026-09-12T16:47:21Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:21Z	compile: applied revision 169 at 107878173935041
+2026-09-12T16:47:21Z	status: revision 169: recovered, 119 diagnostics in 25 ms (durable r167)
+2026-09-12T16:47:21Z	paint: revision 169 needed 2 extra turn(s); drew 0/3 pages
+2026-09-12T16:47:21Z	paint: revision 169 at 107878252655958 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:47:21Z	keystroke: revision 170 at 107878269969750 (delegate 107878270953208, revision 107878271425208)
+2026-09-12T16:47:21Z	compile: sending revision 170 at 107878271481333
+2026-09-12T16:47:21Z	durable: r168 for revision 170 at 107878309958833
+2026-09-12T16:47:21Z	controller release: preview preview-170 is the admitted compile (generation 170, durable r168) (in flight revision 170)
+2026-09-12T16:47:21Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:21Z	compile: applied revision 170 at 107878311783875
+2026-09-12T16:47:21Z	status: revision 170: recovered, 119 diagnostics in 29 ms (durable r168)
+2026-09-12T16:47:21Z	paint: revision 170 redrew 1/3 pages
+2026-09-12T16:47:21Z	paint: revision 170 at 107878383041791 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:21Z	keystroke: revision 171 at 107878419703541 (delegate 107878420720416, revision 107878421186541)
+2026-09-12T16:47:21Z	compile: sending revision 171 at 107878421249375
+2026-09-12T16:47:21Z	durable: r169 for revision 171 at 107878462123625
+2026-09-12T16:47:21Z	controller release: preview preview-171 is the admitted compile (generation 171, durable r169) (in flight revision 171)
+2026-09-12T16:47:21Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:21Z	compile: applied revision 171 at 107878463967125
+2026-09-12T16:47:21Z	status: revision 171: recovered, 119 diagnostics in 26 ms (durable r169)
+2026-09-12T16:47:21Z	paint: revision 171 needed 2 extra turn(s); drew 0/3 pages
+2026-09-12T16:47:21Z	paint: revision 171 at 107878540638000 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:47:21Z	keystroke: revision 172 at 107878540855458 (delegate 107878541840500, revision 107878542289083)
+2026-09-12T16:47:21Z	compile: sending revision 172 at 107878542325958
+2026-09-12T16:47:21Z	durable: r170 for revision 172 at 107878582335500
+2026-09-12T16:47:21Z	controller release: preview preview-172 is the admitted compile (generation 172, durable r170) (in flight revision 172)
+2026-09-12T16:47:21Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:21Z	compile: applied revision 172 at 107878584529000
+2026-09-12T16:47:21Z	status: revision 172: recovered, 119 diagnostics in 30 ms (durable r170)
+2026-09-12T16:47:21Z	paint: revision 172 redrew 1/3 pages
+2026-09-12T16:47:21Z	paint: revision 172 at 107878677681583 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:21Z	keystroke: revision 173 at 107878687243166 (delegate 107878688338958, revision 107878688869208)
+2026-09-12T16:47:21Z	compile: sending revision 173 at 107878688932083
+2026-09-12T16:47:21Z	durable: r171 for revision 173 at 107878730944375
+2026-09-12T16:47:21Z	controller release: preview preview-173 is the admitted compile (generation 173, durable r171) (in flight revision 173)
+2026-09-12T16:47:21Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:21Z	compile: applied revision 173 at 107878732816916
+2026-09-12T16:47:21Z	status: revision 173: recovered, 119 diagnostics in 26 ms (durable r171)
+2026-09-12T16:47:21Z	paint: revision 173 redrew 1/3 pages
+2026-09-12T16:47:21Z	paint: revision 173 at 107878832466958 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:21Z	keystroke: revision 174 at 107878837222625 (delegate 107878838164833, revision 107878838629125)
+2026-09-12T16:47:21Z	compile: sending revision 174 at 107878838674958
+2026-09-12T16:47:21Z	durable: r172 for revision 174 at 107878879834125
+2026-09-12T16:47:21Z	controller release: preview preview-174 is the admitted compile (generation 174, durable r172) (in flight revision 174)
+2026-09-12T16:47:21Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:21Z	compile: applied revision 174 at 107878881998583
+2026-09-12T16:47:21Z	status: revision 174: recovered, 119 diagnostics in 28 ms (durable r172)
+2026-09-12T16:47:21Z	paint: revision 174 redrew 1/3 pages
+2026-09-12T16:47:21Z	paint: revision 174 at 107878977907333 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:21Z	keystroke: revision 175 at 107878982938625 (delegate 107878983869125, revision 107878984325333)
+2026-09-12T16:47:21Z	compile: sending revision 175 at 107878984380958
+2026-09-12T16:47:22Z	durable: r173 for revision 175 at 107879043387166
+2026-09-12T16:47:22Z	controller release: preview preview-175 is the admitted compile (generation 175, durable r173) (in flight revision 175)
+2026-09-12T16:47:22Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:22Z	compile: applied revision 175 at 107879045242583
+2026-09-12T16:47:22Z	status: revision 175: recovered, 119 diagnostics in 26 ms (durable r173)
+2026-09-12T16:47:22Z	paint: revision 175 needed 1 extra turn(s); drew 1/3 pages
+2026-09-12T16:47:22Z	paint: revision 175 at 107879155941333 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:22Z	keystroke: revision 176 at 107879156344916 (delegate 107879157321125, revision 107879157790833)
+2026-09-12T16:47:22Z	compile: sending revision 176 at 107879157832666
+2026-09-12T16:47:22Z	durable: r174 for revision 176 at 107879226010291
+2026-09-12T16:47:22Z	controller release: preview preview-176 is the admitted compile (generation 176, durable r174) (in flight revision 176)
+2026-09-12T16:47:22Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:22Z	compile: applied revision 176 at 107879227871083
+2026-09-12T16:47:22Z	status: revision 176: recovered, 119 diagnostics in 28 ms (durable r174)
+2026-09-12T16:47:22Z	paint: revision 176 needed 1 extra turn(s); drew 1/3 pages
+2026-09-12T16:47:22Z	paint: revision 176 at 107879336388291 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:22Z	keystroke: revision 177 at 107879336780916 (delegate 107879337876291, revision 107879338406250)
+2026-09-12T16:47:22Z	compile: sending revision 177 at 107879338450458
+2026-09-12T16:47:22Z	durable: r175 for revision 177 at 107879379214250
+2026-09-12T16:47:22Z	controller release: preview preview-177 is the admitted compile (generation 177, durable r175) (in flight revision 177)
+2026-09-12T16:47:22Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:22Z	compile: applied revision 177 at 107879381077375
+2026-09-12T16:47:22Z	status: revision 177: recovered, 119 diagnostics in 30 ms (durable r175)
+2026-09-12T16:47:22Z	paint: revision 177 needed 2 extra turn(s); drew 0/3 pages
+2026-09-12T16:47:22Z	paint: revision 177 at 107879472127166 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:47:22Z	keystroke: revision 178 at 107879472233291 (delegate 107879473367583, revision 107879473888708)
+2026-09-12T16:47:22Z	compile: sending revision 178 at 107879473932625
+2026-09-12T16:47:22Z	durable: r176 for revision 178 at 107879520417083
+2026-09-12T16:47:22Z	controller release: preview preview-178 is the admitted compile (generation 178, durable r176) (in flight revision 178)
+2026-09-12T16:47:22Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:22Z	compile: applied revision 178 at 107879556068000
+2026-09-12T16:47:22Z	status: revision 178: recovered, 119 diagnostics in 39 ms (durable r176)
+2026-09-12T16:47:22Z	paint: revision 178 needed 2 extra turn(s); drew 0/3 pages
+2026-09-12T16:47:22Z	paint: revision 178 at 107879652883125 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:47:22Z	keystroke: revision 179 at 107879653278625 (delegate 107879654181375, revision 107879654684208)
+2026-09-12T16:47:22Z	compile: sending revision 179 at 107879654729833
+2026-09-12T16:47:22Z	durable: r177 for revision 179 at 107879698189625
+2026-09-12T16:47:22Z	keystroke: revision 180 at 107879721576041 (delegate 107879722538500, revision 107879723032666)
+2026-09-12T16:47:22Z	controller release: preview preview-179 is the admitted compile (generation 179, durable r177) (in flight revision 179)
+2026-09-12T16:47:22Z	compile: sending revision 180 at 107879778968500
+2026-09-12T16:47:22Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:22Z	compile: applied revision 179 at 107879781140208
+2026-09-12T16:47:22Z	status: revision 179: recovered, 119 diagnostics in 57 ms (durable r177)
+2026-09-12T16:47:22Z	durable: r178 for revision 180 at 107879847084583
+2026-09-12T16:47:22Z	completion metadata refused: helper error for pc-848: source versions changed; refresh snapshot before querying
+2026-09-12T16:47:22Z	controller error pc-849: source versions changed; refresh snapshot before querying
+2026-09-12T16:47:22Z	controller error pc-850: source versions changed; refresh snapshot before querying
+2026-09-12T16:47:22Z	controller release: preview preview-180 is the admitted compile (generation 180, durable r178) (in flight revision 180)
+2026-09-12T16:47:22Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:22Z	compile: applied revision 180 at 107879850151833
+2026-09-12T16:47:22Z	status: revision 180: recovered, 119 diagnostics in 26 ms (durable r178)
+2026-09-12T16:47:22Z	paint: revision 180 redrew 1/3 pages
+2026-09-12T16:47:22Z	paint: revision 180 at 107879929921250 (covers 2 keystrokes, redrawn true)
+2026-09-12T16:47:22Z	keystroke: revision 181 at 107879929985583 (delegate 107879931226666, revision 107879931689041)
+2026-09-12T16:47:22Z	compile: sending revision 181 at 107879931729333
+2026-09-12T16:47:22Z	durable: r179 for revision 181 at 107880000147458
+2026-09-12T16:47:23Z	controller release: preview preview-181 is the admitted compile (generation 181, durable r179) (in flight revision 181)
+2026-09-12T16:47:23Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:23Z	compile: applied revision 181 at 107880027325250
+2026-09-12T16:47:23Z	status: revision 181: recovered, 119 diagnostics in 42 ms (durable r179)
+2026-09-12T16:47:23Z	paint: revision 181 needed 1 extra turn(s); drew 1/3 pages
+2026-09-12T16:47:23Z	paint: revision 181 at 107880126641125 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:23Z	keystroke: revision 182 at 107880126676166 (delegate 107880127626916, revision 107880128094875)
+2026-09-12T16:47:23Z	compile: sending revision 182 at 107880128134500
+2026-09-12T16:47:23Z	durable: r180 for revision 182 at 107880173128458
+2026-09-12T16:47:23Z	controller release: preview preview-182 is the admitted compile (generation 182, durable r180) (in flight revision 182)
+2026-09-12T16:47:23Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:23Z	compile: applied revision 182 at 107880175422541
+2026-09-12T16:47:23Z	status: revision 182: recovered, 119 diagnostics in 29 ms (durable r180)
+2026-09-12T16:47:23Z	paint: revision 182 needed 2 extra turn(s); drew 0/3 pages
+2026-09-12T16:47:23Z	paint: revision 182 at 107880265800416 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:47:23Z	keystroke: revision 183 at 107880274423666 (delegate 107880275527416, revision 107880276069500)
+2026-09-12T16:47:23Z	compile: sending revision 183 at 107880276137083
+2026-09-12T16:47:23Z	durable: r181 for revision 183 at 107880319285083
+2026-09-12T16:47:23Z	keystroke: revision 184 at 107880341688416 (delegate 107880342614500, revision 107880343102250)
+2026-09-12T16:47:23Z	controller release: preview preview-183 is the admitted compile (generation 183, durable r181) (in flight revision 183)
+2026-09-12T16:47:23Z	compile: sending revision 184 at 107880398247250
+2026-09-12T16:47:23Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:23Z	compile: applied revision 183 at 107880400146375
+2026-09-12T16:47:23Z	status: revision 183: recovered, 119 diagnostics in 53 ms (durable r181)
+2026-09-12T16:47:23Z	durable: r182 for revision 184 at 107880474567291
+2026-09-12T16:47:23Z	completion metadata refused: helper error for pc-864: source versions changed; refresh snapshot before querying
+2026-09-12T16:47:23Z	controller error pc-865: source versions changed; refresh snapshot before querying
+2026-09-12T16:47:23Z	controller error pc-866: source versions changed; refresh snapshot before querying
+2026-09-12T16:47:23Z	controller release: preview preview-184 is the admitted compile (generation 184, durable r182) (in flight revision 184)
+2026-09-12T16:47:23Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:23Z	compile: applied revision 184 at 107880476645625
+2026-09-12T16:47:23Z	status: revision 184: recovered, 119 diagnostics in 29 ms (durable r182)
+2026-09-12T16:47:23Z	paint: revision 184 redrew 1/3 pages
+2026-09-12T16:47:23Z	paint: revision 184 at 107880555439833 (covers 2 keystrokes, redrawn true)
+2026-09-12T16:47:23Z	keystroke: revision 185 at 107880592551750 (delegate 107880593563500, revision 107880594038458)
+2026-09-12T16:47:23Z	compile: sending revision 185 at 107880594097416
+2026-09-12T16:47:23Z	durable: r183 for revision 185 at 107880634607666
+2026-09-12T16:47:23Z	controller release: preview preview-185 is the admitted compile (generation 185, durable r183) (in flight revision 185)
+2026-09-12T16:47:23Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:23Z	compile: applied revision 185 at 107880656546375
+2026-09-12T16:47:23Z	status: revision 185: recovered, 119 diagnostics in 40 ms (durable r183)
+2026-09-12T16:47:23Z	paint: revision 185 needed 1 extra turn(s); drew 1/3 pages
+2026-09-12T16:47:23Z	paint: revision 185 at 107880772335750 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:23Z	keystroke: revision 186 at 107880772370041 (delegate 107880773346166, revision 107880773886916)
+2026-09-12T16:47:23Z	compile: sending revision 186 at 107880773939666
+2026-09-12T16:47:23Z	durable: r184 for revision 186 at 107880817709041
+2026-09-12T16:47:23Z	controller release: preview preview-186 is the admitted compile (generation 186, durable r184) (in flight revision 186)
+2026-09-12T16:47:23Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:23Z	compile: applied revision 186 at 107880819534250
+2026-09-12T16:47:23Z	status: revision 186: recovered, 119 diagnostics in 27 ms (durable r184)
+2026-09-12T16:47:23Z	paint: revision 186 redrew 1/3 pages
+2026-09-12T16:47:23Z	paint: revision 186 at 107880883593791 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:23Z	keystroke: revision 187 at 107880919455958 (delegate 107880921916125, revision 107880922453958)
+2026-09-12T16:47:23Z	compile: sending revision 187 at 107880922527083
+2026-09-12T16:47:23Z	durable: r185 for revision 187 at 107880964235583
+2026-09-12T16:47:23Z	controller release: preview preview-187 is the admitted compile (generation 187, durable r185) (in flight revision 187)
+2026-09-12T16:47:23Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:23Z	compile: applied revision 187 at 107880966064291
+2026-09-12T16:47:23Z	status: revision 187: recovered, 119 diagnostics in 27 ms (durable r185)
+2026-09-12T16:47:24Z	paint: revision 187 needed 2 extra turn(s); drew 0/3 pages
+2026-09-12T16:47:24Z	paint: revision 187 at 107881056542791 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:47:24Z	keystroke: revision 188 at 107881056608083 (delegate 107881057643000, revision 107881058166958)
+2026-09-12T16:47:24Z	compile: sending revision 188 at 107881058208375
+2026-09-12T16:47:24Z	keystroke: revision 189 at 107881098758958 (delegate 107881099744875, revision 107881100212333)
+2026-09-12T16:47:24Z	durable: r186 for revision 188 at 107881138588875
+2026-09-12T16:47:24Z	controller release: preview preview-188 is the admitted compile (generation 188, durable r186) (in flight revision 188)
+2026-09-12T16:47:24Z	compile: sending revision 189 at 107881162024000
+2026-09-12T16:47:24Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:24Z	compile: applied revision 188 at 107881164055666
+2026-09-12T16:47:24Z	status: revision 188: recovered, 119 diagnostics in 40 ms (durable r186)
+2026-09-12T16:47:24Z	durable: r187 for revision 189 at 107881234414083
+2026-09-12T16:47:24Z	completion metadata refused: helper error for pc-886: source versions changed; refresh snapshot before querying
+2026-09-12T16:47:24Z	controller error pc-887: source versions changed; refresh snapshot before querying
+2026-09-12T16:47:24Z	controller error pc-888: source versions changed; refresh snapshot before querying
+2026-09-12T16:47:24Z	controller release: preview preview-189 is the admitted compile (generation 189, durable r187) (in flight revision 189)
+2026-09-12T16:47:24Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:24Z	compile: applied revision 189 at 107881236341625
+2026-09-12T16:47:24Z	status: revision 189: recovered, 119 diagnostics in 26 ms (durable r187)
+2026-09-12T16:47:24Z	paint: revision 189 redrew 1/3 pages
+2026-09-12T16:47:24Z	paint: revision 189 at 107881312854041 (covers 2 keystrokes, redrawn true)
+2026-09-12T16:47:24Z	keystroke: revision 190 at 107881312893416 (delegate 107881313876791, revision 107881314338458)
+2026-09-12T16:47:24Z	compile: sending revision 190 at 107881314385250
+2026-09-12T16:47:24Z	durable: r188 for revision 190 at 107881383054458
+2026-09-12T16:47:24Z	controller release: preview preview-190 is the admitted compile (generation 190, durable r188) (in flight revision 190)
+2026-09-12T16:47:24Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:24Z	compile: applied revision 190 at 107881411574791
+2026-09-12T16:47:24Z	status: revision 190: recovered, 119 diagnostics in 63 ms (durable r188)
+2026-09-12T16:47:24Z	keystroke: revision 191 at 107881489598166 (delegate 107881490597041, revision 107881491076375)
+2026-09-12T16:47:24Z	compile: sending revision 191 at 107881491142375
+2026-09-12T16:47:24Z	paint: revision 190 needed 2 extra turn(s); drew 0/3 pages
+2026-09-12T16:47:24Z	paint: revision 190 at 107881491811125 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:47:24Z	durable: r189 for revision 191 at 107881535953208
+2026-09-12T16:47:24Z	controller release: preview preview-191 is the admitted compile (generation 191, durable r189) (in flight revision 191)
+2026-09-12T16:47:24Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:24Z	compile: applied revision 191 at 107881538097625
+2026-09-12T16:47:24Z	status: revision 191: recovered, 119 diagnostics in 29 ms (durable r189)
+2026-09-12T16:47:24Z	paint: revision 191 needed 2 extra turn(s); drew 0/3 pages
+2026-09-12T16:47:24Z	paint: revision 191 at 107881613518916 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:47:24Z	keystroke: revision 192 at 107881618209041 (delegate 107881619469833, revision 107881619974791)
+2026-09-12T16:47:24Z	compile: sending revision 192 at 107881620031750
+2026-09-12T16:47:24Z	durable: r190 for revision 192 at 107881662494916
+2026-09-12T16:47:24Z	controller release: preview preview-192 is the admitted compile (generation 192, durable r190) (in flight revision 192)
+2026-09-12T16:47:24Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:24Z	compile: applied revision 192 at 107881664904375
+2026-09-12T16:47:24Z	status: revision 192: recovered, 119 diagnostics in 27 ms (durable r190)
+2026-09-12T16:47:24Z	paint: revision 192 redrew 1/3 pages
+2026-09-12T16:47:24Z	paint: revision 192 at 107881763064791 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:24Z	keystroke: revision 193 at 107881767793958 (delegate 107881768843791, revision 107881769310750)
+2026-09-12T16:47:24Z	compile: sending revision 193 at 107881769369958
+2026-09-12T16:47:24Z	durable: r191 for revision 193 at 107881834822208
+2026-09-12T16:47:24Z	keystroke: revision 194 at 107881835308958 (delegate 107881836436166, revision 107881836975000)
+2026-09-12T16:47:24Z	controller release: preview preview-193 is the admitted compile (generation 193, durable r191) (in flight revision 193)
+2026-09-12T16:47:24Z	compile: sending revision 194 at 107881888995500
+2026-09-12T16:47:24Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:24Z	compile: applied revision 193 at 107881890875708
+2026-09-12T16:47:24Z	status: revision 193: recovered, 119 diagnostics in 57 ms (durable r191)
+2026-09-12T16:47:24Z	durable: r192 for revision 194 at 107881960513125
+2026-09-12T16:47:24Z	completion metadata refused: helper error for pc-909: source versions changed; refresh snapshot before querying
+2026-09-12T16:47:24Z	controller error pc-910: source versions changed; refresh snapshot before querying
+2026-09-12T16:47:24Z	controller error pc-911: source versions changed; refresh snapshot before querying
+2026-09-12T16:47:24Z	controller release: preview preview-194 is the admitted compile (generation 194, durable r192) (in flight revision 194)
+2026-09-12T16:47:24Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:24Z	compile: applied revision 194 at 107881963043500
+2026-09-12T16:47:24Z	status: revision 194: recovered, 119 diagnostics in 34 ms (durable r192)
+2026-09-12T16:47:24Z	paint: revision 193 needed 2 extra turn(s); drew 0/3 pages
+2026-09-12T16:47:24Z	paint: revision 193 at 107881963334166 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:47:25Z	keystroke: revision 195 at 107882041414375 (delegate 107882042562541, revision 107882043086708)
+2026-09-12T16:47:25Z	compile: sending revision 195 at 107882043150416
+2026-09-12T16:47:25Z	paint: revision 194 needed 2 extra turn(s); drew 0/3 pages
+2026-09-12T16:47:25Z	paint: revision 194 at 107882043912625 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:47:25Z	durable: r193 for revision 195 at 107882086054666
+2026-09-12T16:47:25Z	keystroke: revision 196 at 107882107253750 (delegate 107882108439208, revision 107882108987500)
+2026-09-12T16:47:25Z	controller release: preview preview-195 is the admitted compile (generation 195, durable r193) (in flight revision 195)
+2026-09-12T16:47:25Z	compile: sending revision 196 at 107882161405791
+2026-09-12T16:47:25Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:25Z	compile: applied revision 195 at 107882163680166
+2026-09-12T16:47:25Z	status: revision 195: recovered, 119 diagnostics in 47 ms (durable r193)
+2026-09-12T16:47:25Z	durable: r194 for revision 196 at 107882236888750
+2026-09-12T16:47:25Z	completion metadata refused: helper error for pc-918: source versions changed; refresh snapshot before querying
+2026-09-12T16:47:25Z	controller error pc-919: source versions changed; refresh snapshot before querying
+2026-09-12T16:47:25Z	controller error pc-920: source versions changed; refresh snapshot before querying
+2026-09-12T16:47:25Z	controller release: preview preview-196 is the admitted compile (generation 196, durable r194) (in flight revision 196)
+2026-09-12T16:47:25Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:25Z	compile: applied revision 196 at 107882238797083
+2026-09-12T16:47:25Z	status: revision 196: recovered, 119 diagnostics in 27 ms (durable r194)
+2026-09-12T16:47:25Z	paint: revision 195 needed 2 extra turn(s); drew 0/3 pages
+2026-09-12T16:47:25Z	paint: revision 195 at 107882239041208 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:47:25Z	paint: revision 196 needed 1 extra turn(s); drew 1/3 pages
+2026-09-12T16:47:25Z	paint: revision 196 at 107882343303791 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:25Z	keystroke: revision 197 at 107882343422541 (delegate 107882344517833, revision 107882345065000)
+2026-09-12T16:47:25Z	compile: sending revision 197 at 107882345108375
+2026-09-12T16:47:25Z	durable: r195 for revision 197 at 107882407471958
+2026-09-12T16:47:25Z	controller release: preview preview-197 is the admitted compile (generation 197, durable r195) (in flight revision 197)
+2026-09-12T16:47:25Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:25Z	compile: applied revision 197 at 107882409341958
+2026-09-12T16:47:25Z	status: revision 197: recovered, 119 diagnostics in 35 ms (durable r195)
+2026-09-12T16:47:25Z	paint: revision 197 needed 2 extra turn(s); drew 0/3 pages
+2026-09-12T16:47:25Z	paint: revision 197 at 107882488256125 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:47:25Z	keystroke: revision 198 at 107882518621416 (delegate 107882519838583, revision 107882520333750)
+2026-09-12T16:47:25Z	compile: sending revision 198 at 107882520393625
+2026-09-12T16:47:25Z	durable: r196 for revision 198 at 107882585388541
+2026-09-12T16:47:25Z	keystroke: revision 199 at 107882585829708 (delegate 107882586818375, revision 107882587277333)
+2026-09-12T16:47:25Z	controller release: preview preview-198 is the admitted compile (generation 198, durable r196) (in flight revision 198)
+2026-09-12T16:47:25Z	compile: sending revision 199 at 107882641338458
+2026-09-12T16:47:25Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:25Z	compile: applied revision 198 at 107882643542875
+2026-09-12T16:47:25Z	status: revision 198: recovered, 119 diagnostics in 46 ms (durable r196)
+2026-09-12T16:47:25Z	durable: r197 for revision 199 at 107882714931333
+2026-09-12T16:47:25Z	completion metadata refused: helper error for pc-933: source versions changed; refresh snapshot before querying
+2026-09-12T16:47:25Z	controller error pc-934: source versions changed; refresh snapshot before querying
+2026-09-12T16:47:25Z	controller error pc-935: source versions changed; refresh snapshot before querying
+2026-09-12T16:47:25Z	paint: revision 198 needed 1 extra turn(s); drew 1/3 pages
+2026-09-12T16:47:25Z	paint: revision 198 at 107882729542041 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:25Z	controller release: preview preview-199 is the admitted compile (generation 199, durable r197) (in flight revision 199)
+2026-09-12T16:47:25Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:25Z	compile: applied revision 199 at 107882731349333
+2026-09-12T16:47:25Z	status: revision 199: recovered, 119 diagnostics in 52 ms (durable r197)
+2026-09-12T16:47:25Z	keystroke: revision 200 at 107882806209750 (delegate 107882807301041, revision 107882807766500)
+2026-09-12T16:47:25Z	compile: sending revision 200 at 107882807823500
+2026-09-12T16:47:25Z	paint: revision 199 needed 2 extra turn(s); drew 0/3 pages
+2026-09-12T16:47:25Z	paint: revision 199 at 107882808322083 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:47:25Z	durable: r198 for revision 200 at 107882849000875
+2026-09-12T16:47:25Z	controller release: preview preview-200 is the admitted compile (generation 200, durable r198) (in flight revision 200)
+2026-09-12T16:47:25Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:25Z	compile: applied revision 200 at 107882851122708
+2026-09-12T16:47:25Z	status: revision 200: recovered, 119 diagnostics in 28 ms (durable r198)
+2026-09-12T16:47:25Z	paint: revision 200 needed 2 extra turn(s); drew 0/3 pages
+2026-09-12T16:47:25Z	paint: revision 200 at 107882929436541 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:47:25Z	keystroke: revision 201 at 107882933045791 (delegate 107882934090250, revision 107882934551166)
+2026-09-12T16:47:25Z	compile: sending revision 201 at 107882934616416
+2026-09-12T16:47:25Z	durable: r199 for revision 201 at 107882977128458
+2026-09-12T16:47:25Z	controller release: preview preview-201 is the admitted compile (generation 201, durable r199) (in flight revision 201)
+2026-09-12T16:47:25Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:25Z	compile: applied revision 201 at 107882978968000
+2026-09-12T16:47:25Z	status: revision 201: recovered, 119 diagnostics in 29 ms (durable r199)
+2026-09-12T16:47:26Z	paint: revision 201 redrew 1/3 pages
+2026-09-12T16:47:26Z	paint: revision 201 at 107883081332708 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:47:26Z	keystroke: revision 202 at 107883085822708 (delegate 107883086908916, revision 107883087361166)
+2026-09-12T16:47:26Z	compile: sending revision 202 at 107883087420500
+2026-09-12T16:47:26Z	durable: r200 for revision 202 at 107883131560333
+2026-09-12T16:47:26Z	controller release: preview preview-202 is the admitted compile (generation 202, durable r200) (in flight revision 202)
+2026-09-12T16:47:26Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:47:26Z	compile: applied revision 202 at 107883133853125
+2026-09-12T16:47:26Z	status: revision 202: recovered, 119 diagnostics in 28 ms (durable r200)
+2026-09-12T16:47:26Z	paint: revision 202 needed 2 extra turn(s); drew 0/3 pages
+2026-09-12T16:47:26Z	paint: revision 202 at 107883235885416 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:47:26Z	bench: done (all keystrokes painted); keystrokes 200, painted 200, coalesced 12, p50 147.357792 ms

@@ -13,16 +13,18 @@ SHA-256 match the Commander's pinned manifest
 SHA-pinned inside `crates/rendering-core/tools/verify_bundle_resources.py`).
 
 Usage:
-  bundle-texmf.py check <source-texmf-root>
-      Verify the manifest's texmf entries under the source root. Exit 0 when
-      every entry is verified; 1 when any is missing/mismatched; 2 on setup
-      failure (verifier or manifest missing/mismatched). JSON report on stdout.
-  bundle-texmf.py stage <source-texmf-root> <Contents/Resources> <report.json>
-      Re-verify the source entries, copy them to `<Resources>/texmf/...`, then
-      run the pinned verifier on the whole Resources directory (fonts, metrics,
-      license) and write its report to <report.json>. Exit codes as above.
-      On success prints one compact JSON object (the `resources` entry for
-      components.json: manifest hash, per-resource sha256/bytes) to stdout.
+  bundle-texmf.py check <source-texmf-root> [<source-fonts-dir>]
+      Verify the manifest's texmf entries under the source root (and, with a
+      fonts directory, every pinned OpenType face under it). Exit 0 when every
+      entry is verified; 1 when any is missing/mismatched; 2 on setup failure
+      (verifier or manifest missing/mismatched). JSON report on stdout.
+  bundle-texmf.py stage <source-texmf-root> <Contents/Resources> <report.json> [<source-fonts-dir>]
+      Re-verify the source entries, copy them to `<Resources>/texmf/...` (and
+      the faces to `<Resources>/Fonts/`), then run the pinned verifier on the
+      whole Resources directory (fonts, metrics, license) and write its report
+      to <report.json>. Exit codes as above. On success prints one compact JSON
+      object (the `resources` entry for components.json: manifest hash,
+      per-resource sha256/bytes) to stdout.
 
 Supplementary metrics: `<source-root>/SUPPLEMENTARY-METRICS.json` (in-repo
 pin, see its `provenance`) lists further Latin Modern TFMs (other design sizes,
@@ -30,6 +32,14 @@ bold, italic) that are not in the Commander's manifest. They are verified with
 the same descriptor-relative check against that file's hashes, staged into the
 same directory, and reported under `supplementary` in the components entry;
 any drift refuses packaging. The pinned verifier does not scan them.
+
+Faces: with a `<source-fonts-dir>` (the vendored `apps/mac/Fonts`), the three
+Commander-pinned OTFs (`Fonts/...` manifest entries, tier `pinned`) and every
+face in `<source-fonts-dir>/SUPPLEMENTARY-FACES.json` (in-repo pin: the other
+Latin Modern Roman optical masters/styles the render pipeline can request,
+tier `supplementary-face`) are verified there and staged into
+`<Resources>/Fonts/`. An `.otf` in the fonts directory that neither pin lists
+is refused (`status: unpinned`): nothing unverifiable is ever packaged.
 
 Symlinks and non-regular files are refused by the verifier's descriptor-relative
 no-follow walk. Nothing here prints font bytes or reads outside the two roots.
@@ -46,7 +56,9 @@ HERE = Path(__file__).resolve().parent
 REPO_ROOT = HERE.parents[2]
 VERIFIER = REPO_ROOT / "crates/rendering-core/tools/verify_bundle_resources.py"
 TEXMF_PREFIX = "texmf/"
+FONTS_PREFIX = "Fonts/"
 SUPPLEMENTARY = "SUPPLEMENTARY-METRICS.json"
+SUPPLEMENTARY_FACES = "SUPPLEMENTARY-FACES.json"
 MAX_SUPPLEMENTARY = 65536
 
 
@@ -62,17 +74,23 @@ def texmf_entries(verifier):
     return [e for e in entries if e["path"].startswith(TEXMF_PREFIX)]
 
 
-def supplementary_entries(source_root):
-    """The in-repo supplementary pin (empty when the sidecar is absent)."""
-    path = Path(source_root) / SUPPLEMENTARY
+def font_entries(verifier):
+    manifest = verifier["pinned_manifest"]()
+    entries = verifier["validate_entries"](manifest)
+    return [e for e in entries if e["path"].startswith(FONTS_PREFIX)]
+
+
+def supplementary_entries(source_root, sidecar=SUPPLEMENTARY):
+    """An in-repo supplementary pin (empty when the sidecar is absent)."""
+    path = Path(source_root) / sidecar
     if not path.is_file():
         return []
     raw = path.read_bytes()
     if len(raw) > MAX_SUPPLEMENTARY:
-        raise ValueError("supplementary metrics pin too large")
+        raise ValueError(f"supplementary pin too large: {sidecar}")
     doc = json.loads(raw)
     if doc.get("schema_version") != 1 or not isinstance(doc.get("entries"), list):
-        raise ValueError("unsupported supplementary metrics pin")
+        raise ValueError(f"unsupported supplementary pin: {sidecar}")
     seen = set()
     entries = []
     for e in doc["entries"]:
@@ -86,10 +104,29 @@ def supplementary_entries(source_root):
     return entries
 
 
-def check_source(verifier, source_root):
+def check_under(verifier, root, entries, prefix):
+    """Verify `entries` (bundle paths under `prefix`) relative to `root`."""
+    root_fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        results = []
+        for entry, tier in entries:
+            relative = dict(entry, path=entry["path"][len(prefix):])
+            result = verifier["check_resource"](root_fd, relative)
+            result["bundle_path"] = entry["path"]
+            result["tier"] = tier
+            results.append(result)
+    finally:
+        os.close(root_fd)
+    return results
+
+
+def check_source(verifier, source_root, fonts_dir=None):
     """Verify the texmf entries relative to `source_root` (no `texmf/` prefix):
     the Commander-pinned ones (`tier: pinned`) and the in-repo supplementary
-    ones (`tier: supplementary`)."""
+    ones (`tier: supplementary`). With `fonts_dir`, also the faces relative to
+    it (no `Fonts/` prefix): the Commander-pinned OTFs (`tier: pinned`) and the
+    `SUPPLEMENTARY-FACES.json` ones (`tier: supplementary-face`); an unpinned
+    `.otf` there is refused (`status: unpinned`)."""
     entries = [(e, "pinned") for e in texmf_entries(verifier)]
     if not entries:
         raise ValueError("pinned manifest has no texmf entries")
@@ -98,17 +135,25 @@ def check_source(verifier, source_root):
         if e["path"] in pinned_paths:
             raise ValueError(f"supplementary entry duplicates a pinned path: {e['path']}")
         entries.append((dict(e, path=TEXMF_PREFIX + e["path"]), "supplementary"))
-    root_fd = os.open(source_root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
-    try:
-        results = []
-        for entry, tier in entries:
-            relative = dict(entry, path=entry["path"][len(TEXMF_PREFIX):])
-            result = verifier["check_resource"](root_fd, relative)
-            result["bundle_path"] = entry["path"]
-            result["tier"] = tier
-            results.append(result)
-    finally:
-        os.close(root_fd)
+    results = check_under(verifier, source_root, entries, TEXMF_PREFIX)
+    if fonts_dir is None:
+        return results
+    faces = [(e, "pinned") for e in font_entries(verifier)]
+    if not faces:
+        raise ValueError("pinned manifest has no font entries")
+    pinned_faces = {e["path"][len(FONTS_PREFIX):] for e, _ in faces}
+    listed = set(pinned_faces)
+    for e in supplementary_entries(fonts_dir, SUPPLEMENTARY_FACES):
+        if e["path"] in pinned_faces:
+            raise ValueError(f"supplementary face duplicates a pinned path: {e['path']}")
+        if "/" in e["path"] or not e["path"].endswith(".otf"):
+            raise ValueError(f"supplementary face must be a flat .otf name: {e['path']!r}")
+        listed.add(e["path"])
+        faces.append((dict(e, path=FONTS_PREFIX + e["path"]), "supplementary-face"))
+    results.extend(check_under(verifier, fonts_dir, faces, FONTS_PREFIX))
+    for name in sorted(os.listdir(fonts_dir)):
+        if name.endswith(".otf") and name not in listed:
+            results.append({"path": name, "status": "unpinned", "bundle_path": FONTS_PREFIX + name, "tier": "unpinned"})
     return results
 
 
@@ -126,32 +171,33 @@ def report(status, source_root, results, extra=None):
     return out
 
 
-def cmd_check(source_root):
+def cmd_check(source_root, fonts_dir=None):
     verifier = load_verifier()
-    results = check_source(verifier, source_root)
+    results = check_source(verifier, source_root, fonts_dir)
     ok = all(r["status"] == "verified" for r in results)
     print(json.dumps(report("verified" if ok else "refused", source_root, results), indent=2))
     return 0 if ok else 1
 
 
-def cmd_stage(source_root, resources, report_path):
+def cmd_stage(source_root, resources, report_path, fonts_dir=None):
     verifier = load_verifier()
-    results = check_source(verifier, source_root)
+    results = check_source(verifier, source_root, fonts_dir)
     if not all(r["status"] == "verified" for r in results):
         print(json.dumps(report("refused", source_root, results), indent=2))
         return 1
     source_root = Path(source_root)
     resources = Path(resources)
     for r in results:
+        source = (Path(fonts_dir) if r["bundle_path"].startswith(FONTS_PREFIX) else source_root) / r["path"]
         destination = resources / r["bundle_path"]
         destination.parent.mkdir(parents=True, exist_ok=True)
         # The source was just verified through a no-follow descriptor walk;
         # copy the bytes (not a symlink) and re-verify the copy below.
-        shutil.copyfile(source_root / r["path"], destination)
+        shutil.copyfile(source, destination)
         os.chmod(destination, 0o644)
     full = verifier["verify"](str(resources))
     # Re-verify the staged supplementary copies through the same no-follow walk.
-    supplementary = [r for r in results if r["tier"] == "supplementary"]
+    supplementary = [r for r in results if r["tier"] in ("supplementary", "supplementary-face")]
     staged_supplementary = []
     if supplementary:
         res_fd = os.open(str(resources), os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
@@ -179,7 +225,8 @@ def cmd_stage(source_root, resources, report_path):
             r["path"]: {"sha256": r["actual_sha256"], "bytes": r["actual_bytes"]}
             for r in staged_supplementary
         },
-        "supplementary_pin": TEXMF_PREFIX + SUPPLEMENTARY if supplementary else None,
+        "supplementary_pin": TEXMF_PREFIX + SUPPLEMENTARY if any(r["tier"] == "supplementary" for r in results) else None,
+        "supplementary_faces_pin": FONTS_PREFIX + SUPPLEMENTARY_FACES if any(r["tier"] == "supplementary-face" for r in results) else None,
     }
     print(json.dumps(entry, sort_keys=True, separators=(",", ":")))
     return 0
@@ -187,10 +234,10 @@ def cmd_stage(source_root, resources, report_path):
 
 def main(argv):
     try:
-        if len(argv) == 3 and argv[1] == "check":
-            return cmd_check(argv[2])
-        if len(argv) == 5 and argv[1] == "stage":
-            return cmd_stage(argv[2], argv[3], argv[4])
+        if len(argv) in (3, 4) and argv[1] == "check":
+            return cmd_check(*argv[2:])
+        if len(argv) in (5, 6) and argv[1] == "stage":
+            return cmd_stage(*argv[2:])
     except (ValueError, OSError) as error:
         print(json.dumps({"status": "setup_refused", "reason": str(error)}, indent=2))
         return 2
