@@ -124,6 +124,8 @@ for spec in "${COMPILER_REFS[@]}"; do
   COMPILER_ARGS+=(--compiler "$label=$bin")
   COMPILER_JSON+="{\"label\":\"$label\",\"ref\":\"$ref\",\"sha\":\"$sha\",\"crate\":\"$crate\",\"binary\":\"$binname\",\"build_ok\":true,\"note\":$(python3 -c 'import json,sys;print(json.dumps(sys.argv[1]))' "$subject")},"
 done
+COMPILER_JSON="${COMPILER_JSON%,}]"
+
 # --- exact route (third candidate column): flashtex-render --v2 -> flashtex-pdf-exact from-v2
 EXACT_ARGS=()
 if [[ "$EXACT_ROUTE" != "none" ]]; then
