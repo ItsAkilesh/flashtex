@@ -1,0 +1,37 @@
+{
+  "agent_id": "mac-document-files",
+  "allocation_id": "claude-mac20x-document-files",
+  "assignment_acknowledgements": {},
+  "branch": "agent/mac-document-files/rooted-helper",
+  "capabilities": [
+    "swift",
+    "rust",
+    "cargo",
+    "xctest"
+  ],
+  "code_revision": "f72de78bdfdbefcd71260c32e44f65582ce1ccf0",
+  "eta_minutes": {
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 0
+  },
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "b1f158c4a3ab1301fc9d2340b36705ab21432bbb",
+  "next_action": "Parent: apply the reported minimal diffs (Save menu -> saveTexInteractive, Resolve On-Disk Conflict menu item, checkDiskStatus on didBecomeActive, quit flow); optionally fold files state into ShellModel; route BridgeSession .tex export through files.save",
+  "reviewed_peers": {
+    "origin/main": {
+      "adaptation": "merged into the task branch cleanly (main does not touch apps/mac beyond the mac-shell base; crates/project-files identical on main, only additions here)",
+      "reviewed_utc": "2026-09-12T08:46:24Z",
+      "sha": "b1f158c4a3ab1301fc9d2340b36705ab21432bbb"
+    }
+  },
+  "schema_version": 1,
+  "state": "ready_for_integration",
+  "summary": "DocumentFiles.swift consumes crates/project-files as a child process (new flashtex-project-files --root JSON Lines binary, protocol project-files-v1: ping/read/status/save; conflict is a payload). Saves are hash-checked compare-and-replace with explicit files.conflict (modified externally / appeared where none expected) resolved only by overwriteOnDisk / reloadFromDisk / keep editing; external deletion is a notice and Save recreates via expected-new-file. Direct Foundation fallback only when no helper binary exists, reported in files.status. Lost/late replies never lose the dirty buffer: bounded wait, stuck helper replaced before the next request, late receipt reconciled on the main actor. Multi-file open/detach/reopen across two roots verified with real files and the real helper.",
+  "tool": "Claude Code subagent (parent mac-claude-a)",
+  "updated_utc": "2026-09-12T08:46:24Z",
+  "usage": {
+    "evidence": "crates/project-files: cargo test 38 pass (3 new helper_bin), clippy -D warnings clean, fmt clean. apps/mac: swift test 193 pass (DocumentFilesTests 8 new) with FLASHTEX_COMPILER/PDF/BRIDGE/EDIT_LEDGER real binaries and FLASHTEX_PROJECT_FILES=crates/project-files/target/release/flashtex-project-files",
+    "status": "parent's Max 20x quota; per-call usage not exposed; no purchases"
+  }
+}

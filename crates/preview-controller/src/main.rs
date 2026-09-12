@@ -18,7 +18,22 @@ use std::{
     thread,
     time::Duration,
 };
+mod wire;
+
 const MAX_FRAME: usize = 1024 * 1024;
+// Leave four MiB below the helper frame bound for its wrapping metadata.
+const MAX_COMPILER_FRAME: usize = 12 * 1024 * 1024;
+fn compiler_limits(config: &Value) -> Result<Limits, String> {
+    let mut limits = Limits::default();
+    if let Some(value) = config.get("compiler_max_frame_bytes") {
+        limits.max_frame = value
+            .as_u64()
+            .and_then(|n| usize::try_from(n).ok())
+            .filter(|n| (128..=MAX_COMPILER_FRAME).contains(n))
+            .ok_or("compiler_max_frame_bytes must be 128..12582912")?;
+    }
+    Ok(limits)
+}
 fn string<'a>(v: &'a Value, name: &str) -> Result<&'a str, String> {
     v[name].as_str().ok_or(format!("missing string {name}"))
 }
@@ -65,6 +80,7 @@ fn run(config: Value) -> Result<(), String> {
     if session.is_empty() || session.len() > 128 {
         return Err("invalid session identity".into());
     }
+    let limits = compiler_limits(&config)?;
     let project = string(&config, "project_id")?.to_owned();
     let entry = string(&config, "entry_path")?.to_owned();
     let (mut controller, file_project) = if config.get("project_root").is_some() {
@@ -101,11 +117,9 @@ fn run(config: Value) -> Result<(), String> {
         .get("compiler_path")
         .and_then(Value::as_str)
         .map(str::to_owned);
-    let compiler_error = compiler.as_ref().and_then(|path| {
-        controller
-            .restart(Command::new(path), Limits::default())
-            .err()
-    });
+    let compiler_error = compiler
+        .as_ref()
+        .and_then(|path| controller.restart(Command::new(path), limits.clone()).err());
     let (input_tx, input_rx) = mpsc::sync_channel::<Value>(16);
     let (output_tx, output_rx) = mpsc::sync_channel::<Vec<u8>>(8);
     let stopped = Arc::new(AtomicBool::new(false));
@@ -179,7 +193,7 @@ fn run(config: Value) -> Result<(), String> {
     emit(
         &output_tx,
         &stopped,
-        json!({"protocol_version":1,"session_id":session,"id":null,"type":"ready","payload":{"compiler_error":compiler_error}}),
+        json!({"protocol_version":1,"session_id":session,"id":null,"type":"ready","payload":{"compiler_error":compiler_error,"compiler_max_frame_bytes":limits.max_frame,"helper_max_output_bytes":16*1024*1024}}),
     );
     let mut reviews: BTreeMap<String, PreparedEdit> = BTreeMap::new();
     while !stopped.load(Ordering::SeqCst) {
@@ -205,13 +219,12 @@ fn run(config: Value) -> Result<(), String> {
                         &mut reviews,
                         &request,
                         compiler.as_deref(),
+                        &limits,
                         file_project.as_ref(),
                     )
                 };
                 let output = match response {
-                    Ok(payload) => {
-                        json!({"protocol_version":1,"session_id":session,"id":id,"type":"result","payload":payload})
-                    }
+                    Ok(payload) => wire::envelope(&session, id, "result", payload),
                     Err(reason) => failure(&session, id, reason),
                 };
                 emit(&output_tx, &stopped, output);
@@ -221,9 +234,7 @@ fn run(config: Value) -> Result<(), String> {
         }
         for update in controller.poll() {
             let payload = match update {
-                Update::Preview(preview) => {
-                    json!({"kind":"preview","request_id":preview.request_id,"compile_revision":preview.compile_revision,"source_versions":preview.source_versions.documents,"result":preview.result,"missing_layout_capabilities":preview.missing_layout_capabilities,"runtime_total_ms":preview.runtime_total_ms,"controller_total_ms":preview.controller_total_ms})
-                }
+                Update::Preview(preview) => wire::preview_payload(preview),
                 Update::Discarded { request_id } => {
                     json!({"kind":"discarded","request_id":request_id})
                 }
@@ -244,7 +255,7 @@ fn run(config: Value) -> Result<(), String> {
             emit(
                 &output_tx,
                 &stopped,
-                json!({"protocol_version":1,"session_id":session,"id":null,"type":"update","payload":payload}),
+                wire::envelope(&session, Value::Null, "update", payload),
             );
         }
     }
@@ -272,6 +283,7 @@ fn handle(
     reviews: &mut BTreeMap<String, PreparedEdit>,
     request: &Value,
     compiler: Option<&str>,
+    limits: &Limits,
     file_project: Option<&FileProject>,
 ) -> Result<Value, String> {
     let p = &request["payload"];
@@ -360,6 +372,26 @@ fn handle(
             )?;
             Ok(
                 json!({"document":result.document,"preview_error":result.preview_error,"save_and_submit_ms":result.save_and_submit_ms}),
+            )
+        }
+        "project_status" => {
+            let snapshot = controller.index().snapshot();
+            let max = match p.get("max_documents") {
+                None => 256,
+                Some(value) => value
+                    .as_u64()
+                    .filter(|n| (1..=256).contains(n))
+                    .ok_or("max_documents must be 1..256")? as usize,
+            };
+            let documents = snapshot.documents.keys().take(max).map(|path| {
+                let document = controller.document(path)?;
+                Ok(json!({"path":path,"revision":document.revision,"sha256":document.source_sha256,"bytes":document.text.len()}))
+            }).collect::<Result<Vec<Value>, String>>()?;
+            Ok(
+                json!({"project_id":snapshot.project_id,"source_versions":snapshot.documents,
+                "membership_generation":snapshot.generation,"documents":documents,
+                "total_documents":snapshot.documents.len(),"truncated":snapshot.documents.len()>max,
+                "scope":"active_sources_only","disk_tree_enumerated":false}),
             )
         }
         "open_document" | "detach_document" => {
@@ -479,7 +511,7 @@ fn handle(
         "restart" => {
             controller.restart(
                 Command::new(compiler.ok_or("compiler not configured")?),
-                Limits::default(),
+                limits.clone(),
             )?;
             Ok(json!({"submitted":true}))
         }
@@ -559,5 +591,33 @@ fn main() {
     if let Err(error) = result {
         eprintln!("{error}");
         std::process::exit(1);
+    }
+}
+
+#[cfg(test)]
+mod configuration_tests {
+    use super::*;
+    #[test]
+    fn compiler_frame_configuration_preserves_helper_headroom() {
+        assert_eq!(
+            compiler_limits(&json!({})).unwrap().max_frame,
+            8 * 1024 * 1024
+        );
+        assert_eq!(
+            compiler_limits(&json!({"compiler_max_frame_bytes":MAX_COMPILER_FRAME}))
+                .unwrap()
+                .max_frame,
+            MAX_COMPILER_FRAME
+        );
+        for value in [
+            json!(0),
+            json!(-1),
+            json!(1.5),
+            json!("large"),
+            Value::Null,
+            json!(MAX_COMPILER_FRAME + 1),
+        ] {
+            assert!(compiler_limits(&json!({"compiler_max_frame_bytes":value})).is_err());
+        }
     }
 }

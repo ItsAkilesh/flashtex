@@ -325,7 +325,20 @@ public enum RuntimeV1 {
         case invalidLayoutCapabilities(String)
     }
 
+    /// Fast path first (FastJSON, same values for every valid frame); any
+    /// input it does not accept goes through `JSONDecoder`, whose error is the
+    /// one reported.
     public static func decodeCompileResult(_ data: Data) throws -> Envelope<CompileResult> {
+        if let env = try? FastJSON.compileResultEnvelope(data) {
+            guard env.protocolVersion == protocolVersion else { throw DecodeError.unsupportedVersion(env.protocolVersion) }
+            guard env.type == "compile_result" else { throw DecodeError.unexpectedType(expected: "compile_result", actual: env.type) }
+            return env
+        }
+        return try decode(data, expectedType: "compile_result")
+    }
+
+    /// `JSONDecoder` only — for equivalence tests of the fast path.
+    public static func decodeCompileResultReference(_ data: Data) throws -> Envelope<CompileResult> {
         try decode(data, expectedType: "compile_result")
     }
 

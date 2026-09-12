@@ -17,6 +17,7 @@
 //! embedding helper and returns the old-to-new map. See README.md for the
 //! proposed ABI and the list of unsupported features.
 
+pub mod adapters;
 pub mod core14;
 pub mod embed;
 pub mod encoding;
@@ -59,6 +60,14 @@ pub enum Error {
         byte_offset: usize,
         reason: &'static str,
     },
+    /// A requested shaping feature depends on a lookup type this engine does
+    /// not implement in this font (e.g. contextual kerning). Raised instead
+    /// of shaping partially when `ShapeOptions::fail_on_unsupported_lookups`.
+    UnsupportedFeature {
+        table: &'static str,
+        feature: &'static str,
+        detail: String,
+    },
 }
 
 impl fmt::Display for Error {
@@ -78,6 +87,11 @@ impl fmt::Display for Error {
                 "cannot shape U+{:04X} at byte {byte_offset}: {reason}",
                 *ch as u32
             ),
+            Error::UnsupportedFeature {
+                table,
+                feature,
+                detail,
+            } => write!(f, "{table} feature {feature}: {detail}"),
         }
     }
 }
@@ -166,6 +180,9 @@ pub enum KerningSource {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Unsupported {
     pub table: &'static str,
+    /// The OpenType feature (`kern`, `liga`, `mark`) or table area the note
+    /// belongs to, so the shaper can fail when that feature is requested.
+    pub feature: &'static str,
     pub detail: String,
 }
 

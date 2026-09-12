@@ -1,0 +1,545 @@
+import Foundation
+import XCTest
+@testable import FlashTeXMac
+
+/// Pure pairing-flow model: every transition of `PairingFlow.Machine`, stale
+/// input rejection, journal/store persistence, and the accessibility text.
+/// Owner: mac-pairing-ui.
+final class PairingFlowMachineTests: XCTestCase {
+    typealias M = PairingFlow.Machine
+    typealias P = PairingFlow.Phase
+
+    let t0 = Date(timeIntervalSince1970: 1_800_000_000)
+    func attempt(_ g: Int, code: String = "123456", lifetime: TimeInterval = 120) -> PairingFlow.Attempt {
+        .init(generation: g, code: code, pairId: "pair-\(code)", startedAt: t0, expiresAt: t0.addingTimeInterval(lifetime))
+    }
+    var a1: PairingFlow.Attempt { attempt(1) }
+    var a2: PairingFlow.Attempt { attempt(2, code: "654321") }
+    var later: Date { t0.addingTimeInterval(10) }
+
+    // MARK: advertising and code issue
+
+    func testAdvertisingTogglesBetweenOffAndAdvertising() {
+        var m = M()
+        XCTAssertEqual(m.phase, .off)
+        XCTAssertEqual(m.apply(.advertising(true), now: t0), .none)
+        XCTAssertEqual(m.phase, .advertising)
+        XCTAssertEqual(m.apply(.advertising(true), now: t0), .none) // idempotent
+        XCTAssertEqual(m.apply(.advertising(false), now: t0), .none)
+        XCTAssertEqual(m.phase, .off)
+    }
+
+    func testCodeIssuedShowsCodePersistsAndAnnouncesDigits() {
+        var m = M()
+        let out = m.apply(.codeIssued(a1), now: t0)
+        XCTAssertEqual(m.phase, .codeShown(a1))
+        XCTAssertEqual(m.generation, 1)
+        XCTAssertTrue(m.isAdvertising, "a code implies the listener is up")
+        XCTAssertEqual(out.effects.first, .persist(a1))
+        XCTAssertEqual(out.effects.last, .announce("Pairing code 1 2 3 4 5 6, valid for 120 seconds."))
+    }
+
+    func testCodeIssuedWithOlderGenerationIsStale() {
+        var m = M(phase: .codeShown(a2), generation: 2, isAdvertising: true)
+        XCTAssertEqual(m.apply(.codeIssued(a1), now: t0), .staleInput)
+        XCTAssertEqual(m.phase, .codeShown(a2), "an older code never replaces the current one")
+    }
+
+    func testNewCodeReplacesAnyEarlierPhase() {
+        for start in [P.off, .advertising, .paired(.init(pairId: "x", companionName: "X", generation: 1)),
+                      .failed(reason: "r", generation: 1), .interrupted(a1, .relaunch, detail: "d")] {
+            var m = M(phase: start, generation: 1, isAdvertising: false)
+            m.apply(.codeIssued(a2), now: t0)
+            XCTAssertEqual(m.phase, .codeShown(a2), "\(start)")
+        }
+    }
+
+    // MARK: happy path
+
+    func testVerifyingThenConfirmedClearsJournal() {
+        var m = M()
+        m.apply(.codeIssued(a1), now: t0)
+        let v = m.apply(.bootstrapSessionOpened(generation: 1), now: later)
+        XCTAssertEqual(m.phase, .verifying(a1))
+        XCTAssertEqual(v.effects, [.announce("A companion connected; verifying the code.")])
+        let c = m.apply(.confirmed(pairId: a1.pairId, companionName: "iPad", generation: 1), now: later)
+        XCTAssertEqual(m.phase, .paired(.init(pairId: a1.pairId, companionName: "iPad", generation: 1)))
+        XCTAssertEqual(c.effects, [.clearJournal, .announce("Paired with iPad.")])
+        // Idempotent re-confirmation from a second observer is ignored, not stale.
+        XCTAssertEqual(m.apply(.confirmed(pairId: a1.pairId, companionName: "iPad", generation: 1), now: later), .ignoredInput)
+        XCTAssertEqual(m.apply(.dismiss, now: later), .none)
+        XCTAssertEqual(m.phase, .advertising)
+    }
+
+    func testConfirmedStraightFromCodeShownWithoutSessionEvent() {
+        // The transport today only publishes the stored pair, not the session open.
+        var m = M()
+        m.apply(.codeIssued(a1), now: t0)
+        m.apply(.confirmed(pairId: a1.pairId, companionName: "iPad", generation: 1), now: later)
+        XCTAssertEqual(m.phase, .paired(.init(pairId: a1.pairId, companionName: "iPad", generation: 1)))
+    }
+
+    func testOtherCompanionConnectingDuringVerificationReturnsToCodeShown() {
+        var m = M()
+        m.apply(.codeIssued(a1), now: t0)
+        m.apply(.bootstrapSessionOpened(generation: 1), now: later)
+        XCTAssertEqual(m.apply(.otherCompanionConnected(generation: 1), now: later), .none)
+        XCTAssertEqual(m.phase, .codeShown(a1))
+        XCTAssertEqual(m.apply(.otherCompanionConnected(generation: 1), now: later), .ignoredInput)
+    }
+
+    // MARK: stale reconnects never overwrite the current pairing
+
+    func testStaleConfirmationForReplacedCodeIsIgnored() {
+        var m = M()
+        m.apply(.codeIssued(a1), now: t0)
+        m.apply(.cancel, now: later)
+        m.apply(.codeIssued(a2), now: later)
+        // A session that authenticated with the first code reports late.
+        let stale = m.apply(.confirmed(pairId: a1.pairId, companionName: "Old iPad", generation: 1), now: later)
+        XCTAssertTrue(stale.stale)
+        XCTAssertEqual(m.phase, .codeShown(a2))
+        // Even with the current generation, a different pair id is not this attempt.
+        let wrongPair = m.apply(.confirmed(pairId: a1.pairId, companionName: "Old iPad", generation: 2), now: later)
+        XCTAssertTrue(wrongPair.stale)
+        XCTAssertEqual(m.phase, .codeShown(a2))
+        // The real one still lands.
+        m.apply(.confirmed(pairId: a2.pairId, companionName: "New iPad", generation: 2), now: later)
+        XCTAssertEqual(m.phase, .paired(.init(pairId: a2.pairId, companionName: "New iPad", generation: 2)))
+    }
+
+    func testStaleSessionOpenExpiryAndPeerGoneAreIgnored() {
+        var m = M()
+        m.apply(.codeIssued(a1), now: t0)
+        m.apply(.codeIssued(a2), now: later)
+        XCTAssertEqual(m.phase, .codeShown(a2))
+        XCTAssertTrue(m.apply(.bootstrapSessionOpened(generation: 1), now: later).stale)
+        XCTAssertEqual(m.phase, .codeShown(a2))
+        XCTAssertTrue(m.apply(.codeExpired(generation: 1), now: later).stale)
+        XCTAssertEqual(m.phase, .codeShown(a2))
+        XCTAssertTrue(m.apply(.peerGone(pairId: a1.pairId, reason: "closed", generation: 1), now: later).stale)
+        XCTAssertEqual(m.phase, .codeShown(a2))
+        XCTAssertTrue(m.apply(.withdrawn(generation: 1, reason: "x"), now: later).stale)
+        XCTAssertEqual(m.phase, .codeShown(a2))
+    }
+
+    func testStaleReconnectAfterPairedDoesNotOverwritePaired() {
+        var m = M()
+        m.apply(.codeIssued(a2), now: t0)
+        m.apply(.confirmed(pairId: a2.pairId, companionName: "New", generation: 2), now: later)
+        let paired = m.phase
+        // Old session (other pair id) closes and reports late.
+        XCTAssertTrue(m.apply(.peerGone(pairId: "pair-old", reason: "closed", generation: 2), now: later).stale)
+        XCTAssertEqual(m.phase, paired)
+        XCTAssertTrue(m.apply(.confirmed(pairId: "pair-old", companionName: "Old", generation: 1), now: later).stale)
+        XCTAssertEqual(m.phase, paired)
+        // The current companion's own close ends the banner.
+        XCTAssertEqual(m.apply(.peerGone(pairId: a2.pairId, reason: "peer closed", generation: 2), now: later), .none)
+        XCTAssertEqual(m.phase, .advertising)
+    }
+
+    func testRestoredOlderAttemptIsStaleAgainstNewerGeneration() {
+        var m = M(phase: .advertising, generation: 3, isAdvertising: true)
+        XCTAssertTrue(m.apply(.restored(a1), now: t0).stale)
+        XCTAssertEqual(m.phase, .advertising)
+    }
+
+    // MARK: expiry, cancel, dismiss
+
+    func testExpiryWhileShownOrVerifyingBecomesFailedAndClearsJournal() {
+        for open in [false, true] {
+            var m = M()
+            m.apply(.codeIssued(a1), now: t0)
+            if open { m.apply(.bootstrapSessionOpened(generation: 1), now: later) }
+            let out = m.apply(.codeExpired(generation: 1), now: t0.addingTimeInterval(121))
+            XCTAssertEqual(m.phase, .failed(reason: "The pairing code expired before a companion paired.", generation: 1))
+            XCTAssertEqual(out.effects.first, .clearJournal)
+            XCTAssertTrue(m.phase.canDismiss(now: t0))
+            XCTAssertTrue(m.phase.canShowCode(now: t0))
+            XCTAssertFalse(m.phase.canCancel(now: t0))
+            m.apply(.dismiss, now: t0)
+            XCTAssertEqual(m.phase, .advertising)
+        }
+    }
+
+    func testCancelAtEachCancellableStep() {
+        // Code shown.
+        var m = M()
+        m.apply(.codeIssued(a1), now: t0)
+        XCTAssertTrue(m.phase.canCancel(now: t0))
+        var out = m.apply(.cancel, now: t0)
+        XCTAssertEqual(out.effects, [.cancelTransport(a1), .clearJournal, .announce("Pairing cancelled.")])
+        XCTAssertEqual(m.phase, .advertising)
+
+        // Verifying.
+        m = M()
+        m.apply(.codeIssued(a1), now: t0)
+        m.apply(.bootstrapSessionOpened(generation: 1), now: t0)
+        XCTAssertTrue(m.phase.canCancel(now: t0))
+        out = m.apply(.cancel, now: t0)
+        XCTAssertEqual(out.effects.first, .cancelTransport(a1))
+        XCTAssertEqual(m.phase, .advertising)
+
+        // Interrupted by the peer (transport still holds the key → cancel it).
+        m = M()
+        m.apply(.codeIssued(a1), now: t0)
+        m.apply(.bootstrapSessionOpened(generation: 1), now: t0)
+        m.apply(.peerGone(pairId: a1.pairId, reason: "peer closed", generation: 1), now: t0)
+        XCTAssertEqual(m.phase, .interrupted(a1, .peerGone, detail: "peer closed"))
+        XCTAssertTrue(m.phase.canCancel(now: t0))
+        out = m.apply(.cancel, now: t0)
+        XCTAssertEqual(out.effects, [.cancelTransport(a1), .clearJournal, .announce("Pairing cancelled.")])
+
+        // Interrupted by relaunch (transport never had the key → only the journal).
+        m = M()
+        m.apply(.restored(a1), now: t0)
+        out = m.apply(.cancel, now: t0)
+        XCTAssertEqual(out.effects, [.clearJournal, .announce("Pairing cancelled.")])
+        XCTAssertEqual(m.phase, .off)
+
+        // Failed: cancel doubles as dismiss.
+        m = M(phase: .failed(reason: "x", generation: 1), generation: 1, isAdvertising: true)
+        XCTAssertEqual(m.apply(.cancel, now: t0), .none)
+        XCTAssertEqual(m.phase, .advertising)
+
+        // Receiving: not cancellable in v1 (no transport API); state is unchanged.
+        m = M(phase: .advertising, generation: 1, isAdvertising: true)
+        m.apply(.receiving(pairId: "p", companionName: "c", captureId: nil, bytes: 10, total: 100), now: t0)
+        XCTAssertFalse(m.phase.canCancel(now: t0))
+        XCTAssertEqual(m.apply(.cancel, now: t0), .ignoredInput)
+        if case .receiving = m.phase {} else { XCTFail("\(m.phase)") }
+
+        // Nothing to cancel.
+        m = M()
+        XCTAssertEqual(m.apply(.cancel, now: t0), .ignoredInput)
+    }
+
+    // MARK: interruption and resume
+
+    func testRelaunchWithValidCodeResumesThroughTransport() {
+        var m = M()
+        let out = m.apply(.restored(a1), now: later)
+        XCTAssertEqual(m.phase, .interrupted(a1, .relaunch, detail: "FlashTeX was quit while the code was valid"))
+        XCTAssertEqual(m.generation, 1)
+        XCTAssertEqual(out.effects, [.announce("A pairing from a previous launch is waiting. Resume it or cancel.")])
+        XCTAssertTrue(m.phase.canResume(now: later))
+        XCTAssertTrue(m.phase.canCancel(now: later))
+        XCTAssertFalse(m.phase.canShowCode(now: later), "must resume or cancel first")
+        let r = m.apply(.resume, now: later)
+        XCTAssertEqual(m.phase, .codeShown(a1))
+        XCTAssertEqual(r.effects.first, .resumeTransport(a1))
+        XCTAssertTrue(m.isAdvertising)
+    }
+
+    func testRelaunchWithExpiredCodeOnlyDismisses() {
+        var m = M()
+        let now = t0.addingTimeInterval(500)
+        m.apply(.restored(a1), now: now)
+        XCTAssertEqual(m.phase, .interrupted(a1, .relaunch, detail: "the code expired while FlashTeX was not running"))
+        XCTAssertFalse(m.phase.canResume(now: now))
+        XCTAssertFalse(m.phase.canCancel(now: now))
+        XCTAssertTrue(m.phase.canDismiss(now: now))
+        XCTAssertTrue(m.phase.canShowCode(now: now))
+        // Resume anyway (e.g. the clock ran out between render and click) → failed, journal cleared.
+        var copy = m
+        let r = copy.apply(.resume, now: now)
+        XCTAssertEqual(copy.phase, .failed(reason: "The pairing code expired before it could be resumed.", generation: 1))
+        XCTAssertEqual(r.effects.first, .clearJournal)
+        let d = m.apply(.dismiss, now: now)
+        XCTAssertEqual(d.effects, [.clearJournal])
+        XCTAssertEqual(m.phase, .off)
+    }
+
+    func testRestoredIsIgnoredWhileAnotherAttemptIsActive() {
+        var m = M()
+        m.apply(.codeIssued(a2), now: t0)
+        XCTAssertEqual(m.apply(.restored(a2), now: t0), .ignoredInput)
+        XCTAssertEqual(m.phase, .codeShown(a2))
+    }
+
+    func testPeerGoneDuringVerificationResumesWithoutTransportEffect() {
+        var m = M()
+        m.apply(.codeIssued(a1), now: t0)
+        m.apply(.bootstrapSessionOpened(generation: 1), now: t0)
+        m.apply(.peerGone(pairId: nil, reason: "handshake failed", generation: 1), now: t0)
+        XCTAssertEqual(m.phase, .interrupted(a1, .peerGone, detail: "handshake failed"))
+        let r = m.apply(.resume, now: later)
+        XCTAssertEqual(m.phase, .codeShown(a1))
+        XCTAssertEqual(r.effects, [.announce("Resumed pairing code 1 2 3 4 5 6, 110 seconds left.")], "key still served; no transport effect")
+    }
+
+    func testPeerGoneWhileCodeShownWithoutSessionIsIgnored() {
+        var m = M()
+        m.apply(.codeIssued(a1), now: t0)
+        XCTAssertEqual(m.apply(.peerGone(pairId: nil, reason: "x", generation: 1), now: t0), .ignoredInput)
+        XCTAssertEqual(m.phase, .codeShown(a1))
+    }
+
+    func testAdvertisingOffUnderCodeInterruptsAndResumeRestartsTransport() {
+        var m = M()
+        m.apply(.codeIssued(a1), now: t0)
+        m.apply(.advertising(false), now: t0)
+        XCTAssertEqual(m.phase, .interrupted(a1, .transportStopped, detail: "advertising was turned off"))
+        XCTAssertFalse(m.isAdvertising)
+        let r = m.apply(.resume, now: later)
+        XCTAssertEqual(r.effects.first, .resumeTransport(a1))
+        XCTAssertEqual(m.phase, .codeShown(a1))
+        XCTAssertTrue(m.isAdvertising)
+    }
+
+    func testListenerFailureUnderCodeInterruptsOtherwiseFails() {
+        var m = M()
+        m.apply(.codeIssued(a1), now: t0)
+        m.apply(.listenerFailed("listener error: port in use"), now: t0)
+        XCTAssertEqual(m.phase, .interrupted(a1, .transportStopped, detail: "listener error: port in use"))
+        XCTAssertEqual(m.apply(.listenerFailed("again"), now: t0), .ignoredInput)
+
+        var n = M(phase: .advertising, generation: 1, isAdvertising: true)
+        n.apply(.listenerFailed("listener error: boom"), now: t0)
+        XCTAssertEqual(n.phase, .failed(reason: "listener error: boom", generation: 1))
+        XCTAssertFalse(n.isAdvertising)
+        n.apply(.dismiss, now: t0)
+        XCTAssertEqual(n.phase, .off)
+    }
+
+    func testWithdrawnCodeInterruptsAndExpiryWhileInterruptedFails() {
+        var m = M()
+        m.apply(.codeIssued(a1), now: t0)
+        m.apply(.withdrawn(generation: 1, reason: "the transport withdrew the code"), now: t0)
+        XCTAssertEqual(m.phase, .interrupted(a1, .transportStopped, detail: "the transport withdrew the code"))
+        let out = m.apply(.codeExpired(generation: 1), now: t0.addingTimeInterval(200))
+        XCTAssertEqual(m.phase, .failed(reason: "The pairing code expired before it could be resumed.", generation: 1))
+        XCTAssertEqual(out.effects.first, .clearJournal)
+    }
+
+    func testConfirmedWhileInterruptedByPeerStillPairs() {
+        // The dropped session was not the one that completed; a second attempt
+        // with the same code (still served) completes the pairing.
+        var m = M()
+        m.apply(.codeIssued(a1), now: t0)
+        m.apply(.bootstrapSessionOpened(generation: 1), now: t0)
+        m.apply(.peerGone(pairId: nil, reason: "x", generation: 1), now: t0)
+        m.apply(.confirmed(pairId: a1.pairId, companionName: "iPad", generation: 1), now: t0)
+        XCTAssertEqual(m.phase, .paired(.init(pairId: a1.pairId, companionName: "iPad", generation: 1)))
+    }
+
+    // MARK: receiving
+
+    func testReceivingProgressAndCompletion() {
+        var m = M(phase: .advertising, generation: 1, isAdvertising: true)
+        m.apply(.receiving(pairId: "p", companionName: "iPad", captureId: nil, bytes: 1024, total: nil), now: t0)
+        XCTAssertEqual(m.phase.title, "Receiving capture")
+        XCTAssertEqual(m.phase.detail(now: t0), "Receiving 1024 bytes from iPad (size unknown until the line ends).")
+        m.apply(.receiving(pairId: "p", companionName: "iPad", captureId: "c1", bytes: 4096, total: 8192), now: t0)
+        XCTAssertEqual(m.phase.detail(now: t0), "Receiving 4096 of 8192 bytes from iPad.")
+        let done = m.apply(.captureReceived(pairId: "p", captureId: "c1"), now: t0)
+        XCTAssertEqual(m.phase, .advertising)
+        XCTAssertEqual(done.effects, [.announce("Received capture c1 from iPad.")])
+    }
+
+    func testReceivingFromAnotherPairIsNotEndedByStaleCapture() {
+        var m = M(phase: .advertising, generation: 1, isAdvertising: true)
+        m.apply(.receiving(pairId: "p", companionName: nil, captureId: nil, bytes: 1, total: nil), now: t0)
+        XCTAssertTrue(m.apply(.captureReceived(pairId: "q", captureId: "c"), now: t0).stale)
+        if case .receiving = m.phase {} else { XCTFail("\(m.phase)") }
+        XCTAssertTrue(m.apply(.peerGone(pairId: "q", reason: "x", generation: 1), now: t0).stale)
+        m.apply(.peerGone(pairId: "p", reason: "reset", generation: 1), now: t0)
+        XCTAssertEqual(m.phase, .failed(reason: "Connection to p closed while receiving: reset", generation: 1))
+    }
+
+    func testReceivingIsIgnoredWhileACodeIsShown() {
+        var m = M()
+        m.apply(.codeIssued(a1), now: t0)
+        XCTAssertEqual(m.apply(.receiving(pairId: "p", companionName: nil, captureId: nil, bytes: 1, total: nil), now: t0), .ignoredInput)
+        XCTAssertEqual(m.phase, .codeShown(a1))
+        // A capture from an already paired device while advertising is only announced.
+        var n = M(phase: .advertising, generation: 1, isAdvertising: true)
+        XCTAssertEqual(n.apply(.captureReceived(pairId: nil, captureId: "c9"), now: t0).effects, [.announce("Received capture c9.")])
+        XCTAssertEqual(n.phase, .advertising)
+    }
+
+    func testForgetEndsPairedOrReceivingBanner() {
+        var m = M(phase: .paired(.init(pairId: "p", companionName: "c", generation: 1)), generation: 1, isAdvertising: true)
+        XCTAssertEqual(m.apply(.forgotten(pairId: "other"), now: t0), .ignoredInput)
+        m.apply(.forgotten(pairId: "p"), now: t0)
+        XCTAssertEqual(m.phase, .advertising)
+    }
+
+    func testAdvertisingOffEndsBannersAndKeepsInterrupted() {
+        var m = M(phase: .paired(.init(pairId: "p", companionName: "c", generation: 1)), generation: 1, isAdvertising: true)
+        m.apply(.advertising(false), now: t0)
+        XCTAssertEqual(m.phase, .off)
+        var n = M()
+        n.apply(.restored(a1), now: t0)
+        n.apply(.advertising(true), now: t0)
+        XCTAssertEqual(n.phase, .interrupted(a1, .relaunch, detail: "FlashTeX was quit while the code was valid"))
+    }
+
+    // MARK: user-visible text
+
+    func testPhaseTextIsPreciseAndCountdownFree() {
+        XCTAssertEqual(P.off.title, "Off")
+        XCTAssertEqual(P.advertising.detail(now: t0), "Paired companions can connect. No pairing in progress.")
+        let shown = P.codeShown(a1)
+        XCTAssertEqual(shown.title, "Pairing code shown")
+        XCTAssertEqual(shown.detail(now: t0.addingTimeInterval(30)), "Enter the code on the companion. Expires in 90 s.")
+        XCTAssertEqual(shown.accessibilityValue(now: t0), "Code 1 2 3 4 5 6. Enter it on the companion.")
+        XCTAssertEqual(P.verifying(a1).detail(now: t0.addingTimeInterval(119.5)), "A companion connected with the code; waiting for its hello. Expires in 1 s.")
+        let inter = P.interrupted(a1, .peerGone, detail: "peer closed")
+        XCTAssertEqual(inter.detail(now: t0), "The companion disconnected (peer closed). Code 123 456 is still valid for 120 s: resume or cancel.")
+        XCTAssertEqual(inter.detail(now: t0.addingTimeInterval(121)), "The companion disconnected (peer closed); the code has expired. Dismiss it or show a new code.")
+        XCTAssertEqual(inter.accessibilityValue(now: t0), "peer closed. Code 1 2 3 4 5 6 is still valid.")
+        XCTAssertEqual(P.failed(reason: "boom", generation: 1).detail(now: t0), "boom")
+        XCTAssertEqual(P.paired(.init(pairId: "p", companionName: "iPad", generation: 1)).detail(now: t0), "Paired with iPad (p).")
+        XCTAssertEqual(Pairing.displayCode("123456"), "123 456")
+        XCTAssertEqual(Pairing.spokenCode("907"), "9 0 7")
+    }
+
+    func testRowAccessibilityText() {
+        let r = PairRecord(pairId: "abc", psk: "k", companionName: "iPad", createdAt: t0, lastSeenAt: nil)
+        let a = PairingAccessibility.deviceRow(r, connected: true)
+        XCTAssertEqual(a.label, "Companion iPad, pair id abc")
+        XCTAssertTrue(a.value.hasPrefix("Connected. Paired "), a.value)
+        XCTAssertFalse(a.value.contains("Last seen"))
+        var seen = r
+        seen.lastSeenAt = t0
+        XCTAssertTrue(PairingAccessibility.deviceRow(seen, connected: false).value.hasPrefix("Not connected. Paired "))
+        XCTAssertTrue(PairingAccessibility.deviceRow(seen, connected: false).value.contains("Last seen"))
+
+        let inbox = PairingAccessibility.CaptureRow(captureId: "c1", source: .inbox, state: "received", durable: false, note: "image/png")
+        XCTAssertEqual(inbox.accessibilityLabel, "Capture c1")
+        XCTAssertEqual(inbox.accessibilityValue, "received, not durable (in memory only). image/png")
+        let bridge = PairingAccessibility.CaptureRow(captureId: "c2", source: .bridge, state: "proposed", durable: nil, note: "")
+        XCTAssertEqual(bridge.accessibilityValue, "proposed, via bridge")
+        XCTAssertEqual(bridge.id, "bridge:c2")
+    }
+}
+
+// MARK: - persistence
+
+final class PairingPersistenceTests: XCTestCase {
+    private func tempDir() -> URL {
+        FileManager.default.temporaryDirectory.appendingPathComponent("pairing-tests-\(UUID().uuidString)")
+    }
+
+    func testPairRecordDescriptionNeverContainsTheKey() {
+        let psk = Pairing.mintLongTermPSK().base64EncodedString()
+        let r = PairRecord(pairId: "abcdef0123456789", psk: psk, companionName: "iPad", createdAt: Date(), lastSeenAt: Date())
+        for text in [String(describing: r), String(reflecting: r), "\(r)", "record: \(r)"] {
+            XCTAssertFalse(text.contains(psk), text)
+            XCTAssertTrue(text.contains("<redacted>"), text)
+            XCTAssertTrue(text.contains("abcdef0123456789"))
+        }
+    }
+
+    func testPairStoreSurvivesRelaunchAndReportsSchemaVersion() throws {
+        let dir = tempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let url = dir.appendingPathComponent("pairs.json")
+        let store = PairStore(url: url)
+        XCTAssertEqual(store.loadOutcome, .created)
+        let psk = Pairing.mintLongTermPSK().base64EncodedString()
+        XCTAssertTrue(store.upsert(PairRecord(pairId: "p1", psk: psk, companionName: "iPad", createdAt: Date(), lastSeenAt: nil)))
+        let json = try JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any]
+        XCTAssertEqual(json?["version"] as? Int, PairStore.schemaVersion)
+        // "Relaunch": a fresh store at the same path sees the pairing and the same salt.
+        let again = PairStore(url: url)
+        XCTAssertEqual(again.loadOutcome, .loaded(version: PairStore.schemaVersion))
+        XCTAssertEqual(again.pairs.map(\.pairId), ["p1"])
+        XCTAssertEqual(again.salt, store.salt)
+        XCTAssertNil(again.loadError)
+    }
+
+    func testPairStoreRefusesNewerVersionWithoutOverwriting() throws {
+        let dir = tempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let url = dir.appendingPathComponent("pairs.json")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let future = """
+        {"version": \(PairStore.schemaVersion + 1), "salt": "000102030405060708090a0b0c0d0e0f", "pairs": [], "future_field": true}
+        """
+        try Data(future.utf8).write(to: url)
+        let store = PairStore(url: url)
+        guard case .refused(let reason) = store.loadOutcome else { return XCTFail("\(store.loadOutcome)") }
+        XCTAssertTrue(reason.contains("newer than this build"), reason)
+        XCTAssertNotNil(store.loadError)
+        XCTAssertFalse(store.upsert(PairRecord(pairId: "x", psk: "k", companionName: "x", createdAt: Date(), lastSeenAt: nil)),
+                       "a refused store must not persist over the newer file")
+        XCTAssertEqual(try String(contentsOf: url, encoding: .utf8), future, "file untouched")
+    }
+
+    func testPairStoreDecodeRejectsBadSaltOrKeyAndUpgradesOlderVersions() throws {
+        let ok = Data("""
+        {"version": 1, "salt": "000102030405060708090a0b0c0d0e0f", "pairs": []}
+        """.utf8)
+        XCTAssertEqual(try PairStore.decode(ok).get().1, .loaded(version: 1))
+        let badSalt = Data("""
+        {"version": 1, "salt": "0001", "pairs": []}
+        """.utf8)
+        XCTAssertThrowsError(try PairStore.decode(badSalt).get())
+        let badKey = Data("""
+        {"version": 1, "salt": "000102030405060708090a0b0c0d0e0f", "pairs": [{"pair_id": "p", "psk": "c2hvcnQ=", "companion_name": "x", "created_at": "2026-09-12T00:00:00Z"}]}
+        """.utf8)
+        XCTAssertThrowsError(try PairStore.decode(badKey).get())
+        XCTAssertThrowsError(try PairStore.decode(Data("{\"pairs\": []}".utf8)).get())
+        XCTAssertThrowsError(try PairStore.decode(Data("{\"version\": 0, \"salt\": \"00\", \"pairs\": []}".utf8)).get())
+        // Upgrade path is exercised once a version 2 exists; version 1 is current.
+        var f = PairStore.File(version: 1, salt: "00", pairs: [])
+        f = PairStore.upgrade(f)
+        XCTAssertEqual(f.version, PairStore.schemaVersion)
+    }
+
+    func testJournalPersistsPendingAttemptAndGenerationAcrossRelaunch() throws {
+        let dir = tempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let url = dir.appendingPathComponent("pairing-session.json")
+        let j = PairingJournal(url: url)
+        XCTAssertNil(j.pending)
+        XCTAssertEqual(j.generation, 0)
+        XCTAssertEqual(j.nextGeneration(), 1)
+        XCTAssertEqual(j.nextGeneration(), 2)
+        let a = PairingFlow.Attempt(generation: 2, code: "123456", pairId: "pid", startedAt: Date(), expiresAt: Date().addingTimeInterval(120))
+        XCTAssertTrue(j.setPending(a))
+        let attrs = try FileManager.default.attributesOfItem(atPath: url.path)
+        XCTAssertEqual((attrs[.posixPermissions] as? Int).map { $0 & 0o777 }, 0o600)
+        let text = try String(contentsOf: url, encoding: .utf8)
+        XCTAssertTrue(text.contains("\"pair_id\""), text)
+        XCTAssertFalse(text.contains("psk"), "the journal never holds a long-term key")
+
+        // Relaunch.
+        let k = PairingJournal(url: url)
+        XCTAssertEqual(k.generation, 2)
+        XCTAssertEqual(k.pending?.code, "123456")
+        XCTAssertEqual(k.pending?.generation, 2)
+        XCTAssertEqual(k.pending!.expiresAt.timeIntervalSince1970, a.expiresAt.timeIntervalSince1970, accuracy: 1)
+        XCTAssertTrue(k.setPending(nil))
+        XCTAssertNil(PairingJournal(url: url).pending)
+        XCTAssertEqual(PairingJournal(url: url).generation, 2, "the counter never rewinds")
+
+        // A pending attempt from a newer generation advances the counter.
+        XCTAssertTrue(k.setPending(PairingFlow.Attempt(generation: 9, code: "1", pairId: "p", startedAt: Date(), expiresAt: Date())))
+        XCTAssertEqual(PairingJournal(url: url).generation, 9)
+    }
+
+    func testJournalRefusesUnknownVersionWithoutOverwriting() throws {
+        let dir = tempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let url = dir.appendingPathComponent("pairing-session.json")
+        let text = "{\"version\": 99, \"generation\": 5}"
+        try Data(text.utf8).write(to: url)
+        let j = PairingJournal(url: url)
+        XCTAssertNotNil(j.loadError)
+        XCTAssertEqual(j.generation, 0)
+        XCTAssertFalse(j.setPending(nil))
+        XCTAssertEqual(try String(contentsOf: url, encoding: .utf8), text)
+    }
+
+    func testDefaultLocationsHonourAutomationOverrides() {
+        XCTAssertEqual(PairingJournal.defaultURL().lastPathComponent, ProcessInfo.processInfo.environment["FLASHTEX_PAIRING_JOURNAL"].map { URL(fileURLWithPath: $0).lastPathComponent } ?? "pairing-session.json")
+        XCTAssertEqual(PairStore.defaultURL().lastPathComponent, ProcessInfo.processInfo.environment["FLASHTEX_PAIR_STORE"].map { URL(fileURLWithPath: $0).lastPathComponent } ?? "pairs.json")
+        if ProcessInfo.processInfo.environment["FLASHTEX_PAIRING_JOURNAL"] == nil {
+            XCTAssertEqual(PairingJournal.defaultURL().deletingLastPathComponent(), PairStore.defaultURL().deletingLastPathComponent())
+        }
+    }
+}

@@ -1,0 +1,23 @@
+{
+  "acceptance": [
+    "Meaningful tests and strict lint pass",
+    "Publish truthful execution provenance and exact tested SHA",
+    "No native integration or PDF parity claim without measured evidence"
+  ],
+  "agent_id": "commander-preview-performance",
+  "allocation_id": "hosted-openai-product",
+  "branch": "agent/commander-preview-performance/preview-performance",
+  "deadline_utc": null,
+  "dependencies": [],
+  "input_main_sha": "68c111aa65d5aae80fb43c2f371e27eeca444be9",
+  "objective": "Measure real helper result delivery with exact current-source and lost-reply recovery gates",
+  "owned_paths": [
+    "crates/preview-controller"
+  ],
+  "revision": 2,
+  "schema_version": 1,
+  "state": "assigned",
+  "task_id": "FT-048",
+  "timebox_minutes": 30,
+  "updated_utc": "2026-09-12T09:00:59Z"
+}

@@ -97,9 +97,9 @@ final class WorkerClient {
             let t0 = MonotonicClock.nowNs()
             let event = Self.decode(line)
             let t1 = MonotonicClock.nowNs()
-            if TypingBench.shared.isActive { FlashTeXLog.write("worker: line \(line.count) B decoded in \(Double(t1 - t0) / 1e6) ms at \(t1)") }
+            if TypingBench.isBenchActive { FlashTeXLog.write("worker: line \(line.count) B decoded in \(Double(t1 - t0) / 1e6) ms at \(t1)") }
             deliver {
-                if TypingBench.shared.isActive { FlashTeXLog.write("worker: event on main at \(MonotonicClock.nowNs())") }
+                if TypingBench.isBenchActive { FlashTeXLog.write("worker: event on main at \(MonotonicClock.nowNs())") }
                 self.handler(event)
             }
         }

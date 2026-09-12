@@ -14,4 +14,6 @@ sha2 = "0.10"
 path = "../font-resources"
 
 [dev-dependencies]
+flashtex-project-files = { path = "../project-files" }
+flashtex-font-engine = { path = "../font-engine" }
 tempfile = "3"

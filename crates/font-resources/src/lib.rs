@@ -93,6 +93,15 @@ fn valid_hash(value: &str) -> bool {
             .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
 fn check_entry(entry: &ManifestEntry) -> Result<()> {
+    check_entry_common(entry)?;
+    if entry.font.format != "static-truetype" || entry.font.face_index != 0 {
+        return Err(Error::UnsupportedFont(
+            "rendering-v2 permits static TrueType face 0 only".into(),
+        ));
+    }
+    Ok(())
+}
+fn check_entry_common(entry: &ManifestEntry) -> Result<()> {
     let f = &entry.font;
     if f.font_id.is_empty()
         || f.font_id.len() > 128
@@ -109,11 +118,6 @@ fn check_entry(entry: &ManifestEntry) -> Result<()> {
             "invalid font identity, digest or byte length".into(),
         ));
     }
-    if f.format != "static-truetype" || f.face_index != 0 {
-        return Err(Error::UnsupportedFont(
-            "rendering-v2 permits static TrueType face 0 only".into(),
-        ));
-    }
     if !(16..=16384).contains(&f.units_per_em)
         || !(2..=65536).contains(&f.glyph_count)
         || f.postscript_name.is_empty()
@@ -123,7 +127,9 @@ fn check_entry(entry: &ManifestEntry) -> Result<()> {
             "invalid declared font metrics/name".into(),
         ));
     }
-    let l = &entry.license;
+    check_license_metadata(&entry.license)
+}
+fn check_license_metadata(l: &LicenseMetadata) -> Result<()> {
     if [&l.identifier, &l.copyright, &l.source]
         .iter()
         .any(|s| s.trim().is_empty() || s.len() > 8192)
@@ -530,7 +536,10 @@ mod outline;
 pub use outline::{OutlinePoint, SimpleOutline};
 
 mod expansion;
-pub use expansion::{Coordinate, ExactPoint, ExpandedOutline, GlyphInstance};
+pub use expansion::{
+    CompositeDeviceGrid, Coordinate, DeviceExpandedOutline, ExactPoint, ExpandedOutline,
+    GlyphInstance, GridTieRule,
+};
 
 mod path;
 pub use path::{PathCommand, QuadraticPath};
@@ -544,3 +553,17 @@ pub mod vf;
 pub mod vf_graph;
 
 pub mod cff;
+
+/// Identity-preserving adapter to the original sibling font engine.
+pub mod engine_adapter;
+
+/// Explicit project-scoped font registry using the rooted file layer.
+pub mod registry;
+
+pub mod math_adapter;
+
+pub mod math_variants;
+
+pub mod math_fit;
+
+pub mod math_kern;

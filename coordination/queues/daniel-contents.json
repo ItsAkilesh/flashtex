@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "agent_id": "daniel-contents",
+  "task_id": "FT-034",
+  "next_index": 0,
+  "steps": [
+    {
+      "name": "Contents stabilization: adversarial bounds and exact identity regressions",
+      "objective": "Contents stabilization: adversarial bounds and exact identity regressions",
+      "owned_paths": [
+        "crates/toc-layout"
+      ],
+      "acceptance": [
+        "Meaningful tests and strict Rust lint pass with bounded malformed/Unicode inputs",
+        "Preserve exact source/revision and resource identities; no implicit approximation or parity claim",
+        "Do not edit peer compiler/native/layout files; publish typed adapter contract and exact tested SHA"
+      ],
+      "allocation_id": "daniel-claude20x-shared",
+      "timebox_minutes": 30
+    },
+    {
+      "name": "Contents stabilization: existing consumer integration fixture and measured unsupported gaps",
+      "objective": "Contents stabilization: existing consumer integration fixture and measured unsupported gaps",
+      "owned_paths": [
+        "crates/toc-layout"
+      ],
+      "acceptance": [
+        "Meaningful tests and strict Rust lint pass with bounded malformed/Unicode inputs",
+        "Preserve exact source/revision and resource identities; no implicit approximation or parity claim",
+        "Do not edit peer compiler/native/layout files; publish typed adapter contract and exact tested SHA"
+      ],
+      "allocation_id": "daniel-claude20x-shared",
+      "timebox_minutes": 30
+    }
+  ]
+}

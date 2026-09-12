@@ -10,15 +10,16 @@
   "deadline_utc": null,
   "dependencies": [],
   "input_main_sha": "0a3d8e22fe4abc5cf15c39cce889aaa125f38bb6",
-  "objective": "Dependency-aware unresolved diagnostics",
+  "objective": "Finish preserved bounded literal search/replace plans and native serialization with exact source revision guards",
   "owned_paths": [
     "crates/project-index"
   ],
-  "revision": 2,
+  "revision": 3,
   "schema_version": 1,
-  "state": "paused_by_user",
+  "state": "integrated",
   "task_id": "FT-025",
   "timebox_minutes": 30,
-  "updated_utc": "2026-09-12T06:32:12.639657+00:00",
-  "pause_reason": "Local active-agent cap reduced from7to4; preserve work, no automatic revival/replacement/remote reallocation."
+  "updated_utc": "2026-09-12T08:18:56.142617+00:00",
+  "pause_reason": "Local active-agent cap reduced from7to4; preserve work, no automatic revival/replacement/remote reallocation.",
+  "integration_evidence": "Integrated tested product checkpoint 978bd9b; current user staffing rule leaves this engineer stopped with queue paused."
 }

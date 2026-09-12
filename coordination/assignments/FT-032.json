@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "task_id": "FT-032",
+  "agent_id": "daniel-footnotes",
+  "branch": "agent/daniel-footnotes/footnote-layout",
+  "revision": 3,
+  "state": "assigned",
+  "objective": "Exercise indexed roots, delimiters and script geometry with explicit metric inputs and clean-rebuild equivalence; coordinate source-breaking radical API consumers.",
+  "owned_paths": [
+    "crates/math-layout"
+  ],
+  "dependencies": [],
+  "acceptance": [
+    "Meaningful tests and strict Rust lint pass with bounded malformed/Unicode inputs",
+    "Preserve exact source/revision and resource identities; no implicit approximation or parity claim",
+    "Do not edit peer compiler/native/layout files; publish typed adapter contract and exact tested SHA",
+    "Register Daniel machine and exact assignment ACK/session before working",
+    "Preserve old WIP and test before publication; no automatic return of paths at cooldown end"
+  ],
+  "allocation_id": "daniel-claude20x-shared",
+  "timebox_minutes": 40,
+  "deadline_utc": null,
+  "input_main_sha": "5499e419b09868e2e248c413351a5646db74fac1",
+  "updated_utc": "2026-09-12T09:02:36.189558+00:00"
+}

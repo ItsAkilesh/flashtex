@@ -3,9 +3,9 @@
   "task_id": "FT-023",
   "agent_id": "commander-render-core",
   "branch": "agent/commander-render-core/rendering-core",
-  "revision": 3,
+  "revision": 5,
   "state": "assigned",
-  "objective": "Bounded exact geometry-diff API and CLI with stable identities and explicit mismatch categories",
+  "objective": "Consume published MathKernInfo into exact source-bound metrics replay without inventing script layout",
   "owned_paths": [
     "crates/rendering-core"
   ],
@@ -18,6 +18,6 @@
   "allocation_id": "hosted-openai-product",
   "timebox_minutes": 30,
   "deadline_utc": null,
-  "input_main_sha": "cab39a20278914747f92ee703f6da40a26b72a93",
-  "updated_utc": "2026-09-12T07:19:21.938673+00:00"
+  "input_main_sha": "28a4657f70269b800e963081b969572d3006644a",
+  "updated_utc": "2026-09-12T08:49:23.060270+00:00"
 }

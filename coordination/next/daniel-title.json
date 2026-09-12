@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "agent_id": "daniel-title",
+  "task_id": "FT-033",
+  "revision": 2,
+  "branch": "agent/daniel-title/title-layout",
+  "assignment_path": "coordination/assignments/FT-033.json",
+  "updated_utc": "2026-09-12T09:02:36.189558+00:00"
+}
