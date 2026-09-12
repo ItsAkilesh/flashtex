@@ -1,8 +1,21 @@
 # Proposal: `display-list-v2-delta` — a bounded, opt-in delta sibling for `display-list-v2`
 
-Revision: **r4, 2026-09-12** — amended for the Commander's r3 review (issue #2
-comment 5646664026): an over-cap reconstructed target is REJECTED before any
-allocation or paint (typed `delta_target_oversize` naming the estimated size
+Revision: **r5, 2026-09-12** — amended for the Commander's r4 review (issue #2
+comment 5646803033): the residency charge is no longer an estimate. Choice
+**(b) exact cached accounting**: the producer, which serialises every page it
+emits, carries the exact serialised byte length of EVERY page of the target in
+the delta (`page_bytes[]`, accounting metadata OUTSIDE the digested semantic
+model — the `dl2-canon-1` vectors are unchanged); the consumer verifies each
+entry (changed pages: measured length of the received page object; unchanged
+pages: cached length of the installed page plus the exact decimal-width change
+of its relocated offsets — no serialisation, no estimate), mismatch =
+`delta_page_bytes_mismatch`; the target's exact size = fixed framing + measured
+header parts + Σ `page_bytes` + separators, computed before any allocation.
+In-flight PRERASTER bitmaps (`V2Loader.preraster` runs in the same off-main
+job) are added to the peak accounting. Appendix A re-run: digests identical,
+exact target size equals the fresh line length. r4 was 0569b742 — amended for
+the Commander's r3 review (issue #2 comment 5646664026): an over-cap reconstructed target is REJECTED before any
+allocation or paint (typed `delta_target_oversize` naming the (since r5: exact) size
 vs the cap, last installed frame kept marked stale, chain cleared → full
 resync, which itself refuses honestly per §8); residency accounting now counts
 one IN-FLIGHT reconstruction (a running off-main callback is never terminated
@@ -44,10 +57,10 @@ line and its decline fallback), `crates/preview-controller/docs/display-forwardi
 2. When accepted, the ONE sibling line after `compile_result` is `type: "display_list_delta"` (protocol_version 2) instead of `display_list`; the echoed capability list says which of the two the consumer must expect — a mismatch is a protocol violation.
 3. A delta names an INSTALLED base exactly (`request_id`, `project_id`, `revision`, `page_count`, `list_digest`): the snapshot the consumer acknowledged as installed in the request's `display_list_base` field (installed = the frame currently published in the v2 pane after full validation and digesting; a stale sibling is never installed, a producer write is never installation), which must also be the producer's last emitted sibling; each side holds at most old + new (§6.2); any reply without a sibling, a stale sibling, a restart or a session change clears the chain (full resync).
 4. A delta carries the complete header (`documents`, `fonts` = the full resource closure, `diagnostics`, `required_features`), the full ordered `page_count`, a digest for EVERY page of the new list, the changed pages in full (exact page objects of the full reply), the explicit `removed_pages`, and per-document source relocations (`edit_start`, `edit_end`, `delta`) so unchanged pages' source spans are moved exactly as the producer's own block cache moves them.
-5. Digests (`dl2-canon-1`) are SHA-256 over a specified canonical binary encoding of the semantic model (glyph runs, rules, clusters, hit rects, carets, source spans, paint, fonts, documents, diagnostics) — implementable identically in Rust, Swift and the ~65-line Python reference in Appendix A, with test vectors; digests prove the consumer rebuilt what the producer sent, never that the producer sent everything (that is the fresh-full oracle's job, §10.1 P2).
+5. Digests (`dl2-canon-1`) are SHA-256 over a specified canonical binary encoding of the semantic model (glyph runs, rules, clusters, hit rects, carets, source spans, paint, fonts, documents, diagnostics) — implementable identically in Rust, Swift and the Python reference in Appendix A, with test vectors; digests prove the consumer rebuilt what the producer sent, never that the producer sent everything (that is the fresh-full oracle's job, §10.1 P2).
 6. Reconstruction yields COMPLETE new semantics — documents, fonts/resource closure, diagnostics, required_features and every page's full model are produced by the reconstruction (changed pages as sent, unchanged pages relocated), nothing inherited implicitly — then the normal full validation. Invariant: `to_json(reconstructed)` is byte-identical to a fresh full compile's `display_list` line (same id), including unchanged pages, resources, source spans and diagnostics — proven with the existing `tests/incremental.rs` gate shape (200 edits × 27 pages; 30 × 107).
 7. Refusals are typed: the producer never emits a delta without a snapshot of its own (no snapshot → the unchanged full line, `status` stays `ok`, no diagnostic); the consumer verifies the delta's `base` against the snapshot it holds and refuses `delta_base_mismatch`, `delta_page_count`, `delta_relocation_invalid`, `delta_digest_mismatch`, `delta_list_digest_mismatch`, `delta_oversize`, `delta_unsolicited` and resyncs by requesting without `-delta` (→ full).
-8. Bounded state: every snapshot is charged by its RECONSTRUCTED serialised-equivalent size BEFORE allocation (`MAX_SNAPSHOT_PAGES` 1 024, `MAX_SNAPSHOT_BYTES` 16 MiB, retained texts ≤ 8 MiB each / 32 MiB total); an over-cap target is refused, never built or painted (`delta_target_oversize`); consumer peak = `installed` (incl. its painted-frame resources) + one in-flight reconstruction (its input line + target under construction) + one queued wire line; producer peak = `old` + `new` + the line being written + the request line; eviction order defined in §6.2.
+8. Bounded state: every snapshot is charged by its EXACT reconstructed serialised size BEFORE allocation — no estimator: the delta carries `page_bytes[]` (exact per-page serialised lengths, verified by the consumer, outside the digests) and the target size is framing + measured header parts + Σ `page_bytes` (`MAX_SNAPSHOT_PAGES` 1 024, `MAX_SNAPSHOT_BYTES` 16 MiB, retained texts ≤ 8 MiB each / 32 MiB total); an over-cap target is refused, never built or painted (`delta_target_oversize`); consumer peak = `installed` (model + painted raster) + one in-flight reconstruction (input line + target + its PRERASTER bitmaps) + one queued wire line; producer peak = `old` + `new` + the line being written + the request line; eviction order in §6.2.
 8b. The full resync path never truncates: when the full reply itself exceeds a limit, the reply is the existing typed refusal naming that limit (`display_list_declined` / `failed` / the runtime's `serialization_refused`), the consumer keeps its last installed frame marked stale and drops its base, and no page is ever omitted to fit (§8).
 9. Visibility page filtering is NOT this proposal: a filtered view is an incomplete view, never a complete compile, and never authorizes source actions outside its validated coverage; a reconstructed delta result IS a complete compile because it is verified equal to one.
 10. Acceptance is three separate gates — producer (cargo, byte identity + digests + refusals), consumer (Swift, reconstruction equality + typed refusals + V2Parity 0 px), transport (size/latency measured on the direct route and, after an FT-049 runtime change to accept the new sibling type, the helper route) — nothing about size or latency is claimed from this schema.
@@ -161,6 +174,7 @@ duplicated/replayed request); it is evidence of a bug, not a normal path.
   "relocations":[{"path":"main.tex","edit_start":a,"edit_end":b,"delta":d}, …],   -- ≤ 1 per document
   "page_count":N,                               -- full ordered page count of the reconstructed list
   "page_digests":["<hex64>", … N entries],      -- page 1..N, ALL pages
+  "page_bytes":[int, … N entries],              -- exact serialised byte length of each page object of the FULL line (accounting metadata, not digested; §6.2)
   "changed_pages":[<page>, …],                  -- full page objects, ascending number, exactly as the full line would carry them
   "removed_pages":[B'+1, …, B],                 -- explicit; must equal exactly the base numbers > N
   "list_digest":"<hex64>"                       -- of the reconstructed list
@@ -177,6 +191,14 @@ Rules:
    when `N ≥ base.page_count`) and refuses otherwise.
 2. `page_digests[i-1]` is the `dl2-canon-1` page digest of page `i` of the
    reconstructed list (changed and unchanged alike).
+2b. `page_bytes[i-1]` is the exact UTF-8 byte length of page `i`'s JSON object
+   exactly as the producer's writer emits it inside the full line's `pages`
+   array (`json::write(&page_json(p))`, `display.rs:443`): for a changed page it
+   equals the length of the page object as it appears in this delta line; for
+   an unchanged page it equals the length of the relocated base page (§6.2
+   gives the exact arithmetic). `page_bytes` is accounting metadata: it is NOT
+   an input of any `dl2-canon-1` digest, and a wrong value is a typed refusal,
+   never a silent correction.
 3. `fonts` is the complete closure: every `font_id` referenced by any page of
    the reconstructed list, unchanged pages included, is declared, and nothing
    undeclared is referenced (checked by the unchanged full validator on the
@@ -223,7 +245,9 @@ page on the wire. Domain-separated prefixes:
 
 Every field of the wire model is covered (glyph runs, rules, clusters, hit
 rects, carets, source spans and synthetic reasons, paint, fonts, documents,
-diagnostics, features, identity). What a digest proves: that the list the
+diagnostics, features, identity); `page_bytes` (§4 rule 2b) is deliberately
+outside the digested model — it describes the serialisation, not the
+semantics, and is verified separately (§6.2). What a digest proves: that the list the
 consumer holds after reconstruction is, field for field, the list the producer
 computed digests over. What it cannot prove: that the producer's list is
 complete relative to a fresh full compile — a producer that dropped a
@@ -286,6 +310,8 @@ with a span inside it is a changed page; the size policy then decides.
 verify base == held snapshot (all five fields)      else delta_base_mismatch
 verify digest_scheme known                           else delta_unsupported_scheme
 verify page_count, changed numbers, removed_pages    else delta_page_count / delta_removed_pages
+verify page_bytes[n] for every n (§6.2 exact rule)   else delta_page_bytes_mismatch(n)
+charge target = framing + header parts + Σ page_bytes + separators ≤ MAX_SNAPSHOT_BYTES   else delta_target_oversize  (BEFORE any allocation)
 for n in 1..=page_count:
     page = changed[n] if present else relocate(base.pages[n], relocations)   (invalid span → delta_relocation_invalid)
     verify page_digest(page) == page_digests[n-1]    else delta_digest_mismatch(n)
@@ -357,11 +383,12 @@ digest agreement establishes completeness of anything the producer omitted.
 
 A snapshot is **installed** on the consumer when, and only when, all of:
 
-1. its envelope was decoded (full line) or, for a delta, its reconstructed
-   target was CHARGED and admitted before reconstruction (§6.2: the estimate
-   is computable from the delta header, the changed pages, and the per-page
-   estimates cached for `installed` — no target allocation is needed to
-   compute it) and then reconstructed (§5.4);
+1. its envelope was decoded (full line; the exact byte length of every page
+   object is recorded from the line by the existing fast typed reader
+   (`RenderingV2Fast`, which already scans object ranges) and cached with the
+   snapshot) or, for a delta, its reconstructed target's EXACT size was
+   computed from `page_bytes` and admitted before reconstruction (§6.2 — no
+   target allocation is needed to compute it) and then reconstructed (§5.4);
 2. the unchanged full validation path accepted it (§5.4a: `RenderingV2.validate`
    → `V2FontStore.resolve` → `V2Frame.prepare`);
 3. its `dl2-canon-1` page digests and `list_digest` were computed (and, for a
@@ -425,17 +452,19 @@ are unaffected.
 | slot | content | charged as | when it exists |
 |---|---|---|---|
 | `installed` | the acknowledged base: validated model, digests, identity, transport binding, AND its painted-frame resources (`V2Frame`: prepared pages, resolved `CGFont`s shared with the store, prerastered bitmaps at the pane's last scale) | model ≤ `MAX_SNAPSHOT_BYTES` serialised-equivalent; bitmaps separately by the pane's raster policy (page count × pixels; a §10.3 measurement) | from installation until replaced or cleared |
-| `in-flight` | the ONE off-main preparation currently running (`V2Loader.queue`, `startDisplayListV2`): its input wire line (captured by the closure) and, for a delta, the target model under construction, which becomes `candidate` on completion | input line ≤ 16 MiB + target ≤ `MAX_SNAPSHOT_BYTES` (admitted by the pre-allocation charge, else refused before building) | from dispatch of the callback until it completes — replacing or dropping the QUEUED callback never terminates a RUNNING one, so this slot is live for the whole callback regardless of newer arrivals |
+| `in-flight` | the ONE off-main preparation currently running (`V2Loader.queue`, `startDisplayListV2`): its input wire line (captured by the closure), for a delta the target model under construction, the prepared pages, AND the candidate's PRERASTER bitmaps (`V2Loader.preraster` runs inside the same job at the pane's last scale/appearance BEFORE delivery, `PreviewV2View.swift` `startDisplayListV2`), which become `candidate` on completion | input line ≤ 16 MiB + target ≤ `MAX_SNAPSHOT_BYTES` (admitted by the exact pre-allocation charge, else refused before building) + preraster bitmaps of the candidate (page count × pixels at the pane's scale — the same size class as the painted frame's bitmaps) | from dispatch of the callback until it completes — replacing or dropping the QUEUED callback never terminates a RUNNING one, so this slot, bitmaps included, is live for the whole callback regardless of newer arrivals |
 | `queued` | the newest wire line waiting behind `in-flight` (`V2QueuedLoad`; older queued lines are dropped undecoded, existing coalescing) | one line ≤ 16 MiB | from arrival while `in-flight` is busy until it is dispatched (becomes `in-flight`) or replaced by a newer arrival |
 
 `candidate` is not a fourth slot: it is the completed `in-flight` result during
 the single main-thread step that either installs it (publish as the current
 frame) or drops it (stale, refused, or a clearing event happened meanwhile).
 Peak consumer residency is therefore `installed` (model + painted-frame
-resources) + `in-flight` (one line + one target) + `queued` (one line), i.e.
-≤ 2 × `MAX_SNAPSHOT_BYTES` serialised-equivalent + 2 × 16 MiB of wire lines +
-the painted frame's raster resources. Dropping the queued line frees only that
-line; the running callback's allocations are released only when it returns.
+resources incl. its bitmaps) + `in-flight` (one line + one target + the
+candidate's preraster bitmaps) + `queued` (one line), i.e. ≤ 2 ×
+`MAX_SNAPSHOT_BYTES` exact serialised size + 2 × 16 MiB of wire lines + TWO
+sets of raster bitmaps (painted + prerastered candidate) at the pane's scale.
+Dropping the queued line frees only that line; the running callback's
+allocations, bitmaps included, are released only when it returns.
 
 Eviction order: (1) a clearing event (a `compile_result` without accepted
 `display-list-v2`; any §7 refusal; pane hidden; worker/helper restart,
@@ -457,8 +486,8 @@ never an extra snapshot.
 | cap | value | why |
 |---|---|---|
 | `MAX_SNAPSHOT_PAGES` | 1 024 pages | rendering-core allows 10 000; 1 024 keeps digest recomputation and page relocation bounded at ~40× the measured 27-page document |
-| `MAX_SNAPSHOT_BYTES` | 16 MiB of serialised-equivalent size of the RECONSTRUCTED TARGET, charged BEFORE any target allocation: `estimated_json_bytes()` constants (`display.rs:296-311`) applied as `est(delta header) + Σ est(changed pages) + Σ est(base pages reused)`, where each base page's estimate was cached at install (the constants count items, glyphs, clusters and text bytes only, so relocation does not change a page's estimate) — never the received delta line length, which bounds nothing about the target | a delta line is small by construction while its target can be up to the full-line limit or, if the document grew, beyond it. **Decision (r4): an over-cap target is REJECTED before reconstruction and before paint** — typed `delta_target_oversize` naming the estimated target size and the cap; the last installed frame stays on screen marked stale; the chain is cleared; the next request omits `-delta` and the full reply is subject to its own honest refusal (§8). Nothing over the cap is ever built, validated, painted or retained, so the painted frame is always within the cap |
-| **peak residency (per side)** | consumer: `installed` (model + painted-frame resources) + `in-flight` (one wire line + one target) + `queued` (one wire line) ≤ 2 × `MAX_SNAPSHOT_BYTES` serialised-equivalent + 2 × 16 MiB + raster resources; producer: `old` + `new` ≤ 2 × `MAX_SNAPSHOT_BYTES` + the reply line being written (≤ 16 MiB) + the request line (≤ 8 MiB input) + retained texts | the in-memory model overhead factor over serialised-equivalent and the raster resources are §10.3 measurements, not claims; the estimator's over-approximation (≈ 8 % on the runtime's 26-page fixture, `producer-size-contract.md`) makes the charge conservative |
+| `MAX_SNAPSHOT_BYTES` | 16 MiB of EXACT serialised size of the RECONSTRUCTED TARGET, computed BEFORE any target allocation — **choice (b), no estimator exists**: `target_bytes = F + H + Σ page_bytes[1..N] + (N − 1)` where `F` is the fixed framing of the full line for this id (the writer's constant keys and punctuation, `display.rs:329-395`, plus `json(id)`), `H` is the byte length of the header parts as they appear IN THE DELTA LINE (`required_features`, `documents`, `fonts`, `diagnostics` arrays and the scalar header values — the same writer's bytes as in the full line, measured on the received delta by the existing fast reader, never re-serialised), and `page_bytes` are the producer's exact per-page lengths (§4 rule 2b) each VERIFIED by the consumer before use: for a changed page, the measured length of that page object in the delta line; for an unchanged page, `cached_bytes(installed page n) + Σ over its relocated source ranges of (digits(start+d) − digits(start) + digits(end+d) − digits(end))` — exact because the producer prints integral values as plain decimal (`crates/compiler/src/json.rs:312-313`) and relocation changes nothing else in the page; any inequality is `delta_page_bytes_mismatch(n)` (§7). At install of a FULL line the per-page lengths are measured from the received line. The old producer heuristic `estimated_json_bytes()` is NOT used anywhere in this proposal (the Commander's evidence at main a744cd86 shows it under-charges schema-valid values, e.g. a 4 214-byte document declaration charged 200 B) | a delta line is small by construction while its target can be up to the full-line limit or, if the document grew, beyond it. **Decision (r4, kept): an over-cap target is REJECTED before reconstruction and before paint** — typed `delta_target_oversize` naming the exact target size and the cap; the last installed frame stays on screen marked stale; the chain is cleared; the next request omits `-delta` and the full reply is subject to its own honest refusal (§8). Nothing over the cap is ever built, validated, painted or retained, so the painted frame is always within the cap. Appendix A implements `target_bytes` and checks it equals the fresh full line's length on the worked example (3 498 bytes) and that the digit-width arithmetic equals actual serialisation across 2→3-digit boundaries |
+| **peak residency (per side)** | consumer: `installed` (model + painted bitmaps) + `in-flight` (one wire line + one target + the candidate's preraster bitmaps) + `queued` (one wire line) ≤ 2 × `MAX_SNAPSHOT_BYTES` exact serialised size + 2 × 16 MiB + 2 × raster set; producer: `old` + `new` ≤ 2 × `MAX_SNAPSHOT_BYTES` + the reply line being written (≤ 16 MiB) + the request line (≤ 8 MiB input) + retained texts | the in-memory model overhead factor over exact serialised size and the raster set size are §10.3 measurements, not claims; the serialised-size part of the bound is exact, not conservative |
 | retained request texts (producer only) | ≤ 8 MiB per document (rendering-core document bound), ≤ 32 MiB total | needed for the relocation diff; over the cap → no snapshot |
 | documents / fonts per snapshot | 4 096 / 256 (the existing validator bounds) | unchanged |
 
@@ -475,10 +504,10 @@ never an extra snapshot.
   the producer answers in full (§8). A delta whose `base` is not the currently
   installed (published) frame is `delta_base_mismatch` → full resync (§7).
 - **Over-cap target:** refused before allocation (`delta_target_oversize`,
-  §7); the delta line itself is dropped after the header/changed-page
-  estimate; `installed` stays painted and marked stale; chain cleared; the
+  §7); the delta line itself is dropped after the exact `page_bytes`
+  accounting; `installed` stays painted and marked stale; chain cleared; the
   next full reply is refused honestly if it too exceeds a limit (§8). There is
-  no "validate but do not retain" path in r4.
+  no "validate but do not retain" path since r4.
 - **In-flight work is never cancelled:** replacing or dropping `queued`, a
   clearing event, or a newer result only marks the running callback's ticket
   stale; the callback completes, its result is dropped on return, and its
@@ -506,7 +535,8 @@ never an extra snapshot.
 | `delta_digest_mismatch(n)` | a page digest differs after reconstruction | refuse, resync; evidence-worthy: reconstruction or producer classification bug |
 | `delta_list_digest_mismatch` | header/list digest differs | refuse, resync |
 | `delta_oversize` | line over the consumer's framing budget | dropped before parse (existing behaviour), resync |
-| `delta_target_oversize` | the pre-allocation estimate of the reconstructed target exceeds `MAX_SNAPSHOT_BYTES` (or `page_count` > `MAX_SNAPSHOT_PAGES`) | refuse BEFORE building the target: message names "estimated reconstructed size N bytes / P pages over the cap C"; last installed frame kept marked stale; chain cleared; resync (whose full reply refuses honestly per §8 if it too is over a limit) |
+| `delta_page_bytes_mismatch(n)` | `page_bytes[n-1]` ≠ the measured length of changed page `n` in the delta line, or ≠ the cached-plus-digit-delta length of unchanged page `n` (§6.2) | refuse BEFORE building the target; chain cleared; resync; evidence-worthy (producer writer or consumer accounting bug) |
+| `delta_target_oversize` | the EXACT pre-allocation size of the reconstructed target exceeds `MAX_SNAPSHOT_BYTES` (or `page_count` > `MAX_SNAPSHOT_PAGES`) | refuse BEFORE building the target: message names "reconstructed size N bytes / P pages over the cap C"; last installed frame kept marked stale; chain cleared; resync (whose full reply refuses honestly per §8 if it too is over a limit) |
 | existing full-validation errors | the reconstructed list fails `RenderingV2.validate` | refuse, resync (same codes as a full frame) |
 
 "Refuse" = keep the previous verified frame on screen (labelled stale as
@@ -609,12 +639,14 @@ route (`untrusted:true`, `source_actions_enabled:false`) stay as they are.
   the next request carries no acknowledgement; with one request in flight the
   acknowledged base stays installed until that reply is handled; at most
   `installed` + `in-flight` + `queued` exist at any time and the charge of each target is the
-  reconstructed target's `estimated_json_bytes()`-equivalent computed BEFORE
-  allocation (assert in the fake-worker test: a delta whose target estimate is
-  cap + 1 byte is refused with `delta_target_oversize` naming both numbers, no
-  target object is created, the previous frame stays painted and marked stale,
-  the next request omits `-delta`; scenario `small_delta_oversized_reconstruction`
-  in §10.4); residency: at most `installed` + `in-flight` + `queued` (assert with
+  reconstructed target's EXACT serialised size from verified `page_bytes`,
+  computed BEFORE allocation (assert in the fake-worker test: a delta whose
+  target is cap + 1 byte is refused with `delta_target_oversize` naming both
+  numbers, no target object is created, the previous frame stays painted and
+  marked stale, the next request omits `-delta`; a delta whose `page_bytes`
+  entry is off by one for a changed or an unchanged page is refused with
+  `delta_page_bytes_mismatch(n)` before allocation; scenario
+  `small_delta_oversized_reconstruction` in §10.4); residency: at most `installed` + `in-flight` + `queued` (assert with
   a slow fake reconstruction: a newer line arriving mid-callback lands in
   `queued`, a third replaces it, the running callback completes and its result
   is dropped as stale — scenario `coalescing_peak_inflight_and_queued`); a stale
@@ -647,12 +679,16 @@ route (`untrusted:true`, `source_actions_enabled:false`) stay as they are.
 - Consumer peak residency: RSS at the moment `installed` + `in-flight` +
   `queued` coexist (slow-reconstruction harness), split into model bytes,
   wire-line bytes and painted-frame raster resources (prepared pages +
-  prerastered bitmaps at 1 and 2 px/pt), and the per-page estimate cache; the
+  prerastered bitmaps at 1 and 2 px/pt), and the per-page `page_bytes` cache; the
   in-memory factor over serialised-equivalent reported as a range.
-- Estimate accuracy: `estimated_json_bytes()`-equivalent vs the actual
-  `to_json` length of each reconstructed target over the 200-edit script
-  (over-approximation ratio), so the cap's conservatism is measured, not
-  assumed.
+- Exact accounting check: over the 200-edit script, `target_bytes` computed
+  from `page_bytes` before reconstruction equals the byte length of the fresh
+  full line (P2's oracle) at every edit — an equality assertion, not a ratio;
+  plus the cost of measuring per-page lengths at install and of the
+  digit-width pass per delta.
+- Raster peak: bitmap bytes of the painted frame plus the in-flight
+  candidate's preraster set at 1 and 2 px/pt, measured at the moment both
+  exist.
 - Wall: keystroke→paint through the v2 pane (`TypingBench`) with and without
   `-delta`, load-aware (`uptime` recorded; skipped above 1-min load 20).
 - Report as ranges with load; the 33.6 ms / 4.3 MB baseline in
@@ -670,7 +706,7 @@ case, asserting every `required_outcome` key:
 
 | scenario id | gate | what the test feeds and asserts |
 |---|---|---|
-| `small_delta_oversized_reconstruction` | consumer C3 (fake worker); producer P4 | a 4 096-byte delta whose target charge is cap + 1 → `delta_target_oversize` before allocation, `install_as_base:false`, `publish_under_claimed_candidate_cap:false`, `old_frame_mutated:false`, next request = full resync under existing bounds (producer side: the producer itself never emits a delta whose target it would not retain, so P4 asserts a full reply there) |
+| `small_delta_oversized_reconstruction` | consumer C3 (fake worker); producer P4 | a 4 096-byte delta whose exact target size (Σ verified `page_bytes` + header + framing) is cap + 1 → `delta_target_oversize` before allocation, `install_as_base:false`, `publish_under_claimed_candidate_cap:false`, `old_frame_mutated:false`, next request = full resync under existing bounds (producer side: the producer itself never emits a delta whose target it would not retain, so P4 asserts a full reply there) |
 | `painted_a_stale_b_candidate_c` | consumer C2/C3 | painted A (rev 12), late B (rev 11), candidate C (rev 13): `install_late_b:false`, `acknowledge_late_b:false`, `use_b_for_current_export_or_hit:false`, `old_frame_mutated:false` (§6.1 item 4; the helper route's `DisplayCandidateGate` and, once D2 of the draft review is fixed, membership generation) |
 | `coalescing_peak_inflight_and_queued` | consumer C3 + §10.3 peak measurement | live objects painted A, active preparation B, queued C: `count_live_callback_allocations:true`, `count_queued_wire_bytes:true`, `count_retained_frame_resources:true`, `dropping_queue_counts_as_cancelling_active_work:false` (§6.2 slots) |
 
@@ -759,6 +795,47 @@ def list_digest(pl, page_digests):
     for d in page_digests: h.update(bytes.fromhex(d))
     return h.hexdigest()
 
+
+# ---- exact size accounting (r5): page_bytes is OUTSIDE the digested model ---
+def wire(o): return json.dumps(o, separators=(',', ':'))   # stand-in for the producer writer (illustrative)
+def page_bytes(p): return len(wire(p).encode('utf-8'))
+def digits(n): return len(str(int(n)))
+def relocated_page_bytes(base_page, cached_bytes, relocs):
+    """Exact byte length of relocate(base_page) from the cached length: only the
+    decimal width of moved offsets can change. No serialisation needed."""
+    by_path = {r['path']: r for r in relocs}
+    delta = 0
+    def moved(r):
+        rl = by_path.get(r['path'])
+        if rl is None or r['end_byte'] <= rl['edit_start']: return 0
+        if r['start_byte'] >= rl['edit_end']:
+            d = rl['delta']
+            return (digits(r['start_byte'] + d) - digits(r['start_byte'])) + (digits(r['end_byte'] + d) - digits(r['end_byte']))
+        raise ValueError('span intersects edited region')
+    for it in base_page['items']:
+        provs = [c for c in it['clusters']] if it['kind'] == 'glyph_run' else [it]
+        for o in provs:
+            for r in o.get('sources', []): delta += moved(r)
+    return cached_bytes + delta
+def target_bytes(delta_env, base_env, cached_page_bytes):
+    """Exact serialised size of the reconstructed target, computed BEFORE
+    reconstruction: header parts measured on the delta line (same writer bytes),
+    pages from page_bytes, fixed framing from the writer's layout."""
+    d = delta_env['payload']
+    changed = {p['number']: p for p in d['changed_pages']}
+    total_pages = 0
+    for num in range(1, d['page_count'] + 1):
+        if num in changed:
+            got = page_bytes(changed[num])
+        else:
+            got = relocated_page_bytes(base_env['payload']['pages'][num - 1], cached_page_bytes[num - 1], d['relocations'])
+        assert got == d['page_bytes'][num - 1], f'delta_page_bytes_mismatch page {num}: {got} != {d["page_bytes"][num - 1]}'
+        total_pages += got
+    header = {k: d[k] for k in ('render_format', 'coordinate_unit', 'color_space', 'text_extraction', 'project_id', 'revision', 'required_features', 'documents', 'fonts')}
+    header['pages'] = []; header['diagnostics'] = d['diagnostics']
+    frame = len(wire({'protocol_version': 2, 'id': delta_env['id'], 'type': 'display_list', 'payload': header}).encode('utf-8'))
+    return frame + total_pages + max(0, d['page_count'] - 1)   # commas between page objects
+
 # ---- relocation + reconstruction (consumer algorithm) ---------------------
 def relocate_range(r, reloc):
     a, b, d = reloc['edit_start'], reloc['edit_end'], reloc['delta']
@@ -784,6 +861,8 @@ def apply_delta(base_env, delta_env):
     base_pd = [page_digest(p) for p in base['pages']]
     assert d['base']['list_digest'] == list_digest(base, base_pd), 'delta_base_mismatch'
     n = d['page_count']; assert len(d['page_digests']) == n, 'delta_page_count'
+    cached = [page_bytes(p) for p in base['pages']]          # measured at install of the base
+    assert target_bytes(delta_env, base_env, cached) <= MAX_SNAPSHOT_BYTES, 'delta_target_oversize'
     changed = {p['number']: p for p in d['changed_pages']}
     assert sorted(changed) == [p['number'] for p in d['changed_pages']], 'delta_pages_unordered'
     assert d['removed_pages'] == list(range(n + 1, len(base['pages']) + 1)), 'delta_removed_pages'
@@ -802,6 +881,7 @@ def apply_delta(base_env, delta_env):
 
 # ---- worked example ---------------------------------------------------------
 T = 1 << 20
+MAX_SNAPSHOT_BYTES = 16 * 1024 * 1024
 FONT = 'c1f0e5d6a7b8c9d0e1f2a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f8'  # illustrative
 def rect(x, w): return {'x': x, 'top': 78643200, 'width': w, 'height': 12582912}
 def caret(tb, x): return {'text_byte': tb, 'x': x, 'top': 78643200, 'height': 12582912}
@@ -844,6 +924,7 @@ delta['documents'] = fresh['documents']; delta['fonts'] = fresh['fonts']; delta[
 delta['relocations'] = [{'path': 'main.tex', 'edit_start': 19, 'edit_end': 19, 'delta': 1}]
 delta['page_count'] = 2
 delta['page_digests'] = fresh_pd
+delta['page_bytes'] = [page_bytes(p) for p in fresh['pages']]
 delta['changed_pages'] = [fresh['pages'][0]]
 delta['removed_pages'] = []
 delta['list_digest'] = list_digest(fresh, fresh_pd)
@@ -866,6 +947,8 @@ if __name__ == '__main__':
         print('fresh page digests', fresh_pd)
         print('fresh header', header_digest(fresh)); print('fresh list', delta['list_digest'])
         print('base line bytes', len(json.dumps(base_env, separators=(',', ':'))), 'delta line bytes', len(json.dumps(delta_env, separators=(',', ':'))), 'fresh line bytes', len(json.dumps(fresh_env, separators=(',', ':'))))
+        print('page_bytes base', [page_bytes(p) for p in base['pages']], 'fresh', delta['page_bytes'])
+        print('exact target bytes', target_bytes(delta_env, base_env, [page_bytes(p) for p in base['pages']]), '== len(fresh line)', len(wire(fresh_env).encode()))
         print('reconstruction == fresh: True')
 ```
 
@@ -883,9 +966,15 @@ base list 68db4fe3ae528414058efecd7d5870c689d598f415a4c6045a86173d7514eec1
 fresh page digests ['2a2f15ca94dd927ace6c633f69cf5db765ccdf8622df40ca107b93d850edee94', '4d71e83b0f5b28c5db04e4232d75fde0deb61912acb6e4f5b37c0969ecf7518e']
 fresh header 7411c7fde8668f1bf2e8cf39a762d2e4b7eac6c4db3967fd8cfb4f2096503ab8
 fresh list 6e93b60654755c252c79580be04e5d964d7b9fc4aee167d6124afc766a6c4e1e
-base line bytes 3145 delta line bytes 2676 fresh line bytes 3498
+base line bytes 3145 delta line bytes 2701 fresh line bytes 3498
+page_bytes base [1014, 1367] fresh [1367, 1367]
+exact target bytes 3498 == len(fresh line) 3498
 reconstruction == fresh: True
 ```
+
+(r5: the delta line grew by 25 bytes for `page_bytes`; a separate check moved a
+page whose spans sit at 97–100 by +1, +3, −90 and +903 and found the
+digit-width arithmetic equal to the actual serialised length in every case.)
 
 (The byte counts are Python's compact `json.dumps` of the example, not the
 producer writer's; the example is too small for the delta to be meaningfully
@@ -991,6 +1080,7 @@ block is a cache hit relocated by +1 and `relocate(base page 2) == new page 2`
     "2a2f15ca94dd927ace6c633f69cf5db765ccdf8622df40ca107b93d850edee94",
     "4d71e83b0f5b28c5db04e4232d75fde0deb61912acb6e4f5b37c0969ecf7518e"
   ],
+  "page_bytes":[1367,1367],
   "changed_pages":[
     {"number":1,"width":641728512,"height":830472192,"items":[
      {"kind":"glyph_run","font_id":"c1f0e5d6…","font_size":12582912,"text":"Hio",
@@ -1022,6 +1112,15 @@ block is a cache hit relocated by +1 and `relocate(base page 2) == new page 2`
    `start_byte ≥ 19`, so `29–30 → 30–31`, `30–31 → 31–32`, `31–32 → 32–33`;
    glyphs, hit rects, carets, paint untouched. `page_digest` =
    `4d71e83b…518e` = `page_digests[1]`. OK.
+3b. Accounting, done BEFORE steps 2–3 in the real consumer: `page_bytes[0]`
+   = 1 367 = measured length of the changed page object in the delta line;
+   `page_bytes[1]` = 1 367 = cached length of installed page 2 (1 367) + digit
+   deltas of its three relocated spans (29→30, 30→31, 31→32, 32→33: all stay
+   2 digits, so 0). Exact target = framing + header parts + 1 367 + 1 367 + 1
+   separator = 3 498 bytes = the length of the fresh full line (Appendix A
+   prints both); 3 498 ≤ `MAX_SNAPSHOT_BYTES`, admitted. (Byte counts here use
+   the reference's compact writer as a stand-in; the producer's writer is
+   normative and the gate compares against its bytes.)
 4. Header from the delta (`documents` with the new sha256/49 bytes, `fonts`,
    `diagnostics`, features, `demo`/8) + pages → `list_digest` =
    `6e93b606…4e1e` = the delta's. OK.

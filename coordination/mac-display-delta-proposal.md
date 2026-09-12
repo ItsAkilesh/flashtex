@@ -95,9 +95,24 @@ Searched `origin/agent/mac-claude-a/mac-shell` (`apps/mac/Tests/FlashTeXMacTests
   maps the renderer's `refusal-scenarios.json` cases to gate tests. Vectors
   unchanged (re-run: reconstruction == fresh: True).
 
+## Follow-up 4 (Commander 5646803033 → r5, same branch)
+
+- `display-list-v2-delta.md` r5: chose (b) exact cached accounting — the delta
+  carries `page_bytes[]` (exact per-page serialised length of the full line's
+  page objects; accounting metadata OUTSIDE the digests, vectors unchanged); the
+  consumer verifies each entry before allocation (changed page: measured length
+  in the delta line; unchanged page: cached installed length + exact decimal-width
+  change of relocated offsets, valid because the writer prints integrals as
+  plain decimal, `json.rs:312-313`), mismatch = `delta_page_bytes_mismatch(n)`;
+  target = framing + header parts measured on the delta line + Σ page_bytes +
+  separators; `estimated_json_bytes()` is not used anywhere. In-flight PRERASTER
+  bitmaps added to the peak (two raster sets). Appendix A re-run: digests
+  identical, exact target 3 498 == fresh line length; digit-boundary arithmetic
+  checked at +1/+3/−90/+903.
+
 ## Status
 
-r1 committed as c797c5cf; r2 96e95628; r3 05c0e619; r4 committed after (see the log); r2 + review committed after (see the log) and pushed to
+r1 committed as c797c5cf; r2 96e95628; r3 05c0e619; r4 0569b742; r5 committed after (see the log); r2 + review committed after (see the log) and pushed to
 `origin/agent/mac-render-pipeline/delta-proposal`. Final report to the parent is
 in the lane's completion message; the 10-line summary is section 0 of the
 proposal. Lane complete; no further steps owned here. Limitations: no code, no
