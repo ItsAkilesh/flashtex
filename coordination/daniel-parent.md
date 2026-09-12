@@ -44,6 +44,79 @@ Not currently running, with reasons:
 
 16 lanes total: 12 running, 3 current-and-idle, 1 held.
 
+## Round 4 results — 12 lanes published
+
+Every lane below was independently re-verified on this machine before push:
+`cargo test` green, `cargo clippy --all-targets -- -D warnings` exit 0, every
+non-merge commit authored `d-q222`, zero AI-attribution trailers, a valid 17-key
+record at the dispatched revision, and `main_integrated_through` confirmed with
+`git merge-base --is-ancestor` rather than taken on trust.
+
+| Task | Rev | Crate | Tests |
+|---|---|---|---|
+| FT-031 | 5 | font-engine | 79 |
+| FT-032 | 4 | math-layout | 57 |
+| FT-033 | 4 | title-layout | 51 |
+| FT-034 | 4 | toc-layout | 51 |
+| FT-035 | 4 | color-expressions | 114 |
+| FT-038 | 4 | math-accessibility | 48 |
+| FT-040 | 3 | project-templates | 75 |
+| FT-041 | 4 | editor-snippets | 87 |
+| FT-042 | 4 | document-statistics | 73 |
+| FT-044 | 4 | collaboration-core | 57 |
+| FT-045 | 3 | tex-calc | 83 |
+| FT-046 | 5 | tools/daniel-supervisor | 17 |
+
+Held, verified, deliberately unpushed pending the ruling requested above:
+FT-039 spellcheck (62) and FT-043 project-bundle (51). FT-030 is running with its
+push held on the same basis. FT-036 r2 and FT-037 r3 remain current.
+
+### Two defects fixed, not merely covered
+
+**FT-039 spellcheck** found and fixed two real complexity defects: an
+O(tokens x excluded-ranges) rescan (a nested-delimiter input took ~302s) and a
+per-occurrence edit-distance recompute (~17.6s on a megabyte document with one
+repeated typo). The whole suite now runs in 0.704s.
+
+**FT-032 math-layout** found that `CmMathMetrics::text_glyph` mapped any ASCII
+byte, including control characters, straight to a `cmr10` OT1 code point — so a
+NUL resolved to a real unrelated glyph (OT1 0x00 is capital Gamma) instead of a
+`Limitation`. Fixed by restricting the mapping to printable ASCII.
+
+**FT-031 font-engine** attempted a `parse_with_source` hardening, discovered it
+broke 4 of `font-resources`' own 35 tests (its fixtures legitimately use a
+zero-length `glyf` table and a non-4-byte-aligned `CFF ` offset, both spec-legal),
+and reverted rather than shipping it. The revert is the finding.
+
+### Self-directed hardening, reported as such
+
+With the dispatched queue exhausted, this lane started its own audits inside
+already-owned paths, hunting the defect class GH#43 proves live in a peer crate:
+a narrowing cast of an input-derived length later used as an index.
+
+Two have reported and both are **clean negatives**, which is worth recording
+honestly rather than quietly dropping:
+
+- `font-engine`: 49 casts triaged, 0 live defects. The structural reason is that
+  `GlyphId` is `u16` sourced from the format's own `maxp.numGlyphs`, so the glyph
+  index space cannot reach 65536 the way GH#43's unbounded shaped-run vector can.
+  `adapters/paragraph.rs` even widens gids to `u32` before handing off.
+- `color-expressions` and `toc-layout`: 1 cast each, both already guarded. Prior
+  hardening revisions had converted the rest to `checked_*` and typed errors.
+
+**A correction against this lane's own earlier claim:** the cast counts used to
+justify these audits were inflated by a bad triage command (a `head -200` cap
+before counting, so any crate at or above 200 reported exactly 200). True counts
+are font-engine 49, math-layout 9, paragraph-layout 5, and 0-5 elsewhere. The
+audits were still worth running, but they were pitched on a number this lane got
+wrong, and the record should say so.
+
+Still running: release-mode overflow sweep (the suites all run in debug, where
+Rust panics on overflow; release silently wraps, and for scaled-point arithmetic
+a wrap is a wrong glyph position that nothing reports), library panic-surface
+audit, dependency and `unsafe` audit, contract-versus-source drift check, and an
+independent re-derivation of every published measurement.
+
 ## Consult for the Commander
 
 Three items this lane will not decide unilaterally.
