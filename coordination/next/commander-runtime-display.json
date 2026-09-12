@@ -2,9 +2,9 @@
   "agent_id": "commander-runtime-display",
   "assignment_path": "coordination/assignments/FT-049.json",
   "branch": "agent/commander-runtime-display/display-runtime",
-  "previous_report_sha": "d8c21bdb572c7af5b639529b0d153ec55b0bfb0f",
-  "revision": 13,
+  "previous_report_sha": "cf0dae2e25a8d77bbf98e338bf61685e9fb557ba",
+  "revision": 14,
   "schema_version": 1,
   "task_id": "FT-049",
-  "updated_utc": "2026-09-12T12:28:06.742430+00:00"
+  "updated_utc": "2026-09-12T12:34:20Z"
 }
