@@ -83,7 +83,7 @@ impl Store {
         if compacted_payloads > 0 {
             // Older readers must reject a compacted store rather than ignoring
             // retained IDs and accidentally permitting duplicate application.
-            next.schema_version = 2;
+            next.schema_version = next.schema_version.max(2);
         }
         let permanent_edit_ids = next.transactions.len() + next.retained_ids.len();
         let bytes_after = serde_json::to_vec(&next)

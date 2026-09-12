@@ -4,7 +4,7 @@ use std::sync::{
     atomic::AtomicU64,
     mpsc::{sync_channel, Receiver, SyncSender, TrySendError},
 };
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum EventKind {
     Queued,
     Running,
@@ -31,7 +31,7 @@ pub struct UsageEvidence {
 }
 pub(crate) struct Hub {
     subscribers: Mutex<Vec<SyncSender<Event>>>,
-    sequence: AtomicU64,
+    pub(crate) sequence: AtomicU64,
     pub(crate) started: AtomicU64,
     dropped: AtomicU64,
 }

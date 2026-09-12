@@ -116,3 +116,47 @@ Acceptance tests cover transformed attachment, byte/word indices, malformed
 indices, exact scaled versus unscaled offsets and refusal to guess grid rounding.
 No ppem, device grid or hint state is represented here, so grid-rounded nonzero
 offsets remain unsupported. Real-font smoke remains 1679 accepted / 941 unsupported.
+
+## Exact TeX font metrics
+
+`tfm::Tfm::parse` is an original bounded parser for the documented TFM format.
+It checks exact file/table lengths, dimensions, character indices, next-larger
+cycles, extensible pieces and ligature/kern program targets and actions. Checksum
+is retained as an external font identity value, not recomputed from TFM contents;
+source_sha256 binds the actual bytes. `FixWord(i32)` preserves signed 12.20 values;
+`at_design_size` returns an exact numerator over 2^40 in TeX points, without
+pretending that this implements TeX's separate scaled-point rounding algorithm.
+`char_metrics`, one-based `parameter`, and bounded `pair_action` expose typed
+values and ligature retention/advance semantics. TFM codes are 8-bit encoding
+slots, not Unicode or TrueType GIDs; consumers need an explicit encoding binding.
+Specification reference: [TeX Live tex.web TFM format documentation](https://github.com/TeX-Live/texlive-source/blob/trunk/texk/web2c/tex.web).
+No existing TeX engine is linked or invoked. No installed TFM oracle was found;
+current tests use declared synthetic format fixtures, not measured font parity.
+
+`apply_ligatures_kerns` interprets already encoded runs with exact kern FixWords
+and ligature keep-left/keep-right/advance semantics. Each output glyph retains
+its contributing input index interval; inserted kerns stay separate typed items.
+Input is limited to 4096 bytes, output to 8192 items and execution to 65536 steps;
+cyclic ligature programs fail rather than hanging. Fonts declaring boundary
+programs are explicitly unsupported by this run interpreter (pair inspection
+remains available). It does not perform Unicode encoding, hyphenation,
+discretionaries, TeX scaled-point rounding or TrueType glyph selection.
+
+## Explicit TFM encoding adapter
+
+`encoding::EncodingManifest` is a typed JSON declaration (not a PostScript `.enc`
+interpreter). It binds exact TFM SHA256, font SHA256 and face index to at most 256
+code/name entries and 65536 declared name/original-GID entries. Names are literal
+JSON strings; JSON escapes decode normally, while PostScript/PDF escape syntax is
+not guessed. Duplicate codes/names, absent declarations, invalid GIDs and hash or
+face mismatches fail. Distinct encoding slots may intentionally share a glyph.
+`.notdef` yields the explicit GlyphIdentity::Notdef value; other names cannot map
+to GID zero. A declaration is not proof that a font's name table uses those names.
+
+`BoundTfmFont::new(tfm,font,manifest)` retains immutable borrowed resources and a
+validated map. `map_code` returns original glyph identity plus exact TFM metrics;
+`map_run` applies the bounded TFM interpreter then resolves all output slots,
+retaining input intervals and separate exact kerns. No Unicode casting, font
+fallback, hidden `.notdef` drawing, or TrueType metric substitution occurs.
+The caller must handle Notdef explicitly and establish the declared encoding's
+provenance. This adapter does not establish TFM-to-outline visual equivalence.

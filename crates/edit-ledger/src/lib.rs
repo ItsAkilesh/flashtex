@@ -12,6 +12,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
+pub mod history;
 pub mod recovery;
 pub mod retention;
 pub mod service;
@@ -118,6 +119,8 @@ struct State {
     transactions: BTreeMap<String, AppliedTransaction>,
     #[serde(default)]
     retained_ids: BTreeMap<String, retention::RetainedEditId>,
+    #[serde(default)]
+    history: history::HistoryState,
 }
 
 pub fn digest(text: &str) -> String {
@@ -206,7 +209,7 @@ fn apply_to(document: &Document, edit: &PreparedEdit) -> Result<Document> {
 impl State {
     fn validate(&self) -> Result<()> {
         self.document.validate()?;
-        if !matches!(self.schema_version, 1 | 2)
+        if !matches!(self.schema_version, 1..=3)
             || (self.schema_version == 1 && !self.retained_ids.is_empty())
             || self.transactions.len() + self.retained_ids.len() > MAX_EDIT_IDS
         {
@@ -291,6 +294,10 @@ impl State {
                     "retained edit-ID identity/hash mismatch",
                 ));
             }
+        }
+        self.history.validate(&self.document)?;
+        if self.schema_version < 3 && !self.history.is_empty() {
+            return Err(Error::new("invalid_store", "history requires schema 3"));
         }
         Ok(())
     }
@@ -407,6 +414,7 @@ impl Store {
             document,
             transactions: BTreeMap::new(),
             retained_ids: BTreeMap::new(),
+            history: history::HistoryState::default(),
         })
     }
     /// Atomic source+ledger application. An identical retry returns its original
@@ -473,6 +481,11 @@ impl Store {
         let mut next = state.clone();
         next.document = after;
         next.transactions.insert(receipt.edit_id.clone(), tx);
+        history::record(
+            &mut next,
+            &state.document,
+            format!("Capture {}", receipt.capture_id),
+        )?;
         self.commit(next)?;
         Ok(receipt)
     }
@@ -488,6 +501,7 @@ impl Store {
             .state
             .clone()
             .ok_or_else(|| Error::new("document_missing", "initialize source first"))?;
+        let before = next.document.clone();
         if next.document.revision != expected_revision
             || next.document.source_sha256 != expected_sha256
         {
@@ -506,6 +520,7 @@ impl Store {
             text,
         )?;
         let result = next.document.clone();
+        history::record(&mut next, &before, "Source edit".into())?;
         self.commit(next)?;
         Ok(result)
     }
