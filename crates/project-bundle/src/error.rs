@@ -29,6 +29,15 @@ pub enum BundleError {
     MalformedPath(String),
     /// The same bundle path was declared more than once in one spec.
     DuplicatePath(String),
+    /// Two *different* caller-declared paths resolve to the same
+    /// underlying file on disk — most notably, two Unicode normalization
+    /// forms of one visual filename (precomposed vs. combining-mark
+    /// decomposed) that a normalization-insensitive filesystem (default
+    /// macOS APFS) folds into one directory entry. Rejected as a typed
+    /// error rather than silently building a bundle with two entries that
+    /// would in fact overwrite each other, or that both happen to read the
+    /// same bytes without the caller ever being told why.
+    AmbiguousPath { first: String, second: String },
     /// A parent directory or the file itself is a symbolic link. The
     /// underlying rooted reader (`flashtex-project-files`) refuses *every*
     /// symlink component outright — whether or not it would resolve inside
@@ -66,6 +75,26 @@ pub enum BundleError {
         expected: Option<Digest>,
         found: Option<Digest>,
     },
+    /// A write in [`crate::apply_import`] failed partway through a
+    /// multi-file batch, and the rollback that undoes every write already
+    /// committed earlier in that same call could not fully complete — a
+    /// double fault (an out-of-contract writer bypassing the project lock
+    /// to touch a path this call had just written, or the disk filling
+    /// during the restore). This is distinct from every other error
+    /// `apply_import` returns: those mean the whole call left the target
+    /// exactly as it was before (the earlier writes were cleanly rolled
+    /// back and the original typed cause is returned directly); this one
+    /// means it did not, and names precisely which paths are left in the
+    /// state this call wrote them to.
+    RollbackIncomplete {
+        /// The error that triggered the rollback — the same error
+        /// `apply_import` would have returned had rollback fully
+        /// succeeded.
+        original_cause: Box<BundleError>,
+        /// Paths this call had already written that rollback could not
+        /// restore to their pre-import state, each paired with why.
+        left_in_written_state: Vec<(String, String)>,
+    },
     /// Any other I/O failure reading or writing the file, with context.
     Io(String),
 }
@@ -79,6 +108,10 @@ impl fmt::Display for BundleError {
             BundleError::PathTraversal(p) => write!(f, "path traversal not allowed: {p:?}"),
             BundleError::MalformedPath(msg) => write!(f, "malformed path: {msg}"),
             BundleError::DuplicatePath(p) => write!(f, "duplicate bundle path: {p:?}"),
+            BundleError::AmbiguousPath { first, second } => write!(
+                f,
+                "{first:?} and {second:?} are different declared paths but resolve to the same file on disk"
+            ),
             BundleError::SymlinkRefused(p) => {
                 write!(f, "symlink component refused: {p:?}")
             }
@@ -107,6 +140,13 @@ impl fmt::Display for BundleError {
             } => write!(
                 f,
                 "{path:?} changed since the import preview was computed (expected {expected:?}, found {found:?}); refusing to overwrite"
+            ),
+            BundleError::RollbackIncomplete {
+                original_cause,
+                left_in_written_state,
+            } => write!(
+                f,
+                "apply_import batch failed ({original_cause}) and rollback could not fully undo it; left in written state: {left_in_written_state:?}"
             ),
             BundleError::Io(msg) => write!(f, "I/O error: {msg}"),
         }

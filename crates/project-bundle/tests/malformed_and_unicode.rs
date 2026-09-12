@@ -130,3 +130,51 @@ fn non_ascii_directory_and_file_names_are_rooted_normally() {
     let bytes = root.read_rooted("章/一.tex").unwrap();
     assert_eq!(bytes, "第一章".as_bytes());
 }
+
+#[test]
+fn path_of_only_separators_is_rejected_as_absolute() {
+    // No content at all, just repeated "/" — must not be silently
+    // normalized down to the empty path (a different, also-rejected case)
+    // or accepted as some kind of root reference. `ProjectPath::normalize`
+    // checks `starts_with('/')` before it ever splits into segments, so
+    // this is `AbsolutePath`, not `EmptyPath` — pinned here so the two
+    // stay distinguishable.
+    let dir = TempDir::new("malformed-only-separators");
+    let root = ProjectRoot::new(dir.path()).unwrap();
+    let err = root.read_rooted("///").unwrap_err();
+    assert_eq!(err, BundleError::AbsolutePath("///".to_string()));
+}
+
+#[test]
+fn unicode_normalization_collision_is_rejected_not_silently_admitted() {
+    // "café.tex" written with a precomposed é (U+00E9, NFC) vs. the same
+    // visual name spelled with "e" + a combining acute accent (U+0301,
+    // NFD): different UTF-8 byte sequences, but the APFS hazard documented
+    // at the crate level means a normalization-insensitive volume (the
+    // default for macOS APFS, which this test runs on) resolves both to
+    // the very same directory entry. Declaring both as separate bundle
+    // entries must be a typed error, not a bundle that silently ends up
+    // with two "different" files that are actually one, or a panic from
+    // whatever tries to treat them as independent.
+    let nfc = "caf\u{e9}.tex".to_string(); // "café.tex", precomposed é (U+00E9)
+    let nfd = "cafe\u{301}.tex".to_string(); // "café.tex", "e" + combining acute (U+0301)
+
+    let dir = TempDir::new("unicode-normalization-collision");
+    dir.write(&nfc, b"content");
+    let root = ProjectRoot::new(dir.path()).unwrap();
+
+    // Sanity check on this machine's actual filesystem: reading the NFD
+    // spelling must find the very same file the NFC spelling wrote, or
+    // the rest of this test would not be exercising the hazard it claims
+    // to.
+    assert_eq!(
+        root.read_rooted(&nfd).unwrap(),
+        b"content",
+        "this test assumes a normalization-insensitive filesystem (default macOS APFS); \
+         the NFD spelling must resolve to the file the NFC spelling created"
+    );
+
+    let entries = [BundleEntry::new(nfc.clone()), BundleEntry::new(nfd.clone())];
+    let err = build_bundle(&root, &entries).unwrap_err();
+    assert_eq!(err, BundleError::AmbiguousPath { first: nfc, second: nfd });
+}

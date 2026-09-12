@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use flashtex_project_files::{Digest, PathError, ProjectPath, Refused, SaveError};
 use flashtex_project_files::ProjectRoot as FilesRoot;
@@ -109,6 +109,24 @@ impl ProjectRoot {
     /// e.g. [`crate::apply_import`] performing a caller-decided write.
     pub(crate) fn files_root(&self) -> &FilesRoot {
         &self.inner
+    }
+
+    /// Best-effort filesystem identity for `relative`, used only to detect
+    /// two *different* caller-declared paths that the filesystem itself
+    /// folds into the same underlying file — the APFS hazard documented at
+    /// the crate level: two Unicode normalization forms of one visual name
+    /// (precomposed vs. combining-mark decomposed) are distinct byte
+    /// strings but the same directory entry on a normalization-insensitive
+    /// volume (default macOS APFS). `None` when identity cannot be
+    /// determined (nothing there any more, or the OS-level canonicalize
+    /// call itself fails) — this is a collision *detector* layered on top
+    /// of an already-successful read, never a precondition for it, so a
+    /// failure here is silently treated as "no collision observed" rather
+    /// than propagated as an error.
+    pub(crate) fn canonical_identity(&self, relative: &str) -> Option<PathBuf> {
+        let normalized = Self::normalize(relative).ok()?;
+        let os_path = normalized.to_os_path(self.as_path());
+        std::fs::canonicalize(&os_path).ok()
     }
 }
 
