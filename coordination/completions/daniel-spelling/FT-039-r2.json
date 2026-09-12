@@ -1,0 +1,75 @@
+{
+  "agent_id": "daniel-spelling",
+  "archived_utc": "2026-09-12T09:28:42Z",
+  "assignment": {
+    "acceptance": [
+      "Meaningful tests and strict Rust lint pass with bounded malformed/Unicode inputs",
+      "Preserve exact source/revision and resource identities; no implicit approximation or parity claim",
+      "Do not edit peer compiler/native/layout files; publish typed adapter contract and exact tested SHA"
+    ],
+    "agent_id": "daniel-spelling",
+    "allocation_id": "daniel-claude20x-shared",
+    "branch": "agent/daniel-spelling/spellcheck",
+    "deadline_utc": null,
+    "dependencies": [],
+    "input_main_sha": "83f65e08ae60b312609f49ec0a2b6cae25c8e353",
+    "objective": "Add bounded user-dictionary and source-revision aware suggestions with Unicode ranges, cancellation and no automatic source mutation.",
+    "owned_paths": [
+      "crates/spellcheck"
+    ],
+    "revision": 2,
+    "schema_version": 1,
+    "state": "assigned",
+    "task_id": "FT-039",
+    "timebox_minutes": 40,
+    "updated_utc": "2026-09-12T09:08:31.372212+00:00"
+  },
+  "report": {
+    "agent_id": "daniel-spelling",
+    "allocation_id": "daniel-claude20x-shared",
+    "assignment_acknowledgements": {
+      "FT-039": {
+        "acknowledged_utc": "2026-09-12T09:26:49Z",
+        "adaptation": "Accepted FT-039 rev 2 as specified. Modeled UserDictionary as two bounded HashSet layers (additions, ignores) sharing one capacity so exceeding it returns UserDictionaryError::CapacityExceeded rather than growing unbounded; composed with the caller's Dictionary via LayeredDictionary so SpellChecker::check needed no change. Modeled Revision as an opaque caller-defined u64 rather than adding a generic parameter, keeping the empty [dependencies] table. Refactored check()/check_revision()/check_cancellable() onto one private check_impl to avoid duplicating the scan/suggest logic; check()'s public signature and behavior are unchanged and all rev 1 tests still pass unmodified. No workspace root Cargo.toml, no other crate, and no coordination file outside my own were touched.",
+        "main_sha": "2fc45df69f0d397706174117116777f19619dfe2",
+        "revision": 2
+      }
+    },
+    "branch": "agent/daniel-spelling/spellcheck",
+    "capabilities": [
+      "rust",
+      "spellcheck"
+    ],
+    "code_revision": "9c0651a37da934f401d681200e765d757ff59f65",
+    "eta_minutes": {
+      "likely": 0,
+      "optimistic": 0,
+      "pessimistic": 0
+    },
+    "machine": "mac-m5pro-dq222",
+    "main_integrated_through": "2fc45df69f0d397706174117116777f19619dfe2",
+    "next_action": "Await Commander review/ack; no consumer wiring in scope for this crate.",
+    "reviewed_peers": {
+      "origin/main": "2fc45df69f0d397706174117116777f19619dfe2"
+    },
+    "schema_version": 1,
+    "state": "ready_for_integration",
+    "summary": "crates/spellcheck rev 2: bounded UserDictionary (typed CapacityExceeded error) layered over the caller dictionary via LayeredDictionary; check_revision/CheckResult carrying a caller Revision with CheckResult::is_stale; check_cancellable/CheckOutcome polling a caller callback before/during the scan for prompt cancellation, no threads; zero source mutation; still zero dependencies. 35/35 tests pass (26 rev 1 + 9 new), clippy clean.",
+    "tool": "Claude Code on Claude Max 20x",
+    "updated_utc": "2026-09-12T09:26:49Z",
+    "usage": {
+      "evidence": "Shared Claude Max 20x subscription quota; no separate usage metering available to this agent; no purchases or overages made.",
+      "status": "unknown"
+    }
+  },
+  "report_age_seconds": 113,
+  "report_path": "coordination/agents/daniel-spelling.json",
+  "review_required": true,
+  "revision": 2,
+  "schema_version": 1,
+  "stale_completion": false,
+  "state": "reported_ready",
+  "task_id": "FT-039",
+  "worker_branch": "agent/daniel-spelling/spellcheck",
+  "worker_report_sha": "97e1831c653f0fe1e38f5dff868e2fa3f4205e76"
+}
