@@ -1,0 +1,41 @@
+{
+  "agent_id": "mac-validation",
+  "allocation_id": "claude-mac20x-validation",
+  "assignment_acknowledgements": {},
+  "branch": "agent/mac-validation/mac-live",
+  "capabilities": [
+    "xcode",
+    "validation",
+    "python"
+  ],
+  "code_revision": "1c5047505f4ede22dd1679247ef03386bc51171f",
+  "eta_minutes": {
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 0
+  },
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "6b43a3a1ae8697697a3fb338909bc973db0c1e02",
+  "next_action": "Re-run tools/native-validation/mac-live/run.sh after each integration of apps/mac or the helper crates; compare reports",
+  "reviewed_peers": {
+    "origin/agent/mac-claude-a/mac-shell": {
+      "adaptation": "Runner builds from whatever these refs are at run time (recorded in env.json); read the preview-controller attach path and launch-check/make-app scripts; no product source edited",
+      "reviewed_utc": "2026-09-12T09:05:18Z",
+      "sha": "d8baed6bc2ef1e333ecad48d3d056478a9f984fd"
+    },
+    "origin/main": {
+      "adaptation": "Runner builds from whatever these refs are at run time (recorded in env.json); read the preview-controller attach path and launch-check/make-app scripts; no product source edited",
+      "reviewed_utc": "2026-09-12T09:05:18Z",
+      "sha": "780f1458c125d9702b994ab9df377aed96a1113f"
+    }
+  },
+  "schema_version": 1,
+  "state": "ready_for_integration",
+  "summary": "tools/native-validation/mac-live: independent acceptance runner (helpers from pinned origin/main clone, app from mac-shell, typing bench on compiler + preview-controller routes, make-app + launch-check with FLASHTEX_NO_ACTIVATE=1, packaged capture cycle with provider_disabled refusal, offline fixture proposal, ledger apply, compile, flashtex-pdf --verify); committed report under reports/<UTC>.md",
+  "tool": "Claude Code subagent (parent mac-claude-a)",
+  "updated_utc": "2026-09-12T09:05:18Z",
+  "usage": {
+    "evidence": "tools/native-validation/mac-live/reports/",
+    "status": "Shared Claude Max quota via parent mac-claude-a; no purchases; no paid network calls"
+  }
+}

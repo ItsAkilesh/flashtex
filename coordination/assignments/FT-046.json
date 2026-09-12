@@ -3,9 +3,9 @@
   "task_id": "FT-046",
   "agent_id": "daniel-parent",
   "branch": "agent/daniel-parent/supervisor",
-  "revision": 1,
+  "revision": 2,
   "state": "assigned",
-  "objective": "Bootstrap Daniel machine supervisor NOW: register actual machine/auth/toolchain and launch16 assigned disjoint product lanes FT030\u2013045, prioritizing transferred layout/font/math. Read coordination/machines/daniel-new.json. Publish exact ACK/session evidence and keep current+2 tasks; no global authority/control writes.",
+  "objective": "Maintain16 concurrent authorized engineering lanes on Daniel machine, each with unique ownership and current+2followups. Verify exact live IDs, repair structured report schema and clock evidence. Do not reinterpret16lanes as a three-task queue or reduce based on another machine historical quota failures; report actual local capacity/permission blocker if any.",
   "owned_paths": [
     "tools/daniel-supervisor",
     "coordination/agents/daniel-parent.json",
@@ -20,6 +20,6 @@
   "allocation_id": "daniel-claude20x-shared",
   "timebox_minutes": 30,
   "deadline_utc": null,
-  "input_main_sha": "60a498aff541e6ff982086c522877ef36f5c42dd",
-  "updated_utc": "2026-09-12T08:26:53.728263+00:00"
+  "input_main_sha": "c9f1b9edbc872085949da89a7d3e4875ce17cd54",
+  "updated_utc": "2026-09-12T08:57:30.114547+00:00"
 }
