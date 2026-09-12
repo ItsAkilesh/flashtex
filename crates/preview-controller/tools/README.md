@@ -11,7 +11,7 @@ not a producer sibling-frame or native rendering harness.
 Required options: `--binary`, `--requests`, `--expected`, `--output`.
 Optional: `--timeout` seconds (default30), `--max-reply` bytes (default16MiB).
 The output directory must be new; existing directories are refused to prevent stale
-success artifacts from a prior run. Nonfinite or nonpositive timeouts are rejected. Partial captured replies
+success artifacts from a prior run. Nonfinite or nonpositive timeouts are rejected. Complete captured replies, bounded failed-response prefixes
 and stderr remain on failure; result.json is written only after successful checks.
 Historical benchmark files/results are unchanged and used their archived script.
 
@@ -22,3 +22,9 @@ invalid-timeout refusal before worker startup. The actual optimized Text compile
 all ten recorded text-session request/response comparisons through this probe.
 
 Run: `python3 -m unittest discover -s crates/preview-controller/tools -p test_bounded_protocol_probe.py -v`.
+
+Before success the probe closes stdin and requires stdout EOF within the deadline;
+any trailing output is refused. Request IDs are checked when present; compile
+results additionally match project and revision. Error replies remain errors with
+matching IDs. Two additional tests cover trailing output and a wrong reference ID.
+Cleanup reaps the direct child; it does not claim process-tree supervision.

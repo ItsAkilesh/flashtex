@@ -9,11 +9,11 @@ import subprocess
 import time
 
 
-def exchange(process, request, timeout, max_reply):
+def exchange(process, request, timeout, max_reply, failure_prefix=None):
     start = time.perf_counter()
     deadline = start + timeout
     sent = 0
-    reply = bytearray()
+    reply = failure_prefix if failure_prefix is not None else bytearray()
     with selectors.DefaultSelector() as events:
         events.register(process.stdin, selectors.EVENT_WRITE)
         events.register(process.stdout, selectors.EVENT_READ)
@@ -66,8 +66,24 @@ def run(binary, requests, expected, output, timeout=30.0, max_reply=16 * 1024 * 
                 reference = references.readline()
                 if not reference or not request.endswith(b'\n'):
                     raise ValueError("request/reference line mismatch")
-                reply, elapsed = exchange(process, request, timeout, max_reply)
+                prefix = bytearray()
+                try:
+                    reply, elapsed = exchange(process, request, timeout, max_reply, prefix)
+                except Exception:
+                    (output / 'failed-response-prefix.bin').write_bytes(prefix)
+                    raise
                 captured.write(reply)
+                sent = json.loads(request)
+                received = json.loads(reply)
+                if 'id' in sent and received.get('id') != sent['id']:
+                    raise ValueError("response identity differs from request")
+                if sent.get('type') == 'compile':
+                    if received.get('type') not in ('compile_result', 'error'):
+                        raise ValueError("unexpected compile response type")
+                    if received['type'] == 'compile_result':
+                        for field in ('project_id', 'revision'):
+                            if received.get('payload', {}).get(field) != sent.get('payload', {}).get(field):
+                                raise ValueError("response project/revision differs from request")
                 if json.loads(reply) != json.loads(reference):
                     raise ValueError("complete response differs from reference")
                 rows.append({'elapsed_ms': elapsed, 'request_bytes': len(request),
@@ -75,7 +91,22 @@ def run(binary, requests, expected, output, timeout=30.0, max_reply=16 * 1024 * 
             if references.read(1):
                 raise ValueError("extra reference responses")
             process.stdin.close()
-            if process.wait(timeout=timeout) != 0:
+            deadline = time.perf_counter() + timeout
+            with selectors.DefaultSelector() as events:
+                events.register(process.stdout, selectors.EVENT_READ)
+                while True:
+                    remaining = deadline - time.perf_counter()
+                    if remaining <= 0 or not events.select(remaining):
+                        raise TimeoutError("worker did not close stdout after final reply")
+                    try:
+                        extra = os.read(process.stdout.fileno(), 1)
+                    except BlockingIOError:
+                        continue
+                    if extra:
+                        (output / 'unexpected-output-prefix.bin').write_bytes(extra)
+                        raise ValueError("unexpected output after final reply")
+                    break
+            if process.wait(timeout=max(0.001, deadline - time.perf_counter())) != 0:
                 raise RuntimeError("worker exited unsuccessfully")
         finally:
             if process.poll() is None:

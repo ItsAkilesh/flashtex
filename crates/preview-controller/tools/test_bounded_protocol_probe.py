@@ -45,6 +45,13 @@ class BoundedProbeTests(unittest.TestCase):
                         Path(directory) / 'output', timeout=value)
                 self.assertFalse((Path(directory) / 'output').exists())
 
+    def test_trailing_output_after_eof_is_not_success(self):
+        self.exercise('for line in sys.stdin:\n sys.stdout.write(line); sys.stdout.flush()\nsys.stdout.write("{}\\n"); sys.stdout.flush()\n', error=ValueError)
+
+    def test_wrong_request_identity_cannot_match_wrong_reference(self):
+        self.exercise('import json; sys.stdin.readline(); print(json.dumps(dict(id="wrong")), flush=True)',
+                      request=b'{"id":"right"}\n', expected=b'{"id":"wrong"}\n', error=ValueError)
+
     def test_partial_response_times_out_and_reaps_worker(self):
         self.exercise('sys.stdin.readline()\nsys.stdout.write("{"); sys.stdout.flush()\ntime.sleep(60)\n',
                       error=TimeoutError)
