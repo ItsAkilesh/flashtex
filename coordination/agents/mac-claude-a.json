@@ -3,10 +3,10 @@
   "allocation_id": "openai-mac-plus-ft003",
   "assignment_acknowledgements": {
     "FT-003": {
-      "acknowledged_utc": "2026-09-12T04:30:04Z",
-      "adaptation": "Accepted FT-003 rev 2 (Live compiler integration) at input main 25a92a9; delivered at fd2a26e: real subprocess transport (Python test double clearly labeled + real crates/compiler 29221d8 via RealCompilerTests), stale-guard for older responses, debounced auto-compile with coalescing, edit mapping that refuses stale offsets unless rebased, measured latency 0.5-9 ms/request. Children mac-pdf (FT-009) and mac-validation (FT-010) running in worktrees.",
-      "main_sha": "09031efa9feca80d7a34e29b0b6fc41d43c509c4",
-      "revision": 2
+      "acknowledged_utc": "2026-09-12T04:34:05Z",
+      "adaptation": "Accepted FT-003 rev 3 (Native editor and preview quality) at input main 09031ef. Already at a336754: export always white regardless of dark preview (fixed a merged regression), Rust-writer export path, diagnostics panel with recovery never hidden, Unicode click-to-source tests with real compiler. In flight: editor inline diagnostic underlines (subagent). User additionally authorized light Codex CLI (ChatGPT Plus) use via a Sonnet driver for small tasks; Claude Max remains primary.",
+      "main_sha": "4d17c62cb5a9cb524fd3a1313690a946ddb340ec",
+      "revision": 3
     }
   },
   "branch": "agent/mac-claude-a/mac-shell",
@@ -16,15 +16,15 @@
     "rust",
     "macos-simulators"
   ],
-  "code_revision": "fd2a26e5deea9151138d8c59e9c7bc8b757f3334",
+  "code_revision": "a3367540a75aa6af1af220751f60410ea124a5fa",
   "eta_minutes": {
-    "likely": 0,
-    "optimistic": 0,
-    "pessimistic": 0
+    "likely": 20,
+    "optimistic": 10,
+    "pessimistic": 35
   },
   "machine": "mac-m1max-a",
-  "main_integrated_through": "d6858792737c0980cccaec5db835075e94a1ebc9",
-  "next_action": "Queue step 1 Native editor and preview quality; collect mac-pdf/mac-validation; register children via coord.py",
+  "main_integrated_through": "09031efa9feca80d7a34e29b0b6fc41d43c509c4",
+  "next_action": "Merge editor-diagnostics subagent; shortcuts table; report ready. Codex driver on demo.tex sample.",
   "reviewed_peers": {
     "origin/agent/aarush-macbook/companion-capture": {
       "adaptation": "Peer cannot run xcodebuild; will verify their branch from this Mac. No contract change.",
@@ -42,18 +42,18 @@
       "sha": "25a92a9c591a92a3d49071e536ecf8f129112c24"
     },
     "origin/main": {
-      "adaptation": "Main 09031ef dispatches FT-003 rev 2 = the step just completed; FT-007 is Commander-owned; fixture compile-result.json text/range mismatch reported",
-      "reviewed_utc": "2026-09-12T04:30:04Z",
-      "sha": "09031efa9feca80d7a34e29b0b6fc41d43c509c4"
+      "adaptation": "Dispatcher advanced FT-003 to rev 3; acknowledged",
+      "reviewed_utc": "2026-09-12T04:34:05Z",
+      "sha": "4d17c62cb5a9cb524fd3a1313690a946ddb340ec"
     }
   },
   "schema_version": 1,
-  "state": "ready_for_integration",
-  "summary": "FT-003 rev 2 complete at fd2a26e: real JSONLines transport, revision ordering, debounce/coalescing, stale-offset refusal with validated rebase, latency 0.5-9ms; 34/34 tests with real compiler; xcodebuild OK; PDF export + caret sync merged",
+  "state": "in_progress",
+  "summary": "FT-003 rev 3 in progress at a336754: white-only export, Rust PDF writer wiring, diagnostics panel; 36/36 tests with real compiler+pdf binaries; editor underline diagnostics pending",
   "tool": "Claude Code",
-  "updated_utc": "2026-09-12T04:30:04Z",
+  "updated_utc": "2026-09-12T04:34:05Z",
   "usage": {
-    "evidence": "Claude Max 20x per user + CMD-006; 4 subagents run so far; no purchases",
+    "evidence": "Claude Max 20x (user+CMD-006); Codex Plus light use newly user-authorized; no purchases",
     "status": "unknown"
   }
 }
