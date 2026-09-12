@@ -239,3 +239,53 @@ fn actual_runtime_raw_sibling_pairs_and_exports_without_repair() {
         assert!(pipeline_frame::pair(raw, Some(lines[1]), false).is_err());
     }
 }
+
+#[test]
+fn native_migration_cases_reuse_actual_helper_envelope_and_existing_binder() {
+    let suite: Value = serde_json::from_slice(include_bytes!(
+        "../docs/handoffs/native-helper-interop/cases.json"
+    ))
+    .unwrap();
+    let raw = include_bytes!("fixtures/runtime-candidates/step-1.json");
+    assert_eq!(suite["base_sha256"], digest(raw));
+    let (base, result, current, _) = fixture(raw);
+    let resources = resources(&base["payload"]["display_list"]);
+    for case in suite["cases"].as_array().unwrap() {
+        let mut event = base.clone();
+        let mut state = current.clone();
+        for (key, value) in case["current"].as_object().unwrap() {
+            match key.as_str() {
+                "editor_revision" => {
+                    state.sources.get_mut("main.tex").unwrap().editor_revision =
+                        value.as_u64().unwrap()
+                }
+                "membership_generation" => state.membership_generation = value.as_u64().unwrap(),
+                "compile_revision" => state.compile_revision = value.as_u64().unwrap(),
+                "session_id" => state.session_id = value.as_str().unwrap().into(),
+                "append_source" => state
+                    .sources
+                    .get_mut("main.tex")
+                    .unwrap()
+                    .text
+                    .push_str(value.as_str().unwrap()),
+                _ => panic!("unrecognized fixture mutation"),
+            }
+        }
+        for (pointer, value) in case["candidate"].as_object().unwrap() {
+            *event.pointer_mut(pointer).unwrap() = value.clone();
+        }
+        let actual = bind(
+            &serde_json::to_vec(&event).unwrap(),
+            &result,
+            &state,
+            &caps(),
+            &resources,
+        );
+        assert_eq!(
+            actual.is_ok(),
+            case["accept"].as_bool().unwrap(),
+            "{}",
+            case["name"]
+        );
+    }
+}
