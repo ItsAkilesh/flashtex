@@ -48,6 +48,12 @@ fn entry_end(
             );
         }
         let byte = source.as_bytes()[cursor];
+        if byte == b'%' && !quoted && depth == base && quote_aware {
+            cursor = source[cursor..]
+                .find('\n')
+                .map_or(source.len(), |offset| cursor + offset);
+            continue;
+        }
         if line_start && recover && !quoted && depth == base {
             let candidate = trivia(source, cursor);
             if header(source, candidate).is_some() {

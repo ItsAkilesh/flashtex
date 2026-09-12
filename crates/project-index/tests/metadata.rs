@@ -162,3 +162,40 @@ fn metadata_queries_reject_stale_snapshots_and_bibitem_is_not_a_record() {
         MetadataStatus::NoBibliographyRecord
     );
 }
+
+#[test]
+fn comments_outside_values_cannot_close_entries_or_inject_records() {
+    let index = index("@book{k, % } @book{fake,title={X}}\n title={100% literal},year=2026}");
+    let snapshot = index.snapshot();
+    let metadata = index.citation_metadata(&snapshot, "k").unwrap();
+    assert_eq!(metadata.status, MetadataStatus::Resolved);
+    assert_eq!(
+        metadata.fields["title"].value.as_deref(),
+        Some("100% literal")
+    );
+    assert_eq!(
+        index.citation_metadata(&snapshot, "fake").unwrap().status,
+        MetadataStatus::Missing
+    );
+}
+
+#[test]
+fn malformed_unicode_value_prefixes_retain_valid_spans_without_panics() {
+    let source = "@string{préfix=\"Å{文}\"} @book{κ,title={世界},author=missing # \"é\",year=2026}";
+    for end in (0..=source.len()).filter(|i| source.is_char_boundary(*i)) {
+        let index = index(&source[..end]);
+        let snapshot = index.snapshot();
+        for metadata in index.complete_citations(&snapshot, "", 100).unwrap() {
+            for record in metadata.records {
+                index.source_text(&snapshot, &record.source).unwrap();
+                for field in record.fields {
+                    index.source_text(&snapshot, &field.name_source).unwrap();
+                    index.source_text(&snapshot, &field.source).unwrap();
+                    for part in field.parts {
+                        index.source_text(&snapshot, &part.source).unwrap();
+                    }
+                }
+            }
+        }
+    }
+}

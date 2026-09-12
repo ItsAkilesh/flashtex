@@ -212,6 +212,8 @@ pub struct ProjectIndex {
     readers: DependencyMap,
     unresolved: BTreeMap<String, Vec<UnresolvedReference>>,
     last_metrics: Option<ReindexMetrics>,
+    metadata_cache: BTreeMap<String, CitationMetadata>,
+    metadata_metrics: MetadataCacheMetrics,
 }
 
 impl ProjectIndex {
@@ -229,6 +231,8 @@ impl ProjectIndex {
             readers: BTreeMap::new(),
             unresolved: BTreeMap::new(),
             last_metrics: None,
+            metadata_cache: BTreeMap::new(),
+            metadata_metrics: MetadataCacheMetrics::default(),
         })
     }
 
@@ -385,6 +389,32 @@ impl ProjectIndex {
 
     /// Update dependency memberships; only changed definition availability wakes readers.
     fn commit_document(&mut self, file: &str, replacement: Option<Document>) -> (usize, usize) {
+        let mut dirty_metadata = BTreeSet::new();
+        let mut changed_macros = BTreeSet::new();
+        for document in [self.documents.get(file), replacement.as_ref()]
+            .into_iter()
+            .flatten()
+        {
+            dirty_metadata.extend(
+                document
+                    .symbols
+                    .iter()
+                    .filter(|s| s.kind.category() == Category::Citation)
+                    .map(|s| s.name.clone()),
+            );
+            changed_macros.extend(
+                document
+                    .records
+                    .iter()
+                    .filter(|r| r.entry_type == "string")
+                    .flat_map(|r| r.fields.iter().map(|f| f.name.clone())),
+            );
+        }
+        for (key, metadata) in &self.metadata_cache {
+            if !metadata.macro_dependencies.is_disjoint(&changed_macros) {
+                dirty_metadata.insert(key.clone());
+            }
+        }
         let (old_definitions, old_readers) = relation_keys(self.documents.get(file));
         let (new_definitions, new_readers) = relation_keys(replacement.as_ref());
         let availability: Vec<_> = old_definitions
@@ -442,6 +472,24 @@ impl ProjectIndex {
                 .collect();
             self.unresolved.insert(path.clone(), unresolved);
         }
+        let mut recomputed = 0;
+        let mut removed = 0;
+        for key in dirty_metadata {
+            let symbol_key = (Category::Citation, key.clone());
+            if self.definitions.contains_key(&symbol_key) || self.readers.contains_key(&symbol_key)
+            {
+                let metadata = bibliography_values::resolve(self, &key);
+                self.metadata_cache.insert(key, metadata);
+                recomputed += 1;
+            } else if self.metadata_cache.remove(&key).is_some() {
+                removed += 1;
+            }
+        }
+        self.metadata_metrics = MetadataCacheMetrics {
+            keys_recomputed: recomputed,
+            keys_reused: self.metadata_cache.len() - recomputed,
+            keys_removed: removed,
+        };
         (changed, affected.len())
     }
 
@@ -676,7 +724,36 @@ impl ProjectIndex {
         key: &str,
     ) -> Result<CitationMetadata, IndexError> {
         self.check(snapshot)?;
-        Ok(bibliography_values::resolve(self, key))
+        Ok(self
+            .metadata_cache
+            .get(key)
+            .cloned()
+            .unwrap_or_else(|| CitationMetadata::missing(key)))
+    }
+
+    /// Sorted citation names with metadata details, including unresolved references.
+    pub fn complete_citations(
+        &self,
+        snapshot: &VersionSnapshot,
+        prefix: &str,
+        limit: usize,
+    ) -> Result<Vec<CitationMetadata>, IndexError> {
+        self.check(snapshot)?;
+        Ok(self
+            .metadata_cache
+            .iter()
+            .filter(|(key, _)| key.starts_with(prefix))
+            .take(limit)
+            .map(|(_, metadata)| metadata.clone())
+            .collect())
+    }
+
+    pub fn metadata_cache_metrics(
+        &self,
+        snapshot: &VersionSnapshot,
+    ) -> Result<MetadataCacheMetrics, IndexError> {
+        self.check(snapshot)?;
+        Ok(self.metadata_metrics.clone())
     }
 }
 

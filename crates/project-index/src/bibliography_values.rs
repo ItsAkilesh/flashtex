@@ -54,6 +54,29 @@ pub struct CitationMetadata {
     /// Includes missing and transitively used macros, normalized to ASCII lowercase.
     pub macro_dependencies: BTreeSet<String>,
 }
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct MetadataCacheMetrics {
+    pub keys_recomputed: usize,
+    pub keys_reused: usize,
+    pub keys_removed: usize,
+}
+
+impl CitationMetadata {
+    pub(super) fn missing(key: &str) -> Self {
+        Self {
+            key: key.into(),
+            status: MetadataStatus::Missing,
+            records: Vec::new(),
+            fields: BTreeMap::new(),
+            macro_dependencies: BTreeSet::new(),
+        }
+    }
+    /// Exact expression span for local navigation; no inferred author/title/year formatting.
+    pub fn field(&self, name: &str) -> Option<&MetadataField> {
+        self.fields.get(&name.to_ascii_lowercase())
+    }
+}
 pub(super) struct RecordBounds {
     pub kind: String,
     pub key: Option<SourceSpan>,

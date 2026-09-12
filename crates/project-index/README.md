@@ -17,6 +17,24 @@ the outer scanner resumes only at a safely delimited following entry. Limits are
 expansion atom visits per field and 256 KiB of expanded bytes per field, in
 addition to the existing document/entry limits. All queries require a fresh snapshot.
 
+Parsed records are retained per document. `complete_citations(snapshot, prefix,
+limit)` returns sorted cached metadata for definitions and observed unresolved
+citations. `metadata.field("author")`, `field("title")`, and `field("year")` expose
+literal inspection values and exact expression spans usable with `source_text`.
+This preserves source text, including name separators and TeX syntax; it does not
+split authors, normalize years, or infer formatted titles.
+
+Replacement/removal refreshes citation keys in the changed document and cached
+keys whose visited direct/transitive macro dependencies intersect declarations in
+that document. Missing macro dependencies are retained for later repair. Other
+metadata results are reused; duplicate counts and field edits refresh even when
+definition availability stays unchanged. `metadata_cache_metrics(snapshot)` reports
+recomputed/reused/removed key counts. These are work counters, not an asymptotic
+performance claim: dependency selection scans cached metadata and resolving each
+dirty key inspects retained project records without rescanning source. Macro
+evaluation stops at its first error; dependencies beyond that error are discovered
+when an earlier dependency is repaired. Fresh rebuild equivalence is tested.
+
 Original, dependency-free Rust library for lexical LaTeX navigation and prefix
 completion. It accepts source strings from its caller and never reads project files,
 expands macros, invokes a compiler, resolves packages, or modifies a native UI.
