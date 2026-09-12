@@ -884,7 +884,9 @@ pub struct SimpleFont {
     pub base_font: String,
     pub program: Option<FontProgram>,
     pub first_char: u8,
-    /// Widths for codes `first_char..=first_char + widths.len() - 1`.
+    /// Widths for codes `first_char..=first_char + widths.len() - 1`. Empty
+    /// means no `/Widths` array (a standard-14 font using its own metrics),
+    /// in which case every code is accepted.
     pub widths: Vec<Decimal>,
     pub encoding: Option<Encoding>,
     pub descriptor: Option<FontDescriptor>,
@@ -1210,6 +1212,9 @@ fn validate(
             let f = font.ok_or_else(|| err(i, "text shown before Tf".into()))?;
             match f {
                 ExactFont::Simple(s) => {
+                    if s.widths.is_empty() {
+                        return Ok(());
+                    }
                     let last = s.first_char as usize + s.widths.len();
                     for &b in bytes {
                         if (b as usize) < s.first_char as usize || (b as usize) >= last {
@@ -1391,7 +1396,7 @@ pub fn render_exact(doc: &ExactDocument) -> Result<crate::PdfOutput, ExactError>
             return Err(ExactError::Limit("font program bytes"));
         }
         if let ExactFont::Simple(s) = f
-            && (s.widths.is_empty() || s.first_char as usize + s.widths.len() > 256)
+            && s.first_char as usize + s.widths.len() > 256
         {
             return Err(ExactError::Font {
                 resource: name.clone(),
@@ -1621,16 +1626,21 @@ fn write_font(d: &mut Document, obj: usize, f: &ExactFont) {
         ExactFont::Simple(s) => {
             let mut next = obj + 1;
             let mut body = format!(
-                "<< /Type /Font /Subtype /{} /BaseFont /{} /FirstChar {} /LastChar {} /Widths [",
-                s.subtype,
-                s.base_font,
-                s.first_char,
-                s.first_char as usize + s.widths.len() - 1
+                "<< /Type /Font /Subtype /{} /BaseFont /{}",
+                s.subtype, s.base_font
             );
-            for w in &s.widths {
-                let _ = write!(body, " {w}");
+            if !s.widths.is_empty() {
+                let _ = write!(
+                    body,
+                    " /FirstChar {} /LastChar {} /Widths [",
+                    s.first_char,
+                    s.first_char as usize + s.widths.len() - 1
+                );
+                for w in &s.widths {
+                    let _ = write!(body, " {w}");
+                }
+                body.push_str(" ]");
             }
-            body.push_str(" ]");
             let mut trailing: Vec<(usize, Vec<u8>, Option<String>)> = Vec::new();
             if let Some(desc) = &s.descriptor {
                 let desc_obj = next;
