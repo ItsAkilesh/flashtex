@@ -10,3 +10,9 @@ name = "flashtex_document_statistics"
 path = "src/lib.rs"
 
 [dependencies]
+
+[dev-dependencies]
+# Test-only: the real, only document producer in this repository today (see
+# tests/support/mod.rs). This crate's own src/ takes no dependency on the
+# compiler -- see src/lib.rs's "no filesystem, no parsing" guarantee.
+flashtex-compiler = { path = "../compiler" }
