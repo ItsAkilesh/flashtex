@@ -128,3 +128,13 @@ that worker while awaiting a reply. Use a new session ID for every explicit rest
 OS process creation/reaping and JSON serialization are not real-time operations;
 the deadline specifically bounds pipe exchange rather than guaranteeing a hard
 wall-clock deadline under all operating-system conditions.
+
+`cargo run --release --example client_latency -- PATH_TO_HELPER` measures five
+local submit/cancel roundtrips at each source size (5KB,50KB,500KB,1MB). It includes
+JSON serialization, pipe exchange and source/context validation, excludes provider
+calls, and does not measure editor-to-painted-preview latency. On this shared Linux
+host a baseline run measured medians1.06/1.10/12.99/26.22ms. An experimental loop
+that slept only when IO made no progress measured2.66/9.40/90.78/149.42ms, with
+substantial variation on repeat. The experiment was reverted: these observations
+do not establish a speedup or a stable regression cause under concurrent builds.
+Use controlled repeated comparisons before changing scheduling behavior.

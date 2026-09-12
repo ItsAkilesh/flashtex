@@ -14,23 +14,23 @@
     "rust",
     "diagnostic-context"
   ],
-  "code_revision": "2aa1d72c541ab8b77e011b8a87c25a80e5657ede",
+  "code_revision": "7469b2ad4804a87be4436159a05a83063e67adec",
   "eta_minutes": {
-    "likely": 25,
-    "optimistic": 10,
-    "pessimistic": 45
+    "likely": 30,
+    "optimistic": 15,
+    "pessimistic": 50
   },
   "machine": "linux-primary",
   "main_integrated_through": "94c76ee510e7bf043ef6e9a02ffc287581dd921e",
-  "next_action": "Review native integration interface and connect consumer under ownership assignment.",
+  "next_action": "Implement explicitly configured optional Grok text transport with fake HTTP tests and no actual inference.",
   "reviewed_peers": {},
   "schema_version": 1,
-  "state": "ready_for_integration",
-  "summary": "Unix supervised helper client implemented;14 tests plus stalledstdin/stdout/late/EOF/inheritedpipe/oversize fixtures and strict clippy pass.",
+  "state": "in_progress",
+  "summary": "Added repeatable local helper latency benchmark. Conditional-sleep experiment did not demonstrate benefit and was reverted; production7469b2a client preserved.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T07:57:06Z",
+  "updated_utc": "2026-09-12T07:59:18Z",
   "usage": {
-    "evidence": "cargo test include-ignored14passed; expanded supervised_client test passed; strict clippy passed",
-    "status": "Hosted OpenAI; no provider calls."
+    "evidence": "Baseline5KB/50KB/500KB/1MB medians1.06/1.10/12.99/26.22ms; experiment noisy/slower; strict clippy passed.",
+    "status": "Hosted OpenAI only; no provider calls."
   }
 }
