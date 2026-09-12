@@ -355,3 +355,26 @@ and 941 explicitly unsupported non-.notdef glyphs. Geometry SHA256:
 `a33a8836d80b2bd9fa89ba017c60df0ef175d563d930b5620e0b7e75f9dfa3b5`.
 The fixture records font/license/policy pins. Device policy is not TrueType
 instruction execution or a hinted raster/native/PDF parity claim.
+
+`shaped_run::PlacedShapedRun::prepare` consumes the original font engine's
+`BoundShapedRun` and a current source snapshot into exact internal quadratic or
+cubic paths. It retains the complete immutable shaping record, original GIDs,
+engine face identity and distinct full-font SHA, absolute UTF-8 cluster ranges,
+empty clusters, ligature counts and feature notes. Integer advances already
+include shaping kerning; exact size/UPEM scales them separately from outline
+advances. Glyph offsets flip the font y-axis once. The caller supplies the exact
+clip and an item identity; no hit positions are invented inside a cluster.
+
+The source digest/revision and outline resource identity must agree before
+expansion. Glyph/command/charged-payload limits fail atomically without returning
+a partial run. Charged payload includes hint records; it is not allocator RSS or
+shared cache residency. TrueType uses the unchanged unhinted cache; device-grid
+paths require the separate explicit device API. CFF requires an immutable cache
+bound to the full font and an explicit hint policy. No wire/native activation.
+
+`cargo run --offline --manifest-path crates/rendering-core/Cargo.toml --example
+shaped_run_probe -- /path/STIXTwoText-Regular.otf /path/OFL.txt` checks existing
+font/license pins and exact warm-cache placement for a Unicode source slice.
+The observed pinned run has 11 glyphs/clusters, 165 commands and advance
+9762243491/600 canonical ticks. This demonstrates consumer consistency, not
+reference shaping completeness, TeX metrics, hinting or native visual parity.

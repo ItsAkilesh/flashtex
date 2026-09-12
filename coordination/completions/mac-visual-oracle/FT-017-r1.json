@@ -1,0 +1,81 @@
+{
+  "agent_id": "mac-visual-oracle",
+  "archived_utc": "2026-09-12T06:13:32Z",
+  "assignment": {
+    "acceptance": [
+      "Harness renders identical declared fixtures through available reference engines and FlashTeX at fixed DPI/color settings",
+      "Artifacts include overlays, diff heatmaps, pixel error distributions, structural text/rule measurements, and exact provenance",
+      "Narrow-case results never claim general pixel perfection; unavailable engines/fonts are explicit",
+      "Publish exact rev1 ACK plus Opus worker PID/session, branch, current+two followups, Max quota/reset/usage and in-flight calls"
+    ],
+    "agent_id": "mac-visual-oracle",
+    "allocation_id": "claude-mac20x-visual-oracle",
+    "branch": "agent/mac-visual-oracle/reference-raster",
+    "deadline_utc": null,
+    "dependencies": [],
+    "input_main_sha": "998e566c3a23bffeca141c0ce6688c217655b87a",
+    "objective": "Build reference-render and raster-diff harnesses for a declared visual corpus on Jaysen mac-m1max-a using Opus. pdfLaTeX, XeLaTeX, and LuaLaTeX are test oracles only; FlashTeX remains original Rust. Record exact engine/font versions, flags, page size, DPI, color profile, and fixture SHA; generate overlays, per-pixel and perceptual metrics, and separate preview/export comparisons.",
+    "owned_paths": [
+      "tests/visual-corpus/harness",
+      "tests/visual-corpus/evidence"
+    ],
+    "revision": 1,
+    "schema_version": 1,
+    "state": "assigned",
+    "task_id": "FT-017",
+    "timebox_minutes": 45,
+    "updated_utc": "2026-09-12T05:20:25Z"
+  },
+  "report": {
+    "agent_id": "mac-visual-oracle",
+    "allocation_id": "claude-mac20x-visual-oracle",
+    "assignment_acknowledgements": {
+      "FT-017": {
+        "acknowledged_utc": "2026-09-12T05:25:05Z",
+        "adaptation": "Accepted FT-017 rev 1 from main 998e566. Reusing native-verification oracle approach (PDFKit word boxes, apples-to-apples preamble B); adding CoreGraphics fixed-DPI rasterizer shared by all sides, pixel/SSIM/overlay/heatmap diffs, preview-equivalent CoreText raster. Owned paths only: tests/visual-corpus/{harness,evidence}. Engines: pdflatex/xelatex/lualatex present at /Library/TeX/texbin; availability of Times New Roman via fontspec to be verified in run.",
+        "main_sha": "984fa28f2537feadb9f848eb90f69de0327d1fa5",
+        "revision": 1
+      }
+    },
+    "branch": "agent/mac-visual-oracle/reference-raster",
+    "capabilities": [
+      "xcode",
+      "tex-oracle"
+    ],
+    "code_revision": "07af3da4b868b0bb19a499a87e55801201df1f44",
+    "eta_minutes": {
+      "likely": 0,
+      "optimistic": 0,
+      "pessimistic": 0
+    },
+    "machine": "mac-m1max-a",
+    "main_integrated_through": "984fa28f2537feadb9f848eb90f69de0327d1fa5",
+    "next_action": "Await Commander review; queue step 0/1 refinements (region metrics, Retina capture route) if assigned",
+    "reviewed_peers": {
+      "origin/main": {
+        "adaptation": "Reviewed b873340: FT-017 still rev 1; queue steps 0-1 published (registration diagnostics, exact gates) -> implemented as diagnostics vs acceptance split; crates/compiler unchanged since base so compiler=main is rebuilt from b873340 with identical sources.",
+        "reviewed_utc": "2026-09-12T05:58:52Z",
+        "sha": "984b77db504051dbd20b1bbae9f8a9f14e0cf1c7"
+      }
+    },
+    "schema_version": 1,
+    "state": "ready_for_integration",
+    "summary": "FT-017 rev1 delivered at 07af3da (agent/mac-visual-oracle/reference-raster): 9-fixture declared corpus, shared CoreGraphics 144-DPI rasterizer, pdflatex/xelatex/lualatex x Times/Latin-Modern oracles (all available, all fixtures exit 0), FlashTeX export + preview-equivalent + native screencapture sides, stdlib diff (histogram/SSIM/overlay/heatmap/word boxes/rule rows/registration), exact-equality gates + pinned PDF profile, thresholds/regress as diagnostics. Evidence 20260912T053804Z and 20260912T055841Z. Native capture is 1x-display upsampled x2.84 (stated). pipeline branch absent.",
+    "tool": "Claude Code subagent (parent mac-claude-a)",
+    "updated_utc": "2026-09-12T06:13:06Z",
+    "usage": {
+      "evidence": "Claude Max 20x shared quota; no readout available to this subagent; no in-flight calls",
+      "status": "unknown"
+    }
+  },
+  "report_age_seconds": 26,
+  "report_path": "coordination/agents/mac-visual-oracle.json",
+  "review_required": true,
+  "revision": 1,
+  "schema_version": 1,
+  "stale_completion": false,
+  "state": "reported_ready",
+  "task_id": "FT-017",
+  "worker_branch": "agent/mac-visual-oracle/reference-raster",
+  "worker_report_sha": "db182361a7923d911e7beb8883b2febea0b19055"
+}

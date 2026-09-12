@@ -14,23 +14,23 @@
     "rust",
     "rendering"
   ],
-  "code_revision": "cb19024b34762f82c1ed609ff740bb880040139a",
+  "code_revision": "0cdce332aaea06327eaa05d35628592aac86873d",
   "eta_minutes": {
-    "likely": 20,
-    "optimistic": 10,
-    "pessimistic": 30
+    "likely": 15,
+    "optimistic": 5,
+    "pessimistic": 25
   },
   "machine": "linux-primary",
   "main_integrated_through": "cb19024b34762f82c1ed609ff740bb880040139a",
-  "next_action": "Integrate published font-engine shaping adapter 767ea70 after exact GID, cluster, and font identity verification.",
+  "next_action": "Await next assigned rendering-core product increment; current checkpoint ready for integration.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "Explicit device-grid cache, exact placement, and geometry-diff context implemented; 116 Rust tests pass.",
+  "summary": "Exact original-engine shaped-run consumer implemented and tested for identity-bound TrueType and CFF resources.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T07:35:28Z",
+  "updated_utc": "2026-09-12T07:40:44Z",
   "usage": {
-    "evidence": "116 Rust tests and strict all-target clippy pass. Pinned LiberationSans 16ppem: 2619 non-notdef direct/cache matches, 63782 commands, SHA a33a8836d80b2bd9fa89ba017c60df0ef175d563d930b5620e0b7e75f9dfa3b5. Default 1678 accepted and 941 unsupported unchanged. Peer 23209f7 merged unchanged.",
-    "status": "Hosted OpenAI authorized; no external provider calls or purchases."
+    "evidence": "119 Rust tests and strict all-target clippy pass. Synthetic UTF8/empty clusters, exact fractional placement, stale-source/resource rejection and atomic budgets. Pinned STIX 11 glyphs, 165 commands, exact advance 9762243491/600 and warm-cache command equality. Peer 767ea70 merged unchanged, retaining font-engine f418238 ancestry. No wire/native activation.",
+    "status": "Existing hosted OpenAI allocation only; no paid auxiliary provider calls."
   }
 }

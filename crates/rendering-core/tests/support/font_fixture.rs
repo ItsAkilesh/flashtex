@@ -6,16 +6,20 @@ fn be32(data: &mut [u8], at: usize, n: u32) {
     data[at..at + 4].copy_from_slice(&n.to_be_bytes());
 }
 pub fn fixture() -> Vec<u8> {
-    build(false, false)
+    build(false, false, false)
 }
 pub fn triangle_fixture() -> Vec<u8> {
-    build(true, false)
+    build(true, false, false)
 }
 #[allow(dead_code)]
 pub fn grid_fixture() -> Vec<u8> {
-    build(true, true)
+    build(true, true, false)
 }
-fn build(triangle: bool, grid: bool) -> Vec<u8> {
+#[allow(dead_code)]
+pub fn shaping_fixture() -> Vec<u8> {
+    build(true, false, true)
+}
+fn build(triangle: bool, grid: bool, shaping: bool) -> Vec<u8> {
     let mut tables = BTreeMap::new();
     let mut head = vec![0; 54];
     be32(&mut head, 0, 0x00010000);
@@ -65,6 +69,24 @@ fn build(triangle: bool, grid: bool) -> Vec<u8> {
         name.extend_from_slice(&ch.to_be_bytes());
     }
     tables.insert(*b"name", name);
+    if shaping {
+        // Original synthetic Unicode format12 map: A and é -> original GID1.
+        let mut cmap = vec![0; 12 + 16 + 24];
+        be16(&mut cmap, 2, 1);
+        be16(&mut cmap, 4, 3);
+        be16(&mut cmap, 6, 10);
+        be32(&mut cmap, 8, 12);
+        be16(&mut cmap, 12, 12);
+        be32(&mut cmap, 16, 40);
+        be32(&mut cmap, 24, 2);
+        for (at, code) in [(28, 65), (40, 233)] {
+            be32(&mut cmap, at, code);
+            be32(&mut cmap, at + 4, code);
+            be32(&mut cmap, at + 8, 1);
+        }
+        tables.insert(*b"cmap", cmap);
+        be16(tables.get_mut(b"hmtx").unwrap(), 4, 500);
+    }
     let mut bytes = vec![0; 12 + tables.len() * 16];
     be32(&mut bytes, 0, 0x00010000);
     be16(&mut bytes, 4, tables.len() as u16);

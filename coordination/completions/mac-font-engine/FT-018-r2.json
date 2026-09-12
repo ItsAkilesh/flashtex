@@ -1,0 +1,79 @@
+{
+  "agent_id": "mac-font-engine",
+  "archived_utc": "2026-09-12T06:27:58Z",
+  "assignment": {
+    "acceptance": [
+      "Roundtrip extraction and native rendering preserve supported Unicode",
+      "Fallback is explicit and deterministic",
+      "Subset bytes are reproducible"
+    ],
+    "agent_id": "mac-font-engine",
+    "allocation_id": "claude-mac20x-font-engine-stage2",
+    "branch": "agent/mac-font-engine/tex-fonts",
+    "deadline_utc": null,
+    "dependencies": [],
+    "input_main_sha": "a77e697faa51866607f8c9cf9f5d2a65a63e1521",
+    "objective": "Extend glyph clustering, kerning, combining marks, fallback identity, subset embedding and ToUnicode with licensed pinned fonts.",
+    "owned_paths": [
+      "crates/font-engine"
+    ],
+    "revision": 2,
+    "schema_version": 1,
+    "state": "assigned",
+    "task_id": "FT-018",
+    "timebox_minutes": 45,
+    "updated_utc": "2026-09-12T06:04:03Z"
+  },
+  "report": {
+    "agent_id": "mac-font-engine",
+    "allocation_id": "claude-mac20x-font-engine",
+    "assignment_acknowledgements": {
+      "FT-018": {
+        "acknowledged_utc": "2026-09-12T06:06:29Z",
+        "adaptation": "Accepted rev 2: pinned Latin Modern manifest (descriptor fields aligned with crates/font-resources; CFF is outside its static-truetype profile so font-engine validates the same fields itself), explicit ordered fallback with per-cluster FontId, GPOS MarkToBase, CoreText render + PDFKit extraction checks under tools/, reproducible subset+ToUnicode test, CIDFontType0C subtype.",
+        "main_sha": "ae3f4de96282e7ea2c60aa268ed5f0b09c664e06",
+        "revision": 2
+      }
+    },
+    "branch": "agent/mac-font-engine/tex-fonts",
+    "capabilities": [
+      "rust",
+      "fonts"
+    ],
+    "code_revision": "293572198dca30cee17c2fd3bad76064d07f820f",
+    "eta_minutes": {
+      "likely": 0,
+      "optimistic": 0,
+      "pessimistic": 0
+    },
+    "machine": "mac-m1max-a",
+    "main_integrated_through": "d0c64cfc81ee08216247fff091aee006aaf2ebb9",
+    "next_action": "Await Commander review; follow-ups: CFF subsetting, MathVariants, MarkToMark, font-resources opentype-cff acceptance",
+    "reviewed_peers": {
+      "origin/main": {
+        "adaptation": "font-resources on main has TFM parsing and the EncodingManifest adapter; its loader still accepts only static-truetype, so the pinned LM (opentype-cff) manifest is validated in font-engine with the same fields; fixtures/tfm/ec-lmr10 is in its EncodingManifest shape; no overlap with owned paths",
+        "reviewed_utc": "2026-09-12T06:27:18Z",
+        "sha": "df9e26e44a74b4322f86bcbcfe0cf2312afaece0"
+      }
+    },
+    "schema_version": 1,
+    "state": "ready_for_integration",
+    "summary": "FT-018 rev 2 complete: pinned LM manifest+GUST FL, explicit deterministic fallback with per-cluster FontId, GPOS MarkToBase, CIDFontType0C CFF embedding, PDFKit extraction and CoreText render checks (exact / pixel-identical), reproducible subset+ToUnicode, EncodingCode newtype, ec-lmr10 TFM fixture for Commander; 57 tests",
+    "tool": "Claude Code subagent (parent mac-claude-a)",
+    "updated_utc": "2026-09-12T06:27:18Z",
+    "usage": {
+      "evidence": "Shared Max quota not observable from subagent",
+      "status": "unknown"
+    }
+  },
+  "report_age_seconds": 39,
+  "report_path": "coordination/agents/mac-font-engine.json",
+  "review_required": true,
+  "revision": 2,
+  "schema_version": 1,
+  "stale_completion": false,
+  "state": "reported_ready",
+  "task_id": "FT-018",
+  "worker_branch": "agent/mac-font-engine/tex-fonts",
+  "worker_report_sha": "dca990c74c6d11fa3dc30e7a5e2b9e8c08b05803"
+}

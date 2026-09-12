@@ -1,0 +1,23 @@
+{
+  "acceptance": [
+    "Meaningful tests and strict lint pass",
+    "Publish truthful execution provenance and exact tested SHA",
+    "No native integration or PDF parity claim without measured evidence"
+  ],
+  "agent_id": "commander-font-resources",
+  "allocation_id": "hosted-openai-product",
+  "branch": "agent/commander-corpus/font-resources",
+  "deadline_utc": null,
+  "dependencies": [],
+  "input_main_sha": "c59aa5b8fff8b33e109908a1fb48e610398ad308",
+  "objective": "Exact TeX encoding to font-resource mapping",
+  "owned_paths": [
+    "crates/font-resources"
+  ],
+  "revision": 4,
+  "schema_version": 1,
+  "state": "assigned",
+  "task_id": "FT-024",
+  "timebox_minutes": 30,
+  "updated_utc": "2026-09-12T06:11:20Z"
+}

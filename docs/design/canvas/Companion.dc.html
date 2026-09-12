@@ -1,0 +1,98 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    body { margin:0; font-family:-apple-system,"SF Pro Text",system-ui,sans-serif;
+           color:#1D1D1F; background:#fff; -webkit-font-smoothing:antialiased; }
+    a { color:#3A5BD9; } a:hover { color:#2B47B5; }
+    .mono { font-family:"SF Mono",ui-monospace,Menlo,monospace; }
+    .cap { font-size:12px; color:#6E6E73; }
+  </style>
+</helmet>
+
+<div style="width:820px;height:1060px;background:#fff;display:flex;flex-direction:column;overflow:hidden">
+
+  <!-- nav: no fake status bar, the real one renders above -->
+  <div style="display:flex;align-items:center;gap:12px;padding:16px 22px;border-bottom:1px solid #E1E1E6">
+    <div style="font-size:19px;font-weight:700">Capture</div>
+    <div style="flex-grow:1"></div>
+    <div style="display:flex;align-items:center;gap:7px;font-size:13px;color:#2C8A4B">
+      <span style="width:8px;height:8px;border-radius:999px;background:#2C8A4B"></span>
+      Kabir's MacBook Pro
+    </div>
+  </div>
+
+  <!-- destination, mirrored from Mac -->
+  <div style="margin:18px 22px;padding:14px 16px;border:1px solid #E1E1E6;border-radius:11px;background:#FAFAFC;display:flex;align-items:center;gap:11px">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="{{accent}}" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s7-6.3 7-11a7 7 0 1 0-14 0c0 4.7 7 11 7 11"/><circle cx="12" cy="10" r="2.6"/></svg>
+    <div style="flex-grow:1">
+      <div style="font-size:14px;font-weight:600">Goes after equation (1)</div>
+      <div class="mono" style="font-size:11.5px;color:#6E6E73;margin-top:2px">thermo-pset.tex · pinned on Mac</div>
+    </div>
+  </div>
+
+  <!-- mode switch -->
+  <div style="margin:0 22px;display:flex;gap:4px;padding:4px;background:#EDEDF1;border-radius:10px">
+    <div style="flex-grow:1;text-align:center;padding:9px;border-radius:7px;background:#fff;font-size:14px;font-weight:600;box-shadow:0 1px 3px rgba(0,0,0,.1)">Draw</div>
+    <div style="flex-grow:1;text-align:center;padding:9px;border-radius:7px;font-size:14px;color:#6E6E73">Photograph</div>
+  </div>
+
+  <!-- canvas -->
+  <div style="flex-grow:1;margin:18px 22px;border:1px solid #E1E1E6;border-radius:13px;background:#FDFDFE;
+              display:flex;align-items:center;justify-content:center;position:relative;min-height:0">
+    <svg width="440" height="120" viewBox="0 0 440 120" fill="none" stroke="#1D1D1F" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M20 74c0-24 8-40 17-40s11 14 5 26-19 19-22 5"/>
+      <path d="M54 32v56"/>
+      <path d="M74 58h40"/>
+      <path d="M134 36c12-6 25-3 25 9 0 14-25 16-25 30 0 11 14 14 26 8"/>
+      <path d="M186 28v62"/>
+      <path d="M206 48h34M206 70h34"/>
+      <path d="M268 38l22 42M290 38l-22 42"/>
+      <path d="M320 32c16 0 25 10 25 27s-9 27-25 27-25-10-25-27 9-27 25-27"/>
+      <path d="M370 86V32l31 54V32"/>
+      <path d="M414 56h14"/>
+    </svg>
+    <div style="position:absolute;bottom:14px;left:14px;display:flex;gap:7px">
+      <span style="width:30px;height:30px;border-radius:999px;background:#1D1D1F;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.28)"></span>
+      <span style="width:30px;height:30px;border-radius:999px;background:#C9372C;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.28)"></span>
+      <span style="width:30px;height:30px;border-radius:999px;background:{{accent}};border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.28)"></span>
+    </div>
+    <div style="position:absolute;bottom:14px;right:14px;display:flex;gap:9px">
+      <button style="font:inherit;font-size:13px;padding:9px 15px;border:1px solid #D6D6DB;border-radius:9px;background:#fff;min-height:44px">Undo</button>
+      <button style="font:inherit;font-size:13px;padding:9px 15px;border:1px solid #D6D6DB;border-radius:9px;background:#fff;min-height:44px">Clear</button>
+    </div>
+  </div>
+
+  <!-- context note -->
+  <div style="margin:0 22px 16px">
+    <div class="cap" style="font-weight:700;letter-spacing:.04em;margin-bottom:7px">NOTE FOR THE CONVERSION — OPTIONAL</div>
+    <div style="border:1px solid #E1E1E6;border-radius:10px;padding:13px 15px;font-size:14px;color:#9A9AA0;min-height:44px">
+      e.g. "this is a definite integral"
+    </div>
+  </div>
+
+  <!-- send -->
+  <div style="padding:16px 22px 24px;border-top:1px solid #E1E1E6;display:flex;flex-direction:column;gap:10px">
+    <button style="font:inherit;font-size:16px;font-weight:600;padding:15px;border:none;border-radius:11px;background:{{accent}};color:#fff;min-height:52px">
+      Send to Mac
+    </button>
+    <div class="cap" style="text-align:center">
+      You'll approve the converted LaTeX on the Mac before anything is inserted.
+    </div>
+  </div>
+</div>
+
+</x-dc>
+<script data-dc-script data-props='{"accent":{"editor":"color","default":"#3A5BD9","options":["#3A5BD9","#0B6E99","#7B3FA0","#2C8A4B"]}}'>
+class Component extends DCLogic {
+  renderVals() { return { accent: this.props.accent ?? '#3A5BD9' }; }
+}
+</script>
+</body>
+</html>

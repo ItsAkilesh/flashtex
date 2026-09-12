@@ -125,3 +125,69 @@ recovery, pairing, TLS identity storage and native Keychain access are outstandi
 Consumers: FT-003 Mac owns UI review, document transaction and bridge lifecycle;
 FT-004 companion owns image production and authenticated delivery; FT-012 validates
 published envelopes; FT-007 owns Rust journal, anchors and provider conversion.
+
+## Dependency-bound proposal freshness (additive bridge update)
+
+Conversion context now includes `dependencies`, a deterministic path-ordered list
+of `{path,revision,source_sha256}` for the target and its literal include-connected
+uploaded snapshots. Hashes cover each complete UTF-8 snapshot, including source
+outside the bounded excerpts. All entries belong to `context.project_id`. The
+journal persists these fingerprints together with the proposal. The context's
+`definitions` contains complete supported lexical declarations with source path,
+revision and line provenance, plus explicit lexical-analysis/omission notices.
+It is not a declaration of evaluated TeX scope or full compiler support.
+
+Preparation checks that the current dependency set, revisions and hashes still
+match the saved conversion. A changed/missing dependency or legacy context without
+fingerprints returns `proposal_context_stale`, even if the selected document itself
+is unchanged. The UI must discard approval and explicitly offer conversion again,
+then display the refreshed proposal for new review. `capture_convert` reuses a
+proposal only when its dependency fingerprints and supplied supported-feature list
+still match; an explicit conversion request refreshes a stale unprepared proposal.
+There is no background provider call. A failed conversion keeps the old proposal
+journaled but stale and unpreparable. Unrelated disconnected project files do not
+invalidate a proposal.
+
+An already prepared edit cannot be superseded by another conversion. When its
+context becomes stale, preparation returns `proposal_context_stale` with receipt
+reconciliation instructions. `capture_convert` returns that existing issued
+proposal without calling the provider; `capture_status` exposes its prepared edit.
+The Mac must reconcile its durable edit ledger before starting a new capture.
+Receipt acknowledgement is still allowed: it reports an edit already applied,
+not authorization to apply a new edit to changed source.
+
+After restart, reopen the original target snapshot/anchor and all relevant current
+project snapshots before review. Reusing a revision number with changed dependency
+content is detected by the hash. Mac review UI integration and temporary-project
+compiler validation remain separate acceptance gates; a fresh proposal is not proof
+that the proposed TeX compiles successfully.
+
+## Compiler validation before review approval
+
+`capture_validate` payload is `{capture_id,expected_revision}`. Configure the bridge
+with `--compiler ORIGINAL_FLASHTEX_BINARY --compiler-entry main.tex`; both flags
+are required together. Without them, this request returns `compiler_not_configured`.
+The selected binary is the original Rust compiler, never a reference LaTeX engine.
+
+Reply type `capture_validation` contains `capture_id,context_revision,validation`.
+The validation object contains request correlation, project/revision, original
+snapshot path/revision/hash identities, hypothetical snapshot identities, compiler
+`status,diagnostics,pages`, `source_is_hypothetical:true`, and an explicit compiler
+compatibility limitation. Source offsets refer to the hypothetical snapshots;
+they must not navigate unchanged editor text without translating the proposed edit.
+
+Validation requires a current, non-rejected, unapplied proposal with matching
+context dependency fingerprints and current target revision. It constructs copies
+with the proposed replacement, compiles those copies, and checks reply ID, project,
+revision, UTF-8 spans and display geometry. It never prepares an edit, changes
+source, saves approval or calls Grok. Review approval and subsequent insertion remain
+separate. Failed/recovered compiler output is evidence to display, not successful
+full-compatibility certification. The current compiler's multi-file limitations
+remain visible in diagnostics.
+
+Compiler execution has a five-second deadline, an 8 MiB request/response bound and
+a 64 KiB stderr bound. File-backed transport avoids pipe backpressure deadlocks;
+file size is polled, so a misbehaving configured binary may transiently write more
+than the cap before termination. Output is never loaded past the bounded read.
+Run bridge requests away from the Mac UI thread. Compilation for live editor
+preview remains a separate process; proposal validation must not block typing.

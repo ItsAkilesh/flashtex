@@ -1,0 +1,47 @@
+{
+  "agent_id": "mac-math-layout",
+  "allocation_id": "claude-mac20x-math-layout",
+  "assignment_acknowledgements": {
+    "FT-020": {
+      "acknowledged_utc": "2026-09-12T05:35:21Z",
+      "adaptation": "Accepted FT-020 rev 1: original Rust math layout crate at crates/math-layout with explicit boxes (glyph/font identity + rule geometry), MathFontMetrics trait with CM (plain.tex/TeXbook fontdimen) and Times-approximation adapters; compiler math.rs is read-only reference; oracle pdflatex used only for comparison evidence.",
+      "main_sha": "1dd26c5e0dd5e04a39f0b8e55c90abebf635c863",
+      "revision": 1
+    }
+  },
+  "branch": "agent/mac-math-layout/math-boxes",
+  "capabilities": [
+    "rust",
+    "math"
+  ],
+  "code_revision": "207965097cd91cfdc86f7fe9311a785487768be7",
+  "eta_minutes": {
+    "likely": 5,
+    "optimistic": 0,
+    "pessimistic": 10
+  },
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "9da7e48148d91872dc0514119e1a04568ebfcb51",
+  "next_action": "Final report to parent; implement MathFontMetrics on FT-018 Face when merged",
+  "reviewed_peers": {
+    "origin/agent/mac-font-engine/tex-fonts": {
+      "adaptation": "FT-018 font engine landed with OpenType MATH constants, FontId content hash and GlyphId; MathFontMetrics can be implemented on its Face via the LuaTeX OpenType->TeX parameter mapping (to be added as MathParams::from_opentype)",
+      "reviewed_utc": "2026-09-12T06:04:19Z",
+      "sha": "bd60519138bf3f99bd05a44b1a65e16bc660669d"
+    },
+    "origin/main": {
+      "adaptation": "main through 0a3d8e2 has no math-layout files; FT-020 still rev 1",
+      "reviewed_utc": "2026-09-12T06:11:59Z",
+      "sha": "0a3d8e22fe4abc5cf15c39cce889aaa125f38bb6"
+    }
+  },
+  "schema_version": 1,
+  "state": "ready_for_integration",
+  "summary": "crates/math-layout complete for FT-020 rev 1: Appendix G boxes, CM metrics matching pdfTeX to 1sp, OpenType MATH mapping, oracle comparison within 0.003bp; 25 tests",
+  "tool": "Claude Code subagent (parent mac-claude-a)",
+  "updated_utc": "2026-09-12T06:11:59Z",
+  "usage": {
+    "evidence": "cargo test 25 passed; docs/comparison.md max deviation 0.003 bp vs pdfTeX 1.40.29",
+    "status": "unknown"
+  }
+}

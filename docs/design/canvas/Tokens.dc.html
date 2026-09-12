@@ -1,0 +1,126 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    body { margin:0; font-family:-apple-system,"SF Pro Text",system-ui,sans-serif;
+           color:#1D1D1F; background:#FBFBFC; -webkit-font-smoothing:antialiased; }
+    a { color:#3A5BD9; } a:hover { color:#2B47B5; }
+    .mono { font-family:"SF Mono",ui-monospace,Menlo,monospace; }
+    .cap { font-size:11px; color:#6E6E73; }
+    .h { font-size:11px; font-weight:700; letter-spacing:.05em; color:#8A8F98; margin-bottom:10px; }
+    .sw { display:flex; flex-direction:column; gap:5px; }
+    .chip { height:46px; border-radius:7px; border:1px solid rgba(0,0,0,.09); }
+  </style>
+</helmet>
+
+<div style="width:1200px;height:1000px;padding:34px 38px;display:flex;flex-direction:column;gap:26px;background:#FBFBFC;overflow:hidden">
+
+  <div>
+    <div style="font-size:21px;font-weight:700">FlashTeX — interface tokens</div>
+    <div class="cap" style="margin-top:4px">Native macOS vocabulary. Semantic colours match the status values the compiler already emits: ok, recovered, failed.</div>
+  </div>
+
+  <!-- colour -->
+  <div>
+    <div class="h">SURFACES &amp; TEXT</div>
+    <div style="display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px">
+      <div class="sw"><div class="chip" style="background:#E8E8EC"></div><div class="mono cap">#E8E8EC window</div></div>
+      <div class="sw"><div class="chip" style="background:#F4F4F6"></div><div class="mono cap">#F4F4F6 bar</div></div>
+      <div class="sw"><div class="chip" style="background:#FDFDFE"></div><div class="mono cap">#FDFDFE editor</div></div>
+      <div class="sw"><div class="chip" style="background:#1D1D1F"></div><div class="mono cap">#1D1D1F primary</div></div>
+      <div class="sw"><div class="chip" style="background:#6E6E73"></div><div class="mono cap">#6E6E73 secondary</div></div>
+      <div class="sw"><div class="chip" style="background:#9A9AA0"></div><div class="mono cap">#9A9AA0 tertiary</div></div>
+    </div>
+  </div>
+
+  <div>
+    <div class="h">SEMANTIC — COMPILER STATUS</div>
+    <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px">
+      <div class="sw"><div class="chip" style="background:#2C8A4B"></div><div class="mono cap">#2C8A4B ok / worker</div></div>
+      <div class="sw"><div class="chip" style="background:#C77700"></div><div class="mono cap">#C77700 recovered / warning</div></div>
+      <div class="sw"><div class="chip" style="background:#C9372C"></div><div class="mono cap">#C9372C failed / error</div></div>
+      <div class="sw"><div class="chip" style="background:{{accent}}"></div><div class="mono cap">accent — action &amp; anchor</div></div>
+    </div>
+  </div>
+
+  <div>
+    <div class="h">SYNTAX</div>
+    <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px">
+      <div class="sw"><div class="chip" style="background:#7B3FA0"></div><div class="mono cap">#7B3FA0 command</div></div>
+      <div class="sw"><div class="chip" style="background:#0B6E99"></div><div class="mono cap">#0B6E99 math / argument</div></div>
+      <div class="sw"><div class="chip" style="background:#8A8F98"></div><div class="mono cap">#8A8F98 comment</div></div>
+      <div class="sw"><div class="chip" style="background:#242427"></div><div class="mono cap">#242427 dark preview page</div></div>
+    </div>
+  </div>
+
+  <!-- type + components -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:30px;flex-grow:1;min-height:0">
+    <div>
+      <div class="h">TYPE</div>
+      <div style="display:flex;flex-direction:column;gap:11px">
+        <div><div style="font-size:19px;font-weight:700">Window title — 19/700</div><div class="mono cap">SF Pro Text</div></div>
+        <div><div style="font-size:13px">Body and controls — 13/400</div><div class="mono cap">SF Pro Text</div></div>
+        <div><div style="font-size:11px;color:#6E6E73">Caption and metadata — 11/400 secondary</div></div>
+        <div><div class="mono" style="font-size:12.5px">Editor and identifiers — 12.5 SF Mono</div><div class="mono cap">byte offsets always monospace</div></div>
+      </div>
+      <div class="h" style="margin-top:22px">SPACING</div>
+      <div style="display:flex;gap:9px;align-items:flex-end">
+        <div style="width:4px;height:20px;background:{{accent}};border-radius:2px"></div>
+        <div style="width:8px;height:28px;background:{{accent}};border-radius:2px"></div>
+        <div style="width:12px;height:36px;background:{{accent}};border-radius:2px"></div>
+        <div style="width:14px;height:44px;background:{{accent}};border-radius:2px"></div>
+        <div style="width:22px;height:52px;background:{{accent}};border-radius:2px"></div>
+        <span class="mono cap" style="margin-left:8px">4 · 8 · 12 · 14 · 22</span>
+      </div>
+    </div>
+
+    <div>
+      <div class="h">COMPONENTS</div>
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <div style="display:flex;gap:9px;align-items:center;flex-wrap:wrap">
+          <span style="font-size:10px;font-weight:700;letter-spacing:.04em;padding:2px 7px;border-radius:999px;background:rgba(44,138,75,.18);color:#1F6B39">WORKER</span>
+          <span style="font-size:10px;font-weight:700;letter-spacing:.04em;padding:2px 7px;border-radius:999px;background:rgba(199,119,0,.2);color:#8A5200">FIXTURE</span>
+          <span style="font-size:10px;font-weight:700;letter-spacing:.04em;padding:2px 7px;border-radius:999px;background:rgba(154,154,160,.24);color:#5C5C63">NONE</span>
+          <span class="cap">source badges</span>
+        </div>
+        <div style="display:flex;gap:9px;align-items:center">
+          <button style="font:inherit;font-size:12.5px;padding:5px 14px;border:1px solid {{accent}};border-radius:7px;background:{{accent}};color:#fff;font-weight:600">Insert</button>
+          <button style="font:inherit;font-size:12.5px;padding:5px 14px;border:1px solid #C6C6CC;border-radius:7px;background:#FCFCFD">Discard</button>
+          <span class="cap">primary / secondary</span>
+        </div>
+        <div class="mono" style="font-size:11px;color:#2C8A4B;background:rgba(44,138,75,.12);padding:3px 9px;border-radius:5px;display:inline-block;width:fit-content">latency 41 ms · median 58 ms over 124</div>
+        <div style="display:flex;gap:9px;padding:10px 12px;border:1px solid #E1E1E6;border-radius:9px;background:#fff">
+          <svg width="15" height="15" style="flex-shrink:0;margin-top:1px" viewBox="0 0 24 24" fill="#C9372C"><path d="M8.6 2h6.8L22 8.6v6.8L15.4 22H8.6L2 15.4V8.6z"/><path d="M12 7v6M12 16v1.5" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg>
+          <div>
+            <div style="font-size:12.5px">diagnostic message</div>
+            <div class="cap" style="margin-top:2px">↳ recovery: what was rendered instead</div>
+            <div class="mono" style="font-size:10.5px;color:#9A9AA0;margin-top:2px">file.tex bytes 1 204..&lt;1 218</div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:9px;padding:9px 12px;border:1px solid #E1E1E6;border-radius:9px;background:#fff">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="{{accent}}" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s7-6.3 7-11a7 7 0 1 0-14 0c0 4.7 7 11 7 11"/><circle cx="12" cy="10" r="2.6"/></svg>
+          <span class="mono" style="font-size:11.5px">anchor a-7 · byte 1 902 @ rev 87</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="cap" style="border-top:1px solid #E9E9EE;padding-top:12px">
+    Every byte offset shown to the user is UTF-8, matching the runtime-v1 contract. The editor converts to UTF-16 for AppKit; the interface never shows a converted number without saying which unit it is.
+  </div>
+</div>
+
+</x-dc>
+<script data-dc-script data-props='{"accent":{"editor":"color","default":"#3A5BD9","options":["#3A5BD9","#0B6E99","#7B3FA0","#2C8A4B"]}}'>
+class Component extends DCLogic {
+  renderVals() { return { accent: this.props.accent ?? '#3A5BD9' }; }
+}
+</script>
+</body>
+</html>
