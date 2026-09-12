@@ -155,3 +155,25 @@ fn cancelled_expired_and_stale_flights_never_accept_late_results() {
     assert_eq!(success.state(), FlightState::Completed);
     assert!(success.receive(&response, &docs).is_err());
 }
+
+#[test]
+fn selected_diagnostics_are_bound_and_clipping_is_explicit() {
+    let docs = vec![source()];
+    let binding = CompileBinding::capture("r", "p", 7, &docs).unwrap();
+    let mut result = result();
+    let mut second = result["payload"]["diagnostics"][0].clone();
+    second["message"] = json!("β".repeat(1100));
+    result["payload"]["diagnostics"]
+        .as_array_mut()
+        .unwrap()
+        .push(second);
+    let context =
+        Context::build_selected(binding.clone(), &docs, &result, "second only", &[], &[1]).unwrap();
+    assert_eq!(context.payload().diagnostics.len(), 1);
+    assert_eq!(context.payload().diagnostics[0].diagnostic_index, 1);
+    assert!(context.payload().diagnostics[0].message_truncated);
+    assert_eq!(context.payload().diagnostics[0].message.len(), 2048);
+    assert_eq!(context.payload().omitted_diagnostics, 1);
+    assert!(Context::build_selected(binding.clone(), &docs, &result, "", &[], &[1, 1]).is_err());
+    assert!(Context::build_selected(binding, &docs, &result, "", &[], &[2]).is_err());
+}

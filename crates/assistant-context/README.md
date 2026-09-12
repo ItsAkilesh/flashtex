@@ -50,3 +50,8 @@ failure are terminal; stale or duplicate responses cannot revive the request.
 The native caller must cancel the actual provider task separately and still
 recheck source when approving any returned proposal. Polling `state()` observes
 expiry without an inference call; this library does not run a timer or network job.
+
+`build_selected(..., selected_indices)` selects up to16unique diagnostics by their
+indices in the bound compiler result. Each selected context includes its original
+`diagnostic_index`; the context hash therefore binds the exact selection. Invalid
+or duplicate indices are refused. `build` retains its default first16behavior.
