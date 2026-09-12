@@ -30,7 +30,7 @@
   --all-targets && cargo fmt --check`; HW1 export as in
   `crates/pdf/docs/export-fidelity-hw1.md` "Reproduction". Raster/text tools
   (not committed): scratch `…/scratchpad/pdf2/{cgdiff.swift,pdftext.swift,
-  gidinfo.swift,widths.py,runs.py}` with `hw1.v2.json`, `hw1-from-v2.pdf`
+  gidinfo.swift,widths.py,runs.py,replay.py}` with `hw1.v2.json`, `hw1-from-v2.pdf`
   (before), `hw1-after.pdf` (after), `hw1-cg/`, `after-cg/` PNGs.
 - Resource pool: parent's Claude Max allocation on mac-m1max-a (shared quota,
   no purchases, no paid API calls). Load average 20–26 for most of the lane,
@@ -119,7 +119,8 @@ argument is typeset as text. The two rules that do arrive (`\sqrt` overbars,
 The HW1 list already uses f762f82's face split: math roman digits/parens
 from LMRoman8-Regular (3 glyphs) and LMRoman10-Regular, italic/symbol from
 LatinModernMath-Regular (38 glyphs). `from-v2` embedded all of them as
-GID-preserving CFF subsets, every glyph at its origin (replay test), PDFKit
+GID-preserving CFF subsets, every glyph at its origin (all 3 232 HW1 glyphs
+replay to their display-list origins, 0 mismatches), PDFKit
 text of the math lines is sane (`a\mida2 + b2`, `5 = 2√x + √10- x`, `D(m, n)`)
 apart from the recovered-source garbage that is the producer's. The one
 math-font `/W` replacement differs from hmtx by under 1.5/1000 em (TFM vs
