@@ -3,27 +3,27 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-049": {
-      "acknowledged_utc": "2026-09-12T13:02:40Z",
-      "adaptation": "Corrected eca6 capture all hashes/archive/license verified; unchanged six requests and all corrected statuses ok/no diagnostics. Existing captured-byte consumer and raw-wrapper/source checks pass; no runtime/API change.",
-      "main_sha": "e7134a3392d86b051de476cfad50cea7fc540c57",
-      "revision": 21
+      "acknowledged_utc": "2026-09-12T13:08:13Z",
+      "adaptation": "Verified all355 pinned65dbe7d source files/archive and preserved debug binary. Preparing isolated release target under home; root captures exact actual typing producer stdin before release-vs-debug comparison. No source edits or modeled-request proof.",
+      "main_sha": "ef1a964ecf851c10ffb44f16d212de21e0e1675e",
+      "revision": 23
     }
   },
   "branch": "agent/commander-runtime-display/display-runtime",
   "capabilities": [
     "rust-runtime"
   ],
-  "code_revision": "fd379ad9731e2689cbe77b2ab1b401dac182d32a",
+  "code_revision": "31f62559f2ed154b3c93e8bc2240690a565da672",
   "eta_minutes": null,
   "machine": "linux-primary",
-  "main_integrated_through": "c4178a54dccf4bf5a94c151c759fa18cb3096462",
-  "next_action": "Commander GH34/integration handoff. All probe/publish commands terminal after final push; clean checkpoint. Preserve recovered prior artifacts and distinct earlier helper-binary provenance. No native/pixel/visual parity claim.",
+  "main_integrated_through": "fd379ad9731e2689cbe77b2ab1b401dac182d32a",
+  "next_action": "Root consumes release-manifest at /home/natkarri/flashtex-producer-release-artifacts/65dbe7d for release helper comparison. All build/replay handles terminal. Clean after report publication. No calibrated latency/native parity claim; source ownership remains runtime evidence only.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "FT049 r21 product fd379ad9: independent corrected eca6ab25 capture artifact/assets/archive/license checks pass; six requests unchanged, all corrected statuses ok/no diagnostics, exact raw/source identities. Existing capture consumer passes restart/stale assertions. Data/docs only, no runtime/API change or redundant full-suite run.",
+  "summary": "FT049 r23 product31f62559: untouched65dbe7d release build passes;355 source files unchanged/debug preserved. ReleaseSHA1587245d; all4 actual53c0 sessions/7 requests exact stdout equality debug=release=capture, full/group current inputbytes equal. Build/lock/toolchain/assets/provenance and typing review preserved; no runtime/API change.",
   "tool": "codex",
-  "updated_utc": "2026-09-12T13:02:54Z",
+  "updated_utc": "2026-09-12T13:13:07Z",
   "usage": {
     "status": "unknown"
   }
