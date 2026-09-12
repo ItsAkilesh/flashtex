@@ -194,3 +194,26 @@ fn promised_sibling_blocks_next_dispatch_and_preserves_timeout() {
         .iter()
         .any(|e| matches!(e, Event::Failed { id, .. } if id == "r2")));
 }
+
+#[test]
+fn helper_can_defer_take_without_extra_pending_value_and_close_invalidates() {
+    let (_d, mut s) = session("ok");
+    s.set_display_candidates_enabled(true).unwrap();
+    s.submit_with_capabilities(request(1), caps()).unwrap();
+    poll_for(&mut s, 80); // Required v1 output could still be writing externally.
+    assert!(poll_for(&mut s, 40).is_empty());
+    assert_eq!(
+        s.take_current_display_candidate().unwrap().request_id(),
+        "r1"
+    );
+    s.submit_with_capabilities(request(2), caps()).unwrap();
+    poll_for(&mut s, 80);
+    s.close_project("p").unwrap();
+    assert!(s.take_current_display_candidate().is_none());
+    s.set_display_candidates_enabled(false).unwrap();
+    s.set_completed_snapshots_enabled(true).unwrap();
+    assert!(s.set_display_candidates_enabled(true).is_err());
+    assert!(s
+        .submit_with_snapshot_origin(request(3), vec![], "origin3".into())
+        .is_ok());
+}

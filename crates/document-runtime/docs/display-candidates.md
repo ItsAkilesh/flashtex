@@ -45,3 +45,28 @@ and missing siblings, stale edits, close/toggle epochs and sequential dispatch.
 They do not establish native acceptance, optical/font correctness, parity or
 end-to-end typing latency. Helper contract reviewed at c400d0a. Existing decoder
 permit/shutdown tests remain authoritative for its queue invariant.
+
+## Actual producer transport replay
+
+`tools/replay_display_producer.py` verifies every published producer archive file,
+rejects extra source inputs, rebuilds offline, and records exact binary/asset and
+request/reply hashes. It downloads or installs nothing. Run with explicit existing
+producer tree, font directory, rooted TFM directory and a new output directory.
+The ignored `real_display_producer` test is its runtime consumer probe.
+
+Evidence in `benchmarks/display-producer-65dbe7d` uses the unchanged355-file
+archive and pinned official LM assets. Requested output returns one accepted
+source-bound sibling with no diagnostics; legacy output returns only v1; a1500-byte
+producer reply budget declines v2 with a recovered warning; a1-byte budget produces
+an explicit failed v1 result and no sibling. The tiny budget is a producer failure
+trigger, not a claim that its failure reply itself fits one byte. All four direct
+producer results equal the runtime's returned JSON values; emitted font raw-byte
+hashes occur in the recorded assets. Source text is shared via the committed request
+fixture. No metadata correction, font substitution or rendered-output validation
+occurs. This is actual transport evidence, not native visual or timing evidence.
+
+The helper may delay taking the runtime slot while required output is pending.
+Runtime tests retain it across polls, then move it once, or clear it on close. A
+failed mutually exclusive policy enable leaves the prior policy usable. Root's
+unchanged dependency uptake854b041 and forwarding contractc400d0a were reviewed;
+actual helper/native output admission remains their separate integration gate.
