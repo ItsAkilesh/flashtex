@@ -2,13 +2,15 @@
 
 Agent / task / branch: mac-proposal-preview / shadow-compile preview of capture
 proposals in the review sheet / `agent/mac-claude-a/proposal-preview`
-(based on `agent/mac-claude-a/mac-shell` 5401a07)
+(based on `agent/mac-claude-a/mac-shell`; merged through cf98810)
 State: ready for integration (into mac-shell by the parent)
 Owned paths: `apps/mac/Sources/FlashTeXMac/ProposalPreview.swift`,
 `apps/mac/Tests/FlashTeXMacTests/ProposalPreviewTests.swift`; hook lines in
 `ContentView.swift` (ProposalReviewSheet only); additive `%diag:<n>` / `%slow`
 directives in `Tests/FlashTeXMacTests/Fixtures/fake_worker.py`.
-Main integrated through: mac-shell 5401a07 (not merged to main here).
+Main integrated through: mac-shell cf98810 (not merged to main here).
+Peer revisions reviewed and adaptations: mac-shell cf98810 (Latin Modern face;
+`PDFExport.render` signature unchanged, thumbnail unaffected) — merged, 103 tests pass.
 
 Ready behavior:
 - `ProposalPreview` (sheet-owned ObservableObject): builds the shadow text at
@@ -39,7 +41,7 @@ entry yet (parent owns `apps/mac/README.md`).
 Interface changes and required consumer actions: none to contracts. Fake worker
 gains `%diag:<n>` (error diagnostic at directive byte + n) and `%slow`
 (400 ms delay); existing tests unaffected (101/101 pass).
-Validation: `swift build`, `swift test` (101 tests, 3 skipped, 0 failures),
+Validation: `swift build`, `swift test` (103 tests after merge, 3 skipped, 0 failures),
 `xcodebuild -scheme FlashTeXMac -destination 'platform=macOS' build` succeeded.
 Needs from others: parent to merge into mac-shell and add a README line.
 Next action: none; awaiting parent review/merge.
