@@ -5,12 +5,14 @@ Appendix G, `tex.web` §§720–767) that turns a math list into explicit boxes
 carrying glyph identity and rule geometry. No TeX engine runs at runtime and
 no external crates are used (edition 2024).
 
-Owner: FT-020 (`mac-math-layout`), revision 2. Status: model, spacing,
+Owner: FT-020 (`mac-math-layout`), revision 3. Status: model, spacing,
 fractions, scripts, radicals (with degree), fixed and extensible delimiters
 and radicals, operators (symbol and text, limits per style), accents
 (including over scripted bases, `\widehat`/`\widetilde`), `\overline`/
-`\underline`, explicit style overrides, oracle comparisons. See
-"Unsupported" for the honest scope.
+`\underline`, explicit style overrides; a declared 15-case visual corpus
+gated structurally against pinned pdfTeX geometry, by raster overlays
+(harness), and by preview/PDF box parity. See "Unsupported" for the honest
+scope.
 
 ## API
 
@@ -137,8 +139,8 @@ TeX parameters with the LuaTeX correspondence. Until then two adapters ship:
 
 ## Validation
 
-`cargo test` (34 tests): unit tests for styles, spacing, parameters, the
-OpenType MATH mapping, and `tests/golden.rs` — nested scripts, stacked
+`cargo test` (37 tests): unit tests for styles, spacing, parameters, the
+OpenType MATH mapping, the corpus lookup/placement, and `tests/golden.rs` — nested scripts, stacked
 fractions in text and display, radical overbar geometry and sign selection,
 `\sqrt[3]`, `\left(\frac{a}{b}\right)` sizing, the extensible brace and
 radical stacks piece by piece, `\sum` with limits (display) and scripts
@@ -158,11 +160,63 @@ stacks: every glyph origin and rule matches within 0.003 bp, the reference's
 own output rounding. `tools/oracle_compare.py` and
 `tools/oracle_glyphs.swift` regenerate it; `examples/emit_runs.rs` feeds it.
 
+### Visual corpus and gates (rev 3)
+
+`fixtures/visual/` declares 15 cases (`NN-name.tex` + `.meta.json`): the
+seven oracle formulas plus nested scripts, display `\int`, scripts on a
+`\left[…\right]` box, accents with skew, `\sum\limits` and `\prod` with
+scripts in text style, a mixed text/math line and a nested fraction sum.
+`src/corpus.rs` declares each body as a `MathList` (a lookup, not a parser)
+and lays it out at the page origin of a 12pt `article` with `margin=1in`.
+`flashtex-math-corpus` (`src/bin/`) serves those bodies as a runtime-v1
+compile server: one `text` item per glyph, `rule` items when the client
+negotiated `rules-v1`, and `font-hints-v1` family/style per glyph
+(`docs/contracts/runtime-v1-layout-capabilities.md`); `--runs` dumps the
+geometry in TeX points.
+
+One command runs all three gates and writes an evidence directory under
+`docs/visual-evidence/<UTC stamp>/`:
+
+```sh
+FLASHTEX_LM_DIR=/path/to/lm/opentype tools/run_visual.sh   # LM dir optional
+```
+
+| gate | tool | verdict rule |
+| --- | --- | --- |
+| structural | `tools/structural_gate.py --regress fixtures/visual/structural-baseline.json` | every glyph origin and rule vs the pdfTeX oracle for the fixture as committed: per-case `thresholds.json` (0.01 bp; placement 0.05 bp) and no worsening beyond 0.001 bp against the baseline. With no `pdflatex` installed it uses `fixtures/visual/oracle-geometry.json`, the pinned geometry of a recorded pdfTeX 1.40.29 run keyed by fixture SHA-256 (`--oracle auto\|pinned\|pdflatex`, `--pin-oracle DIR` to re-pin) |
+| raster | the visual-oracle harness (`tests/visual-corpus/harness`, pinned commit exported with `git archive`, never edited) | export/preview rasters vs the pdflatex references under `fixtures/visual/raster-thresholds.json` (SSIM, diff mean, above-threshold fraction) and `--regress <previous evidence dir>` |
+| box parity | `tools/box_parity.py` + `tools/coretext_boxes.swift` | the same `compile_result` drawn by the pinned `crates/pdf` (`Td` origins, `re` rectangles) and by a CoreText draw (`CTLineDraw` per item, fill per rule) must agree with it within 0.05 pt, item by item |
+
+Latest evidence (`docs/visual-evidence/20260912T070234Z`): structural 15/15,
+corpus max |Δ| 0.0055 bp; parity 15/15, PDF writer max |Δ| 0.00096 pt,
+CoreText 0.00000 pt; raster references not regenerable (no TeX installed at
+the time — stated in the report and in `docs/comparison.md`, stage 3).
+
 ## Unsupported / limitations
 
-- No `\mathchoice` (use `Nucleus::Styled` for explicit overrides), no
-  matrices/arrays/`\overset`, no stretchy accents beyond the `cmex`
-  `\widehat`/`\widetilde` chains, no horizontal extensible constructs.
+Explicit list (rev 3 acceptance). Anything not listed under "What the engine
+implements" is unsupported; these are the ones a LaTeX user will meet first:
+
+| construct | state |
+| --- | --- |
+| `\mathchoice` | not implemented; `Nucleus::Styled` gives explicit style overrides |
+| matrices, arrays, `\cases`, `\substack`, `\overset`/`\underset`, `\stackrel` | not implemented (no vertical alignment model beyond fractions and limits) |
+| `\binom`, `\genfrac`, `\over` variants with custom rule thickness or delimiters | only `\frac` and `\atop` (θ = 0); no `\above` |
+| stretchy accents beyond the `cmex` `\widehat`/`\widetilde` size chains, `\overbrace`/`\underbrace`, `\overrightarrow`, horizontal extensibles | not implemented |
+| `\left … \middle … \right` | `\middle` not implemented |
+| `\mathrm`, `\mathbf`, `\mathcal`, `\mathbb`, `\boldsymbol` and other family switches | not implemented; families are cmr/cmmi/cmsy/cmex only |
+| math-mode `\text{…}`, `\mbox` | not implemented (`Nucleus::Text` is the upright operator font only) |
+| `\phantom`, `\vphantom`, `\smash`, `\mathstrut`, explicit `\mkern`/`\mskip`/`\hspace` in math | not implemented (the `\sqrt[n]` kerns are internal) |
+| `\not`, `\cancel`, `\colon`, `\ldots`/`\cdots`, `\pmod` | not implemented (no ellipsis glyphs in the Unicode → family map) |
+| inter-character kerning and ligatures between adjacent Ord characters (`math_text_char`) | not implemented; italic corrections are applied |
+| display environment placement (`\[`, `equation`, centring, `\abovedisplayskip`, equation numbers) | out of scope for this crate: it lays out the formula box; the corpus places one line at the page origin |
+| line breaking inside math, glue stretch/shrink | not implemented |
+| OpenType `MathVariants` (Latin Modern Math assemblies) | not consumed (see below); TFM recipes only |
+| `CmMathMetrics::scaled(base)` at arbitrary sizes | proportional scaling of the 10/7/5pt design; `latex_12pt` uses the real cmr12/cmmi12/cmsy10/8/6 tables |
+| Times fallback (`TimesApproxMetrics`) | heights/depths estimated; only advance widths are transcribed metrics; no size chains |
+
+Details:
+
 - Extensible delimiters and radicals come from TFM recipes only. The
   OpenType `MathVariants` table (vertical glyph construction/assembly for
   Latin Modern Math) is **not** consumed: `crates/font-engine`

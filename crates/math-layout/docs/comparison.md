@@ -316,3 +316,95 @@ PDFKit cross-check (content-stream x vs PDFKit box left edge, same page):
 | cmmi5 101 | 210.131 | 210.131 | +0.000 | 3.372 | 3.372 | +0.000 |
 | cmmi5 102 | 209.819 | 209.819 | +0.000 | 3.407 | 3.407 | +0.000 |
 | cmex10 59 | 217.401 | 217.401 | +0.000 | 8.856 | 8.856 | +0.000 |
+
+## Stage 3 (FT-020 rev 3): declared visual corpus with structural, raster and parity gates
+
+The rev 1/2 formulas became committed fixtures and eight more cases were
+added. Every case is one line of a 12pt `article` (`margin=1in`, real
+Computer Modern OT1 fonts, `\pagestyle{empty}`), and three gates run over
+the same 15 cases from one command, `tools/run_visual.sh`:
+
+| gate | tool | what is compared | numbers at `29e63ca` |
+| --- | --- | --- | --- |
+| structural | `tools/structural_gate.py --regress fixtures/visual/structural-baseline.json` | every glyph origin (font, glyph id, x, baseline) and rule (x, centre line, length, thickness) of `flashtex-math-corpus --runs` against the pdfTeX oracle for the fixture as committed; page placement of the first glyph absolutely, everything else relative to it; per-case thresholds in `fixtures/visual/thresholds.json` (0.01 bp, placement 0.05 bp) and a 0.001 bp regression tolerance against the recorded baseline | 15/15 pass; corpus max \|Δ\| **0.0055 bp**; placement \|Δ\| ≤ 0.0005 bp |
+| box parity (preview = PDF) | `tools/box_parity.py` | the runtime-v1 `compile_result` the corpus compiler emits (one `text` item per glyph with `font-hints-v1`, one `rule` item per rule with `rules-v1`) against (a) the `Td` origins and `re` rectangles the pinned `crates/pdf` (4bd8c2e) wrote and (b) the boxes a CoreText draw of the same result (`tools/coretext_boxes.swift`: `CTLineDraw` at `x_pt`/`baseline_y_pt`, one fill per rule, into a CoreGraphics PDF) actually used; tolerance 0.05 pt | 15/15 pass; PDF writer max \|Δ\| **0.00096 pt** (its three-decimal rounding), CoreText **0.00000 pt** |
+| raster | the visual-oracle harness (`tests/visual-corpus/harness` at `db18236`, exported read-only) with `fixtures/visual/raster-thresholds.json` and `--regress` | FlashTeX export raster (flashtex-pdf output) and preview-equivalent raster against the pdflatex reference rasters, SSIM/diff-mean/above-threshold limits | **not regenerable in this session** — see below |
+
+Evidence: `docs/visual-evidence/20260912T070234Z/` (`structural.md`,
+`box-parity.md`/`.json`, the harness's `report.md`, `metrics.json`,
+`provenance.json`). The oracle report for the structural gate is also kept
+at `docs/oracle/structural-report.md`.
+
+### The corpus (`fixtures/visual/*.tex`, `*.meta.json`)
+
+| case | body | exercises |
+| --- | --- | --- |
+| 01-stacked-fraction | `\displaystyle\frac{\frac{a}{b}}{c}=1` | formula A |
+| 02-sqrt-left-right | `\displaystyle\sqrt{x}+\left(\frac{a}{b}\right)` | formula B |
+| 03-sum-limits-scripts | `\displaystyle\sum_{i=1}^{n}x_i^2` | formula C |
+| 04-tall-braces | `\displaystyle\left\{\frac{\frac{\frac{a}{b}}{c}}{\frac{d}{\frac{e}{f}}}\right\}` | formula D, extensible brace recipe |
+| 05-cube-root | `\displaystyle\sqrt[3]{\frac{a}{b}}` | formula E |
+| 06-lim-sin | `\displaystyle\lim_{x\to 0}\frac{\sin x}{x}` | formula F |
+| 07-tall-sqrt-braces | `\displaystyle\sqrt{\left\{…\right\}}` | formula G, extensible radical |
+| 08-nested-scripts | `\displaystyle x^{y^z}_{i_j}` | script and scriptscript sizes, sup/sub separation |
+| 09-int-display | `\displaystyle\int_0^1 f(x)` | `\nolimits` large operator, italic-correction script offset |
+| 10-left-bracket-frac-squared | `\displaystyle\left[\frac{a}{b}\right]^2` | scripts on an Inner box (sup_drop), bracket sizing |
+| 11-accents | `\displaystyle\hat{\imath}+\vec{x}` | accent skew centring, cmmi accent |
+| 12-sum-limits-inline | `\sum\limits_{i=1}^{n}x_i` | limits on the small operator in text style |
+| 13-bigop-scripts-inline | `\prod_{k=1}^{m}a_k` | box-nucleus scripts (sup_drop/sub_drop) in text style |
+| 14-mixed-text-math | `Let $x^2+y^2=z^2$ hold.` | roman words with interword space around an inline formula |
+| 15-nested-fraction-sum | `\displaystyle\frac{a+b}{\frac{c}{d}+e}` | text-style inner fractions inside a display fraction |
+
+### Pinned oracle
+
+`fixtures/visual/oracle-geometry.json` pins the reference geometry of all
+15 cases, extracted from the pdfTeX 1.40.29 (TeX Live 2026, format
+`pdflatex 2026.3.1`, run of 12 Sep 2026 02:43) PDFs of the fixtures as
+committed, keyed by each fixture's SHA-256. `structural_gate.py` compiles
+with pdflatex when it is installed and otherwise uses the pin, and refuses a
+pinned case whose fixture has changed. A baseline regenerated from the pin
+is byte-identical to the committed `structural-baseline.json`, so the pinned
+numbers are the numbers the live oracle produced.
+
+### Tuning done from corpus deltas (before → after, structural gate)
+
+- Accent centring (`11-accents`): the accent was centred on the character's
+  width without its italic correction; TeX centres on the `char_box` width,
+  which includes it (tex.web §738). max \|Δ\| **0.9176 → 0.0055 bp**.
+- Text operators (`06-lim-sin`): the last character's italic correction is
+  now kept (tex.web §752); no numeric change for cmr12, where it is zero,
+  but the box width is now TeX's. The remaining 0.08 bp on this case came
+  from an `lmodern` oracle preamble (OT1 `lmr12` heights differ from
+  `cmr12`), fixed by declaring the structural preamble as real CM; the
+  engine was right.
+- No other case exceeded pdfTeX's three-decimal rounding, so nothing else
+  was tuned. The residual 0.0055 bp (`ı` after `\hat` in 11-accents) is the
+  skew-kern rounding of the reference's own output and stays under the
+  0.01 bp threshold; it is recorded, not hidden.
+
+### What could not be regenerated in this session, and why
+
+- **Raster reference overlays**: `pdflatex` is not installed on
+  `mac-m1max-a` (BasicTeX was removed; MacTeX is pending), so the harness
+  reports every reference engine as unavailable and produces no reference
+  rasters, overlays or SSIM numbers. `report.md` in the evidence directory
+  therefore contains only the FlashTeX-side rasters and the harness's own
+  export-vs-preview-equivalent rows. Those rows read DIFFERENT (a few
+  hundred pixels per page) by design at harness `db18236`: its
+  preview-equivalent draw uses Times-Roman for every text item and skips
+  typed `rule` items, while the export side embeds Latin Modern Roman via
+  the font hints and draws the rules. `box_parity.py` is the parity gate
+  for this corpus for that reason. The `raster-thresholds.json` values are
+  still the declared placeholders; they will be set from measured numbers
+  with ~10–20% headroom on the first run with an oracle present.
+- **Structural oracle**: not re-run; the pinned geometry above stands in,
+  with the pdfTeX banner and PDF SHA-256 of the run it came from.
+- **Faces on the parity check**: the PDF side embedded `LMRoman10-Regular/
+  Italic` from a local Latin Modern directory (`FLASHTEX_LM_DIR`), and the
+  CoreText side had no system-installed Latin Modern, so it drew
+  Times-Roman/Times-Italic at the same origins. Origins, sizes and rule
+  rectangles are what the gate compares; glyph outlines differ between the
+  two faces and are reported per item, not gated.
+- The earlier WIP evidence run `20260912T064724Z` was deleted: every case
+  had failed the corpus lookup (fixed in `748527c`) and no oracle was
+  present, so it measured nothing.
