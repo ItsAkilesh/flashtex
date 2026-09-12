@@ -428,3 +428,10 @@ pub use matrix::{MatrixCommand, MatrixOutline, Rational, RationalPoint};
 
 mod cache;
 pub use cache::{CacheLimits, CacheOutcome, CacheStatus, CffIdentity, CffOutlineCache};
+
+mod names;
+mod standard_strings;
+pub use names::{
+    BoundCffTfmFont, CffEncodingCache, CffEncodingManifest, CffGlyphNames, EncodingCacheOutcome,
+    ResolvedCffEncoding,
+};

@@ -170,7 +170,7 @@ fn lmroman10_raw_cff_is_exposed_with_the_directory_length() {
 }
 
 #[test]
-fn lmroman10_embeds_as_whole_opentype_program_with_identity_cids() {
+fn lmroman10_embeds_as_bare_cff_with_identity_cids() {
     let Some(f) = load(LM_ROMAN10) else { return };
     let shaped = shape(&f, "ffi AV \u{00E9}", &ShapeOptions::default()).unwrap();
     let mut plan = EmbedPlan::new();
@@ -180,8 +180,14 @@ fn lmroman10_embeds_as_whole_opentype_program_with_identity_cids() {
     assert_eq!(pdf.base_font, "LMRoman10-Regular");
     assert!(pdf.subset.is_none());
     match &pdf.font_file {
-        FontFile::OpenTypeProgram(bytes) => assert_eq!(&bytes[..], f.program()),
-        other => panic!("expected whole program, got {other:?}"),
+        FontFile::Cff(bytes) => {
+            assert_eq!(&bytes[..], f.cff_table().unwrap());
+            assert_eq!(
+                pdf.font_file.stream_key(),
+                ("FontFile3", Some("CIDFontType0C"))
+            );
+        }
+        other => panic!("expected bare CFF, got {other:?}"),
     }
     for g in shaped.glyphs() {
         assert_eq!(pdf.cid(g.gid), Some(g.gid.0), "identity CIDs for CFF");

@@ -16,8 +16,11 @@
   ],
   "revision": 4,
   "schema_version": 1,
-  "state": "assigned",
+  "state": "cancelled",
   "task_id": "FT-020",
   "timebox_minutes": 45,
-  "updated_utc": "2026-09-12T07:08:41Z"
+  "updated_utc": "2026-09-12T07:08:41Z",
+  "transfer_to": "FT-032",
+  "resume_rule": "Do not resume these owned files after cooldown; ownership is transferred to Daniel until explicit return",
+  "cancellation_reason": "User-authorized ownership transfer to Daniel during Jaysen quota cooldown; old work preserved, old worker must not resume these paths"
 }

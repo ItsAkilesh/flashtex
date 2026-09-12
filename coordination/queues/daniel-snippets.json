@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "agent_id": "daniel-snippets",
+  "task_id": "FT-041",
+  "next_index": 0,
+  "steps": [
+    {
+      "name": "Integrate an explicit published consumer adapter without peer ownership edits",
+      "objective": "Bounded UTF8-safe editor snippet expansion with numbered placeholders, linked edits and guarded tab navigation; no automatic source mutation. Integrate an explicit published consumer adapter without peer ownership edits",
+      "owned_paths": [
+        "crates/editor-snippets"
+      ],
+      "acceptance": [
+        "Meaningful tests and strict Rust lint pass with bounded malformed/Unicode inputs",
+        "Preserve exact source/revision and resource identities; no implicit approximation or parity claim",
+        "Do not edit peer compiler/native/layout files; publish typed adapter contract and exact tested SHA"
+      ],
+      "allocation_id": "daniel-claude20x-shared",
+      "timebox_minutes": 40
+    },
+    {
+      "name": "Expand measured fixtures and adversarial bounds with reproducible compatibility evidence",
+      "objective": "Bounded UTF8-safe editor snippet expansion with numbered placeholders, linked edits and guarded tab navigation; no automatic source mutation. Expand measured fixtures and adversarial bounds with reproducible compatibility evidence",
+      "owned_paths": [
+        "crates/editor-snippets"
+      ],
+      "acceptance": [
+        "Meaningful tests and strict Rust lint pass with bounded malformed/Unicode inputs",
+        "Preserve exact source/revision and resource identities; no implicit approximation or parity claim",
+        "Do not edit peer compiler/native/layout files; publish typed adapter contract and exact tested SHA"
+      ],
+      "allocation_id": "daniel-claude20x-shared",
+      "timebox_minutes": 40
+    }
+  ]
+}

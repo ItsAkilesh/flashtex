@@ -1,8 +1,10 @@
 # flashtex-compiler
 
 Original Rust compiler foundation for FlashTeX (task FT-002). No existing TeX
-engine is invoked, linked, or shelled out to. Zero external crate dependencies:
-the build is offline and deterministic, and the JSON transport is hand-written.
+engine is invoked, linked, or shelled out to. The compiler has no registry
+dependencies: it uses the in-repository `../font-engine` crate through a path
+dependency, so the build remains offline and deterministic. The JSON transport
+is hand-written.
 
 Speaks runtime protocol v1 (`docs/contracts/runtime-v1.md`) over JSON Lines on
 stdin/stdout.
@@ -26,7 +28,8 @@ This revision supports:
   approximation remains and produces the existing PDF-export warning.
 - `font-hints-v1`: every text item adds a `font` object containing the family,
   `normal` or `bold` weight, and `normal` or `italic` style selected by layout.
-  Current body text reports Times-Roman and headings report Times-Bold.
+  Current body text reports Times-Roman, headings report Times-Bold, and
+  supported mathematical symbols report Symbol.
 
 This additive extension is not rendering-v2 activation or a claim of exact
 LaTeX PDF identity. Font hints do not identify font bytes, glyph IDs, shaping,
@@ -56,12 +59,19 @@ Implemented and tested:
   previous typeset-everything behavior.
 - Scoped `\newcommand` and `\renewcommand` expansion, with zero through nine
   required arguments, nested expansion, and an explicit recursion limit.
+- Project-relative `\input` expansion across supplied documents, with included
+  text and diagnostics retaining the included document's path and byte ranges.
 - Dependency-aware incremental layout reuse behind unchanged runtime-v1 messages.
   A resumable cursor in `src/layout.rs` is the only layout engine used by both
   clean and incremental builds. Per-block cache validation includes exact macro
   definitions read, preamble bytes, layout constraints, source mapping, and the
   flow geometry entering the block; `ReuseStats` reports actual reuse.
 - Diagnostics carrying severity, message, source range, and a recovery note.
+- The shared original Rust font engine is the single measurement path. Core 14
+  shaping supplies exact AFM advances and pair kerning; its standard ligatures
+  are enabled. Every shaping cluster retains the exact input byte range and text.
+  Literal cluster-relative ranges are translated back into the originating
+  document, while generated macro text keeps its real invocation span.
 - Greedy line breaking and page breaking onto 612×792 pt pages.
 - Inline math (`$...$`) and display math (`$$...$$` and `\[...\]`), including
   nested fractions, square roots, superscripts, and subscripts.
@@ -85,7 +95,6 @@ Implemented and tested:
 Required, outstanding — this is a foundation, not a LaTeX implementation:
 
 - No `\def`, `\let`, mutable category codes, registers, or conditionals.
-- No `\input` or multi-file include expansion.
 - Math remains a declared subset: matrices, alignment environments,
   `\left`/`\right` delimiter sizing, real math-font parameters, and operator
   spacing classes are not implemented.
@@ -97,8 +106,9 @@ Required, outstanding — this is a foundation, not a LaTeX implementation:
 - Environments other than `document`, `equation`, `figure`, `itemize`, and
   `enumerate` warn and typeset as plain text.
 - No PDF output. `pdf_path` is always `null`, as the contract permits for now.
-- Only the entry document is compiled. Multi-document projects produce a warning
-  rather than silently compiling part of the project.
+- No bidi, joining, complex-script reordering, hyphenation, or TeX optimal
+  paragraph breaking. The font engine reports unsupported shaping and missing
+  glyphs explicitly; the compiler never silently substitutes a missing glyph.
 - `\textbf`, `\emph`, and `\textit` are parsed and their text is typeset, but the
   visual weight and slant are not yet applied.
 
@@ -141,7 +151,8 @@ a braced math list, including `x^{a_b}` and `\frac{a^2}{b_1}`.
 The named symbols `\alpha`, `\beta`, `\gamma`, `\delta`, `\theta`, `\lambda`,
 `\mu`, `\pi`, `\sigma`, `\phi`, `\omega`, `\times`, `\div`, `\pm`, `\leq`,
 `\geq`, `\neq`, `\approx`, `\cdot`, `\infty`, `\sum`, and `\int` map to Unicode.
-The corresponding Unicode glyph must exist in the chosen font. Unknown math
+The corresponding Unicode glyph must exist in the Symbol face selected by the
+export mapping; ordinary math letters and digits use Times-Roman. Unknown math
 commands produce an explicit diagnostic naming the command and are rendered
 literally, never silently dropped.
 
@@ -149,16 +160,34 @@ Script sizes and shifts and fraction geometry use named classic-proportion
 constants in `src/math.rs`. They approximate TeX's font-parameter-driven values;
 the compiler does not yet read a real math font.
 
-## The glyph-metric placeholder
+## Font shaping and layout limits
 
-Layout estimates every glyph as `0.5 × font_size` wide and the inter-word space
-as `0.28 × font_size` (`src/layout.rs`). These are **placeholders, not font
-metrics.** Line breaks therefore will not match a real TeX engine's, and no
-compatibility claim can rest on this output until real per-glyph advance widths
-from the font are wired in.
+Layout measures Times-Roman body text, Times-Bold headings, and supported math
+symbols in Symbol through `flashtex-font-engine::shape`. The returned cluster
+advances already include AFM pair kerning and enabled standard ligatures. One
+item is still emitted per word rather than per line; its span is derived from the
+shaped clusters and remains an exact document byte range for literal text.
 
-One item is emitted per word rather than per line. That keeps each item's source
-span exact, which is what click-to-source navigation (FT-003) needs.
+This is real Core 14 shaping, but it is not full TeX paragraph layout. Greedy
+line breaking, approximate math constants, no hyphenation, and the lack of a
+negotiated original-glyph rendering contract still prevent pixel or PDF identity
+claims.
+
+## Pinned evidence and separate fidelity gates
+
+`tests/pinned_fixtures.rs` compiles plain text, a heading, inline/display math,
+a macro, an include, a forward reference, and `AV Wa To Ty`. It compares the
+complete live `compile_result` JSON against committed JSONL bytes in
+`tests/pinned/`, once with no capabilities and once with `rules-v1` plus
+`font-hints-v1`. It does not parse, round, reorder, or normalize either stream;
+on failure it lists every differing byte offset with context. The regeneration
+command is pinned in the test header and is ignored during ordinary test runs.
+
+This compiler evidence is distinct from three other gates: raw PDF-byte equality,
+raster pixel equality, and incremental-versus-clean equivalence. The first two
+require downstream PDF/native artifacts and are not asserted in this crate;
+incremental-clean equivalence remains covered by the compiler's session tests.
+No reference TeX engine is invoked in production.
 
 ## Negotiated representation and source attribution
 
@@ -176,6 +205,36 @@ command that produced them. For these items the span does not slice back to the
 item's text, unlike ordinary words. That is deliberate: source navigation must
 land on the command the author typed. The ordinary-text invariant — every
 ordinary word item's span slices back to exactly that word — is unchanged.
+
+## Scaling, measured
+
+Run `cargo run --release --bin scaling_bench`. It prints the SHA-256 of every
+generated input and of the binary, so a number can be tied to what produced it.
+Inputs are generated by a seeded LCG, so they are identical on every machine.
+
+One-word edit, p95, before and after the revision-7 parser fix:
+
+| Size | Blocks | Before | After |
+|---|---|---|---|
+| 5 KB | 84 | 0.801 ms | 0.551 ms |
+| 50 KB | 792 | 7.402 ms | 2.541 ms |
+| 500 KB | 7 754 | 420.606 ms | **29.401 ms** |
+
+Scaling is now approximately linear. It was not: 10x the blocks cost 64x the
+time between 50 KB and 500 KB, because every macro invocation removed the
+invocation token and then spliced its expansion into the gap, moving the tail of
+the token vector twice. Replacing the token in a single splice makes a one-token
+expansion an in-place overwrite that shifts nothing. Parse fell from 402.586 ms
+to 12.254 ms at 500 KB.
+
+The pinned byte-exact fixtures were unchanged by this work, which is the evidence
+that it is a pure speedup and not a change in output.
+
+These are COMPILER-ONLY measurements, from source text to laid-out result. UI
+paint, scheduling, IPC transport and PDF writing are outside this crate. Native
+paint parity and raw PDF byte equality are separate gates and are not claimed
+here. The product target of under 200 ms from keystroke to visible output
+REMAINS UNPROVEN and can only be established by measuring the real application.
 
 ## Recovery behaviour
 
@@ -226,24 +285,18 @@ Fifty samples produced these actual compiler-only measurements:
 
 | Case | Actual latency | Reuse |
 |---|---:|---:|
-| First cold compile | 37.490 ms | 0 / 500 blocks |
-| Cold compile | median 26.613 ms, p95 27.366 ms | 0 / 500 blocks |
-| Warm unchanged | median 0.784 ms, p95 0.933 ms | 500 / 500 blocks |
-| One-word edit in paragraph 250 | median 29.092 ms, p95 29.678 ms | 499 / 500 blocks |
-| Global macro-definition edit | median 29.014 ms, p95 29.643 ms | 0 / 500 blocks |
+| First cold compile | 45.762 ms | 0 / 500 blocks |
+| Cold compile | median 37.882 ms, p95 40.453 ms | 0 / 500 blocks |
+| Warm unchanged | median 0.728 ms, p95 0.879 ms | 500 / 500 blocks |
+| One-word edit in paragraph 250 | median 27.459 ms, p95 29.225 ms | 499 / 500 blocks |
+| Global macro-definition edit | median 40.211 ms, p95 42.009 ms | 0 / 500 blocks |
 
-These numbers were re-measured after cross-references, figures and multi-file
-support landed. The earlier figures in this table were stale, and re-measuring
-caught a real regression: the reuse lookup shifted a cached block once per
-comparison rather than once, which is quadratic, and a one-word edit had reached
-178 ms p95 — six times slower than a full cold compile despite reusing 499 of 500
-blocks. Hoisting the shift out of the inner scan restored it to 29.678 ms.
-
-Cold compilation is genuinely slower than before (27 ms against 21 ms); that is
-the real cost of the convergence pass and multi-file handling, not a regression.
+These numbers were re-measured after adopting shared Core 14 shaping. Cold and
+global-macro cases include shaping every recomputed block. The one-word edit
+still reuses 499 of 500 blocks.
 
 The measured compiler work is below the 200 ms ordinary warm-edit target; the
-one-word edit p95 is 29.678 ms, leaving 170.322 ms of that budget. This is not an
+one-word edit p95 is 29.225 ms, leaving 170.775 ms of that budget. This is not an
 end-to-end keystroke-to-visible measurement: scheduling, JSON transfer, native UI
 drawing, and artifact publication are excluded, so the full product target still
 requires integration measurement. The benchmark intentionally does not claim a

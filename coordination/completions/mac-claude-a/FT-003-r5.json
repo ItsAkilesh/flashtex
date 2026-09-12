@@ -1,0 +1,101 @@
+{
+  "agent_id": "mac-claude-a",
+  "archived_utc": "2026-09-12T08:21:08Z",
+  "assignment": {
+    "acceptance": [
+      "Packaged app launches and completes the pinned demo with measured edit/capture/export latency",
+      "Crash/restart, disconnect/retry, stale preview, accessibility, and update paths have reproducible evidence",
+      "Device, signing, notarization, provider, and visual gaps remain explicit"
+    ],
+    "agent_id": "mac-claude-a",
+    "allocation_id": "claude-mac20x-shell-stage5",
+    "branch": "agent/mac-claude-a/mac-shell",
+    "deadline_utc": null,
+    "dependencies": [],
+    "input_main_sha": "2d67b0da5a0a4fd83e700558e33168624d250f2d",
+    "objective": "Harden the packaged Mac workflow and repeat native recovery, accessibility, nearby-device, responsiveness, and non-regression gates using exact integrated component SHAs.",
+    "owned_paths": [
+      "apps/mac"
+    ],
+    "revision": 5,
+    "schema_version": 1,
+    "state": "assigned",
+    "task_id": "FT-003",
+    "timebox_minutes": 45,
+    "updated_utc": "2026-09-12T06:16:47Z"
+  },
+  "report": {
+    "agent_id": "mac-claude-a",
+    "allocation_id": "openai-mac-plus-ft003",
+    "assignment_acknowledgements": {
+      "FT-003": {
+        "acknowledged_utc": "2026-09-12T06:17:21Z",
+        "adaptation": "Accepted FT-003 rev 5 (packaged recovery/responsiveness) at input main 2d67b0d; rev 4 delivered at b18ed2f (136/136 with real compiler/pdf/bridge/edit-ledger). Plan: packaging worker bundles bridge + edit-ledger helper into FlashTeX.app and reruns install/update/launch-check; native-e2e worker runs the pinned packaged demo with measured edit/capture/export latency, crash/restart, disconnect/retry, stale-preview and accessibility evidence using exact component SHAs; gaps stay explicit.",
+        "main_sha": "87d20e8fa3c80bffcb223a503dc5da0f4784eb58",
+        "revision": 5
+      }
+    },
+    "branch": "agent/mac-claude-a/mac-shell",
+    "capabilities": [
+      "swift",
+      "xcode",
+      "rust",
+      "macos-simulators"
+    ],
+    "code_revision": "65945befef9051ec14f017f36dac5203bb1398ac",
+    "eta_minutes": {
+      "likely": 120,
+      "optimistic": 60,
+      "pessimistic": 240
+    },
+    "machine": "mac-m1max-a",
+    "main_integrated_through": "2fd302675040308c2b07d346c07389a051518979",
+    "next_action": "Reduce PreviewView main-thread render cost (cache CoreText lines per item, render off-main) and re-measure with tools/typing-bench/run.sh",
+    "reviewed_peers": {
+      "origin/agent/aarush-macbook/companion-capture": {
+        "adaptation": "Peer cannot run xcodebuild; will verify their branch from this Mac. No contract change.",
+        "reviewed_utc": "2026-09-12T04:16:05Z",
+        "sha": "eb1c2fcb75b8f51cfe99d8facbec91c7c9857546"
+      },
+      "origin/agent/claude/compiler-foundation": {
+        "adaptation": "Compiler 9f1033b: rustfmt + 8 MiB request bound, no interface change; documented limit in README",
+        "reviewed_utc": "2026-09-12T04:36:12Z",
+        "sha": "9f1033ba75176236bc5fc66b5e64b8ebbfc15a37"
+      },
+      "origin/agent/commander/capture-bridge": {
+        "adaptation": "transfer-v1 read; Mac integration started as a child against exact commit b5ca96b (unmerged dependency recorded)",
+        "reviewed_utc": "2026-09-12T05:05:25Z",
+        "sha": "b5ca96bdaca634166a01023cd3321955f2bc5f70"
+      },
+      "origin/agent/commander/coordination-tools": {
+        "adaptation": "Acknowledged FT-009/FT-010 as parent and spawned both; will not build FT-007 bridge (Commander-owned); following queue step 0 acceptance",
+        "reviewed_utc": "2026-09-12T04:24:53Z",
+        "sha": "25a92a9c591a92a3d49071e536ecf8f129112c24"
+      },
+      "origin/main": {
+        "adaptation": "main through 53fee30 read (queue/slot reconciliation, standby setup paths, Codex quota record); no Mac-shell interface change; 2fd3026 merged into mac-shell and all four workers rebuilt from the merged tree",
+        "reviewed_utc": "2026-09-12T07:32:12Z",
+        "sha": "53fee3012b2902ca05bd31766defa515b3044cec"
+      }
+    },
+    "schema_version": 1,
+    "state": "ready_for_integration",
+    "summary": "FT-003 rev 5: mac-shell 65945be (main 2fd3026 merged): 173/173 with compiler 9026d8a (sha256 765a95e9\u2026) pdf 4bd8c2e (45253add\u2026) bridge fb6b367 edit-ledger a41dbc4; packaged FlashTeX.app launch+crash-recovery check passed; typing bench keystroke->paint p50 890 ms (PreviewView render p50 313 ms is the bottleneck, compiler 1-2 ms); MacTeX 2026 full installed as oracle. Blocker: Claude Max monthly spend limit (HTTP 429) terminated 5 subagents at 07:27Z; WIP preserved; no new subagents until reset 08:20Z.",
+    "tool": "Claude Code",
+    "updated_utc": "2026-09-12T07:32:12Z",
+    "usage": {
+      "evidence": "issue #2 comment 5644480082; docs/evidence/typing-bench-2026-09-12T073000Z.md",
+      "status": "Claude Max 20x: monthly spend limit reached for subagents (429); parent session still running; no overage"
+    }
+  },
+  "report_age_seconds": 2936,
+  "report_path": "coordination/agents/mac-claude-a.json",
+  "review_required": true,
+  "revision": 5,
+  "schema_version": 1,
+  "stale_completion": true,
+  "state": "reported_ready",
+  "task_id": "FT-003",
+  "worker_branch": "agent/mac-claude-a/mac-shell",
+  "worker_report_sha": "552a67a9e49035bb20d9c090bddade6121986a41"
+}
