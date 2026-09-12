@@ -9,16 +9,16 @@
   "branch": "agent/commander-preview-performance/preview-performance",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "eb5ae874fdb8b2fde2dfbc0fe11aebc272b0fe26",
-  "objective": "Resolve GH34 with separately labeled actual helper capture using verified official ec-lmr10 in an isolated rooted asset stage",
+  "input_main_sha": "a45f7e28c0ed7c2bcc159bed7bfcf8e956ced749",
+  "objective": "Compare existing full-source edit and compact grouped edit for the same actual50KB typing sequence with pinned helper compiler and assets",
   "owned_paths": [
     "crates/preview-controller",
     "crates/edit-ledger"
   ],
-  "revision": 18,
+  "revision": 19,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-048",
   "timebox_minutes": 40,
-  "updated_utc": "2026-09-12T12:56:49.635344+00:00"
+  "updated_utc": "2026-09-12T13:01:24.312845+00:00"
 }
