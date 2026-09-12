@@ -201,7 +201,11 @@ impl MathParser<'_> {
                 let (offset, ch) = chars.next()?;
                 let end = offset + ch.len_utf8();
                 let span = if token.span.end - token.span.start == word.len() {
-                    Span::new(token.span.start + offset, token.span.start + end)
+                    Span::in_document(
+                        token.span.document,
+                        token.span.start + offset,
+                        token.span.start + end,
+                    )
                 } else {
                     token.span
                 };
@@ -473,7 +477,8 @@ fn split_word_tokens(tokens: &[Token]) -> Vec<Token> {
                 out.push(Token {
                     kind: TokenKind::Word(ch.to_string()),
                     span: if source_matches_word {
-                        Span::new(
+                        Span::in_document(
+                            token.span.document,
                             token.span.start + offset,
                             token.span.start + offset + ch.len_utf8(),
                         )
@@ -531,7 +536,7 @@ fn shift(span: Span, delta: isize) -> Span {
             v.saturating_sub(delta.unsigned_abs())
         }
     };
-    Span::new(apply(span.start), apply(span.end))
+    Span::in_document(span.document, apply(span.start), apply(span.end))
 }
 
 #[cfg(test)]

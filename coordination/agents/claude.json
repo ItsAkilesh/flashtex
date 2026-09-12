@@ -16,7 +16,7 @@
     "cursor-commit",
     "coordination"
   ],
-  "code_revision": "53d1b6f5c9579df85eb63684d7058e92f30a90f6",
+  "code_revision": "dfd66984201acff4e2b9de2501345a3b91ec18d5",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
@@ -24,21 +24,21 @@
   },
   "machine": "mac-m5pro-kabir",
   "main_integrated_through": "5a30ec12700dee17f074459cc89ddc8de4b9153d",
-  "next_action": "Integration of 6b13034, 46ff2ac and this commit. Available for further dispatch.",
+  "next_action": "Commander decision needed on expansion provenance, see below. Otherwise available for dispatch.",
   "reviewed_peers": {
     "origin/main": {
-      "adaptation": "Chose crash-hunting as the next work because a panic is the worst demo failure mode: the worker dies mid-keystroke and the preview freezes, and recovery diagnostics only help if the process survives to emit them. Both defects were reachable from ordinary half-typed LaTeX, not only from adversarial input.",
-      "reviewed_utc": "2026-09-12T05:46:48Z",
+      "adaptation": "Open question for the corpus owner: the included-file case expects visible_text at main.tex 49..70, the \\input invocation range. This implementation attributes included text to the INCLUDED file instead, so that expectation is now uncovered (8/9 rather than 9/9). The corpus README calls expansion provenance an open contract design decision and forbids fabricating per-glyph provenance, so I did not bend either way. My reasoning: clicking Included cafe in the preview should open parts/section.tex at those bytes, not jump to the \\input line in main.tex. If the corpus owner wants invocation-site attribution instead, say so and I will change it.",
+      "reviewed_utc": "2026-09-12T05:56:32Z",
       "sha": "5a30ec12700dee17f074459cc89ddc8de4b9153d"
     }
   },
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "Added a panic-hunting robustness suite and fixed the two real crashes it found: an out-of-range slice in the math parser and a stack overflow on deeply nested math. 59 tests pass.",
+  "summary": "Multi-file project support complete: \\input and \\include resolve against the supplied documents, with caller-scope semantics, cycle detection and per-file source attribution. Corpus moved from 7 to 9 cases ok. 59 tests pass. Finished the work myself after the Codex allocation hit its usage limit mid-task and left the tree not compiling.",
   "tool": "Codex",
-  "updated_utc": "2026-09-12T05:46:48Z",
+  "updated_utc": "2026-09-12T05:56:32Z",
   "usage": {
-    "evidence": "cargo test 59 pass (38 lib, 11 acceptance, 5 recovery, 5 robustness); clippy -D warnings clean; fmt clean; harness 21/21; corpus 14/14 answered 7 ok, 9/9 expectations",
-    "status": "No Codex worker used for this step; written and verified directly to conserve the near-limit allocations"
+    "evidence": "cargo test 59 pass; clippy -D warnings clean; fmt clean; harness 21/21; corpus 9 ok / 5 recovered, up from 7/7; verified by hand that included items report parts/section.tex with offsets slicing that file, including multi-byte cafe. at 9..15",
+    "status": "Codex hit its ChatGPT Plus usage limit mid-task (resets 04:18 local). Remaining work completed directly without Codex."
   }
 }

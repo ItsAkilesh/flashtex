@@ -52,6 +52,11 @@ impl Diagnostic {
     }
 
     pub fn to_json(&self, path: &str) -> Value {
+        self.to_json_with_paths(&[path])
+    }
+
+    /// Serialize with the path belonging to the document carried by the span.
+    pub fn to_json_with_paths(&self, paths: &[&str]) -> Value {
         let mut v = Value::obj();
         v.set("severity", str_(self.severity.as_str()));
         v.set("message", str_(self.message.clone()));
@@ -60,7 +65,7 @@ impl Diagnostic {
             match self.span {
                 Some(s) => {
                     let mut src = Value::obj();
-                    src.set("path", str_(path));
+                    src.set("path", str_(paths.get(s.document.0).copied().unwrap_or("")));
                     src.set("start_byte", Value::Num(s.start as f64));
                     src.set("end_byte", Value::Num(s.end as f64));
                     src

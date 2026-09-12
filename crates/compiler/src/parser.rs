@@ -8,12 +8,21 @@
 use std::collections::{BTreeMap, HashMap};
 
 use crate::diagnostics::Diagnostic;
-use crate::lexer::{tokenize, Token, TokenKind};
+use crate::lexer::{tokenize, tokenize_document, Token, TokenKind};
 use crate::math::{self, MathList};
-use crate::Span;
+use crate::{DocumentId, Span};
 
 /// Maximum number of nested user-macro expansions at one use site.
 pub const MACRO_RECURSION_LIMIT: usize = 64;
+/// Maximum number of active nested `\input`/`\include` calls.
+pub const INCLUDE_DEPTH_LIMIT: usize = 64;
+
+/// One project document supplied by the runtime compile payload.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SourceDocument<'a> {
+    pub path: &'a str,
+    pub text: &'a str,
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Inline {
@@ -74,7 +83,20 @@ const BUILT_INS: &[&str] = &[
     "usepackage",
     "newcommand",
     "renewcommand",
+    "input",
+    "include",
 ];
+
+/// Project-relative paths only: no absolute paths or parent traversal.
+pub(crate) fn path_is_safe(path: &str) -> bool {
+    if path.is_empty() || path.starts_with('/') || path.starts_with('\\') {
+        return false;
+    }
+    if path.len() >= 2 && path.as_bytes()[1] == b':' {
+        return false;
+    }
+    !path.split(['/', '\\']).any(|component| component == "..")
+}
 
 #[derive(Debug, Clone)]
 struct InputToken {
@@ -90,7 +112,20 @@ struct MacroDef {
 }
 
 pub fn parse(text: &str) -> Parsed {
-    let raw = tokenize(text);
+    parse_project(&[SourceDocument { path: "", text }], "")
+}
+
+/// Parse an entry document and every project document it includes.
+pub fn parse_project(documents: &[SourceDocument<'_>], entry_path: &str) -> Parsed {
+    let entry = documents
+        .iter()
+        .position(|document| document.path == entry_path)
+        .unwrap_or(0);
+    let entry_document = documents.get(entry).copied().unwrap_or(SourceDocument {
+        path: entry_path,
+        text: "",
+    });
+    let raw = tokenize_document(entry_document.text, DocumentId(entry));
     let has_document = has_document_environment(&raw);
     let mut p = P {
         t: raw
@@ -114,6 +149,13 @@ pub fn parse(text: &str) -> Parsed {
         packages: Vec::new(),
         block_dependencies: Vec::new(),
         current_dependencies: BTreeMap::new(),
+        documents,
+        document_by_path: documents
+            .iter()
+            .enumerate()
+            .map(|(index, document)| (document.path, index))
+            .collect(),
+        include_stack: vec![entry],
     };
     let blocks = p.document();
 
@@ -139,12 +181,12 @@ pub fn parse(text: &str) -> Parsed {
         document_class: p.document_class,
         packages: p.packages,
         block_dependencies: p.block_dependencies,
-        preamble_source: preamble_source(text, has_document),
+        preamble_source: preamble_source(entry_document.text, has_document),
         incremental_safe,
     }
 }
 
-struct P {
+struct P<'a> {
     t: Vec<InputToken>,
     i: usize,
     diags: Vec<Diagnostic>,
@@ -159,9 +201,12 @@ struct P {
     packages: Vec<String>,
     block_dependencies: Vec<Vec<MacroDependency>>,
     current_dependencies: BTreeMap<String, (usize, Vec<TokenKind>)>,
+    documents: &'a [SourceDocument<'a>],
+    document_by_path: HashMap<&'a str, usize>,
+    include_stack: Vec<usize>,
 }
 
-impl P {
+impl P<'_> {
     fn peek(&self) -> Option<&Token> {
         self.t.get(self.i).map(|t| &t.token)
     }
@@ -170,6 +215,12 @@ impl P {
         let mut blocks = Vec::new();
         let mut para = Vec::new();
 
+        self.parse_stream(&mut blocks, &mut para);
+        self.flush_paragraph(&mut blocks, &mut para);
+        blocks
+    }
+
+    fn parse_stream(&mut self, blocks: &mut Vec<Block>, para: &mut Vec<Inline>) {
         while self.i < self.t.len() {
             let input = self.t[self.i].clone();
             let tok = input.token;
@@ -178,7 +229,7 @@ impl P {
                 TokenKind::ParBreak => {
                     self.i += 1;
                     if render {
-                        self.flush_paragraph(&mut blocks, &mut para);
+                        self.flush_paragraph(blocks, para);
                     }
                 }
                 TokenKind::Space | TokenKind::Comment => self.i += 1,
@@ -216,8 +267,8 @@ impl P {
                         self.restore_scope();
                     }
                 }
-                TokenKind::MathShift if render => self.dollar_math(tok.span, &mut para),
-                TokenKind::DisplayMathOpen if render => self.bracket_math(tok.span, &mut para),
+                TokenKind::MathShift if render => self.dollar_math(tok.span, para),
+                TokenKind::DisplayMathOpen if render => self.bracket_math(tok.span, para),
                 TokenKind::DisplayMathClose if render => {
                     self.i += 1;
                     self.diags.push(Diagnostic::error(
@@ -241,19 +292,10 @@ impl P {
                 | TokenKind::Subscript => self.i += 1,
                 TokenKind::Command(name) => {
                     self.i += 1;
-                    self.command(
-                        &name,
-                        tok.span,
-                        input.expansion_depth,
-                        &mut blocks,
-                        &mut para,
-                    );
+                    self.command(&name, tok.span, input.expansion_depth, blocks, para);
                 }
             }
         }
-
-        self.flush_paragraph(&mut blocks, &mut para);
-        blocks
     }
 
     fn command(
@@ -283,6 +325,7 @@ impl P {
             "usepackage" => self.use_package(span),
             "newcommand" | "renewcommand" => self.define_macro(name, span),
             "begin" | "end" => self.environment(name, span, blocks, para),
+            "input" | "include" => self.include(name, span, blocks, para),
             _ if self.has_document && !self.in_body => self.unsupported_preamble(name, span),
             "section" | "subsection" => {
                 let level = if name == "section" { 1 } else { 2 };
@@ -304,11 +347,6 @@ impl P {
                 para.extend(self.inlines_from_tokens(tokens));
             }
             "par" => self.flush_paragraph(blocks, para),
-            "input" => self.diags.push(Diagnostic::error(
-                "\\input and multi-document inclusion are not implemented",
-                Some(span),
-                Some("skipped the include and typeset its braced path as plain text".into()),
-            )),
             "frac" | "sqrt" => self.diags.push(Diagnostic::error(
                 format!("\\{} requires math mode", name),
                 Some(span),
@@ -316,6 +354,100 @@ impl P {
             )),
             other => self.unsupported(other, span),
         }
+    }
+
+    fn include(
+        &mut self,
+        command: &str,
+        span: Span,
+        blocks: &mut Vec<Block>,
+        para: &mut Vec<Inline>,
+    ) {
+        let (tokens, _) = self.required_group(command, span);
+        let requested = token_text(&tokens).trim().to_string();
+        if requested.is_empty() {
+            self.diags.push(Diagnostic::error(
+                format!("\\{command} requires a non-empty project-relative path"),
+                Some(span),
+                Some("skipped the empty include and continued".into()),
+            ));
+            return;
+        }
+        if !path_is_safe(&requested) {
+            self.diags.push(Diagnostic::error(
+                format!(
+                    "rejected include path '{requested}': paths must be project-relative with no parent traversal"
+                ),
+                Some(span),
+                Some("skipped the unsafe include and continued".into()),
+            ));
+            return;
+        }
+
+        let appended = format!("{requested}.tex");
+        let resolved = self
+            .document_by_path
+            .get(requested.as_str())
+            .copied()
+            .or_else(|| self.document_by_path.get(appended.as_str()).copied());
+        let Some(document_index) = resolved else {
+            self.diags.push(Diagnostic::error(
+                format!("included file not found: looked for '{requested}' and '{appended}'"),
+                Some(span),
+                Some("skipped the missing include and continued".into()),
+            ));
+            return;
+        };
+
+        if let Some(cycle_start) = self
+            .include_stack
+            .iter()
+            .position(|active| *active == document_index)
+        {
+            let mut cycle: Vec<&str> = self.include_stack[cycle_start..]
+                .iter()
+                .map(|index| self.documents[*index].path)
+                .collect();
+            cycle.push(self.documents[document_index].path);
+            self.diags.push(Diagnostic::error(
+                format!("include cycle detected: {}", cycle.join(" -> ")),
+                Some(span),
+                Some("skipped the cyclic include and continued".into()),
+            ));
+            return;
+        }
+        if self.include_stack.len() > INCLUDE_DEPTH_LIMIT {
+            self.diags.push(Diagnostic::error(
+                format!(
+                    "include depth exceeds the limit of {INCLUDE_DEPTH_LIMIT} while loading '{}'",
+                    self.documents[document_index].path
+                ),
+                Some(span),
+                Some("skipped the too-deep include and continued".into()),
+            ));
+            return;
+        }
+
+        let saved_tokens = std::mem::replace(
+            &mut self.t,
+            tokenize_document(
+                self.documents[document_index].text,
+                DocumentId(document_index),
+            )
+            .into_iter()
+            .map(|token| InputToken {
+                token,
+                expansion_depth: 0,
+                maps_to_invocation: false,
+            })
+            .collect(),
+        );
+        let saved_index = std::mem::replace(&mut self.i, 0);
+        self.include_stack.push(document_index);
+        self.parse_stream(blocks, para);
+        self.include_stack.pop();
+        self.t = saved_tokens;
+        self.i = saved_index;
     }
 
     fn document_class(&mut self, span: Span) {
@@ -731,7 +863,7 @@ impl P {
         para.push(Inline::Math {
             list,
             display,
-            span: Span::new(open.start, end),
+            span: Span::in_document(open.document, open.start, end),
         });
     }
 
@@ -762,7 +894,7 @@ impl P {
                         end = token.span.end;
                         let content = self.t[start..self.i].to_vec();
                         self.i += 1;
-                        return (content, Span::new(open.start, end));
+                        return (content, Span::in_document(open.document, open.start, end));
                     }
                 }
                 _ => {}
@@ -775,7 +907,10 @@ impl P {
             Some(open),
             Some("closed the argument at end of input".into()),
         ));
-        (self.t[start..].to_vec(), Span::new(open.start, end))
+        (
+            self.t[start..].to_vec(),
+            Span::in_document(open.document, open.start, end),
+        )
     }
 
     /// Brackets stay ordinary lexer word characters, preserving normal text.
@@ -789,6 +924,7 @@ impl P {
             return None;
         }
         let start = first.span.start;
+        let document = first.span.document;
         let mut end = first.span.end;
         let mut found = first_word.contains(']');
         let mut raw = first_word.clone();
@@ -810,7 +946,7 @@ impl P {
             }
             self.i += 1;
         }
-        let span = Span::new(start, end);
+        let span = Span::in_document(document, start, end);
         let content = raw
             .strip_prefix('[')
             .unwrap_or(&raw)

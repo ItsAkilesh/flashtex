@@ -8,7 +8,7 @@
 //! the recognised set is limited to what the documented subset needs. See the
 //! crate README for the honest boundary.
 
-use crate::Span;
+use crate::{DocumentId, Span};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TokenKind {
@@ -46,6 +46,11 @@ fn is_special(c: char) -> bool {
 }
 
 pub fn tokenize(text: &str) -> Vec<Token> {
+    tokenize_document(text, DocumentId::default())
+}
+
+/// Tokenize one member of a project while retaining its document identity.
+pub fn tokenize_document(text: &str, document: DocumentId) -> Vec<Token> {
     let bytes = text.as_bytes();
     let mut tokens = Vec::new();
     let mut it = text.char_indices().peekable();
@@ -71,7 +76,7 @@ pub fn tokenize(text: &str) -> Vec<Token> {
                 } else {
                     TokenKind::Space
                 },
-                span: Span::new(start, end),
+                span: Span::in_document(document, start, end),
             });
             continue;
         }
@@ -86,7 +91,7 @@ pub fn tokenize(text: &str) -> Vec<Token> {
                         it.next();
                         tokens.push(Token {
                             kind: TokenKind::LineBreak,
-                            span: Span::new(start, j + 1),
+                            span: Span::in_document(document, start, j + 1),
                         });
                     }
                     Some(&(_, ch)) if ch.is_alphabetic() => {
@@ -102,7 +107,7 @@ pub fn tokenize(text: &str) -> Vec<Token> {
                         }
                         tokens.push(Token {
                             kind: TokenKind::Command(name),
-                            span: Span::new(start, end),
+                            span: Span::in_document(document, start, end),
                         });
                     }
                     Some(&(j, '[')) | Some(&(j, ']')) => {
@@ -114,7 +119,7 @@ pub fn tokenize(text: &str) -> Vec<Token> {
                             } else {
                                 TokenKind::DisplayMathClose
                             },
-                            span: Span::new(start, j + 1),
+                            span: Span::in_document(document, start, j + 1),
                         });
                     }
                     // A control symbol such as `\%`: treat as escaped literal.
@@ -122,13 +127,13 @@ pub fn tokenize(text: &str) -> Vec<Token> {
                         it.next();
                         tokens.push(Token {
                             kind: TokenKind::Word(ch.to_string()),
-                            span: Span::new(start, j + ch.len_utf8()),
+                            span: Span::in_document(document, start, j + ch.len_utf8()),
                         });
                     }
                     None => {
                         tokens.push(Token {
                             kind: TokenKind::Command(String::new()),
-                            span: Span::new(start, bytes.len()),
+                            span: Span::in_document(document, start, bytes.len()),
                         });
                     }
                 }
@@ -144,7 +149,7 @@ pub fn tokenize(text: &str) -> Vec<Token> {
                 };
                 tokens.push(Token {
                     kind,
-                    span: Span::new(i, i + c.len_utf8()),
+                    span: Span::in_document(document, i, i + c.len_utf8()),
                 });
             }
             '%' => {
@@ -160,7 +165,7 @@ pub fn tokenize(text: &str) -> Vec<Token> {
                 }
                 tokens.push(Token {
                     kind: TokenKind::Comment,
-                    span: Span::new(start, end),
+                    span: Span::in_document(document, start, end),
                 });
             }
             _ => {
@@ -177,7 +182,7 @@ pub fn tokenize(text: &str) -> Vec<Token> {
                 }
                 tokens.push(Token {
                     kind: TokenKind::Word(word),
-                    span: Span::new(start, end),
+                    span: Span::in_document(document, start, end),
                 });
             }
         }

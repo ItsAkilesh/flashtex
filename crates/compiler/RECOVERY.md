@@ -1,4 +1,4 @@
-Generated from commit `6b13034593e04404a0cfde0f296c14360f5c4b26` by `cargo test --test recovery generate_recovery_evidence -- --ignored --exact`.
+Generated from commit `dfd66984201acff4e2b9de2501345a3b91ec18d5` by `cargo test --test recovery generate_recovery_evidence -- --ignored --exact`.
 
 # FlashTeX recovery evidence
 
@@ -120,7 +120,7 @@ Positioned text items:
 - `argument` — byte range `20..28`
 - `Tail.` — byte range `30..35`
 
-## input multi-document command
+## include of a file the request did not supply
 
 Input:
 
@@ -132,12 +132,11 @@ Status: `recovered`
 
 Diagnostics:
 
-- `\input and multi-document inclusion are not implemented` — recovery: `skipped the include and typeset its braced path as plain text`; byte range: `8..14`
+- `included file not found: looked for 'chapter.tex' and 'chapter.tex.tex'` — recovery: `skipped the missing include and continued`; byte range: `8..14`
 
 Positioned text items:
 
 - `Visible` — byte range `0..7`
-- `chapter.tex` — byte range `15..26`
 - `Tail.` — byte range `28..33`
 
 ## math command outside math mode
@@ -733,19 +732,19 @@ Positioned text items:
 - `b` — byte range `19..20`
 - `Tail.` — byte range `23..28`
 
-## multiple documents
+## include naming a document the request did not supply
 
 Input:
 
 ```text
-{"id":"recovery","payload":{"documents":[{"path":"main.tex","text":"Visible main document."},{"path":"chapter.tex","text":"Other."}],"entry_path":"main.tex","project_id":"recovery-evidence","revision":1},"protocol_version":1,"type":"compile"}
+{"id":"recovery","payload":{"documents":[{"path":"main.tex","text":"Visible main document. \\input{absent}"},{"path":"chapter.tex","text":"Other."}],"entry_path":"main.tex","project_id":"recovery-evidence","revision":1},"protocol_version":1,"type":"compile"}
 ```
 
 Status: `recovered`
 
 Diagnostics:
 
-- `2 documents were supplied; this version compiles only the entry document` — recovery: `compiled the entry document alone`; byte range: `null`
+- `included file not found: looked for 'absent' and 'absent.tex'` — recovery: `skipped the missing include and continued`; byte range: `23..29`
 
 Positioned text items:
 

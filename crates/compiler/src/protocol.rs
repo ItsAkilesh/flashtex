@@ -8,6 +8,7 @@ use crate::diagnostics::{Diagnostic, Severity};
 use crate::incremental::Session;
 use crate::json::{self, str_, Value};
 use crate::layout::{LayoutConstraints, Page};
+use crate::parser::SourceDocument;
 use std::collections::HashMap;
 use std::io::{self, BufRead};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -191,7 +192,10 @@ fn result_envelope(id: &str, payload: Value) -> Value {
     v
 }
 
-fn pages_json(pages: &[Page], path: &str) -> Value {
+/// `paths` is indexed by `DocumentId`. Each item reports the file its bytes
+/// actually live in, so click-to-source navigation opens the right file in a
+/// multi-file project instead of always pointing at the entry document.
+fn pages_json(pages: &[Page], paths: &[&str]) -> Value {
     Value::Arr(
         pages
             .iter()
@@ -207,7 +211,10 @@ fn pages_json(pages: &[Page], path: &str) -> Value {
                             .iter()
                             .map(|it| {
                                 let mut src = Value::obj();
-                                src.set("path", str_(path));
+                                src.set(
+                                    "path",
+                                    str_(paths.get(it.span.document.0).copied().unwrap_or("")),
+                                );
                                 src.set("start_byte", Value::Num(it.span.start as f64));
                                 src.set("end_byte", Value::Num(it.span.end as f64));
                                 let mut i = Value::obj();
@@ -290,24 +297,35 @@ fn compile(id: &str, payload: &Value) -> Value {
         return failed(id, &project_id, revision, vec![diag], &entry);
     }
 
-    // This version compiles the entry document only. Multi-file projects are an
-    // outstanding requirement, reported rather than silently ignored.
+    // Every supplied document participates: \input resolves against this set, and
+    // DocumentId indexes it, so span order here defines the identity of a span.
+    let project: Vec<(String, String)> = docs
+        .iter()
+        .map(|d| {
+            (
+                d.get("path")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+                d.get("text")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+            )
+        })
+        .collect();
+
     let entry_doc = docs
         .iter()
         .find(|d| d.get("path").and_then(|v| v.as_str()) == Some(entry.as_str()))
         .or_else(|| docs.first());
 
-    let (path, text) = match entry_doc {
-        Some(d) => (
-            d.get("path")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string(),
-            d.get("text")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string(),
-        ),
+    let path = match entry_doc {
+        Some(d) => d
+            .get("path")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
         None => {
             let diag = Diagnostic {
                 severity: Severity::Error,
@@ -343,19 +361,19 @@ fn compile(id: &str, payload: &Value) -> Value {
         .entry(key)
         .or_insert_with(|| (tick, Session::new()));
     slot.0 = tick;
-    let incremental = slot.1.compile(&text, LayoutConstraints::default());
+    let sources: Vec<SourceDocument<'_>> = project
+        .iter()
+        .map(|(p, t)| SourceDocument {
+            path: p.as_str(),
+            text: t.as_str(),
+        })
+        .collect();
+    let incremental = slot
+        .1
+        .compile_project(&sources, &path, LayoutConstraints::default());
     let pages = incremental.output.pages;
-    let mut diags = incremental.output.diagnostics;
-    if docs.len() > 1 {
-        diags.push(Diagnostic::warning(
-            format!(
-                "{} documents were supplied; this version compiles only the entry document",
-                docs.len()
-            ),
-            None,
-            Some("compiled the entry document alone".into()),
-        ));
-    }
+    let diags = incremental.output.diagnostics;
+    let paths: Vec<&str> = project.iter().map(|(p, _)| p.as_str()).collect();
 
     let has_content = pages.iter().any(|p| !p.items.is_empty());
     let status = if diags.is_empty() {
@@ -370,10 +388,10 @@ fn compile(id: &str, payload: &Value) -> Value {
     p.set("project_id", str_(project_id));
     p.set("revision", Value::Num(revision as f64));
     p.set("status", str_(status));
-    p.set("pages", pages_json(&pages, &path));
+    p.set("pages", pages_json(&pages, &paths));
     p.set(
         "diagnostics",
-        Value::Arr(diags.iter().map(|d| d.to_json(&path)).collect()),
+        Value::Arr(diags.iter().map(|d| d.to_json_with_paths(&paths)).collect()),
     );
     p.set("pdf_path", Value::Null);
     result_envelope(id, p)

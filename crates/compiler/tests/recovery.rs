@@ -46,9 +46,12 @@ const SOURCE_CASES: &[SourceCase] = &[
         message: r"\frobnicate is not supported",
     },
     SourceCase {
-        name: "input multi-document command",
+        // \input is implemented now; the recoverable failure is a file the
+        // request did not supply. The diagnostic must name what it looked for,
+        // because "not found" without the attempted paths is unactionable.
+        name: "include of a file the request did not supply",
         input: r"Visible \input{chapter.tex} Tail.",
-        message: r"\input and multi-document inclusion are not implemented",
+        message: r"included file not found: looked for 'chapter.tex' and 'chapter.tex.tex'",
     },
     SourceCase {
         name: "math command outside math mode",
@@ -246,10 +249,14 @@ fn compile_request_with(entry: &str, documents: Vec<(&str, &str)>) -> String {
 }
 
 fn wire_cases() -> Vec<WireCase> {
+    // Supplying an unreferenced extra document is no longer a failure: multi-file
+    // projects compile. The recoverable wire failure is now an \input naming a
+    // file the request did not supply, with the other document present to prove
+    // the compiler looked and did not merely ignore the whole set.
     let multi = compile_request_with(
         "main.tex",
         vec![
-            ("main.tex", "Visible main document."),
+            ("main.tex", "Visible main document. \\input{absent}"),
             ("chapter.tex", "Other."),
         ],
     );
@@ -259,12 +266,12 @@ fn wire_cases() -> Vec<WireCase> {
     let oversized = vec![b'x'; MAX_LINE_BYTES + 1];
     vec![
         WireCase {
-            name: "multiple documents",
+            name: "include naming a document the request did not supply",
             input_description: multi.clone(),
             bytes: multi.into_bytes(),
             expected: "recovered",
-            message: "2 documents were supplied",
-            source_text: Some("Visible main document."),
+            message: "included file not found",
+            source_text: Some(r"Visible main document. \input{absent}"),
             source_mappable: false,
             expect_text: true,
         },

@@ -15,7 +15,7 @@
 use crate::diagnostics::Diagnostic;
 use crate::layout::{self, FlowState, LayoutCursor, Page, PlacedItem, TextItem};
 use crate::math::{MathAtom, MathList, Nucleus};
-use crate::parser::{self, Block, Inline, MacroDependency};
+use crate::parser::{self, Block, Inline, MacroDependency, SourceDocument};
 use crate::Span;
 use std::ops::Range;
 
@@ -82,7 +82,6 @@ pub fn changed_bytes(old: &str, new: &str) -> ChangedBytes {
 
 #[derive(Debug, Clone)]
 struct CachedBlock {
-    source_span: Span,
     block: Block,
     dependencies: Vec<MacroDependency>,
     prepared_state: FlowState,
@@ -92,7 +91,8 @@ struct CachedBlock {
 
 #[derive(Debug, Clone)]
 struct Revision {
-    text: String,
+    documents: Vec<(String, String)>,
+    entry_path: String,
     constraints: LayoutConstraints,
     preamble_source: String,
     incremental_safe: bool,
@@ -112,8 +112,25 @@ impl Session {
     }
 
     pub fn compile(&mut self, text: &str, constraints: LayoutConstraints) -> IncrementalResult {
+        self.compile_project(&[SourceDocument { path: "", text }], "", constraints)
+    }
+
+    /// Compile a complete supplied project while retaining reusable block layout.
+    pub fn compile_project(
+        &mut self,
+        documents: &[SourceDocument<'_>],
+        entry_path: &str,
+        constraints: LayoutConstraints,
+    ) -> IncrementalResult {
+        let snapshot: Vec<(String, String)> = documents
+            .iter()
+            .map(|document| (document.path.to_string(), document.text.to_string()))
+            .collect();
         if let Some(previous) = &self.previous {
-            if previous.text == text && previous.constraints == constraints {
+            if previous.documents == snapshot
+                && previous.entry_path == entry_path
+                && previous.constraints == constraints
+            {
                 let total = previous.output.blocks.len();
                 return IncrementalResult {
                     output: previous.output.clone(),
@@ -127,19 +144,38 @@ impl Session {
             }
         }
 
-        let parsed = parser::parse(text);
+        let parsed = parser::parse_project(documents, entry_path);
+        let same_document_set = self.previous.as_ref().is_some_and(|previous| {
+            previous.entry_path == entry_path
+                && previous.documents.len() == snapshot.len()
+                && previous
+                    .documents
+                    .iter()
+                    .zip(&snapshot)
+                    .all(|((old_path, _), (new_path, _))| old_path == new_path)
+        });
         let can_reuse = self.previous.as_ref().is_some_and(|previous| {
-            previous.incremental_safe
+            same_document_set
+                && previous.incremental_safe
                 && parsed.incremental_safe
                 && previous.constraints == constraints
                 && previous.preamble_source == parsed.preamble_source
         });
-        let change = self
-            .previous
-            .as_ref()
-            .map(|previous| changed_bytes(&previous.text, text));
-        let delta = self.previous.as_ref().map_or(0, |previous| {
-            text.len() as isize - previous.text.len() as isize
+        let changes: Vec<ChangedBytes> = self.previous.as_ref().map_or_else(Vec::new, |previous| {
+            previous
+                .documents
+                .iter()
+                .zip(&snapshot)
+                .map(|((_, old), (_, new))| changed_bytes(old, new))
+                .collect()
+        });
+        let deltas: Vec<isize> = self.previous.as_ref().map_or_else(Vec::new, |previous| {
+            previous
+                .documents
+                .iter()
+                .zip(&snapshot)
+                .map(|((_, old), (_, new))| new.len() as isize - old.len() as isize)
+                .collect()
         });
 
         let mut cursor = LayoutCursor::new(constraints);
@@ -152,21 +188,12 @@ impl Session {
 
         for (index, block) in parsed.blocks.iter().enumerate() {
             let dependencies = parsed.block_dependencies[index].clone();
-            let source_span = block_span(block);
             let prepared_state = cursor.prepare_block(block);
             let candidate = if can_reuse {
                 self.previous.as_ref().and_then(|previous| {
                     previous.blocks.iter().find(|cached| {
                         cached.dependencies == dependencies
-                            && mapped_span(
-                                cached.source_span,
-                                change.as_ref().expect("diff"),
-                                delta,
-                            ) == Some(source_span)
-                            && shift_block(
-                                &cached.block,
-                                delta_for(cached.source_span, source_span),
-                            ) == *block
+                            && shift_block(&cached.block, &changes, &deltas).as_ref() == Some(block)
                     })
                 })
             } else {
@@ -175,8 +202,8 @@ impl Session {
 
             let placed = if let Some(cached) = candidate {
                 if prepared_state.same_geometry(cached.prepared_state) {
-                    let shift = delta_for(cached.source_span, source_span);
-                    let shifted = shift_placed(&cached.placed, shift);
+                    let shifted = shift_placed(&cached.placed, &changes, &deltas)
+                        .expect("candidate spans were already validated");
                     cursor.append_reused(&shifted, cached.end_state);
                     stats.blocks_reused += 1;
                     shifted
@@ -190,7 +217,6 @@ impl Session {
             };
             let end_state = cursor.state();
             cache.push(CachedBlock {
-                source_span,
                 block: block.clone(),
                 dependencies,
                 prepared_state,
@@ -205,7 +231,8 @@ impl Session {
             pages: cursor.into_pages(),
         };
         self.previous = Some(Revision {
-            text: text.to_string(),
+            documents: snapshot,
+            entry_path: entry_path.to_string(),
             constraints,
             preamble_source: parsed.preamble_source,
             incremental_safe: parsed.incremental_safe,
@@ -218,7 +245,16 @@ impl Session {
 
 /// Authoritative clean compile for equivalence checks and callers without a session.
 pub fn compile_full(text: &str, constraints: LayoutConstraints) -> CompileOutput {
-    let parsed = parser::parse(text);
+    compile_full_project(&[SourceDocument { path: "", text }], "", constraints)
+}
+
+/// Authoritative clean compile for a complete supplied project.
+pub fn compile_full_project(
+    documents: &[SourceDocument<'_>],
+    entry_path: &str,
+    constraints: LayoutConstraints,
+) -> CompileOutput {
+    let parsed = parser::parse_project(documents, entry_path);
     let pages = layout::layout_with_constraints(&parsed.blocks, constraints);
     CompileOutput {
         blocks: parsed.blocks,
@@ -227,23 +263,9 @@ pub fn compile_full(text: &str, constraints: LayoutConstraints) -> CompileOutput
     }
 }
 
-fn block_span(block: &Block) -> Span {
-    let inlines = match block {
-        Block::Paragraph(inlines) => inlines,
-        Block::Heading { content, .. } => content,
-    };
-    let mut spans = inlines.iter().map(inline_span);
-    let first = spans.next().expect("parser never emits an empty block");
-    spans.fold(first, Span::merge)
-}
-
-fn inline_span(inline: &Inline) -> Span {
-    match inline {
-        Inline::Text { span, .. } | Inline::LineBreak { span } | Inline::Math { span, .. } => *span,
-    }
-}
-
-fn mapped_span(span: Span, change: &ChangedBytes, delta: isize) -> Option<Span> {
+fn mapped_span(span: Span, changes: &[ChangedBytes], deltas: &[isize]) -> Option<Span> {
+    let change = changes.get(span.document.0)?;
+    let delta = *deltas.get(span.document.0)?;
     if span.end <= change.old.start {
         Some(span)
     } else if span.start >= change.old.end {
@@ -253,12 +275,9 @@ fn mapped_span(span: Span, change: &ChangedBytes, delta: isize) -> Option<Span> 
     }
 }
 
-fn delta_for(old: Span, new: Span) -> isize {
-    new.start as isize - old.start as isize
-}
-
 fn shift_span(span: Span, delta: isize) -> Span {
-    Span::new(
+    Span::in_document(
+        span.document,
         span.start
             .checked_add_signed(delta)
             .expect("valid span shift"),
@@ -268,83 +287,104 @@ fn shift_span(span: Span, delta: isize) -> Span {
     )
 }
 
-fn shift_block(block: &Block, delta: isize) -> Block {
-    match block {
-        Block::Paragraph(inlines) => Block::Paragraph(shift_inlines(inlines, delta)),
+fn shift_block(block: &Block, changes: &[ChangedBytes], deltas: &[isize]) -> Option<Block> {
+    Some(match block {
+        Block::Paragraph(inlines) => Block::Paragraph(shift_inlines(inlines, changes, deltas)?),
         Block::Heading { level, content } => Block::Heading {
             level: *level,
-            content: shift_inlines(content, delta),
+            content: shift_inlines(content, changes, deltas)?,
         },
-    }
+    })
 }
 
-fn shift_inlines(inlines: &[Inline], delta: isize) -> Vec<Inline> {
+fn shift_inlines(
+    inlines: &[Inline],
+    changes: &[ChangedBytes],
+    deltas: &[isize],
+) -> Option<Vec<Inline>> {
     inlines
         .iter()
         .map(|inline| match inline {
-            Inline::Text { text, span } => Inline::Text {
+            Inline::Text { text, span } => Some(Inline::Text {
                 text: text.clone(),
-                span: shift_span(*span, delta),
-            },
-            Inline::LineBreak { span } => Inline::LineBreak {
-                span: shift_span(*span, delta),
-            },
+                span: mapped_span(*span, changes, deltas)?,
+            }),
+            Inline::LineBreak { span } => Some(Inline::LineBreak {
+                span: mapped_span(*span, changes, deltas)?,
+            }),
             Inline::Math {
                 list,
                 display,
                 span,
-            } => Inline::Math {
-                list: shift_math_list(list, delta),
+            } => Some(Inline::Math {
+                list: shift_math_list(list, changes, deltas)?,
                 display: *display,
-                span: shift_span(*span, delta),
-            },
+                span: mapped_span(*span, changes, deltas)?,
+            }),
         })
         .collect()
 }
 
-fn shift_math_list(list: &MathList, delta: isize) -> MathList {
-    MathList {
+fn shift_math_list(
+    list: &MathList,
+    changes: &[ChangedBytes],
+    deltas: &[isize],
+) -> Option<MathList> {
+    Some(MathList {
         atoms: list
             .atoms
             .iter()
-            .map(|atom| MathAtom {
-                nucleus: match &atom.nucleus {
-                    Nucleus::Symbol(text) => Nucleus::Symbol(text.clone()),
-                    Nucleus::Fraction {
-                        numerator,
-                        denominator,
-                    } => Nucleus::Fraction {
-                        numerator: shift_math_list(numerator, delta),
-                        denominator: shift_math_list(denominator, delta),
+            .map(|atom| {
+                Some(MathAtom {
+                    nucleus: match &atom.nucleus {
+                        Nucleus::Symbol(text) => Nucleus::Symbol(text.clone()),
+                        Nucleus::Fraction {
+                            numerator,
+                            denominator,
+                        } => Nucleus::Fraction {
+                            numerator: shift_math_list(numerator, changes, deltas)?,
+                            denominator: shift_math_list(denominator, changes, deltas)?,
+                        },
+                        Nucleus::Radical(list) => {
+                            Nucleus::Radical(shift_math_list(list, changes, deltas)?)
+                        }
                     },
-                    Nucleus::Radical(list) => Nucleus::Radical(shift_math_list(list, delta)),
-                },
-                span: shift_span(atom.span, delta),
-                superscript: atom
-                    .superscript
-                    .as_ref()
-                    .map(|list| shift_math_list(list, delta)),
-                subscript: atom
-                    .subscript
-                    .as_ref()
-                    .map(|list| shift_math_list(list, delta)),
+                    span: mapped_span(atom.span, changes, deltas)?,
+                    // An absent script stays absent; a present one that cannot be
+                    // shifted fails the whole mapping, so the caller falls back to a
+                    // full recompile rather than emitting a stale span.
+                    superscript: match atom.superscript.as_ref() {
+                        Some(list) => Some(shift_math_list(list, changes, deltas)?),
+                        None => None,
+                    },
+                    subscript: match atom.subscript.as_ref() {
+                        Some(list) => Some(shift_math_list(list, changes, deltas)?),
+                        None => None,
+                    },
+                })
             })
-            .collect(),
-    }
+            .collect::<Option<Vec<_>>>()?,
+    })
 }
 
-fn shift_placed(items: &[PlacedItem], delta: isize) -> Vec<PlacedItem> {
+fn shift_placed(
+    items: &[PlacedItem],
+    changes: &[ChangedBytes],
+    deltas: &[isize],
+) -> Option<Vec<PlacedItem>> {
     items
         .iter()
-        .map(|placed| PlacedItem {
-            page_index: placed.page_index,
-            item: TextItem {
-                text: placed.item.text.clone(),
-                x_pt: placed.item.x_pt,
-                baseline_y_pt: placed.item.baseline_y_pt,
-                font_size_pt: placed.item.font_size_pt,
-                span: shift_span(placed.item.span, delta),
-            },
+        .map(|placed| {
+            Some(PlacedItem {
+                page_index: placed.page_index,
+                item: TextItem {
+                    text: placed.item.text.clone(),
+                    x_pt: placed.item.x_pt,
+                    baseline_y_pt: placed.item.baseline_y_pt,
+                    font_size_pt: placed.item.font_size_pt,
+                    span: mapped_span(placed.item.span, changes, deltas)?,
+                },
+            })
         })
         .collect()
 }
