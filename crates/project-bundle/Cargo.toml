@@ -1,0 +1,16 @@
+[package]
+name = "flashtex-project-bundle"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+description = "Deterministic, explicitly-scoped project export bundle: rooted reads, a SHA-256 manifest with reproducible ordering, and no implicit filesystem discovery."
+
+[lib]
+name = "flashtex_project_bundle"
+path = "src/lib.rs"
+
+[dependencies]
+sha2 = "0.10"
+
+[dev-dependencies]
