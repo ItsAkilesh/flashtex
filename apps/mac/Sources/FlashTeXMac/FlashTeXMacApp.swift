@@ -194,6 +194,8 @@ struct FlashTeXMacApp: App {
                 Divider()
                 Button("Nearby Companion…") { openWindow(id: "nearby") }
                     .keyboardShortcut("n", modifiers: [.command, .shift])
+                Button("Ask Grok…") { model.askGrok() } // ShellModel+GrokAssistant.swift
+                    .keyboardShortcut("g", modifiers: [.command, .option])
                 Button("Durable History…") { openWindow(id: EditHistoryPanel.windowID) } // EditHistoryPanel.swift
             }
             CommandGroup(replacing: .newItem) {

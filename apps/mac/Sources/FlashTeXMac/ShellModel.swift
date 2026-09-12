@@ -37,6 +37,8 @@ final class ShellModel {
     var problemsSeverityFilter: RuntimeV1.Severity?
     var commandPaletteShown = false
     let problemsPanel = DiagnosticsPanelState()
+    /// Ask Grok on the live document (ShellModel+GrokAssistant.swift, GrokAssistantView.swift).
+    @ObservationIgnored let grokAssistant = GrokAssistant()
     var previewV2 = ProcessInfo.processInfo.environment["FLASHTEX_PREVIEW_V2"] == "1" // experimental v2 pane (PreviewV2View.swift)
     /// Preview zoom multiplier over the fit-to-width scale (PreviewZoom.swift); persisted.
     var previewZoom: CGFloat = PreviewZoom.load(.standard) {

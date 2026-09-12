@@ -47,6 +47,7 @@ struct ContentView: View {
         .navigationSplitViewStyle(.balanced)
         .toolbar { WorkspaceToolbar(openWindow: openWindow) }
         .sheet(isPresented: $model.commandPaletteShown) { CommandPalette().environment(model) }
+        .grokAssistantSheet() // Ask Grok (GrokAssistantView.swift)
     }
 }
 
@@ -129,6 +130,9 @@ private struct WorkspaceToolbar: ToolbarContent {
                 .help("Export PDF… (⌘⇧E), via Rust writer (⌘⌥E), or exact from the v2 display list (File menu)")
             Button { openWindow(id: "nearby") } label: { Label("Nearby", systemImage: "ipad.and.iphone") }
                 .help("Nearby Companion… (Edit, ⌘⇧N): pair an iPad/iPhone to send captures")
+            Button { model.askGrok() } label: { Label("Ask Grok", systemImage: "sparkles") }
+                .help("Ask Grok… (Edit, ⌘⌥G): explain or edit the selection (or the document) through the assistant helper; nothing is applied until you choose Apply")
+                .accessibilityIdentifier("toolbar.ask-grok")
             Toggle(isOn: $model.problemsVisible) {
                 let n = model.displayedDiagnostics.count
                 Label(n > 0 ? "Problems \(n)" : "Problems", systemImage: n > 0 ? "exclamationmark.triangle.fill" : "exclamationmark.triangle")
