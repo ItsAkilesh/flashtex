@@ -144,3 +144,36 @@ refuses a one-byte-over-budget frame after buffer flushing, confirms no optional
 bytes were admitted, then delivers a required ACK and an exact-limit frame.
 Source validation and duplicate/numeric/depth acceptance belong to the separate
 runtime contract and are not established by this serializer test.
+
+
+### Proposed experimental raw helper contract (not implemented/activated yet)
+
+Startup configuration `display_transport:"raw-prototype"` will select the fixed
+runtime decoder strategy before the first compiler session. Omitting it retains
+the existing Value strategy. Runtime restarts must preserve the selected strategy
+but reset candidate enablement; no already queued frame changes decoder strategy.
+The helper must reject unknown selectors before source import or compiler spawn.
+
+Enable via the existing `configure_display_candidates` request with the separate
+capability `display-candidates-raw-v1`, `enabled:true` and
+`renderer_support_confirmed:true`. Wait for an exact capability acknowledgement.
+Value-mode helpers must reject the raw capability and vice versa, without changing
+current source or optional epochs. Historical delivery remains mutually exclusive.
+The wire candidate shape remains the same; the nested display envelope preserves
+original JSON value spelling, excluding transport newline/outer whitespace.
+
+The existing replay harness now accepts `--display-transport raw-prototype` and
+requires exact acknowledgement; this deliberately fails against today's Value-only
+helper instead of silently measuring the wrong route. It also verifies the
+candidate request and compile generation match the already received current v1.
+Raw provenance records the startup selector and capability. Syntax/help checks
+pass; raw integration and raw replay have not yet run.
+
+Before activation, require runtime proof of complete syntax/finite numbers/depth,
+duplicate identity/source rejection, exact source binding, cancellation and epoch
+fences. Native/core validation must reject ambiguous duplicate geometry fields.
+Raw `1e9` remains `1e9`; it does not inherit Value's reserialization expansion.
+Therefore raw optional overflow tests must use the actual whole output byte size,
+while the existing numeric expansion refusal gate remains on the Value route.
+Required v1/durable replies, complete-frame limits and explicit native paint
+acceptance remain mandatory in either route.

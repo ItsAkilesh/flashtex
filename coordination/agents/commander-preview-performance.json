@@ -13,17 +13,17 @@
   "capabilities": [
     "Preview helper serialization and latency"
   ],
-  "code_revision": "7d69a543bd3d5d975d40eefa2b7a30b3dfb359f2",
+  "code_revision": "40a1178c606f3ef672a4bd9ca27bbf6b465f466d",
   "eta_minutes": null,
   "machine": "linux-primary",
   "main_integrated_through": "7d69a543bd3d5d975d40eefa2b7a30b3dfb359f2",
-  "next_action": "Consume immutable runtime raw API after duplicate/numeric/depth checks; implement separately negotiated helper mode.",
+  "next_action": "Consume tested runtime fixed-strategy constructor; implement startup selector/restart persistence and separately negotiated candidate take.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "FT048r8 raw output feasibility: ten paired preencoded-copy tests preserve exact1.15MB frames and limits; runtime validation pending.",
+  "summary": "Prepared startup raw replay contract with exact capability ACK and current v1/candidate generation checks; raw helper not activated.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T11:41:06Z",
+  "updated_utc": "2026-09-12T11:42:57Z",
   "usage": {
     "status": "unknown"
   }
