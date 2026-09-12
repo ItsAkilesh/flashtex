@@ -294,7 +294,10 @@ struct DiagnosticsListView: View {
                 if g.count > 1 {
                     Text("\(k + 1) of \(g.count): \(group?.location ?? "no source")").font(.caption2).foregroundStyle(.tertiary)
                 } else if let src = d.source {
-                    Text("\(src.path) bytes \(src.startByte)..<\(src.endByte)").font(.caption2).foregroundStyle(.tertiary)
+                    // "main.tex line 3" when the compiled text is known (an author never thinks in bytes).
+                    let line = model.compiledDocuments[src.path].flatMap { EditorDiagnostics.lineNumber(ofByte: src.startByte, in: $0) }
+                    Text(line.map { "\(src.path) line \($0)" } ?? "\(src.path) bytes \(src.startByte)..<\(src.endByte)")
+                        .font(.caption2).foregroundStyle(.tertiary)
                 } else {
                     Text("no source mapping").font(.caption2).foregroundStyle(.tertiary)
                 }
@@ -311,13 +314,17 @@ struct DiagnosticsListView: View {
                 }
                 .fixedSize()
                 .help("Jump to one occurrence of this diagnostic (⌘⌥] / ⌘⌥[ step through them)")
-            } else if d.source != nil { Button("Go to source") { model.goToOccurrence(0, of: g, panel: panel) } }
+            } else if d.source != nil {
+                Button("Go to source") { model.goToOccurrence(0, of: g, panel: panel) }
+                    .help("Select the diagnostic's span in the editor (Return does the same)")
+            }
             if let x = model.explanations.explanation(resultID: model.resultID, index: i),
                x.suggestions.contains(where: { !$0.edits.isEmpty }) {
                 Button("Fix…") { model.previewQuickFix(diagnosticIndex: i) }
                     .help(x.suggestions.first { !$0.edits.isEmpty }?.text ?? "Preview a suggested fix")
             }
         }
+        .controlSize(.small) // 30 TeX diagnostics must fit a 260 pt panel: small trailing controls, tight rows
         .tag(g.id)
         .accessibleDiagnostic(d, index: i, total: diags.count, status: status,
                               explanation: model.explanations.explanation(resultID: model.resultID, index: i)?.line,
