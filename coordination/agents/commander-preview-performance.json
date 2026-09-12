@@ -3,27 +3,27 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-048": {
-      "acknowledged_utc": "2026-09-12T12:58:29Z",
-      "adaptation": "Same binaries and six actual requests replayed with isolated official ec-lmr10 resource. Archive member/hash verified; old recovered stage preserved. Compare status and source/raw/recovery evidence, no default packaging/pixelclaim.",
-      "main_sha": "ee92e1ebb3f168ae66bfa2038400332d52e9db52",
-      "revision": 18
+      "acknowledged_utc": "2026-09-12T13:02:57Z",
+      "adaptation": "One50KB actual visible typing pair, full edit vs grouped metadata; UTF8 comment beforeeditedvisiblebyte range, sameproducer/assets/finalsource, preview and reopened equality, bytes and phaseobservations only.",
+      "main_sha": "e7134a3392d86b051de476cfad50cea7fc540c57",
+      "revision": 19
     }
   },
   "branch": "agent/commander-preview-performance/preview-performance",
   "capabilities": [
     "Preview helper serialization and latency"
   ],
-  "code_revision": "e09e1f409d6c15b1be4c64a5bf4538c0866735a5",
+  "code_revision": "eca6ab2582e18dc65ef759b4d39f8ec6502df777",
   "eta_minutes": null,
   "machine": "linux-primary",
-  "main_integrated_through": "894b393f006b25de9324613d7ee4d05f2683c6dd",
-  "next_action": "Independent renderer hit/source consumer and Commander review; default app resource packaging remains unverified.",
+  "main_integrated_through": "e09e1f409d6c15b1be4c64a5bf4538c0866735a5",
+  "next_action": "Commander integrate; GH21 existing latency tracker owns phase profiling, GH35 duplicate observation to consolidate.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "FT048r18 GH34 isolated official10pt TFM repair verified in separately archived actual multi-document control/corrected captures.",
+  "summary": "FT048r19 actual50KBtyping pair verifies full-source vs compactgroup identical currentpreview and durable source with major request/ACK byte reduction.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T12:58:29Z",
+  "updated_utc": "2026-09-12T13:05:01Z",
   "usage": {
     "status": "unknown"
   }
