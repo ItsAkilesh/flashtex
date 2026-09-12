@@ -15,6 +15,22 @@
 //!   not matter to the cost.
 //! - Reports every range as a byte range that lands on a UTF-8 character
 //!   boundary, so multi-byte characters are never split.
+//! - Lets callers layer a bounded, in-memory [`UserDictionary`] (additions
+//!   and ignores) on top of their own dictionary via [`LayeredDictionary`],
+//!   without this crate ever loading or persisting one itself.
+//! - Lets callers tag a check with a caller-defined [`Revision`] via
+//!   [`SpellChecker::check_revision`], so a previously computed
+//!   [`CheckResult`] can be detected as stale ([`CheckResult::is_stale`])
+//!   instead of being silently reused after the source moved on.
+//! - Lets callers interrupt a long check via [`SpellChecker::check_cancellable`],
+//!   which polls a caller-supplied callback and returns
+//!   [`CheckOutcome::Cancelled`] promptly instead of running to completion.
+//!   No threads are spawned; the callback runs synchronously on the calling
+//!   thread.
+//!
+//! None of this crate's checking APIs ever modify the input text: they only
+//! read `text` and report byte ranges and suggestion strings into/about it.
+//! There is no "apply correction" API and there never will be one.
 
 use std::collections::{BTreeSet, HashSet};
 use std::ops::Range;
@@ -160,9 +176,71 @@ impl SpellChecker {
     /// bytes and revisions are preserved by construction, since this method
     /// only ever reads `text` and returns byte ranges into it.
     pub fn check(&self, text: &str, dictionary: &dyn Dictionary) -> Vec<Misspelling> {
+        // `&|| false` never cancels, so this always returns `Some`.
+        self.check_impl(text, dictionary, &|| false).unwrap_or_default()
+    }
+
+    /// Same as [`Self::check`], but tags the result with `revision` (a
+    /// caller-defined identifier for the exact source text this call
+    /// checked). Use [`CheckResult::is_stale`] later to detect that the
+    /// source has since moved on, instead of assuming a previously
+    /// computed result still applies.
+    pub fn check_revision(
+        &self,
+        text: &str,
+        revision: Revision,
+        dictionary: &dyn Dictionary,
+    ) -> CheckResult {
+        CheckResult {
+            revision,
+            misspellings: self.check(text, dictionary),
+        }
+    }
+
+    /// Same as [`Self::check_revision`], but polls `is_cancelled` before
+    /// starting and again before processing each candidate word (the point
+    /// at which the potentially expensive suggestion search would run),
+    /// returning [`CheckOutcome::Cancelled`] the first time it reports
+    /// `true` instead of running to completion.
+    ///
+    /// This requires no threads or async runtime: `is_cancelled` is called
+    /// synchronously on the calling thread, so it can be backed by whatever
+    /// cancellation primitive the caller already has (an `AtomicBool` flag,
+    /// a deadline check, a channel poll, ...).
+    pub fn check_cancellable(
+        &self,
+        text: &str,
+        revision: Revision,
+        dictionary: &dyn Dictionary,
+        is_cancelled: &dyn Fn() -> bool,
+    ) -> CheckOutcome {
+        match self.check_impl(text, dictionary, is_cancelled) {
+            Some(misspellings) => CheckOutcome::Completed(CheckResult {
+                revision,
+                misspellings,
+            }),
+            None => CheckOutcome::Cancelled { revision },
+        }
+    }
+
+    /// Shared implementation behind [`Self::check`] and
+    /// [`Self::check_cancellable`]. Returns `None` the moment `is_cancelled`
+    /// reports `true`, otherwise `Some` with the complete misspelling list.
+    fn check_impl(
+        &self,
+        text: &str,
+        dictionary: &dyn Dictionary,
+        is_cancelled: &dyn Fn() -> bool,
+    ) -> Option<Vec<Misspelling>> {
+        if is_cancelled() {
+            return None;
+        }
         let excluded = excluded_ranges(text);
         let mut out = Vec::new();
         for (range, word) in tokenize_words(text) {
+            if is_cancelled() {
+                return None;
+            }
             if overlaps_any(&range, &excluded) {
                 continue;
             }
@@ -181,7 +259,7 @@ impl SpellChecker {
                 suggestions,
             });
         }
-        out
+        Some(out)
     }
 
     fn suggest(&self, word: &str, dictionary: &dyn Dictionary) -> Vec<String> {
@@ -451,6 +529,210 @@ fn excluded_ranges(text: &str) -> Vec<Range<usize>> {
     }
 
     ranges
+}
+
+// ---- Source-revision awareness ------------------------------------------
+
+/// Opaque, caller-defined identifier for a specific version of the source
+/// text (e.g. an incrementing edit counter, or a content hash truncated to
+/// 64 bits). This crate never interprets it beyond equality comparison; it
+/// exists purely so a computed result can later be compared against the
+/// source's *current* revision to detect staleness.
+pub type Revision = u64;
+
+/// The result of a revision-aware check: the misspellings found, tagged
+/// with the exact revision they were computed against.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CheckResult {
+    /// The revision passed to [`SpellChecker::check_revision`] or
+    /// [`SpellChecker::check_cancellable`] that produced this result.
+    pub revision: Revision,
+    /// The misspellings found in the text at that revision.
+    pub misspellings: Vec<Misspelling>,
+}
+
+impl CheckResult {
+    /// True if `current_revision` differs from the revision this result was
+    /// computed against — i.e. the source has since changed and this result
+    /// must not be reused (displayed, acted on, ...) without recomputing.
+    pub fn is_stale(&self, current_revision: Revision) -> bool {
+        self.revision != current_revision
+    }
+}
+
+/// Outcome of a cancellable check: either it ran to completion, or a
+/// caller-supplied cancellation signal fired first.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CheckOutcome {
+    /// The check ran to completion.
+    Completed(CheckResult),
+    /// Cancelled before completion. The revision is still reported (it was
+    /// known before any work started) so the caller can correlate the
+    /// cancellation with the request that issued it, but no misspellings
+    /// are returned: a cancelled check makes no claim about the text.
+    Cancelled {
+        /// The revision that was passed in when cancellation was observed.
+        revision: Revision,
+    },
+}
+
+// ---- Bounded user dictionary ---------------------------------------------
+
+/// Default bound on the number of entries a [`UserDictionary`] holds; see
+/// [`UserDictionary::new`] to configure a different bound.
+pub const USER_DICTIONARY_DEFAULT_MAX_ENTRIES: usize = 10_000;
+
+/// Error returned when a [`UserDictionary`] mutation would exceed its
+/// configured capacity.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UserDictionaryError {
+    /// The dictionary already holds `max_entries` distinct entries; the
+    /// requested addition/ignore was rejected rather than silently applied
+    /// or an existing entry silently evicted.
+    CapacityExceeded {
+        /// The configured bound that was hit.
+        max_entries: usize,
+    },
+}
+
+impl std::fmt::Display for UserDictionaryError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            UserDictionaryError::CapacityExceeded { max_entries } => {
+                write!(f, "user dictionary capacity exceeded (max {max_entries} entries)")
+            }
+        }
+    }
+}
+
+impl std::error::Error for UserDictionaryError {}
+
+/// A bounded, caller-managed, in-memory layer of words on top of a base
+/// [`Dictionary`]. This crate ships no dictionary and does no I/O: the
+/// caller decides how (or whether) to persist this across sessions.
+///
+/// Two kinds of entries, both counted against the same bound:
+/// - [`Self::add_word`]: a word the caller has confirmed is genuinely
+///   correct (e.g. "FlashTeX"). It stops being flagged, project-wide.
+/// - [`Self::ignore_word`]: a one-off suppression (e.g. a placeholder
+///   token) the caller does not want flagged but is not vouching for as a
+///   real word.
+///
+/// Exceeding the configured capacity returns a typed
+/// [`UserDictionaryError`] rather than growing unbounded or silently
+/// evicting an existing entry.
+#[derive(Debug, Clone)]
+pub struct UserDictionary {
+    max_entries: usize,
+    additions: HashSet<String>,
+    ignored: HashSet<String>,
+}
+
+impl UserDictionary {
+    /// Creates an empty user dictionary bounded to `max_entries` combined
+    /// additions + ignores.
+    pub fn new(max_entries: usize) -> Self {
+        Self {
+            max_entries,
+            additions: HashSet::new(),
+            ignored: HashSet::new(),
+        }
+    }
+
+    /// Total number of distinct entries currently stored (additions +
+    /// ignores).
+    pub fn len(&self) -> usize {
+        self.additions.len() + self.ignored.len()
+    }
+
+    /// True if no entries have been added or ignored yet.
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// Marks `word` as a known-correct word: it stops being flagged, and it
+    /// becomes eligible as a suggestion for *other* misspelled words.
+    /// Idempotent (adding an already-added word always succeeds, even at
+    /// capacity); promotes an existing ignore to an addition in place.
+    /// Returns [`UserDictionaryError::CapacityExceeded`] only when the
+    /// dictionary is already full and `word` is a genuinely new entry.
+    pub fn add_word(&mut self, word: &str) -> Result<(), UserDictionaryError> {
+        if self.additions.contains(word) {
+            return Ok(());
+        }
+        if self.ignored.remove(word) {
+            self.additions.insert(word.to_string());
+            return Ok(());
+        }
+        if self.len() >= self.max_entries {
+            return Err(UserDictionaryError::CapacityExceeded {
+                max_entries: self.max_entries,
+            });
+        }
+        self.additions.insert(word.to_string());
+        Ok(())
+    }
+
+    /// Marks `word` as ignored: it stops being flagged, but (unlike
+    /// [`Self::add_word`]) it is never offered as a suggestion for other
+    /// misspelled words. A no-op if `word` is already an addition
+    /// (additions are the stronger claim and are not downgraded).
+    pub fn ignore_word(&mut self, word: &str) -> Result<(), UserDictionaryError> {
+        if self.additions.contains(word) || self.ignored.contains(word) {
+            return Ok(());
+        }
+        if self.len() >= self.max_entries {
+            return Err(UserDictionaryError::CapacityExceeded {
+                max_entries: self.max_entries,
+            });
+        }
+        self.ignored.insert(word.to_string());
+        Ok(())
+    }
+
+    /// True if `word` was added via [`Self::add_word`].
+    pub fn is_addition(&self, word: &str) -> bool {
+        self.additions.contains(word)
+    }
+
+    /// True if `word` was ignored via [`Self::ignore_word`] (and not since
+    /// promoted to an addition).
+    pub fn is_ignored(&self, word: &str) -> bool {
+        self.ignored.contains(word)
+    }
+
+    /// True if `word` is suppressed from flagging by either layer.
+    fn contains_entry(&self, word: &str) -> bool {
+        self.is_addition(word) || self.is_ignored(word)
+    }
+}
+
+impl Default for UserDictionary {
+    fn default() -> Self {
+        Self::new(USER_DICTIONARY_DEFAULT_MAX_ENTRIES)
+    }
+}
+
+/// Layers a caller-managed [`UserDictionary`] over a base [`Dictionary`]
+/// without mutating or copying either. Pass a value of this type anywhere a
+/// `&dyn Dictionary` is expected (e.g. to [`SpellChecker::check`]) to
+/// combine both.
+pub struct LayeredDictionary<'a> {
+    base: &'a dyn Dictionary,
+    user: &'a UserDictionary,
+}
+
+impl<'a> LayeredDictionary<'a> {
+    /// Creates a view that checks `user` first, falling back to `base`.
+    pub fn new(base: &'a dyn Dictionary, user: &'a UserDictionary) -> Self {
+        Self { base, user }
+    }
+}
+
+impl Dictionary for LayeredDictionary<'_> {
+    fn contains(&self, word: &str) -> bool {
+        self.user.contains_entry(word) || self.base.contains(word)
+    }
 }
 
 #[cfg(test)]
@@ -795,5 +1077,132 @@ mod tests {
         let checker = SpellChecker::default();
         assert!(checker.check("hello world", &d).is_empty());
         assert_eq!(checker.check("wrold", &d)[0].suggestions, vec!["world".to_string()]);
+    }
+
+    // ---- User dictionary: bounded, additions vs. ignores -------------------
+
+    #[test]
+    fn user_dictionary_add_word_respects_capacity_bound() {
+        let mut ud = UserDictionary::new(2);
+        ud.add_word("alpha").unwrap();
+        ud.add_word("beta").unwrap();
+        let err = ud.add_word("gamma").unwrap_err();
+        assert_eq!(err, UserDictionaryError::CapacityExceeded { max_entries: 2 });
+        // Re-adding an already-present word is always fine, even at capacity.
+        ud.add_word("alpha").unwrap();
+        assert_eq!(ud.len(), 2);
+    }
+
+    #[test]
+    fn user_dictionary_ignore_word_shares_the_same_capacity_bound_as_additions() {
+        let mut ud = UserDictionary::new(1);
+        ud.ignore_word("todo").unwrap();
+        let err = ud.add_word("other").unwrap_err();
+        assert_eq!(err, UserDictionaryError::CapacityExceeded { max_entries: 1 });
+    }
+
+    #[test]
+    fn user_dictionary_error_display_mentions_the_bound() {
+        let err = UserDictionaryError::CapacityExceeded { max_entries: 3 };
+        assert!(err.to_string().contains('3'));
+    }
+
+    #[test]
+    fn user_dictionary_ignore_does_not_promote_to_addition_and_add_promotes_existing_ignore() {
+        let mut ud = UserDictionary::new(10);
+        ud.ignore_word("scratch").unwrap();
+        assert!(ud.is_ignored("scratch"));
+        assert!(!ud.is_addition("scratch"));
+
+        ud.add_word("scratch").unwrap();
+        assert!(ud.is_addition("scratch"));
+        assert!(!ud.is_ignored("scratch"));
+        // Promotion must not double-count against capacity.
+        assert_eq!(ud.len(), 1);
+    }
+
+    #[test]
+    fn layered_dictionary_suppresses_additions_and_ignores_without_mutating_the_base() {
+        let base = dict(&["hello"]);
+        let mut ud = UserDictionary::new(10);
+        ud.add_word("flashtex").unwrap();
+        ud.ignore_word("wrold").unwrap();
+        let layered = LayeredDictionary::new(&base, &ud);
+
+        let checker = SpellChecker::default();
+        let out = checker.check("hello flashtex wrold unknownword", &layered);
+        assert_eq!(out.len(), 1, "only the truly unknown word should be flagged: {out:?}");
+        assert_eq!(out[0].word, "unknownword");
+
+        // The caller-supplied base dictionary itself is never mutated.
+        assert!(!Dictionary::contains(&base, "flashtex"));
+        assert!(!Dictionary::contains(&base, "wrold"));
+    }
+
+    // ---- Source-revision awareness ------------------------------------------
+
+    #[test]
+    fn check_revision_tags_result_and_detects_staleness() {
+        let d = dict(&["hello"]);
+        let checker = SpellChecker::default();
+        let result = checker.check_revision("helo", 5, &d);
+        assert_eq!(result.revision, 5);
+        assert_eq!(result.misspellings.len(), 1);
+        assert!(!result.is_stale(5), "a result checked at the current revision is not stale");
+        assert!(result.is_stale(6), "a result checked at an older revision must be detectably stale");
+    }
+
+    // ---- Cancellation --------------------------------------------------------
+
+    #[test]
+    fn check_cancellable_without_cancellation_matches_plain_check() {
+        let d = dict(&["world"]);
+        let checker = SpellChecker::default();
+        let text = "wrold and wrold again";
+        let plain = checker.check(text, &d);
+        let outcome = checker.check_cancellable(text, 42, &d, &|| false);
+        match outcome {
+            CheckOutcome::Completed(result) => {
+                assert_eq!(result.revision, 42);
+                assert_eq!(result.misspellings, plain);
+            }
+            CheckOutcome::Cancelled { .. } => panic!("must not cancel when the signal never fires"),
+        }
+    }
+
+    #[test]
+    fn cancellation_short_circuits_a_long_check_instead_of_running_to_completion() {
+        let d = dict(&["hello"]);
+        let checker = SpellChecker::default();
+        // Many separately-tokenized misspelled words, each of which would
+        // trigger a bounded but non-trivial suggestion search if processed.
+        let words: Vec<String> = (0..500).map(|i| format!("wrold{i}")).collect();
+        let text = words.join(" ");
+
+        let calls = std::cell::Cell::new(0usize);
+        let is_cancelled = || {
+            calls.set(calls.get() + 1);
+            calls.get() > 3
+        };
+        let outcome = checker.check_cancellable(&text, 7, &d, &is_cancelled);
+
+        match outcome {
+            CheckOutcome::Cancelled { revision } => assert_eq!(revision, 7),
+            CheckOutcome::Completed(_) => panic!("expected cancellation to short-circuit the check"),
+        }
+        assert!(
+            calls.get() <= 5,
+            "cancellation must be observed promptly, not only after scanning all {} words (polled {} times)",
+            words.len(),
+            calls.get()
+        );
+    }
+
+    #[test]
+    fn check_cancellable_reports_the_given_revision_even_when_cancelled_immediately() {
+        let d = dict(&["hello"]);
+        let checker = SpellChecker::default();
+        let outcome = checker.check_cancellable("hello world", 99, &d, &|| true);
+        assert_eq!(outcome, CheckOutcome::Cancelled { revision: 99 });
     }
 }
