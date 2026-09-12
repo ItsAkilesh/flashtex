@@ -203,11 +203,13 @@ preview and PDF writer need without re-deriving anything:
    onto a runtime-v1 `text` item (`x_pt`, `baseline_y_pt`, `font_size_pt`)
    with the provider's font identity and gid carried by the compiler's
    internal item so preview and PDF draw the same glyph. Rules are
-   explicit `PositionedRule { x, y, w, h }`; runtime-v1 has no rule item
-   and this crate proposes none (Commander owns v1). Until the contract
-   grows one, the compiler can keep its current U+2500 text-run encoding
-   for the transport while taking the bar's position, width and thickness
-   from the rule geometry, so preview and PDF agree.
+   explicit `PositionedRule { x, y, w, h }`, which is exactly the
+   `rules-v1` item of `docs/contracts/runtime-v1-layout-capabilities.md`
+   (`{"kind":"rule","x_pt","y_pt","width_pt","height_pt"}`, top-left
+   corner, y down): emit one per rule when the consumer negotiated
+   `rules-v1`, converting TeX pt to page pt once. For consumers without it,
+   the legacy U+2500 fallback is the pipeline's job — this crate never emits
+   box-drawing glyphs (asserted in `tests/golden.rs`).
 4. Choose the provider: `CmMathMetrics` when the renderer draws Computer
    Modern (FT-018), `TimesApproxMetrics` otherwise. Implement
    `MathFontMetrics` on the font engine once it exposes metrics.
