@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "predecessor_id": "orchestrator-astra",
+  "predecessor_handle": "/root/runtime_validator",
+  "successor_id": "orchestrator-jaysen-opus",
+  "successor_machine": "mac-m1max-a",
+  "process": {
+    "pid": 268514,
+    "start_ticks": 30612338,
+    "boot_id": "f1d9f6a2-ccc1-4c85-bfcb-e629905e9820"
+  },
+  "publisher_services": [
+    "flashtex-dispatch.service"
+  ],
+  "mode": "read_only_standby",
+  "quota_terminal_adapter": "unverified",
+  "remote_witness_transport": "unverified",
+  "mac_standby_ack": "pending",
+  "billing": "Existing Jaysen Max20x allowance only; no overages/purchases. Sole newly authorized standby exception, no engineering staffing increase."
+}

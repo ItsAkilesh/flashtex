@@ -1,3 +1,11 @@
+> LATEST STAFFING OVERRIDE: this computer has FOUR active agents total: sole
+> commander orchestrator-astra, root preview-controller, compiler_corpus fonts,
+> supervisor_api_review rendering. Bridge-context, project-index and edit-ledger
+> agents are paused; preserve all dirty/published work. Never revive or replace
+> them automatically and do not compensate by increasing staffing elsewhere.
+> This overrides older six-engineer staffing text below. Other authorization
+> and explicit-user-stop-only project continuity remain unchanged.
+
 > Imported Kabir observations below are historical snapshots, not current available capacity. Percentage changes do not justify linear task-count or token-cost projections; refresh actual per-machine usage/reset evidence before grants. Current user billing restrictions at the top-level AGENTS.md remain authoritative.
 
 # Current publication override — September 12

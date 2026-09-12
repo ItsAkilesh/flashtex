@@ -1,3 +1,11 @@
+> LATEST STAFFING OVERRIDE: this computer has FOUR active agents total: sole
+> commander orchestrator-astra, root preview-controller, compiler_corpus fonts,
+> supervisor_api_review rendering. Bridge-context, project-index and edit-ledger
+> agents are paused; preserve all dirty/published work. Never revive or replace
+> them automatically and do not compensate by increasing staffing elsewhere.
+> This overrides older six-engineer staffing text below. Other authorization
+> and explicit-user-stop-only project continuity remain unchanged.
+
 > Latest user override: stop only on an explicit user instruction. A verified
 > completion milestone starts the next improvement cycle. Prioritize exact PDF
 > byte and pixel identity (separate gates), typing-to-visible preview below 200ms,

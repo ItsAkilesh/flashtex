@@ -3,7 +3,7 @@
 //! system's own PDF reader opens the fixture output.
 
 use flashtex_pdf::verify::{check_structure, placements, rules, stream_data};
-use flashtex_pdf::{CompileResult, Item, Page, PdfError, render_envelope, render_pdf};
+use flashtex_pdf::{CompileResult, Item, Page, PdfError, TextItem, render_envelope, render_pdf};
 
 const FIXTURE: &str = include_str!("../../../protocol/fixtures/compile-result.json");
 /// Exact output of `flashtex-compiler` at de1020c for
@@ -11,13 +11,18 @@ const FIXTURE: &str = include_str!("../../../protocol/fixtures/compile-result.js
 /// the reproduction from GitHub issue #9.
 const MATH_RESULT: &str = include_str!("fixtures/math-compile-result.json");
 
-fn item(text: &str, x: f64, baseline: f64, size: f64) -> Item {
-    Item {
+fn text_item(text: &str, x: f64, baseline: f64, size: f64) -> TextItem {
+    TextItem {
         text: text.into(),
         x_pt: x,
         baseline_y_pt: baseline,
         font_size_pt: size,
+        font: None,
     }
+}
+
+fn item(text: &str, x: f64, baseline: f64, size: f64) -> Item {
+    Item::Text(text_item(text, x, baseline, size))
 }
 
 fn page(number: u32, w: f64, h: f64, items: Vec<Item>) -> Page {
@@ -87,6 +92,7 @@ fn two_synthetic_pages_get_their_own_mediabox_and_content() {
             page(1, 612.0, 792.0, vec![item("first", 72.0, 84.0, 12.0)]),
             page(2, 595.28, 841.89, vec![item("second", 56.7, 70.9, 10.5)]),
         ],
+        capabilities: None,
     };
     let out = render_pdf(&result).unwrap();
     let s = check_structure(&out.bytes).unwrap();
@@ -117,15 +123,21 @@ fn multiline_placement_maps_every_baseline_to_pdf_space() {
     // Three lines as the FT-002 layout would emit them: one item per word, a
     // 14.4pt leading, and a heading at a larger size.
     let items = vec![
-        item("Title", 72.0, 89.0, 17.0),
-        item("Hello", 72.0, 115.4, 12.0),
-        item("world", 105.36, 115.4, 12.0),
-        item("Second", 72.0, 129.8, 12.0),
-        item("line", 114.36, 129.8, 12.0),
-        item("Third", 72.0, 144.2, 12.0),
+        text_item("Title", 72.0, 89.0, 17.0),
+        text_item("Hello", 72.0, 115.4, 12.0),
+        text_item("world", 105.36, 115.4, 12.0),
+        text_item("Second", 72.0, 129.8, 12.0),
+        text_item("line", 114.36, 129.8, 12.0),
+        text_item("Third", 72.0, 144.2, 12.0),
     ];
     let result = CompileResult {
-        pages: vec![page(1, 612.0, 792.0, items.clone())],
+        pages: vec![page(
+            1,
+            612.0,
+            792.0,
+            items.iter().cloned().map(Item::Text).collect(),
+        )],
+        capabilities: None,
     };
     let out = render_pdf(&result).unwrap();
     check_structure(&out.bytes).unwrap();
@@ -159,6 +171,7 @@ fn winansi_characters_are_encoded_and_others_warn() {
                 item("(paren) back\\slash", 72.0, 120.0, 12.0),
             ],
         )],
+        capabilities: None,
     };
     let out = render_pdf(&result).unwrap();
     check_structure(&out.bytes).unwrap();
@@ -194,15 +207,22 @@ fn winansi_characters_are_encoded_and_others_warn() {
 
 #[test]
 fn unsupported_item_kinds_and_bad_envelopes_are_explicit() {
+    // Legacy route (no layout_capabilities): unknown kinds are skipped with
+    // a warning; a rule can only come from an unrequested capability, so it
+    // is an error even here.
     let json = r#"{"protocol_version":1,"id":"x","type":"compile_result","payload":{"pages":[
         {"number":1,"width_pt":612,"height_pt":792,"items":[
-            {"kind":"rule","x_pt":1,"y_pt":2},
+            {"kind":"image","x_pt":1,"y_pt":2},
             {"kind":"text","text":"ok","x_pt":72,"baseline_y_pt":84,"font_size_pt":12}
         ]}]}}"#;
     let out = render_envelope(json).unwrap();
     assert_eq!(out.warnings.len(), 1);
-    assert!(out.warnings[0].contains("\"rule\""));
+    assert!(out.warnings[0].contains("\"image\""));
     assert!(out.warnings[0].contains("skipped"));
+    let legacy_rule = json.replace("\"kind\":\"image\"", "\"kind\":\"rule\"");
+    assert!(
+        matches!(render_envelope(&legacy_rule), Err(PdfError::Protocol(m)) if m.contains("rules-v1"))
+    );
 
     let v9 = json.replace("\"protocol_version\":1", "\"protocol_version\":9");
     assert!(matches!(render_envelope(&v9), Err(PdfError::Protocol(_))));
@@ -225,10 +245,12 @@ fn unsupported_item_kinds_and_bad_envelopes_are_explicit() {
     ));
     let zero = CompileResult {
         pages: vec![page(1, 0.0, 792.0, vec![])],
+        capabilities: None,
     };
     assert!(matches!(render_pdf(&zero), Err(PdfError::Invalid(_))));
     let nan = CompileResult {
         pages: vec![page(1, 612.0, 792.0, vec![item("x", f64::NAN, 1.0, 12.0)])],
+        capabilities: None,
     };
     assert!(matches!(render_pdf(&nan), Err(PdfError::Invalid(_))));
 }
@@ -319,6 +341,7 @@ fn mixed_item_switches_fonts_inside_one_text_object() {
                 item("─", 72.0, 100.0, 10.0),
             ],
         )],
+        capabilities: None,
     };
     let out = render_pdf(&result).unwrap();
     check_structure(&out.bytes).unwrap();
@@ -488,6 +511,7 @@ fn embedded_subset_font_covers_unicode_and_reports_the_rest() {
                 item(EMBED_TEXT, 72.0, 100.0, 12.0),
             ],
         )],
+        capabilities: None,
     };
     let options = flashtex_pdf::RenderOptions {
         embed_font: Some(font.clone()),
@@ -594,6 +618,7 @@ fn embedded_subset_font_covers_unicode_and_reports_the_rest() {
 fn embedding_is_off_by_default_and_a_bad_font_path_is_an_error() {
     let result = CompileResult {
         pages: vec![page(1, 612.0, 792.0, vec![item("ж", 72.0, 84.0, 12.0)])],
+        capabilities: None,
     };
     let out = render_pdf(&result).unwrap();
     assert!(find(&out.bytes, b"/Type0").is_none());
@@ -699,6 +724,7 @@ fn latin_modern_cff_is_embedded_whole_and_verbatim() {
             792.0,
             vec![item(CFF_TEXT, 72.0, 84.0, 14.0)],
         )],
+        capabilities: None,
     };
     let options = flashtex_pdf::RenderOptions {
         embed_font: Some(font.clone()),
@@ -946,6 +972,7 @@ fn latin_modern_as_document_face_sets_all_latin_text_in_it() {
     let text = "Latin Modern naïve — café";
     let result = CompileResult {
         pages: vec![page(1, 612.0, 792.0, vec![item(text, 72.0, 84.0, 12.0)])],
+        capabilities: None,
     };
     assert_eq!(
         flashtex_pdf::RenderOptions::default_face_for(&font),
@@ -1177,4 +1204,288 @@ fn latin_modern_face_widths_match_lm_metrics_in_pdfkit() {
         "width {measured} must not look like Times {expected_times}"
     );
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+// ---------------------------------------------------------------------------
+// Negotiated layout capabilities (docs/contracts/runtime-v1-layout-capabilities.md).
+
+/// A negotiated result: the contract's rule example plus hinted text.
+fn negotiated_envelope(capabilities: &str, items: &str) -> String {
+    format!(
+        r#"{{"protocol_version":1,"id":"caps","type":"compile_result","payload":{{"project_id":"caps","revision":1,"status":"ok","layout_capabilities":[{capabilities}],"pages":[{{"number":1,"width_pt":612,"height_pt":792,"items":[{items}]}}],"diagnostics":[],"pdf_path":null}}}}"#
+    )
+}
+
+const RULE_ITEM: &str = r#"{"kind":"rule","x_pt":72,"y_pt":84,"width_pt":24,"height_pt":0.5,"source":{"path":"main.tex","start_byte":0,"end_byte":11}}"#;
+
+#[test]
+fn accepted_rules_v1_draws_the_rectangle_in_pdf_space() {
+    let json = negotiated_envelope(
+        r#""rules-v1""#,
+        &format!(
+            r#"{RULE_ITEM},{{"kind":"text","text":"after","x_pt":72,"baseline_y_pt":100,"font_size_pt":12,"source":{{"path":"main.tex","start_byte":12,"end_byte":17}}}}"#
+        ),
+    );
+    let out = render_envelope(&json).unwrap();
+    assert!(out.warnings.is_empty(), "{:?}", out.warnings);
+    check_structure(&out.bytes).unwrap();
+    let content = stream_data(&out.bytes, 7).unwrap();
+    let bars = rules(&content).unwrap();
+    // Top-left (72, 84) with height 0.5 in y-down page space is bottom-left
+    // (72, 792 - 84 - 0.5) in PDF space.
+    assert_eq!(bars.len(), 1);
+    assert_eq!(bars[0].x, 72.0);
+    assert!((bars[0].y - 707.5).abs() < 0.0005, "{:?}", bars[0]);
+    assert_eq!(bars[0].width, 24.0);
+    assert_eq!(bars[0].height, 0.5);
+    // Paint order follows item order: the rule precedes the text.
+    assert!(find(&content, b" re f\n").unwrap() < find(&content, b"BT\n").unwrap());
+    let placed = placements(&content).unwrap();
+    assert_eq!(placed.len(), 1);
+    assert_eq!(placed[0].bytes, b"after");
+
+    // On the negotiated route U+2500 is ordinary text, not a legacy rule.
+    let dashes = negotiated_envelope(
+        r#""rules-v1""#,
+        r#"{"kind":"text","text":"──","x_pt":72,"baseline_y_pt":84,"font_size_pt":8.4}"#,
+    );
+    let out = render_envelope(&dashes).unwrap();
+    let content = stream_data(&out.bytes, 7).unwrap();
+    assert!(rules(&content).unwrap().is_empty());
+    assert_eq!(out.warnings.len(), 1);
+    assert!(out.warnings[0].contains("U+2500"));
+}
+
+#[test]
+fn unrequested_rules_and_unknown_kinds_are_errors_with_source() {
+    // Capabilities negotiated but without rules-v1.
+    let json = negotiated_envelope(r#""font-hints-v1""#, RULE_ITEM);
+    let err = render_envelope(&json).unwrap_err();
+    assert!(
+        matches!(&err, PdfError::Protocol(m) if m.contains("rules-v1") && m.contains("main.tex:0-11")),
+        "{err}"
+    );
+    // Empty capability set: still negotiated, still no rules.
+    let json = negotiated_envelope("", RULE_ITEM);
+    assert!(matches!(render_envelope(&json), Err(PdfError::Protocol(_))));
+    // Unknown kind under negotiation names the kind and the source range.
+    let json = negotiated_envelope(
+        r#""rules-v1""#,
+        r#"{"kind":"image","x_pt":1,"y_pt":2,"source":{"path":"fig.tex","start_byte":3,"end_byte":9}}"#,
+    );
+    let err = render_envelope(&json).unwrap_err();
+    assert!(
+        matches!(&err, PdfError::Protocol(m) if m.contains("\"image\"") && m.contains("fig.tex:3-9")),
+        "{err}"
+    );
+    // Rule geometry limits.
+    for bad in [
+        RULE_ITEM.replace("\"height_pt\":0.5", "\"height_pt\":0"),
+        RULE_ITEM.replace("\"width_pt\":24", "\"width_pt\":-24"),
+        RULE_ITEM.replace("\"x_pt\":72", "\"x_pt\":1000001"),
+    ] {
+        let json = negotiated_envelope(r#""rules-v1""#, &bad);
+        assert!(render_envelope(&json).is_err(), "{bad}");
+    }
+    // A rule built directly, rendered without the capability, is refused too.
+    let direct = CompileResult {
+        pages: vec![page(
+            1,
+            612.0,
+            792.0,
+            vec![Item::Rule(flashtex_pdf::RuleItem {
+                x_pt: 1.0,
+                y_pt: 1.0,
+                width_pt: 1.0,
+                height_pt: 1.0,
+            })],
+        )],
+        capabilities: Some(vec![]),
+    };
+    assert!(matches!(render_pdf(&direct), Err(PdfError::Invalid(m)) if m.contains("rules-v1")));
+}
+
+#[test]
+fn font_hints_select_times_variants_and_report_substitutions() {
+    let items = r#"{"kind":"text","text":"plain","x_pt":72,"baseline_y_pt":84,"font_size_pt":12},
+        {"kind":"text","text":"bold","x_pt":120,"baseline_y_pt":84,"font_size_pt":12,"font":{"family":"Times New Roman","weight":"bold","style":"normal"}},
+        {"kind":"text","text":"italic","x_pt":160,"baseline_y_pt":84,"font_size_pt":12,"font":{"family":"Times","weight":"normal","style":"italic"}},
+        {"kind":"text","text":"both","x_pt":200,"baseline_y_pt":84,"font_size_pt":12,"font":{"family":"Times","weight":"bold","style":"italic"}},
+        {"kind":"text","text":"bold2","x_pt":240,"baseline_y_pt":84,"font_size_pt":12,"font":{"family":"Times","weight":"bold","style":"normal"}},
+        {"kind":"text","text":"helv","x_pt":280,"baseline_y_pt":84,"font_size_pt":12,"font":{"family":"Helvetica","weight":"bold","style":"normal"}},
+        {"kind":"text","text":"roman","x_pt":320,"baseline_y_pt":84,"font_size_pt":12,"font":{"family":"Times","weight":"normal","style":"normal"}}"#;
+    let json = negotiated_envelope(r#""font-hints-v1""#, items);
+    let out = render_envelope(&json).unwrap();
+    check_structure(&out.bytes).unwrap();
+    // Three extra base-14 objects after the one page: Bold, Italic, BoldItalic.
+    assert!(
+        find(
+            &out.bytes,
+            b"/Font << /F1 3 0 R /F2 4 0 R /F4 8 0 R /F5 9 0 R /F6 10 0 R >>"
+        )
+        .is_some()
+    );
+    assert!(find(&out.bytes, b"\n8 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Times-Bold /Encoding /WinAnsiEncoding >>").is_some());
+    assert!(
+        find(
+            &out.bytes,
+            b"\n9 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Times-Italic /Encoding"
+        )
+        .is_some()
+    );
+    assert!(
+        find(
+            &out.bytes,
+            b"\n10 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Times-BoldItalic /Encoding"
+        )
+        .is_some()
+    );
+    let placed = placements(&stream_data(&out.bytes, 7).unwrap()).unwrap();
+    let fonts: Vec<(&str, &[u8])> = placed
+        .iter()
+        .map(|p| (p.font.as_str(), p.bytes.as_slice()))
+        .collect();
+    assert_eq!(
+        fonts,
+        vec![
+            ("F1", b"plain".as_slice()),
+            ("F4", b"bold"),
+            ("F5", b"italic"),
+            ("F6", b"both"),
+            ("F4", b"bold2"),
+            ("F4", b"helv"),
+            ("F1", b"roman"),
+        ]
+    );
+    // Helvetica is not available: substituted, said so, once.
+    assert_eq!(out.warnings.len(), 1, "{:?}", out.warnings);
+    assert!(
+        out.warnings[0].contains("\"Helvetica\""),
+        "{}",
+        out.warnings[0]
+    );
+    assert!(
+        out.warnings[0].contains("substituted by 'Times-Bold'"),
+        "{}",
+        out.warnings[0]
+    );
+
+    // A hint without font-hints-v1 in the negotiated set is an error; on
+    // the legacy route it is ignored with a warning.
+    let no_cap = negotiated_envelope(r#""rules-v1""#, items);
+    assert!(
+        matches!(render_envelope(&no_cap), Err(PdfError::Protocol(m)) if m.contains("font-hints-v1"))
+    );
+    let legacy = no_cap.replace(r#""layout_capabilities":["rules-v1"],"#, "");
+    let out = render_envelope(&legacy).unwrap();
+    assert!(
+        out.warnings.iter().all(|w| w.contains("legacy route")),
+        "{:?}",
+        out.warnings
+    );
+    assert!(find(&out.bytes, b"/F4").is_none());
+}
+
+#[test]
+fn font_hints_select_latin_modern_faces_as_their_own_embedded_fonts() {
+    let Some(font) = font_with_outlines_or_skip(
+        "font_hints_select_latin_modern_faces_as_their_own_embedded_fonts",
+        flashtex_pdf::truetype::Outlines::Cff,
+    ) else {
+        return;
+    };
+    if !font.font.postscript_name.starts_with("LMRoman") {
+        eprintln!(
+            "SKIPPED: CFF font found is not Latin Modern ({})",
+            font.font.postscript_name
+        );
+        return;
+    }
+    let items = r#"{"kind":"text","text":"regular","x_pt":72,"baseline_y_pt":84,"font_size_pt":12,"font":{"family":"Latin Modern Roman","weight":"normal","style":"normal"}},
+        {"kind":"text","text":"bold","x_pt":120,"baseline_y_pt":84,"font_size_pt":12,"font":{"family":"Latin Modern Roman","weight":"bold","style":"normal"}},
+        {"kind":"text","text":"italic","x_pt":160,"baseline_y_pt":84,"font_size_pt":12,"font":{"family":"Latin Modern Roman","weight":"normal","style":"italic"}},
+        {"kind":"text","text":"unhinted","x_pt":200,"baseline_y_pt":84,"font_size_pt":12},
+        {"kind":"text","text":"bold again","x_pt":260,"baseline_y_pt":84,"font_size_pt":12,"font":{"family":"Latin Modern Roman","weight":"bold","style":"normal"}},
+        {"kind":"text","text":"mystery","x_pt":340,"baseline_y_pt":84,"font_size_pt":12,"font":{"family":"Palatino","weight":"normal","style":"italic"}}"#;
+    let json = negotiated_envelope(r#""font-hints-v1""#, items);
+    let options = flashtex_pdf::RenderOptions::with_document_face(font.clone());
+    let out = flashtex_pdf::render_envelope_with(&json, &options).unwrap();
+    let s = check_structure(&out.bytes).unwrap();
+    // 7 base objects + document LM regular (5) + LM bold (5) + LM italic (5).
+    assert_eq!(s.object_count, 22);
+    assert!(
+        find(
+            &out.bytes,
+            b"/Font << /F1 3 0 R /F2 4 0 R /F3 8 0 R /F4 13 0 R /F5 18 0 R >>"
+        )
+        .is_some()
+    );
+    assert!(find(&out.bytes, b"/BaseFont /LMRoman10-Regular").is_some());
+    assert!(find(&out.bytes, b"/BaseFont /LMRoman10-Bold").is_some());
+    assert!(find(&out.bytes, b"/BaseFont /LMRoman10-Italic").is_some());
+    assert_eq!(
+        count(&out.bytes, b"/Subtype /CIDFontType0C"),
+        3,
+        "three whole CFF programs"
+    );
+    assert_eq!(s.stream_objects, vec![7, 11, 12, 16, 17, 21, 22]);
+
+    let placed = placements(&stream_data(&out.bytes, 7).unwrap()).unwrap();
+    let fonts: Vec<&str> = placed.iter().map(|p| p.font.as_str()).collect();
+    assert_eq!(fonts, vec!["F3", "F4", "F5", "F3", "F4", "F5"]);
+    // The italic face's ToUnicode covers both "italic" and the substituted
+    // "mystery"; the bold face's covers "bold" and "bold again".
+    let bold_map =
+        flashtex_pdf::embed::parse_to_unicode(&stream_data(&out.bytes, 17).unwrap()).unwrap();
+    let italic_map =
+        flashtex_pdf::embed::parse_to_unicode(&stream_data(&out.bytes, 22).unwrap()).unwrap();
+    let decode = |p: &flashtex_pdf::verify::Placement,
+                  map: &std::collections::BTreeMap<u16, char>|
+     -> String {
+        p.bytes
+            .chunks(2)
+            .map(|g| map[&u16::from_be_bytes([g[0], g[1]])])
+            .collect()
+    };
+    assert_eq!(decode(&placed[1], &bold_map), "bold");
+    assert_eq!(decode(&placed[4], &bold_map), "bold again");
+    assert_eq!(decode(&placed[2], &italic_map), "italic");
+    assert_eq!(decode(&placed[5], &italic_map), "mystery");
+    // Bold and italic programs are different fonts, not the regular one again.
+    let regular = stream_data(&out.bytes, 11).unwrap();
+    let bold = stream_data(&out.bytes, 16).unwrap();
+    let italic = stream_data(&out.bytes, 21).unwrap();
+    assert!(regular != bold && bold != italic && regular != italic);
+
+    assert_eq!(out.warnings.len(), 1, "{:?}", out.warnings);
+    assert!(
+        out.warnings[0].contains("\"Palatino\"")
+            && out.warnings[0].contains("Latin Modern Roman italic"),
+        "{}",
+        out.warnings[0]
+    );
+    assert!(out.warnings[0].contains("not preserved"));
+}
+
+#[test]
+fn latin_modern_hint_without_installation_is_substituted_by_times() {
+    // No embedded font and (as far as this test can tell) the hint asks for
+    // LM: if no LM installation exists, Times-Bold with a warning; if one
+    // exists it is embedded even without --embed-font, because the hint
+    // named it explicitly.
+    let items = r#"{"kind":"text","text":"x","x_pt":72,"baseline_y_pt":84,"font_size_pt":12,"font":{"family":"Latin Modern Roman","weight":"bold","style":"normal"}}"#;
+    let json = negotiated_envelope(r#""font-hints-v1""#, items);
+    let out = render_envelope(&json).unwrap();
+    check_structure(&out.bytes).unwrap();
+    let lm_installed = flashtex_pdf::embed::candidate_paths()
+        .iter()
+        .any(|p| p.ends_with(flashtex_pdf::embed::LATIN_MODERN_FILE) && p.is_file());
+    if lm_installed {
+        assert!(out.warnings.is_empty(), "{:?}", out.warnings);
+        assert!(find(&out.bytes, b"/BaseFont /LMRoman10-Bold").is_some());
+    } else {
+        assert_eq!(out.warnings.len(), 1);
+        assert!(out.warnings[0].contains("substituted by 'Times-Bold'"));
+        assert!(find(&out.bytes, b"/BaseFont /Times-Bold").is_some());
+    }
 }

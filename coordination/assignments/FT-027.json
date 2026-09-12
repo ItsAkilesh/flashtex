@@ -10,15 +10,17 @@
   "branch": "agent/commander/preview-controller",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "b44eb68dda46385bf98cc8d1ebb539ee85eeef2c",
-  "objective": "Subprocess crash/restart and reviewed receipt recovery",
+  "input_main_sha": "cab39a20278914747f92ee703f6da40a26b72a93",
+  "objective": "Dynamic rooted project membership with additive atomic index membership replacement preserving monotonic generation and stale snapshot refusal",
   "owned_paths": [
-    "crates/preview-controller"
+    "crates/preview-controller",
+    "crates/document-runtime",
+    "crates/project-index"
   ],
-  "revision": 2,
+  "revision": 6,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-027",
   "timebox_minutes": 30,
-  "updated_utc": "2026-09-12T06:22:04Z"
+  "updated_utc": "2026-09-12T06:52:47Z"
 }

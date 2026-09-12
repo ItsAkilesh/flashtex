@@ -1,23 +1,23 @@
 {
   "acceptance": [
-    "Cold/warm/edit measurements use pinned corpus inputs and compare exact clean output",
-    "Crash/restart and malformed-repair sequences preserve deterministic state and diagnostics",
-    "Every remaining unsupported corpus feature is explicit with a reproducible case"
+    "Pinned input/binary hashes and p50/p95/p99 measurements",
+    "Exact incremental-clean equality and no lost corpus checks",
+    "Native paint and raw PDF byte equality remain separate gates"
   ],
   "agent_id": "claude",
-  "allocation_id": "openai-kabir-plus-ft002-stage5",
+  "allocation_id": "openai-kabir-plus-ft002-stage6",
   "branch": "agent/claude/compiler-foundation",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "ac170976d00cb5e8549c17542522608ad35c98ac",
-  "objective": "Harden incremental restart/recovery and run the pinned corpus non-regression gate across the integrated compiler, recording supported, failed, unsupported, and unverified behavior honestly.",
+  "input_main_sha": "0512585539e5d492c3791bd58d5dbcd9aa338704",
+  "objective": "Within existing Kabir staffing, own standing compiler bottleneck repair: measure 5KB/50KB/500KB edits, remove superlinear hot paths, add safe dependency-aware reuse and prove incremental equals clean full output. Do not add workers or reference engines to production.",
   "owned_paths": [
     "crates/compiler"
   ],
-  "revision": 5,
+  "revision": 7,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-002",
   "timebox_minutes": 45,
-  "updated_utc": "2026-09-12T06:22:39Z"
+  "updated_utc": "2026-09-12T07:06:36Z"
 }

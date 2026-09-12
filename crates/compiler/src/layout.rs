@@ -8,10 +8,12 @@
 //! One item is emitted per word rather than per line. That keeps each item's
 //! source span exact, which is what click-to-source navigation (FT-003) needs.
 
+use crate::diagnostics::Diagnostic;
 use crate::math::{self, MathBox};
 use crate::metrics::{self, Font};
 use crate::parser::{Block, Inline};
 use crate::Span;
+use std::collections::BTreeMap;
 
 pub const PAGE_WIDTH_PT: f64 = 612.0;
 pub const PAGE_HEIGHT_PT: f64 = 792.0;
@@ -19,6 +21,15 @@ pub const MARGIN_PT: f64 = 72.0;
 pub const BODY_SIZE_PT: f64 = 12.0;
 pub const LINE_SPACING: f64 = 1.2;
 pub const PARAGRAPH_GAP_PT: f64 = 6.0;
+/// References normally settle in two passes; the cap also covers page-number
+/// changes caused by a resolved reference changing line or page breaks.
+pub const REFERENCE_ITERATION_LIMIT: usize = 5;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ReferenceValue {
+    number: String,
+    page: u32,
+}
 
 /// Layout inputs that participate in incremental cache validation.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -53,6 +64,17 @@ pub struct TextItem {
     pub baseline_y_pt: f64,
     pub font_size_pt: f64,
     pub span: Span,
+    /// The face actually used to measure and lay out this item.
+    pub font: Font,
+    /// Typed geometry for an item that has a legacy text fallback.
+    pub rule: Option<RuleGeometry>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct RuleGeometry {
+    pub y_pt: f64,
+    pub width_pt: f64,
+    pub height_pt: f64,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -115,10 +137,21 @@ pub struct LayoutCursor {
     line_start: usize,
     first_block: bool,
     constraints: LayoutConstraints,
+    resolved_labels: BTreeMap<String, ReferenceValue>,
+    collected_labels: BTreeMap<String, ReferenceValue>,
+    emit_heading_numbers: bool,
 }
 
 impl LayoutCursor {
     pub fn new(constraints: LayoutConstraints) -> Self {
+        Self::with_labels(constraints, BTreeMap::new(), true)
+    }
+
+    fn with_labels(
+        constraints: LayoutConstraints,
+        resolved_labels: BTreeMap<String, ReferenceValue>,
+        emit_heading_numbers: bool,
+    ) -> Self {
         LayoutCursor {
             pages: vec![Page {
                 number: 1,
@@ -133,6 +166,9 @@ impl LayoutCursor {
             line_start: 0,
             first_block: true,
             constraints,
+            resolved_labels,
+            collected_labels: BTreeMap::new(),
+            emit_heading_numbers,
         }
     }
 
@@ -164,6 +200,7 @@ impl LayoutCursor {
     }
 
     fn place(&mut self, text: String, size: f64, span: Span) {
+        let font = font_for_size(size);
         let w = glyph_width(&text, size);
         if self.x > MARGIN_PT && self.x + w > self.right_edge() {
             self.newline(size);
@@ -175,6 +212,8 @@ impl LayoutCursor {
             baseline_y_pt: round2(self.y),
             font_size_pt: size,
             span,
+            font,
+            rule: None,
         };
         self.pages
             .last_mut()
@@ -207,18 +246,25 @@ impl LayoutCursor {
         let base_y = self.y;
         let page = self.pages.last_mut().expect("at least one page");
         for item in b.items {
+            let rule = item.rule.map(|rule| RuleGeometry {
+                y_pt: round2(base_y + rule.y),
+                width_pt: round2(rule.width),
+                height_pt: round2(rule.height),
+            });
             page.items.push(TextItem {
                 text: item.text,
                 x_pt: round2(base_x + item.x),
                 baseline_y_pt: round2(base_y + item.baseline),
                 font_size_pt: item.size,
                 span: item.span,
+                font: Font::TimesRoman,
+                rule,
             });
         }
         self.x += b.width + metrics::advance_width(font_for_size(size), ' ', size);
     }
 
-    fn display_math(&mut self, b: MathBox, size: f64) {
+    fn display_math(&mut self, b: MathBox, size: f64, number: Option<(&str, Span)>) {
         if self.x > MARGIN_PT
             || self
                 .pages
@@ -230,6 +276,21 @@ impl LayoutCursor {
         self.vertical_gap(PARAGRAPH_GAP_PT);
         self.x = MARGIN_PT + (self.right_edge() - MARGIN_PT - b.width).max(0.0) / 2.0;
         self.place_math(b, size);
+        if let Some((number, span)) = number {
+            let text = format!("({number})");
+            let width = glyph_width(&text, size);
+            let x_pt = round2(self.right_edge() - width);
+            let page = self.pages.last_mut().expect("at least one page");
+            page.items.push(TextItem {
+                text,
+                x_pt,
+                baseline_y_pt: round2(self.y),
+                font_size_pt: size,
+                span,
+                font: font_for_size(size),
+                rule: None,
+            });
+        }
         self.newline(self.constraints.font_size_pt);
         self.vertical_gap(PARAGRAPH_GAP_PT);
     }
@@ -237,6 +298,10 @@ impl LayoutCursor {
     /// Apply the inter-block spacing and return the state used as a cache key.
     pub fn prepare_block(&mut self, block: &Block) -> FlowState {
         let body_size = self.constraints.font_size_pt;
+        if matches!(block, Block::Paragraph(inlines) if inlines.iter().all(|inline| matches!(inline, Inline::Label { .. })))
+        {
+            return self.state();
+        }
         match block {
             Block::Paragraph(_) => {
                 if !self.first_block {
@@ -251,6 +316,12 @@ impl LayoutCursor {
                     self.vertical_gap(PARAGRAPH_GAP_PT * 2.0);
                 }
             }
+            Block::FigureCaption { .. } => {
+                if !self.first_block {
+                    self.newline(body_size);
+                    self.vertical_gap(PARAGRAPH_GAP_PT);
+                }
+            }
         }
         self.first_block = false;
         self.state()
@@ -262,11 +333,37 @@ impl LayoutCursor {
         let body_size = self.constraints.font_size_pt;
         match block {
             Block::Paragraph(inlines) => emit(self, inlines, body_size),
-            Block::Heading { level, content } => {
+            Block::Heading {
+                level,
+                number,
+                number_span,
+                content,
+            } => {
+                if self.emit_heading_numbers {
+                    self.place(
+                        number.clone(),
+                        heading_size(*level, body_size),
+                        *number_span,
+                    );
+                }
                 emit(self, content, heading_size(*level, body_size));
                 self.newline(body_size);
                 self.vertical_gap(PARAGRAPH_GAP_PT);
                 self.x = MARGIN_PT;
+            }
+            Block::FigureCaption { content } => {
+                let width: f64 = content
+                    .iter()
+                    .map(|inline| match inline {
+                        Inline::Text { text, .. } => {
+                            glyph_width(text, body_size) + word_space(body_size, Font::TimesRoman)
+                        }
+                        _ => 0.0,
+                    })
+                    .sum();
+                self.x = MARGIN_PT + (self.constraints.measure_pt - width).max(0.0) / 2.0;
+                emit(self, content, body_size);
+                self.newline(body_size);
             }
         }
         let mut placed = Vec::new();
@@ -323,6 +420,10 @@ impl LayoutCursor {
     pub fn into_pages(self) -> Vec<Page> {
         self.pages
     }
+
+    fn into_result(self) -> (Vec<Page>, BTreeMap<String, ReferenceValue>) {
+        (self.pages, self.collected_labels)
+    }
 }
 
 fn heading_size(level: u8, body_size: f64) -> f64 {
@@ -339,7 +440,12 @@ fn round2(v: f64) -> f64 {
 }
 
 pub fn layout(blocks: &[Block]) -> Vec<Page> {
-    layout_with_constraints(blocks, LayoutConstraints::default())
+    let mut c = LayoutCursor::with_labels(LayoutConstraints::default(), BTreeMap::new(), false);
+    for block in blocks {
+        c.prepare_block(block);
+        c.render_prepared_block(block);
+    }
+    c.into_pages()
 }
 
 pub fn layout_with_constraints(blocks: &[Block], constraints: LayoutConstraints) -> Vec<Page> {
@@ -351,18 +457,113 @@ pub fn layout_with_constraints(blocks: &[Block], constraints: LayoutConstraints)
     c.into_pages()
 }
 
+/// Lay out repeatedly until both label values and their page numbers stabilize.
+pub fn layout_converged(
+    blocks: &[Block],
+    constraints: LayoutConstraints,
+) -> (Vec<Page>, Vec<Diagnostic>) {
+    let mut labels = BTreeMap::new();
+    let mut last_pages = Vec::new();
+    let mut converged = false;
+    for _ in 0..REFERENCE_ITERATION_LIMIT {
+        let mut cursor = LayoutCursor::with_labels(constraints, labels.clone(), true);
+        for block in blocks {
+            cursor.prepare_block(block);
+            cursor.render_prepared_block(block);
+        }
+        let (pages, next_labels) = cursor.into_result();
+        last_pages = pages;
+        if next_labels == labels {
+            converged = true;
+            labels = next_labels;
+            break;
+        }
+        labels = next_labels;
+    }
+
+    let mut diagnostics = Vec::new();
+    visit_references(blocks, &mut |key, span| {
+        if !labels.contains_key(key) {
+            diagnostics.push(Diagnostic::warning(
+                format!("undefined reference '{key}'"),
+                Some(span),
+                Some("rendered ?? for the unresolved reference".into()),
+            ));
+        }
+    });
+    if !converged {
+        diagnostics.push(Diagnostic::warning(
+            format!(
+                "cross-reference values did not converge after {REFERENCE_ITERATION_LIMIT} layout passes"
+            ),
+            None,
+            Some("returned the final bounded layout pass".into()),
+        ));
+    }
+    (last_pages, diagnostics)
+}
+
+fn visit_references(blocks: &[Block], visitor: &mut impl FnMut(&str, Span)) {
+    for block in blocks {
+        let inlines = match block {
+            Block::Paragraph(inlines) => inlines,
+            Block::Heading { content, .. } | Block::FigureCaption { content } => content,
+        };
+        for inline in inlines {
+            if let Inline::Reference { key, span, .. } = inline {
+                visitor(key, *span);
+            }
+        }
+    }
+}
+
 fn emit(c: &mut LayoutCursor, inlines: &[Inline], size: f64) {
     for inline in inlines {
         match inline {
             Inline::Text { text, span } => c.place(text.clone(), size, *span),
             Inline::LineBreak { .. } => c.newline(size),
-            Inline::Math { list, display, .. } => {
+            Inline::Math {
+                list,
+                display,
+                number,
+                number_span,
+                span,
+            } => {
                 let b = math::layout(list, size);
                 if *display {
-                    c.display_math(b, size);
+                    c.display_math(
+                        b,
+                        size,
+                        number
+                            .as_deref()
+                            .zip(*number_span)
+                            .or_else(|| number.as_deref().map(|number| (number, *span))),
+                    );
                 } else {
                     c.place_math(b, size);
                 }
+            }
+            Inline::Label { key, value, .. } => {
+                c.collected_labels.insert(
+                    key.clone(),
+                    ReferenceValue {
+                        number: value.clone(),
+                        page: c.pages.len() as u32,
+                    },
+                );
+            }
+            Inline::Reference { key, page, span } => {
+                let text = c.resolved_labels.get(key).map_or_else(
+                    || "??".to_string(),
+                    |value| {
+                        if *page {
+                            value.page.to_string()
+                        } else {
+                            value.number.clone()
+                        }
+                    },
+                );
+                c.place(text, size, *span);
             }
         }
     }

@@ -517,3 +517,94 @@ fn editor_operates_without_compiler_then_attaches_and_renders() {
     });
     assert!(events.iter().any(|event| matches!(event, Update::Preview(preview) if preview.source_versions.documents["main.tex"] == 2)));
 }
+
+#[test]
+fn missing_negotiated_capability_is_explicit_and_legacy_switch_invalidates_preview() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut controller = Controller::new(
+        "p".into(),
+        "main.tex".into(),
+        vec![store(dir.path())],
+        command(dir.path(), ECHO),
+        Limits::default(),
+    )
+    .unwrap();
+    controller
+        .configure_layout(vec!["rules-v1".into()])
+        .unwrap();
+    let events = wait(&mut controller, |events| {
+        events
+            .iter()
+            .any(|event| matches!(event, Update::Preview(_)))
+    });
+    let extended = events
+        .into_iter()
+        .find_map(|event| {
+            if let Update::Preview(p) = event {
+                Some(p)
+            } else {
+                None
+            }
+        })
+        .unwrap();
+    assert_eq!(extended.missing_layout_capabilities, vec!["rules-v1"]);
+    controller.configure_layout(vec![]).unwrap();
+    assert!(!controller.is_current_preview(&extended));
+    let events = wait(&mut controller, |events| {
+        events
+            .iter()
+            .any(|event| matches!(event, Update::Preview(_)))
+    });
+    let legacy = events
+        .into_iter()
+        .find_map(|event| {
+            if let Update::Preview(p) = event {
+                Some(p)
+            } else {
+                None
+            }
+        })
+        .unwrap();
+    assert!(legacy.missing_layout_capabilities.is_empty());
+    assert!(controller.is_current_preview(&legacy));
+}
+
+#[test]
+fn membership_change_discards_pending_preview_and_reopens_same_source_revision() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut controller = Controller::new(
+        "p".into(),
+        "main.tex".into(),
+        vec![store(dir.path())],
+        command(dir.path(), ECHO),
+        Limits::default(),
+    )
+    .unwrap();
+    controller.compile_current().unwrap();
+    let mut extra = Store::open(dir.path().join("extra")).unwrap();
+    extra
+        .initialize(Document::new("p".into(), "extra.tex".into(), 1, "extra".into()).unwrap())
+        .unwrap();
+    let initial = controller.index().snapshot();
+    controller.attach_document(&initial, extra).unwrap();
+    let added = controller.index().snapshot();
+    controller.detach_document(&added, "extra.tex").unwrap();
+    let removed = controller.index().snapshot();
+    controller
+        .attach_document(&removed, Store::open(dir.path().join("extra")).unwrap())
+        .unwrap();
+    let current = controller.index().snapshot();
+    let events = wait(&mut controller, |items| {
+        items
+            .iter()
+            .any(|event| matches!(event, Update::Preview(_)))
+    });
+    for event in events {
+        if let Update::Preview(preview) = event {
+            assert_eq!(preview.source_versions, current);
+            assert!(controller.is_current_preview(&preview));
+        }
+    }
+    assert!(current.generation > added.generation);
+    assert_eq!(controller.document("extra.tex").unwrap().revision, 1);
+}

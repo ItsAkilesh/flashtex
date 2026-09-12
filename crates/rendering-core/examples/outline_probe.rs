@@ -66,6 +66,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             y: Tick(84 * TICKS_PER_BP),
         },
     )?;
+    let mut cache = flashtex_rendering_core::glyph_cache::GlyphPathCache::new(128, 1024 * 1024)?;
+    let start = std::time::Instant::now();
+    cache.lookup(&font, gid)?;
+    let cold_ns = start.elapsed().as_nanos();
+    let start = std::time::Instant::now();
+    for _ in 0..1000 {
+        cache.lookup(&font, gid)?;
+    }
+    let warm_total_ns = start.elapsed().as_nanos();
+    eprintln!(
+        "{}",
+        serde_json::json!({"scope":"font expansion cache only, not native paint latency","cold_expansion_ns":cold_ns,"warm_lookup_samples":1000,"warm_lookup_total_ns":warm_total_ns,"expansions":cache.stats().expansions,"hits":cache.stats().hits})
+    );
     println!(
         "{}",
         serde_json::json!({"font_sha256":entry.font.sha256,"license_sha256":entry.license.text_sha256,"character":character.to_string(),"original_gid":gid,"contours":outline.contour_ends.len(),"points":outline.points.len(),"path_commands":path.len(),"hinting_applied":false,"painted":false})
