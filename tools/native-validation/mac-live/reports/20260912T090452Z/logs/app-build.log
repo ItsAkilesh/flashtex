@@ -1,0 +1,18 @@
+Building for production...
+[0/6] Write sources
+[3/6] Write swift-version--58304C5D6DBC2206.txt
+[5/7] Compiling FlashTeXProtocol ByteOffsets.swift
+[6/8] Compiling FlashTeXAccessibility AccessibilityCommands.swift
+[7/9] Compiling FlashTeXMac BridgeClient.swift
+/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/d8baed6bc2ef1e333ecad48d3d056478a9f984fd/apps/mac/Sources/FlashTeXMac/ShellModel+Controller.swift:184:48: warning: string interpolation produces a debug description for an optional value; did you mean to make this explicit?
+182 |                 controllerState.inFlight = nil
+183 |                 inFlightRevision = nil
+184 |                 log("controller refused edit \(id): \(message)")
+    |                                                |- warning: string interpolation produces a debug description for an optional value; did you mean to make this explicit?
+    |                                                |- note: provide a default value to avoid this warning
+    |                                                `- note: use 'String(describing:)' to silence this warning
+185 |                 controllerStatus = "edit refused: \(message)"
+186 |                 if message.hasPrefix("document_conflict") {
+[7/9] Write Objects.LinkFileList
+[8/9] Linking FlashTeXMac
+Build complete! (59.34s)

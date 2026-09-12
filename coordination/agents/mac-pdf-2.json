@@ -1,0 +1,43 @@
+{
+  "agent_id": "mac-pdf-2",
+  "allocation_id": "claude-mac20x-pdf-2",
+  "assignment_acknowledgements": {},
+  "branch": "agent/mac-pdf-2/export-fidelity",
+  "capabilities": [
+    "rust",
+    "pdf",
+    "coregraphics",
+    "pdfkit",
+    "swift"
+  ],
+  "code_revision": "4893f3e7",
+  "eta_minutes": {
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 0
+  },
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "80b71cda",
+  "next_action": "Commander integrates agent/mac-pdf/fidelity (0be6c132, one commit on origin/main 80b71cda, crates/pdf only); parent decides on bundling lmroman8/6-regular.otf in apps/mac/Fonts; follow-ups 1 (rules/vspace) and 2 (math faces) measured but blocked upstream, see coordination/mac-pdf-2.md",
+  "reviewed_peers": {
+    "origin/agent/mac-claude-a/mac-shell": {
+      "adaptation": "Branched from cd58fc2e; crates/pdf on mac-shell is byte-identical to origin/main (git diff empty), so the crates/pdf fix is published twice: on this lane branch and as agent/mac-pdf/fidelity from origin/main for the Commander",
+      "reviewed_utc": "2026-09-12T16:04:00Z",
+      "sha": "cd58fc2e"
+    },
+    "origin/agent/mac-render-pipeline/unified": {
+      "adaptation": "Used the corpus harness's pinned 9aaec57a flashtex-render scratch build as the HW1 producer; its advance_x carries TFM widths with following kerns folded in, which is what the /W fix keys on (mode per glyph)",
+      "reviewed_utc": "2026-09-12T16:10:00Z",
+      "sha": "9aaec57a"
+    }
+  },
+  "schema_version": 1,
+  "state": "ready_for_integration",
+  "summary": "HW1 export fidelity audit: every visible HW1 difference vs the reference is producer recovery (unsupported constructs typeset as source text); the export's own defect was searchable text: hmtx-derived /W widths made PDFKit read 'Wednesday,' as 'W ednesday ,'. Fixed in crates/pdf v2.rs (/W from the display list's kern-free advances where hmtx differs; joins use the written width; positions replay exactly). CoreGraphics 144 dpi before/after: 0 differing pixels on all 3 pages; PDFKit text: only that line changed. crates/pdf cargo test 87 passed, clippy/fmt clean. Bundling gap reported: lmroman8/6-regular.otf missing from apps/mac/Fonts.",
+  "tool": "Claude Code subagent (parent mac-claude-a)",
+  "updated_utc": "2026-09-12T16:22:08Z",
+  "usage": {
+    "evidence": "cargo test in crates/pdf at 4893f3e7: 87 passed (42 unit, 12 exact, 25 render, 3 type1, 5 v2); cherry-pick 0be6c132 on origin/main: tests/v2 5 passed; HW1 rasters/text diffs in the lane scratch directory (not committed), numbers in crates/pdf/docs/export-fidelity-hw1.md; swift test not run (1-min load 20-26 during the lane)",
+    "status": "Shared Claude Max quota with parent mac-claude-a; no purchases; MacTeX used only as the reference and, on this Mac, as the fallback source of lmroman8-regular.otf"
+  }
+}

@@ -1,17 +1,27 @@
 #!/usr/bin/env bash
 # Measures keystroke -> paint latency of the FlashTeX Mac shell by typing a
 # fixed script into the real editor (TypingBench.swift, FLASHTEX_TYPING_BENCH)
-# for three seed documents, two typing intervals, and every available producer
-# (main's flashtex-compiler; flashtex-render from the render-pipeline branch
-# when it builds). Writes docs/evidence/typing-bench-<UTC>.md plus the raw JSON
-# summaries next to it.
+# for three seed documents, two typing intervals, and every requested producer
+# route:
+#   compiler    direct runtime-v1 worker: main's flashtex-compiler
+#   render      direct runtime-v1 worker: flashtex-render (render-pipeline branch)
+#   controller  durable helper route: flashtex-preview-controller (origin/main
+#               crates/preview-controller) owning the ledger + main's compiler
+#   v2          the display-list-v2 pane (FLASHTEX_PREVIEW_V2=1) — measured only
+#               once PreviewV2View paints live results through TypingBench;
+#               until then the route is recorded as not measurable (stub)
+# The 1-minute load average is recorded before/after every cell; cells above
+# --load-limit are marked "load-affected" in the evidence (never a gate).
+# Writes docs/evidence/typing-bench-<UTC>.md plus raw JSON next to it.
 #
 # Usage: tools/typing-bench/run.sh [--intervals "30 0"] [--seeds "demo body60k fixture"]
-#                                  [--producers "compiler render"]
+#                                  [--producers "compiler render controller v2"]
+#                                  [--quiet-load 8] [--quiet-wait 900] [--load-limit 10]
 #                                  [--no-render] [--out <evidence.md>]
-# Env:   FLASHTEX_RENDER=<path>  use an already built flashtex-render
-#        FLASHTEX_RENDER_REF=<git ref>  branch to build it from
-#                                        (default origin/agent/mac-render-pipeline/unified)
+# Env:   FLASHTEX_RENDER=<path>            use an already built flashtex-render
+#        FLASHTEX_RENDER_REF=<git ref>     (default origin/agent/mac-render-pipeline/unified)
+#        FLASHTEX_PREVIEW_CONTROLLER=<path> use an already built helper
+#        FLASHTEX_CONTROLLER_REF=<git ref> (default origin/main; crates/ archived to a scratch dir)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -19,9 +29,12 @@ ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 MAC="$ROOT/apps/mac"
 INTERVALS="30 0"
 SEEDS="demo body60k fixture"
-PRODUCERS="compiler render"
+PRODUCERS="compiler render controller v2"
 OUT=""
 WANT_RENDER=1
+QUIET_LOAD=8
+QUIET_WAIT=900
+LOAD_LIMIT=10
 UTC="$(date -u +%Y-%m-%dT%H%M%SZ)"
 
 while [[ $# -gt 0 ]]; do
@@ -30,8 +43,11 @@ while [[ $# -gt 0 ]]; do
     --seeds) SEEDS="$2"; shift 2 ;;
     --producers) PRODUCERS="$2"; shift 2 ;;
     --out) OUT="$2"; shift 2 ;;
+    --quiet-load) QUIET_LOAD="$2"; shift 2 ;;
+    --quiet-wait) QUIET_WAIT="$2"; shift 2 ;;
+    --load-limit) LOAD_LIMIT="$2"; shift 2 ;;
     --no-render) WANT_RENDER=0; shift ;;
-    -h|--help) sed -n '2,14p' "${BASH_SOURCE[0]}"; exit 0 ;;
+    -h|--help) sed -n '2,26p' "${BASH_SOURCE[0]}"; exit 0 ;;
     *) echo "run.sh: unknown argument $1" >&2; exit 1 ;;
   esac
 done
@@ -41,8 +57,13 @@ mkdir -p "$WORK"
 [[ -n "$OUT" ]] || OUT="$ROOT/docs/evidence/typing-bench-$UTC.md"
 RAW_DIR="$(dirname "$OUT")/typing-bench-$UTC"
 mkdir -p "$RAW_DIR"
+NOTES_FILE="$WORK/producers.txt"
+: > "$NOTES_FILE"
 
 step() { echo "==> $*"; }
+note() { echo "$*" >> "$NOTES_FILE"; }
+load1() { sysctl -n vm.loadavg | awk '{print $2}'; }   # "{ 1.23 4.56 7.89 }" -> 1-minute average
+wants() { [[ " $PRODUCERS " == *" $1 "* ]]; }
 
 # --- 1. Build the app (release) ------------------------------------------
 step "building FlashTeXMac (release)"
@@ -50,43 +71,84 @@ swift build -c release --package-path "$MAC" 2>&1 | tail -1
 APP_BIN="$MAC/.build/release/FlashTeXMac"
 
 # --- 2. Producers ---------------------------------------------------------
-declare -a PRODUCER_NAMES=() PRODUCER_PATHS=() PRODUCER_NOTES=()
+# Parallel arrays: name, kind (worker | controller | v2), executable.
+declare -a P_NAMES=() P_KINDS=() P_PATHS=()
 COMPILER="$ROOT/crates/compiler/target/release/flashtex-compiler"
-if [[ " $PRODUCERS " == *" compiler "* ]]; then
+if wants compiler || wants controller || wants v2; then
   if [[ ! -x "$COMPILER" ]]; then
     step "building flashtex-compiler (release)"
     cargo build --release --manifest-path "$ROOT/crates/compiler/Cargo.toml" 2>&1 | tail -1
   fi
-  PRODUCER_NAMES+=("compiler"); PRODUCER_PATHS+=("$COMPILER")
-  PRODUCER_NOTES+=("crates/compiler @ $(git -C "$ROOT" rev-parse --short HEAD) (this checkout)")
 fi
-if [[ " $PRODUCERS " == *" render "* && $WANT_RENDER == 1 ]]; then
+if wants compiler; then
+  P_NAMES+=("compiler"); P_KINDS+=("worker"); P_PATHS+=("$COMPILER")
+  note "compiler: crates/compiler @ $(git -C "$ROOT" rev-parse --short HEAD) (this checkout)"
+fi
+
+# Builds one crate from a git ref into a scratch archive; prints the binary path.
+# archive_paths: what to `git archive` (a self-contained crate, or all of crates/).
+build_from_ref() { # ref scratch manifest_subdir bin archive_paths...
+  local ref="$1" scratch="$2" sub="$3" bin="$4"; shift 4
+  git -C "$ROOT" rev-parse --verify -q "$ref" >/dev/null || { echo "    $ref not found (git fetch origin)" >&2; return 1; }
+  mkdir -p "$scratch"
+  git -C "$ROOT" archive "$ref" "$@" | tar -x -C "$scratch" || return 1
+  cargo build --release --manifest-path "$scratch/$sub/Cargo.toml" --bin "$bin" 2>&1 | tail -1 >&2 || return 1
+  local out="$scratch/$sub/target/release/$bin"
+  [[ -x "$out" ]] && echo "$out"
+}
+
+if wants render && [[ $WANT_RENDER == 1 ]]; then
   RENDER="${FLASHTEX_RENDER:-$ROOT/crates/render-pipeline/target/release/flashtex-render}"
   RENDER_NOTE="crates/render-pipeline/target/release (this checkout)"
   if [[ ! -x "$RENDER" ]]; then
     REF="${FLASHTEX_RENDER_REF:-origin/agent/mac-render-pipeline/unified}"
-    SCRATCH="$MAC/build/typing-bench/render-pipeline"
-    step "building flashtex-render from $REF in $SCRATCH"
-    if git -C "$ROOT" rev-parse --verify -q "$REF" >/dev/null; then
-      mkdir -p "$SCRATCH"
-      if git -C "$ROOT" archive "$REF" crates/render-pipeline | tar -x -C "$SCRATCH" \
-         && cargo build --release --manifest-path "$SCRATCH/crates/render-pipeline/Cargo.toml" --bin flashtex-render 2>&1 | tail -1; then
-        RENDER="$SCRATCH/crates/render-pipeline/target/release/flashtex-render"
-        RENDER_NOTE="$REF @ $(git -C "$ROOT" rev-parse --short "$REF") (scratch build, vendored siblings)"
-      else
-        echo "    flashtex-render build FAILED; skipping that producer" >&2
-        RENDER=""
-        RENDER_NOTE="build failed from $REF"
-      fi
+    step "building flashtex-render from $REF"
+    if RENDER="$(build_from_ref "$REF" "$MAC/build/typing-bench/render-pipeline" crates/render-pipeline flashtex-render crates/render-pipeline)"; then
+      RENDER_NOTE="$REF @ $(git -C "$ROOT" rev-parse --short "$REF") (scratch build, vendored siblings)"
     else
-      echo "    $REF not found (git fetch origin); skipping flashtex-render" >&2
-      RENDER=""; RENDER_NOTE="$REF not fetched"
+      echo "    flashtex-render build FAILED; skipping that route" >&2
+      RENDER=""; RENDER_NOTE="build failed from $REF"
     fi
   fi
   if [[ -n "$RENDER" && -x "$RENDER" ]]; then
-    PRODUCER_NAMES+=("render"); PRODUCER_PATHS+=("$RENDER"); PRODUCER_NOTES+=("$RENDER_NOTE")
+    P_NAMES+=("render"); P_KINDS+=("worker"); P_PATHS+=("$RENDER"); note "render: $RENDER_NOTE"
   else
-    PRODUCER_NOTES+=("render: $RENDER_NOTE")
+    note "skipped: render ($RENDER_NOTE)"
+  fi
+fi
+
+if wants controller; then
+  CTRL="${FLASHTEX_PREVIEW_CONTROLLER:-$ROOT/crates/preview-controller/target/release/flashtex-preview-controller}"
+  CTRL_NOTE="crates/preview-controller/target/release (this checkout)"
+  if [[ ! -x "$CTRL" ]]; then
+    REF="${FLASHTEX_CONTROLLER_REF:-origin/main}"
+    step "building flashtex-preview-controller from $REF (crates/ archived: path dependencies on siblings)"
+    if CTRL="$(build_from_ref "$REF" "$MAC/build/typing-bench/main-crates" crates/preview-controller flashtex-preview-controller crates)"; then
+      CTRL_NOTE="$REF @ $(git -C "$ROOT" rev-parse --short "$REF") (scratch build of crates/)"
+    else
+      echo "    flashtex-preview-controller build FAILED; skipping that route" >&2
+      CTRL=""; CTRL_NOTE="build failed from $REF"
+    fi
+  fi
+  if [[ -n "$CTRL" && -x "$CTRL" ]]; then
+    P_NAMES+=("controller"); P_KINDS+=("controller"); P_PATHS+=("$CTRL")
+    note "controller: $CTRL_NOTE, owning compiler $COMPILER"
+  else
+    note "skipped: controller ($CTRL_NOTE)"
+  fi
+fi
+
+if wants v2; then
+  # Stub until the preview-v2 lane lands display-list-v2 on the typing path: the
+  # pane is measurable only when it reports its paints through TypingBench
+  # (willRender/didDraw) for live results; today it draws display lists opened
+  # from a file (PreviewV2View.swift), so no keystroke can reach it.
+  if grep -q "TypingBench.shared" "$MAC/Sources/FlashTeXMac/PreviewV2View.swift" 2>/dev/null; then
+    P_NAMES+=("v2"); P_KINDS+=("v2"); P_PATHS+=("$COMPILER")
+    note "v2: display-list-v2 pane (FLASHTEX_PREVIEW_V2=1) with compiler $COMPILER"
+  else
+    echo "    v2 pane does not paint live results through TypingBench yet; recording the route as not measurable" >&2
+    note "skipped: v2 (PreviewV2View draws display lists opened from a file and has no TypingBench paint hooks; the preview-v2 lane is still negotiating display-list-v2 — re-run with --producers v2 once it lands)"
   fi
 fi
 
@@ -114,102 +176,77 @@ for n in ("demo", "body60k", "fixture"):
 PY
 
 # --- 4. Runs --------------------------------------------------------------
-run_one() { # producer_name producer_path seed interval -> writes $RAW_DIR/<name>.json
-  local pname="$1" ppath="$2" seed="$3" ms="$4"
-  local name="$pname-$seed-${ms}ms" log="$WORK/$pname-$seed-${ms}ms.log" json="$RAW_DIR/$pname-$seed-${ms}ms.json"
+wait_quiet() { # blocks until the 1-minute load is below QUIET_LOAD and no other
+  local waited=0 l other # FlashTeXMac (another bench/validation run) is alive, or QUIET_WAIT s passed
+  while :; do
+    l="$(load1)"; other="$( (pgrep -x FlashTeXMac || true) | wc -l | tr -d ' ')"
+    if awk -v l="$l" -v q="$QUIET_LOAD" 'BEGIN { exit !(l < q) }' && (( other == 0 )); then return 0; fi
+    if (( waited >= QUIET_WAIT )); then echo "    load $l / $other other FlashTeXMac after $QUIET_WAIT s; running anyway" >&2; return 0; fi
+    (( waited == 0 )) && echo "    load $l (limit $QUIET_LOAD), $other other FlashTeXMac process(es); waiting for a quiet machine (up to $QUIET_WAIT s)"
+    sleep 10; waited=$((waited + 10))
+  done
+}
+
+run_one() { # route kind executable seed interval -> $RAW_DIR/<route>-<seed>-<interval>ms.json
+  local route="$1" kind="$2" exe="$3" seed="$4" ms="$5"
+  local name="$route-$seed-${ms}ms" log="$WORK/$route-$seed-${ms}ms.log" json="$RAW_DIR/$route-$seed-${ms}ms.json"
   rm -f "$log" "$json"
-  step "run $name"
+  wait_quiet
+  local before after
+  before="$(load1)"
+  step "run $name (load $before)"
+  # Each cell gets its own seed copy (the durable route writes next to the file)
+  # and, for the controller, a fresh temporary ledger root.
+  local cell="$WORK/$name"; mkdir -p "$cell"; cp "$WORK/$seed.tex" "$cell/$seed.tex"
+  local -a extra=()
+  case "$kind" in
+    worker) extra=(FLASHTEX_COMPILER="$exe") ;;
+    controller) extra=(FLASHTEX_COMPILER="$COMPILER" FLASHTEX_PREVIEW_CONTROLLER="$exe" FLASHTEX_CONTROLLER_LEDGER_ROOT="$cell/ledger") ;;
+    v2) extra=(FLASHTEX_COMPILER="$exe" FLASHTEX_PREVIEW_V2=1) ;;
+  esac
   (
     cd "$MAC"
-    FLASHTEX_REPO="$ROOT" FLASHTEX_AUTOATTACH=1 FLASHTEX_NO_ACTIVATE=1 \
-    FLASHTEX_COMPILER="$ppath" FLASHTEX_LM_DIR="$MAC/Fonts" FLASHTEX_FONT_DIRS="$MAC/Fonts" \
-    FLASHTEX_SEED_FILE="$WORK/$seed.tex" FLASHTEX_LOG="$log" \
-    FLASHTEX_TYPING_BENCH="$TYPED" FLASHTEX_TYPING_BENCH_MS="$ms" FLASHTEX_TYPING_BENCH_OUT="$json" \
-    FLASHTEX_TYPING_BENCH_SETTLE_MS=60000 FLASHTEX_TYPING_BENCH_MAX_MS=120000 \
-    "$APP_BIN" >/dev/null 2>&1 &
+    env FLASHTEX_REPO="$ROOT" FLASHTEX_AUTOATTACH=1 FLASHTEX_NO_ACTIVATE=1 \
+      FLASHTEX_LM_DIR="$MAC/Fonts" FLASHTEX_FONT_DIRS="$MAC/Fonts" \
+      FLASHTEX_SEED_FILE="$cell/$seed.tex" FLASHTEX_LOG="$log" \
+      FLASHTEX_TYPING_BENCH="$TYPED" FLASHTEX_TYPING_BENCH_MS="$ms" FLASHTEX_TYPING_BENCH_OUT="$json" \
+      FLASHTEX_TYPING_BENCH_SETTLE_MS=60000 FLASHTEX_TYPING_BENCH_MAX_MS=120000 \
+      "${extra[@]}" "$APP_BIN" >/dev/null 2>&1 &
     pid=$!
     for _ in $(seq 1 600); do kill -0 "$pid" 2>/dev/null || break; sleep 0.5; done
     if kill -0 "$pid" 2>/dev/null; then echo "    timed out after 300 s; killing" >&2; kill "$pid" 2>/dev/null || true; fi
     wait "$pid" 2>/dev/null || true
   )
+  after="$(load1)"
   if [[ -f "$json" ]]; then
     grep -F "bench: done" "$log" | sed 's/^/    /' || true
+    python3 - "$json" "$route" "$before" "$after" "$LOAD_LIMIT" <<'PY'
+import json, sys
+path, route, before, after, limit = sys.argv[1:6]
+d = json.load(open(path, encoding="utf-8"))
+d["route"] = route
+d["load_avg_before"] = float(before); d["load_avg_after"] = float(after); d["load_limit"] = float(limit)
+d["load_affected"] = max(float(before), float(after)) > float(limit)
+json.dump(d, open(path, "w", encoding="utf-8"), indent=2, sort_keys=True)
+if d["load_affected"]:
+    print("    load-affected: %s -> %s (limit %s)" % (before, after, limit))
+PY
   else
     echo "    no summary written (see $log)" >&2
-    grep -E "status:|bench:" "$log" | tail -3 | sed 's/^/    /' || true
+    grep -E "status:|bench:|controller" "$log" | tail -3 | sed 's/^/    /' || true
   fi
 }
 
-for i in "${!PRODUCER_NAMES[@]}"; do
+set +u # bash 3.2 treats an empty array as unset
+for i in "${!P_NAMES[@]}"; do
   for seed in $SEEDS; do
     for ms in $INTERVALS; do
-      run_one "${PRODUCER_NAMES[$i]}" "${PRODUCER_PATHS[$i]}" "$seed" "$ms"
+      run_one "${P_NAMES[$i]}" "${P_KINDS[$i]}" "${P_PATHS[$i]}" "$seed" "$ms"
     done
   done
 done
+set -u
 
 # --- 5. Evidence document --------------------------------------------------
 step "writing $OUT"
-python3 - "$OUT" "$RAW_DIR" "$ROOT" "$UTC" "$TYPED" "$(printf '%s\n' "${PRODUCER_NOTES[@]}")" <<'PY'
-import json, os, subprocess, sys, glob
-out, raw, root, utc, typed_path, notes = sys.argv[1:7]
-def sh(*a):
-    try: return subprocess.check_output(a, text=True).strip()
-    except Exception as e: return "unavailable (%s)" % e
-sha = sh("git", "-C", root, "rev-parse", "--short", "HEAD")
-branch = sh("git", "-C", root, "rev-parse", "--abbrev-ref", "HEAD")
-hw = sh("sysctl", "-n", "machdep.cpu.brand_string")
-osv = sh("sw_vers", "-productVersion")
-runs = []
-for f in sorted(glob.glob(os.path.join(raw, "*.json"))):
-    d = json.load(open(f)); d["_file"] = os.path.basename(f); runs.append(d)
-def ms(v): return "—" if v is None else ("%.0f" % v if v >= 10 else "%.1f" % v)
-lines = []
-lines.append("# Typing bench: keystroke → paint latency (%s)" % utc)
-lines.append("")
-lines.append("Branch `%s` @ `%s`; %s; macOS %s; release build of `FlashTeXMac` (`swift build -c release`)." % (branch, sha, hw, osv))
-lines.append("Script: `tools/typing-bench/run.sh`; raw JSON summaries in `%s/`." % os.path.basename(raw))
-lines.append("")
-lines.append("Producers:")
-for n in notes.splitlines():
-    if n.strip(): lines.append("- " + n.strip())
-lines.append("")
-lines.append("## Results")
-lines.append("")
-lines.append("Latency is keystroke → paint per typed character (ms); a coalesced keystroke is measured to the first paint that showed it. `compile` is the shell's send → result time on the main thread (waits behind any render pass in progress); `render` is PreviewView body → last page Canvas draw.")
-lines.append("")
-lines.append("| producer | seed | bytes | interval | keys typed | paints | coalesced | k→p p50 | p95 | p99 | max | compile p50 | compile p95 | render p50 | render p95 | unpainted |")
-lines.append("|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
-for d in runs:
-    prod, seed, interval = d["_file"][:-5].split("-", 2)
-    k = d["keystroke_to_paint_ms"]; c = d["compile_ms"]; r = d.get("render_pass_ms", {})
-    typed = "%d" % d["keystrokes"] + (" of %d (budget)" % d["script_keystrokes"] if d.get("typing_budget_exhausted") else "")
-    lines.append("| %s | %s | %d | %s | %s | %d | %d | %s | %s | %s | %s | %s | %s | %s | %s | %d |" % (
-        d["producer"], seed, d["document_bytes_after"], interval, typed, d["paints"], d["coalesced"],
-        ms(k.get("p50_ms")), ms(k.get("p95_ms")), ms(k.get("p99_ms")), ms(k.get("max_ms")),
-        ms(c.get("p50_ms")), ms(c.get("p95_ms")), ms(r.get("p50_ms")), ms(r.get("p95_ms")), d["unpainted"]))
-if not runs:
-    lines.append("| (no runs completed) | | | | | | | | | | | | | | | |")
-lines.append("")
-lines.append("Typed script: `tools/typing-bench/typed-200.txt` (%d characters, inserted before `\\end{document}` when present, else at the end)." % len(open(typed_path, encoding="utf-8").read()))
-lines.append("Seeds: `demo` = `apps/mac/Samples/demo.tex`; `body60k` = the demo's paragraphs repeated to ≥ 60 KB in one document; `fixture` = the entry document of `protocol/fixtures/compile-request.json`.")
-lines.append("")
-lines.append("## Methodology")
-lines.append("")
-lines.append("- The app is launched with `FLASHTEX_AUTOATTACH=1 FLASHTEX_NO_ACTIVATE=1 FLASHTEX_SEED_FILE=<seed> FLASHTEX_TYPING_BENCH=<script>` and the producer as `FLASHTEX_COMPILER`. After the worker attached and its first result was painted, `TypingBenchDriver` (`apps/mac/Sources/FlashTeXMac/TypingBench.swift`) inserts the script one extended grapheme cluster at a time into the real editor `NSTextView` through `insertText(_:replacementRange:)` from a main-run-loop `Timer` at the configured interval (30 ms ≈ a fast typist; 0 ms = one keystroke per run-loop turn, a burst). Each insertion takes the production path: `NSTextViewDelegate.textDidChange` → SwiftUI binding → `ShellModel.updateActiveText` (revision bump, `keystroke:` log line) → auto-compile (`FLASHTEX_DEBOUNCE_MS` default 0, one request in flight, newest buffer coalesced) → `compile_result` → `PreviewView` render.")
-lines.append("- Keystroke time is stamped immediately before `insertText` on the monotonic clock (`clock_gettime_nsec_np(CLOCK_UPTIME_RAW)`, i.e. `mach_absolute_time` in ns). For a person typing, the same recorder uses the `NSEvent.timestamp` of the `keyDown` seen by an in-process local event monitor (HID time on the same clock) — no Accessibility permission or event tap is involved, and a key that changes no text is discarded at the end of its dispatch.")
-lines.append("- Paint time (`paint:` log line) is the first main-queue turn after the run-loop iteration whose SwiftUI render pass evaluated `PreviewView.body` for the result revision; the page `Canvas` draw closures run inside that pass and are counted, so the CoreAnimation commit containing the new pages has completed when the stamp is taken. A revision whose result changed nothing visible (SwiftUI skipped the canvas redraw) is still recorded as painted, flagged `redrawn: false`.")
-lines.append("- A paint of revision N makes every unpainted keystroke with revision ≤ N visible; those with revision < N are `coalesced`. p50/p95/p99 are nearest-rank percentiles over the per-keystroke latencies. The run ends when every keystroke is painted (or after the settle timeout), and the app writes the JSON summary and exits.")
-lines.append("")
-lines.append("## Limitations")
-lines.append("")
-lines.append("- The bench inserts text programmatically: there is no OS keyboard event, no event-queue wait, no key repeat and no input-method composition; real typing adds the HID → WindowServer → `NSApplication.sendEvent` hop, which the local-monitor path measures but this bench cannot.")
-lines.append("- `paint` is the completed CoreAnimation commit, not the display scan-out: the pixels reach the panel at the next vsync (up to one frame, 8–17 ms at 60–120 Hz) after the stamp, and later still if the render server is behind. No IOSurface presentation callback is observed. The window is ordered back (`FLASHTEX_NO_ACTIVATE=1`) and may be occluded during the run; commits still happen, on-screen visibility is not verified.")
-lines.append("- Compile time is measured on the main thread from send to result application, so it includes any time the reply waited behind a render pass; the producers' own round trip is 1–6 ms for these documents when measured directly.")
-lines.append("- Typing stops after `FLASHTEX_TYPING_BENCH_MAX_MS` (120 s here); a cell marked 'of 200 (budget)' typed fewer characters because each keystroke waited for a main-thread render pass.")
-lines.append("- One machine, one run per cell, no warm-up discard beyond the first compile; numbers are indicative, not a regression gate.")
-open(out, "w", encoding="utf-8").write("\n".join(lines) + "\n")
-print("\n".join(lines[:4]))
-for l in lines:
-    if l.startswith("| ") and not l.startswith("| producer") and not l.startswith("|---"): print(l)
-PY
+python3 "$SCRIPT_DIR/evidence.py" "$OUT" "$RAW_DIR" "$ROOT" "$UTC" "$TYPED" "$NOTES_FILE"

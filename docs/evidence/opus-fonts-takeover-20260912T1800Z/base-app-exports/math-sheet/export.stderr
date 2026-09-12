@@ -1,0 +1,219 @@
+note: /F1 LMRoman10-Regular from /private/tmp/flashtex-opus-fonts-takeover/apps/mac/build/FlashTeX.app/Contents/Resources/Fonts/lmroman10-regular.otf: 61 glyph(s), CffSubset, program 7796 bytes
+note: /F2 LatinModernMath-Regular from /private/tmp/flashtex-opus-fonts-takeover/apps/mac/build/FlashTeX.app/Contents/Resources/Fonts/latinmodern-math.otf: 61 glyph(s), CffSubset, program 10006 bytes
+note: /F3 LMRoman8-Regular from /private/tmp/flashtex-opus-fonts-takeover/apps/mac/build/FlashTeX.app/Contents/Resources/Fonts/lmroman8-regular.otf: 8 glyph(s), CffSubset, program 1379 bytes
+diagnostic (from the display list): warning: compiler: packages fontenc are recognised but not implemented
+diagnostic (from the display list): warning: compiler: packages inputenc are recognised but not implemented
+diagnostic (from the display list): warning: compiler: packages geometry are recognised but not implemented
+diagnostic (from the display list): warning: compiler: packages amsmath, amssymb are recognised but not implemented
+diagnostic (from the display list): error: compiler: \DeclareMathOperator is not supported in the document preamble
+diagnostic (from the display list): error: compiler: \tr is not supported in the document preamble
+diagnostic (from the display list): error: compiler: \title is not supported in the document preamble
+diagnostic (from the display list): error: compiler: \author is not supported in the document preamble
+diagnostic (from the display list): error: compiler: \date is not supported in the document preamble
+diagnostic (from the display list): error: compiler: \maketitle is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: \thispagestyle is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: \section requires a braced argument
+diagnostic (from the display list): warning: compiler: environment 'align' is not implemented; its body is typeset as plain text
+diagnostic (from the display list): error: compiler: \sum is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: math script marker used outside math mode
+diagnostic (from the display list): error: compiler: math script marker used outside math mode
+diagnostic (from the display list): error: compiler: \frac requires math mode
+diagnostic (from the display list): error: compiler: \sum is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: math script marker used outside math mode
+diagnostic (from the display list): error: compiler: math script marker used outside math mode
+diagnostic (from the display list): error: compiler: math script marker used outside math mode
+diagnostic (from the display list): error: compiler: \frac requires math mode
+diagnostic (from the display list): error: compiler: \sum is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: math script marker used outside math mode
+diagnostic (from the display list): error: compiler: math script marker used outside math mode
+diagnostic (from the display list): error: compiler: \infty is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: math script marker used outside math mode
+diagnostic (from the display list): error: compiler: \frac requires math mode
+diagnostic (from the display list): error: compiler: \quad is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: math script marker used outside math mode
+diagnostic (from the display list): error: compiler: \sum is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: math script marker used outside math mode
+diagnostic (from the display list): error: compiler: math script marker used outside math mode
+diagnostic (from the display list): error: compiler: \infty is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: \frac requires math mode
+diagnostic (from the display list): error: compiler: math script marker used outside math mode
+diagnostic (from the display list): error: compiler: \binom is not supported in math mode
+diagnostic (from the display list): error: compiler: \section requires a braced argument
+diagnostic (from the display list): warning: compiler: environment 'align*' is not implemented; its body is typeset as plain text
+diagnostic (from the display list): error: compiler: \int is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: math script marker used outside math mode
+diagnostic (from the display list): error: compiler: math script marker used outside math mode
+diagnostic (from the display list): error: compiler: math script marker used outside math mode
+diagnostic (from the display list): error: compiler: \mathrm is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: \left is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: \frac requires math mode
+diagnostic (from the display list): error: compiler: math script marker used outside math mode
+diagnostic (from the display list): error: compiler: \right is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: math script marker used outside math mode
+diagnostic (from the display list): error: compiler: math script marker used outside math mode
+diagnostic (from the display list): error: compiler: \qquad is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: \ne is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: \int is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: \frac requires math mode
+diagnostic (from the display list): error: compiler: \mathrm is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: \ln is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: \int is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: math script marker used outside math mode
+diagnostic (from the display list): error: compiler: \infty is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: math script marker used outside math mode
+diagnostic (from the display list): error: compiler: \infty is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: math script marker used outside math mode
+diagnostic (from the display list): error: compiler: math script marker used outside math mode
+diagnostic (from the display list): error: compiler: \mathrm is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: \sqrt requires math mode
+diagnostic (from the display list): error: compiler: \pi is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: \int is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: math script marker used outside math mode
+diagnostic (from the display list): error: compiler: math script marker used outside math mode
+diagnostic (from the display list): error: compiler: \pi is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: \int is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: math script marker used outside math mode
+diagnostic (from the display list): error: compiler: math script marker used outside math mode
+diagnostic (from the display list): error: compiler: \mathrm is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: \mathrm is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: \theta is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: \pi is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: math script marker used outside math mode
+diagnostic (from the display list): error: compiler: \displaystyle is not supported in math mode
+diagnostic (from the display list): error: compiler: \mathrm is not supported in math mode
+diagnostic (from the display list): error: compiler: \mathrm is not supported in math mode
+diagnostic (from the display list): error: compiler: \section requires a braced argument
+diagnostic (from the display list): error: compiler: \begin is not supported in math mode
+diagnostic (from the display list): error: compiler: \text is not supported in math mode
+diagnostic (from the display list): error: compiler: \ge is not supported in math mode
+diagnostic (from the display list): error: compiler: \text is not supported in math mode
+diagnostic (from the display list): error: compiler: \end is not supported in math mode
+diagnostic (from the display list): error: compiler: \qquad is not supported in math mode
+diagnostic (from the display list): error: compiler: \operatorname is not supported in math mode
+diagnostic (from the display list): error: compiler: \begin is not supported in math mode
+diagnostic (from the display list): error: compiler: \end is not supported in math mode
+diagnostic (from the display list): error: compiler: \section requires a braced argument
+diagnostic (from the display list): error: compiler: \lim is not supported in math mode
+diagnostic (from the display list): error: compiler: \to is not supported in math mode
+diagnostic (from the display list): error: compiler: \qquad is not supported in math mode
+diagnostic (from the display list): error: compiler: \mathrm is not supported in math mode
+diagnostic (from the display list): error: compiler: \mathrm is not supported in math mode
+diagnostic (from the display list): error: compiler: \bigl is not supported in math mode
+diagnostic (from the display list): error: compiler: \bigr is not supported in math mode
+diagnostic (from the display list): error: compiler: \dfrac is not supported in math mode
+diagnostic (from the display list): error: compiler: \mathrm is not supported in math mode
+diagnostic (from the display list): error: compiler: \mathrm is not supported in math mode
+diagnostic (from the display list): error: compiler: \xi is not supported in math mode
+diagnostic (from the display list): error: compiler: \quad is not supported in math mode
+diagnostic (from the display list): error: compiler: \text is not supported in math mode
+diagnostic (from the display list): error: compiler: \xi is not supported in math mode
+diagnostic (from the display list): error: compiler: \text is not supported in math mode
+diagnostic (from the display list): error: compiler: \text is not supported in math mode
+diagnostic (from the display list): error: compiler: \section requires a braced argument
+diagnostic (from the display list): error: compiler: \begin is not supported in math mode
+diagnostic (from the display list): error: compiler: \end is not supported in math mode
+diagnostic (from the display list): error: compiler: \det is not supported in math mode
+diagnostic (from the display list): error: compiler: \qquad is not supported in math mode
+diagnostic (from the display list): error: compiler: \begin is not supported in math mode
+diagnostic (from the display list): error: compiler: \end is not supported in math mode
+diagnostic (from the display list): error: compiler: \qquad is not supported in math mode
+diagnostic (from the display list): error: compiler: \tr is not supported in math mode
+diagnostic (from the display list): error: compiler: \begin is not supported in math mode
+diagnostic (from the display list): error: compiler: \end is not supported in math mode
+diagnostic (from the display list): error: compiler: \qquad is not supported in math mode
+diagnostic (from the display list): error: compiler: \begin is not supported in math mode
+diagnostic (from the display list): error: compiler: \cdots is not supported in math mode
+diagnostic (from the display list): error: compiler: \cdots is not supported in math mode
+diagnostic (from the display list): error: compiler: \vdots is not supported in math mode
+diagnostic (from the display list): error: compiler: \vdots is not supported in math mode
+diagnostic (from the display list): error: compiler: \ddots is not supported in math mode
+diagnostic (from the display list): error: compiler: \vdots is not supported in math mode
+diagnostic (from the display list): error: compiler: \cdots is not supported in math mode
+diagnostic (from the display list): error: compiler: \end is not supported in math mode
+diagnostic (from the display list): error: compiler: \det is not supported in math mode
+diagnostic (from the display list): error: compiler: \in is not supported in math mode
+diagnostic (from the display list): error: compiler: \mathbb is not supported in math mode
+diagnostic (from the display list): error: compiler: \in is not supported in math mode
+diagnostic (from the display list): error: compiler: \mathbb is not supported in math mode
+diagnostic (from the display list): error: compiler: \Lambda is not supported in math mode
+diagnostic (from the display list): error: compiler: \mathsf is not supported in math mode
+diagnostic (from the display list): error: compiler: \section requires a braced argument
+diagnostic (from the display list): warning: compiler: environment 'gather' is not implemented; its body is typeset as plain text
+diagnostic (from the display list): error: compiler: \left is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: \sum is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: math script marker used outside math mode
+diagnostic (from the display list): error: compiler: math script marker used outside math mode
+diagnostic (from the display list): error: compiler: math script marker used outside math mode
+diagnostic (from the display list): error: compiler: math script marker used outside math mode
+diagnostic (from the display list): error: compiler: \right is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: \le is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: \left is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: \sum is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: math script marker used outside math mode
+diagnostic (from the display list): error: compiler: math script marker used outside math mode
+diagnostic (from the display list): error: compiler: math script marker used outside math mode
+diagnostic (from the display list): error: compiler: math script marker used outside math mode
+diagnostic (from the display list): error: compiler: \right is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: math script marker used outside math mode
+diagnostic (from the display list): error: compiler: \left is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: \sum is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: math script marker used outside math mode
+diagnostic (from the display list): error: compiler: math script marker used outside math mode
+diagnostic (from the display list): error: compiler: math script marker used outside math mode
+diagnostic (from the display list): error: compiler: math script marker used outside math mode
+diagnostic (from the display list): error: compiler: \right is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: math script marker used outside math mode
+diagnostic (from the display list): error: compiler: \frac requires math mode
+diagnostic (from the display list): error: compiler: \ge is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: \sqrt requires math mode
+diagnostic (from the display list): error: compiler: \ge is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: \frac requires math mode
+diagnostic (from the display list): error: compiler: \qquad is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: \le is not supported in math mode
+diagnostic (from the display list): error: compiler: \in is not supported in math mode
+diagnostic (from the display list): error: compiler: \mathbb is not supported in math mode
+diagnostic (from the display list): error: compiler: \section requires a braced argument
+diagnostic (from the display list): error: compiler: \epsilon is not supported in math mode
+diagnostic (from the display list): error: compiler: \varepsilon is not supported in math mode
+diagnostic (from the display list): error: compiler: \varphi is not supported in math mode
+diagnostic (from the display list): error: compiler: \quad is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: \Gamma is not supported in math mode
+diagnostic (from the display list): error: compiler: \Delta is not supported in math mode
+diagnostic (from the display list): error: compiler: \Theta is not supported in math mode
+diagnostic (from the display list): error: compiler: \Lambda is not supported in math mode
+diagnostic (from the display list): error: compiler: \Pi is not supported in math mode
+diagnostic (from the display list): error: compiler: \Sigma is not supported in math mode
+diagnostic (from the display list): error: compiler: \Phi is not supported in math mode
+diagnostic (from the display list): error: compiler: \Omega is not supported in math mode
+diagnostic (from the display list): error: compiler: \partial is not supported in math mode
+diagnostic (from the display list): error: compiler: \nabla is not supported in math mode
+diagnostic (from the display list): error: compiler: \circ is not supported in math mode
+diagnostic (from the display list): error: compiler: \le is not supported in math mode
+diagnostic (from the display list): error: compiler: \ge is not supported in math mode
+diagnostic (from the display list): error: compiler: \ne is not supported in math mode
+diagnostic (from the display list): error: compiler: \equiv is not supported in math mode
+diagnostic (from the display list): error: compiler: \subseteq is not supported in math mode
+diagnostic (from the display list): error: compiler: \cup is not supported in math mode
+diagnostic (from the display list): error: compiler: \cap is not supported in math mode
+diagnostic (from the display list): error: compiler: \emptyset is not supported in math mode
+diagnostic (from the display list): error: compiler: \to is not supported in math mode
+diagnostic (from the display list): error: compiler: \mapsto is not supported in math mode
+diagnostic (from the display list): error: compiler: \Leftrightarrow is not supported in math mode
+diagnostic (from the display list): warning: overfull_hbox: overfull line: 19.32pt too wide (no hyphenation available)
+diagnostic (from the display list): warning: overfull_hbox: overfull line: 16.59pt too wide (no hyphenation available)
+diagnostic (from the display list): warning: math_limitation: no math glyph for '&'; empty box used
+diagnostic (from the display list): warning: overfull_display: display is 237.83pt wider than the text width
+diagnostic (from the display list): warning: math_limitation: no math glyph for '''; empty box used
+diagnostic (from the display list): warning: overfull_display: display is 11.38pt wider than the text width
+diagnostic (from the display list): warning: overfull_hbox: overfull line: 14.81pt too wide (no hyphenation available)
+diagnostic (from the display list): warning: overfull_display: display is 13.44pt wider than the text width
+diagnostic (from the display list): warning: overfull_display: display is 16.02pt wider than the text width
+diagnostic (from the display list): warning: overfull_display: display is 388.09pt wider than the text width
+diagnostic (from the display list): warning: overfull_hbox: overfull line: 271.92pt too wide (no hyphenation available)
+diagnostic (from the display list): warning: overfull_hbox: overfull line: 247.13pt too wide (no hyphenation available)
+diagnostic (from the display list): warning: math_resource_profile: lmex10: glyphs drawn from latinmodern-math (one 10pt design); no optical-size OpenType outline resource exists for this family, so the outlines are not the reference's lmex10 design
+diagnostic (from the display list): warning: math_resource_profile: lmmi10: glyphs drawn from latinmodern-math (one 10pt design); no optical-size OpenType outline resource exists for this family, so the outlines are not the reference's lmmi10 design
+diagnostic (from the display list): warning: math_resource_profile: lmmi8: glyphs drawn from latinmodern-math (one 10pt design); no optical-size OpenType outline resource exists for this family, so the outlines are not the reference's lmmi8 design
+diagnostic (from the display list): warning: math_resource_profile: lmsy10: glyphs drawn from latinmodern-math (one 10pt design); no optical-size OpenType outline resource exists for this family, so the outlines are not the reference's lmsy10 design
+diagnostic (from the display list): warning: math_resource_profile: lmsy8: glyphs drawn from latinmodern-math (one 10pt design); no optical-size OpenType outline resource exists for this family, so the outlines are not the reference's lmsy8 design
+note: 1 page(s), 351 glyph run(s), 1499 glyph(s) (0 continued at the natural advance, 0 with an exact TJ kern), 5 rule(s), 143567 bytes -> /private/tmp/flashtex-opus-fonts-takeover/docs/evidence/opus-fonts-takeover-20260912T1800Z/base-app-exports/math-sheet/export.pdf

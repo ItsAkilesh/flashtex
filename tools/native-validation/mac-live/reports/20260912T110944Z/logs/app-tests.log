@@ -1,0 +1,551 @@
+warning: 'mac': found 17 file(s) which are unhandled; explicitly declare them as resources or exclude from the target
+    /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/Tests/FlashTeXMacTests/Fixtures/display-list-v2-missing-font.json
+    /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/Tests/FlashTeXMacTests/Fixtures/display-list-v2-text.tex
+    /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/Tests/FlashTeXMacTests/Fixtures/fake_worker_v2.py
+    /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/Tests/FlashTeXMacTests/Fixtures/nearby-companion-session.jsonl
+    /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/Tests/FlashTeXMacTests/Fixtures/fake_bridge.py
+    /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/Tests/FlashTeXMacTests/Fixtures/display-list-v2-text.json
+    /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/Tests/FlashTeXMacTests/Fixtures/display-list-v2-math-rules.json
+    /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/Tests/FlashTeXMacTests/Fixtures/fake_worker.py
+    /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/Tests/FlashTeXMacTests/Fixtures/fake_assistant_provider.py
+    /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/Tests/FlashTeXMacTests/Fixtures/build_assistant_context.sh
+    /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/Tests/FlashTeXMacTests/Fixtures/display-list-v2-math-rules.tex
+    /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/Tests/FlashTeXMacTests/Fixtures/fake_assistant_context.py
+    /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/Tests/FlashTeXMacTests/Fixtures/fake_project_files.py
+    /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/Tests/FlashTeXMacTests/Fixtures/fake_pdf_writer.py
+    /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/Tests/FlashTeXMacTests/Fixtures/display-list-v2-math.json
+    /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/Tests/FlashTeXMacTests/Fixtures/fake_edit_ledger.py
+    /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/Tests/FlashTeXMacTests/Fixtures/fake_preview_controller.py
+Building for debugging...
+[0/16] Write sources
+[0/16] /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/.build/arm64-apple-macosx/debug/FlashTeXMacPackageTests.derived/runner.swift
+[0/16] Write sources
+[9/16] Write FlashTeXMac-entitlement.plist
+[10/16] Write swift-version--58304C5D6DBC2206.txt
+[12/36] Compiling FlashTeXProtocol SourceMapping.swift
+[13/37] Compiling FlashTeXProtocol JSONLines.swift
+[14/37] Compiling FlashTeXProtocol ByteOffsets.swift
+[15/37] Compiling FlashTeXProtocol Capture.swift
+[16/37] Emitting module FlashTeXProtocol
+[17/37] Compiling FlashTeXProtocol FastJSON.swift
+[18/37] Compiling FlashTeXProtocol RenderingV2Fast.swift
+[19/37] Compiling NearbyClient NearbyWire.swift
+[20/37] Compiling NearbyClient NearbyResolver.swift
+[21/37] Compiling NearbyClient NearbyCrypto.swift
+[22/37] Compiling NearbyClient NearbyReconnector.swift
+[23/37] Compiling FlashTeXProtocol Rules.swift
+[24/37] Compiling FlashTeXProtocol RuntimeV1.swift
+[25/37] Compiling NearbyClient NearbyConnection.swift
+[26/37] Compiling NearbyClient NearbyClient.swift
+[27/37] Compiling NearbyClient NearbyBrowser.swift
+[28/37] Emitting module NearbyClient
+[29/37] Compiling NearbyClient NearbyCLI.swift
+[30/37] Compiling FlashTeXProtocol LayoutNegotiation.swift
+[31/37] Compiling FlashTeXProtocol RenderingV2.swift
+[32/37] Compiling FlashTeXProtocol TransferV1.swift
+[33/49] Compiling FlashTeXAccessibility CompletionAccessibility.swift
+[34/49] Compiling FlashTeXAccessibility EditorDiagnosticsAccessibility.swift
+[35/49] Emitting module FlashTeXAccessibility
+[36/49] Compiling FlashTeXAccessibility AccessibleDocumentModel.swift
+[37/49] Compiling FlashTeXAccessibility AccessibleEditorModel.swift
+[38/49] Compiling FlashTeXProtocolTests ProtocolTests.swift
+[39/49] Compiling FlashTeXProtocolTests SourceMappingTests.swift
+[40/49] Compiling FlashTeXProtocolTests LayoutCapabilityTests.swift
+[41/49] Emitting module FlashTeXProtocolTests
+[42/49] Compiling FlashTeXProtocolTests FastJSONTests.swift
+/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/Tests/FlashTeXProtocolTests/FastJSONTests.swift:118:13: warning: will never be executed
+115 |         // optimized; a debug FastJSON bounds-checks every byte): measured
+116 |         // release 16.8 ms vs 63.7 ms for 10.8k items.
+117 |         if !_isDebugAssertConfiguration() {
+    |            `- note: condition always evaluates to false
+118 |             XCTAssertLessThan(fast, slow, "the fast path must not be slower than JSONDecoder")
+    |             `- warning: will never be executed
+119 |         }
+120 |     }
+[43/49] Compiling FlashTeXAccessibility AccessibilityCommands.swift
+[44/49] Compiling FlashTeXAccessibility AccessibilityViews.swift
+[45/94] Compiling FlashTeXAccessibilityTests EditorDiagnosticsAccessibilityTests.swift
+[46/94] Compiling FlashTeXAccessibilityTests DocumentModelTests.swift
+[47/94] Compiling FlashTeXAccessibilityTests CompletionAccessibilityTests.swift
+/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/Tests/FlashTeXAccessibilityTests/CompletionAccessibilityTests.swift:79:97: warning: 'accessibilityAttributeValue' was deprecated in macOS 10.10: Use the NSAccessibility protocol methods instead (see NSAccessibilityProtocols.h) [#DeprecatedDeclaration]
+ 77 |         // (and `accessibilityRows()` traps bridging them), so rows and their
+ 78 |         // cells are read through `accessibilityAttributeValue`.
+ 79 |         func legacy(_ o: AnyObject, _ a: NSAccessibility.Attribute) -> Any? { (o as? NSObject)?.accessibilityAttributeValue(a) }
+    |                                                                                                 `- warning: 'accessibilityAttributeValue' was deprecated in macOS 10.10: Use the NSAccessibility protocol methods instead (see NSAccessibilityProtocols.h) [#DeprecatedDeclaration]
+ 80 |         let children = (table.accessibilityChildren() as? [AnyObject]) ?? []
+ 81 |         let axRows = children.filter { (legacy($0, .role) as? String) == NSAccessibility.Role.row.rawValue }
+
+[#DeprecatedDeclaration]: <https://docs.swift.org/compiler/documentation/diagnostics/deprecated-declaration>
+[48/94] Compiling FlashTeXAccessibilityTests CommandTableTests.swift
+[49/94] Emitting module FlashTeXAccessibilityTests
+[50/94] Compiling FlashTeXAccessibilityTests OverlayTests.swift
+[51/94] Compiling FlashTeXAccessibilityTests EditorModelTests.swift
+[52/94] Emitting module FlashTeXMac
+[53/98] Compiling FlashTeXMac EditorDiagnostics.swift
+[54/98] Compiling FlashTeXMac ExactPDFExport.swift
+[55/98] Compiling FlashTeXMac FlashTeXMacApp.swift
+[56/98] Compiling FlashTeXMac Fonts.swift
+[57/98] Compiling FlashTeXMac ControllerRelease.swift
+[58/98] Compiling FlashTeXMac DocumentFiles.swift
+[59/98] Compiling FlashTeXMac DocumentFilesClient.swift
+[60/98] Compiling FlashTeXMac EditLedgerClient.swift
+[61/98] Compiling FlashTeXMac ShellModel+Bridge.swift
+/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/Sources/FlashTeXMac/ShellModel+Controller.swift:214:48: warning: string interpolation produces a debug description for an optional value; did you mean to make this explicit?
+212 |                 controllerState.inFlight = nil
+213 |                 inFlightRevision = nil
+214 |                 log("controller refused edit \(id): \(message)")
+    |                                                |- warning: string interpolation produces a debug description for an optional value; did you mean to make this explicit?
+    |                                                |- note: provide a default value to avoid this warning
+    |                                                `- note: use 'String(describing:)' to silence this warning
+215 |                 controllerStatus = "edit refused: \(message)"
+216 |                 if message.hasPrefix("document_conflict") {
+[62/98] Compiling FlashTeXMac ShellModel+Controller.swift
+/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/Sources/FlashTeXMac/ShellModel+Controller.swift:214:48: warning: string interpolation produces a debug description for an optional value; did you mean to make this explicit?
+212 |                 controllerState.inFlight = nil
+213 |                 inFlightRevision = nil
+214 |                 log("controller refused edit \(id): \(message)")
+    |                                                |- warning: string interpolation produces a debug description for an optional value; did you mean to make this explicit?
+    |                                                |- note: provide a default value to avoid this warning
+    |                                                `- note: use 'String(describing:)' to silence this warning
+215 |                 controllerStatus = "edit refused: \(message)"
+216 |                 if message.hasPrefix("document_conflict") {
+[63/98] Compiling FlashTeXMac ShellModel+Nearby.swift
+/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/Sources/FlashTeXMac/ShellModel+Controller.swift:214:48: warning: string interpolation produces a debug description for an optional value; did you mean to make this explicit?
+212 |                 controllerState.inFlight = nil
+213 |                 inFlightRevision = nil
+214 |                 log("controller refused edit \(id): \(message)")
+    |                                                |- warning: string interpolation produces a debug description for an optional value; did you mean to make this explicit?
+    |                                                |- note: provide a default value to avoid this warning
+    |                                                `- note: use 'String(describing:)' to silence this warning
+215 |                 controllerStatus = "edit refused: \(message)"
+216 |                 if message.hasPrefix("document_conflict") {
+[64/98] Compiling FlashTeXMac ShellModel.swift
+/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/Sources/FlashTeXMac/ShellModel+Controller.swift:214:48: warning: string interpolation produces a debug description for an optional value; did you mean to make this explicit?
+212 |                 controllerState.inFlight = nil
+213 |                 inFlightRevision = nil
+214 |                 log("controller refused edit \(id): \(message)")
+    |                                                |- warning: string interpolation produces a debug description for an optional value; did you mean to make this explicit?
+    |                                                |- note: provide a default value to avoid this warning
+    |                                                `- note: use 'String(describing:)' to silence this warning
+215 |                 controllerStatus = "edit refused: \(message)"
+216 |                 if message.hasPrefix("document_conflict") {
+[65/98] Compiling FlashTeXMac NearbyState.swift
+[66/98] Compiling FlashTeXMac NearbyView.swift
+[67/98] Compiling FlashTeXMac PDFExport.swift
+[68/98] Compiling FlashTeXMac Pairing.swift
+[69/98] Compiling FlashTeXMac SourceEditorView.swift
+[70/98] Compiling FlashTeXMac Transcript.swift
+[71/98] Compiling FlashTeXMac TypingBench.swift
+[72/98] Compiling FlashTeXMac WorkerClient.swift
+[73/98] Compiling FlashTeXMac ProjectDocuments.swift
+[74/98] Compiling FlashTeXMac ProposalPreview.swift
+[75/98] Compiling FlashTeXMac RuleGeometry.swift
+[76/98] Compiling FlashTeXMac RustPDFExport.swift
+[77/98] Compiling FlashTeXMac Logging.swift
+[78/98] Compiling FlashTeXMac Navigation.swift
+[79/98] Compiling FlashTeXMac NearbyListener.swift
+[80/98] Compiling FlashTeXMac NearbyProtocol.swift
+[81/98] Compiling FlashTeXMac BridgeClient.swift
+[82/98] Compiling FlashTeXMac BridgeSession.swift
+[83/98] Compiling FlashTeXMac CaretSync.swift
+[84/98] Compiling FlashTeXMac Completion.swift
+[85/98] Compiling FlashTeXMac ContentView.swift
+[86/98] Compiling FlashTeXMac GlyphRunRenderer.swift
+[87/98] Compiling FlashTeXMac HistoricalPreview.swift
+[88/98] Compiling FlashTeXMac Insertion.swift
+[89/98] Compiling FlashTeXMac LineProcessClient.swift
+[90/98] Compiling FlashTeXMac PreviewControllerClient.swift
+[91/98] Compiling FlashTeXMac PreviewTextCache.swift
+[92/98] Compiling FlashTeXMac PreviewV2View.swift
+[93/98] Compiling FlashTeXMac PreviewView.swift
+[93/98] Write Objects.LinkFileList
+[94/98] Linking FlashTeXMac
+[95/98] Applying FlashTeXMac
+[97/133] Emitting module FlashTeXMacTests
+[98/136] Compiling FlashTeXMacTests RustPDFExportTests.swift
+[99/136] Compiling FlashTeXMacTests ShellModelBridgeTests.swift
+[100/136] Compiling FlashTeXMacTests ShellModelTests.swift
+[101/136] Compiling FlashTeXMacTests RenderingV2Tests.swift
+[102/136] Compiling FlashTeXMacTests RuntimeTranscriptTests.swift
+[103/136] Compiling FlashTeXMacTests RustPDFExportPipeTests.swift
+[104/136] Compiling FlashTeXMacTests EditorDiagnosticsTests.swift
+[105/136] Compiling FlashTeXMacTests ExactPDFExportTests.swift
+[106/136] Compiling FlashTeXMacTests HistoricalPreviewTests.swift
+[107/136] Compiling FlashTeXMacTests InsertionTests.swift
+[108/136] Compiling FlashTeXMacTests NearbyViewTests.swift
+[109/136] Compiling FlashTeXMacTests PDFExportTests.swift
+[110/136] Compiling FlashTeXMacTests PairingTests.swift
+[111/136] Compiling FlashTeXMacTests PreviewControllerTests.swift
+[112/136] Compiling FlashTeXMacTests PreviewFontsTests.swift
+[113/136] Compiling FlashTeXMacTests PreviewTextCacheTests.swift
+[114/136] Compiling FlashTeXMacTests PreviewV2Tests.swift
+[115/136] Compiling FlashTeXMacTests ProjectDocumentsTests.swift
+[116/136] Compiling FlashTeXMacTests SourceEditorViewTests.swift
+/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/Tests/FlashTeXMacTests/SourceEditorViewTests.swift:199:48: warning: conditional downcast from 'String?' to 'String' does nothing
+ 197 |         XCTAssertEqual(tv.accessibilityLabel(), "LaTeX source")
+ 198 |         XCTAssertEqual(tv.accessibilityRole(), .textArea)
+ 199 |         XCTAssertEqual(tv.accessibilityValue() as? String, model.activeText)
+     |                                                `- warning: conditional downcast from 'String?' to 'String' does nothing
+ 200 |         XCTAssertEqual(tv.accessibilityNumberOfCharacters(), (model.activeText as NSString).length)
+ 201 |         XCTAssertNotNil(tv.accessibilityHelp())
+
+/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/Tests/FlashTeXMacTests/SourceEditorViewTests.swift:231:48: warning: conditional downcast from 'String?' to 'String' does nothing
+ 229 |         XCTAssertEqual(spoken, [], "typing steps are not announced")
+ 230 |         XCTAssertEqual(model.activeText, "first!? line\nsecond naïve line\n")
+ 231 |         XCTAssertEqual(tv.accessibilityValue() as? String, model.activeText)
+     |                                                `- warning: conditional downcast from 'String?' to 'String' does nothing
+ 232 |         XCTAssertEqual(model.caretUTF16, 7)
+ 233 | 
+[117/136] Compiling FlashTeXMacTests TypingBenchTests.swift
+/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/Tests/FlashTeXMacTests/SourceEditorViewTests.swift:199:48: warning: conditional downcast from 'String?' to 'String' does nothing
+ 197 |         XCTAssertEqual(tv.accessibilityLabel(), "LaTeX source")
+ 198 |         XCTAssertEqual(tv.accessibilityRole(), .textArea)
+ 199 |         XCTAssertEqual(tv.accessibilityValue() as? String, model.activeText)
+     |                                                `- warning: conditional downcast from 'String?' to 'String' does nothing
+ 200 |         XCTAssertEqual(tv.accessibilityNumberOfCharacters(), (model.activeText as NSString).length)
+ 201 |         XCTAssertNotNil(tv.accessibilityHelp())
+
+/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/Tests/FlashTeXMacTests/SourceEditorViewTests.swift:231:48: warning: conditional downcast from 'String?' to 'String' does nothing
+ 229 |         XCTAssertEqual(spoken, [], "typing steps are not announced")
+ 230 |         XCTAssertEqual(model.activeText, "first!? line\nsecond naïve line\n")
+ 231 |         XCTAssertEqual(tv.accessibilityValue() as? String, model.activeText)
+     |                                                `- warning: conditional downcast from 'String?' to 'String' does nothing
+ 232 |         XCTAssertEqual(model.caretUTF16, 7)
+ 233 | 
+[118/136] Compiling FlashTeXMacTests WorkerClientTests.swift
+/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/Tests/FlashTeXMacTests/SourceEditorViewTests.swift:199:48: warning: conditional downcast from 'String?' to 'String' does nothing
+ 197 |         XCTAssertEqual(tv.accessibilityLabel(), "LaTeX source")
+ 198 |         XCTAssertEqual(tv.accessibilityRole(), .textArea)
+ 199 |         XCTAssertEqual(tv.accessibilityValue() as? String, model.activeText)
+     |                                                `- warning: conditional downcast from 'String?' to 'String' does nothing
+ 200 |         XCTAssertEqual(tv.accessibilityNumberOfCharacters(), (model.activeText as NSString).length)
+ 201 |         XCTAssertNotNil(tv.accessibilityHelp())
+
+/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/Tests/FlashTeXMacTests/SourceEditorViewTests.swift:231:48: warning: conditional downcast from 'String?' to 'String' does nothing
+ 229 |         XCTAssertEqual(spoken, [], "typing steps are not announced")
+ 230 |         XCTAssertEqual(model.activeText, "first!? line\nsecond naïve line\n")
+ 231 |         XCTAssertEqual(tv.accessibilityValue() as? String, model.activeText)
+     |                                                `- warning: conditional downcast from 'String?' to 'String' does nothing
+ 232 |         XCTAssertEqual(model.caretUTF16, 7)
+ 233 | 
+[119/136] Compiling FlashTeXMacTests ControllerReleaseTests.swift
+[120/136] Compiling FlashTeXMacTests DocumentFilesTests.swift
+[121/136] Compiling FlashTeXMacTests EditorDiagnosticsExplanationsTests.swift
+[122/136] Compiling FlashTeXMacTests EditorDiagnosticsQuickFixTests.swift
+[123/136] Compiling FlashTeXMacTests BridgeClientTests.swift
+[124/136] Compiling FlashTeXMacTests BridgeRecoveryTests.swift
+[125/136] Compiling FlashTeXMacTests CaretSyncTests.swift
+[126/136] Compiling FlashTeXMacTests CompletionTests.swift
+[127/136] Compiling FlashTeXMacTests ProposalPreviewTests.swift
+[128/136] Compiling FlashTeXMacTests RealBridgeTests.swift
+[129/136] Compiling FlashTeXMacTests RealCompilerTests.swift
+[130/136] Compiling FlashTeXMacTests RealEditLedgerTests.swift
+[131/136] Compiling FlashTeXMacTests LayoutCapabilityConsumerTests.swift
+/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/Tests/FlashTeXMacTests/NearbyReferenceClientTests.swift:235:58: warning: converting non-Sendable function value to '@Sendable (NearbyReconnector.Event) -> Void' may introduce data races
+233 |         let reconnector = NearbyReconnector(pair: longTermPair(), policy: policy,
+234 |                                             endpoints: { .hostPort(host: "127.0.0.1", port: NWEndpoint.Port(rawValue: port)!) },
+235 |                                             onEvent: log.record)
+    |                                                          `- warning: converting non-Sendable function value to '@Sendable (NearbyReconnector.Event) -> Void' may introduce data races
+236 |         let session = try await reconnector.connect()
+237 |         XCTAssertEqual(session.destination?.destinationId, anchor.destinationId)
+
+/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/Tests/FlashTeXMacTests/NearbyReferenceClientTests.swift:297:105: warning: converting non-Sendable function value to '@Sendable (NearbyReconnector.Event) -> Void' may introduce data races
+295 |         let log = EventLog()
+296 |         let policy = ReconnectPolicy(maxAttempts: 5, initialDelay: 0.1, maxDelay: 0.1, jitter: 0, connectTimeout: 3, requestTimeout: 10)
+297 |         let reconnector = NearbyReconnector(pair: pair, policy: policy, endpoints: { ep }, onEvent: log.record)
+    |                                                                                                         `- warning: converting non-Sendable function value to '@Sendable (NearbyReconnector.Event) -> Void' may introduce data races
+298 |         let session = try await reconnector.connect()
+299 |         try await waitUntil("hello seen") { state.connectedPairIds == [pair.pairId] }
+
+/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/Tests/FlashTeXMacTests/NearbyReferenceClientTests.swift:360:58: warning: converting non-Sendable function value to '@Sendable (NearbyReconnector.Event) -> Void' may introduce data races
+358 |         let reconnector = NearbyReconnector(pair: longTermPair(), policy: .immediate,
+359 |                                             endpoints: { .hostPort(host: "127.0.0.1", port: NWEndpoint.Port(rawValue: port)!) },
+360 |                                             onEvent: log.record)
+    |                                                          `- warning: converting non-Sendable function value to '@Sendable (NearbyReconnector.Event) -> Void' may introduce data races
+361 |         let session = try await reconnector.connect()
+362 |         XCTAssertEqual(session.destination, NearbyWire.Destination(destinationId: first.destinationId, projectId: first.projectId, path: first.path, baseRevision: first.baseRevision))
+
+/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/Tests/FlashTeXMacTests/NearbyReferenceClientTests.swift:453:156: warning: converting non-Sendable function value to '@Sendable (NearbyReconnector.Event) -> Void' may introduce data races
+451 |             let policy = ReconnectPolicy(maxAttempts: 4, initialDelay: 0.05, maxDelay: 0.05, jitter: 0, connectTimeout: 3, requestTimeout: 5)
+452 |             let r = NearbyReconnector(pair: longTermPair(), policy: policy,
+453 |                                       endpoints: { [port = h.port] in .hostPort(host: "127.0.0.1", port: NWEndpoint.Port(rawValue: port)!) }, onEvent: log.record)
+    |                                                                                                                                                            `- warning: converting non-Sendable function value to '@Sendable (NearbyReconnector.Event) -> Void' may introduce data races
+454 |             let session = try await r.connect()
+455 |             let first = try session.makeCapture(captureId: "ref-bp-1", image: Self.fixturePNG, mimeType: "image/png", instructions: "")
+
+/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/Tests/FlashTeXMacTests/NearbyReferenceClientTests.swift:504:48: warning: converting non-Sendable function value to '@Sendable (NearbyReconnector.Event) -> Void' may introduce data races
+502 |         let r = NearbyReconnector(pair: longTermPair(), policy: policy,
+503 |                                   endpoints: { [port = h.port] in .hostPort(host: "127.0.0.1", port: NWEndpoint.Port(rawValue: port)!) },
+504 |                                   onEvent: log.record,
+    |                                                `- warning: converting non-Sendable function value to '@Sendable (NearbyReconnector.Event) -> Void' may introduce data races
+505 |                                   sleep: { s in
+506 |                                       // What a companion does on too_many_sessions: close its older connections, then retry.
+
+/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/Tests/FlashTeXMacTests/NearbyReferenceClientTests.swift:548:152: warning: converting non-Sendable function value to '@Sendable (NearbyReconnector.Event) -> Void' may introduce data races
+546 |         let log = EventLog()
+547 |         let r = NearbyReconnector(pair: longTermPair(), policy: ReconnectPolicy(maxAttempts: 4, initialDelay: 0, jitter: 0),
+548 |                                   endpoints: { [port = h.port] in .hostPort(host: "127.0.0.1", port: NWEndpoint.Port(rawValue: port)!) }, onEvent: log.record)
+    |                                                                                                                                                        `- warning: converting non-Sendable function value to '@Sendable (NearbyReconnector.Event) -> Void' may introduce data races
+549 |         let session = try await r.connect()
+550 |         // Structurally broken PNG (signature + garbage): passes the client's cheap check, refused by the Mac.
+[132/136] Compiling FlashTeXMacTests NavigationTests.swift
+/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/Tests/FlashTeXMacTests/NearbyReferenceClientTests.swift:235:58: warning: converting non-Sendable function value to '@Sendable (NearbyReconnector.Event) -> Void' may introduce data races
+233 |         let reconnector = NearbyReconnector(pair: longTermPair(), policy: policy,
+234 |                                             endpoints: { .hostPort(host: "127.0.0.1", port: NWEndpoint.Port(rawValue: port)!) },
+235 |                                             onEvent: log.record)
+    |                                                          `- warning: converting non-Sendable function value to '@Sendable (NearbyReconnector.Event) -> Void' may introduce data races
+236 |         let session = try await reconnector.connect()
+237 |         XCTAssertEqual(session.destination?.destinationId, anchor.destinationId)
+
+/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/Tests/FlashTeXMacTests/NearbyReferenceClientTests.swift:297:105: warning: converting non-Sendable function value to '@Sendable (NearbyReconnector.Event) -> Void' may introduce data races
+295 |         let log = EventLog()
+296 |         let policy = ReconnectPolicy(maxAttempts: 5, initialDelay: 0.1, maxDelay: 0.1, jitter: 0, connectTimeout: 3, requestTimeout: 10)
+297 |         let reconnector = NearbyReconnector(pair: pair, policy: policy, endpoints: { ep }, onEvent: log.record)
+    |                                                                                                         `- warning: converting non-Sendable function value to '@Sendable (NearbyReconnector.Event) -> Void' may introduce data races
+298 |         let session = try await reconnector.connect()
+299 |         try await waitUntil("hello seen") { state.connectedPairIds == [pair.pairId] }
+
+/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/Tests/FlashTeXMacTests/NearbyReferenceClientTests.swift:360:58: warning: converting non-Sendable function value to '@Sendable (NearbyReconnector.Event) -> Void' may introduce data races
+358 |         let reconnector = NearbyReconnector(pair: longTermPair(), policy: .immediate,
+359 |                                             endpoints: { .hostPort(host: "127.0.0.1", port: NWEndpoint.Port(rawValue: port)!) },
+360 |                                             onEvent: log.record)
+    |                                                          `- warning: converting non-Sendable function value to '@Sendable (NearbyReconnector.Event) -> Void' may introduce data races
+361 |         let session = try await reconnector.connect()
+362 |         XCTAssertEqual(session.destination, NearbyWire.Destination(destinationId: first.destinationId, projectId: first.projectId, path: first.path, baseRevision: first.baseRevision))
+
+/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/Tests/FlashTeXMacTests/NearbyReferenceClientTests.swift:453:156: warning: converting non-Sendable function value to '@Sendable (NearbyReconnector.Event) -> Void' may introduce data races
+451 |             let policy = ReconnectPolicy(maxAttempts: 4, initialDelay: 0.05, maxDelay: 0.05, jitter: 0, connectTimeout: 3, requestTimeout: 5)
+452 |             let r = NearbyReconnector(pair: longTermPair(), policy: policy,
+453 |                                       endpoints: { [port = h.port] in .hostPort(host: "127.0.0.1", port: NWEndpoint.Port(rawValue: port)!) }, onEvent: log.record)
+    |                                                                                                                                                            `- warning: converting non-Sendable function value to '@Sendable (NearbyReconnector.Event) -> Void' may introduce data races
+454 |             let session = try await r.connect()
+455 |             let first = try session.makeCapture(captureId: "ref-bp-1", image: Self.fixturePNG, mimeType: "image/png", instructions: "")
+
+/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/Tests/FlashTeXMacTests/NearbyReferenceClientTests.swift:504:48: warning: converting non-Sendable function value to '@Sendable (NearbyReconnector.Event) -> Void' may introduce data races
+502 |         let r = NearbyReconnector(pair: longTermPair(), policy: policy,
+503 |                                   endpoints: { [port = h.port] in .hostPort(host: "127.0.0.1", port: NWEndpoint.Port(rawValue: port)!) },
+504 |                                   onEvent: log.record,
+    |                                                `- warning: converting non-Sendable function value to '@Sendable (NearbyReconnector.Event) -> Void' may introduce data races
+505 |                                   sleep: { s in
+506 |                                       // What a companion does on too_many_sessions: close its older connections, then retry.
+
+/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/Tests/FlashTeXMacTests/NearbyReferenceClientTests.swift:548:152: warning: converting non-Sendable function value to '@Sendable (NearbyReconnector.Event) -> Void' may introduce data races
+546 |         let log = EventLog()
+547 |         let r = NearbyReconnector(pair: longTermPair(), policy: ReconnectPolicy(maxAttempts: 4, initialDelay: 0, jitter: 0),
+548 |                                   endpoints: { [port = h.port] in .hostPort(host: "127.0.0.1", port: NWEndpoint.Port(rawValue: port)!) }, onEvent: log.record)
+    |                                                                                                                                                        `- warning: converting non-Sendable function value to '@Sendable (NearbyReconnector.Event) -> Void' may introduce data races
+549 |         let session = try await r.connect()
+550 |         // Structurally broken PNG (signature + garbage): passes the client's cheap check, refused by the Mac.
+[133/136] Compiling FlashTeXMacTests NearbyListenerTests.swift
+/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/Tests/FlashTeXMacTests/NearbyReferenceClientTests.swift:235:58: warning: converting non-Sendable function value to '@Sendable (NearbyReconnector.Event) -> Void' may introduce data races
+233 |         let reconnector = NearbyReconnector(pair: longTermPair(), policy: policy,
+234 |                                             endpoints: { .hostPort(host: "127.0.0.1", port: NWEndpoint.Port(rawValue: port)!) },
+235 |                                             onEvent: log.record)
+    |                                                          `- warning: converting non-Sendable function value to '@Sendable (NearbyReconnector.Event) -> Void' may introduce data races
+236 |         let session = try await reconnector.connect()
+237 |         XCTAssertEqual(session.destination?.destinationId, anchor.destinationId)
+
+/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/Tests/FlashTeXMacTests/NearbyReferenceClientTests.swift:297:105: warning: converting non-Sendable function value to '@Sendable (NearbyReconnector.Event) -> Void' may introduce data races
+295 |         let log = EventLog()
+296 |         let policy = ReconnectPolicy(maxAttempts: 5, initialDelay: 0.1, maxDelay: 0.1, jitter: 0, connectTimeout: 3, requestTimeout: 10)
+297 |         let reconnector = NearbyReconnector(pair: pair, policy: policy, endpoints: { ep }, onEvent: log.record)
+    |                                                                                                         `- warning: converting non-Sendable function value to '@Sendable (NearbyReconnector.Event) -> Void' may introduce data races
+298 |         let session = try await reconnector.connect()
+299 |         try await waitUntil("hello seen") { state.connectedPairIds == [pair.pairId] }
+
+/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/Tests/FlashTeXMacTests/NearbyReferenceClientTests.swift:360:58: warning: converting non-Sendable function value to '@Sendable (NearbyReconnector.Event) -> Void' may introduce data races
+358 |         let reconnector = NearbyReconnector(pair: longTermPair(), policy: .immediate,
+359 |                                             endpoints: { .hostPort(host: "127.0.0.1", port: NWEndpoint.Port(rawValue: port)!) },
+360 |                                             onEvent: log.record)
+    |                                                          `- warning: converting non-Sendable function value to '@Sendable (NearbyReconnector.Event) -> Void' may introduce data races
+361 |         let session = try await reconnector.connect()
+362 |         XCTAssertEqual(session.destination, NearbyWire.Destination(destinationId: first.destinationId, projectId: first.projectId, path: first.path, baseRevision: first.baseRevision))
+
+/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/Tests/FlashTeXMacTests/NearbyReferenceClientTests.swift:453:156: warning: converting non-Sendable function value to '@Sendable (NearbyReconnector.Event) -> Void' may introduce data races
+451 |             let policy = ReconnectPolicy(maxAttempts: 4, initialDelay: 0.05, maxDelay: 0.05, jitter: 0, connectTimeout: 3, requestTimeout: 5)
+452 |             let r = NearbyReconnector(pair: longTermPair(), policy: policy,
+453 |                                       endpoints: { [port = h.port] in .hostPort(host: "127.0.0.1", port: NWEndpoint.Port(rawValue: port)!) }, onEvent: log.record)
+    |                                                                                                                                                            `- warning: converting non-Sendable function value to '@Sendable (NearbyReconnector.Event) -> Void' may introduce data races
+454 |             let session = try await r.connect()
+455 |             let first = try session.makeCapture(captureId: "ref-bp-1", image: Self.fixturePNG, mimeType: "image/png", instructions: "")
+
+/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/Tests/FlashTeXMacTests/NearbyReferenceClientTests.swift:504:48: warning: converting non-Sendable function value to '@Sendable (NearbyReconnector.Event) -> Void' may introduce data races
+502 |         let r = NearbyReconnector(pair: longTermPair(), policy: policy,
+503 |                                   endpoints: { [port = h.port] in .hostPort(host: "127.0.0.1", port: NWEndpoint.Port(rawValue: port)!) },
+504 |                                   onEvent: log.record,
+    |                                                `- warning: converting non-Sendable function value to '@Sendable (NearbyReconnector.Event) -> Void' may introduce data races
+505 |                                   sleep: { s in
+506 |                                       // What a companion does on too_many_sessions: close its older connections, then retry.
+
+/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/Tests/FlashTeXMacTests/NearbyReferenceClientTests.swift:548:152: warning: converting non-Sendable function value to '@Sendable (NearbyReconnector.Event) -> Void' may introduce data races
+546 |         let log = EventLog()
+547 |         let r = NearbyReconnector(pair: longTermPair(), policy: ReconnectPolicy(maxAttempts: 4, initialDelay: 0, jitter: 0),
+548 |                                   endpoints: { [port = h.port] in .hostPort(host: "127.0.0.1", port: NWEndpoint.Port(rawValue: port)!) }, onEvent: log.record)
+    |                                                                                                                                                        `- warning: converting non-Sendable function value to '@Sendable (NearbyReconnector.Event) -> Void' may introduce data races
+549 |         let session = try await r.connect()
+550 |         // Structurally broken PNG (signature + garbage): passes the client's cheap check, refused by the Mac.
+[134/136] Compiling FlashTeXMacTests NearbyReferenceClientTests.swift
+/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/Tests/FlashTeXMacTests/NearbyReferenceClientTests.swift:235:58: warning: converting non-Sendable function value to '@Sendable (NearbyReconnector.Event) -> Void' may introduce data races
+233 |         let reconnector = NearbyReconnector(pair: longTermPair(), policy: policy,
+234 |                                             endpoints: { .hostPort(host: "127.0.0.1", port: NWEndpoint.Port(rawValue: port)!) },
+235 |                                             onEvent: log.record)
+    |                                                          `- warning: converting non-Sendable function value to '@Sendable (NearbyReconnector.Event) -> Void' may introduce data races
+236 |         let session = try await reconnector.connect()
+237 |         XCTAssertEqual(session.destination?.destinationId, anchor.destinationId)
+
+/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/Tests/FlashTeXMacTests/NearbyReferenceClientTests.swift:297:105: warning: converting non-Sendable function value to '@Sendable (NearbyReconnector.Event) -> Void' may introduce data races
+295 |         let log = EventLog()
+296 |         let policy = ReconnectPolicy(maxAttempts: 5, initialDelay: 0.1, maxDelay: 0.1, jitter: 0, connectTimeout: 3, requestTimeout: 10)
+297 |         let reconnector = NearbyReconnector(pair: pair, policy: policy, endpoints: { ep }, onEvent: log.record)
+    |                                                                                                         `- warning: converting non-Sendable function value to '@Sendable (NearbyReconnector.Event) -> Void' may introduce data races
+298 |         let session = try await reconnector.connect()
+299 |         try await waitUntil("hello seen") { state.connectedPairIds == [pair.pairId] }
+
+/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/Tests/FlashTeXMacTests/NearbyReferenceClientTests.swift:360:58: warning: converting non-Sendable function value to '@Sendable (NearbyReconnector.Event) -> Void' may introduce data races
+358 |         let reconnector = NearbyReconnector(pair: longTermPair(), policy: .immediate,
+359 |                                             endpoints: { .hostPort(host: "127.0.0.1", port: NWEndpoint.Port(rawValue: port)!) },
+360 |                                             onEvent: log.record)
+    |                                                          `- warning: converting non-Sendable function value to '@Sendable (NearbyReconnector.Event) -> Void' may introduce data races
+361 |         let session = try await reconnector.connect()
+362 |         XCTAssertEqual(session.destination, NearbyWire.Destination(destinationId: first.destinationId, projectId: first.projectId, path: first.path, baseRevision: first.baseRevision))
+
+/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/Tests/FlashTeXMacTests/NearbyReferenceClientTests.swift:453:156: warning: converting non-Sendable function value to '@Sendable (NearbyReconnector.Event) -> Void' may introduce data races
+451 |             let policy = ReconnectPolicy(maxAttempts: 4, initialDelay: 0.05, maxDelay: 0.05, jitter: 0, connectTimeout: 3, requestTimeout: 5)
+452 |             let r = NearbyReconnector(pair: longTermPair(), policy: policy,
+453 |                                       endpoints: { [port = h.port] in .hostPort(host: "127.0.0.1", port: NWEndpoint.Port(rawValue: port)!) }, onEvent: log.record)
+    |                                                                                                                                                            `- warning: converting non-Sendable function value to '@Sendable (NearbyReconnector.Event) -> Void' may introduce data races
+454 |             let session = try await r.connect()
+455 |             let first = try session.makeCapture(captureId: "ref-bp-1", image: Self.fixturePNG, mimeType: "image/png", instructions: "")
+
+/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/Tests/FlashTeXMacTests/NearbyReferenceClientTests.swift:504:48: warning: converting non-Sendable function value to '@Sendable (NearbyReconnector.Event) -> Void' may introduce data races
+502 |         let r = NearbyReconnector(pair: longTermPair(), policy: policy,
+503 |                                   endpoints: { [port = h.port] in .hostPort(host: "127.0.0.1", port: NWEndpoint.Port(rawValue: port)!) },
+504 |                                   onEvent: log.record,
+    |                                                `- warning: converting non-Sendable function value to '@Sendable (NearbyReconnector.Event) -> Void' may introduce data races
+505 |                                   sleep: { s in
+506 |                                       // What a companion does on too_many_sessions: close its older connections, then retry.
+
+/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/Tests/FlashTeXMacTests/NearbyReferenceClientTests.swift:548:152: warning: converting non-Sendable function value to '@Sendable (NearbyReconnector.Event) -> Void' may introduce data races
+546 |         let log = EventLog()
+547 |         let r = NearbyReconnector(pair: longTermPair(), policy: ReconnectPolicy(maxAttempts: 4, initialDelay: 0, jitter: 0),
+548 |                                   endpoints: { [port = h.port] in .hostPort(host: "127.0.0.1", port: NWEndpoint.Port(rawValue: port)!) }, onEvent: log.record)
+    |                                                                                                                                                        `- warning: converting non-Sendable function value to '@Sendable (NearbyReconnector.Event) -> Void' may introduce data races
+549 |         let session = try await r.connect()
+550 |         // Structurally broken PNG (signature + garbage): passes the client's cheap check, refused by the Mac.
+[135/138] Compiling FlashTeXMacPackageTests runner.swift
+[136/138] Emitting module FlashTeXMacPackageTests
+[136/138] Write Objects.LinkFileList
+[137/138] Linking FlashTeXMacPackageTests
+Build complete! (36.02s)
+Test Suite 'Selected tests' started at 2026-09-12 07:18:55.760.
+Test Suite 'FlashTeXMacPackageTests.xctest' started at 2026-09-12 07:18:55.762.
+Test Suite 'DocumentFilesControllerTests' started at 2026-09-12 07:18:55.762.
+Test Case '-[FlashTeXMacTests.DocumentFilesControllerTests testControllerReloadIsReviewedPinnedAndImportedIntoTheDurableSource]' started.
+Test Case '-[FlashTeXMacTests.DocumentFilesControllerTests testControllerReloadIsReviewedPinnedAndImportedIntoTheDurableSource]' passed (0.661 seconds).
+Test Suite 'DocumentFilesControllerTests' passed at 2026-09-12 07:18:56.423.
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.661 (0.661) seconds
+Test Suite 'DocumentFilesTests' started at 2026-09-12 07:18:56.423.
+Test Case '-[FlashTeXMacTests.DocumentFilesTests testDirectFallbackIsReportedAndStillDetectsConflicts]' started.
+Test Case '-[FlashTeXMacTests.DocumentFilesTests testDirectFallbackIsReportedAndStillDetectsConflicts]' passed (0.007 seconds).
+Test Case '-[FlashTeXMacTests.DocumentFilesTests testGarbageReplyIsAProtocolFailureNotASave]' started.
+Test Case '-[FlashTeXMacTests.DocumentFilesTests testGarbageReplyIsAProtocolFailureNotASave]' passed (0.703 seconds).
+Test Case '-[FlashTeXMacTests.DocumentFilesTests testHangingHelperKeepsTheDirtyBufferAndIsRestartedNextTime]' started.
+Test Case '-[FlashTeXMacTests.DocumentFilesTests testHangingHelperKeepsTheDirtyBufferAndIsRestartedNextTime]' passed (1.118 seconds).
+Test Case '-[FlashTeXMacTests.DocumentFilesTests testHelperExitingMidRequestKeepsTheDirtyBuffer]' started.
+Test Case '-[FlashTeXMacTests.DocumentFilesTests testHelperExitingMidRequestKeepsTheDirtyBuffer]' passed (0.474 seconds).
+Test Case '-[FlashTeXMacTests.DocumentFilesTests testHelperRefusesSymlinksAndNeverWritesOutsideTheRoot]' started.
+Test Case '-[FlashTeXMacTests.DocumentFilesTests testHelperRefusesSymlinksAndNeverWritesOutsideTheRoot]' passed (0.017 seconds).
+Test Case '-[FlashTeXMacTests.DocumentFilesTests testHelperSaveRefusesExternalChangesUntilOverwriteOrReload]' started.
+Test Case '-[FlashTeXMacTests.DocumentFilesTests testHelperSaveRefusesExternalChangesUntilOverwriteOrReload]' passed (0.060 seconds).
+Test Case '-[FlashTeXMacTests.DocumentFilesTests testLateSaveReceiptIsReconciledWithoutLosingLaterEdits]' started.
+Test Case '-[FlashTeXMacTests.DocumentFilesTests testLateSaveReceiptIsReconciledWithoutLosingLaterEdits]' passed (6.142 seconds).
+Test Case '-[FlashTeXMacTests.DocumentFilesTests testLineChangeSummaryCountsAddedAndRemovedLines]' started.
+Test Case '-[FlashTeXMacTests.DocumentFilesTests testLineChangeSummaryCountsAddedAndRemovedLines]' passed (0.000 seconds).
+Test Case '-[FlashTeXMacTests.DocumentFilesTests testMultiFileOpenDetachReopenAcrossProjectRoots]' started.
+Test Case '-[FlashTeXMacTests.DocumentFilesTests testMultiFileOpenDetachReopenAcrossProjectRoots]' passed (0.176 seconds).
+Test Case '-[FlashTeXMacTests.DocumentFilesTests testReloadIsReviewedAndPinnedToTheReviewedSnapshot]' started.
+Test Case '-[FlashTeXMacTests.DocumentFilesTests testReloadIsReviewedAndPinnedToTheReviewedSnapshot]' passed (0.083 seconds).
+Test Suite 'DocumentFilesTests' passed at 2026-09-12 07:19:05.205.
+	 Executed 10 tests, with 0 failures (0 unexpected) in 8.780 (8.782) seconds
+Test Suite 'HistoricalPreviewTests' started at 2026-09-12 07:19:05.205.
+Test Case '-[FlashTeXMacTests.HistoricalPreviewTests testCloseAndReattachInvalidateNegotiationAndFloor]' started.
+Test Case '-[FlashTeXMacTests.HistoricalPreviewTests testCloseAndReattachInvalidateNegotiationAndFloor]' passed (0.357 seconds).
+Test Case '-[FlashTeXMacTests.HistoricalPreviewTests testDecodesCompletedSnapshotAndRefusesMalformedOnes]' started.
+Test Case '-[FlashTeXMacTests.HistoricalPreviewTests testDecodesCompletedSnapshotAndRefusesMalformedOnes]' passed (0.005 seconds).
+Test Case '-[FlashTeXMacTests.HistoricalPreviewTests testFramesWithForeignTokenOrProjectAreRefusedAndWrongSessionIsAViolation]' started.
+Test Case '-[FlashTeXMacTests.HistoricalPreviewTests testFramesWithForeignTokenOrProjectAreRefusedAndWrongSessionIsAViolation]' passed (0.773 seconds).
+Test Case '-[FlashTeXMacTests.HistoricalPreviewTests testHistoricalDisplayLabel]' started.
+Test Case '-[FlashTeXMacTests.HistoricalPreviewTests testHistoricalDisplayLabel]' passed (0.000 seconds).
+Test Case '-[FlashTeXMacTests.HistoricalPreviewTests testHistoricalFrameAfterCurrentIsDropped]' started.
+Test Case '-[FlashTeXMacTests.HistoricalPreviewTests testHistoricalFrameAfterCurrentIsDropped]' passed (0.258 seconds).
+Test Case '-[FlashTeXMacTests.HistoricalPreviewTests testHistoricalFrameBeforeCurrentIsPaintedLabelledGatedThenReplaced]' started.
+Test Case '-[FlashTeXMacTests.HistoricalPreviewTests testHistoricalFrameBeforeCurrentIsPaintedLabelledGatedThenReplaced]' passed (0.274 seconds).
+Test Case '-[FlashTeXMacTests.HistoricalPreviewTests testMalformedClaimsOfCurrencyAreViolationsNotFrames]' started.
+Test Case '-[FlashTeXMacTests.HistoricalPreviewTests testMalformedClaimsOfCurrencyAreViolationsNotFrames]' passed (0.504 seconds).
+Test Case '-[FlashTeXMacTests.HistoricalPreviewTests testNegotiationPayloadMatchesHelperWire]' started.
+Test Case '-[FlashTeXMacTests.HistoricalPreviewTests testNegotiationPayloadMatchesHelperWire]' passed (0.000 seconds).
+Test Case '-[FlashTeXMacTests.HistoricalPreviewTests testNoEmissionAndNoTokenWithoutNegotiation]' started.
+Test Case '-[FlashTeXMacTests.HistoricalPreviewTests testNoEmissionAndNoTokenWithoutNegotiation]' passed (0.195 seconds).
+Test Case '-[FlashTeXMacTests.HistoricalPreviewTests testRealHelperNegotiatesEchoesTokensAndPaintsHistoryDuringABurst]' started.
+Test Case '-[FlashTeXMacTests.HistoricalPreviewTests testRealHelperNegotiatesEchoesTokensAndPaintsHistoryDuringABurst]' passed (0.666 seconds).
+Test Case '-[FlashTeXMacTests.HistoricalPreviewTests testReplaceProjectClearsTheFlag]' started.
+Test Case '-[FlashTeXMacTests.HistoricalPreviewTests testReplaceProjectClearsTheFlag]' passed (0.125 seconds).
+Test Case '-[FlashTeXMacTests.HistoricalPreviewTests testStateKeepsOnePendingFrameHonoursTheFloorAndInvalidatesOnSwitch]' started.
+Test Case '-[FlashTeXMacTests.HistoricalPreviewTests testStateKeepsOnePendingFrameHonoursTheFloorAndInvalidatesOnSwitch]' passed (0.001 seconds).
+Test Case '-[FlashTeXMacTests.HistoricalPreviewTests testTokenRoundTripAndForeignTokensRefused]' started.
+Test Case '-[FlashTeXMacTests.HistoricalPreviewTests testTokenRoundTripAndForeignTokensRefused]' passed (0.000 seconds).
+Test Suite 'HistoricalPreviewTests' passed at 2026-09-12 07:19:08.364.
+	 Executed 13 tests, with 0 failures (0 unexpected) in 3.158 (3.159) seconds
+Test Suite 'ProjectDocumentsTests' started at 2026-09-12 07:19:08.364.
+Test Case '-[FlashTeXMacTests.ProjectDocumentsTests testClosureDepthIsBounded]' started.
+Test Case '-[FlashTeXMacTests.ProjectDocumentsTests testClosureDepthIsBounded]' passed (0.023 seconds).
+Test Case '-[FlashTeXMacTests.ProjectDocumentsTests testClosureIsDepthFirstRefusesCyclesAndListsDiamondsOnce]' started.
+Test Case '-[FlashTeXMacTests.ProjectDocumentsTests testClosureIsDepthFirstRefusesCyclesAndListsDiamondsOnce]' passed (0.021 seconds).
+Test Case '-[FlashTeXMacTests.ProjectDocumentsTests testClosureRefusesSelfInclude]' started.
+Test Case '-[FlashTeXMacTests.ProjectDocumentsTests testClosureRefusesSelfInclude]' passed (0.012 seconds).
+Test Case '-[FlashTeXMacTests.ProjectDocumentsTests testDirectModeNeedsAProjectRoot]' started.
+Test Case '-[FlashTeXMacTests.ProjectDocumentsTests testDirectModeNeedsAProjectRoot]' passed (0.002 seconds).
+Test Case '-[FlashTeXMacTests.ProjectDocumentsTests testDirectModeOpensIncludesSwitchesAndDetaches]' started.
+Test Case '-[FlashTeXMacTests.ProjectDocumentsTests testDirectModeOpensIncludesSwitchesAndDetaches]' passed (0.017 seconds).
+Test Case '-[FlashTeXMacTests.ProjectDocumentsTests testDirectModeRefusesEscapesSymlinksAndMissingFiles]' started.
+Test Case '-[FlashTeXMacTests.ProjectDocumentsTests testDirectModeRefusesEscapesSymlinksAndMissingFiles]' passed (0.017 seconds).
+Test Case '-[FlashTeXMacTests.ProjectDocumentsTests testDirectModeSavesNonEntryDocumentsAndRefusesChangedDisk]' started.
+Test Case '-[FlashTeXMacTests.ProjectDocumentsTests testDirectModeSavesNonEntryDocumentsAndRefusesChangedDisk]' passed (0.028 seconds).
+Test Case '-[FlashTeXMacTests.ProjectDocumentsTests testHelperRouteOpensWithExactSnapshotAndDetaches]' started.
+Test Case '-[FlashTeXMacTests.ProjectDocumentsTests testHelperRouteOpensWithExactSnapshotAndDetaches]' passed (0.146 seconds).
+Test Case '-[FlashTeXMacTests.ProjectDocumentsTests testHelperRouteSavesThroughExportAndFlushesOnSwitch]' started.
+Test Case '-[FlashTeXMacTests.ProjectDocumentsTests testHelperRouteSavesThroughExportAndFlushesOnSwitch]' passed (0.197 seconds).
+Test Case '-[FlashTeXMacTests.ProjectDocumentsTests testHelperSyncAttachesDocumentsOpenedBeforeTheController]' started.
+Test Case '-[FlashTeXMacTests.ProjectDocumentsTests testHelperSyncAttachesDocumentsOpenedBeforeTheController]' passed (0.094 seconds).
+Test Case '-[FlashTeXMacTests.ProjectDocumentsTests testNavigationSwitchRecordsTheOutgoingCaret]' started.
+Test Case '-[FlashTeXMacTests.ProjectDocumentsTests testNavigationSwitchRecordsTheOutgoingCaret]' passed (0.002 seconds).
+Test Case '-[FlashTeXMacTests.ProjectDocumentsTests testRootedPathNormalizationMirrorsProjectFiles]' started.
+Test Case '-[FlashTeXMacTests.ProjectDocumentsTests testRootedPathNormalizationMirrorsProjectFiles]' passed (0.000 seconds).
+Test Case '-[FlashTeXMacTests.ProjectDocumentsTests testSaveCommandWritesOnlyTheActiveNonEntryDocumentDirectly]' started.
+Test Case '-[FlashTeXMacTests.ProjectDocumentsTests testSaveCommandWritesOnlyTheActiveNonEntryDocumentDirectly]' passed (0.051 seconds).
+Test Case '-[FlashTeXMacTests.ProjectDocumentsTests testSaveCommandWritesOnlyTheActiveNonEntryDocumentThroughTheHelper]' started.
+Test Case '-[FlashTeXMacTests.ProjectDocumentsTests testSaveCommandWritesOnlyTheActiveNonEntryDocumentThroughTheHelper]' passed (0.198 seconds).
+Test Case '-[FlashTeXMacTests.ProjectDocumentsTests testScanFindsInputAndIncludeWithByteSpans]' started.
+Test Case '-[FlashTeXMacTests.ProjectDocumentsTests testScanFindsInputAndIncludeWithByteSpans]' passed (0.000 seconds).
+Test Case '-[FlashTeXMacTests.ProjectDocumentsTests testScanIsBounded]' started.
+Test Case '-[FlashTeXMacTests.ProjectDocumentsTests testScanIsBounded]' passed (0.000 seconds).
+Test Case '-[FlashTeXMacTests.ProjectDocumentsTests testScanSkipsCommentsVerbVerbatimAndCommandPrefixes]' started.
+Test Case '-[FlashTeXMacTests.ProjectDocumentsTests testScanSkipsCommentsVerbVerbatimAndCommandPrefixes]' passed (0.000 seconds).
+Test Case '-[FlashTeXMacTests.ProjectDocumentsTests testScanSpansAreBytesNotCharacters]' started.
+Test Case '-[FlashTeXMacTests.ProjectDocumentsTests testScanSpansAreBytesNotCharacters]' passed (0.000 seconds).
+Test Suite 'ProjectDocumentsTests' passed at 2026-09-12 07:19:09.174.
+	 Executed 18 tests, with 0 failures (0 unexpected) in 0.808 (0.810) seconds
+Test Suite 'ShellModelWorkerTests' started at 2026-09-12 07:19:09.174.
+Test Case '-[FlashTeXMacTests.ShellModelWorkerTests testCrashedWorkerIsRelaunchedWithBoundedBackoff]' started.
+Test Case '-[FlashTeXMacTests.ShellModelWorkerTests testCrashedWorkerIsRelaunchedWithBoundedBackoff]' passed (5.085 seconds).
+Test Suite 'ShellModelWorkerTests' passed at 2026-09-12 07:19:14.260.
+	 Executed 1 test, with 0 failures (0 unexpected) in 5.085 (5.085) seconds
+Test Suite 'FlashTeXMacPackageTests.xctest' passed at 2026-09-12 07:19:14.260.
+	 Executed 43 tests, with 0 failures (0 unexpected) in 18.492 (18.498) seconds
+Test Suite 'Selected tests' passed at 2026-09-12 07:19:14.260.
+	 Executed 43 tests, with 0 failures (0 unexpected) in 18.492 (18.499) seconds
+real helper burst: historical painted=2 refused=0 dropped=0 observed=["revision 3 shown — revision 7 compiling", "revision 5 shown — revision 22 compiling"] log=["historical: requested completed-snapshots-v1 (pc-1)", "historical: helper acknowledged completed-snapshots-v1", "historical: painted preview-4 as revision 3; revision 3 shown — revision 7 compiling", "historical: painted preview-5 as revision 5; revision 5 shown — revision 22 compiling"]
+◇ Test run started.
+↳ Testing Library Version: 1501
+↳ Target Platform: arm64e-apple-macos14.0
+✔ Test run with 0 tests in 0 suites passed after 0.001 seconds.

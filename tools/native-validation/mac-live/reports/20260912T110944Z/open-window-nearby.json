@@ -1,0 +1,63 @@
+{
+ "app_exit": -15,
+ "checks": [
+  {
+   "detail": "pid 15068",
+   "name": "app process running",
+   "ok": true
+  },
+  {
+   "detail": "{\"bounds\": [726, 392, 456, 588], \"id\": 12332, \"layer\": 0, \"name\": \"Nearby Companion\"}",
+   "name": "on-screen window titled 'Nearby Companion' owned by the app (CGWindowList)",
+   "ok": true
+  },
+  {
+   "detail": "{\"path\": \"/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/reports/20260912T110944Z/open-window-nearby/nearby.png\", \"bytes\": 233882, \"width\": 924, \"height\": 1188, \"screencapture_exit\": 0, \"stderr\": \"\"}",
+   "name": "screencapture -l <window id> wrote a PNG (> 4 KB, > 100x100 px)",
+   "ok": true
+  },
+  {
+   "detail": "env",
+   "name": "never activated (FLASHTEX_NO_ACTIVATE=1)",
+   "ok": true
+  }
+ ],
+ "expected_title": "Nearby Companion",
+ "failed": 0,
+ "passed": 4,
+ "pid": 15068,
+ "screenshot": {
+  "bytes": 233882,
+  "height": 1188,
+  "path": "/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/reports/20260912T110944Z/open-window-nearby/nearby.png",
+  "screencapture_exit": 0,
+  "stderr": "",
+  "width": 924
+ },
+ "seen_after_s": 0.708,
+ "window_id": "nearby",
+ "windows": [
+  {
+   "bounds": [
+    726,
+    392,
+    456,
+    588
+   ],
+   "id": 12332,
+   "layer": 0,
+   "name": "Nearby Companion"
+  },
+  {
+   "bounds": [
+    616,
+    37,
+    892,
+    940
+   ],
+   "id": 12330,
+   "layer": 0,
+   "name": "FlashTeX"
+  }
+ ]
+}

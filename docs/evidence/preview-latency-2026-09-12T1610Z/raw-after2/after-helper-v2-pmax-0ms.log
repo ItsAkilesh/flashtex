@@ -1,0 +1,322 @@
+2026-09-12T16:54:15Z	status: no worker attached
+2026-09-12T16:54:15Z	status: attached: flashtex-preview-controller
+2026-09-12T16:54:15Z	launched /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a96ab6bafe259bfb2/crates/preview-controller/target/release/flashtex-preview-controller for /var/folders/_0/d71mvr2d4_177qkm0506xl200000gn/T/flashtex-project-69D7FFCF-59B7-4CED-AE2B-603A1C80405F (ledger /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a96ab6bafe259bfb2/apps/mac/build/preview-latency/2026-09-12T165224Z/after-helper-v2-pmax-0ms/ledger)
+2026-09-12T16:54:15Z	controller: {"admission_attempt_ms":0.032417,"at_ms":0.039375,"bytes":208,"class":"required","compile_revision":null,"outcome":"admitted","phase":"output_frame",
+2026-09-12T16:54:15Z	controller: "sequence":1}
+2026-09-12T16:54:15Z	controller: {"admission_attempt_ms":0.032417,
+2026-09-12T16:54:15Z	controller: "at_ms":0.043917,"bytes":208,"class":"required"
+2026-09-12T16:54:15Z	controller: ,"compile_revision":null,"outcome":"dequeued"
+2026-09-12T16:54:15Z	controller: ,"phase
+2026-09-12T16:54:15Z	controller: ":"output_frame",
+2026-09-12T16:54:15Z	controller: "sequence":1}
+{"
+2026-09-12T16:54:15Z	controller: admission_attempt_ms
+2026-09-12T16:54:15Z	controller: ":0.032417,"at_ms":0.192125,"bytes":208,"class":"required","
+2026-09-12T16:54:15Z	controller: compile_revision":null,"outcome":"write_started","phase":"output_frame","sequence":1}
+2026-09-12T16:54:15Z	controller ready: compiler frames ≤ 8 MiB, helper output ≤ 16 MiB
+2026-09-12T16:54:15Z	display-candidate: requested display-candidates-v1 (pc-2)
+2026-09-12T16:54:15Z	controller: {"admission_attempt_ms":0.032417,"at_ms":0.279,"bytes":208,"class":"required","compile_revision":null,"outcome":"write_finished","phase":"output_frame","sequence":1}
+2026-09-12T16:54:15Z	controller: {"duration_ms":0.313875,"events":1,"phase":"compiler_poll"}
+2026-09-12T16:54:15Z	controller: {"admission_attempt_ms":28.765791999999998,"at_ms":28.771083,"bytes":605350,"class":"required","compile_revision":null,
+2026-09-12T16:54:15Z	controller: "outcome":"admitted","
+2026-09-12T16:54:15Z	controller: phase":"output_frame","
+2026-09-12T16:54:15Z	controller: sequence":2}
+2026-09-12T16:54:15Z	controller: {"admission_attempt_ms":28.765791999999998,"at_ms":28.779833,"bytes":605350,"class":"required","compile_revision":null,"outcome"
+2026-09-12T16:54:15Z	controller: :"dequeued","phase":"output_frame","sequence":2}
+{"admission_attempt_ms":
+2026-09-12T16:54:15Z	controller: 28.765791999999998,"at_ms":28.882,"bytes":605350,"class":"required",
+2026-09-12T16:54:15Z	controller: "compile_revision":null,"outcome":"write_started","phase":"output_frame
+2026-09-12T16:54:15Z	controller: ","sequence":2}
+2026-09-12T16:54:15Z	controller: {"admission_attempt_ms":28.765791999999998,"at_ms":29.500999999999998,"bytes":605350,"class":"required","compile_revision":null,"outcome":"write_finished","phase":"output_frame","sequence":2}
+2026-09-12T16:54:15Z	ignored controller preview preview-1: versions ["main.tex": 1] unknown to this session
+2026-09-12T16:54:15Z	controller: {"admission_attempt_ms":60.938041999999996,"at_ms":60.941874999999996,"bytes":136,"class":"
+2026-09-12T16:54:15Z	controller: required","compile_revision":null,"outcome":"admitted",
+2026-09-12T16:54:15Z	controller: "phase":"
+2026-09-12T16:54:15Z	controller: output_frame","sequence":3}
+{"admission_attempt_ms":
+2026-09-12T16:54:15Z	controller: 60.938041999999996,"at_ms":60.961667,"bytes":136,
+2026-09-12T16:54:15Z	controller: "class":"required"
+2026-09-12T16:54:15Z	controller: ,"compile_revision":
+2026-09-12T16:54:15Z	controller: null,"outcome"
+2026-09-12T16:54:15Z	controller: :"dequeued",
+2026-09-12T16:54:15Z	controller: "phase":"
+2026-09-12T16:54:15Z	controller: output_frame","sequence
+2026-09-12T16:54:15Z	controller: ":3}
+2026-09-12T16:54:15Z	controller: {"admission_attempt_ms":60.938041999999996,"at_ms":61.122707999999996,"bytes":136,"class":"required","compile_revision":null,"outcome":"write_started","phase":"output_frame","sequence":3}
+{"admission_attempt_ms":60.938041999999996,"at_ms":61.197292,
+2026-09-12T16:54:15Z	controller: "bytes":136,"class":"required","compile_revision":null,"outcome":"write_finished","phase":"output_frame","sequence":3}
+{"handling_ms":0.052167,"phase":"request","response_serialization_ms":0.197458,"sequence":1,"started_ms":60.88375}
+2026-09-12T16:54:15Z	controller: {"admission_attempt_ms":61.305958000000004,"at_ms":61.309792,"bytes":192,"class":"required","compile_revision":null,"outcome":"admitted","phase":"output_frame","sequence":4}
+2026-09-12T16:54:15Z	controller: {"handling_ms":0.030834000000000004,"phase":"request","response_serialization_ms":0.041708,"sequence":2,"started_ms":61.273792}
+2026-09-12T16:54:15Z	controller: {"admission_attempt_ms":61.305958000000004,"at_ms":61.318541999999994,"bytes
+2026-09-12T16:54:15Z	controller: ":192,"class":
+2026-09-12T16:54:15Z	controller: "required","compile_revision
+2026-09-12T16:54:15Z	controller: ":null,"
+2026-09-12T16:54:15Z	controller: outcome":"dequeued","phase":"output_frame","sequence":4}
+2026-09-12T16:54:15Z	controller: {"admission_attempt_ms":61.305958000000004,"at_ms":61.491667,"bytes":192,"class":"required"
+2026-09-12T16:54:15Z	controller: ,"compile_revision":null,"outcome":
+2026-09-12T16:54:15Z	controller: "write_started","phase
+2026-09-12T16:54:15Z	controller: ":"output_frame"
+2026-09-12T16:54:15Z	controller: ,"sequence":
+2026-09-12T16:54:15Z	controller: 4}
+2026-09-12T16:54:15Z	display-candidate: helper acknowledged display-candidates-v1
+2026-09-12T16:54:15Z	controller: {"admission_attempt_ms":61.394292,"at_ms":61.394749999999995,"bytes":23783,"class":"required","compile_revision":null,
+2026-09-12T16:54:15Z	controller: "outcome":"admitted","
+2026-09-12T16:54:15Z	controller: phase":"output_frame
+2026-09-12T16:54:15Z	controller: ","sequence
+2026-09-12T16:54:15Z	controller: ":5}
+2026-09-12T16:54:15Z	controller: 
+2026-09-12T16:54:15Z	controller: {"admission_attempt_ms":61.305958000000004,"at_ms":61.588583,"bytes":192,"class
+2026-09-12T16:54:15Z	controller: ":"required","
+2026-09-12T16:54:15Z	controller: compile_revision":null,"
+2026-09-12T16:54:15Z	controller: outcome":"write_finished"
+2026-09-12T16:54:15Z	controller: ,"phase"
+2026-09-12T16:54:15Z	controller: :"output_frame"
+2026-09-12T16:54:15Z	controller: ,"sequence":4
+2026-09-12T16:54:15Z	controller: }
+2026-09-12T16:54:15Z	controller: {"admission_attempt_ms":61.394292,"at_ms":61.825375,"bytes":23783,"class":"required","compile_revision":null,"outcome":"dequeued","phase":"output_frame","sequence":5}
+{"admission_attempt_ms":61.394292,"
+2026-09-12T16:54:15Z	controller: at_ms"
+2026-09-12T16:54:15Z	controller: :61.867083,"bytes
+2026-09-12T16:54:15Z	controller: ":23783,
+2026-09-12T16:54:15Z	controller: "class":
+2026-09-12T16:54:15Z	controller: "required",
+2026-09-12T16:54:15Z	controller: "compile_revision":
+2026-09-12T16:54:15Z	controller: null,"outcome
+2026-09-12T16:54:15Z	controller: ":"
+2026-09-12T16:54:15Z	controller: write_started","phase":"output_frame
+2026-09-12T16:54:15Z	controller: ","sequence":5}
+{"handling_ms":0.006042,"phase":"request","response_serialization_ms":0.308291,"sequence":3,"started_ms":61.367542}
+{"admission_attempt_ms
+2026-09-12T16:54:15Z	controller: ":61.394292,"at_ms":62.084917000000004,"bytes":23783,"class":"required","compile_revision":null,"outcome":"write_finished","phase":"output_frame","sequence":5}
+2026-09-12T16:54:15Z	controller: {"admission_attempt_ms":63.82708300000001,"at_ms":63.83204200000001,"bytes":136,"class":"required","compile_revision":null,"outcome":"admitted","phase"
+2026-09-12T16:54:15Z	controller: :"output_frame","sequence":6}
+2026-09-12T16:54:15Z	controller: {"handling_ms":0.038709,
+2026-09-12T16:54:15Z	controller: "phase":"request",
+2026-09-12T16:54:15Z	controller: "response_serialization_ms":0.048167,"
+2026-09-12T16:54:15Z	controller: sequence":4,"
+2026-09-12T16:54:15Z	controller: started_ms":63.786792}
+2026-09-12T16:54:15Z	controller: {"duration_ms":0.001833,"events":1,"phase":"compiler_poll
+2026-09-12T16:54:15Z	controller: "}
+2026-09-12T16:54:15Z	controller: {"admission_attempt_ms":63.920792000000006,"at_ms":63.921458,"bytes":182,"class":"required","compile_revision":null,"outcome":"admitted","phase":"output_frame","sequence":7}
+2026-09-12T16:54:15Z	controller: {"admission_attempt_ms":63.82708300000001,"at_ms
+2026-09-12T16:54:15Z	controller: ":63.846125,"bytes":136,"class":"required","compile_revision":null,"
+2026-09-12T16:54:15Z	bench: waiting for attach + first paint (200 keystrokes, 0.0 ms)
+2026-09-12T16:54:15Z	controller: outcome":"dequeued
+2026-09-12T16:54:15Z	controller: ","phase":"output_frame","sequence":6}
+{"admission_attempt_ms":63.82708300000001,"at_ms":64.063208,"bytes":136,"class":"required","compile_revision":null,"outcome":"write_started","phase":"output_frame","sequence":6}
+2026-09-12T16:54:15Z	controller: {"admission_attempt_ms":63.82708300000001,"at_ms":64.10525,"bytes":136,"class":"required","compile_revision":null,"outcome":
+2026-09-12T16:54:15Z	controller: "write_finished","phase":"output_frame","sequence":6
+2026-09-12T16:54:15Z	controller: }
+{"admission_attempt_ms":63.920792000000006,"at_ms":64.16737499999999,"bytes":182,"class":"required","compile_revision":null,"outcome":"dequeued
+2026-09-12T16:54:15Z	controller: ",
+2026-09-12T16:54:15Z	controller: "phase":"output_frame","sequence":7}
+2026-09-12T16:54:15Z	controller: {"admission_attempt_ms":63.920792000000006,"at_ms":64.255917,"bytes":182,"
+2026-09-12T16:54:15Z	controller: class":"required","compile_revision"
+2026-09-12T16:54:15Z	controller: :null,"outcome":"write_started
+2026-09-12T16:54:15Z	controller: ","phase":"output_frame","sequence":7}
+{"admission_attempt_ms":63.920792000000006
+2026-09-12T16:54:15Z	controller: ,"at_ms":64.403083,"bytes":182,"class":"required","compile_revision":null,"outcome":"write_finished","phase":"output_frame","sequence":7}
+2026-09-12T16:54:15Z	controller: {"duration_ms":1.989584,"events":1,"phase":"compiler_poll"}
+2026-09-12T16:54:15Z	controller: {"admission_attempt_ms":78.04558300000001,"at_ms":78.050083,"bytes":178,"class":"required","compile_revision
+2026-09-12T16:54:15Z	controller: ":null,"outcome":"admitted
+2026-09-12T16:54:15Z	controller: ","phase":"output_frame","sequence":8}
+2026-09-12T16:54:15Z	controller: {
+2026-09-12T16:54:15Z	controller: "admission_attempt_ms":78.04558300000001,"at_ms
+2026-09-12T16:54:15Z	controller: ":78.0915,"bytes":
+2026-09-12T16:54:15Z	controller: 178,"class":"
+2026-09-12T16:54:15Z	controller: required","compile_revision":
+2026-09-12T16:54:15Z	controller: null,"outcome":"
+2026-09-12T16:54:15Z	controller: dequeued","phase"
+2026-09-12T16:54:15Z	controller: :"output_frame","
+2026-09-12T16:54:15Z	controller: sequence":8}
+2026-09-12T16:54:15Z	controller: {"admission_attempt_ms":78.04558300000001,"
+2026-09-12T16:54:15Z	controller: at_ms":78.178458,"bytes
+2026-09-12T16:54:15Z	controller: ":178,"class
+2026-09-12T16:54:15Z	controller: ":"required",
+2026-09-12T16:54:15Z	controller: "compile_revision":null,
+2026-09-12T16:54:15Z	controller: "outcome":"write_started
+2026-09-12T16:54:15Z	controller: ","phase":"output_frame
+2026-09-12T16:54:15Z	controller: ","sequence":8
+2026-09-12T16:54:15Z	controller: }
+2026-09-12T16:54:15Z	controller: {"admission_attempt_ms":78.04558300000001,"at_ms":78.22245799999999,"bytes":178,"class":"required","compile_revision":null,"outcome":"write_finished","phase":"output_frame","
+2026-09-12T16:54:15Z	controller: sequence":8}
+2026-09-12T16:54:15Z	controller: {"duration_ms":0.52275,"events":1,"phase":"compiler_poll"}
+2026-09-12T16:54:15Z	controller: {"admission_attempt_ms":91.830333,"at_ms":91.835708,"bytes":893414,"class":"required","compile_revision":null,"outcome":"admitted"
+2026-09-12T16:54:15Z	controller: ,"phase":"output_frame","sequence":9}
+2026-09-12T16:54:15Z	controller: {"admission_attempt_ms":91.830333,"at_ms":91.856083,"bytes":893414,"class":"required","compile_revision":null,"outcome":"dequeued","phase":"output_frame","sequence":9}
+2026-09-12T16:54:15Z	controller: {"admission_attempt_ms":91.830333,"at_ms":91.939708,"bytes":893414,"class"
+2026-09-12T16:54:15Z	controller: :"required","compile_revision":null,"outcome
+2026-09-12T16:54:15Z	controller: ":"write_started","phase":"output_frame"
+2026-09-12T16:54:15Z	controller: ,"sequence":9}
+2026-09-12T16:54:15Z	controller: {"admission_attempt_ms":91.830333,"at_ms":93.119375,"bytes":893414,"class":"required","compile_revision":null,"outcome":"write_finished","phase":"output_frame","sequence":9}
+2026-09-12T16:54:15Z	capability display-list-v2 not accepted by the worker
+2026-09-12T16:54:15Z	controller: compiler declined layout capabilities ["display-list-v2"]
+2026-09-12T16:54:15Z	status: revision 2: recovered, 1 diagnostics in 27 ms (durable r1)
+2026-09-12T16:54:15Z	controller: {"admission_attempt_ms":323.395,"at_ms":323.39875,"bytes":136,"class":"required","compile_revision":null,"outcome":"admitted","phase":"output_frame","sequence":10}
+{"handling_ms":0.062625,"phase":"request","response_serialization_ms":0.045916,"sequence":5,"started_ms":323.330125}
+{"admission_attempt_ms":323.395,"at_ms"
+2026-09-12T16:54:15Z	controller: :323.44958299999996,"bytes":136,"class":"required","compile_revision":null,"outcome":"dequeued","phase":"
+2026-09-12T16:54:15Z	controller: output_frame","sequence"
+2026-09-12T16:54:15Z	controller: :10}
+{"admission_attempt_ms":323.395,"at_ms":323.561583,"bytes":136,"class":"required","compile_revision":null,"outcome":"write_started","phase":"output_frame","sequence":10}
+2026-09-12T16:54:15Z	controller: {"admission_attempt_ms":323.395,"at_ms":323.66275,"bytes":136,"class":"required","compile_revision":null,"outcome":"write_finished
+2026-09-12T16:54:15Z	controller: ","phase":"output_frame",
+2026-09-12T16:54:15Z	controller: "sequence":10}
+2026-09-12T16:54:15Z	controller: {"duration_ms":0.531208,"events":1,"phase":"compiler_poll"}
+2026-09-12T16:54:15Z	controller: {"admission_attempt_ms":337.60625,"at_ms":337.61304199999995,"bytes":893420,"class":"required","compile_revision":null,"outcome":"admitted","phase":"output_frame","sequence":11}
+{"admission_attempt_ms":337.60625,"at_ms":337.642875,"bytes":893420,"class":"required","compile_revision":null,"outcome":"dequeued","phase":"output_frame","sequence":11}
+{"admission_attempt_ms":337.60625,"at_ms":337.681958,
+2026-09-12T16:54:15Z	controller: "bytes":893420,"class":"required","compile_revision":null,"outcome":"write_started","phase":"output_frame","sequence":11}
+2026-09-12T16:54:15Z	controller: {"admission_attempt_ms":337.60625,"at_ms":338.582542,"bytes":893420,"class":"required","compile_revision":null,"outcome":"write_finished","phase":"output_frame","sequence":11}
+2026-09-12T16:54:15Z	capability display-list-v2 not accepted by the worker
+2026-09-12T16:54:15Z	controller: compiler declined layout capabilities ["display-list-v2"]
+2026-09-12T16:54:15Z	status: revision 2: recovered, 1 diagnostics in 13 ms (durable r1)
+2026-09-12T16:54:15Z	controller: {"admission_attempt_ms":395.51662500000003,"at_ms":395.5225,"bytes":169,"class":"required","compile_revision"
+2026-09-12T16:54:15Z	controller: :null,"outcome":"admitted","phase":"output_frame","sequence":12}
+2026-09-12T16:54:15Z	controller: {"handling_ms":0.109416,"phase":"request","response_serialization_ms":
+2026-09-12T16:54:15Z	controller: 0.067959,"sequence":6,"started_ms":395.402292}
+2026-09-12T16:54:15Z	controller: {"admission_attempt_ms":395.623833,"at_ms":395.624333,"bytes":169,"class":"required","compile_revision":null,"outcome":"admitted",
+2026-09-12T16:54:15Z	controller: "phase":"output_frame","sequence":13}
+2026-09-12T16:54:15Z	controller: {"handling_ms":0.007917,"phase":"request","response_serialization_ms":0.06904199999999999,"sequence":7,"started_ms":395.615167}
+2026-09-12T16:54:15Z	controller: {"admission_attempt_ms":395.51662500000003,"at_ms":395.52841700000005,"bytes":169,"class":"required","compile_revision":null,"outcome":"dequeued","phase":"output_frame","sequence":12}
+{"admission_attempt_ms":395.51662500000003,"at_ms":395.760708,"bytes":169,"class":"required","compile_revision":null,"outcome":"write_started","phase":"output_frame","sequence":12}
+{"admission_attempt_ms":395.51662500000003,"at_ms":395.789833,"bytes":169,"class":"required","compile_revision":null,"outcome":"write_finished","phase":"output_frame","sequence":12}
+{"admission_attempt_ms":395.623833,"at_ms":395.819417,"bytes":169,"class":"required","compile_revision":null,"outcome":"dequeued","phase":"output_frame","sequence":13}
+{"admission_attempt_ms":395.623833,"at_ms":395.85116700000003,"bytes":169,"class":"required","compile_revision":null,
+2026-09-12T16:54:15Z	controller: "outcome":"write_started","phase":"output_frame","sequence":13}
+{"admission_attempt_ms":395.623833,"at_ms":395.89908299999996,"bytes":169,"class":"required","compile_revision":null,"outcome":"write_finished","phase":"output_frame","sequence":13}
+2026-09-12T16:54:15Z	controller: {"admission_attempt_ms":395.826583,"at_ms
+2026-09-12T16:54:15Z	controller: ":395.931375,"bytes":4264
+2026-09-12T16:54:15Z	controller: ,"class":"required","compile_revision":null,"outcome":"dequeued","phase
+2026-09-12T16:54:15Z	controller: ":"output_frame","sequence":14}
+{"admission_attempt_ms":395.826583,"at_ms":395.99475,"bytes":4264,
+2026-09-12T16:54:15Z	controller: "class":"required","compile_revision"
+2026-09-12T16:54:15Z	controller result pc-6: completions,source_versions
+2026-09-12T16:54:15Z	controller: :null,"outcome":
+2026-09-12T16:54:15Z	controller: "write_started","phase":"output_frame","sequence":14}
+{"
+2026-09-12T16:54:15Z	controller result pc-7: completions,source_versions
+2026-09-12T16:54:15Z	controller: admission_attempt_ms":395.826583,"at_ms"
+2026-09-12T16:54:15Z	controller: :396.045375,"bytes":4264,"
+2026-09-12T16:54:15Z	controller: class":"required","compile_revision":null,"outcome"
+2026-09-12T16:54:15Z	controller: :"write_finished","phase":"output_frame","sequence":14}
+2026-09-12T16:54:15Z	controller: {"admission_attempt_ms":395.826583,"at_ms":395.828167,"bytes":4264,"class":"required","compile_revision":null,"outcome":"admitted","phase":"output_frame","sequence":14}
+{"handling_ms":0.104708,"phase":"request","response_serialization_ms":0.3525,"sequence":8,"started_ms":395.712708}
+2026-09-12T16:54:15Z	controller result pc-8: completions,source_versions
+2026-09-12T16:54:15Z	controller: {"admission_attempt_ms":406.598458,"at_ms":406.601583,"bytes":
+2026-09-12T16:54:15Z	controller: 169,"class":"required","compile_revision":null,"outcome":"admitted","
+2026-09-12T16:54:15Z	controller: phase":"output_frame
+2026-09-12T16:54:15Z	controller: ","sequence":15}
+2026-09-12T16:54:15Z	controller: {"admission_attempt_ms":406.598458,"at_ms":406.614,
+2026-09-12T16:54:15Z	controller: "bytes":169,"class":"required","compile_revision":null,"outcome
+2026-09-12T16:54:15Z	controller: ":"dequeued"
+2026-09-12T16:54:15Z	controller: ,"phase":"output_frame","
+2026-09-12T16:54:15Z	controller: sequence":15}
+2026-09-12T16:54:15Z	controller: {"handling_ms":0.037334,"phase":"request",
+2026-09-12T16:54:15Z	controller: "response_serialization_ms":0.058041999999999996
+2026-09-12T16:54:15Z	controller: ,"sequence":
+2026-09-12T16:54:15Z	controller: 9,"started_ms":406.558208}
+2026-09-12T16:54:15Z	controller: {"admission_attempt_ms":406.598458,"at_ms
+2026-09-12T16:54:15Z	controller: ":406.694625,"bytes":169,
+2026-09-12T16:54:15Z	controller: "class":"required",
+2026-09-12T16:54:15Z	controller: "compile_revision":null,"outcome
+2026-09-12T16:54:15Z	controller: ":"write_started","phase
+2026-09-12T16:54:15Z	controller: ":"output_frame","sequence
+2026-09-12T16:54:15Z	controller: ":15}
+2026-09-12T16:54:15Z	controller: {"admission_attempt_ms
+2026-09-12T16:54:15Z	controller: ":406.737125,"at_ms"
+2026-09-12T16:54:15Z	controller: :406.73783299999997,"bytes":
+2026-09-12T16:54:15Z	controller: 170,"class":"
+2026-09-12T16:54:15Z	controller: required","compile_revision":null,
+2026-09-12T16:54:15Z	controller: "outcome":"admitted",
+2026-09-12T16:54:15Z	controller: "phase":"output_frame","
+2026-09-12T16:54:15Z	controller: sequence":16}
+2026-09-12T16:54:15Z	controller: {"handling_ms
+2026-09-12T16:54:15Z	controller: ":0.007834,"phase":"request"
+2026-09-12T16:54:15Z	controller: ,"response_serialization_ms":0.06425
+2026-09-12T16:54:15Z	controller: ,"sequence
+2026-09-12T16:54:15Z	controller: ":10,"started_ms":
+2026-09-12T16:54:15Z	controller: 406.72841700000004}
+2026-09-12T16:54:15Z	controller: {"admission_attempt_ms":406.598458,
+2026-09-12T16:54:15Z	controller: "at_ms":406.768417,"bytes":
+2026-09-12T16:54:15Z	controller: 169,"class":"required"
+2026-09-12T16:54:15Z	controller: ,"compile_revision":null,"outcome
+2026-09-12T16:54:15Z	controller: ":"write_finished","phase
+2026-09-12T16:54:15Z	controller: ":"output_frame","sequence
+2026-09-12T16:54:15Z	controller: ":15}
+2026-09-12T16:54:15Z	controller: {"admission_attempt_ms"
+2026-09-12T16:54:15Z	controller: :406.737125,"at_ms":406.900792
+2026-09-12T16:54:15Z	controller: ,"bytes":170,"
+2026-09-12T16:54:15Z	controller: class":"required","
+2026-09-12T16:54:15Z	controller: compile_revision":null,"outcome
+2026-09-12T16:54:15Z	controller: ":"dequeued","
+2026-09-12T16:54:15Z	controller: phase":"output_frame","sequence
+2026-09-12T16:54:15Z	controller: ":16}
+2026-09-12T16:54:15Z	controller: {"admission_attempt_ms":406.737125
+2026-09-12T16:54:15Z	controller: ,"at_ms":406.940833,"
+2026-09-12T16:54:15Z	controller: bytes":170,"class"
+2026-09-12T16:54:15Z	controller: :"required","compile_revision"
+2026-09-12T16:54:15Z	controller: :null,"outcome":"
+2026-09-12T16:54:15Z	controller: write_started","phase":
+2026-09-12T16:54:15Z	controller: "output_frame","sequence"
+2026-09-12T16:54:15Z	controller: :16}
+2026-09-12T16:54:15Z	controller: {"admission_attempt_ms"
+2026-09-12T16:54:15Z	controller: :406.955708,"at_ms":406.95633300000003
+2026-09-12T16:54:15Z	controller: ,"bytes":4265,"
+2026-09-12T16:54:15Z	controller: class":"required","compile_revision
+2026-09-12T16:54:15Z	controller: ":null,"outcome":"admitted","phase":"output_frame
+2026-09-12T16:54:15Z	controller: ","sequence":17}
+2026-09-12T16:54:15Z	controller: {"admission_attempt_ms":
+2026-09-12T16:54:15Z	controller: 406.737125,"at_ms":406.977458,"
+2026-09-12T16:54:15Z	controller: bytes":170,"class
+2026-09-12T16:54:15Z	controller: ":"required","compile_revision
+2026-09-12T16:54:15Z	controller: ":null,"outcome"
+2026-09-12T16:54:15Z	controller: :"write_finished","phase"
+2026-09-12T16:54:15Z	controller: :"output_frame","sequence"
+2026-09-12T16:54:15Z	controller: :16}
+2026-09-12T16:54:15Z	controller: {"admission_attempt_ms":406.955708,"at_ms
+2026-09-12T16:54:15Z	controller: ":407.05225
+2026-09-12T16:54:15Z	controller: ,"bytes":4265,"
+2026-09-12T16:54:15Z	controller: class":"required","
+2026-09-12T16:54:15Z	controller: compile_revision":null,"outcome"
+2026-09-12T16:54:15Z	controller: :"dequeued","phase"
+2026-09-12T16:54:15Z	controller: :"output_frame","sequence
+2026-09-12T16:54:15Z	controller: ":17}
+2026-09-12T16:54:15Z	controller: {"admission_attempt_ms":406.955708
+2026-09-12T16:54:15Z	controller: ,"at_ms":407.0905,
+2026-09-12T16:54:15Z	controller: "bytes":4265,"class
+2026-09-12T16:54:15Z	controller: ":"required","compile_revision
+2026-09-12T16:54:15Z	controller: ":null,"outcome":
+2026-09-12T16:54:15Z	controller: "write_started","phase":
+2026-09-12T16:54:15Z	controller: "output_frame","sequence":
+2026-09-12T16:54:15Z	controller: 17}
+2026-09-12T16:54:15Z	controller: {"handling_ms"
+2026-09-12T16:54:15Z	controller: :0.083417,"phase":
+2026-09-12T16:54:15Z	controller: "request","response_serialization_ms":
+2026-09-12T16:54:15Z	controller: 0.077708,"sequence":11,
+2026-09-12T16:54:15Z	controller: "started_ms":406.862542}
+2026-09-12T16:54:15Z	controller: {"admission_attempt_ms":406.955708,"at_ms
+2026-09-12T16:54:15Z	controller: ":407.126417,"bytes":4265
+2026-09-12T16:54:15Z	controller: ,"class":"required"
+2026-09-12T16:54:15Z	controller: ,"compile_revision":null,"
+2026-09-12T16:54:15Z	controller: outcome":"write_finished","
+2026-09-12T16:54:15Z	controller: phase":"output_frame","
+2026-09-12T16:54:15Z	controller: sequence":17}
+2026-09-12T16:54:15Z	controller: {"admission_attempt_ms":445.58037499999995,"at_ms":445.58270799999997,"bytes":237,"class":"required","compile_revision":null,"outcome":"admitted","phase":"output_frame","sequence":18}
+2026-09-12T16:54:15Z	controller: {"handling_ms":0.011542,"phase":"request","response_serialization_ms":0.046959,"sequence":12,"started_ms":445.565583}
+{"admission_attempt_ms":445.58037499999995,"at_ms":445.586292,"bytes":237,"class":"required","compile_revision"
+2026-09-12T16:54:15Z	controller: :null,"outcome":"dequeued
+2026-09-12T16:54:15Z	controller: ","phase":"output_frame"
+2026-09-12T16:54:15Z	controller: ,"sequence":18}
+{"admission_attempt_ms":445.58037499999995,"at_ms
+2026-09-12T16:54:15Z	controller: ":445.707583,"bytes":237,"class":"required","compile_revision":null,"outcome"
+2026-09-12T16:54:15Z	controller: :"write_started","
+2026-09-12T16:54:15Z	controller: phase":"
+2026-09-12T16:54:15Z	controller: output_frame","sequence":
+2026-09-12T16:54:15Z	controller: 18}
+2026-09-12T16:54:15Z	controller: {"admission_attempt_ms":445.58037499999995,"at_ms":445.75179199999997,"bytes":237,"class":"required",
+2026-09-12T16:54:15Z	controller: "compile_revision":null,"outcome":"
+2026-09-12T16:54:15Z	controller: write_finished","phase":
+2026-09-12T16:54:15Z	controller: "output_frame","sequence":18}
+2026-09-12T16:55:15Z	bench: done (worker never attached/painted (60 s)); keystrokes 0, painted 0, coalesced 0, p50 -1.0 ms

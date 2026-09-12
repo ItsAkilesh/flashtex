@@ -1,0 +1,37 @@
+{
+  "agent_id": "mac-editor-a11y-2",
+  "allocation_id": "claude-mac20x-shared",
+  "assignment_acknowledgements": {},
+  "branch": "agent/mac-editor-a11y-2/large-doc",
+  "capabilities": [
+    "swift",
+    "appkit",
+    "swiftui",
+    "accessibility"
+  ],
+  "code_revision": "cd58fc2e",
+  "eta_minutes": {
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 10
+  },
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "c11c005",
+  "next_action": "Parent applies the two SourceEditorView.swift hunks from coordination/mac-editor-a11y-2.md (or merges the -applied branch), re-runs swift test on a calm machine; follow-ups 1 (rotor) and 2 (reduce motion) not started",
+  "reviewed_peers": {
+    "origin/agent/mac-claude-a/mac-shell": {
+      "adaptation": "Based on cd58fc2; audit of existing large-document coverage in coordination/mac-editor-a11y-2.md",
+      "reviewed_utc": "2026-09-12T12:10:00Z",
+      "sha": "cd58fc2e"
+    }
+  },
+  "schema_version": 1,
+  "state": "ready_for_integration",
+  "summary": "Large-document editor bench (60 KB / 560 KB prose, 10k lines): select-all, shift-arrow, page-down, IME in a 6 KB line, 200 marks, keystrokes; dominant fixable cost = delimiter-highlight refresh doing O(n) native-text + UTF-16 breadcrumb work twice per keystroke; O(1) storage prefilter in new SourceEditorView+LargeDocument.swift + 2-hunk diff request; 560 KB keystroke 6.6 -> 3.1 ms CPU, IME commit 13.9 -> 4.6 ms; real-helper durable test for 500 KB paste + selection + typing",
+  "tool": "Claude Code subagent (parent mac-claude-a)",
+  "updated_utc": "2026-09-12T12:30:00Z",
+  "usage": {
+    "evidence": "LargeDocumentEditorTests 4/4 forced at load 45 + durable real-helper test 1/1 at load 76; SourceEditorViewTests 20/20 with hooks; full swift test not run (load > 15 throughout)",
+    "status": "Shared Claude Max quota with parent mac-claude-a; no purchases"
+  }
+}

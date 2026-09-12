@@ -1,0 +1,46 @@
+==> building FlashTeXMac (release)
+Build complete! (0.23s)
+    seed demo       5909 bytes
+    seed body60k   63899 bytes
+    seed fixture      16 bytes
+==> run compiler-fixture-30ms
+    2026-09-12T09:57:58Z	bench: done (all keystrokes painted); keystrokes 200, painted 200, coalesced 5, p50 30.16625 ms
+==> run compiler-fixture-0ms
+    2026-09-12T09:58:07Z	bench: done (all keystrokes painted); keystrokes 200, painted 200, coalesced 14, p50 32.181541 ms
+==> run compiler-demo-30ms
+    2026-09-12T09:58:18Z	bench: done (all keystrokes painted); keystrokes 200, painted 200, coalesced 11, p50 41.705875 ms
+==> run compiler-demo-0ms
+    2026-09-12T09:58:27Z	bench: done (all keystrokes painted); keystrokes 200, painted 200, coalesced 43, p50 43.061 ms
+==> run compiler-body60k-30ms
+    2026-09-12T09:58:35Z	bench: done (all keystrokes painted); keystrokes 200, painted 200, coalesced 129, p50 148.69725 ms
+==> run compiler-body60k-0ms
+    2026-09-12T09:58:40Z	bench: done (all keystrokes painted); keystrokes 200, painted 200, coalesced 169, p50 138.207291 ms
+==> run render-fixture-30ms
+    2026-09-12T09:58:47Z	bench: done (all keystrokes painted); keystrokes 200, painted 200, coalesced 0, p50 21.456875 ms
+==> run render-fixture-0ms
+    2026-09-12T09:58:53Z	bench: done (all keystrokes painted); keystrokes 200, painted 200, coalesced 5, p50 22.301042 ms
+==> run render-demo-30ms
+    2026-09-12T09:59:02Z	bench: done (all keystrokes painted); keystrokes 200, painted 200, coalesced 15, p50 46.207958 ms
+==> run render-demo-0ms
+    2026-09-12T09:59:10Z	bench: done (all keystrokes painted); keystrokes 200, painted 200, coalesced 32, p50 42.719916 ms
+==> run render-body60k-30ms
+    2026-09-12T09:59:18Z	bench: done (all keystrokes painted); keystrokes 200, painted 200, coalesced 148, p50 193.699583 ms
+==> run render-body60k-0ms
+    2026-09-12T09:59:22Z	bench: done (all keystrokes painted); keystrokes 200, painted 200, coalesced 189, p50 326.483583 ms
+==> writing /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/reports/20260912T095354Z/typing-bench/retry/typing-bench.md
+# Typing bench: keystroke → paint latency (2026-09-12T095748Z)
+
+Branch `HEAD` @ `35b4e12`; Apple M1 Max; macOS 26.3.1; release build of `FlashTeXMac` (`swift build -c release`).
+Script: `tools/typing-bench/run.sh`; raw JSON summaries in `typing-bench-2026-09-12T095748Z/`.
+| flashtex-compiler | body60k | 64103 | 0ms | 200 | 31 | 169 | 138 | 293 | 329 | 342 | 68 | 150 | 18 | 21 | 0 |
+| flashtex-compiler | body60k | 64103 | 30ms | 200 | 71 | 129 | 149 | 251 | 302 | 325 | 79 | 162 | 8.3 | 21 | 0 |
+| flashtex-compiler | demo | 6113 | 0ms | 200 | 157 | 43 | 43 | 70 | 87 | 95 | 17 | 34 | 14 | 17 | 0 |
+| flashtex-compiler | demo | 6113 | 30ms | 200 | 190 | 11 | 42 | 57 | 72 | 80 | 17 | 28 | 15 | 17 | 0 |
+| flashtex-compiler | fixture | 220 | 0ms | 200 | 186 | 14 | 32 | 56 | 60 | 61 | 8.1 | 21 | 15 | 20 | 0 |
+| flashtex-compiler | fixture | 220 | 30ms | 200 | 195 | 5 | 30 | 53 | 58 | 60 | 7.8 | 23 | 15 | 19 | 0 |
+| flashtex-render | body60k | 64103 | 0ms | 200 | 11 | 189 | 326 | 432 | 466 | 482 | 202 | 252 | 20 | 24 | 0 |
+| flashtex-render | body60k | 64103 | 30ms | 200 | 52 | 148 | 194 | 410 | 498 | 536 | 104 | 252 | 11 | 21 | 0 |
+| flashtex-render | demo | 6113 | 0ms | 200 | 168 | 32 | 43 | 60 | 76 | 84 | 16 | 24 | 16 | 19 | 0 |
+| flashtex-render | demo | 6113 | 30ms | 200 | 185 | 15 | 46 | 85 | 108 | 109 | 21 | 45 | 15 | 18 | 0 |
+| flashtex-render | fixture | 220 | 0ms | 200 | 195 | 5 | 22 | 41 | 43 | 47 | 5.9 | 16 | 11 | 14 | 0 |
+| flashtex-render | fixture | 220 | 30ms | 200 | 201 | 0 | 21 | 38 | 44 | 48 | 6.0 | 15 | 8.8 | 11 | 0 |

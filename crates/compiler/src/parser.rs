@@ -113,6 +113,9 @@ const BUILT_INS: &[&str] = &[
     "caption",
     "item",
     "includegraphics",
+    "hfill",
+    "normalfont",
+    "bfseries",
 ];
 
 /// Project-relative paths only: no absolute paths or parent traversal.
@@ -373,9 +376,12 @@ impl P<'_> {
             _ if self.has_document && !self.in_body => self.unsupported_preamble(name, span),
             "section" | "subsection" => {
                 let level = if name == "section" { 1 } else { 2 };
+                let starred = self.take_optional_star();
                 let (tokens, _) = self.required_group(name, span);
                 self.flush_paragraph(blocks, para);
-                let number = if level == 1 {
+                let number = if starred {
+                    String::new()
+                } else if level == 1 {
                     self.section_counter += 1;
                     self.subsection_counter = 0;
                     self.section_counter.to_string()
@@ -383,7 +389,9 @@ impl P<'_> {
                     self.subsection_counter += 1;
                     format!("{}.{}", self.section_counter, self.subsection_counter)
                 };
-                self.current_counter = Some(number.clone());
+                if !starred {
+                    self.current_counter = Some(number.clone());
+                }
                 let content = self.inlines_from_tokens(tokens);
                 if content.is_empty() {
                     // A missing/empty heading is already diagnosed where
@@ -489,6 +497,10 @@ impl P<'_> {
                 let (tokens, _) = self.required_group(name, span);
                 para.extend(self.inlines_from_tokens(tokens));
             }
+            // The current layout model has no stretchable horizontal glue or
+            // declaration-scoped font state. These commands are explicit no-ops:
+            // they never consume or alter surrounding content.
+            "hfill" | "normalfont" | "bfseries" => {}
             "par" => self.flush_paragraph(blocks, para),
             "frac" | "sqrt" => self.diags.push(Diagnostic::error(
                 format!("\\{} requires math mode", name),
@@ -1229,6 +1241,19 @@ impl P<'_> {
         Some((content, span))
     }
 
+    fn take_optional_star(&mut self) -> bool {
+        self.skip_spaces();
+        if matches!(
+            self.peek().map(|token| &token.kind),
+            Some(TokenKind::Word(word)) if word == "*"
+        ) {
+            self.i += 1;
+            true
+        } else {
+            false
+        }
+    }
+
     fn inlines_from_tokens(&mut self, tokens: Vec<InputToken>) -> Vec<Inline> {
         let outer_tokens = std::mem::replace(&mut self.t, tokens);
         let outer_index = std::mem::replace(&mut self.i, 0);
@@ -1494,6 +1519,31 @@ mod tests {
         );
         assert_eq!(parsed.diagnostics.len(), 1);
         assert!(parsed.diagnostics[0].message.contains("amsmath"));
+    }
+
+    #[test]
+    fn starred_subsection_consumes_its_star_and_does_not_advance_numbering() {
+        let parsed = parse(r"\section{One}\subsection*{Aside}\subsection{Two}");
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        let numbers: Vec<&str> = parsed
+            .blocks
+            .iter()
+            .filter_map(|block| match block {
+                Block::Heading { number, .. } => Some(number.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(numbers, ["1", "", "1.1"]);
+    }
+
+    #[test]
+    fn problem_style_macro_and_font_declarations_preserve_content_without_errors() {
+        let source = r"\newcommand{\problem}[2]{\subsection*{Problem #1 \hfill \normalfont[#2 points]}}\problem{1}{4}{\bfseries Body}";
+        let (parsed, items) = items(source);
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        assert!(items.iter().any(|item| item.text == "Problem"));
+        assert!(items.iter().any(|item| item.text == "Body"));
+        assert!(!items.iter().any(|item| item.text == "*"));
     }
 
     #[test]

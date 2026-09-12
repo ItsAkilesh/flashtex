@@ -1,0 +1,1 @@
+Inputs were copies of ../typing-bench*/typing-bench-*/controller-*.json (JSON under <mode>/typing-bench-*/, .log next to <mode>/); rebuild that layout from those files and run: python3 analyze.py baseline historical

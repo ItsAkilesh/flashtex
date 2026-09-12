@@ -21,7 +21,57 @@ enum PreviewFonts {
         "/Library/TeX/Root/texmf-dist/fonts/opentype/public/lm",
     ].compactMap { $0 }
 
-    /// PostScript names after registration; nil if Latin Modern was not found.
+    // MARK: Resource generation
+
+    /// Monotonic generation of the font resource set the preview resolves
+    /// against. It moves whenever an input of name resolution or of what a
+    /// PostScript name denotes changes: Latin Modern registration
+    /// (`FLASHTEX_LM_DIR`, bundle, repository copy, TeX Live), a producer face
+    /// switch (`flashtex-compiler` Times ↔ `flashtex-render` Latin Modern), the
+    /// `FLASHTEX_PREVIEW_FACE` override, or an explicit `invalidateResources()`.
+    /// Consumers stamp what they build with the generation it was built at and
+    /// never serve an entry from another generation (`PreviewTextCache`), so
+    /// invalidation is keyed rather than a scattered `clear()`. Main-thread
+    /// state, like the cache: the draw closure, the shell's worker attach and
+    /// the CoreGraphics export all run there.
+    private(set) static var resourceGeneration: UInt64 = 0
+
+    /// Records a change of the font resource set that the other inputs do not
+    /// already cover (a caller registered or unregistered fonts itself).
+    static func invalidateResources() { resourceGeneration &+= 1 }
+
+    /// Directory Latin Modern was registered from, nil when not found. Only
+    /// meaningful after `latinModernRegistered` has been consulted.
+    private(set) static var latinModernDirectory: String?
+
+    /// Every Latin Modern file the layout producer can request
+    /// (`flashtex-render` `FontSet::latin_modern_file`, t1lmr.fd boundaries):
+    /// regular 5–17, bold 5–12, italic 7–12, bold-italic 10, and LM Math. The
+    /// vendored `apps/mac/Fonts` (pinned by `SUPPLEMENTARY-FACES.json` plus the
+    /// Commander manifest) holds all of them; when the registered directory
+    /// lacks any, the gap is recorded in `latinModernMissingFaces` so a
+    /// CoreText fallback for that master is never silent.
+    static let latinModernFaceFiles: [String] =
+        [5, 6, 7, 8, 9, 10, 12, 17].map { "lmroman\($0)-regular.otf" }
+        + [5, 6, 7, 8, 9, 10, 12].map { "lmroman\($0)-bold.otf" }
+        + [7, 8, 9, 10, 12].map { "lmroman\($0)-italic.otf" }
+        + ["lmroman10-bolditalic.otf", "latinmodern-math.otf"]
+
+    /// Files of `latinModernFaceFiles` absent from `directory`.
+    static func latinModernMissingFaces(in directory: String) -> [String] {
+        latinModernFaceFiles.filter { !FileManager.default.fileExists(atPath: directory + "/" + $0) }
+    }
+
+    /// Faces the registered directory lacks (empty when it is complete or when
+    /// nothing is registered). Meaningful after `latinModernRegistered`.
+    private(set) static var latinModernMissingFaces: [String] = []
+
+    /// Whether the Latin Modern Roman masters are registered with CoreText for
+    /// this process. Registration happens on first access and moves
+    /// `resourceGeneration`: an `LMRoman*` name asked for before it resolves to
+    /// a CoreText fallback, afterwards to the real font. The first search
+    /// directory holding any `lmroman*.otf` wins (explicit overrides first);
+    /// the faces it lacks are recorded, never silently substituted.
     private(set) static var latinModernRegistered: Bool = {
         for dir in latinModernSearchPaths {
             let url = URL(fileURLWithPath: dir)
@@ -29,6 +79,9 @@ enum PreviewFonts {
             let otfs = files.filter { $0.pathExtension == "otf" && $0.lastPathComponent.hasPrefix("lmroman") }
             guard !otfs.isEmpty else { continue }
             CTFontManagerRegisterFontURLs(otfs as CFArray, .process, true, nil)
+            latinModernDirectory = dir
+            latinModernMissingFaces = latinModernMissingFaces(in: dir)
+            invalidateResources()
             return true
         }
         return false
@@ -37,11 +90,22 @@ enum PreviewFonts {
     /// Set by the shell from the attached producer: `flashtex-render` (the new
     /// pipeline, Latin Modern metrics) → `.latinModern`; `flashtex-compiler`
     /// (Core-14 Times metrics today) → `.times`. `FLASHTEX_PREVIEW_FACE` overrides.
-    static var producerFace: Face = .times
+    /// A change moves `resourceGeneration`.
+    static var producerFace: Face = .times {
+        didSet { if oldValue != producerFace { invalidateResources() } }
+    }
 
     /// `FLASHTEX_PREVIEW_FACE` read once: `ProcessInfo.environment` copies the
     /// whole environment on every access and this is consulted per drawn item.
-    private static let environmentFace: Face? = Face(rawValue: ProcessInfo.processInfo.environment["FLASHTEX_PREVIEW_FACE"] ?? "")
+    /// `overrideEnvironmentFace` replaces it explicitly (tests, a future
+    /// preference) and moves `resourceGeneration`.
+    private(set) static var environmentFace: Face? = Face(rawValue: ProcessInfo.processInfo.environment["FLASHTEX_PREVIEW_FACE"] ?? "")
+
+    static func overrideEnvironmentFace(_ face: Face?) {
+        guard face != environmentFace else { return }
+        environmentFace = face
+        invalidateResources()
+    }
 
     static var requested: Face { environmentFace ?? producerFace }
 
@@ -59,8 +123,12 @@ enum PreviewFonts {
         postScriptName(face: active, size: size, bold: bold, italic: italic)
     }
 
-    /// Latin Modern optical size by nominal point size, matching LaTeX's choice
-    /// (lmroman5/7/8/9/10/12/17 masters).
+    /// Latin Modern optical size by nominal point size, the master the layout
+    /// producer picks (`t1lmr.fd` design-size boundaries, mirrored from
+    /// render-pipeline `FontSet::latin_modern_file`): regular
+    /// 5/6/7/8/9/10/12/17, bold 5–12, italic 7–12, bold-italic only 10 — every
+    /// one a file in `latinModernFaceFiles`, so the name never denotes a
+    /// CoreText fallback once the vendored directory is registered.
     static func postScriptName(face: Face, size: Double, bold: Bool, italic: Bool) -> String {
         switch face {
         case .times:
@@ -71,10 +139,19 @@ enum PreviewFonts {
             case (true, true): return "Times-BoldItalic"
             }
         case .latinModern:
-            let master: Int = size < 6 ? 5 : size < 7.5 ? 7 : size < 8.5 ? 8 : size < 9.5 ? 9 : size < 11.5 ? 10 : size < 14.5 ? 12 : 17
-            let style = bold && italic ? "BoldItalic" : bold ? "Bold" : italic ? "Italic" : "Regular"
-            // e.g. LMRoman10-Regular, LMRoman12-Bold; 17 has only Regular.
-            return master == 17 && (bold || italic) ? "LMRoman12-\(style)" : "LMRoman\(master)-\(style)"
+            return "LMRoman\(latinModernMaster(size: size, bold: bold, italic: italic))-"
+                + (bold && italic ? "BoldItalic" : bold ? "Bold" : italic ? "Italic" : "Regular")
+        }
+    }
+
+    /// The design size of the Latin Modern Roman master for a nominal size and
+    /// style (see `postScriptName(face:size:bold:italic:)`).
+    static func latinModernMaster(size s: Double, bold: Bool, italic: Bool) -> Int {
+        switch (bold, italic) {
+        case (true, true): return 10
+        case (false, true): return s < 7.5 ? 7 : s < 8.5 ? 8 : s < 9.5 ? 9 : s < 11 ? 10 : 12
+        case (true, false): return s < 5.5 ? 5 : s < 6.5 ? 6 : s < 7.5 ? 7 : s < 8.5 ? 8 : s < 9.5 ? 9 : s < 11 ? 10 : 12
+        case (false, false): return s < 5.5 ? 5 : s < 6.5 ? 6 : s < 7.5 ? 7 : s < 8.5 ? 8 : s < 9.5 ? 9 : s < 11 ? 10 : s < 15 ? 12 : 17
         }
     }
 

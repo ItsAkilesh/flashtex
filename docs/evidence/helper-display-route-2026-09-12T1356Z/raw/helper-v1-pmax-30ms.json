@@ -1,0 +1,1878 @@
+{
+  "candidate_counters": {
+    "candidates_admitted": 0,
+    "candidates_dropped_at_paint": 0,
+    "candidates_invalid": 0,
+    "candidates_painted": 0,
+    "candidates_refused": 0,
+    "compiler_session_failed": 0,
+    "declined_display_list_v2": 0,
+    "v1_previews_applied": 132
+  },
+  "coalesced": 69,
+  "compile_ms": {
+    "count": 131,
+    "max_ms": 60.019417,
+    "mean_ms": 28.968405809160288,
+    "min_ms": 22.668,
+    "p50_ms": 28.465417,
+    "p95_ms": 34.111333,
+    "p99_ms": 49.649
+  },
+  "compiles": 131,
+  "debounce_ms": 0,
+  "document_bytes_after": 23510,
+  "document_bytes_before": 23306,
+  "elapsed_ms": 6114.700792,
+  "helper_caps": {
+    "compiler_frame": "8 MiB",
+    "helper_output": "16 MiB"
+  },
+  "interval_ms": 30,
+  "keystroke_to_paint_ms": {
+    "count": 200,
+    "max_ms": 122.581125,
+    "mean_ms": 81.62299171000004,
+    "min_ms": 55.639417,
+    "p50_ms": 81.028292,
+    "p95_ms": 104.435167,
+    "p99_ms": 114.738958
+  },
+  "keystrokes": 200,
+  "load_avg_after": 4.77,
+  "load_avg_before": 4.67,
+  "load_note": "load < 8 during the cell",
+  "paint_point": "first main-queue turn after the run-loop iteration whose SwiftUI render pass evaluated PreviewView for the revision (Canvas draw closures of every page ran inside that pass); the CoreAnimation commit has completed, the display's next vsync scan-out is not observed",
+  "painted": 200,
+  "paints": 132,
+  "paints_without_redraw": 16,
+  "per_keystroke": [
+    {
+      "compile_ms": 24.366959,
+      "delegate_ns": 99313882370541,
+      "keystroke_ns": 99313879934875,
+      "paint_ns": 99313961389875,
+      "painted_by_revision": 3,
+      "redrawn": true,
+      "revision": 3
+    },
+    {
+      "compile_ms": 23.597167,
+      "delegate_ns": 99313910771208,
+      "keystroke_ns": 99313910195666,
+      "paint_ns": 99314011013208,
+      "painted_by_revision": 4,
+      "redrawn": true,
+      "revision": 4
+    },
+    {
+      "compile_ms": 23.595041000000002,
+      "delegate_ns": 99313962253791,
+      "keystroke_ns": 99313961568333,
+      "paint_ns": 99314038068541,
+      "painted_by_revision": 6,
+      "redrawn": true,
+      "revision": 5
+    },
+    {
+      "compile_ms": 23.595041000000002,
+      "delegate_ns": 99313974926750,
+      "keystroke_ns": 99313974356166,
+      "paint_ns": 99314038068541,
+      "painted_by_revision": 6,
+      "redrawn": true,
+      "revision": 6
+    },
+    {
+      "compile_ms": 24.710417,
+      "delegate_ns": 99314011673166,
+      "keystroke_ns": 99314011063875,
+      "paint_ns": 99314094792291,
+      "painted_by_revision": 7,
+      "redrawn": true,
+      "revision": 7
+    },
+    {
+      "compile_ms": 23.902791999999998,
+      "delegate_ns": 99314051017333,
+      "keystroke_ns": 99314050380000,
+      "paint_ns": 99314123867666,
+      "painted_by_revision": 9,
+      "redrawn": true,
+      "revision": 8
+    },
+    {
+      "compile_ms": 23.902791999999998,
+      "delegate_ns": 99314065283208,
+      "keystroke_ns": 99314064766000,
+      "paint_ns": 99314123867666,
+      "painted_by_revision": 9,
+      "redrawn": true,
+      "revision": 9
+    },
+    {
+      "compile_ms": 24.129125000000002,
+      "delegate_ns": 99314095460041,
+      "keystroke_ns": 99314094851500,
+      "paint_ns": 99314165662750,
+      "painted_by_revision": 10,
+      "redrawn": true,
+      "revision": 10
+    },
+    {
+      "compile_ms": 23.954583000000003,
+      "delegate_ns": 99314136187208,
+      "keystroke_ns": 99314135508791,
+      "paint_ns": 99314208080583,
+      "painted_by_revision": 12,
+      "redrawn": false,
+      "revision": 11
+    },
+    {
+      "compile_ms": 23.954583000000003,
+      "delegate_ns": 99314150785666,
+      "keystroke_ns": 99314150236875,
+      "paint_ns": 99314208080583,
+      "painted_by_revision": 12,
+      "redrawn": false,
+      "revision": 12
+    },
+    {
+      "compile_ms": 22.668,
+      "delegate_ns": 99314180775875,
+      "keystroke_ns": 99314180158208,
+      "paint_ns": 99314242491541,
+      "painted_by_revision": 13,
+      "redrawn": true,
+      "revision": 13
+    },
+    {
+      "compile_ms": 24.207791999999998,
+      "delegate_ns": 99314218232166,
+      "keystroke_ns": 99314217579791,
+      "paint_ns": 99314283428083,
+      "painted_by_revision": 14,
+      "redrawn": true,
+      "revision": 14
+    },
+    {
+      "compile_ms": 23.813125,
+      "delegate_ns": 99314251188916,
+      "keystroke_ns": 99314250636750,
+      "paint_ns": 99314335872333,
+      "painted_by_revision": 15,
+      "redrawn": true,
+      "revision": 15
+    },
+    {
+      "compile_ms": 24.216207999999998,
+      "delegate_ns": 99314292926500,
+      "keystroke_ns": 99314292348083,
+      "paint_ns": 99314363815625,
+      "painted_by_revision": 17,
+      "redrawn": true,
+      "revision": 16
+    },
+    {
+      "compile_ms": 24.216207999999998,
+      "delegate_ns": 99314300377666,
+      "keystroke_ns": 99314299844208,
+      "paint_ns": 99314363815625,
+      "painted_by_revision": 17,
+      "redrawn": true,
+      "revision": 17
+    },
+    {
+      "compile_ms": 23.289209000000003,
+      "delegate_ns": 99314336590916,
+      "keystroke_ns": 99314335960458,
+      "paint_ns": 99314405556333,
+      "painted_by_revision": 18,
+      "redrawn": true,
+      "revision": 18
+    },
+    {
+      "compile_ms": 26.165333,
+      "delegate_ns": 99314375628958,
+      "keystroke_ns": 99314375041250,
+      "paint_ns": 99314446008083,
+      "painted_by_revision": 20,
+      "redrawn": true,
+      "revision": 19
+    },
+    {
+      "compile_ms": 26.165333,
+      "delegate_ns": 99314391116333,
+      "keystroke_ns": 99314390368666,
+      "paint_ns": 99314446008083,
+      "painted_by_revision": 20,
+      "redrawn": true,
+      "revision": 20
+    },
+    {
+      "compile_ms": 26.589541,
+      "delegate_ns": 99314420965833,
+      "keystroke_ns": 99314420227208,
+      "paint_ns": 99314493760250,
+      "painted_by_revision": 21,
+      "redrawn": false,
+      "revision": 21
+    },
+    {
+      "compile_ms": 26.323041,
+      "delegate_ns": 99314459238208,
+      "keystroke_ns": 99314458567541,
+      "paint_ns": 99314530694000,
+      "painted_by_revision": 22,
+      "redrawn": true,
+      "revision": 22
+    },
+    {
+      "compile_ms": 27.230625,
+      "delegate_ns": 99314498903250,
+      "keystroke_ns": 99314498269083,
+      "paint_ns": 99314574297541,
+      "painted_by_revision": 24,
+      "redrawn": true,
+      "revision": 23
+    },
+    {
+      "compile_ms": 27.230625,
+      "delegate_ns": 99314510602250,
+      "keystroke_ns": 99314510185208,
+      "paint_ns": 99314574297541,
+      "painted_by_revision": 24,
+      "redrawn": true,
+      "revision": 24
+    },
+    {
+      "compile_ms": 24.202875,
+      "delegate_ns": 99314544002291,
+      "keystroke_ns": 99314543405708,
+      "paint_ns": 99314628306750,
+      "painted_by_revision": 25,
+      "redrawn": false,
+      "revision": 25
+    },
+    {
+      "compile_ms": 26.530917000000002,
+      "delegate_ns": 99314586030958,
+      "keystroke_ns": 99314585417375,
+      "paint_ns": 99314670106250,
+      "painted_by_revision": 27,
+      "redrawn": true,
+      "revision": 26
+    },
+    {
+      "compile_ms": 26.530917000000002,
+      "delegate_ns": 99314600839541,
+      "keystroke_ns": 99314600208458,
+      "paint_ns": 99314670106250,
+      "painted_by_revision": 27,
+      "redrawn": true,
+      "revision": 27
+    },
+    {
+      "compile_ms": 25.717042,
+      "delegate_ns": 99314630588916,
+      "keystroke_ns": 99314630011500,
+      "paint_ns": 99314715253916,
+      "painted_by_revision": 28,
+      "redrawn": true,
+      "revision": 28
+    },
+    {
+      "compile_ms": 26.845291,
+      "delegate_ns": 99314670778083,
+      "keystroke_ns": 99314670148250,
+      "paint_ns": 99314756188458,
+      "painted_by_revision": 29,
+      "redrawn": true,
+      "revision": 29
+    },
+    {
+      "compile_ms": 24.502833000000003,
+      "delegate_ns": 99314691985416,
+      "keystroke_ns": 99314691506291,
+      "paint_ns": 99314794733375,
+      "painted_by_revision": 31,
+      "redrawn": true,
+      "revision": 30
+    },
+    {
+      "compile_ms": 24.502833000000003,
+      "delegate_ns": 99314721108416,
+      "keystroke_ns": 99314720406708,
+      "paint_ns": 99314794733375,
+      "painted_by_revision": 31,
+      "redrawn": true,
+      "revision": 31
+    },
+    {
+      "compile_ms": 26.045167,
+      "delegate_ns": 99314756925958,
+      "keystroke_ns": 99314756287416,
+      "paint_ns": 99314842584416,
+      "painted_by_revision": 32,
+      "redrawn": true,
+      "revision": 32
+    },
+    {
+      "compile_ms": 26.14,
+      "delegate_ns": 99314795359416,
+      "keystroke_ns": 99314794773166,
+      "paint_ns": 99314874067791,
+      "painted_by_revision": 34,
+      "redrawn": true,
+      "revision": 33
+    },
+    {
+      "compile_ms": 26.14,
+      "delegate_ns": 99314810886666,
+      "keystroke_ns": 99314810209458,
+      "paint_ns": 99314874067791,
+      "painted_by_revision": 34,
+      "redrawn": true,
+      "revision": 34
+    },
+    {
+      "compile_ms": 27.312334,
+      "delegate_ns": 99314843296375,
+      "keystroke_ns": 99314842656666,
+      "paint_ns": 99314932531708,
+      "painted_by_revision": 35,
+      "redrawn": true,
+      "revision": 35
+    },
+    {
+      "compile_ms": 24.999625,
+      "delegate_ns": 99314885664833,
+      "keystroke_ns": 99314885076416,
+      "paint_ns": 99314959265250,
+      "painted_by_revision": 37,
+      "redrawn": true,
+      "revision": 36
+    },
+    {
+      "compile_ms": 24.999625,
+      "delegate_ns": 99314901034125,
+      "keystroke_ns": 99314900414666,
+      "paint_ns": 99314959265250,
+      "painted_by_revision": 37,
+      "redrawn": true,
+      "revision": 37
+    },
+    {
+      "compile_ms": 26.771917,
+      "delegate_ns": 99314933301625,
+      "keystroke_ns": 99314932735125,
+      "paint_ns": 99315015412250,
+      "painted_by_revision": 38,
+      "redrawn": true,
+      "revision": 38
+    },
+    {
+      "compile_ms": 26.309375,
+      "delegate_ns": 99314967398875,
+      "keystroke_ns": 99314966851208,
+      "paint_ns": 99315053145625,
+      "painted_by_revision": 39,
+      "redrawn": true,
+      "revision": 39
+    },
+    {
+      "compile_ms": 26.152708,
+      "delegate_ns": 99314991740291,
+      "keystroke_ns": 99314991182166,
+      "paint_ns": 99315095617333,
+      "painted_by_revision": 41,
+      "redrawn": true,
+      "revision": 40
+    },
+    {
+      "compile_ms": 26.152708,
+      "delegate_ns": 99315021051708,
+      "keystroke_ns": 99315020371250,
+      "paint_ns": 99315095617333,
+      "painted_by_revision": 41,
+      "redrawn": true,
+      "revision": 41
+    },
+    {
+      "compile_ms": 25.845666,
+      "delegate_ns": 99315053908208,
+      "keystroke_ns": 99315053260625,
+      "paint_ns": 99315132907166,
+      "painted_by_revision": 42,
+      "redrawn": false,
+      "revision": 42
+    },
+    {
+      "compile_ms": 26.756959000000002,
+      "delegate_ns": 99315096337666,
+      "keystroke_ns": 99315095663750,
+      "paint_ns": 99315172672458,
+      "painted_by_revision": 44,
+      "redrawn": true,
+      "revision": 43
+    },
+    {
+      "compile_ms": 26.756959000000002,
+      "delegate_ns": 99315111021666,
+      "keystroke_ns": 99315110358625,
+      "paint_ns": 99315172672458,
+      "painted_by_revision": 44,
+      "redrawn": true,
+      "revision": 44
+    },
+    {
+      "compile_ms": 26.59025,
+      "delegate_ns": 99315142893791,
+      "keystroke_ns": 99315142192375,
+      "paint_ns": 99315232094750,
+      "painted_by_revision": 45,
+      "redrawn": true,
+      "revision": 45
+    },
+    {
+      "compile_ms": 26.657458,
+      "delegate_ns": 99315184867625,
+      "keystroke_ns": 99315184182291,
+      "paint_ns": 99315270546333,
+      "painted_by_revision": 47,
+      "redrawn": true,
+      "revision": 46
+    },
+    {
+      "compile_ms": 26.657458,
+      "delegate_ns": 99315200874708,
+      "keystroke_ns": 99315200347166,
+      "paint_ns": 99315270546333,
+      "painted_by_revision": 47,
+      "redrawn": true,
+      "revision": 47
+    },
+    {
+      "compile_ms": 26.003583,
+      "delegate_ns": 99315232927833,
+      "keystroke_ns": 99315232312666,
+      "paint_ns": 99315306693291,
+      "painted_by_revision": 48,
+      "redrawn": false,
+      "revision": 48
+    },
+    {
+      "compile_ms": 28.45,
+      "delegate_ns": 99315271248666,
+      "keystroke_ns": 99315270587291,
+      "paint_ns": 99315346574041,
+      "painted_by_revision": 49,
+      "redrawn": true,
+      "revision": 49
+    },
+    {
+      "compile_ms": 26.787209,
+      "delegate_ns": 99315306362666,
+      "keystroke_ns": 99315305781208,
+      "paint_ns": 99315389298791,
+      "painted_by_revision": 51,
+      "redrawn": true,
+      "revision": 50
+    },
+    {
+      "compile_ms": 26.787209,
+      "delegate_ns": 99315322287041,
+      "keystroke_ns": 99315321713958,
+      "paint_ns": 99315389298791,
+      "painted_by_revision": 51,
+      "redrawn": true,
+      "revision": 51
+    },
+    {
+      "compile_ms": 27.913041,
+      "delegate_ns": 99315358840166,
+      "keystroke_ns": 99315358228500,
+      "paint_ns": 99315449536458,
+      "painted_by_revision": 52,
+      "redrawn": false,
+      "revision": 52
+    },
+    {
+      "compile_ms": 31.231624999999998,
+      "delegate_ns": 99315403737291,
+      "keystroke_ns": 99315402993541,
+      "paint_ns": 99315495002500,
+      "painted_by_revision": 54,
+      "redrawn": true,
+      "revision": 53
+    },
+    {
+      "compile_ms": 31.231624999999998,
+      "delegate_ns": 99315415935083,
+      "keystroke_ns": 99315415409958,
+      "paint_ns": 99315495002500,
+      "painted_by_revision": 54,
+      "redrawn": true,
+      "revision": 54
+    },
+    {
+      "compile_ms": 49.649,
+      "delegate_ns": 99315458160458,
+      "keystroke_ns": 99315457341375,
+      "paint_ns": 99315562325125,
+      "painted_by_revision": 56,
+      "redrawn": true,
+      "revision": 55
+    },
+    {
+      "compile_ms": 49.649,
+      "delegate_ns": 99315470686666,
+      "keystroke_ns": 99315470011416,
+      "paint_ns": 99315562325125,
+      "painted_by_revision": 56,
+      "redrawn": true,
+      "revision": 56
+    },
+    {
+      "compile_ms": 26.240583,
+      "delegate_ns": 99315509700166,
+      "keystroke_ns": 99315509029583,
+      "paint_ns": 99315619760333,
+      "painted_by_revision": 58,
+      "redrawn": true,
+      "revision": 57
+    },
+    {
+      "compile_ms": 26.240583,
+      "delegate_ns": 99315531613333,
+      "keystroke_ns": 99315530868458,
+      "paint_ns": 99315619760333,
+      "painted_by_revision": 58,
+      "redrawn": true,
+      "revision": 58
+    },
+    {
+      "compile_ms": 26.418541,
+      "delegate_ns": 99315575556666,
+      "keystroke_ns": 99315574858791,
+      "paint_ns": 99315648642958,
+      "painted_by_revision": 60,
+      "redrawn": true,
+      "revision": 59
+    },
+    {
+      "compile_ms": 26.418541,
+      "delegate_ns": 99315591043541,
+      "keystroke_ns": 99315590373625,
+      "paint_ns": 99315648642958,
+      "painted_by_revision": 60,
+      "redrawn": true,
+      "revision": 60
+    },
+    {
+      "compile_ms": 25.668375,
+      "delegate_ns": 99315620595291,
+      "keystroke_ns": 99315619947333,
+      "paint_ns": 99315691062875,
+      "painted_by_revision": 61,
+      "redrawn": true,
+      "revision": 61
+    },
+    {
+      "compile_ms": 26.251958,
+      "delegate_ns": 99315661830625,
+      "keystroke_ns": 99315661188250,
+      "paint_ns": 99315733221000,
+      "painted_by_revision": 62,
+      "redrawn": true,
+      "revision": 62
+    },
+    {
+      "compile_ms": 26.903917,
+      "delegate_ns": 99315703168458,
+      "keystroke_ns": 99315702497291,
+      "paint_ns": 99315787485666,
+      "painted_by_revision": 64,
+      "redrawn": true,
+      "revision": 63
+    },
+    {
+      "compile_ms": 26.903917,
+      "delegate_ns": 99315713519250,
+      "keystroke_ns": 99315713084833,
+      "paint_ns": 99315787485666,
+      "painted_by_revision": 64,
+      "redrawn": true,
+      "revision": 64
+    },
+    {
+      "compile_ms": 27.960917,
+      "delegate_ns": 99315741934000,
+      "keystroke_ns": 99315741347458,
+      "paint_ns": 99315820537583,
+      "painted_by_revision": 65,
+      "redrawn": true,
+      "revision": 65
+    },
+    {
+      "compile_ms": 26.794833,
+      "delegate_ns": 99315788191375,
+      "keystroke_ns": 99315787528666,
+      "paint_ns": 99315862749166,
+      "painted_by_revision": 67,
+      "redrawn": true,
+      "revision": 66
+    },
+    {
+      "compile_ms": 26.794833,
+      "delegate_ns": 99315800503375,
+      "keystroke_ns": 99315799972708,
+      "paint_ns": 99315862749166,
+      "painted_by_revision": 67,
+      "redrawn": true,
+      "revision": 67
+    },
+    {
+      "compile_ms": 28.023209,
+      "delegate_ns": 99315832677875,
+      "keystroke_ns": 99315831983875,
+      "paint_ns": 99315920821000,
+      "painted_by_revision": 68,
+      "redrawn": true,
+      "revision": 68
+    },
+    {
+      "compile_ms": 26.55175,
+      "delegate_ns": 99315875260916,
+      "keystroke_ns": 99315874577083,
+      "paint_ns": 99315961707000,
+      "painted_by_revision": 70,
+      "redrawn": true,
+      "revision": 69
+    },
+    {
+      "compile_ms": 26.55175,
+      "delegate_ns": 99315891003375,
+      "keystroke_ns": 99315890358750,
+      "paint_ns": 99315961707000,
+      "painted_by_revision": 70,
+      "redrawn": true,
+      "revision": 70
+    },
+    {
+      "compile_ms": 28.384959000000002,
+      "delegate_ns": 99315921588416,
+      "keystroke_ns": 99315920876875,
+      "paint_ns": 99316007518250,
+      "painted_by_revision": 71,
+      "redrawn": false,
+      "revision": 71
+    },
+    {
+      "compile_ms": 27.171292,
+      "delegate_ns": 99315962451125,
+      "keystroke_ns": 99315961813958,
+      "paint_ns": 99316042842250,
+      "painted_by_revision": 73,
+      "redrawn": true,
+      "revision": 72
+    },
+    {
+      "compile_ms": 27.171292,
+      "delegate_ns": 99315981400083,
+      "keystroke_ns": 99315980669083,
+      "paint_ns": 99316042842250,
+      "painted_by_revision": 73,
+      "redrawn": true,
+      "revision": 73
+    },
+    {
+      "compile_ms": 40.666042,
+      "delegate_ns": 99316010836500,
+      "keystroke_ns": 99316010129333,
+      "paint_ns": 99316113041500,
+      "painted_by_revision": 74,
+      "redrawn": true,
+      "revision": 74
+    },
+    {
+      "compile_ms": 26.366500000000002,
+      "delegate_ns": 99316051152916,
+      "keystroke_ns": 99316050521791,
+      "paint_ns": 99316162208291,
+      "painted_by_revision": 76,
+      "redrawn": true,
+      "revision": 75
+    },
+    {
+      "compile_ms": 26.366500000000002,
+      "delegate_ns": 99316071154541,
+      "keystroke_ns": 99316070300125,
+      "paint_ns": 99316162208291,
+      "painted_by_revision": 76,
+      "redrawn": true,
+      "revision": 76
+    },
+    {
+      "compile_ms": 60.019417,
+      "delegate_ns": 99316113724000,
+      "keystroke_ns": 99316113089083,
+      "paint_ns": 99316230285000,
+      "painted_by_revision": 78,
+      "redrawn": true,
+      "revision": 77
+    },
+    {
+      "compile_ms": 60.019417,
+      "delegate_ns": 99316130477250,
+      "keystroke_ns": 99316129917875,
+      "paint_ns": 99316230285000,
+      "painted_by_revision": 78,
+      "redrawn": true,
+      "revision": 78
+    },
+    {
+      "compile_ms": 27.584958,
+      "delegate_ns": 99316163069958,
+      "keystroke_ns": 99316162364708,
+      "paint_ns": 99316273859458,
+      "painted_by_revision": 80,
+      "redrawn": true,
+      "revision": 79
+    },
+    {
+      "compile_ms": 27.584958,
+      "delegate_ns": 99316191124416,
+      "keystroke_ns": 99316190365000,
+      "paint_ns": 99316273859458,
+      "painted_by_revision": 80,
+      "redrawn": true,
+      "revision": 80
+    },
+    {
+      "compile_ms": 26.268334,
+      "delegate_ns": 99316243088875,
+      "keystroke_ns": 99316242426416,
+      "paint_ns": 99316315419125,
+      "painted_by_revision": 82,
+      "redrawn": true,
+      "revision": 81
+    },
+    {
+      "compile_ms": 26.268334,
+      "delegate_ns": 99316250437208,
+      "keystroke_ns": 99316249957083,
+      "paint_ns": 99316315419125,
+      "painted_by_revision": 82,
+      "redrawn": true,
+      "revision": 82
+    },
+    {
+      "compile_ms": 27.524957999999998,
+      "delegate_ns": 99316286714708,
+      "keystroke_ns": 99316286021166,
+      "paint_ns": 99316370464166,
+      "painted_by_revision": 83,
+      "redrawn": true,
+      "revision": 83
+    },
+    {
+      "compile_ms": 27.562666,
+      "delegate_ns": 99316327585500,
+      "keystroke_ns": 99316326942000,
+      "paint_ns": 99316415019083,
+      "painted_by_revision": 85,
+      "redrawn": true,
+      "revision": 84
+    },
+    {
+      "compile_ms": 27.562666,
+      "delegate_ns": 99316340928208,
+      "keystroke_ns": 99316340185541,
+      "paint_ns": 99316415019083,
+      "painted_by_revision": 85,
+      "redrawn": true,
+      "revision": 85
+    },
+    {
+      "compile_ms": 27.281042,
+      "delegate_ns": 99316371212958,
+      "keystroke_ns": 99316370514333,
+      "paint_ns": 99316462607333,
+      "painted_by_revision": 86,
+      "redrawn": true,
+      "revision": 86
+    },
+    {
+      "compile_ms": 27.726208,
+      "delegate_ns": 99316415819875,
+      "keystroke_ns": 99316415064208,
+      "paint_ns": 99316496158208,
+      "painted_by_revision": 88,
+      "redrawn": true,
+      "revision": 87
+    },
+    {
+      "compile_ms": 27.726208,
+      "delegate_ns": 99316430991708,
+      "keystroke_ns": 99316430237333,
+      "paint_ns": 99316496158208,
+      "painted_by_revision": 88,
+      "redrawn": true,
+      "revision": 88
+    },
+    {
+      "compile_ms": 28.798750000000002,
+      "delegate_ns": 99316463366208,
+      "keystroke_ns": 99316462674083,
+      "paint_ns": 99316539741375,
+      "painted_by_revision": 89,
+      "redrawn": true,
+      "revision": 89
+    },
+    {
+      "compile_ms": 28.205625,
+      "delegate_ns": 99316508716708,
+      "keystroke_ns": 99316508080375,
+      "paint_ns": 99316595469750,
+      "painted_by_revision": 91,
+      "redrawn": true,
+      "revision": 90
+    },
+    {
+      "compile_ms": 28.205625,
+      "delegate_ns": 99316520726375,
+      "keystroke_ns": 99316520055708,
+      "paint_ns": 99316595469750,
+      "painted_by_revision": 91,
+      "redrawn": true,
+      "revision": 91
+    },
+    {
+      "compile_ms": 28.70775,
+      "delegate_ns": 99316552102333,
+      "keystroke_ns": 99316551436875,
+      "paint_ns": 99316641493541,
+      "painted_by_revision": 92,
+      "redrawn": true,
+      "revision": 92
+    },
+    {
+      "compile_ms": 28.630667,
+      "delegate_ns": 99316596272375,
+      "keystroke_ns": 99316595591166,
+      "paint_ns": 99316675886666,
+      "painted_by_revision": 94,
+      "redrawn": true,
+      "revision": 93
+    },
+    {
+      "compile_ms": 28.630667,
+      "delegate_ns": 99316610770083,
+      "keystroke_ns": 99316610072583,
+      "paint_ns": 99316675886666,
+      "painted_by_revision": 94,
+      "redrawn": true,
+      "revision": 94
+    },
+    {
+      "compile_ms": 28.661583,
+      "delegate_ns": 99316642281208,
+      "keystroke_ns": 99316641628583,
+      "paint_ns": 99316724571583,
+      "painted_by_revision": 95,
+      "redrawn": false,
+      "revision": 95
+    },
+    {
+      "compile_ms": 28.610416999999998,
+      "delegate_ns": 99316684564291,
+      "keystroke_ns": 99316683942833,
+      "paint_ns": 99316765759708,
+      "painted_by_revision": 97,
+      "redrawn": true,
+      "revision": 96
+    },
+    {
+      "compile_ms": 28.610416999999998,
+      "delegate_ns": 99316700763708,
+      "keystroke_ns": 99316700083791,
+      "paint_ns": 99316765759708,
+      "painted_by_revision": 97,
+      "redrawn": true,
+      "revision": 97
+    },
+    {
+      "compile_ms": 29.182333,
+      "delegate_ns": 99316731408250,
+      "keystroke_ns": 99316730777458,
+      "paint_ns": 99316821368541,
+      "painted_by_revision": 98,
+      "redrawn": true,
+      "revision": 98
+    },
+    {
+      "compile_ms": 27.948375000000002,
+      "delegate_ns": 99316778902416,
+      "keystroke_ns": 99316778185125,
+      "paint_ns": 99316855301416,
+      "painted_by_revision": 100,
+      "redrawn": true,
+      "revision": 99
+    },
+    {
+      "compile_ms": 27.948375000000002,
+      "delegate_ns": 99316790681500,
+      "keystroke_ns": 99316790024958,
+      "paint_ns": 99316855301416,
+      "painted_by_revision": 100,
+      "redrawn": true,
+      "revision": 100
+    },
+    {
+      "compile_ms": 28.465417,
+      "delegate_ns": 99316822157750,
+      "keystroke_ns": 99316821471666,
+      "paint_ns": 99316910347833,
+      "painted_by_revision": 101,
+      "redrawn": true,
+      "revision": 101
+    },
+    {
+      "compile_ms": 28.284208000000003,
+      "delegate_ns": 99316867413666,
+      "keystroke_ns": 99316866761291,
+      "paint_ns": 99316955987541,
+      "painted_by_revision": 103,
+      "redrawn": true,
+      "revision": 102
+    },
+    {
+      "compile_ms": 28.284208000000003,
+      "delegate_ns": 99316880573750,
+      "keystroke_ns": 99316879938541,
+      "paint_ns": 99316955987541,
+      "painted_by_revision": 103,
+      "redrawn": true,
+      "revision": 103
+    },
+    {
+      "compile_ms": 27.59275,
+      "delegate_ns": 99316911157291,
+      "keystroke_ns": 99316910490416,
+      "paint_ns": 99316999533875,
+      "painted_by_revision": 104,
+      "redrawn": true,
+      "revision": 104
+    },
+    {
+      "compile_ms": 28.350832999999998,
+      "delegate_ns": 99316956742291,
+      "keystroke_ns": 99316956034250,
+      "paint_ns": 99317034327583,
+      "painted_by_revision": 106,
+      "redrawn": true,
+      "revision": 105
+    },
+    {
+      "compile_ms": 28.350832999999998,
+      "delegate_ns": 99316970857000,
+      "keystroke_ns": 99316970105125,
+      "paint_ns": 99317034327583,
+      "painted_by_revision": 106,
+      "redrawn": true,
+      "revision": 106
+    },
+    {
+      "compile_ms": 29.345125,
+      "delegate_ns": 99317000491041,
+      "keystroke_ns": 99316999868166,
+      "paint_ns": 99317080503083,
+      "painted_by_revision": 107,
+      "redrawn": true,
+      "revision": 107
+    },
+    {
+      "compile_ms": 28.36475,
+      "delegate_ns": 99317043221500,
+      "keystroke_ns": 99317042591875,
+      "paint_ns": 99317124815083,
+      "painted_by_revision": 109,
+      "redrawn": true,
+      "revision": 108
+    },
+    {
+      "compile_ms": 28.36475,
+      "delegate_ns": 99317060880958,
+      "keystroke_ns": 99317060192458,
+      "paint_ns": 99317124815083,
+      "painted_by_revision": 109,
+      "redrawn": true,
+      "revision": 109
+    },
+    {
+      "compile_ms": 28.143,
+      "delegate_ns": 99317092963791,
+      "keystroke_ns": 99317092285375,
+      "paint_ns": 99317178883333,
+      "painted_by_revision": 110,
+      "redrawn": true,
+      "revision": 110
+    },
+    {
+      "compile_ms": 27.830208,
+      "delegate_ns": 99317136469875,
+      "keystroke_ns": 99317135755958,
+      "paint_ns": 99317214067333,
+      "painted_by_revision": 112,
+      "redrawn": true,
+      "revision": 111
+    },
+    {
+      "compile_ms": 27.830208,
+      "delegate_ns": 99317150782083,
+      "keystroke_ns": 99317150165208,
+      "paint_ns": 99317214067333,
+      "painted_by_revision": 112,
+      "redrawn": true,
+      "revision": 112
+    },
+    {
+      "compile_ms": 31.035959,
+      "delegate_ns": 99317180597666,
+      "keystroke_ns": 99317179937416,
+      "paint_ns": 99317271841375,
+      "painted_by_revision": 113,
+      "redrawn": true,
+      "revision": 113
+    },
+    {
+      "compile_ms": 29.283291,
+      "delegate_ns": 99317226890083,
+      "keystroke_ns": 99317226240666,
+      "paint_ns": 99317308514625,
+      "painted_by_revision": 115,
+      "redrawn": true,
+      "revision": 114
+    },
+    {
+      "compile_ms": 29.283291,
+      "delegate_ns": 99317240941541,
+      "keystroke_ns": 99317240163375,
+      "paint_ns": 99317308514625,
+      "painted_by_revision": 115,
+      "redrawn": true,
+      "revision": 115
+    },
+    {
+      "compile_ms": 28.338375,
+      "delegate_ns": 99317272709750,
+      "keystroke_ns": 99317271993625,
+      "paint_ns": 99317352158500,
+      "painted_by_revision": 116,
+      "redrawn": true,
+      "revision": 116
+    },
+    {
+      "compile_ms": 29.85175,
+      "delegate_ns": 99317320661708,
+      "keystroke_ns": 99317319927166,
+      "paint_ns": 99317399292208,
+      "painted_by_revision": 118,
+      "redrawn": true,
+      "revision": 117
+    },
+    {
+      "compile_ms": 29.85175,
+      "delegate_ns": 99317330657083,
+      "keystroke_ns": 99317330160666,
+      "paint_ns": 99317399292208,
+      "painted_by_revision": 118,
+      "redrawn": true,
+      "revision": 118
+    },
+    {
+      "compile_ms": 27.639375,
+      "delegate_ns": 99317364581875,
+      "keystroke_ns": 99317363956750,
+      "paint_ns": 99317442240291,
+      "painted_by_revision": 119,
+      "redrawn": true,
+      "revision": 119
+    },
+    {
+      "compile_ms": 29.508459000000002,
+      "delegate_ns": 99317412174833,
+      "keystroke_ns": 99317411494666,
+      "paint_ns": 99317487288833,
+      "painted_by_revision": 121,
+      "redrawn": true,
+      "revision": 120
+    },
+    {
+      "compile_ms": 29.508459000000002,
+      "delegate_ns": 99317422144291,
+      "keystroke_ns": 99317421605958,
+      "paint_ns": 99317487288833,
+      "painted_by_revision": 121,
+      "redrawn": true,
+      "revision": 121
+    },
+    {
+      "compile_ms": 30.063958,
+      "delegate_ns": 99317450761083,
+      "keystroke_ns": 99317450096333,
+      "paint_ns": 99317538815875,
+      "painted_by_revision": 122,
+      "redrawn": false,
+      "revision": 122
+    },
+    {
+      "compile_ms": 28.955667000000002,
+      "delegate_ns": 99317499505708,
+      "keystroke_ns": 99317498829666,
+      "paint_ns": 99317578921541,
+      "painted_by_revision": 124,
+      "redrawn": true,
+      "revision": 123
+    },
+    {
+      "compile_ms": 28.955667000000002,
+      "delegate_ns": 99317511567458,
+      "keystroke_ns": 99317511024041,
+      "paint_ns": 99317578921541,
+      "painted_by_revision": 124,
+      "redrawn": true,
+      "revision": 124
+    },
+    {
+      "compile_ms": 28.595625,
+      "delegate_ns": 99317543629958,
+      "keystroke_ns": 99317542917166,
+      "paint_ns": 99317623987041,
+      "painted_by_revision": 125,
+      "redrawn": true,
+      "revision": 125
+    },
+    {
+      "compile_ms": 30.252083,
+      "delegate_ns": 99317591810833,
+      "keystroke_ns": 99317591119208,
+      "paint_ns": 99317669917333,
+      "painted_by_revision": 127,
+      "redrawn": true,
+      "revision": 126
+    },
+    {
+      "compile_ms": 30.252083,
+      "delegate_ns": 99317601813916,
+      "keystroke_ns": 99317601233208,
+      "paint_ns": 99317669917333,
+      "painted_by_revision": 127,
+      "redrawn": true,
+      "revision": 127
+    },
+    {
+      "compile_ms": 28.72775,
+      "delegate_ns": 99317636147916,
+      "keystroke_ns": 99317635445291,
+      "paint_ns": 99317715459583,
+      "painted_by_revision": 128,
+      "redrawn": true,
+      "revision": 128
+    },
+    {
+      "compile_ms": 28.397708,
+      "delegate_ns": 99317682427166,
+      "keystroke_ns": 99317681703833,
+      "paint_ns": 99317764380041,
+      "painted_by_revision": 130,
+      "redrawn": false,
+      "revision": 129
+    },
+    {
+      "compile_ms": 28.397708,
+      "delegate_ns": 99317692416916,
+      "keystroke_ns": 99317691955166,
+      "paint_ns": 99317764380041,
+      "painted_by_revision": 130,
+      "redrawn": false,
+      "revision": 130
+    },
+    {
+      "compile_ms": 29.459291,
+      "delegate_ns": 99317727775041,
+      "keystroke_ns": 99317727096791,
+      "paint_ns": 99317805027875,
+      "painted_by_revision": 131,
+      "redrawn": true,
+      "revision": 131
+    },
+    {
+      "compile_ms": 29.825417,
+      "delegate_ns": 99317763930833,
+      "keystroke_ns": 99317763314333,
+      "paint_ns": 99317851383583,
+      "painted_by_revision": 133,
+      "redrawn": true,
+      "revision": 132
+    },
+    {
+      "compile_ms": 29.825417,
+      "delegate_ns": 99317780984125,
+      "keystroke_ns": 99317780241041,
+      "paint_ns": 99317851383583,
+      "painted_by_revision": 133,
+      "redrawn": true,
+      "revision": 133
+    },
+    {
+      "compile_ms": 29.387292,
+      "delegate_ns": 99317817402500,
+      "keystroke_ns": 99317816702916,
+      "paint_ns": 99317896537166,
+      "painted_by_revision": 134,
+      "redrawn": true,
+      "revision": 134
+    },
+    {
+      "compile_ms": 30.250667,
+      "delegate_ns": 99317864835500,
+      "keystroke_ns": 99317864078000,
+      "paint_ns": 99317958410541,
+      "painted_by_revision": 136,
+      "redrawn": true,
+      "revision": 135
+    },
+    {
+      "compile_ms": 30.250667,
+      "delegate_ns": 99317875025750,
+      "keystroke_ns": 99317874497041,
+      "paint_ns": 99317958410541,
+      "painted_by_revision": 136,
+      "redrawn": true,
+      "revision": 136
+    },
+    {
+      "compile_ms": 29.863833,
+      "delegate_ns": 99317909080458,
+      "keystroke_ns": 99317908362083,
+      "paint_ns": 99317989041625,
+      "painted_by_revision": 138,
+      "redrawn": true,
+      "revision": 137
+    },
+    {
+      "compile_ms": 29.863833,
+      "delegate_ns": 99317930705875,
+      "keystroke_ns": 99317929919666,
+      "paint_ns": 99317989041625,
+      "painted_by_revision": 138,
+      "redrawn": true,
+      "revision": 138
+    },
+    {
+      "compile_ms": 29.314666,
+      "delegate_ns": 99317960728458,
+      "keystroke_ns": 99317960000666,
+      "paint_ns": 99318048352000,
+      "painted_by_revision": 139,
+      "redrawn": false,
+      "revision": 139
+    },
+    {
+      "compile_ms": 29.47625,
+      "delegate_ns": 99318001552000,
+      "keystroke_ns": 99318000834791,
+      "paint_ns": 99318086393583,
+      "painted_by_revision": 141,
+      "redrawn": true,
+      "revision": 140
+    },
+    {
+      "compile_ms": 29.47625,
+      "delegate_ns": 99318021644708,
+      "keystroke_ns": 99318020870375,
+      "paint_ns": 99318086393583,
+      "painted_by_revision": 141,
+      "redrawn": true,
+      "revision": 141
+    },
+    {
+      "compile_ms": 31.564208000000004,
+      "delegate_ns": 99318050692583,
+      "keystroke_ns": 99318050021916,
+      "paint_ns": 99318150083750,
+      "painted_by_revision": 142,
+      "redrawn": true,
+      "revision": 142
+    },
+    {
+      "compile_ms": 38.091667,
+      "delegate_ns": 99318098470333,
+      "keystroke_ns": 99318097767916,
+      "paint_ns": 99318207320708,
+      "painted_by_revision": 144,
+      "redrawn": true,
+      "revision": 143
+    },
+    {
+      "compile_ms": 38.091667,
+      "delegate_ns": 99318111629083,
+      "keystroke_ns": 99318110949083,
+      "paint_ns": 99318207320708,
+      "painted_by_revision": 144,
+      "redrawn": true,
+      "revision": 144
+    },
+    {
+      "compile_ms": 35.10025,
+      "delegate_ns": 99318151028708,
+      "keystroke_ns": 99318150240500,
+      "paint_ns": 99318264979458,
+      "painted_by_revision": 146,
+      "redrawn": true,
+      "revision": 145
+    },
+    {
+      "compile_ms": 35.10025,
+      "delegate_ns": 99318171255875,
+      "keystroke_ns": 99318170267958,
+      "paint_ns": 99318264979458,
+      "painted_by_revision": 146,
+      "redrawn": true,
+      "revision": 146
+    },
+    {
+      "compile_ms": 33.103417,
+      "delegate_ns": 99318208279333,
+      "keystroke_ns": 99318207505666,
+      "paint_ns": 99318306800500,
+      "painted_by_revision": 148,
+      "redrawn": true,
+      "revision": 147
+    },
+    {
+      "compile_ms": 33.103417,
+      "delegate_ns": 99318231724791,
+      "keystroke_ns": 99318230923250,
+      "paint_ns": 99318306800500,
+      "painted_by_revision": 148,
+      "redrawn": true,
+      "revision": 148
+    },
+    {
+      "compile_ms": 29.48375,
+      "delegate_ns": 99318265908083,
+      "keystroke_ns": 99318265129000,
+      "paint_ns": 99318349921541,
+      "painted_by_revision": 150,
+      "redrawn": true,
+      "revision": 149
+    },
+    {
+      "compile_ms": 29.48375,
+      "delegate_ns": 99318291290125,
+      "keystroke_ns": 99318290372791,
+      "paint_ns": 99318349921541,
+      "painted_by_revision": 150,
+      "redrawn": true,
+      "revision": 150
+    },
+    {
+      "compile_ms": 30.074291,
+      "delegate_ns": 99318320722958,
+      "keystroke_ns": 99318319929833,
+      "paint_ns": 99318417326833,
+      "painted_by_revision": 151,
+      "redrawn": true,
+      "revision": 151
+    },
+    {
+      "compile_ms": 30.084291,
+      "delegate_ns": 99318359512833,
+      "keystroke_ns": 99318358794833,
+      "paint_ns": 99318453706500,
+      "painted_by_revision": 153,
+      "redrawn": true,
+      "revision": 152
+    },
+    {
+      "compile_ms": 30.084291,
+      "delegate_ns": 99318381635708,
+      "keystroke_ns": 99318380866541,
+      "paint_ns": 99318453706500,
+      "painted_by_revision": 153,
+      "redrawn": true,
+      "revision": 153
+    },
+    {
+      "compile_ms": 30.644834,
+      "delegate_ns": 99318418284833,
+      "keystroke_ns": 99318417490375,
+      "paint_ns": 99318500348458,
+      "painted_by_revision": 154,
+      "redrawn": false,
+      "revision": 154
+    },
+    {
+      "compile_ms": 29.5895,
+      "delegate_ns": 99318467118791,
+      "keystroke_ns": 99318466370541,
+      "paint_ns": 99318546947750,
+      "painted_by_revision": 156,
+      "redrawn": true,
+      "revision": 155
+    },
+    {
+      "compile_ms": 29.5895,
+      "delegate_ns": 99318477886375,
+      "keystroke_ns": 99318477317791,
+      "paint_ns": 99318546947750,
+      "painted_by_revision": 156,
+      "redrawn": true,
+      "revision": 156
+    },
+    {
+      "compile_ms": 30.443250000000003,
+      "delegate_ns": 99318501004916,
+      "keystroke_ns": 99318500396375,
+      "paint_ns": 99318595593083,
+      "painted_by_revision": 157,
+      "redrawn": true,
+      "revision": 157
+    },
+    {
+      "compile_ms": 30.636125,
+      "delegate_ns": 99318559458125,
+      "keystroke_ns": 99318558657916,
+      "paint_ns": 99318659034208,
+      "painted_by_revision": 158,
+      "redrawn": true,
+      "revision": 158
+    },
+    {
+      "compile_ms": 33.784416,
+      "delegate_ns": 99318608927500,
+      "keystroke_ns": 99318608162583,
+      "paint_ns": 99318690012166,
+      "painted_by_revision": 160,
+      "redrawn": true,
+      "revision": 159
+    },
+    {
+      "compile_ms": 33.784416,
+      "delegate_ns": 99318620675583,
+      "keystroke_ns": 99318619955958,
+      "paint_ns": 99318690012166,
+      "painted_by_revision": 160,
+      "redrawn": true,
+      "revision": 160
+    },
+    {
+      "compile_ms": 29.101958,
+      "delegate_ns": 99318659924208,
+      "keystroke_ns": 99318659201125,
+      "paint_ns": 99318738838833,
+      "painted_by_revision": 161,
+      "redrawn": true,
+      "revision": 161
+    },
+    {
+      "compile_ms": 29.266792,
+      "delegate_ns": 99318702467250,
+      "keystroke_ns": 99318701759333,
+      "paint_ns": 99318779547041,
+      "painted_by_revision": 163,
+      "redrawn": true,
+      "revision": 162
+    },
+    {
+      "compile_ms": 29.266792,
+      "delegate_ns": 99318713576541,
+      "keystroke_ns": 99318712954500,
+      "paint_ns": 99318779547041,
+      "painted_by_revision": 163,
+      "redrawn": true,
+      "revision": 163
+    },
+    {
+      "compile_ms": 29.693875000000002,
+      "delegate_ns": 99318751417708,
+      "keystroke_ns": 99318750735791,
+      "paint_ns": 99318825839333,
+      "painted_by_revision": 164,
+      "redrawn": true,
+      "revision": 164
+    },
+    {
+      "compile_ms": 30.288125,
+      "delegate_ns": 99318791679291,
+      "keystroke_ns": 99318790997750,
+      "paint_ns": 99318872096958,
+      "painted_by_revision": 166,
+      "redrawn": true,
+      "revision": 165
+    },
+    {
+      "compile_ms": 30.288125,
+      "delegate_ns": 99318802252208,
+      "keystroke_ns": 99318801748958,
+      "paint_ns": 99318872096958,
+      "painted_by_revision": 166,
+      "redrawn": true,
+      "revision": 166
+    },
+    {
+      "compile_ms": 29.384416,
+      "delegate_ns": 99318834015916,
+      "keystroke_ns": 99318833231625,
+      "paint_ns": 99318916816125,
+      "painted_by_revision": 167,
+      "redrawn": true,
+      "revision": 167
+    },
+    {
+      "compile_ms": 31.461833000000002,
+      "delegate_ns": 99318884830000,
+      "keystroke_ns": 99318884047333,
+      "paint_ns": 99318981372541,
+      "painted_by_revision": 169,
+      "redrawn": true,
+      "revision": 168
+    },
+    {
+      "compile_ms": 31.461833000000002,
+      "delegate_ns": 99318892971458,
+      "keystroke_ns": 99318892408625,
+      "paint_ns": 99318981372541,
+      "painted_by_revision": 169,
+      "redrawn": true,
+      "revision": 169
+    },
+    {
+      "compile_ms": 30.425125,
+      "delegate_ns": 99318926062791,
+      "keystroke_ns": 99318925332625,
+      "paint_ns": 99319017494583,
+      "painted_by_revision": 171,
+      "redrawn": true,
+      "revision": 170
+    },
+    {
+      "compile_ms": 30.425125,
+      "delegate_ns": 99318951311791,
+      "keystroke_ns": 99318950487458,
+      "paint_ns": 99319017494583,
+      "painted_by_revision": 171,
+      "redrawn": true,
+      "revision": 171
+    },
+    {
+      "compile_ms": 31.941916,
+      "delegate_ns": 99318982238583,
+      "keystroke_ns": 99318981520666,
+      "paint_ns": 99319065118125,
+      "painted_by_revision": 172,
+      "redrawn": true,
+      "revision": 172
+    },
+    {
+      "compile_ms": 30.258625000000002,
+      "delegate_ns": 99319026259250,
+      "keystroke_ns": 99319025601708,
+      "paint_ns": 99319124893875,
+      "painted_by_revision": 174,
+      "redrawn": true,
+      "revision": 173
+    },
+    {
+      "compile_ms": 30.258625000000002,
+      "delegate_ns": 99319041395958,
+      "keystroke_ns": 99319040712416,
+      "paint_ns": 99319124893875,
+      "painted_by_revision": 174,
+      "redrawn": true,
+      "revision": 174
+    },
+    {
+      "compile_ms": 31.153875,
+      "delegate_ns": 99319077769166,
+      "keystroke_ns": 99319077068666,
+      "paint_ns": 99319159841916,
+      "painted_by_revision": 175,
+      "redrawn": true,
+      "revision": 175
+    },
+    {
+      "compile_ms": 30.026833999999997,
+      "delegate_ns": 99319101716708,
+      "keystroke_ns": 99319101025166,
+      "paint_ns": 99319223606291,
+      "painted_by_revision": 177,
+      "redrawn": true,
+      "revision": 176
+    },
+    {
+      "compile_ms": 30.026833999999997,
+      "delegate_ns": 99319131305000,
+      "keystroke_ns": 99319130455833,
+      "paint_ns": 99319223606291,
+      "painted_by_revision": 177,
+      "redrawn": true,
+      "revision": 177
+    },
+    {
+      "compile_ms": 32.877,
+      "delegate_ns": 99319168351208,
+      "keystroke_ns": 99319167682333,
+      "paint_ns": 99319266400125,
+      "painted_by_revision": 179,
+      "redrawn": false,
+      "revision": 178
+    },
+    {
+      "compile_ms": 32.877,
+      "delegate_ns": 99319191155416,
+      "keystroke_ns": 99319190353958,
+      "paint_ns": 99319266400125,
+      "painted_by_revision": 179,
+      "redrawn": false,
+      "revision": 179
+    },
+    {
+      "compile_ms": 36.218333,
+      "delegate_ns": 99319224683166,
+      "keystroke_ns": 99319223809166,
+      "paint_ns": 99319316246416,
+      "painted_by_revision": 180,
+      "redrawn": true,
+      "revision": 180
+    },
+    {
+      "compile_ms": 30.905874999999998,
+      "delegate_ns": 99319265876958,
+      "keystroke_ns": 99319265154250,
+      "paint_ns": 99319376252083,
+      "painted_by_revision": 182,
+      "redrawn": true,
+      "revision": 181
+    },
+    {
+      "compile_ms": 30.905874999999998,
+      "delegate_ns": 99319280641708,
+      "keystroke_ns": 99319279891208,
+      "paint_ns": 99319376252083,
+      "painted_by_revision": 182,
+      "redrawn": true,
+      "revision": 182
+    },
+    {
+      "compile_ms": 29.963166,
+      "delegate_ns": 99319326039375,
+      "keystroke_ns": 99319325259833,
+      "paint_ns": 99319420342500,
+      "painted_by_revision": 184,
+      "redrawn": true,
+      "revision": 183
+    },
+    {
+      "compile_ms": 29.963166,
+      "delegate_ns": 99319342597208,
+      "keystroke_ns": 99319341826416,
+      "paint_ns": 99319420342500,
+      "painted_by_revision": 184,
+      "redrawn": true,
+      "revision": 184
+    },
+    {
+      "compile_ms": 31.784291,
+      "delegate_ns": 99319377132041,
+      "keystroke_ns": 99319376409791,
+      "paint_ns": 99319459377958,
+      "painted_by_revision": 185,
+      "redrawn": true,
+      "revision": 185
+    },
+    {
+      "compile_ms": 33.205375000000004,
+      "delegate_ns": 99319421220458,
+      "keystroke_ns": 99319420489208,
+      "paint_ns": 99319519386791,
+      "painted_by_revision": 187,
+      "redrawn": true,
+      "revision": 186
+    },
+    {
+      "compile_ms": 33.205375000000004,
+      "delegate_ns": 99319431728333,
+      "keystroke_ns": 99319431154500,
+      "paint_ns": 99319519386791,
+      "painted_by_revision": 187,
+      "redrawn": true,
+      "revision": 187
+    },
+    {
+      "compile_ms": 34.111333,
+      "delegate_ns": 99319468532208,
+      "keystroke_ns": 99319467828833,
+      "paint_ns": 99319564857416,
+      "painted_by_revision": 189,
+      "redrawn": false,
+      "revision": 188
+    },
+    {
+      "compile_ms": 34.111333,
+      "delegate_ns": 99319491146250,
+      "keystroke_ns": 99319490379083,
+      "paint_ns": 99319564857416,
+      "painted_by_revision": 189,
+      "redrawn": false,
+      "revision": 189
+    },
+    {
+      "compile_ms": 31.396832999999997,
+      "delegate_ns": 99319520642875,
+      "keystroke_ns": 99319519879541,
+      "paint_ns": 99319608485125,
+      "painted_by_revision": 190,
+      "redrawn": true,
+      "revision": 190
+    },
+    {
+      "compile_ms": 31.563708000000002,
+      "delegate_ns": 99319564307708,
+      "keystroke_ns": 99319563588958,
+      "paint_ns": 99319671996333,
+      "painted_by_revision": 192,
+      "redrawn": true,
+      "revision": 191
+    },
+    {
+      "compile_ms": 31.563708000000002,
+      "delegate_ns": 99319580871250,
+      "keystroke_ns": 99319580056000,
+      "paint_ns": 99319671996333,
+      "painted_by_revision": 192,
+      "redrawn": true,
+      "revision": 192
+    },
+    {
+      "compile_ms": 31.311208,
+      "delegate_ns": 99319616992333,
+      "keystroke_ns": 99319616320166,
+      "paint_ns": 99319705326000,
+      "painted_by_revision": 194,
+      "redrawn": true,
+      "revision": 193
+    },
+    {
+      "compile_ms": 31.311208,
+      "delegate_ns": 99319641265416,
+      "keystroke_ns": 99319640385916,
+      "paint_ns": 99319705326000,
+      "painted_by_revision": 194,
+      "redrawn": true,
+      "revision": 194
+    },
+    {
+      "compile_ms": 30.228875,
+      "delegate_ns": 99319672952000,
+      "keystroke_ns": 99319672200333,
+      "paint_ns": 99319762296250,
+      "painted_by_revision": 195,
+      "redrawn": true,
+      "revision": 195
+    },
+    {
+      "compile_ms": 32.459,
+      "delegate_ns": 99319718329791,
+      "keystroke_ns": 99319717561125,
+      "paint_ns": 99319800961500,
+      "painted_by_revision": 197,
+      "redrawn": true,
+      "revision": 196
+    },
+    {
+      "compile_ms": 32.459,
+      "delegate_ns": 99319730713416,
+      "keystroke_ns": 99319730045750,
+      "paint_ns": 99319800961500,
+      "painted_by_revision": 197,
+      "redrawn": true,
+      "revision": 197
+    },
+    {
+      "compile_ms": 30.338167,
+      "delegate_ns": 99319763245958,
+      "keystroke_ns": 99319762486333,
+      "paint_ns": 99319847093833,
+      "painted_by_revision": 198,
+      "redrawn": true,
+      "revision": 198
+    },
+    {
+      "compile_ms": 30.905749999999998,
+      "delegate_ns": 99319808831625,
+      "keystroke_ns": 99319808156541,
+      "paint_ns": 99319899740833,
+      "painted_by_revision": 200,
+      "redrawn": false,
+      "revision": 199
+    },
+    {
+      "compile_ms": 30.905749999999998,
+      "delegate_ns": 99319824863375,
+      "keystroke_ns": 99319824165583,
+      "paint_ns": 99319899740833,
+      "painted_by_revision": 200,
+      "redrawn": false,
+      "revision": 200
+    },
+    {
+      "compile_ms": 31.095375,
+      "delegate_ns": 99319859817916,
+      "keystroke_ns": 99319859094416,
+      "paint_ns": 99319951338125,
+      "painted_by_revision": 202,
+      "redrawn": true,
+      "revision": 201
+    },
+    {
+      "compile_ms": 31.095375,
+      "delegate_ns": 99319881792250,
+      "keystroke_ns": 99319880875625,
+      "paint_ns": 99319951338125,
+      "painted_by_revision": 202,
+      "redrawn": true,
+      "revision": 202
+    }
+  ],
+  "producer": "flashtex-preview-controller",
+  "render_pass_ms": {
+    "count": 116,
+    "max_ms": 16.101625,
+    "mean_ms": 8.853394008620688,
+    "min_ms": 4.461042,
+    "p50_ms": 5.607667,
+    "p95_ms": 15.438875,
+    "p99_ms": 16.056083
+  },
+  "result_to_paint_ms": {
+    "count": 131,
+    "max_ms": 30.223792,
+    "mean_ms": 15.60358053435115,
+    "min_ms": 9.581625,
+    "p50_ms": 13.579167,
+    "p95_ms": 24.711083,
+    "p99_ms": 26.473375
+  },
+  "route": "helper-v1",
+  "script": "/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-ae7ddcfb739815fac/tools/typing-bench/typed-200.txt",
+  "script_keystrokes": 200,
+  "seed": "pmax",
+  "started_at": "2026-09-12T14:24:36Z",
+  "typed": 200,
+  "typing_budget_exhausted": false,
+  "unpainted": 0
+}

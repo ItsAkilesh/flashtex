@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# PATH shim for /usr/bin/open used while running apps/mac/scripts/launch-check.sh.
+# launch-check.sh launches the packaged app with `open --env ...` and does not
+# set FLASHTEX_NO_ACTIVATE; this shim prepends every newline-separated
+# VAR=value in $FLASHTEX_MAC_LIVE_OPEN_ENV as additional `--env` arguments so
+# the app is launched ordered back (never stealing keyboard focus) and with a
+# private capture/ledger store. Nothing else about the call changes.
+set -euo pipefail
+extra=()
+while IFS= read -r kv; do
+  [[ -n "$kv" ]] && extra+=(--env "$kv")
+done <<< "${FLASHTEX_MAC_LIVE_OPEN_ENV:-}"
+if [[ -n "${FLASHTEX_MAC_LIVE_OPEN_LOG:-}" ]]; then
+  printf '/usr/bin/open %s %s\n' "${extra[*]:-}" "$*" >> "$FLASHTEX_MAC_LIVE_OPEN_LOG"
+fi
+exec /usr/bin/open ${extra[@]+"${extra[@]}"} "$@"

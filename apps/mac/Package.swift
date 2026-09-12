@@ -9,6 +9,12 @@ let package = Package(
         .library(name: "FlashTeXProtocol", targets: ["FlashTeXProtocol"]),
         .library(name: "FlashTeXAccessibility", targets: ["FlashTeXAccessibility"]),
     ],
+    dependencies: [
+        // Test-only: the reference companion client (apps/mac/tools/nearby-client)
+        // drives the real NearbyListener in NearbyReferenceClientTests. The
+        // package has no dependency back on this one, so there is no cycle.
+        .package(path: "tools/nearby-client"),
+    ],
     targets: [
         // Codable models for docs/contracts/runtime-v1.md plus offset conversion.
         .target(name: "FlashTeXProtocol"),
@@ -22,7 +28,7 @@ let package = Package(
         ),
         .testTarget(
             name: "FlashTeXMacTests",
-            dependencies: ["FlashTeXMac"]
+            dependencies: ["FlashTeXMac", .product(name: "NearbyClient", package: "nearby-client")]
         ),
         // Pure accessibility models (reading sequence, editor navigation,
         // command table) plus the SwiftUI attachment views; depends only on

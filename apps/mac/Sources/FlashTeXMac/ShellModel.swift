@@ -26,7 +26,11 @@ final class ShellModel {
     var loadError: String?
     var selection: Selection?
     var navigationNote: String?
-    var darkPreview = false
+    var darkPreview = EditorPreferences.shared.darkPreviewDefault // EditorPreferences.swift: appearance preference
+    /// Openers the editor auto-closes (`{`, `[`, `$`); braces only by default (SourceEditorView).
+    var autoClosePairs: Set<Character> = ["{"]
+    var previewV2 = ProcessInfo.processInfo.environment["FLASHTEX_PREVIEW_V2"] == "1" // experimental v2 pane (PreviewV2View.swift)
+    var displayListV2: V2PreviewState?
     var previewSource: PreviewSource = .none
     /// File backing the entry document, if any, and its last saved contents.
     var documentURL: URL?
@@ -34,14 +38,31 @@ final class ShellModel {
     var recoverableBuffer: RecoverableBuffer?
 
     // Capture review / insertion (contract: "Capture and insertion").
-    struct PendingEdit: Equatable { var path: String; var nsRange: NSRange; var text: String; var token: Int }
+    struct PendingEdit: Equatable {
+        var path: String; var nsRange: NSRange; var text: String; var token: Int
+        /// Editor revision `nsRange` was computed for; the editor refuses the
+        /// edit if the buffer moved on (an IME commit, a keystroke) before it
+        /// could apply it. nil: not bound (bridge-verified edits).
+        var revision: Int? = nil
+        /// What to give back when a capture insertion is refused.
+        var captureRefund: CaptureRefund? = nil
+    }
+    struct CaptureRefund: Equatable { var proposal: RuntimeV1.CaptureProposal; var anchorBefore: InsertionAnchor }
     var caretUTF16: Int = 0
     var anchor: InsertionAnchor?
     var proposals: [RuntimeV1.CaptureProposal] = []
     var reviewing: RuntimeV1.CaptureProposal?
     var pendingEdit: PendingEdit?
+    /// Tokens only ever grow: the editor remembers the last token it consumed,
+    /// so a token that restarted at 1 after `pendingEdit` was cleared (an
+    /// applied or refused edit) would never be applied.
+    @ObservationIgnored private var editTokens = 0
+    func nextEditToken() -> Int { editTokens += 1; return editTokens }
     var captureNote: String?
     var appliedCaptureIDs: Set<String> = []
+    /// Past proposal decisions with outcomes (ReviewHistory.swift); persisted
+    /// under Application Support (`FLASHTEX_REVIEW_HISTORY_DIR` overrides, `off` = memory only).
+    @ObservationIgnored lazy var reviewHistory = ReviewHistoryRecorder(projectId: projectId)
     var nextAnchorNumber = 1
     /// UTF-16 length of the editor selection starting at `caretUTF16` (0 = caret only).
     var caretLengthUTF16: Int = 0
@@ -56,6 +77,40 @@ final class ShellModel {
     let nearbyInbox = NearbyInbox() // captures from paired companions (ShellModel+Nearby.swift)
     var workerLog: [String] = []
     @ObservationIgnored private var worker: WorkerClient?
+    /// How the current worker was launched, so an abnormal exit can relaunch
+    /// the same executable (bounded: `maxWorkerRelaunches` per minute).
+    @ObservationIgnored private var workerLaunch: (url: URL, arguments: [String])?
+    @ObservationIgnored private var workerRelaunchTimes: [Date] = []
+    @ObservationIgnored private var workerRelaunchWork: DispatchWorkItem?
+    static let maxWorkerRelaunches = 3
+    /// Relaunch delays after the 1st, 2nd, 3rd abnormal exit within a minute.
+    static let workerRelaunchDelays: [TimeInterval] = [0.2, 1.0, 3.0]
+    /// Number of automatic relaunches performed so far (for status/tests).
+    private(set) var workerRelaunchCount = 0
+    /// Durable-source helper (`flashtex-preview-controller`), see ShellModel+Controller.swift.
+    @ObservationIgnored var controller: PreviewControllerClient?
+    /// Executable of the attached helper, so an abnormal exit can relaunch it
+    /// (same bound and delays as the worker); cleared by an explicit detach.
+    @ObservationIgnored var controllerLaunchURL: URL?
+    @ObservationIgnored var controllerRelaunchTimes: [Date] = []
+    @ObservationIgnored var controllerRelaunchWork: DispatchWorkItem?
+    /// Number of automatic helper relaunches performed so far (status/tests).
+    var controllerRelaunchCount = 0
+    @ObservationIgnored var controllerState = ControllerState()
+    /// Status of the helper route (attached / ready / durable revision / errors).
+    var controllerStatus: String = "no preview controller attached"
+    /// Set while the displayed result is a completed OLDER snapshot from the
+    /// helper (HistoricalPreview.swift): navigation, diagnostic jump, caret
+    /// sync, capture destinations and export are disabled until a current
+    /// preview replaces it. Explicit, never inferred from staleness.
+    var historicalPreview: HistoricalDisplay?
+    @ObservationIgnored var historicalState = HistoricalPreviewState()
+    /// Helper display-candidate route (ShellModel+DisplayCandidates.swift): opt-in, negotiation and gate state.
+    let displayCandidates = DisplayCandidateState()
+    /// Project-index completion vocabulary (labels/citations/commands) bound to
+    /// the editor revision it was fetched for (Completion.swift).
+    var completionMetadata: Completion.Metadata?
+    @ObservationIgnored let completionFetcher = ProjectIndexCompletionFetcher()
     @ObservationIgnored private var nextRequestID = 1
     /// Text each document had when the current `result` was produced, so stale
     /// byte offsets can be rebased (or refused) after edits.
@@ -116,7 +171,7 @@ final class ShellModel {
     }
 
     /// Binds a result's negotiation state, substitutions, and layout diagnostics.
-    private func bindLayout(of applied: RuntimeV1.CompileResult, requested: [String]) {
+    func bindLayout(of applied: RuntimeV1.CompileResult, requested: [String]) {
         negotiation = LayoutNegotiation(requested: requested, accepted: applied.layoutCapabilities ?? [])
         fontSubstitutions = PreviewFonts.substitutions(in: applied)
         layoutDiagnostics = LayoutNegotiation.unsupportedPrimitiveDiagnostics(in: applied, negotiation: negotiation)
@@ -136,7 +191,7 @@ final class ShellModel {
         return 0
     }()
     /// Revision of the compile request currently in flight (nil if idle).
-    private(set) var inFlightRevision: Int?
+    var inFlightRevision: Int?
     /// Revision the editor buffer corresponds to. Bumps on every edit so the
     /// UI can say when the preview's source ranges no longer match the buffer.
     private(set) var editorRevision = 1
@@ -173,7 +228,9 @@ final class ShellModel {
         let sorted = latenciesMs.sorted()
         return sorted[sorted.count / 2]
     }
-    var workerAttached: Bool { worker?.isRunning == true }
+    var workerAttached: Bool { worker?.isRunning == true || controller?.isRunning == true }
+    /// True when previews come from the durable helper instead of the direct worker.
+    var controllerAttached: Bool { controller?.isRunning == true }
 
     var activeText: String {
         get { documents.first { $0.path == activePath }?.text ?? "" }
@@ -181,34 +238,110 @@ final class ShellModel {
 
     /// Diagnostic underlines for the active document, rebased across edits or
     /// dropped (see `EditorDiagnostics`).
-    var editorMarks: [EditorDiagnostics.Mark] {
-        guard let result else { return [] }
-        // Memoized: ContentView reads this on every body evaluation and the
-        // rebase compares the compiled and current texts in full.
-        let key = EditorMarksKey(resultID: resultID, resultRevision: result.revision, editorRevision: editorRevision, path: activePath)
-        if let cached = editorMarksCache, cached.key == key { return cached.marks }
-        let marks = EditorDiagnostics.marks(for: result, path: activePath,
-                                            compiledText: compiledDocuments[activePath], currentText: activeText)
-        editorMarksCache = (key, marks)
-        return marks
+    var editorMarks: [EditorDiagnostics.Mark] { editorMarkReport.marks }
+
+    /// Marks plus the diagnostics withheld after an edit; `staleNote` is
+    /// shown in the footer. Memoized: ContentView reads this on every body
+    /// evaluation and the rebase compares the compiled and current texts.
+    var editorMarkReport: EditorDiagnostics.Report {
+        // Historical spans are inert: not drawn even when their offsets are in bounds.
+        guard let result, historicalPreview == nil else { return .empty }
+        let key = EditorMarksKey(resultID: resultID, resultRevision: result.revision, editorRevision: editorRevision, path: activePath,
+                                 explanationsCount: explanations[resultID]?.count ?? -1,
+                                 carriedExplanationsCount: explanations[retainedMarks?.resultID]?.count ?? -1)
+        if let cached = editorMarksCache, cached.key == key { return cached.report }
+        // Retention: a failed result with no pages keeps the last marks, flagged
+        // (ShellModel+DiagnosticRetention.swift); carried marks take their
+        // explanation lines from the retained result's cache entry.
+        let report = EditorDiagnostics.attach(explanations[resultID], carried: explanations[retainedMarks?.resultID],
+                                              to: diagnosticReport(for: activePath, currentText: activeText))
+        editorMarksCache = (key, report)
+        return report
     }
-    private struct EditorMarksKey: Equatable { var resultID: String?; var resultRevision: Int; var editorRevision: Int; var path: String }
-    @ObservationIgnored private var editorMarksCache: (key: EditorMarksKey, marks: [EditorDiagnostics.Mark])?
+    /// The last result that produced output (`EditorDiagnostics.Retained`),
+    /// kept while a later result fails with no pages; see `retainMarksAfterResultBound`.
+    var retainedMarks: EditorDiagnostics.Retained?
+    private struct EditorMarksKey: Equatable {
+        var resultID: String?; var resultRevision: Int; var editorRevision: Int; var path: String
+        var explanationsCount: Int; var carriedExplanationsCount: Int
+    }
+    @ObservationIgnored private var editorMarksCache: (key: EditorMarksKey, report: EditorDiagnostics.Report)?
+    /// Identity of the mark last reached by ⌘⇧]/⌘⇧[, so marks sharing a
+    /// start offset are each visited once (Navigation.swift).
+    @ObservationIgnored var currentDiagnosticID: String?
+
+    /// Offline explanations per result id (crates/diagnostic-explanations via
+    /// flashtex-explain); attached to marks, never blocking a keystroke.
+    private(set) var explanations = EditorDiagnostics.ExplanationCache()
+    @ObservationIgnored private var explanationClient: ExplanationClient?
+    var explanationStatus: String?
+
+    /// A reviewed quick fix being previewed (sheet); nil when none.
+    var quickFix: EditorDiagnostics.QuickFix.Preview?
+    var quickFixIndex: Int?
+
+    /// "Fix…" on a diagnostics row: prepare the suggestion against the current
+    /// buffer and show the preview; refusals go to the footer.
+    func previewQuickFix(diagnosticIndex: Int, suggestion: Int = 0) {
+        guard let x = explanations.explanation(resultID: resultID, index: diagnosticIndex) else {
+            navigationNote = "No explanation for this diagnostic yet."; return
+        }
+        switch EditorDiagnostics.QuickFix.prepare(x, suggestion: suggestion, path: activePath,
+                                                  in: activeText, compiledText: compiledDocuments[activePath]) {
+        case .success(let preview): quickFix = preview; quickFixIndex = diagnosticIndex; navigationNote = nil
+        case .failure(let why): quickFix = nil; navigationNote = "Fix not applied: " + why.text
+        }
+    }
+
+    /// "Apply" in the preview sheet: one grouped replacement through the
+    /// existing pendingEdit path (single undoable edit, never automatic).
+    func applyQuickFix() {
+        guard let preview = quickFix else { return }
+        let grouped = preview.apply()
+        guard grouped.path == activePath, grouped.matches(activeText) else {
+            navigationNote = "Fix not applied: the document changed since the preview; open Fix… again."
+            quickFix = nil; return
+        }
+        pendingEdit = .init(path: grouped.path, nsRange: grouped.nsRange, text: grouped.text,
+                            token: nextEditToken(), revision: editorRevision)
+        navigationNote = "Applied: \(preview.summary) (undo with ⌘Z)"
+        quickFix = nil
+    }
+
+    /// Asks the helper once per result; the cache is read by `editorMarkReport`.
+    private func fetchExplanations(for result: RuntimeV1.CompileResult, id: String, documents: [RuntimeV1.Document]) {
+        guard explanations[id] == nil else { return }
+        if explanations.reuse(for: id, result: result, documents: documents) { // ExplanationMemo.swift: unchanged diagnostics, no helper request
+            editorMarksCache = nil; explanationStatus = nil; return
+        }
+        if explanationClient == nil || explanationClient?.isRunning == false {
+            guard let exe = ExplanationClient.locate() else { explanationStatus = nil; return }
+            explanationClient = try? ExplanationClient(executable: exe) { [weak self] e in self?.explanationStatus = "flashtex-explain: " + e }
+        }
+        explanationClient?.explain(result: result, documents: documents, supported: Completion.defaultSupported) { [weak self] outcome in
+            guard let self else { return }
+            switch outcome {
+            case .success(let list):
+                self.explanations.store(list, for: id, result: result, documents: documents)
+                self.editorMarksCache = nil // re-attach on the next read
+                self.explanationStatus = nil
+            case .failure(let f):
+                self.explanationStatus = f.text // shown in the footer; marks stay as they are
+            }
+        }
+    }
 
     // MARK: caret sync (source -> preview)
 
     /// UTF-8 byte offset of the editor caret in `activeText`, or nil when the
     /// UTF-16 caret is out of range for the buffer.
     var caretByte: Int? {
-        activeText.utf8ByteRange(of: NSRange(location: caretUTF16, length: 0))?.start
+        CaretSync.byteOffset(ofCaretUTF16: caretUTF16, in: activeText) // mid-surrogate carets rounded, never split
     }
 
     /// Preview items under the caret, as `page number -> item indices`.
     /// Empty when there is no result or the caret maps to nothing.
-    var caretItems: [Int: Set<Int>] {
-        guard let result, let byte = caretByte else { return [:] }
-        return CaretSync.indicesByPage(byte: byte, path: activePath, in: result)
-    }
+    var caretItems: [Int: Set<Int>] { exactCaretItems } // CaretSync.swift: O(log n) index, memoized per result
 
     init() {
         let env = ProcessInfo.processInfo.environment
@@ -225,7 +358,12 @@ final class ShellModel {
             let bundledCompiler = Bundle.main.executableURL?.deletingLastPathComponent()
                 .appendingPathComponent("flashtex-compiler").path
             let hasBundled = bundledCompiler.map { FileManager.default.isExecutableFile(atPath: $0) } ?? false
-            if env["FLASHTEX_AUTOATTACH"] != "0", (env["FLASHTEX_AUTOATTACH"] == "1" || hasBundled),
+            if env["FLASHTEX_AUTOATTACH"] == "1", let helper = env["FLASHTEX_PREVIEW_CONTROLLER"],
+               FileManager.default.isExecutableFile(atPath: helper) {
+                // Durable helper route (STDIO.md): the helper owns the ledger and the
+                // compiler; the direct worker is not attached alongside it.
+                attachController(at: URL(fileURLWithPath: helper))
+            } else if env["FLASHTEX_AUTOATTACH"] != "0", (env["FLASHTEX_AUTOATTACH"] == "1" || hasBundled),
                Self.locateCompiler() != nil {
                 attachDiscoveredWorker()
                 compile()
@@ -273,16 +411,19 @@ final class ShellModel {
             self.resultID = res.id
             self.fixtureURL = result
             self.previewSource = .fixture
+            self.historicalPreview = nil
             bindLayout(of: res.payload, requested: requested)
             if let req {
                 documents = req.payload.documents
                 activePath = req.payload.entryPath
                 editorRevision = req.payload.revision
                 compiledDocuments = Dictionary(uniqueKeysWithValues: req.payload.documents.map { ($0.path, $0.text) })
+                fetchExplanations(for: res.payload, id: res.id, documents: req.payload.documents)
             } else {
                 if documents.isEmpty { documents = [.init(path: "main.tex", text: "")] }
                 compiledDocuments = [:]
             }
+            retainMarksAfterResultBound() // ShellModel+DiagnosticRetention.swift
             selection = nil
             navigationNote = nil
         } catch {
@@ -323,7 +464,9 @@ final class ShellModel {
         compiledDocuments = [:]
         result = nil
         resultID = nil
+        retainedMarks = nil
         previewSource = .none
+        historicalPreview = nil
         negotiation = .legacy
         fontSubstitutions = []
         layoutDiagnostics = []
@@ -346,6 +489,7 @@ final class ShellModel {
 
     private func scheduleAutoCompile() {
         guard autoCompile, workerAttached else { return }
+        if controllerAttached { controllerSubmitEdit(); return }
         debounce?.cancel()
         if Self.debounceInterval == 0 { compile(); return }
         let item = DispatchWorkItem { [weak self] in self?.compile() }
@@ -357,48 +501,54 @@ final class ShellModel {
 
     /// Converts the contract's UTF-8 byte range to a UTF-16 selection in the
     /// matching document and asks the editor to select it.
+    /// Preview/diagnostic navigation: see `navigateExactly` (Navigation.swift)
+    /// for the byte-exact staleness and cluster guarantees.
     func navigate(to source: RuntimeV1.SourceRange?) {
-        guard let source else {
-            navigationNote = "This item has no source mapping."
-            return
-        }
-        navigate(to: source, expectedText: nil)
+        navigateExactly(to: source, expectedText: nil)
     }
 
-    /// `expectedText` (an item's text) lets a rebased range be verified.
+    /// `expectedText` (an item's text) annotates generated text after a rebase.
     func navigate(to source: RuntimeV1.SourceRange, expectedText: String?) {
-        guard let doc = documents.first(where: { $0.path == source.path }) else {
-            navigationNote = "No open document named \(source.path)."
-            return
-        }
-        var target = source
-        var rebasedNote = ""
-        if let compiled = compiledDocuments[source.path], compiled != doc.text {
-            guard let mapped = SourceMapping.rebase(source, from: compiled, to: doc.text, expectedText: expectedText) else {
-                navigationNote = "Source for this item was edited since revision \(result?.revision ?? 0); recompile to navigate."
-                return
-            }
-            if mapped != source {
-                rebasedNote = " (rebased from \(source.startByte)..<\(source.endByte) across edits)"
-            }
-            target = mapped
-        } else if compiledDocuments[source.path] == nil, previewIsStale {
-            navigationNote = "Buffer edited since revision \(result?.revision ?? 0) and no compiled text is recorded; recompile to navigate."
-            return
-        }
-        guard let ns = doc.text.nsRange(utf8Bytes: target) else {
-            navigationNote = "Bytes \(target.startByte)..<\(target.endByte) are not a valid range in \(source.path) (buffer is \(doc.text.utf8.count) bytes)."
-            return
-        }
-        activePath = source.path
-        selection = .init(path: source.path, nsRange: ns, token: (selection?.token ?? 0) + 1)
-        navigationNote = "Selected \(source.path) bytes \(target.startByte)..<\(target.endByte) → UTF-16 \(ns.location)..<\(ns.location + ns.length)" + rebasedNote
+        navigateExactly(to: source, expectedText: expectedText)
     }
 
     // MARK: worker transport (runtime v1 JSON Lines)
 
     /// Finds a built FT-002 worker: $FLASHTEX_COMPILER, then
     /// crates/compiler/target/{release,debug}/flashtex-compiler under the repo root.
+    /// Finds a built render pipeline (`flashtex-render`, crates/render-pipeline:
+    /// a drop-in runtime-v1 producer measured with Latin Modern metrics, so
+    /// the preview draws Computer Modern-style text): $FLASHTEX_RENDER, the
+    /// app bundle, then crates/render-pipeline/target/{release,debug}.
+    static func locateRenderPipeline() -> URL? {
+        let fm = FileManager.default
+        if let env = ProcessInfo.processInfo.environment["FLASHTEX_RENDER"], fm.isExecutableFile(atPath: env) {
+            return URL(fileURLWithPath: env)
+        }
+        if let bundled = Bundle.main.executableURL?.deletingLastPathComponent().appendingPathComponent("flashtex-render"),
+           fm.isExecutableFile(atPath: bundled.path) {
+            return bundled
+        }
+        guard let root = locateRepoRoot() else { return nil }
+        for profile in ["release", "debug"] {
+            let url = root.appendingPathComponent("crates/render-pipeline/target/\(profile)/flashtex-render")
+            if fm.isExecutableFile(atPath: url.path) { return url }
+        }
+        return nil
+    }
+
+    /// File > Attach Render Pipeline: the Latin Modern producer when it is built.
+    @discardableResult
+    func attachDiscoveredRenderPipeline() -> Bool {
+        guard let url = Self.locateRenderPipeline() else {
+            workerStatus = "no built flashtex-render found (build crates/render-pipeline or set FLASHTEX_RENDER)"
+            return false
+        }
+        attachWorker(at: url)
+        compile()
+        return true
+    }
+
     static func locateCompiler() -> URL? {
         let fm = FileManager.default
         if let env = ProcessInfo.processInfo.environment["FLASHTEX_COMPILER"], fm.isExecutableFile(atPath: env) {
@@ -437,10 +587,16 @@ final class ShellModel {
 
     func attachWorker(at url: URL, arguments: [String] = []) {
         detachWorker()
+        workerRelaunchTimes = []
+        launchWorker(at: url, arguments: arguments)
+    }
+
+    private func launchWorker(at url: URL, arguments: [String]) {
         do {
             worker = try WorkerClient(executable: url, arguments: arguments, transcript: transcript) { [weak self] event in
                 self?.handle(event)
             }
+            workerLaunch = (url, arguments)
             workerStatus = "attached: \(url.lastPathComponent)"
             PreviewFonts.producerFace = PreviewFonts.face(forProducer: url.lastPathComponent)
             log("launched \(url.path) (preview face: \(PreviewFonts.active.rawValue))")
@@ -451,6 +607,9 @@ final class ShellModel {
 
     func detachWorker() {
         debounce?.cancel()
+        workerRelaunchWork?.cancel()
+        workerRelaunchWork = nil
+        workerLaunch = nil
         worker?.terminate()
         worker = nil
         inFlightRequests.removeAll()
@@ -467,10 +626,12 @@ final class ShellModel {
     /// at once under a new id — at the same revision when the buffer has not
     /// changed — and the older request's reply is then classified stale.
     func compile() {
+        if controllerAttached { controllerCompile(); return }
         guard let worker, worker.isRunning else {
             workerStatus = "no worker attached"
             return
         }
+        if outputBoundBlocksCompile { return } // the document still exceeds the worker line limit (ShellModel+OutputBounds.swift)
         debounce?.cancel()
         let capabilities = requestedLayoutCapabilities
         if let latestID = latestRequestID, let latest = inFlightRequests[latestID] {
@@ -488,11 +649,11 @@ final class ShellModel {
         let request = RuntimeV1.CompileRequest(
             projectId: result?.projectId ?? "demo",
             revision: editorRevision,
-            entryPath: activePath,
+            entryPath: project.entryPath, // the entry stays first whichever document is being edited
             documents: documents,
             layoutCapabilities: capabilities.isEmpty ? nil : capabilities)
         do {
-            if TypingBench.shared.isActive { FlashTeXLog.write("compile: sending revision \(editorRevision) at \(MonotonicClock.nowNs())") }
+            if TypingBench.isBenchActive { FlashTeXLog.write("compile: sending revision \(editorRevision) at \(MonotonicClock.nowNs())") }
             try worker.send(request, id: id)
             inFlightRequests[id] = InFlight(projectId: request.projectId, revision: request.revision,
                                             documents: documents, sentAt: Date(), layoutCapabilities: capabilities)
@@ -569,11 +730,14 @@ final class ShellModel {
             result = incoming
             resultID = env.id
             previewSource = .worker(worker?.executable.lastPathComponent ?? "worker")
+            historicalPreview = nil
             bindLayout(of: incoming, requested: sent.layoutCapabilities)
             compiledDocuments = Dictionary(uniqueKeysWithValues: sent.documents.map { ($0.path, $0.text) })
+            retainMarksAfterResultBound() // ShellModel+DiagnosticRetention.swift
+            fetchExplanations(for: incoming, id: env.id, documents: sent.documents)
             let ms = Date().timeIntervalSince(sent.sentAt) * 1000
             TypingBench.shared.noteCompile(revision: incoming.revision, ms: ms)
-            if TypingBench.shared.isActive { FlashTeXLog.write("compile: applied revision \(incoming.revision) at \(MonotonicClock.nowNs())") }
+            if TypingBench.isBenchActive { FlashTeXLog.write("compile: applied revision \(incoming.revision) at \(MonotonicClock.nowNs())") }
             lastLatencyMs = ms
             latenciesMs.append(ms)
             if latenciesMs.count > 100 { latenciesMs.removeFirst(latenciesMs.count - 100) }
@@ -584,15 +748,27 @@ final class ShellModel {
                 compileQueued = false
                 compile() // no-op when buffers and capability set are unchanged
             }
+        case .displayList(let id, let line):
+            receiveDisplayListV2(id: id, line: line) // negotiated live v2 frame (PreviewV2View.swift)
         case .error(let id, let message):
+            let wasLatest = latestRequestID == id
             inFlightRequests.removeValue(forKey: id)
             refreshInFlightRevision()
-            if inFlightRevision == nil { compileQueued = false }
             workerStatus = "worker error for \(id): \(message)"
             log("error \(id): \(message)")
+            // A keystroke coalesced behind the errored request still wants its
+            // preview: send the newest buffer once (a new revision, a new id).
+            // Nothing is re-sent when the buffer did not change.
+            if wasLatest, inFlightRevision == nil, compileQueued {
+                compileQueued = false
+                compile()
+            } else if inFlightRevision == nil {
+                compileQueued = false
+            }
         case .protocolViolation(let message):
             workerStatus = "protocol violation: \(message)"
             log("protocol violation: \(message)")
+            outputBoundHandleWorkerViolation(message) // an oversized compile_result: name the bound and the document size
         case .stderr(let text):
             log(text.trimmingCharacters(in: .whitespacesAndNewlines))
         case .exited(let code):
@@ -603,10 +779,51 @@ final class ShellModel {
             workerStatus = "worker exited (\(code))"
             log("worker exited with status \(code)")
             worker = nil
+            scheduleWorkerRelaunch(afterExit: code)
         }
     }
 
-    private func log(_ line: String) {
+    /// An abnormal exit of a worker we launched relaunches the same executable
+    /// after a short backoff, at most `maxWorkerRelaunches` times per minute;
+    /// beyond that the exit is left visible for the user. A clean exit (0) or
+    /// an explicit detach never relaunches. The preview keeps the last result.
+    private func scheduleWorkerRelaunch(afterExit code: Int32) {
+        guard code != 0, let launch = workerLaunch else { return }
+        let now = Date()
+        workerRelaunchTimes = workerRelaunchTimes.filter { now.timeIntervalSince($0) < 60 }
+        guard workerRelaunchTimes.count < Self.maxWorkerRelaunches else {
+            workerStatus = "worker exited (\(code)); not relaunched: \(Self.maxWorkerRelaunches) relaunches in the last minute — File > Attach Built Compiler to retry"
+            log("worker relaunch limit reached")
+            return
+        }
+        let delay = Self.workerRelaunchDelays[min(workerRelaunchTimes.count, Self.workerRelaunchDelays.count - 1)]
+        workerRelaunchTimes.append(now)
+        workerStatus = String(format: "worker exited (%d); relaunching in %.1f s", code, delay)
+        log("relaunching \(launch.url.lastPathComponent) in \(delay) s (attempt \(workerRelaunchTimes.count))")
+        let item = DispatchWorkItem { [weak self] in
+            guard let self, self.worker == nil, let launch = self.workerLaunch else { return }
+            self.launchWorker(at: launch.url, arguments: launch.arguments)
+            self.workerRelaunchCount += 1
+            if self.workerAttached {
+                self.log("relaunched \(launch.url.lastPathComponent)")
+                if self.autoCompile { self.compile() }
+            }
+        }
+        workerRelaunchWork = item
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: item)
+    }
+
+    /// Documents (path → text) the current result was compiled from.
+    func setCompiledDocuments(_ docs: [String: String]) { compiledDocuments = docs }
+
+    /// Records one producer round trip for the status line's latency summary.
+    func recordLatency(_ ms: Double) {
+        lastLatencyMs = ms
+        latenciesMs.append(ms)
+        if latenciesMs.count > 100 { latenciesMs.removeFirst(latenciesMs.count - 100) }
+    }
+
+    func log(_ line: String) {
         FlashTeXLog.write(line)
         workerLog.append(line)
         if workerLog.count > 200 { workerLog.removeFirst(workerLog.count - 200) }
@@ -616,6 +833,7 @@ final class ShellModel {
 
     /// Pins the current caret as the insertion destination (`destination_id`).
     func pinAnchorAtCaret() {
+        if let why = historicalRefusal(of: "pinning an insertion point") { captureNote = why; return }
         guard let anchor = Insertion.makeAnchor(id: "mac-anchor-\(nextAnchorNumber)", path: activePath,
                                                 text: activeText, caretUTF16: caretUTF16, revision: editorRevision)
         else { captureNote = "Caret position is not valid."; return }
@@ -660,6 +878,7 @@ final class ShellModel {
         proposals.removeAll { $0.captureId == proposal.captureId }
         if reviewing?.captureId == proposal.captureId { reviewing = proposals.first }
         captureNote = "Rejected \(proposal.captureId)."
+        reviewHistory.recordRejected(proposal, editorRevision: editorRevision)
         bridgeReject(captureId: proposal.captureId)
     }
 
@@ -671,6 +890,12 @@ final class ShellModel {
     /// verified against the bridge), never through this local path.
     @discardableResult
     func approveProposal(_ proposal: RuntimeV1.CaptureProposal, latex: String) -> ApproveOutcome {
+        let outcome = approveProposalCore(proposal, latex: latex)
+        reviewHistory.record(outcome, proposal: proposal, latex: latex, path: anchor?.path ?? activePath, editorRevision: editorRevision)
+        return outcome
+    }
+
+    private func approveProposalCore(_ proposal: RuntimeV1.CaptureProposal, latex: String) -> ApproveOutcome {
         guard !appliedCaptureIDs.contains(proposal.captureId) else {
             rejectProposal(proposal); captureNote = "Capture \(proposal.captureId) already inserted."; return .duplicate
         }
@@ -697,7 +922,10 @@ final class ShellModel {
             captureNote = "Anchor offset is not a valid position."; return .needsReselection("invalid offset")
         }
         activePath = anchor.path
-        pendingEdit = .init(path: anchor.path, nsRange: ns, text: insert, token: (pendingEdit?.token ?? 0) + 1)
+        var reviewed = proposal
+        reviewed.latex = latex
+        pendingEdit = .init(path: anchor.path, nsRange: ns, text: insert, token: nextEditToken(),
+                            revision: editorRevision, captureRefund: .init(proposal: reviewed, anchorBefore: anchor))
         appliedCaptureIDs.insert(proposal.captureId)
         proposals.removeAll { $0.captureId == proposal.captureId }
         reviewing = proposals.first
@@ -708,10 +936,32 @@ final class ShellModel {
         return .inserted(byteOffset: byte)
     }
 
+    /// Called by the editor when it could NOT apply a pending edit: the buffer
+    /// moved on since the edit was prepared (an IME commit, a keystroke) or the
+    /// range no longer fits. A capture goes back to the front of the review
+    /// queue with its pre-insertion anchor, so approving it again re-resolves
+    /// the anchor against the current text; nothing is recorded as inserted.
+    func editRefused(_ edit: PendingEdit, reason: String) {
+        if pendingEdit == edit { pendingEdit = nil }
+        guard let refund = edit.captureRefund else {
+            navigationNote = "Edit not applied: \(reason)."
+            return
+        }
+        let id = refund.proposal.captureId
+        appliedCaptureIDs.remove(id)
+        if !proposals.contains(where: { $0.captureId == id }) { proposals.insert(refund.proposal, at: 0) }
+        reviewing = proposals.first
+        if anchor?.id == refund.anchorBefore.id { anchor = refund.anchorBefore }
+        captureNote = "Capture \(id) was not inserted: \(reason). It is back in the review queue; approve it again."
+        reviewHistory.recordRefused(refund, reason: reason, editorRevision: editorRevision)
+        log("insertion of \(id) refused: \(reason)")
+    }
+
     /// Called by the editor once it has applied a pending edit (with undo registered).
     func editApplied(_ edit: PendingEdit, newText: String) {
         if pendingEdit == edit { pendingEdit = nil }
         updateActiveText(newText)
+        reviewHistory.recordApplied(edit, editorRevision: editorRevision)
         // The insertion is the edit that bumped the revision; the anchor is exact for it.
         if let a = anchor, a.path == edit.path {
             anchor = InsertionAnchor(id: a.id, path: a.path, byteOffset: a.byteOffset,

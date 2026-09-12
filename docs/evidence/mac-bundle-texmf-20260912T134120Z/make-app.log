@@ -1,0 +1,144 @@
+==> Pinned rooted TFM metrics verified under <worktree>/apps/mac/Fonts/texmf (7 entries)
+==> Building FlashTeXMac (-c debug) in <worktree>/apps/mac
+Building for debugging...
+[0/8] Write FlashTeXMac-entitlement.plist
+[0/8] Write sources
+[4/8] Write swift-version--58304C5D6DBC2206.txt
+[6/19] Compiling FlashTeXProtocol Rules.swift
+[7/20] Compiling FlashTeXProtocol SourceMapping.swift
+[8/20] Compiling FlashTeXProtocol RenderingV2Fast.swift
+[9/20] Compiling FlashTeXProtocol RuntimeV1.swift
+[10/20] Compiling FlashTeXProtocol LayoutNegotiation.swift
+[11/20] Compiling FlashTeXProtocol JSONLines.swift
+[12/20] Compiling FlashTeXProtocol FastJSON.swift
+[13/20] Compiling FlashTeXProtocol ByteOffsets.swift
+[14/20] Compiling FlashTeXProtocol Capture.swift
+[15/20] Emitting module FlashTeXProtocol
+[16/20] Compiling FlashTeXProtocol RenderingV2.swift
+[17/20] Compiling FlashTeXProtocol TransferV1.swift
+[18/27] Compiling FlashTeXAccessibility AccessibleEditorModel.swift
+[19/27] Compiling FlashTeXAccessibility CompletionAccessibility.swift
+[20/27] Compiling FlashTeXAccessibility EditorDiagnosticsAccessibility.swift
+[21/27] Emitting module FlashTeXAccessibility
+[22/27] Compiling FlashTeXAccessibility AccessibilityCommands.swift
+[23/27] Compiling FlashTeXAccessibility AccessibleDocumentModel.swift
+[24/27] Compiling FlashTeXAccessibility AccessibilityViews.swift
+[25/68] Compiling FlashTeXMac NearbyState.swift
+[26/68] Compiling FlashTeXMac NearbyView.swift
+[27/68] Compiling FlashTeXMac PDFExport.swift
+[28/68] Compiling FlashTeXMac Pairing.swift
+[29/72] Compiling FlashTeXMac ShellModel+Bridge.swift
+<worktree>/apps/mac/Sources/FlashTeXMac/ShellModel+Controller.swift:214:48: warning: string interpolation produces a debug description for an optional value; did you mean to make this explicit?
+212 |                 controllerState.inFlight = nil
+213 |                 inFlightRevision = nil
+214 |                 log("controller refused edit \(id): \(message)")
+    |                                                |- warning: string interpolation produces a debug description for an optional value; did you mean to make this explicit?
+    |                                                |- note: provide a default value to avoid this warning
+    |                                                `- note: use 'String(describing:)' to silence this warning
+215 |                 controllerStatus = "edit refused: \(message)"
+216 |                 if message.hasPrefix("document_conflict") {
+[30/72] Compiling FlashTeXMac ShellModel+Controller.swift
+<worktree>/apps/mac/Sources/FlashTeXMac/ShellModel+Controller.swift:214:48: warning: string interpolation produces a debug description for an optional value; did you mean to make this explicit?
+212 |                 controllerState.inFlight = nil
+213 |                 inFlightRevision = nil
+214 |                 log("controller refused edit \(id): \(message)")
+    |                                                |- warning: string interpolation produces a debug description for an optional value; did you mean to make this explicit?
+    |                                                |- note: provide a default value to avoid this warning
+    |                                                `- note: use 'String(describing:)' to silence this warning
+215 |                 controllerStatus = "edit refused: \(message)"
+216 |                 if message.hasPrefix("document_conflict") {
+[31/72] Compiling FlashTeXMac ShellModel+Nearby.swift
+<worktree>/apps/mac/Sources/FlashTeXMac/ShellModel+Controller.swift:214:48: warning: string interpolation produces a debug description for an optional value; did you mean to make this explicit?
+212 |                 controllerState.inFlight = nil
+213 |                 inFlightRevision = nil
+214 |                 log("controller refused edit \(id): \(message)")
+    |                                                |- warning: string interpolation produces a debug description for an optional value; did you mean to make this explicit?
+    |                                                |- note: provide a default value to avoid this warning
+    |                                                `- note: use 'String(describing:)' to silence this warning
+215 |                 controllerStatus = "edit refused: \(message)"
+216 |                 if message.hasPrefix("document_conflict") {
+[32/72] Compiling FlashTeXMac ShellModel.swift
+<worktree>/apps/mac/Sources/FlashTeXMac/ShellModel+Controller.swift:214:48: warning: string interpolation produces a debug description for an optional value; did you mean to make this explicit?
+212 |                 controllerState.inFlight = nil
+213 |                 inFlightRevision = nil
+214 |                 log("controller refused edit \(id): \(message)")
+    |                                                |- warning: string interpolation produces a debug description for an optional value; did you mean to make this explicit?
+    |                                                |- note: provide a default value to avoid this warning
+    |                                                `- note: use 'String(describing:)' to silence this warning
+215 |                 controllerStatus = "edit refused: \(message)"
+216 |                 if message.hasPrefix("document_conflict") {
+[33/72] Compiling FlashTeXMac BridgeClient.swift
+[34/72] Compiling FlashTeXMac BridgeSession.swift
+[35/72] Compiling FlashTeXMac BundledMetrics.swift
+[36/72] Compiling FlashTeXMac CaretSync.swift
+[37/72] Compiling FlashTeXMac Completion.swift
+[38/72] Compiling FlashTeXMac ContentView.swift
+[39/72] Compiling FlashTeXMac ControllerRelease.swift
+[40/72] Compiling FlashTeXMac DocumentFiles.swift
+[41/72] Compiling FlashTeXMac DocumentFilesClient.swift
+[42/72] Compiling FlashTeXMac EditHistoryPanel.swift
+[43/72] Compiling FlashTeXMac ProjectDocuments.swift
+[44/72] Compiling FlashTeXMac ProposalPreview.swift
+[45/72] Compiling FlashTeXMac RuleGeometry.swift
+[46/72] Compiling FlashTeXMac RustPDFExport.swift
+[47/72] Compiling FlashTeXMac EditLedgerClient.swift
+[48/72] Compiling FlashTeXMac EditorDiagnostics.swift
+[49/72] Compiling FlashTeXMac EditorPreferences.swift
+[50/72] Compiling FlashTeXMac ExactPDFExport.swift
+[51/72] Compiling FlashTeXMac FlashTeXMacApp.swift
+[52/72] Emitting module FlashTeXMac
+[53/72] Compiling FlashTeXMac Logging.swift
+[54/72] Compiling FlashTeXMac Navigation.swift
+[55/72] Compiling FlashTeXMac NearbyListener.swift
+[56/72] Compiling FlashTeXMac NearbyProtocol.swift
+[57/72] Compiling FlashTeXMac SourceEditorView.swift
+[58/72] Compiling FlashTeXMac Transcript.swift
+[59/72] Compiling FlashTeXMac TypingBench.swift
+[60/72] Compiling FlashTeXMac WorkerClient.swift
+[61/72] Compiling FlashTeXMac Fonts.swift
+[62/72] Compiling FlashTeXMac GlyphRunRenderer.swift
+[63/72] Compiling FlashTeXMac HistoricalPreview.swift
+[64/72] Compiling FlashTeXMac Insertion.swift
+[65/72] Compiling FlashTeXMac LineProcessClient.swift
+[66/72] Compiling FlashTeXMac PreviewControllerClient.swift
+[67/72] Compiling FlashTeXMac PreviewTextCache.swift
+[68/72] Compiling FlashTeXMac PreviewV2View.swift
+[69/72] Compiling FlashTeXMac PreviewView.swift
+[69/72] Write Objects.LinkFileList
+[70/72] Linking FlashTeXMac
+[71/72] Applying FlashTeXMac
+Build complete! (21.64s)
+==> Assembling bundle at <worktree>/apps/mac/build/FlashTeX.app
+==> Copying fixtures and samples into Contents/Resources/Samples
+    bundled 10 Latin Modern faces
+==> Staging pinned rooted TFM metrics into Contents/Resources/texmf (source: <worktree>/apps/mac/Fonts/texmf)
+    verified 6 rooted metric/license files + 3 pinned faces; report at Contents/Resources/resource-coverage.json
+==> Locating built Rust binaries (helper root: /Users/jay3332/Projects/flashtex)
+    bundled flashtex-compiler from /Users/jay3332/Projects/flashtex/crates/compiler/target/release/flashtex-compiler
+    bundled flashtex-pdf from /Users/jay3332/Projects/flashtex/crates/pdf/target/release/flashtex-pdf
+    bundled flashtex-bridge from /Users/jay3332/Projects/flashtex/crates/bridge/target/release/flashtex-bridge
+    bundled flashtex-edit-ledger from /Users/jay3332/Projects/flashtex/crates/edit-ledger/target/release/flashtex-edit-ledger
+    bundled flashtex-render from /tmp/ft-tfm/render-f762f82a/crates/render-pipeline/target/release/flashtex-render
+    no flashtex-pdf-exact found (build crates/pdf or pass --pdf-exact <path>); skipping
+    bundled flashtex-preview-controller from /Users/jay3332/Projects/flashtex/crates/preview-controller/target/release/flashtex-preview-controller
+    bundled flashtex-project-files from /Users/jay3332/Projects/flashtex/crates/project-files/target/release/flashtex-project-files
+    bundled flashtex-assistant-context from /Users/jay3332/Projects/flashtex/crates/assistant-context/target/release/flashtex-assistant-context
+    no flashtex-explain found (build crates/diagnostic-explanations or pass --explain <path>); skipping
+==> Signing bundled helpers (adhoc, hardened runtime: no)
+    signed flashtex-compiler (tech.jay3332.flashtex.mac.flashtex-compiler)
+    signed flashtex-pdf (tech.jay3332.flashtex.mac.flashtex-pdf)
+    signed flashtex-bridge (tech.jay3332.flashtex.mac.flashtex-bridge)
+    signed flashtex-edit-ledger (tech.jay3332.flashtex.mac.flashtex-edit-ledger)
+    signed flashtex-render (tech.jay3332.flashtex.mac.flashtex-render)
+    signed flashtex-preview-controller (tech.jay3332.flashtex.mac.flashtex-preview-controller)
+    signed flashtex-project-files (tech.jay3332.flashtex.mac.flashtex-project-files)
+    signed flashtex-assistant-context (tech.jay3332.flashtex.mac.flashtex-assistant-context)
+==> Writing Contents/Resources/components.json
+    components.json written and valid JSON
+==> Ad-hoc codesigning
+<worktree>/apps/mac/build/FlashTeX.app: replacing existing signature
+    codesign OK (ad-hoc)
+    codesign --verify --deep --strict OK
+==> Done: <worktree>/apps/mac/build/FlashTeX.app
+    open "<worktree>/apps/mac/build/FlashTeX.app"
+make-app exit 0

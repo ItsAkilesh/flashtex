@@ -1,0 +1,457 @@
+[
+ {
+  "revision": 2,
+  "covers": 0,
+  "redrawn": false
+ },
+ {
+  "revision": 3,
+  "covers": 1,
+  "redrawn": true,
+  "key_to_paint_ms": 258.313833,
+  "key_to_send_ms": 38.044708,
+  "helper_roundtrip_ms": 175.962875,
+  "durable_to_apply_ms": 121.756125,
+  "paint_ms": 44.30625
+ },
+ {
+  "revision": 7,
+  "covers": 4,
+  "redrawn": true,
+  "key_to_paint_ms": 200.954625,
+  "key_to_send_ms": 16.043792,
+  "helper_roundtrip_ms": 167.638292,
+  "durable_to_apply_ms": 124.51575,
+  "paint_ms": 17.272541
+ },
+ {
+  "revision": 11,
+  "covers": 4,
+  "redrawn": false,
+  "key_to_paint_ms": 253.567959,
+  "key_to_send_ms": 22.346459,
+  "helper_roundtrip_ms": 197.929916,
+  "durable_to_apply_ms": 153.623916,
+  "paint_ms": 33.291584
+ },
+ {
+  "revision": 16,
+  "covers": 5,
+  "redrawn": false,
+  "key_to_paint_ms": 244.518834,
+  "key_to_send_ms": 27.693125,
+  "helper_roundtrip_ms": 182.01075,
+  "durable_to_apply_ms": 137.990041,
+  "paint_ms": 34.814959
+ },
+ {
+  "revision": 21,
+  "covers": 5,
+  "redrawn": true,
+  "key_to_paint_ms": 251.354541,
+  "key_to_send_ms": 16.908291,
+  "helper_roundtrip_ms": 186.668917,
+  "durable_to_apply_ms": 143.783042,
+  "paint_ms": 47.777333
+ },
+ {
+  "revision": 26,
+  "covers": 5,
+  "redrawn": true,
+  "key_to_paint_ms": 208.7665,
+  "key_to_send_ms": 10.628958,
+  "helper_roundtrip_ms": 179.139625,
+  "durable_to_apply_ms": 134.768583,
+  "paint_ms": 18.997917
+ },
+ {
+  "revision": 30,
+  "covers": 4,
+  "redrawn": false,
+  "key_to_paint_ms": 244.324417,
+  "key_to_send_ms": 27.941167,
+  "helper_roundtrip_ms": 185.414875,
+  "durable_to_apply_ms": 154.545292,
+  "paint_ms": 30.968375
+ },
+ {
+  "revision": 35,
+  "covers": 5,
+  "redrawn": true,
+  "key_to_paint_ms": 220.089,
+  "key_to_send_ms": 21.496667,
+  "helper_roundtrip_ms": 157.551917,
+  "durable_to_apply_ms": 115.516167,
+  "paint_ms": 41.040416
+ },
+ {
+  "revision": 39,
+  "covers": 4,
+  "redrawn": true,
+  "key_to_paint_ms": 182.366708,
+  "key_to_send_ms": 18.694041,
+  "helper_roundtrip_ms": 142.516042,
+  "durable_to_apply_ms": 101.655792,
+  "paint_ms": 21.156625
+ },
+ {
+  "revision": 42,
+  "covers": 3,
+  "redrawn": true,
+  "key_to_paint_ms": 227.932792,
+  "key_to_send_ms": 29.961667,
+  "helper_roundtrip_ms": 154.03775,
+  "durable_to_apply_ms": 121.396125,
+  "paint_ms": 43.933375
+ },
+ {
+  "revision": 46,
+  "covers": 4,
+  "redrawn": true,
+  "key_to_paint_ms": 196.207625,
+  "key_to_send_ms": 23.960291,
+  "helper_roundtrip_ms": 152.443,
+  "durable_to_apply_ms": 110.254708,
+  "paint_ms": 19.804334
+ },
+ {
+  "revision": 50,
+  "covers": 4,
+  "redrawn": true,
+  "key_to_paint_ms": 201.928667,
+  "key_to_send_ms": 15.937209,
+  "helper_roundtrip_ms": 143.867208,
+  "durable_to_apply_ms": 113.583167,
+  "paint_ms": 42.12425
+ },
+ {
+  "revision": 53,
+  "covers": 3,
+  "redrawn": false,
+  "key_to_paint_ms": 215.421167,
+  "key_to_send_ms": 28.075292,
+  "helper_roundtrip_ms": 155.56275,
+  "durable_to_apply_ms": 114.34875,
+  "paint_ms": 31.783125
+ },
+ {
+  "revision": 57,
+  "covers": 4,
+  "redrawn": true,
+  "key_to_paint_ms": 204.797959,
+  "key_to_send_ms": 21.759375,
+  "helper_roundtrip_ms": 164.278292,
+  "durable_to_apply_ms": 123.122292,
+  "paint_ms": 18.760292
+ },
+ {
+  "revision": 61,
+  "covers": 4,
+  "redrawn": true,
+  "key_to_paint_ms": 224.498042,
+  "key_to_send_ms": 24.146375,
+  "helper_roundtrip_ms": 156.058875,
+  "durable_to_apply_ms": 125.356208,
+  "paint_ms": 44.292792
+ },
+ {
+  "revision": 65,
+  "covers": 4,
+  "redrawn": true,
+  "key_to_paint_ms": 199.833041,
+  "key_to_send_ms": 18.722625,
+  "helper_roundtrip_ms": 163.4705,
+  "durable_to_apply_ms": 118.447959,
+  "paint_ms": 17.639916
+ },
+ {
+  "revision": 69,
+  "covers": 4,
+  "redrawn": true,
+  "key_to_paint_ms": 253.25275,
+  "key_to_send_ms": 20.681583,
+  "helper_roundtrip_ms": 190.555375,
+  "durable_to_apply_ms": 161.693708,
+  "paint_ms": 42.015792
+ },
+ {
+  "revision": 74,
+  "covers": 5,
+  "redrawn": true,
+  "key_to_paint_ms": 203.024625,
+  "key_to_send_ms": 16.684917,
+  "helper_roundtrip_ms": 166.071541,
+  "durable_to_apply_ms": 120.708583,
+  "paint_ms": 20.268167
+ },
+ {
+  "revision": 78,
+  "covers": 4,
+  "redrawn": true,
+  "key_to_paint_ms": 201.599042,
+  "key_to_send_ms": 22.844167,
+  "helper_roundtrip_ms": 160.089875,
+  "durable_to_apply_ms": 129.852542,
+  "paint_ms": 18.665
+ },
+ {
+  "revision": 82,
+  "covers": 4,
+  "redrawn": true,
+  "key_to_paint_ms": 254.607625,
+  "key_to_send_ms": 22.438375,
+  "helper_roundtrip_ms": 189.472167,
+  "durable_to_apply_ms": 143.348959,
+  "paint_ms": 42.697083
+ },
+ {
+  "revision": 87,
+  "covers": 5,
+  "redrawn": true,
+  "key_to_paint_ms": 200.042708,
+  "key_to_send_ms": 17.772833,
+  "helper_roundtrip_ms": 164.153417,
+  "durable_to_apply_ms": 117.700209,
+  "paint_ms": 18.116458
+ },
+ {
+  "revision": 91,
+  "covers": 4,
+  "redrawn": false,
+  "key_to_paint_ms": 212.581375,
+  "key_to_send_ms": 19.657791,
+  "helper_roundtrip_ms": 162.7135,
+  "durable_to_apply_ms": 132.854041,
+  "paint_ms": 30.210084
+ },
+ {
+  "revision": 95,
+  "covers": 4,
+  "redrawn": false,
+  "key_to_paint_ms": 214.757792,
+  "key_to_send_ms": 17.604083,
+  "helper_roundtrip_ms": 164.629625,
+  "durable_to_apply_ms": 119.431375,
+  "paint_ms": 32.524084
+ },
+ {
+  "revision": 99,
+  "covers": 4,
+  "redrawn": false,
+  "key_to_paint_ms": 211.069792,
+  "key_to_send_ms": 21.130292,
+  "helper_roundtrip_ms": 158.33475,
+  "durable_to_apply_ms": 114.46,
+  "paint_ms": 31.60475
+ },
+ {
+  "revision": 103,
+  "covers": 4,
+  "redrawn": true,
+  "key_to_paint_ms": 289.178291,
+  "key_to_send_ms": 17.386208,
+  "helper_roundtrip_ms": 252.657958,
+  "durable_to_apply_ms": 212.051458,
+  "paint_ms": 19.134125
+ },
+ {
+  "revision": 110,
+  "covers": 7,
+  "redrawn": false,
+  "key_to_paint_ms": 286.352458,
+  "key_to_send_ms": 20.525958,
+  "helper_roundtrip_ms": 230.609917,
+  "durable_to_apply_ms": 182.2575,
+  "paint_ms": 35.216583
+ },
+ {
+  "revision": 116,
+  "covers": 6,
+  "redrawn": true,
+  "key_to_paint_ms": 211.988792,
+  "key_to_send_ms": 29.062625,
+  "helper_roundtrip_ms": 157.409417,
+  "durable_to_apply_ms": 111.280834,
+  "paint_ms": 25.51675
+ },
+ {
+  "revision": 119,
+  "covers": 3,
+  "redrawn": true,
+  "key_to_paint_ms": 205.91275,
+  "key_to_send_ms": 26.444584,
+  "helper_roundtrip_ms": 160.588041,
+  "durable_to_apply_ms": 124.294416,
+  "paint_ms": 18.880125
+ },
+ {
+  "revision": 123,
+  "covers": 4,
+  "redrawn": false,
+  "key_to_paint_ms": 232.752084,
+  "key_to_send_ms": 24.873875,
+  "helper_roundtrip_ms": 178.214625,
+  "durable_to_apply_ms": 147.7715,
+  "paint_ms": 29.663584
+ },
+ {
+  "revision": 128,
+  "covers": 5,
+  "redrawn": true,
+  "key_to_paint_ms": 238.710417,
+  "key_to_send_ms": 12.477042,
+  "helper_roundtrip_ms": 202.054625,
+  "durable_to_apply_ms": 161.506167,
+  "paint_ms": 24.17875
+ },
+ {
+  "revision": 133,
+  "covers": 5,
+  "redrawn": true,
+  "key_to_paint_ms": 224.021916,
+  "key_to_send_ms": 23.093541,
+  "helper_roundtrip_ms": 182.664292,
+  "durable_to_apply_ms": 131.061417,
+  "paint_ms": 18.264083
+ },
+ {
+  "revision": 138,
+  "covers": 5,
+  "redrawn": true,
+  "key_to_paint_ms": 226.140291,
+  "key_to_send_ms": 14.740291,
+  "helper_roundtrip_ms": 192.883125,
+  "durable_to_apply_ms": 163.466125,
+  "paint_ms": 18.516875
+ },
+ {
+  "revision": 143,
+  "covers": 5,
+  "redrawn": true,
+  "key_to_paint_ms": 296.6635,
+  "key_to_send_ms": 15.53675,
+  "helper_roundtrip_ms": 262.267958,
+  "durable_to_apply_ms": 231.116291,
+  "paint_ms": 18.858792
+ },
+ {
+  "revision": 150,
+  "covers": 7,
+  "redrawn": true,
+  "key_to_paint_ms": 280.586584,
+  "key_to_send_ms": 25.552959,
+  "helper_roundtrip_ms": 206.130833,
+  "durable_to_apply_ms": 150.068958,
+  "paint_ms": 48.902792
+ },
+ {
+  "revision": 156,
+  "covers": 6,
+  "redrawn": false,
+  "key_to_paint_ms": 219.893416,
+  "key_to_send_ms": 10.767875,
+  "helper_roundtrip_ms": 177.915375,
+  "durable_to_apply_ms": 117.461334,
+  "paint_ms": 31.210166
+ },
+ {
+  "revision": 160,
+  "covers": 4,
+  "redrawn": true,
+  "key_to_paint_ms": 207.597084,
+  "key_to_send_ms": 25.91925,
+  "helper_roundtrip_ms": 160.921042,
+  "durable_to_apply_ms": 117.126208,
+  "paint_ms": 20.756792
+ },
+ {
+  "revision": 164,
+  "covers": 4,
+  "redrawn": false,
+  "key_to_paint_ms": 240.35175,
+  "key_to_send_ms": 26.334,
+  "helper_roundtrip_ms": 181.076166,
+  "durable_to_apply_ms": 133.578833,
+  "paint_ms": 32.941584
+ },
+ {
+  "revision": 169,
+  "covers": 5,
+  "redrawn": true,
+  "key_to_paint_ms": 295.420709,
+  "key_to_send_ms": 15.735667,
+  "helper_roundtrip_ms": 261.386625,
+  "durable_to_apply_ms": 220.300833,
+  "paint_ms": 18.298417
+ },
+ {
+  "revision": 176,
+  "covers": 7,
+  "redrawn": true,
+  "key_to_paint_ms": 284.75675,
+  "key_to_send_ms": 25.566417,
+  "helper_roundtrip_ms": 215.93275,
+  "durable_to_apply_ms": 168.71525,
+  "paint_ms": 43.257583
+ },
+ {
+  "revision": 182,
+  "covers": 6,
+  "redrawn": true,
+  "key_to_paint_ms": 207.955292,
+  "key_to_send_ms": 18.046167,
+  "helper_roundtrip_ms": 166.290625,
+  "durable_to_apply_ms": 121.209708,
+  "paint_ms": 23.6185
+ },
+ {
+  "revision": 186,
+  "covers": 4,
+  "redrawn": false,
+  "key_to_paint_ms": 226.331375,
+  "key_to_send_ms": 23.671375,
+  "helper_roundtrip_ms": 158.543416,
+  "durable_to_apply_ms": 124.175416,
+  "paint_ms": 44.116584
+ },
+ {
+  "revision": 190,
+  "covers": 4,
+  "redrawn": false,
+  "key_to_paint_ms": 285.54,
+  "key_to_send_ms": 19.444792,
+  "helper_roundtrip_ms": 230.07425,
+  "durable_to_apply_ms": 173.340625,
+  "paint_ms": 36.020958
+ },
+ {
+  "revision": 195,
+  "covers": 5,
+  "redrawn": true,
+  "key_to_paint_ms": 256.525,
+  "key_to_send_ms": 27.725084,
+  "helper_roundtrip_ms": 179.578833,
+  "durable_to_apply_ms": 132.033125,
+  "paint_ms": 49.221083
+ },
+ {
+  "revision": 200,
+  "covers": 5,
+  "redrawn": false,
+  "key_to_paint_ms": 313.700959,
+  "key_to_send_ms": 15.6005,
+  "helper_roundtrip_ms": 269.096709,
+  "durable_to_apply_ms": 222.152,
+  "paint_ms": 29.00375
+ },
+ {
+  "revision": 202,
+  "covers": 2,
+  "redrawn": true,
+  "key_to_paint_ms": 379.687542,
+  "key_to_send_ms": 180.0025,
+  "helper_roundtrip_ms": 158.773792,
+  "durable_to_apply_ms": 118.234917,
+  "paint_ms": 40.91125
+ }
+]

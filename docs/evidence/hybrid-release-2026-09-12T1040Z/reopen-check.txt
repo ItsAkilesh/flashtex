@@ -1,0 +1,22 @@
+| mode | cell | reopen | detail |
+|---|---|---|---|
+| hold | controller-body60k-0ms | OK | r21 0d7ce0f4aae1 64103 bytes; last keystroke rev 202, last durable r21 for rev 202 |
+| hold | controller-body60k-30ms | OK | r62 0d7ce0f4aae1 64103 bytes; last keystroke rev 202, last durable r62 for rev 202 |
+| hold | controller-demo-0ms | OK | r155 f18905b73ac9 6113 bytes; last keystroke rev 202, last durable r155 for rev 202 |
+| hold | controller-demo-30ms | OK | r199 f18905b73ac9 6113 bytes; last keystroke rev 202, last durable r199 for rev 202 |
+| hybrid | controller-body60k-0ms | OK | r28 0d7ce0f4aae1 64103 bytes; last keystroke rev 202, last durable r28 for rev 202 |
+| hybrid | controller-body60k-30ms | OK | r50 0d7ce0f4aae1 64103 bytes; last keystroke rev 202, last durable r50 for rev 202 |
+| hybrid | controller-demo-0ms | OK | r176 f18905b73ac9 6113 bytes; last keystroke rev 202, last durable r176 for rev 202 |
+| hybrid | controller-demo-30ms | OK | r181 f18905b73ac9 6113 bytes; last keystroke rev 202, last durable r181 for rev 202 |
+| hybrid-historical | controller-body60k-0ms | OK | r25 0d7ce0f4aae1 64103 bytes; last keystroke rev 202, last durable r25 for rev 202 |
+| hybrid-historical | controller-body60k-30ms | OK | r38 0d7ce0f4aae1 64103 bytes; last keystroke rev 202, last durable r38 for rev 202 |
+| hybrid-historical | controller-demo-0ms | OK | r148 f18905b73ac9 6113 bytes; last keystroke rev 202, last durable r148 for rev 202 |
+| hybrid-historical | controller-demo-30ms | OK | r196 f18905b73ac9 6113 bytes; last keystroke rev 202, last durable r196 for rev 202 |
+| hybrid-factor1 | controller-body60k-0ms | OK | r27 0d7ce0f4aae1 64103 bytes; last keystroke rev 202, last durable r27 for rev 202 |
+| hybrid-factor1 | controller-body60k-30ms | OK | r37 0d7ce0f4aae1 64103 bytes; last keystroke rev 202, last durable r37 for rev 202 |
+| hybrid-factor1 | controller-demo-0ms | OK | r120 f18905b73ac9 6113 bytes; last keystroke rev 202, last durable r120 for rev 202 |
+| hybrid-factor1 | controller-demo-30ms | OK | r194 f18905b73ac9 6113 bytes; last keystroke rev 202, last durable r194 for rev 202 |
+| hybrid-factor1-historical | controller-body60k-0ms | OK | r24 0d7ce0f4aae1 64103 bytes; last keystroke rev 202, last durable r24 for rev 202 |
+| hybrid-factor1-historical | controller-body60k-30ms | OK | r64 0d7ce0f4aae1 64103 bytes; last keystroke rev 202, last durable r64 for rev 202 |
+| hybrid-factor1-historical | controller-demo-0ms | OK | r159 f18905b73ac9 6113 bytes; last keystroke rev 202, last durable r159 for rev 202 |
+| hybrid-factor1-historical | controller-demo-30ms | OK | r190 f18905b73ac9 6113 bytes; last keystroke rev 202, last durable r190 for rev 202 |

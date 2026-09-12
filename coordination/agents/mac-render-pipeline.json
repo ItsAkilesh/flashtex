@@ -1,0 +1,37 @@
+{
+  "agent_id": "mac-render-pipeline",
+  "allocation_id": "claude-mac20x-render-pipeline",
+  "assignment_acknowledgements": {},
+  "branch": "agent/mac-render-pipeline/unified",
+  "capabilities": [
+    "rust",
+    "typesetting"
+  ],
+  "code_revision": "7c12dee4e8dc38f4f0e34153fdab35a965e9d94f",
+  "eta_minutes": {
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 30
+  },
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "d5440b01f1681175e8dc25108d92424db188a7fe",
+  "next_action": "reply-side lever (page-scoped/delta replies) pending mac-preview-v2 answer on issue #2; optional lazy placement of cached runs; extensible assemblies; 13/14 when the compiler parses \\left/\\right and Greek",
+  "reviewed_peers": {
+    "agent/mac-document-style/style-model": "bfc980d",
+    "agent/mac-font-engine/tex-fonts": "f418238",
+    "agent/mac-math-layout/math-boxes": "db90047",
+    "agent/mac-paragraph-layout/linebreak": "70209e2",
+    "agent/mac-pdf/pdf-output": "4bd8c2e",
+    "agent/mac-visual-oracle/reference-raster": "63f0cf5",
+    "main": "d5440b01f1681175e8dc25108d92424db188a7fe"
+  },
+  "schema_version": 1,
+  "state": "in_progress",
+  "summary": "render-pipeline: TFM-exact text+math (0.00/0.01pt vs MacTeX 2026 pdflatex); block + assembled-items + adapter caches and direct reply writer, byte-identical over 200-edit scripts; 27 pages 27 ms in-process / 33.6 ms worker per edit (target <30 over the protocol not met); GH36 bundle-rooted discovery with tests; main d5440b0 merged; 45 tests",
+  "tool": "Claude Code subagent Opus (parent mac-claude-a)",
+  "updated_utc": "2026-09-12T13:55:14Z",
+  "usage": {
+    "evidence": "shared 20x Max quota; not observable from a subagent",
+    "status": "unknown"
+  }
+}

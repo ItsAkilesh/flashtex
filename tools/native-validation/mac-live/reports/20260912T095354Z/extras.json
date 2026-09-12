@@ -1,0 +1,32 @@
+{
+ "pdf-exact": {
+  "built_ok": true,
+  "bytes": 1130240,
+  "crate": "crates/pdf",
+  "path": "/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/pdf-exact/654f626658ddf5d1c2ca4c2db63c3b4c87172e51/src/crates/pdf/target/release/flashtex-pdf-exact",
+  "ref": "origin/agent/mac-pdf/v2-adapter",
+  "scratch_dirty_status": [],
+  "scratch_head": "654f626658ddf5d1c2ca4c2db63c3b4c87172e51",
+  "sha": "654f626658ddf5d1c2ca4c2db63c3b4c87172e51",
+  "sha256": "91c48f3e273b86910ac94f52ddbf1f0c90012164b3f658ddf0dde4828f366e4c",
+  "sha256_content": "4127ce768ae9e8257d57423fdded25c81e9285972ae13a639267abe2908b8a5a",
+  "sha256_unsigned": "0b448665fc857134442d5cf95a3fde20dbb5966e3bb90c343ea43fc132d4ef7e",
+  "signature": "Signature=adhoc",
+  "subject": "pdf docs + coord: v2-adapter gap report, README from-v2 section, mac-pdf handoff"
+ },
+ "render": {
+  "built_ok": true,
+  "bytes": 1749776,
+  "crate": "crates/render-pipeline",
+  "path": "/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/render/4888a67ce79330c36d1fbae35e054b8f3b63512b/src/crates/render-pipeline/target/release/flashtex-render",
+  "ref": "origin/agent/mac-render-pipeline/unified",
+  "scratch_dirty_status": [],
+  "scratch_head": "4888a67ce79330c36d1fbae35e054b8f3b63512b",
+  "sha": "4888a67ce79330c36d1fbae35e054b8f3b63512b",
+  "sha256": "1367298a968e02a65d15ac1c50c317743a660915b26497c26e32193ec64a647c",
+  "sha256_content": "48beef44ed07e35f941369e00e4167e6dbe13a9d8e000865c420211ae397fc69",
+  "sha256_unsigned": "74869abf4c417cbe3fb057a9524c64f03d41e7e8a4998f0daec167583fdca569",
+  "signature": "Signature=adhoc",
+  "subject": "render-pipeline: display-list-v2 sibling line, reply limit, Core 14 lookup fix, stage timing"
+ }
+}

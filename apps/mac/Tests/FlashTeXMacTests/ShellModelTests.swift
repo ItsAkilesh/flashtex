@@ -139,6 +139,39 @@ final class ShellModelWorkerTests: XCTestCase {
         model.detachWorker()
     }
 
+    /// A worker that dies mid-request is relaunched (bounded) and the next
+    /// edit compiles again; the last preview stays; a clean exit or an explicit
+    /// detach never relaunches; the per-minute limit leaves the exit visible.
+    func testCrashedWorkerIsRelaunchedWithBoundedBackoff() async throws {
+        let model = ShellModel()
+        model.attachWorker(at: WorkerClientTests.python, arguments: [WorkerClientTests.fakeWorker.path])
+        model.autoCompile = true
+        model.updateActiveText("first\n")
+        try await waitUntil { model.result?.revision == model.editorRevision && model.inFlightRevision == nil }
+        let before = model.result
+        model.updateActiveText("%crash\n")   // the fake worker exits with status 3 without replying
+        try await waitUntil { model.workerRelaunchCount == 1 && model.workerAttached }
+        XCTAssertEqual(model.result, before, "the last preview survives the crash")
+        XCTAssertTrue(model.workerStatus.contains("revision") || model.workerStatus.contains("compiling") || model.workerStatus.contains("attached"), model.workerStatus)
+        // The relaunched worker compiles the current buffer (still %crash → crashes again, relaunch 2),
+        // then a harmless edit compiles normally on the third worker.
+        try await waitUntil { model.workerRelaunchCount >= 2 && model.workerAttached }
+        model.updateActiveText("after relaunch\n")
+        try await waitUntil { model.result?.revision == model.editorRevision && model.inFlightRevision == nil }
+        guard case .text(let item) = model.result!.pages[0].items[0] else { return XCTFail() }
+        XCTAssertEqual(item.text, "after relaunch")
+        // Three more crashes within the minute exhaust the budget: no fourth relaunch.
+        for _ in 0..<2 { model.updateActiveText("%crash \(UUID())\n"); try await waitUntil { !model.workerAttached || model.workerRelaunchCount >= 3 } ; try await Task.sleep(nanoseconds: 300_000_000) }
+        model.updateActiveText("%crash final\n")
+        try await waitUntil(timeout: 5) { model.workerStatus.contains("not relaunched") }
+        XCTAssertFalse(model.workerAttached)
+        XCTAssertEqual(model.workerRelaunchCount, ShellModel.maxWorkerRelaunches)
+        // Explicit detach after a manual re-attach cancels any pending relaunch.
+        model.attachWorker(at: WorkerClientTests.python, arguments: [WorkerClientTests.fakeWorker.path])
+        model.detachWorker()
+        XCTAssertFalse(model.workerAttached)
+    }
+
     /// A bridge/ledger restart can raise the editor revision past the compiled
     /// one without changing the buffer; the preview must not stay "stale" until
     /// the next keystroke — the shell recompiles at the advanced revision.

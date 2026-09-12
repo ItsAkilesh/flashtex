@@ -1,0 +1,71 @@
+==> building FlashTeXMac (release)
+Build complete! (0.75s)
+    seed demo       5909 bytes
+    seed body60k   63899 bytes
+    seed fixture      16 bytes
+    load 15.58 (limit 8), 0 other FlashTeXMac process(es); waiting for a quiet machine (up to 120 s)
+==> run compiler-fixture-30ms (load 7.73)
+    2026-09-12T11:13:21Z	bench: done (all keystrokes painted); keystrokes 200, painted 200, coalesced 0, p50 22.963583 ms
+==> run compiler-fixture-0ms (load 7.75)
+    2026-09-12T11:13:27Z	bench: done (all keystrokes painted); keystrokes 200, painted 200, coalesced 8, p50 20.850958 ms
+==> run compiler-demo-30ms (load 6.94)
+    2026-09-12T11:13:35Z	bench: done (all keystrokes painted); keystrokes 200, painted 200, coalesced 0, p50 22.980458 ms
+==> run compiler-demo-0ms (load 6.78)
+    2026-09-12T11:13:41Z	bench: done (all keystrokes painted); keystrokes 200, painted 200, coalesced 14, p50 24.560042 ms
+==> run compiler-body60k-30ms (load 6.56)
+    2026-09-12T11:13:49Z	bench: done (all keystrokes painted); keystrokes 200, painted 200, coalesced 82, p50 93.836875 ms
+==> run compiler-body60k-0ms (load 7.50)
+    2026-09-12T11:13:54Z	bench: done (all keystrokes painted); keystrokes 200, painted 200, coalesced 139, p50 96.598167 ms
+==> run render-fixture-30ms (load 7.38)
+    2026-09-12T11:14:01Z	bench: done (all keystrokes painted); keystrokes 200, painted 200, coalesced 0, p50 21.735875 ms
+==> run render-fixture-0ms (load 7.19)
+    2026-09-12T11:14:07Z	bench: done (all keystrokes painted); keystrokes 200, painted 200, coalesced 14, p50 23.53475 ms
+==> run render-demo-30ms (load 7.00)
+    2026-09-12T11:14:16Z	bench: done (all keystrokes painted); keystrokes 200, painted 200, coalesced 11, p50 40.992584 ms
+==> run render-demo-0ms (load 7.00)
+    2026-09-12T11:14:24Z	bench: done (all keystrokes painted); keystrokes 200, painted 200, coalesced 31, p50 40.811166 ms
+==> run render-body60k-30ms (load 7.00)
+    2026-09-12T11:14:32Z	bench: done (all keystrokes painted); keystrokes 200, painted 200, coalesced 117, p50 132.036625 ms
+==> run render-body60k-0ms (load 6.92)
+    2026-09-12T11:14:36Z	bench: done (all keystrokes painted); keystrokes 200, painted 200, coalesced 164, p50 130.240792 ms
+==> run controller-fixture-30ms (load 6.53)
+    2026-09-12T11:14:44Z	bench: done (all keystrokes painted); keystrokes 200, painted 200, coalesced 2, p50 47.0515 ms
+==> run controller-fixture-0ms (load 6.46)
+    2026-09-12T11:14:52Z	bench: done (all keystrokes painted); keystrokes 200, painted 200, coalesced 48, p50 50.122709 ms
+==> run controller-demo-30ms (load 6.35)
+    2026-09-12T11:15:00Z	bench: done (all keystrokes painted); keystrokes 200, painted 200, coalesced 23, p50 55.271375 ms
+==> run controller-demo-0ms (load 5.99)
+    2026-09-12T11:15:07Z	bench: done (all keystrokes painted); keystrokes 200, painted 200, coalesced 20, p50 52.176958 ms
+==> run controller-body60k-30ms (load 6.07)
+    2026-09-12T11:15:15Z	bench: done (all keystrokes painted); keystrokes 200, painted 200, coalesced 136, p50 163.521083 ms
+==> run controller-body60k-0ms (load 6.20)
+    2026-09-12T11:15:19Z	bench: done (all keystrokes painted); keystrokes 200, painted 200, coalesced 171, p50 149.228875 ms
+==> writing /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/reports/20260912T110944Z/typing-bench/typing-bench.md
+# Typing bench: keystroke → paint latency (2026-09-12T111202Z)
+
+Branch `HEAD` @ `7ccbd7e9`; Apple M1 Max; macOS 26.3.1; release build of `FlashTeXMac` (`swift build -c release`).
+Script: `tools/typing-bench/run.sh`; raw JSON summaries in `typing-bench-2026-09-12T111202Z/`.
+| compiler | flashtex-compiler | body60k | 64103 | 0ms | 200 | 61 | 139 | 97 | 113 | 118 | 130 | 53 | 57 | 17 | 19 | 0 | 7.5 / 7.4 |
+| compiler | flashtex-compiler | body60k | 64103 | 30ms | 200 | 118 | 82 | 94 | 119 | 125 | 137 | 52 | 61 | 7.8 | 19 | 0 | 6.6 / 7.5 |
+| compiler | flashtex-compiler | demo | 6113 | 0ms | 200 | 186 | 14 | 25 | 41 | 49 | 70 | 6.9 | 18 | 11 | 15 | 0 | 6.8 / 6.6 |
+| compiler | flashtex-compiler | demo | 6113 | 30ms | 200 | 200 | 0 | 23 | 42 | 44 | 48 | 6.9 | 17 | 6.3 | 14 | 0 | 6.9 / 6.8 |
+| compiler | flashtex-compiler | fixture | 220 | 0ms | 200 | 192 | 8 | 21 | 39 | 41 | 44 | 6.1 | 15 | 11 | 14 | 0 | 7.8 / 6.9 |
+| compiler | flashtex-compiler | fixture | 220 | 30ms | 200 | 200 | 0 | 23 | 41 | 43 | 46 | 6.4 | 18 | 9.6 | 12 | 0 | 7.7 / 7.8 |
+| render | flashtex-render | body60k | 64103 | 0ms | 200 | 36 | 164 | 130 | 155 | 160 | 167 | 75 | 77 | 21 | 22 | 0 | 6.9 / 6.5 |
+| render | flashtex-render | body60k | 64103 | 30ms | 200 | 83 | 117 | 132 | 151 | 171 | 182 | 73 | 78 | 11 | 22 | 0 | 7.0 / 6.9 |
+| render | flashtex-render | demo | 6113 | 0ms | 200 | 169 | 31 | 41 | 51 | 55 | 56 | 15 | 22 | 15 | 17 | 0 | 7.0 / 7.0 |
+| render | flashtex-render | demo | 6113 | 30ms | 200 | 189 | 11 | 41 | 46 | 50 | 57 | 16 | 19 | 15 | 17 | 0 | 7.0 / 7.0 |
+| render | flashtex-render | fixture | 220 | 0ms | 200 | 186 | 14 | 24 | 40 | 42 | 42 | 6.3 | 17 | 11 | 14 | 0 | 7.2 / 7.0 |
+| render | flashtex-render | fixture | 220 | 30ms | 200 | 200 | 0 | 22 | 40 | 43 | 44 | 6.3 | 17 | 9.5 | 12 | 0 | 7.4 / 7.2 |
+| controller | flashtex-preview-controller | body60k | 64103 | 0ms | 200 | 29 | 171 | 149 | 190 | 201 | 203 | 45 | 58 | 6.9 | 18 | 0 | 6.2 / 5.9 |
+| controller | flashtex-preview-controller | body60k | 64103 | 30ms | 200 | 64 | 136 | 164 | 206 | 229 | 239 | 47 | 59 | 16 | 18 | 0 | 6.1 / 6.2 |
+| controller | flashtex-preview-controller | demo | 6113 | 0ms | 200 | 181 | 20 | 52 | 69 | 75 | 79 | 16 | 24 | 11 | 18 | 0 | 6.0 / 6.1 |
+| controller | flashtex-preview-controller | demo | 6113 | 30ms | 200 | 177 | 23 | 55 | 116 | 145 | 169 | 16 | 40 | 11 | 17 | 0 | 6.3 / 6.0 |
+| controller | flashtex-preview-controller | fixture | 220 | 0ms | 200 | 153 | 48 | 50 | 91 | 121 | 131 | 18 | 31 | 13 | 24 | 0 | 6.5 / 6.3 |
+| controller | flashtex-preview-controller | fixture | 220 | 30ms | 200 | 198 | 2 | 47 | 62 | 68 | 72 | 19 | 30 | 12 | 16 | 0 | 6.5 / 6.5 |
+| body60k | 30ms | 94 / 119 | 132 / 151 | 164 / 206 |
+| body60k | 0ms | 97 / 113 | 130 / 155 | 149 / 190 |
+| demo | 30ms | 23 / 42 | 41 / 46 | 55 / 116 |
+| demo | 0ms | 25 / 41 | 41 / 51 | 52 / 69 |
+| fixture | 30ms | 23 / 41 | 22 / 40 | 47 / 62 |
+| fixture | 0ms | 21 / 39 | 24 / 40 | 50 / 91 |

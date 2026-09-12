@@ -47,6 +47,78 @@ is discarded) and `--dmg` produces a compressed disk image; see
 `apps/mac/docs/packaging.md` for signing/notarization status and the
 update-path and launch-recovery evidence (`scripts/launch-check.sh`).
 
+### Rooted TeX metrics for no-TeX operation (GH36)
+
+`flashtex-render` lays text out with Latin Modern's TeX metrics. It looks for
+`.tfm` files in `FLASHTEX_TFM_DIRS` (colon separated) before anything it infers,
+and loads its digest-bound required 12 pt set only from a rooted `texmf` tree:
+the directory must end in `fonts/tfm/public/lm` and
+`<root>/doc/fonts/lm/GUST-FONT-LICENSE.TXT` must sit beside it. A flat
+`Resources/Fonts` cannot satisfy that, and a MacTeX on the build machine can
+hide the gap. The bundle therefore ships the five official LM 2.004 metrics the
+established fixtures need (`ec-lmr10`, `ec-lmr12`, `rm-lmr12`, `rm-lmr8`,
+`rm-lmr6`) plus the rooted license, vendored under `apps/mac/Fonts/texmf/…`:
+
+- `scripts/bundle-texmf.py` (called by `make-app.sh`) verifies every file's
+  byte length and SHA-256 against the Commander's pinned manifest
+  (`crates/rendering-core/docs/handoffs/native-assets/manifest.json`, itself
+  SHA-pinned in `crates/rendering-core/tools/verify_bundle_resources.py`)
+  BEFORE the build, stages them into `Contents/Resources/texmf/fonts/tfm/public/lm`
+  and `Contents/Resources/texmf/doc/fonts/lm/GUST-FONT-LICENSE.TXT`, then runs
+  the pinned verifier over the whole `Resources` directory (3 fonts + 5 metrics
+  + license) before signing. Any missing/mismatched/symlinked file refuses
+  packaging; nothing is downloaded and the host TeX tree is never consulted.
+  `FLASHTEX_BUNDLE_TEXMF_ROOT` points at another verified official root.
+- The verified hashes are recorded in `Contents/Resources/components.json`
+  (`"resources"`) and `Contents/Resources/resource-coverage.json`, both sealed by
+  the app signature.
+- `BundledMetrics` (`BundledMetrics.swift`) finds the bundled directory (bundle
+  `Resources/texmf`, else the repository copy for `swift build` products) and
+  appends it to `FLASHTEX_TFM_DIRS` for every producer launch — the directly
+  attached worker (`WorkerClient`) and the helper-spawned producer
+  (`PreviewControllerClient` → `flashtex-preview-controller` → compiler child,
+  which inherits the helper's environment). Policy: explicit user entries come
+  first and override the bundle (a populated user directory wins — verified by
+  `BundledMetricsTests` with a truncated user `ec-lmr10.tfm`, which the producer
+  then reads and reports as `tfm_missing … InvalidFont` although an intact copy
+  sits behind it); the bundled directory is the fallback for everything the user
+  entries do not carry; nothing else in the environment changes.
+  A producer at or after render-pipeline 421a2049 also discovers
+  `<exe>/../Resources/texmf` by itself (explicit env first, then the bundle,
+  then host TeX); the env route keeps older producers and explicit overrides
+  working and is what the shell sets regardless.
+- Supplementary metrics (`apps/mac/Fonts/texmf/SUPPLEMENTARY-METRICS.json`):
+  23 further Latin Modern text TFMs — `ec-lmr{5,6,7,8,9,17}`,
+  `ec-lmbx{5,6,7,8,9,10,12}`, `ec-lmri{7,8,9,10,12}`, `ec-lmbxi10`,
+  `rm-lmr{5,7,9,10}` — so 5–17 pt regular, 5–12 pt bold, 7–12 pt italic,
+  10 pt bold-italic and 5–10 pt roman math lay out with TeX metrics (GH34:
+  10/11 pt documents are `ok`, not `recovered/tfm_missing`). They are NOT in
+  the Commander's manifest: copied from MacTeX 2026 (TeX Live `lm` rev 77682,
+  catalogue 2.005, MANIFEST 2.004) and byte-identical to the CTAN `lm.zip`
+  copy on the build machine, but not verified against the pinned 2.004
+  archive; their SHA-256/lengths are pinned in that JSON, verified by
+  `bundle-texmf.py` on every package (drift refuses packaging), and recorded
+  under `components.json` `resources.supplementary`. Not covered: sans,
+  typewriter, caps, slanted, dunhill; the `lmmi/lmsy/lmex` math families come
+  from Latin Modern Math (OTF).
+- Acceptance: `scripts/texmf-acceptance.sh [--app …] [--evidence <dir>]` runs
+  the producer actually inside the bundle with host TeX excluded (`env -i`,
+  `PATH=/usr/bin:/bin`, empty `HOME`, no `FLASHTEX_*`/`TEXMF*`, plus a
+  `sandbox-exec` profile denying reads under `/usr/local/texlive`,
+  `/Library/TeX`, `/usr/share/texmf|texlive`) on the corrected 10 pt
+  multi-document request and 12 pt text/math documents through the direct route,
+  the route with a user entry appended, and the bundled preview controller;
+  requires zero `tfm_missing`/`required_metrics_unavailable`/`font_unavailable`
+  diagnostics, an explicit failure once `ec-lmr10.tfm` is deleted from a copy,
+  and verifier exit 0. `packaging-selftest.sh` covers the refusal paths without
+  a build and runs the acceptance in `--full` mode; `launch-check.sh` verifies
+  the resources statically. Evidence: `docs/evidence/mac-bundle-texmf-<UTC>/`
+  (134120Z: env route with an unpatched f762f82a producer; 135157Z and
+  135718Z: discovery + env routes with producers 98e829bf and 9aaec57a).
+  `make-app.sh --source-sha render=<sha>` records the producer's source
+  revision in `components.json` (`git_sha_origin: declared`) when the binary
+  was built outside a repository checkout.
+
 ## Behavior
 
 - Editor: `NSTextView` (monospaced, undo, no smart substitutions). Footer shows
@@ -72,6 +144,30 @@ update-path and launch-recovery evidence (`scripts/launch-check.sh`).
   unaffected. After edits a mark is rebased through `SourceMapping` or dropped when
   it overlaps the edited region — never drawn under the wrong text. Diagnostics
   with null `source` appear only in the preview's diagnostics list.
+  Partial output (`recovered` with pages AND diagnostics) marks every reported
+  span, including spans inside regions the compiler skipped; a diagnostic raised
+  while expanding a user macro is reported at the macro's call site (HW1:
+  `\problem` carries `\subsection`/`\hfill`/`\normalfont`, `\Z` carries
+  `\mathbb`), verified for all 119 HW1 diagnostics in
+  `EditorDiagnosticsPartialOutputTests`. A `failed` result with no pages keeps
+  the last result's underlines, rebased and flagged "kept from revision N:
+  revision M failed with no output" (tooltip, VoiceOver line, footer) — never
+  cleared, never duplicated across consecutive failures; any result with
+  output replaces them (`EditorDiagnostics.Retained`,
+  `ShellModel+DiagnosticRetention.swift`). The diagnostics list groups
+  identical diagnostics (same severity and message) into one row — "12× `\in`
+  is not supported in math mode" — with an "N places" menu that jumps to each
+  occurrence ("3 of 12: main.tex line 41"); Fix… and the explanation line
+  belong to the first occurrence (`EditorDiagnostics.groups`). The panel
+  (`DiagnosticsListView`, DiagnosticsPanel.swift) has a keyboard selection:
+  ↑/↓ pick a row, Return jumps to the row's current occurrence, Esc gives the
+  keyboard back to the editor at its caret, ⌘⌥] / ⌘⌥[ (Navigate) step through
+  the selected group's places (wrapping) and the row — and its VoiceOver label
+  — then reads "12 places, 3 of 12, main.tex line 41". ⌘C on the focused list
+  or Edit > Copy Diagnostics as Text (⌘⌥C) copies `path:line: error: message`
+  lines for the selected row (every place; all diagnostics when none is
+  selected; `-:0:` for unsourced ones) for pasting into an issue
+  (`DiagnosticsPanelTests`).
 - Dark preview toggle in the toolbar (page and text colors only).
 - Stale offsets are never applied. Each `compile_result` remembers the exact
   document text it was produced for; after edits, a span is rebased through the
@@ -190,6 +286,8 @@ What works offline (no key, no network — verified with `RealBridgeTests`):
   pending receipts whose text differs from the buffer is adopted into the editor
   as one undoable operation; without pending receipts the buffer replaces the
   stored text (`replace_document`).
+- Automatic relaunch of the preview-controller helper: an abnormal exit (crash, SIGKILL) relaunches the same executable for the same project after 0.2/1/3 s, at most 3 times per minute, never after a clean exit or an explicit detach. The helper reopens its ledger, so the durable document returns through the normal `document` reply and the buffer is resubmitted only when it differs; the last preview stays on screen meanwhile (`PreviewControllerTests.testKilledHelperIsRelaunchedAndDurableTextSurvives`).
+- Automatic relaunch: an abnormal exit of the bridge or the edit-ledger helper is relaunched with the same store after 0.2/1/3 s, at most 3 times per minute per helper, never after a clean exit or detach; the same reconciliation then runs against the live buffer (ledger realigned, pending receipts settled through `recovery_import`, document reopened, pinned destination re-pinned identically or dropped with a note). A capture or receipt in flight at the crash is shown as `uncertain` and settled exactly once; a capture the bridge never acknowledged may be resubmitted with the same ID.
 
 ### Edit ledger helper (durable document transaction)
 
@@ -335,7 +433,147 @@ FT-004's. What is implemented here (Mac side only):
   `.app` will need `NSLocalNetworkUsageDescription`/`NSBonjourServices`; the
   bare executable and `swift test` did not prompt on macOS 26.3.
 
+### Reference companion client (`tools/nearby-client`) — owner: mac-nearby-client
+
+`apps/mac/tools/nearby-client` is a standalone Swift package (macOS 13+/iOS 15+,
+no dependency on this app or `FlashTeXProtocol`, so FT-004 can copy
+`Sources/NearbyClient` verbatim) plus the `nearby-client` CLI. It is the
+executable companion side of the proposal: `NearbyBrowser` (Bonjour with TXT,
+`fp` validated against `salt`), `NearbyCrypto` (HKDF/HMAC vectors pinned to
+`PairingTests`), `NearbyResolver` (resolve `.service` endpoints to host:port
+first — a refused TLS-PSK handshake on a service endpoint otherwise never
+leaves `.preparing`), `NearbyConnection` (TLS 1.2 / 0x00A8 / resumption off,
+JSON Lines, id-correlated replies), `NearbyClient.pair/connect`, `PairFile`
+(0600 JSON, **not** the Keychain) and `NearbyCLI`
+(`pair | send | status | browse | forget`, `nearby-client help` prints usage
+and exit codes).
+
+Bounded disconnect/reconnect (`NearbyReconnector`, actor):
+
+- `ReconnectPolicy`: `maxAttempts` (default 5, per operation), exponential
+  backoff `initialDelay` 0.25 s × 2 up to `maxDelay` 4 s with ±20 % jitter,
+  `overallDeadline` 60 s, `connectTimeout` 5 s, `requestTimeout` 30 s. The
+  schedule is pure (`delay(beforeAttempt:random:)`), so tests pin it.
+- Retryable, and only these: `unreachable` (TCP/DNS refused the dial — reported
+  at once from `.waiting`, not after the timeout), `closed`, `timeout`,
+  `noMatchingMac`/`browseFailed` (the Mac may be restarting; the Bonjour
+  endpoint source re-browses by `fp` before every attempt, so a Mac that
+  came back on another port is found).
+- Retryable with the Mac's receive caps (proposal §4): `too_many_in_flight`
+  and `inbox_full` keep the session — the retry first waits until this
+  connection has no request awaiting a reply (`waitUntilIdle`, bounded by
+  `requestTimeout`; event `waitingForAcks`), then backs off and re-sends the
+  same `capture_id` on the same connection; `too_many_sessions` closes — the
+  reconnector drops its own session, backs off (time for the owner to close
+  older connections) and reconnects. Both count against the same budget.
+- Terminal, never retried: `handshakeFailed` / `pair_mismatch` /
+  `pairing_expired` (`needsRepair` → re-pair); `image_too_large`,
+  `invalid_image`, `unsupported_image`, `revision_mismatch`,
+  `capture_id_conflict`, `bad_request` (`needsNewCapture` → build a new
+  capture); every other `error` reply, `invalidInput`, `protocolViolation`,
+  `overloaded`, `destinationChanged`, and `attemptsExhausted` once the
+  budget is spent; a cancelled task is `cancelled`. Before sending, the
+  client mirrors the Mac's cheap image checks (`NearbyWire.checkImage`:
+  ≤ 8 MiB, signature matches `mime_type`, valid base64, `base_revision` ≥ 0)
+  as `invalidInput`; structure stays the Mac's check (`validateImage: false`
+  reaches it). An identical retry on one session is acknowledged by the Mac
+  without re-delivery.
+- `submit(capture)` is at-least-once with the *same* `capture_id` and payload
+  (the Mac de-duplicates; a bridge journals once). Before every delivery —
+  first or retry — the capture's `destination_id`/`base_revision` is checked
+  against what the Mac reports now (a fresh connection's `hello_ack`, or one
+  `destination_query` on a reused session); a mismatch or `null` is
+  `destinationChanged` and nothing is sent, so a capture never lands on a
+  re-pinned or unpinned anchor without the user knowing
+  (`requireCurrentDestination: false` / CLI `--destination-id` opts out).
+- Bounds: one session at a time and no pending-capture queue (callers hold
+  their capture and await); at most 8 in-flight requests per connection
+  (`overloaded`, nothing sent beyond); inbound line bound 1 MiB (an oversized
+  complete or unterminated line closes; the Mac's replies are a few hundred
+  bytes); every timer is cancelled when its request completes.
+- CLI `send --attempts N --retry-delay s --max-delay s --deadline s`
+  (connect and submit are two bounded operations); exit codes 0 ok · 1 nothing
+  stored · 2 error · **3 re-pair** · **4 retry budget exhausted** ·
+  **5 destination changed on the Mac, reselect and send again** · 64/65/66
+  usage/not an image/unreadable file.
+
+`nearby-client doctor [--mac <name|fp>] [--host H --port N] [--seconds 5]
+[--json]` validates one stored pairing against the running listener without
+sending a capture: checks `store` (`no_pairing`, `ambiguous_pairing`,
+`bad_pair_psk`), `discovery` (`not_advertised`, `unsupported_service`,
+`fp_mismatch` — same Mac name, another fp: re-pair), `connect` (`unreachable`,
+`handshake_refused`, `connect_timeout`), `tls` (`tls_not_1_2`,
+`tls_suite_mismatch`), `hello` (the Mac's error code verbatim, e.g.
+`pair_mismatch`, `too_many_sessions`; `hello_timeout`, `closed`,
+`protocol_violation`) and `destination` (warn `no_destination`). One line per
+check, `check <name>: ok|warn|FAIL code=<code>`, a summary with a hint, and
+with `--json` the whole report as one line; exit 0 healthy (warnings allowed)
+· 1 no pairing / not advertised · 3 re-pair · 4 try later · 2 other.
+
+Tests: `swift test` in `tools/nearby-client` (47: vectors, wire shapes, TXT
+validation, pair file, and a loopback-only `FakeMac` with fault injection —
+drop before ack → identical re-send, idle drop, refused key terminal, remote
+error terminal, destination changed/unpinned/re-pinned, deadline, cancellation,
+refused port fails fast, 9th in-flight request refused, oversized inbound line
+closes, request timeout, CLI exit codes 0/2/3/4/5; backpressure retried on the
+same session after acks and budget-bounded, `too_many_sessions` retried after
+a reconnect, image/revision/conflict refusals terminal, local image checks,
+CLI hints per code; `NearbyTranscriptFixtureTests` replays duplicate delivery,
+revocation — key removed by a same-port listener restart, and `pair_mismatch`
+at hello — and idle-drop reconnect and compares every wire line and reconnector
+event with the captured client-side transcripts in `tools/nearby-client/
+Tests/Fixtures/*.jsonl`, ids/nonce/proof normalised; re-record after a
+deliberate wire change with `NEARBY_CLIENT_RECORD_FIXTURES=1`; `NearbyDoctorTests`:
+every doctor code and exit code against the fake Mac, Bonjour discovery,
+re-salted Mac, refused port in 0.004 s). `swift test` here runs the same client against the real
+stack in `NearbyReferenceClientTests` (Bonjour pair → send → identical retry →
+conflict → status → forget; direct mode and listener refusals; listener
+dropped after the inbox stored a capture and restarted on the same port →
+duplicate delivery acknowledged, stored once; `NearbyState.forget` with a
+live session → one refused reconnect, terminal, CLI exit 3; `doctor` healthy
+through Bonjour, `handshake_refused` exit 3 after `forget`, `not_advertised`
+exit 1 after advertising stops, nothing in the inbox;
+`replaceProject`/re-pin → `destinationChanged` on reused and fresh
+connections, nothing in the inbox until rebuilt; with lowered
+`NearbyReceiveLimits`: `too_many_in_flight` and `inbox_full` while an
+acknowledgement is held → same-session re-send acknowledged ~0.09 s after the
+ack goes out, `too_many_sessions` with one session per pairing → older
+connection closed during the backoff → reconnect in 0.11 s, kept open →
+budget exhausted; `invalid_image` and `image_too_large` from the real
+validator terminal with the session kept; same-session duplicate acknowledged
+without redelivery, `revision_mismatch` and `capture_id_conflict` terminal).
+Everything binds loopback only; Bonjour still resolves loopback-only services
+on this machine.
+
+Measured native behavior (separate `nearby-client` process against a served
+`NearbyState`, loopback, M1 Max, macOS 26.3.1; reproduce with
+`python3 tools/nearby-client/scripts/measure-native.py --out <md>`), from
+[docs/evidence/nearby-client-recovery-2026-09-12T092814Z.md](../../docs/evidence/nearby-client-recovery-2026-09-12T092814Z.md) (commit d1da72c; the earlier run at T084502Z matches):
+pair via Bonjour 0.76 s process-to-process; send via Bonjour 0.97 s cold, then
+0.03–0.05 s; send direct 0.02 s; identical retry acknowledged again 0.02 s;
+3 s listener outage with a new ephemeral port afterwards → one failed attempt,
+~0.5 s backoff, re-browse finds the new port, same capture_id delivered,
+3.42 s total; forgotten pairing → refused handshake, no retry, exit 3 in
+0.28 s; Mac gone → 3 refused dials with backoff, exit 4 in 0.63 s (Bonjour:
+2 empty browses, 2.15 s). The receive-cap codes cannot be provoked by a single
+CLI process against default limits (one frame is far below the 24 MiB cap),
+so they are measured in-process with lowered limits (above). In-process (real listener): drop → duplicate ack
+0.21 s with a 0.2 s backoff; revoked pairing terminal 2–7 ms after the retry
+begins. The serve harness (`FLASHTEX_NEARBY_SERVE_INFO=<path>`) is loopback
+only unless `FLASHTEX_NEARBY_SERVE_LAN=1` is set by a human for a real iPad,
+and can stage an outage (`FLASHTEX_NEARBY_SERVE_RESTART_AT`,
+`_DOWN_SECONDS`) and a revocation (`FLASHTEX_NEARBY_SERVE_FORGET_AT`).
+
+Not done / limits: pairing itself is not retried (a bootstrap code is single
+use; a drop before `hello_ack` needs a new code); no Keychain; the CLI
+re-checks the destination but does not offer the reselection UI transfer-v1
+asks for (it exits 5 with the hint); the timing above is loopback on one
+machine — Wi‑Fi to a real iPad is not measured; `FakeMac` in the package tests
+is a stand-in, the real listener is only exercised from `apps/mac`.
+
 ## Launch hooks and evidence
+
+Assistant: `FLASHTEX_ASSISTANT_CONTEXT` (helper, offline), `FLASHTEX_ASSISTANT_PROVIDER` (optional local provider command — the only thing that may reach a network, by the user's choice).
 
 `FLASHTEX_NO_ACTIVATE=1` launches without activating/focusing the window (for
 automation; never steals keyboard focus). `FLASHTEX_DEBOUNCE_MS` sets the
@@ -351,7 +589,6 @@ were `current` and which `stale_ignore`).
 `FLASHTEX_AUTOATTACH=1` attaches the discovered compiler at launch and compiles
 (a compiler bundled inside `FlashTeX.app` attaches by default; `=0` disables);
 `FLASHTEX_SEED_FILE=<path.tex>` seeds the editor. Example (from `apps/mac`):
-
 ```sh
 FLASHTEX_REPO=$(git rev-parse --show-toplevel) FLASHTEX_AUTOATTACH=1 \
   FLASHTEX_SEED_FILE=Samples/recovery-demo.tex .build/debug/FlashTeXMac
@@ -486,8 +723,15 @@ for the preview currently on screen, never for the request in flight.
 Completion (`Completion.swift`) is a pure engine over the buffer's UTF-8 bytes
 with the caret in UTF-16 units, wired into the editor through a small
 `NSTextView` subclass (`CompletingTextView`) whose user-completion range includes
-a leading `\`. Esc or ⌃Space opens the standard AppKit completion popup; choosing
-an entry replaces the partial token. Sources, in rank order, at most 12 entries:
+a leading `\`. Esc or ⌃Space opens the editor's own non-activating completion
+list (`CompletionPopup`, a child panel that never becomes key): ↑/↓ or Tab/⇧Tab
+choose (wrapping, each choice announced to VoiceOver as "n of m: candidate, kind,
+origin"), Return/Enter inserts the chosen entry over the partial token as one
+undo step, Esc closes; typing narrows the list and any other caret move closes
+it. Candidates are computed off the main thread and delivered only while the
+buffer and caret are unchanged (`CompletionLatencyTests` measures pickup,
+narrowing, arrow and Return latency best-of-N). Sources, in rank order, at most
+12 entries:
 
 1. `\end{X}` for every `\begin{X}` before the caret that is still unclosed
    (detail names the byte of the `\begin`).
@@ -540,12 +784,15 @@ explain that nothing is loaded.
 
 | Shortcut | Action |
 |---|---|
+| ⌘, | Settings window (editor preferences: font, wrapping, tab width, indent, appearance, auto-close braces, completion list; Tab walks the controls top to bottom) |
 | ⌘O | Open LaTeX file… (becomes the `main.tex` entry document; compiles if a worker is attached) |
 | ⌘S / ⌘⇧S | Save / Save As… (UTF-8; header shows "— edited" when dirty) |
 | Edit > Restore Discarded Buffer | Brings back the unsaved text replaced by a "Discard" decision when opening another file |
 | ⌘⇧O | Open compile result fixture… (sibling `-request.json` seeds the editor) |
 | ⌘R | Reload fixture |
 | ⌘⇧K | Attach built compiler (`$FLASHTEX_COMPILER` or `crates/compiler/target/…`) |
+| File > Export PDF (exact, v2)… | Exact route: the loaded v2 display list through `flashtex-pdf-exact from-v2` (`$FLASHTEX_PDF_EXACT`, bundle, or `crates/pdf/target/…`): original GIDs, embedded font programs, typed rules; refusals name the item |
+| ⌘⇧R | Attach render pipeline (`$FLASHTEX_RENDER`, the app bundle, or `crates/render-pipeline/target/…`): the Latin Modern-metric producer, so the preview shows Computer Modern-style text |
 | ⌘K | Attach worker executable… |
 | ⌘B | Compile now (auto-compile also runs 250 ms after edits) |
 | ⌘⇧E | Export PDF… (CoreGraphics, always white) |
@@ -554,13 +801,20 @@ explain that nothing is loaded.
 | ⌘⇧I | Open capture proposal… (review sheet; ⏎ approves, inserts one undoable edit) |
 | ⌘⇧U | Submit sample capture… (PNG/JPEG → `capture_submit` through the attached bridge) |
 | ⌘⇧G | Convert capture (`capture_convert` for the latest received capture) |
-| ⌘⇧N | Nearby Companion… (advertise, pairing code, paired devices, received captures) |
+| ⌘⇧N | Nearby Companion… (advertise, pairing code, paired devices, received captures; Return shows or resumes a pairing code, Esc cancels it or dismisses a banner, Tab walks Advertise → pairing controls → Forget → Clear; the step indicator, status row and every transition are VoiceOver text) |
+| Edit > Durable History… | Durable History window (undo/redo on the helper's edit ledger: Refresh, Undo, Redo, Retry/Discard after an uncertain reply, retention gauge, both stacks) |
+| ⌘⇧F | Find in Project… window (case-sensitive literal search of the durable project source; Return searches or goes to the selected match, ↑/↓ move the selection, Esc closes; Plan Replacement / Apply for reviewed replacement) |
+| ⌘G | Next match (while the Find in Project window is key: selects the next match, wrapping, and goes there) |
 | ⌘Z | Undo (including an approved capture insertion) |
-| Esc / ⌃Space | Completion popup (supported commands, `\end{…}` for open environments, labels, document words) |
+| Esc / ⌃Space | Completion popup (supported commands, `\end{…}` for open environments, labels, citation keys, document words; never takes the keyboard from the editor) |
+| ↑ / ↓ / Tab / ⇧Tab / Return | Completion list keys, while the list is open: ↑/↓ or Tab/⇧Tab choose the candidate (wrapping; VoiceOver announces “n of m: candidate, kind, origin”), Return/Enter inserts it over the typed token, Esc closes without inserting; typing narrows the list, any other caret move closes it |
 | ⌘⇧D | Go to matching `\begin`/`\end` or `\label`/`\ref` |
 | ⌘⇧] / ⌘⇧[ | Next / previous diagnostic (refused if its span was edited since the compile) |
+| ⌘⌥] / ⌘⌥[ | Next / previous occurrence within the diagnostics panel's selected group (wrapping; the row reads "k of n") |
+| ⌘⌥C | Copy diagnostics as text (`path:line: error/warning: message` lines for the selected row, all when none; ⌘C while the list has the keyboard) |
 | ⌘⇧J | Reveal caret in preview (selects the item's source span) |
 | Click preview text | Select its source (UTF-8 span → UTF-16; refused if edited since compile) |
+| Help > FlashTeX Accessibility Help | Help window: focus order, what VoiceOver reads in each pane, every command above |
 
 The compiler rejects request lines over 8 MiB with an `error` envelope, which the
 banner shows; the shell rejects response lines over 16 MiB.
@@ -625,6 +879,157 @@ banner shows; the shell rejects response lines over 16 MiB.
   line splitting/encoding, and a round trip through `Tests/.../fake_worker.py`
   (a Python test double, not a compiler) including error/garbage/exit paths and
   the stale-revision guard.
+
+## v2 preview (experimental)
+
+An opt-in consumer for the EXPERIMENTAL rendering-v2 display list
+(`docs/contracts/rendering-v2-proposal.md`, `protocol/rendering-v2.schema.json`;
+not a negotiated production wire). The runtime-v1 preview above stays the default;
+this pane only exists to prove the consumer gates on real pipeline output. It does
+not replace, negotiate, or change the v1 path.
+
+- Input, live: while the pane is visible the shell adds `display-list-v2` to the
+  compile request's `layout_capabilities` (`docs/contracts/runtime-v1-display-list-v2.md`;
+  `ShellModel.setLiveV2`). A producer that accepts it (flashtex-render ≥ 4888a67) echoes
+  it and writes the `display_list` envelope as one sibling line right after the
+  `compile_result`; `WorkerClient.decode` routes `protocol_version: 2` + `display_list`
+  lines (header probed by a byte scan, `RenderingV2Fast.header`) to
+  `ShellModel.receiveDisplayListV2`, which applies a line only when its `id` is the applied
+  result's id and that result accepted the capability — anything else is stale or
+  unsolicited and is dropped (`V2Live` counters; unsolicited → protocol-violation status).
+  The header shows LIVE / "v1 only" and "frame revision N — applied result is M" when a
+  result came without a frame (failed or declined per request). The v1 pages of the same
+  result paint first and stay the product preview. Old producers ignore the capability;
+  the pane never requests it while hidden. The preview-controller (helper) route does not
+  forward the line yet.
+- Input, file: a `display_list` JSON envelope written by `flashtex-render --v2 out.json`.
+  Open it with `File > Open Display List (v2)…`, or launch with `FLASHTEX_V2_FILE=<json>`
+  (`FLASHTEX_PREVIEW_V2=1` starts with the toolbar toggle on). The toolbar's
+  "v2 preview" switch flips between the v1 and v2 panes.
+- Keeping up with typing (`docs/evidence/mac-preview-v2-live-2026-09-12.md`): one
+  preparation in flight, the newest arrival waits and lists in between are dropped
+  undecoded (coalescing; strict supersession alone starved visible progress: only the last
+  frame painted); `RenderingV2Fast`, a typed byte-level reader for the envelope (9 ms for
+  the 1.9 MB two-page demo envelope against 75 ms with JSONDecoder, same values, JSONDecoder
+  remains the arbiter of what is rejected); a new frame is pre-rasterized off-main at the
+  pane's last pixels-per-point and its bitmaps are installed right before it is published,
+  so the pass that shows it blits at once; the header is its own view, bitmaps are observed
+  per page and page views are Equatable, so a bitmap or caret change redraws one page.
+  Measured with flashtex-render 4888a67 on demo.tex: keystroke→paint p50 89 ms (p95 116)
+  through the v2 pane, 40 ms through the v1 pane with the same producer; every keystroke
+  painted, every frame published.
+- Fail closed (`FlashTeXProtocol/RenderingV2.swift`): unknown `protocol_version`,
+  message `type`, item `kind`, `required_features`, font `format`, or an undeclared
+  font/document reference, a glyph ID outside `1..<glyph_count`, a cluster that does
+  not partition the run text on UTF-8 boundaries, malformed carets/rects/paint, or
+  non-integer geometry is a diagnostic-bearing `ValidationError`. The validator also
+  applies crates/rendering-core's `DisplayList::validate` structural rules: every
+  feature the list uses must be declared in `required_features` (`glyph_run`, `rule`,
+  and always `rgba-srgb`/`cluster-actualtext`; `static-truetype` is deliberately not
+  derived from glyph runs because the pipeline paints Latin Modern as `opentype-cff`),
+  every cluster is referenced by at least one glyph, source ranges lie within the
+  declared document `byte_length`, every tick and tick sum stays within ±(2^53−1),
+  document paths follow rendering-core's `path` rule, and collection sizes are
+  bounded (`RenderingV2.Bounds`: documents 1…4096, fonts ≤256, pages ≤10000, items
+  ≤100000, glyphs/clusters 1…65536, hit rects 1…128, carets ≤128). The pane then
+  shows the code and message and NO page: a refused list never renders partially.
+- Fonts by content hash only (`GlyphRunRenderer.swift`, `V2FontStore`): every
+  `.otf`/`.ttf` in the existing `PreviewFonts.latinModernSearchPaths` directories
+  (bundle `Fonts`, `apps/mac/Fonts`, `FLASHTEX_LM_DIR`) is SHA-256'd once; a
+  manifest entry resolves only if its `sha256` matches a file exactly, and the file's
+  byte length, glyph count, units per em and PostScript name must agree with the
+  manifest. A run whose font is not bundled refuses the whole frame with
+  `font_resource_unavailable: font resource <sha256> (<name>) unavailable`. Platform
+  font names are never an identity; nothing is substituted.
+- Preparation, off-main and immutable (`V2Frame.prepare` → `V2PreparedPage`): each
+  page is converted ONCE into what CoreGraphics consumes — the exact `CTFont` per run
+  (from the hash-resolved `CGFont`), `CGGlyph` IDs, absolute baseline origins in PDF
+  space, rule `CGRect`s — on `V2Loader.queue` (serial, `userInitiated`), together with
+  decoding, validation and font resolution. A frame is a value over immutable
+  CoreFoundation fonts and carries a per-preparation nonce. Every load takes a
+  monotonically increasing ticket; the result reaches the main run loop as a
+  run-loop block plus wake-up (as `WorkerClient` delivers worker events) and is
+  published only if its ticket is still the one the shell is waiting for — a
+  superseded result is dropped and counted (`V2Loader.staleResultsDropped`). While a
+  load is in flight the previous verified frame stays on screen with an explicit
+  STALE indicator (header + page label, `v2-stale`), as the rendering-v2 proposal
+  asks; a refusal drops it (nothing unverified stays visible).
+- Drawing: one CoreGraphics routine (`GlyphRunRenderer.draw`) in PDF space (y up,
+  1 unit = 1 pt) paints a prepared page's items in list order — rules as path fills,
+  glyph runs with `CTFontDrawGlyphs` by ORIGINAL glyph ID at the absolute origins
+  (advances are never re-added, no reshaping/kerning). `Export PDF (v2)…` calls it on
+  a PDF context with one glyph per call (`glyphByGlyph`): CG's PDF writer otherwise
+  merges glyphs into `Tj` strings positioned by the font's advances plus integer
+  1/1000 em `TJ` adjustments, which drifted up to a pixel at line ends once the producer
+  laid text out with TeX/TFM metrics (444 differing pixels per frame, now 0); the pane does not draw glyphs on the main thread at all: `V2PageRasterizer`
+  (`@Observable`, bounded bytes, LRU) rasterizes each page once through
+  `GlyphRunRenderer.rasterize` at the pane's pixels-per-point on its own queue and the
+  canvas blits that bitmap 1:1 (device pixels) under the hover/caret overlays, so a
+  hover or caret change costs a blit. Bitmaps of a frame that is no longer current are
+  dropped on arrival and evicted on frame change (`staleBitmapsDropped`). Dark
+  preview inverts paint in the bitmap only; export keeps the list's colors.
+- Export/preview parity, tolerance 0 (`V2Parity`): every page's preview raster
+  (the bitmap above) is compared byte-for-byte with the CG PDF export rasterized
+  back by CoreGraphics into the same bitmap configuration (sRGB premultiplied RGBA,
+  antialiased, font smoothing off, subpixel positioning on). Two measured causes of
+  disagreement are fixed in the shared routine: CG's fast `fill(rect)` computes edge
+  coverage differently from the scan converter that replays `re f` (one gray level
+  along every rule row), so rules are path fills; and CG's PDF writer serializes
+  numbers at 7 significant digits, so prepared coordinates and font sizes are
+  quantized through the same `%.7g` (≤5e-5 pt from the tick geometry) and both
+  sides start from identical numbers. Measured: 0 differing pixels at 1 and 2 px/pt
+  on 22 real pipeline pages (text fixture, math+rules fixture, a 20-page/47k-glyph
+  document) and at every scale tried on the two fixtures; at some fractional
+  scales CoreGraphics rasterizes thin glyph stems differently through a `CTFont`
+  than through the PDF-embedded font (e.g. one 0.7 px en dash at 1.37 px/pt), so the
+  gate pins 1 and 2 px/pt (display scales) and reports other scales. Evidence and
+  numbers: `docs/evidence/mac-preview-v2-parity-2026-09-12.md`.
+  `FLASHTEX_V2_PARITY_OUT=<dir>` (and `FLASHTEX_V2_PARITY_SCALE`, default 2) makes the
+  app write `parity.json`, `export.pdf` and per-page preview/export PNGs after each load.
+- Hit/caret geometry (`V2Geometry`): click → the cluster whose `hit_rects` contain
+  the point (half-open, in ticks, later-painted wins) → its `sources`; the shell
+  checks the display list's document `sha256` against the current buffer and then
+  goes through `ShellModel.navigate(to:expectedText:)` (same stale-revision refusal
+  and rebase verification as v1). Synthetic clusters/rules report their
+  `synthetic_reason`. Editor caret → clusters whose sources contain the byte: an
+  exact caret bar when the cluster maps its bytes 1:1 and the compiler supplied a
+  caret at that byte, else the whole cluster's rectangles (documented fallback;
+  no width is divided by character count).
+- Deviations between the schema and the pipeline that the model accepts, explicitly:
+  `fonts[].format` is `opentype-cff` (Latin Modern) or `core14-afm` (metrics only,
+  `byte_length` 0, never paintable) where the schema allows only `static-truetype`;
+  `fonts[].sha256`/`font_id` is SHA-256(bytes ‖ face_index as u32 BE) (font-engine's
+  `content_sha256`), so the store indexes both that and plain SHA-256(bytes); unknown
+  JSON keys are ignored by `Codable` where the schema says `additionalProperties:
+  false`; clusters must partition the run and source paths must name a declared
+  document (stricter than the schema, as crates/rendering-core requires).
+- Tests (`RenderingV2Tests`, `PreviewV2Tests`, `PreviewV2ShellTests`,
+  `PreviewV2ParityTests`, `PreviewV2LiveTests`): real `flashtex-render --v2` fixtures
+  (`Tests/FlashTeXMacTests/Fixtures/display-list-v2-*.json`: text and math from
+  pipeline 7094ef7 with `apps/mac/Fonts` only; `display-list-v2-math-rules.json` from
+  79ba728 with three typed fraction rules and Latin Modern Math) decode, resolve by
+  hash and navigate ligature clusters (`ffi` = one glyph, three source bytes; `é`
+  from `\'e`); the math fixture fails closed on the unbundled `latinmodern-math.otf`
+  hash (the rules parity case resolves it from MacTeX's `lm-math` directory and skips
+  without it); every fail-closed rule above has a negative case; the shared routine
+  drawing a run built from CoreText's own glyph positions matches `CTLineDraw` with 0
+  differing pixels; export equals preview with 0 differing pixels at the pinned
+  scales; prepared geometry is verified against the tick geometry; stale load results
+  and stale page bitmaps are dropped; retention is bounded; the fast reader equals
+  Codable on every fixture and falls back on anything else; the live route against
+  `Fixtures/fake_worker_v2.py` (a producer double that rebinds the real text envelope to
+  each request): line routing, capability toggling, frame arrives/navigates/passes
+  parity, second edit replaces it, old producer, per-request decline, failed result,
+  stale/unsolicited/mismatched lines. Evidence:
+  `docs/evidence/mac-preview-v2-latin-modern-2026-09-12.png`,
+  `docs/evidence/mac-preview-v2-parity-2026-09-12.md`,
+  `docs/evidence/mac-preview-v2-live-2026-09-12.md`.
+- Not done: the rendering-v2 proposal's own `render_capabilities`/`render_format_selected`
+  handshake (the live route negotiates per request through `layout_capabilities`
+  instead); the preview-controller route; no clip/rotation/image primitives (rejected as
+  unknown kinds/features); v1 → v2 caret sync uses the v2 clusters only while the pane
+  is visible; the pipeline's own `--pdf` is still the legacy v1 writer, so parity is
+  against the Mac CoreGraphics export (the product exporter is crates/pdf).
 
 ## Known upstream issue
 
