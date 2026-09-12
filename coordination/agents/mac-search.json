@@ -7,32 +7,32 @@
     "swift",
     "macos"
   ],
-  "code_revision": "9e89cc3070c7b782dfbd58b724650819805a6fdc",
+  "code_revision": "490f4f229dae854e67195f95d2039f6008f62186",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
     "pessimistic": 30
   },
   "machine": "mac-m1max-a",
-  "main_integrated_through": "3ac69c3ed109fa0902af39f4e2187d572a61c075",
-  "next_action": "Parent applies the FlashTeXMacApp.swift diff (or cherry-picks 6235272) and merges the branch into mac-shell. Follow-up: consume plan_literal_replacement (landed on origin/main 4e15783, docs/source-plans.md revision 5 in progress) as a reviewed, read-only replacement plan in the panel; needs a helper binary built from that main and the exact handoff the Commander named.",
+  "main_integrated_through": "527ae54100de636b264fbbc2a2ac30e2f5a02388",
+  "next_action": "Parent merges agent/mac-search/panel into mac-shell (contains mac-shell 5bc3fc0; FlashTeXMacApp diff already applied) and runs swift test with a helper built from main >= 4e15783. Optional: a recordDurableDocument hook on ShellModel+Controller so the replacement reconcile does not write controllerState fields directly. Citation rename (plan_citation_rename) not started.",
   "reviewed_peers": {
     "origin/agent/mac-claude-a/mac-shell": {
-      "adaptation": "merged mac-shell 5222b86 then a73bdf2 (hybrid historical release, delimiter matching, multifile evidence, nearby generation API) into the lane at fe5815e/9e89cc3; no conflicts with the new files; full suite green after each merge",
-      "reviewed_utc": "2026-09-12T11:07:17Z",
-      "sha": "7ccbd7e9d330479b3f35927bbf968316270b7495"
+      "adaptation": "merged mac-shell 5222b86, a73bdf2, ff574d7 and 5bc3fc0 (preferences Settings scene, history panel, validation lanes, packaging) into the lane; two trivial FlashTeXMacApp.swift conflicts resolved by keeping both lanes' lines; full suite 543/14/0 after the last merge",
+      "reviewed_utc": "2026-09-12T13:31:05Z",
+      "sha": "5bc3fc0facfba950eb3c8762c0f2e878a1afaec0"
     },
     "origin/main": {
-      "adaptation": "search_literal handler and STDIO.md on main match the client (whole version map compared; limits 1..1000 and 1..1000000; termination strings incl. cancelled). Main 4e15783 added plan_literal_replacement / plan_citation_rename (read-only proposals, apply_group application per document): the Commander's named follow-up is now available; the installed helper binary (06:27) predates it.",
-      "reviewed_utc": "2026-09-12T11:07:17Z",
-      "sha": "1884986fe54ba3ff8f602b1e7711c9cee324cd25"
+      "adaptation": "search_literal and plan_literal_replacement handlers / STDIO.md / docs/source-plans.md on main match the client: whole version map + membership generation compared, limits 1..1000 and 1..1000000, decimal-string plan offsets parsed as exact ints, apply through per-document apply_group with retained command ids; helper built from merged main 1884986 in this worktree ran all 21 search tests",
+      "reviewed_utc": "2026-09-12T13:31:05Z",
+      "sha": "ffe199d89302a4353f621923c0914707b5611a80"
     }
   },
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "Native project search on agent/mac-search/panel 9e89cc3 (merged mac-shell a73bdf2): ProjectSearchPanel.swift (pure ProjectSearch helpers + bounded ProjectSearchClient + Find in Project window/commands) over the helper's search_literal with exact source_versions, clamped max_matches/max_work, explicit termination (partial never labelled exhaustive), UTF-8-exact lines and cluster-safe snippets, navigation refused on moved versions / changed durable bytes / overlapping local edit (selectIndexLocation = the navigateExactly rule), active-document scope via documents, Next Match (cmd-G). ProjectSearchTests: 9 pure + 5 real-helper tests. Full apps/mac suite with all five real binaries: 506 tests, 13 skipped (other lanes' optional routes), 0 failures. Parent diff: 3 lines in FlashTeXMacApp.swift, applied locally in labelled commit 6235272.",
+  "summary": "Native project search + reviewed literal replacement on agent/mac-search/panel (tip after this report; merged mac-shell 5bc3fc0 and main 1884986): ProjectSearchPanel.swift (pure ProjectSearch helpers, bounded ProjectSearchClient, Find in Project window/commands) over the helper's search_literal with exact source_versions, clamped limits, explicit termination (partial never labelled exhaustive), UTF-8-exact lines and cluster-safe snippets, navigation refused on moved versions / changed durable bytes / overlapping local edit (selectIndexLocation = navigateExactly rule), active-document scope, Next Match (cmd-G); follow-up: plan_literal_replacement consumed as a read-only per-file proposal with exact-integer parsing and an explicit Apply that sends one guarded apply_group per file (retained command ids, byte-verified ranges, per-file outcomes, identical-payload retry). ProjectSearchTests: 13 pure + 8 real-helper tests (plan tests need a helper from main >= 4e15783, skip otherwise). Full apps/mac suite with five real binaries at 490f4f2: 543 tests, 14 skipped (other lanes' optional routes), 0 failures. Parent diff: 3 lines in FlashTeXMacApp.swift, applied in labelled commit 6235272 and carried through the merges.",
   "tool": "Claude Code subagent (parent mac-claude-a)",
-  "updated_utc": "2026-09-12T11:07:17Z",
+  "updated_utc": "2026-09-12T13:31:05Z",
   "usage": {
     "evidence": "coordination/mac-search.md; docs/evidence/mac-search-2026-09-12/*.png (live window against the real helper); full apps/mac suite logs in the session scratchpad",
     "status": "shared Claude Max 20x quota with parent mac-claude-a; no purchases; totals unknown"
