@@ -1130,17 +1130,26 @@ final class ProjectDocuments {
     func refreshSnapshot() async -> Snapshot? {
         switch await helperRequest("snapshot", [:]) {
         case .success(let payload):
-            guard let versions = payload["source_versions"] as? [String: Int], let generation = payload["membership_generation"] as? Int else {
-                status = "helper snapshot is missing source_versions/membership_generation"
-                return nil
-            }
-            sourceVersions = versions
-            membershipGeneration = generation
-            return Snapshot(versions: versions, generation: generation)
+            return adoptSnapshot(payload)
         case .failure(let e):
             status = "helper snapshot failed: \(e.message)"
             return nil
         }
+    }
+
+    /// Adopts a `snapshot` reply as the current versions/generation (also the
+    /// ready-time learn in ShellModel+DisplayCandidates.swift, which sends the
+    /// request itself so it precedes the first compile); nil, with `status`
+    /// set, when the reply lacks the fields.
+    @discardableResult
+    func adoptSnapshot(_ payload: [String: Any]) -> Snapshot? {
+        guard let versions = payload["source_versions"] as? [String: Int], let generation = payload["membership_generation"] as? Int else {
+            status = "helper snapshot is missing source_versions/membership_generation"
+            return nil
+        }
+        sourceVersions = versions
+        membershipGeneration = generation
+        return Snapshot(versions: versions, generation: generation)
     }
 
     /// Current active-source metadata from the helper (`project_status`), or nil.
@@ -1148,6 +1157,15 @@ final class ProjectDocuments {
         guard case .success(let payload) = await helperRequest("project_status", [:]) else { return nil }
         adoptMembership(payload)
         return payload
+    }
+
+    /// The helper is gone (detach, exit, reattach): its generation and
+    /// versions mean nothing to the next session, which learns them afresh
+    /// (`snapshot` on `ready`; ShellModel+DisplayCandidates.swift). Until then
+    /// the display-candidate gate refuses every candidate as `membership_unknown`.
+    func forgetMembership() {
+        membershipGeneration = nil
+        sourceVersions = [:]
     }
 
     private func adoptMembership(_ payload: [String: Any]) {

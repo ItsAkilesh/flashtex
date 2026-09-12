@@ -115,9 +115,12 @@ final class V2ConformanceTests: XCTestCase {
         let applied = DisplayCandidateAppliedPreview(requestID: "pc-7", compileRevision: 3, sourceVersions: ["main.tex": 2], editorRevision: 5)
         var gate = DisplayCandidateGate(negotiated: true, sessionID: "s1", projectID: "demo", applied: applied, appliedResultID: "pc-7",
                                         activePath: "main.tex", displayedEditorRevision: nil)
-        // No membership operation has run yet: the shell knows no generation, nothing to compare (documented).
+        // No generation learned yet (before the `snapshot` sent on ready): the comparison is not skipped,
+        // the candidate is refused with the typed `membership_unknown` reason (first-generation gate).
         XCTAssertNil(gate.membershipGeneration)
-        XCTAssertNil(gate.rejection(of: try candidate(generation: 1)))
+        let unknown = try XCTUnwrap(gate.rejection(of: try candidate(generation: 1)))
+        XCTAssertTrue(unknown.hasPrefix(DisplayCandidates.membershipUnknown + ":"), unknown)
+        XCTAssertTrue(unknown.contains("candidate names generation 1"), unknown)
         // The project is at generation 4 (an open/detach happened): a candidate compiled at generation 3 is stale.
         gate.membershipGeneration = 4
         XCTAssertEqual(gate.rejection(of: try candidate(generation: 3)), "membership generation 3 is not the project's current generation 4")

@@ -22,9 +22,11 @@ import FlashTeXProtocol
 ///    `source_versions` are exactly those of the v1 preview the shell has
 ///    APPLIED (the helper delivers v1 before the sibling; a candidate for
 ///    any other request is stale or foreign and is refused), and its
-///    `membership_generation` is the project's current generation whenever
-///    the shell has learned one (an open/detach between the compile and the
-///    candidate makes the candidate stale);
+///    `membership_generation` is the project's current generation as the
+///    shell learned it from the helper (`snapshot` on `ready`, then every
+///    open/detach/project_status); a candidate arriving BEFORE a generation
+///    has been learned is refused (`membership_unknown`), and an open/detach
+///    between the compile and the candidate makes the candidate stale (D2);
 /// 3. the v2 envelope decodes, validates, resolves every font by content
 ///    hash (GH31 byte identity) and prepares every page OFF the UI thread
 ///    (`V2Loader.queue`), and its `project_id`/`revision` and every declared
@@ -46,6 +48,12 @@ enum DisplayCandidates {
     /// The layout capability the helper enrolls on our behalf while enabled.
     static let layoutCapability = "display-list-v2"
     static let previewSourceName = "flashtex-preview-controller"
+    /// Typed refusal (prefix of `DisplayCandidateGate.rejection`) for a
+    /// candidate that arrives before the shell has learned the project's
+    /// membership generation from the helper: the membership comparison is
+    /// never skipped, so the first candidate of a session is compared
+    /// against the generation learned by the `snapshot` sent on `ready`.
+    static let membershipUnknown = "membership_unknown"
 
     /// `FLASHTEX_DISPLAY_CANDIDATES=1` opts the app in at attach; unset/anything else is OFF.
     static func requested(environment: [String: String] = ProcessInfo.processInfo.environment) -> Bool {
@@ -136,12 +144,14 @@ struct DisplayCandidateGate: Equatable {
     /// Editor revision of the v2 frame currently on screen from this route.
     var displayedEditorRevision: Int?
     /// The project's current membership generation as the shell last learned
-    /// it from the helper (`ProjectDocuments.membershipGeneration`: snapshot,
-    /// open_document, detach_document, project_status), or nil when no
-    /// membership operation has run yet in this session. Draft contract L91:
-    /// the candidate's `membership_generation` must match fresh caller-owned
-    /// state — a candidate compiled before an open/detach names the older
-    /// generation and is refused (D2).
+    /// it from the helper (`ProjectDocuments.membershipGeneration`: the
+    /// `snapshot` sent on `ready`, open_document, detach_document,
+    /// project_status), or nil while none has been learned in this helper
+    /// session. Draft contract L91: the candidate's `membership_generation`
+    /// must match fresh caller-owned state — a candidate compiled before an
+    /// open/detach names the older generation and is refused (D2), and a
+    /// candidate that arrives before the first generation is learned is
+    /// refused as `membership_unknown` rather than admitted unchecked.
     var membershipGeneration: Int? = nil
 
     /// Why `frame` may not be shown, or nil when it may (so far).
@@ -149,7 +159,10 @@ struct DisplayCandidateGate: Equatable {
         guard negotiated else { return "display candidates not negotiated for this session" }
         guard frame.sessionID == sessionID else { return "session \(frame.sessionID) is not the negotiated \(sessionID ?? "none")" }
         guard frame.projectID == projectID else { return "project \(frame.projectID) is not the attached \(projectID ?? "none")" }
-        if let generation = membershipGeneration, frame.membershipGeneration != generation {
+        guard let generation = membershipGeneration else {
+            return "\(DisplayCandidates.membershipUnknown): the project's membership generation has not been learned from the helper yet (candidate names generation \(frame.membershipGeneration))"
+        }
+        if frame.membershipGeneration != generation {
             return "membership generation \(frame.membershipGeneration) is not the project's current generation \(generation)"
         }
         guard let applied, appliedResultID == frame.requestID, applied.requestID == frame.requestID else {
@@ -413,6 +426,7 @@ extension ShellModel {
             displayCandidates.status = "off"
             return
         }
+        if want { displayCandidatesLearnMembershipGeneration() } // the first candidate is gated on this snapshot
         do {
             let id = try controller.configureDisplayCandidates(enabled: want)
             displayCandidates.beginNegotiation(sessionID: controller.config.sessionID, projectID: controller.config.projectID,
@@ -422,6 +436,38 @@ extension ShellModel {
         } catch {
             displayCandidates.status = "negotiation failed to send: \(error.localizedDescription)"
             log("display-candidate: " + displayCandidates.status)
+        }
+    }
+
+    /// Learns the project's authoritative membership generation from the
+    /// helper (`snapshot`, adopted by `ProjectDocuments.adoptSnapshot`) so
+    /// the first candidate of this session is compared, never admitted
+    /// unchecked. Sent synchronously with the opt-in — on `ready` (before the
+    /// `document` request whose reply admits the first compile, so the
+    /// helper answers it before any candidate exists), on a toggle and after
+    /// a restart. The reply is routed through `controllerState.awaiting`; a
+    /// helper that exits or is detached fails the waiter and the generation
+    /// is forgotten with the rest of the route (`displayCandidatesInvalidate`).
+    func displayCandidatesLearnMembershipGeneration() {
+        guard let controller, controller.isRunning, controllerState.ready else { return }
+        let id: String
+        do { id = try controller.send("snapshot", [:]) } catch {
+            log("display-candidate: snapshot failed to send (\(error.localizedDescription)); candidates stay refused as \(DisplayCandidates.membershipUnknown)")
+            return
+        }
+        let session = controller.config.sessionID
+        controllerState.awaiting[id] = { [weak self] reply in
+            guard let self, self.controller?.config.sessionID == session else { return } // a later session learns its own
+            switch reply {
+            case .success(let payload):
+                if let snapshot = self.project.adoptSnapshot(payload) {
+                    self.log("display-candidate: learned membership generation \(snapshot.generation) (\(snapshot.versions.count) member(s), \(id))")
+                } else {
+                    self.log("display-candidate: membership generation not learned (\(self.project.status)); candidates stay refused as \(DisplayCandidates.membershipUnknown)")
+                }
+            case .failure(let e):
+                self.log("display-candidate: membership generation not learned (\(e.message)); candidates stay refused as \(DisplayCandidates.membershipUnknown)")
+            }
         }
     }
 
@@ -557,6 +603,7 @@ extension ShellModel {
             log("display-candidate: invalidated (\(reason))")
         }
         displayCandidates.invalidate()
+        project.forgetMembership() // the next helper session's generation is learned afresh on its ready
         displayCandidates.status = displayCandidates.requested ? "requested (helper \(reason))" : "off"
     }
 
