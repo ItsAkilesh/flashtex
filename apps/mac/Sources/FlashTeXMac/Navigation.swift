@@ -313,7 +313,10 @@ extension ShellModel {
     ///   number legitimately differs from its source);
     /// - the selection covers whole composed character sequences;
     /// - the active document switches when the span lives in another open one.
-    func navigateExactly(to source: RuntimeV1.SourceRange?, expectedText: String? = nil) {
+    ///
+    /// `compiledText` overrides the recorded baseline for `source.path` (a v2
+    /// display list that attests the buffer's exact digest passes the buffer).
+    func navigateExactly(to source: RuntimeV1.SourceRange?, expectedText: String? = nil, compiledText: String? = nil) {
         if let why = historicalRefusal(of: "navigation") { navigationNote = why; return }
         guard let source else {
             navigationNote = "This item has no source mapping."
@@ -327,7 +330,7 @@ extension ShellModel {
         var start = source.startByte, end = source.endByte
         var notes: [String] = []
         let revision = result?.revision ?? 0
-        if let compiled = compiledDocuments[source.path] {
+        if let compiled = compiledText ?? self.compiledText(for: source.path) {
             switch Navigation.rebaseExactly(start: start, end: end, from: compiled, to: doc.text, path: source.path) {
             case .refused(let why):
                 navigationNote = "Source for this item was edited since revision \(revision) (\(why)); recompile to navigate."
@@ -363,6 +366,18 @@ extension ShellModel {
         caretLengthUTF16 = ns.length
         navigationNote = "Selected \(source.path) bytes \(start)..<\(end) → UTF-16 \(ns.location)..<\(NSMaxRange(ns))"
             + (notes.isEmpty ? "" : " (" + notes.joined(separator: "; ") + ")")
+    }
+
+    /// The exact text `path` was compiled from for the applied result: the
+    /// recorded request text or, on the helper route, the durable text at the
+    /// version the applied preview names — an include the helper compiled
+    /// before this window read it (Open All Includes / FLASHTEX_OPEN_INCLUDES=1
+    /// after the first preview) has no request text recorded, but its durable
+    /// text at that version is the same bytes once read.
+    func compiledText(for path: String) -> String? {
+        if let text = compiledDocuments[path] { return text }
+        guard controllerAttached, let revision = displayCandidates.applied?.sourceVersions[path] else { return nil }
+        return controllerState.textByDurable[path]?[revision]
     }
 
     /// ⌘⇧D: select the counterpart of the `\begin`/`\end`/`\label`/`\ref`

@@ -139,9 +139,15 @@ struct DisplayCandidateGate: Equatable {
     /// it from the helper (`ProjectDocuments.membershipGeneration`: snapshot,
     /// open_document, detach_document, project_status), or nil when no
     /// membership operation has run yet in this session. Draft contract L91:
-    /// the candidate's `membership_generation` must match fresh caller-owned
-    /// state — a candidate compiled before an open/detach names the older
-    /// generation and is refused (D2).
+    /// the candidate's `membership_generation` must not predate fresh
+    /// caller-owned state — a candidate compiled before an open/detach names an
+    /// OLDER generation and is refused (D2). The helper's generation is its
+    /// project-index generation (crates/project-index `check_update`), which
+    /// also advances on every durable edit, so a candidate legitimately names
+    /// a NEWER generation than the one the shell learned at its last
+    /// open/snapshot; equality would refuse every candidate after the first
+    /// keystroke in a project with an opened include (measured: multi-file
+    /// `\input` project, second candidate "generation 4 is not … 3").
     var membershipGeneration: Int? = nil
 
     /// Why `frame` may not be shown, or nil when it may (so far).
@@ -149,7 +155,7 @@ struct DisplayCandidateGate: Equatable {
         guard negotiated else { return "display candidates not negotiated for this session" }
         guard frame.sessionID == sessionID else { return "session \(frame.sessionID) is not the negotiated \(sessionID ?? "none")" }
         guard frame.projectID == projectID else { return "project \(frame.projectID) is not the attached \(projectID ?? "none")" }
-        if let generation = membershipGeneration, frame.membershipGeneration != generation {
+        if let generation = membershipGeneration, frame.membershipGeneration < generation {
             return "membership generation \(frame.membershipGeneration) is not the project's current generation \(generation)"
         }
         guard let applied, appliedResultID == frame.requestID, applied.requestID == frame.requestID else {
@@ -195,6 +201,9 @@ final class DisplayCandidateState {
     @ObservationIgnored private(set) var pendingActivePath: String?
     /// The candidate being validated off-main, with its load ticket.
     @ObservationIgnored var validating: (frame: DisplayCandidateFrame, ticket: Int, editorRevision: Int)?
+    /// Request id of the candidate whose unread durable texts were requested
+    /// from the helper once (never re-requested for the same candidate).
+    @ObservationIgnored var fetchedTextsFor: String?
     /// Editor revision of the v2 frame this route last published.
     @ObservationIgnored private(set) var displayedEditorRevision: Int?
     /// Work held back until the sibling of `requestID` arrived (or the bound
@@ -304,6 +313,13 @@ final class DisplayCandidateState {
         guard let frame = pending else { return nil }
         guard pendingActivePath == activePath else { dropped += 1; return nil }
         return frame
+    }
+
+    /// Puts a taken candidate back (its durable texts are being read) unless
+    /// a newer one arrived meanwhile (then the held one is dropped, counted).
+    func hold(_ frame: DisplayCandidateFrame, activePath: String) {
+        guard pending == nil else { dropped += 1; return }
+        pending = frame; pendingActivePath = activePath
     }
 
     func dropPending() {
@@ -589,9 +605,31 @@ extension ShellModel {
             log("display-candidate: refused \(frame.requestID): versions unknown to this session")
             return
         }
-        // The exact durable text of every version the candidate names.
+        // The exact durable text of every version the candidate names. A version
+        // this session has not read yet (an include the helper discovered and
+        // compiled before the window opened it — FLASHTEX_OPEN_INCLUDES=1 / Open
+        // All Includes race the first candidate) is read from the helper's ledger
+        // (`document`; the controller handler records it) once, bounded, with the
+        // candidate held pending; still-missing text is then refused as before.
         var texts: [String: String] = [:]
         for (path, rev) in frame.sourceVersions { if let t = controllerState.textByDurable[path]?[rev] { texts[path] = t } }
+        let missing = frame.sourceVersions.keys.filter { texts[$0] == nil }.sorted()
+        if !missing.isEmpty, displayCandidates.fetchedTextsFor != frame.requestID, controllerAttached {
+            displayCandidates.fetchedTextsFor = frame.requestID
+            displayCandidates.hold(frame, activePath: activePath)
+            displayCandidates.status = "enabled; reading \(missing.joined(separator: ", ")) for \(frame.requestID)"
+            log("display-candidate: \(frame.requestID) names \(missing.map { "\($0) r\(frame.sourceVersions[$0] ?? -1)" }.joined(separator: ", ")) not read by this session; reading from the helper")
+            for path in missing { _ = try? controller?.document(path: path) }
+            Task { @MainActor [weak self] in
+                let deadline = Date().addingTimeInterval(2)
+                while let self, self.controllerAttached, Date() < deadline,
+                      missing.contains(where: { self.controllerState.textByDurable[$0]?[frame.sourceVersions[$0] ?? -1] == nil }) {
+                    try? await Task.sleep(nanoseconds: 5_000_000)
+                }
+                self?.displayCandidatesStartPending()
+            }
+            return
+        }
         let ticket = V2Loader.issueTicket()
         let source = V2Source.worker(requestID: frame.requestID, projectId: frame.projectID, revision: editorRev, line: frame.displayList)
         displayCandidates.validating = (frame, ticket, editorRev)

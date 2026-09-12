@@ -374,8 +374,13 @@ extension ShellModel {
 
     /// Click in the v2 preview → source selection. The display list's document
     /// digest must match the current buffer (the list attests exactly which
-    /// bytes it laid out); then `navigate(to:expectedText:)` applies the
-    /// shell's own stale-revision refusal and rebase verification.
+    /// bytes it laid out) — or, when the buffer moved on, the recorded compile
+    /// text (`compiledDocuments`, the exact request text the applied result and
+    /// its sibling were produced for) must carry that digest, in which case
+    /// `navigate(to:expectedText:)` rebases the span across the single edited
+    /// region (`Navigation.rebaseExactly`: refused when the span overlaps the
+    /// edit, verified to spell the same bytes otherwise). Any other mismatch
+    /// is refused: a click on a stale frame never lands on other bytes.
     func navigateV2(_ hit: V2Geometry.Hit) {
         if let reason = hit.syntheticReason {
             navigationNote = "Generated content (\(reason)) has no source range."
@@ -394,11 +399,18 @@ extension ShellModel {
             navigationNote = "No open document named \(source.path)."
             return
         }
-        guard SourceDigest.sha256Hex(doc.text) == declared.sha256 else {
-            navigationNote = "Display list is for \(source.path) revision \(declared.revision) (sha256 \(declared.sha256.prefix(12))…), which differs from the current buffer; regenerate the display list to navigate."
+        let attestsBuffer = SourceDigest.sha256Hex(doc.text) == declared.sha256
+        let compiled = compiledText(for: source.path)
+        let attestsCompiled = !attestsBuffer && compiled.map { SourceDigest.sha256Hex($0) == declared.sha256 } == true
+        guard attestsBuffer || attestsCompiled else {
+            navigationNote = "Display list is for \(source.path) revision \(declared.revision) (sha256 \(declared.sha256.prefix(12))…), which differs from the current buffer and from the recorded compile text; regenerate the display list to navigate."
             return
         }
-        navigate(to: source, expectedText: hit.text)
+        // The baseline is the text the list attests: the buffer itself, or the recorded compile text it was rebased from.
+        navigateExactly(to: source, expectedText: hit.text, compiledText: attestsBuffer ? doc.text : compiled)
+        if attestsCompiled, navigationNote?.hasPrefix("Selected") == true {
+            navigationNote! += " (display list revision \(declared.revision) rebased onto the edited buffer)"
+        }
         if hit.sources.count > 1, navigationNote?.hasPrefix("Selected") == true {
             navigationNote! += " (+\(hit.sources.count - 1) more source range(s) for this cluster)"
         }

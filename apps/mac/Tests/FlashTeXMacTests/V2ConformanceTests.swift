@@ -121,8 +121,11 @@ final class V2ConformanceTests: XCTestCase {
         // The project is at generation 4 (an open/detach happened): a candidate compiled at generation 3 is stale.
         gate.membershipGeneration = 4
         XCTAssertEqual(gate.rejection(of: try candidate(generation: 3)), "membership generation 3 is not the project's current generation 4")
-        XCTAssertEqual(gate.rejection(of: try candidate(generation: 5)), "membership generation 5 is not the project's current generation 4")
         XCTAssertNil(gate.rejection(of: try candidate(generation: 4)))
+        // A NEWER generation is not stale: the helper's generation is its project-index generation, which
+        // every durable edit advances (crates/project-index check_update), so after one keystroke every
+        // candidate names a generation above the one learned at the last open/snapshot (mac-navigation-2).
+        XCTAssertNil(gate.rejection(of: try candidate(generation: 5)))
         // The generation check sits with the identity checks, before the applied-preview checks.
         gate.applied = nil
         XCTAssertTrue(gate.rejection(of: try candidate(generation: 3))!.hasPrefix("membership generation 3"))
