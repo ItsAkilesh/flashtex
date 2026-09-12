@@ -16,7 +16,12 @@ echo "$$" > "$HOME_DIR/supervisor.pid"
 log "supervisor start pid=$$ interval=${INTERVAL}s (deterministic, no model calls)"
 
 snapshot() {
-  git -C "$REPO" fetch origin --prune --quiet 2>/dev/null
+  local fetch_err
+  fetch_err=$(git -C "$REPO" fetch origin --prune 2>&1)
+  local fetch_rc=$?
+  if [ $fetch_rc -ne 0 ]; then
+    log "FETCH FAILED rc=$fetch_rc: $fetch_err"
+  fi
   git -C "$REPO" ls-tree --name-only origin/main coordination/assignments/ 2>/dev/null \
     | while read -r f; do
         git -C "$REPO" show "origin/main:$f" 2>/dev/null | python3 -c "
@@ -44,16 +49,23 @@ try:
     d=json.loads(subprocess.check_output(['git','-C','$REPO','show','origin/main:$f']))
 except Exception:
     sys.exit()
-agent=d.get('agent_id','')
-age='?'
-try:
-    ts=subprocess.check_output(['git','-C','$REPO','log','-1','--format=%ct',
-        f'origin/agent/{agent}']).decode().strip()
-    if ts: age=str(($now_epoch - int(ts))//60)
-except Exception:
-    pass
-print(f\"| {d['task_id']} | {d['revision']} | {d['state']} | {agent} | {age} |\")
-" 2>/dev/null
+task=d.get('task_id',''); rev=d.get('revision',''); state=d.get('state','')
+agent=d.get('agent_id',''); branch=d.get('branch','')
+age='unknown'
+if branch:
+    try:
+        out=subprocess.run(['git','-C','$REPO','log','-1','--format=%ct',
+            f'origin/{branch}'], capture_output=True, text=True)
+        if out.returncode==0 and out.stdout.strip():
+            age=str(($now_epoch - int(out.stdout.strip()))//60)
+        else:
+            age='no such remote branch'
+    except Exception as e:
+        age=f'error: {e}'
+else:
+    age='no branch field'
+print(f\"| {task} | {rev} | {state} | {agent} | {age} |\")
+" 2>&1
     done
   } > "$REPORT.tmp"
   mv "$REPORT.tmp" "$REPORT" 2>/dev/null
