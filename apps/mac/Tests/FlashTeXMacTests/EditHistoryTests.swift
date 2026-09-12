@@ -255,6 +255,41 @@ final class EditHistoryTests: XCTestCase {
         try await waitUntil { client.status?.undoLabels.count == 2 }
         XCTAssertEqual(client.undoRows.map(\.title), ["Typing run"])
         XCTAssertEqual(client.undoRows.first?.steps, 2)
+
+        // A session annotation names the next "Source edit" the panel witnesses
+        // (the shell announces an explicit reload this way) and follows that step
+        // across the stacks; the ledger label underneath stays visible.
+        client.noteNextLabel("Reload from disk")
+        model.updateActiveText(edited + "% more\n% reloaded\n")
+        try await waitUntil { model.controllerState.durable["main.tex"]?.revision == 6 && model.controllerState.inFlight == nil }
+        client.refresh()
+        try await waitUntil { client.status?.undoLabels.count == 3 && !client.refreshing }
+        XCTAssertEqual(client.undoRows.map(\.title), ["Reload from disk", "Typing run"])
+        XCTAssertEqual(client.undoRows.first?.kind, .reload)
+        XCTAssertEqual(client.undoRows.first?.detail, "recorded by the ledger as “Source edit”")
+        XCTAssertEqual(client.undoRows.first?.accessibilityLabel(direction: .undo), "Reload from disk, 1 step, next undo. recorded by the ledger as “Source edit”")
+        client.undo()
+        try await waitUntil { client.pending == nil && client.lastResult?.document.revision == 7 }
+        try await waitUntil { client.status?.redoLabels.count == 1 && !client.refreshing }
+        XCTAssertEqual(client.redoRows.map(\.title), ["Reload from disk"], "the annotation moved with the step to the redo stack")
+        XCTAssertEqual(client.undoRows.map(\.title), ["Typing run"])
+        client.redo()
+        try await waitUntil { client.pending == nil && client.lastResult?.document.revision == 8 }
+        try await waitUntil { client.status?.undoLabels.count == 3 && !client.refreshing }
+        XCTAssertEqual(client.undoRows.map(\.title), ["Reload from disk", "Typing run"], "and back")
+        XCTAssertEqual(client.redoRows, [])
+
+        // With a same-turn identity (helper ≥ 64829a0d) a refresh while nothing
+        // durable changed sends no request; a forced one always does.
+        if client.status?.identity != nil {
+            XCTAssertTrue(client.statusIsCurrent)
+            let sent = client.statusRequests
+            client.refresh()
+            XCTAssertEqual(client.statusRequests, sent, "identity equals the durable snapshot: no round trip")
+            client.refresh(force: true)
+            XCTAssertEqual(client.statusRequests, sent + 1)
+            try await waitUntil { !client.refreshing }
+        }
     }
 
     func testStaleRevisionIsRefusedAndTheDocumentIsReread() async throws {
@@ -496,7 +531,7 @@ final class EditHistoryTests: XCTestCase {
             sha = doc["source_sha256"] as! String
         }
         XCTAssertEqual(revision, 257)
-        client.refresh()
+        client.refresh(force: true) // the shell was bypassed: its durable snapshot still says r1
         try await waitUntil { client.status?.entries == EditHistory.maxEntries }
         let full = try XCTUnwrap(client.status)
         XCTAssertTrue(full.isFull)

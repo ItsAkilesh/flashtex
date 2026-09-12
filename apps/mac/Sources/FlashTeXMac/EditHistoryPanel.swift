@@ -343,6 +343,8 @@ final class EditHistoryClient {
     private(set) var undoAnnotations: [String?] = []
     private(set) var redoAnnotations: [String?] = []
     private var pendingAnnotation: String?
+    /// Direction of the move this client completed since the last status read.
+    private var movedSinceStatus: EditHistory.Direction?
     private var refreshQueued = false
     private var refreshRequestID: String?
     private var timeoutTask: Task<Void, Never>?
@@ -421,20 +423,24 @@ final class EditHistoryClient {
             return
         }
         let du = new.undoLabels.count - old.undoLabels.count, dr = new.redoLabels.count - old.redoLabels.count
+        // A move this client completed since the last status is the only way to
+        // tell "redo" (undo +1, redo −1) from "one new edit cleared one redo".
+        let moved = movedSinceStatus
+        movedSinceStatus = nil
         if du == 0, dr == 0 {
             // unchanged
+        } else if moved == .undo, du == -1, dr == 1 {
+            // top of undo moved to top of redo
+            let a = undoAnnotations.popLast() ?? nil
+            redoAnnotations.append(a)
+        } else if moved == .redo, du == 1, dr == -1 {
+            let a = redoAnnotations.popLast() ?? nil
+            undoAnnotations.append(a)
         } else if du > 0, new.redoLabels.isEmpty {
             // New recorded edits: redo cleared, annotations appended.
             undoAnnotations = Array(undoAnnotations.prefix(old.undoLabels.count)) + Array(repeating: nil, count: du)
             redoAnnotations = []
             if du == 1, let pendingAnnotation, new.undoLabels.last == "Source edit" { undoAnnotations[undoAnnotations.count - 1] = pendingAnnotation }
-        } else if du == -1, dr == 1 {
-            // undo: top of undo moved to top of redo
-            let moved = undoAnnotations.popLast() ?? nil
-            redoAnnotations.append(moved)
-        } else if du == 1, dr == -1 {
-            let moved = redoAnnotations.popLast() ?? nil
-            undoAnnotations.append(moved)
         } else {
             undoAnnotations = Array(repeating: nil, count: new.undoLabels.count)
             redoAnnotations = Array(repeating: nil, count: new.redoLabels.count)
@@ -446,17 +452,34 @@ final class EditHistoryClient {
 
     // MARK: status
 
+    /// The last status carried an identity equal to the shell's durable snapshot
+    /// for the active path: the stacks it describes are still the current ones.
+    var statusIsCurrent: Bool {
+        guard let model, let status, statusPath == model.activePath, let identity = status.identity,
+              let durable = model.controllerState.durable[model.activePath] else { return false }
+        return identity.path == model.activePath && identity.revision == durable.revision && identity.sha256 == durable.sha256
+    }
+
+    /// Number of `history_status` requests sent (tests: the same-turn identity
+    /// lets the panel skip a round trip when nothing durable changed).
+    private(set) var statusRequests = 0
+
     /// `history_status` for the active path; coalesced (one in flight, the
-    /// newest request re-runs after the reply).
-    func refresh() {
+    /// newest request re-runs after the reply). Every history change advances
+    /// the durable revision, so when the last status came with an identity
+    /// (main ≥ 64829a0d) that still equals the shell's durable snapshot, the
+    /// stacks cannot have changed and no request is sent unless `force`d.
+    func refresh(force: Bool = false) {
         guard let model else { return }
         guard helperReady, let controller = model.controller else {
             phase = .unavailable(model.controllerAttached ? "preview controller not ready" : "no preview controller attached")
             return
         }
         if refreshing { refreshQueued = true; return }
+        if !force, statusIsCurrent { return }
         let path = model.activePath
         do {
+            statusRequests += 1
             let id = try controller.send("history_status", ["path": path])
             refreshing = true
             refreshRequestID = id
@@ -587,6 +610,7 @@ final class EditHistoryClient {
             }
             timeoutTask?.cancel()
             lastResult = result
+            movedSinceStatus = result.replayedCommand ? nil : pending.command.direction
             let doc: [String: Any] = ["path": result.document.path, "revision": result.document.revision,
                                       "source_sha256": result.document.sha256, "text": result.document.text]
             model.controllerAdoptHistoryResult(doc, requestID: requestID, payload: payload,
@@ -624,7 +648,7 @@ final class EditHistoryClient {
         if rereading, let model, let controller = model.controller, controller.isRunning {
             _ = try? controller.document(path: model.activePath)
         }
-        refresh()
+        refresh(force: true)
     }
 
     /// Drops the pending command without sending anything (the user gives up on
@@ -652,7 +676,7 @@ final class EditHistoryClient {
             refreshRequestID = nil
             // The shell reads the document on `ready`; a status read races that
             // only in ordering, and is coalesced behind later refreshes.
-            refresh()
+            refresh(force: true)
         } else {
             timeoutTask?.cancel()
             refreshing = false
@@ -721,7 +745,7 @@ struct EditHistoryPanel: View {
             Text(model.controllerAttached ? "\(model.activePath) · durable r\(model.controllerState.durable[model.activePath]?.revision ?? 0)" : "no preview controller")
                 .font(.caption).foregroundStyle(.secondary)
                 .accessibilityLabel(model.controllerAttached ? "Durable revision \(model.controllerState.durable[model.activePath]?.revision ?? 0) of \(model.activePath)" : "No preview controller attached")
-            Button { client.refresh() } label: { Image(systemName: "arrow.clockwise") }
+            Button { client.refresh(force: true) } label: { Image(systemName: "arrow.clockwise") }
                 .controlSize(.small)
                 .disabled(!model.controllerAttached)
                 .help("Re-read the undo/redo stacks (history_status)")
