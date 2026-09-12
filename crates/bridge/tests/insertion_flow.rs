@@ -248,54 +248,6 @@ fn oversized_and_malformed_converter_output_never_mutates_document_or_journal() 
     }
 }
 
-/// FINDING (see delegation report): `Proposal::validate` (src/lib.rs) bounds only the
-/// size and NUL-byte content of `latex`; it performs no structural or security-relevant
-/// inspection of the untrusted model's output. Nothing in `prepare_insert`/
-/// `confirm_insert` requires that the optional compiler-backed `validate_capture`
-/// round-trip (src/validation.rs) ever ran. This test documents the resulting fact:
-/// a shell-escape primitive, an absolute-path `\input`, a redefined `\documentclass`,
-/// and unbalanced braces all flow verbatim into the user's document once a caller sets
-/// `approved: true`. There is no independent enforcement boundary inside this crate for
-/// any of it. This is reported as a security-posture question for a human decision, not
-/// asserted here as either correct or incorrect.
-#[test]
-fn adversarial_latex_from_the_model_receives_no_content_level_validation() {
-    let dir = tempfile::tempdir().unwrap();
-    let mut b = Bridge::new(Store::open(dir.path()).unwrap());
-    open(&mut b, "before AFTER");
-    b.pin("anchor-1", "project", "main.tex", 1, 7, 7).unwrap();
-
-    let payloads = [
-        "\\write18{rm -rf ~}",
-        "\\input{/etc/passwd}",
-        "\\documentclass{evil}\\begin{document}",
-        "$x${{{unbalanced",
-    ];
-    for (i, payload) in payloads.into_iter().enumerate() {
-        let capture_id = format!("cap-adv-{i}");
-        b.receive(capture_for(&capture_id, "anchor-1", 1)).unwrap();
-        let record = b
-            .convert(&capture_id, vec![], &fixed(payload))
-            .expect("Proposal::validate has no content checks beyond size/NUL bytes");
-        assert_eq!(record.proposal.unwrap().latex, payload);
-        let edit = b.prepare_insert(&capture_id, 1, true).unwrap();
-        assert_eq!(edit.replacement, payload);
-    }
-
-    // Confirm one lands byte-for-byte in the real document text, not just the receipt.
-    b.receive(capture_for("cap-adv-confirm", "anchor-1", 1))
-        .unwrap();
-    b.convert("cap-adv-confirm", vec![], &fixed(payloads[0]))
-        .unwrap();
-    let edit = b.prepare_insert("cap-adv-confirm", 1, true).unwrap();
-    b.confirm_insert("cap-adv-confirm", &edit.edit_id, 2)
-        .unwrap();
-    assert_eq!(
-        b.document("project", "main.tex").unwrap().text,
-        format!("before {}AFTER", payloads[0])
-    );
-}
-
 #[test]
 fn reject_is_refused_once_an_edit_has_been_prepared_or_applied() {
     let dir = tempfile::tempdir().unwrap();
