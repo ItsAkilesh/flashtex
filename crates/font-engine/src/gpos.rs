@@ -184,3 +184,124 @@ fn parse_pair_subtable(b: &[u8], at: usize) -> Result<PairSubtable, Error> {
         f => Err(Error::Unsupported(format!("PairPos format {f}"))),
     }
 }
+
+// ------------------------------------------------------------ MarkToBase
+
+#[derive(Debug, Clone)]
+struct MarkBaseSubtable {
+    mark_coverage: Coverage,
+    base_coverage: Coverage,
+    class_count: u16,
+    /// Per mark coverage index: (class, anchor x, anchor y).
+    marks: Vec<(u16, i16, i16)>,
+    /// Per base coverage index: per class `Some((x, y))` or `None`.
+    bases: Vec<Vec<Option<(i16, i16)>>>,
+}
+
+/// The `mark` feature's MarkToBase (lookup type 4) attachment data.
+/// MarkToLigature (5) and MarkToMark (6) are recorded as unsupported.
+#[derive(Debug, Clone, Default)]
+pub struct MarkAttachment {
+    subtables: Vec<MarkBaseSubtable>,
+    pub unsupported: Vec<Unsupported>,
+}
+
+fn anchor_xy(b: &[u8], at: usize) -> Result<(i16, i16), Error> {
+    // Anchor formats 1, 2 and 3 all start with format, xCoordinate, yCoordinate.
+    let format = u16_at(b, at)?;
+    if !(1..=3).contains(&format) {
+        return Err(Error::Malformed(format!("anchor format {format}")));
+    }
+    Ok((i16_at(b, at + 2)?, i16_at(b, at + 4)?))
+}
+
+impl MarkAttachment {
+    pub fn parse(gpos: &[u8]) -> Result<MarkAttachment, Error> {
+        let mut out = MarkAttachment::default();
+        for index in otl::lookups_for_feature(gpos, b"mark")? {
+            let lk = otl::lookup(gpos, index, 9)?;
+            if lk.lookup_type != 4 {
+                out.unsupported.push(Unsupported {
+                    table: "GPOS",
+                    detail: format!(
+                        "mark lookup {} is type {} (only MarkToBase type 4 is applied)",
+                        lk.index, lk.lookup_type
+                    ),
+                });
+                continue;
+            }
+            for st in lk.subtables {
+                out.subtables.push(parse_mark_base(gpos, st)?);
+            }
+        }
+        Ok(out)
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.subtables.is_empty()
+    }
+
+    /// Offset (dx, dy) in font units from the BASE glyph's origin at which
+    /// `mark` should be drawn, from the first subtable covering both.
+    pub fn attach(&self, base: GlyphId, mark: GlyphId) -> Option<(i16, i16)> {
+        for sub in &self.subtables {
+            let (Some(mi), Some(bi)) = (
+                sub.mark_coverage.index(mark.0),
+                sub.base_coverage.index(base.0),
+            ) else {
+                continue;
+            };
+            let (class, mx, my) = *sub.marks.get(usize::from(mi))?;
+            if class >= sub.class_count {
+                continue;
+            }
+            let Some((bx, by)) = sub.bases.get(usize::from(bi))?.get(usize::from(class))? else {
+                continue;
+            };
+            return Some((bx - mx, by - my));
+        }
+        None
+    }
+}
+
+fn parse_mark_base(b: &[u8], at: usize) -> Result<MarkBaseSubtable, Error> {
+    if u16_at(b, at)? != 1 {
+        return Err(Error::Malformed("MarkBasePos format".into()));
+    }
+    let mark_coverage = Coverage::parse(b, at + usize::from(u16_at(b, at + 2)?))?;
+    let base_coverage = Coverage::parse(b, at + usize::from(u16_at(b, at + 4)?))?;
+    let class_count = u16_at(b, at + 6)?;
+    let mark_array = at + usize::from(u16_at(b, at + 8)?);
+    let base_array = at + usize::from(u16_at(b, at + 10)?);
+    let n_marks = usize::from(u16_at(b, mark_array)?);
+    let mut marks = Vec::with_capacity(n_marks);
+    for i in 0..n_marks {
+        let rec = mark_array + 2 + 4 * i;
+        let class = u16_at(b, rec)?;
+        let anchor = mark_array + usize::from(u16_at(b, rec + 2)?);
+        let (x, y) = anchor_xy(b, anchor)?;
+        marks.push((class, x, y));
+    }
+    let n_bases = usize::from(u16_at(b, base_array)?);
+    let mut bases = Vec::with_capacity(n_bases);
+    for i in 0..n_bases {
+        let rec = base_array + 2 + 2 * usize::from(class_count) * i;
+        let mut anchors = Vec::with_capacity(usize::from(class_count));
+        for c in 0..usize::from(class_count) {
+            let off = u16_at(b, rec + 2 * c)?;
+            anchors.push(if off == 0 {
+                None
+            } else {
+                Some(anchor_xy(b, base_array + usize::from(off))?)
+            });
+        }
+        bases.push(anchors);
+    }
+    Ok(MarkBaseSubtable {
+        mark_coverage,
+        base_coverage,
+        class_count,
+        marks,
+        bases,
+    })
+}

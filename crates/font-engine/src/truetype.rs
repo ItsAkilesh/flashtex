@@ -15,7 +15,7 @@
 
 use std::collections::BTreeMap;
 
-use crate::gpos::GposKerning;
+use crate::gpos::{GposKerning, MarkAttachment};
 use crate::gsub::GsubLigatures;
 use crate::kern::KernTable;
 use crate::math::MathTable;
@@ -55,6 +55,7 @@ pub struct TrueTypeFace {
     pub fs_type: u16,
     kern: KernTable,
     gpos: GposKerning,
+    marks: MarkAttachment,
     gsub: GsubLigatures,
     math: Option<MathTable>,
     unsupported: Vec<Unsupported>,
@@ -301,9 +302,9 @@ impl TrueTypeFace {
             },
             None => KernTable::default(),
         };
-        let gpos = match table(b"GPOS") {
-            Some(t) => GposKerning::parse(t)?,
-            None => GposKerning::default(),
+        let (gpos, marks) = match table(b"GPOS") {
+            Some(t) => (GposKerning::parse(t)?, MarkAttachment::parse(t)?),
+            None => (GposKerning::default(), MarkAttachment::default()),
         };
         let gsub = match table(b"GSUB") {
             Some(t) => GsubLigatures::parse(t)?,
@@ -311,6 +312,7 @@ impl TrueTypeFace {
         };
         unsupported.extend(kern.unsupported.iter().cloned());
         unsupported.extend(gpos.unsupported.iter().cloned());
+        unsupported.extend(marks.unsupported.iter().cloned());
         unsupported.extend(gsub.unsupported.iter().cloned());
         let math = match table(b"MATH") {
             Some(t) => Some(MathTable::parse(t)?),
@@ -353,6 +355,7 @@ impl TrueTypeFace {
             fs_type,
             kern,
             gpos,
+            marks,
             gsub,
             math,
             unsupported,
@@ -413,6 +416,11 @@ impl TrueTypeFace {
     /// preferred; for diagnostics and cross-checks.
     pub fn legacy_kern_table_kerning(&self, left: GlyphId, right: GlyphId) -> Option<i16> {
         self.kern.kerning(left, right)
+    }
+
+    /// Whether the face has GPOS MarkToBase data.
+    pub fn has_mark_attachment(&self) -> bool {
+        !self.marks.is_empty()
     }
 
     pub fn has_gsub_ligatures(&self) -> bool {
@@ -511,6 +519,10 @@ impl Face for TrueTypeFace {
 
     fn ligature(&self, components: &[GlyphId]) -> Option<GlyphId> {
         self.gsub.ligature(components)
+    }
+
+    fn mark_attachment(&self, base: GlyphId, mark: GlyphId) -> Option<(i16, i16)> {
+        self.marks.attach(base, mark)
     }
 
     fn ligature_passes(&self) -> usize {

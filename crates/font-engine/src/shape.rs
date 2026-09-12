@@ -248,19 +248,23 @@ pub fn shape(face: &dyn Face, text: &str, opts: &ShapeOptions) -> Result<Shaped,
             if !last.glyphs.is_empty() {
                 // Attach as a zero-advance mark glyph (or missing).
                 let base_adv = last.glyphs.last().map_or(0, |g| g.advance);
+                let base_gid = last.glyphs[0].gid;
                 match face.glyph_id(ch) {
                     Some(gid) => {
                         let mark_adv = i32::from(face.advance(gid)?);
-                        let x_offset = if mark_adv == 0 {
-                            0
-                        } else {
-                            -(base_adv + mark_adv) / 2
+                        // GPOS MarkToBase when the font has it; otherwise the
+                        // approximation: zero-advance marks sit where the
+                        // designer hung them, spacing ones are centred.
+                        let (x_offset, y_offset) = match face.mark_attachment(base_gid, gid) {
+                            Some((dx, dy)) => (i32::from(dx) - base_adv, i32::from(dy)),
+                            None if mark_adv == 0 => (0, 0),
+                            None => (-(base_adv + mark_adv) / 2, 0),
                         };
                         last.glyphs.push(Glyph {
                             gid,
                             advance: 0,
                             x_offset,
-                            y_offset: 0,
+                            y_offset,
                         });
                     }
                     None => {

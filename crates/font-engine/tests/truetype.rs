@@ -388,3 +388,43 @@ fn gsub_latin_liga_from_a_font_that_declares_it() {
     }
     eprintln!("SKIP: no candidate font with a Latin GSUB liga present");
 }
+
+#[test]
+fn gpos_mark_to_base_positions_an_unattached_combining_mark() {
+    let Some(f) = load(TIMES_NEW_ROMAN) else {
+        return;
+    };
+    assert!(
+        f.has_mark_attachment(),
+        "Times New Roman carries GPOS mark/mkmk"
+    );
+    // x + U+0301 has no precomposed form, so the mark stays a separate glyph
+    // and MarkToBase places it above the x.
+    let s = shape(&f, "x\u{0301}", &ShapeOptions::default()).unwrap();
+    assert_eq!(s.clusters.len(), 1);
+    assert_eq!(s.clusters[0].glyphs.len(), 2);
+    assert!(s.missing.is_empty());
+    let base = s.clusters[0].glyphs[0];
+    let mark = s.clusters[0].glyphs[1];
+    let x = f.glyph_id('x').unwrap();
+    let acute = f.glyph_id('\u{0301}').unwrap();
+    let (dx, dy) = f.mark_attachment(x, acute).expect("anchor pair");
+    assert_eq!(mark.x_offset, i32::from(dx) - base.advance);
+    assert_eq!(mark.y_offset, i32::from(dy));
+    assert_eq!(mark.advance, 0);
+    // The mark lands over the base, not after it: its origin is inside the
+    // base's advance box horizontally, and at or above the baseline.
+    let mark_x = base.advance + mark.x_offset;
+    assert!(
+        mark_x > -base.advance && mark_x < base.advance,
+        "mark x {mark_x} vs base advance {}",
+        base.advance
+    );
+    // TNR draws the combining acute at cap height and anchors it down to
+    // the x-height of 'x' (dy = -310 at 2048/em); the exact value is the
+    // font's, the test only requires a real, bounded attachment.
+    assert!(
+        dy != 0 && i32::from(dy).abs() < i32::from(f.units_per_em()),
+        "dy {dy}"
+    );
+}

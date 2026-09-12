@@ -189,6 +189,9 @@ pub trait Face {
     fn kerning_source(&self) -> KerningSource;
     /// Ligature glyph the face's lookups produce for exactly this sequence.
     fn ligature(&self, components: &[GlyphId]) -> Option<GlyphId>;
+    /// GPOS MarkToBase attachment: offset (dx, dy) in font units from the
+    /// base glyph's origin at which `mark` is drawn, if the font defines it.
+    fn mark_attachment(&self, base: GlyphId, mark: GlyphId) -> Option<(i16, i16)>;
     /// Number of ligature passes (GSUB lookups) to run in order.
     fn ligature_passes(&self) -> usize;
     /// Longest ligature of pass `pass` starting at `glyphs[0]`; returns the

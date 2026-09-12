@@ -238,6 +238,10 @@ impl Face for Core14Face {
         self.glyph_id(lig)
     }
 
+    fn mark_attachment(&self, _base: GlyphId, _mark: GlyphId) -> Option<(i16, i16)> {
+        None
+    }
+
     fn ligature_passes(&self) -> usize {
         1
     }
