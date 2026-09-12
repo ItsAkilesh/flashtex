@@ -682,7 +682,10 @@ impl LayoutCursor {
                 }
             }
             Block::VSpace { pt } => {
-                if !self.first_block {
+                // Only end a line that has content: after a rule or another
+                // vertical block there is no text line to finish, and TeX adds
+                // no interline glue there either.
+                if !self.first_block && self.state().trailing_line_items > 0 {
                     self.newline(body_size);
                 }
                 self.vertical_gap(*pt);
@@ -777,7 +780,8 @@ impl LayoutCursor {
                     .expect("at least one page")
                     .items
                     .push(item);
-                self.newline(body_size);
+                // A rule has no depth: end its line without adding a text line.
+                self.newline(0.0);
             }
         }
         // A block is the incremental cache unit. Resolve its final line before
