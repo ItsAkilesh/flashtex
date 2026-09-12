@@ -165,12 +165,32 @@ def main():
                 finally:
                     events.close()
                     (out/'receiver-timings.json').write_text(json.dumps(dict(records=client.receiver_timings,dropped=client.receiver_timings_dropped),indent=2)+'\n')
-        reopened=Client(args.helper,config)
+        reopened=Client(args.helper,config,capture_wire=True,capture_diagnostics=True)
+        reopen_events=(out/'reopen-events.jsonl').open('wb')
+        original_read=reopened.read
+        def reopen_read():
+            result=original_read()
+            reopen_events.write(reopened.last_wire);reopen_events.flush()
+            return result
+        reopened.read=reopen_read
         try:
             durable=snapshot_after_initial_preview(reopened)
             assert durable['revision']==21 and durable['text']==states[-1]
             assert durable['source_sha256']==sha(states[-1].encode())
-        finally:reopened.stop()
+        finally:
+            try:
+                # Preserve raw diagnostics, even an incomplete final stderr line.
+                reopened.diagnostic_file.seek(0)
+                data=reopened.diagnostic_file.read(1024*1024+1)
+                (out/'reopen-diagnostics.jsonl').write_bytes(data[:1024*1024])
+                (out/'reopen-capture-status.json').write_text(json.dumps(dict(
+                    scope="pre-stop snapshot; terminal stderr may be missing",
+                    diagnostics_truncated=len(data)>1024*1024,
+                    receiver_records=reopened.receiver_timings,
+                    receiver_records_dropped=reopened.receiver_timings_dropped))+'\n')
+            finally:
+                try:reopened.stop()
+                finally:reopen_events.close()
     request_frames=[line for f in (out/'producer').glob('*.input.jsonl') for line in f.read_bytes().splitlines(keepends=True)
         if json.loads(line)['id']==final['request_id']]
     assert len(request_frames)==1
