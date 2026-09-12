@@ -22,8 +22,11 @@ length and historical generation agrees with its output/receiver association.
 The audit keeps helper and receiver clock domains separate and does not infer
 native paint or causal stage costs from their durations.
 
-The postmeasurement reopened producer receives the exact final source, but its
-captured output is94208 bytes with zero complete JSONL frames. Its SHA256 is
+The reopened proxy input log contains the exact final source; logging before
+forwarding alone does not establish child receipt. Its captured output-log prefix
+is94208 bytes with zero complete JSONL frames. An interrupted log write after a
+complete readline can also produce such a prefix; it does not prove the producer
+emitted an incomplete JSON frame. Its SHA256 is
 fd25c7d5d69c89a95d2cab0c6d5c445c6c0cfea0bfb9aceb63594a190f4c4f40.
 Successful reopened preview/document validation, clean final direct comparison and
 normal successful-run provenance are absent. No claim is made that the partial
