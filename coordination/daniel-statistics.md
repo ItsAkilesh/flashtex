@@ -1,21 +1,89 @@
 # daniel-statistics handoff — FT-042
 
-Agent / task / branch: daniel-statistics / FT-042 revision 2 (cached document
-statistics with dependency-aware project aggregation) /
+Agent / task / branch: daniel-statistics / FT-042 revision 3 (bounded
+adversarial and stale-identity acceptance tests) /
 `agent/daniel-statistics/document-statistics`
 Owned paths: `crates/document-statistics/**`, `coordination/daniel-statistics.md`
 State: ready for integration (standalone additive crate; no consumer wired yet)
-Tested commit SHA: `e56b2e56a9a4ca9409a74b43014039f2db051bb4`
+Tested commit SHA: `cce30e1d9f692316f7df16d116752e7bf043cc72`
+Previous (rev 2) tested SHA: `e56b2e56a9a4ca9409a74b43014039f2db051bb4`
 Previous (rev 1) tested SHA: `92dd4ee806e513c68096e32ab0ff89a0133355d8`
-Main integrated through (merged and reviewed): `e5901797e8a7ebdd8d714ecdee6793e1097515a9`
+Main integrated through (merged and reviewed): `967703ebb4e8140feaf4db02d27cb3ac63c573f6`
 
 Validation at that SHA (`cd crates/document-statistics`):
 - `cargo build` — clean.
-- `cargo test` — 46 tests total: 39 unit tests (`src/`), 2 property-style
-  integration tests (`tests/incremental_equals_fresh.rs`), 4 integration
+- `cargo test` — 65 tests total: 39 unit tests (`src/`), 2 property-style
+  integration tests (`tests/incremental_equals_fresh.rs`), 14 adversarial
+  acceptance tests (`tests/adversarial_bounds.rs`), 5 stale-identity
+  acceptance tests (`tests/stale_identity_acceptance.rs`), 4 integration
   tests (`tests/statistics.rs`), 1 doctest. All pass.
 - `cargo clippy --all-targets -- -D warnings` — 0 warnings.
 - `cargo fmt --check` — clean.
+
+## Rev 3: what changed
+
+No source under `src/` changed at all: rev 1's counting rule (including the
+documented CJK limitation) and rev 2's `ScanLimit`/`ProjectCache` behavior
+are untouched. Rev 3 adds two new test files that attack and specify that
+existing behavior.
+
+**New: `tests/adversarial_bounds.rs` (14 tests).** Directly attacks the
+scanner and the cache, asserting every case resolves to either a typed
+`ScanTooLarge` or a bounded `Ok` — never a panic, a hang, or unbounded
+memory growth:
+- Scan-byte limit boundary: exactly `limit` bytes is accepted
+  (`scan_exactly_at_the_limit_is_accepted`); one byte past it is a typed
+  error with exact `{scanned, limit}` fields
+  (`scan_one_byte_past_the_limit_is_a_typed_error_with_exact_fields`); a
+  zero limit is a legal edge case handled without panicking
+  (`scan_limit_of_zero_rejects_any_nonempty_content_but_accepts_empty`).
+- `a_project_with_thousands_of_documents_stays_correct_and_bounded`: 5,000
+  distinct documents, each inserted then re-confirmed as a hit; `cache.len()`
+  stays exactly 5,000, never one-per-call.
+- `a_single_enormous_text_item_is_bounded_by_scan_limit_not_by_luck`: one
+  ~2,000,000-byte text item — the limit binds on a single oversized item,
+  not only on accumulation across many small ones; unbounded, the same item
+  still terminates with a correct count.
+- Combining-mark-only and zero-width-character-only text
+  (`text_of_only_combining_marks_is_bounded_and_not_a_word`,
+  `text_of_only_zero_width_characters_is_bounded_and_not_a_word`, and 1,000
+  pathological items summed in
+  `mix_of_combining_marks_and_zero_width_characters_across_many_items_is_bounded`):
+  correctly counted as zero words (no alphanumeric scalar value) while
+  `chars`/`scanned_bytes` still account for every byte, with no panic.
+- `a_revision_id_at_u64_max_behaves_exactly_like_any_other_revision`: `u64::MAX`
+  works exactly like any other revision number, including caching correctly
+  and not colliding with a wrapped-around revision 0.
+- Same document id re-registered many times with different content:
+  `same_document_id_registered_twice_with_different_content_never_duplicates_the_entry`
+  (200 re-registrations, same revision never bumped, `cache.len()` stays 1
+  throughout) and `same_document_id_same_revision_different_content_is_a_miss_not_corruption`.
+- `an_empty_project_answers_every_query_with_a_bounded_default_never_a_panic`:
+  every `ProjectCache` query on a project with zero documents.
+- Cache does not grow without bound under repeated updates:
+  `repeatedly_updating_one_document_never_grows_the_cache_past_one_entry`
+  (20,000 updates to one document, `cache.len() == 1` after every single
+  one) and `repeatedly_updating_a_fixed_set_of_documents_never_grows_the_cache_past_that_set`
+  (5,000 updates spread over 10 documents, `cache.len() <= 10` throughout).
+
+**New: `tests/stale_identity_acceptance.rs` (5 tests).** Restates rev 2's
+property-tested cache contract (`tests/incremental_equals_fresh.rs`) as a
+readable specification of when a cached answer may be trusted, one example
+test per rule:
+1. `same_revision_same_content_is_a_hit_the_cached_answer_is_trustworthy` —
+   the only condition under which a cached answer is safe to trust without
+   rescanning.
+2. `same_revision_changed_content_is_a_miss_the_cached_answer_would_be_a_lie`
+   — **the dangerous case**: a caller that reuses a revision id over content
+   that actually changed must never be served the old, stale answer.
+3. `changed_revision_same_content_is_a_miss_identity_must_match_exactly` — a
+   content match alone does not entitle a caller to a cached answer; the
+   claimed revision must match too.
+4. `a_sibling_documents_entry_is_untouched_by_either_a_hit_or_a_miss_elsewhere`
+   — a sibling document's cache entry survives byte-for-byte through both a
+   hit and a miss on another document.
+`the_full_trust_contract_in_one_sequence` walks all four rules in one
+narrative sequence against a single cache instance.
 
 ## Rev 2: what changed
 

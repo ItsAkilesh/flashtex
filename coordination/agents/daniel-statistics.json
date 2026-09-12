@@ -6,8 +6,8 @@
   "capabilities": ["rust", "document-statistics", "caching"],
   "branch": "agent/daniel-statistics/document-statistics",
   "state": "ready_for_integration",
-  "summary": "crates/document-statistics rev 2: ProjectCache keyed by exact source identity (RevisionId + FNV-1a content fingerprint) with per-document invalidation and dependency-aware project totals; ScanLimit/ScanTooLarge bounds scanned bytes; property test over 40 edit sequences (1160 steps) proves incremental equals fresh at every step and measures incremental scanning 127436 bytes vs 326335 fresh. 46 tests pass, clippy and fmt clean.",
-  "next_action": "Await Commander integration; no consumer wired up yet (deferred per FT-042 negotiation).",
+  "summary": "crates/document-statistics rev 3: no src/ changes. Added tests/adversarial_bounds.rs (14 tests) attacking the cache and scanner -- exact scan-byte-limit boundary, a 5000-document project, a single ~2MB item, combining-mark-only and zero-width-only text, revision id at u64::MAX, one source id re-registered 200 times with different content, an empty project, and 20000/5000-update churn proving cache.len() tracks distinct sources not update count -- every case a typed ScanTooLarge or a bounded Ok, never a panic. Added tests/stale_identity_acceptance.rs (5 tests) restating rev 2's property-tested contract as a specification: same revision+content is a trusted hit; same revision+changed content is a miss (the dangerous stale case); changed revision+same content is a miss; a sibling document's entry is untouched by either. 65 tests pass (was 46), clippy and fmt clean.",
+  "next_action": "Await Commander integration; no consumer wired up yet (deferred per FT-042 negotiation). No further rev-3 work planned unless Commander requests additional adversarial coverage.",
   "eta_minutes": {
     "optimistic": 0,
     "likely": 0,
@@ -19,17 +19,17 @@
     "evidence": "Shared Claude Max 20x subscription quota; no purchases or overages; live consumption not exposed to this agent."
   },
   "reviewed_peers": {
-    "origin/main": "e5901797e8a7ebdd8d714ecdee6793e1097515a9"
+    "origin/main": "967703ebb4e8140feaf4db02d27cb3ac63c573f6"
   },
   "assignment_acknowledgements": {
     "FT-042": {
-      "acknowledged_utc": "2026-09-12T09:27:47Z",
-      "revision": 2,
-      "main_sha": "e5901797e8a7ebdd8d714ecdee6793e1097515a9",
-      "adaptation": "Accepted FT-042 rev 2 as owner of crates/document-statistics only. Kept rev 1's pure Statistics::compute and its word-counting/CJK honesty tests unchanged. Added ScanLimit/ScanTooLarge (typed cap on scanned bytes, enforced in Statistics::compute_bounded) and ProjectCache (per-document cache keyed by source+revision+content fingerprint, with dependency-aware project_totals summing only currently-cached entries so an unrelated document's entry survives a sibling's update). Proved incremental equals fresh with a hand-rolled deterministic-PRNG property test over 40 sequences / 1160 total steps, asserting exact agreement after every step and that incremental scanning (127436 bytes) is well under fresh recomputation (326335 bytes). No workspace root Cargo.toml touched, no peer crate edited, no push/merge to main performed."
+      "acknowledged_utc": "2026-09-12T16:32:13Z",
+      "revision": 3,
+      "main_sha": "967703ebb4e8140feaf4db02d27cb3ac63c573f6",
+      "adaptation": "Accepted FT-042 rev 3 as owner of crates/document-statistics only. Kept rev 1's pure Statistics::compute, its word-counting rule and documented CJK limitation, rev 2's ScanLimit/ProjectCache, and the rev-2 incremental-equals-fresh property test fully intact -- no src/ file touched. Added tests/adversarial_bounds.rs attacking the cache and scanner with the required minimum cases (scan-byte limit at/past the boundary, a thousands-of-documents project, a single enormous item, combining-mark/zero-width-only text, a u64::MAX revision id, one document id re-registered with different content, an empty project, and many-updates churn showing bounded cache size), asserting exact typed-error fields or bounded Ok results and never a panic. Added tests/stale_identity_acceptance.rs stating the four-rule trust contract (same rev+content hit; same rev+changed content miss, the dangerous case; changed rev+same content miss; sibling entry untouched) as named, readable acceptance tests. Merged origin/main first. No workspace root Cargo.toml touched, no peer crate edited, no push/merge to main performed."
     }
   },
-  "updated_utc": "2026-09-12T09:27:47Z",
-  "code_revision": "e56b2e56a9a4ca9409a74b43014039f2db051bb4",
-  "main_integrated_through": "e5901797e8a7ebdd8d714ecdee6793e1097515a9"
+  "updated_utc": "2026-09-12T16:32:13Z",
+  "code_revision": "cce30e1d9f692316f7df16d116752e7bf043cc72",
+  "main_integrated_through": "967703ebb4e8140feaf4db02d27cb3ac63c573f6"
 }
