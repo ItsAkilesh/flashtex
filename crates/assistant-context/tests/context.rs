@@ -177,3 +177,68 @@ fn selected_diagnostics_are_bound_and_clipping_is_explicit() {
     assert!(Context::build_selected(binding.clone(), &docs, &result, "", &[], &[1, 1]).is_err());
     assert!(Context::build_selected(binding, &docs, &result, "", &[], &[2]).is_err());
 }
+
+#[test]
+fn explicit_destination_rehashes_context_and_limits_proposals() {
+    use flashtex_assistant_context::Location;
+    let docs = vec![source()];
+    let original = build(&docs);
+    let id = original.payload().context_id.clone();
+    let context = original
+        .restrict_edits(
+            vec![Location {
+                path: "main.tex".into(),
+                start_byte: 3,
+                end_byte: 3,
+            }],
+            &docs,
+        )
+        .unwrap();
+    assert_ne!(context.payload().context_id, id);
+    let mut response = json!({"context_id":context.payload().context_id,"explanation":"Insert text","edits":[{"location":{"path":"main.tex","start_byte":3,"end_byte":3},"removed_text":"","replacement":"x"}]});
+    context
+        .validate_response(&serde_json::to_vec(&response).unwrap(), &docs)
+        .unwrap();
+    response["edits"][0]["location"]["end_byte"] = json!(7);
+    response["edits"][0]["removed_text"] = json!("\\bad");
+    assert!(context
+        .validate_response(&serde_json::to_vec(&response).unwrap(), &docs)
+        .is_err());
+}
+#[test]
+fn native_json_helper_prepares_and_validates_without_applying() {
+    use std::{
+        io::Write,
+        process::{Command, Stdio},
+    };
+    fn call(value: &Value) -> Value {
+        let mut child = Command::new(env!("CARGO_BIN_EXE_flashtex-assistant-context"))
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .unwrap();
+        child
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(&serde_json::to_vec(value).unwrap())
+            .unwrap();
+        let output = child.wait_with_output().unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stdout)
+        );
+        serde_json::from_slice(&output.stdout).unwrap()
+    }
+    let docs = vec![source()];
+    let mut request = json!({"operation":"prepare","binding":CompileBinding::capture("r","p",7,&docs).unwrap(),"sources":docs,"compiler_result":result(),"user_instruction":"Explain only","destinations":[]});
+    let prepared = call(&request);
+    assert_eq!(prepared["type"], "prepared_context");
+    request["operation"] = json!("validate");
+    request["current_sources"] = json!(docs);
+    request["response"] = json!({"context_id":prepared["payload"]["context_id"],"explanation":"Explanation","edits":[]});
+    let validated = call(&request);
+    assert_eq!(validated["type"], "validated_proposal");
+    assert_eq!(validated["applied"], false);
+}

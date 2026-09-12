@@ -14,19 +14,19 @@
     "rust",
     "diagnostic-context"
   ],
-  "code_revision": "eed9aeaef5f98bdee4045435d247cca964b1d0ef",
+  "code_revision": "f153058ab98211226a166dd54c0a84de0ff29e92",
   "eta_minutes": null,
   "machine": "linux-primary",
   "main_integrated_through": "f522cf185f93e67e350ad4590d58afd6c66bc1e7",
-  "next_action": "Add selected diagnostic context and explicit reviewed destination binding for native integration.",
+  "next_action": "Native provider adapter integration and lifecycle consumer review; no autonomous edit application.",
   "reviewed_peers": {},
   "schema_version": 1,
-  "state": "in_progress",
-  "summary": "Added terminal explanation request lifecycle: cancelled/expired/stale/duplicate responses refused.4 local tests plus earlier actual compiler gate; strict clippy passes.",
+  "state": "ready_for_integration",
+  "summary": "Explicit edit destinations and bounded native JSON helper complete;8tests including original compiler diagnostics and actual prepare/validate subprocess pass, strict clippy passes.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T07:36:11Z",
+  "updated_utc": "2026-09-12T07:41:06Z",
   "usage": {
     "evidence": "unknown",
-    "status": "Existing root hosted slot; no provider/model calls or staffing changes."
+    "status": "Existing root hosted slot only; no inference or credentials used."
   }
 }

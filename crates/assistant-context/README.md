@@ -55,3 +55,18 @@ expiry without an inference call; this library does not run a timer or network j
 indices in the bound compiler result. Each selected context includes its original
 `diagnostic_index`; the context hash therefore binds the exact selection. Invalid
 or duplicate indices are refused. `build` retains its default first16behavior.
+
+`restrict_edits(destinations,current_sources)` consumes Context and returns a new
+context ID bound to up to8explicit UTF-8 destination ranges. Proposals must stay
+inside those ranges as well as supplied snippets. A zero-width destination permits
+insertion only at that offset; an empty destination list means explanation-only.
+
+The `flashtex-assistant-context` binary accepts one JSON request on stdin (16MiB
+maximum) and emits one JSON reply (128KiB maximum) before exiting. Run it off the
+native UI thread. Fields: `operation` (`prepare` or `validate`), `binding`, `sources`,
+`compiler_result`, `user_instruction`; optional `related_paths`,
+`selected_diagnostics`, `destinations`. `validate` additionally requires `response`
+and `current_sources`. It reconstructs/checks the same bound context, returns a
+`validated_proposal` with `applied:false`, and never writes source. `prepare`
+returns `prepared_context`. Errors return `type:error` and nonzero exit status.
+Provider transport and actual user approval remain separate native operations.
