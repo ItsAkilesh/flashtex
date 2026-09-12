@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "machine": "mac-m1max-a",
-  "not_before_utc": "2026-09-12T08:21:08Z",
+  "not_before_utc": "2026-09-12T08:20:35.242464+00:00",
   "target_engineering_sessions": 15,
   "supervisor": "mac-claude-a",
   "active_count_verified": null,
@@ -187,5 +187,6 @@
     "Fresh usable billing/reset evidence; unknown capacity stays unknown",
     "Publish own task branch after meaningful tested checkpoints; maintain current+2 work"
   ],
-  "scope_note": "Prepared dispatch is not evidence of running sessions; supervisor may preserve equivalent existing worker IDs while keeping unique ownership and15target."
+  "scope_note": "Prepared dispatch is not evidence of running sessions; supervisor may preserve equivalent existing worker IDs while keeping unique ownership and15target.",
+  "cooldown_override": "User explicitly lifts cooldown now; restore full preparedscale after currentroute verification"
 }

@@ -2,13 +2,14 @@
   "schema_version": 1,
   "commander_id": "orchestrator-astra",
   "start_utc": "2026-09-12T07:39:08Z",
-  "resume_utc": "2026-09-12T08:21:08Z",
-  "state": "cooldown_until_timestamp",
+  "resume_utc": "2026-09-12T08:20:35.242464+00:00",
+  "state": "lifted_by_explicit_user_override",
   "dispatch_issues": [
     2,
     23
   ],
   "heavy_work_machine": "daniel-new",
   "jaysen_during_cooldown": "small tasks only using explicitly authorized existing remaining usage credits; no purchases",
-  "resume_prompt": "TIMED COMMANDER DISPATCH: the user-authorized cooldown ends now (2026-09-12T08:21:08Z). Jaysen and Daniel: run both independent engineering queues in parallel now, with current+2 followups. Jaysen first verify provider reset/usable authorized allowance locally; do not buy usage or repeat a rejected paid call. Daniel continues existing accepted heavy handoffs. Do not reclaim paths transferred to Daniel: Jaysen uses remaining independent FT018/019/020 followups or new separately owned tests/consumers only after checking current ownership. Publish exact current ACK, local supervisor/worker session IDs, verified quota route and actual count immediately. A blocked route must report evidence and continue eligible work. This dispatch does not claim workers started or grant new spending. Local four-agent cap and single Astra authority remain. Read coordination/machines/mac-m1max-a-resume.json:15 prepared engineering lanes with explicit disjoint ownership/current+2 followups. Parent retains shared shell integration. Start eligible lanes and publish exact actual counts; Daniel16 lanes continue independently."
+  "resume_prompt": "IMMEDIATE USER-AUTHORIZED TANDEM DISPATCH: the user says Jaysen plan should now be reset and explicitly lifts the cooldown NOW. Jaysen parent: verify currently usable authorized route and start the prepared15 independent engineering lanes in coordination/machines/mac-m1max-a-resume.json immediately. Do not wait08:21. Daniel continues16 assigned lanes including transferred paragraph/font-engine/math; do not reclaim those paths. Preserve already running sessions rather than duplicate them. Publish exact assignment ACKs, actual child session IDs/count and current quota response immediately. No purchases or unapproved overages. If a route still rejects, report exact blocker and continue other eligible existing resources. This dispatch is not a running-session claim; Commander will verify pickup.",
+  "previous_resume_utc": "2026-09-12T08:21:08Z"
 }

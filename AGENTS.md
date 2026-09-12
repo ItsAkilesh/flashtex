@@ -1,3 +1,8 @@
+> LATEST USER OVERRIDE: Jaysen cooldown is lifted immediately. Restore the
+> prepared15 independent engineering lanes NOW after verifying usable route.
+> Daniel retains transferred heavy paths. Old08:21 wait instructions below are
+> superseded. Never duplicate an already running session or purchase usage.
+
 > LATEST USER STAFFING RESET: this host now has SEVEN active total: sole Astra
 > Commander plus SIX product engineers (root assistant-context, font-resources,
 > rendering-core, conversion-jobs, project-index, edit-ledger). The three paused
