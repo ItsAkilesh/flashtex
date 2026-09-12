@@ -7,7 +7,7 @@ glyph runs for the preview and PDF back ends. Edition 2024, no external crates,
 no TeX engine involved.
 
 ```
-cargo test            # 24 tests: unit, golden (hand-derived numbers), pdflatex oracle
+cargo test            # 34 tests: unit, golden (hand-derived numbers), incremental property, pdflatex oracles
 ```
 
 ## API tour
@@ -17,7 +17,7 @@ use flashtex_paragraph_layout::*;
 use flashtex_paragraph_layout::core14::Core14Times;
 
 // 1. Items: boxes, glue, penalties, kerns.
-let hyph = ExplicitDiscretionary;            // honours `\-`; NoHyphenation also shipped
+let hyph = LiangHyphenator::en_us_subset();  // TeX patterns; ExplicitDiscretionary / NoHyphenation also shipped
 let mut b = ParagraphBuilder::new(&hyph);
 b.text(&Core14Times::ROMAN, 12.0, "A naïve reader at the café ", 0);
 b.text(&Core14Times::BOLD, 12.0, "expects", 28);
@@ -33,7 +33,8 @@ for line in &lines.lines {
     }
 }
 // lines.breaks[i].{item, ratio, badness, fitness, demerits, hyphenated}
-// lines.stats.{pass, total_demerits, overfull, underfull, hyphenated_lines}
+// lines.stats.{pass, total_demerits, overfull, underfull, hyphenated_lines, emergency_pass_used}
+// lines.diagnostics[i].{severity, message, source, recovery, kind, line, boxes}
 
 // 3. Pages.
 let blocks = vec![ParagraphBlock::body(lines)];
@@ -42,12 +43,70 @@ let pages: Pages = layout_pages(&blocks, &PageParams::article_12pt_letter_1in_te
 // pages.overflow: every line that did not fit (never dropped)
 ```
 
+### Documents and incremental relayout
+
+```rust
+use flashtex_paragraph_layout::document::{DocumentSpec, layout_document, relayout};
+let spec = DocumentSpec { text, font: &Core14Times::ROMAN, size: 12.0, hyphenator: &hyph,
+                          line: LineBreakParams::article_12pt_letter_1in(),
+                          page: PageParams::article_12pt_letter_1in_tex_pt() };
+let doc = layout_document(&spec);                       // paragraphs = blank-line separated
+// after replacing bytes `edit` of the old text with `replacement_len` new bytes:
+let doc2 = relayout(&doc, &spec_with_new_text, edit, replacement_len);
+// doc2.stats: {reused_before, reused_after, relaid}; doc2 == layout_document(&spec_with_new_text)
+```
+
+`relayout` reuses every paragraph that ends before the edit verbatim and every
+unchanged paragraph after it with shifted source offsets, re-breaks only the
+paragraph(s) touching the edit, and re-pages. `tests/incremental.rs` asserts
+equality with a clean layout over 300 random edits (insertions, deletions,
+paragraph splits/joins, `\-` markers, non-ASCII).
+
 `Item` is the only input the breaker reads. Callers with shaped output from the
 font engine build boxes directly with `GlyphRun::from_shaped(font_id, size,
 units_per_em, ascender, descender, &[ShapedGlyph], source_range)` and add
 `Item::Glue`/`Item::Penalty`/`Item::Kern` themselves; `ParagraphBuilder` is the
 convenience path for text (it implements TeX `\spacefactor` spacing, cross-run
 kerns, ligatures and discretionaries through a `Hyphenator`).
+
+### Hyphenation
+
+`Hyphenator` is the input trait (`hyphenate(word) -> Vec<HyphenationPoint {
+offset, marker_len, automatic }>`). Shipped implementations:
+
+* `LiangHyphenator` — original implementation of Liang's pattern algorithm (what
+  TeX runs) with TeX's word rules (leading letter run, trailing punctuation
+  allowed, uppercase lower-cased, `\lefthyphenmin`/`\righthyphenmin`,
+  `\hyphenation{}` exceptions, explicit `\-` disables automatic points for
+  that word). `en_us_subset()` embeds **420 patterns** from TeX Live 2026
+  `hyph-en-us.tex` (Gerard D.C. Kuiken, version 2005-05-30; licence: copying
+  and distribution with or without modification permitted provided the
+  copyright notice and licence notice are preserved — both are reproduced in
+  `src/liang.rs`), restricted to patterns that are also in Knuth's `hyphen.tex`
+  (pdflatex's default `english`) and that match a word of the two oracle
+  samples, plus the 14-entry exception list the two files share. It is a
+  deliberately small set: other words get fewer points than TeX, never wrong
+  ones. `src/liang.rs` verifies 110/110 sample words against pdflatex's
+  `\showhyphens`.
+* `ExplicitDiscretionary` — only `\-`; `NoHyphenation`.
+
+`ParagraphBuilder` turns points into flagged penalties (`hyphen_penalty` 50 for
+automatic and `\-` points, `ex_hyphen_penalty` 50 otherwise) whose `pre_break`
+is the hyphen glyph; automatic points are used only in TeX's second pass and
+only for words that follow glue (TeX never hyphenates a paragraph's first word).
+
+### Diagnostics
+
+`Lines.diagnostics` carries `Diagnostic { severity, message, source, recovery,
+kind, line, boxes }`: the first four fields are runtime-v1's shape (`source`
+is the byte span from the first to the last box on the line, `recovery` says
+what was set instead), `kind` is `Overfull { excess }` or `Underfull { badness }`,
+`line` is the zero-based line index and `boxes` lists the source byte range of
+every box on the offending line (a discretionary hyphen contributes its marker
+range). Thresholds follow TeX: `hfuzz` (0.1pt) and `hbadness` (1000);
+underfullness is judged by the glue actually on the line, so a paragraph that
+needed `emergency_stretch` reports the resulting loose lines like TeX's hpack
+does. Overfull lines are set at maximum shrink and kept; nothing is dropped.
 
 ### Font metrics input
 
@@ -112,7 +171,8 @@ oracle comparison (`docs/comparison.md`) uses the former.
 | `mode` | — | `Justified` | `RaggedRight` = LaTeX `\raggedright` (`\rightskip 0pt plus 1fil`, interword shrink kept) |
 | `algorithm` | — | `TotalFit` | `FirstFit` greedy for comparison |
 | `pretolerance` / `tolerance` | same | 100 / 200 | pass 1 ignores automatic hyphens; `pretolerance < 0` skips pass 1 |
-| `emergency_stretch` | same | 0 | > 0 enables a third pass |
+| `emergency_stretch` | same | 0 | > 0 enables a third pass (`Stats.emergency_pass_used`) |
+| `hfuzz` / `hbadness` | same | 0.1 pt / 1000 | diagnostic thresholds |
 | `line_penalty` | `\linepenalty` | 10 | |
 | `adj_demerits` | `\adjdemerits` | 10000 | fitness classes differing by > 1 |
 | `double_hyphen_demerits` / `final_hyphen_demerits` | same | 10000 / 5000 | |
@@ -123,6 +183,7 @@ oracle comparison (`docs/comparison.md`) uses the former.
 
 `ParagraphBuilder`: `hyphen_penalty` / `ex_hyphen_penalty` 50 (`\hyphenpenalty`,
 `\exhyphenpenalty`), `french_spacing` false (`\nonfrenchspacing`).
+`LiangHyphenator`: `left_min` / `right_min` 2 / 3 (`\lefthyphenmin`, `\righthyphenmin`).
 
 `PageParams` (`article_12pt_letter_1in_tex_pt()`):
 
@@ -142,6 +203,9 @@ article: before 3.5 ex (18.9 pt), after 2.3 ex (12.42 pt), keep-with-next. Use
 
 ## Algorithms
 
+* **Incremental**: `document::relayout` (see above) — paragraph-granular reuse
+  with offset shifting; output is provably identical to a clean layout because
+  a paragraph's lines depend only on its text and start offset.
 * **Total-fit**: Knuth–Plass with TeX's specifics — legal breaks (glue after a
   box, penalty < 10000, kern before glue), discardables dropped after a break,
   integer badness `round(100·r³)` capped at 10000, fitness classes from badness
@@ -168,9 +232,11 @@ Everything is deterministic: no hashing, randomness, or time; equal inputs give
   footnotes, marginpars, math (FT-020), `\flushbottom`, `\addvspace` merging,
   vertical glue stretch/shrink, per-character heights/depths (the font
   ascender/descender is used), infinite-order *shrink*.
-* Automatic (pattern) hyphenation: only the `Hyphenator` trait, `NoHyphenation`
-  and `ExplicitDiscretionary` (`\-`) are shipped. A pattern hyphenator plugs in
-  by returning `HyphenationPoint { automatic: true, marker_len: 0, .. }`.
+* Hyphenation patterns: only the documented 420-pattern American-English
+  subset is embedded (see above); other languages and the rest of `hyphen.tex`
+  are a data addition through `LiangHyphenator::new(patterns, exceptions, l, r)`.
+  `\uchyph=0`, `\hyphenchar` other than `-`, and TeX's ligature/kern
+  reconstitution across a discretionary are not modelled.
 * Ligature/kern interaction across a discretionary (TeX reconstitutes; we kern
   around the break point as a separate `Item::Kern`).
 * Right-to-left or vertical scripts; combining marks (a mark is a glyph with

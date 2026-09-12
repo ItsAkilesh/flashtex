@@ -14,15 +14,15 @@
     "rust",
     "typesetting"
   ],
-  "code_revision": "a95e14d0ec7548a05f9c5bacadae01dc5d1dee4a",
+  "code_revision": "92eb5ba7d25fcff57464375eea206658248bbf12",
   "eta_minutes": {
     "likely": 5,
     "optimistic": 0,
     "pessimistic": 15
   },
   "machine": "mac-m1max-a",
-  "main_integrated_through": "0a3d8e22fe4abc5cf15c39cce889aaa125f38bb6",
-  "next_action": "Await Commander review; available for follow-ups (pattern hyphenator, parshape, per-char heights).",
+  "main_integrated_through": "df9e26e44a74b4322f86bcbcfe0cf2312afaece0",
+  "next_action": "Await orchestrator review/integration; follow-ups on request (more patterns, parshape).",
   "reviewed_peers": {
     "origin/agent/mac-font-engine/tex-fonts": {
       "adaptation": "main: compiler layout.rs still greedy (1.2 spacing, 6pt gap) with de1020c metrics; paragraph-layout is the proposed replacement, no overlap; added FontId::to_hex for rendering-core hex sha256. FT-018: FontId [u8;32] matches content_sha256; added ShapedGlyph/GlyphRun::from_shaped; adapter documented, not stacked on the unmerged branch.",
@@ -30,18 +30,18 @@
       "sha": "6a20750efd70e67fe061c321c2cb7ebc99c4b043"
     },
     "origin/main": {
-      "adaptation": "main: compiler layout.rs still greedy (1.2 spacing, 6pt gap) with de1020c metrics; paragraph-layout is the proposed replacement, no overlap; added FontId::to_hex for rendering-core hex sha256. FT-018: FontId [u8;32] matches content_sha256; added ShapedGlyph/GlyphRun::from_shaped; adapter documented, not stacked on the unmerged branch.",
-      "reviewed_utc": "2026-09-12T06:08:14Z",
-      "sha": "ae3f4de96282e7ea2c60aa268ed5f0b09c664e06"
+      "adaptation": "main integrated the rev-1 crate unchanged (c689b1a); merged origin/main 3730c23 into the branch with no conflicts; later main commits (through df9e26e) do not touch crates/paragraph-layout.",
+      "reviewed_utc": "2026-09-12T06:27:02Z",
+      "sha": "df9e26e44a74b4322f86bcbcfe0cf2312afaece0"
     }
   },
   "schema_version": 1,
-  "state": "accepted",
-  "summary": "Checkpoint 2: 24 tests (7 unit, 15 golden with hand-derived numbers, 2 pdflatex oracle: 102/102 line starts, mean|dx| 0.001 bp), README (API, TeX defaults, coordinates, limits, integration note), docs/comparison.md, GlyphRun::from_shaped for FT-018 output, clippy clean.",
+  "state": "ready_for_integration",
+  "summary": "FT-019 rev 2 delivered: Liang pattern hyphenator (420 Knuth patterns from hyph-en-us.tex, licence quoted; 110/110 words equal pdflatex showhyphens), TeX word/first-word rules and hyphen penalties, emergency-stretch third pass test, hfuzz/hbadness diagnostics in runtime-v1 shape citing every box's source range, document::relayout with 300-random-edit equality property, oracle hyphenating sample: 92/92 line starts, 5/5 hyphenated line ends, mean|dx| 0.003 bp.",
   "tool": "Claude Code subagent (parent mac-claude-a)",
-  "updated_utc": "2026-09-12T06:12:30Z",
+  "updated_utc": "2026-09-12T06:27:02Z",
   "usage": {
-    "evidence": "cargo test: 24 passed; cargo clippy --all-targets: 0 warnings",
+    "evidence": "cargo test: 34 passed; cargo clippy --all-targets: 0 warnings",
     "status": "Claude Max 20x shared quota; remaining unknown"
   }
 }

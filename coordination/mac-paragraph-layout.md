@@ -1,19 +1,19 @@
-# mac-paragraph-layout — FT-019 rev 1
+# mac-paragraph-layout — FT-019 rev 2
 
 Agent / task / branch: `mac-paragraph-layout` (Claude Code subagent, parent
 `mac-claude-a`, mac-m1max-a) / FT-019 rev 1 paragraph line breaking + metrics
 crate / `agent/mac-paragraph-layout/linebreak`
 
-State: ready for integration (checkpoint 2: golden tests, README,
-`docs/comparison.md`, `GlyphRun::from_shaped` for FT-018 output). Follow-ups
-available on request: pattern hyphenator, `\parshape`/hanging indent,
-per-character heights.
+State: ready for integration — rev 2 delivered (Liang hyphenation with TeX
+word rules and penalties, emergency-stretch pass, hfuzz/hbadness diagnostics
+with box provenance, incremental `relayout` with a random-edit equality
+property, oracle-measured hyphenating sample). Rev 1 scope unchanged.
 
 Owned paths: `crates/paragraph-layout/**`, `coordination/mac-paragraph-layout.md`,
 `coordination/agents/mac-paragraph-layout.json`
 
-Main integrated through: `9da7e48` (branch base). Reviewed origin/main
-`ae3f4de` (new crates rendering-core, font-resources, edit-ledger,
+Main integrated through: `c59aa5b` (merged at a95e14d, no conflicts; rev 2
+input main 5e75574 is an ancestor). Reviewed origin/main `ae3f4de` (new crates rendering-core, font-resources, edit-ledger,
 project-index, conversion-jobs, document-runtime; compiler now carries
 de1020c's `metrics.rs` and a wider `layout.rs` that is still greedy with
 `LINE_SPACING 1.2` / `PARAGRAPH_GAP_PT 6`, so the integration note in the
@@ -50,9 +50,36 @@ Ready behavior:
   0.002 bp, mean|dy| 0.016 bp (max 0.132 bp = PDFKit bold glyph-box descent).
 - README: API, TeX/LaTeX defaults, coordinate frames and pt/bp conversion,
   not-modelled list, integration proposal for the compiler lead.
+- Rev 2: `liang.rs` (Liang's algorithm; 420 patterns of TeX Live
+  `hyph-en-us.tex` that are also in Knuth's `hyphen.tex` and match the sample
+  words, licence quoted; 14 exceptions; TeX word rules; lefthyphenmin 2 /
+  righthyphenmin 3; explicit `\-` wins) — 110/110 sample words equal
+  pdflatex `\showhyphens`; builder hyphenates only words after glue (never a
+  paragraph's first word); `\hyphenpenalty`/`\exhyphenpenalty` parameters.
+- Rev 2: `Lines.diagnostics` (runtime-v1 shape: severity/message/source/
+  recovery, plus kind, line, and the source byte range of every box on the
+  line); `hfuzz` 0.1pt / `hbadness` 1000; underfullness judged by the real
+  glue after an emergency-stretch pass, like TeX's hpack;
+  `Stats.emergency_pass_used`.
+- Rev 2: `document::{layout_document, relayout}`: paragraphs = blank-line
+  separated; `relayout(previous, spec, edit, replacement_len)` reuses
+  paragraphs before the edit verbatim and unchanged ones after it with shifted
+  offsets, re-breaks the rest, re-pages; `tests/incremental.rs` proves equality
+  with a clean layout over 300 random edits and checks single-paragraph reuse
+  counts (1 before / 1 relaid / 2 after).
+- Rev 2 measurement (`docs/comparison.md`, `tests/oracle_hyphen_sample.rs`,
+  `docs/hyphen-sample.tex` compiled once by the oracle pdflatex 1.40.29 with
+  default `times` settings): 92/92 line starts, hyphenated line ends 5/5
+  matching (doc-umentation, implemen-tation, incom-prehensible,
+  counterproduc-tive, poly-syllabic), mean|dx| 0.003 bp, max 0.007 bp, both
+  paragraphs through TeX's second pass.
+- Core-14 adapter: ASCII `'`/`` ` `` are TeX quoteright/quoteleft (333 + AFM
+  kerns; U+2018/2019 share them) — found by the oracle (0.66 pt on "engine's").
 
 Incomplete behavior / not modelled: `\hbox` nesting, `\parshape`, floats,
-footnotes, math (FT-020), automatic pattern hyphenation, ff/ffi/ffl composites,
+footnotes, math (FT-020), hyphenation patterns beyond the documented 420
+(other words get fewer points than TeX, never wrong ones), `\uchyph=0`,
+ligature/kern reconstitution across a discretionary, ff/ffi/ffl composites,
 `\addvspace` merging, `\looseness`, `\flushbottom`, per-character
 heights/depths (font ascender/descender used).
 
@@ -61,8 +88,9 @@ FT-018 should implement `FontMetricsSource` for `font_engine::Face` or feed
 `Shaped` clusters to `GlyphRun::from_shaped` (mapping in README); the
 compiler's AST adapter is described in README "Proposed integration".
 
-Validation: `cargo test` in `crates/paragraph-layout` — 24 passed;
-`cargo clippy --all-targets` 0 warnings; `cargo fmt` applied.
+Validation: `cargo test` in `crates/paragraph-layout` — 34 passed (10 unit,
+19 golden, 2 incremental, 3 oracle); `cargo clippy --all-targets` 0 warnings;
+`cargo fmt` applied.
 
 Needs from others: none blocking. Commander review/integration.
 
@@ -89,4 +117,4 @@ Resource: Claude Max 20x plan on mac-m1max-a (allocation
 `claude-mac20x-paragraph`, shared account quota; remaining quota unknown to
 this worker).
 
-Updated: 2026-09-12T06:12Z
+Updated: 2026-09-12T06:27Z

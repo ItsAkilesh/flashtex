@@ -559,3 +559,153 @@ fn layout_is_deterministic() {
     let pb = layout_pages(&[ParagraphBlock::body(b)], &small_page());
     assert_eq!(pa, pb);
 }
+
+/// `\emergencystretch`: width 55, words 20pt, Times-like glue. "aaaa bbbb" is
+/// 12.5pt short over 1.5pt stretch (infinite badness) and "aaaa bbbb cccc" is
+/// 10pt over with 1.2pt shrink, so passes 1 and 2 fail. With
+/// `emergency_stretch = 10`, pass 3 sees 11.5pt of stretch: ratio 1.087,
+/// badness round(100 x 1.284) = 128 <= 200, and the paragraph is 2 + 2 words.
+/// The set line still only has its real 1.5pt of stretch, so like TeX's hpack
+/// it is reported "Underfull \hbox (badness 10000)" citing both boxes.
+#[test]
+fn emergency_stretch_enables_a_third_pass_and_reports_underfull() {
+    let it = items(&TestFont::TIMES_LIKE, &NoHyphenation, "aaaa bbbb cccc dddd");
+    let without = layout_paragraph(&it, &params(55.0));
+    assert_eq!(without.stats.pass, 2);
+    assert!(!without.stats.overfull.is_empty() || !without.stats.underfull.is_empty());
+    let p = LineBreakParams {
+        emergency_stretch: 10.0,
+        ..params(55.0)
+    };
+    let with = layout_paragraph(&it, &p);
+    assert_eq!(with.stats.pass, 3);
+    assert!(with.stats.emergency_pass_used);
+    assert_eq!(with.lines.len(), 2);
+    assert_eq!(with.lines[0].runs.len(), 2);
+    assert!(close(with.breaks[0].ratio, 12.5 / 11.5));
+    assert_eq!(with.breaks[0].badness, 128.0);
+    // Real glue: 2.5 + (12.5/11.5) x 1.5 = 4.13pt space; set width 44.13 < 55.
+    assert!(close(
+        with.lines[0].runs[1].x,
+        20.0 + 2.5 + 12.5 / 11.5 * 1.5
+    ));
+    assert!(with.stats.overfull.is_empty());
+    assert_eq!(with.diagnostics.len(), 1);
+    let d = &with.diagnostics[0];
+    assert_eq!(d.severity, Severity::Warning);
+    assert_eq!(d.kind, DiagnosticKind::Underfull { badness: 10000.0 });
+    assert_eq!(d.line, 0);
+    assert_eq!(d.boxes, vec![0..4, 5..9]);
+    assert_eq!(d.source, Some(0..9));
+    assert!(
+        d.message
+            .starts_with("Underfull \\hbox (badness 10000) in paragraph, line 1")
+    );
+    assert!(d.recovery.is_some());
+}
+
+/// Overfull diagnostics obey `\hfuzz` and cite the exact box: the 40pt word
+/// "yyyyzzzz" (source bytes 5..13) on a 35pt measure is 5pt too wide.
+#[test]
+fn overfull_diagnostic_cites_the_offending_box_and_respects_hfuzz() {
+    let it = items(&TestFont::TIMES_LIKE, &NoHyphenation, "xxxx yyyyzzzz");
+    let out = layout_paragraph(&it, &params(35.0).ragged());
+    assert_eq!(out.diagnostics.len(), 1);
+    let d = &out.diagnostics[0];
+    assert_eq!(d.kind, DiagnosticKind::Overfull { excess: 5.0 });
+    assert_eq!(d.line, 1);
+    assert_eq!(d.boxes, vec![5..13]);
+    assert_eq!(d.source, Some(5..13));
+    assert!(
+        d.message
+            .starts_with("Overfull \\hbox (5.000pt too wide) in paragraph, line 2")
+    );
+    // A generous \hfuzz silences it; the overfull stat remains.
+    let p = LineBreakParams {
+        hfuzz: 6.0,
+        ..params(35.0).ragged()
+    };
+    let out = layout_paragraph(&it, &p);
+    assert!(out.diagnostics.is_empty());
+    assert_eq!(out.stats.overfull.len(), 1);
+}
+
+/// `\hbadness`: with `\tolerance 10000` (sloppy) a 12.5pt-short line over
+/// 1.5pt of stretch is accepted (badness 10000) and reported underfull; raising
+/// `\hbadness` to 10000 silences the report.
+#[test]
+fn underfull_diagnostic_respects_hbadness() {
+    let it = items(&TestFont::TIMES_LIKE, &NoHyphenation, "aaaa bbbb cccc dddd");
+    let p = LineBreakParams {
+        pretolerance: -1.0,
+        tolerance: 10000.0,
+        ..params(55.0)
+    };
+    let out = layout_paragraph(&it, &p);
+    assert_eq!(out.lines.len(), 2);
+    assert_eq!(out.diagnostics.len(), 1);
+    assert_eq!(
+        out.diagnostics[0].kind,
+        DiagnosticKind::Underfull { badness: 10000.0 }
+    );
+    assert_eq!(out.diagnostics[0].boxes, vec![0..4, 5..9]);
+    let p = LineBreakParams {
+        hbadness: 10000.0,
+        ..p
+    };
+    assert!(layout_paragraph(&it, &p).diagnostics.is_empty());
+}
+
+/// Automatic hyphenation with penalties: only a word after glue gets
+/// automatic points (TeX never hyphenates a paragraph's first word). Justified
+/// on an 85pt measure, "documentation" (59.44pt at 10pt Times) alone on a line
+/// has no glue to stretch, so pass 1 fails and pass 2 breaks at "docu-":
+/// 59.44 + 2.5 + 19.44 + 3.33 = 84.71pt, 0.29pt short (badness 1). With
+/// `\hyphenpenalty 10000` no discretionary is legal; a lone "documentation"
+/// line has infinite badness (no glue) and is never feasible below
+/// `\tolerance 10000`, so — exactly as TeX does — the final pass sets both
+/// words on one overfull line (121.38pt natural, set at full 0.6pt shrink:
+/// 35.78pt too wide) and reports it.
+#[test]
+fn hyphen_penalty_and_first_word_rule() {
+    let hyph = LiangHyphenator::en_us_subset();
+    let text = "documentation documentation";
+    let mut b = ParagraphBuilder::new(&hyph);
+    b.text(&Core14Times::ROMAN, 10.0, text, 0);
+    let it = b.finish(Glue::fil());
+    let hyphen_points = it
+        .iter()
+        .filter(|i| matches!(i, Item::Penalty(p) if p.flagged))
+        .count();
+    assert_eq!(
+        hyphen_points, 4,
+        "only the second word gets doc-u-men-ta-tion"
+    );
+    let out = layout_paragraph(&it, &params(85.0));
+    assert_eq!(out.stats.pass, 2);
+    assert_eq!(out.lines.len(), 2);
+    assert!(out.lines[0].hyphenated);
+    assert!(out.lines[0].runs.last().unwrap().is_hyphen);
+    assert!(close(out.lines[0].natural_width, 84.71));
+    assert_eq!(out.breaks[0].badness, 1.0);
+    // The hyphen's cluster is empty (automatic point) at the break offset.
+    assert_eq!(out.lines[0].runs.last().unwrap().glyphs[0].cluster, 18..18);
+    let mut b = ParagraphBuilder::new(&hyph);
+    b.hyphen_penalty = 10000;
+    b.text(&Core14Times::ROMAN, 10.0, text, 0);
+    let it = b.finish(Glue::fil());
+    let out = layout_paragraph(&it, &params(85.0));
+    assert_eq!(out.stats.hyphenated_lines, 0);
+    assert_eq!(out.lines.len(), 1);
+    assert_eq!(out.diagnostics.len(), 1);
+    match out.diagnostics[0].kind {
+        DiagnosticKind::Overfull { excess } => assert!(close(excess, 121.38 - 0.6 - 85.0)),
+        ref k => panic!("expected overfull, got {k:?}"),
+    }
+    // Boxes are the shaped fragments: the second word is split at its four
+    // (forbidden) discretionaries, so its provenance is five ranges.
+    assert_eq!(
+        out.diagnostics[0].boxes,
+        vec![0..13, 14..17, 17..18, 18..21, 21..23, 23..27]
+    );
+}

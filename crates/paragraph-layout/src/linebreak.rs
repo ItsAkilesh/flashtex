@@ -849,14 +849,25 @@ pub fn layout_paragraph(items: &[Item], params: &LineBreakParams) -> Lines {
         } else if m.badness > tolerance_in_force {
             stats.underfull.push((li, m.badness));
         }
-        if m.badness < AWFUL_BAD && m.badness > params.hbadness && m.natural < m.target {
+        // Like TeX's hpack, judge underfullness by the glue actually on the
+        // line: emergency stretch only helps the breaker choose, so a line
+        // chosen in pass 3 is usually reported underfull afterwards.
+        let real = if extra > 0.0 {
+            measure(items, &p, params, start, bp.item, li, 0.0)
+        } else {
+            m
+        };
+        if real.badness < AWFUL_BAD && real.badness > params.hbadness && real.natural < real.target
+        {
             diagnostics.push(diagnose(
                 &line,
                 li,
-                DiagnosticKind::Underfull { badness: m.badness },
+                DiagnosticKind::Underfull {
+                    badness: real.badness,
+                },
                 format!(
                     "Underfull \\hbox (badness {}) in paragraph, line {}",
-                    m.badness,
+                    real.badness,
                     li + 1
                 ),
                 "interword glue stretched beyond \\hbadness",
@@ -904,10 +915,6 @@ fn diagnose(
     let source = match (boxes.first(), boxes.last()) {
         (Some(a), Some(b)) => Some(a.start.min(b.start)..a.end.max(b.end)),
         _ => None,
-    };
-    let message = match &source {
-        Some(r) => format!("{message} (bytes {}..{})", r.start, r.end),
-        None => message,
     };
     Diagnostic {
         severity: Severity::Warning,

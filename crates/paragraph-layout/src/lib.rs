@@ -7,6 +7,7 @@
 //! conventions, and `docs/comparison.md` for the pdflatex oracle comparison.
 
 pub mod core14;
+pub mod document;
 pub mod hyphenate;
 pub mod items;
 pub mod liang;
@@ -14,6 +15,9 @@ pub mod linebreak;
 pub mod metrics;
 pub mod pages;
 
+pub use document::{
+    DocumentLayout, DocumentSpec, ParagraphLayout, RelayoutStats, layout_document, relayout,
+};
 pub use hyphenate::{ExplicitDiscretionary, HyphenationPoint, Hyphenator, NoHyphenation};
 pub use items::{
     FORCED_BREAK, Glue, GlueOrder, Glyph, GlyphRun, INFINITE_PENALTY, Item, Kern, ParagraphBuilder,

@@ -102,3 +102,62 @@ where shrinking a line (finite `\fontdimen4`, still active under
   `\flushbottom`.
 * Glyph *positions inside* a word were compared only through the next word's
   start; per-glyph offsets follow the same advances + kerns.
+
+## Hyphenating sample (FT-019 rev 2): `docs/hyphen-sample.tex`
+
+Executable: `cargo test --test oracle_hyphen_sample -- --nocapture`.
+
+| Item | Value |
+|---|---|
+| Sample | `docs/hyphen-sample.tex` (two justified paragraphs, 92 words) |
+| Oracle | `/Library/TeX/texbin/pdflatex` = pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026), run once on 2026-09-12 for this measurement; no overfull/underfull boxes in its log |
+| Settings | default `times` settings: `[12pt]{article}`, T1, `geometry margin=1in`, `\parindent 0pt`, justified, hyphenation on (`\language` english = Knuth's `hyphen.tex`, `\lefthyphenmin 2`, `\righthyphenmin 3`), `\tolerance 200`, `\pretolerance 100`, `\emergencystretch 0pt` |
+| Word boxes | PDFKit via the native-verification branch's `oracle_extract.swift`, PDF points, no DPI |
+| Ours | `LiangHyphenator::en_us_subset()` (420 patterns from TeX Live's `hyph-en-us.tex` that are also in `hyphen.tex` and match a sample word; 14 shared exceptions), `Algorithm::TotalFit`, `BreakMode::Justified`, `LineBreakParams::article_12pt_letter_1in()` |
+
+Headline:
+
+```
+line starts matched: 92/92; hyphenated line ends: oracle 5, ours 5, matching 5; mean|dx| 0.003 bp; max|dx| 0.007 bp; max|dy| 0.013 bp
+paragraph: 6 lines, pass 2, total demerits 25584, hyphenated lines 2
+paragraph: 5 lines, pass 2, total demerits 28729, hyphenated lines 3
+```
+
+* **Hyphenation match rate: 5/5** hyphenated line ends coincide with pdflatex's
+  (`doc-umentation`, `implemen-tation`, `incom-prehensible`,
+  `counterproduc-tive`, `poly-syllabic`), with no extra hyphenation on our side,
+  and all 11 line starts match. Both paragraphs required TeX's second pass
+  (hyphenation), which is what this sample was written to exercise.
+* **Word-level hyphenation points: 110/110.** `src/liang.rs` also checks every
+  5+-letter word of both oracle samples against pdflatex's `\showhyphens`
+  output (`matches_tex_showhyphens_for_every_sample_word`), so the pattern
+  algorithm, hyphenmins and exception handling are verified independently of
+  the breaker.
+* **Horizontal**: mean |dx| 0.003 bp, max 0.007 bp on justified lines — the
+  interword glue is stretched/shrunk by the same ratios as TeX's. Getting here
+  needed one adapter fix: TeX's T1 encoding maps ASCII `'` to `quoteright`
+  (width 333 with its AFM kern pairs, e.g. `quoteright s -55`), whereas
+  de1020c's width table holds `quotesingle` (180); the crate now follows TeX.
+
+Representative rows (full table from the test; x/bottom in bp):
+
+| word | oracle x | ours x | dx | oracle bottom | ours bottom | dy | line start o/u |
+|---|---|---|---|---|---|---|---|
+| Reproducibility | 72.000 | 72.000 | +0.000 | 86.537 | 86.549 | +0.012 | yes/yes |
+| doc- | 518.754 | 518.756 | +0.002 | 86.537 | 86.549 | +0.012 | no/no |
+| umentation | 72.000 | 72.000 | +0.000 | 100.983 | 100.995 | +0.012 | yes/yes |
+| implemen- | 488.196 | 488.198 | +0.002 | 129.875 | 129.887 | +0.012 | no/no |
+| tation | 72.000 | 72.000 | +0.000 | 144.320 | 144.333 | +0.013 | yes/yes |
+| engine’s | 500.152 | 500.153 | +0.001 | 144.320 | 144.333 | +0.013 | no/no |
+| incom- | 506.129 | 506.131 | +0.002 | 173.212 | 173.224 | +0.012 | no/no |
+| prehensible | 72.000 | 72.000 | +0.000 | 187.658 | 187.670 | +0.012 | yes/yes |
+| counterproduc- | 466.964 | 466.966 | +0.002 | 187.658 | 187.670 | +0.012 | no/no |
+| tive | 72.000 | 72.000 | +0.000 | 202.104 | 202.116 | +0.012 | yes/yes |
+| poly- | 514.761 | 514.763 | +0.002 | 202.104 | 202.116 | +0.012 | no/no |
+| syllabic | 72.000 | 72.000 | +0.000 | 216.550 | 216.562 | +0.012 | yes/yes |
+| measurement. | 145.058 | 145.058 | +0.000 | 230.995 | 231.008 | +0.013 | no/no |
+
+Scope of the claim: the embedded pattern set is a documented subset, so words
+outside the two samples may receive fewer hyphenation points than TeX
+(never wrong ones, since every embedded pattern is Knuth's). Extending the
+subset is a data change, not an algorithm change.
