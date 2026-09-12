@@ -420,7 +420,7 @@ fn shift_inlines(
             Inline::LineBreak { span } => Some(Inline::LineBreak {
                 span: mapped_span(*span, changes, deltas)?,
             }),
-            Inline::HSpace { em, span } => Some(Inline::HSpace {
+            Inline::TextGlue { em, span } => Some(Inline::TextGlue {
                 em: *em,
                 span: mapped_span(*span, changes, deltas)?,
             }),
@@ -628,7 +628,7 @@ fn block_signature(block: &Block) -> BlockSignature {
     let span_of = |inline: &Inline| match inline {
         Inline::Text { span, .. } => *span,
         Inline::LineBreak { span } => *span,
-        Inline::HSpace { span, .. } => *span,
+        Inline::TextGlue { span, .. } => *span,
         Inline::Math { span, .. } => *span,
         Inline::MathRows { span, .. } => *span,
         Inline::Label { span, .. } => *span,
@@ -667,7 +667,7 @@ fn shifted_signature(
     let span_of = |inline: &Inline| match inline {
         Inline::Text { span, .. } => *span,
         Inline::LineBreak { span } => *span,
-        Inline::HSpace { span, .. } => *span,
+        Inline::TextGlue { span, .. } => *span,
         Inline::Math { span, .. } => *span,
         Inline::MathRows { span, .. } => *span,
         Inline::Label { span, .. } => *span,
