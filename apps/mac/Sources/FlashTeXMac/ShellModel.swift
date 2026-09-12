@@ -54,8 +54,55 @@ final class ShellModel: ObservableObject {
     /// Text each document had when the current `result` was produced, so stale
     /// byte offsets can be rebased (or refused) after edits.
     private(set) var compiledDocuments: [String: String] = [:]
-    struct InFlight { var projectId: String; var revision: Int; var documents: [RuntimeV1.Document]; var sentAt: Date }
+    struct InFlight {
+        var projectId: String; var revision: Int; var documents: [RuntimeV1.Document]; var sentAt: Date
+        /// `layout_capabilities` this request carried; the reply is checked against it.
+        var layoutCapabilities: [String] = []
+    }
     private(set) var inFlightRequests: [String: InFlight] = [:]
+
+    // MARK: negotiated layout capabilities (runtime-v1-layout-capabilities.md)
+
+    /// Capabilities sent with every compile request. Default: `rules-v1` and
+    /// `font-hints-v1` (gate 3: consumer tests pass), overridable with
+    /// `FLASHTEX_LAYOUT_CAPABILITIES` (comma-separated; empty string disables).
+    @Published var requestedLayoutCapabilities: [String] = ShellModel.defaultLayoutCapabilities()
+    /// Negotiation bound to the *applied* result: what its own request asked for
+    /// and what the producer accepted. A late reply for another request never
+    /// changes this (results are correlated by id + project + revision first).
+    @Published private(set) var negotiation: LayoutNegotiation = .legacy
+    var acceptedLayoutCapabilities: [String] { negotiation.accepted }
+    /// Font hints the applied result carries that could not be honored exactly.
+    @Published private(set) var fontSubstitutions: [PreviewFonts.Substitution] = []
+    /// Source-aware errors for unknown primitives in the applied result
+    /// (negotiated route only; the legacy route still skips unknown kinds).
+    @Published private(set) var layoutDiagnostics: [RuntimeV1.Diagnostic] = []
+    /// Producer diagnostics followed by the shell's own layout diagnostics.
+    var displayedDiagnostics: [RuntimeV1.Diagnostic] { (result?.diagnostics ?? []) + layoutDiagnostics }
+
+    /// Explicit banner notes: requested-but-unaccepted capabilities and font
+    /// substitutions. Never inferred from item shapes.
+    var capabilityNotes: [String] {
+        negotiation.missing.map { "capability \($0) not accepted by the worker" } + fontSubstitutions.map(\.description)
+    }
+
+    // Gate 3 (contract): stays empty until the consumer tests pass.
+    static let builtInLayoutCapabilities: [String] = []
+
+    /// `FLASHTEX_LAYOUT_CAPABILITIES` (unset → built-in default; "" → none).
+    static func defaultLayoutCapabilities(environment: [String: String] = ProcessInfo.processInfo.environment) -> [String] {
+        guard let raw = environment["FLASHTEX_LAYOUT_CAPABILITIES"] else { return builtInLayoutCapabilities }
+        return raw.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+    }
+
+    /// Binds a result's negotiation state, substitutions, and layout diagnostics.
+    private func bindLayout(of applied: RuntimeV1.CompileResult, requested: [String]) {
+        negotiation = LayoutNegotiation(requested: requested, accepted: applied.layoutCapabilities ?? [])
+        fontSubstitutions = PreviewFonts.substitutions(in: applied)
+        layoutDiagnostics = LayoutNegotiation.unsupportedPrimitiveDiagnostics(in: applied, negotiation: negotiation)
+        for note in capabilityNotes { log(note) }
+        for d in layoutDiagnostics { log(d.message) }
+    }
     @Published var autoCompile = true
     @Published private(set) var lastLatencyMs: Double?
     @Published private(set) var latenciesMs: [Double] = []
@@ -173,19 +220,28 @@ final class ShellModel: ObservableObject {
         loadError = nil
         do {
             let res = try RuntimeV1.decodeCompileResult(Data(contentsOf: result))
-            self.result = res.payload
-            self.resultID = res.id
-            self.fixtureURL = result
-            self.previewSource = .fixture
             // Seed the editor from `request` or, for `<name>-result.json`, a
             // sibling `<name>-request.json` (e.g. Samples/multipage-*.json).
             var candidates: [URL] = []
             if let request { candidates.append(request) }
             if let sibling = Self.siblingRequestURL(forResult: result) { candidates.append(sibling) }
-            if let req = candidates.lazy.compactMap({ url -> RuntimeV1.Envelope<RuntimeV1.CompileRequest>? in
+            let req = candidates.lazy.compactMap({ url -> RuntimeV1.Envelope<RuntimeV1.CompileRequest>? in
                 guard let data = try? Data(contentsOf: url) else { return nil }
                 return try? RuntimeV1.decodeCompileRequest(data)
-            }).first {
+            }).first
+            // A fixture is checked against its request's capabilities when that
+            // request is available, else against the set it declares itself.
+            let requested = req?.payload.layoutCapabilities ?? res.payload.layoutCapabilities ?? []
+            if let violation = LayoutNegotiation.violation(in: res.payload, requested: requested) {
+                loadError = "Rejected \(result.lastPathComponent): \(violation)"
+                return
+            }
+            self.result = res.payload
+            self.resultID = res.id
+            self.fixtureURL = result
+            self.previewSource = .fixture
+            bindLayout(of: res.payload, requested: requested)
+            if let req {
                 documents = req.payload.documents
                 activePath = req.payload.entryPath
                 editorRevision = req.payload.revision
@@ -235,6 +291,9 @@ final class ShellModel: ObservableObject {
         result = nil
         resultID = nil
         previewSource = .none
+        negotiation = .legacy
+        fontSubstitutions = []
+        layoutDiagnostics = []
         selection = nil
         anchor = nil
         editorRevision += 1
@@ -381,15 +440,17 @@ final class ShellModel: ObservableObject {
         if let current = result, previewSource != .fixture, current.revision == editorRevision { return }
         let id = "mac-\(nextRequestID)"
         nextRequestID += 1
+        let capabilities = requestedLayoutCapabilities
         let request = RuntimeV1.CompileRequest(
             projectId: result?.projectId ?? "demo",
             revision: editorRevision,
             entryPath: activePath,
-            documents: documents)
+            documents: documents,
+            layoutCapabilities: capabilities.isEmpty ? nil : capabilities)
         do {
             try worker.send(request, id: id)
             inFlightRequests[id] = InFlight(projectId: request.projectId, revision: request.revision,
-                                            documents: documents, sentAt: Date())
+                                            documents: documents, sentAt: Date(), layoutCapabilities: capabilities)
             inFlightRevision = editorRevision
             workerStatus = "compiling revision \(editorRevision) (\(id))…"
         } catch {
@@ -418,6 +479,15 @@ final class ShellModel: ObservableObject {
                 return
             }
             inFlightRequests.removeValue(forKey: env.id)
+            // Layout capabilities are per request: the reply may only claim what
+            // this request asked for, and may only carry negotiated shapes.
+            if let violation = LayoutNegotiation.violation(in: incoming, requested: sent.layoutCapabilities) {
+                if inFlightRevision == sent.revision { inFlightRevision = nil }
+                let msg = "compile_result \(env.id): \(violation)"
+                log("rejected " + msg)
+                workerStatus = "protocol violation: " + msg
+                return
+            }
             // Contract: never replace a newer preview with an older revision.
             if let current = result, previewSource != .fixture, incoming.revision < current.revision {
                 log("ignored stale compile_result revision \(incoming.revision) < \(current.revision)")
@@ -427,6 +497,7 @@ final class ShellModel: ObservableObject {
             result = incoming
             resultID = env.id
             previewSource = .worker(worker?.executable.lastPathComponent ?? "worker")
+            bindLayout(of: incoming, requested: sent.layoutCapabilities)
             compiledDocuments = Dictionary(uniqueKeysWithValues: sent.documents.map { ($0.path, $0.text) })
             let ms = Date().timeIntervalSince(sent.sentAt) * 1000
             lastLatencyMs = ms

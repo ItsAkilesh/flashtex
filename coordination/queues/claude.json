@@ -1,6 +1,6 @@
 {
   "agent_id": "claude",
-  "next_index": 3,
+  "next_index": 4,
   "schema_version": 1,
   "steps": [
     {
@@ -60,17 +60,17 @@
       "timebox_minutes": 45
     },
     {
+      "acceptance": [
+        "Pinned fixture evidence reports every byte/pixel mismatch without normalization",
+        "Warm edit timing includes compiler work and leaves native paint gate explicit"
+      ],
+      "allocation_id": "openai-kabir-plus-ft002-stage6",
       "name": "Exact rendering convergence",
       "objective": "Connect original compiler to negotiated original Rust font/layout pipeline with exact source identity. Separate raw PDF bytes, pixel equality and incremental-clean equivalence; no reference engine in production.",
       "owned_paths": [
         "crates/compiler"
       ],
-      "acceptance": [
-        "Pinned fixture evidence reports every byte/pixel mismatch without normalization",
-        "Warm edit timing includes compiler work and leaves native paint gate explicit"
-      ],
-      "timebox_minutes": 45,
-      "allocation_id": "openai-kabir-plus-ft002-stage6"
+      "timebox_minutes": 45
     }
   ],
   "task_id": "FT-002"

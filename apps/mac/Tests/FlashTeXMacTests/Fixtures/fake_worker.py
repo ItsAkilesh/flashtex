@@ -8,7 +8,19 @@ the entry text for tests: `%error` -> error envelope, `%garbage` -> non-JSON lin
 diagnostic per occurrence, spanning byte `pos+n ..< pos+n+1` where `pos` is the
 directive's own UTF-8 byte offset, so a diagnostic after an insertion shifts with
 the text the way a real compiler's would. `%slow` at the start -> the reply is
-delayed 400 ms (for coalescing tests). Test double only.
+delayed 400 ms (for coalescing tests).
+
+`%caps` at the start -> layout-capability negotiation (runtime-v1-layout-
+capabilities.md): the reply echoes back the requested capabilities it knows
+(`rules-v1`, `font-hints-v1`) as `layout_capabilities`, adds one `rule` item when
+rules-v1 was accepted, and a bold Latin Modern `font` hint on the text item when
+font-hints-v1 was accepted. Optional flags after a colon, comma-separated:
+`blob` -> also emit an item of unknown kind `blob` with a source range;
+`sub` -> the font hint asks for family "Comic Sans" (forces substitution);
+`unrequested` -> emit the rule and font hint even when not requested (violation);
+`claim` -> claim acceptance of `rules-v1` even when not requested (violation).
+`%caps` never speeds up or slows down the reply; combine with `%slow` by
+writing `%caps` first. Test double only, not a compiler.
 """
 import json
 import re
@@ -56,6 +68,13 @@ for raw in sys.stdin:
     if text.startswith("%wrongrev"):
         p["revision"] = p["revision"] + 1000
         text = text[len("%wrongrev"):]
+    caps_flags, offset = None, 0
+    if text.startswith("%caps"):
+        head = text.split("\n", 1)[0][len("%caps"):]
+        caps_flags = set(head[1:].split(",")) if head.startswith(":") else set()
+        rest = text.split("\n", 1)[1] if "\n" in text else ""
+        offset = len(text.encode("utf-8")) - len(rest.encode("utf-8"))  # keep spans document-relative
+        text = rest
     if text.startswith("%slow"):
         time.sleep(0.4)
     first = text.split("\n", 1)[0]
@@ -73,6 +92,23 @@ for raw in sys.stdin:
                                   "items": [{"kind": "text", "text": first, "x_pt": 72,
                                              "baseline_y_pt": 84, "font_size_pt": 12,
                                              "source": {"path": p["entry_path"],
-                                                        "start_byte": 0, "end_byte": end}}]}],
+                                                        "start_byte": offset, "end_byte": offset + end}}]}],
                        "diagnostics": diagnostics, "pdf_path": None}}
+    if caps_flags is not None:
+        requested = p.get("layout_capabilities") or []
+        accepted = [c for c in requested if c in ("rules-v1", "font-hints-v1")]
+        if "claim" in caps_flags and "rules-v1" not in accepted:
+            accepted.append("rules-v1")
+        payload = out["payload"]
+        if "layout_capabilities" in p or accepted:
+            payload["layout_capabilities"] = accepted
+        items = payload["pages"][0]["items"]
+        src = items[0]["source"]
+        if "rules-v1" in accepted or "unrequested" in caps_flags:
+            items.append({"kind": "rule", "x_pt": 72, "y_pt": 90, "width_pt": 24, "height_pt": 0.5, "source": src})
+        if "font-hints-v1" in accepted or "unrequested" in caps_flags:
+            family = "Comic Sans" if "sub" in caps_flags else "Latin Modern Roman"
+            items[0]["font"] = {"family": family, "weight": "bold", "style": "normal"}
+        if "blob" in caps_flags:
+            items.append({"kind": "blob", "source": src})
     print(json.dumps(out), flush=True)

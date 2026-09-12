@@ -32,13 +32,66 @@ public enum RuntimeV1 {
         public var revision: Int
         public var entryPath: String
         public var documents: [Document]
+        /// Requested layout capabilities (`layout_capabilities`, see
+        /// runtime-v1-layout-capabilities.md). Omitted from the wire when nil.
+        public var layoutCapabilities: [String]?
 
         enum CodingKeys: String, CodingKey {
             case projectId = "project_id", revision, entryPath = "entry_path", documents
+            case layoutCapabilities = "layout_capabilities"
         }
-        public init(projectId: String, revision: Int, entryPath: String, documents: [Document]) {
+        public init(projectId: String, revision: Int, entryPath: String, documents: [Document],
+                    layoutCapabilities: [String]? = nil) {
             self.projectId = projectId; self.revision = revision
             self.entryPath = entryPath; self.documents = documents
+            self.layoutCapabilities = layoutCapabilities
+        }
+
+        public init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            projectId = try c.decode(String.self, forKey: .projectId)
+            revision = try c.decode(Int.self, forKey: .revision)
+            entryPath = try c.decode(String.self, forKey: .entryPath)
+            documents = try c.decode([Document].self, forKey: .documents)
+            layoutCapabilities = try c.decodeIfPresent([String].self, forKey: .layoutCapabilities)
+            if let caps = layoutCapabilities { try LayoutCapabilities.validate(caps) }
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var c = encoder.container(keyedBy: CodingKeys.self)
+            try c.encode(projectId, forKey: .projectId)
+            try c.encode(revision, forKey: .revision)
+            try c.encode(entryPath, forKey: .entryPath)
+            try c.encode(documents, forKey: .documents)
+            if let caps = layoutCapabilities {
+                try LayoutCapabilities.validate(caps)
+                try c.encode(caps, forKey: .layoutCapabilities)
+            }
+        }
+    }
+
+    /// Negotiated layout capabilities (runtime-v1-layout-capabilities.md).
+    /// A list is at most 16 unique, nonempty strings of at most 64 UTF-8 bytes.
+    public enum LayoutCapabilities {
+        public static let rulesV1 = "rules-v1"
+        public static let fontHintsV1 = "font-hints-v1"
+        /// Capabilities this client knows how to consume.
+        public static let supported: [String] = [rulesV1, fontHintsV1]
+        public static let maxCount = 16
+        public static let maxBytes = 64
+
+        public static func validate(_ caps: [String]) throws {
+            guard caps.count <= maxCount else {
+                throw DecodeError.invalidLayoutCapabilities("\(caps.count) capabilities exceed the limit of \(maxCount)")
+            }
+            var seen = Set<String>()
+            for cap in caps {
+                guard !cap.isEmpty else { throw DecodeError.invalidLayoutCapabilities("empty capability string") }
+                guard cap.utf8.count <= maxBytes else {
+                    throw DecodeError.invalidLayoutCapabilities("capability of \(cap.utf8.count) bytes exceeds \(maxBytes)")
+                }
+                guard seen.insert(cap).inserted else { throw DecodeError.invalidLayoutCapabilities("duplicate capability \(cap)") }
+            }
         }
     }
 
@@ -60,11 +113,15 @@ public enum RuntimeV1 {
         }
     }
 
-    /// Only `kind: text` exists in v1. Unknown kinds are decoded as `.unknown`
-    /// so a newer contract revision does not crash the shell.
+    /// `kind: text` is base v1; `kind: rule` is decoded only as a typed rule
+    /// (negotiated `rules-v1`) and fails decoding when malformed. Unknown kinds
+    /// decode as `.unknown` (with their `source` when present) so a newer
+    /// contract revision does not crash the shell; whether they are reported
+    /// or skipped is the consumer's decision (see ShellModel).
     public enum PageItem: Codable, Equatable {
         case text(TextItem)
-        case unknown(kind: String)
+        case rule(RuleItem)
+        case unknown(kind: String, source: SourceRange? = nil)
 
         public struct TextItem: Codable, Equatable {
             public var text: String
@@ -72,20 +129,100 @@ public enum RuntimeV1 {
             public var baselineYPt: Double
             public var fontSizePt: Double
             public var source: SourceRange?
+            /// Explicit face intent (`font-hints-v1`); nil means legacy selection.
+            public var font: FontHint?
 
             enum CodingKeys: String, CodingKey {
                 case text, xPt = "x_pt", baselineYPt = "baseline_y_pt"
-                case fontSizePt = "font_size_pt", source
+                case fontSizePt = "font_size_pt", source, font
+            }
+            public init(text: String, xPt: Double, baselineYPt: Double, fontSizePt: Double,
+                        source: SourceRange?, font: FontHint? = nil) {
+                self.text = text; self.xPt = xPt; self.baselineYPt = baselineYPt
+                self.fontSizePt = fontSizePt; self.source = source; self.font = font
             }
         }
 
-        enum CodingKeys: String, CodingKey { case kind }
+        /// `font-hints-v1`: family/weight/style intent. Not font bytes, GIDs,
+        /// or advances — a consumer that cannot resolve `family` must report
+        /// substitution rather than claim the requested face was preserved.
+        public struct FontHint: Codable, Equatable {
+            public enum Weight: String, Codable { case normal, bold }
+            public enum Style: String, Codable { case normal, italic }
+            public var family: String
+            public var weight: Weight
+            public var style: Style
+            public static let maxFamilyBytes = 128
+
+            public init(family: String, weight: Weight = .normal, style: Style = .normal) {
+                self.family = family; self.weight = weight; self.style = style
+            }
+
+            enum CodingKeys: String, CodingKey { case family, weight, style }
+
+            public init(from decoder: Decoder) throws {
+                let c = try decoder.container(keyedBy: CodingKeys.self)
+                family = try c.decode(String.self, forKey: .family)
+                weight = try c.decode(Weight.self, forKey: .weight)
+                style = try c.decode(Style.self, forKey: .style)
+                guard !family.isEmpty, family.utf8.count <= Self.maxFamilyBytes else {
+                    throw DecodingError.dataCorruptedError(forKey: .family, in: c,
+                        debugDescription: "font family must be 1...\(Self.maxFamilyBytes) UTF-8 bytes")
+                }
+                guard !family.unicodeScalars.contains(where: { $0.properties.generalCategory == .control }) else {
+                    throw DecodingError.dataCorruptedError(forKey: .family, in: c,
+                        debugDescription: "font family must not contain control characters")
+                }
+            }
+        }
+
+        /// `rules-v1`: a filled rectangle whose TOP-LEFT corner is `(x_pt, y_pt)`
+        /// in page coordinates (y downward from the page top). `y_pt` is not a
+        /// baseline. Dimensions are positive and finite; magnitudes ≤ 1e6.
+        public struct RuleItem: Codable, Equatable {
+            public var xPt: Double
+            public var yPt: Double
+            public var widthPt: Double
+            public var heightPt: Double
+            public var source: SourceRange?
+            public static let maxMagnitude = 1_000_000.0
+
+            enum CodingKeys: String, CodingKey {
+                case xPt = "x_pt", yPt = "y_pt", widthPt = "width_pt", heightPt = "height_pt", source
+            }
+            public init(xPt: Double, yPt: Double, widthPt: Double, heightPt: Double, source: SourceRange?) {
+                self.xPt = xPt; self.yPt = yPt; self.widthPt = widthPt; self.heightPt = heightPt; self.source = source
+            }
+
+            public init(from decoder: Decoder) throws {
+                let c = try decoder.container(keyedBy: CodingKeys.self)
+                xPt = try c.decode(Double.self, forKey: .xPt)
+                yPt = try c.decode(Double.self, forKey: .yPt)
+                widthPt = try c.decode(Double.self, forKey: .widthPt)
+                heightPt = try c.decode(Double.self, forKey: .heightPt)
+                source = try c.decodeIfPresent(SourceRange.self, forKey: .source)
+                for (value, key) in [(xPt, CodingKeys.xPt), (yPt, .yPt), (widthPt, .widthPt), (heightPt, .heightPt)] {
+                    guard value.isFinite, abs(value) <= Self.maxMagnitude else {
+                        throw DecodingError.dataCorruptedError(forKey: key, in: c,
+                            debugDescription: "rule \(key.rawValue) must be finite with magnitude ≤ 1e6")
+                    }
+                }
+                guard widthPt > 0, heightPt > 0 else {
+                    throw DecodingError.dataCorruptedError(forKey: .widthPt, in: c,
+                        debugDescription: "rule width_pt and height_pt must be positive")
+                }
+            }
+        }
+
+        enum CodingKeys: String, CodingKey { case kind, source }
 
         public init(from decoder: Decoder) throws {
-            let kind = try decoder.container(keyedBy: CodingKeys.self).decode(String.self, forKey: .kind)
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            let kind = try c.decode(String.self, forKey: .kind)
             switch kind {
             case "text": self = .text(try TextItem(from: decoder))
-            default: self = .unknown(kind: kind)
+            case "rule": self = .rule(try RuleItem(from: decoder))
+            default: self = .unknown(kind: kind, source: try? c.decodeIfPresent(SourceRange.self, forKey: .source))
             }
         }
 
@@ -95,8 +232,12 @@ public enum RuntimeV1 {
             case .text(let item):
                 try c.encode("text", forKey: .kind)
                 try item.encode(to: encoder)
-            case .unknown(let kind):
+            case .rule(let item):
+                try c.encode("rule", forKey: .kind)
+                try item.encode(to: encoder)
+            case .unknown(let kind, let source):
                 try c.encode(kind, forKey: .kind)
+                try c.encodeIfPresent(source, forKey: .source)
             }
         }
     }
@@ -110,6 +251,9 @@ public enum RuntimeV1 {
         enum CodingKeys: String, CodingKey {
             case number, widthPt = "width_pt", heightPt = "height_pt", items
         }
+        public init(number: Int, widthPt: Double, heightPt: Double, items: [PageItem]) {
+            self.number = number; self.widthPt = widthPt; self.heightPt = heightPt; self.items = items
+        }
     }
 
     public enum Severity: String, Codable { case error, warning }
@@ -119,6 +263,9 @@ public enum RuntimeV1 {
         public var message: String
         public var source: SourceRange?
         public var recovery: String?
+        public init(severity: Severity, message: String, source: SourceRange?, recovery: String?) {
+            self.severity = severity; self.message = message; self.source = source; self.recovery = recovery
+        }
     }
 
     public struct CompileResult: Codable, Equatable {
@@ -128,15 +275,45 @@ public enum RuntimeV1 {
         public var pages: [Page]
         public var diagnostics: [Diagnostic]
         public var pdfPath: String?
+        /// Capabilities the producer accepted for this result (a subset of the
+        /// request's `layout_capabilities`). Nil/omitted means none.
+        public var layoutCapabilities: [String]?
 
         enum CodingKeys: String, CodingKey {
             case projectId = "project_id", revision, status, pages, diagnostics
-            case pdfPath = "pdf_path"
+            case pdfPath = "pdf_path", layoutCapabilities = "layout_capabilities"
         }
         public init(projectId: String, revision: Int, status: Status, pages: [Page],
-                    diagnostics: [Diagnostic], pdfPath: String?) {
+                    diagnostics: [Diagnostic], pdfPath: String?, layoutCapabilities: [String]? = nil) {
             self.projectId = projectId; self.revision = revision; self.status = status
             self.pages = pages; self.diagnostics = diagnostics; self.pdfPath = pdfPath
+            self.layoutCapabilities = layoutCapabilities
+        }
+
+        public init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            projectId = try c.decode(String.self, forKey: .projectId)
+            revision = try c.decode(Int.self, forKey: .revision)
+            status = try c.decode(Status.self, forKey: .status)
+            pages = try c.decode([Page].self, forKey: .pages)
+            diagnostics = try c.decode([Diagnostic].self, forKey: .diagnostics)
+            pdfPath = try c.decodeIfPresent(String.self, forKey: .pdfPath)
+            layoutCapabilities = try c.decodeIfPresent([String].self, forKey: .layoutCapabilities)
+            if let caps = layoutCapabilities { try LayoutCapabilities.validate(caps) }
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var c = encoder.container(keyedBy: CodingKeys.self)
+            try c.encode(projectId, forKey: .projectId)
+            try c.encode(revision, forKey: .revision)
+            try c.encode(status, forKey: .status)
+            try c.encode(pages, forKey: .pages)
+            try c.encode(diagnostics, forKey: .diagnostics)
+            try c.encode(pdfPath, forKey: .pdfPath) // null until a real artifact exists
+            if let caps = layoutCapabilities {
+                try LayoutCapabilities.validate(caps)
+                try c.encode(caps, forKey: .layoutCapabilities)
+            }
         }
     }
 
@@ -145,6 +322,7 @@ public enum RuntimeV1 {
     public enum DecodeError: Error, Equatable {
         case unsupportedVersion(Int)
         case unexpectedType(expected: String, actual: String)
+        case invalidLayoutCapabilities(String)
     }
 
     public static func decodeCompileResult(_ data: Data) throws -> Envelope<CompileResult> {

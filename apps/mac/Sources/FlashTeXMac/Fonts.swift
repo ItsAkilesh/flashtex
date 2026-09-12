@@ -1,5 +1,6 @@
 import AppKit
 import CoreText
+import FlashTeXProtocol
 
 /// Preview/export faces. LaTeX's default is Computer Modern; we use Latin Modern
 /// (GUST Font License) when it can be found, falling back to Times-Roman (the
@@ -48,10 +49,15 @@ enum PreviewFonts {
         return n.contains("render") ? .latinModern : .times
     }
 
+    /// Legacy selection (no font hint): the active face, regular weight/style.
+    static func postScriptName(size: Double, bold: Bool = false, italic: Bool = false) -> String {
+        postScriptName(face: active, size: size, bold: bold, italic: italic)
+    }
+
     /// Latin Modern optical size by nominal point size, matching LaTeX's choice
     /// (lmroman5/7/8/9/10/12/17 masters).
-    static func postScriptName(size: Double, bold: Bool = false, italic: Bool = false) -> String {
-        switch active {
+    static func postScriptName(face: Face, size: Double, bold: Bool, italic: Bool) -> String {
+        switch face {
         case .times:
             switch (bold, italic) {
             case (false, false): return "Times-Roman"
@@ -69,5 +75,67 @@ enum PreviewFonts {
 
     static func ctFont(size: Double) -> CTFont {
         CTFontCreateWithName(postScriptName(size: size) as CFString, size, nil)
+    }
+
+    // MARK: font-hints-v1
+
+    /// A requested family the preview could not honor and the face used instead.
+    struct Substitution: Hashable {
+        var family: String
+        var weight: RuntimeV1.PageItem.FontHint.Weight
+        var style: RuntimeV1.PageItem.FontHint.Style
+        var usedFace: String
+        var requested: String {
+            family + (weight == .bold ? " bold" : "") + (style == .italic ? " italic" : "")
+        }
+        var description: String { "font substituted: \(requested) → \(usedFace)" }
+    }
+
+    struct Resolved: Equatable {
+        var postScriptName: String
+        /// Non-nil when the requested family was not available and another face
+        /// was used; the requested metrics were then NOT preserved.
+        var substitution: Substitution?
+    }
+
+    /// Families that map to the registered Latin Modern Roman masters.
+    static func isLatinModernFamily(_ family: String) -> Bool {
+        let f = family.lowercased().trimmingCharacters(in: .whitespaces)
+        return f.hasPrefix("latin modern") || f.hasPrefix("lmroman") || f == "lm roman" || f == "computer modern" || f.hasPrefix("computer modern")
+    }
+
+    /// Families that map to the Core-14 Times faces.
+    static func isTimesFamily(_ family: String) -> Bool {
+        let f = family.lowercased().trimmingCharacters(in: .whitespaces)
+        return f == "times" || f == "times new roman" || f == "times-roman" || f == "times roman" || f == "timesnewroman"
+    }
+
+    /// Resolves an explicit `font-hints-v1` hint to a PostScript face. Latin
+    /// Modern families use the registered LM masters (weight/style honored);
+    /// Times families use the Core-14 Times faces; anything else — or Latin
+    /// Modern when it is not registered on this machine — falls back to Times
+    /// with the requested weight/style and is reported as a substitution.
+    /// A nil hint is legacy selection (`postScriptName(size:)`), never a substitution.
+    static func resolve(hint: RuntimeV1.PageItem.FontHint?, size: Double) -> Resolved {
+        guard let hint else { return Resolved(postScriptName: postScriptName(size: size), substitution: nil) }
+        let bold = hint.weight == .bold, italic = hint.style == .italic
+        if isLatinModernFamily(hint.family), latinModernRegistered {
+            return Resolved(postScriptName: postScriptName(face: .latinModern, size: size, bold: bold, italic: italic), substitution: nil)
+        }
+        let times = postScriptName(face: .times, size: size, bold: bold, italic: italic)
+        if isTimesFamily(hint.family) { return Resolved(postScriptName: times, substitution: nil) }
+        return Resolved(postScriptName: times,
+                        substitution: Substitution(family: hint.family, weight: hint.weight, style: hint.style, usedFace: times))
+    }
+
+    /// Every distinct substitution a result would need, in first-seen order.
+    static func substitutions(in result: RuntimeV1.CompileResult) -> [Substitution] {
+        var seen = Set<Substitution>(), out: [Substitution] = []
+        for page in result.pages {
+            for case .text(let t) in page.items {
+                if let sub = resolve(hint: t.font, size: t.fontSizePt).substitution, seen.insert(sub).inserted { out.append(sub) }
+            }
+        }
+        return out
     }
 }
