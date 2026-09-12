@@ -16,15 +16,15 @@
     "rust",
     "macos-simulators"
   ],
-  "code_revision": "4d93a7fa3e012bad7f6ce5127ebb66127d60fcba",
+  "code_revision": "0af3c2bc94b92c69abdfae816de491653c68e73e",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
     "pessimistic": 0
   },
   "machine": "mac-m1max-a",
-  "main_integrated_through": "7a1760114a706e8f76f17b957af84921be832340",
-  "next_action": "Merge fontmetrics/app-bundle subagent branches when done; await next dispatch",
+  "main_integrated_through": "342e1e029f80e7a5b472ad202ae87d597274127b",
+  "next_action": "Collect mac-bridge and oracle-compare results; merge; await dispatch",
   "reviewed_peers": {
     "origin/agent/aarush-macbook/companion-capture": {
       "adaptation": "Peer cannot run xcodebuild; will verify their branch from this Mac. No contract change.",
@@ -35,6 +35,11 @@
       "adaptation": "Compiler 9f1033b: rustfmt + 8 MiB request bound, no interface change; documented limit in README",
       "reviewed_utc": "2026-09-12T04:36:12Z",
       "sha": "9f1033ba75176236bc5fc66b5e64b8ebbfc15a37"
+    },
+    "origin/agent/commander/capture-bridge": {
+      "adaptation": "transfer-v1 read; Mac integration started as a child against exact commit b5ca96b (unmerged dependency recorded)",
+      "reviewed_utc": "2026-09-12T05:05:25Z",
+      "sha": "b5ca96bdaca634166a01023cd3321955f2bc5f70"
     },
     "origin/agent/commander/coordination-tools": {
       "adaptation": "Acknowledged FT-009/FT-010 as parent and spawned both; will not build FT-007 bridge (Commander-owned); following queue step 0 acceptance",
@@ -49,11 +54,11 @@
   },
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "FT-003 rev 3 ready at 4d93a7f incl. Commander findings: complete-line 16MiB cap, EOF trailing-bytes violation, id+project+revision correlation (44/44 tests w/ real compiler+pdf); children mac-pdf a0855dd, mac-validation b9c06ae ready",
+  "summary": "FT-003 rev 3 ready at 0af3c2b (+ Times preview fix, rules, .tex open/save, FlashTeX.app packaging); mac-pdf c0f3837 resolves issue #9 PDF side; mac-validation b9c06ae ready; mac-bridge integrating FT-007 bridge b5ca96b",
   "tool": "Claude Code",
-  "updated_utc": "2026-09-12T04:45:56Z",
+  "updated_utc": "2026-09-12T05:05:25Z",
   "usage": {
-    "evidence": "Claude Code session on Max 20x (claude PIDs: ); subagents: 8 spawned this session; 1 codex exec (gpt-6-astra, ~35k tokens); quota unknown; no purchases",
+    "evidence": "Claude Max 20x; 12 subagent runs so far; 1 codex exec; BasicTeX installed by user (oracle only); no purchases",
     "status": "unknown"
   }
 }
