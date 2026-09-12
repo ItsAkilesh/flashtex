@@ -1,0 +1,73 @@
+{
+  "agent_id": "commander-preview-controller",
+  "archived_utc": "2026-09-12T06:22:04Z",
+  "assignment": {
+    "acceptance": [
+      "Parallel controller and real original compiler tests pass",
+      "Durable source succeeds independently of missing compiler",
+      "Reviewed insertion is explicit; never automatically approve provider text",
+      "Native paint and full PDF equality remain separate measured gates"
+    ],
+    "agent_id": "commander-preview-controller",
+    "allocation_id": "hosted-openai-product",
+    "branch": "agent/commander/preview-controller",
+    "deadline_utc": null,
+    "dependencies": [],
+    "input_main_sha": "56c003f8f82dee63507205f69f4d3b8c353442e0",
+    "objective": "Native-consumable original Rust preview controller joins durable source/edit-ledger, source index and original compiler session. Add bounded JSONLines helper and exact revision/session guards.",
+    "owned_paths": [
+      "crates/preview-controller"
+    ],
+    "revision": 1,
+    "schema_version": 1,
+    "state": "assigned",
+    "task_id": "FT-027",
+    "timebox_minutes": 30,
+    "updated_utc": "2026-09-12T06:09:29.165922+00:00"
+  },
+  "report": {
+    "agent_id": "commander-preview-controller",
+    "allocation_id": "hosted-openai-product",
+    "assignment_acknowledgements": {
+      "FT-027": {
+        "acknowledged_utc": "2026-09-12T06:15:29Z",
+        "adaptation": "Reviewed FT-027r1; own preview-controller only, helper7cc6475 implements bounded actor stdio with explicit approval and durable receipt recovery, continuing guarded editor queries.",
+        "main_sha": "928595ecbd1cf63af5924c7a4df76f12350b52af",
+        "revision": 1
+      }
+    },
+    "branch": "agent/commander/preview-controller",
+    "capabilities": [
+      "rust"
+    ],
+    "code_revision": "faaadb9f672074a87dbd8e6af89d46948edd0b7a",
+    "eta_minutes": {
+      "likely": 10,
+      "optimistic": 5,
+      "pessimistic": 20
+    },
+    "machine": "linux-primary",
+    "main_integrated_through": "87d20e8fa3c80bffcb223a503dc5da0f4784eb58",
+    "next_action": "Integrate nativehelper and dispatch next nonoverlapping product stage; nativepaint remainsunmeasured.",
+    "reviewed_peers": {},
+    "schema_version": 1,
+    "state": "ready_for_integration",
+    "summary": "Helper throughfaaadb9 plus pendingfaulttests:17tests incl original compiler, real process kill/receipt+undo retry, stalled output bound and wrong-session isolation; strictClippy pass.",
+    "tool": "Codex GPT-6 Astra",
+    "updated_utc": "2026-09-12T06:21:40Z",
+    "usage": {
+      "evidence": "Live hosted /root Astra session; helper subprocess tests actually ran, no paid auxiliary calls; quota unknown.",
+      "status": "unknown"
+    }
+  },
+  "report_age_seconds": 23,
+  "report_path": "coordination/agents/commander-preview-controller.json",
+  "review_required": true,
+  "revision": 1,
+  "schema_version": 1,
+  "stale_completion": false,
+  "state": "reported_ready",
+  "task_id": "FT-027",
+  "worker_branch": "agent/commander/preview-controller",
+  "worker_report_sha": "a873476ec471fe6307747e02e2577bcc81e09202"
+}

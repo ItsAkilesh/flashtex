@@ -1,0 +1,16 @@
+[package]
+name = "flashtex-pdf"
+version = "0.1.0"
+edition = "2024"
+description = "Original FlashTeX PDF writer: runtime-v1 positioned pages to a hand-written PDF 1.4 document."
+publish = false
+
+[lib]
+name = "flashtex_pdf"
+path = "src/lib.rs"
+
+[[bin]]
+name = "flashtex-pdf"
+path = "src/main.rs"
+
+[dependencies]

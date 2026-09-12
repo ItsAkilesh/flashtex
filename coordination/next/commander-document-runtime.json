@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "agent_id": "commander-document-runtime",
+  "task_id": "FT-021",
+  "revision": 1,
+  "branch": "agent/commander/document-runtime",
+  "assignment_path": "coordination/assignments/FT-021.json",
+  "updated_utc": "2026-09-12T05:59:24.973775+00:00"
+}
