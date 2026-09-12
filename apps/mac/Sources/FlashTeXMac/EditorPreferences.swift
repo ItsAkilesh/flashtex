@@ -387,12 +387,16 @@ final class EditorPreferences {
         guard let container = textView.textContainer else { return }
         let scroll = textView.enclosingScrollView
         if wrap {
+            // Before the first layout the clip view is empty; tracking fills the
+            // width in on the first resize, so only a real width is pushed now.
             let width = scroll?.contentView.bounds.width ?? textView.bounds.width
             container.widthTracksTextView = true
-            container.containerSize = NSSize(width: width, height: CGFloat.greatestFiniteMagnitude)
             textView.isHorizontallyResizable = false
             textView.autoresizingMask = [.width]
-            textView.frame.size.width = width
+            if width > 0 {
+                container.containerSize = NSSize(width: width, height: CGFloat.greatestFiniteMagnitude)
+                textView.frame.size.width = width
+            }
             scroll?.hasHorizontalScroller = false
         } else {
             container.widthTracksTextView = false
