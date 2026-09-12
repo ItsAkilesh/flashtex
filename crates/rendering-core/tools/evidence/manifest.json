@@ -1,0 +1,9 @@
+{
+  "runner_sha256": "b5f3790b4be34303dd862f42fd05b063c98d422f160590bb87caa57ecff42fdb",
+  "expected_exits": {
+    "plain-accepted.json": 0,
+    "missing-assets-refused.json": 2,
+    "unpinned-tool-unknown.json": 4
+  },
+  "notes": "unknown-tool case uses a version-only fake executable; acceptance uses actual pinned Poppler. No source repair or new parser/rasterizer."
+}
