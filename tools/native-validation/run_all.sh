@@ -21,6 +21,8 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(git -C "$HERE" rev-parse --show-toplevel)"
 MAC_REF="origin/agent/mac-claude-a/mac-shell"
 COMPILER_REF="origin/agent/claude/compiler-foundation"
+PDF_REF="origin/agent/mac-pdf/pdf-output"
+BRIDGE_REF="origin/agent/commander/capture-bridge"
 SCRATCH="${TMPDIR:-/tmp}/flashtex-validation"
 KEEP=0
 SKIP_XCODEBUILD=0
@@ -30,6 +32,8 @@ while [[ $# -gt 0 ]]; do
     --repo) REPO="$(cd "$2" && pwd)"; shift 2 ;;
     --mac-ref) MAC_REF="$2"; shift 2 ;;
     --compiler-ref) COMPILER_REF="$2"; shift 2 ;;
+    --pdf-ref) PDF_REF="$2"; shift 2 ;;
+    --bridge-ref) BRIDGE_REF="$2"; shift 2 ;;
     --scratch) SCRATCH="$2"; shift 2 ;;
     --reports-dir) REPORTS_DIR="$2"; shift 2 ;;
     --keep) KEEP=1; shift ;;
@@ -45,11 +49,15 @@ RUN_DIR="$SCRATCH/run-$STAMP"
 LOG_DIR="$RUN_DIR/logs"
 MAC_WT="$RUN_DIR/mac"
 COMPILER_WT="$RUN_DIR/compiler"
+PDF_WT="$RUN_DIR/pdf"
+BRIDGE_WT="$RUN_DIR/bridge"
 REPORT="$REPORTS_DIR/report-$STAMP.md"
 mkdir -p "$LOG_DIR" "$REPORTS_DIR"
 
 MAC_SHA="$(git -C "$REPO" rev-parse --verify "$MAC_REF^{commit}")"
 COMPILER_SHA="$(git -C "$REPO" rev-parse --verify "$COMPILER_REF^{commit}")"
+PDF_SHA="$(git -C "$REPO" rev-parse --verify "$PDF_REF^{commit}" 2>/dev/null || true)"
+BRIDGE_SHA="$(git -C "$REPO" rev-parse --verify "$BRIDGE_REF^{commit}" 2>/dev/null || true)"
 SUITE_SHA="$(git -C "$REPO" rev-parse HEAD)"
 
 # ---------------------------------------------------------------- reporting
@@ -86,7 +94,7 @@ cleanup() {
     echo "keeping worktrees under $RUN_DIR"
     return
   fi
-  for wt in "$MAC_WT" "$COMPILER_WT"; do
+  for wt in "$MAC_WT" "$COMPILER_WT" "$PDF_WT" "$BRIDGE_WT"; do
     if [[ -d "$wt" ]]; then
       git -C "$REPO" worktree remove --force "$wt" >/dev/null 2>&1 || rm -rf "$wt"
     fi
@@ -99,11 +107,20 @@ trap cleanup EXIT
 echo "repo:      $REPO (suite at $SUITE_SHA)"
 echo "mac:       $MAC_REF = $MAC_SHA"
 echo "compiler:  $COMPILER_REF = $COMPILER_SHA"
+echo "pdf:       $PDF_REF = ${PDF_SHA:-<unresolved>}"
 echo "run dir:   $RUN_DIR"
 run_step "worktree: compiler" 1 worktree-compiler "$REPO" -- git worktree add --detach "$COMPILER_WT" "$COMPILER_SHA"
 run_step "worktree: mac" 1 worktree-mac "$REPO" -- git worktree add --detach "$MAC_WT" "$MAC_SHA"
+if [[ -n "$PDF_SHA" ]]; then
+  run_step "worktree: pdf" 0 worktree-pdf "$REPO" -- git worktree add --detach "$PDF_WT" "$PDF_SHA"
+fi
+if [[ -n "$BRIDGE_SHA" ]]; then
+  run_step "worktree: bridge" 0 worktree-bridge "$REPO" -- git worktree add --detach "$BRIDGE_WT" "$BRIDGE_SHA"
+fi
 
 COMPILER_BIN="$COMPILER_WT/crates/compiler/target/release/flashtex-compiler"
+PDF_BIN="$PDF_WT/crates/pdf/target/release/flashtex-pdf"
+BRIDGE_BIN="$BRIDGE_WT/crates/bridge/target/release/flashtex-bridge"
 MAC_DIR="$MAC_WT/apps/mac"
 
 # ---------------------------------------------------------------- compiler
@@ -114,12 +131,29 @@ else
   STEP_ROWS+=("| FAIL | compiler: crates/compiler present in $COMPILER_REF | - | - | - | - |"); OVERALL=1
 fi
 
+# ---------------------------------------------------------------- pdf writer (non-gating; enables the FLASHTEX_PDF-gated tests)
+if [[ -d "$PDF_WT/crates/pdf" ]]; then
+  run_step "pdf: cargo build --release" 0 cargo-build-pdf "$PDF_WT/crates/pdf" -- cargo build --release
+else
+  STEP_ROWS+=("| SKIPPED | pdf: crates/pdf present in $PDF_REF | - | - | - | - |")
+fi
+PDF_ENV=()
+[[ -x "$PDF_BIN" ]] && PDF_ENV=(FLASHTEX_PDF="$PDF_BIN")
+
+# ---------------------------------------------------------------- capture bridge (non-gating; enables the FLASHTEX_BRIDGE-gated tests)
+if [[ -d "$BRIDGE_WT/crates/bridge" ]]; then
+  run_step "bridge: cargo build --release" 0 cargo-build-bridge "$BRIDGE_WT/crates/bridge" -- cargo build --release
+else
+  STEP_ROWS+=("| SKIPPED | bridge: crates/bridge present in $BRIDGE_REF | - | - | - | - |")
+fi
+[[ -x "$BRIDGE_BIN" ]] && PDF_ENV+=(FLASHTEX_BRIDGE="$BRIDGE_BIN")
+
 # ---------------------------------------------------------------- mac app
 if [[ -d "$MAC_DIR" ]]; then
   run_step "mac: swift build" 1 swift-build "$MAC_DIR" -- swift build
   if [[ -x "$COMPILER_BIN" ]]; then
-    run_step "mac: swift test (FLASHTEX_COMPILER set, real-compiler test enabled)" 1 swift-test "$MAC_DIR" -- \
-      env FLASHTEX_COMPILER="$COMPILER_BIN" swift test
+    run_step "mac: swift test (FLASHTEX_COMPILER${PDF_ENV[*]:+ + ${PDF_ENV[*]%%=*}} set; gated real-binary tests enabled)" 1 swift-test "$MAC_DIR" -- \
+      env FLASHTEX_COMPILER="$COMPILER_BIN" ${PDF_ENV[@]+"${PDF_ENV[@]}"} swift test
   else
     run_step "mac: swift test (no compiler binary; RealCompilerTests will be skipped)" 1 swift-test "$MAC_DIR" -- swift test
   fi
@@ -166,6 +200,7 @@ swift_summary() {
   echo "- Suite: \`tools/native-validation\` at \`$SUITE_SHA\`"
   echo "- Mac app ref: \`$MAC_REF\` = \`$MAC_SHA\`"
   echo "- Compiler ref: \`$COMPILER_REF\` = \`$COMPILER_SHA\`"
+  echo "- PDF writer ref (only for FLASHTEX_PDF-gated tests): \`$PDF_REF\` = \`${PDF_SHA:-unresolved}\`; bridge ref (FLASHTEX_BRIDGE-gated tests): \`$BRIDGE_REF\` = \`${BRIDGE_SHA:-unresolved}\`"
   echo "- Toolchain: $(swift --version 2>&1 | head -1); $(xcodebuild -version 2>&1 | tr '\n' ' '); $(cargo --version); $(python3 --version)"
   echo "- Worktrees: \`$MAC_WT\`, \`$COMPILER_WT\` (removed after the run unless \`--keep\`)"
   echo "- Full logs: \`$LOG_DIR\` (not committed)"

@@ -186,6 +186,7 @@ def main():
     ap.add_argument("--reports-dir", required=True)
     ap.add_argument("--scratch", default=None, help="keep intermediate PDFs/JSON here (default: temp dir)")
     ap.add_argument("--label", action="append", default=[], help="key=value recorded in the report header")
+    ap.add_argument("--only", action="append", default=[], help="sample name(s) without .tex to run; default all")
     args = ap.parse_args()
 
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
@@ -193,7 +194,7 @@ def main():
     os.makedirs(scratch, exist_ok=True)
     os.makedirs(args.reports_dir, exist_ok=True)
     compilers = [c.split("=", 1) for c in args.compiler]
-    samples = sorted(f for f in os.listdir(args.samples) if f.endswith(".tex"))
+    samples = sorted(f for f in os.listdir(args.samples) if f.endswith(".tex") and (not args.only or f[:-4] in args.only))
 
     rc, out, _, _ = run([args.pdflatex, "--version"])
     pdflatex_version = out.decode().splitlines()[0] if rc == 0 else f"exit {rc}"

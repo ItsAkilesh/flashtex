@@ -1,7 +1,8 @@
 # mac-validation handoff — FT-010 native verification suite
 
 Agent / task / branch: `mac-validation` (Claude Code subagent, parent
-`mac-claude-a`, machine `mac-m1max-a`) / FT-010 rev 1 / `agent/mac-validation/native-verification`
+`mac-claude-a`, machine `mac-m1max-a`; also acting as worker `mac-native-e2e` for the
+issue #2 follow-up) / FT-010 rev 1 + oracle (#10) + native e2e (#2) / `agent/mac-validation/native-verification`
 State: ready for integration
 Owned paths: `tools/native-validation/` (this file is the only coordination file touched)
 Main integrated through: `25a92a9` (branch base). origin/main is now `342e1e0`; the oracle run built its compiler from that revision, and nothing on main touches `tools/`, so no merge is needed yet.
@@ -33,6 +34,17 @@ Ready behavior:
   wraps `onto` that LaTeX keeps), +14.75 pt after headings and +5.9 pt per
   paragraph break versus LaTeX, `observation:` split into two items; `main`'s
   placeholder metrics make adjacent words touch (PDFKit merges them).
+- Native end-to-end (issue #2): `e2e_native.sh` + `e2e_latency.py`, `e2e_bridge.py`,
+  `e2e_nonregression.py`, `window_probe.swift`. Evidence `reports/e2e-20260912T053133Z.md`
+  + two window-id screenshots: app launch with `FLASHTEX_AUTOATTACH=1`/`FLASHTEX_SEED_FILE`
+  observed (process, compiler child, window, screenshot); CLI-equivalent compiler ->
+  flashtex-pdf --verify -> PDFKit PASS; CLI latency over demo.tex (5909 B) min 1.30 /
+  median 1.34 / max 3.57 ms, in-app RealCompilerTests latency median 6.68 ms; crash/restart
+  PASS (app survives child SIGKILL, relaunch re-attaches, window 966 ms after SIGKILL
+  relaunch); bridge receipt path 10/10 PASS against real `flashtex-bridge` b5ca96b;
+  non-regression vs the 04:31 run: only swift test count changed (34 -> 75, new tests).
+  `run_all.sh` now also builds the PDF writer and bridge so the `FLASHTEX_PDF`/`FLASHTEX_BRIDGE`
+  gated tests run (75 tests, 0 skipped).
 - Evidence: `tools/native-validation/reports/report-20260912T043142Z.md`
   against mac-shell `1c3ff13` (app code `fd2a26e`) and compiler-foundation
   `9f1033b`: cargo build/test PASS, swift build PASS, swift test PASS (34 tests,
@@ -63,11 +75,13 @@ Needs from others:
   item `"Hello FlashTeX."` has `end_byte: 14`; the text is 15 UTF-8 bytes, so
   `[0,14)` slices to `"Hello FlashTeX"`. Expected `end_byte: 15`. The compiler is
   correct (`[0,5)`, `[6,15)`); the fixture preview's click-to-source is one byte short.
-- mac-claude-a (app owner): `ShellModel.exportPDF()` passes `dark: darkPreview`
-  to `PDFExport.render`, so an export made with dark preview on has a
-  `gray 0.16` page and white text. FT-010's expectation is that export stays
-  white regardless of the toggle. Decide and, if changing, verify with
-  `check_pdf_export.py` (expects `1.0 sc`).
+- mac-claude-a (app owner): the dark-export discrepancy is resolved at `ec94f89`+
+  (export always white). New: `CompletionTests.testCompletionOnOneMegabyteBufferIsFast`
+  (`< 20 ms`) failed once under build load (20.39 ms at `a03e571`), passed at 05:31 —
+  load-sensitive threshold.
+- Commander: `protocol/fixtures/capture-submission.json` on main still carries the
+  68-byte PNG the bridge rejects as `invalid_image`; the bridge branch and mac-shell
+  `4213ec9` carry the accepted 69-byte one.
 - A human in the GUI session to run `expectations.md` sections 1-5 and attach
   observations, or grant Accessibility to the terminal host so UI scripting
   can be automated next.
@@ -90,10 +104,15 @@ Peer revisions reviewed and adaptations:
   attribute the deltas; both are labelled separately in the oracle report.
 - main `25a92a9` -> `342e1e0` (integration commit; compiler on main = `9f1033b`
   content). Adaptation: oracle run uses main's compiler as the `main` label.
+- mac-shell `1c3ff13` -> `4213ec9` (.tex open/save, `FLASHTEX_AUTOATTACH`/`FLASHTEX_SEED_FILE`,
+  Rust-writer export, `make-app.sh`, always-white export, `RustPDFExportTests`/`RealBridgeTests`
+  gated on `FLASHTEX_PDF`/`FLASHTEX_BRIDGE`, corrected capture fixture): e2e built on it;
+  run_all gained `--pdf-ref`/`--bridge-ref`. mac-pdf `c0f3837` -> `5b5f7b5`; bridge
+  `b5ca96b` (read main.rs/lib.rs/tests/cli.rs to script the receipt path).
 - main `25a92a9`: base of this branch; nothing under `tools/` on main.
 
 Resource state: Claude Max (20x) plan on mac-m1max-a, allocation
 `claude-mac20x-validation` under parent mac-claude-a; one subagent session, no
-children spawned, no paid API calls. Timebox 45 min for FT-010 (elapsed about 20 min) plus about 35 min for the oracle follow-up.
+children spawned, no paid API calls. Timebox 45 min for FT-010 (elapsed about 20 min) plus about 35 min for the oracle follow-up and about 45 min for the e2e follow-up.
 
-Updated: 2026-09-12T05:15Z
+Updated: 2026-09-12T05:40Z

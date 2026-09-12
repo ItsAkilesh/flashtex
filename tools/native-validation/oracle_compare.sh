@@ -11,7 +11,7 @@
 #   oracle_compare.sh [--repo <path>] [--pdflatex /Library/TeX/texbin/pdflatex]
 #                     [--compiler-ref <label>=<ref> ...]   (default: main=origin/main)
 #                     [--pdf-ref <ref>]                     (default: origin/agent/mac-pdf/pdf-output)
-#                     [--scratch <dir>] [--reports-dir <dir>] [--keep]
+#                     [--scratch <dir>] [--reports-dir <dir>] [--keep] [--only <sample> ...]
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -22,6 +22,7 @@ SCRATCH="${TMPDIR:-/tmp}/flashtex-validation"
 REPORTS_DIR=""
 KEEP=0
 COMPILER_REFS=()
+ONLY=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --repo) REPO="$(cd "$2" && pwd)"; shift 2 ;;
@@ -31,6 +32,7 @@ while [[ $# -gt 0 ]]; do
     --scratch) SCRATCH="$2"; shift 2 ;;
     --reports-dir) REPORTS_DIR="$2"; shift 2 ;;
     --keep) KEEP=1; shift ;;
+    --only) ONLY+=(--only "$2"); shift 2 ;;
     -h|--help) sed -n '2,15p' "$0"; exit 0 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
@@ -82,7 +84,7 @@ echo "== oracle_compare.py"
 python3 "$HERE/oracle_compare.py" \
   --pdflatex "$PDFLATEX" --extract "$RUN_DIR/oracle_extract" --pdf-bin "$PDF_BIN" \
   "${COMPILER_ARGS[@]}" --samples "$HERE/oracle-samples" --reports-dir "$REPORTS_DIR" \
-  --scratch "$RUN_DIR/work" "${LABELS[@]}" \
+  --scratch "$RUN_DIR/work" "${LABELS[@]}" ${ONLY[@]+"${ONLY[@]}"} \
   --label "pdf-crate=$PDF_REF @ $pdf_sha" \
   --label "suite=$(git -C "$REPO" rev-parse HEAD)" \
   --label "toolchain=$(swift --version 2>&1 | head -1); $(cargo --version); $(python3 --version); macOS $(sw_vers -productVersion)"

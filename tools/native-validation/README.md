@@ -9,11 +9,12 @@ failures in those are written up in `reports/` for their owners.
 
 | File | What it checks | Gating? |
 |---|---|---|
-| `run_all.sh` | Creates detached worktrees for the Mac app ref and the compiler ref, runs `cargo build --release`, `cargo test --release`, `swift build`, `swift test` (with `FLASHTEX_COMPILER` set so `RealCompilerTests` actually runs), `xcodebuild -scheme FlashTeXMac -destination 'platform=macOS' build`, then `check_protocol.py` and `check_ui_capabilities.sh`; writes `reports/report-<UTC>.md` with exact commands, exit codes, durations and pass/fail; removes the worktrees. | yes (exit 1 on any gating failure) |
+| `run_all.sh` | Creates detached worktrees for the Mac app ref, the compiler ref, and (non-gating) the PDF-writer and bridge refs, runs `cargo build --release`, `cargo test --release`, `swift build`, `swift test` (with `FLASHTEX_COMPILER`, `FLASHTEX_PDF` and `FLASHTEX_BRIDGE` set so `RealCompilerTests`, `RustPDFExportTests` and `RealBridgeTests` actually run), `xcodebuild -scheme FlashTeXMac -destination 'platform=macOS' build`, then `check_protocol.py` and `check_ui_capabilities.sh`; writes `reports/report-<UTC>.md` with exact commands, exit codes, durations and pass/fail; removes the worktrees. | yes (exit 1 on any gating failure) |
 | `check_protocol.py` | Runtime-v1 checks against the real compiler binary over stdin/stdout JSON Lines: fixture request/response comparison (texts + ranges; positions INFO only), fixture self-consistency, Unicode byte-span round trip (`naïve café — 😀 end`), revision echo for out-of-order revisions, source editing changes output and is deterministic, diagnostics for unsupported input, `error` envelopes for `protocol_version: 2`, unknown `type`, malformed JSON, worker survives errors, and edit-to-result latency over 20 requests (min/median/max). | yes |
 | `check_ui_capabilities.sh` | Probes (never fails): `screencapture -x`, `osascript` System Events process listing, `osascript` UI scripting (Accessibility), `xcrun simctl list devices available`, whether the built `FlashTeXMac` launches and survives 3 s, whether it is frontmost / has enumerable windows, and the launchd session type. Records exact stderr for every failure. | no |
 | `check_pdf_export.py` | Stdlib inspector for a PDF exported by the app (`File > Export PDF…`): page count, MediaBoxes, and the page background fill colour before the first rectangle fill; exit 1 when a page background is not white. Validated against CoreGraphics PDFs painted `gray 1.0` (`1.0 sc`, PASS) and `gray 0.16` (`0.16 sc`, FAIL); not yet against an app-exported file (save panel needs a human). | manual input |
 | `oracle_compare.sh` / `oracle_compare.py` / `oracle_extract.swift` | Reference-oracle comparison (issue #10): pdflatex is run **only as a measuring stick, never by the product**. For each `oracle-samples/*.tex` and each oracle variant: pdflatex (`-interaction=batchmode`, temp dir) -> oracle PDF; FlashTeX compiler (preamble stripped) -> `compile_result` -> `flashtex-pdf --verify` -> our PDF; PDFKit word boxes for both (`oracle_extract.swift`, no third-party packages); page count / MediaBox equality, word-sequence equality after normalisation, per-word x/y deltas (mean/max, 10 largest), line-start agreement. Writes `reports/oracle-<UTC>.md` and a compact `.json` with every per-word delta. Exit 1 only when a tool fails; layout disagreement is a finding, not a failure. | findings |
+| `e2e_native.sh` + `e2e_latency.py`, `e2e_bridge.py`, `e2e_nonregression.py`, `window_probe.swift` | Native end-to-end (issue #2): builds Mac shell + its `crates/compiler`, PDF writer and bridge from refs; (1) launches `FlashTeXMac` with `FLASHTEX_AUTOATTACH=1 FLASHTEX_SEED_FILE=oracle-samples/wrap-sample.tex` and observes process, `flashtex-compiler` child (`pgrep -P`), window (`CGWindowListCopyWindowInfo`, no Accessibility needed) and a screenshot by window id, then runs the CLI-equivalent `flashtex-compiler -> flashtex-pdf --verify -> PDFKit` for the same input; (2) 20x CLI round trip over `Samples/demo.tex` while attached + `swift test --filter RealCompilerTests` REAL-COMPILER LATENCY; (3) SIGKILL compiler child (app must survive 5 s), relaunch re-attaches, SIGKILL app, relaunch shows a window within 5 s; (4) re-runs `run_all.sh` and `oracle_compare.sh --only fixture-hello` and diffs headline numbers against the newest previous reports; (5) bridge receipt path against the real `flashtex-bridge`. Only its own app instance (PID from `$!`) is ever signalled. Writes `reports/e2e-<UTC>.md` + PNGs <= 300 KB. | yes (exit 1 on FAIL; findings and diffs are INFO/FINDING) |
 | `expectations.md` | Human checklist for what automation cannot verify here: visual click-to-source, Unicode selection, stale-preview banner, dark preview vs export, capture review. | manual |
 
 ## Running
@@ -33,6 +34,8 @@ python3 tools/native-validation/check_protocol.py \
 tools/native-validation/check_ui_capabilities.sh --mac-dir apps/mac --repo .
 # reference-oracle comparison (needs BasicTeX/TeX Live pdflatex at /Library/TeX/texbin/pdflatex)
 tools/native-validation/oracle_compare.sh --compiler-ref main=origin/main --compiler-ref de1020c=de1020c --pdf-ref c0f3837
+# native end-to-end (own app instance, screenshots, bridge); ~4 min
+tools/native-validation/e2e_native.sh
 # inspect a PDF a human exported with File > Export PDF…
 python3 tools/native-validation/check_pdf_export.py ~/Desktop/demo-r3.pdf --expect-pages 1
 ```
@@ -103,7 +106,7 @@ pass/fail pattern (28 Swift tests then; 34 now).
 - Not an app or compiler bug; reported as FAIL because the fixture is the
   contract's example and the app renders it.
 
-### Discrepancy for the app owner (mac-claude-a): PDF export follows the dark toggle
+### Discrepancy for the app owner (mac-claude-a): PDF export follows the dark toggle — resolved at mac-shell `ec94f89`+ ("Export is always white: dark preview is a viewing mode only")
 
 - Where: `apps/mac/Sources/FlashTeXMac/PDFExport.swift` at mac-shell `fd2a26e`,
   `ShellModel.exportPDF()` calls `PDFExport.render(result, dark: darkPreview)`;
@@ -207,3 +210,35 @@ Findings for the owners (nothing was changed in the compiler or PDF crate):
 
 The per-word deltas for every sample/variant/compiler are in the `.json`
 (`results[].comparisons[].deltas[]`: word, pages, oracle/ours x and y, dx, dy, line-start flags).
+
+## Native end-to-end (issue #2) — run 2026-09-12T05:31:33Z
+
+Report: `reports/e2e-20260912T053133Z.md` with `e2e-20260912T053133Z-check1-app.png` and
+`-check3-relaunch.png` (231 KB each, window-id captures of this script's own instance).
+Refs: mac-shell `4213ec9` (its `crates/compiler` = main's `9f1033b`, placeholder metrics — the
+crowded words in the screenshot are that compiler, see oracle finding 4), PDF writer `5b5f7b5`,
+bridge `b5ca96b`. The mac-shell branch advanced three times while this was built
+(`ec94f89` -> `d9b4e0d` -> `62c146f` -> `4213ec9`); the committed report names the exact SHA.
+
+| # | Check | App-observed or CLI-equivalent | Result |
+|---|---|---|---|
+| 1 | process alive, compiler child (`pgrep -P`), window (CGWindowList), screenshot by window id | app-observed | PASS: pid, child `flashtex-compiler`, window 960x1049 pt, `screencapture -x -o -l <id>` captured |
+| 1 | `flashtex-compiler` -> `flashtex-pdf --verify` -> PDFKit page count/words for the seeded file | CLI-equivalent (menus need Accessibility) | PASS: status `recovered` (1 diagnostic: `\documentclass`), 1 page, 99 words, all expected words present |
+| 2 | 20x CLI round trip, `Samples/demo.tex` 5909 bytes, app attached | CLI | min 1.30 / median 1.34 / max 3.57 ms |
+| 2 | `swift test --filter RealCompilerTests` REAL-COMPILER LATENCY (in-app path, debounce/coalescing) | app code path | n=2 min 0.84 / median 6.68 / max 6.68 ms |
+| 3 | SIGKILL compiler child; app alive after 5 s | app-observed | PASS (no auto-respawn; banner reports worker exit per README) |
+| 3 | relaunch re-attaches a child; SIGKILL app; relaunch shows window | app-observed | PASS: child re-attached; window 966 ms after relaunch; no orphaned compiler |
+| 4 | `run_all.sh` re-run + `oracle_compare.sh --only fixture-hello`, diffed | non-regression | 1 changed field: swift tests 34/0 -> 75/0 (new tests on mac-shell); fixture-hello oracle rows identical; protocol 20/1/6 unchanged (the 1 FAIL is still the fixture `end_byte`) |
+| 5 | bridge: document_open, destination_pin, capture_submit -> `capture_received durable:true`, duplicate -> same record, `capture_convert` without `--enable-grok` -> `provider_disabled`, `capture_reject` -> `rejected:true`, journal file on disk | real `flashtex-bridge` | PASS (10/10) |
+
+Findings from the two preceding trial runs (05:21 and 05:27 UTC, reports not committed):
+
+- **App owner:** `CompletionTests.testCompletionOnOneMegabyteBufferIsFast` asserts `< 20 ms` and
+  measured 20.39 ms once while this suite was building in parallel (`swift test` FAIL at mac-shell
+  `a03e571`); it passed at 05:31. A wall-clock threshold that tight is load-sensitive.
+- **Fixture (Commander):** `protocol/fixtures/capture-submission.json` on main/mac-shell up to
+  `d9b4e0d` carried a 68-byte PNG that the bridge's decoder rejects (`invalid_image`); the bridge
+  branch and mac-shell `4213ec9` carry a 69-byte one that is accepted. main still has the old one.
+- **This suite:** the earlier `check_ui_capabilities.sh` recorded the wrapper shell's PID instead of
+  the app's and its fallback `pkill -x FlashTeXMac` could have killed another agent's instance;
+  fixed (`exec`, own PID only). Other agents on this Mac do run their own `FlashTeXMac`.

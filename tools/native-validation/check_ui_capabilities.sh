@@ -85,8 +85,11 @@ fi
 # 4. Does the built app launch and stay alive for 3 seconds?
 if [[ -n "$MAC_DIR" && -x "$MAC_DIR/.build/debug/FlashTeXMac" ]]; then
   log="$SCRATCH/app-launch.log"
-  ( cd "$MAC_DIR" && FLASHTEX_REPO="${REPO:-$MAC_DIR/../..}" .build/debug/FlashTeXMac >"$log" 2>&1 & echo $! >"$SCRATCH/app.pid" )
-  pid=$(cat "$SCRATCH/app.pid")
+  # exec so the backgrounded subshell *becomes* the app and $! is the app's pid
+  # (without exec, $! is a wrapper shell and the app would outlive the kill).
+  ( cd "$MAC_DIR" && exec env FLASHTEX_REPO="${REPO:-$MAC_DIR/../..}" .build/debug/FlashTeXMac >"$log" 2>&1 ) &
+  pid=$!
+  echo "$pid" >"$SCRATCH/app.pid"
   sleep 3
   if kill -0 "$pid" 2>/dev/null && pgrep -x FlashTeXMac >/dev/null; then
     record OK "FlashTeXMac launches and survives 3 s" "pid $pid; stderr/stdout=$(esc "$(head -c 300 "$log")")"
@@ -103,9 +106,11 @@ if [[ -n "$MAC_DIR" && -x "$MAC_DIR/.build/debug/FlashTeXMac" ]]; then
     else
       record BLOCKED "FlashTeXMac window count (Accessibility)" "stderr=$(esc "$wc_")"
     fi
+    # Only ever signal the instance this probe launched: other agents or the
+    # user may have their own FlashTeXMac running on this machine.
     kill "$pid" 2>/dev/null || true
     sleep 0.5
-    pgrep -x FlashTeXMac >/dev/null && pkill -x FlashTeXMac || true
+    kill -0 "$pid" 2>/dev/null && kill -9 "$pid" 2>/dev/null || true
   else
     record BLOCKED "FlashTeXMac launches and survives 3 s" "process exited early; log=$(esc "$(head -c 400 "$log")")"
   fi
