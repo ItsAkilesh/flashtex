@@ -211,18 +211,46 @@ final class ShellModel {
     /// evaluation and the rebase compares the compiled and current texts.
     var editorMarkReport: EditorDiagnostics.Report {
         guard let result else { return .empty }
-        let key = EditorMarksKey(resultID: resultID, resultRevision: result.revision, editorRevision: editorRevision, path: activePath)
+        let key = EditorMarksKey(resultID: resultID, resultRevision: result.revision, editorRevision: editorRevision, path: activePath,
+                                 explanationsCount: explanations[resultID]?.count ?? -1)
         if let cached = editorMarksCache, cached.key == key { return cached.report }
-        let report = EditorDiagnostics.report(for: result, resultID: resultID, path: activePath,
-                                              compiledText: compiledDocuments[activePath], currentText: activeText)
+        let report = EditorDiagnostics.attach(explanations[resultID], to: EditorDiagnostics.report(
+            for: result, resultID: resultID, path: activePath,
+            compiledText: compiledDocuments[activePath], currentText: activeText))
         editorMarksCache = (key, report)
         return report
     }
-    private struct EditorMarksKey: Equatable { var resultID: String?; var resultRevision: Int; var editorRevision: Int; var path: String }
+    private struct EditorMarksKey: Equatable { var resultID: String?; var resultRevision: Int; var editorRevision: Int; var path: String; var explanationsCount: Int }
     @ObservationIgnored private var editorMarksCache: (key: EditorMarksKey, report: EditorDiagnostics.Report)?
     /// Identity of the mark last reached by ⌘⇧]/⌘⇧[, so marks sharing a
     /// start offset are each visited once (Navigation.swift).
     @ObservationIgnored var currentDiagnosticID: String?
+
+    /// Offline explanations per result id (crates/diagnostic-explanations via
+    /// flashtex-explain); attached to marks, never blocking a keystroke.
+    private(set) var explanations = EditorDiagnostics.ExplanationCache()
+    @ObservationIgnored private var explanationClient: ExplanationClient?
+    var explanationStatus: String?
+
+    /// Asks the helper once per result; the cache is read by `editorMarkReport`.
+    private func fetchExplanations(for result: RuntimeV1.CompileResult, id: String, documents: [RuntimeV1.Document]) {
+        guard explanations[id] == nil else { return }
+        if explanationClient == nil || explanationClient?.isRunning == false {
+            guard let exe = ExplanationClient.locate() else { explanationStatus = nil; return }
+            explanationClient = try? ExplanationClient(executable: exe) { [weak self] e in self?.explanationStatus = "flashtex-explain: " + e }
+        }
+        explanationClient?.explain(result: result, documents: documents, supported: Completion.defaultSupported) { [weak self] outcome in
+            guard let self else { return }
+            switch outcome {
+            case .success(let list):
+                self.explanations.store(list, for: id)
+                self.editorMarksCache = nil // re-attach on the next read
+                self.explanationStatus = nil
+            case .failure(let f):
+                self.explanationStatus = f.text // shown in the footer; marks stay as they are
+            }
+        }
+    }
 
     // MARK: caret sync (source -> preview)
 
@@ -310,6 +338,7 @@ final class ShellModel {
                 activePath = req.payload.entryPath
                 editorRevision = req.payload.revision
                 compiledDocuments = Dictionary(uniqueKeysWithValues: req.payload.documents.map { ($0.path, $0.text) })
+                fetchExplanations(for: res.payload, id: res.id, documents: req.payload.documents)
             } else {
                 if documents.isEmpty { documents = [.init(path: "main.tex", text: "")] }
                 compiledDocuments = [:]
@@ -619,6 +648,7 @@ final class ShellModel {
             previewSource = .worker(worker?.executable.lastPathComponent ?? "worker")
             bindLayout(of: incoming, requested: sent.layoutCapabilities)
             compiledDocuments = Dictionary(uniqueKeysWithValues: sent.documents.map { ($0.path, $0.text) })
+            fetchExplanations(for: incoming, id: env.id, documents: sent.documents)
             let ms = Date().timeIntervalSince(sent.sentAt) * 1000
             TypingBench.shared.noteCompile(revision: incoming.revision, ms: ms)
             if TypingBench.isBenchActive { FlashTeXLog.write("compile: applied revision \(incoming.revision) at \(MonotonicClock.nowNs())") }
