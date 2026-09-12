@@ -4,8 +4,8 @@
   "schema_version": 1,
   "steps": [
     {
-      "name": "Investigate GH33 helper deadline failures by separating test harness parsing readiness and helper work without relaxing watchdog limits",
-      "objective": "Investigate GH33 helper deadline failures by separating test harness parsing readiness and helper work without relaxing watchdog limits",
+      "name": "Move validated owned edit text from parsed request into durable API without response or envelope changes",
+      "objective": "Move validated owned edit text from parsed request into durable API without response or envelope changes",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"
@@ -19,8 +19,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Implement only evidence-backed deterministic helper acceptance synchronization preserving output bounds and failure assertions",
-      "objective": "Implement only evidence-backed deterministic helper acceptance synchronization preserving output bounds and failure assertions",
+      "name": "Prove invalid input remains premutation and raw source buffer is moved in default and metadata paths",
+      "objective": "Prove invalid input remains premutation and raw source buffer is moved in default and metadata paths",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"
@@ -34,8 +34,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Verify exact two deadline cases in isolation and retain initial failure evidence with honest cause and remaining limits",
-      "objective": "Verify exact two deadline cases in isolation and retain initial failure evidence with honest cause and remaining limits",
+      "name": "Verify existing source token preview and durable recovery semantics and measure one500KB clone removal",
+      "objective": "Verify existing source token preview and durable recovery semantics and measure one500KB clone removal",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"

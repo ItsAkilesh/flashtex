@@ -1,6 +1,6 @@
 {
   "agent_id": "commander-runtime-display",
-  "next_index": 1,
+  "next_index": 2,
   "schema_version": 1,
   "steps": [
     {
@@ -12,8 +12,8 @@
         "Publish bounded candidate API for existing helper owner; if deep validation is deferred, the type and contract must remain explicitly untrusted until existing native/core validator accepts it"
       ],
       "allocation_id": "hosted-openai-product",
-      "name": "Inspect and deterministically verify timeout close and joined shutdown when child stops reading admitted request stdin",
-      "objective": "Inspect and deterministically verify timeout close and joined shutdown when child stops reading admitted request stdin",
+      "name": "Verify thirty sequential normal and stopped-reader session lifecycles return child thread and descriptor observations to baseline",
+      "objective": "Verify thirty sequential normal and stopped-reader session lifecycles return child thread and descriptor observations to baseline",
       "owned_paths": [
         "crates/document-runtime"
       ],
@@ -28,8 +28,8 @@
         "Publish bounded candidate API for existing helper owner; if deep validation is deferred, the type and contract must remain explicitly untrusted until existing native/core validator accepts it"
       ],
       "allocation_id": "hosted-openai-product",
-      "name": "Verify near-limit request writer and child processes are reaped without false preview success or unbounded retained buffers",
-      "objective": "Verify near-limit request writer and child processes are reaped without false preview success or unbounded retained buffers",
+      "name": "Use explicit test-only terminal witnesses and bounded condition waits for writer stdout stderr and joined decoder without production changes",
+      "objective": "Use explicit test-only terminal witnesses and bounded condition waits for writer stdout stderr and joined decoder without production changes",
       "owned_paths": [
         "crates/document-runtime"
       ],
@@ -44,8 +44,8 @@
         "Publish bounded candidate API for existing helper owner; if deep validation is deferred, the type and contract must remain explicitly untrusted until existing native/core validator accepts it"
       ],
       "allocation_id": "hosted-openai-product",
-      "name": "Implement only demonstrated writer lifecycle correction preserving queue and frame defaults with exact failure recovery tests",
-      "objective": "Implement only demonstrated writer lifecycle correction preserving queue and frame defaults with exact failure recovery tests",
+      "name": "Publish exact per-cycle evidence and correct only demonstrated lifecycle leaks preserving source and queue policies",
+      "objective": "Publish exact per-cycle evidence and correct only demonstrated lifecycle leaks preserving source and queue policies",
       "owned_paths": [
         "crates/document-runtime"
       ],

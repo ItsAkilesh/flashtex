@@ -11,15 +11,15 @@
   "branch": "agent/commander-runtime-display/display-runtime",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "2bdee9e7d9ec9d7283f75c05bb1bd7f63e30e6d5",
-  "objective": "Inspect and deterministically verify timeout close and joined shutdown when child stops reading admitted request stdin",
+  "input_main_sha": "0b53c124343c88ad3e9662ab249cd926ba6579f1",
+  "objective": "Use explicit test-only terminal witnesses and bounded condition waits for writer stdout stderr and joined decoder without production changes",
   "owned_paths": [
     "crates/document-runtime"
   ],
-  "revision": 15,
+  "revision": 18,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-049",
   "timebox_minutes": 40,
-  "updated_utc": "2026-09-12T12:34:42.495086+00:00"
+  "updated_utc": "2026-09-12T12:44:39Z"
 }
