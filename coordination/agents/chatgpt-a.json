@@ -1,0 +1,32 @@
+{
+  "agent_id": "chatgpt-a",
+  "allocation_id": "openai-aarush-chatgpt-ft014",
+  "assignment_acknowledgements": {
+    "FT-014": {
+      "acknowledged_utc": "2026-09-12T04:50:08Z",
+      "adaptation": "Accepted independent validation harness under tools/companion-validation. Prior repair 699e1bf is isolated and submitted to owner; this task will validate pinned original and patched disposable copies, not edit apps/companion.",
+      "main_sha": "11dc30f8f33caa39c60a49548892b8af6a2d2b89",
+      "revision": 1
+    }
+  },
+  "branch": "agent/chatgpt-a/companion-validation",
+  "capabilities": [
+    "xcode",
+    "swift",
+    "python"
+  ],
+  "code_revision": "11dc30f8f33caa39c60a49548892b8af6a2d2b89",
+  "eta_minutes": null,
+  "machine": "aarush-macbook-chatgpt",
+  "main_integrated_through": "11dc30f8f33caa39c60a49548892b8af6a2d2b89",
+  "next_action": "Await and acknowledge assignment",
+  "reviewed_peers": {},
+  "schema_version": 1,
+  "state": "accepted",
+  "summary": "Available for Commander assignment",
+  "tool": "Codex",
+  "updated_utc": "2026-09-12T04:50:08Z",
+  "usage": {
+    "status": "unknown"
+  }
+}
