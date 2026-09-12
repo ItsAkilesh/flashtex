@@ -108,7 +108,12 @@ established fixtures need (`ec-lmr10`, `ec-lmr12`, `rm-lmr12`, `rm-lmr8`,
   diagnostics, an explicit failure once `ec-lmr10.tfm` is deleted from a copy,
   and verifier exit 0. `packaging-selftest.sh` covers the refusal paths without
   a build and runs the acceptance in `--full` mode; `launch-check.sh` verifies
-  the resources statically. Evidence: `docs/evidence/mac-bundle-texmf-<UTC>/`.
+  the resources statically. Evidence: `docs/evidence/mac-bundle-texmf-<UTC>/`
+  (134120Z: env route with an unpatched f762f82a producer; 135157Z and
+  135718Z: discovery + env routes with producers 98e829bf and 9aaec57a).
+  `make-app.sh --source-sha render=<sha>` records the producer's source
+  revision in `components.json` (`git_sha_origin: declared`) when the binary
+  was built outside a repository checkout.
 
 ## Behavior
 

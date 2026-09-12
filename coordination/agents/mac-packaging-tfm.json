@@ -11,7 +11,7 @@
     "python",
     "macos-packaging"
   ],
-  "code_revision": "4f06cdb353b9d3d37e6f482e7a1e0c27d08d2348",
+  "code_revision": "HEADPLACEHOLDER",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
@@ -29,11 +29,11 @@
   },
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "GH36: five pinned LM 2.004 TFMs + rooted GUST license vendored under apps/mac/Fonts/texmf (hashes matched the manifest from MacTeX 2026); make-app.sh verifies pre-build, stages Contents/Resources/texmf/..., verifies 9 pinned resources before signing, records hashes in components.json/resource-coverage.json (scripts/bundle-texmf.py); BundledMetrics.swift prepends the bundled dir to FLASHTEX_TFM_DIRS for WorkerClient and PreviewControllerClient (user entries preserved); texmf-acceptance.sh app-only run with host TeX denied by sandbox-exec: env route 0 missing-metric diagnostics on direct/user/helper routes, control 9, removal explicit, verifier exit 0. Second pass with producer 98e829bf (discovery 421a2049): discovery route 6/6 with 0 missing-metric diagnostics, env routes 0, helper 0; 23 supplementary LM TFMs (5-17 pt regular, 5-12 pt bold, 7-12 pt italic, bxi10, rm 5-10) pinned in-repo (SUPPLEMENTARY-METRICS.json; not verified against the 2.004 archive, stated) and recorded in components.json; BundledMetricsTests 8/8; packaging-selftest 25 ok",
+  "summary": "GH36: five pinned LM 2.004 TFMs + rooted GUST license vendored under apps/mac/Fonts/texmf (hashes matched the manifest from MacTeX 2026); make-app.sh verifies pre-build, stages Contents/Resources/texmf/..., verifies 9 pinned resources before signing, records hashes in components.json/resource-coverage.json (scripts/bundle-texmf.py); BundledMetrics.swift prepends the bundled dir to FLASHTEX_TFM_DIRS for WorkerClient and PreviewControllerClient (user entries preserved); texmf-acceptance.sh app-only run with host TeX denied by sandbox-exec: env route 0 missing-metric diagnostics on direct/user/helper routes, control 9, removal explicit, verifier exit 0. Second pass with producer 98e829bf (discovery 421a2049) and third pass with tip 9aaec57a (components.json git_sha 9aaec57a declared, sha256 79c2be4c...): discovery route 6/6 with 0 missing-metric diagnostics, env routes 0, helper 0; 23 supplementary LM TFMs (5-17 pt regular, 5-12 pt bold, 7-12 pt italic, bxi10, rm 5-10) pinned in-repo (SUPPLEMENTARY-METRICS.json; not verified against the 2.004 archive, stated) and recorded in components.json; BundledMetricsTests 8/8; packaging-selftest 25 ok",
   "tool": "Claude Code subagent (parent mac-claude-a)",
-  "updated_utc": "2026-09-12T13:55:48Z",
+  "updated_utc": "2026-09-12T13:59:30Z",
   "usage": {
-    "evidence": "docs/evidence/mac-bundle-texmf-20260912T134120Z (f762f82a producer, env route: tests 7/7 load 21-27, acceptance 7 ok load 5.6) and docs/evidence/mac-bundle-texmf-20260912T135157Z (98e829bf producer, discovery + env: tests 8/8 load 7.4, acceptance 8 ok load 6.7-8.7); packaging-selftest fast 25 ok both times; full swift test not run under load 80-120 per parent instruction",
+    "evidence": "docs/evidence/mac-bundle-texmf-20260912T134120Z (f762f82a producer, env route: tests 7/7 load 21-27, acceptance 7 ok load 5.6) docs/evidence/mac-bundle-texmf-20260912T135157Z (98e829bf producer, discovery + env: tests 8/8 load 7.4, acceptance 8 ok load 6.7-8.7) and docs/evidence/mac-bundle-texmf-20260912T135718Z (9aaec57a producer: tests 8/8 load 6.7, acceptance 8 ok load 8.75); packaging-selftest fast 25 ok both times; full swift test not run under load 80-120 per parent instruction",
     "status": "Shared Claude Max quota with parent mac-claude-a; no purchases; no paid calls; no background processes left"
   }
 }

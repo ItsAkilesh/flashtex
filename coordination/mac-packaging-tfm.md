@@ -113,6 +113,21 @@ Searched `apps/mac/Tests/FlashTeXMacTests/*`,
   real-producer test) with the 98e829bf producer, load 7.4. packaging-selftest
   fast 25 ok.
 
+## Third pass (parent 13:56Z): render-pipeline tip 9aaec57a
+
+- Producer rebuilt from `origin/agent/mac-render-pipeline/unified` @ 9aaec57a
+  (archive export, `cargo build --release`): source sha256 ed729b02…, bundled/
+  codesigned 79c2be4c…. `make-app.sh --source-sha render=9aaec57a` (new
+  option) records `"git_sha": "9aaec57a", "git_sha_origin": "declared"` in
+  `components.json` for a helper built outside a checkout (a checkout-built
+  helper records `resolved`; a contradiction refuses packaging).
+- `texmf-acceptance.sh --require-discovery` → evidence
+  `docs/evidence/mac-bundle-texmf-20260912T135718Z/`: discovery 6/6 **0**,
+  env-direct 6/6 **0**, env-user 6/6 **0**, helper **0**, removed 7 explicit +
+  verifier exit 1, verifier exit 0, components 9 + 23. 8 ok / 0 failed, load
+  8.75. `BundledMetricsTests` 8/8 with the 9aaec57a producer (load 6.7).
+  packaging-selftest fast 25 ok.
+
 ## Evidence (`docs/evidence/mac-bundle-texmf-20260912T134120Z/` — env route, unpatched f762f82a producer)
 
 - `make-app.log`: `--debug --helper-root <main checkout> --render <f762f82a build>`;

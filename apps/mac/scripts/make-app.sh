@@ -9,7 +9,7 @@
 # Usage: apps/mac/scripts/make-app.sh [--debug] [--helper-root <repo>]
 #          [--compiler <path>] [--pdf <path>] [--bridge <path>] [--ledger <path>]
 #          [--render <path>] [--pdf-exact <path>] [--controller <path>] [--project-files <path>]
-#          [--assistant <path>] [--explain <path>]
+#          [--assistant <path>] [--explain <path>] [--source-sha <key>=<sha>]
 #          [--sign <identity>] [--entitlements <file>] [--notarize <keychain-profile>]
 #          [--open] [--install] [--install-dir <dir>] [--dmg]
 #
@@ -21,6 +21,9 @@
 # --notarize <profile> (requires --sign) submits with `xcrun notarytool submit
 # --wait` using a keychain profile created by `xcrun notarytool
 # store-credentials <profile>`, then staples the app (and the DMG with --dmg).
+# --source-sha <key>=<sha> declares the source revision of a helper built
+# outside a repository checkout (e.g. from an archive export): components.json
+# then records it with git_sha_origin "declared" instead of "resolved".
 # Helpers default to <helper-root>/crates/<crate>/target/release/<name>;
 # --helper-root defaults to this repository (set it to the main checkout when
 # packaging from a worktree). No credential is ever printed by this script.
@@ -70,6 +73,17 @@ HELPER_TABLE=(
 )
 # Explicit --<flag> <path> overrides as "key=path" (bash 3.2: no assoc arrays).
 HELPER_OVERRIDES=()
+# Declared source revisions as "key=sha" (--source-sha), for helpers whose
+# build directory is not a repository (an archive export).
+HELPER_SHA_OVERRIDES=()
+
+helper_declared_sha_for() {
+  local entry
+  for entry in ${HELPER_SHA_OVERRIDES[@]+"${HELPER_SHA_OVERRIDES[@]}"}; do
+    if [[ "${entry%%=*}" == "$1" ]]; then echo "${entry#*=}"; return 0; fi
+  done
+  return 0
+}
 
 helper_override_for() {
   local entry
@@ -87,6 +101,8 @@ helper_key_for_flag() {
   done
   return 1
 }
+
+die_early() { echo "make-app.sh: $*" >&2; exit 1; }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -130,6 +146,13 @@ while [[ $# -gt 0 ]]; do
     --dmg)
       DO_DMG=1
       shift
+      ;;
+    --source-sha)
+      [[ "${2:-}" == *=* ]] || die_early "--source-sha needs <key>=<sha>"
+      [[ "${2%%=*}" =~ ^[a-z_]+$ ]] || die_early "--source-sha: component key must be a components.json key such as render"
+      [[ "${2#*=}" =~ ^[0-9a-f]{7,40}$ ]] || die_early "--source-sha: <sha> must be 7-40 hex characters"
+      HELPER_SHA_OVERRIDES+=("$2")
+      shift 2
       ;;
     -h|--help)
       sed -n '2,26p' "${BASH_SOURCE[0]}"
@@ -217,10 +240,17 @@ COMPONENTS_JSON_ENTRIES=()
 record_component() {
   local name="$1" bundled_path="$2" source_path="$3"
   if [[ -n "$bundled_path" && -f "$bundled_path" ]]; then
-    local sha256 git_sha
+    local sha256 git_sha declared origin="resolved"
     sha256="$(shasum -a 256 "$bundled_path" | awk '{print $1}')"
     git_sha="$(component_git_sha "$source_path")"
-    COMPONENTS_JSON_ENTRIES+=("  \"$name\": {\"bundled\": true, \"source_path\": \"$source_path\", \"git_sha\": \"$git_sha\", \"sha256\": \"$sha256\"}")
+    declared="$(helper_declared_sha_for "$name")"
+    if [[ -n "$declared" ]]; then
+      if [[ "$git_sha" != "unknown" && "$declared" != "$git_sha"* && "$git_sha" != "$declared"* ]]; then
+        die "--source-sha $name=$declared contradicts the resolved revision $git_sha of $source_path"
+      fi
+      git_sha="$declared"; origin="declared"
+    fi
+    COMPONENTS_JSON_ENTRIES+=("  \"$name\": {\"bundled\": true, \"source_path\": \"$source_path\", \"git_sha\": \"$git_sha\", \"git_sha_origin\": \"$origin\", \"sha256\": \"$sha256\"}")
   else
     COMPONENTS_JSON_ENTRIES+=("  \"$name\": {\"bundled\": false, \"source_path\": null, \"git_sha\": null, \"sha256\": null}")
   fi
