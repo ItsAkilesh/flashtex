@@ -3,27 +3,27 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-048": {
-      "acknowledged_utc": "2026-09-12T08:58:02Z",
-      "adaptation": "Isolated preview-controller ownership; remove verified nested Value copies preserving exact wire shape, durability and bounded backpressure.",
-      "main_sha": "f2ea364efc4329512dc143ad9d7eab89d833604c",
-      "revision": 1
+      "acknowledged_utc": "2026-09-12T09:17:09Z",
+      "adaptation": "Delivered real-helper exact-current, unread-ack recovery and burst checkpoints throughc9e36bc; no compiler/native ownership assumed. Await next interface revision.",
+      "main_sha": "da9dc355a6fab08ac53812c8a04042781d9d9dc4",
+      "revision": 2
     }
   },
   "branch": "agent/commander-preview-performance/preview-performance",
   "capabilities": [
     "Preview helper serialization and latency"
   ],
-  "code_revision": "8e6eac652e65d6e928cadd09bc6246316be9eba0",
+  "code_revision": "c9e36bc0605261bef5a33ea3534a202c36867af3",
   "eta_minutes": null,
   "machine": "linux-primary",
   "main_integrated_through": "4db4a7a94a06f9873c1bb2148f567054fce12b3c",
   "next_action": "Commander coordinate runtime/native interface ownership before implementation; continue compiler throughput work separately.",
   "reviewed_peers": {},
   "schema_version": 1,
-  "state": "ready_for_integration",
+  "state": "accepted",
   "summary": "FT048 completed-snapshot proposal prepared from actual burst evidence; identifies missing runtime stale-result API, immutable origin binding, bounded queues and native source-action gates. No default behavior changed or feature activated.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T09:16:03Z",
+  "updated_utc": "2026-09-12T09:17:09Z",
   "usage": {
     "status": "unknown"
   }
