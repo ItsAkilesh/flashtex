@@ -96,6 +96,7 @@ extension ShellModel {
         if let s = ProcessInfo.processInfo.environment["FLASHTEX_CONTROLLER_MAX_FRAME_BYTES"], let n = Int(s) {
             config.compilerMaxFrameBytes = n
         }
+        config.bibliographyPaths = documentKinds.startupBibliographyPaths(projectRoot: projectRoot, privateLedgerRoot: ledgerRoot, projectID: projectId, entry: entryPath) // DocumentKinds.swift: persisted explicit declarations, never inferred
         controllerState = ControllerState()
         controllerLaunchURL = url
         controllerRelaunchTimes = [] // an explicit attach starts a fresh relaunch budget

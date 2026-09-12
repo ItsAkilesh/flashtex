@@ -249,6 +249,10 @@ final class DocumentKinds {
     /// must not overwrite the record the next reopen needs.
     @discardableResult
     func refresh() async -> Bool {
+        // The model owns this object (unowned back-reference); a strong local
+        // keeps it alive across the await so a refresh racing the model's
+        // deallocation (tests tear models down) cannot touch a freed object.
+        let model = self.model
         guard model.controllerAttached, model.controllerState.ready else {
             status = "no preview controller: kinds are reported by the helper only"
             return false
@@ -387,7 +391,10 @@ final class DocumentKinds {
                     }
                     guard self.model.controllerState.ready else { return }
                     let g = self.model.project.membershipGeneration
-                    if self.kinds.isEmpty || g != self.lastSeenGeneration { Task { await self.refresh() } }
+                    if self.kinds.isEmpty || g != self.lastSeenGeneration {
+                        let keepAlive = self.model // the Task may start after the model's owner let go (tests)
+                        Task { _ = keepAlive; await self.refresh() }
+                    }
                 }
             }
         }
