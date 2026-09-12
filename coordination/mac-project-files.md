@@ -2,75 +2,108 @@
 
 Agent / task / branch: mac-project-files (Claude Code subagent, parent
 mac-claude-a, machine mac-m1max-a) / issue #2 dispatch "project file layer"
-(no FT number, no assignment file yet, so no `coord.py ack` is possible) /
-`agent/mac-project-files/graph`
-State: ready for integration (crate + follow-up 1 crash recovery + follow-up 2
-integration proposal); awaiting parent agreement on the native integration
-point before any `apps/mac` change.
++ issue #18 urgent fix (no FT number, no assignment file, so no `coord.py
+ack` is possible) / `agent/mac-project-files/graph`
+State: ready for integration. Issue #18 fix pushed at
+d92db378f25cc0b882a7a45e0a83a96f58ca1306 (branch merged origin/main df9e26e
+at 210e7e1; reviewed 38155b1 — no overlap).
 Owned paths: `crates/project-files/**`, `coordination/mac-project-files.md`,
 `coordination/agents/mac-project-files.json`
-Main integrated through: 1dd26c5e0dd5e04a39f0b8e55c90abebf635c863 (base);
-reviewed 254193c175534e78bfd9e5206b4850b86123cbe6 — no overlap with owned
-paths; merge deferred to integration (branch applies cleanly: only additions).
-Ready behavior (`crates/project-files`, zero external crates, edition 2024):
-- `ProjectPath` normalization (relative, `/`, no `..` escape, no
-  absolute/drive/backslash/colon/NUL).
-- Reference scanner with UTF-8 byte spans: `\input`, `\include`,
-  `\bibliography` (per item), `\addbibresource`, `\includegraphics`, bare
-  `\input name`; skips comments/`\verb`/verbatim envs; flags macro args.
-- `ProjectGraph::discover(_with overlay)`: DFS in reference order, implicit
-  extension rules against the root, diamond dedup, diagnostics for missing
-  file (with `tried`), invalid/escaping path, symlink escape, cycle (chain),
-  unresolvable macro argument, invalid UTF-8, read error, depth > 64; runtime-v1
-  `documents()` (Tex only, entry first), `documents_including_bibliography()`,
-  `compile_payload()`, `compile_envelope()`.
-- Hand-written SHA-256 (FIPS vectors incl. 1M `a`, streaming chunkings).
-- `RevisionTracker`: per-file revision by hash; deterministic project revision.
-- `save_atomic`: temp+fsync+rename in-dir, dir fsync best effort, permissions
-  preserved, `SaveReceipt{path,bytes,sha256,mtime}`; refuses on
-  Modified/Deleted/AlreadyExists with ours/theirs/mtime/size unless `force`.
-- `Snapshot`/`diff`: mtime+size gate, hash only when moved; Created/Modified/
-  Deleted; `Conflict{ModifiedExternally|DeletedExternally|Both, local_dirty}`;
-  `record_own_write`; `Poller` (no FSEvents dependency).
-- `RecoveryJournal`: `<root>/.flashtex/recovery/<sha256(path)>.json`, atomic,
-  hash-verified on read, list/load/check/restore_to_disk/discard with explicit
-  conflict rules; malformed entries reported, never deleted.
-- README: API, guarantees, non-guarantees (no cross-process locking; rename
-  atomicity is the filesystem's; mtime granularity; not the compiler), native
-  integration proposal.
-Incomplete behavior: no JSON Lines/FFI adapter or binary yet (proposed in
-README step 2, pending parent agreement); no `apps/mac` changes (parent-owned).
-Interface changes and required consumer actions: none. Produces runtime-v1
-`compile` payloads unchanged; hashes are transfer-v1 SHA-256 hex.
-Validation (rustc 1.99.0-nightly, cargo 1.99.0-nightly, this Mac):
-- `cargo test`: 35 tests pass (12 unit, 10 graph, 6 save/watch, 4 recovery,
-  3 sha256), temp dirs only.
-- `cargo clippy --all-targets -- -D warnings`: clean.
-- `cargo fmt --check`: clean. `RUSTDOCFLAGS=-D warnings cargo doc`: clean.
-Needs from others: assignment file / FT number from Commander for ack;
-parent decision on process-vs-FFI integration (README proposal).
-Next action: on parent agreement, add the JSON adapter + binary; otherwise
-extend scanner coverage (`\import`, `\subfile`) as a bounded follow-up.
+Main integrated through: df9e26e (merged); reviewed
+38155b125775d84438b5694c9bfb9fb71a2c0556 (coordination + protocol typed
+rules; nothing under crates/project-files).
+
+## Issue #18 — exact API at d92db37 (`crates/project-files/src/save.rs`)
+
+```rust
+pub struct ProjectRoot;                      // open dir handle, O_DIRECTORY|O_NOFOLLOW
+impl ProjectRoot {
+    pub fn open(path: &Path) -> Result<ProjectRoot, SaveError>;
+    pub fn path(&self) -> &Path;
+    pub fn read(&self, path: &ProjectPath, limit: u64) -> Result<Option<RootedRead>, SaveError>;
+    pub fn read_text(&self, path: &ProjectPath, limit: u64) -> Result<Option<(String, RootedRead)>, SaveError>;
+    pub fn lock(&self) -> Result<ProjectLock<'_>, SaveError>;                 // flock(LOCK_EX|LOCK_NB) on .flashtex/project.lock
+    pub fn save(&self, path: &ProjectPath, bytes: &[u8], expected: Expected, force: bool) -> Result<SaveReceipt, SaveError>;
+    pub fn remove(&self, path: &ProjectPath) -> Result<bool, SaveError>;
+}
+pub struct ProjectLock<'a>;                  // unlock on drop
+impl ProjectLock<'_> {
+    pub fn root(&self) -> &ProjectRoot;
+    pub fn save(&self, path: &ProjectPath, bytes: &[u8], expected: Expected, force: bool) -> Result<SaveReceipt, SaveError>;
+    pub fn remove(&self, path: &ProjectPath) -> Result<bool, SaveError>;
+}
+pub fn save_atomic(root: &Path, path: &ProjectPath, text: &str, expected: Expected, force: bool) -> Result<SaveReceipt, SaveError>;
+pub fn save_atomic_bytes(root: &Path, path: &ProjectPath, bytes: &[u8], expected: Expected, force: bool) -> Result<SaveReceipt, SaveError>;
+pub enum Expected { NewFile, Hash(Digest), Any }
+pub struct SaveReceipt { path: ProjectPath, bytes: u64, sha256: Digest, mtime: SystemTime, identity: FileIdentity }
+pub struct RootedRead  { path, bytes: Vec<u8>, sha256: Digest, mtime, identity: FileIdentity, mode: u32 }
+pub struct FileIdentity { dev: u64, ino: u64 }
+pub enum SaveError { Conflict(Box<SaveConflict>), Refused(Refused), Io(io::Error), DirectorySync(io::Error) }
+pub enum Refused { SymlinkComponent{component: String}, NotADirectory{component}, NotARegularFile{component},
+                   EscapesRoot{component}, TooLarge{limit: u64, size: u64}, LockUnavailable{lock_path: PathBuf}, Unsupported }
+pub struct SaveConflict { path, kind: SaveConflictKind, ours: Option<Digest>, theirs: Option<Digest>, mtime: Option<SystemTime>, size: Option<u64> }
+pub enum SaveConflictKind { ModifiedExternally, DeletedExternally, AlreadyExists, ModifiedDuringSave }
+pub const LOCK_FILE: &str = ".flashtex/project.lock";
+pub const DEFAULT_READ_LIMIT: u64 = 64 * 1024 * 1024;
+// recovery.rs
+pub struct RecoveryJournal<'r>;  RecoveryJournal::new(&ProjectRoot);
+    record(&self, &ProjectLock, &ProjectPath, text: &str, base: Option<Digest>) -> Result<RecoveryEntry, RecoveryError>
+    list() / load(&ProjectPath) / check(&RecoveryEntry) -> RestoreCheck
+    restore_to_disk(&self, &ProjectLock, &RecoveryEntry, force) -> Result<Option<SaveReceipt>, RecoveryError>
+    discard(&self, &ProjectLock, &ProjectPath) -> Result<bool, RecoveryError>
+```
+
+Mechanism: `src/sys.rs` binds `openat/renameat/unlinkat/mkdirat/flock`
+directly to the C library std already links (no external crate; std has no
+openat). Root opened `O_DIRECTORY|O_NOFOLLOW`; each component walked with
+`openat(O_DIRECTORY|O_NOFOLLOW)` and its `..` compared by dev/ino to the
+parent handle; file opened `O_NOFOLLOW`. Save: observe → compare → temp
+`O_CREAT|O_EXCL|O_NOFOLLOW` + fsync + fchmod → re-observe (symlink → Refused;
+change → Conflict{ModifiedDuringSave}) → renameat → dir fsync (hard error
+`DirectorySync`) → reopen, verify dev/ino == temp and hash == written.
+Contract (README "Concurrency and durability contract"): in-contract writers
+serialize on the flock; out-of-contract writers are detected (pre-rename
+re-verify + post-rename identity/hash), not prevented; residual window
+between re-verify and renameat documented; no power-loss test claimed.
+Targets: macOS, Linux x86_64/aarch64; others `Refused::Unsupported`.
+
+Ready behavior: everything in the previous handoff (graph, scanner,
+SHA-256, revisions, snapshot/diff, recovery) plus the rooted API above.
+Incomplete behavior: no JSON Lines/FFI adapter yet (README proposal step 2,
+pending parent agreement); no `apps/mac` changes (parent-owned).
+Interface changes and required consumer actions: `RecoveryJournal::new` now
+takes `&ProjectRoot` and its write methods take `&ProjectLock`;
+`SaveError` gained `Refused`/`DirectorySync`; `SaveReceipt` gained
+`identity`. No consumer exists on main yet; root's preview-controller export
+should use `ProjectRoot::open` + `lock` + `save`.
+Validation (this Mac, rustc 1.99.0-nightly): `cargo test` 47 pass (16 unit,
+10 graph, 4 recovery, 8 rooted, 6 save/watch, 3 sha256); tests: exact #18
+repro (symlinked parent, Hash and forced) refused with outside file
+unchanged, nested symlinked dir, symlinked file for read/save/remove,
+symlinked root, not-a-directory, lock exclusive across handles + released on
+drop, durability bytes/hash/dev/ino/mtime + bounded read, expected-hash
+conflicts, injected races (dir fsync failure → DirectorySync; out-of-contract
+write between check and rename → Conflict, temp cleaned; target swapped for
+symlink → Refused, victim untouched; NewFile vs concurrently created →
+Conflict), 400-iteration thread race file↔symlink (outcomes
+ok/refused/conflict = [0,267,133], outside file never touched).
+`cargo clippy --all-targets -- -D warnings`, `cargo fmt --check`,
+`RUSTDOCFLAGS=-D warnings cargo doc` clean. Linux flag values are from
+headers, not executed here.
+Needs from others: Commander review/close of #18 against d92db37; parent
+decision on process-vs-FFI integration.
+Next action: JSON adapter + binary on parent agreement.
 Peer revisions reviewed and adaptations:
-- origin/main 1dd26c5 (base), b873340, c89ca86, 254193c (scripts/claude_worker.py supervisor only): AGENTS/PROJECT/coord tooling,
-  FT-021..026 assignments (none for this worker), and new crates
-  `project-index`, `edit-ledger`, `document-runtime`, `rendering-core`,
-  `font-resources`, `conversion-jobs`. None touch `crates/project-files`.
-  Adaptation: README gained a "Relationship to sibling crates" section —
-  `documents()` + file revisions feed `project-index::replace_document`;
-  `edit-ledger` owns live text/receipts per document while this crate owns
-  the `.tex`-side graph/export/external-change layer (the ledger does not
-  watch the exported file); `RecoveryJournal` is redundant for ledger-backed
-  documents and kept for non-ledger buffers.
-- crates/compiler `protocol.rs::path_is_safe` on main: rejects absolute,
-  drive prefix, `..` segments; `ProjectPath` is stricter (also backslash,
-  colon, NUL, control chars, symlink escape at discovery).
-- origin/agent/mac-claude-a/mac-shell `DocumentFiles.swift`: single-file
-  open/save via `String.write(atomically:)`, no hash/conflict check, entry
-  always `main.tex`. README proposal targets it; no change made there.
-- issue #8 (FT-002 file-aware `\input`): compiler resolves against the
-  supplied document map with implicit `.tex`; `documents()` supplies exactly
-  that map (real paths, overlay text) so no concatenation/relabeling occurs.
+- origin/main df9e26e merged (210e7e1): no conflicts; new crates
+  (preview-controller, document-style, font-engine, math-layout,
+  paragraph-layout, bibliography, vector-graphics) do not touch owned paths.
+  preview-controller README states it does not write exported `.tex` files;
+  this crate is the intended primitive (issue #18).
+- origin/main 38155b1: coordination/staffing + protocol typed-rules
+  negotiation; no adaptation.
+- Earlier: compiler `path_is_safe`, mac-shell `DocumentFiles.swift`, issue
+  #8, project-index/edit-ledger/document-runtime — unchanged from previous
+  handoff.
 Resource: allocation claude-mac20x-project-files (parent's Max 20x quota);
 per-call usage not exposed; no purchases.
-Updated: 2026-09-12T06:12Z
+Updated: 2026-09-12T06:58Z
