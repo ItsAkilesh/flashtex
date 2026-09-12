@@ -3,27 +3,27 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-048": {
-      "acknowledged_utc": "2026-09-12T12:39:05Z",
-      "adaptation": "GH33 review found detached reader and un-attributed end-to-end deadlines; add bounded test-only scalar observation without relaxing production/test limits or claiming original cause.",
-      "main_sha": "0124d39c5e06baaedb6a31c1eabd7977f256850c",
-      "revision": 14
+      "acknowledged_utc": "2026-09-12T12:54:59Z",
+      "adaptation": "Resume deferred owned history command transfer. Policy/path parsed beforetake, existing typed deserializer before mutation.64KBUnicode replacement retains parsedpointer, fulltypedcommand and envelope identical; allhistory guards unchanged.",
+      "main_sha": "eb5ae874fdb8b2fde2dfbc0fe11aebc272b0fe26",
+      "revision": 17
     }
   },
   "branch": "agent/commander-preview-performance/preview-performance",
   "capabilities": [
     "Preview helper serialization and latency"
   ],
-  "code_revision": "d53c50738e4e26276a014835537e4ebd46a31e80",
+  "code_revision": "e680d2ef51d3fc6cc9e38f55fdbbc0f43f1aa183",
   "eta_minutes": null,
   "machine": "linux-primary",
-  "main_integrated_through": "d53c50738e4e26276a014835537e4ebd46a31e80",
-  "next_action": "Commander review/integration; GH33 cause remains unresolved and future failures now attributable.",
+  "main_integrated_through": "894b393f006b25de9324613d7ee4d05f2683c6dd",
+  "next_action": "Commander integration; rerun exact multi-document capture separately with renderer-verified official10pt TFM for GH34.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "FT048r14 GH33 test harness now observes scalar reader progress and bounded helper diagnostics; retains reader handle with bounded terminal cleanup after kill/reap.",
+  "summary": "FT048r17 history JSON commands move into existing typed deserializer without Value clone; default/metadata replies and source authority unchanged.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T12:41:33Z",
+  "updated_utc": "2026-09-12T12:55:18Z",
   "usage": {
     "status": "unknown"
   }
