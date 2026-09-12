@@ -27,3 +27,12 @@ actualdebughelper directprobe1.42s. Preserve this qualification. No active toolj
 Next improve serialization only with measured semantics-preserving design; receipts,
 snapshot imports, backup/undo/redo and I/O uncertainty remain hard gates. Root remains
 productengineer; runtime_validator soleCommander. Drainedworkersstaystopped.
+
+Next checkpoint after397bff7: bounded Entry raw-JSON cache implemented, serde_json
+raw_value enabled. Perentry min(1MiB, before+after bytes+512), escaped/oversize
+fallback; cache absent on disk and cold on deserialize.67ledger tests/lint and
+all53serial helper tests (explicit originalcompiler) pass.18paired history encodings
+byte-identical, cached faster eachpair; component medians20entries41.026vs93.685ms.
+Actual native/save effect unmeasured. No active jobs. Root resumed sameCommander
+handle after its natural final response; live census confirmedroot/font/render plus
+Commander. New remote census corrections belong toCommander, not this report.
