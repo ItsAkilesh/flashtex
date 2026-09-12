@@ -3,7 +3,7 @@ use flashtex_document_runtime::{Event, Limits};
 use flashtex_edit_ledger::{AppliedReceipt, PreparedEdit, Store};
 use flashtex_preview_controller::file_project::{DiskState, FileProject};
 use flashtex_preview_controller::{ApprovedEdit, Controller, HistoryAction, Update};
-use flashtex_project_index::{Category, SourceSpan};
+use flashtex_project_index::{Category, SearchRequest, SearchTermination, SourceSpan};
 use serde_json::{json, Value};
 use std::{
     collections::BTreeMap,
@@ -267,6 +267,38 @@ fn handle(
         "snapshot" => {
             let snapshot = controller.index().snapshot();
             Ok(json!({"project_id":snapshot.project_id,"source_versions":snapshot.documents}))
+        }
+        "search_literal" => {
+            let snapshot = controller.index().snapshot();
+            if p["source_versions"] != json!(snapshot.documents) {
+                return Err("source versions changed; refresh snapshot before searching".into());
+            }
+            let max_matches =
+                usize::try_from(number(p, "max_matches")?).map_err(|_| "invalid match limit")?;
+            let max_work =
+                usize::try_from(number(p, "max_work")?).map_err(|_| "invalid work limit")?;
+            if max_matches == 0 || max_matches > 1000 || max_work == 0 || max_work > 1_000_000 {
+                return Err("search requires 1..1000 matches and 1..1000000 work budget".into());
+            }
+            let mut search = SearchRequest::literal(string(p, "literal")?);
+            search.max_matches = max_matches;
+            search.max_work = max_work;
+            search.documents =
+                serde_json::from_value(p.get("documents").cloned().unwrap_or(Value::Null))
+                    .map_err(|e| e.to_string())?;
+            let result = controller
+                .index()
+                .search_literal(&snapshot, &search, || false)
+                .map_err(|e| e.to_string())?;
+            let termination = match result.termination {
+                SearchTermination::Complete => "complete",
+                SearchTermination::MatchLimit => "match_limit",
+                SearchTermination::WorkLimit => "work_limit",
+                SearchTermination::Cancelled => "cancelled",
+            };
+            Ok(
+                json!({"source_versions":snapshot.documents,"matches":result.matches.iter().map(source_json).collect::<Vec<_>>(),"termination":termination,"work_used":result.work_used}),
+            )
         }
         "complete" | "navigate" => {
             let snapshot = controller.index().snapshot();

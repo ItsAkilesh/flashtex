@@ -346,3 +346,31 @@ fn file_project_helper_reports_external_change_without_overwrite() {
         "external source"
     );
 }
+
+#[test]
+fn literal_search_exposes_utf8_matches_work_limits_and_stale_version_errors() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut client = Client::start(dir.path());
+    client.send("get", "document", json!({"path":"main.tex"}));
+    let doc = client.reply("get")["payload"]["document"].clone();
+    client.send("edit","edit",json!({"path":"main.tex","expected_revision":1,"expected_sha256":doc["source_sha256"],"text":"α x α"}));
+    assert_eq!(client.reply("edit")["type"], "result");
+    let query =
+        json!({"source_versions":{"main.tex":2},"literal":"α","max_matches":10,"max_work":100});
+    client.send("search", "search_literal", query.clone());
+    let result = client.reply("search")["payload"].clone();
+    assert_eq!(result["termination"], "complete");
+    assert_eq!(result["matches"].as_array().unwrap().len(), 2);
+    assert_eq!(result["matches"][1]["start_byte"], 5);
+    let mut bounded = query.clone();
+    bounded["max_work"] = json!(1);
+    client.send("bounded", "search_literal", bounded);
+    assert_eq!(
+        client.reply("bounded")["payload"]["termination"],
+        "work_limit"
+    );
+    let mut stale = query;
+    stale["source_versions"] = json!({"main.tex":1});
+    client.send("stale", "search_literal", stale);
+    assert_eq!(client.reply("stale")["type"], "error");
+}

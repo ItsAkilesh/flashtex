@@ -102,3 +102,12 @@ clients must surface that limitation. Accepted rule/font data remains unchanged
 inside the compiler envelope, and switching capabilities invalidates retained
 previews even when source text did not change. Negotiation does not establish
 font-resource identity, pixel equality, or typing-to-painted-preview latency.
+
+`search_literal:{source_versions,literal,max_matches,max_work,documents?}` performs
+case-sensitive raw source search, including comments and verbatim text. Supply the
+exact current version map; optional `documents` limits the search to named files.
+`max_matches` is 1–1000 and `max_work` is 1–1,000,000 byte comparisons, including
+query preprocessing. Results contain ordered UTF-8 byte ranges, `work_used` and
+explicit `termination`: `complete`, `match_limit`, or `work_limit`. Partial results
+must never be labeled exhaustive. Search is a bounded serialized operation; this
+initial helper route does not implement mid-query user cancellation or regex.
