@@ -1,3 +1,5 @@
+#[cfg(feature = "bridge-integration")]
+pub mod bridge_adapter;
 pub mod events;
 pub mod snapshot;
 use serde::{Deserialize, Serialize};

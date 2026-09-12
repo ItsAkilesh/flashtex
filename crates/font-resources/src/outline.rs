@@ -38,7 +38,7 @@ impl FontResource {
         )
     }
 }
-fn decode(data: &[u8]) -> Result<SimpleOutline> {
+pub(crate) fn decode(data: &[u8]) -> Result<SimpleOutline> {
     let mut out = SimpleOutline {
         points: Vec::new(),
         contour_ends: Vec::new(),

@@ -14,6 +14,7 @@ use std::{
 
 pub mod recovery;
 pub mod retention;
+pub mod service;
 
 pub const MAX_DOCUMENT_BYTES: usize = 8 * 1024 * 1024;
 pub const MAX_REPLACEMENT_BYTES: usize = 64 * 1024;
@@ -304,6 +305,15 @@ pub struct Store {
     poisoned: bool,
     #[cfg(test)]
     failpoint: Option<&'static str>,
+}
+impl Drop for Store {
+    fn drop(&mut self) {
+        // flock belongs to the shared open-file description. A concurrently
+        // forked child may hold that description until exec even with CLOEXEC.
+        // Explicitly relinquish ownership rather than waiting for every inherited
+        // descriptor to close. The child is not an authorized store writer.
+        let _ = FileExt::unlock(&self._lock);
+    }
 }
 impl Store {
     pub fn open(path: impl AsRef<Path>) -> Result<Self> {
