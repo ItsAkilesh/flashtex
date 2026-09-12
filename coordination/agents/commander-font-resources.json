@@ -13,7 +13,7 @@
   "capabilities": [
     "rust-font-resources"
   ],
-  "code_revision": "d3b1781a1eb004eafec4cc261146a0e8bab4f880",
+  "code_revision": "5aa9281ea17764e8e5a2f95771b7bc014bad0e42",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
@@ -21,13 +21,13 @@
   },
   "machine": "linux-primary",
   "main_integrated_through": "79bdadafab843c86525ad85f5c86742783cb5ad3",
-  "next_action": "Commander integrate bounded matrix checkpoint; actual LM active context requires separately supported declaration/prologue handling, TTC repaired owner publication still pending. Clean product committed, no peerwrites/providers/pending processes.",
+  "next_action": "Commander chooses explicit isolated-resource semantics before any LMprofile expansion; existing TTC owner reviews82a478f patch. Clean product committed, no peerwrites/providers/benchmark/pending operations.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "Published strict Type1 FontMatrix/PaintType context + separate exact rational transform reusing lexer/matrix helpers. Fullidentity/sourcechains retained, widths vectors exclude translation.3synthetic matrix/negative/overflow/identity tests and fulltests/clippy/realinventory pass. Actual LM conditional FontDirectory prologue explicitly refuses active context despite observed literal declarations; no guessed matrix/PS/render activation.",
+  "summary": "Published5aa9281: traced pinned LM192byte conditional FontDirectory prologue and restore trailer; full file cannot prove final active matrix without external VM semantics. Kept typed refusal, supplied minimal isolated-profile owner contract and exact hashes. Fixed supported literal Context trailer validation (512zeros+cleartomark only), branch/redefinition/override tests pass; full suite/clippy pass. Fetched17Danielrefs, corrected TTC API not yet published.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T10:31:25Z",
+  "updated_utc": "2026-09-12T10:34:54Z",
   "usage": {
     "evidence": "crates/font-resources/README.md; test suite; installed font SHA pinned.",
     "status": "Hosted allocation; no external provider calls; account remainder unknown."
