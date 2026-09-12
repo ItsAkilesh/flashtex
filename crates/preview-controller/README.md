@@ -57,3 +57,10 @@ source state even if preview submission fails. Repeating the identical edit afte
 restart returns its original receipt and never inserts twice. Use `recovery(path)`
 to resend pending receipts, and `confirm_receipt` only after the bridge acknowledges
 that exact receipt. Confirmation does not change source or trigger compilation.
+
+Prefer `open_without_compiler` when opening an editor: source and navigation remain
+available even if the compiler executable is missing. Edits remain durable and
+return an explicit preview-unavailable status. Call `restart` once an original
+compiler is configured to attach it and compile the latest saved snapshot. A failed
+attachment never overwrites source. `new` is the convenience constructor for a
+known available compiler.

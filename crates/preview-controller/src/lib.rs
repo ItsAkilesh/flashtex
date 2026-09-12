@@ -49,7 +49,7 @@ pub struct Controller {
     entry_path: String,
     stores: BTreeMap<String, Store>,
     index: ProjectIndex,
-    runtime: Session,
+    runtime: Option<Session>,
     generation: u64,
     submitted: Option<(String, VersionSnapshot, Instant)>,
     closed: bool,
@@ -63,6 +63,16 @@ impl Controller {
         stores: Vec<Store>,
         command: Command,
         limits: Limits,
+    ) -> Result<Self, String> {
+        let mut controller = Self::open_without_compiler(project_id, entry_path, stores)?;
+        controller.runtime = Some(Session::spawn_command(command, limits)?);
+        Ok(controller)
+    }
+    /// Open authoritative source and navigation even when no compiler is available.
+    pub fn open_without_compiler(
+        project_id: String,
+        entry_path: String,
+        stores: Vec<Store>,
     ) -> Result<Self, String> {
         let mut by_path = BTreeMap::new();
         let mut index = ProjectIndex::new(&project_id).map_err(|e| e.to_string())?;
@@ -87,7 +97,7 @@ impl Controller {
             entry_path,
             stores: by_path,
             index,
-            runtime: Session::spawn_command(command, limits)?,
+            runtime: None,
             generation: 0,
             submitted: None,
             closed: false,
@@ -215,13 +225,16 @@ impl Controller {
             });
         }
         let id = format!("preview-{generation}");
-        self.runtime.submit(Request {
-            id: id.clone(),
-            project_id: self.project_id.clone(),
-            revision: generation,
-            entry_path: self.entry_path.clone(),
-            documents,
-        })?;
+        self.runtime
+            .as_mut()
+            .ok_or("compiler unavailable; source remains saved")?
+            .submit(Request {
+                id: id.clone(),
+                project_id: self.project_id.clone(),
+                revision: generation,
+                entry_path: self.entry_path.clone(),
+                documents,
+            })?;
         self.generation = generation;
         self.submitted = Some((id, self.index.snapshot(), started));
         Ok(())
@@ -238,7 +251,10 @@ impl Controller {
     }
     pub fn poll(&mut self) -> Vec<Update> {
         let current = self.index.snapshot();
-        self.runtime
+        let Some(runtime) = self.runtime.as_mut() else {
+            return Vec::new();
+        };
+        runtime
             .poll()
             .into_iter()
             .map(|event| match event {
@@ -296,13 +312,15 @@ impl Controller {
                 .map_err(|e| e.to_string())?;
         }
         let runtime = Session::spawn_command(command, limits)?;
-        self.runtime = runtime;
+        self.runtime = Some(runtime);
         self.index = index;
         self.submitted = None;
         self.compile_current()
     }
     pub fn close(&mut self) -> Result<(), String> {
-        self.runtime.close_project(&self.project_id)?;
+        if let Some(runtime) = self.runtime.as_mut() {
+            runtime.close_project(&self.project_id)?;
+        }
         self.closed = true;
         self.submitted = None;
         Ok(())

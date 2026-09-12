@@ -411,3 +411,109 @@ fn approved_edit_conflict_cannot_modify_source() {
     assert_eq!(controller.document("main.tex").unwrap(), &before);
     assert!(controller.recovery("main.tex").unwrap().is_empty());
 }
+
+#[test]
+fn included_file_edit_updates_complete_source_versions_and_navigation() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut chapter = Store::open(dir.path().join("chapter-store")).unwrap();
+    chapter
+        .initialize(
+            Document::new(
+                "p".into(),
+                "chapter.tex".into(),
+                3,
+                "\\label{chapter}".into(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+    let mut controller = Controller::new(
+        "p".into(),
+        "main.tex".into(),
+        vec![store(dir.path()), chapter],
+        command(dir.path(), ECHO),
+        Limits::default(),
+    )
+    .unwrap();
+    let before = controller.document("chapter.tex").unwrap().clone();
+    let outcome = controller
+        .replace_document(
+            "chapter.tex",
+            before.revision,
+            &before.source_sha256,
+            "\\label{revised}".into(),
+        )
+        .unwrap();
+    assert!(outcome.preview_error.is_none());
+    let snapshot = controller.index().snapshot();
+    let definitions = controller
+        .index()
+        .definitions(&snapshot, Category::Label, "revised")
+        .unwrap();
+    assert_eq!(definitions.len(), 1);
+    assert_eq!(definitions[0].source.file, "chapter.tex");
+    let events = wait(&mut controller, |events| {
+        events
+            .iter()
+            .any(|event| matches!(event, Update::Preview(_)))
+    });
+    let preview = events
+        .into_iter()
+        .find_map(|event| {
+            if let Update::Preview(p) = event {
+                Some(p)
+            } else {
+                None
+            }
+        })
+        .unwrap();
+    assert_eq!(preview.source_versions.documents["main.tex"], 1);
+    assert_eq!(preview.source_versions.documents["chapter.tex"], 4);
+}
+
+#[test]
+fn editor_operates_without_compiler_then_attaches_and_renders() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut controller =
+        Controller::open_without_compiler("p".into(), "main.tex".into(), vec![store(dir.path())])
+            .unwrap();
+    let before = controller.document("main.tex").unwrap().clone();
+    let saved = controller
+        .replace_document(
+            "main.tex",
+            before.revision,
+            &before.source_sha256,
+            "\\label{offline}".into(),
+        )
+        .unwrap();
+    assert!(saved
+        .preview_error
+        .as_ref()
+        .unwrap()
+        .contains("compiler unavailable"));
+    assert!(controller.poll().is_empty());
+    assert_eq!(
+        controller
+            .index()
+            .definitions(&controller.index().snapshot(), Category::Label, "offline")
+            .unwrap()
+            .len(),
+        1
+    );
+    assert!(controller
+        .restart(
+            Command::new(dir.path().join("missing-compiler")),
+            Limits::default()
+        )
+        .is_err());
+    assert_eq!(controller.document("main.tex").unwrap().revision, 2);
+    controller
+        .restart(command(dir.path(), ECHO), Limits::default())
+        .unwrap();
+    let events = wait(&mut controller, |events| {
+        events
+            .iter()
+            .any(|event| matches!(event, Update::Preview(_)))
+    });
+    assert!(events.iter().any(|event| matches!(event, Update::Preview(preview) if preview.source_versions.documents["main.tex"] == 2)));
+}
