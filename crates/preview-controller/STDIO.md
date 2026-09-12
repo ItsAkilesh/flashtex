@@ -49,3 +49,18 @@ Operations:
 The helper has no provider access, automatic approval, native rendering or fallback
 TeX engine. Tests use real durable stores and real helper subprocesses; the optional
 original-compiler test also exercises streamed positioned results.
+
+Editor queries are lexical project navigation, not a claim of TeX macro expansion:
+
+- `snapshot`: `{}` returns `project_id` and the complete `source_versions` map.
+- `complete`: `{source_versions, category, prefix, limit}` with category `label`,
+  `citation` or `command`, literal prefix and limit 1–100. Returns matching project
+  names and source locations, with explicit per-item location truncation flags.
+- `navigate`: `{source_versions, path, byte_offset}` returns a source origin and
+  lexical definitions or null. Offsets must lie on UTF-8 scalar boundaries.
+
+Both queries require the exact current full version map and return it alongside
+results. Refresh after a stale-version error and recheck current editor versions
+before applying a result. Definition/occurrence locations are capped at 100 with
+explicit truncation flags. This interface does not supply every package's built-in
+completion vocabulary yet.

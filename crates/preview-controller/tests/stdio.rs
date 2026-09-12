@@ -169,3 +169,44 @@ fn helper_streams_original_compiler_result_for_latest_durable_edit() {
         }
     }
 }
+
+#[test]
+fn native_queries_check_versions_and_return_utf8_source_navigation() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut client = Client::start(dir.path());
+    client.send("get", "document", json!({"path":"main.tex"}));
+    let doc = client.reply("get")["payload"]["document"].clone();
+    let text = "α \\label{chapter} \\ref{chapter}";
+    client.send("edit","edit",json!({"path":"main.tex","expected_revision":1,"expected_sha256":doc["source_sha256"],"text":text}));
+    assert_eq!(client.reply("edit")["type"], "result");
+    client.send("snapshot", "snapshot", json!({}));
+    let versions = client.reply("snapshot")["payload"]["source_versions"].clone();
+    client.send(
+        "complete",
+        "complete",
+        json!({"source_versions":versions,"category":"label","prefix":"cha","limit":10}),
+    );
+    assert_eq!(
+        client.reply("complete")["payload"]["completions"][0]["name"],
+        "chapter"
+    );
+    client.send("nav","navigate",json!({"source_versions":versions,"path":"main.tex","byte_offset":text.rfind("chapter").unwrap()}));
+    let navigation = client.reply("nav")["payload"]["navigation"].clone();
+    assert_eq!(navigation["definitions"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        navigation["definitions"][0]["start_byte"],
+        text.find("chapter").unwrap()
+    );
+    client.send(
+        "stale",
+        "complete",
+        json!({"source_versions":{"main.tex":1},"category":"label","prefix":"cha","limit":10}),
+    );
+    assert_eq!(client.reply("stale")["type"], "error");
+    client.send(
+        "badutf8",
+        "navigate",
+        json!({"source_versions":versions,"path":"main.tex","byte_offset":1}),
+    );
+    assert_eq!(client.reply("badutf8")["type"], "error");
+}

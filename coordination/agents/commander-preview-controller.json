@@ -1,0 +1,35 @@
+{
+  "agent_id": "commander-preview-controller",
+  "allocation_id": "hosted-openai-product",
+  "assignment_acknowledgements": {
+    "FT-027": {
+      "acknowledged_utc": "2026-09-12T06:15:29Z",
+      "adaptation": "Reviewed FT-027r1; own preview-controller only, helper7cc6475 implements bounded actor stdio with explicit approval and durable receipt recovery, continuing guarded editor queries.",
+      "main_sha": "928595ecbd1cf63af5924c7a4df76f12350b52af",
+      "revision": 1
+    }
+  },
+  "branch": "agent/commander/preview-controller",
+  "capabilities": [
+    "rust"
+  ],
+  "code_revision": "7cc6475117a2253b78d3cf494dd75f4ef632f6a6",
+  "eta_minutes": {
+    "likely": 20,
+    "optimistic": 10,
+    "pessimistic": 35
+  },
+  "machine": "linux-primary",
+  "main_integrated_through": "0fde142870005cb508e3b9a4934b599823ff93a5",
+  "next_action": "Consume durable ledger undo APIs and continue native helper bounds/crash evidence.",
+  "reviewed_peers": {},
+  "schema_version": 1,
+  "state": "in_progress",
+  "summary": "Nativehelper plus revision-checked navigation/completion pass14tests incl real helper and original compiler, strictClippy.",
+  "tool": "Codex GPT-6 Astra",
+  "updated_utc": "2026-09-12T06:16:59Z",
+  "usage": {
+    "evidence": "Active hosted /root Astra; no auxiliary paid calls; remaining hosted quota unknown.",
+    "status": "unknown"
+  }
+}

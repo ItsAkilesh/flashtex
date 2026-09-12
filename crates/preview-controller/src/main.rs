@@ -2,6 +2,7 @@
 use flashtex_document_runtime::{Event, Limits};
 use flashtex_edit_ledger::{AppliedReceipt, PreparedEdit, Store};
 use flashtex_preview_controller::{ApprovedEdit, Controller, Update};
+use flashtex_project_index::{Category, SourceSpan};
 use serde_json::{json, Value};
 use std::{
     collections::BTreeMap,
@@ -226,6 +227,9 @@ fn run(config: Value) -> Result<(), String> {
     }
     Ok(())
 }
+fn source_json(source: &SourceSpan) -> Value {
+    json!({"path":source.file,"revision":source.revision,"start_byte":source.start_byte,"end_byte":source.end_byte})
+}
 fn handle(
     controller: &mut Controller,
     reviews: &mut BTreeMap<String, PreparedEdit>,
@@ -235,6 +239,46 @@ fn handle(
     let p = &request["payload"];
     match string(request, "type")? {
         "document" => Ok(json!({"document":controller.document(string(p,"path")?)?})),
+        "snapshot" => {
+            let snapshot = controller.index().snapshot();
+            Ok(json!({"project_id":snapshot.project_id,"source_versions":snapshot.documents}))
+        }
+        "complete" | "navigate" => {
+            let snapshot = controller.index().snapshot();
+            if p["source_versions"] != json!(snapshot.documents) {
+                return Err("source versions changed; refresh snapshot before querying".into());
+            }
+            if request["type"] == "complete" {
+                let category = match string(p, "category")? {
+                    "label" => Category::Label,
+                    "citation" => Category::Citation,
+                    "command" => Category::Command,
+                    _ => return Err("unknown completion category".into()),
+                };
+                let limit =
+                    usize::try_from(number(p, "limit")?).map_err(|_| "invalid completion limit")?;
+                if limit == 0 || limit > 100 {
+                    return Err("completion limit must be 1..100".into());
+                }
+                let results = controller
+                    .index()
+                    .complete(&snapshot, category, string(p, "prefix")?, limit)
+                    .map_err(|e| e.to_string())?;
+                let results: Vec<Value> = results.into_iter().map(|item|json!({"name":item.name,"definitions":item.definitions.iter().take(100).map(source_json).collect::<Vec<_>>(),"occurrences":item.occurrences.iter().take(100).map(source_json).collect::<Vec<_>>(),"locations_truncated":item.definitions.len()>100 || item.occurrences.len()>100})).collect();
+                Ok(json!({"source_versions":snapshot.documents,"completions":results}))
+            } else {
+                let offset =
+                    usize::try_from(number(p, "byte_offset")?).map_err(|_| "invalid offset")?;
+                let navigation = controller
+                    .index()
+                    .navigate(&snapshot, string(p, "path")?, offset)
+                    .map_err(|e| e.to_string())?;
+                Ok(
+                    json!({"source_versions":snapshot.documents,"navigation":navigation.map(|item|json!({"origin":source_json(&item.origin.source),"name":item.origin.name,"definitions":item.definitions.iter().take(100).map(|symbol|source_json(&symbol.source)).collect::<Vec<_>>(),"definitions_truncated":item.definitions.len()>100}))}),
+                )
+            }
+        }
+
         "edit" => {
             let result = controller.replace_document(
                 string(p, "path")?,
