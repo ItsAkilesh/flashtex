@@ -8,8 +8,8 @@ import PackageDescription
 // which require the iOS SDK. Use xcodebuild instead:
 //
 //   xcodebuild -project FlashTeXCompanion.xcodeproj \
-//     -scheme FlashTeXCompanion \
-//     -destination 'platform=iOS Simulator,name=iPhone 16' build
+//     -target FlashTeXCompanion \
+//     -sdk iphonesimulator CODE_SIGNING_ALLOWED=NO build
 
 let package = Package(
     name: "FlashTeXCompanion",

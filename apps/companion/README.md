@@ -21,9 +21,9 @@ for transport to the Rust worker.
 ```bash
 cd apps/companion
 xcodebuild -project FlashTeXCompanion.xcodeproj \
-  -scheme FlashTeXCompanion \
-  -destination 'platform=iOS Simulator,name=iPhone 16' \
-  build
+  -target FlashTeXCompanion \
+  -sdk iphonesimulator \
+  CODE_SIGNING_ALLOWED=NO build
 ```
 
 Requires Xcode with iOS SDK. Camera capture requires a physical device.
