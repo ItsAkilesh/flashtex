@@ -1,0 +1,76 @@
+{
+  "agent_id": "daniel-color",
+  "archived_utc": "2026-09-12T09:28:09Z",
+  "assignment": {
+    "acceptance": [
+      "Meaningful tests and strict Rust lint pass with bounded malformed/Unicode inputs",
+      "Preserve exact source/revision and resource identities; no implicit approximation or parity claim",
+      "Do not edit peer compiler/native/layout files; publish typed adapter contract and exact tested SHA"
+    ],
+    "agent_id": "daniel-color",
+    "allocation_id": "daniel-claude20x-shared",
+    "branch": "agent/daniel-color/color-expressions",
+    "deadline_utc": null,
+    "dependencies": [],
+    "input_main_sha": "5499e419b09868e2e248c413351a5646db74fac1",
+    "objective": "Expand exact supported color model/mix evaluation with bounded parsing and explicit unsupported states; tests against independently specified fixtures, no silent fallback.",
+    "owned_paths": [
+      "crates/color-expressions"
+    ],
+    "revision": 2,
+    "schema_version": 1,
+    "state": "assigned",
+    "task_id": "FT-035",
+    "timebox_minutes": 40,
+    "updated_utc": "2026-09-12T09:02:36.189558+00:00"
+  },
+  "report": {
+    "agent_id": "daniel-color",
+    "allocation_id": "daniel-claude20x-shared",
+    "assignment_acknowledgements": {
+      "FT-035": {
+        "acknowledged_utc": "2026-09-12T09:23:26Z",
+        "adaptation": "Interpreted 'expand exact supported color model/mix evaluation' as adding a model:components literal atom (gray/rgb/cmyk only, matching vector-graphics::Color exactly) alongside named-palette lookup, and 'independently specified fixtures' as expected values worked out by hand in comments from documented formulas (this crate's own lerp rule and vector-graphics's documented naive to_rgb conversion), never by calling this crate's own resolve()/mix(). Did not add CMYK entries to base_palette since the new literal syntax already gives exact CMYK access; did not attempt to re-derive vector-graphics's to_rgb formula's own design choice, since that is documented, not independently specifiable, and said so explicitly in coordination/daniel-color.md.",
+        "main_sha": "2fc45df69f0d397706174117116777f19619dfe2",
+        "revision": 2
+      }
+    },
+    "branch": "agent/daniel-color/color-expressions",
+    "capabilities": [
+      "rust",
+      "parsing",
+      "color"
+    ],
+    "code_revision": "b9ea73f8940b66a8dcdb853aa40f56b207c46210",
+    "eta_minutes": {
+      "likely": 0,
+      "optimistic": 0,
+      "pessimistic": 0
+    },
+    "machine": "mac-m5pro-dq222",
+    "main_integrated_through": "2fc45df69f0d397706174117116777f19619dfe2",
+    "next_action": "Await Commander integration; no further work planned this revision",
+    "reviewed_peers": {
+      "origin/main": "2fc45df69f0d397706174117116777f19619dfe2"
+    },
+    "schema_version": 1,
+    "state": "ready_for_integration",
+    "summary": "crates/color-expressions rev2: added gray:/rgb:/cmyk: literal colour syntax (typed UnsupportedColorModel/InvalidComponentCount/ComponentOutOfRange errors, no invented colour space, no silent default) and independently hand-derived CMYK-CMYK/CMYK-RGB/CMYK-Gray mixing fixtures citing vector-graphics's documented naive to_rgb formula instead of asserting the resolver's own output. 63 unit tests + 1 doctest pass; cargo clippy --all-targets -- -D warnings clean.",
+    "tool": "Claude Code on Claude Max 20x",
+    "updated_utc": "2026-09-12T09:23:26Z",
+    "usage": {
+      "evidence": "Shared Claude Max 20x subscription quota on mac-m5pro-dq222; no purchases or overages made or requested",
+      "status": "unknown"
+    }
+  },
+  "report_age_seconds": 283,
+  "report_path": "coordination/agents/daniel-color.json",
+  "review_required": true,
+  "revision": 2,
+  "schema_version": 1,
+  "stale_completion": false,
+  "state": "reported_ready",
+  "task_id": "FT-035",
+  "worker_branch": "agent/daniel-color/color-expressions",
+  "worker_report_sha": "1c75fcea0b126cde2bc5e10172470d2dad47fac2"
+}
