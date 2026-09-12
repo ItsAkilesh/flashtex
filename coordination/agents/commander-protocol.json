@@ -13,23 +13,34 @@
   "capabilities": [
     "runtime-validation"
   ],
-  "code_revision": "25a92a9c591a92a3d49071e536ecf8f129112c24",
+  "code_revision": "efcf65036f1a6c65479a769c1623f44b0f154e3a",
   "eta_minutes": {
     "likely": 5,
     "optimistic": 0,
     "pessimistic": 10
   },
   "machine": "linux-primary",
-  "main_integrated_through": "25a92a9c591a92a3d49071e536ecf8f129112c24",
-  "next_action": "Commander review and actual Cursor commit; run validator against real Rust/native captured transcript once available. Capture schemas and PDF existence/rendering are outside this compile validator.",
-  "reviewed_peers": {},
+  "main_integrated_through": "efcf65036f1a6c65479a769c1623f44b0f154e3a",
+  "next_action": "Sol Cursor publication: protocol worktree ready to freeze, all six pending increments in owned files. CLI: python3 scripts/check_runtime.py --protocol transfer-v1 --requests requests.jsonl responses.jsonl. Native ledger, real pixel decode and provider behavior remain outside validator evidence.",
+  "reviewed_peers": {
+    "origin/agent/claude/compiler-foundation": {
+      "adaptation": "Reviewed Mac product fd2a26e and subsequent handoff-only1c3ff13. Match compiler line bound excluding LF and accept complete unterminated EOF JSON; flag truncated EOF. Isolated peer build confirms envelopes/source spans for ASCII, Unicode, recovery cases. Mac consumer gaps reported to orchestrator, no edits outside assigned paths.",
+      "reviewed_utc": "2026-09-12T04:32:00Z",
+      "sha": "9f1033ba75176236bc5fc66b5e64b8ebbfc15a37"
+    },
+    "origin/agent/mac-claude-a/mac-shell": {
+      "adaptation": "Reviewed Mac product fd2a26e and subsequent handoff-only1c3ff13. Match compiler line bound excluding LF and accept complete unterminated EOF JSON; flag truncated EOF. Isolated peer build confirms envelopes/source spans for ASCII, Unicode, recovery cases. Mac consumer gaps reported to orchestrator, no edits outside assigned paths.",
+      "reviewed_utc": "2026-09-12T04:32:00Z",
+      "sha": "1c3ff1332e7b9d0cf716a45da3d2a1424bf6e2f0"
+    }
+  },
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "FT-012 runtime compile transcript validator implemented; 14 tests pass including UTF-8 offsets, async stale replies, revision/id correlation, bounded malformed JSONLines, and CLI subprocess IO.",
+  "summary": "FT-012 sixth increment adds transfer-v1 bridge transcript mode.45 tests pass including real compiler and real bridge CLI. Exact request/reply correlation, durable capture flags, anchor/source hashes, UTF-8 spans, proposal context, reviewed edits, receipt retries/rejection/status validated.",
   "tool": "Codex",
-  "updated_utc": "2026-09-12T04:24:46Z",
+  "updated_utc": "2026-09-12T05:14:53Z",
   "usage": {
-    "evidence": "python3 -m unittest discover -s tests -p test_runtime_validation.py -q: 14 passed. CLI accepts published compile request/result fixtures. git diff --check passes.",
+    "evidence": "Reviewed bridge final b5ca96bdaca634166a01023cd3321955f2bc5f70 transfer-v1.45 tests passed with FLASHTEX_COMPILER_BIN pinned9f1033b and FLASHTEX_BRIDGE_BIN local final bridge. Standalone actual bridge request/response file CLI validation passed; /tmp/transfer-validation-evidence-* records fixture-only evidence. No Grok/network/model calls.",
     "status": "unknown"
   }
 }

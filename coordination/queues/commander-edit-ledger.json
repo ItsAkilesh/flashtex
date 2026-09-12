@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "agent_id": "commander-edit-ledger",
+  "task_id": "FT-026",
+  "next_index": 0,
+  "steps": [
+    {
+      "name": "Recovery import/export and acknowledged snapshot compaction",
+      "objective": "Recovery import/export and acknowledged snapshot compaction",
+      "owned_paths": [
+        "crates/edit-ledger"
+      ],
+      "acceptance": [
+        "Meaningful tests and strict lint pass",
+        "Publish truthful execution provenance and exact tested SHA",
+        "No native integration or PDF parity claim without measured evidence"
+      ],
+      "timebox_minutes": 30,
+      "allocation_id": "hosted-openai-product"
+    },
+    {
+      "name": "Background serialized IPC and exact stale-session response guards",
+      "objective": "Background serialized IPC and exact stale-session response guards",
+      "owned_paths": [
+        "crates/edit-ledger"
+      ],
+      "acceptance": [
+        "Meaningful tests and strict lint pass",
+        "Publish truthful execution provenance and exact tested SHA",
+        "No native integration or PDF parity claim without measured evidence"
+      ],
+      "timebox_minutes": 30,
+      "allocation_id": "hosted-openai-product"
+    }
+  ]
+}

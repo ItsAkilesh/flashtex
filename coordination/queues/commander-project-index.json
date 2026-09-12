@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "agent_id": "commander-project-index",
+  "task_id": "FT-025",
+  "next_index": 0,
+  "steps": [
+    {
+      "name": "Dependency-aware unresolved diagnostics",
+      "objective": "Dependency-aware unresolved diagnostics",
+      "owned_paths": [
+        "crates/project-index"
+      ],
+      "acceptance": [
+        "Meaningful tests and strict lint pass",
+        "Publish truthful execution provenance and exact tested SHA",
+        "No native integration or PDF parity claim without measured evidence"
+      ],
+      "timebox_minutes": 30,
+      "allocation_id": "hosted-openai-product"
+    },
+    {
+      "name": "Measured incremental versus clean index equivalence",
+      "objective": "Measured incremental versus clean index equivalence",
+      "owned_paths": [
+        "crates/project-index"
+      ],
+      "acceptance": [
+        "Meaningful tests and strict lint pass",
+        "Publish truthful execution provenance and exact tested SHA",
+        "No native integration or PDF parity claim without measured evidence"
+      ],
+      "timebox_minutes": 30,
+      "allocation_id": "hosted-openai-product"
+    }
+  ]
+}
