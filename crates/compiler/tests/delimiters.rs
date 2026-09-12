@@ -254,3 +254,34 @@ fn set_membership_commands_render_and_export_cleanly() {
     );
     assert_spans_slice(&reply, text);
 }
+
+/// Starred headings are unnumbered and must not consume a counter, and the star
+/// must be consumed so the title group is seen. Without this the heading
+/// reported "requires a braced argument": seven such errors on the HW1 source.
+#[test]
+fn starred_headings_are_unnumbered_and_parse_their_title() {
+    let text = "\\section{First}\n\\section*{Starred}\n\\section{Second}\n";
+    let reply = compile("starred", text);
+    let out = rendered(&reply);
+
+    assert!(
+        !messages(&reply)
+            .iter()
+            .any(|m| m.contains("requires a braced argument")),
+        "the star was not consumed: {:?}",
+        messages(&reply)
+    );
+    assert!(out.contains("Starred"), "starred title was lost: {out:?}");
+
+    // The starred heading must not advance the counter: the numbered headings
+    // either side are 1 and 2, not 1 and 3.
+    assert!(
+        out.contains('1') && out.contains('2'),
+        "numbering changed: {out:?}"
+    );
+    assert!(
+        !out.contains('3'),
+        "the starred heading consumed a section number: {out:?}"
+    );
+    assert_spans_slice(&reply, text);
+}

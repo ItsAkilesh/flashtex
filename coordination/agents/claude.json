@@ -16,7 +16,7 @@
     "cursor-commit",
     "coordination"
   ],
-  "code_revision": "ce5bf48e618d01b5244c9ed6a41fa3aa47826828",
+  "code_revision": "88c7d73a22149647782020a9876dd28853cb9a4e",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
@@ -24,21 +24,21 @@
   },
   "machine": "mac-m5pro-kabir",
   "main_integrated_through": "4425d9d77b747db69c1f04c493b363bd3a467f4e",
-  "next_action": "Watcher confirmed running as a supervised task; armed for rev 17.",
+  "next_action": "Watcher armed for rev 18.",
   "reviewed_peers": {
     "origin/main": {
-      "adaptation": "My first attempt at GH38 over-reached: I also diagnosed math shifts inside titles, which broke an existing test because math in a section title is ordinary LaTeX. Narrowed the fix to unsupported commands only, which is what the issue actually reports, and added a guard test asserting legal math in a title is never reported as a problem. Revisions 13 to 15 were missed entirely because my board watcher died silently; it is now a supervised background task and verified running.",
-      "reviewed_utc": "2026-09-12T15:37:39Z",
-      "sha": "e67fe2a5e4346632056a5308268a41bb39e4ec7b"
+      "adaptation": "Did not apply the candidate patch. Verification showed its logical symbols vee and Rightarrow were already implemented on this branch from earlier symbol work, so applying it would have conflicted or duplicated. Instead I ran the authentic fixture, found the one real difference of seven braced-argument errors from unconsumed section stars, implemented that, and confirmed the diagnostic count then matched the reviewed evidence exactly.",
+      "reviewed_utc": "2026-09-12T15:42:09Z",
+      "sha": "84ed6a9dbad284e028d4ae2f4966c8f77ac99103"
     }
   },
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "FT-002 rev 16 delivered: GH38 silent diagnostic drop inside section titles fixed, and GH40 set-membership commands added to both the math table and the Symbol export encoding. All twelve membership commands now render with zero diagnostics. 17 suites pass.",
+  "summary": "FT-002 rev 17 delivered: starred headings implemented, which was the last gap between my branch and the reviewed candidate. My branch now reproduces the handoff evidence EXACTLY on the immutable HW1 source: 77 diagnostics, 35 command-bound symbol spans, and zero braced-argument errors. 17 suites pass.",
   "tool": "Codex",
-  "updated_utc": "2026-09-12T15:37:39Z",
+  "updated_utc": "2026-09-12T15:42:09Z",
   "usage": {
-    "evidence": "GH38: hfill and normalfont inside a section title now produce explicit diagnostics where the arm was previously a silent drop, and the title still typesets. GH40: in, ni, notin, subset, subseteq, supset, supseteq, cup, cap, emptyset, forall, exists all render as the correct glyphs with zero diagnostics and are exportable through Adobe Symbol encoding. 17 suites pass, clippy -D warnings clean, fmt clean.",
+    "evidence": "Ran the authentic HW1 fixture, source sha256 f725e238 matching the handoff, through my compiler: 77 diagnostics against 77 expected; membership 12, universal 10, existential 6, disjunction 4, implication 3, all 35 spans slicing to their command; remaining unsupported exactly mid 4, setminus 2, Longrightarrow 1, mathbb 11, hfill 7, normalfont 7",
     "status": "Written directly; no Codex worker"
   }
 }
