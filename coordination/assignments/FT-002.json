@@ -1,23 +1,23 @@
 {
   "acceptance": [
-    "Pinned input/binary hashes and p50/p95/p99 measurements",
-    "Exact incremental-clean equality and no lost corpus checks",
-    "Native paint and raw PDF byte equality remain separate gates"
+    "Reproduce actual reference fixtures13/14 from render-pipeline evidence and remove only demonstrated parser blockers",
+    "Bound nesting and malformed delimiter recovery; preserve UTF8 source ranges and original font/glyph mapping gates",
+    "Full compiler tests and strict lint; no transferred math/paragraph/font edits, no raw PDF or native parity assertion"
   ],
   "agent_id": "claude",
   "allocation_id": "openai-kabir-plus-ft002-stage6",
   "branch": "agent/claude/compiler-foundation",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "155e6ff84c60353aeab1422a0b86897d5fd17fd7",
-  "objective": "Implement one measured compiler output allocation or reuse improvement with exact clean equivalence",
+  "input_main_sha": "47bb0e8028cf846adaeb998b0ea7431e48a50731",
+  "objective": "Resolve measured reference fixture parser gaps: bounded left/right math delimiters and missing nu Greek control word, preserving source ranges, typed unsupported export and exact incremental-clean equality.",
   "owned_paths": [
     "crates/compiler"
   ],
-  "revision": 11,
+  "revision": 12,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-002",
   "timebox_minutes": 45,
-  "updated_utc": "2026-09-12T09:45:11Z"
+  "updated_utc": "2026-09-12T09:48:50.695736+00:00"
 }

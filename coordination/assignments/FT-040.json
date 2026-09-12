@@ -1,23 +1,23 @@
 {
-  "schema_version": 1,
-  "task_id": "FT-040",
-  "agent_id": "daniel-templates",
-  "branch": "agent/daniel-templates/project-templates",
-  "revision": 2,
-  "state": "assigned",
-  "objective": "Add explicit creation receipt and interrupted-write recovery around existing template preflight, using rooted filesystem APIs; never overwrite existing user files.",
-  "owned_paths": [
-    "crates/project-templates"
-  ],
-  "dependencies": [],
   "acceptance": [
     "Meaningful tests and strict Rust lint pass with bounded malformed/Unicode inputs",
     "Preserve exact source/revision and resource identities; no implicit approximation or parity claim",
     "Do not edit peer compiler/native/layout files; publish typed adapter contract and exact tested SHA"
   ],
+  "agent_id": "daniel-templates",
   "allocation_id": "daniel-claude20x-shared",
-  "timebox_minutes": 40,
+  "branch": "agent/daniel-templates/project-templates",
   "deadline_utc": null,
-  "input_main_sha": "83f65e08ae60b312609f49ec0a2b6cae25c8e353",
-  "updated_utc": "2026-09-12T09:08:31.372212+00:00"
+  "dependencies": [],
+  "input_main_sha": "5878a0c37d2f81b4fe5d517467184f85869f087a",
+  "objective": "Recoverable project template creation: bounded adversarial and stale-identity acceptance tests",
+  "owned_paths": [
+    "crates/project-templates"
+  ],
+  "revision": 3,
+  "schema_version": 1,
+  "state": "assigned",
+  "task_id": "FT-040",
+  "timebox_minutes": 30,
+  "updated_utc": "2026-09-12T09:48:23Z"
 }

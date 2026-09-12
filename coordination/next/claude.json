@@ -3,8 +3,8 @@
   "assignment_path": "coordination/assignments/FT-002.json",
   "branch": "agent/claude/compiler-foundation",
   "previous_report_sha": "a5ceece154c2166c2839a3fd10ff3f734acc5e22",
-  "revision": 11,
+  "revision": 12,
   "schema_version": 1,
   "task_id": "FT-002",
-  "updated_utc": "2026-09-12T09:45:11Z"
+  "updated_utc": "2026-09-12T09:48:50.695736+00:00"
 }
