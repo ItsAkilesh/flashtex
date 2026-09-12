@@ -3,27 +3,27 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-048": {
-      "acknowledged_utc": "2026-09-12T12:29:18Z",
-      "adaptation": "Extend existing metadata history adapter to undo/redo; preserve full replies and ledger commands, test unread redo ACK reopen and both retries after later source edit.",
-      "main_sha": "837db9000ca75de76bf538c040c59f06d875494e",
-      "revision": 12
+      "acknowledged_utc": "2026-09-12T12:33:26Z",
+      "adaptation": "Factor existing command outcome into source-free HistoryCommandStatus; full API wraps same mutation with source clone. Compact helper borrows authoritative document. Compare persisted bytes and full/status results across group undo redo/retries.",
+      "main_sha": "2bd701089917c0a75faa26b7250962783e425d30",
+      "revision": 13
     }
   },
   "branch": "agent/commander-preview-performance/preview-performance",
   "capabilities": [
     "Preview helper serialization and latency"
   ],
-  "code_revision": "1699357c4ab6e481e2fa9665ff316540a534fe8e",
+  "code_revision": "3a660762e517b00dc263c129793c624a9ed6bdf1",
   "eta_minutes": null,
   "machine": "linux-primary",
-  "main_integrated_through": "fc262c468a8e25862c345574fffce857045ce89f",
-  "next_action": "Commander integrate reviewed checkpoint; native adoption remains pending.",
+  "main_integrated_through": "3a660762e517b00dc263c129793c624a9ed6bdf1",
+  "next_action": "Commander review/integration then next helper responsiveness task.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "FT048r12 compact undo/redo acknowledgements implemented through shared history adapter; current versus command revisions and permanent IDs preserved.",
+  "summary": "FT048r13 source-free ledger history status removes response Document clone for compact group/undo/redo; full API delegates same mutation path.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T12:31:29Z",
+  "updated_utc": "2026-09-12T12:36:38Z",
   "usage": {
     "status": "unknown"
   }

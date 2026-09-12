@@ -62,19 +62,23 @@ impl Controller {
         self.submitted = None;
         let store = self.stores.get_mut(path).ok_or("unknown document")?;
         let result = match action {
-            HistoryAction::Group(group) => store.apply_group(group),
-            HistoryAction::Undo(command) => store.undo(command),
-            HistoryAction::Redo(command) => store.redo(command),
+            HistoryAction::Group(group) => store.apply_group_status(group),
+            HistoryAction::Undo(command) => store.undo_status(command),
+            HistoryAction::Redo(command) => store.redo_status(command),
         }
         .map_err(|e| e.to_string())?;
+        let saved = store
+            .document()
+            .map_err(|e| e.to_string())?
+            .ok_or("saved source missing")?;
         let history = MetadataHistory {
-            document: DocumentMetadata::from(&result.document),
+            document: DocumentMetadata::from(saved),
             command_revision: result.command_revision,
             replayed_command: result.replayed_command,
             can_undo: result.can_undo,
             can_redo: result.can_redo,
         };
-        let indexed = Self::index_saved_document(&mut self.index, &result.document);
+        let indexed = Self::index_saved_document(&mut self.index, saved);
         let (preview_error, save_and_submit_ms) = self.finish_saved_index(indexed, started);
         Ok(MetadataGroupOutcome {
             history,

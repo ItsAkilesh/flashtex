@@ -58,11 +58,11 @@ command_revision remains2. That response does not mean the old edit was reapplie
 If current source has advanced, reconcile through the existing document/snapshot
 query before applying any UI replacement or undo action.
 
-Metadata projection borrows the existing HistoryResult document for indexing and
-copies only metadata to the response. The ledger still returns its existing owned
-HistoryResult and retains all ordinary history/permanent-ID records. This avoids
-an extra controller response-source clone; it does not remove history snapshots or
-claim zero-copy mutation. No new patch format, cap or source-approval shortcut is
+Metadata projection now uses the ledger's source-free HistoryCommandStatus and
+borrows the authoritative current document for indexing. Existing full-result APIs
+wrap the same mutation path and clone the document only for callers requesting it.
+History snapshots and permanent-ID records remain unchanged; this does not claim
+zero-copy mutation. No new patch format, cap or source-approval shortcut is
 introduced. Native adoption remains opt-in and has not been measured here.
 
 An actual helper test starts with500KB of Unicode source, applies two byte-aligned
@@ -81,8 +81,8 @@ ledger performance.
 `undo` and `redo` accept the same response policy and compact `history` shape as
 `apply_group`. Validation occurs before mutation. Their existing command payloads,
 fingerprints, permanent IDs and full-response defaults are unchanged. The shared
-controller adapter avoids its extra source clone while preserving the ledger's
-owned history result and durable snapshots.
+controller adapter and source-free ledger status avoid response source clones
+while preserving legacy full results and durable snapshots.
 
 A retry of an old undo or redo returns its original command revision alongside the
 current document identity and current undo/redo availability. It does not replay
@@ -95,3 +95,25 @@ exact redo retry, a conflicting ID, a stale new undo, and both old commands afte
 later ordinary edit. Full and compact replies agree on current hashes/history
 flags; the 500KB redo response is below1KB and reopening preserves exact text.
 This is protocol/recovery evidence, not native undo integration or paint timing.
+
+## Source-free ledger history status
+
+`apply_group_status`, `undo_status` and `redo_status` reuse the existing command
+validation, mutation, commit and permanent receipt paths. They return command
+revision/replay and current undo/redo flags without a Document. The helper then
+borrows `Store::document`; there is no intervening mutation. Legacy APIs return
+unchanged full HistoryResult values. Disk format, snapshots and retention do not
+change.
+
+A paired test starts from an identical durable store, compares full/status group,
+undo and redo, reopens after another edit, retries all three commands and checks
+conflict/stale rejection plus exact final persisted bytes. The initial comparison
+fixture used independently generated store IDs; it was corrected to seed both
+stores from the same durable state before comparing bytes.
+
+The single paired500KB durable undo allocation observation in
+`../../edit-ledger/benchmarks/history-command-status/provenance.json` counts31
+allocation/reallocation requests totaling5,002,401bytes for the full API versus27
+requests totaling4,502,328bytes for status. The500,073byte difference is the removed
+response Document clone. These are cumulative allocation requests, not peak memory,
+wall-clock latency or native paint. History/commit allocations remain.

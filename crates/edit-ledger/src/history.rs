@@ -41,6 +41,26 @@ pub struct HistoryResult {
     pub can_undo: bool,
     pub can_redo: bool,
 }
+/// Source-free outcome of a durable command. Borrow `Store::document` for the
+/// current source; `command_revision` can be older on an exact retry.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HistoryCommandStatus {
+    pub command_revision: u64,
+    pub replayed_command: bool,
+    pub can_undo: bool,
+    pub can_redo: bool,
+}
+impl HistoryCommandStatus {
+    fn with_document(self, document: &Document) -> HistoryResult {
+        HistoryResult {
+            document: document.clone(),
+            command_revision: self.command_revision,
+            replayed_command: self.replayed_command,
+            can_undo: self.can_undo,
+            can_redo: self.can_redo,
+        }
+    }
+}
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HistoryStatus {
     /// Oldest to newest, with the next action at the end of each stack.
@@ -280,16 +300,19 @@ fn guard(document: &Document, revision: u64, sha256: &str) -> Result<()> {
     }
     Ok(())
 }
-fn result(state: &State, command_revision: u64, replayed: bool) -> HistoryResult {
-    HistoryResult {
-        document: state.document.clone(),
+fn result(state: &State, command_revision: u64, replayed: bool) -> HistoryCommandStatus {
+    HistoryCommandStatus {
         command_revision,
         replayed_command: replayed,
         can_undo: !state.history.undo.is_empty(),
         can_redo: !state.history.redo.is_empty(),
     }
 }
-fn check_command(state: &State, id: &str, fingerprint: &str) -> Result<Option<HistoryResult>> {
+fn check_command(
+    state: &State,
+    id: &str,
+    fingerprint: &str,
+) -> Result<Option<HistoryCommandStatus>> {
     crate::identifier(id)?;
     if let Some(receipt) = state.history.command_ids.get(id) {
         return if receipt.request_sha256 == fingerprint {
@@ -336,6 +359,17 @@ impl Store {
         })
     }
     pub fn apply_group(&mut self, group: GroupedEdit) -> Result<HistoryResult> {
+        let status = self.apply_group_status(group)?;
+        Ok(status.with_document(
+            &self
+                .state
+                .as_ref()
+                .expect("successful command has source")
+                .document,
+        ))
+    }
+    /// Apply the same durable command without cloning a response document.
+    pub fn apply_group_status(&mut self, group: GroupedEdit) -> Result<HistoryCommandStatus> {
         self.ready()?;
         let state = self
             .state
@@ -415,12 +449,34 @@ impl Store {
         Ok(response)
     }
     pub fn undo(&mut self, command: HistoryMove) -> Result<HistoryResult> {
-        self.move_history(command, false)
+        let status = self.undo_status(command)?;
+        Ok(status.with_document(
+            &self
+                .state
+                .as_ref()
+                .expect("successful command has source")
+                .document,
+        ))
     }
     pub fn redo(&mut self, command: HistoryMove) -> Result<HistoryResult> {
+        let status = self.redo_status(command)?;
+        Ok(status.with_document(
+            &self
+                .state
+                .as_ref()
+                .expect("successful command has source")
+                .document,
+        ))
+    }
+    /// Undo using the same receipts and snapshots without a response source clone.
+    pub fn undo_status(&mut self, command: HistoryMove) -> Result<HistoryCommandStatus> {
+        self.move_history(command, false)
+    }
+    /// Redo using the same receipts and snapshots without a response source clone.
+    pub fn redo_status(&mut self, command: HistoryMove) -> Result<HistoryCommandStatus> {
         self.move_history(command, true)
     }
-    fn move_history(&mut self, command: HistoryMove, redo: bool) -> Result<HistoryResult> {
+    fn move_history(&mut self, command: HistoryMove, redo: bool) -> Result<HistoryCommandStatus> {
         self.ready()?;
         let state = self
             .state
