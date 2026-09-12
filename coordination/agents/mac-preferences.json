@@ -1,0 +1,36 @@
+{
+  "agent_id": "mac-preferences",
+  "allocation_id": "claude-mac20x-preferences",
+  "assignment_acknowledgements": {},
+  "branch": "agent/mac-preferences/editor",
+  "capabilities": [
+    "swift",
+    "appkit",
+    "swiftui"
+  ],
+  "code_revision": "3c932ddaf92b1bb2cce31316373e2344d14c08b3",
+  "eta_minutes": {
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 10
+  },
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "3ac69c3ed109fa0902af39f4e2187d572a61c075",
+  "next_action": "Parent applies the diffs (FlashTeXMacApp Settings scene, ShellModel darkPreview default, SourceEditorView observeApplying, ContentView autoClosePairs gate, Completion.requestCompletion guard) and merges the branch",
+  "reviewed_peers": {
+    "origin/agent/mac-claude-a/mac-shell": {
+      "adaptation": "Merged a73bdf2; the braces lane exposes autoClosePairs on ShellModel/ContentView, so the autoCloseBraces preference gates that set at the ContentView call site instead of a new editor flag; nearby changes do not touch the editor",
+      "reviewed_utc": "2026-09-12T11:05:25Z",
+      "sha": "a73bdf24e943b712ba78505c20fbf54841170f75"
+    }
+  },
+  "schema_version": 1,
+  "state": "ready_for_integration",
+  "summary": "agent/mac-preferences/editor (merged mac-shell a73bdf2): @Observable EditorPreferences singleton (monospaced-only validated font family, size 8-36, wrap, tab width 2-8 + indent style, appearance system/light/dark incl. preview dark default, auto-close/completion flags) persisted under versioned UserDefaults keys with migration/repair; apply(to: NSTextView) + observeApplying(to:) seam; EditorPreferencesView for the Settings scene; 18 tests; 5-file parent/editor/completion diffs in the handoff; labelled local application on agent/mac-preferences/editor-applied",
+  "tool": "Claude Code subagent (parent mac-claude-a)",
+  "updated_utc": "2026-09-12T11:05:25Z",
+  "usage": {
+    "evidence": "swift test 507/507 (25 env-gated skips) with real compiler/pdf/bridge/edit-ledger at the 7c11d65 merge, load avg 12-27; after the a73bdf2 (nearby-only) merge EditorPreferences/SourceEditorView/NearbyListener 46/46; EditorPreferencesTests 17 + 1 gated PNG render; app captures with stored prefs vs base control",
+    "status": "Shared Claude Max quota with parent mac-claude-a; no purchases"
+  }
+}
