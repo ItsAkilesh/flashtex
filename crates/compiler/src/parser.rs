@@ -3127,7 +3127,8 @@ mod tests {
         for (text, font) in [
             ("a", Font::TimesRoman),
             ("b", Font::TimesBold),
-            ("x", Font::TimesRoman),
+            // Math variables are math italic even inside \textbf.
+            ("x", Font::TimesItalic),
             ("c", Font::TimesBold),
             ("d", Font::TimesItalic),
             ("e", Font::TimesBoldItalic),

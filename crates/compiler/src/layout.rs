@@ -97,7 +97,15 @@ fn shape_text(font: Font, text: &str) -> Result<Shaped, flashtex_font_engine::Er
 }
 
 /// Select the same Core 14 face that the export mapping assigns to a math glyph.
+/// A single Latin letter is a math variable and uses the italic face, as TeX's
+/// math italic does; digits, operators and multi-letter names stay upright.
 pub(crate) fn math_font(text: &str) -> Font {
+    let mut chars = text.chars();
+    if let (Some(ch), None) = (chars.next(), chars.next()) {
+        if ch.is_ascii_alphabetic() {
+            return Font::TimesItalic;
+        }
+    }
     if !text.is_empty()
         && text.chars().all(|ch| {
             matches!(
@@ -1061,7 +1069,7 @@ mod tests {
         assert_eq!(x.font_size_pt, BODY_SIZE_PT);
         assert_eq!(x.baseline_y_pt, item_at(&pages, 0).baseline_y_pt);
         assert!(
-            (y.x_pt - (PAGE_WIDTH_PT - glyph_width("y", BODY_SIZE_PT, Font::TimesRoman)) / 2.0)
+            (y.x_pt - (PAGE_WIDTH_PT - glyph_width("y", BODY_SIZE_PT, Font::TimesItalic)) / 2.0)
                 .abs()
                 < 0.02
         );
