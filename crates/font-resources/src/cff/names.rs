@@ -148,6 +148,30 @@ impl ResolvedCffEncoding {
     pub fn identity(&self) -> &CffIdentity {
         &self.identity
     }
+    pub(crate) fn preserve_literal_names(
+        mut self,
+        slots: &[EncodingEntry],
+        declaration_sha256: &str,
+    ) -> Result<Self> {
+        if !crate::valid_hash(declaration_sha256) {
+            return Err(invalid("CFF mapping declaration digest"));
+        }
+        for (&code, (name, _)) in &mut self.mapping {
+            let original = slots
+                .iter()
+                .find(|e| e.code == code)
+                .ok_or_else(|| invalid("CFF literal slot provenance"))?;
+            *name = original.glyph_name.clone();
+        }
+        self.digest = crate::sha256(
+            format!(
+                "cff-explicit-encoding-declarations-v1:{}:{}",
+                self.digest, declaration_sha256
+            )
+            .as_bytes(),
+        );
+        Ok(self)
+    }
     pub fn encoding_sha256(&self) -> &str {
         &self.digest
     }
