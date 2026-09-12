@@ -92,7 +92,7 @@ Fixture…` (⌘⇧O) → `apps/mac/Samples/multipage-result.json`. Turn VoiceOv
 | 4 | VO-Right past the capture bar | `Capture bar, group` then value `No insertion point pinned; 0 proposals to review`; inside: `Pin insertion point, button` |
 | 5 | ⌘⇧P, then VO-Left back to the group | Value now `Insertion point pinned: a1 at main.tex byte <n>, revision <r>; 0 proposals to review` |
 | 6 | VO-Right into the preview; VO-Shift-Down to interact with the scroll area, then the page | `Page 1, 2 lines, group` (page count is not passed to the overlay yet, so `of 2` is absent) |
-| 7 | VO-Right through the page | `Introduction, 17 point` (hint `Page 1, line 1`), then `A, 12 point`, `naïve, 12 point`, `approach, 12 point`, `fails., 12 point` — in that order |
+| 7 | VO-Right through the page | `Introduction`, value `17 point` (hint `Page 1, line 1`), then `A`, `naïve`, `approach`, `fails.` (each `12 point`) — in that order; no staleness note, since the overlay has no document text |
 | 8 | On `naïve`, VO-Command-Space (actions menu) | Menu shows `Go to source`; choosing it selects `naïve` in the editor and the footer reads `Selected main.tex bytes 66..<72 …` |
 | 9 | VO-Right to page 2 | `Page 2, 3 lines, group`; items `Method`, `Résumé`, `of the steps.`, `oops` |
 | 10 | VO-Right into the diagnostics list | Header `Diagnostics (2) — the preview above is still shown; errors are not hidden`, then `Diagnostic 1 of 2: Error: Missing } inserted for \textbf.` with value `recovery: Closed the group at end of paragraph and rendered its contents in bold.` |

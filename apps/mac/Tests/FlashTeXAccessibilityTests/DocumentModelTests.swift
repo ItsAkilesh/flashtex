@@ -79,7 +79,7 @@ final class DocumentModelTests: XCTestCase {
         let bare = AccessibleDocumentModel(result: res)
         XCTAssertEqual(bare.readingSequence.map(\.text), model.readingSequence.map(\.text))
         XCTAssertTrue(bare.readingSequence.allSatisfy { $0.utf16Range == nil })
-        XCTAssertEqual(bare.readingSequence[2].value, "12 point, source not mapped to the current text")
+        XCTAssertEqual(bare.readingSequence[2].value, "12 point", "no text supplied: no staleness claim")
     }
 
     func testRangesRebaseAcrossEditsOrDropOut() throws {
@@ -138,10 +138,10 @@ final class DocumentModelTests: XCTestCase {
         XCTAssertEqual(line.summary, "x superscript 2 superscript 3 + numerator a fraction bar denominator b y subscript i")
         XCTAssertEqual(line.elements.map(\.role), [.text, .superscript, .superscript, .text, .numerator, .rule, .denominator, .text, .subscript])
         XCTAssertEqual(line.elements[1].label, "superscript 2")
-        XCTAssertEqual(line.elements[1].value, "8.4 point, 70% of the 12 point line, source not mapped to the current text")
-        XCTAssertEqual(line.elements[2].value, "6 point, 50% of the 12 point line, source not mapped to the current text")
+        XCTAssertEqual(line.elements[1].value, "8.4 point, 70% of the 12 point line")
+        XCTAssertEqual(line.elements[2].value, "6 point, 50% of the 12 point line")
         XCTAssertEqual(line.elements[5].label, "fraction bar")
-        XCTAssertEqual(line.elements[5].value, "8.4 point, 2 segments, source not mapped to the current text")
+        XCTAssertEqual(line.elements[5].value, "8.4 point, 2 segments")
         XCTAssertEqual(line.elements[8].label, "subscript i")
         XCTAssertEqual(line.elements[8].value, "8.4 point, 70% of the 12 point line, no source mapping")
         XCTAssertEqual(line.elements[8].actions, [])

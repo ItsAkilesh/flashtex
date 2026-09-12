@@ -109,7 +109,7 @@ public extension View {
                               goToSource: @escaping () -> Void) -> some View {
         let element = AccessibleDocumentModel.DiagnosticElement(
             index: index, severity: diagnostic.severity, message: diagnostic.message,
-            recovery: diagnostic.recovery, source: diagnostic.source, utf16Range: nil, lines: [])
+            recovery: diagnostic.recovery, source: diagnostic.source, utf16Range: nil, textKnown: false, lines: [])
         let base = accessibilityElement(children: .ignore)
             .accessibilityLabel("Diagnostic \(index + 1) of \(total): \(element.label)")
             .accessibilityValue(element.recovery.map { "recovery: \($0)" } ?? "no provisional rendering")

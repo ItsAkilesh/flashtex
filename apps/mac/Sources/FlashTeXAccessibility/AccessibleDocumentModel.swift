@@ -45,6 +45,9 @@ public struct AccessibleDocumentModel: Equatable {
         /// maps onto it (exact, or rebased across edits when the compiled
         /// text was supplied). Nil when unmapped, stale, or no text was given.
         public var utf16Range: NSRange?
+        /// Whether the current text of `source.path` was supplied (so a nil
+        /// `utf16Range` means "edited since compile", not "unknown").
+        public var textKnown: Bool = false
 
         /// How the element is spoken inside a line summary ("superscript 2").
         public var spoken: String {
@@ -75,7 +78,7 @@ public struct AccessibleDocumentModel: Equatable {
                 parts.append("\(Self.pt(fontSizePt)) point, \(pct)% of the \(Self.pt(lineSizePt)) point line")
             }
             if source == nil { parts.append("no source mapping") }
-            else if utf16Range == nil { parts.append("source not mapped to the current text") }
+            else if textKnown, utf16Range == nil { parts.append("source not mapped to the current text") }
             return parts.joined(separator: ", ")
         }
 
@@ -122,6 +125,7 @@ public struct AccessibleDocumentModel: Equatable {
         public var recovery: String?
         public var source: RuntimeV1.SourceRange?
         public var utf16Range: NSRange?
+        public var textKnown: Bool = false
         /// Preview lines whose items overlap the diagnostic's source bytes.
         public var lines: [LineRef]
 
@@ -132,7 +136,7 @@ public struct AccessibleDocumentModel: Equatable {
         public var value: String {
             var parts = [recovery.map { "recovery: \($0)" } ?? "no provisional rendering"]
             if source == nil { parts.append("no source mapping") }
-            else if utf16Range == nil { parts.append("source not mapped to the current text, recompile to navigate") }
+            else if textKnown, utf16Range == nil { parts.append("source not mapped to the current text, recompile to navigate") }
             if !lines.isEmpty {
                 parts.append("in " + lines.map { "page \($0.page) line \($0.line)" }.joined(separator: ", "))
             }
@@ -193,7 +197,8 @@ public struct AccessibleDocumentModel: Equatable {
                 }
             }
             diags.append(DiagnosticElement(index: i, severity: d.severity, message: d.message,
-                                           recovery: d.recovery, source: d.source, utf16Range: utf16, lines: hits))
+                                           recovery: d.recovery, source: d.source, utf16Range: utf16,
+                                           textKnown: d.source.map { documents[$0.path] != nil } ?? false, lines: hits))
         }
         diagnostics = diags
     }
@@ -296,7 +301,8 @@ public struct AccessibleDocumentModel: Equatable {
                 keyed.append(((anchorX, order, e.item.xPt, e.index),
                               Element(page: page.number, line: number, itemIndex: e.index, text: e.item.text,
                                       role: role, fontSizePt: e.item.fontSizePt, lineSizePt: rootC.size,
-                                      source: e.item.source, utf16Range: utf16)))
+                                      source: e.item.source, utf16Range: utf16,
+                                      textKnown: e.item.source.map { documents[$0.path] != nil } ?? false)))
             }
             keyed.sort { a, b in
                 if a.key.0 != b.key.0 { return a.key.0 < b.key.0 }
