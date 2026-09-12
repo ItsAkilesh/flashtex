@@ -817,9 +817,13 @@ impl<'a> Context<'a> {
                             style: TextStyle {
                                 bold: seg.style.bold || base.bold,
                                 italic: seg.style.italic || base.italic,
+                                size_cpt: seg.style.size_cpt,
                             },
                         };
-                        if let Some((run, rec)) = self.text_box(&seg, size) {
+                        // A size declaration in force (`{\Large ...}`) sets
+                        // this segment at its own size.
+                        let seg_size = seg.style.size_or(size);
+                        if let Some((run, rec)) = self.text_box(&seg, seg_size) {
                             push(&mut out, &mut recs, pl::Item::Box(run), Some(rec));
                         }
                     }
@@ -828,11 +832,12 @@ impl<'a> Context<'a> {
                     let style = TextStyle {
                         bold: style.bold || base.bold,
                         italic: style.italic || base.italic,
+                        size_cpt: style.size_cpt,
                     };
                     if *no_break {
                         push(&mut out, &mut recs, pl::Item::penalty(pl::INFINITE_PENALTY), None);
                     }
-                    let glue = self.space_glue(style, size, *factor);
+                    let glue = self.space_glue(style, style.size_or(size), *factor);
                     push(&mut out, &mut recs, pl::Item::Glue(glue), None);
                 }
                 AItem::Math { list, span } => {
@@ -1022,6 +1027,7 @@ impl<'a> Context<'a> {
             TextStyle {
                 bold: h.bold,
                 italic: false,
+                size_cpt: 0,
             },
             ParaStyle::Plain,
         );

@@ -25,7 +25,7 @@ fn layout(text: &str) -> (V1Payload, Vec<Word>) {
     let fonts = FontSet::with_default_dirs(&[]);
     let docs = [SourceDocument { path: "main.tex", text }];
     let r = render(&docs, "main.tex", 1, "p", &fonts, &RenderOptions::default());
-    let v1 = v1_of(&r, Capabilities { rules: true, ..Capabilities::default() });
+    let v1 = v1_of(&r, Capabilities { rules: true, font_hints: true, ..Capabilities::default() });
     assert_ne!(v1.status, "failed", "{:?}", v1.diagnostics);
     // Word widths from the v2 display list's runs (v1 text items carry none).
     let mut words = Vec::new();
@@ -198,4 +198,36 @@ fn hrule_is_a_full_measure_rule_with_no_interline_glue() {
     assert!(gap_below > bp(6.0) && gap_below < bp(9.0), "next line's top on the rule's bottom: {gap_below}bp");
     // Nothing else is reported for the rule.
     assert!(!v1.diagnostics.iter().any(|d| d.message.contains("hrule")), "{:?}", v1.diagnostics);
+}
+
+#[test]
+fn preamble_parskip_and_group_size_declarations_are_read_from_the_source() {
+    if !lm_available() {
+        eprintln!("skipping: Latin Modern not installed");
+        return;
+    }
+    // `\setlength{\parskip}{0.65em}` at 11pt = 7.1175pt between paragraphs
+    // (on top of \baselineskip 13.6pt); `{\Large\bfseries ...}` sets its
+    // group at 14.4pt bold, `\LARGE` at 17.28pt, back to 10.95pt after it.
+    let src = "\\documentclass[11pt]{article}\\setlength{\\parskip}{0.65em}\\begin{document}\nFirst para.\n\nSecond para.\n\n{\\Large\\bfseries Big title} then {\\LARGE Bigger} and normal.\n\\end{document}";
+    let (v1, words) = layout(src);
+    let first = word(&words, "First");
+    let second = word(&words, "Second");
+    assert!((second.baseline - first.baseline - bp(13.6 + 7.1175)).abs() < 0.05, "parskip: {}", second.baseline - first.baseline);
+    let sizes: Vec<(String, f64, bool)> = v1
+        .pages
+        .iter()
+        .flat_map(|p| p.items.iter())
+        .filter_map(|it| match it {
+            V1Item::Text { text, font_size_pt, font, .. } => Some((text.clone(), *font_size_pt, font.as_ref().is_some_and(|f| f.weight == "bold"))),
+            _ => None,
+        })
+        .collect();
+    let of = |t: &str| sizes.iter().find(|s| s.0 == t).unwrap_or_else(|| panic!("no {t:?} in {sizes:?}"));
+    assert!((of("Big").1 - bp(14.4)).abs() < 0.01, "\\Large: {:?}", of("Big"));
+    assert!(of("Big").2 && of("title").2, "\\bfseries in the group: {sizes:?}");
+    assert!((of("title").1 - bp(14.4)).abs() < 0.01);
+    assert!((of("then").1 - bp(10.95)).abs() < 0.01 && !of("then").2, "back to normalsize/medium after the group: {:?}", of("then"));
+    assert!((of("Bigger").1 - bp(17.28)).abs() < 0.01, "\\LARGE: {:?}", of("Bigger"));
+    assert!((of("normal.").1 - bp(10.95)).abs() < 0.01);
 }

@@ -26,6 +26,20 @@ use crate::RenderOptions;
 pub struct TextStyle {
     pub bold: bool,
     pub italic: bool,
+    /// Font size set by a size declaration (`\Large`, ...) in force, in
+    /// hundredths of a point; 0 keeps the paragraph's size.
+    pub size_cpt: u16,
+}
+
+impl TextStyle {
+    /// The size to shape at, given the paragraph's `size`.
+    pub fn size_or(self, size: f64) -> f64 {
+        if self.size_cpt == 0 {
+            size
+        } else {
+            f64::from(self.size_cpt) / 100.0
+        }
+    }
 }
 
 /// One output character and the source bytes it came from.
@@ -274,9 +288,14 @@ pub fn adapt_cached(
         None if explicit_class.is_none() => Some(Geometry::margin(Pt::inches(1.0))),
         None => None,
     };
-    let style = Stylesheet::from_document(&class_options, &parsed.packages, geometry, parindent);
+    let mut style = Stylesheet::from_document(&class_options, &parsed.packages, geometry, parindent);
+    // `\setlength{\parskip}{...}`: a fixed skip (no stretch) replaces
+    // article's `0pt plus 1pt`.
+    if let Some(pt) = parskip(source, size) {
+        style.parskip = crate::style::Skip::fixed(pt);
+    }
     let secnumdepth = counter(source, "secnumdepth").unwrap_or(options.default_secnumdepth);
-    let styles: Vec<Styles> = texts.iter().map(|t| Styles::new(style_intervals(t))).collect();
+    let styles: Vec<Styles> = texts.iter().map(|t| Styles::new(style_intervals(t, size))).collect();
     let labels_fp = {
         use std::hash::{Hash, Hasher};
         let mut h = std::collections::hash_map::DefaultHasher::new();
@@ -744,18 +763,34 @@ pub fn counter(source: &str, name: &str) -> Option<u8> {
 /// `\setlength{\parindent}{<dim>}` in points; `em` is resolved against the
 /// body size.
 pub fn parindent(source: &str, size: u32) -> Option<f64> {
+    setlength(source, "parindent", size)
+}
+
+/// `\setlength{\parskip}{<dimen>}` in the source, in points (the compiler
+/// reports the preamble command and drops it; LaTeX evaluates `em`/`ex`
+/// in the class's `\normalsize`).
+pub fn parskip(source: &str, size: u32) -> Option<f64> {
+    setlength(source, "parskip", size)
+}
+
+/// The last `\setlength{\<name>}{<dimen>}` of the source, in points.
+fn setlength(source: &str, name: &str, size: u32) -> Option<f64> {
+    let needle = format!("{{\\{name}}}");
     let mut from = 0;
+    let mut found = None;
     while let Some(at) = find_command(&source[from..], "setlength") {
         let abs = from + at;
         let rest = source[abs + "\\setlength".len()..].trim_start();
-        if let Some(r) = rest.strip_prefix("{\\parindent}") {
-            let r = r.trim_start().strip_prefix('{')?;
-            let end = r.find('}')?;
-            return parse_dimen(&r[..end], size);
+        if let Some(r) = rest.strip_prefix(needle.as_str()) {
+            if let Some(r) = r.trim_start().strip_prefix('{') {
+                if let Some(end) = r.find('}') {
+                    found = parse_dimen(&r[..end], size).or(found);
+                }
+            }
         }
         from = abs + 1;
     }
-    None
+    found
 }
 
 fn parse_dimen(s: &str, size: u32) -> Option<f64> {
@@ -850,15 +885,44 @@ enum StyleKind {
     Bold,
     Emph,
     Italic,
+    /// A size declaration, in hundredths of a point.
+    Size(u16),
+}
+
+/// The point size a LaTeX size declaration selects at a class base size
+/// (size10/11/12.clo), in hundredths of a point.
+fn declared_size(name: &str, base: u32) -> Option<u16> {
+    let table: [(&str, [u16; 3]); 10] = [
+        ("tiny", [500, 600, 600]),
+        ("scriptsize", [700, 800, 800]),
+        ("footnotesize", [800, 900, 1000]),
+        ("small", [900, 1000, 1095]),
+        ("normalsize", [1000, 1095, 1200]),
+        ("large", [1200, 1200, 1440]),
+        ("Large", [1440, 1440, 1728]),
+        ("LARGE", [1728, 1728, 2074]),
+        ("huge", [2074, 2074, 2488]),
+        ("Huge", [2488, 2488, 2488]),
+    ];
+    let col = match base {
+        11 => 1,
+        12 => 2,
+        _ => 0,
+    };
+    table.iter().find(|(n, _)| *n == name).map(|(_, sizes)| sizes[col])
 }
 
 /// Brace-group intervals of `\textbf{}`, `\emph{}`, `\textit{}` in source
 /// byte offsets (content only), in document order.
-fn style_intervals(source: &str) -> Vec<(usize, usize, StyleKind)> {
+fn style_intervals(source: &str, base: u32) -> Vec<(usize, usize, StyleKind)> {
     let mut out = Vec::new();
     let bytes = source.as_bytes();
     let mut i = 0;
     let mut in_comment = false;
+    // Open brace groups (byte of `{`): a declaration (`\bfseries`,
+    // `\Large`, ...) lasts to the end of the innermost one, or to the next
+    // `\end{...}`/the document end outside any group.
+    let mut groups: Vec<usize> = Vec::new();
     while i < bytes.len() {
         let c = bytes[i];
         if in_comment {
@@ -871,6 +935,14 @@ fn style_intervals(source: &str) -> Vec<(usize, usize, StyleKind)> {
         match c {
             b'%' => {
                 in_comment = true;
+                i += 1;
+            }
+            b'{' => {
+                groups.push(i);
+                i += 1;
+            }
+            b'}' => {
+                groups.pop();
                 i += 1;
             }
             b'\\' => {
@@ -896,13 +968,32 @@ fn style_intervals(source: &str) -> Vec<(usize, usize, StyleKind)> {
                             }
                         }
                         i += len;
+                        continue;
                     }
-                    None => i += 2,
+                    None => {}
                 }
+                // Declarations: the control word's letters.
+                let word_end = i + 1 + rest[1..].bytes().take_while(u8::is_ascii_alphabetic).count();
+                let name = &source[i + 1..word_end];
+                let decl = match name {
+                    "bfseries" => Some(StyleKind::Bold),
+                    "itshape" | "slshape" => Some(StyleKind::Italic),
+                    "em" => Some(StyleKind::Emph),
+                    _ => declared_size(name, base).map(StyleKind::Size),
+                };
+                if let Some(k) = decl {
+                    let end = match groups.last() {
+                        Some(&open) => matching_brace(bytes, open).unwrap_or(bytes.len()),
+                        None => find_command(&source[word_end..], "end").map_or(bytes.len(), |e| word_end + e),
+                    };
+                    out.push((word_end, end, k));
+                }
+                i = word_end.max(i + 2);
             }
             _ => i += 1,
         }
     }
+    out.sort_by_key(|(start, _, _)| *start);
     out
 }
 
@@ -971,6 +1062,12 @@ impl Styles {
                     StyleKind::Bold => s.bold = true,
                     StyleKind::Italic => s.italic = true,
                     StyleKind::Emph => s.italic = !s.italic,
+                    // Innermost (nearest start) declaration wins.
+                    StyleKind::Size(cpt) => {
+                        if s.size_cpt == 0 {
+                            s.size_cpt = cpt;
+                        }
+                    }
                 }
             }
         }
