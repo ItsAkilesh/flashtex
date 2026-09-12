@@ -321,6 +321,22 @@ impl LayoutCursor {
         self.y += gap;
     }
 
+    /// `\newpage`: start a fresh page unconditionally, even if the current
+    /// one still has room. Unlike `newline`'s overflow break, this always
+    /// creates a new page rather than only doing so past the bottom margin.
+    fn force_page_break(&mut self) {
+        self.x = MARGIN_PT;
+        let n = self.pages.len() as u32 + 1;
+        self.pages.push(Page {
+            number: n,
+            width_pt: PAGE_WIDTH_PT,
+            height_pt: PAGE_HEIGHT_PT,
+            items: Vec::new(),
+        });
+        self.y = MARGIN_PT + self.constraints.font_size_pt;
+        self.line_start = 0;
+    }
+
     fn place(&mut self, text: String, size: f64, span: Span, font: Font) {
         let (w, span) = shaped_width(&text, size, font, span, &mut self.diagnostics);
         if self.x > MARGIN_PT && self.x + w > self.right_edge() {
@@ -444,6 +460,23 @@ impl LayoutCursor {
                     self.vertical_gap(PARAGRAPH_GAP_PT);
                 }
             }
+            Block::VSpace { pt } => {
+                if !self.first_block {
+                    self.newline(body_size);
+                }
+                self.vertical_gap(*pt);
+            }
+            Block::Rule { .. } => {
+                if !self.first_block {
+                    self.newline(body_size);
+                    self.vertical_gap(PARAGRAPH_GAP_PT);
+                }
+            }
+            Block::PageBreak => {
+                if !self.first_block {
+                    self.force_page_break();
+                }
+            }
         }
         self.first_block = false;
         self.state()
@@ -492,6 +525,29 @@ impl LayoutCursor {
                     .sum();
                 self.x = MARGIN_PT + (self.constraints.measure_pt - width).max(0.0) / 2.0;
                 emit(self, content, body_size, Font::TimesRoman);
+                self.newline(body_size);
+            }
+            Block::VSpace { .. } | Block::PageBreak => {}
+            Block::Rule { span } => {
+                let width = self.constraints.measure_pt;
+                let item = TextItem {
+                    text: math::FRACTION_RULE_CHAR.to_string(),
+                    x_pt: round2(self.x),
+                    baseline_y_pt: round2(self.y),
+                    font_size_pt: body_size,
+                    span: *span,
+                    font: Font::TimesRoman,
+                    rule: Some(RuleGeometry {
+                        y_pt: round2(self.y),
+                        width_pt: round2(width),
+                        height_pt: 0.5,
+                    }),
+                };
+                self.pages
+                    .last_mut()
+                    .expect("at least one page")
+                    .items
+                    .push(item);
                 self.newline(body_size);
             }
         }
@@ -653,9 +709,10 @@ pub fn layout_converged(
 
 fn visit_references(blocks: &[Block], visitor: &mut impl FnMut(&str, Span)) {
     for block in blocks {
-        let inlines = match block {
+        let inlines: &[Inline] = match block {
             Block::Paragraph(inlines) => inlines,
             Block::Heading { content, .. } | Block::FigureCaption { content } => content,
+            Block::VSpace { .. } | Block::Rule { .. } | Block::PageBreak => &[],
         };
         for inline in inlines {
             if let Inline::Reference { key, span, .. } = inline {
