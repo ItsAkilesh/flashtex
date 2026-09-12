@@ -123,6 +123,24 @@ pub enum Block {
         style: ParagraphStyle,
         content: Vec<Inline>,
     },
+    /// One paragraph of an `itemize`/`enumerate` `\item`. `level` (1 =
+    /// outermost) drives the hanging-indent margin; `label` carries the
+    /// marker text and the `\item` span, and is `None` for a continuation
+    /// paragraph of the same item (a blank line inside `\item`'s text) so the
+    /// marker is not repeated while the hanging indent still applies.
+    /// `extra_gap_before_pt`/`extra_gap_after_pt` are `\setlist`
+    /// itemsep/topsep overrides (`0.0` without `\setlist`).
+    ListItem {
+        level: u8,
+        label: Option<(String, Span)>,
+        content: Vec<Inline>,
+        /// Extra gap before this item, beyond the ordinary paragraph gap:
+        /// `topsep` before the list's first item, `itemsep` before the rest.
+        extra_gap_before_pt: f64,
+        /// Extra gap after this item: `topsep`, set only on the list's last
+        /// item.
+        extra_gap_after_pt: f64,
+    },
     /// `\vspace{<dimen>}`: additional vertical glue, in points.
     VSpace {
         pt: f64,
@@ -143,6 +161,11 @@ pub struct TextStyle {
     pub bold: bool,
     pub italic: bool,
     pub family: TextFamily,
+    /// The active `\tiny`..`\Huge` declaration, if any (`None` is
+    /// `\normalsize`, the body size). Resolved to an actual point size in
+    /// `layout::size_declaration_pt`, against the layout's own body size
+    /// rather than here, since that is the one authoritative value.
+    pub size: Option<FontSizeLevel>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Hash)]
@@ -153,11 +176,33 @@ pub enum TextFamily {
     Mono,
 }
 
+/// One `\tiny`..`\Huge` declaration level. Scoped on `TextStyle` exactly like
+/// bold/italic/family, via the same group/environment style stack, rather
+/// than a parallel size stack.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum FontSizeLevel {
+    Tiny,
+    ScriptSize,
+    FootnoteSize,
+    Small,
+    /// `\large`.
+    Large1,
+    /// `\Large`.
+    Large2,
+    /// `\LARGE`.
+    Large3,
+    /// `\huge`.
+    Huge1,
+    /// `\Huge`.
+    Huge2,
+}
+
 impl TextStyle {
     pub const BOLD: TextStyle = TextStyle {
         bold: true,
         italic: false,
         family: TextFamily::Roman,
+        size: None,
     };
 }
 
@@ -178,7 +223,11 @@ fn style_command(name: &str) -> bool {
     )
 }
 
-/// Group-scoped style declarations (`\bfseries`, `{\bf ...}`).
+/// Group-scoped style declarations (`\bfseries`, `{\bf ...}`). `\tiny`..
+/// `\Huge` are declarations too, not argument-taking commands: `\Large{...}`
+/// (a common `\textbf{...}`-style misuse) is deliberately handled the same
+/// way as `{\Large ...}` — its size stays active past the immediate group,
+/// matching real LaTeX (the group only undoes assignments made *inside* it).
 fn style_declaration(name: &str) -> bool {
     matches!(
         name,
@@ -198,6 +247,16 @@ fn style_declaration(name: &str) -> bool {
             | "tt"
             | "rm"
             | "sf"
+            | "tiny"
+            | "scriptsize"
+            | "footnotesize"
+            | "small"
+            | "normalsize"
+            | "large"
+            | "Large"
+            | "LARGE"
+            | "huge"
+            | "Huge"
     )
 }
 
@@ -224,6 +283,16 @@ fn apply_style(style: TextStyle, name: &str) -> TextStyle {
             }
         }
         "tt" | "rm" | "sf" => next = apply_style(TextStyle::default(), &format!("{name}family")),
+        "tiny" => next.size = Some(FontSizeLevel::Tiny),
+        "scriptsize" => next.size = Some(FontSizeLevel::ScriptSize),
+        "footnotesize" => next.size = Some(FontSizeLevel::FootnoteSize),
+        "small" => next.size = Some(FontSizeLevel::Small),
+        "normalsize" => next.size = None,
+        "large" => next.size = Some(FontSizeLevel::Large1),
+        "Large" => next.size = Some(FontSizeLevel::Large2),
+        "LARGE" => next.size = Some(FontSizeLevel::Large3),
+        "huge" => next.size = Some(FontSizeLevel::Huge1),
+        "Huge" => next.size = Some(FontSizeLevel::Huge2),
         _ => {}
     }
     next
@@ -509,11 +578,13 @@ pub fn parse_project(documents: &[SourceDocument<'_>], entry_path: &str) -> Pars
         current_counter: None,
         seen_labels: HashMap::new(),
         list_stack: Vec::new(),
+        pending_item_label: None,
         paragraph_styles: Vec::new(),
         document_global_state: false,
         style: TextStyle::default(),
         style_stack: Vec::new(),
         env_styles: Vec::new(),
+        list_spacing: HashMap::new(),
     };
     let blocks = p.document();
 
@@ -573,8 +644,15 @@ struct P<'a> {
     figure_counter: u32,
     current_counter: Option<String>,
     seen_labels: HashMap<String, Span>,
-    /// Environment name, item count, and an enumitem label template if given.
-    list_stack: Vec<(String, u32, Option<String>)>,
+    /// Environment name, item count, an enumitem label template if given,
+    /// and the `\setlist` spacing resolved when this list's `\begin` ran.
+    list_stack: Vec<(String, u32, Option<String>, ListSpacing)>,
+    /// The marker text and span set by the most recent `\item`, consumed by
+    /// the next `flush_paragraph`/`flush_list_item` call (its own paragraph,
+    /// or a later one if the item's text is empty). `None` once consumed, so
+    /// later paragraphs of the same item render with the hanging indent but
+    /// no repeated label.
+    pending_item_label: Option<(String, Span)>,
     paragraph_styles: Vec<ParagraphStyle>,
     document_global_state: bool,
     /// Current text style; saved on `{` and environment entry, restored on
@@ -582,6 +660,20 @@ struct P<'a> {
     style: TextStyle,
     style_stack: Vec<TextStyle>,
     env_styles: Vec<TextStyle>,
+    /// `\setlist` overrides, keyed by environment name ("itemize" /
+    /// "enumerate"). A list resolves its spacing from here when `\begin`
+    /// runs, so a later `\setlist` does not retroactively change an
+    /// already-open list.
+    list_spacing: HashMap<String, ListSpacing>,
+}
+
+/// Extra vertical space `\setlist{itemsep=...,topsep=...}` adds on top of
+/// the compiler's ordinary paragraph gap. Both default to zero, matching
+/// today's spacing exactly when `\setlist` is never called.
+#[derive(Debug, Clone, Copy, Default)]
+struct ListSpacing {
+    itemsep_pt: f64,
+    topsep_pt: f64,
 }
 
 impl P<'_> {
@@ -820,9 +912,20 @@ impl P<'_> {
                 }
             }
             "item" => {
-                self.flush_paragraph(blocks, para);
+                let gap_before = self
+                    .list_stack
+                    .last()
+                    .map(|(_, count, _, spacing)| {
+                        if *count <= 1 {
+                            spacing.topsep_pt
+                        } else {
+                            spacing.itemsep_pt
+                        }
+                    })
+                    .unwrap_or(0.0);
+                self.flush_list_item(blocks, para, gap_before, 0.0);
                 match self.list_stack.last_mut() {
-                    Some((kind, count, template)) => {
+                    Some((kind, count, template, _)) => {
                         *count += 1;
                         let marker = if kind == "enumerate" {
                             match template {
@@ -832,12 +935,7 @@ impl P<'_> {
                         } else {
                             "•".to_string()
                         };
-                        para.push(Inline::Text {
-                            text: marker,
-                            span,
-                            style: TextStyle::default(),
-                            space_before: true,
-                        });
+                        self.pending_item_label = Some((marker, span));
                     }
                     None => self.diags.push(Diagnostic::error(
                         "\\item is only supported inside itemize or enumerate",
@@ -898,11 +996,6 @@ impl P<'_> {
             // model, so there is nothing for \noindent to suppress: an honest
             // no-op rather than a fabricated indent to cancel.
             "noindent" => {}
-            // Font-size declarations: this layout has no per-run size
-            // scaling for body text, so honestly doing nothing is preferred
-            // over fabricating a size change the renderer cannot represent.
-            "tiny" | "scriptsize" | "footnotesize" | "small" | "normalsize" | "large" | "Large"
-            | "LARGE" | "huge" | "Huge" => {}
             // Text-mode horizontal glue. `\quad`/`\qquad` are also implemented
             // in math mode (`src/math.rs`); this arm covers the same commands
             // used directly in running text, 1em/2em of the body text size.
@@ -1133,14 +1226,77 @@ impl P<'_> {
         }
     }
 
+    /// `\setlist[<env list>]{key=value,...}`: enumitem's list-spacing
+    /// override. The optional argument names which environments the given
+    /// keys apply to (a comma list; omitted means every list). Only
+    /// `itemsep` and `topsep` change layout today; every other recognised
+    /// enumitem key (`leftmargin`, `label`, `parsep`, `partopsep`, ...) has
+    /// no equivalent in this layout engine and is reported once, by name.
     fn set_list(&mut self, span: Span) {
-        let _ = self.optional_bracket_argument();
-        let (_, argument_span) = self.required_group("setlist", span);
-        self.diags.push(Diagnostic::warning(
-            "\\setlist list spacing is recognised but not implemented",
-            Some(span.merge(argument_span)),
-            Some("lists use the compiler's default spacing".into()),
-        ));
+        let environments = self
+            .optional_bracket_argument()
+            .map(|(options, _)| options)
+            .unwrap_or_default();
+        let (tokens, argument_span) = self.required_group("setlist", span);
+        let full_span = span.merge(argument_span);
+        let envs: Vec<String> = if environments.trim().is_empty() {
+            vec!["itemize".to_string(), "enumerate".to_string()]
+        } else {
+            environments
+                .split(',')
+                .map(str::trim)
+                .filter(|env| !env.is_empty())
+                .map(str::to_string)
+                .collect()
+        };
+
+        let mut itemsep_pt = None;
+        let mut topsep_pt = None;
+        let mut ignored_keys: Vec<String> = Vec::new();
+        for pair in token_text(&tokens).split(',') {
+            let pair = pair.trim();
+            if pair.is_empty() {
+                continue;
+            }
+            let (key, value) = match pair.split_once('=') {
+                Some((key, value)) => (key.trim(), Some(value.trim())),
+                None => (pair, None),
+            };
+            match key {
+                "itemsep" if value.and_then(parse_dimen_pt).is_some() => {
+                    itemsep_pt = value.and_then(parse_dimen_pt);
+                }
+                "topsep" if value.and_then(parse_dimen_pt).is_some() => {
+                    topsep_pt = value.and_then(parse_dimen_pt);
+                }
+                _ if !ignored_keys.iter().any(|seen| seen == key) => {
+                    ignored_keys.push(key.to_string());
+                }
+                _ => {}
+            }
+        }
+
+        for env in &envs {
+            let spacing = self.list_spacing.entry(env.clone()).or_default();
+            if let Some(pt) = itemsep_pt {
+                spacing.itemsep_pt = pt;
+            }
+            if let Some(pt) = topsep_pt {
+                spacing.topsep_pt = pt;
+            }
+        }
+
+        if !ignored_keys.is_empty() {
+            ignored_keys.sort();
+            self.diags.push(Diagnostic::warning(
+                format!(
+                    "\\setlist keys {} are recognised but not implemented",
+                    ignored_keys.join(", ")
+                ),
+                Some(full_span),
+                Some("lists use the compiler's default spacing for these keys".into()),
+            ));
+        }
     }
 
     fn use_package(&mut self, span: Span) {
@@ -1425,7 +1581,13 @@ impl P<'_> {
             } else if matches!(environment.as_str(), "itemize" | "enumerate") && self.in_body {
                 self.flush_paragraph(blocks, para);
                 let template = self.optional_bracket_argument().map(|(options, _)| options);
-                self.list_stack.push((environment.clone(), 0, template));
+                let spacing = self
+                    .list_spacing
+                    .get(&environment)
+                    .copied()
+                    .unwrap_or_default();
+                self.list_stack
+                    .push((environment.clone(), 0, template, spacing));
             } else if self.in_body {
                 self.diags.push(Diagnostic::warning(
                     format!(
@@ -1468,7 +1630,18 @@ impl P<'_> {
             self.flush_paragraph(blocks, para);
             self.paragraph_styles.pop();
         } else if matches!(environment.as_str(), "itemize" | "enumerate") {
-            self.flush_paragraph(blocks, para);
+            let (gap_before, gap_after) = match self.list_stack.last() {
+                Some((_, count, _, spacing)) => (
+                    if *count <= 1 {
+                        spacing.topsep_pt
+                    } else {
+                        spacing.itemsep_pt
+                    },
+                    spacing.topsep_pt,
+                ),
+                None => (0.0, 0.0),
+            };
+            self.flush_list_item(blocks, para, gap_before, gap_after);
             self.list_stack.pop();
         } else if environment == "figure" {
             self.flush_paragraph(blocks, para);
@@ -2159,14 +2332,52 @@ impl P<'_> {
     }
 
     fn flush_paragraph(&mut self, blocks: &mut Vec<Block>, paragraph: &mut Vec<Inline>) {
-        if !paragraph.is_empty() {
-            let content = std::mem::take(paragraph);
-            blocks.push(match self.paragraph_styles.last() {
+        self.flush_list_item(blocks, paragraph, 0.0, 0.0);
+    }
+
+    /// Flushes the accumulated paragraph. Inside a list, this attaches the
+    /// pending `\item` marker (for the first paragraph of an item; later
+    /// paragraphs of the same item get the hanging indent without repeating
+    /// it), the item's nesting level, and any `\setlist` itemsep/topsep gap
+    /// due before or after it (`0.0`/`0.0` from `flush_paragraph`, meaning no
+    /// override — mid-item paragraph breaks never get itemsep/topsep, which
+    /// are gaps between items, not between paragraphs within one). Falls
+    /// back to an ordinary `Block::Paragraph`/`Block::Styled` outside a list.
+    fn flush_list_item(
+        &mut self,
+        blocks: &mut Vec<Block>,
+        paragraph: &mut Vec<Inline>,
+        extra_gap_before_pt: f64,
+        extra_gap_after_pt: f64,
+    ) {
+        let label = self.pending_item_label.take();
+        if paragraph.is_empty() && label.is_none() {
+            return;
+        }
+        let content = std::mem::take(paragraph);
+        // A list level is "current" only once its first `\item` has been
+        // seen (`count > 0`); text typed directly inside `itemize`/
+        // `enumerate` before any `\item` falls back to an ordinary
+        // paragraph, same as before this paragraph became list-aware.
+        let list_level = self
+            .list_stack
+            .last()
+            .filter(|(_, count, _, _)| *count > 0)
+            .map(|_| self.list_stack.len() as u8);
+        blocks.push(match list_level {
+            Some(level) => Block::ListItem {
+                level,
+                label,
+                content,
+                extra_gap_before_pt,
+                extra_gap_after_pt,
+            },
+            None => match self.paragraph_styles.last() {
                 Some(&style) => Block::Styled { style, content },
                 None => Block::Paragraph(content),
-            });
-            self.finish_block_dependencies();
-        }
+            },
+        });
+        self.finish_block_dependencies();
     }
 
     /// Drops a `[<length>]` that directly follows `\\`, keeping any text glued
@@ -2837,13 +3048,19 @@ mod tests {
     fn tex_input_ligatures_never_apply_inside_math() {
         // Math is parsed through an entirely separate path (`math::parse_tokens`)
         // that this function is never wired into; a literal double-hyphen inside
-        // `$...$` must stay two literal hyphens, never an en dash.
+        // `$...$` must stay two separate math minus signs, never an en dash.
         let source = "Text. $a--b$ more text.\n";
         let (parsed, items) = items(source);
         assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
         assert!(!items.iter().any(|item| item.text.contains('\u{2013}')));
         assert!(!items.iter().any(|item| item.text.contains('\u{2014}')));
-        assert!(items.iter().any(|item| item.text == "-"));
+        assert_eq!(
+            items
+                .iter()
+                .filter(|item| item.text == crate::math::MINUS_SIGN)
+                .count(),
+            2
+        );
     }
 
     #[test]
@@ -3300,6 +3517,167 @@ mod tests {
         ] {
             assert_eq!(font_of(&items, text), font, "{text}");
         }
+    }
+
+    fn size_of(items: &[crate::layout::TextItem], text: &str) -> f64 {
+        items
+            .iter()
+            .find(|item| item.text == text)
+            .unwrap_or_else(|| panic!("no item {text:?}"))
+            .font_size_pt
+    }
+
+    #[test]
+    fn size_declarations_scale_relative_to_normalsize() {
+        // No `\documentclass`, so the body size defaults to the 12pt class's
+        // own table.
+        let source = r"\tiny a \scriptsize b \footnotesize c \small d \normalsize e \large f \Large g \LARGE h \huge i \Huge j";
+        let (parsed, items) = items(source);
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        for (text, size) in [
+            ("a", 6.0),
+            ("b", 8.0),
+            ("c", 10.0),
+            ("d", 10.95),
+            ("e", 12.0),
+            ("f", 14.4),
+            ("g", 17.28),
+            ("h", 20.74),
+            ("i", 24.88),
+            ("j", 24.88),
+        ] {
+            assert_eq!(size_of(&items, text), size, "{text}");
+        }
+    }
+
+    #[test]
+    fn large_scales_text_until_its_group_closes() {
+        let (parsed, items) = items(r"Normal {\Large Big text} After");
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        assert_eq!(size_of(&items, "Normal"), crate::layout::BODY_SIZE_PT);
+        assert_eq!(size_of(&items, "Big"), 17.28);
+        assert_eq!(size_of(&items, "text"), 17.28);
+        assert_eq!(size_of(&items, "After"), crate::layout::BODY_SIZE_PT);
+    }
+
+    #[test]
+    fn bare_size_declaration_followed_by_a_group_is_not_scoped_to_it() {
+        // `\Large{...}` is a common `\textbf{...}`-style misuse: unlike an
+        // argument-taking command, `\Large` is a declaration, so it takes
+        // effect in whatever scope it appears and stays active past the
+        // following group — exactly like real LaTeX, where a group only
+        // undoes assignments made *inside* it.
+        let (parsed, items) = items(r"\Large{Big} still big");
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        assert_eq!(size_of(&items, "Big"), 17.28);
+        assert_eq!(size_of(&items, "still"), 17.28);
+        assert_eq!(size_of(&items, "big"), 17.28);
+    }
+
+    #[test]
+    fn size_declarations_use_the_active_documentclass_option_table() {
+        // The three real LaTeX class tables are not a uniform scale of one
+        // another: e.g. `\large` is the same absolute size as `\Large` in
+        // the 10pt/11pt classes, but the 12pt class's own
+        // `\normalsize`-plus-one-step.
+        const LEVELS: [&str; 9] = [
+            "tiny",
+            "scriptsize",
+            "footnotesize",
+            "small",
+            "large",
+            "Large",
+            "LARGE",
+            "huge",
+            "Huge",
+        ];
+        for (class_option, expected_pt) in [
+            (
+                "10pt",
+                [5.0, 7.0, 8.0, 9.0, 12.0, 14.4, 17.28, 20.74, 24.88],
+            ),
+            (
+                "11pt",
+                [6.0, 8.0, 9.0, 10.0, 12.0, 14.4, 17.28, 20.74, 24.88],
+            ),
+            (
+                "12pt",
+                [6.0, 8.0, 10.0, 10.95, 14.4, 17.28, 20.74, 24.88, 24.88],
+            ),
+        ] {
+            let body: String = LEVELS
+                .iter()
+                .enumerate()
+                .map(|(i, level)| format!("\\{level} w{i} "))
+                .collect();
+            let source = format!(
+                "\\documentclass[{class_option}]{{article}}\\begin{{document}}{body}\\end{{document}}"
+            );
+            let parsed = parse(&source);
+            assert!(
+                parsed.diagnostics.is_empty(),
+                "{class_option}: {:?}",
+                parsed.diagnostics
+            );
+            let output =
+                crate::incremental::compile_full(&source, layout::LayoutConstraints::default());
+            for (i, level) in LEVELS.iter().enumerate() {
+                let word = format!("w{i}");
+                let size = output
+                    .pages
+                    .iter()
+                    .flat_map(|page| &page.items)
+                    .find(|item| item.text == word)
+                    .unwrap_or_else(|| panic!("{class_option} \\{level}: no item {word:?}"))
+                    .font_size_pt;
+                assert_eq!(size, expected_pt[i], "{class_option} \\{level}");
+            }
+        }
+    }
+
+    #[test]
+    fn normalsize_is_exactly_the_documentclass_body_size_even_at_11pt() {
+        // This compiler's `\documentclass[11pt]` body size is a literal
+        // 11pt, not real LaTeX's 10.95pt `\normalsize` (see `class_size_pt`).
+        // `\normalsize` must match that approximation exactly, not the real
+        // class table value, so text with no size declaration in effect
+        // renders identically to before this feature existed.
+        let source = r"\documentclass[11pt]{article}\begin{document}Body {\small Small} \normalsize Reset\end{document}";
+        let parsed = parse(source);
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        let output = crate::incremental::compile_full(source, layout::LayoutConstraints::default());
+        let size_of = |text: &str| {
+            output
+                .pages
+                .iter()
+                .flat_map(|page| &page.items)
+                .find(|item| item.text == text)
+                .unwrap_or_else(|| panic!("no item {text:?}"))
+                .font_size_pt
+        };
+        assert_eq!(size_of("Body"), 11.0);
+        assert_eq!(size_of("Small"), 10.0);
+        assert_eq!(size_of("Reset"), 11.0);
+    }
+
+    #[test]
+    fn size_declarations_grow_the_line_height_so_larger_lines_do_not_overlap() {
+        let (parsed, items) = items(r"{\Large Big}\\Small line");
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        let big = items.iter().find(|i| i.text == "Big").unwrap();
+        let small = items.iter().find(|i| i.text == "Small").unwrap();
+        assert!(small.baseline_y_pt > big.baseline_y_pt);
+        let gap = small.baseline_y_pt - big.baseline_y_pt;
+        // Without this feature `\Large` renders at the plain body size, so
+        // the two lines would sit exactly `BODY_SIZE_PT * LINE_SPACING` apart
+        // (14.4pt) regardless of the declared size. The real `\Large` line is
+        // taller, so the gap to the next line must be strictly larger than
+        // that, or the two lines would overlap.
+        let old_buggy_gap = crate::layout::BODY_SIZE_PT * crate::layout::LINE_SPACING;
+        assert!(
+            gap > old_buggy_gap,
+            "gap = {gap}, old_buggy_gap = {old_buggy_gap}"
+        );
     }
 
     #[test]

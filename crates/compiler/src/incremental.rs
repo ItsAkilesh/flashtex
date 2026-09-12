@@ -398,6 +398,22 @@ fn shift_block(block: &Block, changes: &[ChangedBytes], deltas: &[isize]) -> Opt
             style: *style,
             content: shift_inlines(content, changes, deltas)?,
         },
+        Block::ListItem {
+            level,
+            label,
+            content,
+            extra_gap_before_pt,
+            extra_gap_after_pt,
+        } => Block::ListItem {
+            level: *level,
+            label: match label {
+                Some((text, span)) => Some((text.clone(), mapped_span(*span, changes, deltas)?)),
+                None => None,
+            },
+            content: shift_inlines(content, changes, deltas)?,
+            extra_gap_before_pt: *extra_gap_before_pt,
+            extra_gap_after_pt: *extra_gap_after_pt,
+        },
         Block::VSpace { pt } => Block::VSpace { pt: *pt },
         Block::Rule { span } => Block::Rule {
             span: mapped_span(*span, changes, deltas)?,
@@ -630,6 +646,7 @@ type BlockSignature = (usize, usize, usize, usize, usize);
 fn block_signature(block: &Block) -> BlockSignature {
     let inlines: &[Inline] = match block {
         Block::Paragraph(inlines) => inlines,
+        Block::ListItem { content, .. } => content,
         Block::Heading { content, .. } => content,
         Block::FigureCaption { content } => content,
         Block::Styled { content, .. } => content,
@@ -669,6 +686,7 @@ fn shifted_signature(
 ) -> Option<BlockSignature> {
     let inlines: &[Inline] = match block {
         Block::Paragraph(inlines) => inlines,
+        Block::ListItem { content, .. } => content,
         Block::Heading { content, .. } => content,
         Block::FigureCaption { content } => content,
         Block::Styled { content, .. } => content,

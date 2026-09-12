@@ -11,7 +11,7 @@
 use crate::diagnostics::Diagnostic;
 use crate::export::{self, ExportFont};
 use crate::math::{self, MathBox};
-use crate::parser::{Block, Inline, MathRow, ParagraphStyle, TextFamily, TextStyle};
+use crate::parser::{Block, FontSizeLevel, Inline, MathRow, ParagraphStyle, TextFamily, TextStyle};
 use crate::Span;
 use flashtex_font_engine::core14::Core14;
 use flashtex_font_engine::shape::{shape, ShapeOptions, Shaped};
@@ -29,6 +29,17 @@ pub const LINE_SPACING: f64 = 1.2;
 pub const PARAGRAPH_GAP_PT: f64 = 6.0;
 /// `quote` margins: LaTeX's `\leftmargini` (2.5em at 10pt).
 pub const QUOTE_INDENT_PT: f64 = 25.0;
+/// `\leftmargini`..`\leftmarginiv` (standard classes' 10pt-class defaults):
+/// each `itemize`/`enumerate` nesting level's own hanging-indent increment,
+/// in em of the document body size. LaTeX's `\list` macro advances
+/// `\@totalleftmargin` by the new level's `\leftmargin` on top of whatever
+/// the enclosing list already established, so nested levels are cumulative
+/// (see `list_margin_pt`). Nesting past level 4 — real LaTeX's `\@toodeep`
+/// limit for these environments — reuses the deepest defined increment.
+const LIST_LEFTMARGIN_EM: [f64; 4] = [2.5, 2.2, 1.87, 1.7];
+/// `\labelsep`: gap between a list label's right edge and the item text,
+/// constant across nesting levels.
+const LIST_LABELSEP_EM: f64 = 0.5;
 /// amsmath `\jot`: extra gap between rows of a multi-row display. Measured
 /// against pdflatex (12pt article + amsmath): row gap = `\baselineskip` + 3pt.
 pub const JOT_PT: f64 = 3.0;
@@ -311,6 +322,10 @@ pub struct LayoutCursor {
     diagnostics: Vec<Diagnostic>,
     /// Active only while rendering a `Block::Styled` paragraph.
     style: Option<ParagraphStyle>,
+    /// The current `Block::ListItem`'s left margin in points, or `0.0`
+    /// outside one. Unlike `style`, this only ever affects `left_edge` —
+    /// lists don't pull in the right margin the way `quote` does.
+    list_margin_pt: f64,
 }
 
 impl LayoutCursor {
@@ -344,19 +359,32 @@ impl LayoutCursor {
             emit_heading_numbers,
             diagnostics: Vec::new(),
             style: None,
+            list_margin_pt: 0.0,
         }
     }
 
     fn right_edge(&self) -> f64 {
-        MARGIN_PT + self.constraints.measure_pt - self.indent()
+        MARGIN_PT + self.constraints.measure_pt - self.right_indent()
     }
 
     fn left_edge(&self) -> f64 {
-        MARGIN_PT + self.indent()
+        MARGIN_PT + self.left_indent()
     }
 
-    fn indent(&self) -> f64 {
+    /// `quote`/`quotation` indent both margins by the same amount; a list's
+    /// `\rightmargin` defaults to `0`, so only `left_indent` looks at it.
+    fn right_indent(&self) -> f64 {
         if self.style == Some(ParagraphStyle::Quote) {
+            QUOTE_INDENT_PT
+        } else {
+            0.0
+        }
+    }
+
+    fn left_indent(&self) -> f64 {
+        if self.list_margin_pt > 0.0 {
+            self.list_margin_pt
+        } else if self.style == Some(ParagraphStyle::Quote) {
             QUOTE_INDENT_PT
         } else {
             0.0
@@ -588,6 +616,32 @@ impl LayoutCursor {
         self.style = style;
     }
 
+    /// Draws an `\item` label (bullet/number) right-aligned so it ends
+    /// `\labelsep` before the item's hanging-indent margin, on the item's
+    /// first baseline — mirroring `\makelabel`'s right-justified label box.
+    /// Deliberately unclamped: a label wider than the available `labelwidth`
+    /// is not wrapped or pushed into the item text, it just extends further
+    /// left, exactly like real LaTeX's overfull label box.
+    fn place_list_label(&mut self, text: &str, span: Span, margin_pt: f64, size: f64) {
+        let width = glyph_width(text, size, Font::TimesRoman);
+        let label_sep = LIST_LABELSEP_EM * size;
+        let x_pt = round2(MARGIN_PT + margin_pt - label_sep - width);
+        let item = TextItem {
+            text: text.to_string(),
+            x_pt,
+            baseline_y_pt: round2(self.y),
+            font_size_pt: size,
+            span,
+            font: Font::TimesRoman,
+            rule: None,
+        };
+        self.pages
+            .last_mut()
+            .expect("at least one page")
+            .items
+            .push(item);
+    }
+
     fn place_equation_number(&mut self, number: &str, span: Span, size: f64) {
         let text = format!("({number})");
         let width = glyph_width(&text, size, Font::TimesRoman);
@@ -688,6 +742,21 @@ impl LayoutCursor {
                     self.vertical_gap(self.constraints.parskip_pt.unwrap_or(PARAGRAPH_GAP_PT));
                 }
             }
+            // Same base inter-block gap as an ordinary paragraph (so a
+            // custom `\parskip` still applies), plus any `\setlist`
+            // itemsep/topsep override before this item.
+            Block::ListItem {
+                extra_gap_before_pt,
+                ..
+            } => {
+                if !self.first_block {
+                    self.newline(body_size);
+                    self.vertical_gap(
+                        self.constraints.parskip_pt.unwrap_or(PARAGRAPH_GAP_PT)
+                            + extra_gap_before_pt,
+                    );
+                }
+            }
             Block::Heading { level, .. } => {
                 let size = heading_size(*level, body_size);
                 if !self.first_block {
@@ -702,7 +771,10 @@ impl LayoutCursor {
                 }
             }
             Block::VSpace { pt } => {
-                if !self.first_block {
+                // Only end a line that has content: after a rule or another
+                // vertical block there is no text line to finish, and TeX adds
+                // no interline glue there either.
+                if !self.first_block && self.state().trailing_line_items > 0 {
                     self.newline(body_size);
                 }
                 self.vertical_gap(*pt);
@@ -743,6 +815,29 @@ impl LayoutCursor {
                 self.resolve_hfill();
                 self.align_current_line();
                 self.style = None;
+            }
+            Block::ListItem {
+                level,
+                label,
+                content,
+                extra_gap_after_pt,
+                ..
+            } => {
+                self.list_margin_pt = list_margin_pt(*level, body_size);
+                if let Some((text, span)) = label {
+                    self.place_list_label(text, *span, self.list_margin_pt, body_size);
+                }
+                // Same reasoning as `Block::Styled`: `left_edge()` now
+                // reflects the new hanging indent, so `content_end` must
+                // move with `x` or this item's first glued inline
+                // (`space_before: false`) would rewind past it.
+                self.x = self.left_edge();
+                self.content_end = self.x;
+                emit(self, content, body_size, Font::TimesRoman);
+                self.list_margin_pt = 0.0;
+                if *extra_gap_after_pt != 0.0 {
+                    self.vertical_gap(*extra_gap_after_pt);
+                }
             }
             Block::Heading {
                 level,
@@ -805,7 +900,8 @@ impl LayoutCursor {
                     .expect("at least one page")
                     .items
                     .push(item);
-                self.newline(body_size);
+                // A rule has no depth: end its line without adding a text line.
+                self.newline(0.0);
             }
         }
         // A block is the incremental cache unit. Resolve its final line before
@@ -908,8 +1004,58 @@ fn heading_size(level: u8, body_size: f64) -> f64 {
         }
 }
 
+/// Absolute point size for one `\tiny`..`\Huge` declaration, from the real
+/// LaTeX class files' own tables (`size10.clo`/`size11.clo`/`size12.clo`),
+/// selected by the document's body size (`\documentclass[10pt|11pt|12pt]`;
+/// see `parser::Parsed::class_size_pt`). The three tables are not a uniform
+/// scale of each other — e.g. `\large` is 12pt in the 10pt and 11pt classes
+/// but 14.4pt in the 12pt class — so the whole table is picked by class
+/// rather than computed from one ratio.
+///
+/// `\normalsize` is deliberately not looked up here: it is always exactly
+/// `body_size_pt` itself, so text with no size declaration in effect renders
+/// identically to before this existed, even for the 11pt class, where this
+/// compiler's own body size is a literal 11pt rather than real LaTeX's
+/// 10.95pt normalsize (`class_size_pt`'s documented approximation).
+fn size_declaration_pt(level: FontSizeLevel, body_size_pt: f64) -> f64 {
+    // tiny, scriptsize, footnotesize, small, large, Large, LARGE, huge, Huge
+    // (normalsize is handled by the caller before reaching here).
+    const SIZE_10PT: [f64; 9] = [5.0, 7.0, 8.0, 9.0, 12.0, 14.4, 17.28, 20.74, 24.88];
+    const SIZE_11PT: [f64; 9] = [6.0, 8.0, 9.0, 10.0, 12.0, 14.4, 17.28, 20.74, 24.88];
+    const SIZE_12PT: [f64; 9] = [6.0, 8.0, 10.0, 10.95, 14.4, 17.28, 20.74, 24.88, 24.88];
+    let table = if body_size_pt <= 10.5 {
+        SIZE_10PT
+    } else if body_size_pt <= 11.5 {
+        SIZE_11PT
+    } else {
+        SIZE_12PT
+    };
+    let index = match level {
+        FontSizeLevel::Tiny => 0,
+        FontSizeLevel::ScriptSize => 1,
+        FontSizeLevel::FootnoteSize => 2,
+        FontSizeLevel::Small => 3,
+        FontSizeLevel::Large1 => 4,
+        FontSizeLevel::Large2 => 5,
+        FontSizeLevel::Large3 => 6,
+        FontSizeLevel::Huge1 => 7,
+        FontSizeLevel::Huge2 => 8,
+    };
+    table[index]
+}
+
 fn round2(v: f64) -> f64 {
     (v * 100.0).round() / 100.0
+}
+
+/// Cumulative left margin, in points, for an `itemize`/`enumerate` item at
+/// `level` (1 = outermost), scaled by the document body size.
+fn list_margin_pt(level: u8, body_size_pt: f64) -> f64 {
+    let depth = level.max(1) as usize;
+    let em: f64 = (1..=depth)
+        .map(|l| LIST_LEFTMARGIN_EM[(l - 1).min(LIST_LEFTMARGIN_EM.len() - 1)])
+        .sum();
+    em * body_size_pt
 }
 
 pub fn layout(blocks: &[Block]) -> Vec<Page> {
@@ -981,7 +1127,8 @@ fn visit_references(blocks: &[Block], visitor: &mut impl FnMut(&str, Span)) {
     for block in blocks {
         let inlines: &[Inline] = match block {
             Block::Paragraph(inlines) => inlines,
-            Block::Heading { content, .. }
+            Block::ListItem { content, .. }
+            | Block::Heading { content, .. }
             | Block::FigureCaption { content }
             | Block::Styled { content, .. } => content,
             Block::VSpace { .. } | Block::Rule { .. } | Block::PageBreak => &[],
@@ -1016,7 +1163,21 @@ fn emit(c: &mut LayoutCursor, inlines: &[Inline], size: f64, font: Font) {
                 span,
                 style,
                 space_before,
-            } => c.place(text.clone(), size, *span, style_font(*style), *space_before),
+            } => {
+                // A `\tiny`..`\Huge` declaration is always relative to the
+                // document's own body size, not to `size` (which can already
+                // be a heading's or a math script's own scaled context).
+                let text_size = style.size.map_or(size, |level| {
+                    size_declaration_pt(level, c.constraints.font_size_pt)
+                });
+                c.place(
+                    text.clone(),
+                    text_size,
+                    *span,
+                    style_font(*style),
+                    *space_before,
+                )
+            }
             Inline::LineBreak { .. } => c.newline(size),
             Inline::TextGlue { em, .. } => c.text_glue(*em, size),
             Inline::Math {
@@ -1286,5 +1447,132 @@ mod tests {
         let right = item_at(&pages, source.find("right").unwrap());
         let left_width = glyph_width("left", BODY_SIZE_PT, Font::TimesRoman);
         assert!((right.x_pt - left.x_pt - left_width - 12.0).abs() < 0.02);
+    }
+
+    #[test]
+    fn list_item_label_ends_labelsep_before_the_hanging_indent() {
+        let source = "\\begin{itemize}\\item Text\\end{itemize}";
+        let (parsed, pages) = laid_out(source);
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        let items: Vec<&TextItem> = pages.iter().flat_map(|p| &p.items).collect();
+        let label = items
+            .iter()
+            .find(|item| item.text == "•")
+            .expect("bullet label item");
+        let text = items
+            .iter()
+            .find(|item| item.text == "Text")
+            .expect("item text");
+        let text_x = MARGIN_PT + list_margin_pt(1, BODY_SIZE_PT);
+        let label_sep = LIST_LABELSEP_EM * BODY_SIZE_PT;
+        let label_width = glyph_width("•", BODY_SIZE_PT, Font::TimesRoman);
+        assert_eq!(text.x_pt, round2(text_x));
+        assert_eq!(label.x_pt, round2(text_x - label_sep - label_width));
+        assert_eq!(label.baseline_y_pt, text.baseline_y_pt);
+    }
+
+    #[test]
+    fn wrapped_continuation_lines_keep_the_same_hanging_indent() {
+        let words = "sample ".repeat(20);
+        let source = format!("\\begin{{itemize}}\\item {}\\end{{itemize}}", words.trim());
+        let (parsed, pages) = laid_out(&source);
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        let mut baselines: Vec<f64> = pages[0]
+            .items
+            .iter()
+            .map(|item| item.baseline_y_pt)
+            .collect();
+        baselines.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        baselines.dedup();
+        assert!(
+            baselines.len() >= 2,
+            "expected the item text to wrap onto a second line"
+        );
+        let first_on_wrapped_line = pages[0]
+            .items
+            .iter()
+            .filter(|item| item.baseline_y_pt == baselines[1])
+            .min_by(|a, b| a.x_pt.partial_cmp(&b.x_pt).unwrap())
+            .expect("an item on the wrapped line");
+        assert_eq!(
+            first_on_wrapped_line.x_pt,
+            round2(MARGIN_PT + list_margin_pt(1, BODY_SIZE_PT))
+        );
+    }
+
+    #[test]
+    fn nested_list_levels_add_their_own_margin_cumulatively() {
+        let source =
+            "\\begin{itemize}\\item Outer\\begin{itemize}\\item Inner\\end{itemize}\\end{itemize}";
+        let (parsed, pages) = laid_out(source);
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        let items: Vec<&TextItem> = pages.iter().flat_map(|p| &p.items).collect();
+        let outer = items.iter().find(|item| item.text == "Outer").unwrap();
+        let inner = items.iter().find(|item| item.text == "Inner").unwrap();
+        assert_eq!(
+            outer.x_pt,
+            round2(MARGIN_PT + list_margin_pt(1, BODY_SIZE_PT))
+        );
+        assert_eq!(
+            inner.x_pt,
+            round2(MARGIN_PT + list_margin_pt(2, BODY_SIZE_PT))
+        );
+        assert!(
+            inner.x_pt > outer.x_pt,
+            "a nested item indents further than its enclosing item"
+        );
+    }
+
+    #[test]
+    fn a_blank_line_inside_an_item_keeps_the_indent_without_repeating_the_label() {
+        let source = "\\begin{itemize}\\item First\n\nSecond\\end{itemize}";
+        let (parsed, pages) = laid_out(source);
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        let list_items: Vec<(u8, bool)> = parsed
+            .blocks
+            .iter()
+            .filter_map(|block| match block {
+                parser::Block::ListItem { level, label, .. } => Some((*level, label.is_some())),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            list_items,
+            [(1, true), (1, false)],
+            "the blank line must start a second paragraph of the same item, not a new item"
+        );
+        let second = pages
+            .iter()
+            .flat_map(|p| &p.items)
+            .find(|item| item.text == "Second")
+            .expect("continuation paragraph text");
+        assert_eq!(
+            second.x_pt,
+            round2(MARGIN_PT + list_margin_pt(1, BODY_SIZE_PT))
+        );
+    }
+
+    #[test]
+    fn a_label_wider_than_its_margin_overflows_left_without_pushing_the_item_text() {
+        let source =
+            "\\begin{enumerate}[label=Preposterously-Long-Label-\\arabic*]\\item Text\\end{enumerate}";
+        let (parsed, pages) = laid_out(source);
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        let items: Vec<&TextItem> = pages.iter().flat_map(|p| &p.items).collect();
+        let label = items
+            .iter()
+            .find(|item| item.text.starts_with("Preposterously"))
+            .expect("overlong label item");
+        let text = items.iter().find(|item| item.text == "Text").unwrap();
+        assert_eq!(
+            text.x_pt,
+            round2(MARGIN_PT + list_margin_pt(1, BODY_SIZE_PT)),
+            "the item text must stay at the normal hanging-indent margin"
+        );
+        assert!(
+            label.x_pt < MARGIN_PT,
+            "an overlong label should overflow past the page margin, like LaTeX's overfull label box (got {})",
+            label.x_pt
+        );
     }
 }

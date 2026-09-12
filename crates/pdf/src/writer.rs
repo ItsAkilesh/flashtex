@@ -116,6 +116,15 @@ fn describe(weight: Weight, style: Style) -> &'static str {
     }
 }
 
+/// Latin Modern Math: the compiler's `lm.math` resource for blackboard bold,
+/// `\setminus` and `\Longrightarrow`. Checked before the roman families,
+/// whose files lack those glyphs.
+const LATIN_MODERN_MATH_FILE: &str = "latinmodern-math.otf";
+
+fn is_latin_modern_math_family(family: &str) -> bool {
+    family.eq_ignore_ascii_case("latin modern math")
+}
+
 fn is_latin_modern_family(family: &str) -> bool {
     let f = family.to_ascii_lowercase();
     f.starts_with("latin modern") || f.starts_with("lmroman") || f == "lm roman" || f == "lm"
@@ -314,7 +323,26 @@ impl FontTable {
         let dir = self.latin_modern_dir.clone().ok_or_else(|| {
             "no Latin Modern installation found (set FLASHTEX_LM_DIR)".to_string()
         })?;
-        let path = dir.join(latin_modern_file(weight, style));
+        self.embedded_file(dir.join(latin_modern_file(weight, style)))
+    }
+
+    /// Latin Modern Math, beside the roman files (the Mac bundle) or in TeX
+    /// Live's sibling `lm-math` directory.
+    fn latin_modern_math(&mut self) -> Result<Resolved, String> {
+        let dir = self.latin_modern_dir.clone().ok_or_else(|| {
+            "no Latin Modern installation found (set FLASHTEX_LM_DIR)".to_string()
+        })?;
+        let beside = dir.join(LATIN_MODERN_MATH_FILE);
+        let sibling = dir.join("../lm-math").join(LATIN_MODERN_MATH_FILE);
+        self.embedded_file(if beside.is_file() || !sibling.is_file() {
+            beside
+        } else {
+            sibling
+        })
+    }
+
+    /// The trailing embedded font for `path`, loading it once per document.
+    fn embedded_file(&mut self, path: std::path::PathBuf) -> Result<Resolved, String> {
         if let Some(i) = self.fonts.iter().position(|f| match f {
             TrailingFont::Embedded { font, .. } => font.source == path,
             _ => false,
@@ -350,7 +378,20 @@ impl FontTable {
         }
         let (weight, style) = (hint.weight, hint.style);
         let variant = TimesVariant::of(weight, style);
-        let resolved = if is_latin_modern_family(&hint.family) {
+        let resolved = if is_latin_modern_math_family(&hint.family) {
+            match self.latin_modern_math() {
+                Ok(r) => r,
+                Err(reason) => {
+                    warnings.push(format!(
+                        "font {:?} ({}) substituted by '{}': {reason}",
+                        hint.family,
+                        describe(weight, style),
+                        variant.base_font()
+                    ));
+                    self.times_variant(variant)
+                }
+            }
+        } else if is_latin_modern_family(&hint.family) {
             match self.latin_modern(weight, style) {
                 Ok(r) => r,
                 Err(reason) => {
