@@ -39,8 +39,8 @@ final class CompletionTests: XCTestCase {
         let math = Completion.suggestions(in: "$\\al", caretUTF16: 4, result: nil)
         XCTAssertEqual(labels(math), ["\\alpha"])
         XCTAssertEqual(math.first?.detail, "math · symbol α")
-        XCTAssertEqual(Completion.Vocabulary.symbols.count, 22)
-        XCTAssertEqual(Completion.Vocabulary.entries.count, 22 + 22)
+        XCTAssertEqual(Completion.Vocabulary.symbols.count, 29)
+        XCTAssertEqual(Completion.Vocabulary.entries.count, 25 + 29)
         let frac = Completion.suggestions(in: "\\fr", caretUTF16: 3, result: nil)
         XCTAssertEqual(labels(frac), ["\\frac{num}{den}"])
         XCTAssertEqual(frac.first?.insertText, "\\frac")
@@ -365,7 +365,7 @@ final class CompletionTests: XCTestCase {
         // Symbols: the exact `COMMAND_GLYPHS` table, in order, with its glyphs.
         let mathRS = try String(contentsOf: compiler.appendingPathComponent("src/math.rs"), encoding: .utf8)
         let glyphBlock = try XCTUnwrap(mathRS.range(of: "COMMAND_GLYPHS: &[(&str, &str)] = &[")).upperBound
-        let glyphs = matches("\\(\"([a-z]+)\", \"([^\"]+)\"\\)", in: String(mathRS[glyphBlock...].prefix { $0 != "]" })).map { ($0[1], $0[2]) }
+        let glyphs = matches("\\(\"([A-Za-z]+)\", \"([^\"]+)\"\\)", in: String(mathRS[glyphBlock...].prefix { $0 != "]" })).map { ($0[1], $0[2]) }
         XCTAssertEqual(glyphs.map(\.0), Completion.Vocabulary.symbols.map(\.0), "src/math.rs COMMAND_GLYPHS names drifted")
         XCTAssertEqual(glyphs.map(\.1), Completion.Vocabulary.symbols.map(\.1), "src/math.rs COMMAND_GLYPHS glyphs drifted")
         XCTAssertEqual(Set(readmeMath), Set(glyphs.map(\.0) + ["frac", "sqrt"]), "README symbols and COMMAND_GLYPHS disagree")
@@ -385,7 +385,7 @@ final class CompletionTests: XCTestCase {
         let arms = matches("^\\s*((?:\"[a-z]+\"\\s*\\|\\s*)*\"[a-z]+\")\\s*=>", in: String(dispatch[..<dispatchEnd]), options: [.anchorsMatchLines])
             .flatMap { matches("\"([a-z]+)\"", in: $0[1]).map { $0[1] } }
         XCTAssertFalse(arms.isEmpty)
-        let diagnosticOnlyArms = ["includegraphics"]
+        let diagnosticOnlyArms = ["includegraphics", "setlist"]
         for arm in diagnosticOnlyArms {
             XCTAssertTrue(unsupportedMD.contains("\\\(arm)"), "\(arm) must be listed in UNSUPPORTED.md")
             XCTAssertNil(Completion.Vocabulary.byName[arm], "\(arm) is unsupported and must not be offered")
@@ -394,7 +394,7 @@ final class CompletionTests: XCTestCase {
             XCTAssertNotNil(Completion.Vocabulary.byName[arm], "parser arm \\\(arm) is missing from Completion.Vocabulary")
         }
         let parserOnly = table.filter { $0.source == .parserArm }.map(\.name)
-        XCTAssertEqual(parserOnly, ["input", "include"])
+        XCTAssertEqual(parserOnly, ["input", "include", "hfill", "normalfont", "bfseries"])
         XCTAssertTrue(parser.contains("\"input\" | \"include\" => self.include("), "the parser arm the parser-only entries cite")
         for name in parserOnly { XCTAssertFalse(readmeCommands.contains(name), "\(name) is not in the README paragraph; move its source if that changes") }
     }

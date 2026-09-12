@@ -35,6 +35,11 @@ const CASES: &[Case] = &[
         consequence: "Figures lay out and number, but no image is loaded or drawn.",
     },
     Case {
+        feature: r"\setlist — enumitem list spacing",
+        input: "\\documentclass{article}\\setlist[enumerate]{itemsep=1em}\\begin{document}Text.\\end{document}\n",
+        consequence: "List spacing keys are read and ignored; lists keep the default spacing.",
+    },
+    Case {
         feature: "tabular — tables",
         input: "\\begin{tabular}{ll}a & b \\\\ c & d\\end{tabular}\n",
         consequence: "Tables are typeset as plain text without column alignment or rules.",
