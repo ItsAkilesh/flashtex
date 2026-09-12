@@ -61,6 +61,10 @@ final class ShellModel {
     @ObservationIgnored var controllerState = ControllerState()
     /// Status of the helper route (attached / ready / durable revision / errors).
     var controllerStatus: String = "no preview controller attached"
+    /// Project-index completion vocabulary (labels/citations/commands) bound to
+    /// the editor revision it was fetched for (Completion.swift).
+    var completionMetadata: Completion.Metadata?
+    @ObservationIgnored let completionFetcher = ProjectIndexCompletionFetcher()
     @ObservationIgnored private var nextRequestID = 1
     /// Text each document had when the current `result` was produced, so stale
     /// byte offsets can be rebased (or refused) after edits.
