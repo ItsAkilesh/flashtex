@@ -396,6 +396,10 @@ extension EditorDiagnostics {
         private(set) var entries: [String: [Explanation]] = [:]
         private var order: [String] = []
         let maxResults: Int
+        /// Keyed by (diagnostic, source sha) across results (ExplanationMemo.swift):
+        /// outlives the per-result entries so an unchanged diagnostic is never
+        /// fetched twice.
+        private(set) var memo = ExplanationMemo()
 
         init(maxResults: Int = ExplanationLimits.maxCachedResults) { self.maxResults = maxResults }
 
@@ -407,6 +411,25 @@ extension EditorDiagnostics {
                 }
             }
             entries[resultID] = explanations
+        }
+
+        /// `store` plus memoizing each explanation under its diagnostic's
+        /// (diagnostic, source sha) key so a later result can reuse it.
+        mutating func store(_ explanations: [Explanation], for resultID: String,
+                            result: RuntimeV1.CompileResult, documents: [RuntimeV1.Document]) {
+            store(explanations, for: resultID)
+            memo.remember(explanations, for: result, documents: documents)
+        }
+
+        /// Fills `resultID` from the memo when every diagnostic of `result` was
+        /// already explained for exactly these document texts; true when it
+        /// did (no helper request is needed), false when a fetch is required.
+        /// A result already stored is left alone (true).
+        mutating func reuse(for resultID: String, result: RuntimeV1.CompileResult, documents: [RuntimeV1.Document]) -> Bool {
+            if entries[resultID] != nil { return true }
+            guard let list = memo.recall(for: result, documents: documents) else { return false }
+            store(list, for: resultID)
+            return true
         }
 
         subscript(resultID: String?) -> [Explanation]? {
