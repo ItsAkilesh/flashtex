@@ -32,3 +32,8 @@ No passing capture or performance comparison is inferred.
 No remaining concrete review blocker was found in the bounded snapshot repair.
 Validation here consisted of exact-source review, sidecar hash verification and
 git diff --check; all original failed-run limitations remain explicit.
+
+Followup e2072fe3 was also reviewed read-only: initial status now explicitly says
+captured:false/no snapshot, while successful pread sets captured:true. This resolves
+the absent-versus-empty caveat above without changing snapshot bounds or parsing.
+No remaining concrete review blocker; no new workload was run by this reviewer.
