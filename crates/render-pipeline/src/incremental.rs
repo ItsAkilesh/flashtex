@@ -63,10 +63,18 @@ pub struct AssembledBlock {
     pub unmapped: Vec<(String, u8, char)>,
 }
 
+/// Adapter output for one compiler block: its items with source offsets
+/// as of the request that built it.
+pub struct AdaptedBlock {
+    pub items: Vec<Item>,
+    pub base: usize,
+}
+
 #[derive(Default)]
 pub struct RenderCache {
     blocks: RefCell<HashMap<u64, Rc<CachedBlock>>>,
     assembled: RefCell<HashMap<u64, Rc<AssembledBlock>>>,
+    adapted: RefCell<HashMap<u64, Rc<AdaptedBlock>>>,
     hits: RefCell<u64>,
     misses: RefCell<u64>,
 }
@@ -93,6 +101,18 @@ impl RenderCache {
             self.assembled.borrow_mut().clear();
         }
         b.insert(key, Rc::new(block));
+    }
+
+    pub fn adapted(&self, key: u64) -> Option<Rc<AdaptedBlock>> {
+        self.adapted.borrow().get(&key).cloned()
+    }
+
+    pub fn insert_adapted(&self, key: u64, block: AdaptedBlock) {
+        let mut a = self.adapted.borrow_mut();
+        if a.len() >= MAX_BLOCKS {
+            a.clear();
+        }
+        a.insert(key, Rc::new(block));
     }
 
     pub fn assembled(&self, key: u64) -> Option<Rc<AssembledBlock>> {
@@ -360,4 +380,50 @@ pub fn place_item(item: &crate::display::Item, dy: crate::display::Tick, path: &
             Item::Rule(rule)
         }
     }
+}
+
+fn shift_math(list: &mut MathList, delta: isize) {
+    for a in &mut list.atoms {
+        shift_span(&mut a.span, delta);
+        match &mut a.nucleus {
+            Nucleus::Symbol(_) => {}
+            Nucleus::Fraction { numerator, denominator } => {
+                shift_math(numerator, delta);
+                shift_math(denominator, delta);
+            }
+            Nucleus::Radical(r) => shift_math(r, delta),
+        }
+        if let Some(s) = &mut a.superscript {
+            shift_math(s, delta);
+        }
+        if let Some(s) = &mut a.subscript {
+            shift_math(s, delta);
+        }
+    }
+}
+
+/// Clones adapted items with every source offset moved by `delta`.
+pub fn relocate_items(items: &[Item], delta: isize) -> Vec<Item> {
+    let mut out = items.to_vec();
+    if delta == 0 {
+        return out;
+    }
+    for it in &mut out {
+        match it {
+            Item::Word(w) => {
+                for seg in &mut w.segments {
+                    for c in &mut seg.chars {
+                        c.start = shift(c.start, delta);
+                        c.end = shift(c.end, delta);
+                    }
+                }
+            }
+            Item::Math { list, span } => {
+                shift_span(span, delta);
+                shift_math(list, delta);
+            }
+            _ => {}
+        }
+    }
+    out
 }

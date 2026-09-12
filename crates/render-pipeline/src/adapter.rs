@@ -171,6 +171,20 @@ impl Labels {
 /// Builds the block model from the compiler's parse result. `texts` is
 /// indexed by `DocumentId`; `entry` is the root document's index.
 pub fn adapt(texts: &[&str], entry: usize, parsed: &Parsed, options: &RenderOptions, labels: &Labels) -> Doc {
+    adapt_cached(texts, entry, parsed, options, labels, None)
+}
+
+/// [`adapt`] with the cross-request cache: a compiler block whose inlines,
+/// source bytes, enclosing style and label table match an earlier request
+/// reuses its items (offsets relocated).
+pub fn adapt_cached(
+    texts: &[&str],
+    entry: usize,
+    parsed: &Parsed,
+    options: &RenderOptions,
+    labels: &Labels,
+    cache: Option<&crate::incremental::RenderCache>,
+) -> Doc {
     let source = texts.get(entry).copied().unwrap_or("");
     let explicit_class = class_options(source);
     let class_options = explicit_class.clone().unwrap_or_else(|| options.default_class_options.clone());
@@ -197,6 +211,20 @@ pub fn adapt(texts: &[&str], entry: usize, parsed: &Parsed, options: &RenderOpti
     let style = Stylesheet::from_document(&class_options, &parsed.packages, geometry, parindent);
     let secnumdepth = counter(source, "secnumdepth").unwrap_or(options.default_secnumdepth);
     let styles: Vec<Styles> = texts.iter().map(|t| Styles::new(style_intervals(t))).collect();
+    let labels_fp = {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        for (k, v) in &labels.values {
+            k.hash(&mut h);
+            v.hash(&mut h);
+        }
+        for (k, v) in &labels.pages {
+            k.hash(&mut h);
+            v.hash(&mut h);
+        }
+        h.finish()
+    };
+    let items_for = |inlines: &[Inline]| -> Vec<Item> { items_cached(texts, inlines, &styles, labels, labels_fp, cache) };
     let mut blocks = Vec::new();
     let mut after_heading = false;
     for unit in split_at_page_breaks(texts, parsed) {
@@ -223,7 +251,7 @@ pub fn adapt(texts: &[&str], entry: usize, parsed: &Parsed, options: &RenderOpti
                     push_segment(&mut items, number.to_string(), chars, TextStyle::default());
                     items.push(Item::Quad { em: 1.0 });
                 }
-                items.extend(items_from_inlines(texts, content, &styles, labels));
+                items.extend(items_for(content));
                 blocks.push(Block::Heading {
                     level,
                     items,
@@ -232,7 +260,7 @@ pub fn adapt(texts: &[&str], entry: usize, parsed: &Parsed, options: &RenderOpti
                 after_heading = true;
             }
             UnitKind::Paragraph { inlines, caption } => {
-                let items = items_from_inlines(texts, inlines, &styles, labels);
+                let items = items_for(inlines);
                 let mut parts = Vec::new();
                 let mut current = Vec::new();
                 for item in items {
@@ -765,6 +793,90 @@ fn accent(mark: char, base: char) -> Option<char> {
         }
     }
     None
+}
+
+/// [`items_from_inlines`] through the cross-request cache. The key covers
+/// the inlines (kinds, texts, relative spans, label/reference keys), the
+/// source bytes they sit in (gaps decide spaces, groups decide styles and
+/// italic corrections), the style in force at the start, and the label
+/// table; the value is relocated by the block's byte offset.
+fn items_cached(
+    texts: &[&str],
+    inlines: &[Inline],
+    styles: &[Styles],
+    labels: &Labels,
+    labels_fp: u64,
+    cache: Option<&crate::incremental::RenderCache>,
+) -> Vec<Item> {
+    let Some(cache) = cache else {
+        return items_from_inlines(texts, inlines, styles, labels);
+    };
+    let Some(first) = inlines.first().map(inline_span) else {
+        return items_from_inlines(texts, inlines, styles, labels);
+    };
+    let document = first.document;
+    let mut start = first.start;
+    let mut end = first.end;
+    for i in inlines {
+        let s = inline_span(i);
+        if s.document != document {
+            return items_from_inlines(texts, inlines, styles, labels);
+        }
+        start = start.min(s.start);
+        end = end.max(s.end);
+    }
+    let Some(src) = texts.get(document.0) else {
+        return items_from_inlines(texts, inlines, styles, labels);
+    };
+    let slice_end = (end + 2).min(src.len());
+    let Some(slice) = src.get(start..slice_end) else {
+        return items_from_inlines(texts, inlines, styles, labels);
+    };
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    b'A'.hash(&mut h);
+    document.0.hash(&mut h);
+    slice.hash(&mut h);
+    labels_fp.hash(&mut h);
+    let no_styles = Styles::default();
+    let st = styles.get(document.0).unwrap_or(&no_styles);
+    let at = st.at(start);
+    at.bold.hash(&mut h);
+    at.italic.hash(&mut h);
+    for i in inlines {
+        let s = inline_span(i);
+        (s.start.wrapping_sub(start), s.end.wrapping_sub(start)).hash(&mut h);
+        match i {
+            Inline::Text { text, .. } => {
+                0u8.hash(&mut h);
+                text.hash(&mut h);
+            }
+            Inline::LineBreak { .. } => 1u8.hash(&mut h),
+            Inline::Math { list, display, number, .. } => {
+                2u8.hash(&mut h);
+                display.hash(&mut h);
+                number.hash(&mut h);
+                crate::incremental::hash_math(list, &mut h);
+            }
+            Inline::Label { key, value, .. } => {
+                3u8.hash(&mut h);
+                key.hash(&mut h);
+                value.hash(&mut h);
+            }
+            Inline::Reference { key, page, .. } => {
+                4u8.hash(&mut h);
+                key.hash(&mut h);
+                page.hash(&mut h);
+            }
+        }
+    }
+    let key = h.finish();
+    if let Some(a) = cache.adapted(key) {
+        return crate::incremental::relocate_items(&a.items, start as isize - a.base as isize);
+    }
+    let items = items_from_inlines(texts, inlines, styles, labels);
+    cache.insert_adapted(key, crate::incremental::AdaptedBlock { items: items.clone(), base: start });
+    items
 }
 
 /// Converts the compiler inlines into words, spaces, math and line breaks.
