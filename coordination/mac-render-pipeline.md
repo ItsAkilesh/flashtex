@@ -9,8 +9,10 @@ Worktree: `/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a1798a96df2c
 State: geometry lane done for every fixture the compiler can parse; incremental reuse
 shipped (byte-identical); math roman family on optical faces with resource-profile provenance;
 every pushed SHA is a tested checkpoint (`cargo test --release`: 43 passed + 1 ignored at
-0b09be5). Session was cut by a Claude Max 429 at ~11:2xZ (reset 13:20Z, no purchase); the WIP
-(assembled-items cache) was verified and committed on resume.
+7ca34cec; metrics_provenance 5 + lib 21 + cli_e2e 3 focused at 421a2049 — full run deferred
+while the machine's 1-min load is 25–120). Session was cut by a Claude Max 429 at ~11:2xZ
+(reset 13:20Z, no purchase); the WIP (assembled-items cache, adapter cache) was verified and
+committed on resume.
 Owned paths: `crates/render-pipeline/**` (this lane), plus `docs/proposals/rendering-abi.md`,
 `coordination/mac-render-pipeline.md`, `coordination/agents/mac-render-pipeline.json`
 Rules in force: no purchases; crates/font-engine, crates/paragraph-layout, crates/math-layout
@@ -51,6 +53,19 @@ Main integrated through: merged origin/main 60c40c1 (d556519); compiler vendored
   default search dir. For 10/11 pt documents and headings the bundle should also carry the
   non-pinned TFMs (ec-lmr5..17, ec-lmbx5..12, ec-lmri7..12, ec-lmbxi10, rm-lmr5..10) or the
   compile reports `tfm_missing` (GH34's ec-lmr10 case).
+- Per-block adapter cache (7ca34cec): items keyed by inline kinds/texts/relative spans +
+  source slice + style state + label table, relocated on hit. 27 pages in-process: adapt
+  9.1 -> 6.1 ms, stage sum 38.2 -> 32.6 ms; worker over the protocol median 39.7 ms wall /
+  40.4 ms CPU per edit at load 14.8 (fresh process 86.4 ms). Target "well under 30" NOT met.
+- GH36 producer discovery (421a2049, adapts main 6472a5d's reviewable
+  `producer-discovery.patch`): `fonts::Discovery` (env overrides + exe dir) with pure
+  `font_dirs()` / `tfm_dirs_for()`; order = `FLASHTEX_FONT_DIRS`/`FLASHTEX_TFM_DIRS`/
+  `FLASHTEX_LM_DIR`, then `<exe>/../Resources/texmf` and `<exe>/texmf`
+  (`fonts/opentype/public/{lm,lm-math}`, `fonts/tfm/public/lm`,
+  `doc/fonts/lm/GUST-FONT-LICENSE.TXT`), then flat `Fonts`, then host TeX; nothing written to
+  the environment. Tests: staged bundle discovered without host dirs and compiles clean;
+  overrides precede the bundle; missing/mismatched `ec-lmr12.tfm` -> blocking
+  `required_metrics_unavailable`, never silent.
 
 ## Tests (exact evidence)
 `cd crates/render-pipeline && cargo test --release`: 43 passed (unit 21; cli_e2e 3; golden v1 3;
@@ -65,15 +80,16 @@ stages -- file.tex 2`.
 - 13/14 need compiler math parser support for `\left`/`\right` and Greek control words.
 - Lists (11), `ǅ` (10), extensible delimiter assemblies (no OTF mapping → `math_glyph_unmapped`),
   `\emph{\textbf{x}} y` outer-group italic correction.
-- 27 pages ≈ 38 ms in-process / 45 ms worker CPU per edit (a8e39c1; target "well under 30" not
-  yet met: output construction ≈ 20 ms, adapter 9 ms); 107 pages exceed the 16 MiB v1 reply.
+- 27 pages ≈ 32.6 ms in-process / 40 ms worker CPU per edit (7ca34cec; target "well under 30"
+  not met: parse+typeset 8.5 ms fixed, reply construction assemble+v1+JSON 18 ms for a 4.3 MB
+  reply the protocol requires in full); 107 pages exceed the 16 MiB v1 reply.
 - Provenance pins exist only for the 12 pt set; other sizes' TFMs warn (`tfm_missing`).
 
 ## Next steps (in order)
-1. Per-block adapter cache (script drafted at scratchpad/rp/edit_adaptcache.py, not applied):
-   items keyed by inline kinds/texts/relative spans + source slice + style state + label table,
-   relocated on hit; then measure on a quiet machine. Remaining floor after that is output
-   construction (v1 + JSON ≈ 12 ms, assemble/place ≈ 7 ms at 27 pages).
+1. Reply-side lever for the 30 ms target: the remaining 18 ms at 27 pages is building and
+   serialising the full 4.3 MB reply per edit; propose page-scoped / delta replies to
+   mac-preview-v2 on issue #2 (protocol change, not a cache), or accept the measured floor.
+   Full `cargo test --release` re-run when 1-min load < 15 (record `uptime`).
 2. Extensible delimiter/radical assemblies → LM Math glyph assemblies (math-layout API ask).
 3. When the compiler adds `\left`/`\right`/Greek, re-run 13/14 and update the evidence table.
 4. Keep `docs/oracle-evidence.md` and README in step; un-vendor siblings as they merge.
@@ -84,7 +100,9 @@ compiler main 745f327 (crates/compiler 75c8018), font-engine f418238, paragraph-
 60c40c1 (79bdada), project-files main 60c40c1 (d92db37).
 
 ## Running commands / messages
-No background jobs. Coordinator items answered on issue #2: geometry report (9bb7b27),
+No background jobs (the quiet-machine measurement finished; numbers in docs/oracle-evidence.md).
+Latest pushed: 7ca34cec (adapter cache), 421a2049 (GH36 producer discovery) — mac-packaging-tfm
+builds `flashtex-render` from this tip for the app-only acceptance. Coordinator items answered on issue #2: geometry report (9bb7b27),
 display-list-v2 ACK + tfm_missing (4888a67), font-resources adoption + raw digests + blocking
 required metrics (919ad8b), incremental reuse (a8e39c1). Commander's rendering-core ef350d2
 check of 02-wrapping-paragraph (+0.0054 bp = pdfTeX TJ/Tf rounding, no layout displacement)
@@ -92,4 +110,4 @@ is recorded in docs/oracle-evidence.md.
 
 Attach to the Mac app: `FLASHTEX_COMPILER=<repo>/crates/render-pipeline/target/release/flashtex-render`.
 Resource state: shared 20x Max quota on mac-m1max-a; usage not observable from a subagent.
-Updated: 2026-09-12T13:40:00Z
+Updated: 2026-09-12T13:44:16Z

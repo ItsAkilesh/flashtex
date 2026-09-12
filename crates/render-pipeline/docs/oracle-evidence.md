@@ -213,10 +213,44 @@ Stage split at 27 pages after the change: parse 3.4 ms, adapt 9.1, typeset
 (shape + break + pages, all blocks cached) 5.4 (was 21), assemble v2 8.6
 (was 13), v1 4.8, JSON 6.9. What remains is mostly output construction
 for a 4.3 MB reply (assemble + v1 + JSON ≈ 20 ms) and the adapter's
-per-character source records (9 ms); the target of "well under 30 ms" at
-27 pages is not met yet — the next levers are caching assembled display
-items per block (needs tick-exact relocation) and a per-block adapter
-cache keyed by the compiler's block dependencies.
+per-character source records (9 ms).
+
+### The two further levers (`0b09be57` assembled-items cache, `7ca34cec` adapter cache)
+
+* Display items are built per block in line-local coordinates and placed
+  by integer tick moves (`incremental::place_item`), the assembled lines
+  cached by block key; every y tick is `baseline_tick + local_tick`, so a
+  block placed anywhere yields identical ticks.
+* The adapter's items for a compiler block are cached keyed by the inlines
+  (kinds, texts, relative spans, label/reference keys), the source bytes
+  they sit in, the style in force at the block start and the label table;
+  a hit clones the items with every source record and math-atom span
+  relocated.
+
+Both keep the byte-identical gate (200 edits × 27 pages, 30 edits × 107
+pages). Measured at 1-min load 14.8 (`uptime` recorded by
+`scratchpad/rp/measure_quiet.sh`; still not a quiet machine — 12 lanes
+were compiling), 27 pages, in-process stage timings (`examples/stages`):
+
+| stage | `a8e39c1` | `0b09be57` | **`7ca34cec`** |
+|---|---|---|---|
+| parse | 3.4 ms | 3.4 | 3.4 |
+| adapt | 9.1 | 9.1 | **6.1** |
+| typeset (cached blocks) | 5.4 | 5.4 | 5.1 |
+| assemble v2 | 8.6 | 7.1 | 6.6 |
+| v1 fallback | 4.8 | 4.8 | 4.7 |
+| JSON (4.27 MB) | 6.9 | 6.9 | 6.7 |
+| **sum** | 38.2 | 36.7 | **32.6** |
+
+Persistent worker over the protocol (one-word edits, 30 per run, wall
+under the same load): 27 pages median **39.7 ms** (min 38.9, max 44.3;
+CPU 40.4 ms per request incl. the first), fresh process 86.4 ms; 3 pages
+median 4.3 ms (CPU 5.2), fresh 33.3 ms. The "well under 30 ms" target at
+27 pages is **not met**: ~7 ms of the in-process 32.6 ms is fixed
+compiler parse + typeset, and 18 ms is producing and serialising a 4.3 MB
+reply (assemble + v1 + JSON) that the protocol requires in full for every
+edit. The next lever is on the reply side (page-scoped or delta replies),
+which is a protocol change to agree with mac-preview-v2, not a cache.
 
 Independent check (Commander, rendering-core `ef350d2`, issue #2 11:00Z):
 02-wrapping-paragraph rendered from `65dbe7d` with rooted LM 2.004 assets
