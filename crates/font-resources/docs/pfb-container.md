@@ -108,3 +108,36 @@ finds822glyph records and882subroutine slots; all decrypt within bounds. A yield
 8bytes SHA13883a7a5915c1d3874a112f50a9e269e7663daf1587f4edbd504e381e16cdec;
 .notdef yields5bytes SHAeaa5a748d6652e8857daddbbb79acaa6359e20d1eb90a1b1f0c843b3538a00d8.
 These are byte-stage observations, not interpreted outline/shape/render results.
+
+## Opt-in Type1 charstring geometry subset
+
+`type1_outline::interpret(&Records, glyph_name)` interprets only hsbw/sbw,
+rmoveto/hmoveto/vmoveto, rlineto/hlineto/vlineto, rrcurveto/hvcurveto/vhcurveto,
+closepath, bounded callsubr/return and endchar. Primary contract: Adobe Type1
+section6.4 path/width operators and section8 subroutines. Numbers retain Type1's
+signed32bit integer encoding (including255); Type2 fixedpoint255 semantics are not
+reused. Existing exact Coordinate/CubicPoint/CubicCommand types are reused for
+checked accumulated geometry. closepath deliberately leaves the current point
+unchanged, as required for Type1, and does not behave like PostScript closepath.
+
+Width is established exactly once, including through a subroutine; argument stack
+and call chain remain shared. Unknown opcodes, hints, div/arithmetic, seac, flex,
+OtherSubrs/pop/setcurrentpoint all return typed unsupported without being ignored.
+The strict subset requires explicitly closed contours; implicit closure cases
+return Path rather than guessing fill/stroke semantics. Path commands are raw
+character-space data: neither FontMatrix nor PaintType is inferred or applied.
+
+Bounds:24operand values,16nested subroutines with cycle refusal,65536byte/operator
+steps,16384output commands and16MiB cumulative decoded input per glyph. Record
+allocation remains capped by the extractor. Each emitted command carries its
+original subroutine-index chain and byte offset; the result retains original glyph
+name, decrypted charstring digest, full font/license identity and exact width/
+sidebearing. No platform fallback, PostScript execution or renderer activation.
+
+Actual pinned lmr10 inventory is in pfb-type1-outline-inventory.json:6accepted
+(5nonmarking and fraction.alt with10commands);353stop at hstem,4at vstem,4at hstem3,
+455at div. Categories identify the FIRST unsupported opcode, not all features a
+font needs. Synthetic tests verify exact cumulative cubic points, closepath/current
+point behavior, subroutine width/provenance, cycles, operand/output/step caps and
+unsupported operators. Existing broad `Resource::require_outlines` still refuses:
+this opt-in subset does not establish safe whole-font rendering or visual parity.

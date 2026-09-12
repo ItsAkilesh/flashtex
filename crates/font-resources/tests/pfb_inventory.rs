@@ -78,6 +78,32 @@ fn pinned_official_type1_container_only() {
             records.decrypted_subr(index).unwrap();
         }
     }
+    let mut outcomes = std::collections::BTreeMap::<String, usize>::new();
+    let mut accepted = Vec::new();
+    for name in records.glyphs().keys() {
+        match flashtex_font_resources::type1_outline::interpret(&records, name) {
+            Ok(outline) => {
+                *outcomes.entry("accepted".into()).or_default() += 1;
+                accepted.push((name.clone(), outline.commands.len()));
+                assert_eq!(outline.identity, *resource.identity());
+                assert_eq!(outline.commands.len(), outline.sources.len());
+            }
+            Err(error) => {
+                *outcomes.entry(format!("{error:?}")).or_default() += 1;
+            }
+        }
+    }
+    let expected: serde_json::Value =
+        serde_json::from_str(include_str!("../fixtures/pfb-type1-outline-inventory.json")).unwrap();
+    assert_eq!(
+        serde_json::to_value(&outcomes).unwrap(),
+        expected["outcomes"]
+    );
+    assert_eq!(
+        serde_json::to_value(&accepted).unwrap(),
+        expected["accepted"]
+    );
+    println!("Type1 inventory {:?}; accepted {:?}", outcomes, accepted);
     assert_eq!(
         resource.require_outlines(),
         Err(Error::EncryptedOutlinesUnsupported)
