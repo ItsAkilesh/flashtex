@@ -36,6 +36,18 @@ pub enum Inline {
     Math {
         list: MathList,
         display: bool,
+        number: Option<String>,
+        number_span: Option<Span>,
+        span: Span,
+    },
+    Label {
+        key: String,
+        value: String,
+        span: Span,
+    },
+    Reference {
+        key: String,
+        page: bool,
         span: Span,
     },
 }
@@ -43,7 +55,15 @@ pub enum Inline {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Block {
     Paragraph(Vec<Inline>),
-    Heading { level: u8, content: Vec<Inline> },
+    Heading {
+        level: u8,
+        number: String,
+        number_span: Span,
+        content: Vec<Inline>,
+    },
+    FigureCaption {
+        content: Vec<Inline>,
+    },
 }
 
 /// A macro definition actually consulted while producing one block.
@@ -68,6 +88,8 @@ pub struct Parsed {
     pub preamble_source: String,
     /// False for recovery/unsupported cases whose state effects are not proven.
     pub incremental_safe: bool,
+    /// True when counters or the label table make layout document-global.
+    pub document_global_state: bool,
 }
 
 const BUILT_INS: &[&str] = &[
@@ -85,6 +107,12 @@ const BUILT_INS: &[&str] = &[
     "renewcommand",
     "input",
     "include",
+    "label",
+    "ref",
+    "pageref",
+    "caption",
+    "item",
+    "includegraphics",
 ];
 
 /// Project-relative paths only: no absolute paths or parent traversal.
@@ -156,6 +184,14 @@ pub fn parse_project(documents: &[SourceDocument<'_>], entry_path: &str) -> Pars
             .map(|(index, document)| (document.path, index))
             .collect(),
         include_stack: vec![entry],
+        section_counter: 0,
+        subsection_counter: 0,
+        equation_counter: 0,
+        figure_counter: 0,
+        current_counter: None,
+        seen_labels: HashMap::new(),
+        list_stack: Vec::new(),
+        document_global_state: false,
     };
     let blocks = p.document();
 
@@ -183,6 +219,7 @@ pub fn parse_project(documents: &[SourceDocument<'_>], entry_path: &str) -> Pars
         block_dependencies: p.block_dependencies,
         preamble_source: preamble_source(entry_document.text, has_document),
         incremental_safe,
+        document_global_state: p.document_global_state,
     }
 }
 
@@ -204,6 +241,14 @@ struct P<'a> {
     documents: &'a [SourceDocument<'a>],
     document_by_path: HashMap<&'a str, usize>,
     include_stack: Vec<usize>,
+    section_counter: u32,
+    subsection_counter: u32,
+    equation_counter: u32,
+    figure_counter: u32,
+    current_counter: Option<String>,
+    seen_labels: HashMap<String, Span>,
+    list_stack: Vec<(String, u32)>,
+    document_global_state: bool,
 }
 
 impl P<'_> {
@@ -331,6 +376,15 @@ impl P<'_> {
                 let level = if name == "section" { 1 } else { 2 };
                 let (tokens, _) = self.required_group(name, span);
                 self.flush_paragraph(blocks, para);
+                let number = if level == 1 {
+                    self.section_counter += 1;
+                    self.subsection_counter = 0;
+                    self.section_counter.to_string()
+                } else {
+                    self.subsection_counter += 1;
+                    format!("{}.{}", self.section_counter, self.subsection_counter)
+                };
+                self.current_counter = Some(number.clone());
                 let content = self.inlines_from_tokens(tokens);
                 if content.is_empty() {
                     // A missing/empty heading is already diagnosed where
@@ -338,9 +392,99 @@ impl P<'_> {
                     // empty block: incremental block spans require real source.
                     self.current_dependencies.clear();
                 } else {
-                    blocks.push(Block::Heading { level, content });
+                    blocks.push(Block::Heading {
+                        level,
+                        number,
+                        number_span: span,
+                        content,
+                    });
                     self.finish_block_dependencies();
                 }
+            }
+            "label" => {
+                let (tokens, argument_span) = self.required_group(name, span);
+                let key = token_text(&tokens).trim().to_string();
+                self.document_global_state = true;
+                if key.is_empty() {
+                    self.diags.push(Diagnostic::warning(
+                        "\\label was given an empty key",
+                        Some(span.merge(argument_span)),
+                        Some("ignored the empty label".into()),
+                    ));
+                } else {
+                    if self.seen_labels.insert(key.clone(), span).is_some() {
+                        self.diags.push(Diagnostic::warning(
+                            format!("duplicate \\label{{{key}}}; the second definition wins"),
+                            Some(span.merge(argument_span)),
+                            Some("replaced the earlier label definition".into()),
+                        ));
+                    }
+                    para.push(Inline::Label {
+                        key,
+                        value: self.current_counter.clone().unwrap_or_default(),
+                        span,
+                    });
+                }
+            }
+            "ref" | "pageref" => {
+                let (tokens, argument_span) = self.required_group(name, span);
+                let key = token_text(&tokens).trim().to_string();
+                self.document_global_state = true;
+                para.push(Inline::Reference {
+                    key,
+                    page: name == "pageref",
+                    span: span.merge(argument_span),
+                });
+            }
+            "caption" => {
+                let (tokens, _) = self.required_group(name, span);
+                if self.env_stack.last().map(|(name, _)| name.as_str()) != Some("figure") {
+                    self.diags.push(Diagnostic::error(
+                        "\\caption is only supported inside a figure environment",
+                        Some(span),
+                        Some("typeset the caption text as an ordinary paragraph".into()),
+                    ));
+                    para.extend(self.inlines_from_tokens(tokens));
+                } else {
+                    self.flush_paragraph(blocks, para);
+                    self.figure_counter += 1;
+                    self.current_counter = Some(self.figure_counter.to_string());
+                    let mut content = vec![Inline::Text {
+                        text: format!("Figure {}:", self.figure_counter),
+                        span,
+                    }];
+                    content.extend(self.inlines_from_tokens(tokens));
+                    blocks.push(Block::FigureCaption { content });
+                    self.finish_block_dependencies();
+                }
+            }
+            "item" => {
+                self.flush_paragraph(blocks, para);
+                match self.list_stack.last_mut() {
+                    Some((kind, count)) => {
+                        *count += 1;
+                        let marker = if kind == "enumerate" {
+                            format!("{}.", count)
+                        } else {
+                            "•".to_string()
+                        };
+                        para.push(Inline::Text { text: marker, span });
+                    }
+                    None => self.diags.push(Diagnostic::error(
+                        "\\item is only supported inside itemize or enumerate",
+                        Some(span),
+                        Some("ignored the item marker and continued".into()),
+                    )),
+                }
+            }
+            "includegraphics" => {
+                let _ = self.optional_bracket_argument();
+                let _ = self.required_group(name, span);
+                self.diags.push(Diagnostic::warning(
+                    "\\includegraphics is unsupported; image loading is not implemented",
+                    Some(span),
+                    Some("omitted the image and continued".into()),
+                ));
             }
             "textbf" | "emph" | "textit" => {
                 let (tokens, _) = self.required_group(name, span);
@@ -681,8 +825,17 @@ impl P<'_> {
         let (tokens, argument_span) = self.required_group(kind, span);
         let environment = token_text(&tokens).trim().to_string();
         if kind == "begin" {
+            if environment == "equation" && self.in_body {
+                self.equation_environment(span, blocks, para);
+                return;
+            }
             if environment == "document" && self.has_document {
                 self.in_body = true;
+            } else if environment == "figure" && self.in_body {
+                self.flush_paragraph(blocks, para);
+            } else if matches!(environment.as_str(), "itemize" | "enumerate") && self.in_body {
+                self.flush_paragraph(blocks, para);
+                self.list_stack.push((environment.clone(), 0));
             } else if self.in_body {
                 self.diags.push(Diagnostic::warning(
                     format!(
@@ -714,11 +867,87 @@ impl P<'_> {
                 Some("ignored the stray \\end".into()),
             )),
         }
+        if matches!(environment.as_str(), "itemize" | "enumerate") {
+            self.flush_paragraph(blocks, para);
+            self.list_stack.pop();
+        } else if environment == "figure" {
+            self.flush_paragraph(blocks, para);
+        }
         if environment == "document" && self.has_document {
             self.flush_paragraph(blocks, para);
             self.in_body = false;
             self.document_ended = true;
         }
+    }
+
+    fn equation_environment(
+        &mut self,
+        open: Span,
+        blocks: &mut Vec<Block>,
+        para: &mut Vec<Inline>,
+    ) {
+        self.flush_paragraph(blocks, para);
+        self.equation_counter += 1;
+        let number = self.equation_counter.to_string();
+        self.current_counter = Some(number.clone());
+        let mut raw = Vec::new();
+        let mut labels = Vec::new();
+        let mut end = open.end;
+        let mut found_end = false;
+
+        while self.i < self.t.len() {
+            if self.expand_current_macro() {
+                continue;
+            }
+            if let Some((after, end_span)) = environment_end_at(&self.t, self.i, "equation") {
+                self.i = after;
+                end = end_span.end;
+                found_end = true;
+                break;
+            }
+            if matches!(&self.t[self.i].token.kind, TokenKind::Command(name) if name == "label") {
+                let label_span = self.t[self.i].token.span;
+                self.i += 1;
+                let (tokens, argument_span) = self.required_group("label", label_span);
+                let key = token_text(&tokens).trim().to_string();
+                self.document_global_state = true;
+                if !key.is_empty() {
+                    if self.seen_labels.insert(key.clone(), label_span).is_some() {
+                        self.diags.push(Diagnostic::warning(
+                            format!("duplicate \\label{{{key}}}; the second definition wins"),
+                            Some(label_span.merge(argument_span)),
+                            Some("replaced the earlier label definition".into()),
+                        ));
+                    }
+                    labels.push(Inline::Label {
+                        key,
+                        value: number.clone(),
+                        span: label_span,
+                    });
+                }
+                continue;
+            }
+            end = self.t[self.i].token.span.end;
+            raw.push(self.t[self.i].token.clone());
+            self.i += 1;
+        }
+        if !found_end {
+            self.diags.push(Diagnostic::error(
+                "unterminated environment 'equation' — no matching \\end",
+                Some(open),
+                Some("closed the equation at end of input".into()),
+            ));
+        }
+        let list = math::parse_tokens(&raw, &mut self.diags);
+        para.push(Inline::Math {
+            list,
+            display: true,
+            number: Some(number),
+            number_span: Some(open),
+            span: Span::in_document(open.document, open.start, end),
+        });
+        para.extend(labels);
+        self.flush_paragraph(blocks, para);
     }
 
     fn dollar_math(&mut self, open: Span, para: &mut Vec<Inline>) {
@@ -860,9 +1089,19 @@ impl P<'_> {
                 Some("closed math mode at end of input and typeset its contents".into()),
             ));
         }
+        let number = if display && found {
+            self.equation_counter += 1;
+            let number = self.equation_counter.to_string();
+            self.current_counter = Some(number.clone());
+            Some(number)
+        } else {
+            None
+        };
         para.push(Inline::Math {
             list,
             display,
+            number,
+            number_span: (display && found).then_some(open),
             span: Span::in_document(open.document, open.start, end),
         });
     }
@@ -1141,6 +1380,41 @@ fn token_text(tokens: &[InputToken]) -> String {
         }
     }
     result
+}
+
+fn environment_end_at(
+    tokens: &[InputToken],
+    index: usize,
+    expected: &str,
+) -> Option<(usize, Span)> {
+    let command = tokens.get(index)?;
+    if !matches!(&command.token.kind, TokenKind::Command(name) if name == "end") {
+        return None;
+    }
+    let mut cursor = index + 1;
+    while matches!(
+        tokens.get(cursor).map(|input| &input.token.kind),
+        Some(TokenKind::Space | TokenKind::Comment)
+    ) {
+        cursor += 1;
+    }
+    if !matches!(
+        tokens.get(cursor).map(|input| &input.token.kind),
+        Some(TokenKind::LBrace)
+    ) {
+        return None;
+    }
+    cursor += 1;
+    let name = tokens.get(cursor)?;
+    if !matches!(&name.token.kind, TokenKind::Word(name) if name == expected) {
+        return None;
+    }
+    cursor += 1;
+    let close = tokens.get(cursor)?;
+    if close.token.kind != TokenKind::RBrace {
+        return None;
+    }
+    Some((cursor + 1, command.token.span.merge(close.token.span)))
 }
 
 fn has_document_environment(tokens: &[Token]) -> bool {

@@ -23,12 +23,15 @@ final class WorkerClient {
     private let lock = NSLock()
     private let stateLock = NSLock()
     private var violated = false
+    /// Optional verbatim record of every line sent/received (see `RuntimeTranscript`).
+    let transcript: RuntimeTranscript?
 
     init(executable: URL, arguments: [String] = [], queue: DispatchQueue = .main,
-         handler: @escaping (Event) -> Void) throws {
+         transcript: RuntimeTranscript? = nil, handler: @escaping (Event) -> Void) throws {
         self.executable = executable
         self.queue = queue
         self.handler = handler
+        self.transcript = transcript
         process.executableURL = executable
         process.arguments = arguments
         process.standardInput = stdin
@@ -66,6 +69,7 @@ final class WorkerClient {
         let line = try RuntimeV1.encodeLine(RuntimeV1.compileEnvelope(id: id, request))
         lock.lock(); defer { lock.unlock() }
         try stdin.fileHandleForWriting.write(contentsOf: line)
+        transcript?.record(line)
     }
 
     func terminate() {
@@ -89,6 +93,7 @@ final class WorkerClient {
             return
         }
         for line in lines where !line.isEmpty {
+            transcript?.record(line)
             let event = Self.decode(line)
             queue.async { self.handler(event) }
         }

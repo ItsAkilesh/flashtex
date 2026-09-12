@@ -23,7 +23,7 @@ compiler failure; it cannot repair a poisoned persistence handle in place.
 This is not a cross-crate transaction. A crash between the durable edit and cache
 update is recovered by rebuilding caches, with source remaining authoritative.
 The controller does not write exported `.tex` files, invoke a provider, approve a
-capture, implement UI undo, or render PDF. Store membership is fixed for this first
+capture, implement native keyboard bindings, or render PDF. Store membership is fixed for this first
 API; callers reopen with the intended set of initialized stores to change it.
 
 `save_and_submit_ms` includes persistence/index/submission. Preview
@@ -64,3 +64,33 @@ return an explicit preview-unavailable status. Call `restart` once an original
 compiler is configured to attach it and compile the latest saved snapshot. A failed
 attachment never overwrites source. `new` is the convenience constructor for a
 known available compiler.
+
+`file_project::FileProject::open(project_root, private_ledger_root, project_id,
+entry)` imports discovered UTF-8 source into private durable stores. Existing
+ledger source always wins on reopen, including when the entry was deleted from
+disk. Bindings include canonical root and project identity, so identical project
+IDs under different roots do not share stores. `inspect` explicitly distinguishes
+matching source, changed disk content, missing files and unavailable reads; it
+never updates the source or silently treats a disk change as accepted.
+
+File discovery uses the shared project-files graph. Entry canonicalization adds a
+consumer preflight for its unchecked initial path, but is not a race-proof rooted
+IO capability. Export is explicitly disabled pending shared rooted-save issue GH18.
+Import is durable per document, not an atomic project-wide transaction. The shared
+graph's discovery IO limits and native file UI integration remain outstanding.
+
+A repeatable release-helper latency probe runs complete durable edit round trips:
+
+```sh
+python3 crates/preview-controller/examples/helper_latency.py \
+  --helper /absolute/flashtex-preview-controller \
+  --compiler /absolute/original/flashtex-compiler --edits 100
+```
+
+It uses temporary file-project storage, sequential edits to one 20-paragraph source,
+validates clean compile status and exact source revision, and records both executable
+hashes. One Linux run measured p50 3.07ms, p95 3.61ms, p99 4.09ms, max 4.22ms across
+100 edits. This is a narrow local observation, not a native responsiveness guarantee:
+it excludes UI event handling and painting, uses the temporary filesystem, and does
+not exercise complex packages or reference-PDF parity. The probe caps edits below
+ledger history capacity and never evicts history to improve the measurement.

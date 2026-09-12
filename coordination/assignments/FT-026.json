@@ -16,8 +16,9 @@
   ],
   "revision": 3,
   "schema_version": 1,
-  "state": "assigned",
+  "state": "paused_by_user",
   "task_id": "FT-026",
   "timebox_minutes": 30,
-  "updated_utc": "2026-09-12T06:14:07Z"
+  "updated_utc": "2026-09-12T06:32:12.639657+00:00",
+  "pause_reason": "Local active-agent cap reduced from7to4; preserve work, no automatic revival/replacement/remote reallocation."
 }

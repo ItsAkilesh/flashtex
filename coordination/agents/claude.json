@@ -3,10 +3,10 @@
   "allocation_id": "openai-kabir-plus-ft002",
   "assignment_acknowledgements": {
     "FT-002": {
-      "acknowledged_utc": "2026-09-12T05:15:58Z",
-      "adaptation": "Accepted FT-002 revision 3 (stage 3: dependency-aware invalidation and cached reuse) at input main 60ceb5c, allocation openai-kabir-plus-ft002-stage3. Groundwork already exists: a Session with byte-diff block reuse and ReuseStats was built on this machine during stage 2 and deliberately NOT merged, because its own equivalence test caught real drift between its private copy of the layout engine and the real one once math landed. Stage 3 makes that fix in scope: layout.rs will be refactored into a resumable cursor so there is one layout engine, then reuse drives it. Macro definitions are state, so a macro change must invalidate every dependent block - that is the dependency-aware part of this revision and goes beyond the earlier byte-diff prototype.",
-      "main_sha": "342e1e029f80e7a5b472ad202ae87d597274127b",
-      "revision": 3
+      "acknowledged_utc": "2026-09-12T06:34:14Z",
+      "adaptation": "Accepted FT-002 revision 5 at input main ac17097 under allocation openai-kabir-plus-ft002-stage5: harden incremental restart/recovery and run a pinned-corpus non-regression gate, recording supported, failed, unsupported and unverified behaviour honestly. Note that crates/compiler is now integrated on main, so this branch is finally building on integrated work. Running rules-v1 and font-hints-v1 negotiation in parallel in a separate worktree, because the layout-capabilities contract published at a949f5b is what finally allows issue #9 to be closed properly: the fraction bar can become a real rule primitive instead of a box-drawing stand-in.",
+      "main_sha": "0b7076ad9f3b8b8ac8e9e7f80960c97af2c8e7b3",
+      "revision": 5
     }
   },
   "branch": "agent/claude/compiler-foundation",
@@ -16,29 +16,29 @@
     "cursor-commit",
     "coordination"
   ],
-  "code_revision": "dfd66984201acff4e2b9de2501345a3b91ec18d5",
+  "code_revision": "0fd0b4571bebdc1ab5b613e77dbc8507f8d3a5d5",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
     "pessimistic": 0
   },
   "machine": "mac-m5pro-kabir",
-  "main_integrated_through": "5a30ec12700dee17f074459cc89ddc8de4b9153d",
-  "next_action": "Commander decision needed on expansion provenance, see below. Otherwise available for dispatch.",
+  "main_integrated_through": "3ae7d9b76e6503fcb60f33cb2258b78250baf8bc",
+  "next_action": "Close issue #9 and notify FT-009 that the producer side of migration gate 1 is done. Available for the next dispatch.",
   "reviewed_peers": {
     "origin/main": {
-      "adaptation": "Open question for the corpus owner: the included-file case expects visible_text at main.tex 49..70, the \\input invocation range. This implementation attributes included text to the INCLUDED file instead, so that expectation is now uncovered (8/9 rather than 9/9). The corpus README calls expansion provenance an open contract design decision and forbids fabricating per-glyph provenance, so I did not bend either way. My reasoning: clicking Included cafe in the preview should open parts/section.tex at those bytes, not jump to the \\input line in main.tex. If the corpus owner wants invocation-site attribution instead, say so and I will change it.",
-      "reviewed_utc": "2026-09-12T05:56:32Z",
-      "sha": "5a30ec12700dee17f074459cc89ddc8de4b9153d"
+      "adaptation": "Verified the contract trap myself rather than trusting the worker: sessions are keyed by project and path, not by capability set, so a cached result could have been returned to a request with a different set. It is bound correctly. Also confirmed rule geometry is top-left with the numerator above and denominator below, dimensions positive and within the magnitude cap, and the source range naming the generating \\\\frac command.",
+      "reviewed_utc": "2026-09-12T06:46:58Z",
+      "sha": "0b7076ad9f3b8b8ac8e9e7f80960c97af2c8e7b3"
     }
   },
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "Multi-file project support complete: \\input and \\include resolve against the supplied documents, with caller-scope semantics, cycle detection and per-file source attribution. Corpus moved from 7 to 9 cases ok. 59 tests pass. Finished the work myself after the Codex allocation hit its usage limit mid-task and left the tree not compiling.",
+  "summary": "rules-v1 and font-hints-v1 negotiation implemented, closing the compiler half of issue #9. Fraction bars are now real rule primitives when negotiated; the legacy text-bar route and its export warning are unchanged for clients that do not request the capability. 83 tests across 12 suites.",
   "tool": "Codex",
-  "updated_utc": "2026-09-12T05:56:32Z",
+  "updated_utc": "2026-09-12T06:46:58Z",
   "usage": {
-    "evidence": "cargo test 59 pass; clippy -D warnings clean; fmt clean; harness 21/21; corpus 9 ok / 5 recovered, up from 7/7; verified by hand that included items report parts/section.tex with offsets slicing that file, including multi-byte cafe. at 9..15",
-    "status": "Codex hit its ChatGPT Plus usage limit mid-task (resets 04:18 local). Remaining work completed directly without Codex."
+    "evidence": "cargo test 83 pass; clippy -D warnings clean; fmt clean; legacy harness 21/21 unchanged; corpus 9 ok unchanged; one-word edit p95 30.715 ms so no latency regression; capability cache binding verified independently by compiling the same document with rules-v1, then without on the same session, then with again, and confirming the rule primitive does not leak to the request that did not ask for it",
+    "status": "Codex used for the implementation; verification and merge done directly"
   }
 }

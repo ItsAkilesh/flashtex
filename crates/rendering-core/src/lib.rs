@@ -3,8 +3,10 @@
 //! establish font outline safety, shaping correctness, visual parity or permission
 //! to paint. The caller must negotiate/integrate actual consumers separately.
 
+pub mod batch;
 pub mod cache;
 pub mod font_adapter;
+pub mod glyph_cache;
 pub mod hit_test;
 pub mod outlines;
 pub mod transform;
@@ -753,3 +755,11 @@ pub struct ResourceEvidence {
     /// Always false: renderer acceptance/outline painting is a separate gate.
     pub paintable: bool,
 }
+
+pub mod tex_adapter;
+
+pub mod graph_cache;
+
+pub mod cubic;
+
+pub mod mixed;
