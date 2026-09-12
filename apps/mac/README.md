@@ -659,6 +659,7 @@ explain that nothing is loaded.
 
 | Shortcut | Action |
 |---|---|
+| ⌘, | Settings window (editor preferences: font, wrapping, tab width, indent, appearance, auto-close braces, completion list; Tab walks the controls top to bottom) |
 | ⌘O | Open LaTeX file… (becomes the `main.tex` entry document; compiles if a worker is attached) |
 | ⌘S / ⌘⇧S | Save / Save As… (UTF-8; header shows "— edited" when dirty) |
 | Edit > Restore Discarded Buffer | Brings back the unsaved text replaced by a "Discard" decision when opening another file |
@@ -676,6 +677,9 @@ explain that nothing is loaded.
 | ⌘⇧U | Submit sample capture… (PNG/JPEG → `capture_submit` through the attached bridge) |
 | ⌘⇧G | Convert capture (`capture_convert` for the latest received capture) |
 | ⌘⇧N | Nearby Companion… (advertise, pairing code, paired devices, received captures) |
+| Edit > Durable History… | Durable History window (undo/redo on the helper's edit ledger: Refresh, Undo, Redo, Retry/Discard after an uncertain reply, retention gauge, both stacks) |
+| ⌘⇧F | Find in Project… window (case-sensitive literal search of the durable project source; Return searches or goes to the selected match, ↑/↓ move the selection, Esc closes; Plan Replacement / Apply for reviewed replacement) |
+| ⌘G | Next match (while the Find in Project window is key: selects the next match, wrapping, and goes there) |
 | ⌘Z | Undo (including an approved capture insertion) |
 | Esc / ⌃Space | Completion popup (supported commands, `\end{…}` for open environments, labels, document words) |
 | ⌘⇧D | Go to matching `\begin`/`\end` or `\label`/`\ref` |

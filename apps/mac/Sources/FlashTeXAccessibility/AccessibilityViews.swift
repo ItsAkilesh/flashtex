@@ -347,6 +347,9 @@ public struct AccessibilityHelpView: View {
         "Preview: use the Landmarks rotor to jump between pages (“Page n of m, k lines”); inside a page each line is a group (“Page n, line k: text”) and each item is static text whose value gives its size and whether it has a source; the “Go to source” action selects the source in the editor.",
         "Diagnostics: each list row is “Diagnostic n of m: Error or Warning: message”; its value is the recovery line and source bytes; rows with a source have the “Go to source” action, rows without say “No source mapping; listed only.”",
         "Capture bar: one group whose value reads the pinned insertion point and how many proposals are waiting; the review sheet approves with Return.",
+        "Settings (⌘,): a form named “Editor preferences”; each control reads its label and value (“Editor font size, 13 points”, “Tab width, 4 columns”); hints explain the wrap, appearance, brace and completion switches.",
+        "Durable History (Edit > Durable History…): the header reads the durable revision; Undo and Redo read how many steps are available; the retention gauge reads its percentage; each stack row is “undo/redo n of m: label”; empty stacks say so.",
+        "Find in Project (⌘⇧F): the literal field reads its hint (Return searches or goes to the selected match, ↑/↓ move the selection); results read “match n of m, file, line, snippet”; replacement previews read “replacement n of m … becomes …”; status lines are labelled “Search status” and “Replacement status”.",
     ]
 
     public init() {}
@@ -370,6 +373,9 @@ public struct AccessibilityHelpView: View {
             }
             Section("What VoiceOver reads") {
                 ForEach(Self.voiceOverNotes, id: \.self) { Text($0).font(.callout) }
+            }
+            Section("Panels: keyboard focus order") {
+                ForEach(PanelFocusOrder.helpLines, id: \.self) { Text($0).font(.callout) }
             }
             ForEach(Self.menus, id: \.menu) { group in
                 Section("\(group.menu) commands") {

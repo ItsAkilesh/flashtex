@@ -5,6 +5,7 @@ import Foundation
 /// lives in, and a discoverable description. The UI can render this as an
 /// "Accessibility help" list; the test target checks it against the README.
 public enum AccessibilityCommand: String, CaseIterable, Equatable {
+    case editorPreferences
     case openLaTeXFile, save, saveAs, openFixture, reloadFixture
     case attachBuiltCompiler, attachRenderPipeline, attachWorker, compile
     case exportPDF, exportPDFViaRust, exportPDFExact
@@ -14,6 +15,7 @@ public enum AccessibilityCommand: String, CaseIterable, Equatable {
     case goToMatching, nextDiagnostic, previousDiagnostic, revealCaretInPreview
     case selectPreviewItemSource
     case accessibilityHelp
+    case durableHistory, findInProject, nextSearchMatch
 
     public struct Entry: Equatable {
         public var command: AccessibilityCommand
@@ -157,6 +159,21 @@ public enum AccessibilityCommand: String, CaseIterable, Equatable {
             return Entry(command: self, title: "Select source of a preview item", shortcuts: ["Click preview text"], menu: "Preview",
                          description: "Selects the item's source in the editor; with VoiceOver, use the “Go to source” action on the item.",
                          requires: "a compile result")
+        case .editorPreferences:
+            return Entry(command: self, title: "Settings window", shortcuts: ["⌘,"], menu: "FlashTeX",
+                         description: "Opens the editor preferences (the system Settings item): font family and size, wrapping, tab width and indent style, appearance, auto-close braces, completion list, Restore Defaults; Tab walks the controls top to bottom, ⌘W closes and the editor keeps the keyboard.")
+        case .durableHistory:
+            return Entry(command: self, title: "Durable History window", shortcuts: ["Edit > Durable History…"], menu: "Edit",
+                         description: "Opens the durable undo/redo history on the helper's edit ledger: Refresh, Undo, Redo (Retry/Discard after an uncertain reply), retention gauge, then the undo and redo stacks as a list; ⌘W closes and the editor keeps the keyboard.",
+                         menuItem: "Durable History…")
+        case .findInProject:
+            return Entry(command: self, title: "Find in Project window", shortcuts: ["⌘⇧F"], menu: "Edit",
+                         description: "Opens the project search: the literal field takes the keyboard, Return searches or goes to the selected match, ↑/↓ move the selection, then Search, Go to Match, Next Match, scope, match limit, results, the replacement field, Plan Replacement and Apply; Esc closes and the editor keeps the keyboard.",
+                         menuItem: "Find in Project…")
+        case .nextSearchMatch:
+            return Entry(command: self, title: "Next match", shortcuts: ["⌘G"], menu: "Find in Project window",
+                         description: "Selects the next search match (wrapping) and goes to it in the editor; only while the Find in Project window is key.",
+                         requires: "a search with matches")
         }
     }
 
@@ -226,4 +243,92 @@ public enum FocusOrder {
     public static var helpLines: [String] {
         panes.enumerated().map { i, p in "\(i + 1). \(p.name): \(p.contents) \(p.rationale)" }
     }
+}
+
+/// Keyboard focus order inside each secondary panel window. SwiftUI's Tab
+/// cycle follows the view tree, so each control names the source text that
+/// declares it (in `sourceFile`, in this order); the test target reads the
+/// panel source and fails when a control is added, removed or reordered
+/// without updating this table, and when a control has no spoken name.
+public enum PanelFocusOrder {
+    public struct Control: Equatable {
+        /// What VoiceOver says when Tab lands on the control.
+        public var name: String
+        /// Text that declares the control in `Panel.sourceFile`, in order.
+        public var sourceMarker: String
+        /// When the control is present/enabled, or nil if always.
+        public var when: String?
+
+        public init(name: String, sourceMarker: String, when: String? = nil) {
+            self.name = name; self.sourceMarker = sourceMarker; self.when = when
+        }
+    }
+
+    public struct Panel: Equatable {
+        public var name: String
+        public var windowTitle: String
+        public var command: AccessibilityCommand
+        /// Where keyboard focus lands when the window opens.
+        public var initialFocus: String
+        /// How the window closes from the keyboard and where focus returns.
+        public var closing: String
+        public var controls: [Control]
+        /// File under `apps/mac/Sources/FlashTeXMac` that declares the controls.
+        public var sourceFile: String
+
+        public var helpLine: String {
+            "\(name) (\(command.entry.shortcuts.joined(separator: " or "))): opens with focus on \(initialFocus). Tab order: "
+                + controls.map { $0.name + ($0.when.map { " (\($0))" } ?? "") }.joined(separator: " → ") + ". \(closing)"
+        }
+    }
+
+    public static let panels: [Panel] = [
+        Panel(name: "Settings", windowTitle: "Editor Preferences", command: .editorPreferences,
+              initialFocus: "the font family pop-up",
+              closing: "⌘W closes the window; the editor text view is first responder again.",
+              controls: [
+                Control(name: "Editor font family", sourceMarker: "Picker(\"Family\""),
+                Control(name: "Editor font size (slider)", sourceMarker: "Slider(value: $prefs.fontSize"),
+                Control(name: "Editor font size stepper", sourceMarker: "Stepper(value: $prefs.fontSize"),
+                Control(name: "Wrap long lines", sourceMarker: "Toggle(\"Wrap long lines\""),
+                Control(name: "Tab width", sourceMarker: "Stepper(value: $prefs.tabWidth"),
+                Control(name: "Indent style (radio group)", sourceMarker: "Picker(\"Indent with\""),
+                Control(name: "Editor appearance (segments)", sourceMarker: "Picker(\"Editor appearance\""),
+                Control(name: "Auto-close braces", sourceMarker: "Toggle(\"Auto-close braces\""),
+                Control(name: "Show completion list", sourceMarker: "Toggle(\"Show completion list\""),
+                Control(name: "Restore Defaults", sourceMarker: "Button(\"Restore Defaults\""),
+              ],
+              sourceFile: "EditorPreferences.swift"),
+        Panel(name: "Durable History", windowTitle: "Durable History", command: .durableHistory,
+              initialFocus: "the undo/redo list (every button is disabled until a preview controller is attached)",
+              closing: "⌘W closes the window; the editor text view is first responder again.",
+              controls: [
+                Control(name: "Refresh history", sourceMarker: "accessibilityIdentifier(\"history.refresh\")", when: "controller attached"),
+                Control(name: "Undo, n steps available", sourceMarker: "accessibilityIdentifier(\"history.undo\")", when: "controller attached"),
+                Control(name: "Redo, n steps available", sourceMarker: "accessibilityIdentifier(\"history.redo\")", when: "controller attached"),
+                Control(name: "Retry the uncertain undo/redo", sourceMarker: "accessibilityIdentifier(\"history.retry\")", when: "after an uncertain reply"),
+                Control(name: "Discard the uncertain undo/redo", sourceMarker: "accessibilityIdentifier(\"history.discard\")", when: "after an uncertain reply"),
+                Control(name: "Undo and redo stacks (list)", sourceMarker: "accessibilityIdentifier(\"history.stacks\")"),
+              ],
+              sourceFile: "EditHistoryPanel.swift"),
+        Panel(name: "Find in Project", windowTitle: "Find in Project", command: .findInProject,
+              initialFocus: "the literal field",
+              closing: "Esc or ⌘W closes the window; the editor text view is first responder again.",
+              controls: [
+                Control(name: "Literal to find in the project, case-sensitive", sourceMarker: "TextField(\"Find in project"),
+                Control(name: "Search", sourceMarker: "Button(\"Search\")", when: "non-empty literal"),
+                Control(name: "Go to Match", sourceMarker: "Button(\"Go to Match\")", when: "a match is selected"),
+                Control(name: "Next Match", sourceMarker: "Button(\"Next Match\")", when: "matches"),
+                Control(name: "Search scope", sourceMarker: "Picker(\"Scope\""),
+                Control(name: "Max matches", sourceMarker: "Stepper(\"Max matches"),
+                Control(name: "Search results, n matches (list)", sourceMarker: "List(selection: $client.selectedID)", when: "after a search"),
+                Control(name: "Replacement text", sourceMarker: "TextField(\"Replace with"),
+                Control(name: "Plan Replacement", sourceMarker: "Button(\"Plan Replacement\")", when: "complete search with matches"),
+                Control(name: "Apply n replacements", sourceMarker: "Button(\"Apply \\(plan.summary)\")", when: "a planned proposal"),
+                Control(name: "Retry path", sourceMarker: "Button(\"Retry \\(outcome.path)\")", when: "an uncertain apply"),
+              ],
+              sourceFile: "ProjectSearchPanel.swift"),
+    ]
+
+    public static var helpLines: [String] { panels.map(\.helpLine) }
 }

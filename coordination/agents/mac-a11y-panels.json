@@ -1,0 +1,42 @@
+{
+  "agent_id": "mac-a11y-panels",
+  "allocation_id": "claude-mac20x-a11y-panels",
+  "assignment_acknowledgements": {},
+  "branch": "agent/mac-a11y-panels/a11y-panels",
+  "capabilities": [
+    "swift",
+    "appkit",
+    "swiftui",
+    "accessibility"
+  ],
+  "code_revision": "5ed664d1",
+  "eta_minutes": {
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 5
+  },
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "527ae54100de636b264fbbc2a2ac30e2f5a02388",
+  "next_action": "Parent merges agent/mac-a11y-panels/a11y-panels into mac-shell (no parent-retained files touched); full swift test at integration under load < 15",
+  "reviewed_peers": {
+    "origin/agent/mac-search/panel": {
+      "adaptation": "Read ProjectSearchPanel.swift and ProjectSearchTests.swift: 22 tests cover the client and pure labels, none host the view; its Find in Project… (⌘⇧F) lives in ProjectSearchCommands outside the files CommandTableTests parses, so the parity tests are extended to read it and the entry/README row are delivered as diffs for the merge",
+      "reviewed_utc": "2026-09-12T13:32:00Z",
+      "sha": "00e7b098"
+    },
+    "origin/agent/mac-claude-a/mac-shell": {
+      "sha": "72b29e8f",
+      "reviewed_utc": "2026-09-12T13:40:00Z",
+      "adaptation": "Merged; search lane integrated so ProjectSearchPanel is tested directly (no separate applied branch needed)"
+    }
+  },
+  "schema_version": 1,
+  "state": "ready_for_integration",
+  "summary": "Gap 6 delivered: PanelAccessibilityTests (3/3: hosted keyboard-focus walk of Settings/History/Search controls, search field focused on open, editor keeps first responder after close), AccessibilityCommand entries ⌘, / Durable History / ⌘⇧F / ⌘G, PanelFocusOrder table + help window section + README rows, CommandTableTests extended to ProjectSearchCommands and panel sources (8/8)",
+  "tool": "Claude Code subagent (parent mac-claude-a)",
+  "updated_utc": "2026-09-12T13:57:00Z",
+  "usage": {
+    "evidence": "swift test --filter 'CommandTableTests|PanelAccessibilityTests|EditorPreferencesTests|EditHistoryTests': 41 executed, 7 env-gated skips, 0 failures (load 8-20); full suite not run per parent's heavy-build notice",
+    "status": "Shared Claude Max quota with parent mac-claude-a; no purchases"
+  }
+}
