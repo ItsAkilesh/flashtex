@@ -4,8 +4,8 @@
   "schema_version": 1,
   "steps": [
     {
-      "name": "Prepare current release helper for same50KBtyping GH21 phase attribution preserving debug evidence and exact source workload",
-      "objective": "Prepare current release helper for same50KBtyping GH21 phase attribution preserving debug evidence and exact source workload",
+      "name": "Verify sustained50KB grouped typing with twenty edits at30ms on the exact release helper producer pair",
+      "objective": "Verify sustained50KB grouped typing with twenty edits at30ms on the exact release helper producer pair",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"
@@ -19,8 +19,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Verify release helper final output source receipts and reopen against existing debug capture using pinned producer release",
-      "objective": "Verify release helper final output source receipts and reopen against existing debug capture using pinned producer release",
+      "name": "Count durable acknowledgements current previews superseded work and post-last-edit completion with exact final source preview and reopen",
+      "objective": "Count durable acknowledgements current previews superseded work and post-last-edit completion with exact final source preview and reopen",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"
@@ -34,8 +34,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Record one release phase-attributed sample with request ACK compiler and frame costs without native or universal latency claims",
-      "objective": "Record one release phase-attributed sample with request ACK compiler and frame costs without native or universal latency claims",
+      "name": "Verify permanent receipt retry and publish one bounded sustained-typing observation without native or every-keystroke claims",
+      "objective": "Verify permanent receipt retry and publish one bounded sustained-typing observation without native or every-keystroke claims",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"

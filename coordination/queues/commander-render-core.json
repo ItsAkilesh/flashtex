@@ -4,8 +4,8 @@
   "schema_version": 1,
   "steps": [
     {
-      "name": "Audit latest published native font and metric packaging against verified10pt12pt and math resource lookup without Swift changes",
-      "objective": "Audit latest published native font and metric packaging against verified10pt12pt and math resource lookup without Swift changes",
+      "name": "Implement read-only verified bundle resource manifest checker for GH36 under owned handoff tools",
+      "objective": "Implement read-only verified bundle resource manifest checker for GH36 under owned handoff tools",
       "owned_paths": [
         "crates/rendering-core"
       ],
@@ -17,8 +17,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Distinguish packaged assets from external TeX fallback and identify only demonstrated default installation gaps",
-      "objective": "Distinguish packaged assets from external TeX fallback and identify only demonstrated default installation gaps",
+      "name": "Validate isolated staged official assets and negative missing corrupted or misrooted metrics without native execution",
+      "objective": "Validate isolated staged official assets and negative missing corrupted or misrooted metrics without native execution",
       "owned_paths": [
         "crates/rendering-core"
       ],
@@ -30,8 +30,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Publish exact asset hash lookup coverage and bounded native-owner handoff without native execution or parity claims",
-      "objective": "Publish exact asset hash lookup coverage and bounded native-owner handoff without native execution or parity claims",
+      "name": "Publish native owner command and coverage limits preserving original app resources and external TeX distinction",
+      "objective": "Publish native owner command and coverage limits preserving original app resources and external TeX distinction",
       "owned_paths": [
         "crates/rendering-core"
       ],

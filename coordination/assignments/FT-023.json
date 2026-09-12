@@ -8,15 +8,15 @@
   "branch": "agent/commander-render-core/rendering-core",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "0d0e2cce744b57cf4ebf1478dd12dc2f23b4f308",
-  "objective": "Audit latest published native font and metric packaging against verified10pt12pt and math resource lookup without Swift changes",
+  "input_main_sha": "b22331f7963fae46c6efcb8fa5fed16a2160ba38",
+  "objective": "Implement read-only verified bundle resource manifest checker for GH36 under owned handoff tools",
   "owned_paths": [
     "crates/rendering-core"
   ],
-  "revision": 16,
+  "revision": 17,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-023",
   "timebox_minutes": 40,
-  "updated_utc": "2026-09-12T13:07:20.713348+00:00"
+  "updated_utc": "2026-09-12T13:14:19.490705+00:00"
 }
