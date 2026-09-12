@@ -18,38 +18,48 @@
   `FlashTeXMacApp.swift`, `ShellModel.swift`, `ShellModel+Controller.swift`.
   `ContentView.swift` needed no change. `crates/preview-controller` untouched.
 
-## Durable checkpoint
+## Durable checkpoint (resumed session, 2026-09-12T14:05Z)
 
 - Worktree: `/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-ae7ddcfb739815fac`
-- Branch `agent/mac-helper-display/route` @ `74b8825c` (pushed). Base: parent
+  (the only worktree for this lane; never touch the main checkout).
+- Branch `agent/mac-helper-display/route` @ `3db719cf` (pushed): base parent
   `origin/agent/mac-claude-a/mac-shell` `5bc3fc0f` merged with `origin/main`
-  `6472a5d2` (merge `c74a95bc`). Commits on top: `a9b55af7` (GH31 fix + owner
-  test), `74b8825c` (route + tests).
-- Branch `agent/mac-helper-display/route-applied` @ `fd5ce63a` (pushed): the
-  lane plus ONE labelled "LOCAL APPLICATION" commit of the parent-retained hook
-  lines (diff below). This is the branch that compiles, tests and benches; it
-  is not for integration as-is.
-- Dirty files at this checkpoint: none on the lane branch (registration/handoff
-  being committed now).
-- Consumed SHAs: helper `crates/preview-controller` as of main `6472a5d2`
-  (built release from this tree: `crates/preview-controller/target/release/
-  flashtex-preview-controller`, 2565952 B, 09:27 local); producer
-  `flashtex-render` built from `origin/agent/mac-render-pipeline/unified`
-  `f762f82a7307dc3d6522078364af79e09a51ad06` (`git archive` of
-  `crates/render-pipeline` into the session scratchpad; vendored siblings;
-  1967168 B). v1-only producer for the declined case: the main checkout's
-  `crates/compiler/target/release/flashtex-compiler`.
-- Tested: `swift test --filter "DisplayCandidateTests|PreviewControllerTests|
-  HistoricalPreviewTests|PreviewV2Tests|V2FontStoreIdentityTests|RenderingV2Tests"`
-  on the applied branch with `FLASHTEX_PREVIEW_CONTROLLER`, `FLASHTEX_RENDER`,
-  `FLASHTEX_COMPILER` set: 50/50, 0 skips, twice (load avg 8–29). The GH31
-  refusal test was verified to FAIL on the unfixed source and pass with the fix.
-  Full `swift test` deliberately NOT run (parent's heavy-build window notice).
-- Pending: keystroke→paint helper-route measurement (parent must open the
-  low-load window first). Harness: `docs/evidence/helper-display-route-<UTC>/run.sh`.
-- Next commands: see "Measurement harness" below.
-- Staffing/billing: shared Claude Max quota with parent; one 429 (monthly spend
-  limit, reset 13:20Z) before this session started; no purchases.
+  `6472a5d2` (merge `c74a95bc`); commits `a9b55af7` (GH31 fix + owner test),
+  `74b8825c` (route + tests), `3db719cf` (registration/handoff/bench harness).
+- Branch `agent/mac-helper-display/route-applied` @ `a2c5a21e` (pushed): the
+  lane plus ONE "LOCAL APPLICATION" commit of the parent-retained hook lines.
+  Checked out here; compiles, tests and benches. Not for integration as-is.
+- Dirty files at this checkpoint (uncommitted; the previous session was
+  stopped by mistake at ~14:03Z while iterating on the sibling hold):
+  `apps/mac/Sources/FlashTeXMac/ShellModel+DisplayCandidates.swift` (held work
+  is a list; `.candidate/.timeout/.superseded` release reasons; env knobs
+  `FLASHTEX_DISPLAY_CANDIDATES_WAIT_MS`, `FLASHTEX_DISPLAY_CANDIDATES_HOLD`),
+  `apps/mac/Tests/FlashTeXMacTests/DisplayCandidateTests.swift` (new hold test
+  + burst assertions), and PARENT-RETAINED `ShellModel+Controller.swift`
+  (in-flight edit release held for the sibling: goes to the applied branch only).
+  Untracked: `docs/evidence/helper-display-route-2026-09-12T1356Z/smoke-under-load/`
+  (a smoke run at load 30: v2 p3/30 ms painted 43 candidates of 200 keystrokes,
+  p50 275 ms; v1 control p50 61 ms; p27 seed: producer declines the v2 sibling).
+- Consumed SHAs: helper `crates/preview-controller` as in this tree (main
+  `6472a5d2`; origin/main `77c8cab1` only adds tracing to the optional slot and
+  still evicts it on every required enqueue); producer `flashtex-render` for the
+  measurement: `origin/agent/mac-render-pipeline/unified` `9aaec57a` built at
+  `<scratchpad>/render-9aaec57a/crates/render-pipeline/target/release/flashtex-render`
+  (2031840 B, 09:56 local); previous f762f82a build only for the smoke.
+- Tested at this checkpoint: nothing since the dirty edits (previous 50/50 was
+  on `a2c5a21e` clean). Next: `swift build`, then the filtered `swift test`.
+- Next commands: (1) `swift build --package-path apps/mac`; (2) `swift test
+  --package-path apps/mac --filter "DisplayCandidateTests|PreviewV2Tests|RenderingV2Tests|V2FontStoreIdentityTests"`
+  with FLASHTEX_PREVIEW_CONTROLLER/FLASHTEX_RENDER/FLASHTEX_COMPILER; (3)
+  `FLASHTEX_RENDER=<9aaec57a build> docs/evidence/helper-display-route-2026-09-12T1356Z/run.sh`
+  while load is low, record `uptime`; (4) commit non-parent files on `route`
+  (parent-retained diffs only on `route-applied`, labelled LOCAL APPLICATION);
+  push both; (5) report.
+- Ownership: parent retains ShellModel.swift, ShellModel+Controller.swift,
+  ContentView.swift, PreviewView.swift, FlashTeXMacApp.swift,
+  SourceEditorView.swift; Rust crates never edited by this lane.
+- Staffing/billing: shared Claude Max quota with parent mac-claude-a; no
+  purchases; kill only pids this lane launched; `FLASHTEX_NO_ACTIVATE=1`.
 
 ## What the route does (ShellModel+DisplayCandidates.swift)
 
