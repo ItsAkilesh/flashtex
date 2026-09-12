@@ -61,6 +61,28 @@ final class DocumentKindsTests: XCTestCase {
         }(), "an unsupported record version is never overwritten")
     }
 
+    func testLaunchFilterDropsDeclarationsTheHelperCouldNotImport() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("dk-launch-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let project = root.appendingPathComponent("project"), ledger = root.appendingPathComponent("ledger")
+        try FileManager.default.createDirectory(at: project, withIntermediateDirectories: true)
+        try "@misc{x}".write(to: project.appendingPathComponent("ondisk.bib"), atomically: true, encoding: .utf8)
+        var record = DocumentKindsRecord()
+        record.set(bibliographyPaths: ["ondisk.bib", "gone.bib", "retained.bib"], entry: "main.tex")
+        try DocumentKindsStore.save(record, ledgerRoot: ledger)
+        // A retained ledger slot exactly where the helper binds it (file_project.rs).
+        let canonical = try XCTUnwrap(DocumentKindsStore.canonicalPath(project)) // realpath, as the helper binds it
+        let binding = SourceDigest.sha256Hex("\(canonical.utf8.count):\(canonical):pid")
+        try FileManager.default.createDirectory(at: ledger.appendingPathComponent("project-\(binding)/\(SourceDigest.sha256Hex("retained.bib"))"),
+                                                withIntermediateDirectories: true)
+        let launch = DocumentKindsStore.launchableBibliographyPaths(projectRoot: project, privateLedgerRoot: ledger, projectID: "pid", entry: "main.tex")
+        XCTAssertEqual(launch.paths, ["ondisk.bib", "retained.bib"])
+        XCTAssertEqual(launch.dropped, ["gone.bib"], "neither on disk nor retained: not supplied (the helper would refuse to start)")
+        let other = DocumentKindsStore.launchableBibliographyPaths(projectRoot: project, privateLedgerRoot: ledger, projectID: "other", entry: "main.tex")
+        XCTAssertEqual(other.paths, ["ondisk.bib"], "another project id binds a different ledger")
+        XCTAssertEqual(try DocumentKindsStore.load(ledgerRoot: ledger).get(), record, "the record itself is not rewritten at launch")
+    }
+
     func testKindsAreNeverInferredWithoutTheHelper() async {
         let model = ShellModel()
         model.replaceProject(entryText: "\\begin{document}\\cite{knuth84}\\end{document}\n")
@@ -188,7 +210,11 @@ final class DocumentKindsTests: XCTestCase {
         var config = PreviewControllerClient.Config(sessionID: "dk-\(UUID().uuidString)", projectID: model.projectId, entryPath: "main.tex",
                                                     projectRoot: project.dir, privateLedgerRoot: ShellModel.controllerLedgerRoot(for: project.dir),
                                                     compilerPath: ShellModel.locateCompiler())
-        config.bibliographyPaths = kinds.startupBibliographyPaths
+        // The launch-time filter keeps refs.bib: its private ledger slot is retained.
+        XCTAssertNotNil(DocumentKindsStore.retainedLedgerSlot(path: "refs.bib", projectRoot: project.dir, privateLedgerRoot: ledgerRoot, projectID: model.projectId))
+        config.bibliographyPaths = kinds.startupBibliographyPaths(projectRoot: project.dir, privateLedgerRoot: ledgerRoot, projectID: model.projectId, entry: "main.tex")
+        XCTAssertEqual(config.bibliographyPaths, ["refs.bib"])
+        XCTAssertEqual(kinds.droppedAtLaunch, [])
         let reopened = try await RawHelper(executable: helper, config: config)
         defer { reopened.stop() }
         let snapshot = try await reopened.request("snapshot", [:])
@@ -250,10 +276,12 @@ final class DocumentKindsTests: XCTestCase {
         }
         XCTAssertEqual(kinds.kind(of: "refs.bib"), .bibliography, "hook applied: the declared kind is restored")
         XCTAssertEqual(kinds.kinds, ["main.tex": .latex, "chapter.tex": .latex, "refs.bib": .bibliography])
-        // The shell adopts the retained bibliography source without a disk file.
+        // The shell still lists the retained bibliography source (the durable
+        // text, no disk file) and the generic open finds it already a member.
         let adopted = await model.project.openDocument("refs.bib")
-        XCTAssertEqual(adopted, .opened(path: "refs.bib"))
-        XCTAssertEqual(model.documents.last?.text, Self.bibText)
+        XCTAssertEqual(adopted, .alreadyOpen(path: "refs.bib"))
+        XCTAssertEqual(model.documents.first { $0.path == "refs.bib" }?.text, Self.bibText)
+        XCTAssertEqual(model.controllerState.durable["refs.bib"]?.revision, 1)
         XCTAssertEqual(kinds.kind(of: "refs.bib"), .bibliography)
     }
 
