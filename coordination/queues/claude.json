@@ -1,6 +1,6 @@
 {
   "agent_id": "claude",
-  "next_index": 2,
+  "next_index": 3,
   "schema_version": 1,
   "steps": [
     {
@@ -40,7 +40,9 @@
       "allocation_id": "openai-kabir-plus-ft002-stage4",
       "name": "Macro, multifile, and PDF convergence",
       "objective": "Integrate the four Kabir child streams: reusable incremental state, scoped macro expansion, project-relative multifile dependencies, and independent equivalence/performance evidence. Resolve issues #8 and #9 without duplicating layout or silently substituting unsupported glyphs.",
-      "owned_paths": ["crates/compiler"],
+      "owned_paths": [
+        "crates/compiler"
+      ],
       "timebox_minutes": 45
     },
     {
@@ -52,7 +54,9 @@
       "allocation_id": "openai-kabir-plus-ft002-stage5",
       "name": "Compiler recovery and compatibility gate",
       "objective": "Harden incremental restart/recovery and run the pinned corpus non-regression gate across the integrated compiler, recording supported, failed, unsupported, and unverified behavior honestly.",
-      "owned_paths": ["crates/compiler"],
+      "owned_paths": [
+        "crates/compiler"
+      ],
       "timebox_minutes": 45
     }
   ],

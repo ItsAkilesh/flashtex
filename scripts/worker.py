@@ -197,7 +197,7 @@ def main():
             while True:
                 fleet = coord.checkpoint(root, emit=False)
                 control = coord.peer_json(root, 'origin/main', 'coordination/control.json')
-                if control.get('state') in ['user_stopped', 'verified_complete']:
+                if control.get('state') == 'user_stopped':
                     print('Project stop/completion control received; worker stopped.', flush=True)
                     break
                 selected = assignment_for(fleet, args.id)
