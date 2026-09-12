@@ -42,10 +42,10 @@ impl Model {
         for (i, items) in self.documents.iter().enumerate() {
             let stats =
                 Statistics::compute(RevisionId::new(Model::source(i), self.revisions[i]), items);
-            words += stats.words.words;
-            math += stats.math.total;
-            pages += stats.pages;
-            scanned += stats.scanned_bytes as u64;
+            words += stats.words().words;
+            math += stats.math().total;
+            pages += stats.pages();
+            scanned += stats.scanned_bytes() as u64;
         }
         (words, math, pages, scanned)
     }
@@ -179,19 +179,23 @@ fn run_sequence(seed: u64, n_docs: usize, steps: usize) -> (u64, u64) {
         // document, right now. ---
         let fresh_doc = model.fresh_one(doc);
         assert_eq!(
-            lookup.stats.words, fresh_doc.words,
+            lookup.stats.words(),
+            fresh_doc.words(),
             "seed {seed} step {step} doc {doc}: word stats diverged from fresh"
         );
         assert_eq!(
-            lookup.stats.math, fresh_doc.math,
+            lookup.stats.math(),
+            fresh_doc.math(),
             "seed {seed} step {step} doc {doc}: math stats diverged from fresh"
         );
         assert_eq!(
-            lookup.stats.pages, fresh_doc.pages,
+            lookup.stats.pages(),
+            fresh_doc.pages(),
             "seed {seed} step {step} doc {doc}: page count diverged from fresh"
         );
         assert_eq!(
-            lookup.stats.content_hash, fresh_doc.content_hash,
+            lookup.stats.content_hash(),
+            fresh_doc.content_hash(),
             "seed {seed} step {step} doc {doc}: content hash diverged from fresh"
         );
 
@@ -277,8 +281,8 @@ fn single_document_repeat_updates_are_hits_and_agree_with_fresh() {
         assert!(repeat.hit);
         assert_eq!(repeat.bytes_scanned, 0);
         let fresh = Statistics::compute(revision.clone(), &items);
-        assert_eq!(repeat.stats.words, fresh.words);
-        assert_eq!(repeat.stats.math, fresh.math);
-        assert_eq!(repeat.stats.pages, fresh.pages);
+        assert_eq!(repeat.stats.words(), fresh.words());
+        assert_eq!(repeat.stats.math(), fresh.math());
+        assert_eq!(repeat.stats.pages(), fresh.pages());
     }
 }

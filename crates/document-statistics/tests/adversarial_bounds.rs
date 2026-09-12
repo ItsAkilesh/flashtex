@@ -25,7 +25,7 @@ fn scan_exactly_at_the_limit_is_accepted() {
     let items = vec![SourceItem::text(text)];
     let stats = Statistics::compute_bounded(rev("edge.tex", 1), &items, ScanLimit::new(100))
         .expect("scanning exactly up to the limit must be accepted, not rejected");
-    assert_eq!(stats.scanned_bytes, 100);
+    assert_eq!(stats.scanned_bytes(), 100);
 }
 
 #[test]
@@ -50,8 +50,8 @@ fn scan_limit_of_zero_rejects_any_nonempty_content_but_accepts_empty() {
     let empty: Vec<SourceItem> = vec![SourceItem::text(""), SourceItem::PageMark];
     let stats = Statistics::compute_bounded(rev("zero.tex", 1), &empty, ScanLimit::new(0))
         .expect("zero scanned bytes is within a zero limit");
-    assert_eq!(stats.scanned_bytes, 0);
-    assert_eq!(stats.pages, 1);
+    assert_eq!(stats.scanned_bytes(), 0);
+    assert_eq!(stats.pages(), 1);
 
     let nonempty = vec![SourceItem::text("x")];
     let err = Statistics::compute_bounded(rev("zero.tex", 2), &nonempty, ScanLimit::new(0))
@@ -112,8 +112,8 @@ fn a_single_enormous_text_item_is_bounded_by_scan_limit_not_by_luck() {
     // correct count, and not panic -- "enormous" is not "unbounded".
     let items = vec![SourceItem::text("word ".repeat(400_000))];
     let stats = Statistics::compute(rev("huge.tex", 1), &items);
-    assert_eq!(stats.words.words, 400_000);
-    assert_eq!(stats.scanned_bytes, len);
+    assert_eq!(stats.words().words, 400_000);
+    assert_eq!(stats.scanned_bytes(), len);
 }
 
 // --- Text of only combining marks or zero-width characters ---
@@ -126,9 +126,9 @@ fn text_of_only_combining_marks_is_bounded_and_not_a_word() {
     let text: String = std::iter::repeat_n('\u{0301}', 50).collect();
     let items = vec![SourceItem::text(text.clone())];
     let stats = Statistics::compute(rev("marks.tex", 1), &items);
-    assert_eq!(stats.words.words, 0);
-    assert_eq!(stats.words.chars, 50);
-    assert_eq!(stats.scanned_bytes, text.len());
+    assert_eq!(stats.words().words, 0);
+    assert_eq!(stats.words().chars, 50);
+    assert_eq!(stats.scanned_bytes(), text.len());
 }
 
 #[test]
@@ -140,9 +140,9 @@ fn text_of_only_zero_width_characters_is_bounded_and_not_a_word() {
     let text = "\u{200B}\u{200C}\u{200D}\u{200B}";
     let items = vec![SourceItem::text(text)];
     let stats = Statistics::compute(rev("zwsp.tex", 1), &items);
-    assert_eq!(stats.words.words, 0);
-    assert_eq!(stats.words.chars, 4);
-    assert_eq!(stats.scanned_bytes, text.len());
+    assert_eq!(stats.words().words, 0);
+    assert_eq!(stats.words().chars, 4);
+    assert_eq!(stats.scanned_bytes(), text.len());
 }
 
 #[test]
@@ -153,8 +153,8 @@ fn mix_of_combining_marks_and_zero_width_characters_across_many_items_is_bounded
     let items: Vec<SourceItem> = (0..1_000).map(|_| SourceItem::text(pathological)).collect();
     let expected_bytes = pathological.len() * 1_000;
     let stats = Statistics::compute(rev("pathological.tex", 1), &items);
-    assert_eq!(stats.words.words, 0);
-    assert_eq!(stats.scanned_bytes, expected_bytes);
+    assert_eq!(stats.words().words, 0);
+    assert_eq!(stats.scanned_bytes(), expected_bytes);
 }
 
 // --- A revision id at integer maximum ---
@@ -164,7 +164,7 @@ fn a_revision_id_at_u64_max_behaves_exactly_like_any_other_revision() {
     let items = vec![SourceItem::text("hello world")];
     let revision = rev("max.tex", u64::MAX);
     let stats = Statistics::compute(revision.clone(), &items);
-    assert_eq!(stats.revision.revision, u64::MAX);
+    assert_eq!(stats.revision().revision, u64::MAX);
     assert!(stats.is_current_for(&revision, &items));
     // Not equal to a "wrapped around" revision 0 -- there must be no
     // silent wraparound anywhere near this boundary.
@@ -208,7 +208,7 @@ fn same_document_id_registered_twice_with_different_content_never_duplicates_the
         assert_eq!(cache.len(), 1);
     }
     assert!(cache.contains(source));
-    assert_eq!(cache.get(source).unwrap().revision.revision, 200);
+    assert_eq!(cache.get(source).unwrap().revision().revision, 200);
 }
 
 #[test]
@@ -235,8 +235,8 @@ fn same_document_id_same_revision_different_content_is_a_miss_not_corruption() {
     assert!(!lookup.hit);
     assert_eq!(cache.len(), 1);
     assert_eq!(
-        cache.get("dup2.tex").unwrap().words.words,
-        lookup.stats.words.words
+        cache.get("dup2.tex").unwrap().words().words,
+        lookup.stats.words().words
     );
 }
 

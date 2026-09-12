@@ -90,10 +90,10 @@ fn same_revision_changed_content_is_a_miss_the_cached_answer_would_be_a_lie() {
     // never the stale one served under a false hit.
     // "the" "proof" "has" "three" "steps," "plus" "a" "fourth" "step"
     // "added" "after" "the" "fact" = 13, not the original's 5.
-    assert_eq!(lookup.stats.words.words, 13);
+    assert_eq!(lookup.stats.words().words, 13);
     assert_eq!(
-        cache.get("proof.tex").unwrap().words.words,
-        lookup.stats.words.words
+        cache.get("proof.tex").unwrap().words().words,
+        lookup.stats.words().words
     );
 }
 
@@ -122,10 +122,11 @@ fn changed_revision_same_content_is_a_miss_identity_must_match_exactly() {
         "identical content under a different claimed revision must still miss"
     );
     assert_eq!(
-        lookup.stats.words, first.stats.words,
+        lookup.stats.words(),
+        first.stats.words(),
         "the recomputed answer still agrees on content"
     );
-    assert_eq!(cache.get("stable.tex").unwrap().revision.revision, 2);
+    assert_eq!(cache.get("stable.tex").unwrap().revision().revision, 2);
 }
 
 /// Rule 4: a sibling document's cache entry is untouched by either a hit or
@@ -237,8 +238,8 @@ fn the_full_trust_contract_in_one_sequence() {
         .unwrap();
     assert!(!step3.hit);
     assert_eq!(
-        step3.stats.words,
-        flashtex_document_statistics::Statistics::compute(rev("main.tex", 1), &v2).words
+        step3.stats.words(),
+        flashtex_document_statistics::Statistics::compute(rev("main.tex", 1), &v2).words()
     );
 
     // Step 4 (Rule 3): changed revision, same (now-current) content -> miss.

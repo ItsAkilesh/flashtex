@@ -23,29 +23,47 @@ pub struct MathStats {
 /// A `Statistics` value never claims to describe anything the caller didn't
 /// hand it directly: there is no filesystem read, no network call, and no
 /// TeX/PDF parsing anywhere in [`Statistics::compute`].
+///
+/// Every field is private, and [`Statistics::compute`] /
+/// [`Statistics::compute_bounded`] are the only ways to build one: an
+/// earlier revision of this type had these fields `pub`, which let a caller
+/// assemble a `Statistics` via struct-literal (or functional-update) syntax
+/// with a `content_hash` copied from a genuine computation but `words` /
+/// `math` / `pages` values that did not actually come from any real scan —
+/// [`Statistics::is_current_for`] would then accept that forged value as
+/// current, since it only recomputes and compares `content_hash`, not the
+/// other fields. Keeping construction exclusive to `compute`/
+/// `compute_bounded` makes that forgery impossible to express: the counts
+/// and the hash are always produced together, from the same real items.
+///
+/// Regression: the forging struct-literal below must never compile again.
+///
+/// ```compile_fail
+/// use flashtex_document_statistics::{RevisionId, SourceItem, Statistics, WordStats, MathStats};
+///
+/// let revision = RevisionId::new("draft.tex", 1);
+/// let items = vec![SourceItem::text("hello world")]; // 2 real words
+/// let real = Statistics::compute(revision.clone(), &items);
+///
+/// // Forge a `Statistics` that reuses a genuine content_hash for `items`
+/// // but carries a fabricated word count `is_current_for` cannot detect.
+/// let forged = Statistics {
+///     revision,
+///     content_hash: real.content_hash, // private: this line must not compile
+///     words: WordStats { words: 999_999, chars: 0 },
+///     math: MathStats::default(),
+///     pages: 0,
+///     scanned_bytes: 0,
+/// };
+/// ```
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Statistics {
-    /// The revision these statistics were computed from.
-    pub revision: RevisionId,
-    /// A deterministic fingerprint of the exact items counted, used by
-    /// [`Statistics::is_current_for`] to detect a `RevisionId` that was
-    /// reused for different content. Not cryptographic, and not meant to be
-    /// stable across crate versions — only to catch drift within one
-    /// pipeline run. See that method before relying on `revision` alone.
-    pub content_hash: u64,
-    /// Word statistics, summed over every [`SourceItem::Text`] item.
-    pub words: WordStats,
-    /// Math statistics, summed over every [`SourceItem::Math`] item.
-    pub math: MathStats,
-    /// Number of pages, i.e. the number of [`SourceItem::PageMark`] items.
-    pub pages: usize,
-    /// Source bytes actually scanned to compute `words` and `math`: the
-    /// summed byte length of every [`SourceItem::Text`] string and every
-    /// [`crate::items::MathItem::source`] string. `PageMark` items and the
-    /// cheap `content_hash` fingerprint pass are not counted here — this is
-    /// specifically the cost [`ScanLimit`] bounds, and what a cache is
-    /// expected to let a caller avoid paying twice for unchanged content.
-    pub scanned_bytes: usize,
+    revision: RevisionId,
+    content_hash: u64,
+    words: WordStats,
+    math: MathStats,
+    pages: usize,
+    scanned_bytes: usize,
 }
 
 impl Statistics {
@@ -126,6 +144,45 @@ impl Statistics {
     /// current.
     pub fn is_current_for(&self, revision: &RevisionId, items: &[SourceItem]) -> bool {
         &self.revision == revision && self.content_hash == fingerprint(items)
+    }
+
+    /// The revision these statistics were computed from.
+    pub fn revision(&self) -> &RevisionId {
+        &self.revision
+    }
+
+    /// A deterministic fingerprint of the exact items counted, used by
+    /// [`Statistics::is_current_for`] to detect a `RevisionId` that was
+    /// reused for different content. Not cryptographic, and not meant to be
+    /// stable across crate versions — only to catch drift within one
+    /// pipeline run. See that method before relying on `revision` alone.
+    pub fn content_hash(&self) -> u64 {
+        self.content_hash
+    }
+
+    /// Word statistics, summed over every [`SourceItem::Text`] item.
+    pub fn words(&self) -> WordStats {
+        self.words
+    }
+
+    /// Math statistics, summed over every [`SourceItem::Math`] item.
+    pub fn math(&self) -> MathStats {
+        self.math
+    }
+
+    /// Number of pages, i.e. the number of [`SourceItem::PageMark`] items.
+    pub fn pages(&self) -> usize {
+        self.pages
+    }
+
+    /// Source bytes actually scanned to compute `words` and `math`: the
+    /// summed byte length of every [`SourceItem::Text`] string and every
+    /// [`crate::items::MathItem::source`] string. `PageMark` items and the
+    /// cheap `content_hash` fingerprint pass are not counted here — this is
+    /// specifically the cost [`ScanLimit`] bounds, and what a cache is
+    /// expected to let a caller avoid paying twice for unchanged content.
+    pub fn scanned_bytes(&self) -> usize {
+        self.scanned_bytes
     }
 }
 

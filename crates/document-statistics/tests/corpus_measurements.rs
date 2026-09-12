@@ -77,9 +77,9 @@ fn total_documents_and_total_words_across_the_real_corpus() {
             RevisionId::new(case.name.clone(), 1),
             &items,
         );
-        total_words += stats.words.words;
-        total_math += stats.math.total;
-        total_pages += stats.pages;
+        total_words += stats.words().words;
+        total_math += stats.math().total;
+        total_pages += stats.pages();
     }
 
     eprintln!(
@@ -263,7 +263,7 @@ fn measured_cache_hit_rate_and_bytes_saved_over_a_realistic_edit_sequence() {
                 hits += 1;
             }
             incremental_bytes_scanned += lookup.bytes_scanned;
-            fresh_equivalent_bytes_scanned += lookup.stats.scanned_bytes;
+            fresh_equivalent_bytes_scanned += lookup.stats.scanned_bytes();
         }
     }
 

@@ -110,12 +110,12 @@ impl ProjectCache {
             });
         }
         let stats = Statistics::compute_bounded(revision.clone(), items, limit)?;
-        let bytes_scanned = stats.scanned_bytes;
+        let bytes_scanned = stats.scanned_bytes();
         self.documents.insert(
             revision.source.clone(),
             Entry {
                 revision: revision.revision,
-                content_hash: stats.content_hash,
+                content_hash: stats.content_hash(),
                 stats: stats.clone(),
             },
         );
@@ -149,11 +149,11 @@ impl ProjectCache {
     pub fn project_totals(&self) -> ProjectTotals {
         let mut totals = ProjectTotals::default();
         for entry in self.documents.values() {
-            totals.words = totals.words + entry.stats.words;
-            totals.math.total += entry.stats.math.total;
-            totals.math.inline += entry.stats.math.inline;
-            totals.math.display += entry.stats.math.display;
-            totals.pages += entry.stats.pages;
+            totals.words = totals.words + entry.stats.words();
+            totals.math.total += entry.stats.math().total;
+            totals.math.inline += entry.stats.math().inline;
+            totals.math.display += entry.stats.math().display;
+            totals.pages += entry.stats.pages();
         }
         totals
     }
@@ -203,7 +203,7 @@ mod tests {
             .unwrap();
         assert!(lookup.hit);
         assert_eq!(lookup.bytes_scanned, 0);
-        assert_eq!(lookup.stats.words.words, 2);
+        assert_eq!(lookup.stats.words().words, 2);
     }
 
     #[test]
@@ -224,8 +224,8 @@ mod tests {
             !lookup.hit,
             "reused revision id over changed content must miss"
         );
-        assert_eq!(lookup.stats.words.words, 4);
-        assert_eq!(cache.get("a.tex").unwrap().words.words, 4);
+        assert_eq!(lookup.stats.words().words, 4);
+        assert_eq!(cache.get("a.tex").unwrap().words().words, 4);
     }
 
     #[test]
@@ -312,6 +312,6 @@ mod tests {
         assert!(err.scanned > err.limit);
 
         // The rejected update must not have clobbered the existing entry.
-        assert_eq!(cache.get("a.tex").unwrap().revision.revision, 1);
+        assert_eq!(cache.get("a.tex").unwrap().revision().revision, 1);
     }
 }

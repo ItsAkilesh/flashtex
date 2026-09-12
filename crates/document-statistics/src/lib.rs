@@ -34,9 +34,9 @@
 //!     SourceItem::inline_math("x^2"),
 //! ];
 //! let stats = Statistics::compute(RevisionId::new("draft.tex", 1), &items);
-//! assert_eq!(stats.words.words, 5); // "Well-known" "results" "don't" "need" "proof."
-//! assert_eq!(stats.math.total, 1);
-//! assert_eq!(stats.pages, 1);
+//! assert_eq!(stats.words().words, 5); // "Well-known" "results" "don't" "need" "proof."
+//! assert_eq!(stats.math().total, 1);
+//! assert_eq!(stats.pages(), 1);
 //! assert!(stats.is_current_for(&RevisionId::new("draft.tex", 1), &items));
 //!
 //! // Edit the text without bumping the revision: the cached stats are stale.

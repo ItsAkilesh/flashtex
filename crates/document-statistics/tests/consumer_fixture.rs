@@ -48,10 +48,10 @@ fn every_real_corpus_case_computes_bounded_statistics_without_panicking() {
             });
         let real_content_bytes: usize = items.iter().map(item_len).sum();
         assert!(
-            stats.scanned_bytes <= real_content_bytes,
+            stats.scanned_bytes() <= real_content_bytes,
             "case '{}': scanned {} bytes but real content is only {} bytes",
             case.name,
-            stats.scanned_bytes,
+            stats.scanned_bytes(),
             real_content_bytes
         );
     }
@@ -64,9 +64,9 @@ fn plain_paragraphs_case_word_count_matches_the_real_compiler_output() {
     assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
     let stats = Statistics::compute(RevisionId::new("plain-paragraphs", 1), &items);
     // "First paragraph." "Second paragraph." -- 4 real compiler word-tokens.
-    assert_eq!(stats.words.words, 4);
-    assert_eq!(stats.pages, 1);
-    assert_eq!(stats.math.total, 0);
+    assert_eq!(stats.words().words, 4);
+    assert_eq!(stats.pages(), 1);
+    assert_eq!(stats.math().total, 0);
 }
 
 #[test]
@@ -75,12 +75,12 @@ fn math_inline_display_case_math_is_counted_and_never_word_counted() {
     let (parsed, items) = support::adapt(&case);
     assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
     let stats = Statistics::compute(RevisionId::new("math-inline-display", 1), &items);
-    assert_eq!(stats.math.total, 2);
-    assert_eq!(stats.math.inline, 1);
-    assert_eq!(stats.math.display, 1);
+    assert_eq!(stats.math().total, 2);
+    assert_eq!(stats.math().inline, 1);
+    assert_eq!(stats.math().display, 1);
     // "Inline" ... "ends." around the real math span; math source itself
     // never contributes to the word count.
-    assert_eq!(stats.words.words, 2);
+    assert_eq!(stats.words().words, 2);
     // The real math source was sliced verbatim from the actual document
     // text via the compiler's own span, not reconstructed -- delimiters
     // included, exactly as the compiler's `Inline::Math` span covers them.
