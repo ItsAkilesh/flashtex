@@ -10,16 +10,16 @@
   "branch": "agent/commander/preview-controller",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "38155b125775d84438b5694c9bfb9fb71a2c0556",
-  "objective": "Consume authoritative ledger undo/redo and background event integration",
+  "input_main_sha": "cab39a20278914747f92ee703f6da40a26b72a93",
+  "objective": "Enable rooted file export with explicit conflict and uncertain-durability outcomes",
   "owned_paths": [
     "crates/preview-controller",
     "crates/document-runtime"
   ],
-  "revision": 4,
+  "revision": 5,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-027",
   "timebox_minutes": 30,
-  "updated_utc": "2026-09-12T06:38:17Z"
+  "updated_utc": "2026-09-12T06:46:32Z"
 }

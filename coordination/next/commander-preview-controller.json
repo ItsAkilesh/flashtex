@@ -3,8 +3,8 @@
   "assignment_path": "coordination/assignments/FT-027.json",
   "branch": "agent/commander/preview-controller",
   "previous_report_sha": "929940d653ced50ee21e49a061bc69a9fcc6c39c",
-  "revision": 4,
+  "revision": 5,
   "schema_version": 1,
   "task_id": "FT-027",
-  "updated_utc": "2026-09-12T06:38:17Z"
+  "updated_utc": "2026-09-12T06:46:32Z"
 }

@@ -1,39 +1,35 @@
 {
   "agent_id": "commander-preview-controller",
-  "next_index": 2,
+  "next_index": 0,
   "schema_version": 1,
   "steps": [
     {
-      "acceptance": [
-        "Parallel controller and real original compiler tests pass",
-        "Durable source succeeds independently of missing compiler",
-        "Reviewed insertion is explicit; never automatically approve provider text",
-        "Native paint and full PDF equality remain separate measured gates"
-      ],
-      "allocation_id": "hosted-openai-product",
-      "name": "Subprocess crash/restart and reviewed receipt recovery",
-      "objective": "Subprocess crash/restart and reviewed receipt recovery",
+      "name": "Guarded external-file reconciliation and reload without overwriting dirty durable source",
+      "objective": "Guarded external-file reconciliation and reload without overwriting dirty durable source",
       "owned_paths": [
         "crates/preview-controller",
         "crates/document-runtime"
       ],
-      "timebox_minutes": 30
+      "acceptance": [
+        "Focused regression tests and strict lint pass",
+        "Publish exact tested source revision and honest consumer limitations"
+      ],
+      "timebox_minutes": 30,
+      "allocation_id": "hosted-openai-product"
     },
     {
-      "acceptance": [
-        "Parallel controller and real original compiler tests pass",
-        "Durable source succeeds independently of missing compiler",
-        "Reviewed insertion is explicit; never automatically approve provider text",
-        "Native paint and full PDF equality remain separate measured gates"
-      ],
-      "allocation_id": "hosted-openai-product",
-      "name": "Consume authoritative ledger undo/redo and background event integration",
-      "objective": "Consume authoritative ledger undo/redo and background event integration",
+      "name": "Measure multi-document helper latency and retain exact revision gating under burst edits",
+      "objective": "Measure multi-document helper latency and retain exact revision gating under burst edits",
       "owned_paths": [
         "crates/preview-controller",
         "crates/document-runtime"
       ],
-      "timebox_minutes": 30
+      "acceptance": [
+        "Focused regression tests and strict lint pass",
+        "Publish exact tested source revision and honest consumer limitations"
+      ],
+      "timebox_minutes": 30,
+      "allocation_id": "hosted-openai-product"
     }
   ],
   "task_id": "FT-027"

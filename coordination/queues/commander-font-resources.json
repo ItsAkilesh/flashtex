@@ -1,77 +1,33 @@
 {
   "agent_id": "commander-font-resources",
-  "next_index": 3,
+  "next_index": 0,
   "schema_version": 1,
   "steps": [
     {
-      "acceptance": [
-        "Meaningful tests and strict lint pass",
-        "Publish truthful execution provenance and exact tested SHA",
-        "No native integration or PDF parity claim without measured evidence"
-      ],
-      "allocation_id": "hosted-openai-product",
-      "name": "Simple glyph outline decoding",
-      "objective": "Simple glyph outline decoding",
+      "name": "Bounded immutable CFF outline cache keyed resource identity, glyph and HintPolicy",
+      "objective": "Bounded immutable CFF outline cache keyed resource identity, glyph and HintPolicy",
       "owned_paths": [
         "crates/font-resources"
       ],
-      "timebox_minutes": 30
+      "acceptance": [
+        "Focused regression tests and strict lint pass",
+        "Publish exact tested source revision and honest consumer limitations"
+      ],
+      "timebox_minutes": 30,
+      "allocation_id": "hosted-openai-product"
     },
     {
-      "acceptance": [
-        "Meaningful tests and strict lint pass",
-        "Publish truthful execution provenance and exact tested SHA",
-        "No native integration or PDF parity claim without measured evidence"
-      ],
-      "allocation_id": "hosted-openai-product",
-      "name": "Composite transform geometry and exact bounds",
-      "objective": "Composite transform geometry and exact bounds",
+      "name": "Measure cached original outline replay and explicitly inventory unsupported CFF behavior",
+      "objective": "Measure cached original outline replay and explicitly inventory unsupported CFF behavior",
       "owned_paths": [
         "crates/font-resources"
       ],
-      "timebox_minutes": 30
-    },
-    {
       "acceptance": [
-        "Meaningful tests and strict lint pass",
-        "Publish truthful execution provenance and exact tested SHA",
-        "No native integration or PDF parity claim without measured evidence"
+        "Focused regression tests and strict lint pass",
+        "Publish exact tested source revision and honest consumer limitations"
       ],
-      "allocation_id": "hosted-openai-product",
-      "name": "Exact TeX encoding to font-resource mapping",
-      "objective": "Exact TeX encoding to font-resource mapping",
-      "owned_paths": [
-        "crates/font-resources"
-      ],
-      "timebox_minutes": 30
-    },
-    {
-      "acceptance": [
-        "Meaningful tests and strict lint pass",
-        "Publish truthful execution provenance and exact tested SHA",
-        "No native integration or PDF parity claim without measured evidence"
-      ],
-      "allocation_id": "hosted-openai-product",
-      "name": "TFM metric and glyph binding consumer adapter",
-      "objective": "TFM metric and glyph binding consumer adapter",
-      "owned_paths": [
-        "crates/font-resources"
-      ],
-      "timebox_minutes": 30
-    },
-    {
-      "acceptance": [
-        "Meaningful tests and strict lint pass",
-        "Publish truthful execution provenance and exact tested SHA",
-        "No native integration or PDF parity claim without measured evidence"
-      ],
-      "allocation_id": "hosted-openai-product",
-      "name": "Real licensed font metric equivalence fixtures",
-      "objective": "Real licensed font metric equivalence fixtures",
-      "owned_paths": [
-        "crates/font-resources"
-      ],
-      "timebox_minutes": 30
+      "timebox_minutes": 30,
+      "allocation_id": "hosted-openai-product"
     }
   ],
   "task_id": "FT-024"
