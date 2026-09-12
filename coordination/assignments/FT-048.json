@@ -1,24 +1,24 @@
 {
   "acceptance": [
-    "Preserve exact source revision/hash, durable approval and permanent-ID guarantees; history metadata is source-free and does not change retention",
-    "Do not edit crates/document-runtime after published ecbaf7c handoff; consume FT049 reviewed API only",
-    "Helper v2 forwarding remains default OFF, preserves required-output priority and complete frame limits, and never claims native rendering validation"
+    "Preserve full/metadata and permanent-command semantics, exact source hashes and currentness",
+    "No runtime/producer/native changes or unrelated benchmark sweep",
+    "No optimization claim without concrete measured or ownership proof"
   ],
   "agent_id": "commander-preview-performance",
   "allocation_id": "hosted-openai-product",
   "branch": "agent/commander-preview-performance/preview-performance",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "a91fc1015e6884ab4a451d5d32a626271edacbd4",
-  "objective": "Owned preview-controller edit/index/submit large-source ownership audit. Static first; implement only a concrete material redundant-copy improvement preserving exact durable source, per-operation admission receipts and source identity. No runtime/producer/native edits or benchmark sweep. Current-base Text reconciliation remains held for Kabir overlap ACK; no duplicate producer Text implementation.",
+  "input_main_sha": "0294d2ca48cbfd497c6b549deb7575fbcec4a4b8",
+  "objective": "Implement justified ownership improvement with exact durable/source/receipt equivalence gates",
   "owned_paths": [
     "crates/preview-controller",
     "crates/edit-ledger"
   ],
-  "revision": 44,
+  "revision": 45,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-048",
   "timebox_minutes": 40,
-  "updated_utc": "2026-09-12T16:24:32.722788+00:00"
+  "updated_utc": "2026-09-12T16:25:31Z"
 }
