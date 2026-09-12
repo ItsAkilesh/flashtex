@@ -227,3 +227,21 @@ alone does not prove charstring safety or rendering support. Production font
 resource schema remains static-truetype; no fallback or wire activation occurs.
 References: [CFF specification](https://adobe-type-tools.github.io/font-tech-notes/pdfs/5176.CFF.pdf)
 and [Type 2 specification](https://adobe-type-tools.github.io/font-tech-notes/pdfs/5177.Type2.pdf).
+
+`Cff::cubic_outline(gid)` adds staged exact Type2 charstring-space MoveTo, LineTo,
+CurveTo(control1,control2,end) and Close commands. It handles integer/16.16
+operands, width extraction, relative/alternating line and curve forms, local/global
+subroutine bias/calls/returns, and explicit closure. Limits: 48 operands, 10 active
+subroutine calls, 100000 instructions and 100000 commands; recursion, malformed
+arity and out-of-range calls fail. Hints/masks, escaped flex/arithmetic and seac
+are explicitly unsupported. FontMatrix stays in Top DICT and is not silently
+applied; cubic commands are not reinterpreted as quadratic rendering-v2 paths.
+
+Real CFF smoke used the unchanged font-engine accessor at `2d6954b` in an isolated
+/tmp harness, against installed STIXTwoText-Regular.otf font SHA
+`c4864ca6ec071c2d31d0d8309001faa1ee3517fffb53a31a405a697b71f52ca1`.
+CFF SHA `c5d11bab6a95e75a568e1b72fd30fdd5e4c95abe68a72f02c0c4329ee948b532`:
+2221 glyphs, 824 global and 704 local subroutines; 16 glyphs accepted and 2205
+explicitly unsupported due to hints/masks. No invalid-font failures occurred.
+This does not establish useful visible coverage, Latin Modern support or parity;
+no font file was copied into the repository and no schema activation occurred.

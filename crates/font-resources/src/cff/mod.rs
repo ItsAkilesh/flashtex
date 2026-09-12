@@ -417,3 +417,6 @@ mod tests {
         assert!(matches!(Cff::parse(&b), Err(Error::UnsupportedFont(_))));
     }
 }
+
+mod type2;
+pub use type2::{CubicCommand, CubicOutline, CubicPoint};
