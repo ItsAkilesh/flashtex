@@ -13,17 +13,17 @@
   "capabilities": [
     "Preview helper serialization and latency"
   ],
-  "code_revision": "e39f50e594703c0d4b4bd6848e72fd2fe5169678",
+  "code_revision": "f5524794eb2581bdace0f32681041aeb9912e292",
   "eta_minutes": null,
   "machine": "linux-primary",
   "main_integrated_through": "b5ec8e4270dcd2beb47967a3bad788233a3a3b22",
-  "next_action": "Publish exact raw artifacts for renderer uptake; coordinate next native/source acceptance without default promotion.",
+  "next_action": "Publish multipage acceptance; review next owner-coordinated performance or native integration gap.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "Actual65dbe7d\u2192raw helper repeat100 passes exact original nested wire bytes, direct v1/v2 semantic equality, source identity and durable reopen.",
+  "summary": "Actual26-page raw helper fallback/reopen passes across three original source states; all v1 output exact and v2 explicitly declined.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T11:56:43Z",
+  "updated_utc": "2026-09-12T12:00:44Z",
   "usage": {
     "status": "unknown"
   }
