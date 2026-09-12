@@ -3,27 +3,27 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-048": {
-      "acknowledged_utc": "2026-09-12T13:07:58Z",
-      "adaptation": "Releasehelper built from58d27314 Rusttree, olddebug/release preserved. Same50KBfixture and pinneddebugproducer; optional transparent capture supplies actualstdin for independentproducer releaseverification. Preserve diagnosticphase vs native/captureoverhead distinction.",
-      "main_sha": "ef1a964ecf851c10ffb44f16d212de21e0e1675e",
-      "revision": 20
+      "acknowledged_utc": "2026-09-12T13:16:15Z",
+      "adaptation": "Newtyping_burst.py20grouped@30ms onreleasepair; actualsend schedule recorded, allpredictedrevisionrefusals fail, finalactualrequest cleancompile/reopen/20IDs/oldandlatestretry/conflict outside measurement.",
+      "main_sha": "367aba68e2ee689cca8db4da2a8427d82f3de72b",
+      "revision": 21
     }
   },
   "branch": "agent/commander-preview-performance/preview-performance",
   "capabilities": [
     "Preview helper serialization and latency"
   ],
-  "code_revision": "53c0c71d1fc35e8bafe0473c60f4eaf277833482",
+  "code_revision": "de574ec71b4f918388ff588d32b83a44ac84e4b3",
   "eta_minutes": null,
   "machine": "linux-primary",
   "main_integrated_through": "58d27314c83cbc62fa20e81dd1f5532a82849fef",
-  "next_action": "Commander integrate with runtimeproducerreleaseverification; nativepackaging and widerlatencyacceptance remain separate.",
+  "next_action": "Commander integrate and prioritize continuouspreview gapGH21; no broaderlatencyclaim or extra repeats.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "FT048r20 releasehelper+independentlyverifiedreleaseproducer50KBpair delivers currentframes77.53/80.33ms with exactprioroutputs/source.",
+  "summary": "FT048r21 sustained20grouped@30ms acceptance: allACKs durable, onlyfinalcurrentpreview; cleancompile/reopen/receiptretry/conflict pass.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T13:12:54Z",
+  "updated_utc": "2026-09-12T13:19:22Z",
   "usage": {
     "status": "unknown"
   }
