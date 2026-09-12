@@ -3,7 +3,7 @@
 Agent / task / branch: `daniel-collaboration` / FT-044 "Offline bounded
 collaborative text operation core" / `agent/daniel-collaboration/collaboration-core`
 
-State: ready for integration (revision 3)
+State: ready for integration (revision 4)
 
 Owned paths: `crates/collaboration-core/**`, `coordination/daniel-collaboration.md`.
 No other crate is touched, in particular `crates/edit-ledger` is untouched.
@@ -287,15 +287,21 @@ cargo test --manifest-path crates/collaboration-core/Cargo.toml
 cargo clippy --manifest-path crates/collaboration-core/Cargo.toml --all-targets -- -D warnings
 ```
 
-44 tests pass: 26 unit tests in `src/lib.rs` (15 core, incl. the two new
+57 tests pass: 26 unit tests in `src/lib.rs` (15 core, incl. the two
 revision-3 counter-exhaustion cases, + 5 in `checkpoint::tests` + 6 in
-`recovery::tests`), plus integration tests in `tests/convergence.rs` (4,
-revision 1, unchanged), `tests/checkpoint_equivalence.rs` (3, revision 2,
-unchanged), `tests/interrupted_delivery.rs` (2, revision 2, unchanged), and
-the new `tests/adversarial.rs` (9, revision 3). Clippy passes with warnings
-denied (`cargo clippy --all-targets -- -D warnings`). Zero dependencies
-(`Cargo.lock` lists only this crate itself), so no network access is
-possible at build or run time — revision 3 added no dependency either.
+`recovery::tests`; unchanged since revision 3), plus integration tests in
+`tests/convergence.rs` (4, revision 1, unchanged),
+`tests/checkpoint_equivalence.rs` (3, revision 2, unchanged),
+`tests/interrupted_delivery.rs` (2, revision 2, unchanged),
+`tests/adversarial.rs` (17: the 9 from revision 3 plus 8 new in revision 4),
+`tests/measured_fixtures.rs` (3, new in revision 4), and
+`tests/compatibility_evidence.rs` (2, new in revision 4). Clippy passes with
+warnings denied (`cargo clippy --all-targets -- -D warnings`). Zero
+dependencies (`Cargo.lock` lists only this crate itself), so no network
+access is possible at build or run time — revision 4 added no dependency
+either, including in test code (the byte-hash helper in
+`tests/compatibility_evidence.rs` is a locally written, dependency-free
+FNV-1a implementation, not an external crate).
 
 ## Known limitations / not done
 
@@ -505,3 +511,96 @@ text that a consumer would *then* hand to `edit-ledger` as one ordinary
 edit, per step 5 of the worked example above; whether and how a caller does
 that wiring is exactly the "no consumer exists today" gap this section
 reports rather than fills.
+
+## Revision 4: expanded measured fixtures, adversarial bounds, and reproducible compatibility evidence
+
+Revision 4's objective adds one clause on top of revision 3's scope
+(unchanged): "Expand measured fixtures and adversarial bounds with
+reproducible compatibility evidence." No public type or signature changed;
+this revision is tests and documentation only. Test count: 44 -> 57 (13
+new), all listed exactly in "Build and check" above.
+
+### Expanded measured fixtures (`tests/measured_fixtures.rs`, new file, 3 tests)
+
+Each fixture states its replica count and operation count as an assertion
+computed from the fixture's own generated operations (not hand-typed), and
+its converged result as a pinned `const` literal, checked across 2-3
+independent, causally valid delivery orders per fixture:
+
+- **Fixture 1** (`fixture_1_three_replica_word_merge_pinned_at_eight_ops`):
+  3 replicas, 8 operations, converged result `"[dogcat]"`.
+- **Fixture 2**
+  (`fixture_2_five_replica_single_anchor_insert_with_delete_pinned_at_seven_ops`):
+  5 replicas, 7 operations, converged result `"[srq]"`.
+- **Fixture 3** (`fixture_3_five_replica_four_word_merge_pinned_at_ten_ops`):
+  5 replicas, 10 operations, converged result `"[dwczbyax]"`.
+
+These are additional to, not replacements for, `tests/convergence.rs`'s
+revision-1 hand-derived cases and 120-permutation exhaustive sweep.
+
+### Expanded adversarial bounds (`tests/adversarial.rs`, 9 -> 17 tests)
+
+8 new cases, each still asserting a specific typed `Err`/`None` (or a
+well-defined `Ok`) — never a panic — covering every category revision 4
+called out beyond revision 3's 9:
+
+- **Concurrent inserts at the identical anchor, from N replicas**
+  (`concurrent_inserts_at_identical_anchor_from_five_replicas_produce_one_deterministic_total_order`):
+  5 replicas insert into the same `(left, right)` gap; checked across 4
+  distinct delivery orders that the result is the *specific* deterministic
+  descending-`OpId` order (`"a65432c"`), not merely "some" consistent order.
+- **Interleaved delete/insert on the same element**
+  (`interleaved_delete_then_insert_on_the_same_element_converges_across_delivery_orders`):
+  a delete of `'a'`, an insert anchored to `'a'`, and a delete of that new
+  insert, across all 3 causally valid orderings of the 3 ops.
+- **Replay of an entire op log, reversed and shuffled**
+  (`replaying_the_full_op_log_in_reverse_order_is_idempotent`,
+  `replaying_the_full_op_log_in_shuffled_order_is_idempotent`): an 8-op log
+  (5 inserts, 1 concurrent insert, 2 deletes) replayed in full reverse
+  order and in a fixed shuffle; every replayed op reports
+  `ApplyOutcome::Duplicate` and the document is byte-unchanged, because
+  dedup checks `applied.contains(&op.id)` before any dependency lookup.
+- **Pending buffer at a zero bound**
+  (`pending_buffer_zero_capacity_rejects_the_very_first_blocked_operation`):
+  `PendingOps::new(0)` rejects the very first blocked operation with
+  `PendingBufferFull { max_pending: 0 }` rather than buffering it
+  momentarily — complementing revision 3's "fill to N, then one more"
+  case with the degenerate zero-capacity bound.
+- **Checkpoint bound crossed by document growth**
+  (`checkpoint_bound_fixed_document_grows_from_within_bound_to_one_past_it`):
+  a fixed `max_entries` bound; the document grows from exactly at the bound
+  (succeeds) to exactly one past it (fails `TooLarge`) — complementing
+  revision 3's "fixed document, shrinking bound" framing of the same edge.
+- **Truncated bytes inside the delete-op-ids section specifically**
+  (`checkpoint_bytes_truncated_inside_the_delete_op_ids_section_is_rejected`):
+  revision 3's truncation cases hit the header or the element list; this
+  one truncates 4 bytes out of a delete-op-id's own 16-byte encoding.
+- **Counter at `u64::MAX` across two different replicas**
+  (`two_replicas_both_at_u64_max_counter_coexist_without_id_conflict`):
+  confirms `OpId` uniqueness is the pair `(counter, replica)`, not
+  `counter` alone — two replicas both issuing `u64::MAX` coexist without
+  `IdConflict`.
+
+### Reproducible compatibility evidence (`tests/compatibility_evidence.rs`, new file, 2 tests)
+
+- **A checkpoint written under this contract is readable byte-for-byte**
+  (`checkpoint_bytes_for_a_fixed_fixture_are_pinned_byte_for_byte`): a
+  fixed 2-insert-plus-1-delete fixture's `Checkpoint::to_bytes()` output is
+  compared against a 102-byte literal pinned inline (with a field-by-field
+  layout comment), and `Checkpoint::from_bytes` of that exact pinned
+  literal is asserted to decode to a checkpoint equal to the one written.
+  A future change to the wire encoding breaks this test with a literal
+  byte mismatch, not just a passing round trip that could mask a
+  compatible-looking change.
+- **A converged document is byte-identical across every replica ordering,
+  pinned, not just mutually equal**
+  (`converged_document_is_byte_identical_across_replica_orderings_pinned`):
+  3 replicas concurrently insert into an identical gap; all 6 permutations
+  of delivery order are checked against a pinned literal (`"arqpc"`) *and*
+  a pinned `u64` FNV-1a hash of its bytes (`7_532_153_511_834_115_664`) —
+  two independent, checkable invariants rather than one. The hash function
+  is a small, locally written, dependency-free implementation (no crate
+  added), consistent with this crate's zero-dependency property.
+
+No public API changed in revision 4; the "Typed contract" section above
+and the worked example are unchanged and still accurate.
