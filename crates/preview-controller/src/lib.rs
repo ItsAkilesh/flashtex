@@ -17,10 +17,16 @@ pub use historical::HistoricalPreview;
 use serde_json::Value;
 use std::{collections::BTreeMap, process::Command, time::Instant};
 
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct CompileAdmission {
+    pub request_id: String,
+    pub compile_revision: u64,
+}
 #[derive(Debug)]
 pub struct EditOutcome {
     /// This exact source is durable even when preview submission fails.
     pub document: Document,
+    pub compile_admission: Option<CompileAdmission>,
     pub preview_error: Option<String>,
     /// Includes fsync/index/submission; excludes compiler completion and paint.
     pub save_and_submit_ms: f64,
@@ -63,7 +69,10 @@ pub struct Preview {
 #[derive(Debug)]
 pub enum Update {
     Preview(Preview),
-    Discarded { request_id: String },
+    Discarded {
+        request_id: String,
+        compile_revision: u64,
+    },
     Runtime(Event),
 }
 
@@ -291,9 +300,11 @@ impl Controller {
     }
     fn after_save(&mut self, document: Document, started: Instant) -> EditOutcome {
         let indexed = Self::index_saved_document(&mut self.index, &document);
-        let (preview_error, save_and_submit_ms) = self.finish_saved_index(indexed, started);
+        let (preview_error, save_and_submit_ms, compile_admission) =
+            self.finish_saved_index_with_admission(indexed, started);
         EditOutcome {
             document,
+            compile_admission,
             preview_error,
             save_and_submit_ms,
         }
@@ -320,17 +331,33 @@ impl Controller {
         indexed: Result<(), String>,
         started: Instant,
     ) -> (Option<String>, f64) {
+        let (error, elapsed, _) = self.finish_saved_index_with_admission(indexed, started);
+        (error, elapsed)
+    }
+    fn finish_saved_index_with_admission(
+        &mut self,
+        indexed: Result<(), String>,
+        started: Instant,
+    ) -> (Option<String>, f64, Option<CompileAdmission>) {
         self.submitted = None;
-        let preview_error = match indexed {
-            Ok(()) => self.compile_current().err(),
-            Err(error) => Some(format!("source saved; index recovery required: {error}")),
+        let result = match indexed {
+            Ok(()) => self.compile_current_with_admission(),
+            Err(error) => Err(format!("source saved; index recovery required: {error}")),
         };
-        if preview_error.is_none() {
-            if let Some((_, _, submitted_at)) = self.submitted.as_mut() {
-                *submitted_at = started;
+        let (preview_error, admission) = match result {
+            Ok(admission) => {
+                if let Some((_, _, submitted_at)) = self.submitted.as_mut() {
+                    *submitted_at = started;
+                }
+                (None, Some(admission))
             }
-        }
-        (preview_error, started.elapsed().as_secs_f64() * 1000.0)
+            Err(error) => (Some(error), None),
+        };
+        (
+            preview_error,
+            started.elapsed().as_secs_f64() * 1000.0,
+            admission,
+        )
     }
     /// The returned receipt is durable before any compile attempt. A matching
     /// retry returns the original receipt and cannot apply the source edit twice.
@@ -418,6 +445,9 @@ impl Controller {
         self.generation
     }
     pub fn compile_current(&mut self) -> Result<(), String> {
+        self.compile_current_with_admission().map(|_| ())
+    }
+    fn compile_current_with_admission(&mut self) -> Result<CompileAdmission, String> {
         let started = Instant::now();
         if self.closed {
             return Err("project closed".into());
@@ -467,8 +497,11 @@ impl Controller {
             runtime.submit_with_capabilities(request, self.layout_capabilities.clone())?;
         }
         self.generation = generation;
-        self.submitted = Some((id, self.index.snapshot(), started));
-        Ok(())
+        self.submitted = Some((id.clone(), self.index.snapshot(), started));
+        Ok(CompileAdmission {
+            request_id: id,
+            compile_revision: generation,
+        })
     }
     /// Internal opt-in only; this does not negotiate or activate any native helper messages.
     pub fn configure_completed_snapshots(&mut self, enabled: bool) -> Result<(), String> {
@@ -574,7 +607,10 @@ impl Controller {
                                 * 1000.0,
                         })
                     } else {
-                        Update::Discarded { request_id: id }
+                        Update::Discarded {
+                            request_id: id,
+                            compile_revision: revision,
+                        }
                     }
                 }
                 other => Update::Runtime(other),

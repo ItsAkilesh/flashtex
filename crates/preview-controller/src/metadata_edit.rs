@@ -14,6 +14,7 @@ pub struct DocumentMetadata {
 #[derive(Debug, Serialize)]
 pub struct MetadataEditOutcome {
     pub document: DocumentMetadata,
+    pub compile_admission: Option<crate::CompileAdmission>,
     pub preview_error: Option<String>,
     pub save_and_submit_ms: f64,
 }
@@ -108,9 +109,11 @@ impl Controller {
             .ok_or("saved source missing")?;
         let document = DocumentMetadata::from(saved);
         let indexed = Self::index_saved_document(&mut self.index, saved);
-        let (preview_error, save_and_submit_ms) = self.finish_saved_index(indexed, started);
+        let (preview_error, save_and_submit_ms, compile_admission) =
+            self.finish_saved_index_with_admission(indexed, started);
         Ok(MetadataEditOutcome {
             document,
+            compile_admission,
             preview_error,
             save_and_submit_ms,
         })

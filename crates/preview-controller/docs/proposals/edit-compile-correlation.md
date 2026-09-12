@@ -1,6 +1,6 @@
 # Edit-to-compile correlation review
 
-Status: design only, against helper f8bb2389. No wire activation or native edits.
+Status: bounded full/metadata edit implementation published3014ade2, based on the review against helper f8bb2389. Native adoption remains pending. The analysis below records the design; history/group/apply correlation remains separately scoped.
 
 Current full and metadata edit results return durable document revision/hash,
 preview_error and save_and_submit_ms, but no admitted compile identity. Controller
@@ -40,3 +40,5 @@ generation after a restart or configuration-triggered compile. Discarded events
 retain original event revision. Replay durable command tests retain receipt
 identity separately from any new compile. No latency or paint claim follows from
 admission timestamps or acknowledgement receipt.
+
+Validation follow-up: actual stdio helper plus child producer test confirms both full and metadata edit ACK identities equal their later preview identities. An extra compile before editing deliberately separates durable source revision from compile generation. Existing held-child lifecycle test covers queued supersession; offline and encoding-refusal tests retain saved source with null admission.

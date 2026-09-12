@@ -429,8 +429,11 @@ fn run(config: Value) -> Result<(), String> {
                     bindings.retire_through(preview.compile_revision);
                     wire::preview_payload(preview)
                 }
-                Update::Discarded { request_id } => {
-                    json!({"kind":"discarded","request_id":request_id})
+                Update::Discarded {
+                    request_id,
+                    compile_revision,
+                } => {
+                    json!({"kind":"discarded","request_id":request_id,"compile_revision":compile_revision})
                 }
                 Update::Runtime(event) => match event {
                     Event::Superseded { id, by_id } => {
@@ -708,13 +711,13 @@ fn handle(
                 )?;
                 return Ok(
                     json!({"response_mode":"metadata", "document":result.document,
-                    "preview_error":result.preview_error,"save_and_submit_ms":result.save_and_submit_ms}),
+                    "compile_request_id":result.compile_admission.as_ref().map(|a| &a.request_id),"compile_revision":result.compile_admission.as_ref().map(|a| a.compile_revision),"preview_error":result.preview_error,"save_and_submit_ms":result.save_and_submit_ms}),
                 );
             }
             let result =
                 controller.replace_document(&edit.path, edit.revision, &edit.sha256, edit.text)?;
             Ok(
-                json!({"document":result.document,"preview_error":result.preview_error,"save_and_submit_ms":result.save_and_submit_ms}),
+                json!({"document":result.document,"compile_request_id":result.compile_admission.as_ref().map(|a| &a.request_id),"compile_revision":result.compile_admission.as_ref().map(|a| a.compile_revision),"preview_error":result.preview_error,"save_and_submit_ms":result.save_and_submit_ms}),
             )
         }
         "project_status" => {
