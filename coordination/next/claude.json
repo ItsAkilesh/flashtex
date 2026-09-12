@@ -1,10 +1,10 @@
 {
-  "schema_version": 1,
   "agent_id": "claude",
-  "task_id": "FT-002",
-  "revision": 1,
-  "branch": "agent/claude/compiler-foundation",
-  "action": "work",
   "assignment_path": "coordination/assignments/FT-002.json",
-  "issue_number": 1
+  "branch": "agent/claude/compiler-foundation",
+  "previous_report_sha": "29221d8b15d412f4feb877879d5bfc02f6086a98",
+  "revision": 2,
+  "schema_version": 1,
+  "task_id": "FT-002",
+  "updated_utc": "2026-09-12T04:21:55Z"
 }
