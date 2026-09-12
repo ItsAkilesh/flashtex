@@ -2,7 +2,7 @@
 //! consumer-conversion format, not the negotiated rendering display-list wire.
 use crate::{
     batch::{DrawOperation, ExactClip, PrimitiveId},
-    cubic::{CffConsumer, CubicError, CubicPathCommand, PositionedCubic},
+    cubic::{CubicError, CubicPathCommand, CubicProvider, PositionedCubic},
     outlines::{OutlineCoordinate, OutlinePoint, PlacedPathCommand},
     tex_adapter::TracedBatch,
     *,
@@ -35,7 +35,7 @@ impl From<CubicError> for MixedError {
 }
 pub type MixedResult<T> = std::result::Result<T, MixedError>;
 pub struct CubicReplacement<'a> {
-    pub resource: &'a CffConsumer,
+    pub resource: &'a dyn CubicProvider,
     pub original_gid: u16,
     pub policy: HintPolicy,
     pub size: OutlineCoordinate,
@@ -100,6 +100,9 @@ pub struct MixedBatch {
     encoded: Vec<u8>,
 }
 impl MixedBatch {
+    pub fn identity(&self) -> (&str, u64, u32) {
+        (&self.project_id, self.revision, self.page)
+    }
     pub fn primitives(&self) -> &[MixedPrimitive] {
         &self.primitives
     }
@@ -209,6 +212,22 @@ impl MixedBatch {
                             cubic.origin,
                             remaining,
                         )?;
+                        if placed.original_gid != cubic.original_gid
+                            || placed.hinting_applied
+                            || placed.hints.policy != cubic.policy
+                        {
+                            return Err(MixedError::Identity);
+                        }
+                        hash(&placed.cff_table_sha256)?;
+                        if let Some(identity) = &placed.full_font_identity {
+                            hash(&identity.font_sha256)?;
+                            if identity.cff_sha256 != placed.cff_table_sha256
+                                || identity.face_index != 0
+                                || identity.table_range.start >= identity.table_range.end
+                            {
+                                return Err(MixedError::Identity);
+                            }
+                        }
                         (
                             MixedGeometry::Cubic(Box::new(placed)),
                             None,
@@ -324,9 +343,9 @@ impl MixedBatch {
         Ok(result)
     }
 }
-struct BoundedOutput {
-    bytes: Vec<u8>,
-    limit: usize,
+pub(crate) struct BoundedOutput {
+    pub(crate) bytes: Vec<u8>,
+    pub(crate) limit: usize,
 }
 impl Write for BoundedOutput {
     fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
@@ -402,12 +421,7 @@ impl Serialize for MixedPrimitive {
                 json!({"kind":"quadratic","commands":commands.iter().map(quadratic).collect::<Vec<_>>()})
             }
             MixedGeometry::Rule(bounds) => json!({"kind":"rule","bounds":rect(*bounds)}),
-            MixedGeometry::Cubic(path) => {
-                let dyadic = |v: flashtex_font_resources::Coordinate| {
-                    json!([v.numerator().to_string(), (1u128 << v.shift()).to_string()])
-                };
-                json!({"kind":"cubic","cff_table_sha256":path.cff_table_sha256,"font_matrix":path.font_matrix.iter().map(|v|json!([v.numerator().to_string(),v.denominator().to_string()])).collect::<Vec<_>>(),"advance":point(path.advance),"commands":path.commands.iter().map(cubic).collect::<Vec<_>>(),"hint_policy":match path.hints.policy{HintPolicy::Reject=>"reject",HintPolicy::Unhinted=>"unhinted"},"stems":path.hints.stems.iter().map(|h|json!({"vertical":h.vertical,"delta":dyadic(h.delta),"width":dyadic(h.width)})).collect::<Vec<_>>(),"masks":path.hints.masks.iter().map(|h|json!({"counter":h.counter,"stem_count":h.stem_count,"bytes":h.bytes})).collect::<Vec<_>>(),"flex_depths":path.hints.flex_depths.iter().map(|v|dyadic(*v)).collect::<Vec<_>>()})
-            }
+            MixedGeometry::Cubic(path) => cubic_geometry_value(path),
         };
         json!({"identity":{"item_index":self.identity.item_index,"glyph_index":self.identity.glyph_index},"geometry":geometry,"clip":rect(self.clip),"paint":self.paint,"source_chain":self.source_chain.iter().map(|s|json!({"resource":resource(&s.resource),"character":s.character,"command_index":s.command_index})).collect::<Vec<_>>(),"sources":self.sources,"synthetic_reason":self.synthetic_reason,"logical_interval":self.logical_interval,"font_sha256":self.font_sha256,"original_gid":self.original_gid}).serialize(serializer)
     }
@@ -432,4 +446,11 @@ impl Serialize for MixedBatch {
         s.serialize_field("hinting_applied", &false)?;
         s.end()
     }
+}
+
+pub(crate) fn cubic_geometry_value(path: &PositionedCubic) -> Value {
+    let dyadic = |v: flashtex_font_resources::Coordinate| {
+        json!([v.numerator().to_string(), (1u128 << v.shift()).to_string()])
+    };
+    json!({"kind":"cubic","cff_table_sha256":path.cff_table_sha256,"full_font_identity":path.full_font_identity.as_ref().map(|identity|json!({"font_sha256":identity.font_sha256,"cff_sha256":identity.cff_sha256,"face_index":identity.face_index,"table_range":[identity.table_range.start,identity.table_range.end]})),"font_matrix":path.font_matrix.iter().map(|v|json!([v.numerator().to_string(),v.denominator().to_string()])).collect::<Vec<_>>(),"advance":point(path.advance),"commands":path.commands.iter().map(cubic).collect::<Vec<_>>(),"hint_policy":match path.hints.policy{HintPolicy::Reject=>"reject",HintPolicy::Unhinted=>"unhinted"},"stems":path.hints.stems.iter().map(|h|json!({"vertical":h.vertical,"delta":dyadic(h.delta),"width":dyadic(h.width)})).collect::<Vec<_>>(),"masks":path.hints.masks.iter().map(|h|json!({"counter":h.counter,"stem_count":h.stem_count,"bytes":h.bytes})).collect::<Vec<_>>(),"flex_depths":path.hints.flex_depths.iter().map(|v|dyadic(*v)).collect::<Vec<_>>()})
 }
