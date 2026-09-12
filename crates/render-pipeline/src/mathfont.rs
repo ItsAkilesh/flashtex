@@ -111,12 +111,15 @@ impl MathFonts {
     }
 
     /// The `k`-th (1-based) vertical variant of `base` from `MathVariants`,
-    /// in the table's increasing-size order.
+    /// in the table's increasing-size order. Latin Modern Math lists the
+    /// base glyph itself as the first entry of every `MathGlyphConstruction`
+    /// (`∑`: `[3060, 3074]`), so entries equal to `base` are skipped: `k = 1`
+    /// is the first glyph that is actually larger (cmex's `next_larger`).
     pub fn variant_gid(&self, base: u16, k: usize) -> Option<u16> {
         if k == 0 {
             return Some(base);
         }
-        self.vert_variants.get(&base)?.get(k - 1).map(|v| v.gid)
+        self.vert_variants.get(&base)?.iter().filter(|v| v.gid != base).nth(k - 1).map(|v| v.gid)
     }
 
     /// The character actually drawn for a math symbol: letters and lower-case
