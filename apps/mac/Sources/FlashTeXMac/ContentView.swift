@@ -395,7 +395,15 @@ private struct Footer: View {
                  ?? "Click text in the preview to select its source range.")
                 .font(.caption).foregroundStyle(.secondary).lineLimit(1)
             Spacer()
-            if let note = model.captureNote {
+            if case .running(let pid, _) = model.exportSession.state { // ShellModel+ExportSession.swift
+                ProgressView().controlSize(.small)
+                Text("Exporting exact PDF (flashtex-pdf-exact pid \(pid))…")
+                    .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                Button("Cancel") { model.cancelExactExport() }
+                    .controlSize(.small)
+                    .help("Terminate flashtex-pdf-exact; nothing is written to the destination")
+                    .accessibilityIdentifier("export.cancel")
+            } else if let note = model.captureNote {
                 Text(note).font(.caption).foregroundStyle(.secondary).lineLimit(1)
             }
         }
