@@ -380,15 +380,6 @@ fn shift_span(span: Span, delta: isize) -> Span {
 fn shift_block(block: &Block, changes: &[ChangedBytes], deltas: &[isize]) -> Option<Block> {
     Some(match block {
         Block::Paragraph(inlines) => Block::Paragraph(shift_inlines(inlines, changes, deltas)?),
-        Block::ListItem {
-            content,
-            extra_gap_before_pt,
-            extra_gap_after_pt,
-        } => Block::ListItem {
-            content: shift_inlines(content, changes, deltas)?,
-            extra_gap_before_pt: *extra_gap_before_pt,
-            extra_gap_after_pt: *extra_gap_after_pt,
-        },
         Block::Heading {
             level,
             number,
@@ -407,6 +398,22 @@ fn shift_block(block: &Block, changes: &[ChangedBytes], deltas: &[isize]) -> Opt
             style: *style,
             content: shift_inlines(content, changes, deltas)?,
         },
+        Block::ListItem {
+            level,
+            label,
+            content,
+            extra_gap_before_pt,
+            extra_gap_after_pt,
+        } => Block::ListItem {
+            level: *level,
+            label: match label {
+                Some((text, span)) => Some((text.clone(), mapped_span(*span, changes, deltas)?)),
+                None => None,
+            },
+            content: shift_inlines(content, changes, deltas)?,
+            extra_gap_before_pt: *extra_gap_before_pt,
+            extra_gap_after_pt: *extra_gap_after_pt,
+        },
         Block::VSpace { pt } => Block::VSpace { pt: *pt },
         Block::Rule { span } => Block::Rule {
             span: mapped_span(*span, changes, deltas)?,
@@ -423,10 +430,16 @@ fn shift_inlines(
     inlines
         .iter()
         .map(|inline| match inline {
-            Inline::Text { text, span, style } => Some(Inline::Text {
+            Inline::Text {
+                text,
+                span,
+                style,
+                space_before,
+            } => Some(Inline::Text {
                 style: *style,
                 text: text.clone(),
                 span: mapped_span(*span, changes, deltas)?,
+                space_before: *space_before,
             }),
             Inline::LineBreak { span } => Some(Inline::LineBreak {
                 span: mapped_span(*span, changes, deltas)?,
@@ -441,6 +454,7 @@ fn shift_inlines(
                 number,
                 number_span,
                 span,
+                space_before,
             } => Some(Inline::Math {
                 list: shift_math_list(list, changes, deltas)?,
                 display: *display,
@@ -450,6 +464,7 @@ fn shift_inlines(
                     None => None,
                 },
                 span: mapped_span(*span, changes, deltas)?,
+                space_before: *space_before,
             }),
             Inline::MathRows {
                 rows,

@@ -179,6 +179,9 @@ pub enum Block {
         /// one (compiler `Block::VSpace`), summed in points; `\addvspace`
         /// glue added before the block.
         vspace_before: f64,
+        /// The paragraph is (part of) an `itemize`/`enumerate` `\item`
+        /// (compiler `Block::ListItem`): LaTeX's `\list` geometry applies.
+        list: Option<ListGeom>,
     },
     Heading {
         level: u8,
@@ -194,6 +197,40 @@ pub enum Block {
         eject_before: bool,
         vspace_before: f64,
     },
+}
+
+/// LaTeX `\list` geometry of one `\item` paragraph (see
+/// [`Block::Paragraph::list`]). `\list` sets `\parshape` so every line of
+/// the item starts `\@totalleftmargin` (the sum of the enclosing lists'
+/// `\leftmargin`s) in from the left margin, and `\@item` sets the label
+/// right-aligned in `\hbox to\labelwidth{\hss <label>}\hskip\labelsep`
+/// before the first line, so its right edge ends `\labelsep` before the
+/// text (article's `\makelabel` is `\hss\llap{#1}`, so a wider label
+/// simply extends further left).
+#[derive(Debug, Clone, PartialEq)]
+pub struct ListGeom {
+    /// Nesting level (1 = outermost).
+    pub level: u8,
+    /// `\leftmargin` of every enclosing list, outermost first; the hanging
+    /// indent is their sum.
+    pub margins: Vec<ListMargin>,
+    /// The `\item` marker text and the command's span; `None` for a later
+    /// paragraph of the same item (a blank line inside the item's text).
+    pub label: Option<(String, Span)>,
+}
+
+/// One list level's `\leftmargin`.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ListMargin {
+    /// article's `\leftmargin<i>` (or an explicit enumitem
+    /// `leftmargin=<dimen>`), in points.
+    Fixed(f64),
+    /// enumitem `leftmargin=*`: `\labelwidth` + `\labelsep`, where
+    /// `\labelwidth` is the width of this label — the widest one the list
+    /// can produce (enumitem's `widest` default: `m`/`M`/`viii`/`VIII`/`0`
+    /// for `\alph`/`\Alph`/`\roman`/`\Roman`/`\arabic`), set in the
+    /// body font.
+    Widest(String),
 }
 
 /// How a paragraph-shape environment began (see [`Block::Paragraph`]).
@@ -321,7 +358,7 @@ pub fn adapt_cached(
     let mut blocks = Vec::new();
     let mut limitations: Vec<(&'static str, Span, String)> = Vec::new();
     let mut after_heading = false;
-    for unit in split_at_page_breaks(texts, parsed, size) {
+    for unit in split_at_page_breaks(texts, entry, parsed, size) {
         let eject_before = unit.eject_before;
         let vspace_before = unit.vspace_before;
         limitations.extend(unit.limitations);
@@ -370,6 +407,7 @@ pub fn adapt_cached(
                 styled,
                 env_open,
                 after_env,
+                list,
             } => {
                 for inline in inlines {
                     if let Inline::MathRows { rows, aligned, span } = inline {
@@ -419,16 +457,18 @@ pub fn adapt_cached(
                     continue;
                 }
                 // `\centering` sets `\parindent 0pt`; a list item's first
-                // paragraph carries no indent and `quote` sets
-                // `\listparindent 0pt` for the ones after it.
+                // paragraph carries no indent and `\list` sets
+                // `\parindent\listparindent` (0pt in article) for the
+                // ones after it, `quote` likewise.
                 blocks.push(Block::Paragraph {
                     parts,
-                    indent: !after_heading && !caption && styled.is_none() && !after_env,
+                    indent: !after_heading && !caption && styled.is_none() && !after_env && list.is_none(),
                     style: styled.unwrap_or_default(),
                     env_open,
                     env_close: false,
                     eject_before,
                     vspace_before,
+                    list,
                 });
                 after_heading = false;
             }
@@ -503,6 +543,8 @@ enum UnitKind<'p> {
         /// LaTeX's `\@endpe`: text that follows `\end{center}`/... without
         /// a blank line continues in the same paragraph, unindented.
         after_env: bool,
+        /// A compiler `ListItem` paragraph: its `\list` geometry.
+        list: Option<ListGeom>,
     },
     Rule {
         span: Span,
@@ -521,8 +563,10 @@ fn gap_has_page_break(texts: &[&str], prev: Span, next: Span) -> bool {
     PAGE_BREAKS.iter().any(|c| find_command(gap, c).is_some())
 }
 
-fn split_at_page_breaks<'p>(texts: &[&str], parsed: &'p Parsed, size: u32) -> Vec<Unit<'p>> {
+fn split_at_page_breaks<'p>(texts: &[&str], entry: usize, parsed: &'p Parsed, size: u32) -> Vec<Unit<'p>> {
     let mut units = Vec::new();
+    // `\setlist` lives in the root document's preamble.
+    let setlist = setlist_gaps(texts.get(entry).copied().unwrap_or(""), size);
     let mut prev_end: Option<Span> = None;
     // Carried from the compiler's own `PageBreak`/`VSpace`/`Rule` blocks
     // to the next unit that holds material.
@@ -577,23 +621,37 @@ fn split_at_page_breaks<'p>(texts: &[&str], parsed: &'p Parsed, size: u32) -> Ve
                 }
             }
         }
-        // The compiler's list model (pin `b38e1884`): an `\item` of a list
-        // under a `\setlist{itemsep=..,topsep=..}` override carries the
+        // The compiler's list model (pin `42557b09`): every `\item`
+        // paragraph is a `ListItem` with its nesting level and, for the
+        // item's first paragraph, the marker text; under a
+        // `\setlist{itemsep=..,topsep=..}` override it also carries the
         // extra gap due before it (`topsep` for the first item, `itemsep`
-        // for the rest) and, on the last item, after it. The pipeline has
-        // no list scan of its own, so the compiler's gaps are the only
-        // list spacing applied: before as `\addvspace` glue on the item,
-        // after as pending space for the next unit. (`em` in `\setlist` is
-        // the compiler's fixed 12pt body, like its `\vspace`; unlike
-        // `\vspace` the source is not re-read here.)
+        // for the rest) and, on the last item, after it. The compiler's
+        // gaps are the only list spacing applied: before as `\addvspace`
+        // glue on the item, after as pending space for the next unit. The
+        // compiler evaluates `em`/`ex` in `\setlist` at its fixed 12pt
+        // body; LaTeX uses the class's `\normalsize`, so a gap that equals
+        // one of the source's `\setlist` values at 12pt is re-read at the
+        // class size (like `\vspace` above). The hanging indent and the
+        // label box are the pipeline's (`list_geometry`): the compiler
+        // reports `leftmargin` as unimplemented.
+        let mut list = None;
         if let CBlock::ListItem {
+            level,
+            label,
             extra_gap_before_pt,
             extra_gap_after_pt,
             ..
         } = block
         {
-            vspace_before += extra_gap_before_pt;
-            pending_vspace += extra_gap_after_pt;
+            vspace_before += setlist.at_class_size(*extra_gap_before_pt);
+            pending_vspace += setlist.at_class_size(*extra_gap_after_pt);
+            let anchor = label.as_ref().map(|(_, span)| *span).or(first);
+            list = anchor.map(|at| ListGeom {
+                level: *level,
+                margins: list_margins(texts.get(at.document.0).copied().unwrap_or(""), at.start, size),
+                label: label.clone(),
+            });
         }
         let limitations = std::mem::take(&mut pending_limitations);
         let styled = match block {
@@ -666,6 +724,7 @@ fn split_at_page_breaks<'p>(texts: &[&str], parsed: &'p Parsed, size: u32) -> Ve
                                 styled,
                                 env_open: env_open.take(),
                                 after_env,
+                                list: list.clone(),
                             },
                             eject_before: eject,
                             vspace_before: std::mem::take(&mut vspace_before),
@@ -682,6 +741,7 @@ fn split_at_page_breaks<'p>(texts: &[&str], parsed: &'p Parsed, size: u32) -> Ve
                         styled,
                         env_open,
                         after_env,
+                        list,
                     },
                     eject_before: eject,
                     vspace_before,
@@ -872,6 +932,201 @@ fn parse_dimen(s: &str, size: u32) -> Option<f64> {
         "bp" => v * 72.27 / 72.0,
         _ => return None,
     })
+}
+
+/// `\setlist` `itemsep`/`topsep` values of the source: each as the
+/// compiler evaluates it (`em`/`ex` at its fixed 12pt body) paired with
+/// the same value at the class's `\normalsize`.
+#[derive(Debug, Default)]
+struct SetlistGaps {
+    pairs: Vec<(f64, f64)>,
+}
+
+impl SetlistGaps {
+    /// `pt` as the compiler reported it, re-read at the class size when it
+    /// is one of the source's `\setlist` values; unchanged otherwise.
+    fn at_class_size(&self, pt: f64) -> f64 {
+        self.pairs.iter().find(|(compiler, _)| (compiler - pt).abs() < 1e-6).map_or(pt, |(_, class)| *class)
+    }
+}
+
+/// Every `\setlist[...]{...}` of `source`: the `(compiler 12pt, class
+/// size)` evaluation of each `itemsep`/`topsep` key.
+fn setlist_gaps(source: &str, size: u32) -> SetlistGaps {
+    let mut gaps = SetlistGaps::default();
+    for (_, keys) in setlist_calls(source) {
+        for (key, value) in list_keys(keys) {
+            if matches!(key, "itemsep" | "topsep") {
+                if let (Some(c), Some(k)) = (parse_dimen(value, 12), parse_dimen(value, size)) {
+                    gaps.pairs.push((c, k));
+                }
+            }
+        }
+    }
+    gaps
+}
+
+/// The `\setlist[<envs>]{<keys>}` calls of `source`, in order:
+/// `(environment list or "" for all, keys)`.
+fn setlist_calls(source: &str) -> Vec<(&str, &str)> {
+    let mut calls = Vec::new();
+    let mut from = 0;
+    while let Some(at) = find_command(&source[from..], "setlist") {
+        let abs = from + at;
+        from = abs + 1;
+        let rest = &source[abs + "\\setlist".len()..];
+        let rest = rest.strip_prefix('*').unwrap_or(rest).trim_start();
+        let (envs, rest) = match rest.strip_prefix('[') {
+            Some(r) => match r.find(']') {
+                Some(close) => (&r[..close], r[close + 1..].trim_start()),
+                None => continue,
+            },
+            None => ("", rest),
+        };
+        if !rest.starts_with('{') {
+            continue;
+        }
+        let Some(close) = matching_brace(rest.as_bytes(), 0) else { continue };
+        calls.push((envs, &rest[1..close]));
+    }
+    calls
+}
+
+/// enumitem `key=value` pairs (a key without `=` gets an empty value).
+fn list_keys(keys: &str) -> impl Iterator<Item = (&str, &str)> {
+    keys.split(',').map(str::trim).filter(|k| !k.is_empty()).map(|k| match k.split_once('=') {
+        Some((key, value)) => (key.trim(), value.trim()),
+        None => (k, ""),
+    })
+}
+
+/// Whether a `\setlist[<envs>]` list names `env` (enumitem also accepts
+/// level numbers there, which apply to every environment).
+fn setlist_names(envs: &str, env: &str) -> bool {
+    envs.trim().is_empty() || envs.split(',').map(str::trim).any(|e| e == env || e.parse::<u8>().is_ok())
+}
+
+/// The `itemize`/`enumerate` environments open at byte `at` of `source`,
+/// outermost first: `(environment, `\begin` optional argument)`.
+fn list_stack_at(source: &str, at: usize) -> Vec<(&str, &str)> {
+    let mut stack: Vec<(&str, &str)> = Vec::new();
+    let mut from = 0;
+    while from < at {
+        let next_begin = find_command(&source[from..at], "begin").map(|i| from + i);
+        let next_end = find_command(&source[from..at], "end").map(|i| from + i);
+        let (pos, is_begin) = match (next_begin, next_end) {
+            (Some(b), Some(e)) if b < e => (b, true),
+            (Some(b), None) => (b, true),
+            (_, Some(e)) => (e, false),
+            (None, None) => break,
+        };
+        from = pos + 1;
+        let rest = &source[pos + if is_begin { "\\begin".len() } else { "\\end".len() }..];
+        let rest = rest.trim_start();
+        let Some(inner) = rest.strip_prefix('{') else { continue };
+        let Some(close) = inner.find('}') else { continue };
+        let env = inner[..close].trim();
+        if !matches!(env, "itemize" | "enumerate") {
+            continue;
+        }
+        if is_begin {
+            let after = inner[close + 1..].trim_start();
+            let options = match after.strip_prefix('[') {
+                Some(o) => o.find(']').map_or("", |c| &o[..c]),
+                None => "",
+            };
+            stack.push((env, options));
+        } else if stack.last().is_some_and(|(open, _)| *open == env) {
+            stack.pop();
+        }
+    }
+    stack
+}
+
+/// article's `\leftmargin<i>` for nesting `depth` (1-based), in em of
+/// the body font (`\leftmarginv`/`vi` are 1em).
+fn article_leftmargin_em(depth: usize) -> f64 {
+    [2.5, 2.2, 1.87, 1.7, 1.0, 1.0][depth.clamp(1, 6) - 1]
+}
+
+/// The widest label enumitem assumes for the `leftmargin=*` computation:
+/// a `label=` key (its `\alph*`-style counter replaced by `m`/`M`/
+/// `viii`/`VIII`/`0`), a shortlabels template (`(a)` -> `(m)`), or the
+/// class's own label for this depth.
+fn widest_label(env: &str, depth: usize, label_key: Option<&str>, template: Option<&str>) -> String {
+    if let Some(label) = label_key {
+        return [("\\alph*", "m"), ("\\Alph*", "M"), ("\\roman*", "viii"), ("\\Roman*", "VIII"), ("\\arabic*", "0")]
+            .iter()
+            .fold(label.to_string(), |text, (command, widest)| text.replace(command, widest));
+    }
+    if env == "itemize" {
+        return match depth {
+            1 => "•",
+            2 => "–",
+            3 => "∗",
+            _ => "·",
+        }
+        .to_string();
+    }
+    if let Some(template) = template {
+        if let Some((index, style)) = template.char_indices().find(|(_, c)| "aAiI1".contains(*c)) {
+            let widest = match style {
+                'a' => "m",
+                'A' => "M",
+                'i' => "viii",
+                'I' => "VIII",
+                _ => "0",
+            };
+            return format!("{}{}{}", &template[..index], widest, &template[index + 1..]);
+        }
+        return template.to_string();
+    }
+    match depth {
+        1 => "0.",
+        2 => "(m)",
+        3 => "viii.",
+        _ => "M.",
+    }
+    .to_string()
+}
+
+/// `\leftmargin` of every list open at byte `at` (outermost first): the
+/// class's `\leftmargin<i>` unless a `\setlist` naming the environment or
+/// the `\begin` options set enumitem's `leftmargin` (`*` = the widest
+/// label's width plus `\labelsep`; a `<dimen>` as given).
+fn list_margins(source: &str, at: usize, size: u32) -> Vec<ListMargin> {
+    let calls = setlist_calls(source);
+    let class_margin = |depth: usize| ListMargin::Fixed(parse_dimen(&format!("{}em", article_leftmargin_em(depth)), size).unwrap_or(0.0));
+    list_stack_at(source, at)
+        .iter()
+        .enumerate()
+        .map(|(i, (env, options))| {
+            let depth = i + 1;
+            let mut leftmargin: Option<&str> = None;
+            let mut label_key: Option<&str> = None;
+            let begin_keys = options.contains('=');
+            let all_keys = calls
+                .iter()
+                .filter(|(envs, _)| setlist_names(envs, env))
+                .map(|(_, keys)| *keys)
+                .chain(begin_keys.then_some(*options));
+            for keys in all_keys {
+                for (key, value) in list_keys(keys) {
+                    match key {
+                        "leftmargin" => leftmargin = Some(value),
+                        "label" => label_key = Some(value),
+                        _ => {}
+                    }
+                }
+            }
+            let template = (!begin_keys && !options.is_empty()).then_some(*options);
+            match leftmargin {
+                Some("*") => ListMargin::Widest(widest_label(env, depth, label_key, template)),
+                Some(dimen) => parse_dimen(dimen, size).map_or_else(|| class_margin(depth), ListMargin::Fixed),
+                None => class_margin(depth),
+            }
+        })
+        .collect()
 }
 
 /// Byte offset of `\name` (as a whole control word, outside comments).
@@ -1636,6 +1891,9 @@ fn items_from_inlines(texts: &[&str], inlines: &[Inline], styles: &[Styles], lab
                     text,
                     span: *span,
                     style: Default::default(),
+                    // Interword gaps are read from the source bytes between
+                    // spans here, never from the compiler's flag.
+                    space_before: true,
                 }));
             }
             other => resolved.push(std::borrow::Cow::Borrowed(other)),

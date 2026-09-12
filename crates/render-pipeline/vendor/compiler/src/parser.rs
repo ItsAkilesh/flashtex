@@ -30,6 +30,14 @@ pub enum Inline {
         text: String,
         span: Span,
         style: TextStyle,
+        /// Whether the source had real whitespace (or nothing — start of a
+        /// paragraph/group) immediately before this run, as opposed to
+        /// sitting directly against whatever came before it (the far side
+        /// of `$...$`, or a macro-argument splice such as `\normalfont[#2
+        /// points]` gluing the literal `[` to the substituted digits).
+        /// Real TeX never inserts an inter-word gap that is not present in
+        /// the source; see `layout::LayoutCursor::place`.
+        space_before: bool,
     },
     LineBreak {
         span: Span,
@@ -50,6 +58,8 @@ pub enum Inline {
         number: Option<String>,
         number_span: Option<Span>,
         span: Span,
+        /// See `Inline::Text::space_before`.
+        space_before: bool,
     },
     /// A multi-row amsmath display (`gather`, `align` and their starred forms).
     /// `aligned` cells alternate right/left alignment around shared tab stops.
@@ -98,18 +108,6 @@ pub struct MathRow {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Block {
     Paragraph(Vec<Inline>),
-    /// One `\item` inside `itemize`/`enumerate` whose list has a `\setlist`
-    /// itemsep/topsep override. Lists without `\setlist` keep using
-    /// `Paragraph` for their items, so default output is unaffected.
-    ListItem {
-        content: Vec<Inline>,
-        /// Extra gap before this item, beyond the ordinary paragraph gap:
-        /// `topsep` before the list's first item, `itemsep` before the rest.
-        extra_gap_before_pt: f64,
-        /// Extra gap after this item: `topsep`, set only on the list's last
-        /// item.
-        extra_gap_after_pt: f64,
-    },
     Heading {
         level: u8,
         number: String,
@@ -124,6 +122,24 @@ pub enum Block {
     Styled {
         style: ParagraphStyle,
         content: Vec<Inline>,
+    },
+    /// One paragraph of an `itemize`/`enumerate` `\item`. `level` (1 =
+    /// outermost) drives the hanging-indent margin; `label` carries the
+    /// marker text and the `\item` span, and is `None` for a continuation
+    /// paragraph of the same item (a blank line inside `\item`'s text) so the
+    /// marker is not repeated while the hanging indent still applies.
+    /// `extra_gap_before_pt`/`extra_gap_after_pt` are `\setlist`
+    /// itemsep/topsep overrides (`0.0` without `\setlist`).
+    ListItem {
+        level: u8,
+        label: Option<(String, Span)>,
+        content: Vec<Inline>,
+        /// Extra gap before this item, beyond the ordinary paragraph gap:
+        /// `topsep` before the list's first item, `itemsep` before the rest.
+        extra_gap_before_pt: f64,
+        /// Extra gap after this item: `topsep`, set only on the list's last
+        /// item.
+        extra_gap_after_pt: f64,
     },
     /// `\vspace{<dimen>}`: additional vertical glue, in points.
     VSpace {
@@ -487,6 +503,21 @@ struct InputToken {
     maps_to_invocation: bool,
 }
 
+/// Whether the token at `index` in `tokens` sits directly against real
+/// source whitespace — a preceding `TokenKind::Space`/`ParBreak` — or is the
+/// first token, in which case there is nothing before it to glue against.
+/// Any other neighbour (a word, a control word, `$`, a brace, ...) means the
+/// source had no space there, so layout must not invent one. Shared by the
+/// main token cursor (`P::space_precedes`) and `P::inlines_from_tokens`,
+/// which walks its own flattened, macro-expanded token list.
+fn preceded_by_space(tokens: &[InputToken], index: usize) -> bool {
+    index == 0
+        || matches!(
+            tokens.get(index - 1).map(|input| &input.token.kind),
+            Some(TokenKind::Space) | Some(TokenKind::ParBreak)
+        )
+}
+
 #[derive(Debug, Clone)]
 struct MacroDef {
     argument_count: usize,
@@ -547,6 +578,7 @@ pub fn parse_project(documents: &[SourceDocument<'_>], entry_path: &str) -> Pars
         current_counter: None,
         seen_labels: HashMap::new(),
         list_stack: Vec::new(),
+        pending_item_label: None,
         paragraph_styles: Vec::new(),
         document_global_state: false,
         style: TextStyle::default(),
@@ -615,6 +647,12 @@ struct P<'a> {
     /// Environment name, item count, an enumitem label template if given,
     /// and the `\setlist` spacing resolved when this list's `\begin` ran.
     list_stack: Vec<(String, u32, Option<String>, ListSpacing)>,
+    /// The marker text and span set by the most recent `\item`, consumed by
+    /// the next `flush_paragraph`/`flush_list_item` call (its own paragraph,
+    /// or a later one if the item's text is empty). `None` once consumed, so
+    /// later paragraphs of the same item render with the hanging indent but
+    /// no repeated label.
+    pending_item_label: Option<(String, Span)>,
     paragraph_styles: Vec<ParagraphStyle>,
     document_global_state: bool,
     /// Current text style; saved on `{` and environment entry, restored on
@@ -643,6 +681,12 @@ impl P<'_> {
         self.t.get(self.i).map(|t| &t.token)
     }
 
+    /// See the free function `preceded_by_space`, applied to the main token
+    /// cursor.
+    fn space_precedes(&self, index: usize) -> bool {
+        preceded_by_space(&self.t, index)
+    }
+
     fn document(&mut self) -> Vec<Block> {
         let mut blocks = Vec::new();
         let mut para = Vec::new();
@@ -666,12 +710,14 @@ impl P<'_> {
                 }
                 TokenKind::Space | TokenKind::Comment => self.i += 1,
                 TokenKind::Word(word) => {
+                    let space_before = self.space_precedes(self.i);
                     self.i += 1;
                     if render {
                         para.push(Inline::Text {
                             text: apply_text_ligatures(&word),
                             span: tok.span,
                             style: self.style,
+                            space_before,
                         });
                     }
                 }
@@ -858,6 +904,7 @@ impl P<'_> {
                         text: format!("Figure {}:", self.figure_counter),
                         span,
                         style: TextStyle::default(),
+                        space_before: true,
                     }];
                     content.extend(self.inlines_from_tokens(tokens, TextStyle::default()));
                     blocks.push(Block::FigureCaption { content });
@@ -888,11 +935,7 @@ impl P<'_> {
                         } else {
                             "•".to_string()
                         };
-                        para.push(Inline::Text {
-                            text: marker,
-                            span,
-                            style: TextStyle::default(),
-                        });
+                        self.pending_item_label = Some((marker, span));
                     }
                     None => self.diags.push(Diagnostic::error(
                         "\\item is only supported inside itemize or enumerate",
@@ -1679,6 +1722,9 @@ impl P<'_> {
             number: numbered.then_some(number),
             number_span: numbered.then_some(open),
             span: Span::in_document(open.document, open.start, end),
+            // Always its own line (see `layout::LayoutCursor::display_math`),
+            // so whether real source whitespace preceded it is moot.
+            space_before: true,
         });
         para.extend(labels);
         self.flush_paragraph(blocks, para);
@@ -1866,6 +1912,7 @@ impl P<'_> {
     }
 
     fn dollar_math(&mut self, open: Span, para: &mut Vec<Inline>) {
+        let space_before = self.space_precedes(self.i);
         self.i += 1;
         let display = matches!(self.peek().map(|t| &t.kind), Some(TokenKind::MathShift));
         if display {
@@ -1903,11 +1950,13 @@ impl P<'_> {
             close_end,
             found,
             display,
+            space_before,
             para,
         );
     }
 
     fn bracket_math(&mut self, open: Span, para: &mut Vec<Inline>) {
+        let space_before = self.space_precedes(self.i);
         self.i += 1;
         let content_start = self.i;
         while self.i < self.t.len() {
@@ -1935,6 +1984,7 @@ impl P<'_> {
             close_end,
             found,
             true,
+            space_before,
             para,
         );
     }
@@ -1971,6 +2021,7 @@ impl P<'_> {
         close_end: usize,
         found: bool,
         display: bool,
+        space_before: bool,
         para: &mut Vec<Inline>,
     ) {
         // Unterminated math inside an expansion can report a content end past the
@@ -2019,6 +2070,7 @@ impl P<'_> {
             number: None,
             number_span: None,
             span: Span::in_document(open.document, open.start, end),
+            space_before,
         });
     }
 
@@ -2177,13 +2229,14 @@ impl P<'_> {
         let mut style = base;
         let mut saved = Vec::new();
         let mut pending = None;
-        for input in expanded {
-            match input.token.kind {
-                TokenKind::Command(name) if style_command(&name) => {
-                    pending = Some(apply_style(style, &name));
+        for (index, input) in expanded.iter().enumerate() {
+            let space_before = preceded_by_space(&expanded, index);
+            match &input.token.kind {
+                TokenKind::Command(name) if style_command(name) => {
+                    pending = Some(apply_style(style, name));
                 }
-                TokenKind::Command(name) if style_declaration(&name) => {
-                    style = apply_style(style, &name);
+                TokenKind::Command(name) if style_declaration(name) => {
+                    style = apply_style(style, name);
                 }
                 TokenKind::LBrace => {
                     saved.push(style);
@@ -2197,9 +2250,10 @@ impl P<'_> {
                     }
                 }
                 TokenKind::Word(text) => content.push(Inline::Text {
-                    text: apply_text_ligatures(&text),
+                    text: apply_text_ligatures(text),
                     span: input.token.span,
                     style,
+                    space_before,
                 }),
                 TokenKind::LineBreak => content.push(Inline::LineBreak {
                     span: input.token.span,
@@ -2278,20 +2332,17 @@ impl P<'_> {
     }
 
     fn flush_paragraph(&mut self, blocks: &mut Vec<Block>, paragraph: &mut Vec<Inline>) {
-        if !paragraph.is_empty() {
-            let content = std::mem::take(paragraph);
-            blocks.push(match self.paragraph_styles.last() {
-                Some(&style) => Block::Styled { style, content },
-                None => Block::Paragraph(content),
-            });
-            self.finish_block_dependencies();
-        }
+        self.flush_list_item(blocks, paragraph, 0.0, 0.0);
     }
 
-    /// Like `flush_paragraph`, but for the content of one list `\item`:
-    /// attaches any `\setlist` itemsep/topsep gap due before or after it.
-    /// Falls back to an ordinary `Block::Paragraph` when neither applies, so
-    /// default output (no `\setlist`) stays byte-identical.
+    /// Flushes the accumulated paragraph. Inside a list, this attaches the
+    /// pending `\item` marker (for the first paragraph of an item; later
+    /// paragraphs of the same item get the hanging indent without repeating
+    /// it), the item's nesting level, and any `\setlist` itemsep/topsep gap
+    /// due before or after it (`0.0`/`0.0` from `flush_paragraph`, meaning no
+    /// override — mid-item paragraph breaks never get itemsep/topsep, which
+    /// are gaps between items, not between paragraphs within one). Falls
+    /// back to an ordinary `Block::Paragraph`/`Block::Styled` outside a list.
     fn flush_list_item(
         &mut self,
         blocks: &mut Vec<Block>,
@@ -2299,21 +2350,34 @@ impl P<'_> {
         extra_gap_before_pt: f64,
         extra_gap_after_pt: f64,
     ) {
-        if !paragraph.is_empty() {
-            let content = std::mem::take(paragraph);
-            blocks.push(match self.paragraph_styles.last() {
-                Some(&style) => Block::Styled { style, content },
-                None if extra_gap_before_pt != 0.0 || extra_gap_after_pt != 0.0 => {
-                    Block::ListItem {
-                        content,
-                        extra_gap_before_pt,
-                        extra_gap_after_pt,
-                    }
-                }
-                None => Block::Paragraph(content),
-            });
-            self.finish_block_dependencies();
+        let label = self.pending_item_label.take();
+        if paragraph.is_empty() && label.is_none() {
+            return;
         }
+        let content = std::mem::take(paragraph);
+        // A list level is "current" only once its first `\item` has been
+        // seen (`count > 0`); text typed directly inside `itemize`/
+        // `enumerate` before any `\item` falls back to an ordinary
+        // paragraph, same as before this paragraph became list-aware.
+        let list_level = self
+            .list_stack
+            .last()
+            .filter(|(_, count, _, _)| *count > 0)
+            .map(|_| self.list_stack.len() as u8);
+        blocks.push(match list_level {
+            Some(level) => Block::ListItem {
+                level,
+                label,
+                content,
+                extra_gap_before_pt,
+                extra_gap_after_pt,
+            },
+            None => match self.paragraph_styles.last() {
+                Some(&style) => Block::Styled { style, content },
+                None => Block::Paragraph(content),
+            },
+        });
+        self.finish_block_dependencies();
     }
 
     /// Drops a `[<length>]` that directly follows `\\`, keeping any text glued
@@ -2862,6 +2926,95 @@ mod tests {
         assert!(items.iter().any(|item| item.text == "Problem"));
         assert!(items.iter().any(|item| item.text == "Body"));
         assert!(!items.iter().any(|item| item.text == "*"));
+    }
+
+    /// audit A8: inline math must not gain an inter-word gap the source
+    /// never had, on either side of `$...$`.
+    #[test]
+    fn math_glued_to_following_punctuation_has_no_gap() {
+        let (parsed, glued) = items("$x$.");
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        let (parsed, spaced) = items("$x$ .");
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        let glued_period = glued.iter().find(|i| i.text == ".").unwrap();
+        let spaced_period = spaced.iter().find(|i| i.text == ".").unwrap();
+        let space = layout::word_space(layout::BODY_SIZE_PT, layout::Font::TimesRoman);
+        assert!(
+            (spaced_period.x_pt - glued_period.x_pt - space).abs() < 0.01,
+            "expected `$x$ .` to sit exactly one word space right of `$x$.`: {} vs {}",
+            spaced_period.x_pt,
+            glued_period.x_pt
+        );
+    }
+
+    #[test]
+    fn math_followed_by_a_real_space_keeps_exactly_one_word_space() {
+        let (parsed, spaced) = items("$x$ y");
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        let (parsed, glued) = items("$x$y");
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        let spaced_y = spaced.iter().find(|i| i.text == "y").unwrap();
+        let glued_y = glued.iter().find(|i| i.text == "y").unwrap();
+        let space = layout::word_space(layout::BODY_SIZE_PT, layout::Font::TimesRoman);
+        assert!(
+            (spaced_y.x_pt - glued_y.x_pt - space).abs() < 0.01,
+            "expected `$x$ y` to sit exactly one word space right of `$x$y`: {} vs {}",
+            spaced_y.x_pt,
+            glued_y.x_pt
+        );
+    }
+
+    #[test]
+    fn text_followed_by_a_real_space_before_math_keeps_exactly_one_word_space() {
+        let (parsed, spaced) = items("a $x$");
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        let (parsed, glued) = items("a$x$");
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        let spaced_x = spaced.iter().find(|i| i.text == "x").unwrap();
+        let glued_x = glued.iter().find(|i| i.text == "x").unwrap();
+        let space = layout::word_space(layout::BODY_SIZE_PT, layout::Font::TimesRoman);
+        assert!(
+            (spaced_x.x_pt - glued_x.x_pt - space).abs() < 0.01,
+            "expected `a $x$` to sit exactly one word space right of `a$x$`: {} vs {}",
+            spaced_x.x_pt,
+            glued_x.x_pt
+        );
+    }
+
+    /// audit A9: a control *word* swallows the whitespace that follows it
+    /// (real TeX's "skip blanks" state), so `\normalfont 4` and
+    /// `\normalfont4` must typeset identically. Exercised through
+    /// `\section{...}` content, the same `inlines_from_tokens` path used by
+    /// `\problem`-style macro bodies like `\normalfont[#2 points]`.
+    #[test]
+    fn normalfont_swallows_its_following_space() {
+        let (parsed, spaced) = items("\\section{X\\normalfont 4}");
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        let (parsed, glued) = items("\\section{X\\normalfont4}");
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        let spaced_four = spaced.iter().find(|i| i.text == "4").unwrap();
+        let glued_four = glued.iter().find(|i| i.text == "4").unwrap();
+        assert_eq!(
+            spaced_four.x_pt, glued_four.x_pt,
+            "the space after \\normalfont must not shift what follows it"
+        );
+    }
+
+    /// `\ ` is a control *symbol* (an escaped literal space), not a control
+    /// word, so it is never swallowed; `\\` is the unrelated line-break
+    /// token. Neither is affected by the control-word space-swallow rule.
+    #[test]
+    fn control_space_and_linebreak_are_not_swallowed() {
+        let toks = tokenize("x\\ y");
+        assert_eq!(toks[0].kind, TokenKind::Word("x".into()));
+        assert_eq!(toks[1].kind, TokenKind::Word(" ".into()));
+        assert_eq!(toks[2].kind, TokenKind::Word("y".into()));
+
+        let toks = tokenize("x\\\\ y");
+        assert_eq!(toks[0].kind, TokenKind::Word("x".into()));
+        assert_eq!(toks[1].kind, TokenKind::LineBreak);
+        assert_eq!(toks[2].kind, TokenKind::Space);
+        assert_eq!(toks[3].kind, TokenKind::Word("y".into()));
     }
 
     #[test]
