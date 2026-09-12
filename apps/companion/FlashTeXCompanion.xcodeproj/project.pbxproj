@@ -7,18 +7,21 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		A1000001 /* FlashTeXCompanionApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000001; };
-		A1000002 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000002; };
-		A1000003 /* DrawingCanvasView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000003; };
-		A1000004 /* CameraCaptureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000004; };
-		A1000005 /* CapturePayload.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000005; };
-		A1000006 /* CaptureStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000006; };
-		A1000007 /* PayloadPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000007; };
-		A1000008 /* CaptureHistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000008; };
-		A100000C /* ImageValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000D; };
-		A100000B /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000C; };
-		A100000A /* CaptureTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000B; };
-		A1000009 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A2000009; };
+		A1000001 /* FlashTeXCompanionApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000001 /* FlashTeXCompanionApp.swift */; };
+		A1000002 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000002 /* ContentView.swift */; };
+		A1000003 /* DrawingCanvasView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000003 /* DrawingCanvasView.swift */; };
+		A1000004 /* CameraCaptureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000004 /* CameraCaptureView.swift */; };
+		A1000005 /* CapturePayload.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000005 /* CapturePayload.swift */; };
+		A1000006 /* CaptureStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000006 /* CaptureStore.swift */; };
+		A1000007 /* PayloadPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000007 /* PayloadPreviewView.swift */; };
+		A1000008 /* CaptureHistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000008 /* CaptureHistoryView.swift */; };
+		A1000009 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A2000009 /* Assets.xcassets */; };
+		A100000A /* CaptureTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000B /* CaptureTransport.swift */; };
+		A100000B /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000C /* SettingsView.swift */; };
+		A100000C /* ImageValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000D /* ImageValidator.swift */; };
+		A100000D /* BonjourTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000E /* BonjourTransport.swift */; };
+		A100000E /* CapturePayloadTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000011 /* CapturePayloadTests.swift */; };
+		A100000F /* ImageValidatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000012 /* ImageValidatorTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -31,15 +34,26 @@
 		A2000007 /* PayloadPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PayloadPreviewView.swift; sourceTree = "<group>"; };
 		A2000008 /* CaptureHistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureHistoryView.swift; sourceTree = "<group>"; };
 		A2000009 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
-		A200000D /* ImageValidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageValidator.swift; sourceTree = "<group>"; };
-		A200000C /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
-		A200000B /* CaptureTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureTransport.swift; sourceTree = "<group>"; };
 		A200000A /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
-		A3000001 /* FlashTeXCompanion.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = FlashTeXCompanion.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A200000B /* CaptureTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureTransport.swift; sourceTree = "<group>"; };
+		A200000C /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		A200000D /* ImageValidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageValidator.swift; sourceTree = "<group>"; };
+		A200000E /* BonjourTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BonjourTransport.swift; sourceTree = "<group>"; };
+		A200000F /* FlashTeXCompanion.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = FlashTeXCompanion.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A2000010 /* FlashTeXCompanionTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FlashTeXCompanionTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		A2000011 /* CapturePayloadTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CapturePayloadTests.swift; sourceTree = "<group>"; };
+		A2000012 /* ImageValidatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageValidatorTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		A4000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A4000002 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -53,18 +67,8 @@
 			isa = PBXGroup;
 			children = (
 				A5000002 /* FlashTeXCompanion */,
-				A5000006 /* Services */ = {
-			isa = PBXGroup;
-			children = (
-				A200000D /* ImageValidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageValidator.swift; sourceTree = "<group>"; };
-		A200000C /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
-		A200000B /* CaptureTransport.swift */,
-				A200000D /* ImageValidator.swift */,
-			);
-			path = Services;
-			sourceTree = "<group>";
-		};
-		A5000005 /* Products */,
+				A5000007 /* FlashTeXCompanionTests */,
+				A5000006 /* Products */,
 			);
 			sourceTree = "<group>";
 		};
@@ -74,12 +78,9 @@
 				A2000001 /* FlashTeXCompanionApp.swift */,
 				A5000003 /* Views */,
 				A5000004 /* Models */,
-				A5000006 /* Services */,
+				A5000005 /* Services */,
 				A2000009 /* Assets.xcassets */,
-				A200000D /* ImageValidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageValidator.swift; sourceTree = "<group>"; };
-		A200000C /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
-		A200000B /* CaptureTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureTransport.swift; sourceTree = "<group>"; };
-		A200000A /* Info.plist */,
+				A200000A /* Info.plist */,
 			);
 			path = FlashTeXCompanion;
 			sourceTree = "<group>";
@@ -92,8 +93,7 @@
 				A2000004 /* CameraCaptureView.swift */,
 				A2000007 /* PayloadPreviewView.swift */,
 				A2000008 /* CaptureHistoryView.swift */,
-				A200000D /* ImageValidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageValidator.swift; sourceTree = "<group>"; };
-		A200000C /* SettingsView.swift */,
+				A200000C /* SettingsView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -107,23 +107,32 @@
 			path = Models;
 			sourceTree = "<group>";
 		};
-		A5000006 /* Services */ = {
+		A5000005 /* Services */ = {
 			isa = PBXGroup;
 			children = (
-				A200000D /* ImageValidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageValidator.swift; sourceTree = "<group>"; };
-		A200000C /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
-		A200000B /* CaptureTransport.swift */,
+				A200000B /* CaptureTransport.swift */,
 				A200000D /* ImageValidator.swift */,
+				A200000E /* BonjourTransport.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
 		};
-		A5000005 /* Products */ = {
+		A5000006 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				A3000001 /* FlashTeXCompanion.app */,
+				A200000F /* FlashTeXCompanion.app */,
+				A2000010 /* FlashTeXCompanionTests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		A5000007 /* FlashTeXCompanionTests */ = {
+			isa = PBXGroup;
+			children = (
+				A2000011 /* CapturePayloadTests.swift */,
+				A2000012 /* ImageValidatorTests.swift */,
+			);
+			path = FlashTeXCompanionTests;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -143,8 +152,25 @@
 			);
 			name = FlashTeXCompanion;
 			productName = FlashTeXCompanion;
-			productReference = A3000001 /* FlashTeXCompanion.app */;
+			productReference = A200000F /* FlashTeXCompanion.app */;
 			productType = "com.apple.product-type.application";
+		};
+		A6000002 /* FlashTeXCompanionTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A8000009 /* Build configuration list for PBXNativeTarget "FlashTeXCompanionTests" */;
+			buildPhases = (
+				A7000003 /* Sources */,
+				A4000002 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				AB000001 /* PBXTargetDependency */,
+			);
+			name = FlashTeXCompanionTests;
+			productName = FlashTeXCompanionTests;
+			productReference = A2000010 /* FlashTeXCompanionTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
 		};
 /* End PBXNativeTarget section */
 
@@ -159,6 +185,10 @@
 					A6000001 = {
 						CreatedOnToolsVersion = 16.0;
 					};
+					A6000002 = {
+						CreatedOnToolsVersion = 16.0;
+						TestTargetID = A6000001;
+					};
 				};
 			};
 			buildConfigurationList = A8000001 /* Build configuration list for PBXProject "FlashTeXCompanion" */;
@@ -170,22 +200,12 @@
 				Base,
 			);
 			mainGroup = A5000001;
-			productRefGroup = A5000006 /* Services */ = {
-			isa = PBXGroup;
-			children = (
-				A200000D /* ImageValidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageValidator.swift; sourceTree = "<group>"; };
-		A200000C /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
-		A200000B /* CaptureTransport.swift */,
-				A200000D /* ImageValidator.swift */,
-			);
-			path = Services;
-			sourceTree = "<group>";
-		};
-		A5000005 /* Products */;
+			productRefGroup = A5000006 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
 				A6000001 /* FlashTeXCompanion */,
+				A6000002 /* FlashTeXCompanionTests */,
 			);
 		};
 /* End PBXProject section */
@@ -195,10 +215,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				A100000C /* ImageValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000D; };
-		A100000B /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000C; };
-		A100000A /* CaptureTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000B; };
-		A1000009 /* Assets.xcassets in Resources */,
+				A1000009 /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -217,16 +234,41 @@
 				A1000006 /* CaptureStore.swift in Sources */,
 				A1000007 /* PayloadPreviewView.swift in Sources */,
 				A1000008 /* CaptureHistoryView.swift in Sources */,
-				A100000C /* ImageValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000D; };
-		A100000B /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000C; };
-		A100000A /* CaptureTransport.swift in Sources */,
-				A100000C /* ImageValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000D; };
-		A100000B /* SettingsView.swift in Sources */,
+				A100000A /* CaptureTransport.swift in Sources */,
+				A100000B /* SettingsView.swift in Sources */,
 				A100000C /* ImageValidator.swift in Sources */,
+				A100000D /* BonjourTransport.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A7000003 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A100000E /* CapturePayloadTests.swift in Sources */,
+				A100000F /* ImageValidatorTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		AB000001 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A6000001 /* FlashTeXCompanion */;
+			targetProxy = AB000002 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin PBXContainerItemProxy section */
+		AB000002 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A9000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A6000001;
+			remoteInfo = FlashTeXCompanion;
+		};
+/* End PBXContainerItemProxy section */
 
 /* Begin XCBuildConfiguration section */
 		A8000002 /* Debug */ = {
@@ -282,6 +324,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = "";
+				ENABLE_TESTABILITY = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = FlashTeXCompanion/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "FlashTeX Companion";
@@ -333,6 +376,44 @@
 			};
 			name = Release;
 		};
+		A8000007 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.flashtex.companion.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/FlashTeXCompanion.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/FlashTeXCompanion";
+			};
+			name = Debug;
+		};
+		A8000008 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.flashtex.companion.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/FlashTeXCompanion.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/FlashTeXCompanion";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -350,6 +431,15 @@
 			buildConfigurations = (
 				A8000005 /* Debug */,
 				A8000006 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A8000009 /* Build configuration list for PBXNativeTarget "FlashTeXCompanionTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A8000007 /* Debug */,
+				A8000008 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
