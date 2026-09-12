@@ -392,17 +392,18 @@ private struct StatusBar: View {
                 .help(model.isFixture ? "Not a real compile." : (model.controllerAttached ? model.controllerStatus : model.workerStatus))
             let diags = model.displayedDiagnostics
             if !diags.isEmpty {
-                let errors = diags.filter { $0.severity == .error }.count
+                let (errors, warnings, gaps) = EditorDiagnostics.counts(diags)
                 Button {
                     model.problemsVisible.toggle()
                 } label: {
                     HStack(spacing: 6) {
                         if errors > 0 { Label("\(errors)", systemImage: "xmark.octagon.fill").foregroundStyle(.red) }
-                        if diags.count - errors > 0 { Label("\(diags.count - errors)", systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange) }
+                        if warnings > 0 { Label("\(warnings)", systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange) }
+                        if gaps > 0 { Label("\(gaps)", systemImage: "puzzlepiece.extension").foregroundStyle(.secondary) }
                     }
                 }
                 .buttonStyle(.plain)
-                .help("Errors and warnings of the last result — click to show or hide the Problems panel (⌘⇧M)")
+                .help("Errors, warnings and not-implemented gaps of the last result — click to show or hide the Problems panel (⌘⇧M)")
             }
             Divider().frame(height: 12)
             Text(model.navigationNote ?? model.editorMarkReport.staleNote ?? model.explanationStatus

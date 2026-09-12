@@ -274,9 +274,10 @@ struct DiagnosticsListView: View {
         let i = g.first
         let d = diags[i]
         let group = EditorDiagnostics.groupInfo(g, occurrence: k, in: diags, texts: model.compiledDocuments)
+        let gap = EditorDiagnostics.isGap(d.message) // FlashTeX gap, not an authoring error: grey puzzle piece
         HStack(alignment: .top) {
-            Image(systemName: d.severity == .error ? "xmark.octagon.fill" : "exclamationmark.triangle.fill")
-                .foregroundStyle(d.severity == .error ? .red : .orange)
+            Image(systemName: gap ? "puzzlepiece.extension" : d.severity == .error ? "xmark.octagon.fill" : "exclamationmark.triangle.fill")
+                .foregroundStyle(gap ? Color.secondary : d.severity == .error ? .red : .orange)
             VStack(alignment: .leading) {
                 Text(g.title)
                 if let line = EditorDiagnostics.recoveryLine(recovery: d.recovery, status: status) {
