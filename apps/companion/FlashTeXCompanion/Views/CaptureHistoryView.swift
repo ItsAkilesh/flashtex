@@ -3,6 +3,7 @@ import SwiftUI
 /// Shows list of previous captures with thumbnails and payload previews.
 struct CaptureHistoryView: View {
     @Environment(CaptureStore.self) private var store
+    private let bonjour = BonjourTransport.shared
 
     var body: some View {
         List {
@@ -42,15 +43,19 @@ struct CaptureHistoryView: View {
                             }
                             Spacer()
                             VStack(alignment: .trailing, spacing: 2) {
-                                Image(systemName: capture.networkSent ? "wifi" : "terminal")
-                                    .foregroundStyle(capture.networkSent ? .green : .secondary)
+                                let receiptConfirmed = bonjour.receivedAcks.contains(capture.id)
+                                Image(systemName: deliveryIcon(for: capture, receiptConfirmed: receiptConfirmed))
+                                    .foregroundStyle(deliveryColor(for: capture, receiptConfirmed: receiptConfirmed))
                                     .font(.caption)
-                                Text(capture.networkSent ? "Sent to Mac" : "Saved locally")
+                                Text(deliveryLabel(for: capture, receiptConfirmed: receiptConfirmed))
                                     .font(.caption2)
                                     .foregroundStyle(.secondary)
                             }
                             .accessibilityElement(children: .combine)
-                            .accessibilityLabel(capture.networkSent ? "Sent to Mac" : "Saved locally")
+                            .accessibilityLabel(deliveryLabel(
+                                for: capture,
+                                receiptConfirmed: bonjour.receivedAcks.contains(capture.id)
+                            ))
                         }
                     }
                 }
@@ -65,5 +70,20 @@ struct CaptureHistoryView: View {
         case .camera: return "camera"
         case .photoLibrary: return "photo"
         }
+    }
+
+    private func deliveryIcon(for capture: CaptureStore.CaptureRecord, receiptConfirmed: Bool) -> String {
+        if !capture.networkSent { return "terminal" }
+        return receiptConfirmed ? "checkmark.circle.fill" : "arrow.up.circle"
+    }
+
+    private func deliveryColor(for capture: CaptureStore.CaptureRecord, receiptConfirmed: Bool) -> Color {
+        if !capture.networkSent { return .secondary }
+        return receiptConfirmed ? .green : .orange
+    }
+
+    private func deliveryLabel(for capture: CaptureStore.CaptureRecord, receiptConfirmed: Bool) -> String {
+        if !capture.networkSent { return "Saved locally" }
+        return receiptConfirmed ? "Mac received" : "Awaiting receipt"
     }
 }
