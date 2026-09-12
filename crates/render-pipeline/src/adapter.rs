@@ -196,23 +196,10 @@ pub fn adapt(texts: &[&str], entry: usize, parsed: &Parsed, options: &RenderOpti
     let styles: Vec<Vec<(usize, usize, StyleKind)>> = texts.iter().map(|t| style_intervals(t)).collect();
     let mut blocks = Vec::new();
     let mut after_heading = false;
-    let mut prev_end: Option<Span> = None;
-    for block in &parsed.blocks {
-        // Page-break commands are not in the parse tree; find them in the
-        // source gap between this block and the previous one.
-        let first = block_first_span(block);
-        let eject_before = match (prev_end, first) {
-            (Some(prev), Some(first)) if prev.document == first.document && prev.end <= first.start => {
-                let gap = texts.get(first.document.0).and_then(|t| t.get(prev.end..first.start)).unwrap_or("");
-                ["newpage", "clearpage", "pagebreak"].iter().any(|c| find_command(gap, c).is_some())
-            }
-            _ => false,
-        };
-        if let Some(last) = block_last_span(block) {
-            prev_end = Some(last);
-        }
-        match block {
-            CBlock::Heading {
+    for unit in split_at_page_breaks(texts, parsed) {
+        let eject_before = unit.eject_before;
+        match unit.kind {
+            UnitKind::Heading {
                 level,
                 number,
                 number_span,
@@ -221,7 +208,7 @@ pub fn adapt(texts: &[&str], entry: usize, parsed: &Parsed, options: &RenderOpti
                 // LaTeX `\@seccntformat`: the counter, then `\quad`, then the
                 // title; the number's bytes are the `\section` command's.
                 let mut items = Vec::new();
-                if !number.is_empty() && *level <= secnumdepth {
+                if !number.is_empty() && level <= secnumdepth {
                     let chars = number
                         .chars()
                         .map(|_| CharSrc {
@@ -233,15 +220,16 @@ pub fn adapt(texts: &[&str], entry: usize, parsed: &Parsed, options: &RenderOpti
                     push_segment(&mut items, number.clone(), chars, TextStyle::default());
                     items.push(Item::Quad { em: 1.0 });
                 }
-                items.extend(items_from_inlines(texts, content, &styles, labels));
+                items.extend(items_from_inlines(texts, &content, &styles, labels));
                 blocks.push(Block::Heading {
-                    level: *level,
+                    level,
                     items,
                     eject_before,
                 });
                 after_heading = true;
             }
-            CBlock::Paragraph(inlines) | CBlock::FigureCaption { content: inlines } => {
+            UnitKind::Paragraph { inlines, caption } => {
+                let inlines = &inlines[..];
                 let items = items_from_inlines(texts, inlines, &styles, labels);
                 let mut parts = Vec::new();
                 let mut current = Vec::new();
@@ -275,7 +263,6 @@ pub fn adapt(texts: &[&str], entry: usize, parsed: &Parsed, options: &RenderOpti
                 if parts.is_empty() || only_labels {
                     continue;
                 }
-                let caption = matches!(block, CBlock::FigureCaption { .. });
                 blocks.push(Block::Paragraph {
                     parts,
                     indent: !after_heading && !caption,
@@ -302,15 +289,94 @@ fn inline_span(i: &Inline) -> Span {
     }
 }
 
-fn block_first_span(block: &CBlock) -> Option<Span> {
-    if let CBlock::Heading { number_span, .. } = block {
-        return Some(*number_span);
-    }
-    inlines_of(block).iter().map(inline_span).next()
+/// A compiler block, or the piece of a paragraph between page-break
+/// commands (`\newpage` ends the paragraph in LaTeX; the compiler keeps the
+/// text in one block and reports the command as unsupported).
+struct Unit {
+    kind: UnitKind,
+    eject_before: bool,
 }
 
-fn block_last_span(block: &CBlock) -> Option<Span> {
-    inlines_of(block).iter().map(inline_span).last()
+enum UnitKind {
+    Heading {
+        level: u8,
+        number: String,
+        number_span: Span,
+        content: Vec<Inline>,
+    },
+    Paragraph {
+        inlines: Vec<Inline>,
+        caption: bool,
+    },
+}
+
+const PAGE_BREAKS: [&str; 3] = ["newpage", "clearpage", "pagebreak"];
+
+/// Whether the source between `prev` and `next` (same document, in order)
+/// holds a page-break command.
+fn gap_has_page_break(texts: &[&str], prev: Span, next: Span) -> bool {
+    if prev.document != next.document || prev.end > next.start {
+        return false;
+    }
+    let gap = texts.get(next.document.0).and_then(|t| t.get(prev.end..next.start)).unwrap_or("");
+    PAGE_BREAKS.iter().any(|c| find_command(gap, c).is_some())
+}
+
+fn split_at_page_breaks(texts: &[&str], parsed: &Parsed) -> Vec<Unit> {
+    let mut units = Vec::new();
+    let mut prev_end: Option<Span> = None;
+    for block in &parsed.blocks {
+        let first = match block {
+            CBlock::Heading { number_span, .. } => Some(*number_span),
+            _ => inlines_of(block).iter().map(inline_span).next(),
+        };
+        let mut eject = matches!((prev_end, first), (Some(p), Some(f)) if gap_has_page_break(texts, p, f));
+        match block {
+            CBlock::Heading {
+                level,
+                number,
+                number_span,
+                content,
+            } => {
+                units.push(Unit {
+                    kind: UnitKind::Heading {
+                        level: *level,
+                        number: number.clone(),
+                        number_span: *number_span,
+                        content: content.clone(),
+                    },
+                    eject_before: eject,
+                });
+            }
+            CBlock::Paragraph(inlines) | CBlock::FigureCaption { content: inlines } => {
+                let caption = matches!(block, CBlock::FigureCaption { .. });
+                let mut current: Vec<Inline> = Vec::new();
+                for inline in inlines {
+                    if let Some(last) = current.last() {
+                        if gap_has_page_break(texts, inline_span(last), inline_span(inline)) {
+                            units.push(Unit {
+                                kind: UnitKind::Paragraph {
+                                    inlines: std::mem::take(&mut current),
+                                    caption,
+                                },
+                                eject_before: eject,
+                            });
+                            eject = true;
+                        }
+                    }
+                    current.push(inline.clone());
+                }
+                units.push(Unit {
+                    kind: UnitKind::Paragraph { inlines: current, caption },
+                    eject_before: eject,
+                });
+            }
+        }
+        if let Some(last) = inlines_of(block).iter().map(inline_span).last() {
+            prev_end = Some(last);
+        }
+    }
+    units
 }
 
 fn is_display(inlines: &[Inline], span: Span) -> bool {

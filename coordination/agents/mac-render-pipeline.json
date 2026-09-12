@@ -7,22 +7,31 @@
     "rust",
     "typesetting"
   ],
-  "code_revision": "5a30ec12700dee17f074459cc89ddc8de4b9153d",
+  "code_revision": "7fea005b0611e2cc565ec38b9a705eff7cc4532c",
   "eta_minutes": {
-    "likely": 70,
-    "optimistic": 40,
-    "pessimistic": 120
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 30
   },
   "machine": "mac-m1max-a",
-  "main_integrated_through": "5a30ec12700dee17f074459cc89ddc8de4b9153d",
-  "next_action": "wire TeX page builder, refresh sibling pins, README/rendering-abi deviations, oracle evidence table",
-  "reviewed_peers": {},
+  "main_integrated_through": "7fea005b0611e2cc565ec38b9a705eff7cc4532c",
+  "next_action": "integrator review; un-vendor siblings as they merge; schema decision on opentype-cff",
+  "reviewed_peers": {
+    "main": "7fea005b0611e2cc565ec38b9a705eff7cc4532c",
+    "agent/mac-font-engine/tex-fonts": "f418238",
+    "agent/mac-paragraph-layout/linebreak": "70209e2",
+    "agent/mac-math-layout/math-boxes": "db90047",
+    "agent/mac-pdf/pdf-output": "4bd8c2e",
+    "agent/mac-document-style/style-model": "bfc980d",
+    "agent/mac-visual-oracle/reference-raster": "63f0cf5"
+  },
   "schema_version": 1,
-  "state": "in_progress",
-  "summary": "render-pipeline crate + flashtex-render CLI: v2 display list, runtime-v1 fallback with layout-capability negotiation; 25 tests green; pagebuild not yet wired",
+  "state": "ready_for_integration",
+  "summary": "render-pipeline crate + flashtex-render worker: v2 display list, runtime-v1 fallback with layout-capability negotiation, TeX page builder, LaTeX structure; 35 tests; 18-fixture oracle table vs MacTeX 2026 pdflatex; v2 validated by main rendering-core except the opentype-cff font profile",
   "tool": "Claude Code subagent Opus (parent mac-claude-a)",
-  "updated_utc": "2026-09-12T07:20:00Z",
+  "updated_utc": "2026-09-12T08:05:00Z",
   "usage": {
+    "evidence": "shared 20x Max quota; not observable from a subagent",
     "status": "unknown"
   }
 }
