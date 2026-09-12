@@ -65,8 +65,9 @@ final class FontHintResolutionTests: XCTestCase {
         let font = CTFontCreateWithName(bold.postScriptName as CFString, 12, nil)
         XCTAssertEqual(CTFontCopyPostScriptName(font) as String, "LMRoman12-Bold")
         XCTAssertEqual(CTFontCopyFamilyName(font) as String, "Latin Modern Roman")
+        // Latin Modern has one bold-italic master (10); the producer scales it at 12 pt.
         XCTAssertEqual(PreviewFonts.resolve(hint: Hint(family: "Latin Modern Roman", weight: .bold, style: .italic), size: 12),
-                       .init(postScriptName: "LMRoman12-BoldItalic", substitution: nil))
+                       .init(postScriptName: "LMRoman10-BoldItalic", substitution: nil))
         XCTAssertEqual(PreviewFonts.resolve(hint: Hint(family: "Latin Modern Roman"), size: 10).postScriptName, "LMRoman10-Regular")
         XCTAssertEqual(PreviewFonts.resolve(hint: Hint(family: "Latin Modern Roman", weight: .bold), size: 24).postScriptName, "LMRoman12-Bold", "17 master has only Regular")
         XCTAssertEqual(PreviewFonts.resolve(hint: Hint(family: "Latin Modern Roman"), size: 24).postScriptName, "LMRoman17-Regular")

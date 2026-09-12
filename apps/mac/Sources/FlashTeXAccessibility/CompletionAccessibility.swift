@@ -27,7 +27,7 @@ public enum CompletionAccessibility {
     public static let listLabel = "Completions"
 
     /// Help text of the table (how to use it from the keyboard).
-    public static let listHelp = "Completion candidates for the word at the caret. Up and Down arrows choose, Return inserts, Escape closes."
+    public static let listHelp = "Completion candidates for the word at the caret. Up and Down arrows or Tab and Shift-Tab choose, Return inserts, Escape closes."
 
     /// One row: "\\section, command, supported by this compiler". The label
     /// is spelled out so VoiceOver does not swallow the backslash: "\\end{itemize}"

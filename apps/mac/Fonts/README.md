@@ -37,3 +37,31 @@ MANIFEST 2.004) and byte-identical to the CTAN `lm.zip` copy on the build
 machine, but not verified against the pinned 2.004 archive hash; see the
 `provenance` block in that file. `make-app.sh` refuses packaging if any of them
 drifts from the pinned hash.
+
+All **22 producer-requestable faces** are now vendored: eight Roman regular
+masters (5/6/7/8/9/10/12/17), seven bold (5/6/7/8/9/10/12), five italic
+(7/8/9/10/12), Roman10 bold-italic and Latin Modern Math. These are the files
+`FontSet::latin_modern_file` requests in producer `9aaec57a`; sans/mono/slanted
+families are not requested by that pinned producer and are not included here.
+`SUPPLEMENTARY-FACES.json` pins the 19 faces outside the Commander's three-OTF
+manifest. Each is byte-identical to its member in the local CTAN `lm.zip`
+(SHA-256 `71c48809cb50fbfe09c8eddaa251398957c7b243acdf69f7f807268f0d42c939`,
+LM 2.004) and the installed MacTeX copy; overlapping Commander-pinned face/license
+hashes agree. This archive is distinct from the Commander's pinned baseline ZIP;
+its hash equivalence is not claimed. See the sidecar's provenance and
+`docs/evidence/opus-fonts-takeover-20260912T1800Z/archive-verification.json`.
+
+`bundle-texmf.py check Fonts/texmf Fonts` checks every face. `make-app.sh` stages
+faces through verified copies and refuses missing, altered, symlinked or unpinned
+OTFs before building/signing. `FLASHTEX_BUNDLE_FONTS_DIR` selects an explicit
+verified source directory; no download or host TeX lookup occurs during packaging.
+Preview Roman master selection follows the pinned producer's style-dependent
+boundaries, including Roman6 and Roman10 as the sole bold-italic master. The
+registered source directory's missing-face list remains visible to consumers.
+
+Acceptance evidence and app-only export reproduction commands are in
+[the temporary continuation report](../../../docs/evidence/opus-fonts-takeover-20260912T1800Z/README.md).
+`apps/mac/scripts/faces-acceptance.py` drives the actual app producer and exact
+exporter with host TeX and repository font reads denied. Use `--require-optical`
+with an optical-capable producer to require Roman8/Roman6 and refusal after
+Roman8 removal. A producer lacking these emitted faces is not optical coverage.

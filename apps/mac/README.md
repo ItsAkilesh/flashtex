@@ -714,8 +714,15 @@ for the preview currently on screen, never for the request in flight.
 Completion (`Completion.swift`) is a pure engine over the buffer's UTF-8 bytes
 with the caret in UTF-16 units, wired into the editor through a small
 `NSTextView` subclass (`CompletingTextView`) whose user-completion range includes
-a leading `\`. Esc or ⌃Space opens the standard AppKit completion popup; choosing
-an entry replaces the partial token. Sources, in rank order, at most 12 entries:
+a leading `\`. Esc or ⌃Space opens the editor's own non-activating completion
+list (`CompletionPopup`, a child panel that never becomes key): ↑/↓ or Tab/⇧Tab
+choose (wrapping, each choice announced to VoiceOver as "n of m: candidate, kind,
+origin"), Return/Enter inserts the chosen entry over the partial token as one
+undo step, Esc closes; typing narrows the list and any other caret move closes
+it. Candidates are computed off the main thread and delivered only while the
+buffer and caret are unchanged (`CompletionLatencyTests` measures pickup,
+narrowing, arrow and Return latency best-of-N). Sources, in rank order, at most
+12 entries:
 
 1. `\end{X}` for every `\begin{X}` before the caret that is still unclosed
    (detail names the byte of the `\begin`).
@@ -790,7 +797,8 @@ explain that nothing is loaded.
 | ⌘⇧F | Find in Project… window (case-sensitive literal search of the durable project source; Return searches or goes to the selected match, ↑/↓ move the selection, Esc closes; Plan Replacement / Apply for reviewed replacement) |
 | ⌘G | Next match (while the Find in Project window is key: selects the next match, wrapping, and goes there) |
 | ⌘Z | Undo (including an approved capture insertion) |
-| Esc / ⌃Space | Completion popup (supported commands, `\end{…}` for open environments, labels, document words) |
+| Esc / ⌃Space | Completion popup (supported commands, `\end{…}` for open environments, labels, citation keys, document words; never takes the keyboard from the editor) |
+| ↑ / ↓ / Tab / ⇧Tab / Return | Completion list keys, while the list is open: ↑/↓ or Tab/⇧Tab choose the candidate (wrapping; VoiceOver announces “n of m: candidate, kind, origin”), Return/Enter inserts it over the typed token, Esc closes without inserting; typing narrows the list, any other caret move closes it |
 | ⌘⇧D | Go to matching `\begin`/`\end` or `\label`/`\ref` |
 | ⌘⇧] / ⌘⇧[ | Next / previous diagnostic (refused if its span was edited since the compile) |
 | ⌘⇧J | Reveal caret in preview (selects the item's source span) |

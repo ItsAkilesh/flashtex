@@ -1,0 +1,49 @@
+note: /F1 LMRoman10-Regular from /private/tmp/flashtex-opus-fonts-takeover/apps/mac/build/FlashTeX.app/Contents/Resources/Fonts/lmroman10-regular.otf: 87 glyph(s), CffSubset, program 10733 bytes
+note: /F2 LMRoman12-Bold from /private/tmp/flashtex-opus-fonts-takeover/apps/mac/build/FlashTeX.app/Contents/Resources/Fonts/lmroman12-bold.otf: 42 glyph(s), CffSubset, program 5727 bytes
+diagnostic (from the display list): warning: compiler: packages fontenc are recognised but not implemented
+diagnostic (from the display list): warning: compiler: packages inputenc are recognised but not implemented
+diagnostic (from the display list): warning: compiler: packages geometry are recognised but not implemented
+diagnostic (from the display list): warning: compiler: packages CJKutf8 are recognised but not implemented
+diagnostic (from the display list): error: compiler: \title is not supported in the document preamble
+diagnostic (from the display list): error: compiler: \author is not supported in the document preamble
+diagnostic (from the display list): error: compiler: \date is not supported in the document preamble
+diagnostic (from the display list): error: compiler: \maketitle is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: \LaTeX is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: \i is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: \c is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: \AA is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: \aa is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: \AE is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: \o is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: \OE is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: \ss is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: \v is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: \L is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: \O is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: \TH is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: \dots is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: \S is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: \copyright is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: \pounds is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): warning: compiler: environment 'CJK' is not implemented; its body is typeset as plain text
+diagnostic (from the display list): warning: compiler: environment 'CJK' is not implemented; its body is typeset as plain text
+diagnostic (from the display list): warning: compiler: environment 'CJK' is not implemented; its body is typeset as plain text
+diagnostic (from the display list): warning: missing_glyph: U+6771 '東' has no glyph in lmroman10-regular; nothing drawn for it
+diagnostic (from the display list): warning: missing_glyph: U+4EAC '京' has no glyph in lmroman10-regular; nothing drawn for it
+diagnostic (from the display list): warning: missing_glyph: U+306F 'は' has no glyph in lmroman10-regular; nothing drawn for it
+diagnostic (from the display list): warning: missing_glyph: U+65E5 '日' has no glyph in lmroman10-regular; nothing drawn for it
+diagnostic (from the display list): warning: missing_glyph: U+672C '本' has no glyph in lmroman10-regular; nothing drawn for it
+diagnostic (from the display list): warning: missing_glyph: U+306E 'の' has no glyph in lmroman10-regular; nothing drawn for it
+diagnostic (from the display list): warning: missing_glyph: U+9996 '首' has no glyph in lmroman10-regular; nothing drawn for it
+diagnostic (from the display list): warning: missing_glyph: U+90FD '都' has no glyph in lmroman10-regular; nothing drawn for it
+diagnostic (from the display list): warning: missing_glyph: U+3067 'で' has no glyph in lmroman10-regular; nothing drawn for it
+diagnostic (from the display list): warning: missing_glyph: U+3059 'す' has no glyph in lmroman10-regular; nothing drawn for it
+diagnostic (from the display list): warning: missing_glyph: U+3002 '。' has no glyph in lmroman10-regular; nothing drawn for it
+diagnostic (from the display list): warning: missing_glyph: U+6392 '排' has no glyph in lmroman10-regular; nothing drawn for it
+diagnostic (from the display list): warning: missing_glyph: U+7248 '版' has no glyph in lmroman10-regular; nothing drawn for it
+diagnostic (from the display list): warning: missing_glyph: U+662F '是' has no glyph in lmroman10-regular; nothing drawn for it
+diagnostic (from the display list): warning: missing_glyph: U+4E00 '一' has no glyph in lmroman10-regular; nothing drawn for it
+diagnostic (from the display list): warning: missing_glyph: U+95E8 '门' has no glyph in lmroman10-regular; nothing drawn for it
+diagnostic (from the display list): warning: missing_glyph: U+827A '艺' has no glyph in lmroman10-regular; nothing drawn for it
+diagnostic (from the display list): warning: missing_glyph: U+672F '术' has no glyph in lmroman10-regular; nothing drawn for it
+note: 1 page(s), 171 glyph run(s), 907 glyph(s) (0 continued at the natural advance, 0 with an exact TJ kern), 0 rule(s), 91868 bytes -> /private/tmp/flashtex-opus-fonts-takeover/docs/evidence/opus-fonts-takeover-20260912T1800Z/optical-app-exports/unicode-accents/export.pdf
