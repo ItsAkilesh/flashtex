@@ -28,14 +28,19 @@ Ready behavior:
 - No compiler → "no compiler attached — cannot preview"; never launches.
 - The real `ShellModel.result` / `editorRevision` / documents are untouched
   (tested).
-Incomplete behavior: no page thumbnail of the shadow result (follow-up 1);
-fault handling is basic relaunch-on-next-edit / Retry (follow-up 2). No README
+- Thumbnail (PDFKit over `PDFExport.render` of only the shadow page whose text
+  items map the inserted text) shown beside the report; labeled as the shadow
+  page, not the live preview. Worker crash mid-compile / error envelope →
+  "preview failed: …" with Retry (relaunches when the process is gone).
+Incomplete behavior: thumbnail is only available when the compiler maps an
+item to the inserted text (none for a failed compile); fault handling is
+relaunch + Retry only (no automatic backoff). No README
 entry yet (parent owns `apps/mac/README.md`).
 Interface changes and required consumer actions: none to contracts. Fake worker
 gains `%diag:<n>` (error diagnostic at directive byte + n) and `%slow`
-(400 ms delay); existing tests unaffected (100/100 pass).
-Validation: `swift build`, `swift test` (100 tests, 3 skipped, 0 failures),
+(400 ms delay); existing tests unaffected (101/101 pass).
+Validation: `swift build`, `swift test` (101 tests, 3 skipped, 0 failures),
 `xcodebuild -scheme FlashTeXMac -destination 'platform=macOS' build` succeeded.
 Needs from others: parent to merge into mac-shell and add a README line.
-Next action: follow-ups above if assigned.
+Next action: none; awaiting parent review/merge.
 Updated: 2026-09-12

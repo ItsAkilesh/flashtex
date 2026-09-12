@@ -1,5 +1,7 @@
+import AppKit
 import Combine
 import Foundation
+import PDFKit
 import SwiftUI
 import FlashTeXProtocol
 
@@ -81,6 +83,9 @@ final class ProposalPreview: ObservableObject {
         /// relative to the insertion).
         var new: [Finding]
         var unrelatedCount: Int
+        /// Number of the shadow page whose text items map the inserted text
+        /// (nil when nothing maps it, e.g. a failed compile).
+        var insertionPage: Int?
         var newErrorCount: Int { new.filter { $0.diagnostic.severity == .error }.count }
     }
 
@@ -96,6 +101,9 @@ final class ProposalPreview: ObservableObject {
     @Published private(set) var state: State = .idle
     @Published private(set) var shadow: Shadow?
     @Published var highlightedFragment: String?
+    /// Thumbnail of the shadow page containing the insertion, drawn from the
+    /// shadow result with `PDFExport.render` (only that page) via PDFKit.
+    @Published private(set) var thumbnail: NSImage?
     /// Requests sent so far, by kind (tests assert debounce/coalescing).
     @Published private(set) var shadowCompileCount = 0
     @Published private(set) var baselineCompileCount = 0
@@ -271,7 +279,9 @@ final class ProposalPreview: ObservableObject {
 
     private func finish() {
         if let (s, r) = shadowResult {
-            state = .ready(Self.report(shadow: s, result: r, baseline: baseline))
+            let report = Self.report(shadow: s, result: r, baseline: baseline)
+            thumbnail = report.insertionPage.flatMap { Self.thumbnail(of: $0, in: r) }
+            state = .ready(report)
         }
         // A newer edit arrived while compiling: go again.
         if let latest, let compiled, latest.input != compiled.input || latest.latex != compiled.latex {
@@ -404,7 +414,34 @@ final class ProposalPreview: ObservableObject {
         let new = fresh.enumerated().map { finding(1000 + $0.offset, $0.element) }
         return Report(status: result.status, pageCount: result.pages.count,
                       pageDelta: baseline.map { result.pages.count - $0.pages.count },
-                      nearby: nearby, new: new, unrelatedCount: unrelated)
+                      nearby: nearby, new: new, unrelatedCount: unrelated,
+                      insertionPage: insertionPage(in: result, shadow: shadow))
+    }
+
+    /// First page with a text item whose source range intersects the inserted
+    /// text (touching counts, so an item ending exactly at the insertion point
+    /// still locates the page). Nil when no item maps the insertion.
+    static func insertionPage(in result: RuntimeV1.CompileResult, shadow: Shadow) -> Int? {
+        for page in result.pages {
+            for case .text(let t) in page.items {
+                guard let s = t.source, s.path == shadow.path else { continue }
+                if intersects(s.startByte..<max(s.startByte, s.endByte), shadow.insertedRange) { return page.number }
+            }
+        }
+        return nil
+    }
+
+    /// Renders only `pageNumber` of `result` through `PDFExport` and asks
+    /// PDFKit for a thumbnail. Nil when the page is missing or PDFKit refuses.
+    static func thumbnail(of pageNumber: Int, in result: RuntimeV1.CompileResult,
+                          width: CGFloat = 180) -> NSImage? {
+        guard let page = result.pages.first(where: { $0.number == pageNumber }), page.widthPt > 0 else { return nil }
+        var single = result
+        single.pages = [page]
+        let data = PDFExport.render(single)
+        guard let doc = PDFDocument(data: data), let pdfPage = doc.page(at: 0) else { return nil }
+        let size = NSSize(width: width, height: width * page.heightPt / page.widthPt)
+        return pdfPage.thumbnail(of: size, for: .mediaBox)
     }
 }
 
@@ -448,6 +485,14 @@ struct ProposalPreviewView: View {
                 if pre > 0 || r.unrelatedCount > 0 {
                     Text("\(pre) pre-existing near the insertion, \(r.unrelatedCount) elsewhere (unchanged)")
                         .font(.caption2).foregroundStyle(.tertiary)
+                }
+                if let image = preview.thumbnail, let page = r.insertionPage {
+                    HStack(alignment: .top, spacing: 6) {
+                        Image(nsImage: image).resizable().aspectRatio(contentMode: .fit)
+                            .frame(maxWidth: 120).border(.separator)
+                        Text("shadow page \(page) of \(r.pageCount), with the proposal inserted (not the live preview)")
+                            .font(.caption2).foregroundStyle(.tertiary)
+                    }
                 }
             }
         }

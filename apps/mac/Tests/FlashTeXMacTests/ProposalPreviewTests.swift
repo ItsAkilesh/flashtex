@@ -118,6 +118,30 @@ final class ProposalPreviewTests: XCTestCase {
         XCTAssertEqual(report.unrelatedCount, 2)
     }
 
+    func testInsertionPageAndThumbnailComeFromTheShadowResult() throws {
+        let shadow = try ProposalPreview.makeShadow(input: input("one\ntwo\n", anchorByte: 4), latex: "X").get()
+        XCTAssertEqual(shadow.shadowText, "one\nX\ntwo\n")
+        func item(_ text: String, _ start: Int, _ end: Int) -> RuntimeV1.PageItem {
+            .text(.init(text: text, xPt: 72, baselineYPt: 84, fontSizePt: 12,
+                        source: .init(path: "main.tex", startByte: start, endByte: end)))
+        }
+        let result = RuntimeV1.CompileResult(projectId: "demo-preview", revision: 1, status: .ok, pages: [
+            .init(number: 1, widthPt: 612, heightPt: 792, items: [item("one", 0, 3)]),
+            .init(number: 2, widthPt: 612, heightPt: 792, items: [item("X", 4, 5), item("two", 6, 9)]),
+        ], diagnostics: [], pdfPath: nil)
+        XCTAssertEqual(ProposalPreview.insertionPage(in: result, shadow: shadow), 2)
+        let report = ProposalPreview.report(shadow: shadow, result: result, baseline: nil)
+        XCTAssertEqual(report.insertionPage, 2)
+        XCTAssertNil(report.pageDelta)
+        let image = try XCTUnwrap(ProposalPreview.thumbnail(of: 2, in: result, width: 90))
+        XCTAssertEqual(image.size.width, 90, accuracy: 1)
+        XCTAssertEqual(image.size.height, 90 * 792 / 612, accuracy: 1)
+        XCTAssertNil(ProposalPreview.thumbnail(of: 3, in: result))
+        // No item maps the insertion (e.g. a failed compile with no pages).
+        let empty = RuntimeV1.CompileResult(projectId: "demo-preview", revision: 1, status: .failed, pages: [], diagnostics: [], pdfPath: nil)
+        XCTAssertNil(ProposalPreview.insertionPage(in: empty, shadow: shadow))
+    }
+
     // MARK: worker-backed
 
     func testCompilesShadowAndBaselineAndReportsOnlyInsertedDiagnosticAsNew() async throws {
@@ -133,6 +157,8 @@ final class ProposalPreviewTests: XCTestCase {
         XCTAssertEqual(r.new.map(\.diagnostic.message), ["fake diagnostic 0"])
         XCTAssertEqual(r.new[0].diagnostic.recovery, "test double: byte skipped")
         XCTAssertEqual(r.nearby.count, 2)
+        XCTAssertNil(r.insertionPage, "the fake maps only the first line; the insertion is on line 2")
+        XCTAssertNil(preview.thumbnail)
         XCTAssertEqual(preview.shadowCompileCount, 1)
         XCTAssertEqual(preview.baselineCompileCount, 1)
         XCTAssertTrue(preview.hasNewErrors)
@@ -209,6 +235,18 @@ final class ProposalPreviewTests: XCTestCase {
         preview.update(input: input("%trailing\n", anchorByte: 10), latex: "X")
         try await waitUntil("failure") { if case .failed = preview.state { return true }; return false }
         try await waitUntil("worker gone") { !preview.workerIsRunning }
+        XCTAssertTrue(preview.statusText.hasPrefix("preview failed: protocol violation"), preview.statusText)
+        // Retry relaunches a worker and re-sends the same request (which faults again).
+        preview.retry()
+        XCTAssertEqual(preview.state, .compiling)
+        XCTAssertEqual(preview.shadowCompileCount, 2)
+        try await waitUntil("second failure") { if case .failed = preview.state { return true }; return false }
+        try await waitUntil("worker gone again") { !preview.workerIsRunning }
+        // A worker `error` envelope is reported too, and the worker stays usable.
+        preview.update(input: input("%error\n", anchorByte: 7), latex: "X")
+        try await waitUntil("error reported") { preview.statusText.hasPrefix("preview failed: worker error") }
+        XCTAssertTrue(preview.workerIsRunning)
+        // The next edit compiles normally on the live worker.
         preview.update(input: input("fine\n", anchorByte: 5), latex: "X")
         try await waitUntil("recovered") { if case .ready = preview.state { return true }; return false }
         XCTAssertTrue(preview.workerIsRunning)
@@ -230,6 +268,8 @@ final class ProposalPreviewTests: XCTestCase {
         guard case .ready(let r) = preview.state else { return XCTFail() }
         XCTAssertEqual(r.new.count, 1)
         XCTAssertEqual(preview.shadow?.shadowText, "%diag:0 inserted\nHello FlashTeX.\n")
+        XCTAssertEqual(r.insertionPage, 1, "the fake maps the first line, which the insertion now occupies")
+        XCTAssertNotNil(preview.thumbnail)
 
         XCTAssertEqual(model.result, fixture)
         XCTAssertEqual(model.editorRevision, revision)
