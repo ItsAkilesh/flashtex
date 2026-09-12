@@ -111,6 +111,10 @@ final class DocumentFilesState {
         case unavailable(String)
     }
 
+    /// Records a disk state observed through another route (the preview
+    /// controller's `file_status`) so the UI sees one field either way.
+    func noteDiskState(_ state: ProjectFilesV1.DiskState?) { lastDiskState = state }
+
     var helperRunning: Bool { client?.isRunning == true }
     var usesHelper: Bool { if case .helper = backend { true } else { false } }
     var helperRoot: URL? { client?.root }
@@ -493,16 +497,9 @@ extension ShellModel {
         }
         switch files.read(url) {
         case .text(let text):
-            // Only a successful read consumes the discard decision: a failed
-            // open leaves the dirty buffer in place, not "discarded".
-            if let discarding { recoverableBuffer = discarding }
-            replaceProject(entryText: text)
-            documentURL = url
-            savedText = text
-            files.conflict = nil
+            adoptOpenedText(text, url: url, discarding: discarding)
             captureNote = "Opened \(url.lastPathComponent) (\(text.utf8.count) bytes)"
                 + (recoverableBuffer == nil ? "" : "; previous unsaved buffer kept (Edit > Restore Discarded Buffer)")
-            if workerAttached { compile() }
             return .opened
         case .missing:
             captureNote = "Could not open \(url.lastPathComponent): no such file"
@@ -511,6 +508,19 @@ extension ShellModel {
             captureNote = "Could not open \(url.lastPathComponent): \(reason)"
             return .readFailed
         }
+    }
+
+    /// Replaces the project with `text` read from `url` (open or direct reload).
+    /// Only a successful read consumes a discard decision: a failed open leaves
+    /// the dirty buffer in place, not "discarded".
+    private func adoptOpenedText(_ text: String, url: URL, discarding: RecoverableBuffer?) {
+        if let discarding { recoverableBuffer = discarding }
+        replaceProject(entryText: text)
+        documentURL = url
+        savedText = text
+        files.conflict = nil
+        files.noteDiskState(.unchanged)
+        if workerAttached { compile() }
     }
 
     /// Restores the buffer discarded by the last authorized open (undo of the
@@ -600,19 +610,258 @@ extension ShellModel {
         return write(to: url, expected: .any, force: true)
     }
 
-    /// Resolves a conflict by replacing the buffer with the file on disk. A
-    /// dirty buffer is only replaced with `.discard` (kept recoverable) or
-    /// `.saveFirst` (which cannot succeed while the conflict stands).
-    @discardableResult
-    func reloadFromDisk(dirty: DirtyDisposition = .none) -> OpenOutcome {
-        guard let url = files.conflict?.url ?? documentURL else { captureNote = "No file to reload."; return .readFailed }
-        let outcome = openTex(at: url, dirty: dirty)
-        if outcome == .opened { captureNote = "Reloaded \(url.lastPathComponent) from disk" + (recoverableBuffer == nil ? "." : "; previous buffer kept (Edit > Restore Discarded Buffer).") }
-        return outcome
+    // MARK: reviewed reload
+
+    /// What a reload would do, read from disk *before* the user confirms:
+    /// the snapshot's identity (hash) is what the reload is then pinned to, so
+    /// a file that changes again between review and confirmation is refused
+    /// rather than silently imported. Built by `prepareReload()`.
+    struct ReloadReview: Equatable {
+        struct DurableIdentity: Equatable { var revision: Int; var sha256: String }
+        var url: URL
+        var currentText: String
+        var diskText: String
+        var diskSha256: String
+        var bufferDirty: Bool
+        /// The durable (ledger) identity the helper's `reload` must still see;
+        /// nil for the direct path (no preview controller attached).
+        var durable: DurableIdentity?
+        var viaController: Bool { durable != nil }
+        var identical: Bool { currentText.sameBytes(as: diskText) }
+        var bytesBefore: Int { currentText.utf8.count }
+        var bytesAfter: Int { diskText.utf8.count }
+        /// Line-multiset difference (lines present on disk but not in the
+        /// buffer, and vice versa) — a review summary, not a positional diff.
+        var linesAdded: Int { ShellModel.lineChanges(from: currentText, to: diskText).added }
+        var linesRemoved: Int { ShellModel.lineChanges(from: currentText, to: diskText).removed }
+
+        var summary: String {
+            let name = url.lastPathComponent
+            if identical { return "\(name) on disk is identical to the buffer (\(bytesAfter) bytes); reloading changes nothing." }
+            let change = ShellModel.lineChanges(from: currentText, to: diskText)
+            let route = viaController
+                ? "through the preview controller (the current text stays in durable undo history)"
+                : "directly"
+            let edits = bufferDirty ? "Your unsaved edits are replaced (kept recoverable this session). " : ""
+            return "Reload \(name) \(route): \(bytesBefore) → \(bytesAfter) bytes, +\(change.added) / −\(change.removed) lines. \(edits)"
+                + "The reload is pinned to the reviewed snapshot (sha256 \(diskSha256.prefix(12))) and refused if the file changes again."
+        }
     }
 
-    /// Asks the file layer whether the open document still matches its baseline
-    /// and records an explicit conflict if not (before any save is attempted).
+    /// Counts lines present in `new` but not `old` (added) and in `old` but
+    /// not `new` (removed) as multisets: O(n), order-insensitive.
+    nonisolated static func lineChanges(from old: String, to new: String) -> (added: Int, removed: Int) {
+        var counts: [Substring: Int] = [:]
+        for line in old.split(separator: "\n", omittingEmptySubsequences: false) { counts[line, default: 0] += 1 }
+        var added = 0
+        for line in new.split(separator: "\n", omittingEmptySubsequences: false) {
+            if let n = counts[line], n > 0 { counts[line] = n - 1 } else { added += 1 }
+        }
+        let removed = counts.values.reduce(0, +)
+        return (added, removed)
+    }
+
+    /// Reads the file a reload would import and describes the change. nil (with
+    /// a `captureNote`) when there is nothing readable on disk. Never changes
+    /// the buffer.
+    func prepareReload() -> ReloadReview? {
+        guard let url = files.conflict?.url ?? documentURL else { captureNote = "No file to reload."; return nil }
+        switch files.read(url) {
+        case .missing:
+            captureNote = "Nothing to reload: \(url.lastPathComponent) does not exist on disk."
+            return nil
+        case .failed(let reason):
+            captureNote = "Could not read \(url.lastPathComponent) for reload: \(reason)"
+            return nil
+        case .text(let diskText):
+            var durable: ReloadReview.DurableIdentity?
+            if controllerRoutesFiles(for: url), let d = controllerState.durable[activePath] {
+                durable = .init(revision: d.revision, sha256: d.sha256)
+            }
+            return ReloadReview(url: url, currentText: activeText, diskText: diskText,
+                                diskSha256: SourceDigest.sha256Hex(diskText), bufferDirty: isDirty, durable: durable)
+        }
+    }
+
+    /// Whether file operations on `url` belong to the attached preview
+    /// controller: it is ready and names the open document by `activePath`.
+    var controllerRoutesFiles: Bool { documentURL.map(controllerRoutesFiles(for:)) ?? false }
+    private func controllerRoutesFiles(for url: URL) -> Bool {
+        controllerAttached && controllerState.ready && url == documentURL && url.lastPathComponent == activePath
+    }
+
+    /// Applies a reviewed reload. A dirty buffer is replaced only with
+    /// `.discard` (kept in `recoverableBuffer`); `.saveFirst` is refused
+    /// because a file you are about to reload is not one to save over. With the
+    /// preview controller attached the import goes through its `reload`
+    /// (durable identity + reviewed disk hash must both still match; the prior
+    /// source stays in undo history); otherwise the file is re-read directly
+    /// and refused if it no longer hashes to the reviewed snapshot.
+    @discardableResult
+    func confirmReload(_ review: ReloadReview, dirty: DirtyDisposition = .none) async -> OpenOutcome {
+        var discarding: RecoverableBuffer?
+        if isDirty {
+            switch dirty {
+            case .none:
+                captureNote = "\(review.url.lastPathComponent) has unsaved edits; discard them explicitly to reload."
+                return .blockedByUnsavedEdits
+            case .saveFirst:
+                captureNote = "Cannot save over \(review.url.lastPathComponent) while reloading it; overwrite or discard instead."
+                return .saveFailed
+            case .discard:
+                discarding = RecoverableBuffer(url: documentURL, text: activeText)
+            }
+        }
+        if review.viaController { return await controllerReload(review, discarding: discarding) }
+        return directReload(review, discarding: discarding)
+    }
+
+    /// Reviewed reload without a modal: `prepareReload()` then `confirmReload`.
+    @discardableResult
+    func reloadFromDiskReviewed(dirty: DirtyDisposition = .none) async -> OpenOutcome {
+        guard let review = prepareReload() else { return .readFailed }
+        return await confirmReload(review, dirty: dirty)
+    }
+
+    /// Synchronous reviewed reload for the direct path (no preview controller).
+    /// With a controller attached the import must go through its `reload`,
+    /// which is asynchronous: use `reloadFromDiskReviewed` / `confirmReload`.
+    @discardableResult
+    func reloadFromDisk(dirty: DirtyDisposition = .none) -> OpenOutcome {
+        guard let review = prepareReload() else { return .readFailed }
+        if review.viaController {
+            captureNote = "\(review.url.lastPathComponent) is held by the preview controller; use the reviewed reload (Resolve On-Disk Conflict…)."
+            return .readFailed
+        }
+        if isDirty {
+            switch dirty {
+            case .none:
+                captureNote = "\(review.url.lastPathComponent) has unsaved edits; discard them explicitly to reload."
+                return .blockedByUnsavedEdits
+            case .saveFirst:
+                captureNote = "Cannot save over \(review.url.lastPathComponent) while reloading it; overwrite or discard instead."
+                return .saveFailed
+            case .discard: break
+            }
+        }
+        return directReload(review, discarding: isDirty ? RecoverableBuffer(url: documentURL, text: activeText) : nil)
+    }
+
+    private func directReload(_ review: ReloadReview, discarding: RecoverableBuffer?) -> OpenOutcome {
+        let url = review.url
+        switch files.read(url) {
+        case .text(let text):
+            guard SourceDigest.sha256Hex(text) == review.diskSha256 else {
+                captureNote = "\(url.lastPathComponent) changed again after the reload was reviewed; nothing replaced. Review again."
+                files.noteDiskState(.modified)
+                return .readFailed
+            }
+            adoptOpenedText(text, url: url, discarding: discarding)
+            captureNote = "Reloaded \(url.lastPathComponent) from disk" + (recoverableBuffer == nil ? "." : "; previous buffer kept (Edit > Restore Discarded Buffer).")
+            return .opened
+        case .missing:
+            captureNote = "\(url.lastPathComponent) disappeared after the reload was reviewed; nothing replaced."
+            return .readFailed
+        case .failed(let reason):
+            captureNote = "Could not reload \(url.lastPathComponent): \(reason)"
+            return .readFailed
+        }
+    }
+
+    /// `reload {path, expected_revision, expected_sha256, expected_disk_sha256,
+    /// user_approved:true}` through the preview controller (STDIO.md). The
+    /// helper re-reads the file under the project lock and refuses a stale
+    /// durable identity or a disk hash other than the reviewed one; a reply
+    /// carries the new durable document, adopted as one editor revision. A
+    /// lost reply leaves the buffer untouched (the helper may have imported:
+    /// the next `document`/`file_status` shows it).
+    private func controllerReload(_ review: ReloadReview, discarding: RecoverableBuffer?) async -> OpenOutcome {
+        let name = review.url.lastPathComponent
+        guard let controller, controller.isRunning, controllerState.ready, review.url == documentURL else {
+            captureNote = "Preview controller is no longer attached to \(name); review the reload again."
+            return .readFailed
+        }
+        let path = activePath
+        guard let expected = review.durable, let durable = controllerState.durable[path],
+              durable.revision == expected.revision, durable.sha256 == expected.sha256 else {
+            captureNote = "The durable source of \(name) changed since the reload was reviewed; review again."
+            return .readFailed
+        }
+        let id: String
+        do {
+            id = try controller.send("reload", ["path": path, "expected_revision": expected.revision, "expected_sha256": expected.sha256,
+                                                "expected_disk_sha256": review.diskSha256, "user_approved": true])
+        } catch {
+            captureNote = "Reload of \(name) failed to send: \(error.localizedDescription)"
+            return .readFailed
+        }
+        let reply: Result<[String: Any], ControllerError> = await withCheckedContinuation { cont in
+            // Adopt inside the waiter, on the helper's own delivery turn, so the
+            // preview the helper sends for the new revision already finds its
+            // editor-revision mapping.
+            controllerState.awaiting[id] = { [weak self] result in
+                if let self, case .success(let payload) = result {
+                    MainActor.assumeIsolated { self.adoptReloadedDocument(payload, review: review, discarding: discarding) }
+                }
+                cont.resume(returning: result)
+            }
+        }
+        switch reply {
+        case .success(let payload):
+            guard payload["document"] is [String: Any] else {
+                captureNote = "Reload reply for \(name) carried no document; buffer untouched."
+                return .readFailed
+            }
+            return .opened
+        case .failure(let e):
+            captureNote = "Reload of \(name) refused by the preview controller: \(e.message). Nothing replaced."
+            FlashTeXLog.write("files: controller reload refused: \(e.message)")
+            return .readFailed
+        }
+    }
+
+    /// Records the reloaded durable document and shows it in the editor as one
+    /// revision (no edit is submitted back: the ledger already holds it).
+    private func adoptReloadedDocument(_ payload: [String: Any], review: ReloadReview, discarding: RecoverableBuffer?) {
+        guard let doc = payload["document"] as? [String: Any], let path = doc["path"] as? String,
+              let revision = doc["revision"] as? Int, let sha = doc["source_sha256"] as? String,
+              let text = doc["text"] as? String else {
+            FlashTeXLog.write("files: controller reload reply is missing document fields")
+            return
+        }
+        controllerState.durable[path] = (revision, sha)
+        controllerState.textByDurable[path, default: [:]][revision] = text
+        if let discarding { recoverableBuffer = discarding }
+        if path == activePath { updateActiveText(text) }
+        controllerState.editorRevisionByDurable[path, default: [:]][revision] = editorRevision
+        savedText = text
+        files.conflict = nil
+        files.noteDiskState(.unchanged)
+        captureNote = "Reloaded \(review.url.lastPathComponent) through the preview controller (durable r\(revision); previous text in undo history"
+            + (recoverableBuffer == nil ? ")." : " and Edit > Restore Discarded Buffer).")
+        if let e = payload["preview_error"] as? String { FlashTeXLog.write("files: reload preview_error: \(e)") }
+    }
+
+    /// Reviewed reload behind a modal: shows the change summary, then imports
+    /// only on "Reload". Never automatic.
+    func reloadFromDiskInteractive() {
+        guard let review = prepareReload() else { return }
+        let alert = NSAlert()
+        alert.messageText = "Reload \(review.url.lastPathComponent) from disk?"
+        alert.informativeText = review.summary
+        alert.addButton(withTitle: "Reload")
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            await confirmReload(review, dirty: review.bufferDirty ? .discard : .none)
+        }
+    }
+
+    /// Asks the file layer (project-files helper or direct) whether the open
+    /// document still matches its baseline and records an explicit conflict if
+    /// not (before any save is attempted). With a preview controller attached
+    /// use `refreshDiskStatus()`, which asks the controller's `file_status`.
     @discardableResult
     func checkDiskStatus() -> ProjectFilesV1.DiskState? {
         guard let url = documentURL else { return nil }
@@ -621,40 +870,90 @@ extension ShellModel {
             captureNote = "Could not check \(url.lastPathComponent) on disk: \(failure.reason)"
             return nil
         case .success(let s):
-            switch s.state {
-            case .unchanged:
-                if files.conflict?.url == url { files.conflict = nil }
-            case .created:
-                // The editor expected no file; one appeared. Saving would be
-                // refused (`alreadyExists`), so say so now.
-                files.conflict = DocumentConflict(url: url, kind: .alreadyExists, ours: nil, theirs: s.sha256, size: s.bytes,
-                                                  mtimeUnixMs: s.mtimeUnixMs, viaHelper: files.usesHelper)
-                captureNote = files.conflict?.summary
-            case .deleted:
-                // Nothing to overwrite: not a blocking conflict; Save recreates it.
-                if files.conflict?.url == url { files.conflict = nil }
-                captureNote = "\(url.lastPathComponent) was deleted on disk; Save will recreate it from the buffer."
-            case .modified:
-                files.conflict = DocumentConflict(url: url, kind: .modifiedExternally, ours: baselineSha256, theirs: s.sha256,
-                                                  size: s.bytes, mtimeUnixMs: s.mtimeUnixMs, viaHelper: files.usesHelper)
-                captureNote = files.conflict?.summary
-            }
+            applyDiskState(s.state, url: url, sha256: s.sha256, bytes: s.bytes, mtimeUnixMs: s.mtimeUnixMs, viaHelper: files.usesHelper)
             return s.state
         }
     }
 
+    /// `checkDiskStatus()` routed through the preview controller's `file_status`
+    /// when one is attached (it rereads the disk under the project lock and
+    /// never reloads), else the file layer. The helper compares disk with its
+    /// durable source; the editor compares with its own baseline (the hash it
+    /// last opened, saved or reloaded), so typed-but-unexported edits do not
+    /// read as an external change.
+    @discardableResult
+    func refreshDiskStatus() async -> ProjectFilesV1.DiskState? {
+        guard let url = documentURL else { return nil }
+        guard controllerRoutesFiles(for: url) else { return checkDiskStatus() }
+        guard let status = await controllerFileStatus(path: activePath) else {
+            captureNote = "Could not check \(url.lastPathComponent) on disk: the preview controller did not answer."
+            return nil
+        }
+        let state: ProjectFilesV1.DiskState
+        var diskSha: String? = status.diskSHA256
+        switch status.state {
+        case "missing":
+            state = baselineSha256 == nil ? .unchanged : .deleted
+        case "matches_source", "differs_from_source":
+            // `matches_source` reports the hash as the source's; the parent
+            // client exposes only `disk_sha256`, so fall back to the durable hash.
+            if diskSha == nil, status.state == "matches_source" { diskSha = controllerState.durable[activePath]?.sha256 }
+            guard let sha = diskSha else {
+                captureNote = "Could not check \(url.lastPathComponent) on disk: file_status carried no hash."
+                return nil
+            }
+            state = baselineSha256 == nil ? .created : (sha == baselineSha256 ? .unchanged : .modified)
+        default:
+            captureNote = "Could not check \(url.lastPathComponent) on disk: \(status.reason ?? status.state)"
+            return nil
+        }
+        applyDiskState(state, url: url, sha256: diskSha, bytes: nil, mtimeUnixMs: nil, viaHelper: true)
+        files.noteDiskState(state)
+        return state
+    }
+
+    private func applyDiskState(_ state: ProjectFilesV1.DiskState, url: URL, sha256: String?, bytes: Int?, mtimeUnixMs: Int?, viaHelper: Bool) {
+        switch state {
+        case .unchanged:
+            if files.conflict?.url == url { files.conflict = nil }
+        case .created:
+            // The editor expected no file; one appeared. Saving would be
+            // refused (`alreadyExists`), so say so now.
+            files.conflict = DocumentConflict(url: url, kind: .alreadyExists, ours: nil, theirs: sha256, size: bytes,
+                                              mtimeUnixMs: mtimeUnixMs, viaHelper: viaHelper)
+            captureNote = files.conflict?.summary
+        case .deleted:
+            // Nothing to overwrite: not a blocking conflict; Save recreates it.
+            if files.conflict?.url == url { files.conflict = nil }
+            captureNote = "\(url.lastPathComponent) was deleted on disk; Save will recreate it from the buffer."
+        case .modified:
+            files.conflict = DocumentConflict(url: url, kind: .modifiedExternally, ours: baselineSha256, theirs: sha256,
+                                              size: bytes, mtimeUnixMs: mtimeUnixMs, viaHelper: viaHelper)
+            captureNote = files.conflict?.summary
+        }
+    }
+
     /// Modal resolution of `files.conflict`: Overwrite / Reload / Keep Editing.
+    /// The reload is reviewed: the alert shows what the disk snapshot would
+    /// change and the import is pinned to exactly that snapshot.
     func resolveConflictPanel() {
         guard let conflict = files.conflict else { return }
+        let review = prepareReload()
         let alert = NSAlert()
         alert.messageText = "\(conflict.url.lastPathComponent) changed on disk"
-        alert.informativeText = conflict.summary
+        alert.informativeText = conflict.summary + "\n\n" + (review?.summary ?? (captureNote ?? "Nothing on disk to reload."))
         alert.addButton(withTitle: "Overwrite")
         alert.addButton(withTitle: "Reload")
         alert.addButton(withTitle: "Keep Editing")
+        alert.buttons[1].isEnabled = review != nil
         switch alert.runModal() {
         case .alertFirstButtonReturn: overwriteOnDisk()
-        case .alertSecondButtonReturn: reloadFromDisk(dirty: isDirty ? .discard : .none)
+        case .alertSecondButtonReturn:
+            guard let review else { return }
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                await confirmReload(review, dirty: review.bufferDirty ? .discard : .none)
+            }
         default: break
         }
     }
