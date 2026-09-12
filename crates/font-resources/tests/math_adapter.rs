@@ -383,6 +383,19 @@ fn pinned_math_registry_equivalence() {
     );
     assert_eq!(cache.stats().kern_parses, 1);
     assert_eq!(cache.stats().hits, 99);
+    let unhinted_query = Query::UnhintedKern {
+        glyph_id: benchmark_gid,
+        corner: benchmark_corner,
+        height: Rational::new(0, 1).unwrap(),
+    };
+    let unhinted = cache
+        .query(bound.identity(), unhinted_query.clone())
+        .unwrap();
+    assert!(
+        matches!(unhinted.outcome.as_ref(),Ok(CachedValue::UnhintedKern{value,height_device_adjustment_present:false}) if value==&kerns.data().lookup(benchmark_gid,benchmark_corner,Rational::new(0,1).unwrap()).unwrap())
+    );
+    cache.query(bound.identity(), unhinted_query).unwrap();
+    assert_eq!(cache.stats().kern_parses, 1);
     // Different height requires computation but reuses the immutable parsed table.
     let distinct = Query::Kern {
         glyph_id: benchmark_gid,
