@@ -8,15 +8,15 @@
   "branch": "agent/commander-corpus/font-resources",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "60c40c12f3c8db2050694c9f76817db909853338",
-  "objective": "Add a bounded exact-rational Type1 outline API for currently unrepresentable division while preserving strict defaults and conditional-context refusal gates",
+  "input_main_sha": "ca3f9e8e7931245cc3d9d407069a63ae634e1a50",
+  "objective": "Feed exact rational outlines through existing matrix APIs only with verified declarative context; preserve widths and immutable identities",
   "owned_paths": [
     "crates/font-resources"
   ],
-  "revision": 16,
+  "revision": 17,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-024",
   "timebox_minutes": 40,
-  "updated_utc": "2026-09-12T10:37:24.803475+00:00"
+  "updated_utc": "2026-09-12T10:39:42Z"
 }
