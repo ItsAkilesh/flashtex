@@ -1,0 +1,44 @@
+# Experimental Rust rendering core
+
+Original Rust types, bounded JSON parsing and semantic validation for the
+experimental `protocol/rendering-v2.schema.json` proposal. This crate does not
+change the compiler, native preview, PDF writer or runtime-v1 wire behavior.
+
+```sh
+cargo test --manifest-path crates/rendering-core/Cargo.toml
+cargo clippy --manifest-path crates/rendering-core/Cargo.toml -- -D warnings
+```
+
+`parse(&[u8])` enforces a 32 MiB message limit, exact typed fields, protocol version
+and known message/item types. Call `Envelope::validate(Some(&offer))` afterwards:
+parsing alone does not negotiate capabilities or validate cross-record references.
+Offers and explicit rejections can be validated with no preceding offer. Selection
+IDs must match the offer; display IDs identify their own compiler request.
+
+`DisplayList::validate` checks font manifests, original GID bounds, contiguous pages,
+finite RGBA, exact fixed-point coordinates and checked geometry sums, explicit rule
+geometry, logical UTF-8 clusters, caret/hit regions and source provenance. Logical
+cluster text partitions the run and is extracted once per cluster. Multiple glyphs
+may refer to one cluster; consumers must not repeat its text once per glyph.
+
+`DisplayList::validate_resources` additionally takes exact `SourceSnapshot` maps,
+font byte maps and a `FontValidator` adapter. It verifies SHA256/length before calling
+the separately owned font loader, compares units/GID count, and checks source UTF-8
+boundaries against the exact document revision. The hook intentionally avoids a
+second competing font parser. The `font-resources` crate's
+`inspect_static_truetype` API can implement this adapter once integrated.
+
+All resource evidence retains `paintable: false`: source/font identity checks are
+not proof that a consumer safely paints those outlines, that shaping is correct,
+or that native/PDF output matches. Production activation requires compiler/PDF/Mac
+agreement on the proposal and their acceptance gates.
+
+Coordinates use `Tick(i64)`, bounded to JSON's exact ±(2^53−1) integer range, with
+1,048,576 ticks per PDF point. `Tick::from_tex_sp` converts TeX scaled points once
+using exact integer arithmetic and round-to-nearest/ties-to-even; TeX and PDF point
+sizes are deliberately different. JSON floating-point geometry is rejected.
+
+Tests use declared synthetic glyph IDs and a deliberately fake font-validation
+callback to exercise mapping and resource substitution; these are not real fonts
+or visual correctness evidence. Fixtures retain the experimental schema provenance
+from commit `41cacfc`; no image, network provider, or external TeX engine is run.
