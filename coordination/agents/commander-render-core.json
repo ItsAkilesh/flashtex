@@ -14,7 +14,7 @@
     "rust",
     "rendering"
   ],
-  "code_revision": "d819d5cf02926607e0392881b80c3bc39476c19e",
+  "code_revision": "a16e4f4586dca6af70c5f5790843b120a302dfd6",
   "eta_minutes": {
     "likely": 20,
     "optimistic": 10,
@@ -22,15 +22,15 @@
   },
   "machine": "linux-primary",
   "main_integrated_through": "9d69d6ed0b2a3300fb3fd5351af150707f062824",
-  "next_action": "Consume published CFF cubic FontMatrix API with explicit unhinted policy in separate internal consumer.",
+  "next_action": "Publish CFF consumer and continue next assigned product increment.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "Stable primitive identities and source-chain-aware nested batches implemented; culling and consumer reordering preserve provenance. 79 Rust tests pass.",
+  "summary": "Separate CFF1 cubic consumer implemented with immutable table digest, explicit hint policy, exact FontMatrix and rational page placement. 84 Rust tests pass.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T06:39:14Z",
+  "updated_utc": "2026-09-12T06:42:54Z",
   "usage": {
-    "evidence": "79 Rust tests and strict all-target clippy pass. Adversarial initial-rule and fractional-clip culling plus retained primitive reordering tested.",
+    "evidence": "84 Rust tests and strict all-target clippy pass. Installed STIXTwoText-Regular: 2220 non-notdef exact placements accepted, 55177 commands, no native painting. Peer 8cf7304 merged unchanged.",
     "status": "Hosted OpenAI authorized; no external provider calls or purchases."
   }
 }

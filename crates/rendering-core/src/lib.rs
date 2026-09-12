@@ -759,3 +759,5 @@ pub struct ResourceEvidence {
 pub mod tex_adapter;
 
 pub mod graph_cache;
+
+pub mod cubic;

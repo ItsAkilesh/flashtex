@@ -193,3 +193,24 @@ The nested run and chain storage are immutable behind accessors. An adversarial
 fixture culls an initial rule, keeps a glyph and later rule, reorders the retained
 primitives, then applies a fractional clip that removes the later rule. Every
 retained chain still points to its original virtual-font command.
+
+`cubic::CffConsumer` is a separate opt-in CFF1 consumer. It verifies an explicitly
+supplied raw table digest and encapsulates parsed dictionaries immutably. The
+font loader applies exact FontMatrix into font/text space; this adapter then
+scales once and flips the baseline into exact page coordinates. Cubic controls
+remain cubic. Callers supply `HintPolicy` explicitly; `Unhinted` retains validated
+hint metadata while `hinting_applied` remains false. CID/CFF2 and other unsupported
+loader operations remain explicit failures. Original GID zero is rejected.
+
+```sh
+cargo run --manifest-path crates/rendering-core/Cargo.toml --example cff_probe -- /path/to/raw-table.cff
+```
+
+An offline installed STIXTwoText-Regular probe retained 55,177 exact commands across
+2,220 non-.notdef glyphs, with zero rejected placements and one skipped .notdef.
+CFF table SHA256: `c5d11bab6a95e75a568e1b72fd30fdd5e4c95abe68a72f02c0c4329ee948b532`;
+containing installed OTF SHA256: `c4864ca6ec071c2d31d0d8309001faa1ee3517fffb53a31a405a697b71f52ca1`.
+The probe used rational size 10,485,761/3 ticks and origin (1/2, 7/4). This verifies
+decoding/placement only. OpenType selection, license binding, shaping, rasterization
+and native/PDF acceptance remain upstream or downstream gates. No font file is
+copied into the repository and no display-list wire primitive is activated.

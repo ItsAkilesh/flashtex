@@ -208,3 +208,68 @@ remain explicitly unsupported. Flat-versus-nested synthetic glyph and rule
 fixtures compare exact geometry and retain intentionally distinct provenance;
 cycle, missing-resource, depth, node and global-output cap tests also pass.
 Real licensed VF/TFM/outline oracle agreement remains pending.
+
+## Staged CFF1 support (not production activated)
+
+`cff::Cff::parse` accepts raw CFF table bytes from the existing public
+font-engine `TrueTypeFace::cff_table()` or PDF `TrueTypeFont::cff_table()` accessor.
+Reviewed peers: font-engine `2d6954b923340c788cd31f663fa8e7a845326dec`, PDF
+`52b371171ee497a52ce0529dbe6bf22cda4bfe04`. Their private numeric readers are not
+re-exported; existing local bounded readers are reused. No second OpenType font
+selector, shaper or sfnt directory parser is introduced.
+
+This first stage validates bounded CFF1 INDEX/DICT syntax, one-font Name/Top DICT,
+CharStrings, custom charset/encoding and Private/Local/Global Subrs offsets.
+Integer and decimal DICT values remain exact (decimals are preserved strings).
+CID-keyed/CFF2/Expert predefined charsets are explicitly unsupported. Semantic
+validation of every optional DICT operator is not claimed. Metadata acceptance
+alone does not prove charstring safety or rendering support. Production font
+resource schema remains static-truetype; no fallback or wire activation occurs.
+References: [CFF specification](https://adobe-type-tools.github.io/font-tech-notes/pdfs/5176.CFF.pdf)
+and [Type 2 specification](https://adobe-type-tools.github.io/font-tech-notes/pdfs/5177.Type2.pdf).
+
+`Cff::cubic_outline(gid)` adds staged exact Type2 charstring-space MoveTo, LineTo,
+CurveTo(control1,control2,end) and Close commands. It handles integer/16.16
+operands, width extraction, relative/alternating line and curve forms, local/global
+subroutine bias/calls/returns, and explicit closure. Limits: 48 operands, 10 active
+subroutine calls, 100000 instructions and 100000 commands; recursion, malformed
+arity and out-of-range calls fail. Hints/masks, escaped flex/arithmetic and seac
+are explicitly unsupported. FontMatrix stays in Top DICT and is not silently
+applied; cubic commands are not reinterpreted as quadratic rendering-v2 paths.
+
+Real CFF smoke used the unchanged font-engine accessor at `2d6954b` in an isolated
+/tmp harness, against installed STIXTwoText-Regular.otf font SHA
+`c4864ca6ec071c2d31d0d8309001faa1ee3517fffb53a31a405a697b71f52ca1`.
+CFF SHA `c5d11bab6a95e75a568e1b72fd30fdd5e4c95abe68a72f02c0c4329ee948b532`:
+2221 glyphs, 824 global and 704 local subroutines; 16 glyphs accepted and 2205
+explicitly unsupported due to hints/masks. No invalid-font failures occurred.
+This does not establish useful visible coverage, Latin Modern support or parity;
+no font file was copied into the repository and no schema activation occurred.
+
+## Explicit unhinted CFF geometry and FontMatrix
+
+`cubic_outline_with_policy(gid, HintPolicy::Unhinted)` validates/records stem
+operands and hint/counter masks without applying grid fitting. It enforces the
+96-stem limit, exact ceil(stems/8) mask payload length, zero unused bits, stem
+ordering and operand counts. HintMetadata records policy, raw stem deltas/widths,
+mask bytes and flex depths. The default `cubic_outline` retains Reject policy.
+All four flex forms emit their two exact cubic curves under Unhinted policy;
+no device-dependent flattening is performed. Arithmetic/seac/CID/CFF2 remain
+explicitly unsupported. This supersedes the earlier stage's blanket hint/flex
+rejection only when Unhinted is deliberately selected.
+
+`matrix_outline(gid, policy)` applies the exact six-term FontMatrix and returns
+separate MatrixCommand/MatrixOutline types. Coordinates use normalized checked
+i128 Rational values with positive denominators, so decimal 0.001 is exactly
+1/1000, not a binary approximation. The default matrix is applied explicitly.
+Translation affects points but not the advance vector. Decimal scale/mantissa
+budgets and arithmetic overflow return errors. Output is CFF font/text space,
+not raw charstring units or rendering-v2 page ticks. Rasterizers must make their
+size/grid policy separately; no schema or production font-profile switch occurs.
+
+Under Unhinted plus matrix application, the same pinned STIX font above now
+accepts all 2221 glyphs, with zero unsupported/invalid decoder outcomes. The old
+Reject-policy results remain valid and unchanged in meaning. This proves bounded
+parser/geometry acceptance only, not outline equality against an oracle, hinted
+raster fidelity, Latin Modern coverage or PDF parity. Synthetic tests cover exact
+masks, malformed operands, all flex forms, decimal matrices and overflow.
