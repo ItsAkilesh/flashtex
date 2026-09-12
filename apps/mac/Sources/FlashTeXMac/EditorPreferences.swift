@@ -506,6 +506,7 @@ struct EditorPreferencesView: View {
                 Toggle("Show completion list", isOn: $prefs.completionPopup)
                     .accessibilityHint("When off, the list never opens; Control-Space and Escape do nothing.")
             }
+            GrokPreferencesSection() // xAI key (Keychain), provider toggle, model, Test connection (GrokPreferencesView.swift)
             Section {
                 Button("Restore Defaults") { prefs.resetToDefaults() }
                     .accessibilityHint("Resets every editor preference to its default value.")

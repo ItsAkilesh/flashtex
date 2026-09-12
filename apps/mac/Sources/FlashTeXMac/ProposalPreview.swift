@@ -141,6 +141,8 @@ final class ProposalPreview: ObservableObject {
     /// sheet shows the latest note next to a cancelled/failed state.
     @Published private(set) var recoveryLog = AssistantRecoveryLog()
     private var explanationProcess: OneShotProcess?
+    /// The live Grok session child while the provider stage runs (GrokProvider.swift).
+    private var grokSession: GrokProviderSession?
     private var explanationJob: ExplanationJob?
     private var explained: (input: Input, latex: String)?
     private var nextExplanationID = 1
@@ -616,6 +618,13 @@ extension ProposalPreview {
         var helperArguments: [String] = []
         var provider: URL?
         var providerArguments: [String] = []
+        /// Live Grok (xAI) through `helper --provider-session` (GrokProvider.swift);
+        /// selected by `FLASHTEX_ASSISTANT_PROVIDER=grok` or the Preferences
+        /// toggle. Takes precedence over `provider` when set. The credential is
+        /// resolved once here (GrokCredential.swift) and only ever reaches the
+        /// session child's environment; nil credential means "selected but no
+        /// key": the sheet says so and sends nothing.
+        var grok: GrokProviderConfiguration?
         /// The helper is a local, bounded JSON transform; seconds suffice.
         var helperTimeout: TimeInterval = 10
         /// `ExplanationFlight` in the crate allows at most 120 s.
@@ -635,10 +644,25 @@ extension ProposalPreview {
 
         static let disabled = ExplanationConfiguration(helper: nil)
 
+        /// `FLASHTEX_ASSISTANT_PROVIDER`: `grok` selects the live xAI path; an
+        /// executable path selects that local command; otherwise the
+        /// Preferences toggle (`GrokPreferences.providerEnabled`) may select
+        /// Grok. Unset and untoggled: disabled, exactly as before. `keychain`
+        /// and `preferences` are injectable so tests never touch the user's.
         @MainActor static func fromEnvironment(_ env: [String: String] = ProcessInfo.processInfo.environment,
-                                               bundleExecutableDirectory: URL? = Bundle.main.executableURL?.deletingLastPathComponent()) -> ExplanationConfiguration {
+                                               bundleExecutableDirectory: URL? = Bundle.main.executableURL?.deletingLastPathComponent(),
+                                               preferences: GrokPreferences = .shared,
+                                               keychain: any GrokKeychainStore = SecItemKeychain.shared) -> ExplanationConfiguration {
             var c = ExplanationConfiguration(helper: locateHelper(env, bundleExecutableDirectory: bundleExecutableDirectory))
-            if let p = env["FLASHTEX_ASSISTANT_PROVIDER"], FileManager.default.isExecutableFile(atPath: p) {
+            let selection = env["FLASHTEX_ASSISTANT_PROVIDER"]
+            if selection?.lowercased() == GrokProviderConfiguration.selector || (selection == nil && preferences.providerEnabled) {
+                let dedicated = env["FLASHTEX_ASSISTANT_CONTEXT_GROK"].flatMap {
+                    FileManager.default.isExecutableFile(atPath: $0) ? URL(fileURLWithPath: $0) : nil
+                }
+                c.grok = GrokProviderConfiguration(model: GrokCredential.model(environment: env, preferences: preferences),
+                                                   credential: GrokCredential.resolve(environment: env, keychain: keychain),
+                                                   helper: dedicated ?? c.helper)
+            } else if let p = selection, FileManager.default.isExecutableFile(atPath: p) {
                 c.provider = URL(fileURLWithPath: p)
             }
             if let s = env["FLASHTEX_ASSISTANT_TIMEOUT_S"], let t = TimeInterval(s), t > 0 { c.providerTimeout = min(t, 120) }
@@ -674,21 +698,27 @@ extension ProposalPreview {
         /// What the sheet shows for the provider: the enabled command's file
         /// name (the user chose it) or "disabled". Never a URL or a key.
         var providerIdentityText: String {
-            provider.map { "provider: \($0.lastPathComponent)" } ?? "provider disabled (set FLASHTEX_ASSISTANT_PROVIDER to a local command)"
+            if let grok { return grok.identityText }
+            return provider.map { "provider: \($0.lastPathComponent)" } ?? "provider disabled (set FLASHTEX_ASSISTANT_PROVIDER to a local command)"
         }
 
-        enum ChildRole { case helper, provider }
+        /// `grok`: the helper in `--provider-session` mode, the one child that
+        /// receives the xAI key (in its environment only).
+        enum ChildRole { case helper, provider, grok }
 
         /// Environment handed to a child. The helper gets a minimal offline
         /// environment: no credential-, token- or proxy-like variables (the
         /// helper's default build has no network code either; the `grok`
         /// feature is off and `FLASHTEX_GROK_API_KEY` is always removed). The
         /// provider is the user's own command and inherits the user's
-        /// environment unchanged, minus nothing this app adds.
+        /// environment unchanged, minus nothing this app adds. The Grok session
+        /// starts from the same minimal set as the helper; `GrokProviderSession`
+        /// adds `FLASHTEX_GROK_API_KEY` from the credential adapter — the only
+        /// allow-listed exception to the stripping, for that role only.
         static func childEnvironment(for role: ChildRole, from env: [String: String] = ProcessInfo.processInfo.environment) -> [String: String] {
             switch role {
             case .provider: return env
-            case .helper:
+            case .helper, .grok:
                 let keep: Set<String> = ["PATH", "HOME", "TMPDIR", "LANG", "LC_ALL", "LC_CTYPE", "USER", "SHELL", "RUST_BACKTRACE"]
                 return env.filter { keep.contains($0.key) && !isSensitiveVariable($0.key) }
             }
@@ -710,6 +740,22 @@ extension ProposalPreview {
         var arguments: [String]
         var environmentKeys: [String]
         var stage: ExplanationStage
+    }
+
+    /// Live Grok selection (see `ExplanationConfiguration.grok`).
+    struct GrokProviderConfiguration: Equatable {
+        static let selector = "grok"
+        var model: String
+        var credential: GrokCredential.Resolution?
+        /// The helper used for the session: `FLASHTEX_ASSISTANT_CONTEXT_GROK`
+        /// when set (a build with `--features grok` kept apart from the pinned
+        /// offline one), else the same helper as the one-shot stages.
+        var helper: URL?
+
+        /// Shown in the sheet: model and key presence/source, never the key.
+        var identityText: String {
+            "provider: Grok (xAI) \(model), " + (credential.map(\.description) ?? "no API key (Preferences ⌘, → xAI API key, or XAI_API_KEY)")
+        }
     }
 
     struct ByteRange: Equatable {
@@ -824,9 +870,12 @@ extension ProposalPreview {
     /// Pid of the helper/provider child currently running for the explanation,
     /// nil when none is (introspection for tests; the app never signals it).
     var runningChildProcessIdentifier: Int32? {
+        if let s = grokSession, s.isRunning { return s.processIdentifier }
         guard let p = explanationProcess, p.isRunning else { return nil }
         return p.processIdentifier
     }
+    /// The Grok session's launch record while (or after) it ran, for tests.
+    var lastGrokLaunch: GrokProviderSession.Launch? { grokSession?.launch }
     /// The exact JSON request the current job last sent (or will send) to the
     /// helper; introspection so a test can replay it against the real helper
     /// with a moved snapshot. Nil when no request is current.
@@ -836,7 +885,9 @@ extension ProposalPreview {
         guard explanationState.isIdleForReviewer, let last = recoveryLog.last else { return nil }
         return last.note
     }
-    var explanationProviderEnabled: Bool { explanationConfiguration.provider != nil }
+    var explanationProviderEnabled: Bool { explanationConfiguration.provider != nil || explanationConfiguration.grok != nil }
+    /// True when Grok is selected and a key resolved: the next explanation is a live xAI call.
+    var grokLive: Bool { explanationConfiguration.grok?.credential != nil }
     var explanationInFlight: Bool { explanationState.isInFlight }
     /// True when the current shadow result can be explained right now.
     var canExplain: Bool {
@@ -866,6 +917,9 @@ extension ProposalPreview {
             return "context \(c.contextId.prefix(8)) prepared for \(c.shadowRequestId): \(c.diagnosticCount) diagnostic\(c.diagnosticCount == 1 ? "" : "s")"
                 + (c.omittedDiagnostics > 0 ? " (\(c.omittedDiagnostics) omitted)" : "") + ", \(c.payloadBytes) bytes; edits: \(c.editBoundaryText). No provider is enabled — nothing was sent."
         case .awaitingProvider(let c):
+            if let grok = explanationConfiguration.grok {
+                return "context \(c.contextId.prefix(8)) admitted to Grok (xAI) \(grok.model) through the helper's provider session; waiting for the live reply…"
+            }
             return "context \(c.contextId.prefix(8)) handed to \(explanationConfiguration.provider?.lastPathComponent ?? "your provider command") on stdin; waiting…"
         case .validating(let c): return "validating the provider's reply against context \(c.contextId.prefix(8))…"
         case .ready(let e):
@@ -980,6 +1034,43 @@ extension ProposalPreview {
     private func cancelExplanationProcess() {
         explanationProcess?.cancel()
         explanationProcess = nil
+        grokSession?.cancel()
+        grokSession = nil
+    }
+
+    /// The provider stage over the live Grok path: the helper's
+    /// `--provider-session` child (GrokProvider.swift) admits the exact
+    /// `prepare` request the context came from and polls until the helper
+    /// returns a source-validated proposal, which then enters the same
+    /// validate/review stages as a local provider's reply. Without a key the
+    /// request fails honestly here; nothing was sent anywhere.
+    private func launchGrok(_ grok: GrokProviderConfiguration, job: ExplanationJob) {
+        guard let credential = grok.credential else {
+            fail(job.id, "Grok (xAI) is selected but no API key is present — add one in Preferences (⌘,) or set XAI_API_KEY; the context was prepared and sent nowhere")
+            return
+        }
+        guard let helper = grok.helper ?? explanationConfiguration.helper else { fail(job.id, "helper vanished"); return }
+        let sessionId = "mac-\(job.id)-\(UUID().uuidString.lowercased().prefix(8))".filter { $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" }
+        var request = job.request
+        request["operation"] = "prepare"
+        request.removeValue(forKey: "response")
+        request.removeValue(forKey: "current_sources")
+        do {
+            let environment = ExplanationConfiguration.childEnvironment(for: .grok)
+            let session = try GrokProviderSession(helper: helper, model: grok.model, sessionId: String(sessionId),
+                                                  credential: credential, environment: environment) { [weak self] result in
+                self?.grokSession = nil
+                self?.handleExplanationReply(id: job.id, stage: .provider, result: result)
+            }
+            grokSession = session
+            childLaunches.append(ChildLaunch(role: .grok, executable: helper, arguments: session.launch.arguments,
+                                             environmentKeys: session.launch.environmentKeys, stage: .provider))
+            if childLaunches.count > 64 { childLaunches.removeFirst(childLaunches.count - 64) }
+            session.run(prepareRequest: request, currentSources: job.sources, timeout: explanationConfiguration.providerTimeout,
+                        allocation: "flashtex-mac explain \(job.id) \(job.projectId)")
+        } catch {
+            fail(job.id, "could not launch \(helper.lastPathComponent) --provider-session: \(error.localizedDescription)")
+        }
     }
 
     private func runHelper(_ helper: URL, job: ExplanationJob) {
@@ -1049,7 +1140,12 @@ extension ProposalPreview {
                 let payload = try Self.preparedPayload(output.stdout)
                 let context = try Self.context(from: payload, job: job)
                 job.context = context
-                if let provider = explanationConfiguration.provider {
+                if let grok = explanationConfiguration.grok {
+                    job.stage = .provider
+                    explanationJob = job
+                    explanationState = .awaitingProvider(context)
+                    launchGrok(grok, job: job)
+                } else if let provider = explanationConfiguration.provider {
                     job.stage = .provider
                     explanationJob = job
                     explanationState = .awaitingProvider(context)

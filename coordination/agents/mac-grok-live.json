@@ -1,0 +1,30 @@
+{
+  "agent_id": "mac-grok-live",
+  "allocation_id": "claude-max-20x-mac-claude-a-child",
+  "assignment_acknowledgements": {},
+  "branch": "agent/mac-grok-live/wiring",
+  "capabilities": [
+    "swift",
+    "xcode",
+    "rust"
+  ],
+  "code_revision": "9ba9851cefb3ba263ffe1d25f42cb7fdd27371c4",
+  "eta_minutes": {
+    "likely": 90,
+    "optimistic": 60,
+    "pessimistic": 120
+  },
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "c11c005b90c1b495889dea7c664aae4b8a9424c4",
+  "next_action": "Implement GrokCredential.swift + GrokProvider.swift; thread environment through LineProcessClient/BridgeClient",
+  "reviewed_peers": {},
+  "schema_version": 1,
+  "state": "in_progress",
+  "summary": "Grok/xAI wiring started: credential adapter, provider-session driver, bridge --enable-grok, preferences row, tests, live-check script",
+  "tool": "Claude Code",
+  "updated_utc": "2026-09-12T18:34:18Z",
+  "usage": {
+    "evidence": "branch agent/mac-grok-live/wiring from 9ba9851c",
+    "status": "shares mac-claude-a Claude Max 20x quota; no xAI key on this machine"
+  }
+}
