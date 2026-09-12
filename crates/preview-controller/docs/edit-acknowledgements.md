@@ -135,3 +135,19 @@ that one source clone. It is not a measurement of aggregate allocations or laten
 small path/hash/token copies and durable/index/compiler allocations remain. The
 test also checks invalid fields leave the request intact and omitted/full response
 policies preserve legacy selection. Full stdio30/30 and strict lint pass.
+
+## Parsed history command ownership
+
+The helper now transfers the owned JSON `command` value into the existing typed
+GroupedEdit/HistoryMove deserializer for group, undo and redo. It checks operation,
+response policy and path before taking the command; typed deserialization completes
+before calling the unchanged controller/ledger mutation. A malformed typed command
+may be consumed from the ephemeral request on rejection, but never reaches durable
+mutation. Session/request identity and source-binding token remain intact.
+
+The64KB Unicode replacement test compares the old Value-clone control with the
+moved command: the typed replacement retains the exact parsed pointer, the control
+has a distinct buffer, and reserialized typed command values match. Undo/redo
+selection and default full mode are unchanged. This proves removal of that copied
+replacement buffer, not aggregate allocation or native response time. Existing
+permanent-ID conflict/retry/recovery and stale source guards still apply.

@@ -499,6 +499,33 @@ fn take_edit_input(payload: &mut Value) -> Result<OwnedEditInput, String> {
         metadata_only,
     })
 }
+struct OwnedHistoryInput {
+    path: String,
+    metadata_only: bool,
+    action: HistoryAction,
+}
+fn take_history_input(request: &mut Value) -> Result<OwnedHistoryInput, String> {
+    let kind = match string(request, "type")? {
+        "apply_group" => 0,
+        "undo" => 1,
+        "redo" => 2,
+        _ => return Err("unsupported history action".into()),
+    };
+    let payload = &mut request["payload"];
+    let metadata_only = metadata_response_mode(payload)?;
+    let path = string(payload, "path")?.to_owned();
+    let command = payload["command"].take();
+    let action = match kind {
+        0 => HistoryAction::Group(serde_json::from_value(command).map_err(|e| e.to_string())?),
+        1 => HistoryAction::Undo(serde_json::from_value(command).map_err(|e| e.to_string())?),
+        _ => HistoryAction::Redo(serde_json::from_value(command).map_err(|e| e.to_string())?),
+    };
+    Ok(OwnedHistoryInput {
+        path,
+        metadata_only,
+        action,
+    })
+}
 fn handle(
     controller: &mut Controller,
     reviews: &mut BTreeMap<String, PreparedEdit>,
@@ -749,25 +776,13 @@ fn handle(
                     "permanent_command_ids":MAX_HISTORY_COMMAND_IDS}}))
         }
         "apply_group" | "undo" | "redo" => {
-            let metadata_only = metadata_response_mode(p)?;
-            let command = p["command"].clone();
-            let action = match request["type"].as_str().unwrap() {
-                "apply_group" => HistoryAction::Group(
-                    serde_json::from_value(command).map_err(|e| e.to_string())?,
-                ),
-                "undo" => {
-                    HistoryAction::Undo(serde_json::from_value(command).map_err(|e| e.to_string())?)
-                }
-                _ => {
-                    HistoryAction::Redo(serde_json::from_value(command).map_err(|e| e.to_string())?)
-                }
-            };
-            if metadata_only {
-                let result = controller.apply_history_metadata(string(p, "path")?, action)?;
+            let input = take_history_input(request)?;
+            if input.metadata_only {
+                let result = controller.apply_history_metadata(&input.path, input.action)?;
                 return Ok(json!({"response_mode":"metadata","history":result.history,
                     "preview_error":result.preview_error,"save_and_submit_ms":result.save_and_submit_ms}));
             }
-            let outcome = controller.apply_history(string(p, "path")?, action)?;
+            let outcome = controller.apply_history(&input.path, input.action)?;
             Ok(
                 json!({"history":outcome.history,"preview_error":outcome.source.preview_error,"save_and_submit_ms":outcome.source.save_and_submit_ms}),
             )
@@ -875,6 +890,66 @@ fn main() {
 #[cfg(test)]
 mod configuration_tests {
     use super::*;
+    #[test]
+    fn owned_history_input_reuses_large_replacement_and_preserves_envelope() {
+        let source = json!({"protocol_version":1,"session_id":"s","id":"request",
+            "type":"apply_group","payload":{"path":"main.tex","response_mode":"metadata",
+            "source_binding_token":"binding","command":{"command_id":"group","expected_revision":7,
+            "expected_sha256":"a".repeat(64),"label":"large replacement",
+            "edits":[{"start_byte":0,"end_byte":0,"removed_text":"","replacement":"β".repeat(32768)}]}}});
+        let mut request: Value =
+            serde_json::from_slice(&serde_json::to_vec(&source).unwrap()).unwrap();
+        let pointer = request["payload"]["command"]["edits"][0]["replacement"]
+            .as_str()
+            .unwrap()
+            .as_ptr();
+        let old_copy = request["payload"]["command"].clone();
+        assert_ne!(
+            pointer,
+            old_copy["edits"][0]["replacement"]
+                .as_str()
+                .unwrap()
+                .as_ptr()
+        );
+        let input = take_history_input(&mut request).unwrap();
+        let HistoryAction::Group(group) = input.action else {
+            panic!("wrong action")
+        };
+        assert_eq!(group.edits[0].replacement.as_ptr(), pointer);
+        assert_eq!(group.edits[0].replacement.len(), 65536);
+        assert_eq!(serde_json::to_value(&group).unwrap(), old_copy);
+        assert_eq!(input.path, "main.tex");
+        assert!(input.metadata_only);
+        assert!(request["payload"]["command"].is_null());
+        assert_eq!(request["payload"]["source_binding_token"], "binding");
+        for key in ["protocol_version", "session_id", "id", "type"] {
+            assert_eq!(request[key], source[key]);
+        }
+        eprintln!("history replacement moved in place:65536bytes; prior Value clone retained distinct65536byte text");
+        for (field, bad) in [("response_mode", json!(false)), ("path", Value::Null)] {
+            let mut invalid = source.clone();
+            invalid["payload"][field] = bad;
+            let before = invalid.clone();
+            assert!(take_history_input(&mut invalid).is_err());
+            assert!(invalid == before, "invalid policy/path consumed command");
+        }
+        for kind in ["undo", "redo"] {
+            let mut r = json!({"type":kind,"payload":{"path":"main.tex","command":{
+                "command_id":"history","expected_revision":8,"expected_sha256":"b".repeat(64)}}});
+            let parsed = take_history_input(&mut r).unwrap();
+            assert!(!parsed.metadata_only);
+            match (kind, parsed.action) {
+                ("undo", HistoryAction::Undo(c)) | ("redo", HistoryAction::Redo(c)) => {
+                    assert_eq!(c.command_id, "history");
+                    assert_eq!(c.expected_revision, 8);
+                }
+                _ => panic!("wrong action"),
+            }
+        }
+        let mut malformed = source;
+        malformed["payload"]["command"]["edits"] = json!(true);
+        assert!(take_history_input(&mut malformed).is_err());
+    }
     #[test]
     fn owned_edit_input_moves_parsed_source_after_validation() {
         let wire = serde_json::to_vec(&json!({"path":"main.tex","expected_revision":1,
