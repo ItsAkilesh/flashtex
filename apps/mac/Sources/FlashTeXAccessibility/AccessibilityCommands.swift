@@ -12,7 +12,6 @@ public enum AccessibilityCommand: String, CaseIterable, Equatable {
     case undo, completion
     case goToMatching, nextDiagnostic, previousDiagnostic, revealCaretInPreview
     case selectPreviewItemSource
-    case nearbyCompanion
 
     public struct Entry: Equatable {
         public var command: AccessibilityCommand
@@ -104,10 +103,6 @@ public enum AccessibilityCommand: String, CaseIterable, Equatable {
             return Entry(command: self, title: "Reveal caret in preview", shortcuts: ["⌘⇧J"], menu: "Navigate",
                          description: "Selects the source span of the preview item under the caret and names its page and item.",
                          requires: "a compile result")
-        case .nearbyCompanion:
-            return Entry(command: self, title: "Nearby Companion…", shortcuts: ["⌘⇧N"], menu: "Edit",
-                         description: "Opens the window that advertises this Mac, shows the pairing code, lists paired devices and received captures.",
-                         requires: "nothing")
         case .selectPreviewItemSource:
             return Entry(command: self, title: "Go to source of a preview item", shortcuts: ["Click preview text"], menu: "Preview",
                          description: "Selects the item's source in the editor; with VoiceOver, use the “Go to source” action on the item.",
