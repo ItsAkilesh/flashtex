@@ -88,6 +88,20 @@ terminate the helper. Request operations:
 | `apply` | `edit: PreparedEdit` | durable `receipt`, current `document` |
 | `replace_document` | `expected_revision`, `expected_sha256`, `text` | `document` |
 | `confirm` | `receipt: {capture_id,edit_id,new_revision}` | `confirmed` |
+| `recovery_export` | none | `snapshot_token`, `current_document`, `pending_receipts` |
+| `recovery_import` | `recovery: {snapshot_token,observations}` | `actions`, fresh `recovery` export |
+
+Recovery export/import is a ledger-local API; it does not add bridge wire fields.
+After export, query the bridge for each pending capture. Import observations
+tagged `status: applied` with the exact `receipt`, `status: prepared` with the
+exact `edit`, or `status: unavailable` with `capture_id` and a bounded `reason`.
+An applied observation durably confirms that receipt. A prepared observation
+returns a `replay_receipt` action with original source and receipt; it does not
+reapply or replace the current document. Unavailable observations return a retry
+action and retain all recovery evidence. Any conflict rejects the entire batch.
+If source or ledger changed during the bridge round trip, the snapshot token is
+stale and import is refused. Re-export and query again. Imported data never
+contains document text to overwrite the authoritative source.
 
 `pending_receipts` entries include prepared edit, receipt, original document,
 after-source hash and confirmation flag. They retain original source until the
