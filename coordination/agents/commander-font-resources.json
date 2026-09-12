@@ -13,7 +13,7 @@
   "capabilities": [
     "rust-font-resources"
   ],
-  "code_revision": "1b53ec22cb376309e868962fcf2604263cdb3016",
+  "code_revision": "cb4ff5f4b224b553eaaf580f1676e50f03a8c43c",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
@@ -21,13 +21,13 @@
   },
   "machine": "linux-primary",
   "main_integrated_through": "1b53ec22cb376309e868962fcf2604263cdb3016",
-  "next_action": "Existing pipeline consumer can replace duplicate reader using published adapter; await exact consumer feedback or next bounded assignment. No dirty peer files or running operations.",
+  "next_action": "Commander integrate cb4ff5f; pipeline consumer wires required-mode diagnostic and renderer reruns with /tmp/flashtex-lm-tfm-0or97xdj/v2.004. TTC gate remains unchanged. Await bounded next assignment; no pending processes or peer writes.",
   "reviewed_peers": {},
   "schema_version": 1,
-  "state": "accepted",
-  "summary": "Published03cdc27: additive Tfm::glyph_run with explicit leading boundary kern and checked attached sums; actual pipeline9bb7b27 compiled readonly and exact ec-lmr10 all metrics/fontdimens/ten-run outputs match shared adapter. Full crate tests and all-target clippy pass. Migration/API table and reproducible peer replay committed; issue2 handoff posted. ec-lmr12/rm-lmr assets absent, no guessed mapping. TTC resolver gate unchanged.",
+  "state": "ready_for_integration",
+  "summary": "FT024r14 published cb4ff5f. Official LM2.004 matching ec-lmr12/rm-lmr12/8/6 retrieved temporarily with archive/file/license hashes; exact actual9bb7b27 reader replay matches all present metrics/fontdimens/ten runs. RequiredMetrics rooted SHA-bound all-or-error loader explicitly rejects missing/changed metric/license; no OTF fallback. Full tests/clippy and real opt-in tests pass; renderer has asset path, issue2 handoff published.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T09:43:43Z",
+  "updated_utc": "2026-09-12T09:45:22Z",
   "usage": {
     "evidence": "crates/font-resources/README.md; test suite; installed font SHA pinned.",
     "status": "Hosted allocation; no external provider calls; account remainder unknown."
