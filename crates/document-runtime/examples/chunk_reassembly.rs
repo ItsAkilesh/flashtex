@@ -119,7 +119,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             1024 * 1024,
             Duration::from_secs(60),
         )?;
+        let expected_digest =
+            flashtex_document_runtime::experimental_chunks::canonical_digest(&full)?;
         let typed_start = Instant::now();
+        let mut first_page_ready_ms = None;
         let mut typed_wire = header.len();
         let mut typed_largest = header.len();
         for page in full["payload"]["pages"].as_array().ok_or("pages")? {
@@ -131,14 +134,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             })?;
             typed_wire += frame.len();
             typed_largest = typed_largest.max(frame.len());
-            typed.push(&frame, revision)?;
+            typed.push_to_sink(&frame, revision, |_| {
+                first_page_ready_ms
+                    .get_or_insert_with(|| typed_start.elapsed().as_secs_f64() * 1000.0);
+                Ok(())
+            })?;
         }
-        let typed_result = typed.finish(revision)?;
+        let residency = typed.residency();
+        let typed_result = typed.finish_verified(revision, expected_digest)?;
         let typed_ms = typed_start.elapsed().as_secs_f64() * 1000.0;
         let typed_equal = typed_result == full;
         println!(
             "{}",
-            json!({"mode":"typed_pages","pages":pages,"wire_bytes":typed_wire,
+            json!({"mode":"typed_pages","first_page_ready_ms":first_page_ready_ms,"retained_items":residency.1,"pages":pages,"wire_bytes":typed_wire,
         "largest_chunk_bytes":typed_largest,"pack_reassemble_validate_ms":typed_ms,"exact_json_equal":typed_equal,
         "production_transport":false,"peak_memory_measured":false,"native_paint_measured":false})
         );

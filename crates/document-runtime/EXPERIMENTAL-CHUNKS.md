@@ -76,3 +76,38 @@ memory benchmark. Both processes retain the full source JSON and parsed referenc
 for equality checking; the numbers must not be represented as consumer-only RSS.
 The roughly10MiB reduction is consistent with eliminating the extra full JSON
 byte buffer, but allocator behavior was not independently profiled.
+
+## Provisional page sink and integrity completion
+
+`push_to_sink` validates each page with the existing source-span/geometry rules
+before invoking a borrowed `ProvisionalPage` callback tagged with request ID,
+project and revision. It never marks the result complete. The sink may reject
+admission; rejection clears the private assembly. A caller retaining copied pages
+must enforce its own residency budget and clear all provisional content on error,
+revision change or cancellation. The prototype caps100,000items per page and
+1,000,000retained items overall, alongside the existing serialized wire limits.
+`residency()` reports retained pages/items and admitted wire bytes, not heap size.
+
+Provisional consumers must complete with `finish_verified(current_revision,
+expected_digest)`. It returns the complete result only after full validation and
+SHA256 agreement. Digest bytes are compact serde_json serialization with ordered
+map keys, including the entire envelope. Producers must use the same encoding;
+this is not a claim of general cross-language canonical JSON. The expected digest
+must come from the matching producer completion record, not be recomputed from
+received data and trusted as proof. Generic legacy `finish` remains available for
+the earlier offline non-provisional prototype; it must not authorize provisional
+export. No production native export is wired to either API.
+
+SHA256 reuses the existing project-files implementation via an explicit local
+path dependency. A64KiB buffered writer hashes serialization without constructing
+a full extra serialized result. After buffering, the301-page offline prototype
+reported first validated sink callback0.336ms and full packing/reassembly/validation
+plus hash verification170.39ms, with67,298items retained. Unbuffered hashing had
+made full completion294.19ms. Linux benchmark maxRSS238,024KiB includes the complete
+reference and source bytes. Both runs exactly matched original JSON.
+
+First-page timing begins AFTER the compiler's full output has already been read
+and parsed for this offline test. It is not compiler first-page latency, streaming
+producer evidence, native paint timing or proof of the200ms typing objective.
+The expected reference digest computation is also outside the timed consumer
+interval; full completion includes computing/checking the received result digest.

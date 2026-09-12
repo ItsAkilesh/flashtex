@@ -133,6 +133,8 @@ pub struct PageAssembly {
     request: Request,
     capabilities: Vec<String>,
     result: Value,
+    header: Value,
+    retained_items: usize,
     expected_pages: usize,
     received: usize,
     wire_bytes: usize,
@@ -169,7 +171,9 @@ impl PageAssembly {
         Ok(Self {
             request,
             capabilities,
+            header: result.clone(),
             result,
+            retained_items: 0,
             expected_pages,
             received: 0,
             wire_bytes: header.len(),
@@ -181,6 +185,10 @@ impl PageAssembly {
     pub fn cancel(&mut self) {
         self.failed = true;
         self.result = Value::Null;
+        self.header = Value::Null;
+        self.retained_items = 0;
+        self.received = 0;
+        self.wire_bytes = 0;
     }
     pub fn push(&mut self, frame: &[u8], current_revision: u64) -> Result<(), String> {
         let result = self.push_checked(frame, current_revision);
@@ -201,7 +209,8 @@ impl PageAssembly {
         {
             return Err("page chunk or total wire budget exceeded".into());
         }
-        let chunk: PageChunk = serde_json::from_slice(frame).map_err(|_| "invalid page chunk")?;
+        let mut chunk: PageChunk =
+            serde_json::from_slice(frame).map_err(|_| "invalid page chunk")?;
         if chunk.id != self.request.id
             || chunk.project_id != self.request.project_id
             || chunk.revision != self.request.revision
@@ -210,13 +219,75 @@ impl PageAssembly {
         {
             return Err("page identity, order or count invalid".into());
         }
+        let items = chunk.page["items"]
+            .as_array()
+            .ok_or("page items missing")?
+            .len();
+        if items > 100_000 || self.retained_items.saturating_add(items) > 1_000_000 {
+            return Err("page residency item budget exceeded".into());
+        }
+        // Apply the existing validator to an isolated page before exposing it.
+        // Its page-number invariant is local to that one-page envelope.
+        let number = chunk.page["number"].take();
+        chunk.page["number"] = serde_json::json!(1);
+        let mut isolated = self.header.clone();
+        isolated["payload"]["pages"] = Value::Array(vec![chunk.page]);
+        let mut checked = crate::validate_reply_value(isolated, &self.request, &self.capabilities)?;
+        let mut page = checked["payload"]["pages"]
+            .as_array_mut()
+            .unwrap()
+            .pop()
+            .unwrap();
+        page["number"] = number;
+        self.retained_items += items;
         self.result["payload"]["pages"]
             .as_array_mut()
             .unwrap()
-            .push(chunk.page);
+            .push(page);
         self.received += 1;
         self.wire_bytes += frame.len();
         Ok(())
+    }
+    pub fn residency(&self) -> (usize, usize, usize) {
+        (self.received, self.retained_items, self.wire_bytes)
+    }
+    /// The borrowed page is validated but provisional; retain a clone only under
+    /// the caller's own memory budget and discard it on cancellation/failure.
+    pub fn push_to_sink(
+        &mut self,
+        frame: &[u8],
+        current_revision: u64,
+        sink: impl FnOnce(ProvisionalPage<'_>) -> Result<(), String>,
+    ) -> Result<(), String> {
+        self.push(frame, current_revision)?;
+        let event = ProvisionalPage {
+            request_id: &self.request.id,
+            project_id: &self.request.project_id,
+            revision: self.request.revision,
+            page: self.result["payload"]["pages"]
+                .as_array()
+                .unwrap()
+                .last()
+                .unwrap(),
+        };
+        if let Err(error) = sink(event) {
+            self.cancel();
+            return Err(error);
+        }
+        Ok(())
+    }
+    /// Required completion path for provisional consumers; no result is returned
+    /// unless both full validation and the caller's expected digest match.
+    pub fn finish_verified(
+        self,
+        current_revision: u64,
+        expected: [u8; 32],
+    ) -> Result<Value, String> {
+        let value = self.finish(current_revision)?;
+        if canonical_digest(&value)? != expected {
+            return Err("completed result digest mismatch".into());
+        }
+        Ok(value)
     }
     pub fn finish(self, current_revision: u64) -> Result<Value, String> {
         if self.failed
@@ -228,4 +299,33 @@ impl PageAssembly {
         }
         crate::validate_reply_value(self.result, &self.request, &self.capabilities)
     }
+}
+
+/// This event never authorizes export or marks a revision complete.
+pub struct ProvisionalPage<'a> {
+    pub request_id: &'a str,
+    pub project_id: &'a str,
+    pub revision: u64,
+    pub page: &'a Value,
+}
+/// Digest contract: compact serde_json serialization with its ordered map keys.
+/// Hashes structure deterministically without allocating a full serialized buffer.
+pub fn canonical_digest(value: &Value) -> Result<[u8; 32], String> {
+    struct HashWriter(flashtex_project_files::Sha256);
+    impl std::io::Write for HashWriter {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            self.0.update(bytes);
+            Ok(bytes.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    let mut writer = HashWriter(flashtex_project_files::Sha256::new());
+    {
+        let mut buffered = std::io::BufWriter::with_capacity(64 * 1024, &mut writer);
+        serde_json::to_writer(&mut buffered, value).map_err(|e| e.to_string())?;
+        std::io::Write::flush(&mut buffered).map_err(|e| e.to_string())?;
+    }
+    Ok(writer.0.finalize())
 }

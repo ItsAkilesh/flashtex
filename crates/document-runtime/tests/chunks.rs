@@ -103,10 +103,59 @@ fn typed_pages_preserve_all_fields_and_reject_incomplete_or_invalid_geometry() {
         page: json!({"number":1,"width_pt":-1,"height_pt":792,"items":[]}),
     })
     .unwrap();
-    invalid.push(&frame, 1).unwrap();
+    assert!(invalid.push(&frame, 1).is_err());
     assert!(invalid.finish(1).is_err());
     let mut stale =
         PageAssembly::new(request(), vec![], &bytes, 1, 1024, Duration::from_secs(5)).unwrap();
     assert!(stale.push(&chunk, 2).is_err());
     assert!(stale.push(&chunk, 1).is_err());
+}
+
+#[test]
+fn provisional_delivery_is_validated_and_final_digest_gated() {
+    use flashtex_document_runtime::experimental_chunks::{
+        canonical_digest, PageAssembly, PageChunk,
+    };
+    let header = result();
+    let bytes = serde_json::to_vec(&header).unwrap();
+    let page = json!({"number":1,"width_pt":612,"height_pt":792,"items":[]});
+    let frame = serde_json::to_vec(&PageChunk {
+        id: "r".into(),
+        project_id: "p".into(),
+        revision: 1,
+        page: page.clone(),
+    })
+    .unwrap();
+    let mut full = header.clone();
+    full["payload"]["pages"] = json!([page]);
+    let expected = canonical_digest(&full).unwrap();
+    assert_eq!(
+        expected,
+        flashtex_project_files::sha256(&serde_json::to_vec(&full).unwrap())
+    );
+    let mut a =
+        PageAssembly::new(request(), vec![], &bytes, 1, 1024, Duration::from_secs(5)).unwrap();
+    let mut delivered = false;
+    a.push_to_sink(&frame, 1, |event| {
+        assert_eq!(event.revision, 1);
+        assert_eq!(event.request_id, "r");
+        assert_eq!(event.page["number"], 1);
+        delivered = true;
+        Ok(())
+    })
+    .unwrap();
+    assert!(delivered);
+    assert_eq!(a.residency().0, 1);
+    assert_eq!(a.finish_verified(1, expected).unwrap(), full);
+    let mut bad =
+        PageAssembly::new(request(), vec![], &bytes, 1, 1024, Duration::from_secs(5)).unwrap();
+    bad.push(&frame, 1).unwrap();
+    assert!(bad.finish_verified(1, [0; 32]).is_err());
+    let mut rejected =
+        PageAssembly::new(request(), vec![], &bytes, 1, 1024, Duration::from_secs(5)).unwrap();
+    assert!(rejected
+        .push_to_sink(&frame, 1, |_| Err("sink budget exhausted".into()))
+        .is_err());
+    assert_eq!(rejected.residency().1, 0);
+    assert!(rejected.finish_verified(1, expected).is_err());
 }
