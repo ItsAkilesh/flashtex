@@ -6,6 +6,7 @@
 pub mod cache;
 pub mod font_adapter;
 pub mod hit_test;
+pub mod outlines;
 pub mod transform;
 pub mod wire;
 

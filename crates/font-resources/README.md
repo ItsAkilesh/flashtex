@@ -50,8 +50,11 @@ unmeasured integration gates. No reference LaTeX engine is used in this crate.
 Unicode access: `glyph_id(char)` returns the original GID or `None` for .notdef.
 It deterministically prefers Unicode format 12 over format 4, then first record
 in directory order; unsupported-only cmaps return an explicit error. It checks
-all selected subtable groups/segments and resulting GIDs before answering. Each
-lookup is bounded but currently rescans the selected table (no shaping cache).
+all selected subtable groups/segments and resulting GIDs before answering. The validated representation is initialized once per immutable resource and shared
+by clones, including cached validation failures. Lookup uses binary search; no
+process-global cache or filename-based identity exists. cmap_cache_key() exposes
+the verified SHA256/face tuple. A maximum of 65536 ranges retains at most 768KiB
+of mapping payload per resource (plus small allocation metadata).
 `horizontal_metrics(gid)` returns original unsigned advance and signed bearing,
 including the repeated final advance for trailing hmtx bearings.
 
@@ -62,3 +65,43 @@ component references at 1,000,000. Shared acyclic subgraphs are permitted; cache
 subtree heights cannot hide an over-depth ancestor chain. These are explicit
 experimental resource limits, not a claim to accept every valid TrueType font.
 Simple-outline point data and glyph instructions are still not interpreted.
+
+Cache evidence: 23 normal tests pass; an explicitly run release benchmark on this
+Linux host measured 100000 synthetic format-12 lookups at 9.672ms rebuilding
+validation versus 0.358ms cached. This is one tiny synthetic font and excludes
+initialization, shaping, rendering and UI latency. Reproduce with
+`cargo test --offline --release --manifest-path crates/font-resources/Cargo.toml repeated_lookup_benchmark -- --ignored --nocapture`.
+
+`simple_outline(gid)` decodes closed simple-glyph contours into original points
+and inclusive contour endpoints. Coordinates are signed 16.16 fixed-point design
+units; no scaling or rounding is performed. On/off-curve flags, raw bounding box,
+overlap flag and unexecuted instruction bytes are preserved. Limits come from
+signed contour counts and 16-bit point endpoints (at most 65536 points), with
+checked flag repetitions, instruction/coordinate extents and signed coordinate
+accumulation. Missing bytes or invalid endpoints return errors. Composite glyphs
+explicitly return unsupported; implied quadratic midpoint expansion, hinting,
+composite transforms, shaping and rasterization are not implemented here.
+
+Real-font smoke decoded all 1544 simple/empty glyphs of the LiberationSans digest
+above, explicitly skipping 1076 composites. This proves decoder acceptance, not
+visual/byte parity. Reproduce by setting FLASHTEX_SMOKE_FONT to that explicit font
+path and running the ignored installed_simple_glyph_smoke test with --nocapture.
+
+`expanded_outline(gid)` recursively expands supported composite affine transforms
+and explicit XY translations, retaining root font SHA/face/ID and each original
+component GID plus point range. Coordinates are normalized exact dyadic rationals
+(numerator / 2^shift, accessed through methods), checked within i128 and at most
+96 fractional bits. No floating rounding occurs. Expansion caps 4096 visited
+instances, 1000000 leaf points and 32 dependency edges. Point attachment,
+nonzero grid-rounded offsets and transformed nonzero offsets without an explicit
+scaled/unscaled policy return unsupported. Instructions remain unexecuted.
+
+Composite smoke on the pinned LiberationSans font accepted 1679 glyphs and
+explicitly rejected 941 requesting nonzero grid-rounded offsets. These are
+unsupported pending a hinting policy, not substituted or counted as complete.
+`ExpandedOutline::quadratic_path()` yields deterministic MoveTo/LineTo/QuadTo/Close
+commands, inserts exact implied midpoints between consecutive off-curve points,
+and handles contours whose first/last points are off-curve. Original root/font
+identity remains on the owning ExpandedOutline. The iterator validates contour
+coverage and materializes a bounded command stream; it does not execute hints,
+choose fill/rasterization rules or assert output parity.

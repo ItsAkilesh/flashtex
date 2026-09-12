@@ -14,23 +14,23 @@
     "rust",
     "rendering"
   ],
-  "code_revision": "aa9da1d951e575d04dae2cd0210ea9c4f7a18a0a",
+  "code_revision": "0e897dd40843eca64ae507512c1ad529d0e0ced5",
   "eta_minutes": {
-    "likely": 20,
-    "optimistic": 10,
-    "pessimistic": 30
+    "likely": 15,
+    "optimistic": 5,
+    "pessimistic": 25
   },
   "machine": "linux-primary",
   "main_integrated_through": "25d159d652204b61479a86f3910431039a052d50",
-  "next_action": "Consume published exact font outlines and expose checked placement consumer API without activating production v2.",
+  "next_action": "Continue next assigned rendering product stage after checkpoint; production consumers remain opt-in pending agreement.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "FT-023 validated bounded wire serialization and typed unsupported errors complete; all 43 Rust tests pass. Offline canonical roundtrip fixture passes at1263bytes.",
+  "summary": "FT-023 exact unhinted quadratic glyph placement integrated with font owner446b608, preserving original GIDs,fontSHA,component instances and source cluster provenance.47 Rust tests pass; real LiberationSans A produced17 commands from GID36.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T06:02:37Z",
+  "updated_utc": "2026-09-12T06:07:35Z",
   "usage": {
-    "evidence": "43 Rust tests pass; strict clippy pass; validate_display example canonicalSHA a55775916d06d76c62a233d80bea5dc026a42c8c23ebbd6c849beccd5f527ec4.",
-    "status": "Hosted OpenAI authorized, no provider inference or purchases."
+    "evidence": "47 Rust rendering tests pass; actual outline_probe A:17points2contours17commands, hintingfalse paintedfalse.",
+    "status": "Hosted OpenAI authorized; no auxiliary paid providers or purchases."
   }
 }
