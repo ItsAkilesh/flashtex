@@ -12,7 +12,7 @@ use flashtex_project_files::{Digest, Expected, ProjectLock};
 use crate::bundle::{Bundle, BundleFile};
 use crate::error::BundleError;
 use crate::preview::{FileOutcome, ImportPreview};
-use crate::root::{map_write_error, ProjectRoot};
+use crate::root::{is_reserved, map_write_error, ProjectRoot};
 
 /// What the caller wants done with one previewed file.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -67,13 +67,21 @@ pub struct ImportOutcome {
 /// - [`FileOutcome::Unchanged`] — never written; the target already holds
 ///   these exact bytes, decision or not.
 ///
-/// Every previewed path is checked against `bundle` up front, before the
+/// Two things are checked for the *whole* batch up front, before the
 /// project lock is taken and before any file is written, so a rejection
-/// leaves the target byte-for-byte as it was. The two arguments are
-/// independent values and nothing structurally ties them together, so a
-/// caller can pass a preview computed from a different (e.g. since
-/// rebuilt) bundle; that is [`BundleError::PreviewBundleMismatch`], not a
-/// panic partway through the batch.
+/// leaves the target byte-for-byte as it was:
+///
+/// - every previewed path must exist in `bundle`. The two arguments are
+///   independent values and nothing structurally ties them together, so a
+///   caller can pass a preview computed from a different (e.g. since
+///   rebuilt) bundle; that is [`BundleError::PreviewBundleMismatch`], not a
+///   panic partway through the batch.
+/// - no previewed path may lie inside the project's own `.flashtex/`
+///   control directory ([`BundleError::ReservedPath`]). That directory
+///   holds the advisory lock this very call is holding and the
+///   crash-recovery journal; importing over the lock file would replace the
+///   locked inode with an unlocked one and silently void the exclusion
+///   promised just below, for the remainder of this batch.
 ///
 /// All writes for one call share a single project lock (from the target's
 /// underlying `flashtex_project_files::ProjectRoot`), so no other in-contract
@@ -140,11 +148,16 @@ pub fn apply_import(
         by_path.entry(file.path.as_str()).or_insert(file);
     }
 
-    // Resolve the whole batch before taking the lock and before writing
-    // anything, so a rejection here leaves the target exactly as it was
-    // rather than surfacing once earlier files are already committed.
+    // Validate and resolve the whole batch before taking the lock and
+    // before writing anything, so a rejection here leaves the target — and
+    // the project's control directory — exactly as they were, rather than
+    // surfacing once earlier files are already committed.
     let mut resolved: Vec<&BundleFile> = Vec::with_capacity(preview.files.len());
     for fp in &preview.files {
+        let normalized = ProjectRoot::normalize(&fp.path)?;
+        if is_reserved(&normalized) {
+            return Err(BundleError::ReservedPath(fp.path.clone()));
+        }
         match by_path.get(fp.path.as_str()) {
             Some(file) => resolved.push(file),
             None => return Err(BundleError::PreviewBundleMismatch(fp.path.clone())),

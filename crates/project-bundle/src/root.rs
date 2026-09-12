@@ -152,6 +152,19 @@ pub fn validate_relative_path(path: &str) -> Result<(), BundleError> {
     ProjectRoot::normalize(path).map(|_| ())
 }
 
+/// The project's own control directory, relative to the root: the advisory
+/// lock (`.flashtex/project.lock`) and the crash-recovery journal
+/// (`.flashtex/recovery/...`) both live here. It is `flashtex-project-files`'
+/// private bookkeeping, never project content, so this crate refuses to
+/// import over it — see [`BundleError::ReservedPath`].
+pub(crate) const CONTROL_DIR: &str = ".flashtex";
+
+/// Whether a normalized project path lands inside [`CONTROL_DIR`].
+pub(crate) fn is_reserved(path: &ProjectPath) -> bool {
+    let p = path.as_str();
+    p == CONTROL_DIR || p.starts_with(concat!(".flashtex", "/"))
+}
+
 /// Whether a rooted-read failure is really "nothing is there": the walk to
 /// the parent directory hit a component that does not exist. The rooted
 /// reader already turns a missing *leaf* into `Ok(None)`, so an `ENOENT`

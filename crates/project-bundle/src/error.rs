@@ -38,6 +38,21 @@ pub enum BundleError {
     /// would in fact overwrite each other, or that both happen to read the
     /// same bytes without the caller ever being told why.
     AmbiguousPath { first: String, second: String },
+    /// A bundle path lands inside the project's own control directory
+    /// (`.flashtex/`), which holds `flashtex-project-files`' advisory lock
+    /// (`.flashtex/project.lock`) and crash-recovery journal
+    /// (`.flashtex/recovery/...`). Refused by [`crate::apply_import`]
+    /// before any write in the batch happens.
+    ///
+    /// This is not hygiene. `apply_import` holds that very lock file open
+    /// for the whole batch, and the rooted writer commits by `rename`, so
+    /// importing over `.flashtex/project.lock` replaces the locked inode
+    /// with an unlocked one: the `flock` this call still holds is stranded
+    /// on an orphan, and any other writer can immediately take "the lock"
+    /// and interleave with the rest of this same batch. The batch would
+    /// then return `Ok` having silently voided the mutual exclusion its own
+    /// documentation promises.
+    ReservedPath(String),
     /// [`crate::apply_import`] was given an [`crate::ImportPreview`] that
     /// names a path the supplied [`crate::Bundle`] does not contain — the
     /// two arguments do not describe the same import (most simply: the
@@ -122,6 +137,10 @@ impl fmt::Display for BundleError {
             BundleError::AmbiguousPath { first, second } => write!(
                 f,
                 "{first:?} and {second:?} are different declared paths but resolve to the same file on disk"
+            ),
+            BundleError::ReservedPath(p) => write!(
+                f,
+                "{p:?} is inside the project's reserved .flashtex control directory and must not be imported"
             ),
             BundleError::PreviewBundleMismatch(p) => write!(
                 f,
