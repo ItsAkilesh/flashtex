@@ -12,8 +12,8 @@
         "Publish bounded candidate API for existing helper owner; if deep validation is deferred, the type and contract must remain explicitly untrusted until existing native/core validator accepts it"
       ],
       "allocation_id": "hosted-openai-product",
-      "name": "Review exact published proxy fault propagation and bounded diagnostic limitations",
-      "objective": "Review exact published proxy fault propagation and bounded diagnostic limitations",
+      "name": "Review positional diagnostic snapshot invariants and retained raw bytes before parsing",
+      "objective": "Review positional diagnostic snapshot invariants and retained raw bytes before parsing",
       "owned_paths": [
         "crates/document-runtime"
       ],
@@ -28,8 +28,8 @@
         "Publish bounded candidate API for existing helper owner; if deep validation is deferred, the type and contract must remain explicitly untrusted until existing native/core validator accepts it"
       ],
       "allocation_id": "hosted-openai-product",
-      "name": "Independently audit one corrected-harness correctness capture including reopened source and clean final request response",
-      "objective": "Independently audit one corrected-harness correctness capture including reopened source and clean final request response",
+      "name": "Independently check deterministic writer offset append and partial coverage tests against exact published candidate",
+      "objective": "Independently check deterministic writer offset append and partial coverage tests against exact published candidate",
       "owned_paths": [
         "crates/document-runtime"
       ],
@@ -44,8 +44,8 @@
         "Publish bounded candidate API for existing helper owner; if deep validation is deferred, the type and contract must remain explicitly untrusted until existing native/core validator accepts it"
       ],
       "allocation_id": "hosted-openai-product",
-      "name": "Preserve original failed capture and distinguish new acceptance from proof of original cause without workload rerun",
-      "objective": "Preserve original failed capture and distinguish new acceptance from proof of original cause without workload rerun",
+      "name": "Preserve failed58242 and68918 uncertainty and audit only existing artifacts without workload rerun",
+      "objective": "Preserve failed58242 and68918 uncertainty and audit only existing artifacts without workload rerun",
       "owned_paths": [
         "crates/document-runtime"
       ],

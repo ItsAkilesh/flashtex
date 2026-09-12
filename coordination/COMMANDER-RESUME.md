@@ -126,3 +126,7 @@ Integrated renderer57e37a1b/report92ff8c37 and runtimefailedprefix4052d311/e2eee
 
 ## Proxy fault propagation tested and one correctness recovery authorized
 Integrated77c8cab1, independentfivefaulttestsPASS under/home. Best-effortnonblockingFIFOstderr uses independentfdflags; regularfile/socketscope notuniversaldeadline. ExistingPDEATH termination notallchildreapingclaim; reopenedprestoplogcoverage explicitlypartial. AuthorizeONE same298helper/158producer corrected-harness fullcorrectnesscapture under/home, exactsource/durable/reopen/clean/receipts; no performancecomparison or originalcause inference. Failed9farchivepreserved. RendererFT023r22 reviews actualMacpackaging7be sandboxartifacts and overridepriority, no nativeauthoritativeedit.
+
+
+## Diagnostic snapshot second failure and repair scope
+Corrected58242 TERMINALFAIL before reopen at diagnostics JSONDecodeError. /home/natkarri/flashtex-captures/ft048-corrected-historical retained, no normalprovenance/reopen/cleanPASS. Pre-fix diagnostic TemporaryFile seek/read shareswriterfileoffset; concrete mechanismbug but absentrawstderrprecludes proving58242cause. Root positionalpread/rawbeforeparse/partialstatus fix assigned, deterministicsharedoffsettests, no rerun. Integrated runtimec29d4e95/ff1e8dd6 proxyreview and renderer73401a5a/2293f8df actual recovery boundaries: warning10ptstandaloneexportallowed, required12errorrefused;12ptv2filesnotnegotiatedsiblings. Nativepagecontractreply5646362851 and refreshed3childcensus inRESOURCES.

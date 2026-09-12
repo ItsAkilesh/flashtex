@@ -1,3 +1,7 @@
+## Latest resource and remote checkpoint 2026-09-12T14:05:54.621332+00:00
+
+Local userquota -s confirms secondtmpfs6282M used/6284Mlimit whiledfpreviously1.6GBfree; do notequatefilesystemfreewithquota. Useowned/home scratch, no pinnedartifactcleanup. Dispatcher1099831/witness1405586 active. Jaysen13:55:16Z comment5646314777 reports parent+3children (pipeline/helperdisplay/packaging);590tests/7skips/0fail, workloadnotlatencybenchmark. Userrelayed5husage18% recordedwithout derivingremainingbalance. Existingtarget15refill requested5646362851 for realuncoveredgaps, no newbilling/duplicates. Otherleadcounts remainstale. Page/delta proposal authorizedonlyasreviewableexistingownerhandoff; fullreply/default/decline and exactfullreconstruction guards retained.
+
 ## Census timestamp correction
 
 Jaysen comment5646213168 corrects future labels: actual census interval13:25:11–13:30:18Z; host date reading13:34:55Z. Twelve children plus parent remains lead-reported, with later search lane completed/integrated, so it is not a current process census. No fresh Daniel/Kabir/Aarush confirmation. Native reported load121 caused four real-helper timeouts; passes80–94 and deferred full suite remain distinct. Heavy-build coordination requested5646221443. GH36 discovery.patch on main is only a handoff, not authoritative producer adoption.

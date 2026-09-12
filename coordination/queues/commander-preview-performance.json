@@ -4,8 +4,8 @@
   "schema_version": 1,
   "steps": [
     {
-      "name": "Run one corrected-harness end-to-end correctness gate under owned home scratch with unchanged helper producer and source",
-      "objective": "Run one corrected-harness end-to-end correctness gate under owned home scratch with unchanged helper producer and source",
+      "name": "Replace shared diagnostic file seek reads with bounded positional snapshots preserving raw bytes before parsing",
+      "objective": "Replace shared diagnostic file seek reads with bounded positional snapshots preserving raw bytes before parsing",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"
@@ -19,8 +19,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Verify exact durable reopen clean final and permanent receipts while retaining proxy error and reopen evidence",
-      "objective": "Verify exact durable reopen clean final and permanent receipts while retaining proxy error and reopen evidence",
+      "name": "Test shared open-file-description writer offset append integrity and explicit partial truncated nonJSON coverage",
+      "objective": "Test shared open-file-description writer offset append integrity and explicit partial truncated nonJSON coverage",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"
@@ -34,8 +34,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Publish successful or failed acceptance without performance comparison or inference about prior failure cause",
-      "objective": "Publish successful or failed acceptance without performance comparison or inference about prior failure cause",
+      "name": "Publish exact tested repair and failed58242 evidence without rerun or inference about earlier causes",
+      "objective": "Publish exact tested repair and failed58242 evidence without rerun or inference about earlier causes",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"

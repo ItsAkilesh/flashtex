@@ -11,15 +11,15 @@
   "branch": "agent/commander-runtime-display/display-runtime",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "c314b86620f8a209d950a14b093aff47c91e4a75",
-  "objective": "Review exact published proxy fault propagation and bounded diagnostic limitations",
+  "input_main_sha": "2bb1cc7ac169ddd778dab3314d3310c06fdecb00",
+  "objective": "Review positional diagnostic snapshot invariants and retained raw bytes before parsing",
   "owned_paths": [
     "crates/document-runtime"
   ],
-  "revision": 37,
+  "revision": 38,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-049",
   "timebox_minutes": 40,
-  "updated_utc": "2026-09-12T14:02:06.894794+00:00"
+  "updated_utc": "2026-09-12T14:05:54.621332+00:00"
 }

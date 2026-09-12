@@ -3,8 +3,8 @@
   "assignment_path": "coordination/assignments/FT-049.json",
   "branch": "agent/commander-runtime-display/display-runtime",
   "previous_report_sha": "ff1e8dd62661c44db634363ddee9630b9368afad",
-  "revision": 37,
+  "revision": 38,
   "schema_version": 1,
   "task_id": "FT-049",
-  "updated_utc": "2026-09-12T14:02:06.894794+00:00"
+  "updated_utc": "2026-09-12T14:05:54.621332+00:00"
 }
