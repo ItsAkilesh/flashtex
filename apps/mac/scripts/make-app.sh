@@ -6,7 +6,8 @@
 # wraps the built executable in a minimal .app bundle so it can be launched
 # with `open` and eventually granted such permissions.
 #
-# Usage: apps/mac/scripts/make-app.sh [--debug] [--compiler <path>] [--pdf <path>] [--open]
+# Usage: apps/mac/scripts/make-app.sh [--debug] [--compiler <path>] [--pdf <path>]
+#                                      [--open] [--install] [--dmg]
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -17,6 +18,8 @@ CONFIG="release"
 COMPILER_PATH=""
 PDF_PATH=""
 DO_OPEN=0
+DO_INSTALL=0
+DO_DMG=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -36,8 +39,16 @@ while [[ $# -gt 0 ]]; do
       DO_OPEN=1
       shift
       ;;
+    --install)
+      DO_INSTALL=1
+      shift
+      ;;
+    --dmg)
+      DO_DMG=1
+      shift
+      ;;
     -h|--help)
-      sed -n '2,10p' "${BASH_SOURCE[0]}"
+      sed -n '2,11p' "${BASH_SOURCE[0]}"
       exit 0
       ;;
     *)
@@ -98,6 +109,12 @@ cat > "$CONTENTS_DIR/Info.plist" <<PLIST
 	<string>NSApplication</string>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.productivity</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>FlashTeX uses the local network to discover and receive captures from nearby devices.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_flashtex._tcp</string>
+	</array>
 </dict>
 </plist>
 PLIST
@@ -151,6 +168,73 @@ if command -v codesign >/dev/null 2>&1; then
   fi
 else
   echo "    warning: codesign not available on this system; bundle is unsigned" >&2
+fi
+
+if [[ "$DO_DMG" -eq 1 ]]; then
+  echo "==> Building DMG"
+  DMG_PATH="$MAC_DIR/build/FlashTeX.dmg"
+  DMG_STAGING="$(mktemp -d "${TMPDIR:-/tmp}/flashtex-dmg.XXXXXX")"
+  cp -R "$APP_DIR" "$DMG_STAGING/FlashTeX.app"
+  ln -s /Applications "$DMG_STAGING/Applications"
+  rm -f "$DMG_PATH"
+  if hdiutil create -volname "FlashTeX" -srcfolder "$DMG_STAGING" -ov -format UDZO "$DMG_PATH" >/dev/null; then
+    echo "    DMG at $DMG_PATH"
+  else
+    echo "    warning: hdiutil failed; no DMG produced" >&2
+  fi
+  rm -rf "$DMG_STAGING"
+fi
+
+if [[ "$DO_INSTALL" -eq 1 ]]; then
+  echo "==> Installing to ~/Applications"
+  INSTALL_DIR="$HOME/Applications"
+  DEST="$INSTALL_DIR/FlashTeX.app"
+  PREVIOUS="$INSTALL_DIR/FlashTeX-previous.app"
+  STAGED="$INSTALL_DIR/.FlashTeX.app.staging.$$"
+  mkdir -p "$INSTALL_DIR"
+  rm -rf "$STAGED"
+
+  # Copy into a hidden staging name first, then rename (same directory, so
+  # the final `mv` is a single atomic rename): $DEST never briefly points at
+  # a half-copied bundle.
+  cp -R "$APP_DIR" "$STAGED"
+  if [[ -d "$DEST" ]]; then
+    rm -rf "$PREVIOUS"
+    mv "$DEST" "$PREVIOUS"
+    echo "    kept previous install at $PREVIOUS pending launch verification"
+  fi
+  mv "$STAGED" "$DEST"
+  echo "    installed $DEST"
+
+  echo "==> Verifying the installed app launches"
+  pkill -x FlashTeX >/dev/null 2>&1 || true
+  sleep 1
+  open "$DEST"
+  LAUNCHED=0
+  for _ in $(seq 1 10); do
+    if pgrep -x FlashTeX >/dev/null 2>&1; then
+      LAUNCHED=1
+      break
+    fi
+    sleep 1
+  done
+
+  if [[ "$LAUNCHED" -eq 1 ]]; then
+    echo "    launch OK (FlashTeX process is running)"
+    osascript -e 'tell application "FlashTeX" to quit' >/dev/null 2>&1 || pkill -x FlashTeX >/dev/null 2>&1 || true
+    if [[ -d "$PREVIOUS" ]]; then
+      rm -rf "$PREVIOUS"
+      echo "    removed $PREVIOUS (new install verified)"
+    fi
+  else
+    echo "    warning: installed app did not launch within 10s; rolling back" >&2
+    rm -rf "$DEST"
+    if [[ -d "$PREVIOUS" ]]; then
+      mv "$PREVIOUS" "$DEST"
+      echo "    restored previous install at $DEST" >&2
+    fi
+    exit 1
+  fi
 fi
 
 echo "==> Done: $APP_DIR"

@@ -3,10 +3,10 @@
   "allocation_id": "openai-mac-plus-ft003",
   "assignment_acknowledgements": {
     "FT-003": {
-      "acknowledged_utc": "2026-09-12T04:34:05Z",
-      "adaptation": "Accepted FT-003 rev 3 (Native editor and preview quality) at input main 09031ef. Already at a336754: export always white regardless of dark preview (fixed a merged regression), Rust-writer export path, diagnostics panel with recovery never hidden, Unicode click-to-source tests with real compiler. In flight: editor inline diagnostic underlines (subagent). User additionally authorized light Codex CLI (ChatGPT Plus) use via a Sonnet driver for small tasks; Claude Max remains primary.",
-      "main_sha": "4d17c62cb5a9cb524fd3a1313690a946ddb340ec",
-      "revision": 3
+      "acknowledged_utc": "2026-09-12T05:20:43Z",
+      "adaptation": "Accepted FT-003 rev 4 (integrate six child streams) at input main 6096405. Running children: mac-bridge-client (transfer-v1 vs bridge b5ca96b), mac-nearby (TLS-PSK pairing listener), mac-pdf-unicode (crates/pdf 1ea4261 opt-in TrueType embedding), mac-completion, mac-packaging (ec94f89/983b627/99c805a merged), mac-native-e2e (oracle d3754f9 done; e2e running). Parent merges only after reviewing diffs and running swift test / xcodebuild.",
+      "main_sha": "998e566c3a23bffeca141c0ce6688c217655b87a",
+      "revision": 4
     }
   },
   "branch": "agent/mac-claude-a/mac-shell",
@@ -16,15 +16,15 @@
     "rust",
     "macos-simulators"
   ],
-  "code_revision": "0af3c2bc94b92c69abdfae816de491653c68e73e",
+  "code_revision": "48780a88fda46ea7be7e600fd2af663890b9ca41",
   "eta_minutes": {
-    "likely": 0,
-    "optimistic": 0,
-    "pessimistic": 0
+    "likely": 60,
+    "optimistic": 30,
+    "pessimistic": 120
   },
   "machine": "mac-m1max-a",
-  "main_integrated_through": "342e1e029f80e7a5b472ad202ae87d597274127b",
-  "next_action": "Collect mac-bridge and oracle-compare results; merge; await dispatch",
+  "main_integrated_through": "998e566c3a23bffeca141c0ce6688c217655b87a",
+  "next_action": "Merge nearby + completion; spawn FT-019/020 after two completions; rev 4 ready report",
   "reviewed_peers": {
     "origin/agent/aarush-macbook/companion-capture": {
       "adaptation": "Peer cannot run xcodebuild; will verify their branch from this Mac. No contract change.",
@@ -47,18 +47,18 @@
       "sha": "25a92a9c591a92a3d49071e536ecf8f129112c24"
     },
     "origin/main": {
-      "adaptation": "Main 7a17601: authority.json names orchestrator-sol as Commander; single-leader and recovery-issue rules read; no change to my work",
-      "reviewed_utc": "2026-09-12T04:45:56Z",
-      "sha": "7a1760114a706e8f76f17b957af84921be832340"
+      "adaptation": "FT-017..020 assignments read; rendering-v2 constraints relayed; two spawned, two queued per cap",
+      "reviewed_utc": "2026-09-12T05:26:42Z",
+      "sha": "984fa28f2537feadb9f848eb90f69de0327d1fa5"
     }
   },
   "schema_version": 1,
-  "state": "ready_for_integration",
-  "summary": "FT-003 rev 3 ready at 0af3c2b (+ Times preview fix, rules, .tex open/save, FlashTeX.app packaging); mac-pdf c0f3837 resolves issue #9 PDF side; mac-validation b9c06ae ready; mac-bridge integrating FT-007 bridge b5ca96b",
+  "state": "in_progress",
+  "summary": "FT-003 rev 4: bridge integration merged at 48780a8 (59/59 w/ real compiler+pdf+bridge); packaging + pdf-unicode + oracle done; nearby/completion/e2e/sim-companion running; FT-017/018 spawned, FT-019/020 queued",
   "tool": "Claude Code",
-  "updated_utc": "2026-09-12T05:05:25Z",
+  "updated_utc": "2026-09-12T05:26:42Z",
   "usage": {
-    "evidence": "Claude Max 20x; 12 subagent runs so far; 1 codex exec; BasicTeX installed by user (oracle only); no purchases",
+    "evidence": "Claude Max 20x; 9 workers live; no purchases",
     "status": "unknown"
   }
 }

@@ -1,23 +1,23 @@
 {
   "acceptance": [
-    "Build with Xcode and test Unicode click-to-source navigation",
-    "Dark preview changes viewing only; document export appearance remains controlled by LaTeX",
-    "Show recovery diagnostics alongside available preview without hiding errors"
+    "Transfer-v1 bridge client authenticates pairing and persists exactly-once native apply receipts across restart",
+    "PDF export preserves supported Unicode or emits an explicit faithful fallback without silent question-mark loss",
+    "Native end-to-end suite covers capture receipt/retry, reviewed accept/reject, stale context, and document recompile"
   ],
   "agent_id": "mac-claude-a",
-  "allocation_id": "claude-mac20x-shell-stage3",
+  "allocation_id": "claude-mac20x-shell-stage4",
   "branch": "agent/mac-claude-a/mac-shell",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "09031efa9feca80d7a34e29b0b6fc41d43c509c4",
-  "objective": "Improve native source editing, UTF-8 navigation, dark preview with white exported document, keyboard shortcuts, and diagnostic presentation. Use real Rust output when available; label fixtures explicitly.",
+  "input_main_sha": "609640558cafc6b02b650fd8757eada4d42fa604",
+  "objective": "Integrate the six Jaysen child streams for durable bridge insertion, authenticated nearby transport, Unicode PDF output, source-aware completion/navigation, packaging, and native end-to-end validation. Preserve exact child file ownership and test before merging.",
   "owned_paths": [
     "apps/mac"
   ],
-  "revision": 3,
+  "revision": 4,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-003",
   "timebox_minutes": 45,
-  "updated_utc": "2026-09-12T04:30:26Z"
+  "updated_utc": "2026-09-12T05:18:58Z"
 }

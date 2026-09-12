@@ -13,6 +13,7 @@ struct SourceEditorView: NSViewRepresentable {
     var marks: [EditorDiagnostics.Mark] = []
     var result: RuntimeV1.CompileResult? // for completion (Completion.swift)
     var onCaretChange: (Int) -> Void = { _ in }
+    var onSelectionChange: (NSRange) -> Void = { _ in }
     var onEditApplied: (ShellModel.PendingEdit, String) -> Void = { _, _ in }
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
@@ -112,6 +113,7 @@ struct SourceEditorView: NSViewRepresentable {
         func textViewDidChangeSelection(_ notification: Notification) {
             guard let tv = notification.object as? NSTextView else { return }
             parent.onCaretChange(tv.selectedRange().location)
+            parent.onSelectionChange(tv.selectedRange())
         }
     }
 }

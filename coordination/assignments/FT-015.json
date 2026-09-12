@@ -6,7 +6,7 @@
     "Worker publishes exact rev 1 ACK, actual Claude PID/session, auth state, current plan/quota evidence, and no in-flight ambiguity"
   ],
   "agent_id": "local-claude-opus",
-  "allocation_id": "claude-linux-max20x-ft015",
+  "allocation_id": "claude-linux-api-ft015",
   "branch": "agent/local-claude-opus/e2e-harness",
   "deadline_utc": null,
   "dependencies": [],

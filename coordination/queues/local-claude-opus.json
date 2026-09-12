@@ -14,7 +14,7 @@
       ],
       "owned_paths": ["tools/e2e", "tests/e2e"],
       "timebox_minutes": 60,
-      "allocation_id": "claude-linux-max20x-ft015-stage2"
+      "allocation_id": "claude-linux-api-ft015-stage2"
     },
     {
       "name": "Compatibility and performance gate",
@@ -26,7 +26,7 @@
       ],
       "owned_paths": ["tools/e2e", "tests/e2e"],
       "timebox_minutes": 60,
-      "allocation_id": "claude-linux-max20x-ft015-stage3"
+      "allocation_id": "claude-linux-api-ft015-stage3"
     }
   ]
 }

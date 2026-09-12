@@ -126,9 +126,11 @@ struct ContentView: View {
                 marks: model.editorMarks,
                 result: model.result,
                 onCaretChange: { model.caretUTF16 = $0 },
+                onSelectionChange: { model.caretLengthUTF16 = $0.length },
                 onEditApplied: { model.editApplied($0, newText: $1) }
             )
             captureBar
+            bridgeBar
         }
     }
 
@@ -155,6 +157,31 @@ struct ContentView: View {
                              set: { model.reviewing = $0?.proposal })) { item in
             ProposalReviewSheet(proposal: item.proposal)
         }
+    }
+
+    /// Bridge lifecycle line: attached/error status, the pinned bridge
+    /// destination, and the latest capture's state (plain text, never a prompt).
+    private var bridgeBar: some View {
+        HStack(spacing: 8) {
+            Text("bridge:").font(.caption.bold())
+            Text(model.bridgeStatus).font(.caption)
+                .foregroundStyle(model.bridgeAttached ? Color.secondary : Color.orange).lineLimit(1)
+            if let d = model.bridgeDestination {
+                Text("· destination \(d.destinationId) bytes \(d.startByte)..<\(d.endByte) @ rev \(d.pinnedRevision)\(d.valid ? "" : " (invalid)")")
+                    .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            }
+            Spacer()
+            if let c = model.bridgeCaptures.last {
+                Text("\(c.captureId): \(c.state.rawValue) — \(c.note)").font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    .help(c.note)
+            }
+            if model.latestConvertibleCapture?.state == .received {
+                Button("Convert") { model.convertLatestCapture() }.controlSize(.small)
+                    .help("capture_convert for the latest received capture (Edit > Convert Capture)")
+            }
+        }
+        .padding(.horizontal, 8).padding(.vertical, 3)
+        .background(.bar)
     }
 
     private var previewPane: some View {
@@ -238,6 +265,16 @@ private struct ProposalReviewSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Review capture \(proposal.captureId)").font(.headline)
+            if model.isBridgeCapture(proposal.captureId) {
+                Text("Bridge capture: approval asks the bridge for a prepared edit, verifies revision, SHA-256 and removed text, then inserts once. The LaTeX must stay as proposed.")
+                    .font(.caption).foregroundStyle(.secondary)
+                if let d = model.bridgeDestination {
+                    Text("Bridge destination \(d.destinationId): \(d.path) bytes \(d.startByte)..<\(d.endByte)").font(.caption).foregroundStyle(.secondary)
+                }
+                if let cr = proposal.contextRevision {
+                    Text("Context revision \(cr)\(cr == model.editorRevision ? "" : " (editor is at \(model.editorRevision))")").font(.caption).foregroundStyle(cr == model.editorRevision ? Color.secondary : Color.orange)
+                }
+            }
             if let a = model.anchor {
                 Text("Inserts at \(a.path) byte \(a.byteOffset) (anchor \(a.id))").font(.caption).foregroundStyle(.secondary)
             } else {
@@ -259,10 +296,12 @@ private struct ProposalReviewSheet: View {
                 Button("Reject", role: .destructive) { model.rejectProposal(proposal); dismiss() }
                 Spacer()
                 Button("Approve and insert") {
-                    if case .inserted = model.approveProposal(proposal, latex: latex) { dismiss() }
+                    if model.isBridgeCapture(proposal.captureId) {
+                        Task { if case .inserted = await model.approveBridgeProposal(proposal, latex: latex) { dismiss() } }
+                    } else if case .inserted = model.approveProposal(proposal, latex: latex) { dismiss() }
                 }
                 .keyboardShortcut(.defaultAction)
-                .disabled(model.anchor == nil || latex.trimmingCharacters(in: .whitespaces).isEmpty)
+                .disabled((model.anchor == nil && !model.isBridgeCapture(proposal.captureId)) || latex.trimmingCharacters(in: .whitespaces).isEmpty)
             }
         }
         .padding(16)
