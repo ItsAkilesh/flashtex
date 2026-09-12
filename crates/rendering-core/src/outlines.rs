@@ -18,7 +18,7 @@ impl OutlineCoordinate {
     pub fn denominator(self) -> u128 {
         self.denominator
     }
-    fn new(numerator: i128, denominator: u128) -> Result<Self> {
+    pub(crate) fn new(numerator: i128, denominator: u128) -> Result<Self> {
         require(
             denominator > 0 && denominator <= i128::MAX as u128,
             "outline denominator budget",

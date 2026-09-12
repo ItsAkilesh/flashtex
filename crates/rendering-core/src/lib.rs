@@ -755,3 +755,5 @@ pub struct ResourceEvidence {
     /// Always false: renderer acceptance/outline painting is a separate gate.
     pub paintable: bool,
 }
+
+pub mod tex_adapter;

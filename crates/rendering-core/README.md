@@ -144,3 +144,19 @@ Glyph ink is never culled using source hit boxes. Operation/path limits fail the
 whole batch explicitly; immutable cached expansions remain reusable on retry.
 Collection validation uses loader-owned verified bytes without copying or reparsing
 fonts. This adapter does not activate runtime-v2 or establish native paint parity.
+
+`tex_adapter` binds original 8-bit TFM codes through the font loader's explicit
+encoding manifest. Physical and virtual runs retain original GIDs, font/TFM hashes,
+exact metrics/kerns and original input intervals. VF rules convert their lower-left
+reference to the page's top-edge convention. Callers explicitly select
+`ExactRationalNoTexRounding`; exact rational values never imply TeX scaled-point
+rounding. Unsupported virtual commands, .notdef, absent bindings and arithmetic
+budgets fail explicitly.
+
+`EncodedRun::batch` emits existing unhinted exact quadratic draw batches using only
+loader-bound immutable fonts and supplied logical UTF-8/source interval mappings.
+Source snapshots must match declared revision/digest. Current batch conversion
+requires integral canonical origins/sizes and returns `NonIntegralTicks` otherwise;
+the original run retains its exact fractions. No Unicode inference, interval
+interpolation, implicit rounding or production runtime activation occurs. Flat/VF
+equivalence fixtures are original synthetic data, not a reference-TeX oracle.

@@ -353,3 +353,212 @@ fn horizontal_metrics_keep_original_units_and_trailing_bearings() {
         Err(Error::UnsupportedFont(_))
     ));
 }
+
+fn tfm_for_encoding() -> flashtex_font_resources::tfm::Tfm {
+    let mut bytes = [16u16, 2, 65, 66, 2, 1, 1, 1, 0, 0, 0, 1]
+        .into_iter()
+        .flat_map(u16::to_be_bytes)
+        .collect::<Vec<_>>();
+    for word in [
+        0u32,
+        10 << 20,
+        0x01000000,
+        0x01000000,
+        0,
+        1 << 19,
+        0,
+        0,
+        0,
+        0,
+    ] {
+        bytes.extend(word.to_be_bytes());
+    }
+    flashtex_font_resources::tfm::Tfm::parse(&bytes).unwrap()
+}
+fn encoding_manifest(
+    font: &FontResource,
+    tfm: &flashtex_font_resources::tfm::Tfm,
+) -> flashtex_font_resources::encoding::EncodingManifest {
+    use flashtex_font_resources::encoding::*;
+    EncodingManifest {
+        font_sha256: font.descriptor().sha256.clone(),
+        tfm_sha256: tfm.source_sha256.clone(),
+        face_index: 0,
+        encoding: vec![
+            EncodingEntry {
+                code: 65,
+                glyph_name: "A.alt".into(),
+            },
+            EncodingEntry {
+                code: 66,
+                glyph_name: ".notdef".into(),
+            },
+        ],
+        declared_glyphs: vec![NamedGlyph {
+            glyph_name: "A.alt".into(),
+            glyph_id: 2,
+        }],
+    }
+}
+#[test]
+fn explicit_encoding_never_casts_codes_and_adapter_preserves_metrics() {
+    use flashtex_font_resources::encoding::*;
+    let bytes = fixture();
+    let font = FontResource::from_bytes(&entry(&bytes), &bytes, b"test license").unwrap();
+    let tfm = tfm_for_encoding();
+    let manifest = encoding_manifest(&font, &tfm);
+    let bound = BoundTfmFont::new(&tfm, &font, &manifest).unwrap();
+    assert_eq!(bound.map_code(65).unwrap().0, GlyphIdentity::Original(2));
+    assert_eq!(bound.map_code(66).unwrap().0, GlyphIdentity::Notdef);
+    assert!(bound.map_code(67).is_err());
+    assert!(matches!(
+        &bound.map_run(b"AB").unwrap()[0],
+        MappedItem::Glyph {
+            identity: GlyphIdentity::Original(2),
+            input_start: 0,
+            input_end: 1,
+            ..
+        }
+    ));
+}
+#[test]
+fn encoding_duplicate_missing_and_hash_binding_fail() {
+    use flashtex_font_resources::encoding::*;
+    let bytes = fixture();
+    let font = FontResource::from_bytes(&entry(&bytes), &bytes, b"test license").unwrap();
+    let tfm = tfm_for_encoding();
+    let original = encoding_manifest(&font, &tfm);
+    for mode in 0..7 {
+        let mut m = original.clone();
+        match mode {
+            0 => m.encoding.push(m.encoding[0].clone()),
+            1 => m.declared_glyphs.push(m.declared_glyphs[0].clone()),
+            2 => m.declared_glyphs.clear(),
+            3 => m.font_sha256 = "0".repeat(64),
+            4 => m.tfm_sha256 = "0".repeat(64),
+            5 => m.face_index = 1,
+            _ => m.declared_glyphs[0].glyph_id = 0,
+        };
+        assert!(EncodingMap::bind(&m, &font, &tfm).is_err(), "{mode}");
+    }
+}
+#[test]
+fn typed_json_escaped_names_decode_exactly_without_postscript_guessing() {
+    use flashtex_font_resources::encoding::*;
+    let bytes = fixture();
+    let font = FontResource::from_bytes(&entry(&bytes), &bytes, b"test license").unwrap();
+    let tfm = tfm_for_encoding();
+    let mut manifest = encoding_manifest(&font, &tfm);
+    manifest.encoding[0] =
+        serde_json::from_str(r#"{"code":65,"glyph_name":"A\u002ealt"}"#).unwrap();
+    assert_eq!(
+        EncodingMap::bind(&manifest, &font, &tfm)
+            .unwrap()
+            .resolve(65)
+            .unwrap(),
+        GlyphIdentity::Original(2)
+    );
+    manifest.encoding[0].glyph_name = "A#2Ealt".into();
+    assert!(EncodingMap::bind(&manifest, &font, &tfm).is_err());
+    manifest.declared_glyphs.push(NamedGlyph {
+        glyph_name: ".notdef".into(),
+        glyph_id: 1,
+    });
+    assert!(EncodingMap::bind(&manifest, &font, &tfm).is_err());
+}
+
+fn virtual_font(commands: &[u8]) -> flashtex_font_resources::vf::VirtualFont {
+    let mut b = vec![247, 202, 0];
+    for n in [0u32, 10 << 20] {
+        b.extend(n.to_be_bytes());
+    }
+    b.extend([243, 0]);
+    for n in [0u32, 1 << 20, 10 << 20] {
+        b.extend(n.to_be_bytes());
+    }
+    b.extend([0, 1, b'f', 242]);
+    for n in [commands.len() as u32, 65, 1 << 19] {
+        b.extend(n.to_be_bytes());
+    }
+    b.extend(commands);
+    b.push(248);
+    flashtex_font_resources::vf::VirtualFont::parse(&b).unwrap()
+}
+#[test]
+fn virtual_packet_expands_exact_bound_glyphs_and_restores_position() {
+    use flashtex_font_resources::{encoding::*, vf::Placement};
+    let bytes = fixture();
+    let font = FontResource::from_bytes(&entry(&bytes), &bytes, b"test license").unwrap();
+    let tfm = tfm_for_encoding();
+    let manifest = encoding_manifest(&font, &tfm);
+    let binding = BoundTfmFont::new(&tfm, &font, &manifest).unwrap();
+    let resources = BTreeMap::from([(0, binding)]);
+    let vf = virtual_font(&[65, 141, 146, 0, 8, 0, 0, 65, 142, 65]);
+    let out = vf.expand_packet(65, &tfm, &resources).unwrap();
+    let xs = out
+        .placements
+        .iter()
+        .map(|p| match p {
+            Placement::Glyph { x, glyph_id, .. } => {
+                assert_eq!(*glyph_id, 2);
+                (x.numerator(), x.shift())
+            }
+            _ => panic!("unexpected rule"),
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(xs, vec![(0, 0), (1, 0), (1, 1)]);
+}
+#[test]
+fn virtual_packet_missing_resources_specials_notdef_and_width_fail() {
+    use flashtex_font_resources::encoding::*;
+    let bytes = fixture();
+    let font = FontResource::from_bytes(&entry(&bytes), &bytes, b"test license").unwrap();
+    let tfm = tfm_for_encoding();
+    let manifest = encoding_manifest(&font, &tfm);
+    let resources = BTreeMap::from([(0, BoundTfmFont::new(&tfm, &font, &manifest).unwrap())]);
+    assert!(virtual_font(&[65])
+        .expand_packet(65, &tfm, &BTreeMap::new())
+        .is_err());
+    assert!(virtual_font(&[66])
+        .expand_packet(65, &tfm, &resources)
+        .is_err());
+    assert!(matches!(
+        virtual_font(&[239, 1, 0]).expand_packet(65, &tfm, &resources),
+        Err(Error::UnsupportedFont(_))
+    ));
+    let mut mismatch = tfm.clone();
+    mismatch.design_size = flashtex_font_resources::tfm::FixWord(11 << 20);
+    assert!(virtual_font(&[65])
+        .expand_packet(65, &mismatch, &resources)
+        .is_err());
+}
+
+#[test]
+fn virtual_packet_put_rule_and_reused_register_have_exact_units() {
+    use flashtex_font_resources::{encoding::*, vf::Placement};
+    let bytes = fixture();
+    let font = FontResource::from_bytes(&entry(&bytes), &bytes, b"test license").unwrap();
+    let tfm = tfm_for_encoding();
+    let manifest = encoding_manifest(&font, &tfm);
+    let resources = BTreeMap::from([(0, BoundTfmFont::new(&tfm, &font, &manifest).unwrap())]);
+    let out = virtual_font(&[
+        133, 65, 151, 0, 8, 0, 0, 65, 147, 132, 0, 4, 0, 0, 0, 8, 0, 0, 65,
+    ])
+    .expand_packet(65, &tfm, &resources)
+    .unwrap();
+    assert_eq!(out.placements.len(), 4);
+    match &out.placements[2] {
+        Placement::Rule {
+            x, width, height, ..
+        } => {
+            assert_eq!((x.numerator(), x.shift()), (3, 1));
+            assert_eq!((width.numerator(), width.shift()), (1, 1));
+            assert_eq!((height.numerator(), height.shift()), (1, 2));
+        }
+        _ => panic!("expected rule"),
+    }
+    match &out.placements[3] {
+        Placement::Glyph { x, .. } => assert_eq!((x.numerator(), x.shift()), (2, 0)),
+        _ => panic!("expected glyph"),
+    }
+}

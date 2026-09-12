@@ -92,8 +92,7 @@ and explicit XY translations, retaining root font SHA/face/ID and each original
 component GID plus point range. Coordinates are normalized exact dyadic rationals
 (numerator / 2^shift, accessed through methods), checked within i128 and at most
 96 fractional bits. No floating rounding occurs. Expansion caps 4096 visited
-instances, 1000000 leaf points and 32 dependency edges. Point attachment,
-nonzero grid-rounded offsets and transformed nonzero offsets without an explicit
+instances, 1000000 leaf points and 32 dependency edges. Nonzero grid-rounded offsets and transformed nonzero offsets without an explicit
 scaled/unscaled policy return unsupported. Instructions remain unexecuted.
 
 Composite smoke on the pinned LiberationSans font accepted 1679 glyphs and
@@ -105,3 +104,86 @@ and handles contours whose first/last points are off-curve. Original root/font
 identity remains on the owning ExpandedOutline. The iterator validates contour
 coverage and materializes a bounded command stream; it does not execute hints,
 choose fill/rasterization rules or assert output parity.
+
+Point-attachment placement now supports existing parent/child contour-point
+indices, decoded as unsigned byte/word values. The child affine transform is
+applied before computing the exact translation that makes the points coincide.
+First-component attachment, missing indices and phantom-point references fail;
+this API does not synthesize phantom points or execute child/parent instructions.
+The semantics are explicitly unhinted design-space geometry, not the rasterizer's
+post-hint placement. Source: [OpenType glyf specification](https://learn.microsoft.com/en-us/typography/opentype/spec/glyf).
+Acceptance tests cover transformed attachment, byte/word indices, malformed
+indices, exact scaled versus unscaled offsets and refusal to guess grid rounding.
+No ppem, device grid or hint state is represented here, so grid-rounded nonzero
+offsets remain unsupported. Real-font smoke remains 1679 accepted / 941 unsupported.
+
+## Exact TeX font metrics
+
+`tfm::Tfm::parse` is an original bounded parser for the documented TFM format.
+It checks exact file/table lengths, dimensions, character indices, next-larger
+cycles, extensible pieces and ligature/kern program targets and actions. Checksum
+is retained as an external font identity value, not recomputed from TFM contents;
+source_sha256 binds the actual bytes. `FixWord(i32)` preserves signed 12.20 values;
+`at_design_size` returns an exact numerator over 2^40 in TeX points, without
+pretending that this implements TeX's separate scaled-point rounding algorithm.
+`char_metrics`, one-based `parameter`, and bounded `pair_action` expose typed
+values and ligature retention/advance semantics. TFM codes are 8-bit encoding
+slots, not Unicode or TrueType GIDs; consumers need an explicit encoding binding.
+Specification reference: [TeX Live tex.web TFM format documentation](https://github.com/TeX-Live/texlive-source/blob/trunk/texk/web2c/tex.web).
+No existing TeX engine is linked or invoked. No installed TFM oracle was found;
+current tests use declared synthetic format fixtures, not measured font parity.
+
+`apply_ligatures_kerns` interprets already encoded runs with exact kern FixWords
+and ligature keep-left/keep-right/advance semantics. Each output glyph retains
+its contributing input index interval; inserted kerns stay separate typed items.
+Input is limited to 4096 bytes, output to 8192 items and execution to 65536 steps;
+cyclic ligature programs fail rather than hanging. Fonts declaring boundary
+programs are explicitly unsupported by this run interpreter (pair inspection
+remains available). It does not perform Unicode encoding, hyphenation,
+discretionaries, TeX scaled-point rounding or TrueType glyph selection.
+
+## Explicit TFM encoding adapter
+
+`encoding::EncodingManifest` is a typed JSON declaration (not a PostScript `.enc`
+interpreter). It binds exact TFM SHA256, font SHA256 and face index to at most 256
+code/name entries and 65536 declared name/original-GID entries. Names are literal
+JSON strings; JSON escapes decode normally, while PostScript/PDF escape syntax is
+not guessed. Duplicate codes/names, absent declarations, invalid GIDs and hash or
+face mismatches fail. Distinct encoding slots may intentionally share a glyph.
+`.notdef` yields the explicit GlyphIdentity::Notdef value; other names cannot map
+to GID zero. A declaration is not proof that a font's name table uses those names.
+
+`BoundTfmFont::new(tfm,font,manifest)` retains immutable borrowed resources and a
+validated map. `map_code` returns original glyph identity plus exact TFM metrics;
+`map_run` applies the bounded TFM interpreter then resolves all output slots,
+retaining input intervals and separate exact kerns. No Unicode casting, font
+fallback, hidden `.notdef` drawing, or TrueType metric substitution occurs.
+The caller must handle Notdef explicitly and establish the declared encoding's
+provenance. This adapter does not establish TFM-to-outline visual equivalence.
+
+## Virtual font packets
+
+`vf::VirtualFont::parse` preserves VF checksum/design size, raw font names/areas,
+local font definitions, short/long character packets, exact signed movement/rule
+units and typed glyph/font/register/stack commands. Names never trigger disk or
+network resolution. Missing font references, malformed packet lengths, duplicate
+IDs/codes, prohibited opcodes and unbalanced/deep stacks fail. Bounds: 16MiB file,
+4096 fonts, 65536 packets, 1MiB/100000 commands per packet, 1000000 commands total,
+and 64 stack entries. Specials remain explicit typed byte payloads; parsing does
+not execute or silently discard them. [VF format documentation](https://github.com/TeX-Live/texlive-source/blob/trunk/texk/web2c/vftovp.web)
+was consulted; no existing VF/DVI implementation is used in production.
+
+`VirtualFont::expand_packet(code, virtual_tfm, physical_bindings)` validates the
+virtual TFM checksum/design-size/packet width and each local TFM definition against
+explicit BoundTfmFont resources. It emits original GID/font+TFM hashes, local font
+ID and exact dyadic placement coordinates relative to the virtual font's size.
+Glyph scale is a 12.20 fraction of that size. DVI y is positive downward; rule
+position is its lower-left reference point and positive height extends upward.
+Set/put advances, w/x/y/z registers and push/pop positions are interpreted without
+float/device rounding. Font selection is not a pushed register. Specials, missing
+bindings, explicit Notdef and physical codes above the supported 8-bit encoding
+fail. No special-handler execution, nested VF resolver, font discovery, ligature
+reshaping inside packets or silent substitution occurs. Current packet limits
+bound execution and output; actual nested resource recursion is not implemented.
+Synthetic integration tests establish arithmetic/binding behavior only, not
+real-VF/font visual parity.

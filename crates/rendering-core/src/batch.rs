@@ -179,7 +179,7 @@ impl<'a> PreparedBatchSource<'a> {
         Ok(batch)
     }
 }
-fn intersection(a: &HitRect, b: &HitRect) -> Option<HitRect> {
+pub(crate) fn intersection(a: &HitRect, b: &HitRect) -> Option<HitRect> {
     let left = a.x.0.max(b.x.0);
     let top = a.top.0.max(b.top.0);
     let right = (a.x.0 + a.width.0).min(b.x.0 + b.width.0);
