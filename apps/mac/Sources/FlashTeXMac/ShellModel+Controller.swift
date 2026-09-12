@@ -160,6 +160,12 @@ extension ShellModel {
             }
             _ = try? controller.document(path: activePath)
         case .result(let id, let payload):
+            switch completionFetcher.handle(resultID: id, payload: payload) {
+            case .notMine: break
+            case .pending: return
+            case .complete(let metadata): completionMetadata = metadata; return
+            case .refused(let why): log("completion metadata refused: \(why)"); return
+            }
             if let doc = payload["document"] as? [String: Any] {
                 applyDurableDocument(doc, requestID: id, payload: payload)
             } else if payload["submitted"] != nil || payload["closed"] != nil || payload["configured"] != nil {
@@ -168,6 +174,10 @@ extension ShellModel {
                 log("controller result \(id): \(payload.keys.sorted().joined(separator: ","))")
             }
         case .error(let id, let message):
+            if case .refused(let why) = completionFetcher.handle(errorID: id, message: message) {
+                log("completion metadata refused: \(why)")
+                break
+            }
             if let inFlight = controllerState.inFlight, inFlight.id == id {
                 controllerState.inFlight = nil
                 inFlightRevision = nil
@@ -311,5 +321,9 @@ extension ShellModel {
         workerStatus = String(format: "revision %d: %@, %d diagnostics in %.0f ms (durable r%d)", editorRev,
                               incoming.status.rawValue, incoming.diagnostics.count, ms, durableRevision)
         selection = nil
+        // Refresh the completion vocabulary for exactly these source versions.
+        if let controller {
+            completionFetcher.request(sourceVersions: update.sourceVersions, editorRevision: editorRev) { try controller.send($0, $1) }
+        }
     }
 }

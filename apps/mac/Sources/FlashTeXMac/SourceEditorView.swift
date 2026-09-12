@@ -28,6 +28,9 @@ struct SourceEditorView: NSViewRepresentable {
     var pendingEdit: ShellModel.PendingEdit?
     var marks: [EditorDiagnostics.Mark] = []
     var result: RuntimeV1.CompileResult? // for completion (Completion.swift)
+    /// Editor revision the buffer is at; completion metadata binds to it.
+    var editorRevision: Int?
+    var projectIndexMetadata: Completion.Metadata?
     var onCaretChange: (Int) -> Void = { _ in }
     var onSelectionChange: (NSRange) -> Void = { _ in }
     var onEditApplied: (ShellModel.PendingEdit, String) -> Void = { _, _ in }
@@ -65,6 +68,8 @@ struct SourceEditorView: NSViewRepresentable {
         let co = context.coordinator
         co.parent = self
         (tv as? CompletingTextView)?.compileResult = result
+        (tv as? CompletingTextView)?.editorRevision = editorRevision
+        if let m = projectIndexMetadata { _ = (tv as? CompletingTextView)?.accept(projectIndex: m) }
         if let edit = pendingEdit, edit.token != co.appliedEditToken {
             co.appliedEditToken = edit.token
             co.applyPendingEdit(edit, to: tv)

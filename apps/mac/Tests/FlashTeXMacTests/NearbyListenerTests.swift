@@ -1,4 +1,7 @@
+import CoreGraphics
+import ImageIO
 import Network
+import UniformTypeIdentifiers
 import XCTest
 import FlashTeXProtocol
 @testable import FlashTeXMac
@@ -111,9 +114,9 @@ final class ListenerHarness {
 
     init(psks: [NearbyListener.PSKEntry], sink: CaptureSink?, destinations: DestinationProvider?,
          pairing: PairingConfirmer? = nil, advertise: NearbyListener.Advertisement? = nil,
-         maxLineBytes: Int = NearbyV1.maxLineBytes, port: UInt16? = nil, queue: DispatchQueue? = nil) {
+         limits: NearbyReceiveLimits = .init(), port: UInt16? = nil, queue: DispatchQueue? = nil) {
         let config = NearbyListener.Configuration(psks: psks, macName: "Test Mac", port: port, advertisement: advertise,
-                                                  loopbackOnly: advertise == nil, maxLineBytes: maxLineBytes)
+                                                  loopbackOnly: advertise == nil, limits: limits)
         var capture: ((NearbyListener.Event) -> Void)!
         let box = EventBox()
         capture = { box.handler?($0) }
@@ -248,8 +251,10 @@ final class NearbyListenerTests: XCTestCase {
 
     func testOversizedLineClosesConnection() throws {
         let sink = RecordingSink()
+        var limits = NearbyReceiveLimits()
+        limits.maxLineBytes = 4096
         let h = ListenerHarness(psks: [.init(identity: "pair-a", key: Self.pskA, isBootstrap: false)], sink: sink,
-                                destinations: nil, maxLineBytes: 4096)
+                                destinations: nil, limits: limits)
         try h.start()
         defer { h.stop() }
 
@@ -780,5 +785,767 @@ final class NearbyBridgeForwardingTests: XCTestCase {
         client.cancel()
         state.stopAdvertising()
         try? FileManager.default.removeItem(at: dir)
+    }
+}
+
+// MARK: - bounded receive (mac-nearby-transport)
+
+/// Sink whose acknowledgements are held until the test releases them, so
+/// in-flight accounting and duplicate coalescing can be observed.
+final class DeferredSink: CaptureSink {
+    private let lock = NSLock()
+    private(set) var pending: [(envelope: RuntimeV1.Envelope<RuntimeV1.CaptureSubmit>, reply: (Data) -> Void)] = []
+    private(set) var delivered = 0
+    var durable = false
+    var refuseWith: NearbyV1.ErrorPayload?
+    func submit(_ envelope: RuntimeV1.Envelope<RuntimeV1.CaptureSubmit>, reply: @escaping (Data) -> Void) {
+        lock.withLock { delivered += 1; pending.append((envelope, reply)) }
+    }
+    var count: Int { lock.withLock { delivered } }
+    var pendingCount: Int { lock.withLock { pending.count } }
+    /// Answers the oldest pending capture.
+    func flush() {
+        let next: (envelope: RuntimeV1.Envelope<RuntimeV1.CaptureSubmit>, reply: (Data) -> Void)? = lock.withLock {
+            pending.isEmpty ? nil : pending.removeFirst()
+        }
+        guard let next else { return }
+        if let e = refuseWith {
+            next.reply(NearbyV1.errorLine(id: next.envelope.id, code: e.code, message: e.message))
+        } else {
+            let ack = NearbyV1.CaptureReceived(captureId: next.envelope.payload.captureId, durable: durable, hasProposal: false, applied: false)
+            next.reply(NearbyV1.line(id: next.envelope.id, type: "capture_received", ack))
+        }
+    }
+}
+
+/// Test images encoded with ImageIO (the same encoder the companion uses).
+enum TestImages {
+    static func png(width: Int, height: Int, noise: Bool = false, alpha: Bool = true, interlaced: Bool = false) -> Data {
+        encode(width: width, height: height, noise: noise, alpha: alpha, type: UTType.png,
+               properties: interlaced ? [kCGImagePropertyPNGDictionary: [kCGImagePropertyPNGInterlaceType: 1]] : nil)
+    }
+    static func jpeg(width: Int, height: Int, noise: Bool = false) -> Data {
+        encode(width: width, height: height, noise: noise, alpha: false, type: UTType.jpeg, properties: nil)
+    }
+    private static func encode(width: Int, height: Int, noise: Bool, alpha: Bool, type: UTType, properties: [CFString: Any]?) -> Data {
+        let cs = CGColorSpaceCreateDeviceRGB()
+        let info = alpha ? CGImageAlphaInfo.premultipliedLast.rawValue : CGImageAlphaInfo.noneSkipLast.rawValue
+        let ctx = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0, space: cs, bitmapInfo: info)!
+        if noise {
+            let p = ctx.data!.assumingMemoryBound(to: UInt8.self)
+            var g = SystemRandomNumberGenerator()
+            for i in 0..<(ctx.bytesPerRow * height) { p[i] = UInt8.random(in: 0...255, using: &g) }
+        } else {
+            ctx.setFillColor(CGColor(red: 0.2, green: 0.4, blue: 0.8, alpha: 1))
+            ctx.fill(CGRect(x: 0, y: 0, width: width, height: height))
+            ctx.setStrokeColor(CGColor(red: 0, green: 0, blue: 0, alpha: 1))
+            ctx.setLineWidth(3)
+            ctx.move(to: CGPoint(x: 4, y: 4)); ctx.addLine(to: CGPoint(x: width - 4, y: height - 4)); ctx.strokePath()
+        }
+        let out = NSMutableData()
+        let dest = CGImageDestinationCreateWithData(out, type.identifier as CFString, 1, nil)!
+        CGImageDestinationAddImage(dest, ctx.makeImage()!, properties as CFDictionary?)
+        CGImageDestinationFinalize(dest)
+        return out as Data
+    }
+}
+
+final class NearbyImageCheckTests: XCTestCase {
+    let limits = NearbyReceiveLimits()
+
+    func testValidPNGAndJPEGReportDimensions() throws {
+        let png = TestImages.png(width: 37, height: 23)
+        let p = try NearbyImageCheck.validate(bytes: png, mimeType: "image/png", limits: limits).get()
+        XCTAssertEqual(p.format, "png"); XCTAssertEqual(p.width, 37); XCTAssertEqual(p.height, 23)
+        XCTAssertEqual(p.encodedBytes, png.count)
+        XCTAssertEqual(p.decodedBytes, 37 * 23 * 4)
+        let jpg = TestImages.jpeg(width: 40, height: 30)
+        let j = try NearbyImageCheck.validate(bytes: jpg, mimeType: "image/jpeg", limits: limits).get()
+        XCTAssertEqual(j.format, "jpeg"); XCTAssertEqual(j.width, 40); XCTAssertEqual(j.height, 30)
+        XCTAssertEqual(j.decodedBytes, 40 * 30 * 3)
+        // The fixture the companion sends (1×1 PNG) and a base64 round trip.
+        let fixture = try RuntimeV1.decodeCaptureSubmit(Data(contentsOf: NearbyListenerTests.fixtureURL)).payload.image
+        let f = try NearbyImageCheck.validate(base64: fixture.dataBase64, mimeType: fixture.mimeType, limits: limits).get()
+        XCTAssertEqual(f.width, 1); XCTAssertEqual(f.height, 1)
+        // Noise (incompressible) exercises the streaming inflater across many buffers.
+        let big = TestImages.png(width: 300, height: 300, noise: true)
+        XCTAssertGreaterThan(big.count, 64 * 1024)
+        XCTAssertEqual(try NearbyImageCheck.validate(bytes: big, mimeType: "image/png", limits: limits).get().width, 300)
+    }
+
+    func testInterlacedPNGRawSizeAndEncoder() throws {
+        // Adam7 for an 8×8 RGBA8 image: 5+5+9+18+34+68+132.
+        XCTAssertEqual(NearbyImageCheck.pngRawSize(width: 8, height: 8, channels: 4, bitDepth: 8, interlaced: true), 271)
+        XCTAssertEqual(NearbyImageCheck.pngRawSize(width: 8, height: 8, channels: 4, bitDepth: 8, interlaced: false), 264)
+        XCTAssertEqual(NearbyImageCheck.pngRawSize(width: 1, height: 1, channels: 1, bitDepth: 1, interlaced: true), 2)
+        XCTAssertEqual(NearbyImageCheck.pngRawSize(width: 3, height: 5, channels: 3, bitDepth: 16, interlaced: false), 5 * 19)
+        let data = TestImages.png(width: 21, height: 13, interlaced: true)
+        let interlace = [UInt8](data)[28]
+        try XCTSkipUnless(interlace == 1, "ImageIO did not write an Adam7 PNG on this system; formula covered above")
+        XCTAssertEqual(try NearbyImageCheck.validate(bytes: data, mimeType: "image/png", limits: limits).get().width, 21)
+    }
+
+    func testTruncatedCorruptAndMismatchedImagesAreInvalid() throws {
+        let png = TestImages.png(width: 64, height: 48)
+        let jpg = TestImages.jpeg(width: 64, height: 48)
+        func code(_ d: Data, _ mime: String) -> String? {
+            if case .failure(let f) = NearbyImageCheck.validate(bytes: d, mimeType: mime, limits: limits) { return f.code }
+            return nil
+        }
+        XCTAssertEqual(code(png.prefix(png.count / 2), "image/png"), "invalid_image", "truncated PNG")
+        XCTAssertEqual(code(png.prefix(png.count - 1), "image/png"), "invalid_image", "PNG missing one byte of IEND")
+        var corrupt = png
+        corrupt[png.count / 2] ^= 0xFF
+        XCTAssertEqual(code(corrupt, "image/png"), "invalid_image", "flipped IDAT byte fails the CRC")
+        var trailing = png; trailing.append(contentsOf: [1, 2, 3])
+        XCTAssertEqual(code(trailing, "image/png"), "invalid_image", "bytes after IEND")
+        XCTAssertEqual(code(png, "image/jpeg"), "invalid_image", "PNG bytes declared as JPEG")
+        XCTAssertEqual(code(jpg, "image/png"), "invalid_image", "JPEG bytes declared as PNG")
+        XCTAssertEqual(code(jpg.prefix(jpg.count / 2), "image/jpeg"), "invalid_image", "truncated JPEG scan")
+        XCTAssertEqual(code(jpg.prefix(jpg.count - 2), "image/jpeg"), "invalid_image", "JPEG without EOI")
+        XCTAssertEqual(code(Data("hello".utf8), "image/png"), "invalid_image")
+        XCTAssertEqual(code(Data(), "image/png"), "invalid_image")
+        XCTAssertEqual(code(png, "image/gif"), "invalid_image")
+        if case .failure(let f) = NearbyImageCheck.validate(base64: "not base64!!", mimeType: "image/png", limits: limits) {
+            XCTAssertEqual(f.code, "invalid_image")
+        } else { XCTFail() }
+        // A CRC-consistent PNG whose pixel stream is too short: rewrite IHDR
+        // height (with a fresh CRC) so the inflated data no longer matches.
+        var taller = [UInt8](png)
+        taller[23] = 0x60 // height 48 -> 96
+        let crc = NearbyImageCheck.crc32(taller, 12..<29)
+        taller[29] = UInt8(crc >> 24); taller[30] = UInt8((crc >> 16) & 0xFF); taller[31] = UInt8((crc >> 8) & 0xFF); taller[32] = UInt8(crc & 0xFF)
+        XCTAssertEqual(code(Data(taller), "image/png"), "invalid_image", "pixel stream shorter than the dimensions claim")
+    }
+
+    func testSizeCapsUseBridgeCodes() throws {
+        var small = NearbyReceiveLimits()
+        small.maxImageBytes = 200
+        let png = TestImages.png(width: 64, height: 48)
+        XCTAssertGreaterThan(png.count, 200)
+        if case .failure(let f) = NearbyImageCheck.validate(bytes: png, mimeType: "image/png", limits: small) {
+            XCTAssertEqual(f.code, "image_too_large")
+        } else { XCTFail() }
+        let base64 = png.base64EncodedString()
+        if case .failure(let f) = NearbyImageCheck.validate(base64: base64, mimeType: "image/png", limits: small) {
+            XCTAssertEqual(f.code, "image_too_large", "refused on base64 length before decoding")
+        } else { XCTFail() }
+        XCTAssertEqual(small.maxImageBase64Bytes, 268)
+        var narrow = NearbyReceiveLimits()
+        narrow.maxImageSide = 60
+        if case .failure(let f) = NearbyImageCheck.validate(bytes: png, mimeType: "image/png", limits: narrow) {
+            XCTAssertEqual(f.code, "invalid_image"); XCTAssertTrue(f.message.contains("64×48"))
+        } else { XCTFail() }
+        var shallow = NearbyReceiveLimits()
+        shallow.maxDecodedImageBytes = 64 * 48 * 4 - 1
+        if case .failure(let f) = NearbyImageCheck.validate(bytes: png, mimeType: "image/png", limits: shallow) {
+            XCTAssertEqual(f.code, "invalid_image"); XCTAssertTrue(f.message.contains("decoded"))
+        } else { XCTFail() }
+        XCTAssertNoThrow(try NearbyImageCheck.validate(bytes: png, mimeType: "image/png", limits: limits).get())
+    }
+}
+
+final class NearbySessionBoundsTests: XCTestCase {
+    let key = NearbyListener.PSKEntry(identity: "p", key: NearbyListenerTests.pskA, isBootstrap: false)
+
+    struct Driver {
+        let session: NearbySession
+        var out: [Data] = []
+        var events: [NearbySession.Event] = []
+    }
+
+    /// Session with inline decoding (no decode queue) and a completed hello.
+    func makeSession(sink: CaptureSink?, limits: NearbyReceiveLimits = .init(), budget: NearbyReceiveBudget? = nil,
+                     pairId: String = "p", nonce: String = "n", events: @escaping (NearbySession.Event) -> Void = { _ in }) -> NearbySession {
+        let keys = [NearbyListener.PSKEntry(identity: pairId, key: NearbyListenerTests.pskA, isBootstrap: false)]
+        let s = NearbySession(keys: keys, macName: "M", sink: sink, destinations: nil, pairing: nil,
+                              limits: limits, budget: budget, events: events)
+        let hello = NearbyV1.line(id: "h", type: "hello", NearbyV1.Hello(pairId: pairId, companionName: "c", nonce: nonce,
+                                                                          proof: Pairing.helloProof(psk: NearbyListenerTests.pskA, nonce: nonce)))
+        XCTAssertEqual(s.handle(line: hello.dropLast(), emit: { _ in }), .keepOpen)
+        return s
+    }
+
+    func capture(_ id: String = "c1", captureId: String = "cap-1", revision: Int = 1, image: Data? = nil,
+                 mime: String = "image/png", instructions: String = "x") -> Data {
+        let img = image ?? TestImages.png(width: 16, height: 16)
+        let submit = RuntimeV1.CaptureSubmit(captureId: captureId, destinationId: "dest-1", baseRevision: revision,
+                                             image: .init(mimeType: mime, dataBase64: img.base64EncodedString()), instructions: instructions)
+        return NearbyV1.line(id: id, type: "capture_submit", submit).dropLast()
+    }
+
+    func errorCode(_ line: Data) -> String? {
+        (try? JSONDecoder().decode(RuntimeV1.Envelope<NearbyV1.ErrorPayload>.self, from: line))?.payload.code
+    }
+    func ackId(_ line: Data) -> String? {
+        let e = try? JSONDecoder().decode(RuntimeV1.Envelope<NearbyV1.CaptureReceived>.self, from: line)
+        return e?.type == "capture_received" ? e?.id : nil
+    }
+
+    func testImageValidationRefusesBeforeTheSinkSeesIt() {
+        let sink = RecordingSink()
+        var events: [NearbySession.Event] = []
+        let s = makeSession(sink: sink) { events.append($0) }
+        var out: [Data] = []
+        let png = TestImages.png(width: 16, height: 16)
+        XCTAssertEqual(s.handle(line: capture(image: png.prefix(png.count - 8)), emit: { out.append($0) }), .keepOpen)
+        XCTAssertEqual(errorCode(out[0]), "invalid_image")
+        XCTAssertEqual(events.last, .refused(captureId: "cap-1", code: "invalid_image", message: "PNG is truncated (no IEND)"))
+        _ = s.handle(line: capture(image: TestImages.jpeg(width: 16, height: 16), mime: "image/png"), emit: { out.append($0) })
+        XCTAssertEqual(errorCode(out[1]), "invalid_image")
+        var limits = NearbyReceiveLimits(); limits.maxImageBytes = 64
+        let tight = makeSession(sink: sink, limits: limits)
+        _ = tight.handle(line: capture(image: png), emit: { out.append($0) })
+        XCTAssertEqual(errorCode(out[2]), "image_too_large")
+        _ = s.handle(line: capture(revision: -1), emit: { out.append($0) })
+        XCTAssertEqual(errorCode(out[3]), "bad_request")
+        XCTAssertEqual(sink.count, 0, "nothing invalid reaches the sink")
+        XCTAssertEqual(s.bytesInFlight, 0, "refused frames are not charged")
+        _ = s.handle(line: capture(image: png), emit: { out.append($0) })
+        XCTAssertEqual(ackId(out[4]), "c1")
+        XCTAssertEqual(sink.count, 1)
+        XCTAssertEqual(s.bytesInFlight, 0)
+    }
+
+    func testPerSessionBytesInFlightCapIsExplicitAndRecovers() {
+        let sink = DeferredSink()
+        let frame = capture("a", captureId: "cap-a")
+        var limits = NearbyReceiveLimits()
+        limits.maxSessionBytesInFlight = frame.count + 1 + frame.count / 2 // one frame fits, two do not
+        var events: [NearbySession.Event] = []
+        let s = makeSession(sink: sink, limits: limits) { events.append($0) }
+        var out: [Data] = []
+        _ = s.handle(line: capture("a", captureId: "cap-a"), emit: { out.append($0) })
+        XCTAssertEqual(sink.count, 1)
+        XCTAssertEqual(s.bytesInFlight, frame.count + 1)
+        _ = s.handle(line: capture("b", captureId: "cap-b"), emit: { out.append($0) })
+        XCTAssertEqual(errorCode(out[0]), "too_many_in_flight")
+        XCTAssertEqual(sink.count, 1, "the over-cap frame is refused, not queued")
+        XCTAssertTrue(events.contains { if case .refused(_, "too_many_in_flight", _) = $0 { return true }; return false })
+        sink.flush()
+        XCTAssertEqual(ackId(out[1]), "a")
+        XCTAssertEqual(s.bytesInFlight, 0)
+        _ = s.handle(line: capture("b", captureId: "cap-b"), emit: { out.append($0) })
+        XCTAssertEqual(sink.count, 2)
+        sink.flush()
+        XCTAssertEqual(ackId(out[2]), "b")
+    }
+
+    func testListenerWideInboxCapAndSessionsPerPeer() {
+        let frame = capture("a", captureId: "cap-a")
+        var limits = NearbyReceiveLimits()
+        limits.maxInboxBytes = frame.count + 1
+        limits.maxSessionsPerPeer = 1
+        let budget = NearbyReceiveBudget(limits: limits)
+        let sink = DeferredSink()
+        let s1 = makeSession(sink: sink, limits: limits, budget: budget, pairId: "p", nonce: "n1")
+        let s2 = makeSession(sink: sink, limits: limits, budget: budget, pairId: "q", nonce: "n2")
+        var out1: [Data] = [], out2: [Data] = []
+        _ = s1.handle(line: capture("a", captureId: "cap-a"), emit: { out1.append($0) })
+        XCTAssertEqual(budget.inboxBytesInFlight, frame.count + 1)
+        _ = s2.handle(line: capture("b", captureId: "cap-b"), emit: { out2.append($0) })
+        XCTAssertEqual(errorCode(out2[0]), "inbox_full")
+        XCTAssertEqual(sink.count, 1)
+        sink.flush()
+        XCTAssertEqual(budget.inboxBytesInFlight, 0)
+        _ = s2.handle(line: capture("b", captureId: "cap-b"), emit: { out2.append($0) })
+        XCTAssertEqual(sink.count, 2)
+        sink.flush()
+        XCTAssertEqual(ackId(out2[1]), "b")
+
+        // A second session for "p" is refused at hello while s1 lives.
+        XCTAssertEqual(budget.sessionCount(pairId: "p"), 1)
+        let keys = [NearbyListener.PSKEntry(identity: "p", key: NearbyListenerTests.pskA, isBootstrap: false)]
+        let s3 = NearbySession(keys: keys, macName: "M", sink: sink, destinations: nil, pairing: nil, limits: limits, budget: budget) { _ in }
+        let hello = NearbyV1.line(id: "h", type: "hello", NearbyV1.Hello(pairId: "p", companionName: "c", nonce: "n3",
+                                                                          proof: Pairing.helloProof(psk: NearbyListenerTests.pskA, nonce: "n3")))
+        var out3: [Data] = []
+        XCTAssertEqual(s3.handle(line: hello.dropLast(), emit: { out3.append($0) }), .closeAfterFlush("too many sessions"))
+        XCTAssertEqual(errorCode(out3[0]), "too_many_sessions")
+        XCTAssertFalse(s3.helloCompleted)
+        s3.end()
+        XCTAssertEqual(budget.sessionCount(pairId: "p"), 1, "a refused hello holds no slot")
+        s1.end()
+        XCTAssertEqual(budget.sessionCount(pairId: "p"), 0)
+        let s4 = NearbySession(keys: keys, macName: "M", sink: sink, destinations: nil, pairing: nil, limits: limits, budget: budget) { _ in }
+        XCTAssertEqual(s4.handle(line: hello.dropLast(), emit: { _ in }), .keepOpen)
+        XCTAssertEqual(budget.sessionCount(pairId: "p"), 1)
+
+        // Ending a session with a capture still pending releases its share.
+        _ = s4.handle(line: capture("c", captureId: "cap-c"), emit: { _ in })
+        XCTAssertEqual(budget.inboxBytesInFlight, frame.count + 1)
+        s4.end()
+        XCTAssertEqual(budget.inboxBytesInFlight, 0)
+        sink.flush() // the late reply must not double-release
+        XCTAssertEqual(budget.inboxBytesInFlight, 0)
+    }
+
+    func testDuplicateIsAcknowledgedNotRedeliveredAndMismatchesAreRefused() {
+        let sink = DeferredSink()
+        var events: [NearbySession.Event] = []
+        let s = makeSession(sink: sink) { events.append($0) }
+        var out: [Data] = []
+        let png = TestImages.png(width: 16, height: 16)
+        // Two identical submissions while the first is still pending: one delivery, two acks.
+        _ = s.handle(line: capture("r1", image: png), emit: { out.append($0) })
+        _ = s.handle(line: capture("r2", image: png), emit: { out.append($0) })
+        XCTAssertEqual(sink.count, 1)
+        XCTAssertEqual(out.count, 0)
+        XCTAssertEqual(events.last, .duplicate(captureId: "cap-1"))
+        sink.flush()
+        XCTAssertEqual(out.map(ackId), ["r1", "r2"])
+        XCTAssertEqual(s.bytesInFlight, 0)
+        // A later retry is answered from memory.
+        _ = s.handle(line: capture("r3", image: png), emit: { out.append($0) })
+        XCTAssertEqual(ackId(out[2]), "r3")
+        XCTAssertEqual(sink.count, 1)
+        XCTAssertEqual(events.filter { $0 == .duplicate(captureId: "cap-1") }.count, 2)
+        // Same id, other revision: refused, not delivered.
+        _ = s.handle(line: capture("r4", revision: 2, image: png), emit: { out.append($0) })
+        XCTAssertEqual(errorCode(out[3]), "revision_mismatch")
+        XCTAssertEqual(events.last, .refused(captureId: "cap-1", code: "revision_mismatch",
+                                             message: "capture_id cap-1 was accepted at base_revision 1, not 2"))
+        // Same id and revision, other payload: conflict.
+        _ = s.handle(line: capture("r5", image: png, instructions: "other"), emit: { out.append($0) })
+        XCTAssertEqual(errorCode(out[4]), "capture_id_conflict")
+        XCTAssertEqual(sink.count, 1)
+        // A different capture id is new.
+        _ = s.handle(line: capture("r6", captureId: "cap-2", image: png), emit: { out.append($0) })
+        XCTAssertEqual(sink.count, 2)
+        sink.flush()
+        XCTAssertEqual(ackId(out[5]), "r6")
+        XCTAssertEqual(s.rememberedCaptureCount, 2)
+    }
+
+    func testSinkRefusalIsNotRememberedAndBoundsHold() {
+        let sink = DeferredSink()
+        var events: [NearbySession.Event] = []
+        var limits = NearbyReceiveLimits()
+        limits.maxRememberedCaptures = 3
+        let s = makeSession(sink: sink, limits: limits) { events.append($0) }
+        var out: [Data] = []
+        let png = TestImages.png(width: 16, height: 16)
+        sink.refuseWith = .init(code: "unavailable", message: "bridge down")
+        _ = s.handle(line: capture("r1", image: png), emit: { out.append($0) })
+        _ = s.handle(line: capture("r2", image: png), emit: { out.append($0) }) // coalesced onto the pending one
+        sink.flush()
+        XCTAssertEqual(out.map(errorCode), ["unavailable", "unavailable"])
+        XCTAssertEqual(events.last, .refused(captureId: "cap-1", code: "unavailable", message: "bridge down"))
+        XCTAssertEqual(s.rememberedCaptureCount, 0, "a refused capture is forgotten so a retry is delivered again")
+        sink.refuseWith = nil
+        _ = s.handle(line: capture("r3", image: png), emit: { out.append($0) })
+        XCTAssertEqual(sink.count, 2)
+        sink.flush()
+        XCTAssertEqual(ackId(out[2]), "r3")
+        // Memory is bounded: acknowledged entries are evicted oldest first, pending ones kept.
+        for i in 2...5 {
+            _ = s.handle(line: capture("x\(i)", captureId: "cap-\(i)", image: png), emit: { _ in })
+            if i < 5 { sink.flush() }
+        }
+        XCTAssertEqual(s.rememberedCaptureCount, 3)
+        _ = s.handle(line: capture("again", captureId: "cap-1", image: png), emit: { out.append($0) })
+        XCTAssertEqual(sink.count, 7, "an evicted id is delivered again")
+        s.end()
+        XCTAssertEqual(s.rememberedCaptureCount, 0)
+    }
+}
+
+final class NearbyBoundedTransportTests: XCTestCase {
+    static let pskA = NearbyListenerTests.pskA
+
+    func hello(_ client: NearbyTestClient, pairId: String, psk: Data, nonce: String = UUID().uuidString) {
+        client.send(id: "h1", type: "hello", NearbyV1.Hello(pairId: pairId, companionName: "Bound iPad", nonce: nonce,
+                                                            proof: Pairing.helloProof(psk: psk, nonce: nonce)))
+    }
+    func type(_ line: Data) -> String? { (try? RuntimeV1.header(of: line))?.type }
+    func id(_ line: Data) -> String? { (try? RuntimeV1.header(of: line))?.id }
+
+    /// A multi-megabyte capture from one peer is decoded off the listener
+    /// queue: another peer's query is answered while it is still being
+    /// validated, and the main thread keeps turning (ShellModel is the sink).
+    @MainActor
+    func testSlowCaptureDoesNotBlockOtherPeersOrTheMainThread() async throws {
+        let model = ShellModel()
+        model.autoCompile = false
+        let h = ListenerHarness(psks: [.init(identity: "pair-a", key: Self.pskA, isBootstrap: false),
+                                       .init(identity: "pair-b", key: NearbyListenerTests.pskB, isBootstrap: false)],
+                                sink: model, destinations: FixedDestinations(nil))
+        try h.listener.start()
+        try await waitUntil("ready") { h.port != 0 }
+        let a = NearbyTestClient(port: h.port, identity: "pair-a", psk: Self.pskA)
+        let b = NearbyTestClient(port: h.port, identity: "pair-b", psk: NearbyListenerTests.pskB)
+        try await waitUntil("clients ready") { a.isReady && b.isReady }
+        hello(a, pairId: "pair-a", psk: Self.pskA)
+        hello(b, pairId: "pair-b", psk: NearbyListenerTests.pskB)
+        try await waitUntil("hello acks") { a.lineCount >= 1 && b.lineCount >= 1 }
+
+        // >1 MiB of incompressible PNG: CRC + inflate take measurable time in a debug build.
+        let noise = TestImages.png(width: 640, height: 640, noise: true)
+        XCTAssertGreaterThan(noise.count, 1024 * 1024)
+        let submit = RuntimeV1.CaptureSubmit(captureId: "big-1", destinationId: "dest", baseRevision: 1,
+                                             image: .init(mimeType: "image/png", dataBase64: noise.base64EncodedString()), instructions: "big")
+        // Main-thread stall meter while the capture is in flight.
+        var maxGap: TimeInterval = 0
+        var last = Date()
+        let meter = Timer.scheduledTimer(withTimeInterval: 0.005, repeats: true) { _ in
+            let now = Date(); maxGap = max(maxGap, now.timeIntervalSince(last)); last = now
+        }
+        let sentAt = Date()
+        a.send(id: "big", type: "capture_submit", submit)
+        var order: [String] = []
+        // Interleave queries from b while a's capture is being received and validated.
+        for i in 0..<20 {
+            b.send(id: "q\(i)", type: "destination_query", NearbyV1.Empty())
+            try await Task.sleep(nanoseconds: 5_000_000)
+            if b.lineCount >= 2 + i, order.isEmpty || order.last != "b" { order.append("b") }
+            if a.lineCount >= 2, !order.contains("a") { order.append("a") }
+        }
+        try await waitUntil("big ack", timeout: 30) { a.lineCount >= 2 }
+        let elapsed = Date().timeIntervalSince(sentAt)
+        try await waitUntil("queries answered", timeout: 10) { b.lineCount >= 21 }
+        meter.invalidate()
+        let ack = try JSONDecoder().decode(RuntimeV1.Envelope<NearbyV1.CaptureReceived>.self, from: a.allLines[1])
+        XCTAssertEqual(ack.payload.captureId, "big-1")
+        XCTAssertEqual(model.nearbyInbox.lastCaptureId, "big-1", "delivered to the main-actor inbox after validation")
+        XCTAssertEqual(order.first, "b", "peer b was answered before peer a's capture was acknowledged (took \(elapsed)s)")
+        XCTAssertLessThan(maxGap, 0.25, "main thread stalled for \(maxGap)s while a \(noise.count)-byte capture was validated")
+        XCTAssertEqual(h.listener.inboxBytesInFlight, 0)
+        a.cancel(); b.cancel()
+        h.stop()
+    }
+
+    func testConnectionCapClosesExtraPeersWithoutASession() throws {
+        var limits = NearbyReceiveLimits()
+        limits.maxConnections = 2
+        let h = ListenerHarness(psks: [.init(identity: "pair-a", key: Self.pskA, isBootstrap: false)], sink: nil,
+                                destinations: nil, limits: limits)
+        try h.start()
+        defer { h.stop() }
+        let c1 = NearbyTestClient(port: h.port, identity: "pair-a", psk: Self.pskA)
+        let c2 = NearbyTestClient(port: h.port, identity: "pair-a", psk: Self.pskA)
+        XCTAssertEqual(XCTWaiter.wait(for: [c1.ready, c2.ready], timeout: 5), .completed)
+        let c3 = NearbyTestClient(port: h.port, identity: "pair-a", psk: Self.pskA)
+        // The client sees a reset during its handshake (`.waiting`/`.failed`), never `.ready`.
+        XCTAssertEqual(XCTWaiter.wait(for: [c3.failed], timeout: 5), .completed, "third connection is closed: \(String(describing: c3.failure))")
+        XCTAssertFalse(c3.isReady)
+        c3.cancel()
+        XCTAssertTrue(h.snapshot.contains(.connectionClosed(identity: nil, reason: "too many connections (2)")), "\(h.snapshot)")
+        XCTAssertEqual(h.snapshot.filter { $0 == .connectionOpened }.count, 2)
+        c1.cancel()
+        XCTAssertEqual(XCTWaiter.wait(for: [c1.closed], timeout: 5), .completed)
+        // A slot frees up once the stack reports the close.
+        var c4: NearbyTestClient?
+        for _ in 0..<20 {
+            let c = NearbyTestClient(port: h.port, identity: "pair-a", psk: Self.pskA)
+            if XCTWaiter.wait(for: [c.ready], timeout: 1) == .completed { c4 = c; break }
+        }
+        XCTAssertNotNil(c4, "a connection is accepted again after one closed")
+        c2.cancel(); c4?.cancel()
+    }
+
+    func testSessionsPerPeerAndInFlightCapsOverTheWire() throws {
+        var limits = NearbyReceiveLimits()
+        limits.maxSessionsPerPeer = 1
+        let sink = DeferredSink()
+        let h = ListenerHarness(psks: [.init(identity: "pair-a", key: Self.pskA, isBootstrap: false)], sink: sink,
+                                destinations: nil, limits: limits)
+        try h.start()
+        defer { h.stop() }
+        let c1 = NearbyTestClient(port: h.port, identity: "pair-a", psk: Self.pskA)
+        XCTAssertEqual(XCTWaiter.wait(for: [c1.ready], timeout: 5), .completed)
+        hello(c1, pairId: "pair-a", psk: Self.pskA)
+        XCTAssertEqual(type(c1.lines(atLeast: 1)[0]), "hello_ack")
+        let c2 = NearbyTestClient(port: h.port, identity: "pair-a", psk: Self.pskA)
+        XCTAssertEqual(XCTWaiter.wait(for: [c2.ready], timeout: 5), .completed)
+        hello(c2, pairId: "pair-a", psk: Self.pskA)
+        let e = try JSONDecoder().decode(RuntimeV1.Envelope<NearbyV1.ErrorPayload>.self, from: c2.lines(atLeast: 1)[0])
+        XCTAssertEqual(e.payload.code, "too_many_sessions")
+        XCTAssertEqual(XCTWaiter.wait(for: [c2.closed], timeout: 5), .completed)
+        XCTAssertEqual(h.listener.budget.sessionCount(pairId: "pair-a"), 1)
+
+        // Duplicate over the wire while pending, then the in-flight cap.
+        let png = TestImages.png(width: 32, height: 32)
+        let submit = RuntimeV1.CaptureSubmit(captureId: "w-1", destinationId: "dest", baseRevision: 3,
+                                             image: .init(mimeType: "image/png", dataBase64: png.base64EncodedString()), instructions: "w")
+        c1.send(id: "s1", type: "capture_submit", submit)
+        c1.send(id: "s2", type: "capture_submit", submit)
+        let waited = XCTestExpectation(description: "delivered once")
+        DispatchQueue.global().async {
+            while sink.count < 1 { usleep(5_000) }
+            usleep(100_000)
+            waited.fulfill()
+        }
+        XCTAssertEqual(XCTWaiter.wait(for: [waited], timeout: 5), .completed)
+        XCTAssertEqual(sink.count, 1, "the retry was coalesced")
+        XCTAssertGreaterThan(h.listener.inboxBytesInFlight, 0)
+        sink.flush()
+        let lines = c1.lines(atLeast: 3)
+        XCTAssertEqual(lines[1...2].map(type), ["capture_received", "capture_received"])
+        XCTAssertEqual(Set(lines[1...2].compactMap(id)), ["s1", "s2"])
+        XCTAssertTrue(h.snapshot.contains(.captureDuplicate(identity: "pair-a", captureId: "w-1")))
+        XCTAssertEqual(h.listener.inboxBytesInFlight, 0)
+        var other = submit; other.baseRevision = 4
+        c1.send(id: "s3", type: "capture_submit", other)
+        let l4 = c1.lines(atLeast: 4)
+        XCTAssertEqual(type(l4[3]), "error")
+        XCTAssertTrue(h.snapshot.contains { if case .captureRefused("pair-a", "w-1", "revision_mismatch", _) = $0 { return true }; return false }, "\(h.snapshot)")
+
+        // Closing the session frees the peer slot and any pending share.
+        var pending = submit; pending.captureId = "w-2"
+        c1.send(id: "s4", type: "capture_submit", pending)
+        let delivered = XCTestExpectation(description: "w-2 delivered")
+        DispatchQueue.global().async { while sink.count < 2 { usleep(5_000) }; delivered.fulfill() }
+        XCTAssertEqual(XCTWaiter.wait(for: [delivered], timeout: 5), .completed)
+        c1.cancel()
+        let freed = XCTestExpectation(description: "slot freed")
+        DispatchQueue.global().async {
+            while h.listener.budget.sessionCount(pairId: "pair-a") != 0 || h.listener.inboxBytesInFlight != 0 { usleep(5_000) }
+            freed.fulfill()
+        }
+        XCTAssertEqual(XCTWaiter.wait(for: [freed], timeout: 5), .completed)
+        sink.flush()
+        XCTAssertEqual(h.listener.inboxBytesInFlight, 0)
+    }
+
+    @MainActor
+    private func waitUntil(_ what: String, timeout: TimeInterval = 5, _ cond: @escaping @MainActor () -> Bool) async throws {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if cond() { return }
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+        XCTFail("timed out waiting for \(what)")
+    }
+}
+
+@MainActor
+final class NearbyStateErrorTests: XCTestCase {
+    /// The window's error state: a refused capture is named with its code, a
+    /// duplicate is counted, and the log carries both; `clearReceiveErrors`
+    /// acknowledges without losing the log.
+    func testRefusalsAndDuplicatesAreVisibleState() async throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("nearby-err-\(UUID().uuidString)")
+        let store = PairStore(url: dir.appendingPathComponent("pairs.json"))
+        let model = ShellModel()
+        model.autoCompile = false
+        let state = NearbyState(store: store, macName: "Err Mac", loopbackOnly: true)
+        state.attach(sink: model, destinations: model)
+        let psk = Pairing.mintLongTermPSK()
+        XCTAssertTrue(store.upsert(PairRecord(pairId: "companion9", psk: psk.base64EncodedString(), companionName: "c", createdAt: Date(), lastSeenAt: nil)))
+        state.refreshPairs()
+        state.startAdvertising()
+        try await waitUntil("advertising") { state.port != nil }
+        let client = NearbyTestClient(port: state.port!, identity: "companion9", psk: psk)
+        try await waitUntil("client ready") { client.isReady }
+        let nonce = UUID().uuidString
+        client.send(id: "h", type: "hello", NearbyV1.Hello(pairId: "companion9", companionName: "c", nonce: nonce,
+                                                           proof: Pairing.helloProof(psk: psk, nonce: nonce)))
+        try await waitUntil("hello_ack") { client.lineCount >= 1 }
+        XCTAssertNil(state.lastReceiveError)
+
+        let png = TestImages.png(width: 24, height: 24)
+        var submit = RuntimeV1.CaptureSubmit(captureId: "e-1", destinationId: "dest", baseRevision: 1,
+                                             image: .init(mimeType: "image/png", dataBase64: png.prefix(png.count / 2).base64EncodedString()),
+                                             instructions: "broken")
+        client.send(id: "c1", type: "capture_submit", submit)
+        try await waitUntil("refusal visible") { state.lastReceiveError != nil }
+        let err = try XCTUnwrap(state.lastReceiveError)
+        XCTAssertEqual(err.code, "invalid_image")
+        XCTAssertEqual(err.captureId, "e-1")
+        XCTAssertEqual(err.pairId, "companion9")
+        XCTAssertEqual(state.receiveErrors, [err])
+        XCTAssertTrue(state.log.contains { $0.hasPrefix("refused invalid_image: e-1 from companion9") }, "\(state.log)")
+        XCTAssertNil(model.nearbyInbox.lastCaptureId, "nothing reached the inbox")
+
+        submit.image.dataBase64 = png.base64EncodedString()
+        client.send(id: "c2", type: "capture_submit", submit)
+        client.send(id: "c3", type: "capture_submit", submit)
+        try await waitUntil("acks") { client.lineCount >= 4 }
+        try await waitUntil("duplicate counted") { state.duplicateCaptureCount == 1 }
+        XCTAssertEqual(state.lastDuplicateCaptureId, "e-1")
+        XCTAssertEqual(state.lastReceivedCaptureId, "e-1")
+        XCTAssertEqual(model.nearbyInbox.received.count, 1, "the retry was not re-delivered")
+        submit.baseRevision = 2
+        client.send(id: "c4", type: "capture_submit", submit)
+        try await waitUntil("revision refusal") { state.receiveErrors.count == 2 }
+        XCTAssertEqual(state.lastReceiveError?.code, "revision_mismatch")
+        XCTAssertEqual(model.nearbyInbox.received.count, 1)
+
+        state.clearReceiveErrors()
+        XCTAssertNil(state.lastReceiveError)
+        XCTAssertTrue(state.receiveErrors.isEmpty)
+        XCTAssertTrue(state.log.contains { $0.hasPrefix("refused revision_mismatch") })
+        XCTAssertEqual(state.limits, NearbyReceiveLimits())
+        client.cancel()
+        state.stopAdvertising()
+        try? FileManager.default.removeItem(at: dir)
+    }
+
+    private func waitUntil(_ what: String, timeout: TimeInterval = 5, _ cond: @escaping @MainActor () -> Bool) async throws {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if cond() { return }
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+        XCTFail("timed out waiting for \(what)")
+    }
+}
+
+// MARK: - transcript acceptance (mac-nearby-transport)
+
+/// Replays a companion session transcript against the listener on loopback.
+///
+/// Provenance of `Fixtures/nearby-companion-session.jsonl`: the shape of the
+/// iPad Pro 13" (M5) simulator run recorded in
+/// `docs/evidence/companion-simulator/README.md` §5 — runtime-v1
+/// `capture_submit` envelopes with `.sortedKeys` ordering and `/` escaped as
+/// `\/`, `capture-<8 hex>` ids, `default-anchor` / revision 1, the companion's
+/// default instructions, a 400×300 opaque photo-library PNG and a 1408×1510
+/// RGBA pencil drawing with a transparent background, **each line emitted
+/// twice byte-identically** (the double-print bug in that run). The captured
+/// `launch-1-stdout.log` was not committed and the companion still connects
+/// in plaintext (no TLS-PSK, no v1 `hello`), so the images were re-drawn with
+/// ImageIO and the `hello` line is the §8 shape with the pinned pairing vector
+/// (code 123456, salt 00…0f) and a proof computed independently in Python.
+/// This is therefore a recorded-shape transcript, not the original bytes.
+@MainActor
+final class NearbyTranscriptAcceptanceTests: XCTestCase {
+    static let transcriptURL = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        .appendingPathComponent("Fixtures/nearby-companion-session.jsonl")
+    static let vectorPSK = Pairing.data(hex: Pairing.vectorPSKHex)!
+
+    struct Transcript {
+        var lines: [Data]
+        var hello: RuntimeV1.Envelope<NearbyV1.Hello>
+        var captures: [RuntimeV1.Envelope<RuntimeV1.CaptureSubmit>]
+    }
+
+    func load() throws -> Transcript {
+        let raw = try Data(contentsOf: Self.transcriptURL)
+        var splitter = LineSplitter()
+        let lines = splitter.append(raw)
+        XCTAssertEqual(splitter.pendingBytes, 0, "transcript ends with a newline")
+        let hello = try JSONDecoder().decode(RuntimeV1.Envelope<NearbyV1.Hello>.self, from: lines[0])
+        let captures = try lines.dropFirst().map { try RuntimeV1.decodeCaptureSubmit($0) }
+        return Transcript(lines: lines, hello: hello, captures: captures)
+    }
+
+    /// Sends one line the way a companion's socket delivers it: in chunks.
+    func stream(_ line: Data, to client: NearbyTestClient) async throws {
+        var i = 0
+        while i < line.count {
+            let end = min(i + 16 * 1024, line.count)
+            client.send(line[i..<end])
+            i = end
+            try await Task.sleep(nanoseconds: 1_000_000)
+        }
+    }
+
+    func testTranscriptMatchesTheRecordedSessionShape() throws {
+        let t = try load()
+        XCTAssertEqual(t.lines.count, 5, "hello + 2 captures × 2 (double emission)")
+        XCTAssertEqual(t.hello.type, "hello")
+        XCTAssertEqual(t.hello.payload.pairId, Pairing.vectorPairID)
+        XCTAssertEqual(t.hello.payload.protocolVersion, 1)
+        XCTAssertTrue(String(decoding: t.lines[0], as: UTF8.self).contains("\"role\":\"companion\""), "the companion's extra key is kept")
+        XCTAssertTrue(Pairing.verifyHelloProof(t.hello.payload.proof, psk: Self.vectorPSK, nonce: t.hello.payload.nonce),
+                      "the Python-computed proof verifies against the Swift vector")
+        XCTAssertEqual(t.lines[1], t.lines[2]); XCTAssertEqual(t.lines[3], t.lines[4])
+        XCTAssertNotEqual(t.lines[1], t.lines[3])
+        XCTAssertEqual(t.captures.map(\.payload.captureId), ["capture-3A2F48D1", "capture-3A2F48D1", "capture-23361924", "capture-23361924"])
+        XCTAssertEqual(Set(t.captures.map(\.payload.destinationId)), ["default-anchor"])
+        XCTAssertEqual(Set(t.captures.map(\.payload.baseRevision)), [1])
+        for l in t.lines.dropFirst() {
+            let s = String(decoding: l, as: UTF8.self)
+            XCTAssertTrue(s.hasPrefix("{\"id\":\""), "sorted keys as the companion's encoder emits them")
+            XCTAssertTrue(s.contains("\\/"), "slashes escaped as the companion's encoder emits them")
+        }
+        let limits = NearbyReceiveLimits()
+        let photo = try NearbyImageCheck.validate(base64: t.captures[0].payload.image.dataBase64, mimeType: "image/png", limits: limits).get()
+        XCTAssertEqual(photo.width, 400); XCTAssertEqual(photo.height, 300)
+        XCTAssertEqual(photo.decodedBytes, 400 * 300 * 3, "opaque RGB")
+        let drawing = try NearbyImageCheck.validate(base64: t.captures[2].payload.image.dataBase64, mimeType: "image/png", limits: limits).get()
+        XCTAssertEqual(drawing.width, 1408); XCTAssertEqual(drawing.height, 1510)
+        XCTAssertEqual(drawing.decodedBytes, 1408 * 1510 * 4, "RGBA, as PKDrawing.image exports")
+        XCTAssertLessThan(t.lines.map(\.count).max()!, NearbyV1.maxLineBytes)
+    }
+
+    func testRecordedSessionIsAcceptedOnLoopbackWithDuplicatesAbsorbed() async throws {
+        let t = try load()
+        let model = ShellModel()
+        model.autoCompile = false
+        let h = ListenerHarness(psks: [.init(identity: Pairing.vectorPairID, key: Self.vectorPSK, isBootstrap: false)],
+                                sink: model, destinations: FixedDestinations(nil))
+        try h.listener.start()
+        try await waitUntil("ready") { h.port != 0 }
+        defer { h.stop() }
+
+        // Connection 1: the transcript, verbatim, line by line.
+        let c1 = NearbyTestClient(port: h.port, identity: Pairing.vectorPairID, psk: Self.vectorPSK)
+        try await waitUntil("client ready (\(String(describing: c1.failure)))") { c1.isReady }
+        for line in t.lines { try await stream(line + [0x0A], to: c1) }
+        try await waitUntil("five replies", timeout: 20) { c1.lineCount >= 5 }
+        let replies = c1.allLines
+        let ack = try JSONDecoder().decode(RuntimeV1.Envelope<NearbyV1.HelloAck>.self, from: replies[0])
+        XCTAssertEqual(ack.type, "hello_ack")
+        XCTAssertEqual(ack.id, t.hello.id)
+        XCTAssertEqual(ack.payload.nonce, t.hello.payload.nonce)
+        XCTAssertNil(ack.payload.pairPsk, "a stored pairing gets no new key")
+        XCTAssertTrue(String(decoding: replies[0], as: UTF8.self).contains("\"destination\":null"))
+        let received = try replies[1...4].map { try JSONDecoder().decode(RuntimeV1.Envelope<NearbyV1.CaptureReceived>.self, from: $0) }
+        XCTAssertEqual(received.map(\.type), Array(repeating: "capture_received", count: 4))
+        XCTAssertEqual(received.map(\.id), t.captures.map(\.id), "every line, including the duplicates, is acknowledged with its own id")
+        XCTAssertEqual(received.map(\.payload.captureId), t.captures.map(\.payload.captureId))
+        XCTAssertEqual(received.map(\.payload.durable), [false, false, false, false], "no bridge attached")
+        XCTAssertEqual(model.nearbyInbox.received.count, 2, "each capture reached the main-actor inbox once")
+        XCTAssertEqual(model.nearbyInbox.received.map(\.captureId), ["capture-3A2F48D1", "capture-23361924"])
+        XCTAssertEqual(model.nearbyInbox.received[1].image.dataBase64, t.captures[2].payload.image.dataBase64, "payload delivered unchanged")
+        let events = h.snapshot
+        XCTAssertTrue(events.contains(.hello(pairId: Pairing.vectorPairID, companionName: "iPad Pro 13-inch (M5)", bootstrap: false)), "\(events)")
+        XCTAssertEqual(events.filter { if case .capture = $0 { return true }; return false }.count, 2)
+        XCTAssertEqual(events.filter { $0 == .captureDuplicate(identity: Pairing.vectorPairID, captureId: "capture-3A2F48D1") }.count, 1)
+        XCTAssertEqual(events.filter { $0 == .captureDuplicate(identity: Pairing.vectorPairID, captureId: "capture-23361924") }.count, 1)
+        XCTAssertFalse(events.contains { if case .captureRefused = $0 { return true }; return false }, "nothing refused: \(events)")
+        XCTAssertEqual(h.listener.inboxBytesInFlight, 0)
+        XCTAssertFalse(c1.isClosed, "the session stays open")
+
+        // Connection 2: the identical transcript again (a naive replay). The
+        // hello nonce was already used, so the Mac refuses before any capture.
+        let c2 = NearbyTestClient(port: h.port, identity: Pairing.vectorPairID, psk: Self.vectorPSK)
+        try await waitUntil("client 2 ready") { c2.isReady }
+        for line in t.lines { try await stream(line + [0x0A], to: c2) }
+        try await waitUntil("replay refused") { c2.lineCount >= 1 }
+        let err = try JSONDecoder().decode(RuntimeV1.Envelope<NearbyV1.ErrorPayload>.self, from: c2.allLines[0])
+        XCTAssertEqual(err.payload.code, "bad_request")
+        XCTAssertTrue(err.payload.message.contains("nonce"))
+        try await waitUntil("replay closed") { c2.isClosed }
+        XCTAssertEqual(c2.lineCount, 1)
+        XCTAssertEqual(model.nearbyInbox.received.count, 2)
+
+        // Connection 3: reconnect with a fresh hello and retry the same
+        // captures (§7.4). The session is new, so the retries reach the
+        // inbox, which acknowledges identical payloads without storing again.
+        let c3 = NearbyTestClient(port: h.port, identity: Pairing.vectorPairID, psk: Self.vectorPSK)
+        try await waitUntil("client 3 ready") { c3.isReady }
+        let nonce = UUID().uuidString
+        c3.send(id: "h3", type: "hello", NearbyV1.Hello(pairId: Pairing.vectorPairID, companionName: "iPad Pro 13-inch (M5)", nonce: nonce,
+                                                        proof: Pairing.helloProof(psk: Self.vectorPSK, nonce: nonce)))
+        try await waitUntil("hello 3") { c3.lineCount >= 1 }
+        for line in t.lines.dropFirst() { try await stream(line + [0x0A], to: c3) }
+        try await waitUntil("retries acknowledged", timeout: 20) { c3.lineCount >= 5 }
+        let again = try c3.allLines[1...4].map { try JSONDecoder().decode(RuntimeV1.Envelope<NearbyV1.CaptureReceived>.self, from: $0) }
+        XCTAssertEqual(again.map(\.payload.captureId), t.captures.map(\.payload.captureId))
+        XCTAssertEqual(model.nearbyInbox.received.count, 2, "identical retries after a reconnect are not stored twice")
+        XCTAssertEqual(model.nearbyInbox.lastNote, "Duplicate capture-23361924 acknowledged again.")
+        c1.cancel(); c3.cancel()
+    }
+
+    private func waitUntil(_ what: String, timeout: TimeInterval = 5, _ cond: @escaping @MainActor () -> Bool) async throws {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if cond() { return }
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+        XCTFail("timed out waiting for \(what)")
     }
 }

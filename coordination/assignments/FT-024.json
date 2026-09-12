@@ -8,15 +8,15 @@
   "branch": "agent/commander-corpus/font-resources",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "cdc47170f4aa7990d8a8de8ff80482a555f98a86",
-  "objective": "Implement exact TFM boundary ligature/kern programs with bounded execution and source intervals",
+  "input_main_sha": "6f02330b5a12c01028549ed61d254f401c2a1f34",
+  "objective": "Paired pinned-font query performance and cached/direct exact equivalence",
   "owned_paths": [
     "crates/font-resources"
   ],
-  "revision": 9,
+  "revision": 11,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-024",
   "timebox_minutes": 30,
-  "updated_utc": "2026-09-12T07:52:57.718501+00:00"
+  "updated_utc": "2026-09-12T08:55:45Z"
 }

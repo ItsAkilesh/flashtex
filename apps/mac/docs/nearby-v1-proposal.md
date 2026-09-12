@@ -4,7 +4,8 @@ Status: **proposal** from FT-003 (Mac shell, mac-claude-a) for the Commander to
 adopt as `docs/contracts/nearby-v1.md`. Until then nothing here is a published
 contract; the Mac implementation in `apps/mac/Sources/FlashTeXMac/Nearby*.swift`
 and `Pairing.swift` is the reference for the Mac side only. The companion side
-belongs to FT-004. Updated September 12, 2026.
+belongs to FT-004. Updated September 12, 2026 (receive caps, image validation
+and duplicate handling added by mac-nearby-transport; wire version unchanged).
 
 Scope: how an iPad/iPhone companion on the same network finds a Mac, pairs with
 it once, and then delivers runtime-v1 `capture_submit` messages to it with
@@ -135,14 +136,50 @@ never types IDs or revisions (transfer-v1 requirement).
 
 `capture_submit` validation on the Mac before any sink is called: decodable
 envelope, `capture_id`/`destination_id` are 1–128 ASCII `[A-Za-z0-9_-]`,
-`mime_type` ∈ {image/png, image/jpeg}, `instructions` ≤ 4096 bytes. Rejections
-are `error` replies that keep the session open. Image decoding, the 8 MiB /
-8192×8192 limits and durability are the bridge's job (transfer-v1); the nearby
-adapter does not re-implement them.
+`mime_type` ∈ {image/png, image/jpeg}, `instructions` ≤ 4096 bytes,
+`base_revision` ≥ 0, and the image itself (validated off the listener queue,
+before anything reaches the main thread): base64 decodes to 1–8 MiB
+(`image_too_large`, same bound as transfer-v1), the bytes are a structurally
+complete PNG (signature, IHDR first, chunk CRCs, consecutive IDAT, IEND last,
+nothing after it, IDAT inflates to exactly the scanline size with a matching
+Adler-32) or JPEG (SOI, one SOF frame header, EOI reached through the scan
+data) matching the declared `mime_type`, width and height ≤ 8192 and the
+decoded pixel size ≤ 64 MiB (`invalid_image`, the bridge's code for the same
+conditions). Rejections are `error` replies that keep the session open. The
+bridge still performs its own full decode (transfer-v1); the nearby check is
+what lets the Mac refuse a bad image without touching the run loop.
+
+Receive caps (defaults in `NearbyReceiveLimits`; every one is an explicit
+error, never a silent drop):
+
+| Cap | Default | Refusal |
+|---|---|---|
+| frame (line incl. newline) | 12 MiB | `line_too_long`, `id: null`, connection closed |
+| per-session frame bytes accepted but not yet acknowledged | 24 MiB | `too_many_in_flight`, session stays open; retry after acks |
+| listener-wide accepted-but-unacknowledged bytes ("inbox") | 64 MiB | `inbox_full`, session stays open |
+| sessions per `pair_id` | 4 | `too_many_sessions` at `hello`, connection closed |
+| accepted TCP connections | 16 | closed before the handshake (no bytes to an unauthenticated peer); Mac logs `too many connections` |
+
+Duplicate handling in the session, keyed by `(session, capture_id)` with the
+accepted `base_revision` and a digest of the rest of the payload (last 256
+per session): an identical retry is acknowledged again with the *new*
+request id and **not re-delivered** (a retry that arrives while the first
+delivery is pending is coalesced onto it); the same `capture_id` with another
+`base_revision` is refused with `revision_mismatch`; the same id and revision
+with another payload is `capture_id_conflict`. A capture the sink refused is
+forgotten, so a retry is delivered again. The Mac window surfaces refusals
+(`code`, `capture_id`, `pair_id`, message) and the duplicate count
+(`NearbyState.lastReceiveError` / `receiveErrors` / `duplicateCaptureCount`).
+Retries on a *new* connection after a disconnect are not deduplicated here;
+they reach the inbox (identical → acknowledged) or the bridge (its journal
+rules), as before.
 
 Error codes used: `bad_request`, `hello_required`, `pair_mismatch`,
-`pairing_expired`, `unsupported_version`, `unsupported_image`, `unknown_type`,
-`line_too_long`, `capture_id_conflict`, `unavailable`.
+`pairing_expired`, `unsupported_version`, `unsupported_image`,
+`image_too_large`, `invalid_image`, `unknown_type`, `line_too_long`,
+`too_many_in_flight`, `inbox_full`, `too_many_sessions`, `revision_mismatch`,
+`capture_id_conflict`, `unavailable`. Codes are additive to the ones listed
+before; the nearby `protocol_version` stays 1 (no existing message changed).
 
 Acknowledgement semantics: `durable: true` may only be reported when the local
 bridge has journaled the capture (transfer-v1 `capture_received`). With a
@@ -179,8 +216,11 @@ rules).
   `hello_ack` to its `hello` and refuses a companion re-sending a nonce.
 - **Cross-pairing impersonation** by a paired device is prevented by `proof`.
 - **Resource exhaustion:** per-line cap 12 MiB, per-read cap 64 KiB, unknown
-  types answered without closing; no limit yet on concurrent connections or on
-  the inbox beyond its last 50 captures (in memory).
+  types answered without closing; connections, sessions per pairing,
+  per-session and listener-wide unacknowledged bytes are capped (§4 table);
+  image validation runs on a utility queue so a slow or hostile peer cannot
+  stall the listener queue or the main thread. Still unbounded: the in-memory
+  inbox keeps its last 50 captures by count, not bytes (up to 50 × 8 MiB).
 - **Device loss:** "Forget" on the Mac invalidates the pairing immediately
   (listener restarted without the key, live session closed). There is no remote
   wipe of the companion's copy.
@@ -373,3 +413,16 @@ over the Mac's own interfaces (loopback included) with no extra setup.
 Without the companion, the same path is exercised by
 `swift test --filter NearbyStateTests` (a Network.framework client in the
 test process pairs, sends the fixture capture, is forgotten, and is refused).
+
+`swift test --filter NearbyTranscriptAcceptanceTests` replays
+`apps/mac/Tests/FlashTeXMacTests/Fixtures/nearby-companion-session.jsonl` on
+loopback: a recorded-shape companion session (the simulator run's envelope
+ordering, `\/` escaping, `capture-<hex>` ids, 400×300 photo and 1408×1510
+RGBA pencil PNGs, each capture line emitted twice as that build did) with a
+§8 `hello`. Expected: `hello_ack`, four `capture_received` (the two
+duplicates acknowledged, not re-delivered), two captures in the inbox; a
+verbatim replay on a second connection is refused at `hello` (stale nonce);
+a reconnect with a fresh `hello` re-sending the same captures is
+acknowledged again without storing them twice. The original simulator
+stdout was not committed and the companion still speaks plaintext, so this
+fixture is re-synthesized to the recorded shape, not the original bytes.

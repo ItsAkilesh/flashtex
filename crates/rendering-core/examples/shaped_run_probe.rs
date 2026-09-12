@@ -144,5 +144,54 @@ fn main() -> Result<(), Box<dyn Error>> {
         assert!(!x.hinting_applied);
     }
     println!("glyphs={} clusters={} commands={} advance={}/{} source={} original_engine_id={} font_sha256={} cached_direct_equal=true hinting=false native_painted=false",a.glyphs().len(),run.shaped().clusters.len(),a.command_count(),a.advance().numerator(),a.advance().denominator(),run.source().source_sha256,run.identity().engine_font_id.content_hex(),run.identity().font_sha256);
+    // Exact integral-em placement gives a finite decimal CFF content stream.
+    // This is a real outline stream, not a PDF container or native paint test.
+    let unit = flashtex_rendering_core::TICKS_PER_BP as i128;
+    let pdf_placement = Placement {
+        item_index: 9,
+        size: r(1000 * unit, 1),
+        origin: OutlinePoint {
+            x: r(0, 1),
+            y: r(5000 * unit, 1),
+        },
+        clip: ExactClip {
+            left: r(0, 1),
+            top: r(0, 1),
+            right: r(10000 * unit, 1),
+            bottom: r(10000 * unit, 1),
+        },
+    };
+    let pdf_run = PlacedShapedRun::prepare(
+        &run,
+        &snapshot,
+        OutlineSource::Cff {
+            resource: &resource,
+            policy: HintPolicy::Unhinted,
+        },
+        pdf_placement,
+        PlacementLimits {
+            max_glyphs: 100,
+            max_commands: 10000,
+            max_payload_bytes: 1024 * 1024,
+        },
+    )
+    .map_err(|e| format!("{e:?}"))?;
+    let stream = flashtex_rendering_core::pdf_stream::PdfCommandStream::from_shaped(
+        &pdf_run,
+        flashtex_rendering_core::pdf_stream::PdfPage {
+            width: flashtex_rendering_core::Tick((10000 * unit) as i64),
+            height: flashtex_rendering_core::Tick((10000 * unit) as i64),
+        },
+        flashtex_rendering_core::Paint {
+            r: 0.0,
+            g: 0.0,
+            b: 0.0,
+            a: 1.0,
+        },
+        Default::default(),
+    )
+    .map_err(|e| format!("{e:?}"))?;
+    let content = stream.content_bytes().map_err(|e| format!("{e:?}"))?;
+    println!("pdf_operators={} pdf_content_bytes={} pdf_content_sha256={} source_fixture_sha256={} standalone_pdf=false",stream.operators().len(),content.len(),digest(&content),stream.source_sha256());
     Ok(())
 }

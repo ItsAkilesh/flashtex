@@ -93,7 +93,9 @@ enum Pairing {
 }
 
 /// One paired companion. `psk` is the long-term key (base64, 32 bytes).
-struct PairRecord: Codable, Equatable, Identifiable {
+/// String conversion never includes the key: interpolating a record into a
+/// log line or an error message yields `pairId`, name and timestamps only.
+struct PairRecord: Codable, Equatable, Identifiable, CustomStringConvertible, CustomDebugStringConvertible {
     var pairId: String
     var psk: String
     var companionName: String
@@ -105,24 +107,45 @@ struct PairRecord: Codable, Equatable, Identifiable {
         case createdAt = "created_at", lastSeenAt = "last_seen_at"
     }
     var pskData: Data? { Data(base64Encoded: psk) }
+
+    var description: String {
+        "PairRecord(\(pairId) “\(companionName)” created \(Pairing.stamp(createdAt))"
+            + (lastSeenAt.map { " seen \(Pairing.stamp($0))" } ?? "") + ", psk: <redacted>)"
+    }
+    var debugDescription: String { description }
 }
 
 /// Plain-file store for pairings: `~/Library/Application Support/FlashTeX/pairs.json`,
 /// mode 0600, written atomically. Not the Keychain — see the proposal's
 /// "Not provided" list; moving the keys there is a follow-up.
 final class PairStore {
+    /// On-disk schema of `pairs.json`. Version 1: `{version, salt, pairs[]}` as
+    /// documented in `apps/mac/docs/nearby-v1-proposal.md` §2. A file written by
+    /// a newer build (`version > schemaVersion`) is left untouched and the store
+    /// starts empty with `loadError` set; an older version is upgraded in
+    /// memory by `upgrade(_:)` and rewritten on the next persist.
+    static let schemaVersion = 1
+
     struct File: Codable {
         var version: Int
         var salt: String
         var pairs: [PairRecord]
     }
 
+    enum LoadOutcome: Equatable { case created, loaded(version: Int), upgraded(from: Int), refused(reason: String) }
+    struct DecodeError: Error, Equatable { let reason: String }
+
     let url: URL
     private let lock = NSLock()
     private var file: File
     private(set) var loadError: String?
+    /// What the initializer found at `url` (evidence for recovery reports).
+    private(set) var loadOutcome: LoadOutcome = .created
 
+    /// `FLASHTEX_PAIR_STORE=<path>` overrides the location (automation and
+    /// evidence runs must not touch the user's real pairings).
     static func defaultURL() -> URL {
+        if let p = ProcessInfo.processInfo.environment["FLASHTEX_PAIR_STORE"], !p.isEmpty { return URL(fileURLWithPath: p) }
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Application Support")
         return base.appendingPathComponent("FlashTeX/pairs.json")
@@ -130,20 +153,61 @@ final class PairStore {
 
     init(url: URL) {
         self.url = url
-        let dec = JSONDecoder()
-        dec.dateDecodingStrategy = .iso8601
+        let fresh = File(version: Self.schemaVersion, salt: Pairing.hex(Pairing.generateSalt()), pairs: [])
         if let data = try? Data(contentsOf: url) {
-            if let f = try? dec.decode(File.self, from: data), f.version == 1, Pairing.data(hex: f.salt) != nil {
+            switch Self.decode(data) {
+            case .success(let (f, outcome)):
                 file = f
-            } else {
-                // Keep a corrupt file rather than silently overwriting it.
-                file = File(version: 1, salt: Pairing.hex(Pairing.generateSalt()), pairs: [])
-                loadError = "\(url.path) is not a version-1 pair store; starting empty without overwriting it"
+                loadOutcome = outcome
+                if case .upgraded = outcome { _ = try? persist() }
+            case .failure(let e):
+                // Keep a corrupt or too-new file rather than silently overwriting it.
+                file = fresh
+                loadOutcome = .refused(reason: e.reason)
+                loadError = "\(url.path): \(e.reason); starting empty without overwriting it"
             }
         } else {
-            file = File(version: 1, salt: Pairing.hex(Pairing.generateSalt()), pairs: [])
+            file = fresh
+            loadOutcome = .created
             do { try persist() } catch { loadError = "cannot create \(url.path): \(error.localizedDescription)" }
         }
+    }
+
+    /// Decodes a pair-store file, upgrading older schema versions in memory.
+    static func decode(_ data: Data) -> Result<(File, LoadOutcome), DecodeError> {
+        struct Header: Decodable { var version: Int }
+        guard let header = try? JSONDecoder().decode(Header.self, from: data) else {
+            return .failure(DecodeError(reason: "not a pair store (no integer `version`)"))
+        }
+        guard header.version <= schemaVersion else {
+            return .failure(DecodeError(reason: "pair store version \(header.version) is newer than this build's \(schemaVersion)"))
+        }
+        guard header.version >= 1 else { return .failure(DecodeError(reason: "pair store version \(header.version) is not supported")) }
+        let dec = JSONDecoder()
+        dec.dateDecodingStrategy = .iso8601
+        guard var f = try? dec.decode(File.self, from: data) else {
+            return .failure(DecodeError(reason: "version-\(header.version) pair store is undecodable"))
+        }
+        guard let salt = Pairing.data(hex: f.salt), salt.count == Pairing.saltLength else {
+            return .failure(DecodeError(reason: "pair store salt is not \(Pairing.saltLength) hex bytes"))
+        }
+        // Every record must carry a usable long-term key; drop nothing silently.
+        guard f.pairs.allSatisfy({ $0.pskData?.count == Pairing.pskLength && !$0.pairId.isEmpty }) else {
+            return .failure(DecodeError(reason: "pair store holds a record without a \(Pairing.pskLength)-byte key"))
+        }
+        if f.version < schemaVersion {
+            f = upgrade(f)
+            return .success((f, .upgraded(from: header.version)))
+        }
+        return .success((f, .loaded(version: header.version)))
+    }
+
+    /// Schema upgrades, oldest first. Version 1 is current; this is where a
+    /// future version 2 (e.g. per-record pairing generation) rewrites older files.
+    static func upgrade(_ old: File) -> File {
+        var f = old
+        f.version = schemaVersion
+        return f
     }
 
     var salt: Data { lock.withLock { Pairing.data(hex: file.salt) ?? Data() } }
@@ -187,6 +251,571 @@ final class PairStore {
         enc.dateEncodingStrategy = .iso8601
         let data = try enc.encode(file)
         try data.write(to: url, options: [.atomic])
+        try fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+    }
+}
+
+extension Pairing {
+    private static let iso: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        return f
+    }()
+    /// ISO-8601 UTC seconds, for logs and journal evidence.
+    static func stamp(_ date: Date) -> String { iso.string(from: date) }
+
+    /// Digits separated by spaces ("123 456"), what the window displays.
+    static func displayCode(_ code: String) -> String {
+        stride(from: 0, to: code.count, by: 3).map { i -> String in
+            let s = code.index(code.startIndex, offsetBy: i)
+            let e = code.index(s, offsetBy: 3, limitedBy: code.endIndex) ?? code.endIndex
+            return String(code[s..<e])
+        }.joined(separator: " ")
+    }
+
+    /// One digit per word ("1 2 3 4 5 6") so VoiceOver spells the code.
+    static func spokenCode(_ code: String) -> String { code.map(String.init).joined(separator: " ") }
+}
+
+// MARK: - pairing flow state machine
+
+/// The pairing window's state, modelled explicitly so that every transition is
+/// testable and a stale event (from an attempt that was cancelled, expired, or
+/// replaced by a newer code) can never overwrite the current pairing.
+///
+/// Each "Show Pairing Code" is an `Attempt` with a monotonically increasing
+/// `generation` (persisted by `PairingJournal`, so it survives relaunch).
+/// Inputs that concern one attempt carry its generation or its `pairId`; the
+/// machine ignores any that do not match the attempt it is showing.
+///
+/// The machine is pure: `Machine.apply` returns the effects the owner must
+/// perform against the transport (`NearbyState`) and the journal.
+enum PairingFlow {
+    /// One pairing code and everything needed to show or resume it.
+    struct Attempt: Codable, Equatable {
+        var generation: Int
+        var code: String
+        var pairId: String
+        var startedAt: Date
+        var expiresAt: Date
+        enum CodingKeys: String, CodingKey {
+            case generation, code, pairId = "pair_id", startedAt = "started_at", expiresAt = "expires_at"
+        }
+        func remaining(at now: Date) -> TimeInterval { max(0, expiresAt.timeIntervalSince(now)) }
+        func isExpired(at now: Date) -> Bool { now >= expiresAt }
+    }
+
+    /// Why a code that was being shown is no longer being served.
+    enum Interruption: String, Codable, Equatable {
+        /// The app was quit or crashed while the code was valid.
+        case relaunch
+        /// A bootstrap session opened but ended before the pairing completed.
+        case peerGone
+        /// The transport stopped serving the code: listener failure, advertising
+        /// turned off, or the code withdrawn by another caller.
+        case transportStopped
+    }
+
+    struct Paired: Equatable {
+        var pairId: String
+        var companionName: String
+        var generation: Int
+    }
+
+    struct Receiving: Equatable {
+        var pairId: String
+        var companionName: String?
+        var captureId: String?
+        var bytes: Int
+        /// Unknown until the transport reports a length (JSON lines do not announce one).
+        var total: Int?
+    }
+
+    enum Phase: Equatable {
+        /// Listener off; nothing can pair.
+        case off
+        /// Listener up and advertising; paired companions may connect.
+        case advertising
+        /// A code is displayed and its bootstrap key is accepted.
+        case codeShown(Attempt)
+        /// A bootstrap session opened; waiting for a valid `hello`.
+        case verifying(Attempt)
+        /// A pairing was stored (banner until dismissed or the next event).
+        case paired(Paired)
+        /// A paired companion is sending a capture.
+        case receiving(Receiving)
+        /// A code that may still be valid stopped being served; user must resume or cancel.
+        case interrupted(Attempt, Interruption, detail: String)
+        /// Something ended with a reason the user must see and dismiss.
+        case failed(reason: String, generation: Int)
+    }
+
+    enum Input: Equatable {
+        case advertising(Bool)
+        /// The transport issued a new code (always a new generation).
+        case codeIssued(Attempt)
+        /// A pending attempt was found in the journal at launch.
+        case restored(Attempt)
+        case bootstrapSessionOpened(generation: Int)
+        case confirmed(pairId: String, companionName: String, generation: Int)
+        case codeExpired(generation: Int)
+        case peerGone(pairId: String?, reason: String, generation: Int)
+        case listenerFailed(String)
+        /// The transport stopped serving the attempt's code without the user asking.
+        case withdrawn(generation: Int, reason: String)
+        /// A session opened while the code was shown turned out to be an already
+        /// paired companion, not the one being paired.
+        case otherCompanionConnected(generation: Int)
+        case receiving(pairId: String, companionName: String?, captureId: String?, bytes: Int, total: Int?)
+        case captureReceived(pairId: String?, captureId: String)
+        case forgotten(pairId: String)
+        /// User actions.
+        case cancel
+        case resume
+        case dismiss
+    }
+
+    enum Effect: Equatable {
+        /// Write the attempt to the journal (it is now the pending pairing).
+        case persist(Attempt)
+        /// Remove the pending attempt from the journal.
+        case clearJournal
+        /// Tell the transport to stop accepting the current attempt's bootstrap key.
+        case cancelTransport(Attempt)
+        /// Tell the transport to accept this attempt's bootstrap key again.
+        case resumeTransport(Attempt)
+        /// Post an accessibility announcement.
+        case announce(String)
+    }
+
+    struct Outcome: Equatable {
+        var effects: [Effect] = []
+        /// The input belonged to an older attempt (or another pairing) and was ignored.
+        var stale = false
+        /// The input made no sense in the current phase and was ignored (not stale).
+        var ignored = false
+        static let none = Outcome()
+        static let staleInput = Outcome(stale: true)
+        static let ignoredInput = Outcome(ignored: true)
+    }
+
+    struct Machine: Equatable {
+        private(set) var phase: Phase
+        /// Generation of the newest attempt seen; anything older is stale.
+        private(set) var generation: Int
+        private(set) var isAdvertising: Bool
+
+        init(phase: Phase = .off, generation: Int = 0, isAdvertising: Bool = false) {
+            self.phase = phase
+            self.generation = generation
+            self.isAdvertising = isAdvertising
+        }
+
+        /// The attempt currently shown, verified, or interrupted.
+        var attempt: Attempt? {
+            switch phase {
+            case .codeShown(let a), .verifying(let a), .interrupted(let a, _, _): return a
+            default: return nil
+            }
+        }
+
+        private var rest: Phase { isAdvertising ? .advertising : .off }
+
+        @discardableResult
+        mutating func apply(_ input: Input, now: Date = Date()) -> Outcome {
+            switch input {
+            case .advertising(let on):
+                isAdvertising = on
+                switch phase {
+                case .off where on: phase = .advertising
+                case .advertising where !on: phase = .off
+                case .codeShown(let a) where !on, .verifying(let a) where !on:
+                    // The transport drops the code with the listener; keep the
+                    // attempt so the user can resume once advertising again.
+                    phase = .interrupted(a, .transportStopped, detail: "advertising was turned off")
+                    return Outcome(effects: [.announce("Pairing interrupted: advertising was turned off.")])
+                case .paired where !on, .receiving where !on: phase = .off
+                default: break
+                }
+                return .none
+
+            case .codeIssued(let a):
+                guard a.generation > generation else { return .staleInput }
+                generation = a.generation
+                isAdvertising = true
+                phase = .codeShown(a)
+                return Outcome(effects: [.persist(a), .announce("Pairing code \(Pairing.spokenCode(a.code)), valid for \(Int(a.remaining(at: now).rounded(.up))) seconds.")])
+
+            case .restored(let a):
+                guard a.generation >= generation else { return .staleInput }
+                switch phase {
+                case .off, .advertising:
+                    generation = a.generation
+                    let expired = a.isExpired(at: now)
+                    phase = .interrupted(a, .relaunch, detail: expired
+                        ? "the code expired while FlashTeX was not running"
+                        : "FlashTeX was quit while the code was valid")
+                    return Outcome(effects: [.announce(expired
+                        ? "A pairing from a previous launch expired. Dismiss it or show a new code."
+                        : "A pairing from a previous launch is waiting. Resume it or cancel.")])
+                default:
+                    return .ignoredInput
+                }
+
+            case .bootstrapSessionOpened(let g):
+                guard g >= generation else { return .staleInput }
+                guard case .codeShown(let a) = phase, a.generation == g else { return .ignoredInput }
+                phase = .verifying(a)
+                return Outcome(effects: [.announce("A companion connected; verifying the code.")])
+
+            case .confirmed(let pairId, let name, let g):
+                guard g >= generation else { return .staleInput }
+                switch phase {
+                case .codeShown(let a), .verifying(let a), .interrupted(let a, _, _):
+                    guard a.generation == g, a.pairId == pairId else { return .staleInput }
+                    phase = .paired(Paired(pairId: pairId, companionName: name, generation: g))
+                    return Outcome(effects: [.clearJournal, .announce("Paired with \(name).")])
+                case .paired(let p) where p.pairId == pairId:
+                    return .ignoredInput // idempotent
+                default:
+                    return .ignoredInput
+                }
+
+            case .codeExpired(let g):
+                guard g >= generation else { return .staleInput }
+                switch phase {
+                case .codeShown(let a), .verifying(let a):
+                    guard a.generation == g else { return .staleInput }
+                    phase = .failed(reason: "The pairing code expired before a companion paired.", generation: g)
+                    return Outcome(effects: [.clearJournal, .announce("The pairing code expired. Show a new code to try again.")])
+                case .interrupted(let a, _, _):
+                    guard a.generation == g else { return .staleInput }
+                    phase = .failed(reason: "The pairing code expired before it could be resumed.", generation: g)
+                    return Outcome(effects: [.clearJournal, .announce("The interrupted pairing code expired.")])
+                default:
+                    return .ignoredInput
+                }
+
+            case .peerGone(let pairId, let reason, let g):
+                guard g >= generation else { return .staleInput }
+                switch phase {
+                case .verifying(let a):
+                    guard a.generation == g, pairId == nil || pairId == a.pairId else { return .staleInput }
+                    phase = .interrupted(a, .peerGone, detail: reason)
+                    return Outcome(effects: [.announce("The companion disconnected before pairing finished: \(reason). Resume or cancel.")])
+                case .receiving(let r):
+                    guard pairId == r.pairId else { return .staleInput }
+                    phase = .failed(reason: "Connection to \(r.companionName ?? r.pairId) closed while receiving: \(reason)", generation: g)
+                    return Outcome(effects: [.announce("Capture interrupted: \(reason).")])
+                case .paired(let p):
+                    guard pairId == p.pairId else { return .staleInput }
+                    phase = rest
+                    return .none
+                default:
+                    return .ignoredInput
+                }
+
+            case .listenerFailed(let reason):
+                isAdvertising = false
+                switch phase {
+                case .codeShown(let a), .verifying(let a):
+                    phase = .interrupted(a, .transportStopped, detail: reason)
+                    return Outcome(effects: [.announce("Pairing interrupted: \(reason). Resume or cancel.")])
+                case .interrupted:
+                    return .ignoredInput
+                default:
+                    phase = .failed(reason: reason, generation: generation)
+                    return Outcome(effects: [.announce("Nearby error: \(reason)")])
+                }
+
+            case .withdrawn(let g, let reason):
+                guard g >= generation else { return .staleInput }
+                switch phase {
+                case .codeShown(let a), .verifying(let a):
+                    guard a.generation == g else { return .staleInput }
+                    phase = .interrupted(a, .transportStopped, detail: reason)
+                    return Outcome(effects: [.announce("Pairing interrupted: \(reason). Resume or cancel.")])
+                default:
+                    return .ignoredInput
+                }
+
+            case .otherCompanionConnected(let g):
+                guard g >= generation else { return .staleInput }
+                guard case .verifying(let a) = phase, a.generation == g else { return .ignoredInput }
+                phase = .codeShown(a)
+                return .none
+
+            case .receiving(let pairId, let name, let captureId, let bytes, let total):
+                switch phase {
+                case .advertising, .paired, .receiving:
+                    phase = .receiving(Receiving(pairId: pairId, companionName: name, captureId: captureId, bytes: bytes, total: total))
+                    return .none
+                default:
+                    return .ignoredInput
+                }
+
+            case .captureReceived(let pairId, let captureId):
+                switch phase {
+                case .receiving(let r):
+                    guard pairId == nil || pairId == r.pairId else { return .staleInput }
+                    phase = rest
+                    return Outcome(effects: [.announce("Received capture \(captureId) from \(r.companionName ?? r.pairId).")])
+                case .paired, .advertising:
+                    return Outcome(effects: [.announce("Received capture \(captureId).")])
+                default:
+                    return .ignoredInput
+                }
+
+            case .forgotten(let pairId):
+                switch phase {
+                case .paired(let p) where p.pairId == pairId:
+                    phase = rest
+                    return Outcome(effects: [.announce("Forgot pairing \(pairId).")])
+                case .receiving(let r) where r.pairId == pairId:
+                    phase = rest
+                    return Outcome(effects: [.announce("Forgot pairing \(pairId).")])
+                default:
+                    return .ignoredInput
+                }
+
+            case .cancel:
+                switch phase {
+                case .codeShown(let a), .verifying(let a):
+                    phase = rest
+                    return Outcome(effects: [.cancelTransport(a), .clearJournal, .announce("Pairing cancelled.")])
+                case .interrupted(let a, let why, _):
+                    phase = rest
+                    // After a relaunch the transport never held this key; nothing to cancel there.
+                    let effects: [Effect] = why == .relaunch ? [.clearJournal] : [.cancelTransport(a), .clearJournal]
+                    return Outcome(effects: effects + [.announce("Pairing cancelled.")])
+                case .failed:
+                    phase = rest
+                    return .none
+                case .receiving:
+                    // Needs a transport API to close one session; not cancellable in v1.
+                    return .ignoredInput
+                default:
+                    return .ignoredInput
+                }
+
+            case .resume:
+                guard case .interrupted(let a, let why, _) = phase else { return .ignoredInput }
+                if a.isExpired(at: now) {
+                    phase = .failed(reason: "The pairing code expired before it could be resumed.", generation: a.generation)
+                    return Outcome(effects: [.clearJournal, .announce("The pairing code expired; show a new code.")])
+                }
+                phase = .codeShown(a)
+                isAdvertising = true
+                // The transport still holds the key after a peer dropped; it must
+                // be told again after a relaunch or a listener failure.
+                let effects: [Effect] = why == .peerGone ? [] : [.resumeTransport(a)]
+                return Outcome(effects: effects + [.announce("Resumed pairing code \(Pairing.spokenCode(a.code)), \(Int(a.remaining(at: now).rounded(.up))) seconds left.")])
+
+            case .dismiss:
+                switch phase {
+                case .failed, .paired:
+                    phase = rest
+                    return .none
+                case .interrupted(let a, _, _) where a.isExpired(at: now):
+                    phase = rest
+                    return Outcome(effects: [.clearJournal])
+                default:
+                    return .ignoredInput
+                }
+            }
+        }
+    }
+}
+
+// MARK: - user-visible text and accessibility
+
+extension PairingFlow.Phase {
+    /// Which user actions apply. `cancel` ends an attempt; `dismiss` clears a
+    /// terminal banner; `resume` re-serves an interrupted code.
+    func canCancel(now: Date = Date()) -> Bool {
+        switch self {
+        case .codeShown, .verifying: return true
+        case .interrupted(let a, _, _): return !a.isExpired(at: now)
+        default: return false
+        }
+    }
+    func canResume(now: Date = Date()) -> Bool {
+        if case .interrupted(let a, _, _) = self { return !a.isExpired(at: now) }
+        return false
+    }
+    func canDismiss(now: Date = Date()) -> Bool {
+        switch self {
+        case .failed, .paired: return true
+        case .interrupted(let a, _, _): return a.isExpired(at: now)
+        default: return false
+        }
+    }
+    func canShowCode(now: Date = Date()) -> Bool {
+        switch self {
+        case .off, .advertising, .paired, .failed: return true
+        case .interrupted(let a, _, _): return a.isExpired(at: now)
+        default: return false
+        }
+    }
+
+    /// Short state name (also the accessibility label of the status element).
+    var title: String {
+        switch self {
+        case .off: return "Off"
+        case .advertising: return "Advertising"
+        case .codeShown: return "Pairing code shown"
+        case .verifying: return "Verifying companion"
+        case .paired: return "Paired"
+        case .receiving: return "Receiving capture"
+        case .interrupted: return "Pairing interrupted"
+        case .failed: return "Error"
+        }
+    }
+
+    /// One precise sentence for the current state, evaluated at `now`.
+    func detail(now: Date = Date()) -> String {
+        switch self {
+        case .off: return "Not advertising. Turn on Advertise or show a pairing code."
+        case .advertising: return "Paired companions can connect. No pairing in progress."
+        case .codeShown(let a):
+            return "Enter the code on the companion. Expires in \(Int(a.remaining(at: now).rounded(.up))) s."
+        case .verifying(let a):
+            return "A companion connected with the code; waiting for its hello. Expires in \(Int(a.remaining(at: now).rounded(.up))) s."
+        case .paired(let p): return "Paired with \(p.companionName) (\(p.pairId))."
+        case .receiving(let r):
+            let who = r.companionName ?? r.pairId
+            if let total = r.total { return "Receiving \(r.bytes) of \(total) bytes from \(who)." }
+            return "Receiving \(r.bytes) bytes from \(who) (size unknown until the line ends)."
+        case .interrupted(let a, let why, let detail):
+            let base: String
+            switch why {
+            case .relaunch: base = "Interrupted by a relaunch"
+            case .peerGone: base = "The companion disconnected"
+            case .transportStopped: base = "The listener stopped serving the code"
+            }
+            if a.isExpired(at: now) { return "\(base) (\(detail)); the code has expired. Dismiss it or show a new code." }
+            return "\(base) (\(detail)). Code \(Pairing.displayCode(a.code)) is still valid for \(Int(a.remaining(at: now).rounded(.up))) s: resume or cancel."
+        case .failed(let reason, _): return reason
+        }
+    }
+
+    /// Accessibility value for the status element: the detail without the
+    /// countdown churn, so VoiceOver does not re-announce every second.
+    func accessibilityValue(now: Date = Date()) -> String {
+        switch self {
+        case .codeShown(let a): return "Code \(Pairing.spokenCode(a.code)). Enter it on the companion."
+        case .verifying: return "A companion connected; waiting for its hello."
+        case .interrupted(let a, _, let detail):
+            return a.isExpired(at: now) ? "\(detail). The code has expired." : "\(detail). Code \(Pairing.spokenCode(a.code)) is still valid."
+        default: return detail(now: now)
+        }
+    }
+}
+
+/// Accessibility text for the window's rows (pure, testable).
+enum PairingAccessibility {
+    static func deviceRow(_ r: PairRecord, connected: Bool) -> (label: String, value: String) {
+        var value = connected ? "Connected." : "Not connected."
+        value += " Paired \(r.createdAt.formatted(date: .abbreviated, time: .shortened))."
+        if let seen = r.lastSeenAt { value += " Last seen \(seen.formatted(date: .abbreviated, time: .shortened))." }
+        return ("Companion \(r.companionName), pair id \(r.pairId)", value)
+    }
+
+    struct CaptureRow: Equatable, Identifiable {
+        enum Source: String { case inbox, bridge }
+        var captureId: String
+        var source: Source
+        var state: String
+        /// nil: durability is whatever the bridge acknowledged (see its note).
+        var durable: Bool?
+        var note: String
+        var id: String { "\(source.rawValue):\(captureId)" }
+        var durabilityText: String {
+            switch durable {
+            case .some(true): return "durable"
+            case .some(false): return "not durable (in memory only)"
+            case .none: return "via bridge"
+            }
+        }
+        var accessibilityLabel: String { "Capture \(captureId)" }
+        var accessibilityValue: String { "\(state), \(durabilityText)" + (note.isEmpty ? "" : ". \(note)") }
+    }
+}
+
+// MARK: - pairing journal (durable pending attempt)
+
+/// `~/Library/Application Support/FlashTeX/pairing-session.json` (mode 0600):
+/// the attempt generation counter and the one pending attempt, so a code that
+/// was valid when the app quit can be resumed or explicitly cancelled after
+/// relaunch. The code is a bootstrap secret (≤ 120 s, one pairing); it is
+/// stored only while pending and never together with a long-term PSK.
+final class PairingJournal {
+    static let schemaVersion = 1
+
+    struct File: Codable, Equatable {
+        var version: Int
+        var generation: Int
+        var pending: PairingFlow.Attempt?
+    }
+
+    let url: URL
+    private let lock = NSLock()
+    private var file: File
+    private(set) var loadError: String?
+
+    /// Next to the pair store; `FLASHTEX_PAIRING_JOURNAL=<path>` overrides.
+    static func defaultURL() -> URL {
+        if let p = ProcessInfo.processInfo.environment["FLASHTEX_PAIRING_JOURNAL"], !p.isEmpty { return URL(fileURLWithPath: p) }
+        return PairStore.defaultURL().deletingLastPathComponent().appendingPathComponent("pairing-session.json")
+    }
+
+    init(url: URL) {
+        self.url = url
+        let dec = JSONDecoder()
+        dec.dateDecodingStrategy = .iso8601
+        if let data = try? Data(contentsOf: url) {
+            if let f = try? dec.decode(File.self, from: data), f.version == Self.schemaVersion {
+                file = f
+            } else {
+                file = File(version: Self.schemaVersion, generation: 0, pending: nil)
+                loadError = "\(url.path) is not a version-\(Self.schemaVersion) pairing journal; starting from generation 0 without overwriting it"
+            }
+        } else {
+            file = File(version: Self.schemaVersion, generation: 0, pending: nil)
+        }
+    }
+
+    var generation: Int { lock.withLock { file.generation } }
+    var pending: PairingFlow.Attempt? { lock.withLock { file.pending } }
+
+    /// Reserves the next attempt generation (persisted before use, so a crash
+    /// between reserve and show still leaves older events stale).
+    func nextGeneration() -> Int {
+        lock.withLock {
+            file.generation += 1
+            _ = try? persist()
+            return file.generation
+        }
+    }
+
+    @discardableResult
+    func setPending(_ attempt: PairingFlow.Attempt?) -> Bool {
+        lock.withLock {
+            guard loadError == nil else { return false }
+            file.pending = attempt
+            if let a = attempt, a.generation > file.generation { file.generation = a.generation }
+            return (try? persist()) != nil
+        }
+    }
+
+    private func persist() throws {
+        let fm = FileManager.default
+        try fm.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true,
+                               attributes: [.posixPermissions: 0o700])
+        let enc = JSONEncoder()
+        enc.outputFormatting = [.prettyPrinted, .sortedKeys]
+        enc.dateEncodingStrategy = .iso8601
+        try enc.encode(file).write(to: url, options: [.atomic])
         try fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
     }
 }
