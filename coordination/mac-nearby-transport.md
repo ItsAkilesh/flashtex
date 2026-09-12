@@ -15,8 +15,8 @@
   (plus a documentation-only edit to `apps/mac/docs/nearby-v1-proposal.md` §4/§5)
 - Branch / code revision / main integrated through:
   `agent/mac-nearby-transport/bounded` (from origin/agent/mac-claude-a/mac-shell
-  6b43a3a, merged mac-shell b973b89) / see JSON / origin/main as contained in
-  mac-shell b973b89
+  6b43a3a, merged mac-shell 71675cd) / see JSON / origin/main as contained in
+  mac-shell 71675cd
 - State: ready for integration (lane + both follow-ups)
 - Ready behavior and evidence:
   - `NearbyReceiveLimits` (frame 12 MiB, image 8 MiB / 8192² / 64 MiB decoded,
@@ -76,7 +76,7 @@
   `cd apps/mac && swift build` clean; `swift test --filter 'Nearby|Pairing'`
   30 tests pass; full `swift test` with FLASHTEX_COMPILER/PDF/BRIDGE/
   EDIT_LEDGER/PREVIEW_CONTROLLER real binaries after merging mac-shell
-  b973b89: 221 tests, 0 failures, 0 skipped.
+  71675cd: 221 tests, 0 failures, 0 skipped.
 - Exact deadline UTC / remaining time / integration reserve: no fixed deadline
   (continuous authorization); 20% reserve kept for integration.
 - ETA remaining: 0 / 0 / 0 (lane and follow-ups done; awaiting review).
