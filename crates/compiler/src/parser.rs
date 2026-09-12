@@ -2849,13 +2849,19 @@ mod tests {
     fn tex_input_ligatures_never_apply_inside_math() {
         // Math is parsed through an entirely separate path (`math::parse_tokens`)
         // that this function is never wired into; a literal double-hyphen inside
-        // `$...$` must stay two literal hyphens, never an en dash.
+        // `$...$` must stay two separate math minus signs, never an en dash.
         let source = "Text. $a--b$ more text.\n";
         let (parsed, items) = items(source);
         assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
         assert!(!items.iter().any(|item| item.text.contains('\u{2013}')));
         assert!(!items.iter().any(|item| item.text.contains('\u{2014}')));
-        assert!(items.iter().any(|item| item.text == "-"));
+        assert_eq!(
+            items
+                .iter()
+                .filter(|item| item.text == crate::math::MINUS_SIGN)
+                .count(),
+            2
+        );
     }
 
     #[test]
