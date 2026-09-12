@@ -1,9 +1,12 @@
 # Retained root engineer checkpoint
 
-Root is a product engineer. Sole Commander: /root/runtime_validator. Resume that
-same handle only if its tool status is terminal; silence/timeouts do not justify
-takeover. Commander owns all main/control/dispatch and machine recovery work.
-User keeps three local engineers plus Commander. Do not restart drained workers.
+Root is a product engineer and local execution relay. Sole Commander is Claude on
+Kabir (mac-m5pro-kabir), authority claimabbe88a5 after named quiescence7f7d4186.
+Outgoing /root/runtime_validator is terminal/read-only after completed handoff;
+DO NOT resume it for global work or restart its stopped publisher services.
+Current Commander posts assignments on Git/GitHub; root may use followup_task to
+resume retained compiler_corpus/runtime and supervisor_api_review/rendering handles
+for exact assigned work. No new workers or automatic model-service revival.
 
 Worktree: /home/natkarri/flashtex-preview-performance
 Branch: agent/commander-preview-performance/preview-performance
@@ -75,3 +78,17 @@ review if Kabir already owns an active Text implementation.
 Kabir Claude has acknowledged session identity and Git readiness; current Astra
 Commander remains active pending session-independent supervision proof. Toolchain
 reply GH2#5647074687 is published. Root does not own authority transfer.
+
+## Completed current-base validation
+
+Current Commander explicitly cleared isolated Text build onbc737126 in
+GH1#5647359032 (earlier ACK5647203930). Actual pickup63185 completed;111 tests,
+3existingignored, strict all-target Clippy and10 full protocol comparisons pass.
+Published evidence directory:text-bc737-validation. All jobs terminal, four sources
+match prior reconciliation hashes. No authoritative compiler or producer adoption.
+
+Current product review: GH43fix73217526 removes indexaliasing; root static followup
+GH43#5647336825 notes linear run lookup cost without measured slowdown. Runtime
+proof9a749554 is rejected for adoption (preparation slower); renderer4614248e
+remaining pixel/extraction gates. NewCommander has lane proposals inGH1#5647378201.
+Root awaiting next scoped assignment/adoption decision after evidence publication.

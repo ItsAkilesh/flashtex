@@ -1,0 +1,52 @@
+[
+  {
+    "elapsed_ms": 0.7994460029294714,
+    "request_bytes": 193,
+    "reply_bytes": 364
+  },
+  {
+    "elapsed_ms": 0.20236401178408414,
+    "request_bytes": 197,
+    "reply_bytes": 562
+  },
+  {
+    "elapsed_ms": 0.12604199582710862,
+    "request_bytes": 197,
+    "reply_bytes": 562
+  },
+  {
+    "elapsed_ms": 0.14467000437434763,
+    "request_bytes": 190,
+    "reply_bytes": 517
+  },
+  {
+    "elapsed_ms": 0.30101698939688504,
+    "request_bytes": 190,
+    "reply_bytes": 699
+  },
+  {
+    "elapsed_ms": 0.15278700448106974,
+    "request_bytes": 193,
+    "reply_bytes": 364
+  },
+  {
+    "elapsed_ms": 0.17412399756722152,
+    "request_bytes": 197,
+    "reply_bytes": 364
+  },
+  {
+    "elapsed_ms": 0.18559899763204157,
+    "request_bytes": 200,
+    "reply_bytes": 364
+  },
+  {
+    "elapsed_ms": 0.18916299450211227,
+    "request_bytes": 185,
+    "reply_bytes": 629
+  },
+  {
+    "elapsed_ms": 0.12639300257433206,
+    "request_bytes": 194,
+    "reply_bytes": 365
+  }
+]

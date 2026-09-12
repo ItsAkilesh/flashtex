@@ -1,0 +1,24 @@
+{
+  "base": "bc73712632345dea800267561e7fec7135cfe465",
+  "patch_commit": "8b676e72",
+  "authorization": "https://github.com/flash-tex/flashtex/issues/1#issuecomment-5647359032",
+  "validated_utc": "2026-09-12T17:05:38.708352+00:00",
+  "source_hashes": {
+    "crates/compiler/src/layout.rs": "2fb61802f90f08b711cd51360ea1cef3f5c21cd735b8557868ffaaa9891f2d91",
+    "crates/compiler/src/math.rs": "627d82a37557d7a3b2b6addad37be63135d0ad55d6870dc52e89911dc826cf5b",
+    "crates/compiler/src/incremental.rs": "6192b6f676b5589b5bf04fe51f56000f2ea75764ef07340f38f5b70d5ca175cf",
+    "crates/compiler/tests/math_text.rs": "4f3ebad24a19076fb983600caf7ea9f0004e5da373f3fc05883ac3c92d7d0fdd"
+  },
+  "source_hashes_match_apply_check": true,
+  "tests": {
+    "passed": 111,
+    "failed": 0,
+    "ignored": 3,
+    "suites": 13
+  },
+  "clippy": "all-targets -D warnings passed",
+  "binary_sha256": "a8c9140ab4a0291b5ffeb13783051d74f8669e95eebdf77e26237ee21ce888f7",
+  "protocol_replies": 10,
+  "protocol_complete_json_equals_prior_reference": true,
+  "scope": "isolated original compiler build; no authoritative adoption, producer repin, native or reference-pixel validation"
+}
