@@ -117,3 +117,14 @@ and sixnat coauthor; preserve peer author history. Context policy: actual>80%, o
 60–80% mostly irrelevant, compact at natural checkpoint after durable state. No
 telemetry/compact tool exposed here; never invent percentage or restart workers.
 Historical checkpoint details remain in Git, not repeated here.
+
+
+## Integration checkpoint after main70a5f30
+
+Main4248b49 integrates renderer c158f4e with combined all-target tests and strict Clippy. One actual untouched65dbe7d zero-diagnostic rooted-TFM fixture matches reference text and144DPI RGB exactly; prior211pixel fallback/error evidence is retained and corrected. No universal/math parity claim. Main70a5f30 integrates root397bff7 including GH29 explicit15MiB compiler ceiling (default8MiB unchanged), independent16MiB wire guard and exact-schema shared immutable history. Combined ledger/helper suites, serial explicit original-compiler gates including full large-result delivery, and strict helper lint pass. Prior producer/helper timeout logs remain evidence, not erased by later passes.
+
+No pending publication at this checkpoint. Dispatcher1099831 and witness752107 independently active. All main writes used dispatch_loop.publication_lock over the common Git directory. Existing revival prompt verified; quota-to-terminal hook remains unverified. Never claim offline from silence or quota error.
+
+Root is running bounded cached-history-serialization paired benchmark88252; avoid overlapping heavy comparisons. Font retained slot resumed from7fc273c for bounded passive Type1 outline opcodes, explicit unsupported hints/flex/OtherSubrs/seac and no PS execution. Renderer retained slot resumed for reproducible actual-reference runner then exact existing LM Math asset b898cfc (SHA6075562b771f8b82f0c179e363389684f2dd09de30038269e2628e504bd7be0f). Drained bridge/index/ledger remain completed; no new agents.
+
+Fresh native historical report12faf78 at10:19:37 requires feature remain OFF: actual ab945e6 per-keystroke current p95 starvation1.6s demo/5.6s60KB, historical lag93/119/146ms demo and316/414/441ms60KB. After b898cfc merge four tests assume math font absent; owner reports parent-preexisting. Parent must reconcile5c35587 and test expectations. This report is not proof all15 remote workers running. Latest explicit Jaysen census remains09:47 four children, Daniel full live census still unverified.
