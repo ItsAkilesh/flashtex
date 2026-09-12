@@ -89,11 +89,12 @@ struct FlashTeXMacApp: App {
                 .onAppear {
                     appDelegate.model = model; nearby.attach(sink: model, destinations: model); TypingBench.shared.install(model: model)
                     // Automation: open a secondary window at launch for evidence captures.
-                    if let id = ProcessInfo.processInfo.environment["FLASHTEX_OPEN_WINDOW"], ["nearby", AccessibilityHelpView.windowID, EditHistoryPanel.windowID].contains(id) { openWindow(id: id) }
+                    if let id = ProcessInfo.processInfo.environment["FLASHTEX_OPEN_WINDOW"], ["nearby", AccessibilityHelpView.windowID, EditHistoryPanel.windowID, ProjectSearch.windowID].contains(id) { openWindow(id: id) }
                 }
         }
         .commands {
             NavigationCommands(model: model) // Navigation.swift
+            ProjectSearchCommands(openWindow: openWindow) // ProjectSearchPanel.swift: ⌘⇧F Find in Project…
             CommandGroup(after: .help) {
                 Button("FlashTeX Accessibility Help") { openWindow(id: AccessibilityHelpView.windowID) }
             }
@@ -175,5 +176,6 @@ struct FlashTeXMacApp: App {
             AccessibilityHelpView() // FlashTeXAccessibility: focus order, VoiceOver notes, command table
         }
         Settings { EditorPreferencesView() } // EditorPreferences.swift (⌘,)
+        ProjectSearchWindow(model: model) // ProjectSearchPanel.swift: Find in Project (⌘⇧F)
     }
 }

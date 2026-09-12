@@ -14,8 +14,10 @@ use std::{
 
 mod decode_lane;
 mod display_candidate;
+mod raw_display;
 use decode_lane::{Decoder, Input, RawInput};
 pub use display_candidate::{SourceBinding, UntrustedDisplayCandidate};
+pub use raw_display::UntrustedRawDisplayCandidate;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Document {
@@ -88,6 +90,20 @@ pub struct ResponseProfile {
     pub parse_ms: f64,
     pub validation_ms: f64,
 }
+/// Scalar transport timings for the last current source-bound candidate only.
+/// No native decoding, font validation, rendering, paint or source text is included.
+#[derive(Clone, Debug, serde::Serialize)]
+pub struct DisplayResponseProfile {
+    pub request_id: String,
+    pub project_id: String,
+    pub revision: u64,
+    pub display_epoch: u64,
+    pub response_bytes: usize,
+    pub parse_ms: f64,
+    pub decode_queue_wait_ms: f64,
+    pub reader_delivery_wait_ms: f64,
+    pub source_binding_ms: f64,
+}
 /// Optional historical display data. This is never a current-preview/source-action grant.
 /// `origin` is opaque caller metadata captured with the original submitted request.
 #[derive(Debug)]
@@ -111,12 +127,16 @@ struct Pending {
     sent: Option<Instant>,
 }
 struct Process {
+    #[cfg(all(test, target_os = "linux"))]
+    writer_finished: Option<mpsc::Receiver<()>>,
+    #[cfg(all(test, target_os = "linux"))]
+    io_finished: Option<[mpsc::Receiver<()>; 2]>,
     child: Child,
     writer: SyncSender<Vec<u8>>,
     reader: Decoder,
 }
 impl Process {
-    fn spawn(mut command: Command, limit: usize) -> Result<Self, String> {
+    fn spawn(mut command: Command, limit: usize, raw_display: bool) -> Result<Self, String> {
         let mut child = command
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -129,6 +149,12 @@ impl Process {
         let (tx, rx) = mpsc::sync_channel::<Vec<u8>>(1);
         let (out_tx, out_rx) = mpsc::sync_channel(4);
         let failures = out_tx.clone();
+        #[cfg(all(test, target_os = "linux"))]
+        let (writer_done, writer_finished) = mpsc::channel();
+        #[cfg(all(test, target_os = "linux"))]
+        let (stdout_done, stdout_finished) = mpsc::channel();
+        #[cfg(all(test, target_os = "linux"))]
+        let (stderr_done, stderr_finished) = mpsc::channel();
         thread::spawn(move || {
             while let Ok(bytes) = rx.recv() {
                 if stdin.write_all(&bytes).and_then(|_| stdin.flush()).is_err() {
@@ -136,6 +162,8 @@ impl Process {
                     break;
                 }
             }
+            #[cfg(all(test, target_os = "linux"))]
+            let _ = writer_done.send(());
         });
         thread::spawn(move || {
             let mut reader = BufReader::new(stdout);
@@ -171,6 +199,8 @@ impl Process {
                     }
                 }
             }
+            #[cfg(all(test, target_os = "linux"))]
+            let _ = stdout_done.send(());
         });
         // Drain continuously in a fixed buffer. Logs are not retained or exposed to UI.
         thread::spawn(move || {
@@ -180,11 +210,17 @@ impl Process {
                     break;
                 }
             }
+            #[cfg(all(test, target_os = "linux"))]
+            let _ = stderr_done.send(());
         });
         Ok(Self {
+            #[cfg(all(test, target_os = "linux"))]
+            io_finished: Some([stdout_finished, stderr_finished]),
+            #[cfg(all(test, target_os = "linux"))]
+            writer_finished: Some(writer_finished),
             child,
             writer: tx,
-            reader: Decoder::spawn(out_rx),
+            reader: Decoder::spawn_mode(out_rx, raw_display),
         })
     }
 }
@@ -196,9 +232,11 @@ impl Drop for Process {
 }
 
 pub struct Session {
+    raw_candidate: Option<UntrustedRawDisplayCandidate>,
     display_enabled: bool,
     display_epoch: u64,
     display_candidate: Option<UntrustedDisplayCandidate>,
+    last_display_profile: Option<DisplayResponseProfile>,
     process: Option<Process>,
     limits: Limits,
     active: Option<Pending>,
@@ -216,6 +254,17 @@ impl Session {
     }
     /// Allows explicit original compiler flags/environment without shell parsing.
     pub fn spawn_command(command: Command, limits: Limits) -> Result<Self, String> {
+        Self::spawn_mode(command, limits, false)
+    }
+    /// Experimental fixed-session raw decoding strategy. Candidate delivery stays disabled
+    /// until explicitly enabled; downstream rendering validation remains mandatory.
+    pub fn spawn_command_raw_display_prototype(
+        command: Command,
+        limits: Limits,
+    ) -> Result<Self, String> {
+        Self::spawn_mode(command, limits, true)
+    }
+    fn spawn_mode(command: Command, limits: Limits, raw_display: bool) -> Result<Self, String> {
         if limits.max_frame < 128
             || limits.max_frame > 64 * 1024 * 1024
             || limits.max_projects == 0
@@ -224,11 +273,13 @@ impl Session {
         {
             return Err("invalid runtime limits".into());
         }
-        let process = Process::spawn(command, limits.max_frame)?;
+        let process = Process::spawn(command, limits.max_frame, raw_display)?;
         Ok(Self {
+            raw_candidate: None,
             display_enabled: false,
             display_epoch: 0,
             display_candidate: None,
+            last_display_profile: None,
             process: Some(process),
             limits,
             active: None,
@@ -301,6 +352,8 @@ impl Session {
             );
         }
         self.display_candidate = None;
+        self.raw_candidate = None;
+        self.last_display_profile = None;
         self.display_epoch = self
             .display_epoch
             .checked_add(1)
@@ -309,6 +362,9 @@ impl Session {
         Ok(())
     }
     /// Moves untrusted data; downstream must validate rendering and live source/session epochs.
+    pub fn take_current_raw_display_candidate(&mut self) -> Option<UntrustedRawDisplayCandidate> {
+        self.raw_candidate.take()
+    }
     pub fn take_current_display_candidate(&mut self) -> Option<UntrustedDisplayCandidate> {
         self.display_candidate.take()
     }
@@ -349,6 +405,18 @@ impl Session {
         } else if self.latest.len() >= self.limits.max_projects {
             return Err("project capacity reached".into());
         }
+        // Admission is complete. Do not retain caller reserve capacity or serializer
+        // growth slack alongside immutable snapshots for the lifetime of the queue.
+        let request = compact_request(request);
+        let bytes = bytes.into_boxed_slice().into_vec();
+        let capabilities = capabilities
+            .into_iter()
+            .map(compact_string)
+            .collect::<Vec<_>>()
+            .into_boxed_slice()
+            .into_vec();
+        let snapshot_origin =
+            snapshot_origin.map(|(epoch, origin)| (epoch, compact_string(origin)));
         if let Some(index) = self
             .queue
             .iter()
@@ -365,6 +433,8 @@ impl Session {
             (request.revision, request.id.clone()),
         );
         self.display_candidate = None;
+        self.raw_candidate = None;
+        self.last_display_profile = None;
         self.queue.push_back(Pending {
             awaiting_display: false,
             display_epoch: self.display_epoch,
@@ -394,6 +464,8 @@ impl Session {
             self.completed_snapshot = None;
         }
         self.display_candidate = None;
+        self.raw_candidate = None;
+        self.last_display_profile = None;
         self.latest.remove(project_id);
         if let Some(active) = self.active.as_mut() {
             if active.request.project_id == project_id && !active.cancelled {
@@ -420,7 +492,17 @@ impl Session {
         if self.active.is_some() || self.process.is_none() {
             return;
         }
+        self.process
+            .as_ref()
+            .unwrap()
+            .reader
+            .set_budget(raw_display::MetadataBudget::default());
         if let Some(mut pending) = self.queue.pop_front() {
+            self.process
+                .as_ref()
+                .unwrap()
+                .reader
+                .set_budget(raw_display::MetadataBudget::from_request(&pending.request));
             pending.sent = Some(Instant::now());
             let bytes = std::mem::take(&mut pending.bytes);
             self.active = Some(pending);
@@ -438,6 +520,8 @@ impl Session {
     }
     fn fail(&mut self, reason: &str) {
         self.display_candidate = None;
+        self.raw_candidate = None;
+        self.last_display_profile = None;
         self.completed_snapshot = None;
         self.process.take();
         if let Some(p) = self.active.take().filter(|p| !p.cancelled) {
@@ -467,10 +551,17 @@ impl Session {
                         self.fail("unsolicited compiler reply");
                         break;
                     };
-                    let parsed = frame.value.take().expect("decoded frame consumed once");
+                    let parsed = frame.value.take();
                     if pending.awaiting_display {
-                        let candidate = match display_candidate::validate(parsed, &pending.request)
-                        {
+                        let binding_start = Instant::now();
+                        let candidate = match frame
+                            .raw
+                            .take()
+                            .map(|raw| raw.validate(&pending.request).map(|c| (None, Some(c))))
+                            .unwrap_or_else(|| {
+                                display_candidate::validate(parsed.unwrap(), &pending.request)
+                                    .map(|c| (Some(c), None))
+                            }) {
                             Ok(candidate) => candidate,
                             Err(reason) => {
                                 self.fail(&reason);
@@ -486,22 +577,36 @@ impl Session {
                                 },
                             )
                         {
-                            self.display_candidate = Some(candidate);
+                            self.last_display_profile = Some(DisplayResponseProfile {
+                                request_id: pending.request.id.clone(),
+                                project_id: pending.request.project_id.clone(),
+                                revision: pending.request.revision,
+                                display_epoch: pending.display_epoch,
+                                response_bytes: frame.response_bytes,
+                                parse_ms: frame.parse_ms,
+                                decode_queue_wait_ms: frame.decode_queue_wait_ms,
+                                reader_delivery_wait_ms,
+                                source_binding_ms: binding_start.elapsed().as_secs_f64() * 1000.0,
+                            });
+                            self.display_candidate = candidate.0;
+                            self.raw_candidate = candidate.1;
                         }
                         self.active.take();
                         self.dispatch();
                         continue;
                     }
                     let validate_at = Instant::now();
-                    let result =
-                        match validate_reply_value(parsed, &pending.request, &pending.capabilities)
-                        {
-                            Ok(value) => value,
-                            Err(reason) => {
-                                self.fail(&reason);
-                                break;
-                            }
-                        };
+                    let result = match parsed
+                        .ok_or_else(|| "unexpected raw sibling".to_string())
+                        .and_then(|parsed| {
+                            validate_reply_value(parsed, &pending.request, &pending.capabilities)
+                        }) {
+                        Ok(value) => value,
+                        Err(reason) => {
+                            self.fail(&reason);
+                            break;
+                        }
+                    };
                     self.last_profile = Some(ResponseProfile {
                         request_id: pending.request.id.clone(),
                         response_bytes: frame.response_bytes,
@@ -595,6 +700,11 @@ impl Session {
         }
         self.events.drain(..).collect()
     }
+    /// Last current display transport timing; survives candidate take, but clears
+    /// on submit, close, policy reset or failure. Epoch is local to this Session.
+    pub fn last_display_profile(&self) -> Option<&DisplayResponseProfile> {
+        self.last_display_profile.as_ref()
+    }
     /// Last fully validated response, including stale/cancelled work. Match its
     /// request ID; these phases do not measure native paint or compiler CPU alone.
     pub fn last_profile(&self) -> Option<&ResponseProfile> {
@@ -603,6 +713,20 @@ impl Session {
     pub fn is_alive(&self) -> bool {
         self.process.is_some()
     }
+}
+fn compact_string(value: String) -> String {
+    value.into_boxed_str().into_string()
+}
+fn compact_request(mut request: Request) -> Request {
+    request.id = compact_string(request.id);
+    request.project_id = compact_string(request.project_id);
+    request.entry_path = compact_string(request.entry_path);
+    for document in &mut request.documents {
+        document.path = compact_string(std::mem::take(&mut document.path));
+        document.text = compact_string(std::mem::take(&mut document.text));
+    }
+    request.documents = request.documents.into_boxed_slice().into_vec();
+    request
 }
 fn safe_path(p: &str) -> bool {
     !p.is_empty()
@@ -853,3 +977,84 @@ pub fn validate_layout_capabilities(capabilities: &[String]) -> Result<(), Strin
 }
 
 pub mod experimental_chunks;
+
+#[cfg(all(test, unix))]
+mod decode_cancellation_probe {
+    use super::*;
+    #[test]
+    #[ignore = "near-limit cancellation probe; run separately in a quiet window"]
+    fn cancellation_during_entered_serde_invalidates_source_ownership() {
+        let mut command = std::process::Command::new("/usr/bin/python3");
+        command.arg("-c").arg(r#"import sys,json
+r=json.loads(sys.stdin.readline());p=r['payload']
+v={'opaque':[''],'protocol_version':1,'type':'compile_result','id':r['id'],'payload':{'project_id':p['project_id'],'revision':p['revision'],'status':'ok','pages':[],'diagnostics':[]}}
+s=json.dumps(v,separators=(',',':'));v['opaque'][0]='x'*(8388608-1-len(s));print(json.dumps(v,separators=(',',':')),flush=True);sys.stdin.read()
+"#);
+        let mut s =
+            Session::spawn_command_raw_display_prototype(command, Limits::default()).unwrap();
+        let (entered_tx, entered) = std::sync::mpsc::sync_channel(1);
+        let (resume, resume_rx) = std::sync::mpsc::sync_channel(1);
+        s.process
+            .as_ref()
+            .unwrap()
+            .reader
+            .install_gate(crate::raw_display::DecodeGate {
+                entered: entered_tx,
+                resume: resume_rx,
+            });
+        s.submit(Request {
+            id: "r".into(),
+            project_id: "p".into(),
+            revision: 1,
+            entry_path: "main.tex".into(),
+            documents: vec![Document {
+                path: "main.tex".into(),
+                text: "x".into(),
+            }],
+        })
+        .unwrap();
+        entered.recv_timeout(Duration::from_secs(10)).unwrap();
+        let start = Instant::now();
+        s.close_project("p").unwrap();
+        let cancel_ms = start.elapsed().as_secs_f64() * 1000.0;
+        assert!(s.active.as_ref().unwrap().cancelled);
+        assert!(s.last_display_profile().is_none());
+        resume.send(()).unwrap();
+        let started = Instant::now();
+        let mut events = vec![];
+        while s.active.is_some() {
+            events.extend(s.poll());
+            assert!(
+                s.is_alive() && started.elapsed() < Duration::from_secs(10),
+                "{events:?}"
+            );
+            std::thread::yield_now();
+        }
+        assert!(events.iter().any(|e| matches!(e, Event::Cancelled { .. })));
+        assert!(!events
+            .iter()
+            .any(|e| matches!(e, Event::Preview { .. } | Event::Failed { .. })));
+        assert!(s.take_current_raw_display_candidate().is_none());
+        let drained_ms = started.elapsed().as_secs_f64() * 1000.0;
+        let start = Instant::now();
+        drop(s);
+        let drop_ms = start.elapsed().as_secs_f64() * 1000.0;
+        let peak = std::fs::read_to_string("/proc/self/status")
+            .ok()
+            .and_then(|s| {
+                s.lines()
+                    .find(|l| l.starts_with("VmHWM:"))
+                    .map(str::to_owned)
+            });
+        println!(
+            "{}",
+            serde_json::json!({"framed_bytes":8388608,"entered_serde_before_cancel":true,"cancel_ms":cancel_ms,"drain_after_release_ms":drained_ms,"drop_after_drain_ms":drop_ms,"cancelled_preview_suppressed":true,"process_peak":peak,"scope":"one test process; owner cancellation does not interrupt serde; no native responsiveness guarantee"})
+        );
+    }
+}
+
+#[cfg(test)]
+mod queue_accounting;
+
+#[cfg(all(test, target_os = "linux"))]
+mod blocked_writer;

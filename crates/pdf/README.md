@@ -174,7 +174,15 @@ a CID-keyed program would resolve the components by CID instead of name;
 the font's own) and says so in its note. Latin Modern's 821 glyphs contain
 no `seac`; a nine-glyph subset is 22,557 bytes against the 61,140-byte whole
 table. The subset tag in `/BaseFont` is derived from the glyph set and the
-source program's SHA-256, so the same request always names the same font.
+source program's SHA-256, so the same request always names the same font. Type 1 programs
+(`crate::type1`, `ExactFont::type1_subset`) are subset the way pdfTeX does
+it: retained charstrings and needed subroutines byte-identical, unused
+subroutines blanked, deterministic eexec, `Length3 0`; the classifier
+compares two embedded Type 1 programs charstring by charstring. Subsets keep only the
+subroutines the retained glyphs reach (renumbered, call operands rewritten)
+and only the Top DICT's strings; `CffFont::expanded_charstring` (subroutines
+inlined) is byte-identical before and after, which is what the identity
+tests compare. Latin Modern Math: 7 glyphs in 1,753 bytes.
 
 **Reading references and classifying differences.** `crate::reader` reads
 a finished PDF (this crate's or pdfTeX's: xref streams, object streams,
@@ -200,8 +208,11 @@ emits.
 OUT.pdf [--font-dir DIR]` (`crate::v2`) consumes the `display_list` envelope
 of `flashtex-render --v2`: ticks (`bp_2pow20`) become exact decimals after an
 integer y flip, every glyph is placed by original GID at its absolute origin
-(its own `Tm`, joining the previous string only when the origin equals the
-previous origin plus the `hmtx` advance exactly), rules become `re f`, fonts
+(continuing the previous `TJ` segment when the gap from the natural advance
+is an exactly representable thousandth of the size — zero joins the string,
+non-zero is a `TJ` kern — and starting its own `Tm` otherwise; the written
+operators replay to the envelope origins exactly, `exact::glyph_positions`),
+rules become `re f`, fonts
 are resolved by content hash from `--font-dir`/`FLASHTEX_FONT_DIRS`/
 `FLASHTEX_LM_DIR`/the TeX Live Latin Modern directories and embedded as
 GID-preserving subsets, cluster text becomes ToUnicode. `opentype-cff` and

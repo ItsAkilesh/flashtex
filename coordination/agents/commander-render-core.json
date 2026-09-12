@@ -3,10 +3,10 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-023": {
-      "acknowledged_utc": "2026-09-12T10:39:37Z",
-      "adaptation": "Read actual published602pixel classification objective. Use existing owner dumps and pinned raster/font data; no speculative geometry patch or invented reference GIDs.",
-      "main_sha": "ca3f9e8e7931245cc3d9d407069a63ae634e1a50",
-      "revision": 8
+      "acknowledged_utc": "2026-09-12T13:16:34.309615+00:00",
+      "adaptation": "Read exact FT023r17. Bounded read-only pinned bundle asset verifier, isolated official asset stage and malformed/missing cases only; no native discovery claims.",
+      "main_sha": "291849d7d5ab67781d1c681f50ebc328fd8a996c",
+      "revision": 17
     }
   },
   "branch": "agent/commander-render-core/rendering-core",
@@ -14,23 +14,23 @@
     "rust",
     "rendering"
   ],
-  "code_revision": "8b06436cd5bc74d2b5a2a3c9e2e7a45522c47a42",
+  "code_revision": "f576ac11002f3ad64ddbf4172aba7d95d912dbbf",
   "eta_minutes": {
-    "likely": 15,
-    "optimistic": 5,
-    "pessimistic": 25
+    "likely": 2,
+    "optimistic": 1,
+    "pessimistic": 3
   },
   "machine": "linux-primary",
-  "main_integrated_through": "a45e71b0ec92ba99dd089988ee6f87ac3c58aada",
-  "next_action": "Send precise font-binding handoff to existing producer/font owners, then classify a second existing math fixture as queued; no speculative coordinate patch.",
+  "main_integrated_through": "9d8931d5f948416ca9c7e915da47808b3f9fe10e",
+  "next_action": "Commander route exact patches to existing packaging/pipeline owners; require their appliedSHA/buildidentity and nohostTeX native acceptance.",
   "reviewed_peers": {},
   "schema_version": 1,
-  "state": "in_progress",
-  "summary": "FT023r8 classified602pixel math mismatch read-only:582math-associated,20colon; exact checked origins/rules differ under0.001bp, observed math resource/optical-family distinction; no verified consumergeometry bug.",
+  "state": "accepted",
+  "summary": "GH36 candidate patches prepared only in owned handoff: rooted official asset staging via existing verifier and producer bundle discovery after explicit TFM overrides.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T10:41:05Z",
+  "updated_utc": "2026-09-12T13:21:46Z",
   "usage": {
-    "evidence": "Existing owner dump binary and rawtraces/bboxes pinned; directRGB602 count reconciles disjoint windows. Fractionrule and radicalrule interior0diff. CandidateoriginalGIDs/origins retained; referenceType1codes not GIDs. No builds during root timing; window nowreleased. No pending calls.",
-    "status": "Hosted OpenAI only; no providers or descendants. Context telemetry/native compaction unavailable."
+    "evidence": "Exactaf155e59/f762f82a gitapplychecks and bashsyntax pass; isolatedstaging9assetsverified, missing10pt refuses. Override ordering checked structurally, no native execution claim. patch-manifest and patch-check-evidence record hashes.",
+    "status": "Hosted OpenAI only; no descendants/providers. Scratch-only git/shell/Python checks terminal; no native or Rust builds. Context telemetry/native compaction unavailable."
   }
 }

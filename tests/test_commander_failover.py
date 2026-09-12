@@ -15,6 +15,22 @@ class FailoverTests(unittest.TestCase):
         self.authority = {'commander_id': 'astra', 'authority_state': 'active'}
         self.services = [{'active': 'inactive', 'pid': 0}]
 
+    def test_quota_write_failure_preserves_receipt_and_next_observation_recovers(self):
+        import tempfile
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as folder:
+            output = Path(folder) / 'witness.json'
+            old = {'state': 'blocked', 'claim_authorized': False}
+            self.assertEqual(f.write_observation(output, old)['state'], 'blocked')
+            before = output.read_bytes()
+            with patch.object(Path, 'write_text', side_effect=OSError(122, 'Disk quota exceeded')):
+                result = f.write_observation(output, {'state': 'terminal_quiescent_observed'})
+            self.assertEqual(result['state'], 'observation_write_failed')
+            self.assertEqual(result['errno'], 122)
+            self.assertFalse(result['claim_authorized'])
+            self.assertEqual(output.read_bytes(), before)
+            self.assertEqual(f.write_observation(output, old)['state'], 'blocked')
+
     def test_live_quota_or_idle_process_is_never_terminal(self):
         for state in ('S', 'R', 'D', 'T'):
             observed = dict(self.pin, state=state)

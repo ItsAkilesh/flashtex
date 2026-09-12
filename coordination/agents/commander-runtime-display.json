@@ -3,27 +3,27 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-049": {
-      "acknowledged_utc": "2026-09-12T11:01:59Z",
-      "adaptation": "Read origin/main FT049r2. Replay unchanged actual65dbe7d with pinned assets; root consumed f58b656 unchanged via854b041. Runtime-owned tests only; no helper/render edits.",
-      "main_sha": "d1bd76bb23ae94a293d3346806d50facd0732d33",
-      "revision": 2
+      "acknowledged_utc": "2026-09-12T13:02:40Z",
+      "adaptation": "Corrected eca6 capture all hashes/archive/license verified; unchanged six requests and all corrected statuses ok/no diagnostics. Existing captured-byte consumer and raw-wrapper/source checks pass; no runtime/API change.",
+      "main_sha": "e7134a3392d86b051de476cfad50cea7fc540c57",
+      "revision": 21
     }
   },
   "branch": "agent/commander-runtime-display/display-runtime",
   "capabilities": [
     "rust-runtime"
   ],
-  "code_revision": "b9240b0a1d9bf3ca512ac2b65ce5626d023944d2",
+  "code_revision": "fd379ad9731e2689cbe77b2ab1b401dac182d32a",
   "eta_minutes": null,
   "machine": "linux-primary",
-  "main_integrated_through": "eed1847e923b42dbbc02d25309e9e432bd6e3aa0",
-  "next_action": "Integrate exact checkpoint; continue runtime-only consumer feedback and legacy compiler evidence if assigned. No native parity/latency claim; helper optional output and rendering validation remain downstream.",
+  "main_integrated_through": "c4178a54dccf4bf5a94c151c759fa18cb3096462",
+  "next_action": "Commander GH34/integration handoff. All probe/publish commands terminal after final push; clean checkpoint. Preserve recovered prior artifacts and distinct earlier helper-binary provenance. No native/pixel/visual parity claim.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "FT049r2: actual65dbe7da7a182e99322070e2c9763cc3b69a342b archive355 files verified unchanged and rebuilt offline, binary4341bc53e6c16d3930266bc1c59c1fb93d7739f29390a3bf5879381e6ae30780. Requested/legacy/declined/failed direct replies equal runtime results; font raw SHAs match supplied assets. Full suite7 sibling tests plus existing tests and clippy pass; actual ignored producer probe explicitly executed. Reviewed helper854b041/c400d0a.",
+  "summary": "FT049 r21 product fd379ad9: independent corrected eca6ab25 capture artifact/assets/archive/license checks pass; six requests unchanged, all corrected statuses ok/no diagnostics, exact raw/source identities. Existing capture consumer passes restart/stale assertions. Data/docs only, no runtime/API change or redundant full-suite run.",
   "tool": "codex",
-  "updated_utc": "2026-09-12T11:05:43Z",
+  "updated_utc": "2026-09-12T13:02:54Z",
   "usage": {
     "status": "unknown"
   }
