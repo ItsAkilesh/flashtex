@@ -1,6 +1,6 @@
 # mac-bridge-recovery handoff
 
-- Updated UTC: 2026-09-12T09:55Z
+- Updated UTC: 2026-09-12T10:02Z
 - Agent / parent / machine alias: mac-bridge-recovery (Claude Code subagent) /
   mac-claude-a / mac-m1max-a
 - Task / acceptance gate / owned paths: lane "Bounded automatic relaunch of the
@@ -14,7 +14,7 @@
   `coordination/mac-bridge-recovery.md`, `coordination/agents/mac-bridge-recovery.json`
 - Branch / code revision / main integrated through:
   `agent/mac-bridge-recovery/relaunch` (from origin/agent/mac-claude-a/mac-shell
-  92a052c) / see JSON / origin/main as contained in mac-shell 92a052c
+  92a052c, merged mac-shell 35b4e12 at the final checkpoint) / see JSON / origin/main as contained in mac-shell 35b4e12
   (merge-base 780f145).
 - State: ready for integration
 - Ready behavior and evidence:
@@ -96,8 +96,13 @@
   with FLASHTEX_COMPILER / FLASHTEX_PDF / FLASHTEX_BRIDGE / FLASHTEX_EDIT_LEDGER /
   FLASHTEX_PREVIEW_CONTROLLER pointing at the release binaries in the main
   checkout: 382 tests, 0 failures, 7 env-gated skips (project-files helper not
-  built ×3, screenshot/evidence dirs ×4). Focused runs of the new
-  BridgeRecoveryTests and Real* tests passed on every run (3 runs).
+  built ×3, screenshot/evidence dirs ×4), run before merging mac-shell 35b4e12.
+  After the merge (load average 51 with 16 lanes on this Mac): 393 tests, 9
+  skips, 7 failures — all in `SourceEditorViewTests.testLargeDocumentKeystroke…`
+  (per-keystroke wall/CPU gate of another lane, load-induced; also fails when
+  run alone at that load, passed in both pre-merge full runs); the bridge lane
+  filter (BridgeRecovery/BridgeClient/ShellModelBridge/Real*/ShellModel)
+  35/35 green post-merge. Focused runs of the new tests passed on every run.
 - Exact deadline UTC / remaining time / integration reserve: no fixed deadline
   (continuous authorization); 20% reserve kept for integration.
 - ETA remaining: 0 / 0 / 0 (lane done; awaiting parent review/integration).

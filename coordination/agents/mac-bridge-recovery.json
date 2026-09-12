@@ -7,18 +7,29 @@
     "swift",
     "process-recovery"
   ],
-  "code_revision": "03579d825af4eac73eb7a446c4efdcfa4d8cc8a5",
-  "eta_minutes": null,
+  "code_revision": "bb66d498979da0196604de363df35eba528de570",
+  "eta_minutes": {
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 0
+  },
   "machine": "mac-m1max-a",
-  "main_integrated_through": "780f1458c125d9702b994ab9df377aed96a1113f",
-  "next_action": "Await and acknowledge assignment",
-  "reviewed_peers": {},
+  "main_integrated_through": "277a0910811fdb27bd156ecd92b92b50f277c750",
+  "next_action": "Parent review/integration of agent/mac-bridge-recovery/relaunch; apply the three ShellModel+Bridge.swift diffs (onRelaunched -> captureNote, onRevisionFloor -> advanceEditorRevision, bridgeTextChanged guard) and the README paragraph from the final report",
+  "reviewed_peers": {
+    "origin/agent/mac-claude-a/mac-shell": {
+      "adaptation": "Base 92a052c: mirrored the ShellModel worker relaunch policy for BridgeSession; merged 35b4e12 (no changes to owned files, merge clean)",
+      "reviewed_utc": "2026-09-12T09:59:43Z",
+      "sha": "35b4e121df7fafd509ec51ce949343f5c8fa320a"
+    }
+  },
   "schema_version": 1,
-  "state": "registered",
-  "summary": "Available for Commander assignment",
+  "state": "ready_for_integration",
+  "summary": "Bounded relaunch of the capture bridge and edit-ledger helpers after an abnormal exit (0.2/1/3 s, 3 per minute per child, never on clean exit or detach) with reconciliation: ledger reopened/realigned, pending receipts settled through the ledger-guarded reconcile, document reopened, pinned destination re-pinned identically or reported; receipts/captures in flight at the crash are shown as uncertain and settled exactly once; a capture_submit crash leaves the capture uncertain and retryable. Fake bridge journal now durable; crash directives in both fakes; 10 new BridgeRecoveryTests plus real-binary SIGKILL tests for bridge and ledger.",
   "tool": "Claude Code subagent (parent mac-claude-a)",
-  "updated_utc": "2026-09-12T09:54:20Z",
+  "updated_utc": "2026-09-12T09:59:43Z",
   "usage": {
-    "status": "unknown"
+    "evidence": "apps/mac swift test with real compiler/pdf/bridge/edit-ledger/preview-controller before merging mac-shell 35b4e12: 382 tests, 0 failures, 7 env-gated skips; after the merge (load average 51, 16 lanes): 393 tests, 9 skips, 7 failures all in SourceEditorViewTests keystroke wall/CPU gate (another lane, load-induced); bridge lane filter 35/35 green post-merge",
+    "status": "Claude Max 20x shared quota; subagent cannot read usage"
   }
 }
