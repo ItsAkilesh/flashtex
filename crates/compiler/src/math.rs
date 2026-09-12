@@ -306,32 +306,48 @@ fn symbol(text: String, span: Span) -> MathAtom {
     }
 }
 
+/// Every named symbol the math layer can emit, as (command, rendered glyph).
+///
+/// The export adapter in `crate::export` is tested against this exact table, so
+/// adding a symbol here without giving it an export mapping fails the build's
+/// tests rather than silently producing a glyph the PDF path turns into `?`.
+pub const COMMAND_GLYPHS: &[(&str, &str)] = &[
+    ("alpha", "α"),
+    ("beta", "β"),
+    ("gamma", "γ"),
+    ("delta", "δ"),
+    ("theta", "θ"),
+    ("lambda", "λ"),
+    ("mu", "μ"),
+    ("pi", "π"),
+    ("sigma", "σ"),
+    ("phi", "φ"),
+    ("omega", "ω"),
+    ("times", "×"),
+    ("div", "÷"),
+    ("pm", "±"),
+    ("leq", "≤"),
+    ("geq", "≥"),
+    ("neq", "≠"),
+    ("approx", "≈"),
+    ("cdot", "·"),
+    ("infty", "∞"),
+    ("sum", "∑"),
+    ("int", "∫"),
+];
+
+/// The rule character used to draw fraction bars.
+///
+/// This is a stand-in, not a real glyph: runtime-v1 has no rule item type yet
+/// (see issue #9). No font contains it, so it is deliberately unrepresentable in
+/// the export adapter and is reported rather than silently substituted.
+pub const FRACTION_RULE_CHAR: char = '\u{2500}';
+
 fn command_glyph(name: &str) -> Option<&'static str> {
-    Some(match name {
-        "alpha" => "α",
-        "beta" => "β",
-        "gamma" => "γ",
-        "delta" => "δ",
-        "theta" => "θ",
-        "lambda" => "λ",
-        "mu" => "μ",
-        "pi" => "π",
-        "sigma" => "σ",
-        "phi" => "φ",
-        "omega" => "ω",
-        "times" => "×",
-        "div" => "÷",
-        "pm" => "±",
-        "leq" => "≤",
-        "geq" => "≥",
-        "neq" => "≠",
-        "approx" => "≈",
-        "cdot" => "·",
-        "infty" => "∞",
-        "sum" => "∑",
-        "int" => "∫",
-        _ => return None,
-    })
+    COMMAND_GLYPHS
+        .iter()
+        .find(|(command, _)| *command == name)
+        .map(|(_, glyph)| *glyph)
 }
 
 /// Math symbols are measured with the same real metrics as body text, at the

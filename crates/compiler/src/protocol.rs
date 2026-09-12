@@ -372,9 +372,11 @@ fn compile(id: &str, payload: &Value) -> Value {
         .1
         .compile_project(&sources, &path, LayoutConstraints::default());
     let pages = incremental.output.pages;
-    let diags = incremental.output.diagnostics;
-    let paths: Vec<&str> = project.iter().map(|(p, _)| p.as_str()).collect();
+    let mut diags = incremental.output.diagnostics;
 
+    // Status describes this compilation. Export warnings are added afterwards so
+    // a perfectly valid document containing a fraction is not downgraded to
+    // "recovered" for a limitation of a different pipeline stage.
     let has_content = pages.iter().any(|p| !p.items.is_empty());
     let status = if diags.is_empty() {
         "ok"
@@ -383,6 +385,36 @@ fn compile(id: &str, payload: &Value) -> Value {
     } else {
         "failed"
     };
+
+    // Tell the author before they export, not after. Issue #9: the PDF path uses
+    // the base-14 fonts, so a glyph outside that repertoire becomes a question
+    // mark in the exported file. Silently substituting is what rev 4 forbids.
+    let mut offenders: Vec<char> = Vec::new();
+    let mut first_span = None;
+    for page in &pages {
+        for item in &page.items {
+            for c in crate::export::unrepresentable(&item.text) {
+                if !offenders.contains(&c) {
+                    offenders.push(c);
+                    if first_span.is_none() {
+                        first_span = Some(item.span);
+                    }
+                }
+            }
+        }
+    }
+    for c in &offenders {
+        let reason = crate::export::reason(*c).unwrap_or("not representable in the export fonts");
+        diags.push(Diagnostic::warning(
+            format!(
+                "{c:?} (U+{:04X}) will not survive PDF export: {reason}",
+                *c as u32
+            ),
+            first_span,
+            Some("the preview shows it correctly; the exported PDF will not".into()),
+        ));
+    }
+    let paths: Vec<&str> = project.iter().map(|(p, _)| p.as_str()).collect();
 
     let mut p = Value::obj();
     p.set("project_id", str_(project_id));

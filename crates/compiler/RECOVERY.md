@@ -1,4 +1,4 @@
-Generated from commit `dfd66984201acff4e2b9de2501345a3b91ec18d5` by `cargo test --test recovery generate_recovery_evidence -- --ignored --exact`.
+Generated from commit `c14866252e255c5949565cd14af32106fe8ac92d` by `cargo test --test recovery generate_recovery_evidence -- --ignored --exact`.
 
 # FlashTeX recovery evidence
 
@@ -721,6 +721,7 @@ Diagnostics:
 
 - `\frac requires a braced math argument` — recovery: `used an empty argument and continued`; byte range: `11..16`
 - `\frac requires a braced math argument` — recovery: `used an empty argument and continued`; byte range: `11..16`
+- `'─' (U+2500) will not survive PDF export: fraction rules are drawn with a box-drawing character as a stand-in; runtime-v1 has no rule item type yet, so they cannot be exported faithfully` — recovery: `the preview shows it correctly; the exported PDF will not`; byte range: `11..16`
 
 Positioned text items:
 

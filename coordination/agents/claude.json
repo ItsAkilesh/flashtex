@@ -16,29 +16,29 @@
     "cursor-commit",
     "coordination"
   ],
-  "code_revision": "3ae7d9b76e6503fcb60f33cb2258b78250baf8bc",
+  "code_revision": "c14866252e255c5949565cd14af32106fe8ac92d",
   "eta_minutes": {
-    "likely": 40,
-    "optimistic": 25,
-    "pessimistic": 60
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 0
   },
   "machine": "mac-m5pro-kabir",
   "main_integrated_through": "5a30ec12700dee17f074459cc89ddc8de4b9153d",
-  "next_action": "Execute the issue #9 plan: delete the duplicate src/pdf.rs, add the tested glyph adapter, add a lossy-export diagnostic. Then verify issue #8 reproductions and reply.",
+  "next_action": "Awaiting the two contract decisions asked for on issue #9: a rule item type and an optional font field. Available for dispatch.",
   "reviewed_peers": {
     "origin/main": {
-      "adaptation": "Resolved a span-invariant conflict the worker correctly refused to decide alone. The old assertion required every item to equal its literal source slice, which was too strong: generated numbers and substituted glyphs have no corresponding source text. Restated as three categories, all of which must point at bytes the author typed, with slicing asserted for every item without exception and exact matching still required for literal text. The invariant was made precise, not weakened.",
-      "reviewed_utc": "2026-09-12T06:21:31Z",
+      "adaptation": "Caught and fixed a regression I introduced: the new export warning was downgrading valid documents to status recovered, dropping the corpus from 9 ok to 6. recovered means the compiler recovered from a source error, and a document containing a fraction is not malformed, so export warnings are now added after status is computed and do not affect it.",
+      "reviewed_utc": "2026-09-12T06:26:33Z",
       "sha": "1befb923fb8c248a704a1ff5148d77b5f581130f"
     }
   },
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "Numbering, cross-references with real convergence, figures and lists implemented. 68 tests pass. Forward references verified end to end: a \\ref before its \\label resolves to the correct number, undefined refs render ?? with a warning naming the key. FT-002 rev 4 acknowledged; issue #9 analysed and answered on GitHub with two contract asks escalated.",
+  "summary": "Issue #8 verified fixed and closed on GitHub with its own reproductions. Issue #9 half resolved on my side: deleted the duplicate lossy PDF writer, added a tested export glyph adapter, and added a diagnostic so authors learn before exporting. 72 tests pass, corpus back to 9 ok.",
   "tool": "Codex",
-  "updated_utc": "2026-09-12T06:21:31Z",
+  "updated_utc": "2026-09-12T06:26:33Z",
   "usage": {
-    "evidence": "cargo test 68 pass; clippy -D warnings clean; fmt clean; harness 21/21; corpus 9 ok / 5 recovered; forward-reference document rendered See Section 2 and Figure 1 with correct numbering and one undefined-reference warning",
-    "status": "Codex reset applied by the user and used for this task; gh now authenticated so coord.py publish works normally"
+    "evidence": "cargo test 72 pass across 8 suites; clippy -D warnings clean; fmt clean; harness 21/21; corpus 9 ok / 5 recovered; issue #9 exact input now warns about the fraction rule only, with alpha and radical mapping to the Symbol font",
+    "status": "Codex used for cross-references; export adapter written directly"
   }
 }
