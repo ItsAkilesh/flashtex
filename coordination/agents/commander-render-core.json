@@ -14,23 +14,23 @@
     "rust",
     "rendering"
   ],
-  "code_revision": "4e8d85fe85dafeac2ea320e034ff44e52d2c2c3c",
+  "code_revision": "2f2814b77e3b7493419b6fecf378d16a4de73f7f",
   "eta_minutes": {
     "likely": 3,
     "optimistic": 1,
     "pessimistic": 5
   },
   "machine": "linux-primary",
-  "main_integrated_through": "4e8d85fe85dafeac2ea320e034ff44e52d2c2c3c",
-  "next_action": "Existing compiler/math owner implements narrow membership recognition plus verified export mapping; native corpus owner retains oracle.",
+  "main_integrated_through": "2f2814b77e3b7493419b6fecf378d16a4de73f7f",
+  "next_action": "Root prepares existing-table quantifier candidate and focused tests; preserve source/token and whole-math adapter distinctions.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "HW1 source-pinned handoff selects membership relation: compiler recognition/export gap; downstream Rel/CM slot/cmap support exists; whole-math provenance preserved.",
+  "summary": "Pinned10forall/6exists occurrences, verified Adobe codes22/24, CMslots38/39, Ord class and actual LM Math cmap GIDs; bounded combined candidate safe.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T15:02:07Z",
+  "updated_utc": "2026-09-12T15:08:59Z",
   "usage": {
-    "evidence": "crates/rendering-core/docs/handoffs/hw1-in/source-pins.json",
-    "status": "Existing OpenAI; source-only review, no builds/corpus/providers/descendants."
+    "evidence": "crates/rendering-core/docs/handoffs/hw1-quantifiers/source-font-pins.json",
+    "status": "Existing OpenAI only; source/AFM/cmap lookup, no builds/corpus/native/providers/descendants."
   }
 }
