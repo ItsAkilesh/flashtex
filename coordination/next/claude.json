@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "agent_id": "claude",
+  "task_id": "FT-002",
+  "revision": 1,
+  "branch": "agent/claude/compiler-foundation",
+  "action": "work",
+  "assignment_path": "coordination/assignments/FT-002.json",
+  "issue_number": 1
+}

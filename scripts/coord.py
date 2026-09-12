@@ -185,7 +185,7 @@ def dispatch(root, args):
         'agent_id': agent, 'branch': args.branch, 'state': 'assigned',
         'objective': args.objective, 'acceptance': args.acceptance,
         'owned_paths': paths, 'dependencies': args.depends, 'timebox_minutes': args.minutes,
-        'allocation_id': args.allocation, 'deadline_utc': DEADLINE,
+        'allocation_id': args.allocation, 'deadline_utc': None if (root / 'coordination/control.json').exists() else DEADLINE,
         'input_main_sha': git(root, 'rev-parse', 'origin/main'), 'updated_utc': stamp(),
     }
     write_json(path, obj)
@@ -322,7 +322,7 @@ def checkpoint(root, emit=True):
 def watch(root, args):
     if args.interval < 10:
         raise ValueError('watch interval must be at least 10 seconds')
-    while datetime.now(timezone.utc) < parse_time(DEADLINE):
+    while not getattr(args, 'until', None) or datetime.now(timezone.utc) < parse_time(args.until):
         try:
             obj = checkpoint(root, emit=False)
             print(json.dumps({'checked_utc': obj['checked_utc'], 'changed_refs': obj['changed_refs'],
@@ -330,10 +330,32 @@ def watch(root, args):
                               'warnings': obj['warnings']}), flush=True)
         except RuntimeError as exc:
             print(str(exc), file=sys.stderr, flush=True)
-        remaining = (parse_time(DEADLINE)-datetime.now(timezone.utc)).total_seconds()
+        remaining = (parse_time(args.until)-datetime.now(timezone.utc)).total_seconds() if getattr(args, 'until', None) else args.interval
         if remaining > 0:
             time.sleep(min(args.interval, remaining))
     print('Deadline reached; watcher stopped. No model, merge, commit, or push was performed.')
+
+
+def current_git_user_trailer(root):
+    """Use the authenticated GitHub identity, not the repository's Cursor bot label."""
+    data = json.loads(run(['gh', 'api', 'user', '--jq', '{login: .login, id: .id}'], cwd=root).stdout)
+    login, user_id = data.get('login'), data.get('id')
+    if not isinstance(login, str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9-]{0,38}', login):
+        raise ValueError('cannot verify current GitHub user for coauthorship')
+    if not isinstance(user_id, int) or isinstance(user_id, bool) or user_id <= 0:
+        raise ValueError('cannot verify GitHub user ID for noreply coauthor address')
+    return f'Co-authored-by: {login} <{user_id}+{login}@users.noreply.github.com>'
+
+
+def commit_identity(root, coauthor):
+    """Honor the published Mac-specific primary-author exception; Cursor executes."""
+    match = BRANCH.fullmatch(branch(root))
+    record = root / 'coordination' / 'agents' / (match.group(1) + '.json')
+    if record.exists():
+        obj = json.loads(record.read_text())
+        if obj.get('agent_id') == match.group(1) and obj.get('machine') == 'mac-m1max-a':
+            return coauthor.removeprefix('Co-authored-by: ')
+    return 'Cursor <cursor@flashtex.invalid>'
 
 
 def publish(root, args):
@@ -347,13 +369,16 @@ def publish(root, args):
     git(root, 'diff', '--cached', '--check')
     before = git(root, 'rev-parse', 'HEAD')
     tree = git(root, 'write-tree')
+    coauthor = current_git_user_trailer(root)
+    expected_identity = commit_identity(root, coauthor)
     prompt = ('Read AGENTS.md. The user requires you, Cursor CLI, to execute this commit. '
               'This is one authorized bounded commit session under allocation ' + args.allocation + '. '
               'No nested model/Claude calls, purchases, branch switching, push, history rewriting, '
               'or file modifications. Review the already staged diff; commit it exactly as staged '
-              'with author AND committer Cursor <cursor@flashtex.invalid>. Execute git commit yourself. '
+              'with author AND committer ' + expected_identity + '. Execute git commit yourself. '
               'Use this subject: ' + args.message + '\n'
               'Include trailers Implementation-Agent: ' + args.implementation + '\nCommit-Executor: Cursor CLI\n'
+              + coauthor + '\n'
               'Verify staged whitespace. Return the SHA. Stop if the staged changes are unsuitable.')
     result = run(['cursor-agent', '--print', '--trust', '--auto-review', '--output-format', 'text', prompt],
                  cwd=root, timeout=args.timeout, check=False)
@@ -367,11 +392,13 @@ def publish(root, args):
     if git(root, 'rev-parse', after + '^{tree}') != tree or git(root, 'status', '--porcelain'):
         raise RuntimeError('Cursor changed the staged tree or left work dirty; not pushing')
     ident = git(root, 'show', '-s', '--format=%an <%ae>%n%cn <%ce>', after).splitlines()
-    if ident != ['Cursor <cursor@flashtex.invalid>'] * 2:
+    if ident != [expected_identity] * 2:
         raise RuntimeError('unexpected author/committer; not pushing')
     message = git(root, 'show', '-s', '--format=%B', after)
     if not re.search(r'^Commit-Executor: Cursor CLI$', message, re.M) or not re.search(r'^Implementation-Agent: .+$', message, re.M):
         raise RuntimeError('missing truthful provenance trailers; not pushing')
+    if coauthor not in message.splitlines():
+        raise RuntimeError('missing authenticated GitHub user coauthor; not pushing')
     git(root, 'push', '--set-upstream', 'origin', f'HEAD:refs/heads/{name}')
     print(json.dumps({'commit': after, 'branch': name, 'published': True, 'cursor_output': result.stdout[-3000:]}))
 
@@ -394,7 +421,7 @@ def parser():
     r = sub.add_parser('ack'); r.add_argument('--id', required=True); r.add_argument('--task', required=True)
     r.add_argument('--revision', type=int, required=True); r.add_argument('--adaptation', required=True)
     sub.add_parser('checkpoint')
-    r = sub.add_parser('watch'); r.add_argument('--interval', type=int, default=60)
+    r = sub.add_parser('watch'); r.add_argument('--interval', type=int, default=60); r.add_argument('--until')
     r = sub.add_parser('publish'); r.add_argument('-m', '--message', required=True)
     r.add_argument('--implementation', required=True); r.add_argument('--allocation', required=True)
     r.add_argument('--timeout', type=int, default=180)

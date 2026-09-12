@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "agent_id": "claude",
+  "task_id": "FT-002",
+  "next_index": 0,
+  "steps": [
+    {
+      "name": "Original mathematical layout and source-mapped output",
+      "objective": "Extend the original Rust compiler with displayed and inline math, fractions, superscripts/subscripts, multiline layout, and source mapping. Preserve runtime-v1 and document unsupported TeX honestly.",
+      "acceptance": [
+        "cargo test passes with Unicode source offsets and math fixtures",
+        "Positioned output reflects actual source edits; no existing TeX engine is invoked",
+        "Publish supported constructs and reproducible rendering evidence"
+      ],
+      "owned_paths": [
+        "crates/compiler"
+      ],
+      "timebox_minutes": 45,
+      "allocation_id": "openai-kabir-plus-ft002-stage2"
+    },
+    {
+      "name": "Incremental reuse and recovery",
+      "objective": "Add dependency-aware invalidation and cached reusable compiler work to the original Rust implementation. Preserve state semantics; recover malformed input with marked diagnostics.",
+      "acceptance": [
+        "Compare incremental results with clean builds after edits and macro changes",
+        "Measure cold/warm/edit latency on documented fixtures; report actual sub-200ms result or gap",
+        "Malformed-input examples retain partial output and explicit source diagnostics"
+      ],
+      "owned_paths": [
+        "crates/compiler"
+      ],
+      "timebox_minutes": 45,
+      "allocation_id": "openai-kabir-plus-ft002-stage3"
+    }
+  ]
+}

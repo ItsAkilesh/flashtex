@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "agent_id": "mac-claude-a",
+  "task_id": "FT-003",
+  "revision": 1,
+  "branch": "agent/mac-claude-a/mac-shell",
+  "action": "work",
+  "assignment_path": "coordination/assignments/FT-003.json",
+  "issue_number": 2
+}

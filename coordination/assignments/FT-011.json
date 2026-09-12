@@ -1,0 +1,22 @@
+{
+  "acceptance": [
+    "Cover macros/scoping, Unicode, math, includes, malformed input and source mapping with small explainable cases",
+    "Manifest validates and each expected behavior cites fixture source; no claim full compatibility from corpus alone"
+  ],
+  "agent_id": "commander-corpus",
+  "allocation_id": "openai-commander-corpus",
+  "branch": "agent/commander-corpus/compatibility-fixtures",
+  "deadline_utc": null,
+  "dependencies": [],
+  "input_main_sha": "d6858792737c0980cccaec5db835075e94a1ebc9",
+  "objective": "Hosted Commander subagent builds a concrete compatibility and recovery fixture corpus for the original Rust compiler, with documented expected behavior and supported/unsupported categorization. Coordinate runtime-v1 and preserve compiler owner paths.",
+  "owned_paths": [
+    "tests/tex-corpus"
+  ],
+  "revision": 1,
+  "schema_version": 1,
+  "state": "assigned",
+  "task_id": "FT-011",
+  "timebox_minutes": 30,
+  "updated_utc": "2026-09-12T04:18:56Z"
+}

@@ -1,0 +1,27 @@
+{
+  "acceptance": [
+    "Provide runnable Mac validation commands covering source editing, Unicode navigation, stale preview safety and dark-preview versus export expectations",
+    "Record actual Xcode/build and UI automation capabilities; distinguish tested behavior from blocked Screen Recording/device permissions",
+    "Do not edit the app owner code; publish reproducible failures for that owner"
+  ],
+  "agent_id": "mac-validation",
+  "allocation_id": "claude-mac20x-validation",
+  "branch": "agent/mac-validation/native-verification",
+  "deadline_utc": null,
+  "dependencies": [],
+  "implementation_tool": "Claude Code",
+  "input_main_sha": "d6858792737c0980cccaec5db835075e94a1ebc9",
+  "machine": "mac-m1max-a",
+  "max_descendants": 0,
+  "objective": "Claude Max parent mac-claude-a delegates a separate subagent to build native verification automation and acceptance evidence, while parent implements editor/transport. Use own worktree and tools/native-validation only; report OS permissions needed now without waiting indefinitely.",
+  "owned_paths": [
+    "tools/native-validation"
+  ],
+  "parent_agent": "mac-claude-a",
+  "revision": 1,
+  "schema_version": 1,
+  "state": "assigned",
+  "task_id": "FT-010",
+  "timebox_minutes": 45,
+  "updated_utc": "2026-09-12T04:18:56Z"
+}

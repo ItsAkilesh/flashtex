@@ -1,0 +1,27 @@
+{
+  "acceptance": [
+    "cargo test passes and generated PDF opens correctly on the Mac",
+    "Test page dimensions, text placement, multiline output and Unicode/font behavior; unsupported cases must be explicit",
+    "Export remains white by default independently of dark preview; publish sample verification and integration instructions"
+  ],
+  "agent_id": "mac-pdf",
+  "allocation_id": "claude-mac20x-pdf",
+  "branch": "agent/mac-pdf/pdf-output",
+  "deadline_utc": null,
+  "dependencies": [],
+  "implementation_tool": "Claude Code",
+  "input_main_sha": "d6858792737c0980cccaec5db835075e94a1ebc9",
+  "machine": "mac-m1max-a",
+  "max_descendants": 0,
+  "objective": "Claude Max parent mac-claude-a delegates an independent subagent on the same Mac to implement original Rust PDF output from runtime-v1 positioned pages. Use standard PDF/font libraries if helpful, but never an existing TeX compiler. Coordinate output and font limitations with compiler owner.",
+  "owned_paths": [
+    "crates/pdf"
+  ],
+  "parent_agent": "mac-claude-a",
+  "revision": 1,
+  "schema_version": 1,
+  "state": "assigned",
+  "task_id": "FT-009",
+  "timebox_minutes": 45,
+  "updated_utc": "2026-09-12T04:18:55Z"
+}
