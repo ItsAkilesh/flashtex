@@ -26,8 +26,10 @@ use output_buffer::OutputBuffer;
 const MAX_OUTPUT_BYTES: usize = 16 * 1024 * 1024;
 
 const MAX_FRAME: usize = 1024 * 1024;
-// Leave four MiB below the helper frame bound for its wrapping metadata.
-const MAX_COMPILER_FRAME: usize = 12 * 1024 * 1024;
+// Reserve one MiB for typical wrapping metadata; this is not a proof that every
+// compiler frame fits after reserialization. OutputBuffer checks the complete JSONL.
+const COMPILER_ENVELOPE_RESERVE: usize = 1024 * 1024;
+const MAX_COMPILER_FRAME: usize = MAX_OUTPUT_BYTES - COMPILER_ENVELOPE_RESERVE;
 fn compiler_limits(config: &Value) -> Result<Limits, String> {
     let mut limits = Limits::default();
     if let Some(value) = config.get("compiler_max_frame_bytes") {
@@ -35,7 +37,7 @@ fn compiler_limits(config: &Value) -> Result<Limits, String> {
             .as_u64()
             .and_then(|n| usize::try_from(n).ok())
             .filter(|n| (128..=MAX_COMPILER_FRAME).contains(n))
-            .ok_or("compiler_max_frame_bytes must be 128..12582912")?;
+            .ok_or("compiler_max_frame_bytes must be 128..15728640")?;
     }
     Ok(limits)
 }
@@ -76,6 +78,7 @@ fn run(config: Value) -> Result<(), String> {
         return Err("invalid session identity".into());
     }
     let limits = compiler_limits(&config)?;
+    let diagnostic_timings = config["diagnostic_timings"].as_bool().unwrap_or(false);
     let project = string(&config, "project_id")?.to_owned();
     let entry = string(&config, "entry_path")?.to_owned();
     let (mut controller, file_project) = if config.get("project_root").is_some() {
@@ -210,6 +213,7 @@ fn run(config: Value) -> Result<(), String> {
         }
         match input_rx.recv_timeout(Duration::from_millis(2)) {
             Ok(request) => {
+                let request_started = std::time::Instant::now();
                 let id = request["id"].clone();
                 let response = if request["protocol_version"] != 1
                     || request["session_id"] != session
@@ -270,12 +274,29 @@ fn run(config: Value) -> Result<(), String> {
                     Ok(payload) => wire::envelope(&session, id, "result", payload),
                     Err(reason) => failure(&session, id, reason),
                 };
+                let handling_ms = request_started.elapsed().as_secs_f64() * 1000.0;
+                let serialization_started = std::time::Instant::now();
                 emit(&output_tx, &stopped, output);
+                if diagnostic_timings {
+                    eprintln!(
+                        "{}",
+                        json!({"phase":"request","handling_ms":handling_ms,
+                        "response_serialization_ms":serialization_started.elapsed().as_secs_f64()*1000.0})
+                    );
+                }
             }
             Err(mpsc::RecvTimeoutError::Timeout) => {}
             Err(mpsc::RecvTimeoutError::Disconnected) => break,
         }
+        let poll_started = std::time::Instant::now();
         let updates = controller.poll();
+        if diagnostic_timings && !updates.is_empty() {
+            eprintln!(
+                "{}",
+                json!({"phase":"compiler_poll","events":updates.len(),
+                "duration_ms":poll_started.elapsed().as_secs_f64()*1000.0})
+            );
+        }
         let historical = controller.take_completed_snapshot().and_then(|snapshot| {
             bindings
                 .take(bindings.epoch(), snapshot.compile_revision())
@@ -690,6 +711,38 @@ mod configuration_tests {
             .as_str()
             .unwrap()
             .contains("durable"));
+    }
+
+    #[test]
+    fn compiler_result_and_metadata_share_complete_output_budget_without_partial_frame() {
+        let (tx, rx) = output_delivery::channel(2);
+        let stopped = AtomicBool::new(false);
+        // A result admitted below the compiler ceiling can still have too much
+        // helper metadata. No fixed reserve can guarantee arbitrary path lengths.
+        let mut payload = json!({"kind":"preview","result":"r".repeat(MAX_COMPILER_FRAME-128)});
+        payload["source_versions"] = json!({"long-path":"m".repeat(COMPILER_ENVELOPE_RESERVE+256)});
+        emit(
+            &tx,
+            &stopped,
+            wire::envelope("s", Value::Null, "update", payload),
+        );
+        emit(
+            &tx,
+            &stopped,
+            wire::envelope("s", json!("saved"), "result", json!({"durable":true})),
+        );
+        let rejected = rx.next(Duration::ZERO).unwrap();
+        assert!(rejected.bytes.capacity() < 4096);
+        let error: Value = serde_json::from_slice(&rejected.bytes).unwrap();
+        assert_eq!(error["type"], "error");
+        assert_eq!(error["session_id"], "s");
+        rx.written(&rejected);
+        let ack = rx.next(Duration::ZERO).unwrap();
+        assert_eq!(
+            serde_json::from_slice::<Value>(&ack.bytes).unwrap()["id"],
+            "saved"
+        );
+        assert!(!stopped.load(Ordering::SeqCst));
     }
 
     #[test]

@@ -16,3 +16,14 @@ Compaction: save exactcheckpoint first, useactualtelemetry/nativecontrols; no ex
 
 
 Latest continuation: negotiated stdio path implemented after b04237d; exact code SHA in next commit. Main.rs integrates output_delivery required FIFO plus single optional frame; completed_protocol token bindings capture generation after synchronous request handling. Protocol example and limits in completed-snapshot-proposal.md. Full52 tests with explicit original compiler and strict lint pass. No outstanding tool jobs. Next publish native handoff through Commander and extend helper_burst.py for opt-in historical counts, original-token checking and lag separate from current latency. Existing strictdefault remains off.
+
+
+FT048 revision4 now ACKed from main0dc50da, extends ownership to crates/edit-ledger.
+Current candidate: Arc immutable history entries, serde rc, nonserialized OnceLock
+content-validation cache. No schema or retention change. Ledger66 tests/lint pass;
+benchmark raw evidence in edit-ledger/benchmarks/growing-history. Helper integration
+first52/53pass + unchanged isolated307page testlaterpass9.56s aftertwo10stimeouts;
+actualdebughelper directprobe1.42s. Preserve this qualification. No active tooljobs.
+Next improve serialization only with measured semantics-preserving design; receipts,
+snapshot imports, backup/undo/redo and I/O uncertainty remain hard gates. Root remains
+productengineer; runtime_validator soleCommander. Drainedworkersstaystopped.

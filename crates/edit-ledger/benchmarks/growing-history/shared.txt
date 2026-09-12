@@ -1,0 +1,52 @@
+
+running 1 test
+GROWING {"edit":1,"edit_us":33825,"phases_ns":{"clone":[213353],"persist":[3138650],"serialize":[10102168],"validate":[2930413]},"store_bytes":1565937}
+GROWING {"edit":2,"edit_us":43568,"phases_ns":{"clone":[213375],"persist":[4570909],"serialize":[14990792],"validate":[2564535]},"store_bytes":2609743}
+GROWING {"edit":3,"edit_us":42685,"phases_ns":{"clone":[199040],"persist":[6379579],"serialize":[18096235],"validate":[2590702]},"store_bytes":3653549}
+GROWING {"edit":4,"edit_us":58827,"phases_ns":{"clone":[251216],"persist":[9069237],"serialize":[25547068],"validate":[2544335]},"store_bytes":4697355}
+GROWING {"edit":5,"edit_us":56091,"phases_ns":{"clone":[216609],"persist":[12721941],"serialize":[31068161],"validate":[2724408]},"store_bytes":5741161}
+GROWING {"edit":6,"edit_us":70446,"phases_ns":{"clone":[187268],"persist":[12544816],"serialize":[33322134],"validate":[2998696]},"store_bytes":6784967}
+GROWING {"edit":7,"edit_us":74382,"phases_ns":{"clone":[193905],"persist":[13640671],"serialize":[38635936],"validate":[2533534]},"store_bytes":7828773}
+GROWING {"edit":8,"edit_us":101921,"phases_ns":{"clone":[197720],"persist":[15246746],"serialize":[48752613],"validate":[2531671]},"store_bytes":8872579}
+GROWING {"edit":9,"edit_us":86341,"phases_ns":{"clone":[188150],"persist":[20457197],"serialize":[49612934],"validate":[2553148]},"store_bytes":9916386}
+GROWING {"edit":10,"edit_us":92427,"phases_ns":{"clone":[197383],"persist":[18533404],"serialize":[51833085],"validate":[3486226]},"store_bytes":10960192}
+GROWING {"edit":11,"edit_us":96575,"phases_ns":{"clone":[187594],"persist":[22643282],"serialize":[60712239],"validate":[2709375]},"store_bytes":12003998}
+GROWING {"edit":12,"edit_us":115218,"phases_ns":{"clone":[197006],"persist":[26152953],"serialize":[70387640],"validate":[2634122]},"store_bytes":13047804}
+GROWING {"edit":13,"edit_us":116404,"phases_ns":{"clone":[172727],"persist":[21364907],"serialize":[62919024],"validate":[2159377]},"store_bytes":14091610}
+GROWING {"edit":14,"edit_us":101024,"phases_ns":{"clone":[209278],"persist":[24462347],"serialize":[62900810],"validate":[2365485]},"store_bytes":15135416}
+GROWING {"edit":15,"edit_us":107364,"phases_ns":{"clone":[172681],"persist":[29535225],"serialize":[70810725],"validate":[2334893]},"store_bytes":16179222}
+GROWING {"edit":16,"edit_us":177998,"phases_ns":{"clone":[241238],"persist":[31849185],"serialize":[128341489],"validate":[2542779]},"store_bytes":17223028}
+GROWING {"edit":17,"edit_us":155898,"phases_ns":{"clone":[190582],"persist":[30255982],"serialize":[80352806],"validate":[2160638]},"store_bytes":18266834}
+GROWING {"edit":18,"edit_us":134329,"phases_ns":{"clone":[229052],"persist":[30490571],"serialize":[92653217],"validate":[2857319]},"store_bytes":19310640}
+GROWING {"edit":19,"edit_us":138002,"phases_ns":{"clone":[210513],"persist":[35466865],"serialize":[87779714],"validate":[2919920]},"store_bytes":20354446}
+GROWING {"edit":20,"edit_us":141110,"phases_ns":{"clone":[192866],"persist":[32031846],"serialize":[90661051],"validate":[2194692]},"store_bytes":21398252}
+GROWING_REOPEN_EXACT true
+test cost_benchmark::growing_source_history_cost ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 58 filtered out; finished in 3.92s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
