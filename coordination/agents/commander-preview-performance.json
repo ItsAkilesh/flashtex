@@ -3,27 +3,27 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-048": {
-      "acknowledged_utc": "2026-09-12T11:26:20Z",
-      "adaptation": "Consuming FT0492f2a78e7/5d12255f unchanged; add bounded profile diagnostics and same-input attribution under helper ownership only.",
-      "main_sha": "7af10301cee94abdb263f868dfa5bf99a4b181c1",
-      "revision": 7
+      "acknowledged_utc": "2026-09-12T11:37:30Z",
+      "adaptation": "Read published FT048r8; buffered serialization9da22ae6 delivered. Prepare private raw-body serializer acceptance while runtime owner retains all parser/source-binding changes; required output unchanged.",
+      "main_sha": "36c062924dd56ad15a0ddc5772cb262e84113541",
+      "revision": 8
     }
   },
   "branch": "agent/commander-preview-performance/preview-performance",
   "capabilities": [
     "Preview helper serialization and latency"
   ],
-  "code_revision": "35dc8648a1bbffd804252e961160fc760fa0dca3",
+  "code_revision": "9da22ae6e13593beab3560024c74a1ac6cd6a9b0",
   "eta_minutes": null,
   "machine": "linux-primary",
-  "main_integrated_through": "7af10301cee94abdb263f868dfa5bf99a4b181c1",
-  "next_action": "Publish tested batching then consume FT048r8 reviewed runtime raw-body proposal; preserve full syntax/source validation and explicit numeric/frame policy.",
+  "main_integrated_through": "9da22ae6e13593beab3560024c74a1ac6cd6a9b0",
+  "next_action": "Consume reviewed runtime raw candidate API; implement separate explicit opt-in, preserve required route and source guards.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "Buffered optional serializer preserves exact frames and halves encoding cost in ten alternating actual-candidate pairs.",
+  "summary": "FT048r8 serializer prepared for typed raw wrapper; production remains Value. Raw9KB exact spelling/frame limit/ACK boundary passes.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T11:36:38Z",
+  "updated_utc": "2026-09-12T11:39:02Z",
   "usage": {
     "status": "unknown"
   }
