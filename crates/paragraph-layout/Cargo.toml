@@ -11,3 +11,9 @@ path = "src/lib.rs"
 
 [dependencies]
 flashtex-document-style = { path = "../document-style" }
+
+[dev-dependencies]
+# Test-only: reads the Latin Modern OpenType faces for the LM route
+# comparison (tests/oracle_lm_cm_default.rs). default-features = false keeps
+# this a leaf dependency once the engine gains its paragraph adapter feature.
+flashtex-font-engine = { path = "../font-engine", default-features = false }

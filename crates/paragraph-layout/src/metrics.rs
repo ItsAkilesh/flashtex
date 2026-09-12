@@ -91,6 +91,19 @@ pub trait FontMetricsSource {
     fn ascender(&self) -> f64;
     /// Typographic descender (negative, below the baseline).
     fn descender(&self) -> f64;
+    /// Height of `ch`'s box above the baseline (TeX's per-character height,
+    /// the TFM `charht`). A run's height is the maximum over its glyphs, which
+    /// is what TeX's `\baselineskip`/`\lineskiplimit` test and `\topskip` see.
+    /// Default: the font ascender, i.e. every line as tall as the font; an
+    /// adapter with real per-glyph boxes should override.
+    fn glyph_height(&self, _ch: char) -> f64 {
+        self.ascender()
+    }
+    /// Depth of `ch`'s box below the baseline, positive (TFM `chardp`).
+    /// Default: the negated font descender.
+    fn glyph_depth(&self, _ch: char) -> f64 {
+        -self.descender()
+    }
     /// Extra leading the font recommends between lines (0 for AFM fonts).
     fn line_gap(&self) -> f64;
     /// Natural interword space (`\fontdimen2`).

@@ -43,9 +43,10 @@ pub struct GlyphRun {
     pub glyphs: Vec<Glyph>,
     /// Sum of `advance + kern` over the glyphs.
     pub width: f64,
-    /// Extent above the baseline (font ascender scaled to `size`).
+    /// Extent above the baseline: the tallest glyph box (`glyph_height`), or
+    /// the font ascender when the metrics source has no per-glyph boxes.
     pub height: f64,
-    /// Extent below the baseline, positive (font descender scaled to `size`).
+    /// Extent below the baseline, positive: the deepest glyph box.
     pub depth: f64,
     /// Source byte range covered by the whole run.
     pub source: Range<usize>,
@@ -462,6 +463,9 @@ pub fn shape_run(
     }
     let mut glyphs = Vec::with_capacity(chars.len());
     let mut width = 0.0;
+    // TeX box rule: a run is as tall/deep as its tallest/deepest glyph.
+    let mut height: f64 = 0.0;
+    let mut depth: f64 = 0.0;
     for (idx, (ch, cluster)) in chars.iter().enumerate() {
         let advance = font.advance(*ch) * scale;
         let kern = match chars.get(idx + 1) {
@@ -469,6 +473,8 @@ pub fn shape_run(
             None => 0.0,
         };
         width += advance + kern;
+        height = height.max(font.glyph_height(*ch) * scale);
+        depth = depth.max(font.glyph_depth(*ch) * scale);
         glyphs.push(Glyph {
             gid: font.glyph_id(*ch),
             advance,
@@ -481,8 +487,8 @@ pub fn shape_run(
         size,
         glyphs,
         width,
-        height: font.ascender() * scale,
-        depth: -font.descender() * scale,
+        height,
+        depth,
         source: source_start..source_start + text.len(),
     }
 }
