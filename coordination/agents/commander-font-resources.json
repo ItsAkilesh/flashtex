@@ -13,21 +13,21 @@
   "capabilities": [
     "rust-font-resources"
   ],
-  "code_revision": "767ea70a64f15b812ead9a3964d28c2450826f3b",
+  "code_revision": "45fbb1d6d70a8c414b6c70b3fd8e03fe49b7d365",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
     "pessimistic": 0
   },
   "machine": "linux-primary",
-  "main_integrated_through": "63a93717865920014d15fa113102698572494976",
-  "next_action": "Renderer handoff sent; current adapter+licensed equivalence/cache-identity followups complete. Ready next assigned product stage.",
+  "main_integrated_through": "4b4647e399349c46d5cd0f146f5c0997cd111ac2",
+  "next_action": "Ready next stage; extend registry CFF resources through existing verified engine/cache if assigned. Renderer has generation/cache identity API.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "FT024r7 published767ea70 original font-engine adapter; exactpeer f418238 merged unchanged.89resource tests/all-targetclippy,8peer library tests,2pinned licensed font direct-equivalence replays pass. Raw/full-face engine identities, originalGIDs/exactmetrics/UTF8clusters and actual peer-source cache identity retained. STIXdefault liga unsupported lookup14type6; peer no-default all-target tests have optional-feature gating failure, library works.",
+  "summary": "Published45fbb1d bounded explicit project-font registry; unchanged rooted project-files d92db378 imported68ca6d8.91resource tests/all-targetclippy and8peer rooted tests pass. Family/weight/style/fullfont/license binding; typedmissing/ambiguous/mismatch, symlink/path and file/entry/totalbyte gates, immutable snapshots and canonical generation/native metadata. Initial staticTrueType profile; CFF registry explicitly unsupported.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T07:26:17Z",
+  "updated_utc": "2026-09-12T07:31:33Z",
   "usage": {
     "evidence": "crates/font-resources/README.md; test suite; installed font SHA pinned.",
     "status": "Hosted allocation; no external provider calls; account remainder unknown."
