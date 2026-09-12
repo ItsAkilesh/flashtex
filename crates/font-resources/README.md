@@ -678,3 +678,27 @@ fixtures additionally verify negative pixel deltas, corrected-height equality,
 outside-range zero, variation refusal and nonmonotone corrected-height refusal.
 This is metric correction only; it neither grid-fits outlines nor proves raster
 or TeX script-layout parity.
+
+`math_cache::MathQueryCache` borrows one immutable `BoundMathFont`. Its namespace
+is the complete registry/style/declaration/font/engine/MATH identity, checked on
+every call; query keys include record/GID/corner, rational height/target, ppem,
+strategy and fitting limits. Replies retain that identity and share immutable
+`Arc<Result<Value,QueryError>>`, including typed negative outcomes. Stale identity
+is refused before lookup. The caller must supply the new identity after a registry
+reload; this cache does not discover external file changes.
+
+Variants and kerns reuse one bounded parsed table per cache when budget allows.
+LRU query retention has separate entry/byte caps; oversized values bypass storage.
+Defaults are128 entries,8MiB query charge and8MiB parsed charge; hard limits4096
+entries/64MiB/16MiB. Conservative charges include preallocated queue storage,
+result payloads and parsed vector/tree storage. Borrowed font bytes and externally
+retained result Arcs are outside the cache's ownership/budget. These caches are
+process-local and cannot outlive their borrowed font or cross decoder builds.
+
+Pinned STIX GID3/TopRight height0 ppem12 replay observed100 identical queries
+reduce from100 kern parses to1 parse/99 hits, with exactly equal outputs. One Linux
+debug run measured56.27ms uncached versus0.618ms cached; host-load variation was
+substantial, so tests assert no timing threshold or native performance claim.
+`fixtures/math-cache-replay.json` preserves measured source/hash/context evidence.
+Tests also cover device-context changes, exact fitted-shape equality, stale
+identity, eviction, disabled budgets, and cached VariationIndex refusal.

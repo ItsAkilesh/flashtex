@@ -322,6 +322,123 @@ fn pinned_math_registry_equivalence() {
     }
     println!("STIX glyph italic/accent device records {glyph_device_records}");
     assert_eq!(glyph_device_records, 4);
+    let benchmark_start = std::time::Instant::now();
+    let (&(benchmark_gid, benchmark_corner), _) = kerns.data().records().first_key_value().unwrap();
+    for _ in 0..100 {
+        std::hint::black_box(
+            bound
+                .kern_device(
+                    benchmark_gid,
+                    benchmark_corner,
+                    Rational::new(0, 1).unwrap(),
+                    KernDeviceContext {
+                        horizontal: context,
+                        vertical: context,
+                    },
+                )
+                .unwrap(),
+        );
+    }
+    println!(
+        "STIX uncached100 kern-device queries {:?}",
+        benchmark_start.elapsed()
+    );
+    use flashtex_font_resources::math_cache::{
+        Limits, MathQueryCache, Query, Value as CachedValue,
+    };
+    let mut cache = MathQueryCache::new(&bound, Limits::default()).unwrap();
+    let query = Query::Kern {
+        glyph_id: benchmark_gid,
+        corner: benchmark_corner,
+        height: Rational::new(0, 1).unwrap(),
+        context: KernDeviceContext {
+            horizontal: context,
+            vertical: context,
+        },
+    };
+    let expected = bound
+        .kern_device(
+            benchmark_gid,
+            benchmark_corner,
+            Rational::new(0, 1).unwrap(),
+            KernDeviceContext {
+                horizontal: context,
+                vertical: context,
+            },
+        )
+        .unwrap();
+    println!("STIX cache benchmark GID {benchmark_gid} corner {benchmark_corner:?} height0 ppem12");
+    let cached_start = std::time::Instant::now();
+    for _ in 0..100 {
+        let result = cache.query(bound.identity(), query.clone()).unwrap();
+        let Ok(CachedValue::Kern(value)) = result.outcome.as_ref() else {
+            panic!("kern outcome")
+        };
+        assert_eq!(value, expected.correction());
+    }
+    println!(
+        "STIX cached100 kern-device queries {:?} stats {:?}",
+        cached_start.elapsed(),
+        cache.stats()
+    );
+    assert_eq!(cache.stats().kern_parses, 1);
+    assert_eq!(cache.stats().hits, 99);
+    // Different height requires computation but reuses the immutable parsed table.
+    let distinct = Query::Kern {
+        glyph_id: benchmark_gid,
+        corner: benchmark_corner,
+        height: Rational::new(1, 2).unwrap(),
+        context: KernDeviceContext {
+            horizontal: context,
+            vertical: context,
+        },
+    };
+    cache.query(bound.identity(), distinct).unwrap();
+    assert_eq!(cache.stats().kern_parses, 1);
+    for ppem in [12, 13] {
+        let q = Query::Glyph {
+            glyph_id: 3326,
+            kind: GlyphDeviceKind::TopAccentAttachment,
+            context: DeviceContext::new(ppem).unwrap(),
+        };
+        let cached = cache.query(bound.identity(), q).unwrap();
+        let Ok(CachedValue::Glyph {
+            design_units,
+            correction,
+        }) = cached.outcome.as_ref()
+        else {
+            panic!()
+        };
+        let direct = bound
+            .glyph_device(
+                3326,
+                GlyphDeviceKind::TopAccentAttachment,
+                DeviceContext::new(ppem).unwrap(),
+            )
+            .unwrap();
+        assert_eq!(*design_units, direct.design_units());
+        assert_eq!(correction.as_ref(), direct.correction());
+    }
+    let fit_query = Query::Fit {
+        glyph_id: 1064,
+        direction: Direction::Vertical,
+        target: Rational::new(5000, 1).unwrap(),
+        strategy: FitStrategy::EqualExtendersProportionalConnectorFlexibility,
+        limits: FitLimits::default(),
+    };
+    let direct = variants
+        .fit(
+            Direction::Vertical,
+            1064,
+            Rational::new(5000, 1).unwrap(),
+            FitStrategy::EqualExtendersProportionalConnectorFlexibility,
+            FitLimits::default(),
+        )
+        .unwrap();
+    let cached = cache.query(bound.identity(), fit_query.clone()).unwrap();
+    assert!(matches!(cached.outcome.as_ref(),Ok(CachedValue::Fit(v)) if v==direct.fit()));
+    cache.query(bound.identity(), fit_query).unwrap();
+    assert_eq!(cache.stats().variant_parses, 1);
     // Held registry resources remain immutable when the project file changes.
     std::fs::write(dir.path().join(&resource.path), b"changed").unwrap();
     assert_eq!(bound.constants(), &face.math().unwrap().constants);

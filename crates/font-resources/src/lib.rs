@@ -569,3 +569,5 @@ pub mod math_fit;
 pub mod math_kern;
 
 pub mod math_device;
+
+pub mod math_cache;
