@@ -3,7 +3,10 @@ use serde_json::{json, Value};
 use std::{
     io::{BufRead, BufReader, Write},
     process::{Child, ChildStdin, Command, Stdio},
-    sync::mpsc::{self, Receiver},
+    sync::{
+        mpsc::{self, Receiver},
+        Arc, Mutex,
+    },
     thread,
     time::Duration,
 };
@@ -11,6 +14,15 @@ struct Client {
     child: Child,
     input: Option<ChildStdin>,
     output: Receiver<Value>,
+    reader_progress: Arc<Mutex<ReaderProgress>>,
+    reader_thread: Option<thread::JoinHandle<()>>,
+}
+#[derive(Debug, Default)]
+struct ReaderProgress {
+    phase: &'static str,
+    frames: usize,
+    last_frame_bytes: usize,
+    last_decode_ms: f64,
 }
 #[test]
 fn metadata_undo_redo_unread_ack_retry_and_later_edit() {
@@ -312,7 +324,26 @@ fn invalid_display_transport_is_rejected_before_source_import() {
         assert!(!private.exists());
     }
 }
+fn bounded_diagnostics(path: &std::path::Path) -> String {
+    use std::io::{Read, Seek, SeekFrom};
+    let Ok(mut file) = std::fs::File::open(path) else {
+        return "unavailable".into();
+    };
+    let length = file.metadata().map(|m| m.len()).unwrap_or(0);
+    let _ = file.seek(SeekFrom::Start(length.saturating_sub(8192)));
+    let mut bytes = Vec::new();
+    let _ = file.take(8192).read_to_end(&mut bytes);
+    String::from_utf8_lossy(&bytes).into_owned()
+}
 impl Client {
+    fn reader_snapshot(&self) -> String {
+        format!(
+            "{:?}",
+            self.reader_progress
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+        )
+    }
     fn start(root: &std::path::Path) -> Self {
         Self::with_compiler(root, None)
     }
@@ -357,20 +388,47 @@ impl Client {
         let stdout = child.stdout.take().unwrap();
         let input = child.stdin.take();
         let (tx, output) = mpsc::channel();
-        thread::spawn(move || {
+        let reader_progress = Arc::new(Mutex::new(ReaderProgress::default()));
+        let progress = Arc::clone(&reader_progress);
+        let reader_thread = thread::spawn(move || {
+            progress.lock().unwrap().phase = "reading";
             for line in BufReader::new(stdout).lines() {
                 let Ok(line) = line else {
-                    break;
+                    progress.lock().unwrap().phase = "io_error";
+                    return;
                 };
-                if tx.send(serde_json::from_str(&line).unwrap()).is_err() {
+                {
+                    let mut p = progress.lock().unwrap();
+                    p.phase = "decoding";
+                    p.last_frame_bytes = line.len();
+                }
+                let started = std::time::Instant::now();
+                let value = match serde_json::from_str(&line) {
+                    Ok(value) => value,
+                    Err(_) => {
+                        progress.lock().unwrap().phase = "json_error";
+                        return;
+                    }
+                };
+                {
+                    let mut p = progress.lock().unwrap();
+                    p.frames += 1;
+                    p.last_decode_ms = started.elapsed().as_secs_f64() * 1000.0;
+                    p.phase = "delivering";
+                }
+                if tx.send(value).is_err() {
                     break;
                 }
+                progress.lock().unwrap().phase = "reading";
             }
+            progress.lock().unwrap().phase = "finished";
         });
         let client = Self {
             child,
             input,
             output,
+            reader_progress,
+            reader_thread: Some(reader_thread),
         };
         assert_eq!(
             client.output.recv_timeout(Duration::from_secs(3)).unwrap()["type"],
@@ -396,6 +454,30 @@ impl Drop for Client {
     fn drop(&mut self) {
         let _ = self.child.kill();
         let _ = self.child.wait();
+        if let Some(reader) = self.reader_thread.take() {
+            // Do not let a previous test's JSON decode continue into the next test.
+            // A descendant retaining stdout must not cause an unbounded join.
+            let deadline = std::time::Instant::now() + Duration::from_secs(3);
+            while !reader.is_finished() && std::time::Instant::now() < deadline {
+                thread::sleep(Duration::from_millis(2));
+            }
+            if reader.is_finished() {
+                let result = reader.join();
+                if !thread::panicking() {
+                    assert!(result.is_ok(), "helper reader panicked");
+                }
+            } else if thread::panicking() {
+                eprintln!(
+                    "helper reader did not terminate after kill/reap: {:?}",
+                    self.reader_snapshot()
+                );
+            } else {
+                panic!(
+                    "helper reader did not terminate after kill/reap: {:?}",
+                    self.reader_snapshot()
+                );
+            }
+        }
     }
 }
 #[test]
@@ -611,6 +693,11 @@ fn stalled_reader(requests: usize) {
         child,
         input,
         output,
+        reader_progress: Arc::new(Mutex::new(ReaderProgress {
+            phase: "intentionally_unread",
+            ..ReaderProgress::default()
+        })),
+        reader_thread: None,
     };
     let mut ready = String::new();
     unread_output.read_line(&mut ready).unwrap();
@@ -832,14 +919,25 @@ fn configured_large_result_reaches_real_helper_without_dropping_pages() {
     let config_dir = tempfile::tempdir().unwrap();
     let text = "Measured paragraph with ordinary words and spaces.\n\n".repeat(9804);
     std::fs::write(root.path().join("main.tex"), &text).unwrap();
-    let config = json!({"session_id":"session1","project_id":"p","entry_path":"main.tex","project_root":root.path(),"private_ledger_root":private.path(),"compiler_path":compiler,"compiler_max_frame_bytes":12*1024*1024});
-    let client = Client::configured(config_dir.path(), config);
+    let config = json!({"session_id":"session1","project_id":"p","entry_path":"main.tex","project_root":root.path(),"private_ledger_root":private.path(),"compiler_path":compiler,"compiler_max_frame_bytes":12*1024*1024,"diagnostic_timings":true});
+    let diagnostic_path = config_dir.path().join("diagnostics.jsonl");
+    let client = Client::configured_stderr(
+        config_dir.path(),
+        config,
+        Stdio::from(std::fs::File::create(&diagnostic_path).unwrap()),
+    );
     let deadline = std::time::Instant::now() + Duration::from_secs(10);
     loop {
         let event = client
             .output
             .recv_timeout(deadline.saturating_duration_since(std::time::Instant::now()))
-            .unwrap();
+            .unwrap_or_else(|error| {
+                panic!(
+                    "large preview receive {error:?}; reader={:?}; helper={}",
+                    client.reader_snapshot(),
+                    bounded_diagnostics(&diagnostic_path)
+                )
+            });
         assert_ne!(event["type"], "error", "{event}");
         if event["type"] != "update" {
             continue;
@@ -1507,7 +1605,9 @@ fn full_size_optional_expansion_drops_candidate_and_keeps_edit_ack_and_reopen() 
         );
         assert!(
             std::time::Instant::now() < deadline,
-            "no full-size serialization refusal: {diagnostics}"
+            "no full-size serialization refusal; reader={:?}; helper={} ",
+            client.reader_snapshot(),
+            bounded_diagnostics(&diagnostic_path)
         );
         thread::sleep(Duration::from_millis(2));
     }
@@ -1587,6 +1687,11 @@ fn stalled_optional_display_write_triggers_watchdog_with_no_source_loss() {
         child,
         input,
         output,
+        reader_progress: Arc::new(Mutex::new(ReaderProgress {
+            phase: "intentionally_unread",
+            ..ReaderProgress::default()
+        })),
+        reader_thread: None,
     };
     let mut line = String::new();
     unread.read_line(&mut line).unwrap();

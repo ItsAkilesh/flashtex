@@ -3,27 +3,27 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-048": {
-      "acknowledged_utc": "2026-09-12T12:33:26Z",
-      "adaptation": "Factor existing command outcome into source-free HistoryCommandStatus; full API wraps same mutation with source clone. Compact helper borrows authoritative document. Compare persisted bytes and full/status results across group undo redo/retries.",
-      "main_sha": "2bd701089917c0a75faa26b7250962783e425d30",
-      "revision": 13
+      "acknowledged_utc": "2026-09-12T12:39:05Z",
+      "adaptation": "GH33 review found detached reader and un-attributed end-to-end deadlines; add bounded test-only scalar observation without relaxing production/test limits or claiming original cause.",
+      "main_sha": "0124d39c5e06baaedb6a31c1eabd7977f256850c",
+      "revision": 14
     }
   },
   "branch": "agent/commander-preview-performance/preview-performance",
   "capabilities": [
     "Preview helper serialization and latency"
   ],
-  "code_revision": "3a660762e517b00dc263c129793c624a9ed6bdf1",
+  "code_revision": "d53c50738e4e26276a014835537e4ebd46a31e80",
   "eta_minutes": null,
   "machine": "linux-primary",
-  "main_integrated_through": "3a660762e517b00dc263c129793c624a9ed6bdf1",
-  "next_action": "Commander review/integration then next helper responsiveness task.",
+  "main_integrated_through": "d53c50738e4e26276a014835537e4ebd46a31e80",
+  "next_action": "Commander review/integration; GH33 cause remains unresolved and future failures now attributable.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "FT048r13 source-free ledger history status removes response Document clone for compact group/undo/redo; full API delegates same mutation path.",
+  "summary": "FT048r14 GH33 test harness now observes scalar reader progress and bounded helper diagnostics; retains reader handle with bounded terminal cleanup after kill/reap.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T12:36:38Z",
+  "updated_utc": "2026-09-12T12:41:33Z",
   "usage": {
     "status": "unknown"
   }
