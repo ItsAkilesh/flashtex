@@ -137,8 +137,26 @@ pub fn place_outline(
     let path = outline
         .quadratic_path()
         .map_err(|error| ValidationError(format!("quadratic outline: {error}")))?;
-    let mut commands = Vec::with_capacity(path.len());
+    place_path(path, size, units, origin)
+}
+/// Place an immutable cached loader path without repeating glyph expansion.
+pub fn place_path<I: IntoIterator<Item = PathCommand>>(
+    path: I,
+    size: Tick,
+    units: u32,
+    origin: Point,
+) -> Result<Vec<PlacedPathCommand>> {
+    size.positive()?;
+    origin.x.validate()?;
+    origin.y.validate()?;
+    require(
+        (16..=16384).contains(&units),
+        "invalid outline units per em",
+    )?;
+    let mut commands = Vec::new();
+
     for command in path {
+        require(commands.len() < 2_000_000, "placed path command budget")?;
         commands.push(match command {
             PathCommand::MoveTo(point) => {
                 PlacedPathCommand::MoveTo(position_font_point(point, size, units, origin)?)
@@ -250,6 +268,77 @@ impl<'a> PreparedOutlines<'a> {
             sources: cluster.sources.clone().unwrap_or_default(),
             synthetic_reason: cluster.synthetic_reason.clone(),
             instances: outline.instances,
+            commands,
+            hinting_applied: false,
+        })
+    }
+}
+
+impl PreparedOutlines<'_> {
+    /// Reuse immutable unscaled paths across glyph placements; font size/origin
+    /// remain authoritative per glyph and are applied exactly after cache lookup.
+    pub fn glyph_cached(
+        &self,
+        page: u32,
+        item_index: usize,
+        glyph_index: usize,
+        cache: &mut crate::glyph_cache::GlyphPathCache,
+    ) -> Result<PositionedGlyph> {
+        use crate::glyph_cache::PathOutcome;
+        let page_index = page
+            .checked_sub(1)
+            .ok_or_else(|| ValidationError("unknown outline page".into()))?
+            as usize;
+        let page_data = self
+            .list
+            .pages
+            .get(page_index)
+            .ok_or_else(|| ValidationError("unknown outline page".into()))?;
+        let run = match page_data.items.get(item_index) {
+            Some(Item::GlyphRun(run)) => run,
+            _ => return Err(ValidationError("outline item is not a glyph run".into())),
+        };
+        let glyph = run
+            .glyphs
+            .get(glyph_index)
+            .ok_or_else(|| ValidationError("unknown outline glyph".into()))?;
+        let resource = self
+            .fonts
+            .get(&run.font_id)
+            .map_err(|error| ValidationError(format!("outline font resource: {error}")))?;
+        let cached = match cache.lookup(resource, glyph.gid as u16)?.outcome {
+            PathOutcome::Ready(data) => data,
+            PathOutcome::Unavailable(error) => {
+                return Err(ValidationError(format!(
+                    "cached outline unavailable: {error:?}"
+                )))
+            }
+        };
+        let commands = place_path(
+            cached.commands.iter().copied(),
+            run.font_size,
+            resource.descriptor().units_per_em,
+            Point {
+                x: glyph.origin_x,
+                y: glyph.baseline_y,
+            },
+        )?;
+        let cluster = &run.clusters[glyph.cluster as usize];
+        Ok(PositionedGlyph {
+            project_id: self.list.project_id.clone(),
+            revision: self.list.revision,
+            page,
+            item_index,
+            glyph_index,
+            font_id: run.font_id.clone(),
+            font_sha256: resource.descriptor().sha256.clone(),
+            original_gid: glyph.gid,
+            cluster_index: glyph.cluster,
+            logical_start_byte: cluster.text_start_byte,
+            logical_end_byte: cluster.text_end_byte,
+            sources: cluster.sources.clone().unwrap_or_default(),
+            synthetic_reason: cluster.synthetic_reason.clone(),
+            instances: cached.instances.clone(),
             commands,
             hinting_applied: false,
         })

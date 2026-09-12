@@ -121,3 +121,16 @@ Local LiberationSans `A` probe: original GID 36, 17 points, two contours and
 17 placed path commands; exact font hash recorded above. Supplied installed license
 SHA256 was `93fed46019c38bbe566b479d22148e2e8a1e85ada614accb0211c37b2c61c19b`.
 No glyph shaping, hint execution, raster painting or reference-TeX parity is claimed.
+
+`glyph_cache::GlyphPathCache` retains immutable expanded quadratic paths by font
+SHA256, face, original GID and `UnhintedExactComponentsV1` policy. Font aliases share
+geometry only when the actual bytes match. LRU limits bound entry count and retained
+path/component payload estimates; map/allocator overhead and caller-held Arcs are
+additional memory. Unsupported/font-error results and oversized-path budget failures
+remain explicit cached outcomes, preventing repeated expansion attempts.
+`PreparedOutlines::glyph_cached` applies each glyph's exact size/origin after lookup.
+
+The developer outline probe now reports expansion-cache measurements separately.
+One local debug-build LiberationSans `A` run measured one cold expansion at 59,456ns
+and 1,000 cache lookups totaling 901,476ns (one expansion, 1,000 hits). These are
+single-run font-cache observations, not native paint or edit-to-preview latency.
