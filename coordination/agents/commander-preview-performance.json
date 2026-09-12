@@ -13,17 +13,17 @@
   "capabilities": [
     "Preview helper serialization and latency"
   ],
-  "code_revision": "2f2605d",
+  "code_revision": "a4a7bcd",
   "eta_minutes": null,
   "machine": "linux-primary",
   "main_integrated_through": "ab945e65d23797918e4d6ee21a6b856e00151723",
-  "next_action": "Inspect bounded reader-thread JSON decoding to keep owner available for durable edits; preserve validation/provenance and explicit parsed-memoryqueue bounds. Commander routeexistingMacremeasure.",
+  "next_action": "Commander/nativeparent integrate exactworker andremeasure. Investigate owner discardedValue destruction vssemanticvalidation, preservingone-decodedvalue budget and allstale/sourcechecks.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "accepted",
-  "summary": "Actualcachedhelper521792Boff/on pair40ACKs/twoexactcleanfinals/reopens. Final867/754ms,lastACK356/263ms,requesthandling393/439ms. Both1current0historical; stillabove200ms/no nativeclaim. No activejobs.",
+  "summary": "Boundeddecoderworker: same4rawqueue +1globalparse/validationpermit, joinedshutdown,owneridentityvalidationunchanged.31runtime/53helpertests+lintpass.60ACKs/3cleanfinals/reopens in500KBprobes; pairfinal644\u2013656ms,ownerpoll13\u201351ms. RSSprobe224396kBpeak,no matchedbaseline.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T10:25:33Z",
+  "updated_utc": "2026-09-12T10:35:19Z",
   "usage": {
     "status": "unknown"
   }
