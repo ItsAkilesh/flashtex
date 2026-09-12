@@ -14,7 +14,7 @@
     "rust-build",
     "helper-protocol-v1"
   ],
-  "code_revision": "pending-commit",
+  "code_revision": "282e01e0",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
