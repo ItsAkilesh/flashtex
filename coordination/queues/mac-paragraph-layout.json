@@ -30,6 +30,34 @@
         "crates/paragraph-layout"
       ],
       "timebox_minutes": 45
+    },
+    {
+      "acceptance": [
+        "Page and baseline metrics have golden tests",
+        "Preview/PDF positions agree",
+        "Visual deltas are quantified"
+      ],
+      "allocation_id": "claude-mac20x-paragraph-layout-stage3",
+      "name": "Exact paragraph linebreak and glue/penalty convergence",
+      "objective": "Exact paragraph linebreak and glue/penalty convergence",
+      "owned_paths": [
+        "crates/paragraph-layout"
+      ],
+      "timebox_minutes": 45
+    },
+    {
+      "acceptance": [
+        "Page and baseline metrics have golden tests",
+        "Preview/PDF positions agree",
+        "Visual deltas are quantified"
+      ],
+      "allocation_id": "claude-mac20x-paragraph-layout-stage3",
+      "name": "Incremental paragraph state versus clean layout equivalence",
+      "objective": "Incremental paragraph state versus clean layout equivalence",
+      "owned_paths": [
+        "crates/paragraph-layout"
+      ],
+      "timebox_minutes": 45
     }
   ],
   "task_id": "FT-019"

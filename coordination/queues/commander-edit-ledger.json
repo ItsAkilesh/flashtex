@@ -30,6 +30,34 @@
         "crates/edit-ledger"
       ],
       "timebox_minutes": 30
+    },
+    {
+      "acceptance": [
+        "Meaningful tests and strict lint pass",
+        "Publish truthful execution provenance and exact tested SHA",
+        "No native integration or PDF parity claim without measured evidence"
+      ],
+      "allocation_id": "hosted-openai-product",
+      "name": "Explicit integrity-bound backup recovery plans",
+      "objective": "Explicit integrity-bound backup recovery plans",
+      "owned_paths": [
+        "crates/edit-ledger"
+      ],
+      "timebox_minutes": 30
+    },
+    {
+      "acceptance": [
+        "Meaningful tests and strict lint pass",
+        "Publish truthful execution provenance and exact tested SHA",
+        "No native integration or PDF parity claim without measured evidence"
+      ],
+      "allocation_id": "hosted-openai-product",
+      "name": "Atomic checkpoint rotation and interrupted-write recovery",
+      "objective": "Atomic checkpoint rotation and interrupted-write recovery",
+      "owned_paths": [
+        "crates/edit-ledger"
+      ],
+      "timebox_minutes": 30
     }
   ],
   "task_id": "FT-026"

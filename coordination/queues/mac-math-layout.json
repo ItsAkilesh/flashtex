@@ -30,6 +30,34 @@
         "crates/math-layout"
       ],
       "timebox_minutes": 45
+    },
+    {
+      "acceptance": [
+        "Raster overlays and structural geometry both gate changes",
+        "Preview/PDF consume identical boxes",
+        "Remaining unsupported constructs are explicit"
+      ],
+      "allocation_id": "claude-mac20x-math-layout-stage3",
+      "name": "Exact TeX math spacing and size-dependent symbol metrics",
+      "objective": "Exact TeX math spacing and size-dependent symbol metrics",
+      "owned_paths": [
+        "crates/math-layout"
+      ],
+      "timebox_minutes": 45
+    },
+    {
+      "acceptance": [
+        "Raster overlays and structural geometry both gate changes",
+        "Preview/PDF consume identical boxes",
+        "Remaining unsupported constructs are explicit"
+      ],
+      "allocation_id": "claude-mac20x-math-layout-stage3",
+      "name": "Nested math font and delimiter reference convergence",
+      "objective": "Nested math font and delimiter reference convergence",
+      "owned_paths": [
+        "crates/math-layout"
+      ],
+      "timebox_minutes": 45
     }
   ],
   "task_id": "FT-020"

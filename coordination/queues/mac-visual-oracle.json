@@ -32,6 +32,36 @@
         "tests/visual-corpus/evidence"
       ],
       "timebox_minutes": 45
+    },
+    {
+      "acceptance": [
+        "Exact zero pixel difference and separate raw PDF byte equality; report mismatches honestly without normalization",
+        "Native preview/export differences are classified",
+        "Narrow corpus scope remains explicit"
+      ],
+      "allocation_id": "claude-mac20x-visual-oracle-stage3",
+      "name": "Exact PDF raw-byte identity analysis separate from zero-pixel gate",
+      "objective": "Exact PDF raw-byte identity analysis separate from zero-pixel gate",
+      "owned_paths": [
+        "tests/visual-corpus/harness",
+        "tests/visual-corpus/evidence"
+      ],
+      "timebox_minutes": 45
+    },
+    {
+      "acceptance": [
+        "Exact zero pixel difference and separate raw PDF byte equality; report mismatches honestly without normalization",
+        "Native preview/export differences are classified",
+        "Narrow corpus scope remains explicit"
+      ],
+      "allocation_id": "claude-mac20x-visual-oracle-stage3",
+      "name": "Native typing-to-visible p95/p99 measurement with pinned renderer resources",
+      "objective": "Native typing-to-visible p95/p99 measurement with pinned renderer resources",
+      "owned_paths": [
+        "tests/visual-corpus/harness",
+        "tests/visual-corpus/evidence"
+      ],
+      "timebox_minutes": 45
     }
   ],
   "task_id": "FT-017"
