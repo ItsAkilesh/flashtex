@@ -128,7 +128,7 @@ struct ContentView: View {
     private var previewPane: some View {
         VStack(spacing: 0) {
             if let result = model.result {
-                PreviewView(result: result, dark: model.darkPreview) { model.navigate(to: $0) }
+                PreviewView(result: result, dark: model.darkPreview, caretItems: model.caretItems) { model.navigate(to: $0) }
                 if !result.diagnostics.isEmpty {
                     Divider()
                     diagnosticsList(result.diagnostics)

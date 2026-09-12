@@ -54,6 +54,21 @@ final class ShellModel: ObservableObject {
         get { documents.first { $0.path == activePath }?.text ?? "" }
     }
 
+    // MARK: caret sync (source -> preview)
+
+    /// UTF-8 byte offset of the editor caret in `activeText`, or nil when the
+    /// UTF-16 caret is out of range for the buffer.
+    var caretByte: Int? {
+        activeText.utf8ByteRange(of: NSRange(location: caretUTF16, length: 0))?.start
+    }
+
+    /// Preview items under the caret, as `page number -> item indices`.
+    /// Empty when there is no result or the caret maps to nothing.
+    var caretItems: [Int: Set<Int>] {
+        guard let result, let byte = caretByte else { return [:] }
+        return CaretSync.indicesByPage(byte: byte, path: activePath, in: result)
+    }
+
     init() {
         if let root = Self.locateRepoRoot() {
             let fixtures = root.appendingPathComponent("protocol/fixtures")
@@ -75,8 +90,15 @@ final class ShellModel: ObservableObject {
             self.resultID = res.id
             self.fixtureURL = result
             self.previewSource = .fixture
-            if let request, let data = try? Data(contentsOf: request),
-               let req = try? RuntimeV1.decodeCompileRequest(data) {
+            // Seed the editor from `request` or, for `<name>-result.json`, a
+            // sibling `<name>-request.json` (e.g. Samples/multipage-*.json).
+            var candidates: [URL] = []
+            if let request { candidates.append(request) }
+            if let sibling = Self.siblingRequestURL(forResult: result) { candidates.append(sibling) }
+            if let req = candidates.lazy.compactMap({ url -> RuntimeV1.Envelope<RuntimeV1.CompileRequest>? in
+                guard let data = try? Data(contentsOf: url) else { return nil }
+                return try? RuntimeV1.decodeCompileRequest(data)
+            }).first {
                 documents = req.payload.documents
                 activePath = req.payload.entryPath
                 editorRevision = req.payload.revision
@@ -88,6 +110,14 @@ final class ShellModel: ObservableObject {
         } catch {
             loadError = "Failed to load \(result.lastPathComponent): \(error)"
         }
+    }
+
+    /// `<dir>/<name>-request.json` for a result named `<name>-result.json`, else nil.
+    static func siblingRequestURL(forResult result: URL) -> URL? {
+        let name = result.deletingPathExtension().lastPathComponent
+        guard name.hasSuffix("-result"), result.pathExtension == "json" else { return nil }
+        let stem = String(name.dropLast("-result".count))
+        return result.deletingLastPathComponent().appendingPathComponent("\(stem)-request.json")
     }
 
     func reloadFixture() {

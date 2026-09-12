@@ -7,13 +7,15 @@ import FlashTeXProtocol
 struct PreviewView: View {
     let result: RuntimeV1.CompileResult
     let dark: Bool
+    /// Items under the editor caret, `page number -> item indices` (see `CaretSync`).
+    var caretItems: [Int: Set<Int>] = [:]
     let onSelect: (RuntimeV1.SourceRange?) -> Void
 
     var body: some View {
         ScrollView([.vertical, .horizontal]) {
             VStack(spacing: 24) {
                 ForEach(result.pages, id: \.number) { page in
-                    PageView(page: page, dark: dark, onSelect: onSelect)
+                    PageView(page: page, dark: dark, caretItems: caretItems[page.number] ?? [], onSelect: onSelect)
                 }
             }
             .padding(24)
@@ -25,6 +27,7 @@ struct PreviewView: View {
 private struct PageView: View {
     let page: RuntimeV1.Page
     let dark: Bool
+    var caretItems: Set<Int> = []
     let onSelect: (RuntimeV1.SourceRange?) -> Void
 
     /// Fixed display scale: 1pt = 1 screen point at 100%.
@@ -32,7 +35,7 @@ private struct PageView: View {
 
     var body: some View {
         let size = CGSize(width: page.widthPt * scale, height: page.heightPt * scale)
-        HitTestCanvas(page: page, dark: dark, scale: scale, onSelect: onSelect)
+        HitTestCanvas(page: page, dark: dark, scale: scale, caretItems: caretItems, onSelect: onSelect)
             .frame(width: size.width, height: size.height)
             .background(dark ? Color(white: 0.16) : .white)
             .shadow(radius: 4)
@@ -47,6 +50,8 @@ private struct HitTestCanvas: View {
     let page: RuntimeV1.Page
     let dark: Bool
     let scale: CGFloat
+    /// Indices into `page.items` to mark as containing the editor caret.
+    var caretItems: Set<Int> = []
     let onSelect: (RuntimeV1.SourceRange?) -> Void
 
     @State private var hitRects: [(CGRect, RuntimeV1.SourceRange?)] = []
@@ -65,6 +70,16 @@ private struct HitTestCanvas: View {
                 let baseline = resolved.firstBaseline(in: measured)
                 let origin = CGPoint(x: t.xPt * scale, y: t.baselineYPt * scale - baseline)
                 let rect = CGRect(origin: origin, size: measured)
+                if caretItems.contains(index) {
+                    // Secondary (caret) highlight: subtle fill plus an underline.
+                    context.fill(Path(rect.insetBy(dx: -2, dy: -1)),
+                                 with: .color(Color.accentColor.opacity(0.15)))
+                    let y = rect.maxY + 1
+                    var underline = Path()
+                    underline.move(to: CGPoint(x: rect.minX, y: y))
+                    underline.addLine(to: CGPoint(x: rect.maxX, y: y))
+                    context.stroke(underline, with: .color(Color.accentColor), lineWidth: 1.5)
+                }
                 if hover == index {
                     context.fill(Path(rect.insetBy(dx: -2, dy: -1)),
                                  with: .color(Color.accentColor.opacity(0.25)))
