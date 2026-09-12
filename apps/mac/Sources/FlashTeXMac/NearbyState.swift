@@ -85,7 +85,9 @@ final class PairingCoordinator: PairingConfirmer {
     }
 
     func notePairSeen(pairId: String) { store.touch(pairId: pairId) }
-    func noteCapture(pairId: String, captureId: String) { store.recordCapture(pairId: pairId, captureId: captureId) }
+    func noteCapture(pairId: String, captureId: String, remembered: NearbyAckMemory.Persisted?) {
+        store.recordCapture(pairId: pairId, captureId: captureId, remembered: remembered)
+    }
 }
 
 /// UI-facing state for the nearby listener: advertising, port, pairing code,
@@ -140,6 +142,11 @@ final class NearbyState: ObservableObject {
     let limits: NearbyReceiveLimits
     private let queue = DispatchQueue(label: "flashtex.nearby.listener")
     private var listener: NearbyListener?
+    /// Acknowledgement memory shared by every listener this state creates, so
+    /// `stopAdvertising()`/`startAdvertising()` within a session does not
+    /// re-deliver a companion's retry; seeded from `pairs.json` (bounded,
+    /// acknowledged entries only) and trimmed when a pairing is forgotten.
+    let ackMemory: NearbyAckMemory
     private weak var sink: CaptureSink?
     private weak var destinations: DestinationProvider?
     private var expiry: DispatchWorkItem?
@@ -154,6 +161,8 @@ final class NearbyState: ObservableObject {
         self.limits = limits
         self.coordinator = PairingCoordinator(store: store)
         self.pairs = store.pairs
+        self.ackMemory = NearbyAckMemory(maxPerPair: limits.maxRememberedCaptures)
+        for r in store.pairs { ackMemory.restore(pairId: r.pairId, entries: r.rememberedCaptures ?? []) }
         if let e = store.loadError { log.append(e); status = e }
         coordinator.onConfirmed = { [weak self] record in
             Task { @MainActor in self?.pairingConfirmed(record) }
@@ -207,7 +216,7 @@ final class NearbyState: ObservableObject {
             psks: psks, macName: macName, port: port,
             advertisement: .init(name: macName, txt: txtRecord), loopbackOnly: loopbackOnly, limits: limits)
         let next = NearbyListener(configuration: config, sink: sink, destinations: destinations,
-                                  pairing: coordinator, queue: queue) { [weak self] event in
+                                  pairing: coordinator, queue: queue, memory: ackMemory) { [weak self] event in
             Task { @MainActor in self?.handle(event) }
         }
         let previous = listener
@@ -360,6 +369,7 @@ final class NearbyState: ObservableObject {
 
     func forget(pairId: String) {
         store.remove(pairId: pairId)
+        ackMemory.forget(pairId: pairId)
         pairs = store.pairs
         note("forgot \(pairId)")
         if listener != nil { restartListener() }

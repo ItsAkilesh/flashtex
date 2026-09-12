@@ -110,11 +110,17 @@ struct PairRecord: Codable, Equatable, Identifiable, CustomStringConvertible, Cu
     var captureCount: Int? = nil
     var lastCaptureAt: Date? = nil
     var lastCaptureId: String? = nil
+    /// Acknowledged captures (mac-nearby-transport-3), oldest first, at most
+    /// `PairStore.maxRememberedCaptures`: seeds the listener's acknowledgement
+    /// memory after `stopAdvertising()` or a relaunch so a companion's retry
+    /// is acknowledged again, never re-delivered. Optional so older files decode.
+    var rememberedCaptures: [NearbyAckMemory.Persisted]? = nil
     var id: String { pairId }
     enum CodingKeys: String, CodingKey {
         case pairId = "pair_id", psk, companionName = "companion_name"
         case createdAt = "created_at", lastSeenAt = "last_seen_at", generation
         case captureCount = "capture_count", lastCaptureAt = "last_capture_at", lastCaptureId = "last_capture_id"
+        case rememberedCaptures = "remembered_captures"
     }
     var pskData: Data? { Data(base64Encoded: psk) }
 
@@ -250,15 +256,28 @@ final class PairStore {
         }
     }
 
+    /// Bound on `PairRecord.rememberedCaptures` (each entry is a few hundred
+    /// bytes: ids, revision, digest, ack flags).
+    static let maxRememberedCaptures = 64
+
     /// Records one accepted capture on the pairing's bounded summary
-    /// (count, last id ≤ 128 bytes, timestamp) and marks it seen.
-    func recordCapture(pairId: String, captureId: String, at date: Date = Date()) {
+    /// (count, last id ≤ 128 bytes, timestamp), marks it seen, and appends
+    /// `remembered` (replacing an entry with the same id) under the bound.
+    func recordCapture(pairId: String, captureId: String, at date: Date = Date(),
+                       remembered: NearbyAckMemory.Persisted? = nil) {
         lock.withLock {
             guard let i = file.pairs.firstIndex(where: { $0.pairId == pairId }) else { return }
             file.pairs[i].captureCount = (file.pairs[i].captureCount ?? 0) + 1
             file.pairs[i].lastCaptureAt = date
             file.pairs[i].lastCaptureId = String(captureId.prefix(128))
             file.pairs[i].lastSeenAt = date
+            if let remembered {
+                var list = file.pairs[i].rememberedCaptures ?? []
+                list.removeAll { $0.captureId == remembered.captureId }
+                list.append(remembered)
+                if list.count > Self.maxRememberedCaptures { list.removeFirst(list.count - Self.maxRememberedCaptures) }
+                file.pairs[i].rememberedCaptures = list
+            }
             _ = try? persist()
         }
     }

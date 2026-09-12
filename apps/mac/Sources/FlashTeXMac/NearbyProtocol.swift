@@ -166,8 +166,10 @@ protocol DestinationProvider: AnyObject {
 protocol PairingConfirmer: AnyObject {
     func confirmPairing(pairId: String, companionName: String, generation: Int?) -> Data?
     func notePairSeen(pairId: String)
-    /// An accepted (acknowledged) capture from a paired session.
-    func noteCapture(pairId: String, captureId: String)
+    /// An accepted (acknowledged) capture from a paired session. `remembered`
+    /// is the bounded dedup entry (`NearbyAckMemory.Persisted`) the confirmer
+    /// may persist with the pairing so a later listener answers the retry.
+    func noteCapture(pairId: String, captureId: String, remembered: NearbyAckMemory.Persisted?)
 }
 
 // MARK: - receive limits and accounting
@@ -339,12 +341,64 @@ final class NearbyAckMemory {
         var ack: NearbyV1.CaptureReceived?
         var waiting: [(id: String, emit: (Data) -> Void)] = []
     }
+    /// One acknowledged capture as persisted with its pairing record
+    /// (`PairRecord.rememberedCaptures`): enough to answer a retry with the
+    /// same `capture_received` and to name a revision/payload mismatch.
+    /// Never carries the image, the key, or a pending (unanswered) entry.
+    struct Persisted: Codable, Equatable {
+        var captureId: String
+        var baseRevision: Int
+        /// Hex SHA-256 of the submit payload (`NearbySession.digest(of:)`).
+        var digestHex: String
+        var ack: NearbyV1.CaptureReceived
+        enum CodingKeys: String, CodingKey {
+            case captureId = "capture_id", baseRevision = "base_revision", digestHex = "digest_sha256", ack
+        }
+    }
+
     private let lock = NSLock()
     private var byPair: [String: [String: Remembered]] = [:]
     private var order: [String: [String]] = [:]
     private var maxPerPair: Int
 
     init(maxPerPair: Int) { self.maxPerPair = maxPerPair }
+
+    /// Acknowledged entries of one pairing, oldest first (pending ones are
+    /// not persistable: their answer is still owed by the sink).
+    func snapshot(pairId: String) -> [Persisted] {
+        lock.withLock {
+            (order[pairId] ?? []).compactMap { id in
+                guard let r = byPair[pairId]?[id], let ack = r.ack else { return nil }
+                return Persisted(captureId: id, baseRevision: r.baseRevision, digestHex: Pairing.hex(r.digest), ack: ack)
+            }
+        }
+    }
+
+    /// Seeds a pairing's memory from its persisted entries. An entry already
+    /// known live (pending or acknowledged) is left alone; the per-pair bound
+    /// still applies, oldest acknowledged first.
+    func restore(pairId: String, entries: [Persisted]) {
+        lock.withLock {
+            for e in entries where byPair[pairId]?[e.captureId] == nil {
+                guard let digest = Pairing.data(hex: e.digestHex) else { continue }
+                byPair[pairId, default: [:]][e.captureId] = Remembered(baseRevision: e.baseRevision, digest: digest, ack: e.ack)
+                order[pairId, default: []].append(e.captureId)
+            }
+            evictLocked(pairId: pairId)
+        }
+    }
+
+    /// Caller holds `lock`: drops the oldest acknowledged entries beyond the bound.
+    private func evictLocked(pairId: String) {
+        var i = 0
+        while (byPair[pairId]?.count ?? 0) > maxPerPair, i < (order[pairId]?.count ?? 0) {
+            let old = order[pairId]![i]
+            if byPair[pairId]?[old]?.ack != nil {
+                byPair[pairId]?.removeValue(forKey: old)
+                order[pairId]?.remove(at: i)
+            } else { i += 1 }
+        }
+    }
 
     var limit: Int {
         get { lock.withLock { maxPerPair } }
@@ -364,14 +418,7 @@ final class NearbyAckMemory {
         lock.withLock {
             byPair[pairId, default: [:]][captureId] = Remembered(baseRevision: baseRevision, digest: digest, ack: nil)
             order[pairId, default: []].append(captureId)
-            var i = 0
-            while (byPair[pairId]?.count ?? 0) > maxPerPair, i < (order[pairId]?.count ?? 0) {
-                let old = order[pairId]![i]
-                if byPair[pairId]?[old]?.ack != nil {
-                    byPair[pairId]?.removeValue(forKey: old)
-                    order[pairId]?.remove(at: i)
-                } else { i += 1 }
-            }
+            evictLocked(pairId: pairId)
         }
     }
 
@@ -1022,7 +1069,13 @@ final class NearbySession {
                 if let header = try? RuntimeV1.header(of: reply), header.type == "capture_received",
                    let env = try? JSONDecoder().decode(RuntimeV1.Envelope<NearbyV1.CaptureReceived>.self, from: reply) {
                     let waiting = memory.acknowledge(pairId: pair, captureId: captureId, ack: env.payload)
-                    if !pair.isEmpty { pairing?.noteCapture(pairId: pair, captureId: captureId) }
+                    if !pair.isEmpty {
+                        let remembered = memory.lookup(pairId: pair, captureId: captureId).map {
+                            NearbyAckMemory.Persisted(captureId: captureId, baseRevision: $0.baseRevision,
+                                                      digestHex: Pairing.hex($0.digest), ack: env.payload)
+                        }
+                        pairing?.noteCapture(pairId: pair, captureId: captureId, remembered: remembered)
+                    }
                     events(.capture(captureId: captureId))
                     emit(reply)
                     for w in waiting { w.emit(NearbyV1.line(id: w.id, type: "capture_received", env.payload)) }

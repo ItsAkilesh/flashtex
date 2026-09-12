@@ -95,11 +95,15 @@ final class NearbyListener {
 
     init(configuration: Configuration, sink: CaptureSink?, destinations: DestinationProvider?,
          pairing: PairingConfirmer?, queue: DispatchQueue = DispatchQueue(label: "flashtex.nearby"),
-         events: @escaping (Event) -> Void) {
+         memory: NearbyAckMemory? = nil, events: @escaping (Event) -> Void) {
         self.configuration = configuration
         self.queue = queue
         self.budget = NearbyReceiveBudget(limits: configuration.limits)
-        self.memory = NearbyAckMemory(maxPerPair: configuration.limits.maxRememberedCaptures)
+        // An owner-supplied memory outlives this listener (NearbyState keeps
+        // one per session); otherwise the memory is this listener's own and
+        // moves only through `adoptConnections`.
+        self.memory = memory ?? NearbyAckMemory(maxPerPair: configuration.limits.maxRememberedCaptures)
+        self.memory.limit = configuration.limits.maxRememberedCaptures
         self.decodeQueue = DispatchQueue(label: "flashtex.nearby.decode", qos: .utility, attributes: .concurrent)
         queue.setSpecific(key: Self.queueKey, value: true)
         self.sink = sink
