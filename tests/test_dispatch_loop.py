@@ -34,6 +34,7 @@ class DispatcherTests(unittest.TestCase):
             timebox_minutes=30, allocation_id='approved-worker-grant')])
         self.write(self.root, 'coordination/assignments/TASK.json', self.assignment)
         self.write(self.root, 'coordination/queues/worker.json', self.queue)
+        self.write(self.root, 'coordination/authority.json', {'schema_version': 1, 'commander_id': 'test-commander', 'authority_state': 'active'})
         self.commit(self.root)
         self.run_git(self.root, 'push', 'origin', 'HEAD:main')
         self.baseline = self.run_git(self.root, 'rev-parse', 'HEAD')
@@ -46,7 +47,7 @@ class DispatcherTests(unittest.TestCase):
                            supervisor={'assignment': 'TASK:1'},
                            assignment_acknowledgements={'TASK': {'revision': 1, 'main_sha': self.baseline, 'adaptation': 'Accept task and its tests'}})
         self.publish_report()
-        self.args = SimpleNamespace(publish=False, allocation=None, stale_seconds=600, timeout=10)
+        self.args = SimpleNamespace(publish=False, allocation=None, stale_seconds=600, timeout=10, commander_id='test-commander')
 
     def run_git(self, cwd, *args):
         p = subprocess.run(['git', *args], cwd=cwd, text=True, capture_output=True)
@@ -73,6 +74,13 @@ class DispatcherTests(unittest.TestCase):
         self.write(self.root, 'coordination/queues/worker.json', self.queue)
         self.commit(self.root)
         self.run_git(self.root, 'push', 'origin', 'HEAD:main')
+
+    def test_stale_commander_stops_before_assignment_mutation(self):
+        self.args.commander_id = 'old-commander'
+        with self.assertRaisesRegex(ValueError, 'authority changed'):
+            loop.scan_once(self.root, self.args)
+        self.assertEqual(self.run_git(self.root, 'status', '--porcelain'), '')
+        self.assertEqual(json.loads((self.root / 'coordination/assignments/TASK.json').read_text())['revision'], 1)
 
     def test_ready_prepares_next_same_task_with_evidence_not_verification(self):
         with patch.object(coord, 'publish') as publish:
