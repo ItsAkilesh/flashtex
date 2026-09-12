@@ -1,0 +1,22 @@
+{
+  "engine": "lualatex",
+  "variant": "times",
+  "available": true,
+  "path": "/Library/TeX/texbin/lualatex",
+  "exit": 0,
+  "seconds": 0.685,
+  "flags": [
+    "-interaction=batchmode",
+    "-halt-on-error",
+    "-file-line-error"
+  ],
+  "preamble": "\\documentclass[12pt]{article}\n\\usepackage{fontspec}\n\\setmainfont{Times New Roman}\n\\usepackage[margin=1in]{geometry}\n\\setlength{\\parindent}{0pt}\n\\setcounter{secnumdepth}{0}\n\\pagestyle{empty}\n",
+  "errors": [],
+  "warnings": [],
+  "fontspec_fonts": [],
+  "pdf": true,
+  "engine_version": "This is LuaHBTeX, Version 1.24.0 (TeX Live 2026)",
+  "fixture_sha256": "9a9ac05f3eca94365cbf3797e451180540e1684e2bf401936f1e50cf117ade5e",
+  "pdf_sha256": "54163234138c6c4ba59ab734c26672ca1f9cee7cbcfa79dbaafe9622172f58c6",
+  "rendered_in_run": "20260912T064032Z"
+}

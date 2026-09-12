@@ -1,0 +1,22 @@
+{
+  "engine": "xelatex-lm",
+  "variant": "lm",
+  "available": true,
+  "path": "/Library/TeX/texbin/xelatex",
+  "exit": 0,
+  "seconds": 0.346,
+  "flags": [
+    "-interaction=batchmode",
+    "-halt-on-error",
+    "-file-line-error"
+  ],
+  "preamble": "\\documentclass[12pt]{article}\n\\usepackage{fontspec}\n\\setmainfont{lmroman12-regular.otf}[Path=/usr/local/texlive/2026basic/texmf-dist/fonts/opentype/public/lm/,BoldFont=lmroman12-bold.otf,ItalicFont=lmroman12-italic.otf,BoldItalicFont=lmroman10-bolditalic.otf]\n\\usepackage[margin=1in]{geometry}\n\\setlength{\\parindent}{0pt}\n\\setcounter{secnumdepth}{0}\n\\pagestyle{empty}\n",
+  "errors": [],
+  "warnings": [],
+  "fontspec_fonts": [],
+  "pdf": true,
+  "engine_version": "XeTeX 3.141592653-2.6-0.999998 (TeX Live 2026)",
+  "fixture_sha256": "e4f5d58b6d47897375a039282eec473f9c93af3c0569634e1f3585f9f112e624",
+  "pdf_sha256": "6d47fb7d3599b512a15699b10eb68838e0cda717fafdb64e3e675662b2ab2b25",
+  "rendered_in_run": "20260912T064032Z"
+}

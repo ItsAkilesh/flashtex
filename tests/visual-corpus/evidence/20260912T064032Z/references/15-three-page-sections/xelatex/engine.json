@@ -1,0 +1,22 @@
+{
+  "engine": "xelatex",
+  "variant": "times",
+  "available": true,
+  "path": "/Library/TeX/texbin/xelatex",
+  "exit": 0,
+  "seconds": 0.373,
+  "flags": [
+    "-interaction=batchmode",
+    "-halt-on-error",
+    "-file-line-error"
+  ],
+  "preamble": "\\documentclass[12pt]{article}\n\\usepackage{fontspec}\n\\setmainfont{Times New Roman}\n\\usepackage[margin=1in]{geometry}\n\\setlength{\\parindent}{0pt}\n\\setcounter{secnumdepth}{0}\n\\pagestyle{empty}\n",
+  "errors": [],
+  "warnings": [],
+  "fontspec_fonts": [],
+  "pdf": true,
+  "engine_version": "XeTeX 3.141592653-2.6-0.999998 (TeX Live 2026)",
+  "fixture_sha256": "a40ef2bd5ea8649369965dceb92a4bd2edd099036ac4ed07620bbd5eaba6cfe5",
+  "pdf_sha256": "1ce8f2057aa3fb11cdf37c060fbca9fe58e5b13db3d17d4010bb54a7043d4daa",
+  "rendered_in_run": "20260912T064032Z"
+}

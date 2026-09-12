@@ -20,13 +20,18 @@
 #          [--profile <json>] pinned raw-PDF SHA-256 profile (default harness/reference-profile.json)
 #          [--pin-profile]    explicitly re-baseline the profile from this run's PDFs
 #          [--gate]           exit 5 when an exact-equality gate fails (default: report only)
+#          [--reference-from <evidence dir>|auto|none]  stored oracle renders to reuse when an engine
+#                             is not installed (default auto: every evidence dir that has
+#                             references/manifest.json, newest first). A run that renders
+#                             references itself writes them to <evidence>/references/ so later
+#                             runs can reuse them with the original engine/version pins.
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(git -C "$HERE" rev-parse --show-toplevel)"
 COMPILER_REFS=(); PDF_REF="5b5f7b5"; DPI=144; THRESHOLD=32
 SCRATCH="${TMPDIR:-/tmp}/flashtex-visual-corpus"; EVROOT="$REPO/tests/visual-corpus/evidence"
 ENGINES=(); THRESHOLDS="$HERE/thresholds.json"; REGRESS=""; NATIVE=""; SKIP_BUILD=0; APP=""
-PROFILE="$HERE/reference-profile.json"; PIN=0; GATE=0
+PROFILE="$HERE/reference-profile.json"; PIN=0; GATE=0; REF_FROM=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --compiler-ref) COMPILER_REFS+=("$2"); shift 2 ;;
@@ -44,6 +49,7 @@ while [[ $# -gt 0 ]]; do
     --profile) PROFILE="$2"; shift 2 ;;
     --pin-profile) PIN=1; shift ;;
     --gate) GATE=1; shift ;;
+    --reference-from) REF_FROM+=("$2"); shift 2 ;;
     -h|--help) sed -n '2,17p' "$0"; exit 0 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
@@ -110,9 +116,56 @@ read -r pdf_sha PDF_BIN pdf_log < <(build_crate pdf "$PDF_REF" crates/pdf flasht
 echo "== swiftc rasterize.swift"
 swiftc -O "$HERE/rasterize.swift" -o "$WORK/rasterize"
 
+# --- reference stores (reused only for engines that are not installed)
+if [[ ${#REF_FROM[@]} -eq 0 || "${REF_FROM[0]}" == "auto" ]]; then
+  REF_FROM=()
+  for d in $(ls -d "$EVROOT"/*/ 2>/dev/null | sort -r); do
+    [[ -f "${d%/}/references/manifest.json" ]] && REF_FROM+=("${d%/}")
+  done
+elif [[ "${REF_FROM[0]}" == "none" ]]; then
+  REF_FROM=()
+fi
+REF_ARGS=(); for d in "${REF_FROM[@]}"; do REF_ARGS+=(--reference-from "$d"); done
+MISSING=(); for e in "${ENGINES[@]}"; do [[ -x "/Library/TeX/texbin/$e" ]] || MISSING+=("$e"); done
+if [[ ${#MISSING[@]} -gt 0 ]]; then
+  echo "engines not installed: ${MISSING[*]}; stored references will be reused from: ${REF_FROM[*]:-(none)}"
+fi
+
 # --- render both sides
 ENGINE_ARGS=(); for e in "${ENGINES[@]}"; do ENGINE_ARGS+=(--engine "$e"); done
-"$HERE/render_reference.sh" --out "$WORK/reference" --rasterize "$WORK/rasterize" --dpi "$DPI" "${ENGINE_ARGS[@]}"
+"$HERE/render_reference.sh" --out "$WORK/reference" --rasterize "$WORK/rasterize" --dpi "$DPI" "${ENGINE_ARGS[@]}" "${REF_ARGS[@]}"
+
+# --- durable reference store: PDFs rendered by an installed engine THIS run (never the reused ones)
+python3 - "$WORK/reference" "$EVIDENCE" "$STAMP" <<'PY'
+import json, os, shutil, sys
+work, ev, stamp = sys.argv[1:4]
+engines = json.load(open(os.path.join(work, "engines.json")))
+entries = {}
+for fx in sorted(os.listdir(work)):
+    d = os.path.join(work, fx)
+    if not os.path.isdir(d): continue
+    for label in sorted(os.listdir(d)):
+        ej, pdf = os.path.join(d, label, "engine.json"), os.path.join(d, label, "main.pdf")
+        if not (os.path.exists(ej) and os.path.exists(pdf)): continue
+        e = json.load(open(ej))
+        if e.get("reused") or e.get("exit") != 0: continue
+        dst = os.path.join(ev, "references", fx, label); os.makedirs(dst, exist_ok=True)
+        shutil.copy2(pdf, os.path.join(dst, "main.pdf"))
+        e2 = dict(e); e2["engine_version"] = engines.get(label.split("-")[0], {}).get("version"); e2["rendered_in_run"] = stamp
+        json.dump(e2, open(os.path.join(dst, "engine.json"), "w"), indent=2)
+        entries[f"{fx}/{label}"] = {"fixture_sha256": e.get("fixture_sha256"), "pdf_sha256": e.get("pdf_sha256"), "engine": label,
+                                    "engine_version": e2["engine_version"], "variant": e.get("variant"), "exit": e.get("exit")}
+if entries:
+    json.dump({"schema_version": 1, "run": stamp, "machine": "mac-m1max-a",
+               "note": "Reference oracle renders (PDF + engine metadata) rendered by this run; rasters/word boxes are re-derived from the PDF. "
+                       "Later runs without an engine reuse these after a fixture SHA-256 + preamble check.",
+               "engines": {k: v for k, v in engines.items() if not k.startswith("_")},
+               "packages": engines.get("_packages"), "system_fonts": engines.get("_system_fonts"), "entries": entries},
+              open(os.path.join(ev, "references", "manifest.json"), "w"), indent=1)
+    print(f"reference store written: {len(entries)} fresh renders -> {ev}/references")
+else:
+    print("no fresh reference renders this run; no reference store written")
+PY
 "$HERE/render_flashtex.sh" --out "$WORK/flashtex" --rasterize "$WORK/rasterize" --pdf-bin "$PDF_BIN" \
   "${COMPILER_ARGS[@]}" --dpi "$DPI" --embed-font auto
 
@@ -140,6 +193,23 @@ for f in sorted(os.listdir(os.path.join(here, "fixtures"))):
                      "meta_sha256": hashlib.sha256(open(meta_p, "rb").read()).hexdigest() if os.path.exists(meta_p) else None,
                      "purpose": meta.get("purpose"), "meta": meta})
 engines = json.load(open(os.path.join(work, "reference", "engines.json")))
+references = {"fresh": [], "reused": {}, "unavailable": [], "stores": engines.get("_reference_stores", [])}
+for fx in sorted(os.listdir(os.path.join(work, "reference"))):
+    d = os.path.join(work, "reference", fx)
+    if not os.path.isdir(d): continue
+    for e in sorted(os.listdir(d)):
+        ej = os.path.join(d, e, "engine.json")
+        if not os.path.exists(ej): continue
+        j = json.load(open(ej))
+        key = f"{fx}/{e}"
+        if j.get("reused"):
+            rf = j.get("reused_from", {})
+            references["reused"][key] = {"run": rf.get("run"), "engine_version": rf.get("engine_version"), "pdf_sha256": j.get("pdf_sha256"),
+                                         "fixture_sha256": j.get("fixture_sha256")}
+        elif j.get("available") and j.get("exit") == 0:
+            references["fresh"].append(key)
+        else:
+            references["unavailable"].append({"key": key, "reason": j.get("reason") or f"engine exit {j.get('exit')}"})
 pre, flags = {}, []
 for fx in sorted(os.listdir(os.path.join(work, "reference"))):
     d = os.path.join(work, "reference", fx)
@@ -170,6 +240,7 @@ prov = {
     "harness_files_sha256": {f: hashlib.sha256(open(os.path.join(here, f), "rb").read()).hexdigest()
                              for f in sorted(os.listdir(here)) if os.path.isfile(os.path.join(here, f))},
     "engines": {k: v for k, v in engines.items() if not k.startswith("_")},
+    "references": references,
     "packages": engines.get("_packages", {}), "system_fonts": engines.get("_system_fonts", {}),
     "preambles": pre, "engine_flags": flags,
     "compilers": json.loads(compilers),

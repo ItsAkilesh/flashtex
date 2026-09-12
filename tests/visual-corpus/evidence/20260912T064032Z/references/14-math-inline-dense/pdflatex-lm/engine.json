@@ -1,0 +1,22 @@
+{
+  "engine": "pdflatex-lm",
+  "variant": "lm",
+  "available": true,
+  "path": "/Library/TeX/texbin/pdflatex",
+  "exit": 0,
+  "seconds": 0.204,
+  "flags": [
+    "-interaction=batchmode",
+    "-halt-on-error",
+    "-file-line-error"
+  ],
+  "preamble": "\\documentclass[12pt]{article}\n\\usepackage[T1]{fontenc}\n\\usepackage{lmodern}\n\\usepackage[margin=1in]{geometry}\n\\setlength{\\parindent}{0pt}\n\\setcounter{secnumdepth}{0}\n\\pagestyle{empty}\n",
+  "errors": [],
+  "warnings": [],
+  "fontspec_fonts": [],
+  "pdf": true,
+  "engine_version": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+  "fixture_sha256": "4db4c0efbbe30c80fe412d56b521e697cfb55977d840b17b7a71aa0612189bc9",
+  "pdf_sha256": "126acc84a5a09b8ab23b8bf899bc8ccd27065aaa969f6e05046a8334ac6a7bed",
+  "rendered_in_run": "20260912T064032Z"
+}

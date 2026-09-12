@@ -151,6 +151,41 @@ def ssim_blocks(a, b, n=8):
     return statistics.fmean(vals) if vals else 1.0, len(vals), sum(1 for v in vals if v < 0.9), worst[:10]
 
 
+def add_png_text(path, fields):
+    """Insert Latin-1 `tEXt` chunks (keyword -> text) before the first IDAT of an existing PNG."""
+    data = open(path, "rb").read()
+    if not data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return
+    def chunk(t, b):
+        c = t + b
+        return struct.pack(">I", len(b)) + c + struct.pack(">I", zlib.crc32(c) & 0xFFFFFFFF)
+    i, out, inserted = 8, [data[:8]], False
+    while i < len(data):
+        n, = struct.unpack(">I", data[i:i + 4])
+        t = data[i + 4:i + 8]
+        if t == b"IDAT" and not inserted:
+            for k, v in fields.items():
+                out.append(chunk(b"tEXt", k.encode("latin-1") + b"\x00" + v.encode("latin-1", "replace")))
+            inserted = True
+        out.append(data[i:i + 12 + n])
+        i += 12 + n
+    open(path, "wb").write(b"".join(out))
+
+
+def png_text(path):
+    """Read tEXt chunks back (used by the self-test)."""
+    data = open(path, "rb").read()
+    i, out = 8, {}
+    while i < len(data):
+        n, = struct.unpack(">I", data[i:i + 4])
+        t = data[i + 4:i + 8]
+        if t == b"tEXt":
+            k, _, v = data[i + 8:i + 8 + n].partition(b"\x00")
+            out[k.decode("latin-1")] = v.decode("latin-1")
+        i += 12 + n
+    return out
+
+
 def write_png(path, w, h, rgb, max_bytes=None, footer=None, rasterize=None):
     """Write RGB bytes as PNG; if larger than max_bytes, box-downsample by 2 and retry.
     With `footer` and a `rasterize` binary, the provenance footer is burned into the
@@ -176,6 +211,8 @@ def write_png(path, w, h, rgb, max_bytes=None, footer=None, rasterize=None):
                 os.replace(tmp, path)
             else:
                 os.remove(tmp)
+        if footer:
+            add_png_text(path, {"Description": footer, "Software": "FlashTeX visual corpus harness (tests/visual-corpus/harness/diff.py)"})
         return os.path.getsize(path)
     size = encode(w, h, rgb)
     scale = 1
@@ -748,7 +785,23 @@ def build_report(entries, prov, evidence, thresholds_result, regress_result, arg
         else:
             font = "Times New Roman (`fontspec`, /System/Library/Fonts/Supplemental/Times New Roman.ttf)"
         pre = prov.get("preambles", {}).get(e, "").replace("\n", " ")
-        L.append(f"| {e} | {'yes' if row.get('available') else 'NO'} | {row.get('version', '-')} | {font if row.get('available') else '-'} | `{pre}` |")
+        avail = "yes" if row.get("available") else ("NO — PDFs reused from run " + str(row["reused_from"].get("run")) if row.get("reused_from") else "NO")
+        L.append(f"| {e} | {avail} | {row.get('version', '-')} | {font if (row.get('available') or row.get('reused_from')) else '-'} | `{pre}` |")
+    refs = prov.get("references") or {}
+    if refs:
+        L.append("\n### Reference availability this run\n")
+        L.append(f"- rendered fresh by an installed engine: {len(refs.get('fresh', []))} fixture/oracle pairs")
+        by_run = {}
+        for k, v in (refs.get("reused") or {}).items():
+            by_run.setdefault((v.get("run"), v.get("engine_version")), []).append(k)
+        for (run, ver), keys in sorted(by_run.items()):
+            L.append(f"- reused from run `{run}` ({ver}): {len(keys)} pairs — the PDF stored in `evidence/{run}/references/` was reused after its "
+                     "recorded fixture SHA-256 and preamble matched; raster and word boxes re-derived by this run's rasterizer; the engine "
+                     "version above is the one that produced that PDF, not a binary present on this machine")
+        if refs.get("unavailable"):
+            L.append(f"- **reference unavailable** (reported, not failed): {len(refs['unavailable'])} pairs")
+            for u in refs["unavailable"][:24]:
+                L.append(f"  - {u['key']}: {u['reason']}")
     L.append("\nThe `-lm` oracles are the intended primary apples-to-apples target once a Latin-Modern-metrics FlashTeX pipeline "
              "exists; the Times oracles match the current compiler's Times metrics. Both are reported for every fixture.")
     L.append(f"\nEngine flags: `{' '.join(prov.get('engine_flags', []))}`. Page size: US letter 612×792 pt for every producer "
@@ -792,6 +845,10 @@ def build_report(entries, prov, evidence, thresholds_result, regress_result, arg
         L.append("| Fixture | Engine | Compiler | Pages ref/ours | Status | mean\\|Δ\\| raw | SSIM₈ raw | registration Δ pt (dx,dy per page) | mean\\|Δ\\| after reg | SSIM₈ after reg | max | differing | ≥thr | words ref/ours/aligned | seq= | mean\\|dx\\| pt | mean\\|dy\\| pt | line-start agree | rules ref/ours | overlay |")
         L.append("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|")
         for e in rows:
+            if e.get("skipped"):
+                L.append(f"| {e['fixture']} | {e['engine']} | {e['compiler']} | {e.get('ref_pages', '-')}/{e.get('our_pages', '-')} | "
+                         f"**{e['skipped']}** | " + " | ".join(["-"] * 15) + " |")
+                continue
             r, w = e.get("raster") or {}, e.get("words") or {}
             pg = e.get("pages", [])
             first = next((p for p in pg if p.get("overlay")), None)
@@ -833,7 +890,7 @@ def build_report(entries, prov, evidence, thresholds_result, regress_result, arg
 
     L.append("## Per-fixture diagnostic details (export side)\n")
     for e in entries:
-        if e["side"] != "export":
+        if e["side"] != "export" or e.get("skipped"):
             continue
         L.append(f"### {e['fixture']} — {e['engine']} vs compiler `{e['compiler']}` (export)\n")
         b = e.get("build", {})
@@ -962,7 +1019,11 @@ def main():
                              "status": build.get("status"), "ref_pages": len(ref_pages), "our_pages": len(our_pages),
                              "build": {k: build.get(k) for k in ("diagnostics", "diagnostic_count", "rule_items", "pdf_re_f_count", "pdf_re_f_rects", "pdf_exit", "compile_exit")}}
                     if not ref_pages or not our_pages:
-                        entry["skipped"] = "no reference raster" if not ref_pages else "no flashtex raster"
+                        if not ref_pages:
+                            entry["skipped"] = "reference unavailable" if not einfo.get("available") else "no reference raster"
+                            entry["reason"] = einfo.get("reason") or f"engine exit {einfo.get('exit')}"
+                        else:
+                            entry["skipped"] = "no flashtex raster"
                         entries.append(entry)
                         continue
                     out_dir = os.path.join(args.evidence, "images", fx)
@@ -972,14 +1033,19 @@ def main():
                         and side in args.images_for_sides.split(",")
                     fx_sha = next((f["sha256"] for f in prov.get("fixtures", []) if f["name"] == fx + ".tex"), "")
                     comp_info = next((c for c in prov.get("compilers", []) if c["label"] == comp), {})
-                    eng_ver = prov.get("engines", {}).get(eng.split("-")[0], {}).get("version", "?")
+                    reused = einfo.get("reused_from") if einfo.get("reused") else None
+                    eng_ver = (reused or {}).get("engine_version") or prov.get("engines", {}).get(eng.split("-")[0], {}).get("version", "?")
                     font = ("times/T1" if eng == "pdflatex" else "lmodern/T1" if eng == "pdflatex-lm"
                             else "Latin Modern OTF" if eng.endswith("-lm") else "Times New Roman TTF")
                     entry["provenance"] = {"fixture_sha256": fx_sha, "engine": eng, "engine_version": eng_ver, "font": font,
+                                           "reference_pdf_sha256": einfo.get("pdf_sha256"),
+                                           "reference_reused_from_run": (reused or {}).get("run"),
                                            "compiler_sha": comp_info.get("sha"), "pdf_writer_sha": (prov.get("pdf_writer") or {}).get("sha"),
                                            "dpi": args.dpi, "color_space": "sRGB IEC61966-2.1", "pixel_format": "RGBA8",
                                            "side": side, "run": prov.get("generated_utc")}
-                    footer = (f"fixture {fx}.tex sha256 {fx_sha[:16]} | oracle {eng} {eng_ver} {font} | compiler {comp}@{(comp_info.get('sha') or '')[:12]}"
+                    footer = (f"fixture {fx}.tex sha256 {fx_sha[:16]} | oracle {eng} {eng_ver} {font}"
+                              + (f" (PDF reused from run {reused.get('run')})" if reused else "")
+                              + f" | compiler {comp}@{(comp_info.get('sha') or '')[:12]}"
                               f" | flashtex-pdf {((prov.get('pdf_writer') or {}).get('sha') or '')[:12]} | side {side} | {args.dpi:g} DPI sRGB RGBA8 | run {prov.get('generated_utc')}")
                     pages = compare_pages(ref_pages, our_pages, out_dir, tag, args.threshold, args.dpi, args.max_png_bytes, args.evidence, want_images,
                                           ref_words=ref_words, footer=footer, rasterize=args.rasterize)

@@ -6,6 +6,16 @@
 # Usage: render_reference.sh --out <dir> --rasterize <bin> [--dpi 144]
 #                            [--texbin /Library/TeX/texbin] [--fixtures <dir>]
 #                            [--engine pdflatex --engine xelatex ...]
+#                            [--reference-from <evidence dir> ...]
+#
+# Missing engines: when an engine binary is not installed, each fixture/variant is
+# looked up (newest --reference-from dir first) in <dir>/references/<fixture>/<label>/
+# {main.pdf,engine.json}; the stored PDF is reused ONLY when its recorded fixture
+# SHA-256 equals the current fixture and its recorded preamble equals the preamble
+# this script would use. engine.json then carries `reused_from` (run id, original
+# engine version/path/flags) and the raster/word boxes are re-derived from the PDF
+# with the shared rasterizer. Otherwise engine.json says `available:false` with a
+# `reason` ("reference unavailable ...") and the fixture is reported, not failed.
 #
 # Output layout: <out>/<fixture>/<engine>/main.tex|main.pdf|main.log|
 #                page-p<N>.png|.rgba|.rgba.json|raster.json|engine.json|words.json
@@ -26,7 +36,7 @@
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 OUT=""; RASTERIZE=""; DPI=144; TEXBIN=/Library/TeX/texbin; FIXTURES="$HERE/fixtures"
-ENGINES=()
+ENGINES=(); REF_FROM=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --out) OUT="$2"; shift 2 ;;
@@ -35,7 +45,8 @@ while [[ $# -gt 0 ]]; do
     --texbin) TEXBIN="$2"; shift 2 ;;
     --fixtures) FIXTURES="$2"; shift 2 ;;
     --engine) ENGINES+=("$2"); shift 2 ;;
-    -h|--help) sed -n '2,20p' "$0"; exit 0 ;;
+    --reference-from) REF_FROM+=("$2"); shift 2 ;;
+    -h|--help) sed -n '2,30p' "$0"; exit 0 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done
@@ -80,9 +91,16 @@ PRE_FONTSPEC_LM="\\documentclass[12pt]{article}
 FLAGS=(-interaction=batchmode -halt-on-error -file-line-error)
 
 # Engine availability and versions, recorded honestly.
-python3 - "$OUT/engines.json" "$TEXBIN" "${ENGINES[@]}" <<'PY'
+REF_FROM_ARG="$(IFS=:; echo "${REF_FROM[*]:-}")"
+python3 - "$OUT/engines.json" "$TEXBIN" "$REF_FROM_ARG" "${ENGINES[@]}" <<'PY'
 import json, os, subprocess, sys
-out, texbin, engines = sys.argv[1], sys.argv[2], sys.argv[3:]
+out, texbin, ref_from, engines = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4:]
+stores = []
+for d in [x for x in ref_from.split(":") if x]:
+    m = os.path.join(d, "references", "manifest.json")
+    if os.path.exists(m):
+        j = json.load(open(m))
+        stores.append({"dir": d, "run": j.get("run"), "engines": j.get("engines", {}), "entries": len(j.get("entries", {}))})
 info = {}
 for e in engines:
     path = os.path.join(texbin, e)
@@ -90,7 +108,15 @@ for e in engines:
     if row["available"]:
         v = subprocess.run([path, "--version"], capture_output=True, text=True).stdout.splitlines()
         row["version"] = v[0] if v else "?"
+    else:
+        row["reason"] = "engine binary not installed at " + path
+        src = next((s for s in stores if s["engines"].get(e, {}).get("available")), None)
+        if src:
+            row["reused_from"] = {"run": src["run"], "dir": src["dir"], "version": src["engines"][e].get("version"),
+                                  "path": src["engines"][e].get("path")}
+            row["version"] = src["engines"][e].get("version")  # the version that produced the reused PDFs
     info[e] = row
+info["_reference_stores"] = stores
 kp = os.path.join(texbin, "kpsewhich")
 pk = {}
 if os.access(kp, os.X_OK):
@@ -115,16 +141,62 @@ for tex in "$FIXTURES"/*.tex; do
     label="$engine"; [[ "$variant" == "lm" ]] && label="$engine-lm"
     dir="$OUT/$name/$label"
     mkdir -p "$dir"
-    if [[ ! -x "$bin" ]]; then
-      echo "{\"engine\":\"$engine\",\"variant\":\"$variant\",\"available\":false}" > "$dir/engine.json"
-      echo "-- $name/$label: not available"; continue
-    fi
     case "$engine-$variant" in
       pdflatex-times) pre="$PRE_PDFLATEX" ;;
       pdflatex-lm) pre="$PRE_PDFLATEX_LM" ;;
       *-times) pre="$PRE_FONTSPEC" ;;
       *) pre="$PRE_FONTSPEC_LM" ;;
     esac
+    if [[ ! -x "$bin" ]]; then
+      # Reuse a stored reference PDF (newest store first) when fixture SHA and preamble match.
+      reused="$(python3 - "$tex" "$dir" "$engine" "$variant" "$label" "$pre" "$REF_FROM_ARG" <<'PY'
+import hashlib, json, os, re, shutil, sys
+tex, d, engine, variant, label, pre, ref_from = sys.argv[1:8]
+fx = os.path.basename(tex)[:-4]
+fx_sha = hashlib.sha256(open(tex, "rb").read()).hexdigest()
+tried = []
+for store in [x for x in ref_from.split(":") if x]:
+    src = os.path.join(store, "references", fx, label)
+    ej, pdf = os.path.join(src, "engine.json"), os.path.join(src, "main.pdf")
+    if not (os.path.exists(ej) and os.path.exists(pdf)):
+        tried.append(f"{store}: no stored reference"); continue
+    e = json.load(open(ej))
+    if e.get("fixture_sha256") != fx_sha:
+        tried.append(f"{store}: fixture changed (stored {str(e.get('fixture_sha256'))[:12]}, now {fx_sha[:12]})"); continue
+    norm = lambda t: re.sub(r"Path=[^,\]]+", "Path=<lm-dir>", t or "")  # same OTF files, TeX Live tree may move
+    if norm(e.get("preamble")) != norm(pre):
+        tried.append(f"{store}: preamble differs"); continue
+    if e.get("exit") != 0:
+        tried.append(f"{store}: stored render exited {e.get('exit')}"); continue
+    if hashlib.sha256(open(pdf, "rb").read()).hexdigest() != e.get("pdf_sha256"):
+        tried.append(f"{store}: stored PDF SHA-256 mismatch"); continue
+    shutil.copy2(pdf, os.path.join(d, "main.pdf"))
+    shutil.copy2(ej, os.path.join(d, "stored-engine.json"))
+    out = {"engine": label, "variant": variant, "available": True, "reused": True,
+           "reused_from": {"run": e.get("rendered_in_run"), "dir": store, "engine_version": e.get("engine_version"),
+                           "path": e.get("path"), "flags": e.get("flags"), "seconds": e.get("seconds")},
+           "path": None, "exit": 0, "seconds": 0.0, "flags": e.get("flags"), "preamble": pre,
+           "errors": e.get("errors", []), "warnings": e.get("warnings", []), "fontspec_fonts": e.get("fontspec_fonts", []),
+           "fixture_sha256": fx_sha, "pdf_sha256": e.get("pdf_sha256"), "pdf": True,
+           "note": "engine binary not installed this run; PDF reused from run %s (%s) after fixture SHA-256 and preamble check" % (e.get("rendered_in_run"), e.get("engine_version"))}
+    json.dump(out, open(os.path.join(d, "engine.json"), "w"), indent=2)
+    print("reused " + str(e.get("rendered_in_run")))
+    sys.exit(0)
+out = {"engine": label, "variant": variant, "available": False, "reused": False, "fixture_sha256": fx_sha, "preamble": pre,
+       "reason": "reference unavailable: engine binary not installed and no matching stored reference (" + ("; ".join(tried) or "no --reference-from store") + ")"}
+json.dump(out, open(os.path.join(d, "engine.json"), "w"), indent=2)
+print("unavailable")
+PY
+)"
+      if [[ "$reused" == reused* ]]; then
+        "$RASTERIZE" pdf "$dir/main.pdf" "$dir/page" --dpi "$DPI" > "$dir/raster.json"
+        "$RASTERIZE" word-boxes "$dir/main.pdf" > "$dir/words.json"
+        echo "-- $name/$label: engine not installed; $reused (raster re-derived)"
+      else
+        echo "-- $name/$label: reference unavailable (engine not installed, no stored reference)"
+      fi
+      continue
+    fi
     python3 - "$tex" "$dir/main.tex" "$pre" <<'PY'
 import re, sys
 src = open(sys.argv[1], encoding="utf-8").read()
@@ -142,7 +214,7 @@ PY
       "$RASTERIZE" pdf "$dir/main.pdf" "$dir/page" --dpi "$DPI" > "$dir/raster.json"
       "$RASTERIZE" word-boxes "$dir/main.pdf" > "$dir/words.json"
     fi
-    python3 - "$dir" "$label" "$bin" "$rc" "$secs" "${FLAGS[*]}" "$pre" "$variant" <<'PY'
+    python3 - "$dir" "$label" "$bin" "$rc" "$secs" "${FLAGS[*]}" "$pre" "$variant" "$tex" <<'PY'
 import json, re, sys, os
 d, engine, path, rc, secs, flags, pre, variant = sys.argv[1:9]
 log = open(os.path.join(d, "main.log"), encoding="latin-1").read() if os.path.exists(os.path.join(d, "main.log")) else ""
@@ -150,9 +222,13 @@ fonts = sorted(set(re.findall(r"(?:Font|font)\s+([A-Za-z0-9\-]+(?:/[A-Za-z0-9\-\
 errors = [l for l in log.splitlines() if l.startswith("!")][:5]
 warns = [l for l in log.splitlines() if "Warning" in l][:10]
 fontspec_font = re.findall(r"Font\s+'([^']+)'\s+\(([^)]+)\)", log)
-json.dump({"engine": engine, "variant": variant, "available": True, "path": path, "exit": int(rc), "seconds": float(secs),
+import hashlib
+pdfp = os.path.join(d, "main.pdf")
+json.dump({"engine": engine, "variant": variant, "available": True, "reused": False, "path": path, "exit": int(rc), "seconds": float(secs),
            "flags": flags.split(), "preamble": pre, "errors": errors, "warnings": warns,
-           "fontspec_fonts": fontspec_font[:6], "pdf": os.path.exists(os.path.join(d, "main.pdf"))},
+           "fontspec_fonts": fontspec_font[:6], "pdf": os.path.exists(pdfp),
+           "fixture_sha256": hashlib.sha256(open(sys.argv[9], "rb").read()).hexdigest(),
+           "pdf_sha256": hashlib.sha256(open(pdfp, "rb").read()).hexdigest() if os.path.exists(pdfp) else None},
           open(os.path.join(d, "engine.json"), "w"), indent=2)
 PY
     echo "-- $name/$label: exit $rc (${secs}s)"

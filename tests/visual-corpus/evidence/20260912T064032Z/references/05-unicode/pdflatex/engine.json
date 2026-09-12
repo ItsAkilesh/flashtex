@@ -1,0 +1,22 @@
+{
+  "engine": "pdflatex",
+  "variant": "times",
+  "available": true,
+  "path": "/Library/TeX/texbin/pdflatex",
+  "exit": 0,
+  "seconds": 0.118,
+  "flags": [
+    "-interaction=batchmode",
+    "-halt-on-error",
+    "-file-line-error"
+  ],
+  "preamble": "\\documentclass[12pt]{article}\n\\usepackage[T1]{fontenc}\n\\usepackage{times}\n\\usepackage[margin=1in]{geometry}\n\\setlength{\\parindent}{0pt}\n\\setcounter{secnumdepth}{0}\n\\pagestyle{empty}\n",
+  "errors": [],
+  "warnings": [],
+  "fontspec_fonts": [],
+  "pdf": true,
+  "engine_version": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+  "fixture_sha256": "3656f7c08076a0b2aa4954e16499456657dbd600b44df68e70dd5648a8013309",
+  "pdf_sha256": "419fdfce7ce2ab8f9e448808468008ab97d1a166c0884ad3f5b1cd42f573e56c",
+  "rendered_in_run": "20260912T064032Z"
+}
