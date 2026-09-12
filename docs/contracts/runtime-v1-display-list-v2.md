@@ -24,6 +24,8 @@ failed result cannot promise a display sibling. A declined or unrequested
 capability produces no sibling; ordinary full v1 behavior remains available.
 An unsupported producer may decline by omitting the capability. The current
 producer's size decline uses `display_list_declined` and a recovered result.
+Its preflight estimate can decline before exact v2 serialization; an estimated
+size is not a measured serialized size. Exact output is also checked when produced.
 
 The sibling request ID, project ID and compile revision must equal the admitted
 request and result. Declared document paths, byte lengths and raw UTF-8 SHA-256
@@ -56,12 +58,18 @@ not equivalent to its explicit `PipelineCff` adapter: the generic default profil
 is static TrueType; `opentype-cff` uses the explicit CFF binder and immutable font
 registry. Do not claim that the generic schema accepts that extension unchanged.
 
-A font resource SHA-256 identifies the complete original font bytes, with face
+For supported file-backed fonts, a resource SHA-256 identifies the complete
+original font bytes, with face
 index and other declared identity checked separately. The historical
 SHA-256(bytes || face-index) engine identifier is not the raw resource digest.
 Original GIDs, compiler positions and declared source spans are retained; consumers
 do not invent mappings or repair malformed metadata. Resource verification must
 bind the bytes actually used by the renderer, not an earlier path read.
+The producer also describes metrics-only `core14-afm` resources with zero byte
+length and an AFM identity digest; these are not authenticated paintable font files.
+The strict PipelineCff path accepts neither AFM resources nor face-salted aliases.
+A native schema decoding a metrics-only descriptor does not establish that it can
+resolve that descriptor for painting.
 
 Every declared source is checked against supplied bytes. The standalone CFF binder
 does not itself assert that its declared document list equals an arbitrary caller
@@ -76,7 +84,9 @@ checks v2 display diagnostics and refuses errors but can export warning-only out
 Pairing does not compare the two diagnostic sequences. PipelineCff binding checks
 v2 diagnostic provenance without itself rejecting error severity; export applies
 that refusal. Do not infer a blanket bind or hit refusal from a v2-only error.
-Neither outcome establishes reference fidelity.
+The native route has its own diagnostic display and preparation policy; it must
+not be described as enforcing the Rust paired-helper or export severity policy
+without a route-specific gate. None of these outcomes establishes reference fidelity.
 
 ## Helper boundary and currentness
 
