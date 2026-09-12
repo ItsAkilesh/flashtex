@@ -3,7 +3,6 @@
   "reference_commit": "10e80be98a59a6c6317cb21348cee07370ebf1b0",
   "source_transformation": "Original request retains begin{document} and following body; reference preamble is replaced as recorded in reference-engine.json. Full inputs are not identical.",
   "pipeline_pdf_route": "vendored runtime-v1 PDF; not rendering-core exact path",
-  "font_sha256": "d0f39b3e9f0ba871e9659676236d9ffaee9113ea30b07e40235fa2fdbe549c1c",
   "font_name": "LMRoman12-Regular",
   "missing_metrics": "ec-lmr12.tfm; pipeline silently uses OTF metrics, diagnostics empty",
   "original_gid_binding_present": true,
@@ -15,6 +14,18 @@
     "reference-engine.json": "fdde1c02add6450469801fdfa86b80c24d15a2bcdc4538106691011e46dca084",
     "reference.pdf": "7434e7c32852c7313ac973ecd3edb3625a2935046dc25060d3464d8fecd66292",
     "request.jsonl": "16e39aa9eba60096b8067ad69644c3f614fe0ea0a65a627e31b7579feef08c64",
-    "source.tex": "223aac6742bf98c115d7205ebd17f8a1af86af09f40fbfcd706e930b8f40aa3b"
+    "source.tex": "223aac6742bf98c115d7205ebd17f8a1af86af09f40fbfcd706e930b8f40aa3b",
+    "matched-v2.json": "e2ff9cd0994b866f0c1f8a413a4ab3fd54174436f74d1475fb73aab90e74bff4",
+    "matched-legacy.pdf": "c5154492a61d2b1fb041cb8e31bc1542e251541fb1b3b2567df24af34be8f46b",
+    "lmroman12-regular.otf": "e6be218ae83e61aa8a29990d3cdc401c678c1962188cb9a4a8b6359e4f5e5870",
+    "GUST-FONT-LICENSE.txt": "5eb61bb836bb1845ef668717cb15b382e997748ce2629e4388cc5e4c3fa4e433"
+  },
+  "declared_engine_font_sha256": "d0f39b3e9f0ba871e9659676236d9ffaee9113ea30b07e40235fa2fdbe549c1c",
+  "actual_raw_font_sha256": "e6be218ae83e61aa8a29990d3cdc401c678c1962188cb9a4a8b6359e4f5e5870",
+  "matching_tfm": {
+    "sha256": "299021120f0a29ef61278a2363903bd8defbb8faaade458eb79067342aecb56f",
+    "name": "ec-lmr12.tfm",
+    "release": "official LM2.004",
+    "effect": "matched-v2.json and matched-legacy.pdf rerun unchanged original pipeline; exact adapter refuses producer raw-SHA mislabel"
   }
 }

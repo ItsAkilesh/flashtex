@@ -48,3 +48,161 @@ fn compiler_source_identity_and_original_gids_exist_but_wire_is_not_activated() 
     let error = parse(V2).unwrap().validate(Some(&offer)).unwrap_err();
     assert!(error.0.contains("unsupported font profile"), "{error}");
 }
+
+#[test]
+fn opt_in_cff_binding_requires_actual_resources_and_current_sources() {
+    use flashtex_rendering_core::{pipeline_cff::PipelineCff, Message, SourceSnapshot};
+    use std::collections::BTreeMap;
+    let Message::Offer(caps) = parse(include_bytes!("fixtures/capabilities.json"))
+        .unwrap()
+        .message
+    else {
+        unreachable!()
+    };
+    let request: Value =
+        serde_json::from_slice(include_bytes!("fixtures/original-reference/request.jsonl"))
+            .unwrap();
+    let mut docs = BTreeMap::from([(
+        "main.tex".into(),
+        SourceSnapshot {
+            revision: 1,
+            text: request["payload"]["documents"][0]["text"]
+                .as_str()
+                .unwrap()
+                .into(),
+        },
+    )]);
+    let error = PipelineCff::bind(V2, &caps, &docs, &BTreeMap::new())
+        .err()
+        .unwrap();
+    assert_eq!(error.0, "missing immutable CFF resource");
+    docs.get_mut("main.tex").unwrap().revision = 2;
+    assert_eq!(
+        PipelineCff::bind(V2, &caps, &docs, &BTreeMap::new())
+            .err()
+            .unwrap()
+            .0,
+        "source identity mismatch"
+    );
+}
+
+#[test]
+fn actual_font_digest_is_engine_identity_not_raw_resource() {
+    let fixtures =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/original-reference");
+    let font = std::fs::read(fixtures.join("lmroman12-regular.otf")).unwrap();
+    let v: Value = serde_json::from_slice(V2).unwrap();
+    assert_ne!(v["payload"]["fonts"][0]["sha256"], digest(&font));
+    let mut engine_input = font.clone();
+    engine_input.extend_from_slice(&[0; 4]);
+    assert_eq!(v["payload"]["fonts"][0]["sha256"], digest(&engine_input));
+    // Binary invocation is intentionally left to the explicit documented probe;
+    // this test pins the actual producer refusal condition without fabricating
+    // a corrected original-output artifact.
+}
+
+#[test]
+fn explicit_cff_contract_binds_bytes_and_budgets_atomically() {
+    use flashtex_font_resources::{cff::HintPolicy, registry::*};
+    use flashtex_rendering_core::{
+        mixed::MixedLimits, pipeline_cff::PipelineCff, Message, SourceSnapshot,
+    };
+    use std::collections::BTreeMap;
+    let dir = tempfile::tempdir().unwrap();
+    let font = include_bytes!("fixtures/original-reference/lmroman12-regular.otf");
+    let license = include_bytes!("fixtures/original-reference/GUST-FONT-LICENSE.txt");
+    std::fs::write(dir.path().join("font.otf"), font).unwrap();
+    std::fs::write(dir.path().join("LICENSE"), license).unwrap();
+    let mut hypothetical: Value = serde_json::from_slice(include_bytes!(
+        "fixtures/original-reference/matched-v2.json"
+    ))
+    .unwrap();
+    let mut descriptor = hypothetical["payload"]["fonts"][0].clone();
+    descriptor["format"] = "static-cff".into();
+    descriptor["sha256"] = digest(font).into();
+    let binding = serde_json::json!({"family":"LM","weight":400,"style":"upright"});
+    let manifest = serde_json::json!({"schema_version":1,"entries":[{"binding":binding,"resource":{"font":descriptor,"path":"font.otf","license":{"identifier":"GUST","copyright":"See supplied license","source":"official LM2.004","text_path":"LICENSE","text_sha256":digest(license),"embedding_permission":"unknown"}}}]});
+    std::fs::write(
+        dir.path().join("fonts.json"),
+        serde_json::to_vec(&manifest).unwrap(),
+    )
+    .unwrap();
+    let root = flashtex_project_files::ProjectRoot::open(dir.path()).unwrap();
+    let registry =
+        ProjectFontRegistry::load(&root, "fonts.json", RegistryLimits::default()).unwrap();
+    let RegistryResource::Cff(resource) = registry
+        .resource(&serde_json::from_value(binding).unwrap())
+        .unwrap()
+    else {
+        unreachable!()
+    };
+    let resources = BTreeMap::from([(descriptor["font_id"].as_str().unwrap().into(), resource)]);
+    let req: Value =
+        serde_json::from_slice(include_bytes!("fixtures/original-reference/request.jsonl"))
+            .unwrap();
+    let docs = BTreeMap::from([(
+        "main.tex".into(),
+        SourceSnapshot {
+            revision: 1,
+            text: req["payload"]["documents"][0]["text"]
+                .as_str()
+                .unwrap()
+                .into(),
+        },
+    )]);
+    let Message::Offer(caps) = parse(include_bytes!("fixtures/capabilities.json"))
+        .unwrap()
+        .message
+    else {
+        unreachable!()
+    };
+    assert_eq!(
+        PipelineCff::bind(
+            &serde_json::to_vec(&hypothetical).unwrap(),
+            &caps,
+            &docs,
+            &resources
+        )
+        .err()
+        .unwrap()
+        .0,
+        "CFF resource metadata mismatch"
+    );
+    // Explicit hypothetical contract test, never saved as actual producer output.
+    hypothetical["payload"]["fonts"][0]["sha256"] = digest(font).into();
+    let bound = PipelineCff::bind(
+        &serde_json::to_vec(&hypothetical).unwrap(),
+        &caps,
+        &docs,
+        &resources,
+    )
+    .unwrap();
+    let batch = bound
+        .page(0, HintPolicy::Unhinted, MixedLimits::default())
+        .unwrap();
+    assert!(!batch.primitives().is_empty());
+    assert!(batch
+        .primitives()
+        .iter()
+        .all(|p| p.font_sha256.as_deref() == Some(digest(font).as_str()) && !p.sources.is_empty()));
+    assert!(bound
+        .page(
+            0,
+            HintPolicy::Unhinted,
+            MixedLimits {
+                max_commands: 1,
+                ..MixedLimits::default()
+            }
+        )
+        .is_err());
+    assert!(bound
+        .page(
+            0,
+            HintPolicy::Unhinted,
+            MixedLimits {
+                max_primitives: 1,
+                ..MixedLimits::default()
+            }
+        )
+        .is_err());
+}

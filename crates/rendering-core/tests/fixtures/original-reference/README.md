@@ -52,3 +52,41 @@ FLASHTEX_TFM_DIRS=/path/to/only-ec-lmr10-fixture-directory flashtex-render --fon
 Keep the missing 12pt TFM condition explicit. Installing the proper TFM changes
 the resource configuration and requires a new evidence manifest. Never use the
 reference PDF as an input to the original renderer.
+
+## Opt-in CFF consumer and matched metrics rerun
+
+`pipeline_cff::PipelineCff` now offers an explicit additive path: parse the
+existing typed display, validate its CFF profile, bind immutable registry
+resources and UTF-8 source snapshots, then expand original GIDs with exact
+FontMatrix/size/origin, caller-selected hint policy and bounded command counts.
+It retains producer advances separately in `display()`; CFF outline advances
+never replace supplied glyph origins. Font IDs may differ from raw resource
+hashes. The legacy wire validator still rejects CFF. This API is opt-in and does
+not negotiate a new protocol or select implicit fonts.
+
+The stronger check exposed a producer defect: the previously declared font SHA
+`d0f39b...` is actually SHA256(font bytes + four face-index zero bytes).
+The supplied, unmodified LM2.004 font has raw SHA
+`e6be218ae83e61aa8a29990d3cdc401c678c1962188cb9a4a8b6359e4f5e5870`.
+Thus earlier statements of full-font identity describe the producer's claim,
+not successful verification. The adapter refuses `CFF resource metadata mismatch`.
+Producer fix requested at
+https://github.com/flash-tex/flashtex/issues/2#issuecomment-5645097175.
+
+`matched-v2.json` and `matched-legacy.pdf` are fresh unchanged pipeline outputs
+using official LM2.004 `ec-lmr12.tfm` SHA299021120f0a29ef61278a2363903bd8defbb8faaade458eb79067342aecb56f.
+The reference is unchanged. The legacy PDF still differs in bytes/operators;
+visual and cross-producer source correspondence remain unknown. Exact export
+refuses the mislabeled hash even with correct TFM metrics.
+
+Run the actual refusal from repository root:
+
+```
+cargo run --offline --manifest-path crates/rendering-core/Cargo.toml --example pipeline_cff_probe -- crates/rendering-core/tests/fixtures/original-reference/matched-v2.json crates/rendering-core/tests/fixtures/original-reference/request.jsonl crates/rendering-core/tests/fixtures/original-reference/lmroman12-regular.otf crates/rendering-core/tests/fixtures/original-reference/GUST-FONT-LICENSE.txt /tmp/matched-exact
+```
+
+The font fixture is unmodified official LM2.004, redistributed with its adjacent
+GUST license. The automated hypothetical corrected-contract test changes only
+the hash in memory to exercise successful adapter geometry and atomic budget
+refusals. That edited fixture is never labeled original output or used to claim
+original-versus-reference equality. No producer metadata is silently repaired.

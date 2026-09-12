@@ -14,23 +14,23 @@
     "rust",
     "rendering"
   ],
-  "code_revision": "9d09582794299aee7ef751c77167130820d35be4",
+  "code_revision": "9068d390d7dffe70d644b4260bff76817e94acdb",
   "eta_minutes": {
     "likely": 15,
     "optimistic": 5,
     "pessimistic": 25
   },
   "machine": "linux-primary",
-  "main_integrated_through": "4ee877fda92ee24bba2866a3beda9e6d1fea4e2c",
-  "next_action": "Coordinate missing TFM diagnostics and negotiated CFF boundary with existing Mac owners; await next bounded product task.",
+  "main_integrated_through": "9d09582794299aee7ef751c77167130820d35be4",
+  "next_action": "Consume producer raw-SHA correction when published, rerun exact original/reference export with official matched12TFM; retain strict old wire and no parity claim.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "FT023r7: pinned actual unchanged pipeline9bb7b27 original output versus committed pdfTeX2026 reference; real PDF difference and strict CFF wire refusal reproduced.",
+  "summary": "Add opt-in actual pipeline CFF-to-exact-batch adapter with immutable registry/source validation. Corrected-contract test succeeds; unmodified producer SHA claim fails honestly.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T09:39:34Z",
+  "updated_utc": "2026-09-12T09:46:56Z",
   "usage": {
-    "evidence": "149 ordinary tests and all-target strict clippy pass. Reference SHA7434e7c32852c7313ac973ecd3edb3625a2935046dc25060d3464d8fecd66292; original SHA8d130791ad2d5da2c20fd5eb134a62bbc75fb41a7446c90158fd945e4f0edbd5. GH2 comment5645061659. No reference geometry substitution; no visual equality claim. No pending processes.",
-    "status": "Hosted OpenAI only; no providers or descendants. Native context telemetry and compaction control unavailable."
+    "evidence": "152 ordinary tests and strict all-target clippy pass. Actual matching12TFM rerun pinned. LM12 rawSHA e6be218a differs producer engineSHA d0f39b3e. GH2 comment5645097175. Actual adapter returns CFF resource metadata mismatch; hypothetical corrected-contract probe produces real PDF only as consumer test. No native/schema activation or pending calls.",
+    "status": "Hosted OpenAI only; no providers or descendants. Context telemetry/native compaction unavailable."
   }
 }
