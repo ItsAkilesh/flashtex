@@ -7,17 +7,17 @@
     "orchestration",
     "git-integration"
   ],
-  "code_revision": "d4ee54f9687d11d194d8063ea916b7ef9c00befe",
+  "code_revision": "e6997a83d25409a81fa816c66113f4a4859806be",
   "eta_minutes": null,
   "machine": "linux-primary",
-  "main_integrated_through": "d4ee54f9687d11d194d8063ea916b7ef9c00befe",
-  "next_action": "Hold heavy gates for renderer75642 paired sample; review source-free historyd53c5073 and paired rendering21ce1756; root resolves GH33, runtime finalizes blocked-stdin evidence.",
+  "main_integrated_through": "e6997a83d25409a81fa816c66113f4a4859806be",
+  "next_action": "Review actual producer launch-cap acceptance after71049ffa; keep corrected HW1 GH38 handoff with existing FT002 owner pending ACK; review native route and delta blockers. Telemetry expansion paused. Use owned /home scratch because /tmp user quota6282M/6284M.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "Sole Commander plus three retained engineers actually running; drained workers remain completed. Dispatcher1099831 and witness1405586 active, exact Commander live and no journal blockers. Remote census stale, targets unconfirmed.",
+  "summary": "Sole Commander with three retained engineering handles; no new workers. Dispatcher1099831 and witness1405586 live; witness14:48:40 refuses takeover, no journal blockers. Mac reported parent plus3 at14:35:26; later new session has no revised total. Other hosts remain unverified.",
   "tool": "Codex Astra orchestrator",
-  "updated_utc": "2026-09-12T12:38:21.553671+00:00",
+  "updated_utc": "2026-09-12T14:49:49.520500+00:00",
   "usage": {
     "status": "unknown",
     "billing": "No new purchases, overages or funded API grants; existing hosted route only."

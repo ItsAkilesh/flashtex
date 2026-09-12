@@ -11,15 +11,15 @@
   "branch": "agent/commander-runtime-display/display-runtime",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "467538c77e84e4c3febc5308d49b53e1ca7f3d65",
-  "objective": "Audit exact 518a2ce3 helper capture hashes raw bodies source generations and durable reopen without rerun",
+  "input_main_sha": "e6997a83d25409a81fa816c66113f4a4859806be",
+  "objective": "Review existing producer cap parsing and shared helper launch policy, then audit actual oversized decline acceptance without runtime relaxation",
   "owned_paths": [
     "crates/document-runtime"
   ],
-  "revision": 43,
+  "revision": 44,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-049",
   "timebox_minutes": 40,
-  "updated_utc": "2026-09-12T14:40:56.951261+00:00"
+  "updated_utc": "2026-09-12T14:49:49.520500+00:00"
 }
