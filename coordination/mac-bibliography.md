@@ -5,12 +5,12 @@ Agent / task / branch: `mac-bibliography` (Claude Code subagent, parent
 number, no `coordination/assignments/*.json` yet, so no `ack`) /
 `agent/mac-bibliography/bibtex`
 
-State: in progress
+State: ready for integration
 
 Owned paths: `crates/bibliography/**`, `coordination/mac-bibliography.md`,
 `coordination/agents/mac-bibliography.json`. Compiler files are read-only.
 
-Main integrated through: d9dd2d2f9731353acb6afd8d653542970aadbd72
+Main integrated through: 1befb923fb8c248a704a1ff5148d77b5f581130f
 
 Ready behavior (crate `flashtex-bibliography`, edition 2024, zero deps):
 - `.bib` parser: `@entry{key, f = {..} | ".." | 123 | macro # ..}`, `@string`
@@ -34,9 +34,13 @@ Ready behavior (crate `flashtex-bibliography`, edition 2024, zero deps):
   `plain.bst` for all 13 entry functions; decoded text plus raw LaTeX; `.bbl`
   rendering for comparison.
 
-Incomplete behavior: README (in progress), compiler citation adapter proposal
-(follow-up 2, after owner agreement). See README "Unsupported" for biblatex,
-multi-level crossref, `@string` across files, crossref-specific formatting.
+Incomplete behavior: none of the issue #2 scope is outstanding. The compiler
+adapter itself is not implemented (proposal only, `crates/bibliography/
+ADAPTER-PROPOSAL.md`, awaiting compiler-owner agreement). Goldens match the
+author's expectation of `plain.bst` output and have not been diffed against a
+real BibTeX run (no TeX installation is used by this project). See README
+"Unsupported": biblatex, crossref beyond one level and crossref-specific
+formatting, `@string` across files, styles other than unsrt/plain/alpha.
 
 Interface changes and required consumer actions: none; new crate, no shared
 contract touched. Diagnostics reuse the runtime-v1 shape and UTF-8 byte spans.
@@ -48,8 +52,8 @@ integration, 1 doctest), `cargo clippy --all-targets -- -D warnings` clean,
 Needs from others: an FT number/assignment file for `ack`; compiler owner
 agreement before the adapter proposal becomes a contract.
 
-Next action: README with accent table, style provenance, unsupported list;
-then adapter proposal doc.
+Next action: await Commander review/FT number; on compiler-owner agreement,
+implement the adapter per the proposal (compiler owner's paths, not mine).
 
 Peer revisions reviewed and adaptations: origin/main 1dd26c5 (branch base).
 `crates/compiler/src/diagnostics.rs` read; same severity/message/span/recovery
@@ -59,4 +63,4 @@ shape mirrored in `crates/bibliography/src/diagnostics.rs` with a hand-written
 Resource: allocation `claude-mac20x-bibliography` (Claude Max 20x on
 mac-m1max-a, shared account quota); usage unknown, no per-call figures exposed.
 
-Updated: 2026-09-12T05:50Z
+Updated: 2026-09-12T06:05Z

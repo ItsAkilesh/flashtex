@@ -7,29 +7,29 @@
     "rust",
     "cargo"
   ],
-  "code_revision": "d9dd2d2f9731353acb6afd8d653542970aadbd72",
+  "code_revision": "91a49d7f8471be0ed85053a8ddeaa654188b953c",
   "eta_minutes": {
-    "likely": 35,
-    "optimistic": 20,
-    "pessimistic": 60
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 0
   },
   "machine": "mac-m1max-a",
-  "main_integrated_through": "d9dd2d2f9731353acb6afd8d653542970aadbd72",
-  "next_action": "README (accent table, provenance, unsupported), then adapter proposal after owner agreement",
+  "main_integrated_through": "1befb923fb8c248a704a1ff5148d77b5f581130f",
+  "next_action": "Await Commander review and FT number; implement compiler adapter only after compiler-owner agreement",
   "reviewed_peers": {
     "origin/main": {
-      "adaptation": "Reviewed 1dd26c5..d9dd2d2: new crates (project-index, rendering-core, fonts), no change to compiler diagnostics or runtime-v1; no bibliography assignment file yet; no adaptation needed",
-      "reviewed_utc": "2026-09-12T06:01:15Z",
-      "sha": "d9dd2d2f9731353acb6afd8d653542970aadbd72"
+      "adaptation": "Reviewed d9dd2d2..1befb92: dispatch-loop fixes and FT-021..026 assignments, none for bibliography; merged main, no conflicts, no adaptation needed",
+      "reviewed_utc": "2026-09-12T06:04:44Z",
+      "sha": "1befb923fb8c248a704a1ff5148d77b5f581130f"
     }
   },
   "schema_version": 1,
-  "state": "in_progress",
-  "summary": "flashtex-bibliography crate: parser, model, names, resolution, plain/alpha layout data; 43 tests, clippy/fmt clean",
+  "state": "ready_for_integration",
+  "summary": "flashtex-bibliography complete for issue #2: parser, model, names, resolution, plain/alpha layout data, README, adapter proposal; 43 tests, clippy/fmt clean",
   "tool": "Claude Code subagent (parent mac-claude-a)",
-  "updated_utc": "2026-09-12T06:01:15Z",
+  "updated_utc": "2026-09-12T06:04:44Z",
   "usage": {
-    "evidence": "cargo test 43 pass; clippy -D warnings clean; fmt clean",
+    "evidence": "cargo test 43 pass; clippy -D warnings clean; fmt clean; branch merged with main 1befb92",
     "status": "unknown"
   }
 }
