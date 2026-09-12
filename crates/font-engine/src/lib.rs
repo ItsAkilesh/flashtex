@@ -19,11 +19,13 @@
 
 pub mod core14;
 pub mod embed;
+pub mod encoding;
 #[rustfmt::skip]
 mod generated;
 mod gpos;
 mod gsub;
 mod kern;
+pub mod manifest;
 pub mod math;
 mod otl;
 mod reader;

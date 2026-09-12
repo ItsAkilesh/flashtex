@@ -29,7 +29,7 @@
 use std::ops::Range;
 
 use crate::generated::{COMBINING_MARKS, COMPOSITIONS};
-use crate::{Error, Face, GlyphId, KerningSource, Unsupported};
+use crate::{Error, Face, FontId, GlyphId, KerningSource, Unsupported};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ShapeOptions {
@@ -84,6 +84,9 @@ pub struct Cluster {
     /// The exact input text of `source_range`, for `ActualText` and hit
     /// testing. Equal to `text[source_range]`.
     pub text: String,
+    /// Index into [`Shaped::fonts`] of the face that rendered this cluster.
+    /// 0 is the primary face; anything else is an explicit fallback.
+    pub font: usize,
 }
 
 impl Cluster {
@@ -102,6 +105,10 @@ pub struct MissingGlyph {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Shaped {
     pub clusters: Vec<Cluster>,
+    /// Faces used, in chain order; `clusters[i].font` indexes this. The
+    /// glyph ids and advances of a cluster are in ITS face's units; every
+    /// face in a chain must therefore share `units_per_em` (checked).
+    pub fonts: Vec<FontId>,
     pub missing: Vec<MissingGlyph>,
     /// Parse-time unsupported-feature notes of the face, copied so a
     /// consumer holding only the result still sees what was skipped.
@@ -210,6 +217,7 @@ pub fn shape(face: &dyn Face, text: &str, opts: &ShapeOptions) -> Result<Shaped,
                 glyphs: Vec::new(),
                 source_range: byte_offset..end,
                 text: ch.to_string(),
+                font: 0,
             });
             continue;
         }
@@ -291,6 +299,7 @@ pub fn shape(face: &dyn Face, text: &str, opts: &ShapeOptions) -> Result<Shaped,
             glyphs: vec![glyph],
             source_range: byte_offset..end,
             text: ch.to_string(),
+            font: 0,
         });
     }
 
@@ -359,6 +368,7 @@ pub fn shape(face: &dyn Face, text: &str, opts: &ShapeOptions) -> Result<Shaped,
                             source_range: merged[0].source_range.start
                                 ..merged[len - 1].source_range.end,
                             text,
+                            font: 0,
                         },
                     );
                     ligatures_applied += 1;
@@ -393,10 +403,111 @@ pub fn shape(face: &dyn Face, text: &str, opts: &ShapeOptions) -> Result<Shaped,
 
     Ok(Shaped {
         clusters,
+        fonts: vec![face.id().clone()],
         missing,
         unsupported: face.unsupported().to_vec(),
         units_per_em: face.units_per_em(),
         kerning_source,
         ligatures_applied,
     })
+}
+
+/// Shapes `text` with an explicit, ordered fallback chain: `faces[0]` is the
+/// primary; each character is rendered by the FIRST face in the chain whose
+/// character map has it (a combining mark stays with its base's face so
+/// composition can apply). Characters no face has are shaped by the primary
+/// as `.notdef` and listed in `missing`. The choice is a pure function of
+/// the chain and the text, so it is deterministic and reported per cluster
+/// through [`Cluster::font`] / [`Shaped::fonts`] — never silent.
+///
+/// Runs from different faces are shaped independently: no kerning or
+/// ligature crosses a face boundary. All faces must share `units_per_em`.
+pub fn shape_with_fallback(
+    faces: &[&dyn Face],
+    text: &str,
+    opts: &ShapeOptions,
+) -> Result<Shaped, Error> {
+    let Some(primary) = faces.first() else {
+        return Err(Error::Unsupported("empty fallback chain".into()));
+    };
+    for f in faces {
+        if f.units_per_em() != primary.units_per_em() {
+            return Err(Error::Unsupported(format!(
+                "fallback face {} has {} units/em, primary has {}",
+                f.postscript_name(),
+                f.units_per_em(),
+                primary.units_per_em()
+            )));
+        }
+    }
+    // Pass 1: assign a face index to every scalar.
+    let mut assignment: Vec<(usize, usize, char)> = Vec::new(); // (byte, face, ch)
+    let mut current = 0usize;
+    for (byte_offset, ch) in text.char_indices() {
+        if let Some(reason) = unsupported_reason(ch) {
+            return Err(Error::UnsupportedScript {
+                ch,
+                byte_offset,
+                reason,
+            });
+        }
+        let cp = ch as u32;
+        let face = if is_default_ignorable(cp) || (is_mark(cp) && !assignment.is_empty()) {
+            current
+        } else {
+            faces
+                .iter()
+                .position(|f| f.glyph_id(ch).is_some())
+                .unwrap_or(0)
+        };
+        current = face;
+        assignment.push((byte_offset, face, ch));
+    }
+    // Pass 2: shape each maximal run with its face and stitch.
+    let mut out = Shaped {
+        clusters: Vec::new(),
+        fonts: faces.iter().map(|f| f.id().clone()).collect(),
+        missing: Vec::new(),
+        unsupported: Vec::new(),
+        units_per_em: primary.units_per_em(),
+        kerning_source: KerningSource::None,
+        ligatures_applied: 0,
+    };
+    let mut i = 0;
+    while i < assignment.len() {
+        let face_index = assignment[i].1;
+        let start = assignment[i].0;
+        let mut j = i;
+        while j < assignment.len() && assignment[j].1 == face_index {
+            j += 1;
+        }
+        let end = if j < assignment.len() {
+            assignment[j].0
+        } else {
+            text.len()
+        };
+        let run = shape(faces[face_index], &text[start..end], opts)?;
+        for mut c in run.clusters {
+            c.source_range = c.source_range.start + start..c.source_range.end + start;
+            c.font = face_index;
+            out.clusters.push(c);
+        }
+        for m in run.missing {
+            out.missing.push(MissingGlyph {
+                ch: m.ch,
+                byte_offset: m.byte_offset + start,
+            });
+        }
+        for u in run.unsupported {
+            if !out.unsupported.contains(&u) {
+                out.unsupported.push(u);
+            }
+        }
+        if face_index == 0 {
+            out.kerning_source = run.kerning_source;
+        }
+        out.ligatures_applied += run.ligatures_applied;
+        i = j;
+    }
+    Ok(out)
 }
