@@ -2,8 +2,8 @@
 
 Status: user confirmed £75 is Pro/Max extra usage and included allowance must not
 be consumed. Balance/isolation remain UNVERIFIED. Claude task execution blocked.
-Updated: 2026-09-12T03:17:10Z.
-Resource owner: not yet designated.
+Updated: 2026-09-12T03:22:36Z.
+Resource owner: Commander, the primary Codex agent on linux-primary, appointed by user.
 
 ## Non-negotiable restriction
 
@@ -40,6 +40,11 @@ Keep USD and GBP separate until an exchange-rate policy is explicitly approved.
 Subscription prices are not spendable API balances. Usage multipliers are not
 money, and subscription/API credits are not interchangeable by assumption.
 
+The user identified a $200 OpenAI account on this Commander machine and authorized
+it for orchestration. Record it as user-reported account/subscription access;
+the exact plan, current quota, reset, and API balance have not been verified. Do
+not subtract usage estimates from $200 as though it were an API-credit deposit.
+
 ## Pool register
 
 | Pool alias | Funding type | Currency/unit | Confirmed remaining | Expiry/reset | Permission |
@@ -48,6 +53,7 @@ money, and subscription/API credits are not interchangeable by assumption.
 | claude-project-api | Separate project API credits, proposed | Unknown | Unknown | Unknown | BLOCKED pending verification |
 | claude-personal | Personal subscription/billing | Subscription usage | Not queried | Unknown | PROHIBITED |
 | cursor-project | Authenticated Cursor account usage | Unknown | Unknown | Unknown | User explicitly authorized Cursor commit execution; no general development allocation |
+| openai-commander | User-reported $200 OpenAI account on linux-primary | Subscription/account usage; exact plan unverified | Unknown | Unknown | Commander orchestration authorized; no new API charges inferred |
 | openai-project-api | Project API credits, proposed | Unknown | Unknown | Unknown | BLOCKED pending verification |
 | grok-product | Product conversion API | Unknown | Unknown | Unknown | Credentials/budget not audited here |
 
@@ -63,7 +69,9 @@ Reserve 20% of confirmed allocatable funds for integration unless directed other
 
 | Allocation ID | Pool | Agent/machine alias | Maximum | Spent | Reserved in-flight | State |
 |---|---|---|---|---|---|---|
-| cursor-docs-commit-001 | cursor-project | Cursor CLI / linux-primary | One bounded documentation commit session; monetary cost unknown | In use this session; monetary cost unknown | One session | Active: Cursor CLI reviewing and committing docs; zero Claude calls; no nested model tasks |
+| cursor-docs-commit-001 | cursor-project | Cursor CLI / linux-primary | One bounded documentation commit session; monetary cost unknown | One completed session; monetary cost unknown | Charge unresolved; no inference in flight | Completed: b37237b committed by Cursor and pushed by Commander; zero Claude calls |
+| cursor-orchestration-commit-002 | cursor-project | Cursor CLI / linux-primary | One bounded orchestration-docs commit session; monetary cost unknown | In use this session; monetary cost unknown | One session | Active: Cursor CLI reviewing and committing orchestration docs; zero Claude calls; no nested model tasks; push not claimed |
+| commander-orch-001 | openai-commander | commander / linux-primary | Current orchestration task under user's account authorization | Usage unknown to repository | Unknown | Active; no delegated development agents started |
 
 The Cursor grant records the user's explicit tool-specific commit authorization,
 not an invented dollar balance. Do not enable overages or change billing settings.

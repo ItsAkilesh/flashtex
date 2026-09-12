@@ -6,6 +6,10 @@ your task; do not load the entire repository history into every prompt.
 | Need | Authoritative location | Writer |
 |---|---|---|
 | Required collaboration behavior | [AGENTS.md](../AGENTS.md) | Integration owner with user direction |
+| Command, dispatch, reporting, integration | [ORCHESTRATION.md](../ORCHESTRATION.md) | Commander |
+| Latest global update and recovery state | [COMMANDER.md](../coordination/COMMANDER.md) | Commander |
+| Worker identities and capabilities | [ROSTER.md](../coordination/ROSTER.md) | Commander |
+| Assignments, revisions, dependencies | [TASKS.md](../coordination/TASKS.md) | Commander |
 | Product requirements | [Master plan](../latex-master-plan.md) | Product/integration owner |
 | Deadline and acceptance gates | [PROJECT.md](../coordination/PROJECT.md) | Designated coordinator |
 | Funding, permissions, allocations | [RESOURCES.md](../coordination/RESOURCES.md) | Designated resource owner |

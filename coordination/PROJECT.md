@@ -1,8 +1,9 @@
 # Project control
 
-Status: deadline recorded; awaiting team/resource assignments.
-Updated: 2026-09-12T03:11:00Z.
-Coordinator: not yet designated; do not assume exclusive ownership.
+Status: deadline and Commander recorded; awaiting worker registrations.
+Updated: 2026-09-12T03:17:32Z.
+Coordinator: primary Codex agent on `linux-primary`, appointed Commander by user.
+Dispatch and reporting: [ORCHESTRATION.md](../ORCHESTRATION.md).
 
 ## Deadline
 

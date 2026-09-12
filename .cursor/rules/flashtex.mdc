@@ -5,6 +5,7 @@ alwaysApply: true
 
 Read root `AGENTS.md` before planning or editing and after context recovery.
 Use `docs/INDEX.md` to find authoritative project information. Read
+`ORCHESTRATION.md` and `coordination/COMMANDER.md` for command and dispatch. Read
 `coordination/PROJECT.md` and `coordination/RESOURCES.md` for deadlines and funding.
 All descendant agents inherit the same restrictions and must publish handoffs.
 The Cursor commit identity is an automation label; record actual tool provenance.

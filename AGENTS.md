@@ -5,6 +5,18 @@ and sessions. Read this file before planning or editing. Follow it throughout th
 task, including after context compaction or resuming a session. User instructions
 and higher-priority platform instructions take precedence.
 
+## Command and dispatch
+
+The user designated the primary Codex agent on `linux-primary` as **Commander**,
+responsible for orchestration, task/resource assignment, and integration of main.
+Read `ORCHESTRATION.md` and `coordination/COMMANDER.md` at startup and after
+compaction. Register capabilities in your own handoff; the Commander maintains
+`coordination/ROSTER.md` and `coordination/TASKS.md`. Acknowledge your assignment
+revision before implementation and publish changes, evidence, ETA, resource
+state, and reviewed peer revisions at the required checkpoints. Task rows do not
+prove agents are running. Follow the orchestration plan's ownership and reporting
+rules; do not independently assign overlapping work or spend another agent's grant.
+
 ## Resource, deadline, and recovery rules — read first
 
 Read `docs/INDEX.md`, `coordination/PROJECT.md`, and `coordination/RESOURCES.md`

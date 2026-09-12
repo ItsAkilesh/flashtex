@@ -3,6 +3,11 @@ super duper cool project
 
 ## Working with agents
 
+Start with the [orchestration master plan](ORCHESTRATION.md) and the
+[Commander bulletin](coordination/COMMANDER.md). The user designated the primary
+Codex agent on `linux-primary` as Commander. Workers register, acknowledge bounded
+assignments, and publish progress to their own branches; Commander integrates main.
+
 **Every agent must read [AGENTS.md](AGENTS.md) before planning or editing.** It
 defines task ownership, frequent Git checkpoints, adaptation to other agents'
 changes, handoffs, and integration rules for all computers and sessions.
