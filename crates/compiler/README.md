@@ -18,11 +18,28 @@ echo '{"protocol_version":1,"id":"a","type":"compile","payload":{"project_id":"d
 
 Implemented and tested:
 
-- Tokenizer with exact UTF-8 byte spans. Every emitted span slices back to the
-  text it describes, verified on multi-byte input (`héllo — naïve café`).
+- Tokenizer with exact UTF-8 byte spans. Ordinary text and literal math items
+  slice back to their emitted text, verified on multi-byte input
+  (`héllo — naïve café`). A substituted math glyph such as `α` instead maps to
+  the command source (`\alpha`) that produced it; the span remains exact and
+  slice-safe but the source slice intentionally differs from the output glyph.
 - A finite parser for the subset listed below, with error recovery.
+- LaTeX preamble recognition: `\documentclass[options]{class}` records the
+  class, and `\usepackage[options]{a,b,c}` records the package names and emits
+  one warning listing exactly those unimplemented packages. When a document
+  environment exists, only its body is typeset; bare fragments retain the
+  previous typeset-everything behavior.
+- Scoped `\newcommand` and `\renewcommand` expansion, with zero through nine
+  required arguments, nested expansion, and an explicit recursion limit.
+- Dependency-aware incremental layout reuse behind unchanged runtime-v1 messages.
+  A resumable cursor in `src/layout.rs` is the only layout engine used by both
+  clean and incremental builds. Per-block cache validation includes exact macro
+  definitions read, preamble bytes, layout constraints, source mapping, and the
+  flow geometry entering the block; `ReuseStats` reports actual reuse.
 - Diagnostics carrying severity, message, source range, and a recovery note.
 - Greedy line breaking and page breaking onto 612×792 pt pages.
+- Inline math (`$...$`) and display math (`$$...$$` and `\[...\]`), including
+  nested fractions, square roots, superscripts, and subscripts.
 - `compile` → `compile_result`, and `error` envelopes for unknown protocol
   versions, unknown message types, and malformed JSON.
 - Rejection of absolute paths and parent traversal in document paths.
@@ -31,13 +48,16 @@ Implemented and tested:
 
 Required, outstanding — this is a foundation, not a LaTeX implementation:
 
-- No macro expansion, no mutable category codes, no registers, no conditionals.
-  None of the TeX programmability described in the master plan §5.1 exists yet.
-- No math typesetting. `$` is recognised only to report that it is unsupported.
-- No packages, no `\usepackage`, no TikZ, no bibliography, no cross-references.
+- No `\def`, `\let`, mutable category codes, registers, or conditionals.
+- No `\input` or multi-file include expansion.
+- Math remains a declared subset: matrices, alignment environments,
+  `\left`/`\right` delimiter sizing, real math-font parameters, and operator
+  spacing classes are not implemented.
+- Package declarations are recognised but packages are not loaded: package
+  commands, TikZ, bibliography support, and cross-references remain missing.
+- Environments generally are not implemented. Only `document` controls the
+  preamble/body boundary; other environments warn and typeset as plain text.
 - No PDF output. `pdf_path` is always `null`, as the contract permits for now.
-- No incremental reuse yet. Every request recompiles the whole document; the
-  revision number is carried through but nothing is cached across revisions.
 - Only the entry document is compiled. Multi-document projects produce a warning
   rather than silently compiling part of the project.
 - `\textbf`, `\emph`, and `\textit` are parsed and their text is typeset, but the
@@ -45,11 +65,49 @@ Required, outstanding — this is a foundation, not a LaTeX implementation:
 
 ## Supported commands
 
-`\section`, `\subsection`, `\textbf`, `\emph`, `\textit`, `\begin`/`\end`
-(only `document` is meaningful; other environments warn and typeset their body
-as plain text), `\par`, and `\\`. Paragraphs are separated by blank lines.
-`%` begins a comment. Any other command produces an explicit
-"not supported by this compiler version" diagnostic — never silent output.
+`\documentclass[options]{class}`, `\usepackage[options]{a,b,c}`,
+`\newcommand{\name}{body}`, `\newcommand{\name}[n]{body}`,
+`\renewcommand{\name}{body}`, `\renewcommand{\name}[n]{body}`,
+`\section`, `\subsection`, `\textbf`, `\emph`, `\textit`,
+`\begin`/`\end` (only `document` controls rendering; other environments
+warn and typeset their body as plain text), `\par`, and `\\`. Macro
+argument counts are decimal integers from 0 through 9, and replacement
+parameters are `#1` through `#9`. Paragraphs are separated by blank lines.
+`%` begins a comment. Any other command produces an explicit "not supported by
+this compiler version" diagnostic — never silent output.
+
+## Macro expansion and source mapping
+
+User macros expand at their use site and may call other user macros. Expansion
+is limited to 64 nested macro calls. Exceeding that limit emits an error naming
+the macro and stops that invocation, so recursive definitions cannot hang.
+`\newcommand` rejects an existing name; `\renewcommand` rejects an
+undefined name. A definition made inside `{ ... }` is restored or removed when
+that group closes.
+
+Tokens substituted for `#1` through `#9` retain the real byte spans of the
+argument text the author supplied. Literal replacement tokens have no independent
+bytes in the input and therefore map to the macro control-sequence span at the
+invocation site.
+This is intentionally invocation-level provenance: per-glyph ranges inside
+synthesised replacement text are not fabricated.
+
+## Supported math
+
+Math atoms are ordinary characters and digits. `\frac{num}{den}` and `\sqrt{x}`
+may be nested, and `^` superscripts and `_` subscripts accept either one token or
+a braced math list, including `x^{a_b}` and `\frac{a^2}{b_1}`.
+
+The named symbols `\alpha`, `\beta`, `\gamma`, `\delta`, `\theta`, `\lambda`,
+`\mu`, `\pi`, `\sigma`, `\phi`, `\omega`, `\times`, `\div`, `\pm`, `\leq`,
+`\geq`, `\neq`, `\approx`, `\cdot`, `\infty`, `\sum`, and `\int` map to Unicode.
+The corresponding Unicode glyph must exist in the chosen font. Unknown math
+commands produce an explicit diagnostic naming the command and are rendered
+literally, never silently dropped.
+
+Script sizes and shifts and fraction geometry use named classic-proportion
+constants in `src/math.rs`. They approximate TeX's font-parameter-driven values;
+the compiler does not yet read a real math font.
 
 ## The glyph-metric placeholder
 
@@ -62,6 +120,22 @@ from the font are wired in.
 One item is emitted per word rather than per line. That keeps each item's source
 span exact, which is what click-to-source navigation (FT-003) needs.
 
+## Two deliberate representation choices
+
+**Fraction rules are drawn as text.** runtime-v1 defines only a `text` item and
+says line and path item types "will be added by contract revision; do not
+independently invent them". So the fraction bar is emitted as box-drawing
+characters in a text item rather than an invented rule item. It is positioned
+correctly and it is honest about the contract; it should become a real rule item
+when the contract gains one, and the Commander owns that revision.
+
+**Substituted glyphs span their source command.** `\alpha` emits an item whose
+text is the Greek letter but whose span covers `\alpha` in the source, six bytes.
+So for these items the span does not slice back to the item's text, unlike
+ordinary words. That is deliberate: source navigation must land on the command
+the author typed. The ordinary-text invariant — every word item's span slices
+back to exactly that word — is unchanged and still asserted by the test suite.
+
 ## Recovery behaviour
 
 `status` is `ok` with no diagnostics, `recovered` when diagnostics were produced
@@ -69,3 +143,50 @@ but text was still positioned, and `failed` when nothing could be produced.
 Recovered cases include unmatched `{`, stray `}`, unterminated environments,
 mismatched `\end`, unknown commands, and empty required arguments. Each carries a
 `recovery` string stating what was rendered provisionally.
+
+## Incremental safety boundary
+
+The parser executes the complete document on every changed revision so macro and
+group state, diagnostics, and recovery are identical to a clean build. Only
+positioned block-layout fragments are reused. Changing a macro definition
+invalidates every block that actually read that definition; unrelated blocks may
+still be reused if their entering flow geometry matches. A changed flow state
+(for example, because an earlier edit adds a line) recomputes the affected suffix
+until geometry matches again.
+
+A first compile, any preamble-byte change through `\begin{document}` (including
+`\documentclass` or `\usepackage`), font-size or measure changes, malformed input,
+or any diagnostic/unsupported construct forces a full layout rebuild. Mutable
+category codes, registers, assignments, conditionals, auxiliary files, output
+routines, external effects, and future constructs are not modeled and therefore
+must also force a full rebuild if introduced. An exactly unchanged snapshot may
+return its already-produced output, including diagnostics, because no execution
+or layout result can differ.
+
+## Measured incremental latency
+
+Measured on `mac-m5pro-kabir` on 2026-09-12 with:
+
+```sh
+cargo run --release --bin incremental_bench
+```
+
+The deterministic `generated-500-paragraphs` fixture is built by the benchmark:
+500 multi-line paragraphs, 118,700 UTF-8 bytes, with one user-macro expansion,
+inline scripted math, a named math symbol, and a fraction in every paragraph.
+Fifty samples produced these actual compiler-only measurements:
+
+| Case | Actual latency | Reuse |
+|---|---:|---:|
+| First cold compile | 35.522 ms | 0 / 500 blocks |
+| Cold compile | median 20.034 ms, p95 21.518 ms | 0 / 500 blocks |
+| Warm unchanged | median 0.639 ms, p95 0.710 ms | 500 / 500 blocks |
+| One-word edit in paragraph 250 | median 21.079 ms, p95 22.578 ms | 499 / 500 blocks |
+| Global macro-definition edit | median 21.219 ms, p95 22.682 ms | 0 / 500 blocks |
+
+The measured compiler work is below the 200 ms ordinary warm-edit target; the
+one-word edit p95 is 22.578 ms, leaving 177.422 ms of that budget. This is not an
+end-to-end keystroke-to-visible measurement: scheduling, JSON transfer, native UI
+drawing, and artifact publication are excluded, so the full product target still
+requires integration measurement. The benchmark intentionally does not claim a
+guarantee for arbitrary documents or TeX programs.

@@ -1,0 +1,24 @@
+{
+  "acceptance": [
+    "Parallel controller and real original compiler tests pass",
+    "Durable source succeeds independently of missing compiler",
+    "Reviewed insertion is explicit; never automatically approve provider text",
+    "Native paint and full PDF equality remain separate measured gates"
+  ],
+  "agent_id": "commander-preview-controller",
+  "allocation_id": "hosted-openai-product",
+  "branch": "agent/commander/preview-controller",
+  "deadline_utc": null,
+  "dependencies": [],
+  "input_main_sha": "b44eb68dda46385bf98cc8d1ebb539ee85eeef2c",
+  "objective": "Subprocess crash/restart and reviewed receipt recovery",
+  "owned_paths": [
+    "crates/preview-controller"
+  ],
+  "revision": 2,
+  "schema_version": 1,
+  "state": "assigned",
+  "task_id": "FT-027",
+  "timebox_minutes": 30,
+  "updated_utc": "2026-09-12T06:22:04Z"
+}

@@ -1,0 +1,38 @@
+{
+  "agent_id": "commander-preview-controller",
+  "next_index": 1,
+  "schema_version": 1,
+  "steps": [
+    {
+      "acceptance": [
+        "Parallel controller and real original compiler tests pass",
+        "Durable source succeeds independently of missing compiler",
+        "Reviewed insertion is explicit; never automatically approve provider text",
+        "Native paint and full PDF equality remain separate measured gates"
+      ],
+      "allocation_id": "hosted-openai-product",
+      "name": "Subprocess crash/restart and reviewed receipt recovery",
+      "objective": "Subprocess crash/restart and reviewed receipt recovery",
+      "owned_paths": [
+        "crates/preview-controller"
+      ],
+      "timebox_minutes": 30
+    },
+    {
+      "acceptance": [
+        "Parallel controller and real original compiler tests pass",
+        "Durable source succeeds independently of missing compiler",
+        "Reviewed insertion is explicit; never automatically approve provider text",
+        "Native paint and full PDF equality remain separate measured gates"
+      ],
+      "allocation_id": "hosted-openai-product",
+      "name": "Consume authoritative ledger undo/redo and background event integration",
+      "objective": "Consume authoritative ledger undo/redo and background event integration",
+      "owned_paths": [
+        "crates/preview-controller"
+      ],
+      "timebox_minutes": 30
+    }
+  ],
+  "task_id": "FT-027"
+}
