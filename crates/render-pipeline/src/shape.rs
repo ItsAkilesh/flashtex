@@ -92,6 +92,10 @@ impl Shaped {
     }
 }
 
+/// Most shaped words kept; beyond this the cache is cleared (a document
+/// edited for hours never grows it without bound).
+pub const SHAPER_CACHE_LIMIT: usize = 200_000;
+
 #[derive(Default)]
 pub struct Shaper {
     cache: RefCell<HashMap<(String, String), Rc<Shaped>>>,
@@ -109,8 +113,20 @@ impl Shaper {
             return hit.clone();
         }
         let shaped = Rc::new(shape_uncached(face, text));
-        self.cache.borrow_mut().insert(key, shaped.clone());
+        let mut cache = self.cache.borrow_mut();
+        if cache.len() >= SHAPER_CACHE_LIMIT {
+            cache.clear();
+        }
+        cache.insert(key, shaped.clone());
         shaped
+    }
+
+    pub fn len(&self) -> usize {
+        self.cache.borrow().len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.cache.borrow().is_empty()
     }
 }
 

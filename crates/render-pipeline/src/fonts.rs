@@ -328,6 +328,9 @@ pub struct FontSet {
     required: RefCell<Option<Result<Rc<RequiredMetrics>, String>>>,
     /// Non-required TFMs parsed so far, by file name.
     tfms: RefCell<BTreeMap<String, Result<Rc<Tfm>, String>>>,
+    /// Shaped words, keyed by (face, text); shaping is size-independent and
+    /// a keystroke changes one word, so this outlives requests. Bounded.
+    shaper: crate::shape::Shaper,
 }
 
 pub struct Resolved {
@@ -381,7 +384,13 @@ impl FontSet {
             tfm_dirs,
             required: RefCell::new(None),
             tfms: RefCell::new(BTreeMap::new()),
+            shaper: crate::shape::Shaper::new(),
         }
+    }
+
+    /// The shaping cache shared by every request on this font set.
+    pub fn shaper(&self) -> &crate::shape::Shaper {
+        &self.shaper
     }
 
     /// The `texmf-dist` roots implied by the TFM directories
