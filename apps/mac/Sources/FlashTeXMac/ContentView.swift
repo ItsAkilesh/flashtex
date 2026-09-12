@@ -187,36 +187,48 @@ private struct ProjectMenu: View {
 
     var body: some View {
         Menu {
-            let found = model.project.discoverIncludes()
-            if found.isEmpty {
+            // The transitive closure (chapter → section → …), depth-first in
+            // source order, indented by depth; cycles and missing files are
+            // listed with their reason. Bounded: 8 levels, 256 documents.
+            let closure = model.project.discoverClosure()
+            if closure.nodes.isEmpty {
                 Text("No \\input or \\include in \(model.project.entryPath)")
             }
-            ForEach(Array(found.enumerated()), id: \.offset) { _, d in
-                switch d.state {
+            ForEach(Array(closure.nodes.enumerated()), id: \.offset) { _, n in
+                let indent = String(repeating: "    ", count: max(0, n.depth))
+                let name = n.resolvedPath ?? n.reference.argument
+                switch n.state {
                 case .available:
-                    Button("Open \(d.resolvedPath ?? d.reference.argument)") {
-                        Task { await model.project.openInclude(d.reference.argument) }
-                    }
+                    Button(indent + "Open \(name)") { Task { await model.project.openDocument(name, role: .included(from: n.from)) } }
                 case .open:
-                    Button("Show \(d.resolvedPath ?? d.reference.argument)") {
-                        if let path = d.resolvedPath { model.project.switchDocument(to: path) }
-                    }
+                    Button(indent + "Show \(name)") { model.project.switchDocument(to: name) }
                 case .unresolvable(let why):
-                    Text("\\\(d.reference.kind.rawValue){\(d.reference.argument)}: \(why)")
+                    Text(indent + "\\\(n.reference.kind.rawValue){\(n.reference.argument)}: \(why)")
                 }
             }
-            if !found.isEmpty, found.contains(where: { $0.state == .available }) {
+            if closure.truncated { Text("closure truncated at \(ProjectDocuments.maxClosureDocuments) documents") }
+            if closure.nodes.contains(where: { $0.state == .available }) {
                 Button("Open All Includes") { Task { await model.project.openDiscoveredIncludes() } }
+                    .help("Opens the whole include closure in this order; unresolvable references are reported in the footer note")
+            }
+            if let report = model.project.lastOpenReport, !report.unresolvable.isEmpty {
+                Divider()
+                Text("Open All: \(report.unresolvable.count) unresolvable")
+                ForEach(Array(report.unresolvable.enumerated()), id: \.offset) { _, line in Text(line) }
             }
             if model.activePath != model.project.entryPath {
                 Divider()
                 Button("Save \(model.activePath)") { Task { await model.project.saveDocument(model.activePath) } }
                     .disabled(model.documentURL == nil)
-                Button("Detach \(model.activePath)") {
+                Button("Detach \(model.activePath) (this session)") {
                     Task {
-                        if case .refused(let why) = await model.project.detachDocument(model.activePath) { model.captureNote = why }
+                        switch await model.project.detachDocument(model.activePath) {
+                        case .refused(let why): model.captureNote = why
+                        case .detached(let path): model.captureNote = "Detached \(path) — " + ProjectDocuments.detachScopeNote
+                        }
                     }
                 }
+                .help("Session only: " + ProjectDocuments.detachScopeNote)
             }
         } label: {
             Label("Project", systemImage: "doc.on.doc")
