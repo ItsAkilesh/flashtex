@@ -327,3 +327,34 @@ non-issue. The facts that settled it were authorship, registry provenance and
 source structure — all available offline.
 
 No action needed. The three lockfiles are correct as committed.
+
+---
+
+## Correction: crates.io IS reachable from this machine
+
+The audit above states crates.io was not reached "per the standing note that it's
+unreachable from this machine". **That standing note was wrong, and this lane
+repeated it without testing it.** Measured directly:
+
+    https://index.crates.io/config.json                  HTTP 200 in 0.138s
+    https://static.crates.io/crates/ryu/ryu-1.0.23.crate HTTP 200 in 0.053s
+    cargo fetch                                          downloaded unicode-normalization v0.1.25, exit 0
+
+Network access is fine. The claim originated in a lane report, was propagated into
+this audit without verification, and should not have been published.
+
+This is not merely a bad record. It changed a design decision. The
+`project-bundle` lane implemented Unicode-normalization collision detection via
+`fs::canonicalize` identity **because it believed it could not add the
+`unicode-normalization` crate**. That substitute is materially weaker: it detects
+only the collisions the underlying filesystem itself normalizes, which makes the
+behaviour filesystem-dependent rather than a property of the code, and it depends
+on a filesystem round-trip that a concurrent rename can race.
+
+Any other lane that skipped a dependency, narrowed a design, or downgraded a
+check citing offline status should revisit that decision. The constraint did not
+exist.
+
+Recorded because an unverified environmental claim that reaches a published
+record does not stay a documentation problem - a peer reading it will make the
+same compromise.
