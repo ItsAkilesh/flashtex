@@ -82,33 +82,53 @@ exists yet and FT-046 remains formally unacknowledged. This handoff carries the
 same evidence in the meantime. Per `docs/coordination-cli.md` a comment is not
 an acknowledgement, so the Commander should not treat this as one.
 
-## Live lane status — 7 running of 16
+## Lane status — 3 complete, 9 running, 4 queued
 
-Updated 2026-09-12T08:52Z. Every lane has its own git worktree, as AGENTS.md
-requires and FT-046 acceptance demands, and each owns exactly one crate.
+Updated 2026-09-12T09:10Z. Every lane has its own git worktree, as AGENTS.md
+requires and FT-046 acceptance demands, and owns exactly one crate.
 
-Batch 1, the prioritised transfers FT-046 names first:
+### Complete, verified by the supervisor and published
 
-| Task | Agent | Owns | Worktree | State |
+Each was independently re-verified here, not accepted on the lane's own report:
+build, `cargo test`, `cargo clippy --all-targets -- -D warnings`, the exact set
+of paths touched, and the author and trailer on the commit.
+
+| Task | Agent | Crate | Tests | Branch |
 |---|---|---|---|---|
-| FT-030 | daniel-tables | `crates/paragraph-layout` | `~/ft-wt-daniel-tables` | running |
-| FT-031 | daniel-floats | `crates/font-engine` | `~/ft-wt-daniel-floats` | running |
-| FT-032 | daniel-footnotes | `crates/math-layout` | `~/ft-wt-daniel-footnotes` | running |
+| FT-030 | daniel-tables | `paragraph-layout` | 27 pass, 0 fail | `agent/daniel-tables/table-layout` at `e69165a` |
+| FT-031 | daniel-floats | `font-engine` | 65 pass, 0 fail | `agent/daniel-floats/float-layout` at `8080c90` |
+| FT-032 | daniel-footnotes | `math-layout` | 34 pass, 0 fail | `agent/daniel-footnotes/footnote-layout` at `801c649` |
 
-Batch 2, standalone additive crates:
+All three touched only their own crate plus their own handoff file. Clippy is
+clean on each with warnings denied.
 
-| Task | Agent | Owns | Worktree | State |
-|---|---|---|---|---|
-| FT-033 | daniel-title | `crates/title-layout` | `~/ft-wt-daniel-title` | running |
-| FT-034 | daniel-contents | `crates/toc-layout` | `~/ft-wt-daniel-contents` | running |
-| FT-035 | daniel-color | `crates/color-expressions` | `~/ft-wt-daniel-color` | running |
-| FT-036 | daniel-images | `crates/image-assets` | `~/ft-wt-daniel-images` | running |
+**Consumer-visible change, FT-032.** `math-layout`'s `Nucleus::Radical(MathList)`
+became a struct variant `Nucleus::Radical { radicand, degree: Option<MathList> }`
+to carry `\sqrt[n]{}`. Source-breaking only for code matching that variant
+directly. `Atom::sqrt()` is unchanged, and the only in-repo consumer,
+`crates/font-engine` under feature `math`, does not touch it and still builds.
 
-Queued, not yet started: FT-037 links, FT-038 math-access, FT-039 spelling,
-FT-040 templates, FT-041 snippets, FT-042 statistics, FT-043 bundle,
-FT-044 collaboration, FT-045 calc.
+**Deliberate omissions, reported rather than hidden.** FT-030 rejected the
+`bad0666` WIP fixtures: 1,461 lines of transcribed TFM data whose own commit says
+"Validation: none run", plus an oracle test needing Latin Modern font files at
+test time and a dev-dependency on an unmerged branch. FT-031 declined to wire up
+`tfm_binding.rs` because `font-resources` already depends on `font-engine`, so
+doing so would create a package dependency cycle cargo refuses. FT-032 left the
+cancelled lane's visual-regression harness out because it needs external tooling
+it could not verify. Each is recorded in that lane's handoff.
 
-**Actual live count is 7, not 16**, reported separately as acceptance requires.
+### Running
+
+FT-033 title-layout, FT-034 toc-layout, FT-035 color-expressions,
+FT-036 image-assets, FT-037 link-annotations, FT-038 math-accessibility,
+FT-039 spellcheck, FT-040 project-templates, FT-041 editor-snippets.
+
+### Queued
+
+FT-042 document-statistics, FT-043 project-bundle, FT-044 collaboration-core,
+FT-045 tex-calc.
+
+**Actual live count is 9**, reported separately as acceptance requires.
 
 ## Why batched, with evidence
 
