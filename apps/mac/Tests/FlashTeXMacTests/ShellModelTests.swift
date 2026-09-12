@@ -139,6 +139,23 @@ final class ShellModelWorkerTests: XCTestCase {
         model.detachWorker()
     }
 
+    /// A bridge/ledger restart can raise the editor revision past the compiled
+    /// one without changing the buffer; the preview must not stay "stale" until
+    /// the next keystroke — the shell recompiles at the advanced revision.
+    func testAdvancedEditorRevisionRecompilesSoPreviewIsNotStaleForever() async throws {
+        let model = ShellModel()
+        model.attachWorker(at: WorkerClientTests.python, arguments: [WorkerClientTests.fakeWorker.path])
+        model.autoCompile = true
+        model.updateActiveText("hello\n")
+        try await waitUntil(timeout: 10) { model.result?.revision == model.editorRevision && model.inFlightRevision == nil }
+        XCTAssertFalse(model.previewIsStale)
+        model.advanceEditorRevision(atLeast: model.editorRevision + 7)
+        XCTAssertTrue(model.previewIsStale, "the advanced revision makes the old result stale")
+        try await waitUntil(timeout: 10) { model.result?.revision == model.editorRevision && model.inFlightRevision == nil }
+        XCTAssertFalse(model.previewIsStale)
+        model.detachWorker()
+    }
+
     private func waitUntil(timeout: TimeInterval = 10, _ cond: () -> Bool) async throws {
         let start = Date()
         while !cond() {

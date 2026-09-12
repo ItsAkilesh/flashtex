@@ -5,8 +5,8 @@
   "next_index": 0,
   "steps": [
     {
-      "name": "Integrate an explicit published consumer adapter without peer ownership edits",
-      "objective": "Deterministic explicit project export bundle with rooted dependency reads, SHA manifest, reproducible ordering and no implicit filesystem discovery. Integrate an explicit published consumer adapter without peer ownership edits",
+      "name": "Bounded project bundle recovery: bounded adversarial and stale-identity acceptance tests",
+      "objective": "Bounded project bundle recovery: bounded adversarial and stale-identity acceptance tests",
       "owned_paths": [
         "crates/project-bundle"
       ],
@@ -16,11 +16,11 @@
         "Do not edit peer compiler/native/layout files; publish typed adapter contract and exact tested SHA"
       ],
       "allocation_id": "daniel-claude20x-shared",
-      "timebox_minutes": 40
+      "timebox_minutes": 30
     },
     {
-      "name": "Expand measured fixtures and adversarial bounds with reproducible compatibility evidence",
-      "objective": "Deterministic explicit project export bundle with rooted dependency reads, SHA manifest, reproducible ordering and no implicit filesystem discovery. Expand measured fixtures and adversarial bounds with reproducible compatibility evidence",
+      "name": "Bounded project bundle recovery: actual existing consumer fixture and exact measured limitations",
+      "objective": "Bounded project bundle recovery: actual existing consumer fixture and exact measured limitations",
       "owned_paths": [
         "crates/project-bundle"
       ],
@@ -30,7 +30,7 @@
         "Do not edit peer compiler/native/layout files; publish typed adapter contract and exact tested SHA"
       ],
       "allocation_id": "daniel-claude20x-shared",
-      "timebox_minutes": 40
+      "timebox_minutes": 30
     }
   ]
 }

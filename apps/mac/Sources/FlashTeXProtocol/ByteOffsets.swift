@@ -37,3 +37,21 @@ public extension String {
         return (start, end)
     }
 }
+
+public extension String {
+    /// Byte-for-byte equality of the UTF-8 encodings. `==` on `String` is
+    /// canonical equivalence: for text containing any non-ASCII scalar it
+    /// normalizes both operands, which for a 60 KB document costs ~1 ms per
+    /// comparison and the shell compared buffers several times per keystroke.
+    /// Editors care whether the bytes changed, not whether the two texts are
+    /// canonically equivalent, so this is a `memcmp` (after the identical
+    /// storage fast path).
+    func sameBytes(as other: String) -> Bool {
+        var a = self, b = other
+        return a.withUTF8 { ab in
+            b.withUTF8 { bb in
+                ab.count == bb.count && (ab.count == 0 || memcmp(ab.baseAddress!, bb.baseAddress!, ab.count) == 0)
+            }
+        }
+    }
+}
