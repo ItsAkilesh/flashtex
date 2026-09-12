@@ -104,6 +104,52 @@ enum NearbyV1 {
         init(code: String, message: String) { self.code = code; self.message = message }
     }
 
+    /// Additive since nearby-v1 §4 (proposal §6 is closed for this item): a
+    /// companion asks what became of a capture it submitted on this pairing.
+    /// The request is only honoured for a `capture_id` this pairing's
+    /// acknowledgement memory knows (`unknown_capture` otherwise), so a
+    /// companion learns nothing about another pairing's captures.
+    struct CaptureStatusRequest: Codable, Equatable {
+        var captureId: String
+        enum CodingKeys: String, CodingKey { case captureId = "capture_id" }
+        init(captureId: String) { self.captureId = captureId }
+    }
+
+    /// `capture_status_ack`. `state` is one of `CaptureStatusState`; a
+    /// companion shows an unknown string verbatim (additive vocabulary).
+    /// `latex` is the proposal text (read-only on the companion) once a
+    /// proposal exists — `proposal_ready`, `inserted`, `rejected`; `note` is
+    /// the Mac's plain-text detail; `new_revision` the revision after an
+    /// insertion. `durable` mirrors the receipt (false: in-memory inbox).
+    struct CaptureStatusAck: Codable, Equatable {
+        var captureId: String
+        var state: String
+        var durable: Bool
+        var latex: String?
+        var note: String?
+        var newRevision: Int?
+        enum CodingKeys: String, CodingKey {
+            case captureId = "capture_id", state, durable, latex, note, newRevision = "new_revision"
+        }
+        init(captureId: String, state: CaptureStatusState, durable: Bool, latex: String? = nil, note: String? = nil, newRevision: Int? = nil) {
+            self.captureId = captureId; self.state = state.rawValue; self.durable = durable
+            self.latex = latex; self.note = note; self.newRevision = newRevision
+        }
+    }
+
+    enum CaptureStatusState: String {
+        /// In the Mac's in-memory inbox (no bridge attached): nothing converts it yet.
+        case received
+        /// Journaled by the bridge; no conversion started.
+        case journaled
+        case converting
+        /// A proposal exists (possibly already prepared for review on the Mac).
+        case proposalReady = "proposal_ready"
+        case inserted, rejected, failed
+        /// The bridge relaunched while the capture was in flight: journaling unknown.
+        case uncertain
+    }
+
     struct Empty: Codable, Equatable { init() {} }
 
     // MARK: encoding helpers
@@ -151,6 +197,17 @@ enum NearbyV1 {
 /// `capture_received` or an `error` envelope carrying the request's id.
 protocol CaptureSink: AnyObject {
     func submit(_ envelope: RuntimeV1.Envelope<RuntimeV1.CaptureSubmit>, reply: @escaping (Data) -> Void)
+    /// nearby-v1 `capture_status` (additive). `reply` gets one encoded line:
+    /// `capture_status_ack` or an `error` carrying the request's id. The
+    /// session has already checked that this pairing submitted `capture_id`
+    /// and that its receipt was sent.
+    func captureStatus(_ envelope: RuntimeV1.Envelope<NearbyV1.CaptureStatusRequest>, reply: @escaping (Data) -> Void)
+}
+
+extension CaptureSink {
+    func captureStatus(_ envelope: RuntimeV1.Envelope<NearbyV1.CaptureStatusRequest>, reply: @escaping (Data) -> Void) {
+        reply(NearbyV1.errorLine(id: envelope.id, code: "unavailable", message: "capture_status is not answered by this sink"))
+    }
 }
 
 /// Answers `hello`/`destination_query` with the Mac's current anchor.
@@ -882,10 +939,50 @@ final class NearbySession {
         case "capture_submit":
             handleCapture(line: line, id: id, emit: emit)
             return .keepOpen
+        case "capture_status":
+            handleStatus(line: line, id: id, emit: emit)
+            return .keepOpen
         default:
             emit(NearbyV1.errorLine(id: id, code: "unknown_type", message: "unknown message type \(header.type)"))
             return .keepOpen
         }
+    }
+
+    // MARK: capture_status (additive)
+
+    /// Answers only for a capture this pairing's memory knows: a capture
+    /// never accepted (or refused and forgotten) is `unknown_capture`; one
+    /// whose delivery is still pending in the sink is reported `received`
+    /// with a note (its receipt is owed first); otherwise the sink answers
+    /// from the bridge / inbox.
+    private func handleStatus(line: Data, id: String, emit: @escaping (Data) -> Void) {
+        let env: RuntimeV1.Envelope<NearbyV1.CaptureStatusRequest>
+        do { env = try JSONDecoder().decode(RuntimeV1.Envelope<NearbyV1.CaptureStatusRequest>.self, from: line) } catch {
+            emit(NearbyV1.errorLine(id: id, code: "bad_request", message: "undecodable capture_status: \(error)"))
+            return
+        }
+        let captureId = env.payload.captureId
+        guard NearbyV1.isValidID(captureId) else {
+            emit(NearbyV1.errorLine(id: id, code: "bad_request", message: "capture_id must be 1–128 ASCII [A-Za-z0-9_-]"))
+            return
+        }
+        guard let pairId, let remembered = memory.lookup(pairId: pairId, captureId: captureId) else {
+            emit(NearbyV1.errorLine(id: id, code: "unknown_capture", message: "capture \(captureId) was not accepted on this pairing"))
+            return
+        }
+        guard let ack = remembered.ack else {
+            emit(NearbyV1.line(id: id, type: "capture_status_ack",
+                               NearbyV1.CaptureStatusAck(captureId: captureId, state: .received, durable: false,
+                                                         note: "delivery to the Mac still pending; capture_received not yet sent")))
+            return
+        }
+        guard let sink else {
+            emit(NearbyV1.line(id: id, type: "capture_status_ack",
+                               NearbyV1.CaptureStatusAck(captureId: captureId, state: ack.durable ? .journaled : .received,
+                                                         durable: ack.durable, note: "no capture sink attached")))
+            return
+        }
+        sink.captureStatus(env, reply: emit)
     }
 
     // MARK: capture path

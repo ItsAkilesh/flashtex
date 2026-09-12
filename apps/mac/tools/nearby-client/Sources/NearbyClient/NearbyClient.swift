@@ -45,6 +45,11 @@ public final class NearbySession: @unchecked Sendable {
         try await connection.submitCapture(c, requestID: requestID)
     }
 
+    /// Outcome of a submitted capture (additive `capture_status`).
+    public func captureStatus(captureId: String, requestID: String? = nil) async throws -> NearbyWire.CaptureStatus {
+        try await connection.captureStatus(captureId: captureId, requestID: requestID)
+    }
+
     /// Builds a `capture_submit` for the given destination (or the hello_ack
     /// one) with the image bytes base64-encoded.
     public func makeCapture(captureId: String = "cap-" + UUID().uuidString.lowercased(), image: Data, mimeType: String,

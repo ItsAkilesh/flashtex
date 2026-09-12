@@ -30,9 +30,10 @@ public final class MacLink: @unchecked Sendable {
     private var _transcript: [TranscriptLine] = []
     /// Called on an arbitrary queue whenever the transcript grows.
     public var onTranscript: (@Sendable (TranscriptLine) -> Void)?
-    public let store: PairFile?
+    /// Pairings (Keychain in the app; a `PairFile` or nil in tests).
+    public let store: PairingStore?
 
-    public init(store: PairFile? = nil) { self.store = store }
+    public init(store: PairingStore? = nil) { self.store = store }
 
     public var session: NearbySession? { lock.withLock { _session } }
     public var pair: PairedMac? { lock.withLock { _pair } }
@@ -72,6 +73,34 @@ public final class MacLink: @unchecked Sendable {
         return pair
     }
 
+    /// Pairing from the Mac's QR payload (`flashtex-nearby://pair?…`, parsed
+    /// by the reference client's `NearbyBootstrapPayload`): the same bootstrap
+    /// as `pair(host:…)`, with the salt/fp/code taken from the payload. The
+    /// payload carries no address, so the Mac is found by Bonjour `fp`
+    /// (`browseSeconds`) unless `host`/`port` are given (simulator: no Bonjour
+    /// listener to browse for in the tests).
+    @discardableResult
+    public func pair(bootstrap payload: NearbyBootstrapPayload, host: String?, port: UInt16?, companionName: String,
+                     browseSeconds: TimeInterval = 5) async throws -> PairedMac {
+        if let host, let port {
+            return try await pair(host: host, port: port, saltHex: NearbyCrypto.hex(payload.salt), fingerprint: payload.fingerprint,
+                                  macName: payload.macName, code: payload.code, companionName: companionName)
+        }
+        log(.note, "browsing \(NearbyWire.serviceType) for fp=\(payload.fingerprint) (\(Int(browseSeconds)) s)")
+        let found = try await NearbyBrowser.discover(seconds: browseSeconds) { $0.fingerprint == payload.fingerprint }
+        guard let mac = found.first(where: { $0.fingerprint == payload.fingerprint }) else {
+            throw NearbyError.noMatchingMac("no \(NearbyWire.serviceType) service with fp \(payload.fingerprint) within \(Int(browseSeconds)) s — enter the host and port shown in the Mac's Nearby window")
+        }
+        log(.note, "found \(mac.macName) at \(mac.endpoint)")
+        let (pair, session) = try await NearbyClient.pair(mac: mac, code: payload.code, companionName: companionName,
+                                                          onLine: { [weak self] in self?.onLine($0, $1) })
+        session.connection.onClose = { [weak self] why in self?.log(.note, "closed: \(why)") }
+        lock.withLock { _session = session; _pair = pair }
+        try? store?.upsert(pair)
+        log(.note, "paired: \(pair.macName) pair_id=\(pair.pairId)")
+        return pair
+    }
+
     /// Every later connection (proposal §7 step 3) with the stored `pair_psk`.
     public func connect(host: String, port: UInt16, pair: PairedMac) async throws {
         let endpoint = NWEndpoint.hostPort(host: NWEndpoint.Host(host), port: NWEndpoint.Port(rawValue: port)!)
@@ -99,6 +128,12 @@ public final class MacLink: @unchecked Sendable {
         let r = try await s.submitCapture(cap)
         log(.note, "capture_received \(r.captureId) durable=\(r.durable) has_proposal=\(r.hasProposal) applied=\(r.applied)")
         return r
+    }
+
+    /// `capture_status` for a capture this pairing submitted (additive).
+    public func captureStatus(captureId: String) async throws -> NearbyWire.CaptureStatus {
+        guard let s = session else { throw NearbyError.closed("not connected") }
+        return try await s.captureStatus(captureId: captureId)
     }
 
     public func disconnect() {
