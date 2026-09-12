@@ -3,10 +3,10 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-023": {
-      "acknowledged_utc": "2026-09-12T11:30:02Z",
-      "adaptation": "Read d44459e FT023r11. Helper-display branch not yet published at remote check; inspect exact direct Swift9dbdb01 source/ticket/font guards and map migration acceptance from actual8876279 fixtures. Read-only until root timing release, no native edits.",
-      "main_sha": "d44459e1969d1179ffc2fede6ad001fd3382cc03",
-      "revision": 11
+      "acknowledged_utc": "2026-09-12T11:37:02Z",
+      "adaptation": "Read36c0629 FT023r12. Test actual raw/helper-normalized representations against existing parser/binder, exact numbers/escapes and duplicate-field behavior. Current nested payload Value collapse is a candidate compatibility gap; no parser/transport/native activation.",
+      "main_sha": "36c062924dd56ad15a0ddc5772cb262e84113541",
+      "revision": 12
     }
   },
   "branch": "agent/commander-render-core/rendering-core",
@@ -14,23 +14,23 @@
     "rust",
     "rendering"
   ],
-  "code_revision": "720a5be8b3985e3d99f4f354fbcb96740f23ae6f",
+  "code_revision": "b797b21ae74cb5d0e30afb3e5494e80975f7609a",
   "eta_minutes": {
-    "likely": 5,
-    "optimistic": 2,
-    "pessimistic": 10
+    "likely": 3,
+    "optimistic": 1,
+    "pessimistic": 5
   },
   "machine": "linux-primary",
-  "main_integrated_through": "720a5be8b3985e3d99f4f354fbcb96740f23ae6f",
-  "next_action": "Publish owner handoff; existing helper-display lane must compile/apply/native-test patch and freshness/fallback cases; await exact published route for recheck.",
+  "main_integrated_through": "fbf21a7b2691972abe0e99876a33d4e3c6ff238e",
+  "next_action": "Commander integration and GH32 verification; runtime owner preserves raw bytes end-to-end. Recheck native helper/GH31 only upon new published owner refs. No transport activation.",
   "reviewed_peers": {},
   "schema_version": 1,
-  "state": "in_progress",
-  "summary": "FT023r11 current native consumer reviewed; GH31 confirms first-resolve raw font identity gap. Minimal pinned Swift patch and8actual helper migration cases prepared without native edits.",
+  "state": "accepted",
+  "summary": "FT023r12 GH32 correction b797b21a: duplicate known nested fields refuse before normalization; valid raw/escaped representation and five actual original PDFs unchanged.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T11:34:38Z",
+  "updated_utc": "2026-09-12T11:52:46Z",
   "usage": {
-    "evidence": "4focused helper_candidate tests pass including8migration cases; strictall-targetClippy pass. Patch git-apply check passes in isolated exact1fd5ba0b source. No native execution claim; GH31 open and Commander assigned existing owner.",
-    "status": "Hosted OpenAI only; no providers/descendants/native activation; no quota telemetry."
+    "evidence": "169 rendering tests pass, 2 ignored; strict all-target Clippy pass; final helper7/wire6 pass; Python6 pass. Pinned all-five replay exit3 preserves exact PDF/raster/text hashes and differences0/602/1244/979/337, with display-math ToUnicode limitation.",
+    "status": "Hosted OpenAI only; no providers or descendants; quota telemetry unavailable. All test/replay sessions terminal."
   }
 }

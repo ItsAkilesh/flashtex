@@ -127,5 +127,14 @@
       }
     ],
     "result": "New subset PDF hashes match tested artifacts; all five previous raster counts and extracted-text validity/outcomes unchanged. Prior rows are retained historical evidence."
+  },
+  "raw_payload_validation": {
+    "consumer_commit": "b797b21ae74cb5d0e30afb3e5494e80975f7609a",
+    "report": "evidence/raw-payload-five-fixtures.json",
+    "report_sha256": "88bea653863407856898d4d6eb8c9038f8f600be737dc1481d41f6e08baa216b",
+    "comparison_baseline": "evidence/subset20-five-fixtures.json",
+    "all_five_original_pdf_hashes_unchanged": true,
+    "all_five_raster_and_text_metrics_unchanged": true,
+    "scope": "Stricter duplicate-field refusal does not alter these five valid inputs. Existing four reference raster mismatches and display-math ToUnicode oracle limitation remain; no activation or general parity."
   }
 }
