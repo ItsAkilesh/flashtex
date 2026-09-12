@@ -122,6 +122,36 @@
       "end_byte": 89,
       "purpose": "Repair must clear stale diagnostic and render valid nested script.",
       "gate": "Compare original-compiler incremental result to clean compile of identical edited project; independently compare edited output to a newly generated reference."
+    },
+    {
+      "case": "diagrams-amscd",
+      "path": "main.tex",
+      "old": "@>{f}>>",
+      "new": "@>{\\phi}>>",
+      "start_byte": 279,
+      "end_byte": 286,
+      "purpose": "A horizontal commutative-diagram label edit must preserve arrow direction and the surrounding CD grid while replacing a single math glyph.",
+      "gate": "Compare original-compiler incremental result to clean compile of identical edited project; independently compare edited output to a newly generated reference."
+    },
+    {
+      "case": "diagrams-tikzcd",
+      "path": "main.tex",
+      "old": "\\arrow[r, bend left=18, \"p\"]",
+      "new": "\\arrow[r, bend right=18, \"p\"]",
+      "start_byte": 517,
+      "end_byte": 545,
+      "purpose": "Changing one TikZ-cd bend direction changes a curved arrow's geometry without altering the distinct reciprocal arrow or matrix grid.",
+      "gate": "Compare original-compiler incremental result to clean compile of identical edited project; independently compare edited output to a newly generated reference."
+    },
+    {
+      "case": "packages-algorithm2e",
+      "path": "main.tex",
+      "old": "\\ElseIf{$a_i>x$}",
+      "new": "\\ElseIf{$a_i\\ge x$}",
+      "start_byte": 472,
+      "end_byte": 488,
+      "purpose": "An algorithm2e conditional relation edit preserves numbered nested control flow, vertical rules and cross-references while changing one math comparison.",
+      "gate": "Compare original-compiler incremental result to clean compile of identical edited project; independently compare edited output to a newly generated reference."
     }
   ]
 }

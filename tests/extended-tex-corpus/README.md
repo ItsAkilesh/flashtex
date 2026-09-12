@@ -105,7 +105,7 @@ both legacy and typed capability modes, with complete raw warm/clean replies.
 Three additional original one-page references cover `amscd`, `tikz-cd` and
 `algorithm2e`: commutative-diagram arrow direction/labels/tips/crossings and
 numbered ruled nested algorithms. The suite now has 58 projects, 51 original
-positive PDFs (60 pages), seven expected-error cases, six edited PDFs and 14
+positive PDFs (60 pages), seven expected-error cases, six edited PDFs and 17
 incremental edits. See [their MacTeX evidence](../../docs/evidence/diagram-algorithm-oracles-20260912/README.md).
 
 ## Coverage map

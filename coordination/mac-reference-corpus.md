@@ -5,7 +5,7 @@
 Latest code `1ac7c12cb33d6d13ca49a996936ee56517d36ca4` adds three warning-free,
 individually inspected one-page MacTeX references: `amscd`, `tikz-cd` and
 `algorithm2e`. Corpus is now 58 projects, 51 original positive PDFs/60 pages,
-seven errors, six edited PDFs and14 exact edits. Full corpus suite15/15 passes;
+seven errors, six edited PDFs and17 exact edits. Full corpus suite15/15 passes;
 the separate edited index manifest hash was refreshed after the new cases. The
 first algorithm candidate's unsupported small-caps italic T1 fallback was removed
 before acceptance. Evidence `docs/evidence/diagram-algorithm-oracles-20260912/`.
