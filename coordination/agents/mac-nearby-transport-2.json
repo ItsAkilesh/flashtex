@@ -4,22 +4,25 @@
   "assignment_acknowledgements": {},
   "branch": "agent/mac-nearby-transport-2/reconnect",
   "capabilities": ["swift", "network-framework", "tls-psk", "xctest"],
-  "code_revision": "cd58fc2e",
-  "eta_minutes": {"likely": 60, "optimistic": 45, "pessimistic": 90},
+  "code_revision": "d16474b2",
+  "eta_minutes": {"likely": 0, "optimistic": 0, "pessimistic": 15},
   "machine": "mac-m1max-a",
   "main_integrated_through": "c11c005",
-  "next_action": "Implement listener-side timeouts, typed frame errors, per-pairing ack memory; tests; report",
+  "next_action": "Parent reviews and merges into mac-shell; rerun full swift test with real helpers when 1-min load < 15",
   "reviewed_peers": {
     "origin/agent/mac-claude-a/mac-shell": {
-      "adaptation": "Base branch; coverage audit in coordination/mac-nearby-transport-2.md lists the covered tests",
-      "reviewed_utc": "2026-09-12T19:16:00Z",
+      "adaptation": "Base branch; coverage audit in coordination/mac-nearby-transport-2.md lists the already-covered tests; two existing NearbyListenerTests assertions updated for pairing-scoped ack memory",
+      "reviewed_utc": "2026-09-12T16:16:00Z",
       "sha": "cd58fc2e"
     }
   },
   "schema_version": 1,
-  "state": "in_progress",
-  "summary": "Nearby transport item 12: coverage audit done; implementing uncovered disconnect/reconnect and bounded-decoding parts",
+  "state": "ready_for_integration",
+  "summary": "Nearby item 12: listener deadlines (handshake/hello/frame), typed NearbyFrameError with pre-append bound, TCP keepalive schedule, per-pairing ack memory across sessions and same-port restarts (no redelivery after a reconnect); follow-up 1 IPv6/link-local/Bonjour TXT+resolve tests (no defect); follow-up 2 transport metrics line in the Nearby window. 11 new tests; Nearby suite 124/124 (9 env/load skips).",
   "tool": "Claude Code subagent (parent mac-claude-a)",
-  "updated_utc": "2026-09-12T19:16:00Z",
-  "usage": {"evidence": "none yet", "status": "Shared Claude Max quota with parent mac-claude-a; no purchases"}
+  "updated_utc": "2026-09-12T16:37:00Z",
+  "usage": {
+    "evidence": "cd apps/mac && swift build clean; swift test --filter 'Nearby|Pairing|Capture' 124 tests, 0 failures, 9 skipped at load 31-34 (d16474b2); NearbyReconnectTests 3x green; deadline timing measured at load 12.9 (0.41/0.41/0.61 s for 0.4/0.4/0.6 s deadlines); full suite not run (load 24-87 > 15 bound)",
+    "status": "Shared Claude Max quota with parent mac-claude-a; no purchases; no paid provider calls"
+  }
 }
