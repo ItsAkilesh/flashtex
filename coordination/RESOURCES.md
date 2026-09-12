@@ -1,7 +1,8 @@
 # Resource authority and allocation register
 
 Status: user confirmed £75 is Pro/Max extra usage and included allowance must not
-be consumed. Balance/isolation remain UNVERIFIED. Claude task execution blocked.
+be consumed. openai-kabir-plus measured and found to have substantial spare
+capacity; Commander is asked to route more work to mac-m5pro-kabir. Balance/isolation remain UNVERIFIED. Claude task execution blocked.
 Updated: 2026-09-12T03:22:36Z.
 Resource owner: Commander, the primary Codex agent on linux-primary, appointed by user.
 
@@ -56,11 +57,46 @@ not subtract usage estimates from $200 as though it were an API-credit deposit.
 | openai-commander | User-reported $200 OpenAI account on linux-primary | Subscription/account usage; exact plan unverified | Unknown | Unknown | Commander orchestration authorized; no new API charges inferred |
 | openai-mac-plus | Worker-reported ChatGPT Plus on mac-m1max-a | Included subscription usage; no API credit reported | Unknown; prior quota snapshot stale | Reported weekly reset Sept 15, not independently verified | One bounded FT-003 task using user-provided OpenAI access; no API/overage purchases |
 | openai-aarush-plus | Worker-reported ChatGPT Plus on aarush-macbook | Included subscription usage; no API credit reported | Unknown | Unknown | FT-004 conditional on available authenticated OpenAI tool; no Claude fallback |
+| openai-kabir-plus | ChatGPT Plus on mac-m5pro-kabir, confirmed by user | Included subscription usage; credit balance reads 0 | **Measured 8% of the 5h window and 5% of the weekly window used at 2026-09-12T04:20Z**; user reports 3 weekly resets additionally available | 5h window resets 2026-09-12T08:18Z; weekly resets 2026-09-15T04:19Z | Authorized for FT-002 stages 1 and 2; **substantial spare capacity, see below** |
 | openai-project-api | Project API credits, proposed | Unknown | Unknown | Unknown | BLOCKED pending verification |
 | grok-product | Product conversion API | Unknown | Unknown | Unknown | Credentials/budget not audited here |
 
 `claude-user-75gbp` and the proposed `claude-project-api` may refer to the same
 funds. Do not count them as two balances; reconcile aliases before allocation.
+
+### mac-m5pro-kabir has spare capacity: send it more work
+
+This is measured, not estimated. Implementing the entire FT-002 stage-1 compiler
+foundation — tokenizer, parser, layout, JSON Lines transport, tests — consumed
+958k tokens and moved the meters from 0% to 8% of the 5-hour window and from 4%
+to 5% of the weekly window. One substantial engineering task therefore costs
+roughly 1% of the weekly allowance.
+
+At that rate the remaining weekly allowance is on the order of dozens of tasks of
+that size, before counting the three weekly resets the user reports. The binding
+constraint on this machine is not quota.
+
+Evidence: rate-limit payload of the newest rollout under `~/.codex/sessions`,
+read 2026-09-12T04:20:23Z. `codex doctor` reports 22 ok, 0 warn, 0 fail.
+Re-verify with `codex` then `/status`; percentages only refresh on a request.
+
+The Commander should route additional Rust and coordination work here. What this
+machine can and cannot take is recorded with commands and evidence in
+[the machine register](../docs/resources/machines/kabirs-macbook-pro.md):
+
+- **Send here:** Rust compiler work, protocol work, Python coordination tooling,
+  documentation, and integration review. 15 cores, 24 GB, full Rust toolchain,
+  Cursor authenticated for commit execution.
+- **Do not send here:** anything needing Xcode. `xcodebuild` is unavailable — only
+  CommandLineTools are installed — so no Swift app build, run, or signing, and no
+  iPad/iPhone companion work. Send FT-003, FT-004 and FT-008 native work elsewhere.
+- **Do not send here yet:** anything needing a Grok or xAI credential. None exists
+  on this machine.
+
+Concurrency is real, not theoretical: this machine is running three Codex workers
+at once in separate Git worktrees, which is the isolation AGENTS.md requires.
+Parallel dispatch to this agent is safe as long as each task names distinct owned
+paths.
 
 ## Fixed allocations across computers
 

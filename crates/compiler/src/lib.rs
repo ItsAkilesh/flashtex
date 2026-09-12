@@ -13,7 +13,10 @@ pub mod diagnostics;
 pub mod json;
 pub mod layout;
 pub mod lexer;
+pub mod math;
+pub mod metrics;
 pub mod parser;
+pub mod pdf;
 pub mod protocol;
 
 /// A zero-based, end-exclusive UTF-8 byte range into a source document.

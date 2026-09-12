@@ -194,6 +194,34 @@ allocate Swift/Apple UI and capture-companion tasks to a machine with full Xcode
 and allocate compiler work here. This is the single most important allocation
 fact on this computer.
 
+## Measured throughput capacity
+
+Updated 2026-09-12T04:25Z with measurements, not estimates.
+
+Implementing the whole FT-002 stage-1 compiler foundation on Codex — tokenizer,
+parser, layout, JSON Lines transport and tests — consumed 958k tokens and moved
+the meters from 0% to 8% of the 5-hour window, and from 4% to 5% of the weekly
+window. One substantial engineering task costs roughly **1% of the weekly
+allowance**.
+
+| Window | Used at 04:20Z | Resets |
+|---|---|---|
+| Primary, 5 h | 8% | 2026-09-12T08:18Z |
+| Weekly, 7 d | 5% | 2026-09-15T04:19Z |
+
+Plus three weekly resets the user reports as available for this project. Quota is
+not the binding constraint on this machine; Xcode is.
+
+This machine runs **three Codex workers concurrently** in separate Git worktrees
+(`/Users/kubar/code/ft-wt-*`), which is the isolation AGENTS.md requires for
+concurrent agents on one computer. Parallel dispatch here is safe provided each
+task names distinct owned paths. 15 cores and 24 GB support that comfortably;
+memory is what would bind first if the count grew much beyond this.
+
+**The Commander should route more Rust, protocol, coordination-tooling,
+documentation and integration work to this machine.** Route Apple-platform work
+(FT-003, FT-004, FT-008 native verification) elsewhere until Xcode is installed.
+
 ## What this machine is good for
 
 Ranked by what the evidence supports:

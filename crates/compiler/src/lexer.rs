@@ -26,8 +26,13 @@ pub enum TokenKind {
     RBrace,
     /// `%` to end of line, retained so spans stay faithful to the source.
     Comment,
-    /// `$`, recognised only so it can be reported as unsupported.
+    /// `$`, used once for inline math and twice for display math.
     MathShift,
+    /// `\[` and `\]`, the alternate display-math delimiters.
+    DisplayMathOpen,
+    DisplayMathClose,
+    Superscript,
+    Subscript,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -37,7 +42,7 @@ pub struct Token {
 }
 
 fn is_special(c: char) -> bool {
-    matches!(c, '\\' | '{' | '}' | '%' | '$')
+    matches!(c, '\\' | '{' | '}' | '%' | '$' | '^' | '_')
 }
 
 pub fn tokenize(text: &str) -> Vec<Token> {
@@ -100,6 +105,18 @@ pub fn tokenize(text: &str) -> Vec<Token> {
                             span: Span::new(start, end),
                         });
                     }
+                    Some(&(j, '[')) | Some(&(j, ']')) => {
+                        let open = matches!(it.peek(), Some((_, '[')));
+                        it.next();
+                        tokens.push(Token {
+                            kind: if open {
+                                TokenKind::DisplayMathOpen
+                            } else {
+                                TokenKind::DisplayMathClose
+                            },
+                            span: Span::new(start, j + 1),
+                        });
+                    }
                     // A control symbol such as `\%`: treat as escaped literal.
                     Some(&(j, ch)) => {
                         it.next();
@@ -116,12 +133,14 @@ pub fn tokenize(text: &str) -> Vec<Token> {
                     }
                 }
             }
-            '{' | '}' | '$' => {
+            '{' | '}' | '$' | '^' | '_' => {
                 it.next();
                 let kind = match c {
                     '{' => TokenKind::LBrace,
                     '}' => TokenKind::RBrace,
-                    _ => TokenKind::MathShift,
+                    '$' => TokenKind::MathShift,
+                    '^' => TokenKind::Superscript,
+                    _ => TokenKind::Subscript,
                 };
                 tokens.push(Token {
                     kind,

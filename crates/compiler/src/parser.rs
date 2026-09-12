@@ -10,10 +10,22 @@ use crate::diagnostics::Diagnostic;
 use crate::lexer::{tokenize, Token, TokenKind};
 use crate::Span;
 
+use crate::math::{self, MathList};
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Inline {
-    Text { text: String, span: Span },
-    LineBreak { span: Span },
+    Text {
+        text: String,
+        span: Span,
+    },
+    LineBreak {
+        span: Span,
+    },
+    Math {
+        list: MathList,
+        display: bool,
+        span: Span,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -127,12 +139,22 @@ impl P {
                         ));
                     }
                 }
-                TokenKind::MathShift => {
+                TokenKind::MathShift => self.dollar_math(tok.span, &mut para),
+                TokenKind::DisplayMathOpen => self.bracket_math(tok.span, &mut para),
+                TokenKind::DisplayMathClose => {
                     self.i += 1;
                     self.diags.push(Diagnostic::error(
-                        "math mode is not implemented in this version",
+                        "stray \\] has no matching \\[",
                         Some(tok.span),
-                        Some("skipped the math shift character; no math was typeset".into()),
+                        Some("ignored the stray display-math delimiter".into()),
+                    ));
+                }
+                TokenKind::Superscript | TokenKind::Subscript => {
+                    self.i += 1;
+                    self.diags.push(Diagnostic::error(
+                        "math script marker used outside math mode",
+                        Some(tok.span),
+                        Some("ignored the script marker and continued".into()),
                     ));
                 }
                 TokenKind::Command(name) => {
@@ -170,7 +192,7 @@ impl P {
                     .iter()
                     .filter_map(|i| match i {
                         Inline::Text { text, .. } => Some(text.clone()),
-                        _ => None,
+                        Inline::LineBreak { .. } | Inline::Math { .. } => None,
                     })
                     .collect();
                 if name == "begin" {
@@ -209,7 +231,10 @@ impl P {
             other => {
                 debug_assert!(!SUPPORTED.contains(&other));
                 self.diags.push(Diagnostic::error(
-                    format!("\\{} is not supported by this compiler version", other),
+                    format!(
+                        "\\{} is not supported by this compiler version; unrestricted TeX math mode is not implemented",
+                        other
+                    ),
                     Some(span),
                     Some(
                         "skipped the command; any braced argument was typeset as plain text".into(),
@@ -217,6 +242,107 @@ impl P {
                 ));
             }
         }
+    }
+
+    fn dollar_math(&mut self, open: Span, para: &mut Vec<Inline>) {
+        self.i += 1;
+        let display = matches!(self.peek().map(|t| &t.kind), Some(TokenKind::MathShift));
+        if display {
+            self.i += 1;
+        }
+        let content_start = self.i;
+        let mut content_end = self.t.len();
+        let mut close_end = open.end;
+        let mut found = false;
+        while self.i < self.t.len() {
+            if self.t[self.i].kind == TokenKind::MathShift {
+                let closes = !display
+                    || self.t.get(self.i + 1).map(|t| &t.kind) == Some(&TokenKind::MathShift);
+                if closes {
+                    content_end = self.i;
+                    close_end = if display {
+                        self.t[self.i + 1].span.end
+                    } else {
+                        self.t[self.i].span.end
+                    };
+                    self.i += if display { 2 } else { 1 };
+                    found = true;
+                    break;
+                }
+            }
+            self.i += 1;
+        }
+        self.finish_math(
+            open,
+            content_start,
+            content_end,
+            close_end,
+            found,
+            display,
+            para,
+        );
+    }
+
+    fn bracket_math(&mut self, open: Span, para: &mut Vec<Inline>) {
+        self.i += 1;
+        let content_start = self.i;
+        while self.i < self.t.len() && self.t[self.i].kind != TokenKind::DisplayMathClose {
+            self.i += 1;
+        }
+        let content_end = self.i;
+        let found = self.i < self.t.len();
+        let close_end = if found {
+            let end = self.t[self.i].span.end;
+            self.i += 1;
+            end
+        } else {
+            open.end
+        };
+        self.finish_math(
+            open,
+            content_start,
+            content_end,
+            close_end,
+            found,
+            true,
+            para,
+        );
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn finish_math(
+        &mut self,
+        open: Span,
+        content_start: usize,
+        content_end: usize,
+        close_end: usize,
+        found: bool,
+        display: bool,
+        para: &mut Vec<Inline>,
+    ) {
+        let raw = &self.t[content_start..content_end];
+        let list = math::parse_tokens(raw, &mut self.diags);
+        let end = if found {
+            close_end
+        } else {
+            raw.last().map_or(open.end, |t| t.span.end)
+        };
+        if !found {
+            self.diags.push(Diagnostic::error(
+                if display {
+                    "display math is missing its closing delimiter"
+                } else {
+                    "inline math is missing its closing '$'"
+                },
+                Some(open),
+                Some("closed math mode at end of input and typeset its contents".into()),
+            ));
+        }
+        para.push(Inline::Math {
+            list,
+            display,
+            span: Span::new(open.start, end),
+        });
     }
 
     /// Reads a `{...}` argument. Returns its inlines and the span covering it.
