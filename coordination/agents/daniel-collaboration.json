@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "agent_id": "daniel-collaboration",
+  "machine": "mac-m5pro-dq222",
+  "tool": "Claude Code on Claude Max 20x",
+  "capabilities": [
+    "rust",
+    "crdt",
+    "offline-collaboration",
+    "checkpoint-serialization"
+  ],
+  "branch": "agent/daniel-collaboration/collaboration-core",
+  "state": "ready_for_integration",
+  "summary": "FT-044 rev 2: crates/collaboration-core adds Document::checkpoint()/From<Checkpoint> (bounded serializable snapshot of structure + causal frontier, typed TooLarge error past bound) with checkpoint equivalence proven across 3 scenarios (sequential build, Unicode, every causally valid ordering of a 5-op concurrent scenario at every cut point); and PendingOps, an additive buffering layer for interrupted/out-of-order delivery recovery (bounded, PendingBufferFull past bound, missing_dependencies() exposes what to re-request). Document::apply is unchanged from rev 1. 33/33 tests pass, clippy -D warnings clean, zero dependencies.",
+  "next_action": "Await Commander integration review of agent/daniel-collaboration/collaboration-core into main; no follow-up work planned by this agent absent a new assignment revision.",
+  "eta_minutes": {
+    "optimistic": 0,
+    "likely": 0,
+    "pessimistic": 0
+  },
+  "allocation_id": "daniel-claude20x-shared",
+  "usage": {
+    "status": "unknown",
+    "evidence": "Shared Claude Max 20x subscription quota; no purchases, no overages, no API billing. Live consumption not exposed to this agent."
+  },
+  "reviewed_peers": {
+    "origin/main": "745f32736134583f72ac830453a46abd02994a73"
+  },
+  "assignment_acknowledgements": {
+    "FT-044": {
+      "acknowledged_utc": "2026-09-12T09:42:30Z",
+      "revision": 2,
+      "main_sha": "745f32736134583f72ac830453a46abd02994a73",
+      "adaptation": "Accepted FT-044 rev 2 objective as stated: added bounded durable checkpoints and interrupted-delivery recovery on top of rev-1's convergence/dedup/causal-id core without changing Document::apply's semantics. Chose buffering (PendingOps) over exposure-only for interrupted delivery, while also exposing missing_dependencies() as a complementary, non-primary capability. Checkpoint equivalence checked structurally (via Checkpoint equality itself), not just via visible text, across 3 independent operation sequences including an exhaustive (ordering x cut-point) sweep. No changes to crates/edit-ledger or any other crate; owned paths only."
+    }
+  },
+  "updated_utc": "2026-09-12T09:42:30Z",
+  "code_revision": "3520284775b919bb87a5178411bee5f1cf931000",
+  "main_integrated_through": "745f32736134583f72ac830453a46abd02994a73"
+}
