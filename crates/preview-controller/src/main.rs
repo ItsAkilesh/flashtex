@@ -24,6 +24,7 @@ mod output_buffer;
 mod output_delivery;
 mod source_plans;
 mod wire;
+mod raw_wire;
 use output_buffer::OutputBuffer;
 const MAX_OUTPUT_BYTES: usize = 16 * 1024 * 1024;
 
@@ -80,6 +81,12 @@ fn run(config: Value) -> Result<(), String> {
         return Err("invalid session identity".into());
     }
     let limits = compiler_limits(&config)?;
+    let raw_display = match config.get("display_transport") {
+        None => false,
+        Some(Value::String(mode)) if mode == "value" => false,
+        Some(Value::String(mode)) if mode == "raw-prototype" => true,
+        _ => return Err("display_transport must be value or raw-prototype".into()),
+    };
     let diagnostic_timings = config["diagnostic_timings"].as_bool().unwrap_or(false);
     let project = string(&config, "project_id")?.to_owned();
     let entry = string(&config, "entry_path")?.to_owned();
@@ -125,6 +132,9 @@ fn run(config: Value) -> Result<(), String> {
         .get("compiler_path")
         .and_then(Value::as_str)
         .map(str::to_owned);
+    if raw_display {
+        controller.select_raw_display_prototype()?;
+    }
     let compiler_error = compiler
         .as_ref()
         .and_then(|path| controller.restart(Command::new(path), limits.clone()).err());
@@ -245,7 +255,8 @@ fn run(config: Value) -> Result<(), String> {
                             SubmissionBindings::validate_token(token)?;
                         }
                         if request["type"] == "configure_display_candidates" {
-                            if request["payload"]["capability"] != "display-candidates-v1" {
+                            let capability = controller.display_candidate_capability();
+                            if request["payload"]["capability"] != capability {
                                 return Err("unsupported display candidate capability".into());
                             }
                             let enabled = request["payload"]["enabled"]
@@ -259,7 +270,7 @@ fn run(config: Value) -> Result<(), String> {
                             let preview_error = controller.configure_display_candidates(enabled)?;
                             output_epoch = output_tx.reset_optional();
                             return Ok(
-                                json!({"capability":"display-candidates-v1","enabled":enabled,"preview_error":preview_error}),
+                                json!({"capability":capability,"enabled":enabled,"preview_error":preview_error}),
                             );
                         }
                         if request["type"] == "configure_completed_snapshots" {
@@ -403,6 +414,22 @@ fn run(config: Value) -> Result<(), String> {
                         "{}",
                         json!({"phase":"optional_output","kind":"completed_snapshot",
                         "outcome":outcome.label(),"serialization_ms":started.elapsed().as_secs_f64()*1000.0})
+                    );
+                }
+            }
+        }
+        if output_tx.can_offer(output_epoch) {
+            if let Some(payload) = controller.take_current_raw_display_payload() {
+                let value = raw_wire::envelope(&session, &payload);
+                let started = std::time::Instant::now();
+                let outcome =
+                    optional_output::offer(&output_tx, output_epoch, &value, MAX_OUTPUT_BYTES);
+                if diagnostic_timings {
+                    eprintln!(
+                        "{}",
+                        json!({"phase":"optional_output","kind":"display_candidate",
+                        "transport":"raw-prototype","outcome":outcome.label(),
+                        "serialization_ms":started.elapsed().as_secs_f64()*1000.0})
                     );
                 }
             }

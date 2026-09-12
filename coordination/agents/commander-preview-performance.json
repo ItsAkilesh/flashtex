@@ -13,17 +13,17 @@
   "capabilities": [
     "Preview helper serialization and latency"
   ],
-  "code_revision": "b5ec8e4270dcd2beb47967a3bad788233a3a3b22",
+  "code_revision": "96bd3bb1f79711d35c148928bc2733b03f6c66bc",
   "eta_minutes": null,
   "machine": "linux-primary",
-  "main_integrated_through": "7d69a543bd3d5d975d40eefa2b7a30b3dfb359f2",
-  "next_action": "Await tested raw runtime publication then wire startup-only helper strategy and lifecycle tests.",
+  "main_integrated_through": "b5ec8e4270dcd2beb47967a3bad788233a3a3b22",
+  "next_action": "Publish opt-in integration, then actual producer raw replay after runtime scan-reduction checkpoint; no native or speed promotion.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "Read-only raw Syntax Unicode-key suspicion disproved by actual paired probe; no speculative owner change.",
+  "summary": "FT048r8 experimental raw helper startup integration passes source/lifecycle recovery gates; default Value untouched.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T11:44:42Z",
+  "updated_utc": "2026-09-12T11:52:50Z",
   "usage": {
     "status": "unknown"
   }
