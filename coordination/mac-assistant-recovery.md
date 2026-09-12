@@ -128,10 +128,13 @@ NOT covered before this lane (implemented here):
 - `swift test --filter ProposalPreviewTests` → 25/25 (1 env-gated skip) in 26.5 s,
   load 5.4→20.1 during the run.
 - Full `swift test` NOT run (parent heavy-build window notice at 13:38Z).
+- Repeat run of `swift test --filter AssistantRecoveryTests` after the commit: 6/6
+  in 8.6 s (uptime `9:43 up 1 day, 8:36, load averages: 16.52 23.89 23.50`).
+- Lane commit `0517513d` on origin; helper binary NOT committed (build artifact).
 
 ## Durable checkpoint
 
-- Branch `agent/mac-assistant-recovery/assistant-recovery`; base `5bc3fc0f`.
+- Branch `agent/mac-assistant-recovery/assistant-recovery`; base `5bc3fc0f`; lane tip `0517513d` (+ this checkpoint commit), pushed.
 - Consumed main SHA: `dda0b62` (via the mac-shell base); origin/main `ffe199d8` observed, not merged.
 - Dirty files: see `git status` at each commit; nothing outside the owned paths.
 - Helper binary: building in-worktree `cargo build --release --offline` in
