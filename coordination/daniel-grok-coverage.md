@@ -1,10 +1,12 @@
 # daniel-grok-coverage: handwritten-math compile coverage
 
-Offline corpus of 63 short snippets (9 expected outputs from tests/grok-corpus/cases plus common homework forms), each wrapped in article+amsmath+amssymb and compiled through the flashtex-compiler JSON Lines CLI. A snippet counts as rendering when it compiles with 0 error diagnostics. Generator: coordination/daniel-grok-coverage.py.
+Offline corpus of 63 short snippets (9 expected outputs from tests/grok-corpus/cases plus common homework forms), each wrapped in article+amsmath+amssymb and compiled through the flashtex-compiler JSON Lines CLI. A snippet counts as rendering when it compiles with 0 error diagnostics (warnings listed; package-recognition and U+2500 rule-fallback warnings omitted). Reproduce: build crates/compiler, then `python3 coordination/daniel-grok-coverage.py`.
 
-## After batch 1 (symbols, operators, delimiters, style no-ops, split/aligned grids)
+Summary: before 16/63, after batch 1 38/63, after batch 2 46/63.
 
-0-error snippets: 38/63
+## After batch 2
+
+0-error snippets: 46/63
 
 | # | snippet | status | errors | diagnostics (first 3) |
 |---|---|---|---|---|
@@ -21,7 +23,7 @@ Offline corpus of 63 short snippets (9 expected outputs from tests/grok-corpus/c
 | 11 | `derivative-d-dx` | recovered | 0 |  |
 | 12 | `partial` | recovered | 0 |  |
 | 13 | `vec-hat-bar` | recovered | 3 | \vec is not supported in math mode; \hat is not supported in math mode; \bar is not supported in math mode |
-| 14 | `mathbf` | recovered | 2 | \mathbf is not supported in math mode; \mathbf is not supported in math mode |
+| 14 | `mathbf` | recovered | 0 |  |
 | 15 | `mathrm` | recovered | 0 |  |
 | 16 | `operatorname` | recovered | 0 |  |
 | 17 | `left-right-big` | recovered | 0 |  |
@@ -30,20 +32,20 @@ Offline corpus of 63 short snippets (9 expected outputs from tests/grok-corpus/c
 | 20 | `greek-lower` | recovered | 0 |  |
 | 21 | `greek-upper` | recovered | 0 |  |
 | 22 | `functions` | recovered | 0 |  |
-| 23 | `binom` | recovered | 1 | \binom is not supported in math mode |
-| 24 | `sqrt-n` | recovered | 1 | \sqrt requires a braced math argument |
+| 23 | `binom` | recovered | 0 |  |
+| 24 | `sqrt-n` | recovered | 0 |  |
 | 25 | `dots` | recovered | 2 | \vdots is not supported in math mode; \ddots is not supported in math mode |
 | 26 | `text-in-math` | recovered | 0 |  |
-| 27 | `multline` | recovered | 0 | environment 'multline*' is not implemented; its body is typeset as plain text |
+| 27 | `multline` | recovered | 0 |  |
 | 28 | `split` | recovered | 0 |  |
-| 29 | `alignat` | recovered | 1 | \quad is not supported by this compiler version; unrestricted TeX math mode is not implemented; environment 'alignat*' is not implemented; its body is typeset as plain text |
-| 30 | `tag` | recovered | 1 | \tag is not supported in math mode |
-| 31 | `boxed` | recovered | 1 | \boxed is not supported in math mode |
+| 29 | `alignat` | recovered | 0 |  |
+| 30 | `tag` | recovered | 0 |  |
+| 31 | `boxed` | recovered | 0 |  |
 | 32 | `tabular` | recovered | 3 | \hline is not supported by this compiler version; unrestricted TeX math mode is not implemented; \hline is not supported by this compiler version; unrestricted TeX math mode is not implemented; \hline is not supported by this compiler version; unrestricted TeX math mode is not implemented; environment 'tabular' is not implemented; its body is typeset as plain text |
 | 33 | `sum-limits` | recovered | 0 |  |
 | 34 | `int-limits` | recovered | 0 |  |
 | 35 | `iint-oint` | recovered | 1 | \oint is not supported in math mode |
-| 36 | `nabla-infty` | recovered | 1 | \mathbf is not supported in math mode |
+| 36 | `nabla-infty` | recovered | 0 |  |
 | 37 | `set-braces` | recovered | 0 |  |
 | 38 | `set-ops` | recovered | 0 |  |
 | 39 | `quantifiers` | recovered | 0 |  |
@@ -60,8 +62,8 @@ Offline corpus of 63 short snippets (9 expected outputs from tests/grok-corpus/c
 | 50 | `degrees-circ` | recovered | 3 | \circ is not supported in math mode; \triangle is not supported in math mode; \parallel is not supported in math mode |
 | 51 | `therefore` | recovered | 1 | \because is not supported in math mode |
 | 52 | `tfrac-dfrac` | recovered | 0 |  |
-| 53 | `overline-underline` | recovered | 3 | \overline is not supported in math mode; \underline is not supported in math mode; \overbrace is not supported in math mode |
-| 54 | `pmod-mod` | recovered | 1 | \pmod is not supported in math mode |
+| 53 | `overline-underline` | recovered | 1 | \overbrace is not supported in math mode |
+| 54 | `pmod-mod` | recovered | 0 |  |
 | 55 | `limsup-max` | recovered | 0 |  |
 | 56 | `spacing` | recovered | 0 |  |
 | 57 | `displaystyle-frac` | recovered | 0 |  |
@@ -72,7 +74,7 @@ Offline corpus of 63 short snippets (9 expected outputs from tests/grok-corpus/c
 | 62 | `frac-pm-sqrt-choose` | recovered | 1 | \choose is not supported in math mode |
 | 63 | `stackrel-overset` | recovered | 3 | \overset is not supported in math mode; \stackrel is not supported in math mode; \underset is not supported in math mode |
 
-## Before (origin/main + amsmath lane)
+## Before (origin/main + amsmath lane, f05b4cef)
 
 0-error snippets: 16/63
 
