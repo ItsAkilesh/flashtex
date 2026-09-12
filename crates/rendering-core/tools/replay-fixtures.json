@@ -158,6 +158,43 @@
         "limitation": null,
         "verification": "pinned reference and fixture text evidence; not an exhaustive Unicode coverage claim"
       }
+    },
+    "ligatures": {
+      "files": {
+        "source.tex": {
+          "path": "tests/fixtures/ligatures-reference/source.tex",
+          "sha256": "9a9ac05f3eca94365cbf3797e451180540e1684e2bf401936f1e50cf117ade5e"
+        },
+        "request.jsonl": {
+          "path": "tests/fixtures/ligatures-reference/request.jsonl",
+          "sha256": "90671808f851afb5a06358e5fce3026515f0703a50f8677f5c1226f446a210f4"
+        },
+        "reference.pdf": {
+          "path": "tests/fixtures/ligatures-reference/reference.pdf",
+          "sha256": "377de22d34ae318c46872d71de4772eba372cc18e15ffef9db623e8a75df6218"
+        },
+        "reference-engine.json": {
+          "path": "tests/fixtures/ligatures-reference/reference-engine.json",
+          "sha256": "63744fee5f4e3994606247a936062f950a5278a6f7071449249f3b267eb7a159"
+        },
+        "lmroman12-regular.otf": {
+          "path": "tests/fixtures/original-reference/lmroman12-regular.otf",
+          "sha256": "e6be218ae83e61aa8a29990d3cdc401c678c1962188cb9a4a8b6359e4f5e5870"
+        },
+        "GUST-FONT-LICENSE.TXT": {
+          "path": "tests/fixtures/math-reference/GUST-FONT-LICENSE.TXT",
+          "sha256": "49ea6cb9257bbee0a3979c48a774cd221550ac1c20c95549efe45fc99cc18050"
+        }
+      },
+      "font_files": [
+        "lmroman12-regular.otf"
+      ],
+      "text_comparison_validity": {
+        "status": "limited_linear_text",
+        "scope": "Observed linear Unicode extraction only; no mathematical structure or accessibility proof.",
+        "limitation": null,
+        "verification": "pinned reference and fixture text evidence; not an exhaustive Unicode coverage claim"
+      }
     }
   }
 }

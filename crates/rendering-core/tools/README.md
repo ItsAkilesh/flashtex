@@ -86,3 +86,10 @@ The added `wrapping` selection replays existing02 with the same resources. Its
 actual report has13 matching line memberships/210 words, equal text, and979
 differing pixels. `all` now includes this fourth established fixture; historical
 three-fixture reports retain their original scope and runner hashes.
+
+The `ligatures` selection adds existing18 with original GID/source-interval and
+reference ToUnicode checks. Its measured337-pixel mismatch remains separate from
+matching three-line word membership and extracted text. `all` now covers the
+five explicitly selected fixtures, not the complete corpus. The aggregate in
+completed-fixtures.json retains the actual report hashes for each checkpoint;
+it does not pretend these were one simultaneous benchmark run.
