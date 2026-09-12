@@ -13,7 +13,7 @@
   "capabilities": [
     "rust-font-resources"
   ],
-  "code_revision": "cb4ff5f4b224b553eaaf580f1676e50f03a8c43c",
+  "code_revision": "00d62a9cb9c6071160477d8674402420ed61658a",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
@@ -21,13 +21,13 @@
   },
   "machine": "linux-primary",
   "main_integrated_through": "1b53ec22cb376309e868962fcf2604263cdb3016",
-  "next_action": "Commander integrate cb4ff5f; pipeline consumer wires required-mode diagnostic and renderer reruns with /tmp/flashtex-lm-tfm-0or97xdj/v2.004. TTC gate remains unchanged. Await bounded next assignment; no pending processes or peer writes.",
+  "next_action": "Existing TTC owner adds validated header/directory ranges and hard preallocation/work caps; then rerun probe and integrate unchanged. No pending commands/peer edits; await bounded next assignment.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "FT024r14 published cb4ff5f. Official LM2.004 matching ec-lmr12/rm-lmr12/8/6 retrieved temporarily with archive/file/license hashes; exact actual9bb7b27 reader replay matches all present metrics/fontdimens/ten runs. RequiredMetrics rooted SHA-bound all-or-error loader explicitly rejects missing/changed metric/license; no OTF fallback. Full tests/clippy and real opt-in tests pass; renderer has asset path, issue2 handoff published.",
+  "summary": "TTC exact peer f2fdb08/4422cff reviewed and compiled readonly: descriptor now exists but accepts malformed TTC/sfnt versions and header/directory payload overlaps. Published owned synthetic probes/evidence and two passing consumer contract tests, clippy clean. Explicit resolver gate retained; no duplicate parser or peer dependency merge. Issue2 comment5645127215 gives precise owner fixes. Prior cb4ff5f/578ac0c real matching12pt metrics complete and renderer informed.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T09:45:22Z",
+  "updated_utc": "2026-09-12T09:49:33Z",
   "usage": {
     "evidence": "crates/font-resources/README.md; test suite; installed font SHA pinned.",
     "status": "Hosted allocation; no external provider calls; account remainder unknown."
