@@ -193,8 +193,8 @@ tried and inserts the literal characters.
   (AppKit setup + layout), not repeated; the round trip never includes it.
 
 Validation: `swift test` in apps/mac with the four real worker binaries
-(FLASHTEX_COMPILER/PDF/BRIDGE/EDIT_LEDGER) on the braces branch: 459 tests,
-0 failures, 21 pre-existing env-gated skips. `SourceEditorViewTests` 20/20,
+(FLASHTEX_COMPILER/PDF/BRIDGE/EDIT_LEDGER) on the braces branch (mac-shell dbcf9c3): 484 tests,
+0 failures, 24 pre-existing env-gated skips. `SourceEditorViewTests` 20/20,
 repeated 3× consecutively without failure (17/17 ×6 on the ime branch). Under a heavy concurrent load
 burst (full suite at 103 s instead of 33 s) one run of the keystroke bench
 exceeded the whole-keystroke CPU budget (TextKit layout inflates under
