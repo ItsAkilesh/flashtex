@@ -11,15 +11,15 @@
   "branch": "agent/commander-runtime-display/display-runtime",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "764d57655aa7c87c02b9c33ea8b43b1211244885",
-  "objective": "Review exact positional-read repair and unobserved partial truncated diagnostic states",
+  "input_main_sha": "d923951262af359cee6018ca6c834c1d63698b3b",
+  "objective": "Independently audit next corrected correctness capture immutable source trace completeness reopened result and clean comparison",
   "owned_paths": [
     "crates/document-runtime"
   ],
-  "revision": 39,
+  "revision": 40,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-049",
   "timebox_minutes": 40,
-  "updated_utc": "2026-09-12T14:07:28.282919+00:00"
+  "updated_utc": "2026-09-12T14:13:36Z"
 }
