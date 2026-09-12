@@ -12,7 +12,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::reader::{fnv1a, u16_at, u32_at};
+use crate::reader::{fnv1a, slice, u16_at, u32_at};
 use crate::truetype::{TrueTypeFace, composite_components};
 use crate::{Error, GlyphId};
 
@@ -220,7 +220,7 @@ pub fn verify_checksums(data: &[u8]) -> Result<(), Error> {
     let mut spans: Vec<(usize, usize)> = Vec::new();
     for i in 0..n {
         let rec = 12 + 16 * i;
-        let tag = &data[rec..rec + 4];
+        let tag = slice(data, rec, 4)?;
         let want = u32_at(data, rec + 4)?;
         let off = u32_at(data, rec + 8)? as usize;
         let len = u32_at(data, rec + 12)? as usize;
@@ -258,4 +258,26 @@ pub fn verify_checksums(data: &[u8]) -> Result<(), Error> {
         return Err(Error::Malformed("head.checkSumAdjustment mismatch".into()));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A buffer just long enough to read `numTables` (offset 4, `numTables
+    /// = 1`) but far too short to hold that one table directory entry (16
+    /// bytes starting at offset 12). Before the `slice()` bounds check
+    /// above, the first record's tag was read with `&data[rec..rec + 4]`,
+    /// which panicked ("range end index 16 out of range for slice of length
+    /// 10") instead of reporting the malformed input through `Error`.
+    #[test]
+    fn short_buffer_with_one_table_is_rejected_not_panicking() {
+        let mut data = vec![0u8; 10];
+        data[4..6].copy_from_slice(&1u16.to_be_bytes()); // numTables = 1
+        let err = verify_checksums(&data).expect_err("table directory entry does not fit");
+        assert!(
+            matches!(err, Error::Malformed(_)),
+            "expected Error::Malformed, got {err:?}"
+        );
+    }
 }
