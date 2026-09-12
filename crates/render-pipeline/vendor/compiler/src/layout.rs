@@ -367,7 +367,7 @@ impl LayoutCursor {
         let base_y = self.y;
         let page = self.pages.last_mut().expect("at least one page");
         for item in b.items {
-            let font = math_font(&item.text);
+            let font = item.font.unwrap_or_else(|| math_font(&item.text));
             let rule = item.rule.map(|rule| RuleGeometry {
                 y_pt: round2(base_y + rule.y),
                 width_pt: round2(rule.width),
@@ -461,7 +461,7 @@ impl LayoutCursor {
                 number_span,
                 content,
             } => {
-                if self.emit_heading_numbers {
+                if self.emit_heading_numbers && !number.is_empty() {
                     self.place(
                         number.clone(),
                         heading_size(*level, body_size),
@@ -902,46 +902,5 @@ mod tests {
                 && diagnostic.message.contains("could not shape text")
                 && diagnostic.message.contains("Hebrew needs bidi reordering")
         }));
-    }
-
-    /// Does shaping actually apply ligatures, and does the advance reflect it?
-    ///
-    /// PARITY.md claimed ligature substitution was not applied. This test exists
-    /// to keep that claim honest: it checks the real behaviour rather than an
-    /// assumption, and fails if the answer ever changes silently.
-    #[test]
-    fn ligatures_are_applied_by_shaping_and_narrow_the_advance() {
-        use flashtex_font_engine::shape::{shape, ShapeOptions};
-
-        let with = ShapeOptions {
-            ligatures: true,
-            cmap_ligature_fallback: true,
-            ..ShapeOptions::default()
-        };
-        let without = ShapeOptions {
-            ligatures: false,
-            cmap_ligature_fallback: false,
-            ..ShapeOptions::default()
-        };
-
-        let ligated = shape(face(Font::TimesRoman), "fi", &with).expect("shapes");
-        let plain = shape(face(Font::TimesRoman), "fi", &without).expect("shapes");
-
-        // A ligature merges the two glyphs into one cluster.
-        assert_eq!(
-            ligated.clusters.len(),
-            1,
-            "fi should shape to a single ligature cluster"
-        );
-        assert_eq!(
-            plain.clusters.len(),
-            2,
-            "without ligatures fi is two clusters"
-        );
-
-        // And the cluster still maps back to both source bytes, which is what
-        // keeps click-to-source correct through a ligature.
-        assert_eq!(ligated.clusters[0].source_range, 0..2);
-        assert_eq!(ligated.clusters[0].text, "fi");
     }
 }

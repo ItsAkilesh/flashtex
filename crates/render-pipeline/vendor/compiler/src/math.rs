@@ -15,6 +15,7 @@ pub const SUBSCRIPT_LOWER_EM: f64 = 0.2;
 pub const MATH_AXIS_EM: f64 = 0.25;
 pub const FRACTION_GAP_EM: f64 = 0.16;
 pub const FRACTION_RULE_EM: f64 = 0.06;
+pub const QUAD_EM: f64 = 1.0;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct MathList {
@@ -32,6 +33,12 @@ pub struct MathAtom {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Nucleus {
     Symbol(String),
+    /// Literal text with explicit Roman intent, distinct from math symbols.
+    Text(String),
+    /// Explicit TeX math glue, measured in ems of the current math style.
+    Space {
+        em: f64,
+    },
     Fraction {
         numerator: MathList,
         denominator: MathList,
@@ -41,6 +48,8 @@ pub enum Nucleus {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct MathItem {
+    /// Explicit font for text nuclei; None retains symbol-driven selection.
+    pub font: Option<crate::layout::Font>,
     pub text: String,
     pub x: f64,
     /// Offset from the surrounding text baseline; positive is downward.
@@ -69,27 +78,13 @@ pub struct MathBox {
 
 pub fn parse_tokens(tokens: &[Token], diagnostics: &mut Vec<Diagnostic>) -> MathList {
     let split = split_word_tokens(tokens);
-    let last_span = split.last().map(|t| t.span);
-    let mut parser = MathParser {
+    MathParser {
         tokens: &split,
         i: 0,
         depth: 0,
-        delimiter_depth: 0,
         diagnostics,
-    };
-    let list = parser.list(false);
-    // A \left with no \right is an error in TeX, and silently accepting it would
-    // let a half-typed formula look finished. Reported here, at the end of the
-    // formula, because that is the first point at which it is known.
-    if parser.delimiter_depth > 0 {
-        let open = parser.delimiter_depth;
-        parser.diagnostics.push(Diagnostic::error(
-            format!("{open} \\left delimiter(s) without a matching \\right"),
-            last_span,
-            Some("typeset the opening delimiter and continued".into()),
-        ));
     }
-    list
+    .list(false)
 }
 
 /// Maximum nesting of braced math groups, scripts, fractions and radicals.
@@ -100,16 +95,10 @@ pub fn parse_tokens(tokens: &[Token], diagnostics: &mut Vec<Diagnostic>) -> Math
 /// Exceeding the bound is an explicit diagnostic, not a crash.
 pub const MAX_MATH_DEPTH: usize = 256;
 
-/// Maximum nesting of \left ... \right pairs.
-pub const MAX_DELIMITER_DEPTH: usize = 64;
-
 struct MathParser<'a> {
     tokens: &'a [Token],
     i: usize,
     depth: usize,
-    /// Open \left delimiters, so an unmatched \right is diagnosed rather than
-    /// silently accepted.
-    delimiter_depth: usize,
     diagnostics: &'a mut Vec<Diagnostic>,
 }
 
@@ -268,45 +257,6 @@ impl MathParser<'_> {
         }
     }
 
-    /// Consumes the delimiter after \left or \right.
-    ///
-    /// A full stop is TeX's null delimiter: it pairs but renders nothing.
-    fn take_delimiter(&mut self) -> Option<(String, Span)> {
-        while matches!(
-            self.tokens.get(self.i).map(|t| &t.kind),
-            Some(TokenKind::Space)
-        ) {
-            self.i += 1;
-        }
-        let token = self.tokens.get(self.i)?.clone();
-        let text = match &token.kind {
-            TokenKind::Word(w) if w == "." => String::new(),
-            TokenKind::Word(w) => w.clone(),
-            TokenKind::LBrace => "{".into(),
-            TokenKind::RBrace => "}".into(),
-            TokenKind::Command(c) => match command_glyph(c) {
-                Some(glyph) => glyph.to_string(),
-                None => {
-                    // An unknown delimiter used to be dropped silently here:
-                    // \left\foo produced status ok, zero diagnostics, and no
-                    // delimiter at all, so the author was told nothing. Reported
-                    // by the outgoing Commander against the held delimiter
-                    // worktree. Pairing is still honoured; only the glyph is
-                    // missing, and now it says so.
-                    self.diagnostics.push(Diagnostic::error(
-                        format!("\\{c} is not a delimiter this compiler recognises"),
-                        Some(token.span),
-                        Some("paired the delimiter but typeset no glyph for it".into()),
-                    ));
-                    String::new()
-                }
-            },
-            _ => return None,
-        };
-        self.i += 1;
-        Some((text, token.span))
-    }
-
     fn command_atom(&mut self, name: String, span: Span) -> MathAtom {
         match name.as_str() {
             "frac" => {
@@ -328,45 +278,21 @@ impl MathParser<'_> {
                 superscript: None,
                 subscript: None,
             },
-            // \left and \right delimit a subformula. The delimiter that follows
-            // is emitted as an ordinary symbol: this removes the blocker and the
-            // leaked literal text, but the delimiter is NOT grown to the height
-            // of its content, which real TeX does by assembling extensible
-            // pieces. That limitation is stated in README.md rather than implied.
-            "left" | "right" => {
-                let is_left = name == "left";
-                if is_left {
-                    self.delimiter_depth += 1;
-                    if self.delimiter_depth > MAX_DELIMITER_DEPTH {
-                        self.diagnostics.push(Diagnostic::error(
-                            format!(
-                                "\\left nesting deeper than {MAX_DELIMITER_DEPTH} levels is not supported"
-                            ),
-                            Some(span),
-                            Some("stopped tracking delimiter pairing at this depth".into()),
-                        ));
-                    }
-                } else if self.delimiter_depth == 0 {
-                    self.diagnostics.push(Diagnostic::error(
-                        "\\right has no matching \\left".to_string(),
-                        Some(span),
-                        Some("typeset the delimiter on its own and continued".into()),
-                    ));
-                } else {
-                    self.delimiter_depth -= 1;
-                }
-                match self.take_delimiter() {
-                    Some((text, delim_span)) => symbol(text, delim_span),
-                    None => {
-                        self.diagnostics.push(Diagnostic::error(
-                            format!("\\{name} must be followed by a delimiter"),
-                            Some(span),
-                            Some("used no delimiter and continued".into()),
-                        ));
-                        symbol(String::new(), span)
-                    }
+            "text" => {
+                let (text, argument_span) = self.required_text_group("text", span);
+                MathAtom {
+                    nucleus: Nucleus::Text(text),
+                    span: span.merge(argument_span),
+                    superscript: None,
+                    subscript: None,
                 }
             }
+            // Delimiter stretching is not implemented yet. Consume and retain
+            // the requested delimiter at ordinary size instead of fabricating a
+            // hard-coded parenthesis (which would duplicate the source token).
+            "bigl" | "bigr" => self.take_delimiter(&name, span),
+            "quad" => space(QUAD_EM, span),
+            "qquad" => space(2.0 * QUAD_EM, span),
             _ => match command_glyph(&name) {
                 Some(glyph) => symbol(glyph.into(), span),
                 None => {
@@ -379,6 +305,155 @@ impl MathParser<'_> {
                 }
             },
         }
+    }
+
+    fn take_delimiter(&mut self, command: &str, span: Span) -> MathAtom {
+        while matches!(
+            self.tokens.get(self.i).map(|t| &t.kind),
+            Some(TokenKind::Space)
+        ) {
+            self.i += 1;
+        }
+        let Some(token) = self.tokens.get(self.i).cloned() else {
+            self.diagnostics.push(Diagnostic::error(
+                format!("\\{command} requires a following delimiter"),
+                Some(span),
+                Some("used an empty delimiter and continued".into()),
+            ));
+            return symbol(String::new(), span);
+        };
+        let TokenKind::Word(delimiter) = &token.kind else {
+            self.diagnostics.push(Diagnostic::error(
+                format!("\\{command} requires a following delimiter"),
+                Some(span),
+                Some("left the following non-delimiter token to be parsed normally".into()),
+            ));
+            return symbol(String::new(), span);
+        };
+        if delimiter.chars().count() != 1 || !"()[]{}|./".contains(delimiter.as_str()) {
+            self.diagnostics.push(Diagnostic::error(
+                format!("\\{command} does not support delimiter {delimiter:?}"),
+                Some(span.merge(token.span)),
+                Some("typeset the delimiter at ordinary size and continued".into()),
+            ));
+        }
+        self.i += 1;
+        symbol(delimiter.clone(), span.merge(token.span))
+    }
+
+    fn required_text_group(&mut self, command: &str, span: Span) -> (String, Span) {
+        while matches!(
+            self.tokens.get(self.i).map(|t| &t.kind),
+            Some(TokenKind::Space)
+        ) {
+            self.i += 1;
+        }
+        let Some(open) = self.tokens.get(self.i).cloned() else {
+            self.diagnostics.push(Diagnostic::error(
+                format!("\\{command} requires a braced text argument"),
+                Some(span),
+                Some("used an empty argument and continued".into()),
+            ));
+            return (String::new(), span);
+        };
+        if open.kind != TokenKind::LBrace {
+            self.diagnostics.push(Diagnostic::error(
+                format!("\\{command} requires a braced text argument"),
+                Some(span),
+                Some("used an empty argument and continued".into()),
+            ));
+            return (String::new(), span);
+        }
+        self.i += 1;
+        let mut depth = 1usize;
+        let mut text = String::new();
+        let mut end = open.span;
+        let mut after_comment = false;
+        let mut depth_reported = false;
+        while let Some(token) = self.tokens.get(self.i).cloned() {
+            self.i += 1;
+            end = token.span;
+            match token.kind {
+                TokenKind::LBrace => {
+                    depth += 1;
+                    if depth > MAX_MATH_DEPTH && !depth_reported {
+                        depth_reported = true;
+                        self.diagnostics.push(Diagnostic::error(
+                            "text group nesting exceeds the supported math depth",
+                            Some(token.span),
+                            Some("continued bounded iterative recovery".into()),
+                        ));
+                    }
+                }
+                TokenKind::RBrace => {
+                    depth -= 1;
+                    if depth == 0 {
+                        return (text, open.span.merge(end));
+                    }
+                }
+                TokenKind::Word(word) => text.push_str(&word),
+                TokenKind::Space => {
+                    if !after_comment {
+                        text.push(' ');
+                    }
+                }
+                TokenKind::Comment => {
+                    after_comment = true;
+                    continue;
+                }
+                TokenKind::ParBreak => {
+                    self.diagnostics.push(Diagnostic::error(
+                        format!("paragraph breaks are not supported inside \\{command}"),
+                        Some(token.span),
+                        Some("collapsed the paragraph break to one space and continued".into()),
+                    ));
+                    text.push(' ');
+                }
+                TokenKind::LineBreak => {
+                    self.diagnostics.push(Diagnostic::error(
+                        format!("line breaks are not supported inside \\{command}"),
+                        Some(token.span),
+                        Some("typeset the line-break command literally and continued".into()),
+                    ));
+                    text.push_str("\\\\");
+                }
+                TokenKind::Command(name) => {
+                    self.diagnostics.push(Diagnostic::error(
+                        format!("\\{name} is not supported inside \\{command}"),
+                        Some(token.span),
+                        Some("typeset the command name literally and continued".into()),
+                    ));
+                    text.push('\\');
+                    text.push_str(&name);
+                }
+                TokenKind::MathShift
+                | TokenKind::DisplayMathOpen
+                | TokenKind::DisplayMathClose
+                | TokenKind::Superscript
+                | TokenKind::Subscript => {
+                    self.diagnostics.push(Diagnostic::error(
+                        format!("math syntax is not supported inside \\{command}"),
+                        Some(token.span),
+                        Some("typeset the token literally and continued".into()),
+                    ));
+                    text.push_str(match token.kind {
+                        TokenKind::MathShift => "$",
+                        TokenKind::DisplayMathOpen => "\\[",
+                        TokenKind::DisplayMathClose => "\\]",
+                        TokenKind::Superscript => "^",
+                        TokenKind::Subscript => "_",
+                        _ => unreachable!(),
+                    });
+                }
+            }
+            after_comment = false;
+        }
+        self.diagnostics.push(Diagnostic::error(
+            format!("argument to \\{command} is missing its closing brace"),
+            Some(open.span),
+            Some("closed the text argument at the math delimiter".into()),
+        ));
+        (text, open.span.merge(end))
     }
 
     fn required_group(&mut self, command: &str, span: Span) -> MathList {
@@ -414,6 +489,15 @@ fn symbol(text: String, span: Span) -> MathAtom {
     }
 }
 
+fn space(em: f64, span: Span) -> MathAtom {
+    MathAtom {
+        nucleus: Nucleus::Space { em },
+        span,
+        superscript: None,
+        subscript: None,
+    }
+}
+
 /// Every named symbol the math layer can emit, as (command, rendered glyph).
 ///
 /// The export adapter in `crate::export` is tested against this exact table, so
@@ -427,7 +511,6 @@ pub const COMMAND_GLYPHS: &[(&str, &str)] = &[
     ("theta", "θ"),
     ("lambda", "λ"),
     ("mu", "μ"),
-    ("nu", "ν"),
     ("pi", "π"),
     ("sigma", "σ"),
     ("phi", "φ"),
@@ -443,43 +526,12 @@ pub const COMMAND_GLYPHS: &[(&str, &str)] = &[
     ("infty", "∞"),
     ("sum", "∑"),
     ("int", "∫"),
-    ("Gamma", "\u{393}"),
-    ("Delta", "\u{394}"),
-    ("Theta", "\u{398}"),
-    ("Lambda", "\u{39B}"),
-    ("Xi", "\u{39E}"),
-    ("Pi", "\u{3A0}"),
-    ("Sigma", "\u{3A3}"),
-    ("Upsilon", "\u{3A5}"),
-    ("Phi", "\u{3A6}"),
-    ("Psi", "\u{3A8}"),
-    ("Omega", "\u{3A9}"),
-    ("partial", "\u{2202}"),
-    ("nabla", "\u{2207}"),
-    ("in", "\u{2208}"),
-    ("prod", "\u{220F}"),
-    ("to", "\u{2192}"),
-    ("gets", "\u{2190}"),
-    ("Rightarrow", "\u{21D2}"),
-    ("Leftrightarrow", "\u{21D4}"),
-    ("wedge", "\u{2227}"),
-    ("vee", "\u{2228}"),
-    ("neg", "\u{AC}"),
-    ("forall", "\u{2200}"),
-    ("exists", "\u{2203}"),
-    ("emptyset", "\u{2205}"),
-    ("equiv", "\u{2261}"),
-    ("sim", "\u{223C}"),
-    ("subset", "\u{2282}"),
-    ("subseteq", "\u{2286}"),
-    ("perp", "\u{22A5}"),
-    ("angle", "\u{2220}"),
-    ("ni", "\u{220B}"),
-    ("notin", "\u{2209}"),
-    ("supset", "\u{2283}"),
-    ("supseteq", "\u{2287}"),
-    ("cup", "\u{222A}"),
-    ("cap", "\u{2229}"),
+    ("in", "∈"),
+    ("forall", "∀"),
+    ("exists", "∃"),
+    ("vee", "∨"),
+    ("Rightarrow", "⇒"),
+    ("mid", "∣"),
 ];
 
 /// The rule character used to draw fraction bars.
@@ -556,8 +608,10 @@ fn layout_nucleus(
     diagnostics: &mut Vec<Diagnostic>,
 ) -> MathBox {
     match &atom.nucleus {
-        Nucleus::Symbol(text) => MathBox {
+        Nucleus::Symbol(text) | Nucleus::Text(text) => MathBox {
             items: vec![MathItem {
+                font: matches!(atom.nucleus, Nucleus::Text(_))
+                    .then_some(crate::layout::Font::TimesRoman),
                 text: text.clone(),
                 x: 0.0,
                 baseline: 0.0,
@@ -568,11 +622,21 @@ fn layout_nucleus(
             width: crate::layout::shaped_width(
                 text,
                 size,
-                crate::layout::math_font(text),
+                if matches!(atom.nucleus, Nucleus::Text(_)) {
+                    crate::layout::Font::TimesRoman
+                } else {
+                    crate::layout::math_font(text)
+                },
                 atom.span,
                 diagnostics,
             )
             .0,
+            ascent: size,
+            descent: 0.2 * size,
+        },
+        Nucleus::Space { em } => MathBox {
+            items: Vec::new(),
+            width: em * size,
             ascent: size,
             descent: 0.2 * size,
         },
@@ -590,6 +654,7 @@ fn layout_nucleus(
             b.items.insert(
                 0,
                 MathItem {
+                    font: None,
                     text: "√".into(),
                     x: 0.0,
                     baseline: 0.0,
@@ -628,6 +693,7 @@ fn layout_nucleus(
             offset_items(&mut den.items, den_x, den_dy);
             let mut items = num.items;
             items.push(MathItem {
+                font: None,
                 text: rule_text,
                 x: 0.0,
                 baseline: axis + rule / 2.0,
@@ -703,6 +769,8 @@ fn shift_atom(atom: &MathAtom, delta: isize) -> MathAtom {
     MathAtom {
         nucleus: match &atom.nucleus {
             Nucleus::Symbol(s) => Nucleus::Symbol(s.clone()),
+            Nucleus::Text(s) => Nucleus::Text(s.clone()),
+            Nucleus::Space { em } => Nucleus::Space { em: *em },
             Nucleus::Fraction {
                 numerator,
                 denominator,
@@ -730,6 +798,83 @@ fn shift(span: Span, delta: isize) -> Span {
 }
 
 #[cfg(test)]
+mod parse_tests {
+    use super::*;
+
+    #[test]
+    fn logical_commands_are_real_exportable_symbol_atoms() {
+        let mut diagnostics = Vec::new();
+        let tokens = crate::lexer::tokenize(r"\in\forall\exists\vee\Rightarrow\mid");
+        let list = parse_tokens(&tokens, &mut diagnostics);
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
+        let glyphs: Vec<&str> = list
+            .atoms
+            .iter()
+            .map(|atom| match &atom.nucleus {
+                Nucleus::Symbol(text) => text.as_str(),
+                other => panic!("expected symbol, got {other:?}"),
+            })
+            .collect();
+        assert_eq!(glyphs, ["∈", "∀", "∃", "∨", "⇒", "∣"]);
+    }
+
+    #[test]
+    fn delimiter_sizes_consume_the_source_delimiter_once() {
+        let mut diagnostics = Vec::new();
+        let tokens = crate::lexer::tokenize(r"\bigl(x\bigr)");
+        let list = parse_tokens(&tokens, &mut diagnostics);
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
+        let glyphs: Vec<&str> = list
+            .atoms
+            .iter()
+            .map(|atom| match &atom.nucleus {
+                Nucleus::Symbol(text) => text.as_str(),
+                other => panic!("expected symbol, got {other:?}"),
+            })
+            .collect();
+        assert_eq!(glyphs, ["(", "x", ")"]);
+    }
+
+    #[test]
+    fn quad_text_and_qquad_have_distinct_semantics() {
+        let mut diagnostics = Vec::new();
+        let tokens = crate::lexer::tokenize(r"\quad\text{two words}\qquad");
+        let list = parse_tokens(&tokens, &mut diagnostics);
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
+        assert!(matches!(list.atoms[0].nucleus, Nucleus::Space { em } if em == 1.0));
+        assert!(matches!(&list.atoms[1].nucleus, Nucleus::Text(text) if text == "two words"));
+        assert!(matches!(list.atoms[2].nucleus, Nucleus::Space { em } if em == 2.0));
+
+        let laid_out = layout(&list, 12.0, &mut diagnostics);
+        assert_eq!(laid_out.items.len(), 1, "spacing must not emit fake glyphs");
+        assert_eq!(
+            laid_out.items[0].font,
+            Some(crate::layout::Font::TimesRoman),
+            "text nuclei must retain explicit Roman intent"
+        );
+        let text_width =
+            crate::layout::text_width("two words", 12.0, crate::layout::Font::TimesRoman);
+        assert!((laid_out.width - (text_width + 36.0)).abs() < 0.001);
+    }
+
+    #[test]
+    fn malformed_delimiter_and_text_arguments_remain_diagnostic() {
+        for source in [r"\bigl", r"\text unbraced"] {
+            let mut diagnostics = Vec::new();
+            let tokens = crate::lexer::tokenize(source);
+            let _ = parse_tokens(&tokens, &mut diagnostics);
+            assert!(!diagnostics.is_empty(), "{source:?} must remain diagnostic");
+        }
+
+        let mut diagnostics = Vec::new();
+        let tokens = crate::lexer::tokenize(r"\text x");
+        let list = parse_tokens(&tokens, &mut diagnostics);
+        assert!(matches!(list.atoms[0].nucleus, Nucleus::Text(ref text) if text.is_empty()));
+        assert!(matches!(list.atoms[1].nucleus, Nucleus::Symbol(ref text) if text == "x"));
+    }
+}
+
+#[cfg(test)]
 mod shift_tests {
     use super::*;
 
@@ -746,6 +891,8 @@ mod shift_tests {
                 .map(|a| {
                     let nested = match &a.nucleus {
                         Nucleus::Symbol(_) => usize::MAX,
+                        Nucleus::Text(_) => usize::MAX,
+                        Nucleus::Space { .. } => usize::MAX,
                         Nucleus::Fraction {
                             numerator,
                             denominator,

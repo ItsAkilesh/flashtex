@@ -622,6 +622,12 @@ impl<'a> Context<'a> {
         let texts = self.texts;
         let fence = |sp: &Span| fence_before(texts.get(sp.document.0).copied().unwrap_or(""), sp.start);
         let ml_list = convert_math_fenced(list, &mut sink, &fence);
+        let glue_em = math_glue_em(list);
+        if glue_em > 0.0 {
+            let src = self.source(span);
+            let msg = format!("\\quad/\\qquad glue ({glue_em} em in this formula) dropped: math-layout has no kern atom");
+            self.report_once(format!("mathlim:{msg}"), Diagnostic::warning("math_limitation", msg, vec![src]));
+        }
         let style = if display { ml::Style::DISPLAY } else { ml::Style::TEXT };
         let text_metrics = crate::mathtext::TextRunMetrics::new(fonts.metrics(), self.fonts, self.shaper, self.style.family, &sink.texts);
         let mut laid = ml::layout_with_report(&ml_list, style, &text_metrics);
@@ -1233,9 +1239,9 @@ pub fn convert_math(list: &flashtex_compiler::math::MathList) -> ml::MathList {
 }
 
 /// [`convert_math`] collecting `\text{...}` arguments into `sink`, which
-/// hands back the ordinary atom standing for each run. The compiler arm
-/// exists only with the `compiler-text-nucleus` feature (the variant is an
-/// isolated compiler candidate, see `Cargo.toml`).
+/// hands back the ordinary atom standing for each run (compiler pin
+/// `887bf21` carries `Nucleus::Text` on main; the `compiler-text-nucleus`
+/// feature is kept as a no-op for existing build invocations).
 pub fn convert_math_with(list: &flashtex_compiler::math::MathList, sink: &mut crate::mathtext::TextSink) -> ml::MathList {
     convert_math_fenced(list, sink, &|_| None)
 }
@@ -1277,8 +1283,13 @@ pub fn convert_math_fenced(list: &flashtex_compiler::math::MathList, sink: &mut 
     for a in &list.atoms {
         let sub = |l: &flashtex_compiler::math::MathList, sink: &mut crate::mathtext::TextSink| convert_math_fenced(l, sink, fence);
         let mut out: Vec<ml::Atom> = match &a.nucleus {
-            #[cfg(feature = "compiler-text-nucleus")]
             N::Text(text) => vec![sink.atom(text)],
+            // `\quad`/`\qquad` (compiler `Space { em }`): TeX glue in the
+            // math list. math-layout has no kern/glue atom, so the glue is
+            // dropped (inter-atom spacing across it is what TeX's mlist_to_hlist
+            // does too, since glue does not reset r_type) and reported once per
+            // formula by `math_box` as a typed math_limitation.
+            N::Space { .. } => continue,
             N::Symbol(s) => {
                 let mut chars = s.chars();
                 let single = match (chars.next(), chars.next()) {
@@ -1331,6 +1342,24 @@ pub fn convert_math_fenced(list: &flashtex_compiler::math::MathList, sink: &mut 
         atoms.extend(body);
     }
     ml::MathList::new(atoms)
+}
+
+/// Total explicit math glue (`\quad`/`\qquad`, in ems) in `list` and its
+/// sub-formulas; see the `Space` arm of [`convert_math_fenced`].
+fn math_glue_em(list: &flashtex_compiler::math::MathList) -> f64 {
+    use flashtex_compiler::math::Nucleus as N;
+    list.atoms
+        .iter()
+        .map(|a| {
+            let own = match &a.nucleus {
+                N::Space { em } => *em,
+                N::Fraction { numerator, denominator } => math_glue_em(numerator) + math_glue_em(denominator),
+                N::Radical(r) => math_glue_em(r),
+                N::Symbol(_) | N::Text(_) => 0.0,
+            };
+            own + a.superscript.as_ref().map_or(0.0, math_glue_em) + a.subscript.as_ref().map_or(0.0, math_glue_em)
+        })
+        .sum()
 }
 
 /// The math-layout atoms for one compiler symbol character: plain.tex's

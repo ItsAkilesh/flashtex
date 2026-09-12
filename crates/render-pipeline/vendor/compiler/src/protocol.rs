@@ -293,8 +293,6 @@ fn add_accepted_capabilities(payload: &mut Value, capabilities: &NegotiatedCapab
     }
 }
 
-/// The structured font object. Retained as the authoritative reference that
-/// [`font_json_literal`] is tested against; the hot path uses the literal.
 #[cfg(test)]
 fn font_json(font: Font) -> Value {
     let (family, weight, style) = match font {
@@ -341,11 +339,6 @@ fn valid_rule_geometry(x_pt: f64, rule: crate::layout::RuleGeometry) -> bool {
 /// time-to-first-byte.
 fn pages_json(pages: &[Page], paths: &[&str], capabilities: &AcceptedCapabilities) -> Value {
     // Rough capacity guess: replies are large and reallocation is the cost.
-    //
-    // Tuning this was measured and rejected: 96 bytes per item (the fixture
-    // averages 86) helped the negotiated case and hurt the legacy one, and the
-    // difference was within run-to-run noise either way. Left as it was so this
-    // revision isolates a single improvement rather than bundling a wash.
     let item_count: usize = pages.iter().map(|p| p.items.len()).sum();
     let mut out = String::with_capacity(item_count * 160 + 256);
     out.push('[');
@@ -406,15 +399,6 @@ fn pages_json(pages: &[Page], paths: &[&str], capabilities: &AcceptedCapabilitie
     Value::Raw(out)
 }
 
-/// The font hint as a precomputed literal, byte-identical to serialising
-/// [`font_json`].
-///
-/// `Font` has seven variants whose family, weight and style are fixed, so the
-/// object never varies per item. Building a `Value` and stringifying it per item
-/// cost one allocation for every positioned item: 96 571 of them on the pinned
-/// fixture, which measured as 13 ms of the warm reply when font-hints-v1 was
-/// negotiated. A test asserts each literal equals the serialised form, so the
-/// two cannot drift.
 fn font_json_literal(font: Font) -> &'static str {
     match font {
         Font::TimesRoman => r#"{"family":"Times-Roman","style":"normal","weight":"normal"}"#,
@@ -689,45 +673,11 @@ fn compile(id: &str, payload: &Value) -> Value {
     }
     let paths: Vec<&str> = project.iter().map(|(p, _)| p.as_str()).collect();
 
-    // Bound the reply so it cannot exceed the consumer's transport frame.
-    //
-    // Issue #21: a valid 500 KB project produced a 13.4 MB reply, and the
-    // runtime rejected it as "malformed/truncated/oversized". The author saw
-    // corruption when the real cause was size, and the compiler had said nothing.
-    //
-    // Pages are dropped only from the end, and only with an explicit diagnostic
-    // naming how many and why, because the issue is clear that silently skipped
-    // pages are not acceptable. Partial output plus an explicit diagnostic is the
-    // same contract the compiler already honours for malformed input.
-    let (kept_pages, dropped) = bound_pages(&pages, &paths, &capabilities.enabled);
-    if dropped > 0 {
-        diags.push(Diagnostic::error(
-            format!(
-                "document produces more positioned output than the {} MiB transport frame allows; \
-                 {dropped} of {} pages were not delivered",
-                MAX_RESULT_BYTES / (1024 * 1024),
-                pages.len()
-            ),
-            None,
-            Some(format!(
-                "delivered the first {} pages; the rest are compiled but undeliverable until \
-                 chunked or compact transport exists",
-                pages.len() - dropped
-            )),
-        ));
-    }
-
     let mut p = Value::obj();
     p.set("project_id", str_(project_id));
     p.set("revision", Value::Num(revision as f64));
-    p.set(
-        "status",
-        str_(if dropped > 0 { "recovered" } else { status }),
-    );
-    p.set(
-        "pages",
-        pages_json(&kept_pages, &paths, &capabilities.enabled),
-    );
+    p.set("status", str_(status));
+    p.set("pages", pages_json(&pages, &paths, &capabilities.enabled));
     p.set(
         "diagnostics",
         Value::Arr(diags.iter().map(|d| d.to_json_with_paths(&paths)).collect()),
@@ -735,36 +685,6 @@ fn compile(id: &str, payload: &Value) -> Value {
     p.set("pdf_path", Value::Null);
     add_accepted_capabilities(&mut p, &capabilities);
     result_envelope(id, p)
-}
-
-/// Largest reply this compiler will emit, matching the documented runtime frame.
-pub const MAX_RESULT_BYTES: usize = 8 * 1024 * 1024;
-
-/// Keeps the leading pages that fit within [`MAX_RESULT_BYTES`], returning them
-/// and how many were dropped.
-///
-/// Measures the serialised size of each page rather than guessing from item
-/// counts, because item cost varies by an order of magnitude between a heading
-/// and a dense math page.
-fn bound_pages(
-    pages: &[Page],
-    paths: &[&str],
-    capabilities: &AcceptedCapabilities,
-) -> (Vec<Page>, usize) {
-    // Reserve room for the envelope, diagnostics and the capability echo.
-    let budget = MAX_RESULT_BYTES.saturating_sub(64 * 1024);
-    let mut used = 0usize;
-    let mut kept: Vec<Page> = Vec::new();
-    for page in pages {
-        let cost = json::write(&pages_json(std::slice::from_ref(page), paths, capabilities)).len();
-        if used + cost > budget && !kept.is_empty() {
-            let dropped = pages.len() - kept.len();
-            return (kept, dropped);
-        }
-        used += cost;
-        kept.push(page.clone());
-    }
-    (kept, 0)
 }
 
 #[cfg(test)]

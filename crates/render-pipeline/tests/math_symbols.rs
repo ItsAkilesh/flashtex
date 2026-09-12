@@ -78,7 +78,7 @@ fn composite_and_extra_symbols_convert_with_texbook_classes() {
 }
 
 #[test]
-fn every_compiler_symbol_typesets_without_a_missing_glyph_except_angle() {
+fn every_compiler_symbol_typesets_without_a_missing_glyph() {
     if !lm_available() {
         return;
     }
@@ -90,8 +90,9 @@ fn every_compiler_symbol_typesets_without_a_missing_glyph_except_angle() {
     let (words, diags) = math_words(&body);
     assert!(!words.is_empty());
     let limitations: Vec<&String> = diags.iter().filter(|d| d.starts_with("math_limitation") || d.starts_with("missing_glyph")).collect();
-    assert_eq!(limitations.len(), 1, "{limitations:?}");
-    assert!(limitations[0].contains('\u{2220}'), "only \\angle (a constructed macro in fontmath.ltx, not a glyph) is unmatched: {limitations:?}");
+    // Compiler pin 887bf21 (main) no longer lists \angle (a constructed
+    // macro in fontmath.ltx, not a glyph), so every listed symbol has a glyph.
+    assert_eq!(limitations.len(), 0, "{limitations:?}");
 }
 
 #[test]

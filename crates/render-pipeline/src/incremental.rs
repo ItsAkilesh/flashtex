@@ -251,6 +251,14 @@ pub fn hash_math(list: &MathList, h: &mut DefaultHasher) {
                 2u8.hash(h);
                 hash_math(r, h);
             }
+            Nucleus::Text(s) => {
+                3u8.hash(h);
+                s.hash(h);
+            }
+            Nucleus::Space { em } => {
+                4u8.hash(h);
+                em.to_bits().hash(h);
+            }
         }
         match &a.superscript {
             Some(s) => {
@@ -386,7 +394,7 @@ fn shift_math(list: &mut MathList, delta: isize) {
     for a in &mut list.atoms {
         shift_span(&mut a.span, delta);
         match &mut a.nucleus {
-            Nucleus::Symbol(_) => {}
+            Nucleus::Symbol(_) | Nucleus::Text(_) | Nucleus::Space { .. } => {}
             Nucleus::Fraction { numerator, denominator } => {
                 shift_math(numerator, delta);
                 shift_math(denominator, delta);
