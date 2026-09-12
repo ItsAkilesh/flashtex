@@ -6,8 +6,8 @@
   "capabilities": ["rust", "editor-snippets", "text-editing-primitives"],
   "branch": "agent/daniel-snippets/editor-snippets",
   "state": "ready_for_integration",
-  "summary": "crates/editor-snippets rev 2: SnippetPlan binds an expansion to a DocumentId (caller revision id + FNV-1a content hash of exact bytes) and an Anchor (caret or selection), with typed Staleness (Fresh/RevisionMismatch/ContentMismatch) catching bytes changed under an unchanged revision id. Anchor offsets are validated as char boundaries against the exact document text passed to SnippetPlan::compute (PlanError::InvalidOffset/SelectionReversed), tested with CJK, accented Latin, and a multi-codepoint ZWJ emoji sequence. Rev 1 placeholders/linked edits/tab order/self-referential detection and all six limits.rs bounds are unchanged and re-verified through the plan API. SnippetPlan exposes only compute() (shared refs + owned Anchor, never &mut anything document-shaped) plus getters and a pure staleness comparison -- no apply/commit method exists, so caller application is required by the API surface, not documentation. 41 rev-1 tests + 17 new plan tests + 2 doc-tests, all passing; cargo clippy --all-targets -D warnings clean; cargo fmt --check clean.",
-  "next_action": "Await Commander integration; no follow-up work identified for FT-041 rev 2",
+  "summary": "crates/editor-snippets rev 3: two new integration test files, no production code changed. tests/adversarial_bounds.rs drives the full parse -> expand_with -> SnippetPlan::compute pipeline through every limits.rs bound as a boundary pair (exactly-at-limit ok, one-past a typed error): input bytes/InputTooLarge, nesting depth/NestingTooDeep, placeholder index/PlaceholderIndexTooLarge, distinct placeholders/TooManyPlaceholders, occurrences/TooManyOccurrences, output bytes/OutputTooLarge (via an override, so the source itself stays small); plus unbalanced/escaped braces, a trailing dollar sign, mutual self-reference, a caret past end of document, an inverted selection, and a caret mid-character in multi-byte text (each asserted against the exact PlanError/SnippetError variant, with the mid-character case also proving the valid boundary just before it still succeeds). tests/stale_identity_acceptance.rs specifies SnippetPlan/DocumentId staleness as the full revision x content 2x2 matrix (Fresh only when both match; RevisionMismatch when only revision differs; ContentMismatch when only bytes differ -- the case a naive revision-only check misses; RevisionMismatch, not a third variant, when both differ, since revision is checked first), restated once more directly against DocumentId::compare. Rev 1 (linked edits, tab order, UTF-8 structural safety) and rev 2 (SnippetPlan staleness/anchors) untouched; SnippetPlan still exposes no mutating method. 41 rev-1 + 17 rev-2 plan + 15 new adversarial + 5 new stale-identity tests + 2 doc-tests = 80 total, all passing; cargo clippy --all-targets -D warnings clean; cargo fmt --check clean.",
+  "next_action": "Await Commander integration; no follow-up work identified for FT-041 rev 3",
   "eta_minutes": {
     "optimistic": 0,
     "likely": 0,
@@ -19,17 +19,17 @@
     "evidence": "Runs on the user's Claude Max 20x subscription; no token/usage metering exposed to this agent; no purchases or overages made"
   },
   "reviewed_peers": {
-    "origin/main": "284369de3fd2af4384c3de2d2403801dffbcf94b"
+    "origin/main": "967703ebb4e8140feaf4db02d27cb3ac63c573f6"
   },
   "assignment_acknowledgements": {
     "FT-041": {
-      "acknowledged_utc": "2026-09-12T09:36:47Z",
-      "revision": 2,
-      "main_sha": "284369de3fd2af4384c3de2d2403801dffbcf94b",
-      "adaptation": "Implemented SnippetPlan/DocumentId/ContentHash/Staleness/Anchor/PlanError as new modules (identity.rs, anchor.rs, plan.rs) additive to rev 1; no rev-1 public item was changed or removed. Merged origin/main (fast-forward-free merge, no conflicts in owned paths) before final verification."
+      "acknowledged_utc": "2026-09-12T16:32:49Z",
+      "revision": 3,
+      "main_sha": "967703ebb4e8140feaf4db02d27cb3ac63c573f6",
+      "adaptation": "Implemented rev 3 as two new integration test files only (tests/adversarial_bounds.rs, tests/stale_identity_acceptance.rs); no src/ file changed. Merged origin/main first (fast merge, no conflicts in owned paths) before implementation and final verification."
     }
   },
-  "updated_utc": "2026-09-12T09:36:47Z",
-  "code_revision": "d15a64ab5f9263154755421b46d8c613a9499b59",
-  "main_integrated_through": "284369de3fd2af4384c3de2d2403801dffbcf94b"
+  "updated_utc": "2026-09-12T16:32:49Z",
+  "code_revision": "9e9f9b4ca0284ca026094099dd590d2516e8ebb7",
+  "main_integrated_through": "967703ebb4e8140feaf4db02d27cb3ac63c573f6"
 }

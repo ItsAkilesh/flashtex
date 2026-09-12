@@ -1,23 +1,89 @@
 # FT-041: editor-snippets
 
-Status: complete through revision 2, standalone additive crate. No other
+Status: complete through revision 3, standalone additive crate. No other
 crate was touched.
 
-## Tested commit (revision 2)
+## Tested commit (revision 3)
 
 ```
-d15a64ab5f9263154755421b46d8c613a9499b59
+9e9f9b4ca0284ca026094099dd590d2516e8ebb7
 ```
 
 On branch `agent/daniel-snippets/editor-snippets`, main integrated through
-`284369de3fd2af4384c3de2d2403801dffbcf94b`. At this exact SHA, inside
+`967703ebb4e8140feaf4db02d27cb3ac63c573f6`. At this exact SHA, inside
 `crates/editor-snippets`:
 
 - `cargo build` — clean.
-- `cargo test` — 41 rev-1 integration tests + 17 new plan tests + 2
-  doc-tests, all passing (60 total).
+- `cargo test` — 41 rev-1 tests + 17 rev-2 plan tests + 15 new adversarial
+  bounds tests + 5 new stale-identity acceptance tests + 2 doc-tests, all
+  passing (80 total).
 - `cargo clippy --all-targets -- -D warnings` — clean, zero warnings.
 - `cargo fmt --check` — clean.
+
+## Revision 3: bounded adversarial and stale-identity acceptance tests
+
+No production code changed. Two new integration test files were added,
+both driving the same public API rev 1/2 already shipped:
+
+**`tests/adversarial_bounds.rs`** attacks the *whole pipeline* — a single
+`attempt_plan` helper chains `Snippet::parse` → `Snippet::expand_with` →
+`SnippetPlan::compute`, so every case is exercised exactly as a real caller
+would use the crate, not just one internal stage. 15 tests cover, each as a
+typed `PlanError` (never a panic or a hang):
+
+- every numeric bound in `limits.rs` as a boundary *pair* — exactly at the
+  limit succeeds, one unit past fails with the exact documented variant:
+  input bytes (`MAX_INPUT_BYTES`, `InputTooLarge`), nesting depth
+  (`MAX_NESTING_DEPTH`, `NestingTooDeep`), placeholder index
+  (`MAX_PLACEHOLDER_INDEX`, `PlaceholderIndexTooLarge`), distinct
+  placeholders (`MAX_PLACEHOLDERS`, `TooManyPlaceholders`), occurrences
+  (`MAX_OCCURRENCES`, `TooManyOccurrences`), and output bytes
+  (`MAX_OUTPUT_BYTES`, `OutputTooLarge`, driven via an override large
+  enough to hit the cap without needing a huge source template);
+- unbalanced and escaped braces (`UnterminatedPlaceholder` for both
+  `${1:abc` and `${1`; an escaped `\}` stays literal; a stray unmatched
+  `}` at top level is literal text, not an error);
+- a dollar sign at end of input (`abc$` stays literal, no hang);
+- mutually self-referential placeholders (`${1:$2}${2:$1}` →
+  `SelfReferential`);
+- a caret past the end of the document, an inverted selection, and a caret
+  mid-character in multi-byte text (`café` at offset 4) — each
+  `PlanError::InvalidOffset` / `PlanError::SelectionReversed`, with the
+  mid-character case also asserting the valid boundary immediately before
+  it still succeeds, so the check is proven to be a real char-boundary
+  test rather than a blanket rejection.
+
+**`tests/stale_identity_acceptance.rs`** is an explicit specification for
+the `SnippetPlan`/`DocumentId` staleness contract, stated as the full
+2×2 matrix of "revision same/changed" × "content same/changed":
+
+| revision  | content   | expected staleness |
+|-----------|-----------|---------------------|
+| unchanged | unchanged | `Fresh`             |
+| unchanged | changed   | `ContentMismatch`   |
+| changed   | unchanged | `RevisionMismatch`  |
+| changed   | changed   | `RevisionMismatch`  |
+
+Each row is its own named test against `SnippetPlan::staleness`
+(`same_revision_and_same_content_is_fresh`,
+`changed_revision_with_same_content_is_revision_mismatch`,
+`same_revision_with_changed_content_is_content_mismatch_not_fresh`,
+`changed_revision_and_changed_content_is_revision_mismatch`), plus one more
+(`document_id_compare_matches_the_same_four_row_matrix`) restating the same
+four rows directly against `DocumentId::compare`, so the specification is
+pinned at both the identity primitive and the plan contract built on it.
+The "unchanged/changed" row is the load-bearing one: it holds the revision
+id constant while changing only the document's bytes, proving the check
+cannot be satisfied by revision alone — a naive check that trusted the
+revision counter would wrongly call this fresh. The "changed/changed" row
+documents that there is no third "everything changed" variant:
+`DocumentId::compare` checks revision first, so any revision mismatch
+reports `RevisionMismatch` regardless of what the content hash shows.
+
+Rev 1 (linked edits, tab order, UTF-8 structural safety) and rev 2
+(`SnippetPlan` staleness/anchors) are unchanged and still pass unmodified;
+`SnippetPlan` still exposes no mutating method — only `compute` (shared
+refs + owned `Anchor`), getters, and the pure `staleness` comparison.
 
 ## Revision 2: SnippetPlan (document identity, Unicode anchors)
 
