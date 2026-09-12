@@ -1,0 +1,30 @@
+{
+  "agent_id": "commander-runtime-performance",
+  "allocation_id": "hosted-openai-product",
+  "assignment_acknowledgements": {
+    "FT-047": {
+      "acknowledged_utc": "2026-09-12T08:35:48Z",
+      "adaptation": "Exclusive document-runtime worktree; additive profiling baseline preserves full validation and output; no compiler/native edits.",
+      "main_sha": "781aafab73d0c94b53a549b70cea7fbdc17ba0a2",
+      "revision": 1
+    }
+  },
+  "branch": "agent/commander-runtime-performance/runtime-performance",
+  "capabilities": [
+    "Runtime profiling and exact source validation"
+  ],
+  "code_revision": "5b6911090e2dcbe807c6fb4d9e75cd4f214a2440",
+  "eta_minutes": null,
+  "machine": "linux-primary",
+  "main_integrated_through": "5b6911090e2dcbe807c6fb4d9e75cd4f214a2440",
+  "next_action": "Compare safe UTF8-once JSON parsing against pinned baseline; preserve full validation.",
+  "reviewed_peers": {},
+  "schema_version": 1,
+  "state": "in_progress",
+  "summary": "FT047 phase instrumentation: 60 exact-clean samples; 20 tests and strict Clippy pass. 500KB median357.649ms, parse85.843ms, validation23.374ms.",
+  "tool": "Codex GPT-6 Astra",
+  "updated_utc": "2026-09-12T08:45:28Z",
+  "usage": {
+    "status": "unknown"
+  }
+}
