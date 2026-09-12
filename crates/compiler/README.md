@@ -177,6 +177,21 @@ Script sizes and shifts and fraction geometry use named classic-proportion
 constants in `src/math.rs`. They approximate TeX's font-parameter-driven values;
 the compiler does not yet read a real math font.
 
+`\hat`, `\bar`, `\vec`, `\tilde`, `\dot`, `\ddot`, `\acute`, and `\grave` place a
+real base-14 accent glyph over `{body}`, symmetrically centered (no skew
+term: this compiler's math letters render upright, never math-italic, and
+Adobe Core 14 AFM metrics have no TeX-style skewchar kern to add one from).
+`\vec` uses the Symbol arrowright glyph and `\dot` uses the middle dot
+`\cdot` already renders with — the closest real glyphs available, not TeX's
+exact short arrow or raised dot. `\widehat`/`\widetilde` reuse the plain
+`\hat`/`\tilde` glyph unstretched (no cmex-style growing glyph exists here),
+which is diagnosed when the base is more than one symbol. `\check` and
+`\breve` have no representable base-14 glyph (no caron or breve in WinAnsi
+or the Symbol encoding) and are diagnosed rather than faked; the base still
+typesets without a mark. `\overline{body}` and `\underline{body}` draw a
+real rule spanning `body`'s width, the same rule/legacy-glyph pattern the
+fraction bar uses.
+
 ## Font shaping and layout limits
 
 Layout measures Times-Roman body text, Times-Bold headings, and supported math

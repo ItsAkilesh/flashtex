@@ -54,6 +54,90 @@ pub enum Nucleus {
         left: String,
         right: String,
     },
+    /// `\hat`, `\bar`, `\vec`, ..., `\widehat`, `\widetilde`: a mark placed
+    /// over `body`. See [`Accent`] for which marks have a real base-14 glyph.
+    Accent {
+        accent: Accent,
+        body: MathList,
+    },
+    /// `\overline{body}`: a rule drawn above `body`.
+    Overline(MathList),
+    /// `\underline{body}`: a rule drawn below `body`.
+    Underline(MathList),
+}
+
+/// `\hat`..`\grave`, plus `\widehat`/`\widetilde`.
+///
+/// The compiler renders math with Adobe's Core 14 Symbol/Times-Roman faces,
+/// not Computer Modern, so TeX's exact accent geometry is not reproducible
+/// (see `RESEARCH-accents.md`). Where a real base-14 glyph exists for the
+/// mark, it is used, scaled and centered over `body`; `\check` and `\breve`
+/// have no such glyph (no caron or breve character in WinAnsi or the Symbol
+/// encoding — see `crate::export`) and are reported rather than faked, the
+/// same policy `crate::export::map_char` already applies to every other
+/// unrepresentable character.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Accent {
+    Hat,
+    Bar,
+    Vec,
+    Tilde,
+    Dot,
+    Ddot,
+    Check,
+    Breve,
+    Acute,
+    Grave,
+    WideHat,
+    WideTilde,
+}
+
+impl Accent {
+    pub fn command(self) -> &'static str {
+        match self {
+            Accent::Hat => "hat",
+            Accent::Bar => "bar",
+            Accent::Vec => "vec",
+            Accent::Tilde => "tilde",
+            Accent::Dot => "dot",
+            Accent::Ddot => "ddot",
+            Accent::Check => "check",
+            Accent::Breve => "breve",
+            Accent::Acute => "acute",
+            Accent::Grave => "grave",
+            Accent::WideHat => "widehat",
+            Accent::WideTilde => "widetilde",
+        }
+    }
+
+    /// The glyph drawn above `body`, or `None` when no base-14 glyph exists.
+    ///
+    /// `\widehat`/`\widetilde` reuse the plain `\hat`/`\tilde` glyph: TeX
+    /// grows these from a cmex10 successor chain to cover a wide base, and
+    /// there is no equivalent stretchy glyph or font-growing mechanism here,
+    /// so a multi-atom base gets a diagnostic (see `accent_atom`) rather than
+    /// a silently-too-narrow mark.
+    pub fn glyph(self) -> Option<char> {
+        match self {
+            Accent::Hat | Accent::WideHat => Some('\u{2C6}'), // circumflex accent
+            Accent::Bar => Some('\u{AF}'),                    // macron
+            // TeX's \vec draws a short low arrow; the closest real base-14
+            // glyph is the full-size Symbol arrowright. An approximation,
+            // not a fabrication: it is a real arrow glyph, just not the
+            // exact short accent stroke.
+            Accent::Vec => Some('\u{2192}'),
+            Accent::Tilde | Accent::WideTilde => Some('\u{2DC}'), // small tilde
+            // TeX's \dot is a raised dot above (U+02D9), which has no
+            // base-14 glyph either. The Symbol/Times middle dot U+00B7 (the
+            // same character already used for \cdot) is the closest real
+            // stand-in.
+            Accent::Dot => Some('\u{B7}'),
+            Accent::Ddot => Some('\u{A8}'),  // diaeresis
+            Accent::Acute => Some('\u{B4}'), // acute accent
+            Accent::Grave => Some('\u{60}'), // grave accent
+            Accent::Check | Accent::Breve => None,
+        }
+    }
 }
 
 /// Math-mode environments implemented as grids: (name, default column
@@ -334,6 +418,30 @@ impl MathParser<'_> {
             "bigl" | "bigr" => self.take_delimiter(&name, span),
             "quad" => space(QUAD_EM, span),
             "qquad" => space(2.0 * QUAD_EM, span),
+            "hat" => self.accent_atom(Accent::Hat, span),
+            "bar" => self.accent_atom(Accent::Bar, span),
+            "vec" => self.accent_atom(Accent::Vec, span),
+            "tilde" => self.accent_atom(Accent::Tilde, span),
+            "dot" => self.accent_atom(Accent::Dot, span),
+            "ddot" => self.accent_atom(Accent::Ddot, span),
+            "check" => self.accent_atom(Accent::Check, span),
+            "breve" => self.accent_atom(Accent::Breve, span),
+            "acute" => self.accent_atom(Accent::Acute, span),
+            "grave" => self.accent_atom(Accent::Grave, span),
+            "widehat" => self.accent_atom(Accent::WideHat, span),
+            "widetilde" => self.accent_atom(Accent::WideTilde, span),
+            "overline" => MathAtom {
+                nucleus: Nucleus::Overline(self.required_group("overline", span)),
+                span,
+                superscript: None,
+                subscript: None,
+            },
+            "underline" => MathAtom {
+                nucleus: Nucleus::Underline(self.required_group("underline", span)),
+                span,
+                superscript: None,
+                subscript: None,
+            },
             _ => match command_glyph(&name) {
                 Some(glyph) => symbol(glyph.into(), span),
                 None => {
@@ -345,6 +453,35 @@ impl MathParser<'_> {
                     symbol(format!("\\{}", name), span)
                 }
             },
+        }
+    }
+
+    fn accent_atom(&mut self, accent: Accent, span: Span) -> MathAtom {
+        let body = self.required_group(accent.command(), span);
+        if accent.glyph().is_none() {
+            self.diagnostics.push(Diagnostic::warning(
+                format!(
+                    "\\{} has no representable accent glyph in the compiler's base-14 fonts",
+                    accent.command()
+                ),
+                Some(span),
+                Some("typeset the base without the accent mark and continued".into()),
+            ));
+        } else if matches!(accent, Accent::WideHat | Accent::WideTilde) && body.atoms.len() > 1 {
+            self.diagnostics.push(Diagnostic::warning(
+                format!(
+                    "\\{} does not stretch to cover more than one symbol without a cmex-style growing glyph",
+                    accent.command()
+                ),
+                Some(span),
+                Some("centered a fixed-width accent glyph over the whole base and continued".into()),
+            ));
+        }
+        MathAtom {
+            nucleus: Nucleus::Accent { accent, body },
+            span,
+            superscript: None,
+            subscript: None,
         }
     }
 
@@ -942,6 +1079,110 @@ fn layout_nucleus(
             level,
             diagnostics,
         ),
+        Nucleus::Accent { accent, body } => {
+            layout_accent(atom, *accent, body, size, root_size, level, diagnostics)
+        }
+        Nucleus::Overline(body) => {
+            let b = layout_list(body, size, root_size, level, diagnostics);
+            layout_over_under(atom, b, size, true)
+        }
+        Nucleus::Underline(body) => {
+            let b = layout_list(body, size, root_size, level, diagnostics);
+            layout_over_under(atom, b, size, false)
+        }
+    }
+}
+
+/// Places `accent`'s mark over `body`.
+///
+/// Horizontal: plain symmetric centering, `(body.width - glyph.width) / 2`.
+/// TeX adds a "skew" term here from the base character's TFM skewchar kern
+/// (a slant correction for math-italic letters) — see `RESEARCH-accents.md`
+/// for the pdflatex-measured `\hat{A}` example (2.63893bp, vs. 1.25bp naive).
+/// That term does not apply here: this compiler's math letters render in
+/// upright Times-Roman, never math-italic (`crate::layout::math_font` never
+/// selects an italic face), and Adobe Core 14 AFM metrics
+/// (`crate::layout::x_height_pt`'s sibling, `Core14Face`) have no skewchar
+/// kerning concept at all — that is a TeX TFM construct, not an AFM one.
+/// Adding a foreign skew constant to an unslanted glyph would miscenter it,
+/// not fix it.
+///
+/// Vertical: TeX's real rule, `raise = min(nucleus_height, accent font's
+/// x-height)`, using the real Times-Roman x-height
+/// (`crate::layout::x_height_pt`) rather than a guessed constant.
+fn layout_accent(
+    atom: &MathAtom,
+    accent: Accent,
+    body: &MathList,
+    size: f64,
+    root_size: f64,
+    level: usize,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> MathBox {
+    let mut b = layout_list(body, size, root_size, level, diagnostics);
+    let Some(glyph) = accent.glyph() else {
+        // \check / \breve: no base-14 glyph. Already diagnosed at parse time
+        // (`accent_atom`); typeset the body alone rather than draw nothing
+        // and also fabricate a plausible-looking substitute mark.
+        return b;
+    };
+    let glyph_text = glyph.to_string();
+    let accent_font = crate::layout::math_font(&glyph_text);
+    let accent_width =
+        crate::layout::shaped_width(&glyph_text, size, accent_font, atom.span, diagnostics).0;
+    let dx = (b.width - accent_width) / 2.0;
+    let raise = b.ascent.min(crate::layout::x_height_pt(accent_font, size));
+    // A thin mark, not a full-height glyph: ~0.15em is enough for a
+    // circumflex/tilde/dot/acute stroke without inflating every accented
+    // atom's box to a full line height.
+    let accent_ascent = 0.15 * size;
+    b.items.push(MathItem {
+        font: Some(accent_font),
+        text: glyph_text,
+        x: dx,
+        baseline: -raise,
+        size,
+        span: atom.span,
+        rule: None,
+    });
+    b.ascent = b.ascent.max(raise + accent_ascent);
+    b
+}
+
+/// `\overline`/`\underline`: a rule spanning `body`'s width, drawn with the
+/// same real-`MathRule`-plus-legacy-glyph pattern the fraction bar already
+/// uses (`Nucleus::Fraction`) — runtime-v1 has no rule item type of its own
+/// (issue #9), so the stand-in character is reported as unexportable while
+/// the real rule still paints.
+fn layout_over_under(atom: &MathAtom, mut body: MathBox, size: f64, above: bool) -> MathBox {
+    let rule = FRACTION_RULE_EM * size;
+    let gap = FRACTION_GAP_EM * size;
+    let width = body.width;
+    let (rule_top, ascent, descent) = if above {
+        let top = -(body.ascent + gap + rule);
+        (top, body.ascent + gap + rule, body.descent)
+    } else {
+        let top = body.descent + gap;
+        (top, body.ascent, body.descent + gap + rule)
+    };
+    body.items.push(MathItem {
+        font: None,
+        text: "─".to_string(),
+        x: 0.0,
+        baseline: rule_top + rule / 2.0,
+        size,
+        span: atom.span,
+        rule: Some(MathRule {
+            y: rule_top,
+            width,
+            height: rule,
+        }),
+    });
+    MathBox {
+        items: body.items,
+        width,
+        ascent,
+        descent,
     }
 }
 
@@ -1139,6 +1380,12 @@ fn shift_atom(atom: &MathAtom, delta: isize) -> MathAtom {
                 left: left.clone(),
                 right: right.clone(),
             },
+            Nucleus::Accent { accent, body } => Nucleus::Accent {
+                accent: *accent,
+                body: shift_list(body, delta),
+            },
+            Nucleus::Overline(body) => Nucleus::Overline(shift_list(body, delta)),
+            Nucleus::Underline(body) => Nucleus::Underline(shift_list(body, delta)),
         },
         span: shift(atom.span, delta),
         superscript: atom.superscript.as_ref().map(|l| shift_list(l, delta)),
@@ -1237,6 +1484,151 @@ mod parse_tests {
 }
 
 #[cfg(test)]
+mod accent_tests {
+    use super::*;
+
+    fn laid_out(source: &str, size: f64) -> (MathBox, Vec<Diagnostic>) {
+        let mut diagnostics = Vec::new();
+        let tokens = crate::lexer::tokenize(source);
+        let list = parse_tokens(&tokens, &mut diagnostics);
+        let b = layout(&list, size, &mut diagnostics);
+        (b, diagnostics)
+    }
+
+    /// The measurement the task brief asked for: `\hat{A}`'s horizontal
+    /// offset in this compiler, checked against pdflatex's measured
+    /// 2.63893pt (from `RESEARCH-accents.md`). It does NOT match, on
+    /// purpose — see the `layout_accent` doc comment for why forcing that
+    /// CM/cmmi-specific constant onto an upright Times-Roman "A" would be
+    /// wrong, not right.
+    #[test]
+    fn hat_a_centers_symmetrically_with_no_skew_term() {
+        let size = 10.0;
+        let (b, diagnostics) = laid_out(r"\hat{A}", size);
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
+        let a_item = b.items.iter().find(|i| i.text == "A").unwrap();
+        let accent_item = b.items.iter().find(|i| i.text == "\u{2C6}").unwrap();
+
+        let mut d = Vec::new();
+        let a_width = crate::layout::shaped_width(
+            "A",
+            size,
+            crate::layout::Font::TimesRoman,
+            a_item.span,
+            &mut d,
+        )
+        .0;
+        let accent_width = crate::layout::shaped_width(
+            "\u{2C6}",
+            size,
+            crate::layout::Font::TimesRoman,
+            accent_item.span,
+            &mut d,
+        )
+        .0;
+        let expected_dx = (a_width - accent_width) / 2.0;
+
+        assert!(
+            (accent_item.x - a_item.x - expected_dx).abs() < 1e-9,
+            "expected symmetric centering dx {expected_dx}, got {}",
+            accent_item.x - a_item.x
+        );
+        // Documented measurement: at 10pt this is ~1.945pt, not pdflatex's
+        // 2.63893pt — the gap is cmmi10's italic-slant skewchar kern, which
+        // has no analog in Adobe AFM metrics or in this upright rendering.
+        assert!(
+            (expected_dx - 1.945).abs() < 0.01,
+            "expected ~1.945pt at 10pt, got {expected_dx}"
+        );
+        assert!(
+            (expected_dx - 2.63893).abs() > 0.5,
+            "this MUST differ from pdflatex's CM-specific 2.63893pt"
+        );
+    }
+
+    #[test]
+    fn accent_vertical_raise_is_capped_at_the_accent_fonts_x_height() {
+        let size = 10.0;
+        let (b, diagnostics) = laid_out(r"\hat{A}", size);
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
+        let accent_item = b.items.iter().find(|i| i.text == "\u{2C6}").unwrap();
+        let xheight = crate::layout::x_height_pt(crate::layout::Font::TimesRoman, size);
+        assert!((accent_item.baseline - (-xheight)).abs() < 1e-9);
+    }
+
+    #[test]
+    fn ddot_acute_grave_bar_use_exact_base14_glyphs() {
+        for (source, glyph) in [
+            (r"\ddot{x}", "\u{A8}"),
+            (r"\acute{x}", "\u{B4}"),
+            (r"\grave{x}", "\u{60}"),
+            (r"\bar{x}", "\u{AF}"),
+            (r"\tilde{x}", "\u{2DC}"),
+        ] {
+            let (b, diagnostics) = laid_out(source, 10.0);
+            assert!(diagnostics.is_empty(), "{source}: {diagnostics:?}");
+            assert!(
+                b.items.iter().any(|i| i.text == glyph),
+                "{source}: expected glyph {glyph:?} in {:?}",
+                b.items.iter().map(|i| &i.text).collect::<Vec<_>>()
+            );
+        }
+    }
+
+    #[test]
+    fn check_and_breve_are_diagnosed_and_typeset_without_a_mark() {
+        for source in [r"\check{x}", r"\breve{x}"] {
+            let (b, diagnostics) = laid_out(source, 10.0);
+            assert_eq!(diagnostics.len(), 1, "{source}: {diagnostics:?}");
+            assert!(diagnostics[0]
+                .message
+                .contains("no representable accent glyph"));
+            // Only the base "x", no extra accent glyph item.
+            assert_eq!(b.items.len(), 1);
+            assert_eq!(b.items[0].text, "x");
+        }
+    }
+
+    #[test]
+    fn widehat_over_one_symbol_is_silent_but_warns_over_more_than_one() {
+        let (_, one) = laid_out(r"\widehat{A}", 10.0);
+        assert!(one.is_empty(), "{one:?}");
+
+        let (_, many) = laid_out(r"\widehat{AB}", 10.0);
+        assert_eq!(many.len(), 1, "{many:?}");
+        assert!(many[0].message.contains("does not stretch"));
+    }
+
+    #[test]
+    fn overline_and_underline_draw_a_rule_spanning_the_body() {
+        let size = 10.0;
+        let (over, d1) = laid_out(r"\overline{x}", size);
+        assert!(d1.is_empty(), "{d1:?}");
+        let over_rule = over
+            .items
+            .iter()
+            .find_map(|i| i.rule)
+            .expect("overline rule");
+        assert!(over_rule.width > 0.0);
+        assert!(over_rule.height > 0.0);
+        // Drawn above the body: strictly negative (upward) y.
+        assert!(over_rule.y < 0.0);
+
+        let (under, d2) = laid_out(r"\underline{x}", size);
+        assert!(d2.is_empty(), "{d2:?}");
+        let under_rule = under
+            .items
+            .iter()
+            .find_map(|i| i.rule)
+            .expect("underline rule");
+        assert!(under_rule.width > 0.0);
+        assert!(under_rule.height > 0.0);
+        // Drawn below the body: strictly positive (downward) y.
+        assert!(under_rule.y > 0.0);
+    }
+}
+
+#[cfg(test)]
 mod shift_tests {
     use super::*;
 
@@ -1266,6 +1658,8 @@ mod shift_tests {
                             .map(min_start)
                             .min()
                             .unwrap_or(usize::MAX),
+                        Nucleus::Accent { body, .. } => min_start(body),
+                        Nucleus::Overline(body) | Nucleus::Underline(body) => min_start(body),
                     };
                     let scripts = a
                         .superscript

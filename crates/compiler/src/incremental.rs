@@ -534,6 +534,16 @@ fn shift_math_list(
                             left: left.clone(),
                             right: right.clone(),
                         },
+                        Nucleus::Accent { accent, body } => Nucleus::Accent {
+                            accent: *accent,
+                            body: shift_math_list(body, changes, deltas)?,
+                        },
+                        Nucleus::Overline(body) => {
+                            Nucleus::Overline(shift_math_list(body, changes, deltas)?)
+                        }
+                        Nucleus::Underline(body) => {
+                            Nucleus::Underline(shift_math_list(body, changes, deltas)?)
+                        }
                     },
                     span: mapped_span(atom.span, changes, deltas)?,
                     // An absent script stays absent; a present one that cannot be
