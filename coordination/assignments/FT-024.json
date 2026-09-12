@@ -8,15 +8,15 @@
   "branch": "agent/commander-corpus/font-resources",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "780f1458c125d9702b994ab9df377aed96a1113f",
-  "objective": "Cache eviction, unsupported outcomes and stale registry/device generation tests",
+  "input_main_sha": "83f65e08ae60b312609f49ec0a2b6cae25c8e353",
+  "objective": "Implement bounded non-executable .enc literal-array subset feeding exact existing TFM/font bindings; explicit unsupported syntax and file SHA identity.",
   "owned_paths": [
     "crates/font-resources"
   ],
-  "revision": 12,
+  "revision": 13,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-024",
   "timebox_minutes": 30,
-  "updated_utc": "2026-09-12T09:06:14Z"
+  "updated_utc": "2026-09-12T09:08:31.372212+00:00"
 }

@@ -5,8 +5,8 @@
   "next_index": 0,
   "steps": [
     {
-      "name": "Bind explicit MATH device correction context into existing metrics replay",
-      "objective": "Bind explicit MATH device correction context into existing metrics replay",
+      "name": "Exact PDF consumer integration: bounded adversarial and stale-identity acceptance tests",
+      "objective": "Exact PDF consumer integration: bounded adversarial and stale-identity acceptance tests",
       "owned_paths": [
         "crates/rendering-core"
       ],
@@ -19,8 +19,8 @@
       "timebox_minutes": 30
     },
     {
-      "name": "Exact cached/direct mixed math replay with stale source and resource refusal",
-      "objective": "Exact cached/direct mixed math replay with stale source and resource refusal",
+      "name": "Exact PDF consumer integration: actual existing consumer fixture and exact measured limitations",
+      "objective": "Exact PDF consumer integration: actual existing consumer fixture and exact measured limitations",
       "owned_paths": [
         "crates/rendering-core"
       ],
