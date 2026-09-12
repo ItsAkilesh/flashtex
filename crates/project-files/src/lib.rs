@@ -25,6 +25,7 @@ pub mod revision;
 pub mod save;
 pub mod scan;
 pub mod sha256;
+pub mod sys;
 pub mod watch;
 
 pub use graph::{
@@ -37,7 +38,8 @@ pub use recovery::{
 };
 pub use revision::{FileRevision, RevisionTracker};
 pub use save::{
-    Expected, SaveConflict, SaveConflictKind, SaveError, SaveReceipt, save_atomic,
+    DEFAULT_READ_LIMIT, Expected, FileIdentity, LOCK_FILE, ProjectLock, ProjectRoot, Refused,
+    RootedRead, SaveConflict, SaveConflictKind, SaveError, SaveReceipt, save_atomic,
     save_atomic_bytes,
 };
 pub use scan::{ByteSpan, Reference, ReferenceKind, scan_references};
