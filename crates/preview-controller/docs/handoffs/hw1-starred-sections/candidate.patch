@@ -29,6 +29,18 @@
                  let content = self.inlines_from_tokens(tokens);
                  if content.is_empty() {
                      // A missing/empty heading is already diagnosed where
+@@ -1253,6 +1262,11 @@
+                 TokenKind::LineBreak => content.push(Inline::LineBreak {
+                     span: input.token.span,
+                 }),
++                TokenKind::Command(name) => self.diags.push(Diagnostic::error(
++                    format!("\\{name} is not supported in this inline argument"),
++                    Some(input.token.span),
++                    Some("skipped the command; retained supported argument text".into()),
++                )),
+                 _ => {}
+             }
+         }
 --- a/crates/compiler/src/layout.rs
 +++ b/crates/compiler/src/layout.rs
 @@ -461,7 +461,7 @@
@@ -42,7 +54,7 @@
                          heading_size(*level, body_size),
 --- /dev/null
 +++ b/crates/compiler/tests/starred_sections.rs
-@@ -0,0 +1,60 @@
+@@ -0,0 +1,80 @@
 +use flashtex_compiler::incremental::{compile_full, LayoutConstraints, Session};
 +
 +#[test]
@@ -102,4 +114,24 @@
 +        assert_eq!(incremental.output.pages, clean.pages);
 +        assert_eq!(incremental.output.diagnostics, clean.diagnostics);
 +    }
++}
++
++#[test]
++fn unsupported_heading_commands_remain_explicit() {
++    let source = r"\newcommand{\problem}[2]{\subsection*{Problem #1 \hfill \normalfont[#2 points]}}\problem{1}{10}";
++    let result = compile_full(source, LayoutConstraints::default());
++    assert_eq!(result.diagnostics.len(), 2, "{:?}", result.diagnostics);
++    for command in ["hfill", "normalfont"] {
++        let diagnostic = result
++            .diagnostics
++            .iter()
++            .find(|d| d.message.contains(command))
++            .unwrap();
++        let span = diagnostic.span.unwrap();
++        assert_eq!(&source[span.start..span.end], r"\problem");
++    }
++    assert!(!result
++        .diagnostics
++        .iter()
++        .any(|d| d.message.contains("requires a braced argument")));
 +}
