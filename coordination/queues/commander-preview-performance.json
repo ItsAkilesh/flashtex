@@ -1,41 +1,52 @@
 {
   "agent_id": "commander-preview-performance",
-  "next_index": 0,
+  "next_index": 1,
   "schema_version": 1,
   "steps": [
     {
-      "name": "Verify measured ledger optimization through actual helper with exact ACK/restart/undo/receipt and full-output gates",
-      "objective": "Verify measured ledger optimization through actual helper with exact ACK/restart/undo/receipt and full-output gates",
-      "owned_paths": [
-        "crates/preview-controller",
-        "crates/document-runtime",
-        "crates/edit-ledger"
-      ],
       "acceptance": [
-        "Measure request/ledger/serialization/compiler phases on unchanged500KB workload before selecting optimization",
-        "Preserve source/history/receipt/dedup/undo/reopen and I/O uncertainty semantics; no dropped pages or hidden fallback",
-        "Full relevant tests and strict lint, exact persistent snapshot compatibility; retain default8MiB unless separately justified",
-        "Root retained engineer only; drained ledger worker stays stopped, no new worker or native default switch"
+        "Preserve exact source revision/hash, durable approval and permanent-ID guarantees; history metadata is source-free and does not change retention",
+        "Do not edit crates/document-runtime after published ecbaf7c handoff; consume FT049 reviewed API only",
+        "Helper v2 forwarding remains default OFF, preserves required-output priority and complete frame limits, and never claims native rendering validation"
       ],
       "allocation_id": "hosted-openai-product",
-      "timebox_minutes": 45
+      "name": "Expose source-bound history metadata and consume the separately owned runtime display-list-v2 candidate interface through bounded opt-in helper forwarding",
+      "objective": "Expose source-bound history metadata and consume the separately owned runtime display-list-v2 candidate interface through bounded opt-in helper forwarding",
+      "owned_paths": [
+        "crates/preview-controller",
+        "crates/edit-ledger"
+      ],
+      "timebox_minutes": 40
     },
     {
-      "name": "Provide native negotiated-history and large-project acceptance evidence; repair only measured integration regressions",
-      "objective": "Provide native negotiated-history and large-project acceptance evidence; repair only measured integration regressions",
-      "owned_paths": [
-        "crates/preview-controller",
-        "crates/document-runtime",
-        "crates/edit-ledger"
-      ],
       "acceptance": [
-        "Measure request/ledger/serialization/compiler phases on unchanged500KB workload before selecting optimization",
-        "Preserve source/history/receipt/dedup/undo/reopen and I/O uncertainty semantics; no dropped pages or hidden fallback",
-        "Full relevant tests and strict lint, exact persistent snapshot compatibility; retain default8MiB unless separately justified",
-        "Root retained engineer only; drained ledger worker stays stopped, no new worker or native default switch"
+        "Preserve exact source revision/hash, durable approval and permanent-ID guarantees; history metadata is source-free and does not change retention",
+        "Do not edit crates/document-runtime after published ecbaf7c handoff; consume FT049 reviewed API only",
+        "Helper v2 forwarding remains default OFF, preserves required-output priority and complete frame limits, and never claims native rendering validation"
       ],
       "allocation_id": "hosted-openai-product",
-      "timebox_minutes": 45
+      "name": "Wire the reviewed FT049 candidate API with exact session/project/source identity and bounded optional delivery; default legacy behavior unchanged",
+      "objective": "Wire the reviewed FT049 candidate API with exact session/project/source identity and bounded optional delivery; default legacy behavior unchanged",
+      "owned_paths": [
+        "crates/preview-controller",
+        "crates/edit-ledger"
+      ],
+      "timebox_minutes": 40
+    },
+    {
+      "acceptance": [
+        "Preserve exact source revision/hash, durable approval and permanent-ID guarantees; history metadata is source-free and does not change retention",
+        "Do not edit crates/document-runtime after published ecbaf7c handoff; consume FT049 reviewed API only",
+        "Helper v2 forwarding remains default OFF, preserves required-output priority and complete frame limits, and never claims native rendering validation"
+      ],
+      "allocation_id": "hosted-openai-product",
+      "name": "Verify actual producer/helper v2 negotiation, stale/oversize/cancel/backpressure and native handoff without claiming native paint acceptance",
+      "objective": "Verify actual producer/helper v2 negotiation, stale/oversize/cancel/backpressure and native handoff without claiming native paint acceptance",
+      "owned_paths": [
+        "crates/preview-controller",
+        "crates/edit-ledger"
+      ],
+      "timebox_minutes": 40
     }
   ],
   "task_id": "FT-048"

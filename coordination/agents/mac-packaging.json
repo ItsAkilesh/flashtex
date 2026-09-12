@@ -1,0 +1,41 @@
+{
+  "agent_id": "mac-packaging",
+  "allocation_id": "claude-mac20x-packaging",
+  "assignment_acknowledgements": {},
+  "branch": "agent/mac-packaging/signing",
+  "capabilities": [
+    "bash",
+    "codesign",
+    "swift"
+  ],
+  "code_revision": "6c31d4ed87cbd0d590023ff536ab8f4b0c5a9551",
+  "eta_minutes": {
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 0
+  },
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "d1bd76bb23ae94a293d3346806d50facd0732d33",
+  "next_action": "Parent merges agent/mac-packaging/signing into agent/mac-claude-a/mac-shell and applies the README/packaging.md diffs from the final report",
+  "reviewed_peers": {
+    "origin/agent/mac-claude-a/mac-shell": {
+      "adaptation": "new Swift only (delimiter pairs, hybrid preview); no changes under apps/mac/scripts or apps/mac/Resources; merged (4a828d4) and packaging re-verified on the merged tip (--sign - --dmg build, launch-check --dmg 0 FAIL, selftest 18/18)",
+      "reviewed_utc": "2026-09-12T11:12:00Z",
+      "sha": "7c11d6535cfd0dead20cb9dfb70ca719b6eacf02"
+    },
+    "origin/main": {
+      "adaptation": "no apps/mac changes (eed1847 diff read; d1bd76b adds one coordination dispatch commit); merged (6c31d4e)",
+      "reviewed_utc": "2026-09-12T11:12:00Z",
+      "sha": "d1bd76bb23ae94a293d3346806d50facd0732d33"
+    }
+  },
+  "schema_version": 1,
+  "state": "ready_for_integration",
+  "summary": "make-app.sh: --sign/--notarize hardened-runtime signing (helpers first, app with empty documented Resources/FlashTeX.entitlements, codesign --verify --deep --strict, spctl, notarytool submit --wait, stapler), --sign - test path, pre-build non-secret failures when identity/profile absent (0 identities here), Info.plist template, 10 optional helpers incl. --assistant/--explain, components.json helper sha256 == shipped bytes (baseline mismatch fixed) + build block with SOURCE_DATE_EPOCH-pinnable timestamp, --install-dir, pid-only install verification; launch-check.sh: open -n --env FLASHTEX_NO_ACTIVATE=1, pid+path instance detection, NSRunningApplication.terminate quit, no name-based kills, --dmg mount/launch/detach; repro-check.sh + packaging-selftest.sh (fast 18/18, --full 23/23 with main-checkout helpers); re-verified after merging mac-shell 7c11d65 and main d1bd76b",
+  "tool": "Claude Code subagent (parent mac-claude-a)",
+  "updated_utc": "2026-09-12T11:02:18Z",
+  "usage": {
+    "evidence": "coordination/mac-packaging.md validation section",
+    "status": "Shared Claude Max quota via parent mac-claude-a; no purchases; no notarization submission made"
+  }
+}

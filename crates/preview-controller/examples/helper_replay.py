@@ -41,6 +41,14 @@ class Client:
         received = time.monotonic()
         return json.loads(line), received
 
+    def memory_snapshot(self):
+        status = Path(f"/proc/{self.proc.pid}/status")
+        if not status.exists():
+            return None
+        wanted = {"VmRSS", "VmHWM", "Threads"}
+        return {name: value.strip() for line in status.read_text().splitlines()
+                if ":" in line for name, value in [line.split(":", 1)] if name in wanted}
+
     def diagnostics(self):
         if self.diagnostic_file is None:
             return []
