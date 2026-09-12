@@ -1,0 +1,46 @@
+{
+  "agent_id": "mac-helper-display",
+  "allocation_id": "claude-mac20x-helper-display",
+  "assignment_acknowledgements": {
+    "issue-2-comment-5645530349": "acknowledged 2026-09-12T13:20Z: native helper display-candidate route (Mac shell) + measurement",
+    "issue-31": "acknowledged 2026-09-12T13:26Z (parent relay): V2FontStore discovery-to-CGFont byte identity"
+  },
+  "branch": "agent/mac-helper-display/route",
+  "capabilities": [
+    "swift",
+    "appkit",
+    "swiftui",
+    "rust-build",
+    "helper-protocol-v1"
+  ],
+  "code_revision": "74b8825c",
+  "eta_minutes": {
+    "likely": 30,
+    "optimistic": 15,
+    "pessimistic": 90
+  },
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "6472a5d2",
+  "next_action": "Parent applies the parent-retained hook diff (coordination/mac-helper-display.md, also commit fd5ce63a on agent/mac-helper-display/route-applied) and posts the GH31 commit a9b55af7; the keystroke->paint helper-route measurement runs when the parent opens the low-load window (harness prepared under docs/evidence/helper-display-route-*/run.sh)",
+  "reviewed_peers": {
+    "origin/agent/mac-claude-a/mac-shell": {
+      "adaptation": "Based on 5bc3fc0 and merged main 6472a5d2 (helper gained compact edit acks, raw metadata and display-stage diagnostics since e4c9252; configure_display_candidates/display.rs wire unchanged). Reused HistoricalPreview's negotiation/admission shape and PreviewV2View's V2Loader/V2PageRasterizer path; no PreviewV2View edit was needed (own start/deliver over the internal loader API).",
+      "reviewed_utc": "2026-09-12T13:30:00Z",
+      "sha": "5bc3fc0f"
+    },
+    "origin/agent/mac-render-pipeline/unified": {
+      "adaptation": "Producer for all real-helper tests: flashtex-render built from f762f82a in a scratch archive; names fonts by raw byte SHA-256 (V2FontStore 'bytes' convention), accepts display-list-v2 with rules-v1/font-hints-v1.",
+      "reviewed_utc": "2026-09-12T13:28:00Z",
+      "sha": "f762f82a"
+    }
+  },
+  "schema_version": 1,
+  "state": "ready_for_integration_measurement_pending",
+  "summary": "Native helper display-candidate route: PreviewControllerClient decodes update{kind:display_candidate} into Event.displayCandidate (raw v2 envelope bytes) and sends configure_display_candidates; ShellModel+DisplayCandidates (new) owns opt-in (FLASHTEX_DISPLAY_CANDIDATES=1 / View menu), exact session/project/request/generation/source-version gate against the APPLIED v1 preview, off-main RenderingV2+font(GH31)+page validation and durable-text sha256/byte_length binding, paint-time recheck, v1 fallback, restart/close/reattach fresh opt-in, and a <=80 ms hold of the post-preview completion refresh (helper drops queued optional frames on any required enqueue). GH31 fixed separately (a9b55af7). 10 DisplayCandidateTests (5 pure + 5 real helper/producer) and 3 V2FontStoreIdentityTests pass; neighbours 50/50 twice.",
+  "tool": "Claude Code subagent (parent mac-claude-a)",
+  "updated_utc": "2026-09-12T13:52:00Z",
+  "usage": {
+    "evidence": "swift test --filter DisplayCandidateTests|PreviewControllerTests|HistoricalPreviewTests|PreviewV2Tests|V2FontStoreIdentityTests|RenderingV2Tests: 50/50 x2 with real helper (this tree, main 6472a5d2 crates) + flashtex-render f762f82a + flashtex-compiler; load avg 8-29 during runs (parent's heavy-build window). Full swift test NOT run per parent instruction; latency measurement deferred to the low-load window.",
+    "status": "Shared Claude Max quota with parent mac-claude-a; no purchases; one 429 (monthly spend limit, reset 13:20Z) before start"
+  }
+}
