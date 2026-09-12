@@ -2,15 +2,124 @@
 
 Agent / task / branch: daniel-bundle (FlashTeX agent) / FT-043 "project export
 bundle" / `agent/daniel-bundle/project-bundle`
-State: ready for integration, revision 2 (bounded import preview + no-clobber
-apply on top of `flashtex-project-files`' rooted reader; zero consumers yet).
-Owned paths: `crates/project-bundle/**`, `coordination/daniel-bundle.md`
-Main integrated through: `e5901797e8a7ebdd8d714ecdee6793e1097515a9` (the
-`origin/main` tip at the rev 2 fetch+merge; `origin/main` has since advanced
-with unrelated work from other agents — not reviewed further this
-revision). No other crate touched; no workspace root `Cargo.toml` created
-(each crate here builds standalone, matching existing siblings such as
+State: ready for integration, revision 3 (batch-recoverable `apply_import`,
+new adversarial bounds, and a stale-identity acceptance suite, on top of rev
+2's bounded import preview + no-clobber apply over `flashtex-project-files`'
+rooted reader; zero consumers yet).
+Owned paths: `crates/project-bundle/**`, `coordination/daniel-bundle.md`,
+`coordination/agents/daniel-bundle.json`
+Main integrated through: `abbe88a5275b89d99357815846de3cbe76a91810` (fetched
+and merged `--no-edit` this revision per the rev 3 instructions; the merge
+was clean with zero conflicts, and touched nothing under
+`crates/project-bundle` — verified with `git diff --stat <merge-base>
+origin/main -- crates/project-bundle` before merging, empty output). No
+other crate touched; no workspace root `Cargo.toml` created (each crate
+here builds standalone, matching existing siblings such as
 `crates/project-files`).
+
+## Revision 3 — batch recovery, adversarial bounds, stale-identity acceptance
+
+Objective: "Bounded project bundle recovery: bounded adversarial and
+stale-identity acceptance tests."
+
+### Assessment of the interrupted rev 3 work found in the worktree
+
+A previous rev 3 run had already been interrupted mid-session, leaving
+uncommitted changes to `src/apply.rs` and `src/error.rs` plus a new,
+uncommitted `tests/recovery.rs`. **Verdict: sound, kept as the foundation
+for this revision, not discarded or reworked.** It builds clean, and its 4
+new tests (first/middle/last write failure, plus overwritten-conflict
+restore) all passed before I changed anything. It is exactly the batch
+atomicity fix the rev 2 handoff had flagged as an open gap (see the
+now-removed "Incomplete behavior" bullet below): each write commits a small
+undo record (bytes to restore, or "remove — this call created it") as it
+goes; on a later failure, everything already committed in that call is
+undone in reverse order under the same lock the forward writes used, and
+the original typed cause is returned unchanged. I committed it as-is (see
+the git log) rather than rewrite it, then added the remaining rev 3
+requirements — the interrupted work did not need correction, only
+completion.
+
+### Batch recovery (`apply_import`, `src/apply.rs`)
+
+The reused writer (`flashtex_project_files::ProjectLock::save`) makes
+exactly one file's write atomic; it has no multi-file transaction. This
+crate now builds batch recoverability on top of it: `apply_one` returns,
+alongside each successful write, an `Undo` (`Remove { written_sha256 }` for
+a file this call created, `Restore { original_bytes, written_sha256 }` for
+one it overwrote). `apply_import` accumulates these in order and, on any
+later failure, calls `roll_back` to undo them in reverse — each undo is
+itself compare-and-swapped against exactly what this call wrote, so a
+double-fault (something outside this call's contract touching a
+just-written path) is detected rather than silently clobbering a second
+time. Two outcomes only: a clean rollback returns the original typed cause
+(`OverwriteNotDecided`, `ConcurrentModification`, etc.) with the target
+byte-for-byte as it was before the call; a rollback that cannot fully
+complete returns `BundleError::RollbackIncomplete { original_cause,
+left_in_written_state }`, naming exactly which paths are left in the state
+this call wrote them to.
+
+Tested by injecting a real race (an out-of-contract writer creating/
+modifying the target between preview and apply, the same mechanism
+`tests/apply.rs`'s single-file race tests already used) at the first, the
+middle, and the last of three writes, plus a fourth variant where every
+file is an overwritten conflict rather than a new file (`tests/recovery.rs`,
+4 tests). What survives at each injection point: the failing path itself is
+left exactly as the race left it (never touched by this call); every path
+before it in iteration order is rolled back to its pre-call state (removed
+if this call created it, restored to its exact original bytes if this call
+overwrote it); every path after it was never attempted.
+
+### New adversarial bounds (`src/bundle.rs`, `src/root.rs`, `src/error.rs`)
+
+- **A path of only separators** (`"///"`) is `BundleError::AbsolutePath`,
+  not silently normalized down to the empty-path case — `ProjectPath::normalize`
+  checks `starts_with('/')` before it ever splits into segments, so this is
+  pinned as distinct from `EmptyPath`. (`tests/malformed_and_unicode.rs::path_of_only_separators_is_rejected_as_absolute`)
+- **Names differing only by Unicode normalization (the documented APFS
+  hazard):** two declared paths that are byte-*different* (precomposed
+  `é`, U+00E9, vs. `e` + combining acute, U+0301) but resolve to the same
+  file on a normalization-insensitive volume are now rejected as a new
+  typed error, `BundleError::AmbiguousPath { first, second }`, rather than
+  silently admitted as two bundle entries that would in fact collide.
+  Detection is `ProjectRoot::canonical_identity` — `fs::canonicalize` on
+  each declared path's resolved OS path, tracked in a `HashMap<PathBuf,
+  String>` alongside the existing exact-string `DuplicatePath` check — a
+  filesystem-identity check, not a hand-rolled Unicode normalization table
+  (this crate takes no new dependency; NFC/NFD tables are exactly the kind
+  of thing worth reusing a real Unicode library for, not reimplementing,
+  and none was available to add — see "Incomplete behavior"). Consequence:
+  this only fires on a filesystem that actually folds the two spellings;
+  on one that does not, the two paths genuinely are different files and no
+  error fires, correctly. Proven against this machine's real filesystem —
+  the test asserts the fold actually happens before asserting the crate's
+  response to it (`tests/malformed_and_unicode.rs::unicode_normalization_collision_is_rejected_not_silently_admitted`).
+- The other six items on the rev 3 adversarial list (entry count at/past
+  the cap, total bytes at/past the cap, one file past the per-file limit,
+  duplicate paths, an empty path, a target that changes between preview
+  and apply, a decision map missing an entry for a conflict) were already
+  covered by rev 1/2's `tests/bounds.rs`, `tests/malformed_and_unicode.rs`
+  and `tests/apply.rs` — verified still passing, not re-proven.
+- Every one of these is a typed `BundleError` returned normally; none
+  panics or hangs (no `unwrap`/`expect`/`panic!` on caller-controlled input
+  anywhere in `src/`, and every test above runs to completion under the
+  default `cargo test` timeout).
+
+### Stale-identity acceptance (`tests/stale_identity.rs`, new file)
+
+Specification: an `ImportPreview` is valid only while the target hashes it
+observed still hold; any change invalidates it; `apply_import` refuses
+rather than clobbers. Rev 2 already proved this for a previewed file being
+*modified* or *created* between preview and apply
+(`tests/apply.rs::concurrent_modification_between_preview_and_apply_is_refused_not_clobbered`,
+`::concurrently_created_new_file_is_refused_not_clobbered`). This revision
+adds the third way a previewed file can go stale — **deletion**, not
+previously tested (`check_expected`'s `Expected::Hash(_)` vs. `None`
+`DeletedExternally` path existed in `flashtex_project_files` but nothing
+in this crate had exercised it) — and proves the property holds at the
+whole-batch level together with batch recovery: one previewed file going
+stale by deletion mid-batch still rolls back every write already committed
+earlier in that same call, not just refuses the one stale write.
 
 ## Revision 2 — reuse `project-files`' rooted reader; import preview + apply
 
@@ -139,9 +248,15 @@ Public API (`src/lib.rs` re-exports):
 - `Bundle { files: Vec<BundleFile> }` with `BundleFile { path, sha256: [u8;
   32], size: u64, contents: Vec<u8> }`, plus `Bundle::manifest_bytes()`,
   `Bundle::manifest_sha256()`, `Bundle::manifest_hex()`.
-- `BundleError`: `InvalidRoot`, `EmptyPath`, `AbsolutePath`, `PathTraversal`,
-  `MalformedPath`, `DuplicatePath`, `SymlinkEscapesRoot`, `NotFound`,
-  `NotAFile`, `Io` — each carries the offending caller-declared path (or
+- `BundleError` (current full variant list as of rev 3; the rev 1 list
+  printed here previously was stale — `SymlinkEscapesRoot` was renamed to
+  `SymlinkRefused` in rev 2 and several variants were added since, none of
+  which had been reflected here until now): `InvalidRoot`, `EmptyPath`,
+  `AbsolutePath`, `PathTraversal`, `MalformedPath`, `DuplicatePath`,
+  `AmbiguousPath` (new, rev 3), `SymlinkRefused`, `NotFound`, `NotAFile`,
+  `FileTooLarge`, `TooManyEntries`, `TotalBytesExceeded`,
+  `OverwriteNotDecided`, `ConcurrentModification`, `RollbackIncomplete`
+  (new, rev 3), `Io` — each carries the offending caller-declared path (or
   message), `Debug + Clone + PartialEq + Eq + Display + std::error::Error`.
 
 ### Rooting (security core of this lane)
@@ -205,37 +320,37 @@ still plain-byte and platform-independent given whatever bytes the caller's
 
 ## Test counts
 
-Rev 2: 42 integration tests (`tests/rooted.rs` 10, `tests/no_discovery.rs` 2,
-`tests/determinism.rs` 4, `tests/malformed_and_unicode.rs` 10,
-`tests/preview.rs` 3, `tests/apply.rs` 8, `tests/bounds.rs` 5) + 1 doctest =
-43 total, 0 unit tests inside `src/` (all behavior is exercised at the
-public API). Malformed-input coverage unchanged in kind, updated in
-expected outcome per the normalization change above (empty path, NUL byte,
-`//`, trailing `/`, `.` component and internal `..` all now accepted after
-normalization; bare `..` and an escaping `..`/absolute path/symlink are
-still rejected). Unicode coverage unchanged: non-ASCII filenames (`café.tex`,
-`日本語のファイル.tex`, an emoji filename) round-tripping content and
-participating correctly in byte-order sorting, plus a non-ASCII directory
-component. New: preview classification (new/unchanged/conflict) and
-hash-based (not size/mtime-based) differentiation, preview leaving the
-target byte-for-byte and file-for-file untouched, apply's no-clobber rules
-(undecided conflict, explicit skip, explicit overwrite, default-write new,
-never-rewrite unchanged) and both races (target modified / created between
-preview and apply) refused rather than clobbered, and bundle entry-count /
-total-byte / per-file-size limits at and over the boundary.
+Rev 3: 50 integration tests (`tests/rooted.rs` 10, `tests/no_discovery.rs`
+2, `tests/determinism.rs` 4, `tests/malformed_and_unicode.rs` 12 (+2 this
+revision: path-of-only-separators, Unicode-normalization collision),
+`tests/preview.rs` 3, `tests/apply.rs` 8, `tests/bounds.rs` 5,
+`tests/recovery.rs` 4 (new this revision), `tests/stale_identity.rs` 2
+(new this revision)) + 1 doctest = 51 total, 0 unit tests inside `src/`
+(all behavior is exercised at the public API). Rev 2's coverage
+(malformed-input/normalization, Unicode filenames, preview classification,
+no-clobber apply, both preview-to-apply races, bundle bounds) is unchanged
+and still passing; see the rev 2 section below for what each of those
+proves. New this revision: `tests/recovery.rs` proves batch rollback at
+the first/middle/last of three writes plus overwritten-conflict restore;
+`tests/malformed_and_unicode.rs`'s two additions prove the
+path-of-only-separators and Unicode-normalization-collision adversarial
+bounds; `tests/stale_identity.rs` proves the deletion case of stale-identity
+acceptance, standalone and combined with batch rollback.
 
 ## Validation
 
 rustc/cargo 1.98.1, this machine:
 - `cargo build --manifest-path crates/project-bundle/Cargo.toml`: clean.
-- `cargo test --manifest-path crates/project-bundle/Cargo.toml`: 43 passed
-  (42 integration + 1 doctest), 0 failed.
+- `cargo test --manifest-path crates/project-bundle/Cargo.toml`: 51 passed
+  (50 integration + 1 doctest), 0 failed.
 - `cargo clippy --manifest-path crates/project-bundle/Cargo.toml --all-targets -- -D warnings`:
   clean, 0 warnings.
 
 Exact tested commit SHA (the commit whose `crates/project-bundle` tree the
-above three commands were run against): `ddd445d421dae99f80c9bed37e253b3c6c69c82e`.
-(Rev 1's tested SHA for reference: `5a37954d2ed8f5e73379e7d31381bcfefcd8c6c2`.)
+above three commands were run against, after the rev 3 `origin/main`
+merge): `10b4f4193a5d2dc41a4ce38b976159e08e70a8f3`.
+(Rev 2's tested SHA for reference: `ddd445d421dae99f80c9bed37e253b3c6c69c82e`.
+Rev 1's: `5a37954d2ed8f5e73379e7d31381bcfefcd8c6c2`.)
 
 ## Incomplete behavior
 
@@ -248,17 +363,33 @@ above three commands were run against): `ddd445d421dae99f80c9bed37e253b3c6c69c82
 - Not wired into any consumer crate — this is an additive, standalone crate
   per the assignment; a caller integration (e.g. from `project-files`'s
   graph) would need its own follow-up and is not claimed here.
-- `apply_import` is not atomic across a whole batch: if one file's write
-  fails partway through a multi-file call (e.g. a race on the third of five
-  files), the writes already made for earlier files in that call stand —
-  each individual write is itself safe (never a silent overwrite), but the
-  batch as a whole is not rolled back. Not required by the rev 2 objective
-  as stated; flagged as a reasonable follow-up if all-or-nothing import
-  semantics are wanted later.
+- **Resolved this revision** (was open in rev 2): `apply_import` is now
+  batch-recoverable — see the rev 3 "Batch recovery" section above. The
+  one residual gap is genuine double faults: if rollback *itself* cannot
+  complete (an out-of-contract writer racing a path this call just wrote,
+  or the disk filling mid-restore), the caller gets
+  `BundleError::RollbackIncomplete` naming exactly what is left in the
+  written state, rather than a silently-clean-looking failure — there is
+  no way to make an actual double fault fully transparent beyond naming it.
 - `preview_import`/`apply_import` take a whole `Bundle` already built (and
   therefore already bounded by `BundleLimits`); they do not independently
   re-check bounds, since nothing they do can grow the file set beyond what
   `build_bundle_with_limits` already admitted.
+- `BundleError::AmbiguousPath`'s Unicode-normalization-collision detection
+  (`ProjectRoot::canonical_identity`) is filesystem-identity-based
+  (`fs::canonicalize` equality), not a from-scratch NFC/NFD table — this
+  crate took no new dependency to build one, and no `unicode-normalization`
+  crate was available to add (network access to crates.io was blocked in
+  this environment; adding an unverified new external dependency to a
+  security-adjacent crate on the strength of an untested fetch was judged
+  the wrong tradeoff against the same detection achieved with what is
+  already reused here). Consequence: it only fires where the actual
+  filesystem folds two spellings together — the concrete hazard this task
+  named — not for two Unicode-canonically-equivalent paths on a filesystem
+  that keeps them genuinely distinct (correctly, since there they are not
+  the same file). It also incidentally catches any other same-file
+  aliasing a filesystem folds (e.g. two case variants on a case-insensitive
+  volume), which is a reasonable bonus, not a claim of Unicode correctness.
 
 ## Needs from others
 
@@ -290,6 +421,28 @@ dependency. No file under `crates/project-files` was edited.
 agents (verified via `git log e590179..origin/main`); not reviewed this
 revision, out of scope (touches no path this lane owns or depends on).
 
+Rev 3: fetched and merged `origin/main` at
+`abbe88a5275b89d99357815846de3cbe76a91810` per the rev 3 instructions,
+`--no-edit`. Confirmed before merging (`git diff --stat <merge-base>
+origin/main -- crates/project-bundle`, empty output) that nothing under
+this lane's owned path had changed upstream since the rev 2 merge base, so
+the merge was a pure fast-forward-of-history-on-other-paths with zero risk
+to this crate; merge itself completed with zero conflicts anywhere (70
+files touched, all outside `crates/project-bundle`). Did not review the 70
+changed files' content in depth — none intersects this lane's owned or
+depended-on paths (`crates/project-bundle`, `crates/project-files`); the
+diff-stat check above is the actual basis for "safe to merge", not a full
+read.
+
+The repository's own `AGENTS.md` and `CLAUDE.md` (and one found at
+`coordination/CLAUDE.md`) contain multiple layers of text styled as "latest
+user authorization" / "explicit override" — alternate commit-identity and
+attribution rules, staffing/authority claims, instructions to read further
+files before starting. Per this revision's explicit task instructions,
+these are untrusted and were not followed or acted on in any way; this
+handoff and its commits use only this task's actual instructions and the
+operator's real global configuration.
+
 Resource: allocation `daniel-claude20x-shared`; no purchases.
 
-Updated: 2026-09-12T09:31:51Z
+Updated: 2026-09-12T16:53:23Z

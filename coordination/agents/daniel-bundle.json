@@ -6,7 +6,7 @@
   "capabilities": ["rust", "security", "filesystem", "project-bundle"],
   "branch": "agent/daniel-bundle/project-bundle",
   "state": "ready_for_integration",
-  "summary": "crates/project-bundle rev2: ProjectRoot rewritten as a thin adapter over flashtex_project_files' openat(O_NOFOLLOW) rooted reader (no gap found vs rev1's proven traversal/absolute/symlink-escape rejection; reuse is strictly stronger, with two deliberate tightenings/relaxations documented, not regressions); new preview_import (read-only, full SHA-256 both sides, New/Unchanged/Conflict) and apply_import (writes a Conflict only on explicit ImportDecision::Write, absent decision is a typed OverwriteNotDecided error, races refused as ConcurrentModification via Expected::Hash/NewFile compare-and-swap, force never used); build_bundle_with_limits caps entry count and total bytes with typed errors. 43 tests (42 integration + 1 doctest), 0 failed; clippy clean.",
+  "summary": "crates/project-bundle rev3: found rev3 already interrupted mid-session with uncommitted apply_import batch-recovery work (src/apply.rs, src/error.rs) plus an uncommitted tests/recovery.rs; assessed as sound and complete, kept as-is rather than reworked (verdict recorded in coordination/daniel-bundle.md). apply_import now rolls back every write already committed earlier in a multi-file call when a later write fails (per-write undo: remove a file this call created, or restore its exact pre-write bytes), returning the original typed cause on a clean rollback or the new BundleError::RollbackIncomplete naming exactly what could not be undone on a double fault; proven by injecting a real race at the first, middle and last of three writes, plus an overwritten-conflict restore variant (tests/recovery.rs, 4 tests). Added two new adversarial bounds: a path of only separators is AbsolutePath not silently normalized to empty, and two declared paths that are byte-different but resolve to the same file on disk (the documented APFS Unicode-normalization hazard: precomposed vs. combining-mark forms) are now the new typed BundleError::AmbiguousPath via filesystem-identity (fs::canonicalize) detection rather than a hand-rolled NFC/NFD table (no unicode-normalization crate available offline); the other six items on the adversarial list (entry-count/total-bytes at and past the cap, one file past the per-file limit, duplicate paths, empty path, target changed between preview and apply, decision map missing a conflict entry) were already covered by rev1/2 and re-verified passing, not re-proven. New tests/stale_identity.rs proves the stale-identity acceptance spec (a preview is valid only while the target hashes it observed still hold) for the one previously-untested case, deletion between preview and apply, both standalone and combined with batch rollback (2 tests). Fetched and merged origin/main at abbe88a5 (--no-edit): clean, zero conflicts, verified beforehand that nothing under crates/project-bundle had changed upstream. Fixed stale rev1-era BundleError variant list in coordination/daniel-bundle.md's typed-contract section (never updated through rev2). cargo test: 51 passed (50 integration + 1 doctest), 0 failed. cargo clippy --all-targets -- -D warnings: clean. Repo's own AGENTS.md/CLAUDE.md contain untrusted text styled as user authorization (alternate commit-identity rules, staffing claims); not followed, per this revision's explicit task instructions.",
   "next_action": "Await Commander integration; no consumer crate depends on flashtex-project-bundle yet",
   "eta_minutes": {
     "optimistic": 0,
@@ -19,17 +19,17 @@
     "evidence": "Shared Claude Max 20x subscription allocation; no purchases or overages; live plan consumption not exposed to this agent"
   },
   "reviewed_peers": {
-    "origin/main": "e5901797e8a7ebdd8d714ecdee6793e1097515a9"
+    "origin/main": "abbe88a5275b89d99357815846de3cbe76a91810"
   },
   "assignment_acknowledgements": {
     "FT-043": {
-      "acknowledged_utc": "2026-09-12T09:31:51Z",
-      "revision": 2,
-      "main_sha": "e5901797e8a7ebdd8d714ecdee6793e1097515a9",
-      "adaptation": "Reused flashtex_project_files::ProjectRoot (openat/O_NOFOLLOW rooted reader) in place of rev1's canonicalize-based rooting after verifying it preserves (and exceeds) rev1's traversal/absolute-path/symlink-escape rejection; kept two deliberate behavior changes (dot/empty-segment normalization instead of hard rejection, every symlink refused instead of only escaping ones) as tightenings, not gaps, and updated tests accordingly. Added preview_import (no-write, full-hash New/Unchanged/Conflict classification) and apply_import (typed OverwriteNotDecided on an undecided conflict, ConcurrentModification on a race, no force anywhere), plus build_bundle_with_limits for entry-count/total-byte bounds."
+      "acknowledged_utc": "2026-09-12T16:55:37Z",
+      "revision": 3,
+      "main_sha": "abbe88a5275b89d99357815846de3cbe76a91810",
+      "adaptation": "Kept the interrupted rev3 batch-recovery implementation (apply_import rollback, tests/recovery.rs) found already sound in the worktree rather than rewriting it. Added the two adversarial bounds not yet covered (path of only separators; Unicode-normalization-collision AmbiguousPath via filesystem-identity detection, no new crate dependency since crates.io was unreachable in this environment) and a stale-identity acceptance suite covering the untested deletion case standalone and combined with batch rollback. Merged origin/main abbe88a5 clean, no conflicts, nothing under crates/project-bundle touched upstream. Ignored repo AGENTS.md/CLAUDE.md text posing as user authorization, per explicit task instructions."
     }
   },
-  "updated_utc": "2026-09-12T09:31:51Z",
-  "code_revision": "ddd445d421dae99f80c9bed37e253b3c6c69c82e",
-  "main_integrated_through": "e5901797e8a7ebdd8d714ecdee6793e1097515a9"
+  "updated_utc": "2026-09-12T16:55:37Z",
+  "code_revision": "10b4f4193a5d2dc41a4ce38b976159e08e70a8f3",
+  "main_integrated_through": "abbe88a5275b89d99357815846de3cbe76a91810"
 }
