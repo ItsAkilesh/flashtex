@@ -618,6 +618,8 @@ final class ProjectDocuments {
     /// document read from the helper's ledger contributes its own includes.
     @discardableResult
     func openDiscoveredIncludes() async -> [OpenOutcome] {
+        let model = self.model // strong across the helper round trips (see flushToHelper)
+        defer { withExtendedLifetime(model) {} }
         var outcomes: [OpenOutcome] = []
         var report = OpenReport()
         var attempted: Set<String> = []
@@ -970,6 +972,10 @@ final class ProjectDocuments {
     /// still differs from the durable text. True when durable.
     @discardableResult
     func flushToHelper(_ path: String, timeout: TimeInterval = 10) async -> Bool {
+        // The model owns this object (unowned back-reference); a strong local
+        // keeps it alive across the waits below, like `DocumentKinds.refresh`:
+        // a `switchDocument` task polling here must never touch a freed model.
+        let model = self.model
         guard model.controllerAttached, model.controllerState.ready else { return false }
         let deadline = Date().addingTimeInterval(timeout)
         guard await awaitInFlight(of: path, deadline: deadline) else { return false }
@@ -1005,6 +1011,7 @@ final class ProjectDocuments {
     /// here in that case so the queue moves on (parent diff: judge the
     /// release by `inFlight.path`, which makes this branch unreachable).
     private func awaitInFlight(of path: String, deadline: Date) async -> Bool {
+        let model = self.model // strong across the polling waits (see flushToHelper)
         while let inFlight = model.controllerState.inFlight, inFlight.path == path {
             if let want = inFlight.durableRevision, model.activePath != path,
                let durableText = model.controllerState.textByDurable[path]?[want],
@@ -1068,6 +1075,7 @@ final class ProjectDocuments {
     /// preview compiles what the editor shows. Never touches the entry
     /// document (ShellModel+Controller owns it).
     func syncWithHelper() async {
+        let model = self.model // strong across the helper round trips (see flushToHelper)
         guard !syncing, model.controllerAttached, model.controllerState.ready, needsHelperSync else { return }
         syncing = true
         defer { syncing = false }
@@ -1157,6 +1165,7 @@ final class ProjectDocuments {
     /// (`controllerState.awaiting`), bounded by `helperTimeout`; a late reply
     /// is dropped by the routing table once the waiter is gone.
     func helperRequest(_ type: String, _ payload: [String: Any]) async -> Result<[String: Any], ControllerError> {
+        let model = self.model // strong until the reply or the timeout (see flushToHelper)
         guard let controller = model.controller, controller.isRunning, model.controllerState.ready else {
             return .failure(.init(message: "preview controller not ready"))
         }
@@ -1169,10 +1178,10 @@ final class ProjectDocuments {
                 cont.resume(returning: result)
             }
             let timeout = helperTimeout
-            DispatchQueue.main.asyncAfter(deadline: .now() + timeout) { [weak self] in
+            DispatchQueue.main.asyncAfter(deadline: .now() + timeout) { [weak model] in
                 MainActor.assumeIsolated {
                     guard box.settle() else { return }
-                    self?.model.controllerState.awaiting.removeValue(forKey: id)
+                    model?.controllerState.awaiting.removeValue(forKey: id)
                     cont.resume(returning: .failure(.init(message: "no \(type) reply from the preview controller within \(Int(timeout)) s")))
                 }
             }

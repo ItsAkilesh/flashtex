@@ -139,6 +139,51 @@ final class ControllerPipelineReviewTests: XCTestCase {
         XCTAssertEqual(model.savedText, edited)
     }
 
+    static let fakeHelper = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent().appendingPathComponent("Fixtures/fake_preview_controller.py")
+
+    /// Finding 3 (the DocumentKinds use-after-free pattern, elsewhere):
+    /// `ProjectDocuments` keeps an `unowned` back-reference to the model and
+    /// its async helpers (`flushToHelper` polling the in-flight edit,
+    /// `syncWithHelper`, `helperRequest`'s timeout) read it after awaits, while
+    /// the app launches them from `Task`s that hold `ProjectDocuments`
+    /// strongly (`switchDocument`, `armControllerTracking`, `init`). A model
+    /// torn down during such a wait (tests do; a closed window would) left the
+    /// task touching a freed object: a fatal unowned read that takes the whole
+    /// process down. The fix keeps the model alive for the duration of the
+    /// call, as `DocumentKinds.refresh` does.
+    func testProjectDocumentsFlushSurvivesTheModelBeingReleasedMidWait() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("pc-review-unowned-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root.appendingPathComponent("project"), withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let tex = root.appendingPathComponent("project/main.tex")
+        try "Hello\n".write(to: tex, atomically: true, encoding: .utf8)
+        setenv("FLASHTEX_CONTROLLER_LEDGER_ROOT", root.appendingPathComponent("ledger").path, 1)
+        defer { unsetenv("FLASHTEX_CONTROLLER_LEDGER_ROOT") }
+
+        var model: ShellModel? = ShellModel()
+        model!.autoCompile = true
+        XCTAssertEqual(model!.openTex(at: tex), .opened)
+        model!.attachController(at: Self.fakeHelper)
+        let ready = await settles(10) { model!.controllerState.ready && model!.result?.revision == model!.editorRevision }
+        XCTAssertTrue(ready, model!.controllerStatus)
+        weak var weakModel = model
+        let project = model!.project
+        // An edit whose preview is slow to arrive: the flush polls the in-flight slot for it.
+        model!.controllerState.inFlight = ("review-held", "main.tex", model!.editorRevision, Date(), model!.activeText, 99)
+        model!.inFlightRevision = model!.editorRevision
+        let flush = Task { @MainActor in await project.flushToHelper("main.tex", timeout: 0.5) }
+        await Task.yield()
+        await Task.yield()
+        // The last strong reference goes while the flush is waiting.
+        model = nil
+        let flushed = await flush.value
+        XCTAssertFalse(flushed, "the held edit never became durable within the bounded wait")
+        // Run-loop blocks queued by the helper client may hold the model for a turn.
+        let released = await settles(2) { weakModel == nil }
+        XCTAssertTrue(released, "nothing retains the model once the flush has returned")
+    }
+
     /// Polls `cond` on the main actor until it holds or `timeout` elapses.
     private func settles(_ timeout: TimeInterval, _ cond: () -> Bool) async -> Bool {
         let start = Date()
