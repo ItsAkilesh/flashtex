@@ -362,6 +362,9 @@ private struct ProposalReviewSheet: View {
         .onChange(of: latex) { _, new in preview.update(from: model, latex: new) }
         .onChange(of: model.editorRevision) { _, _ in preview.update(from: model, latex: latex) }
         .onChange(of: model.anchor) { _, _ in preview.update(from: model, latex: latex) }
+        // A reviewer-approved assistant amendment replaces the DRAFT only;
+        // insertion still requires "Approve and insert" (mac-ai-review).
+        .onChange(of: preview.amendedProposalLatex) { _, new in if let new { latex = new } }
         .onDisappear { preview.close() }
     }
 }
