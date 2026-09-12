@@ -36,11 +36,14 @@
 pub mod abstract_block;
 pub mod class;
 pub mod error;
+pub mod metrics;
 pub mod title;
 
 pub use abstract_block::{AbstractLayout, layout_abstract};
 pub use class::DocumentClass;
 pub use error::TitleLayoutError;
+pub use metrics::GlyphMetrics;
 pub use title::{
-    DateField, MeasuredRow, RowKind, TitleBlockInput, TitleBlockLayout, layout_title_block,
+    DateField, HorizontalExtent, MeasuredRow, MeasuredTitleBlock, RowKind, TitleBlockInput,
+    TitleBlockLayout, layout_title_block, layout_title_block_with_metrics,
 };

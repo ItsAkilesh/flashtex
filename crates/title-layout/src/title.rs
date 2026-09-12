@@ -36,6 +36,7 @@ use flashtex_document_style::{Pt, SizeName, Stylesheet, font_size};
 
 use crate::class::DocumentClass;
 use crate::error::TitleLayoutError;
+use crate::metrics::GlyphMetrics;
 
 /// `\date{...}`, or its deliberate omission.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -196,4 +197,215 @@ pub fn layout_title_block(
         rows,
         total_height: y,
     })
+}
+
+/// One row's horizontal placement, added by [`layout_title_block_with_metrics`].
+/// `x` is measured from the left edge of the page's usable text width (see
+/// [`flashtex_document_style::PageLayout::text_area`]), matching how
+/// `\begin{center}` centers each title/date line, and how the `tabular[t]{c}`
+/// author group is centered as a whole with each author's own lines then
+/// centered within that author's column.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct HorizontalExtent {
+    /// Natural width of this row's text (or, for an author line, that
+    /// author's own widest line — the tabular column's natural width).
+    pub width: Pt,
+    /// Offset from the left edge of the usable text width to this row's
+    /// left edge.
+    pub x: Pt,
+}
+
+/// [`TitleBlockLayout`] plus a [`HorizontalExtent`] for every row, in the
+/// same order as `layout.rows`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct MeasuredTitleBlock {
+    pub layout: TitleBlockLayout,
+    /// Same length and order as `layout.rows`.
+    pub extents: Vec<HorizontalExtent>,
+}
+
+fn pt_max(a: Pt, b: Pt) -> Pt {
+    if b.0 > a.0 { b } else { a }
+}
+
+/// Measures one line's natural width by summing caller-supplied glyph
+/// advances one Unicode scalar value at a time (never per byte, so a
+/// multi-byte character costs exactly one query). Fails with
+/// [`TitleLayoutError::MissingGlyphMetric`] at the first character the
+/// caller cannot measure, naming exactly that character — never a
+/// substituted nominal width.
+fn measure_line(metrics: &dyn GlyphMetrics, line: &str, size: Pt) -> Result<Pt, TitleLayoutError> {
+    let mut width = Pt::ZERO;
+    for ch in line.chars() {
+        let w = metrics
+            .advance_width(ch, size)
+            .ok_or(TitleLayoutError::MissingGlyphMetric { ch, size })?;
+        width += w;
+    }
+    Ok(width)
+}
+
+/// Measures `\maketitle` for `class` under `sheet`, additionally computing
+/// horizontal placement (line widths, centering, and multi-author
+/// side-by-side placement) from caller-supplied `metrics`, and checking the
+/// result against the page's usable text width and height.
+///
+/// This is [`layout_title_block`] plus everything that function's module
+/// docs say it deliberately does not measure. It fails with every error
+/// [`layout_title_block`] can return, plus:
+/// - [`TitleLayoutError::MissingGlyphMetric`] / [`TitleLayoutError::MissingEmMetric`]
+///   when `metrics` has no measurement for a character or em the layout needs —
+///   never a fabricated substitute.
+/// - [`TitleLayoutError::RowTooWide`] / [`TitleLayoutError::AuthorGroupTooWide`]
+///   when a line or the author group is wider than the page's usable text
+///   width — never silently clipped.
+/// - [`TitleLayoutError::BlockTallerThanPage`] when the block is taller than
+///   the page's usable text height — never silently overflowed.
+pub fn layout_title_block_with_metrics(
+    class: DocumentClass,
+    sheet: &Stylesheet,
+    input: &TitleBlockInput,
+    metrics: &dyn GlyphMetrics,
+) -> Result<MeasuredTitleBlock, TitleLayoutError> {
+    let layout = layout_title_block(class, sheet, input)?;
+
+    let text_area = sheet.page_layout().text_area;
+    let text_width = text_area.width;
+
+    if layout.total_height > text_area.height {
+        return Err(TitleLayoutError::BlockTallerThanPage {
+            total_height: layout.total_height,
+            available_height: text_area.height,
+        });
+    }
+
+    let base = sheet.base_size();
+    let title_font = font_size(base, SizeName::LARGE3);
+    let author_font = font_size(base, SizeName::Large);
+    let date_font = font_size(base, SizeName::Large);
+
+    // Measure every author's lines up front: each author is one
+    // `tabular[t]{c}` column, so its natural width is the widest of its own
+    // lines, and each of its lines is centered within that width.
+    let mut author_line_widths: Vec<Vec<Pt>> = Vec::with_capacity(input.author_lines.len());
+    for lines in &input.author_lines {
+        let mut widths = Vec::with_capacity(lines.len());
+        for line in lines {
+            widths.push(measure_line(metrics, line, author_font.size)?);
+        }
+        author_line_widths.push(widths);
+    }
+    let author_block_widths: Vec<Pt> = author_line_widths
+        .iter()
+        .map(|widths| widths.iter().copied().fold(Pt::ZERO, pt_max))
+        .collect();
+
+    // `\and` inserts `\hskip 1em \@plus.17fil` between authors' tabulars. At
+    // natural width (nothing here stretches the block to a forced width)
+    // only the fixed `1em` survives; the `.17fil` stretch never applies. A
+    // single author needs no gap, and this crate never asks the caller for
+    // an em it does not need.
+    let author_count = author_block_widths.len();
+    let mut total_author_width = author_block_widths
+        .iter()
+        .copied()
+        .fold(Pt::ZERO, |a, b| a + b);
+    let em_gap = if author_count > 1 {
+        let gap = metrics
+            .em(author_font.size)
+            .ok_or(TitleLayoutError::MissingEmMetric {
+                size: author_font.size,
+            })?;
+        total_author_width += gap * (author_count as f64 - 1.0);
+        gap
+    } else {
+        Pt::ZERO
+    };
+    if total_author_width > text_width {
+        return Err(TitleLayoutError::AuthorGroupTooWide {
+            natural_width: total_author_width,
+            available_width: text_width,
+        });
+    }
+    let mut author_x = Vec::with_capacity(author_count);
+    let mut cursor = (text_width - total_author_width) * 0.5;
+    for &w in &author_block_widths {
+        author_x.push(cursor);
+        cursor += w + em_gap;
+    }
+
+    finish_measured_block(
+        layout,
+        input,
+        &author_line_widths,
+        &author_block_widths,
+        &author_x,
+        metrics,
+        title_font.size,
+        date_font.size,
+        text_width,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn finish_measured_block(
+    layout: TitleBlockLayout,
+    input: &TitleBlockInput,
+    author_line_widths: &[Vec<Pt>],
+    author_block_widths: &[Pt],
+    author_x: &[Pt],
+    metrics: &dyn GlyphMetrics,
+    title_size: Pt,
+    date_size: Pt,
+    text_width: Pt,
+) -> Result<MeasuredTitleBlock, TitleLayoutError> {
+    let mut extents = Vec::with_capacity(layout.rows.len());
+    for row in &layout.rows {
+        let extent = match row.kind {
+            RowKind::TitleLine(i) => {
+                let w = measure_line(metrics, &input.title_lines[i], title_size)?;
+                if w > text_width {
+                    return Err(TitleLayoutError::RowTooWide {
+                        row: row.kind,
+                        natural_width: w,
+                        available_width: text_width,
+                    });
+                }
+                HorizontalExtent {
+                    width: w,
+                    x: (text_width - w) * 0.5,
+                }
+            }
+            RowKind::AuthorLine(a, l) => {
+                let w = author_line_widths[a][l];
+                let block_w = author_block_widths[a];
+                HorizontalExtent {
+                    width: w,
+                    x: author_x[a] + (block_w - w) * 0.5,
+                }
+            }
+            RowKind::DateLine => {
+                let text = match &input.date {
+                    DateField::Text(t) => t,
+                    DateField::Suppressed => {
+                        unreachable!("layout_title_block only emits DateLine for DateField::Text")
+                    }
+                };
+                let w = measure_line(metrics, text, date_size)?;
+                if w > text_width {
+                    return Err(TitleLayoutError::RowTooWide {
+                        row: row.kind,
+                        natural_width: w,
+                        available_width: text_width,
+                    });
+                }
+                HorizontalExtent {
+                    width: w,
+                    x: (text_width - w) * 0.5,
+                }
+            }
+        };
+        extents.push(extent);
+    }
+    Ok(MeasuredTitleBlock { layout, extents })
 }
