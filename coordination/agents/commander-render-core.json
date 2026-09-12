@@ -3,10 +3,10 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-023": {
-      "revision": 20,
-      "main_sha": "04840a863290843dff3ef7be6154266a860f9888",
-      "acknowledged_utc": "2026-09-12T13:46:49.486523+00:00",
-      "adaptation": "ReadFT023r20, authorized offline-j2 build window andeight bounded actualLinux siblinglayout cases; no nativeclaim/authoritativeedit/download."
+      "revision": 21,
+      "main_sha": "d5440b01f1681175e8dc25108d92424db188a7fe",
+      "acknowledged_utc": "2026-09-12T13:56:22.683353+00:00",
+      "adaptation": "Read FT023 revision21. Reuse existing binaries for strict PipelineCff identity/export and exact matching-fixture comparison; no rebuild or native claim."
     }
   },
   "branch": "agent/commander-render-core/rendering-core",
@@ -14,23 +14,23 @@
     "rust",
     "rendering"
   ],
-  "code_revision": "2efd9af50a75b96eb5563f33ec7995867e157773",
+  "code_revision": "57e37a1bee9043f6c0109da445492990ec14e034",
   "eta_minutes": {
     "likely": 3,
     "optimistic": 1,
     "pessimistic": 5
   },
   "machine": "linux-primary",
-  "main_integrated_through": "68f94f647f864212ca4b4f587d75fa75833e1984",
-  "next_action": "Commander route actual rooted-before-flat behavior to Mac owners; native sealed/direct/helper nohostTeX acceptance still required. Existing producer build under target/gh36-producer-7ca34cec reusable exactSHA.",
+  "main_integrated_through": "512ddff3f4304efebd61e5f94d8923bdf65f1ea9",
+  "next_action": "Commander integrate acceptance; native helper route and signed no-TeX package gates remain separate. No new producer/consumer rebuild required for this increment.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "accepted",
-  "summary": "FT023r20 actual unchanged7ca producer offlinebuild +eight Linux siblinglayout probes pass; exact10/12bundledsuccess and typed missing/corrupt/override outcomes retained.",
+  "summary": "New 7ca producer 10pt/12pt outputs bind and export through existing strict consumer; old/new PDF and extraction bytes match, exact hit geometry differences retained.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T13:46:49Z",
+  "updated_utc": "2026-09-12T13:56:22Z",
   "usage": {
-    "evidence": "Binaryd002742d/375sourcefilesunchanged; archive2bba68a7.9resourceverifierpass; all12defaulthostpathsabsent andcleanenv.8actualcases pass;10override selected beforebundle, required12roots beforeflat. Originalrawoutputs+hashes under linux-7ca34cec.",
-    "status": "Hosted OpenAI only; no providers/descendants. Build42542 andall8probes terminal; no nativecalls/timingclaims. Context telemetry/native compaction unavailable; buildreceipt+rawoutputs durable."
+    "evidence": "Consumer binary 41d9cc1f; source trees unchanged from fce554f1. PDFs d1cc00ca (10pt), fdaf6f84 (12pt). Exactly99/20 cluster hit/caret top leaves -1tick, all other leaves unchanged. Bad raw font/source identity refused, no PDF created. Actual v1 inputs zero diagnostics.",
+    "status": "Hosted OpenAI only; no providers or descendants. Four export and two malformed-input probes terminal; no timed measurements or native calls. Context telemetry/native compaction unavailable."
   }
 }
