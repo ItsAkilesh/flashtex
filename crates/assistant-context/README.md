@@ -37,3 +37,9 @@ request cancellation and provider error handling remain separate integration wor
 Validation: `cargo test --manifest-path crates/assistant-context/Cargo.toml --offline`.
 Set `FLASHTEX_TEST_COMPILER` to the original compiler binary and add
 `-- --include-ignored` to exercise actual compiler diagnostics as well.
+
+Use `context.payload()` to obtain a read-only payload reference. The bound payload
+cannot be mutated through Context after its context ID is computed. A cloned
+payload is presentation data, not a new validated context. Each clipped diagnostic
+sets `message_truncated:true`, so clients and the model can distinguish incomplete
+message text from a complete compiler diagnostic.

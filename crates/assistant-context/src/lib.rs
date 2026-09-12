@@ -95,6 +95,7 @@ pub struct Snippet {
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct DiagnosticContext {
+    pub message_truncated: bool,
     pub severity: String,
     pub message: String,
     pub location: Option<Location>,
@@ -115,7 +116,7 @@ pub struct PromptPayload {
     pub related: Vec<Snippet>,
 }
 pub struct Context {
-    pub payload: PromptPayload,
+    payload: PromptPayload,
     binding: CompileBinding,
 }
 fn clip(text: &str, max: usize) -> String {
@@ -172,6 +173,9 @@ fn location(value: &Value, docs: &BTreeMap<&str, &Document>) -> Result<Location,
     })
 }
 impl Context {
+    pub fn payload(&self) -> &PromptPayload {
+        &self.payload
+    }
     /// Caller passes the binding captured for this exact compiler request.
     pub fn build(
         binding: CompileBinding,
@@ -223,6 +227,7 @@ impl Context {
                 .as_ref()
                 .map(|loc| snippet(docs[loc.path.as_str()], loc.start_byte));
             selected.push(DiagnosticContext {
+                message_truncated: message.len() > 2048,
                 severity: severity.into(),
                 message: clip(message, 2048),
                 location: loc,

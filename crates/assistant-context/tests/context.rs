@@ -21,9 +21,9 @@ fn build(docs: &[Document]) -> Context {
 fn bounded_utf8_context_preserves_exact_source_and_rejects_stale_compiler() {
     let docs = vec![source()];
     let context = build(&docs);
-    assert_eq!(context.payload.provider_intent, "grok");
+    assert_eq!(context.payload().provider_intent, "grok");
     assert_eq!(
-        context.payload.diagnostics[0]
+        context.payload().diagnostics[0]
             .snippet
             .as_ref()
             .unwrap()
@@ -47,7 +47,7 @@ fn bounded_utf8_context_preserves_exact_source_and_rejects_stale_compiler() {
 fn response_is_only_a_source_bound_proposal() {
     let docs = vec![source()];
     let context = build(&docs);
-    let response = json!({"context_id":context.payload.context_id,"explanation":"This command is unknown.","edits":[{"location":{"path":"main.tex","start_byte":3,"end_byte":7},"removed_text":"\\bad","replacement":"text"}]});
+    let response = json!({"context_id":context.payload().context_id,"explanation":"This command is unknown.","edits":[{"location":{"path":"main.tex","start_byte":3,"end_byte":7},"removed_text":"\\bad","replacement":"text"}]});
     let validated = context
         .validate_response(&serde_json::to_vec(&response).unwrap(), &docs)
         .unwrap();
@@ -79,7 +79,7 @@ fn multifile_context_is_explicit_and_payload_limits_are_enforced() {
         &["chapter.tex".into()],
     )
     .unwrap();
-    assert_eq!(context.payload.related.len(), 1);
+    assert_eq!(context.payload().related.len(), 1);
     assert!(Context::build(binding.clone(), &docs, &result(), &"x".repeat(8193), &[]).is_err());
     assert!(Context::build(binding, &docs, &result(), "", &["missing.tex".into()]).is_err());
 }
@@ -118,9 +118,9 @@ fn actual_compiler_diagnostic_builds_source_bound_context() {
         &[],
     )
     .unwrap();
-    assert!(!context.payload.diagnostics.is_empty());
+    assert!(!context.payload().diagnostics.is_empty());
     assert_eq!(
-        context.payload.user_instruction,
+        context.payload().user_instruction,
         "Explain this error without editing"
     );
 }
