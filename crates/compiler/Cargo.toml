@@ -2,7 +2,7 @@
 name = "flashtex-compiler"
 version = "0.1.0"
 edition = "2021"
-description = "Original FlashTeX compiler foundation: lexing, a finite LaTeX subset, layout, and the runtime-v1 JSON Lines transport."
+description = "Original FlashTeX compiler foundation: lexing, a finite LaTeX subset, layout, PDF output, and the runtime-v1 JSON Lines transport."
 publish = false
 
 [lib]
@@ -14,3 +14,7 @@ name = "flashtex-compiler"
 path = "src/main.rs"
 
 [dependencies]
+pdf-writer = "0.15"
+
+[dev-dependencies]
+tempfile = "3"

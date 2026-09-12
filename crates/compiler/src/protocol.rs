@@ -8,6 +8,9 @@ use crate::diagnostics::{Diagnostic, Severity};
 use crate::json::{self, str_, Value};
 use crate::layout::{self, Page};
 use crate::parser;
+use crate::pdf;
+use std::fs;
+use std::io::Write;
 
 pub const PROTOCOL_VERSION: i64 = 1;
 /// Documented maximum accepted line size. Oversized payloads are rejected.
@@ -216,12 +219,59 @@ fn compile(id: &str, payload: &Value) -> Value {
         "failed"
     };
 
+    // Write PDF to a temp file when there is content to render.
+    // The Mac shell reads pdf_path and shows a badge; null means no PDF yet.
+    let pdf_path = if has_content {
+        write_pdf(&pages, &project_id, revision)
+    } else {
+        None
+    };
+
     let mut p = Value::obj();
     p.set("project_id", str_(project_id));
     p.set("revision", Value::Num(revision as f64));
     p.set("status", str_(status));
     p.set("pages", pages_json(&pages, &path));
     p.set("diagnostics", Value::Arr(diags.iter().map(|d| d.to_json(&path)).collect()));
-    p.set("pdf_path", Value::Null);
+    match &pdf_path {
+        Some(pp) => p.set("pdf_path", str_(pp.clone())),
+        None => p.set("pdf_path", Value::Null),
+    }
     result_envelope(id, p)
+}
+
+/// Render pages to PDF and write to a temp path.
+/// Returns the path on success; logs and returns None on any I/O error.
+///
+/// Path format: /tmp/flashtex/<project_id>/rev<revision>.pdf
+/// The directory is created if absent. The file is overwritten on each
+/// compile so the Mac always reads the latest revision.
+fn write_pdf(pages: &[Page], project_id: &str, revision: i64) -> Option<String> {
+    let pdf_bytes = pdf::render(pages);
+    if pdf_bytes.is_empty() {
+        return None;
+    }
+
+    // Sanitise project_id for use as a directory component.
+    let safe_id: String = project_id
+        .chars()
+        .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+        .take(64)
+        .collect();
+    let safe_id = if safe_id.is_empty() { "project".to_string() } else { safe_id };
+
+    let dir = format!("/tmp/flashtex/{}", safe_id);
+    if let Err(e) = fs::create_dir_all(&dir) {
+        eprintln!("flashtex-compiler: pdf dir error: {}", e);
+        return None;
+    }
+
+    let pdf_path = format!("{}/rev{}.pdf", dir, revision);
+    match fs::File::create(&pdf_path).and_then(|mut f| f.write_all(&pdf_bytes)) {
+        Ok(()) => Some(pdf_path),
+        Err(e) => {
+            eprintln!("flashtex-compiler: pdf write error {}: {}", pdf_path, e);
+            None
+        }
+    }
 }
