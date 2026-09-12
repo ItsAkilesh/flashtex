@@ -315,3 +315,28 @@ fn explicit_cff_contract_binds_bytes_and_budgets_atomically() {
         )
         .is_err());
 }
+
+#[test]
+fn reviewable_producer_candidate_changes_only_raw_digest() {
+    let base: Value = serde_json::from_slice(
+        include_bytes!("fixtures/original-reference/4888-matched.jsonl")
+            .split(|b| *b == b'\n')
+            .nth(1)
+            .unwrap(),
+    )
+    .unwrap();
+    let candidate: Value = serde_json::from_slice(include_bytes!(
+        "../docs/handoffs/pipeline-4888a67-candidate.json"
+    ))
+    .unwrap();
+    let raw = digest(include_bytes!(
+        "fixtures/original-reference/lmroman12-regular.otf"
+    ));
+    let mut expected = base.clone();
+    expected["payload"]["fonts"][0]["sha256"] = raw.into();
+    assert_eq!(candidate, expected);
+    assert_eq!(
+        candidate["payload"]["fonts"][0]["font_id"],
+        base["payload"]["fonts"][0]["font_id"]
+    );
+}

@@ -14,7 +14,7 @@
     "rust",
     "rendering"
   ],
-  "code_revision": "635db744a3050ae55d213929a5e17dd799fd27c7",
+  "code_revision": "2d589b20b9d29af812e72e889a2e41cbe9739904",
   "eta_minutes": {
     "likely": 15,
     "optimistic": 5,
@@ -22,15 +22,15 @@
   },
   "machine": "linux-primary",
   "main_integrated_through": "dd09e2352ef85ab3769858dc23461a3caeb13b69",
-  "next_action": "Prioritize unmodified original/reference searchable export once rawSHA fix publishes; preserve explicit ambiguous/empty/multiglyph refusal.",
+  "next_action": "Send producer owner patch and await publishedSHA before original/reference acceptance; no authoritative producer edits.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "Verified exact PDF CID/ToUnicode reconstruction of repeated H/space and fi ligature through existing owner API; added unimplemented ActualText group contract.",
+  "summary": "Prepared minimal wire-only rawSHA patch against4888a67; disposable patched producer changes exactly one outputleaf and unmodified exact adapter succeeds.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T09:58:18Z",
+  "updated_utc": "2026-09-12T10:01:49Z",
   "usage": {
-    "evidence": "155 full-suite tests and strictclippy pass, focused5tests repeated after exact CID remainder check. Currentproducer fetched still4888a67 rawSHA unchanged. H H fi extraction exact from emitted PDF owner reader, not independent visual/original compilation evidence.",
+    "evidence": "156 coretests and strictclippy pass. Scratch producer fulltests pass with existing shape.rs unused-variable warning. Candidate output hashes and one-leaf equality pinned. Candidate exactPDF65d9bc38; no published-original/visual claim.",
     "status": "Hosted OpenAI only; no providers or descendants. Context telemetry/native compaction unavailable."
   }
 }
