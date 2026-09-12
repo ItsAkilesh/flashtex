@@ -16,11 +16,23 @@ ORACLE TOOLING ONLY. For every corpus fixture this script:
      (a case fails if it exceeds its threshold or worsens by more than the
      baseline tolerance). Exit 0 = pass, 1 = fail, 2 = usage/oracle error.
 
+Pinned oracle. Step 1 needs pdflatex; step 2's output can be pinned instead:
+fixtures/visual/oracle-geometry.json holds every reference glyph origin and
+rule per case together with the fixture SHA-256 and the pdfTeX banner of the
+run that produced it. By default the gate compiles with pdflatex when it is
+installed and otherwise falls back to the pinned geometry (the report says
+which). `--oracle pinned` forces the pinned file, `--oracle pdflatex` forces a
+fresh compile, and `--pin-oracle DIR` re-extracts the pinned file from oracle
+PDFs in DIR/<case>/<case>.pdf (as left by a pdflatex run in --scratch). A
+pinned case is refused when its fixture SHA-256 no longer matches.
+
 Usage:
   python3 tools/structural_gate.py [--scratch DIR] [--report OUT.md]
       [--regress BASELINE.json] [--write-baseline OUT.json] [--case ID ...]
+      [--oracle auto|pinned|pdflatex] [--pin-oracle DIR]
 """
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -35,6 +47,61 @@ import oracle_compare as oc  # noqa: E402
 TEXBIN = "/Library/TeX/texbin"
 BP_PER_TEX_PT = 72.0 / 72.27
 PAGE_H = 792.0
+PINNED = os.path.join(CRATE, "fixtures", "visual", "oracle-geometry.json")
+
+
+def sha256_file(path):
+    return hashlib.sha256(open(path, "rb").read()).hexdigest()
+
+
+def pdftex_banner(log_path):
+    try:
+        return open(log_path, errors="replace").readline().strip()
+    except OSError:
+        return None
+
+
+def pin_oracle(pdf_dir, fixtures, out):
+    """Extract the reference geometry of every oracle PDF under pdf_dir into `out`."""
+    pinned = {"_comment": ("Pinned structural oracle for tools/structural_gate.py: glyph origins (font, code, x, "
+                           "y_top) and rules (x, y_top centre line, w, h) in PDF points, top-left page origin, read "
+                           "from the pdflatex PDF of each fixture as committed (sha256). Oracle output, never "
+                           "product input; regenerate with --pin-oracle after any fixture change."),
+              "cases": {}}
+    for f in sorted(os.listdir(fixtures)):
+        if not f.endswith(".tex"):
+            continue
+        name = f[:-4]
+        pdf = os.path.join(pdf_dir, name, name + ".pdf")
+        if not os.path.exists(pdf):
+            print(f"pin: no oracle PDF for {name} at {pdf}", file=sys.stderr)
+            return 2
+        glyphs, rules = reference_geometry(pdf)
+        pinned["cases"][name] = {
+            "fixture_sha256": sha256_file(os.path.join(fixtures, f)),
+            "pdftex": pdftex_banner(os.path.join(pdf_dir, name, name + ".log")),
+            "pdf_sha256": sha256_file(pdf),
+            "glyphs": [{"font": g["font"], "code": g["code"], "x": round(g["x"], 6), "y_top": round(g["y_top"], 6)}
+                       for g in glyphs],
+            "rules": [{"x": round(r["x"], 6), "y_top": round(r["y_top"], 6), "w": round(r["w"], 6), "h": round(r["h"], 6)}
+                      for r in rules],
+        }
+    json.dump(pinned, open(out, "w"), indent=1, sort_keys=True)
+    print(f"pinned {len(pinned['cases'])} cases to {out}")
+    return 0
+
+
+def pinned_geometry(pinned, name, tex):
+    case = pinned["cases"].get(name)
+    if case is None:
+        raise RuntimeError(f"{name}: not in the pinned oracle; run --pin-oracle after a pdflatex run")
+    actual = sha256_file(tex)
+    if case["fixture_sha256"] != actual:
+        raise RuntimeError(f"{name}: fixture changed since the oracle was pinned "
+                           f"({actual[:12]} vs {case['fixture_sha256'][:12]}); regenerate with pdflatex")
+    glyphs = [dict(g) for g in case["glyphs"]]
+    rules = [dict(r) for r in case["rules"]]
+    return glyphs, rules
 
 
 def cm_name(base):
@@ -139,8 +206,18 @@ def main():
     ap.add_argument("--write-baseline")
     ap.add_argument("--case", action="append")
     ap.add_argument("--runs-json", help="precomputed `flashtex-math-corpus --runs` output")
+    ap.add_argument("--oracle", choices=["auto", "pinned", "pdflatex"], default="auto")
+    ap.add_argument("--pin-oracle", metavar="DIR", help="extract fixtures/visual/oracle-geometry.json from DIR/<case>/<case>.pdf and exit")
     a = ap.parse_args()
     fixtures = os.path.join(CRATE, "fixtures", "visual")
+    if a.pin_oracle:
+        return pin_oracle(a.pin_oracle, fixtures, PINNED)
+    have_tex = os.path.exists(os.path.join(TEXBIN, "pdflatex"))
+    if a.oracle == "pdflatex" and not have_tex:
+        print(f"oracle error: {TEXBIN}/pdflatex is not installed", file=sys.stderr)
+        return 2
+    use_pinned = a.oracle == "pinned" or (a.oracle == "auto" and not have_tex)
+    pinned = json.load(open(PINNED)) if use_pinned else None
     thresholds = json.load(open(os.path.join(fixtures, "thresholds.json")))
     if a.runs_json:
         runs = json.load(open(a.runs_json))
@@ -160,8 +237,11 @@ def main():
             continue
         tex = os.path.join(fixtures, name + ".tex")
         try:
-            pdf = oracle_pdf(tex, a.scratch)
-            ref_glyphs, ref_rules = reference_geometry(pdf)
+            if pinned is not None:
+                ref_glyphs, ref_rules = pinned_geometry(pinned, name, tex)
+            else:
+                pdf = oracle_pdf(tex, a.scratch)
+                ref_glyphs, ref_rules = reference_geometry(pdf)
         except Exception as e:  # noqa: BLE001
             print(f"oracle error: {e}", file=sys.stderr)
             return 2
@@ -211,8 +291,11 @@ def main():
         "",
         f"Cases: {len(results)}; failed: {len(failed)} {failed if failed else ''}",
         f"Largest max |Δ| over the corpus: {max((r.get('max_abs_delta_bp', 0) for r in results.values()), default=0):.4f} bp",
-        "Reference: pdflatex (BasicTeX) on the fixture as committed (12pt lmodern preamble); Δ = ours − reference in PDF points; positions relative to the first glyph of each case except the placement row.",
-    ]
+        ("Reference: " + (f"pinned oracle geometry ({os.path.relpath(PINNED, CRATE)}; pdflatex not run" +
+                          (" — not installed" if not have_tex else "") + ")" if pinned is not None else
+                          "pdflatex run now") +
+         " on the fixture as committed (12pt article, OT1 Computer Modern); Δ = ours − reference in PDF points; positions relative to the first glyph of each case except the placement row."),
+    ] + ([f"Pinned pdfTeX: {next(iter(pinned['cases'].values()))['pdftex']}"] if pinned is not None else [])
     text = "\n".join(header + lines) + "\n"
     if a.report:
         open(a.report, "w").write(text)

@@ -1,0 +1,1051 @@
+{
+ "_comment": "Pinned structural oracle for tools/structural_gate.py: glyph origins (font, code, x, y_top) and rules (x, y_top centre line, w, h) in PDF points, top-left page origin, read from the pdflatex PDF of each fixture as committed (sha256). Oracle output, never product input; regenerate with --pin-oracle after any fixture change.",
+ "cases": {
+  "01-stacked-fraction": {
+   "fixture_sha256": "145d499fbfd061883bbee12be9ef0f84eebc8ab27588133393f27ff8f471cd04",
+   "glyphs": [
+    {
+     "code": 97,
+     "font": "cmmi8",
+     "x": 74.391,
+     "y_top": 75.432
+    },
+    {
+     "code": 98,
+     "font": "cmmi8",
+     "x": 74.829,
+     "y_top": 84.261
+    },
+    {
+     "code": 99,
+     "font": "cmmi12",
+     "x": 74.121,
+     "y_top": 96.845
+    },
+    {
+     "code": 61,
+     "font": "cmr12",
+     "x": 84.601,
+     "y_top": 88.645
+    },
+    {
+     "code": 49,
+     "font": "cmr12",
+     "x": 97.029626,
+     "y_top": 88.645
+    }
+   ],
+   "pdf_sha256": "55f0f2d5e38d50d53fdbd161a4065af3d51cee4ea94d69816baa7d9be98f21df",
+   "pdftex": "This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026) (preloaded format=pdflatex 2026.3.1)  12 SEP 2026 02:43",
+   "rules": [
+    {
+     "h": 0.398,
+     "w": 4.498,
+     "x": 74.391,
+     "y_top": 77.15
+    },
+    {
+     "h": 0.398,
+     "w": 6.889,
+     "x": 73.196,
+     "y_top": 85.656
+    }
+   ]
+  },
+  "02-sqrt-left-right": {
+   "fixture_sha256": "c0a86e0368992f7af18b0254d83e41016a13b83f6918450550bb1b9f3c5fec0d",
+   "glyphs": [
+    {
+     "code": 112,
+     "font": "cmsy10",
+     "x": 72.0,
+     "y_top": 77.789
+    },
+    {
+     "code": 120,
+     "font": "cmmi12",
+     "x": 81.963,
+     "y_top": 86.944
+    },
+    {
+     "code": 43,
+     "font": "cmr12",
+     "x": 91.268928,
+     "y_top": 86.944
+    },
+    {
+     "code": 18,
+     "font": "cmex10",
+     "x": 103.033,
+     "y_top": 72.398
+    },
+    {
+     "code": 97,
+     "font": "cmmi12",
+     "x": 111.562,
+     "y_top": 78.856
+    },
+    {
+     "code": 98,
+     "font": "cmmi12",
+     "x": 112.146,
+     "y_top": 95.145
+    },
+    {
+     "code": 19,
+     "font": "cmex10",
+     "x": 118.902,
+     "y_top": 72.398
+    }
+   ],
+   "pdf_sha256": "8934f76ce7450b44c119532f75535999c8d04fd496d53a4930ff643c16169843",
+   "pdftex": "This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026) (preloaded format=pdflatex 2026.3.1)  12 SEP 2026 02:43",
+   "rules": [
+    {
+     "h": 0.478,
+     "w": 6.652,
+     "x": 81.963,
+     "y_top": 77.55
+    },
+    {
+     "h": 0.398,
+     "w": 6.145,
+     "x": 111.562,
+     "y_top": 83.955
+    }
+   ]
+  },
+  "03-sum-limits-scripts": {
+   "fixture_sha256": "97aac8d0f4a5e1fa876f574e7addde2efac99d6875a57ffc873dbbc64653d05b",
+   "glyphs": [
+    {
+     "code": 110,
+     "font": "cmmi8",
+     "x": 76.626,
+     "y_top": 76.428
+    },
+    {
+     "code": 88,
+     "font": "cmex10",
+     "x": 72.0,
+     "y_top": 79.417
+    },
+    {
+     "code": 105,
+     "font": "cmmi8",
+     "x": 72.343,
+     "y_top": 101.29
+    },
+    {
+     "code": 61,
+     "font": "cmr8",
+     "x": 75.225785,
+     "y_top": 101.29
+    },
+    {
+     "code": 49,
+     "font": "cmr8",
+     "x": 81.812276,
+     "y_top": 101.29
+    },
+    {
+     "code": 120,
+     "font": "cmmi12",
+     "x": 88.383,
+     "y_top": 89.379
+    },
+    {
+     "code": 50,
+     "font": "cmr8",
+     "x": 95.035,
+     "y_top": 84.443
+    },
+    {
+     "code": 105,
+     "font": "cmmi8",
+     "x": 95.035,
+     "y_top": 92.335
+    }
+   ],
+   "pdf_sha256": "124e9e839a7a634f15f86fd1bfdf912ebe0aaa60ff0438279ab53f96f4801885",
+   "pdftex": "This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026) (preloaded format=pdflatex 2026.3.1)  12 SEP 2026 02:43",
+   "rules": []
+  },
+  "04-tall-braces": {
+   "fixture_sha256": "bb6c1d5a07580a908d3c2b2ffdc6c15f2c53b74ec8a0bffcb0106848b63730c7",
+   "glyphs": [
+    {
+     "code": 56,
+     "font": "cmex10",
+     "x": 72.0,
+     "y_top": 72.0
+    },
+    {
+     "code": 62,
+     "font": "cmex10",
+     "x": 72.0,
+     "y_top": 80.966
+    },
+    {
+     "code": 60,
+     "font": "cmex10",
+     "x": 72.0,
+     "y_top": 83.955
+    },
+    {
+     "code": 62,
+     "font": "cmex10",
+     "x": 72.0,
+     "y_top": 101.888
+    },
+    {
+     "code": 58,
+     "font": "cmex10",
+     "x": 72.0,
+     "y_top": 104.877
+    },
+    {
+     "code": 97,
+     "font": "cmmi6",
+     "x": 84.563,
+     "y_top": 77.434
+    },
+    {
+     "code": 98,
+     "font": "cmmi6",
+     "x": 84.943,
+     "y_top": 83.818
+    },
+    {
+     "code": 99,
+     "font": "cmmi8",
+     "x": 84.746,
+     "y_top": 91.527
+    },
+    {
+     "code": 100,
+     "font": "cmmi8",
+     "x": 84.401,
+     "y_top": 99.851
+    },
+    {
+     "code": 101,
+     "font": "cmmi6",
+     "x": 84.82,
+     "y_top": 105.423
+    },
+    {
+     "code": 102,
+     "font": "cmmi6",
+     "x": 84.442,
+     "y_top": 111.807
+    },
+    {
+     "code": 57,
+     "font": "cmex10",
+     "x": 92.304,
+     "y_top": 72.0
+    },
+    {
+     "code": 62,
+     "font": "cmex10",
+     "x": 92.304,
+     "y_top": 80.966
+    },
+    {
+     "code": 61,
+     "font": "cmex10",
+     "x": 92.304,
+     "y_top": 83.955
+    },
+    {
+     "code": 62,
+     "font": "cmex10",
+     "x": 92.304,
+     "y_top": 101.888
+    },
+    {
+     "code": 59,
+     "font": "cmex10",
+     "x": 92.304,
+     "y_top": 104.877
+    }
+   ],
+   "pdf_sha256": "d05f86b40095095976ced2da3002f83a713a227ca257bdf4cd08594742d7320f",
+   "pdftex": "This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026) (preloaded format=pdflatex 2026.3.1)  12 SEP 2026 02:43",
+   "rules": [
+    {
+     "h": 0.398,
+     "w": 4.034,
+     "x": 84.563,
+     "y_top": 78.7
+    },
+    {
+     "h": 0.398,
+     "w": 6.425,
+     "x": 83.367,
+     "y_top": 84.416
+    },
+    {
+     "h": 0.398,
+     "w": 9.058,
+     "x": 82.051,
+     "y_top": 92.922
+    },
+    {
+     "h": 0.398,
+     "w": 6.667,
+     "x": 83.247,
+     "y_top": 101.57
+    },
+    {
+     "h": 0.398,
+     "w": 4.276,
+     "x": 84.442,
+     "y_top": 106.688
+    }
+   ]
+  },
+  "05-cube-root": {
+   "fixture_sha256": "1d0a8eeb7f76d861754d1c8145b6c23b5614ad288b5442cf49399a76fd9c5b04",
+   "glyphs": [
+    {
+     "code": 51,
+     "font": "cmr6",
+     "x": 75.321,
+     "y_top": 83.403
+    },
+    {
+     "code": 114,
+     "font": "cmex10",
+     "x": 72.332,
+     "y_top": 72.797
+    },
+    {
+     "code": 97,
+     "font": "cmmi12",
+     "x": 83.49,
+     "y_top": 79.825
+    },
+    {
+     "code": 98,
+     "font": "cmmi12",
+     "x": 84.074,
+     "y_top": 96.114
+    }
+   ],
+   "pdf_sha256": "7353d740896520fa2b0a5300e0521c8c241b8cd13ff65de77a1ebf7c703e4f38",
+   "pdftex": "This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026) (preloaded format=pdflatex 2026.3.1)  12 SEP 2026 02:43",
+   "rules": [
+    {
+     "h": 0.398,
+     "w": 8.536,
+     "x": 82.295,
+     "y_top": 72.598
+    },
+    {
+     "h": 0.398,
+     "w": 6.145,
+     "x": 83.49,
+     "y_top": 84.924
+    }
+   ]
+  },
+  "06-lim-sin": {
+   "fixture_sha256": "9e29622097698eded9b444759eeaf188c21070b3e0ab54a2c18319fb5de46ac2",
+   "glyphs": [
+    {
+     "code": 108,
+     "font": "cmr12",
+     "x": 72.606,
+     "y_top": 88.022
+    },
+    {
+     "code": 105,
+     "font": "cmr12",
+     "x": 75.857814,
+     "y_top": 88.022
+    },
+    {
+     "code": 109,
+     "font": "cmr12",
+     "x": 79.109629,
+     "y_top": 88.022
+    },
+    {
+     "code": 120,
+     "font": "cmmi8",
+     "x": 72.0,
+     "y_top": 94.819
+    },
+    {
+     "code": 33,
+     "font": "cmsy8",
+     "x": 76.766917,
+     "y_top": 94.819
+    },
+    {
+     "code": 48,
+     "font": "cmr8",
+     "x": 85.235148,
+     "y_top": 94.819
+    },
+    {
+     "code": 115,
+     "font": "cmr12",
+     "x": 92.657,
+     "y_top": 79.935
+    },
+    {
+     "code": 105,
+     "font": "cmr12",
+     "x": 97.274098,
+     "y_top": 79.935
+    },
+    {
+     "code": 110,
+     "font": "cmr12",
+     "x": 100.525913,
+     "y_top": 79.935
+    },
+    {
+     "code": 120,
+     "font": "cmmi12",
+     "x": 109.02606,
+     "y_top": 79.935
+    },
+    {
+     "code": 120,
+     "font": "cmmi12",
+     "x": 100.84,
+     "y_top": 96.223
+    }
+   ],
+   "pdf_sha256": "63f185d862c46f1940326db3c0aa39f45f56d448d51ec52dc1a690ca8318a941",
+   "pdftex": "This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026) (preloaded format=pdflatex 2026.3.1)  12 SEP 2026 02:43",
+   "rules": [
+    {
+     "h": 0.398,
+     "w": 23.017,
+     "x": 92.657,
+     "y_top": 85.034
+    }
+   ]
+  },
+  "07-tall-sqrt-braces": {
+   "fixture_sha256": "dc1f28985d98deced33d2952f8ace96127bf035ef0914d9fcb2cad2202cdfb6e",
+   "glyphs": [
+    {
+     "code": 118,
+     "font": "cmex10",
+     "x": 72.0,
+     "y_top": 72.797
+    },
+    {
+     "code": 117,
+     "font": "cmex10",
+     "x": 72.0,
+     "y_top": 78.376
+    },
+    {
+     "code": 117,
+     "font": "cmex10",
+     "x": 72.0,
+     "y_top": 84.354
+    },
+    {
+     "code": 117,
+     "font": "cmex10",
+     "x": 72.0,
+     "y_top": 90.331
+    },
+    {
+     "code": 117,
+     "font": "cmex10",
+     "x": 72.0,
+     "y_top": 96.309
+    },
+    {
+     "code": 116,
+     "font": "cmex10",
+     "x": 72.0,
+     "y_top": 102.287
+    },
+    {
+     "code": 56,
+     "font": "cmex10",
+     "x": 82.516,
+     "y_top": 76.429
+    },
+    {
+     "code": 62,
+     "font": "cmex10",
+     "x": 82.516,
+     "y_top": 85.396
+    },
+    {
+     "code": 60,
+     "font": "cmex10",
+     "x": 82.516,
+     "y_top": 88.384
+    },
+    {
+     "code": 62,
+     "font": "cmex10",
+     "x": 82.516,
+     "y_top": 106.317
+    },
+    {
+     "code": 58,
+     "font": "cmex10",
+     "x": 82.516,
+     "y_top": 109.306
+    },
+    {
+     "code": 97,
+     "font": "cmmi6",
+     "x": 95.079,
+     "y_top": 81.863
+    },
+    {
+     "code": 98,
+     "font": "cmmi6",
+     "x": 95.459,
+     "y_top": 88.247
+    },
+    {
+     "code": 99,
+     "font": "cmmi8",
+     "x": 95.262,
+     "y_top": 95.956
+    },
+    {
+     "code": 100,
+     "font": "cmmi8",
+     "x": 94.918,
+     "y_top": 104.28
+    },
+    {
+     "code": 101,
+     "font": "cmmi6",
+     "x": 95.336,
+     "y_top": 109.852
+    },
+    {
+     "code": 102,
+     "font": "cmmi6",
+     "x": 94.958,
+     "y_top": 116.236
+    },
+    {
+     "code": 57,
+     "font": "cmex10",
+     "x": 102.821,
+     "y_top": 76.429
+    },
+    {
+     "code": 62,
+     "font": "cmex10",
+     "x": 102.821,
+     "y_top": 85.396
+    },
+    {
+     "code": 61,
+     "font": "cmex10",
+     "x": 102.821,
+     "y_top": 88.385
+    },
+    {
+     "code": 62,
+     "font": "cmex10",
+     "x": 102.821,
+     "y_top": 106.317
+    },
+    {
+     "code": 59,
+     "font": "cmex10",
+     "x": 102.821,
+     "y_top": 109.306
+    }
+   ],
+   "pdf_sha256": "5e8f2dc0c1d202903d7afbea14a3de4ac7948681072ac6a8678e74c6efa4b56c",
+   "pdftex": "This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026) (preloaded format=pdflatex 2026.3.1)  12 SEP 2026 02:43",
+   "rules": [
+    {
+     "h": 0.398,
+     "w": 29.16,
+     "x": 82.516,
+     "y_top": 72.598
+    },
+    {
+     "h": 0.398,
+     "w": 4.034,
+     "x": 95.079,
+     "y_top": 83.129
+    },
+    {
+     "h": 0.398,
+     "w": 6.425,
+     "x": 93.884,
+     "y_top": 88.845
+    },
+    {
+     "h": 0.398,
+     "w": 9.058,
+     "x": 92.567,
+     "y_top": 97.351
+    },
+    {
+     "h": 0.398,
+     "w": 6.667,
+     "x": 93.763,
+     "y_top": 105.999
+    },
+    {
+     "h": 0.398,
+     "w": 4.276,
+     "x": 94.958,
+     "y_top": 111.118
+    }
+   ]
+  },
+  "08-nested-scripts": {
+   "fixture_sha256": "a5ee0d5bdb690ce460466705cc7a445c64ce4cc869bf3eb2bb003bfbeab6c49f",
+   "glyphs": [
+    {
+     "code": 120,
+     "font": "cmmi12",
+     "x": 72.0,
+     "y_top": 83.955
+    },
+    {
+     "code": 121,
+     "font": "cmmi8",
+     "x": 78.652,
+     "y_top": 78.288
+    },
+    {
+     "code": 122,
+     "font": "cmmi6",
+     "x": 83.124,
+     "y_top": 75.475
+    },
+    {
+     "code": 105,
+     "font": "cmmi8",
+     "x": 78.652,
+     "y_top": 86.7
+    },
+    {
+     "code": 106,
+     "font": "cmmi6",
+     "x": 81.535,
+     "y_top": 87.915
+    }
+   ],
+   "pdf_sha256": "c1d95193b933d3c5fdb91c33d3ca55bf0eaaabb31915ccfab585b0539d26de31",
+   "pdftex": "This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026) (preloaded format=pdflatex 2026.3.1)  12 SEP 2026 02:43",
+   "rules": []
+  },
+  "09-int-display": {
+   "fixture_sha256": "06a8ce2184fe34cd23b554f8349c8c3bc0cebbf62750e67f29acbc57b93c58c6",
+   "glyphs": [
+    {
+     "code": 90,
+     "font": "cmex10",
+     "x": 72.0,
+     "y_top": 73.981
+    },
+    {
+     "code": 49,
+     "font": "cmr8",
+     "x": 81.963,
+     "y_top": 77.136
+    },
+    {
+     "code": 48,
+     "font": "cmr8",
+     "x": 77.535,
+     "y_top": 96.619
+    },
+    {
+     "code": 102,
+     "font": "cmmi12",
+     "x": 88.687,
+     "y_top": 88.04
+    },
+    {
+     "code": 40,
+     "font": "cmr12",
+     "x": 95.735786,
+     "y_top": 88.04
+    },
+    {
+     "code": 120,
+     "font": "cmmi12",
+     "x": 100.288326,
+     "y_top": 88.04
+    },
+    {
+     "code": 41,
+     "font": "cmr12",
+     "x": 106.940199,
+     "y_top": 88.04
+    }
+   ],
+   "pdf_sha256": "06959d50211d526c981c59096f680f45ca884bb137675ef41d14bd684e539c3f",
+   "pdftex": "This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026) (preloaded format=pdflatex 2026.3.1)  12 SEP 2026 02:43",
+   "rules": []
+  },
+  "10-left-bracket-frac-squared": {
+   "fixture_sha256": "80eb087ff957b1cad4d2823db13487d1e6a4ba85b1071deece876a585b59208d",
+   "glyphs": [
+    {
+     "code": 20,
+     "font": "cmex10",
+     "x": 72.0,
+     "y_top": 74.38
+    },
+    {
+     "code": 97,
+     "font": "cmmi12",
+     "x": 78.454,
+     "y_top": 80.838
+    },
+    {
+     "code": 98,
+     "font": "cmmi12",
+     "x": 79.038,
+     "y_top": 97.126
+    },
+    {
+     "code": 21,
+     "font": "cmex10",
+     "x": 85.794,
+     "y_top": 74.38
+    },
+    {
+     "code": 50,
+     "font": "cmr8",
+     "x": 91.052,
+     "y_top": 77.136
+    }
+   ],
+   "pdf_sha256": "534b8899e55da40c4b5c3d56ea25037e218d9d9b27492721df141208498ad526",
+   "pdftex": "This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026) (preloaded format=pdflatex 2026.3.1)  12 SEP 2026 02:43",
+   "rules": [
+    {
+     "h": 0.398,
+     "w": 6.145,
+     "x": 78.454,
+     "y_top": 85.937
+    }
+   ]
+  },
+  "11-accents": {
+   "fixture_sha256": "5bfdb0214470fbf6e5615a1f68c4b8b7fe392beb205f08f0a389cfebd3e76a51",
+   "glyphs": [
+    {
+     "code": 94,
+     "font": "cmr12",
+     "x": 71.267,
+     "y_top": 83.955
+    },
+    {
+     "code": 123,
+     "font": "cmmi12",
+     "x": 72.00344,
+     "y_top": 83.955
+    },
+    {
+     "code": 43,
+     "font": "cmr12",
+     "x": 78.393495,
+     "y_top": 83.955
+    },
+    {
+     "code": 126,
+     "font": "cmmi12",
+     "x": 89.961346,
+     "y_top": 83.955
+    },
+    {
+     "code": 120,
+     "font": "cmmi12",
+     "x": 90.159803,
+     "y_top": 83.955
+    }
+   ],
+   "pdf_sha256": "4abde03cf6f09c80f459125bc43d712c20e0ea02e221899e25c2fdad5cfaef82",
+   "pdftex": "This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026) (preloaded format=pdflatex 2026.3.1)  12 SEP 2026 02:43",
+   "rules": []
+  },
+  "12-sum-limits-inline": {
+   "fixture_sha256": "567572f5327b3f10b242ab13061fce8cfa9c3d4f3a9a46796ee784ae9ca557ef",
+   "glyphs": [
+    {
+     "code": 110,
+     "font": "cmmi8",
+     "x": 76.283,
+     "y_top": 76.428
+    },
+    {
+     "code": 80,
+     "font": "cmex10",
+     "x": 73.594,
+     "y_top": 78.42
+    },
+    {
+     "code": 105,
+     "font": "cmmi8",
+     "x": 72.0,
+     "y_top": 95.312
+    },
+    {
+     "code": 61,
+     "font": "cmr8",
+     "x": 74.882785,
+     "y_top": 95.312
+    },
+    {
+     "code": 49,
+     "font": "cmr8",
+     "x": 81.469276,
+     "y_top": 95.312
+    },
+    {
+     "code": 120,
+     "font": "cmmi12",
+     "x": 87.696,
+     "y_top": 86.391
+    },
+    {
+     "code": 105,
+     "font": "cmmi8",
+     "x": 94.348,
+     "y_top": 88.184
+    }
+   ],
+   "pdf_sha256": "b0b0d7141d3943326fe15a92421184bb0d79ed1e2a13afa3346b215ba269d77c",
+   "pdftex": "This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026) (preloaded format=pdflatex 2026.3.1)  12 SEP 2026 02:43",
+   "rules": []
+  },
+  "13-bigop-scripts-inline": {
+   "fixture_sha256": "c5c70de4653a424d330bc62c5ac7d3241d2f1284c6640d9c8efda03e27eb67c7",
+   "glyphs": [
+    {
+     "code": 81,
+     "font": "cmex10",
+     "x": 72.0,
+     "y_top": 75.985
+    },
+    {
+     "code": 109,
+     "font": "cmmi8",
+     "x": 81.409,
+     "y_top": 79.14
+    },
+    {
+     "code": 107,
+     "font": "cmmi8",
+     "x": 81.409,
+     "y_top": 86.911
+    },
+    {
+     "code": 61,
+     "font": "cmr8",
+     "x": 86.033252,
+     "y_top": 86.911
+    },
+    {
+     "code": 49,
+     "font": "cmr8",
+     "x": 92.619743,
+     "y_top": 86.911
+    },
+    {
+     "code": 97,
+     "font": "cmmi12",
+     "x": 99.342,
+     "y_top": 83.955
+    },
+    {
+     "code": 107,
+     "font": "cmmi8",
+     "x": 105.487,
+     "y_top": 85.748
+    }
+   ],
+   "pdf_sha256": "18bc90faebac8c31087b745286d10d9a25a443deb762362b3c1938a9b4cc9c36",
+   "pdftex": "This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026) (preloaded format=pdflatex 2026.3.1)  12 SEP 2026 02:43",
+   "rules": []
+  },
+  "14-mixed-text-math": {
+   "fixture_sha256": "c2f47b726e5d73aef1bfcb1bc2fa0fe440e98398ed650bef1161fc3fb56436e6",
+   "glyphs": [
+    {
+     "code": 76,
+     "font": "cmr12",
+     "x": 72.0,
+     "y_top": 83.955
+    },
+    {
+     "code": 101,
+     "font": "cmr12",
+     "x": 79.314191,
+     "y_top": 83.955
+    },
+    {
+     "code": 116,
+     "font": "cmr12",
+     "x": 84.517094,
+     "y_top": 83.955
+    },
+    {
+     "code": 120,
+     "font": "cmmi12",
+     "x": 92.96703,
+     "y_top": 83.955
+    },
+    {
+     "code": 50,
+     "font": "cmr8",
+     "x": 99.623,
+     "y_top": 79.617
+    },
+    {
+     "code": 43,
+     "font": "cmr12",
+     "x": 107.012,
+     "y_top": 83.955
+    },
+    {
+     "code": 121,
+     "font": "cmmi12",
+     "x": 118.771135,
+     "y_top": 83.955
+    },
+    {
+     "code": 50,
+     "font": "cmr8",
+     "x": 124.91,
+     "y_top": 79.617
+    },
+    {
+     "code": 61,
+     "font": "cmr12",
+     "x": 132.963,
+     "y_top": 83.955
+    },
+    {
+     "code": 122,
+     "font": "cmmi12",
+     "x": 145.391626,
+     "y_top": 83.955
+    },
+    {
+     "code": 50,
+     "font": "cmr8",
+     "x": 151.359,
+     "y_top": 79.617
+    },
+    {
+     "code": 104,
+     "font": "cmr12",
+     "x": 159.994,
+     "y_top": 83.955
+    },
+    {
+     "code": 111,
+     "font": "cmr12",
+     "x": 166.497629,
+     "y_top": 83.955
+    },
+    {
+     "code": 108,
+     "font": "cmr12",
+     "x": 172.350895,
+     "y_top": 83.955
+    },
+    {
+     "code": 100,
+     "font": "cmr12",
+     "x": 175.602709,
+     "y_top": 83.955
+    },
+    {
+     "code": 46,
+     "font": "cmr12",
+     "x": 182.106338,
+     "y_top": 83.955
+    }
+   ],
+   "pdf_sha256": "9befd11c5ad7339d15710f6ff3b318989a87e5143c7139bdd6b3c12cd5d8e8b3",
+   "pdftex": "This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026) (preloaded format=pdflatex 2026.3.1)  12 SEP 2026 02:43",
+   "rules": []
+  },
+  "15-nested-fraction-sum": {
+   "fixture_sha256": "cbf509b2e4a806ad5319ae36d80b15a493b436a4a4d9394c029e1128c6bcea65",
+   "glyphs": [
+    {
+     "code": 97,
+     "font": "cmmi12",
+     "x": 73.721,
+     "y_top": 80.302
+    },
+    {
+     "code": 43,
+     "font": "cmr12",
+     "x": 82.520027,
+     "y_top": 80.302
+    },
+    {
+     "code": 98,
+     "font": "cmmi12",
+     "x": 94.279162,
+     "y_top": 80.302
+    },
+    {
+     "code": 99,
+     "font": "cmmi8",
+     "x": 74.736,
+     "y_top": 91.883
+    },
+    {
+     "code": 100,
+     "font": "cmmi8",
+     "x": 74.391,
+     "y_top": 100.713
+    },
+    {
+     "code": 43,
+     "font": "cmr12",
+     "x": 82.601,
+     "y_top": 96.591
+    },
+    {
+     "code": 101,
+     "font": "cmmi12",
+     "x": 94.360135,
+     "y_top": 96.591
+    }
+   ],
+   "pdf_sha256": "9457bc3146c1c71cd4709bd1a2ae1303c8bbfaa8aa88364f72e86af6ab203e28",
+   "pdftex": "This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026) (preloaded format=pdflatex 2026.3.1)  12 SEP 2026 02:43",
+   "rules": [
+    {
+     "h": 0.398,
+     "w": 26.592,
+     "x": 73.196,
+     "y_top": 85.401
+    },
+    {
+     "h": 0.398,
+     "w": 4.357,
+     "x": 74.391,
+     "y_top": 93.602
+    }
+   ]
+  }
+ }
+}

@@ -2,7 +2,8 @@
 
 Cases: 15; failed: 0 
 Largest max |Δ| over the corpus: 0.0055 bp
-Reference: pdflatex (BasicTeX) on the fixture as committed (12pt lmodern preamble); Δ = ours − reference in PDF points; positions relative to the first glyph of each case except the placement row.
+Reference: pinned oracle geometry (fixtures/visual/oracle-geometry.json; pdflatex not run — not installed) on the fixture as committed (12pt article, OT1 Computer Modern); Δ = ours − reference in PDF points; positions relative to the first glyph of each case except the placement row.
+Pinned pdfTeX: This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026) (preloaded format=pdflatex 2026.3.1)  12 SEP 2026 02:43
 
 ### 01-stacked-fraction
 
