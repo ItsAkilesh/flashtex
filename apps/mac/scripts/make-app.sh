@@ -98,6 +98,12 @@ cat > "$CONTENTS_DIR/Info.plist" <<PLIST
 	<string>NSApplication</string>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.productivity</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>FlashTeX uses the local network to discover and receive captures from nearby devices.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_flashtex._tcp</string>
+	</array>
 </dict>
 </plist>
 PLIST
