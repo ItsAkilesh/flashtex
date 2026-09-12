@@ -1,3 +1,13 @@
+# Current publication override — September 12
+
+Local Cursor returned terminal `ActionRequiredError: usage limit` on authority and
+bridge publication. The user explicitly authorizes direct commits by the current
+agent on ALL computers when Cursor limits are hit. No additional Cursor call,
+purchase, or overage is required. Preserve truthful tool/executor identity, local
+GitHub user coauthorship, and Jaysen primary-author exception. Other resource and
+Linux Claude API-only restrictions remain unchanged. The broker #15 is superseded
+once Astra publishes this direct authority claim and verifies remote main.
+
 # Resource authority and allocation register
 
 Status: user confirmed £75 is Pro/Max extra usage and included allowance must not

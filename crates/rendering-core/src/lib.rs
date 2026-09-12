@@ -4,6 +4,7 @@
 //! to paint. The caller must negotiate/integrate actual consumers separately.
 
 pub mod cache;
+pub mod font_adapter;
 pub mod hit_test;
 
 use serde::{Deserialize, Serialize};
