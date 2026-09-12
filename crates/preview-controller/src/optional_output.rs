@@ -1,6 +1,6 @@
 //! Complete-frame optional admission. Never changes required source-delivery state.
 use crate::{output_buffer::OutputBuffer, output_delivery::Sender};
-use serde_json::Value;
+use serde::Serialize;
 use std::io::BufWriter;
 #[derive(Debug, PartialEq, Eq)]
 pub enum Outcome {
@@ -17,7 +17,12 @@ impl Outcome {
         }
     }
 }
-pub fn offer(sender: &Sender, epoch: u64, value: &Value, limit: usize) -> Outcome {
+pub fn offer<T: Serialize + ?Sized>(
+    sender: &Sender,
+    epoch: u64,
+    value: &T,
+    limit: usize,
+) -> Outcome {
     if !sender.can_offer(epoch) {
         return Outcome::BusyOrObsolete;
     }
@@ -42,8 +47,43 @@ pub fn offer(sender: &Sender, epoch: u64, value: &Value, limit: usize) -> Outcom
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
+    use serde_json::{json, value::RawValue, Value};
     use std::time::Duration;
+    #[test]
+    fn raw_body_preserves_spelling_and_complete_frame_limit_without_activation() {
+        // Serializer boundary only: production must first validate source identity
+        // and agree numeric/duplicate-key policy with the runtime owner.
+        #[derive(Serialize)]
+        struct Frame<'a> {
+            kind: &'a str,
+            body: &'a RawValue,
+        }
+        let raw = RawValue::from_string(format!(
+            "{{\"number\":1e9,\"text\":\"{}\\u0061\"}}",
+            "x".repeat(9000)
+        ))
+        .unwrap();
+        let frame = Frame {
+            kind: "probe",
+            body: &raw,
+        };
+        let mut expected = serde_json::to_vec(&frame).unwrap();
+        expected.push(b'\n');
+        let (tx, rx) = crate::output_delivery::channel(1);
+        assert_eq!(
+            offer(&tx, 0, &frame, expected.len() - 1),
+            Outcome::SerializationRefused
+        );
+        assert!(rx.next(Duration::ZERO).is_err());
+        tx.try_send(b"durable-ack\n".to_vec()).unwrap();
+        let ack = rx.next(Duration::ZERO).unwrap();
+        assert_eq!(ack.bytes, b"durable-ack\n");
+        rx.written(&ack);
+        assert_eq!(offer(&tx, 0, &frame, expected.len()), Outcome::Admitted);
+        assert_eq!(rx.next(Duration::ZERO).unwrap().bytes, expected);
+        assert!(std::str::from_utf8(&expected).unwrap().contains("1e9"));
+        assert!(std::str::from_utf8(&expected).unwrap().contains("\\u0061"));
+    }
     #[test]
     fn reserialization_growth_is_refused_without_partial_output_or_lost_ack() {
         let (tx, rx) = crate::output_delivery::channel(2);

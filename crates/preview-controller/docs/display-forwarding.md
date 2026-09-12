@@ -133,3 +133,14 @@ idle and document-query polls, framed bytes above5MB, and finite nonnegative sta
 durations before confirming that durable editing still works. Use these stages
 alongside optional-output serialization and end-to-end receipt timings; do not
 infer a full latency budget by summing phases from different requests or processes.
+
+
+Preparatory raw-body serializer boundary: optional admission accepts any typed
+`Serialize` value, so a future reviewed candidate wrapper can retain `RawValue`
+without first converting it back to `Value`. Current production callers still
+supply the original `Value` envelopes; no raw transport mode is activated by this
+change. A >8KiB raw-body test preserves exponent and Unicode-escape spelling,
+refuses a one-byte-over-budget frame after buffer flushing, confirms no optional
+bytes were admitted, then delivers a required ACK and an exact-limit frame.
+Source validation and duplicate/numeric/depth acceptance belong to the separate
+runtime contract and are not established by this serializer test.
