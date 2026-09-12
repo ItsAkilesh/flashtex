@@ -208,3 +208,22 @@ remain explicitly unsupported. Flat-versus-nested synthetic glyph and rule
 fixtures compare exact geometry and retain intentionally distinct provenance;
 cycle, missing-resource, depth, node and global-output cap tests also pass.
 Real licensed VF/TFM/outline oracle agreement remains pending.
+
+## Staged CFF1 support (not production activated)
+
+`cff::Cff::parse` accepts raw CFF table bytes from the existing public
+font-engine `TrueTypeFace::cff_table()` or PDF `TrueTypeFont::cff_table()` accessor.
+Reviewed peers: font-engine `2d6954b923340c788cd31f663fa8e7a845326dec`, PDF
+`52b371171ee497a52ce0529dbe6bf22cda4bfe04`. Their private numeric readers are not
+re-exported; existing local bounded readers are reused. No second OpenType font
+selector, shaper or sfnt directory parser is introduced.
+
+This first stage validates bounded CFF1 INDEX/DICT syntax, one-font Name/Top DICT,
+CharStrings, custom charset/encoding and Private/Local/Global Subrs offsets.
+Integer and decimal DICT values remain exact (decimals are preserved strings).
+CID-keyed/CFF2/Expert predefined charsets are explicitly unsupported. Semantic
+validation of every optional DICT operator is not claimed. Metadata acceptance
+alone does not prove charstring safety or rendering support. Production font
+resource schema remains static-truetype; no fallback or wire activation occurs.
+References: [CFF specification](https://adobe-type-tools.github.io/font-tech-notes/pdfs/5176.CFF.pdf)
+and [Type 2 specification](https://adobe-type-tools.github.io/font-tech-notes/pdfs/5177.Type2.pdf).
