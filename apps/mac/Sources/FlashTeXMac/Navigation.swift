@@ -633,8 +633,7 @@ extension ShellModel {
             // mark of the next open document that has one.
             for offset in 1..<documents.count {
                 let doc = documents[(active + offset) % documents.count]
-                let other = EditorDiagnostics.report(for: result, resultID: resultID, path: doc.path,
-                                                     compiledText: compiledDocuments[doc.path], currentText: doc.text)
+                let other = diagnosticReport(for: doc.path, currentText: doc.text) // retention rule applied (ShellModel+DiagnosticRetention.swift)
                 if let step = EditorDiagnostics.step(other.marks, fromUTF16: forward ? -1 : Int.max, forward: forward, in: doc.text) {
                     chosen = (doc.path, step, other)
                     break
