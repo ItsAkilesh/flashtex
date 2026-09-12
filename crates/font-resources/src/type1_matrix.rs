@@ -54,6 +54,21 @@ impl Context {
             header.extend(&resource.bytes()[s.payload.clone()]);
         }
         let (font_name, matrix) = parse(&header)?;
+        let mut trailer = Vec::new();
+        let mut binary_seen = false;
+        for segment in resource.segments() {
+            if segment.kind == SegmentKind::Binary {
+                binary_seen = true;
+                continue;
+            }
+            if binary_seen {
+                if trailer.len() + segment.payload.len() > 65536 {
+                    return Err(Error::Budget);
+                }
+                trailer.extend(&resource.bytes()[segment.payload.clone()]);
+            }
+        }
+        validate_trailer(&trailer)?;
         Ok(Self {
             identity: resource.identity().clone(),
             font_name,
@@ -61,6 +76,28 @@ impl Context {
             header_sha256: sha256(&header),
         })
     }
+}
+fn validate_trailer(bytes: &[u8]) -> Result<(), Error> {
+    let mut at = 0;
+    let mut zeros = 0;
+    while let Some(c) = bytes.get(at) {
+        if c.is_ascii_whitespace() {
+            at += 1
+        } else if *c == b'0' {
+            zeros += 1;
+            at += 1
+        } else {
+            break;
+        }
+    }
+    if zeros != 512 {
+        return Err(Error::UnsupportedHeader);
+    }
+    let tail = bytes.get(at..).ok_or(Error::UnsupportedHeader)?;
+    if !tail.starts_with(b"cleartomark") || tail[11..].iter().any(|c| !c.is_ascii_whitespace()) {
+        return Err(Error::UnsupportedHeader);
+    }
+    Ok(())
 }
 fn decimal(p: &mut Parser<'_>) -> Result<Rational, Error> {
     let t = p.token()?;
@@ -318,5 +355,32 @@ mod tests {
         let mut wrong = context;
         wrong.identity.resource_id = "other".into();
         assert!(matches!(transform(raw(), &wrong), Err(Error::Identity)));
+    }
+    #[test]
+    fn redefinitions_branches_and_post_eexec_overrides_are_refused() {
+        let valid = header("1 0 0 1 0 0", 0);
+        for text in [
+            valid.replace("/PaintType 0 def", "/PaintType 0 def /PaintType 2 def"),
+            valid.replace(
+                "/FontMatrix [",
+                "false { /PaintType 2 def } if /FontMatrix [",
+            ),
+            format!("FontDirectory /Test known {{save true}}{{false}}ifelse {valid}"),
+        ] {
+            assert!(parse(text.as_bytes()).is_err())
+        }
+        let mut valid_trailer = vec![b'0'; 512];
+        valid_trailer.extend(b"\ncleartomark\n");
+        assert!(validate_trailer(&valid_trailer).is_ok());
+        for tail in [
+            b"{restore}if".as_slice(),
+            b"/FontMatrix [2 0 0 2 0 0] def",
+            b"exec",
+        ] {
+            let mut tampered = valid_trailer.clone();
+            tampered.extend(tail);
+            assert!(validate_trailer(&tampered).is_err())
+        }
+        assert!(validate_trailer(b"cleartomark").is_err());
     }
 }
