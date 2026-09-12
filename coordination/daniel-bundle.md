@@ -109,7 +109,7 @@ rustc/cargo 1.98.1, this machine:
 - `cargo clippy --all-targets -- -D warnings`: clean, 0 warnings.
 
 Exact tested commit SHA (the commit whose `crates/project-bundle` tree the
-above three commands were run against): `PENDING-FILLED-IN-FOLLOWUP-COMMIT`.
+above three commands were run against): `5a37954d2ed8f5e73379e7d31381bcfefcd8c6c2`.
 
 ## Incomplete behavior
 
