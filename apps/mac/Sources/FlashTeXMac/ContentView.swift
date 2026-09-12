@@ -31,6 +31,7 @@ struct ContentView: View {
                         .disabled(!model.workerAttached)
                 }
             }
+            ToolbarItem { HStack(spacing: 4) { Text("v2 preview").font(.caption); Toggle("v2 preview", isOn: $model.previewV2).toggleStyle(.switch).labelsHidden() }.help("Experimental display-list-v2 preview (File > Open Display List (v2)…)") }
             ToolbarItem { Button("Reload fixture") { model.reloadFixture() } }
             ToolbarItem {
                 Button("Compile", systemImage: "hammer") { model.compile() }
@@ -230,7 +231,9 @@ private struct PreviewPane: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if let result = model.result {
+            if model.previewV2 {
+                PreviewV2Pane() // experimental v2 path (PreviewV2View.swift); v1 below stays the default
+            } else if let result = model.result {
                 PreviewView(result: result, dark: model.darkPreview, caretItems: model.caretItems) { source, text in
                     guard let source else { model.navigationNote = "This item has no source mapping."; return }
                     model.navigate(to: source, expectedText: text)

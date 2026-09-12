@@ -1,0 +1,21 @@
+{
+  "frameId" : "v2-math",
+  "identical" : true,
+  "pages" : [
+    {
+      "differingPixels" : 0,
+      "exportSha256" : "7a18de16ce7cec00e3f031f30bdb5bd92d7f0624dd8bc3826389af99af4baf72",
+      "heightPx" : 1584,
+      "page" : 1,
+      "previewSha256" : "7a18de16ce7cec00e3f031f30bdb5bd92d7f0624dd8bc3826389af99af4baf72",
+      "widthPx" : 1224
+    }
+  ],
+  "pdfBytes" : 116384,
+  "projectId" : "preview-v2",
+  "revision" : 3,
+  "scale" : 2,
+  "source" : "\/private\/tmp\/claude-501\/-Users-jay3332-Projects-flashtex\/e30fd4a4-f46a-4c3f-a28c-cbb8617b4425\/scratchpad\/pv2\/math.v2.json",
+  "tolerance" : 0,
+  "total_differing_pixels" : 0
+}

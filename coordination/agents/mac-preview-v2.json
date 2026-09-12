@@ -1,0 +1,41 @@
+{
+  "agent_id": "mac-preview-v2",
+  "allocation_id": "claude-mac20x-preview-v2",
+  "assignment_acknowledgements": {},
+  "branch": "agent/mac-preview-v2/exact-glyphs",
+  "capabilities": [
+    "swift",
+    "coregraphics",
+    "rendering-v2"
+  ],
+  "code_revision": "0dbdf77929da9a504aada29f0ddf2fbb5bf71d67",
+  "eta_minutes": {
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 0
+  },
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "780f1458c125d9702b994ab9df377aed96a1113f",
+  "next_action": "Parent cherry-picks 8cb9ade (ShellModel +2, ContentView +4/-1, FlashTeXMacApp +1) or re-applies; next lane candidates: render-format negotiation with the worker instead of file input; in-app hover/caret repaint timing; bundle latinmodern-math.otf decision (GUST license) for math lists.",
+  "reviewed_peers": {
+    "origin/agent/mac-render-pipeline/unified": {
+      "adaptation": "Swift validator applies rendering-core's DisplayList::validate structural rules (feature declaration, cluster-glyph mapping, exact-range ticks, bounds); main dd75e15 changes only coordination queues (mac-preview-v2 lane unchanged); pipeline display.rs unchanged between 79ba728 (scratch-built for the fixtures) and ba5611f (space factor + TFM metrics only; manifest hash/format conventions unchanged), still emits opentype-cff and bytes+face0 hashes (documented deviations kept); its --pdf is the legacy v1 writer, so parity is against the Mac CG export",
+      "reviewed_utc": "2026-09-12T09:11:14Z",
+      "sha": "ba5611fc8954456db54731576cd1ac75b2f566c9"
+    },
+    "origin/main": {
+      "adaptation": "Swift validator applies rendering-core's DisplayList::validate structural rules (feature declaration, cluster-glyph mapping, exact-range ticks, bounds); main dd75e15 changes only coordination queues (mac-preview-v2 lane unchanged); pipeline display.rs unchanged between 79ba728 (scratch-built for the fixtures) and ba5611f (space factor + TFM metrics only; manifest hash/format conventions unchanged), still emits opentype-cff and bytes+face0 hashes (documented deviations kept); its --pdf is the legacy v1 writer, so parity is against the Mac CG export",
+      "reviewed_utc": "2026-09-12T09:11:14Z",
+      "sha": "dd75e15f32e5a0616939e3d32078b4434db8a2d7"
+    }
+  },
+  "schema_version": 1,
+  "state": "ready_for_integration",
+  "summary": "agent/mac-preview-v2/exact-glyphs tip 0dbdf77 (mac-shell 312cabc merged): rendering-v2 consumer with exact glyph runs by original GID and typed rules; validator applies rendering-core rules; off-main immutable page preparation with load tickets (stale results dropped, previous frame retained with STALE indicator); off-main bounded page raster cache blitted 1:1; zero-tolerance export/preview parity 0 px at 1 and 2 px/pt on 22 real pipeline pages (rules as path fills + 7-significant-digit serialized coordinates), fractional-scale CoreGraphics residual documented; full swift test 339/339 (5 skipped for other lanes' optional helpers). Shared shell edits isolated in commit 8cb9ade for the parent.",
+  "tool": "Claude Code subagent (parent mac-claude-a)",
+  "updated_utc": "2026-09-12T09:20:25Z",
+  "usage": {
+    "evidence": "docs/evidence/mac-preview-v2-parity-2026-09-12.md (+ parity JSON, window capture by id with FLASHTEX_NO_ACTIVATE=1); apps/mac swift test 339 tests, 5 skipped, 0 failures after merging mac-shell 312cabc; v2 suites 33/33",
+    "status": "Shared Claude Max 20x quota with parent mac-claude-a; no purchases; no paid network calls"
+  }
+}

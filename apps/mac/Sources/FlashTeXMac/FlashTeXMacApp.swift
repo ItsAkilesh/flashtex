@@ -115,6 +115,7 @@ struct FlashTeXMacApp: App {
                     .keyboardShortcut("o", modifiers: [.command, .shift])
                 Button("Reload Fixture") { model.reloadFixture() }
                     .keyboardShortcut("r")
+                Button("Open Display List (v2)…") { model.openDisplayListV2Panel() } // experimental, PreviewV2View.swift
                 Button("Export PDF…") { model.exportPDF() }
                     .keyboardShortcut("e", modifiers: [.command, .shift])
                     .disabled(model.result == nil)
