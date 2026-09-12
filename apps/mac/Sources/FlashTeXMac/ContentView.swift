@@ -133,14 +133,23 @@ private struct EditorPane: View {
         @Bindable var model = model
         VStack(spacing: 0) {
             HStack {
-                Picker("Document", selection: $model.activePath) {
-                    ForEach(model.documents, id: \.path) { Text($0.path).tag($0.path) }
+                // Switching goes through ProjectDocuments so each document's
+                // caret/selection is kept and a pending insertion is never
+                // applied to the wrong buffer (ProjectDocuments.swift).
+                Picker("Document", selection: Binding(get: { model.activePath },
+                                                      set: { model.project.switchDocument(to: $0) })) {
+                    ForEach(model.project.listing) { doc in
+                        Text(doc.path + (doc.isDirty ? " •" : "") + (doc.durableRevision.map { " r\($0)" } ?? "")).tag(doc.path)
+                    }
                 }
-                .labelsHidden().frame(maxWidth: 220)
+                .labelsHidden().frame(maxWidth: 260)
+                ProjectMenu()
                 if let url = model.documentURL {
-                    Text(url.lastPathComponent + (model.isDirty ? " — edited" : ""))
-                        .font(.caption).foregroundStyle(model.isDirty ? .orange : .secondary)
-                        .help(url.path)
+                    let dirty = model.project.isDirty(model.activePath)
+                    let name = model.activePath == model.project.entryPath ? url.lastPathComponent : model.activePath
+                    Text(name + (dirty ? " — edited" : ""))
+                        .font(.caption).foregroundStyle(dirty ? .orange : .secondary)
+                        .help(model.activePath == model.project.entryPath ? url.path : url.deletingLastPathComponent().appendingPathComponent(model.activePath).path)
                 } else {
                     Text("unsaved buffer").font(.caption).foregroundStyle(.secondary)
                 }
@@ -164,6 +173,53 @@ private struct EditorPane: View {
             CaptureBar()
             BridgeBar()
         }
+    }
+}
+
+/// Project membership: open the entry document's `\input`/`\include`
+/// targets, save or detach the active non-entry document. Discovery runs
+/// when the menu opens (bounded lexical scan, ProjectDocuments.swift).
+private struct ProjectMenu: View {
+    @Environment(ShellModel.self) var model
+
+    var body: some View {
+        Menu {
+            let found = model.project.discoverIncludes()
+            if found.isEmpty {
+                Text("No \\input or \\include in \(model.project.entryPath)")
+            }
+            ForEach(Array(found.enumerated()), id: \.offset) { _, d in
+                switch d.state {
+                case .available:
+                    Button("Open \(d.resolvedPath ?? d.reference.argument)") {
+                        Task { await model.project.openInclude(d.reference.argument) }
+                    }
+                case .open:
+                    Button("Show \(d.resolvedPath ?? d.reference.argument)") {
+                        if let path = d.resolvedPath { model.project.switchDocument(to: path) }
+                    }
+                case .unresolvable(let why):
+                    Text("\\\(d.reference.kind.rawValue){\(d.reference.argument)}: \(why)")
+                }
+            }
+            if !found.isEmpty, found.contains(where: { $0.state == .available }) {
+                Button("Open All Includes") { Task { await model.project.openDiscoveredIncludes() } }
+            }
+            if model.activePath != model.project.entryPath {
+                Divider()
+                Button("Save \(model.activePath)") { Task { await model.project.saveDocument(model.activePath) } }
+                    .disabled(model.documentURL == nil)
+                Button("Detach \(model.activePath)") {
+                    Task {
+                        if case .refused(let why) = await model.project.detachDocument(model.activePath) { model.captureNote = why }
+                    }
+                }
+            }
+        } label: {
+            Label("Project", systemImage: "doc.on.doc")
+        }
+        .menuStyle(.borderlessButton).fixedSize()
+        .help(model.project.status)
     }
 }
 
