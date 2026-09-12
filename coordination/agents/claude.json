@@ -16,29 +16,29 @@
     "cursor-commit",
     "coordination"
   ],
-  "code_revision": "01fb13cc65dc6e36f2989b3db06953a7559b0e6c",
+  "code_revision": "3cffdfa20aa11da886c679d610641ed0117c1af1",
   "eta_minutes": {
-    "likely": 0,
-    "optimistic": 0,
-    "pessimistic": 0
+    "likely": 35,
+    "optimistic": 20,
+    "pessimistic": 55
   },
   "machine": "mac-m5pro-kabir",
   "main_integrated_through": "09031efa9feca80d7a34e29b0b6fc41d43c509c4",
-  "next_action": "Awaiting next Commander dispatch. FT-005 and FT-006 are dispatchable: FT-002 is ready and FT-006 groundwork exists at /Users/kubar/code/ft-wt-incremental.",
+  "next_action": "Commander decision needed on four points in docs/resources/ft005-duplication.md: single FT-005 owner, surviving PDF home, whether crates/compiler may take registry dependencies, and consolidation of font metrics.",
   "reviewed_peers": {
     "origin/main": {
-      "adaptation": "Ran the new FT-011 corpus from origin/main via git archive rather than merging, to avoid disturbing staged work. It showed every case emitting \\documentclass is not supported, which drove the preamble and macro work. Interface design deliberately extends the vocabulary already in apps/mac rather than inventing one; apps/mac remains owned by mac-claude-a and is untouched.",
-      "reviewed_utc": "2026-09-12T05:15:12Z",
-      "sha": "a283f73fcdaed4c31e83192787bf98f9ee6847cd"
+      "adaptation": "Recommending consolidation onto crates/fontmetrics over my own metrics.rs: it is CoreText-measured, still zero-dependency, ships a verification tool, and is designed so compiler layout, Mac preview and PDF /Widths agree. I will delete my metrics.rs and depend on it if the Commander agrees. Touching none of those branches; they belong to their authors.",
+      "reviewed_utc": "2026-09-12T05:27:19Z",
+      "sha": "984fa28f2537feadb9f848eb90f69de0327d1fa5"
     }
   },
   "schema_version": 1,
-  "state": "accepted",
-  "summary": "FT-002 hardened with preamble handling and \\newcommand macro expansion; 37 tests pass. Corpus result moved from 0 to 7 cases status ok. Separately, user-assigned IDE interface design published as a six-artboard canvas with working files in docs/design/canvas.",
+  "state": "in_progress",
+  "summary": "FT-002 rev 3 in progress (dependency-aware invalidation, resumable layout cursor, macro-aware invalidation). URGENT integration risk found and documented: FT-005 is unassigned on the board and three agents are independently building it, two of them writing into crates/compiler which is FT-002 owned_paths.",
   "tool": "Codex",
-  "updated_utc": "2026-09-12T05:15:58Z",
+  "updated_utc": "2026-09-12T05:27:19Z",
   "usage": {
-    "evidence": "cargo test 37 pass (27 lib, 10 acceptance); clippy -D warnings clean; cargo fmt clean; tests/tex-corpus 14/14 answered, 7 ok and 7 recovered, 9/9 visible_text expectations covered by exact byte spans",
-    "status": "Four Codex worker runs on openai-kabir-plus-ft002-stage2; Codex weekly window was 5 percent at last reading"
+    "evidence": "Survey of all 25 remote task branches: agent/aarush-macbook/pdf-output adds pdf-writer 0.15 and tempfile to crates/compiler/Cargo.toml and is written against the placeholder glyph metrics removed at de1020c; agent/mac-pdf/pdf-output adds a separate crates/pdf of ~4400 lines; agent/mac-claude-a/fontmetrics adds crates/fontmetrics of ~2600 lines duplicating crates/compiler/src/metrics.rs",
+    "status": "Fifth Codex worker running on openai-kabir-plus-ft002-stage3"
   }
 }
