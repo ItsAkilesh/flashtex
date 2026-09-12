@@ -308,12 +308,15 @@ impl Controller {
             })
     }
     pub fn poll(&mut self) -> Vec<Update> {
-        let current = self.index.snapshot();
         let Some(runtime) = self.runtime.as_mut() else {
             return Vec::new();
         };
-        runtime
-            .poll()
+        let events = runtime.poll();
+        if events.is_empty() {
+            return Vec::new();
+        }
+        let current = self.index.snapshot();
+        events
             .into_iter()
             .map(|event| match event {
                 Event::Preview {
