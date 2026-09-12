@@ -1,7 +1,7 @@
 //! Persistent original-compiler transport. Poll from an application worker, not
 //! the UI thread. Results are never substituted across revisions.
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::Value;
 use std::{
     collections::{BTreeMap, VecDeque},
     io::{BufRead, BufReader, Read, Write},
@@ -44,6 +44,9 @@ impl Default for Limits {
 }
 #[derive(Debug)]
 pub enum Event {
+    Cancelled {
+        id: String,
+    },
     Superseded {
         id: String,
         by_id: String,
@@ -67,6 +70,7 @@ pub enum Event {
     },
 }
 struct Pending {
+    cancelled: bool,
     request: Request,
     bytes: Vec<u8>,
     queued: Instant,
@@ -227,12 +231,41 @@ impl Session {
             (request.revision, request.id.clone()),
         );
         self.queue.push_back(Pending {
+            cancelled: false,
             request,
             bytes,
             queued: Instant::now(),
             sent: None,
         });
         self.dispatch();
+        Ok(())
+    }
+    /// Release a closed project's slot and explicitly cancel accepted work.
+    /// An in-flight wire request is still drained before another is dispatched.
+    pub fn close_project(&mut self, project_id: &str) -> Result<(), String> {
+        if self.events.len() >= self.limits.max_pending_events {
+            return Err("poll pending events before closing projects".into());
+        }
+        self.latest.remove(project_id);
+        if let Some(active) = self.active.as_mut() {
+            if active.request.project_id == project_id && !active.cancelled {
+                active.cancelled = true;
+                self.events.push_back(Event::Cancelled {
+                    id: active.request.id.clone(),
+                });
+            }
+        }
+        let mut retained = VecDeque::new();
+        for pending in self.queue.drain(..) {
+            if pending.request.project_id == project_id {
+                self.events.push_back(Event::Cancelled {
+                    id: pending.request.id,
+                });
+            } else {
+                retained.push_back(pending);
+            }
+        }
+        self.queue = retained;
         Ok(())
     }
     fn dispatch(&mut self) {
@@ -257,7 +290,7 @@ impl Session {
     }
     fn fail(&mut self, reason: &str) {
         self.process.take();
-        if let Some(p) = self.active.take() {
+        if let Some(p) = self.active.take().filter(|p| !p.cancelled) {
             self.events.push_back(Event::Failed {
                 id: p.request.id,
                 reason: reason.into(),
@@ -291,6 +324,10 @@ impl Session {
                         }
                     };
                     let pending = self.active.take().unwrap();
+                    if pending.cancelled {
+                        self.dispatch();
+                        continue;
+                    }
                     let sent = pending.sent.unwrap();
                     let now = Instant::now();
                     if self
@@ -365,7 +402,33 @@ fn encode(r: &Request, limit: usize) -> Result<Vec<u8>, String> {
     if !paths.contains_key(&r.entry_path) {
         return Err("entry snapshot missing".into());
     }
-    let mut bytes=serde_json::to_vec(&json!({"protocol_version":1,"id":r.id,"type":"compile","payload":{"project_id":r.project_id,"revision":r.revision,"entry_path":r.entry_path,"documents":r.documents}})).map_err(|e|e.to_string())?;
+    #[derive(Serialize)]
+    struct Payload<'a> {
+        project_id: &'a str,
+        revision: u64,
+        entry_path: &'a str,
+        documents: &'a [Document],
+    }
+    #[derive(Serialize)]
+    struct Envelope<'a> {
+        protocol_version: u8,
+        id: &'a str,
+        #[serde(rename = "type")]
+        kind: &'static str,
+        payload: Payload<'a>,
+    }
+    let envelope = Envelope {
+        protocol_version: 1,
+        id: &r.id,
+        kind: "compile",
+        payload: Payload {
+            project_id: &r.project_id,
+            revision: r.revision,
+            entry_path: &r.entry_path,
+            documents: &r.documents,
+        },
+    };
+    let mut bytes = serde_json::to_vec(&envelope).map_err(|e| e.to_string())?;
     bytes.push(b'\n');
     if bytes.len() > limit {
         return Err("request frame too large".into());
@@ -389,16 +452,17 @@ fn validate_reply(bytes: &[u8], r: &Request) -> Result<Value, String> {
     {
         return Err("invalid compiler result shape".into());
     }
+    let documents: BTreeMap<&str, &str> = r
+        .documents
+        .iter()
+        .map(|document| (document.path.as_str(), document.text.as_str()))
+        .collect();
     let span = |source: &Value| -> Result<(), String> {
         if source.is_null() {
             return Ok(());
         }
         let path = source["path"].as_str().ok_or("missing source path")?;
-        let document = r
-            .documents
-            .iter()
-            .find(|d| d.path == path)
-            .ok_or("unknown source snapshot")?;
+        let text = documents.get(path).ok_or("unknown source snapshot")?;
         let start = source["start_byte"]
             .as_u64()
             .and_then(|n| usize::try_from(n).ok())
@@ -408,9 +472,9 @@ fn validate_reply(bytes: &[u8], r: &Request) -> Result<Value, String> {
             .and_then(|n| usize::try_from(n).ok())
             .ok_or("invalid source end")?;
         if start > end
-            || end > document.text.len()
-            || !document.text.is_char_boundary(start)
-            || !document.text.is_char_boundary(end)
+            || end > text.len()
+            || !text.is_char_boundary(start)
+            || !text.is_char_boundary(end)
         {
             return Err("invalid UTF-8 source range".into());
         }
