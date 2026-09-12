@@ -584,3 +584,23 @@ and its OFL license. Observed MATH table SHA
 adapter-equivalence evidence, not an independent layout oracle. Synthetic tests
 cover missing MATH, signed/unsigned metric boundaries, lookup bounds, stale
 registry generations, and exact scaling/overflow.
+
+`BoundMathFont::variants()` separately parses the previously unsupported variants
+subtable and returns `BoundMathVariants` retaining its complete parent identity.
+The constants-only `require(Variants)` remains unsupported; use this explicit
+fallible extension. `MathVariants` preserves original GIDs, variant advances,
+assembly italic correction, connector lengths, extender flags and direction.
+Limits: 4 MiB table, 4096 constructions, 65536 aggregate variant/part records.
+Coverage formats 1/2 are checked locally because the peer helper is private.
+
+`select` returns the first ready-made variant meeting a requested integer advance,
+`AssemblyRequired`, or `Unavailable`. `assemble` accepts caller-selected equal
+extender repetitions and exact per-join overlaps; it enforces connector bounds
+and returns exact design-unit positions and original part/instance provenance.
+It caps repetitions at1024 and output at4096 parts. This is not automatic target
+fitting or baseline placement. Device corrections remain explicitly unevaluated;
+nonzero device offsets are range-checked, but device table bodies are not parsed.
+Pinned STIX Math replay observes165 constructions,633 variants and69 assemblies.
+Connector lengths are preserved even when longer than advance: these are distinct
+font measurements. Semantics reference:
+https://learn.microsoft.com/en-us/typography/opentype/spec/math

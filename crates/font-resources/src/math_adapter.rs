@@ -121,6 +121,16 @@ impl BoundMathFont {
         };
         Ok(Self { engine, identity })
     }
+    /// Separate additive parse retains exact immutable parent identity.
+    pub fn variants(&self) -> Result<BoundMathVariants, MathError> {
+        Ok(BoundMathVariants {
+            identity: self.identity.clone(),
+            data: crate::math_variants::MathVariants::parse(
+                self.engine.face().table(b"MATH").expect("bound MATH table"),
+                self.glyph_count(),
+            )?,
+        })
+    }
     pub fn identity(&self) -> &MathIdentity {
         &self.identity
     }
@@ -187,6 +197,20 @@ pub fn scale_design_units(
 pub fn percent_ratio(value: i16) -> Result<Rational, MathError> {
     Ok(Rational::new(value as i128, 100)?)
 }
+/// Variants capability is supported only after this separate bounded parse succeeds.
+pub struct BoundMathVariants {
+    identity: MathIdentity,
+    data: crate::math_variants::MathVariants,
+}
+impl BoundMathVariants {
+    pub fn identity(&self) -> &MathIdentity {
+        &self.identity
+    }
+    pub fn data(&self) -> &crate::math_variants::MathVariants {
+        &self.data
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

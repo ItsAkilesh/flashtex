@@ -117,6 +117,30 @@ fn pinned_math_registry_equivalence() {
             matches!(bound.require(capability),Err(MathError::Unsupported(c)) if c==capability)
         );
     }
+    let variants = bound.variants().unwrap();
+    assert_eq!(variants.identity(), bound.identity());
+    let constructions = variants.data().constructions();
+    let assemblies = constructions
+        .values()
+        .filter(|c| c.assembly.is_some())
+        .count();
+    let records: usize = constructions.values().map(|c| c.variants.len()).sum();
+    assert_eq!(constructions.len(), 165);
+    assert_eq!(assemblies, 69);
+    assert_eq!(records, 633);
+    for (&(direction, gid), c) in constructions {
+        for variant in &c.variants {
+            assert!(
+                matches!(variants.data().select(direction,gid,variant.advance.into()),flashtex_font_resources::math_variants::Selection::Variant(v) if v.advance>=variant.advance)
+            );
+        }
+    }
+    println!(
+        "variants constructions {} assemblies {} records {}",
+        constructions.len(),
+        assemblies,
+        records
+    );
     // Held registry resources remain immutable when the project file changes.
     std::fs::write(dir.path().join(&resource.path), b"changed").unwrap();
     assert_eq!(bound.constants(), &face.math().unwrap().constants);
