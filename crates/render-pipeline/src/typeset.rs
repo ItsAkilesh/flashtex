@@ -795,6 +795,9 @@ impl<'a> Context<'a> {
         if !list.iter().any(|i| matches!(i, pl::Item::Box(_))) {
             return None;
         }
+        if self.refuse_trailing_break(items, &list) {
+            return None;
+        }
         let lines = pl::layout_paragraph(&list, &self.line_params(indent, self.style.baselineskip_pt));
         self.report_overfull(&lines, &list, &recs);
         let vertical = VBlock {
@@ -818,6 +821,39 @@ impl<'a> Context<'a> {
             labels,
             cache_key: None,
         })
+    }
+
+    /// A paragraph whose last item is `\\` (TeX: an empty final line,
+    /// LaTeX's "Underfull \hbox" warning) is refused with a typed
+    /// diagnostic: the pinned paragraph-layout (`linebreak.rs:988`) panics on
+    /// a forced break followed by the paragraph-end sequence, which would
+    /// kill the worker mid-keystroke. Nothing is typeset for the paragraph
+    /// until the owner's fix lands (see `coordination/mac-render-text-gaps.md`).
+    fn refuse_trailing_break(&mut self, items: &[AItem], list: &[pl::Item]) -> bool {
+        // `hlist` appends `\penalty10000 \parfillskip \penalty-10000`; the
+        // item before that triple is the last one of the paragraph proper.
+        let n = list.len();
+        let trailing_break = n >= 4 && matches!(&list[n - 4], pl::Item::Penalty(p) if p.value <= pl::FORCED_BREAK);
+        if !trailing_break {
+            return false;
+        }
+        // Source: the last word/formula before the break (`\\` carries no
+        // span of its own in the adapter's items).
+        let span = items.iter().rev().find_map(|i| match i {
+            AItem::Word(w) => w.segments.iter().rev().find_map(seg_span),
+            AItem::Math { span, .. } => Some(*span),
+            _ => None,
+        });
+        let sources = span.map(|s| vec![self.source(s)]).unwrap_or_default();
+        self.emit(
+            None,
+            Diagnostic::error(
+                "paragraph_final_linebreak",
+                "\\\\ at the end of a paragraph: LaTeX sets an empty last line here (Underfull \\hbox); this paragraph is not typeset because the line breaker cannot lay out a trailing forced break yet",
+                sources,
+            ),
+        );
+        true
     }
 
     fn heading_block(&mut self, level: u8, items: &[AItem]) -> Option<BuiltBlock> {

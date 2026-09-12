@@ -7,23 +7,23 @@
     "rust",
     "typesetting"
   ],
-  "code_revision": "9aaec57a019c6a0073419eeb3ec90f922f5b367c",
+  "code_revision": "033cd5cb",
   "eta_minutes": {
-    "likely": 60,
-    "optimistic": 45,
-    "pessimistic": 90
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 0
   },
   "machine": "mac-m1max-a",
   "main_integrated_through": "d5440b01f1681175e8dc25108d92424db188a7fe",
-  "next_action": "audit done; implement \\text run shaping (T1 TFM ligatures/kerns, fontdimen space glue) in crates/render-pipeline behind the existing math-layout interfaces; scratch-build the six HW1 probes against the f261b36c evidence before/after",
+  "next_action": "compiler owner: adopt Nucleus::Text candidate, then re-pin vendor/compiler + incremental.rs arms and drop the compiler-text-nucleus feature; paragraph-layout owner: linebreak.rs:988 trailing forced break; GH38 \\hfill token",
   "reviewed_peers": {
     "agent/mac-render-pipeline/unified": "9aaec57a",
-    "main": "f261b36c (crates/rendering-core/docs/handoffs/hw1-text-producer read)",
-    "compiler candidate": "f464c6d6 + 61bd63f7 (isolated patch, not adopted)"
+    "compiler candidate": "f464c6d6 + 61bd63f7 (isolated patch, not adopted)",
+    "main": "f261b36c (crates/rendering-core/docs/handoffs/hw1-text-producer read)"
   },
   "schema_version": 1,
-  "state": "in_progress",
-  "summary": "render-pipeline \\text spacing/brace-encoding/ligature gaps (HW1 text producer evidence); follow-ups: paragraph-layout linebreak.rs:988 guard, \\hfill in section titles",
+  "state": "done",
+  "summary": "render-pipeline: \\text as an hbox in the T1 text face (ligatures, T1 braces, fontdimen2 glue) behind existing math-layout interfaces, six HW1 probes replayed before/after against the f261b36c stage; trailing-\\\\ paragraph panic guarded with paragraph_final_linebreak; \\hfill (GH38) documented, compiler token not landed; cargo test --release 55 passed",
   "tool": "Claude Code subagent Opus (parent mac-claude-a)",
   "updated_utc": "2026-09-12T16:30:00Z",
   "usage": {
