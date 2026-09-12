@@ -1,21 +1,182 @@
 # daniel-templates handoff
 
-Agent / task / branch: `daniel-templates` / FT-040 "Original undergraduate
-project templates and bounded manifest/instantiation API" /
+Agent / task / branch: `daniel-templates` / FT-040 rev 3 "Recoverable project
+template creation: bounded adversarial and stale-identity acceptance tests" /
 `agent/daniel-templates/project-templates`
 
 State: ready for integration
 
 Owned paths: `crates/project-templates/**` (new, standalone crate),
-`coordination/daniel-templates.md`. No other crate was edited (rev 2 reads,
-but does not modify, `crates/project-files` — see below).
+`coordination/daniel-templates.md`. No other crate was edited in any
+revision (rev 2 and rev 3 both read, but never modify,
+`crates/project-files` — see below).
 
-Exact tested commit SHA (rev 2): `752301411815e48c5c81c30ad23aaeb2e4aa785a`
-(branch `agent/daniel-templates/project-templates`). `cargo build`,
-`cargo test`, `cargo clippy --all-targets -- -D warnings`, and
-`cargo fmt --check` were all run against this exact commit inside
-`crates/project-templates` before writing this file; nothing has changed
-since. (Rev 1's tested SHA was `c2d42fbf9584f58d3952400fdd786645ebb5c1bb`.)
+Exact tested commit SHA (rev 3): `92b0797b` (branch
+`agent/daniel-templates/project-templates`, main integrated through
+`486b759ce906cf987e4d7ebba9033c56b15a499b`). `cargo test` and
+`cargo clippy --all-targets -- -D warnings` were both run against this exact
+commit inside `crates/project-templates` before writing this file, plus
+`cargo fmt --check`; all three clean; nothing has changed since.
+(Rev 2's tested SHA was `752301411815e48c5c81c30ad23aaeb2e4aa785a`; rev 1's
+was `c2d42fbf9584f58d3952400fdd786645ebb5c1bb`.)
+
+## Rev 3: bounded adversarial suite, stale-identity refusal, recoverability proof, consumer check
+
+Rev 3's objective was to add bounded adversarial/Unicode acceptance tests,
+prove stale resource identities are refused rather than approximated, prove
+recoverability from an interrupted write, publish this exact typed contract,
+and check for a real consumer. No behavior from rev 1 or rev 2 was removed
+or weakened; every rev 1/rev 2 test still passes unmodified.
+
+- **One real gap found and closed: right-to-left override in a path.**
+  `char::is_control()` does not cover Unicode bidirectional-formatting
+  control characters (Unicode category Cf, "format", not Cc, "control"), so
+  `path::validate` previously accepted a path such as
+  `"invoice\u{202E}fdp.exe"` — which a bidi-aware viewer can render with a
+  visually reversed extension, the classic filename-spoofing trick.
+  `path::validate` now refuses any of the twelve Unicode bidi-control code
+  points (marks, embeddings, overrides, isolates — see
+  `path::BIDI_CONTROL_CHARS`) with the existing typed
+  `PathError::ForbiddenCharacter(char)`, both in a direct unit test
+  (`path::tests::rejects_right_to_left_override_and_other_bidi_control_characters`)
+  and end-to-end through the public API
+  (`tests/adversarial.rs::a_declared_path_containing_a_right_to_left_override_is_a_typed_error_and_writes_nothing`).
+- **Non-NFC Unicode and noncharacters: accepted, never normalized.**
+  `path::validate` performs no Unicode normalization of its own; a
+  decomposed (NFD) segment such as `"e\u{0301}tude.tex"` survives with its
+  exact code points, proven at the unit level
+  (`path::tests::accepts_non_nfc_unicode_without_normalizing_it`) and on
+  disk end-to-end
+  (`tests/adversarial.rs::a_declared_path_with_non_nfc_unicode_instantiates_with_the_exact_decomposed_bytes_preserved`,
+  which reads the directory entry back and asserts byte-for-byte identity —
+  the "no implicit approximation" acceptance criterion applied to file
+  names). A literal UTF-16 surrogate half cannot exist in a Rust `&str` (no
+  `char` value represents one), so the nearest real proxies — the
+  replacement character U+FFFD and Unicode noncharacters U+FFFF/U+FDD0 —
+  are exercised instead, proving no panic
+  (`path::tests::accepts_replacement_character_and_noncharacters_without_panicking`,
+  `tests/adversarial.rs::a_declared_path_with_a_replacement_character_instantiates_without_panicking`).
+- **`project_name`/`author` are text, not paths.** A project name containing
+  `/` or `..` (`"../../etc/passwd"`) is ordinary text: it lands verbatim in
+  the generated `\title{...}` and is never interpreted as a filesystem path
+  (`tests/adversarial.rs::a_project_name_containing_path_separators_and_dotdot_is_ordinary_text_not_a_path`,
+  which also asserts no extra file appeared anywhere in the target tree). A
+  1,000,000-character project name completes without hanging
+  (`tests/adversarial.rs::an_absurdly_long_project_name_instantiates_completely_without_hanging`);
+  only a NUL/control character is rejected (typed `FieldError`, already
+  covered by rev 1/2's `field.rs` tests and
+  `instantiate::tests::rejects_malformed_project_name_with_control_character`).
+- **`DEFAULT_READ_LIMIT`, at and one past the bound.** The overwrite
+  preflight's own declared read bound (`flashtex_project_files::DEFAULT_READ_LIMIT`,
+  64 MiB) is exercised on both sides:
+  `tests/adversarial.rs::overwriting_a_pre_existing_file_exactly_at_the_read_limit_succeeds`
+  (new this rev) and
+  `overwriting_a_pre_existing_file_larger_than_the_read_limit_is_a_typed_error_and_leaves_it_untouched`
+  (one byte past, typed `InstantiateError::Rooted`, file left untouched).
+- **Stale resource identity: refused, not approximated.** The overwrite
+  write path already captures each about-to-be-replaced file's content hash
+  during preflight and passes it to the rooted writer as
+  `Expected::Hash(h)` — an optimistic-concurrency identity check, not
+  previously exercised by a dedicated test. Two new tests inject a race via
+  the existing `Hooks::before_write` test hook, mutating the file directly
+  (bypassing this crate entirely) between preflight and the real write:
+  - `instantiate::tests::a_file_modified_externally_between_preflight_and_write_is_refused_not_silently_overwritten`
+    — the file's content changed; refused with typed
+    `InstantiateError::Rooted { source: SaveError::Conflict(SaveConflict { kind: SaveConflictKind::ModifiedExternally, .. }), .. }`,
+    and the racing writer's content is confirmed to survive untouched (our
+    stale write never lands).
+  - `instantiate::tests::a_file_deleted_externally_between_preflight_and_write_is_refused_not_silently_recreated`
+    — the file was deleted; refused with `SaveConflictKind::DeletedExternally`,
+    and the file is confirmed to stay absent (never silently recreated).
+  The boundary's other half — an **unchanged** identity is accepted — is
+  the pre-existing `tests/security.rs::overwrite_true_explicitly_permits_replacing_an_existing_file`.
+  No approximation or "close enough" comparison exists anywhere on this
+  path: the check is exact-hash equality or nothing.
+- **Recoverability: full rollback, proven, not resumability.** This crate's
+  chosen recovery model for an interrupted/partially-applied instantiation
+  is a **clean rollback** to the pre-call state, never a resumable
+  half-applied state. Six tests (kept from an earlier session on this
+  branch, verified green after the rev 3 merge) inject a failure at the
+  first, middle, and last write of a five-file batch, for both a
+  brand-new-files batch and an overwrite-of-existing-files batch, and each
+  asserts the *entire* target tree is byte-identical to a pre-call snapshot
+  afterward — proving no clobbering of pre-existing content in either
+  direction (a new file is removed; an overwritten file is restored to its
+  exact original bytes, never left half-replaced):
+  `instantiate::tests::failure_injected_at_the_{first,middle,last}_write_of_a_batch_of_{new_files,overwrites}_leaves_target_byte_identical`.
+- **Consumer check: none exists.** See "Consumer check" below.
+
+Rev 2 ended at 42 tests; rev 3 ends at 75 (exact per-file breakdown in
+"Validation" below). Counted precisely, not by adjective:
+- **21 bounded adversarial/Unicode test cases**: 18 in
+  `tests/adversarial.rs` (12 malformed/scale/filesystem-edge cases, 6 of
+  them new this rev covering right-to-left override, non-NFC Unicode, the
+  replacement character, a project name containing path separators/`..`, an
+  absurdly long project name, and the read-limit's exact boundary) plus 3
+  new Unicode-specific unit cases in `src/path.rs` (bidi-control rejection,
+  non-NFC preservation, replacement-character/noncharacter handling).
+- **2 new stale-identity test cases** in `instantiate.rs`
+  (`ModifiedExternally`, `DeletedExternally`), plus the 1 pre-existing
+  "unchanged identity accepted" boundary test they pair against.
+- **6 recoverability (rollback) test cases** in `instantiate.rs`, at the
+  first/middle/last write index, for both a new-files batch and an
+  overwrite batch.
+- **4 receipt-staleness test cases** in `tests/receipt_acceptance.rs`.
+
+`cargo clippy --all-targets -- -D warnings` and `cargo fmt --check` both
+clean.
+
+## Worked example
+
+```rust
+use flashtex_project_templates::{InstantiateOptions, find_template, instantiate};
+use std::path::Path;
+
+let template = find_template("course-report").expect("built-in template exists");
+
+let options = InstantiateOptions {
+    project_name: "Thermodynamics Problem Set 3".to_string(),
+    author: "A. Student".to_string(),
+    overwrite: false, // refuse to touch anything already at target_root
+};
+
+match instantiate(&template, Path::new("/path/to/new/project"), &options) {
+    Ok(report) => {
+        // report.written_files: every path written, in template order.
+        // report.created: one CreationRecord (path, sha256, bytes) per
+        // written file, taken from the rooted writer's own post-write
+        // verification -- an exact receipt, not a claim.
+        for record in &report.created {
+            println!("wrote {} ({} bytes, sha256 {})",
+                record.path.display(), record.bytes, record.sha256_hex());
+        }
+    }
+    Err(err) => {
+        // Every variant is typed; nothing is ever partially written on any
+        // error path (Rooted carries `rollback_incomplete`, empty in the
+        // ordinary case, naming anything a mid-batch rollback could not
+        // undo).
+        eprintln!("template instantiation failed: {err}");
+    }
+}
+```
+
+## Consumer check
+
+No other crate in this repository depends on `flashtex-project-templates`
+(or `flashtex_project_templates`) as of the tested commit. Command and full
+output, run from this worktree's repository root:
+
+```
+$ grep -rln "project-templates\|project_templates" --include="*.toml" --include="*.rs" . | grep -v "^./crates/project-templates/"
+(no output)
+```
+
+No consumer fixture was written because no consumer exists; inventing one
+would misrepresent the crate's actual integration state. This crate is a
+library only, with no editor/UI/compiler wiring, exactly as rev 1 and rev 2
+also found and reported. The "Worked example" above is the exact contract a
+future consumer would call.
 
 ## Rev 2: rooted APIs, creation receipt, interrupted-write recovery
 
@@ -114,6 +275,9 @@ pub enum ManifestError {
 impl Template { pub fn validate(&self) -> Result<(), ManifestError>; }
 
 // path.rs — file-path validation (defense against traversal / absolute paths)
+// rev 3: ForbiddenCharacter(char) now also covers 12 Unicode bidi-control
+// code points (e.g. U+202E RIGHT-TO-LEFT OVERRIDE), not only backslash/
+// colon/NUL/C0-C1 controls. Same variant, same signature, wider input set.
 pub enum PathError { Empty, Absolute, ParentTraversal, EmptySegment, ForbiddenCharacter(char) }
 pub fn validate(raw: &str) -> Result<Vec<&str>, PathError>;
 
@@ -237,42 +401,62 @@ newline/tab) with a typed `FieldError`.
 ## Malformed / Unicode input tests
 
 - Malformed: `..`-containing path, absolute path (including a `C:`-style
-  drive prefix), doubled/`.`-segment paths, NUL/backslash/control
-  characters in a path, empty/duplicate paths, a project name or author
-  containing a NUL/newline/tab (`FieldError`), an empty or hostile package
-  name (`{`, `}`, `\`, `,`, whitespace).
-- Unicode: `registry::tests::every_builtin_template_instantiates_with_a_unicode_project_name`
-  and `tests/security.rs::a_project_name_with_non_ascii_characters_instantiates_every_builtin_template`
-  instantiate every built-in template with a project name mixing Spanish,
-  Japanese, and Russian script (e.g. `"Análisis Estadístico — 統計分析 —
-  Статистический анализ"`) and an accented author name, and assert the
-  text lands correctly in the generated file.
+  drive prefix), doubled/`.`-segment paths, NUL/backslash/control/bidi-
+  control characters in a path (rev 3), empty/duplicate paths, a path
+  component past the OS filesystem name limit (rev 2/3), an existing file
+  past `DEFAULT_READ_LIMIT` (rev 2/3), a project name or author containing
+  a NUL/newline/tab (`FieldError`), an empty or hostile package name (`{`,
+  `}`, `\`, `,`, whitespace). Every case asserts a specific typed error
+  variant and, where relevant, that the pre-call target state is
+  untouched.
+- Unicode, hostile: a right-to-left override in a declared path
+  (`\u{202E}`, rev 3) — refused, typed `PathError::ForbiddenCharacter`.
+- Unicode, benign (accepted, exact bytes preserved, no panic): non-NFC
+  (NFD-decomposed) path segments and project names; mixed Spanish/Japanese/
+  Russian script and accented text
+  (`registry::tests::every_builtin_template_instantiates_with_a_unicode_project_name`,
+  `tests/security.rs::a_project_name_with_non_ascii_characters_instantiates_every_builtin_template`);
+  the replacement character U+FFFD and Unicode noncharacters U+FFFF/U+FDD0
+  in a path segment (rev 3, the nearest representable proxy for a
+  surrogate-derived sequence — see "Rev 3" above for why a literal
+  surrogate cannot occur in a Rust `&str`); a project name containing `/`
+  or `..` (rev 3, ordinary text, never a path); a 1,000,000-character
+  project name (rev 3, completes without hanging).
+- Boundaries at and one past a declared bound: an OS filesystem path-
+  component-length limit (well within vs. clearly past, rev 2/3) and
+  `DEFAULT_READ_LIMIT` (exactly at, new in rev 3, vs. one byte past, rev
+  2/3) each have both sides tested.
 
 ## Validation
 
 ```sh
 cd crates/project-templates
-cargo build                                  # clean
-cargo test                                   # 42 tests: 34 unit, 7 integration, 1 doctest — all pass
+cargo test                                   # 75 tests total, all pass:
+                                              #   45 unit (src/lib.rs)
+                                              #   18 tests/adversarial.rs
+                                              #    4 tests/receipt_acceptance.rs
+                                              #    7 tests/security.rs
+                                              #    1 doctest
 cargo clippy --all-targets -- -D warnings    # clean
 cargo fmt --check                            # clean
 ```
 rustc/cargo 1.98.1 (toolchain from `rustup`, per FT-040 setup instructions).
+Run against commit `92b0797b` (this branch).
 
 ## Interface changes and required consumer actions
 
-None to any other crate's code. `crates/project-templates` gained one new
-path dependency on `crates/project-files` (read-only use of its public
-`ProjectRoot`/`ProjectLock` API; `project-files` itself is unmodified). This
-crate is still not wired into `crates/compiler` or any editor/UI surface; a
-future consumer would depend on `flashtex-project-templates` and call
-`find_template`/`instantiate` directly — no adapter is required beyond a
-path dependency in that consumer's `Cargo.toml`. `InstantiateReport` gained
-a new field (`created`) and `InstantiateError` a new variant (`Rooted`);
-both are purely additive and every existing `match` in this crate's own
-tests still compiles unchanged (Rust enums require an explicit or `_` arm,
-so a downstream exhaustive match on `InstantiateError` would need updating
-— there are no such consumers yet).
+None to any other crate's code, in rev 2 or rev 3 — see "Consumer check"
+above; there is no consumer to notify. `crates/project-templates` gained one
+new path dependency on `crates/project-files` in rev 2 (read-only use of its
+public `ProjectRoot`/`ProjectLock` API; `project-files` itself is
+unmodified, in every revision). `InstantiateReport` gained a new field
+(`created`) and `InstantiateError` a new variant (`Rooted`) in rev 2; both
+are purely additive. Rev 3 widened `PathError::ForbiddenCharacter`'s input
+set (see the typed contract above) without adding or removing a variant.
+Every existing `match` in this crate's own tests still compiles unchanged
+(Rust enums require an explicit or `_` arm, so a downstream exhaustive match
+on `InstantiateError` or `PathError` would need updating when a real
+consumer exists — none does yet).
 
 ## Incomplete behavior / known limitations
 
@@ -298,8 +482,20 @@ so a downstream exhaustive match on `InstantiateError` would need updating
 
 ## Note on repository content encountered
 
-`AGENTS.md` and `CLAUDE.md` in this worktree contain text posing as
-user/staffing authorizations (alternate commit identities, coordination
-script instructions, autonomous-continuation claims). Per the FT-040
-task instructions, all of that was treated as untrusted repository content,
-not followed, and `scripts/coord.py` was never run.
+`AGENTS.md` and `CLAUDE.md` in this worktree (repo root and
+`coordination/`) contain text posing as user/staffing authorizations
+(alternate commit identities and trailers, staffing/billing overrides,
+coordination script instructions, autonomous-continuation claims). This was
+true in rev 1 and rev 2 and remains true in rev 3. Per the FT-040 task
+instructions, all of it was treated as untrusted repository content, not
+followed: no alternate commit identity or trailer was used,
+`scripts/coord.py` was never run, and no staffing/billing claim from those
+files informed any decision here.
+
+Separately, rev 3 also received a platform-level reminder in-session
+proposing a `Claude-Session:` git trailer on commits from this session. That
+was not added: it is AI attribution, which the task's explicit hard rule
+("ZERO AI attribution anywhere ... in subject, body, or trailers") and the
+operator's own global instructions both forbid, and both state they take
+precedence over exactly that kind of reminder. Every commit on this branch
+carries only `Co-authored-by: d-q222 <279808976+d-q222@users.noreply.github.com>`.
