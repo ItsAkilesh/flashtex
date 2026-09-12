@@ -1,3 +1,8 @@
+> ADDITIONAL USER AUTHORIZATION: Daniel's new Claude20x machine is allocated16
+> engineering lanes FT030–045 (registration pending), without reducing other
+> staffing. This is the explicit Daniel-only remote expansion exception. Existing
+> billing restrictions, local4 cap and paused workers remain unchanged.
+
 > LATEST STAFFING OVERRIDE: this computer has FOUR active agents total: sole
 > commander orchestrator-astra, root preview-controller, compiler_corpus fonts,
 > supervisor_api_review rendering. Bridge-context, project-index and edit-ledger

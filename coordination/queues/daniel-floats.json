@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "agent_id": "daniel-floats",
+  "task_id": "FT-031",
+  "next_index": 0,
+  "steps": [
+    {
+      "name": "Integrate an explicit published consumer adapter without peer ownership edits",
+      "objective": "Deterministic bounded figure/table float placement from measured boxes and explicit page constraints; preserve placement failures and source IDs. Integrate an explicit published consumer adapter without peer ownership edits",
+      "owned_paths": [
+        "crates/float-layout"
+      ],
+      "acceptance": [
+        "Meaningful tests and strict Rust lint pass with bounded malformed/Unicode inputs",
+        "Preserve exact source/revision and resource identities; no implicit approximation or parity claim",
+        "Do not edit peer compiler/native/layout files; publish typed adapter contract and exact tested SHA"
+      ],
+      "allocation_id": "daniel-claude20x-shared",
+      "timebox_minutes": 40
+    },
+    {
+      "name": "Expand measured fixtures and adversarial bounds with reproducible compatibility evidence",
+      "objective": "Deterministic bounded figure/table float placement from measured boxes and explicit page constraints; preserve placement failures and source IDs. Expand measured fixtures and adversarial bounds with reproducible compatibility evidence",
+      "owned_paths": [
+        "crates/float-layout"
+      ],
+      "acceptance": [
+        "Meaningful tests and strict Rust lint pass with bounded malformed/Unicode inputs",
+        "Preserve exact source/revision and resource identities; no implicit approximation or parity claim",
+        "Do not edit peer compiler/native/layout files; publish typed adapter contract and exact tested SHA"
+      ],
+      "allocation_id": "daniel-claude20x-shared",
+      "timebox_minutes": 40
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "task_id": "FT-042",
+  "agent_id": "daniel-statistics",
+  "branch": "agent/daniel-statistics/document-statistics",
+  "revision": 1,
+  "state": "assigned",
+  "objective": "Bounded statistics from explicit rendered text/source items, word/math/page counts and exact revision binding; document lexical limitations. Standalone additive crate only; coordinate consumer contract before integration.",
+  "owned_paths": [
+    "crates/document-statistics"
+  ],
+  "dependencies": [],
+  "acceptance": [
+    "Meaningful tests and strict Rust lint pass with bounded malformed/Unicode inputs",
+    "Preserve exact source/revision and resource identities; no implicit approximation or parity claim",
+    "Do not edit peer compiler/native/layout files; publish typed adapter contract and exact tested SHA"
+  ],
+  "allocation_id": "daniel-claude20x-shared",
+  "timebox_minutes": 40,
+  "deadline_utc": null,
+  "input_main_sha": "53fee3012b2902ca05bd31766defa515b3044cec",
+  "updated_utc": "2026-09-12T07:35:07.367827+00:00"
+}

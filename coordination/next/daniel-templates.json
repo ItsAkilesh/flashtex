@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "agent_id": "daniel-templates",
+  "task_id": "FT-040",
+  "revision": 1,
+  "branch": "agent/daniel-templates/project-templates",
+  "assignment_path": "coordination/assignments/FT-040.json",
+  "updated_utc": "2026-09-12T07:35:07.367827+00:00"
+}

@@ -295,3 +295,20 @@ slots share this account; do not sum their snapshots as separate resources.
 Transient model-capacity errors on font/render resolved on one same-slot retry
 (GH22); no model, billing route or staffing increase occurred. Jaysen standby
 FT028 is the explicit sole new standby exception; Mac ACK/session remains pending.
+
+## Explicit Daniel addition
+
+The user authorized an ADDITIONAL Daniel Claude20x machine with at least as many
+engineering agents as current Jaysen, without reducing other staffing/tasks.
+Reserve16 engineering lanes FT030–045 plus a local supervising parent. Last
+explicit Jaysen census was15 engineers; newer report lists5 spend-limit
+terminations and lacks a full active census. Daniel active count is ZERO VERIFIED
+until registration/ACK/session evidence arrives. See machines/daniel-new.json.
+This is an explicit exception to no remote expansion for Daniel only; local4
+cap and paused workers remain unchanged. Shared existing plan allowance only,
+no overages/purchases or unverified API fallback.
+
+Jaysen07:31UTC report: five workers terminated by HTTP429 monthly spend limit,
+reported reset4:20am America/New_York; parent/render-pipeline/visual-oracle remain
+reported active, standby setup completed on its branch. Treat reset as reported,
+not permission to purchase or proof quota has renewed. Dirty WIP stays preserved.
