@@ -45,6 +45,7 @@ final class SourceEditorViewTests: XCTestCase {
     /// Hosts the real editor bound to a `ShellModel`, like `ContentView` does.
     private final class Probe {
         var editApplied: [(ShellModel.PendingEdit, String)] = []
+        var editRefused: [(ShellModel.PendingEdit, String)] = []
         var bindingSetNs: UInt64 = 0
         var bindingSetCpuNs: UInt64 = 0
         var coordinator: SourceEditorView.Coordinator?
@@ -69,6 +70,10 @@ final class SourceEditorViewTests: XCTestCase {
                 onEditApplied: { edit, text in
                     probe.editApplied.append((edit, text))
                     model.editApplied(edit, newText: text)
+                },
+                onEditRefused: { edit, reason in
+                    probe.editRefused.append((edit, reason))
+                    model.editRefused(edit, reason: reason)
                 }
             )
         }
@@ -519,7 +524,10 @@ final class SourceEditorViewTests: XCTestCase {
         XCTAssertEqual(model.activeText, afterTail, "no stale binding write after the turn")
     }
 
-    func testPendingEditOutsideTheBufferIsReportedWithoutChangingText() async throws {
+    /// An edit whose range no longer fits is refused explicitly (never
+    /// reported as applied: a capture reported applied but not inserted was
+    /// lost for good, as `appliedCaptureIDs` refused its retry as a duplicate).
+    func testPendingEditOutsideTheBufferIsRefusedWithoutChangingText() async throws {
         let model = ShellModel()
         model.replaceProject(entryText: "short\n")
         let probe = Probe()
@@ -527,10 +535,12 @@ final class SourceEditorViewTests: XCTestCase {
         defer { window.orderOut(nil) }
         let edit = ShellModel.PendingEdit(path: "main.tex", nsRange: NSRange(location: 50, length: 0), text: "x", token: 1)
         model.pendingEdit = edit
-        try await waitUntil("model told") { probe.editApplied.count == 1 }
-        XCTAssertEqual(probe.editApplied[0].1, "short\n")
+        try await waitUntil("model told") { probe.editRefused.count == 1 }
+        XCTAssertTrue(probe.editApplied.isEmpty, "never reported as applied")
+        XCTAssertTrue(probe.editRefused.first?.1.contains("outside the buffer") == true, probe.editRefused.first?.1 ?? "-")
         XCTAssertEqual(tv.string, "short\n")
         XCTAssertNil(model.pendingEdit)
+        XCTAssertEqual(model.navigationNote?.hasPrefix("Edit not applied"), true)
         XCTAssertFalse(tv.undoManager?.canUndo ?? true)
     }
 

@@ -48,7 +48,8 @@ final class IMEHarness {
                 onEditApplied: { edit, text in
                     probe.editApplied.append((edit, text))
                     model.editApplied(edit, newText: text)
-                }
+                },
+                onEditRefused: { edit, reason in model.editRefused(edit, reason: reason) }
             )
         }
     }

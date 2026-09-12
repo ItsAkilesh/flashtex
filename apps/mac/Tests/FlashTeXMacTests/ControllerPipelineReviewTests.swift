@@ -184,6 +184,177 @@ final class ControllerPipelineReviewTests: XCTestCase {
         XCTAssertTrue(released, "nothing retains the model once the flush has returned")
     }
 
+    /// Finding 8: a capture approved while the editor is composing (IME marked
+    /// text) produced a `pendingEdit` whose UTF-16 range was computed against
+    /// the model text, which is BEHIND the storage by the marked run; the view
+    /// applied it at once (before its own marked-text guard), landing the
+    /// capture inside/before the composition, or — when AppKit refused the
+    /// change — reported it applied anyway, so `appliedCaptureIDs` recorded a
+    /// capture that was never inserted (a retry is refused as a duplicate).
+    /// Expected: the edit waits for the composition; a range that no longer
+    /// matches the buffer is refused explicitly, the capture returns to the
+    /// review queue, and approving it again inserts at the pinned anchor.
+    func testCaptureApprovedDuringCompositionIsNotMisplacedOrSilentlyLost() async throws {
+        let h = try await IMEHarness.attached("capture-ime", text: "AB\n")
+        defer { h.close() }
+        let model = h.model
+        // Pin the insertion point after "AB" (byte 2).
+        h.textView.setSelectedRange(NSRange(location: 2, length: 0))
+        XCTAssertEqual(model.caretUTF16, 2)
+        model.pinAnchorAtCaret()
+        XCTAssertEqual(model.anchor?.byteOffset, 2)
+        // The IME composes two characters at the start: the storage is ahead of the model.
+        h.textView.setSelectedRange(NSRange(location: 0, length: 0))
+        h.compose("かな")
+        XCTAssertTrue(h.hasMarkedText)
+        XCTAssertEqual(h.string, "かなAB\n")
+        XCTAssertEqual(model.activeText, "AB\n", "the model sees the buffer only once the composition commits")
+
+        let proposal = RuntimeV1.CaptureProposal(captureId: "cap-ime-1", latex: "X", ambiguities: [], requiredDependencies: [])
+        model.enqueue(proposal)
+        XCTAssertEqual(model.approveProposal(proposal, latex: "X"), .inserted(byteOffset: 2))
+        // Give the view its update passes while the composition is still open.
+        try? await Task.sleep(nanoseconds: 300_000_000)
+        XCTAssertTrue(h.hasMarkedText, "the pending edit must not break the composition")
+        XCTAssertEqual(h.string, "かなAB\n", "nothing is inserted into a buffer that is still being composed: \(h.probe.editApplied.map(\.1))")
+        h.commit("かな")
+        XCTAssertFalse(h.hasMarkedText)
+        let settled = await settles(5) { model.pendingEdit == nil && model.activeText == "かなAB\n" }
+        XCTAssertTrue(settled, "text \(model.activeText.debugDescription), pendingEdit \(String(describing: model.pendingEdit)), applied \(h.probe.editApplied.map(\.1))")
+        XCTAssertNotEqual(h.string, "かなXAB\n", "the capture must not land inside the composed run")
+        // Either the capture was inserted at the anchor, or it was refused explicitly and re-queued.
+        if model.appliedCaptureIDs.contains("cap-ime-1") {
+            XCTAssertTrue(model.activeText.hasPrefix("かなAB") && model.activeText.contains("X"), "an inserted capture sits after the pinned anchor: \(model.activeText.debugDescription)")
+        } else {
+            XCTAssertTrue(model.proposals.contains { $0.captureId == "cap-ime-1" }, "a refused capture returns to the queue: \(model.captureNote ?? "-")")
+            XCTAssertEqual(model.approveProposal(proposal, latex: "X").isInserted, true, model.captureNote ?? "-")
+            let inserted = await settles(5) { model.activeText.hasPrefix("かなAB") && model.activeText.contains("X") }
+            XCTAssertTrue(inserted, "text \(model.activeText.debugDescription), note \(model.captureNote ?? "-")")
+        }
+        XCTAssertTrue(model.appliedCaptureIDs.contains("cap-ime-1"))
+    }
+
+    /// Finding 9 (direct worker route): an `error` envelope for the latest
+    /// compile request cleared `compileQueued`, so a keystroke coalesced behind
+    /// that request was never recompiled — the preview stayed stale until the
+    /// next keystroke.
+    func testWorkerErrorForTheLatestRequestStillCompilesTheQueuedBuffer() async throws {
+        guard ShellModel.locateCompiler() != nil else { throw XCTSkip("set FLASHTEX_COMPILER to a built compiler") }
+        let model = ShellModel()
+        model.autoCompile = true
+        model.replaceProject(entryText: "\\begin{document}\nWorker error.\n\\end{document}\n")
+        XCTAssertTrue(model.attachDiscoveredWorker())
+        defer { model.detachWorker() }
+        model.compile()
+        let first = await settles(15) { model.result?.revision == model.editorRevision && model.inFlightRevision == nil }
+        XCTAssertTrue(first, model.workerStatus)
+        // A goes out; B coalesces behind it; the worker answers A with an error.
+        model.updateActiveText("\\begin{document}\nWorker error A.\n\\end{document}\n")
+        let requestA = try XCTUnwrap(model.latestRequestID)
+        XCTAssertEqual(model.inFlightRevision, model.editorRevision)
+        model.updateActiveText("\\begin{document}\nWorker error B.\n\\end{document}\n")
+        let revisionB = model.editorRevision
+        model.handleForTesting(.error(id: requestA, message: "simulated worker error"))
+        // B must be requested now (a fresh id) and previewed.
+        let requested = await settles(5) { model.latestRequestID != requestA && model.inFlightRevision == revisionB || model.result?.revision == revisionB }
+        XCTAssertTrue(requested, "the coalesced buffer was not recompiled after the error: latest \(model.latestRequestID ?? "-"), inFlight \(String(describing: model.inFlightRevision)), \(model.workerStatus)")
+        let previewed = await settles(15) { model.result?.revision == revisionB }
+        XCTAssertTrue(previewed, "preview never reached revision \(revisionB): \(model.workerStatus)")
+        XCTAssertFalse(model.previewIsStale)
+    }
+
+    /// Finding 6: `completionFetcher` kept its outstanding query across a helper
+    /// exit/relaunch while request ids restart at `pc-1` on the new client. A
+    /// query still waiting for `pc-N` when the helper died swallowed the
+    /// relaunched helper's reply with that id (`.refused` returns before
+    /// `applyDurableDocument`): here the `document` reply, so the shell never
+    /// learned the durable revision again and typing never became durable.
+    /// The bounded auto-relaunch (`scheduleControllerRelaunch`) makes this an
+    /// in-app path, not just a test one.
+    func testCompletionQueryOutstandingAtHelperExitDoesNotSwallowTheRelaunchedHelpersReplies() async throws {
+        guard let helper = Self.helper, FileManager.default.isExecutableFile(atPath: helper.path),
+              ShellModel.locateCompiler() != nil else {
+            throw XCTSkip("set FLASHTEX_PREVIEW_CONTROLLER and FLASHTEX_COMPILER to built binaries")
+        }
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("pc-review-ids-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root.appendingPathComponent("project"), withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let tex = root.appendingPathComponent("project/main.tex")
+        try "\\begin{document}\nRelaunch ids.\n\\end{document}\n".write(to: tex, atomically: true, encoding: .utf8)
+        setenv("FLASHTEX_CONTROLLER_LEDGER_ROOT", root.appendingPathComponent("ledger").path, 1)
+        defer { unsetenv("FLASHTEX_CONTROLLER_LEDGER_ROOT") }
+        let model = ShellModel()
+        model.autoCompile = true
+        XCTAssertEqual(model.openTex(at: tex), .opened)
+        model.attachController(at: helper)
+        defer { model.detachController() }
+        let ready = await settles(15) { model.result?.revision == model.editorRevision && model.inFlightRevision == nil && model.completionFetcher.query == nil }
+        XCTAssertTrue(ready, model.controllerStatus)
+        // One edit, to learn this session's id numbering: ready sends R requests
+        // (configure_layout, display-candidate negotiation, document — the
+        // document last), the document reply compiles (+1), the preview asks
+        // three completion categories (+3) and document kinds a snapshot (+1); the
+        // relaunched helper sends the same ready requests: document = pc-2.
+        model.updateActiveText("\\begin{document}\nRelaunch ids, edited.\n\\end{document}\n")
+        let editID = try XCTUnwrap(model.controllerState.inFlight?.id)
+        guard let k = Int(editID.dropFirst("pc-".count)), k >= 6 else { throw XCTSkip("unexpected request id \(editID)") }
+        let documentID = "pc-2" // configure_layout is pc-1, document pc-2 on every launch
+        let edited = await settles(15) { model.result?.revision == model.editorRevision && model.inFlightRevision == nil && model.completionFetcher.query == nil }
+        XCTAssertTrue(edited, model.controllerStatus)
+        // A completion query still waiting for the relaunched helper's document
+        // id when the helper dies (the helper answered nothing for it).
+        var handed = [documentID, "review-stale-a", "review-stale-b"]
+        model.completionFetcher.request(sourceVersions: ["main.tex": 2], editorRevision: model.editorRevision) { _, _ in handed.removeFirst() }
+        XCTAssertEqual(model.completionFetcher.query?.outstanding.count, 3)
+        let pid = try XCTUnwrap(model.controller?.processIdentifier)
+        XCTAssertEqual(kill(pid, SIGKILL), 0)
+        let relaunched = await settles(15) { model.controllerRelaunchCount == 1 && model.controllerAttached && model.controllerState.ready }
+        XCTAssertTrue(relaunched, model.controllerStatus)
+        // The relaunched helper's document reply must be learned; typing must become durable.
+        let learned = await settles(5) { model.controllerState.durable["main.tex"]?.revision == 2 }
+        XCTAssertTrue(learned, "the relaunched helper's document reply was swallowed: durable \(String(describing: model.controllerState.durable["main.tex"]?.revision)), query \(String(describing: model.completionFetcher.query?.outstanding.keys.sorted()))")
+        model.updateActiveText("\\begin{document}\nRelaunch ids, edited twice.\n\\end{document}\n")
+        let durable = await settles(10) { model.controllerState.durable["main.tex"]?.revision == 3 && model.inFlightRevision == nil }
+        XCTAssertTrue(durable, "typing after the relaunch stalled: \(model.controllerStatus)")
+    }
+
+    /// Finding 5: `controllerSave`/`controllerFileStatus` park a continuation in
+    /// `controllerState.awaiting` with no timeout; an explicit
+    /// `detachController()` reset the state without resuming it, so the
+    /// awaiting Task hung forever (`.exited` fails the waiters; detach did not).
+    func testExplicitDetachResumesAwaitingFileStatusAndSave() async throws {
+        guard let helper = Self.helper, FileManager.default.isExecutableFile(atPath: helper.path),
+              ShellModel.locateCompiler() != nil else {
+            throw XCTSkip("set FLASHTEX_PREVIEW_CONTROLLER and FLASHTEX_COMPILER to built binaries")
+        }
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("pc-review-detach-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root.appendingPathComponent("project"), withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let tex = root.appendingPathComponent("project/main.tex")
+        try "\\begin{document}\nDetach.\n\\end{document}\n".write(to: tex, atomically: true, encoding: .utf8)
+        setenv("FLASHTEX_CONTROLLER_LEDGER_ROOT", root.appendingPathComponent("ledger").path, 1)
+        defer { unsetenv("FLASHTEX_CONTROLLER_LEDGER_ROOT") }
+        let model = ShellModel()
+        model.autoCompile = true
+        XCTAssertEqual(model.openTex(at: tex), .opened)
+        model.attachController(at: helper)
+        let ready = await settles(15) { model.result?.revision == model.editorRevision && model.inFlightRevision == nil }
+        XCTAssertTrue(ready, model.controllerStatus)
+        // Freeze the helper (a pid this test launched) so it cannot answer, ask, then detach.
+        let pid = try XCTUnwrap(model.controller?.processIdentifier)
+        XCTAssertEqual(kill(pid, SIGSTOP), 0)
+        defer { kill(pid, SIGCONT); kill(pid, SIGKILL) }
+        var status: ShellModel.ControllerDiskStatus?? = nil
+        let ask = Task { @MainActor in status = .some(await model.controllerFileStatus(path: "main.tex")) }
+        await Task.yield(); await Task.yield()
+        XCTAssertEqual(model.controllerState.awaiting.count, 1, "the file_status request is awaiting its reply")
+        model.detachController()
+        let resumed = await settles(3) { status != nil }
+        XCTAssertTrue(resumed, "controllerFileStatus never returned after the explicit detach")
+        ask.cancel()
+        XCTAssertNil(status ?? nil, "no status without a helper")
+    }
+
     /// Polls `cond` on the main actor until it holds or `timeout` elapses.
     private func settles(_ timeout: TimeInterval, _ cond: () -> Bool) async -> Bool {
         let start = Date()
@@ -193,4 +364,8 @@ final class ControllerPipelineReviewTests: XCTestCase {
         }
         return true
     }
+}
+
+private extension ShellModel.ApproveOutcome {
+    var isInserted: Bool { if case .inserted = self { return true } else { return false } }
 }

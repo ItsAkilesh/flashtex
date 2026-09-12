@@ -42,6 +42,9 @@ struct SourceEditorView: NSViewRepresentable {
     var onCaretChange: (Int) -> Void = { _ in }
     var onSelectionChange: (NSRange) -> Void = { _ in }
     var onEditApplied: (ShellModel.PendingEdit, String) -> Void = { _, _ in }
+    /// A pending edit the view could not apply (the buffer moved on since it
+    /// was prepared, or its range no longer fits); never reported as applied.
+    var onEditRefused: (ShellModel.PendingEdit, String) -> Void = { _, _ in }
     /// Openers typed at the caret that get their closer inserted after it
     /// (`{`, `[`, `$`). Default: braces only; the owner passes its setting.
     /// Auto-close, type-over and empty-pair backspace never run while marked
@@ -90,6 +93,11 @@ struct SourceEditorView: NSViewRepresentable {
         (tv as? CompletingTextView)?.editorRevision = editorRevision
         if let m = projectIndexMetadata { _ = (tv as? CompletingTextView)?.accept(projectIndex: m) }
         if let edit = pendingEdit, edit.token != co.appliedEditToken {
+            // While marked text exists the storage is ahead of the model by the
+            // composition: the edit's range would land inside it. Wait for the
+            // commit (which updates the model and brings the next update here;
+            // the edit is then refused if it was prepared for the old text).
+            guard !tv.hasMarkedText() else { return }
             co.appliedEditToken = edit.token
             co.applyPendingEdit(edit, to: tv)
             return
@@ -657,8 +665,24 @@ struct SourceEditorView: NSViewRepresentable {
 
         func applyPendingEdit(_ edit: ShellModel.PendingEdit, to tv: NSTextView) {
             let ns = edit.nsRange
+            // The range was computed for one editor revision: a buffer that
+            // moved on since (an IME commit, a keystroke) makes it meaningless.
+            // Refuse explicitly rather than insert at a shifted offset or report
+            // an unapplied edit as applied.
+            let refuse: (String) -> Void = { [weak self] reason in
+                let onEditRefused = self?.parent.onEditRefused ?? { _, _ in }
+                DispatchQueue.main.async { onEditRefused(edit, reason) }
+            }
+            if let prepared = edit.revision, let current = parent.editorRevision, prepared != current {
+                refuse("the document changed since the edit was prepared (revision \(prepared), now \(current))")
+                return
+            }
+            guard ns.location >= 0, NSMaxRange(ns) <= (tv.textStorage?.length ?? 0) else {
+                refuse("range \(ns.location)..<\(NSMaxRange(ns)) is outside the buffer (\(tv.textStorage?.length ?? 0) UTF-16 units)")
+                return
+            }
             var applied = false
-            if ns.location >= 0, NSMaxRange(ns) <= (tv.textStorage?.length ?? 0) {
+            do {
                 tv.breakUndoCoalescing() // preceding typing stays its own undo step
                 if tv.shouldChangeText(in: ns, replacementString: edit.text) {
                     programmaticChanges += 1
@@ -675,11 +699,12 @@ struct SourceEditorView: NSViewRepresentable {
                     applied = true
                 }
             }
+            guard applied else { refuse("the text view declined the change"); return }
             let s = SourceEditorView.nativeText(of: tv)
             lastKnownText = s
             pendingClosers = []
             refreshBraceHighlight(tv)
-            if applied { announceNow(text: s, range: tv.selectedRange(), prefix: "Inserted capture. ") }
+            announceNow(text: s, range: tv.selectedRange(), prefix: "Inserted capture. ")
             // The model is updated outside the SwiftUI view update; `editApplied`
             // bumps the revision and reaches the bridge/ledger through
             // `updateActiveText` exactly once.

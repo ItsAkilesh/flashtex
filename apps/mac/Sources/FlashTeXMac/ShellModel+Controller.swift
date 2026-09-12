@@ -122,6 +122,11 @@ extension ShellModel {
         controller.close()
         controller.terminate()
         self.controller = nil
+        // Replies parked in `awaiting` (save, file_status, project requests)
+        // never come now: resume them with a failure instead of dropping their
+        // continuations; the completion query's ids mean nothing on the next client.
+        for (_, waiter) in controllerState.awaiting { waiter(.failure(.init(message: "helper exited (detached)"))) }
+        completionFetcher.discard()
         controllerState = ControllerState()
         historicalInvalidate(reason: "close")
         displayCandidatesInvalidate(reason: "close") // ShellModel+DisplayCandidates.swift
@@ -285,6 +290,7 @@ extension ShellModel {
             workerStatus = "worker exited (\(code))"
             log("controller exited with status \(code)")
             self.controller = nil
+            completionFetcher.discard() // its ids restart at pc-1 on the relaunched client
             controllerState = ControllerState()
             inFlightRevision = nil
             historicalInvalidate(reason: "helper exited")
