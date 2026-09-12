@@ -7,7 +7,7 @@ number, no assignment file — no ack possible) /
 State: ready for integration
 Owned paths: `crates/vector-graphics/**`, `coordination/mac-vector-graphics.md`,
 `coordination/agents/mac-vector-graphics.json`
-Main integrated through: b87334038ee33c78d2eee67b66eac562768a9798
+Main integrated through: 254193c175534e78bfd9e5206b4850b86123cbe6
 Ready behavior:
 - `crates/vector-graphics` (edition 2024, zero dependencies): `Point`/`Rect`/
   `Transform` (translate/scale/rotate/skew, compose, invert), `Path`
@@ -48,7 +48,15 @@ assignment if tracking is wanted; ABI decisions listed in
 `crates/vector-graphics/docs/rendering-v2-integration.md` §5.
 Next action: none pending; adjust the v2 mapping when the ABI is decided.
 Peer revisions reviewed and adaptations:
-- origin/main b873340 (merged; coordination-only changes, no conflicts).
+- origin/main b873340 then 254193c (both merged, no conflicts). 254193c adds
+  `docs/contracts/rendering-v2-proposal.md`, `protocol/rendering-v2.schema.json`
+  and `crates/rendering-core` (Tick(i64) bp_2pow20, from_tex_sp ties-to-even,
+  hit_test::PageIndex). Adaptation: rewrote §4 of the integration doc so an
+  unselected feature is an explicit render failure (error diagnostics), not
+  a placeholder/approximation, as the contract requires; corrected the
+  tick-rounding note (TeX sp needs the 7200/7227 factor via rendering-core,
+  this crate is PDF points only); referenced PageIndex as the index to
+  extend rather than a competing hit-tester.
 - origin/agent/mac-pdf/pdf-output 5b5f7b5 `crates/pdf/src/writer.rs`: rules
   `x y w h re f` in bottom-left space, `num()` 3 decimals. Adopted the same
   formatting and flip; golden test `pdf_rule_golden_matches_pdf_crate_convention`.
@@ -59,4 +67,4 @@ Peer revisions reviewed and adaptations:
   `synthetic_reason`. Mapped in the proposal doc; no new v1 kinds proposed.
 Resource: allocation claude-mac20x-vector-graphics (parent mac-claude-a's
 Max 20x grant); quota unknown to this subagent.
-Updated: 2026-09-12T06:05Z
+Updated: 2026-09-12T06:18Z

@@ -1,12 +1,17 @@
 # Proposal: consuming `flashtex-vector-graphics` from rendering-v2
 
 Status: **proposal, documentation only.** Nothing here is implemented in any
-consumer, and nothing changes runtime-v1. Rendering-v2
-(`protocol/rendering-v2.schema.json` on
-`origin/agent/commander-render-schema/rendering-v2-schema`, reviewed at
-`41cacfc`) is under Commander review; the feature-gating decisions below are
-the Commander's to make. This document exists so the ABI conversation can
+consumer, and nothing changes runtime-v1. Rendering-v2 is itself a proposal:
+`docs/contracts/rendering-v2-proposal.md`, `protocol/rendering-v2.schema.json`
+and the typed validator `crates/rendering-core` (reviewed on main at
+`254193c`, schema provenance `41cacfc`). The feature-gating decisions below
+are the Commander's to make. This document exists so the ABI conversation can
 start from concrete field mappings rather than from the crate's Rust types.
+
+The v2 proposal already states that "rotation, arbitrary paths, images,
+patterns and transparency groups require declared extensions; do not
+approximate or silently ignore them" and that an unsupported primitive is a
+render failure, not a silent fallback. Everything below follows those rules.
 
 ## 1. What v2 already has that this crate can feed
 
@@ -32,17 +37,19 @@ accept `invalid_display_list` rejections for off-page geometry.
 
 Rounding rule proposed for **all** pt → tick conversion: multiply by 2^20 in
 f64, then round half to even, then check the result fits in the schema's
-`±(2^53 − 1)` bound. The conversion is exact for any value with ≤ 20
-fractional binary digits, which covers every TeX scaled-point quantity
-(2^16 sp per pt) with room to spare.
+`±(2^53 − 1)` bound (`crates/rendering-core`'s `Tick(i64)` enforces the
+bound). This crate works in PDF points, so no 72/72.27 factor is involved
+here; a producer that lays out in TeX scaled points must convert once with
+`rendering-core`'s `Tick::from_tex_sp` (exact integer `× 7200 / (7227 ×
+65536)`, ties-to-even) *before* building a `DisplayList`, never twice.
 
 ## 2. Proposed feature-gated v2 extensions (for Commander decision)
 
 The remaining primitives have no v2 counterpart. They are proposed as
 **opt-in features** using v2's existing `render_capabilities` /
 `render_format_selected` negotiation, so a consumer that does not advertise a
-feature never receives the item and the producer must fall back (§4). Nothing
-is proposed for runtime-v1.
+feature never receives the item; the producer then fails that page
+explicitly (§4). Nothing is proposed for runtime-v1.
 
 | proposed feature | item `kind` | fields (all coordinates in ticks) |
 | --- | --- | --- |
@@ -61,15 +68,17 @@ not the authored tree: transforms are applied, group opacity is folded into
 `paint.a`, and clips are attached per item as a `clips` array of
 `{kind:"rect",…}` / `{kind:"path",…}` in page space. Consumers then never
 implement a transform or clip stack, and the v2 validator can keep checking
-plain rectangles. If a consumer wants clip-free items it can advertise no
-`clip` feature and the producer must rasterise-free fall back (§4). This
-mirrors how the crate's `json::write_device_list` is already shaped.
+plain rectangles. `clip` is its own negotiated feature; a consumer that does
+not offer it never receives clipped items (§4). This mirrors how the crate's
+`json::write_device_list` is already shaped.
 
 Hit-testing stays consumer-side and needs no protocol support: the device
 list carries every leaf's `source`, and `DeviceList::hit`/`source_at` are the
 reference semantics (topmost first; strokes hit within `width/2 + tolerance`;
-clips honoured). A Swift consumer would reimplement these on the JSON, so the
-crate's tests double as the conformance description.
+clips honoured). `crates/rendering-core`'s `hit_test::PageIndex` already
+indexes v2 rules and glyph hit rectangles in paint order; path, stroke, image
+and clip hit-testing would extend that index using the same tie-breaking
+(later item wins). The crate's tests double as the conformance description.
 
 ## 3. `crates/pdf` integration (after ABI agreement)
 
@@ -94,20 +103,24 @@ The fragment keeps strokes in local space via `cm`, so line widths and dashes
 are exact under any affine transform; only the device list (used for
 preview/hit-testing) approximates anisotropic stroke scaling.
 
-## 4. Fallback when a feature is not selected
+## 4. Behaviour when a feature is not selected
 
-Producers must not silently drop geometry. Proposed order of degradation:
+Per the v2 proposal, an unsupported primitive is a **render failure, not an
+approximation**. Proposed handling, in the negotiation's own terms:
 
-- `path_fill`/`path_stroke` not selected: emit a `warning` diagnostic per
-  dropped item with its `sources`, and, where the path is an axis-aligned
-  rectangle (`Path::rect` under an axis-aligned transform), emit a `rule`
-  instead.
-- `image` not selected: emit a `rule` placeholder of the placed box with a
-  `synthetic_reason` of `"image placeholder"` and a `warning` diagnostic.
-- `clips` present but consumer cannot clip: producer pre-intersects
-  rectangular clips into rules (`Rect::intersect`) and drops items whose
-  clip has no rectangular intersection, with a diagnostic; path clips are
-  reported as unsupported.
+- The producer lists every feature the page set needs in
+  `required_features`. If the consumer's `render_capabilities` offer lacks
+  one, the producer must not emit `display_list` items of that kind; it
+  emits an `error` diagnostic per affected item (carrying the item's
+  `sources`, or its synthetic reason) and the consumer shows the page as
+  failed/stale, exactly as it would for a missing font.
+- One exact rewrite is allowed because it is lossless, not an approximation:
+  a `path_fill` whose path is `Path::rect` under an axis-aligned transform
+  with `FillRule::NonZero` and no clip *is* a `rule`, and may be emitted as
+  one. Nothing else is rewritten (no placeholder rules for images, no
+  pre-intersected clips).
+- `clips` follows the same rule: a consumer that does not offer the `clip`
+  feature receives no clipped items, only diagnostics.
 
 ## 5. Open questions for the ABI
 

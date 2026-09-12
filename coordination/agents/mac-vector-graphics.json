@@ -6,29 +6,29 @@
   "capabilities": [
     "rust"
   ],
-  "code_revision": "7247562e8f7d99e95669bbfb19353540f79583de",
+  "code_revision": "e78c6115ce52e660726d6a86f9ef1df253569bb4",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
     "pessimistic": 0
   },
   "machine": "mac-m1max-a",
-  "main_integrated_through": "b87334038ee33c78d2eee67b66eac562768a9798",
-  "next_action": "Await Commander review of issue #2 branch; adjust v2 mapping once ABI agreed",
+  "main_integrated_through": "254193c175534e78bfd9e5206b4850b86123cbe6",
+  "next_action": "Await Commander review of issue #2 branch; adjust v2 mapping once ABI decided",
   "reviewed_peers": {
     "origin/main": {
-      "adaptation": "Merged main (coordination-only). Read rendering-v2 draft 41cacfc on origin/agent/commander-render-schema/rendering-v2-schema: rule maps 1:1 (bp_2pow20 ticks, RGBA paint, sources/synthetic_reason); paths/images proposed as feature-gated v2 extensions in docs/rendering-v2-integration.md, no v1 changes",
-      "reviewed_utc": "2026-09-12T05:53:45Z",
-      "sha": "b87334038ee33c78d2eee67b66eac562768a9798"
+      "adaptation": "Merged main 254193c (rendering-v2 proposal contract, schema, crates/rendering-core). Rewrote fallback section: unselected feature = explicit render failure with error diagnostics, no approximation; corrected tick rounding note (TeX sp via rendering-core from_tex_sp, crate is PDF points); referenced hit_test::PageIndex as the index to extend.",
+      "reviewed_utc": "2026-09-12T05:56:23Z",
+      "sha": "254193c175534e78bfd9e5206b4850b86123cbe6"
     }
   },
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "crates/vector-graphics complete: geometry, paths, clips, colour, primitives, display list flatten/bounds/hit, PDF fragment + JSON serializers, diagram helpers; 40 tests, clippy/fmt clean. Rendering-v2 integration proposal doc written (doc only). No assignment file / FT number exists, so no ack.",
+  "summary": "crates/vector-graphics complete (geometry, paths, clips, colour, primitives, display list flatten/bounds/hit, PDF fragment + JSON serializers, diagram helpers; 40 tests, clippy/fmt clean) plus docs/rendering-v2-integration.md aligned with the v2 proposal now on main. No assignment file / FT number exists, so no ack.",
   "tool": "Claude Code subagent (parent mac-claude-a)",
-  "updated_utc": "2026-09-12T05:53:45Z",
+  "updated_utc": "2026-09-12T05:56:23Z",
   "usage": {
-    "evidence": "cargo test 14 unit + 26 integration pass; cargo clippy --all-targets 0 warnings; cargo fmt --check clean; quota not visible to subagent",
+    "evidence": "cargo test 14 unit + 26 integration pass after merging main 254193c; clippy 0 warnings; fmt clean; quota not visible to subagent",
     "status": "unknown"
   }
 }
