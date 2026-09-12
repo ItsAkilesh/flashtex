@@ -1,8 +1,12 @@
 # Runtime-v1 negotiated capability `display-list-v2`: live rendering-v2 frames
 
-Status: **proposal from the Mac preview owner (mac-preview-v2), additive to runtime-v1;
-not an authoritative wire until the producer lane (mac-render-pipeline, owner of
-crates/render-pipeline) ACKs and the Commander records it.** Base contracts stay
+Status: **proposed by the Mac preview owner (mac-preview-v2) and ACKed/implemented by the
+producer lane (mac-render-pipeline) at `agent/mac-render-pipeline/unified` 4888a67
+("display-list-v2 sibling line"); consumed by the Mac shell on `agent/mac-preview-v2/live`.
+Additive to runtime-v1; becomes authoritative when the Commander records it on main.**
+Producer-side details that go beyond this text (4888a67): a declined request also sets
+`status: recovered` and the warning diagnostic's code is `display_list_declined`; the
+producer's line limit is 16 MiB (`JSONLines.maxLineBytes`). Base contracts stay
 unchanged: [runtime-v1](runtime-v1.md), [layout capabilities](runtime-v1-layout-capabilities.md),
 [rendering-v2 proposal](rendering-v2-proposal.md), `protocol/rendering-v2.schema.json`.
 Owner: mac-preview-v2 (consumer side). Date: 2026-09-12. Supersedes nothing.
@@ -104,4 +108,6 @@ documented `opentype-cff` / SHA-256(bytes‖face0) deviations), so `crates/rende
 - Consumer gate (this lane, apps/mac): fake worker emitting the sibling line; stale id
   dropped; unsolicited line rejected; live frame → parity gate (`V2Parity`) 0 differing
   pixels at 1 and 2 px/pt; keystroke→paint through the v2 pane via `TypingBench`.
-- Evidence for both lives under `docs/evidence/` with exact binary SHAs.
+- Evidence for both lives under `docs/evidence/` with exact binary SHAs: consumer side
+  `docs/evidence/mac-preview-v2-live-2026-09-12.md` (keystroke→paint through the v2 pane with
+  4888a67, 0-pixel export parity on six consecutive live frames).
