@@ -4,5 +4,18 @@
   "stop_at_utc": null,
   "stop_condition": "explicit user stop only; verified completion starts another improvement cycle",
   "authorization": "Latest explicit user instruction: continue improvements even after verified completion until the user explicitly stops work. Existing billing and authentication restrictions remain.",
-  "completion_evidence": []
+  "completion_evidence": [],
+  "local_max_active_agents": 4,
+  "paused_agents": [
+    "bridge-context-jobs",
+    "commander-project-index",
+    "commander-edit-ledger"
+  ],
+  "paused_agent_handles": [
+    "/root/bridge_context",
+    "/root/orchestrator_sol/corpus_continuation",
+    "/root/orchestrator_sol/mac_integration_review"
+  ],
+  "staffing_authorization": "Latest user instruction: retain commander, root controller, compiler_corpus fonts and supervisor_api_review rendering only on this computer; no replacement agents or compensating remote staffing increase.",
+  "no_compensating_reallocation": true
 }

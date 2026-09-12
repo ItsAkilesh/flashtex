@@ -1,0 +1,75 @@
+{
+  "agent_id": "commander-preview-controller",
+  "archived_utc": "2026-09-12T06:38:17Z",
+  "assignment": {
+    "acceptance": [
+      "Parallel controller and real original compiler tests pass",
+      "Durable source succeeds independently of missing compiler",
+      "Reviewed insertion is explicit; never automatically approve provider text",
+      "Native paint and full PDF equality remain separate measured gates"
+    ],
+    "agent_id": "commander-preview-controller",
+    "allocation_id": "hosted-openai-product",
+    "branch": "agent/commander/preview-controller",
+    "deadline_utc": null,
+    "dependencies": [],
+    "dispatch_reason": "Commander scope extension for newly authoritative runtime-v1 layout capabilities; prior helper stages completed, no extra agent allocation.",
+    "input_main_sha": "0b7076ad9f3b8b8ac8e9e7f80960c97af2c8e7b3",
+    "objective": "Implement explicit opt-in rules-v1/font-hints-v1 negotiation and validation in persistent runtime/controller, preserving legacy output and exact async ID/revision/capability correlation; then guarded native helper integration.",
+    "owned_paths": [
+      "crates/preview-controller",
+      "crates/document-runtime"
+    ],
+    "revision": 3,
+    "schema_version": 1,
+    "state": "assigned",
+    "task_id": "FT-027",
+    "timebox_minutes": 30,
+    "updated_utc": "2026-09-12T06:34:25.106201+00:00"
+  },
+  "report": {
+    "agent_id": "commander-preview-controller",
+    "allocation_id": "hosted-openai-product",
+    "assignment_acknowledgements": {
+      "FT-027": {
+        "acknowledged_utc": "2026-09-12T06:37:45Z",
+        "adaptation": "Reviewed negotiated layout scope in document-runtime plus preview-controller; implemented9786b58 with explicit per-request opt-in, strict validation and no native parity claim.",
+        "main_sha": "38155b125775d84438b5694c9bfb9fb71a2c0556",
+        "revision": 3
+      }
+    },
+    "branch": "agent/commander/preview-controller",
+    "capabilities": [
+      "rust"
+    ],
+    "code_revision": "9786b5897497d5a6c9373bb18013026f8297ffa9",
+    "eta_minutes": {
+      "likely": 20,
+      "optimistic": 10,
+      "pessimistic": 35
+    },
+    "machine": "linux-primary",
+    "main_integrated_through": "87d20e8fa3c80bffcb223a503dc5da0f4784eb58",
+    "next_action": "Consume published bounded project-index search API; preserve4localagentlimit andGH18exportgate.",
+    "reviewed_peers": {},
+    "schema_version": 1,
+    "state": "ready_for_integration",
+    "summary": "9786b58 negotiatedrules/font hints published;14runtime+22controller tests andstrictClippy pass. Defaultlegacy unchanged.",
+    "tool": "Codex GPT-6 Astra",
+    "updated_utc": "2026-09-12T06:37:45Z",
+    "usage": {
+      "evidence": "Hosted /root active; no auxiliarypaidcalls; remainingquotaunknown.",
+      "status": "unknown"
+    }
+  },
+  "report_age_seconds": 32,
+  "report_path": "coordination/agents/commander-preview-controller.json",
+  "review_required": true,
+  "revision": 3,
+  "schema_version": 1,
+  "stale_completion": false,
+  "state": "reported_ready",
+  "task_id": "FT-027",
+  "worker_branch": "agent/commander/preview-controller",
+  "worker_report_sha": "929940d653ced50ee21e49a061bc69a9fcc6c39c"
+}

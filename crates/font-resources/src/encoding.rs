@@ -153,6 +153,9 @@ impl<'a> BoundTfmFont<'a> {
     pub fn font(&self) -> &'a FontResource {
         self.font
     }
+    pub fn tfm(&self) -> &'a Tfm {
+        self.tfm
+    }
     pub fn design_size(&self) -> FixWord {
         self.tfm.design_size
     }

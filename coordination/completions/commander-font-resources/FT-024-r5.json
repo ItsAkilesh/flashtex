@@ -1,0 +1,72 @@
+{
+  "agent_id": "commander-font-resources",
+  "archived_utc": "2026-09-12T06:54:08Z",
+  "assignment": {
+    "acceptance": [
+      "Meaningful tests and strict lint pass",
+      "Publish truthful execution provenance and exact tested SHA",
+      "No native integration or PDF parity claim without measured evidence"
+    ],
+    "agent_id": "commander-font-resources",
+    "allocation_id": "hosted-openai-product",
+    "branch": "agent/commander-corpus/font-resources",
+    "deadline_utc": null,
+    "dependencies": [],
+    "input_main_sha": "cab39a20278914747f92ee703f6da40a26b72a93",
+    "objective": "Harden CFF hint-mask/subroutine/matrix parsing with real licensed-font regression evidence",
+    "owned_paths": [
+      "crates/font-resources"
+    ],
+    "revision": 5,
+    "schema_version": 1,
+    "state": "assigned",
+    "task_id": "FT-024",
+    "timebox_minutes": 30,
+    "updated_utc": "2026-09-12T06:46:32Z"
+  },
+  "report": {
+    "agent_id": "commander-font-resources",
+    "allocation_id": "hosted-openai-product",
+    "assignment_acknowledgements": {
+      "FT-024": {
+        "acknowledged_utc": "2026-09-12T06:47:16Z",
+        "adaptation": "Proceed with current authorized CFF regression evidence and immutable full-font/table identity cache. Prior unhinted/flex/matrix stage already published at569fe9c; no repeated implementation.",
+        "main_sha": "13ee88dff72631bf2bc7a7f9f9d1f3a966a13fc6",
+        "revision": 5
+      }
+    },
+    "branch": "agent/commander-corpus/font-resources",
+    "capabilities": [
+      "rust-font-resources"
+    ],
+    "code_revision": "061555f7ae2f51872cb4f303e6c8a0cb637e9587",
+    "eta_minutes": {
+      "likely": 0,
+      "optimistic": 0,
+      "pessimistic": 0
+    },
+    "machine": "linux-primary",
+    "main_integrated_through": "8cf7304f4c5d46733a6c8b6c648761038526610d",
+    "next_action": "Rendering-core adapts shared Arc outcomes and validated table-range binding; visual/native/hinted oracle gates remain pending.",
+    "reviewed_peers": {},
+    "schema_version": 1,
+    "state": "ready_for_integration",
+    "summary": "Immutable full-font/CFF outline cache and pinned STIX evidence published; 79 normal tests, opt-in 2221-glyph replay and strict clippy pass. Warm replay 0.251ms; no native latency or parity claim.",
+    "tool": "Codex Astra",
+    "updated_utc": "2026-09-12T06:50:59Z",
+    "usage": {
+      "evidence": "crates/font-resources/README.md; test suite; installed font SHA pinned.",
+      "status": "Hosted allocation; no external provider calls; account remainder unknown."
+    }
+  },
+  "report_age_seconds": 189,
+  "report_path": "coordination/agents/commander-font-resources.json",
+  "review_required": true,
+  "revision": 5,
+  "schema_version": 1,
+  "stale_completion": false,
+  "state": "reported_ready",
+  "task_id": "FT-024",
+  "worker_branch": "agent/commander-corpus/font-resources",
+  "worker_report_sha": "63a93717865920014d15fa113102698572494976"
+}

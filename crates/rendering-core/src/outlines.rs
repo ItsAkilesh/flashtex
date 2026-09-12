@@ -18,7 +18,55 @@ impl OutlineCoordinate {
     pub fn denominator(self) -> u128 {
         self.denominator
     }
-    fn new(numerator: i128, denominator: u128) -> Result<Self> {
+    pub fn from_fraction(numerator: i128, denominator: u128) -> Result<Self> {
+        Self::new(numerator, denominator)
+    }
+    pub fn checked_add(self, other: Self) -> Result<Self> {
+        let divisor = gcd(self.denominator, other.denominator);
+        let a = other.denominator / divisor;
+        let b = self.denominator / divisor;
+        let numerator = self
+            .numerator
+            .checked_mul(a as i128)
+            .and_then(|n| {
+                other
+                    .numerator
+                    .checked_mul(b as i128)
+                    .and_then(|m| n.checked_add(m))
+            })
+            .ok_or_else(|| ValidationError("exact outline addition overflow".into()))?;
+        Self::new(
+            numerator,
+            self.denominator
+                .checked_mul(a)
+                .ok_or_else(|| ValidationError("exact outline denominator overflow".into()))?,
+        )
+    }
+    pub fn checked_multiply(self, other: Self) -> Result<Self> {
+        let a = gcd(self.numerator.unsigned_abs(), other.denominator);
+        let b = gcd(other.numerator.unsigned_abs(), self.denominator);
+        Self::new(
+            (self.numerator / a as i128)
+                .checked_mul(other.numerator / b as i128)
+                .ok_or_else(|| ValidationError("exact outline multiplication overflow".into()))?,
+            (self.denominator / b)
+                .checked_mul(other.denominator / a)
+                .ok_or_else(|| ValidationError("exact outline precision overflow".into()))?,
+        )
+    }
+    pub fn checked_cmp(self, other: Self) -> Result<std::cmp::Ordering> {
+        let divisor = gcd(self.denominator, other.denominator);
+        let a = self
+            .numerator
+            .checked_mul((other.denominator / divisor) as i128)
+            .ok_or_else(|| ValidationError("exact outline comparison overflow".into()))?;
+        let b = other
+            .numerator
+            .checked_mul((self.denominator / divisor) as i128)
+            .ok_or_else(|| ValidationError("exact outline comparison overflow".into()))?;
+        Ok(a.cmp(&b))
+    }
+    pub(crate) fn new(numerator: i128, denominator: u128) -> Result<Self> {
         require(
             denominator > 0 && denominator <= i128::MAX as u128,
             "outline denominator budget",
@@ -137,8 +185,26 @@ pub fn place_outline(
     let path = outline
         .quadratic_path()
         .map_err(|error| ValidationError(format!("quadratic outline: {error}")))?;
-    let mut commands = Vec::with_capacity(path.len());
+    place_path(path, size, units, origin)
+}
+/// Place an immutable cached loader path without repeating glyph expansion.
+pub fn place_path<I: IntoIterator<Item = PathCommand>>(
+    path: I,
+    size: Tick,
+    units: u32,
+    origin: Point,
+) -> Result<Vec<PlacedPathCommand>> {
+    size.positive()?;
+    origin.x.validate()?;
+    origin.y.validate()?;
+    require(
+        (16..=16384).contains(&units),
+        "invalid outline units per em",
+    )?;
+    let mut commands = Vec::new();
+
     for command in path {
+        require(commands.len() < 2_000_000, "placed path command budget")?;
         commands.push(match command {
             PathCommand::MoveTo(point) => {
                 PlacedPathCommand::MoveTo(position_font_point(point, size, units, origin)?)
@@ -254,4 +320,131 @@ impl<'a> PreparedOutlines<'a> {
             hinting_applied: false,
         })
     }
+}
+
+impl PreparedOutlines<'_> {
+    /// Reuse immutable unscaled paths across glyph placements; font size/origin
+    /// remain authoritative per glyph and are applied exactly after cache lookup.
+    pub fn glyph_cached(
+        &self,
+        page: u32,
+        item_index: usize,
+        glyph_index: usize,
+        cache: &mut crate::glyph_cache::GlyphPathCache,
+    ) -> Result<PositionedGlyph> {
+        use crate::glyph_cache::PathOutcome;
+        let page_index = page
+            .checked_sub(1)
+            .ok_or_else(|| ValidationError("unknown outline page".into()))?
+            as usize;
+        let page_data = self
+            .list
+            .pages
+            .get(page_index)
+            .ok_or_else(|| ValidationError("unknown outline page".into()))?;
+        let run = match page_data.items.get(item_index) {
+            Some(Item::GlyphRun(run)) => run,
+            _ => return Err(ValidationError("outline item is not a glyph run".into())),
+        };
+        let glyph = run
+            .glyphs
+            .get(glyph_index)
+            .ok_or_else(|| ValidationError("unknown outline glyph".into()))?;
+        let resource = self
+            .fonts
+            .get(&run.font_id)
+            .map_err(|error| ValidationError(format!("outline font resource: {error}")))?;
+        let cached = match cache.lookup(resource, glyph.gid as u16)?.outcome {
+            PathOutcome::Ready(data) => data,
+            PathOutcome::Unavailable(error) => {
+                return Err(ValidationError(format!(
+                    "cached outline unavailable: {error:?}"
+                )))
+            }
+        };
+        let commands = place_path(
+            cached.commands.iter().copied(),
+            run.font_size,
+            resource.descriptor().units_per_em,
+            Point {
+                x: glyph.origin_x,
+                y: glyph.baseline_y,
+            },
+        )?;
+        let cluster = &run.clusters[glyph.cluster as usize];
+        Ok(PositionedGlyph {
+            project_id: self.list.project_id.clone(),
+            revision: self.list.revision,
+            page,
+            item_index,
+            glyph_index,
+            font_id: run.font_id.clone(),
+            font_sha256: resource.descriptor().sha256.clone(),
+            original_gid: glyph.gid,
+            cluster_index: glyph.cluster,
+            logical_start_byte: cluster.text_start_byte,
+            logical_end_byte: cluster.text_end_byte,
+            sources: cluster.sources.clone().unwrap_or_default(),
+            synthetic_reason: cluster.synthetic_reason.clone(),
+            instances: cached.instances.clone(),
+            commands,
+            hinting_applied: false,
+        })
+    }
+}
+
+/// Original exact rational size/origin adapter. This is internal geometry, not a
+/// change to the negotiated integer-tick display-list wire format.
+pub fn place_path_exact<I: IntoIterator<Item = PathCommand>>(
+    path: I,
+    size: OutlineCoordinate,
+    units: u32,
+    origin: OutlinePoint,
+) -> Result<Vec<PlacedPathCommand>> {
+    require(size.numerator() > 0, "nonpositive exact font size")?;
+    require(
+        (16..=16384).contains(&units),
+        "invalid outline units per em",
+    )?;
+    let point = |p: flashtex_font_resources::ExactPoint| -> Result<OutlinePoint> {
+        let coord =
+            |v: Coordinate, base: OutlineCoordinate, flip: bool| -> Result<OutlineCoordinate> {
+                let denominator = (1u128
+                    .checked_shl(v.shift())
+                    .ok_or_else(|| ValidationError("outline precision overflow".into()))?)
+                .checked_mul(units as u128)
+                .ok_or_else(|| ValidationError("outline units precision overflow".into()))?;
+                let numerator = if flip {
+                    v.numerator()
+                        .checked_neg()
+                        .ok_or_else(|| ValidationError("outline y overflow".into()))?
+                } else {
+                    v.numerator()
+                };
+                OutlineCoordinate::new(numerator, denominator)?
+                    .checked_multiply(size)?
+                    .checked_add(base)
+            };
+        Ok(OutlinePoint {
+            x: coord(p.x, origin.x, false)?,
+            y: coord(p.y, origin.y, true)?,
+        })
+    };
+    let mut commands = Vec::new();
+    for command in path {
+        require(
+            commands.len() < 2_000_000,
+            "placed exact path command budget",
+        )?;
+        commands.push(match command {
+            PathCommand::MoveTo(p) => PlacedPathCommand::MoveTo(point(p)?),
+            PathCommand::LineTo(p) => PlacedPathCommand::LineTo(point(p)?),
+            PathCommand::QuadTo { control, end } => PlacedPathCommand::QuadTo {
+                control: point(control)?,
+                end: point(end)?,
+            },
+            PathCommand::Close => PlacedPathCommand::Close,
+        });
+    }
+    Ok(commands)
 }

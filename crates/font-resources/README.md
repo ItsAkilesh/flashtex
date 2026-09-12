@@ -160,3 +160,151 @@ retaining input intervals and separate exact kerns. No Unicode casting, font
 fallback, hidden `.notdef` drawing, or TrueType metric substitution occurs.
 The caller must handle Notdef explicitly and establish the declared encoding's
 provenance. This adapter does not establish TFM-to-outline visual equivalence.
+
+## Virtual font packets
+
+`vf::VirtualFont::parse` preserves VF checksum/design size, raw font names/areas,
+local font definitions, short/long character packets, exact signed movement/rule
+units and typed glyph/font/register/stack commands. Names never trigger disk or
+network resolution. Missing font references, malformed packet lengths, duplicate
+IDs/codes, prohibited opcodes and unbalanced/deep stacks fail. Bounds: 16MiB file,
+4096 fonts, 65536 packets, 1MiB/100000 commands per packet, 1000000 commands total,
+and 64 stack entries. Specials remain explicit typed byte payloads; parsing does
+not execute or silently discard them. [VF format documentation](https://github.com/TeX-Live/texlive-source/blob/trunk/texk/web2c/vftovp.web)
+was consulted; no existing VF/DVI implementation is used in production.
+
+`VirtualFont::expand_packet(code, virtual_tfm, physical_bindings)` validates the
+virtual TFM checksum/design-size/packet width and each local TFM definition against
+explicit BoundTfmFont resources. It emits original GID/font+TFM hashes, local font
+ID and exact dyadic placement coordinates relative to the virtual font's size.
+Glyph scale is a 12.20 fraction of that size. DVI y is positive downward; rule
+position is its lower-left reference point and positive height extends upward.
+Set/put advances, w/x/y/z registers and push/pop positions are interpreted without
+float/device rounding. Font selection is not a pushed register. Specials, missing
+bindings, explicit Notdef and physical codes above the supported 8-bit encoding
+fail. No special-handler execution, nested VF resolver, font discovery, ligature
+reshaping inside packets or silent substitution occurs. Current packet limits
+bound execution and output; actual nested resource recursion is not implemented.
+Synthetic integration tests establish arithmetic/binding behavior only, not
+real-VF/font visual parity.
+
+## Explicit nested VF graph
+
+`vf_graph::ResourceGraph` extends the single-packet API with recursive virtual
+resources and explicit local-font edges. Physical keys bind font SHA/face plus
+TFM SHA; virtual keys bind VF SHA plus TFM SHA. Duplicate identities and malformed
+or undeclared local edges fail; no pathname lookup or recursive fallback occurs.
+One explicit encoding binding is accepted per physical key (conflicting duplicate
+bindings are rejected). Each output preserves the root-to-leaf resource/code and
+command-index chain, original physical GID, exact dyadic position and composed
+scale. Child glyph advances use the child's TFM packet width at the declared
+local scale; rules scale and translate through the same exact arithmetic.
+
+Graph bounds are 4096 resources, 4096 expanded nodes, 32 nested edges, 1000000
+executed commands and 100000 output placements across the whole expansion.
+Repeated (resource,character) on the active stack is a cycle; acyclic reuse is
+allowed. Precision/overflow errors propagate without partial output. Specials
+remain explicitly unsupported. Flat-versus-nested synthetic glyph and rule
+fixtures compare exact geometry and retain intentionally distinct provenance;
+cycle, missing-resource, depth, node and global-output cap tests also pass.
+Real licensed VF/TFM/outline oracle agreement remains pending.
+
+## Staged CFF1 support (not production activated)
+
+`cff::Cff::parse` accepts raw CFF table bytes from the existing public
+font-engine `TrueTypeFace::cff_table()` or PDF `TrueTypeFont::cff_table()` accessor.
+Reviewed peers: font-engine `2d6954b923340c788cd31f663fa8e7a845326dec`, PDF
+`52b371171ee497a52ce0529dbe6bf22cda4bfe04`. Their private numeric readers are not
+re-exported; existing local bounded readers are reused. No second OpenType font
+selector, shaper or sfnt directory parser is introduced.
+
+This first stage validates bounded CFF1 INDEX/DICT syntax, one-font Name/Top DICT,
+CharStrings, custom charset/encoding and Private/Local/Global Subrs offsets.
+Integer and decimal DICT values remain exact (decimals are preserved strings).
+CID-keyed/CFF2/Expert predefined charsets are explicitly unsupported. Semantic
+validation of every optional DICT operator is not claimed. Metadata acceptance
+alone does not prove charstring safety or rendering support. Production font
+resource schema remains static-truetype; no fallback or wire activation occurs.
+References: [CFF specification](https://adobe-type-tools.github.io/font-tech-notes/pdfs/5176.CFF.pdf)
+and [Type 2 specification](https://adobe-type-tools.github.io/font-tech-notes/pdfs/5177.Type2.pdf).
+
+`Cff::cubic_outline(gid)` adds staged exact Type2 charstring-space MoveTo, LineTo,
+CurveTo(control1,control2,end) and Close commands. It handles integer/16.16
+operands, width extraction, relative/alternating line and curve forms, local/global
+subroutine bias/calls/returns, and explicit closure. Limits: 48 operands, 10 active
+subroutine calls, 100000 instructions and 100000 commands; recursion, malformed
+arity and out-of-range calls fail. Hints/masks, escaped flex/arithmetic and seac
+are explicitly unsupported. FontMatrix stays in Top DICT and is not silently
+applied; cubic commands are not reinterpreted as quadratic rendering-v2 paths.
+
+Real CFF smoke used the unchanged font-engine accessor at `2d6954b` in an isolated
+/tmp harness, against installed STIXTwoText-Regular.otf font SHA
+`c4864ca6ec071c2d31d0d8309001faa1ee3517fffb53a31a405a697b71f52ca1`.
+CFF SHA `c5d11bab6a95e75a568e1b72fd30fdd5e4c95abe68a72f02c0c4329ee948b532`:
+2221 glyphs, 824 global and 704 local subroutines; 16 glyphs accepted and 2205
+explicitly unsupported due to hints/masks. No invalid-font failures occurred.
+This does not establish useful visible coverage, Latin Modern support or parity;
+no font file was copied into the repository and no schema activation occurred.
+
+## Explicit unhinted CFF geometry and FontMatrix
+
+`cubic_outline_with_policy(gid, HintPolicy::Unhinted)` validates/records stem
+operands and hint/counter masks without applying grid fitting. It enforces the
+96-stem limit, exact ceil(stems/8) mask payload length, zero unused bits, stem
+ordering and operand counts. HintMetadata records policy, raw stem deltas/widths,
+mask bytes and flex depths. The default `cubic_outline` retains Reject policy.
+All four flex forms emit their two exact cubic curves under Unhinted policy;
+no device-dependent flattening is performed. Arithmetic/seac/CID/CFF2 remain
+explicitly unsupported. This supersedes the earlier stage's blanket hint/flex
+rejection only when Unhinted is deliberately selected.
+
+`matrix_outline(gid, policy)` applies the exact six-term FontMatrix and returns
+separate MatrixCommand/MatrixOutline types. Coordinates use normalized checked
+i128 Rational values with positive denominators, so decimal 0.001 is exactly
+1/1000, not a binary approximation. The default matrix is applied explicitly.
+Translation affects points but not the advance vector. Decimal scale/mantissa
+budgets and arithmetic overflow return errors. Output is CFF font/text space,
+not raw charstring units or rendering-v2 page ticks. Rasterizers must make their
+size/grid policy separately; no schema or production font-profile switch occurs.
+
+Under Unhinted plus matrix application, the same pinned STIX font above now
+accepts all 2221 glyphs, with zero unsupported/invalid decoder outcomes. The old
+Reject-policy results remain valid and unchanged in meaning. This proves bounded
+parser/geometry acceptance only, not outline equality against an oracle, hinted
+raster fidelity, Latin Modern coverage or PDF parity. Synthetic tests cover exact
+masks, malformed operands, all flex forms, decimal matrices and overflow.
+
+## Pinned CFF regression and immutable cache
+
+`fixtures/stix-cff.json` records the installed font/OFL hashes, exact CFF table
+range verified through the existing font-engine accessor, and a canonical exact
+geometry regression hash. No font/license bytes are vendored. Run the opt-in
+`cff_regression` test in release mode with `--ignored --nocapture`; optional
+FLASHTEX_STIX_FONT and FLASHTEX_STIX_LICENSE override paths, never expected hashes.
+Missing resources mean this gate remains pending, not that fidelity passed.
+The canonical v1 hash streams GID u16be, advance rationals (signed numerator and
+positive denominator i128be), command count u32be, then command tag 0/1/2/3 and
+point rationals for move/line/curve/close. It is an implementation regression
+baseline, not an independent visual oracle. Concrete hardening also rejects
+stroked PaintType in the filled-outline API; mask/subroutine/matrix overflow
+regressions run through the matrix-applied API.
+
+`CffOutlineCache::from_font_table(full_bytes, face0, validated_table_range, limits)`
+computes the full-font and CFF hashes, reparses immutable table bytes and retains
+an internal Cff value. The existing OpenType accessor remains range/selection
+authority. Keys include that fixed full identity, original GID and HintPolicy.
+`lookup` returns CacheOutcome { result: Result<Arc<MatrixOutline>>, status };
+status is Hit, Stored or BypassedOversize, including explicit negative results.
+LRU entry/byte limits are enforced, with 512 conservative bookkeeping bytes per
+entry plus actual retained Vec/String capacities and object sizes. The budget
+covers cache-owned references/payload, not external Arc holders or allocator-wide
+accounting. Source CFF storage has its separate 64MiB input cap. Oversized entries
+are returned without retention; identities and decoded state cannot mutate through
+the cache API. Max configured limits are 4096 entries and 256MiB.
+
+Measured replay evidence is in `fixtures/stix-cff-replay.json`, with tested source
+hashes. All 2221 STIX glyphs produce 55206 commands; cached/direct outputs match.
+One Linux release observation: direct decoding 103.106ms, cache cold 108.647ms,
+full warm replay 0.251ms, 20641359 charged retained bytes within a 32MiB budget.
+These measurements exclude native rendering and are not typing-visible latency
+or hinted/visual/PDF parity claims.

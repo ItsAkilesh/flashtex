@@ -14,23 +14,23 @@
     "rust",
     "source-navigation"
   ],
-  "code_revision": "f01a7520fd9b57e59c280bbfa57681c0f6bc0662",
+  "code_revision": "8f48b549375fc0268fc8863e3b7c99b2a4d01c56",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
-    "pessimistic": 5
+    "pessimistic": 0
   },
   "machine": "linux-primary",
-  "main_integrated_through": "cfe441d3b95de22c0aa7089f36b2689ad21f43c9",
-  "next_action": "Review/integrate f01a752 and own report. Native consumers may call replace_bibliography_document and document_kind while preserving snapshot/source guards. No processes in flight; await next assigned product increment.",
+  "main_integrated_through": "9372296059270ce3e8a6d578bcd87bed94be4421",
+  "next_action": "Orchestrator integration and independent product review; no provider calls or engine semantics claimed.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "FT-025 ready: exact code f01a7520fd9b57e59c280bbfa57681c0f6bc0662 has 48 passing tests and strict Clippy/fmt. Bounded literal exclusions protect label/citation rename targets; explicitly declared bibliography sources supply Unicode citation keys and dependency-aware navigation without invoking BibTeX.",
+  "summary": "Published bounded bibliography value parser and incremental citation metadata cache. Exact UTF8 key/field/expression/atom spans; explicit malformed/duplicate/missing/cyclic states; author/title/year inspection and source navigation; 60 tests pass.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T06:12:06Z",
+  "updated_utc": "2026-09-12T06:23:56Z",
   "usage": {
-    "evidence": "cargo test --offline:48 pass incl200 malformed Unicode bibliography samples plus existing200 TeX samples. StrictClippy -Dwarnings, fmt --check and diff --check pass. Current code measured as lexical source index only; no providers, engine execution, native UI or PDF parity claim.",
+    "evidence": "cargo test --offline: 60 passed; cargo clippy --offline --all-targets -- -D warnings passed; cargo fmt and git diff --check passed. Metadata rebuild equivalence, transitive invalidation, malformed recovery, Unicode spans, comment shielding and expansion bounds tested.",
     "status": "unknown"
   }
 }
