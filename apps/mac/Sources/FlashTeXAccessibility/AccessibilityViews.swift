@@ -267,13 +267,17 @@ public struct DiagnosticRowAccessibility: Equatable {
     ///   - status: the result's status; a `recovered` result reads
     ///     "no provisional rendering" for a diagnostic without a recovery
     ///     note, exactly as the visible row and the keyboard navigator do.
-    public init(_ diagnostic: RuntimeV1.Diagnostic, index: Int, total: Int, status: RuntimeV1.Status) {
+    ///   - explanation: the offline explanation line the visible row shows
+    ///     under the recovery line (`EditorDiagnosticNavigation.Item.explanation`), if any.
+    public init(_ diagnostic: RuntimeV1.Diagnostic, index: Int, total: Int, status: RuntimeV1.Status,
+                explanation: String? = nil) {
         let element = AccessibleDocumentModel.DiagnosticElement(
             index: index, severity: diagnostic.severity, message: diagnostic.message,
             recovery: diagnostic.recovery, source: diagnostic.source, utf16Range: nil, textKnown: false, lines: [])
         label = "Diagnostic \(index + 1) of \(total): \(element.label)"
         var parts: [String] = []
         if let line = Self.recoveryLine(recovery: diagnostic.recovery, status: status) { parts.append(line) }
+        if let explanation, !explanation.isEmpty { parts.append(explanation) }
         if let s = diagnostic.source { parts.append("\(s.path) bytes \(s.startByte) to \(s.endByte)") }
         value = parts.joined(separator: "; ")
         hint = diagnostic.source == nil ? Self.noSourceHint : nil
@@ -291,12 +295,13 @@ public struct DiagnosticRowAccessibility: Equatable {
 
 public extension View {
     /// Makes a diagnostics-list row one element: "Diagnostic 1 of 2: Error:
-    /// message" with the recovery line and source bytes as the value and a
-    /// "Go to source" action when the diagnostic has a source. The visible
-    /// row is unchanged.
+    /// message" with the recovery line, the explanation line and source
+    /// bytes as the value and a "Go to source" action when the diagnostic
+    /// has a source. The visible row is unchanged.
     func accessibleDiagnostic(_ diagnostic: RuntimeV1.Diagnostic, index: Int, total: Int,
-                              status: RuntimeV1.Status, goToSource: @escaping () -> Void) -> some View {
-        let row = DiagnosticRowAccessibility(diagnostic, index: index, total: total, status: status)
+                              status: RuntimeV1.Status, explanation: String? = nil,
+                              goToSource: @escaping () -> Void) -> some View {
+        let row = DiagnosticRowAccessibility(diagnostic, index: index, total: total, status: status, explanation: explanation)
         let base = accessibilityElement(children: .ignore)
             .accessibilityLabel(row.label)
             .accessibilityValue(row.value)

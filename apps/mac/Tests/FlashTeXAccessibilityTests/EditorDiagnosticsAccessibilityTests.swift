@@ -84,6 +84,17 @@ final class EditorDiagnosticsAccessibilityTests: XCTestCase {
         XCTAssertEqual(DiagnosticRowAccessibility.recoveryLine(recovery: nil, status: .recovered), "no provisional rendering")
         XCTAssertNil(DiagnosticRowAccessibility.recoveryLine(recovery: nil, status: .ok))
         XCTAssertEqual(DiagnosticRowAccessibility.recoveryLine(recovery: "x", status: .ok), "recovery: x")
+        // The explanation line sits between the recovery line and the source
+        // bytes, in the order the navigator announces it (message — recovery — explanation).
+        let explained = DiagnosticRowAccessibility(withNote, index: 0, total: 3, status: .recovered,
+                                                   explanation: "A group was opened by \\textbf and never closed.")
+        XCTAssertEqual(explained.value, "recovery: rendered plain; A group was opened by \\textbf and never closed.; main.tex bytes 10 to 20")
+        let step = Nav.Step(item: Nav.Item(id: "r#0", nsRange: NSRange(location: 10, length: 10), severity: .error, message: "outer",
+                                           recoveryLine: "recovery: rendered plain", explanation: "A group was opened by \\textbf and never closed."),
+                            ordinal: 1, total: 3, wrapped: false, line: 1)
+        XCTAssertEqual(step.announcement, "Error 1 of 3, line 1: outer — recovery: rendered plain — A group was opened by \\textbf and never closed.")
+        XCTAssertEqual(DiagnosticRowAccessibility(withNote, index: 0, total: 3, status: .recovered, explanation: "").value,
+                       "recovery: rendered plain; main.tex bytes 10 to 20", "an empty explanation adds nothing")
     }
 
     /// The list row, the keyboard navigator's "n of m" announcement and the

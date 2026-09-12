@@ -1,6 +1,6 @@
 # mac-accessibility (Claude Code subagent, parent mac-claude-a)
 
-- Updated UTC: 2026-09-12T10:40Z
+- Updated UTC: 2026-09-12T10:55Z
 - Agent / parent / machine alias: mac-accessibility / mac-claude-a / mac-m1max-a
 - Task / acceptance gate / owned paths: lane "keyboard/VoiceOver completeness
   for the shell": (1) Help > Accessibility Help window content and
@@ -16,10 +16,13 @@
   `agent/mac-accessibility/help-and-rotor` from
   `origin/agent/mac-claude-a/mac-shell` 40d53b7, then merged mac-shell
   b898cfc (multi-file ProjectDocuments + Project menu in the editor header,
-  bridge recovery, IME, vocabulary, helper navigation lanes) at 959a036;
-  accessibility tests stayed green, the Editor pane description now names
-  the Project menu. main 4248b49 fetched and inspected, not merged (its
-  apps/mac content arrives through mac-shell).
+  bridge recovery, IME, vocabulary, helper navigation lanes) at 959a036 and
+  mac-shell 596650b (diagnostic explanations: `EditorDiagnosticNavigation.Item.explanation`
+  added to this lane's file by the parent, refusal-fixture fix) at e589a1a;
+  accessibility tests stayed green, the Editor pane description names the
+  Project menu, the diagnostics row gained the explanation line. main
+  02d91f0 fetched and inspected, not merged (its apps/mac content arrives
+  through mac-shell).
   Worktree `.claude/worktrees/agent-a3cbe1d28258de76a`.
 - State: ready for integration (parent review + the parent-file patch below).
 
@@ -66,9 +69,9 @@ inside `EditorPane` under the text view), each pane with its container and
 source marker.
 
 Diagnostics rows: `DiagnosticRowAccessibility` (label "Diagnostic n of m:
-Error/Warning: message", value "recovery line; path bytes a to b", hint "No
-source mapping; listed only." / action "Go to source") and
-`accessibleDiagnostic(_:index:total:status:goToSource:)`. The recovery line
+Error/Warning: message", value "recovery line; explanation line; path bytes
+a to b", hint "No source mapping; listed only." / action "Go to source") and
+`accessibleDiagnostic(_:index:total:status:explanation:goToSource:)`. The recovery line
 follows the shell's `EditorDiagnostics.recoveryLine` rule (note, else "no
 provisional rendering" only for a `recovered` result). The old call shape
 without `status` still compiles and reads as `recovered` (previous behavior).
@@ -122,11 +125,14 @@ asserted at the NSAccessibility protocol level only.
 
 ## Diffs needed in parent-retained / other-lane files (not applied)
 
-All hunks below were applied locally on top of the merged tip (959a036,
-mac-shell b898cfc merged; tip now 1d75acb), built, run (`FlashTeXAccessibilityTests` +
-`CompletionTests`: 62 tests, 0 failures, the 1 documented skip) and then
-reverted with a checkout, so this is the verified text (`git apply --check`
-passes on the branch tip). The FlashTeXMacApp hunk also lets
+All hunks below were applied locally on top of the merged tip (e589a1a,
+mac-shell 596650b merged), built, run (`FlashTeXAccessibilityTests`,
+`CompletionTests`, `PreviewV2Tests`, `RenderingV2Tests`,
+`EditorDiagnostics*Tests`: 113 tests, 0 failures, 2 documented skips) and
+then reverted with a checkout, so this is the verified text. The
+ContentView hunk also hands the row the offline explanation line the
+visible row shows (mac-shell 596650b), so the row value reads
+"recovery line; explanation; path bytes a to b" in the navigator's order. The FlashTeXMacApp hunk also lets
 `FLASHTEX_OPEN_WINDOW=a11y-help` open the help window at launch for
 evidence captures (same mechanism as "nearby").
 The first four belong together (README row + `accessibilityHelp` entry + the
@@ -138,10 +144,10 @@ announcement, list help) are independent.
 
 ```diff
 diff --git a/apps/mac/README.md b/apps/mac/README.md
-index d53090b..09c3115 100644
+index 680915f..10c158a 100644
 --- a/apps/mac/README.md
 +++ b/apps/mac/README.md
-@@ -679,6 +679,7 @@ explain that nothing is loaded.
+@@ -680,6 +680,7 @@ explain that nothing is loaded.
  | ⌘⇧] / ⌘⇧[ | Next / previous diagnostic (refused if its span was edited since the compile) |
  | ⌘⇧J | Reveal caret in preview (selects the item's source span) |
  | Click preview text | Select its source (UTF-8 span → UTF-16; refused if edited since compile) |
@@ -150,7 +156,7 @@ index d53090b..09c3115 100644
  The compiler rejects request lines over 8 MiB with an `error` envelope, which the
  banner shows; the shell rejects response lines over 16 MiB.
 diff --git a/apps/mac/Sources/FlashTeXAccessibility/AccessibilityCommands.swift b/apps/mac/Sources/FlashTeXAccessibility/AccessibilityCommands.swift
-index cd2cb79..471321e 100644
+index 17b9f40..da78860 100644
 --- a/apps/mac/Sources/FlashTeXAccessibility/AccessibilityCommands.swift
 +++ b/apps/mac/Sources/FlashTeXAccessibility/AccessibilityCommands.swift
 @@ -13,6 +13,7 @@ public enum AccessibilityCommand: String, CaseIterable, Equatable {
@@ -172,16 +178,88 @@ index cd2cb79..471321e 100644
          case .selectPreviewItemSource:
              return Entry(command: self, title: "Select source of a preview item", shortcuts: ["Click preview text"], menu: "Preview",
                           description: "Selects the item's source in the editor; with VoiceOver, use the “Go to source” action on the item.",
+diff --git a/apps/mac/Sources/FlashTeXMac/Completion.swift b/apps/mac/Sources/FlashTeXMac/Completion.swift
+index b108a1e..2c90d2d 100644
+--- a/apps/mac/Sources/FlashTeXMac/Completion.swift
++++ b/apps/mac/Sources/FlashTeXMac/Completion.swift
+@@ -1,4 +1,5 @@
+ import AppKit
++import FlashTeXAccessibility
+ import FlashTeXProtocol
+ import os
+ 
+@@ -1054,7 +1055,8 @@ final class CompletionPopup: NSPanel, NSTableViewDataSource, NSTableViewDelegate
+         table.target = self
+         table.action = #selector(rowClicked(_:))
+         table.doubleAction = #selector(rowDoubleClicked(_:))
+-        table.setAccessibilityLabel("Completions")
++        table.setAccessibilityLabel(CompletionAccessibility.listLabel) // FlashTeXAccessibility
++        table.setAccessibilityHelp(CompletionAccessibility.listHelp)
+         let scroll = NSScrollView(frame: contentView!.bounds)
+         scroll.documentView = table
+         scroll.hasVerticalScroller = true
+@@ -1096,6 +1098,7 @@ final class CompletionPopup: NSPanel, NSTableViewDataSource, NSTableViewDelegate
+         if items.indices.contains(selected) {
+             table.selectRowIndexes(IndexSet(integer: selected), byExtendingSelection: false)
+             table.scrollRowToVisible(selected)
++            announceSelection(items[selected], index: selected, total: items.count)
+         }
+         updatingSelection = false
+     }
+@@ -1150,9 +1153,24 @@ final class CompletionPopup: NSPanel, NSTableViewDataSource, NSTableViewDelegate
+             return f
+         }()
+         field.attributedStringValue = Self.attributed(items[row])
++        field.setAccessibilityLabel(Self.spokenLabel(items[row])) // FlashTeXAccessibility
+         return field
+     }
+ 
++    /// "\section, command, supported by this compiler" — what VoiceOver reads for a row.
++    static func spokenLabel(_ s: Completion.Suggestion) -> String {
++        CompletionAccessibility.rowLabel(label: s.label, kind: s.kind.accessibilityKind, detail: s.detail)
++    }
++
++    /// "n of m: …" posted when the selection moves (the panel never takes focus, so this is the only cue).
++    private func announceSelection(_ s: Completion.Suggestion, index: Int, total: Int) {
++        NSAccessibility.post(element: table, notification: .announcementRequested, userInfo: [
++            .announcement: CompletionAccessibility.selectionAnnouncement(index: index, total: total, label: s.label,
++                                                                        kind: s.kind.accessibilityKind, detail: s.detail),
++            .priority: NSAccessibilityPriorityLevel.medium.rawValue,
++        ])
++    }
++
+     /// `\section  cmd · supported by this compiler` — label in the editor's
+     /// monospaced font, kind and detail in the secondary colour.
+     static func attributed(_ s: Completion.Suggestion) -> NSAttributedString {
+@@ -1167,6 +1185,17 @@ final class CompletionPopup: NSPanel, NSTableViewDataSource, NSTableViewDelegate
+ }
+ 
+ extension Completion.Kind {
++    /// The accessibility layer's spelling of the kind (spoken "label" for `.reference`).
++    var accessibilityKind: CompletionAccessibility.Kind {
++        switch self {
++        case .command: return .command
++        case .environment: return .environment
++        case .reference: return .reference
++        case .citation: return .citation
++        case .word: return .word
++        }
++    }
++
+     var badge: String {
+         switch self {
+         case .command: return "cmd"
 diff --git a/apps/mac/Sources/FlashTeXMac/ContentView.swift b/apps/mac/Sources/FlashTeXMac/ContentView.swift
-index 7656bae..71211b6 100644
+index 1ef2a21..f7003cb 100644
 --- a/apps/mac/Sources/FlashTeXMac/ContentView.swift
 +++ b/apps/mac/Sources/FlashTeXMac/ContentView.swift
-@@ -277,7 +277,7 @@ private struct PreviewPane: View {
+@@ -336,7 +336,8 @@ private struct PreviewPane: View {
                      Spacer()
                      if d.source != nil { Button("Go to source") { model.navigate(to: d.source) } }
                  }
 -                .accessibleDiagnostic(d, index: i, total: diags.count) { model.navigate(to: d.source) } // FlashTeXAccessibility
-+                .accessibleDiagnostic(d, index: i, total: diags.count, status: model.result?.status ?? .ok) { model.navigate(to: d.source) } // FlashTeXAccessibility
++                .accessibleDiagnostic(d, index: i, total: diags.count, status: model.result?.status ?? .ok,
++                                      explanation: model.explanations.explanation(resultID: model.resultID, index: i)?.line) { model.navigate(to: d.source) } // FlashTeXAccessibility
              }
              .frame(minHeight: 80, maxHeight: 180)
          }
@@ -272,77 +350,6 @@ index 1c10d5b..b5a042f 100644
          XCTAssertEqual(menus.flatMap(\.entries).count, AccessibilityCommand.allCases.count)
          XCTAssertEqual(AccessibilityHelpView.windowID, "a11y-help")
          XCTAssertEqual(AccessibilityHelpView.menuItem, "FlashTeX Accessibility Help")
-diff --git a/apps/mac/Sources/FlashTeXMac/Completion.swift b/apps/mac/Sources/FlashTeXMac/Completion.swift
-index a3ca1a5..d6123f3 100644
---- a/apps/mac/Sources/FlashTeXMac/Completion.swift
-+++ b/apps/mac/Sources/FlashTeXMac/Completion.swift
-@@ -1,4 +1,5 @@
- import AppKit
-+import FlashTeXAccessibility
- import FlashTeXProtocol
- import os
- 
-@@ -981,7 +982,8 @@ final class CompletionPopup: NSPanel, NSTableViewDataSource, NSTableViewDelegate
-         table.target = self
-         table.action = #selector(rowClicked(_:))
-         table.doubleAction = #selector(rowDoubleClicked(_:))
--        table.setAccessibilityLabel("Completions")
-+        table.setAccessibilityLabel(CompletionAccessibility.listLabel) // FlashTeXAccessibility
-+        table.setAccessibilityHelp(CompletionAccessibility.listHelp)
-         let scroll = NSScrollView(frame: contentView!.bounds)
-         scroll.documentView = table
-         scroll.hasVerticalScroller = true
-@@ -1023,6 +1025,7 @@ final class CompletionPopup: NSPanel, NSTableViewDataSource, NSTableViewDelegate
-         if items.indices.contains(selected) {
-             table.selectRowIndexes(IndexSet(integer: selected), byExtendingSelection: false)
-             table.scrollRowToVisible(selected)
-+            announceSelection(items[selected], index: selected, total: items.count)
-         }
-         updatingSelection = false
-     }
-@@ -1077,9 +1080,24 @@ final class CompletionPopup: NSPanel, NSTableViewDataSource, NSTableViewDelegate
-             return f
-         }()
-         field.attributedStringValue = Self.attributed(items[row])
-+        field.setAccessibilityLabel(Self.spokenLabel(items[row])) // FlashTeXAccessibility
-         return field
-     }
- 
-+    /// "\section, command, supported by this compiler" — what VoiceOver reads for a row.
-+    static func spokenLabel(_ s: Completion.Suggestion) -> String {
-+        CompletionAccessibility.rowLabel(label: s.label, kind: s.kind.accessibilityKind, detail: s.detail)
-+    }
-+
-+    /// "n of m: …" posted when the selection moves (the panel never takes focus, so this is the only cue).
-+    private func announceSelection(_ s: Completion.Suggestion, index: Int, total: Int) {
-+        NSAccessibility.post(element: table, notification: .announcementRequested, userInfo: [
-+            .announcement: CompletionAccessibility.selectionAnnouncement(index: index, total: total, label: s.label,
-+                                                                        kind: s.kind.accessibilityKind, detail: s.detail),
-+            .priority: NSAccessibilityPriorityLevel.medium.rawValue,
-+        ])
-+    }
-+
-     /// `\section  cmd · supported by this compiler` — label in the editor's
-     /// monospaced font, kind and detail in the secondary colour.
-     static func attributed(_ s: Completion.Suggestion) -> NSAttributedString {
-@@ -1094,6 +1112,17 @@ final class CompletionPopup: NSPanel, NSTableViewDataSource, NSTableViewDelegate
- }
- 
- extension Completion.Kind {
-+    /// The accessibility layer's spelling of the kind (spoken "label" for `.reference`).
-+    var accessibilityKind: CompletionAccessibility.Kind {
-+        switch self {
-+        case .command: return .command
-+        case .environment: return .environment
-+        case .reference: return .reference
-+        case .citation: return .citation
-+        case .word: return .word
-+        }
-+    }
-+
-     var badge: String {
-         switch self {
-         case .command: return "cmd"
 ```
 
 ## Validation
@@ -356,18 +363,15 @@ index a3ca1a5..d6123f3 100644
   ExactPDFExport, NearbyReferenceClient, NearbyView screenshots,
   PreviewController x2, ProposalPreview x3) plus this lane's documented
   SwiftUI-hosting skip. Log: scratchpad `fullsuite1.log` (not committed).
-- Full `swift test` on the merged tip (1d75acb, mac-shell b898cfc merged),
-  same environment: 437 tests, 19 skips, 4 failures, all in the preview-v2
-  lane's tests and all caused by mac-shell b898cfc vendoring
-  `Fonts/latinmodern-math.otf`: `PreviewV2ShellTests.testRefusedDisplayListShowsNoFrame`,
-  `…testLoadingRetainsThePreviousFrameAsStaleUntilTheNewOneIsVerified`,
-  `…testStaleLoadResultNeverOverwritesANewerState` and
-  `RenderingV2Tests.testMathFixtureFailsClosedWithoutTheMathFontBundled`
-  expect `display-list-v2-math.json` to be refused with
-  `font_resource_unavailable`, and the math font now resolves. Not this
-  lane's files (PreviewV2Tests/RenderingV2Tests, owner mac-preview-v2 /
-  parent); nothing in FlashTeXAccessibility is involved. Reported, not
-  fixed. Log: scratchpad `fullsuite2.log`.
+- Full `swift test` on the first merged tip (1d75acb, mac-shell b898cfc):
+  437 tests, 19 skips, 4 failures, all in PreviewV2Tests/RenderingV2Tests
+  and all caused by b898cfc vendoring `Fonts/latinmodern-math.otf` (the math
+  fixture was no longer refused). mac-shell 596650b fixed those tests with an
+  explicit missing-font fixture; merged at e589a1a.
+- Full `swift test` on the final tree (e589a1a + the explanation-line
+  commit), same environment: 443 tests, 0 failures, 20 skips (19
+  pre-existing environment skips + this lane's documented SwiftUI-hosting
+  skip). Log: scratchpad `fullsuite3.log`.
 - The parent-file diffs were applied locally, built and tested, then
   reverted, so the patch above is the verified text.
 - Help window evidence: with the patch applied, the debug app was launched
