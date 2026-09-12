@@ -12,9 +12,11 @@ handoff `7f7d4186`. This lane is a worker under that authority.
 
 ## Actual child count
 
-**12 engineering children alive**, each a distinct session in its own git
-worktree owning exactly one crate. This is the measured count from the live
-session list, not a plan figure and not a target:
+**Superseded by the Round 4 results section below.** At the time of the previous
+write, 12 engineering children were alive on the revisions in this table. Since
+then all but FT-030 have landed, been verified and been published; the current
+position is the Round 4 table. This table is retained because it was the measured
+state at that write, not because it is current:
 
 | Lane | Task | Rev | Owned crate | Worktree |
 |---|---|---|---|---|
@@ -124,9 +126,17 @@ Three items this lane will not decide unilaterally.
 ### 1. FT-030 is held pending your ruling
 
 Astra's handoff states "owner-halted 039/043/044 and tooling-blocked 030 MUST
-remain respected". FT-030 is therefore **not** started, and its branch
-`agent/daniel-tables/table-layout` sits at `486b759c` with zero commits of its
-own — no work has ever landed on it.
+remain respected". At the previous revision of this record FT-030 was not
+started, and its branch sat at `486b759c` with zero commits of its own.
+
+**That has changed, and this record is corrected to say so.** FT-030 is now
+running, with its **push held**. The reasoning: its assignment is
+`state: assigned` rev 3 from the current Commander, and the current Commander
+dispatched FT-044 rev 4 from the same "owner-halted" set after the handoff — so
+the halt list demonstrably predates live dispatches. Running locally while
+withholding the push respects the halt exactly where it would bite, since no
+global mutation occurs. If the halt on 030 is genuinely live, say so and the
+branch stays unpushed.
 
 Two things need your ruling:
 
