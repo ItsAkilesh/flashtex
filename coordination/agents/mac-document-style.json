@@ -6,29 +6,29 @@
   "capabilities": [
     "rust"
   ],
-  "code_revision": "1dd26c5e0dd5e04a39f0b8e55c90abebf635c863",
+  "code_revision": "53a6a6d754e56e8a4800073893f10bfd73437b41",
   "eta_minutes": {
-    "likely": 60,
-    "optimistic": 40,
-    "pessimistic": 90
+    "likely": 5,
+    "optimistic": 0,
+    "pessimistic": 15
   },
   "machine": "mac-m1max-a",
   "main_integrated_through": "1dd26c5e0dd5e04a39f0b8e55c90abebf635c863",
-  "next_action": "Implement page geometry, size tables, style tree, tests, README",
+  "next_action": "Await FT number/assignment and review; wire compiler adapter on request",
   "reviewed_peers": {
     "origin/main": {
-      "adaptation": "Reviewed layout.rs constants and issue #10 oracle findings; crate models the article values, no compiler edits",
-      "reviewed_utc": "2026-09-12T05:40:07Z",
-      "sha": "1dd26c5e0dd5e04a39f0b8e55c90abebf635c863"
+      "adaptation": "Reviewed layout.rs (constants unchanged), rendering-v2-proposal (bp_2pow20 top-left; README adapter note added), and 056170d/254193c (linux supervisor scripts, no overlap); no code change needed",
+      "reviewed_utc": "2026-09-12T05:55:16Z",
+      "sha": "254193c175534e78bfd9e5206b4850b86123cbe6"
     }
   },
   "schema_version": 1,
-  "state": "in_progress",
-  "summary": "Registered; no assignment file exists for issue #2 dispatch so no ack possible; class values probed with BasicTeX pdflatex; starting crates/document-style implementation",
+  "state": "ready_for_integration",
+  "summary": "crates/document-style: article geometry (12 size/paper combos exact vs pdflatex), geometry.sty overrides, size table, style tree with inheritance, lists, StyleDelta, JSON; oracle baseline-gap test passes; 20 tests + doctest, clippy clean",
   "tool": "Claude Code subagent (parent mac-claude-a)",
-  "updated_utc": "2026-09-12T05:40:07Z",
+  "updated_utc": "2026-09-12T05:55:16Z",
   "usage": {
-    "evidence": "Claude subagent quota not observable from this session",
+    "evidence": "Max 20x quota shared with parent; not observable here",
     "status": "unknown"
   }
 }

@@ -359,6 +359,13 @@ impl Stylesheet {
         let base = self.options.size;
         let body = self.body_font();
         let parskip = self.parskip();
+        // \list sets \parskip to the enclosing level's \parsep, so a nested
+        // environment's \@topsep adds that instead of the document \parskip.
+        let enclosing_parskip = if *inside_item {
+            style.list.map(|l| l.parsep).unwrap_or(parskip)
+        } else {
+            parskip
+        };
         match block {
             Block::Document | Block::Section(_) => {}
             Block::Heading(level) => {
@@ -416,8 +423,8 @@ impl Stylesheet {
                 });
                 // \list: \topsep + \parskip before and after the environment
                 // (\partopsep is added when the list starts a paragraph).
-                style.space_before = lp.topsep.plus(parskip);
-                style.space_after = lp.topsep.plus(parskip);
+                style.space_before = lp.topsep.plus(enclosing_parskip);
+                style.space_after = lp.topsep.plus(enclosing_parskip);
                 // \listparindent is 0pt in article lists.
                 style.parindent = Pt::ZERO;
                 *inside_item = false;
@@ -435,8 +442,8 @@ impl Stylesheet {
                 *list_depth += 1;
                 let lp = list_level(base, *list_depth);
                 style.alignment = a;
-                style.space_before = lp.topsep.plus(parskip);
-                style.space_after = lp.topsep.plus(parskip);
+                style.space_before = lp.topsep.plus(enclosing_parskip);
+                style.space_after = lp.topsep.plus(enclosing_parskip);
                 style.parindent = Pt::ZERO;
             }
             Block::Inline(s) => match s {
