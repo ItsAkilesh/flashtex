@@ -1,14 +1,25 @@
 {
   "agent_id": "commander-runtime-display",
-  "next_index": 1,
+  "next_index": 2,
   "schema_version": 1,
   "steps": [
     {
+      "acceptance": [
+        "Start from integrated decoder ecbaf7c on main; preserve four raw frames plus one decoded permit and joined shutdown",
+        "Exactly one contiguous sibling only after requested and accepted nonfailed result; bind ID/project/revision/document hashes and reject malformed, unsolicited, missing or out-of-order frames",
+        "Default legacy requests unchanged; preserve line limits and source epochs, no duplicate renderer parser or automatic native activation",
+        "Use corrected actual producer65dbe7d or later raw-byte font hashes; old contract SHA-bytes-plus-face deviation is historical, not accepted resource evidence",
+        "Publish bounded candidate API for existing helper owner; if deep validation is deferred, the type and contract must remain explicitly untrusted until existing native/core validator accepts it"
+      ],
+      "allocation_id": "hosted-openai-product",
       "name": "Prototype bounded validated raw display sibling with typed source correlation to avoid full Value materialization; no custom JSON parser or decoder expansion",
       "objective": "Prototype bounded validated raw display sibling with typed source correlation to avoid full Value materialization; no custom JSON parser or decoder expansion",
       "owned_paths": [
         "crates/document-runtime"
       ],
+      "timebox_minutes": 40
+    },
+    {
       "acceptance": [
         "Start from integrated decoder ecbaf7c on main; preserve four raw frames plus one decoded permit and joined shutdown",
         "Exactly one contiguous sibling only after requested and accepted nonfailed result; bind ID/project/revision/document hashes and reject malformed, unsolicited, missing or out-of-order frames",
@@ -17,14 +28,14 @@
         "Publish bounded candidate API for existing helper owner; if deep validation is deferred, the type and contract must remain explicitly untrusted until existing native/core validator accepts it"
       ],
       "allocation_id": "hosted-openai-product",
-      "timebox_minutes": 40
-    },
-    {
       "name": "Verify raw versus current candidate equivalence, malformed and duplicate fields, source/epoch invalidation and exact frame bounds",
       "objective": "Verify raw versus current candidate equivalence, malformed and duplicate fields, source/epoch invalidation and exact frame bounds",
       "owned_paths": [
         "crates/document-runtime"
       ],
+      "timebox_minutes": 40
+    },
+    {
       "acceptance": [
         "Start from integrated decoder ecbaf7c on main; preserve four raw frames plus one decoded permit and joined shutdown",
         "Exactly one contiguous sibling only after requested and accepted nonfailed result; bind ID/project/revision/document hashes and reject malformed, unsolicited, missing or out-of-order frames",
@@ -33,22 +44,11 @@
         "Publish bounded candidate API for existing helper owner; if deep validation is deferred, the type and contract must remain explicitly untrusted until existing native/core validator accepts it"
       ],
       "allocation_id": "hosted-openai-product",
-      "timebox_minutes": 40
-    },
-    {
       "name": "Measure isolated parse/residency effect and coordinate reviewed helper consumption before any default behavior change",
       "objective": "Measure isolated parse/residency effect and coordinate reviewed helper consumption before any default behavior change",
       "owned_paths": [
         "crates/document-runtime"
       ],
-      "acceptance": [
-        "Start from integrated decoder ecbaf7c on main; preserve four raw frames plus one decoded permit and joined shutdown",
-        "Exactly one contiguous sibling only after requested and accepted nonfailed result; bind ID/project/revision/document hashes and reject malformed, unsolicited, missing or out-of-order frames",
-        "Default legacy requests unchanged; preserve line limits and source epochs, no duplicate renderer parser or automatic native activation",
-        "Use corrected actual producer65dbe7d or later raw-byte font hashes; old contract SHA-bytes-plus-face deviation is historical, not accepted resource evidence",
-        "Publish bounded candidate API for existing helper owner; if deep validation is deferred, the type and contract must remain explicitly untrusted until existing native/core validator accepts it"
-      ],
-      "allocation_id": "hosted-openai-product",
       "timebox_minutes": 40
     }
   ],

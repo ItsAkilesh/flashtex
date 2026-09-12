@@ -11,15 +11,15 @@
   "branch": "agent/commander-runtime-display/display-runtime",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "81b482cc3730758c48b3c98d3ea55706fc425df6",
-  "objective": "Prototype bounded validated raw display sibling with typed source correlation to avoid full Value materialization; no custom JSON parser or decoder expansion",
+  "input_main_sha": "36797512287440dbb4ef4229c1d77a4df86b891f",
+  "objective": "Verify raw versus current candidate equivalence, malformed and duplicate fields, source/epoch invalidation and exact frame bounds",
   "owned_paths": [
     "crates/document-runtime"
   ],
-  "revision": 5,
+  "revision": 6,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-049",
   "timebox_minutes": 40,
-  "updated_utc": "2026-09-12T11:36:16.558654+00:00"
+  "updated_utc": "2026-09-12T11:48:45Z"
 }

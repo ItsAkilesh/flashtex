@@ -1,0 +1,69 @@
+{
+  "agent_id": "commander-runtime-display",
+  "archived_utc": "2026-09-12T11:48:44Z",
+  "assignment": {
+    "acceptance": [
+      "Start from integrated decoder ecbaf7c on main; preserve four raw frames plus one decoded permit and joined shutdown",
+      "Exactly one contiguous sibling only after requested and accepted nonfailed result; bind ID/project/revision/document hashes and reject malformed, unsolicited, missing or out-of-order frames",
+      "Default legacy requests unchanged; preserve line limits and source epochs, no duplicate renderer parser or automatic native activation",
+      "Use corrected actual producer65dbe7d or later raw-byte font hashes; old contract SHA-bytes-plus-face deviation is historical, not accepted resource evidence",
+      "Publish bounded candidate API for existing helper owner; if deep validation is deferred, the type and contract must remain explicitly untrusted until existing native/core validator accepts it"
+    ],
+    "agent_id": "commander-runtime-display",
+    "allocation_id": "hosted-openai-product",
+    "branch": "agent/commander-runtime-display/display-runtime",
+    "deadline_utc": null,
+    "dependencies": [],
+    "input_main_sha": "81b482cc3730758c48b3c98d3ea55706fc425df6",
+    "objective": "Prototype bounded validated raw display sibling with typed source correlation to avoid full Value materialization; no custom JSON parser or decoder expansion",
+    "owned_paths": [
+      "crates/document-runtime"
+    ],
+    "revision": 5,
+    "schema_version": 1,
+    "state": "assigned",
+    "task_id": "FT-049",
+    "timebox_minutes": 40,
+    "updated_utc": "2026-09-12T11:36:16.558654+00:00"
+  },
+  "report": {
+    "agent_id": "commander-runtime-display",
+    "allocation_id": "hosted-openai-product",
+    "assignment_acknowledgements": {
+      "FT-049": {
+        "acknowledged_utc": "2026-09-12T11:37:39Z",
+        "adaptation": "Read exactr5. Separate opt-in raw sibling prototype, preserve legacy default and decoder queue invariant; coordinate duplicate-field/source identity semantics before activation. No peer parser duplication or concurrency changes.",
+        "main_sha": "36c062924dd56ad15a0ddc5772cb262e84113541",
+        "revision": 5
+      }
+    },
+    "branch": "agent/commander-runtime-display/display-runtime",
+    "capabilities": [
+      "rust-runtime"
+    ],
+    "code_revision": "217ec7dfc7ff586c90e5211039229589e461699e",
+    "eta_minutes": null,
+    "machine": "linux-primary",
+    "main_integrated_through": "551371625898078095046ea82dcbe0e29007f5d0",
+    "next_action": "Authorized bounded existing-serde scan reduction next; currently four passes. Coordinate helper/core raw API and preserve duplicate/numeric/source/epoch policies; no custom tokenizer/unsafe RawValue/private serializer tokens. Native integration remains separate gate.",
+    "reviewed_peers": {},
+    "schema_version": 1,
+    "state": "ready_for_integration",
+    "summary": "FT049r5 raw prototype complete: fixed-session opt-in constructor, exact raw getters/move, typed duplicate-safe identity/source metadata, full serde syntax/finite/depth checks. Raw4/decoded1/joined shutdown unchanged, default Value unchanged. Full tests8unit/6chunks/9sibling/19session and strict lint pass. Final loaded-host replay Value652/974ms peak18.2-18.4MB vs raw1359/1615ms peak6.9-7.0MB: memory benefit but parse regression, no default promotion.",
+    "tool": "codex",
+    "updated_utc": "2026-09-12T11:48:11Z",
+    "usage": {
+      "status": "unknown"
+    }
+  },
+  "report_age_seconds": 33,
+  "report_path": "coordination/agents/commander-runtime-display.json",
+  "review_required": true,
+  "revision": 5,
+  "schema_version": 1,
+  "stale_completion": false,
+  "state": "reported_ready",
+  "task_id": "FT-049",
+  "worker_branch": "agent/commander-runtime-display/display-runtime",
+  "worker_report_sha": "f8c44e30883b35220f44b16fa500cd65fdc5eea4"
+}
