@@ -41,6 +41,7 @@ pub struct AppliedOutcome {
 }
 #[derive(Debug)]
 pub struct Preview {
+    pub missing_layout_capabilities: Vec<String>,
     pub request_id: String,
     pub compile_revision: u64,
     pub source_versions: VersionSnapshot,
@@ -63,6 +64,7 @@ pub struct Controller {
     index: ProjectIndex,
     runtime: Option<Session>,
     generation: u64,
+    layout_capabilities: Vec<String>,
     submitted: Option<(String, VersionSnapshot, Instant)>,
     closed: bool,
 }
@@ -111,6 +113,7 @@ impl Controller {
             index,
             runtime: None,
             generation: 0,
+            layout_capabilities: Vec::new(),
             submitted: None,
             closed: false,
         })
@@ -240,6 +243,17 @@ impl Controller {
         let source = self.after_save(history.document.clone(), started);
         Ok(HistoryOutcome { history, source })
     }
+    /// Explicit native opt-in after implementing the requested draw capabilities.
+    /// Empty restores legacy output. Every subsequent compile binds this request.
+    pub fn configure_layout(&mut self, capabilities: Vec<String>) -> Result<(), String> {
+        if self.closed {
+            return Err("project closed".into());
+        }
+        flashtex_document_runtime::validate_layout_capabilities(&capabilities)?;
+        self.layout_capabilities = capabilities;
+        self.submitted = None;
+        self.compile_current()
+    }
     pub fn compile_current(&mut self) -> Result<(), String> {
         let started = Instant::now();
         if self.closed {
@@ -269,13 +283,16 @@ impl Controller {
         self.runtime
             .as_mut()
             .ok_or("compiler unavailable; source remains saved")?
-            .submit(Request {
-                id: id.clone(),
-                project_id: self.project_id.clone(),
-                revision: generation,
-                entry_path: self.entry_path.clone(),
-                documents,
-            })?;
+            .submit_with_capabilities(
+                Request {
+                    id: id.clone(),
+                    project_id: self.project_id.clone(),
+                    revision: generation,
+                    entry_path: self.entry_path.clone(),
+                    documents,
+                },
+                self.layout_capabilities.clone(),
+            )?;
         self.generation = generation;
         self.submitted = Some((id, self.index.snapshot(), started));
         Ok(())
@@ -314,7 +331,19 @@ impl Controller {
                                 expected == &id && snapshot == &current
                             })
                     {
+                        let accepted = result["payload"]["layout_capabilities"].as_array();
+                        let missing_layout_capabilities = self
+                            .layout_capabilities
+                            .iter()
+                            .filter(|cap| {
+                                !accepted.is_some_and(|items| {
+                                    items.iter().any(|item| item.as_str() == Some(cap.as_str()))
+                                })
+                            })
+                            .cloned()
+                            .collect();
                         Update::Preview(Preview {
+                            missing_layout_capabilities,
                             request_id: id,
                             compile_revision: revision,
                             source_versions: current.clone(),

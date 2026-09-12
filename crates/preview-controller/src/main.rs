@@ -209,7 +209,7 @@ fn run(config: Value) -> Result<(), String> {
         for update in controller.poll() {
             let payload = match update {
                 Update::Preview(preview) => {
-                    json!({"kind":"preview","request_id":preview.request_id,"compile_revision":preview.compile_revision,"source_versions":preview.source_versions.documents,"result":preview.result,"runtime_total_ms":preview.runtime_total_ms,"controller_total_ms":preview.controller_total_ms})
+                    json!({"kind":"preview","request_id":preview.request_id,"compile_revision":preview.compile_revision,"source_versions":preview.source_versions.documents,"result":preview.result,"missing_layout_capabilities":preview.missing_layout_capabilities,"runtime_total_ms":preview.runtime_total_ms,"controller_total_ms":preview.controller_total_ms})
                 }
                 Update::Discarded { request_id } => {
                     json!({"kind":"discarded","request_id":request_id})
@@ -362,6 +362,16 @@ fn handle(
             Ok(
                 json!({"history":outcome.history,"preview_error":outcome.source.preview_error,"save_and_submit_ms":outcome.source.save_and_submit_ms}),
             )
+        }
+        "configure_layout" => {
+            if p["renderer_support_confirmed"] != true {
+                return Err("explicit native renderer support confirmation required".into());
+            }
+            let capabilities: Vec<String> =
+                serde_json::from_value(p["layout_capabilities"].clone())
+                    .map_err(|e| e.to_string())?;
+            controller.configure_layout(capabilities)?;
+            Ok(json!({"submitted":true}))
         }
         "compile" => {
             controller.compile_current()?;

@@ -92,3 +92,13 @@ It never implicitly reloads an external edit into the authoritative source.
 `export` currently returns an explicit error: shared rooted-save guarantees are
 being fixed under GH18. The response's `export_available:false` is intentional;
 clients must not offer a successful save action until that gate is implemented.
+
+`configure_layout:{layout_capabilities:[...], renderer_support_confirmed:true}`
+explicitly opts this client into negotiated runtime-v1 rules/font hints and submits
+current source. Default startup remains legacy; an empty list restores legacy.
+Call only after the native renderer implements the requested primitives. Each
+preview reports `missing_layout_capabilities` if the compiler declined requests;
+clients must surface that limitation. Accepted rule/font data remains unchanged
+inside the compiler envelope, and switching capabilities invalidates retained
+previews even when source text did not change. Negotiation does not establish
+font-resource identity, pixel equality, or typing-to-painted-preview latency.

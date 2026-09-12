@@ -66,3 +66,11 @@ request is drained and checked before dispatch resumes; its result is never show
 A reopened project can start a new revision sequence using a distinct live request
 ID. A hung cancelled compiler still reaches the ordinary timeout and requires a
 fresh session. This avoids silently treating cancellation as process interruption.
+
+`submit_with_capabilities(request, capabilities)` explicitly negotiates the additive
+runtime-v1 `rules-v1` and `font-hints-v1` contract. Default `submit` omits capabilities.
+Acceptance is validated against each exact in-flight request; unknown/unrequested
+acceptance, malformed rules/fonts and unknown primitives fail the session. Typed
+rule coordinates and dimensions obey the one-million-unit bound. The exact compiler
+JSON and paint order are preserved. Acceptance is optional: consumers must inspect
+missing capabilities and report unsupported rendering rather than guess support.
