@@ -714,6 +714,95 @@ enum Completion {
     }
 }
 
+// MARK: - Project-index vocabulary through the preview-controller helper
+
+/// Drives the helper's `complete` queries (STDIO.md) for the three categories
+/// at one exact snapshot and turns the replies into one bound `Metadata`.
+/// Owned by the shell model, which calls `request` when a controller preview
+/// for known `source_versions` was applied and routes `result`/`error` frames
+/// through `handle`. Everything is refused rather than guessed: a reply for
+/// other source versions, a helper error (e.g. "source versions changed"), or
+/// a newer request all discard the query. Nothing here blocks: `send` only
+/// writes a frame.
+@MainActor
+final class ProjectIndexCompletionFetcher {
+    static let categories: [Completion.Kind] = [.reference, .citation, .command]
+    static let wireCategory: [Completion.Kind: String] = [.reference: "label", .citation: "citation", .command: "command"]
+
+    struct Query: Equatable {
+        /// Request id → category, for the replies still outstanding.
+        var outstanding: [String: Completion.Kind]
+        let sourceVersions: [String: Int]
+        let editorRevision: Int
+        var merged: Completion.Metadata?
+    }
+
+    enum Outcome: Equatable {
+        /// The id does not belong to this fetcher.
+        case notMine
+        /// Accepted; other categories are still outstanding.
+        case pending
+        /// Every category arrived: metadata bound to the query's editor revision.
+        case complete(Completion.Metadata)
+        /// The query was discarded (stale versions, helper error, decode failure).
+        case refused(String)
+    }
+
+    private(set) var query: Query?
+    private(set) var refusals = 0
+
+    /// Sends one `complete` per category with an empty prefix and the maximum
+    /// limit (100), naming the exact `sourceVersions` the preview was compiled
+    /// from and the editor revision that produced them. A previous query is
+    /// discarded. A send failure discards the whole query.
+    func request(sourceVersions: [String: Int], editorRevision: Int,
+                 send: (_ type: String, _ payload: [String: Any]) throws -> String) {
+        var outstanding: [String: Completion.Kind] = [:]
+        for kind in Self.categories {
+            let payload: [String: Any] = ["source_versions": sourceVersions, "category": Self.wireCategory[kind]!,
+                                          "prefix": "", "limit": Completion.Metadata.Limits.maxItemsPerCategory]
+            guard let id = try? send("complete", payload) else { query = nil; return }
+            outstanding[id] = kind
+        }
+        query = Query(outstanding: outstanding, sourceVersions: sourceVersions, editorRevision: editorRevision, merged: nil)
+    }
+
+    /// A `result` frame. The payload is the helper's JSON object; it is
+    /// re-serialized so the bounded decoder sees the documented wire shape.
+    func handle(resultID id: String, payload: [String: Any]) -> Outcome {
+        guard var q = query, let kind = q.outstanding[id] else { return .notMine }
+        let data: Data
+        do { data = try JSONSerialization.data(withJSONObject: payload) } catch { return refuse("unserializable reply \(id)") }
+        let metadata: Completion.Metadata
+        do {
+            metadata = try Completion.Metadata.decodeProjectIndexReply(data, category: kind, editorRevision: q.editorRevision,
+                                                                       expectedSourceVersions: q.sourceVersions)
+        } catch {
+            return refuse("\(kind) reply \(id): \(error)")
+        }
+        q.outstanding.removeValue(forKey: id)
+        q.merged = q.merged.flatMap { $0.merged(with: metadata) } ?? metadata
+        if q.outstanding.isEmpty, let merged = q.merged {
+            query = nil
+            return .complete(merged)
+        }
+        query = q
+        return .pending
+    }
+
+    /// An `error` frame for one of the query's ids discards the query.
+    func handle(errorID id: String?, message: String) -> Outcome {
+        guard let id, let q = query, q.outstanding[id] != nil else { return .notMine }
+        return refuse("helper error for \(id): \(message)")
+    }
+
+    private func refuse(_ why: String) -> Outcome {
+        query = nil
+        refusals += 1
+        return .refused(why)
+    }
+}
+
 // MARK: - Off-main candidate computation
 
 /// Computes candidates off the main thread and delivers them on the main run
@@ -883,6 +972,9 @@ final class CompletionPopup: NSPanel, NSTableViewDataSource, NSTableViewDelegate
         table.focusRingType = .none
         table.dataSource = self
         table.delegate = self
+        table.target = self
+        table.action = #selector(rowClicked(_:))
+        table.doubleAction = #selector(rowDoubleClicked(_:))
         table.setAccessibilityLabel("Completions")
         let scroll = NSScrollView(frame: contentView!.bounds)
         scroll.documentView = table
@@ -920,11 +1012,13 @@ final class CompletionPopup: NSPanel, NSTableViewDataSource, NSTableViewDelegate
 
     func update(items: [Completion.Suggestion], selected: Int) {
         self.items = items
+        updatingSelection = true
         table.reloadData()
         if items.indices.contains(selected) {
             table.selectRowIndexes(IndexSet(integer: selected), byExtendingSelection: false)
             table.scrollRowToVisible(selected)
         }
+        updatingSelection = false
     }
 
     func hide() {
@@ -932,6 +1026,37 @@ final class CompletionPopup: NSPanel, NSTableViewDataSource, NSTableViewDelegate
         orderOut(nil)
         items = []
         table.reloadData()
+    }
+
+    // MARK: mouse
+
+    /// A click on a row chooses it; a double-click accepts it. The panel is
+    /// non-activating, so clicks never move keyboard focus off the editor.
+    var onChoose: (Int) -> Void = { _ in }
+    var onAccept: (Int) -> Void = { _ in }
+    private var updatingSelection = false
+
+    /// Test hook for the table's click/double-click actions.
+    func click(row: Int, double: Bool = false) {
+        guard items.indices.contains(row) else { return }
+        if double { onAccept(row) } else { onChoose(row) }
+    }
+
+    @objc private func rowClicked(_ sender: Any?) {
+        let row = table.clickedRow
+        guard row >= 0 else { return }
+        click(row: row)
+    }
+
+    @objc private func rowDoubleClicked(_ sender: Any?) {
+        let row = table.clickedRow
+        guard row >= 0 else { return }
+        click(row: row, double: true)
+    }
+
+    func tableViewSelectionDidChange(_ notification: Notification) {
+        guard !updatingSelection, table.selectedRow >= 0 else { return }
+        onChoose(table.selectedRow)
     }
 
     func numberOfRows(in tableView: NSTableView) -> Int { items.count }
@@ -1033,7 +1158,14 @@ final class CompletingTextView: NSTextView {
     /// Latest outcome presented, for evidence (compute time off-main).
     private(set) var lastOutcome: CompletionScheduler.Outcome?
 
-    private lazy var popup = CompletionPopup()
+    /// The popup's mouse actions route back here (a click chooses, a
+    /// double-click accepts); the session stays the single source of truth.
+    private lazy var popup: CompletionPopup = {
+        let p = CompletionPopup()
+        p.onChoose = { [weak self] in self?.selectCompletion(at: $0) }
+        p.onAccept = { [weak self] in self?.selectCompletion(at: $0); self?.acceptSelectedCompletion() }
+        return p
+    }()
     private var typingThroughSession = false
     private var applyingCompletion = false
     private var lastCaret: NSRange?
@@ -1145,11 +1277,19 @@ final class CompletingTextView: NSTextView {
     }
 
     func moveSelection(by delta: Int) {
-        guard var s = session, !s.items.isEmpty else { return }
-        s.selectedIndex = (s.selectedIndex + delta + s.items.count) % s.items.count
-        session = s
-        popup.update(items: s.items, selected: s.selectedIndex)
+        guard let s = session, !s.items.isEmpty else { return }
+        selectCompletion(at: (s.selectedIndex + delta + s.items.count) % s.items.count)
     }
+
+    func selectCompletion(at index: Int) {
+        guard var s = session, s.items.indices.contains(index) else { return }
+        s.selectedIndex = index
+        session = s
+        popup.update(items: s.items, selected: index)
+    }
+
+    /// The list window (created on first use), for tests and evidence.
+    var completionPopup: CompletionPopup { popup }
 
     /// Replaces the session's range with the selected item, as one undoable
     /// edit, and closes the list. Refused when the text or caret changed since
@@ -1183,6 +1323,13 @@ final class CompletingTextView: NSTextView {
             } else {
                 super.keyDown(with: event)
             }
+            return
+        }
+        if event.modifierFlags.contains(.command) {
+            // Shortcuts (⌘Z, ⌘A, …) act on the editor, never on the list.
+            scheduler.cancel()
+            close(.caretMoved)
+            super.keyDown(with: event)
             return
         }
         switch event.keyCode {

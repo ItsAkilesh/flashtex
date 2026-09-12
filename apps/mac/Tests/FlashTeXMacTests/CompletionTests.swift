@@ -429,6 +429,73 @@ final class CompletionTests: XCTestCase {
         XCTAssertEqual(tv.projectIndexMetadata?.commands.map(\.name), ["newer"], "a newer revision replaces the held metadata")
     }
 
+    @MainActor
+    func testFetcherQueriesThreeCategoriesAndRefusesStaleOrFailedReplies() throws {
+        let fetcher = ProjectIndexCompletionFetcher()
+        var sent: [(id: String, type: String, payload: [String: Any])] = []
+        var next = 1
+        let send: (String, [String: Any]) throws -> String = { type, payload in
+            defer { next += 1 }
+            let id = "pc-\(next)"
+            sent.append((id, type, payload))
+            return id
+        }
+        let versions = ["main.tex": 3, "parts/body.tex": 1]
+        fetcher.request(sourceVersions: versions, editorRevision: 12, send: send)
+        XCTAssertEqual(sent.map(\.type), ["complete", "complete", "complete"])
+        XCTAssertEqual(sent.map { $0.payload["category"] as? String }, ["label", "citation", "command"])
+        for s in sent {
+            XCTAssertEqual(s.payload["source_versions"] as? [String: Int], versions)
+            XCTAssertEqual(s.payload["prefix"] as? String, "")
+            XCTAssertEqual(s.payload["limit"] as? Int, 100)
+        }
+        XCTAssertEqual(fetcher.query?.outstanding.count, 3)
+        XCTAssertEqual(fetcher.handle(resultID: "other", payload: [:]), .notMine)
+        XCTAssertEqual(fetcher.handle(errorID: "other", message: "x"), .notMine)
+        XCTAssertEqual(fetcher.handle(errorID: nil, message: "x"), .notMine)
+
+        func reply(_ names: [String], versions: [String: Int]) -> [String: Any] {
+            try! JSONSerialization.jsonObject(with: indexReply(versions: versions, names: names.map { ($0, 1, 2, false) })) as! [String: Any]
+        }
+        // Replies arrive in any order; the query completes when all three are in.
+        XCTAssertEqual(fetcher.handle(resultID: "pc-3", payload: reply(["mycmd"], versions: versions)), .pending)
+        XCTAssertEqual(fetcher.handle(resultID: "pc-1", payload: reply(["sec:a"], versions: versions)), .pending)
+        guard case .complete(let m) = fetcher.handle(resultID: "pc-2", payload: reply(["knuth84"], versions: versions)) else {
+            return XCTFail("expected complete")
+        }
+        XCTAssertEqual(m.revision, 12)
+        XCTAssertEqual(m.labels.map(\.name), ["sec:a"])
+        XCTAssertEqual(m.citations.map(\.name), ["knuth84"])
+        XCTAssertEqual(m.commands.map(\.name), ["mycmd"])
+        XCTAssertEqual(m.origin, .projectIndex(sourceVersions: versions))
+        XCTAssertNil(fetcher.query)
+        XCTAssertEqual(fetcher.handle(resultID: "pc-2", payload: [:]), .notMine, "a finished query accepts nothing more")
+
+        // A reply for other source versions discards the whole query.
+        fetcher.request(sourceVersions: versions, editorRevision: 13, send: send)
+        XCTAssertEqual(fetcher.handle(resultID: "pc-4", payload: reply(["sec:a"], versions: versions)), .pending)
+        guard case .refused = fetcher.handle(resultID: "pc-5", payload: reply(["k"], versions: ["main.tex": 4, "parts/body.tex": 1])) else {
+            return XCTFail("expected refusal")
+        }
+        XCTAssertNil(fetcher.query)
+        XCTAssertEqual(fetcher.handle(resultID: "pc-6", payload: reply(["mycmd"], versions: versions)), .notMine)
+        XCTAssertEqual(fetcher.refusals, 1)
+
+        // The helper's own error ("source versions changed") discards it too.
+        fetcher.request(sourceVersions: versions, editorRevision: 14, send: send)
+        XCTAssertEqual(fetcher.handle(errorID: "pc-8", message: "source versions changed; refresh snapshot before querying"),
+                       .refused("helper error for pc-8: source versions changed; refresh snapshot before querying"))
+        XCTAssertNil(fetcher.query)
+        // A newer request supersedes an outstanding one.
+        fetcher.request(sourceVersions: versions, editorRevision: 15, send: send)
+        fetcher.request(sourceVersions: versions, editorRevision: 16, send: send)
+        XCTAssertEqual(fetcher.handle(resultID: "pc-10", payload: reply(["x"], versions: versions)), .notMine)
+        XCTAssertEqual(fetcher.query?.editorRevision, 16)
+        // A send failure leaves no query behind.
+        fetcher.request(sourceVersions: versions, editorRevision: 17) { _, _ in throw CocoaError(.fileWriteUnknown) }
+        XCTAssertNil(fetcher.query)
+    }
+
     // MARK: cancellation and stale refusal
 
     /// Holds jobs until the test runs them, so caret moves and job completion
@@ -693,6 +760,33 @@ final class CompletionTests: XCTestCase {
         try await waitUntil("closed by space") { tv.session == nil }
         XCTAssertEqual(tv.lastCloseReason, .noCandidates)
         XCTAssertEqual(tv.scheduler.statistics.refusedStale, 0, "every delivered outcome was current")
+        // Mouse: a click chooses a row, a double-click accepts it; the popup is a
+        // non-activating child window that cannot become key.
+        tv.string = "\\begin{document}\nx \\s"
+        tv.setSelectedRange(NSRange(location: end, length: 0))
+        key(tv, " ", code: 49, flags: .control)
+        try await waitUntil("popup 5") { tv.session != nil }
+        let popup = tv.completionPopup
+        XCTAssertTrue(popup.isVisible)
+        XCTAssertFalse(popup.canBecomeKey)
+        XCTAssertTrue(popup.parent === window)
+        XCTAssertEqual(popup.items.count, 5)
+        popup.click(row: 2)
+        XCTAssertEqual(tv.session?.selected?.label, "\\sqrt")
+        popup.click(row: 9) // out of range: ignored
+        XCTAssertEqual(tv.session?.selectedIndex, 2)
+        popup.click(row: 3, double: true)
+        XCTAssertEqual(tv.string, "\\begin{document}\nx \\sigma")
+        XCTAssertNil(tv.session)
+        XCTAssertFalse(popup.isVisible)
+        // ⌘-shortcuts with the list open act on the editor (undo) and close the list.
+        tv.string = "\\begin{document}\nx \\s"
+        tv.setSelectedRange(NSRange(location: end, length: 0))
+        key(tv, " ", code: 49, flags: .control)
+        try await waitUntil("popup 6") { tv.session != nil }
+        key(tv, "a", code: 0, flags: .command)
+        XCTAssertNil(tv.session)
+        XCTAssertEqual(tv.lastCloseReason, .caretMoved)
         // The session reports the metadata revision it was bound to.
         tv.compileResult = result(revision: 8, [])
         tv.editorRevision = 8
