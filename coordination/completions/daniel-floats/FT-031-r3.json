@@ -1,0 +1,79 @@
+{
+  "agent_id": "daniel-floats",
+  "archived_utc": "2026-09-12T09:46:48Z",
+  "assignment": {
+    "acceptance": [
+      "Meaningful tests and strict Rust lint pass with bounded malformed/Unicode inputs",
+      "Preserve exact source/revision and resource identities; no implicit approximation or parity claim",
+      "Do not edit peer compiler/native/layout files; publish typed adapter contract and exact tested SHA",
+      "Register Daniel machine and exact assignment ACK/session before working",
+      "Preserve old WIP and test before publication; no automatic return of paths at cooldown end"
+    ],
+    "agent_id": "daniel-floats",
+    "allocation_id": "daniel-claude20x-shared",
+    "branch": "agent/daniel-floats/float-layout",
+    "deadline_utc": null,
+    "dependencies": [],
+    "input_main_sha": "5499e419b09868e2e248c413351a5646db74fac1",
+    "objective": "Expose bounded validated TTC face/table directory ranges and duplicate-tag/overlap checks using existing parser, preserving legitimate shared tables; coordinate font-resources resolver.",
+    "owned_paths": [
+      "crates/font-engine"
+    ],
+    "revision": 3,
+    "schema_version": 1,
+    "state": "assigned",
+    "task_id": "FT-031",
+    "timebox_minutes": 40,
+    "updated_utc": "2026-09-12T09:02:36.189558+00:00"
+  },
+  "report": {
+    "agent_id": "daniel-floats",
+    "allocation_id": "daniel-claude20x-shared",
+    "assignment_acknowledgements": {
+      "FT-031": {
+        "acknowledged_utc": "2026-09-12T09:44:53Z",
+        "adaptation": "Implemented as an additive inspection API (collection_layout + CollectionLayout/FaceLayout/TableRange) layered on the existing table-directory reading in truetype.rs rather than rewiring TrueTypeFace::parse_with_source itself, to keep the existing 65 tests' behavior unchanged under the timebox. Built synthetic ttcf/sfnt fixtures by hand for the duplicate-tag, overlap, and hostile-header cases since no real corrupted TTC fixture was available on this machine; the identical-shared-table acceptance test is built the same way against the documented ttcf structure, not diffed against a specific vendor font.",
+        "main_sha": "277a0910811fdb27bd156ecd92b92b50f277c750",
+        "revision": 3
+      }
+    },
+    "branch": "agent/daniel-floats/float-layout",
+    "capabilities": [
+      "rust",
+      "fonts",
+      "truetype",
+      "opentype"
+    ],
+    "code_revision": "f2fdb08a153de5940cc535e06bc0c496f5bf4eb5",
+    "eta_minutes": {
+      "likely": 0,
+      "optimistic": 0,
+      "pessimistic": 0
+    },
+    "machine": "mac-m5pro-dq222",
+    "main_integrated_through": "277a0910811fdb27bd156ecd92b92b50f277c750",
+    "next_action": "Await Commander integration. Follow-up option (not done, flagged as scope decision): route parse_with_source's own directory build through collection_layout's duplicate/overlap validation for stricter-by-default parsing.",
+    "reviewed_peers": {
+      "origin/main": "277a0910811fdb27bd156ecd92b92b50f277c750"
+    },
+    "schema_version": 1,
+    "state": "ready_for_integration",
+    "summary": "crates/font-engine: added collection_layout() (CollectionLayout/FaceLayout/TableRange) exposing bounded, validated ttcf/sfnt face and table-directory byte ranges. Rejects duplicate table tags and any within-face table overlap; accepts cross-face tables at an exact (offset,length) match as legitimate ttcf sharing and rejects any other cross-face intersection as corruption. numFonts/numTables are bounds-checked against the buffer with checked arithmetic before any Vec sized by the claim is allocated. Reuses the existing bounded readers (reader.rs), no second parser. 8 new synthetic-fixture tests in tests/ttc_layout.rs; existing 65 tests untouched and passing (73 total).",
+    "tool": "Claude Code on Claude Max 20x",
+    "updated_utc": "2026-09-12T09:44:53Z",
+    "usage": {
+      "evidence": "Runs on the user's Claude Max 20x subscription per this session's explicit direction; live token consumption is not exposed to this agent. No purchases, overages, or other accounts used.",
+      "status": "unknown"
+    }
+  },
+  "report_age_seconds": 115,
+  "report_path": "coordination/agents/daniel-floats.json",
+  "review_required": true,
+  "revision": 3,
+  "schema_version": 1,
+  "stale_completion": false,
+  "state": "reported_ready",
+  "task_id": "FT-031",
+  "worker_branch": "agent/daniel-floats/float-layout",
+  "worker_report_sha": "4422cff89998c7fa275ffdbc74e1be2810357691"
+}

@@ -67,7 +67,13 @@ completion vocabulary yet.
 
 Durable editor history uses the shared ledger implementation:
 
-- `history_status`: `{path}` returns undo/redo labels and retention usage.
+- `history_status`: `{path}` returns undo/redo labels and retention usage in
+  `history`, with a same-owner-turn `document:{project_id,path,revision,source_sha256}`
+  (no source text) and `limits:{history_bytes,history_entries,permanent_command_ids}`.
+  Use the returned revision/hash for guarded undo/redo; a later source edit can
+  still cause refusal. Limits are actual ledger constants, not a promise that a
+  proposed edit fits: history byte cost depends on before/after source. Permanent
+  command IDs have their own limit and are not released by clearing undo history.
 - `undo` / `redo`: `{path, command:{command_id, expected_revision,
   expected_sha256}}`. Command IDs must be unique for a new action and reused
   unchanged when retrying that same action after uncertain delivery.
@@ -154,12 +160,15 @@ not enumerated. No source text or disk contents are read by this query.
 Compiler restart now advances index generation instead of resetting it, so a
 previously invalid index snapshot cannot become valid again after restarting.
 
-Optional startup `compiler_max_frame_bytes` accepts128..12,582,912 (12MiB),
+Optional startup `compiler_max_frame_bytes` accepts128..15,728,640 (15MiB),
 default8MiB. Startup and compiler restart use the same limit. Ready advertises the
-selected compiler limit and16MiB helper output limit. Twelve MiB leaves4MiB for
-helper envelope/serialization headroom; the actual serialized helper bound is
-still checked, so excess fails explicitly. This opt-in admits the measured~10MB
-positioned result; it does not promise arbitrary document sizes or200ms latency.
+selected compiler limit and16MiB helper output limit. Fifteen MiB reserves1MiB for
+typical helper metadata; path lengths and JSON reserialization mean this reserve
+is not a guarantee that every admitted compiler result fits. The complete serialized
+helper envelope, including newline, is checked against16MiB before publication.
+Overflow produces one small error frame, never a partial preview; durable source
+and subsequent acknowledgements remain independent. This explicit opt-in admits
+the measured13,117,053-byte positioned result; it does not promise arbitrary document sizes or200ms latency.
 
 The output queue remains8 frames with16MiB per-frame serialization bounds
 (128MiB queued encoded payload, plus writer/producer buffers). Parsed JSON,
@@ -167,3 +176,57 @@ compiler memory and allocator overhead are additional; this is not an RSS cap.
 The native client must continuously drain large replies off its UI thread.
 Chunked or compact output requires a separate negotiated contract; no pages are
 silently omitted under the current JSON protocol.
+
+
+For developer diagnostics, optional startup `diagnostic_timings:true` writes JSON
+phase records to stderr containing only durations and event counts, never source
+or tokens. It does not alter protocol stdout. Consumers enabling this option must
+drain stderr; normal callers should leave it off. The replay driver's `--phases`
+option captures these records in a temporary file and bounds the parsed capture
+at1MiB. Timing records are attribution data, not latency guarantees.
+
+### Reviewed source plans
+
+`plan_literal_replacement`, `plan_citation_rename`, and
+`plan_citation_rename_at` export bounded read-only plans from the shared index.
+They require the complete `source_versions` and `membership_generation` snapshot.
+See [source-plans.md](docs/source-plans.md) for request fields, exact integer
+conversion, explicit bibliography declarations, and the review/application/retry
+contract. Native application is separate; multi-document application is not atomic.
+
+### Producer reply budget at launch
+
+The stdio helper sets `FLASHTEX_MAX_REPLY_BYTES` on the compiler child at both
+startup and restart to at most `compiler_max_frame_bytes - 1`, reserving the
+runtime frame's terminal newline. A stricter positive inherited value is
+preserved. Parsing follows the producer's Rust `usize` semantics: zero, invalid,
+non-UTF-8 and overflowing values use the helper ceiling; whitespace is not trimmed.
+The parent process environment is not modified.
+
+The existing render producer uses this budget to decline an oversized optional
+v2 sibling before promising it. This does not truncate output or raise runtime
+limits. Full v1 must still fit; a very small user budget can be too small even
+for a failure response. Other compilers may ignore this producer-specific setting,
+so runtime framing checks remain authoritative. Native latency is not established
+by the launch policy.
+
+### Edit admission correlation
+
+Full and metadata `edit` results include nullable `compile_request_id` and
+`compile_revision`. A non-null pair identifies the compile admitted for that
+operation; it may be queued, superseded, or immediately followed by a failed
+update. It does not prove dispatch, compilation, paint or source-action authority.
+`preview_error: null` likewise is not completion proof. If indexing/submission
+fails, both fields are null while the acknowledged source remains durable.
+Document revision and compile revision are different counters. Match updates by
+session and request ID rather than guessing IDs from document revisions.
+`discarded` updates now retain the original preview's `compile_revision`;
+`stale` already carries it. Reviewed `apply`, undo and redo wire result schemas are unchanged.
+
+`apply_group` full and metadata results also carry nullable `compile_request_id`
+and `compile_revision` with the same admission-only meaning. An exact permanent
+command retry preserves `history.command_revision` and `replayed_command`, and
+returns the currently saved document. If that retry admits another compile, its
+compile identity is fresh and refers to that current document, not the original
+command's historical source. Failure still returns null identities with the
+existing saved-source/error result. Undo and redo wire schemas are unchanged.

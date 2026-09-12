@@ -17,11 +17,19 @@
 //! - Pages are always white. The writer takes no theme input, so a dark preview
 //!   in the Mac app cannot leak into the export.
 
+pub mod cff;
+pub mod compare;
 pub mod embed;
 pub mod encoding;
+pub mod exact;
+pub mod inflate;
 pub mod json;
 pub mod protocol;
+pub mod reader;
+pub mod sha256;
 pub mod truetype;
+pub mod type1;
+pub mod v2;
 pub mod verify;
 pub mod writer;
 

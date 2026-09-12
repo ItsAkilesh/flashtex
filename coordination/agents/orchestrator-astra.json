@@ -7,18 +7,19 @@
     "orchestration",
     "git-integration"
   ],
-  "code_revision": "4746e5b0b248f5df5db9c68807b6a23ce58dfc99",
+  "code_revision": "e6997a83d25409a81fa816c66113f4a4859806be",
   "eta_minutes": null,
   "machine": "linux-primary",
-  "main_integrated_through": "4746e5b0b248f5df5db9c68807b6a23ce58dfc99",
-  "next_action": "Integrate preview-controller after parallel lock-fix gate; keep remote native candidate held for exact combined Xcode validation and five known bridge source defects.",
+  "main_integrated_through": "6c595b25cb82be321092ecad243f82528e32977d",
+  "next_action": "Review typed edit admission candidate after owner gates. Native owner notified actual cap recovery acceptance5646646403; await existing conformance source/test publication and delta r3. GH38 handoff remains with existing FT002 owner. Telemetry expansion paused.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "Sole active orchestrator; dispatcher478508 verified active. Six hosted product engineers active. Jaysen reported15 engineers. Main includes original compiler3ae7d9b and four tested Rust integration batches; full visual/byte PDF compatibility not achieved.",
+  "summary": "Sole Commander and three retained engineering handles. Mac owner census5646616256 at14:49:21 reports parent+3=4 actual sessions; Linux does not independently verify remote PIDs. Compiler branchce5bf48e remains09:54:34 with r12 ACK, GH38 current owner pickup unconfirmed. Dispatcher1099831/witness1405586 retained; no restart or added staffing.",
   "tool": "Codex Astra orchestrator",
-  "updated_utc": "2026-09-12T06:10:20.628667+00:00",
+  "updated_utc": "2026-09-12T14:55:47.249226+00:00",
   "usage": {
-    "status": "unknown"
+    "status": "unknown",
+    "billing": "No new purchases, overages or funded API grants; existing hosted route only."
   }
 }

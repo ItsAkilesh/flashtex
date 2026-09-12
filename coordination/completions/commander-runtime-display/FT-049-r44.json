@@ -1,0 +1,69 @@
+{
+  "agent_id": "commander-runtime-display",
+  "archived_utc": "2026-09-12T14:52:06Z",
+  "assignment": {
+    "acceptance": [
+      "Start from integrated decoder ecbaf7c on main; preserve four raw frames plus one decoded permit and joined shutdown",
+      "Exactly one contiguous sibling only after requested and accepted nonfailed result; bind ID/project/revision/document hashes and reject malformed, unsolicited, missing or out-of-order frames",
+      "Default legacy requests unchanged; preserve line limits and source epochs, no duplicate renderer parser or automatic native activation",
+      "Use corrected actual producer65dbe7d or later raw-byte font hashes; old contract SHA-bytes-plus-face deviation is historical, not accepted resource evidence",
+      "Publish bounded candidate API for existing helper owner; if deep validation is deferred, the type and contract must remain explicitly untrusted until existing native/core validator accepts it"
+    ],
+    "agent_id": "commander-runtime-display",
+    "allocation_id": "hosted-openai-product",
+    "branch": "agent/commander-runtime-display/display-runtime",
+    "deadline_utc": null,
+    "dependencies": [],
+    "input_main_sha": "e6997a83d25409a81fa816c66113f4a4859806be",
+    "objective": "Review existing producer cap parsing and shared helper launch policy, then audit actual oversized decline acceptance without runtime relaxation",
+    "owned_paths": [
+      "crates/document-runtime"
+    ],
+    "revision": 44,
+    "schema_version": 1,
+    "state": "assigned",
+    "task_id": "FT-049",
+    "timebox_minutes": 40,
+    "updated_utc": "2026-09-12T14:49:49.520500+00:00"
+  },
+  "report": {
+    "agent_id": "commander-runtime-display",
+    "allocation_id": "hosted-openai-product",
+    "assignment_acknowledgements": {
+      "FT-049": {
+        "acknowledged_utc": "2026-09-12T14:51:23Z",
+        "adaptation": "Read r44 cap audit objective; independently verified f8bb2389 six-state Value capture and reopened documents, no rerun. Full source/body comparisons and decline-before-acceptance pass; wrapper boundary remains separate.",
+        "main_sha": "6b69149c2922b043aafd0e11c2cd1320506b0c74",
+        "revision": 44
+      }
+    },
+    "branch": "agent/commander-runtime-display/display-runtime",
+    "capabilities": [
+      "rust-runtime"
+    ],
+    "code_revision": "2006af19e89ac5c666cbf8bbe4184797162adca5",
+    "eta_minutes": null,
+    "machine": "linux-primary",
+    "main_integrated_through": "a8790ce1616921c478c5c84fb988eb6fc66a5e25",
+    "next_action": "Commander integrate bounded capture audit; helper optional serialization remains separate boundary. No active jobs; await next assigned work.",
+    "reviewed_peers": {},
+    "schema_version": 1,
+    "state": "ready_for_integration",
+    "summary": "FT049r44 audit2006af19 PASS:15 compressed artifacts, original hashes,78 assets per capture, exact six v1/accepted v2 Value bodies and source revisions.6000-byte frames;5999JSON decline before acceptance; accepted-declined-accepted recovery and archived reopened documents equal final ACK. No rerun/raw spelling/native claim.",
+    "tool": "codex",
+    "updated_utc": "2026-09-12T14:51:35Z",
+    "usage": {
+      "status": "unknown"
+    }
+  },
+  "report_age_seconds": 31,
+  "report_path": "coordination/agents/commander-runtime-display.json",
+  "review_required": true,
+  "revision": 44,
+  "schema_version": 1,
+  "stale_completion": false,
+  "state": "reported_ready",
+  "task_id": "FT-049",
+  "worker_branch": "agent/commander-runtime-display/display-runtime",
+  "worker_report_sha": "a6b194720c27c454856b6547af9a811d130531d9"
+}

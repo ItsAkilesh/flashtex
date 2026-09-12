@@ -74,30 +74,51 @@ impl RegistryRenderer {
         query: MathQuery<'_>,
         requests: &[KernQuery],
     ) -> MathResult<MathKernSnapshot> {
+        self.math_kerns_with_values(lease, query, requests, None)
+    }
+    pub(super) fn math_kerns_with_values(
+        &self,
+        lease: &MathLease,
+        query: MathQuery<'_>,
+        requests: &[KernQuery],
+        cached: Option<&[flashtex_font_resources::math_cache::Value]>,
+    ) -> MathResult<MathKernSnapshot> {
         if requests.len() > 256 {
             return Err(MathConsumerError::Budget);
         }
         let metrics = self.math_metrics(lease, query)?;
-        let kern = lease.font.kerns()?;
-        require(
-            kern.identity() == lease.identity(),
-            "MATH kern resource identity",
-        )?;
+        let kern = if cached.is_none() {
+            Some(lease.font.kerns()?)
+        } else {
+            None
+        };
         let mut values = Vec::with_capacity(requests.len());
-        for &query in requests {
-            let raw = kern
-                .data()
-                .lookup(query.original_gid, query.corner, query.height)
-                .map_err(|e| MathConsumerError::Binding(BindingError::Font(e)))?;
-            let height_device_adjustment_present = kern
-                .data()
-                .records()
-                .get(&(query.original_gid, query.corner))
-                .is_some_and(|t| {
-                    t.correction_heights()
-                        .iter()
-                        .any(|v| v.device_adjustment_present)
-                });
+        for (index, &query) in requests.iter().enumerate() {
+            let (raw, height_device_adjustment_present) = if let Some(values) = cached {
+                match &values[index] {
+                    flashtex_font_resources::math_cache::Value::UnhintedKern {
+                        value,
+                        height_device_adjustment_present,
+                    } => (*value, *height_device_adjustment_present),
+                    _ => return Err(ValidationError("cached unhinted kern kind".into()).into()),
+                }
+            } else {
+                let kern = kern.as_ref().expect("direct kern parser");
+                let raw = kern
+                    .data()
+                    .lookup(query.original_gid, query.corner, query.height)
+                    .map_err(|e| MathConsumerError::Binding(BindingError::Font(e)))?;
+                let flag = kern
+                    .data()
+                    .records()
+                    .get(&(query.original_gid, query.corner))
+                    .is_some_and(|t| {
+                        t.correction_heights()
+                            .iter()
+                            .any(|v| v.device_adjustment_present)
+                    });
+                (raw, flag)
+            };
             let ticks = exact(
                 lease.font.scale_design_units(
                     raw.design_units as i32,

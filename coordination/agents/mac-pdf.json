@@ -7,36 +7,65 @@
       "adaptation": "Accepted FT-009 rev 1 as child of mac-claude-a; implemented crates/pdf zero-dep PDF 1.4 writer from runtime-v1 compile_result; base-14 Times/WinAnsi placeholder, non-WinAnsi chars become ? with warnings; parent re-verified cargo test 20/20, CLI --verify, sips opens output.",
       "main_sha": "09031efa9feca80d7a34e29b0b6fc41d43c509c4",
       "revision": 1
+    },
+    "exact-export": {
+      "acknowledged_utc": "2026-09-12T08:20:00Z",
+      "adaptation": "Lane from parent mac-claude-a: exact glyph/font/rule export against the reference profile plus follow-ups (bounded subset identity + deterministic serialization tests; classify raw-byte vs raster differences). Implemented per issue #25 and rendering-core PDF-INTEGRATION.md; evidence in crates/pdf/docs/exact-export-classification.md.",
+      "main_sha": "ad9fec2",
+      "revision": 1
+    },
+    "v2-adapter": {
+      "acknowledged_utc": "2026-09-12T09:20:00Z",
+      "adaptation": "Coordinator follow-up: from-v2 command consuming flashtex-render --v2 envelopes into GlyphRun/PlacedGlyph/ExactFont/Op::rule; 18-fixture gap measured per category vs pdflatex-lmodern; issue #28 fixed first as instructed; rebased onto origin/main >= b587385 as instructed.",
+      "main_sha": "27437b9",
+      "revision": 1
     }
   },
-  "branch": "agent/mac-pdf/pdf-output",
+  "branch": "agent/mac-pdf/v2-adapter",
   "capabilities": [
     "rust",
-    "pdf"
+    "pdf",
+    "cff",
+    "exact-export"
   ],
-  "code_revision": "436b2ec096ccd1b3c045b9dd4ece25c24cd7c5f6",
+  "code_revision": "528d52b2743c2414228988d44029c24458eaf55b",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
     "pessimistic": 0
   },
   "machine": "mac-m1max-a",
-  "main_integrated_through": "25a92a9c591a92a3d49071e536ecf8f129112c24",
-  "next_action": "Await Commander integration; optional: worker sets pdf_path via render_envelope",
+  "main_integrated_through": "27437b9",
+  "next_action": "Commander merges agent/mac-pdf/v2-adapter; render-pipeline to emit SHA-256(bytes) for fonts[].sha256 and decide Times bytes; rendering-core to accept opentype-cff",
   "reviewed_peers": {
+    "origin/agent/commander-render-core/rendering-core": {
+      "adaptation": "Adopted the bounded operator set and exact-decimal requirement from pdf_stream.rs / PDF-INTEGRATION.md; Content::Verbatim accepts content_bytes output unchanged",
+      "reviewed_utc": "2026-09-12T09:15:00Z",
+      "sha": "branch tip as of 2026-09-12T08:20Z (pdf_stream.rs, PDF-INTEGRATION.md read)"
+    },
+    "origin/agent/mac-render-pipeline/unified": {
+      "adaptation": "display.rs/fonts.rs/flashtex-render read; sha256 form (bytes||face_index) and opentype-cff format accepted with a reported deviation",
+      "reviewed_utc": "2026-09-12T10:05:00Z",
+      "sha": "ba5611f"
+    },
+    "origin/agent/mac-visual-oracle/reference-raster": {
+      "adaptation": "Reproduced render_reference.sh preambles for the oracle run; read only",
+      "reviewed_utc": "2026-09-12T09:15:00Z",
+      "sha": "tests/visual-corpus harness as of 2026-09-12T08:25Z"
+    },
     "origin/main": {
-      "adaptation": "No contract change needed; pdf_path wiring is a follow-up",
-      "reviewed_utc": "2026-09-12T04:31:13Z",
-      "sha": "09031efa9feca80d7a34e29b0b6fc41d43c509c4"
+      "adaptation": "Rebased onto it; rendering-core pdf_export.rs outline route read, complementary to from-v2",
+      "reviewed_utc": "2026-09-12T10:05:00Z",
+      "sha": "27437b9"
     }
   },
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "crates/pdf: hand-written PDF 1.4 from runtime-v1 pages; 20/20 tests; xref self-check; sips opens fixture PDF 612x792; white page independent of dark preview",
+  "summary": "crates/pdf: issue #28 classifier fix (both sides always parsed); from-v2 adapter feeds the exact route from rendering-v2 display lists (original GIDs at exact tick positions, fonts by content hash as GID-preserving CFF subsets, typed rules, ToUnicode); 18 corpus fixtures flashtex-render --v2 -> from-v2 vs pdflatex-lmodern measured per category in docs/v2-adapter-gap.md (text-only fixtures: 0 ink-only pixels on 01/04/05/17, <=240/page elsewhere; math/lists differ where the pipeline reports limits). Rebased on origin/main 27437b9 incl. Commander's b587385 integration. cargo test 78/78, clippy clean.",
   "tool": "Claude Code subagent (parent mac-claude-a)",
-  "updated_utc": "2026-09-12T04:31:13Z",
+  "updated_utc": "2026-09-12T10:05:00Z",
   "usage": {
-    "evidence": "Shared Claude Max quota with parent mac-claude-a; no purchases",
+    "evidence": "Shared Claude Max quota with parent mac-claude-a; no purchases; context about 4% of session budget at this checkpoint",
     "status": "unknown"
   }
 }

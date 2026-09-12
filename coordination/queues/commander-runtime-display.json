@@ -1,0 +1,50 @@
+{
+  "agent_id": "commander-runtime-display",
+  "next_index": 1,
+  "schema_version": 1,
+  "steps": [
+    {
+      "acceptance": [
+        "Preserve exact source hash/byte boundaries including ASCII and UTF8 endpoints",
+        "Preserve failure rollback, stale source proof, fairness and contiguous sibling validation",
+        "No helper/ledger/API adoption before independent review"
+      ],
+      "allocation_id": "hosted-openai-product",
+      "name": "Prototype immutable validation proof against existing source validator",
+      "objective": "Prototype immutable validation proof against existing source validator",
+      "owned_paths": [
+        "crates/document-runtime"
+      ],
+      "timebox_minutes": 40
+    },
+    {
+      "acceptance": [
+        "Preserve exact source hash/byte boundaries including ASCII and UTF8 endpoints",
+        "Preserve failure rollback, stale source proof, fairness and contiguous sibling validation",
+        "No helper/ledger/API adoption before independent review"
+      ],
+      "allocation_id": "hosted-openai-product",
+      "name": "Verify captured and mutation stale/current acceptance equivalence before comparing costs",
+      "objective": "Verify captured and mutation stale/current acceptance equivalence before comparing costs",
+      "owned_paths": [
+        "crates/document-runtime"
+      ],
+      "timebox_minutes": 40
+    },
+    {
+      "acceptance": [
+        "Preserve exact source hash/byte boundaries including ASCII and UTF8 endpoints",
+        "Preserve failure rollback, stale source proof, fairness and contiguous sibling validation",
+        "No helper/ledger/API adoption before independent review"
+      ],
+      "allocation_id": "hosted-openai-product",
+      "name": "Publish complete admission cost and retained-byte evidence; no production adoption",
+      "objective": "Publish complete admission cost and retained-byte evidence; no production adoption",
+      "owned_paths": [
+        "crates/document-runtime"
+      ],
+      "timebox_minutes": 40
+    }
+  ],
+  "task_id": "FT-049"
+}

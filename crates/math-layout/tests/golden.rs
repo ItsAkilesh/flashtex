@@ -205,18 +205,17 @@ fn delimiter_sizing_left_right_fraction() {
 }
 
 #[test]
-fn delimiter_falls_back_to_largest_and_reports() {
-    // A 60pt-tall body exceeds the largest non-extensible cmex10 parenthesis
-    // (30pt). The engine uses the 30pt glyph and reports the shortfall
-    // instead of silently drawing something else.
-    let tall = Atom::sqrt(MathList::from(Atom::sqrt(MathList::from(Atom::sqrt(
-        MathList::from(Atom::frac(
-            fixtures::stacked_fraction(),
-            fixtures::stacked_fraction(),
-        )),
-    )))));
-    let list = MathList::from(Atom::left_right(Some('('), Some(')'), tall.into()));
-    let out = layout_with_report(&list, Style::DISPLAY, &cm());
+fn delimiter_without_a_recipe_falls_back_and_reports() {
+    // The Times approximation has neither size chains nor extensible recipes:
+    // a tall body gets the base glyph and a reported shortfall, never a
+    // silently substituted shape.
+    let m = TimesApproxMetrics::new(10.0);
+    let list = MathList::from(Atom::left_right(
+        Some('('),
+        Some(')'),
+        fixtures::stacked_fraction(),
+    ));
+    let out = layout_with_report(&list, Style::DISPLAY, &m);
     let hit = out.limitations.iter().find_map(|l| match l {
         Limitation::DelimiterTooSmall { ch, wanted, used } => Some((*ch, *wanted, *used)),
         _ => None,
@@ -224,7 +223,263 @@ fn delimiter_falls_back_to_largest_and_reports() {
     let (ch, wanted, used) = hit.expect("shortfall reported");
     assert_eq!(ch, '(');
     assert!(wanted > used);
-    assert_eq!(f5(used), "30.00029");
+}
+
+#[test]
+fn extensible_brace_is_stacked_glyph_pieces() {
+    // The body is 36pt tall in display; the largest fixed cmex10 brace is
+    // 30pt, so tex.web §713 stacks the recipe of char 0x38: top 0x38 (9pt),
+    // mid 0x3C (18pt), bot 0x3A (9pt), rep 0x3E; w = 36pt ≥ wanted before any
+    // repeater is needed (n = 0). The 36pt stack is centred on the axis:
+    // (0 − 36)/2 − 2.5 = −20.5, so the formula is (20.50018+15.50018).
+    // \showbox: \hbox(20.50018+15.50018)x28.98824, vbox(0.0+36.00037)
+    // shifted -20.50018 containing ^^8 (9.00009), ^^< (18.00018), ^^: (9.00009).
+    let list = fixtures::tall_braces();
+    let out = layout_with_report(&list, Style::DISPLAY, &cm());
+    assert_eq!(dims(&out.root), "(20.50018+15.50018)x28.98824");
+    assert!(out.limitations.is_empty());
+    let r = positioned_runs(&out.root, (0.0, 0.0));
+    let left: Vec<_> = r.glyphs.iter().filter(|g| g.ch == '{').collect();
+    let right: Vec<_> = r.glyphs.iter().filter(|g| g.ch == '}').collect();
+    assert_eq!(
+        left.iter().map(|g| g.gid).collect::<Vec<_>>(),
+        vec![0x38, 0x3C, 0x3A]
+    );
+    assert_eq!(
+        right.iter().map(|g| g.gid).collect::<Vec<_>>(),
+        vec![0x39, 0x3D, 0x3B]
+    );
+    // Pieces abut: each baseline is the previous piece's bottom (h = 0 for
+    // these pieces, so the baseline is the piece's top edge).
+    let b: Vec<String> = left.iter().map(|g| f5(g.baseline_y)).collect();
+    assert_eq!(b, vec!["0.00000", "9.00009", "27.00027"]);
+    for g in left.iter().chain(right.iter()) {
+        assert_eq!(cm().font_name(g.font_id), "cmex10");
+    }
+    // Both delimiters share the same x extent per side and the body sits
+    // between them.
+    assert!(left.iter().all(|g| g.x == 0.0));
+    assert!(right.iter().all(|g| f5(g.x) == "20.09933"));
+}
+
+#[test]
+fn extensible_radical_is_stacked_glyph_pieces() {
+    // The radicand (the 36pt brace stack) wants more than the 30pt cmex10
+    // sign 0x73, so the recipe of 0x74 is stacked: top 0x76 (h 0.39998 +
+    // d 5.60005), reps 0x75 (6pt each), bot 0x74 (18pt). The overbar rule
+    // thickness is the top piece's height, 0.39998pt, and the rule's top
+    // meets the top piece's top.
+    let list = MathList::from(Atom::sqrt(fixtures::tall_braces()));
+    let out = layout_with_report(&list, Style::DISPLAY, &cm());
+    assert!(out.limitations.is_empty());
+    let r = positioned_runs(&out.root, (0.0, 0.0));
+    let pieces: Vec<_> = r.glyphs.iter().filter(|g| g.ch == '\u{221A}').collect();
+    assert_eq!(pieces.first().unwrap().gid, 0x76);
+    assert_eq!(pieces.last().unwrap().gid, 0x74);
+    assert!(pieces.len() >= 4, "reps expected: {}", pieces.len());
+    assert!(pieces[1..pieces.len() - 1].iter().all(|g| g.gid == 0x75));
+    let rule = &r.rules[0];
+    assert_eq!(f5(rule.h), "0.39998");
+    assert_eq!(f5(rule.y), f5(pieces[0].baseline_y - 0.39998));
+    // The sign's total height is the sum of its pieces and covers the
+    // radicand: bottom of the last piece is below the box's depth minus 0.
+    let top = pieces[0].baseline_y - 0.39998;
+    let bottom = pieces.last().unwrap().baseline_y + 18.00018;
+    assert!(bottom - top >= 36.0);
+}
+
+#[test]
+fn cube_root_degree_uses_latex_root_macro_geometry() {
+    // LaTeX \r@@t: \mkern5mu (2.77771pt at 10pt), the degree in
+    // scriptscript style raised by 0.6·(h − d) of the radical box
+    // (0.6·(15.44382 − 8.95639) = 3.89246), then \mkern-10mu (−5.55542pt).
+    // \showbox: \hbox(15.44382+8.95639)x18.31102; \kern 2.77771; hbox "3"
+    // (3.22221+0.0)x3.40283 shifted -3.89249; \kern -5.55542.
+    let list = fixtures::cube_root_frac();
+    let b = layout(&list, Style::DISPLAY, &cm());
+    assert_eq!(dims(&b), "(15.44382+8.95639)x18.31102");
+    let r = runs(&list, Style::DISPLAY);
+    let three = glyph(&r, '3');
+    let sign = glyph(&r, '\u{221A}');
+    assert_eq!(three.size, 5.0);
+    assert_eq!(f5(three.x), "2.77771");
+    assert_eq!(f5(sign.x), f5(2.77771 + 3.40283 - 5.55542));
+    assert_eq!(f5(b.height - three.baseline_y), "3.89246");
+    assert_eq!(sign.gid, 0x72);
+}
+
+#[test]
+fn lim_takes_limits_and_sin_takes_none() {
+    // \lim is an Op with upright text; in display its subscript becomes a
+    // lower limit (Rule 13a): centred under "lim", ξ10 = 1.66666 below, plus
+    // ξ13 = 1.0. \sin has \nolimits and is followed by \thinmuskip (Op–Ord).
+    // \showbox: \hbox(13.44366+7.17776)x40.21942, limit vbox x16.4931 with
+    // "lim" centred by 1.3021 of glue; \glue(\thinmuskip) 1.66663 after sin.
+    let list = fixtures::lim_sin_x_over_x();
+    let b = layout(&list, Style::DISPLAY, &cm());
+    assert_eq!(dims(&b), "(13.44366+7.17776)x40.21942");
+    let r = runs(&list, Style::DISPLAY);
+    let l = glyph(&r, 'l');
+    assert_eq!(cm().font_name(l.font_id), "cmr10");
+    assert_eq!(f5(l.x), "1.30209");
+    let arrow = glyph(&r, '\u{2192}');
+    assert_eq!(arrow.size, 7.0);
+    // Lower limit baseline: below the "lim" baseline by 1.66666 + h(limit).
+    // (ξ10 is 1.66666pt in TeX's truncated arithmetic; 6.17776 in total.)
+    assert_eq!(f5(arrow.baseline_y - l.baseline_y), "6.17776");
+    let s = glyph(&r, 's');
+    let n = glyph(&r, 'n');
+    let xs: Vec<_> = r
+        .glyphs
+        .iter()
+        .filter(|g| g.ch == 'x' && g.size == 10.0)
+        .collect();
+    let x_num = xs.iter().find(|g| g.baseline_y == s.baseline_y).unwrap();
+    assert_eq!(f5(x_num.x - (n.x + 5.55557)), "1.66663");
+}
+
+#[test]
+fn overline_and_underline_are_explicit_rules() {
+    // Rule 9: overbar(x, 3θ, θ) → height h + 3θ + 2θ = 4.30554 + 1.9999.
+    // Rule 10: x, kern 3θ, rule θ, extra θ → depth 5θ = 1.99989.
+    // \showbox: \hbox(6.30544+0.0)x5.71527 and \hbox(4.30554+1.9999)x5.71527.
+    let over = layout(&fixtures::overline_x(), Style::TEXT, &cm());
+    assert_eq!(dims(&over), "(6.30544+0.00000)x5.71527");
+    let r = runs(&fixtures::overline_x(), Style::TEXT);
+    assert_eq!(r.rules.len(), 1);
+    assert_eq!(f5(r.rules[0].y), "0.39998");
+    assert_eq!(f5(r.rules[0].h), "0.39998");
+    assert_eq!(f5(r.rules[0].w), "5.71527");
+    let under = layout(&fixtures::underline_x(), Style::TEXT, &cm());
+    assert_eq!(dims(&under), "(4.30554+1.99989)x5.71527");
+    let r = runs(&fixtures::underline_x(), Style::TEXT);
+    assert_eq!(r.rules.len(), 1);
+    // Rule top is 3θ below the baseline (4.30554 from the box top).
+    assert_eq!(f5(r.rules[0].y), f5(4.30554 + 3.0 * 0.39998));
+}
+
+#[test]
+fn accent_over_scripted_character_keeps_accent_and_grows_box() {
+    // tex.web §742: the superscript moves under the accent; the accent stays
+    // centred over the bare x (shift 0.63542) at the baseline, and the box
+    // grows to the scripted height. \showbox: \hbox(8.14003+0.0)x10.2014,
+    // "^" shifted 0.63542, \kern-8.14003, inner hbox(8.14003+0.0)x10.2014
+    // with the 2 shifted -3.62892 (uncramped text style).
+    let list = fixtures::hat_x_squared();
+    let b = layout(&list, Style::TEXT, &cm());
+    assert_eq!(dims(&b), "(8.14003+0.00000)x10.20140");
+    let r = runs(&list, Style::TEXT);
+    let hat = glyph(&r, '^');
+    let x = glyph(&r, 'x');
+    let two = glyph(&r, '2');
+    assert_eq!(f5(hat.x), "0.63541");
+    assert_eq!(f5(hat.baseline_y), f5(x.baseline_y));
+    assert_eq!(f5(x.baseline_y - two.baseline_y), "3.62892");
+}
+
+#[test]
+fn widehat_widens_along_the_cmex_chain() {
+    // \widehat over a 16.06717pt base: cmex10 0x62 (5.56) and 0x63 (10.0)
+    // are narrower, 0x64 (14.44447) is the widest that still fits.
+    // \showbox: \hbox(7.5+1.94444)x16.06717, ^^d shifted 0.81136.
+    let list = fixtures::widehat_xyz();
+    let b = layout(&list, Style::TEXT, &cm());
+    assert_eq!(dims(&b), "(7.50000+1.94444)x16.06717");
+    let r = runs(&list, Style::TEXT);
+    let hat = glyph(&r, '\u{0302}');
+    assert_eq!(hat.gid, 0x64);
+    assert_eq!(f5(hat.x), "0.81135");
+}
+
+#[test]
+fn explicit_style_overrides_nest() {
+    // {\displaystyle\sum_{i=1}^n}{\textstyle\frac{a}{b}} inside a text-style
+    // formula: the sum takes the display variant with limits; the fraction
+    // uses text-style num2/denom2. \showbox: \hbox(16.51393+12.79865)x21.18211.
+    let list = fixtures::styled_mix();
+    let b = layout(&list, Style::TEXT, &cm());
+    assert_eq!(dims(&b), "(16.51393+12.79865)x21.18211");
+    let r = runs(&list, Style::TEXT);
+    assert_eq!(glyph(&r, '\u{2211}').gid, 0x58);
+    // The overrides are absolute: setting the same list in display style
+    // gives the same geometry.
+    let d = layout(&list, Style::DISPLAY, &cm());
+    assert_eq!(dims(&d), dims(&b));
+}
+
+/// Number of rules TeX would draw for a list: one per fraction with a rule,
+/// radical, overline and underline, recursively.
+fn expected_rules(list: &MathList) -> usize {
+    use flashtex_math_layout::Nucleus;
+    list.atoms
+        .iter()
+        .map(|a| {
+            let scripts = a.superscript.as_ref().map(expected_rules).unwrap_or(0)
+                + a.subscript.as_ref().map(expected_rules).unwrap_or(0);
+            let own = match &a.nucleus {
+                Nucleus::Symbol(_) | Nucleus::Empty | Nucleus::Text(_) => 0,
+                Nucleus::List(l) | Nucleus::Styled { body: l, .. } => expected_rules(l),
+                Nucleus::Fraction {
+                    numerator,
+                    denominator,
+                    thickness,
+                } => {
+                    usize::from(thickness.is_none_or(|t| t > 0.0))
+                        + expected_rules(numerator)
+                        + expected_rules(denominator)
+                }
+                Nucleus::Radical { radicand, degree } => {
+                    1 + expected_rules(radicand) + degree.as_ref().map(expected_rules).unwrap_or(0)
+                }
+                Nucleus::Accent { base, .. } => expected_rules(base),
+                Nucleus::Delimited { body, .. } => expected_rules(body),
+                Nucleus::Overline(l) | Nucleus::Underline(l) => 1 + expected_rules(l),
+            };
+            own + scripts
+        })
+        .sum()
+}
+
+#[test]
+fn rules_are_rule_primitives_never_box_drawing_glyphs() {
+    // Acceptance "no flattened fraction or fake rule glyph": every fraction
+    // bar, overbar and underbar in the output is a `PositionedRule` with
+    // explicit x/y/w/h, and no glyph in the U+2500 box-drawing block (the
+    // compiler's former U+2500-run encoding) ever appears, for every fixture,
+    // style and metrics provider.
+    let cmm = cm();
+    let times = TimesApproxMetrics::new(10.0);
+    let providers: [(&str, &dyn MathFontMetrics); 2] = [("cm", &cmm), ("times", &times)];
+    for (name, list) in fixtures::all() {
+        for style in [
+            Style::DISPLAY,
+            Style::TEXT,
+            Style::SCRIPT,
+            Style::SCRIPT_SCRIPT,
+        ] {
+            for (pname, m) in providers {
+                let out = layout_with_report(&list, style, m);
+                let r = positioned_runs(&out.root, (0.0, 0.0));
+                assert!(
+                    r.glyphs
+                        .iter()
+                        .all(|g| !('\u{2500}'..='\u{257F}').contains(&g.ch)),
+                    "{name} ({pname}, {style:?}): box-drawing glyph in output"
+                );
+                assert_eq!(
+                    r.rules.len(),
+                    expected_rules(&list),
+                    "{name} ({pname}, {style:?}): rule count"
+                );
+                for rule in &r.rules {
+                    assert!(
+                        rule.w > 0.0 && rule.h > 0.0,
+                        "{name}: degenerate rule {rule:?}"
+                    );
+                }
+            }
+        }
+    }
 }
 
 #[test]
@@ -406,7 +661,9 @@ fn times_approximation_lays_out_everything_with_reported_limitations() {
             assert!(
                 matches!(
                     l,
-                    Limitation::DelimiterTooSmall { .. } | Limitation::RadicalTooSmall { .. }
+                    Limitation::DelimiterTooSmall { .. }
+                        | Limitation::RadicalTooSmall { .. }
+                        | Limitation::MissingAccent('\u{0302}')
                 ),
                 "{name}: unexpected limitation {l:?}"
             );
