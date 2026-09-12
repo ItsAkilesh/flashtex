@@ -16,29 +16,29 @@
     "cursor-commit",
     "coordination"
   ],
-  "code_revision": "db7f40dc056c97b6dc50d6115f39917b5f73cc3e",
+  "code_revision": "d5c61186d2e5384e4b0ebac33c7c23c036fc10bf",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
     "pessimistic": 0
   },
   "machine": "mac-m5pro-kabir",
-  "main_integrated_through": "70e4aabc579bb7783187cb397b81857200a4de53",
-  "next_action": "Propose compact or chunked transport to the Commander with measured byte breakdown; key names alone are 71 percent of a large reply.",
+  "main_integrated_through": "4425d9d77b747db69c1f04c493b363bd3a467f4e",
+  "next_action": "Awaiting rev 9 or the transport decision on issue #21. Remaining real gaps are greedy paragraph breaking, owned by FT-019, and hyphenation.",
   "reviewed_peers": {
     "origin/main": {
-      "adaptation": "Measured the byte breakdown before proposing anything: repeated key names account for about 71 percent of a large reply and payload data only 29 percent, so the durable fix is a compact or chunked transport, which is a contract decision the Commander owns. Bounding with an explicit diagnostic is the part that is mine and it turns a confusing malformed-frame rejection into an accurate statement of what happened.",
-      "reviewed_utc": "2026-09-12T08:27:34Z",
-      "sha": "23c30247b5fb421c5da05b3c9f7a714099622b7e"
+      "adaptation": "I wrote the incorrect claim myself in the previous revision and repeated it in a commit message. Checking it empirically rather than trusting my own document is what caught it. The README had it right, which is a reminder that two documents describing the same behaviour will drift unless one is generated or tested.",
+      "reviewed_utc": "2026-09-12T08:32:07Z",
+      "sha": "5b6911090e2dcbe807c6fb4d9e75cd4f214a2440"
     }
   },
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "Issue #21 fixed: a valid 500KB project produced a 13.4MB reply that the runtime rejected as malformed. The reply is now bounded to the 8 MiB transport frame and says explicitly how many pages were not delivered and why. 15 suites pass.",
+  "summary": "Corrected a false limitation I published in PARITY.md: it claimed ligature substitution was not applied, and it is. Added a test pinning the real behaviour so the claim cannot drift from the code again.",
   "tool": "Codex",
-  "updated_utc": "2026-09-12T08:27:34Z",
+  "updated_utc": "2026-09-12T08:32:07Z",
   "usage": {
-    "evidence": "Reproduced: 516193 byte input produced 13381254 byte reply, 88902 items at 150.5 bytes each, exceeding the 8388608 byte frame. After the fix the same input produces 8303434 bytes, 157 of 253 pages, with an explicit error diagnostic naming the 96 undelivered pages. Regression test added.",
+    "evidence": "New test: fi shapes to one ligature cluster whose source_range covers both input bytes 0..2, versus two clusters with ligatures disabled; 15 suites pass; clippy clean; fmt clean",
     "status": "Written directly; Codex unavailable"
   }
 }

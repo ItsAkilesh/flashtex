@@ -43,9 +43,12 @@ compiler number can never be mistaken for the product number.
 
 ## Known fidelity gaps that would affect any future parity comparison
 
-- Ligature substitution is not applied to emitted items. Advances come from the
-  shaped result, but `fi`, `fl` and friends are not substituted, so output will
-  differ from an engine that applies them.
+- ~~Ligature substitution is not applied.~~ **Corrected 2026-09-12: it is.**
+  This document previously claimed ligatures were missing. They are applied:
+  `fi` shapes to a single ligature cluster whose source range still covers both
+  input bytes, so advances reflect the ligature and click-to-source survives it.
+  A test in `src/layout.rs` now pins that behaviour so the claim cannot drift
+  from the code again. The README was already correct; this file was not.
 - Paragraph breaking is greedy, not TeX's optimal total-fit algorithm. Line
   breaks will differ from TeX on the same input even with identical metrics.
 - No hyphenation.
