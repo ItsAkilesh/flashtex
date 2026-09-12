@@ -1,6 +1,6 @@
 # mac-historical-preview handoff — native consumer for `completed_snapshot`
 
-- Updated UTC: 2026-09-12T10:22Z
+- Updated UTC: 2026-09-12T10:55Z
 - Agent / parent / machine: `mac-historical-preview` (Claude Code subagent) / parent
   `mac-claude-a` / `mac-m1max-a`
 - Lane: native consumer for the helper's `completed_snapshot` side channel
@@ -25,6 +25,64 @@
   diffs are isolated in one commit (5c35587) so the parent can cherry-pick or re-apply from the
   diff below; app launched only by the bench with `FLASHTEX_NO_ACTIVATE=1`; commits carry the
   user as primary author with the required trailers. Feature is **default OFF**.
+
+## Refill: hybrid release policy (branch `agent/mac-historical-preview/hybrid`)
+
+- Base: mac-shell 6f4ee94 (the consumer lane is already merged there as 04a4eaa). Commits:
+  77690b2 (owned: `apps/mac/Sources/FlashTeXMac/ControllerRelease.swift`,
+  `apps/mac/Tests/FlashTeXMacTests/ControllerReleaseTests.swift`), **414e4d1 requested parent
+  diff** (`ShellModel+Controller.swift`, listed below), then evidence + this handoff.
+- Policy: `FLASHTEX_CONTROLLER_RELEASE=hybrid` (default `hold`, unchanged; historical stays OFF).
+  Hold the next edit for the in-flight edit's preview, but once it is durable, newer text is
+  queued and it has been in flight ≥ `clamp(2 × last edit→preview latency, 40, 250) ms`, send
+  the newest buffer. Checked on every keystroke while in flight and by a timer armed at the
+  durable receipt. `FLASHTEX_CONTROLLER_RELEASE_FACTOR` overrides the factor (measurement only).
+  In hybrid mode the historical channel no longer releases on the durable receipt (plain
+  historical mode still does).
+- Tests: `ControllerReleaseTests` (5): policy from env; bound clamp/factor; decision table
+  (hold never early; hybrid needs durable + queued + bound); fake-helper e2e: hold keeps the
+  keystroke queued behind a never-answered compile, hybrid sends it at the 40 ms bound (durable
+  r3 without A's preview, release logged with the bound), hybrid+historical paints the
+  superseded compile as a labelled historical frame then the current one.
+- Evidence: `docs/evidence/hybrid-release-2026-09-12T1040Z.md` (+ dir: 20 cells, logs, JSON,
+  `analysis.txt`, `reopen-check.txt`, scripts). Helper from origin/main 60c40c1
+  (preview-controller 2f2605d, sha256 2d9bd1d3…), compiler 004283fc…, **load 32–67 (every cell
+  load-affected)**. hold / hybrid(2×) / hybrid+historical, demo + 60 KB, 30 ms + 0 ms:
+  hybrid at 2× released 0–4 times per 200 keystrokes and matched hold within load noise
+  (60 KB 30 ms first paint p50 173 hold / 233 hybrid / 299 hybrid+hist; durable ACKs per
+  keystroke 0.30 / 0.24 / 0.18; demo 30 ms 53 / 72 / 56 ms, ACKs 0.99 / 0.90 / 0.97; 60 KB 0 ms
+  235 / 192 / 236 ms, ACKs 0.10 / 0.14 / 0.12). Factor 1 (extra data point) released 13–18
+  times and starved previews on 60 KB 0 ms (5 paints, p50 780 ms). **Reopen check 20/20 OK**:
+  the relaunched helper returns the exact expected final text in every cell, last durable
+  receipt bound to the last keystroke revision.
+- Reading: 2× is a safe tail guard that does not move the ACK rate; a tighter bound
+  supersedes compiles that are about to finish. Keep the default; ship hybrid 2× only as an
+  opt-in; the ACK-rate lever is helper/runtime-side (skip superseded queued compiles).
+
+### Exact parent diff for the hybrid lane (commit 414e4d1)
+
+`ShellModel+Controller.swift` only:
+- `ControllerState` gains `var releasePolicy = ControllerReleasePolicy.fromEnvironment()`,
+  `var lastEditToPreviewMs: Double?`, `var sentAtByDurable: [String: [Int: Date]] = [:]`,
+  `var hybridRelease: DispatchWorkItem?`.
+- `controllerSubmitEdit`: the early return becomes
+  `if controllerState.inFlight != nil { controllerState.queued = true; controllerHybridCheck(); return }`.
+- `applyDurableDocument`, in-flight branch: after recording `editorRevisionByDurable`, record
+  `sentAtByDurable[path][revision] = inFlight.sentAt` (prune to the newest 8) and, under the
+  bench, log `durable: r<revision> for revision <editorRevision> at <ns>`; replace
+  `if historicalNegotiated { controllerState.inFlight = nil }` with
+  `switch controllerState.releasePolicy { case .hybrid: controllerScheduleHybridRelease()
+  case .holdUntilPreview: if historicalNegotiated { controllerState.inFlight = nil } }`.
+- New `private func controllerScheduleHybridRelease()` (cancels the previous item, arms a
+  `DispatchWorkItem` on the main queue after `ReleaseBound.remainingMs(...)`) and
+  `func controllerHybridCheck()` (guards with `ReleaseBound.shouldRelease(...)`, logs
+  `controller hybrid release: revision N durable rM after X ms (bound B ms)` and, under the
+  bench, `release: hybrid revision N after X ms (bound B ms) at <ns>`, then
+  `controllerReleaseInFlight()`).
+- `controllerReleaseInFlight` first cancels/clears `controllerState.hybridRelease`.
+- `applyControllerPreview`: after `let versionForActive = …`, record
+  `controllerState.lastEditToPreviewMs = Date().timeIntervalSince(sent) * 1000` when
+  `sentAtByDurable[activePath]?[rev]` is known.
 
 ## Ready behavior (on the branch)
 
