@@ -2,6 +2,7 @@
 
 use crate::items::SourceItem;
 use crate::revision::RevisionId;
+use crate::scan_limit::{ScanLimit, ScanTooLarge};
 use crate::words::WordStats;
 
 /// Math item counts.
@@ -38,22 +39,61 @@ pub struct Statistics {
     pub math: MathStats,
     /// Number of pages, i.e. the number of [`SourceItem::PageMark`] items.
     pub pages: usize,
+    /// Source bytes actually scanned to compute `words` and `math`: the
+    /// summed byte length of every [`SourceItem::Text`] string and every
+    /// [`crate::items::MathItem::source`] string. `PageMark` items and the
+    /// cheap `content_hash` fingerprint pass are not counted here — this is
+    /// specifically the cost [`ScanLimit`] bounds, and what a cache is
+    /// expected to let a caller avoid paying twice for unchanged content.
+    pub scanned_bytes: usize,
 }
 
 impl Statistics {
-    /// Compute statistics for `items`, bound to `revision`.
+    /// Compute statistics for `items`, bound to `revision`, with no cap on
+    /// how many bytes may be scanned.
     ///
     /// This is pure counting over `items`: no filesystem or network access,
     /// no rendering, and no interpretation of math or page-break syntax
-    /// beyond the [`SourceItem`] variant the caller chose.
+    /// beyond the [`SourceItem`] variant the caller chose. Equivalent to
+    /// [`Statistics::compute_bounded`] with [`ScanLimit::UNBOUNDED`], which
+    /// can never fail.
     pub fn compute(revision: RevisionId, items: &[SourceItem]) -> Statistics {
+        Statistics::compute_bounded(revision, items, ScanLimit::UNBOUNDED)
+            .expect("ScanLimit::UNBOUNDED never rejects a scan")
+    }
+
+    /// Compute statistics for `items`, bound to `revision`, refusing to scan
+    /// past `limit`.
+    ///
+    /// `limit` bounds [`Statistics::scanned_bytes`] — the summed byte length
+    /// of [`SourceItem::Text`] and math-source content actually counted.
+    /// Items are scanned in order; as soon as the running total would exceed
+    /// `limit`, this returns [`ScanTooLarge`] instead of silently truncating
+    /// or producing a partial count. No partial `Statistics` is ever
+    /// returned on error.
+    pub fn compute_bounded(
+        revision: RevisionId,
+        items: &[SourceItem],
+        limit: ScanLimit,
+    ) -> Result<Statistics, ScanTooLarge> {
         let mut words = WordStats::default();
         let mut math = MathStats::default();
         let mut pages = 0usize;
+        let mut scanned_bytes = 0usize;
         for item in items {
             match item {
-                SourceItem::Text(text) => words = words + WordStats::of(text),
+                SourceItem::Text(text) => {
+                    scanned_bytes += text.len();
+                    if scanned_bytes > limit.max_bytes() {
+                        return Err(ScanTooLarge::new(scanned_bytes, limit));
+                    }
+                    words = words + WordStats::of(text);
+                }
                 SourceItem::Math(m) => {
+                    scanned_bytes += m.source.len();
+                    if scanned_bytes > limit.max_bytes() {
+                        return Err(ScanTooLarge::new(scanned_bytes, limit));
+                    }
                     math.total += 1;
                     if m.display {
                         math.display += 1;
@@ -65,13 +105,14 @@ impl Statistics {
             }
         }
         let content_hash = fingerprint(items);
-        Statistics {
+        Ok(Statistics {
             revision,
             content_hash,
             words,
             math,
             pages,
-        }
+            scanned_bytes,
+        })
     }
 
     /// `true` if `self` is exactly what [`Statistics::compute`] would
@@ -91,7 +132,12 @@ impl Statistics {
 /// FNV-1a, fed a length-prefixed encoding of each item so that, e.g.,
 /// `[Text("ab"), Text("c")]` and `[Text("a"), Text("bc")]` never collide
 /// just because their bytes concatenate the same way.
-fn fingerprint(items: &[SourceItem]) -> u64 {
+///
+/// `pub(crate)` so [`crate::cache`] can use the exact same fingerprint as a
+/// cheap cache-key identity check, without re-running the (bounded, and
+/// potentially rejected) full statistics scan just to know whether cached
+/// content is still current.
+pub(crate) fn fingerprint(items: &[SourceItem]) -> u64 {
     const FNV_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
     let mut h = FNV_OFFSET;
     for item in items {
@@ -256,5 +302,55 @@ mod tests {
         let sa = Statistics::compute(rev(1), &a);
         let sb = Statistics::compute(rev(1), &b);
         assert_ne!(sa.content_hash, sb.content_hash);
+    }
+
+    // --- Bounded scanning: the cap this crate enforces on scanned bytes ---
+
+    #[test]
+    fn scanned_bytes_sums_text_and_math_source_but_not_page_marks() {
+        let items = vec![
+            SourceItem::PageMark,
+            SourceItem::text("abcde"),     // 5 bytes
+            SourceItem::inline_math("xy"), // 2 bytes
+            SourceItem::display_math("z"), // 1 byte
+        ];
+        let s = Statistics::compute(rev(1), &items);
+        assert_eq!(s.scanned_bytes, 8);
+    }
+
+    #[test]
+    fn compute_bounded_within_limit_matches_compute() {
+        let items = vec![SourceItem::text("hello world")];
+        let unbounded = Statistics::compute(rev(1), &items);
+        let bounded =
+            Statistics::compute_bounded(rev(1), &items, crate::scan_limit::ScanLimit::new(64))
+                .unwrap();
+        assert_eq!(unbounded, bounded);
+    }
+
+    #[test]
+    fn compute_bounded_rejects_past_the_limit_with_no_partial_result() {
+        let items = vec![SourceItem::text("this text is much too long")];
+        let err = Statistics::compute_bounded(rev(1), &items, crate::scan_limit::ScanLimit::new(5))
+            .unwrap_err();
+        assert_eq!(err.limit, 5);
+        assert!(err.scanned > 5);
+    }
+
+    #[test]
+    fn compute_bounded_stops_at_the_item_that_crosses_the_limit() {
+        // First item alone fits; the second pushes the running total past
+        // the limit, so counting must stop there, not silently include it
+        // partially or skip ahead to later items.
+        let items = vec![
+            SourceItem::text("fits"),      // 4 bytes, running total 4
+            SourceItem::text("overflow!"), // 9 bytes, running total 13 > 10
+            SourceItem::text("never scanned"),
+        ];
+        let err =
+            Statistics::compute_bounded(rev(1), &items, crate::scan_limit::ScanLimit::new(10))
+                .unwrap_err();
+        assert_eq!(err.scanned, 13);
+        assert_eq!(err.limit, 10);
     }
 }

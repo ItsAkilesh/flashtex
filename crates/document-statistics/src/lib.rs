@@ -18,6 +18,13 @@
 //! documented limitations (CJK text, hyphenation, apostrophes, math is not
 //! prose).
 //!
+//! [`ScanLimit`] bounds how many source bytes one computation may scan,
+//! raising [`ScanTooLarge`] instead of scanning without limit. [`ProjectCache`]
+//! caches [`Statistics`] by exact source identity (revision id AND content,
+//! never revision id alone) across several documents in one project, so
+//! that editing one document does not force rescanning the others — see the
+//! [`cache`] module docs for the exact hit/miss rule.
+//!
 //! ```
 //! use flashtex_document_statistics::{RevisionId, SourceItem, Statistics};
 //!
@@ -37,12 +44,16 @@
 //! assert!(!stats.is_current_for(&RevisionId::new("draft.tex", 1), &edited));
 //! ```
 
+pub mod cache;
 pub mod items;
 pub mod revision;
+pub mod scan_limit;
 pub mod statistics;
 pub mod words;
 
+pub use cache::{Lookup, ProjectCache, ProjectTotals};
 pub use items::{MathItem, SourceItem};
 pub use revision::RevisionId;
+pub use scan_limit::{ScanLimit, ScanTooLarge};
 pub use statistics::{MathStats, Statistics};
 pub use words::WordStats;
