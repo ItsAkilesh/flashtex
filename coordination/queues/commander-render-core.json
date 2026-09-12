@@ -4,8 +4,8 @@
   "schema_version": 1,
   "steps": [
     {
-      "name": "Verify existing rendering validation on actual raw versus normalized helper candidate JSON with exact numeric, duplicate field and source/resource gates",
-      "objective": "Verify existing rendering validation on actual raw versus normalized helper candidate JSON with exact numeric, duplicate field and source/resource gates",
+      "name": "Measure raw helper rendering preflight allocation and validation phases on existing actual candidate before optimizing",
+      "objective": "Measure raw helper rendering preflight allocation and validation phases on existing actual candidate before optimizing",
       "owned_paths": [
         "crates/rendering-core"
       ],
@@ -17,8 +17,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Consume reviewed raw transport fixture through existing immutable renderer/exporter and record exact geometry/text equivalence",
-      "objective": "Consume reviewed raw transport fixture through existing immutable renderer/exporter and record exact geometry/text equivalence",
+      "name": "Replace avoidable preflight allocation only with existing serde validation preserving duplicate, finite, depth and source rules",
+      "objective": "Replace avoidable preflight allocation only with existing serde validation preserving duplicate, finite, depth and source rules",
       "owned_paths": [
         "crates/rendering-core"
       ],
@@ -30,8 +30,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Recheck published native helper route and font-byte fix against existing interoperability fixtures; no authoritative native edits",
-      "objective": "Recheck published native helper route and font-byte fix against existing interoperability fixtures; no authoritative native edits",
+      "name": "Verify actual raw candidate exports and all malformed-policy fixtures unchanged; no native activation",
+      "objective": "Verify actual raw candidate exports and all malformed-policy fixtures unchanged; no native activation",
       "owned_paths": [
         "crates/rendering-core"
       ],
