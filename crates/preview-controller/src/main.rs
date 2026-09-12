@@ -242,6 +242,24 @@ fn run(config: Value) -> Result<(), String> {
                         if let Some(token) = token {
                             SubmissionBindings::validate_token(token)?;
                         }
+                        if request["type"] == "configure_display_candidates" {
+                            if request["payload"]["capability"] != "display-candidates-v1" {
+                                return Err("unsupported display candidate capability".into());
+                            }
+                            let enabled = request["payload"]["enabled"]
+                                .as_bool()
+                                .ok_or("enabled must be boolean")?;
+                            if enabled && request["payload"]["renderer_support_confirmed"] != true {
+                                return Err(
+                                    "explicit renderer support confirmation required".into()
+                                );
+                            }
+                            let preview_error = controller.configure_display_candidates(enabled)?;
+                            output_epoch = output_tx.reset_optional();
+                            return Ok(
+                                json!({"capability":"display-candidates-v1","enabled":enabled,"preview_error":preview_error}),
+                            );
+                        }
                         if request["type"] == "configure_completed_snapshots" {
                             if request["payload"]["capability"] != CAPABILITY {
                                 return Err("unsupported completed snapshot capability".into());
@@ -361,6 +379,17 @@ fn run(config: Value) -> Result<(), String> {
                 if serde_json::to_writer(&mut buffer, &value).is_ok() {
                     if let Ok(bytes) = buffer.finish() {
                         // Optional oversize/backpressure drops never fail durable source delivery.
+                        output_tx.optional(output_epoch, bytes);
+                    }
+                }
+            }
+        }
+        if output_tx.can_offer(output_epoch) {
+            if let Some(payload) = controller.take_current_display_payload() {
+                let value = wire::envelope(&session, Value::Null, "update", payload);
+                let mut buffer = OutputBuffer::new(MAX_OUTPUT_BYTES);
+                if serde_json::to_writer(&mut buffer, &value).is_ok() {
+                    if let Ok(bytes) = buffer.finish() {
                         output_tx.optional(output_epoch, bytes);
                     }
                 }

@@ -13,17 +13,17 @@
   "capabilities": [
     "Preview helper serialization and latency"
   ],
-  "code_revision": "64829a0db4eb7bd6d0dbad4e50ab72257880f210",
+  "code_revision": "854b041049c66accd7f253c58f207b4f1f14423e",
   "eta_minutes": null,
   "machine": "linux-primary",
   "main_integrated_through": "a885b394b50175690cd98965ec6c9c02b5ff03e2",
-  "next_action": "Agree minimal current-only opt-in display-list candidate interface with FT049; preserve existing helper required-output priority and source identity.",
+  "next_action": "Expand helper malformed sibling, stale edit, oversize and stalled-output acceptance; coordinate actual native renderer validation before enabling product default.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "FT048r6 ACK: explicit document_kinds now included in same-source snapshot, allowing native project settings to preserve bibliography declarations.17 ordinary stdio tests and strict Clippy pass;2 explicit compiler tests not rerun for metadata-only change.",
+  "summary": "FT048r6 helper display candidate forwarding implemented defaultOFF against unchanged FT049f58b656.59 helper tests including real compiler gates and strict Clippy pass. Current controller ID/generation/version/hash guards and optional required-output priority preserved.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T10:54:30Z",
+  "updated_utc": "2026-09-12T11:02:05Z",
   "usage": {
     "status": "unknown"
   }

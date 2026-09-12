@@ -886,3 +886,88 @@ fn history_status_binds_labels_and_limits_to_current_source_without_text() {
         1
     );
 }
+
+#[test]
+#[cfg(unix)]
+fn display_candidate_opt_in_preserves_v1_and_individual_source_versions() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = tempfile::tempdir().unwrap();
+    let compiler = dir.path().join("display-fixture.py");
+    // Transport fixture only: intentionally not renderer-valid or a real compiler.
+    std::fs::write(&compiler, r#"#!/usr/bin/env python3
+import json,sys,hashlib
+for line in sys.stdin:
+ r=json.loads(line);p=r['payload'];caps=p.get('layout_capabilities',[])
+ print(json.dumps({'protocol_version':1,'type':'compile_result','id':r['id'],'payload':{'project_id':p['project_id'],'revision':p['revision'],'status':'ok','pages':[],'diagnostics':[],'layout_capabilities':caps}}),flush=True)
+ if 'display-list-v2' in caps:
+  docs=[{'path':d['path'],'revision':p['revision'],'sha256':hashlib.sha256(d['text'].encode()).hexdigest(),'byte_length':len(d['text'].encode())} for d in p['documents']]
+  print(json.dumps({'protocol_version':2,'type':'display_list','id':r['id'],'payload':{'project_id':p['project_id'],'revision':p['revision'],'render_format':'display-list-v2','documents':docs}}),flush=True)
+"#).unwrap();
+    std::fs::set_permissions(&compiler, std::fs::Permissions::from_mode(0o700)).unwrap();
+    let mut client = Client::with_compiler(dir.path(), Some(&compiler));
+    client.send(
+        "unconfirmed",
+        "configure_display_candidates",
+        json!({"capability":"display-candidates-v1","enabled":true}),
+    );
+    assert_eq!(client.reply("unconfirmed")["type"], "error");
+    client.send("enable", "configure_display_candidates", json!({"capability":"display-candidates-v1","enabled":true,"renderer_support_confirmed":true}));
+    assert_eq!(client.reply("enable")["payload"]["enabled"], true);
+    let mut seen_v1 = Vec::new();
+    loop {
+        let event = client.output.recv_timeout(Duration::from_secs(3)).unwrap();
+        if event["payload"]["kind"] == "preview" {
+            seen_v1.push((
+                event["payload"]["request_id"].clone(),
+                event["payload"]["compile_revision"].clone(),
+            ));
+        }
+        if event["payload"]["kind"] == "display_candidate" {
+            let p = &event["payload"];
+            assert!(seen_v1.contains(&(p["request_id"].clone(), p["compile_revision"].clone())));
+            assert_eq!(p["untrusted"], true);
+            assert_eq!(p["source_actions_enabled"], false);
+            assert_eq!(p["source_versions"]["main.tex"], 1);
+            assert!(p["compile_revision"].as_u64().unwrap() > 1);
+            assert_eq!(
+                p["display_list"]["payload"]["documents"][0]["revision"],
+                p["compile_revision"]
+            );
+            assert_eq!(
+                p["display_list"]["payload"]["documents"][0]["byte_length"],
+                "α original".len()
+            );
+            break;
+        }
+    }
+    client.send(
+        "conflict",
+        "configure_completed_snapshots",
+        json!({"capability":"completed-snapshots-v1","enabled":true}),
+    );
+    assert_eq!(client.reply("conflict")["type"], "error");
+    client.send(
+        "disable",
+        "configure_display_candidates",
+        json!({"capability":"display-candidates-v1","enabled":false}),
+    );
+    assert_eq!(client.reply("disable")["payload"]["enabled"], false);
+    client.send(
+        "history",
+        "configure_completed_snapshots",
+        json!({"capability":"completed-snapshots-v1","enabled":true}),
+    );
+    assert_eq!(client.reply("history")["payload"]["enabled"], true);
+    client.send("conflict2", "configure_display_candidates", json!({"capability":"display-candidates-v1","enabled":true,"renderer_support_confirmed":true}));
+    assert_eq!(client.reply("conflict2")["type"], "error");
+    client.send("restart", "restart", json!({}));
+    assert_eq!(client.reply("restart")["type"], "result");
+    // A restart resets both negotiated optional modes. The fallback still arrives.
+    loop {
+        let event = client.output.recv_timeout(Duration::from_secs(3)).unwrap();
+        assert_ne!(event["payload"]["kind"], "display_candidate");
+        if event["payload"]["kind"] == "preview" {
+            break;
+        }
+    }
+}
