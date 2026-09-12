@@ -13,7 +13,7 @@
   "capabilities": [
     "rust-font-resources"
   ],
-  "code_revision": "026c945a9c1bad71038fb7d5554bd550ab245128",
+  "code_revision": "5a1ea1c4bc1e2530c602c97ac58e7c72b66230cc",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
@@ -21,13 +21,13 @@
   },
   "machine": "linux-primary",
   "main_integrated_through": "9d69d6ed0b2a3300fb3fd5351af150707f062824",
-  "next_action": "Renderer consumer integration and real licensed VF fixture; nested virtual resource resolver remains unsupported.",
+  "next_action": "Rendering-core consumer integration and licensed real VF/TFM/outline oracle; specials remain unsupported.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "VF parser and physical-bound packet expansion published; 56 tests and clippy pass. Exact coordinates, original GIDs/font+TFM hashes, explicit specials/missing-resource failures.",
+  "summary": "Nested VF resource graph published; 60 normal tests and clippy pass. Exact flat/nested glyph-rule equivalence, hash keys, provenance chains and global cycle/depth/node/output caps.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T06:17:19Z",
+  "updated_utc": "2026-09-12T06:22:11Z",
   "usage": {
     "evidence": "crates/font-resources/README.md; test suite; installed font SHA pinned.",
     "status": "Hosted allocation; no external provider calls; account remainder unknown."
