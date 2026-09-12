@@ -8,18 +8,24 @@ reads them from git and executes the shipped scripts.
 
 `run.sh` is one repeatable acceptance run (bash + python3, no new dependencies):
 
-1. **Helpers from integrated main.** `git archive <main-ref> crates` into a
-   scratch tree (like `tools/typing-bench/run.sh` does for `flashtex-render`),
-   `cargo build --release` for `flashtex-compiler`, `flashtex-pdf`,
-   `flashtex-bridge`, `flashtex-edit-ledger` (offline first, crates.io only as a
-   fallback), then the git SHA and sha256 of each binary are recorded.
-2. **App from the branch under test.** `git archive <branch> apps/mac protocol
-   tools/typing-bench` into a scratch tree; `swift build -c release`. Default
-   branch `origin/agent/mac-claude-a/mac-shell`, default main `origin/main`.
+1. **Helpers from integrated main.** A shared clone of the repository pinned
+   (detached) at the exact `<main-ref>` commit — a clean tree with no local
+   edits and a truthful `git rev-parse HEAD`, the same isolation
+   `tools/typing-bench/run.sh` gets from `git archive` — then `cargo build
+   --release` for `flashtex-compiler`, `flashtex-pdf`, `flashtex-bridge`,
+   `flashtex-edit-ledger` and `flashtex-preview-controller` (offline first,
+   crates.io only as a fallback). The git SHA, as-shipped sha256 and
+   signature-removed sha256 of each binary are recorded.
+2. **App from the branch under test.** A second pinned clone at the branch
+   commit; `swift build -c release`. Default branch
+   `origin/agent/mac-claude-a/mac-shell`, default main `origin/main`.
 3. **Typing bench.** The unmodified `tools/typing-bench/run.sh` from that branch
    runs `fixture`, `demo`, `body60k` at 30 ms and 0 ms with the step-1 compiler,
    recording keystroke -> paint p50/p95/p99/max, paints, coalesced and unpainted
-   keystrokes, compile and render-pass times.
+   keystrokes, compile and render-pass times — once on the direct worker route
+   (producer `compiler`) and once on the durable helper route (producer
+   `controller`: `FLASHTEX_PREVIEW_CONTROLLER=<flashtex-preview-controller>`
+   exported, private `FLASHTEX_CONTROLLER_LEDGER_ROOT`).
 4. **Package + launch check.** `apps/mac/scripts/make-app.sh` with the four
    step-1 helpers, then the unmodified `apps/mac/scripts/launch-check.sh`
    (compiler and bridge children attached, each killed in turn, app survives,
@@ -53,6 +59,7 @@ reads them from git and executes the shipped scripts.
 tools/native-validation/mac-live/run.sh                      # full run, defaults
 tools/native-validation/mac-live/run.sh --branch origin/agent/x/y --main-ref origin/main
 tools/native-validation/mac-live/run.sh --skip-bench --skip-launch   # cycle only
+tools/native-validation/mac-live/run.sh --skip-controller            # direct worker route only
 tools/native-validation/mac-live/run.sh --intervals "30" --seeds "demo"
 FLASHTEX_MAC_LIVE_SESSION=<session url> FLASHTEX_MAC_LIVE_AGENT=<agent id> tools/native-validation/mac-live/run.sh
 ```
@@ -69,8 +76,9 @@ Gates fail the run; targets are reported only.
 
 | section | gate |
 |---|---|
-| build | four helpers built from main; app built; bundle has `FlashTeX`, `flashtex-compiler`, `flashtex-pdf`, `flashtex-bridge`, `flashtex-edit-ledger`; bundled helper byte-identical to the built helper after removing the ad-hoc code signature (make-app.sh re-signs the bundle) |
-| typing-bench | all six cells present; per cell: `unpainted == 0`, typing budget not exhausted, `typed == keystrokes == script_keystrokes` (200), `paints >= 1`; keystroke -> paint p50 <= 40 ms (`fixture`), <= 60 ms (`demo`), <= 400 ms (`body60k`) |
+| build | helpers built from main (pinned clone, clean); app built; bundle has `FlashTeX`, `flashtex-compiler`, `flashtex-pdf`, `flashtex-bridge`, `flashtex-edit-ledger`; bundled helpers and app carry the freshly built object code (signature-masked Mach-O content sha256 equal; make-app.sh re-signs the bundle ad hoc); `components.json` SHAs equal the main/branch SHAs |
+| typing-bench/compiler | all six cells present; per cell: `unpainted == 0`, typing budget not exhausted, `typed == keystrokes == script_keystrokes` (200), `paints >= 1`, producer reported as `flashtex-compiler`; keystroke -> paint p50 <= 40 ms (`fixture`), <= 60 ms (`demo`), <= 400 ms (`body60k`) |
+| typing-bench/controller | same correctness gates, producer reported as `flashtex-preview-controller`; latency is reported (not gated) against the project target |
 | typing-bench target (not a gate) | project target typing-to-visible p50 and p95 <= 200 ms, reported per cell as met / not met |
 | launch-check | zero `FAIL:` lines; compiler attached, `attached:` and `revision 1: ok` logged, app survives compiler kill, `worker exited (` logged; bridge attached, `bridge: attached:` logged, app survives bridge kill, `bridge exited (` logged; clean quit; launched with `FLASHTEX_NO_ACTIVATE=1` |
 | launch-check informational | on-screen window confirmed (CGWindowList); child re-attached after kill (the shell has no auto-relaunch) |
@@ -80,11 +88,12 @@ Gates fail the run; targets are reported only.
 
 - `run.sh` — orchestrator; `lib/report.py` — report + gates; `lib/launch_summary.py`
   — parses launch-check evidence; `lib/capture_cycle.py` — packaged capture
-  cycle; `lib/open-shim/open` — adds `--env` values to `open`.
+  cycle; `lib/hashes.py` — as-shipped and signature-removed sha256;
+  `lib/open-shim/open` — adds `--env` values to `open`.
 - `fixtures/capture-proposal.json` — offline `capture_proposal` fixture.
 - `reports/<UTC>.md` + `reports/<UTC>/` — committed evidence: `env.json`,
   `helpers.json`, `app.json`, `bundle.json`, `steps.jsonl`, `commands.log`,
-  `logs/`, `typing-bench/` (bench evidence + raw JSON), `launch-check.md/json`,
+  `logs/`, `typing-bench/` and `typing-bench-controller/` (bench evidence + raw JSON), `launch-check.md/json`,
   `launch-transcript.jsonl`, `capture-cycle.json` + `capture-cycle/`
   (transcript, compile result, exported PDF).
 
@@ -101,6 +110,12 @@ Gates fail the run; targets are reported only.
   shell's review/insertion code is covered by `swift test` on the branch.
 - No provider call is made; the reviewed proposal is a fixture. Real conversion
   needs `--enable-grok` and the Mac credential adapter, outside this runner.
-- `make-app.sh` records helper git SHAs as `unknown` in the bundle's
-  `components.json` because the helpers come from a non-git scratch archive;
-  the report's provenance table carries the real SHAs and hashes.
+- `make-app.sh` re-signs the bundle ad hoc, so bundled binaries are compared to
+  the built ones by a signature-masked Mach-O content hash (`lib/hashes.py`:
+  bytes before the `LC_CODE_SIGNATURE` blob with the two header fields a
+  re-sign rewrites zeroed); `codesign --remove-signature` output is recorded
+  too but is not stable across re-signs. `components.json` SHAs come from the
+  pinned clones and are gated against the main/branch SHAs.
+- Latency numbers depend on machine load: other agents build and test on this
+  Mac concurrently. The load average at start and end is recorded; a latency
+  gate failure under high load is reported as such, never hidden.

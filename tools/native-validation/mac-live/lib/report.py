@@ -60,7 +60,7 @@ def main():
 
     # ---------------------------------------------------------------- builds
     sec = "build"
-    gate(sec, "four helpers built from %s" % helpers.get("ref"), helpers.get("built_ok") and all(b.get("sha256") for b in helpers.get("binaries", {}).values()),
+    gate(sec, "helpers built from %s (pinned clone HEAD %s, %s dirty entries)" % (helpers.get("ref"), (helpers.get("scratch_head") or "?")[:7], helpers.get("scratch_dirty_entries")), helpers.get("built_ok") and all(b.get("sha256") for b in helpers.get("binaries", {}).values()),
          ", ".join("%s=%s" % (k, (v.get("sha256") or "missing")[:12]) for k, v in sorted(helpers.get("binaries", {}).items())))
     gate(sec, "app built (release) from %s" % app.get("branch"), app.get("built_ok"), (app.get("sha256") or "missing")[:12])
     bth = th.get("bundle", {}).get("gates", {})
@@ -70,41 +70,69 @@ def main():
     if bth.get("bundled_helper_sha256_equals_built_helper_sha256"):
         mism = []
         for n, b in helpers.get("binaries", {}).items():
-            if not b.get("sha256_unsigned") or bbins.get(n, {}).get("sha256_unsigned") != b.get("sha256_unsigned"):
+            if n not in bth.get("required_binaries", []):
+                continue
+            if not b.get("sha256_content") or bbins.get(n, {}).get("sha256_content") != b.get("sha256_content"):
                 mism.append(n)
-        gate(sec, "bundled helper == freshly built helper, byte-identical after removing the ad-hoc code signature (all four)",
-             bundle.get("built_ok") and not mism, "mismatch: %s" % mism if mism else "identical (make-app.sh re-signs the bundle ad hoc, so the as-shipped sha256 differs by the signature blob only)")
+        gate(sec, "bundled helpers carry the freshly built object code (signature-masked Mach-O content sha256 equal, all four)",
+             bundle.get("built_ok") and not mism, "mismatch: %s" % mism if mism else "identical (make-app.sh re-signs the bundle ad hoc, so only the code-signature blob differs)")
+        gate(sec, "bundled FlashTeX carries the freshly built FlashTeXMac object code (signature-masked content sha256 equal)",
+             bundle.get("built_ok") and app.get("sha256_content") and bbins.get("FlashTeX", {}).get("sha256_content") == app.get("sha256_content"),
+             "%s vs %s" % ((app.get("sha256_content") or "?")[:12], (bbins.get("FlashTeX", {}).get("sha256_content") or "?")[:12]))
+
+    comp = bundle.get("components_json") or {}
+    if comp:
+        main_short = (env.get("sources", {}).get("main_sha") or "")[:7]
+        branch_short = (env.get("sources", {}).get("branch_sha") or "")[:7]
+        bad = []
+        for key in ("compiler", "pdf", "bridge", "edit_ledger"):
+            if (comp.get(key) or {}).get("git_sha") != main_short:
+                bad.append("%s=%s" % (key, (comp.get(key) or {}).get("git_sha")))
+        if (comp.get("app") or {}).get("git_sha") != branch_short:
+            bad.append("app=%s" % (comp.get("app") or {}).get("git_sha"))
+        gate(sec, "bundle components.json git SHAs: helpers == %s (main), app == %s (branch)" % (main_short, branch_short), not bad, "; ".join(bad) or "all match")
 
     # ---------------------------------------------------------- typing bench
     tb = th.get("typing_bench", {})
     tg = tb.get("gates", {})
-    runs = {}
-    for f in sorted(glob.glob(os.path.join(rd, "typing-bench", "typing-bench-*", "*.json"))):
-        d = load(f)
-        if not d:
+    producers = [("compiler", "typing-bench"), ("controller", "typing-bench-controller")]
+    runs = {}  # producer -> cell -> summary
+    for prod, sub in producers:
+        runs[prod] = {}
+        for f in sorted(glob.glob(os.path.join(rd, sub, "typing-bench-*", "*.json"))):
+            d = load(f)
+            if not d:
+                continue
+            base = os.path.basename(f)[:-5]  # compiler-demo-30ms (run.sh names the file by its producer flag)
+            parts = base.split("-", 1)
+            runs[prod][parts[1] if len(parts) > 1 else base] = d
+    controller_present = bool(runs["controller"]) or os.path.isdir(os.path.join(rd, "typing-bench-controller"))
+    for prod, sub in producers:
+        sec = "typing-bench/" + prod
+        pg = tg.get("producers", {}).get(prod, {})
+        if prod == "controller" and not controller_present:
             continue
-        base = os.path.basename(f)[:-5]  # compiler-demo-30ms
-        parts = base.split("-", 1)
-        runs[parts[1] if len(parts) > 1 else base] = d
-    sec = "typing-bench"
-    for cell in tg.get("required_cells", []):
-        d = runs.get(cell)
-        if d is None:
-            gate(sec, "%s: summary present" % cell, False, "no JSON summary (run failed or timed out)")
-            continue
-        ev = tg.get("every_cell", {})
-        k = d.get("keystroke_to_paint_ms", {})
-        gate(sec, "%s: unpainted keystrokes <= %d" % (cell, ev.get("unpainted_max", 0)), d.get("unpainted", 1) <= ev.get("unpainted_max", 0), "unpainted=%s" % d.get("unpainted"))
-        if ev.get("typing_budget_exhausted") is False:
-            gate(sec, "%s: typing budget not exhausted" % cell, not d.get("typing_budget_exhausted"), "typed %s of %s" % (d.get("typed"), d.get("script_keystrokes")))
-        if ev.get("typed_equals_script_keystrokes"):
-            gate(sec, "%s: every script keystroke typed" % cell, d.get("typed") == d.get("script_keystrokes") and d.get("keystrokes") == d.get("script_keystrokes"),
-                 "typed=%s keystrokes=%s script=%s" % (d.get("typed"), d.get("keystrokes"), d.get("script_keystrokes")))
-        gate(sec, "%s: paints >= %d" % (cell, ev.get("paints_min", 1)), d.get("paints", 0) >= ev.get("paints_min", 1), "paints=%s" % d.get("paints"))
-        seed = cell.rsplit("-", 1)[0]
-        lim = tg.get("per_seed_p50_ms_max", {}).get(seed)
-        if lim is not None:
-            gate(sec, "%s: keystroke->paint p50 <= %s ms" % (cell, lim), k.get("p50_ms") is not None and k["p50_ms"] <= lim, "p50=%s ms; load average at start %s" % (ms(k.get("p50_ms")), env.get("machine", {}).get("load_average_at_start")))
+        for cell in tg.get("required_cells", []):
+            d = runs[prod].get(cell)
+            if d is None:
+                gate(sec, "%s: summary present" % cell, False, "no JSON summary (run failed or timed out)")
+                continue
+            ev = tg.get("every_cell", {})
+            k = d.get("keystroke_to_paint_ms", {})
+            gate(sec, "%s: unpainted keystrokes <= %d" % (cell, ev.get("unpainted_max", 0)), d.get("unpainted", 1) <= ev.get("unpainted_max", 0), "unpainted=%s" % d.get("unpainted"))
+            if ev.get("typing_budget_exhausted") is False:
+                gate(sec, "%s: typing budget not exhausted" % cell, not d.get("typing_budget_exhausted"), "typed %s of %s" % (d.get("typed"), d.get("script_keystrokes")))
+            if ev.get("typed_equals_script_keystrokes"):
+                gate(sec, "%s: every script keystroke typed" % cell, d.get("typed") == d.get("script_keystrokes") and d.get("keystrokes") == d.get("script_keystrokes"),
+                     "typed=%s keystrokes=%s script=%s" % (d.get("typed"), d.get("keystrokes"), d.get("script_keystrokes")))
+            gate(sec, "%s: paints >= %d" % (cell, ev.get("paints_min", 1)), d.get("paints", 0) >= ev.get("paints_min", 1), "paints=%s" % d.get("paints"))
+            expected_producer = pg.get("expected_producer")
+            if expected_producer:
+                gate(sec, "%s: producer reported by the app == %s" % (cell, expected_producer), d.get("producer") == expected_producer, d.get("producer"))
+            seed = cell.rsplit("-", 1)[0]
+            lim = pg.get("per_seed_p50_ms_max", {}).get(seed)
+            if lim is not None:
+                gate(sec, "%s: keystroke->paint p50 <= %s ms" % (cell, lim), k.get("p50_ms") is not None and k["p50_ms"] <= lim, "p50=%s ms; load average at start %s" % (ms(k.get("p50_ms")), env.get("machine", {}).get("load_average_at_start")))
     targets = tb.get("targets", {})
 
     # ---------------------------------------------------------- launch check
@@ -178,16 +206,18 @@ def main():
     L.append("")
     L.append("### Binaries")
     L.append("")
-    L.append("| binary | built from | git SHA | sha256 (as shipped) | sha256 (signature removed) | bytes | signature |")
+    L.append("| binary | built from | git SHA | sha256 (as shipped) | sha256 (signature-masked content) | bytes | signature |")
     L.append("|---|---|---|---|---|---:|---|")
     for n, b in sorted(helpers.get("binaries", {}).items()):
-        L.append("| `%s` (scratch build) | `%s` | `%s` | `%s` | `%s` | %s | %s |" % (n, b.get("crate"), b.get("git_sha"), b.get("sha256"), b.get("sha256_unsigned"), b.get("bytes"), b.get("signature")))
-    L.append("| `FlashTeXMac` (swift build -c release) | `apps/mac` | `%s` | `%s` | `%s` | %s | %s |" % (app.get("sha"), app.get("sha256"), app.get("sha256_unsigned"), app.get("bytes"), app.get("signature")))
+        L.append("| `%s` (scratch build) | `%s` | `%s` | `%s` | `%s` | %s | %s |" % (n, b.get("crate"), b.get("git_sha"), b.get("sha256"), b.get("sha256_content"), b.get("bytes"), b.get("signature")))
+    L.append("| `FlashTeXMac` (swift build -c release) | `apps/mac` | `%s` | `%s` | `%s` | %s | %s |" % (app.get("sha"), app.get("sha256"), app.get("sha256_content"), app.get("bytes"), app.get("signature")))
     for n, b in sorted(bbins.items()):
-        L.append("| `FlashTeX.app/Contents/MacOS/%s` | bundle | — | `%s` | `%s` | %s | %s |" % (n, b.get("sha256"), b.get("sha256_unsigned"), b.get("bytes"), b.get("signature")))
+        L.append("| `FlashTeX.app/Contents/MacOS/%s` | bundle | — | `%s` | `%s` | %s | %s |" % (n, b.get("sha256"), b.get("sha256_content"), b.get("bytes"), b.get("signature")))
+    L.append("")
+    L.append("Signature-masked content = sha256 of the thin Mach-O bytes before the `LC_CODE_SIGNATURE` blob with the signature command's offset/size and the `__LINKEDIT` sizes zeroed (`lib/hashes.py`); `codesign --remove-signature` hashes are also in the JSON but are not stable across re-signs. As-shipped sha256 is what a user would hash.")
     L.append("")
     if bundle.get("components_json"):
-        L.append("`components.json` written by make-app.sh (its `git_sha` fields come from `git rev-parse` next to each source path; the scratch archives are not git checkouts, so they read `unknown` — the SHAs above are authoritative):")
+        L.append("`components.json` written by make-app.sh (its `git_sha` fields come from `git rev-parse` in the pinned scratch clone next to each source binary, so they must equal the short main / branch SHAs above):")
         L.append("")
         L.append("```json")
         L.append(json.dumps(bundle["components_json"], indent=1, sort_keys=True))
@@ -204,26 +234,32 @@ def main():
 
     L.append("## Typing bench: keystroke -> paint")
     L.append("")
-    L.append("Seeds `fixture` / `demo` / `body60k`, 200 typed characters each, at 30 ms (fast typist) and 0 ms (one keystroke per run-loop turn). Producer: the scratch-built `flashtex-compiler` above. Definitions and limitations: `reports/%s/typing-bench/typing-bench.md` (written by `tools/typing-bench/run.sh`)." % os.path.basename(rd))
+    L.append("Seeds `fixture` / `demo` / `body60k`, 200 typed characters each, at 30 ms (fast typist) and 0 ms (one keystroke per run-loop turn). Producer `compiler` = the app's direct worker route with the scratch-built `flashtex-compiler`; producer `controller` = the durable helper route (`FLASHTEX_PREVIEW_CONTROLLER`, scratch-built `flashtex-preview-controller`, which owns the ledger and launches the same compiler). Definitions and limitations: `reports/%s/typing-bench*/typing-bench.md` (written by `tools/typing-bench/run.sh`)." % os.path.basename(rd))
     L.append("")
-    L.append("| cell | bytes | typed | paints | coalesced | unpainted | k->p p50 | p95 | p99 | max | compile p50 | compile p95 | render p50 | render p95 | gate p50 <= | project target p50 <= %s / p95 <= %s |" % (targets.get("project_typing_to_visible_p50_ms"), targets.get("project_typing_to_visible_p95_ms")))
-    L.append("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|")
-    for cell in tg.get("required_cells", []):
-        d = runs.get(cell)
-        if not d:
-            L.append("| %s | — | — | — | — | — | — | — | — | — | — | — | — | — | — | no summary |" % cell)
+    L.append("| producer | cell | bytes | typed | paints | coalesced | unpainted | k->p p50 | p95 | p99 | max | compile p50 | compile p95 | render p50 | render p95 | gate p50 <= | project target p50 <= %s / p95 <= %s |" % (targets.get("project_typing_to_visible_p50_ms"), targets.get("project_typing_to_visible_p95_ms")))
+    L.append("|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|")
+    for prod, sub in producers:
+        if prod == "controller" and not controller_present:
             continue
-        k = d.get("keystroke_to_paint_ms", {}); c = d.get("compile_ms", {}); r = d.get("render_pass_ms", {})
-        seed = cell.rsplit("-", 1)[0]
-        lim = tg.get("per_seed_p50_ms_max", {}).get(seed)
-        tp50 = targets.get("project_typing_to_visible_p50_ms"); tp95 = targets.get("project_typing_to_visible_p95_ms")
-        tmet = (k.get("p50_ms") is not None and tp50 is not None and k["p50_ms"] <= tp50) and (k.get("p95_ms") is not None and tp95 is not None and k["p95_ms"] <= tp95)
-        L.append("| %s | %s | %s/%s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |" % (
-            cell, d.get("document_bytes_after"), d.get("typed"), d.get("script_keystrokes"), d.get("paints"), d.get("coalesced"), d.get("unpainted"),
-            ms(k.get("p50_ms")), ms(k.get("p95_ms")), ms(k.get("p99_ms")), ms(k.get("max_ms")), ms(c.get("p50_ms")), ms(c.get("p95_ms")), ms(r.get("p50_ms")), ms(r.get("p95_ms")),
-            lim if lim is not None else "—", "met" if tmet else "not met"))
+        pg = tg.get("producers", {}).get(prod, {})
+        for cell in tg.get("required_cells", []):
+            d = runs[prod].get(cell)
+            if not d:
+                L.append("| %s | %s | — | — | — | — | — | — | — | — | — | — | — | — | — | — | no summary |" % (prod, cell))
+                continue
+            k = d.get("keystroke_to_paint_ms", {}); c = d.get("compile_ms", {}); r = d.get("render_pass_ms", {})
+            seed = cell.rsplit("-", 1)[0]
+            lim = pg.get("per_seed_p50_ms_max", {}).get(seed)
+            tp50 = targets.get("project_typing_to_visible_p50_ms"); tp95 = targets.get("project_typing_to_visible_p95_ms")
+            tmet = (k.get("p50_ms") is not None and tp50 is not None and k["p50_ms"] <= tp50) and (k.get("p95_ms") is not None and tp95 is not None and k["p95_ms"] <= tp95)
+            L.append("| %s | %s | %s | %s/%s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |" % (
+                d.get("producer", prod), cell, d.get("document_bytes_after"), d.get("typed"), d.get("script_keystrokes"), d.get("paints"), d.get("coalesced"), d.get("unpainted"),
+                ms(k.get("p50_ms")), ms(k.get("p95_ms")), ms(k.get("p99_ms")), ms(k.get("max_ms")), ms(c.get("p50_ms")), ms(c.get("p95_ms")), ms(r.get("p50_ms")), ms(r.get("p95_ms")),
+                lim if lim is not None else "— (not gated)", "met" if tmet else "not met"))
     L.append("")
-    L.append("Elapsed per cell (ms): %s." % ", ".join("%s=%s" % (cell, ms(runs[cell].get("elapsed_ms"))) for cell in tg.get("required_cells", []) if cell in runs))
+    for prod, sub in producers:
+        if runs[prod]:
+            L.append("Elapsed per cell, %s (ms): %s." % (prod, ", ".join("%s=%s" % (cell, ms(runs[prod][cell].get("elapsed_ms"))) for cell in tg.get("required_cells", []) if cell in runs[prod])))
     L.append("")
 
     L.append("## Launch check: packaged app, child crash, app survival")
@@ -294,7 +330,7 @@ def main():
     L.append("- The launch check exercises child crash and app survival; the shell has no automatic child relaunch, so 'restart' here means the app keeps running and reports the exit — reattachment is a user action.")
     L.append("- The capture cycle drives the packaged app's bundled helpers, not the app's menus/sheets (Accessibility is not granted; the window is never activated). It therefore proves the helpers and the shell's protocol sequence end-to-end, not the SwiftUI review sheet itself; the shell's own review/insertion logic is covered by `swift test` (`RealBridgeTests`, `ShellModelBridgeTests`) on the branch.")
     L.append("- No Grok/provider call is made anywhere; the proposal reviewed is a fixture. A real conversion needs `--enable-grok` plus the Mac credential adapter and is outside this runner by design.")
-    L.append("- `components.json` inside the bundle reports git SHAs as `unknown` because the helpers and app are built from non-git scratch archives; the provenance table above carries the real SHAs and hashes. make-app.sh re-signs the bundle ad hoc, so as-shipped hashes differ from the built binaries by the signature blob; the signature-removed hashes are compared instead.")
+    L.append("- make-app.sh re-signs the bundle ad hoc, so as-shipped hashes of the bundled binaries differ from the built ones by the signature blob; the signature-masked content hashes are compared instead. The helpers are built in a shared clone pinned at the main SHA and the app in one pinned at the branch SHA, so `components.json` carries the real short SHAs.")
     L.append("")
     open(a.out, "w", encoding="utf-8").write("\n".join(L) + "\n")
     print("%s: %d gates, %d failed -> %s" % (verdict, len(gates), len(failed), a.out))

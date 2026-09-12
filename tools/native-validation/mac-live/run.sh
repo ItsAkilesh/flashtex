@@ -1,14 +1,17 @@
 #!/usr/bin/env bash
 # Independent, repeatable native acceptance runner for the FlashTeX Mac shell.
 #
-#   1. builds the four Rust helpers (flashtex-compiler, flashtex-pdf,
-#      flashtex-bridge, flashtex-edit-ledger) from a `git archive` of the
-#      CURRENT integrated main (default origin/main) and records SHAs + sha256;
-#   2. builds the Mac app (release) from a `git archive` of the branch under
+#   1. builds the Rust helpers (flashtex-compiler, flashtex-pdf, flashtex-bridge,
+#      flashtex-edit-ledger, flashtex-preview-controller) from the CURRENT
+#      integrated main (default origin/main) — a shared clone pinned (detached)
+#      at that exact commit — and records SHAs + sha256;
+#   2. builds the Mac app (release) from a pinned clone of the branch under
 #      test (default origin/agent/mac-claude-a/mac-shell);
 #   3. runs tools/typing-bench/run.sh (fixture / demo / body60k at 30 ms and
 #      0 ms) with those helpers and records keystroke -> paint p50/p95/p99,
-#      paints and coalesced keystrokes;
+#      paints and coalesced keystrokes — once with the direct compiler worker
+#      and once through the durable flashtex-preview-controller route
+#      (FLASHTEX_PREVIEW_CONTROLLER, also built from main);
 #   4. packages FlashTeX.app with apps/mac/scripts/make-app.sh and runs
 #      apps/mac/scripts/launch-check.sh (compiler + bridge child kill, app
 #      survival) with FLASHTEX_NO_ACTIVATE=1 through the `open` shim in lib/;
@@ -20,7 +23,7 @@
 #
 # Usage: tools/native-validation/mac-live/run.sh [--branch <ref>] [--main-ref <ref>]
 #          [--intervals "30 0"] [--seeds "fixture demo body60k"] [--no-fetch]
-#          [--skip-bench] [--skip-launch] [--skip-cycle] [--rebuild] [--force]
+#          [--skip-bench] [--skip-controller] [--skip-launch] [--skip-cycle] [--rebuild] [--force]
 #          [--work <dir>] [--session <url-or-id>] [--agent <id>]
 # Env:   FLASHTEX_MAC_LIVE_SESSION  provenance: the driving agent session (URL/id)
 #        FLASHTEX_MAC_LIVE_AGENT    provenance: the driving agent id
@@ -40,6 +43,7 @@ DO_FETCH=1
 SKIP_BENCH=0
 SKIP_LAUNCH=0
 SKIP_CYCLE=0
+SKIP_CONTROLLER=0
 REBUILD=0
 FORCE=0
 WORK="$SCRIPT_DIR/build"
@@ -56,12 +60,13 @@ while [[ $# -gt 0 ]]; do
     --skip-bench) SKIP_BENCH=1; shift ;;
     --skip-launch) SKIP_LAUNCH=1; shift ;;
     --skip-cycle) SKIP_CYCLE=1; shift ;;
+    --skip-controller) SKIP_CONTROLLER=1; shift ;;
     --rebuild) REBUILD=1; shift ;;
     --force) FORCE=1; shift ;;
     --work) WORK="$2"; shift 2 ;;
     --session) SESSION="$2"; shift 2 ;;
     --agent) AGENT="$2"; shift 2 ;;
-    -h|--help) sed -n '2,29p' "${BASH_SOURCE[0]}"; exit 0 ;;
+    -h|--help) sed -n '2,32p' "${BASH_SOURCE[0]}"; exit 0 ;;
     *) echo "run.sh: unknown argument $1" >&2; exit 2 ;;
   esac
 done
@@ -144,47 +149,56 @@ PY
 # --------------------------------------------------------------- 1. helpers
 step "helpers from $MAIN_REF ($MAIN_SHA)"
 HELPERS="$WORK/helpers/$MAIN_SHA"
-HELPER_BIN="$HELPERS/bin"
-CRATES=(compiler pdf bridge edit-ledger)
+HELPER_SRC="$HELPERS/src"
+CRATES=(compiler pdf bridge edit-ledger preview-controller)
+BUNDLED_CRATES=(compiler pdf bridge edit-ledger)
+# The built helpers live where cargo would put them inside the pinned scratch
+# clone, so make-app.sh's git lookup next to each binary resolves the real SHA.
+helper_path() { echo "$HELPER_SRC/crates/$1/target/release/flashtex-$1"; }
 HELPERS_OK=1
-if [[ $REBUILD == 1 || ! -f "$HELPER_BIN/.complete" ]]; then
-  rm -rf "$HELPERS"; mkdir -p "$HELPERS/src" "$HELPER_BIN"
-  cmd helpers-archive bash -c "git -C '$ROOT' archive '$MAIN_SHA' crates | tar -x -C '$HELPERS/src'"
-  # Not a git checkout: tools inside must not attribute it to the runner's repository.
-  printf 'gitdir: /nonexistent-flashtex-scratch-archive\n' > "$HELPERS/src/.git"
+if [[ $REBUILD == 1 || ! -f "$HELPERS/.complete" ]]; then
+  rm -rf "$HELPERS"; mkdir -p "$HELPERS"
+  # A shared, detached clone pinned at the exact commit: a clean tree with no
+  # local edits, no build products, and a truthful `git rev-parse HEAD`.
+  cmd helpers-clone git clone -q --shared --no-checkout "$ROOT" "$HELPER_SRC"
+  [[ $CMD_STATUS == 0 ]] && cmd helpers-checkout git -C "$HELPER_SRC" checkout -q --detach "$MAIN_SHA"
   [[ $CMD_STATUS == 0 ]] || HELPERS_OK=0
   export CARGO_TARGET_DIR="$WORK/cargo-target"
   for c in "${CRATES[@]}"; do
     [[ $HELPERS_OK == 1 ]] || break
-    manifest="$HELPERS/src/crates/$c/Cargo.toml"
+    manifest="$HELPER_SRC/crates/$c/Cargo.toml"
     cmd "helpers-build-$c" cargo build --release --offline --manifest-path "$manifest" --bin "flashtex-$c"
     if [[ $CMD_STATUS != 0 ]]; then
       note "offline build of crates/$c failed; retrying with the registry (crates.io only, no paid service)"
       cmd "helpers-build-$c-online" cargo build --release --manifest-path "$manifest" --bin "flashtex-$c"
     fi
     [[ $CMD_STATUS == 0 ]] || { HELPERS_OK=0; break; }
-    cp "$CARGO_TARGET_DIR/release/flashtex-$c" "$HELPER_BIN/flashtex-$c"
+    mkdir -p "$(dirname "$(helper_path "$c")")"
+    cp "$CARGO_TARGET_DIR/release/flashtex-$c" "$(helper_path "$c")"
   done
   unset CARGO_TARGET_DIR
-  [[ $HELPERS_OK == 1 ]] && touch "$HELPER_BIN/.complete"
+  [[ $HELPERS_OK == 1 ]] && touch "$HELPERS/.complete"
 else
-  note "reusing helpers already built from $MAIN_SHA in $HELPER_BIN (--rebuild to force)"
-  printf '[helpers] reused %s\n' "$HELPER_BIN" >> "$COMMANDS"
+  note "reusing helpers already built from $MAIN_SHA in $HELPER_SRC (--rebuild to force)"
+  printf '[helpers] reused %s\n' "$HELPER_SRC" >> "$COMMANDS"
 fi
-[[ -d "$HELPERS/src" ]] && printf 'gitdir: /nonexistent-flashtex-scratch-archive\n' > "$HELPERS/src/.git"
-python3 - "$RUN_DIR/helpers.json" "$HELPER_BIN" "$MAIN_REF" "$MAIN_SHA" "$HELPERS_OK" "$LIB" "${CRATES[@]}" <<'PY'
+HELPER_HEAD="$(git -C "$HELPER_SRC" rev-parse HEAD 2>/dev/null || echo unknown)"
+HELPER_CLEAN="$(git -C "$HELPER_SRC" status --porcelain 2>/dev/null | wc -l | tr -d ' ')"
+python3 - "$RUN_DIR/helpers.json" "$HELPER_SRC" "$MAIN_REF" "$MAIN_SHA" "$HELPERS_OK" "$LIB" "$HELPER_HEAD" "$HELPER_CLEAN" "${CRATES[@]}" <<'PY'
 import json, os, sys
-out, bindir, ref, sha, ok, lib = sys.argv[1:7]; crates = sys.argv[7:]
+out, src, ref, sha, ok, lib, head, dirty = sys.argv[1:9]; crates = sys.argv[9:]
 sys.path.insert(0, lib)
 from hashes import describe
 bins = {}
 for c in crates:
-    d = describe(os.path.join(bindir, "flashtex-" + c))
+    d = describe(os.path.join(src, "crates", c, "target", "release", "flashtex-" + c))
     d.update({"crate": "crates/" + c, "git_sha": sha})
     bins["flashtex-" + c] = d
-json.dump({"ref": ref, "sha": sha, "built_ok": ok == "1", "binaries": bins}, open(out, "w"), indent=1, sort_keys=True)
+json.dump({"ref": ref, "sha": sha, "built_ok": ok == "1", "scratch_clone": src, "scratch_head": head,
+           "scratch_dirty_entries": int(dirty), "binaries": bins}, open(out, "w"), indent=1, sort_keys=True)
 PY
-for c in "${CRATES[@]}"; do [[ -x "$HELPER_BIN/flashtex-$c" ]] && note "flashtex-$c $(sha256 "$HELPER_BIN/flashtex-$c")"; done
+for c in "${CRATES[@]}"; do [[ -x "$(helper_path "$c")" ]] && note "flashtex-$c $(sha256 "$(helper_path "$c")")"; done
+[[ "$HELPER_HEAD" == "$MAIN_SHA" ]] || { note "helpers scratch clone HEAD $HELPER_HEAD != $MAIN_SHA"; HELPERS_OK=0; }
 
 # ------------------------------------------------------------------- 2. app
 step "app from $BRANCH ($BRANCH_SHA)"
@@ -192,20 +206,22 @@ APP_SRC="$WORK/app/$BRANCH_SHA"
 MAC="$APP_SRC/apps/mac"
 APP_OK=1
 if [[ $REBUILD == 1 || ! -f "$APP_SRC/.extracted" ]]; then
-  rm -rf "$APP_SRC"; mkdir -p "$APP_SRC"
-  cmd app-archive bash -c "git -C '$ROOT' archive '$BRANCH_SHA' apps/mac protocol tools/typing-bench | tar -x -C '$APP_SRC'"
-  printf 'gitdir: /nonexistent-flashtex-scratch-archive\n' > "$APP_SRC/.git"
+  rm -rf "$APP_SRC"
+  cmd app-clone git clone -q --shared --no-checkout "$ROOT" "$APP_SRC"
+  [[ $CMD_STATUS == 0 ]] && cmd app-checkout git -C "$APP_SRC" checkout -q --detach "$BRANCH_SHA"
   [[ $CMD_STATUS == 0 ]] && echo "$BRANCH_SHA" > "$APP_SRC/.extracted" || APP_OK=0
 else
-  note "reusing sources already extracted from $BRANCH_SHA in $APP_SRC"
+  note "reusing sources already checked out at $BRANCH_SHA in $APP_SRC"
   printf '[app] reused %s\n' "$APP_SRC" >> "$COMMANDS"
 fi
-[[ -d "$APP_SRC" ]] && printf 'gitdir: /nonexistent-flashtex-scratch-archive\n' > "$APP_SRC/.git"
-# Helpers where typing-bench/run.sh and make-app.sh look by default (this scratch
-# tree has no crates/ of its own, so nothing else can be picked up by mistake).
+APP_HEAD="$(git -C "$APP_SRC" rev-parse HEAD 2>/dev/null || echo unknown)"
+[[ "$APP_HEAD" == "$BRANCH_SHA" ]] || { note "app scratch clone HEAD $APP_HEAD != $BRANCH_SHA"; APP_OK=0; }
+# The step-1 helpers where typing-bench/run.sh looks by default (target/ is
+# gitignored, so the pinned clone stays clean); the branch's own crates are
+# never built here.
 for c in "${CRATES[@]}"; do
   mkdir -p "$APP_SRC/crates/$c/target/release"
-  [[ -x "$HELPER_BIN/flashtex-$c" ]] && cp "$HELPER_BIN/flashtex-$c" "$APP_SRC/crates/$c/target/release/flashtex-$c"
+  [[ -x "$(helper_path "$c")" ]] && cp "$(helper_path "$c")" "$APP_SRC/crates/$c/target/release/flashtex-$c"
 done
 if [[ $APP_OK == 1 ]]; then
   cmd app-build swift build -c release --package-path "$MAC"
@@ -227,6 +243,22 @@ if [[ $SKIP_BENCH == 0 && $APP_OK == 1 && $HELPERS_OK == 1 ]]; then
   cmd typing-bench bash "$APP_SRC/tools/typing-bench/run.sh" --no-render --producers compiler \
       --intervals "$INTERVALS" --seeds "$SEEDS" --out "$RUN_DIR/typing-bench/typing-bench.md"
   note "typing-bench exit $CMD_STATUS"
+  if [[ $SKIP_CONTROLLER == 0 && -x "$(helper_path preview-controller)" ]]; then
+    # Same bench, durable helper route: the app attaches flashtex-preview-controller
+    # (which owns the ledger and launches the same compiler) instead of the direct
+    # worker. run.sh passes the environment through to the app unchanged.
+    step "typing bench via flashtex-preview-controller"
+    mkdir -p "$RUN_DIR/typing-bench-controller"
+    CTRL_LEDGERS="$WORK/controller-ledgers-$UTC"
+    mkdir -p "$CTRL_LEDGERS"
+    export FLASHTEX_PREVIEW_CONTROLLER="$(helper_path preview-controller)" FLASHTEX_CONTROLLER_LEDGER_ROOT="$CTRL_LEDGERS"
+    printf '[typing-bench-controller] FLASHTEX_PREVIEW_CONTROLLER=%q FLASHTEX_CONTROLLER_LEDGER_ROOT=%q\n' "$FLASHTEX_PREVIEW_CONTROLLER" "$CTRL_LEDGERS" >> "$COMMANDS"
+    cmd typing-bench-controller bash "$APP_SRC/tools/typing-bench/run.sh" --no-render --producers compiler \
+        --intervals "$INTERVALS" --seeds "$SEEDS" --out "$RUN_DIR/typing-bench-controller/typing-bench.md"
+    unset FLASHTEX_PREVIEW_CONTROLLER FLASHTEX_CONTROLLER_LEDGER_ROOT
+    rm -rf "$CTRL_LEDGERS"
+    note "typing-bench (controller) exit $CMD_STATUS"
+  fi
 else
   step "typing bench skipped (skip=$SKIP_BENCH app_ok=$APP_OK helpers_ok=$HELPERS_OK)"
 fi
@@ -236,8 +268,8 @@ BUNDLE="$MAC/build/FlashTeX.app"
 BUNDLE_OK=0
 if [[ $APP_OK == 1 && $HELPERS_OK == 1 ]]; then
   step "make-app.sh (bundle with the four helpers)"
-  cmd make-app bash "$MAC/scripts/make-app.sh" --compiler "$HELPER_BIN/flashtex-compiler" --pdf "$HELPER_BIN/flashtex-pdf" \
-      --bridge "$HELPER_BIN/flashtex-bridge" --ledger "$HELPER_BIN/flashtex-edit-ledger"
+  cmd make-app bash "$MAC/scripts/make-app.sh" --compiler "$(helper_path compiler)" --pdf "$(helper_path pdf)" \
+      --bridge "$(helper_path bridge)" --ledger "$(helper_path edit-ledger)"
   [[ $CMD_STATUS == 0 && -x "$BUNDLE/Contents/MacOS/FlashTeX" ]] && BUNDLE_OK=1
   python3 - "$RUN_DIR/bundle.json" "$BUNDLE" "$BUNDLE_OK" "$LIB" <<'PY'
 import json, os, sys

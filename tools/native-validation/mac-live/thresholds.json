@@ -8,10 +8,21 @@
         "typed_equals_script_keystrokes": true,
         "paints_min": 1
       },
-      "per_seed_p50_ms_max": {
-        "fixture": 40,
-        "demo": 60,
-        "body60k": 400
+      "producers": {
+        "compiler": {
+          "_comment": "direct worker route (FLASHTEX_COMPILER); the shell's primary preview path, gated on latency",
+          "expected_producer": "flashtex-compiler",
+          "per_seed_p50_ms_max": {
+            "fixture": 40,
+            "demo": 60,
+            "body60k": 400
+          }
+        },
+        "controller": {
+          "_comment": "durable helper route (FLASHTEX_PREVIEW_CONTROLLER); correctness gates only, latency reported against the project target (route measured ~2x the direct worker by its owner)",
+          "expected_producer": "flashtex-preview-controller",
+          "per_seed_p50_ms_max": {}
+        }
       },
       "required_cells": ["fixture-30ms", "fixture-0ms", "demo-30ms", "demo-0ms", "body60k-30ms", "body60k-0ms"]
     },
