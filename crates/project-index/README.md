@@ -184,3 +184,29 @@ Dependency checkpoint: 32 total tests pass, including six dependency/cache tests
 and 16 successive clean-rebuild equivalence checks inside the test suite. The
 bounded measurement additionally checks 12 whole-index equivalences. Strict Clippy
 and formatting pass. Rename remains a plan-only operation.
+
+## Bounded lexical exclusions
+
+The literal-environment allowlist now includes `verbatim`/`verbatim*`,
+`Verbatim`/`Verbatim*`, `BVerbatim`, `LVerbatim`, `lstlisting`, `minted`, `comment`,
+and `filecontents`/`filecontents*`. Inline `verb`, `lstinline` and `mintinline`
+forms are skipped, including optional options, language arguments and braced
+minted bodies. Percent signs inside literal bodies stay literal. These are source
+exclusions only: packages, shell escape, output files and catcode execution are
+never invoked or simulated.
+
+Literal environment ends require the exact `\end{NAME}` marker at an unescaped
+command-token boundary. Escaped backslashes cannot start a begin/end token; normal
+command and percent-comment recognition follows odd/even backslash parity. The
+allowlist is case-sensitive and does not infer custom environment aliases. These
+conservative conventions are not a full reproduction of each package's parser.
+Missing environment ends exclude the remaining source and emit a diagnostic;
+malformed inline forms resume after the line. Code inside excluded bodies never
+becomes a label/citation target or a rename edit.
+
+Each source document is limited to 8 MiB and a rejected oversize replacement leaves
+all prior state intact. Individual balanced-argument scans allow at most 64 KiB and
+128 levels; over-limit symbol arguments use the same diagnosed recovery as malformed
+ones. Literal-environment searching is a single forward scan with no recursive
+expansion. Seven additional tests cover exclusions, escaped delimiters, malformed
+recovery and bounds: 39 total tests and strict lint pass at this checkpoint.

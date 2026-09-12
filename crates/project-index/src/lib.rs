@@ -2,6 +2,23 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::time::Instant;
 
+pub const MAX_DOCUMENT_BYTES: usize = 8 * 1024 * 1024;
+const MAX_GROUP_BYTES: usize = 64 * 1024;
+const MAX_GROUP_DEPTH: usize = 128;
+const LITERAL_ENVIRONMENTS: &[&str] = &[
+    "verbatim",
+    "verbatim*",
+    "Verbatim",
+    "Verbatim*",
+    "BVerbatim",
+    "LVerbatim",
+    "lstlisting",
+    "minted",
+    "comment",
+    "filecontents",
+    "filecontents*",
+];
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Category {
     Label,
@@ -112,6 +129,10 @@ pub enum IndexError {
         name: String,
     },
     InvalidRenamePlan,
+    DocumentTooLarge {
+        bytes: usize,
+        limit: usize,
+    },
 }
 
 impl std::fmt::Display for IndexError {
@@ -245,6 +266,12 @@ impl ProjectIndex {
     ) -> Result<UpdateSummary, IndexError> {
         let started = Instant::now();
         let generation = self.check_update(file, revision)?;
+        if source.len() > MAX_DOCUMENT_BYTES {
+            return Err(IndexError::DocumentTooLarge {
+                bytes: source.len(),
+                limit: MAX_DOCUMENT_BYTES,
+            });
+        }
         let lexical_started = Instant::now();
         let (symbols, diagnostics) = scan(file, revision, source);
         let lexical_elapsed_nanos = lexical_started.elapsed().as_nanos();
@@ -677,18 +704,31 @@ fn command(source: &str, at: usize) -> Option<(usize, usize)> {
 
 /// Balanced literal group; escaped delimiters and comments do not close it.
 fn group(source: &str, at: usize, open: u8, close: u8) -> Option<(usize, usize, usize)> {
+    balanced_group(source, at, open, close, true)
+}
+
+fn balanced_group(
+    source: &str,
+    at: usize,
+    open: u8,
+    close: u8,
+    comments: bool,
+) -> Option<(usize, usize, usize)> {
     if source.as_bytes().get(at) != Some(&open) {
         return None;
     }
     let mut stack = vec![close];
     let mut cursor = at + 1;
     while cursor < source.len() {
+        if cursor - at > MAX_GROUP_BYTES || stack.len() > MAX_GROUP_DEPTH {
+            return None;
+        }
         let byte = source.as_bytes()[cursor];
         if byte == b'\\' {
             cursor = command(source, cursor).map_or(source.len(), |(_, end)| end);
             continue;
         }
-        if byte == b'%' {
+        if comments && byte == b'%' {
             cursor = trivia(source, cursor);
             continue;
         }
@@ -705,6 +745,59 @@ fn group(source: &str, at: usize, open: u8, close: u8) -> Option<(usize, usize, 
         cursor = next_char(source, cursor);
     }
     None
+}
+
+fn end_of_line(source: &str, at: usize) -> usize {
+    source[at..]
+        .find('\n')
+        .map_or(source.len(), |offset| at + offset)
+}
+
+/// Literal bodies are scanned once. An escaped backslash cannot begin an end token.
+fn literal_environment_end(source: &str, mut cursor: usize, name: &str) -> Option<usize> {
+    let marker = format!("\\end{{{name}}}");
+    while cursor < source.len() {
+        if let Some((_, end)) = command(source, cursor) {
+            if source[cursor..].starts_with(&marker) {
+                return Some(cursor + marker.len());
+            }
+            cursor = end;
+        } else {
+            cursor = next_char(source, cursor);
+        }
+    }
+    None
+}
+
+fn inline_literal_end(source: &str, at: usize, name: &str) -> Option<usize> {
+    let mut cursor = at;
+    if source.as_bytes().get(cursor) == Some(&b'*') {
+        cursor += 1;
+    }
+    if name != "verb" {
+        cursor = trivia(source, cursor);
+        if source.as_bytes().get(cursor) == Some(&b'[') {
+            cursor = trivia(source, group(source, cursor, b'[', b']')?.2);
+        }
+    }
+    if name == "mintinline" {
+        cursor = trivia(source, group(source, cursor, b'{', b'}')?.2);
+        if source.as_bytes().get(cursor) == Some(&b'{') {
+            return balanced_group(source, cursor, b'{', b'}', false).map(|(_, _, end)| end);
+        }
+    }
+    if cursor >= source.len() {
+        return None;
+    }
+    let end = next_char(source, cursor);
+    let delimiter = &source[cursor..end];
+    if delimiter.chars().next()?.is_whitespace() {
+        return None;
+    }
+    let line_end = end_of_line(source, end);
+    source[end..line_end]
+        .find(delimiter)
+        .map(|offset| end + offset + delimiter.len())
 }
 
 fn span(file: &str, revision: u64, start: usize, end: usize) -> SourceSpan {
@@ -759,27 +852,17 @@ fn scan(file: &str, revision: u64, source: &str) -> (Vec<Symbol>, Vec<Diagnostic
             kind: SymbolKind::CommandUse,
             source: span(file, revision, name_start, token_end),
         });
-        if name == "verb" {
-            if source.as_bytes().get(cursor) == Some(&b'*') {
-                cursor += 1;
-            }
-            if cursor < source.len() {
-                let end = next_char(source, cursor);
-                let delimiter = &source[cursor..end];
-                let line_end = source[end..]
-                    .find('\n')
-                    .map_or(source.len(), |offset| end + offset);
-                if !delimiter.chars().next().unwrap().is_whitespace() {
-                    if let Some(offset) = source[end..line_end].find(delimiter) {
-                        cursor = end + offset + delimiter.len();
-                        continue;
-                    }
-                }
+        if ["verb", "lstinline", "mintinline"].contains(&name) {
+            if let Some(end) = inline_literal_end(source, cursor, name) {
+                cursor = end;
+            } else {
                 diagnostics.push(Diagnostic {
-                    message: "Unclosed or invalid verb delimiter; resumed after the line".into(),
+                    message:
+                        "Unclosed, invalid or over-limit inline literal; resumed after the line"
+                            .into(),
                     source: span(file, revision, token_start, token_end),
                 });
-                cursor = if delimiter == "\n" { end } else { line_end };
+                cursor = end_of_line(source, cursor);
             }
             continue;
         }
@@ -847,11 +930,16 @@ fn scan(file: &str, revision: u64, source: &str) -> (Vec<Symbol>, Vec<Diagnostic
         };
         if name == "begin" {
             let environment = source[start..end].trim();
-            if environment == "verbatim" || environment == "verbatim*" {
-                let marker = format!("\\end{{{environment}}}");
-                cursor = source[after..]
-                    .find(&marker)
-                    .map_or(source.len(), |offset| after + offset + marker.len());
+            if LITERAL_ENVIRONMENTS.contains(&environment) {
+                if let Some(end) = literal_environment_end(source, after, environment) {
+                    cursor = end;
+                } else {
+                    diagnostics.push(Diagnostic {
+                        message: "Unclosed literal environment; remaining source excluded".into(),
+                        source: span(file, revision, token_start, after),
+                    });
+                    cursor = source.len();
+                }
             }
             continue;
         }

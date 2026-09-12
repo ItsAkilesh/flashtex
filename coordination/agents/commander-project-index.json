@@ -14,23 +14,23 @@
     "rust",
     "source-navigation"
   ],
-  "code_revision": "15d2e56387bd424e25e2a5b1aa4a462ebd6954c8",
+  "code_revision": "632f0280f01e57fb18d09498792e76fe557815fb",
   "eta_minutes": {
-    "likely": 25,
-    "optimistic": 15,
-    "pessimistic": 35
+    "likely": 15,
+    "optimistic": 10,
+    "pessimistic": 25
   },
   "machine": "linux-primary",
-  "main_integrated_through": "972e065ff17a90d22ab299f3b9be45e3029d445c",
-  "next_action": "Implement bounded literal environment exclusion, verify rename omissions, then source-only bibliography keys and cite navigation.",
+  "main_integrated_through": "15d2e56387bd424e25e2a5b1aa4a462ebd6954c8",
+  "next_action": "Add explicitly declared bibliography-document indexing and source-only citation navigation; retain existing revision/dependency guards.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "FT-025 accepted. Prior 32-test index and measured dependency reuse published at15d2e56; extending literal exclusion and declared bibliography indexing.",
+  "summary": "FT-025 lexical-exclusion checkpoint: 39 Rust tests and strict Clippy pass. Literal code/comment environments and inline forms excluded from navigation/rename; escaped delimiters and source/group bounds tested.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T05:59:03Z",
+  "updated_utc": "2026-09-12T06:04:54Z",
   "usage": {
-    "evidence": "Hosted authorized OpenAI work; no provider, Cursor, or billing calls. Cargo tests are local and offline.",
+    "evidence": "Local offline Cargo tests39 pass; fmt and strictClippy clean. No provider or native/package execution.",
     "status": "unknown"
   }
 }
