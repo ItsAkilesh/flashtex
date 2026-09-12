@@ -159,7 +159,11 @@ def main():
                     ack_receipt_ms=ack_ms, v1_receipt_ms=v1_ms, candidate_receipt_ms=candidate_ms))
             diagnostics = client.diagnostics()
         finally:
-            client.stop()
+            try:client.stop()
+            finally:
+                (output/'diagnostics-raw.jsonl').write_bytes(client.last_diagnostics_raw[:1024*1024])
+                (output/'diagnostics-capture-status.json').write_text(json.dumps(client.diagnostics_status)+'\n')
+        diagnostic_capture_status = client.diagnostics_status
         client = Client(args.helper, config)
         try:
             recovered = snapshot_after_initial_preview(client)
@@ -169,7 +173,8 @@ def main():
     evidence = dict(cases=cases, exact_reopen=True, helper_sha256=digest(args.helper),
         producer_sha256=digest(args.producer), producer_source_sha=expected['producer_sha'],
         producer_evidence_sha256=digest(args.producer_evidence), fixture_sha256=digest(args.fixture),
-        assets=expected['assets'], diagnostics=diagnostics, repeat=args.repeat, reply_limit=args.reply_limit,
+        assets=expected['assets'], diagnostics=diagnostics, diagnostic_capture_status=diagnostic_capture_status,
+        repeat=args.repeat, reply_limit=args.reply_limit,
         display_transport=args.display_transport, negotiated_capability=capability,
         native_rendering='not performed', native_latency='not measured')
     evidence['helper_source_sha'] = args.helper_source_sha
@@ -179,6 +184,7 @@ def main():
         for artifact in list(output.glob('step-*.json')) + list(output.glob('step-*.jsonl')):
             artifact.with_name(artifact.name + '.gz').write_bytes(gzip.compress(artifact.read_bytes(), mtime=0))
             artifact.unlink()
+    evidence['diagnostic_artifact_sha256'] = {name: digest(output/name) for name in ['diagnostics-raw.jsonl','diagnostics-capture-status.json']}
     evidence['artifact_encoding'] = 'gzip' if args.compress_artifacts else 'json'
     evidence['step_artifact_sha256'] = {p.name: digest(p) for p in sorted(output.glob('step-*.json*'))}
     (output/'provenance.json').write_text(json.dumps(evidence, indent=2)+'\n')
