@@ -167,6 +167,25 @@ else
   PROBE_BIN=""
 fi
 
+# --- 1b. Pinned rooted TFM metrics (GH36; static, read-only) -----------------
+step "Pinned bundle resources (Contents/Resources/texmf + Fonts)"
+RESOURCE_VERIFIER="$MAC_DIR/../../crates/rendering-core/tools/verify_bundle_resources.py"
+if [[ -f "$RESOURCE_VERIFIER" ]]; then
+  rc=0; python3 "$RESOURCE_VERIFIER" "$APP_DIR/Contents/Resources" > "$WORK_DIR/resource-coverage.json" 2>&1 || rc=$?
+  if [[ "$rc" -eq 0 ]]; then
+    note "verify_bundle_resources.py exit 0: 3 fonts, 5 rooted metrics and the rooted GUST license match the pinned manifest"
+  else
+    fail "verify_bundle_resources.py exit $rc: $(grep -E '"(status|reason)"' "$WORK_DIR/resource-coverage.json" | grep -v verified | head -3 | tr -s ' \n' ' ')"
+  fi
+else
+  note "verifier not in this checkout ($RESOURCE_VERIFIER); pinned resource check skipped"
+fi
+if [[ -f "$APP_DIR/Contents/Resources/components.json" ]] && python3 -c "import json,sys; r=json.load(open(sys.argv[1]))['resources']; assert r['status']=='verified' and len(r['resources'])==9" "$APP_DIR/Contents/Resources/components.json" 2>/dev/null; then
+  note "components.json records 9 verified resource hashes"
+else
+  fail "components.json lacks a verified 'resources' entry (bundle packaged before the GH36 staging, or refused)"
+fi
+
 # --- 2. Launch --------------------------------------------------------------
 COMPILER_IN_BUNDLE="$APP_DIR/Contents/MacOS/flashtex-compiler"
 BRIDGE_IN_BUNDLE="$APP_DIR/Contents/MacOS/flashtex-bridge"

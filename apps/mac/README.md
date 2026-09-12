@@ -47,6 +47,53 @@ is discarded) and `--dmg` produces a compressed disk image; see
 `apps/mac/docs/packaging.md` for signing/notarization status and the
 update-path and launch-recovery evidence (`scripts/launch-check.sh`).
 
+### Rooted TeX metrics for no-TeX operation (GH36)
+
+`flashtex-render` lays text out with Latin Modern's TeX metrics. It looks for
+`.tfm` files in `FLASHTEX_TFM_DIRS` (colon separated) before anything it infers,
+and loads its digest-bound required 12 pt set only from a rooted `texmf` tree:
+the directory must end in `fonts/tfm/public/lm` and
+`<root>/doc/fonts/lm/GUST-FONT-LICENSE.TXT` must sit beside it. A flat
+`Resources/Fonts` cannot satisfy that, and a MacTeX on the build machine can
+hide the gap. The bundle therefore ships the five official LM 2.004 metrics the
+established fixtures need (`ec-lmr10`, `ec-lmr12`, `rm-lmr12`, `rm-lmr8`,
+`rm-lmr6`) plus the rooted license, vendored under `apps/mac/Fonts/texmf/…`:
+
+- `scripts/bundle-texmf.py` (called by `make-app.sh`) verifies every file's
+  byte length and SHA-256 against the Commander's pinned manifest
+  (`crates/rendering-core/docs/handoffs/native-assets/manifest.json`, itself
+  SHA-pinned in `crates/rendering-core/tools/verify_bundle_resources.py`)
+  BEFORE the build, stages them into `Contents/Resources/texmf/fonts/tfm/public/lm`
+  and `Contents/Resources/texmf/doc/fonts/lm/GUST-FONT-LICENSE.TXT`, then runs
+  the pinned verifier over the whole `Resources` directory (3 fonts + 5 metrics
+  + license) before signing. Any missing/mismatched/symlinked file refuses
+  packaging; nothing is downloaded and the host TeX tree is never consulted.
+  `FLASHTEX_BUNDLE_TEXMF_ROOT` points at another verified official root.
+- The verified hashes are recorded in `Contents/Resources/components.json`
+  (`"resources"`) and `Contents/Resources/resource-coverage.json`, both sealed by
+  the app signature.
+- `BundledMetrics` (`BundledMetrics.swift`) finds the bundled directory (bundle
+  `Resources/texmf`, else the repository copy for `swift build` products) and
+  prepends it to `FLASHTEX_TFM_DIRS` for every producer launch — the directly
+  attached worker (`WorkerClient`) and the helper-spawned producer
+  (`PreviewControllerClient` → `flashtex-preview-controller` → compiler child,
+  which inherits the helper's environment). Explicit user entries stay in
+  effect after the bundled directory; nothing else in the environment changes.
+  Bold/italic/other design sizes are not covered by the five files (their TFMs
+  need a separate inventory) and still come from user entries or host TeX.
+- Acceptance: `scripts/texmf-acceptance.sh [--app …] [--evidence <dir>]` runs
+  the producer actually inside the bundle with host TeX excluded (`env -i`,
+  `PATH=/usr/bin:/bin`, empty `HOME`, no `FLASHTEX_*`/`TEXMF*`, plus a
+  `sandbox-exec` profile denying reads under `/usr/local/texlive`,
+  `/Library/TeX`, `/usr/share/texmf|texlive`) on the corrected 10 pt
+  multi-document request and 12 pt text/math documents through the direct route,
+  the route with a user entry appended, and the bundled preview controller;
+  requires zero `tfm_missing`/`required_metrics_unavailable`/`font_unavailable`
+  diagnostics, an explicit failure once `ec-lmr10.tfm` is deleted from a copy,
+  and verifier exit 0. `packaging-selftest.sh` covers the refusal paths without
+  a build and runs the acceptance in `--full` mode; `launch-check.sh` verifies
+  the resources statically. Evidence: `docs/evidence/mac-bundle-texmf-<UTC>/`.
+
 ## Behavior
 
 - Editor: `NSTextView` (monospaced, undo, no smart substitutions). Footer shows

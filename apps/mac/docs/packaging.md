@@ -317,6 +317,30 @@ whose name is "FlashTeX"'` showed the process while running and `pgrep -x
 FlashTeX` showed nothing after quitting — no stray `FlashTeX` process was
 left behind by either run.
 
+## Rooted TeX metrics in the bundle (GH36)
+
+`make-app.sh` now stages the five pinned official Latin Modern 2.004 TFMs and
+the rooted GUST license from `apps/mac/Fonts/texmf` (or
+`FLASHTEX_BUNDLE_TEXMF_ROOT`) into `Contents/Resources/texmf/fonts/tfm/public/lm`
+and `Contents/Resources/texmf/doc/fonts/lm/GUST-FONT-LICENSE.TXT` through
+`scripts/bundle-texmf.py`: each source file is hash-verified against the
+Commander's pinned manifest before the build (a mismatch, a missing file or a
+symlink exits 1 before `swift build`), staged, and then the whole `Resources`
+directory is verified with `crates/rendering-core/tools/verify_bundle_resources.py`
+before any signing. `components.json` gains a `"resources"` entry with the nine
+verified SHA-256/byte pairs and the manifest hash; `resource-coverage.json` is
+the verifier's full report. Both are sealed by the app signature (they are
+written before `codesign`). The producer gets the bundled directory prepended to
+`FLASHTEX_TFM_DIRS` by `BundledMetrics.swift` on both launch routes
+(`WorkerClient`, `PreviewControllerClient`); see `README.md` "Rooted TeX
+metrics" and the acceptance script `scripts/texmf-acceptance.sh` (bundled
+producer, host TeX denied by `sandbox-exec`, 10 pt multi-document + 12 pt
+text/math, deliberate removal, verifier exit 0). The producer itself does not
+yet discover `../Resources/texmf` on its own (the Commander's
+`producer-discovery.patch` is a reviewable file owned by the render-pipeline
+lane); until it does, the env route is what makes the packaged app independent
+of host TeX, and the acceptance's `control` run records exactly that.
+
 ## Known gaps (rev 5)
 
 - **Signing/notarization: tooling done, credentials absent.** The

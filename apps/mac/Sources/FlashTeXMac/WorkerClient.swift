@@ -37,6 +37,9 @@ final class WorkerClient {
         self.transcript = transcript
         process.executableURL = executable
         process.arguments = arguments
+        // Direct producer route: the bundled rooted TFM directory is
+        // prepended to FLASHTEX_TFM_DIRS (BundledMetrics.swift, GH36).
+        process.environment = BundledMetrics.producerEnvironment()
         process.standardInput = stdin
         process.standardOutput = stdout
         process.standardError = stderr

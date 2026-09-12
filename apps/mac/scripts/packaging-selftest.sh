@@ -79,6 +79,28 @@ fi
 rc=0; "$MAKE" --bogus-flag >"$WORK/out.txt" 2>&1 || rc=$?
 [[ "$rc" -eq 1 ]] && grep -q "unknown argument" "$WORK/out.txt" && ok "unknown argument -> exit 1" || bad "unknown argument handling"
 
+section "Pinned rooted TFM metrics (GH36; no build, no download, no host TeX)"
+TEXMF_TOOL="$SCRIPT_DIR/bundle-texmf.py"
+if python3 "$TEXMF_TOOL" check "$MAC_DIR/Fonts/texmf" >"$WORK/texmf-check.json" 2>&1; then
+  ok "bundle-texmf.py check apps/mac/Fonts/texmf: $(( $(grep -c '"status": "verified"' "$WORK/texmf-check.json") - 1 )) entries verified against the pinned manifest"
+else
+  bad "bundle-texmf.py check apps/mac/Fonts/texmf failed: $(grep -E '"(status|reason)"' "$WORK/texmf-check.json" | head -2 | tr -s ' \n' ' ')"
+fi
+# A corrupted source metric (one byte appended) is refused BEFORE the build.
+cp -R "$MAC_DIR/Fonts/texmf" "$WORK/texmf-corrupt"
+printf 'x' >> "$WORK/texmf-corrupt/fonts/tfm/public/lm/rm-lmr8.tfm"
+FLASHTEX_BUNDLE_TEXMF_ROOT="$WORK/texmf-corrupt" expect_preflight_failure "pinned bundle metric refused" --debug
+# A missing source metric is refused BEFORE the build.
+cp -R "$MAC_DIR/Fonts/texmf" "$WORK/texmf-missing"
+rm "$WORK/texmf-missing/fonts/tfm/public/lm/ec-lmr10.tfm"
+FLASHTEX_BUNDLE_TEXMF_ROOT="$WORK/texmf-missing" expect_preflight_failure "pinned bundle metric refused" --debug
+# A metric hidden behind a symlink is refused (no-follow walk).
+cp -R "$MAC_DIR/Fonts/texmf" "$WORK/texmf-symlink"
+rm "$WORK/texmf-symlink/fonts/tfm/public/lm/ec-lmr12.tfm"
+ln -s "$MAC_DIR/Fonts/texmf/fonts/tfm/public/lm/ec-lmr12.tfm" "$WORK/texmf-symlink/fonts/tfm/public/lm/ec-lmr12.tfm"
+FLASHTEX_BUNDLE_TEXMF_ROOT="$WORK/texmf-symlink" expect_preflight_failure "pinned bundle metric refused" --debug
+FLASHTEX_BUNDLE_TEXMF_ROOT="$WORK/texmf-absent" expect_preflight_failure "pinned bundle metrics root not found" --debug
+
 section "Resources"
 for f in Info.plist.template FlashTeX.entitlements; do
   if plutil -lint "$MAC_DIR/Resources/$f" >/dev/null 2>&1; then ok "plutil -lint Resources/$f"; else bad "plutil -lint Resources/$f"; fi
@@ -92,11 +114,11 @@ ENT_KEYS="$(plutil -convert json -o - "$MAC_DIR/Resources/FlashTeX.entitlements"
 if [[ "$ENT_KEYS" == "{}" ]]; then ok "FlashTeX.entitlements grants no entitlements (empty dict)"; else bad "FlashTeX.entitlements is not empty: $ENT_KEYS (every key needs a documented reason)"; fi
 
 section "--help"
-for s in make-app.sh launch-check.sh repro-check.sh; do
+for s in make-app.sh launch-check.sh repro-check.sh texmf-acceptance.sh; do
   HELP="$("$SCRIPT_DIR/$s" --help 2>/dev/null || true)"
   if grep -q "Usage:" <<< "$HELP"; then ok "$s --help"; else bad "$s --help"; fi
 done
-for s in make-app.sh launch-check.sh repro-check.sh packaging-selftest.sh; do
+for s in make-app.sh launch-check.sh repro-check.sh packaging-selftest.sh texmf-acceptance.sh; do
   if /bin/bash -n "$SCRIPT_DIR/$s" 2>/dev/null; then ok "$s parses under /bin/bash 3.2"; else bad "$s does not parse under /bin/bash 3.2"; fi
 done
 
@@ -127,9 +149,20 @@ if [[ "$FULL" -eq 1 ]]; then
   else
     bad "launch-check.sh --dmg: $(grep '^- FAIL' "$WORK/launch-dmg.md" 2>/dev/null | head -3 | tr '\n' ' ')$(tail -2 "$WORK/launch-dmg.log" | tr '\n' ' ')"
   fi
+  section "Full: texmf-acceptance (bundled producer, host TeX excluded)"
+  if [[ -x "$MAC_DIR/build/FlashTeX.app/Contents/MacOS/flashtex-render" ]]; then
+    if "$SCRIPT_DIR/texmf-acceptance.sh" --evidence "$WORK/texmf-acceptance" >"$WORK/texmf-acceptance.log" 2>&1; then
+      ok "texmf-acceptance.sh: $(grep '^Result' "$WORK/texmf-acceptance/README.md")"
+    else
+      bad "texmf-acceptance.sh: $(grep '^- FAIL' "$WORK/texmf-acceptance/README.md" 2>/dev/null | head -3 | tr '\n' ' ')$(tail -2 "$WORK/texmf-acceptance.log" | tr '\n' ' ')"
+    fi
+    cp "$WORK/texmf-acceptance/README.md" "$WORK/texmf-acceptance.md"
+  else
+    skip "texmf-acceptance: no bundled flashtex-render (pass -- --render <path>)"
+  fi
   if [[ -n "$EVIDENCE_FILE" ]]; then
     EVDIR="$(dirname "$EVIDENCE_FILE")"
-    for f in repro-adhoc.md repro-hardened.md launch-app.md launch-dmg.md; do
+    for f in repro-adhoc.md repro-hardened.md launch-app.md launch-dmg.md texmf-acceptance.md; do
       [[ -f "$WORK/$f" ]] && cp "$WORK/$f" "$EVDIR/packaging-selftest-$f"
     done
   fi
