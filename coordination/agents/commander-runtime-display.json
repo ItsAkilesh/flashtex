@@ -3,27 +3,27 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-049": {
-      "acknowledged_utc": "2026-09-12T12:37:33Z",
-      "adaptation": "Stopped-stdin acceptance passes three direct-child cases with one-byte datagram handshake, kill/reap and separately observed writer exit. Production unchanged. Final ordinary suite/lint held for rendering paired measurement window; exact evidence already preserved.",
-      "main_sha": "d4ee54f9687d11d194d8063ea916b7ef9c00befe",
-      "revision": 15
+      "acknowledged_utc": "2026-09-12T12:43:47Z",
+      "adaptation": "30 sequential normal/stopped Value/raw sessions restore4FD/2thread/emptychild baseline after three I/O terminal witnesses and child reaping. No production change or accumulation demonstrated; complete per-cycle evidence preserved.",
+      "main_sha": "fec22f105a028313962b69fa155b0621e3faf247",
+      "revision": 17
     }
   },
   "branch": "agent/commander-runtime-display/display-runtime",
   "capabilities": [
     "rust-runtime"
   ],
-  "code_revision": "91f1764b4f48f420ab7e06b15cccf439d6e18def",
+  "code_revision": "106bca6ec3f2855a85faa023a66c6f07085d7d61",
   "eta_minutes": null,
   "machine": "linux-primary",
   "main_integrated_through": "0333be37e546273b6bcbe30a1f0745ad8a5e93c5",
-  "next_action": "Commander integration review. All test/build/timing handles terminal; clean checkpoint after report publication. Preserve distinction between joined decoder and separately witnessed detached writer exit; no all-thread or worst-case deadline claim. Docs/evidence blocked-writer preserved.",
+  "next_action": "Commander integration review. All probe/build processes terminal. Clean checkpoint after report publication; docs/blocked-writer.md and benchmarks/session-cycles contain scope, exact PIDs and counters. No RSS/all-production-thread-join/worst-case-time claim.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "FT049 r15 product91f1764b: deterministic stopped-stdin one-byte handshake; timeout/close-drop/direct-drop all reap direct child, separately witness writer exit, and emit no preview.49 ordinary tests pass/9 opt-in ignored; three-case probe and strict lint pass. Only Linux test instrumentation, no production defect demonstrated.",
+  "summary": "FT049 r17 product106bca6e:30 sequential normal/stopped-reader Value/raw cycles restore baseline4FD/2thread/emptychild after writer/stdout/stderr witnesses, decoder join and PID reaping. No accumulation demonstrated; production unchanged.49 ordinary tests pass/10 opt-in ignored;30-cycle gate and strict lint pass.",
   "tool": "codex",
-  "updated_utc": "2026-09-12T12:39:33Z",
+  "updated_utc": "2026-09-12T12:44:10Z",
   "usage": {
     "status": "unknown"
   }
