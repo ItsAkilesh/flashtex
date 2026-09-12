@@ -27,6 +27,8 @@ runtime is recorded as a runtime-test limitation rather than being misreported a
 an XCTest pass.
 The report also checks that the stdout transport has an atomic capture-ID registry
 and explicitly rejects duplicates.
+It separately detects the cross-transport failure mode where `CaptureTransport`
+prints a capture and disconnected `BonjourTransport` prints the same JSON again.
 
 Run the harness unit tests with:
 

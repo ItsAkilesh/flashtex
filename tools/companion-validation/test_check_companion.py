@@ -75,6 +75,23 @@ class CompanionValidationTests(unittest.TestCase):
                 "duplicate capture IDs are not explicitly rejected",
             ],
         )
+
+    def test_detects_stdout_double_submit_between_transports(self):
+        self.assertEqual(
+            check_companion.cross_transport_findings(
+                "CaptureTransport.shared.send(envelope)\nBonjourTransport.shared.send(json)",
+                "print(jsonLine)\nfflush(stdout)",
+            ),
+            [
+                "capture is sent to stdout before Bonjour fallback, so a disconnected capture is emitted twice"
+            ],
+        )
+        self.assertEqual(
+            check_companion.cross_transport_findings(
+                "BonjourTransport.shared.send(json)", "print(jsonLine)\nfflush(stdout)"
+            ),
+            [],
+        )
         self.assertEqual(
             check_companion.deduplication_findings(
                 "sentCaptureIDs.insert(captureID).inserted\n"
@@ -109,10 +126,13 @@ class CompanionValidationTests(unittest.TestCase):
             validator.write_text("")
             store = root / check_companion.STORE
             transport = root / check_companion.TRANSPORT
+            bonjour = root / check_companion.BONJOUR_TRANSPORT
             store.parent.mkdir(parents=True, exist_ok=True)
             transport.parent.mkdir(parents=True, exist_ok=True)
+            bonjour.parent.mkdir(parents=True, exist_ok=True)
             store.write_text("func cancelCapture() {}\nfunc retryCapture() {}")
             transport.write_text("let json = envelope.toJSONString()\nsentCaptureIDs.insert(captureID)")
+            bonjour.write_text("func send() {}")
             with patch.object(check_companion, "run", return_value={"exit_code": 0}) as runner:
                 result = check_companion.validate_tree(root, "xcodebuild", False)
             self.assertEqual(runner.call_args_list[0].args[0][-1], str(project.parent))

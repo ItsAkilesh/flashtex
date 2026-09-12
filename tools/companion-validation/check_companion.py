@@ -27,6 +27,7 @@ PAYLOAD = Path("apps/companion/FlashTeXCompanion/Models/CapturePayload.swift")
 VALIDATOR = Path("apps/companion/FlashTeXCompanion/Services/ImageValidator.swift")
 STORE = Path("apps/companion/FlashTeXCompanion/Models/CaptureStore.swift")
 TRANSPORT = Path("apps/companion/FlashTeXCompanion/Services/CaptureTransport.swift")
+BONJOUR_TRANSPORT = Path("apps/companion/FlashTeXCompanion/Services/BonjourTransport.swift")
 CAPTURE_FIXTURE = Path("protocol/fixtures/capture-submission.json")
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 JPEG_SIGNATURE = b"\xff\xd8\xff"
@@ -151,6 +152,19 @@ def deduplication_findings(transport_source: str) -> list[str]:
     return findings
 
 
+def cross_transport_findings(store_source: str, bonjour_source: str) -> list[str]:
+    """Catch the stdout double-submit path across the two companion transports."""
+    findings: list[str] = []
+    sends_stdout_first = "CaptureTransport.shared.send(envelope)" in store_source
+    then_sends_bonjour = "BonjourTransport.shared.send(json)" in store_source
+    bonjour_stdout_fallback = "print(jsonLine)" in bonjour_source and "fflush(stdout)" in bonjour_source
+    if sends_stdout_first and then_sends_bonjour and bonjour_stdout_fallback:
+        findings.append(
+            "capture is sent to stdout before Bonjour fallback, so a disconnected capture is emitted twice"
+        )
+    return findings
+
+
 def fixture_mime_findings(fixture: Path) -> list[str]:
     """Validate declared MIME type against decoded bytes in a capture fixture."""
     try:
@@ -173,6 +187,7 @@ def validate_tree(source: Path, xcodebuild: str, build: bool) -> dict[str, Any]:
     validator = source / VALIDATOR
     store = source / STORE
     transport = source / TRANSPORT
+    bonjour_transport = source / BONJOUR_TRANSPORT
     result: dict[str, Any] = {
         "project": str(PROJECT),
         "destination": "sdk: iphonesimulator (direct SDK build; no named simulator required)",
@@ -181,6 +196,7 @@ def validate_tree(source: Path, xcodebuild: str, build: bool) -> dict[str, Any]:
         "mime_findings": [],
         "delivery_findings": [],
         "deduplication_findings": [],
+        "cross_transport_findings": [],
         "fixture_mime_findings": [],
         "commands": [],
     }
@@ -201,9 +217,16 @@ def validate_tree(source: Path, xcodebuild: str, build: bool) -> dict[str, Any]:
         result["deduplication_findings"] = deduplication_findings(
             transport.read_text(encoding="utf-8")
         )
+        if bonjour_transport.exists():
+            result["cross_transport_findings"] = cross_transport_findings(
+                store.read_text(encoding="utf-8"), bonjour_transport.read_text(encoding="utf-8")
+            )
+        else:
+            result["cross_transport_findings"] = ["Bonjour transport source missing"]
     else:
         result["delivery_findings"] = ["capture delivery sources missing"]
         result["deduplication_findings"] = ["capture delivery sources missing"]
+        result["cross_transport_findings"] = ["capture delivery sources missing"]
     fixture = source / CAPTURE_FIXTURE
     if fixture.exists():
         result["fixture_mime_findings"] = fixture_mime_findings(fixture)
