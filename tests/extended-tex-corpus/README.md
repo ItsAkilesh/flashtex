@@ -2,7 +2,7 @@
 
 Owner: `mac-reference-corpus`, directly assigned by the user on 2026-09-12.
 Status: 55 original projects, 48 positive reference PDFs (57 pages), seven expected
-error cases, and eight incremental edit scenarios. No FlashTeX compatibility claim.
+error cases, and fourteen incremental edit scenarios. No FlashTeX compatibility claim.
 This is an independent extension of `tests/tex-corpus`, `tests/visual-corpus`, and
 `fixtures/real-world`; it does not replace their manifests or their owners.
 
@@ -54,7 +54,7 @@ FlashTeX's compilation or preview path.
   recorder/provenance files are historical evidence, not portable lookup paths.
 - `reference-index.json`: final source/PDF hashes and observed page counts for all
   55 cases. Integrity tests reject stale sources or PDFs.
-- `edits.json`: eight exact UTF-8 byte replacements and their expected dependency
+- `edits.json`: fourteen exact UTF-8 byte replacements and their expected dependency
   effects. Feed baseline then edited project to an incremental compiler; compare
   the edited result against a clean build of identical edited bytes. Compare warm
   auxiliary-file workflows separately from clean auxiliary state.

@@ -2,6 +2,48 @@
   "offset_unit": "utf8_bytes",
   "edits": [
     {
+      "case": "hw1-blackboard-macros", "path": "main.tex",
+      "old": "\\newcommand{\\R}{\\mathbb{R}}", "new": "\\newcommand{\\R}{\\mathbb{Q}}",
+      "start_byte": 202, "end_byte": 229,
+      "purpose": "A preamble macro edit changes every dependent blackboard use, including nested scripts, without changing the explicit alphabet row.",
+      "gate": "Compare original-compiler incremental result to clean compile of identical edited project; independently compare edited output to a newly generated reference."
+    },
+    {
+      "case": "hw1-array-cases", "path": "main.tex",
+      "old": "\\begin{array}{r|cl}", "new": "\\begin{array}{l|cr}",
+      "start_byte": 422, "end_byte": 441,
+      "purpose": "Changing column alignment moves cells while preserving row gaps, vertical rule, adjacent cases and the later array.",
+      "gate": "Compare original-compiler incremental result to clean compile of identical edited project; independently compare edited output to a newly generated reference."
+    },
+    {
+      "case": "hw1-delimiters-kerns", "path": "main.tex",
+      "old": "A\\quad B", "new": "A\\qquad B",
+      "start_byte": 472, "end_byte": 480,
+      "purpose": "An explicit math-space edit increases only the selected gap; the delimiter and other spacing rows remain unchanged.",
+      "gate": "Compare original-compiler incremental result to clean compile of identical edited project; independently compare edited output to a newly generated reference."
+    },
+    {
+      "case": "hw1-title-size-scope", "path": "main.tex",
+      "old": "{\\LARGE\\bfseries Problem Sheet: Size Scope}", "new": "{\\small\\bfseries Problem Sheet: Size Scope}",
+      "start_byte": 189, "end_byte": 232,
+      "purpose": "A scoped title size edit invalidates its geometry and downstream vertical positions without leaking small size into body text.",
+      "gate": "Compare original-compiler incremental result to clean compile of identical edited project; independently compare edited output to a newly generated reference."
+    },
+    {
+      "case": "hw1-paragraph-registers", "path": "main.tex",
+      "old": "\\setlength{\\parskip}{0.65em}", "new": "\\setlength{\\parskip}{1.1em}",
+      "start_byte": 117, "end_byte": 145,
+      "purpose": "A preamble paragraph-glue edit propagates through later paragraphs; the local override still applies, then restores the new outer value.",
+      "gate": "Compare original-compiler incremental result to clean compile of identical edited project; independently compare edited output to a newly generated reference."
+    },
+    {
+      "case": "hw1-heading-hfill", "path": "main.tex",
+      "old": "\\subsection*{Problem #1\\hfill\\normalfont[#2 points]}", "new": "\\subsection*{Problem #1\\quad\\normalfont[#2 points]}",
+      "start_byte": 114, "end_byte": 166,
+      "purpose": "Changing fill to fixed space in a shared heading macro changes both points-label positions but preserves unrelated body and quote fill glue.",
+      "gate": "Compare original-compiler incremental result to clean compile of identical edited project; independently compare edited output to a newly generated reference."
+    },
+    {
       "case": "tex-expansion-arguments",
       "path": "main.tex",
       "old": "\\def\\word{NEW}",

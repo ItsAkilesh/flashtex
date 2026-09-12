@@ -41,3 +41,11 @@ integrity/byte-edit/profile/timeout/request tests pass. All old reference source
 and PDFs remain unchanged. Current total: 55 projects, 48 positive PDFs/57 pages,
 seven negative cases, eight exact edit scenarios. The newly generated source
 hashes match the accepted PDFs' provenance; no old oracle was regenerated.
+
+Follow-up: six exact UTF-8 edit scenarios now accompany these probes (14 total
+in the corpus). They change a shared macro, array preamble, explicit math gap,
+scoped title size, outer paragraph glue, and heading fill. Existing byte-range,
+unique-replacement and valid UTF-8 checks pass. This validates the edit inputs;
+it does not prove incremental/clean output parity. Agents must compile baseline
+then edited source and compare to a clean build of identical edited bytes, and
+generate an independent edited MacTeX reference before claiming visual parity.
