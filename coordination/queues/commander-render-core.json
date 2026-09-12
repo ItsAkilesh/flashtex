@@ -4,8 +4,8 @@
   "schema_version": 1,
   "steps": [
     {
-      "name": "Inspect measured repeated pairing and resource parsing for one immutable helper candidate",
-      "objective": "Inspect measured repeated pairing and resource parsing for one immutable helper candidate",
+      "name": "Assess existing hit-test index for exact current-source queries on actual bound helper candidates without native activation",
+      "objective": "Assess existing hit-test index for exact current-source queries on actual bound helper candidates without native activation",
       "owned_paths": [
         "crates/rendering-core"
       ],
@@ -17,8 +17,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Implement smallest immutable reuse justified by duplicate work while rechecking live source and registry authority",
-      "objective": "Implement smallest immutable reuse justified by duplicate work while rechecking live source and registry authority",
+      "name": "Implement only supported current-authority geometry lookup reusing exact compiler geometry and source spans",
+      "objective": "Implement only supported current-authority geometry lookup reusing exact compiler geometry and source spans",
       "owned_paths": [
         "crates/rendering-core"
       ],
@@ -30,8 +30,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Verify paired existing-capture exact PDF and refusal equality with bounded residency and stale-source rejection",
-      "objective": "Verify paired existing-capture exact PDF and refusal equality with bounded residency and stale-source rejection",
+      "name": "Verify ligature escaped-source and stale session membership behavior or publish exact missing producer geometry without inference",
+      "objective": "Verify ligature escaped-source and stale session membership behavior or publish exact missing producer geometry without inference",
       "owned_paths": [
         "crates/rendering-core"
       ],
