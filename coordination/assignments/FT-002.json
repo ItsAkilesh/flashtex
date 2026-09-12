@@ -9,15 +9,15 @@
   "branch": "agent/claude/compiler-foundation",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "25bd0064ba364dcbdd58f649d214773d17c98553",
-  "objective": "Measure and reduce compiler input-to-first-response-byte latency on pinned500KB fixture; preserve exact full JSON, diagnostics and incremental-clean equivalence",
+  "input_main_sha": "e5901797e8a7ebdd8d714ecdee6793e1097515a9",
+  "objective": "Isolate layout/page construction versus JSON serialization using exact pinned fixture",
   "owned_paths": [
     "crates/compiler"
   ],
-  "revision": 9,
+  "revision": 10,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-002",
   "timebox_minutes": 45,
-  "updated_utc": "2026-09-12T09:09:43.891533+00:00"
+  "updated_utc": "2026-09-12T09:21:56Z"
 }
