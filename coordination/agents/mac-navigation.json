@@ -2,39 +2,39 @@
   "agent_id": "mac-navigation",
   "allocation_id": "claude-mac20x-navigation",
   "assignment_acknowledgements": {},
-  "branch": "agent/mac-navigation/exact",
+  "branch": "agent/mac-navigation/helper-navigate",
   "capabilities": [
     "swift",
     "macos"
   ],
-  "code_revision": "8feec0d8f22d4c80aea1fdec5d633dfe95bfc8d8",
+  "code_revision": "de345ecd20be27b51b05abf5bc22ab47a1ad468a",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
     "pessimistic": 30
   },
   "machine": "mac-m1max-a",
-  "main_integrated_through": "c9f1b9edbc872085949da89a7d3e4875ce17cd54",
-  "next_action": "Parent applies the ShellModel diff and merges into mac-shell; compiler owner: duplicated source span on PDF-export glyph warnings (all point at the first offending item)",
+  "main_integrated_through": "277a0910811fdb27bd156ecd92b92b50f277c750",
+  "next_action": "Parent merges helper-navigate into mac-shell; document-files owner guards saveTex() when a non-entry document is active",
   "reviewed_peers": {
     "origin/agent/mac-claude-a/mac-shell": {
-      "adaptation": "Merged both; adopted editorMarkReport/currentDiagnosticID for goToDiagnostic per the editor-diagnostics lane diff and extended it across open documents; no contract change",
-      "reviewed_utc": "2026-09-12T08:56:26Z",
-      "sha": "71675cd668b9116d8a1fb6cad0624dff7c2b3218"
+      "adaptation": "mac-shell 40d53b7 integrated lane 1 with the parent diff; refill built on it and merged its tip; main carries no apps/mac change beyond mac-shell",
+      "reviewed_utc": "2026-09-12T10:02:26Z",
+      "sha": "271a3663789222b134151ece31b90dc8a56d23bf"
     },
     "origin/main": {
-      "adaptation": "Merged both; adopted editorMarkReport/currentDiagnosticID for goToDiagnostic per the editor-diagnostics lane diff and extended it across open documents; no contract change",
-      "reviewed_utc": "2026-09-12T08:56:26Z",
-      "sha": "c9f1b9edbc872085949da89a7d3e4875ce17cd54"
+      "adaptation": "mac-shell 40d53b7 integrated lane 1 with the parent diff; refill built on it and merged its tip; main carries no apps/mac change beyond mac-shell",
+      "reviewed_utc": "2026-09-12T10:02:26Z",
+      "sha": "c35ca8bc4e3801fbbe308ee731d718af7ebe78eb"
     }
   },
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "Exact source-preview navigation on agent/mac-navigation/exact: navigateExactly (byte-exact staleness with edited-bytes note, cluster-whole selection, document switching, caret follow), cross-document label/ref, goToDiagnostic via EditorDiagnostics marks continuing into other open documents, CaretSync.Index O(log n) (10k items: 1.16 us/query vs 3.0 ms scan, debug build). swift test with real workers: 222 tests, 1 skipped (preview-controller helper), 0 failures. Parent ShellModel diff (navigate -> navigateExactly, caretItems -> exactCaretItems, caretByte -> CaretSync.byteOffset) trial-applied: 222/0 failures; reverted, listed in coordination/mac-navigation.md",
+  "summary": "Refill on agent/mac-navigation/helper-navigate 37c7970 (from mac-shell 40d53b7, merged 271a366): Go to Matching resolves ref/cite/pageref and user commands project-wide through the preview controller's lexical navigate (snapshot -> exact source_versions -> navigate; stale-version, unindexed-buffer and moved-revision refusals; non-open \\input documents opened at their durable revision; in-buffer fallback unchanged). No ShellModel diff needed (awaiting/send are internal). Full apps/mac suite with all five real binaries: 386 tests, 9 skipped (other lanes), 0 failures. Risk reported: saveTex()/isDirty assume activePath == documentURL.",
   "tool": "Claude Code subagent (parent mac-claude-a)",
-  "updated_utc": "2026-09-12T08:56:26Z",
+  "updated_utc": "2026-09-12T10:02:26Z",
   "usage": {
-    "evidence": "coordination/mac-navigation.md validation section; CaretSyncIndexTests.testTenThousandItemsQueryIsLogarithmic prints the timing line",
+    "evidence": "coordination/mac-navigation.md refill section; NavigationHelperTests ran against the real helper",
     "status": "shared Claude Max 20x quota with parent mac-claude-a; no purchases; totals unknown"
   }
 }
