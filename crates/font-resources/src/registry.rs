@@ -375,3 +375,5 @@ impl CffFontResource {
 
 /// Explicit rooted VF/TFM dependency declarations.
 pub mod vf_project;
+
+pub mod collections;

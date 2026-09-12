@@ -3,28 +3,33 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-048": {
-      "acknowledged_utc": "2026-09-12T08:58:02Z",
-      "adaptation": "Isolated preview-controller ownership; remove verified nested Value copies preserving exact wire shape, durability and bounded backpressure.",
-      "main_sha": "f2ea364efc4329512dc143ad9d7eab89d833604c",
-      "revision": 1
+      "acknowledged_utc": "2026-09-12T16:24:59Z",
+      "adaptation": "Read r44 owned preview edit/index/submit audit. Static inspection finds metadata replacement already moves source and borrows it for indexing; required full-source clone crosses owned runtime Request API. No speculative implementation or runtime edits; report audit and request owner coordination for substantive ownership change.",
+      "main_sha": "0294d2ca48cbfd497c6b549deb7575fbcec4a4b8",
+      "revision": 44
     }
   },
   "branch": "agent/commander-preview-performance/preview-performance",
   "capabilities": [
     "Preview helper serialization and latency"
   ],
-  "code_revision": "3a0c8e90c28ede52a8f80962656ebec784f3d9ab",
-  "eta_minutes": null,
+  "code_revision": "8dd9170dccc9f2a809c5537ca13c08459d4c91f5",
+  "eta_minutes": {
+    "likely": 15,
+    "optimistic": 5,
+    "pessimistic": 30
+  },
   "machine": "linux-primary",
-  "main_integrated_through": "7956d37b7be6c5dc2ba28dfcc8ad56b60e5c9b4c",
-  "next_action": "Commander integrate output-bound fix; request native helper remeasurement and continue measured pipeline improvement.",
+  "main_integrated_through": "8b676e7212042493c690848026cc33cc1900b0fe",
+  "next_action": "Commander coordinate runtime owner for borrowed/request ownership investigation if prioritized; root can adapt helper to a reviewed API. Await Kabir Text overlap acknowledgement. All owned processes terminal; ready for authority transfer fence.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "FT048 fixes16MiB JSONL newline overrun and oversized-error allocation retention; boundedrequestedbuffer growth.37suite tests plus new fallbackallocation test pass(38totalcoverage),strictalltargetlint.",
+  "summary": "FT048r44 static audit completed at8dd9170d: metadata edits move replacement source into durable store, borrow saved source for indexing and return source-free metadata. Remaining full-source copy in compile_current_with_admission supplies runtime-owned InputDocument strings. No material removable source copy found within owned paths; no speculative code changes or benchmark sweep. Current-base Text handoff8b/8dd remains no-build and fenced.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T09:09:53Z",
+  "updated_utc": "2026-09-12T16:25:15Z",
   "usage": {
-    "status": "unknown"
+    "evidence": "crates/preview-controller/src/metadata_edit.rs; crates/preview-controller/src/lib.rs:312; crates/preview-controller/src/lib.rs:444; crates/document-runtime/src/lib.rs:28",
+    "status": "Existing hosted allocation only; no paid API or CLI calls; remaining quota unknown."
   }
 }

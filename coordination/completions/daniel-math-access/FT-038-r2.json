@@ -1,0 +1,76 @@
+{
+  "agent_id": "daniel-math-access",
+  "archived_utc": "2026-09-12T09:40:28Z",
+  "assignment": {
+    "acceptance": [
+      "Meaningful tests and strict Rust lint pass with bounded malformed/Unicode inputs",
+      "Preserve exact source/revision and resource identities; no implicit approximation or parity claim",
+      "Do not edit peer compiler/native/layout files; publish typed adapter contract and exact tested SHA"
+    ],
+    "agent_id": "daniel-math-access",
+    "allocation_id": "daniel-claude20x-shared",
+    "branch": "agent/daniel-math-access/math-accessibility",
+    "deadline_utc": null,
+    "dependencies": [],
+    "input_main_sha": "83f65e08ae60b312609f49ec0a2b6cae25c8e353",
+    "objective": "Expand typed structured math accessibility with exact source-node identity, bounded tree traversal and explicit unsupported nodes; no guessed speech for unknown constructs.",
+    "owned_paths": [
+      "crates/math-accessibility"
+    ],
+    "revision": 2,
+    "schema_version": 1,
+    "state": "assigned",
+    "task_id": "FT-038",
+    "timebox_minutes": 40,
+    "updated_utc": "2026-09-12T09:08:31.372212+00:00"
+  },
+  "report": {
+    "agent_id": "daniel-math-access",
+    "allocation_id": "daniel-claude20x-shared",
+    "assignment_acknowledgements": {
+      "FT-038": {
+        "acknowledged_utc": "2026-09-12T09:37:22Z",
+        "adaptation": "Re-verified math-layout's current public Nucleus before designing (rev1 habit kept): Radical is now a struct variant {radicand, degree}, not rev1's tuple variant, and Text/Overline/Underline/Styled were added since rev1 \u2014 rev1's code would not compile against this tree. Added NodeId (stable structural identity, Display, rebuild-stability test) covering every emitted node via a new Description.nodes list, not just Unsupported entries. Added an independent total-node-count bound (max_nodes/NodeCountExceeded) alongside the existing depth bound, so a wide-but-shallow tree is caught even at depth 1; both bounds have dedicated tests. Kept rev1's no-guessed-speech rule for unknown symbol/accent characters unchanged, extended to all eleven current Nucleus variants.",
+        "main_sha": "284369de3fd2af4384c3de2d2403801dffbcf94b",
+        "revision": 2
+      }
+    },
+    "branch": "agent/daniel-math-access/math-accessibility",
+    "capabilities": [
+      "rust",
+      "math-accessibility",
+      "mathml"
+    ],
+    "code_revision": "0b2d8e74a7d557f9419b1d51aa247568784dc843",
+    "eta_minutes": {
+      "likely": 0,
+      "optimistic": 0,
+      "pessimistic": 0
+    },
+    "machine": "mac-m5pro-dq222",
+    "main_integrated_through": "284369de3fd2af4384c3de2d2403801dffbcf94b",
+    "next_action": "Await Commander integration; no consumer wiring requested or performed.",
+    "reviewed_peers": {
+      "origin/main": "284369de3fd2af4384c3de2d2403801dffbcf94b"
+    },
+    "schema_version": 1,
+    "state": "ready_for_integration",
+    "summary": "crates/math-accessibility rev2: NodeId exact/stable source-node identity on every emitted node (rebuild-stability tested), added max_nodes bound + NodeCountExceeded alongside the existing depth bound, handled math-layout's current Radical{radicand,degree} plus new Text/Overline/Underline/Styled nuclei; unknown symbols/accents still only ever produce an explicit unsupported marker, never a guessed spoken name. 25/25 tests, clippy clean, fmt clean.",
+    "tool": "Claude Code on Claude Max 20x",
+    "updated_utc": "2026-09-12T09:37:22Z",
+    "usage": {
+      "evidence": "Shared Claude Max 20x subscription quota; no purchases or overages.",
+      "status": "unknown"
+    }
+  },
+  "report_age_seconds": 186,
+  "report_path": "coordination/agents/daniel-math-access.json",
+  "review_required": true,
+  "revision": 2,
+  "schema_version": 1,
+  "stale_completion": false,
+  "state": "reported_ready",
+  "task_id": "FT-038",
+  "worker_branch": "agent/daniel-math-access/math-accessibility",
+  "worker_report_sha": "325b06213295179517a32bf37e04987a0f1cfff0"
+}

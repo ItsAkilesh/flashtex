@@ -24,7 +24,7 @@
 //! OpenType font (or a bare `.cff` file) and [`CffFont::subset`] for the
 //! retained GIDs.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// Highest glyph count accepted for a subset (CFF glyph ids are 16-bit).
 pub const MAX_GLYPHS: usize = 65535;
@@ -309,6 +309,10 @@ const OP_ROS: u16 = 1230;
 const OP_CID_COUNT: u16 = 1234;
 const OP_FDARRAY: u16 = 1236;
 const OP_FDSELECT: u16 = 1237;
+/// Top DICT operators whose operands are string ids: version, Notice,
+/// Copyright, FullName, FamilyName, Weight, PostScript, BaseFontName,
+/// FontName.
+const SID_OPS: [u16; 9] = [0, 1, 1200, 2, 3, 4, 1221, 1222, 1238];
 
 /// Where a Private DICT and its local subroutines live in the source.
 #[derive(Debug, Clone)]
@@ -522,22 +526,51 @@ impl CffFont {
             gid,
             glyph_count: self.glyph_count(),
         })?;
-        let mut st = SeacScan {
-            font: self,
-            stack: 0,
-            stems: 0,
-            width_parsed: false,
-            depth: 0,
-            found: false,
-            last_value: None,
-        };
-        st.run(cs)?;
+        let mut st = Scan::new(self, false);
+        st.run(cs, Container::Glyph(gid))?;
         Ok(st.found)
     }
 
+    /// The glyph's charstring with every subroutine call inlined (`callsubr`,
+    /// `callgsubr` and `return` removed, the subroutine bodies spliced in).
+    /// Two programs that give the same expansion for a glyph draw the same
+    /// outline regardless of how their subroutines are numbered.
+    pub fn expanded_charstring(&self, gid: u16) -> R<Vec<u8>> {
+        let cs = self.charstring(gid).ok_or(CffError::GlyphOutOfRange {
+            gid,
+            glyph_count: self.glyph_count(),
+        })?;
+        let mut st = Scan::new(self, true);
+        st.run(cs, Container::Glyph(gid))?;
+        Ok(st.expanded.take().unwrap_or_default())
+    }
+
+    /// Scans a glyph and returns every subroutine call site reached.
+    fn call_sites(&self, gid: u16) -> R<Vec<CallSite>> {
+        let cs = self.charstring(gid).ok_or(CffError::GlyphOutOfRange {
+            gid,
+            glyph_count: self.glyph_count(),
+        })?;
+        let mut st = Scan::new(self, false);
+        st.run(cs, Container::Glyph(gid))?;
+        Ok(st.calls)
+    }
+
     /// Builds the GID-preserving CID-keyed subset described in the module
-    /// docs. `.notdef` (GID 0) is always included.
+    /// docs with subroutine pruning. `.notdef` (GID 0) is always included.
     pub fn subset(&self, gids: &BTreeSet<u16>) -> R<CffSubset> {
+        self.subset_with(gids, SubsetOptions { prune_subrs: true })
+    }
+
+    /// [`CffFont::subset`] with explicit options. With `prune_subrs` the
+    /// global and local subroutine INDEXes keep only the subroutines the
+    /// retained glyphs reach (transitively), renumbered densely, and every
+    /// `callsubr`/`callgsubr` index operand in the retained charstrings and
+    /// subroutines is rewritten to the new biased index. Outlines are
+    /// unchanged: [`CffFont::expanded_charstring`] of a retained glyph is
+    /// byte-identical before and after (tested). Without it the INDEXes are
+    /// copied whole and the charstrings stay byte-identical.
+    pub fn subset_with(&self, gids: &BTreeSet<u16>, options: SubsetOptions) -> R<CffSubset> {
         if self.is_cid {
             return Err(CffError::CidKeyedSource);
         }
@@ -564,13 +597,110 @@ impl CffFont {
         }
         let d = &self.data;
 
-        // Strings: original strings plus the ROS names.
-        let mut strings: Vec<&[u8]> = self
-            .string_index
-            .items
+        // Subroutine pruning: which subroutines the kept glyphs reach, and
+        // where every call operand sits so it can be renumbered.
+        let local_items: Vec<(usize, usize)> = self.fds[0]
+            .local_subrs
+            .as_ref()
+            .map(|i| i.items.clone())
+            .unwrap_or_default();
+        let global_items: Vec<(usize, usize)> = self.global_subrs.items.clone();
+        let (kept_local, kept_global, sites): (Vec<usize>, Vec<usize>, BTreeSet<CallSite>) =
+            if options.prune_subrs {
+                let mut sites = BTreeSet::new();
+                for &g in &keep {
+                    sites.extend(self.call_sites(g)?);
+                }
+                let mut l = BTreeSet::new();
+                let mut gl = BTreeSet::new();
+                for c in &sites {
+                    if c.global {
+                        gl.insert(c.index);
+                    } else {
+                        l.insert(c.index);
+                    }
+                }
+                (l.into_iter().collect(), gl.into_iter().collect(), sites)
+            } else {
+                (
+                    (0..local_items.len()).collect(),
+                    (0..global_items.len()).collect(),
+                    BTreeSet::new(),
+                )
+            };
+        let local_map: BTreeMap<usize, usize> = kept_local
             .iter()
-            .map(|&(s, e)| &d[s..e])
+            .enumerate()
+            .map(|(n, &o)| (o, n))
             .collect();
+        let global_map: BTreeMap<usize, usize> = kept_global
+            .iter()
+            .enumerate()
+            .map(|(n, &o)| (o, n))
+            .collect();
+        let new_local_bias = CffFont::bias(kept_local.len());
+        let new_global_bias = CffFont::bias(kept_global.len());
+        // Rewrites the call operands inside one container.
+        let rewrite = |container: Container, bytes: &[u8]| -> Vec<u8> {
+            let mut out = bytes.to_vec();
+            let mut mine: Vec<&CallSite> =
+                sites.iter().filter(|c| c.container == container).collect();
+            mine.sort_by_key(|c| std::cmp::Reverse(c.offset));
+            for c in mine {
+                let new_index = if c.global {
+                    global_map[&c.index] as i32 - new_global_bias
+                } else {
+                    local_map[&c.index] as i32 - new_local_bias
+                };
+                out.splice(c.offset..c.offset + c.len, encode_int(new_index));
+            }
+            out
+        };
+        let rewritten_locals: Vec<Vec<u8>> = kept_local
+            .iter()
+            .map(|&i| rewrite(Container::Local(i), &d[local_items[i].0..local_items[i].1]))
+            .collect();
+        let rewritten_globals: Vec<Vec<u8>> = kept_global
+            .iter()
+            .map(|&i| {
+                rewrite(
+                    Container::Global(i),
+                    &d[global_items[i].0..global_items[i].1],
+                )
+            })
+            .collect();
+
+        // Strings: a CID-keyed charset carries no glyph names, so only the
+        // custom strings the Top DICT still references survive, renumbered,
+        // plus the ROS names.
+        let mut strings: Vec<&[u8]> = Vec::new();
+        let mut sid_map: BTreeMap<i32, i32> = BTreeMap::new();
+        let mut top_entries: Vec<DictEntry> = Vec::new();
+        for e in &self.top_dict {
+            if SID_OPS.contains(&e.op) {
+                let values = dict_ints(&e.operands)?;
+                let mut operands = Vec::new();
+                for v in values {
+                    let mapped = if v < STANDARD_STRINGS as i32 {
+                        v
+                    } else {
+                        let custom = (v - STANDARD_STRINGS as i32) as usize;
+                        let (s, e) =
+                            *self.string_index.items.get(custom).ok_or_else(|| {
+                                CffError::Malformed(format!("SID {v} out of range"))
+                            })?;
+                        *sid_map.entry(v).or_insert_with(|| {
+                            strings.push(&d[s..e]);
+                            (STANDARD_STRINGS + strings.len() - 1) as i32
+                        })
+                    };
+                    operands.extend_from_slice(&int5(mapped));
+                }
+                top_entries.push(DictEntry { op: e.op, operands });
+            } else {
+                top_entries.push(e.clone());
+            }
+        }
         let sid_adobe = (STANDARD_STRINGS + strings.len()) as i32;
         strings.push(b"Adobe");
         let sid_identity = (STANDARD_STRINGS + strings.len()) as i32;
@@ -583,7 +713,8 @@ impl CffFont {
                 let entries = parse_dict(&d[off..off + size])?;
                 let mut out = Vec::new();
                 let mut subrs = Vec::new();
-                let has_subrs = entries.iter().any(|e| e.op == OP_SUBRS);
+                let has_subrs =
+                    entries.iter().any(|e| e.op == OP_SUBRS) && !rewritten_locals.is_empty();
                 // Emit all entries except Subrs; Subrs goes last with a fixed
                 // 5-byte operand so its value can equal the final dict length.
                 for e in &entries {
@@ -594,14 +725,11 @@ impl CffFont {
                     encode_op(e.op, &mut out);
                 }
                 if has_subrs {
-                    let idx = self.fds[0]
-                        .local_subrs
-                        .as_ref()
-                        .ok_or_else(|| CffError::Malformed("Subrs without INDEX".into()))?;
                     let final_len = out.len() + 5 + 1;
                     out.extend_from_slice(&int5(final_len as i32));
                     encode_op(OP_SUBRS, &mut out);
-                    subrs = idx.raw(d).to_vec();
+                    let items: Vec<&[u8]> = rewritten_locals.iter().map(Vec::as_slice).collect();
+                    subrs = build_index(&items);
                 }
                 (out, subrs)
             }
@@ -617,11 +745,17 @@ impl CffFont {
         let mut fdselect = vec![3u8, 0, 1, 0, 0, 0];
         fdselect.extend_from_slice(&(keep.len() as u16).to_be_bytes());
 
-        let charstrings: Vec<&[u8]> = keep
+        let charstrings: Vec<Vec<u8>> = keep
             .iter()
-            .map(|&g| self.charstring(g).expect("range checked"))
+            .map(|&g| {
+                rewrite(
+                    Container::Glyph(g),
+                    self.charstring(g).expect("range checked"),
+                )
+            })
             .collect();
-        let charstrings_index = build_index(&charstrings);
+        let charstrings_index =
+            build_index(&charstrings.iter().map(Vec::as_slice).collect::<Vec<_>>());
 
         // Layout (in order): header, Name INDEX, Top DICT INDEX, String INDEX,
         // Global Subr INDEX, charset, FDSelect, CharStrings INDEX, FDArray
@@ -630,7 +764,12 @@ impl CffFont {
         // offsets are.
         let header: Vec<u8> = vec![1, 0, 4, 4];
         let name_index = self.name_index.raw(d).to_vec();
-        let global_subrs = self.global_subrs.raw(d).to_vec();
+        let global_subrs = build_index(
+            &rewritten_globals
+                .iter()
+                .map(Vec::as_slice)
+                .collect::<Vec<_>>(),
+        );
         let cid_count = keep.last().map_or(1, |&g| g as i32 + 1);
 
         let build_top = |charset_off: i32, fdselect_off: i32, cs_off: i32, fdarray_off: i32| {
@@ -639,7 +778,7 @@ impl CffFont {
             t.extend_from_slice(&int5(sid_identity));
             t.extend_from_slice(&int5(0));
             encode_op(OP_ROS, &mut t);
-            for e in &self.top_dict {
+            for e in &top_entries {
                 if matches!(
                     e.op,
                     OP_CHARSET
@@ -709,6 +848,8 @@ impl CffFont {
         Ok(CffSubset {
             bytes: out,
             glyphs: keep,
+            local_subrs: kept_local.len(),
+            global_subrs: kept_global.len(),
         })
     }
 }
@@ -723,6 +864,14 @@ pub struct CffSubset {
     /// `Type0`/`Identity-H` font selects glyph `glyphs[i]` with the two-byte
     /// code `glyphs[i]`.
     pub glyphs: Vec<u16>,
+    /// Subroutines retained in the local and global INDEXes.
+    pub local_subrs: usize,
+    pub global_subrs: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SubsetOptions {
+    pub prune_subrs: bool,
 }
 
 fn build_index(items: &[&[u8]]) -> Vec<u8> {
@@ -820,27 +969,65 @@ fn parse_charset(data: &[u8], entry: Option<&DictEntry>, glyph_count: usize) -> 
     Ok(charset)
 }
 
-/// Type 2 charstring walker that only tracks the operand stack depth and
-/// the stem count, enough to find `endchar` with accent-composition operands.
-struct SeacScan<'a> {
+/// Which byte container a charstring token lives in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum Container {
+    Glyph(u16),
+    Local(usize),
+    Global(usize),
+}
+
+/// One `callsubr`/`callgsubr` operand: where its index token sits and what
+/// it resolved to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+struct CallSite {
+    container: Container,
+    offset: usize,
+    len: usize,
+    global: bool,
+    index: usize,
+}
+
+/// Type 2 charstring walker. It tracks operand-stack depth and the stem
+/// count (for `hintmask` lengths), follows subroutines, finds `seac`-style
+/// `endchar`, records every subroutine call site, and can produce the
+/// charstring with all subroutines inlined (the glyph's identity independent
+/// of subroutine numbering).
+struct Scan<'a> {
     font: &'a CffFont,
     stack: usize,
     stems: usize,
     width_parsed: bool,
     depth: usize,
     found: bool,
-    /// The most recently pushed operand (a subroutine index when `callsubr`
-    /// follows).
-    last_value: Option<i32>,
+    /// The most recently pushed operand and its token span in the current
+    /// container (a subroutine index when `callsubr` follows).
+    last_value: Option<(i32, usize, usize)>,
+    calls: Vec<CallSite>,
+    expanded: Option<Vec<u8>>,
 }
 
-impl SeacScan<'_> {
-    fn push(&mut self, v: i32) {
-        self.stack += 1;
-        self.last_value = Some(v);
+impl<'a> Scan<'a> {
+    fn new(font: &'a CffFont, expand: bool) -> Self {
+        Scan {
+            font,
+            stack: 0,
+            stems: 0,
+            width_parsed: false,
+            depth: 0,
+            found: false,
+            last_value: None,
+            calls: Vec::new(),
+            expanded: if expand { Some(Vec::new()) } else { None },
+        }
     }
 
-    fn run(&mut self, cs: &[u8]) -> R<()> {
+    fn push(&mut self, v: i32, at: usize, len: usize) {
+        self.stack += 1;
+        self.last_value = Some((v, at, len));
+    }
+
+    fn run(&mut self, cs: &[u8], container: Container) -> R<()> {
         if self.depth > 10 {
             return Err(CffError::Malformed(
                 "subroutine nesting deeper than 10".into(),
@@ -849,35 +1036,36 @@ impl SeacScan<'_> {
         let mut i = 0;
         while i < cs.len() {
             let b0 = cs[i];
+            // Bytes this token occupies and whether it is copied to the
+            // expansion (subroutine calls and returns are not).
+            let mut n = 1;
+            let mut emit = true;
             match b0 {
-                32..=246 => {
-                    self.push(b0 as i32 - 139);
-                    i += 1;
-                }
+                32..=246 => self.push(b0 as i32 - 139, i, 1),
                 247..=250 => {
                     let b1 = *cs.get(i + 1).ok_or(CffError::Truncated("charstring"))?;
-                    self.push((b0 as i32 - 247) * 256 + b1 as i32 + 108);
-                    i += 2;
+                    self.push((b0 as i32 - 247) * 256 + b1 as i32 + 108, i, 2);
+                    n = 2;
                 }
                 251..=254 => {
                     let b1 = *cs.get(i + 1).ok_or(CffError::Truncated("charstring"))?;
-                    self.push(-(b0 as i32 - 251) * 256 - b1 as i32 - 108);
-                    i += 2;
+                    self.push(-(b0 as i32 - 251) * 256 - b1 as i32 - 108, i, 2);
+                    n = 2;
                 }
                 28 => {
                     let w = cs
                         .get(i + 1..i + 3)
                         .ok_or(CffError::Truncated("charstring"))?;
-                    self.push(i16::from_be_bytes([w[0], w[1]]) as i32);
-                    i += 3;
+                    self.push(i16::from_be_bytes([w[0], w[1]]) as i32, i, 3);
+                    n = 3;
                 }
                 255 => {
                     let w = cs
                         .get(i + 1..i + 5)
                         .ok_or(CffError::Truncated("charstring"))?;
                     // 16.16 fixed; only the integer part matters for an index.
-                    self.push(i32::from_be_bytes([w[0], w[1], w[2], w[3]]) >> 16);
-                    i += 5;
+                    self.push(i32::from_be_bytes([w[0], w[1], w[2], w[3]]) >> 16, i, 5);
+                    n = 5;
                 }
                 1 | 3 | 18 | 23 => {
                     // hstem vstem hstemhm vstemhm: pairs, odd leading arg is width
@@ -886,7 +1074,7 @@ impl SeacScan<'_> {
                     }
                     self.stems += self.stack / 2;
                     self.stack = 0;
-                    i += 1;
+                    self.last_value = None;
                 }
                 19 | 20 => {
                     // hintmask cntrmask: implicit vstem
@@ -895,23 +1083,25 @@ impl SeacScan<'_> {
                     }
                     self.stems += self.stack / 2;
                     self.stack = 0;
-                    i += 1 + self.stems.div_ceil(8);
+                    self.last_value = None;
+                    n = 1 + self.stems.div_ceil(8);
+                    if i + n > cs.len() {
+                        return Err(CffError::Truncated("hintmask"));
+                    }
                 }
                 21 => {
-                    // rmoveto: 2 args (+ width)
                     if self.stack > 2 && !self.width_parsed {
                         self.width_parsed = true;
                     }
                     self.stack = 0;
-                    i += 1;
+                    self.last_value = None;
                 }
                 4 | 22 => {
-                    // vmoveto hmoveto: 1 arg (+ width)
                     if self.stack > 1 && !self.width_parsed {
                         self.width_parsed = true;
                     }
                     self.stack = 0;
-                    i += 1;
+                    self.last_value = None;
                 }
                 14 => {
                     // endchar: 0 or 4 args, plus an optional width.
@@ -925,6 +1115,9 @@ impl SeacScan<'_> {
                         self.found = true;
                     }
                     self.stack = 0;
+                    if let Some(x) = &mut self.expanded {
+                        x.push(14);
+                    }
                     return Ok(());
                 }
                 10 | 29 => {
@@ -933,37 +1126,60 @@ impl SeacScan<'_> {
                         return Err(CffError::Malformed("callsubr with empty stack".into()));
                     }
                     self.stack -= 1;
-                    let (idx_bytes, count) = if b0 == 10 {
+                    let global = b0 == 29;
+                    let (idx_bytes, count) = if global {
+                        (&self.font.global_subrs, self.font.global_subrs.items.len())
+                    } else {
                         let ls = self.font.fds[0]
                             .local_subrs
                             .as_ref()
                             .ok_or_else(|| CffError::Malformed("callsubr without Subrs".into()))?;
                         (ls, ls.items.len())
-                    } else {
-                        (&self.font.global_subrs, self.font.global_subrs.items.len())
                     };
-                    let n = self
+                    let (value, at, len) = self
                         .last_value
-                        .ok_or_else(|| CffError::Malformed("subroutine index operand".into()))?
-                        + CffFont::bias(count);
-                    self.last_value = None;
-                    let (s, e) =
-                        *idx_bytes
-                            .items
-                            .get(usize::try_from(n).map_err(|_| {
-                                CffError::Malformed("negative subroutine index".into())
-                            })?)
-                            .ok_or_else(|| CffError::Malformed("subroutine index".into()))?;
+                        .take()
+                        .ok_or_else(|| CffError::Malformed("subroutine index operand".into()))?;
+                    if at + len != i {
+                        return Err(CffError::Malformed(
+                            "subroutine index is not the token before the call".into(),
+                        ));
+                    }
+                    let index = usize::try_from(value + CffFont::bias(count))
+                        .map_err(|_| CffError::Malformed("negative subroutine index".into()))?;
+                    let (s, e) = *idx_bytes
+                        .items
+                        .get(index)
+                        .ok_or_else(|| CffError::Malformed("subroutine index".into()))?;
+                    self.calls.push(CallSite {
+                        container,
+                        offset: at,
+                        len,
+                        global,
+                        index,
+                    });
+                    if let Some(x) = &mut self.expanded {
+                        // The index token was copied when pushed; drop it.
+                        let keep = x.len() - len;
+                        x.truncate(keep);
+                    }
                     let sub = self.font.data[s..e].to_vec();
                     self.depth += 1;
-                    self.run(&sub)?;
+                    self.run(
+                        &sub,
+                        if global {
+                            Container::Global(index)
+                        } else {
+                            Container::Local(index)
+                        },
+                    )?;
                     self.depth -= 1;
                     if self.found {
                         return Ok(());
                     }
-                    i += 1;
+                    emit = false;
                 }
-                11 => return Ok(()), // return
+                11 => return Ok(()), // return: never copied
                 12 => {
                     // escaped: arithmetic/flex operators; all clear or reduce the stack.
                     let b1 = *cs.get(i + 1).ok_or(CffError::Truncated("charstring"))?;
@@ -973,16 +1189,40 @@ impl SeacScan<'_> {
                         | 27 | 28 | 29 | 30 => self.stack = self.stack.saturating_sub(1),
                         _ => self.stack = 0,
                     }
-                    i += 2;
+                    self.last_value = None;
+                    n = 2;
                 }
                 _ => {
                     // Path operators clear the stack.
                     self.stack = 0;
-                    i += 1;
+                    self.last_value = None;
                 }
             }
+            if emit && let Some(x) = &mut self.expanded {
+                x.extend_from_slice(&cs[i..i + n]);
+            }
+            i += n;
         }
         Ok(())
+    }
+}
+
+/// Shortest Type 2 integer operand encoding.
+fn encode_int(v: i32) -> Vec<u8> {
+    match v {
+        -107..=107 => vec![(v + 139) as u8],
+        108..=1131 => {
+            let w = v - 108;
+            vec![(w / 256 + 247) as u8, (w % 256) as u8]
+        }
+        -1131..=-108 => {
+            let w = -v - 108;
+            vec![(w / 256 + 251) as u8, (w % 256) as u8]
+        }
+        _ => {
+            let b = (v as i16).to_be_bytes();
+            vec![28, b[0], b[1]]
+        }
     }
 }
 
@@ -1475,6 +1715,7 @@ mod tests {
         let font = CffFont::parse(&data).unwrap();
         let sub = font.subset(&BTreeSet::from([3u16])).unwrap();
         assert_eq!(sub.glyphs, vec![0, 3]);
+        assert_eq!((sub.local_subrs, sub.global_subrs), (1, 0));
         let parsed = CffFont::parse(&sub.bytes).unwrap();
         assert!(parsed.is_cid_keyed());
         assert_eq!(parsed.glyph_count(), 2);
@@ -1494,6 +1735,31 @@ mod tests {
             Some(1)
         );
         assert_eq!(parsed.fd_count(), 1);
+        assert_eq!(
+            parsed.expanded_charstring(1).unwrap(),
+            font.expanded_charstring(3).unwrap(),
+            "inlined charstring identical"
+        );
+        // A glyph that calls nothing keeps no subroutines at all.
+        let none = font.subset(&BTreeSet::from([1u16])).unwrap();
+        assert_eq!((none.local_subrs, none.global_subrs), (0, 0));
+        let parsed_none = CffFont::parse(&none.bytes).unwrap();
+        assert_eq!(parsed_none.charstring(1), Some(CS_BOX));
+        assert_eq!(
+            parsed_none.fds[0]
+                .local_subrs
+                .as_ref()
+                .map(|i| i.items.len()),
+            None
+        );
+        // Unpruned subsetting keeps the INDEXes whole.
+        let whole = font
+            .subset_with(
+                &BTreeSet::from([1u16]),
+                SubsetOptions { prune_subrs: false },
+            )
+            .unwrap();
+        assert_eq!((whole.local_subrs, whole.global_subrs), (1, 1));
         // Same input twice is byte-identical.
         assert_eq!(sub, font.subset(&BTreeSet::from([3u16])).unwrap());
         // The seac glyph is refused, not silently broken.

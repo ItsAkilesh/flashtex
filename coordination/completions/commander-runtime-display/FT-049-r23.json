@@ -1,0 +1,69 @@
+{
+  "agent_id": "commander-runtime-display",
+  "archived_utc": "2026-09-12T13:13:08Z",
+  "assignment": {
+    "acceptance": [
+      "Start from integrated decoder ecbaf7c on main; preserve four raw frames plus one decoded permit and joined shutdown",
+      "Exactly one contiguous sibling only after requested and accepted nonfailed result; bind ID/project/revision/document hashes and reject malformed, unsolicited, missing or out-of-order frames",
+      "Default legacy requests unchanged; preserve line limits and source epochs, no duplicate renderer parser or automatic native activation",
+      "Use corrected actual producer65dbe7d or later raw-byte font hashes; old contract SHA-bytes-plus-face deviation is historical, not accepted resource evidence",
+      "Publish bounded candidate API for existing helper owner; if deep validation is deferred, the type and contract must remain explicitly untrusted until existing native/core validator accepts it"
+    ],
+    "agent_id": "commander-runtime-display",
+    "allocation_id": "hosted-openai-product",
+    "branch": "agent/commander-runtime-display/display-runtime",
+    "deadline_utc": null,
+    "dependencies": [],
+    "input_main_sha": "0d0e2cce744b57cf4ebf1478dd12dc2f23b4f308",
+    "objective": "Build untouched pinned65dbe7d producer release in isolated artifact target preserving debug binaries and source provenance",
+    "owned_paths": [
+      "crates/document-runtime"
+    ],
+    "revision": 23,
+    "schema_version": 1,
+    "state": "assigned",
+    "task_id": "FT-049",
+    "timebox_minutes": 40,
+    "updated_utc": "2026-09-12T13:07:20.711612+00:00"
+  },
+  "report": {
+    "agent_id": "commander-runtime-display",
+    "allocation_id": "hosted-openai-product",
+    "assignment_acknowledgements": {
+      "FT-049": {
+        "acknowledged_utc": "2026-09-12T13:08:13Z",
+        "adaptation": "Verified all355 pinned65dbe7d source files/archive and preserved debug binary. Preparing isolated release target under home; root captures exact actual typing producer stdin before release-vs-debug comparison. No source edits or modeled-request proof.",
+        "main_sha": "ef1a964ecf851c10ffb44f16d212de21e0e1675e",
+        "revision": 23
+      }
+    },
+    "branch": "agent/commander-runtime-display/display-runtime",
+    "capabilities": [
+      "rust-runtime"
+    ],
+    "code_revision": "31f62559f2ed154b3c93e8bc2240690a565da672",
+    "eta_minutes": null,
+    "machine": "linux-primary",
+    "main_integrated_through": "fd379ad9731e2689cbe77b2ab1b401dac182d32a",
+    "next_action": "Root consumes release-manifest at /home/natkarri/flashtex-producer-release-artifacts/65dbe7d for release helper comparison. All build/replay handles terminal. Clean after report publication. No calibrated latency/native parity claim; source ownership remains runtime evidence only.",
+    "reviewed_peers": {},
+    "schema_version": 1,
+    "state": "ready_for_integration",
+    "summary": "FT049 r23 product31f62559: untouched65dbe7d release build passes;355 source files unchanged/debug preserved. ReleaseSHA1587245d; all4 actual53c0 sessions/7 requests exact stdout equality debug=release=capture, full/group current inputbytes equal. Build/lock/toolchain/assets/provenance and typing review preserved; no runtime/API change.",
+    "tool": "codex",
+    "updated_utc": "2026-09-12T13:13:07Z",
+    "usage": {
+      "status": "unknown"
+    }
+  },
+  "report_age_seconds": 1,
+  "report_path": "coordination/agents/commander-runtime-display.json",
+  "review_required": true,
+  "revision": 23,
+  "schema_version": 1,
+  "stale_completion": false,
+  "state": "reported_ready",
+  "task_id": "FT-049",
+  "worker_branch": "agent/commander-runtime-display/display-runtime",
+  "worker_report_sha": "3fc8234ad162af912bdd867c3491627c93ab1c1a"
+}

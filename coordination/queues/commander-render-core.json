@@ -1,36 +1,47 @@
 {
-  "schema_version": 1,
   "agent_id": "commander-render-core",
-  "task_id": "FT-023",
-  "next_index": 0,
+  "next_index": 1,
+  "schema_version": 1,
   "steps": [
     {
-      "name": "Classify and reproduce the largest measured reference mismatch or missing consumer identity contract without guessing mapping",
-      "objective": "Classify and reproduce the largest measured reference mismatch or missing consumer identity contract without guessing mapping",
+      "acceptance": [
+        "Meaningful bounded tests and strict lint pass; exact identities and typed unsupported outcomes preserved",
+        "No new worker/provider/native activation, copied reference implementation or unsupported parity claim"
+      ],
+      "allocation_id": "hosted-openai-product",
+      "name": "Review actual published native conformance8844fb59 and delta r4 0569b74 with explicit request-versus-current authority and allocation bounds",
+      "objective": "Review actual published native conformance8844fb59 and delta r4 0569b74 with explicit request-versus-current authority and allocation bounds",
       "owned_paths": [
         "crates/rendering-core"
       ],
-      "acceptance": [
-        "Pin source/compiler/font/reference hashes and preserve original provenance",
-        "Separate raw bytes, parsed geometry and visual evidence; unknown correspondence is explicit",
-        "No duplicate parser, compiler edits, provider calls or native activation; meaningful tests and strict lint"
-      ],
-      "allocation_id": "hosted-openai-product",
-      "timebox_minutes": 30
+      "timebox_minutes": 40
     },
     {
-      "name": "Re-run the pinned original/reference comparison after the owner fix and publish exact closure evidence or remaining blocker",
-      "objective": "Re-run the pinned original/reference comparison after the owner fix and publish exact closure evidence or remaining blocker",
+      "acceptance": [
+        "Meaningful bounded tests and strict lint pass; exact identities and typed unsupported outcomes preserved",
+        "No new worker/provider/native activation, copied reference implementation or unsupported parity claim"
+      ],
+      "allocation_id": "hosted-openai-product",
+      "name": "Verify original refusal scenarios and distinguish owner native tests from local source/vector review",
+      "objective": "Verify original refusal scenarios and distinguish owner native tests from local source/vector review",
       "owned_paths": [
         "crates/rendering-core"
       ],
+      "timebox_minutes": 40
+    },
+    {
       "acceptance": [
-        "Pin source/compiler/font/reference hashes and preserve original provenance",
-        "Separate raw bytes, parsed geometry and visual evidence; unknown correspondence is explicit",
-        "No duplicate parser, compiler edits, provider calls or native activation; meaningful tests and strict lint"
+        "Meaningful bounded tests and strict lint pass; exact identities and typed unsupported outcomes preserved",
+        "No new worker/provider/native activation, copied reference implementation or unsupported parity claim"
       ],
       "allocation_id": "hosted-openai-product",
-      "timebox_minutes": 30
+      "name": "Publish bounded adoption blockers or acceptance without wire activation or duplicated native edits",
+      "objective": "Publish bounded adoption blockers or acceptance without wire activation or duplicated native edits",
+      "owned_paths": [
+        "crates/rendering-core"
+      ],
+      "timebox_minutes": 40
     }
-  ]
+  ],
+  "task_id": "FT-023"
 }

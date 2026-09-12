@@ -1,0 +1,14 @@
+Before the display.
+
+n
+∑
+i=1
+
+After the display.
+
+i=
+
+n(n + 1)
+2
+
+
