@@ -13,17 +13,17 @@
   "capabilities": [
     "Preview helper serialization and latency"
   ],
-  "code_revision": "9da22ae6e13593beab3560024c74a1ac6cd6a9b0",
+  "code_revision": "7d69a543bd3d5d975d40eefa2b7a30b3dfb359f2",
   "eta_minutes": null,
   "machine": "linux-primary",
-  "main_integrated_through": "9da22ae6e13593beab3560024c74a1ac6cd6a9b0",
-  "next_action": "Consume reviewed runtime raw candidate API; implement separate explicit opt-in, preserve required route and source guards.",
+  "main_integrated_through": "7d69a543bd3d5d975d40eefa2b7a30b3dfb359f2",
+  "next_action": "Consume immutable runtime raw API after duplicate/numeric/depth checks; implement separately negotiated helper mode.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "FT048r8 serializer prepared for typed raw wrapper; production remains Value. Raw9KB exact spelling/frame limit/ACK boundary passes.",
+  "summary": "FT048r8 raw output feasibility: ten paired preencoded-copy tests preserve exact1.15MB frames and limits; runtime validation pending.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T11:39:02Z",
+  "updated_utc": "2026-09-12T11:41:06Z",
   "usage": {
     "status": "unknown"
   }
