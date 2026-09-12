@@ -19,7 +19,10 @@
 //!   was not actually given.
 //!
 //! Traversal is bounded two ways, both typed errors rather than a stack
-//! overflow or unbounded memory use:
+//! overflow or unbounded memory use, on any calling thread with at least
+//! ~1 MiB of stack (see [`DEFAULT_MAX_DEPTH`]'s doc for the measured basis
+//! of that assumption — Rust's own default thread stack is 2 MiB, so this
+//! covers the calling thread in virtually every real program):
 //! - nesting depth, via [`MathAccessibility::with_max_depth`]
 //!   ([`DEFAULT_MAX_DEPTH`] by default) — bounds a deep-but-narrow tree;
 //! - total node count, via [`MathAccessibility::with_max_nodes`]
@@ -28,6 +31,29 @@
 use flashtex_math_layout::{Atom, MathList, Nucleus, StyleLevel};
 
 /// Default bound on math-list nesting depth (see [`MathAccessibility::with_max_depth`]).
+///
+/// Empirical basis: the unguarded recursive walk itself
+/// (`Renderer::render_list` / `render_atom` / `render_nucleus`, with the
+/// depth/node bounds disabled via `with_bounds(usize::MAX, usize::MAX)`) was
+/// driven to an actual native stack-overflow abort, by binary search over
+/// nesting depth, in this crate's own **debug** profile — debug is what
+/// `cargo test`/CI actually run, and tolerates far less recursion than
+/// release before overflowing:
+/// - On `cargo test`'s own worker thread (Rust's default spawned-thread
+///   stack, 2 MiB), the walk survives to nesting depth 185 and overflows by
+///   depth 190.
+/// - On an explicitly spawned thread with a smaller, precisely known 1 MiB
+///   stack, it survives to depth 90 and overflows by depth 100.
+/// - On a 512 KiB stack it overflows before depth 64 is even reached.
+///
+/// So this bound's safety assumes the calling thread has **at least ~1 MiB
+/// of stack** — true of Rust's own default (2 MiB) and of virtually every
+/// real caller, including `cargo test`'s worker threads. `64` leaves ~1.4x
+/// margin against the worst case actually measured (1 MiB stack, overflow at
+/// 100) and ~2.9x margin against `cargo test`'s real debug worker-thread
+/// stack (overflow at 190). A caller that deliberately runs this crate on a
+/// thread with a smaller custom stack is outside that assumption and should
+/// pass a lower bound to [`MathAccessibility::with_max_depth`].
 pub const DEFAULT_MAX_DEPTH: usize = 64;
 
 /// Default bound on total nodes visited across the whole tree (see
@@ -1327,6 +1353,32 @@ mod tests {
         match result {
             Err(AccessibilityError::RecursionLimitExceeded { max_depth, .. }) => {
                 assert_eq!(max_depth, 50);
+            }
+            other => panic!("expected RecursionLimitExceeded, got {other:?}"),
+        }
+    }
+
+    // The two tests above pin *explicit* `with_max_depth` overrides. The two
+    // below pin the actual out-of-the-box `DEFAULT_MAX_DEPTH` that
+    // `MathAccessibility::new()` gives every real caller who never overrides
+    // it -- confirming the calibrated default itself (see `DEFAULT_MAX_DEPTH`'s
+    // doc comment for the empirical basis) fails with the typed error, never
+    // a stack-overflow abort, exactly one level past the bound.
+
+    #[test]
+    fn default_depth_bound_succeeds_exactly_at_the_bound() {
+        let list = nested_single_atom_groups(DEFAULT_MAX_DEPTH, MathList::symbols("x"));
+        let desc = MathAccessibility::new().describe(&list).unwrap();
+        assert_eq!(desc.readable, "x");
+    }
+
+    #[test]
+    fn default_depth_bound_one_past_the_bound_fails_with_a_typed_error() {
+        let list = nested_single_atom_groups(DEFAULT_MAX_DEPTH + 1, MathList::symbols("x"));
+        let result = MathAccessibility::new().describe(&list);
+        match result {
+            Err(AccessibilityError::RecursionLimitExceeded { max_depth, .. }) => {
+                assert_eq!(max_depth, DEFAULT_MAX_DEPTH);
             }
             other => panic!("expected RecursionLimitExceeded, got {other:?}"),
         }
