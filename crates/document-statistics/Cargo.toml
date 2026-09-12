@@ -1,0 +1,12 @@
+[package]
+name = "flashtex-document-statistics"
+version = "0.1.0"
+edition = "2024"
+description = "Bounded FlashTeX document statistics (words, math, pages) computed from explicit rendered items, bound exactly to a caller-supplied revision identity."
+publish = false
+
+[lib]
+name = "flashtex_document_statistics"
+path = "src/lib.rs"
+
+[dependencies]
