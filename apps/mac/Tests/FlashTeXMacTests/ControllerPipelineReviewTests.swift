@@ -303,9 +303,9 @@ final class ControllerPipelineReviewTests: XCTestCase {
         XCTAssertTrue(edited, model.controllerStatus)
         // A completion query still waiting for the relaunched helper's document
         // id when the helper dies (the helper answered nothing for it).
-        var handed = [documentID, "review-stale-a", "review-stale-b"]
+        var handed = [documentID, "review-stale-a", "review-stale-b", "review-stale-kinds"] // 3 complete + 1 snapshot
         model.completionFetcher.request(sourceVersions: ["main.tex": 2], editorRevision: model.editorRevision) { _, _ in handed.removeFirst() }
-        XCTAssertEqual(model.completionFetcher.query?.outstanding.count, 3)
+        XCTAssertEqual(model.completionFetcher.query?.outstanding.count, 4)
         let pid = try XCTUnwrap(model.controller?.processIdentifier)
         XCTAssertEqual(kill(pid, SIGKILL), 0)
         let relaunched = await settles(15) { model.controllerRelaunchCount == 1 && model.controllerAttached && model.controllerState.ready }

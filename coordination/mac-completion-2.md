@@ -1,6 +1,6 @@
 # mac-completion-2 handoff — completion pickup/keyboard latency, stale-context cancellation
 
-- Updated UTC: 2026-09-12T12:42Z
+- Updated UTC: 2026-09-12T12:47Z
 - Agent / parent / machine alias: `mac-completion-2` (Claude Code subagent) /
   parent `mac-claude-a` / `mac-m1max-a`
 - Task: Commander replenishment (issue #2 comment 5646989044) item 7,
@@ -100,15 +100,18 @@ pickup best 0.97 ms (load 17.1); edit → bound index metadata best 26 ms.
   (2), SourceEditorView, ShellModel, PreviewController, ProjectDocuments,
   DocumentKinds (8), CitationRename, EditorPreferences, IMEComposition,
   PanelAccessibility, TypingBench, EditorDiagnostics, Navigation — at load 20–36.
-- Full `swift test` not run: 1-minute load stayed ≥ 19 throughout (brief:
-  only below 15).
+- Full `swift test` with all real helpers at start load 11.7: **667 tests, 0
+  failures, 23 skips** (4 load-gated of this lane, 19 env-gated of others),
+  205 s. `ControllerPipelineReviewTests` (core-review lane, merged) scripted
+  exactly three fetcher sends and crashed on the fourth (`snapshot`); it now
+  hands four ids (`apps/mac/Tests/FlashTeXMacTests/ControllerPipelineReviewTests.swift`).
 
 ## Durable checkpoint
 
 - Branch `agent/mac-completion-2/latency`, worktree
   `/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a8e5d330dfc5852c1`;
   commits `35da3aac` (audit), `6dfd0bc0` (latency), `c50f8ac0` (follow-up 1),
-  `0e44bdbf` (follow-up 2), + evidence/handoff commit.
+  `0e44bdbf` (follow-up 2), `112e1488` (evidence), + full-suite fix commit.
 - Dirty files: none after the evidence commit.
 - Next: parent merges the branch into mac-shell; if a quiet window (load < 15)
   appears, rerun `swift test` with all helpers and append the numbers.

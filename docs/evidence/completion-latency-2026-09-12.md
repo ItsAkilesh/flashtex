@@ -35,6 +35,11 @@ text is settled before the pickup timer starts.
 | same, bounds enforced | 13.7 | 5.64 | 5.12 | 0.16 | 3.00 | 0.87 | 1.60 | 2.67 |
 | `setFrame(display: false)` | 13.1 | 5.53 | 6.04 | 0.18 | 2.81 | 0.88 | 1.49 | 1.30 |
 | repeat | 13.1 | 6.89 | 6.46 | 0.25 | 1.16 | 0.90 | 2.18 | 3.24 |
+| final code, 1-min load 10.3 (5-min still 27.7) | 10.3 | 7.40 | 7.56 | 0.22 | 3.70 | 1.08 | 1.99 | 0.01 |
+
+The last row shows the 1-minute average lagging the actual contention (the
+5-minute average was still 27.7 and every stage, scan included, was slower
+than at load 13–17); it is kept because the bounds were enforced and passed.
 
 Bounds enforced when load < 20: pickup best < 25 ms, narrow best < 25 ms,
 arrow best < 5 ms, Return best < 15 ms (passed at load 13.1–17.1; skipped with
@@ -74,9 +79,9 @@ table is cheap; the arrow path was never the problem.
 
 `testHelperVocabularyReachesThePopupBoundToTheEditorRevision`, `\cite{` pickup
 best of 10 with the project-index key bound to the caret's revision
-(⌃Space → list): best 0.97 / median 3.03 / max 4.35 ms at load 17.1; best 1.05 /
-median 2.85 / max 8.11 ms at load 24.4; best 1.50 / median 8.08 / max 16.40 ms
-at load 43.1. Edit → index metadata bound (helper compile + `complete`
+(⌃Space → list): best 0.97 / median 3.03 / max 4.35 ms at load 17.1; best 1.12 /
+median 1.81 / max 3.74 ms at load 10.3; best 1.05 / median 2.85 / max 8.11 ms
+at load 24.4; best 1.50 / median 8.08 / max 16.40 ms at load 43.1. Edit → index metadata bound (helper compile + `complete`
 label/citation/command + `snapshot`): best 26.0 / median 28.4 ms (load 17.1);
 best 28.4 / median 31.9 ms (load 24.4). Request → bound metadata for the first
 snapshot 3.4–14.1 ms; rebound after an edit 1.0–3.2 ms. 12 vocabulary queries
@@ -137,6 +142,20 @@ the next snapshot reports `refs.bib: bibliography` and the same key is
 `DocumentKindsTests.testUndeclareDetachesAndForgetsTheDeclaration` 2 of 3 runs
 at load 36–80 once the fetcher's extra snapshot round trip lengthened the
 helper queue).
+
+## Full suite
+
+`swift test` with real `flashtex-compiler` / `flashtex-preview-controller`
+(built from this branch's crates) and `flashtex-pdf` / `flashtex-bridge` /
+`flashtex-edit-ledger` / `flashtex-project-files` / `flashtex-assistant-context`
+(the main checkout's release builds), started at 1-minute load 11.7: **667
+tests, 0 failures, 23 skips** (4 load-gated timing bounds of this lane — the
+suite itself raised the load — and 19 env-gated tests of other lanes), 205 s.
+A first run crashed the runner in
+`ControllerPipelineReviewTests.testCompletionQueryOutstandingAtHelperExitDoesNotSwallowTheRelaunchedHelpersReplies`
+(`removeFirst` on an empty scripted-id list: it handed exactly three ids to
+the fetcher, which now sends four); the test hands four ids and expects four
+outstanding replies.
 
 ## Limitations
 
