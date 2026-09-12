@@ -2,9 +2,9 @@
   "agent_id": "mac-math-layout",
   "assignment_path": "coordination/assignments/FT-020.json",
   "branch": "agent/mac-math-layout/math-boxes",
-  "previous_report_sha": "2b7c7d58a59017ad0c2f87413067479b0b9890f9",
-  "revision": 2,
+  "previous_report_sha": "d5d092c11aa583c8ffef04a12b362357b2b7aeb5",
+  "revision": 3,
   "schema_version": 1,
   "task_id": "FT-020",
-  "updated_utc": "2026-09-12T06:12:26Z"
+  "updated_utc": "2026-09-12T06:30:37Z"
 }
