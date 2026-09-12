@@ -35,7 +35,7 @@ PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 JPEG_SIGNATURE = b"\xff\xd8\xff"
 
 
-def run(command: list[str], cwd: Path | None = None, timeout: int = 120) -> dict[str, Any]:
+def run(command: list[str], cwd: Path | None = None, timeout: int = 120, output_limit: int = 4000) -> dict[str, Any]:
     """Run a command and retain concise, JSON-safe evidence."""
     try:
         completed = subprocess.run(
@@ -50,7 +50,7 @@ def run(command: list[str], cwd: Path | None = None, timeout: int = 120) -> dict
         return {
             "command": command,
             "exit_code": completed.returncode,
-            "output": output[-4000:],
+            "output": output[-output_limit:],
         }
     except FileNotFoundError:
         return {"command": command, "exit_code": None, "output": "command not found"}
@@ -68,7 +68,16 @@ def export_revision(repo: Path, revision: str, destination: Path) -> None:
     archive_path = destination / "source.tar"
     archive_path.write_bytes(archive)
     with tarfile.open(archive_path) as tar:
-        tar.extractall(destination / "source")
+        # `git archive` is local input, but do not follow a revision's symlinks
+        # or absolute/path-traversal members outside the disposable export.
+        if hasattr(tarfile, "data_filter"):
+            tar.extractall(destination / "source", filter="data")
+        else:
+            for member in tar.getmembers():
+                target = (destination / "source" / member.name).resolve()
+                if not target.is_relative_to((destination / "source").resolve()) or member.issym() or member.islnk():
+                    raise ValueError(f"unsafe Git archive member: {member.name}")
+            tar.extractall(destination / "source")
 
 
 def resolve_revision(repo: Path, revision: str) -> str:
@@ -231,6 +240,44 @@ def fixture_mime_findings(fixture: Path) -> list[str]:
     return []
 
 
+def available_ios_simulator(command_result: dict[str, Any]) -> str | None:
+    """Select an actually installed iOS simulator; never infer one from an SDK."""
+    if command_result["exit_code"] != 0:
+        return None
+    try:
+        devices = json.loads(command_result["output"])["devices"]
+        for runtime, candidates in devices.items():
+            if "iOS" in runtime:
+                for device in candidates:
+                    if device.get("isAvailable") and device.get("udid"):
+                        return device["udid"]
+    except (KeyError, TypeError, ValueError):
+        pass
+    return None
+
+
+def validation_status(validation: dict[str, Any]) -> dict[str, Any]:
+    """Keep source, build, and executed XCTest evidence separate."""
+    findings = {key: value for key, value in validation.items() if key.endswith("_findings") and value}
+    commands = validation["commands"]
+    if not commands or commands[0]["exit_code"] is None:
+        xcode_status = "not_run"
+    elif commands[0]["exit_code"] != 0 or any(
+        item["exit_code"] != 0 for item in commands[1:]
+    ):
+        xcode_status = "failed"
+    elif len(commands) < 4:
+        xcode_status = "not_run"
+    else:
+        xcode_status = "passed"
+    return {
+        "source": "failed" if findings else "passed",
+        "findings": findings,
+        "xcode": xcode_status,
+        "xctest": validation["xctest"]["status"],
+    }
+
+
 def validate_tree(source: Path, xcodebuild: str, build: bool) -> dict[str, Any]:
     project = source / PROJECT
     payload = source / PAYLOAD
@@ -252,6 +299,7 @@ def validate_tree(source: Path, xcodebuild: str, build: bool) -> dict[str, Any]:
         "receipt_findings": [],
         "fixture_mime_findings": [],
         "commands": [],
+        "xctest": {"status": "not_run", "reason": "project not loaded"},
     }
     if not project.exists():
         result["pbx_findings"] = ["project.pbxproj missing"]
@@ -343,6 +391,27 @@ def validate_tree(source: Path, xcodebuild: str, build: bool) -> dict[str, Any]:
                 cwd=source,
             )
         )
+        if all(command["exit_code"] == 0 for command in result["commands"]):
+            simulators = run(["xcrun", "simctl", "list", "devices", "available", "-j"], output_limit=100000)
+            simulator_id = available_ios_simulator(simulators)
+            if simulator_id:
+                test = run([
+                    xcodebuild, "-project", str(project_bundle), "-scheme", "FlashTeXCompanion",
+                    "-destination", f"platform=iOS Simulator,id={simulator_id}",
+                    "CODE_SIGNING_ALLOWED=NO", "test",
+                ], cwd=source, timeout=600)
+                result["xctest"] = {
+                    "status": "passed" if test["exit_code"] == 0 else "failed",
+                    "command": test,
+                }
+            else:
+                result["xctest"] = {"status": "not_run", "reason": "no available iOS simulator", "simulator_query": simulators}
+        else:
+            result["xctest"] = {"status": "not_run", "reason": "project list or target build failed"}
+    elif not build:
+        result["xctest"] = {"status": "not_run", "reason": "--skip-build requested"}
+    else:
+        result["xctest"] = {"status": "not_run", "reason": "Xcode project list/destinations unavailable"}
     return result
 
 
@@ -366,6 +435,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--xcodebuild", default="xcodebuild")
     parser.add_argument("--skip-build", action="store_true")
+    parser.add_argument("--require-native-tests", action="store_true", help="fail unless the repaired/current XCTest scheme executed successfully")
     args = parser.parse_args(argv)
 
     repo = args.repo.resolve()
@@ -446,9 +516,20 @@ def main(argv: list[str] | None = None) -> int:
                     str(path) for path in (companion_bonjour, listener) if not path.exists()
                 ],
             }
+    candidate = report["validations"].get("repair", report["validations"]["pinned"])
+    status = validation_status(candidate)
+    interop = report.get("interop_validation")
+    if interop and (interop["findings"] or interop["missing_sources"]):
+        status["interop"] = "failed"
+    elif interop:
+        status["interop"] = "passed"
+    status["overall"] = "failed" if status["source"] == "failed" or status.get("interop") == "failed" or status["xcode"] == "failed" or status["xctest"] == "failed" else "passed_with_native_not_run" if status["xctest"] == "not_run" else "passed"
+    report["status"] = status
     (output / "report.json").write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
     print(json.dumps(report, indent=2, sort_keys=True))
-    return 0
+    if args.require_native_tests and status["xctest"] != "passed":
+        return 2
+    return 1 if status["overall"] == "failed" else 0
 
 
 if __name__ == "__main__":

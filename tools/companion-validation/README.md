@@ -24,7 +24,14 @@ It also builds the `FlashTeXCompanionTests` target independently (when builds ar
 enabled), and reports conservative source-level recovery gates for cancellation,
 retry, and capture-ID consumption before serialization. A missing simulator
 runtime is recorded as a runtime-test limitation rather than being misreported as
-an XCTest pass.
+an XCTest pass. When an available iOS simulator is installed, the harness runs
+the shared scheme's XCTest suite and records its command and result. `status`
+distinguishes source findings, Xcode loading/build, and executed XCTest. The
+command exits 1 for a candidate source/build/interop failure and 0 when no
+detected gate fails; a missing native runtime is reported as
+`passed_with_native_not_run`, never as a native pass. Add
+`--require-native-tests` to exit 2 unless XCTest executes successfully. A
+known-bad `--bad-ref` is evidence only when `--repair-ref` is supplied.
 The report also checks that the stdout transport has an atomic capture-ID registry
 and explicitly rejects duplicates.
 It separately detects the cross-transport failure mode where `CaptureTransport`

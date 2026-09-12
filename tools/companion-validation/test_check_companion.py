@@ -207,6 +207,62 @@ class CompanionValidationTests(unittest.TestCase):
             self.assertEqual(runner.call_args_list[0].args[0][-1], str(project.parent))
             self.assertEqual(result["destination"], "sdk: iphonesimulator (direct SDK build; no named simulator required)")
 
+    def test_native_tests_execute_only_with_available_ios_simulator(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            project = root / check_companion.PROJECT
+            project.parent.mkdir(parents=True)
+            project.write_text('isa = PBXNativeTarget; name = FlashTeXCompanionTests;')
+            simulator = {"devices": {"iOS 26.0": [
+                {"udid": "unavailable", "isAvailable": False},
+                {"udid": "available-iphone", "isAvailable": True},
+            ]}}
+
+            def fake_run(command, **kwargs):
+                if command[:4] == ["xcrun", "simctl", "list", "devices"]:
+                    return {"exit_code": 0, "output": json.dumps(simulator), "command": command}
+                return {"exit_code": 0, "output": "", "command": command}
+
+            with patch.object(check_companion, "run", side_effect=fake_run) as runner:
+                result = check_companion.validate_tree(root, "xcodebuild", True)
+            self.assertEqual(result["xctest"]["status"], "passed")
+            test_command = runner.call_args_list[-1].args[0]
+            self.assertEqual(test_command[-1], "test")
+            self.assertIn("platform=iOS Simulator,id=available-iphone", test_command)
+            simulator["devices"] = {}
+            with patch.object(check_companion, "run", side_effect=fake_run):
+                result = check_companion.validate_tree(root, "xcodebuild", True)
+            self.assertEqual(result["xctest"]["status"], "not_run")
+
+    def test_status_does_not_claim_native_pass_for_missing_xcode(self):
+        result = {"pbx_findings": [], "receipt_findings": ["bad receipt"],
+                  "commands": [{"exit_code": None}], "xctest": {"status": "not_run"}}
+        self.assertEqual(check_companion.validation_status(result), {
+            "source": "failed", "findings": {"receipt_findings": ["bad receipt"]},
+            "xcode": "not_run", "xctest": "not_run",
+        })
+
+    def test_status_fails_a_requested_build_that_times_out(self):
+        result = {
+            "pbx_findings": [],
+            "commands": [
+                {"exit_code": 0},
+                {"exit_code": 0},
+                {"exit_code": None, "output": "timed out after 120s"},
+                {"exit_code": 0},
+            ],
+            "xctest": {"status": "not_run"},
+        }
+        self.assertEqual(check_companion.validation_status(result)["xcode"], "failed")
+
+    def test_status_marks_intentionally_skipped_build_not_run(self):
+        result = {
+            "pbx_findings": [],
+            "commands": [{"exit_code": 0}, {"exit_code": 0}],
+            "xctest": {"status": "not_run"},
+        }
+        self.assertEqual(check_companion.validation_status(result)["xcode"], "not_run")
+
 
 if __name__ == "__main__":
     unittest.main()
