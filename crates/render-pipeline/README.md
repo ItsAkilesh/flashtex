@@ -22,9 +22,14 @@ FLASHTEX_COMPILER=$PWD/target/release/flashtex-render   # drop-in worker for the
 compiler::parser::parse_project      exact byte spans per document (Span.document)
   -> adapter.rs                      styles/gaps/ligatures/accents re-derived from source bytes,
                                      heading numbers, \ref/\pageref, \newpage, secnumdepth
-  -> shape.rs (font-engine)          kerning + ligatures, clusters keep source bytes
-  -> typeset.rs (paragraph-layout)   total-fit Knuth–Plass, TeX space factor, \parindent, \quad
-  -> mathfont.rs / math-layout       Latin Modern Math MATH table, Appendix G, explicit rules
+  -> shape.rs (tfm.rs / font-engine) TFM widths, kerns, ligatures, heights (ec-lm*.tfm, 2^20
+                                     units per em) with glyph ids from the OTF cmap; font-engine
+                                     GSUB/GPOS for text outside T1; clusters keep source bytes
+  -> typeset.rs (paragraph-layout)   total-fit Knuth–Plass, TeX space factor (§1034), \parindent,
+                                     \quad, \/ italic correction, glue sized by the font at the space
+  -> mathtex.rs / math-layout        TeX's math metrics (lmmi/lmsy/lmex = CM TFMs, rm-lmr*.tfm),
+                                     Appendix G, explicit rules; Latin Modern Math glyphs painted
+                                     (mathfont.rs: OpenType MATH fallback when no TFMs are installed)
   -> pagebuild.rs                    TeX §980–1028 page builder (penalty costs, \topskip, \maxdepth,
                                      per-block \baselineskip, \nointerlineskip, \raggedbottom)
   -> display.rs                      display list v2 (ticks, original GIDs, clusters, carets, rules)
@@ -39,6 +44,13 @@ ids. Every glyph in the display list carries the font's original glyph id.
 
 The default face is Latin Modern (`lmroman<size>-{regular,bold,italic}.otf`
 by optical size following `t1lmr.fd`, `latinmodern-math.otf` for math).
+Layout uses the TeX font metrics pdfLaTeX uses (`ec-lm*.tfm` for text,
+`rm-lmr*.tfm` for the math roman family, the CM-identical `lmmi`/`lmsy`/
+`lmex` values embedded in math-layout), found next to the OTFs
+(`fonts/opentype/...` → `fonts/tfm/...`) or in `FLASHTEX_TFM_DIRS`; the
+OTFs supply the outlines and glyph ids. Without the TFMs the OpenType
+metrics are used and a `math_metrics_opentype` / `tfm_missing` diagnostic
+says so (`tfm_missing` is a warning per face).
 Times is used only when the document selects it (`\usepackage{times}`) and is
 metric-only (`core14-afm`, no bytes). Fonts are read at run time from, in
 order: `FLASHTEX_FONT_DIRS` (colon separated), `--font-dir`, `FLASHTEX_LM_DIR`,

@@ -240,6 +240,17 @@ impl<'a> Context<'a> {
                 ),
             );
         }
+        if let Some(reason) = &r.face.tfm_missing {
+            let src = self.source(span);
+            self.report_once(
+                format!("tfm:{}", r.face.name),
+                Diagnostic::warning(
+                    "tfm_missing",
+                    format!("{}: {reason}; OpenType advances are used instead of TeX's metrics", r.face.name),
+                    vec![src],
+                ),
+            );
+        }
         r.face
     }
 

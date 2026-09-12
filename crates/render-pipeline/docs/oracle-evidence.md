@@ -96,7 +96,7 @@ math fixtures below) and 11 (lists), and 0–0.5 pt horizontally.
   compiler (two error diagnostics) but the page breaks are recovered from
   the source gap; all 1806 words land on the same page as the reference.
 
-### Fixes made from this comparison (all in `1ddb43e`)
+### Fixes made from run 1 (all in `1ddb43e`)
 
 | fixture | before | after | cause |
 |---|---|---|---|
@@ -104,6 +104,51 @@ math fixtures below) and 11 (lists), and 0–0.5 pt horizontally.
 | 15-three-page-sections | dy 64/141 (p2/p3 shifted 55 pt) | 1.15/1.65 | `\newpage` dropped by the compiler; recovered from source as an eject penalty |
 | 03-section-heading | dy 1.86/2.67 (second heading 1.0 pt low) | 1.25/1.65 | heading lines are now appended under their own `\baselineskip` (22 pt) instead of folding the difference into the before-skip, which let `\lineskip` take over |
 | all with `\[`/`$$` | `(n)` equation numbers on unnumbered displays | none | the compiler counts every closed display; only `\begin{equation}` is numbered now |
+
+## Run 2 — exact TFM metrics (pipeline `9bb7b27`, 2026-09-12T09:26:42Z)
+
+Same harness, same MacTeX 2026 pdflatex references rendered fresh, same
+measures. Between run 1 and run 2 the pipeline moved text shaping to the
+`ec-lm*` TFMs (widths, kerns, ligatures, heights, `\fontdimen`s), sized
+interword glue by the font at the space token, added `\/` italic
+correction and TeX's space-factor rule, and moved math to TeX's metrics
+(`lmmi`/`lmsy`/`lmex` = CM, embedded in math-layout; `rm-lmr*` for the
+roman family) while still painting Latin Modern Math glyphs.
+
+| fixture | words ref/ours (aligned) | dx mean/max pt (run 1 → run 2) | dy mean/max pt | ms cold |
+|---|---|---|---|---|
+| 01-plain-paragraph | 13/13 (13) | 0.03/0.06 → **0.00/0.00** | 1.15/1.15 | 1.26 |
+| 02-wrapping-paragraph | 210/210 (210) | 0.01/0.09 → **0.00/0.01** | 1.15/1.15 | 1.93 |
+| 03-section-heading | 15/15 (15) | 0.01/0.02 → **0.00/0.01** | 1.25/1.65 | 2.27 |
+| 04-bold-emph | 10/12 (8) | 0.54/1.16 → **0.00/0.01** | 1.15/1.15 | 4.29 |
+| 05-unicode | 11/11 (11) | 0.01/0.02 → **0.00/0.01** | 1.15/1.15 | 1.22 |
+| 06-math-inline | 14/16 (12) | 0.96/1.58 → **0.00/0.01** | 1.46/2.20 | 6.89 |
+| 07-math-display | 13/15 (12) | 1.86/3.91 → **0.00/0.01** | 1.27/3.00 | 6.81 |
+| 08-two-page | 1800/1800 (1800) | 0.01/0.04 → **0.00/0.01** | 1.15/1.15 | 7.17 |
+| 09-mixed-document | 54/56 (52) | 0.21/0.86 → **0.01/0.06** | 1.16/1.65 | 8.93 |
+| 10-unicode-paragraph | 82/80 (79) | 0.42/10.77 → 0.41/10.80 | 0.12/0.12 | 1.99 |
+| 11-nested-lists | 29/29 (29) | 19.39/40.71 → 19.39/40.72 | 26.87/54.68 | 1.43 |
+| 12-justified-paragraphs | 360/360 (360) | 0.01/0.02 → **0.00/0.01** | 1.15/1.15 | 2.49 |
+| 13-math-display-rich | 19/28 (14) | 8.92/27.25 → 10.95/29.78 | 1.00/1.15 | 6.82 |
+| 14-math-inline-dense | 55/72 (36) | 30.54/282.01 → 10.72/340.11 | 1.94/18.56 | 7.15 |
+| 15-three-page-sections | 1806/1806 (1806) | 0.01/0.06 → **0.00/0.01** | 1.15/1.65 | 7.97 |
+| 16-heading-page-break | 962/962 (962) | 0.01/0.04 → **0.00/0.01** | 1.15/1.65 | 5.38 |
+| 17-apostrophes | 25/25 (25) | 0.02/0.06 → **0.00/0.01** | 1.15/1.15 | 1.52 |
+| 18-ligatures | 36/36 (36) | 0.22/1.49 → **0.00/0.01** | 1.15/1.15 | 1.40 |
+
+Word boxes are read back from PDFs written to 0.001 bp, so 0.01 pt is the
+floor of this measure. On 07-math-display the reference content stream
+was decoded directly: the `\sum` glyph, both limits, the main `i =`, the
+numerator, the fraction rule (x 302.386, width 43.351, thickness 0.398 bp)
+and the denominator all sit at the same coordinates as the pipeline's v1
+items to 0.001 bp.
+
+Residuals, all explained: 13/14 are blocked by the compiler's math parser
+(`\left`/`\right` and `\nu` are rejected and dropped, which changes the
+line's natural width — the lines of 14 without those constructs are at
+0.00/0.01); 11 is the unsupported list environment; 10 is the `ǅ` glyph
+absent from T1/Latin Modern; the constant dy 1.15 pt is the PDFKit font-box
+descent difference (Type 1 vs CFF) — ink registration stays at 0 pt.
 
 ## rendering-v2 validation against main's `rendering-core`
 
