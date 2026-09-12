@@ -161,7 +161,8 @@ elif [[ -n "$SIGN_IDENTITY" ]]; then
   [[ -f "$ENTITLEMENTS" ]] || die "--sign: entitlements file not found: $ENTITLEMENTS"
   plutil -lint "$ENTITLEMENTS" >/dev/null 2>&1 || die "--sign: entitlements file is not a valid plist: $ENTITLEMENTS"
   IDENTITY_COUNT="$( (security find-identity -v -p codesigning 2>/dev/null || true) | grep -cE '^ *[0-9]+\)' || true)"
-  if ! security find-identity -v -p codesigning 2>/dev/null | grep -qF "$SIGN_IDENTITY"; then
+  IDENTITIES="$(security find-identity -v -p codesigning 2>/dev/null || true)"
+  if ! grep -qF -e "$SIGN_IDENTITY" <<< "$IDENTITIES"; then
     die "--sign: no valid codesigning identity matching \"$SIGN_IDENTITY\" in the keychain ($IDENTITY_COUNT valid identities found). Install a \"Developer ID Application\" certificate and its private key in the login keychain, or omit --sign for an ad-hoc build."
   fi
   echo "==> Signing identity found: \"$SIGN_IDENTITY\""

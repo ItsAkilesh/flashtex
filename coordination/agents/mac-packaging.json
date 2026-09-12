@@ -1,0 +1,25 @@
+{
+  "agent_id": "mac-packaging",
+  "allocation_id": "claude-mac20x-packaging",
+  "assignment_acknowledgements": {},
+  "branch": "agent/mac-packaging/signing",
+  "capabilities": [
+    "bash",
+    "codesign",
+    "swift"
+  ],
+  "code_revision": "af0979ffbeb9154817fa4c39812d946d0c1e946f",
+  "eta_minutes": null,
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "3ac69c3ed109fa0902af39f4e2187d572a61c075",
+  "next_action": "Await and acknowledge assignment",
+  "reviewed_peers": {},
+  "schema_version": 1,
+  "state": "registered",
+  "summary": "Available for Commander assignment",
+  "tool": "Claude Code subagent (parent mac-claude-a)",
+  "updated_utc": "2026-09-12T10:58:38Z",
+  "usage": {
+    "status": "unknown"
+  }
+}
