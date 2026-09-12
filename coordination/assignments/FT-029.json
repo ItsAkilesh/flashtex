@@ -9,15 +9,15 @@
   "branch": "agent/commander/assistant-context",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "cdc47170f4aa7990d8a8de8ff80482a555f98a86",
-  "objective": "Bounded native assistant request lifecycle with exact context routing, cancellation and stale revocation",
+  "input_main_sha": "dae486e9449f30a7050886d7d3a7306c212b97f4",
+  "objective": "Subprocess interleaving/cancel/expiry and no replay after terminal response",
   "owned_paths": [
     "crates/assistant-context"
   ],
-  "revision": 3,
+  "revision": 4,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-029",
   "timebox_minutes": 30,
-  "updated_utc": "2026-09-12T07:52:57.718501+00:00"
+  "updated_utc": "2026-09-12T07:57:30Z"
 }
