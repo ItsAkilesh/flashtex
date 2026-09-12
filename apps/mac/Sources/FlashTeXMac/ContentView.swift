@@ -319,6 +319,9 @@ private struct PreviewPane: View {
                         if let line = EditorDiagnostics.recoveryLine(recovery: d.recovery, status: model.result?.status ?? .ok) {
                             Text("↳ \(line)").font(.caption).foregroundStyle(d.recovery == nil ? .tertiary : .secondary)
                         }
+                        if let explain = model.explanations.explanation(resultID: model.resultID, index: i)?.line {
+                            Text("↳ \(explain)").font(.caption).foregroundStyle(.secondary)
+                        }
                         if let result = model.result,
                            let id = EditorDiagnostics.identity(resultID: model.resultID, index: i, in: result),
                            model.editorMarkReport.staleIdentities.contains(id) {
@@ -345,7 +348,7 @@ private struct Footer: View {
 
     var body: some View {
         HStack {
-            Text(model.navigationNote ?? model.editorMarkReport.staleNote
+            Text(model.navigationNote ?? model.editorMarkReport.staleNote ?? model.explanationStatus
                  ?? "Click text in the preview to select its source range.")
                 .font(.caption).foregroundStyle(.secondary).lineLimit(1)
             Spacer()
