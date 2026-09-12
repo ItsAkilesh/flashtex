@@ -14,5 +14,20 @@
   "discarded_prefix_hex": "00000000",
   "plaintext_bytes": 112949,
   "plaintext_sha256": "bd88b12233faf829fbf86770638e4aec367847bcdb06e285b75e2381787af9a4",
-  "status": "actual pinned resource byte inspection passed; no PostScript evaluation or outline support"
+  "status": "actual pinned resource byte inspection passed; no PostScript evaluation or outline support",
+  "record_extraction": {
+    "glyphs": 822,
+    "subroutine_slots": 882,
+    "lenIV": 4,
+    "opaque_other_subrs": true,
+    "A": {
+      "bytes": 8,
+      "sha256": "13883a7a5915c1d3874a112f50a9e269e7663daf1587f4edbd504e381e16cdec"
+    },
+    ".notdef": {
+      "bytes": 5,
+      "sha256": "eaa5a748d6652e8857daddbbb79acaa6359e20d1eb90a1b1f0c843b3538a00d8"
+    },
+    "scope": "passive literal records and decryption only; no outline interpretation"
+  }
 }

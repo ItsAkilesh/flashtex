@@ -48,6 +48,36 @@ fn pinned_official_type1_container_only() {
         "02262ab31d397263650f1ec77c7bef04d0720419f69aa9e6562a52b2ddc85c62"
     );
     assert_eq!(inspection.resource_identity(), resource.identity());
+    let records = flashtex_font_resources::type1_records::extract(&inspection).unwrap();
+    assert_eq!(records.len_iv(), 4);
+    assert_eq!(records.glyphs().len(), 822);
+    assert_eq!(records.subrs().len(), 882);
+    assert!(records.opaque_other_subrs_present());
+    let a = records.decrypted_glyph("A").unwrap();
+    let notdef = records.decrypted_glyph(".notdef").unwrap();
+    println!(
+        "A {} {} notdef {} {}",
+        a.len(),
+        sha256(&a),
+        notdef.len(),
+        sha256(&notdef)
+    );
+    assert_eq!(
+        sha256(&a),
+        "13883a7a5915c1d3874a112f50a9e269e7663daf1587f4edbd504e381e16cdec"
+    );
+    assert_eq!(
+        sha256(&notdef),
+        "eaa5a748d6652e8857daddbbb79acaa6359e20d1eb90a1b1f0c843b3538a00d8"
+    );
+    for name in records.glyphs().keys() {
+        records.decrypted_glyph(name).unwrap();
+    }
+    for (index, record) in records.subrs().iter().enumerate() {
+        if record.is_some() {
+            records.decrypted_subr(index).unwrap();
+        }
+    }
     assert_eq!(
         resource.require_outlines(),
         Err(Error::EncryptedOutlinesUnsupported)

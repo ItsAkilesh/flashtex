@@ -72,3 +72,39 @@ produces the same result. This vector is a synthetic arithmetic check, not an
 independent rendering oracle. Charstring seed4330/lenIV, encrypted dictionary
 interpretation, glyph identity, shaping and outlines remain unsupported. The
 existing `require_outlines` gate is unchanged.
+
+## Strict passive CharStrings/Subrs extraction
+
+`type1_records::extract(&Inspection)` accepts the literal private-dictionary
+organization in Adobe Type1 section2.4 example2 and section7.3. It verifies exact
+RD/ND/NP reader/writer procedure definitions before honoring any binary length.
+Lengths are literal integers; RD consumes exactly one whitespace byte followed by
+that exact byte count. Binary delimiter-looking bytes are never tokenized. Returned
+record ranges are offsets in the eexec plaintext, linked through the retained
+Inspection to original ciphertext ranges/full font/license identity. Original glyph
+names and subroutine indices remain intact; no Unicode/GID mapping is inferred.
+
+Supported metadata: bounded literal numeric/boolean values and flat numeric arrays
+for the listed hint/private keys, exact MinFeature procedure, lenIV0..32 with
+spec default4. Negative lenIV/unencrypted extensions are explicitly unsupported.
+Subrs are literal indexed assignments; CharStrings are literal named records.
+Exact supported closure tokens are recognized but never executed. Unknown forms,
+redefined readers, duplicate metadata/names/indices, out-of-range indices, trailing
+executable code and invalid lengths fail. Caps:8MiB input,65536tokens,256byte token,
+4096subroutine/character slots,1MiB per binary record,128numeric-array elements.
+No general nested procedure evaluator exists.
+
+The real LM OtherSubrs declaration is accepted only as one opaque271byte block
+with SHA2f4adc4e2d703495501ce0ee4cd3d955949139a5f8623779025d58a200e14c3a.
+Its code is neither copied into the implementation nor executed; any different
+OtherSubrs form is typed unsupported. `opaque_other_subrs_present` makes the
+unimplemented procedure semantics explicit. This narrow recognition permits record
+inspection only, not callothersubr or hint-replacement support.
+
+Record decryption reuses the eexec byte recurrence with the explicit charstring
+seed4330 and validated lenIV, returning bytes only. Adobe's published section7.3
+ciphertext example matches its plaintext exactly. Actual pinned lmr10 extraction
+finds822glyph records and882subroutine slots; all decrypt within bounds. A yields
+8bytes SHA13883a7a5915c1d3874a112f50a9e269e7663daf1587f4edbd504e381e16cdec;
+.notdef yields5bytes SHAeaa5a748d6652e8857daddbbb79acaa6359e20d1eb90a1b1f0c843b3538a00d8.
+These are byte-stage observations, not interpreted outline/shape/render results.

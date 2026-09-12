@@ -84,10 +84,7 @@ pub fn inspect_binary_eexec(
     let mut digest = Sha256::new();
     for (index, cipher) in ciphertext().enumerate() {
         digest.update([cipher]);
-        let value = cipher ^ (seed >> 8) as u8;
-        seed = (u16::from(cipher).wrapping_add(seed))
-            .wrapping_mul(52845)
-            .wrapping_add(22719);
+        let value = decrypt_byte(cipher, &mut seed);
         if index < 4 {
             random_prefix[index] = value
         } else {
@@ -104,6 +101,15 @@ pub fn inspect_binary_eexec(
         plaintext_sha256,
     })
 }
+pub(crate) fn decrypt_byte(cipher: u8, seed: &mut u16) -> u8 {
+    let value = cipher ^ (*seed >> 8) as u8;
+    *seed = u16::from(cipher)
+        .wrapping_add(*seed)
+        .wrapping_mul(52845)
+        .wrapping_add(22719);
+    value
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
