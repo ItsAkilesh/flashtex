@@ -13,7 +13,7 @@
   "capabilities": [
     "rust-font-resources"
   ],
-  "code_revision": "82a478f15acbdc53f0fec45253699f06ad84ef92",
+  "code_revision": "5e8d30a39b66bf0f61d97c04343a8f3335a8e67d",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
@@ -21,13 +21,13 @@
   },
   "machine": "linux-primary",
   "main_integrated_through": "1b53ec22cb376309e868962fcf2604263cdb3016",
-  "next_action": "Existing Daniel owner reviews/applies/publishes TTC patch; consume only published fix after exact tests. PFB encrypted gate unchanged; no pending processes/provider calls.",
+  "next_action": "Commander integrates passive checkpoint; await TTC owner publication or oracle adjudication/next bounded task. No dirty product files/paid calls/peer writes or pending operations.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "Published82a478f: tested minimal patch against peer f2fdb08 stored only under owned handoffs/ttc-layout. Adds verified header/directory ranges, version/structural rejection, bounded preallocation/work policy; valid shared tables retained.10scratch tests pass (8original+2new), malicious probes fixed, exact-base apply check passes. Owner review/application requested issue2 comment5645218421. No authoritative peer writes or dependency activation.",
+  "summary": "Published5e8d30a passive binary eexec inspection: seed55665/prefix4, bounded immutable decrypted output, full encrypted PFB/license identity and original ranges retained, ambiguous ASCIIhex prefixes refused. Synthetic known vector at all record splits and actual lmr10 ciphertext02262ab3 ->112949bytes SHA bd88b122 pass; full tests/clippy clean. No PS execution/dictionary/outline activation. TTC awaits peer publication.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T10:04:50Z",
+  "updated_utc": "2026-09-12T10:08:59Z",
   "usage": {
     "evidence": "crates/font-resources/README.md; test suite; installed font SHA pinned.",
     "status": "Hosted allocation; no external provider calls; account remainder unknown."
