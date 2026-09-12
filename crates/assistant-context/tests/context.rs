@@ -619,3 +619,111 @@ fn supervised_provider_startup_is_explicit_and_does_not_start_calls() {
     assert!(SessionClient::spawn_provider(binary, "native_client", "model", "bad\nkey").is_err());
     assert!(SessionClient::spawn_provider(binary, "native_client", "", "dummy").is_err());
 }
+
+#[test]
+fn exact_review_groups_apply_retry_undo_and_reopen_through_real_ledger() {
+    use flashtex_assistant_context::ProposalReview;
+    use flashtex_edit_ledger::{history::HistoryMove, Store};
+    let docs = vec![source()];
+    let context = build(&docs);
+    let response=serde_json::to_vec(&json!({"context_id":context.payload().context_id,"explanation":"Replace unknown command","edits":[{"location":{"path":"main.tex","start_byte":3,"end_byte":7},"removed_text":"\\bad","replacement":"good"}]})).unwrap();
+    let review = ProposalReview::prepare("request-1", &context, &response, &docs).unwrap();
+    assert!(review.approve(false, review.review_id(), &docs).is_err());
+    assert!(review.approve(true, "another-review", &docs).is_err());
+    let approved = review.approve(true, review.review_id(), &docs).unwrap();
+    let root = tempfile::tempdir().unwrap();
+    let path = root.path().join("source.ledger");
+    let mut ledger = Store::open(&path).unwrap();
+    ledger.initialize(docs[0].clone()).unwrap();
+    approved
+        .check_target(ledger.document().unwrap().unwrap())
+        .unwrap();
+    let result = ledger.apply_group(approved.group.clone()).unwrap();
+    assert_eq!(result.document.text, "α good");
+    assert!(!result.replayed_command);
+    assert!(
+        ledger
+            .apply_group(approved.group.clone())
+            .unwrap()
+            .replayed_command
+    );
+    assert!(review
+        .approve(true, review.review_id(), &[result.document.clone()])
+        .is_err());
+    drop(ledger);
+    let mut ledger = Store::open(&path).unwrap();
+    assert!(
+        ledger
+            .apply_group(approved.group.clone())
+            .unwrap()
+            .replayed_command
+    );
+    let undo = ledger
+        .undo(HistoryMove {
+            command_id: "undo-reviewed".into(),
+            expected_revision: result.document.revision,
+            expected_sha256: result.document.source_sha256,
+        })
+        .unwrap();
+    assert_eq!(undo.document.text, docs[0].text);
+    drop(ledger);
+    let mut ledger = Store::open(&path).unwrap();
+    assert_eq!(ledger.document().unwrap().unwrap().text, docs[0].text);
+    assert!(ledger.apply_group(approved.group).unwrap().replayed_command);
+    assert_eq!(ledger.document().unwrap().unwrap().text, docs[0].text);
+}
+
+#[test]
+fn review_refuses_multidocument_partial_application_and_changed_approval() {
+    use flashtex_assistant_context::ProposalReview;
+    let docs = vec![
+        source(),
+        Document::new("p".into(), "chapter.tex".into(), 1, "abc".into()).unwrap(),
+    ];
+    let context = Context::build(
+        CompileBinding::capture("r", "p", 7, &docs).unwrap(),
+        &docs,
+        &result(),
+        "Explain",
+        &["chapter.tex".into()],
+    )
+    .unwrap();
+    let mut response = json!({"context_id":context.payload().context_id,"explanation":"Fix","edits":[{"location":{"path":"main.tex","start_byte":3,"end_byte":7},"removed_text":"\\bad","replacement":"good"},{"location":{"path":"chapter.tex","start_byte":0,"end_byte":3},"removed_text":"abc","replacement":"def"}]});
+    assert!(ProposalReview::prepare(
+        "r1",
+        &context,
+        &serde_json::to_vec(&response).unwrap(),
+        &docs
+    )
+    .err()
+    .unwrap()
+    .contains("multi-document"));
+    response["edits"].as_array_mut().unwrap().pop();
+    let first = ProposalReview::prepare(
+        "r1",
+        &context,
+        &serde_json::to_vec(&response).unwrap(),
+        &docs,
+    )
+    .unwrap();
+    response["edits"][0]["replacement"] = json!("different");
+    let second = ProposalReview::prepare(
+        "r1",
+        &context,
+        &serde_json::to_vec(&response).unwrap(),
+        &docs,
+    )
+    .unwrap();
+    assert_ne!(first.review_id(), second.review_id());
+    assert!(second.approve(true, first.review_id(), &docs).is_err());
+    let approved = first.approve(true, first.review_id(), &docs).unwrap();
+    assert!(approved.check_target(&docs[1]).is_err());
+    response["edits"] = json!([]);
+    assert!(ProposalReview::prepare(
+        "r1",
+        &context,
+        &serde_json::to_vec(&response).unwrap(),
+        &docs
+    )
+    .is_err());
+}

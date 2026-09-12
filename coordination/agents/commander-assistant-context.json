@@ -14,23 +14,23 @@
     "rust",
     "diagnostic-context"
   ],
-  "code_revision": "d059a0b2220e97854f9d1be38ab20c2a64ec4c7b",
+  "code_revision": "2449372daf3bfff2f9f1ef0d264125e32167fd13",
   "eta_minutes": {
-    "likely": 25,
+    "likely": 20,
     "optimistic": 10,
-    "pessimistic": 45
+    "pessimistic": 35
   },
   "machine": "linux-primary",
   "main_integrated_through": "94c76ee510e7bf043ef6e9a02ffc287581dd921e",
-  "next_action": "Mac consumer handoff; await next high-value product assignment rather than duplicate native owner work.",
+  "next_action": "Expose review/approved-group handoff in JSON helper for Mac consumer.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "Supervised Unix client can explicitly spawn provider helper using childenv key, default strips inherited key.24tests pass including zero-call provider startup and realcompiler; strictlint pass.",
+  "summary": "Exact reviewed proposal\u2192single-document grouped ledger adapter ready. Real Store apply/retry/undo/reopen verified; changed approvals and multidoc partial handoff refused.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T08:22:48Z",
+  "updated_utc": "2026-09-12T08:26:00Z",
   "usage": {
-    "evidence": "24allfeaturetests include-ignored; strictlint allfeatures/alltargets",
-    "status": "Hosted OpenAI only, no provider inference."
+    "evidence": "2meaningful review tests pass incl durable Store operations; strictallfeaturelint",
+    "status": "Hosted OpenAI; no provider calls."
   }
 }

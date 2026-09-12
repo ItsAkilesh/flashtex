@@ -26,3 +26,6 @@ optional = true
 [dependencies.flashtex-conversion-jobs]
 path = "../conversion-jobs"
 optional = true
+
+[dev-dependencies]
+tempfile = "3"

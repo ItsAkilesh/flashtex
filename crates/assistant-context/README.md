@@ -234,3 +234,21 @@ environment. Ordinary `SessionClient::spawn` removes that provider variable from
 the child's inherited environment. Startup does not submit jobs; the first status
 snapshot reports zero scheduler starts. This is not a keychain adapter: the native
 host still owns secure credential retrieval and user authorization.
+
+`ProposalReview::prepare(request_id,context,response,current_sources)` revalidates
+provider JSON and exposes an immutable proposal plus a review digest covering
+request identity, full source binding and exact proposal. Explain-only results
+have no edit handoff. Multi-document edits are refused because the existing grouped
+ledger API is single-document; no partial plan is emitted.
+
+After displaying the proposal, the host passes explicit approval and that exact
+digest to `approve`, with a fresh complete source snapshot. It returns an
+`ApprovedGroup` envelope identifying project/path/request/review and the existing
+`history::GroupedEdit` payload. Check the selected ledger's identity with
+`check_target` before passing its group to `Store::apply_group`; the ledger enforces
+revision/hash/removed text. Preserve the unchanged approved group for idempotent
+retry after an uncertain response. Do not rebuild against post-edit source or issue
+a fresh command ID. Tests use the real Store for apply/retry/undo/reopen and prove
+that retry after undo does not reapply the edit. The adapter never writes a ledger
+or applies provider output on its own. User interaction and correct ledger routing
+remain host responsibilities; an approval flag is not independent proof of consent.
