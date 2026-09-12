@@ -41,7 +41,7 @@ fn every_corpus_image_satisfies_capture_image_validate() {
         let image_path = manifest_path.parent().unwrap().join(&case.image);
         let bytes = fs::read(&image_path)
             .unwrap_or_else(|e| panic!("reading {}: {e}", image_path.display()));
-        let submit = CaptureSubmit {
+        let mut submit = CaptureSubmit {
             capture_id: "corpus-check".into(),
             destination_id: "anchor-1".into(),
             base_revision: 1,

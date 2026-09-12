@@ -65,10 +65,7 @@ const SYMBOL_ENCODING: &[(char, u8)] = &[
     ('\u{2203}', 0x24), // there exists (\exists)
     ('\u{2228}', 0xDA), // logical or (\vee)
     ('\u{21D2}', 0xDE), // double right arrow (\Rightarrow)
-    ('\u{7C}', 0x7C),   // vertical bar (\mid), same code as ASCII in Symbol font
-    ('\u{20}', 0x20),   // space (\qquad, \quad), same code as ASCII in Symbol font
-    ('\u{28}', 0x28),   // left paren (\bigl), same code as ASCII in Symbol font
-    ('\u{29}', 0x29),   // right paren (\bigr), same code as ASCII in Symbol font
+    ('\u{2223}', 0x7C), // verticalbar (\mid)
 ];
 
 /// WinAnsiEncoding's 0x80..0x9F block, which is NOT Latin-1.

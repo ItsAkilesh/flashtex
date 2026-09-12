@@ -5,6 +5,7 @@ pub mod store;
 pub mod validation;
 
 use base64::{engine::general_purpose::STANDARD, Engine};
+use image::ImageDecoder;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{collections::BTreeMap, fmt, io::Cursor};
@@ -109,7 +110,13 @@ pub struct CaptureSubmit {
     pub instructions: String,
 }
 impl CaptureSubmit {
-    pub fn validate(&self) -> Result<()> {
+    /// Validates the capture and, in place, normalizes the image: phone photos are
+    /// near-universally stored pre-rotation with an EXIF orientation tag, and
+    /// decoding raw pixels while ignoring it would send sideways or upside-down
+    /// handwriting to Grok. When a non-default orientation is found, the pixels are
+    /// rotated/flipped to match it and losslessly re-encoded as PNG so every later
+    /// reader (including the Grok request body) sees an already-upright image.
+    pub fn validate(&mut self) -> Result<()> {
         identifier(&self.capture_id)?;
         identifier(&self.destination_id)?;
         if self.instructions.len() > 4096 {
@@ -139,22 +146,52 @@ impl CaptureSubmit {
             _ => {
                 return Err(BridgeError::new(
                     "unsupported_image",
-                    "Only PNG and JPEG captures are accepted",
+                    "Only PNG and JPEG captures are accepted; convert HEIC/HEIF or other phone formats to JPEG before capture",
                 ))
             }
         };
-        let mut reader = image::ImageReader::with_format(Cursor::new(bytes), format);
-        let mut limits = image::Limits::default();
-        limits.max_image_width = Some(8192);
-        limits.max_image_height = Some(8192);
-        limits.max_alloc = Some(64 * 1024 * 1024);
-        reader.limits(limits);
-        reader.decode().map_err(|_| {
+        let invalid_image = || {
             BridgeError::new(
                 "invalid_image",
                 "Image is malformed, MIME-mismatched or exceeds decoded image limits",
             )
-        })?;
+        };
+
+        let mut limits = image::Limits::default();
+        limits.max_image_width = Some(8192);
+        limits.max_image_height = Some(8192);
+        limits.max_alloc = Some(64 * 1024 * 1024);
+
+        let mut reader = image::ImageReader::with_format(Cursor::new(bytes), format);
+        reader.limits(limits.clone());
+        let mut decoder = reader.into_decoder().map_err(|_| invalid_image())?;
+        // `into_decoder` checks width/height against `limits` at construction, but
+        // — unlike `ImageReader::decode` — it does not also bound the decoded pixel
+        // buffer's allocation. Reproduce that guard explicitly so a small file can't
+        // declare huge-but-in-range dimensions and force a large allocation (the
+        // classic decompression-bomb shape), before any pixel data is decoded.
+        limits
+            .reserve(decoder.total_bytes())
+            .map_err(|_| invalid_image())?;
+        let orientation = decoder.orientation().map_err(|_| invalid_image())?;
+        let mut decoded =
+            image::DynamicImage::from_decoder(decoder).map_err(|_| invalid_image())?;
+
+        if orientation != image::metadata::Orientation::NoTransforms {
+            decoded.apply_orientation(orientation);
+            let mut normalized = Vec::new();
+            decoded
+                .write_to(Cursor::new(&mut normalized), image::ImageFormat::Png)
+                .map_err(|_| invalid_image())?;
+            if normalized.len() > MAX_IMAGE_BYTES {
+                return Err(BridgeError::new(
+                    "image_too_large",
+                    "Orientation-corrected image exceeds 8 MiB decoded limit",
+                ));
+            }
+            self.image.mime_type = "image/png".to_string();
+            self.image.data_base64 = STANDARD.encode(&normalized);
+        }
         Ok(())
     }
 }
@@ -175,6 +212,11 @@ impl Proposal {
                 "LaTeX must contain 1–65536 UTF-8 bytes without NUL",
             ));
         }
+        // Explicit control-sequence denylist and structural checks (shell
+        // escape, file I/O, catcode/macro redefinition, unbalanced grouping,
+        // embedded `\end{document}`, bidi-override characters, ...). See
+        // `validation::scan_latex` for the full threat model.
+        validation::scan_latex(&self.latex)?;
         for list in [&self.ambiguities, &self.required_dependencies] {
             if list.len() > 32 || list.iter().any(|v| v.len() > 2048 || v.contains('\0')) {
                 return Err(BridgeError::new(
@@ -453,7 +495,7 @@ impl Bridge {
         }
         Ok(a)
     }
-    pub fn receive(&mut self, capture: CaptureSubmit) -> Result<CaptureRecord> {
+    pub fn receive(&mut self, mut capture: CaptureSubmit) -> Result<CaptureRecord> {
         capture.validate()?;
         if let Some(old) = self.store.get(&capture.capture_id)? {
             if old.capture != capture {
@@ -523,7 +565,19 @@ impl Bridge {
         {
             return Ok(record);
         }
-        let proposal = converter.convert(&record.capture, &context)?;
+        let mut proposal = converter.convert(&record.capture, &context)?;
+        proposal.validate()?;
+        // Hard violations already failed above; surface non-fatal but
+        // reviewer-worthy findings (e.g. deep nesting, `\loop`/`\repeat`)
+        // through the same `ambiguities` channel the review UI already
+        // renders alongside `latex`, so a human sees them before approving
+        // `prepare_insert`. Re-validate afterward so an unreasonable number
+        // of findings cannot silently exceed the proposal's own bounds.
+        for advisory in validation::scan_latex(&proposal.latex)?.advisories {
+            if !proposal.ambiguities.contains(&advisory) {
+                proposal.ambiguities.push(advisory);
+            }
+        }
         proposal.validate()?;
         record.context = Some(context);
         record.proposal = Some(proposal);
