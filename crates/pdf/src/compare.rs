@@ -21,6 +21,7 @@ use crate::exact::{
 };
 use crate::reader::{Obj, PdfFile, render};
 use crate::sha256;
+use crate::type1::Type1Font;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 
@@ -61,6 +62,85 @@ pub struct Report {
     pub content_ops_identical: Vec<bool>,
     /// Per page and font resource name: true when program bytes are identical.
     pub font_program_identical: BTreeMap<String, bool>,
+    /// Per paired Type 1 font: true when every glyph both programs embed
+    /// decrypts to the same charstring (the apples-to-apples measure for
+    /// subsets whose bytes differ).
+    pub font_charstrings_identical: BTreeMap<String, bool>,
+}
+
+/// Glyph-level comparison of two embedded Type 1 programs.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Type1Comparison {
+    pub identical: Vec<String>,
+    pub differing: Vec<String>,
+    pub only_a: Vec<String>,
+    pub only_b: Vec<String>,
+    /// Every subroutine any common glyph reaches decrypts identically.
+    pub subrs_identical: bool,
+}
+
+fn type1_from_font_dict(f: &PdfFile, d: &BTreeMap<String, Obj>) -> Result<Type1Font, String> {
+    let desc = f
+        .get(d, "FontDescriptor")
+        .and_then(Obj::as_dict)
+        .ok_or("no FontDescriptor")?;
+    match font_program(f, desc)? {
+        Some(FontProgram::Type1 {
+            bytes,
+            length1,
+            length2,
+            length3,
+        }) => {
+            Type1Font::parse_program(&bytes, length1, length2, length3).map_err(|e| e.to_string())
+        }
+        _ => Err("not a Type 1 FontFile".into()),
+    }
+}
+
+/// Compares the charstrings of two embedded Type 1 programs glyph by glyph.
+pub fn type1_charstrings(
+    fa: &PdfFile,
+    da: &BTreeMap<String, Obj>,
+    fb: &PdfFile,
+    db: &BTreeMap<String, Obj>,
+) -> Result<Type1Comparison, String> {
+    let a = type1_from_font_dict(fa, da)?;
+    let b = type1_from_font_dict(fb, db)?;
+    let names_a: BTreeSet<String> = a.glyph_names().map(String::from).collect();
+    let names_b: BTreeSet<String> = b.glyph_names().map(String::from).collect();
+    let mut out = Type1Comparison {
+        subrs_identical: true,
+        ..Default::default()
+    };
+    let mut common = BTreeSet::new();
+    for n in names_a.union(&names_b) {
+        match (names_a.contains(n), names_b.contains(n)) {
+            (true, true) => {
+                common.insert(n.clone());
+                if a.decrypted_charstring(n) == b.decrypted_charstring(n) {
+                    out.identical.push(n.clone());
+                } else {
+                    out.differing.push(n.clone());
+                }
+            }
+            (true, false) => out.only_a.push(n.clone()),
+            (false, true) => out.only_b.push(n.clone()),
+            (false, false) => {}
+        }
+    }
+    let (_, subrs_a) = a.closure(&common).map_err(|e| e.to_string())?;
+    let (_, subrs_b) = b.closure(&common).map_err(|e| e.to_string())?;
+    if subrs_a != subrs_b {
+        out.subrs_identical = false;
+    } else {
+        for i in subrs_a {
+            if a.decrypted_subr(i) != b.decrypted_subr(i) {
+                out.subrs_identical = false;
+                break;
+            }
+        }
+    }
+    Ok(out)
 }
 
 impl Report {
@@ -796,6 +876,47 @@ pub fn classify(a: &PdfFile, b: &PdfFile, label_a: &str, label_b: &str) -> Repor
                                         pa.0, pa.1, &pa.2[..16], pa.3, pb.0, pb.1, &pb.2[..16], pb.3
                                     ),
                                 );
+                                // Apples to apples for Type 1 subsets: two
+                                // programs differ in bytes whenever the eexec
+                                // prefix, blanked subroutines or clear text
+                                // differ; what matters is whether the glyphs
+                                // both embed decrypt to the same charstrings.
+                                if pa.0 == "FontFile" && pb.0 == "FontFile" {
+                                    match type1_charstrings(a, da, b, db) {
+                                        Ok(t) => {
+                                            r.font_charstrings_identical.insert(
+                                                key.clone(),
+                                                t.differing.is_empty() && !t.identical.is_empty(),
+                                            );
+                                            let line = format!(
+                                                "{key} Type 1 charstrings: {} common glyph(s) identical, {} differ{}, {} only in {label_a}, {} only in {label_b}; subroutines used by the common glyphs {}",
+                                                t.identical.len(),
+                                                t.differing.len(),
+                                                if t.differing.is_empty() {
+                                                    String::new()
+                                                } else {
+                                                    format!(" ({})", t.differing.join(", "))
+                                                },
+                                                t.only_a.len(),
+                                                t.only_b.len(),
+                                                if t.subrs_identical {
+                                                    "identical"
+                                                } else {
+                                                    "DIFFER"
+                                                }
+                                            );
+                                            if t.differing.is_empty() && t.subrs_identical {
+                                                r.same(line);
+                                            } else {
+                                                r.note(Category::FontProgram, line);
+                                            }
+                                        }
+                                        Err(e) => r.note(
+                                            Category::FontProgram,
+                                            format!("{key} Type 1 charstrings not comparable: {e}"),
+                                        ),
+                                    }
+                                }
                             }
                         }
                         (None, None) => r.same(format!(

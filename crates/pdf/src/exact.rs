@@ -33,6 +33,7 @@
 use crate::cff::{CffError, CffFont};
 use crate::sha256;
 use crate::truetype::{Outlines, TrueTypeFont};
+use crate::type1::Type1Font;
 use crate::writer::Document;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
@@ -984,6 +985,99 @@ pub fn subset_tag(gids: &BTreeSet<u16>, program_sha256: &str) -> String {
     (0..6)
         .map(|i| (b'A' + ((h >> (8 * i)) % 26) as u8) as char)
         .collect()
+}
+
+impl ExactFont {
+    /// A simple Type 1 font over a subset of `font` (`crate::type1`): one
+    /// byte per code, `/Differences` from `encoding` (code → glyph name),
+    /// `/Widths` from `width(name)` in thousandths of text space (the
+    /// caller chooses the source: TFM values as pdfTeX does, or
+    /// [`Type1Font::advance_width`] rounded as it sees fit), descriptor
+    /// from the font's clear text (`FontBBox`, `ItalicAngle`, `StdVW`) with
+    /// `/CharSet` listing the retained glyphs. Only the charstrings the
+    /// encoding names (plus `.notdef` and `seac` components) are embedded;
+    /// retained charstrings are byte-identical to the source.
+    pub fn type1_subset(
+        font: &Type1Font,
+        encoding: &[(u8, String)],
+        width: &dyn Fn(&str) -> Option<Decimal>,
+    ) -> Result<(ExactFont, crate::type1::Type1Subset), ExactError> {
+        let resource = font.font_name().unwrap_or("Type1").to_string();
+        let err = |m: String| ExactError::Font {
+            resource: resource.clone(),
+            message: m,
+        };
+        if encoding.is_empty() {
+            return Err(err("no codes to embed".into()));
+        }
+        let names: BTreeSet<String> = encoding.iter().map(|(_, n)| n.clone()).collect();
+        let subset = font.subset(&names).map_err(|e| err(e.to_string()))?;
+        let first = encoding.iter().map(|(c, _)| *c).min().unwrap_or(0);
+        let last = encoding.iter().map(|(c, _)| *c).max().unwrap_or(0);
+        let mut widths = Vec::with_capacity((last - first) as usize + 1);
+        for code in first..=last {
+            let w = match encoding.iter().find(|(c, _)| *c == code) {
+                Some((_, name)) => {
+                    width(name).ok_or_else(|| err(format!("no width for /{name} (code {code})")))?
+                }
+                None => Decimal::from_i64(0),
+            };
+            widths.push(w);
+        }
+        let mut differences: Vec<(u8, String)> = encoding.to_vec();
+        differences.sort_by_key(|(c, _)| *c);
+        let bbox = font
+            .font_bbox()
+            .ok_or_else(|| err("clear text has no /FontBBox".into()))?;
+        let tag = subset_tag(
+            &subset
+                .glyphs
+                .iter()
+                .enumerate()
+                .map(|(i, _)| i as u16)
+                .collect(),
+            &sha256::hex(subset.program.bytes()),
+        );
+        let base_font = format!("{tag}+{}", font.font_name().unwrap_or("Type1"));
+        let mut char_set = String::new();
+        for g in &subset.glyphs {
+            char_set.push('/');
+            char_set.push_str(g);
+        }
+        let simple = SimpleFont {
+            subtype: "Type1".into(),
+            base_font: base_font.clone(),
+            program: Some(subset.program.clone()),
+            first_char: first,
+            widths,
+            encoding: Some(Encoding::Differences {
+                base: None,
+                differences,
+            }),
+            descriptor: Some(FontDescriptor {
+                flags: 4,
+                bbox: [
+                    Decimal::from_i64(bbox[0] as i64),
+                    Decimal::from_i64(bbox[1] as i64),
+                    Decimal::from_i64(bbox[2] as i64),
+                    Decimal::from_i64(bbox[3] as i64),
+                ],
+                italic_angle: font
+                    .italic_angle()
+                    .and_then(|a| Decimal::new(a).ok())
+                    .unwrap_or_else(|| Decimal::from_i64(0)),
+                ascent: Decimal::from_i64(bbox[3] as i64),
+                descent: Decimal::from_i64(bbox[1] as i64),
+                cap_height: Decimal::from_i64(bbox[3] as i64),
+                stem_v: Decimal::from_i64(font.std_vw().unwrap_or(80) as i64),
+                x_height: None,
+                char_set: Some(char_set),
+                extra: Vec::new(),
+            }),
+            to_unicode: None,
+        };
+        Ok((ExactFont::Simple(simple), subset))
+    }
 }
 
 /// What [`ExactFont::cid_from_opentype`] did to the program.

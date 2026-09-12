@@ -2,7 +2,7 @@
 //!
 //! `tests/fixtures/v2-plain-paragraph.json` is the unmodified `display_list`
 //! envelope `flashtex-render --v2 --secnumdepth 0` (branch
-//! `agent/mac-render-pipeline/unified` at `ba5611f`) wrote for the visual-corpus
+//! `agent/mac-render-pipeline/unified` at `d556519`) wrote for the visual-corpus
 //! fixture `01-plain-paragraph` (body only). It references Latin Modern
 //! `lmroman12-regular.otf` by content hash; tests that need the bytes skip
 //! loudly when the font is not installed.
@@ -51,15 +51,10 @@ fn real_pipeline_envelope_exports_glyphs_by_original_gid_at_exact_positions() {
     assert_eq!(f.glyphs, 18);
     assert_eq!(
         f.hash_form,
-        HashForm::BytesAndFaceIndex,
-        "flashtex-render emits font-engine's content hash (bytes || face index)"
+        HashForm::Bytes,
+        "flashtex-render d556519 emits SHA-256 of the raw font bytes"
     );
-    assert!(
-        report
-            .notes
-            .iter()
-            .any(|n| n.contains("render-pipeline deviation"))
-    );
+    assert!(report.notes.is_empty(), "{:?}", report.notes);
     assert!(report.diagnostics.is_empty());
 
     let out = exact::render_exact(&doc).unwrap();
@@ -312,4 +307,34 @@ fn unsupported_envelope_content_is_refused_not_approximated() {
     )
     .unwrap_err();
     assert!(e.contains("Nope") && e.contains("was not found"), "{e}");
+}
+
+/// The older producer form, SHA-256(bytes || face_index), is still resolved
+/// and reported as a deviation.
+#[test]
+fn content_hash_with_face_index_is_still_accepted_and_reported() {
+    let Some(font_path) = lm12() else {
+        eprintln!("skipped: Latin Modern 12 not installed");
+        return;
+    };
+    let mut bytes = std::fs::read(&font_path).unwrap();
+    let font = TrueTypeFont::load(&font_path).unwrap();
+    let len = bytes.len();
+    bytes.extend_from_slice(&0u32.to_be_bytes());
+    let sha = sha256::hex(&bytes);
+    let gid = font.glyph_id('A').unwrap();
+    let envelope = format!(
+        r#"{{"protocol_version":2,"id":"t","type":"display_list","payload":{{"render_format":"display-list-v2","coordinate_unit":"bp_2pow20","color_space":"srgb","fonts":[{{"font_id":"{sha}","sha256":"{sha}","byte_length":{len},"format":"opentype-cff","face_index":0,"units_per_em":1000,"glyph_count":{gc},"postscript_name":"LMRoman12-Regular"}}],"pages":[{{"number":1,"width":1048576,"height":1048576,"items":[{{"kind":"glyph_run","font_id":"{sha}","font_size":1048576,"text":"A","paint":{{"r":0,"g":0,"b":0,"a":1}},"glyphs":[{{"gid":{gid},"origin_x":0,"baseline_y":0,"advance_x":0,"advance_y":0,"cluster":0}}],"clusters":[{{"text_start_byte":0,"text_end_byte":1}}]}}]}}],"diagnostics":[]}}}}"#,
+        gc = font.num_glyphs()
+    );
+    let (_, report) = v2::from_v2(&envelope, &V2Options::default()).unwrap();
+    assert_eq!(report.fonts[0].hash_form, HashForm::BytesAndFaceIndex);
+    assert!(
+        report
+            .notes
+            .iter()
+            .any(|n| n.contains("render-pipeline deviation")),
+        "{:?}",
+        report.notes
+    );
 }

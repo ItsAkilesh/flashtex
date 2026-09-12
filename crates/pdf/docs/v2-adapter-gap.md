@@ -20,7 +20,7 @@ fixture body  ──►  flashtex-render --v2 --secnumdepth 0  ──►  displa
 
 | item | value |
 |---|---|
-| producer | `flashtex-render` built from `origin/agent/mac-render-pipeline/unified` at `ba5611f` (`git archive` into a scratch directory, `cargo build --release --bin flashtex-render`, as `tools/typing-bench/run.sh` does), invoked with `--secnumdepth 0 --v2`, one request per fixture, body from `\begin{document}` only (the harness strips the preamble) |
+| producer | `flashtex-render` built from `origin/agent/mac-render-pipeline/unified` at `d556519` (`git archive` into a scratch directory, `cargo build --release --bin flashtex-render`, as `tools/typing-bench/run.sh` does), invoked with `--secnumdepth 0 --v2`, one request per fixture, body from `\begin{document}` only (the harness strips the preamble). The first run of this report used `ba5611f`; the tip changed only the math fixtures (see "Producer tip d556519") |
 | adapter | `flashtex-pdf-exact from-v2` from this branch (`crates/pdf/src/v2.rs`), default font search (MacTeX 2026 Latin Modern directories) |
 | reference | MacTeX 2026 pdflatex (pdfTeX 1.40.29) with the harness `lm` preamble (`\documentclass[12pt]{article}`, T1 fontenc, `lmodern`, `geometry` margin 1in, `\parindent` 0, `secnumdepth` 0, `\pagestyle{empty}`); the same references as `exact-export-classification.md` |
 | comparison | `flashtex-pdf-exact classify` (categories as in `exact-export-classification.md`; fonts unmatched by resource name are paired by base font name so program/metadata gaps are measured) and CoreGraphics `CGContextDrawPDFPage` at 144 dpi. `% px differ` counts any RGB difference (anti-aliasing included); `ref-only`/`ours-only` count pixels that carry ink on one side only, i.e. differences a reader can see |
@@ -34,15 +34,15 @@ fixture body  ──►  flashtex-render --v2 --secnumdepth 0  ──►  displa
 | 03-section-heading | 1 page(s), 15 glyph run(s), 79 glyph(s) (0 continued at the natural advance, 0 with an exact TJ kern), 0 rule(s), 14765 bytes | ContentOperators | FontMetadata; FontProgram | same | pages 1/1; p1 0.02% px differ; ink 9373 vs 9372, ref-only 12, ours-only 11 | none |
 | 04-bold-emph | 1 page(s), 12 glyph run(s), 54 glyph(s) (3 continued at the natural advance, 0 with an exact TJ kern), 0 rule(s), 17232 bytes | ContentOperators | FontMetadata; FontProgram | same | pages 1/1; p1 0.01% px differ; ink 4863 vs 4863, ref-only 0, ours-only 0 | none |
 | 05-unicode | 1 page(s), 11 glyph run(s), 46 glyph(s) (0 continued at the natural advance, 0 with an exact TJ kern), 0 rule(s), 8859 bytes | ContentOperators | FontMetadata; FontProgram | same | pages 1/1; p1 0.01% px differ; ink 3904 vs 3904, ref-only 0, ours-only 0 | none |
-| 06-math-inline | 1 page(s), 13 glyph run(s), 45 glyph(s) (0 continued at the natural advance, 0 with an exact TJ kern), 2 rule(s), 11719 bytes | ContentOperators | FontMetadata; FontProgram; FontResources | same | pages 1/1; p1 0.09% px differ; ink 3432 vs 3440, ref-only 162, ours-only 170 | none |
-| 07-math-display | 1 page(s), 10 glyph run(s), 47 glyph(s) (1 continued at the natural advance, 0 with an exact TJ kern), 1 rule(s), 11513 bytes | ContentOperators | FontMetadata; FontProgram; FontResources | same | pages 1/1; p1 0.21% px differ; ink 3889 vs 3971, ref-only 1396, ours-only 1478 | none |
+| 06-math-inline | 1 page(s), 13 glyph run(s), 45 glyph(s) (0 continued at the natural advance, 0 with an exact TJ kern), 2 rule(s), 11694 bytes | ContentOperators | FontMetadata; FontProgram; FontResources | same | pages 1/1; p1 0.03% px differ; ink 3432 vs 3445, ref-only 38, ours-only 51 | none |
+| 07-math-display | 1 page(s), 10 glyph run(s), 47 glyph(s) (0 continued at the natural advance, 0 with an exact TJ kern), 1 rule(s), 11536 bytes | ContentOperators | FontMetadata; FontProgram; FontResources | same | pages 1/1; p1 0.07% px differ; ink 3889 vs 3770, ref-only 306, ours-only 187 | none |
 | 08-two-page | 3 page(s), 1800 glyph run(s), 7680 glyph(s) (0 continued at the natural advance, 0 with an exact TJ kern), 0 rule(s), 608568 bytes | ContentOperators | FontMetadata; FontProgram | same | pages 3/3; p1 0.56% px differ; ink 254503 vs 254497, ref-only 240, ours-only 234; p2 0.55% px differ; ink 254661 vs 254649, ref-only 232, ours-only 220; p3 0.24% px differ; ink 112626 vs 112614, ref-only 108, ours-only 96 | none |
-| 09-mixed-document | 1 page(s), 50 glyph run(s), 206 glyph(s) (2 continued at the natural advance, 0 with an exact TJ kern), 3 rule(s), 32523 bytes | ContentOperators | FontMetadata; FontProgram; FontResources | same | pages 1/1; p1 0.70% px differ; ink 17757 vs 17803, ref-only 3289, ours-only 3335 | none |
+| 09-mixed-document | 1 page(s), 50 glyph run(s), 206 glyph(s) (2 continued at the natural advance, 0 with an exact TJ kern), 3 rule(s), 32849 bytes | ContentOperators | FontMetadata; FontProgram; FontResources | same | pages 1/1; p1 0.13% px differ; ink 17757 vs 17809, ref-only 147, ours-only 199 | none |
 | 10-unicode-paragraph | 1 page(s), 81 glyph run(s), 425 glyph(s) (0 continued at the natural advance, 0 with an exact TJ kern), 0 rule(s), 47876 bytes | ContentOperators | FontMetadata; FontProgram; FontResources | same | pages 1/1; p1 0.16% px differ; ink 34516 vs 34285, ref-only 822, ours-only 591 | missing_glyph |
 | 11-nested-lists | 1 page(s), 29 glyph run(s), 147 glyph(s) (0 continued at the natural advance, 0 with an exact TJ kern), 0 rule(s), 17444 bytes | ContentOperators | FontMetadata; FontProgram; FontResources | same | pages 1/1; p1 1.01% px differ; ink 11160 vs 11146, ref-only 9457, ours-only 9443 | none |
 | 12-justified-paragraphs | 1 page(s), 360 glyph run(s), 1536 glyph(s) (0 continued at the natural advance, 0 with an exact TJ kern), 0 rule(s), 126682 bytes | ContentOperators | FontMetadata; FontProgram | same | pages 1/1; p1 0.28% px differ; ink 124408 vs 124396, ref-only 148, ours-only 136 | none |
-| 13-math-display-rich | 1 page(s), 17 glyph run(s), 72 glyph(s) (2 continued at the natural advance, 0 with an exact TJ kern), 3 rule(s), 17060 bytes | ContentOperators | FontMetadata; FontProgram; FontResources | same | pages 1/1; p1 0.44% px differ; ink 5244 vs 6172, ref-only 3388, ours-only 4316 | compiler, compiler |
-| 14-math-inline-dense | 1 page(s), 69 glyph run(s), 147 glyph(s) (1 continued at the natural advance, 0 with an exact TJ kern), 4 rule(s), 27491 bytes | ContentOperators | FontMetadata; FontProgram; FontResources | same | pages 1/1; p1 0.81% px differ; ink 10622 vs 10971, ref-only 5829, ours-only 6178 | compiler, overfull_hbox |
+| 13-math-display-rich | 1 page(s), 17 glyph run(s), 72 glyph(s) (0 continued at the natural advance, 0 with an exact TJ kern), 3 rule(s), 17022 bytes | ContentOperators | FontMetadata; FontProgram; FontResources | same | pages 1/1; p1 0.29% px differ; ink 5244 vs 5700, ref-only 2289, ours-only 2745 | compiler, compiler |
+| 14-math-inline-dense | 1 page(s), 71 glyph run(s), 147 glyph(s) (0 continued at the natural advance, 0 with an exact TJ kern), 4 rule(s), 27588 bytes | ContentOperators | FontMetadata; FontProgram; FontResources | same | pages 1/1; p1 0.48% px differ; ink 10622 vs 10890, ref-only 2974, ours-only 3242 | compiler, overfull_hbox |
 | 15-three-page-sections | 3 page(s), 1806 glyph run(s), 7695 glyph(s) (0 continued at the natural advance, 0 with an exact TJ kern), 0 rule(s), 611989 bytes | ContentOperators | FontMetadata; FontProgram | same | pages 3/3; p1 0.46% px differ; ink 208434 vs 208422, ref-only 240, ours-only 228; p2 0.46% px differ; ink 208508 vs 208496, ref-only 240, ours-only 228; p3 0.46% px differ; ink 208516 vs 208504, ref-only 240, ours-only 228 | compiler, compiler |
 | 16-heading-page-break | 2 page(s), 962 glyph run(s), 4109 glyph(s) (0 continued at the natural advance, 0 with an exact TJ kern), 0 rule(s), 332089 bytes | ContentOperators | FontMetadata; FontProgram | same | pages 2/2; p1 0.56% px differ; ink 254503 vs 254497, ref-only 240, ours-only 234; p2 0.17% px differ; ink 80091 vs 80080, ref-only 73, ours-only 62 | none |
 | 17-apostrophes | 1 page(s), 25 glyph run(s), 132 glyph(s) (0 continued at the natural advance, 0 with an exact TJ kern), 0 rule(s), 17238 bytes | ContentOperators | FontMetadata; FontProgram | same | pages 1/1; p1 0.01% px differ; ink 9482 vs 9482, ref-only 0, ours-only 0 | none |
@@ -173,6 +173,63 @@ to the first run on all 18 fixtures; the size reductions come entirely from
 the font programs, which is why the text-heavy multi-page fixtures (08, 15,
 16, 12), dominated by their content streams, change least.
 
+## Producer tip d556519 and the math-reference fixture
+
+Re-running the 18 fixtures with `flashtex-render` at `d556519` (which now
+emits `fonts[].sha256` as SHA-256 of the raw font bytes, so `from-v2`
+resolves every font by the contract's hash form and no deviation note is
+produced) changed only the five math fixtures, all for the better on the
+producer's side: 06 ink-only 162/170 → 38/51, 07 1396/1478 → 306/187,
+09 3289/3335 → 147/199, 13 3388/4316 → 2289/2745, 14 5829/6178 →
+2974/3242. Text-only fixtures are unchanged (01/04/05/17 still 0 ink-only
+pixels). `from-v2` needed no change; the checked-in test envelope was
+regenerated from this tip and the older hash form remains accepted and
+reported (test).
+
+rendering-core's `math-reference` fixture (`8b06436`: producer `65dbe7d`
+display list exported through this crate's exact writer by rendering-core's
+`pipeline_fonts_probe`, against the same pdflatex-lmodern reference as
+corpus fixture 06; rendering-core measured Poppler text identical and 602
+pixels differing at 144 dpi with `pdftoppm`) through `flashtex-pdf-exact
+classify reference.pdf original.pdf`:
+
+| measure | result |
+|---|---|
+| page count, MediaBox | same |
+| content | `ContentOperators` (52 vs 133 operators: pdfTeX `TJ` with `11.9552 Tf`/`708.045 Td`, original `Tm` per glyph with `11.9551677703857421875 Tf`/`708.0448322296142578125 Tm`) |
+| fonts | `FontProgram` + `FontMetadata` for `LMRoman12-Regular` (Type 1 subset 23,000 B vs CIDFontType0C 23,130 B, unpruned since the fixture predates subroutine pruning); `FontResources`: `LMMathItalic12/8`, `LMMathSymbols10` and pdfTeX's second `LMRoman12` dictionary only in the reference, `LatinModernMath-Regular` only in the original |
+| CoreGraphics 144 dpi | 645 of 1,938,816 RGB pixels differ; ink-only 38 (reference) / 51 (original); registration shift 0 px |
+| exit status | 3 (content operators and font programs not identical, as expected) |
+
+The 645 CoreGraphics pixels against rendering-core's 602 Poppler pixels are
+the two rasterisers' anti-aliasing; the binary-ink count of 38/51 says the
+glyphs sit where pdfTeX's do and the only visible difference is Latin
+Modern Math versus Computer Modern math glyph shapes.
+
+## Type 1 subsetting, apples to apples
+
+pdfTeX embeds Latin Modern as Type 1 subsets, so a `FontProgram` line
+between pdfTeX's output and this crate's CFF subsets compares different
+program formats. `crate::type1` now subsets Type 1 programs the way pdfTeX
+does: only the charstrings the placed glyphs need (plus `.notdef` and `seac`
+components), unused subroutines blanked to `return` so indices survive,
+retained charstrings and subroutines byte-identical to the source, the
+private dictionary re-encrypted deterministically, `Length1` unchanged,
+`Length3 = 0`. `ExactFont::type1_subset` builds the simple font (Differences,
+caller-supplied widths, descriptor from the clear text). The classifier
+compares two embedded Type 1 programs glyph by glyph: for the pdflatex
+oracle document in `tests/type1.rs` (`lmr12.pfb`, 21 glyphs) it reports
+`Type 1 charstrings: 21 common glyph(s) identical, 0 differ … subroutines
+used by the common glyphs identical` as `[same]` while the bytes differ
+(pdfTeX: 23,421 B; ours: 26,981 B, 38 of 784 Subrs retained; pdfTeX also
+trims the clear text). Widths remain a caller decision: Latin Modern's
+charstrings compute widths with `div` (`4787 11 div` = 435.18…), which is
+why pdfTeX takes them from the TFM; `Type1Font::advance_width` returns the
+exact rational and the oracle test reuses pdfTeX's widths. Feeding Type 1
+programs into the runtime-v1 or from-v2 routes is not wired (both need a
+code → glyph-name source such as a TeX `.enc` file); the library and the
+classifier verdict are what this step adds.
+
 ## What this does and does not establish
 
 - Established: a real FlashTeX producer can drive the exact route end to end
@@ -228,8 +285,8 @@ target/release/flashtex-pdf-exact from-v2 list.json --out ours.pdf
 target/release/flashtex-pdf-exact classify reference.pdf ours.pdf
 ```
 
-`cargo test` (80 tests: 40 unit, 12 `tests/exact.rs`, 3 `tests/v2.rs`, 25
-`tests/render.rs`) and `cargo clippy --all-targets` are clean at the commit
-that updates this file. `tests/v2.rs` carries the unmodified `flashtex-render`
+`cargo test` (86 tests: 42 unit, 12 `tests/exact.rs`, 4 `tests/v2.rs`, 3
+`tests/type1.rs`, 25 `tests/render.rs`) and `cargo clippy --all-targets` are
+clean at the commit that updates this file. `tests/v2.rs` carries the unmodified `flashtex-render`
 envelope for fixture 01 (`tests/fixtures/v2-plain-paragraph.json`) and
 resolves Latin Modern by content hash from the installed TeX Live tree.

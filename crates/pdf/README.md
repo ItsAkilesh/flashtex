@@ -174,7 +174,11 @@ a CID-keyed program would resolve the components by CID instead of name;
 the font's own) and says so in its note. Latin Modern's 821 glyphs contain
 no `seac`; a nine-glyph subset is 22,557 bytes against the 61,140-byte whole
 table. The subset tag in `/BaseFont` is derived from the glyph set and the
-source program's SHA-256, so the same request always names the same font. Subsets keep only the
+source program's SHA-256, so the same request always names the same font. Type 1 programs
+(`crate::type1`, `ExactFont::type1_subset`) are subset the way pdfTeX does
+it: retained charstrings and needed subroutines byte-identical, unused
+subroutines blanked, deterministic eexec, `Length3 0`; the classifier
+compares two embedded Type 1 programs charstring by charstring. Subsets keep only the
 subroutines the retained glyphs reach (renumbered, call operands rewritten)
 and only the Top DICT's strings; `CffFont::expanded_charstring` (subroutines
 inlined) is byte-identical before and after, which is what the identity
