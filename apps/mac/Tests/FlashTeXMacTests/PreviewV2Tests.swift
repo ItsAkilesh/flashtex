@@ -276,10 +276,19 @@ final class PreviewV2ShellTests: XCTestCase {
         return model
     }
 
+    /// Starts the off-main load and runs the main run loop until it delivered.
+    private func load(_ model: ShellModel, _ url: URL, file: StaticString = #filePath, line: UInt = #line) {
+        let done = expectation(description: "load \(url.lastPathComponent)")
+        model.loadDisplayListV2(url: url) { done.fulfill() }
+        XCTAssertTrue(model.displayListV2?.isLoading == true, "state is .loading until the result arrives", file: file, line: line)
+        wait(for: [done], timeout: 20)
+        XCTAssertFalse(model.displayListV2?.isLoading == true, "load delivered", file: file, line: line)
+    }
+
     func testOpeningTheRealDisplayListNavigatesLigatureClustersToSourceBytes() throws {
         let model = try model()
         XCTAssertFalse(model.previewV2, "v1 stays the default")
-        model.loadDisplayListV2(url: Self.fixtures.appendingPathComponent("display-list-v2-text.json"))
+        load(model, Self.fixtures.appendingPathComponent("display-list-v2-text.json"))
         guard case .loaded(let frame, _) = model.displayListV2 else { return XCTFail("expected a prepared frame: \(String(describing: model.displayListV2))") }
         XCTAssertTrue(model.previewV2)
         let page = frame.list.pages[0]
@@ -306,7 +315,7 @@ final class PreviewV2ShellTests: XCTestCase {
 
     func testStaleBufferIsRefusedAndSyntheticContentHasNoSource() throws {
         let model = try model()
-        model.loadDisplayListV2(url: Self.fixtures.appendingPathComponent("display-list-v2-text.json"))
+        load(model, Self.fixtures.appendingPathComponent("display-list-v2-text.json"))
         guard case .loaded(let frame, _) = model.displayListV2 else { return XCTFail() }
         let page = frame.list.pages[0]
         guard case .glyphRun(let run) = page.items[2] else { return XCTFail() }
@@ -324,16 +333,289 @@ final class PreviewV2ShellTests: XCTestCase {
 
     func testRefusedDisplayListShowsNoFrame() throws {
         let model = try model()
-        model.loadDisplayListV2(url: Self.fixtures.appendingPathComponent("display-list-v2-math.json"))
+        load(model, Self.fixtures.appendingPathComponent("display-list-v2-math.json"))
         guard case .failed(let error, let url) = model.displayListV2 else { return XCTFail("expected refusal") }
         XCTAssertEqual(error.code, "font_resource_unavailable")
         XCTAssertEqual(url.lastPathComponent, "display-list-v2-math.json")
         XCTAssertNil(model.displayListV2?.frame)
         XCTAssertTrue(model.captureNote?.hasPrefix("Display list refused: font_resource_unavailable") == true, model.captureNote ?? "")
         // A runtime-v1 fixture is not a display list either.
-        model.loadDisplayListV2(url: Self.fixtures.deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        load(model, Self.fixtures.deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
             .deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("protocol/fixtures/compile-result.json"))
         guard case .failed(let e2, _) = model.displayListV2 else { return XCTFail() }
         XCTAssertEqual(e2.code, "unsupported_protocol_version")
+    }
+
+    // MARK: off-main loading, stale-result suppression, stale indicator
+
+    func testLoadingRetainsThePreviousFrameAsStaleUntilTheNewOneIsVerified() throws {
+        let model = try model()
+        let text = Self.fixtures.appendingPathComponent("display-list-v2-text.json")
+        load(model, text)
+        guard case .loaded(let first, _) = model.displayListV2 else { return XCTFail() }
+        // A second load: the first frame stays paintable, explicitly stale.
+        let done = expectation(description: "reload")
+        model.loadDisplayListV2(url: text) { done.fulfill() }
+        guard case .loading(let url, let ticket, let previous) = model.displayListV2 else { return XCTFail("expected .loading, got \(String(describing: model.displayListV2))") }
+        XCTAssertEqual(url, text)
+        XCTAssertEqual(previous?.preparedNonce, first.preparedNonce, "the previous verified frame is retained while loading")
+        XCTAssertEqual(model.displayListV2?.frame?.preparedNonce, first.preparedNonce)
+        XCTAssertTrue(model.captureNote?.hasPrefix("Loading display list") == true)
+        wait(for: [done], timeout: 20)
+        guard case .loaded(let second, _) = model.displayListV2 else { return XCTFail() }
+        XCTAssertNotEqual(second.preparedNonce, first.preparedNonce, "a reload is a new frame instance")
+        XCTAssertNotEqual(V2FrameIdentity.token(second), V2FrameIdentity.token(first))
+        XCTAssertGreaterThan(ticket, 0)
+        // A refusal after a good frame drops it: nothing unverified stays on screen.
+        load(model, Self.fixtures.appendingPathComponent("display-list-v2-math.json"))
+        XCTAssertNil(model.displayListV2?.frame)
+    }
+
+    func testStaleLoadResultNeverOverwritesANewerState() throws {
+        let model = try model()
+        let text = Self.fixtures.appendingPathComponent("display-list-v2-text.json")
+        load(model, text)
+        guard case .loaded(let frame, _) = model.displayListV2 else { return XCTFail() }
+        let dropped = V2Loader.staleResultsDropped
+        // A result for a ticket that is not the one in flight is dropped whether
+        // it is a frame or a refusal, and the state is untouched.
+        XCTAssertFalse(model.deliverDisplayListV2(ticket: -1, url: text, outcome: .failed(RenderingV2.ValidationError(code: "x", message: "stale"))))
+        guard case .loaded(let still, _) = model.displayListV2 else { return XCTFail("stale refusal must not replace the frame") }
+        XCTAssertEqual(still.preparedNonce, frame.preparedNonce)
+        XCTAssertFalse(model.deliverDisplayListV2(ticket: -2, url: text, outcome: .loaded(frame)))
+        XCTAssertEqual(V2Loader.staleResultsDropped, dropped + 2)
+        // Two loads back to back: the first result is superseded by the second
+        // ticket and dropped; only the second is published.
+        let published = V2Loader.resultsPublished
+        let a = expectation(description: "a"), b = expectation(description: "b")
+        model.loadDisplayListV2(url: text) { a.fulfill() }
+        let ticketA = model.displayListV2?.ticket
+        model.loadDisplayListV2(url: Self.fixtures.appendingPathComponent("display-list-v2-math.json")) { b.fulfill() }
+        let ticketB = model.displayListV2?.ticket
+        XCTAssertNotEqual(ticketA, ticketB)
+        wait(for: [a, b], timeout: 20, enforceOrder: true)
+        guard case .failed(let error, let url) = model.displayListV2 else { return XCTFail("the newer load (a refusal) is the final state") }
+        XCTAssertEqual(url.lastPathComponent, "display-list-v2-math.json")
+        XCTAssertEqual(error.code, "font_resource_unavailable")
+        XCTAssertEqual(V2Loader.staleResultsDropped, dropped + 3, "the superseded text load was dropped on arrival")
+        XCTAssertEqual(V2Loader.resultsPublished, published + 1)
+    }
+
+    func testPreparedPagesCarryPDFSpaceGeometryForEveryItem() throws {
+        let model = try model()
+        load(model, Self.fixtures.appendingPathComponent("display-list-v2-text.json"))
+        guard case .loaded(let frame, _) = model.displayListV2 else { return XCTFail() }
+        XCTAssertEqual(frame.prepared.count, frame.list.pages.count)
+        for (page, prepared) in zip(frame.list.pages, frame.prepared) {
+            XCTAssertEqual(prepared.number, page.number)
+            XCTAssertEqual(prepared.items.count, page.items.count, "one prepared item per list item, same order")
+            XCTAssertEqual(prepared.glyphCount, page.items.reduce(0) { n, i in if case .glyphRun(let r) = i { n + r.glyphs.count } else { n } })
+            for (item, ready) in zip(page.items, prepared.items) {
+                switch (item, ready) {
+                case (.glyphRun(let run), .run(let r)):
+                    XCTAssertEqual(r.glyphs, run.glyphs.map { CGGlyph($0.gid) }, "original glyph IDs, unchanged")
+                    XCTAssertEqual(r.positions.count, run.glyphs.count)
+                    for (g, p) in zip(run.glyphs, r.positions) {
+                        XCTAssertEqual(p.x, V2PreparedPage.serialized(RenderingV2.points(g.originX)))
+                        XCTAssertEqual(p.y, V2PreparedPage.serialized(page.heightPt - RenderingV2.points(g.baselineY)), "y flipped once into PDF space")
+                    }
+                    XCTAssertEqual(CTFontGetSize(r.font), V2PreparedPage.serialized(RenderingV2.points(run.fontSize)))
+                    XCTAssertEqual(CTFontCopyPostScriptName(r.font) as String, frame.fonts[run.fontId]?.resource.postscriptName)
+                case (.rule(let rule), .rule(let rect, let paint)):
+                    let exact = GlyphRunRenderer.pdfRect(x: rule.x, top: rule.top, width: rule.width, height: rule.height, pageHeight: page.heightPt)
+                    XCTAssertEqual(rect, CGRect(x: V2PreparedPage.serialized(exact.minX), y: V2PreparedPage.serialized(exact.minY),
+                                                width: V2PreparedPage.serialized(exact.width), height: V2PreparedPage.serialized(exact.height)))
+                    XCTAssertEqual(paint, rule.paint)
+                default: XCTFail("item kind changed during preparation")
+                }
+            }
+        }
+    }
+
+    func testPageRasterizerDeliversOffMainBitmapsAndDropsStaleOnes() throws {
+        let model = try model()
+        load(model, Self.fixtures.appendingPathComponent("display-list-v2-text.json"))
+        guard case .loaded(let frame, _) = model.displayListV2 else { return XCTFail() }
+        let page = frame.prepared[0]
+        let rasterizer = V2PageRasterizer(maxBytes: 64 << 20)
+        let token = V2FrameIdentity.token(frame)
+        rasterizer.setCurrent(frameToken: token)
+        // First request: nothing yet, rasterization starts off-main.
+        XCTAssertNil(rasterizer.image(for: page, frameToken: token, pixelsPerPoint: 1, dark: false))
+        XCTAssertNil(rasterizer.image(for: page, frameToken: token, pixelsPerPoint: 1, dark: false), "a second request while in flight does not start another")
+        let deadline = Date().addingTimeInterval(20)
+        while rasterizer.images.isEmpty, Date() < deadline { RunLoop.main.run(until: Date().addingTimeInterval(0.01)) }
+        let bitmap = try XCTUnwrap(rasterizer.image(for: page, frameToken: token, pixelsPerPoint: 1, dark: false), "bitmap arrived on the main run loop")
+        XCTAssertEqual(rasterizer.rasterizations, 1)
+        // Exactly the bytes of the shared routine: what the pane blits is what parity compares.
+        let direct = try XCTUnwrap(GlyphRunRenderer.rasterize(page, scale: 1))
+        XCTAssertEqual(V2Parity.rgba(bitmap), V2Parity.rgba(direct))
+        XCTAssertGreaterThan(PreviewV2Tests.inkPixels(bitmap), 500)
+        // A different appearance/scale is a different key.
+        XCTAssertNil(rasterizer.image(for: page, frameToken: token, pixelsPerPoint: 2, dark: true))
+        // Frame changes before that bitmap arrives: it is dropped, never installed.
+        rasterizer.setCurrent(frameToken: "other-frame")
+        XCTAssertTrue(rasterizer.images.isEmpty, "bitmaps of the previous frame are evicted")
+        while rasterizer.rasterizations < 2, Date() < deadline { RunLoop.main.run(until: Date().addingTimeInterval(0.01)) }
+        XCTAssertEqual(rasterizer.staleBitmapsDropped, 1)
+        XCTAssertTrue(rasterizer.images.isEmpty)
+        XCTAssertEqual(rasterizer.retainedBytes, 0)
+        // Requests for a frame that is not current never start work.
+        XCTAssertNil(rasterizer.image(for: page, frameToken: token, pixelsPerPoint: 1, dark: false))
+        let settle = Date().addingTimeInterval(0.1)
+        while Date() < settle { RunLoop.main.run(until: Date().addingTimeInterval(0.01)) }
+        XCTAssertEqual(rasterizer.rasterizations, 2)
+    }
+
+    func testPageRasterizerRetentionIsBounded() throws {
+        let model = try model()
+        load(model, Self.fixtures.appendingPathComponent("display-list-v2-text.json"))
+        guard case .loaded(let frame, _) = model.displayListV2 else { return XCTFail() }
+        let page = frame.prepared[0]
+        // Bitmap rows are padded by CoreGraphics; measure real bitmaps.
+        let onePage = try XCTUnwrap(GlyphRunRenderer.rasterize(page, scale: 1)).bytesPerRow * Int(page.heightPt.rounded(.up))
+        let half = try XCTUnwrap(GlyphRunRenderer.rasterize(page, scale: 0.5))
+        let quarterPage = half.bytesPerRow * half.height
+        // Room for one full bitmap at 1 px/pt plus a small one, not two full ones.
+        let rasterizer = V2PageRasterizer(maxBytes: onePage + onePage / 2)
+        let token = V2FrameIdentity.token(frame)
+        rasterizer.setCurrent(frameToken: token)
+        let deadline = Date().addingTimeInterval(20)
+        for dark in [false, true, false] {
+            _ = rasterizer.image(for: page, frameToken: token, pixelsPerPoint: 1, dark: dark)
+        }
+        while rasterizer.rasterizations < 2, Date() < deadline { RunLoop.main.run(until: Date().addingTimeInterval(0.01)) }
+        // The second full bitmap evicted the first (least recently used); the newest is kept.
+        XCTAssertEqual(rasterizer.images.count, 1)
+        XCTAssertEqual(rasterizer.retainedBytes, onePage)
+        XCTAssertNotNil(rasterizer.images[V2PageRasterizer.Key(frameToken: token, page: 1, pixelsPerPoint: 1, dark: true)], "the newest bitmap is kept")
+        XCTAssertNil(rasterizer.images[V2PageRasterizer.Key(frameToken: token, page: 1, pixelsPerPoint: 1, dark: false)], "the oldest was evicted")
+        // A small bitmap fits next to it.
+        _ = rasterizer.image(for: page, frameToken: token, pixelsPerPoint: 0.5, dark: false)
+        while rasterizer.rasterizations < 3, Date() < deadline { RunLoop.main.run(until: Date().addingTimeInterval(0.01)) }
+        XCTAssertLessThanOrEqual(rasterizer.retainedBytes, rasterizer.maxBytes)
+        XCTAssertEqual(rasterizer.images.count, 2)
+        XCTAssertEqual(rasterizer.retainedBytes, onePage + quarterPage)
+        rasterizer.clear()
+        XCTAssertEqual(rasterizer.retainedBytes, 0)
+        XCTAssertTrue(rasterizer.images.isEmpty)
+    }
+}
+
+/// Export-versus-preview identity with NO tolerance, on real pipeline output.
+final class PreviewV2ParityTests: XCTestCase {
+    static let fixtures = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent("Fixtures")
+    /// The bundled fonts plus, when present, MacTeX's Latin Modern Math (for
+    /// the rule fixture; skipped elsewhere). Font files are assets, not an engine.
+    static let mathDir = "/usr/local/texlive/2026/texmf-dist/fonts/opentype/public/lm-math"
+    static let store = V2FontStore(directories: [PreviewV2Tests.fontsDir.path, mathDir])
+
+    func frame(_ name: String) throws -> V2Frame {
+        let envelope = try RenderingV2.decode(try Data(contentsOf: Self.fixtures.appendingPathComponent(name)))
+        return try V2Frame.prepare(envelope, store: Self.store)
+    }
+
+    /// Pinned rasterizer configuration for the zero-tolerance gate: sRGB
+    /// premultiplied RGBA, 1 and 2 pixels per point (non-Retina and Retina
+    /// display scales), antialiased, font smoothing off, subpixel positioning
+    /// on. At other (fractional) scales CoreGraphics rasterizes thin glyph
+    /// stems differently through a CTFont than through the PDF-embedded font
+    /// (measured: a 0.7 px en dash at 1.37 px/pt, 52 px on a page; 0 px at
+    /// 1.0/2.0 on 22 real pages), so those scales are reported, not asserted.
+    static let pinnedScales = [1.0, 2.0]
+
+    /// Fractional scales are measured and printed for the record, never
+    /// asserted (see `pinnedScales`).
+    static let reportedScales = [0.5, 1.37, 1.5, 1.9, 3.0]
+
+    func testRealTextDisplayListExportsPixelIdenticalAtPinnedScales() throws {
+        let frame = try frame("display-list-v2-text.json")
+        for scale in Self.pinnedScales {
+            let report = V2Parity.compare(frame: frame, scale: scale)
+            XCTAssertEqual(report.tolerance, 0)
+            XCTAssertEqual(report.pages.count, frame.list.pages.count)
+            for page in report.pages {
+                XCTAssertEqual(page.differingPixels, 0, "page \(page.page) at \(scale) px/pt")
+                XCTAssertEqual(page.previewSha256, page.exportSha256)
+                XCTAssertEqual(page.widthPx, Int((frame.prepared[0].widthPt * scale).rounded(.up)))
+            }
+            XCTAssertTrue(report.identical)
+            XCTAssertGreaterThan(report.pdfBytes, 1000)
+        }
+        for scale in Self.reportedScales {
+            print("preview-v2 parity (reported, not asserted): text @\(scale) px/pt → \(V2Parity.compare(frame: frame, scale: scale).totalDifferingPixels) differing pixel(s)")
+        }
+        // The preview bitmap is not blank.
+        let preview = try XCTUnwrap(GlyphRunRenderer.rasterize(frame.prepared[0], scale: 2))
+        XCTAssertGreaterThan(PreviewV2Tests.inkPixels(preview), 2000)
+    }
+
+    func testRealMathDisplayListWithTypedRulesExportsPixelIdentical() throws {
+        guard FileManager.default.fileExists(atPath: Self.mathDir + "/latinmodern-math.otf") else {
+            throw XCTSkip("latinmodern-math.otf not available at \(Self.mathDir)")
+        }
+        let frame = try frame("display-list-v2-math-rules.json")
+        let rules = frame.list.pages.flatMap(\.items).filter { if case .rule = $0 { true } else { false } }.count
+        XCTAssertGreaterThanOrEqual(rules, 3, "the fixture carries typed fraction rules")
+        XCTAssertTrue(frame.fonts.values.contains { $0.resource.postscriptName == "LatinModernMath-Regular" })
+        for scale in Self.pinnedScales {
+            let report = V2Parity.compare(frame: frame, scale: scale)
+            XCTAssertTrue(report.identical, "\(report.totalDifferingPixels) differing pixel(s) at \(scale) px/pt")
+        }
+        for scale in Self.reportedScales {
+            print("preview-v2 parity (reported, not asserted): math-rules @\(scale) px/pt → \(V2Parity.compare(frame: frame, scale: scale).totalDifferingPixels) differing pixel(s)")
+        }
+    }
+
+    /// The prepared geometry is what CoreGraphics' PDF writer serializes (7
+    /// significant digits), so preview and export start from identical
+    /// numbers; the displacement from the tick geometry is bounded.
+    func testPreparedCoordinatesAreTheSerializedValues() throws {
+        XCTAssertEqual(V2PreparedPage.serialized(637.7059526443481), 637.706)
+        XCTAssertEqual(V2PreparedPage.serialized(0.39850521087646484), 0.3985052)
+        XCTAssertEqual(V2PreparedPage.serialized(12.20423412322998), 12.20423)
+        XCTAssertEqual(V2PreparedPage.serialized(174.43918323516846), 174.4392)
+        XCTAssertEqual(V2PreparedPage.serialized(0), 0)
+        XCTAssertEqual(V2PreparedPage.serialized(-1.0346), -1.0346)
+        XCTAssertEqual(V2PreparedPage.serialized(V2PreparedPage.serialized(657.2353677749634)), V2PreparedPage.serialized(657.2353677749634), "idempotent")
+        let frame = try frame("display-list-v2-math-rules.json")
+        for (page, prepared) in zip(frame.list.pages, frame.prepared) {
+            for (item, ready) in zip(page.items, prepared.items) {
+                switch (item, ready) {
+                case (.glyphRun(let run), .run(let r)):
+                    for (g, p) in zip(run.glyphs, r.positions) {
+                        XCTAssertEqual(p.x, V2PreparedPage.serialized(RenderingV2.points(g.originX)))
+                        XCTAssertEqual(abs(p.x - RenderingV2.points(g.originX)) <= 5e-5, true, "≤ 5e-5 pt from the tick geometry")
+                        XCTAssertEqual(abs(p.y - (page.heightPt - RenderingV2.points(g.baselineY))) <= 5e-5, true)
+                    }
+                case (.rule(let rule), .rule(let rect, _)):
+                    let exact = GlyphRunRenderer.pdfRect(x: rule.x, top: rule.top, width: rule.width, height: rule.height, pageHeight: page.heightPt)
+                    XCTAssertEqual(abs(rect.minX - exact.minX) <= 5e-5, true)
+                    XCTAssertEqual(abs(rect.height - exact.height) <= 5e-8, true, "sub-point heights keep 7 significant digits")
+                default: XCTFail()
+                }
+            }
+        }
+    }
+
+    func testParityDetectsAOnePointDisplacement() throws {
+        // Sanity: the comparator is not vacuous. Shift one run's export-side
+        // glyphs by 1pt by preparing a second frame from an edited list and
+        // rasterizing that through the PDF path.
+        var frame = try frame("display-list-v2-text.json")
+        var moved = frame.list
+        guard case .glyphRun(var run) = moved.pages[0].items[2] else { return XCTFail() }
+        run.glyphs = run.glyphs.map { var g = $0; g.originX += RenderingV2.ticksPerPoint; return g }
+        moved.pages[0].items[2] = .glyphRun(run)
+        let shifted = try V2Frame.prepare(RenderingV2.Envelope(id: "shifted", payload: moved), store: Self.store)
+        let preview = try XCTUnwrap(GlyphRunRenderer.rasterize(frame.prepared[0], scale: 2))
+        let other = try XCTUnwrap(GlyphRunRenderer.rasterize(shifted.prepared[0], scale: 2))
+        XCTAssertGreaterThan(V2Parity.differingPixels(V2Parity.rgba(preview), V2Parity.rgba(other)), 50)
+        // And a frame compared with itself is identical (bitmaps callback fires per page).
+        var pages = 0
+        let report = V2Parity.compare(frame: frame, scale: 2) { pages += 1; XCTAssertEqual($0.preview.width, $0.export.width) }
+        XCTAssertEqual(pages, frame.list.pages.count)
+        XCTAssertTrue(report.identical)
+        frame.preparedNonce = 0 // silence the unused-mutation warning; frame is a value
     }
 }

@@ -108,15 +108,94 @@ final class V2FontStore {
     }
 }
 
-/// A validated display list whose referenced fonts all resolved: the only
-/// input the renderers accept, so a frame is either fully paintable or absent.
-struct V2Frame {
+/// One page of a frame, converted ONCE into what CoreGraphics consumes:
+/// glyph IDs, absolute origins in PDF space (y up, points), the exact CTFont
+/// per run, and rule rectangles. Built off the main thread by
+/// `V2Frame.prepare`; painting a prepared page allocates nothing and does no
+/// tick arithmetic. Immutable: CTFont/CGFont are immutable CoreFoundation
+/// objects, so a prepared page can be painted from any thread.
+struct V2PreparedPage: @unchecked Sendable {
+    struct Run {
+        var font: CTFont
+        var glyphs: [CGGlyph]
+        /// Baseline origins in PDF space (`x`, `pageHeight − baselineY`), points.
+        var positions: [CGPoint]
+        var paint: RenderingV2.Paint
+    }
+    enum Item {
+        case rule(CGRect, RenderingV2.Paint)
+        case run(Run)
+    }
+    var number: Int
+    var widthPt: Double
+    var heightPt: Double
+    var items: [Item]
+    var glyphCount: Int
+
+    init(page: RenderingV2.Page, fonts: [String: V2FontStore.ResolvedFont]) throws {
+        let heightPt = page.heightPt
+        number = page.number
+        widthPt = page.widthPt
+        self.heightPt = heightPt
+        var items: [Item] = []
+        items.reserveCapacity(page.items.count)
+        var glyphs = 0
+        let q = V2PreparedPage.serialized
+        for item in page.items {
+            switch item {
+            case .rule(let r):
+                let rect = GlyphRunRenderer.pdfRect(x: r.x, top: r.top, width: r.width, height: r.height, pageHeight: heightPt)
+                items.append(.rule(CGRect(x: q(rect.origin.x), y: q(rect.origin.y), width: q(rect.width), height: q(rect.height)), r.paint))
+            case .glyphRun(let run):
+                guard let font = fonts[run.fontId] else {
+                    throw RenderingV2.ValidationError(code: "invalid_resource", message: "page \(page.number): font resource '\(run.fontId)' did not resolve")
+                }
+                let ct = font.ctFont(size: q(RenderingV2.points(run.fontSize)))
+                items.append(.run(Run(font: ct,
+                                      glyphs: run.glyphs.map { CGGlyph($0.gid) },
+                                      positions: run.glyphs.map { CGPoint(x: q(RenderingV2.points($0.originX)), y: q(heightPt - RenderingV2.points($0.baselineY))) },
+                                      paint: run.paint)))
+                glyphs += run.glyphs.count
+            }
+        }
+        self.items = items
+        glyphCount = glyphs
+    }
+
+    /// The value CoreGraphics' PDF writer serializes for `v`: 7 significant
+    /// digits (`%.7g`, measured on its content streams: `637.706`,
+    /// `0.3985052`, `12.20423`). Preparing every page coordinate through this
+    /// once makes the preview raster and the export raster start from
+    /// identical numbers; the displacement from the tick geometry is at most
+    /// half a unit in the 7th digit (5e-5 pt for coordinates below 1000 pt).
+    static func serialized(_ v: Double) -> Double {
+        guard v != 0, v.isFinite else { return v }
+        return Double(String(format: "%.7g", v)) ?? v
+    }
+}
+
+/// A validated display list whose referenced fonts all resolved and whose
+/// pages are prepared: the only input the renderers accept, so a frame is
+/// either fully paintable or absent. Immutable once built (value type over
+/// immutable CoreFoundation fonts), so it may be built on a background queue
+/// and handed to the main thread.
+struct V2Frame: @unchecked Sendable {
     var id: String
     var list: RenderingV2.DisplayList
     /// Keyed by `font_id`; only fonts referenced by at least one glyph run.
     var fonts: [String: V2FontStore.ResolvedFont]
+    /// One entry per `list.pages`, same order.
+    var prepared: [V2PreparedPage]
+    /// Distinct for every `prepare` call: identifies this frame instance
+    /// (bitmap cache keys), independent of the envelope id or file.
+    var preparedNonce: UInt64 = V2Frame.nextNonce()
 
-    /// Resolves every font referenced by a glyph run; the first failure aborts.
+    private static let nonceLock = NSLock()
+    private static var nonce: UInt64 = 0
+    static func nextNonce() -> UInt64 { nonceLock.lock(); defer { nonceLock.unlock() }; nonce += 1; return nonce }
+
+    /// Resolves every font referenced by a glyph run and prepares every page;
+    /// the first failure aborts (no partial frame). Pure: safe off-main.
     static func prepare(_ envelope: RenderingV2.Envelope, store: V2FontStore = .shared) throws -> V2Frame {
         var referenced: [String] = []
         for page in envelope.payload.pages {
@@ -129,10 +208,12 @@ struct V2Frame {
             }
             fonts[id] = try store.resolve(resource)
         }
-        return V2Frame(id: envelope.id, list: envelope.payload, fonts: fonts)
+        let prepared = try envelope.payload.pages.map { try V2PreparedPage(page: $0, fonts: fonts) }
+        return V2Frame(id: envelope.id, list: envelope.payload, fonts: fonts, prepared: prepared)
     }
 
     func page(number: Int) -> RenderingV2.Page? { list.pages.first { $0.number == number } }
+    func preparedPage(number: Int) -> V2PreparedPage? { prepared.first { $0.number == number } }
 }
 
 /// The one draw routine. `ctx`'s user space must be PDF space for the page:
@@ -145,25 +226,31 @@ struct V2Frame {
 enum GlyphRunRenderer {
     /// `dark` inverts paint colors for the on-screen dark preview only; export
     /// callers pass `false` so the document keeps the list's colors.
-    static func draw(page: RenderingV2.Page, frame: V2Frame, in ctx: CGContext, dark: Bool = false) {
-        let pageHeight = page.heightPt
+    static func draw(_ page: V2PreparedPage, in ctx: CGContext, dark: Bool = false) {
         ctx.textMatrix = .identity
         for item in page.items {
             switch item {
-            case .rule(let r):
-                ctx.setFillColor(color(r.paint, dark: dark))
-                ctx.fill(pdfRect(x: r.x, top: r.top, width: r.width, height: r.height, pageHeight: pageHeight))
-            case .glyphRun(let run):
-                // `V2Frame.prepare` resolved every referenced font; a missing entry
-                // cannot happen for a prepared frame, and is never painted around.
-                guard let font = frame.fonts[run.fontId] else { continue }
-                let ct = font.ctFont(size: RenderingV2.points(run.fontSize))
-                let glyphs = run.glyphs.map { CGGlyph($0.gid) }
-                let positions = run.glyphs.map { CGPoint(x: RenderingV2.points($0.originX), y: pageHeight - RenderingV2.points($0.baselineY)) }
+            case .rule(let rect, let paint):
+                // A path fill, not `fill(rect)`: CoreGraphics' fast rectangle
+                // fill computes edge coverage differently from the scan
+                // converter that replays the PDF's `re f`, and differed by one
+                // gray level along every rule row (measured, see V2Parity).
+                ctx.setFillColor(color(paint, dark: dark))
+                ctx.beginPath()
+                ctx.addRect(rect)
+                ctx.fillPath()
+            case .run(let run):
                 ctx.setFillColor(color(run.paint, dark: dark))
-                CTFontDrawGlyphs(ct, glyphs, positions, glyphs.count, ctx)
+                CTFontDrawGlyphs(run.font, run.glyphs, run.positions, run.glyphs.count, ctx)
             }
         }
+    }
+
+    /// Same routine, addressed by display-list page. A page number the frame
+    /// does not hold paints nothing (a prepared frame has every page).
+    static func draw(page: RenderingV2.Page, frame: V2Frame, in ctx: CGContext, dark: Bool = false) {
+        guard let prepared = frame.preparedPage(number: page.number) else { return }
+        draw(prepared, in: ctx, dark: dark)
     }
 
     static func color(_ p: RenderingV2.Paint, dark: Bool) -> CGColor {
@@ -195,11 +282,18 @@ enum GlyphRunRenderer {
         return ctx
     }
 
-    /// Rasterizes one page through `draw` (used by tests and evidence capture).
-    static func rasterize(page: RenderingV2.Page, frame: V2Frame, scale: Double, dark: Bool = false) -> CGImage? {
+    /// Rasterizes one prepared page through `draw`: what the v2 pane blits on
+    /// screen (`V2PageRasterizer`), what tests and the parity check compare.
+    /// Safe off-main: the page is immutable and the context is private.
+    static func rasterize(_ page: V2PreparedPage, scale: Double, dark: Bool = false) -> CGImage? {
         guard let ctx = bitmapContext(widthPt: page.widthPt, heightPt: page.heightPt, scale: scale, dark: dark) else { return nil }
-        draw(page: page, frame: frame, in: ctx, dark: dark)
+        draw(page, in: ctx, dark: dark)
         return ctx.makeImage()
+    }
+
+    static func rasterize(page: RenderingV2.Page, frame: V2Frame, scale: Double, dark: Bool = false) -> CGImage? {
+        guard let prepared = frame.preparedPage(number: page.number) else { return nil }
+        return rasterize(prepared, scale: scale, dark: dark)
     }
 
     /// One PDF page per display-list page, through the same `draw`. The
@@ -207,16 +301,95 @@ enum GlyphRunRenderer {
     static func pdfData(frame: V2Frame) -> Data {
         let data = NSMutableData()
         guard let consumer = CGDataConsumer(data: data), let ctx = CGContext(consumer: consumer, mediaBox: nil, nil) else { return Data() }
-        for page in frame.list.pages {
+        for page in frame.prepared {
             var mediaBox = CGRect(x: 0, y: 0, width: page.widthPt, height: page.heightPt)
             ctx.beginPDFPage([kCGPDFContextMediaBox as String: NSData(bytes: &mediaBox, length: MemoryLayout<CGRect>.size)] as CFDictionary)
             ctx.setFillColor(CGColor(gray: 1, alpha: 1))
             ctx.fill(mediaBox)
-            draw(page: page, frame: frame, in: ctx, dark: false)
+            draw(page, in: ctx, dark: false)
             ctx.endPDFPage()
         }
         ctx.closePDF()
         return data as Data
+    }
+}
+
+/// Export-versus-preview comparison with NO tolerance: every page of the
+/// frame is rasterized through `GlyphRunRenderer.rasterize` (the bitmap the
+/// v2 pane shows) and, separately, exported to PDF through
+/// `GlyphRunRenderer.pdfData` and rasterized back by CoreGraphics into an
+/// identically configured bitmap. Any pixel whose RGBA differs counts.
+/// Same rasterizer, same DPI, same color space and font resources, so a
+/// nonzero count is a placement/resource disagreement, never "antialiasing".
+enum V2Parity {
+    struct PageResult: Codable, Equatable {
+        var page: Int
+        var widthPx: Int
+        var heightPx: Int
+        var differingPixels: Int
+        /// SHA-256 of the raw premultiplied RGBA bytes of each bitmap.
+        var previewSha256: String
+        var exportSha256: String
+        var identical: Bool { differingPixels == 0 && previewSha256 == exportSha256 }
+    }
+    struct Report: Codable, Equatable {
+        var frameId: String
+        var projectId: String
+        var revision: Int
+        var scale: Double
+        var tolerance: Int = 0
+        var pdfBytes: Int
+        var pages: [PageResult]
+        var identical: Bool { pages.allSatisfy(\.identical) }
+        var totalDifferingPixels: Int { pages.reduce(0) { $0 + $1.differingPixels } }
+    }
+
+    /// Raw RGBA bytes of an image drawn into the renderer's bitmap configuration.
+    static func rgba(_ image: CGImage) -> [UInt8] {
+        guard let ctx = CGContext(data: nil, width: image.width, height: image.height, bitsPerComponent: 8, bytesPerRow: image.width * 4,
+                                  space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue),
+              let base = ctx.data else { return [] }
+        ctx.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+        return Array(UnsafeBufferPointer(start: base.assumingMemoryBound(to: UInt8.self), count: image.width * image.height * 4))
+    }
+
+    static func differingPixels(_ a: [UInt8], _ b: [UInt8]) -> Int {
+        guard a.count == b.count else { return max(a.count, b.count) / 4 }
+        var n = 0
+        var i = 0
+        while i < a.count {
+            if a[i] != b[i] || a[i + 1] != b[i + 1] || a[i + 2] != b[i + 2] || a[i + 3] != b[i + 3] { n += 1 }
+            i += 4
+        }
+        return n
+    }
+
+    /// Per-page bitmaps for `compare` (also what the evidence hook writes).
+    struct PageBitmaps { var page: Int; var preview: CGImage; var export: CGImage }
+
+    /// Exports `frame` once, then rasterizes every PDF page next to the
+    /// preview raster of the same page. Off-main safe.
+    static func compare(frame: V2Frame, scale: Double, bitmaps: ((PageBitmaps) -> Void)? = nil) -> Report {
+        let pdf = GlyphRunRenderer.pdfData(frame: frame)
+        var results: [PageResult] = []
+        let document = CGDataProvider(data: pdf as CFData).flatMap { CGPDFDocument($0) }
+        for (index, page) in frame.prepared.enumerated() {
+            guard let preview = GlyphRunRenderer.rasterize(page, scale: scale) else { continue }
+            let previewBytes = rgba(preview)
+            var exportBytes: [UInt8] = []
+            var exportImage: CGImage?
+            if let document, let pdfPage = document.page(at: index + 1),
+               let ctx = GlyphRunRenderer.bitmapContext(widthPt: page.widthPt, heightPt: page.heightPt, scale: scale) {
+                ctx.drawPDFPage(pdfPage)
+                if let image = ctx.makeImage() { exportImage = image; exportBytes = rgba(image) }
+            }
+            results.append(PageResult(page: page.number, widthPx: preview.width, heightPx: preview.height,
+                                      differingPixels: differingPixels(previewBytes, exportBytes),
+                                      previewSha256: V2FontStore.hex(SHA256.hash(data: Data(previewBytes))),
+                                      exportSha256: V2FontStore.hex(SHA256.hash(data: Data(exportBytes)))))
+            if let bitmaps, let exportImage { bitmaps(PageBitmaps(page: page.number, preview: preview, export: exportImage)) }
+        }
+        return Report(frameId: frame.id, projectId: frame.list.projectId, revision: frame.list.revision, scale: scale, pdfBytes: pdf.count, pages: results)
     }
 }
 
