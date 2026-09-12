@@ -921,24 +921,73 @@ final class ProjectDocuments {
             }
             let reply = await helperRequest("export", ["path": path, "expected_revision": durable.revision,
                                                        "expected_sha256": durable.sha256, "expected_disk_sha256": expectedDisk ?? NSNull()])
-            switch reply {
-            case .success(let payload):
-                let sha = payload["sha256"] as? String ?? SourceDigest.sha256Hex(text)
+            let verdict = await Self.exportVerdict(reply, path: path, text: text) { [weak self] in await self?.diskSHA256(of: path) }
+            switch verdict {
+            case .saved(let sha, let afterError):
                 baselines[path] = text
                 diskBaselines[path] = sha
                 saveConflict = nil
                 model.snapshotSaved(url: url, text: text)
-                return noteSave(.saved(path: path, sha256: sha), extra: " through the preview controller (durable r\(durable.revision))")
-            case .failure(let e):
-                guard let kind = ShellModel.conflictKind(inExportRefusal: e.message) else { return noteSave(.failed(e.message)) }
-                let theirs = await diskSHA256(of: path)
+                let how = afterError.map { " (the helper reported \"\($0)\" after the rename; the file holds exactly the exported text)" } ?? ""
+                return noteSave(.saved(path: path, sha256: sha), extra: " through the preview controller (durable r\(durable.revision))" + how)
+            case .conflict(let kind, let theirs):
                 let conflict = DocumentConflict(url: url, kind: kind, ours: expectedDisk, theirs: theirs, size: nil, mtimeUnixMs: nil, viaHelper: true)
                 saveConflict = conflict
                 model.preserveDirtyText(text, at: url, reason: "save refused: file changed on disk")
                 return noteSave(.conflict(conflict))
+            case .failed(let why):
+                model.preserveDirtyText(text, at: url, reason: "save failed: \(why)")
+                return noteSave(.failed(why))
             }
         }
         return saveDocumentNow(path)
+    }
+
+    /// What an `export` reply means for the member's baseline (STDIO.md).
+    enum ExportVerdict: Equatable {
+        /// The file holds exactly `text` (receipt hash verified). `afterError`
+        /// is the helper's error when the write landed but the reply was an
+        /// error ("an error can follow rename"): disk was inspected, not assumed.
+        case saved(sha256: String, afterError: String?)
+        case conflict(ProjectFilesV1.ConflictKind, theirs: String?)
+        case failed(String)
+    }
+
+    /// The exact guard on the export route, on top of the helper's own
+    /// (`expected_revision`/`expected_sha256`/`expected_disk_sha256`, rooted
+    /// lock, rename): a receipt is a save only when it names this path and
+    /// hashes to exactly the text sent — a different hash means the helper
+    /// exported some other durable text and the buffer stays dirty. A refusal
+    /// naming a project-files conflict is a conflict with the disk hash read
+    /// through `file_status`. Any other error is checked against disk first:
+    /// the helper documents errors after a successful rename (directory
+    /// durability), so a file that now hashes to the text sent *is* saved and
+    /// the baseline follows it; otherwise nothing changes and the error stands.
+    static func exportVerdict(_ reply: Result<[String: Any], ControllerError>, path: String, text: String,
+                              diskSHA256: () async -> String?) async -> ExportVerdict {
+        let sent = SourceDigest.sha256Hex(text)
+        switch reply {
+        case .success(let payload):
+            if let p = payload["path"] as? String, p != path {
+                return .failed("export receipt names \(p), not \(path); buffer kept unsaved")
+            }
+            guard let sha = payload["sha256"] as? String else {
+                return .failed("export receipt for \(path) carries no sha256; buffer kept unsaved")
+            }
+            guard sha == sent else {
+                return .failed("export receipt hash for \(path) (\(sha.prefix(12))) is not the text sent (\(sent.prefix(12))); buffer kept unsaved")
+            }
+            if let bytes = payload["bytes"] as? Int, bytes != text.utf8.count {
+                return .failed("export receipt for \(path) reports \(bytes) bytes, sent \(text.utf8.count); buffer kept unsaved")
+            }
+            return .saved(sha256: sha, afterError: nil)
+        case .failure(let e):
+            if let kind = ShellModel.conflictKind(inExportRefusal: e.message) {
+                return .conflict(kind, theirs: await diskSHA256())
+            }
+            if await diskSHA256() == sent { return .saved(sha256: sent, afterError: e.message) }
+            return .failed(e.message)
+        }
     }
 
     /// Synchronous save of a non-entry member through the file layer's
