@@ -1,0 +1,76 @@
+{
+  "agent_id": "daniel-statistics",
+  "archived_utc": "2026-09-12T16:35:39Z",
+  "assignment": {
+    "acceptance": [
+      "Meaningful tests and strict Rust lint pass with bounded malformed/Unicode inputs",
+      "Preserve exact source/revision and resource identities; no implicit approximation or parity claim",
+      "Do not edit peer compiler/native/layout files; publish typed adapter contract and exact tested SHA"
+    ],
+    "agent_id": "daniel-statistics",
+    "allocation_id": "daniel-claude20x-shared",
+    "branch": "agent/daniel-statistics/document-statistics",
+    "deadline_utc": null,
+    "dependencies": [],
+    "input_main_sha": "8e7546dfb4721c780036f03c21b14e6002062142",
+    "objective": "Incremental document statistics: bounded adversarial and stale-identity acceptance tests",
+    "owned_paths": [
+      "crates/document-statistics"
+    ],
+    "revision": 3,
+    "schema_version": 1,
+    "state": "assigned",
+    "task_id": "FT-042",
+    "timebox_minutes": 30,
+    "updated_utc": "2026-09-12T09:36:00Z"
+  },
+  "report": {
+    "agent_id": "daniel-statistics",
+    "allocation_id": "daniel-claude20x-shared",
+    "assignment_acknowledgements": {
+      "FT-042": {
+        "acknowledged_utc": "2026-09-12T16:32:13Z",
+        "adaptation": "Accepted FT-042 rev 3 as owner of crates/document-statistics only. Kept rev 1's pure Statistics::compute, its word-counting rule and documented CJK limitation, rev 2's ScanLimit/ProjectCache, and the rev-2 incremental-equals-fresh property test fully intact -- no src/ file touched. Added tests/adversarial_bounds.rs attacking the cache and scanner with the required minimum cases (scan-byte limit at/past the boundary, a thousands-of-documents project, a single enormous item, combining-mark/zero-width-only text, a u64::MAX revision id, one document id re-registered with different content, an empty project, and many-updates churn showing bounded cache size), asserting exact typed-error fields or bounded Ok results and never a panic. Added tests/stale_identity_acceptance.rs stating the four-rule trust contract (same rev+content hit; same rev+changed content miss, the dangerous case; changed rev+same content miss; sibling entry untouched) as named, readable acceptance tests. Merged origin/main first. No workspace root Cargo.toml touched, no peer crate edited, no push/merge to main performed.",
+        "main_sha": "967703ebb4e8140feaf4db02d27cb3ac63c573f6",
+        "revision": 3
+      }
+    },
+    "branch": "agent/daniel-statistics/document-statistics",
+    "capabilities": [
+      "rust",
+      "document-statistics",
+      "caching"
+    ],
+    "code_revision": "cce30e1d9f692316f7df16d116752e7bf043cc72",
+    "eta_minutes": {
+      "likely": 0,
+      "optimistic": 0,
+      "pessimistic": 0
+    },
+    "machine": "mac-m5pro-dq222",
+    "main_integrated_through": "967703ebb4e8140feaf4db02d27cb3ac63c573f6",
+    "next_action": "Await Commander integration; no consumer wired up yet (deferred per FT-042 negotiation). No further rev-3 work planned unless Commander requests additional adversarial coverage.",
+    "reviewed_peers": {
+      "origin/main": "967703ebb4e8140feaf4db02d27cb3ac63c573f6"
+    },
+    "schema_version": 1,
+    "state": "ready_for_integration",
+    "summary": "crates/document-statistics rev 3: no src/ changes. Added tests/adversarial_bounds.rs (14 tests) attacking the cache and scanner -- exact scan-byte-limit boundary, a 5000-document project, a single ~2MB item, combining-mark-only and zero-width-only text, revision id at u64::MAX, one source id re-registered 200 times with different content, an empty project, and 20000/5000-update churn proving cache.len() tracks distinct sources not update count -- every case a typed ScanTooLarge or a bounded Ok, never a panic. Added tests/stale_identity_acceptance.rs (5 tests) restating rev 2's property-tested contract as a specification: same revision+content is a trusted hit; same revision+changed content is a miss (the dangerous stale case); changed revision+same content is a miss; a sibling document's entry is untouched by either. 65 tests pass (was 46), clippy and fmt clean.",
+    "tool": "Claude Code on Claude Max 20x",
+    "updated_utc": "2026-09-12T16:32:13Z",
+    "usage": {
+      "evidence": "Shared Claude Max 20x subscription quota; no purchases or overages; live consumption not exposed to this agent.",
+      "status": "unknown"
+    }
+  },
+  "report_age_seconds": 206,
+  "report_path": "coordination/agents/daniel-statistics.json",
+  "review_required": true,
+  "revision": 3,
+  "schema_version": 1,
+  "stale_completion": false,
+  "state": "reported_ready",
+  "task_id": "FT-042",
+  "worker_branch": "agent/daniel-statistics/document-statistics",
+  "worker_report_sha": "d7e3184a49b58fa6432937800fb13b3ba684a66c"
+}
