@@ -545,6 +545,7 @@ mod path;
 pub use path::{PathCommand, QuadraticPath};
 
 pub mod tfm;
+pub mod tfm_run;
 
 pub mod encoding;
 
