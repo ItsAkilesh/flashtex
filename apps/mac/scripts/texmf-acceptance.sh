@@ -58,6 +58,10 @@ while [[ $# -gt 0 ]]; do
 done
 die() { echo "texmf-acceptance.sh: $*" >&2; exit 1; }
 
+# Runs below change cwd to an empty home. Resolve caller-relative --app
+# once so binaries and resource overrides still name the requested bundle.
+[[ -d "$APP_DIR" ]] || die "app directory not found: $APP_DIR"
+APP_DIR="$(cd "$APP_DIR" && pwd)"
 RENDER="$APP_DIR/Contents/MacOS/flashtex-render"
 CONTROLLER="$APP_DIR/Contents/MacOS/flashtex-preview-controller"
 RESOURCES="$APP_DIR/Contents/Resources"

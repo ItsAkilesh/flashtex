@@ -1,0 +1,134 @@
+note: /F1 LMRoman10-Regular from /private/tmp/flashtex-opus-fonts-takeover/apps/mac/build/FlashTeX.app/Contents/Resources/Fonts/lmroman10-regular.otf: 61 glyph(s), CffSubset, program 8177 bytes
+note: /F2 LMRoman12-Bold from /private/tmp/flashtex-opus-fonts-takeover/apps/mac/build/FlashTeX.app/Contents/Resources/Fonts/lmroman12-bold.otf: 22 glyph(s), CffSubset, program 3297 bytes
+note: /F3 LatinModernMath-Regular from /private/tmp/flashtex-opus-fonts-takeover/apps/mac/build/FlashTeX.app/Contents/Resources/Fonts/latinmodern-math.otf: 30 glyph(s), CffSubset, program 4642 bytes
+note: /F4 LMRoman10-Italic from /private/tmp/flashtex-opus-fonts-takeover/apps/mac/build/FlashTeX.app/Contents/Resources/Fonts/lmroman10-italic.otf: 14 glyph(s), CffSubset, program 2895 bytes
+note: /F5 LMRoman8-Regular from /private/tmp/flashtex-opus-fonts-takeover/apps/mac/build/FlashTeX.app/Contents/Resources/Fonts/lmroman8-regular.otf: 1 glyph(s), CffSubset, program 631 bytes
+diagnostic (from the display list): warning: compiler: packages fontenc are recognised but not implemented
+diagnostic (from the display list): warning: compiler: packages inputenc are recognised but not implemented
+diagnostic (from the display list): warning: compiler: packages geometry are recognised but not implemented
+diagnostic (from the display list): warning: compiler: packages amsmath, amssymb, amsthm are recognised but not implemented
+diagnostic (from the display list): warning: compiler: packages enumerate are recognised but not implemented
+diagnostic (from the display list): error: compiler: \newtheorem is not supported in the document preamble
+diagnostic (from the display list): error: compiler: \newtheorem is not supported in the document preamble
+diagnostic (from the display list): error: compiler: \newtheorem is not supported in the document preamble
+diagnostic (from the display list): error: compiler: \theoremstyle is not supported in the document preamble
+diagnostic (from the display list): error: compiler: \newtheorem is not supported in the document preamble
+diagnostic (from the display list): error: compiler: \newtheorem is not supported in the document preamble
+diagnostic (from the display list): error: compiler: \theoremstyle is not supported in the document preamble
+diagnostic (from the display list): error: compiler: \newtheorem is not supported in the document preamble
+diagnostic (from the display list): error: compiler: \DeclareMathOperator is not supported in the document preamble
+diagnostic (from the display list): error: compiler: \lcm is not supported in the document preamble
+diagnostic (from the display list): error: compiler: \title is not supported in the document preamble
+diagnostic (from the display list): error: compiler: \author is not supported in the document preamble
+diagnostic (from the display list): error: compiler: \date is not supported in the document preamble
+diagnostic (from the display list): error: compiler: \maketitle is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: \tableofcontents is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): warning: compiler: environment 'definition' is not implemented; its body is typeset as plain text
+diagnostic (from the display list): error: compiler: \in is not supported in math mode
+diagnostic (from the display list): error: compiler: \mathbb is not supported in math mode
+diagnostic (from the display list): error: compiler: \mid is not supported in math mode
+diagnostic (from the display list): error: compiler: \in is not supported in math mode
+diagnostic (from the display list): error: compiler: \mathbb is not supported in math mode
+diagnostic (from the display list): error: compiler: \nmid is not supported in math mode
+diagnostic (from the display list): warning: compiler: environment 'example' is not implemented; its body is typeset as plain text
+diagnostic (from the display list): error: compiler: \mid is not supported in math mode
+diagnostic (from the display list): error: compiler: \nmid is not supported in math mode
+diagnostic (from the display list): warning: compiler: environment 'lemma' is not implemented; its body is typeset as plain text
+diagnostic (from the display list): error: compiler: \mid is not supported in math mode
+diagnostic (from the display list): error: compiler: \mid is not supported in math mode
+diagnostic (from the display list): error: compiler: \mid is not supported in math mode
+diagnostic (from the display list): warning: compiler: environment 'proof' is not implemented; its body is typeset as plain text
+diagnostic (from the display list): error: compiler: \ell is not supported in math mode
+diagnostic (from the display list): error: compiler: \ell is not supported in math mode
+diagnostic (from the display list): error: compiler: \in is not supported in math mode
+diagnostic (from the display list): error: compiler: \mathbb is not supported in math mode
+diagnostic (from the display list): error: compiler: \ell is not supported in math mode
+diagnostic (from the display list): error: compiler: \ell is not supported in math mode
+diagnostic (from the display list): error: compiler: \ell is not supported in math mode
+diagnostic (from the display list): error: compiler: \ell is not supported in math mode
+diagnostic (from the display list): error: compiler: \in is not supported in math mode
+diagnostic (from the display list): error: compiler: \mathbb is not supported in math mode
+diagnostic (from the display list): error: compiler: \mid is not supported in math mode
+diagnostic (from the display list): warning: compiler: environment 'lemma' is not implemented; its body is typeset as plain text
+diagnostic (from the display list): error: compiler: \mid is not supported in math mode
+diagnostic (from the display list): error: compiler: \mid is not supported in math mode
+diagnostic (from the display list): error: compiler: \mid is not supported in math mode
+diagnostic (from the display list): error: compiler: \in is not supported in math mode
+diagnostic (from the display list): error: compiler: \mathbb is not supported in math mode
+diagnostic (from the display list): warning: compiler: environment 'proof' is not implemented; its body is typeset as plain text
+diagnostic (from the display list): error: compiler: \ell is not supported in math mode
+diagnostic (from the display list): error: compiler: \ell is not supported in math mode
+diagnostic (from the display list): error: compiler: \ell is not supported in math mode
+diagnostic (from the display list): warning: compiler: environment 'remark' is not implemented; its body is typeset as plain text
+diagnostic (from the display list): warning: compiler: environment 'theorem' is not implemented; its body is typeset as plain text
+diagnostic (from the display list): error: compiler: \in is not supported in math mode
+diagnostic (from the display list): error: compiler: \mathbb is not supported in math mode
+diagnostic (from the display list): error: compiler: \in is not supported in math mode
+diagnostic (from the display list): error: compiler: \mathbb is not supported in math mode
+diagnostic (from the display list): error: compiler: \in is not supported in math mode
+diagnostic (from the display list): error: compiler: \mathbb is not supported in math mode
+diagnostic (from the display list): error: compiler: \quad is not supported in math mode
+diagnostic (from the display list): error: compiler: \text is not supported in math mode
+diagnostic (from the display list): error: compiler: \quad is not supported in math mode
+diagnostic (from the display list): error: compiler: \le is not supported in math mode
+diagnostic (from the display list): warning: compiler: environment 'proof' is not implemented; its body is typeset as plain text
+diagnostic (from the display list): error: compiler: \in is not supported in math mode
+diagnostic (from the display list): error: compiler: \mathbb is not supported in math mode
+diagnostic (from the display list): error: compiler: \ge is not supported in math mode
+diagnostic (from the display list): error: compiler: \ge is not supported in math mode
+diagnostic (from the display list): error: compiler: \in is not supported in math mode
+diagnostic (from the display list): error: compiler: \le is not supported in math mode
+diagnostic (from the display list): error: compiler: \le is not supported in math mode
+diagnostic (from the display list): error: compiler: \mid is not supported in math mode
+diagnostic (from the display list): warning: compiler: environment 'corollary' is not implemented; its body is typeset as plain text
+diagnostic (from the display list): warning: compiler: environment 'definition' is not implemented; its body is typeset as plain text
+diagnostic (from the display list): error: compiler: \in is not supported in math mode
+diagnostic (from the display list): error: compiler: \mathbb is not supported in math mode
+diagnostic (from the display list): error: compiler: \gcd is not supported in math mode
+diagnostic (from the display list): error: compiler: \in is not supported in math mode
+diagnostic (from the display list): error: compiler: \mathbb is not supported in math mode
+diagnostic (from the display list): error: compiler: \mid is not supported in math mode
+diagnostic (from the display list): error: compiler: \mid is not supported in math mode
+diagnostic (from the display list): error: compiler: \lcm is not supported in math mode
+diagnostic (from the display list): warning: compiler: environment 'theorem' is not implemented; its body is typeset as plain text
+diagnostic (from the display list): error: compiler: \ge is not supported in math mode
+diagnostic (from the display list): error: compiler: \gcd is not supported in math mode
+diagnostic (from the display list): error: compiler: \gcd is not supported in math mode
+diagnostic (from the display list): warning: compiler: environment 'proof' is not implemented; its body is typeset as plain text
+diagnostic (from the display list): warning: compiler: environment 'example' is not implemented; its body is typeset as plain text
+diagnostic (from the display list): error: compiler: \gcd is not supported in math mode
+diagnostic (from the display list): warning: compiler: environment 'align*' is not implemented; its body is typeset as plain text
+diagnostic (from the display list): error: compiler: \cdot is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: \cdot is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: \cdot is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: \cdot is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: \gcd is not supported in math mode
+diagnostic (from the display list): warning: compiler: environment 'theorem' is not implemented; its body is typeset as plain text
+diagnostic (from the display list): error: compiler: \in is not supported in math mode
+diagnostic (from the display list): error: compiler: \mathbb is not supported in math mode
+diagnostic (from the display list): error: compiler: \in is not supported in math mode
+diagnostic (from the display list): error: compiler: \mathbb is not supported in math mode
+diagnostic (from the display list): error: compiler: \gcd is not supported in math mode
+diagnostic (from the display list): warning: compiler: environment 'proof' is not implemented; its body is typeset as plain text
+diagnostic (from the display list): error: compiler: \subsection requires a braced argument
+diagnostic (from the display list): error: compiler: \gcd is not supported in math mode
+diagnostic (from the display list): error: compiler: \in is not supported in math mode
+diagnostic (from the display list): error: compiler: \mathbb is not supported in math mode
+diagnostic (from the display list): error: compiler: \in is not supported in math mode
+diagnostic (from the display list): error: compiler: \mathbb is not supported in math mode
+diagnostic (from the display list): error: compiler: \gcd is not supported in math mode
+diagnostic (from the display list): error: compiler: \lcm is not supported in math mode
+diagnostic (from the display list): error: compiler: \in is not supported in math mode
+diagnostic (from the display list): error: compiler: \mathbb is not supported in math mode
+diagnostic (from the display list): warning: overfull_hbox: overfull line: 5.14pt too wide (no hyphenation available)
+diagnostic (from the display list): warning: overfull_hbox: overfull line: 20.42pt too wide (no hyphenation available)
+diagnostic (from the display list): warning: math_limitation: no math glyph for ' '; empty box used
+diagnostic (from the display list): warning: overfull_hbox: overfull line: 34.21pt too wide (no hyphenation available)
+diagnostic (from the display list): warning: math_limitation: no math glyph for '''; empty box used
+diagnostic (from the display list): warning: overfull_hbox: overfull line: 7.91pt too wide (no hyphenation available)
+diagnostic (from the display list): warning: overfull_hbox: overfull line: 33.92pt too wide (no hyphenation available)
+diagnostic (from the display list): warning: overfull_hbox: overfull line: 20.65pt too wide (no hyphenation available)
+diagnostic (from the display list): warning: math_resource_profile: lmmi10: glyphs drawn from latinmodern-math (one 10pt design); no optical-size OpenType outline resource exists for this family, so the outlines are not the reference's lmmi10 design
+diagnostic (from the display list): warning: math_resource_profile: lmmi8: glyphs drawn from latinmodern-math (one 10pt design); no optical-size OpenType outline resource exists for this family, so the outlines are not the reference's lmmi8 design
+diagnostic (from the display list): warning: math_resource_profile: lmsy10: glyphs drawn from latinmodern-math (one 10pt design); no optical-size OpenType outline resource exists for this family, so the outlines are not the reference's lmsy10 design
+note: 1 page(s), 529 glyph run(s), 1929 glyph(s) (0 continued at the natural advance, 0 with an exact TJ kern), 0 rule(s), 184859 bytes -> /private/tmp/flashtex-opus-fonts-takeover/docs/evidence/opus-fonts-takeover-20260912T1800Z/base-app-exports/lecture-notes/export.pdf

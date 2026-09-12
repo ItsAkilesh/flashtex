@@ -393,6 +393,14 @@ enum Completion {
         return Array(out.prefix(maxSuggestions))
     }
 
+    /// `\cite{` candidates: `\bibitem` keys of this document, then the
+    /// project index's citation keys. Where a key comes from is stated from
+    /// the helper-declared document kinds bound to the same snapshot
+    /// (`Metadata.documentKinds`), never inferred from a file name: a record
+    /// in a declared bibliography, a `\bibitem` in a LaTeX source, a key the
+    /// helper did not report a kind for, or a cited key with no definition
+    /// (which says how to declare the .bib). Declared-bibliography records
+    /// rank first among the index keys, unresolved keys last.
     private static func citationSuggestions(prefix: String, text: String, metadata: Metadata?) -> [Suggestion] {
         var seen = Set<String>()
         var out: [Suggestion] = []
@@ -400,12 +408,40 @@ enum Completion {
             out.append(Suggestion(label: key, insertText: key + "}", kind: .citation, detail: "\\bibitem in this document"))
         }
         if let metadata {
+            var ranked: [(rank: Int, suggestion: Suggestion)] = []
             for item in metadata.citations where item.name.hasPrefix(prefix) && seen.insert(item.name).inserted {
-                out.append(Suggestion(label: item.name, insertText: item.name + "}", kind: .citation,
-                                      detail: item.detail(noun: "defined", revision: metadata.revision)))
+                let (rank, detail) = citationDetail(item, metadata: metadata)
+                ranked.append((rank, Suggestion(label: item.name, insertText: item.name + "}", kind: .citation, detail: detail)))
             }
+            // Stable: the index's own (sorted) order within a rank.
+            out += ranked.enumerated().sorted { a, b in a.element.rank != b.element.rank ? a.element.rank < b.element.rank : a.offset < b.offset }
+                .map(\.element.suggestion)
         }
         return Array(out.prefix(maxSuggestions))
+    }
+
+    /// Rank (0 declared bibliography record, 1 `\bibitem` in a LaTeX source,
+    /// 2 kind unknown, 3 unresolved) and detail text for an index citation.
+    static func citationDetail(_ item: Metadata.Item, metadata: Metadata) -> (rank: Int, detail: String) {
+        var s: String
+        var rank: Int
+        if item.definitions == 0 {
+            rank = 3
+            s = "cited but not defined in a declared bibliography source"
+            if let declared = metadata.declaredBibliographies, declared.isEmpty {
+                s += " (none declared: Project > Document Kinds)"
+            }
+        } else {
+            let path = item.definedIn ?? "project"
+            switch metadata.isDeclaredBibliography(item.definedIn) {
+            case true?: rank = 0; s = "record in \(path) (declared bibliography)"
+            case false?: rank = 1; s = "\\bibitem in \(path)"
+            case nil: rank = 2; s = "defined in \(path) (kind not reported by this helper)"
+            }
+            if item.definitions > 1 { s += " (+\(item.definitions - 1) more)" }
+        }
+        if item.occurrences > 0 { s += " · \(item.occurrences)\(item.locationsTruncated ? "+" : "") use\(item.occurrences == 1 ? "" : "s")" }
+        return (rank, s + " · revision \(metadata.revision)")
     }
 
     private static func wordSuggestions(prefix: String, tokenStart: Int, text: String) -> [Suggestion] {
@@ -705,6 +741,26 @@ enum Completion {
         var unresolvedReferences: Set<String> = []
         /// Some cap in `Limits` dropped data.
         var truncated = false
+        /// Document kinds exactly as the helper's `snapshot` reported them
+        /// for these `source_versions` (`latex` / `bibliography`), keyed by
+        /// project path. Nil when no snapshot was bound (compile-result
+        /// metadata, or a helper without `document_kinds`): the kind of a
+        /// path is then unknown, never inferred from its name or text.
+        var documentKinds: [String: String]?
+
+        /// Whether `path` is a declared bibliography source at this snapshot:
+        /// `true`/`false` when the helper reported a kind for exactly that
+        /// path, nil when it did not (no snapshot bound, or the path is not
+        /// in `document_kinds`) — unknown is never turned into a guess.
+        func isDeclaredBibliography(_ path: String?) -> Bool? {
+            guard let documentKinds, let path, let kind = documentKinds[path] else { return nil }
+            return kind == "bibliography"
+        }
+
+        /// Declared bibliography paths at this snapshot (sorted); nil when unknown.
+        var declaredBibliographies: [String]? {
+            documentKinds.map { $0.filter { $0.value == "bibliography" }.keys.sorted() }
+        }
 
         /// The metadata when it was produced for exactly `revision`, else nil.
         /// A nil `revision` (the editor has not told the view its revision)
@@ -771,6 +827,31 @@ enum Completion {
             return m
         }
 
+        /// Decodes a preview-controller `snapshot` reply payload
+        /// (`{"project_id", "source_versions", "membership_generation",
+        /// "document_kinds": {path: "latex"|"bibliography"}}`) into metadata
+        /// carrying only the declared kinds, bound to `editorRevision`. Refused
+        /// (thrown) for other source versions or an unknown kind value; a
+        /// reply without `document_kinds` (older helper) binds no kinds.
+        static func decodeProjectIndexSnapshot(_ data: Data, editorRevision: Int,
+                                               expectedSourceVersions: [String: Int]) throws -> Metadata {
+            guard data.count <= Limits.maxReplyBytes else { throw DecodeError.tooLarge(bytes: data.count) }
+            let reply: ProjectIndexSnapshot
+            do { reply = try JSONDecoder().decode(ProjectIndexSnapshot.self, from: data) }
+            catch { throw DecodeError.malformed("\(error)") }
+            guard reply.sourceVersions == expectedSourceVersions else {
+                throw DecodeError.staleSourceVersions(expected: expectedSourceVersions, got: reply.sourceVersions)
+            }
+            var m = Metadata(origin: .projectIndex(sourceVersions: reply.sourceVersions), revision: editorRevision)
+            if let kinds = reply.documentKinds {
+                for (path, kind) in kinds where kind != "latex" && kind != "bibliography" {
+                    throw DecodeError.malformed("unknown document kind \(kind) for \(path)")
+                }
+                m.documentKinds = kinds
+            }
+            return m
+        }
+
         /// Combines metadata produced for the same revision (compile-result
         /// diagnostics plus one or more project-index categories). Nil when the
         /// revisions differ: metadata never straddles revisions.
@@ -784,6 +865,11 @@ enum Completion {
             m.diagnosticsByEnvironment.merge(other.diagnosticsByEnvironment) { mine, _ in mine }
             m.unresolvedReferences.formUnion(other.unresolvedReferences)
             m.truncated = truncated || other.truncated
+            switch (documentKinds, other.documentKinds) {
+            case (nil, let k?): m.documentKinds = k
+            case (let mine?, let k?): m.documentKinds = mine.merging(k) { mine, _ in mine }
+            default: break
+            }
             return m
         }
 
@@ -798,6 +884,13 @@ enum Completion {
             guard let close = rest.firstIndex(of: "'") else { return nil }
             let key = rest[..<close]
             return key.isEmpty ? nil : String(key)
+        }
+
+        /// Wire shape of the helper's `snapshot` reply payload (the fields used).
+        struct ProjectIndexSnapshot: Decodable {
+            let sourceVersions: [String: Int]
+            let documentKinds: [String: String]?
+            enum CodingKeys: String, CodingKey { case sourceVersions = "source_versions", documentKinds = "document_kinds" }
         }
 
         /// Wire shape of the helper's `complete` reply payload.
@@ -926,7 +1019,8 @@ enum Completion {
 // MARK: - Project-index vocabulary through the preview-controller helper
 
 /// Drives the helper's `complete` queries (STDIO.md) for the three categories
-/// at one exact snapshot and turns the replies into one bound `Metadata`.
+/// plus the `snapshot` (declared document kinds) at one exact snapshot and
+/// turns the replies into one bound `Metadata`.
 /// Owned by the shell model, which calls `request` when a controller preview
 /// for known `source_versions` was applied and routes `result`/`error` frames
 /// through `handle`. Everything is refused rather than guessed: a reply for
@@ -938,9 +1032,13 @@ final class ProjectIndexCompletionFetcher {
     static let categories: [Completion.Kind] = [.reference, .citation, .command]
     static let wireCategory: [Completion.Kind: String] = [.reference: "label", .citation: "citation", .command: "command"]
 
+    /// One reply the query waits for: a `complete` category or the `snapshot`
+    /// that names the document kinds of the same source versions.
+    enum Part: Equatable { case category(Completion.Kind), documentKinds }
+
     struct Query: Equatable {
-        /// Request id → category, for the replies still outstanding.
-        var outstanding: [String: Completion.Kind]
+        /// Request id → part, for the replies still outstanding.
+        var outstanding: [String: Part]
         let sourceVersions: [String: Int]
         let editorRevision: Int
         var merged: Completion.Metadata?
@@ -965,18 +1063,21 @@ final class ProjectIndexCompletionFetcher {
     private(set) var lastLatencyMs: Double?
 
     /// Sends one `complete` per category with an empty prefix and the maximum
-    /// limit (100), naming the exact `sourceVersions` the preview was compiled
-    /// from and the editor revision that produced them. A previous query is
-    /// discarded. A send failure discards the whole query.
+    /// limit (100), plus one `snapshot` for the declared document kinds, all
+    /// naming the exact `sourceVersions` the preview was compiled from and the
+    /// editor revision that produced them. A previous query is discarded. A
+    /// send failure discards the whole query.
     func request(sourceVersions: [String: Int], editorRevision: Int,
                  send: (_ type: String, _ payload: [String: Any]) throws -> String) {
-        var outstanding: [String: Completion.Kind] = [:]
+        var outstanding: [String: Part] = [:]
         for kind in Self.categories {
             let payload: [String: Any] = ["source_versions": sourceVersions, "category": Self.wireCategory[kind]!,
                                           "prefix": "", "limit": Completion.Metadata.Limits.maxItemsPerCategory]
             guard let id = try? send("complete", payload) else { query = nil; return }
-            outstanding[id] = kind
+            outstanding[id] = .category(kind)
         }
+        guard let kindsID = try? send("snapshot", [:]) else { query = nil; return }
+        outstanding[kindsID] = .documentKinds
         query = Query(outstanding: outstanding, sourceVersions: sourceVersions, editorRevision: editorRevision, merged: nil,
                       requestedNs: MonotonicClock.nowNs())
     }
@@ -984,15 +1085,21 @@ final class ProjectIndexCompletionFetcher {
     /// A `result` frame. The payload is the helper's JSON object; it is
     /// re-serialized so the bounded decoder sees the documented wire shape.
     func handle(resultID id: String, payload: [String: Any]) -> Outcome {
-        guard var q = query, let kind = q.outstanding[id] else { return .notMine }
+        guard var q = query, let part = q.outstanding[id] else { return .notMine }
         let data: Data
         do { data = try JSONSerialization.data(withJSONObject: payload) } catch { return refuse("unserializable reply \(id)") }
         let metadata: Completion.Metadata
         do {
-            metadata = try Completion.Metadata.decodeProjectIndexReply(data, category: kind, editorRevision: q.editorRevision,
-                                                                       expectedSourceVersions: q.sourceVersions)
+            switch part {
+            case .category(let kind):
+                metadata = try Completion.Metadata.decodeProjectIndexReply(data, category: kind, editorRevision: q.editorRevision,
+                                                                           expectedSourceVersions: q.sourceVersions)
+            case .documentKinds:
+                metadata = try Completion.Metadata.decodeProjectIndexSnapshot(data, editorRevision: q.editorRevision,
+                                                                              expectedSourceVersions: q.sourceVersions)
+            }
         } catch {
-            return refuse("\(kind) reply \(id): \(error)")
+            return refuse("\(part) reply \(id): \(error)")
         }
         q.outstanding.removeValue(forKey: id)
         q.merged = q.merged.flatMap { $0.merged(with: metadata) } ?? metadata
@@ -1048,6 +1155,11 @@ final class CompletionScheduler {
         let items: [Completion.Suggestion]
         /// Wall time of the off-main scan.
         let computeMs: Double
+        /// Time the job waited on the queue before the scan started.
+        var queuedMs: Double = 0
+        /// `MonotonicClock` stamp taken when the scan finished, so the
+        /// consumer can measure the run-loop delivery lag.
+        var computedAtNs: UInt64 = 0
     }
 
     struct Statistics: Equatable {
@@ -1099,14 +1211,16 @@ final class CompletionScheduler {
         let job = Job(generation: generation)
         pending = job
         statistics.scheduled += 1
+        let scheduledAt = MonotonicClock.nowNs()
         execute { [weak self] in
             let t0 = MonotonicClock.nowNs()
             let range = Completion.completionRange(in: request.text, caretUTF16: request.caretUTF16)
             let items = job.isCancelled ? [] : Completion.suggestions(in: request.text, caretUTF16: request.caretUTF16,
                                                                      metadata: request.metadata, supported: request.supported,
                                                                      cancelled: { job.isCancelled })
+            let t1 = MonotonicClock.nowNs()
             let outcome = Outcome(generation: job.generation, caretUTF16: request.caretUTF16, range: range, items: items,
-                                  computeMs: Double(MonotonicClock.nowNs() - t0) / 1e6)
+                                  computeMs: Double(t1 - t0) / 1e6, queuedMs: Double(t0 - scheduledAt) / 1e6, computedAtNs: t1)
             Self.onMain { [weak self] in
                 MainActor.assumeIsolated { [weak self] in
                     guard let self else { return }
@@ -1213,6 +1327,17 @@ final class CompletionPopup: NSPanel, NSTableViewDataSource, NSTableViewDelegate
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
 
+    /// The table's selected row, for tests and evidence.
+    var selectedRow: Int { table.selectedRow }
+    /// The list's table, for accessibility read-back in tests.
+    var accessibilityTable: NSTableView { table }
+
+    /// Shows (or refreshes) the list under `caretRect`. While the panel is
+    /// already on screen for the same parent, only what changed is touched:
+    /// the rows reload only when the items differ, the frame moves only when
+    /// the caret rect did, and the window is not re-ordered — each of those is
+    /// a window-server round trip that the typing-through-the-list path would
+    /// otherwise pay on every keystroke.
     func show(items: [Completion.Suggestion], selected: Int, below caretRect: NSRect, parent: NSWindow) {
         update(items: items, selected: selected)
         let rows = CGFloat(min(items.count, Completion.maxSuggestions))
@@ -1223,20 +1348,28 @@ final class CompletionPopup: NSPanel, NSTableViewDataSource, NSTableViewDelegate
             if origin.y < visible.minY { origin.y = caretRect.maxY + 2 } // flip above the caret
             origin.x = min(max(origin.x, visible.minX), max(visible.minX, visible.maxX - Self.width))
         }
-        setFrame(NSRect(origin: origin, size: NSSize(width: Self.width, height: height)), display: true)
+        let target = NSRect(origin: origin, size: NSSize(width: Self.width, height: height))
+        let onScreen = isVisible && self.parent === parent
+        if frame != target { setFrame(target, display: false) } // drawn once, by the display cycle that shows it
         if self.parent !== parent {
             self.parent?.removeChildWindow(self)
             parent.addChildWindow(self, ordered: .above)
         }
-        orderFront(nil)
+        if !onScreen { orderFront(nil) }
     }
 
+    /// Replaces the rows only when they changed; a pure selection move (arrow
+    /// keys) selects the row without reloading the table.
     func update(items: [Completion.Suggestion], selected: Int) {
-        self.items = items
         updatingSelection = true
-        table.reloadData()
+        if items != self.items {
+            self.items = items
+            table.reloadData()
+        }
         if items.indices.contains(selected) {
-            table.selectRowIndexes(IndexSet(integer: selected), byExtendingSelection: false)
+            if table.selectedRow != selected {
+                table.selectRowIndexes(IndexSet(integer: selected), byExtendingSelection: false)
+            }
             table.scrollRowToVisible(selected)
             announceSelection(items[selected], index: selected, total: items.count)
         }
@@ -1244,8 +1377,8 @@ final class CompletionPopup: NSPanel, NSTableViewDataSource, NSTableViewDelegate
     }
 
     func hide() {
-        parent?.removeChildWindow(self)
-        orderOut(nil)
+        if parent != nil { parent?.removeChildWindow(self) }
+        if isVisible { orderOut(nil) }
         items = []
         table.reloadData()
     }
@@ -1351,7 +1484,7 @@ extension Completion.Kind {
 
 /// `NSTextView` with its own completion session: candidates are computed off
 /// the main thread by `CompletionScheduler`, shown in `CompletionPopup`, and
-/// chosen with ↑/↓, inserted with Return/Tab, dismissed with Esc. Any caret
+/// chosen with ↑/↓ or Tab/⇧Tab, inserted with Return/Enter, dismissed with Esc. Any caret
 /// move or text change that is not the user's own typing through the list
 /// closes the session and cancels in-flight work. Esc and ⌃Space open the
 /// list. Rust metadata (`compileResult`, `accept(projectIndex:)`) is used only
@@ -1405,6 +1538,10 @@ final class CompletingTextView: NSTextView {
     private(set) var lastCloseReason: CloseReason?
     /// Latest outcome presented, for evidence (compute time off-main).
     private(set) var lastOutcome: CompletionScheduler.Outcome?
+    /// Evidence for the last delivered outcome: run-loop lag from the end of
+    /// the scan to `present`, and the time `present` spent (session + popup).
+    private(set) var lastDeliveryLagMs: Double = 0
+    private(set) var lastPresentMs: Double = 0
 
     /// The popup's mouse actions route back here (a click chooses, a
     /// double-click accepts); the session stays the single source of truth.
@@ -1490,10 +1627,16 @@ final class CompletingTextView: NSTextView {
         scheduler.schedule(request) { [weak self] outcome in
             self?.present(outcome, metadataRevision: metadata?.revision)
         }
+        // First use: build the panel now, while the scan runs off-main, so the
+        // delivery path only has to fill and show it.
+        if session == nil { _ = popup }
     }
 
     private func present(_ outcome: CompletionScheduler.Outcome, metadataRevision: Int?) {
+        let t0 = MonotonicClock.nowNs()
         lastOutcome = outcome
+        lastDeliveryLagMs = outcome.computedAtNs == 0 ? 0 : Double(t0 &- outcome.computedAtNs) / 1e6
+        defer { lastPresentMs = Double(MonotonicClock.nowNs() - t0) / 1e6 }
         // The scheduler refused other generations; the caret must also still
         // be where the request was made and the range must fit the text.
         let caret = selectedRange()
@@ -1602,7 +1745,8 @@ final class CompletingTextView: NSTextView {
         switch event.keyCode {
         case 125: moveSelection(by: 1) // ↓
         case 126: moveSelection(by: -1) // ↑
-        case 36, 76, 48: acceptSelectedCompletion() // Return, Enter, Tab
+        case 48: moveSelection(by: event.modifierFlags.contains(.shift) ? -1 : 1) // Tab next, ⇧Tab previous (wrapping)
+        case 36, 76: acceptSelectedCompletion() // Return, Enter
         case 53: scheduler.cancel(); close(.escape) // Esc
         case 123, 124, 115, 119, 116, 121: // ←, →, Home, End, Page Up/Down leave the token
             close(.caretMoved)

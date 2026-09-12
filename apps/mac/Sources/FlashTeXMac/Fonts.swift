@@ -44,10 +44,34 @@ enum PreviewFonts {
     /// meaningful after `latinModernRegistered` has been consulted.
     private(set) static var latinModernDirectory: String?
 
+    /// Every Latin Modern file the layout producer can request
+    /// (`flashtex-render` `FontSet::latin_modern_file`, t1lmr.fd boundaries):
+    /// regular 5–17, bold 5–12, italic 7–12, bold-italic 10, and LM Math. The
+    /// vendored `apps/mac/Fonts` (pinned by `SUPPLEMENTARY-FACES.json` plus the
+    /// Commander manifest) holds all of them; when the registered directory
+    /// lacks any, the gap is recorded in `latinModernMissingFaces` so a
+    /// CoreText fallback for that master is never silent.
+    static let latinModernFaceFiles: [String] =
+        [5, 6, 7, 8, 9, 10, 12, 17].map { "lmroman\($0)-regular.otf" }
+        + [5, 6, 7, 8, 9, 10, 12].map { "lmroman\($0)-bold.otf" }
+        + [7, 8, 9, 10, 12].map { "lmroman\($0)-italic.otf" }
+        + ["lmroman10-bolditalic.otf", "latinmodern-math.otf"]
+
+    /// Files of `latinModernFaceFiles` absent from `directory`.
+    static func latinModernMissingFaces(in directory: String) -> [String] {
+        latinModernFaceFiles.filter { !FileManager.default.fileExists(atPath: directory + "/" + $0) }
+    }
+
+    /// Faces the registered directory lacks (empty when it is complete or when
+    /// nothing is registered). Meaningful after `latinModernRegistered`.
+    private(set) static var latinModernMissingFaces: [String] = []
+
     /// Whether the Latin Modern Roman masters are registered with CoreText for
     /// this process. Registration happens on first access and moves
     /// `resourceGeneration`: an `LMRoman*` name asked for before it resolves to
-    /// a CoreText fallback, afterwards to the real font.
+    /// a CoreText fallback, afterwards to the real font. The first search
+    /// directory holding any `lmroman*.otf` wins (explicit overrides first);
+    /// the faces it lacks are recorded, never silently substituted.
     private(set) static var latinModernRegistered: Bool = {
         for dir in latinModernSearchPaths {
             let url = URL(fileURLWithPath: dir)
@@ -56,6 +80,7 @@ enum PreviewFonts {
             guard !otfs.isEmpty else { continue }
             CTFontManagerRegisterFontURLs(otfs as CFArray, .process, true, nil)
             latinModernDirectory = dir
+            latinModernMissingFaces = latinModernMissingFaces(in: dir)
             invalidateResources()
             return true
         }
@@ -98,8 +123,12 @@ enum PreviewFonts {
         postScriptName(face: active, size: size, bold: bold, italic: italic)
     }
 
-    /// Latin Modern optical size by nominal point size, matching LaTeX's choice
-    /// (lmroman5/7/8/9/10/12/17 masters).
+    /// Latin Modern optical size by nominal point size, the master the layout
+    /// producer picks (`t1lmr.fd` design-size boundaries, mirrored from
+    /// render-pipeline `FontSet::latin_modern_file`): regular
+    /// 5/6/7/8/9/10/12/17, bold 5–12, italic 7–12, bold-italic only 10 — every
+    /// one a file in `latinModernFaceFiles`, so the name never denotes a
+    /// CoreText fallback once the vendored directory is registered.
     static func postScriptName(face: Face, size: Double, bold: Bool, italic: Bool) -> String {
         switch face {
         case .times:
@@ -110,10 +139,19 @@ enum PreviewFonts {
             case (true, true): return "Times-BoldItalic"
             }
         case .latinModern:
-            let master: Int = size < 6 ? 5 : size < 7.5 ? 7 : size < 8.5 ? 8 : size < 9.5 ? 9 : size < 11.5 ? 10 : size < 14.5 ? 12 : 17
-            let style = bold && italic ? "BoldItalic" : bold ? "Bold" : italic ? "Italic" : "Regular"
-            // e.g. LMRoman10-Regular, LMRoman12-Bold; 17 has only Regular.
-            return master == 17 && (bold || italic) ? "LMRoman12-\(style)" : "LMRoman\(master)-\(style)"
+            return "LMRoman\(latinModernMaster(size: size, bold: bold, italic: italic))-"
+                + (bold && italic ? "BoldItalic" : bold ? "Bold" : italic ? "Italic" : "Regular")
+        }
+    }
+
+    /// The design size of the Latin Modern Roman master for a nominal size and
+    /// style (see `postScriptName(face:size:bold:italic:)`).
+    static func latinModernMaster(size s: Double, bold: Bool, italic: Bool) -> Int {
+        switch (bold, italic) {
+        case (true, true): return 10
+        case (false, true): return s < 7.5 ? 7 : s < 8.5 ? 8 : s < 9.5 ? 9 : s < 11 ? 10 : 12
+        case (true, false): return s < 5.5 ? 5 : s < 6.5 ? 6 : s < 7.5 ? 7 : s < 8.5 ? 8 : s < 9.5 ? 9 : s < 11 ? 10 : 12
+        case (false, false): return s < 5.5 ? 5 : s < 6.5 ? 6 : s < 7.5 ? 7 : s < 8.5 ? 8 : s < 9.5 ? 9 : s < 11 ? 10 : s < 15 ? 12 : 17
         }
     }
 

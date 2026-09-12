@@ -1,0 +1,24 @@
+Another instance of SwiftPM (PID: 62593) is already running using '/private/tmp/flashtex-opus-fonts-takeover/apps/mac/.build', waiting until that process has finished execution...[0/1] Planning build
+Test Suite 'Selected tests' started at 2026-09-12 14:13:00.643.
+Test Suite 'FlashTeXMacPackageTests.xctest' started at 2026-09-12 14:13:00.644.
+Test Suite 'BundledFacesTests' started at 2026-09-12 14:13:00.644.
+Test Case '-[FlashTeXMacTests.BundledFacesTests testEveryPreviewMasterResolvesToARealCoreTextFace]' started.
+Test Case '-[FlashTeXMacTests.BundledFacesTests testEveryPreviewMasterResolvesToARealCoreTextFace]' passed (0.023 seconds).
+Test Case '-[FlashTeXMacTests.BundledFacesTests testEveryProducerRequestableFaceIsVendoredAndPinned]' started.
+Test Case '-[FlashTeXMacTests.BundledFacesTests testEveryProducerRequestableFaceIsVendoredAndPinned]' passed (0.007 seconds).
+Test Case '-[FlashTeXMacTests.BundledFacesTests testMasterBoundariesMirrorTheProducer]' started.
+Test Case '-[FlashTeXMacTests.BundledFacesTests testMasterBoundariesMirrorTheProducer]' passed (0.000 seconds).
+Test Case '-[FlashTeXMacTests.BundledFacesTests testPackagingCheckVerifiesFacesAndRefusesDrift]' started.
+Test Case '-[FlashTeXMacTests.BundledFacesTests testPackagingCheckVerifiesFacesAndRefusesDrift]' passed (0.436 seconds).
+Test Case '-[FlashTeXMacTests.BundledFacesTests testRealProducerNeedsNoSubstitutionForSmallMastersWithHostTeXExcluded]' started.
+Test Case '-[FlashTeXMacTests.BundledFacesTests testRealProducerNeedsNoSubstitutionForSmallMastersWithHostTeXExcluded]' passed (0.353 seconds).
+Test Suite 'BundledFacesTests' passed at 2026-09-12 14:13:01.464.
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.819 (0.819) seconds
+Test Suite 'FlashTeXMacPackageTests.xctest' passed at 2026-09-12 14:13:01.464.
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.819 (0.819) seconds
+Test Suite 'Selected tests' passed at 2026-09-12 14:13:01.464.
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.819 (0.821) seconds
+◇ Test run started.
+↳ Testing Library Version: 1501
+↳ Target Platform: arm64e-apple-macos14.0
+✔ Test run with 0 tests in 0 suites passed after 0.001 seconds.
