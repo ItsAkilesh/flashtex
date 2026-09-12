@@ -38,7 +38,8 @@
 //! Font hints: with `font-hints-v1` negotiated, each text item may name a
 //! family/weight/style. Latin Modern resolves to the matching
 //! `lmroman10-*.otf` embedded as its own font object; Times resolves to the
-//! base-14 Times variants; anything else is substituted by the document face
+//! base-14 Times variants; Symbol resolves to the base-14 Symbol font `/F2`
+//! with its built-in encoding; anything else is substituted by the document face
 //! at the requested weight/style and reported in the warnings. Additional
 //! faces get resources `/F4`, `/F5`, … and their objects follow the document
 //! font after the pages.
@@ -117,6 +118,10 @@ fn describe(weight: Weight, style: Style) -> &'static str {
 fn is_latin_modern_family(family: &str) -> bool {
     let f = family.to_ascii_lowercase();
     f.starts_with("latin modern") || f.starts_with("lmroman") || f == "lm roman" || f == "lm"
+}
+
+fn is_symbol_family(family: &str) -> bool {
+    family.eq_ignore_ascii_case("symbol")
 }
 
 fn is_times_family(family: &str) -> bool {
@@ -326,6 +331,13 @@ impl FontTable {
             }
         } else if is_times_family(&hint.family) {
             self.times_variant(variant)
+        } else if is_symbol_family(&hint.family) {
+            // Base-14 Symbol (`/F2`, built-in encoding) is always written.
+            Resolved {
+                face: encoding::Face::Times,
+                primary: encoding::Font::Symbol,
+                embedded: None,
+            }
         } else {
             // Unknown family: the document face at the requested weight/style,
             // reported as a substitution and never claimed preserved.

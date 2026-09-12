@@ -394,7 +394,9 @@ a rule without `rules-v1` (negotiated or legacy) and an unknown `image` kind
 under negotiation are errors naming `main.tex:0-11` / `fig.tex:3-9`; zero,
 negative, and >1e6 geometry is rejected. Times hints produce `/F4`
 Times-Bold, `/F5` Times-Italic, `/F6` Times-BoldItalic objects and a single
-`Helvetica … substituted by 'Times-Bold'` warning; LM hints with LM as the
+`Helvetica … substituted by 'Times-Bold'` warning; a `Symbol` hint draws from
+`/F2` in Symbol's built-in encoding (Times only for characters Symbol lacks)
+with no warning; LM hints with LM as the
 document face produce three whole-CFF font objects (`LMRoman10-Regular`,
 `-Bold`, `-Italic`; 22 objects total) whose ToUnicode maps decode each run,
 with `Palatino` reported as substituted by Latin Modern italic. Rasterised on
