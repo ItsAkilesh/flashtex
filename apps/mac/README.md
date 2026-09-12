@@ -30,7 +30,7 @@ and macOS cannot grant it per-app permissions (e.g. local network, later).
 `scripts/make-app.sh` wraps the built executable in a minimal `FlashTeX.app`:
 
 ```sh
-apps/mac/scripts/make-app.sh [--debug] [--compiler <path>] [--pdf <path>] [--open]
+apps/mac/scripts/make-app.sh [--debug] [--compiler <path>] [--pdf <path>] [--open] [--install] [--dmg]
 ```
 
 It builds `FlashTeXMac` (release by default), assembles
@@ -41,7 +41,11 @@ copies `protocol/fixtures/compile-{request,result}.json` and `Samples/*` into
 `Contents/MacOS` when built at `crates/{compiler,pdf}/target/release/…` under
 the repo root (or passed via `--compiler`/`--pdf`), and ad-hoc codesigns the
 result. Launch with `open apps/mac/build/FlashTeX.app` or pass `--open`.
-`apps/mac/build/` is gitignored.
+`apps/mac/build/` is gitignored. `--install` atomically replaces
+`~/Applications/FlashTeX.app` (verified to launch before the previous bundle
+is discarded) and `--dmg` produces a compressed disk image; see
+`apps/mac/docs/packaging.md` for signing/notarization status and the
+update-path and launch-recovery evidence (`scripts/launch-check.sh`).
 
 ## Behavior
 
