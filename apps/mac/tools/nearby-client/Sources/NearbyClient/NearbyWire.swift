@@ -130,6 +130,38 @@ public enum NearbyWire {
         public var code: String
         public var message: String
     }
+    /// Additive `capture_status` request (nearby-v1 §4, closes the §6 gap):
+    /// what became of a capture this pairing submitted. Answered only for a
+    /// `capture_id` the Mac acknowledged on this pairing (`unknown_capture`
+    /// otherwise); a Mac that predates the message answers `unknown_type`.
+    public struct CaptureStatusRequest: Codable, Equatable {
+        public var captureId: String
+        enum CodingKeys: String, CodingKey { case captureId = "capture_id" }
+        public init(captureId: String) { self.captureId = captureId }
+    }
+
+    /// `capture_status_ack`. `state`: `received` (Mac inbox, no bridge) ·
+    /// `journaled` · `converting` · `proposal_ready` · `inserted` ·
+    /// `rejected` · `failed` · `uncertain`; show anything else verbatim
+    /// (additive vocabulary). `latex` is the proposal text once one exists,
+    /// read-only on the companion; `note` the Mac's detail; `new_revision`
+    /// after an insertion.
+    public struct CaptureStatus: Codable, Equatable {
+        public var captureId: String
+        public var state: String
+        public var durable: Bool
+        public var latex: String?
+        public var note: String?
+        public var newRevision: Int?
+        enum CodingKeys: String, CodingKey {
+            case captureId = "capture_id", state, durable, latex, note, newRevision = "new_revision"
+        }
+        public static let knownStates: [String] = ["received", "journaled", "converting", "proposal_ready", "inserted", "rejected", "failed", "uncertain"]
+        /// A state after which polling can stop.
+        public var isFinal: Bool { ["inserted", "rejected", "failed"].contains(state) }
+        public var hasProposal: Bool { latex != nil }
+    }
+
 
     /// `error` envelope; `id` is `null` when the request could not be identified.
     public struct ErrorLine: Decodable {
