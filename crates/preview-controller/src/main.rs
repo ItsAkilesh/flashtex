@@ -22,9 +22,9 @@ use std::{
 mod optional_output;
 mod output_buffer;
 mod output_delivery;
+mod raw_wire;
 mod source_plans;
 mod wire;
-mod raw_wire;
 const MAX_OUTPUT_BYTES: usize = 16 * 1024 * 1024;
 
 const MAX_FRAME: usize = 1024 * 1024;
@@ -572,6 +572,24 @@ fn handle(
         }
 
         "edit" => {
+            let metadata_only = match p.get("response_mode") {
+                None => false,
+                Some(Value::String(mode)) if mode == "full" => false,
+                Some(Value::String(mode)) if mode == "metadata" => true,
+                _ => return Err("response_mode must be full or metadata".into()),
+            };
+            if metadata_only {
+                let result = controller.replace_document_metadata(
+                    string(p, "path")?,
+                    number(p, "expected_revision")?,
+                    string(p, "expected_sha256")?,
+                    string(p, "text")?.to_owned(),
+                )?;
+                return Ok(
+                    json!({"response_mode":"metadata", "document":result.document,
+                    "preview_error":result.preview_error,"save_and_submit_ms":result.save_and_submit_ms}),
+                );
+            }
             let result = controller.replace_document(
                 string(p, "path")?,
                 number(p, "expected_revision")?,
@@ -903,14 +921,32 @@ mod configuration_tests {
     fn required_serialization_refusal_delivers_error_then_next_ack() {
         let (tx, rx) = output_delivery::channel(2);
         let stopped = AtomicBool::new(false);
-        emit_with_limit(&tx, &stopped, wire::envelope("s", json!("large"), "result", json!({"body":"x".repeat(20000)})), 512);
-        emit_with_limit(&tx, &stopped, wire::envelope("s", json!("ack"), "result", json!({"durable":true})), 512);
+        emit_with_limit(
+            &tx,
+            &stopped,
+            wire::envelope(
+                "s",
+                json!("large"),
+                "result",
+                json!({"body":"x".repeat(20000)}),
+            ),
+            512,
+        );
+        emit_with_limit(
+            &tx,
+            &stopped,
+            wire::envelope("s", json!("ack"), "result", json!({"durable":true})),
+            512,
+        );
         assert!(!stopped.load(Ordering::SeqCst));
         let first = rx.next(Duration::ZERO).unwrap();
         let error: Value = serde_json::from_slice(&first.bytes).unwrap();
         assert_eq!(error["type"], "error");
         assert_eq!(error["id"], "large");
-        assert!(error["payload"]["message"].as_str().unwrap().contains("source may already be durable"));
+        assert!(error["payload"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("source may already be durable"));
         rx.written(&first);
         let second = rx.next(Duration::ZERO).unwrap();
         let ack: Value = serde_json::from_slice(&second.bytes).unwrap();
@@ -922,5 +958,4 @@ mod configuration_tests {
         assert!(stopped.load(Ordering::SeqCst));
         assert!(rx.next(Duration::ZERO).is_err());
     }
-
 }

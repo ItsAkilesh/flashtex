@@ -192,3 +192,6 @@ session or request exists. Restart preserves strategy and disables candidates.
 The prototype is not a speed recommendation: the initial runtime experiment used
 less peak memory but took longer to parse because it repeated validation passes.
 Further runtime optimization and complete helper/native measurements remain open.
+
+Native consumer next steps and exact tested/replayed build distinctions are in
+[native-display-acceptance.md](native-display-acceptance.md).

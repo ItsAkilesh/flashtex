@@ -1,7 +1,9 @@
 //! Worker-thread editor controller. Durable source precedes disposable caches.
 pub mod completed_protocol;
 mod display;
+mod metadata_edit;
 pub use display::RawDisplayPayload;
+pub use metadata_edit::{DocumentMetadata, MetadataEditOutcome};
 pub mod experimental_delivery;
 pub mod file_project;
 mod historical;
@@ -286,26 +288,37 @@ impl Controller {
         Ok(self.after_save(document, started))
     }
     fn after_save(&mut self, document: Document, started: Instant) -> EditOutcome {
-        self.submitted = None;
-        let indexed =
-            if self.index.snapshot().documents.get(&document.path) == Some(&document.revision) {
-                Ok(())
+        let indexed = Self::index_saved_document(&mut self.index, &document);
+        let (preview_error, save_and_submit_ms) = self.finish_saved_index(indexed, started);
+        EditOutcome {
+            document,
+            preview_error,
+            save_and_submit_ms,
+        }
+    }
+    fn index_saved_document(index: &mut ProjectIndex, document: &Document) -> Result<(), String> {
+        if index.snapshot().documents.get(&document.path) == Some(&document.revision) {
+            Ok(())
+        } else {
+            let kind = index.document_kind(&index.snapshot(), &document.path);
+            let result = if kind == Ok(flashtex_project_index::DocumentKind::Bibliography) {
+                index.replace_bibliography_document(
+                    &document.path,
+                    document.revision,
+                    &document.text,
+                )
             } else {
-                let kind = self
-                    .index
-                    .document_kind(&self.index.snapshot(), &document.path);
-                let result = if kind == Ok(flashtex_project_index::DocumentKind::Bibliography) {
-                    self.index.replace_bibliography_document(
-                        &document.path,
-                        document.revision,
-                        &document.text,
-                    )
-                } else {
-                    self.index
-                        .replace_document(&document.path, document.revision, &document.text)
-                };
-                result.map(|_| ()).map_err(|e| e.to_string())
+                index.replace_document(&document.path, document.revision, &document.text)
             };
+            result.map(|_| ()).map_err(|e| e.to_string())
+        }
+    }
+    fn finish_saved_index(
+        &mut self,
+        indexed: Result<(), String>,
+        started: Instant,
+    ) -> (Option<String>, f64) {
+        self.submitted = None;
         let preview_error = match indexed {
             Ok(()) => self.compile_current().err(),
             Err(error) => Some(format!("source saved; index recovery required: {error}")),
@@ -315,11 +328,7 @@ impl Controller {
                 *submitted_at = started;
             }
         }
-        EditOutcome {
-            document,
-            preview_error,
-            save_and_submit_ms: started.elapsed().as_secs_f64() * 1000.0,
-        }
+        (preview_error, started.elapsed().as_secs_f64() * 1000.0)
     }
     /// The returned receipt is durable before any compile attempt. A matching
     /// retry returns the original receipt and cannot apply the source edit twice.
