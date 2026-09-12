@@ -24,6 +24,13 @@ Implemented and tested:
   the command source (`\alpha`) that produced it; the span remains exact and
   slice-safe but the source slice intentionally differs from the output glyph.
 - A finite parser for the subset listed below, with error recovery.
+- LaTeX preamble recognition: `\documentclass[options]{class}` records the
+  class, and `\usepackage[options]{a,b,c}` records the package names and emits
+  one warning listing exactly those unimplemented packages. When a document
+  environment exists, only its body is typeset; bare fragments retain the
+  previous typeset-everything behavior.
+- Scoped `\newcommand` and `\renewcommand` expansion, with zero through nine
+  required arguments, nested expansion, and an explicit recursion limit.
 - Diagnostics carrying severity, message, source range, and a recovery note.
 - Greedy line breaking and page breaking onto 612×792 pt pages.
 - Inline math (`$...$`) and display math (`$$...$$` and `\[...\]`), including
@@ -36,12 +43,15 @@ Implemented and tested:
 
 Required, outstanding — this is a foundation, not a LaTeX implementation:
 
-- No macro expansion, no mutable category codes, no registers, no conditionals.
-  None of the TeX programmability described in the master plan §5.1 exists yet.
+- No `\def`, `\let`, mutable category codes, registers, or conditionals.
+- No `\input` or multi-file include expansion.
 - Math remains a declared subset: matrices, alignment environments,
   `\left`/`\right` delimiter sizing, real math-font parameters, and operator
   spacing classes are not implemented.
-- No packages, no `\usepackage`, no TikZ, no bibliography, no cross-references.
+- Package declarations are recognised but packages are not loaded: package
+  commands, TikZ, bibliography support, and cross-references remain missing.
+- Environments generally are not implemented. Only `document` controls the
+  preamble/body boundary; other environments warn and typeset as plain text.
 - No PDF output. `pdf_path` is always `null`, as the contract permits for now.
 - No incremental reuse yet. Every request recompiles the whole document; the
   revision number is carried through but nothing is cached across revisions.
@@ -52,11 +62,32 @@ Required, outstanding — this is a foundation, not a LaTeX implementation:
 
 ## Supported commands
 
-`\section`, `\subsection`, `\textbf`, `\emph`, `\textit`, `\begin`/`\end`
-(only `document` is meaningful; other environments warn and typeset their body
-as plain text), `\par`, and `\\`. Paragraphs are separated by blank lines.
-`%` begins a comment. Any other command produces an explicit
-"not supported by this compiler version" diagnostic — never silent output.
+`\documentclass[options]{class}`, `\usepackage[options]{a,b,c}`,
+`\newcommand{\name}{body}`, `\newcommand{\name}[n]{body}`,
+`\renewcommand{\name}{body}`, `\renewcommand{\name}[n]{body}`,
+`\section`, `\subsection`, `\textbf`, `\emph`, `\textit`,
+`\begin`/`\end` (only `document` controls rendering; other environments
+warn and typeset their body as plain text), `\par`, and `\\`. Macro
+argument counts are decimal integers from 0 through 9, and replacement
+parameters are `#1` through `#9`. Paragraphs are separated by blank lines.
+`%` begins a comment. Any other command produces an explicit "not supported by
+this compiler version" diagnostic — never silent output.
+
+## Macro expansion and source mapping
+
+User macros expand at their use site and may call other user macros. Expansion
+is limited to 64 nested macro calls. Exceeding that limit emits an error naming
+the macro and stops that invocation, so recursive definitions cannot hang.
+`\newcommand` rejects an existing name; `\renewcommand` rejects an
+undefined name. A definition made inside `{ ... }` is restored or removed when
+that group closes.
+
+Tokens substituted for `#1` through `#9` retain the real byte spans of the
+argument text the author supplied. Literal replacement tokens have no independent
+bytes in the input and therefore map to the macro control-sequence span at the
+invocation site.
+This is intentionally invocation-level provenance: per-glyph ranges inside
+synthesised replacement text are not fabricated.
 
 ## Supported math
 

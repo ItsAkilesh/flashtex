@@ -194,6 +194,28 @@ allocate Swift/Apple UI and capture-companion tasks to a machine with full Xcode
 and allocate compiler work here. This is the single most important allocation
 fact on this computer.
 
+## Commit attribution on this machine
+
+Every commit made from mac-m5pro-kabir must credit the user as co-author. The
+user directed this explicitly on 2026-09-12.
+
+```text
+Co-authored-by: GoKubar <75052523+GoKubar@users.noreply.github.com>
+```
+
+The numeric id came from the public GitHub user API, and `GoKubar` is the identity
+this machine's SSH key authenticates as (`ssh -T git@github.com`). A wrong id
+silently attributes the commit to nobody, so do not guess one.
+
+`scripts/coord.py publish` builds this trailer itself from `gh api user`, but it
+treats `gh` as mandatory and fails outright when `gh` is unauthenticated, which it
+is here. Until `gh auth login` is run on this machine, publish through Cursor CLI
+directly with the trailer written into the message, and keep Cursor as the commit
+executor as AGENTS.md requires. Commits made before 2026-09-12T05:30Z
+(25fe5c4, 29221d8, e7127fb, 9f1033b) predate this rule and lack the trailer;
+they are pushed, and AGENTS.md forbids rewriting published history, so they stay
+as they are.
+
 ## Measured throughput capacity
 
 Updated 2026-09-12T04:25Z with measurements, not estimates.

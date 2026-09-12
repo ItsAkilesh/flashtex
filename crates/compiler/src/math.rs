@@ -172,7 +172,11 @@ impl MathParser<'_> {
                 let mut chars = word.char_indices();
                 let (offset, ch) = chars.next()?;
                 let end = offset + ch.len_utf8();
-                let span = Span::new(token.span.start + offset, token.span.start + end);
+                let span = if token.span.end - token.span.start == word.len() {
+                    Span::new(token.span.start + offset, token.span.start + end)
+                } else {
+                    token.span
+                };
                 // Word runs are split before parsing so a script attaches to
                 // one ordinary atom rather than the entire lexer token.
                 debug_assert_eq!(
@@ -436,13 +440,21 @@ fn split_word_tokens(tokens: &[Token]) -> Vec<Token> {
     let mut out = Vec::new();
     for token in tokens {
         if let TokenKind::Word(word) = &token.kind {
+            let source_matches_word = token.span.end - token.span.start == word.len();
             for (offset, ch) in word.char_indices() {
                 out.push(Token {
                     kind: TokenKind::Word(ch.to_string()),
-                    span: Span::new(
-                        token.span.start + offset,
-                        token.span.start + offset + ch.len_utf8(),
-                    ),
+                    span: if source_matches_word {
+                        Span::new(
+                            token.span.start + offset,
+                            token.span.start + offset + ch.len_utf8(),
+                        )
+                    } else {
+                        // Macro replacement text has no byte range of its own.
+                        // Preserve the invocation attribution for every atom
+                        // instead of fabricating per-glyph provenance.
+                        token.span
+                    },
                 });
             }
         } else {

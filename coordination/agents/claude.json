@@ -16,7 +16,7 @@
     "cursor-commit",
     "coordination"
   ],
-  "code_revision": "3fd72c2aeb62a37614e67fb66b2b85816a7a3e0e",
+  "code_revision": "de1020cd0be7cede11be2691e00e7f5b15cb2224",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
@@ -24,21 +24,21 @@
   },
   "machine": "mac-m5pro-kabir",
   "main_integrated_through": "09031efa9feca80d7a34e29b0b6fc41d43c509c4",
-  "next_action": "BLOCKED on publication: coord.py publish requires gh api user for the verified coauthor trailer and gh is not authenticated on this machine. Needs the user to run gh auth login. All work is staged and verified.",
+  "next_action": "Awaiting next Commander dispatch. FT-005 and FT-006 are dispatchable: FT-002 is ready and FT-006 groundwork exists at /Users/kubar/code/ft-wt-incremental.",
   "reviewed_peers": {
     "origin/main": {
-      "adaptation": "Integrated three parallel worker outputs. Deferred the incremental-reuse worker: its equivalence test caught real drift between its private layout copy and the real engine after math landed, so shipping it would have meant two diverging layout engines. It is held at /Users/kubar/code/ft-wt-incremental for FT-006, pending a refactor of layout.rs into a resumable cursor.",
-      "reviewed_utc": "2026-09-12T04:41:14Z",
-      "sha": "09031efa9feca80d7a34e29b0b6fc41d43c509c4"
+      "adaptation": "Ran the new FT-011 corpus from origin/main via git archive rather than merging, to avoid disturbing staged work. It showed every case emitting \\documentclass is not supported, which drove the preamble and macro work. Interface design deliberately extends the vocabulary already in apps/mac rather than inventing one; apps/mac remains owned by mac-claude-a and is untouched.",
+      "reviewed_utc": "2026-09-12T05:15:12Z",
+      "sha": "a283f73fcdaed4c31e83192787bf98f9ee6847cd"
     }
   },
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "FT-002 rev 2 (math) complete and integrated with real font metrics. 27 tests pass (18 lib + 9 acceptance), clippy -D warnings clean, fmt clean, 21/21 independent binary checks. Inline and displayed math, \\frac with stacked numerator/rule/denominator, nested super/subscripts at 8.4pt and 6pt, \\sqrt and Greek symbols. Placeholder glyph ratios replaced by Adobe Core 14 advance widths in both text and math. Original PDF serializer added.",
+  "summary": "FT-002 hardened with preamble handling and \\newcommand macro expansion; 37 tests pass. Corpus result moved from 0 to 7 cases status ok. Separately, user-assigned IDE interface design published as a six-artboard canvas with working files in docs/design/canvas.",
   "tool": "Codex",
-  "updated_utc": "2026-09-12T04:41:14Z",
+  "updated_utc": "2026-09-12T05:15:12Z",
   "usage": {
-    "evidence": "cargo test 27 pass; cargo clippy --all-targets -D warnings clean; cargo fmt --check clean; independent stdin/stdout harness 21/21; manual math render verified item positions, script sizes and byte spans",
-    "status": "Three concurrent Codex workers on openai-kabir-plus-ft002-stage2; per-call cost not exposed"
+    "evidence": "cargo test 37 pass (27 lib, 10 acceptance); clippy -D warnings clean; cargo fmt clean; tests/tex-corpus 14/14 answered, 7 ok and 7 recovered, 9/9 visible_text expectations covered by exact byte spans",
+    "status": "Four Codex worker runs on openai-kabir-plus-ft002-stage2; Codex weekly window was 5 percent at last reading"
   }
 }

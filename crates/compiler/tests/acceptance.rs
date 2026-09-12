@@ -52,6 +52,42 @@ fn status(v: &Value) -> String {
 }
 
 #[test]
+fn realistic_preamble_is_informational_and_only_body_is_positioned() {
+    let text = r"\documentclass[draft]{article}
+\usepackage[demo]{amsmath}
+\begin{document}Body only\end{document}trailer";
+    let response = reply(&compile_line("preamble", 1, "main.tex", text));
+
+    assert_eq!(status(&response), "recovered");
+    let diagnostics = response
+        .get("payload")
+        .unwrap()
+        .get("diagnostics")
+        .unwrap()
+        .as_arr()
+        .unwrap();
+    assert_eq!(diagnostics.len(), 1);
+    assert_eq!(
+        diagnostics[0].get("severity").unwrap().as_str(),
+        Some("warning")
+    );
+    assert!(diagnostics[0]
+        .get("message")
+        .unwrap()
+        .as_str()
+        .unwrap()
+        .contains("amsmath"));
+
+    assert_eq!(
+        items(&response)
+            .iter()
+            .map(|item| item.get("text").unwrap().as_str().unwrap())
+            .collect::<Vec<_>>(),
+        ["Body", "only"]
+    );
+}
+
+#[test]
 fn unicode_spans_are_utf8_bytes_that_slice_back_exactly() {
     let text = "héllo — naïve café world.\n";
     let r = reply(&compile_line("u1", 1, "main.tex", text));

@@ -1,0 +1,126 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    body { margin:0; font-family:-apple-system,"SF Pro Text",system-ui,sans-serif;
+           color:#1D1D1F; background:#E8E8EC; -webkit-font-smoothing:antialiased; }
+    a { color:#3A5BD9; } a:hover { color:#2B47B5; }
+    .mono { font-family:"SF Mono",ui-monospace,Menlo,monospace; }
+    .bar { background:#F4F4F6; }
+    .cap { font-size:11px; color:#6E6E73; }
+    .badge { font-size:10px; font-weight:700; letter-spacing:.04em; padding:2px 7px; border-radius:999px; }
+  </style>
+</helmet>
+
+<div style="width:1440px;height:900px;display:flex;flex-direction:column;background:#E8E8EC;overflow:hidden">
+
+  <div class="bar" style="display:flex;align-items:center;gap:12px;padding:7px 14px;border-bottom:1px solid #D6D6DB;font-size:12px">
+    <span class="badge" style="background:rgba(199,119,0,.2);color:#8A5200">WORKER</span>
+    <span class="mono cap">thermo-pset.tex · id c-2294 · project pset4 · revision 91</span>
+    <span style="font-weight:700;color:#C77700">status: recovered</span>
+    <span style="display:flex;align-items:center;gap:4px;color:#C9372C;font-weight:600">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M8.6 2h6.8L22 8.6v6.8L15.4 22H8.6L2 15.4V8.6z"/><path d="M12 7v6M12 16v1.5" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg>
+      1
+    </span>
+    <span style="display:flex;align-items:center;gap:4px;color:#C77700;font-weight:600">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3 23 20H1z"/><path d="M12 9v5M12 16.5v1.5" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg>
+      2
+    </span>
+    <span style="color:#C77700">recovered: preview shown with provisional rendering</span>
+    <div style="flex-grow:1"></div>
+    <span class="mono" style="font-size:11px;color:#C77700;background:rgba(199,119,0,.13);padding:2px 8px;border-radius:5px">latency 64 ms · median 59 ms over 128</span>
+  </div>
+
+  <div style="flex-grow:1;display:flex;min-height:0">
+
+    <!-- editor with gutter marks -->
+    <div style="width:660px;flex-shrink:0;display:flex;flex-direction:column;background:#FDFDFE;border-right:1px solid #D6D6DB">
+      <div style="flex-grow:1;display:flex;font-size:12.5px;line-height:1.95;overflow:hidden">
+        <div class="mono" style="width:52px;flex-shrink:0;text-align:right;padding:12px 9px 0 0;color:#B0B0B8;background:#F5F5F8;border-right:1px solid #E9E9EE">
+          <div>28</div><div>29</div>
+          <div style="background:rgba(201,55,44,.14);color:#C9372C;font-weight:700;margin-right:-9px;padding-right:9px">30</div>
+          <div>31</div>
+          <div style="background:rgba(199,119,0,.16);color:#8A5200;font-weight:700;margin-right:-9px;padding-right:9px">32</div>
+          <div>33</div><div>34</div><div>35</div>
+        </div>
+        <div class="mono" style="padding:12px 14px 0;flex-grow:1;white-space:pre">
+<span style="color:#7B3FA0">\subsection</span>{Entropy change}
+
+<span style="color:#7B3FA0">\begin</span>{<span style="color:#0B6E99">align</span>}<span style="background:rgba(201,55,44,.13);border-bottom:2px wavy #C9372C">  </span>
+  \Delta S = \int \frac{\delta Q}{T}
+<span style="color:#7B3FA0">\end</span>{<span style="color:#0B6E99">equation</span>}<span style="background:rgba(199,119,0,.15);border-bottom:2px wavy #C77700">  </span>
+
+Therefore the total entropy of an
+isolated system never decreases.</div>
+      </div>
+
+      <!-- diagnostics list -->
+      <div style="border-top:1px solid #D6D6DB;background:#FAFAFC;max-height:300px;display:flex;flex-direction:column">
+        <div style="padding:7px 12px;font-size:11px;font-weight:700;color:#3C3C43;border-bottom:1px solid #E9E9EE">
+          Diagnostics (3) — the preview is still shown; errors are not hidden
+        </div>
+        <div style="display:flex;flex-direction:column">
+          <div style="display:flex;gap:9px;padding:10px 12px;border-bottom:1px solid #EFEFF3;background:rgba(201,55,44,.05)">
+            <svg width="15" height="15" style="flex-shrink:0;margin-top:1px" viewBox="0 0 24 24" fill="#C9372C"><path d="M8.6 2h6.8L22 8.6v6.8L15.4 22H8.6L2 15.4V8.6z"/><path d="M12 7v6M12 16v1.5" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg>
+            <div style="flex-grow:1;min-width:0">
+              <div style="font-size:12.5px">\end{equation} does not match \begin{align}</div>
+              <div class="cap" style="margin-top:2px">↳ recovery: closed the innermost open environment</div>
+              <div class="mono" style="font-size:10.5px;color:#9A9AA0;margin-top:2px">thermo-pset.tex bytes 1 204..&lt;1 218</div>
+            </div>
+            <button style="font:inherit;font-size:11.5px;padding:3px 9px;border:1px solid #C6C6CC;border-radius:5px;background:#FCFCFD;flex-shrink:0;align-self:flex-start">Go to source</button>
+          </div>
+          <div style="display:flex;gap:9px;padding:10px 12px;border-bottom:1px solid #EFEFF3">
+            <svg width="15" height="15" style="flex-shrink:0;margin-top:1px" viewBox="0 0 24 24" fill="#C77700"><path d="M12 3 23 20H1z"/><path d="M12 9v5M12 16.5v1.5" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg>
+            <div style="flex-grow:1;min-width:0">
+              <div style="font-size:12.5px">environment 'align' is not implemented; its body is typeset as plain text</div>
+              <div class="cap" style="margin-top:2px">↳ recovery: typeset the body without the environment's formatting</div>
+              <div class="mono" style="font-size:10.5px;color:#9A9AA0;margin-top:2px">thermo-pset.tex bytes 1 131..&lt;1 137</div>
+            </div>
+            <button style="font:inherit;font-size:11.5px;padding:3px 9px;border:1px solid #C6C6CC;border-radius:5px;background:#FCFCFD;flex-shrink:0;align-self:flex-start">Go to source</button>
+          </div>
+          <div style="display:flex;gap:9px;padding:10px 12px">
+            <svg width="15" height="15" style="flex-shrink:0;margin-top:1px" viewBox="0 0 24 24" fill="#C77700"><path d="M12 3 23 20H1z"/><path d="M12 9v5M12 16.5v1.5" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg>
+            <div style="flex-grow:1;min-width:0">
+              <div style="font-size:12.5px">\usepackage{amsmath}: no package support is implemented</div>
+              <div class="cap" style="margin-top:2px" >↳ no provisional rendering</div>
+              <div class="mono" style="font-size:10.5px;color:#9A9AA0;margin-top:2px">no source mapping</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- preview with provisional marker -->
+    <div style="flex-grow:1;display:flex;flex-direction:column;background:#DFDFE4;min-width:0">
+      <div style="flex-grow:1;padding:22px;display:flex;justify-content:center;overflow:hidden">
+        <div style="width:430px;background:#fff;box-shadow:0 2px 12px rgba(0,0,0,.14);padding:38px 40px;font-family:'Times New Roman',Times,serif">
+          <div style="font-size:16px;font-weight:700;margin-bottom:14px">1.2  Entropy change</div>
+          <div style="border-left:3px solid #C77700;background:rgba(199,119,0,.07);padding:12px 14px;margin-bottom:16px">
+            <div style="font-family:-apple-system,system-ui,sans-serif;font-size:10.5px;font-weight:700;color:#8A5200;letter-spacing:.04em;margin-bottom:6px">PROVISIONAL RENDERING</div>
+            <div style="font-size:14px">ΔS = ∫ δQ⁄T</div>
+          </div>
+          <div style="font-size:13.5px;line-height:1.65;color:#1D1D1F">
+            Therefore the total entropy of an isolated system never decreases.
+          </div>
+        </div>
+      </div>
+      <div class="bar" style="padding:7px 14px;border-top:1px solid #D6D6DB;display:flex;align-items:center;gap:8px">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="#C77700"><path d="M12 3 23 20H1z"/></svg>
+        <span class="cap" style="color:#8A5200">Highlighted regions were recovered, not compiled as written.</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+</x-dc>
+<script data-dc-script>
+class Component extends DCLogic {}
+</script>
+</body>
+</html>
