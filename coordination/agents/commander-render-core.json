@@ -14,23 +14,23 @@
     "rust",
     "rendering"
   ],
-  "code_revision": "53f0cdd9fe0f2de284e05e98ac3aa27df8a66fe0",
+  "code_revision": "4e8d85fe85dafeac2ea320e034ff44e52d2c2c3c",
   "eta_minutes": {
     "likely": 3,
     "optimistic": 1,
     "pessimistic": 5
   },
   "machine": "linux-primary",
-  "main_integrated_through": "53f0cdd9fe0f2de284e05e98ac3aa27df8a66fe0",
-  "next_action": "Existing delta owner resolves precise residency policy; no activation or duplicate parser.",
+  "main_integrated_through": "4e8d85fe85dafeac2ea320e034ff44e52d2c2c3c",
+  "next_action": "Existing compiler/math owner implements narrow membership recognition plus verified export mapping; native corpus owner retains oracle.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "R3 owner vectors independently pass; published machine-readable refusal scenarios and remaining over-cap paint/coalescing residency contradictions.",
+  "summary": "HW1 source-pinned handoff selects membership relation: compiler recognition/export gap; downstream Rel/CM slot/cmap support exists; whole-math provenance preserved.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T14:58:55Z",
+  "updated_utc": "2026-09-12T15:02:07Z",
   "usage": {
-    "evidence": "crates/rendering-core/docs/handoffs/page-delta/r3-reference-results.json",
-    "status": "Existing OpenAI; tiny offline owner Python vector only, no native/build/provider/descendant."
+    "evidence": "crates/rendering-core/docs/handoffs/hw1-in/source-pins.json",
+    "status": "Existing OpenAI; source-only review, no builds/corpus/providers/descendants."
   }
 }
