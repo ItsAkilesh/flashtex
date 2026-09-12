@@ -3,10 +3,10 @@
   "allocation_id": "openai-kabir-plus-ft002",
   "assignment_acknowledgements": {
     "FT-002": {
-      "acknowledged_utc": "2026-09-12T09:17:09Z",
-      "adaptation": "Accepted FT-002 rev 9 at input main 25bd006: measure and reduce input-to-first-response-byte latency on a pinned 500KB fixture while preserving exact JSON bytes, diagnostics and incremental-clean equivalence. Branch was repaired at ee423c3 after I pushed a bad commit; it is green again at 15 suites. Starting by measuring where time to first byte actually goes, because rev 7 taught me that guessing the bottleneck costs more than measuring it: I fixed two wrong things before finding the parser quadratic.",
-      "main_sha": "da9dc355a6fab08ac53812c8a04042781d9d9dc4",
-      "revision": 9
+      "acknowledged_utc": "2026-09-12T09:42:42Z",
+      "adaptation": "Accepted FT-002 rev 10 at input main e590179: isolate layout and page construction from JSON serialisation using the exact pinned fixture. Rev 9 already split compile from serialisation and cut serialisation from 61 ms to 20 ms by rendering pages directly; rev 10 needs the finer split so the remaining cost is attributed precisely rather than lumped as compile. Acknowledged 20 minutes late because nothing was watching the board; a background watcher now polls for new dispatches so that does not recur.",
+      "main_sha": "277a0910811fdb27bd156ecd92b92b50f277c750",
+      "revision": 10
     }
   },
   "branch": "agent/claude/compiler-foundation",
@@ -16,7 +16,7 @@
     "cursor-commit",
     "coordination"
   ],
-  "code_revision": "ee423c332e54c23da3da306508ae72f4d4dd725c",
+  "code_revision": "a6d4979ca400adc8ef6a9ffe4ebdd63a732ccef5",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
@@ -24,21 +24,21 @@
   },
   "machine": "mac-m5pro-kabir",
   "main_integrated_through": "4425d9d77b747db69c1f04c493b363bd3a467f4e",
-  "next_action": "Available for rev 10 or the transport decision on issue #21.",
+  "next_action": "Layout is the next target if latency work continues: it is 64 percent of cold TTFB and contains the cross-reference convergence passes. Watcher armed for the next dispatch.",
   "reviewed_peers": {
     "origin/main": {
-      "adaptation": "Caught a measurement error in my own benchmark before drawing conclusions from it: reusing one project_id across samples meant every iteration after the first hit the warm session cache, so the cold numbers were really warm ones. The tell was compile appearing slower than the whole reply, which is impossible.",
-      "reviewed_utc": "2026-09-12T09:21:34Z",
-      "sha": "da9dc355a6fab08ac53812c8a04042781d9d9dc4"
+      "adaptation": "Acknowledged rev 10 twenty minutes after dispatch because nothing was watching the board. A background watcher now polls origin every 45 seconds and wakes this session on any revision change, so idle time between a dispatch and its acknowledgement should not recur.",
+      "reviewed_utc": "2026-09-12T09:44:44Z",
+      "sha": "277a0910811fdb27bd156ecd92b92b50f277c750"
     }
   },
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "FT-002 rev 9 delivered: time to first response byte on a pinned 500KB fixture cut from 143.451 ms to 101.506 ms cold p50, and 61.826 ms to 20.048 ms warm p50, with byte-identical output proven by the pinned fixtures. 16 suites pass.",
+  "summary": "FT-002 rev 10 delivered: layout and page construction isolated from JSON serialisation on the exact pinned fixture. Layout dominates at 63.300 ms p50, 64 percent of a 99.289 ms cold reply; serialisation is 16.159 ms, parse 11.867 ms, writing 0.105 ms. 16 suites pass.",
   "tool": "Codex",
-  "updated_utc": "2026-09-12T09:21:34Z",
+  "updated_utc": "2026-09-12T09:44:44Z",
   "usage": {
-    "evidence": "ttfb_bench prints sha256 of fixture, request and binary; cold p50 143.451 to 101.506 ms and p95 151.336 to 108.395; warm p50 61.826 to 20.048 and p95 64.758 to 20.954; pinned byte-exact fixtures pass unchanged, proving output identical; 16 suites pass; clippy clean; fmt clean",
-    "status": "Written directly; all Codex workers terminated after one ran away and rewrote files during cleanup"
+    "evidence": "ttfb_bench prints sha256 of fixture, request and binary and reports p50/p95/p99 per phase on 691 pages and 96571 items; parse 11.867, layout 63.300, warm compile 3.299, warm reply 19.458 so serialisation 16.159, write 0.105; phases sum to about 91 ms against 99.289 ms cold with the remainder in request parsing, path validation and diagnostics",
+    "status": "Written directly; no Codex worker used"
   }
 }

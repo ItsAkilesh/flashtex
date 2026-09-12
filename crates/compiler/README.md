@@ -313,6 +313,27 @@ These are COMPILER-ONLY measurements. UI paint, scheduling, IPC transport and PD
 writing are outside this crate. Native paint parity and raw PDF byte equality are
 separate gates and are not claimed here.
 
+### Where the time goes, by phase
+
+Isolated on the same pinned fixture (691 pages, 96 571 positioned items):
+
+| Phase | p50 | Share of cold |
+|---|---|---|
+| Parse | 11.867 ms | 12% |
+| **Layout and page construction** | **63.300 ms** | **64%** |
+| JSON serialisation | 16.159 ms | 16% |
+| Write finished bytes to a writer | 0.105 ms | 0.1% |
+
+Serialisation is measured as the warm reply build (19.458 ms) minus warm compile
+(3.299 ms), using only public API, and is stated as a difference because that is
+what it is.
+
+Layout dominates, and it is where the cross-reference convergence passes live.
+Serialisation was the larger cost before revision 9 cut it from 61 ms to 16 ms;
+attacking it again would win little. The phases sum to about 91 ms against a
+99 ms cold reply, and the remainder is request parsing, path validation and
+diagnostic assembly.
+
 ## Recovery behaviour
 
 `status` is `ok` with no diagnostics, `recovered` when diagnostics were produced
