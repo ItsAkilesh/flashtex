@@ -13,17 +13,17 @@
   "capabilities": [
     "Preview helper serialization and latency"
   ],
-  "code_revision": "684282d75fde77e3105a4eb7444adef6c828de4a",
+  "code_revision": "150f9f0e67b2a6b1e21e9ae52f4bdfc33d93b9ab",
   "eta_minutes": null,
   "machine": "linux-primary",
   "main_integrated_through": "e5901797e8a7ebdd8d714ecdee6793e1097515a9",
-  "next_action": "Implement bounded controller origin/version binding and lifecycle gates after runtime checkpoint review; coordinate native negotiation separately.",
+  "next_action": "Coordinate Mac negotiation/priority contract; measure opt-in internal burst progress before enabling native display.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "FT048r3 runtime-only historical completion prototype:26runtime+38controller tests and strictlint pass. One retained validated result, originalboundedtoken, epoch invalidation, defaultEvent semantics unchanged. No nativeactivation.",
+  "summary": "FT048r3 boundedcontroller historical binding complete:41controller tests+strictlint pass; originalversions/privateincarnation/epochs,monotonicdisplayclaim,64metadata cap with80durableedits. Runtime26tests separatelypassed. Nativewirestilldisabled.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T09:22:23Z",
+  "updated_utc": "2026-09-12T09:27:12Z",
   "usage": {
     "status": "unknown"
   }
