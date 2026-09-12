@@ -1357,7 +1357,7 @@ pub fn assemble(
         start_byte: span.start,
         end_byte: span.end,
     };
-    let mut used: BTreeMap<String, Rc<LoadedFace>> = BTreeMap::new();
+    let mut used: BTreeMap<Rc<str>, Rc<LoadedFace>> = BTreeMap::new();
     // Every block's lines are assembled once in line-local coordinates
     // (cached across requests by the block's key), then placed per page by
     // integer tick/byte moves.
@@ -1449,7 +1449,7 @@ pub fn assemble(
         .values()
         .map(|f| FontResource {
             font_id: f.font_id.clone(),
-            sha256: f.font_id.clone(),
+            sha256: f.font_id.to_string(),
             byte_length: f.byte_length,
             format: f.format.to_string(),
             face_index: 0,
@@ -1490,7 +1490,7 @@ fn assemble_block(
     paths: &[Rc<str>],
     empty: &Rc<str>,
 ) -> incremental::AssembledBlock {
-    let mut used: BTreeMap<String, Rc<LoadedFace>> = BTreeMap::new();
+    let mut used: BTreeMap<Rc<str>, Rc<LoadedFace>> = BTreeMap::new();
     let mut lines = Vec::with_capacity(block.block.lines.lines.len());
     let mut resources = Vec::new();
     let mut unmapped = Vec::new();
@@ -1652,7 +1652,7 @@ fn math_items(
     m: &MathRec,
     source_of: &dyn Fn(Span) -> SourceRange,
     items: &mut Vec<display::Item>,
-    used: &mut BTreeMap<String, Rc<LoadedFace>>,
+    used: &mut BTreeMap<Rc<str>, Rc<LoadedFace>>,
 ) {
     let flat = ml::positioned_runs(&m.root, (run.x, -m.root.height));
     let src = source_of(m.span);

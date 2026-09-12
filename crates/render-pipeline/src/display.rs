@@ -164,7 +164,7 @@ pub enum RunRole {
 #[derive(Debug, Clone, PartialEq)]
 pub struct GlyphRun {
     /// Content-addressed font id (SHA-256 hex of the program).
-    pub font_id: String,
+    pub font_id: std::rc::Rc<str>,
     pub font_size: Tick,
     /// ActualText of the whole run; clusters partition it.
     pub text: String,
@@ -200,7 +200,7 @@ pub struct Page {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FontResource {
-    pub font_id: String,
+    pub font_id: std::rc::Rc<str>,
     pub sha256: String,
     pub byte_length: u64,
     /// `opentype-cff`, `static-truetype` or `core14-afm`.
@@ -361,7 +361,7 @@ impl DisplayList {
                     .iter()
                     .map(|f| {
                         let mut o = Value::obj();
-                        o.set("font_id", json::str_(f.font_id.clone()));
+                        o.set("font_id", json::str_(f.font_id.to_string()));
                         o.set("sha256", json::str_(f.sha256.clone()));
                         o.set("byte_length", json::num(f.byte_length as f64));
                         o.set("format", json::str_(f.format.clone()));
@@ -454,7 +454,7 @@ fn page_json(p: &Page) -> Value {
                     Item::GlyphRun(r) => {
                         let mut o = Value::obj();
                         o.set("kind", json::str_("glyph_run"));
-                        o.set("font_id", json::str_(r.font_id.clone()));
+                        o.set("font_id", json::str_(r.font_id.to_string()));
                         o.set("font_size", tick(r.font_size));
                         o.set("text", json::str_(r.text.clone()));
                         o.set(

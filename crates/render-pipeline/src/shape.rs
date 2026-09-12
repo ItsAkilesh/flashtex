@@ -98,7 +98,7 @@ pub const SHAPER_CACHE_LIMIT: usize = 200_000;
 
 #[derive(Default)]
 pub struct Shaper {
-    cache: RefCell<HashMap<(String, String), Rc<Shaped>>>,
+    cache: RefCell<HashMap<(Rc<str>, String), Rc<Shaped>>>,
 }
 
 impl Shaper {

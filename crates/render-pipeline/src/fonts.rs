@@ -271,7 +271,7 @@ pub struct LoadedFace {
     /// font-resources' digest checks mean). font-engine's own
     /// `FontId::content_sha256` hashes bytes ‖ face_index and is kept in
     /// `engine_id` for diagnostics only.
-    pub font_id: String,
+    pub font_id: Rc<str>,
     /// font-engine's identity (SHA-256 of bytes ‖ big-endian face index).
     pub engine_id: String,
     /// Stable human-readable name (file stem or Core 14 name), for
@@ -573,7 +573,7 @@ impl FontSet {
     }
 
     pub fn by_font_id(&self, font_id: &str) -> Option<Rc<LoadedFace>> {
-        self.faces.borrow().iter().find(|f| f.font_id == font_id).cloned()
+        self.faces.borrow().iter().find(|f| &*f.font_id == font_id).cloned()
     }
 
     /// Latin Modern optical-size file for a role, per `t1lmr.fd` (the
@@ -684,7 +684,7 @@ impl FontSet {
         }
         let sha = f.id().content_sha256;
         let loaded = LoadedFace {
-            font_id: sha256::hex(&sha),
+            font_id: Rc::from(sha256::hex(&sha)),
             engine_id: sha256::hex(&sha),
             name: name.clone(),
             sha256: sha,
@@ -763,7 +763,7 @@ impl FontSet {
             None => (None, None, TfmStatus::Missing("no TFM pairs with this file".into())),
         };
         let loaded = LoadedFace {
-            font_id: sha256::hex(&sha),
+            font_id: Rc::from(sha256::hex(&sha)),
             engine_id,
             name: name.clone(),
             sha256: sha,
