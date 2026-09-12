@@ -324,3 +324,90 @@ fn stale_typing_cannot_overwrite_durable_source() {
         .unwrap();
     assert_eq!(preview.source_versions.documents["main.tex"], 2);
 }
+
+#[test]
+fn approved_insertion_is_durable_and_retry_never_inserts_twice() {
+    use flashtex_edit_ledger::PreparedEdit;
+    use flashtex_preview_controller::ApprovedEdit;
+    let dir = tempfile::tempdir().unwrap();
+    let mut controller = Controller::new(
+        "p".into(),
+        "main.tex".into(),
+        vec![store(dir.path())],
+        command(dir.path(), ECHO),
+        Limits::default(),
+    )
+    .unwrap();
+    let before = controller.document("main.tex").unwrap().clone();
+    let edit = PreparedEdit {
+        capture_id: "capture1".into(),
+        edit_id: "edit1".into(),
+        project_id: "p".into(),
+        path: "main.tex".into(),
+        expected_revision: before.revision,
+        start_byte: 0,
+        end_byte: 2,
+        removed_text: "α".into(),
+        replacement: "β".into(),
+        document_before_sha256: before.source_sha256,
+    };
+    let applied = controller
+        .apply_reviewed(ApprovedEdit::from_explicit_user_approval(edit.clone()))
+        .unwrap();
+    assert!(applied.source.preview_error.is_none());
+    assert_eq!(applied.receipt.new_revision, 2);
+    assert_eq!(controller.recovery("main.tex").unwrap().len(), 1);
+    drop(controller);
+    let mut controller = Controller::new(
+        "p".into(),
+        "main.tex".into(),
+        vec![store(dir.path())],
+        command(dir.path(), ECHO),
+        Limits::default(),
+    )
+    .unwrap();
+    let retry = controller
+        .apply_reviewed(ApprovedEdit::from_explicit_user_approval(edit))
+        .unwrap();
+    assert_eq!(retry.receipt, applied.receipt);
+    assert_eq!(retry.source.document.revision, 2);
+    assert_eq!(retry.source.document.text, "β \\label{old}");
+    assert!(retry.source.preview_error.is_none());
+    controller
+        .confirm_receipt("main.tex", &retry.receipt)
+        .unwrap();
+    assert!(controller.recovery("main.tex").unwrap().is_empty());
+}
+
+#[test]
+fn approved_edit_conflict_cannot_modify_source() {
+    use flashtex_edit_ledger::PreparedEdit;
+    use flashtex_preview_controller::ApprovedEdit;
+    let dir = tempfile::tempdir().unwrap();
+    let mut controller = Controller::new(
+        "p".into(),
+        "main.tex".into(),
+        vec![store(dir.path())],
+        command(dir.path(), ECHO),
+        Limits::default(),
+    )
+    .unwrap();
+    let before = controller.document("main.tex").unwrap().clone();
+    let edit = PreparedEdit {
+        capture_id: "capture1".into(),
+        edit_id: "edit1".into(),
+        project_id: "p".into(),
+        path: "main.tex".into(),
+        expected_revision: before.revision,
+        start_byte: 0,
+        end_byte: 1,
+        removed_text: "α".into(),
+        replacement: "β".into(),
+        document_before_sha256: before.source_sha256.clone(),
+    };
+    assert!(controller
+        .apply_reviewed(ApprovedEdit::from_explicit_user_approval(edit))
+        .is_err());
+    assert_eq!(controller.document("main.tex").unwrap(), &before);
+    assert!(controller.recovery("main.tex").unwrap().is_empty());
+}

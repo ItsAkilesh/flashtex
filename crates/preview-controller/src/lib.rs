@@ -1,6 +1,6 @@
 //! Worker-thread editor controller. Durable source precedes disposable caches.
 use flashtex_document_runtime::{Document as InputDocument, Event, Limits, Request, Session};
-use flashtex_edit_ledger::{Document, Store};
+use flashtex_edit_ledger::{AppliedReceipt, AppliedTransaction, Document, PreparedEdit, Store};
 use flashtex_project_index::{ProjectIndex, VersionSnapshot};
 use serde_json::Value;
 use std::{collections::BTreeMap, process::Command, time::Instant};
@@ -12,6 +12,20 @@ pub struct EditOutcome {
     pub preview_error: Option<String>,
     /// Includes fsync/index/submission; excludes compiler completion and paint.
     pub save_and_submit_ms: f64,
+}
+/// An explicit application boundary: construct only from the user's approval
+/// action after displaying the exact prepared edit. This type is not a verifier
+/// of human intent and must never be constructed automatically by conversion.
+pub struct ApprovedEdit(PreparedEdit);
+impl ApprovedEdit {
+    pub fn from_explicit_user_approval(edit: PreparedEdit) -> Self {
+        Self(edit)
+    }
+}
+#[derive(Debug)]
+pub struct AppliedOutcome {
+    pub receipt: AppliedReceipt,
+    pub source: EditOutcome,
 }
 #[derive(Debug)]
 pub struct Preview {
@@ -110,13 +124,21 @@ impl Controller {
             .ok_or("unknown document")?
             .replace_document(expected_revision, expected_sha256, text)
             .map_err(|e| e.to_string())?;
+        Ok(self.after_save(document, started))
+    }
+    fn after_save(&mut self, document: Document, started: Instant) -> EditOutcome {
         self.submitted = None;
-        let indexed = self
-            .index
-            .replace_document(path, document.revision, &document.text)
-            .map_err(|e| e.to_string());
+        let indexed =
+            if self.index.snapshot().documents.get(&document.path) == Some(&document.revision) {
+                Ok(())
+            } else {
+                self.index
+                    .replace_document(&document.path, document.revision, &document.text)
+                    .map(|_| ())
+                    .map_err(|e| e.to_string())
+            };
         let preview_error = match indexed {
-            Ok(_) => self.compile_current().err(),
+            Ok(()) => self.compile_current().err(),
             Err(error) => Some(format!("source saved; index recovery required: {error}")),
         };
         if preview_error.is_none() {
@@ -124,11 +146,48 @@ impl Controller {
                 *submitted_at = started;
             }
         }
-        Ok(EditOutcome {
+        EditOutcome {
             document,
             preview_error,
             save_and_submit_ms: started.elapsed().as_secs_f64() * 1000.0,
+        }
+    }
+    /// The returned receipt is durable before any compile attempt. A matching
+    /// retry returns the original receipt and cannot apply the source edit twice.
+    pub fn apply_reviewed(&mut self, approved: ApprovedEdit) -> Result<AppliedOutcome, String> {
+        if self.closed {
+            return Err("project closed".into());
+        }
+        let started = Instant::now();
+        self.submitted = None;
+        let path = approved.0.path.clone();
+        let store = self.stores.get_mut(&path).ok_or("unknown document")?;
+        let receipt = store.apply(approved.0).map_err(|e| e.to_string())?;
+        let document = store
+            .document()
+            .map_err(|e| e.to_string())?
+            .ok_or("uninitialized document")?
+            .clone();
+        Ok(AppliedOutcome {
+            receipt,
+            source: self.after_save(document, started),
         })
+    }
+    /// Pending durable receipts for bridge reconciliation, including after reopen.
+    pub fn recovery(&self, path: &str) -> Result<Vec<AppliedTransaction>, String> {
+        self.stores
+            .get(path)
+            .ok_or("unknown document")?
+            .recovery()
+            .map_err(|e| e.to_string())
+    }
+    /// Invoke only after the bridge acknowledges this exact applied receipt.
+    pub fn confirm_receipt(&mut self, path: &str, receipt: &AppliedReceipt) -> Result<(), String> {
+        self.stores
+            .get_mut(path)
+            .ok_or("unknown document")?
+            .confirm(receipt)
+            .map_err(|e| e.to_string())
     }
     pub fn compile_current(&mut self) -> Result<(), String> {
         let started = Instant::now();

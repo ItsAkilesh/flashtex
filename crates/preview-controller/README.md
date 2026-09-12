@@ -47,3 +47,13 @@ For explicit compile/restart it starts at compile invocation. This still exclude
 UI event delivery before the worker call and actual painting afterward. Native
 code must also compare its own current editor revision at paint time; a worker
 freshness check alone is not an atomic transaction with the UI rendering thread.
+
+For reviewed capture insertion, construct `ApprovedEdit` only in the explicit user
+approval handler after showing the exact prepared edit, then call `apply_reviewed`.
+The type makes approval an explicit call-site obligation; it cannot verify that a
+human clicked a button and must not be constructed by automatic conversion code.
+The returned `AppliedOutcome` carries a durable ledger receipt and the current
+source state even if preview submission fails. Repeating the identical edit after
+restart returns its original receipt and never inserts twice. Use `recovery(path)`
+to resend pending receipts, and `confirm_receipt` only after the bridge acknowledges
+that exact receipt. Confirmation does not change source or trigger compilation.
