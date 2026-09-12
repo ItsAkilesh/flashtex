@@ -1,7 +1,10 @@
 //! Durable grouped edits and undo/redo. All fields here are ledger-local.
 use crate::{digest, Document, Error, Result, State, Store, MAX_DOCUMENT_BYTES};
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::{
+    collections::BTreeMap,
+    sync::{Arc, OnceLock},
+};
 
 pub const MAX_HISTORY_BYTES: usize = 32 * 1024 * 1024;
 pub const MAX_HISTORY_ENTRIES: usize = 256;
@@ -44,14 +47,47 @@ pub struct HistoryStatus {
     pub permanent_command_ids: usize,
     pub history_bytes: usize,
 }
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct Entry {
     label: String,
     before_text: String,
     after_text: String,
     before_sha256: String,
     after_sha256: String,
+    // Private entries never mutate after construction. Deserialization starts cold;
+    // cache state is neither persisted nor part of semantic equality.
+    #[serde(skip)]
+    validated: OnceLock<bool>,
 }
+impl Entry {
+    fn valid_content(&self) -> bool {
+        *self.validated.get_or_init(|| {
+            self.label.len() <= 256
+                && self.before_text.len() <= MAX_DOCUMENT_BYTES
+                && self.after_text.len() <= MAX_DOCUMENT_BYTES
+                && digest(&self.before_text) == self.before_sha256
+                && digest(&self.after_text) == self.after_sha256
+        })
+    }
+}
+impl PartialEq for Entry {
+    fn eq(&self, other: &Self) -> bool {
+        (
+            &self.label,
+            &self.before_text,
+            &self.after_text,
+            &self.before_sha256,
+            &self.after_sha256,
+        ) == (
+            &other.label,
+            &other.before_text,
+            &other.after_text,
+            &other.before_sha256,
+            &other.after_sha256,
+        )
+    }
+}
+impl Eq for Entry {}
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 struct CommandReceipt {
     request_sha256: String,
@@ -59,8 +95,8 @@ struct CommandReceipt {
 }
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub(crate) struct HistoryState {
-    undo: Vec<Entry>,
-    redo: Vec<Entry>,
+    undo: Vec<Arc<Entry>>,
+    redo: Vec<Arc<Entry>>,
     command_ids: BTreeMap<String, CommandReceipt>,
 }
 impl HistoryState {
@@ -93,12 +129,7 @@ impl HistoryState {
             ));
         }
         for entry in self.undo.iter().chain(&self.redo) {
-            if entry.label.len() > 256
-                || entry.before_text.len() > MAX_DOCUMENT_BYTES
-                || entry.after_text.len() > MAX_DOCUMENT_BYTES
-                || digest(&entry.before_text) != entry.before_sha256
-                || digest(&entry.after_text) != entry.after_sha256
-            {
+            if !entry.valid_content() {
                 return Err(Error::new(
                     "invalid_history",
                     "history payload hash/size mismatch",
@@ -151,13 +182,14 @@ pub(crate) fn record(next: &mut State, before: &Document, label: String) -> Resu
         return Ok(());
     }
     next.history.redo.clear();
-    next.history.undo.push(Entry {
+    next.history.undo.push(Arc::new(Entry {
         label,
         before_text: before.text.clone(),
         after_text: next.document.text.clone(),
         before_sha256: before.source_sha256.clone(),
         after_sha256: next.document.source_sha256.clone(),
-    });
+        validated: OnceLock::new(),
+    }));
     next.schema_version = next.schema_version.max(3);
     next.history.validate(&next.document)
 }
@@ -655,5 +687,70 @@ mod tests {
             )
             .unwrap();
         assert_eq!(store.history_status().unwrap().undo_labels.len(), 2);
+    }
+    #[test]
+    fn shared_history_preserves_legacy_bytes_and_deserialization_revalidates() {
+        #[derive(Serialize)]
+        struct LegacyEntry<'a> {
+            label: &'a str,
+            before_text: &'a str,
+            after_text: &'a str,
+            before_sha256: &'a str,
+            after_sha256: &'a str,
+        }
+        let entry = Arc::new(Entry {
+            label: "Source edit".into(),
+            before_text: "α before".into(),
+            after_text: "β after".into(),
+            before_sha256: digest("α before"),
+            after_sha256: digest("β after"),
+            validated: OnceLock::new(),
+        });
+        assert!(entry.valid_content());
+        let legacy = LegacyEntry {
+            label: &entry.label,
+            before_text: &entry.before_text,
+            after_text: &entry.after_text,
+            before_sha256: &entry.before_sha256,
+            after_sha256: &entry.after_sha256,
+        };
+        let exact = serde_json::to_vec(&entry).unwrap();
+        assert_eq!(exact, serde_json::to_vec(&legacy).unwrap());
+        let history = HistoryState {
+            undo: vec![entry.clone()],
+            ..Default::default()
+        };
+        let shared = history.clone();
+        assert!(Arc::ptr_eq(&history.undo[0], &shared.undo[0]));
+        let decoded: Entry = serde_json::from_slice(&exact).unwrap();
+        assert!(decoded.validated.get().is_none());
+        assert_eq!(entry.as_ref(), &decoded);
+        assert!(decoded.valid_content());
+        let mut corrupted = serde_json::to_value(&entry).unwrap();
+        corrupted["before_text"] = serde_json::json!("corrupted");
+        let decoded: Entry = serde_json::from_value(corrupted).unwrap();
+        assert!(!decoded.valid_content());
+    }
+
+    #[test]
+    fn reopened_history_cannot_inherit_warm_validation_after_disk_tampering() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut store = Store::open(dir.path()).unwrap();
+        let initial = Document::new("p".into(), "main.tex".into(), 1, "before".into()).unwrap();
+        store.initialize(initial.clone()).unwrap();
+        store
+            .replace_document(1, &initial.source_sha256, "after".into())
+            .unwrap();
+        let state = store.state.as_ref().unwrap();
+        assert_eq!(state.history.undo[0].validated.get(), Some(&true));
+        let mut corrupt = serde_json::to_value(state).unwrap();
+        corrupt["history"]["undo"][0]["before_text"] = serde_json::json!("tampered");
+        drop(store);
+        std::fs::write(
+            dir.path().join("document.json"),
+            serde_json::to_vec(&corrupt).unwrap(),
+        )
+        .unwrap();
+        assert!(Store::open(dir.path()).is_err());
     }
 }

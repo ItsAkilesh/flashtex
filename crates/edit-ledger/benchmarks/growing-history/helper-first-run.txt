@@ -1,0 +1,90 @@
+
+running 8 tests
+test completed_protocol::tests::original_token_is_opaque_immutable_and_consumed_once ... ok
+test completed_protocol::tests::restart_and_negotiation_reject_old_callbacks_without_consuming_new_origin ... ok
+test experimental_delivery::tests::byte_budget_returns_required_frame_and_metadata_capacity_is_bounded ... ok
+test experimental_delivery::tests::cancellation_and_close_invalidate_late_display_but_drain_durable_acks ... ok
+test completed_protocol::tests::eviction_and_current_floor_bound_optional_metadata ... ok
+test experimental_delivery::tests::rejects_wrong_incarnation_and_charges_allocation_capacity ... ok
+test experimental_delivery::tests::required_backpressure_returns_exact_frame_and_current_supersedes_history ... ok
+test experimental_delivery::tests::optional_flood_cannot_consume_required_capacity_or_reorder_acks ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 7 tests
+test configuration_tests::compiler_frame_configuration_preserves_helper_headroom ... ok
+test output_buffer::tests::exact_jsonl_limit_and_rejected_write_preserve_prior_bytes ... ok
+test output_buffer::tests::irregular_growth_never_requests_more_than_frame_budget ... ok
+test output_delivery::tests::bounded_optional_replacement_reset_and_required_full_preserve_fifo ... ok
+test output_delivery::tests::required_pending_and_inflight_both_exclude_optional ... ok
+test configuration_tests::oversized_result_error_does_not_retain_large_output_allocation ... ok
+test configuration_tests::compiler_result_and_metadata_share_complete_output_budget_without_partial_frame ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.63s
+
+
+running 7 tests
+test outside_symlink_entry_is_refused_before_shared_graph_discovery ... ok
+test export_refuses_parent_swapped_to_outside_symlink ... ok
+test same_project_id_under_different_roots_has_separate_ledgers ... ok
+test rooted_export_checks_source_disk_and_new_file_expectations ... ok
+test disk_import_reopen_and_external_changes_preserve_durable_source ... ok
+test dynamic_open_detach_and_reopen_preserve_source_and_navigation ... ok
+test explicit_reload_checks_both_versions_and_keeps_dirty_source_in_undo ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 16 tests
+test approved_insertion_is_durable_and_retry_never_inserts_twice ... ok
+test approved_edit_conflict_cannot_modify_source ... ok
+test compiler_restart_never_revalidates_older_index_snapshot ... ok
+test editor_operates_without_compiler_then_attaches_and_renders ... ok
+test historical_preview_binds_original_versions_and_cannot_regress_after_current_output ... ok
+test included_file_edit_updates_complete_source_versions_and_navigation ... ok
+test edit_persists_indexes_and_only_previews_current_revision ... ok
+test original_compiler_renders_durable_updated_source ... ok
+test membership_change_discards_pending_preview_and_reopens_same_source_revision ... ok
+test close_never_publishes_inflight_preview_or_accepts_typing ... ok
+test compiler_failure_does_not_lose_typing_and_restart_recovers ... ok
+test missing_negotiated_capability_is_explicit_and_legacy_switch_invalidates_preview ... ok
+test stale_typing_cannot_overwrite_durable_source ... ok
+test retained_preview_is_invalid_after_new_edit_and_after_close ... ok
+test optional_historical_metadata_eviction_never_rejects_a_durable_edit ... ok
+test historical_callbacks_are_invalid_after_policy_layout_restart_close_or_other_controller ... ok
+
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.26s
+
+
+running 15 tests
+test literal_search_exposes_utf8_matches_work_limits_and_stale_version_errors ... ok
+test helper_reload_requires_approval_and_preserves_disk ... ok
+test helper_membership_and_bounded_status_preserve_detached_source ... ok
+test eof_drains_durable_edit_response_and_reopen_reads_source ... ok
+test helper_streams_original_compiler_result_for_latest_durable_edit ... ok
+test helper_exports_exact_source_and_refuses_conflicting_or_ambiguous_expectations ... ok
+test file_project_helper_reports_external_change_without_overwrite ... ok
+test native_queries_check_versions_and_return_utf8_source_navigation ... ok
+test wrong_session_cannot_edit_authoritative_source ... ok
+test review_token_requires_explicit_approval_and_kill_preserves_receipt ... ok
+test undo_retry_after_helper_kill_is_idempotent_and_redo_remains_available ... ok
+test negotiated_history_echoes_original_token_and_restart_requires_renegotiation ... ok
+test single_stalled_reply_times_out_without_filling_output_queue ... ok
+test stalled_output_reader_causes_bounded_failure_instead_of_unlimited_queueing ... ok
+test configured_large_result_reaches_real_helper_without_dropping_pages ... FAILED
+
+failures:
+
+---- configured_large_result_reaches_real_helper_without_dropping_pages stdout ----
+
+thread 'configured_large_result_reaches_real_helper_without_dropping_pages' (1213522) panicked at tests/stdio.rs:511:14:
+called `Result::unwrap()` on an `Err` value: Timeout
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    configured_large_result_reaches_real_helper_without_dropping_pages
+
+test result: FAILED. 14 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 10.43s
+
