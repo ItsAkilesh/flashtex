@@ -384,6 +384,9 @@ private struct PreviewHeader: View {
 /// exact-export progress control while one runs.
 private struct StatusBar: View {
     @Environment(ShellModel.self) var model
+    /// Whether the next explanation would go to Grok (xAI): re-read when the
+    /// Grok preferences or the Keychain item change (GrokPreferences.didChange).
+    @State private var grokStatus = GrokStatusPill.current()
 
     var body: some View {
         HStack(spacing: 12) {
@@ -399,6 +402,13 @@ private struct StatusBar: View {
             }
             Label(route, systemImage: routeIcon)
                 .help(model.isFixture ? "Not a real compile." : (model.controllerAttached ? model.controllerStatus : model.workerStatus))
+            Label(grokStatus.text, systemImage: grokStatus.on ? "sparkles" : "sparkles.slash")
+                .foregroundStyle(grokStatus.on ? Color.primary : Color.secondary)
+                .help(grokStatus.help)
+                .accessibilityIdentifier("status.grok")
+                .onReceive(NotificationCenter.default.publisher(for: GrokPreferences.didChange).receive(on: DispatchQueue.main)) { _ in
+                    grokStatus = GrokStatusPill.current()
+                }
             let diags = model.displayedDiagnostics
             if !diags.isEmpty {
                 let (errors, warnings, gaps) = EditorDiagnostics.counts(diags)

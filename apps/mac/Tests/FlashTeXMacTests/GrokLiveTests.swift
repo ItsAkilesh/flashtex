@@ -111,19 +111,57 @@ final class GrokLiveTests: XCTestCase {
     func testModelAndPreferences() {
         let defaults = temporaryDefaults()
         let prefs = GrokPreferences(defaults: defaults)
+        XCTAssertEqual(prefs.providerMode, .auto, "default: Grok whenever a key is present")
         XCTAssertFalse(prefs.providerEnabled)
         XCTAssertNil(prefs.model)
+        // grok-4.6 stays the explanation default: the fast model's edits failed the helper's
+        // source-bound gate live (docs/evidence/grok-live-20260912T210600Z); captures use the fast one.
+        XCTAssertEqual(GrokCredential.defaultModel, "grok-4.6")
         XCTAssertEqual(GrokCredential.model(environment: [:], preferences: prefs), "grok-4.6")
+        XCTAssertEqual(GrokCredential.captureModel(environment: [:], preferences: prefs), "grok-4.20-0309-non-reasoning")
+        XCTAssertEqual(GrokCredential.selectableModels, ["grok-4.6", "grok-4.20-0309-non-reasoning"], "both selectable")
+        XCTAssertEqual(GrokCredential.providerTimeout(for: "grok-4.20-0309-non-reasoning"), 30)
+        XCTAssertEqual(GrokCredential.providerTimeout(for: "grok-4.6"), 100)
+        XCTAssertTrue(GrokCredential.isReasoningModel("grok-4.6"))
+        XCTAssertFalse(GrokCredential.isReasoningModel("grok-4.20-0309-non-reasoning"))
         prefs.model = "grok-4.6-mini"
         XCTAssertEqual(GrokCredential.model(environment: [:], preferences: prefs), "grok-4.6-mini")
         XCTAssertEqual(GrokCredential.model(environment: ["FLASHTEX_GROK_MODEL": "grok-x"], preferences: prefs), "grok-x", "environment wins")
         XCTAssertEqual(GrokCredential.model(environment: ["FLASHTEX_GROK_MODEL": "bad model!"], preferences: prefs), "grok-4.6-mini", "invalid env value ignored")
-        prefs.model = "grok-4.6"
+        prefs.model = "grok-4.20-0309-non-reasoning"
+        XCTAssertEqual(prefs.model, "grok-4.20-0309-non-reasoning", "the fast model is a persisted choice")
+        prefs.model = GrokCredential.defaultModel
         XCTAssertNil(prefs.model, "the default is not persisted")
         prefs.model = "not valid"
         XCTAssertNil(prefs.model)
         prefs.providerEnabled = true
         XCTAssertTrue(GrokPreferences(defaults: defaults).providerEnabled)
+        XCTAssertEqual(GrokPreferences(defaults: defaults).providerMode, .on)
+        prefs.providerMode = .off
+        XCTAssertFalse(GrokPreferences(defaults: defaults).providerEnabled)
+        // Migration from the pre-mode boolean: absent → auto, explicit true → on,
+        // explicit false → off (an opt-out survives a key appearing); a stored mode wins.
+        XCTAssertEqual(GrokPreferences(defaults: temporaryDefaults()).providerMode, .auto)
+        let legacyTrue = temporaryDefaults()
+        legacyTrue.set(true, forKey: GrokPreferences.providerKey)
+        XCTAssertEqual(GrokPreferences(defaults: legacyTrue).providerMode, .on)
+        let legacyFalse = temporaryDefaults()
+        legacyFalse.set(false, forKey: GrokPreferences.providerKey)
+        XCTAssertEqual(GrokPreferences(defaults: legacyFalse).providerMode, .off)
+        legacyFalse.set(GrokPreferences.ProviderMode.auto.rawValue, forKey: GrokPreferences.providerModeKey)
+        XCTAssertEqual(GrokPreferences(defaults: legacyFalse).providerMode, .auto, "an explicit new mode takes precedence over the legacy boolean")
+        let legacyFalseKeyed = ProposalPreview.ExplanationConfiguration.fromEnvironment(
+            ["FLASHTEX_KEYCHAIN_OFF": "1", "XAI_API_KEY": "k"], bundleExecutableDirectory: nil,
+            preferences: GrokPreferences(defaults: { let d = temporaryDefaults(); d.set(false, forKey: GrokPreferences.providerKey); return d }()),
+            keychain: MemoryKeychain())
+        XCTAssertNil(legacyFalseKeyed.grok, "a legacy opt-out with a key present never selects Grok")
+        XCTAssertEqual(legacyFalseKeyed.grokStatusText, "Grok: off")
+        var changes = 0
+        let token = NotificationCenter.default.addObserver(forName: GrokPreferences.didChange, object: nil, queue: nil) { _ in changes += 1 }
+        prefs.providerMode = .auto
+        prefs.model = "grok-4.6"
+        NotificationCenter.default.removeObserver(token)
+        XCTAssertEqual(changes, 2, "the status bar re-reads on every preference change")
         XCTAssertTrue(GrokCredential.isValidModel("grok-4.6"))
         XCTAssertFalse(GrokCredential.isValidModel(""))
         XCTAssertFalse(GrokCredential.isValidModel(String(repeating: "a", count: 129)))
@@ -135,10 +173,36 @@ final class GrokLiveTests: XCTestCase {
         let defaults = temporaryDefaults()
         let prefs = GrokPreferences(defaults: defaults)
         let keychain = MemoryKeychain()
-        // Nothing selected: disabled, as before.
+        // Nothing selected and no key (mode auto): disabled, as before; the pill says off.
         let off = ProposalPreview.ExplanationConfiguration.fromEnvironment(Self.envOnly, bundleExecutableDirectory: nil, preferences: prefs, keychain: keychain)
         XCTAssertNil(off.provider); XCTAssertNil(off.grok)
         XCTAssertEqual(off.providerIdentityText, "provider disabled (set FLASHTEX_ASSISTANT_PROVIDER to a local command)")
+        XCTAssertEqual(off.grokStatusText, "Grok: off")
+        XCTAssertEqual(off.providerTimeout, 60, "local provider bound unchanged")
+        XCTAssertEqual(GrokStatusPill.current(environment: Self.envOnly, preferences: prefs, keychain: keychain), GrokStatusPill(on: false, text: "Grok: off", help: off.grokStatusHelp))
+        // Mode auto with a key (environment or Keychain) and no selector: Grok is the default provider, 100 s bound.
+        var keyed = Self.envOnly; keyed["XAI_API_KEY"] = "k"
+        let autoEnv = ProposalPreview.ExplanationConfiguration.fromEnvironment(keyed, bundleExecutableDirectory: nil, preferences: prefs, keychain: keychain)
+        XCTAssertNil(autoEnv.provider)
+        XCTAssertEqual(autoEnv.grok?.model, "grok-4.6")
+        XCTAssertEqual(autoEnv.grok?.credential?.source, .environment)
+        XCTAssertEqual(autoEnv.providerTimeout, 100)
+        XCTAssertEqual(autoEnv.grokStatusText, "Grok: on (grok-4.6)")
+        XCTAssertTrue(GrokStatusPill.current(environment: keyed, preferences: prefs, keychain: keychain).on)
+        let stored = MemoryKeychain([GrokCredential.keychainService + "\u{0}" + GrokCredential.keychainAccount: "kc-key"])
+        let autoKeychain = ProposalPreview.ExplanationConfiguration.fromEnvironment([:], bundleExecutableDirectory: nil, preferences: prefs, keychain: stored)
+        XCTAssertEqual(autoKeychain.grok?.credential?.source, .keychain)
+        XCTAssertTrue(ProposalPreview(executable: nil, explanation: autoKeychain).grokLive)
+        // The fast model gets the short bound; "Never" turns Grok off even with a key.
+        prefs.model = "grok-4.20-0309-non-reasoning"
+        let fast = ProposalPreview.ExplanationConfiguration.fromEnvironment(keyed, bundleExecutableDirectory: nil, preferences: prefs, keychain: keychain)
+        XCTAssertEqual(fast.grok?.model, "grok-4.20-0309-non-reasoning"); XCTAssertEqual(fast.providerTimeout, 30)
+        XCTAssertEqual(fast.grokStatusText, "Grok: on (grok-4.20-0309-non-reasoning)")
+        prefs.model = nil
+        prefs.providerMode = .off
+        let never = ProposalPreview.ExplanationConfiguration.fromEnvironment(keyed, bundleExecutableDirectory: nil, preferences: prefs, keychain: keychain)
+        XCTAssertNil(never.grok); XCTAssertEqual(never.grokStatusText, "Grok: off")
+        prefs.providerMode = .auto
         // FLASHTEX_ASSISTANT_PROVIDER=grok without a key: selected, no credential, honest text.
         var env = Self.envOnly; env["FLASHTEX_ASSISTANT_PROVIDER"] = "grok"
         let grokNoKey = ProposalPreview.ExplanationConfiguration.fromEnvironment(env, bundleExecutableDirectory: nil, preferences: prefs, keychain: keychain)
@@ -146,18 +210,21 @@ final class GrokLiveTests: XCTestCase {
         XCTAssertEqual(grokNoKey.grok?.model, "grok-4.6")
         XCTAssertNil(grokNoKey.grok?.credential)
         XCTAssertTrue(grokNoKey.providerIdentityText.hasPrefix("provider: Grok (xAI) grok-4.6, no API key"), grokNoKey.providerIdentityText)
+        XCTAssertEqual(grokNoKey.grokStatusText, "Grok: off")
+        XCTAssertTrue(grokNoKey.grokStatusHelp.contains("no API key"), grokNoKey.grokStatusHelp)
         // With a key and a model.
         env["XAI_API_KEY"] = "k"; env["FLASHTEX_GROK_MODEL"] = "grok-4.6-mini"
         let grokKey = ProposalPreview.ExplanationConfiguration.fromEnvironment(env, bundleExecutableDirectory: nil, preferences: prefs, keychain: keychain)
         XCTAssertEqual(grokKey.grok?.credential?.source, .environment)
         XCTAssertEqual(grokKey.providerIdentityText, "provider: Grok (xAI) grok-4.6-mini, key present (environment: XAI_API_KEY)")
+        XCTAssertEqual(grokKey.providerTimeout, 100, "an unknown id is treated as a reasoning model")
         // Case-insensitive selector; a dedicated grok-built helper path is honoured.
         env["FLASHTEX_ASSISTANT_PROVIDER"] = "Grok"; env["FLASHTEX_ASSISTANT_CONTEXT_GROK"] = Self.fakeSession.path
         XCTAssertEqual(ProposalPreview.ExplanationConfiguration.fromEnvironment(env, bundleExecutableDirectory: nil, preferences: prefs, keychain: keychain).grok?.helper, Self.fakeSession)
-        // The preference selects Grok when the variable is unset...
-        prefs.providerEnabled = true
+        // "Always" selects Grok when the variable is unset, even without a key...
+        prefs.providerMode = .on
         let byPref = ProposalPreview.ExplanationConfiguration.fromEnvironment(Self.envOnly, bundleExecutableDirectory: nil, preferences: prefs, keychain: keychain)
-        XCTAssertNotNil(byPref.grok); XCTAssertNil(byPref.provider)
+        XCTAssertNotNil(byPref.grok); XCTAssertNil(byPref.provider); XCTAssertNil(byPref.grok?.credential)
         // ...but an explicit local command in the variable wins over the preference.
         var local = Self.envOnly; local["FLASHTEX_ASSISTANT_PROVIDER"] = WorkerClientTests.python.path
         let byPath = ProposalPreview.ExplanationConfiguration.fromEnvironment(local, bundleExecutableDirectory: nil, preferences: prefs, keychain: keychain)
@@ -248,7 +315,8 @@ final class GrokLiveTests: XCTestCase {
         try await waitForReady(preview)
         preview.explain()
         try await waitUntil("awaiting provider") { if case .awaitingProvider = preview.explanationState { return true }; return false }
-        XCTAssertTrue(preview.explanationStatusText.contains("admitted to Grok (xAI) grok-4.6-test"), preview.explanationStatusText)
+        XCTAssertTrue(preview.explanationStatusText.hasPrefix("Asking Grok (grok-4.6-test)…"), preview.explanationStatusText)
+        XCTAssertNotNil(preview.providerStartedAt, "the sheet's elapsed counter runs while the live stage does")
         XCTAssertNotNil(preview.runningChildProcessIdentifier)
         try await waitSettled(preview)
         guard case .ready(let e) = preview.explanationState else { return XCTFail("\(preview.explanationState)") }
@@ -329,9 +397,11 @@ final class GrokLiveTests: XCTestCase {
         preview.explain()
         try await waitUntil("session running") { if case .awaitingProvider = preview.explanationState { return preview.runningChildProcessIdentifier != nil }; return false }
         let pid = try XCTUnwrap(preview.runningChildProcessIdentifier)
+        XCTAssertNotNil(preview.providerStartedAt)
         let stale = preview.staleExplanationReplies
         preview.cancelExplanationByReviewer()
         XCTAssertEqual(preview.explanationState, .cancelled("cancelled by reviewer"))
+        XCTAssertNil(preview.providerStartedAt, "the elapsed counter stops with the session")
         try await waitUntil("late reply discarded") { preview.staleExplanationReplies == stale + 1 }
         try await waitUntil("child gone") { kill(pid, 0) != 0 }
         XCTAssertEqual(preview.explanationState, .cancelled("cancelled by reviewer"))

@@ -397,8 +397,9 @@ final class ProposalPreviewTests: XCTestCase {
         XCTAssertThrowsError(try ProposalPreview.explanation(from: Data("nope".utf8), context: context, shadow: shadow))
 
         // Provider disabled by default; only an executable path enables it.
-        let none = ProposalPreview.ExplanationConfiguration.fromEnvironment([:])
+        let none = ProposalPreview.ExplanationConfiguration.fromEnvironment(["FLASHTEX_KEYCHAIN_OFF": "1"])
         XCTAssertNil(none.provider)
+        XCTAssertNil(none.grok, "no key in this environment: Grok auto mode stays off")
         XCTAssertNil(ProposalPreview.ExplanationConfiguration.fromEnvironment(["FLASHTEX_ASSISTANT_PROVIDER": "/nonexistent/provider"]).provider)
         let env = ProposalPreview.ExplanationConfiguration.fromEnvironment([
             "FLASHTEX_ASSISTANT_PROVIDER": WorkerClientTests.python.path, "FLASHTEX_ASSISTANT_CONTEXT": WorkerClientTests.python.path,
@@ -901,7 +902,7 @@ final class ProposalPreviewTests: XCTestCase {
         XCTAssertEqual(ProposalPreview.ExplanationConfiguration.locateHelper(["FLASHTEX_ASSISTANT_CONTEXT": WorkerClientTests.python.path],
                                                                             bundleExecutableDirectory: macOSDir), WorkerClientTests.python)
         // fromEnvironment goes through the same lookup and reports the bundled name.
-        let c = ProposalPreview.ExplanationConfiguration.fromEnvironment([:], bundleExecutableDirectory: macOSDir)
+        let c = ProposalPreview.ExplanationConfiguration.fromEnvironment([:], bundleExecutableDirectory: macOSDir, keychain: MemoryKeychain())
         XCTAssertEqual(c.helper, bundled)
         XCTAssertNil(c.provider)
         XCTAssertEqual(c.providerIdentityText, "provider disabled (set FLASHTEX_ASSISTANT_PROVIDER to a local command)")
