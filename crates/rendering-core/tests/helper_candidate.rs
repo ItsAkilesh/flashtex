@@ -525,28 +525,7 @@ fn actual_raw_prototype_three_states_reach_strict_export_without_reencoding() {
             case["producer_sibling_sha256"]
         );
         let metadata: Value = serde_json::from_slice(metadata).unwrap();
-        let c = &metadata["current"];
-        let current = CurrentHelper {
-            session_id: c["session_id"].as_str().unwrap().into(),
-            project_id: c["project_id"].as_str().unwrap().into(),
-            request_id: c["request_id"].as_str().unwrap().into(),
-            compile_revision: c["compile_revision"].as_u64().unwrap(),
-            membership_generation: c["membership_generation"].as_u64().unwrap(),
-            sources: c["sources"]
-                .as_object()
-                .unwrap()
-                .iter()
-                .map(|(p, s)| {
-                    (
-                        p.clone(),
-                        CurrentSource {
-                            editor_revision: s["editor_revision"].as_u64().unwrap(),
-                            text: s["text"].as_str().unwrap().into(),
-                        },
-                    )
-                })
-                .collect(),
-        };
+        let current = current_metadata(&metadata);
         assert_eq!(
             current.sources["main.tex"].editor_revision,
             index as u64 + 1
@@ -626,4 +605,152 @@ fn consumed_pair_preserves_legacy_resource_refusals_and_retained_source_guard() 
             assert!(reused.export_searchable(&current, 8 * 1024 * 1024).is_ok());
         }
     }
+}
+
+fn current_metadata(metadata: &Value) -> CurrentHelper {
+    let c = &metadata["current"];
+    CurrentHelper {
+        session_id: c["session_id"].as_str().unwrap().into(),
+        project_id: c["project_id"].as_str().unwrap().into(),
+        request_id: c["request_id"].as_str().unwrap().into(),
+        compile_revision: c["compile_revision"].as_u64().unwrap(),
+        membership_generation: c["membership_generation"].as_u64().unwrap(),
+        sources: c["sources"]
+            .as_object()
+            .unwrap()
+            .iter()
+            .map(|(p, s)| {
+                (
+                    p.clone(),
+                    CurrentSource {
+                        editor_revision: s["editor_revision"].as_u64().unwrap(),
+                        text: s["text"].as_str().unwrap().into(),
+                    },
+                )
+            })
+            .collect(),
+    }
+}
+
+#[test]
+fn actual_raw_candidate_hit_keeps_ligature_span_and_requires_current_state() {
+    let raw = include_bytes!("fixtures/helper-raw-f5524794/step-0.candidate.jsonl");
+    let event: Value = serde_json::from_slice(raw).unwrap();
+    let metadata: Value = serde_json::from_slice(include_bytes!(
+        "fixtures/helper-raw-f5524794/step-0.metadata.json"
+    ))
+    .unwrap();
+    let current = current_metadata(&metadata);
+    let result = serde_json::to_vec(&metadata["result"]).unwrap();
+    let bound = bind(
+        raw,
+        &result,
+        &current,
+        &caps(),
+        &resources(&event["payload"]["display_list"]),
+    )
+    .unwrap();
+    let point = transform::ExactPoint::from_point(hit_test::Point {
+        x: Tick(144198220),
+        y: Tick(135809276),
+    })
+    .unwrap();
+    for _ in 0..2 {
+        let hit = bound
+            .read_only_hit_test(&current, 1, point)
+            .unwrap()
+            .unwrap();
+        assert_eq!(hit.sources.len(), 1);
+        let source = &hit.sources[0];
+        assert_eq!((source.start_byte, source.end_byte), (48, 51));
+        assert_eq!(&current.sources["main.tex"].text[48..51], "ffi");
+        assert_eq!(
+            hit.selection,
+            hit_test::LogicalSelection::Caret { text_byte: 1 }
+        );
+    }
+    for kind in 0..5 {
+        let mut stale = current.clone();
+        match kind {
+            0 => stale.session_id.push('x'),
+            1 => stale.membership_generation += 1,
+            2 => stale.sources.get_mut("main.tex").unwrap().editor_revision += 1,
+            3 => stale.sources.get_mut("main.tex").unwrap().text.push('x'),
+            _ => {
+                stale.sources.remove("main.tex");
+            }
+        }
+        assert!(bound
+            .read_only_hit_test(&stale, 1, point)
+            .unwrap_err()
+            .0
+            .contains("stale"));
+    }
+    assert!(bound.read_only_hit_test(&current, 999, point).is_err());
+}
+
+#[test]
+fn escaped_producer_geometry_in_labelled_helper_adapter_keeps_tex_span() {
+    // Actual producer source/display, synthetic helper correlation adapter only:
+    // this is not evidence that a native/helper transport emitted this envelope.
+    let display: Value = serde_json::from_slice(include_bytes!(
+        "fixtures/original-reference/escaped-display.json"
+    ))
+    .unwrap();
+    let request: Value = serde_json::from_slice(include_bytes!(
+        "fixtures/original-reference/escaped-request.jsonl"
+    ))
+    .unwrap();
+    let current = CurrentHelper {
+        session_id: "escaped-adapter-only".into(),
+        project_id: "text-semantics".into(),
+        request_id: "text-semantics".into(),
+        compile_revision: 1,
+        membership_generation: 1,
+        sources: BTreeMap::from([(
+            "main.tex".into(),
+            CurrentSource {
+                editor_revision: 1,
+                text: request["payload"]["documents"][0]["text"]
+                    .as_str()
+                    .unwrap()
+                    .into(),
+            },
+        )]),
+    };
+    let event = json!({"protocol_version":1,"type":"update","session_id":current.session_id,
+        "payload":{"kind":"display_candidate","project_id":current.project_id,"request_id":current.request_id,
+        "compile_revision":1,"membership_generation":1,"source_versions":{"main.tex":1},
+        "untrusted":true,"source_actions_enabled":false,"display_list":display}});
+    let result = json!({"protocol_version":1,"type":"compile_result","id":current.request_id,
+        "payload":{"project_id":current.project_id,"revision":1,"status":"ok",
+        "layout_capabilities":["display-list-v2"],"diagnostics":[]}});
+    let bound = bind(
+        &serde_json::to_vec(&event).unwrap(),
+        &serde_json::to_vec(&result).unwrap(),
+        &current,
+        &caps(),
+        &resources(&display),
+    )
+    .unwrap();
+    let point = transform::ExactPoint::from_point(hit_test::Point {
+        x: Tick(123809981),
+        y: Tick(78631449),
+    })
+    .unwrap();
+    let hit = bound
+        .read_only_hit_test(&current, 1, point)
+        .unwrap()
+        .unwrap();
+    assert_eq!(hit.sources.len(), 1);
+    let span = &hit.sources[0];
+    assert_eq!(
+        &current.sources["main.tex"].text[span.start_byte as usize..span.end_byte as usize],
+        "\\%"
+    );
+    assert_eq!(
+        hit.selection,
+        hit_test::LogicalSelection::Caret { text_byte: 0 }
+    );
+    assert_eq!(span.end_byte - span.start_byte, 2);
 }

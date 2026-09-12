@@ -8,7 +8,7 @@ use crate::{
 };
 use flashtex_font_resources::registry::CffFontResource;
 use serde::{Deserialize, Deserializer};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 mod syntax;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -28,6 +28,7 @@ pub struct CurrentHelper {
 pub struct BoundHelperCandidate {
     current: CurrentHelper,
     display: PipelineCff,
+    hit_index: OnceLock<hit_test::PageIndex>,
 }
 impl BoundHelperCandidate {
     /// A fresh authoritative snapshot is required at every export. An A→B→A
@@ -37,8 +38,27 @@ impl BoundHelperCandidate {
         current: &CurrentHelper,
         max_bytes: usize,
     ) -> Result<SearchablePdf> {
-        require(current == &self.current, "stale helper candidate")?;
+        self.require_current(current)?;
         self.display.export_searchable(max_bytes)
+    }
+    fn require_current(&self, current: &CurrentHelper) -> Result<()> {
+        require(current == &self.current, "stale helper candidate")
+    }
+    /// Read-only lookup in compiler-declared geometry. The returned logical caret
+    /// offset is not a TeX byte offset; full original source spans remain intact.
+    /// Missing rectangles produce no invented hit region. This query grants no
+    /// editing/navigation authority or source_actions enablement. Requery with a
+    /// fresh authoritative controller snapshot before using a later result.
+    pub fn read_only_hit_test(
+        &self,
+        current: &CurrentHelper,
+        page: u32,
+        point: transform::ExactPoint,
+    ) -> Result<Option<hit_test::Hit>> {
+        self.require_current(current)?;
+        self.hit_index
+            .get_or_init(|| hit_test::PageIndex::from_pipeline(&self.display))
+            .hit_test_exact(&current.project_id, current.compile_revision, page, point)
     }
 }
 pub fn bind(
@@ -116,6 +136,7 @@ pub fn bind(
     Ok(BoundHelperCandidate {
         current: current.clone(),
         display,
+        hit_index: OnceLock::new(),
     })
 }
 
