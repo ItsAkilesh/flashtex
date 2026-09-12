@@ -1,0 +1,35 @@
+{
+  "agent_id": "commander-protocol",
+  "allocation_id": "openai-commander-protocol",
+  "assignment_acknowledgements": {
+    "FT-012": {
+      "acknowledged_utc": "2026-09-12T04:21:33Z",
+      "adaptation": "Validate runtime-v1 by request id and revision; permit asynchronous completion and explicitly classify stale preview responses.",
+      "main_sha": "25a92a9c591a92a3d49071e536ecf8f129112c24",
+      "revision": 1
+    }
+  },
+  "branch": "agent/commander-protocol/runtime-validation",
+  "capabilities": [
+    "runtime-validation"
+  ],
+  "code_revision": "25a92a9c591a92a3d49071e536ecf8f129112c24",
+  "eta_minutes": {
+    "likely": 5,
+    "optimistic": 0,
+    "pessimistic": 10
+  },
+  "machine": "linux-primary",
+  "main_integrated_through": "25a92a9c591a92a3d49071e536ecf8f129112c24",
+  "next_action": "Commander review and actual Cursor commit; run validator against real Rust/native captured transcript once available. Capture schemas and PDF existence/rendering are outside this compile validator.",
+  "reviewed_peers": {},
+  "schema_version": 1,
+  "state": "ready_for_integration",
+  "summary": "FT-012 runtime compile transcript validator implemented; 14 tests pass including UTF-8 offsets, async stale replies, revision/id correlation, bounded malformed JSONLines, and CLI subprocess IO.",
+  "tool": "Codex",
+  "updated_utc": "2026-09-12T04:24:46Z",
+  "usage": {
+    "evidence": "python3 -m unittest discover -s tests -p test_runtime_validation.py -q: 14 passed. CLI accepts published compile request/result fixtures. git diff --check passes.",
+    "status": "unknown"
+  }
+}
