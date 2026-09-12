@@ -16,7 +16,7 @@
     "cursor-commit",
     "coordination"
   ],
-  "code_revision": "4425d9d77b747db69c1f04c493b363bd3a467f4e",
+  "code_revision": "db7f40dc056c97b6dc50d6115f39917b5f73cc3e",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
@@ -24,21 +24,21 @@
   },
   "machine": "mac-m5pro-kabir",
   "main_integrated_through": "70e4aabc579bb7783187cb397b81857200a4de53",
-  "next_action": "Issue #21 remains open and is mine: a valid 500KB project emits 10.1MB in one reply and exceeds the 8 MiB runtime frame.",
+  "next_action": "Propose compact or chunked transport to the Commander with measured byte breakdown; key names alone are 71 percent of a large reply.",
   "reviewed_peers": {
     "origin/main": {
-      "adaptation": "Correcting my own earlier report: I described a pinned-fixture design of 16 files that was not what got committed. Codex partial rev6b run had written its own tests/pinned_fixtures.rs, which overwrote mine on disk before I staged, so the committed design was its aggregated JSONL evidence and my 16 files were orphans nothing referenced. I have removed the orphans and extended the committed design instead of reinstating mine.",
-      "reviewed_utc": "2026-09-12T08:09:41Z",
+      "adaptation": "Measured the byte breakdown before proposing anything: repeated key names account for about 71 percent of a large reply and payload data only 29 percent, so the durable fix is a compact or chunked transport, which is a contract decision the Commander owns. Bounding with an explicit diagnostic is the part that is mine and it turns a confusing malformed-frame rejection into an accurate statement of what happened.",
+      "reviewed_utc": "2026-09-12T08:27:34Z",
       "sha": "23c30247b5fb421c5da05b3c9f7a714099622b7e"
     }
   },
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "FT-002 rev 8 delivered: burst-edit and recovery performance gates, pinned corpus breadth doubled from 7 to 14 fixtures in both capability modes, and PARITY.md publishing unresolved byte/pixel parity separately from compiler latency. 15 suites pass. Also removed 16 orphaned fixture files I had committed by mistake.",
+  "summary": "Issue #21 fixed: a valid 500KB project produced a 13.4MB reply that the runtime rejected as malformed. The reply is now bounded to the 8 MiB transport frame and says explicitly how many pages were not delivered and why. 15 suites pass.",
   "tool": "Codex",
-  "updated_utc": "2026-09-12T08:09:41Z",
+  "updated_utc": "2026-09-12T08:27:34Z",
   "usage": {
-    "evidence": "15 suites pass; clippy -D warnings clean; fmt clean; harness 21/21; pinned evidence grew from 18609 to 40380 bytes across 14 fixtures x 2 modes; burst gates cover 33 consecutive keystrokes, typing through broken syntax, 25 break-repair cycles and 20 capability switches",
-    "status": "Codex hit its usage limit three times on rev 7 and did no work; rev 8 written directly"
+    "evidence": "Reproduced: 516193 byte input produced 13381254 byte reply, 88902 items at 150.5 bytes each, exceeding the 8388608 byte frame. After the fix the same input produces 8303434 bytes, 157 of 253 pages, with an explicit error diagnostic naming the 96 undelivered pages. Regression test added.",
+    "status": "Written directly; Codex unavailable"
   }
 }

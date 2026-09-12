@@ -181,3 +181,68 @@ fn alternating_capability_requests_never_leak_between_them() {
         );
     }
 }
+
+/// Issue #21: a valid large project must not produce a reply the consumer will
+/// reject. It may deliver fewer pages, but only while saying so explicitly.
+#[test]
+fn a_large_project_reply_fits_the_transport_frame_and_says_what_it_dropped() {
+    use flashtex_compiler::json::{self, Value};
+    use flashtex_compiler::protocol::{handle_line, MAX_RESULT_BYTES};
+
+    let mut text = String::from("\\documentclass{article}\n\\begin{document}\n");
+    while text.len() < 500_000 {
+        text.push_str("Paragraph with a reasonable number of words that wrap across a line.\n\n");
+    }
+    text.push_str("\\end{document}\n");
+
+    let mut doc = Value::obj();
+    doc.set("path", json::str_("main.tex"));
+    doc.set("text", json::str_(text));
+    let mut payload = Value::obj();
+    payload.set("project_id", json::str_("oversized"));
+    payload.set("revision", Value::Num(1.0));
+    payload.set("entry_path", json::str_("main.tex"));
+    payload.set("documents", Value::Arr(vec![doc]));
+    let mut env = Value::obj();
+    env.set("protocol_version", Value::Num(1.0));
+    env.set("id", json::str_("oversized"));
+    env.set("type", json::str_("compile"));
+    env.set("payload", payload);
+
+    let reply = handle_line(&json::write(&env));
+    assert!(
+        reply.len() <= MAX_RESULT_BYTES,
+        "reply of {} bytes exceeds the {MAX_RESULT_BYTES}-byte transport frame; \
+         the consumer would reject it as malformed",
+        reply.len()
+    );
+
+    let parsed = json::parse(&reply).expect("reply must still be valid JSON");
+    let payload = parsed.get("payload").expect("payload");
+
+    let pages = payload
+        .get("pages")
+        .and_then(|v| v.as_arr())
+        .cloned()
+        .unwrap_or_default();
+    assert!(
+        !pages.is_empty(),
+        "a valid document must still deliver pages"
+    );
+
+    // Dropping pages silently is what the issue explicitly rules out.
+    let diagnostics = payload
+        .get("diagnostics")
+        .and_then(|v| v.as_arr())
+        .cloned()
+        .unwrap_or_default();
+    let announced = diagnostics.iter().any(|d| {
+        d.get("message")
+            .and_then(|m| m.as_str())
+            .is_some_and(|m| m.contains("transport frame") && m.contains("were not delivered"))
+    });
+    assert!(
+        announced,
+        "pages were truncated without an explicit diagnostic saying so"
+    );
+}
