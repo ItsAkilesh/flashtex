@@ -9,15 +9,15 @@
   "branch": "agent/mac-math-layout/math-boxes",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "a949f5b773a1bc7f1be7ae2d79581856af88a97b",
-  "objective": "Integrate declared math visual cases and tune spacing, scripts, rules, roots and delimiters against pinned TeX oracles without overclaiming beyond the corpus.",
+  "input_main_sha": "a089e17750ce9a3eeee0bc2a6d34fda70416fb61",
+  "objective": "Exact TeX math spacing and size-dependent symbol metrics",
   "owned_paths": [
     "crates/math-layout"
   ],
-  "revision": 3,
+  "revision": 4,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-020",
   "timebox_minutes": 45,
-  "updated_utc": "2026-09-12T06:30:37Z"
+  "updated_utc": "2026-09-12T07:08:41Z"
 }
