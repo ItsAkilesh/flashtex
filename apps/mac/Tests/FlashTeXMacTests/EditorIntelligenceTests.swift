@@ -103,6 +103,29 @@ final class EditorIntelligenceTests: XCTestCase {
         XCTAssertEqual(EI.openingEnvironment(inLinePrefix: "  \\begin{align*}"), "align*")
     }
 
+    // MARK: completion popup presentation
+
+    func testCompletionRowsCarryKindIconAndDocumentation() {
+        let section = Completion.Suggestion(label: "\\section", insertText: "\\section", kind: .command, detail: "supported by this compiler")
+        let row = CompletionPopup.attributed(section)
+        var attachments = 0
+        row.enumerateAttribute(.attachment, in: NSRange(location: 0, length: row.length)) { value, _, _ in
+            if let a = value as? NSTextAttachment, a.image != nil { attachments += 1 }
+        }
+        XCTAssertEqual(attachments, 1, "one kind icon")
+        XCTAssertTrue(row.string.contains("\\section  cmd · supported by this compiler — \\section{title}: a numbered section heading."), row.string)
+        XCTAssertEqual(CompletionPopup.documentation(for: section), EI.CommandDocs.documentation(for: "section"))
+        let env = Completion.Suggestion(label: "\\begin{itemize}", insertText: "itemize}", kind: .environment, detail: "environment")
+        XCTAssertEqual(CompletionPopup.documentation(for: env), "Bulleted list of \\item entries.")
+        let ref = Completion.Suggestion(label: "eq:1", insertText: "eq:1", kind: .reference, detail: "label")
+        XCTAssertNil(CompletionPopup.documentation(for: ref))
+        XCTAssertFalse(CompletionPopup.attributed(ref).string.contains(" — "))
+        // The spoken label is unchanged by the presentation (accessibility tests read it back).
+        XCTAssertTrue(CompletionPopup.spokenLabel(section).hasPrefix("\\section"), CompletionPopup.spokenLabel(section))
+        XCTAssertFalse(CompletionPopup.spokenLabel(section).contains("numbered section"), "documentation is visual only")
+        for kind in [Completion.Kind.command, .environment, .reference, .citation, .word] { XCTAssertNotNil(kind.icon, "\(kind)") }
+    }
+
     // MARK: hosted editor: gutter, ⌘-click, Return, current line, hover
 
     final class Probe {
