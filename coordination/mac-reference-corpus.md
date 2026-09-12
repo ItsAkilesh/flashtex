@@ -2,6 +2,13 @@
 
 ## Current checkpoint: HW1 isolated probes
 
+Follow-up tested/pushed code `5e42ec58`: six additional exact UTF-8 edit scenarios,
+14 total. Seven corpus checks pass; metadata acceptance is separate from still
+required incremental/clean/edited-reference parity. Merged Grok parent `624fcb14`
+preference migration/selection tests pass 2/2; explicit legacy false stays off
+with an injected key. No live provider call. Publication evidence and resource
+restrictions below continue; next is PR53 review and iPad outcome acceptance.
+
 - Direct user reference-test role; no new Commander assignment/ACK invented.
 - Branch `agent/mac-reference-corpus/hw1-probes`, worktree
   `/private/tmp/flashtex-hw1-reference-probes`, tested code

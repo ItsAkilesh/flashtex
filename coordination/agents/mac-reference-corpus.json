@@ -7,7 +7,7 @@
     "tex-reference-corpus",
     "mactex"
   ],
-  "code_revision": "e35a0281b31321073e313f9f830b8b39ca43a3ef",
+  "code_revision": "5e42ec587aad443cea945798e975471ff97bb86d",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
@@ -15,15 +15,21 @@
   },
   "machine": "mac-m1max-a",
   "main_integrated_through": "a91fc1015e6884ab4a451d5d32a626271edacbd4",
-  "next_action": "Commander review stacked HW1 probe increment after PR42; continue disjoint light/medium app acceptance or reference tasks while Opus implements active iPad/Grok lanes.",
-  "reviewed_peers": {},
+  "next_action": "Commander review PR53; validate published iPad outcome recovery/binding fixes when ready or continue disjoint light/medium reference work.",
+  "reviewed_peers": {
+    "origin/agent/mac-grok-polish/fast-default": {
+      "adaptation": "Read preference migration, provider selection and corresponding final tests; merged code preserves explicit legacy false and new mode precedence. Targeted injected-credential acceptance passes 2/2, no user Keychain/defaults or live call.",
+      "reviewed_utc": "2026-09-12T21:15:00Z",
+      "sha": "f87cf5b4fff9328578d54efaee5301e8783cc245"
+    }
+  },
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "Six isolated HW1 reference projects and inspected MacTeX PDFs added at e35a0281; 55 total cases, 48 PDFs/57 pages, seven expected errors. Integrity suite 7/7. Local parser baseline recovered all six with 173 diagnostics; no support/parity claim.",
+  "summary": "HW1 probe follow-up 5e42ec58 adds six exact UTF-8 incremental edits (14 total); seven corpus checks pass. Independently verified merged Grok legacy preference/selection acceptance 2/2 on parent 624fcb14; no live call.",
   "tool": "Codex",
-  "updated_utc": "2026-09-12T21:11:35Z",
+  "updated_utc": "2026-09-12T21:15:00Z",
   "usage": {
-    "evidence": "docs/evidence/hw1-reference-probes-20260912/README.md",
-    "status": "Current authorized Codex route; no paid provider/Claude calls, purchases, or subagents; monetary balance unknown."
+    "evidence": "docs/evidence/hw1-reference-probes-20260912/README.md; /private/tmp/flashtex-codex-grok-migration-fixed.log",
+    "status": "Current authorized Codex route only; no paid provider/Claude calls, purchases, children, or allocation changes; balance unknown."
   }
 }
