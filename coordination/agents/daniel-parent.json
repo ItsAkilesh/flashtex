@@ -18,20 +18,23 @@
     "latex-oracle",
     "commit-execution"
   ],
+  "code_revision": "1dec0efcf6d073c10cade377de05634787cea9e6",
   "eta_minutes": {
     "likely": 15,
     "optimistic": 5,
     "pessimistic": 40
   },
   "machine": "mac-m5pro-dq222",
-  "next_action": "Verify and publish FT-044 and FT-045, then re-checkpoint against origin/main and adapt.",
+  "main_integrated_through": "780f1458c125d9702b994ab9df377aed96a1113f",
+  "next_action": "Verify and publish FT-045, then re-checkpoint and adapt.",
   "reviewed_peers": {
-    "origin/main": "5499e419b09868e2e248c413351a5646db74fac1"
+    "origin/main": "780f1458c125d9702b994ab9df377aed96a1113f"
   },
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "All 16 lanes FT-030..FT-045 dispatched, each in its own git worktree owning exactly one crate. 14 complete, independently verified and published, totalling 471 tests passing with 0 failing; 2 running. No lane dropped, queued indefinitely, or merged into another. Every commit authored d-q222, no AI attribution.",
+  "summary": "All 16 lanes FT-030..FT-045 dispatched, each in its own git worktree owning exactly one crate. 15 complete, independently verified and published, 488 tests passing and 0 failing; 1 running. No lane dropped, queued indefinitely, or merged into another. Every commit authored d-q222, no AI attribution.",
   "tool": "Claude Code on Claude Max 20x",
+  "updated_utc": "2026-09-12T09:06:45Z",
   "usage": {
     "evidence": "Claude Max 20x, organizationRateLimitTier default_claude_max_20x, hasExtraUsageEnabled=false, so no overage, purchase or API fallback is possible from this machine. Live quota is not readable non-interactively: /usage is an interactive slash command and no CLI subcommand prints it. Unknown is not zero.",
     "status": "unknown"
