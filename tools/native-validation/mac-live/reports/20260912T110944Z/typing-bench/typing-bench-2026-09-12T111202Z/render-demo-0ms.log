@@ -1,0 +1,1752 @@
+2026-09-12T11:14:17Z	status: no worker attached
+2026-09-12T11:14:17Z	status: attached: flashtex-render
+2026-09-12T11:14:17Z	launched /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/crates/render-pipeline/target/release/flashtex-render (preview face: latin-modern)
+2026-09-12T11:14:17Z	status: compiling revision 2 (mac-1)…
+2026-09-12T11:14:17Z	status: revision 2: ok, 0 diagnostics in 105 ms
+2026-09-12T11:14:17Z	bench: waiting for attach + first paint (200 keystrokes, 0.0 ms)
+2026-09-12T11:14:17Z	paint: revision 2 at 87895081115541 (covers 0 keystrokes, redrawn true)
+2026-09-12T11:14:18Z	bridge: attached: flashtex-bridge
+2026-09-12T11:14:18Z	bench: typing 200 keystrokes at UTF-16 offset 5879 every 0.0 ms
+2026-09-12T11:14:18Z	keystroke: revision 3 at 87895184091541 (delegate 87895185018125, revision 87895185070916)
+2026-09-12T11:14:18Z	compile: sending revision 3 at 87895185204583
+2026-09-12T11:14:18Z	status: compiling revision 3 (mac-2)…
+2026-09-12T11:14:18Z	worker: line 222250 B decoded in 3.649458 ms at 87895192211708
+2026-09-12T11:14:18Z	worker: event on main at 87895201541916
+2026-09-12T11:14:18Z	compile: applied revision 3 at 87895202479333
+2026-09-12T11:14:18Z	status: revision 3: ok, 0 diagnostics in 17 ms
+2026-09-12T11:14:18Z	paint: revision 3 redrew 1/2 pages
+2026-09-12T11:14:18Z	paint: revision 3 at 87895216958000 (covers 1 keystrokes, redrawn true)
+2026-09-12T11:14:18Z	keystroke: revision 4 at 87895224318916 (delegate 87895224757083, revision 87895224799166)
+2026-09-12T11:14:18Z	compile: sending revision 4 at 87895224848416
+2026-09-12T11:14:18Z	status: compiling revision 4 (mac-3)…
+2026-09-12T11:14:18Z	worker: line 222251 B decoded in 3.621083 ms at 87895231699166
+2026-09-12T11:14:18Z	worker: event on main at 87895231794125
+2026-09-12T11:14:18Z	compile: applied revision 4 at 87895232634208
+2026-09-12T11:14:18Z	status: revision 4: ok, 0 diagnostics in 8 ms
+2026-09-12T11:14:18Z	paint: revision 4 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T11:14:18Z	paint: revision 4 at 87895257082250 (covers 1 keystrokes, redrawn true)
+2026-09-12T11:14:18Z	keystroke: revision 5 at 87895257143500 (delegate 87895257666708, revision 87895257714083)
+2026-09-12T11:14:18Z	compile: sending revision 5 at 87895257740458
+2026-09-12T11:14:18Z	status: compiling revision 5 (mac-4)…
+2026-09-12T11:14:18Z	worker: line 222252 B decoded in 3.432708 ms at 87895264492916
+2026-09-12T11:14:18Z	worker: event on main at 87895274136541
+2026-09-12T11:14:18Z	compile: applied revision 5 at 87895275030791
+2026-09-12T11:14:18Z	status: revision 5: ok, 0 diagnostics in 17 ms
+2026-09-12T11:14:18Z	paint: revision 5 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T11:14:18Z	paint: revision 5 at 87895301289666 (covers 1 keystrokes, redrawn true)
+2026-09-12T11:14:18Z	keystroke: revision 6 at 87895301787625 (delegate 87895302191833, revision 87895302235916)
+2026-09-12T11:14:18Z	compile: sending revision 6 at 87895302255916
+2026-09-12T11:14:18Z	status: compiling revision 6 (mac-5)…
+2026-09-12T11:14:18Z	worker: line 222252 B decoded in 3.43725 ms at 87895308779500
+2026-09-12T11:14:18Z	worker: event on main at 87895316365166
+2026-09-12T11:14:18Z	compile: applied revision 6 at 87895317293708
+2026-09-12T11:14:18Z	status: revision 6: ok, 0 diagnostics in 15 ms
+2026-09-12T11:14:18Z	paint: revision 6 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T11:14:18Z	paint: revision 6 at 87895345284000 (covers 1 keystrokes, redrawn false)
+2026-09-12T11:14:18Z	keystroke: revision 7 at 87895345791041 (delegate 87895346305458, revision 87895346354375)
+2026-09-12T11:14:18Z	compile: sending revision 7 at 87895346380541
+2026-09-12T11:14:18Z	status: compiling revision 7 (mac-6)…
+2026-09-12T11:14:18Z	worker: line 222477 B decoded in 3.501541 ms at 87895353073916
+2026-09-12T11:14:18Z	worker: event on main at 87895363672750
+2026-09-12T11:14:18Z	compile: applied revision 7 at 87895364563333
+2026-09-12T11:14:18Z	status: revision 7: ok, 0 diagnostics in 18 ms
+2026-09-12T11:14:18Z	bridge: attached: flashtex-bridge
+2026-09-12T11:14:18Z	paint: revision 7 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T11:14:18Z	paint: revision 7 at 87895392219333 (covers 1 keystrokes, redrawn true)
+2026-09-12T11:14:18Z	keystroke: revision 8 at 87895392381958 (delegate 87895392960375, revision 87895393016958)
+2026-09-12T11:14:18Z	compile: sending revision 8 at 87895393045666
+2026-09-12T11:14:18Z	status: compiling revision 8 (mac-7)…
+2026-09-12T11:14:18Z	bridge: attached: flashtex-bridge · durable document diverged from the editor (store at revision 2, edit based on 7); reattach to reconcile
+2026-09-12T11:14:18Z	worker: line 222478 B decoded in 3.485416 ms at 87895399678291
+2026-09-12T11:14:18Z	worker: event on main at 87895412013916
+2026-09-12T11:14:18Z	compile: applied revision 8 at 87895412947458
+2026-09-12T11:14:18Z	status: revision 8: ok, 0 diagnostics in 20 ms
+2026-09-12T11:14:18Z	paint: revision 8 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T11:14:18Z	paint: revision 8 at 87895436818041 (covers 1 keystrokes, redrawn true)
+2026-09-12T11:14:18Z	keystroke: revision 9 at 87895437289125 (delegate 87895437767750, revision 87895437816625)
+2026-09-12T11:14:18Z	compile: sending revision 9 at 87895437845541
+2026-09-12T11:14:18Z	status: compiling revision 9 (mac-8)…
+2026-09-12T11:14:18Z	worker: line 222479 B decoded in 3.451875 ms at 87895444498250
+2026-09-12T11:14:18Z	worker: event on main at 87895452412500
+2026-09-12T11:14:18Z	compile: applied revision 9 at 87895453280208
+2026-09-12T11:14:18Z	status: revision 9: ok, 0 diagnostics in 15 ms
+2026-09-12T11:14:18Z	bridge: attached: flashtex-bridge · durable document diverged from the editor (store at revision 2, edit based on 7); reattach to reconcile
+2026-09-12T11:14:18Z	paint: revision 9 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T11:14:18Z	paint: revision 9 at 87895478480125 (covers 1 keystrokes, redrawn true)
+2026-09-12T11:14:18Z	keystroke: revision 10 at 87895479052541 (delegate 87895479593125, revision 87895479640833)
+2026-09-12T11:14:18Z	compile: sending revision 10 at 87895479667625
+2026-09-12T11:14:18Z	status: compiling revision 10 (mac-9)…
+2026-09-12T11:14:18Z	worker: line 222478 B decoded in 3.406625 ms at 87895486142708
+2026-09-12T11:14:18Z	worker: event on main at 87895494743750
+2026-09-12T11:14:18Z	compile: applied revision 10 at 87895495635208
+2026-09-12T11:14:18Z	status: revision 10: ok, 0 diagnostics in 16 ms
+2026-09-12T11:14:18Z	paint: revision 10 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T11:14:18Z	paint: revision 10 at 87895519722250 (covers 1 keystrokes, redrawn true)
+2026-09-12T11:14:18Z	keystroke: revision 11 at 87895520136250 (delegate 87895520567000, revision 87895520626291)
+2026-09-12T11:14:18Z	compile: sending revision 11 at 87895520647375
+2026-09-12T11:14:18Z	status: compiling revision 11 (mac-10)…
+2026-09-12T11:14:18Z	worker: line 222477 B decoded in 3.431625 ms at 87895527155000
+2026-09-12T11:14:18Z	worker: event on main at 87895535805500
+2026-09-12T11:14:18Z	compile: applied revision 11 at 87895536673333
+2026-09-12T11:14:18Z	status: revision 11: ok, 0 diagnostics in 16 ms
+2026-09-12T11:14:18Z	paint: revision 11 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T11:14:18Z	paint: revision 11 at 87895562818250 (covers 1 keystrokes, redrawn true)
+2026-09-12T11:14:18Z	keystroke: revision 12 at 87895562884625 (delegate 87895563374375, revision 87895563439583)
+2026-09-12T11:14:18Z	compile: sending revision 12 at 87895563469416
+2026-09-12T11:14:18Z	status: compiling revision 12 (mac-11)…
+2026-09-12T11:14:18Z	worker: line 222478 B decoded in 3.466458 ms at 87895570099041
+2026-09-12T11:14:18Z	worker: event on main at 87895578874625
+2026-09-12T11:14:18Z	compile: applied revision 12 at 87895579898916
+2026-09-12T11:14:18Z	status: revision 12: ok, 0 diagnostics in 16 ms
+2026-09-12T11:14:18Z	paint: revision 12 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T11:14:18Z	paint: revision 12 at 87895607131500 (covers 1 keystrokes, redrawn true)
+2026-09-12T11:14:18Z	keystroke: revision 13 at 87895607202500 (delegate 87895607677166, revision 87895607728541)
+2026-09-12T11:14:18Z	compile: sending revision 13 at 87895607751916
+2026-09-12T11:14:18Z	status: compiling revision 13 (mac-12)…
+2026-09-12T11:14:18Z	worker: line 222479 B decoded in 3.400667 ms at 87895614403500
+2026-09-12T11:14:18Z	worker: event on main at 87895622571875
+2026-09-12T11:14:18Z	compile: applied revision 13 at 87895623466958
+2026-09-12T11:14:18Z	status: revision 13: ok, 0 diagnostics in 16 ms
+2026-09-12T11:14:18Z	paint: revision 13 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T11:14:18Z	paint: revision 13 at 87895648013666 (covers 1 keystrokes, redrawn true)
+2026-09-12T11:14:18Z	keystroke: revision 14 at 87895648079666 (delegate 87895648510000, revision 87895648558666)
+2026-09-12T11:14:18Z	compile: sending revision 14 at 87895648579666
+2026-09-12T11:14:18Z	status: compiling revision 14 (mac-13)…
+2026-09-12T11:14:18Z	worker: line 222480 B decoded in 3.39575 ms at 87895655107458
+2026-09-12T11:14:18Z	worker: event on main at 87895662833708
+2026-09-12T11:14:18Z	compile: applied revision 14 at 87895663750375
+2026-09-12T11:14:18Z	status: revision 14: ok, 0 diagnostics in 15 ms
+2026-09-12T11:14:18Z	keystroke: revision 15 at 87895675166458 (delegate 87895675602500, revision 87895675644083)
+2026-09-12T11:14:18Z	compile: sending revision 15 at 87895675685791
+2026-09-12T11:14:18Z	status: compiling revision 15 (mac-14)…
+2026-09-12T11:14:18Z	paint: revision 14 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T11:14:18Z	paint: revision 14 at 87895675975916 (covers 1 keystrokes, redrawn false)
+2026-09-12T11:14:18Z	bridge: attached: flashtex-bridge · main.tex open at revision 9 · durable document diverged from the editor (store at revision 2, edit based on 7); reattach to reconcile
+2026-09-12T11:14:18Z	worker: line 222481 B decoded in 3.488375 ms at 87895682232208
+2026-09-12T11:14:18Z	keystroke: revision 16 at 87895681806375 (delegate 87895682227666, revision 87895682265250)
+2026-09-12T11:14:18Z	worker: event on main at 87895682532125
+2026-09-12T11:14:18Z	compile: applied revision 15 at 87895683360833
+2026-09-12T11:14:18Z	status: revision 15: ok, 0 diagnostics in 8 ms
+2026-09-12T11:14:18Z	compile: sending revision 16 at 87895683404166
+2026-09-12T11:14:18Z	status: compiling revision 16 (mac-15)…
+2026-09-12T11:14:18Z	worker: line 222481 B decoded in 3.407292 ms at 87895689668333
+2026-09-12T11:14:18Z	worker: event on main at 87895695376000
+2026-09-12T11:14:18Z	compile: applied revision 16 at 87895696287458
+2026-09-12T11:14:18Z	status: revision 16: ok, 0 diagnostics in 13 ms
+2026-09-12T11:14:18Z	paint: revision 16 redrew 1/2 pages
+2026-09-12T11:14:18Z	paint: revision 16 at 87895721586583 (covers 2 keystrokes, redrawn true)
+2026-09-12T11:14:18Z	keystroke: revision 17 at 87895722013875 (delegate 87895722451666, revision 87895722498666)
+2026-09-12T11:14:18Z	compile: sending revision 17 at 87895722521916
+2026-09-12T11:14:18Z	status: compiling revision 17 (mac-16)…
+2026-09-12T11:14:18Z	worker: line 222706 B decoded in 3.473875 ms at 87895729245750
+2026-09-12T11:14:18Z	worker: event on main at 87895736971375
+2026-09-12T11:14:18Z	compile: applied revision 17 at 87895737863666
+2026-09-12T11:14:18Z	status: revision 17: ok, 0 diagnostics in 15 ms
+2026-09-12T11:14:18Z	paint: revision 17 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T11:14:18Z	paint: revision 17 at 87895761628875 (covers 1 keystrokes, redrawn true)
+2026-09-12T11:14:18Z	keystroke: revision 18 at 87895762064791 (delegate 87895762540333, revision 87895762590083)
+2026-09-12T11:14:18Z	compile: sending revision 18 at 87895762614541
+2026-09-12T11:14:18Z	status: compiling revision 18 (mac-17)…
+2026-09-12T11:14:18Z	worker: line 222707 B decoded in 3.4825 ms at 87895769352625
+2026-09-12T11:14:18Z	worker: event on main at 87895778592166
+2026-09-12T11:14:18Z	compile: applied revision 18 at 87895779528916
+2026-09-12T11:14:18Z	status: revision 18: ok, 0 diagnostics in 17 ms
+2026-09-12T11:14:18Z	keystroke: revision 19 at 87895792418333 (delegate 87895792884791, revision 87895792930125)
+2026-09-12T11:14:18Z	compile: sending revision 19 at 87895792973458
+2026-09-12T11:14:18Z	status: compiling revision 19 (mac-18)…
+2026-09-12T11:14:18Z	paint: revision 18 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T11:14:18Z	paint: revision 18 at 87895793299625 (covers 1 keystrokes, redrawn false)
+2026-09-12T11:14:18Z	keystroke: revision 20 at 87895798728375 (delegate 87895799152625, revision 87895799192041)
+2026-09-12T11:14:18Z	worker: line 222708 B decoded in 3.417167 ms at 87895799558583
+2026-09-12T11:14:18Z	worker: event on main at 87895802491375
+2026-09-12T11:14:18Z	compile: applied revision 19 at 87895803385791
+2026-09-12T11:14:18Z	status: revision 19: ok, 0 diagnostics in 10 ms
+2026-09-12T11:14:18Z	compile: sending revision 20 at 87895803435583
+2026-09-12T11:14:18Z	status: compiling revision 20 (mac-19)…
+2026-09-12T11:14:18Z	worker: line 222709 B decoded in 3.569875 ms at 87895810206541
+2026-09-12T11:14:18Z	paint: revision 19 redrew 1/2 pages
+2026-09-12T11:14:18Z	paint: revision 19 at 87895827093541 (covers 1 keystrokes, redrawn true)
+2026-09-12T11:14:18Z	worker: event on main at 87895827104250
+2026-09-12T11:14:18Z	compile: applied revision 20 at 87895827965791
+2026-09-12T11:14:18Z	status: revision 20: ok, 0 diagnostics in 24 ms
+2026-09-12T11:14:18Z	paint: revision 20 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T11:14:18Z	paint: revision 20 at 87895852914958 (covers 1 keystrokes, redrawn true)
+2026-09-12T11:14:18Z	keystroke: revision 21 at 87895853418708 (delegate 87895853911666, revision 87895853958666)
+2026-09-12T11:14:18Z	compile: sending revision 21 at 87895853980541
+2026-09-12T11:14:18Z	status: compiling revision 21 (mac-20)…
+2026-09-12T11:14:18Z	worker: line 222709 B decoded in 3.473875 ms at 87895860566250
+2026-09-12T11:14:18Z	worker: event on main at 87895868495708
+2026-09-12T11:14:18Z	compile: applied revision 21 at 87895869364625
+2026-09-12T11:14:18Z	status: revision 21: ok, 0 diagnostics in 15 ms
+2026-09-12T11:14:18Z	keystroke: revision 22 at 87895894889125 (delegate 87895895338833, revision 87895895387625)
+2026-09-12T11:14:18Z	compile: sending revision 22 at 87895895431916
+2026-09-12T11:14:18Z	status: compiling revision 22 (mac-21)…
+2026-09-12T11:14:18Z	paint: revision 21 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T11:14:18Z	paint: revision 21 at 87895895812208 (covers 1 keystrokes, redrawn false)
+2026-09-12T11:14:18Z	keystroke: revision 23 at 87895901221958 (delegate 87895901592041, revision 87895901629750)
+2026-09-12T11:14:18Z	worker: line 222934 B decoded in 3.4195 ms at 87895902049750
+2026-09-12T11:14:18Z	worker: event on main at 87895904669833
+2026-09-12T11:14:18Z	compile: applied revision 22 at 87895905519916
+2026-09-12T11:14:18Z	status: revision 22: ok, 0 diagnostics in 10 ms
+2026-09-12T11:14:18Z	compile: sending revision 23 at 87895905560166
+2026-09-12T11:14:18Z	status: compiling revision 23 (mac-22)…
+2026-09-12T11:14:18Z	worker: line 222935 B decoded in 3.392333 ms at 87895911772583
+2026-09-12T11:14:18Z	worker: event on main at 87895915921333
+2026-09-12T11:14:18Z	compile: applied revision 23 at 87895916790833
+2026-09-12T11:14:18Z	status: revision 23: ok, 0 diagnostics in 11 ms
+2026-09-12T11:14:18Z	paint: revision 22 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T11:14:18Z	paint: revision 22 at 87895916870500 (covers 1 keystrokes, redrawn false)
+2026-09-12T11:14:18Z	keystroke: revision 24 at 87895928462875 (delegate 87895928923125, revision 87895928960666)
+2026-09-12T11:14:18Z	compile: sending revision 24 at 87895928999750
+2026-09-12T11:14:18Z	status: compiling revision 24 (mac-23)…
+2026-09-12T11:14:18Z	paint: revision 23 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T11:14:18Z	paint: revision 23 at 87895929343791 (covers 1 keystrokes, redrawn false)
+2026-09-12T11:14:18Z	worker: line 222936 B decoded in 3.457291 ms at 87895935693916
+2026-09-12T11:14:18Z	worker: event on main at 87895948687000
+2026-09-12T11:14:18Z	compile: applied revision 24 at 87895949559708
+2026-09-12T11:14:18Z	status: revision 24: ok, 0 diagnostics in 20 ms
+2026-09-12T11:14:18Z	paint: revision 24 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T11:14:18Z	paint: revision 24 at 87895978213375 (covers 1 keystrokes, redrawn true)
+2026-09-12T11:14:18Z	keystroke: revision 25 at 87895978656041 (delegate 87895979137125, revision 87895979186750)
+2026-09-12T11:14:18Z	compile: sending revision 25 at 87895979211083
+2026-09-12T11:14:18Z	status: compiling revision 25 (mac-24)…
+2026-09-12T11:14:18Z	worker: line 222936 B decoded in 3.41975 ms at 87895985610291
+2026-09-12T11:14:18Z	worker: event on main at 87895994634750
+2026-09-12T11:14:18Z	compile: applied revision 25 at 87895995517958
+2026-09-12T11:14:18Z	status: revision 25: ok, 0 diagnostics in 16 ms
+2026-09-12T11:14:18Z	keystroke: revision 26 at 87896017959625 (delegate 87896018460666, revision 87896018510166)
+2026-09-12T11:14:18Z	compile: sending revision 26 at 87896018553125
+2026-09-12T11:14:18Z	status: compiling revision 26 (mac-25)…
+2026-09-12T11:14:18Z	paint: revision 25 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T11:14:18Z	paint: revision 25 at 87896018906750 (covers 1 keystrokes, redrawn false)
+2026-09-12T11:14:18Z	keystroke: revision 27 at 87896024445666 (delegate 87896024871708, revision 87896024914333)
+2026-09-12T11:14:18Z	worker: line 223161 B decoded in 3.43975 ms at 87896025161625
+2026-09-12T11:14:18Z	worker: event on main at 87896025207416
+2026-09-12T11:14:18Z	compile: applied revision 26 at 87896026041833
+2026-09-12T11:14:18Z	status: revision 26: ok, 0 diagnostics in 7 ms
+2026-09-12T11:14:18Z	compile: sending revision 27 at 87896026090833
+2026-09-12T11:14:18Z	status: compiling revision 27 (mac-26)…
+2026-09-12T11:14:18Z	worker: line 223162 B decoded in 3.387084 ms at 87896032339500
+2026-09-12T11:14:18Z	worker: event on main at 87896037359750
+2026-09-12T11:14:18Z	compile: applied revision 27 at 87896038228416
+2026-09-12T11:14:18Z	status: revision 27: ok, 0 diagnostics in 12 ms
+2026-09-12T11:14:18Z	paint: revision 27 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T11:14:18Z	paint: revision 27 at 87896049322375 (covers 2 keystrokes, redrawn false)
+2026-09-12T11:14:18Z	keystroke: revision 28 at 87896049346625 (delegate 87896049788541, revision 87896049828416)
+2026-09-12T11:14:18Z	compile: sending revision 28 at 87896049847666
+2026-09-12T11:14:18Z	status: compiling revision 28 (mac-27)…
+2026-09-12T11:14:18Z	worker: line 223163 B decoded in 3.426375 ms at 87896056281125
+2026-09-12T11:14:18Z	worker: event on main at 87896069332125
+2026-09-12T11:14:18Z	compile: applied revision 28 at 87896070216250
+2026-09-12T11:14:18Z	status: revision 28: ok, 0 diagnostics in 20 ms
+2026-09-12T11:14:18Z	paint: revision 28 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T11:14:18Z	paint: revision 28 at 87896094947875 (covers 1 keystrokes, redrawn true)
+2026-09-12T11:14:18Z	keystroke: revision 29 at 87896095399125 (delegate 87896095946916, revision 87896095999625)
+2026-09-12T11:14:18Z	compile: sending revision 29 at 87896096026375
+2026-09-12T11:14:18Z	status: compiling revision 29 (mac-28)…
+2026-09-12T11:14:18Z	worker: line 223164 B decoded in 3.504458 ms at 87896102697083
+2026-09-12T11:14:18Z	worker: event on main at 87896111482041
+2026-09-12T11:14:18Z	compile: applied revision 29 at 87896112364500
+2026-09-12T11:14:18Z	status: revision 29: ok, 0 diagnostics in 16 ms
+2026-09-12T11:14:19Z	paint: revision 29 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T11:14:19Z	paint: revision 29 at 87896136327041 (covers 1 keystrokes, redrawn true)
+2026-09-12T11:14:19Z	keystroke: revision 30 at 87896136390375 (delegate 87896136816083, revision 87896136864208)
+2026-09-12T11:14:19Z	compile: sending revision 30 at 87896136883250
+2026-09-12T11:14:19Z	status: compiling revision 30 (mac-29)…
+2026-09-12T11:14:19Z	worker: line 223164 B decoded in 3.43975 ms at 87896143415291
+2026-09-12T11:14:19Z	worker: event on main at 87896151715083
+2026-09-12T11:14:19Z	compile: applied revision 30 at 87896152601125
+2026-09-12T11:14:19Z	status: revision 30: ok, 0 diagnostics in 16 ms
+2026-09-12T11:14:19Z	keystroke: revision 31 at 87896177597375 (delegate 87896178046875, revision 87896178097583)
+2026-09-12T11:14:19Z	compile: sending revision 31 at 87896178140125
+2026-09-12T11:14:19Z	status: compiling revision 31 (mac-30)…
+2026-09-12T11:14:19Z	paint: revision 30 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T11:14:19Z	paint: revision 30 at 87896178488083 (covers 1 keystrokes, redrawn false)
+2026-09-12T11:14:19Z	worker: line 223389 B decoded in 3.438959 ms at 87896184767750
+2026-09-12T11:14:19Z	keystroke: revision 32 at 87896184461583 (delegate 87896184832333, revision 87896184870500)
+2026-09-12T11:14:19Z	worker: event on main at 87896185075500
+2026-09-12T11:14:19Z	compile: applied revision 31 at 87896185948166
+2026-09-12T11:14:19Z	status: revision 31: ok, 0 diagnostics in 8 ms
+2026-09-12T11:14:19Z	compile: sending revision 32 at 87896185988250
+2026-09-12T11:14:19Z	status: compiling revision 32 (mac-31)…
+2026-09-12T11:14:19Z	worker: line 223390 B decoded in 3.48 ms at 87896192546333
+2026-09-12T11:14:19Z	worker: event on main at 87896199040541
+2026-09-12T11:14:19Z	compile: applied revision 32 at 87896199892875
+2026-09-12T11:14:19Z	status: revision 32: ok, 0 diagnostics in 14 ms
+2026-09-12T11:14:19Z	paint: revision 32 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T11:14:19Z	paint: revision 32 at 87896212198666 (covers 2 keystrokes, redrawn false)
+2026-09-12T11:14:19Z	keystroke: revision 33 at 87896212223791 (delegate 87896212764875, revision 87896212803750)
+2026-09-12T11:14:19Z	compile: sending revision 33 at 87896212825833
+2026-09-12T11:14:19Z	status: compiling revision 33 (mac-32)…
+2026-09-12T11:14:19Z	worker: line 223391 B decoded in 3.461875 ms at 87896219427791
+2026-09-12T11:14:19Z	worker: event on main at 87896232803375
+2026-09-12T11:14:19Z	compile: applied revision 33 at 87896233662666
+2026-09-12T11:14:19Z	status: revision 33: ok, 0 diagnostics in 21 ms
+2026-09-12T11:14:19Z	paint: revision 33 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T11:14:19Z	paint: revision 33 at 87896262726791 (covers 1 keystrokes, redrawn true)
+2026-09-12T11:14:19Z	keystroke: revision 34 at 87896263238333 (delegate 87896263724750, revision 87896263775583)
+2026-09-12T11:14:19Z	compile: sending revision 34 at 87896263796791
+2026-09-12T11:14:19Z	status: compiling revision 34 (mac-33)…
+2026-09-12T11:14:19Z	worker: line 223392 B decoded in 3.425875 ms at 87896270282666
+2026-09-12T11:14:19Z	worker: event on main at 87896278067541
+2026-09-12T11:14:19Z	compile: applied revision 34 at 87896278945291
+2026-09-12T11:14:19Z	status: revision 34: ok, 0 diagnostics in 15 ms
+2026-09-12T11:14:19Z	paint: revision 34 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T11:14:19Z	paint: revision 34 at 87896302689250 (covers 1 keystrokes, redrawn true)
+2026-09-12T11:14:19Z	keystroke: revision 35 at 87896302746625 (delegate 87896303168041, revision 87896303214208)
+2026-09-12T11:14:19Z	compile: sending revision 35 at 87896303233666
+2026-09-12T11:14:19Z	status: compiling revision 35 (mac-34)…
+2026-09-12T11:14:19Z	worker: line 223393 B decoded in 3.561208 ms at 87896309995916
+2026-09-12T11:14:19Z	worker: event on main at 87896318483500
+2026-09-12T11:14:19Z	compile: applied revision 35 at 87896319346541
+2026-09-12T11:14:19Z	status: revision 35: ok, 0 diagnostics in 16 ms
+2026-09-12T11:14:19Z	paint: revision 35 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T11:14:19Z	paint: revision 35 at 87896345885958 (covers 1 keystrokes, redrawn true)
+2026-09-12T11:14:19Z	keystroke: revision 36 at 87896345982083 (delegate 87896346514333, revision 87896346575375)
+2026-09-12T11:14:19Z	compile: sending revision 36 at 87896346595416
+2026-09-12T11:14:19Z	status: compiling revision 36 (mac-35)…
+2026-09-12T11:14:19Z	worker: line 223394 B decoded in 3.44625 ms at 87896353335833
+2026-09-12T11:14:19Z	worker: event on main at 87896362626291
+2026-09-12T11:14:19Z	compile: applied revision 36 at 87896363514833
+2026-09-12T11:14:19Z	status: revision 36: ok, 0 diagnostics in 17 ms
+2026-09-12T11:14:19Z	keystroke: revision 37 at 87896375440833 (delegate 87896375866625, revision 87896375906625)
+2026-09-12T11:14:19Z	compile: sending revision 37 at 87896375947583
+2026-09-12T11:14:19Z	status: compiling revision 37 (mac-36)…
+2026-09-12T11:14:19Z	paint: revision 36 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T11:14:19Z	paint: revision 36 at 87896376273375 (covers 1 keystrokes, redrawn false)
+2026-09-12T11:14:19Z	keystroke: revision 38 at 87896381812291 (delegate 87896382282000, revision 87896382320333)
+2026-09-12T11:14:19Z	worker: line 223395 B decoded in 3.470125 ms at 87896382700833
+2026-09-12T11:14:19Z	worker: event on main at 87896382728000
+2026-09-12T11:14:19Z	compile: applied revision 37 at 87896383562583
+2026-09-12T11:14:19Z	status: revision 37: ok, 0 diagnostics in 8 ms
+2026-09-12T11:14:19Z	compile: sending revision 38 at 87896383606583
+2026-09-12T11:14:19Z	status: compiling revision 38 (mac-37)…
+2026-09-12T11:14:19Z	worker: line 223396 B decoded in 3.4385 ms at 87896390061708
+2026-09-12T11:14:19Z	worker: event on main at 87896395959583
+2026-09-12T11:14:19Z	compile: applied revision 38 at 87896396789000
+2026-09-12T11:14:19Z	status: revision 38: ok, 0 diagnostics in 13 ms
+2026-09-12T11:14:19Z	paint: revision 38 redrew 1/2 pages
+2026-09-12T11:14:19Z	paint: revision 38 at 87896421043416 (covers 2 keystrokes, redrawn true)
+2026-09-12T11:14:19Z	keystroke: revision 39 at 87896421512458 (delegate 87896422109541, revision 87896422146583)
+2026-09-12T11:14:19Z	compile: sending revision 39 at 87896422170708
+2026-09-12T11:14:19Z	status: compiling revision 39 (mac-38)…
+2026-09-12T11:14:19Z	worker: line 223397 B decoded in 3.439542 ms at 87896428690125
+2026-09-12T11:14:19Z	worker: event on main at 87896436154000
+2026-09-12T11:14:19Z	compile: applied revision 39 at 87896437036875
+2026-09-12T11:14:19Z	status: revision 39: ok, 0 diagnostics in 15 ms
+2026-09-12T11:14:19Z	paint: revision 39 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T11:14:19Z	paint: revision 39 at 87896461781750 (covers 1 keystrokes, redrawn true)
+2026-09-12T11:14:19Z	keystroke: revision 40 at 87896462231041 (delegate 87896462808416, revision 87896462857250)
+2026-09-12T11:14:19Z	compile: sending revision 40 at 87896462879375
+2026-09-12T11:14:19Z	status: compiling revision 40 (mac-39)…
+2026-09-12T11:14:19Z	worker: line 223397 B decoded in 3.471208 ms at 87896469572791
+2026-09-12T11:14:19Z	worker: event on main at 87896478297750
+2026-09-12T11:14:19Z	compile: applied revision 40 at 87896479157375
+2026-09-12T11:14:19Z	status: revision 40: ok, 0 diagnostics in 16 ms
+2026-09-12T11:14:19Z	keystroke: revision 41 at 87896500566916 (delegate 87896501062250, revision 87896501113125)
+2026-09-12T11:14:19Z	compile: sending revision 41 at 87896501157791
+2026-09-12T11:14:19Z	status: compiling revision 41 (mac-40)…
+2026-09-12T11:14:19Z	paint: revision 40 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T11:14:19Z	paint: revision 40 at 87896501506416 (covers 1 keystrokes, redrawn false)
+2026-09-12T11:14:19Z	worker: line 223622 B decoded in 3.526958 ms at 87896507840416
+2026-09-12T11:14:19Z	worker: event on main at 87896516135875
+2026-09-12T11:14:19Z	compile: applied revision 41 at 87896517092125
+2026-09-12T11:14:19Z	status: revision 41: ok, 0 diagnostics in 16 ms
+2026-09-12T11:14:19Z	paint: revision 41 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T11:14:19Z	paint: revision 41 at 87896545350166 (covers 1 keystrokes, redrawn true)
+2026-09-12T11:14:19Z	keystroke: revision 42 at 87896545418125 (delegate 87896545956083, revision 87896546008583)
+2026-09-12T11:14:19Z	compile: sending revision 42 at 87896546032875
+2026-09-12T11:14:19Z	status: compiling revision 42 (mac-41)…
+2026-09-12T11:14:19Z	worker: line 223623 B decoded in 3.461166 ms at 87896552623041
+2026-09-12T11:14:19Z	worker: event on main at 87896561579083
+2026-09-12T11:14:19Z	compile: applied revision 42 at 87896562462083
+2026-09-12T11:14:19Z	status: revision 42: ok, 0 diagnostics in 16 ms
+2026-09-12T11:14:19Z	keystroke: revision 43 at 87896575141000 (delegate 87896575616541, revision 87896575657375)
+2026-09-12T11:14:19Z	compile: sending revision 43 at 87896575701416
+2026-09-12T11:14:19Z	status: compiling revision 43 (mac-42)…
+2026-09-12T11:14:19Z	paint: revision 42 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T11:14:19Z	paint: revision 42 at 87896576115583 (covers 1 keystrokes, redrawn false)
+2026-09-12T11:14:19Z	keystroke: revision 44 at 87896581672583 (delegate 87896582125625, revision 87896582166166)
+2026-09-12T11:14:19Z	worker: line 223624 B decoded in 3.416834 ms at 87896582358875
+2026-09-12T11:14:19Z	worker: event on main at 87896582414625
+2026-09-12T11:14:19Z	compile: applied revision 43 at 87896583241250
+2026-09-12T11:14:19Z	status: revision 43: ok, 0 diagnostics in 7 ms
+2026-09-12T11:14:19Z	compile: sending revision 44 at 87896583281416
+2026-09-12T11:14:19Z	status: compiling revision 44 (mac-43)…
+2026-09-12T11:14:19Z	worker: line 223625 B decoded in 3.431 ms at 87896589697750
+2026-09-12T11:14:19Z	worker: event on main at 87896595502916
+2026-09-12T11:14:19Z	compile: applied revision 44 at 87896596369750
+2026-09-12T11:14:19Z	status: revision 44: ok, 0 diagnostics in 13 ms
+2026-09-12T11:14:19Z	paint: revision 44 redrew 1/2 pages
+2026-09-12T11:14:19Z	paint: revision 44 at 87896620073166 (covers 2 keystrokes, redrawn true)
+2026-09-12T11:14:19Z	keystroke: revision 45 at 87896620496541 (delegate 87896620986708, revision 87896621034125)
+2026-09-12T11:14:19Z	compile: sending revision 45 at 87896621059083
+2026-09-12T11:14:19Z	status: compiling revision 45 (mac-44)…
+2026-09-12T11:14:19Z	worker: line 223626 B decoded in 3.423417 ms at 87896627589750
+2026-09-12T11:14:19Z	worker: event on main at 87896635060875
+2026-09-12T11:14:19Z	compile: applied revision 45 at 87896635942958
+2026-09-12T11:14:19Z	status: revision 45: ok, 0 diagnostics in 15 ms
+2026-09-12T11:14:19Z	paint: revision 45 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T11:14:19Z	paint: revision 45 at 87896661561291 (covers 1 keystrokes, redrawn true)
+2026-09-12T11:14:19Z	keystroke: revision 46 at 87896661992291 (delegate 87896662522875, revision 87896662570166)
+2026-09-12T11:14:19Z	compile: sending revision 46 at 87896662593875
+2026-09-12T11:14:19Z	status: compiling revision 46 (mac-45)…
+2026-09-12T11:14:19Z	worker: line 223626 B decoded in 3.418583 ms at 87896669045083
+2026-09-12T11:14:19Z	worker: event on main at 87896678274333
+2026-09-12T11:14:19Z	compile: applied revision 46 at 87896679163208
+2026-09-12T11:14:19Z	status: revision 46: ok, 0 diagnostics in 16 ms
+2026-09-12T11:14:19Z	keystroke: revision 47 at 87896701051250 (delegate 87896701508125, revision 87896701557375)
+2026-09-12T11:14:19Z	compile: sending revision 47 at 87896701600666
+2026-09-12T11:14:19Z	status: compiling revision 47 (mac-46)…
+2026-09-12T11:14:19Z	paint: revision 46 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T11:14:19Z	paint: revision 46 at 87896701929333 (covers 1 keystrokes, redrawn false)
+2026-09-12T11:14:19Z	worker: line 223850 B decoded in 3.443541 ms at 87896708295166
+2026-09-12T11:14:19Z	worker: event on main at 87896715965125
+2026-09-12T11:14:19Z	compile: applied revision 47 at 87896716867291
+2026-09-12T11:14:19Z	status: revision 47: ok, 0 diagnostics in 15 ms
+2026-09-12T11:14:19Z	paint: revision 47 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T11:14:19Z	paint: revision 47 at 87896742392125 (covers 1 keystrokes, redrawn true)
+2026-09-12T11:14:19Z	keystroke: revision 48 at 87896742474083 (delegate 87896743008250, revision 87896743058541)
+2026-09-12T11:14:19Z	compile: sending revision 48 at 87896743079458
+2026-09-12T11:14:19Z	status: compiling revision 48 (mac-47)…
+2026-09-12T11:14:19Z	worker: line 223851 B decoded in 3.410834 ms at 87896749636250
+2026-09-12T11:14:19Z	worker: event on main at 87896761347625
+2026-09-12T11:14:19Z	compile: applied revision 48 at 87896762220208
+2026-09-12T11:14:19Z	status: revision 48: ok, 0 diagnostics in 19 ms
+2026-09-12T11:14:19Z	paint: revision 48 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T11:14:19Z	paint: revision 48 at 87896788147000 (covers 1 keystrokes, redrawn true)
+2026-09-12T11:14:19Z	keystroke: revision 49 at 87896788214916 (delegate 87896788706208, revision 87896788755791)
+2026-09-12T11:14:19Z	compile: sending revision 49 at 87896788781291
+2026-09-12T11:14:19Z	status: compiling revision 49 (mac-48)…
+2026-09-12T11:14:19Z	worker: line 223852 B decoded in 3.536834 ms at 87896795486750
+2026-09-12T11:14:19Z	worker: event on main at 87896803064541
+2026-09-12T11:14:19Z	compile: applied revision 49 at 87896803947791
+2026-09-12T11:14:19Z	status: revision 49: ok, 0 diagnostics in 15 ms
+2026-09-12T11:14:19Z	paint: revision 49 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T11:14:19Z	paint: revision 49 at 87896828932750 (covers 1 keystrokes, redrawn true)
+2026-09-12T11:14:19Z	keystroke: revision 50 at 87896828999833 (delegate 87896829541958, revision 87896829594708)
+2026-09-12T11:14:19Z	compile: sending revision 50 at 87896829617916
+2026-09-12T11:14:19Z	status: compiling revision 50 (mac-49)…
+2026-09-12T11:14:19Z	worker: line 223852 B decoded in 3.44875 ms at 87896836030625
+2026-09-12T11:14:19Z	worker: event on main at 87896844822125
+2026-09-12T11:14:19Z	compile: applied revision 50 at 87896845716583
+2026-09-12T11:14:19Z	status: revision 50: ok, 0 diagnostics in 16 ms
+2026-09-12T11:14:19Z	keystroke: revision 51 at 87896867868666 (delegate 87896868357333, revision 87896868406833)
+2026-09-12T11:14:19Z	compile: sending revision 51 at 87896868449833
+2026-09-12T11:14:19Z	status: compiling revision 51 (mac-50)…
+2026-09-12T11:14:19Z	paint: revision 50 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T11:14:19Z	paint: revision 50 at 87896868782916 (covers 1 keystrokes, redrawn false)
+2026-09-12T11:14:19Z	keystroke: revision 52 at 87896874481125 (delegate 87896874946500, revision 87896874986666)
+2026-09-12T11:14:19Z	worker: line 224076 B decoded in 3.549625 ms at 87896875199750
+2026-09-12T11:14:19Z	worker: event on main at 87896875246375
+2026-09-12T11:14:19Z	compile: applied revision 51 at 87896876069708
+2026-09-12T11:14:19Z	status: revision 51: ok, 0 diagnostics in 8 ms
+2026-09-12T11:14:19Z	compile: sending revision 52 at 87896876114166
+2026-09-12T11:14:19Z	status: compiling revision 52 (mac-51)…
+2026-09-12T11:14:19Z	worker: line 224077 B decoded in 3.449166 ms at 87896882594916
+2026-09-12T11:14:19Z	worker: event on main at 87896887695916
+2026-09-12T11:14:19Z	compile: applied revision 52 at 87896888581291
+2026-09-12T11:14:19Z	status: revision 52: ok, 0 diagnostics in 12 ms
+2026-09-12T11:14:19Z	paint: revision 52 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T11:14:19Z	paint: revision 52 at 87896899923666 (covers 2 keystrokes, redrawn false)
+2026-09-12T11:14:19Z	keystroke: revision 53 at 87896900025250 (delegate 87896900485458, revision 87896900523583)
+2026-09-12T11:14:19Z	compile: sending revision 53 at 87896900542375
+2026-09-12T11:14:19Z	status: compiling revision 53 (mac-52)…
+2026-09-12T11:14:19Z	worker: line 224078 B decoded in 3.488875 ms at 87896907186666
+2026-09-12T11:14:19Z	worker: event on main at 87896920445500
+2026-09-12T11:14:19Z	compile: applied revision 53 at 87896921338083
+2026-09-12T11:14:19Z	status: revision 53: ok, 0 diagnostics in 21 ms
+2026-09-12T11:14:19Z	paint: revision 53 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T11:14:19Z	paint: revision 53 at 87896933267625 (covers 1 keystrokes, redrawn false)
+2026-09-12T11:14:19Z	keystroke: revision 54 at 87896933295000 (delegate 87896933818583, revision 87896933857333)
+2026-09-12T11:14:19Z	compile: sending revision 54 at 87896933877166
+2026-09-12T11:14:19Z	status: compiling revision 54 (mac-53)…
+2026-09-12T11:14:19Z	worker: line 224079 B decoded in 3.460375 ms at 87896940477041
+2026-09-12T11:14:19Z	worker: event on main at 87896951138333
+2026-09-12T11:14:19Z	compile: applied revision 54 at 87896952102083
+2026-09-12T11:14:19Z	status: revision 54: ok, 0 diagnostics in 18 ms
+2026-09-12T11:14:19Z	paint: revision 54 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T11:14:19Z	paint: revision 54 at 87896979239666 (covers 1 keystrokes, redrawn true)
+2026-09-12T11:14:19Z	keystroke: revision 55 at 87896979909625 (delegate 87896980448708, revision 87896980498875)
+2026-09-12T11:14:19Z	compile: sending revision 55 at 87896980534666
+2026-09-12T11:14:19Z	status: compiling revision 55 (mac-54)…
+2026-09-12T11:14:19Z	worker: line 224080 B decoded in 3.443 ms at 87896987125916
+2026-09-12T11:14:19Z	worker: event on main at 87896994724375
+2026-09-12T11:14:19Z	compile: applied revision 55 at 87896995604541
+2026-09-12T11:14:19Z	status: revision 55: ok, 0 diagnostics in 15 ms
+2026-09-12T11:14:19Z	keystroke: revision 56 at 87897008286791 (delegate 87897008761083, revision 87897008802250)
+2026-09-12T11:14:19Z	compile: sending revision 56 at 87897008844791
+2026-09-12T11:14:19Z	status: compiling revision 56 (mac-55)…
+2026-09-12T11:14:19Z	paint: revision 55 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T11:14:19Z	paint: revision 55 at 87897009163458 (covers 1 keystrokes, redrawn false)
+2026-09-12T11:14:19Z	keystroke: revision 57 at 87897014838041 (delegate 87897015309916, revision 87897015347083)
+2026-09-12T11:14:19Z	worker: line 224081 B decoded in 3.512042 ms at 87897015451333
+2026-09-12T11:14:19Z	worker: event on main at 87897015581208
+2026-09-12T11:14:19Z	compile: applied revision 56 at 87897016422250
+2026-09-12T11:14:19Z	status: revision 56: ok, 0 diagnostics in 7 ms
+2026-09-12T11:14:19Z	compile: sending revision 57 at 87897016472416
+2026-09-12T11:14:19Z	status: compiling revision 57 (mac-56)…
+2026-09-12T11:14:19Z	worker: line 224082 B decoded in 3.5745 ms at 87897023168875
+2026-09-12T11:14:19Z	worker: event on main at 87897029716208
+2026-09-12T11:14:19Z	compile: applied revision 57 at 87897030581708
+2026-09-12T11:14:19Z	status: revision 57: ok, 0 diagnostics in 14 ms
+2026-09-12T11:14:19Z	paint: revision 57 redrew 1/2 pages
+2026-09-12T11:14:19Z	paint: revision 57 at 87897057091333 (covers 2 keystrokes, redrawn true)
+2026-09-12T11:14:19Z	keystroke: revision 58 at 87897057648291 (delegate 87897058223875, revision 87897058275833)
+2026-09-12T11:14:19Z	compile: sending revision 58 at 87897058299333
+2026-09-12T11:14:19Z	status: compiling revision 58 (mac-57)…
+2026-09-12T11:14:19Z	worker: line 224082 B decoded in 3.495375 ms at 87897064809750
+2026-09-12T11:14:19Z	worker: event on main at 87897077983500
+2026-09-12T11:14:19Z	compile: applied revision 58 at 87897078898791
+2026-09-12T11:14:19Z	status: revision 58: ok, 0 diagnostics in 21 ms
+2026-09-12T11:14:19Z	paint: revision 58 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T11:14:19Z	paint: revision 58 at 87897100908458 (covers 1 keystrokes, redrawn false)
+2026-09-12T11:14:19Z	keystroke: revision 59 at 87897100967125 (delegate 87897101494541, revision 87897101540041)
+2026-09-12T11:14:19Z	compile: sending revision 59 at 87897101560375
+2026-09-12T11:14:19Z	status: compiling revision 59 (mac-58)…
+2026-09-12T11:14:19Z	worker: line 224307 B decoded in 3.475292 ms at 87897108218250
+2026-09-12T11:14:19Z	worker: event on main at 87897116127625
+2026-09-12T11:14:20Z	compile: applied revision 59 at 87897117071500
+2026-09-12T11:14:20Z	status: revision 59: ok, 0 diagnostics in 15 ms
+2026-09-12T11:14:20Z	paint: revision 59 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T11:14:20Z	paint: revision 59 at 87897145009416 (covers 1 keystrokes, redrawn true)
+2026-09-12T11:14:20Z	keystroke: revision 60 at 87897145474958 (delegate 87897145955583, revision 87897146005833)
+2026-09-12T11:14:20Z	compile: sending revision 60 at 87897146029583
+2026-09-12T11:14:20Z	status: compiling revision 60 (mac-59)…
+2026-09-12T11:14:20Z	worker: line 224308 B decoded in 3.526834 ms at 87897152666875
+2026-09-12T11:14:20Z	worker: event on main at 87897162284375
+2026-09-12T11:14:20Z	compile: applied revision 60 at 87897163263708
+2026-09-12T11:14:20Z	status: revision 60: ok, 0 diagnostics in 17 ms
+2026-09-12T11:14:20Z	keystroke: revision 61 at 87897175313916 (delegate 87897175825125, revision 87897175866958)
+2026-09-12T11:14:20Z	compile: sending revision 61 at 87897175910375
+2026-09-12T11:14:20Z	status: compiling revision 61 (mac-60)…
+2026-09-12T11:14:20Z	paint: revision 60 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T11:14:20Z	paint: revision 60 at 87897176236500 (covers 1 keystrokes, redrawn false)
+2026-09-12T11:14:20Z	keystroke: revision 62 at 87897181666875 (delegate 87897182172458, revision 87897182211583)
+2026-09-12T11:14:20Z	worker: line 224309 B decoded in 3.61425 ms at 87897182828666
+2026-09-12T11:14:20Z	worker: event on main at 87897185550458
+2026-09-12T11:14:20Z	compile: applied revision 61 at 87897186374833
+2026-09-12T11:14:20Z	status: revision 61: ok, 0 diagnostics in 10 ms
+2026-09-12T11:14:20Z	compile: sending revision 62 at 87897186416291
+2026-09-12T11:14:20Z	status: compiling revision 62 (mac-61)…
+2026-09-12T11:14:20Z	worker: line 224310 B decoded in 3.462209 ms at 87897192990125
+2026-09-12T11:14:20Z	paint: revision 61 redrew 1/2 pages
+2026-09-12T11:14:20Z	paint: revision 61 at 87897210174250 (covers 1 keystrokes, redrawn true)
+2026-09-12T11:14:20Z	worker: event on main at 87897210185750
+2026-09-12T11:14:20Z	compile: applied revision 62 at 87897211059708
+2026-09-12T11:14:20Z	status: revision 62: ok, 0 diagnostics in 25 ms
+2026-09-12T11:14:20Z	paint: revision 62 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T11:14:20Z	paint: revision 62 at 87897236591666 (covers 1 keystrokes, redrawn true)
+2026-09-12T11:14:20Z	keystroke: revision 63 at 87897237015041 (delegate 87897237558125, revision 87897237606083)
+2026-09-12T11:14:20Z	compile: sending revision 63 at 87897237628875
+2026-09-12T11:14:20Z	status: compiling revision 63 (mac-62)…
+2026-09-12T11:14:20Z	worker: line 224311 B decoded in 3.52625 ms at 87897244437125
+2026-09-12T11:14:20Z	worker: event on main at 87897253871583
+2026-09-12T11:14:20Z	compile: applied revision 63 at 87897254775125
+2026-09-12T11:14:20Z	status: revision 63: ok, 0 diagnostics in 17 ms
+2026-09-12T11:14:20Z	keystroke: revision 64 at 87897266703958 (delegate 87897267170000, revision 87897267210166)
+2026-09-12T11:14:20Z	compile: sending revision 64 at 87897267259750
+2026-09-12T11:14:20Z	status: compiling revision 64 (mac-63)…
+2026-09-12T11:14:20Z	paint: revision 63 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T11:14:20Z	paint: revision 63 at 87897267600041 (covers 1 keystrokes, redrawn false)
+2026-09-12T11:14:20Z	worker: line 224312 B decoded in 3.511125 ms at 87897273870083
+2026-09-12T11:14:20Z	keystroke: revision 65 at 87897273339833 (delegate 87897273867541, revision 87897273910375)
+2026-09-12T11:14:20Z	worker: event on main at 87897274134625
+2026-09-12T11:14:20Z	compile: applied revision 64 at 87897275051916
+2026-09-12T11:14:20Z	status: revision 64: ok, 0 diagnostics in 8 ms
+2026-09-12T11:14:20Z	compile: sending revision 65 at 87897275094125
+2026-09-12T11:14:20Z	status: compiling revision 65 (mac-64)…
+2026-09-12T11:14:20Z	worker: line 224313 B decoded in 3.522125 ms at 87897281752000
+2026-09-12T11:14:20Z	worker: event on main at 87897288171708
+2026-09-12T11:14:20Z	compile: applied revision 65 at 87897289056416
+2026-09-12T11:14:20Z	status: revision 65: ok, 0 diagnostics in 14 ms
+2026-09-12T11:14:20Z	paint: revision 65 redrew 1/2 pages
+2026-09-12T11:14:20Z	paint: revision 65 at 87897314616416 (covers 2 keystrokes, redrawn true)
+2026-09-12T11:14:20Z	keystroke: revision 66 at 87897315081625 (delegate 87897315605083, revision 87897315650708)
+2026-09-12T11:14:20Z	compile: sending revision 66 at 87897315676916
+2026-09-12T11:14:20Z	status: compiling revision 66 (mac-65)…
+2026-09-12T11:14:20Z	worker: line 224313 B decoded in 3.448417 ms at 87897322106375
+2026-09-12T11:14:20Z	worker: event on main at 87897330853500
+2026-09-12T11:14:20Z	compile: applied revision 66 at 87897331815750
+2026-09-12T11:14:20Z	status: revision 66: ok, 0 diagnostics in 16 ms
+2026-09-12T11:14:20Z	paint: revision 66 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T11:14:20Z	paint: revision 66 at 87897354513166 (covers 1 keystrokes, redrawn false)
+2026-09-12T11:14:20Z	keystroke: revision 67 at 87897360081750 (delegate 87897360693458, revision 87897360745791)
+2026-09-12T11:14:20Z	compile: sending revision 67 at 87897360788166
+2026-09-12T11:14:20Z	status: compiling revision 67 (mac-66)…
+2026-09-12T11:14:20Z	worker: line 224538 B decoded in 3.511625 ms at 87897367469958
+2026-09-12T11:14:20Z	keystroke: revision 68 at 87897366970875 (delegate 87897367475083, revision 87897367519041)
+2026-09-12T11:14:20Z	worker: event on main at 87897367756000
+2026-09-12T11:14:20Z	compile: applied revision 67 at 87897368602000
+2026-09-12T11:14:20Z	status: revision 67: ok, 0 diagnostics in 8 ms
+2026-09-12T11:14:20Z	compile: sending revision 68 at 87897368649291
+2026-09-12T11:14:20Z	status: compiling revision 68 (mac-67)…
+2026-09-12T11:14:20Z	worker: line 224539 B decoded in 3.464334 ms at 87897375191875
+2026-09-12T11:14:20Z	worker: event on main at 87897380744000
+2026-09-12T11:14:20Z	compile: applied revision 68 at 87897381626875
+2026-09-12T11:14:20Z	status: revision 68: ok, 0 diagnostics in 13 ms
+2026-09-12T11:14:20Z	keystroke: revision 69 at 87897393693000 (delegate 87897394162291, revision 87897394203291)
+2026-09-12T11:14:20Z	compile: sending revision 69 at 87897394249666
+2026-09-12T11:14:20Z	status: compiling revision 69 (mac-68)…
+2026-09-12T11:14:20Z	paint: revision 68 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T11:14:20Z	paint: revision 68 at 87897394711875 (covers 2 keystrokes, redrawn false)
+2026-09-12T11:14:20Z	worker: line 224540 B decoded in 3.519041 ms at 87897401072041
+2026-09-12T11:14:20Z	worker: event on main at 87897415928958
+2026-09-12T11:14:20Z	compile: applied revision 69 at 87897416832208
+2026-09-12T11:14:20Z	status: revision 69: ok, 0 diagnostics in 22 ms
+2026-09-12T11:14:20Z	paint: revision 69 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T11:14:20Z	paint: revision 69 at 87897444902416 (covers 1 keystrokes, redrawn true)
+2026-09-12T11:14:20Z	keystroke: revision 70 at 87897445438041 (delegate 87897446003416, revision 87897446071333)
+2026-09-12T11:14:20Z	compile: sending revision 70 at 87897446098291
+2026-09-12T11:14:20Z	status: compiling revision 70 (mac-69)…
+2026-09-12T11:14:20Z	worker: line 224541 B decoded in 3.497917 ms at 87897452887375
+2026-09-12T11:14:20Z	worker: event on main at 87897461848375
+2026-09-12T11:14:20Z	compile: applied revision 70 at 87897462774791
+2026-09-12T11:14:20Z	status: revision 70: ok, 0 diagnostics in 17 ms
+2026-09-12T11:14:20Z	keystroke: revision 71 at 87897475558041 (delegate 87897476095333, revision 87897476139916)
+2026-09-12T11:14:20Z	compile: sending revision 71 at 87897476184625
+2026-09-12T11:14:20Z	status: compiling revision 71 (mac-70)…
+2026-09-12T11:14:20Z	paint: revision 70 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T11:14:20Z	paint: revision 70 at 87897476552000 (covers 1 keystrokes, redrawn false)
+2026-09-12T11:14:20Z	keystroke: revision 72 at 87897482032958 (delegate 87897482533708, revision 87897482570625)
+2026-09-12T11:14:20Z	worker: line 224541 B decoded in 3.479584 ms at 87897482787000
+2026-09-12T11:14:20Z	worker: event on main at 87897482851333
+2026-09-12T11:14:20Z	compile: applied revision 71 at 87897483669166
+2026-09-12T11:14:20Z	status: revision 71: ok, 0 diagnostics in 7 ms
+2026-09-12T11:14:20Z	compile: sending revision 72 at 87897483712333
+2026-09-12T11:14:20Z	status: compiling revision 72 (mac-71)…
+2026-09-12T11:14:20Z	worker: line 224766 B decoded in 3.472 ms at 87897490178750
+2026-09-12T11:14:20Z	worker: event on main at 87897495309250
+2026-09-12T11:14:20Z	compile: applied revision 72 at 87897496195041
+2026-09-12T11:14:20Z	status: revision 72: ok, 0 diagnostics in 12 ms
+2026-09-12T11:14:20Z	paint: revision 72 redrew 1/2 pages
+2026-09-12T11:14:20Z	paint: revision 72 at 87897521933958 (covers 2 keystrokes, redrawn true)
+2026-09-12T11:14:20Z	keystroke: revision 73 at 87897522416625 (delegate 87897522935041, revision 87897522982208)
+2026-09-12T11:14:20Z	compile: sending revision 73 at 87897523008083
+2026-09-12T11:14:20Z	status: compiling revision 73 (mac-72)…
+2026-09-12T11:14:20Z	worker: line 224767 B decoded in 3.473709 ms at 87897529757625
+2026-09-12T11:14:20Z	worker: event on main at 87897537275416
+2026-09-12T11:14:20Z	compile: applied revision 73 at 87897538246583
+2026-09-12T11:14:20Z	status: revision 73: ok, 0 diagnostics in 15 ms
+2026-09-12T11:14:20Z	paint: revision 73 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T11:14:20Z	paint: revision 73 at 87897564753583 (covers 1 keystrokes, redrawn true)
+2026-09-12T11:14:20Z	keystroke: revision 74 at 87897565224041 (delegate 87897565789083, revision 87897565841583)
+2026-09-12T11:14:20Z	compile: sending revision 74 at 87897565864208
+2026-09-12T11:14:20Z	status: compiling revision 74 (mac-73)…
+2026-09-12T11:14:20Z	worker: line 224768 B decoded in 3.4715 ms at 87897572693041
+2026-09-12T11:14:20Z	worker: event on main at 87897580783791
+2026-09-12T11:14:20Z	compile: applied revision 74 at 87897581661958
+2026-09-12T11:14:20Z	status: revision 74: ok, 0 diagnostics in 16 ms
+2026-09-12T11:14:20Z	paint: revision 74 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T11:14:20Z	paint: revision 74 at 87897606736750 (covers 1 keystrokes, redrawn true)
+2026-09-12T11:14:20Z	keystroke: revision 75 at 87897606822666 (delegate 87897607391416, revision 87897607443000)
+2026-09-12T11:14:20Z	compile: sending revision 75 at 87897607466333
+2026-09-12T11:14:20Z	status: compiling revision 75 (mac-74)…
+2026-09-12T11:14:20Z	worker: line 224769 B decoded in 3.501958 ms at 87897614189083
+2026-09-12T11:14:20Z	worker: event on main at 87897622616375
+2026-09-12T11:14:20Z	compile: applied revision 75 at 87897623538875
+2026-09-12T11:14:20Z	status: revision 75: ok, 0 diagnostics in 16 ms
+2026-09-12T11:14:20Z	paint: revision 75 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T11:14:20Z	paint: revision 75 at 87897648336458 (covers 1 keystrokes, redrawn true)
+2026-09-12T11:14:20Z	keystroke: revision 76 at 87897648399708 (delegate 87897648903333, revision 87897648950250)
+2026-09-12T11:14:20Z	compile: sending revision 76 at 87897648970250
+2026-09-12T11:14:20Z	status: compiling revision 76 (mac-75)…
+2026-09-12T11:14:20Z	worker: line 224770 B decoded in 3.514666 ms at 87897655673166
+2026-09-12T11:14:20Z	worker: event on main at 87897664091625
+2026-09-12T11:14:20Z	compile: applied revision 76 at 87897664973208
+2026-09-12T11:14:20Z	status: revision 76: ok, 0 diagnostics in 16 ms
+2026-09-12T11:14:20Z	paint: revision 76 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T11:14:20Z	paint: revision 76 at 87897688953500 (covers 1 keystrokes, redrawn true)
+2026-09-12T11:14:20Z	keystroke: revision 77 at 87897689030416 (delegate 87897689549583, revision 87897689601250)
+2026-09-12T11:14:20Z	compile: sending revision 77 at 87897689626416
+2026-09-12T11:14:20Z	status: compiling revision 77 (mac-76)…
+2026-09-12T11:14:20Z	worker: line 224771 B decoded in 3.4255 ms at 87897696186375
+2026-09-12T11:14:20Z	worker: event on main at 87897704439958
+2026-09-12T11:14:20Z	compile: applied revision 77 at 87897705326333
+2026-09-12T11:14:20Z	status: revision 77: ok, 0 diagnostics in 16 ms
+2026-09-12T11:14:20Z	keystroke: revision 78 at 87897717202250 (delegate 87897717725000, revision 87897717784750)
+2026-09-12T11:14:20Z	compile: sending revision 78 at 87897717844458
+2026-09-12T11:14:20Z	status: compiling revision 78 (mac-77)…
+2026-09-12T11:14:20Z	paint: revision 77 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T11:14:20Z	paint: revision 77 at 87897718242916 (covers 1 keystrokes, redrawn false)
+2026-09-12T11:14:20Z	keystroke: revision 79 at 87897723927833 (delegate 87897724459625, revision 87897724500250)
+2026-09-12T11:14:20Z	worker: line 224772 B decoded in 3.585541 ms at 87897724626791
+2026-09-12T11:14:20Z	worker: event on main at 87897724794750
+2026-09-12T11:14:20Z	compile: applied revision 78 at 87897725639875
+2026-09-12T11:14:20Z	status: revision 78: ok, 0 diagnostics in 8 ms
+2026-09-12T11:14:20Z	compile: sending revision 79 at 87897725682833
+2026-09-12T11:14:20Z	status: compiling revision 79 (mac-78)…
+2026-09-12T11:14:20Z	worker: line 224773 B decoded in 3.494667 ms at 87897732342625
+2026-09-12T11:14:20Z	worker: event on main at 87897738223666
+2026-09-12T11:14:20Z	compile: applied revision 79 at 87897739137208
+2026-09-12T11:14:20Z	status: revision 79: ok, 0 diagnostics in 13 ms
+2026-09-12T11:14:20Z	paint: revision 79 redrew 1/2 pages
+2026-09-12T11:14:20Z	paint: revision 79 at 87897764544458 (covers 2 keystrokes, redrawn true)
+2026-09-12T11:14:20Z	keystroke: revision 80 at 87897764991541 (delegate 87897765499125, revision 87897765543708)
+2026-09-12T11:14:20Z	compile: sending revision 80 at 87897765566791
+2026-09-12T11:14:20Z	status: compiling revision 80 (mac-79)…
+2026-09-12T11:14:20Z	worker: line 224774 B decoded in 3.472875 ms at 87897772171250
+2026-09-12T11:14:20Z	worker: event on main at 87897780428666
+2026-09-12T11:14:20Z	compile: applied revision 80 at 87897781352875
+2026-09-12T11:14:20Z	status: revision 80: ok, 0 diagnostics in 16 ms
+2026-09-12T11:14:20Z	paint: revision 80 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T11:14:20Z	paint: revision 80 at 87897809775250 (covers 1 keystrokes, redrawn true)
+2026-09-12T11:14:20Z	keystroke: revision 81 at 87897810399250 (delegate 87897810957875, revision 87897811009250)
+2026-09-12T11:14:20Z	compile: sending revision 81 at 87897811032291
+2026-09-12T11:14:20Z	status: compiling revision 81 (mac-80)…
+2026-09-12T11:14:20Z	keystroke: revision 82 at 87897817077750 (delegate 87897817569375, revision 87897817610708)
+2026-09-12T11:14:20Z	worker: line 224775 B decoded in 3.532375 ms at 87897817861541
+2026-09-12T11:14:20Z	worker: event on main at 87897821039458
+2026-09-12T11:14:20Z	compile: applied revision 81 at 87897821900416
+2026-09-12T11:14:20Z	status: revision 81: ok, 0 diagnostics in 11 ms
+2026-09-12T11:14:20Z	compile: sending revision 82 at 87897821945000
+2026-09-12T11:14:20Z	status: compiling revision 82 (mac-81)…
+2026-09-12T11:14:20Z	worker: line 224775 B decoded in 3.477416 ms at 87897828472041
+2026-09-12T11:14:20Z	keystroke: revision 83 at 87897833250583 (delegate 87897833755833, revision 87897833804333)
+2026-09-12T11:14:20Z	worker: event on main at 87897834122333
+2026-09-12T11:14:20Z	compile: applied revision 82 at 87897835026333
+2026-09-12T11:14:20Z	status: revision 82: ok, 0 diagnostics in 13 ms
+2026-09-12T11:14:20Z	compile: sending revision 83 at 87897835083458
+2026-09-12T11:14:20Z	status: compiling revision 83 (mac-82)…
+2026-09-12T11:14:20Z	paint: revision 81 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T11:14:20Z	paint: revision 81 at 87897835404416 (covers 1 keystrokes, redrawn false)
+2026-09-12T11:14:20Z	worker: line 224999 B decoded in 3.454959 ms at 87897841646750
+2026-09-12T11:14:20Z	worker: event on main at 87897847071458
+2026-09-12T11:14:20Z	compile: applied revision 83 at 87897847929708
+2026-09-12T11:14:20Z	status: revision 83: ok, 0 diagnostics in 13 ms
+2026-09-12T11:14:20Z	paint: revision 83 redrew 1/2 pages
+2026-09-12T11:14:20Z	paint: revision 83 at 87897867556583 (covers 2 keystrokes, redrawn true)
+2026-09-12T11:14:20Z	keystroke: revision 84 at 87897867647083 (delegate 87897868311875, revision 87897868359458)
+2026-09-12T11:14:20Z	compile: sending revision 84 at 87897868380041
+2026-09-12T11:14:20Z	status: compiling revision 84 (mac-83)…
+2026-09-12T11:14:20Z	worker: line 225000 B decoded in 3.464 ms at 87897875025083
+2026-09-12T11:14:20Z	worker: event on main at 87897882957375
+2026-09-12T11:14:20Z	compile: applied revision 84 at 87897883854416
+2026-09-12T11:14:20Z	status: revision 84: ok, 0 diagnostics in 15 ms
+2026-09-12T11:14:20Z	paint: revision 84 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T11:14:20Z	paint: revision 84 at 87897912425416 (covers 1 keystrokes, redrawn true)
+2026-09-12T11:14:20Z	keystroke: revision 85 at 87897912906291 (delegate 87897913497833, revision 87897913547916)
+2026-09-12T11:14:20Z	compile: sending revision 85 at 87897913572041
+2026-09-12T11:14:20Z	status: compiling revision 85 (mac-84)…
+2026-09-12T11:14:20Z	worker: line 225001 B decoded in 3.471583 ms at 87897920301666
+2026-09-12T11:14:20Z	worker: event on main at 87897929425958
+2026-09-12T11:14:20Z	compile: applied revision 85 at 87897930374333
+2026-09-12T11:14:20Z	status: revision 85: ok, 0 diagnostics in 17 ms
+2026-09-12T11:14:20Z	keystroke: revision 86 at 87897942252333 (delegate 87897942756125, revision 87897942797708)
+2026-09-12T11:14:20Z	compile: sending revision 86 at 87897942850125
+2026-09-12T11:14:20Z	status: compiling revision 86 (mac-85)…
+2026-09-12T11:14:20Z	paint: revision 85 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T11:14:20Z	paint: revision 85 at 87897943205791 (covers 1 keystrokes, redrawn false)
+2026-09-12T11:14:20Z	keystroke: revision 87 at 87897948870125 (delegate 87897949529666, revision 87897949565916)
+2026-09-12T11:14:20Z	worker: line 225002 B decoded in 3.55 ms at 87897949741083
+2026-09-12T11:14:20Z	worker: event on main at 87897949900083
+2026-09-12T11:14:20Z	compile: applied revision 86 at 87897950717458
+2026-09-12T11:14:20Z	status: revision 86: ok, 0 diagnostics in 8 ms
+2026-09-12T11:14:20Z	compile: sending revision 87 at 87897950757083
+2026-09-12T11:14:20Z	status: compiling revision 87 (mac-86)…
+2026-09-12T11:14:20Z	worker: line 225003 B decoded in 3.461083 ms at 87897957209291
+2026-09-12T11:14:20Z	worker: event on main at 87897962693750
+2026-09-12T11:14:20Z	compile: applied revision 87 at 87897963539875
+2026-09-12T11:14:20Z	status: revision 87: ok, 0 diagnostics in 13 ms
+2026-09-12T11:14:20Z	paint: revision 87 redrew 1/2 pages
+2026-09-12T11:14:20Z	paint: revision 87 at 87897988189375 (covers 2 keystrokes, redrawn true)
+2026-09-12T11:14:20Z	keystroke: revision 88 at 87897988726333 (delegate 87897989291541, revision 87897989339541)
+2026-09-12T11:14:20Z	compile: sending revision 88 at 87897989364291
+2026-09-12T11:14:20Z	status: compiling revision 88 (mac-87)…
+2026-09-12T11:14:20Z	worker: line 225003 B decoded in 3.571375 ms at 87897996087791
+2026-09-12T11:14:20Z	worker: event on main at 87898004856625
+2026-09-12T11:14:20Z	compile: applied revision 88 at 87898005781333
+2026-09-12T11:14:20Z	status: revision 88: ok, 0 diagnostics in 16 ms
+2026-09-12T11:14:20Z	paint: revision 88 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T11:14:20Z	paint: revision 88 at 87898028628458 (covers 1 keystrokes, redrawn false)
+2026-09-12T11:14:20Z	keystroke: revision 89 at 87898029014958 (delegate 87898029614375, revision 87898029662250)
+2026-09-12T11:14:20Z	compile: sending revision 89 at 87898029690083
+2026-09-12T11:14:20Z	status: compiling revision 89 (mac-88)…
+2026-09-12T11:14:20Z	worker: line 225227 B decoded in 3.507833 ms at 87898036348833
+2026-09-12T11:14:20Z	worker: event on main at 87898044633375
+2026-09-12T11:14:20Z	compile: applied revision 89 at 87898045510041
+2026-09-12T11:14:20Z	status: revision 89: ok, 0 diagnostics in 16 ms
+2026-09-12T11:14:20Z	paint: revision 89 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T11:14:20Z	paint: revision 89 at 87898069738500 (covers 1 keystrokes, redrawn true)
+2026-09-12T11:14:20Z	keystroke: revision 90 at 87898069803916 (delegate 87898070317208, revision 87898070365583)
+2026-09-12T11:14:20Z	compile: sending revision 90 at 87898070386500
+2026-09-12T11:14:20Z	status: compiling revision 90 (mac-89)…
+2026-09-12T11:14:20Z	worker: line 225228 B decoded in 3.522292 ms at 87898077062875
+2026-09-12T11:14:20Z	worker: event on main at 87898085904000
+2026-09-12T11:14:20Z	compile: applied revision 90 at 87898086801250
+2026-09-12T11:14:20Z	status: revision 90: ok, 0 diagnostics in 16 ms
+2026-09-12T11:14:20Z	keystroke: revision 91 at 87898099530125 (delegate 87898100049833, revision 87898100092666)
+2026-09-12T11:14:20Z	compile: sending revision 91 at 87898100136375
+2026-09-12T11:14:20Z	status: compiling revision 91 (mac-90)…
+2026-09-12T11:14:20Z	paint: revision 90 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T11:14:20Z	paint: revision 90 at 87898100467708 (covers 1 keystrokes, redrawn false)
+2026-09-12T11:14:20Z	keystroke: revision 92 at 87898106111375 (delegate 87898106645833, revision 87898106690583)
+2026-09-12T11:14:20Z	worker: line 225229 B decoded in 3.470334 ms at 87898106897750
+2026-09-12T11:14:20Z	worker: event on main at 87898106997375
+2026-09-12T11:14:20Z	compile: applied revision 91 at 87898107903833
+2026-09-12T11:14:20Z	status: revision 91: ok, 0 diagnostics in 8 ms
+2026-09-12T11:14:20Z	compile: sending revision 92 at 87898107971833
+2026-09-12T11:14:20Z	status: compiling revision 92 (mac-91)…
+2026-09-12T11:14:20Z	worker: line 225230 B decoded in 3.497625 ms at 87898114702208
+2026-09-12T11:14:21Z	worker: event on main at 87898120371875
+2026-09-12T11:14:21Z	compile: applied revision 92 at 87898121229250
+2026-09-12T11:14:21Z	status: revision 92: ok, 0 diagnostics in 13 ms
+2026-09-12T11:14:21Z	paint: revision 92 redrew 1/2 pages
+2026-09-12T11:14:21Z	paint: revision 92 at 87898147843916 (covers 2 keystrokes, redrawn true)
+2026-09-12T11:14:21Z	keystroke: revision 93 at 87898148316583 (delegate 87898148877291, revision 87898148927458)
+2026-09-12T11:14:21Z	compile: sending revision 93 at 87898148952333
+2026-09-12T11:14:21Z	status: compiling revision 93 (mac-92)…
+2026-09-12T11:14:21Z	worker: line 225231 B decoded in 3.471833 ms at 87898155621583
+2026-09-12T11:14:21Z	worker: event on main at 87898164211208
+2026-09-12T11:14:21Z	compile: applied revision 93 at 87898165198875
+2026-09-12T11:14:21Z	status: revision 93: ok, 0 diagnostics in 16 ms
+2026-09-12T11:14:21Z	paint: revision 93 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T11:14:21Z	paint: revision 93 at 87898190217625 (covers 1 keystrokes, redrawn true)
+2026-09-12T11:14:21Z	keystroke: revision 94 at 87898192879083 (delegate 87898193445000, revision 87898193493583)
+2026-09-12T11:14:21Z	compile: sending revision 94 at 87898193527833
+2026-09-12T11:14:21Z	status: compiling revision 94 (mac-93)…
+2026-09-12T11:14:21Z	keystroke: revision 95 at 87898199320541 (delegate 87898199775458, revision 87898199814708)
+2026-09-12T11:14:21Z	worker: line 225232 B decoded in 3.589083 ms at 87898200384541
+2026-09-12T11:14:21Z	worker: event on main at 87898203028625
+2026-09-12T11:14:21Z	compile: applied revision 94 at 87898203915125
+2026-09-12T11:14:21Z	status: revision 94: ok, 0 diagnostics in 10 ms
+2026-09-12T11:14:21Z	compile: sending revision 95 at 87898203968583
+2026-09-12T11:14:21Z	status: compiling revision 95 (mac-94)…
+2026-09-12T11:14:21Z	worker: line 225232 B decoded in 3.551459 ms at 87898210596750
+2026-09-12T11:14:21Z	keystroke: revision 96 at 87898215476833 (delegate 87898215959708, revision 87898216003333)
+2026-09-12T11:14:21Z	worker: event on main at 87898216228625
+2026-09-12T11:14:21Z	compile: applied revision 95 at 87898217131000
+2026-09-12T11:14:21Z	status: revision 95: ok, 0 diagnostics in 13 ms
+2026-09-12T11:14:21Z	compile: sending revision 96 at 87898217175375
+2026-09-12T11:14:21Z	status: compiling revision 96 (mac-95)…
+2026-09-12T11:14:21Z	paint: revision 94 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T11:14:21Z	paint: revision 94 at 87898217444000 (covers 1 keystrokes, redrawn false)
+2026-09-12T11:14:21Z	worker: line 225456 B decoded in 3.440958 ms at 87898223832583
+2026-09-12T11:14:21Z	worker: event on main at 87898229573333
+2026-09-12T11:14:21Z	compile: applied revision 96 at 87898230415250
+2026-09-12T11:14:21Z	status: revision 96: ok, 0 diagnostics in 13 ms
+2026-09-12T11:14:21Z	paint: revision 96 redrew 1/2 pages
+2026-09-12T11:14:21Z	paint: revision 96 at 87898250026583 (covers 2 keystrokes, redrawn true)
+2026-09-12T11:14:21Z	keystroke: revision 97 at 87898250116291 (delegate 87898250744666, revision 87898250795875)
+2026-09-12T11:14:21Z	compile: sending revision 97 at 87898250824750
+2026-09-12T11:14:21Z	status: compiling revision 97 (mac-96)…
+2026-09-12T11:14:21Z	worker: line 225456 B decoded in 3.542917 ms at 87898257466208
+2026-09-12T11:14:21Z	worker: event on main at 87898266495583
+2026-09-12T11:14:21Z	compile: applied revision 97 at 87898267374916
+2026-09-12T11:14:21Z	status: revision 97: ok, 0 diagnostics in 16 ms
+2026-09-12T11:14:21Z	paint: revision 97 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T11:14:21Z	paint: revision 97 at 87898289446375 (covers 1 keystrokes, redrawn false)
+2026-09-12T11:14:21Z	keystroke: revision 98 at 87898289935166 (delegate 87898290470291, revision 87898290519708)
+2026-09-12T11:14:21Z	compile: sending revision 98 at 87898290542833
+2026-09-12T11:14:21Z	status: compiling revision 98 (mac-97)…
+2026-09-12T11:14:21Z	worker: line 225678 B decoded in 3.57975 ms at 87898297298083
+2026-09-12T11:14:21Z	worker: event on main at 87898304657916
+2026-09-12T11:14:21Z	compile: applied revision 98 at 87898305578375
+2026-09-12T11:14:21Z	status: revision 98: ok, 0 diagnostics in 15 ms
+2026-09-12T11:14:21Z	keystroke: revision 99 at 87898316717166 (delegate 87898317211583, revision 87898317251625)
+2026-09-12T11:14:21Z	compile: sending revision 99 at 87898317291916
+2026-09-12T11:14:21Z	status: compiling revision 99 (mac-98)…
+2026-09-12T11:14:21Z	paint: revision 98 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T11:14:21Z	paint: revision 98 at 87898317616375 (covers 1 keystrokes, redrawn false)
+2026-09-12T11:14:21Z	keystroke: revision 100 at 87898323253958 (delegate 87898323815375, revision 87898323855291)
+2026-09-12T11:14:21Z	worker: line 225679 B decoded in 3.513959 ms at 87898324080750
+2026-09-12T11:14:21Z	worker: event on main at 87898324147250
+2026-09-12T11:14:21Z	compile: applied revision 99 at 87898325009083
+2026-09-12T11:14:21Z	status: revision 99: ok, 0 diagnostics in 8 ms
+2026-09-12T11:14:21Z	compile: sending revision 100 at 87898325051041
+2026-09-12T11:14:21Z	status: compiling revision 100 (mac-99)…
+2026-09-12T11:14:21Z	worker: line 225682 B decoded in 3.491792 ms at 87898331699250
+2026-09-12T11:14:21Z	worker: event on main at 87898337994500
+2026-09-12T11:14:21Z	compile: applied revision 100 at 87898338848250
+2026-09-12T11:14:21Z	status: revision 100: ok, 0 diagnostics in 14 ms
+2026-09-12T11:14:21Z	paint: revision 100 redrew 1/2 pages
+2026-09-12T11:14:21Z	paint: revision 100 at 87898364356708 (covers 2 keystrokes, redrawn true)
+2026-09-12T11:14:21Z	keystroke: revision 101 at 87898364819625 (delegate 87898365338791, revision 87898365387041)
+2026-09-12T11:14:21Z	compile: sending revision 101 at 87898365409125
+2026-09-12T11:14:21Z	status: compiling revision 101 (mac-100)…
+2026-09-12T11:14:21Z	worker: line 225684 B decoded in 3.47775 ms at 87898372041083
+2026-09-12T11:14:21Z	worker: event on main at 87898379824041
+2026-09-12T11:14:21Z	compile: applied revision 101 at 87898380785000
+2026-09-12T11:14:21Z	status: revision 101: ok, 0 diagnostics in 15 ms
+2026-09-12T11:14:21Z	paint: revision 101 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T11:14:21Z	paint: revision 101 at 87898405323000 (covers 1 keystrokes, redrawn true)
+2026-09-12T11:14:21Z	keystroke: revision 102 at 87898405807875 (delegate 87898406347833, revision 87898406394208)
+2026-09-12T11:14:21Z	compile: sending revision 102 at 87898406419583
+2026-09-12T11:14:21Z	status: compiling revision 102 (mac-101)…
+2026-09-12T11:14:21Z	worker: line 225685 B decoded in 3.503667 ms at 87898413079500
+2026-09-12T11:14:21Z	worker: event on main at 87898420696708
+2026-09-12T11:14:21Z	compile: applied revision 102 at 87898421589458
+2026-09-12T11:14:21Z	status: revision 102: ok, 0 diagnostics in 15 ms
+2026-09-12T11:14:21Z	keystroke: revision 103 at 87898432993041 (delegate 87898433496541, revision 87898433535875)
+2026-09-12T11:14:21Z	compile: sending revision 103 at 87898433584166
+2026-09-12T11:14:21Z	status: compiling revision 103 (mac-102)…
+2026-09-12T11:14:21Z	paint: revision 102 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T11:14:21Z	paint: revision 102 at 87898433906875 (covers 1 keystrokes, redrawn false)
+2026-09-12T11:14:21Z	keystroke: revision 104 at 87898439203958 (delegate 87898439727625, revision 87898439766375)
+2026-09-12T11:14:21Z	worker: line 225685 B decoded in 3.5205 ms at 87898440077791
+2026-09-12T11:14:21Z	worker: event on main at 87898443498250
+2026-09-12T11:14:21Z	compile: applied revision 103 at 87898444343125
+2026-09-12T11:14:21Z	status: revision 103: ok, 0 diagnostics in 11 ms
+2026-09-12T11:14:21Z	compile: sending revision 104 at 87898444386291
+2026-09-12T11:14:21Z	status: compiling revision 104 (mac-103)…
+2026-09-12T11:14:21Z	worker: line 225909 B decoded in 3.536 ms at 87898451081250
+2026-09-12T11:14:21Z	paint: revision 103 redrew 1/2 pages
+2026-09-12T11:14:21Z	paint: revision 103 at 87898465664375 (covers 1 keystrokes, redrawn true)
+2026-09-12T11:14:21Z	worker: event on main at 87898465680083
+2026-09-12T11:14:21Z	compile: applied revision 104 at 87898466566166
+2026-09-12T11:14:21Z	status: revision 104: ok, 0 diagnostics in 22 ms
+2026-09-12T11:14:21Z	paint: revision 104 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T11:14:21Z	paint: revision 104 at 87898494907916 (covers 1 keystrokes, redrawn true)
+2026-09-12T11:14:21Z	keystroke: revision 105 at 87898495398250 (delegate 87898495974625, revision 87898496021833)
+2026-09-12T11:14:21Z	compile: sending revision 105 at 87898496046250
+2026-09-12T11:14:21Z	status: compiling revision 105 (mac-104)…
+2026-09-12T11:14:21Z	worker: line 225910 B decoded in 3.497291 ms at 87898502753916
+2026-09-12T11:14:21Z	worker: event on main at 87898512198541
+2026-09-12T11:14:21Z	compile: applied revision 105 at 87898513127333
+2026-09-12T11:14:21Z	status: revision 105: ok, 0 diagnostics in 17 ms
+2026-09-12T11:14:21Z	keystroke: revision 106 at 87898525006791 (delegate 87898525549708, revision 87898525591208)
+2026-09-12T11:14:21Z	compile: sending revision 106 at 87898525637875
+2026-09-12T11:14:21Z	status: compiling revision 106 (mac-105)…
+2026-09-12T11:14:21Z	paint: revision 105 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T11:14:21Z	paint: revision 105 at 87898525988041 (covers 1 keystrokes, redrawn false)
+2026-09-12T11:14:21Z	keystroke: revision 107 at 87898531493833 (delegate 87898532002708, revision 87898532042958)
+2026-09-12T11:14:21Z	worker: line 225911 B decoded in 3.502959 ms at 87898532395000
+2026-09-12T11:14:21Z	worker: event on main at 87898535196958
+2026-09-12T11:14:21Z	compile: applied revision 106 at 87898536037500
+2026-09-12T11:14:21Z	status: revision 106: ok, 0 diagnostics in 10 ms
+2026-09-12T11:14:21Z	compile: sending revision 107 at 87898536078666
+2026-09-12T11:14:21Z	status: compiling revision 107 (mac-106)…
+2026-09-12T11:14:21Z	worker: line 225913 B decoded in 3.544125 ms at 87898542532666
+2026-09-12T11:14:21Z	paint: revision 106 redrew 1/2 pages
+2026-09-12T11:14:21Z	paint: revision 106 at 87898557106625 (covers 1 keystrokes, redrawn true)
+2026-09-12T11:14:21Z	worker: event on main at 87898557117583
+2026-09-12T11:14:21Z	compile: applied revision 107 at 87898558068166
+2026-09-12T11:14:21Z	status: revision 107: ok, 0 diagnostics in 22 ms
+2026-09-12T11:14:21Z	paint: revision 107 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T11:14:21Z	paint: revision 107 at 87898583753208 (covers 1 keystrokes, redrawn true)
+2026-09-12T11:14:21Z	keystroke: revision 108 at 87898583871916 (delegate 87898584444291, revision 87898584489541)
+2026-09-12T11:14:21Z	compile: sending revision 108 at 87898584509291
+2026-09-12T11:14:21Z	status: compiling revision 108 (mac-107)…
+2026-09-12T11:14:21Z	worker: line 225914 B decoded in 3.635917 ms at 87898591394083
+2026-09-12T11:14:21Z	worker: event on main at 87898599137416
+2026-09-12T11:14:21Z	compile: applied revision 108 at 87898600051000
+2026-09-12T11:14:21Z	status: revision 108: ok, 0 diagnostics in 15 ms
+2026-09-12T11:14:21Z	paint: revision 108 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T11:14:21Z	paint: revision 108 at 87898626685083 (covers 1 keystrokes, redrawn true)
+2026-09-12T11:14:21Z	keystroke: revision 109 at 87898627248333 (delegate 87898627748416, revision 87898627796750)
+2026-09-12T11:14:21Z	compile: sending revision 109 at 87898627817958
+2026-09-12T11:14:21Z	status: compiling revision 109 (mac-108)…
+2026-09-12T11:14:21Z	keystroke: revision 110 at 87898633556000 (delegate 87898634023375, revision 87898634061833)
+2026-09-12T11:14:21Z	worker: line 225914 B decoded in 3.53125 ms at 87898634406500
+2026-09-12T11:14:21Z	worker: event on main at 87898637129291
+2026-09-12T11:14:21Z	compile: applied revision 109 at 87898637964416
+2026-09-12T11:14:21Z	status: revision 109: ok, 0 diagnostics in 10 ms
+2026-09-12T11:14:21Z	compile: sending revision 110 at 87898638007625
+2026-09-12T11:14:21Z	status: compiling revision 110 (mac-109)…
+2026-09-12T11:14:21Z	worker: line 226138 B decoded in 3.468041 ms at 87898644672041
+2026-09-12T11:14:21Z	keystroke: revision 111 at 87898649065833 (delegate 87898649752041, revision 87898649806500)
+2026-09-12T11:14:21Z	worker: event on main at 87898650102125
+2026-09-12T11:14:21Z	compile: applied revision 110 at 87898650942625
+2026-09-12T11:14:21Z	status: revision 110: ok, 0 diagnostics in 13 ms
+2026-09-12T11:14:21Z	compile: sending revision 111 at 87898650993750
+2026-09-12T11:14:21Z	status: compiling revision 111 (mac-110)…
+2026-09-12T11:14:21Z	paint: revision 109 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T11:14:21Z	paint: revision 109 at 87898651315791 (covers 1 keystrokes, redrawn false)
+2026-09-12T11:14:21Z	worker: line 226139 B decoded in 3.55625 ms at 87898657649791
+2026-09-12T11:14:21Z	worker: event on main at 87898663051916
+2026-09-12T11:14:21Z	compile: applied revision 111 at 87898663931916
+2026-09-12T11:14:21Z	status: revision 111: ok, 0 diagnostics in 13 ms
+2026-09-12T11:14:21Z	paint: revision 111 redrew 1/2 pages
+2026-09-12T11:14:21Z	paint: revision 111 at 87898683693791 (covers 2 keystrokes, redrawn true)
+2026-09-12T11:14:21Z	keystroke: revision 112 at 87898683774208 (delegate 87898684342666, revision 87898684389583)
+2026-09-12T11:14:21Z	compile: sending revision 112 at 87898684410333
+2026-09-12T11:14:21Z	status: compiling revision 112 (mac-111)…
+2026-09-12T11:14:21Z	worker: line 226139 B decoded in 3.517667 ms at 87898690881750
+2026-09-12T11:14:21Z	worker: event on main at 87898699503916
+2026-09-12T11:14:21Z	compile: applied revision 112 at 87898700407250
+2026-09-12T11:14:21Z	status: revision 112: ok, 0 diagnostics in 16 ms
+2026-09-12T11:14:21Z	paint: revision 112 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T11:14:21Z	paint: revision 112 at 87898725892875 (covers 1 keystrokes, redrawn false)
+2026-09-12T11:14:21Z	keystroke: revision 113 at 87898725956083 (delegate 87898726606666, revision 87898726654583)
+2026-09-12T11:14:21Z	compile: sending revision 113 at 87898726676250
+2026-09-12T11:14:21Z	status: compiling revision 113 (mac-112)…
+2026-09-12T11:14:21Z	keystroke: revision 114 at 87898732403333 (delegate 87898732854333, revision 87898732891625)
+2026-09-12T11:14:21Z	worker: line 226363 B decoded in 3.504792 ms at 87898733363583
+2026-09-12T11:14:21Z	worker: event on main at 87898736213833
+2026-09-12T11:14:21Z	compile: applied revision 113 at 87898737060875
+2026-09-12T11:14:21Z	status: revision 113: ok, 0 diagnostics in 10 ms
+2026-09-12T11:14:21Z	compile: sending revision 114 at 87898737105833
+2026-09-12T11:14:21Z	status: compiling revision 114 (mac-113)…
+2026-09-12T11:14:21Z	worker: line 226364 B decoded in 3.528375 ms at 87898743858208
+2026-09-12T11:14:21Z	paint: revision 113 redrew 1/2 pages
+2026-09-12T11:14:21Z	paint: revision 113 at 87898762371458 (covers 1 keystrokes, redrawn true)
+2026-09-12T11:14:21Z	worker: event on main at 87898762382208
+2026-09-12T11:14:21Z	compile: applied revision 114 at 87898763240500
+2026-09-12T11:14:21Z	status: revision 114: ok, 0 diagnostics in 26 ms
+2026-09-12T11:14:21Z	keystroke: revision 115 at 87898775416833 (delegate 87898776008333, revision 87898776048333)
+2026-09-12T11:14:21Z	compile: sending revision 115 at 87898776090333
+2026-09-12T11:14:21Z	status: compiling revision 115 (mac-114)…
+2026-09-12T11:14:21Z	paint: revision 114 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T11:14:21Z	paint: revision 114 at 87898776435333 (covers 1 keystrokes, redrawn false)
+2026-09-12T11:14:21Z	worker: line 226364 B decoded in 3.630541 ms at 87898783082666
+2026-09-12T11:14:21Z	worker: event on main at 87898793998875
+2026-09-12T11:14:21Z	compile: applied revision 115 at 87898794897125
+2026-09-12T11:14:21Z	status: revision 115: ok, 0 diagnostics in 19 ms
+2026-09-12T11:14:21Z	keystroke: revision 116 at 87898818485000 (delegate 87898819144458, revision 87898819194000)
+2026-09-12T11:14:21Z	compile: sending revision 116 at 87898819235500
+2026-09-12T11:14:21Z	status: compiling revision 116 (mac-115)…
+2026-09-12T11:14:21Z	paint: revision 115 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T11:14:21Z	paint: revision 115 at 87898819585250 (covers 1 keystrokes, redrawn false)
+2026-09-12T11:14:21Z	keystroke: revision 117 at 87898825492291 (delegate 87898826011083, revision 87898826055500)
+2026-09-12T11:14:21Z	worker: line 226588 B decoded in 3.603208 ms at 87898826128666
+2026-09-12T11:14:21Z	worker: event on main at 87898826448250
+2026-09-12T11:14:21Z	compile: applied revision 116 at 87898827307875
+2026-09-12T11:14:21Z	status: revision 116: ok, 0 diagnostics in 8 ms
+2026-09-12T11:14:21Z	compile: sending revision 117 at 87898827360166
+2026-09-12T11:14:21Z	status: compiling revision 117 (mac-116)…
+2026-09-12T11:14:21Z	worker: line 226589 B decoded in 3.537 ms at 87898834120166
+2026-09-12T11:14:21Z	worker: event on main at 87898840236833
+2026-09-12T11:14:21Z	compile: applied revision 117 at 87898841154125
+2026-09-12T11:14:21Z	status: revision 117: ok, 0 diagnostics in 14 ms
+2026-09-12T11:14:21Z	paint: revision 117 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T11:14:21Z	paint: revision 117 at 87898853870208 (covers 2 keystrokes, redrawn false)
+2026-09-12T11:14:21Z	keystroke: revision 118 at 87898853896083 (delegate 87898854467500, revision 87898854506916)
+2026-09-12T11:14:21Z	compile: sending revision 118 at 87898854528583
+2026-09-12T11:14:21Z	status: compiling revision 118 (mac-117)…
+2026-09-12T11:14:21Z	worker: line 226590 B decoded in 3.570917 ms at 87898861372750
+2026-09-12T11:14:21Z	worker: event on main at 87898875654375
+2026-09-12T11:14:21Z	compile: applied revision 118 at 87898876569583
+2026-09-12T11:14:21Z	status: revision 118: ok, 0 diagnostics in 22 ms
+2026-09-12T11:14:21Z	paint: revision 118 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T11:14:21Z	paint: revision 118 at 87898900896250 (covers 1 keystrokes, redrawn true)
+2026-09-12T11:14:21Z	keystroke: revision 119 at 87898901005666 (delegate 87898901578250, revision 87898901625250)
+2026-09-12T11:14:21Z	compile: sending revision 119 at 87898901646208
+2026-09-12T11:14:21Z	status: compiling revision 119 (mac-118)…
+2026-09-12T11:14:21Z	worker: line 226591 B decoded in 3.524917 ms at 87898908434958
+2026-09-12T11:14:21Z	worker: event on main at 87898917482500
+2026-09-12T11:14:21Z	compile: applied revision 119 at 87898918379000
+2026-09-12T11:14:21Z	status: revision 119: ok, 0 diagnostics in 17 ms
+2026-09-12T11:14:21Z	paint: revision 119 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T11:14:21Z	paint: revision 119 at 87898945532166 (covers 1 keystrokes, redrawn true)
+2026-09-12T11:14:21Z	keystroke: revision 120 at 87898946049625 (delegate 87898946611166, revision 87898946669458)
+2026-09-12T11:14:21Z	compile: sending revision 120 at 87898946694250
+2026-09-12T11:14:21Z	status: compiling revision 120 (mac-119)…
+2026-09-12T11:14:21Z	worker: line 226591 B decoded in 3.530458 ms at 87898953251583
+2026-09-12T11:14:21Z	worker: event on main at 87898961539333
+2026-09-12T11:14:21Z	compile: applied revision 120 at 87898962449375
+2026-09-12T11:14:21Z	status: revision 120: ok, 0 diagnostics in 16 ms
+2026-09-12T11:14:21Z	keystroke: revision 121 at 87898984627583 (delegate 87898985159916, revision 87898985210625)
+2026-09-12T11:14:21Z	compile: sending revision 121 at 87898985251916
+2026-09-12T11:14:21Z	status: compiling revision 121 (mac-120)…
+2026-09-12T11:14:21Z	paint: revision 120 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T11:14:21Z	paint: revision 120 at 87898985621958 (covers 1 keystrokes, redrawn false)
+2026-09-12T11:14:21Z	worker: line 226817 B decoded in 3.571875 ms at 87898992252083
+2026-09-12T11:14:21Z	keystroke: revision 122 at 87898991647625 (delegate 87898992287666, revision 87898992334625)
+2026-09-12T11:14:21Z	worker: event on main at 87898992602625
+2026-09-12T11:14:21Z	compile: applied revision 121 at 87898993482791
+2026-09-12T11:14:21Z	status: revision 121: ok, 0 diagnostics in 8 ms
+2026-09-12T11:14:21Z	compile: sending revision 122 at 87898993530375
+2026-09-12T11:14:21Z	status: compiling revision 122 (mac-121)…
+2026-09-12T11:14:21Z	worker: line 226817 B decoded in 3.478167 ms at 87899000146000
+2026-09-12T11:14:21Z	worker: event on main at 87899005423625
+2026-09-12T11:14:21Z	compile: applied revision 122 at 87899006323458
+2026-09-12T11:14:21Z	status: revision 122: ok, 0 diagnostics in 13 ms
+2026-09-12T11:14:21Z	paint: revision 122 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T11:14:21Z	paint: revision 122 at 87899017251083 (covers 2 keystrokes, redrawn false)
+2026-09-12T11:14:21Z	keystroke: revision 123 at 87899017273041 (delegate 87899017805708, revision 87899017845083)
+2026-09-12T11:14:21Z	compile: sending revision 123 at 87899017864833
+2026-09-12T11:14:21Z	status: compiling revision 123 (mac-122)…
+2026-09-12T11:14:21Z	worker: line 227041 B decoded in 3.557125 ms at 87899024622916
+2026-09-12T11:14:21Z	worker: event on main at 87899039228791
+2026-09-12T11:14:21Z	compile: applied revision 123 at 87899040129125
+2026-09-12T11:14:21Z	status: revision 123: ok, 0 diagnostics in 22 ms
+2026-09-12T11:14:21Z	paint: revision 123 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T11:14:21Z	paint: revision 123 at 87899064618458 (covers 1 keystrokes, redrawn true)
+2026-09-12T11:14:21Z	keystroke: revision 124 at 87899065058416 (delegate 87899065617666, revision 87899065663375)
+2026-09-12T11:14:21Z	compile: sending revision 124 at 87899065683791
+2026-09-12T11:14:21Z	status: compiling revision 124 (mac-123)…
+2026-09-12T11:14:21Z	worker: line 227042 B decoded in 3.479917 ms at 87899072483333
+2026-09-12T11:14:21Z	worker: event on main at 87899080024125
+2026-09-12T11:14:21Z	compile: applied revision 124 at 87899080963416
+2026-09-12T11:14:21Z	status: revision 124: ok, 0 diagnostics in 15 ms
+2026-09-12T11:14:21Z	paint: revision 124 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T11:14:21Z	paint: revision 124 at 87899106673750 (covers 1 keystrokes, redrawn true)
+2026-09-12T11:14:21Z	keystroke: revision 125 at 87899106753833 (delegate 87899107339291, revision 87899107392041)
+2026-09-12T11:14:21Z	compile: sending revision 125 at 87899107417333
+2026-09-12T11:14:21Z	status: compiling revision 125 (mac-124)…
+2026-09-12T11:14:21Z	worker: line 227043 B decoded in 3.50225 ms at 87899114291083
+2026-09-12T11:14:22Z	worker: event on main at 87899121446333
+2026-09-12T11:14:22Z	compile: applied revision 125 at 87899122340833
+2026-09-12T11:14:22Z	status: revision 125: ok, 0 diagnostics in 15 ms
+2026-09-12T11:14:22Z	paint: revision 125 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T11:14:22Z	paint: revision 125 at 87899147946250 (covers 1 keystrokes, redrawn true)
+2026-09-12T11:14:22Z	keystroke: revision 126 at 87899148026583 (delegate 87899148615125, revision 87899148663916)
+2026-09-12T11:14:22Z	compile: sending revision 126 at 87899148684166
+2026-09-12T11:14:22Z	status: compiling revision 126 (mac-125)…
+2026-09-12T11:14:22Z	worker: line 227043 B decoded in 3.542292 ms at 87899155370750
+2026-09-12T11:14:22Z	worker: event on main at 87899163155625
+2026-09-12T11:14:22Z	compile: applied revision 126 at 87899164061041
+2026-09-12T11:14:22Z	status: revision 126: ok, 0 diagnostics in 15 ms
+2026-09-12T11:14:22Z	keystroke: revision 127 at 87899174995750 (delegate 87899175547708, revision 87899175588583)
+2026-09-12T11:14:22Z	compile: sending revision 127 at 87899175628541
+2026-09-12T11:14:22Z	status: compiling revision 127 (mac-126)…
+2026-09-12T11:14:22Z	paint: revision 126 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T11:14:22Z	paint: revision 126 at 87899175982291 (covers 1 keystrokes, redrawn false)
+2026-09-12T11:14:22Z	keystroke: revision 128 at 87899181666166 (delegate 87899182176416, revision 87899182215708)
+2026-09-12T11:14:22Z	worker: line 227267 B decoded in 3.513916 ms at 87899182343541
+2026-09-12T11:14:22Z	worker: event on main at 87899182519833
+2026-09-12T11:14:22Z	compile: applied revision 127 at 87899183338875
+2026-09-12T11:14:22Z	status: revision 127: ok, 0 diagnostics in 8 ms
+2026-09-12T11:14:22Z	compile: sending revision 128 at 87899183385625
+2026-09-12T11:14:22Z	status: compiling revision 128 (mac-127)…
+2026-09-12T11:14:22Z	worker: line 227268 B decoded in 3.579292 ms at 87899190069708
+2026-09-12T11:14:22Z	worker: event on main at 87899195314791
+2026-09-12T11:14:22Z	compile: applied revision 128 at 87899196229625
+2026-09-12T11:14:22Z	status: revision 128: ok, 0 diagnostics in 13 ms
+2026-09-12T11:14:22Z	paint: revision 128 redrew 1/2 pages
+2026-09-12T11:14:22Z	paint: revision 128 at 87899223575958 (covers 2 keystrokes, redrawn true)
+2026-09-12T11:14:22Z	keystroke: revision 129 at 87899224078083 (delegate 87899224707041, revision 87899224755666)
+2026-09-12T11:14:22Z	compile: sending revision 129 at 87899224786625
+2026-09-12T11:14:22Z	status: compiling revision 129 (mac-128)…
+2026-09-12T11:14:22Z	worker: line 227269 B decoded in 3.543208 ms at 87899231634291
+2026-09-12T11:14:22Z	worker: event on main at 87899239408000
+2026-09-12T11:14:22Z	compile: applied revision 129 at 87899240315666
+2026-09-12T11:14:22Z	status: revision 129: ok, 0 diagnostics in 15 ms
+2026-09-12T11:14:22Z	paint: revision 129 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T11:14:22Z	paint: revision 129 at 87899267417291 (covers 1 keystrokes, redrawn true)
+2026-09-12T11:14:22Z	keystroke: revision 130 at 87899267540833 (delegate 87899268125416, revision 87899268172000)
+2026-09-12T11:14:22Z	compile: sending revision 130 at 87899268192416
+2026-09-12T11:14:22Z	status: compiling revision 130 (mac-129)…
+2026-09-12T11:14:22Z	worker: line 227270 B decoded in 3.502458 ms at 87899274915541
+2026-09-12T11:14:22Z	worker: event on main at 87899282680125
+2026-09-12T11:14:22Z	compile: applied revision 130 at 87899283616875
+2026-09-12T11:14:22Z	status: revision 130: ok, 0 diagnostics in 15 ms
+2026-09-12T11:14:22Z	paint: revision 130 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T11:14:22Z	paint: revision 130 at 87899311302916 (covers 1 keystrokes, redrawn true)
+2026-09-12T11:14:22Z	keystroke: revision 131 at 87899311764541 (delegate 87899312276291, revision 87899312342166)
+2026-09-12T11:14:22Z	compile: sending revision 131 at 87899312367541
+2026-09-12T11:14:22Z	status: compiling revision 131 (mac-130)…
+2026-09-12T11:14:22Z	worker: line 227271 B decoded in 3.528375 ms at 87899319083583
+2026-09-12T11:14:22Z	worker: event on main at 87899328465708
+2026-09-12T11:14:22Z	compile: applied revision 131 at 87899329374000
+2026-09-12T11:14:22Z	status: revision 131: ok, 0 diagnostics in 17 ms
+2026-09-12T11:14:22Z	keystroke: revision 132 at 87899341853333 (delegate 87899342386708, revision 87899342427625)
+2026-09-12T11:14:22Z	compile: sending revision 132 at 87899342471208
+2026-09-12T11:14:22Z	status: compiling revision 132 (mac-131)…
+2026-09-12T11:14:22Z	paint: revision 131 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T11:14:22Z	paint: revision 131 at 87899342814541 (covers 1 keystrokes, redrawn false)
+2026-09-12T11:14:22Z	keystroke: revision 133 at 87899348360666 (delegate 87899348904375, revision 87899348941625)
+2026-09-12T11:14:22Z	worker: line 227272 B decoded in 3.471583 ms at 87899349132041
+2026-09-12T11:14:22Z	worker: event on main at 87899349243833
+2026-09-12T11:14:22Z	compile: applied revision 132 at 87899350109791
+2026-09-12T11:14:22Z	status: revision 132: ok, 0 diagnostics in 8 ms
+2026-09-12T11:14:22Z	compile: sending revision 133 at 87899350152750
+2026-09-12T11:14:22Z	status: compiling revision 133 (mac-132)…
+2026-09-12T11:14:22Z	worker: line 227272 B decoded in 3.551125 ms at 87899356529875
+2026-09-12T11:14:22Z	worker: event on main at 87899362608000
+2026-09-12T11:14:22Z	compile: applied revision 133 at 87899363491041
+2026-09-12T11:14:22Z	status: revision 133: ok, 0 diagnostics in 13 ms
+2026-09-12T11:14:22Z	paint: revision 133 redrew 1/2 pages
+2026-09-12T11:14:22Z	paint: revision 133 at 87899388096625 (covers 2 keystrokes, redrawn true)
+2026-09-12T11:14:22Z	keystroke: revision 134 at 87899388560166 (delegate 87899389253541, revision 87899389292416)
+2026-09-12T11:14:22Z	compile: sending revision 134 at 87899389319583
+2026-09-12T11:14:22Z	status: compiling revision 134 (mac-133)…
+2026-09-12T11:14:22Z	worker: line 227496 B decoded in 3.516166 ms at 87899396032416
+2026-09-12T11:14:22Z	worker: event on main at 87899403498833
+2026-09-12T11:14:22Z	compile: applied revision 134 at 87899404464875
+2026-09-12T11:14:22Z	status: revision 134: ok, 0 diagnostics in 15 ms
+2026-09-12T11:14:22Z	paint: revision 134 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T11:14:22Z	paint: revision 134 at 87899429255666 (covers 1 keystrokes, redrawn true)
+2026-09-12T11:14:22Z	keystroke: revision 135 at 87899429766708 (delegate 87899430418958, revision 87899430470375)
+2026-09-12T11:14:22Z	compile: sending revision 135 at 87899430495750
+2026-09-12T11:14:22Z	status: compiling revision 135 (mac-134)…
+2026-09-12T11:14:22Z	worker: line 227497 B decoded in 3.489375 ms at 87899437304333
+2026-09-12T11:14:22Z	worker: event on main at 87899445002500
+2026-09-12T11:14:22Z	compile: applied revision 135 at 87899445896833
+2026-09-12T11:14:22Z	status: revision 135: ok, 0 diagnostics in 15 ms
+2026-09-12T11:14:22Z	keystroke: revision 136 at 87899457748291 (delegate 87899458258708, revision 87899458303291)
+2026-09-12T11:14:22Z	compile: sending revision 136 at 87899458354041
+2026-09-12T11:14:22Z	status: compiling revision 136 (mac-135)…
+2026-09-12T11:14:22Z	paint: revision 135 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T11:14:22Z	paint: revision 135 at 87899458879375 (covers 1 keystrokes, redrawn false)
+2026-09-12T11:14:22Z	keystroke: revision 137 at 87899464340583 (delegate 87899464839875, revision 87899464881000)
+2026-09-12T11:14:22Z	worker: line 227498 B decoded in 3.435667 ms at 87899465122250
+2026-09-12T11:14:22Z	worker: event on main at 87899465162541
+2026-09-12T11:14:22Z	compile: applied revision 136 at 87899465952291
+2026-09-12T11:14:22Z	status: revision 136: ok, 0 diagnostics in 8 ms
+2026-09-12T11:14:22Z	compile: sending revision 137 at 87899465998000
+2026-09-12T11:14:22Z	status: compiling revision 137 (mac-136)…
+2026-09-12T11:14:22Z	worker: line 227499 B decoded in 3.531916 ms at 87899472653666
+2026-09-12T11:14:22Z	worker: event on main at 87899478163916
+2026-09-12T11:14:22Z	compile: applied revision 137 at 87899479022083
+2026-09-12T11:14:22Z	status: revision 137: ok, 0 diagnostics in 13 ms
+2026-09-12T11:14:22Z	paint: revision 137 redrew 1/2 pages
+2026-09-12T11:14:22Z	paint: revision 137 at 87899503971166 (covers 2 keystrokes, redrawn true)
+2026-09-12T11:14:22Z	keystroke: revision 138 at 87899504518208 (delegate 87899505081208, revision 87899505128583)
+2026-09-12T11:14:22Z	compile: sending revision 138 at 87899505155208
+2026-09-12T11:14:22Z	status: compiling revision 138 (mac-137)…
+2026-09-12T11:14:22Z	worker: line 227500 B decoded in 3.566083 ms at 87899511886833
+2026-09-12T11:14:22Z	worker: event on main at 87899519881708
+2026-09-12T11:14:22Z	compile: applied revision 138 at 87899520827166
+2026-09-12T11:14:22Z	status: revision 138: ok, 0 diagnostics in 16 ms
+2026-09-12T11:14:22Z	paint: revision 138 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T11:14:22Z	paint: revision 138 at 87899545882750 (covers 1 keystrokes, redrawn true)
+2026-09-12T11:14:22Z	keystroke: revision 139 at 87899546332291 (delegate 87899546897750, revision 87899546944583)
+2026-09-12T11:14:22Z	compile: sending revision 139 at 87899546965833
+2026-09-12T11:14:22Z	status: compiling revision 139 (mac-138)…
+2026-09-12T11:14:22Z	worker: line 227500 B decoded in 3.508208 ms at 87899553511958
+2026-09-12T11:14:22Z	worker: event on main at 87899562599166
+2026-09-12T11:14:22Z	compile: applied revision 139 at 87899563514583
+2026-09-12T11:14:22Z	status: revision 139: ok, 0 diagnostics in 16 ms
+2026-09-12T11:14:22Z	keystroke: revision 140 at 87899574488875 (delegate 87899575016083, revision 87899575058083)
+2026-09-12T11:14:22Z	compile: sending revision 140 at 87899575105500
+2026-09-12T11:14:22Z	status: compiling revision 140 (mac-139)…
+2026-09-12T11:14:22Z	paint: revision 139 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T11:14:22Z	paint: revision 139 at 87899575443541 (covers 1 keystrokes, redrawn false)
+2026-09-12T11:14:22Z	keystroke: revision 141 at 87899581339291 (delegate 87899581840208, revision 87899581880041)
+2026-09-12T11:14:22Z	worker: line 227724 B decoded in 3.468583 ms at 87899581935166
+2026-09-12T11:14:22Z	worker: event on main at 87899582097041
+2026-09-12T11:14:22Z	compile: applied revision 140 at 87899582925875
+2026-09-12T11:14:22Z	status: revision 140: ok, 0 diagnostics in 8 ms
+2026-09-12T11:14:22Z	compile: sending revision 141 at 87899582968875
+2026-09-12T11:14:22Z	status: compiling revision 141 (mac-140)…
+2026-09-12T11:14:22Z	worker: line 227725 B decoded in 3.501625 ms at 87899589562833
+2026-09-12T11:14:22Z	worker: event on main at 87899594868416
+2026-09-12T11:14:22Z	compile: applied revision 141 at 87899595738916
+2026-09-12T11:14:22Z	status: revision 141: ok, 0 diagnostics in 13 ms
+2026-09-12T11:14:22Z	paint: revision 141 redrew 1/2 pages
+2026-09-12T11:14:22Z	paint: revision 141 at 87899622320375 (covers 2 keystrokes, redrawn true)
+2026-09-12T11:14:22Z	keystroke: revision 142 at 87899622813666 (delegate 87899623355083, revision 87899623401833)
+2026-09-12T11:14:22Z	compile: sending revision 142 at 87899623425458
+2026-09-12T11:14:22Z	status: compiling revision 142 (mac-141)…
+2026-09-12T11:14:22Z	worker: line 227726 B decoded in 3.653792 ms at 87899630397958
+2026-09-12T11:14:22Z	worker: event on main at 87899637864708
+2026-09-12T11:14:22Z	compile: applied revision 142 at 87899638796375
+2026-09-12T11:14:22Z	status: revision 142: ok, 0 diagnostics in 15 ms
+2026-09-12T11:14:22Z	paint: revision 142 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T11:14:22Z	paint: revision 142 at 87899664382833 (covers 1 keystrokes, redrawn true)
+2026-09-12T11:14:22Z	keystroke: revision 143 at 87899664832416 (delegate 87899665375583, revision 87899665422250)
+2026-09-12T11:14:22Z	compile: sending revision 143 at 87899665444291
+2026-09-12T11:14:22Z	status: compiling revision 143 (mac-142)…
+2026-09-12T11:14:22Z	worker: line 227727 B decoded in 3.546 ms at 87899672290458
+2026-09-12T11:14:22Z	worker: event on main at 87899680805416
+2026-09-12T11:14:22Z	compile: applied revision 143 at 87899681749958
+2026-09-12T11:14:22Z	status: revision 143: ok, 0 diagnostics in 16 ms
+2026-09-12T11:14:22Z	paint: revision 143 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T11:14:22Z	paint: revision 143 at 87899711613375 (covers 1 keystrokes, redrawn true)
+2026-09-12T11:14:22Z	keystroke: revision 144 at 87899711681458 (delegate 87899712223458, revision 87899712272541)
+2026-09-12T11:14:22Z	compile: sending revision 144 at 87899712289625
+2026-09-12T11:14:22Z	status: compiling revision 144 (mac-143)…
+2026-09-12T11:14:22Z	worker: line 227727 B decoded in 3.499166 ms at 87899718864541
+2026-09-12T11:14:22Z	worker: event on main at 87899729005250
+2026-09-12T11:14:22Z	compile: applied revision 144 at 87899729971708
+2026-09-12T11:14:22Z	status: revision 144: ok, 0 diagnostics in 18 ms
+2026-09-12T11:14:22Z	keystroke: revision 145 at 87899741227333 (delegate 87899741852166, revision 87899741900958)
+2026-09-12T11:14:22Z	compile: sending revision 145 at 87899741944791
+2026-09-12T11:14:22Z	status: compiling revision 145 (mac-144)…
+2026-09-12T11:14:22Z	paint: revision 144 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T11:14:22Z	paint: revision 144 at 87899742311791 (covers 1 keystrokes, redrawn false)
+2026-09-12T11:14:22Z	keystroke: revision 146 at 87899747766208 (delegate 87899748255583, revision 87899748296791)
+2026-09-12T11:14:22Z	worker: line 227951 B decoded in 3.5295 ms at 87899748852500
+2026-09-12T11:14:22Z	worker: event on main at 87899751317875
+2026-09-12T11:14:22Z	compile: applied revision 145 at 87899752134583
+2026-09-12T11:14:22Z	status: revision 145: ok, 0 diagnostics in 10 ms
+2026-09-12T11:14:22Z	compile: sending revision 146 at 87899752173083
+2026-09-12T11:14:22Z	status: compiling revision 146 (mac-145)…
+2026-09-12T11:14:22Z	worker: line 227952 B decoded in 3.633792 ms at 87899759067458
+2026-09-12T11:14:22Z	paint: revision 145 redrew 1/2 pages
+2026-09-12T11:14:22Z	paint: revision 145 at 87899774662625 (covers 1 keystrokes, redrawn true)
+2026-09-12T11:14:22Z	worker: event on main at 87899774675250
+2026-09-12T11:14:22Z	compile: applied revision 146 at 87899775586083
+2026-09-12T11:14:22Z	status: revision 146: ok, 0 diagnostics in 23 ms
+2026-09-12T11:14:22Z	paint: revision 146 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T11:14:22Z	paint: revision 146 at 87899801968166 (covers 1 keystrokes, redrawn true)
+2026-09-12T11:14:22Z	keystroke: revision 147 at 87899802456458 (delegate 87899803011708, revision 87899803059375)
+2026-09-12T11:14:22Z	compile: sending revision 147 at 87899803080166
+2026-09-12T11:14:22Z	status: compiling revision 147 (mac-146)…
+2026-09-12T11:14:22Z	worker: line 227953 B decoded in 3.519334 ms at 87899809832125
+2026-09-12T11:14:22Z	keystroke: revision 148 at 87899809378666 (delegate 87899809946958, revision 87899809990416)
+2026-09-12T11:14:22Z	worker: event on main at 87899810202541
+2026-09-12T11:14:22Z	compile: applied revision 147 at 87899811012458
+2026-09-12T11:14:22Z	status: revision 147: ok, 0 diagnostics in 8 ms
+2026-09-12T11:14:22Z	compile: sending revision 148 at 87899811058375
+2026-09-12T11:14:22Z	status: compiling revision 148 (mac-147)…
+2026-09-12T11:14:22Z	worker: line 227954 B decoded in 3.517209 ms at 87899817873125
+2026-09-12T11:14:22Z	worker: event on main at 87899823945041
+2026-09-12T11:14:22Z	compile: applied revision 148 at 87899824962791
+2026-09-12T11:14:22Z	status: revision 148: ok, 0 diagnostics in 14 ms
+2026-09-12T11:14:22Z	keystroke: revision 149 at 87899836961333 (delegate 87899837502625, revision 87899837542333)
+2026-09-12T11:14:22Z	compile: sending revision 149 at 87899837587875
+2026-09-12T11:14:22Z	status: compiling revision 149 (mac-148)…
+2026-09-12T11:14:22Z	paint: revision 148 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T11:14:22Z	paint: revision 148 at 87899838125250 (covers 2 keystrokes, redrawn false)
+2026-09-12T11:14:22Z	worker: line 227955 B decoded in 3.667625 ms at 87899844510916
+2026-09-12T11:14:22Z	worker: event on main at 87899863283500
+2026-09-12T11:14:22Z	compile: applied revision 149 at 87899864373041
+2026-09-12T11:14:22Z	status: revision 149: ok, 0 diagnostics in 27 ms
+2026-09-12T11:14:22Z	paint: revision 149 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T11:14:22Z	paint: revision 149 at 87899889737625 (covers 1 keystrokes, redrawn true)
+2026-09-12T11:14:22Z	keystroke: revision 150 at 87899890231500 (delegate 87899890843541, revision 87899890904833)
+2026-09-12T11:14:22Z	compile: sending revision 150 at 87899890953000
+2026-09-12T11:14:22Z	status: compiling revision 150 (mac-149)…
+2026-09-12T11:14:22Z	worker: line 227955 B decoded in 3.535292 ms at 87899897760625
+2026-09-12T11:14:22Z	worker: event on main at 87899905185916
+2026-09-12T11:14:22Z	compile: applied revision 150 at 87899906088083
+2026-09-12T11:14:22Z	status: revision 150: ok, 0 diagnostics in 15 ms
+2026-09-12T11:14:22Z	keystroke: revision 151 at 87899917584583 (delegate 87899918088375, revision 87899918128333)
+2026-09-12T11:14:22Z	compile: sending revision 151 at 87899918173083
+2026-09-12T11:14:22Z	status: compiling revision 151 (mac-150)…
+2026-09-12T11:14:22Z	paint: revision 150 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T11:14:22Z	paint: revision 150 at 87899918495875 (covers 1 keystrokes, redrawn false)
+2026-09-12T11:14:22Z	keystroke: revision 152 at 87899924048000 (delegate 87899924580083, revision 87899924623750)
+2026-09-12T11:14:22Z	worker: line 228179 B decoded in 3.593708 ms at 87899924944041
+2026-09-12T11:14:22Z	worker: event on main at 87899927940833
+2026-09-12T11:14:22Z	compile: applied revision 151 at 87899928795958
+2026-09-12T11:14:22Z	status: revision 151: ok, 0 diagnostics in 11 ms
+2026-09-12T11:14:22Z	compile: sending revision 152 at 87899928840458
+2026-09-12T11:14:22Z	status: compiling revision 152 (mac-151)…
+2026-09-12T11:14:22Z	worker: line 228180 B decoded in 3.474958 ms at 87899935575791
+2026-09-12T11:14:22Z	paint: revision 151 redrew 1/2 pages
+2026-09-12T11:14:22Z	paint: revision 151 at 87899950515375 (covers 1 keystrokes, redrawn true)
+2026-09-12T11:14:22Z	worker: event on main at 87899950526458
+2026-09-12T11:14:22Z	compile: applied revision 152 at 87899951459250
+2026-09-12T11:14:22Z	status: revision 152: ok, 0 diagnostics in 23 ms
+2026-09-12T11:14:22Z	paint: revision 152 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T11:14:22Z	paint: revision 152 at 87899978822125 (covers 1 keystrokes, redrawn true)
+2026-09-12T11:14:22Z	keystroke: revision 153 at 87899979356375 (delegate 87899979948041, revision 87899979994541)
+2026-09-12T11:14:22Z	compile: sending revision 153 at 87899980018375
+2026-09-12T11:14:22Z	status: compiling revision 153 (mac-152)…
+2026-09-12T11:14:22Z	worker: line 228181 B decoded in 3.519958 ms at 87899986778541
+2026-09-12T11:14:22Z	worker: event on main at 87899995025875
+2026-09-12T11:14:22Z	compile: applied revision 153 at 87899996016625
+2026-09-12T11:14:22Z	status: revision 153: ok, 0 diagnostics in 16 ms
+2026-09-12T11:14:22Z	keystroke: revision 154 at 87900008846875 (delegate 87900009410416, revision 87900009452541)
+2026-09-12T11:14:22Z	compile: sending revision 154 at 87900009511208
+2026-09-12T11:14:22Z	status: compiling revision 154 (mac-153)…
+2026-09-12T11:14:22Z	paint: revision 153 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T11:14:22Z	paint: revision 153 at 87900009881000 (covers 1 keystrokes, redrawn false)
+2026-09-12T11:14:22Z	keystroke: revision 155 at 87900015578583 (delegate 87900016117125, revision 87900016165458)
+2026-09-12T11:14:22Z	worker: line 228182 B decoded in 3.667583 ms at 87900016569666
+2026-09-12T11:14:22Z	worker: event on main at 87900019182666
+2026-09-12T11:14:22Z	compile: applied revision 154 at 87900019989416
+2026-09-12T11:14:22Z	status: revision 154: ok, 0 diagnostics in 10 ms
+2026-09-12T11:14:22Z	compile: sending revision 155 at 87900020025958
+2026-09-12T11:14:22Z	status: compiling revision 155 (mac-154)…
+2026-09-12T11:14:22Z	worker: line 228183 B decoded in 3.681791 ms at 87900026990416
+2026-09-12T11:14:22Z	paint: revision 154 redrew 1/2 pages
+2026-09-12T11:14:22Z	paint: revision 154 at 87900041489208 (covers 1 keystrokes, redrawn true)
+2026-09-12T11:14:22Z	worker: event on main at 87900041500875
+2026-09-12T11:14:22Z	compile: applied revision 155 at 87900042406916
+2026-09-12T11:14:22Z	status: revision 155: ok, 0 diagnostics in 22 ms
+2026-09-12T11:14:22Z	paint: revision 155 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T11:14:22Z	paint: revision 155 at 87900068533750 (covers 1 keystrokes, redrawn true)
+2026-09-12T11:14:22Z	keystroke: revision 156 at 87900069076875 (delegate 87900069627750, revision 87900069672958)
+2026-09-12T11:14:22Z	compile: sending revision 156 at 87900069700458
+2026-09-12T11:14:22Z	status: compiling revision 156 (mac-155)…
+2026-09-12T11:14:22Z	worker: line 228184 B decoded in 3.650708 ms at 87900076653791
+2026-09-12T11:14:22Z	keystroke: revision 157 at 87900076107416 (delegate 87900076682291, revision 87900076729041)
+2026-09-12T11:14:22Z	worker: event on main at 87900076973625
+2026-09-12T11:14:22Z	compile: applied revision 156 at 87900077899000
+2026-09-12T11:14:22Z	status: revision 156: ok, 0 diagnostics in 8 ms
+2026-09-12T11:14:22Z	compile: sending revision 157 at 87900077995750
+2026-09-12T11:14:22Z	status: compiling revision 157 (mac-156)…
+2026-09-12T11:14:22Z	worker: line 228185 B decoded in 3.531083 ms at 87900084939583
+2026-09-12T11:14:22Z	worker: event on main at 87900091253583
+2026-09-12T11:14:22Z	compile: applied revision 157 at 87900092165166
+2026-09-12T11:14:22Z	status: revision 157: ok, 0 diagnostics in 14 ms
+2026-09-12T11:14:22Z	keystroke: revision 158 at 87900103726125 (delegate 87900104261250, revision 87900104302250)
+2026-09-12T11:14:22Z	compile: sending revision 158 at 87900104351208
+2026-09-12T11:14:22Z	status: compiling revision 158 (mac-157)…
+2026-09-12T11:14:22Z	paint: revision 157 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T11:14:22Z	paint: revision 157 at 87900104891083 (covers 2 keystrokes, redrawn false)
+2026-09-12T11:14:22Z	worker: line 228186 B decoded in 3.513791 ms at 87900111101666
+2026-09-12T11:14:23Z	worker: event on main at 87900126579375
+2026-09-12T11:14:23Z	compile: applied revision 158 at 87900127483375
+2026-09-12T11:14:23Z	status: revision 158: ok, 0 diagnostics in 23 ms
+2026-09-12T11:14:23Z	paint: revision 158 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T11:14:23Z	paint: revision 158 at 87900153495875 (covers 1 keystrokes, redrawn true)
+2026-09-12T11:14:23Z	keystroke: revision 159 at 87900153999708 (delegate 87900154615875, revision 87900154665375)
+2026-09-12T11:14:23Z	compile: sending revision 159 at 87900154694250
+2026-09-12T11:14:23Z	status: compiling revision 159 (mac-158)…
+2026-09-12T11:14:23Z	worker: line 228187 B decoded in 3.560084 ms at 87900161539375
+2026-09-12T11:14:23Z	worker: event on main at 87900169876750
+2026-09-12T11:14:23Z	compile: applied revision 159 at 87900170787791
+2026-09-12T11:14:23Z	status: revision 159: ok, 0 diagnostics in 16 ms
+2026-09-12T11:14:23Z	keystroke: revision 160 at 87900183311375 (delegate 87900183863166, revision 87900183904208)
+2026-09-12T11:14:23Z	compile: sending revision 160 at 87900183950458
+2026-09-12T11:14:23Z	status: compiling revision 160 (mac-159)…
+2026-09-12T11:14:23Z	paint: revision 159 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T11:14:23Z	paint: revision 159 at 87900184290875 (covers 1 keystrokes, redrawn false)
+2026-09-12T11:14:23Z	keystroke: revision 161 at 87900189852833 (delegate 87900190436375, revision 87900190476791)
+2026-09-12T11:14:23Z	worker: line 228187 B decoded in 3.570375 ms at 87900190648875
+2026-09-12T11:14:23Z	worker: event on main at 87900190791208
+2026-09-12T11:14:23Z	compile: applied revision 160 at 87900191650250
+2026-09-12T11:14:23Z	status: revision 160: ok, 0 diagnostics in 8 ms
+2026-09-12T11:14:23Z	compile: sending revision 161 at 87900191703333
+2026-09-12T11:14:23Z	status: compiling revision 161 (mac-160)…
+2026-09-12T11:14:23Z	worker: line 228410 B decoded in 3.53025 ms at 87900198501458
+2026-09-12T11:14:23Z	worker: event on main at 87900202987958
+2026-09-12T11:14:23Z	compile: applied revision 161 at 87900203839166
+2026-09-12T11:14:23Z	status: revision 161: ok, 0 diagnostics in 12 ms
+2026-09-12T11:14:23Z	paint: revision 161 redrew 1/2 pages
+2026-09-12T11:14:23Z	paint: revision 161 at 87900227935291 (covers 2 keystrokes, redrawn true)
+2026-09-12T11:14:23Z	keystroke: revision 162 at 87900228452125 (delegate 87900229030125, revision 87900229078291)
+2026-09-12T11:14:23Z	compile: sending revision 162 at 87900229099791
+2026-09-12T11:14:23Z	status: compiling revision 162 (mac-161)…
+2026-09-12T11:14:23Z	worker: line 228411 B decoded in 3.50425 ms at 87900235867458
+2026-09-12T11:14:23Z	worker: event on main at 87900244974083
+2026-09-12T11:14:23Z	compile: applied revision 162 at 87900245883416
+2026-09-12T11:14:23Z	status: revision 162: ok, 0 diagnostics in 17 ms
+2026-09-12T11:14:23Z	paint: revision 162 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T11:14:23Z	paint: revision 162 at 87900270931875 (covers 1 keystrokes, redrawn true)
+2026-09-12T11:14:23Z	keystroke: revision 163 at 87900271454083 (delegate 87900272047750, revision 87900272095333)
+2026-09-12T11:14:23Z	compile: sending revision 163 at 87900272120208
+2026-09-12T11:14:23Z	status: compiling revision 163 (mac-162)…
+2026-09-12T11:14:23Z	worker: line 228412 B decoded in 3.691625 ms at 87900279131833
+2026-09-12T11:14:23Z	worker: event on main at 87900288570791
+2026-09-12T11:14:23Z	compile: applied revision 163 at 87900289497250
+2026-09-12T11:14:23Z	status: revision 163: ok, 0 diagnostics in 17 ms
+2026-09-12T11:14:23Z	paint: revision 163 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T11:14:23Z	paint: revision 163 at 87900314056833 (covers 1 keystrokes, redrawn true)
+2026-09-12T11:14:23Z	keystroke: revision 164 at 87900314129333 (delegate 87900314691625, revision 87900314740291)
+2026-09-12T11:14:23Z	compile: sending revision 164 at 87900314760166
+2026-09-12T11:14:23Z	status: compiling revision 164 (mac-163)…
+2026-09-12T11:14:23Z	worker: line 228413 B decoded in 3.517708 ms at 87900321537458
+2026-09-12T11:14:23Z	worker: event on main at 87900328867833
+2026-09-12T11:14:23Z	compile: applied revision 164 at 87900329854208
+2026-09-12T11:14:23Z	status: revision 164: ok, 0 diagnostics in 15 ms
+2026-09-12T11:14:23Z	paint: revision 164 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T11:14:23Z	paint: revision 164 at 87900358809875 (covers 1 keystrokes, redrawn true)
+2026-09-12T11:14:23Z	keystroke: revision 165 at 87900358931708 (delegate 87900359561041, revision 87900359612208)
+2026-09-12T11:14:23Z	compile: sending revision 165 at 87900359634500
+2026-09-12T11:14:23Z	status: compiling revision 165 (mac-164)…
+2026-09-12T11:14:23Z	worker: line 228414 B decoded in 3.567458 ms at 87900366459416
+2026-09-12T11:14:23Z	worker: event on main at 87900378538833
+2026-09-12T11:14:23Z	compile: applied revision 165 at 87900379462791
+2026-09-12T11:14:23Z	status: revision 165: ok, 0 diagnostics in 20 ms
+2026-09-12T11:14:23Z	keystroke: revision 166 at 87900391914458 (delegate 87900392536125, revision 87900392577833)
+2026-09-12T11:14:23Z	compile: sending revision 166 at 87900392622208
+2026-09-12T11:14:23Z	status: compiling revision 166 (mac-165)…
+2026-09-12T11:14:23Z	paint: revision 165 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T11:14:23Z	paint: revision 165 at 87900392967208 (covers 1 keystrokes, redrawn false)
+2026-09-12T11:14:23Z	keystroke: revision 167 at 87900398595250 (delegate 87900399133958, revision 87900399174666)
+2026-09-12T11:14:23Z	worker: line 228414 B decoded in 3.617791 ms at 87900399392041
+2026-09-12T11:14:23Z	worker: event on main at 87900399491833
+2026-09-12T11:14:23Z	compile: applied revision 166 at 87900400320583
+2026-09-12T11:14:23Z	status: revision 166: ok, 0 diagnostics in 8 ms
+2026-09-12T11:14:23Z	compile: sending revision 167 at 87900400366583
+2026-09-12T11:14:23Z	status: compiling revision 167 (mac-166)…
+2026-09-12T11:14:23Z	worker: line 228638 B decoded in 3.603959 ms at 87900407268375
+2026-09-12T11:14:23Z	worker: event on main at 87900412612041
+2026-09-12T11:14:23Z	compile: applied revision 167 at 87900413502208
+2026-09-12T11:14:23Z	status: revision 167: ok, 0 diagnostics in 13 ms
+2026-09-12T11:14:23Z	paint: revision 167 redrew 1/2 pages
+2026-09-12T11:14:23Z	paint: revision 167 at 87900437229833 (covers 2 keystrokes, redrawn true)
+2026-09-12T11:14:23Z	keystroke: revision 168 at 87900437707541 (delegate 87900438265000, revision 87900438312875)
+2026-09-12T11:14:23Z	compile: sending revision 168 at 87900438337500
+2026-09-12T11:14:23Z	status: compiling revision 168 (mac-167)…
+2026-09-12T11:14:23Z	worker: line 228639 B decoded in 3.568375 ms at 87900445212833
+2026-09-12T11:14:23Z	worker: event on main at 87900452840875
+2026-09-12T11:14:23Z	compile: applied revision 168 at 87900453761291
+2026-09-12T11:14:23Z	status: revision 168: ok, 0 diagnostics in 15 ms
+2026-09-12T11:14:23Z	paint: revision 168 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T11:14:23Z	paint: revision 168 at 87900478542791 (covers 1 keystrokes, redrawn true)
+2026-09-12T11:14:23Z	keystroke: revision 169 at 87900479010708 (delegate 87900479607416, revision 87900479655833)
+2026-09-12T11:14:23Z	compile: sending revision 169 at 87900479680291
+2026-09-12T11:14:23Z	status: compiling revision 169 (mac-168)…
+2026-09-12T11:14:23Z	worker: line 228640 B decoded in 3.5025 ms at 87900486468291
+2026-09-12T11:14:23Z	worker: event on main at 87900494837708
+2026-09-12T11:14:23Z	compile: applied revision 169 at 87900495749958
+2026-09-12T11:14:23Z	status: revision 169: ok, 0 diagnostics in 16 ms
+2026-09-12T11:14:23Z	paint: revision 169 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T11:14:23Z	paint: revision 169 at 87900521243083 (covers 1 keystrokes, redrawn true)
+2026-09-12T11:14:23Z	keystroke: revision 170 at 87900521308375 (delegate 87900521864333, revision 87900521914125)
+2026-09-12T11:14:23Z	compile: sending revision 170 at 87900521936625
+2026-09-12T11:14:23Z	status: compiling revision 170 (mac-169)…
+2026-09-12T11:14:23Z	worker: line 228641 B decoded in 3.652334 ms at 87900528953750
+2026-09-12T11:14:23Z	worker: event on main at 87900537414375
+2026-09-12T11:14:23Z	compile: applied revision 170 at 87900538326916
+2026-09-12T11:14:23Z	status: revision 170: ok, 0 diagnostics in 16 ms
+2026-09-12T11:14:23Z	keystroke: revision 171 at 87900549882458 (delegate 87900550403708, revision 87900550447166)
+2026-09-12T11:14:23Z	compile: sending revision 171 at 87900550493416
+2026-09-12T11:14:23Z	status: compiling revision 171 (mac-170)…
+2026-09-12T11:14:23Z	paint: revision 170 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T11:14:23Z	paint: revision 170 at 87900550839416 (covers 1 keystrokes, redrawn false)
+2026-09-12T11:14:23Z	keystroke: revision 172 at 87900556486000 (delegate 87900557042125, revision 87900557088708)
+2026-09-12T11:14:23Z	worker: line 228641 B decoded in 3.5615 ms at 87900557143833
+2026-09-12T11:14:23Z	worker: event on main at 87900557344916
+2026-09-12T11:14:23Z	compile: applied revision 171 at 87900558185375
+2026-09-12T11:14:23Z	status: revision 171: ok, 0 diagnostics in 8 ms
+2026-09-12T11:14:23Z	compile: sending revision 172 at 87900558237625
+2026-09-12T11:14:23Z	status: compiling revision 172 (mac-171)…
+2026-09-12T11:14:23Z	worker: line 228865 B decoded in 3.537542 ms at 87900565146083
+2026-09-12T11:14:23Z	worker: event on main at 87900569932125
+2026-09-12T11:14:23Z	compile: applied revision 172 at 87900570774708
+2026-09-12T11:14:23Z	status: revision 172: ok, 0 diagnostics in 12 ms
+2026-09-12T11:14:23Z	paint: revision 172 redrew 1/2 pages
+2026-09-12T11:14:23Z	paint: revision 172 at 87900595240291 (covers 2 keystrokes, redrawn true)
+2026-09-12T11:14:23Z	keystroke: revision 173 at 87900595722333 (delegate 87900596305000, revision 87900596352125)
+2026-09-12T11:14:23Z	compile: sending revision 173 at 87900596377750
+2026-09-12T11:14:23Z	status: compiling revision 173 (mac-172)…
+2026-09-12T11:14:23Z	worker: line 228866 B decoded in 3.52 ms at 87900603271125
+2026-09-12T11:14:23Z	worker: event on main at 87900611621708
+2026-09-12T11:14:23Z	compile: applied revision 173 at 87900612556583
+2026-09-12T11:14:23Z	status: revision 173: ok, 0 diagnostics in 16 ms
+2026-09-12T11:14:23Z	paint: revision 173 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T11:14:23Z	paint: revision 173 at 87900638931000 (covers 1 keystrokes, redrawn true)
+2026-09-12T11:14:23Z	keystroke: revision 174 at 87900639467041 (delegate 87900640071208, revision 87900640119375)
+2026-09-12T11:14:23Z	compile: sending revision 174 at 87900640145250
+2026-09-12T11:14:23Z	status: compiling revision 174 (mac-173)…
+2026-09-12T11:14:23Z	worker: line 228867 B decoded in 3.550667 ms at 87900647010625
+2026-09-12T11:14:23Z	worker: event on main at 87900656234708
+2026-09-12T11:14:23Z	compile: applied revision 174 at 87900657161833
+2026-09-12T11:14:23Z	status: revision 174: ok, 0 diagnostics in 17 ms
+2026-09-12T11:14:23Z	paint: revision 174 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T11:14:23Z	paint: revision 174 at 87900683593458 (covers 1 keystrokes, redrawn true)
+2026-09-12T11:14:23Z	keystroke: revision 175 at 87900683663916 (delegate 87900684233458, revision 87900684285333)
+2026-09-12T11:14:23Z	compile: sending revision 175 at 87900684307916
+2026-09-12T11:14:23Z	status: compiling revision 175 (mac-174)…
+2026-09-12T11:14:23Z	worker: line 228868 B decoded in 3.575125 ms at 87900691067625
+2026-09-12T11:14:23Z	worker: event on main at 87900699176750
+2026-09-12T11:14:23Z	compile: applied revision 175 at 87900700039541
+2026-09-12T11:14:23Z	status: revision 175: ok, 0 diagnostics in 16 ms
+2026-09-12T11:14:23Z	paint: revision 175 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T11:14:23Z	paint: revision 175 at 87900728763125 (covers 1 keystrokes, redrawn true)
+2026-09-12T11:14:23Z	keystroke: revision 176 at 87900728830125 (delegate 87900729406958, revision 87900729475041)
+2026-09-12T11:14:23Z	compile: sending revision 176 at 87900729497541
+2026-09-12T11:14:23Z	status: compiling revision 176 (mac-175)…
+2026-09-12T11:14:23Z	worker: line 228869 B decoded in 3.598708 ms at 87900736326916
+2026-09-12T11:14:23Z	worker: event on main at 87900745446500
+2026-09-12T11:14:23Z	compile: applied revision 176 at 87900746359791
+2026-09-12T11:14:23Z	status: revision 176: ok, 0 diagnostics in 17 ms
+2026-09-12T11:14:23Z	keystroke: revision 177 at 87900758138416 (delegate 87900758741666, revision 87900758788750)
+2026-09-12T11:14:23Z	compile: sending revision 177 at 87900758833208
+2026-09-12T11:14:23Z	status: compiling revision 177 (mac-176)…
+2026-09-12T11:14:23Z	paint: revision 176 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T11:14:23Z	paint: revision 176 at 87900759201791 (covers 1 keystrokes, redrawn false)
+2026-09-12T11:14:23Z	keystroke: revision 178 at 87900765068208 (delegate 87900765612708, revision 87900765650625)
+2026-09-12T11:14:23Z	worker: line 228870 B decoded in 3.58325 ms at 87900765801208
+2026-09-12T11:14:23Z	worker: event on main at 87900765968791
+2026-09-12T11:14:23Z	compile: applied revision 177 at 87900766832416
+2026-09-12T11:14:23Z	status: revision 177: ok, 0 diagnostics in 8 ms
+2026-09-12T11:14:23Z	compile: sending revision 178 at 87900766887166
+2026-09-12T11:14:23Z	status: compiling revision 178 (mac-177)…
+2026-09-12T11:14:23Z	worker: line 228870 B decoded in 3.606916 ms at 87900773484166
+2026-09-12T11:14:23Z	worker: event on main at 87900779665916
+2026-09-12T11:14:23Z	compile: applied revision 178 at 87900780575833
+2026-09-12T11:14:23Z	status: revision 178: ok, 0 diagnostics in 14 ms
+2026-09-12T11:14:23Z	paint: revision 178 redrew 1/2 pages
+2026-09-12T11:14:23Z	paint: revision 178 at 87900806679125 (covers 2 keystrokes, redrawn true)
+2026-09-12T11:14:23Z	keystroke: revision 179 at 87900807227500 (delegate 87900807846625, revision 87900807897250)
+2026-09-12T11:14:23Z	compile: sending revision 179 at 87900807927208
+2026-09-12T11:14:23Z	status: compiling revision 179 (mac-178)…
+2026-09-12T11:14:23Z	worker: line 229093 B decoded in 3.606833 ms at 87900814983541
+2026-09-12T11:14:23Z	worker: event on main at 87900823071291
+2026-09-12T11:14:23Z	compile: applied revision 179 at 87900824021125
+2026-09-12T11:14:23Z	status: revision 179: ok, 0 diagnostics in 16 ms
+2026-09-12T11:14:23Z	paint: revision 179 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T11:14:23Z	paint: revision 179 at 87900851034166 (covers 1 keystrokes, redrawn true)
+2026-09-12T11:14:23Z	keystroke: revision 180 at 87900851175083 (delegate 87900851843500, revision 87900851891250)
+2026-09-12T11:14:23Z	compile: sending revision 180 at 87900851911250
+2026-09-12T11:14:23Z	status: compiling revision 180 (mac-179)…
+2026-09-12T11:14:23Z	worker: line 229094 B decoded in 3.553334 ms at 87900858794625
+2026-09-12T11:14:23Z	worker: event on main at 87900866468541
+2026-09-12T11:14:23Z	compile: applied revision 180 at 87900867379333
+2026-09-12T11:14:23Z	status: revision 180: ok, 0 diagnostics in 15 ms
+2026-09-12T11:14:23Z	paint: revision 180 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T11:14:23Z	paint: revision 180 at 87900894925791 (covers 1 keystrokes, redrawn true)
+2026-09-12T11:14:23Z	keystroke: revision 181 at 87900895431625 (delegate 87900896173625, revision 87900896223875)
+2026-09-12T11:14:23Z	compile: sending revision 181 at 87900896249958
+2026-09-12T11:14:23Z	status: compiling revision 181 (mac-180)…
+2026-09-12T11:14:23Z	worker: line 229095 B decoded in 3.5855 ms at 87900903301291
+2026-09-12T11:14:23Z	worker: event on main at 87900911773958
+2026-09-12T11:14:23Z	compile: applied revision 181 at 87900912667791
+2026-09-12T11:14:23Z	status: revision 181: ok, 0 diagnostics in 16 ms
+2026-09-12T11:14:23Z	keystroke: revision 182 at 87900924882583 (delegate 87900925511041, revision 87900925557083)
+2026-09-12T11:14:23Z	compile: sending revision 182 at 87900925602583
+2026-09-12T11:14:23Z	status: compiling revision 182 (mac-181)…
+2026-09-12T11:14:23Z	paint: revision 181 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T11:14:23Z	paint: revision 181 at 87900925961000 (covers 1 keystrokes, redrawn false)
+2026-09-12T11:14:23Z	worker: line 229095 B decoded in 3.5175 ms at 87900932188250
+2026-09-12T11:14:23Z	keystroke: revision 183 at 87900931875666 (delegate 87900932422208, revision 87900932460583)
+2026-09-12T11:14:23Z	worker: event on main at 87900932776916
+2026-09-12T11:14:23Z	compile: applied revision 182 at 87900933667208
+2026-09-12T11:14:23Z	status: revision 182: ok, 0 diagnostics in 8 ms
+2026-09-12T11:14:23Z	compile: sending revision 183 at 87900933709208
+2026-09-12T11:14:23Z	status: compiling revision 183 (mac-182)…
+2026-09-12T11:14:23Z	worker: line 229319 B decoded in 3.557667 ms at 87900940746375
+2026-09-12T11:14:23Z	worker: event on main at 87900945776041
+2026-09-12T11:14:23Z	compile: applied revision 183 at 87900946650375
+2026-09-12T11:14:23Z	status: revision 183: ok, 0 diagnostics in 13 ms
+2026-09-12T11:14:23Z	paint: revision 183 redrew 1/2 pages
+2026-09-12T11:14:23Z	paint: revision 183 at 87900970637250 (covers 2 keystrokes, redrawn true)
+2026-09-12T11:14:23Z	keystroke: revision 184 at 87900971142958 (delegate 87900971723000, revision 87900971770125)
+2026-09-12T11:14:23Z	compile: sending revision 184 at 87900971794666
+2026-09-12T11:14:23Z	status: compiling revision 184 (mac-183)…
+2026-09-12T11:14:23Z	worker: line 229320 B decoded in 3.549459 ms at 87900978807125
+2026-09-12T11:14:23Z	worker: event on main at 87900987300500
+2026-09-12T11:14:23Z	compile: applied revision 184 at 87900988256208
+2026-09-12T11:14:23Z	status: revision 184: ok, 0 diagnostics in 16 ms
+2026-09-12T11:14:23Z	paint: revision 184 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T11:14:23Z	paint: revision 184 at 87901014211375 (covers 1 keystrokes, redrawn true)
+2026-09-12T11:14:23Z	keystroke: revision 185 at 87901014789875 (delegate 87901015401125, revision 87901015449166)
+2026-09-12T11:14:23Z	compile: sending revision 185 at 87901015477083
+2026-09-12T11:14:23Z	status: compiling revision 185 (mac-184)…
+2026-09-12T11:14:23Z	worker: line 229322 B decoded in 3.562041 ms at 87901022519916
+2026-09-12T11:14:23Z	worker: event on main at 87901029880750
+2026-09-12T11:14:23Z	compile: applied revision 185 at 87901030792541
+2026-09-12T11:14:23Z	status: revision 185: ok, 0 diagnostics in 15 ms
+2026-09-12T11:14:23Z	keystroke: revision 186 at 87901042644750 (delegate 87901043198958, revision 87901043239125)
+2026-09-12T11:14:23Z	compile: sending revision 186 at 87901043283791
+2026-09-12T11:14:23Z	status: compiling revision 186 (mac-185)…
+2026-09-12T11:14:23Z	paint: revision 185 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T11:14:23Z	paint: revision 185 at 87901043612041 (covers 1 keystrokes, redrawn false)
+2026-09-12T11:14:23Z	keystroke: revision 187 at 87901049217291 (delegate 87901049772416, revision 87901049816083)
+2026-09-12T11:14:23Z	worker: line 229324 B decoded in 3.584541 ms at 87901050151791
+2026-09-12T11:14:23Z	worker: event on main at 87901052972875
+2026-09-12T11:14:23Z	compile: applied revision 186 at 87901053794041
+2026-09-12T11:14:23Z	status: revision 186: ok, 0 diagnostics in 10 ms
+2026-09-12T11:14:23Z	compile: sending revision 187 at 87901053834125
+2026-09-12T11:14:23Z	status: compiling revision 187 (mac-186)…
+2026-09-12T11:14:23Z	worker: line 229324 B decoded in 3.659834 ms at 87901060616125
+2026-09-12T11:14:23Z	paint: revision 186 redrew 1/2 pages
+2026-09-12T11:14:23Z	paint: revision 186 at 87901075091250 (covers 1 keystrokes, redrawn true)
+2026-09-12T11:14:23Z	worker: event on main at 87901075105083
+2026-09-12T11:14:23Z	compile: applied revision 187 at 87901075992625
+2026-09-12T11:14:23Z	status: revision 187: ok, 0 diagnostics in 22 ms
+2026-09-12T11:14:23Z	paint: revision 187 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T11:14:23Z	paint: revision 187 at 87901098102041 (covers 1 keystrokes, redrawn false)
+2026-09-12T11:14:23Z	keystroke: revision 188 at 87901098545625 (delegate 87901099112208, revision 87901099158166)
+2026-09-12T11:14:23Z	compile: sending revision 188 at 87901099180583
+2026-09-12T11:14:23Z	status: compiling revision 188 (mac-187)…
+2026-09-12T11:14:23Z	worker: line 229544 B decoded in 3.60425 ms at 87901106123416
+2026-09-12T11:14:23Z	worker: event on main at 87901114337083
+2026-09-12T11:14:23Z	compile: applied revision 188 at 87901115250666
+2026-09-12T11:14:23Z	status: revision 188: ok, 0 diagnostics in 16 ms
+2026-09-12T11:14:24Z	paint: revision 188 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T11:14:24Z	paint: revision 188 at 87901139573375 (covers 1 keystrokes, redrawn true)
+2026-09-12T11:14:24Z	keystroke: revision 189 at 87901139642125 (delegate 87901140201666, revision 87901140250750)
+2026-09-12T11:14:24Z	compile: sending revision 189 at 87901140275666
+2026-09-12T11:14:24Z	status: compiling revision 189 (mac-188)…
+2026-09-12T11:14:24Z	worker: line 229545 B decoded in 3.582125 ms at 87901147215583
+2026-09-12T11:14:24Z	worker: event on main at 87901154731958
+2026-09-12T11:14:24Z	compile: applied revision 189 at 87901155682000
+2026-09-12T11:14:24Z	status: revision 189: ok, 0 diagnostics in 15 ms
+2026-09-12T11:14:24Z	paint: revision 189 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T11:14:24Z	paint: revision 189 at 87901182605958 (covers 1 keystrokes, redrawn true)
+2026-09-12T11:14:24Z	keystroke: revision 190 at 87901182672791 (delegate 87901183240833, revision 87901183291666)
+2026-09-12T11:14:24Z	compile: sending revision 190 at 87901183314958
+2026-09-12T11:14:24Z	status: compiling revision 190 (mac-189)…
+2026-09-12T11:14:24Z	worker: line 229546 B decoded in 3.585334 ms at 87901190122000
+2026-09-12T11:14:24Z	worker: event on main at 87901198928333
+2026-09-12T11:14:24Z	compile: applied revision 190 at 87901199839333
+2026-09-12T11:14:24Z	status: revision 190: ok, 0 diagnostics in 16 ms
+2026-09-12T11:14:24Z	paint: revision 190 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T11:14:24Z	paint: revision 190 at 87901228322125 (covers 1 keystrokes, redrawn true)
+2026-09-12T11:14:24Z	keystroke: revision 191 at 87901228392166 (delegate 87901228973541, revision 87901229049125)
+2026-09-12T11:14:24Z	compile: sending revision 191 at 87901229074291
+2026-09-12T11:14:24Z	status: compiling revision 191 (mac-190)…
+2026-09-12T11:14:24Z	worker: line 229547 B decoded in 3.573875 ms at 87901236114958
+2026-09-12T11:14:24Z	worker: event on main at 87901244514750
+2026-09-12T11:14:24Z	compile: applied revision 191 at 87901245426750
+2026-09-12T11:14:24Z	status: revision 191: ok, 0 diagnostics in 16 ms
+2026-09-12T11:14:24Z	paint: revision 191 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T11:14:24Z	paint: revision 191 at 87901269921625 (covers 1 keystrokes, redrawn true)
+2026-09-12T11:14:24Z	keystroke: revision 192 at 87901270001625 (delegate 87901270593125, revision 87901270640791)
+2026-09-12T11:14:24Z	compile: sending revision 192 at 87901270663416
+2026-09-12T11:14:24Z	status: compiling revision 192 (mac-191)…
+2026-09-12T11:14:24Z	worker: line 229548 B decoded in 3.611584 ms at 87901277566375
+2026-09-12T11:14:24Z	worker: event on main at 87901286008166
+2026-09-12T11:14:24Z	compile: applied revision 192 at 87901286944166
+2026-09-12T11:14:24Z	status: revision 192: ok, 0 diagnostics in 16 ms
+2026-09-12T11:14:24Z	paint: revision 192 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T11:14:24Z	paint: revision 192 at 87901311818750 (covers 1 keystrokes, redrawn true)
+2026-09-12T11:14:24Z	keystroke: revision 193 at 87901311884000 (delegate 87901312460791, revision 87901312511916)
+2026-09-12T11:14:24Z	compile: sending revision 193 at 87901312534250
+2026-09-12T11:14:24Z	status: compiling revision 193 (mac-192)…
+2026-09-12T11:14:24Z	worker: line 229548 B decoded in 3.57275 ms at 87901319294458
+2026-09-12T11:14:24Z	worker: event on main at 87901328292791
+2026-09-12T11:14:24Z	compile: applied revision 193 at 87901329210708
+2026-09-12T11:14:24Z	status: revision 193: ok, 0 diagnostics in 17 ms
+2026-09-12T11:14:24Z	keystroke: revision 194 at 87901341219666 (delegate 87901341780125, revision 87901341821125)
+2026-09-12T11:14:24Z	compile: sending revision 194 at 87901341860458
+2026-09-12T11:14:24Z	status: compiling revision 194 (mac-193)…
+2026-09-12T11:14:24Z	paint: revision 193 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T11:14:24Z	paint: revision 193 at 87901342202458 (covers 1 keystrokes, redrawn false)
+2026-09-12T11:14:24Z	keystroke: revision 195 at 87901347592041 (delegate 87901348159041, revision 87901348196416)
+2026-09-12T11:14:24Z	worker: line 229773 B decoded in 3.54225 ms at 87901348673583
+2026-09-12T11:14:24Z	worker: event on main at 87901351374833
+2026-09-12T11:14:24Z	compile: applied revision 194 at 87901352240166
+2026-09-12T11:14:24Z	status: revision 194: ok, 0 diagnostics in 10 ms
+2026-09-12T11:14:24Z	compile: sending revision 195 at 87901352282416
+2026-09-12T11:14:24Z	status: compiling revision 195 (mac-194)…
+2026-09-12T11:14:24Z	worker: line 229774 B decoded in 3.586 ms at 87901359074750
+2026-09-12T11:14:24Z	paint: revision 194 redrew 1/2 pages
+2026-09-12T11:14:24Z	paint: revision 194 at 87901376274833 (covers 1 keystrokes, redrawn true)
+2026-09-12T11:14:24Z	worker: event on main at 87901376286833
+2026-09-12T11:14:24Z	compile: applied revision 195 at 87901377209500
+2026-09-12T11:14:24Z	status: revision 195: ok, 0 diagnostics in 25 ms
+2026-09-12T11:14:24Z	paint: revision 195 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T11:14:24Z	paint: revision 195 at 87901403497166 (covers 1 keystrokes, redrawn true)
+2026-09-12T11:14:24Z	keystroke: revision 196 at 87901404085208 (delegate 87901404722541, revision 87901404771375)
+2026-09-12T11:14:24Z	compile: sending revision 196 at 87901404796916
+2026-09-12T11:14:24Z	status: compiling revision 196 (mac-195)…
+2026-09-12T11:14:24Z	worker: line 229775 B decoded in 3.627375 ms at 87901411825291
+2026-09-12T11:14:24Z	worker: event on main at 87901420470958
+2026-09-12T11:14:24Z	compile: applied revision 196 at 87901421384583
+2026-09-12T11:14:24Z	status: revision 196: ok, 0 diagnostics in 17 ms
+2026-09-12T11:14:24Z	keystroke: revision 197 at 87901433812375 (delegate 87901434380708, revision 87901434422708)
+2026-09-12T11:14:24Z	compile: sending revision 197 at 87901434470083
+2026-09-12T11:14:24Z	status: compiling revision 197 (mac-196)…
+2026-09-12T11:14:24Z	paint: revision 196 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T11:14:24Z	paint: revision 196 at 87901434811208 (covers 1 keystrokes, redrawn false)
+2026-09-12T11:14:24Z	worker: line 229775 B decoded in 3.646459 ms at 87901441283000
+2026-09-12T11:14:24Z	keystroke: revision 198 at 87901440974125 (delegate 87901441623708, revision 87901441664500)
+2026-09-12T11:14:24Z	worker: event on main at 87901441894041
+2026-09-12T11:14:24Z	compile: applied revision 197 at 87901442769583
+2026-09-12T11:14:24Z	status: revision 197: ok, 0 diagnostics in 8 ms
+2026-09-12T11:14:24Z	compile: sending revision 198 at 87901442818458
+2026-09-12T11:14:24Z	status: compiling revision 198 (mac-197)…
+2026-09-12T11:14:24Z	worker: line 230000 B decoded in 3.568542 ms at 87901449656583
+2026-09-12T11:14:24Z	worker: event on main at 87901454160875
+2026-09-12T11:14:24Z	compile: applied revision 198 at 87901455056541
+2026-09-12T11:14:24Z	status: revision 198: ok, 0 diagnostics in 12 ms
+2026-09-12T11:14:24Z	paint: revision 198 redrew 1/2 pages
+2026-09-12T11:14:24Z	paint: revision 198 at 87901480326041 (covers 2 keystrokes, redrawn true)
+2026-09-12T11:14:24Z	keystroke: revision 199 at 87901480837750 (delegate 87901481425583, revision 87901481470708)
+2026-09-12T11:14:24Z	compile: sending revision 199 at 87901481490916
+2026-09-12T11:14:24Z	status: compiling revision 199 (mac-198)…
+2026-09-12T11:14:24Z	worker: line 230001 B decoded in 3.552875 ms at 87901488292125
+2026-09-12T11:14:24Z	worker: event on main at 87901495941583
+2026-09-12T11:14:24Z	compile: applied revision 199 at 87901496855958
+2026-09-12T11:14:24Z	status: revision 199: ok, 0 diagnostics in 15 ms
+2026-09-12T11:14:24Z	paint: revision 199 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T11:14:24Z	paint: revision 199 at 87901521029291 (covers 1 keystrokes, redrawn true)
+2026-09-12T11:14:24Z	keystroke: revision 200 at 87901521525958 (delegate 87901522143666, revision 87901522191500)
+2026-09-12T11:14:24Z	compile: sending revision 200 at 87901522215291
+2026-09-12T11:14:24Z	status: compiling revision 200 (mac-199)…
+2026-09-12T11:14:24Z	worker: line 230002 B decoded in 3.594292 ms at 87901529143000
+2026-09-12T11:14:24Z	worker: event on main at 87901537745583
+2026-09-12T11:14:24Z	compile: applied revision 200 at 87901538655833
+2026-09-12T11:14:24Z	status: revision 200: ok, 0 diagnostics in 16 ms
+2026-09-12T11:14:24Z	paint: revision 200 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T11:14:24Z	paint: revision 200 at 87901564719458 (covers 1 keystrokes, redrawn true)
+2026-09-12T11:14:24Z	keystroke: revision 201 at 87901564789583 (delegate 87901565369750, revision 87901565417916)
+2026-09-12T11:14:24Z	compile: sending revision 201 at 87901565441250
+2026-09-12T11:14:24Z	status: compiling revision 201 (mac-200)…
+2026-09-12T11:14:24Z	worker: line 230003 B decoded in 3.587792 ms at 87901572357750
+2026-09-12T11:14:24Z	worker: event on main at 87901580146875
+2026-09-12T11:14:24Z	compile: applied revision 201 at 87901581079583
+2026-09-12T11:14:24Z	status: revision 201: ok, 0 diagnostics in 16 ms
+2026-09-12T11:14:24Z	keystroke: revision 202 at 87901592652875 (delegate 87901593305166, revision 87901593342500)
+2026-09-12T11:14:24Z	compile: sending revision 202 at 87901593387666
+2026-09-12T11:14:24Z	status: compiling revision 202 (mac-201)…
+2026-09-12T11:14:24Z	paint: revision 201 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T11:14:24Z	paint: revision 201 at 87901593769833 (covers 1 keystrokes, redrawn false)
+2026-09-12T11:14:24Z	worker: line 230003 B decoded in 3.609666 ms at 87901600131041
+2026-09-12T11:14:24Z	worker: event on main at 87901609737375
+2026-09-12T11:14:24Z	compile: applied revision 202 at 87901610654666
+2026-09-12T11:14:24Z	status: revision 202: ok, 0 diagnostics in 17 ms
+2026-09-12T11:14:24Z	paint: revision 202 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T11:14:24Z	paint: revision 202 at 87901633147000 (covers 1 keystrokes, redrawn false)
+2026-09-12T11:14:24Z	bench: done (all keystrokes painted); keystrokes 200, painted 200, coalesced 31, p50 40.811166 ms

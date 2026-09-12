@@ -1,0 +1,14 @@
+ 9:53  up 1 day,  8:46, 2 users, load averages: 7.38 11.26 16.47
+Test Case '-[FlashTeXMacTests.BundledMetricsTests testDefaultDiscoveryFindsTheRepositoryCopyFromASwiftBuildProduct]' passed (0.001 seconds).
+Test Case '-[FlashTeXMacTests.BundledMetricsTests testPrependingKeepsExplicitEntriesInOrderAfterTheBundledDirectory]' passed (0.000 seconds).
+Test Case '-[FlashTeXMacTests.BundledMetricsTests testProducerEnvironmentIsUntouchedWithoutABundledDirectory]' passed (0.000 seconds).
+Test Case '-[FlashTeXMacTests.BundledMetricsTests testProducerEnvironmentPrependsAndPassesEverythingElseThrough]' passed (0.000 seconds).
+Test Case '-[FlashTeXMacTests.BundledMetricsTests testRealProducerHasNoMissingMetricsThroughTheEnvRouteWithHostTeXExcluded]' passed (0.545 seconds).
+Test Case '-[FlashTeXMacTests.BundledMetricsTests testSupplementaryMetricsMatchTheirInRepoPin]' passed (0.004 seconds).
+Test Case '-[FlashTeXMacTests.BundledMetricsTests testTFMDirectoryPrefersFirstRootThatExists]' passed (0.002 seconds).
+Test Case '-[FlashTeXMacTests.BundledMetricsTests testVendoredTreeMatchesPinnedManifest]' passed (0.001 seconds).
+	 Executed 8 tests, with 0 failures (0 unexpected) in 0.553 (0.554) seconds
+	 Executed 8 tests, with 0 failures (0 unexpected) in 0.553 (0.554) seconds
+	 Executed 8 tests, with 0 failures (0 unexpected) in 0.553 (0.556) seconds
+exit 0
+ 9:53  up 1 day,  8:46, 2 users, load averages: 7.35 11.19 16.42

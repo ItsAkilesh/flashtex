@@ -1,0 +1,27 @@
+==> Building FlashTeXMac (-c release) in /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/d8baed6bc2ef1e333ecad48d3d056478a9f984fd/apps/mac
+warning: 'mac': found 6 file(s) which are unhandled; explicitly declare them as resources or exclude from the target
+    /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/d8baed6bc2ef1e333ecad48d3d056478a9f984fd/apps/mac/Tests/FlashTeXMacTests/Fixtures/nearby-companion-session.jsonl
+    /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/d8baed6bc2ef1e333ecad48d3d056478a9f984fd/apps/mac/Tests/FlashTeXMacTests/Fixtures/fake_project_files.py
+    /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/d8baed6bc2ef1e333ecad48d3d056478a9f984fd/apps/mac/Tests/FlashTeXMacTests/Fixtures/fake_edit_ledger.py
+    /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/d8baed6bc2ef1e333ecad48d3d056478a9f984fd/apps/mac/Tests/FlashTeXMacTests/Fixtures/fake_worker.py
+    /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/d8baed6bc2ef1e333ecad48d3d056478a9f984fd/apps/mac/Tests/FlashTeXMacTests/Fixtures/fake_bridge.py
+    /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/d8baed6bc2ef1e333ecad48d3d056478a9f984fd/apps/mac/Tests/FlashTeXMacTests/Fixtures/fake_pdf_writer.py
+[0/1] Planning build
+Building for production...
+[0/2] Write swift-version--58304C5D6DBC2206.txt
+Build complete! (0.25s)
+==> Assembling bundle at /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/d8baed6bc2ef1e333ecad48d3d056478a9f984fd/apps/mac/build/FlashTeX.app
+==> Copying fixtures and samples into Contents/Resources/Samples
+    bundled 9 Latin Modern faces
+==> Locating built Rust binaries
+    bundled flashtex-compiler from /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/helpers/780f1458c125d9702b994ab9df377aed96a1113f/src/crates/compiler/target/release/flashtex-compiler
+    bundled flashtex-pdf from /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/helpers/780f1458c125d9702b994ab9df377aed96a1113f/src/crates/pdf/target/release/flashtex-pdf
+    bundled flashtex-bridge from /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/helpers/780f1458c125d9702b994ab9df377aed96a1113f/src/crates/bridge/target/release/flashtex-bridge
+    bundled flashtex-edit-ledger from /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/helpers/780f1458c125d9702b994ab9df377aed96a1113f/src/crates/edit-ledger/target/release/flashtex-edit-ledger
+==> Writing Contents/Resources/components.json
+    components.json written and valid JSON
+==> Ad-hoc codesigning
+/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/d8baed6bc2ef1e333ecad48d3d056478a9f984fd/apps/mac/build/FlashTeX.app: replacing existing signature
+    codesign OK (ad-hoc)
+==> Done: /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/d8baed6bc2ef1e333ecad48d3d056478a9f984fd/apps/mac/build/FlashTeX.app
+    open "/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/d8baed6bc2ef1e333ecad48d3d056478a9f984fd/apps/mac/build/FlashTeX.app"

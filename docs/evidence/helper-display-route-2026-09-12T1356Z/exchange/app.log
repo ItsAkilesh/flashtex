@@ -1,0 +1,61 @@
+2026-09-12T14:26:39Z	status: no worker attached
+2026-09-12T14:26:39Z	status: attached: helper-tee.sh
+2026-09-12T14:26:39Z	launched /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-ae7ddcfb739815fac/apps/mac/build/helper-display-route/exchange-2026-09-12T142638Z/helper-tee.sh for /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-ae7ddcfb739815fac/apps/mac/build/helper-display-route/exchange-2026-09-12T142638Z (ledger /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-ae7ddcfb739815fac/apps/mac/build/helper-display-route/exchange-2026-09-12T142638Z/ledger)
+2026-09-12T14:26:39Z	bench: waiting for attach + first paint (3 keystrokes, 300.0 ms)
+2026-09-12T14:26:40Z	controller ready: compiler frames ≤ 8 MiB, helper output ≤ 16 MiB
+2026-09-12T14:26:40Z	display-candidate: requested display-candidates-v1 (pc-2)
+2026-09-12T14:26:40Z	ignored controller preview preview-1: versions ["main.tex": 1] unknown to this session
+2026-09-12T14:26:40Z	display-candidate: helper acknowledged display-candidates-v1
+2026-09-12T14:26:40Z	status: revision 2: ok, 0 diagnostics in 6 ms (durable r1)
+2026-09-12T14:26:40Z	display-candidate: admitted preview-3 (generation 3, 17306 B)
+2026-09-12T14:26:40Z	status: revision 2: ok, 0 diagnostics in 3 ms (durable r1)
+2026-09-12T14:26:40Z	display-candidate: admitted preview-4 (generation 4, 17306 B)
+2026-09-12T14:26:40Z	display-candidate: dropped preview-3 at paint: request preview-3 is not the applied v1 preview (preview-4)
+2026-09-12T14:26:40Z	display-candidate: painted preview-4 as revision 2 (generation 4, durable ["main.tex": 1])
+2026-09-12T14:26:40Z	paint: revision 2 needed 2 extra turn(s); drew 0/1 pages
+2026-09-12T14:26:40Z	paint: revision 2 at 99437257380041 (covers 0 keystrokes, redrawn false)
+2026-09-12T14:26:40Z	bench: typing 3 keystrokes at UTF-16 offset 88 every 300.0 ms
+2026-09-12T14:26:40Z	keystroke: revision 3 at 99437592812833 (delegate 99437593853375, revision 99437593886708)
+2026-09-12T14:26:40Z	compile: sending revision 3 at 99437593946666
+2026-09-12T14:26:40Z	durable: r2 for revision 3 at 99437620777083
+2026-09-12T14:26:40Z	compile: applied revision 3 at 99437621016083
+2026-09-12T14:26:40Z	status: revision 3: ok, 0 diagnostics in 16 ms (durable r2)
+2026-09-12T14:26:40Z	display-candidate: admitted preview-5 (generation 5, 17913 B)
+2026-09-12T14:26:40Z	display-candidate: received preview-5 generation 5 (17913 B) at 99437613845041
+2026-09-12T14:26:40Z	display-candidate: validating preview-5 as revision 3 ticket 3 at 99437621083250
+2026-09-12T14:26:40Z	display-candidate: validated preview-5 in 0.259541 ms, prerastered 1 page(s) in 0.305709 ms, delivered 22.498541 ms later
+2026-09-12T14:26:40Z	display-candidate: published preview-5 revision 3 at 99437644249208
+2026-09-12T14:26:40Z	display-candidate: painted preview-5 as revision 3 (generation 5, durable ["main.tex": 2])
+2026-09-12T14:26:40Z	preview-v2: blit page 1 of preview-5#r3#3 at 99437660702708
+2026-09-12T14:26:40Z	paint: revision 3 at 99437672086916 (covers 1 keystrokes, redrawn true)
+2026-09-12T14:26:40Z	keystroke: revision 4 at 99437892697416 (delegate 99437893303583, revision 99437893334916)
+2026-09-12T14:26:40Z	compile: sending revision 4 at 99437893382583
+2026-09-12T14:26:40Z	durable: r3 for revision 4 at 99437914175958
+2026-09-12T14:26:40Z	compile: applied revision 4 at 99437917860333
+2026-09-12T14:26:40Z	status: revision 4: ok, 0 diagnostics in 23 ms (durable r3)
+2026-09-12T14:26:40Z	display-candidate: admitted preview-6 (generation 6, 18270 B)
+2026-09-12T14:26:40Z	display-candidate: received preview-6 generation 6 (18270 B) at 99437924383708
+2026-09-12T14:26:40Z	display-candidate: validating preview-6 as revision 4 ticket 4 at 99437934798541
+2026-09-12T14:26:40Z	preview-v2: blit page 1 of preview-5#r3#3 at 99437955360541
+2026-09-12T14:26:40Z	display-candidate: validated preview-6 in 0.281417 ms, prerastered 1 page(s) in 0.276375 ms, delivered 30.954417 ms later
+2026-09-12T14:26:40Z	display-candidate: published preview-6 revision 4 at 99437966453625
+2026-09-12T14:26:40Z	display-candidate: painted preview-6 as revision 4 (generation 6, durable ["main.tex": 3])
+2026-09-12T14:26:40Z	preview-v2: blit page 1 of preview-6#r4#4 at 99437982435125
+2026-09-12T14:26:40Z	paint: revision 4 needed 1 extra turn(s); drew 1/1 pages
+2026-09-12T14:26:40Z	paint: revision 4 at 99437991254541 (covers 1 keystrokes, redrawn true)
+2026-09-12T14:26:41Z	keystroke: revision 5 at 99438194459291 (delegate 99438195000833, revision 99438195031708)
+2026-09-12T14:26:41Z	compile: sending revision 5 at 99438195073916
+2026-09-12T14:26:41Z	durable: r4 for revision 5 at 99438214267208
+2026-09-12T14:26:41Z	compile: applied revision 5 at 99438217688291
+2026-09-12T14:26:41Z	status: revision 5: ok, 0 diagnostics in 21 ms (durable r4)
+2026-09-12T14:26:41Z	display-candidate: admitted preview-7 (generation 7, 18627 B)
+2026-09-12T14:26:41Z	display-candidate: received preview-7 generation 7 (18627 B) at 99438222693041
+2026-09-12T14:26:41Z	display-candidate: validating preview-7 as revision 5 ticket 5 at 99438234612875
+2026-09-12T14:26:41Z	preview-v2: blit page 1 of preview-6#r4#4 at 99438254677833
+2026-09-12T14:26:41Z	display-candidate: validated preview-7 in 0.280833 ms, prerastered 1 page(s) in 0.278792 ms, delivered 28.915166 ms later
+2026-09-12T14:26:41Z	display-candidate: published preview-7 revision 5 at 99438264244458
+2026-09-12T14:26:41Z	display-candidate: painted preview-7 as revision 5 (generation 7, durable ["main.tex": 4])
+2026-09-12T14:26:41Z	preview-v2: blit page 1 of preview-7#r5#5 at 99438281893291
+2026-09-12T14:26:41Z	paint: revision 5 needed 1 extra turn(s); drew 1/1 pages
+2026-09-12T14:26:41Z	paint: revision 5 at 99438289442208 (covers 1 keystrokes, redrawn true)
+2026-09-12T14:26:41Z	bench: done (all keystrokes painted); keystrokes 3, painted 3, coalesced 0, p50 94.982917 ms

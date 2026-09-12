@@ -1,0 +1,1603 @@
+2026-09-12T16:50:40Z	status: no worker attached
+2026-09-12T16:50:40Z	status: attached: flashtex-preview-controller
+2026-09-12T16:50:40Z	launched /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a96ab6bafe259bfb2/crates/preview-controller/target/release/flashtex-preview-controller for /var/folders/_0/d71mvr2d4_177qkm0506xl200000gn/T/flashtex-project-70718AC7-9F2D-45F3-8EBC-14CEDAA52F06 (ledger /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a96ab6bafe259bfb2/apps/mac/build/preview-latency/2026-09-12T164930Z/before-helper-v2cap15-pmax-0ms/ledger)
+2026-09-12T16:50:40Z	controller: {"admission_attempt_ms":0.026,"at_ms":0.02775,"bytes":209,"class":"required","compile_revision":null,"outcome":"admitted","phase":"output_frame","sequence":1}
+{"admission_attempt_ms":0.026,"at_ms":0.040125,"bytes":209,"class":"required","compile_revision":null,
+2026-09-12T16:50:40Z	controller: "outcome":"dequeued","phase":"output_frame","sequence":1}
+{"admission_attempt_ms":0.026,"at_ms":0.10658300000000001,"bytes":209,"class":"required","compile_revision":null,"
+2026-09-12T16:50:40Z	controller: outcome":"write_started","phase":"output_frame","sequence":1}
+{"
+2026-09-12T16:50:40Z	controller: admission_attempt_ms":0.026,"at_ms":0.14958300000000002,"bytes":209,"class":"required"
+2026-09-12T16:50:40Z	controller: ,"compile_revision":null,"outcome":"write_finished","
+2026-09-12T16:50:40Z	controller: phase":"output_frame
+2026-09-12T16:50:40Z	controller: ","sequence":1}
+2026-09-12T16:50:40Z	controller: 
+2026-09-12T16:50:40Z	controller ready: compiler frames ≤ 15 MiB, helper output ≤ 16 MiB
+2026-09-12T16:50:40Z	display-candidate: requested display-candidates-v1 (pc-2)
+2026-09-12T16:50:40Z	controller: {"duration_ms":0.377042,"events":1,"phase":"compiler_poll"}
+2026-09-12T16:50:40Z	controller: {"admission_attempt_ms":28.768333,"at_ms":28.774166,"bytes":605362,"class":"required","compile_revision":null,"
+2026-09-12T16:50:40Z	controller: outcome":"admitted
+2026-09-12T16:50:40Z	controller: ","phase"
+2026-09-12T16:50:40Z	controller: :"output_frame"
+2026-09-12T16:50:40Z	controller: ,"sequence":2}
+2026-09-12T16:50:40Z	controller: {"admission_attempt_ms":28.768333,"at_ms":28.781208,"bytes":605362
+2026-09-12T16:50:40Z	controller: ,"class":"required"
+2026-09-12T16:50:40Z	controller: ,"compile_revision":
+2026-09-12T16:50:40Z	controller: null,"outcome":"dequeued","phase":
+2026-09-12T16:50:40Z	controller: "output_frame","sequence":2}
+2026-09-12T16:50:40Z	controller: {"admission_attempt_ms":28.768333,"at_ms":28.917333,"bytes":605362
+2026-09-12T16:50:40Z	controller: ,"class":"required","
+2026-09-12T16:50:40Z	controller: compile_revision":null,"outcome
+2026-09-12T16:50:40Z	controller: ":"write_started",
+2026-09-12T16:50:40Z	controller: "phase":"
+2026-09-12T16:50:40Z	controller: output_frame","sequence":2}
+2026-09-12T16:50:40Z	controller: {"admission_attempt_ms":28.768333,"at_ms":29.564375000000002,"bytes":605362,
+2026-09-12T16:50:40Z	controller: "class":"required","compile_revision":null,"outcome":"write_finished",
+2026-09-12T16:50:40Z	controller: "phase":"output_frame
+2026-09-12T16:50:40Z	controller: ","sequence":2}
+2026-09-12T16:50:40Z	controller: 
+2026-09-12T16:50:40Z	ignored controller preview preview-1: versions ["main.tex": 1] unknown to this session
+2026-09-12T16:50:40Z	controller: {"admission_attempt_ms":41.19775,"at_ms":41.200916,"bytes":136,"class":"required","compile_revision":null,"
+2026-09-12T16:50:40Z	controller: outcome":"admitted","phase":"output_frame","sequence":3}
+2026-09-12T16:50:40Z	controller: {"handling_ms":0.054708,"phase":"request","response_serialization_ms":0.0575,"sequence":1,
+2026-09-12T16:50:40Z	controller: "started_ms":41.14125}
+{
+2026-09-12T16:50:40Z	controller: "admission_attempt_ms":41.19775,"at_ms":
+2026-09-12T16:50:40Z	controller: 41.223041,"bytes":136,"class":"required","compile_revision":null,"outcome":"dequeued","phase":"output_frame"
+2026-09-12T16:50:40Z	controller: ,"sequence":3}
+2026-09-12T16:50:40Z	controller: {"admission_attempt_ms":41.19775,"at_ms":41.333083,"bytes":136,"class":"
+2026-09-12T16:50:40Z	controller: required","compile_revision":null,"outcome":"write_started
+2026-09-12T16:50:40Z	controller: ","phase":"output_frame"
+2026-09-12T16:50:40Z	controller: ,"sequence":3}
+2026-09-12T16:50:40Z	controller: {"admission_attempt_ms":41.313375,"at_ms":41.314249999999994,
+2026-09-12T16:50:40Z	controller: "bytes":192,"class":"required","compile_revision":
+2026-09-12T16:50:40Z	controller: null,"outcome":"admitted","phase":"output_frame","sequence":4}
+2026-09-12T16:50:40Z	controller: {"handling_ms":
+2026-09-12T16:50:40Z	controller: 0.027416,"phase":"request"
+2026-09-12T16:50:40Z	controller: ,"response_serialization_ms":0.11883300000000001,"sequence":
+2026-09-12T16:50:40Z	controller: 2,"started_ms":41.284957999999996}
+2026-09-12T16:50:40Z	controller: {"admission_attempt_ms":41.19775,"at_ms":41.391958
+2026-09-12T16:50:40Z	controller: ,"bytes":136,"class":"required","compile_revision":null,"outcome":
+2026-09-12T16:50:40Z	controller: "write_finished","phase":"output_frame","sequence":3}
+2026-09-12T16:50:40Z	controller: {"admission_attempt_ms":41.313375,"at_ms":41.521875,"
+2026-09-12T16:50:40Z	controller: bytes":192,"class":"required",
+2026-09-12T16:50:40Z	controller: "compile_revision":null,"outcome":"dequeued
+2026-09-12T16:50:40Z	controller: ","phase":"output_frame"
+2026-09-12T16:50:40Z	controller: ,"sequence":4}
+2026-09-12T16:50:40Z	controller: {"admission_attempt_ms":41.313375,"at_ms":41.587625
+2026-09-12T16:50:40Z	controller: ,"bytes":192,"class":"
+2026-09-12T16:50:40Z	controller: required","compile_revision":null,
+2026-09-12T16:50:40Z	controller: "outcome":"
+2026-09-12T16:50:40Z	controller: write_started","phase":"output_frame","sequence":4}
+2026-09-12T16:50:40Z	controller: {"admission_attempt_ms":41.485708,"at_ms":41.486583,"bytes":23783,"class":
+2026-09-12T16:50:40Z	controller: "required","compile_revision":null,"
+2026-09-12T16:50:40Z	controller: outcome":"admitted","phase
+2026-09-12T16:50:40Z	display-candidate: helper acknowledged display-candidates-v1
+2026-09-12T16:50:40Z	controller: ":"output_frame","sequence
+2026-09-12T16:50:40Z	controller: ":5}
+{"handling_ms":0.006959,"phase":"request","response_serialization_ms":0.244584,"sequence":3,"started_ms":41.459666}
+2026-09-12T16:50:40Z	controller: {"admission_attempt_ms
+2026-09-12T16:50:40Z	controller: ":41.313375,"at_ms":
+2026-09-12T16:50:40Z	controller: 41.674416,"bytes":192,"
+2026-09-12T16:50:40Z	controller: class":"required","
+2026-09-12T16:50:40Z	controller: compile_revision":null,"outcome":"
+2026-09-12T16:50:40Z	controller: write_finished","phase":"output_frame"
+2026-09-12T16:50:40Z	controller: ,"sequence":4}
+2026-09-12T16:50:40Z	controller: {"admission_attempt_ms":41.485708,"at_ms":41.794290999999994,"bytes":23783,"class"
+2026-09-12T16:50:40Z	controller: :"required","compile_revision":null,"
+2026-09-12T16:50:40Z	controller: outcome":"dequeued","phase":"
+2026-09-12T16:50:40Z	controller: output_frame","sequence":5}
+2026-09-12T16:50:40Z	controller: {"admission_attempt_ms
+2026-09-12T16:50:40Z	controller: ":41.485708,"at_ms
+2026-09-12T16:50:40Z	controller: ":41.857,"bytes":23783,
+2026-09-12T16:50:40Z	controller: "class":"required",
+2026-09-12T16:50:40Z	controller: "compile_revision":null,"outcome
+2026-09-12T16:50:40Z	controller: ":"write_started","phase
+2026-09-12T16:50:40Z	controller: ":"output_frame","sequence
+2026-09-12T16:50:40Z	controller: ":5}
+2026-09-12T16:50:40Z	controller: {"admission_attempt_ms":41.485708,"at_ms":41.915416,
+2026-09-12T16:50:40Z	controller: "bytes":23783,"class":"required
+2026-09-12T16:50:40Z	controller: ","compile_revision":null,"outcome"
+2026-09-12T16:50:40Z	controller: :"write_finished","phase":"output_frame
+2026-09-12T16:50:40Z	controller: ","sequence":5}
+2026-09-12T16:50:40Z	controller: {"admission_attempt_ms":44.02275,"at_ms":44.025625,
+2026-09-12T16:50:40Z	controller: "bytes":136,"class":"required","compile_revision":
+2026-09-12T16:50:40Z	controller: null,"outcome":"
+2026-09-12T16:50:40Z	controller: admitted","phase"
+2026-09-12T16:50:40Z	controller: :"output_frame","sequence":6}
+2026-09-12T16:50:40Z	controller: {"handling_ms":0.039458,"phase":"request","response_serialization_ms":0.045542,"sequence":4,"started_ms":43.981625}
+{"admission_attempt_ms":44.02275,"at_ms":44.02779099999999,"bytes":136,
+2026-09-12T16:50:40Z	controller: "class":"required","compile_revision":null,"outcome":
+2026-09-12T16:50:40Z	controller: "dequeued","phase":
+2026-09-12T16:50:40Z	controller: "output_frame","sequence":6}
+2026-09-12T16:50:40Z	controller: {"duration_ms":0.003791,"
+2026-09-12T16:50:40Z	controller: events":1,"phase
+2026-09-12T16:50:41Z	bench: waiting for attach + first paint (200 keystrokes, 0.0 ms)
+2026-09-12T16:50:41Z	controller: ":"compiler_poll"}
+{"admission_attempt_ms":44.02275,"at_ms":44.143125,"bytes":136,
+2026-09-12T16:50:41Z	controller: "class":"required","compile_revision":null,"outcome":"write_started","phase":"output_frame","sequence":6}
+2026-09-12T16:50:41Z	controller: {"admission_attempt_ms":44.02275,"at_ms":44.220375,"bytes":136,"class":"required","compile_revision":null,"outcome":"write_finished","phase":"output_frame","
+2026-09-12T16:50:41Z	controller: sequence":6}
+2026-09-12T16:50:41Z	controller: {"admission_attempt_ms
+2026-09-12T16:50:41Z	controller: ":44.176458000000004,"at_ms":44.256
+2026-09-12T16:50:41Z	controller: ,"bytes":182,"class":"required","compile_revision":null,"outcome":"dequeued","phase":"output_frame","sequence":7}
+{
+2026-09-12T16:50:41Z	controller: "admission_attempt_ms":44.176458000000004,"at_ms
+2026-09-12T16:50:41Z	controller: ":44.3065,"bytes":182,"class":"required","compile_revision":null,"outcome":"
+2026-09-12T16:50:41Z	controller: write_started","phase":"output_frame","sequence":7}
+{"admission_attempt_ms":44.176458000000004,"at_ms":44.177375,"bytes"
+2026-09-12T16:50:41Z	controller: :182,"class":"
+2026-09-12T16:50:41Z	controller: required","compile_revision":
+2026-09-12T16:50:41Z	controller: null,"outcome":
+2026-09-12T16:50:41Z	controller: "admitted","
+2026-09-12T16:50:41Z	controller: phase":"output_frame",
+2026-09-12T16:50:41Z	controller: "sequence":7}
+2026-09-12T16:50:41Z	controller: {"admission_attempt_ms":44.176458000000004,"at_ms":
+2026-09-12T16:50:41Z	controller: 44.35741599999999,"bytes":182,"class":
+2026-09-12T16:50:41Z	controller: "required","compile_revision
+2026-09-12T16:50:41Z	controller: ":null,"outcome":"
+2026-09-12T16:50:41Z	controller: write_finished","phase":"
+2026-09-12T16:50:41Z	controller: output_frame","sequence"
+2026-09-12T16:50:41Z	controller: :7}
+2026-09-12T16:50:41Z	controller: {"duration_ms":2.0422499999999997,"events":1,"phase":"compiler_poll"}
+{"admission_attempt_ms":
+2026-09-12T16:50:41Z	controller: 58.125416,"at_ms":58.130083,"bytes":178,"class":"required","compile_revision":null,"outcome":"admitted","phase":"output_frame","sequence":8
+2026-09-12T16:50:41Z	controller: }
+2026-09-12T16:50:41Z	controller: {"admission_attempt_ms":58.125416,"at_ms":58.137415999999995,"bytes":178,"class":"required","compile_revision":null,"outcome":"dequeued","phase"
+2026-09-12T16:50:41Z	controller: :"output_frame","sequence":8}
+{"admission_attempt_ms":58.125416,"at_ms":58.222291000000006,"bytes"
+2026-09-12T16:50:41Z	controller: :178,"class":"required",
+2026-09-12T16:50:41Z	controller: "compile_revision":null,"outcome
+2026-09-12T16:50:41Z	controller: ":"write_started",
+2026-09-12T16:50:41Z	controller: "phase":"output_frame
+2026-09-12T16:50:41Z	controller: ","sequence"
+2026-09-12T16:50:41Z	controller: :8}
+2026-09-12T16:50:41Z	controller: {"admission_attempt_ms":58.125416,"at_ms
+2026-09-12T16:50:41Z	controller: ":58.287541,"bytes":178,"class"
+2026-09-12T16:50:41Z	controller: :"required","compile_revision
+2026-09-12T16:50:41Z	controller: ":null,"outcome
+2026-09-12T16:50:41Z	controller: ":"write_finished","
+2026-09-12T16:50:41Z	controller: phase":"output_frame","sequence":8}
+2026-09-12T16:50:41Z	controller: {"duration_ms":0.535542,"events":1,"phase":"compiler_poll"}
+2026-09-12T16:50:41Z	controller: {"admission_attempt_ms":142.613833,"at_ms":142.62287500000002,"bytes":893198,"class":"required","compile_revision":null,"outcome":"admitted","phase":"output_frame","sequence":9}
+{"admission_attempt_ms":142.613833,"at_ms":142.637,"bytes
+2026-09-12T16:50:41Z	controller: ":893198,"class":"required","compile_revision":null,"outcome":"dequeued","phase
+2026-09-12T16:50:41Z	controller: ":"output_frame"
+2026-09-12T16:50:41Z	controller: ,"sequence":9}
+2026-09-12T16:50:41Z	controller: {"admission_attempt_ms":142.613833,"at_ms
+2026-09-12T16:50:41Z	controller: ":142.71445799999998,"
+2026-09-12T16:50:41Z	controller: bytes":893198,"
+2026-09-12T16:50:41Z	controller: class":"required"
+2026-09-12T16:50:41Z	controller: ,"compile_revision":null
+2026-09-12T16:50:41Z	controller: ,"outcome":"
+2026-09-12T16:50:41Z	controller: write_started","phase"
+2026-09-12T16:50:41Z	controller: :"output_frame","
+2026-09-12T16:50:41Z	controller: sequence":9}
+2026-09-12T16:50:41Z	controller: {"admission_attempt_ms":142.613833,"at_ms":143.495625,"bytes":893198,"class":"required","compile_revision":null,"outcome":"write_finished","phase":"output_frame","sequence":9}
+2026-09-12T16:50:41Z	status: revision 2: ok, 0 diagnostics in 97 ms (durable r1)
+2026-09-12T16:50:41Z	controller: {"phase":"display_transport","profile":{"decode_queue_wait_ms":0.010875,"display_epoch":1,"parse_ms":39.186625,"project_id":"demo","
+2026-09-12T16:50:41Z	controller: reader_delivery_wait_ms":2.090792,"request_id":"preview-4","response_bytes":7793562,"revision":4,"source_binding_ms
+2026-09-12T16:50:41Z	controller: ":0.148708}}
+2026-09-12T16:50:41Z	controller: {"admission_attempt_ms":198.614083,"at_ms":198.617333,"bytes":7793894,"class":"optional","compile_revision":null,"outcome":"admitted","phase":"output_frame","sequence":10}
+{"kind":"display_candidate",
+2026-09-12T16:50:41Z	controller: "
+2026-09-12T16:50:41Z	controller: outcome":"
+2026-09-12T16:50:41Z	controller: admitted","phase"
+2026-09-12T16:50:41Z	controller: :"optional_output","serialization_ms
+2026-09-12T16:50:41Z	controller: ":15.723500000000001}
+2026-09-12T16:50:41Z	controller: {"admission_attempt_ms":198.614083,"at_ms":201.404958,"bytes":7793894,"class":"optional","compile_revision":null,"outcome":"dequeued","phase":"output_frame","sequence":10}
+{"admission_attempt_ms":198.614083,"at_ms":201.440208,"bytes":7793894,"class":"optional","compile_revision":null,"outcome":"write_started","phase":"output_frame","sequence":10}
+2026-09-12T16:50:41Z	controller: {"admission_attempt_ms":198.614083,"at_ms":208.685541,"bytes":7793894,"class":"optional","compile_revision":null,"outcome":"write_finished","phase":
+2026-09-12T16:50:41Z	controller: "output_frame","sequence":10}
+2026-09-12T16:50:41Z	display-candidate: admitted preview-4 (generation 4, 7793893 B)
+2026-09-12T16:50:41Z	controller: {"admission_attempt_ms":322.01212499999997,"at_ms":322.015,"bytes":136,"class":"required","compile_revision":null,"outcome":
+2026-09-12T16:50:41Z	controller: "admitted","phase":"output_frame","sequence":11}
+{"handling_ms
+2026-09-12T16:50:41Z	controller: ":0.0505,"phase":"request","response_serialization_ms":0.053333,"sequence":5,
+2026-09-12T16:50:41Z	controller: "started_ms":321.959208}
+{"admission_attempt_ms":
+2026-09-12T16:50:41Z	controller: 322.01212499999997
+2026-09-12T16:50:41Z	controller: ,"at_ms":322.01762499999995,"bytes":
+2026-09-12T16:50:41Z	controller: 136
+2026-09-12T16:50:41Z	controller: ,"class":"required","compile_revision":null,"outcome":"dequeued","phase":"output_frame","sequence":11}
+2026-09-12T16:50:41Z	controller: {"admission_attempt_ms":322.01212499999997,"at_ms":322.18929099999997,"bytes":
+2026-09-12T16:50:41Z	controller: 136,"class":"required
+2026-09-12T16:50:41Z	controller: ","compile_revision":null
+2026-09-12T16:50:41Z	controller: ,"outcome":"
+2026-09-12T16:50:41Z	controller: write_started","phase":
+2026-09-12T16:50:41Z	controller: "output_frame","sequence
+2026-09-12T16:50:41Z	controller: ":11}
+2026-09-12T16:50:41Z	controller: {"admission_attempt_ms":322.01212499999997,"at_ms":322.22625,"bytes":136,"
+2026-09-12T16:50:41Z	controller: class":"required","compile_revision":null,"outcome":"write_finished","phase":"output_frame","sequence":11}
+2026-09-12T16:50:41Z	controller: {"duration_ms":1.931417,"events":1,"phase":"compiler_poll"}
+2026-09-12T16:50:41Z	controller: {"admission_attempt_ms":416.012041,"at_ms":416.01775000000004,"bytes":893190,"class"
+2026-09-12T16:50:41Z	controller: :"required","compile_revision":null,"outcome":"admitted","phase":"output_frame","sequence":12}
+2026-09-12T16:50:41Z	controller: {"admission_attempt_ms":416.012041,"at_ms":416.019208,"bytes":893190,"class":"required","compile_revision":null,"outcome":"dequeued","phase":"output_frame","sequence":12}
+{"admission_attempt_ms":416.012041,"at_ms":416.126166,"bytes":893190,"class":"required","compile_revision":null,"outcome":"write_started","phase":"output_frame","sequence":12}
+2026-09-12T16:50:41Z	controller: {"admission_attempt_ms":416.012041,"at_ms":419.761541,"bytes":893190,"class":"required","compile_revision":null,"outcome":"write_finished","phase":"output_frame","sequence":12}
+2026-09-12T16:50:41Z	status: revision 2: ok, 0 diagnostics in 91 ms (durable r1)
+2026-09-12T16:50:41Z	controller: {"admission_attempt_ms":454.511958,"at_ms":454.517291,"bytes":169,"class":"required","compile_revision":null,"outcome
+2026-09-12T16:50:41Z	controller: ":"admitted","phase":"output_frame","sequence":13}
+{"
+2026-09-12T16:50:41Z	controller: handling_ms":0.022292,
+2026-09-12T16:50:41Z	controller: "phase":"request","response_serialization_ms":0.062958,"sequence":6,"started_ms":
+2026-09-12T16:50:41Z	controller: 454.486916}
+2026-09-12T16:50:41Z	controller: {"admission_attempt_ms":454.630625,"at_ms":
+2026-09-12T16:50:41Z	controller: 454.63133300000004,"bytes":169,"class":"
+2026-09-12T16:50:41Z	controller: required","compile_revision":
+2026-09-12T16:50:41Z	controller: null,"outcome"
+2026-09-12T16:50:41Z	controller: :"admitted","phase":"output_frame","sequence":14}
+{"handling_ms":0.014417,"phase":"request","response_serialization_ms":0.077166,"sequence":7,"started_ms":454.615416}
+{
+2026-09-12T16:50:41Z	controller: "admission_attempt_ms":454.511958,"at_ms":454.533583,"bytes":169,"class":"required","compile_revision":null,
+2026-09-12T16:50:41Z	controller: "outcome":"dequeued","
+2026-09-12T16:50:41Z	controller: phase":"output_frame","sequence
+2026-09-12T16:50:41Z	controller: ":13}
+2026-09-12T16:50:41Z	controller: {"admission_attempt_ms":
+2026-09-12T16:50:41Z	controller: 454.511958,"at_ms":454.8195,"bytes":169,"class":"required",
+2026-09-12T16:50:41Z	controller: "compile_revision":null,"outcome":"write_started","phase":"output_frame","sequence
+2026-09-12T16:50:41Z	controller: ":13
+2026-09-12T16:50:41Z	controller: }
+2026-09-12T16:50:41Z	controller: {"admission_attempt_ms":454.511958,"at_ms":454.910041,"bytes":169
+2026-09-12T16:50:41Z	controller: ,"class":"required","compile_revision":null,"outcome":"write_finished","phase
+2026-09-12T16:50:41Z	controller: ":"output_frame","sequence":13}
+2026-09-12T16:50:41Z	controller: {"admission_attempt_ms
+2026-09-12T16:50:41Z	controller: ":454.630625,"at_ms":455.048333,"
+2026-09-12T16:50:41Z	controller: bytes":169,
+2026-09-12T16:50:41Z	controller: "class":
+2026-09-12T16:50:41Z	controller: "required",
+2026-09-12T16:50:41Z	controller: "compile_revision":
+2026-09-12T16:50:41Z	controller: null,"outcome
+2026-09-12T16:50:41Z	controller: ":"
+2026-09-12T16:50:41Z	controller: dequeued","
+2026-09-12T16:50:41Z	controller: phase":"
+2026-09-12T16:50:41Z	controller: output_frame","sequence
+2026-09-12T16:50:41Z	controller: ":14}
+2026-09-12T16:50:41Z	controller: 
+2026-09-12T16:50:41Z	controller: {"admission_attempt_ms":454.822541,"at_ms":454.82395799999995,
+2026-09-12T16:50:41Z	controller: "bytes"
+2026-09-12T16:50:41Z	controller: :4264,"class":"required","compile_revision":null,"outcome":"admitted","phase":"output_frame","sequence":15}
+2026-09-12T16:50:41Z	controller: 
+2026-09-12T16:50:41Z	controller: {"
+2026-09-12T16:50:41Z	controller: admission_attempt_ms":454.630625,"
+2026-09-12T16:50:41Z	controller: at_ms":455.174125
+2026-09-12T16:50:41Z	controller: ,"bytes":169
+2026-09-12T16:50:41Z	controller: ,"class":
+2026-09-12T16:50:41Z	controller: "required"
+2026-09-12T16:50:41Z	controller: ,"compile_revision
+2026-09-12T16:50:41Z	controller: ":null
+2026-09-12T16:50:41Z	controller: ,"
+2026-09-12T16:50:41Z	controller: outcome":"write_started","phase":"output_frame","sequence":14}
+2026-09-12T16:50:41Z	controller: {"admission_attempt_ms":454.630625,"at_ms":455.409375,"bytes":169,"class":"required","compile_revision":null,"outcome":"write_finished","phase":"output_frame","sequence":14}
+{"admission_attempt_ms
+2026-09-12T16:50:41Z	controller: ":454.822541,"at_ms
+2026-09-12T16:50:41Z	controller: ":455.445,"bytes
+2026-09-12T16:50:41Z	controller: ":4264,"class
+2026-09-12T16:50:41Z	controller: ":"required","
+2026-09-12T16:50:41Z	controller: compile_revision":null,"outcome"
+2026-09-12T16:50:41Z	controller: :"dequeued","
+2026-09-12T16:50:41Z	controller: phase":"output_frame","sequence":15}
+2026-09-12T16:50:41Z	controller: {"admission_attempt_ms":454.822541,"at_ms":455.516208,"bytes":4264,"class":"required","compile_revision":null,"outcome":"write_started","phase":"output_frame",
+2026-09-12T16:50:41Z	controller: "sequence":15}
+2026-09-12T16:50:41Z	controller: {"admission_attempt_ms":454.822541,"at_ms":455.56516600000003,"bytes":4264,"class":"required","compile_revision":null,"outcome"
+2026-09-12T16:50:41Z	controller: :"write_finished","phase":"output_frame","sequence":15
+2026-09-12T16:50:41Z	controller: }
+2026-09-12T16:50:41Z	controller: {"handling_ms":0.084084,"phase":"request","response_serialization_ms":0.47516600000000003,"sequence":8,"started_ms":454.72875}
+2026-09-12T16:50:41Z	controller: {"phase":"display_transport","profile":{"decode_queue_wait_ms"
+2026-09-12T16:50:41Z	controller: :0.009375,"display_epoch":1,"parse_ms":40.747417,"
+2026-09-12T16:50:41Z	controller: project_id":"demo
+2026-09-12T16:50:41Z	controller: ","reader_delivery_wait_ms":2.2790000000000004
+2026-09-12T16:50:41Z	controller: ,"request_id":"
+2026-09-12T16:50:41Z	controller: preview-5","response_bytes":7793562
+2026-09-12T16:50:41Z	controller: ,"revision":5,"source_binding_ms
+2026-09-12T16:50:41Z	controller: ":0.16775}}
+2026-09-12T16:50:41Z	controller: {"admission_attempt_ms":472.108,"at_ms":472.11079099999995,"bytes":7793894,"class":"
+2026-09-12T16:50:41Z	controller: optional","compile_revision":null,"outcome":"admitted","phase":"output_frame","sequence":16}
+{"
+2026-09-12T16:50:41Z	controller: kind":"display_candidate","outcome":"
+2026-09-12T16:50:41Z	controller: admitted","phase":"optional_output
+2026-09-12T16:50:41Z	controller: ","serialization_ms":13.232584000000001}
+2026-09-12T16:50:41Z	controller: {"admission_attempt_ms":472.108,"at_ms":474.916458,
+2026-09-12T16:50:41Z	controller: "bytes":7793894,"class":"optional","compile_revision":null,"outcome":"dequeued
+2026-09-12T16:50:41Z	controller: ","phase":
+2026-09-12T16:50:41Z	controller: "output_frame","sequence"
+2026-09-12T16:50:41Z	controller: :16}
+2026-09-12T16:50:41Z	controller: {"admission_attempt_ms":472.108,"
+2026-09-12T16:50:41Z	controller: at_ms":
+2026-09-12T16:50:41Z	controller: 474.969791,"bytes":
+2026-09-12T16:50:41Z	controller: 7793894,"class":
+2026-09-12T16:50:41Z	controller: "optional","compile_revision
+2026-09-12T16:50:41Z	controller: ":null,"outcome
+2026-09-12T16:50:41Z	controller: ":"write_started",
+2026-09-12T16:50:41Z	controller: "phase":"output_frame
+2026-09-12T16:50:41Z	controller: ","sequence":
+2026-09-12T16:50:41Z	controller: 16}
+2026-09-12T16:50:41Z	controller: {"admission_attempt_ms":472.108,"at_ms":482.474833,"bytes
+2026-09-12T16:50:41Z	controller: ":7793894,"class":"optional","compile_revision":null,"outcome":"write_finished","
+2026-09-12T16:50:41Z	controller: phase":"output_frame"
+2026-09-12T16:50:41Z	controller: ,"sequence":16}
+2026-09-12T16:50:41Z	display-candidate: dropped preview-4 at paint: request preview-4 is not the applied v1 preview (preview-5)
+2026-09-12T16:50:41Z	controller: {"admission_attempt_ms":492.523458,"at_ms":492.529583,"bytes":236,"class"
+2026-09-12T16:50:41Z	controller: :"required","compile_revision":null,"outcome":"admitted","phase"
+2026-09-12T16:50:41Z	controller: :"output_frame","
+2026-09-12T16:50:41Z	controller: sequence":17}
+2026-09-12T16:50:41Z	controller: {"admission_attempt_ms
+2026-09-12T16:50:41Z	controller: ":492.523458,"at_ms
+2026-09-12T16:50:41Z	controller: ":492.537666,"bytes
+2026-09-12T16:50:41Z	controller: ":236,"class
+2026-09-12T16:50:41Z	controller: ":"required",
+2026-09-12T16:50:41Z	controller: "compile_revision":null,
+2026-09-12T16:50:41Z	controller: "outcome":"dequeued
+2026-09-12T16:50:41Z	controller: ","phase":
+2026-09-12T16:50:41Z	controller: "output_frame","sequence
+2026-09-12T16:50:41Z	controller: ":17}
+2026-09-12T16:50:41Z	controller: {"handling_ms":0.016042,
+2026-09-12T16:50:41Z	controller: "phase":"request"
+2026-09-12T16:50:41Z	controller: ,"response_serialization_ms":0.07925
+2026-09-12T16:50:41Z	controller: ,"sequence":
+2026-09-12T16:50:41Z	controller: 9,"started_ms":
+2026-09-12T16:50:41Z	controller: 492.504416}
+2026-09-12T16:50:41Z	controller: {"admission_attempt_ms":492.523458,"at_ms":
+2026-09-12T16:50:41Z	controller: 492.64020800000003,"bytes":236
+2026-09-12T16:50:41Z	controller: ,"class":"required
+2026-09-12T16:50:41Z	controller: ","compile_revision":
+2026-09-12T16:50:41Z	controller: null,"outcome":
+2026-09-12T16:50:41Z	controller: "write_started","phase
+2026-09-12T16:50:41Z	controller: ":"output_frame",
+2026-09-12T16:50:41Z	controller: "sequence":17}
+2026-09-12T16:50:41Z	controller: 
+2026-09-12T16:50:41Z	controller: {"admission_attempt_ms":492.523458,"at_ms":492.711083,"
+2026-09-12T16:50:41Z	controller: bytes":236,"class"
+2026-09-12T16:50:41Z	controller: :"required
+2026-09-12T16:50:41Z	controller: ","
+2026-09-12T16:50:41Z	controller: compile_revision":null,"outcome":"write_finished",
+2026-09-12T16:50:41Z	controller: "phase":"output_frame",
+2026-09-12T16:50:41Z	controller: "sequence":17}
+2026-09-12T16:50:41Z	controller: 
+2026-09-12T16:50:41Z	controller: {"admission_attempt_ms":535.648833,"at_ms":535.652291,"bytes":170,"class":"required","compile_revision":null,"outcome":"admitted","phase":"output_frame","sequence":18}
+{"handling_ms":0.017458,"phase":"request","response_serialization_ms":0.039625,"sequence":10,"started_ms":535.628708}
+{"admission_attempt_ms":535.7120829999999,"at_ms":535.712625,"bytes":170,"class":"required","compile_revision":null,"outcome":"admitted","phase":"output_frame","sequence":19}
+{"handling_ms":0.006625,"phase":"request","response_serialization_ms":0.028458,"sequence":11,"started_ms":535.704791}
+{"admission_attempt_ms":535.8436250000001,"at_ms":535.844125,"bytes":4265,"class":"required","compile_revision":null,"outcome":"admitted","phase":"output_frame","sequence":20}
+{"handling_ms":0.078708,"phase":"request","response_serialization_ms":0.041582999999999995,"sequence":12,"started_ms":535.757083}
+{"admission_attempt_ms":535.648833,"at_ms":535.8986249999999,"bytes":170,"class":"required","compile_revision":null,"outcome":"dequeued","phase":"output_frame","sequence":18}
+{"admission_attempt_ms":535.648833,"at_ms":535.9255,"bytes":170,"class":"required","compile_revision":null,"outcome":"write_started","phase":"output_frame","sequence":18}
+{"admission_attempt_ms":535.648833,"at_ms":535.953041,"bytes":170,"class":"required","compile_revision":null,"outcome":"write_finished","phase":"output_frame","sequence":18}
+{"admission_attempt_ms":535.7120829999999,"at_ms":535.9789999999999,"bytes":170,"class":"required","compile_revision":null,"outcome":"dequeued","phase":"output_frame","sequence":19}
+{"admission_attempt_ms":535.7120829999999,"at_ms":536.005416,"bytes":170,"class":"required","compile_revision":null,"outcome":"write_started","phase":"output_frame","sequence":19}
+{"admission_attempt_ms":535.7120829999999,"at_ms":536.033666,"bytes":170,"class":"required","compile_revision":null,"outcome":"write_finished","phase":"output_frame","sequence":19}
+{"admission_attempt_ms":535.8436250000001,"at_ms":536.059458,"bytes":4265,"class":"required","compile_revision":null,"outcome":"dequeued","phase":"output_frame","sequence":20}
+{"admission_attempt_ms":535.8436250000001,"at_ms":536.0859999999999,"bytes":4265,"class":"required","compile_revision":null,"outcome":"write_started","phase":"output_frame","sequence":20}
+{"admission_attempt_ms":535.8436250000001,"at_ms":536.113666,"bytes":4265,"class":"required","compile_revision":null,"outcome":"write_finished","phase":"output_frame","sequence":20}
+2026-09-12T16:50:41Z	display-candidate: admitted preview-5 (generation 5, 7793893 B)
+2026-09-12T16:50:41Z	display-candidate: painted preview-5 as revision 2 (generation 5, durable ["main.tex": 1])
+2026-09-12T16:50:41Z	paint: revision 2 needed 1 extra turn(s); drew 2/8 pages
+2026-09-12T16:50:41Z	paint: revision 2 at 108078441268416 (covers 0 keystrokes, redrawn true)
+2026-09-12T16:50:41Z	bench: typing 200 keystrokes at UTF-16 offset 23231 every 0.0 ms
+2026-09-12T16:50:41Z	keystroke: revision 3 at 108078443639166 (delegate 108078444765708, revision 108078444849250)
+2026-09-12T16:50:41Z	compile: sending revision 3 at 108078444901375
+2026-09-12T16:50:41Z	keystroke: revision 4 at 108078472732958 (delegate 108078473317666, revision 108078473397041)
+2026-09-12T16:50:41Z	controller: {"admission_attempt_ms":688.57775,"at_ms":688.582375,"bytes":23890,"class":"required","compile_revision":null,"outcome":"admitted","phase":"output_frame","sequence":21}
+{"handling_ms":29.744458,"phase":"request","response_serialization_ms":0.06212500000000001,"sequence":13,"started_ms":658.8127910000001}
+{"admission_attempt_ms":688.57775,"at_ms":689.075083,"bytes":23890,"class":"required","compile_revision":null,"outcome":"dequeued","phase":"output_frame","sequence":21}
+{"admission_attempt_ms":688.57775,"at_ms":689.103166,"bytes":23890,"class":"required","compile_revision":null,"outcome":"write_started","phase":"output_frame","sequence":21}
+{"admission_attempt_ms":688.57775,"at_ms":689.132541,"bytes":23890,"class":"required","compile_revision":null,"outcome":"write_finished","phase":"output_frame","sequence":21}
+2026-09-12T16:50:41Z	durable: r2 for revision 3 at 108078482711875
+2026-09-12T16:50:41Z	keystroke: revision 5 at 108078482862541 (delegate 108078483452333, revision 108078483536791)
+2026-09-12T16:50:41Z	keystroke: revision 6 at 108078501571250 (delegate 108078502253541, revision 108078502334541)
+2026-09-12T16:50:41Z	controller: {"admission_attempt_ms":716.287875,"at_ms":716.296291,"bytes":237,"class":"required","compile_revision":null,"outcome":"admitted","phase":"output_frame","sequence":22}
+{"handling_ms":0.023292,"phase":"request","response_serialization_ms":0.075666,"sequence":14,"started_ms":716.258916}
+2026-09-12T16:50:41Z	keystroke: revision 7 at 108078510752791 (delegate 108078511305375, revision 108078511383750)
+2026-09-12T16:50:41Z	controller: {"admission_attempt_ms":716.287875,"at_ms":723.703958,"bytes":237,"class":"required","compile_revision":null,"outcome":"dequeued","phase":"output_frame","sequence":22}
+{"admission_attempt_ms":716.287875,"at_ms":723.7431250000001,"bytes":237,"class":"required","compile_revision":null,"outcome":"write_started","phase":"output_frame","sequence":22}
+{"admission_attempt_ms":716.287875,"at_ms":723.771791,"bytes":237,"class":"required","compile_revision":null,"outcome":"write_finished","phase":"output_frame","sequence":22}
+2026-09-12T16:50:41Z	keystroke: revision 8 at 108078520401291 (delegate 108078520964791, revision 108078521044083)
+2026-09-12T16:50:41Z	keystroke: revision 9 at 108078527651041 (delegate 108078528184875, revision 108078528267250)
+2026-09-12T16:50:41Z	keystroke: revision 10 at 108078535276791 (delegate 108078535901958, revision 108078535982458)
+2026-09-12T16:50:41Z	keystroke: revision 11 at 108078543038833 (delegate 108078543607583, revision 108078543687708)
+2026-09-12T16:50:41Z	keystroke: revision 12 at 108078550790625 (delegate 108078551345833, revision 108078551424375)
+2026-09-12T16:50:41Z	keystroke: revision 13 at 108078559247166 (delegate 108078559742625, revision 108078559817625)
+2026-09-12T16:50:41Z	keystroke: revision 14 at 108078566474000 (delegate 108078567011791, revision 108078567088666)
+2026-09-12T16:50:41Z	keystroke: revision 15 at 108078574543291 (delegate 108078575124500, revision 108078575203416)
+2026-09-12T16:50:41Z	keystroke: revision 16 at 108078586148916 (delegate 108078586765875, revision 108078586845416)
+2026-09-12T16:50:41Z	keystroke: revision 17 at 108078594602333 (delegate 108078595134791, revision 108078595212083)
+2026-09-12T16:50:41Z	keystroke: revision 18 at 108078602350458 (delegate 108078602995833, revision 108078603076375)
+2026-09-12T16:50:41Z	keystroke: revision 19 at 108078610467125 (delegate 108078611074833, revision 108078611154666)
+2026-09-12T16:50:41Z	keystroke: revision 20 at 108078618116125 (delegate 108078618731000, revision 108078618812000)
+2026-09-12T16:50:41Z	keystroke: revision 21 at 108078625958000 (delegate 108078626629791, revision 108078626709416)
+2026-09-12T16:50:41Z	keystroke: revision 22 at 108078633533458 (delegate 108078634079083, revision 108078634157583)
+2026-09-12T16:50:41Z	keystroke: revision 23 at 108078641488791 (delegate 108078642062375, revision 108078642140458)
+2026-09-12T16:50:41Z	keystroke: revision 24 at 108078649098916 (delegate 108078649704375, revision 108078649783083)
+2026-09-12T16:50:41Z	keystroke: revision 25 at 108078658295666 (delegate 108078658940791, revision 108078659021625)
+2026-09-12T16:50:41Z	keystroke: revision 26 at 108078666252333 (delegate 108078666783541, revision 108078666862625)
+2026-09-12T16:50:41Z	keystroke: revision 27 at 108078675165333 (delegate 108078675819500, revision 108078675900750)
+2026-09-12T16:50:41Z	keystroke: revision 28 at 108078683752958 (delegate 108078684328750, revision 108078684410333)
+2026-09-12T16:50:41Z	keystroke: revision 29 at 108078691988791 (delegate 108078692581541, revision 108078692661416)
+2026-09-12T16:50:41Z	keystroke: revision 30 at 108078700151458 (delegate 108078700745750, revision 108078700825250)
+2026-09-12T16:50:41Z	keystroke: revision 31 at 108078708035916 (delegate 108078708584583, revision 108078708666000)
+2026-09-12T16:50:41Z	keystroke: revision 32 at 108078715875500 (delegate 108078716447458, revision 108078716526750)
+2026-09-12T16:50:41Z	keystroke: revision 33 at 108078730455250 (delegate 108078731071541, revision 108078731150125)
+2026-09-12T16:50:41Z	keystroke: revision 34 at 108078738508916 (delegate 108078739081750, revision 108078739160791)
+2026-09-12T16:50:41Z	keystroke: revision 35 at 108078743587041 (delegate 108078744107458, revision 108078744181500)
+2026-09-12T16:50:41Z	keystroke: revision 36 at 108078750938083 (delegate 108078751531041, revision 108078751611958)
+2026-09-12T16:50:41Z	keystroke: revision 37 at 108078758346083 (delegate 108078758892000, revision 108078758968416)
+2026-09-12T16:50:41Z	keystroke: revision 38 at 108078766098416 (delegate 108078766665791, revision 108078766745625)
+2026-09-12T16:50:41Z	keystroke: revision 39 at 108078780440875 (delegate 108078781077791, revision 108078781165791)
+2026-09-12T16:50:41Z	keystroke: revision 40 at 108078788596916 (delegate 108078789195083, revision 108078789276250)
+2026-09-12T16:50:41Z	keystroke: revision 41 at 108078793702000 (delegate 108078794210833, revision 108078794286750)
+2026-09-12T16:50:41Z	keystroke: revision 42 at 108078800753833 (delegate 108078801342375, revision 108078801421750)
+2026-09-12T16:50:41Z	keystroke: revision 43 at 108078808292291 (delegate 108078808861000, revision 108078808938458)
+2026-09-12T16:50:41Z	keystroke: revision 44 at 108078816043625 (delegate 108078816637875, revision 108078816717500)
+2026-09-12T16:50:41Z	keystroke: revision 45 at 108078830466041 (delegate 108078831123291, revision 108078831204041)
+2026-09-12T16:50:41Z	keystroke: revision 46 at 108078838271375 (delegate 108078838859375, revision 108078838939125)
+2026-09-12T16:50:41Z	keystroke: revision 47 at 108078843300125 (delegate 108078843843541, revision 108078843923416)
+2026-09-12T16:50:41Z	controller: {"duration_ms":3.2168330000000003,"events":1,"phase":"compiler_poll"}
+2026-09-12T16:50:41Z	keystroke: revision 48 at 108078852338458 (delegate 108078852955458, revision 108078853039166)
+2026-09-12T16:50:41Z	controller: {"admission_attempt_ms":1063.6030409999998,"at_ms":1063.610041,"bytes":893427,"class":"required","compile_revision":null,"outcome":"admitted",
+2026-09-12T16:50:41Z	controller: "phase":"output_frame","sequence":23}
+2026-09-12T16:50:41Z	controller: {"admission_attempt_ms":1063.6030409999998,"at_ms":1063.623041,"bytes":893427,"class":"required","compile_revision":null,"outcome":"dequeued","phase":"output_frame","sequence":23}
+{"admission_attempt_ms":1063.6030409999998,"at_ms":1063.696958,"bytes":893427,"class":"required","compile_revision":null,"outcome":"write_started","phase":"output_frame","sequence":23}
+2026-09-12T16:50:41Z	keystroke: revision 49 at 108078861806916 (delegate 108078862437250, revision 108078862518666)
+2026-09-12T16:50:41Z	keystroke: revision 50 at 108078867037250 (delegate 108078867560166, revision 108078867636125)
+2026-09-12T16:50:41Z	keystroke: revision 51 at 108078874567666 (delegate 108078875205458, revision 108078875286708)
+2026-09-12T16:50:41Z	keystroke: revision 52 at 108078883019000 (delegate 108078883654041, revision 108078883736500)
+2026-09-12T16:50:41Z	keystroke: revision 53 at 108078891457708 (delegate 108078892061458, revision 108078892142041)
+2026-09-12T16:50:41Z	controller: {"admission_attempt_ms":1063.6030409999998,"at_ms":1104.1953330000001,"bytes":893427,"class":"required","compile_revision":null,"outcome":"write_finished","phase":"output_frame","sequence":23}
+2026-09-12T16:50:41Z	keystroke: revision 54 at 108078899655208 (delegate 108078900277083, revision 108078900358375)
+2026-09-12T16:50:41Z	controller release: preview preview-6 is the admitted compile (generation 6, durable r2) (in flight revision 3)
+2026-09-12T16:50:41Z	compile: applied revision 3 at 108078915426375
+2026-09-12T16:50:41Z	status: revision 3: ok, 0 diagnostics in 399 ms (durable r2)
+2026-09-12T16:50:41Z	keystroke: revision 55 at 108078930017708 (delegate 108078930597708, revision 108078930675000)
+2026-09-12T16:50:41Z	keystroke: revision 56 at 108078935063458 (delegate 108078935621458, revision 108078935703250)
+2026-09-12T16:50:41Z	keystroke: revision 57 at 108078946706666 (delegate 108078947316208, revision 108078947396000)
+2026-09-12T16:50:41Z	keystroke: revision 58 at 108078954747708 (delegate 108078955287208, revision 108078955364375)
+2026-09-12T16:50:41Z	keystroke: revision 59 at 108078962277500 (delegate 108078962918916, revision 108078962998291)
+2026-09-12T16:50:41Z	keystroke: revision 60 at 108078970313666 (delegate 108078970983833, revision 108078971067125)
+2026-09-12T16:50:41Z	keystroke: revision 61 at 108078978221916 (delegate 108078980314458, revision 108078980416375)
+2026-09-12T16:50:41Z	keystroke: revision 62 at 108078987695875 (delegate 108078988382791, revision 108078988463791)
+2026-09-12T16:50:41Z	keystroke: revision 63 at 108078995484500 (delegate 108078996084750, revision 108078996163833)
+2026-09-12T16:50:41Z	compile: sending revision 63 at 108078996550875
+2026-09-12T16:50:41Z	keystroke: revision 64 at 108079003473750 (delegate 108079004130916, revision 108079004217041)
+2026-09-12T16:50:41Z	keystroke: revision 65 at 108079011642041 (delegate 108079012299666, revision 108079012380875)
+2026-09-12T16:50:41Z	keystroke: revision 66 at 108079019322208 (delegate 108079019977791, revision 108079020059333)
+2026-09-12T16:50:42Z	keystroke: revision 67 at 108079027843708 (delegate 108079029622791, revision 108079029720208)
+2026-09-12T16:50:42Z	controller: {"admission_attempt_ms":1240.065,"at_ms":1240.0674999999999,"bytes":23951,"class":"required","compile_revision":null,"outcome":"admitted","phase":"output_frame","sequence":24}
+{"handling_ms":24.661375,"phase":"request","response_serialization_ms":0.059792,"sequence":15,"started_ms":1215.382791}
+{"admission_attempt_ms":1240.1299999999999,"at_ms":1240.130541,"bytes":189,"class":"required","compile_revision":null,"outcome":"admitted","phase":"output_frame","sequence":25}
+{"handling_ms":0.005291,"phase":"request","response_serialization_ms":0.027375,"sequence":16,"started_ms":1240.1239580000001}
+{"admission_attempt_ms":1240.1748750000002,"at_ms":1240.17525,"bytes":189,"class":"required","compile_revision":null,"outcome":"admitted","phase":"output_frame","sequence":26}
+{"handling_ms":0.001333,"phase":"request","response_serialization_ms":0.026667,"sequence":17,"started_ms":1240.173041}
+{"admission_attempt_ms":1240.219,"at_ms":1240.219333,"bytes":189,"class":"required","compile_revision":null,"outcome":"admitted","phase":"output_frame","sequence":27}
+{"handling_ms":0.001333,"phase":"request","response_serialization_ms":0.026875,"sequence":18,"started_ms":1240.2171660000001}
+{"admission_attempt_ms":1240.065,"at_ms":1240.279041,"bytes":23951,"class":"required","compile_revision":null,"outcome":"dequeued","phase":"output_frame","sequence":24}
+{"admission_attempt_ms":1240.065,"at_ms":1240.32325,"bytes":23951,"class":"required","compile_revision":null,"outcome":"write_started","phase":"output_frame","sequence":24}
+{"admission_attempt_ms":1240.065,"at_ms":1240.354458,"bytes":23951,"class":"required","compile_revision":null,"outcome":"write_finished","phase":"output_frame","sequence":24
+2026-09-12T16:50:42Z	durable: r3 for revision 63 at 108079030118125
+2026-09-12T16:50:42Z	controller: }
+{"admission_attempt_ms":1240.1299999999999,"at_ms":1241.144458,"bytes":189,"class":"required","compile_revision":null,"outcome":"dequeued","phase":"output_frame","sequence":25}
+{"admission_attempt_ms":1240.1299999999999,"at_ms":1241.173208,"bytes":189,"class":"required","compile_revision":null,"outcome":"write_started","phase":"output_frame","sequence":25}
+{"admission_attempt_ms":1240.1299999999999,"at_ms":1241.203041,"bytes":189,"class":"required","compile_revision":null,"outcome":"write_finished","phase":"output_frame","sequence":25}
+{"admission_attempt_ms":1240.1748750000002,"at_ms":1241.229875,"bytes":189,"class":"required","compile_revision":null,"outcome":"dequeued","phase":"output_frame","sequence":26}
+{"admission_attempt_ms":1240.1748750000002,"at_ms":1241.256166,"bytes":189,"class":"required","compile_revision":null,"outcome":"write_started","phase":"output_frame","sequence":26}
+{"admission_attempt_ms":1240.1748750000002,"at_ms":1241.2830829999998,"bytes":189,"class":"required","compile_revision":null,"outcome":"write_finished","phase":"output_frame","sequence":26}
+{"admission_attempt_ms":1240.219,"at_ms":1241.309375,"bytes":189,"class":"required","compile_revision":null,"outcome":"dequeued","phase":"output_frame","sequence":27}
+{"admission_attempt_ms":1240.219,"at_ms":1241.336041,"bytes":189,"class":"required","compile_revision":null,"outcome":"write_started","phase":"output_frame","sequence":27}
+{"admission_attempt_ms":1240.219,"at_ms":1241.3625829999999,"bytes":189,"class":"required","compile_revision":null,"outcome":"write_finished","phase":"output_frame","sequence":27}
+2026-09-12T16:50:42Z	completion metadata refused: helper error for pc-16: source versions changed; refresh snapshot before querying
+2026-09-12T16:50:42Z	controller error pc-17: source versions changed; refresh snapshot before querying
+2026-09-12T16:50:42Z	controller error pc-18: source versions changed; refresh snapshot before querying
+2026-09-12T16:50:42Z	keystroke: revision 68 at 108079037220125 (delegate 108079037810875, revision 108079037887375)
+2026-09-12T16:50:42Z	controller: {"admission_attempt_ms":1252.471416,"at_ms":1252.477333,"bytes":237,"class":"required","compile_revision":null,"outcome":"admitted","phase":"output_frame","sequence":28}
+{"handling_ms":0.034165999999999995,"phase":"request","response_serialization_ms":0.049833,"sequence":19,"started_ms":1252.433916}
+{"admission_attempt_ms":1252.471416,"at_ms":1253.887666,"bytes":237,"class":"required","compile_revision":null,"outcome":"dequeued","phase":"output_frame","sequence":28}
+{"admission_attempt_ms":1252.471416,"at_ms":1253.941333,"bytes":237,"class":"required","compile_revision":null,"outcome":"write_started","phase":"output_frame","sequence":28}
+{"admission_attempt_ms":1252.471416,"at_ms":1255.884875,"bytes":237,"class":"required","compile_revision":null,"outcome":"write_finished","phase":"output_frame","sequence":28}
+2026-09-12T16:50:42Z	keystroke: revision 69 at 108079047558291 (delegate 108079048203958, revision 108079048283583)
+2026-09-12T16:50:42Z	keystroke: revision 70 at 108079057086375 (delegate 108079057746416, revision 108079057827416)
+2026-09-12T16:50:42Z	controller: {"admission_attempt_ms":1269.250625,"at_ms":1269.253666,"bytes":237,"class":"required","compile_revision":null,"outcome":"admitted","phase":"output_frame","sequence":29}
+{"handling_ms":0.016917,"phase":"request","response_serialization_ms":0.038375,"sequence":20,"started_ms":1269.231}
+{"admission_attempt_ms":1269.250625,"at_ms":1270.546041,"bytes":237,"class":"required","compile_revision":null,"outcome":"dequeued","phase":"output_frame","sequence":29}
+{"admission_attempt_ms":1269.250625,"at_ms":1270.578583,"bytes":237,"class":"required","compile_revision":null,"outcome":"write_started","phase":"output_frame","sequence":29}
+{"admission_attempt_ms":1269.250625,"at_ms":1270.608375,"bytes":237,"class":"required","compile_revision":null,"outcome":"write_finished","phase":"output_frame","sequence":29}
+2026-09-12T16:50:42Z	keystroke: revision 71 at 108079066270166 (delegate 108079066946000, revision 108079067026208)
+2026-09-12T16:50:42Z	keystroke: revision 72 at 108079075067375 (delegate 108079075699666, revision 108079075780000)
+2026-09-12T16:50:42Z	keystroke: revision 73 at 108079083197625 (delegate 108079083908708, revision 108079083993125)
+2026-09-12T16:50:42Z	keystroke: revision 74 at 108079096885500 (delegate 108079097588000, revision 108079097671500)
+2026-09-12T16:50:42Z	keystroke: revision 75 at 108079102600666 (delegate 108079103209208, revision 108079103285333)
+2026-09-12T16:50:42Z	keystroke: revision 76 at 108079110210583 (delegate 108079110859083, revision 108079110937833)
+2026-09-12T16:50:42Z	keystroke: revision 77 at 108079118536166 (delegate 108079119149625, revision 108079119227916)
+2026-09-12T16:50:42Z	keystroke: revision 78 at 108079127929875 (delegate 108079129021208, revision 108079129102916)
+2026-09-12T16:50:42Z	keystroke: revision 79 at 108079133668458 (delegate 108079134232958, revision 108079134307333)
+2026-09-12T16:50:42Z	keystroke: revision 80 at 108079141623541 (delegate 108079142267000, revision 108079142346958)
+2026-09-12T16:50:42Z	keystroke: revision 81 at 108079150696916 (delegate 108079151397666, revision 108079151478666)
+2026-09-12T16:50:42Z	keystroke: revision 82 at 108079158893541 (delegate 108079159540583, revision 108079159619166)
+2026-09-12T16:50:42Z	keystroke: revision 83 at 108079166892458 (delegate 108079167459625, revision 108079167537375)
+2026-09-12T16:50:42Z	keystroke: revision 84 at 108079174766208 (delegate 108079175433166, revision 108079175514416)
+2026-09-12T16:50:42Z	keystroke: revision 85 at 108079184539041 (delegate 108079185302291, revision 108079185397208)
+2026-09-12T16:50:42Z	keystroke: revision 86 at 108079193063583 (delegate 108079193699416, revision 108079193779250)
+2026-09-12T16:50:42Z	controller: {"duration_ms":19.693333,"events":0,"phase":"compiler_poll"}
+2026-09-12T16:50:42Z	keystroke: revision 87 at 108079201232416 (delegate 108079201929916, revision 108079202019375)
+2026-09-12T16:50:42Z	keystroke: revision 88 at 108079210396708 (delegate 108079211054000, revision 108079211135083)
+2026-09-12T16:50:42Z	keystroke: revision 89 at 108079218647416 (delegate 108079219317708, revision 108079219400500)
+2026-09-12T16:50:42Z	keystroke: revision 90 at 108079227183916 (delegate 108079227835833, revision 108079227926333)
+2026-09-12T16:50:42Z	keystroke: revision 91 at 108079235182416 (delegate 108079235903083, revision 108079235984958)
+2026-09-12T16:50:42Z	keystroke: revision 92 at 108079243377166 (delegate 108079244038958, revision 108079244118375)
+2026-09-12T16:50:42Z	keystroke: revision 93 at 108079253421666 (delegate 108079254173125, revision 108079254255708)
+2026-09-12T16:50:42Z	controller: {
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: duration_ms
+2026-09-12T16:50:42Z	controller: ":6.390375000000001,"events":0,"phase":"compiler_poll"}
+2026-09-12T16:50:42Z	keystroke: revision 94 at 108079259061333 (delegate 108079259866833, revision 108079259949750)
+2026-09-12T16:50:42Z	keystroke: revision 95 at 108079268380333 (delegate 108079269066500, revision 108079269148833)
+2026-09-12T16:50:42Z	keystroke: revision 96 at 108079276598500 (delegate 108079277234458, revision 108079277318416)
+2026-09-12T16:50:42Z	keystroke: revision 97 at 108079286886416 (delegate 108079287559625, revision 108079287640125)
+2026-09-12T16:50:42Z	keystroke: revision 98 at 108079292138125 (delegate 108079292747333, revision 108079292824541)
+2026-09-12T16:50:42Z	keystroke: revision 99 at 108079299941375 (delegate 108079300628416, revision 108079300711208)
+2026-09-12T16:50:42Z	keystroke: revision 100 at 108079308217500 (delegate 108079308885291, revision 108079308964791)
+2026-09-12T16:50:42Z	keystroke: revision 101 at 108079316252291 (delegate 108079316922833, revision 108079317003375)
+2026-09-12T16:50:42Z	keystroke: revision 102 at 108079326527041 (delegate 108079327204333, revision 108079327284666)
+2026-09-12T16:50:42Z	keystroke: revision 103 at 108079334717875 (delegate 108079335412291, revision 108079335496458)
+2026-09-12T16:50:42Z	keystroke: revision 104 at 108079344440250 (delegate 108079345062958, revision 108079345143125)
+2026-09-12T16:50:42Z	keystroke: revision 105 at 108079352254041 (delegate 108079352919416, revision 108079352999875)
+2026-09-12T16:50:42Z	keystroke: revision 106 at 108079360667833 (delegate 108079361334125, revision 108079361412250)
+2026-09-12T16:50:42Z	keystroke: revision 107 at 108079369580125 (delegate 108079370357250, revision 108079370449666)
+2026-09-12T16:50:42Z	controller: {"duration_ms":1.5935000000000001,"events":1,"phase":"compiler_poll"}
+2026-09-12T16:50:42Z	controller: {"admission_attempt_ms":1584.305875,"at_ms":1584.311416,"bytes":895495,"class":"required","compile_revision":null,"outcome":"admitted","phase":"output_frame","sequence":30}
+{"admission_attempt_ms":1584.305875,"at_ms":1584.7113749999999,"bytes":895495,"class":"required","compile_revision":null,"outcome":"dequeued","phase":"output_frame","sequence":30}
+{"admission_attempt_ms":1584.305875,"at_ms":1584.743166,"bytes":895495,"class":"required","compile_revision":null,"outcome":"write_started","phase":"output_frame","sequence":30}
+2026-09-12T16:50:42Z	keystroke: revision 108 at 108079378555000 (delegate 108079384175208, revision 108079384260541)
+2026-09-12T16:50:42Z	controller: {"admission_attempt_ms":1584.305875,"at_ms":1589.5749580000002,"bytes":895495,"class":"required","compile_revision":null,"outcome":"write_finished","phase":"output_frame","sequence":30}
+2026-09-12T16:50:42Z	keystroke: revision 109 at 108079392162208 (delegate 108079392850041, revision 108079392931208)
+2026-09-12T16:50:42Z	keystroke: revision 110 at 108079400696250 (delegate 108079401353666, revision 108079401436000)
+2026-09-12T16:50:42Z	controller release: preview preview-7 is the admitted compile (generation 7, durable r3) (in flight revision 63)
+2026-09-12T16:50:42Z	compile: applied revision 63 at 108079404160000
+2026-09-12T16:50:42Z	status: revision 63: ok, 0 diagnostics in 367 ms (durable r3)
+2026-09-12T16:50:42Z	keystroke: revision 111 at 108079429296791 (delegate 108079430052833, revision 108079430134416)
+2026-09-12T16:50:42Z	keystroke: revision 112 at 108079437846166 (delegate 108079438401916, revision 108079438486333)
+2026-09-12T16:50:42Z	keystroke: revision 113 at 108079446171125 (delegate 108079446707000, revision 108079446789458)
+2026-09-12T16:50:42Z	keystroke: revision 114 at 108079453743375 (delegate 108079454307875, revision 108079454391500)
+2026-09-12T16:50:42Z	keystroke: revision 115 at 108079462082041 (delegate 108079462642625, revision 108079462725291)
+2026-09-12T16:50:42Z	keystroke: revision 116 at 108079471524041 (delegate 108079472117291, revision 108079472209708)
+2026-09-12T16:50:42Z	controller: {
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: phase
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: :
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: display_transport
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: ,
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: profile
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: :
+2026-09-12T16:50:42Z	controller: {
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: decode_queue_wait_ms
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: :
+2026-09-12T16:50:42Z	controller: 0.018458
+2026-09-12T16:50:42Z	controller: ,
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: display_epoch
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: :
+2026-09-12T16:50:42Z	controller: 1
+2026-09-12T16:50:42Z	controller: ,
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: parse_ms
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: :
+2026-09-12T16:50:42Z	controller: 34.708709
+2026-09-12T16:50:42Z	controller: ,
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: project_id
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: :
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: demo
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: ,
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: reader_delivery_wait_ms
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: :
+2026-09-12T16:50:42Z	controller: 0.686167
+2026-09-12T16:50:42Z	controller: ,
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: request_id
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: :
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: preview-7
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: ,
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: response_bytes
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: :
+2026-09-12T16:50:42Z	controller: 7814966
+2026-09-12T16:50:42Z	controller: ,
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: revision
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: :
+2026-09-12T16:50:42Z	controller: 7
+2026-09-12T16:50:42Z	controller: ,
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: source_binding_ms
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: :
+2026-09-12T16:50:42Z	controller: 0.540875
+2026-09-12T16:50:42Z	controller: }
+2026-09-12T16:50:42Z	controller: }
+2026-09-12T16:50:42Z	controller: 
+2026-09-12T16:50:42Z	keystroke: revision 117 at 108079481728625 (delegate 108079482347041, revision 108079482439666)
+2026-09-12T16:50:42Z	keystroke: revision 118 at 108079490144625 (delegate 108079490754625, revision 108079490841416)
+2026-09-12T16:50:42Z	controller: {"admission_attempt_ms":1704.187958,"at_ms":1704.192833,"bytes":7815298,"class":"optional","compile_revision":null,"outcome":"admitted","phase":"output_frame","sequence":31}
+{"kind":"display_candidate","outcome":"admitted","phase":"optional_output","serialization_ms":17.558375}
+2026-09-12T16:50:42Z	controller: {"admission_attempt_ms":1704.187958,"at_ms":1705.411958,"bytes":7815298,"class":"optional","compile_revision":null,"outcome":"dequeued","phase":"output_frame","sequence":31}
+{"admission_attempt_ms":1704.187958,"at_ms":1705.444625,"bytes":7815298,"class":"optional","compile_revision":null,"outcome":"write_started","phase":"output_frame","sequence":31}
+2026-09-12T16:50:42Z	keystroke: revision 119 at 108079498200541 (delegate 108079498800583, revision 108079498888916)
+2026-09-12T16:50:42Z	controller: {"admission_attempt_ms":1704.187958,"at_ms":1720.781375,"bytes":7815298,"class":"optional","compile_revision":null,"outcome":"write_finished","phase":"output_frame","sequence":31}
+2026-09-12T16:50:42Z	keystroke: revision 120 at 108079512947416 (delegate 108079513551750, revision 108079513635583)
+2026-09-12T16:50:42Z	compile: sending revision 120 at 108079514130291
+2026-09-12T16:50:42Z	keystroke: revision 121 at 108079518465250 (delegate 108079519121083, revision 108079519200291)
+2026-09-12T16:50:42Z	keystroke: revision 122 at 108079525880250 (delegate 108079526506625, revision 108079526584041)
+2026-09-12T16:50:42Z	keystroke: revision 123 at 108079533675125 (delegate 108079534271000, revision 108079534347750)
+2026-09-12T16:50:42Z	controller: {"admission_attempt_ms":1748.661916,"at_ms":1748.666166,"bytes":24010,"class":"required","compile_revision":null,"outcome":"admitted","phase":"output_frame","sequence":32}
+{"handling_ms":23.539542,"phase":"request","response_serialization_ms":0.060667,"sequence":21,"started_ms":1725.101791}
+{"admission_attempt_ms":1748.7297910000002,"at_ms":1748.730291,"bytes":189,"class":"required","compile_revision":null,"outcome":"admitted","phase":"output_frame","sequence":33}
+{"handling_ms":0.006625,"phase":"request","response_serialization_ms":0.027667,"sequence":22,"started_ms":1748.722333}
+{"admission_attempt_ms":1748.774875,"at_ms":1748.77525,"bytes":189,"class":"required","compile_revision":null,"outcome":"admitted","phase":"output_frame","sequence":34}
+{"handling_ms":0.0015,"phase":"request","response_serialization_ms":0.026958,"sequence":23,"started_ms":1748.7727909999999}
+{"admission_attempt_ms":1748.820541,"at_ms":1748.8209160000001,"bytes":189,"class":"required","compile_revision":null,"outcome":"admitted","phase":"output_frame","sequence":35}
+{"handling_ms":0.002833,"phase":"request","response_serialization_ms":0.026709,"sequence":24,"started_ms":1748.8172909999998}
+{"admission_attempt_ms":1748.661916,"at_ms":1749.7607500000001,"bytes":24010,"class":"required","compile_revision":null,"outcome":"dequeued","phase":"output_frame","sequence":32}
+{"admission_attempt_ms":1748.661916,"at_ms":1749.811333,"bytes":24010,"class":"required","compile_revision":null,"outcome":"write_started","phase":"output_frame","sequence":32}
+{"admission_attempt_ms":1748.661916,"at_ms":1749.8643330000002,"bytes":24010,"class":"required","compile_revision":null,"outcome":"write_finished","phase":"output_frame","sequence":32}
+{"admission_attempt_ms":1748.7297910000002,"at_ms":1749.912083,"bytes":189,"class":"required","compile_revision":null,"outcome":"dequeued","phase":"output_frame","sequence":33}
+{"admission_attempt_ms":1748.7297910000002,"at_ms":1749.95575,"bytes":189,"class":"required","compile_revision":null,"outcome":"write_started","phase":"output_frame","sequence":33}
+{"admission_attempt_ms":1748.7297910000002,"at_ms":1750.027791,"bytes":189,"class":"required
+2026-09-12T16:50:42Z	controller: ","compile_revision":null,"outcome":"write_finished","phase":"output_frame","sequence":33}
+{"admission_attempt_ms":1748.774875,"at_ms":1750.1015,"bytes":189,"class":"required","compile_revision":null,"outcome":"dequeued","phase":"output_frame","sequence":34}
+{"admission_attempt_ms":1748.774875,"at_ms":1750.137916,"bytes":189,"class":"required","compile_revision":null,"outcome":"write_started","phase":"output_frame","sequence":34}
+{"admission_attempt_ms":1748.774875,"at_ms":1750.166208,"bytes":189,"class":"required","compile_revision":null,"outcome":"write_finished","phase":"output_frame","sequence":34}
+{"admission_attempt_ms":1748.820541,"at_ms":1750.1924159999999,"bytes":189,"class":"required","compile_revision":null,"outcome":"dequeued","phase":"output_frame","sequence":35}
+{"admission_attempt_ms":1748.820541,"at_ms":1750.2182500000001,"bytes":189,"class":"required","compile_revision":null,"outcome":"write_started","phase":"output_frame","sequence":35}
+{"admission_attempt_ms":1748.820541,"at_ms":1750.2448749999999,"bytes":189,"class":"required","compile_revision":null,"outcome":"write_finished","phase":"output_frame","sequence":35}
+2026-09-12T16:50:42Z	keystroke: revision 124 at 108079542031625 (delegate 108079542817000, revision 108079542898250)
+2026-09-12T16:50:42Z	keystroke: revision 125 at 108079550091625 (delegate 108079550776666, revision 108079550857250)
+2026-09-12T16:50:42Z	keystroke: revision 126 at 108079558779208 (delegate 108079560640000, revision 108079560739333)
+2026-09-12T16:50:42Z	keystroke: revision 127 at 108079568315000 (delegate 108079568963166, revision 108079569043750)
+2026-09-12T16:50:42Z	keystroke: revision 128 at 108079576476041 (delegate 108079577082833, revision 108079577161541)
+2026-09-12T16:50:42Z	keystroke: revision 129 at 108079585970083 (delegate 108079586694500, revision 108079586774083)
+2026-09-12T16:50:42Z	keystroke: revision 130 at 108079594436541 (delegate 108079595083958, revision 108079595162708)
+2026-09-12T16:50:42Z	keystroke: revision 131 at 108079602577041 (delegate 108079603277916, revision 108079603359791)
+2026-09-12T16:50:42Z	keystroke: revision 132 at 108079610825500 (delegate 108079611467791, revision 108079611546333)
+2026-09-12T16:50:42Z	keystroke: revision 133 at 108079618532625 (delegate 108079619203541, revision 108079619282208)
+2026-09-12T16:50:42Z	keystroke: revision 134 at 108079627141083 (delegate 108079627779041, revision 108079627862250)
+2026-09-12T16:50:42Z	display-candidate: admitted preview-7 (generation 7, 7815297 B)
+2026-09-12T16:50:42Z	display-candidate: received preview-7 generation 7 (7815297 B) at 108079634878333
+2026-09-12T16:50:42Z	display-candidate: validating preview-7 as revision 63 ticket 3 at 108079635373083
+2026-09-12T16:50:42Z	durable: r4 for revision 120 at 108079635396708
+2026-09-12T16:50:42Z	completion metadata refused: helper error for pc-22: source versions changed; refresh snapshot before querying
+2026-09-12T16:50:42Z	controller error pc-23: source versions changed; refresh snapshot before querying
+2026-09-12T16:50:42Z	controller error pc-24: source versions changed; refresh snapshot before querying
+2026-09-12T16:50:42Z	preview-v2: blit page 1 of preview-5#r2#2 at 108079655982916
+2026-09-12T16:50:42Z	preview-v2: blit page 2 of preview-5#r2#2 at 108079656089041
+2026-09-12T16:50:42Z	paint: revision 2 needed 1 extra turn(s); drew 2/8 pages
+2026-09-12T16:50:42Z	paint: revision 2 at 108079668546750 (covers 0 keystrokes, redrawn true)
+2026-09-12T16:50:42Z	controller: {"duration_ms":2.652666,"events":1,"phase":"compiler_poll"}
+2026-09-12T16:50:42Z	controller: {"admission_attempt_ms":1870.4305,"at_ms"
+2026-09-12T16:50:42Z	controller: :1870.445416,"bytes":897802
+2026-09-12T16:50:42Z	controller: ,"class":"required","compile_revision":null,"
+2026-09-12T16:50:42Z	controller: outcome":"admitted","phase":"output_frame
+2026-09-12T16:50:42Z	controller: ","sequence":36}
+2026-09-12T16:50:42Z	controller: {"admission_attempt_ms":1870.4305,"at_ms":1870.453541
+2026-09-12T16:50:42Z	controller: ,"bytes":897802,"
+2026-09-12T16:50:42Z	controller: class":"required","compile_revision":
+2026-09-12T16:50:42Z	controller: null,"outcome":"
+2026-09-12T16:50:42Z	controller: dequeued","phase":
+2026-09-12T16:50:42Z	controller: "output_frame","sequence":36}
+2026-09-12T16:50:42Z	controller: {"admission_attempt_ms":1870.4305,
+2026-09-12T16:50:42Z	controller: "at_ms":1870.7157080000002,"
+2026-09-12T16:50:42Z	controller: bytes":897802,"class
+2026-09-12T16:50:42Z	controller: ":"required","compile_revision":null,
+2026-09-12T16:50:42Z	controller: "outcome":"write_started",
+2026-09-12T16:50:42Z	controller: "phase":"output_frame"
+2026-09-12T16:50:42Z	controller: ,"sequence":36}
+2026-09-12T16:50:42Z	controller: 
+2026-09-12T16:50:42Z	controller: {"admission_attempt_ms":1870.4305,"at_ms":1872.645333,"bytes":897802,"class":"required","compile_revision":null,"outcome":"write_finished","phase":"output_frame","sequence":36}
+2026-09-12T16:50:42Z	keystroke: revision 135 at 108079668686541 (delegate 108079669413000, revision 108079669493166)
+2026-09-12T16:50:42Z	keystroke: revision 136 at 108079680696083 (delegate 108079681243291, revision 108079681330625)
+2026-09-12T16:50:42Z	controller release: preview preview-8 is the admitted compile (generation 8, durable r4) (in flight revision 120)
+2026-09-12T16:50:42Z	compile: applied revision 120 at 108079691155583
+2026-09-12T16:50:42Z	status: revision 120: ok, 0 diagnostics in 141 ms (durable r4)
+2026-09-12T16:50:42Z	controller: {"admission_attempt_ms":1902.181458,"at_ms"
+2026-09-12T16:50:42Z	controller: :1902.197833,"bytes":237,"class":"
+2026-09-12T16:50:42Z	controller: required","compile_revision
+2026-09-12T16:50:42Z	controller: ":null,
+2026-09-12T16:50:42Z	controller: "outcome":
+2026-09-12T16:50:42Z	controller: "dequeued",
+2026-09-12T16:50:42Z	controller: "phase":
+2026-09-12T16:50:42Z	controller: "output_frame",
+2026-09-12T16:50:42Z	controller: "sequence":
+2026-09-12T16:50:42Z	controller: 37}
+2026-09-12T16:50:42Z	controller: {"admission_attempt_ms":1902.181458,"at_ms
+2026-09-12T16:50:42Z	controller: ":1902.3062909999999,"bytes":237,"class
+2026-09-12T16:50:42Z	controller: ":"required"
+2026-09-12T16:50:42Z	controller: ,"compile_revision"
+2026-09-12T16:50:42Z	controller: :null,"
+2026-09-12T16:50:42Z	controller: outcome":"
+2026-09-12T16:50:42Z	controller: write_started","
+2026-09-12T16:50:42Z	controller: phase":"
+2026-09-12T16:50:42Z	controller: output_frame","
+2026-09-12T16:50:42Z	controller: sequence":37
+2026-09-12T16:50:42Z	controller: }
+2026-09-12T16:50:42Z	controller: {"admission_attempt_ms":1902.181458,"at_ms":1902.249166,"bytes":237,"class":"required","compile_revision":null,"outcome":"admitted","phase":"output_frame","sequence":37}
+{"handling_ms":0.0305,"phase":"request","response_serialization_ms":0.282209,"sequence":25,"started_ms":1902.1449160000002}
+{"admission_attempt_ms":1902.181458,"at_ms":1902.419125,"bytes":237,"class":"required","compile_revision":null,"outcome":"write_finished","phase":"output_frame","sequence":37}
+2026-09-12T16:50:42Z	display-candidate: validated preview-7 in 50.505417 ms, prerastered 8 page(s) in 10.56775 ms, delivered 9.492833 ms later
+2026-09-12T16:50:42Z	display-candidate: dropped preview-7 at paint: request preview-7 is not the applied v1 preview (preview-8)
+2026-09-12T16:50:42Z	preview-v2: blit page 1 of preview-5#r2#2 at 108079718699291
+2026-09-12T16:50:42Z	preview-v2: blit page 2 of preview-5#r2#2 at 108079718789375
+2026-09-12T16:50:42Z	controller: {"phase":"display_transport","profile":{"decode_queue_wait_ms":0.014624999999999999,"display_epoch":1,"parse_ms":38.128791,"project_id":"demo","reader_delivery_wait_ms":1.6804999999999999,"request_id":"preview-8","response_bytes":7834208,"revision":8,"source_binding_ms":0.151917}}
+2026-09-12T16:50:42Z	keystroke: revision 137 at 108079738351250 (delegate 108079739073791, revision 108079739153750)
+2026-09-12T16:50:42Z	keystroke: revision 138 at 108079744604875 (delegate 108079745141916, revision 108079745223875)
+2026-09-12T16:50:42Z	controller: {"admission_attempt_ms":1958.685291,"at_ms":1958.6885,"bytes":7834540,"class":"optional","compile_revision":null,"outcome":"admitted","phase":"output_frame","sequence":38}
+{"kind":"display_candidate","outcome":"admitted","phase":"optional_output","serialization_ms":13.410333}
+{"admission_attempt_ms":1958.685291,"at_ms":1959.31075,"bytes":7834540,"class":"optional","compile_revision":null,"outcome":"dequeued","phase":"output_frame","sequence":38}
+{"admission_attempt_ms":1958.685291,"at_ms":1959.3690829999998,"bytes
+2026-09-12T16:50:42Z	controller: ":7834540,"class":"optional","compile_revision":null,"outcome":"write_started","phase":"output_frame","sequence":38}
+2026-09-12T16:50:42Z	controller: 
+2026-09-12T16:50:42Z	keystroke: revision 139 at 108079758268541 (delegate 108079759018416, revision 108079759101125)
+2026-09-12T16:50:42Z	keystroke: revision 140 at 108079767831208 (delegate 108079774687625, revision 108079774781583)
+2026-09-12T16:50:42Z	controller: {"admission_attempt_ms":1958.685291,"at_ms":1978.748583,"bytes":7834540,"class":"optional","compile_revision":null,"outcome":"write_finished","phase":"output_frame","sequence":38}
+2026-09-12T16:50:42Z	compile: sending revision 140 at 108079783039541
+2026-09-12T16:50:42Z	keystroke: revision 141 at 108079783866875 (delegate 108079784504916, revision 108079784582083)
+2026-09-12T16:50:42Z	keystroke: revision 142 at 108079788862125 (delegate 108079789308166, revision 108079789388750)
+2026-09-12T16:50:42Z	keystroke: revision 143 at 108079793357583 (delegate 108079793824208, revision 108079793900875)
+2026-09-12T16:50:42Z	controller: {"admission_attempt_ms":2005.6161659999998,"at_ms":2005.618916,"bytes":24032
+2026-09-12T16:50:42Z	controller: ,
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: class
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: :
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: required
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: ,
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: compile_revision
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: :
+2026-09-12T16:50:42Z	controller: null
+2026-09-12T16:50:42Z	controller: ,
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: outcome
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: :
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: admitted
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: ,
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: phase
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: :
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: output_frame
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: ,
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: sequence
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: :
+2026-09-12T16:50:42Z	controller: 39
+2026-09-12T16:50:42Z	controller: }
+2026-09-12T16:50:42Z	controller: 
+2026-09-12T16:50:42Z	controller: {"admission_attempt_ms":2005.6161659999998,"at_ms":
+2026-09-12T16:50:42Z	controller: 2005.621916,"bytes":24032,"class":
+2026-09-12T16:50:42Z	controller: "required","compile_revision":
+2026-09-12T16:50:42Z	controller: null,"outcome":"dequeued
+2026-09-12T16:50:42Z	controller: ","phase":
+2026-09-12T16:50:42Z	controller: "output_frame","sequence":39}
+2026-09-12T16:50:42Z	controller: {"
+2026-09-12T16:50:42Z	controller: admission_attempt_ms":2005.6161659999998,"
+2026-09-12T16:50:42Z	controller: at_ms":2005.9965829999999,"
+2026-09-12T16:50:42Z	controller: bytes":24032,"
+2026-09-12T16:50:42Z	controller: class":"required"
+2026-09-12T16:50:42Z	controller: ,"compile_revision":null,
+2026-09-12T16:50:42Z	controller: "outcome":"write_started
+2026-09-12T16:50:42Z	controller: ","phase":
+2026-09-12T16:50:42Z	controller: "output_frame","sequence
+2026-09-12T16:50:42Z	controller: ":39}
+2026-09-12T16:50:42Z	controller: {"admission_attempt_ms":2005.6161659999998,"
+2026-09-12T16:50:42Z	controller: at_ms":2006.0365,"bytes":
+2026-09-12T16:50:42Z	controller: 24032,"class":"
+2026-09-12T16:50:42Z	controller: required","compile_revision"
+2026-09-12T16:50:42Z	controller: :null,"outcome"
+2026-09-12T16:50:42Z	controller: :"write_finished",
+2026-09-12T16:50:42Z	controller: "phase":"output_frame
+2026-09-12T16:50:42Z	controller: ","sequence":
+2026-09-12T16:50:42Z	controller: 39}
+2026-09-12T16:50:42Z	controller: {
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: handling_ms
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: :
+2026-09-12T16:50:42Z	controller: 11.426375
+2026-09-12T16:50:42Z	controller: ,
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: phase
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: :
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: request
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: ,
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: response_serialization_ms
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: :
+2026-09-12T16:50:42Z	controller: 0.48925
+2026-09-12T16:50:42Z	controller: ,
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: sequence
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: :
+2026-09-12T16:50:42Z	controller: 26
+2026-09-12T16:50:42Z	controller: ,
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: started_ms
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: :
+2026-09-12T16:50:42Z	controller: 1994.168666
+2026-09-12T16:50:42Z	controller: }
+2026-09-12T16:50:42Z	controller: 
+2026-09-12T16:50:42Z	controller: {"admission_attempt_ms":2006.357625,"at_ms":2006.3615000000002,
+2026-09-12T16:50:42Z	controller: "bytes":189,"class":"
+2026-09-12T16:50:42Z	controller: required","compile_revision":
+2026-09-12T16:50:42Z	controller: null,"outcome":
+2026-09-12T16:50:42Z	controller: "dequeued","phase"
+2026-09-12T16:50:42Z	controller: :"output_frame","
+2026-09-12T16:50:42Z	controller: sequence":40}
+2026-09-12T16:50:42Z	controller: {"admission_attempt_ms"
+2026-09-12T16:50:42Z	controller: :2006.357625,"at_ms"
+2026-09-12T16:50:42Z	controller: :2006.3966249999999,"bytes"
+2026-09-12T16:50:42Z	controller: :189,"class"
+2026-09-12T16:50:42Z	controller: :"required","
+2026-09-12T16:50:42Z	controller: compile_revision":null,"
+2026-09-12T16:50:42Z	controller: outcome":"write_started"
+2026-09-12T16:50:42Z	controller: ,"phase":"output_frame",
+2026-09-12T16:50:42Z	controller: "sequence":40
+2026-09-12T16:50:42Z	controller: }
+2026-09-12T16:50:42Z	controller: {"admission_attempt_ms":2006.357625
+2026-09-12T16:50:42Z	controller: ,"at_ms":2006.4440000000002
+2026-09-12T16:50:42Z	controller: ,"bytes":189
+2026-09-12T16:50:42Z	controller: ,"class":"
+2026-09-12T16:50:42Z	controller: required","compile_revision"
+2026-09-12T16:50:42Z	controller: :null,"outcome"
+2026-09-12T16:50:42Z	controller: :"write_finished","
+2026-09-12T16:50:42Z	controller: phase":"output_frame"
+2026-09-12T16:50:42Z	controller: ,"sequence":40
+2026-09-12T16:50:42Z	controller: }
+2026-09-12T16:50:42Z	controller: {
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: admission_attempt_ms
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: :
+2026-09-12T16:50:42Z	controller: 2006.357625
+2026-09-12T16:50:42Z	controller: ,
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: at_ms
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: :
+2026-09-12T16:50:42Z	controller: 2006.4910409999998
+2026-09-12T16:50:42Z	controller: ,
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: bytes
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: :
+2026-09-12T16:50:42Z	controller: 189
+2026-09-12T16:50:42Z	controller: ,
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: class
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: :
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: required
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: ,
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: compile_revision
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: :
+2026-09-12T16:50:42Z	controller: null
+2026-09-12T16:50:42Z	controller: ,
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: outcome
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: :
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: admitted
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: ,
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: phase
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: :
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: output_frame
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: ,
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: sequence
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: :
+2026-09-12T16:50:42Z	controller: 40
+2026-09-12T16:50:42Z	controller: }
+2026-09-12T16:50:42Z	controller: 
+2026-09-12T16:50:42Z	controller: {
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: handling_ms
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: :
+2026-09-12T16:50:42Z	controller: 0.005125
+2026-09-12T16:50:42Z	controller: ,
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: phase
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: :
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: request
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: ,
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: response_serialization_ms
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: :
+2026-09-12T16:50:42Z	controller: 0.5581670000000001
+2026-09-12T16:50:42Z	controller: ,
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: sequence
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: :
+2026-09-12T16:50:42Z	controller: 27
+2026-09-12T16:50:42Z	controller: ,
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: started_ms
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: :
+2026-09-12T16:50:42Z	controller: 2006.3511250000001
+2026-09-12T16:50:42Z	controller: }
+2026-09-12T16:50:42Z	controller: 
+2026-09-12T16:50:42Z	controller: {"admission_attempt_ms":2007.17175,"at_ms":
+2026-09-12T16:50:42Z	controller: 2007.174875,"bytes":189,"
+2026-09-12T16:50:42Z	controller: class":"required"
+2026-09-12T16:50:42Z	controller: ,"compile_revision":null
+2026-09-12T16:50:42Z	controller: ,"outcome":"
+2026-09-12T16:50:42Z	controller: dequeued","phase"
+2026-09-12T16:50:42Z	controller: :"output_frame","
+2026-09-12T16:50:42Z	controller: sequence":41}
+2026-09-12T16:50:42Z	controller: {"admission_attempt_ms"
+2026-09-12T16:50:42Z	controller: :2007.17175,"at_ms"
+2026-09-12T16:50:42Z	controller: :2007.2096250000002,"bytes"
+2026-09-12T16:50:42Z	controller: :189,"class"
+2026-09-12T16:50:42Z	controller: :"required","
+2026-09-12T16:50:42Z	controller: compile_revision":null,"
+2026-09-12T16:50:42Z	controller: outcome":"write_started"
+2026-09-12T16:50:42Z	controller: ,"phase":"
+2026-09-12T16:50:42Z	controller: output_frame","sequence"
+2026-09-12T16:50:42Z	controller: :41}
+2026-09-12T16:50:42Z	controller: {"admission_attempt_ms":2007.17175
+2026-09-12T16:50:42Z	controller: ,"at_ms":2007.24575
+2026-09-12T16:50:42Z	controller: ,"bytes":189
+2026-09-12T16:50:42Z	controller: ,"class":"
+2026-09-12T16:50:42Z	controller: required","compile_revision"
+2026-09-12T16:50:42Z	controller: :null,"outcome"
+2026-09-12T16:50:42Z	controller: :"write_finished",
+2026-09-12T16:50:42Z	controller: "phase":"output_frame","
+2026-09-12T16:50:42Z	controller: sequence":41}
+2026-09-12T16:50:42Z	controller: 
+2026-09-12T16:50:42Z	controller: {
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: admission_attempt_ms
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: :
+2026-09-12T16:50:42Z	controller: 2007.17175
+2026-09-12T16:50:42Z	controller: ,
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: at_ms
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: :
+2026-09-12T16:50:42Z	controller: 2007.302416
+2026-09-12T16:50:42Z	controller: ,
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: bytes
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: :
+2026-09-12T16:50:42Z	controller: 189
+2026-09-12T16:50:42Z	controller: ,
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: class
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: :
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: required
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: ,
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: compile_revision
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: :
+2026-09-12T16:50:42Z	controller: null
+2026-09-12T16:50:42Z	controller: ,
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: outcome
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: :
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: admitted
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: ,
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: phase
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: :
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: output_frame
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: ,
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: sequence
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: :
+2026-09-12T16:50:42Z	controller: 41
+2026-09-12T16:50:42Z	controller: }
+2026-09-12T16:50:42Z	controller: 
+2026-09-12T16:50:42Z	controller: {
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: handling_ms
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: :
+2026-09-12T16:50:42Z	controller: 0.003709
+2026-09-12T16:50:42Z	controller: ,
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: phase
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: :
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: request
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: ,
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: response_serialization_ms
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: :
+2026-09-12T16:50:42Z	controller: 0.534583
+2026-09-12T16:50:42Z	controller: ,
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: sequence
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: :
+2026-09-12T16:50:42Z	controller: 28
+2026-09-12T16:50:42Z	controller: ,
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: started_ms
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: :
+2026-09-12T16:50:42Z	controller: 2007.166875
+2026-09-12T16:50:42Z	controller: }
+2026-09-12T16:50:42Z	controller: 
+2026-09-12T16:50:42Z	controller: {"admission_attempt_ms":2007.9477080000001,"at_ms"
+2026-09-12T16:50:42Z	controller: :2007.9503750000001,
+2026-09-12T16:50:42Z	controller: "bytes":189,
+2026-09-12T16:50:42Z	controller: "class":"required
+2026-09-12T16:50:42Z	controller: ","compile_revision":
+2026-09-12T16:50:42Z	controller: null,"outcome":
+2026-09-12T16:50:42Z	controller: "dequeued","phase
+2026-09-12T16:50:42Z	controller: ":"output_frame",
+2026-09-12T16:50:42Z	controller: "sequence":42}
+2026-09-12T16:50:42Z	controller: {"admission_attempt_ms
+2026-09-12T16:50:42Z	controller: ":2007.9477080000001,"at_ms
+2026-09-12T16:50:42Z	controller: ":2007.990416,"bytes
+2026-09-12T16:50:42Z	controller: ":189,"class
+2026-09-12T16:50:42Z	controller: ":"required",
+2026-09-12T16:50:42Z	controller: "compile_revision":null,
+2026-09-12T16:50:42Z	controller: "outcome":"write_started
+2026-09-12T16:50:42Z	controller: ","phase":
+2026-09-12T16:50:42Z	controller: "output_frame","sequence
+2026-09-12T16:50:42Z	controller: ":42}
+{"admission_attempt_ms":2007.9477080000001,"at_ms"
+2026-09-12T16:50:42Z	controller: :2008.0255829999999,"bytes":189
+2026-09-12T16:50:42Z	controller: ,"class":"required","compile_revision":null,"
+2026-09-12T16:50:42Z	controller: outcome":"write_finished",
+2026-09-12T16:50:42Z	controller: "phase":"output_frame
+2026-09-12T16:50:42Z	controller: ","sequence":
+2026-09-12T16:50:42Z	controller: 42}
+2026-09-12T16:50:42Z	controller: {
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: admission_attempt_ms
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: :
+2026-09-12T16:50:42Z	controller: 2007.9477080000001
+2026-09-12T16:50:42Z	controller: ,
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: at_ms
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: :
+2026-09-12T16:50:42Z	controller: 2008.0782909999998
+2026-09-12T16:50:42Z	controller: ,
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: bytes
+2026-09-12T16:50:42Z	controller: ":189,"class":"required","compile_revision":null,"outcome":"admitted","phase":"output_frame","sequence":42}
+{"handling_ms":0.00175,"phase":"request","response_serialization_ms":0.265334,"sequence
+2026-09-12T16:50:42Z	controller: ":29,"started_ms":2007.945208}
+2026-09-12T16:50:42Z	keystroke: revision 144 at 108079802963666 (delegate 108079803684041, revision 108079803764125)
+2026-09-12T16:50:42Z	keystroke: revision 145 at 108079811426166 (delegate 108079812055416, revision 108079812138708)
+2026-09-12T16:50:42Z	keystroke: revision 146 at 108079819467458 (delegate 108079820152041, revision 108079820230708)
+2026-09-12T16:50:42Z	keystroke: revision 147 at 108079827467541 (delegate 108079828118208, revision 108079828197625)
+2026-09-12T16:50:42Z	keystroke: revision 148 at 108079835366416 (delegate 108079836039208, revision 108079836118750)
+2026-09-12T16:50:42Z	keystroke: revision 149 at 108079843613000 (delegate 108079844309791, revision 108079844389500)
+2026-09-12T16:50:42Z	display-candidate: admitted preview-8 (generation 8, 7834539 B)
+2026-09-12T16:50:42Z	display-candidate: received preview-8 generation 8 (7834539 B) at 108079846721166
+2026-09-12T16:50:42Z	display-candidate: validating preview-8 as revision 120 ticket 4 at 108079851802833
+2026-09-12T16:50:42Z	durable: r5 for revision 140 at 108079851826333
+2026-09-12T16:50:42Z	completion metadata refused: helper error for pc-27: source versions changed; refresh snapshot before querying
+2026-09-12T16:50:42Z	controller error pc-28: source versions changed; refresh snapshot before querying
+2026-09-12T16:50:42Z	controller error pc-29: source versions changed; refresh snapshot before querying
+2026-09-12T16:50:42Z	preview-v2: blit page 1 of preview-5#r2#2 at 108079871537833
+2026-09-12T16:50:42Z	preview-v2: blit page 2 of preview-5#r2#2 at 108079871649708
+2026-09-12T16:50:42Z	keystroke: revision 150 at 108079880909250 (delegate 108079881637833, revision 108079881717833)
+2026-09-12T16:50:42Z	keystroke: revision 151 at 108079889119958 (delegate 108079889634166, revision 108079889713583)
+2026-09-12T16:50:42Z	controller: {"admission_attempt_ms":2102.908375,"at_ms":2102.9204579999996,"bytes":237,"class":"required","compile_revision":null,"outcome":"dequeued","phase":"output_frame","sequence":43}
+{"admission_attempt_ms":2102.908375,"at_ms":2102.978875,"bytes":237,"class":"required","compile_revision":null,"outcome":"write_started","phase":"output_frame","sequence":43}
+{"admission_attempt_ms":2102.908375,"at_ms":2103.026208,"bytes":237,"class":"required","compile_revision":null,"outcome":"write_finished","phase":"output_frame","sequence":43}
+2026-09-12T16:50:42Z	controller: {
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: admission_attempt_ms
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: :
+2026-09-12T16:50:42Z	controller: 2102.908375
+2026-09-12T16:50:42Z	controller: ,
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: at_ms
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: :
+2026-09-12T16:50:42Z	controller: 2103.213083
+2026-09-12T16:50:42Z	controller: ,
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: bytes
+2026-09-12T16:50:42Z	keystroke: revision 152 at 108079893989000 (delegate 108079894590041, revision 108079894664958)
+2026-09-12T16:50:42Z	controller: ":237,"class":"required","compile_revision":null,"outcome":"admitted","phase":"output_frame","sequence":43}
+{"handling_ms":0.026541,"phase":"request","response_serialization_ms":1.799458,"sequence":30,"started_ms":2102.876}
+2026-09-12T16:50:42Z	keystroke: revision 153 at 108079904217875 (delegate 108079904934000, revision 108079905014375)
+2026-09-12T16:50:42Z	display-candidate: validated preview-8 in 46.549083 ms, prerastered 8 page(s) in 13.171667 ms, delivered 2.222708 ms later
+2026-09-12T16:50:42Z	display-candidate: published preview-8 revision 120 at 108079913948500
+2026-09-12T16:50:42Z	display-candidate: painted preview-8 as revision 120 (generation 8, durable ["main.tex": 4])
+2026-09-12T16:50:42Z	preview-v2: blit page 1 of preview-8#r120#4 at 108079936244958
+2026-09-12T16:50:42Z	preview-v2: blit page 2 of preview-8#r120#4 at 108079936350291
+2026-09-12T16:50:42Z	paint: revision 120 needed 1 extra turn(s); drew 2/8 pages
+2026-09-12T16:50:42Z	paint: revision 120 at 108079949211291 (covers 118 keystrokes, redrawn true)
+2026-09-12T16:50:42Z	controller: {"duration_ms":1.6112920000000002,"events":1,"phase":"compiler_poll"}
+2026-09-12T16:50:42Z	controller: {"admission_attempt_ms":2155.865708,"at_ms":2155.876416,"bytes":898937,"class":"required","compile_revision":null,"outcome":"admitted","phase":"output_frame","sequence":44}
+{"admission_attempt_ms":2155.865708,"at_ms":2156.21725,"bytes":898937,"class":"required","compile_revision":null,"outcome":"dequeued","phase":"output_frame","sequence":
+2026-09-12T16:50:42Z	controller: 44}
+{"admission_attempt_ms":2155.865708,"at_ms":2156.269333,"bytes":898937,"class"
+2026-09-12T16:50:42Z	controller: :"required","compile_revision":null,"
+2026-09-12T16:50:42Z	controller: outcome":"write_started","phase"
+2026-09-12T16:50:42Z	controller: :"output_frame","sequence":
+2026-09-12T16:50:42Z	controller: 44}
+2026-09-12T16:50:42Z	controller: {"admission_attempt_ms":2155.865708,"at_ms":2158.12025,"bytes":898937,"class":"required","compile_revision":null,"outcome
+2026-09-12T16:50:42Z	controller: ":"write_finished","phase":"output_frame","sequence":44}
+2026-09-12T16:50:42Z	keystroke: revision 154 at 108079949297750 (delegate 108079950055541, revision 108079950132625)
+2026-09-12T16:50:42Z	keystroke: revision 155 at 108079954674208 (delegate 108079955139750, revision 108079955216083)
+2026-09-12T16:50:42Z	keystroke: revision 156 at 108079959261125 (delegate 108079959871041, revision 108079959947833)
+2026-09-12T16:50:42Z	controller release: preview preview-9 is the admitted compile (generation 9, durable r5) (in flight revision 140)
+2026-09-12T16:50:42Z	compile: applied revision 140 at 108079965612541
+2026-09-12T16:50:42Z	status: revision 140: ok, 0 diagnostics in 159 ms (durable r5)
+2026-09-12T16:50:42Z	keystroke: revision 157 at 108079985904791 (delegate 108079986589666, revision 108079986670000)
+2026-09-12T16:50:42Z	controller: {
+2026-09-12T16:50:42Z	controller: "phase":"display_transport",
+2026-09-12T16:50:42Z	controller: "profile":{"decode_queue_wait_ms":0.010125,
+2026-09-12T16:50:42Z	controller: "
+2026-09-12T16:50:42Z	controller: display_epoch
+2026-09-12T16:50:42Z	controller: ":1,"parse_ms":37.537915999999996,"project_id":"demo","reader_delivery_wait_ms":0.7060000000000001,"request_id":"preview-9","response_bytes":7841286,"revision":9,"
+2026-09-12T16:50:42Z	controller: source_binding_ms":0.23975}}
+2026-09-12T16:50:42Z	keystroke: revision 158 at 108079993733750 (delegate 108079994411333, revision 108079994491000)
+2026-09-12T16:50:42Z	keystroke: revision 159 at 108080002001083 (delegate 108080002683833, revision 108080002763500)
+2026-09-12T16:50:42Z	keystroke: revision 160 at 108080010768125 (delegate 108080011480166, revision 108080011560666)
+2026-09-12T16:50:42Z	controller: {"admission_attempt_ms":2221.470666,"at_ms":2221.47375,"bytes":7841618,"class":"optional","compile_revision":null,"outcome":"admitted","phase":"output_frame","sequence":45}
+{"kind"
+2026-09-12T16:50:42Z	controller: :"display_candidate","outcome":"admitted
+2026-09-12T16:50:42Z	controller: ","phase":"optional_output","serialization_ms":17.2685}
+2026-09-12T16:50:42Z	controller: {"admission_attempt_ms":2221.470666,"at_ms":2222.233291,"bytes":7841618,"class":"optional","compile_revision
+2026-09-12T16:50:42Z	controller: ":null,"outcome":"dequeued","phase":"output_frame","sequence":45}
+{"admission_attempt_ms":2221.470666,"at_ms":
+2026-09-12T16:50:42Z	controller: 2222.309166,"bytes"
+2026-09-12T16:50:42Z	controller: :7841618,"class"
+2026-09-12T16:50:42Z	controller: :"optional"
+2026-09-12T16:50:42Z	controller: ,"compile_revision"
+2026-09-12T16:50:42Z	controller: :null,"
+2026-09-12T16:50:42Z	controller: outcome":"
+2026-09-12T16:50:42Z	controller: write_started","phase":"output_frame
+2026-09-12T16:50:42Z	controller: ","sequence":45}
+2026-09-12T16:50:42Z	keystroke: revision 161 at 108080019486375 (delegate 108080020174458, revision 108080020255083)
+2026-09-12T16:50:43Z	controller: {"admission_attempt_ms":2221.470666,"at_ms":2238.625,"bytes":7841618,"class":"optional","compile_revision":null,"outcome":"write_finished","phase":"output_frame","sequence":45}
+2026-09-12T16:50:43Z	keystroke: revision 162 at 108080029917375 (delegate 108080030612333, revision 108080030691458)
+2026-09-12T16:50:43Z	keystroke: revision 163 at 108080035059083 (delegate 108080035616166, revision 108080035690250)
+2026-09-12T16:50:43Z	keystroke: revision 164 at 108080043388083 (delegate 108080044076041, revision 108080044154458)
+2026-09-12T16:50:43Z	compile: sending revision 164 at 108080051344833
+2026-09-12T16:50:43Z	keystroke: revision 165 at 108080052091625 (delegate 108080052757458, revision 108080052833708)
+2026-09-12T16:50:43Z	keystroke: revision 166 at 108080059989041 (delegate 108080060591375, revision 108080060676791)
+2026-09-12T16:50:43Z	keystroke: revision 167 at 108080070238958 (delegate 108080070926250, revision 108080071006708)
+2026-09-12T16:50:43Z	keystroke: revision 168 at 108080078516083 (delegate 108080079191291, revision 108080079268583)
+2026-09-12T16:50:43Z	controller: {"admission_attempt_ms":2291.4310410000003,"at_ms":2291.43475,"bytes":24056,"class":"required","compile_revision":null,"outcome":"admitted","phase":"output_frame","sequence":46}
+{"handling_ms":29.018167000000002,"phase":"request","response_serialization_ms":0.060666,"sequence":31,"started_ms":2262.3920000000003}
+{"admission_attempt_ms":2291.4964160000004,"at_ms":2291.4970829999997,"bytes":189,"class":"required","compile_revision":null,"outcome":"admitted","phase":"output_frame","sequence":47}
+{"handling_ms":0.004792,"phase":"request","response_serialization_ms":0.028125,"sequence":32,"started_ms":2291.490666}
+{"admission_attempt_ms":2291.541875,"at_ms":2291.5422909999998,"bytes":189,"class":"required","compile_revision":null,"outcome":"admitted","phase":"output_frame","sequence":48}
+{"handling_ms":0.00125,"phase":"request","response_serialization_ms":0.027083000000000003,"sequence":33,"started_ms":2291.540125}
+{"admission_attempt_ms":2291.5860829999997,"at_ms":2291.5864579999998,"bytes":189,"class":"required","compile_revision":null,"outcome":"admitted","phase":"output_frame","sequence":49}
+{"handling_ms":0.0011250000000000001,"phase":"request","response_serialization_ms":0.027208,"sequence":34,"started_ms":2291.5845830000003}
+{"admission_attempt_ms":2291.4310410000003,"at_ms":2291.7764159999997,"bytes":24056,"class":"required","compile_revision":null,"outcome":"dequeued","phase":"output_frame","sequence":46}
+{"admission_attempt_ms":2291.4310410000003,"at_ms":2291.826458,"bytes":24056,"class":"required","compile_revision":null,"outcome":"write_started","phase":"output_frame","sequence":46}
+{"admission_attempt_ms":2291.4310410000003,"at_ms":2291.879083,"bytes":24056,"class":"required","compile_revision":null,"outcome":"write_finished","phase":"output_frame","sequence":46}
+{"admission_attempt_ms":2291.4964160000004,"at_ms":2291.924041,"bytes":189,"class":"required","compile_revision":null,"outcome":"dequeued","phase":"output_frame"
+2026-09-12T16:50:43Z	keystroke: revision 169 at 108080083788458 (delegate 108080084425541, revision 108080084502375)
+2026-09-12T16:50:43Z	controller: ,"sequence":47}
+{"admission_attempt_ms":2291.4964160000004,"at_ms":2293.4277079999997,"bytes":189,"class":"required","compile_revision":null,"outcome":"write_started","phase":"output_frame","sequence":47}
+{"admission_attempt_ms":2291.4964160000004,"at_ms":2293.476541,"bytes":189,"class":"required","compile_revision":null,"outcome":"write_finished","phase":"output_frame","sequence":47}
+{"admission_attempt_ms":2291.541875,"at_ms":2293.5222909999998,"bytes":189,"class":"required","compile_revision":null,"outcome":"dequeued","phase":"output_frame","sequence":48}
+{"admission_attempt_ms":2291.541875,"at_ms":2293.583833,"bytes":189,"class":"required","compile_revision":null,"outcome":"write_started","phase":"output_frame","sequence":48}
+{"admission_attempt_ms":2291.541875,"at_ms":2293.629958,"bytes":189,"class":"required","compile_revision":null,"outcome":"write_finished","phase":"output_frame","sequence":48}
+{"admission_attempt_ms":2291.5860829999997,"at_ms":2293.675583,"bytes":189,"class":"required","compile_revision":null,"outcome":"dequeued","phase":"output_frame","sequence":49}
+{"admission_attempt_ms":2291.5860829999997,"at_ms":2294.920666,"bytes":189,"class":"required","compile_revision":null,"outcome":"write_started","phase":"output_frame","sequence":49}
+{"admission_attempt_ms":2291.5860829999997,"at_ms":2294.949458,"bytes":189,"class":"required","compile_revision":null,"outcome":"write_finished","phase":"output_frame","sequence":49}
+2026-09-12T16:50:43Z	keystroke: revision 170 at 108080091700208 (delegate 108080092404875, revision 108080092483583)
+2026-09-12T16:50:43Z	keystroke: revision 171 at 108080101813458 (delegate 108080102593041, revision 108080102673375)
+2026-09-12T16:50:43Z	keystroke: revision 172 at 108080110493750 (delegate 108080111293333, revision 108080111373500)
+2026-09-12T16:50:43Z	keystroke: revision 173 at 108080118703416 (delegate 108080119461541, revision 108080119542875)
+2026-09-12T16:50:43Z	display-candidate: admitted preview-9 (generation 9, 7841617 B)
+2026-09-12T16:50:43Z	display-candidate: received preview-9 generation 9 (7841617 B) at 108080120144958
+2026-09-12T16:50:43Z	display-candidate: validating preview-9 as revision 140 ticket 5 at 108080127219875
+2026-09-12T16:50:43Z	durable: r6 for revision 164 at 108080127243041
+2026-09-12T16:50:43Z	completion metadata refused: helper error for pc-32: source versions changed; refresh snapshot before querying
+2026-09-12T16:50:43Z	controller error pc-33: source versions changed; refresh snapshot before querying
+2026-09-12T16:50:43Z	controller error pc-34: source versions changed; refresh snapshot before querying
+2026-09-12T16:50:43Z	preview-v2: blit page 1 of preview-8#r120#4 at 108080146373666
+2026-09-12T16:50:43Z	preview-v2: blit page 2 of preview-8#r120#4 at 108080146477416
+2026-09-12T16:50:43Z	keystroke: revision 174 at 108080156040958 (delegate 108080156803500, revision 108080156885833)
+2026-09-12T16:50:43Z	keystroke: revision 175 at 108080164741833 (delegate 108080165273583, revision 108080165355583)
+2026-09-12T16:50:43Z	keystroke: revision 176 at 108080169596083 (delegate 108080170226625, revision 108080170301375)
+2026-09-12T16:50:43Z	controller: {"admission_attempt_ms":2381.6585,"at_ms":2381.674125,"bytes":237,"class":"required","compile_revision"
+2026-09-12T16:50:43Z	controller: :null,"outcome":"dequeued","phase":"output_frame","sequence":50}
+{"admission_attempt_ms":2381.6585,"at_ms":2381.85675,"bytes":237,"class":"required","compile_revision":null,"outcome":"write_started","phase":"output_frame","sequence":50}
+{"admission_attempt_ms":2381.6585,"at_ms":2381.963291,"bytes":237,"class":"required","compile_revision":null,"outcome":"write_finished","phase":"output_frame","sequence":50}
+2026-09-12T16:50:43Z	controller: {"admission_attempt_ms":2381.6585,"at_ms":2382.477416,"bytes":237,"class":"required","compile_revision":null,"outcome":"admitted","phase":"output_frame","sequence":50}
+{"handling_ms":0.042333,"phase":"request","response_serialization_ms":0.865583,"sequence":35,"started_ms":2381.608583}
+2026-09-12T16:50:43Z	keystroke: revision 177 at 108080181265875 (delegate 108080182041416, revision 108080182123333)
+2026-09-12T16:50:43Z	display-candidate: validated preview-9 in 47.086666 ms, prerastered 8 page(s) in 12.494417 ms, delivered 3.795333 ms later
+2026-09-12T16:50:43Z	display-candidate: published preview-9 revision 140 at 108080191240958
+2026-09-12T16:50:43Z	display-candidate: painted preview-9 as revision 140 (generation 9, durable ["main.tex": 5])
+2026-09-12T16:50:43Z	keystroke: revision 178 at 108080213425291 (delegate 108080214182916, revision 108080214265208)
+2026-09-12T16:50:43Z	paint: revision 140 needed 2 extra turn(s); drew 0/8 pages
+2026-09-12T16:50:43Z	paint: revision 140 at 108080214632166 (covers 20 keystrokes, redrawn false)
+2026-09-12T16:50:43Z	keystroke: revision 179 at 108080218986958 (delegate 108080219650708, revision 108080219729375)
+2026-09-12T16:50:43Z	preview-v2: blit page 1 of preview-9#r140#5 at 108080226978583
+2026-09-12T16:50:43Z	preview-v2: blit page 2 of preview-9#r140#5 at 108080227067250
+2026-09-12T16:50:43Z	keystroke: revision 180 at 108080237858208 (delegate 108080238580333, revision 108080238661041)
+2026-09-12T16:50:43Z	keystroke: revision 181 at 108080246007000 (delegate 108080246709083, revision 108080246790750)
+2026-09-12T16:50:43Z	controller: {"duration_ms":3.7722089999999997,"events":1,"phase":"compiler_poll"}
+2026-09-12T16:50:43Z	controller: {"admission_attempt_ms":2461.2387909999998,"at_ms":2461.244458,"bytes":899636,"class":"required","compile_revision":null,"outcome":"admitted","phase":"output_frame","sequence":51}
+2026-09-12T16:50:43Z	controller: {"admission_attempt_ms":2461.2387909999998,"at_ms":2461.30575,"bytes":899636,"class":"required","compile_revision":null,"outcome":"dequeued","phase":"output_frame","sequence":51}
+{"admission_attempt_ms":2461.2387909999998,"at_ms":2461.340083,"bytes":899636,"class":"required","compile_revision":null,"outcome":"write_started","phase":"output_frame","sequence":51}
+2026-09-12T16:50:43Z	controller: {"admission_attempt_ms":2461.2387909999998,"at_ms":2464.096833,"bytes":899636,"class":"required","compile_revision":null,"outcome":"write_finished","phase":"output_frame","sequence":51}
+2026-09-12T16:50:43Z	keystroke: revision 182 at 108080254161250 (delegate 108080254883583, revision 108080254964708)
+2026-09-12T16:50:43Z	keystroke: revision 183 at 108080262737166 (delegate 108080263455750, revision 108080263534750)
+2026-09-12T16:50:43Z	controller release: preview preview-10 is the admitted compile (generation 10, durable r6) (in flight revision 164)
+2026-09-12T16:50:43Z	compile: applied revision 164 at 108080271875625
+2026-09-12T16:50:43Z	status: revision 164: ok, 0 diagnostics in 197 ms (durable r6)
+2026-09-12T16:50:43Z	keystroke: revision 184 at 108080292998333 (delegate 108080293795375, revision 108080293882833)
+2026-09-12T16:50:43Z	keystroke: revision 185 at 108080303029958 (delegate 108080303832875, revision 108080303916500)
+2026-09-12T16:50:43Z	keystroke: revision 186 at 108080308628916 (delegate 108080309291125, revision 108080309369125)
+2026-09-12T16:50:43Z	keystroke: revision 187 at 108080317106750 (delegate 108080317878916, revision 108080317961833)
+2026-09-12T16:50:43Z	keystroke: revision 188 at 108080325759000 (delegate 108080326526375, revision 108080326605583)
+2026-09-12T16:50:43Z	keystroke: revision 189 at 108080334126083 (delegate 108080334928833, revision 108080335026958)
+2026-09-12T16:50:43Z	keystroke: revision 190 at 108080342991000 (delegate 108080343719750, revision 108080343801541)
+2026-09-12T16:50:43Z	compile: sending revision 190 at 108080351178083
+2026-09-12T16:50:43Z	keystroke: revision 191 at 108080351855291 (delegate 108080352546250, revision 108080352624291)
+2026-09-12T16:50:43Z	keystroke: revision 192 at 108080361840166 (delegate 108080362478125, revision 108080362563791)
+2026-09-12T16:50:43Z	keystroke: revision 193 at 108080369914333 (delegate 108080370554791, revision 108080370639625)
+2026-09-12T16:50:43Z	controller: {"admission_attempt_ms":2585.986625,"at_ms":2585.9926250000003,"bytes":24082,"class":"required","compile_revision":null,"outcome":"admitted","phase":"output_frame","sequence":52}
+{"handling_ms":22.681209,"phase":"request","response_serialization_ms":0.062666,"sequence":36,"started_ms":2563.284958}
+{"admission_attempt_ms":2585.986625,"at_ms":2587.3174580000004,"bytes":24082,"class":"required","compile_revision":null,"outcome":"dequeued","phase":"output_frame","sequence":52}
+{"admission_attempt_ms":2585.986625,"at_ms":2587.374666,"bytes":24082,"class":"required","compile_revision":null,"outcome":"write_started","phase":"output_frame","sequence":52}
+{"admission_attempt_ms":2585.986625,"at_ms":2587.559208,"bytes":24082,"class":"required","compile_revision":null,"outcome":"write_finished","phase":"output_frame","sequence":52}
+2026-09-12T16:50:43Z	durable: r7 for revision 190 at 108080378418750
+2026-09-12T16:50:43Z	keystroke: revision 194 at 108080378483250 (delegate 108080379067833, revision 108080379149750)
+2026-09-12T16:50:43Z	keystroke: revision 195 at 108080392132625 (delegate 108080392772125, revision 108080392856250)
+2026-09-12T16:50:43Z	controller: {"duration_ms":18.608125,"events":0,"phase":"compiler_poll"}
+{"admission_attempt_ms":2604.693125,"at_ms":2604.6964159999998,"bytes":189,"class":"required","compile_revision":null,"outcome":"admitted","phase":"output_frame","sequence":53}
+{"handling_ms":0.008959,"phase":"request","response_serialization_ms":0.03375,"sequence":37,"started_ms":2604.68075}
+{"admission_attempt_ms":2604.742666,"at_ms":2604.74325,"bytes":189,"class":"required","compile_revision":null,"outcome":"admitted","phase":"output_frame","sequence":54}
+{"handling_ms":0.0015409999999999998,"phase":"request","response_serialization_ms":0.027375,"sequence":38,"started_ms":2604.740458}
+{"admission_attempt_ms":2604.787291,"at_ms":2604.787791,"bytes":189,"class":"required","compile_revision":null,"outcome":"admitted","phase":"output_frame","sequence":55}
+{"handling_ms":0.0012920000000000002,"phase":"request","response_serialization_ms":0.027125,"sequence":39,"started_ms":2604.7855000000004}
+{"admission_attempt_ms":2604.693125,"at_ms":2605.387375,"bytes":189,"class":"required","compile_revision":null,"outcome":"dequeued","phase":"output_frame","sequence":53}
+{"admission_attempt_ms":2604.693125,"at_ms":2605.416375,"bytes":189,"class":"required","compile_revision":null,"outcome":"write_started","phase":"output_frame","sequence":53}
+{"admission_attempt_ms":2604.693125,"at_ms":2605.4455829999997,"bytes":189,"class":"required","compile_revision":null,"outcome":"write_finished","phase":"output_frame","sequence":53}
+{"admission_attempt_ms":2604.742666,"at_ms":2605.471916,"bytes":189,"class":"required","compile_revision":null,"outcome":"dequeued","phase":"output_frame","sequence":54}
+{"admission_attempt_ms":2604.742666,"at_ms":2605.498,"bytes":189,"class":"required","compile_revision":null,"outcome":"write_started","phase":"output_frame","sequence":54}
+{"admission_attempt_ms":2604.742666,"at_ms":2605.524666,"bytes":189,"class":"required","compile_revision":null,"outcome":"write_finished","phase":"output_frame","sequence":54}
+{"admission_attempt_ms":2604.787291,"at_ms":2605.5509159999997,"bytes":189,"class":"required","compile_revision":null,"outcome":"dequeued","phase":"output_frame","sequence":55}
+{"admission_attempt_ms":2604.787291,"at_ms":2605.5772500000003,"bytes":189,"class":"required","compile_revision":null,"outcome":"write_started","phase":"output_frame","sequence":55}
+{"admission_attempt_ms":2604.787291,"at_ms":2605.6039159999996,"bytes":189,"class":"required","compile_revision":null,"outcome":"write_finished","phase":"output_frame","sequence":55}
+2026-09-12T16:50:43Z	completion metadata refused: helper error for pc-37: source versions changed; refresh snapshot before querying
+2026-09-12T16:50:43Z	controller error pc-38: source versions changed; refresh snapshot before querying
+2026-09-12T16:50:43Z	controller error pc-39: source versions changed; refresh snapshot before querying
+2026-09-12T16:50:43Z	keystroke: revision 196 at 108080400593750 (delegate 108080401328458, revision 108080401408666)
+2026-09-12T16:50:43Z	controller: {"admission_attempt_ms":2611.510875,"at_ms":2611.516333,"bytes":237,
+2026-09-12T16:50:43Z	controller: "class":"required","compile_revision":null,"outcome":"admitted","phase":"output_frame","sequence":56}
+{"handling_ms":0.045625,"phase":"request","response_serialization_ms":0.079,"sequence":40,"started_ms":2611.455}
+2026-09-12T16:50:43Z	controller: {"admission_attempt_ms":2611.510875,"at_ms":2611.524708,"bytes":237,"class":"required","compile_revision":null,"outcome
+2026-09-12T16:50:43Z	controller: ":"dequeued","phase":"output_frame","sequence":56
+2026-09-12T16:50:43Z	controller: }
+{
+2026-09-12T16:50:43Z	controller: "admission_attempt_ms":2611.510875,"at_ms
+2026-09-12T16:50:43Z	controller: ":2611.645583,"bytes"
+2026-09-12T16:50:43Z	controller: :237,"class":
+2026-09-12T16:50:43Z	controller: "required","compile_revision
+2026-09-12T16:50:43Z	controller: ":null,"outcome
+2026-09-12T16:50:43Z	controller: ":"write_started","phase":"output_frame","sequence":56}
+{"admission_attempt_ms":2611.510875,"at_ms":2611.690666,"bytes":237,"class":"required","compile_revision":null,"outcome":"write_finished","phase":"output_frame","sequence":56}
+2026-09-12T16:50:43Z	keystroke: revision 197 at 108080409620458 (delegate 108080410378625, revision 108080410458833)
+2026-09-12T16:50:43Z	keystroke: revision 198 at 108080418447875 (delegate 108080419235000, revision 108080419319375)
+2026-09-12T16:50:43Z	keystroke: revision 199 at 108080427553666 (delegate 108080428335666, revision 108080428419333)
+2026-09-12T16:50:43Z	keystroke: revision 200 at 108080436847916 (delegate 108080437642333, revision 108080437725625)
+2026-09-12T16:50:43Z	keystroke: revision 201 at 108080442706208 (delegate 108080443417541, revision 108080443496500)
+2026-09-12T16:50:43Z	keystroke: revision 202 at 108080451417041 (delegate 108080452238375, revision 108080452318083)
+2026-09-12T16:50:43Z	controller: {"duration_ms":1.016209,"events":1,"phase":"compiler_poll"}
+2026-09-12T16:50:43Z	controller: {"admission_attempt_ms":2694.316625,"at_ms":2694.3235,"bytes":900787,"class":"required","compile_revision":null,"outcome":"admitted","phase":"output_frame","sequence":57}
+{"admission_attempt_ms":2694.316625,"at_ms":2694.3681659999997,"bytes":900787,"class":"required","compile_revision":null,"outcome":"dequeued","phase":"output_frame","sequence":57}
+{"admission_attempt_ms":2694.316625,"at_ms":2694.425583,"bytes":900787,"class":"required","compile_revision":null,"outcome":"write_started","phase":"output_frame","sequence":57}
+2026-09-12T16:50:43Z	controller: {"admission_attempt_ms":2694.316625,"at_ms":2695.553625,"bytes":900787,"class":"required","compile_revision":null,"outcome":"write_finished","phase":"output_frame","sequence":57}
+2026-09-12T16:50:43Z	controller release: preview preview-11 is the admitted compile (generation 11, durable r7) (in flight revision 190)
+2026-09-12T16:50:43Z	compile: applied revision 190 at 108080500210291
+2026-09-12T16:50:43Z	status: revision 190: ok, 0 diagnostics in 129 ms (durable r7)
+2026-09-12T16:50:43Z	controller: {"phase":"display_transport","profile":{"decode_queue_wait_ms":0.200125,"display_epoch":1,"parse_ms":36.364792,"project_id":"demo","reader_delivery_wait_ms":2.016292,"request_id":"preview-11","response_bytes":7858185,"revision":11,"source_binding_ms":0.257333}}
+2026-09-12T16:50:43Z	controller: {"admission_attempt_ms":2749.556875,"at_ms":2749.559916,"bytes":7858519,"class":"optional","compile_revision":null,"outcome":"admitted","phase":"output_frame","sequence":58}
+{"kind":"display_candidate","outcome":"admitted","phase":"optional_output","serialization_ms":15.636000000000001}
+{"admission_attempt_ms":2749.556875,"at_ms":2749.82925,"bytes":7858519,"class":"optional","compile_revision":null,"outcome":"dequeued","phase":"output_frame","sequence":58}
+{"admission_attempt_ms":2749.556875,"at_ms":2749.859791,"bytes":7858519,"class":"optional","compile_revision":null,"outcome":"write_started","phase":"output_frame","sequence":58}
+2026-09-12T16:50:43Z	controller: {"admission_attempt_ms":2749.556875,"at_ms":2769.857375,"bytes":7858519,"class":"optional","compile_revision":null,"outcome":"write_finished","phase":"output_frame","sequence":58}
+2026-09-12T16:50:43Z	compile: sending revision 202 at 108080580966291
+2026-09-12T16:50:43Z	controller: {"admission_attempt_ms":2805.030666,"at_ms":2805.044625,"bytes":24097,"class":"required","compile_revision":null,"outcome":"dequeued","phase":"output_frame","sequence":59}
+{"admission_attempt_ms":2805.030666,"at_ms":2805.102416,"bytes":24097,"class":"required","compile_revision":null,"outcome":"write_started","phase":"output_frame","sequence":59}
+{"admission_attempt_ms":2805.030666,"at_ms":2805.1540830000004,"bytes":24097,"class":"required","compile_revision":null,"outcome":"write_finished","phase":
+2026-09-12T16:50:43Z	controller: "output_frame","sequence":59}
+2026-09-12T16:50:43Z	controller: {"admission_attempt_ms":2805.030666,"at_ms
+2026-09-12T16:50:43Z	controller: ":2805.336375,"bytes":
+2026-09-12T16:50:43Z	controller: 24097
+2026-09-12T16:50:43Z	controller: ,"class":"required","compile_revision":null,"outcome":"admitted","phase":"output_frame","sequence":
+2026-09-12T16:50:43Z	controller: 59}
+2026-09-12T16:50:43Z	controller: {"handling_ms":12.471708,"phase":"request","response_serialization_ms":0.459541,"sequence":41,"started_ms":2792.518541}
+2026-09-12T16:50:43Z	controller: {"admission_attempt_ms":2805.4930000000004,"at_ms":2805.49925,"bytes":189,"class":"required","compile_revision":null,"outcome":"admitted","phase":"output_frame","sequence":60}
+{"handling_ms":0.008334,"phase":"request","response_serialization_ms":0.036334,"sequence":42,"started_ms":2805.482125}
+{"admission_attempt_ms":2805.5453749999997,"at_ms":2805.545875,"bytes":189,"class":"required","compile_revision":null,"outcome":"admitted","phase":"output_frame","sequence":61}
+{"handling_ms":
+2026-09-12T16:50:43Z	controller: 0.001584,"phase":"request","response_serialization_ms":0.028292,"sequence":43
+2026-09-12T16:50:43Z	controller: ,"started_ms":2805.5431249999997}
+2026-09-12T16:50:43Z	controller: {"admission_attempt_ms":2805.641666,"at_ms":2805.6426659999997,"bytes":189,"class":"required","compile_revision":null,"outcome":
+2026-09-12T16:50:43Z	controller: "admitted","phase":"output_frame","sequence":62}
+{"handling_ms":0.003792,"
+2026-09-12T16:50:43Z	controller: phase":"request","response_serialization_ms":0.040666,"sequence":44,"started_ms":2805.6365}
+2026-09-12T16:50:43Z	controller: {"admission_attempt_ms":2805.4930000000004,"at_ms":2805.574291,"bytes":189,"class":"required","compile_revision":null,"outcome":"dequeued","phase":"
+2026-09-12T16:50:43Z	controller: output_frame","sequence"
+2026-09-12T16:50:43Z	controller: :60}
+{
+2026-09-12T16:50:43Z	controller: "admission_attempt_ms":2805.4930000000004,"at_ms
+2026-09-12T16:50:43Z	controller: ":2805.768708,"bytes":189,"class
+2026-09-12T16:50:43Z	controller: ":"required","compile_revision":null,"outcome":"write_started","phase":"output_frame","sequence":60}
+2026-09-12T16:50:43Z	controller: {"admission_attempt_ms":2805.4930000000004,"at_ms":2805.799583,
+2026-09-12T16:50:43Z	controller: "bytes":189,"
+2026-09-12T16:50:43Z	controller: class":"required"
+2026-09-12T16:50:43Z	controller: ,"compile_revision":null,"outcome
+2026-09-12T16:50:43Z	controller: ":"write_finished","phase"
+2026-09-12T16:50:43Z	controller: :"output_frame","sequence
+2026-09-12T16:50:43Z	controller: ":60}
+2026-09-12T16:50:43Z	controller: {"admission_attempt_ms":
+2026-09-12T16:50:43Z	controller: 2805.5453749999997,"at_ms":2805.8325,"bytes":189,"class":"required","compile_revision":null,"outcome":"dequeued","phase":"output_frame",
+2026-09-12T16:50:43Z	controller: "sequence":61}
+{"admission_attempt_ms":
+2026-09-12T16:50:43Z	controller: 2805.5453749999997,"at_ms":2805.8610000000003
+2026-09-12T16:50:43Z	controller: ,"bytes":189,
+2026-09-12T16:50:43Z	controller: "class":"required
+2026-09-12T16:50:43Z	controller: ","compile_revision":null,"outcome":"write_started","phase":"output_frame","sequence":61}
+{"admission_attempt_ms":2805.5453749999997,"at_ms
+2026-09-12T16:50:43Z	controller: ":2805.891083,"bytes":189,"class":"required","compile_revision":null
+2026-09-12T16:50:43Z	controller: ,"outcome":"write_finished","phase":"output_frame"
+2026-09-12T16:50:43Z	controller: ,"sequence":61}
+{"admission_attempt_ms":2805.641666,"at_ms"
+2026-09-12T16:50:43Z	controller: :2805.940666,"bytes":189,"class":"required
+2026-09-12T16:50:43Z	controller: ","compile_revision":null,"outcome":"dequeued","phase":"output_frame","sequence":62}
+2026-09-12T16:50:43Z	controller: {"admission_attempt_ms":2805.641666,"at_ms":2805.979083,"bytes":189,"class":"required","compile_revision
+2026-09-12T16:50:43Z	controller: ":null,"outcome":"write_started
+2026-09-12T16:50:43Z	controller: ","phase":"output_frame",
+2026-09-12T16:50:43Z	controller: "sequence":62}
+{"admission_attempt_ms":2805.641666,"at_ms":2806.010625,"bytes":189,"class":"required","compile_revision":null,"outcome":
+2026-09-12T16:50:43Z	controller: "write_finished","phase":"output_frame","sequence":62}
+2026-09-12T16:50:43Z	display-candidate: admitted preview-11 (generation 11, 7858518 B)
+2026-09-12T16:50:43Z	display-candidate: received preview-11 generation 11 (7858518 B) at 108080621764875
+2026-09-12T16:50:43Z	display-candidate: validating preview-11 as revision 190 ticket 6 at 108080621964208
+2026-09-12T16:50:43Z	durable: r8 for revision 202 at 108080637922125
+2026-09-12T16:50:43Z	completion metadata refused: helper error for pc-42: source versions changed; refresh snapshot before querying
+2026-09-12T16:50:43Z	controller error pc-43: source versions changed; refresh snapshot before querying
+2026-09-12T16:50:43Z	controller error pc-44: source versions changed; refresh snapshot before querying
+2026-09-12T16:50:43Z	preview-v2: blit page 1 of preview-9#r140#5 at 108080640898416
+2026-09-12T16:50:43Z	preview-v2: blit page 2 of preview-9#r140#5 at 108080640995375
+2026-09-12T16:50:43Z	controller: {"admission_attempt_ms":2861.126416,"at_ms":2861.134333,"bytes":237,"class":"required","compile_revision":null,"outcome":"dequeued","phase":"output_frame","sequence":63}
+{"admission_attempt_ms":2861.126416,"at_ms":2861.198125,"bytes":237,"class":"required","compile_revision":null,"outcome":"write_started","phase":"output_frame","sequence":63}
+{"admission_attempt_ms":2861.126416,"at_ms":2861.246083,"bytes":237,"class":"required","compile_revision":null,"outcome":"write_finished","phase":"output_frame","sequence":63}
+{"admission_attempt_ms":2861.126416,"at_ms":2861.3076250000004,"bytes":237,"class":"required","compile_revision":null,"outcome":"admitted","phase":"output_frame","sequence":63}
+{"handling_ms":0.035167,"phase":"request","response_serialization_ms":0.237209,"sequence"
+2026-09-12T16:50:43Z	controller: :45,"started_ms":2861.082041}
+2026-09-12T16:50:43Z	display-candidate: validated preview-11 in 47.536875 ms, prerastered 8 page(s) in 10.524958 ms, delivered 0.044917 ms later
+2026-09-12T16:50:43Z	display-candidate: published preview-11 revision 190 at 108080680884125
+2026-09-12T16:50:43Z	display-candidate: painted preview-11 as revision 190 (generation 11, durable ["main.tex": 7])
+2026-09-12T16:50:43Z	controller: {"duration_ms":0.663375,"events":1,"phase":"compiler_poll"}
+2026-09-12T16:50:43Z	controller: {"admission_attempt_ms":2892.518916,"at_ms":2892.523791,"bytes":901238,"class":"required","compile_revision":null,"outcome":"admitted","phase":"output_frame","sequence"
+2026-09-12T16:50:43Z	controller: :64}
+2026-09-12T16:50:43Z	controller: {"admission_attempt_ms":2892.518916,"
+2026-09-12T16:50:43Z	controller: at_ms":2892.535375,
+2026-09-12T16:50:43Z	controller: "bytes":901238,"class
+2026-09-12T16:50:43Z	controller: ":"required","
+2026-09-12T16:50:43Z	controller: compile_revision":null,"outcome
+2026-09-12T16:50:43Z	controller: ":"dequeued",
+2026-09-12T16:50:43Z	controller: "phase":"output_frame
+2026-09-12T16:50:43Z	controller: ","sequence":
+2026-09-12T16:50:43Z	controller: 64}
+2026-09-12T16:50:43Z	controller: {"admission_attempt_ms":
+2026-09-12T16:50:43Z	controller: 2892.518916,"at_ms":
+2026-09-12T16:50:43Z	controller: 2892.621375,"bytes":
+2026-09-12T16:50:43Z	controller: 901238,"class":
+2026-09-12T16:50:43Z	controller: "required","compile_revision
+2026-09-12T16:50:43Z	controller: ":null,"outcome
+2026-09-12T16:50:43Z	controller: ":"write_started","
+2026-09-12T16:50:43Z	controller: phase":"output_frame"
+2026-09-12T16:50:43Z	controller: ,"sequence":64
+2026-09-12T16:50:43Z	controller: }
+2026-09-12T16:50:43Z	controller: {"admission_attempt_ms":2892.518916,"at_ms":2893.319,"bytes":901238,"class":"required","compile_revision":null,"outcome":"write_finished","phase":"output_frame","sequence":64}
+2026-09-12T16:50:43Z	controller release: preview preview-12 is the admitted compile (generation 12, durable r8) (in flight revision 202)
+2026-09-12T16:50:43Z	compile: applied revision 202 at 108080701420625
+2026-09-12T16:50:43Z	status: revision 202: ok, 0 diagnostics in 98 ms (durable r8)
+2026-09-12T16:50:43Z	preview-v2: blit page 1 of preview-11#r190#6 at 108080723096500
+2026-09-12T16:50:43Z	preview-v2: blit page 2 of preview-11#r190#6 at 108080723191541
+2026-09-12T16:50:43Z	paint: revision 190 needed 1 extra turn(s); drew 2/8 pages
+2026-09-12T16:50:43Z	paint: revision 190 at 108080739943208 (covers 50 keystrokes, redrawn true)
+2026-09-12T16:50:43Z	controller: {
+2026-09-12T16:50:43Z	controller: "
+2026-09-12T16:50:43Z	controller: phase
+2026-09-12T16:50:43Z	controller: "
+2026-09-12T16:50:43Z	controller: :
+2026-09-12T16:50:43Z	controller: "
+2026-09-12T16:50:43Z	controller: display_transport
+2026-09-12T16:50:43Z	controller: "
+2026-09-12T16:50:43Z	controller: ,
+2026-09-12T16:50:43Z	controller: "
+2026-09-12T16:50:43Z	controller: profile
+2026-09-12T16:50:43Z	controller: "
+2026-09-12T16:50:43Z	controller: :
+2026-09-12T16:50:43Z	controller: {"decode_queue_wait_ms":0.010583,"display_epoch":1,"parse_ms":41.777834,"project_id":"demo","reader_delivery_wait_ms":
+2026-09-12T16:50:43Z	controller: 1.9615000000000002,"request_id":"preview-12","response_bytes":7861951,"revision":12,
+2026-09-12T16:50:43Z	controller: "source_binding_ms":0.25462500000000005}}
+2026-09-12T16:50:43Z	controller: {"admission_attempt_ms":2955.5105,"at_ms":2955.5175,"bytes":7862285,"class":"optional","compile_revision":null,"outcome":"admitted","phase":"output_frame","sequence":65}
+{"kind":"display_candidate","outcome":"admitted","phase"
+2026-09-12T16:50:43Z	controller: :"optional_output","serialization_ms":14.201083}
+2026-09-12T16:50:43Z	controller: 
+2026-09-12T16:50:43Z	controller: {"admission_attempt_ms":2955.5105,"at_ms":2955.820333,"bytes":7862285,"class":"optional","compile_revision":null,"outcome":"dequeued","phase":"output_frame","sequence":65}
+{"admission_attempt_ms":2955.5105,"at_ms":2955.872125,"bytes":7862285,"class":"optional","compile_revision":null,"outcome":"write_started","phase":"output_frame","sequence":65}
+2026-09-12T16:50:43Z	controller: {"admission_attempt_ms":2955.5105,"at_ms":2972.00275,"bytes":7862285,"class":"optional","compile_revision":null,"outcome":"write_finished","phase":"output_frame","sequence":65}
+2026-09-12T16:50:43Z	controller: {
+2026-09-12T16:50:43Z	controller: "admission_attempt_ms":2994.120041,"at_ms":2994.125958,"bytes":
+2026-09-12T16:50:43Z	controller: 170,"class":"required",
+2026-09-12T16:50:43Z	controller: "compile_revision":null,"outcome":"admitted","phase":
+2026-09-12T16:50:43Z	controller: "output_frame","sequence":66}
+2026-09-12T16:50:43Z	controller: 
+2026-09-12T16:50:43Z	controller: {"admission_attempt_ms":2994.120041,"at_ms
+2026-09-12T16:50:43Z	controller: ":2994.1317910000002,"
+2026-09-12T16:50:43Z	controller: bytes":170,"class":"required","
+2026-09-12T16:50:43Z	controller: compile_revision":null
+2026-09-12T16:50:43Z	controller: ,"outcome"
+2026-09-12T16:50:43Z	controller: :"dequeued"
+2026-09-12T16:50:43Z	controller: ,"phase"
+2026-09-12T16:50:43Z	controller: :"output_frame"
+2026-09-12T16:50:43Z	controller: ,"
+2026-09-12T16:50:43Z	controller: sequence":66}
+{"admission_attempt_ms":2994.120041,"at_ms":2994.4769579999997,"bytes":170,"class":"required","compile_revision":null,"outcome":"write_started","phase":"output_frame","sequence":66}
+{"admission_attempt_ms":2994.120041,"at_ms":2994.509083,"bytes":170,"class":"required","compile_revision":null,"outcome":"write_finished","phase":"output_frame","sequence":66}
+2026-09-12T16:50:43Z	controller: {"handling_ms":0.065333,"phase":"request","response_serialization_ms":0.283209,"sequence":46,"started_ms":2994.0495}
+{"admission_attempt_ms":2994.59325,"at_ms":2994.596541,"bytes":170,"class":"required","compile_revision":null,"outcome":"admitted","phase":"output_frame","sequence":67}
+{"handling_ms":0.015042,"phase":"request","response_serialization_ms":0.032959,"sequence":47,"started_ms":2994.575541}
+2026-09-12T16:50:43Z	controller: {"admission_attempt_ms":2994.59325,"at_ms":2994.66025,"bytes":
+2026-09-12T16:50:43Z	controller: 170,"class":"required","compile_revision
+2026-09-12T16:50:43Z	controller: ":null,"outcome":"dequeued",
+2026-09-12T16:50:43Z	controller: "phase":
+2026-09-12T16:50:43Z	controller: "output_frame","sequence":
+2026-09-12T16:50:43Z	controller: 67}
+{
+2026-09-12T16:50:43Z	controller: "admission_attempt_ms":2994.59325,"at_ms":
+2026-09-12T16:50:43Z	controller: 2994.754833,"bytes":170,"
+2026-09-12T16:50:43Z	controller: class":"required","compile_revision":null,"outcome":
+2026-09-12T16:50:43Z	controller: "write_started","phase"
+2026-09-12T16:50:43Z	controller: :"output_frame",
+2026-09-12T16:50:43Z	controller: "sequence":67
+2026-09-12T16:50:43Z	controller: }
+{"admission_attempt_ms":2994.59325,"
+2026-09-12T16:50:43Z	controller: at_ms":2994.8392080000003,"bytes":170,
+2026-09-12T16:50:43Z	controller: "class":
+2026-09-12T16:50:43Z	controller: "required",
+2026-09-12T16:50:43Z	controller: "compile_revision":
+2026-09-12T16:50:43Z	controller: null,"outcome"
+2026-09-12T16:50:43Z	controller: :"write_finished"
+2026-09-12T16:50:43Z	controller: ,"phase":
+2026-09-12T16:50:43Z	controller: "output_frame",
+2026-09-12T16:50:43Z	controller: "sequence":
+2026-09-12T16:50:43Z	controller: 67}
+2026-09-12T16:50:43Z	controller: {"admission_attempt_ms":2994.735125,
+2026-09-12T16:50:43Z	controller: "at_ms":2994.940458
+2026-09-12T16:50:43Z	controller: ,"bytes"
+2026-09-12T16:50:43Z	controller: :4265,"
+2026-09-12T16:50:43Z	controller: class":"
+2026-09-12T16:50:43Z	controller: required","compile_revision":null
+2026-09-12T16:50:43Z	controller: ,"outcome":"dequeued",
+2026-09-12T16:50:43Z	controller: "phase":
+2026-09-12T16:50:43Z	controller: "output_frame",
+2026-09-12T16:50:43Z	controller: "sequence":
+2026-09-12T16:50:43Z	controller: 68}
+2026-09-12T16:50:43Z	controller: {"admission_attempt_ms":2994.735125,"
+2026-09-12T16:50:43Z	controller: at_ms":2995.033958
+2026-09-12T16:50:43Z	controller: ,"bytes"
+2026-09-12T16:50:43Z	controller: :4265,"
+2026-09-12T16:50:43Z	controller: class":"
+2026-09-12T16:50:43Z	controller: required","
+2026-09-12T16:50:43Z	controller: compile_revision":null
+2026-09-12T16:50:43Z	controller: ,"outcome":"write_started","phase"
+2026-09-12T16:50:43Z	controller: :"output_frame","
+2026-09-12T16:50:43Z	controller: sequence":68
+2026-09-12T16:50:43Z	controller: }
+2026-09-12T16:50:43Z	controller: {"admission_attempt_ms":2994.735125
+2026-09-12T16:50:43Z	controller: ,"at_ms":2995.141458,"bytes
+2026-09-12T16:50:43Z	controller: ":4265,
+2026-09-12T16:50:43Z	controller: "class":
+2026-09-12T16:50:43Z	controller: "required",
+2026-09-12T16:50:43Z	controller: "compile_revision":null,"outcome
+2026-09-12T16:50:43Z	controller: ":"write_finished","phase"
+2026-09-12T16:50:43Z	controller: :"output_frame"
+2026-09-12T16:50:43Z	controller: ,"sequence"
+2026-09-12T16:50:43Z	controller: :68}
+2026-09-12T16:50:43Z	controller: {"admission_attempt_ms":2994.735125,"at_ms":
+2026-09-12T16:50:43Z	controller: 2994.736041,"bytes":4265,"class":
+2026-09-12T16:50:43Z	controller: "required","compile_revision":null,"outcome":
+2026-09-12T16:50:43Z	controller: "admitted","phase":"output_frame"
+2026-09-12T16:50:43Z	controller: ,"sequence":68}
+2026-09-12T16:50:43Z	controller: {"handling_ms":0.08337499999999999,"phase":"request","response_serialization_ms":
+2026-09-12T16:50:43Z	controller: 0.613958
+2026-09-12T16:50:43Z	controller: ,
+2026-09-12T16:50:43Z	controller: "sequence":48,"started_ms":2994.643791
+2026-09-12T16:50:43Z	controller: }
+2026-09-12T16:50:43Z	display-candidate: admitted preview-12 (generation 12, 7862284 B)
+2026-09-12T16:50:43Z	display-candidate: received preview-12 generation 12 (7862284 B) at 108080823311500
+2026-09-12T16:50:43Z	display-candidate: validating preview-12 as revision 202 ticket 7 at 108080823505416
+2026-09-12T16:50:43Z	preview-v2: blit page 1 of preview-11#r190#6 at 108080834025166
+2026-09-12T16:50:43Z	preview-v2: blit page 2 of preview-11#r190#6 at 108080834113791
+2026-09-12T16:50:43Z	display-candidate: validated preview-12 in 45.061542 ms, prerastered 8 page(s) in 9.984583 ms, delivered 0.04275 ms later
+2026-09-12T16:50:43Z	display-candidate: published preview-12 revision 202 at 108080879688458
+2026-09-12T16:50:43Z	display-candidate: painted preview-12 as revision 202 (generation 12, durable ["main.tex": 8])
+2026-09-12T16:50:43Z	preview-v2: blit page 1 of preview-12#r202#7 at 108080900266875
+2026-09-12T16:50:43Z	preview-v2: blit page 2 of preview-12#r202#7 at 108080900360583
+2026-09-12T16:50:43Z	paint: revision 202 needed 1 extra turn(s); drew 2/8 pages
+2026-09-12T16:50:43Z	paint: revision 202 at 108080910430791 (covers 12 keystrokes, redrawn true)
+2026-09-12T16:50:43Z	bench: done (all keystrokes painted); keystrokes 200, painted 200, coalesced 196, p50 754.038417 ms

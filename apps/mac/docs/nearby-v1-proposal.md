@@ -4,7 +4,8 @@ Status: **proposal** from FT-003 (Mac shell, mac-claude-a) for the Commander to
 adopt as `docs/contracts/nearby-v1.md`. Until then nothing here is a published
 contract; the Mac implementation in `apps/mac/Sources/FlashTeXMac/Nearby*.swift`
 and `Pairing.swift` is the reference for the Mac side only. The companion side
-belongs to FT-004. Updated September 12, 2026.
+belongs to FT-004. Updated September 12, 2026 (receive caps, image validation
+and duplicate handling added by mac-nearby-transport; wire version unchanged).
 
 Scope: how an iPad/iPhone companion on the same network finds a Mac, pairs with
 it once, and then delivers runtime-v1 `capture_submit` messages to it with
@@ -64,6 +65,27 @@ Mac persistence: `~/Library/Application Support/FlashTeX/pairs.json`, mode
 "pairs":[{"pair_id","psk","companion_name","created_at","last_seen_at"}]}`.
 Not the Keychain (see §6). "Forget" removes the record, restarts the listener
 without that key, and closes that companion's live session.
+
+Schema v2 added the optional per-record `generation`; v3 adds the per-record
+`permission` (`"captures"` | `"view_only"`, upgraded from older files as
+`"captures"`, the behaviour they had). A `view_only` companion still pairs,
+reconnects and reads the destination; every `capture_submit` on that pairing
+is refused with `capture_not_permitted` (session stays open, nothing is
+remembered for dedup, nothing reaches the inbox) until the Mac's user changes
+the pop-up in the Nearby Companion window. The listener reads the store on
+each capture, so the change needs no restart. The reference client treats
+the code as its own class (`needsPermission`: not `needsRepair`, not a new
+capture, not retried; exit 6).
+
+QR bootstrap: beside the six-digit code the window shows a CoreImage
+`CIQRCodeGenerator` image (level M) of
+`flashtex-nearby://pair?v=1&code=<6 digits>&salt=<32 hex>&fp=<16 hex>&name=<Mac name>`
+— exactly the inputs `nearby-client pair` takes (`--qr <decoded text>`
+replaces `--code`, `--mac <fp>` and `--salt`; an explicit `--code`/`--mac`
+must agree with it, `fp` must match `salt`). The code is also copyable
+("Copy code", ⌘C on the focused code) as bare digits; VoiceOver reads it
+grouped in pairs ("1 2, 3 4, 5 6"). Nothing in the QR is secret beyond the
+code already displayed next to it; `protocol_version` stays 1.
 
 ## 3. Transport
 
@@ -135,14 +157,83 @@ never types IDs or revisions (transfer-v1 requirement).
 
 `capture_submit` validation on the Mac before any sink is called: decodable
 envelope, `capture_id`/`destination_id` are 1–128 ASCII `[A-Za-z0-9_-]`,
-`mime_type` ∈ {image/png, image/jpeg}, `instructions` ≤ 4096 bytes. Rejections
-are `error` replies that keep the session open. Image decoding, the 8 MiB /
-8192×8192 limits and durability are the bridge's job (transfer-v1); the nearby
-adapter does not re-implement them.
+`mime_type` ∈ {image/png, image/jpeg}, `instructions` ≤ 4096 bytes,
+`base_revision` ≥ 0, and the image itself (validated off the listener queue,
+before anything reaches the main thread): base64 decodes to 1–8 MiB
+(`image_too_large`, same bound as transfer-v1), the bytes are a structurally
+complete PNG (signature, IHDR first, chunk CRCs, consecutive IDAT, IEND last,
+nothing after it, IDAT inflates to exactly the scanline size with a matching
+Adler-32) or JPEG (SOI, one SOF frame header, EOI reached through the scan
+data) matching the declared `mime_type`, width and height ≤ 8192 and the
+decoded pixel size ≤ 64 MiB (`invalid_image`, the bridge's code for the same
+conditions). Rejections are `error` replies that keep the session open. The
+bridge still performs its own full decode (transfer-v1); the nearby check is
+what lets the Mac refuse a bad image without touching the run loop.
+
+Receive caps (defaults in `NearbyReceiveLimits`; every one is an explicit
+error, never a silent drop):
+
+| Cap | Default | Refusal |
+|---|---|---|
+| frame (line incl. newline) | 12 MiB | `line_too_long`, `id: null`, connection closed |
+| per-session frame bytes accepted but not yet acknowledged | 24 MiB | `too_many_in_flight`, session stays open; retry after acks |
+| listener-wide accepted-but-unacknowledged bytes ("inbox") | 64 MiB | `inbox_full`, session stays open |
+| sessions per `pair_id` | 4 | `too_many_sessions` at `hello`, connection closed |
+| accepted TCP connections | 16 | closed before the handshake (no bytes to an unauthenticated peer); Mac logs `too many connections` |
+| TLS handshake deadline | 10 s | closed (no bytes to an unauthenticated peer); Mac logs `handshake timed out` |
+| `hello` deadline after the handshake | 10 s | `hello_timeout`, `id: null`, connection closed |
+| one frame, first byte to newline | 60 s (≥ 200 KiB/s for a full frame) | `frame_timeout`, `id: null`, connection closed |
+| TCP keepalive (half-open peer) | idle 15 s, 5 s × 4 probes | connection fails, session slot and in-flight bytes released |
+
+The frame cap is enforced before the bytes are buffered: a chunk that cannot
+end its line inside the limit is refused without being appended, so the
+receive buffer never holds more than one frame limit. The deadlines are
+absolute per stage (they are not extended by trickled bytes), so a
+slow-loris peer is bounded the same way as a silent one; a session idle
+between complete frames has no deadline.
+
+Duplicate handling, keyed by `(pair_id, capture_id)` with the accepted
+`base_revision` and a digest of the rest of the payload (last 256 per
+pairing, shared by every session of that pairing on the listener and carried
+across a key-table restart): an identical retry is acknowledged again with
+the *new* request id and **not re-delivered** (a retry that arrives while the
+first delivery is pending — on the same or a later session — waits for that
+one answer); the same `capture_id` with another `base_revision` is refused
+with `revision_mismatch`; the same id and revision with another payload is
+`capture_id_conflict`. A capture the sink refused is forgotten, so a retry is
+delivered again. A companion that drops mid-delivery and re-sends on its next
+connection therefore never causes a second delivery to the inbox or the
+bridge; forgetting the pairing drops its memory. The Mac window surfaces
+refusals (`code`, `capture_id`, `pair_id`, message) and the duplicate count
+(`NearbyState.lastReceiveError` / `receiveErrors` / `duplicateCaptureCount`).
 
 Error codes used: `bad_request`, `hello_required`, `pair_mismatch`,
-`pairing_expired`, `unsupported_version`, `unsupported_image`, `unknown_type`,
-`line_too_long`, `capture_id_conflict`, `unavailable`.
+`pairing_expired`, `pairing_cancelled` (`id: null`; the Mac withdrew the code
+— cancelled, expired, replaced or consumed by another session — while this
+bootstrap session had not yet said hello; a close follows), `unsupported_version`, `unsupported_image`,
+`image_too_large`, `invalid_image`, `unknown_type`, `line_too_long`,
+`frame_timeout`, `hello_timeout`,
+`too_many_in_flight`, `inbox_full`, `too_many_sessions`, `revision_mismatch`,
+`capture_id_conflict`, `capture_not_permitted` (§2: view-only companion;
+session stays open, pairing intact), `unavailable`. Codes are additive to the ones listed
+before; the nearby `protocol_version` stays 1 (no existing message changed).
+`frame_timeout`/`hello_timeout` are followed by a close; a companion treats
+them like any other close (reconnect with backoff, re-send the same capture).
+
+Bridge codes passed through verbatim (with a bridge attached; crates/bridge
+`validate`/`capture_anchor`/`receive`), all terminal for the capture as sent:
+`destination_reselection_required` (the pinned target was unpinned, an edit
+overlapped or sat exactly on it, or a restored pin no longer matches the
+capture's durable binding — reselect on the Mac; `hello_ack.destination` and
+`destination` then report `null` until a new pin), `revision_conflict`
+(`base_revision` is not the pin's revision), `capture_id_conflict` (bridge
+journal: same id, different content), `image_too_large`,
+`instructions_too_large`, `invalid_image`, `unsupported_image`, `invalid_id`.
+The reference client's `NearbyWire.captureInputErrorCodes` lists these; a
+client that checks `destination` before sending (`NearbyReconnector`) sees the
+dropped pin as `null` first. The Mac never re-pins on the companion's behalf:
+an edit that overlaps the pin drops the advertised destination (the row shows
+"(invalid)") and the user pins again.
 
 Acknowledgement semantics: `durable: true` may only be reported when the local
 bridge has journaled the capture (transfer-v1 `capture_received`). With a
@@ -179,8 +270,11 @@ rules).
   `hello_ack` to its `hello` and refuses a companion re-sending a nonce.
 - **Cross-pairing impersonation** by a paired device is prevented by `proof`.
 - **Resource exhaustion:** per-line cap 12 MiB, per-read cap 64 KiB, unknown
-  types answered without closing; no limit yet on concurrent connections or on
-  the inbox beyond its last 50 captures (in memory).
+  types answered without closing; connections, sessions per pairing,
+  per-session and listener-wide unacknowledged bytes are capped (§4 table);
+  image validation runs on a utility queue so a slow or hostile peer cannot
+  stall the listener queue or the main thread. Still unbounded: the in-memory
+  inbox keeps its last 50 captures by count, not bytes (up to 50 × 8 MiB).
 - **Device loss:** "Forget" on the Mac invalidates the pairing immediately
   (listener restarted without the key, live session closed). There is no remote
   wipe of the companion's copy.
@@ -327,7 +421,7 @@ app persisted for this Mac's `fp`. Use the Keychain on iOS.)
   `payload.has_proposal`, `payload.applied` (transfer-v1 shape; `durable`
   is true only when the Mac's bridge journaled it).
 - `error` — `id` (may be `null`), `payload.code`, `payload.message`. Codes
-  in §4; `pair_mismatch`, `pairing_expired`, `hello_required`,
+  in §4; `pair_mismatch`, `pairing_expired`, `pairing_cancelled`, `hello_required`,
   `unsupported_version` and `line_too_long` are followed by a close and
   mean "re-pair or fix the client", not "retry".
 
@@ -373,3 +467,16 @@ over the Mac's own interfaces (loopback included) with no extra setup.
 Without the companion, the same path is exercised by
 `swift test --filter NearbyStateTests` (a Network.framework client in the
 test process pairs, sends the fixture capture, is forgotten, and is refused).
+
+`swift test --filter NearbyTranscriptAcceptanceTests` replays
+`apps/mac/Tests/FlashTeXMacTests/Fixtures/nearby-companion-session.jsonl` on
+loopback: a recorded-shape companion session (the simulator run's envelope
+ordering, `\/` escaping, `capture-<hex>` ids, 400×300 photo and 1408×1510
+RGBA pencil PNGs, each capture line emitted twice as that build did) with a
+§8 `hello`. Expected: `hello_ack`, four `capture_received` (the two
+duplicates acknowledged, not re-delivered), two captures in the inbox; a
+verbatim replay on a second connection is refused at `hello` (stale nonce);
+a reconnect with a fresh `hello` re-sending the same captures is
+acknowledged again without storing them twice. The original simulator
+stdout was not committed and the companion still speaks plaintext, so this
+fixture is re-synthesized to the recorded shape, not the original bytes.

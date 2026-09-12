@@ -1,0 +1,25 @@
+    +                                                                                                                               865 __90+[XCTFailableInvocation invokeInvocation:withTestMethodConvention:lastObservedErrorIssue:]_block_invoke  (in XCTestCore) + 28  [0x103004de8]
+    +                                                                                                                                 865 +[XCTFailableInvocation invokeErrorConventionInvocation:completion:]  (in XCTestCore) + 96  [0x103004e50]
+    +                                                                                                                                   865 -[NSInvocation invoke]  (in CoreFoundation) + 424  [0x1948f1c4c]
+    +                                                                                                                                     865 __invoking___  (in CoreFoundation) + 148  [0x1948f1dc4]
+    +                                                                                                                                       865 @objc DisplayListDeltaTests.testAcknowledgingAnOlderSnapshotYieldsFull()  (in FlashTeXMacPackageTests) + 56  [0x10d687624]  /<compiler-generated>:0
+    +                                                                                                                                         865 DisplayListDeltaTests.testAcknowledgingAnOlderSnapshotYieldsFull()  (in FlashTeXMacPackageTests) + 112  [0x10d686b7c]  DisplayListDeltaTests.swift:194
+    +                                                                                                                                           865 DisplayListDeltaTests.session()  (in FlashTeXMacPackageTests) + 1448  [0x10d67cc78]  DisplayListDeltaTests.swift:86
+    +                                                                                                                                             865 DisplayListDeltaTests.Worker.readLine(timeout:)  (in FlashTeXMacPackageTests) + 1384  [0x10d67b0f4]  DisplayListDeltaTests.swift:42
+    +                                                                                                                                               865 -[NSConcreteFileHandle availableData]  (in Foundation) + 216  [0x196169af0]
+    +                                                                                                                                                 865 _NSReadFromFileDescriptorWithProgress  (in Foundation) + 196  [0x19610f0f4]
+    +                                                                                                                                                   865 read  (in libsystem_kernel.dylib) + 8  [0x194825908]
+    865 Thread_13141123
+    + 865 start_wqthread  (in libsystem_pthread.dylib) + 8  [0x194862b9c]
+    +   865 _pthread_wqthread  (in libsystem_pthread.dylib) + 368  [0x194863e98]
+    +     865 __workq_kernreturn  (in libsystem_kernel.dylib) + 8  [0x1948269dc]
+    865 Thread_13158996
+    + 865 start_wqthread  (in libsystem_pthread.dylib) + 8  [0x194862b9c]
+    +   865 _pthread_wqthread  (in libsystem_pthread.dylib) + 368  [0x194863e98]
+    +     865 __workq_kernreturn  (in libsystem_kernel.dylib) + 8  [0x1948269dc]
+    865 Thread_13167988: com.apple.NSEventThread
+    + 865 thread_start  (in libsystem_pthread.dylib) + 8  [0x194862ba8]
+    +   865 _pthread_start  (in libsystem_pthread.dylib) + 136  [0x194867c08]
+    +     865 _NSEventThread  (in AppKit) + 184  [0x198dafa34]
+    +       865 _CFRunLoopRunSpecificWithOptions  (in CoreFoundation) + 532  [0x1949bff3c]
+    +         865 __CFRunLoopRun  (in CoreFoundation) + 1188  [0x194905508]

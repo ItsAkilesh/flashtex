@@ -1,0 +1,41 @@
+{
+  "agent_id": "mac-completion",
+  "allocation_id": "claude-mac20x-completion",
+  "assignment_acknowledgements": {},
+  "branch": "agent/mac-completion/snippets",
+  "capabilities": [
+    "swift",
+    "appkit",
+    "completion"
+  ],
+  "code_revision": "e8d5806a6def55e4c3482bd78b118cf2f576dbcd",
+  "eta_minutes": {
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 15
+  },
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "3ac69c3ed109fa0902af39f4e2187d572a61c075",
+  "next_action": "Parent merges agent/mac-completion/snippets into mac-shell; Commander integration",
+  "reviewed_peers": {
+    "origin/agent/mac-claude-a/mac-shell": {
+      "adaptation": "Kept the IME hasMarkedText guards from the editor-accessibility lane and the popup AX labels; snippets reuse the existing accept path",
+      "reviewed_utc": "2026-09-12T10:47:46Z",
+      "sha": "f4c8aeacbbc1b9656095a60ccabc95ef39777428"
+    },
+    "origin/main": {
+      "adaptation": "Kept the IME hasMarkedText guards from the editor-accessibility lane and the popup AX labels; snippets reuse the existing accept path",
+      "reviewed_utc": "2026-09-12T10:47:46Z",
+      "sha": "7802c9af4728a2dcf86541fb86f0468c69be039e"
+    }
+  },
+  "schema_version": 1,
+  "state": "ready_for_integration",
+  "summary": "agent/mac-completion/snippets: environment skeletons with indentation, argument-shape braces with caret inside, derived unique sec: label keys, all one undo step through the real CompletingTextView, IME-guarded; timing tests best-of-N with load-average XCTSkip; 460 Mac tests pass",
+  "tool": "Claude Code subagent (parent mac-claude-a)",
+  "updated_utc": "2026-09-12T10:47:46Z",
+  "usage": {
+    "evidence": "swift test 460/460 (13 skips: 11 env-gated other lanes + 2 load-gated timing bounds at load 72-76) with real compiler/pdf/bridge/edit-ledger/preview-controller; CompletionTests 25",
+    "status": "Shared Claude Max quota with parent mac-claude-a; no purchases"
+  }
+}

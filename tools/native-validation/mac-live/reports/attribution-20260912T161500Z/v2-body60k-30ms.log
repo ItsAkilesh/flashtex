@@ -1,0 +1,32 @@
+2026-09-12T16:31:12Z	status: no worker attached
+2026-09-12T16:31:12Z	status: attached: flashtex-render
+2026-09-12T16:31:12Z	launched /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/fb16d07d1e0d062a59188fb267e98227a33c2d28/apps/mac/build/FlashTeX.app/Contents/MacOS/flashtex-render (preview face: latin-modern)
+2026-09-12T16:31:12Z	status: compiling revision 2 (mac-1)…
+2026-09-12T16:31:13Z	bench: waiting for attach + first paint (200 keystrokes, 30.0 ms)
+2026-09-12T16:31:13Z	layout capability switch while mac-1 is in flight: re-requesting revision 2 under rules-v1, font-hints-v1, display-list-v2
+2026-09-12T16:31:13Z	status: compiling revision 2 (mac-2)…
+2026-09-12T16:31:13Z	ignored stale compile_result mac-1 (revision 2, rules-v1, font-hints-v1): superseded by mac-2
+2026-09-12T16:31:13Z	capability display-list-v2 not accepted by the worker
+2026-09-12T16:31:13Z	status: revision 2: recovered, 1 diagnostics in 621 ms
+2026-09-12T16:31:14Z	bridge: attached: flashtex-bridge
+2026-09-12T16:31:14Z	bridge: attached: flashtex-bridge
+2026-09-12T16:31:14Z	bridge: bridge exited (1); relaunching in 0.2 s
+2026-09-12T16:31:14Z	bridge: bridge exited (1); relaunching in 0.2 s
+2026-09-12T16:31:14Z	bridge: bridge exited (1); relaunching in 0.2 s
+2026-09-12T16:31:14Z	bridge: bridge exited (1); relaunching in 0.2 s
+2026-09-12T16:31:14Z	bridge: relaunched flashtex-bridge; reconciling…
+2026-09-12T16:31:14Z	bridge: relaunched flashtex-bridge; reconciling…
+2026-09-12T16:31:14Z	bridge: bridge exited (1); relaunching in 1.0 s
+2026-09-12T16:31:14Z	bridge: bridge exited (1); relaunching in 1.0 s
+2026-09-12T16:31:14Z	bridge: bridge exited (1); relaunching in 1.0 s
+2026-09-12T16:31:15Z	bridge: relaunched flashtex-bridge; reconciling…
+2026-09-12T16:31:15Z	bridge: relaunched flashtex-bridge; reconciling…
+2026-09-12T16:31:15Z	bridge: bridge exited (1); relaunching in 3.0 s
+2026-09-12T16:31:15Z	bridge: bridge exited (1); relaunching in 3.0 s
+2026-09-12T16:31:15Z	bridge: bridge exited (1); relaunching in 3.0 s
+2026-09-12T16:31:18Z	bridge: relaunched flashtex-bridge; reconciling…
+2026-09-12T16:31:18Z	bridge: relaunched flashtex-bridge; reconciling…
+2026-09-12T16:31:18Z	bridge: bridge exited (1); not relaunched: 3 relaunches in the last minute — Edit > Attach Capture Bridge to retry
+2026-09-12T16:31:18Z	bridge: bridge exited (1); not relaunched: 3 relaunches in the last minute — Edit > Attach Capture Bridge to retry
+2026-09-12T16:31:18Z	bridge: bridge exited (1); not relaunched: 3 relaunches in the last minute — Edit > Attach Capture Bridge to retry
+2026-09-12T16:32:13Z	bench: done (worker never attached/painted (60 s)); keystrokes 0, painted 0, coalesced 0, p50 -1.0 ms

@@ -1,0 +1,41 @@
+{
+  "agent_id": "mac-admission-correlation",
+  "allocation_id": "claude-mac20x-admission-correlation",
+  "assignment_acknowledgements": {},
+  "branch": "agent/mac-admission-correlation/compile-id",
+  "capabilities": [
+    "swift",
+    "appkit",
+    "preview-controller-protocol"
+  ],
+  "code_revision": "ae0226a0",
+  "eta_minutes": {
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 10
+  },
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "55bcf124",
+  "next_action": "Parent merges the branch (ShellModel+Controller.swift diff is 7 localized hunks; two one-token test fixes in ControllerPipelineReviewTests/OutputBoundsTests for the new tuple field); full-suite result recorded in coordination/mac-admission-correlation.md",
+  "reviewed_peers": {
+    "origin/agent/mac-core-review/pipeline": {
+      "adaptation": "Its ShellModel+Controller.swift hunks are in detachController/.exited (awaiting continuations, completionFetcher.discard); mine are in ControllerState.inFlight, the .update branch, applyDurableDocument and applyControllerPreview: no overlapping lines",
+      "reviewed_utc": "2026-09-12T11:12:00Z",
+      "sha": "2a066215"
+    },
+    "origin/main": {
+      "adaptation": "Merged 55bcf124 (644fcc9e); read STDIO.md 'Edit admission correlation', preview-controller main.rs update emission (stale/discarded/superseded/cancelled/failed wires) and document-runtime fail/cancel (one event per admitted request) before designing the identity match",
+      "reviewed_utc": "2026-09-12T11:12:00Z",
+      "sha": "55bcf124"
+    }
+  },
+  "schema_version": 1,
+  "state": "ready_for_integration",
+  "summary": "agent/mac-admission-correlation/compile-id: the hold-until-preview edit is released by the outcome (preview/stale/discarded/failed/cancelled) naming the helper's admitted compile_request_id from the edit reply (superseded rebinds to by_id); mismatched ids never release; the numeric compile_revision-vs-durable comparison survives only when the reply carries no pair (fake helper/history results). New AdmissionCorrelation.swift + AdmissionCorrelationTests (9: decision matrix + real helper 55bcf12/real compiler (a)(b)(c)(e) + fake-helper fallback (d)).",
+  "tool": "Claude Code subagent (parent mac-claude-a)",
+  "updated_utc": "2026-09-12T11:12:00Z",
+  "usage": {
+    "evidence": "AdmissionCorrelationTests 9/9 in 4 consecutive runs with the worktree-built helper (main 55bcf12) and compiler, load 6-10; required filter (PreviewController|ControllerRelease|ControllerPipelineReview|EditHistory|HistoricalPreview|OutputBounds|DisplayCandidate|AdmissionCorrelation) 63 tests, 5 skipped (DisplayCandidate helper cases need FLASHTEX_RENDER, not built on this Mac), 0 failures; swift build clean; full swift test recorded in the handoff",
+    "status": "Shared Claude Max quota with parent mac-claude-a; no purchases"
+  }
+}

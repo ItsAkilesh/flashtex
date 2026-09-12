@@ -105,6 +105,28 @@ None of this can run today (no Developer ID certificate, no notarization
 credentials). Recorded here so it is a checklist, not a research task, once an
 Apple Developer Program membership is available.
 
+**Update (mac-packaging signing lane):** steps 2–7 are now executed by
+`make-app.sh` itself — `--sign "<Developer ID Application …>"` performs steps
+2–3 (hardened runtime, `apps/mac/Resources/FlashTeX.entitlements`, helper-first
+signing, `codesign --verify --deep --strict`, `spctl --assess`) and
+`--notarize <keychain-profile>` performs steps 4–7 (`ditto` zip,
+`xcrun notarytool submit --wait`, `stapler staple`/`validate`, `spctl`
+re-assessment; with `--dmg` the image is built after stapling, then signed,
+notarized and stapled). Each step fails before the build with a plain,
+non-secret message when the identity, entitlements file or keychain profile
+is absent (verified here: 0 identities, no profile). `--sign -` runs the same
+hardened-runtime/entitlements path with the ad-hoc identity so it can be
+exercised without a certificate; that bundle passed `launch-check.sh` (app and
+`--dmg`). The entitlements file is deliberately empty — the earlier draft below
+listed App Sandbox keys, which are inert without `app-sandbox`; the file's
+comments record why every candidate entitlement is unnecessary. `--deep` is no
+longer used for distribution signing: helpers are signed first with
+identifiers `tech.jay3332.flashtex.mac.<name>`, `components.json` then records
+their as-shipped sha256 (which the old `--deep` re-sign invalidated), and the
+app is signed last. `scripts/repro-check.sh` shows the only build-to-build
+difference is `build.timestamp` in `components.json` (and the seal chain it
+perturbs); with `SOURCE_DATE_EPOCH` set the bundle is byte-identical.
+
 1. **Get a Developer ID Application certificate** (requires a paid Apple
    Developer Program membership, $99/yr, enrolled to a specific Apple ID/Team).
    Generate it in Xcode (Settings → Accounts → Manage Certificates → "+" →
@@ -295,16 +317,48 @@ whose name is "FlashTeX"'` showed the process while running and `pgrep -x
 FlashTeX` showed nothing after quitting — no stray `FlashTeX` process was
 left behind by either run.
 
+## Rooted TeX metrics in the bundle (GH36)
+
+`make-app.sh` now stages the five pinned official Latin Modern 2.004 TFMs and
+the rooted GUST license from `apps/mac/Fonts/texmf` (or
+`FLASHTEX_BUNDLE_TEXMF_ROOT`) into `Contents/Resources/texmf/fonts/tfm/public/lm`
+and `Contents/Resources/texmf/doc/fonts/lm/GUST-FONT-LICENSE.TXT` through
+`scripts/bundle-texmf.py`: each source file is hash-verified against the
+Commander's pinned manifest before the build (a mismatch, a missing file or a
+symlink exits 1 before `swift build`), staged, and then the whole `Resources`
+directory is verified with `crates/rendering-core/tools/verify_bundle_resources.py`
+before any signing. `components.json` gains a `"resources"` entry with the nine
+verified SHA-256/byte pairs and the manifest hash; `resource-coverage.json` is
+the verifier's full report. Both are sealed by the app signature (they are
+written before `codesign`). The producer gets the bundled directory appended to
+`FLASHTEX_TFM_DIRS` (after any explicit user entries, which override it) by
+`BundledMetrics.swift` on both launch routes
+(`WorkerClient`, `PreviewControllerClient`); see `README.md` "Rooted TeX
+metrics" and the acceptance script `scripts/texmf-acceptance.sh` (bundled
+producer, host TeX denied by `sandbox-exec`, 10 pt multi-document + 12 pt
+text/math, 10 pt styles, 11 pt, deliberate removal, verifier exit 0). A
+producer before render-pipeline 421a2049 does not discover
+`../Resources/texmf` on its own, so the env route is what makes such a bundle
+independent of host TeX (evidence `docs/evidence/mac-bundle-texmf-20260912T134120Z`,
+control row 9 diagnostics, env rows 0); from 421a2049 (tip 98e829bf) the
+producer finds the bundle itself and `texmf-acceptance.sh --require-discovery`
+passes both routes (`docs/evidence/mac-bundle-texmf-20260912T135157Z`).
+Beyond the Commander's five pinned files, 23 supplementary Latin Modern TFMs
+(other design sizes, bold, italic) ship under the in-repo pin
+`apps/mac/Fonts/texmf/SUPPLEMENTARY-METRICS.json` and are recorded in
+`components.json` `resources.supplementary`; their provenance limitation (not
+verified against the pinned 2.004 archive) is stated in that file.
+
 ## Known gaps (rev 5)
 
-- **Signing/notarization: unchanged.** Everything in "What ad-hoc signing
-  does **not** give us" and "Exact steps for Developer ID signing +
-  notarization" above still holds exactly as written; nothing in rev 5
-  (bundling `flashtex-bridge`/`flashtex-edit-ledger`, `components.json`)
-  changes the signing story. The bundle is still ad-hoc only
+- **Signing/notarization: tooling done, credentials absent.** The
+  Developer ID and notarization steps are implemented in `make-app.sh`
+  (`--sign`, `--notarize`, see the update above) but cannot be executed in
+  this environment: the default bundle is still ad-hoc only
   (`TeamIdentifier=not set`), `spctl -a -vv` still reports `rejected`
   (exit 3), and there is still no Apple Developer Program membership
-  available in this environment to go further.
+  available to go further. What is verified is the absence path and the
+  hardened-runtime path via `--sign -`.
 
 - **Local-network permission prompt: not scriptable, by OS design.**
   The packaged app now bundles a real nearby-capture listener

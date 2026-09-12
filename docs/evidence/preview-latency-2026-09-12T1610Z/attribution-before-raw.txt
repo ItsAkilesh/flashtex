@@ -1,0 +1,56 @@
+== prior-helper-v2-p3-30ms
+43 painted v2 revisions in prior-helper-v2-p3-30ms.log
+stage            n   p50     p95     max
+key->send       43    14.0    44.3    97.6
+send->v1        43    81.8   115.0   123.1
+v1->recv        43    64.3   106.7   119.1
+recv->val       43     0.2     8.2    10.6
+validate        43    27.7    33.4    34.8
+preraster       43     4.3     7.5     8.1
+deliver         43     1.5     6.9    10.7
+pub->paint      43    26.7    46.5    56.4
+val->paint      43    66.2    83.7    93.8
+key->paint      43   237.9   298.3   308.4
+pages/frame: 4  keystrokes covered per paint: median 5 max 7
+== prior-helper-v2-p3-0ms
+27 painted v2 revisions in prior-helper-v2-p3-0ms.log
+stage            n   p50     p95     max
+key->send       27     7.7    19.5    28.9
+send->v1        27    63.4    69.9    71.1
+v1->recv        27    48.8    53.1    53.3
+recv->val       27     2.2     8.4     9.9
+validate        27    23.3    23.7    23.8
+preraster       27     3.9     4.2     4.2
+deliver         27     2.4     6.6     6.6
+pub->paint      27    25.7    35.8    39.2
+val->paint      27    57.2    65.9    67.8
+key->paint      27   178.7   197.6   200.1
+pages/frame: 4  keystrokes covered per paint: median 7 max 16
+== prior-helper-v2-pmax-30ms
+32 painted v2 revisions in prior-helper-v2-pmax-30ms.log
+stage            n   p50     p95     max
+key->send       32    12.6    28.4    58.1
+send->v1        32   107.5   119.4   123.0
+v1->recv        32    99.4   104.8   116.9
+recv->val       32     0.2     5.1     6.1
+validate        32    46.1    47.3    47.5
+preraster       32     7.6     7.8     7.9
+deliver         32     3.7     8.1     9.9
+pub->paint      32    28.3    34.8    37.0
+val->paint      32    84.8    96.9    99.1
+key->paint      32   307.3   335.5   350.5
+pages/frame: 8.0  keystrokes covered per paint: median 6.0 max 12
+== prior-helper-v2-pmax-0ms
+14 painted v2 revisions in prior-helper-v2-pmax-0ms.log
+stage            n   p50     p95     max
+key->send       14     6.9   142.7   142.7
+send->v1        14   105.4   111.3   111.3
+v1->recv        14    98.5   102.0   102.0
+recv->val       14     2.2     6.1     6.1
+validate        14    46.2    46.9    46.9
+preraster       14     7.6     8.2     8.2
+deliver         14     2.2     7.4     7.4
+pub->paint      14    23.2    35.8    35.8
+val->paint      14    81.8    95.4    95.4
+key->paint      14   292.6   417.8   417.8
+pages/frame: 8.0  keystrokes covered per paint: median 16.0 max 19

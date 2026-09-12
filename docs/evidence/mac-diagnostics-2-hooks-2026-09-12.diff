@@ -1,0 +1,268 @@
+diff --git a/apps/mac/Sources/FlashTeXMac/ContentView.swift b/apps/mac/Sources/FlashTeXMac/ContentView.swift
+index 4a12f9af..0693ad14 100644
+--- a/apps/mac/Sources/FlashTeXMac/ContentView.swift
++++ b/apps/mac/Sources/FlashTeXMac/ContentView.swift
+@@ -349,14 +349,23 @@ private struct PreviewPane: View {
+ 
+     private func diagnosticsList(_ diags: [RuntimeV1.Diagnostic]) -> some View {
+         VStack(alignment: .leading, spacing: 0) {
+-            Text("Diagnostics (\(diags.count)) — the preview above is still shown; errors are not hidden")
++            // Identical diagnostics (same severity and message) are one row with
++            // a count and a per-occurrence jump (EditorDiagnostics.groups).
++            let groups = EditorDiagnostics.groups(of: diags, documentOrder: model.documents.map(\.path))
++            Text("Diagnostics (\(diags.count)\(groups.count < diags.count ? " in \(groups.count) groups" : "")) — the preview above is still shown; errors are not hidden")
+                 .font(.caption.bold()).padding(.horizontal, 8).padding(.vertical, 4)
+-            List(Array(diags.enumerated()), id: \.offset) { i, d in
++            if let carried = model.editorMarkReport.carried {
++                Text("Underlines \(carried.line); the list below is the failed result's.")
++                    .font(.caption).foregroundStyle(.orange).padding(.horizontal, 8).padding(.bottom, 4)
++            }
++            List(groups) { g in
++                let i = g.first
++                let d = diags[i]
+                 HStack(alignment: .top) {
+                     Image(systemName: d.severity == .error ? "xmark.octagon.fill" : "exclamationmark.triangle.fill")
+                         .foregroundStyle(d.severity == .error ? .red : .orange)
+                     VStack(alignment: .leading) {
+-                        Text(d.message)
++                        Text(g.title)
+                         if let line = EditorDiagnostics.recoveryLine(recovery: d.recovery, status: model.result?.status ?? .ok) {
+                             Text("↳ \(line)").font(.caption).foregroundStyle(d.recovery == nil ? .tertiary : .secondary)
+                         }
+@@ -369,13 +378,24 @@ private struct PreviewPane: View {
+                             Text("underline withheld: span edited since the compile").font(.caption2).foregroundStyle(.orange)
+                         }
+                         if let src = d.source {
+-                            Text("\(src.path) bytes \(src.startByte)..<\(src.endByte)").font(.caption2).foregroundStyle(.tertiary)
++                            Text("\(src.path) bytes \(src.startByte)..<\(src.endByte)\(g.count > 1 ? " (first of \(g.count))" : "")").font(.caption2).foregroundStyle(.tertiary)
+                         } else {
+                             Text("no source mapping").font(.caption2).foregroundStyle(.tertiary)
+                         }
+                     }
+                     Spacer()
+-                    if d.source != nil { Button("Go to source") { model.navigate(to: d.source) } }
++                    if g.count > 1 {
++                        Menu("\(g.count) places") {
++                            ForEach(0..<g.count, id: \.self) { k in
++                                Button(EditorDiagnostics.occurrenceLabel(k, of: g, in: diags, texts: model.compiledDocuments)) {
++                                    model.navigate(to: EditorDiagnostics.occurrence(k, of: g, in: diags))
++                                }
++                                .disabled(EditorDiagnostics.occurrence(k, of: g, in: diags) == nil)
++                            }
++                        }
++                        .fixedSize()
++                        .help("Jump to one occurrence of this diagnostic")
++                    } else if d.source != nil { Button("Go to source") { model.navigate(to: d.source) } }
+                     if let x = model.explanations.explanation(resultID: model.resultID, index: i),
+                        x.suggestions.contains(where: { !$0.edits.isEmpty }) {
+                         Button("Fix…") { model.previewQuickFix(diagnosticIndex: i) }
+diff --git a/apps/mac/Sources/FlashTeXMac/Navigation.swift b/apps/mac/Sources/FlashTeXMac/Navigation.swift
+index fc6f1c23..ac040196 100644
+--- a/apps/mac/Sources/FlashTeXMac/Navigation.swift
++++ b/apps/mac/Sources/FlashTeXMac/Navigation.swift
+@@ -633,8 +633,7 @@ extension ShellModel {
+             // mark of the next open document that has one.
+             for offset in 1..<documents.count {
+                 let doc = documents[(active + offset) % documents.count]
+-                let other = EditorDiagnostics.report(for: result, resultID: resultID, path: doc.path,
+-                                                     compiledText: compiledDocuments[doc.path], currentText: doc.text)
++                let other = diagnosticReport(for: doc.path, currentText: doc.text) // retention rule applied (ShellModel+DiagnosticRetention.swift)
+                 if let step = EditorDiagnostics.step(other.marks, fromUTF16: forward ? -1 : Int.max, forward: forward, in: doc.text) {
+                     chosen = (doc.path, step, other)
+                     break
+diff --git a/apps/mac/Sources/FlashTeXMac/ShellModel+Controller.swift b/apps/mac/Sources/FlashTeXMac/ShellModel+Controller.swift
+index 9d5702ac..db71ab7c 100644
+--- a/apps/mac/Sources/FlashTeXMac/ShellModel+Controller.swift
++++ b/apps/mac/Sources/FlashTeXMac/ShellModel+Controller.swift
+@@ -516,6 +516,7 @@ extension ShellModel {
+         for (path, rev) in update.sourceVersions { if let t = controllerState.textByDurable[path]?[rev] { compiled[path] = t } }
+         controllerState.lastPreviewRequestID = update.requestID
+         setCompiledDocuments(compiled)
++        retainMarksAfterResultBound() // ShellModel+DiagnosticRetention.swift
+         let ms = update.controllerTotalMs ?? update.runtimeTotalMs ?? 0
+         TypingBench.shared.noteCompile(revision: editorRev, ms: ms)
+         if TypingBench.isBenchActive { FlashTeXLog.write("compile: applied revision \(editorRev) at \(MonotonicClock.nowNs())") }
+diff --git a/apps/mac/Sources/FlashTeXMac/ShellModel+DiagnosticRetention.swift b/apps/mac/Sources/FlashTeXMac/ShellModel+DiagnosticRetention.swift
+new file mode 100644
+index 00000000..701646f4
+--- /dev/null
++++ b/apps/mac/Sources/FlashTeXMac/ShellModel+DiagnosticRetention.swift
+@@ -0,0 +1,34 @@
++import Foundation
++import FlashTeXProtocol
++
++/// Partial-output marks across a failed compile (lane mac-diagnostics-2).
++///
++/// The shell binds every `compile_result`, including a `failed` one with no
++/// pages (the compiler's answer to an unsafe path, an empty project or a
++/// refused span). Read on its own, such a result has no marks, so the editor
++/// would lose every underline the moment a compile fails and get them all
++/// back on the next success — flicker that also hides where the errors were.
++/// `retainedMarks` remembers the last result that produced output (with the
++/// texts it was compiled from), and `editorMarkReport` draws its marks,
++/// rebased to the current buffer and flagged `carried`, while the newest
++/// result is a failure with no output. Retention never chains through
++/// failures, so the same marks are shown exactly once however many failures
++/// follow, and any result with output replaces them.
++extension ShellModel {
++    /// Call after `result`, `resultID` and `compiledDocuments` are bound
++    /// (fixture, worker and controller paths): updates `retainedMarks`.
++    func retainMarksAfterResultBound() {
++        guard let result else { retainedMarks = nil; return }
++        retainedMarks = EditorDiagnostics.retained(after: result, resultID: resultID, compiledDocuments: compiledDocuments,
++                                                   previous: retainedMarks)
++    }
++
++    /// The report for `path` (any open document) with the retention rule
++    /// applied — what `editorMarkReport` memoizes for the active document
++    /// and what diagnostic navigation reads for the others.
++    func diagnosticReport(for path: String, currentText: String) -> EditorDiagnostics.Report {
++        guard let result else { return .empty }
++        return EditorDiagnostics.report(for: result, resultID: resultID, retained: retainedMarks, path: path,
++                                        compiledText: compiledDocuments[path], currentText: currentText)
++    }
++}
+diff --git a/apps/mac/Sources/FlashTeXMac/ShellModel.swift b/apps/mac/Sources/FlashTeXMac/ShellModel.swift
+index bbb380b0..ac6fa98d 100644
+--- a/apps/mac/Sources/FlashTeXMac/ShellModel.swift
++++ b/apps/mac/Sources/FlashTeXMac/ShellModel.swift
+@@ -244,15 +244,24 @@ final class ShellModel {
+         // Historical spans are inert: not drawn even when their offsets are in bounds.
+         guard let result, historicalPreview == nil else { return .empty }
+         let key = EditorMarksKey(resultID: resultID, resultRevision: result.revision, editorRevision: editorRevision, path: activePath,
+-                                 explanationsCount: explanations[resultID]?.count ?? -1)
++                                 explanationsCount: explanations[resultID]?.count ?? -1,
++                                 carriedExplanationsCount: explanations[retainedMarks?.resultID]?.count ?? -1)
+         if let cached = editorMarksCache, cached.key == key { return cached.report }
+-        let report = EditorDiagnostics.attach(explanations[resultID], to: EditorDiagnostics.report(
+-            for: result, resultID: resultID, path: activePath,
+-            compiledText: compiledDocuments[activePath], currentText: activeText))
++        // Retention: a failed result with no pages keeps the last marks, flagged
++        // (ShellModel+DiagnosticRetention.swift); carried marks take their
++        // explanation lines from the retained result's cache entry.
++        let report = EditorDiagnostics.attach(explanations[resultID], carried: explanations[retainedMarks?.resultID],
++                                              to: diagnosticReport(for: activePath, currentText: activeText))
+         editorMarksCache = (key, report)
+         return report
+     }
+-    private struct EditorMarksKey: Equatable { var resultID: String?; var resultRevision: Int; var editorRevision: Int; var path: String; var explanationsCount: Int }
++    /// The last result that produced output (`EditorDiagnostics.Retained`),
++    /// kept while a later result fails with no pages; see `retainMarksAfterResultBound`.
++    var retainedMarks: EditorDiagnostics.Retained?
++    private struct EditorMarksKey: Equatable {
++        var resultID: String?; var resultRevision: Int; var editorRevision: Int; var path: String
++        var explanationsCount: Int; var carriedExplanationsCount: Int
++    }
+     @ObservationIgnored private var editorMarksCache: (key: EditorMarksKey, report: EditorDiagnostics.Report)?
+     /// Identity of the mark last reached by ⌘⇧]/⌘⇧[, so marks sharing a
+     /// start offset are each visited once (Navigation.swift).
+@@ -408,6 +417,7 @@ final class ShellModel {
+                 if documents.isEmpty { documents = [.init(path: "main.tex", text: "")] }
+                 compiledDocuments = [:]
+             }
++            retainMarksAfterResultBound() // ShellModel+DiagnosticRetention.swift
+             selection = nil
+             navigationNote = nil
+         } catch {
+@@ -448,6 +458,7 @@ final class ShellModel {
+         compiledDocuments = [:]
+         result = nil
+         resultID = nil
++        retainedMarks = nil
+         previewSource = .none
+         historicalPreview = nil
+         negotiation = .legacy
+@@ -716,6 +727,7 @@ final class ShellModel {
+             historicalPreview = nil
+             bindLayout(of: incoming, requested: sent.layoutCapabilities)
+             compiledDocuments = Dictionary(uniqueKeysWithValues: sent.documents.map { ($0.path, $0.text) })
++            retainMarksAfterResultBound() // ShellModel+DiagnosticRetention.swift
+             fetchExplanations(for: incoming, id: env.id, documents: sent.documents)
+             let ms = Date().timeIntervalSince(sent.sentAt) * 1000
+             TypingBench.shared.noteCompile(revision: incoming.revision, ms: ms)
+diff --git a/apps/mac/Tests/FlashTeXMacTests/EditorDiagnosticsRetentionShellTests.swift b/apps/mac/Tests/FlashTeXMacTests/EditorDiagnosticsRetentionShellTests.swift
+new file mode 100644
+index 00000000..1d2dcd83
+--- /dev/null
++++ b/apps/mac/Tests/FlashTeXMacTests/EditorDiagnosticsRetentionShellTests.swift
+@@ -0,0 +1,80 @@
++import XCTest
++@testable import FlashTeXProtocol
++@testable import FlashTeXMac
++
++/// The shell hooks of ShellModel+DiagnosticRetention.swift (applied branch):
++/// after a real HW1 result, a real failed result with no output keeps the
++/// 119 underlines flagged, keyboard navigation still walks them and says so,
++/// an edit rebases them, and the next result with output replaces them.
++final class EditorDiagnosticsRetentionShellTests: XCTestCase {
++    @MainActor
++    func testFailedResultKeepsMarksInTheShellAndNavigationAnnouncesIt() throws {
++        guard let path = ProcessInfo.processInfo.environment["FLASHTEX_COMPILER"],
++              FileManager.default.isExecutableFile(atPath: path) else {
++            throw XCTSkip("set FLASHTEX_COMPILER to run the shell retention test against the live compiler")
++        }
++        let compiler = URL(fileURLWithPath: path)
++        let text = EditorDiagnosticsPartialOutputTests.prefix
++            + (try String(contentsOf: EditorDiagnosticsPartialOutputTests.hw1URL, encoding: .utf8))
++        let good = try EditorDiagnosticsPartialOutputTests.compile([.init(path: "main.tex", text: text)], revision: 1, id: "g-1", with: compiler)
++        let failed = try EditorDiagnosticsPartialOutputTests.compile([], entry: "", revision: 2, id: "f-2", with: compiler)
++        XCTAssertEqual(good.payload.status, .recovered)
++        XCTAssertEqual(failed.payload.status, .failed)
++
++        let model = ShellModel()
++        model.replaceProject(entryText: text)
++        model.result = good.payload; model.resultID = good.id
++        model.setCompiledDocuments(["main.tex": text])
++        model.retainMarksAfterResultBound()
++        let n = good.payload.diagnostics.count
++        XCTAssertEqual(model.editorMarks.count, n)
++        XCTAssertNil(model.editorMarkReport.carried)
++        XCTAssertEqual(model.retainedMarks?.result.revision, 1)
++
++        // The failure binds as the shell binds every result; the marks stay.
++        model.result = failed.payload; model.resultID = failed.id
++        model.setCompiledDocuments([:])
++        model.retainMarksAfterResultBound()
++        XCTAssertEqual(model.retainedMarks?.result.revision, 1, "a failure never replaces the retained result")
++        let report = model.editorMarkReport
++        XCTAssertEqual(report.marks.count, n, "kept, not cleared")
++        XCTAssertEqual(Set(report.marks.map(\.id)).count, n, "not duplicated")
++        XCTAssertEqual(report.carried, .init(revision: 1, failedRevision: 2))
++        XCTAssertEqual(report.staleNote, "\(n) underlines kept from revision 1: revision 2 failed with no output")
++        XCTAssertEqual(model.displayedDiagnostics.count, 1, "the list shows the failed result's own diagnostic")
++
++        model.caretUTF16 = 0
++        model.currentDiagnosticID = nil
++        model.goToDiagnostic(forward: true)
++        XCTAssertEqual((model.activeText as NSString).substring(with: model.selection!.nsRange), "\\usepackage[T1]{fontenc}")
++        XCTAssertTrue(model.navigationNote?.hasPrefix("Warning 1 of \(n), line 4: ") == true, model.navigationNote ?? "nil")
++        XCTAssertTrue(model.navigationNote?.hasSuffix("; \(n) underlines kept from revision 1: revision 2 failed with no output") == true, model.navigationNote ?? "nil")
++
++        // An edit while the failure stands: rebased from the retained text.
++        model.updateActiveText("% edited\n" + text)
++        let edited = model.editorMarkReport
++        XCTAssertEqual(edited.marks.count, n)
++        XCTAssertEqual(edited.marks[0].nsRange.location, report.marks[0].nsRange.location + "% edited\n".utf16.count)
++        XCTAssertEqual(edited.carried, report.carried)
++
++        // A second failure keeps the same marks once; a new good result replaces them.
++        let failed3 = try EditorDiagnosticsPartialOutputTests.compile([], entry: "", revision: 3, id: "f-3", with: compiler)
++        model.result = failed3.payload; model.resultID = failed3.id
++        model.retainMarksAfterResultBound()
++        XCTAssertEqual(model.editorMarks.count, n)
++        XCTAssertEqual(model.editorMarkReport.carried, .init(revision: 1, failedRevision: 3))
++        let again = try EditorDiagnosticsPartialOutputTests.compile([.init(path: "main.tex", text: model.activeText)], revision: 4, id: "g-4", with: compiler)
++        model.result = again.payload; model.resultID = again.id
++        model.setCompiledDocuments(["main.tex": model.activeText])
++        model.retainMarksAfterResultBound()
++        XCTAssertEqual(model.retainedMarks?.result.revision, 4)
++        XCTAssertNil(model.editorMarkReport.carried)
++        XCTAssertEqual(model.editorMarks.count, n)
++        XCTAssertTrue(model.editorMarks.allSatisfy { $0.carried == nil && $0.identity.resultID == "g-4" })
++
++        // File > Open forgets the retained result.
++        model.replaceProject(entryText: "plain\n")
++        XCTAssertNil(model.retainedMarks)
++        XCTAssertEqual(model.editorMarks, [])
++    }
++}

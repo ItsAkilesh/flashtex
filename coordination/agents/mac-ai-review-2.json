@@ -1,0 +1,31 @@
+{
+  "agent_id": "mac-ai-review-2",
+  "allocation_id": "claude-mac20x-ai-review-2",
+  "assignment_acknowledgements": {},
+  "branch": "agent/mac-ai-review-2/recovery",
+  "capabilities": [
+    "swift",
+    "appkit",
+    "swiftui",
+    "xctest"
+  ],
+  "code_revision": "0b1f5ee1",
+  "eta_minutes": {
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 5
+  },
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "c11c005",
+  "next_action": "Parent merges agent/mac-ai-review-2/recovery (0b1f5ee1 + coord commit) and applies docs/evidence/mac-ai-review-2-shellmodel-hooks-2026-09-12.diff to ShellModel.swift (compiled/tested on agent/mac-ai-review-2/recovery-applied 9710f07c); set FLASHTEX_REVIEW_HISTORY_DIR=off or a scratch dir in the test environment",
+  "reviewed_peers": {},
+  "schema_version": 1,
+  "state": "ready_for_integration",
+  "summary": "AI review item 15 replenishment done: ReviewRecoveryTests (cancel at every stage, out-of-order rejection incl. another proposal's context, refused reviewed insertion back to review + re-approval inserted once through the real preview-controller with the real hosted editor; helper killed mid-approve) + delaying real-helper proxy fixture + reviewClosed recovery event; follow-up 1 ReviewHistory (entries with outcomes/reasons, 200-bounded, Application Support JSON persistence, env override, view); follow-up 2 ExplanationMemo keyed by (diagnostic, source sha) with ExplanationCache.reuse; ShellModel hooks as a parent diff",
+  "tool": "Claude Code subagent (parent mac-claude-a)",
+  "updated_utc": "2026-09-12T16:33:00Z",
+  "usage": {
+    "evidence": "ReviewRecoveryTests 3/3 (five runs, load 23-46) + ProposalPreviewTests 24/25 (1 opt-in skip) + AssistantRecoveryTests 5/6 (1 load skip) with real compiler/preview-controller/assistant-context; ReviewHistoryTests 2/2; ExplanationMemoTests 2/3 (+1 load-skipped bench, measured 0.29-0.67 ms); with hooks applied 23 tests, 1 pre-existing load-sensitive failure (testMarksPlusExplanationsStayFast 2.03 ms > 2 ms at load 48); no full swift test (load never < 15)",
+    "status": "Shared Claude Max quota with parent mac-claude-a; no purchases; no live provider"
+  }
+}

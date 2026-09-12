@@ -1,0 +1,31 @@
+{
+  "agent_id": "mac-editor-a11y-3",
+  "allocation_id": "claude-mac20x-editor-a11y-3",
+  "assignment_acknowledgements": {},
+  "branch": "agent/mac-editor-a11y-3/rotor-motion",
+  "capabilities": [
+    "swift",
+    "appkit",
+    "swiftui",
+    "accessibility"
+  ],
+  "code_revision": "c7efc09b",
+  "eta_minutes": {
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 0
+  },
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "9ba9851c",
+  "next_action": "Handed back to parent mac-claude-a: merge agent/mac-editor-a11y-3/rotor-motion @ c7efc09b and apply the two one-line diffs to PreviewView.swift / SourceEditorView.swift (handoff).",
+  "reviewed_peers": {},
+  "schema_version": 1,
+  "state": "done",
+  "summary": "Item 10 follow-ups done: Headings/Environments VoiceOver rotors on CompletingTextView (7 tests), reduce-motion path for the anchor settle window + animate() wrapper (3 tests), bounded large-selection announcement + whole-document selection re-measurement (2 tests); parent hooks are diff requests.",
+  "tool": "Claude Code subagent (parent mac-claude-a)",
+  "updated_utc": "2026-09-12T18:40:00Z",
+  "usage": {
+    "evidence": "Claude Max 20x shared with parent; session cut once by quota ~17:25Z and resumed; no purchases",
+    "status": "Shared Claude Max quota with parent mac-claude-a; no purchases"
+  }
+}

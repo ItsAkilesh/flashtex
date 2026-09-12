@@ -1,0 +1,38 @@
+Test Suite 'Selected tests' started at 2026-09-12 09:45:17.057.
+Test Suite 'FlashTeXMacPackageTests.xctest' started at 2026-09-12 09:45:17.058.
+Test Suite 'PanelAccessibilityTests' started at 2026-09-12 09:45:17.058.
+Test Case '-[FlashTeXMacTests.PanelAccessibilityTests testHistoryPanelListTakesKeyboardFocusAndTheEditorKeepsIt]' started.
+Test Case '-[FlashTeXMacTests.PanelAccessibilityTests testHistoryPanelListTakesKeyboardFocusAndTheEditorKeepsIt]' passed (0.878 seconds).
+Test Case '-[FlashTeXMacTests.PanelAccessibilityTests testPreferencesPanelControlsTakeKeyboardFocusAndTheEditorKeepsIt]' started.
+Test Case '-[FlashTeXMacTests.PanelAccessibilityTests testPreferencesPanelControlsTakeKeyboardFocusAndTheEditorKeepsIt]' passed (1.617 seconds).
+Test Case '-[FlashTeXMacTests.PanelAccessibilityTests testSearchPanelFocusesTheLiteralFieldControlsTakeKeyboardFocusAndTheEditorKeepsIt]' started.
+Test Case '-[FlashTeXMacTests.PanelAccessibilityTests testSearchPanelFocusesTheLiteralFieldControlsTakeKeyboardFocusAndTheEditorKeepsIt]' passed (0.723 seconds).
+Test Suite 'PanelAccessibilityTests' passed at 2026-09-12 09:45:20.276.
+	 Executed 3 tests, with 0 failures (0 unexpected) in 3.218 (3.218) seconds
+Test Suite 'FlashTeXMacPackageTests.xctest' passed at 2026-09-12 09:45:20.276.
+	 Executed 3 tests, with 0 failures (0 unexpected) in 3.218 (3.218) seconds
+Test Suite 'Selected tests' passed at 2026-09-12 09:45:20.276.
+	 Executed 3 tests, with 0 failures (0 unexpected) in 3.218 (3.220) seconds
+[Durable History] AppKit-backed controls in reading order (1); full keyboard access off, key window: false
+  1. SwiftUIOutlineListView y=12 x=12 nextKeyView=_NSScrollViewFloatingSubviewsContainerView
+[Durable History] nextValidKeyView is nil in the never-key host; Tab order is pinned by PanelFocusOrder against the source
+[Settings] AppKit-backed controls in reading order (8); full keyboard access off, key window: false
+  1. SwiftUIPopupButton y=564 x=256 nextKeyView=AppKitPlatformViewHost<PlatformViewRepresentableAdaptor<PlatformView>>
+  2. CustomMarkedSlider y=528 x=118 nextKeyView=_NSCoreHostingView<SliderWrapper>
+  3. EditTrackingStepper y=524 x=410 nextKeyView=AppKitPlatformViewHost<PlatformViewRepresentableAdaptor<AppKitStepper>>
+  4. PlatformSwitch y=395 x=394 nextKeyView=_NSCoreHostingView<AppKitSwitch>
+  5. EditTrackingStepper y=352 x=410 nextKeyView=AppKitPlatformViewHost<PlatformViewRepresentableAdaptor<AppKitStepper>>
+  6. SwiftUISegmentedControl y=219 x=235 nextKeyView=_NSCoreHostingView<AppKitSegmentedControl>
+  7. PlatformSwitch y=126 x=394 nextKeyView=_NSCoreHostingView<AppKitSwitch>
+  8. PlatformSwitch y=89 x=394 nextKeyView=_NSCoreHostingView<AppKitSwitch>
+[Settings] nextValidKeyView is nil in the never-key host; Tab order is pinned by PanelFocusOrder against the source
+[Find in Project] AppKit-backed controls in reading order (4); full keyboard access off, key window: false
+  1. AppKitTextField y=564 x=12 nextKeyView=AppKitPlatformViewHost<PlatformViewRepresentableAdaptor<PlatformTextFieldAdaptor>>
+  2. SwiftUIPopupButton y=531 x=367 nextKeyView=AppKitPlatformViewHost<PlatformViewRepresentableAdaptor<PlatformView>>
+  3. EditTrackingStepper y=530 x=728 nextKeyView=AppKitPlatformViewHost<PlatformViewRepresentableAdaptor<AppKitStepper>>
+  4. AppKitTextField y=34 x=12 nextKeyView=AppKitPlatformViewHost<PlatformViewRepresentableAdaptor<PlatformTextFieldAdaptor>>
+[Find in Project] nextValidKeyView is nil in the never-key host; Tab order is pinned by PanelFocusOrder against the source
+◇ Test run started.
+↳ Testing Library Version: 1501
+↳ Target Platform: arm64e-apple-macos14.0
+✔ Test run with 0 tests in 0 suites passed after 0.001 seconds.

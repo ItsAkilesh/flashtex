@@ -1,0 +1,4 @@
+render27.tex: status recovered, 27 pages, v1 line 3236689 B, v2 sibling none, diagnostics 18, declined: [('display_list_declined', 'display-list-v2 declined: the display_list line would be about 23968281 bytes for 27 pages, over the')]
+body60k.tex: status recovered, 22 pages, v1 line 2462140 B, v2 sibling none, diagnostics 1, declined: [('display_list_declined', 'display-list-v2 declined: the display_list line would be about 23153742 bytes for 22 pages, over the')]
+hw1.tex: status recovered, 3 pages, v1 line 313317 B, v2 sibling 1359468 B, diagnostics 130, declined: []
+demo.tex: status ok, 2 pages, v1 line 222094 B, v2 sibling 1942532 B, diagnostics 0, declined: []

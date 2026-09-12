@@ -1,0 +1,30 @@
+{
+  "agent_id": "mac-citation-rename",
+  "allocation_id": "claude-mac20x-citation-rename",
+  "assignment_acknowledgements": {},
+  "branch": "agent/mac-citation-rename/citation-rename",
+  "capabilities": [
+    "swift",
+    "appkit",
+    "swiftui"
+  ],
+  "code_revision": "d4e360d9",
+  "eta_minutes": {
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 5
+  },
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "ffe199d",
+  "next_action": "Parent: review d4e360d9, apply the FlashTeXMacApp hook (3 lines, diff in coordination/mac-citation-rename.md; compile-checked on agent/mac-citation-rename/citation-rename-applied), integrate into mac-shell",
+  "reviewed_peers": {},
+  "schema_version": 1,
+  "state": "ready_for_integration",
+  "summary": "Reviewed citation rename delivered: CitationRename.swift (plan_citation_rename/_at -> review -> explicit per-file apply_group on the search lane's shared core; Edit > Rename Citation..., no shortcut), CitationRenameTests.swift 11 tests (7 pure + 4 real-helper), ProjectSearchPanel.swift refactor keeps its 21 tests green; 40/40 with real helpers (CitationRename 11, ProjectSearch 21, DocumentKinds 8). Full suite not run (1-min load 19-23 > 15).",
+  "tool": "Claude Code subagent (parent mac-claude-a)",
+  "updated_utc": "2026-09-12T14:16:00Z",
+  "usage": {
+    "evidence": "swift test --filter 'ProjectSearch|DocumentKinds|CitationRename' 40/40 at 14:14Z with FLASHTEX_PREVIEW_CONTROLLER/FLASHTEX_COMPILER release binaries",
+    "status": "Shared Claude Max quota with parent mac-claude-a; no purchases"
+  }
+}

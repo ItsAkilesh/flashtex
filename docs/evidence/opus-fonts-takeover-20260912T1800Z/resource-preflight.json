@@ -1,0 +1,417 @@
+{
+  "format": "flashtex-bundle-texmf-stage-v1",
+  "source_root": "apps/mac/Fonts/texmf",
+  "status": "verified",
+  "entries": [
+    {
+      "path": "fonts/tfm/public/lm/ec-lmr10.tfm",
+      "status": "verified",
+      "actual_bytes": 12056,
+      "actual_sha256": "cd13479f463b9a575d053dd7bf0884daa46bfdeffe4b7f537c193861652ac9e5",
+      "bundle_path": "texmf/fonts/tfm/public/lm/ec-lmr10.tfm",
+      "tier": "pinned"
+    },
+    {
+      "path": "fonts/tfm/public/lm/ec-lmr12.tfm",
+      "status": "verified",
+      "actual_bytes": 12092,
+      "actual_sha256": "299021120f0a29ef61278a2363903bd8defbb8faaade458eb79067342aecb56f",
+      "bundle_path": "texmf/fonts/tfm/public/lm/ec-lmr12.tfm",
+      "tier": "pinned"
+    },
+    {
+      "path": "fonts/tfm/public/lm/rm-lmr12.tfm",
+      "status": "verified",
+      "actual_bytes": 11888,
+      "actual_sha256": "9d4e3d8e39a41b93d91f79c1c47d2297efb7b1af220b94860693c08361f227aa",
+      "bundle_path": "texmf/fonts/tfm/public/lm/rm-lmr12.tfm",
+      "tier": "pinned"
+    },
+    {
+      "path": "fonts/tfm/public/lm/rm-lmr6.tfm",
+      "status": "verified",
+      "actual_bytes": 11836,
+      "actual_sha256": "eb0bfdf8db3ae1409639fac9c88f84923872500d882d9ff8dc37aff445c723fe",
+      "bundle_path": "texmf/fonts/tfm/public/lm/rm-lmr6.tfm",
+      "tier": "pinned"
+    },
+    {
+      "path": "fonts/tfm/public/lm/rm-lmr8.tfm",
+      "status": "verified",
+      "actual_bytes": 11864,
+      "actual_sha256": "80bcbfd844d2310ac1d3bead45aee25e91b1a4a0a60ff1771959b9a1e90ec1a2",
+      "bundle_path": "texmf/fonts/tfm/public/lm/rm-lmr8.tfm",
+      "tier": "pinned"
+    },
+    {
+      "path": "doc/fonts/lm/GUST-FONT-LICENSE.TXT",
+      "status": "verified",
+      "actual_bytes": 1377,
+      "actual_sha256": "49ea6cb9257bbee0a3979c48a774cd221550ac1c20c95549efe45fc99cc18050",
+      "bundle_path": "texmf/doc/fonts/lm/GUST-FONT-LICENSE.TXT",
+      "tier": "pinned"
+    },
+    {
+      "path": "fonts/tfm/public/lm/ec-lmbx10.tfm",
+      "status": "verified",
+      "actual_bytes": 12076,
+      "actual_sha256": "0895c940bd2e763b70dcab18ebf27fd3f93c2490f43b2a8c028fc7fc24b2e855",
+      "bundle_path": "texmf/fonts/tfm/public/lm/ec-lmbx10.tfm",
+      "tier": "supplementary"
+    },
+    {
+      "path": "fonts/tfm/public/lm/ec-lmbx12.tfm",
+      "status": "verified",
+      "actual_bytes": 12088,
+      "actual_sha256": "d19c45859d453c0802699d27aa2bff735574b9bc97d8791aa76e3c7de6c38a36",
+      "bundle_path": "texmf/fonts/tfm/public/lm/ec-lmbx12.tfm",
+      "tier": "supplementary"
+    },
+    {
+      "path": "fonts/tfm/public/lm/ec-lmbx5.tfm",
+      "status": "verified",
+      "actual_bytes": 12036,
+      "actual_sha256": "9dd1a1783864b02e207f29e01e26ccf1116ad4cc982da9857ea919f2ae1d08df",
+      "bundle_path": "texmf/fonts/tfm/public/lm/ec-lmbx5.tfm",
+      "tier": "supplementary"
+    },
+    {
+      "path": "fonts/tfm/public/lm/ec-lmbx6.tfm",
+      "status": "verified",
+      "actual_bytes": 12060,
+      "actual_sha256": "71c89d5050c48f39a74b06ca0f283963a1199edc95ea9eba2d5fbf7637badea4",
+      "bundle_path": "texmf/fonts/tfm/public/lm/ec-lmbx6.tfm",
+      "tier": "supplementary"
+    },
+    {
+      "path": "fonts/tfm/public/lm/ec-lmbx7.tfm",
+      "status": "verified",
+      "actual_bytes": 12072,
+      "actual_sha256": "37ae9162962552ae6fdc7d6f387e5d32b1bca12a8721791db03e179ef4297c4b",
+      "bundle_path": "texmf/fonts/tfm/public/lm/ec-lmbx7.tfm",
+      "tier": "supplementary"
+    },
+    {
+      "path": "fonts/tfm/public/lm/ec-lmbx8.tfm",
+      "status": "verified",
+      "actual_bytes": 12076,
+      "actual_sha256": "bacfd8c7fb1096a76986fcc5a222b940c61fd5b4e277bd33648d200a827a6ec2",
+      "bundle_path": "texmf/fonts/tfm/public/lm/ec-lmbx8.tfm",
+      "tier": "supplementary"
+    },
+    {
+      "path": "fonts/tfm/public/lm/ec-lmbx9.tfm",
+      "status": "verified",
+      "actual_bytes": 12080,
+      "actual_sha256": "c6cbec1d83b81845060d8505d1172666aa270bfaaec1fa18284648f3c4fd8f63",
+      "bundle_path": "texmf/fonts/tfm/public/lm/ec-lmbx9.tfm",
+      "tier": "supplementary"
+    },
+    {
+      "path": "fonts/tfm/public/lm/ec-lmbxi10.tfm",
+      "status": "verified",
+      "actual_bytes": 17180,
+      "actual_sha256": "61e8b89cab10af86bcba97cc3e15037b39d9cca868c48d229704c6401ba3edb7",
+      "bundle_path": "texmf/fonts/tfm/public/lm/ec-lmbxi10.tfm",
+      "tier": "supplementary"
+    },
+    {
+      "path": "fonts/tfm/public/lm/ec-lmr17.tfm",
+      "status": "verified",
+      "actual_bytes": 12156,
+      "actual_sha256": "67fb845ec934b2d50e788280d2c6d63ae719c9d8ac16a02d42fd346c81196c0c",
+      "bundle_path": "texmf/fonts/tfm/public/lm/ec-lmr17.tfm",
+      "tier": "supplementary"
+    },
+    {
+      "path": "fonts/tfm/public/lm/ec-lmr5.tfm",
+      "status": "verified",
+      "actual_bytes": 12020,
+      "actual_sha256": "4f75f4f48232bcc51274bdfc7c04a44324f028345517d7f07c21dfde4ca9b804",
+      "bundle_path": "texmf/fonts/tfm/public/lm/ec-lmr5.tfm",
+      "tier": "supplementary"
+    },
+    {
+      "path": "fonts/tfm/public/lm/ec-lmr6.tfm",
+      "status": "verified",
+      "actual_bytes": 12048,
+      "actual_sha256": "db2ec8f82b5dd559b686afb9da660c397f79c819905ed2706c86b0fd3e1017c7",
+      "bundle_path": "texmf/fonts/tfm/public/lm/ec-lmr6.tfm",
+      "tier": "supplementary"
+    },
+    {
+      "path": "fonts/tfm/public/lm/ec-lmr7.tfm",
+      "status": "verified",
+      "actual_bytes": 12064,
+      "actual_sha256": "8cbbca3361fad7a70510d9e506bed78c1288065c1d83adce828df8c31afeedaf",
+      "bundle_path": "texmf/fonts/tfm/public/lm/ec-lmr7.tfm",
+      "tier": "supplementary"
+    },
+    {
+      "path": "fonts/tfm/public/lm/ec-lmr8.tfm",
+      "status": "verified",
+      "actual_bytes": 12064,
+      "actual_sha256": "9c60dbef6aea9e108bd6512f10bd2855331b31ffa49bfb6161bf4ee9ac570584",
+      "bundle_path": "texmf/fonts/tfm/public/lm/ec-lmr8.tfm",
+      "tier": "supplementary"
+    },
+    {
+      "path": "fonts/tfm/public/lm/ec-lmr9.tfm",
+      "status": "verified",
+      "actual_bytes": 12084,
+      "actual_sha256": "9e5b21c43423010fb28b078b34f2c10e5c5f4f871ec51fb84dca9caf05fae31f",
+      "bundle_path": "texmf/fonts/tfm/public/lm/ec-lmr9.tfm",
+      "tier": "supplementary"
+    },
+    {
+      "path": "fonts/tfm/public/lm/ec-lmri10.tfm",
+      "status": "verified",
+      "actual_bytes": 17148,
+      "actual_sha256": "372f968b4eeb47bf6a6c941c8793bce118d1800f12e194a351c7493ecc158f2a",
+      "bundle_path": "texmf/fonts/tfm/public/lm/ec-lmri10.tfm",
+      "tier": "supplementary"
+    },
+    {
+      "path": "fonts/tfm/public/lm/ec-lmri12.tfm",
+      "status": "verified",
+      "actual_bytes": 17144,
+      "actual_sha256": "879072f2a2086f46e61934977f2e919bb6f196c08442b5b62242e78e576820ce",
+      "bundle_path": "texmf/fonts/tfm/public/lm/ec-lmri12.tfm",
+      "tier": "supplementary"
+    },
+    {
+      "path": "fonts/tfm/public/lm/ec-lmri7.tfm",
+      "status": "verified",
+      "actual_bytes": 17168,
+      "actual_sha256": "e7807ea6471b5fc7a14544fd6f72bb82fbb14230d79196f68509a3589e62a678",
+      "bundle_path": "texmf/fonts/tfm/public/lm/ec-lmri7.tfm",
+      "tier": "supplementary"
+    },
+    {
+      "path": "fonts/tfm/public/lm/ec-lmri8.tfm",
+      "status": "verified",
+      "actual_bytes": 17152,
+      "actual_sha256": "1440665458738428540918b90c7a3556d6ed3118ff2e0237bd739c60f6edb889",
+      "bundle_path": "texmf/fonts/tfm/public/lm/ec-lmri8.tfm",
+      "tier": "supplementary"
+    },
+    {
+      "path": "fonts/tfm/public/lm/ec-lmri9.tfm",
+      "status": "verified",
+      "actual_bytes": 17148,
+      "actual_sha256": "81efc6c5104f8f7a7cc295daeb3dc923309d186e862c6cfc869299a6fdcdbb69",
+      "bundle_path": "texmf/fonts/tfm/public/lm/ec-lmri9.tfm",
+      "tier": "supplementary"
+    },
+    {
+      "path": "fonts/tfm/public/lm/rm-lmr10.tfm",
+      "status": "verified",
+      "actual_bytes": 11868,
+      "actual_sha256": "50dc8240a67003c1ec5bcd55f703c87189aeab0d199c42b4dc3e141a02488998",
+      "bundle_path": "texmf/fonts/tfm/public/lm/rm-lmr10.tfm",
+      "tier": "supplementary"
+    },
+    {
+      "path": "fonts/tfm/public/lm/rm-lmr5.tfm",
+      "status": "verified",
+      "actual_bytes": 11804,
+      "actual_sha256": "420a4fc1563b171e5a791bb71211d85e6bf62fd2f2ed2a7f34f742049d6e5071",
+      "bundle_path": "texmf/fonts/tfm/public/lm/rm-lmr5.tfm",
+      "tier": "supplementary"
+    },
+    {
+      "path": "fonts/tfm/public/lm/rm-lmr7.tfm",
+      "status": "verified",
+      "actual_bytes": 11852,
+      "actual_sha256": "373a4f72b5a088f9caee2cfd75adb2b25116e0cba3ad2bfa99b5f8a7e902a482",
+      "bundle_path": "texmf/fonts/tfm/public/lm/rm-lmr7.tfm",
+      "tier": "supplementary"
+    },
+    {
+      "path": "fonts/tfm/public/lm/rm-lmr9.tfm",
+      "status": "verified",
+      "actual_bytes": 11884,
+      "actual_sha256": "ef6f318763d0052fc82dde4d73071a894ab6dfaa06890800ddd9b4a65657c0df",
+      "bundle_path": "texmf/fonts/tfm/public/lm/rm-lmr9.tfm",
+      "tier": "supplementary"
+    },
+    {
+      "path": "lmroman10-regular.otf",
+      "status": "verified",
+      "actual_bytes": 111536,
+      "actual_sha256": "1aa18cfefa58132c52ce5de70db1fd1154201c19cd2b2cdaffba4906a33e6852",
+      "bundle_path": "Fonts/lmroman10-regular.otf",
+      "tier": "pinned"
+    },
+    {
+      "path": "lmroman12-regular.otf",
+      "status": "verified",
+      "actual_bytes": 110400,
+      "actual_sha256": "e6be218ae83e61aa8a29990d3cdc401c678c1962188cb9a4a8b6359e4f5e5870",
+      "bundle_path": "Fonts/lmroman12-regular.otf",
+      "tier": "pinned"
+    },
+    {
+      "path": "latinmodern-math.otf",
+      "status": "verified",
+      "actual_bytes": 733736,
+      "actual_sha256": "6075562b771f8b82f0c179e363389684f2dd09de30038269e2628e504bd7be0f",
+      "bundle_path": "Fonts/latinmodern-math.otf",
+      "tier": "pinned"
+    },
+    {
+      "path": "lmroman5-regular.otf",
+      "status": "verified",
+      "actual_bytes": 111872,
+      "actual_sha256": "954bd9c376597c7043e7b616430163e0158155edf7434fd70082cf8460c08533",
+      "bundle_path": "Fonts/lmroman5-regular.otf",
+      "tier": "supplementary-face"
+    },
+    {
+      "path": "lmroman6-regular.otf",
+      "status": "verified",
+      "actual_bytes": 112212,
+      "actual_sha256": "501396c437f76c260b8724265b8495f318a640ee5a4674852ecbb20daf256696",
+      "bundle_path": "Fonts/lmroman6-regular.otf",
+      "tier": "supplementary-face"
+    },
+    {
+      "path": "lmroman7-regular.otf",
+      "status": "verified",
+      "actual_bytes": 110792,
+      "actual_sha256": "48c4b46ab255eec96588fb992fba1ed6102e53d051da480738a61cc6cdb328c3",
+      "bundle_path": "Fonts/lmroman7-regular.otf",
+      "tier": "supplementary-face"
+    },
+    {
+      "path": "lmroman8-regular.otf",
+      "status": "verified",
+      "actual_bytes": 111948,
+      "actual_sha256": "f73015c3827596586faa380c398501caf9b5bcbb6f40b46af6a51277ca97c9fc",
+      "bundle_path": "Fonts/lmroman8-regular.otf",
+      "tier": "supplementary-face"
+    },
+    {
+      "path": "lmroman9-regular.otf",
+      "status": "verified",
+      "actual_bytes": 112680,
+      "actual_sha256": "8ab7b017fc67ea0e30cbf9e7ebd940010442ea67b40cf65f87d73f3ca11b0e6f",
+      "bundle_path": "Fonts/lmroman9-regular.otf",
+      "tier": "supplementary-face"
+    },
+    {
+      "path": "lmroman17-regular.otf",
+      "status": "verified",
+      "actual_bytes": 110248,
+      "actual_sha256": "ed048c80fb4b67663b80899b89fe5fba17d7442e1286d61fd08fe5689c6b7c3c",
+      "bundle_path": "Fonts/lmroman17-regular.otf",
+      "tier": "supplementary-face"
+    },
+    {
+      "path": "lmroman5-bold.otf",
+      "status": "verified",
+      "actual_bytes": 109564,
+      "actual_sha256": "6326fb955d07bedcc8f73684e6b6bfa76706d38f3a85bd89c0659504ace366a1",
+      "bundle_path": "Fonts/lmroman5-bold.otf",
+      "tier": "supplementary-face"
+    },
+    {
+      "path": "lmroman6-bold.otf",
+      "status": "verified",
+      "actual_bytes": 112452,
+      "actual_sha256": "f1ebd52916182bfc2e3f9d4b5ba847ad6acc6c7761354c0dc052fb01ec14f73c",
+      "bundle_path": "Fonts/lmroman6-bold.otf",
+      "tier": "supplementary-face"
+    },
+    {
+      "path": "lmroman7-bold.otf",
+      "status": "verified",
+      "actual_bytes": 110212,
+      "actual_sha256": "063ea9e378b4fca4fd59771cf522faa21eb7c8516c89464745c79725b384fb9a",
+      "bundle_path": "Fonts/lmroman7-bold.otf",
+      "tier": "supplementary-face"
+    },
+    {
+      "path": "lmroman8-bold.otf",
+      "status": "verified",
+      "actual_bytes": 112404,
+      "actual_sha256": "04d4f633c3da31a169f4c54a7fe8c7e63925b39d030381f8d3eab955f16be7b2",
+      "bundle_path": "Fonts/lmroman8-bold.otf",
+      "tier": "supplementary-face"
+    },
+    {
+      "path": "lmroman9-bold.otf",
+      "status": "verified",
+      "actual_bytes": 113040,
+      "actual_sha256": "f72feac9ea12eb858d8093d6c0ee710a6c25f59b61278c88ec41c0a680838415",
+      "bundle_path": "Fonts/lmroman9-bold.otf",
+      "tier": "supplementary-face"
+    },
+    {
+      "path": "lmroman10-bold.otf",
+      "status": "verified",
+      "actual_bytes": 111240,
+      "actual_sha256": "102fe06c430a8b681b2bf6876b7cd967ae4d47b4b6b41d915eb7913b726d9fb1",
+      "bundle_path": "Fonts/lmroman10-bold.otf",
+      "tier": "supplementary-face"
+    },
+    {
+      "path": "lmroman12-bold.otf",
+      "status": "verified",
+      "actual_bytes": 110496,
+      "actual_sha256": "28c8782ac2b6486958b5dc7610ada7800c53546ff7f36bc65909a876e1cd338e",
+      "bundle_path": "Fonts/lmroman12-bold.otf",
+      "tier": "supplementary-face"
+    },
+    {
+      "path": "lmroman7-italic.otf",
+      "status": "verified",
+      "actual_bytes": 117960,
+      "actual_sha256": "19d20f2bb00fbffe5d3d66e9b6a54f0108289068029e9d88649d981d53613ddf",
+      "bundle_path": "Fonts/lmroman7-italic.otf",
+      "tier": "supplementary-face"
+    },
+    {
+      "path": "lmroman8-italic.otf",
+      "status": "verified",
+      "actual_bytes": 117248,
+      "actual_sha256": "fb0536b5c3eee5b5622cd827ceb410e6514e36512ebdc51d2cf98a96c06d44e8",
+      "bundle_path": "Fonts/lmroman8-italic.otf",
+      "tier": "supplementary-face"
+    },
+    {
+      "path": "lmroman9-italic.otf",
+      "status": "verified",
+      "actual_bytes": 118380,
+      "actual_sha256": "2106cffcdc9f9cb411d7c3441e34d77a168b998a58b40e727ab5b815437d1975",
+      "bundle_path": "Fonts/lmroman9-italic.otf",
+      "tier": "supplementary-face"
+    },
+    {
+      "path": "lmroman10-italic.otf",
+      "status": "verified",
+      "actual_bytes": 118828,
+      "actual_sha256": "c1fce25075567bb8dbf2151658c3b442690041db17a2d49fc9e55905ea5b7169",
+      "bundle_path": "Fonts/lmroman10-italic.otf",
+      "tier": "supplementary-face"
+    },
+    {
+      "path": "lmroman12-italic.otf",
+      "status": "verified",
+      "actual_bytes": 117732,
+      "actual_sha256": "ada6b3f451238784e5a5ea75d43efa1eb4329cd75ce65bf047ed2f31b7b5e2f3",
+      "bundle_path": "Fonts/lmroman12-italic.otf",
+      "tier": "supplementary-face"
+    },
+    {
+      "path": "lmroman10-bolditalic.otf",
+      "status": "verified",
+      "actual_bytes": 118204,
+      "actual_sha256": "c37a28eed7a6e03f792b98b5e5f637b2fcda378bb4855f99284f1a88fe35f124",
+      "bundle_path": "Fonts/lmroman10-bolditalic.otf",
+      "tier": "supplementary-face"
+    }
+  ],
+  "host_tex_consulted": false,
+  "downloaded": false
+}

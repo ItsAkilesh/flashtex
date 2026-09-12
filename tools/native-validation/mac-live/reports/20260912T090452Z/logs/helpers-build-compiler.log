@@ -1,0 +1,6 @@
+   Compiling flashtex-paragraph-layout v0.1.0 (/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/helpers/780f1458c125d9702b994ab9df377aed96a1113f/src/crates/paragraph-layout)
+   Compiling flashtex-math-layout v0.1.0 (/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/helpers/780f1458c125d9702b994ab9df377aed96a1113f/src/crates/math-layout)
+   Compiling flashtex-pdf v0.1.0 (/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/helpers/780f1458c125d9702b994ab9df377aed96a1113f/src/crates/pdf)
+   Compiling flashtex-font-engine v0.1.0 (/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/helpers/780f1458c125d9702b994ab9df377aed96a1113f/src/crates/font-engine)
+   Compiling flashtex-compiler v0.1.0 (/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/helpers/780f1458c125d9702b994ab9df377aed96a1113f/src/crates/compiler)
+    Finished `release` profile [optimized] target(s) in 8.85s

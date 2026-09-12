@@ -1,0 +1,95 @@
+Test Case '-[FlashTeXAccessibilityTests.CommandTableTests testCommandTableMatchesREADMEShortcuts]' started.
+Test Case '-[FlashTeXAccessibilityTests.CommandTableTests testCommandTableMatchesREADMEShortcuts]' passed (0.004 seconds).
+Test Case '-[FlashTeXAccessibilityTests.CommandTableTests testEntriesAreDiscoverable]' started.
+Test Case '-[FlashTeXAccessibilityTests.CommandTableTests testEntriesAreDiscoverable]' passed (0.001 seconds).
+Test Case '-[FlashTeXAccessibilityTests.CommandTableTests testEveryCommandHasAREADMERowAndEveryRowACommand]' started.
+Test Case '-[FlashTeXAccessibilityTests.CommandTableTests testEveryCommandHasAREADMERowAndEveryRowACommand]' passed (0.004 seconds).
+Test Case '-[FlashTeXAccessibilityTests.CommandTableTests testFocusOrderHelpText]' started.
+Test Case '-[FlashTeXAccessibilityTests.CommandTableTests testFocusOrderHelpText]' passed (0.000 seconds).
+Test Case '-[FlashTeXAccessibilityTests.CommandTableTests testFocusOrderMatchesContentViewPaneOrder]' started.
+Test Case '-[FlashTeXAccessibilityTests.CommandTableTests testFocusOrderMatchesContentViewPaneOrder]' passed (0.002 seconds).
+Test Case '-[FlashTeXAccessibilityTests.CommandTableTests testHelpViewCoversEveryCommandAndMenu]' started.
+Test Case '-[FlashTeXAccessibilityTests.CommandTableTests testHelpViewCoversEveryCommandAndMenu]' passed (0.001 seconds).
+Test Case '-[FlashTeXAccessibilityTests.CommandTableTests testMenuItemsMatchTheShellWiring]' started.
+Test Case '-[FlashTeXAccessibilityTests.CommandTableTests testMenuItemsMatchTheShellWiring]' passed (0.039 seconds).
+Test Case '-[FlashTeXAccessibilityTests.CommandTableTests testPanelFocusOrderMatchesThePanelSources]' started.
+Test Case '-[FlashTeXAccessibilityTests.CommandTableTests testPanelFocusOrderMatchesThePanelSources]' passed (0.035 seconds).
+	 Executed 8 tests, with 0 failures (0 unexpected) in 0.084 (0.085) seconds
+Test Case '-[FlashTeXMacTests.EditHistoryTests testCapacityErrorsAreSurfaced]' started.
+/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a350987b8984676a6/apps/mac/Tests/FlashTeXMacTests/EditHistoryTests.swift:154: -[FlashTeXMacTests.EditHistoryTests testCapacityErrorsAreSurfaced
+Test Case '-[FlashTeXMacTests.EditHistoryTests testCapacityErrorsAreSurfaced]' skipped (0.001 seconds).
+Test Case '-[FlashTeXMacTests.EditHistoryTests testClientIsUnavailableWithoutAHelperAndRefusesLocally]' started.
+Test Case '-[FlashTeXMacTests.EditHistoryTests testClientIsUnavailableWithoutAHelperAndRefusesLocally]' passed (0.032 seconds).
+Test Case '-[FlashTeXMacTests.EditHistoryTests testCommandIDsAreLedgerIdentifiersAndPayloadMatchesTheContract]' started.
+Test Case '-[FlashTeXMacTests.EditHistoryTests testCommandIDsAreLedgerIdentifiersAndPayloadMatchesTheContract]' passed (0.000 seconds).
+Test Case '-[FlashTeXMacTests.EditHistoryTests testEditUndoRedoRoundTripAdoptsExactDurableText]' started.
+/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a350987b8984676a6/apps/mac/Tests/FlashTeXMacTests/EditHistoryTests.swift:154: -[FlashTeXMacTests.EditHistoryTests testEditUndoRedoRoundTripAdop
+Test Case '-[FlashTeXMacTests.EditHistoryTests testEditUndoRedoRoundTripAdoptsExactDurableText]' skipped (0.000 seconds).
+Test Case '-[FlashTeXMacTests.EditHistoryTests testFailureClassificationFollowsLedgerCodes]' started.
+Test Case '-[FlashTeXMacTests.EditHistoryTests testFailureClassificationFollowsLedgerCodes]' passed (0.000 seconds).
+Test Case '-[FlashTeXMacTests.EditHistoryTests testHelperDetachMarksThePendingCommandUncertainAndRetryConvergesAfterReattach]' started.
+/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a350987b8984676a6/apps/mac/Tests/FlashTeXMacTests/EditHistoryTests.swift:154: -[FlashTeXMacTests.EditHistoryTests testHelperDetachMarksThePendi
+Test Case '-[FlashTeXMacTests.EditHistoryTests testHelperDetachMarksThePendingCommandUncertainAndRetryConvergesAfterReattach]' skipped (0.000 seconds).
+Test Case '-[FlashTeXMacTests.EditHistoryTests testIdenticalRetryAfterALostReplyIsIdempotent]' started.
+/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a350987b8984676a6/apps/mac/Tests/FlashTeXMacTests/EditHistoryTests.swift:154: -[FlashTeXMacTests.EditHistoryTests testIdenticalRetryAfterALostR
+Test Case '-[FlashTeXMacTests.EditHistoryTests testIdenticalRetryAfterALostReplyIsIdempotent]' skipped (0.000 seconds).
+Test Case '-[FlashTeXMacTests.EditHistoryTests testRetentionUsageAndWarnings]' started.
+Test Case '-[FlashTeXMacTests.EditHistoryTests testRetentionUsageAndWarnings]' passed (0.000 seconds).
+Test Case '-[FlashTeXMacTests.EditHistoryTests testRetryAfterRelaunchReplaysAnUndoAppliedBeforeTheLostReply]' started.
+/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a350987b8984676a6/apps/mac/Tests/FlashTeXMacTests/EditHistoryTests.swift:154: -[FlashTeXMacTests.EditHistoryTests testRetryAfterRelaunchReplays
+Test Case '-[FlashTeXMacTests.EditHistoryTests testRetryAfterRelaunchReplaysAnUndoAppliedBeforeTheLostReply]' skipped (0.000 seconds).
+Test Case '-[FlashTeXMacTests.EditHistoryTests testRowsCollapseTypingRunsAndLabelCapturesReloadsAndGroups]' started.
+Test Case '-[FlashTeXMacTests.EditHistoryTests testRowsCollapseTypingRunsAndLabelCapturesReloadsAndGroups]' passed (0.000 seconds).
+Test Case '-[FlashTeXMacTests.EditHistoryTests testStaleRevisionIsRefusedAndTheDocumentIsReread]' started.
+/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a350987b8984676a6/apps/mac/Tests/FlashTeXMacTests/EditHistoryTests.swift:154: -[FlashTeXMacTests.EditHistoryTests testStaleRevisionIsRefusedAnd
+Test Case '-[FlashTeXMacTests.EditHistoryTests testStaleRevisionIsRefusedAndTheDocumentIsReread]' skipped (0.000 seconds).
+Test Case '-[FlashTeXMacTests.EditHistoryTests testStatusAndResultDecodeTheHelperWire]' started.
+Test Case '-[FlashTeXMacTests.EditHistoryTests testStatusAndResultDecodeTheHelperWire]' passed (0.000 seconds).
+	 Executed 12 tests, with 6 tests skipped and 0 failures (0 unexpected) in 0.037 (0.038) seconds
+Test Case '-[FlashTeXMacTests.EditorPreferencesTests testAppearanceMapping]' started.
+Test Case '-[FlashTeXMacTests.EditorPreferencesTests testAppearanceMapping]' passed (0.004 seconds).
+Test Case '-[FlashTeXMacTests.EditorPreferencesTests testApplyDoesNotChangeTextUndoOrTemporaryAttributes]' started.
+Test Case '-[FlashTeXMacTests.EditorPreferencesTests testApplyDoesNotChangeTextUndoOrTemporaryAttributes]' passed (0.140 seconds).
+Test Case '-[FlashTeXMacTests.EditorPreferencesTests testApplySetsFontTabIntervalWrappingAndAppearance]' started.
+Test Case '-[FlashTeXMacTests.EditorPreferencesTests testApplySetsFontTabIntervalWrappingAndAppearance]' passed (0.742 seconds).
+Test Case '-[FlashTeXMacTests.EditorPreferencesTests testApplyWithoutScrollViewStillWorks]' started.
+Test Case '-[FlashTeXMacTests.EditorPreferencesTests testApplyWithoutScrollViewStillWorks]' passed (0.005 seconds).
+Test Case '-[FlashTeXMacTests.EditorPreferencesTests testDefaultsWhenNothingIsStored]' started.
+Test Case '-[FlashTeXMacTests.EditorPreferencesTests testDefaultsWhenNothingIsStored]' passed (0.003 seconds).
+Test Case '-[FlashTeXMacTests.EditorPreferencesTests testFontFamilyMustBeInstalledAndMonospaced]' started.
+Test Case '-[FlashTeXMacTests.EditorPreferencesTests testFontFamilyMustBeInstalledAndMonospaced]' passed (0.015 seconds).
+Test Case '-[FlashTeXMacTests.EditorPreferencesTests testFontSizeIsClamped]' started.
+Test Case '-[FlashTeXMacTests.EditorPreferencesTests testFontSizeIsClamped]' passed (0.003 seconds).
+Test Case '-[FlashTeXMacTests.EditorPreferencesTests testGenerationCountsOnlyActualChanges]' started.
+Test Case '-[FlashTeXMacTests.EditorPreferencesTests testGenerationCountsOnlyActualChanges]' passed (0.003 seconds).
+Test Case '-[FlashTeXMacTests.EditorPreferencesTests testInvalidStoredValuesAreRepairedAndWrittenBack]' started.
+Test Case '-[FlashTeXMacTests.EditorPreferencesTests testInvalidStoredValuesAreRepairedAndWrittenBack]' passed (0.004 seconds).
+Test Case '-[FlashTeXMacTests.EditorPreferencesTests testMigrationFromAbsentVersionStampsAndIgnoresUnversionedKeys]' started.
+Test Case '-[FlashTeXMacTests.EditorPreferencesTests testMigrationFromAbsentVersionStampsAndIgnoresUnversionedKeys]' passed (0.003 seconds).
+Test Case '-[FlashTeXMacTests.EditorPreferencesTests testObserveApplyingReappliesOnChange]' started.
+Test Case '-[FlashTeXMacTests.EditorPreferencesTests testObserveApplyingReappliesOnChange]' passed (0.159 seconds).
+Test Case '-[FlashTeXMacTests.EditorPreferencesTests testRangesAndDefaultsAreTheDocumentedOnes]' started.
+Test Case '-[FlashTeXMacTests.EditorPreferencesTests testRangesAndDefaultsAreTheDocumentedOnes]' passed (0.000 seconds).
+Test Case '-[FlashTeXMacTests.EditorPreferencesTests testResetToDefaultsPersists]' started.
+Test Case '-[FlashTeXMacTests.EditorPreferencesTests testResetToDefaultsPersists]' passed (0.012 seconds).
+Test Case '-[FlashTeXMacTests.EditorPreferencesTests testResolveFontFallsBackForUnavailableFamilyAtClampedSize]' started.
+Test Case '-[FlashTeXMacTests.EditorPreferencesTests testResolveFontFallsBackForUnavailableFamilyAtClampedSize]' passed (0.007 seconds).
+Test Case '-[FlashTeXMacTests.EditorPreferencesTests testRoundTripThroughTemporarySuite]' started.
+Test Case '-[FlashTeXMacTests.EditorPreferencesTests testRoundTripThroughTemporarySuite]' passed (0.010 seconds).
+Test Case '-[FlashTeXMacTests.EditorPreferencesTests testSettingsViewHostsAndReflectsChanges]' started.
+Test Case '-[FlashTeXMacTests.EditorPreferencesTests testSettingsViewHostsAndReflectsChanges]' passed (0.466 seconds).
+Test Case '-[FlashTeXMacTests.EditorPreferencesTests testTabWidthIsClamped]' started.
+Test Case '-[FlashTeXMacTests.EditorPreferencesTests testTabWidthIsClamped]' passed (0.004 seconds).
+Test Case '-[FlashTeXMacTests.EditorPreferencesTests testWritesSettingsViewEvidenceWhenRequested]' started.
+/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a350987b8984676a6/apps/mac/Tests/FlashTeXMacTests/EditorPreferencesTests.swift:400: -[FlashTeXMacTests.EditorPreferencesTests testWritesSetting
+Test Case '-[FlashTeXMacTests.EditorPreferencesTests testWritesSettingsViewEvidenceWhenRequested]' skipped (0.001 seconds).
+	 Executed 18 tests, with 1 test skipped and 0 failures (0 unexpected) in 1.581 (1.583) seconds
+Test Case '-[FlashTeXMacTests.PanelAccessibilityTests testHistoryPanelListTakesKeyboardFocusAndTheEditorKeepsIt]' started.
+Test Case '-[FlashTeXMacTests.PanelAccessibilityTests testHistoryPanelListTakesKeyboardFocusAndTheEditorKeepsIt]' passed (0.727 seconds).
+Test Case '-[FlashTeXMacTests.PanelAccessibilityTests testPreferencesPanelControlsTakeKeyboardFocusAndTheEditorKeepsIt]' started.
+Test Case '-[FlashTeXMacTests.PanelAccessibilityTests testPreferencesPanelControlsTakeKeyboardFocusAndTheEditorKeepsIt]' passed (0.801 seconds).
+Test Case '-[FlashTeXMacTests.PanelAccessibilityTests testSearchPanelFocusesTheLiteralFieldControlsTakeKeyboardFocusAndTheEditorKeepsIt]' started.
+Test Case '-[FlashTeXMacTests.PanelAccessibilityTests testSearchPanelFocusesTheLiteralFieldControlsTakeKeyboardFocusAndTheEditorKeepsIt]' passed (0.768 seconds).
+	 Executed 3 tests, with 0 failures (0 unexpected) in 2.297 (2.297) seconds
+	 Executed 41 tests, with 7 tests skipped and 0 failures (0 unexpected) in 3.998 (4.003) seconds
+	 Executed 41 tests, with 7 tests skipped and 0 failures (0 unexpected) in 3.998 (4.004) seconds

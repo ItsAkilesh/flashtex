@@ -1,0 +1,41 @@
+{
+  "agent_id": "mac-accessibility",
+  "allocation_id": "claude-mac20x-shared",
+  "assignment_acknowledgements": {},
+  "branch": "agent/mac-accessibility/help-and-rotor",
+  "capabilities": [
+    "swift",
+    "appkit",
+    "accessibility"
+  ],
+  "code_revision": "0a1552f740e3af1840d9cc550dc9b7a597438cd2",
+  "eta_minutes": {
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 30
+  },
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "c35ca8bc4e3801fbbe308ee731d718af7ebe78eb",
+  "next_action": "Parent applies the patch in coordination/mac-accessibility.md, merges agent/mac-accessibility/help-and-rotor into mac-shell, reruns swift test",
+  "reviewed_peers": {
+    "origin/agent/mac-claude-a/mac-shell": {
+      "adaptation": "Merged mac-shell b898cfc (ProjectDocuments/Project menu), 596650b (diagnostic explanations: Item.explanation, row value gained the explanation line; refusal-fixture fix) and 04a4eaa (historical preview: status banner only, no focus/menu change); main fetched and inspected, its apps/mac content arrives through mac-shell",
+      "reviewed_utc": "2026-09-12T10:28:48Z",
+      "sha": "04a4eaaf27fe7750af90eb20097623fe3869b402"
+    },
+    "origin/main": {
+      "adaptation": "Merged mac-shell b898cfc (ProjectDocuments/Project menu), 596650b (diagnostic explanations: Item.explanation, row value gained the explanation line; refusal-fixture fix) and 04a4eaa (historical preview: status banner only, no focus/menu change); main fetched and inspected, its apps/mac content arrives through mac-shell",
+      "reviewed_utc": "2026-09-12T10:28:48Z",
+      "sha": "3ac69c3ed109fa0902af39f4e2187d572a61c075"
+    }
+  },
+  "schema_version": 1,
+  "state": "ready_for_integration",
+  "summary": "FlashTeXAccessibility: preview AX tree is page landmark (AXLandmarkRegion, 'Page n of m, k lines') > line groups > static-text items with 'Go to source', navigation order = array order, screen frames via screenRect(fromView:); AccessibilityHelpView complete (focus order, VoiceOver notes, commands by menu); FocusOrder corrected to the real ContentView order Editor > Capture bar > Bridge bar > Preview > Diagnostics; DiagnosticRowAccessibility + status-aware accessibleDiagnostic; CompletionAccessibility labels/announcements. Tests: README rows <-> commands, Button/keyboardShortcut/menu/.disabled parity parsed from shell source, focus order parsed from ContentView.swift, hosted PageAXView read back through NSAccessibility, NSTableView rows via AX attribute API. Accessibility target 41 tests/1 documented skip; full apps/mac suite 396/0 failures/13 skips (12 pre-existing) with real workers. Parent-file patch (FlashTeXMacApp Help window+menu, README row, accessibilityHelp entry, ContentView status, PreviewView totalPages, Completion.swift spoken rows) verified locally then reverted; text in coordination/mac-accessibility.md. Real VoiceOver not driven (no Accessibility permission).",
+  "tool": "Claude Code subagent (parent mac-claude-a)",
+  "updated_utc": "2026-09-12T10:28:48Z",
+  "usage": {
+    "evidence": "apps/mac swift test: FlashTeXAccessibilityTests 41 (1 skip); full suite 396 tests 0 failures 13 skips with real workers at a434916",
+    "status": "shared Claude Max 20x quota of parent; figure unknown"
+  }
+}

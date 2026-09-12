@@ -1,0 +1,88 @@
+{
+  "schema_version": 1,
+  "manifest_sha256": "1c09466c55e0440101c4c5d7c7369aac029b13d791a8cb6d57fa82cadbea4d74",
+  "engine": "/usr/local/texlive/2026/bin/universal-darwin/tex",
+  "tftopl": "/usr/local/texlive/2026/bin/universal-darwin/tftopl",
+  "status": "raw_evidence_captured_not_parity",
+  "cases": [
+    {
+      "id": "both-kerns",
+      "tfm_sha256": "3a4d84b297baf3e596af1d5f617584d98b7a43c3f731af30ebf9d8d248d9a1a1",
+      "engine_exit": 1,
+      "tftopl_exit": 0,
+      "status": "raw_node_evidence_requires_adjudication",
+      "files": {
+        "oracle.tex": "9ebf3c09397f5815cc4f07dce19e626eaafbb40b7a2a4458e377b0cb4267d495",
+        "oracle.log": "8a63c17591c2d550549bfb39c2d9cdd9e8b75f7903e4a0936b293e1cbc02ae98",
+        "probe.pl": "80bd7c76ed8a79d4ae8306ed517be0c5a1b5f90662291a4e73254eae0d7e5a6b",
+        "probe.tfm": "3a4d84b297baf3e596af1d5f617584d98b7a43c3f731af30ebf9d8d248d9a1a1",
+        "tftopl.stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "engine.stdout": "7eb1adba2fed1a300773b00d1345024221a5a2b53acf6d40ac6ab925514b0dca"
+      }
+    },
+    {
+      "id": "left-ligature",
+      "tfm_sha256": "ecde3c5a17af80ff0c3598ee4ba338c6056ec37cf3e5a0111036dabb2d5d331f",
+      "engine_exit": 1,
+      "tftopl_exit": 0,
+      "status": "raw_node_evidence_requires_adjudication",
+      "files": {
+        "oracle.tex": "9ebf3c09397f5815cc4f07dce19e626eaafbb40b7a2a4458e377b0cb4267d495",
+        "oracle.log": "74cd87921bfea9bda46b9a11f1b66829ae545ce1451bf91a9beafe924e3ca8e9",
+        "probe.pl": "0382b772ee5799b568066ecf15996f725e82740663f58dec0a651603576dabb2",
+        "probe.tfm": "ecde3c5a17af80ff0c3598ee4ba338c6056ec37cf3e5a0111036dabb2d5d331f",
+        "tftopl.stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "engine.stdout": "435385f3b7908ab7a7e2f2d2b36f938435ea4e156821ea1341a91611afbf9ace"
+      }
+    },
+    {
+      "id": "right-ligature",
+      "tfm_sha256": "17f7b642422871a1bb1c4921b464271dd43628990d18001aefdf04d8ff795ce6",
+      "engine_exit": 1,
+      "tftopl_exit": 0,
+      "status": "raw_node_evidence_requires_adjudication",
+      "files": {
+        "oracle.tex": "9ebf3c09397f5815cc4f07dce19e626eaafbb40b7a2a4458e377b0cb4267d495",
+        "oracle.log": "4b3dc37181a3606a0b74745839fe25bc342324c8cb72b931822ba38f05735e17",
+        "probe.pl": "0dadc56150eff959d70597f84a79ada3495b6b247b4db2f58da86332708fdc12",
+        "probe.tfm": "17f7b642422871a1bb1c4921b464271dd43628990d18001aefdf04d8ff795ce6",
+        "tftopl.stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "engine.stdout": "3efb741c9e94406aaab920bfe63c659241e4061d7853dc26c8eed4dd25b27004"
+      }
+    },
+    {
+      "id": "retained-right-ligature",
+      "tfm_sha256": "5b811a5267fb7f48d878d4a5b9881c458f50fcd1b5bc0724c88fc398d58e3e85",
+      "engine_exit": 1,
+      "tftopl_exit": 0,
+      "status": "raw_node_evidence_requires_adjudication",
+      "files": {
+        "oracle.tex": "9ebf3c09397f5815cc4f07dce19e626eaafbb40b7a2a4458e377b0cb4267d495",
+        "oracle.log": "1571f9bbae2b62c271f6772f30bb24cc05198f844914c6ab517d5b75e0d091e4",
+        "probe.pl": "fb0a31db8016415c32f003b16b0b1b435c5fabc7f8bd4acb5b673059b86bae50",
+        "probe.tfm": "5b811a5267fb7f48d878d4a5b9881c458f50fcd1b5bc0724c88fc398d58e3e85",
+        "tftopl.stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "engine.stdout": "4b36ed00df84ffe112687b044424751c3718073d85b1b4de8548abebfdd32f42"
+      }
+    },
+    {
+      "id": "real-boundary-code",
+      "tfm_sha256": "4722a88f79ee61e8ccd8026db45170f2010d99f219b99334f4f700dcc10c4180",
+      "engine_exit": 1,
+      "tftopl_exit": 0,
+      "status": "raw_node_evidence_requires_adjudication",
+      "files": {
+        "oracle.tex": "5d607124aac9929d35619dd11b6b9a0fa501ac8dd8985d444224de415033c334",
+        "oracle.log": "6b82ba7a9bfa0d1a56937868f960ab1c7bd059d4c91e12853ae204ecf75485f2",
+        "probe.pl": "8f22cb79c7fa364166b9236f6c1fafbbe5546d4270fc5998eb0ef3b8133a9d3a",
+        "probe.tfm": "4722a88f79ee61e8ccd8026db45170f2010d99f219b99334f4f700dcc10c4180",
+        "tftopl.stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "engine.stdout": "1645d262744d93c0e219875eaf2b483152d0e05b538f0ec097c3514c9b99c47e"
+      }
+    }
+  ],
+  "engine_version": "TeX 3.141592653 (TeX Live 2026)\nkpathsea version 6.4.2\nCopyright 2026 D.E. Knuth.\nThere is NO warranty.  Redistribution of this software is\ncovered by the terms of both the TeX copyright and\nthe Lesser GNU General Public License.\nFor more information about these matters, see the file\nnamed COPYING and the TeX source.\nPrimary author of TeX: D.E. Knuth.\n",
+  "engine_sha256": "733f1fb5045ff1fd8e82278e111b9fbbaeac0e6921e7caa19a54af68ce8da76e",
+  "tftopl_sha256": "5d9a7c6c11b191a34fd1b5bbb7f224bebecd144bff9dcd749a4d9f70db28cf98",
+  "tftopl_version": "TFtoPL 3.3 (TeX Live 2026)\nkpathsea version 6.4.2\nThere is NO warranty.  Redistribution of this software is\ncovered by the terms of both the TFtoPL copyright and\nthe Lesser GNU General Public License.\nFor more information about these matters, see the file\nnamed COPYING and the TFtoPL source.\nPrimary author of TFtoPL: D.E. Knuth.\n"
+}

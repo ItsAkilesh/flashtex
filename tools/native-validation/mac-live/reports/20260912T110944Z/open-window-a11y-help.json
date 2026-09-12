@@ -1,0 +1,63 @@
+{
+ "app_exit": -15,
+ "checks": [
+  {
+   "detail": "pid 14447",
+   "name": "app process running",
+   "ok": true
+  },
+  {
+   "detail": "{\"bounds\": [306, 283, 900, 450], \"id\": 12325, \"layer\": 0, \"name\": \"Accessibility Help\"}",
+   "name": "on-screen window titled 'Accessibility Help' owned by the app (CGWindowList)",
+   "ok": true
+  },
+  {
+   "detail": "{\"path\": \"/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/reports/20260912T110944Z/open-window-a11y-help/a11y-help.png\", \"bytes\": 335481, \"width\": 1800, \"height\": 900, \"screencapture_exit\": 0, \"stderr\": \"\"}",
+   "name": "screencapture -l <window id> wrote a PNG (> 4 KB, > 100x100 px)",
+   "ok": true
+  },
+  {
+   "detail": "env",
+   "name": "never activated (FLASHTEX_NO_ACTIVATE=1)",
+   "ok": true
+  }
+ ],
+ "expected_title": "Accessibility Help",
+ "failed": 0,
+ "passed": 4,
+ "pid": 14447,
+ "screenshot": {
+  "bytes": 335481,
+  "height": 900,
+  "path": "/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/reports/20260912T110944Z/open-window-a11y-help/a11y-help.png",
+  "screencapture_exit": 0,
+  "stderr": "",
+  "width": 1800
+ },
+ "seen_after_s": 1.097,
+ "window_id": "a11y-help",
+ "windows": [
+  {
+   "bounds": [
+    306,
+    283,
+    900,
+    450
+   ],
+   "id": 12325,
+   "layer": 0,
+   "name": "Accessibility Help"
+  },
+  {
+   "bounds": [
+    756,
+    33,
+    900,
+    948
+   ],
+   "id": 12323,
+   "layer": 0,
+   "name": "FlashTeX"
+  }
+ ]
+}

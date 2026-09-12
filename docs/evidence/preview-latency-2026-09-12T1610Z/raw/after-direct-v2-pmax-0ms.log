@@ -1,0 +1,1108 @@
+2026-09-12T16:49:17Z	status: no worker attached
+2026-09-12T16:49:17Z	status: attached: flashtex-render
+2026-09-12T16:49:17Z	launched /private/tmp/claude-501/-Users-jay3332-Projects-flashtex/e30fd4a4-f46a-4c3f-a28c-cbb8617b4425/scratchpad/render-9aaec57a/crates/render-pipeline/target/release/flashtex-render (preview face: latin-modern)
+2026-09-12T16:49:17Z	status: compiling revision 2 (mac-1)…
+2026-09-12T16:49:17Z	status: revision 2: ok, 0 diagnostics in 95 ms
+2026-09-12T16:49:18Z	bench: waiting for attach + first paint (200 keystrokes, 0.0 ms)
+2026-09-12T16:49:18Z	status: compiling revision 2 (mac-2)…
+2026-09-12T16:49:18Z	status: revision 2: ok, 0 diagnostics in 101 ms
+2026-09-12T16:49:18Z	paint: revision 2 redrew 2/8 pages
+2026-09-12T16:49:18Z	paint: revision 2 at 107995637123916 (covers 0 keystrokes, redrawn true)
+2026-09-12T16:49:18Z	bench: typing 200 keystrokes at UTF-16 offset 23231 every 0.0 ms
+2026-09-12T16:49:18Z	keystroke: revision 3 at 107995638303208 (delegate 107995639113916, revision 107995639192166)
+2026-09-12T16:49:18Z	compile: sending revision 3 at 107995639312375
+2026-09-12T16:49:18Z	status: compiling revision 3 (mac-3)…
+2026-09-12T16:49:18Z	keystroke: revision 4 at 107995655262041 (delegate 107995655758000, revision 107995655837916)
+2026-09-12T16:49:18Z	keystroke: revision 5 at 107995672638958 (delegate 107995673215208, revision 107995673292625)
+2026-09-12T16:49:18Z	keystroke: revision 6 at 107995682742541 (delegate 107995683301291, revision 107995683377000)
+2026-09-12T16:49:18Z	keystroke: revision 7 at 107995695369791 (delegate 107995695994958, revision 107995696076000)
+2026-09-12T16:49:18Z	keystroke: revision 8 at 107995700416875 (delegate 107995700902916, revision 107995700979708)
+2026-09-12T16:49:18Z	keystroke: revision 9 at 107995708718583 (delegate 107995709295791, revision 107995709376500)
+2026-09-12T16:49:18Z	keystroke: revision 10 at 107995715615750 (delegate 107995716145791, revision 107995716222166)
+2026-09-12T16:49:18Z	keystroke: revision 11 at 107995724308666 (delegate 107995724888250, revision 107995724973541)
+2026-09-12T16:49:18Z	worker: line 893096 B decoded in 14.228792 ms at 107995729390208
+2026-09-12T16:49:18Z	worker: event on main at 107995731511041
+2026-09-12T16:49:18Z	compile: applied revision 3 at 107995733678541
+2026-09-12T16:49:18Z	status: revision 3: ok, 0 diagnostics in 94 ms
+2026-09-12T16:49:18Z	compile: sending revision 11 at 107995733738083
+2026-09-12T16:49:18Z	status: compiling revision 11 (mac-4)…
+2026-09-12T16:49:18Z	worker: display_list mac-3 line 7794171 B received at 107995745687541 (header probe 9.341583 ms)
+2026-09-12T16:49:18Z	worker: event on main at 107995746867083
+2026-09-12T16:49:18Z	preview-v2: preparing live mac-3 (revision 3) ticket 2 at 107995746913083
+2026-09-12T16:49:18Z	keystroke: revision 12 at 107995761912875 (delegate 107995762428958, revision 107995762503833)
+2026-09-12T16:49:18Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107995770058625
+2026-09-12T16:49:18Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107995770160666
+2026-09-12T16:49:18Z	paint: revision 2 redrew 2/8 pages
+2026-09-12T16:49:18Z	paint: revision 2 at 107995782053208 (covers 0 keystrokes, redrawn true)
+2026-09-12T16:49:18Z	preview-v2: prepared live mac-3 (revision 3) in 25.251792 ms (reused pages 7/8), prerastered 6 page(s) in 8.562041 ms, delivered 1.341292 ms later
+2026-09-12T16:49:18Z	preview-v2: published live mac-3 (revision 3) revision 3 at 107995782167583
+2026-09-12T16:49:18Z	keystroke: revision 13 at 107995797976583 (delegate 107995798529500, revision 107995798605916)
+2026-09-12T16:49:18Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107995805720333
+2026-09-12T16:49:18Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107995805810416
+2026-09-12T16:49:18Z	paint: revision 3 at 107995815029583 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:49:18Z	keystroke: revision 14 at 107995815119500 (delegate 107995815562000, revision 107995815642708)
+2026-09-12T16:49:18Z	worker: line 893324 B decoded in 14.202042 ms at 107995821966500
+2026-09-12T16:49:18Z	worker: event on main at 107995822397666
+2026-09-12T16:49:18Z	compile: applied revision 11 at 107995824595916
+2026-09-12T16:49:18Z	status: revision 11: ok, 0 diagnostics in 91 ms
+2026-09-12T16:49:18Z	compile: sending revision 14 at 107995824670208
+2026-09-12T16:49:18Z	status: compiling revision 14 (mac-5)…
+2026-09-12T16:49:18Z	worker: display_list mac-4 line 7796951 B received at 107995839490291 (header probe 9.443833 ms)
+2026-09-12T16:49:18Z	worker: event on main at 107995839624291
+2026-09-12T16:49:18Z	preview-v2: preparing live mac-4 (revision 11) ticket 3 at 107995839684791
+2026-09-12T16:49:18Z	keystroke: revision 15 at 107995839743958 (delegate 107995840357666, revision 107995840437375)
+2026-09-12T16:49:18Z	keystroke: revision 16 at 107995860400291 (delegate 107995860947708, revision 107995861026333)
+2026-09-12T16:49:18Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107995868824416
+2026-09-12T16:49:18Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107995868954958
+2026-09-12T16:49:18Z	preview-v2: prepared live mac-4 (revision 11) in 24.9045 ms (reused pages 7/8), prerastered 1 page(s) in 1.37 ms, delivered 13.95575 ms later
+2026-09-12T16:49:18Z	preview-v2: published live mac-4 (revision 11) revision 11 at 107995880252750
+2026-09-12T16:49:18Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107995896761583
+2026-09-12T16:49:18Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107995896843458
+2026-09-12T16:49:18Z	paint: revision 11 at 107995903555833 (covers 8 keystrokes, redrawn true)
+2026-09-12T16:49:18Z	keystroke: revision 17 at 107995903646750 (delegate 107995904227208, revision 107995904303625)
+2026-09-12T16:49:18Z	keystroke: revision 18 at 107995911232666 (delegate 107995911678541, revision 107995911753083)
+2026-09-12T16:49:18Z	worker: line 893327 B decoded in 14.247791 ms at 107995911878541
+2026-09-12T16:49:18Z	worker: event on main at 107995911975958
+2026-09-12T16:49:18Z	compile: applied revision 14 at 107995914081291
+2026-09-12T16:49:18Z	status: revision 14: ok, 0 diagnostics in 89 ms
+2026-09-12T16:49:18Z	compile: sending revision 18 at 107995914132333
+2026-09-12T16:49:18Z	status: compiling revision 18 (mac-6)…
+2026-09-12T16:49:18Z	worker: display_list mac-5 line 7798040 B received at 107995928713666 (header probe 9.153875 ms)
+2026-09-12T16:49:18Z	keystroke: revision 19 at 107995928486291 (delegate 107995929036375, revision 107995929113250)
+2026-09-12T16:49:18Z	worker: event on main at 107995929324125
+2026-09-12T16:49:18Z	preview-v2: preparing live mac-5 (revision 14) ticket 4 at 107995929354875
+2026-09-12T16:49:18Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107995950274500
+2026-09-12T16:49:18Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107995950369666
+2026-09-12T16:49:18Z	preview-v2: prepared live mac-5 (revision 14) in 24.399583 ms (reused pages 7/8), prerastered 1 page(s) in 1.302375 ms, delivered 4.8215 ms later
+2026-09-12T16:49:18Z	preview-v2: published live mac-5 (revision 14) revision 14 at 107995960050416
+2026-09-12T16:49:18Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107995975593958
+2026-09-12T16:49:18Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107995975672708
+2026-09-12T16:49:18Z	paint: revision 14 at 107995982289541 (covers 3 keystrokes, redrawn true)
+2026-09-12T16:49:18Z	keystroke: revision 20 at 107995982340083 (delegate 107995982870541, revision 107995982945833)
+2026-09-12T16:49:18Z	keystroke: revision 21 at 107995989706833 (delegate 107995990074541, revision 107995990152500)
+2026-09-12T16:49:18Z	keystroke: revision 22 at 107995996178500 (delegate 107995996604041, revision 107995996678916)
+2026-09-12T16:49:18Z	worker: line 893556 B decoded in 14.137584 ms at 107996000046000
+2026-09-12T16:49:18Z	worker: event on main at 107996000441916
+2026-09-12T16:49:18Z	compile: applied revision 18 at 107996002626666
+2026-09-12T16:49:18Z	status: revision 18: ok, 0 diagnostics in 88 ms
+2026-09-12T16:49:18Z	compile: sending revision 22 at 107996002688166
+2026-09-12T16:49:18Z	status: compiling revision 22 (mac-7)…
+2026-09-12T16:49:18Z	keystroke: revision 23 at 107996015379208 (delegate 107996015881041, revision 107996015958125)
+2026-09-12T16:49:18Z	worker: display_list mac-6 line 7799379 B received at 107996016723083 (header probe 9.212875 ms)
+2026-09-12T16:49:18Z	worker: event on main at 107996019514958
+2026-09-12T16:49:18Z	preview-v2: preparing live mac-6 (revision 18) ticket 5 at 107996019573000
+2026-09-12T16:49:19Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107996037360291
+2026-09-12T16:49:19Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107996037454458
+2026-09-12T16:49:19Z	preview-v2: prepared live mac-6 (revision 18) in 24.73675 ms (reused pages 7/8), prerastered 1 page(s) in 1.432666 ms, delivered 0.88725 ms later
+2026-09-12T16:49:19Z	preview-v2: published live mac-6 (revision 18) revision 18 at 107996046862083
+2026-09-12T16:49:19Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107996063203291
+2026-09-12T16:49:19Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107996063280666
+2026-09-12T16:49:19Z	paint: revision 18 at 107996071181791 (covers 4 keystrokes, redrawn true)
+2026-09-12T16:49:19Z	keystroke: revision 24 at 107996071242625 (delegate 107996071807000, revision 107996071881958)
+2026-09-12T16:49:19Z	keystroke: revision 25 at 107996078309166 (delegate 107996078673208, revision 107996078751583)
+2026-09-12T16:49:19Z	keystroke: revision 26 at 107996084369291 (delegate 107996084837750, revision 107996084920000)
+2026-09-12T16:49:19Z	worker: line 893785 B decoded in 14.008958 ms at 107996088035541
+2026-09-12T16:49:19Z	worker: event on main at 107996091750125
+2026-09-12T16:49:19Z	compile: applied revision 22 at 107996094050958
+2026-09-12T16:49:19Z	status: revision 22: ok, 0 diagnostics in 91 ms
+2026-09-12T16:49:19Z	compile: sending revision 26 at 107996094123791
+2026-09-12T16:49:19Z	status: compiling revision 26 (mac-8)…
+2026-09-12T16:49:19Z	worker: display_list mac-7 line 7800718 B received at 107996104257708 (header probe 9.081042 ms)
+2026-09-12T16:49:19Z	worker: event on main at 107996107482208
+2026-09-12T16:49:19Z	preview-v2: preparing live mac-7 (revision 22) ticket 6 at 107996107543750
+2026-09-12T16:49:19Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107996116485250
+2026-09-12T16:49:19Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107996116580333
+2026-09-12T16:49:19Z	keystroke: revision 27 at 107996125842000 (delegate 107996126383541, revision 107996126460416)
+2026-09-12T16:49:19Z	preview-v2: prepared live mac-7 (revision 22) in 24.837458 ms (reused pages 7/8), prerastered 1 page(s) in 1.399583 ms, delivered 5.614167 ms later
+2026-09-12T16:49:19Z	preview-v2: published live mac-7 (revision 22) revision 22 at 107996139616958
+2026-09-12T16:49:19Z	keystroke: revision 28 at 107996153319791 (delegate 107996153707958, revision 107996153783166)
+2026-09-12T16:49:19Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107996160329833
+2026-09-12T16:49:19Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107996160414750
+2026-09-12T16:49:19Z	paint: revision 22 at 107996168021375 (covers 4 keystrokes, redrawn true)
+2026-09-12T16:49:19Z	keystroke: revision 29 at 107996168091958 (delegate 107996168576875, revision 107996168657833)
+2026-09-12T16:49:19Z	keystroke: revision 30 at 107996174511166 (delegate 107996174948875, revision 107996175026041)
+2026-09-12T16:49:19Z	worker: line 894014 B decoded in 14.153542 ms at 107996176078833
+2026-09-12T16:49:19Z	worker: event on main at 107996181155625
+2026-09-12T16:49:19Z	compile: applied revision 26 at 107996183391500
+2026-09-12T16:49:19Z	status: revision 26: ok, 0 diagnostics in 89 ms
+2026-09-12T16:49:19Z	compile: sending revision 30 at 107996183454083
+2026-09-12T16:49:19Z	status: compiling revision 30 (mac-9)…
+2026-09-12T16:49:19Z	worker: display_list mac-8 line 7802059 B received at 107996192121458 (header probe 9.199667 ms)
+2026-09-12T16:49:19Z	worker: event on main at 107996196123708
+2026-09-12T16:49:19Z	preview-v2: preparing live mac-8 (revision 26) ticket 7 at 107996196181125
+2026-09-12T16:49:19Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107996204281625
+2026-09-12T16:49:19Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107996204367041
+2026-09-12T16:49:19Z	keystroke: revision 31 at 107996213412458 (delegate 107996213995500, revision 107996214076250)
+2026-09-12T16:49:19Z	preview-v2: prepared live mac-8 (revision 26) in 24.596041 ms (reused pages 7/8), prerastered 1 page(s) in 1.455875 ms, delivered 5.091167 ms later
+2026-09-12T16:49:19Z	preview-v2: published live mac-8 (revision 26) revision 26 at 107996227530083
+2026-09-12T16:49:19Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107996235065666
+2026-09-12T16:49:19Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107996235140375
+2026-09-12T16:49:19Z	paint: revision 26 at 107996243208750 (covers 4 keystrokes, redrawn true)
+2026-09-12T16:49:19Z	keystroke: revision 32 at 107996255458000 (delegate 107996255931583, revision 107996256010750)
+2026-09-12T16:49:19Z	keystroke: revision 33 at 107996261911375 (delegate 107996262254333, revision 107996262356083)
+2026-09-12T16:49:19Z	worker: line 894017 B decoded in 14.107166 ms at 107996264151416
+2026-09-12T16:49:19Z	worker: event on main at 107996265622208
+2026-09-12T16:49:19Z	compile: applied revision 30 at 107996267829958
+2026-09-12T16:49:19Z	status: revision 30: ok, 0 diagnostics in 84 ms
+2026-09-12T16:49:19Z	compile: sending revision 33 at 107996267889791
+2026-09-12T16:49:19Z	status: compiling revision 33 (mac-10)…
+2026-09-12T16:49:19Z	keystroke: revision 34 at 107996276293333 (delegate 107996276690041, revision 107996276768500)
+2026-09-12T16:49:19Z	worker: display_list mac-9 line 7803148 B received at 107996281091416 (header probe 9.206958 ms)
+2026-09-12T16:49:19Z	worker: event on main at 107996288765875
+2026-09-12T16:49:19Z	preview-v2: preparing live mac-9 (revision 30) ticket 8 at 107996288833083
+2026-09-12T16:49:19Z	keystroke: revision 35 at 107996288887833 (delegate 107996289342625, revision 107996289421958)
+2026-09-12T16:49:19Z	keystroke: revision 36 at 107996308501250 (delegate 107996308915250, revision 107996308991083)
+2026-09-12T16:49:19Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107996315854250
+2026-09-12T16:49:19Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107996315946583
+2026-09-12T16:49:19Z	preview-v2: prepared live mac-9 (revision 30) in 24.573208 ms (reused pages 7/8), prerastered 1 page(s) in 1.431292 ms, delivered 10.476083 ms later
+2026-09-12T16:49:19Z	preview-v2: published live mac-9 (revision 30) revision 30 at 107996325473375
+2026-09-12T16:49:19Z	keystroke: revision 37 at 107996339591208 (delegate 107996340140416, revision 107996340214291)
+2026-09-12T16:49:19Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107996346672541
+2026-09-12T16:49:19Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107996346747000
+2026-09-12T16:49:19Z	worker: line 894247 B decoded in 14.225875 ms at 107996352621208
+2026-09-12T16:49:19Z	paint: revision 30 at 107996354449291 (covers 4 keystrokes, redrawn true)
+2026-09-12T16:49:19Z	worker: event on main at 107996354486041
+2026-09-12T16:49:19Z	compile: applied revision 33 at 107996356647125
+2026-09-12T16:49:19Z	status: revision 33: ok, 0 diagnostics in 89 ms
+2026-09-12T16:49:19Z	compile: sending revision 37 at 107996356704000
+2026-09-12T16:49:19Z	status: compiling revision 37 (mac-11)…
+2026-09-12T16:49:19Z	worker: display_list mac-10 line 7804488 B received at 107996369773416 (header probe 9.066666 ms)
+2026-09-12T16:49:19Z	worker: event on main at 107996370086750
+2026-09-12T16:49:19Z	preview-v2: preparing live mac-10 (revision 33) ticket 9 at 107996370148708
+2026-09-12T16:49:19Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107996379347833
+2026-09-12T16:49:19Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107996379435041
+2026-09-12T16:49:19Z	keystroke: revision 38 at 107996388553416 (delegate 107996389010208, revision 107996389092083)
+2026-09-12T16:49:19Z	preview-v2: prepared live mac-10 (revision 33) in 24.382583 ms (reused pages 7/8), prerastered 1 page(s) in 1.351084 ms, delivered 6.475791 ms later
+2026-09-12T16:49:19Z	preview-v2: published live mac-10 (revision 33) revision 33 at 107996402508791
+2026-09-12T16:49:19Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107996410488041
+2026-09-12T16:49:19Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107996410563125
+2026-09-12T16:49:19Z	paint: revision 33 at 107996419083625 (covers 3 keystrokes, redrawn true)
+2026-09-12T16:49:19Z	keystroke: revision 39 at 107996419132333 (delegate 107996419577666, revision 107996419662041)
+2026-09-12T16:49:19Z	keystroke: revision 40 at 107996437971375 (delegate 107996438459833, revision 107996438550958)
+2026-09-12T16:49:19Z	worker: line 894251 B decoded in 14.1225 ms at 107996441560041
+2026-09-12T16:49:19Z	worker: event on main at 107996442449791
+2026-09-12T16:49:19Z	compile: applied revision 37 at 107996444619458
+2026-09-12T16:49:19Z	status: revision 37: ok, 0 diagnostics in 88 ms
+2026-09-12T16:49:19Z	compile: sending revision 40 at 107996444672791
+2026-09-12T16:49:19Z	status: compiling revision 40 (mac-12)…
+2026-09-12T16:49:19Z	worker: display_list mac-11 line 7805940 B received at 107996457949708 (header probe 9.145 ms)
+2026-09-12T16:49:19Z	worker: event on main at 107996458309958
+2026-09-12T16:49:19Z	preview-v2: preparing live mac-11 (revision 37) ticket 10 at 107996458369666
+2026-09-12T16:49:19Z	keystroke: revision 41 at 107996472838250 (delegate 107996473419750, revision 107996473496041)
+2026-09-12T16:49:19Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107996480455291
+2026-09-12T16:49:19Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107996480554166
+2026-09-12T16:49:19Z	preview-v2: prepared live mac-11 (revision 37) in 24.808375 ms (reused pages 7/8), prerastered 1 page(s) in 1.401917 ms, delivered 5.495542 ms later
+2026-09-12T16:49:19Z	preview-v2: published live mac-11 (revision 37) revision 37 at 107996490272666
+2026-09-12T16:49:19Z	keystroke: revision 42 at 107996504866458 (delegate 107996505483916, revision 107996505558666)
+2026-09-12T16:49:19Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107996512017500
+2026-09-12T16:49:19Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107996512096291
+2026-09-12T16:49:19Z	paint: revision 37 at 107996519232625 (covers 4 keystrokes, redrawn true)
+2026-09-12T16:49:19Z	keystroke: revision 43 at 107996519309791 (delegate 107996519766500, revision 107996519846541)
+2026-09-12T16:49:19Z	keystroke: revision 44 at 107996525899291 (delegate 107996526397958, revision 107996526472833)
+2026-09-12T16:49:19Z	worker: line 894253 B decoded in 14.177625 ms at 107996530297291
+2026-09-12T16:49:19Z	worker: event on main at 107996532538875
+2026-09-12T16:49:19Z	compile: applied revision 40 at 107996534870916
+2026-09-12T16:49:19Z	status: revision 40: ok, 0 diagnostics in 90 ms
+2026-09-12T16:49:19Z	compile: sending revision 44 at 107996534943416
+2026-09-12T16:49:19Z	status: compiling revision 44 (mac-13)…
+2026-09-12T16:49:19Z	worker: display_list mac-12 line 7806685 B received at 107996547085958 (header probe 9.163667 ms)
+2026-09-12T16:49:19Z	worker: event on main at 107996547591250
+2026-09-12T16:49:19Z	preview-v2: preparing live mac-12 (revision 40) ticket 11 at 107996547642625
+2026-09-12T16:49:19Z	keystroke: revision 45 at 107996547701458 (delegate 107996548279958, revision 107996548352000)
+2026-09-12T16:49:19Z	keystroke: revision 46 at 107996565952250 (delegate 107996566526291, revision 107996566603708)
+2026-09-12T16:49:19Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107996573764041
+2026-09-12T16:49:19Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107996573857375
+2026-09-12T16:49:19Z	preview-v2: prepared live mac-12 (revision 40) in 24.431833 ms (reused pages 7/8), prerastered 1 page(s) in 1.349333 ms, delivered 11.034375 ms later
+2026-09-12T16:49:19Z	preview-v2: published live mac-12 (revision 40) revision 40 at 107996584625750
+2026-09-12T16:49:19Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107996601234250
+2026-09-12T16:49:19Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107996601331750
+2026-09-12T16:49:19Z	paint: revision 40 at 107996608198458 (covers 3 keystrokes, redrawn true)
+2026-09-12T16:49:19Z	keystroke: revision 47 at 107996608285541 (delegate 107996608961875, revision 107996609055041)
+2026-09-12T16:49:19Z	keystroke: revision 48 at 107996616826750 (delegate 107996617451208, revision 107996617531333)
+2026-09-12T16:49:19Z	worker: line 894483 B decoded in 14.190291 ms at 107996618479291
+2026-09-12T16:49:19Z	worker: event on main at 107996624537750
+2026-09-12T16:49:19Z	compile: applied revision 44 at 107996626811458
+2026-09-12T16:49:19Z	status: revision 44: ok, 0 diagnostics in 92 ms
+2026-09-12T16:49:19Z	compile: sending revision 48 at 107996626894333
+2026-09-12T16:49:19Z	status: compiling revision 48 (mac-14)…
+2026-09-12T16:49:19Z	worker: display_list mac-13 line 7808388 B received at 107996635037166 (header probe 9.311625 ms)
+2026-09-12T16:49:19Z	worker: event on main at 107996639226375
+2026-09-12T16:49:19Z	preview-v2: preparing live mac-13 (revision 44) ticket 12 at 107996639290666
+2026-09-12T16:49:19Z	keystroke: revision 49 at 107996639352875 (delegate 107996639940041, revision 107996640013083)
+2026-09-12T16:49:19Z	keystroke: revision 50 at 107996657739458 (delegate 107996658295833, revision 107996658373333)
+2026-09-12T16:49:19Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107996665273625
+2026-09-12T16:49:19Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107996665365833
+2026-09-12T16:49:19Z	preview-v2: prepared live mac-13 (revision 44) in 24.517667 ms (reused pages 7/8), prerastered 1 page(s) in 1.360167 ms, delivered 9.590291 ms later
+2026-09-12T16:49:19Z	preview-v2: published live mac-13 (revision 44) revision 44 at 107996674947208
+2026-09-12T16:49:19Z	keystroke: revision 51 at 107996688558833 (delegate 107996689136125, revision 107996689208291)
+2026-09-12T16:49:19Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107996695780750
+2026-09-12T16:49:19Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107996695863375
+2026-09-12T16:49:19Z	paint: revision 44 at 107996703381000 (covers 4 keystrokes, redrawn true)
+2026-09-12T16:49:19Z	keystroke: revision 52 at 107996703460375 (delegate 107996703951833, revision 107996704032416)
+2026-09-12T16:49:19Z	worker: line 894711 B decoded in 14.066916 ms at 107996707611291
+2026-09-12T16:49:19Z	worker: event on main at 107996710209666
+2026-09-12T16:49:19Z	compile: applied revision 48 at 107996712494958
+2026-09-12T16:49:19Z	status: revision 48: ok, 0 diagnostics in 85 ms
+2026-09-12T16:49:19Z	compile: sending revision 52 at 107996712552375
+2026-09-12T16:49:19Z	status: compiling revision 52 (mac-15)…
+2026-09-12T16:49:19Z	worker: display_list mac-14 line 7809728 B received at 107996724388500 (header probe 9.106834 ms)
+2026-09-12T16:49:19Z	worker: event on main at 107996725453083
+2026-09-12T16:49:19Z	preview-v2: preparing live mac-14 (revision 48) ticket 13 at 107996725512375
+2026-09-12T16:49:19Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107996734409208
+2026-09-12T16:49:19Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107996734498916
+2026-09-12T16:49:19Z	keystroke: revision 53 at 107996747087083 (delegate 107996747726083, revision 107996747808208)
+2026-09-12T16:49:19Z	preview-v2: prepared live mac-14 (revision 48) in 24.681916 ms (reused pages 7/8), prerastered 1 page(s) in 1.303625 ms, delivered 9.033292 ms later
+2026-09-12T16:49:19Z	preview-v2: published live mac-14 (revision 48) revision 48 at 107996760721083
+2026-09-12T16:49:19Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107996769089208
+2026-09-12T16:49:19Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107996769178791
+2026-09-12T16:49:19Z	paint: revision 48 at 107996781029916 (covers 4 keystrokes, redrawn true)
+2026-09-12T16:49:19Z	keystroke: revision 54 at 107996789547916 (delegate 107996790030083, revision 107996790120500)
+2026-09-12T16:49:19Z	keystroke: revision 55 at 107996793855791 (delegate 107996794200416, revision 107996794283250)
+2026-09-12T16:49:19Z	worker: line 894939 B decoded in 14.253667 ms at 107996796292375
+2026-09-12T16:49:19Z	worker: event on main at 107996797337333
+2026-09-12T16:49:19Z	compile: applied revision 52 at 107996799505083
+2026-09-12T16:49:19Z	status: revision 52: ok, 0 diagnostics in 87 ms
+2026-09-12T16:49:19Z	compile: sending revision 55 at 107996799562208
+2026-09-12T16:49:19Z	status: compiling revision 55 (mac-16)…
+2026-09-12T16:49:19Z	worker: display_list mac-15 line 7811067 B received at 107996812540083 (header probe 9.287625 ms)
+2026-09-12T16:49:19Z	worker: event on main at 107996818047833
+2026-09-12T16:49:19Z	preview-v2: preparing live mac-15 (revision 52) ticket 14 at 107996818121000
+2026-09-12T16:49:19Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107996834921166
+2026-09-12T16:49:19Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107996835008500
+2026-09-12T16:49:19Z	keystroke: revision 56 at 107996843252083 (delegate 107996843853000, revision 107996843930000)
+2026-09-12T16:49:19Z	preview-v2: prepared live mac-15 (revision 52) in 24.450125 ms (reused pages 7/8), prerastered 1 page(s) in 1.290208 ms, delivered 0.34075 ms later
+2026-09-12T16:49:19Z	preview-v2: published live mac-15 (revision 52) revision 52 at 107996844497333
+2026-09-12T16:49:19Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107996863885041
+2026-09-12T16:49:19Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107996863976375
+2026-09-12T16:49:19Z	paint: revision 52 at 107996872693875 (covers 4 keystrokes, redrawn true)
+2026-09-12T16:49:19Z	keystroke: revision 57 at 107996872750291 (delegate 107996873294375, revision 107996873384458)
+2026-09-12T16:49:19Z	keystroke: revision 58 at 107996879782500 (delegate 107996880209791, revision 107996880295083)
+2026-09-12T16:49:19Z	worker: line 894942 B decoded in 14.21425 ms at 107996884415750
+2026-09-12T16:49:19Z	keystroke: revision 59 at 107996884030333 (delegate 107996884534916, revision 107996884609791)
+2026-09-12T16:49:19Z	worker: event on main at 107996884828208
+2026-09-12T16:49:19Z	compile: applied revision 55 at 107996886993166
+2026-09-12T16:49:19Z	status: revision 55: ok, 0 diagnostics in 87 ms
+2026-09-12T16:49:19Z	compile: sending revision 59 at 107996887054541
+2026-09-12T16:49:19Z	status: compiling revision 59 (mac-17)…
+2026-09-12T16:49:19Z	worker: display_list mac-16 line 7812168 B received at 107996900958541 (header probe 9.29675 ms)
+2026-09-12T16:49:19Z	worker: event on main at 107996901278375
+2026-09-12T16:49:19Z	preview-v2: preparing live mac-16 (revision 55) ticket 15 at 107996901338125
+2026-09-12T16:49:19Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107996918949916
+2026-09-12T16:49:19Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107996919043708
+2026-09-12T16:49:19Z	preview-v2: prepared live mac-16 (revision 55) in 24.905208 ms (reused pages 7/8), prerastered 1 page(s) in 1.366458 ms, delivered 0.675042 ms later
+2026-09-12T16:49:19Z	preview-v2: published live mac-16 (revision 55) revision 55 at 107996928475916
+2026-09-12T16:49:19Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107996945163500
+2026-09-12T16:49:19Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107996945249333
+2026-09-12T16:49:19Z	paint: revision 55 at 107996951945541 (covers 3 keystrokes, redrawn true)
+2026-09-12T16:49:19Z	keystroke: revision 60 at 107996951995125 (delegate 107996952610791, revision 107996952686208)
+2026-09-12T16:49:19Z	keystroke: revision 61 at 107996956360833 (delegate 107996956668958, revision 107996956740916)
+2026-09-12T16:49:19Z	keystroke: revision 62 at 107996960212750 (delegate 107996960704041, revision 107996960778916)
+2026-09-12T16:49:19Z	keystroke: revision 63 at 107996966032375 (delegate 107996966504541, revision 107996966578250)
+2026-09-12T16:49:19Z	worker: line 895171 B decoded in 14.14775 ms at 107996972759958
+2026-09-12T16:49:19Z	keystroke: revision 64 at 107996972365708 (delegate 107996972869125, revision 107996972943625)
+2026-09-12T16:49:19Z	worker: event on main at 107996973187541
+2026-09-12T16:49:19Z	compile: applied revision 59 at 107996975488833
+2026-09-12T16:49:19Z	status: revision 59: ok, 0 diagnostics in 88 ms
+2026-09-12T16:49:19Z	compile: sending revision 64 at 107996975559208
+2026-09-12T16:49:19Z	status: compiling revision 64 (mac-18)…
+2026-09-12T16:49:19Z	worker: display_list mac-17 line 7813512 B received at 107996989131958 (header probe 9.18625 ms)
+2026-09-12T16:49:19Z	worker: event on main at 107996992860000
+2026-09-12T16:49:19Z	preview-v2: preparing live mac-17 (revision 59) ticket 16 at 107996992924833
+2026-09-12T16:49:19Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107997000449291
+2026-09-12T16:49:19Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107997000526541
+2026-09-12T16:49:19Z	keystroke: revision 65 at 107997009474625 (delegate 107997010068375, revision 107997010146041)
+2026-09-12T16:49:19Z	preview-v2: prepared live mac-17 (revision 59) in 24.415042 ms (reused pages 7/8), prerastered 1 page(s) in 1.340791 ms, delivered 4.550667 ms later
+2026-09-12T16:49:19Z	preview-v2: published live mac-17 (revision 59) revision 59 at 107997023428125
+2026-09-12T16:49:20Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107997031374125
+2026-09-12T16:49:20Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107997031460625
+2026-09-12T16:49:20Z	paint: revision 59 at 107997040401083 (covers 4 keystrokes, redrawn true)
+2026-09-12T16:49:20Z	keystroke: revision 66 at 107997040454083 (delegate 107997040948916, revision 107997041034000)
+2026-09-12T16:49:20Z	keystroke: revision 67 at 107997059604625 (delegate 107997060076583, revision 107997060164875)
+2026-09-12T16:49:20Z	worker: line 895176 B decoded in 14.121667 ms at 107997061105500
+2026-09-12T16:49:20Z	worker: event on main at 107997066547875
+2026-09-12T16:49:20Z	compile: applied revision 64 at 107997068722333
+2026-09-12T16:49:20Z	status: revision 64: ok, 0 diagnostics in 93 ms
+2026-09-12T16:49:20Z	compile: sending revision 67 at 107997068780833
+2026-09-12T16:49:20Z	status: compiling revision 67 (mac-19)…
+2026-09-12T16:49:20Z	worker: display_list mac-18 line 7815328 B received at 107997077273333 (header probe 9.2095 ms)
+2026-09-12T16:49:20Z	worker: event on main at 107997082254583
+2026-09-12T16:49:20Z	preview-v2: preparing live mac-18 (revision 64) ticket 17 at 107997082333916
+2026-09-12T16:49:20Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107997090665625
+2026-09-12T16:49:20Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107997090773166
+2026-09-12T16:49:20Z	preview-v2: prepared live mac-18 (revision 64) in 24.450959 ms (reused pages 7/8), prerastered 1 page(s) in 1.372208 ms, delivered 0.268458 ms later
+2026-09-12T16:49:20Z	preview-v2: published live mac-18 (revision 64) revision 64 at 107997108629333
+2026-09-12T16:49:20Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107997115785750
+2026-09-12T16:49:20Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107997115867500
+2026-09-12T16:49:20Z	paint: revision 64 at 107997123088333 (covers 5 keystrokes, redrawn true)
+2026-09-12T16:49:20Z	keystroke: revision 68 at 107997123142291 (delegate 107997123791291, revision 107997123869750)
+2026-09-12T16:49:20Z	keystroke: revision 69 at 107997142179000 (delegate 107997142623166, revision 107997142702416)
+2026-09-12T16:49:20Z	keystroke: revision 70 at 107997149603541 (delegate 107997150108791, revision 107997150180958)
+2026-09-12T16:49:20Z	worker: line 895404 B decoded in 14.267958 ms at 107997150287708
+2026-09-12T16:49:20Z	worker: event on main at 107997150450791
+2026-09-12T16:49:20Z	compile: applied revision 67 at 107997152581541
+2026-09-12T16:49:20Z	status: revision 67: ok, 0 diagnostics in 84 ms
+2026-09-12T16:49:20Z	compile: sending revision 70 at 107997152637583
+2026-09-12T16:49:20Z	status: compiling revision 70 (mac-20)…
+2026-09-12T16:49:20Z	worker: display_list mac-19 line 7816304 B received at 107997166167000 (header probe 9.179917 ms)
+2026-09-12T16:49:20Z	worker: event on main at 107997170838666
+2026-09-12T16:49:20Z	preview-v2: preparing live mac-19 (revision 67) ticket 18 at 107997170905416
+2026-09-12T16:49:20Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107997178979833
+2026-09-12T16:49:20Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107997179069583
+2026-09-12T16:49:20Z	keystroke: revision 71 at 107997187877583 (delegate 107997188480041, revision 107997188557708)
+2026-09-12T16:49:20Z	preview-v2: prepared live mac-19 (revision 67) in 24.33775 ms (reused pages 7/8), prerastered 1 page(s) in 1.339584 ms, delivered 5.01075 ms later
+2026-09-12T16:49:20Z	preview-v2: published live mac-19 (revision 67) revision 67 at 107997201785375
+2026-09-12T16:49:20Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107997209988833
+2026-09-12T16:49:20Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107997210075000
+2026-09-12T16:49:20Z	paint: revision 67 at 107997218493625 (covers 3 keystrokes, redrawn true)
+2026-09-12T16:49:20Z	keystroke: revision 72 at 107997218544666 (delegate 107997219029583, revision 107997219116291)
+2026-09-12T16:49:20Z	keystroke: revision 73 at 107997230976250 (delegate 107997231407291, revision 107997231483625)
+2026-09-12T16:49:20Z	keystroke: revision 74 at 107997234858208 (delegate 107997235307458, revision 107997235380208)
+2026-09-12T16:49:20Z	worker: line 895407 B decoded in 14.097459 ms at 107997238410750
+2026-09-12T16:49:20Z	worker: event on main at 107997238694041
+2026-09-12T16:49:20Z	compile: applied revision 70 at 107997240871791
+2026-09-12T16:49:20Z	status: revision 70: ok, 0 diagnostics in 88 ms
+2026-09-12T16:49:20Z	compile: sending revision 74 at 107997240918625
+2026-09-12T16:49:20Z	status: compiling revision 74 (mac-21)…
+2026-09-12T16:49:20Z	worker: display_list mac-20 line 7817393 B received at 107997255069583 (header probe 9.429583 ms)
+2026-09-12T16:49:20Z	worker: event on main at 107997259497375
+2026-09-12T16:49:20Z	preview-v2: preparing live mac-20 (revision 70) ticket 19 at 107997259597666
+2026-09-12T16:49:20Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107997276546958
+2026-09-12T16:49:20Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107997276637166
+2026-09-12T16:49:20Z	keystroke: revision 75 at 107997284801625 (delegate 107997285391208, revision 107997285472250)
+2026-09-12T16:49:20Z	preview-v2: prepared live mac-20 (revision 70) in 24.656459 ms (reused pages 7/8), prerastered 1 page(s) in 1.49525 ms, delivered 3.888916 ms later
+2026-09-12T16:49:20Z	preview-v2: published live mac-20 (revision 70) revision 70 at 107997289843125
+2026-09-12T16:49:20Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107997298391791
+2026-09-12T16:49:20Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107997298475333
+2026-09-12T16:49:20Z	paint: revision 70 at 107997304205083 (covers 3 keystrokes, redrawn true)
+2026-09-12T16:49:20Z	keystroke: revision 76 at 107997304258000 (delegate 107997304738375, revision 107997304816166)
+2026-09-12T16:49:20Z	keystroke: revision 77 at 107997322821958 (delegate 107997323305083, revision 107997323386916)
+2026-09-12T16:49:20Z	worker: line 895636 B decoded in 14.292083 ms at 107997327186666
+2026-09-12T16:49:20Z	worker: event on main at 107997329471083
+2026-09-12T16:49:20Z	compile: applied revision 74 at 107997331694625
+2026-09-12T16:49:20Z	status: revision 74: ok, 0 diagnostics in 91 ms
+2026-09-12T16:49:20Z	compile: sending revision 77 at 107997331760708
+2026-09-12T16:49:20Z	status: compiling revision 77 (mac-22)…
+2026-09-12T16:49:20Z	worker: display_list mac-21 line 7818740 B received at 107997344471916 (header probe 9.398833 ms)
+2026-09-12T16:49:20Z	worker: event on main at 107997344800416
+2026-09-12T16:49:20Z	preview-v2: preparing live mac-21 (revision 74) ticket 20 at 107997344842000
+2026-09-12T16:49:20Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107997353641500
+2026-09-12T16:49:20Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107997353736958
+2026-09-12T16:49:20Z	preview-v2: prepared live mac-21 (revision 74) in 24.579875 ms (reused pages 7/8), prerastered 1 page(s) in 1.32975 ms, delivered 0.488958 ms later
+2026-09-12T16:49:20Z	preview-v2: published live mac-21 (revision 74) revision 74 at 107997371390500
+2026-09-12T16:49:20Z	keystroke: revision 78 at 107997371523958 (delegate 107997372110625, revision 107997372181333)
+2026-09-12T16:49:20Z	keystroke: revision 79 at 107997388926416 (delegate 107997389377083, revision 107997389454958)
+2026-09-12T16:49:20Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107997396148708
+2026-09-12T16:49:20Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107997396248166
+2026-09-12T16:49:20Z	paint: revision 74 at 107997404252500 (covers 4 keystrokes, redrawn true)
+2026-09-12T16:49:20Z	keystroke: revision 80 at 107997404343666 (delegate 107997404949500, revision 107997405026041)
+2026-09-12T16:49:20Z	keystroke: revision 81 at 107997411246541 (delegate 107997411761333, revision 107997411836250)
+2026-09-12T16:49:20Z	worker: line 895639 B decoded in 14.308875 ms at 107997416699583
+2026-09-12T16:49:20Z	worker: event on main at 107997417670125
+2026-09-12T16:49:20Z	compile: applied revision 77 at 107997419849583
+2026-09-12T16:49:20Z	status: revision 77: ok, 0 diagnostics in 88 ms
+2026-09-12T16:49:20Z	compile: sending revision 81 at 107997419908458
+2026-09-12T16:49:20Z	status: compiling revision 81 (mac-23)…
+2026-09-12T16:49:20Z	worker: display_list mac-22 line 7819836 B received at 107997433322666 (header probe 9.206625 ms)
+2026-09-12T16:49:20Z	worker: event on main at 107997437964333
+2026-09-12T16:49:20Z	preview-v2: preparing live mac-22 (revision 77) ticket 21 at 107997438065458
+2026-09-12T16:49:20Z	keystroke: revision 82 at 107997438115458 (delegate 107997438750125, revision 107997438828166)
+2026-09-12T16:49:20Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107997460749166
+2026-09-12T16:49:20Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107997460847625
+2026-09-12T16:49:20Z	preview-v2: prepared live mac-22 (revision 77) in 24.504167 ms (reused pages 7/8), prerastered 1 page(s) in 1.360291 ms, delivered 6.814459 ms later
+2026-09-12T16:49:20Z	preview-v2: published live mac-22 (revision 77) revision 77 at 107997470930500
+2026-09-12T16:49:20Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107997488361541
+2026-09-12T16:49:20Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107997488454000
+2026-09-12T16:49:20Z	paint: revision 77 at 107997496837875 (covers 3 keystrokes, redrawn true)
+2026-09-12T16:49:20Z	keystroke: revision 83 at 107997496886416 (delegate 107997497427750, revision 107997497509708)
+2026-09-12T16:49:20Z	keystroke: revision 84 at 107997504239125 (delegate 107997504678166, revision 107997504771958)
+2026-09-12T16:49:20Z	worker: line 895643 B decoded in 14.199958 ms at 107997505876291
+2026-09-12T16:49:20Z	worker: event on main at 107997508506833
+2026-09-12T16:49:20Z	compile: applied revision 81 at 107997510693333
+2026-09-12T16:49:20Z	status: revision 81: ok, 0 diagnostics in 91 ms
+2026-09-12T16:49:20Z	compile: sending revision 84 at 107997510747333
+2026-09-12T16:49:20Z	status: compiling revision 84 (mac-24)…
+2026-09-12T16:49:20Z	worker: display_list mac-23 line 7821298 B received at 107997522091625 (header probe 9.283292 ms)
+2026-09-12T16:49:20Z	worker: event on main at 107997523464666
+2026-09-12T16:49:20Z	preview-v2: preparing live mac-23 (revision 81) ticket 22 at 107997523529291
+2026-09-12T16:49:20Z	keystroke: revision 85 at 107997537522500 (delegate 107997538147875, revision 107997538224375)
+2026-09-12T16:49:20Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107997545320250
+2026-09-12T16:49:20Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107997545414666
+2026-09-12T16:49:20Z	preview-v2: prepared live mac-23 (revision 81) in 24.57675 ms (reused pages 7/8), prerastered 1 page(s) in 1.334209 ms, delivered 5.107291 ms later
+2026-09-12T16:49:20Z	preview-v2: published live mac-23 (revision 81) revision 81 at 107997554725166
+2026-09-12T16:49:20Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107997570869583
+2026-09-12T16:49:20Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107997570961208
+2026-09-12T16:49:20Z	paint: revision 81 at 107997580707625 (covers 4 keystrokes, redrawn true)
+2026-09-12T16:49:20Z	keystroke: revision 86 at 107997580799416 (delegate 107997581465041, revision 107997581542041)
+2026-09-12T16:49:20Z	keystroke: revision 87 at 107997587776041 (delegate 107997588344416, revision 107997588418625)
+2026-09-12T16:49:20Z	keystroke: revision 88 at 107997591940375 (delegate 107997592386166, revision 107997592457125)
+2026-09-12T16:49:20Z	worker: line 895870 B decoded in 14.173708 ms at 107997594191416
+2026-09-12T16:49:20Z	worker: event on main at 107997595327458
+2026-09-12T16:49:20Z	compile: applied revision 84 at 107997597464833
+2026-09-12T16:49:20Z	status: revision 84: ok, 0 diagnostics in 87 ms
+2026-09-12T16:49:20Z	compile: sending revision 88 at 107997597521625
+2026-09-12T16:49:20Z	status: compiling revision 88 (mac-25)…
+2026-09-12T16:49:20Z	worker: display_list mac-24 line 7822274 B received at 107997610460416 (header probe 9.223541 ms)
+2026-09-12T16:49:20Z	worker: event on main at 107997616814875
+2026-09-12T16:49:20Z	preview-v2: preparing live mac-24 (revision 84) ticket 23 at 107997616920000
+2026-09-12T16:49:20Z	keystroke: revision 89 at 107997631337833 (delegate 107997632015125, revision 107997632093791)
+2026-09-12T16:49:20Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107997639143875
+2026-09-12T16:49:20Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107997639268458
+2026-09-12T16:49:20Z	preview-v2: prepared live mac-24 (revision 84) in 24.51425 ms (reused pages 7/8), prerastered 1 page(s) in 1.273375 ms, delivered 5.860708 ms later
+2026-09-12T16:49:20Z	preview-v2: published live mac-24 (revision 84) revision 84 at 107997648835208
+2026-09-12T16:49:20Z	keystroke: revision 90 at 107997663396541 (delegate 107997663925375, revision 107997664002666)
+2026-09-12T16:49:20Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107997671045500
+2026-09-12T16:49:20Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107997671131708
+2026-09-12T16:49:20Z	paint: revision 84 at 107997680142625 (covers 3 keystrokes, redrawn true)
+2026-09-12T16:49:20Z	keystroke: revision 91 at 107997680220666 (delegate 107997680703000, revision 107997680781791)
+2026-09-12T16:49:20Z	worker: line 895873 B decoded in 14.17325 ms at 107997683030666
+2026-09-12T16:49:20Z	worker: event on main at 107997684598500
+2026-09-12T16:49:20Z	compile: applied revision 88 at 107997686756041
+2026-09-12T16:49:20Z	status: revision 88: ok, 0 diagnostics in 89 ms
+2026-09-12T16:49:20Z	compile: sending revision 91 at 107997686819291
+2026-09-12T16:49:20Z	status: compiling revision 91 (mac-26)…
+2026-09-12T16:49:20Z	worker: display_list mac-25 line 7823364 B received at 107997700052000 (header probe 9.259042 ms)
+2026-09-12T16:49:20Z	worker: event on main at 107997705185500
+2026-09-12T16:49:20Z	preview-v2: preparing live mac-25 (revision 88) ticket 24 at 107997705256875
+2026-09-12T16:49:20Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107997721860708
+2026-09-12T16:49:20Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107997721967333
+2026-09-12T16:49:20Z	keystroke: revision 92 at 107997730241958 (delegate 107997730886500, revision 107997730967875)
+2026-09-12T16:49:20Z	preview-v2: prepared live mac-25 (revision 88) in 24.60825 ms (reused pages 7/8), prerastered 1 page(s) in 1.336625 ms, delivered 0.214875 ms later
+2026-09-12T16:49:20Z	preview-v2: published live mac-25 (revision 88) revision 88 at 107997731523916
+2026-09-12T16:49:20Z	keystroke: revision 93 at 107997747997375 (delegate 107997748432375, revision 107997748508708)
+2026-09-12T16:49:20Z	keystroke: revision 94 at 107997752012958 (delegate 107997752404166, revision 107997752479291)
+2026-09-12T16:49:20Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107997758540666
+2026-09-12T16:49:20Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107997758631250
+2026-09-12T16:49:20Z	paint: revision 88 at 107997767051041 (covers 4 keystrokes, redrawn true)
+2026-09-12T16:49:20Z	keystroke: revision 95 at 107997767120250 (delegate 107997767711375, revision 107997767803083)
+2026-09-12T16:49:20Z	worker: line 896101 B decoded in 14.040792 ms at 107997771690083
+2026-09-12T16:49:20Z	worker: event on main at 107997774676958
+2026-09-12T16:49:20Z	compile: applied revision 91 at 107997777019916
+2026-09-12T16:49:20Z	status: revision 91: ok, 0 diagnostics in 90 ms
+2026-09-12T16:49:20Z	compile: sending revision 95 at 107997777083541
+2026-09-12T16:49:20Z	status: compiling revision 95 (mac-27)…
+2026-09-12T16:49:20Z	worker: display_list mac-26 line 7824704 B received at 107997788521000 (header probe 9.138709 ms)
+2026-09-12T16:49:20Z	worker: event on main at 107997790731708
+2026-09-12T16:49:20Z	preview-v2: preparing live mac-26 (revision 91) ticket 25 at 107997790789375
+2026-09-12T16:49:20Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107997799236583
+2026-09-12T16:49:20Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107997799323416
+2026-09-12T16:49:20Z	keystroke: revision 96 at 107997809205208 (delegate 107997809834000, revision 107997809912166)
+2026-09-12T16:49:20Z	preview-v2: prepared live mac-26 (revision 91) in 24.620416 ms (reused pages 7/8), prerastered 1 page(s) in 1.482417 ms, delivered 6.108542 ms later
+2026-09-12T16:49:20Z	preview-v2: published live mac-26 (revision 91) revision 91 at 107997823224291
+2026-09-12T16:49:20Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107997830898625
+2026-09-12T16:49:20Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107997830975583
+2026-09-12T16:49:20Z	paint: revision 91 at 107997839304333 (covers 3 keystrokes, redrawn true)
+2026-09-12T16:49:20Z	keystroke: revision 97 at 107997847922833 (delegate 107997848433083, revision 107997848512625)
+2026-09-12T16:49:20Z	keystroke: revision 98 at 107997852180208 (delegate 107997852540083, revision 107997852616250)
+2026-09-12T16:49:20Z	worker: line 896104 B decoded in 14.210958 ms at 107997861215083
+2026-09-12T16:49:20Z	worker: event on main at 107997861484000
+2026-09-12T16:49:20Z	compile: applied revision 95 at 107997863743458
+2026-09-12T16:49:20Z	status: revision 95: ok, 0 diagnostics in 87 ms
+2026-09-12T16:49:20Z	compile: sending revision 98 at 107997863807708
+2026-09-12T16:49:20Z	status: compiling revision 98 (mac-28)…
+2026-09-12T16:49:20Z	worker: display_list mac-27 line 7825806 B received at 107997877339708 (header probe 9.233458 ms)
+2026-09-12T16:49:20Z	worker: event on main at 107997881758291
+2026-09-12T16:49:20Z	preview-v2: preparing live mac-27 (revision 95) ticket 26 at 107997881861333
+2026-09-12T16:49:20Z	keystroke: revision 99 at 107997881905000 (delegate 107997882549000, revision 107997882624375)
+2026-09-12T16:49:20Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107997903563958
+2026-09-12T16:49:20Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107997903661875
+2026-09-12T16:49:20Z	preview-v2: prepared live mac-27 (revision 95) in 24.834958 ms (reused pages 7/8), prerastered 1 page(s) in 1.321042 ms, delivered 6.161917 ms later
+2026-09-12T16:49:20Z	preview-v2: published live mac-27 (revision 95) revision 95 at 107997914412125
+2026-09-12T16:49:20Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107997931147125
+2026-09-12T16:49:20Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107997931241125
+2026-09-12T16:49:20Z	paint: revision 95 at 107997938883291 (covers 4 keystrokes, redrawn true)
+2026-09-12T16:49:20Z	keystroke: revision 100 at 107997938939041 (delegate 107997939526291, revision 107997939611541)
+2026-09-12T16:49:20Z	keystroke: revision 101 at 107997946174166 (delegate 107997946599625, revision 107997946685875)
+2026-09-12T16:49:20Z	worker: line 896554 B decoded in 14.158209 ms at 107997949447000
+2026-09-12T16:49:20Z	worker: event on main at 107997950505375
+2026-09-12T16:49:20Z	compile: applied revision 98 at 107997952706791
+2026-09-12T16:49:20Z	status: revision 98: ok, 0 diagnostics in 89 ms
+2026-09-12T16:49:20Z	compile: sending revision 101 at 107997952765916
+2026-09-12T16:49:20Z	status: compiling revision 101 (mac-29)…
+2026-09-12T16:49:20Z	worker: display_list mac-28 line 7827028 B received at 107997965846416 (header probe 9.147708 ms)
+2026-09-12T16:49:20Z	keystroke: revision 102 at 107997965789541 (delegate 107997966425625, revision 107997966501541)
+2026-09-12T16:49:20Z	worker: event on main at 107997966757666
+2026-09-12T16:49:20Z	preview-v2: preparing live mac-28 (revision 98) ticket 27 at 107997966789583
+2026-09-12T16:49:20Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107997987017708
+2026-09-12T16:49:20Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107997987107291
+2026-09-12T16:49:20Z	preview-v2: prepared live mac-28 (revision 98) in 24.665333 ms (reused pages 7/8), prerastered 1 page(s) in 1.317792 ms, delivered 3.42775 ms later
+2026-09-12T16:49:20Z	preview-v2: published live mac-28 (revision 98) revision 98 at 107997996366291
+2026-09-12T16:49:20Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107998013902458
+2026-09-12T16:49:20Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107998013999250
+2026-09-12T16:49:20Z	paint: revision 98 at 107998021035458 (covers 3 keystrokes, redrawn true)
+2026-09-12T16:49:20Z	keystroke: revision 103 at 107998021091500 (delegate 107998021794166, revision 107998021870291)
+2026-09-12T16:49:21Z	keystroke: revision 104 at 107998028932833 (delegate 107998029447125, revision 107998029524958)
+2026-09-12T16:49:21Z	keystroke: revision 105 at 107998034033791 (delegate 107998034534000, revision 107998034607083)
+2026-09-12T16:49:21Z	worker: line 896559 B decoded in 14.207958 ms at 107998038008041
+2026-09-12T16:49:21Z	worker: event on main at 107998038174000
+2026-09-12T16:49:21Z	compile: applied revision 101 at 107998040396083
+2026-09-12T16:49:21Z	status: revision 101: ok, 0 diagnostics in 87 ms
+2026-09-12T16:49:21Z	compile: sending revision 105 at 107998040457083
+2026-09-12T16:49:21Z	status: compiling revision 105 (mac-30)…
+2026-09-12T16:49:21Z	worker: display_list mac-29 line 7828113 B received at 107998054476500 (header probe 9.2545 ms)
+2026-09-12T16:49:21Z	worker: event on main at 107998060102208
+2026-09-12T16:49:21Z	preview-v2: preparing live mac-29 (revision 101) ticket 28 at 107998060205833
+2026-09-12T16:49:21Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107998077109208
+2026-09-12T16:49:21Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107998077197333
+2026-09-12T16:49:21Z	keystroke: revision 106 at 107998085468458 (delegate 107998086141541, revision 107998086219916)
+2026-09-12T16:49:21Z	preview-v2: prepared live mac-29 (revision 101) in 25.143042 ms (reused pages 7/8), prerastered 1 page(s) in 1.290583 ms, delivered 3.967458 ms later
+2026-09-12T16:49:21Z	preview-v2: published live mac-29 (revision 101) revision 101 at 107998090777166
+2026-09-12T16:49:21Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107998098481208
+2026-09-12T16:49:21Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107998098562750
+2026-09-12T16:49:21Z	paint: revision 101 at 107998104704625 (covers 3 keystrokes, redrawn true)
+2026-09-12T16:49:21Z	keystroke: revision 107 at 107998104760375 (delegate 107998105291875, revision 107998105372708)
+2026-09-12T16:49:21Z	keystroke: revision 108 at 107998123013083 (delegate 107998123509791, revision 107998123591333)
+2026-09-12T16:49:21Z	worker: line 896787 B decoded in 14.320166 ms at 107998126774791
+2026-09-12T16:49:21Z	worker: event on main at 107998130303291
+2026-09-12T16:49:21Z	compile: applied revision 105 at 107998132640041
+2026-09-12T16:49:21Z	status: revision 105: ok, 0 diagnostics in 92 ms
+2026-09-12T16:49:21Z	compile: sending revision 108 at 107998132709416
+2026-09-12T16:49:21Z	status: compiling revision 108 (mac-31)…
+2026-09-12T16:49:21Z	worker: display_list mac-30 line 7829450 B received at 107998143076333 (header probe 9.066958 ms)
+2026-09-12T16:49:21Z	worker: event on main at 107998146112041
+2026-09-12T16:49:21Z	preview-v2: preparing live mac-30 (revision 105) ticket 29 at 107998146179916
+2026-09-12T16:49:21Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107998154541916
+2026-09-12T16:49:21Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107998154633916
+2026-09-12T16:49:21Z	keystroke: revision 109 at 107998171817041 (delegate 107998172456500, revision 107998172532583)
+2026-09-12T16:49:21Z	preview-v2: prepared live mac-30 (revision 105) in 24.76425 ms (reused pages 7/8), prerastered 1 page(s) in 1.319875 ms, delivered 0.588875 ms later
+2026-09-12T16:49:21Z	preview-v2: published live mac-30 (revision 105) revision 105 at 107998172968083
+2026-09-12T16:49:21Z	keystroke: revision 110 at 107998190296583 (delegate 107998190880041, revision 107998190963291)
+2026-09-12T16:49:21Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107998198453375
+2026-09-12T16:49:21Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107998198547875
+2026-09-12T16:49:21Z	paint: revision 105 at 107998209045166 (covers 4 keystrokes, redrawn true)
+2026-09-12T16:49:21Z	keystroke: revision 111 at 107998209130583 (delegate 107998209807125, revision 107998209887166)
+2026-09-12T16:49:21Z	worker: line 896791 B decoded in 14.264625 ms at 107998215842250
+2026-09-12T16:49:21Z	worker: event on main at 107998216614708
+2026-09-12T16:49:21Z	compile: applied revision 108 at 107998218796083
+2026-09-12T16:49:21Z	status: revision 108: ok, 0 diagnostics in 86 ms
+2026-09-12T16:49:21Z	compile: sending revision 111 at 107998218854958
+2026-09-12T16:49:21Z	status: compiling revision 111 (mac-32)…
+2026-09-12T16:49:21Z	worker: display_list mac-31 line 7830552 B received at 107998232126625 (header probe 9.337 ms)
+2026-09-12T16:49:21Z	worker: event on main at 107998237375666
+2026-09-12T16:49:21Z	preview-v2: preparing live mac-31 (revision 108) ticket 30 at 107998237463291
+2026-09-12T16:49:21Z	keystroke: revision 112 at 107998237497791 (delegate 107998238126916, revision 107998238201291)
+2026-09-12T16:49:21Z	keystroke: revision 113 at 107998255980333 (delegate 107998256462750, revision 107998256551708)
+2026-09-12T16:49:21Z	keystroke: revision 114 at 107998260285833 (delegate 107998260814958, revision 107998260888750)
+2026-09-12T16:49:21Z	preview-v2: prepared live mac-31 (revision 108) in 24.525625 ms (reused pages 7/8), prerastered 1 page(s) in 1.356209 ms, delivered 0.844583 ms later
+2026-09-12T16:49:21Z	preview-v2: published live mac-31 (revision 108) revision 108 at 107998264321708
+2026-09-12T16:49:21Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107998280718333
+2026-09-12T16:49:21Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107998280818916
+2026-09-12T16:49:21Z	paint: revision 108 at 107998288236041 (covers 3 keystrokes, redrawn true)
+2026-09-12T16:49:21Z	keystroke: revision 115 at 107998288322541 (delegate 107998288971083, revision 107998289047541)
+2026-09-12T16:49:21Z	keystroke: revision 116 at 107998297551583 (delegate 107998298281083, revision 107998298364500)
+2026-09-12T16:49:21Z	worker: line 897018 B decoded in 14.271792 ms at 107998304694958
+2026-09-12T16:49:21Z	worker: event on main at 107998307145875
+2026-09-12T16:49:21Z	compile: applied revision 111 at 107998309496083
+2026-09-12T16:49:21Z	status: revision 111: ok, 0 diagnostics in 91 ms
+2026-09-12T16:49:21Z	compile: sending revision 116 at 107998309587875
+2026-09-12T16:49:21Z	status: compiling revision 116 (mac-33)…
+2026-09-12T16:49:21Z	keystroke: revision 117 at 107998329691166 (delegate 107998330396416, revision 107998330475458)
+2026-09-12T16:49:21Z	worker: display_list mac-32 line 7831528 B received at 107998332597166 (header probe 9.220375 ms)
+2026-09-12T16:49:21Z	worker: event on main at 107998334813500
+2026-09-12T16:49:21Z	preview-v2: preparing live mac-32 (revision 111) ticket 31 at 107998334873791
+2026-09-12T16:49:21Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107998342919333
+2026-09-12T16:49:21Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107998343002583
+2026-09-12T16:49:21Z	preview-v2: prepared live mac-32 (revision 111) in 24.661334 ms (reused pages 7/8), prerastered 1 page(s) in 1.387208 ms, delivered 2.192333 ms later
+2026-09-12T16:49:21Z	preview-v2: published live mac-32 (revision 111) revision 111 at 107998363296833
+2026-09-12T16:49:21Z	keystroke: revision 118 at 107998363415250 (delegate 107998363969125, revision 107998364044000)
+2026-09-12T16:49:21Z	keystroke: revision 119 at 107998381146166 (delegate 107998381651208, revision 107998381727125)
+2026-09-12T16:49:21Z	keystroke: revision 120 at 107998385434333 (delegate 107998385962625, revision 107998386039166)
+2026-09-12T16:49:21Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107998393010000
+2026-09-12T16:49:21Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107998393117208
+2026-09-12T16:49:21Z	paint: revision 111 at 107998401652958 (covers 3 keystrokes, redrawn true)
+2026-09-12T16:49:21Z	keystroke: revision 121 at 107998401745250 (delegate 107998402455291, revision 107998402538708)
+2026-09-12T16:49:21Z	worker: line 897471 B decoded in 14.147542 ms at 107998406018000
+2026-09-12T16:49:21Z	worker: event on main at 107998410495583
+2026-09-12T16:49:21Z	compile: applied revision 116 at 107998412826875
+2026-09-12T16:49:21Z	status: revision 116: ok, 0 diagnostics in 103 ms
+2026-09-12T16:49:21Z	compile: sending revision 121 at 107998412908541
+2026-09-12T16:49:21Z	status: compiling revision 121 (mac-34)…
+2026-09-12T16:49:21Z	worker: display_list mac-33 line 7833119 B received at 107998422697500 (header probe 9.278 ms)
+2026-09-12T16:49:21Z	worker: event on main at 107998427354500
+2026-09-12T16:49:21Z	preview-v2: preparing live mac-33 (revision 116) ticket 32 at 107998427415000
+2026-09-12T16:49:21Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107998437196291
+2026-09-12T16:49:21Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107998437294583
+2026-09-12T16:49:21Z	keystroke: revision 122 at 107998447227583 (delegate 107998447947041, revision 107998448027125)
+2026-09-12T16:49:21Z	preview-v2: prepared live mac-33 (revision 116) in 24.7955 ms (reused pages 7/8), prerastered 1 page(s) in 1.308208 ms, delivered 8.391375 ms later
+2026-09-12T16:49:21Z	preview-v2: published live mac-33 (revision 116) revision 116 at 107998462073583
+2026-09-12T16:49:21Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107998470462041
+2026-09-12T16:49:21Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107998470551208
+2026-09-12T16:49:21Z	paint: revision 116 at 107998478708250 (covers 5 keystrokes, redrawn true)
+2026-09-12T16:49:21Z	keystroke: revision 123 at 107998490706791 (delegate 107998491242583, revision 107998491319000)
+2026-09-12T16:49:21Z	worker: line 897702 B decoded in 14.089708 ms at 107998495227458
+2026-09-12T16:49:21Z	worker: event on main at 107998497424958
+2026-09-12T16:49:21Z	compile: applied revision 121 at 107998499728875
+2026-09-12T16:49:21Z	status: revision 121: ok, 0 diagnostics in 87 ms
+2026-09-12T16:49:21Z	compile: sending revision 123 at 107998499779458
+2026-09-12T16:49:21Z	status: compiling revision 123 (mac-35)…
+2026-09-12T16:49:21Z	worker: display_list mac-34 line 7834826 B received at 107998512125666 (header probe 9.556291 ms)
+2026-09-12T16:49:21Z	worker: event on main at 107998512761791
+2026-09-12T16:49:21Z	preview-v2: preparing live mac-34 (revision 121) ticket 33 at 107998512804583
+2026-09-12T16:49:21Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107998520919041
+2026-09-12T16:49:21Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107998521000250
+2026-09-12T16:49:21Z	keystroke: revision 124 at 107998530214958 (delegate 107998530834458, revision 107998530922166)
+2026-09-12T16:49:21Z	preview-v2: prepared live mac-34 (revision 121) in 24.928667 ms (reused pages 7/8), prerastered 1 page(s) in 1.370333 ms, delivered 5.340417 ms later
+2026-09-12T16:49:21Z	preview-v2: published live mac-34 (revision 121) revision 121 at 107998544639750
+2026-09-12T16:49:21Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107998553112166
+2026-09-12T16:49:21Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107998553203375
+2026-09-12T16:49:21Z	paint: revision 121 at 107998561486583 (covers 5 keystrokes, redrawn true)
+2026-09-12T16:49:21Z	keystroke: revision 125 at 107998574199041 (delegate 107998574776541, revision 107998574859583)
+2026-09-12T16:49:21Z	keystroke: revision 126 at 107998581742250 (delegate 107998582201583, revision 107998582286500)
+2026-09-12T16:49:21Z	worker: line 897928 B decoded in 14.275 ms at 107998584481833
+2026-09-12T16:49:21Z	worker: event on main at 107998586050500
+2026-09-12T16:49:21Z	compile: applied revision 123 at 107998588272000
+2026-09-12T16:49:21Z	status: revision 123: ok, 0 diagnostics in 88 ms
+2026-09-12T16:49:21Z	compile: sending revision 126 at 107998588345166
+2026-09-12T16:49:21Z	status: compiling revision 126 (mac-36)…
+2026-09-12T16:49:21Z	keystroke: revision 127 at 107998588542625 (delegate 107998589062666, revision 107998589140875)
+2026-09-12T16:49:21Z	worker: display_list mac-35 line 7835439 B received at 107998600764750 (header probe 9.166625 ms)
+2026-09-12T16:49:21Z	worker: event on main at 107998603333291
+2026-09-12T16:49:21Z	preview-v2: preparing live mac-35 (revision 123) ticket 34 at 107998603404708
+2026-09-12T16:49:21Z	keystroke: revision 128 at 107998616983250 (delegate 107998617520833, revision 107998617616333)
+2026-09-12T16:49:21Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107998624985083
+2026-09-12T16:49:21Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107998625097916
+2026-09-12T16:49:21Z	preview-v2: prepared live mac-35 (revision 123) in 24.665125 ms (reused pages 7/8), prerastered 1 page(s) in 1.364917 ms, delivered 5.447375 ms later
+2026-09-12T16:49:21Z	preview-v2: published live mac-35 (revision 123) revision 123 at 107998635162833
+2026-09-12T16:49:21Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107998652140791
+2026-09-12T16:49:21Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107998652224000
+2026-09-12T16:49:21Z	paint: revision 123 at 107998659086291 (covers 2 keystrokes, redrawn true)
+2026-09-12T16:49:21Z	keystroke: revision 129 at 107998659143083 (delegate 107998659878875, revision 107998659957666)
+2026-09-12T16:49:21Z	keystroke: revision 130 at 107998663973041 (delegate 107998664369166, revision 107998664442666)
+2026-09-12T16:49:21Z	keystroke: revision 131 at 107998667655916 (delegate 107998668156791, revision 107998668244291)
+2026-09-12T16:49:21Z	worker: line 897930 B decoded in 14.205125 ms at 107998673721625
+2026-09-12T16:49:21Z	worker: event on main at 107998674400958
+2026-09-12T16:49:21Z	compile: applied revision 126 at 107998676620666
+2026-09-12T16:49:21Z	status: revision 126: ok, 0 diagnostics in 88 ms
+2026-09-12T16:49:21Z	compile: sending revision 131 at 107998676685666
+2026-09-12T16:49:21Z	status: compiling revision 131 (mac-37)…
+2026-09-12T16:49:21Z	keystroke: revision 132 at 107998688553958 (delegate 107998689133958, revision 107998689206750)
+2026-09-12T16:49:21Z	worker: display_list mac-36 line 7836165 B received at 107998690490875 (header probe 9.136 ms)
+2026-09-12T16:49:21Z	worker: event on main at 107998693277625
+2026-09-12T16:49:21Z	preview-v2: preparing live mac-36 (revision 126) ticket 35 at 107998693325666
+2026-09-12T16:49:21Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107998710605916
+2026-09-12T16:49:21Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107998710695458
+2026-09-12T16:49:21Z	preview-v2: prepared live mac-36 (revision 126) in 24.784875 ms (reused pages 7/8), prerastered 1 page(s) in 1.339959 ms, delivered 0.601333 ms later
+2026-09-12T16:49:21Z	preview-v2: published live mac-36 (revision 126) revision 126 at 107998720212833
+2026-09-12T16:49:21Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107998736613583
+2026-09-12T16:49:21Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107998736717833
+2026-09-12T16:49:21Z	paint: revision 126 at 107998747829458 (covers 3 keystrokes, redrawn true)
+2026-09-12T16:49:21Z	keystroke: revision 133 at 107998747891833 (delegate 107998748524291, revision 107998748605541)
+2026-09-12T16:49:21Z	keystroke: revision 134 at 107998755160666 (delegate 107998755630250, revision 107998755707458)
+2026-09-12T16:49:21Z	keystroke: revision 135 at 107998759956500 (delegate 107998760461875, revision 107998760533541)
+2026-09-12T16:49:21Z	worker: line 898160 B decoded in 14.344625 ms at 107998763156625
+2026-09-12T16:49:21Z	worker: event on main at 107998763716875
+2026-09-12T16:49:21Z	compile: applied revision 131 at 107998765834875
+2026-09-12T16:49:21Z	status: revision 131: ok, 0 diagnostics in 89 ms
+2026-09-12T16:49:21Z	compile: sending revision 135 at 107998765888875
+2026-09-12T16:49:21Z	status: compiling revision 135 (mac-38)…
+2026-09-12T16:49:21Z	worker: display_list mac-37 line 7838231 B received at 107998779478291 (header probe 9.148208 ms)
+2026-09-12T16:49:21Z	worker: event on main at 107998784265750
+2026-09-12T16:49:21Z	preview-v2: preparing live mac-37 (revision 131) ticket 36 at 107998784356208
+2026-09-12T16:49:21Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107998801199583
+2026-09-12T16:49:21Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107998801291083
+2026-09-12T16:49:21Z	preview-v2: prepared live mac-37 (revision 131) in 24.808583 ms (reused pages 7/8), prerastered 1 page(s) in 1.525709 ms, delivered 0.625875 ms later
+2026-09-12T16:49:21Z	preview-v2: published live mac-37 (revision 131) revision 131 at 107998811570625
+2026-09-12T16:49:21Z	keystroke: revision 136 at 107998811693166 (delegate 107998812366083, revision 107998812442500)
+2026-09-12T16:49:21Z	keystroke: revision 137 at 107998829840041 (delegate 107998830391791, revision 107998830471458)
+2026-09-12T16:49:21Z	keystroke: revision 138 at 107998834703708 (delegate 107998835340625, revision 107998835415833)
+2026-09-12T16:49:21Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107998842291625
+2026-09-12T16:49:21Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107998842374750
+2026-09-12T16:49:21Z	paint: revision 131 at 107998850640791 (covers 5 keystrokes, redrawn true)
+2026-09-12T16:49:21Z	keystroke: revision 139 at 107998850714250 (delegate 107998851358250, revision 107998851434125)
+2026-09-12T16:49:21Z	worker: line 898388 B decoded in 14.082292 ms at 107998851712500
+2026-09-12T16:49:21Z	worker: event on main at 107998851812041
+2026-09-12T16:49:21Z	compile: applied revision 135 at 107998854070458
+2026-09-12T16:49:21Z	status: revision 135: ok, 0 diagnostics in 88 ms
+2026-09-12T16:49:21Z	compile: sending revision 139 at 107998854137958
+2026-09-12T16:49:21Z	status: compiling revision 139 (mac-39)…
+2026-09-12T16:49:21Z	worker: display_list mac-38 line 7839583 B received at 107998868642625 (header probe 9.276584 ms)
+2026-09-12T16:49:21Z	worker: event on main at 107998873803750
+2026-09-12T16:49:21Z	preview-v2: preparing live mac-38 (revision 135) ticket 37 at 107998873876958
+2026-09-12T16:49:21Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107998882119000
+2026-09-12T16:49:21Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107998882206083
+2026-09-12T16:49:21Z	keystroke: revision 140 at 107998890858791 (delegate 107998891520875, revision 107998891598750)
+2026-09-12T16:49:21Z	preview-v2: prepared live mac-38 (revision 135) in 24.959417 ms (reused pages 7/8), prerastered 1 page(s) in 1.402833 ms, delivered 4.068458 ms later
+2026-09-12T16:49:21Z	preview-v2: published live mac-38 (revision 135) revision 135 at 107998904474541
+2026-09-12T16:49:21Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107998912813750
+2026-09-12T16:49:21Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107998912887791
+2026-09-12T16:49:21Z	paint: revision 135 at 107998920854500 (covers 4 keystrokes, redrawn true)
+2026-09-12T16:49:21Z	keystroke: revision 141 at 107998932995666 (delegate 107998933533083, revision 107998933617291)
+2026-09-12T16:49:21Z	keystroke: revision 142 at 107998940335500 (delegate 107998940899375, revision 107998940982541)
+2026-09-12T16:49:21Z	worker: line 898391 B decoded in 14.10525 ms at 107998941182083
+2026-09-12T16:49:21Z	worker: event on main at 107998941400875
+2026-09-12T16:49:21Z	compile: applied revision 139 at 107998943625166
+2026-09-12T16:49:21Z	status: revision 139: ok, 0 diagnostics in 89 ms
+2026-09-12T16:49:21Z	compile: sending revision 142 at 107998943688583
+2026-09-12T16:49:21Z	status: compiling revision 142 (mac-40)…
+2026-09-12T16:49:21Z	worker: display_list mac-39 line 7840672 B received at 107998957632500 (header probe 9.360417 ms)
+2026-09-12T16:49:21Z	worker: event on main at 107998958543625
+2026-09-12T16:49:21Z	preview-v2: preparing live mac-39 (revision 139) ticket 38 at 107998958595125
+2026-09-12T16:49:21Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107998967514666
+2026-09-12T16:49:21Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107998967603416
+2026-09-12T16:49:21Z	keystroke: revision 143 at 107998981109875 (delegate 107998981678208, revision 107998981763625)
+2026-09-12T16:49:21Z	preview-v2: prepared live mac-39 (revision 139) in 24.673583 ms (reused pages 7/8), prerastered 1 page(s) in 1.306375 ms, delivered 9.848292 ms later
+2026-09-12T16:49:21Z	preview-v2: published live mac-39 (revision 139) revision 139 at 107998994600958
+2026-09-12T16:49:21Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107999002948291
+2026-09-12T16:49:21Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107999003060583
+2026-09-12T16:49:21Z	paint: revision 139 at 107999014701083 (covers 4 keystrokes, redrawn true)
+2026-09-12T16:49:21Z	keystroke: revision 144 at 107999014760166 (delegate 107999015348750, revision 107999015434625)
+2026-09-12T16:49:22Z	worker: line 898619 B decoded in 14.124916 ms at 107999030277166
+2026-09-12T16:49:22Z	worker: event on main at 107999033320000
+2026-09-12T16:49:22Z	compile: applied revision 142 at 107999035503583
+2026-09-12T16:49:22Z	status: revision 142: ok, 0 diagnostics in 92 ms
+2026-09-12T16:49:22Z	compile: sending revision 144 at 107999035570041
+2026-09-12T16:49:22Z	status: compiling revision 144 (mac-41)…
+2026-09-12T16:49:22Z	worker: display_list mac-40 line 7842012 B received at 107999047248916 (header probe 9.217541 ms)
+2026-09-12T16:49:22Z	worker: event on main at 107999048848375
+2026-09-12T16:49:22Z	preview-v2: preparing live mac-40 (revision 142) ticket 39 at 107999048905666
+2026-09-12T16:49:22Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107999057273375
+2026-09-12T16:49:22Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107999057362458
+2026-09-12T16:49:22Z	keystroke: revision 145 at 107999066406500 (delegate 107999067020083, revision 107999067104583)
+2026-09-12T16:49:22Z	preview-v2: prepared live mac-40 (revision 142) in 24.824084 ms (reused pages 7/8), prerastered 1 page(s) in 1.402 ms, delivered 5.911583 ms later
+2026-09-12T16:49:22Z	preview-v2: published live mac-40 (revision 142) revision 142 at 107999081262291
+2026-09-12T16:49:22Z	keystroke: revision 146 at 107999081417875 (delegate 107999081977666, revision 107999082068916)
+2026-09-12T16:49:22Z	keystroke: revision 147 at 107999098649541 (delegate 107999099178208, revision 107999099256041)
+2026-09-12T16:49:22Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107999106742958
+2026-09-12T16:49:22Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107999106838625
+2026-09-12T16:49:22Z	paint: revision 142 at 107999115263875 (covers 3 keystrokes, redrawn true)
+2026-09-12T16:49:22Z	keystroke: revision 148 at 107999115360083 (delegate 107999116070041, revision 107999116148083)
+2026-09-12T16:49:22Z	worker: line 898620 B decoded in 14.230041 ms at 107999120246666
+2026-09-12T16:49:22Z	worker: event on main at 107999122721583
+2026-09-12T16:49:22Z	compile: applied revision 144 at 107999125103708
+2026-09-12T16:49:22Z	status: revision 144: ok, 0 diagnostics in 89 ms
+2026-09-12T16:49:22Z	compile: sending revision 148 at 107999125180958
+2026-09-12T16:49:22Z	status: compiling revision 148 (mac-42)…
+2026-09-12T16:49:22Z	worker: display_list mac-41 line 7842376 B received at 107999136816333 (header probe 9.263 ms)
+2026-09-12T16:49:22Z	worker: event on main at 107999139157291
+2026-09-12T16:49:22Z	preview-v2: preparing live mac-41 (revision 144) ticket 40 at 107999139215708
+2026-09-12T16:49:22Z	keystroke: revision 149 at 107999139272916 (delegate 107999139929083, revision 107999140002625)
+2026-09-12T16:49:22Z	keystroke: revision 150 at 107999156795833 (delegate 107999157426125, revision 107999157501416)
+2026-09-12T16:49:22Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107999165036708
+2026-09-12T16:49:22Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107999165137666
+2026-09-12T16:49:22Z	preview-v2: prepared live mac-41 (revision 144) in 24.815833 ms (reused pages 7/8), prerastered 1 page(s) in 1.45975 ms, delivered 10.477625 ms later
+2026-09-12T16:49:22Z	preview-v2: published live mac-41 (revision 144) revision 144 at 107999176140750
+2026-09-12T16:49:22Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107999193341375
+2026-09-12T16:49:22Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107999193437000
+2026-09-12T16:49:22Z	paint: revision 144 at 107999200347208 (covers 2 keystrokes, redrawn true)
+2026-09-12T16:49:22Z	keystroke: revision 151 at 107999200418916 (delegate 107999201078708, revision 107999201153333)
+2026-09-12T16:49:22Z	keystroke: revision 152 at 107999207916916 (delegate 107999208507666, revision 107999208582166)
+2026-09-12T16:49:22Z	worker: line 898849 B decoded in 14.112791 ms at 107999209694291
+2026-09-12T16:49:22Z	worker: event on main at 107999214918458
+2026-09-12T16:49:22Z	compile: applied revision 148 at 107999217118500
+2026-09-12T16:49:22Z	status: revision 148: ok, 0 diagnostics in 92 ms
+2026-09-12T16:49:22Z	compile: sending revision 152 at 107999217177625
+2026-09-12T16:49:22Z	status: compiling revision 152 (mac-43)…
+2026-09-12T16:49:22Z	worker: display_list mac-42 line 7844079 B received at 107999226478208 (header probe 9.365167 ms)
+2026-09-12T16:49:22Z	worker: event on main at 107999230080875
+2026-09-12T16:49:22Z	preview-v2: preparing live mac-42 (revision 148) ticket 41 at 107999230139750
+2026-09-12T16:49:22Z	keystroke: revision 153 at 107999230198416 (delegate 107999230854166, revision 107999230927666)
+2026-09-12T16:49:22Z	keystroke: revision 154 at 107999248392750 (delegate 107999249037708, revision 107999249115375)
+2026-09-12T16:49:22Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107999255960666
+2026-09-12T16:49:22Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107999256058500
+2026-09-12T16:49:22Z	preview-v2: prepared live mac-42 (revision 148) in 24.807083 ms (reused pages 7/8), prerastered 1 page(s) in 1.355708 ms, delivered 8.935084 ms later
+2026-09-12T16:49:22Z	preview-v2: published live mac-42 (revision 148) revision 148 at 107999265483250
+2026-09-12T16:49:22Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107999281791333
+2026-09-12T16:49:22Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107999281879750
+2026-09-12T16:49:22Z	paint: revision 148 at 107999288502500 (covers 4 keystrokes, redrawn true)
+2026-09-12T16:49:22Z	keystroke: revision 155 at 107999288580625 (delegate 107999289263708, revision 107999289340333)
+2026-09-12T16:49:22Z	keystroke: revision 156 at 107999296224125 (delegate 107999296938791, revision 107999297019041)
+2026-09-12T16:49:22Z	worker: line 899077 B decoded in 14.218583 ms at 107999299197666
+2026-09-12T16:49:22Z	worker: event on main at 107999301464833
+2026-09-12T16:49:22Z	compile: applied revision 152 at 107999303811333
+2026-09-12T16:49:22Z	status: revision 152: ok, 0 diagnostics in 86 ms
+2026-09-12T16:49:22Z	compile: sending revision 156 at 107999303890625
+2026-09-12T16:49:22Z	status: compiling revision 156 (mac-44)…
+2026-09-12T16:49:22Z	worker: display_list mac-43 line 7845419 B received at 107999316017333 (header probe 9.098125 ms)
+2026-09-12T16:49:22Z	worker: event on main at 107999324304291
+2026-09-12T16:49:22Z	preview-v2: preparing live mac-43 (revision 152) ticket 42 at 107999324406791
+2026-09-12T16:49:22Z	keystroke: revision 157 at 107999339903166 (delegate 107999340596625, revision 107999340674833)
+2026-09-12T16:49:22Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107999347920791
+2026-09-12T16:49:22Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107999348045916
+2026-09-12T16:49:22Z	preview-v2: prepared live mac-43 (revision 152) in 24.929459 ms (reused pages 7/8), prerastered 1 page(s) in 1.347416 ms, delivered 8.710875 ms later
+2026-09-12T16:49:22Z	preview-v2: published live mac-43 (revision 152) revision 152 at 107999359623833
+2026-09-12T16:49:22Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107999376349750
+2026-09-12T16:49:22Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107999376434750
+2026-09-12T16:49:22Z	paint: revision 152 at 107999383125250 (covers 4 keystrokes, redrawn true)
+2026-09-12T16:49:22Z	keystroke: revision 158 at 107999383170416 (delegate 107999383838791, revision 107999383913625)
+2026-09-12T16:49:22Z	worker: line 899081 B decoded in 14.061417 ms at 107999389012083
+2026-09-12T16:49:22Z	worker: event on main at 107999389826291
+2026-09-12T16:49:22Z	compile: applied revision 156 at 107999391997666
+2026-09-12T16:49:22Z	status: revision 156: ok, 0 diagnostics in 88 ms
+2026-09-12T16:49:22Z	compile: sending revision 158 at 107999392053375
+2026-09-12T16:49:22Z	status: compiling revision 158 (mac-45)…
+2026-09-12T16:49:22Z	worker: display_list mac-44 line 7846871 B received at 107999405690625 (header probe 9.241375 ms)
+2026-09-12T16:49:22Z	worker: event on main at 107999409386708
+2026-09-12T16:49:22Z	preview-v2: preparing live mac-44 (revision 156) ticket 43 at 107999409474875
+2026-09-12T16:49:22Z	keystroke: revision 159 at 107999409510708 (delegate 107999410073458, revision 107999410152666)
+2026-09-12T16:49:22Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107999431579125
+2026-09-12T16:49:22Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107999431665458
+2026-09-12T16:49:22Z	preview-v2: prepared live mac-44 (revision 156) in 24.902 ms (reused pages 7/8), prerastered 1 page(s) in 1.546708 ms, delivered 6.698667 ms later
+2026-09-12T16:49:22Z	preview-v2: published live mac-44 (revision 156) revision 156 at 107999442879958
+2026-09-12T16:49:22Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107999458890666
+2026-09-12T16:49:22Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107999458978875
+2026-09-12T16:49:22Z	paint: revision 156 at 107999465867250 (covers 4 keystrokes, redrawn true)
+2026-09-12T16:49:22Z	keystroke: revision 160 at 107999465919208 (delegate 107999466514625, revision 107999466602666)
+2026-09-12T16:49:22Z	keystroke: revision 161 at 107999473662541 (delegate 107999474210708, revision 107999474290250)
+2026-09-12T16:49:22Z	worker: line 899083 B decoded in 14.091583 ms at 107999478472541
+2026-09-12T16:49:22Z	worker: event on main at 107999481876541
+2026-09-12T16:49:22Z	compile: applied revision 158 at 107999484169791
+2026-09-12T16:49:22Z	status: revision 158: ok, 0 diagnostics in 92 ms
+2026-09-12T16:49:22Z	compile: sending revision 161 at 107999484229250
+2026-09-12T16:49:22Z	status: compiling revision 161 (mac-46)…
+2026-09-12T16:49:22Z	worker: display_list mac-45 line 7847598 B received at 107999495257375 (header probe 9.339459 ms)
+2026-09-12T16:49:22Z	worker: event on main at 107999497236916
+2026-09-12T16:49:22Z	preview-v2: preparing live mac-45 (revision 158) ticket 44 at 107999497305125
+2026-09-12T16:49:22Z	keystroke: revision 162 at 107999511873958 (delegate 107999512562875, revision 107999512643416)
+2026-09-12T16:49:22Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107999520183666
+2026-09-12T16:49:22Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107999520267291
+2026-09-12T16:49:22Z	preview-v2: prepared live mac-45 (revision 158) in 24.868375 ms (reused pages 7/8), prerastered 1 page(s) in 1.365583 ms, delivered 6.9555 ms later
+2026-09-12T16:49:22Z	preview-v2: published live mac-45 (revision 158) revision 158 at 107999530710500
+2026-09-12T16:49:22Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107999547266791
+2026-09-12T16:49:22Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107999547349333
+2026-09-12T16:49:22Z	paint: revision 158 at 107999554328041 (covers 2 keystrokes, redrawn true)
+2026-09-12T16:49:22Z	keystroke: revision 163 at 107999554384041 (delegate 107999555100541, revision 107999555175916)
+2026-09-12T16:49:22Z	keystroke: revision 164 at 107999561708916 (delegate 107999562175000, revision 107999562251583)
+2026-09-12T16:49:22Z	worker: line 899309 B decoded in 14.275834 ms at 107999567985125
+2026-09-12T16:49:22Z	worker: event on main at 107999568788250
+2026-09-12T16:49:22Z	compile: applied revision 161 at 107999571013666
+2026-09-12T16:49:22Z	status: revision 161: ok, 0 diagnostics in 87 ms
+2026-09-12T16:49:22Z	compile: sending revision 164 at 107999571074708
+2026-09-12T16:49:22Z	status: compiling revision 164 (mac-47)…
+2026-09-12T16:49:22Z	worker: display_list mac-46 line 7848575 B received at 107999584318791 (header probe 9.321875 ms)
+2026-09-12T16:49:22Z	worker: event on main at 107999588614041
+2026-09-12T16:49:22Z	preview-v2: preparing live mac-46 (revision 161) ticket 45 at 107999588700791
+2026-09-12T16:49:22Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107999605853791
+2026-09-12T16:49:22Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107999605949333
+2026-09-12T16:49:22Z	preview-v2: prepared live mac-46 (revision 161) in 24.734667 ms (reused pages 7/8), prerastered 1 page(s) in 1.336042 ms, delivered 0.046166 ms later
+2026-09-12T16:49:22Z	preview-v2: published live mac-46 (revision 161) revision 161 at 107999614976916
+2026-09-12T16:49:22Z	keystroke: revision 165 at 107999615102916 (delegate 107999615804500, revision 107999615879291)
+2026-09-12T16:49:22Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107999636669875
+2026-09-12T16:49:22Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107999636769791
+2026-09-12T16:49:22Z	paint: revision 161 at 107999646870833 (covers 3 keystrokes, redrawn true)
+2026-09-12T16:49:22Z	keystroke: revision 166 at 107999646964208 (delegate 107999647531083, revision 107999647620333)
+2026-09-12T16:49:22Z	keystroke: revision 167 at 107999651710416 (delegate 107999652331791, revision 107999652405916)
+2026-09-12T16:49:22Z	worker: line 899312 B decoded in 14.175958 ms at 107999657301416
+2026-09-12T16:49:22Z	worker: event on main at 107999658037625
+2026-09-12T16:49:22Z	compile: applied revision 164 at 107999660257583
+2026-09-12T16:49:22Z	status: revision 164: ok, 0 diagnostics in 89 ms
+2026-09-12T16:49:22Z	compile: sending revision 167 at 107999660317875
+2026-09-12T16:49:22Z	status: compiling revision 167 (mac-48)…
+2026-09-12T16:49:22Z	keystroke: revision 168 at 107999672639708 (delegate 107999673259041, revision 107999673333666)
+2026-09-12T16:49:22Z	worker: display_list mac-47 line 7849674 B received at 107999673884125 (header probe 9.311875 ms)
+2026-09-12T16:49:22Z	worker: event on main at 107999677112250
+2026-09-12T16:49:22Z	preview-v2: preparing live mac-47 (revision 164) ticket 46 at 107999677158833
+2026-09-12T16:49:22Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107999694412208
+2026-09-12T16:49:22Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107999694511791
+2026-09-12T16:49:22Z	preview-v2: prepared live mac-47 (revision 164) in 24.956125 ms (reused pages 7/8), prerastered 1 page(s) in 1.276458 ms, delivered 2.275542 ms later
+2026-09-12T16:49:22Z	preview-v2: published live mac-47 (revision 164) revision 164 at 107999705937208
+2026-09-12T16:49:22Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107999721816833
+2026-09-12T16:49:22Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107999721897666
+2026-09-12T16:49:22Z	paint: revision 164 at 107999728678750 (covers 3 keystrokes, redrawn true)
+2026-09-12T16:49:22Z	keystroke: revision 169 at 107999728737083 (delegate 107999729349875, revision 107999729430541)
+2026-09-12T16:49:22Z	keystroke: revision 170 at 107999736359500 (delegate 107999736864333, revision 107999736945000)
+2026-09-12T16:49:22Z	keystroke: revision 171 at 107999743193416 (delegate 107999743749666, revision 107999743825708)
+2026-09-12T16:49:22Z	worker: line 899539 B decoded in 14.26075 ms at 107999746738750
+2026-09-12T16:49:22Z	worker: event on main at 107999749979291
+2026-09-12T16:49:22Z	compile: applied revision 167 at 107999752250208
+2026-09-12T16:49:22Z	status: revision 167: ok, 0 diagnostics in 92 ms
+2026-09-12T16:49:22Z	compile: sending revision 171 at 107999752307208
+2026-09-12T16:49:22Z	status: compiling revision 171 (mac-49)…
+2026-09-12T16:49:22Z	worker: display_list mac-48 line 7850654 B received at 107999763496083 (header probe 9.253292 ms)
+2026-09-12T16:49:22Z	worker: event on main at 107999764947958
+2026-09-12T16:49:22Z	preview-v2: preparing live mac-48 (revision 167) ticket 47 at 107999764998166
+2026-09-12T16:49:22Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107999773637125
+2026-09-12T16:49:22Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107999773715125
+2026-09-12T16:49:22Z	keystroke: revision 172 at 107999782517708 (delegate 107999783190208, revision 107999783267000)
+2026-09-12T16:49:22Z	preview-v2: prepared live mac-48 (revision 167) in 24.937834 ms (reused pages 7/8), prerastered 1 page(s) in 1.428875 ms, delivered 5.478375 ms later
+2026-09-12T16:49:22Z	preview-v2: published live mac-48 (revision 167) revision 167 at 107999797018416
+2026-09-12T16:49:22Z	keystroke: revision 173 at 107999810539916 (delegate 107999811085291, revision 107999811163458)
+2026-09-12T16:49:22Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107999818407458
+2026-09-12T16:49:22Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107999818519791
+2026-09-12T16:49:22Z	paint: revision 167 at 107999826428333 (covers 3 keystrokes, redrawn true)
+2026-09-12T16:49:22Z	keystroke: revision 174 at 107999826496916 (delegate 107999827130000, revision 107999827206791)
+2026-09-12T16:49:22Z	keystroke: revision 175 at 107999833438500 (delegate 107999834033916, revision 107999834111458)
+2026-09-12T16:49:22Z	worker: line 899542 B decoded in 14.213625 ms at 107999836331250
+2026-09-12T16:49:22Z	worker: event on main at 107999841159666
+2026-09-12T16:49:22Z	compile: applied revision 171 at 107999843535291
+2026-09-12T16:49:22Z	status: revision 171: ok, 0 diagnostics in 91 ms
+2026-09-12T16:49:22Z	compile: sending revision 175 at 107999843601458
+2026-09-12T16:49:22Z	status: compiling revision 175 (mac-50)…
+2026-09-12T16:49:22Z	worker: display_list mac-49 line 7851743 B received at 107999853247750 (header probe 9.372584 ms)
+2026-09-12T16:49:22Z	worker: event on main at 107999855752000
+2026-09-12T16:49:22Z	preview-v2: preparing live mac-49 (revision 171) ticket 48 at 107999855817291
+2026-09-12T16:49:22Z	keystroke: revision 176 at 107999855878333 (delegate 107999856533666, revision 107999856615583)
+2026-09-12T16:49:22Z	keystroke: revision 177 at 107999875650666 (delegate 107999876328916, revision 107999876405708)
+2026-09-12T16:49:22Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107999883371541
+2026-09-12T16:49:22Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107999883458833
+2026-09-12T16:49:22Z	preview-v2: prepared live mac-49 (revision 171) in 25.092417 ms (reused pages 7/8), prerastered 1 page(s) in 1.434042 ms, delivered 10.565041 ms later
+2026-09-12T16:49:22Z	preview-v2: published live mac-49 (revision 171) revision 171 at 107999893117041
+2026-09-12T16:49:22Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107999909779708
+2026-09-12T16:49:22Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107999909873250
+2026-09-12T16:49:22Z	paint: revision 171 at 107999916901666 (covers 4 keystrokes, redrawn true)
+2026-09-12T16:49:22Z	keystroke: revision 178 at 107999916974458 (delegate 107999917680000, revision 107999917755333)
+2026-09-12T16:49:22Z	keystroke: revision 179 at 107999923957416 (delegate 107999924536000, revision 107999924611250)
+2026-09-12T16:49:22Z	worker: line 899771 B decoded in 14.196959 ms at 107999926325750
+2026-09-12T16:49:22Z	worker: event on main at 107999930601166
+2026-09-12T16:49:22Z	compile: applied revision 175 at 107999932834625
+2026-09-12T16:49:22Z	status: revision 175: ok, 0 diagnostics in 89 ms
+2026-09-12T16:49:22Z	compile: sending revision 179 at 107999932888791
+2026-09-12T16:49:22Z	status: compiling revision 179 (mac-51)…
+2026-09-12T16:49:22Z	worker: display_list mac-50 line 7853084 B received at 107999942413958 (header probe 9.208292 ms)
+2026-09-12T16:49:22Z	worker: event on main at 107999945072416
+2026-09-12T16:49:22Z	preview-v2: preparing live mac-50 (revision 175) ticket 49 at 107999945132875
+2026-09-12T16:49:22Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107999953421875
+2026-09-12T16:49:22Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107999953501041
+2026-09-12T16:49:22Z	keystroke: revision 180 at 107999962199125 (delegate 107999962881625, revision 107999962959458)
+2026-09-12T16:49:22Z	preview-v2: prepared live mac-50 (revision 175) in 24.896041 ms (reused pages 7/8), prerastered 1 page(s) in 1.356292 ms, delivered 5.616833 ms later
+2026-09-12T16:49:22Z	preview-v2: published live mac-50 (revision 175) revision 175 at 107999977154666
+2026-09-12T16:49:22Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 107999984959000
+2026-09-12T16:49:22Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 107999985045500
+2026-09-12T16:49:22Z	paint: revision 175 at 107999994580125 (covers 4 keystrokes, redrawn true)
+2026-09-12T16:49:22Z	keystroke: revision 181 at 108000006842875 (delegate 108000007420375, revision 108000007499125)
+2026-09-12T16:49:22Z	keystroke: revision 182 at 108000013990458 (delegate 108000014475666, revision 108000014565916)
+2026-09-12T16:49:22Z	worker: line 899998 B decoded in 14.191083 ms at 108000015170291
+2026-09-12T16:49:22Z	worker: event on main at 108000018584041
+2026-09-12T16:49:22Z	compile: applied revision 179 at 108000020834625
+2026-09-12T16:49:22Z	status: revision 179: ok, 0 diagnostics in 88 ms
+2026-09-12T16:49:22Z	compile: sending revision 182 at 108000020905666
+2026-09-12T16:49:22Z	status: compiling revision 182 (mac-52)…
+2026-09-12T16:49:23Z	keystroke: revision 183 at 108000029721041 (delegate 108000030294666, revision 108000030377458)
+2026-09-12T16:49:23Z	worker: display_list mac-51 line 7854425 B received at 108000031678500 (header probe 9.167209 ms)
+2026-09-12T16:49:23Z	worker: event on main at 108000042936250
+2026-09-12T16:49:23Z	preview-v2: preparing live mac-51 (revision 179) ticket 50 at 108000043002916
+2026-09-12T16:49:23Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 108000051457125
+2026-09-12T16:49:23Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 108000051544375
+2026-09-12T16:49:23Z	keystroke: revision 184 at 108000061320750 (delegate 108000061863666, revision 108000061943500)
+2026-09-12T16:49:23Z	preview-v2: prepared live mac-51 (revision 179) in 24.856167 ms (reused pages 7/8), prerastered 1 page(s) in 1.383375 ms, delivered 6.606458 ms later
+2026-09-12T16:49:23Z	preview-v2: published live mac-51 (revision 179) revision 179 at 108000076010791
+2026-09-12T16:49:23Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 108000084237458
+2026-09-12T16:49:23Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 108000084323208
+2026-09-12T16:49:23Z	paint: revision 179 at 108000093704833 (covers 4 keystrokes, redrawn true)
+2026-09-12T16:49:23Z	keystroke: revision 185 at 108000093767291 (delegate 108000094352875, revision 108000094431875)
+2026-09-12T16:49:23Z	worker: line 900000 B decoded in 14.355416 ms at 108000104504791
+2026-09-12T16:49:23Z	worker: event on main at 108000106961958
+2026-09-12T16:49:23Z	compile: applied revision 182 at 108000109244833
+2026-09-12T16:49:23Z	status: revision 182: ok, 0 diagnostics in 88 ms
+2026-09-12T16:49:23Z	compile: sending revision 185 at 108000109313208
+2026-09-12T16:49:23Z	status: compiling revision 185 (mac-53)…
+2026-09-12T16:49:23Z	worker: display_list mac-52 line 7855151 B received at 108000121137750 (header probe 9.348875 ms)
+2026-09-12T16:49:23Z	worker: event on main at 108000121687083
+2026-09-12T16:49:23Z	preview-v2: preparing live mac-52 (revision 182) ticket 51 at 108000121769125
+2026-09-12T16:49:23Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 108000139355958
+2026-09-12T16:49:23Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 108000139443625
+2026-09-12T16:49:23Z	keystroke: revision 186 at 108000147989916 (delegate 108000148625750, revision 108000148712250)
+2026-09-12T16:49:23Z	preview-v2: prepared live mac-52 (revision 182) in 24.973208 ms (reused pages 7/8), prerastered 1 page(s) in 1.3415 ms, delivered 1.029833 ms later
+2026-09-12T16:49:23Z	preview-v2: published live mac-52 (revision 182) revision 182 at 108000149302708
+2026-09-12T16:49:23Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 108000168767291
+2026-09-12T16:49:23Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 108000168854000
+2026-09-12T16:49:23Z	paint: revision 182 at 108000178392458 (covers 3 keystrokes, redrawn true)
+2026-09-12T16:49:23Z	keystroke: revision 187 at 108000178486500 (delegate 108000179106000, revision 108000179186625)
+2026-09-12T16:49:23Z	keystroke: revision 188 at 108000183537250 (delegate 108000184124000, revision 108000184201166)
+2026-09-12T16:49:23Z	keystroke: revision 189 at 108000190221916 (delegate 108000190871000, revision 108000190948875)
+2026-09-12T16:49:23Z	worker: line 900229 B decoded in 14.318125 ms at 108000193944250
+2026-09-12T16:49:23Z	worker: event on main at 108000197479333
+2026-09-12T16:49:23Z	compile: applied revision 185 at 108000199737791
+2026-09-12T16:49:23Z	status: revision 185: ok, 0 diagnostics in 90 ms
+2026-09-12T16:49:23Z	compile: sending revision 189 at 108000199792333
+2026-09-12T16:49:23Z	status: compiling revision 189 (mac-54)…
+2026-09-12T16:49:23Z	worker: display_list mac-53 line 7856490 B received at 108000210444541 (header probe 9.220833 ms)
+2026-09-12T16:49:23Z	worker: event on main at 108000213027166
+2026-09-12T16:49:23Z	preview-v2: preparing live mac-53 (revision 185) ticket 52 at 108000213086500
+2026-09-12T16:49:23Z	keystroke: revision 190 at 108000213143625 (delegate 108000213823791, revision 108000213897791)
+2026-09-12T16:49:23Z	keystroke: revision 191 at 108000231361166 (delegate 108000232028375, revision 108000232103000)
+2026-09-12T16:49:23Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 108000239586750
+2026-09-12T16:49:23Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 108000239676833
+2026-09-12T16:49:23Z	preview-v2: prepared live mac-53 (revision 185) in 24.784708 ms (reused pages 7/8), prerastered 1 page(s) in 1.399292 ms, delivered 10.066875 ms later
+2026-09-12T16:49:23Z	preview-v2: published live mac-53 (revision 185) revision 185 at 108000249543875
+2026-09-12T16:49:23Z	keystroke: revision 192 at 108000264105375 (delegate 108000264819958, revision 108000264902500)
+2026-09-12T16:49:23Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 108000272234750
+2026-09-12T16:49:23Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 108000272313875
+2026-09-12T16:49:23Z	paint: revision 185 at 108000279830291 (covers 3 keystrokes, redrawn true)
+2026-09-12T16:49:23Z	keystroke: revision 193 at 108000279891583 (delegate 108000280408333, revision 108000280488333)
+2026-09-12T16:49:23Z	worker: line 900454 B decoded in 14.244833 ms at 108000283603458
+2026-09-12T16:49:23Z	worker: event on main at 108000284220041
+2026-09-12T16:49:23Z	compile: applied revision 189 at 108000286430541
+2026-09-12T16:49:23Z	status: revision 189: ok, 0 diagnostics in 86 ms
+2026-09-12T16:49:23Z	compile: sending revision 193 at 108000286491416
+2026-09-12T16:49:23Z	status: compiling revision 193 (mac-55)…
+2026-09-12T16:49:23Z	worker: display_list mac-54 line 7857822 B received at 108000300157666 (header probe 9.186458 ms)
+2026-09-12T16:49:23Z	worker: event on main at 108000306971916
+2026-09-12T16:49:23Z	preview-v2: preparing live mac-54 (revision 189) ticket 53 at 108000307065833
+2026-09-12T16:49:23Z	keystroke: revision 194 at 108000321594291 (delegate 108000322314541, revision 108000322392625)
+2026-09-12T16:49:23Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 108000329590083
+2026-09-12T16:49:23Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 108000329681958
+2026-09-12T16:49:23Z	preview-v2: prepared live mac-54 (revision 189) in 24.731667 ms (reused pages 7/8), prerastered 1 page(s) in 1.426458 ms, delivered 5.590458 ms later
+2026-09-12T16:49:23Z	preview-v2: published live mac-54 (revision 189) revision 189 at 108000338991833
+2026-09-12T16:49:23Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 108000354492333
+2026-09-12T16:49:23Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 108000354593791
+2026-09-12T16:49:23Z	paint: revision 189 at 108000361469458 (covers 4 keystrokes, redrawn true)
+2026-09-12T16:49:23Z	keystroke: revision 195 at 108000361519666 (delegate 108000362128000, revision 108000362205125)
+2026-09-12T16:49:23Z	keystroke: revision 196 at 108000368262666 (delegate 108000368708750, revision 108000368791250)
+2026-09-12T16:49:23Z	worker: line 900457 B decoded in 14.159125 ms at 108000374149458
+2026-09-12T16:49:23Z	worker: event on main at 108000375005083
+2026-09-12T16:49:23Z	compile: applied revision 193 at 108000377238666
+2026-09-12T16:49:23Z	status: revision 193: ok, 0 diagnostics in 91 ms
+2026-09-12T16:49:23Z	compile: sending revision 196 at 108000377299125
+2026-09-12T16:49:23Z	status: compiling revision 196 (mac-56)…
+2026-09-12T16:49:23Z	worker: display_list mac-55 line 7858904 B received at 108000391026750 (header probe 9.312042 ms)
+2026-09-12T16:49:23Z	worker: event on main at 108000394920541
+2026-09-12T16:49:23Z	preview-v2: preparing live mac-55 (revision 193) ticket 54 at 108000395004541
+2026-09-12T16:49:23Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 108000411862333
+2026-09-12T16:49:23Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 108000411952000
+2026-09-12T16:49:23Z	keystroke: revision 197 at 108000420390083 (delegate 108000421113958, revision 108000421196041)
+2026-09-12T16:49:23Z	preview-v2: prepared live mac-55 (revision 193) in 25.51325 ms (reused pages 7/8), prerastered 1 page(s) in 1.341584 ms, delivered 4.177291 ms later
+2026-09-12T16:49:23Z	preview-v2: published live mac-55 (revision 193) revision 193 at 108000426181125
+2026-09-12T16:49:23Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 108000433707250
+2026-09-12T16:49:23Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 108000433777708
+2026-09-12T16:49:23Z	paint: revision 193 at 108000439501333 (covers 4 keystrokes, redrawn true)
+2026-09-12T16:49:23Z	keystroke: revision 198 at 108000447806541 (delegate 108000448406416, revision 108000448482708)
+2026-09-12T16:49:23Z	keystroke: revision 199 at 108000452701375 (delegate 108000453176291, revision 108000453251083)
+2026-09-12T16:49:23Z	worker: line 900686 B decoded in 14.145875 ms at 108000463697000
+2026-09-12T16:49:23Z	keystroke: revision 200 at 108000463011833 (delegate 108000463681916, revision 108000463758166)
+2026-09-12T16:49:23Z	worker: event on main at 108000464108083
+2026-09-12T16:49:23Z	compile: applied revision 196 at 108000466234416
+2026-09-12T16:49:23Z	status: revision 196: ok, 0 diagnostics in 89 ms
+2026-09-12T16:49:23Z	compile: sending revision 200 at 108000466283750
+2026-09-12T16:49:23Z	status: compiling revision 200 (mac-57)…
+2026-09-12T16:49:23Z	worker: display_list mac-56 line 7860244 B received at 108000479790625 (header probe 9.290084 ms)
+2026-09-12T16:49:23Z	worker: event on main at 108000484224916
+2026-09-12T16:49:23Z	preview-v2: preparing live mac-56 (revision 196) ticket 55 at 108000484284250
+2026-09-12T16:49:23Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 108000492005916
+2026-09-12T16:49:23Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 108000492085583
+2026-09-12T16:49:23Z	keystroke: revision 201 at 108000501373541 (delegate 108000502071541, revision 108000502149625)
+2026-09-12T16:49:23Z	preview-v2: prepared live mac-56 (revision 196) in 24.781458 ms (reused pages 7/8), prerastered 1 page(s) in 1.433 ms, delivered 4.965667 ms later
+2026-09-12T16:49:23Z	preview-v2: published live mac-56 (revision 196) revision 196 at 108000515665041
+2026-09-12T16:49:23Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 108000523793416
+2026-09-12T16:49:23Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 108000523889458
+2026-09-12T16:49:23Z	paint: revision 196 at 108000532548541 (covers 3 keystrokes, redrawn true)
+2026-09-12T16:49:23Z	keystroke: revision 202 at 108000532598250 (delegate 108000533217208, revision 108000533299375)
+2026-09-12T16:49:23Z	worker: line 900915 B decoded in 14.367083 ms at 108000552989583
+2026-09-12T16:49:23Z	worker: event on main at 108000553082750
+2026-09-12T16:49:23Z	compile: applied revision 200 at 108000555311250
+2026-09-12T16:49:23Z	status: revision 200: ok, 0 diagnostics in 89 ms
+2026-09-12T16:49:23Z	compile: sending revision 202 at 108000555366041
+2026-09-12T16:49:23Z	status: compiling revision 202 (mac-58)…
+2026-09-12T16:49:23Z	worker: display_list mac-57 line 7861585 B received at 108000569832916 (header probe 9.430541 ms)
+2026-09-12T16:49:23Z	worker: event on main at 108000573920458
+2026-09-12T16:49:23Z	preview-v2: preparing live mac-57 (revision 200) ticket 56 at 108000574004541
+2026-09-12T16:49:23Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 108000592597791
+2026-09-12T16:49:23Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 108000592690458
+2026-09-12T16:49:23Z	preview-v2: prepared live mac-57 (revision 200) in 24.92975 ms (reused pages 7/8), prerastered 1 page(s) in 1.520625 ms, delivered 1.1165 ms later
+2026-09-12T16:49:23Z	preview-v2: published live mac-57 (revision 200) revision 200 at 108000601800500
+2026-09-12T16:49:23Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 108000618057416
+2026-09-12T16:49:23Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 108000618150375
+2026-09-12T16:49:23Z	paint: revision 200 at 108000625355125 (covers 4 keystrokes, redrawn true)
+2026-09-12T16:49:23Z	worker: line 900916 B decoded in 14.226709 ms at 108000642455250
+2026-09-12T16:49:23Z	worker: event on main at 108000642525583
+2026-09-12T16:49:23Z	compile: applied revision 202 at 108000644805666
+2026-09-12T16:49:23Z	status: revision 202: ok, 0 diagnostics in 89 ms
+2026-09-12T16:49:23Z	worker: display_list mac-58 line 7861948 B received at 108000658856916 (header probe 9.267625 ms)
+2026-09-12T16:49:23Z	worker: event on main at 108000666553125
+2026-09-12T16:49:23Z	preview-v2: preparing live mac-58 (revision 202) ticket 57 at 108000666604833
+2026-09-12T16:49:23Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 108000674562541
+2026-09-12T16:49:23Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 108000674658166
+2026-09-12T16:49:23Z	preview-v2: prepared live mac-58 (revision 202) in 25.425417 ms (reused pages 7/8), prerastered 1 page(s) in 1.454125 ms, delivered 2.395666 ms later
+2026-09-12T16:49:23Z	preview-v2: published live mac-58 (revision 202) revision 202 at 108000696063416
+2026-09-12T16:49:23Z	preview-v2: blit page 1 4f8dfa2eea66414ac8c8fa7a at 108000711586333
+2026-09-12T16:49:23Z	preview-v2: blit page 2 be892b1f6fd930b5174f300e at 108000711671208
+2026-09-12T16:49:23Z	paint: revision 202 at 108000718373291 (covers 2 keystrokes, redrawn true)
+2026-09-12T16:49:23Z	bench: done (all keystrokes painted); keystrokes 200, painted 200, coalesced 144, p50 184.040209 ms

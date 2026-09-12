@@ -35,16 +35,36 @@ public enum RuntimeV1 {
         /// Requested layout capabilities (`layout_capabilities`, see
         /// runtime-v1-layout-capabilities.md). Omitted from the wire when nil.
         public var layoutCapabilities: [String]?
+        /// `display-list-v2-delta` installed-base acknowledgement
+        /// (`display_list_base`; proposal r5 §3). Isolated feature: sent only
+        /// when the delta capability is requested; omitted from the wire when nil.
+        public var displayListBase: DisplayListBase?
+
+        public struct DisplayListBase: Codable, Equatable {
+            public var requestId: String
+            public var projectId: String
+            public var revision: Int
+            public var pageCount: Int
+            public var listDigest: String
+            enum CodingKeys: String, CodingKey {
+                case requestId = "request_id", projectId = "project_id", revision, pageCount = "page_count", listDigest = "list_digest"
+            }
+            public init(requestId: String, projectId: String, revision: Int, pageCount: Int, listDigest: String) {
+                self.requestId = requestId; self.projectId = projectId; self.revision = revision; self.pageCount = pageCount; self.listDigest = listDigest
+            }
+        }
 
         enum CodingKeys: String, CodingKey {
             case projectId = "project_id", revision, entryPath = "entry_path", documents
             case layoutCapabilities = "layout_capabilities"
+            case displayListBase = "display_list_base"
         }
         public init(projectId: String, revision: Int, entryPath: String, documents: [Document],
-                    layoutCapabilities: [String]? = nil) {
+                    layoutCapabilities: [String]? = nil, displayListBase: DisplayListBase? = nil) {
             self.projectId = projectId; self.revision = revision
             self.entryPath = entryPath; self.documents = documents
             self.layoutCapabilities = layoutCapabilities
+            self.displayListBase = displayListBase
         }
 
         public init(from decoder: Decoder) throws {
@@ -55,6 +75,7 @@ public enum RuntimeV1 {
             documents = try c.decode([Document].self, forKey: .documents)
             layoutCapabilities = try c.decodeIfPresent([String].self, forKey: .layoutCapabilities)
             if let caps = layoutCapabilities { try LayoutCapabilities.validate(caps) }
+            displayListBase = try c.decodeIfPresent(DisplayListBase.self, forKey: .displayListBase)
         }
 
         public func encode(to encoder: Encoder) throws {
@@ -67,6 +88,7 @@ public enum RuntimeV1 {
                 try LayoutCapabilities.validate(caps)
                 try c.encode(caps, forKey: .layoutCapabilities)
             }
+            if let base = displayListBase { try c.encode(base, forKey: .displayListBase) }
         }
     }
 
@@ -325,7 +347,20 @@ public enum RuntimeV1 {
         case invalidLayoutCapabilities(String)
     }
 
+    /// Fast path first (FastJSON, same values for every valid frame); any
+    /// input it does not accept goes through `JSONDecoder`, whose error is the
+    /// one reported.
     public static func decodeCompileResult(_ data: Data) throws -> Envelope<CompileResult> {
+        if let env = try? FastJSON.compileResultEnvelope(data) {
+            guard env.protocolVersion == protocolVersion else { throw DecodeError.unsupportedVersion(env.protocolVersion) }
+            guard env.type == "compile_result" else { throw DecodeError.unexpectedType(expected: "compile_result", actual: env.type) }
+            return env
+        }
+        return try decode(data, expectedType: "compile_result")
+    }
+
+    /// `JSONDecoder` only — for equivalence tests of the fast path.
+    public static func decodeCompileResultReference(_ data: Data) throws -> Envelope<CompileResult> {
         try decode(data, expectedType: "compile_result")
     }
 

@@ -1,5 +1,7 @@
 import AppKit
+import FlashTeXAccessibility
 import FlashTeXProtocol
+import os
 
 /// Source-aware completion for the editor. `suggestions` is pure (no AppKit)
 /// and works on UTF-8 bytes with the caret given in UTF-16 units, so it is
@@ -11,11 +13,19 @@ import FlashTeXProtocol
 /// 2. Commands the compiler supports (`supported`; default list below).
 /// 3. Commands typed elsewhere in the document that are not in `supported`,
 ///    marked "not supported by this compiler version".
-/// 4. Environment names (after `\begin{`/`\end{`) and labels (after `\ref{`)
-///    seen in the document.
+/// 4. Environment names (after `\begin{`/`\end{`), labels (after `\ref{`) and
+///    citation keys (after `\cite{`) seen in the document.
 /// 5. Words longer than 3 characters from the document, frequency-ranked.
+///
+/// Rust-produced vocabulary (`Metadata`) is consumed only when it is bound to
+/// the revision of the text being completed: the runtime-v1 `compile_result`
+/// (its `revision` plus the diagnostics naming commands, references and
+/// environments) and the preview-controller `complete` reply
+/// (`crates/preview-controller/STDIO.md`: project-index labels, citations and
+/// declared commands, bound to a `source_versions` map). Metadata from an
+/// older revision than the caret's is refused, never shown.
 enum Completion {
-    enum Kind: Equatable { case command, environment, reference, word }
+    enum Kind: Equatable { case command, environment, reference, citation, word }
 
     struct Suggestion: Equatable {
         /// Display form, e.g. `\section` or `naïve`.
@@ -24,31 +34,135 @@ enum Completion {
         let insertText: String
         let kind: Kind
         let detail: String
+        /// When set, accepting inserts this instead of `insertText` and places
+        /// the caret inside it (one undoable edit).
+        var snippet: Snippet? = nil
+    }
+
+    /// Replacement text plus the caret position inside it, in UTF-16 units.
+    struct Snippet: Equatable {
+        let text: String
+        let caretUTF16: Int
     }
 
     static let maxSuggestions = 12
 
-    /// Commands parsed by the compiler on `main` (`crates/compiler/README.md`,
-    /// "Supported commands"). Names are stored without the leading backslash;
-    /// `\\` is the single-character name `\`.
-    static let coreCommands = ["section", "subsection", "textbf", "emph", "textit", "begin", "end", "par", "\\"]
+    /// The compiler's documented command set (`crates/compiler/README.md`,
+    /// "Supported commands" and "Supported math", plus the `\input`/`\include`
+    /// parser arm). `CompletionTests.testStaticVocabularyMatchesTheCompilerDocs`
+    /// parses those repository files and fails when this table drifts.
+    enum Vocabulary {
+        enum Mode: Equatable { case text, math }
+        enum Source: Equatable {
+            /// README "Supported commands".
+            case readmeCommands
+            /// README "Supported math" (`frac`/`sqrt` and the symbol table,
+            /// which `src/math.rs` `COMMAND_GLYPHS` renders).
+            case readmeMath
+            /// `src/parser.rs` dispatch arm not listed in the README paragraph.
+            case parserArm
+        }
 
-    /// Math commands present in `crates/compiler/src/math.rs` on
-    /// `agent/claude/compiler-foundation` at `mathVerifiedAt`: each name was
-    /// grepped in that file (the `"frac"`/`"sqrt"` parser arms and the
-    /// `"alpha" => "α"` … `"int" => "∫"` symbol table).
-    static let mathCommands = [
-        "frac", "sqrt",
-        "alpha", "beta", "gamma", "delta", "theta", "lambda", "mu", "pi", "sigma", "phi", "omega",
-        "times", "div", "pm", "leq", "geq", "neq", "approx", "cdot", "infty", "sum", "int",
-    ]
-    static let mathVerifiedAt = "de1020c"
+        struct Entry: Equatable {
+            /// Name without the leading backslash; `\\` is the name `\`.
+            let name: String
+            /// Argument shape shown after the name, e.g. `{key}` or `[options]{class}`.
+            let arguments: String
+            let description: String
+            let mode: Mode
+            let source: Source
+            /// Rendered glyph for a math symbol.
+            var glyph: String? = nil
 
-    static let defaultSupported: [String] = coreCommands + mathCommands
+            var label: String { "\\" + name + arguments }
 
-    /// Environments the compiler names explicitly (`document` is the only
-    /// meaningful one; others typeset their body as plain text with a warning).
-    static let knownEnvironments = ["document"]
+            /// The argument shape as an insertion: every `{…}` becomes `{}`,
+            /// `[…]` optionals are dropped, and the caret lands in the first
+            /// braces (`\section{|}`, `\frac{|}{}`, `\newcommand{|}{}`).
+            /// Nil for commands without a braced argument.
+            var snippet: Completion.Snippet? {
+                var out = "\\" + name
+                var caret: Int?
+                var i = arguments.startIndex
+                while i < arguments.endIndex {
+                    let c = arguments[i]
+                    if c == "[" {
+                        i = arguments[i...].firstIndex(of: "]").map(arguments.index(after:)) ?? arguments.endIndex
+                    } else if c == "{" {
+                        out += "{"
+                        if caret == nil { caret = (out as NSString).length }
+                        out += "}"
+                        i = arguments[i...].firstIndex(of: "}").map(arguments.index(after:)) ?? arguments.endIndex
+                    } else {
+                        i = arguments.index(after: i)
+                    }
+                }
+                guard let caret else { return nil }
+                return Completion.Snippet(text: out, caretUTF16: caret)
+            }
+            var detail: String {
+                switch mode {
+                case .text: return description
+                case .math: return "math · " + description
+                }
+            }
+        }
+
+        static let entries: [Entry] = [
+            Entry(name: "section", arguments: "{...}", description: "numbered section heading", mode: .text, source: .readmeCommands),
+            Entry(name: "subsection", arguments: "{...}", description: "numbered subsection heading; resets when a section advances", mode: .text, source: .readmeCommands),
+            Entry(name: "textbf", arguments: "{...}", description: "bold text", mode: .text, source: .readmeCommands),
+            Entry(name: "emph", arguments: "{...}", description: "emphasised (italic) text", mode: .text, source: .readmeCommands),
+            Entry(name: "textit", arguments: "{...}", description: "italic text", mode: .text, source: .readmeCommands),
+            Entry(name: "begin", arguments: "{env}", description: "opens document, equation, figure, itemize or enumerate", mode: .text, source: .readmeCommands),
+            Entry(name: "end", arguments: "{env}", description: "closes the innermost open environment", mode: .text, source: .readmeCommands),
+            Entry(name: "item", arguments: "", description: "entry of an itemize or enumerate list", mode: .text, source: .readmeCommands),
+            Entry(name: "label", arguments: "{key}", description: "names the current section, equation or figure for \\ref and \\pageref", mode: .text, source: .readmeCommands),
+            Entry(name: "ref", arguments: "{key}", description: "number of the labelled item (?? until defined)", mode: .text, source: .readmeCommands),
+            Entry(name: "pageref", arguments: "{key}", description: "page number of the labelled item", mode: .text, source: .readmeCommands),
+            Entry(name: "caption", arguments: "{...}", description: "numbered “Figure N:” caption inside figure", mode: .text, source: .readmeCommands),
+            Entry(name: "par", arguments: "", description: "ends the paragraph", mode: .text, source: .readmeCommands),
+            Entry(name: "\\", arguments: "", description: "line break", mode: .text, source: .readmeCommands),
+            Entry(name: "newcommand", arguments: "{\\name}[n]{body}", description: "defines a macro with 0–9 arguments; rejects an existing name", mode: .text, source: .readmeCommands),
+            Entry(name: "renewcommand", arguments: "{\\name}[n]{body}", description: "redefines an existing macro", mode: .text, source: .readmeCommands),
+            Entry(name: "documentclass", arguments: "[options]{class}", description: "records the class; only the document body is typeset", mode: .text, source: .readmeCommands),
+            Entry(name: "usepackage", arguments: "[options]{a,b,c}", description: "records package names; packages are recognised but not implemented", mode: .text, source: .readmeCommands),
+            Entry(name: "input", arguments: "{path}", description: "expands a project-relative document in place", mode: .text, source: .parserArm),
+            Entry(name: "include", arguments: "{path}", description: "expands a project-relative document in place", mode: .text, source: .parserArm),
+            Entry(name: "frac", arguments: "{num}{den}", description: "fraction; math mode only", mode: .math, source: .readmeMath),
+            Entry(name: "sqrt", arguments: "{x}", description: "square root; math mode only", mode: .math, source: .readmeMath),
+        ] + symbols.map { name, glyph in
+            Entry(name: name, arguments: "", description: "symbol \(glyph)", mode: .math, source: .readmeMath, glyph: glyph)
+        }
+
+        /// `src/math.rs` `COMMAND_GLYPHS`, in table order.
+        static let symbols: [(String, String)] = [
+            ("alpha", "α"), ("beta", "β"), ("gamma", "γ"), ("delta", "δ"), ("theta", "θ"), ("lambda", "λ"), ("mu", "μ"),
+            ("pi", "π"), ("sigma", "σ"), ("phi", "φ"), ("omega", "ω"), ("times", "×"), ("div", "÷"), ("pm", "±"),
+            ("leq", "≤"), ("geq", "≥"), ("neq", "≠"), ("approx", "≈"), ("cdot", "·"), ("infty", "∞"), ("sum", "∑"), ("int", "∫"),
+        ]
+
+        /// Environments the README names for `\begin`/`\end`.
+        static let environments = ["document", "equation", "figure", "itemize", "enumerate"]
+
+        static let byName: [String: Entry] = Dictionary(entries.map { ($0.name, $0) }, uniquingKeysWith: { a, _ in a })
+        static let names: [String] = entries.map(\.name)
+
+        /// Entry for a name outside the table (a caller-supplied list).
+        static func generic(_ name: String) -> Entry {
+            Entry(name: name, arguments: "", description: "supported by this compiler", mode: .text, source: .readmeCommands)
+        }
+    }
+
+    static let defaultSupported: [String] = Vocabulary.names
+
+    /// Environments the compiler names explicitly; any other environment
+    /// typesets its body as plain text with a warning.
+    static let knownEnvironments = Vocabulary.environments
+
+    /// Citation commands whose `{` argument completes citation keys (the
+    /// project-index reference set in `crates/project-index/README.md`).
+    static let citationCommands = ["cite", "citep", "citet", "citeauthor", "citeyear", "parencite", "textcite", "autocite", "nocite"]
 
     // MARK: token at the caret
 
@@ -59,7 +173,7 @@ enum Completion {
         /// A run of letters, with what immediately precedes it (`\begin{`, `\ref{`, …).
         case word(text: String, start: Int, end: Int, context: Context)
 
-        enum Context: Equatable { case none, beginEnvironment, endEnvironment, reference }
+        enum Context: Equatable { case none, beginEnvironment, endEnvironment, reference, citation, label }
 
         var start: Int {
             switch self { case .command(_, let s, _), .word(_, let s, _, _): return s }
@@ -92,17 +206,28 @@ enum Completion {
             let name = String(decoding: b[start..<caretByte], as: UTF8.self)
             return .command(name: name, start: start - 1, end: caretByte)
         }
-        if start == caretByte { return nil }
+        let context = context(in: b, before: start)
+        // Right after an argument brace (`\ref{`, `\cite{`, …) an empty prefix
+        // lists everything; elsewhere there must be letters before the caret.
+        if start == caretByte { return context == .none ? nil : .word(text: "", start: start, end: caretByte, context: context) }
         let word = String(decoding: b[start..<caretByte], as: UTF8.self)
         guard word.unicodeScalars.allSatisfy({ $0.properties.isAlphabetic }) else { return nil }
-        let context: Token.Context
-        if endsWith(b, upTo: start, suffix: "\\begin{") { context = .beginEnvironment }
-        else if endsWith(b, upTo: start, suffix: "\\end{") { context = .endEnvironment }
-        else if endsWith(b, upTo: start, suffix: "\\ref{") || endsWith(b, upTo: start, suffix: "\\eqref{")
-                    || endsWith(b, upTo: start, suffix: "\\pageref{") || endsWith(b, upTo: start, suffix: "\\autoref{") {
-            context = .reference
-        } else { context = .none }
         return .word(text: word, start: start, end: caretByte, context: context)
+    }
+
+    /// What the word starting at `start` completes, judged by the argument
+    /// opener immediately before it.
+    private static func context(in b: UnsafeBufferPointer<UInt8>, before start: Int) -> Token.Context {
+        guard start > 0, b[start - 1] == UInt8(ascii: "{") else { return .none }
+        if endsWith(b, upTo: start, suffix: "\\begin{") { return .beginEnvironment }
+        if endsWith(b, upTo: start, suffix: "\\end{") { return .endEnvironment }
+        if endsWith(b, upTo: start, suffix: "\\label{") { return .label }
+        if endsWith(b, upTo: start, suffix: "\\ref{") || endsWith(b, upTo: start, suffix: "\\eqref{")
+            || endsWith(b, upTo: start, suffix: "\\pageref{") || endsWith(b, upTo: start, suffix: "\\autoref{") {
+            return .reference
+        }
+        if citationCommands.contains(where: { endsWith(b, upTo: start, suffix: "\\" + $0 + "{") }) { return .citation }
+        return .none
     }
 
     /// UTF-16 range the chosen suggestion replaces: the token before the caret
@@ -118,54 +243,92 @@ enum Completion {
 
     // MARK: suggestions
 
+    /// Compatibility entry point: the caller asserts that `result` was compiled
+    /// from `text` (it is bound as-is). Prefer `suggestions(in:caretUTF16:metadata:)`
+    /// with metadata the caller has already bound to the caret's revision.
     static func suggestions(in text: String, caretUTF16: Int, result: RuntimeV1.CompileResult?,
                             supported: [String] = defaultSupported) -> [Suggestion] {
-        guard let token = token(in: text, caretUTF16: caretUTF16) else { return [] }
+        suggestions(in: text, caretUTF16: caretUTF16, metadata: result.map(Metadata.from), supported: supported)
+    }
+
+    /// `metadata` must already be bound to the revision of `text` (see
+    /// `Metadata.bound(to:)`); unbound metadata is the caller's bug, never
+    /// this function's to detect. `cancelled` is polled between scan phases
+    /// so an off-main computation stops early; a cancelled call returns `[]`.
+    static func suggestions(in text: String, caretUTF16: Int, metadata: Metadata?,
+                            supported: [String] = defaultSupported,
+                            cancelled: () -> Bool = { false }) -> [Suggestion] {
+        guard let token = token(in: text, caretUTF16: caretUTF16), !cancelled() else { return [] }
+        let out: [Suggestion]
         switch token {
         case .command(let prefix, _, _):
-            return commandSuggestions(prefix: prefix, tokenStart: token.start, text: text,
-                                      result: result, supported: supported)
+            out = commandSuggestions(prefix: prefix, tokenStart: token.start, text: text,
+                                     metadata: metadata, supported: supported, cancelled: cancelled)
         case .word(let prefix, _, _, let context):
             guard prefix.unicodeScalars.count >= 2 || context != .none else { return [] }
             switch context {
             case .beginEnvironment, .endEnvironment:
-                return environmentSuggestions(prefix: prefix, tokenStart: token.start, text: text,
-                                              closing: context == .endEnvironment)
+                out = environmentSuggestions(prefix: prefix, tokenStart: token.start, text: text,
+                                             closing: context == .endEnvironment, metadata: metadata)
             case .reference:
-                return referenceSuggestions(prefix: prefix, text: text)
+                out = referenceSuggestions(prefix: prefix, text: text, metadata: metadata)
+            case .citation:
+                out = citationSuggestions(prefix: prefix, text: text, metadata: metadata)
+            case .label:
+                out = labelSuggestions(prefix: prefix, tokenStart: token.start, text: text, metadata: metadata)
             case .none:
-                return wordSuggestions(prefix: prefix, tokenStart: token.start, text: text)
+                out = wordSuggestions(prefix: prefix, tokenStart: token.start, text: text)
             }
         }
+        return cancelled() ? [] : out
     }
 
-    private static func commandSuggestions(prefix: String, tokenStart: Int, text: String,
-                                           result: RuntimeV1.CompileResult?, supported: [String]) -> [Suggestion] {
+    private static func commandSuggestions(prefix: String, tokenStart: Int, text: String, metadata: Metadata?,
+                                           supported: [String], cancelled: () -> Bool) -> [Suggestion] {
         var out: [Suggestion] = []
         let scan = scanCommands(in: text, tokenStart: tokenStart, prefix: prefix)
+        if cancelled() { return [] }
         // 1. Close environments still open at the caret.
         for open in scan.open.reversed() where "end".hasPrefix(prefix) {
             out.append(Suggestion(label: "\\end{\(open.name)}", insertText: "\\end{\(open.name)}", kind: .environment,
                                   detail: "closes \\begin{\(open.name)} at byte \(open.byte)"))
         }
-        // 2. Supported commands.
-        let supportedSet = Set(supported)
-        for name in supported where name.hasPrefix(prefix) {
-            let isMath = mathCommands.contains(name) && !coreCommands.contains(name)
-            let detail = isMath ? "math · verified in compiler at \(mathVerifiedAt)" : "supported by this compiler"
-            out.append(Suggestion(label: "\\" + name, insertText: "\\" + name, kind: .command, detail: detail))
+        // 2. The compiler's documented vocabulary, then commands the project
+        //    index saw declared at this exact revision. A project declaration
+        //    wins over a static entry of the same name (the compiler expands
+        //    the user's macro, not a builtin).
+        var offered = Set<String>()
+        let declared: [String: Metadata.Item] = Dictionary((metadata?.commands ?? []).filter { $0.definitions > 0 }.map { ($0.name, $0) },
+                                                           uniquingKeysWith: { a, _ in a })
+        for name in supported where name.hasPrefix(prefix) && offered.insert(name).inserted {
+            if let item = declared[name], let metadata {
+                out.append(Suggestion(label: "\\" + name, insertText: "\\" + name, kind: .command,
+                                      detail: item.detail(noun: "declared", revision: metadata.revision) + " · overrides the builtin"))
+            } else {
+                let entry = Vocabulary.byName[name] ?? Vocabulary.generic(name)
+                out.append(Suggestion(label: entry.label, insertText: "\\" + name, kind: .command, detail: entry.detail,
+                                      snippet: entry.snippet))
+            }
         }
-        // 3. Commands typed in the document that the compiler does not support.
-        let mentioned = diagnosticsByCommand(result)
-        for name in scan.commands where !supportedSet.contains(name) {
-            var detail = "not supported by this compiler version"
-            if let message = mentioned[name] { detail += " — " + message }
+        if let metadata {
+            for item in metadata.commands where item.name.hasPrefix(prefix) && item.name != prefix && offered.insert(item.name).inserted {
+                out.append(Suggestion(label: "\\" + item.name, insertText: "\\" + item.name, kind: .command,
+                                      detail: item.detail(noun: "declared", revision: metadata.revision)))
+            }
+        }
+        // 3. Commands typed in the document that neither the compiler nor the
+        //    project declares, with the compiler's own diagnostic when it
+        //    named the command at this revision.
+        for name in scan.commands where !offered.contains(name) {
+            var detail = "not supported by the compiler"
+            if let message = metadata?.diagnosticsByCommand[name] { detail += " — " + message }
             out.append(Suggestion(label: "\\" + name, insertText: "\\" + name, kind: .command, detail: detail))
         }
         return Array(out.prefix(maxSuggestions))
     }
 
-    private static func environmentSuggestions(prefix: String, tokenStart: Int, text: String, closing: Bool) -> [Suggestion] {
+    private static func environmentSuggestions(prefix: String, tokenStart: Int, text: String, closing: Bool,
+                                               metadata: Metadata?) -> [Suggestion] {
         var names: [String] = []
         if closing {
             names += openEnvironments(in: text, beforeByte: tokenStart).reversed().map(\.name)
@@ -174,20 +337,111 @@ enum Completion {
         names += documentEnvironments(in: text)
         var seen = Set<String>()
         var out: [Suggestion] = []
+        // Opening an environment inserts its body skeleton with the caret on
+        // the (indented) middle line; closing stays the exact name.
+        let indent = closing ? "" : lineIndent(in: text, beforeByte: tokenStart)
         for name in names where name.hasPrefix(prefix) && seen.insert(name).inserted {
-            let detail = knownEnvironments.contains(name) ? "supported by this compiler" : "seen in this document"
-            out.append(Suggestion(label: name, insertText: name + "}", kind: .environment, detail: detail))
+            var detail = knownEnvironments.contains(name) ? "supported by this compiler" : "seen in this document"
+            if let message = metadata?.diagnosticsByEnvironment[name] { detail += " — " + message }
+            var snippet: Snippet?
+            if !closing {
+                let head = "\(name)}\n\(indent)"
+                snippet = Snippet(text: head + "\n\(indent)\\end{\(name)}", caretUTF16: (head as NSString).length)
+            }
+            out.append(Suggestion(label: name, insertText: name + "}", kind: .environment, detail: detail, snippet: snippet))
         }
         return Array(out.prefix(maxSuggestions))
     }
 
-    private static func referenceSuggestions(prefix: String, text: String) -> [Suggestion] {
+    /// One candidate for `\label{`: a key derived from the enclosing
+    /// `\section`/`\subsection` title (`sec:` + kebab-case), made unique against
+    /// the document's labels and the project index's labels at this revision.
+    private static func labelSuggestions(prefix: String, tokenStart: Int, text: String, metadata: Metadata?) -> [Suggestion] {
+        guard let heading = enclosingHeading(in: text, beforeByte: tokenStart) else { return [] }
+        let slug = kebabCase(heading.title)
+        guard !slug.isEmpty else { return [] }
+        var taken = Set(labels(in: text))
+        if let metadata { taken.formUnion(metadata.labels.map(\.name)) }
+        let base = "sec:" + slug
+        var key = base
+        var n = 2
+        while taken.contains(key) { key = "\(base)-\(n)"; n += 1 }
+        guard key.hasPrefix(prefix) else { return [] }
+        var detail = "unique key for \\\(heading.command){\(heading.title)}"
+        if key != base { detail += " (\(base) is taken)" }
+        if let metadata { detail += " · checked against \(metadata.labels.count) project label\(metadata.labels.count == 1 ? "" : "s") · revision \(metadata.revision)" }
+        return [Suggestion(label: key, insertText: key + "}", kind: .reference, detail: detail)]
+    }
+
+    private static func referenceSuggestions(prefix: String, text: String, metadata: Metadata?) -> [Suggestion] {
         var seen = Set<String>()
         var out: [Suggestion] = []
         for label in labels(in: text) where label.hasPrefix(prefix) && seen.insert(label).inserted {
-            out.append(Suggestion(label: label, insertText: label + "}", kind: .reference, detail: "\\label in this document"))
+            var detail = "\\label in this document"
+            if let metadata, metadata.unresolvedReferences.contains(label) {
+                detail += " — undefined when revision \(metadata.revision) compiled"
+            }
+            out.append(Suggestion(label: label, insertText: label + "}", kind: .reference, detail: detail))
+        }
+        // Labels the project index knows from other documents of the project.
+        if let metadata {
+            for item in metadata.labels where item.name.hasPrefix(prefix) && seen.insert(item.name).inserted {
+                out.append(Suggestion(label: item.name, insertText: item.name + "}", kind: .reference,
+                                      detail: item.detail(noun: "defined", revision: metadata.revision)))
+            }
         }
         return Array(out.prefix(maxSuggestions))
+    }
+
+    /// `\cite{` candidates: `\bibitem` keys of this document, then the
+    /// project index's citation keys. Where a key comes from is stated from
+    /// the helper-declared document kinds bound to the same snapshot
+    /// (`Metadata.documentKinds`), never inferred from a file name: a record
+    /// in a declared bibliography, a `\bibitem` in a LaTeX source, a key the
+    /// helper did not report a kind for, or a cited key with no definition
+    /// (which says how to declare the .bib). Declared-bibliography records
+    /// rank first among the index keys, unresolved keys last.
+    private static func citationSuggestions(prefix: String, text: String, metadata: Metadata?) -> [Suggestion] {
+        var seen = Set<String>()
+        var out: [Suggestion] = []
+        for key in bibitems(in: text) where key.hasPrefix(prefix) && seen.insert(key).inserted {
+            out.append(Suggestion(label: key, insertText: key + "}", kind: .citation, detail: "\\bibitem in this document"))
+        }
+        if let metadata {
+            var ranked: [(rank: Int, suggestion: Suggestion)] = []
+            for item in metadata.citations where item.name.hasPrefix(prefix) && seen.insert(item.name).inserted {
+                let (rank, detail) = citationDetail(item, metadata: metadata)
+                ranked.append((rank, Suggestion(label: item.name, insertText: item.name + "}", kind: .citation, detail: detail)))
+            }
+            // Stable: the index's own (sorted) order within a rank.
+            out += ranked.enumerated().sorted { a, b in a.element.rank != b.element.rank ? a.element.rank < b.element.rank : a.offset < b.offset }
+                .map(\.element.suggestion)
+        }
+        return Array(out.prefix(maxSuggestions))
+    }
+
+    /// Rank (0 declared bibliography record, 1 `\bibitem` in a LaTeX source,
+    /// 2 kind unknown, 3 unresolved) and detail text for an index citation.
+    static func citationDetail(_ item: Metadata.Item, metadata: Metadata) -> (rank: Int, detail: String) {
+        var s: String
+        var rank: Int
+        if item.definitions == 0 {
+            rank = 3
+            s = "cited but not defined in a declared bibliography source"
+            if let declared = metadata.declaredBibliographies, declared.isEmpty {
+                s += " (none declared: Project > Document Kinds)"
+            }
+        } else {
+            let path = item.definedIn ?? "project"
+            switch metadata.isDeclaredBibliography(item.definedIn) {
+            case true?: rank = 0; s = "record in \(path) (declared bibliography)"
+            case false?: rank = 1; s = "\\bibitem in \(path)"
+            case nil: rank = 2; s = "defined in \(path) (kind not reported by this helper)"
+            }
+            if item.definitions > 1 { s += " (+\(item.definitions - 1) more)" }
+        }
+        if item.occurrences > 0 { s += " · \(item.occurrences)\(item.locationsTruncated ? "+" : "") use\(item.occurrences == 1 ? "" : "s")" }
+        return (rank, s + " · revision \(metadata.revision)")
     }
 
     private static func wordSuggestions(prefix: String, tokenStart: Int, text: String) -> [Suggestion] {
@@ -272,6 +526,88 @@ enum Completion {
         return out
     }
 
+    struct Heading: Equatable { let command: String; let title: String }
+
+    /// The last `\section{…}`/`\subsection{…}` whose backslash lies before
+    /// `byte`. The title is the balanced brace group (nested braces allowed,
+    /// stops at a newline), so `\section{The \emph{Best} Idea}` is read whole.
+    static func enclosingHeading(in text: String, beforeByte byte: Int) -> Heading? {
+        var found: Heading?
+        withBytes(text) { b in
+            guard let p = b.baseAddress else { return }
+            forEachCommand(in: b, upTo: min(byte, b.count)) { name, nameStart, _ in
+                guard bytes(name, equal: "section") || bytes(name, equal: "subsection") else { return }
+                var j = nameStart + name.count
+                guard j < b.count, p[j] == UInt8(ascii: "{") else { return }
+                j += 1
+                var depth = 1
+                let start = j
+                while j < b.count, depth > 0, p[j] != UInt8(ascii: "\n") {
+                    if p[j] == UInt8(ascii: "{") { depth += 1 } else if p[j] == UInt8(ascii: "}") { depth -= 1 }
+                    j += 1
+                }
+                guard depth == 0 else { return }
+                let title = String(decoding: UnsafeBufferPointer(start: p + start, count: j - 1 - start), as: UTF8.self)
+                found = Heading(command: String(decoding: name, as: UTF8.self), title: title)
+            }
+        }
+        return found
+    }
+
+    /// `The \emph{Best} Idea!` → `the-best-idea`: control words and braces are
+    /// dropped, letters and digits (any script) are lowercased, every other run
+    /// becomes one hyphen, and the result is trimmed.
+    static func kebabCase(_ title: String) -> String {
+        var cleaned = ""
+        var skippingCommand = false
+        for ch in title {
+            if ch == "\\" { skippingCommand = true; continue }
+            if skippingCommand {
+                if ch.isLetter { continue }
+                skippingCommand = false
+            }
+            if ch == "{" || ch == "}" { continue }
+            cleaned.append(ch)
+        }
+        var out = ""
+        var pendingHyphen = false
+        for ch in cleaned.lowercased() {
+            if ch.isLetter || ch.isNumber {
+                if pendingHyphen, !out.isEmpty { out.append("-") }
+                pendingHyphen = false
+                out.append(ch)
+            } else {
+                pendingHyphen = true
+            }
+        }
+        return out
+    }
+
+    /// Leading spaces/tabs of the line containing `byte`.
+    static func lineIndent(in text: String, beforeByte byte: Int) -> String {
+        withBytes(text) { b in
+            guard let p = b.baseAddress else { return "" }
+            var lineStart = min(byte, b.count)
+            while lineStart > 0, p[lineStart - 1] != UInt8(ascii: "\n") { lineStart -= 1 }
+            var j = lineStart
+            while j < b.count, p[j] == UInt8(ascii: " ") || p[j] == UInt8(ascii: "\t") { j += 1 }
+            return String(decoding: UnsafeBufferPointer(start: p + lineStart, count: j - lineStart), as: UTF8.self)
+        }
+    }
+
+    /// Keys of `\bibitem{…}` anywhere in the document, in order. `\bibitem[x]{key}`
+    /// is not matched (the brace does not follow the name); the project index
+    /// covers that form.
+    static func bibitems(in text: String) -> [String] {
+        var out: [String] = []
+        withBytes(text) { b in
+            forEachCommand(in: b, upTo: b.count) { name, _, arg in
+                if let arg, bytes(name, equal: "bibitem") { out.append(String(decoding: arg, as: UTF8.self)) }
+            }
+        }
+        return out
+    }
+
     /// Control words typed anywhere in the document that start with `prefix`,
     /// first occurrence first, excluding the one being typed (whose `\` is at
     /// `excludingTokenAt`).
@@ -331,15 +667,252 @@ enum Completion {
         return counts
     }
 
-    /// Message of the first diagnostic that names `\name`, keyed by name.
-    private static func diagnosticsByCommand(_ result: RuntimeV1.CompileResult?) -> [String: String] {
-        var out: [String: String] = [:]
-        for d in result?.diagnostics ?? [] {
-            guard let bs = d.message.firstIndex(of: "\\") else { continue }
-            let name = d.message[d.message.index(after: bs)...].prefix { $0.isASCII && $0.isLetter }
-            if !name.isEmpty, out[String(name)] == nil { out[String(name)] = d.message }
+    // MARK: revision-bound metadata from Rust producers
+
+    /// Completion vocabulary produced by a Rust worker for one exact editor
+    /// revision. Everything is bounded (`Limits`) and carries the revision it
+    /// was produced for; `bound(to:)` is the only way to obtain metadata for a
+    /// caret, and it refuses any other revision.
+    struct Metadata: Equatable {
+        enum Origin: Equatable {
+            /// runtime-v1 `compile_result` for `projectId`.
+            case compileResult(projectId: String)
+            /// preview-controller `complete` reply, bound to the helper's
+            /// per-document `source_versions` map (ledger revisions, not the
+            /// editor revision; the caller maps between them).
+            case projectIndex(sourceVersions: [String: Int])
         }
-        return out
+
+        /// One project-index name with its location counts (locations
+        /// themselves are not retained; the helper caps them at 100 and flags
+        /// truncation, which is preserved).
+        struct Item: Equatable {
+            let name: String
+            let definitions: Int
+            let occurrences: Int
+            let locationsTruncated: Bool
+            /// Project-relative path of the first definition, when any.
+            let definedIn: String?
+
+            func detail(noun: String, revision: Int) -> String {
+                var s: String
+                if definitions == 0 {
+                    s = "unresolved in the project index"
+                } else {
+                    s = "\(noun) in \(definedIn ?? "project")"
+                    if definitions > 1 { s += " (+\(definitions - 1) more)" }
+                }
+                if occurrences > 0 { s += " · \(occurrences)\(locationsTruncated ? "+" : "") use\(occurrences == 1 ? "" : "s")" }
+                return s + " · revision \(revision)"
+            }
+        }
+
+        enum Limits {
+            /// Matches the helper's `limit` upper bound and location cap.
+            static let maxItemsPerCategory = 100
+            /// project-index bounds keys to 4096 bytes; longer names are dropped.
+            static let maxNameBytes = 4096
+            /// Largest `complete` reply decoded (100 items × 200 locations × ~80 B
+            /// is ~1.6 MB; the helper frame limit is 16 MiB).
+            static let maxReplyBytes = 4 << 20
+            static let maxDiagnostics = 256
+            static let maxMessageCharacters = 512
+        }
+
+        enum DecodeError: Error, Equatable {
+            case tooLarge(bytes: Int)
+            case malformed(String)
+            /// The reply's `source_versions` differ from the versions the caller
+            /// queried with: the helper answered for another snapshot.
+            case staleSourceVersions(expected: [String: Int], got: [String: Int])
+        }
+
+        let origin: Origin
+        /// Editor revision this metadata describes.
+        let revision: Int
+        var labels: [Item] = []
+        var citations: [Item] = []
+        var commands: [Item] = []
+        /// First diagnostic message naming `\name`, keyed by name (no backslash).
+        var diagnosticsByCommand: [String: String] = [:]
+        /// `environment 'X' is not implemented; …` messages keyed by `X`.
+        var diagnosticsByEnvironment: [String: String] = [:]
+        /// Keys from `undefined reference 'key'` diagnostics.
+        var unresolvedReferences: Set<String> = []
+        /// Some cap in `Limits` dropped data.
+        var truncated = false
+        /// Document kinds exactly as the helper's `snapshot` reported them
+        /// for these `source_versions` (`latex` / `bibliography`), keyed by
+        /// project path. Nil when no snapshot was bound (compile-result
+        /// metadata, or a helper without `document_kinds`): the kind of a
+        /// path is then unknown, never inferred from its name or text.
+        var documentKinds: [String: String]?
+
+        /// Whether `path` is a declared bibliography source at this snapshot:
+        /// `true`/`false` when the helper reported a kind for exactly that
+        /// path, nil when it did not (no snapshot bound, or the path is not
+        /// in `document_kinds`) — unknown is never turned into a guess.
+        func isDeclaredBibliography(_ path: String?) -> Bool? {
+            guard let documentKinds, let path, let kind = documentKinds[path] else { return nil }
+            return kind == "bibliography"
+        }
+
+        /// Declared bibliography paths at this snapshot (sorted); nil when unknown.
+        var declaredBibliographies: [String]? {
+            documentKinds.map { $0.filter { $0.value == "bibliography" }.keys.sorted() }
+        }
+
+        /// The metadata when it was produced for exactly `revision`, else nil.
+        /// A nil `revision` (the editor has not told the view its revision)
+        /// binds nothing.
+        func bound(to revision: Int?) -> Metadata? {
+            guard let revision, revision == self.revision else { return nil }
+            return self
+        }
+
+        /// Vocabulary from the compiler's own result: only the revision and its
+        /// diagnostics carry completion information in runtime-v1.
+        static func from(_ result: RuntimeV1.CompileResult) -> Metadata {
+            var m = Metadata(origin: .compileResult(projectId: result.projectId), revision: result.revision)
+            var used = 0
+            for d in result.diagnostics {
+                guard used < Limits.maxDiagnostics else { m.truncated = true; break }
+                let message = d.message.count > Limits.maxMessageCharacters
+                    ? String(d.message.prefix(Limits.maxMessageCharacters)) + "…" : d.message
+                if let key = quoted(after: "undefined reference '", in: d.message) {
+                    if m.unresolvedReferences.insert(key).inserted { used += 1 }
+                } else if let env = quoted(after: "environment '", in: d.message) {
+                    if m.diagnosticsByEnvironment[env] == nil { m.diagnosticsByEnvironment[env] = message; used += 1 }
+                } else if let bs = d.message.firstIndex(of: "\\") {
+                    let name = d.message[d.message.index(after: bs)...].prefix { $0.isASCII && $0.isLetter }
+                    if !name.isEmpty, m.diagnosticsByCommand[String(name)] == nil {
+                        m.diagnosticsByCommand[String(name)] = message
+                        used += 1
+                    }
+                }
+            }
+            return m
+        }
+
+        /// Decodes a preview-controller `complete` reply payload
+        /// (`{"source_versions": {path: revision}, "completions": [...]}`) for
+        /// one `category` into metadata bound to `editorRevision`, the editor
+        /// revision at which `expectedSourceVersions` was the current snapshot.
+        /// A reply for other source versions is refused as stale.
+        static func decodeProjectIndexReply(_ data: Data, category: Kind, editorRevision: Int,
+                                            expectedSourceVersions: [String: Int]) throws -> Metadata {
+            guard data.count <= Limits.maxReplyBytes else { throw DecodeError.tooLarge(bytes: data.count) }
+            let reply: ProjectIndexReply
+            do { reply = try JSONDecoder().decode(ProjectIndexReply.self, from: data) }
+            catch { throw DecodeError.malformed("\(error)") }
+            guard reply.sourceVersions == expectedSourceVersions else {
+                throw DecodeError.staleSourceVersions(expected: expectedSourceVersions, got: reply.sourceVersions)
+            }
+            var m = Metadata(origin: .projectIndex(sourceVersions: reply.sourceVersions), revision: editorRevision)
+            var items: [Item] = []
+            var seen = Set<String>()
+            for c in reply.completions {
+                guard items.count < Limits.maxItemsPerCategory else { m.truncated = true; break }
+                guard c.name.utf8.count <= Limits.maxNameBytes, !c.name.isEmpty else { m.truncated = true; continue }
+                guard seen.insert(c.name).inserted else { continue }
+                items.append(Item(name: c.name, definitions: c.definitions.count, occurrences: c.occurrences.count,
+                                  locationsTruncated: c.locationsTruncated, definedIn: c.definitions.first?.path))
+            }
+            switch category {
+            case .reference: m.labels = items
+            case .citation: m.citations = items
+            case .command: m.commands = items
+            case .environment, .word: throw DecodeError.malformed("project index has no \(category) category")
+            }
+            return m
+        }
+
+        /// Decodes a preview-controller `snapshot` reply payload
+        /// (`{"project_id", "source_versions", "membership_generation",
+        /// "document_kinds": {path: "latex"|"bibliography"}}`) into metadata
+        /// carrying only the declared kinds, bound to `editorRevision`. Refused
+        /// (thrown) for other source versions or an unknown kind value; a
+        /// reply without `document_kinds` (older helper) binds no kinds.
+        static func decodeProjectIndexSnapshot(_ data: Data, editorRevision: Int,
+                                               expectedSourceVersions: [String: Int]) throws -> Metadata {
+            guard data.count <= Limits.maxReplyBytes else { throw DecodeError.tooLarge(bytes: data.count) }
+            let reply: ProjectIndexSnapshot
+            do { reply = try JSONDecoder().decode(ProjectIndexSnapshot.self, from: data) }
+            catch { throw DecodeError.malformed("\(error)") }
+            guard reply.sourceVersions == expectedSourceVersions else {
+                throw DecodeError.staleSourceVersions(expected: expectedSourceVersions, got: reply.sourceVersions)
+            }
+            var m = Metadata(origin: .projectIndex(sourceVersions: reply.sourceVersions), revision: editorRevision)
+            if let kinds = reply.documentKinds {
+                for (path, kind) in kinds where kind != "latex" && kind != "bibliography" {
+                    throw DecodeError.malformed("unknown document kind \(kind) for \(path)")
+                }
+                m.documentKinds = kinds
+            }
+            return m
+        }
+
+        /// Combines metadata produced for the same revision (compile-result
+        /// diagnostics plus one or more project-index categories). Nil when the
+        /// revisions differ: metadata never straddles revisions.
+        func merged(with other: Metadata) -> Metadata? {
+            guard other.revision == revision else { return nil }
+            var m = self
+            m.labels = Self.union(labels, other.labels)
+            m.citations = Self.union(citations, other.citations)
+            m.commands = Self.union(commands, other.commands)
+            m.diagnosticsByCommand.merge(other.diagnosticsByCommand) { mine, _ in mine }
+            m.diagnosticsByEnvironment.merge(other.diagnosticsByEnvironment) { mine, _ in mine }
+            m.unresolvedReferences.formUnion(other.unresolvedReferences)
+            m.truncated = truncated || other.truncated
+            switch (documentKinds, other.documentKinds) {
+            case (nil, let k?): m.documentKinds = k
+            case (let mine?, let k?): m.documentKinds = mine.merging(k) { mine, _ in mine }
+            default: break
+            }
+            return m
+        }
+
+        private static func union(_ a: [Item], _ b: [Item]) -> [Item] {
+            var seen = Set(a.map(\.name))
+            return a + b.filter { seen.insert($0.name).inserted }
+        }
+
+        private static func quoted(after prefix: String, in message: String) -> String? {
+            guard let r = message.range(of: prefix) else { return nil }
+            let rest = message[r.upperBound...]
+            guard let close = rest.firstIndex(of: "'") else { return nil }
+            let key = rest[..<close]
+            return key.isEmpty ? nil : String(key)
+        }
+
+        /// Wire shape of the helper's `snapshot` reply payload (the fields used).
+        struct ProjectIndexSnapshot: Decodable {
+            let sourceVersions: [String: Int]
+            let documentKinds: [String: String]?
+            enum CodingKeys: String, CodingKey { case sourceVersions = "source_versions", documentKinds = "document_kinds" }
+        }
+
+        /// Wire shape of the helper's `complete` reply payload.
+        struct ProjectIndexReply: Decodable {
+            struct Location: Decodable {
+                let path: String
+                let revision: Int
+                let startByte: Int
+                let endByte: Int
+                enum CodingKeys: String, CodingKey { case path, revision, startByte = "start_byte", endByte = "end_byte" }
+            }
+            struct Item: Decodable {
+                let name: String
+                let definitions: [Location]
+                let occurrences: [Location]
+                let locationsTruncated: Bool
+                enum CodingKeys: String, CodingKey { case name, definitions, occurrences, locationsTruncated = "locations_truncated" }
+            }
+            let sourceVersions: [String: Int]
+            let completions: [Item]
+            enum CodingKeys: String, CodingKey { case sourceVersions = "source_versions", completions }
+        }
     }
 
     // MARK: byte helpers
@@ -443,14 +1016,545 @@ enum Completion {
     }
 }
 
+// MARK: - Project-index vocabulary through the preview-controller helper
+
+/// Drives the helper's `complete` queries (STDIO.md) for the three categories
+/// plus the `snapshot` (declared document kinds) at one exact snapshot and
+/// turns the replies into one bound `Metadata`.
+/// Owned by the shell model, which calls `request` when a controller preview
+/// for known `source_versions` was applied and routes `result`/`error` frames
+/// through `handle`. Everything is refused rather than guessed: a reply for
+/// other source versions, a helper error (e.g. "source versions changed"), or
+/// a newer request all discard the query. Nothing here blocks: `send` only
+/// writes a frame.
+@MainActor
+final class ProjectIndexCompletionFetcher {
+    static let categories: [Completion.Kind] = [.reference, .citation, .command]
+    static let wireCategory: [Completion.Kind: String] = [.reference: "label", .citation: "citation", .command: "command"]
+
+    /// One reply the query waits for: a `complete` category or the `snapshot`
+    /// that names the document kinds of the same source versions.
+    enum Part: Equatable { case category(Completion.Kind), documentKinds }
+
+    struct Query: Equatable {
+        /// Request id → part, for the replies still outstanding.
+        var outstanding: [String: Part]
+        let sourceVersions: [String: Int]
+        let editorRevision: Int
+        var merged: Completion.Metadata?
+        /// `MonotonicClock` stamp of `request`, for request → metadata latency.
+        var requestedNs: UInt64 = 0
+    }
+
+    enum Outcome: Equatable {
+        /// The id does not belong to this fetcher.
+        case notMine
+        /// Accepted; other categories are still outstanding.
+        case pending
+        /// Every category arrived: metadata bound to the query's editor revision.
+        case complete(Completion.Metadata)
+        /// The query was discarded (stale versions, helper error, decode failure).
+        case refused(String)
+    }
+
+    private(set) var query: Query?
+    private(set) var refusals = 0
+    /// Request → complete metadata wall time of the last completed query.
+    private(set) var lastLatencyMs: Double?
+
+    /// Sends one `complete` per category with an empty prefix and the maximum
+    /// limit (100), plus one `snapshot` for the declared document kinds, all
+    /// naming the exact `sourceVersions` the preview was compiled from and the
+    /// editor revision that produced them. A previous query is discarded. A
+    /// send failure discards the whole query.
+    func request(sourceVersions: [String: Int], editorRevision: Int,
+                 send: (_ type: String, _ payload: [String: Any]) throws -> String) {
+        var outstanding: [String: Part] = [:]
+        for kind in Self.categories {
+            let payload: [String: Any] = ["source_versions": sourceVersions, "category": Self.wireCategory[kind]!,
+                                          "prefix": "", "limit": Completion.Metadata.Limits.maxItemsPerCategory]
+            guard let id = try? send("complete", payload) else { query = nil; return }
+            outstanding[id] = .category(kind)
+        }
+        guard let kindsID = try? send("snapshot", [:]) else { query = nil; return }
+        outstanding[kindsID] = .documentKinds
+        query = Query(outstanding: outstanding, sourceVersions: sourceVersions, editorRevision: editorRevision, merged: nil,
+                      requestedNs: MonotonicClock.nowNs())
+    }
+
+    /// A `result` frame. The payload is the helper's JSON object; it is
+    /// re-serialized so the bounded decoder sees the documented wire shape.
+    func handle(resultID id: String, payload: [String: Any]) -> Outcome {
+        guard var q = query, let part = q.outstanding[id] else { return .notMine }
+        let data: Data
+        do { data = try JSONSerialization.data(withJSONObject: payload) } catch { return refuse("unserializable reply \(id)") }
+        let metadata: Completion.Metadata
+        do {
+            switch part {
+            case .category(let kind):
+                metadata = try Completion.Metadata.decodeProjectIndexReply(data, category: kind, editorRevision: q.editorRevision,
+                                                                           expectedSourceVersions: q.sourceVersions)
+            case .documentKinds:
+                metadata = try Completion.Metadata.decodeProjectIndexSnapshot(data, editorRevision: q.editorRevision,
+                                                                              expectedSourceVersions: q.sourceVersions)
+            }
+        } catch {
+            return refuse("\(part) reply \(id): \(error)")
+        }
+        q.outstanding.removeValue(forKey: id)
+        q.merged = q.merged.flatMap { $0.merged(with: metadata) } ?? metadata
+        if q.outstanding.isEmpty, let merged = q.merged {
+            query = nil
+            lastLatencyMs = Double(MonotonicClock.nowNs() - q.requestedNs) / 1e6
+            return .complete(merged)
+        }
+        query = q
+        return .pending
+    }
+
+    /// The helper is gone (exit, detach): its outstanding ids mean nothing on
+    /// the next client, whose ids restart at `pc-1`; forget the query so a
+    /// colliding id cannot claim an unrelated reply.
+    func discard() { query = nil }
+
+    /// An `error` frame for one of the query's ids discards the query.
+    func handle(errorID id: String?, message: String) -> Outcome {
+        guard let id, let q = query, q.outstanding[id] != nil else { return .notMine }
+        return refuse("helper error for \(id): \(message)")
+    }
+
+    private func refuse(_ why: String) -> Outcome {
+        query = nil
+        refusals += 1
+        return .refused(why)
+    }
+}
+
+// MARK: - Off-main candidate computation
+
+/// Computes candidates off the main thread and delivers them on the main run
+/// loop only while the request is still current. `cancel()` (every text change
+/// or caret move) and any newer `schedule` invalidate the pending job: its
+/// result is refused at delivery and never reaches the view. The keystroke
+/// path therefore only copies the text and enqueues; it never scans.
+@MainActor
+final class CompletionScheduler {
+    struct Request {
+        var text: String
+        var caretUTF16: Int
+        /// Already bound to the revision of `text` (`Metadata.bound(to:)`).
+        var metadata: Completion.Metadata?
+        var supported: [String] = Completion.defaultSupported
+    }
+
+    struct Outcome: Equatable {
+        let generation: Int
+        let caretUTF16: Int
+        /// UTF-16 range the items replace, computed from the request's text.
+        let range: NSRange
+        let items: [Completion.Suggestion]
+        /// Wall time of the off-main scan.
+        let computeMs: Double
+        /// Time the job waited on the queue before the scan started.
+        var queuedMs: Double = 0
+        /// `MonotonicClock` stamp taken when the scan finished, so the
+        /// consumer can measure the run-loop delivery lag.
+        var computedAtNs: UInt64 = 0
+    }
+
+    struct Statistics: Equatable {
+        var scheduled = 0
+        /// Outcomes handed to the caller.
+        var delivered = 0
+        /// Outcomes that reached the main thread after their job was cancelled
+        /// or superseded, and were dropped.
+        var refusedStale = 0
+        /// Jobs cancelled (explicitly or by a newer request) before delivery.
+        var cancelled = 0
+    }
+
+    /// Runs one job somewhere off the main thread. The default is a serial
+    /// user-initiated queue; tests inject an executor that holds jobs so the
+    /// order of caret moves and job completion is deterministic.
+    typealias Executor = (@escaping @Sendable () -> Void) -> Void
+
+    /// Cancellation flag shared with the running job; polled between scan phases.
+    final class Job: @unchecked Sendable {
+        let generation: Int
+        private let cancelledFlag = OSAllocatedUnfairLock(initialState: false)
+        init(generation: Int) { self.generation = generation }
+        var isCancelled: Bool { cancelledFlag.withLock { $0 } }
+        func cancel() { cancelledFlag.withLock { $0 = true } }
+    }
+
+    private(set) var generation = 0
+    private(set) var statistics = Statistics()
+    private(set) var pending: Job?
+    private let execute: Executor
+
+    init(executor: Executor? = nil) {
+        if let executor {
+            execute = executor
+        } else {
+            let queue = DispatchQueue(label: "flashtex.completion", qos: .userInitiated)
+            execute = { queue.async(execute: $0) }
+        }
+    }
+
+    /// Enqueues `request`; `deliver` runs on the main run loop with the outcome
+    /// unless the job was cancelled or superseded first. Returns the job's
+    /// generation.
+    @discardableResult
+    func schedule(_ request: Request, deliver: @escaping @MainActor (Outcome) -> Void) -> Int {
+        cancelPending()
+        generation += 1
+        let job = Job(generation: generation)
+        pending = job
+        statistics.scheduled += 1
+        let scheduledAt = MonotonicClock.nowNs()
+        execute { [weak self] in
+            let t0 = MonotonicClock.nowNs()
+            let range = Completion.completionRange(in: request.text, caretUTF16: request.caretUTF16)
+            let items = job.isCancelled ? [] : Completion.suggestions(in: request.text, caretUTF16: request.caretUTF16,
+                                                                     metadata: request.metadata, supported: request.supported,
+                                                                     cancelled: { job.isCancelled })
+            let t1 = MonotonicClock.nowNs()
+            let outcome = Outcome(generation: job.generation, caretUTF16: request.caretUTF16, range: range, items: items,
+                                  computeMs: Double(t1 - t0) / 1e6, queuedMs: Double(t0 - scheduledAt) / 1e6, computedAtNs: t1)
+            Self.onMain { [weak self] in
+                MainActor.assumeIsolated { [weak self] in
+                    guard let self else { return }
+                    // Stale refusal: only the exact current, uncancelled job is delivered.
+                    guard !job.isCancelled, job.generation == self.generation, self.pending === job else {
+                        self.statistics.refusedStale += 1
+                        return
+                    }
+                    self.pending = nil
+                    self.statistics.delivered += 1
+                    deliver(outcome)
+                }
+            }
+        }
+        return job.generation
+    }
+
+    /// Invalidates the pending job (if any) and every outcome computed so far.
+    func cancel() {
+        cancelPending()
+        generation += 1
+    }
+
+    private func cancelPending() {
+        guard let job = pending, !job.isCancelled else { return }
+        job.cancel()
+        statistics.cancelled += 1
+        pending = nil
+    }
+
+    /// Head-of-run-loop delivery (see `WorkerClient.deliver`): a plain
+    /// `DispatchQueue.main.async` waits for AppKit to reach the dispatch port.
+    nonisolated private static func onMain(_ block: @escaping @Sendable () -> Void) {
+        CFRunLoopPerformBlock(CFRunLoopGetMain(), CFRunLoopMode.commonModes.rawValue, block)
+        CFRunLoopWakeUp(CFRunLoopGetMain())
+    }
+}
+
+// MARK: - Session state and popup
+
+/// The completion list shown for one token. Owned by `CompletingTextView`;
+/// the popup only renders it.
+struct CompletionSession: Equatable {
+    var items: [Completion.Suggestion]
+    /// UTF-16 range the chosen item replaces.
+    var range: NSRange
+    var selectedIndex: Int
+    /// Scheduler generation the items were computed for; any text change or
+    /// caret move since then has advanced it.
+    var generation: Int
+    /// Editor revision the metadata was bound to (nil: no metadata used).
+    var metadataRevision: Int?
+
+    var selected: Completion.Suggestion? { items.indices.contains(selectedIndex) ? items[selectedIndex] : nil }
+}
+
+/// Non-activating list under the caret. Never becomes key, so it cannot take
+/// keyboard focus from the editor (or from another app in tests).
+final class CompletionPopup: NSPanel, NSTableViewDataSource, NSTableViewDelegate {
+    private let table = NSTableView()
+    private(set) var items: [Completion.Suggestion] = []
+    static let rowHeight: CGFloat = 22
+    static let width: CGFloat = 420
+
+    init() {
+        super.init(contentRect: NSRect(x: 0, y: 0, width: Self.width, height: Self.rowHeight * 4),
+                   styleMask: [.nonactivatingPanel, .borderless], backing: .buffered, defer: false)
+        isFloatingPanel = true
+        hidesOnDeactivate = false
+        level = .popUpMenu
+        hasShadow = true
+        isReleasedWhenClosed = false
+        isExcludedFromWindowsMenu = true
+        animationBehavior = .none
+        let column = NSTableColumn(identifier: .init("completion"))
+        column.width = Self.width - 4
+        table.addTableColumn(column)
+        table.headerView = nil
+        table.rowHeight = Self.rowHeight
+        table.allowsEmptySelection = false
+        table.allowsMultipleSelection = false
+        table.refusesFirstResponder = true
+        table.focusRingType = .none
+        table.dataSource = self
+        table.delegate = self
+        table.target = self
+        table.action = #selector(rowClicked(_:))
+        table.doubleAction = #selector(rowDoubleClicked(_:))
+        table.setAccessibilityLabel(CompletionAccessibility.listLabel) // FlashTeXAccessibility
+        table.setAccessibilityHelp(CompletionAccessibility.listHelp)
+        let scroll = NSScrollView(frame: contentView!.bounds)
+        scroll.documentView = table
+        scroll.hasVerticalScroller = true
+        scroll.autoresizingMask = [.width, .height]
+        scroll.borderType = .noBorder
+        contentView?.addSubview(scroll)
+        contentView?.wantsLayer = true
+        contentView?.layer?.cornerRadius = 6
+        contentView?.layer?.borderWidth = 1
+        contentView?.layer?.borderColor = NSColor.separatorColor.cgColor
+        backgroundColor = .windowBackgroundColor
+    }
+
+    override var canBecomeKey: Bool { false }
+    override var canBecomeMain: Bool { false }
+
+    /// The table's selected row, for tests and evidence.
+    var selectedRow: Int { table.selectedRow }
+    /// The list's table, for accessibility read-back in tests.
+    var accessibilityTable: NSTableView { table }
+
+    /// Shows (or refreshes) the list under `caretRect`. While the panel is
+    /// already on screen for the same parent, only what changed is touched:
+    /// the rows reload only when the items differ, the frame moves only when
+    /// the caret rect did, and the window is not re-ordered — each of those is
+    /// a window-server round trip that the typing-through-the-list path would
+    /// otherwise pay on every keystroke.
+    func show(items: [Completion.Suggestion], selected: Int, below caretRect: NSRect, parent: NSWindow) {
+        update(items: items, selected: selected)
+        let rows = CGFloat(min(items.count, Completion.maxSuggestions))
+        let height = rows * Self.rowHeight + 4
+        var origin = NSPoint(x: caretRect.minX, y: caretRect.minY - height - 2)
+        if let screen = parent.screen ?? NSScreen.main {
+            let visible = screen.visibleFrame
+            if origin.y < visible.minY { origin.y = caretRect.maxY + 2 } // flip above the caret
+            origin.x = min(max(origin.x, visible.minX), max(visible.minX, visible.maxX - Self.width))
+        }
+        let target = NSRect(origin: origin, size: NSSize(width: Self.width, height: height))
+        let onScreen = isVisible && self.parent === parent
+        if frame != target { setFrame(target, display: false) } // drawn once, by the display cycle that shows it
+        if self.parent !== parent {
+            self.parent?.removeChildWindow(self)
+            parent.addChildWindow(self, ordered: .above)
+        }
+        if !onScreen { orderFront(nil) }
+    }
+
+    /// Replaces the rows only when they changed; a pure selection move (arrow
+    /// keys) selects the row without reloading the table.
+    func update(items: [Completion.Suggestion], selected: Int) {
+        updatingSelection = true
+        if items != self.items {
+            self.items = items
+            table.reloadData()
+        }
+        if items.indices.contains(selected) {
+            if table.selectedRow != selected {
+                table.selectRowIndexes(IndexSet(integer: selected), byExtendingSelection: false)
+            }
+            table.scrollRowToVisible(selected)
+            announceSelection(items[selected], index: selected, total: items.count)
+        }
+        updatingSelection = false
+    }
+
+    func hide() {
+        if parent != nil { parent?.removeChildWindow(self) }
+        if isVisible { orderOut(nil) }
+        items = []
+        table.reloadData()
+    }
+
+    // MARK: mouse
+
+    /// A click on a row chooses it; a double-click accepts it. The panel is
+    /// non-activating, so clicks never move keyboard focus off the editor.
+    var onChoose: (Int) -> Void = { _ in }
+    var onAccept: (Int) -> Void = { _ in }
+    private var updatingSelection = false
+
+    /// Test hook for the table's click/double-click actions.
+    func click(row: Int, double: Bool = false) {
+        guard items.indices.contains(row) else { return }
+        if double { onAccept(row) } else { onChoose(row) }
+    }
+
+    @objc private func rowClicked(_ sender: Any?) {
+        let row = table.clickedRow
+        guard row >= 0 else { return }
+        click(row: row)
+    }
+
+    @objc private func rowDoubleClicked(_ sender: Any?) {
+        let row = table.clickedRow
+        guard row >= 0 else { return }
+        click(row: row, double: true)
+    }
+
+    func tableViewSelectionDidChange(_ notification: Notification) {
+        guard !updatingSelection, table.selectedRow >= 0 else { return }
+        onChoose(table.selectedRow)
+    }
+
+    func numberOfRows(in tableView: NSTableView) -> Int { items.count }
+
+    func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
+        let id = NSUserInterfaceItemIdentifier("row")
+        let field = (tableView.makeView(withIdentifier: id, owner: nil) as? NSTextField) ?? {
+            let f = NSTextField(labelWithString: "")
+            f.identifier = id
+            f.lineBreakMode = .byTruncatingTail
+            f.allowsDefaultTighteningForTruncation = true
+            return f
+        }()
+        field.attributedStringValue = Self.attributed(items[row])
+        field.setAccessibilityLabel(Self.spokenLabel(items[row])) // FlashTeXAccessibility
+        return field
+    }
+
+    /// "\section, command, supported by this compiler" — what VoiceOver reads for a row.
+    static func spokenLabel(_ s: Completion.Suggestion) -> String {
+        CompletionAccessibility.rowLabel(label: s.label, kind: s.kind.accessibilityKind, detail: s.detail)
+    }
+
+    /// "n of m: …" posted when the selection moves (the panel never takes focus, so this is the only cue).
+    private func announceSelection(_ s: Completion.Suggestion, index: Int, total: Int) {
+        NSAccessibility.post(element: table, notification: .announcementRequested, userInfo: [
+            .announcement: CompletionAccessibility.selectionAnnouncement(index: index, total: total, label: s.label,
+                                                                        kind: s.kind.accessibilityKind, detail: s.detail),
+            .priority: NSAccessibilityPriorityLevel.medium.rawValue,
+        ])
+    }
+
+    /// `\section  cmd · supported by this compiler` — label in the editor's
+    /// monospaced font, kind and detail in the secondary colour.
+    static func attributed(_ s: Completion.Suggestion) -> NSAttributedString {
+        let out = NSMutableAttributedString(string: s.label, attributes: [
+            .font: NSFont.monospacedSystemFont(ofSize: 12, weight: .medium), .foregroundColor: NSColor.labelColor,
+        ])
+        out.append(NSAttributedString(string: "  \(s.kind.badge) · \(s.detail)", attributes: [
+            .font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.secondaryLabelColor,
+        ]))
+        return out
+    }
+}
+
+extension Completion.Kind {
+    /// The accessibility layer's spelling of the kind (spoken "label" for `.reference`).
+    var accessibilityKind: CompletionAccessibility.Kind {
+        switch self {
+        case .command: return .command
+        case .environment: return .environment
+        case .reference: return .reference
+        case .citation: return .citation
+        case .word: return .word
+        }
+    }
+
+    var badge: String {
+        switch self {
+        case .command: return "cmd"
+        case .environment: return "env"
+        case .reference: return "ref"
+        case .citation: return "cite"
+        case .word: return "word"
+        }
+    }
+}
+
 // MARK: - NSTextView integration
 
-/// `NSTextView` whose user-completion range includes a leading `\` and whose
-/// completions come from `Completion.suggestions`. Esc and ⌃Space open the
-/// popup. The compile result is pushed in by `SourceEditorView`.
+/// `NSTextView` with its own completion session: candidates are computed off
+/// the main thread by `CompletionScheduler`, shown in `CompletionPopup`, and
+/// chosen with ↑/↓ or Tab/⇧Tab, inserted with Return/Enter, dismissed with Esc. Any caret
+/// move or text change that is not the user's own typing through the list
+/// closes the session and cancels in-flight work. Esc and ⌃Space open the
+/// list. Rust metadata (`compileResult`, `accept(projectIndex:)`) is used only
+/// when bound to `editorRevision`, which the owner sets on every update.
 final class CompletingTextView: NSTextView {
-    var compileResult: RuntimeV1.CompileResult?
+    var compileResult: RuntimeV1.CompileResult? {
+        didSet { resultMetadata = compileResult.map(Completion.Metadata.from) }
+    }
     var supportedCommands = Completion.defaultSupported
+
+    /// Revision of `string` as the owner (ShellModel) counts it. Nil until the
+    /// owner sets it, and nil binds no metadata: candidates then come from the
+    /// document text alone, never from a result of unknown age.
+    var editorRevision: Int?
+
+    private(set) var resultMetadata: Completion.Metadata?
+    private(set) var projectIndexMetadata: Completion.Metadata?
+
+    /// Accepts metadata decoded from the helper's `complete` reply. Refuses
+    /// (returns false) metadata older than the one already held; equal
+    /// revisions merge (one reply per category).
+    @discardableResult
+    func accept(projectIndex metadata: Completion.Metadata) -> Bool {
+        if let held = projectIndexMetadata {
+            if metadata.revision < held.revision { return false }
+            if let merged = held.merged(with: metadata) { projectIndexMetadata = merged; return true }
+        }
+        projectIndexMetadata = metadata
+        return true
+    }
+
+    /// Metadata bound to `editorRevision`, merged across producers. Nil when
+    /// nothing was produced for exactly this revision.
+    var boundMetadata: Completion.Metadata? {
+        let r = resultMetadata?.bound(to: editorRevision)
+        let p = projectIndexMetadata?.bound(to: editorRevision)
+        switch (r, p) {
+        case (let r?, let p?): return r.merged(with: p)
+        case (let r?, nil): return r
+        case (nil, let p?): return p
+        case (nil, nil): return nil
+        }
+    }
+
+    /// Replaceable so tests can inject a manual executor.
+    var scheduler = CompletionScheduler()
+    private(set) var session: CompletionSession?
+    var isCompletionActive: Bool { session != nil }
+
+    enum CloseReason: Equatable { case accepted, escape, caretMoved, textChanged, noCandidates, resignedFirstResponder }
+    private(set) var lastCloseReason: CloseReason?
+    /// Latest outcome presented, for evidence (compute time off-main).
+    private(set) var lastOutcome: CompletionScheduler.Outcome?
+    /// Evidence for the last delivered outcome: run-loop lag from the end of
+    /// the scan to `present`, and the time `present` spent (session + popup).
+    private(set) var lastDeliveryLagMs: Double = 0
+    private(set) var lastPresentMs: Double = 0
+
+    /// The popup's mouse actions route back here (a click chooses, a
+    /// double-click accepts); the session stays the single source of truth.
+    private lazy var popup: CompletionPopup = {
+        let p = CompletionPopup()
+        p.onChoose = { [weak self] in self?.selectCompletion(at: $0) }
+        p.onAccept = { [weak self] in self?.selectCompletion(at: $0); self?.acceptSelectedCompletion() }
+        return p
+    }()
+    private var typingThroughSession = false
+    private var applyingCompletion = false
+    private var lastCaret: NSRange?
+    private var storageObserver: NSObjectProtocol?
 
     /// Scroll view + text view pair, like `NSTextView.scrollableTextView()`
     /// but with this subclass as the document view.
@@ -469,10 +1573,18 @@ final class CompletingTextView: NSTextView {
         return scroll
     }
 
+    deinit {
+        if let storageObserver { NotificationCenter.default.removeObserver(storageObserver) }
+    }
+
+    // MARK: synchronous AppKit completion API (kept for callers and tests)
+
     override var rangeForUserCompletion: NSRange {
         Completion.completionRange(in: string, caretUTF16: selectedRange().location)
     }
 
+    /// Synchronous candidates for `charRange` (bound metadata only). The popup
+    /// never uses this path; it exists for AppKit callers and tests.
     override func completions(forPartialWordRange charRange: NSRange,
                               indexOfSelectedItem index: UnsafeMutablePointer<Int>) -> [String]? {
         index.pointee = 0
@@ -481,7 +1593,7 @@ final class CompletingTextView: NSTextView {
         let text = string
         guard charRange.location != NSNotFound, charRange.location >= 0, charRange.length >= 0,
               NSMaxRange(charRange) <= (text as NSString).length else { return nil }
-        let items = Completion.suggestions(in: text, caretUTF16: NSMaxRange(charRange), result: compileResult,
+        let items = Completion.suggestions(in: text, caretUTF16: NSMaxRange(charRange), metadata: boundMetadata,
                                           supported: supportedCommands)
         return items.isEmpty ? nil : items.map(\.insertText)
     }
@@ -496,11 +1608,204 @@ final class CompletingTextView: NSTextView {
         super.insertCompletion(word, forPartialWordRange: charRange, movement: movement, isFinal: flag)
     }
 
-    override func keyDown(with event: NSEvent) {
-        if event.modifierFlags.contains(.control), event.charactersIgnoringModifiers == " " {
-            complete(nil)
+    // MARK: session lifecycle
+
+    /// Esc (AppKit's `cancelOperation:` → `complete:`) and ⌃Space land here.
+    override func complete(_ sender: Any?) { requestCompletion() }
+
+    /// Copies the text and enqueues the scan; the popup opens (or refreshes)
+    /// when the outcome is delivered and still current.
+    func requestCompletion() {
+        guard EditorPreferences.shared.completionPopup else { return } // preference: list disabled
+        observeStorageIfNeeded()
+        let caret = selectedRange()
+        guard caret.length == 0, !hasMarkedText() else { return }
+        lastCaret = caret
+        let metadata = boundMetadata
+        let request = CompletionScheduler.Request(text: string, caretUTF16: caret.location, metadata: metadata,
+                                                  supported: supportedCommands)
+        scheduler.schedule(request) { [weak self] outcome in
+            self?.present(outcome, metadataRevision: metadata?.revision)
+        }
+        // First use: build the panel now, while the scan runs off-main, so the
+        // delivery path only has to fill and show it.
+        if session == nil { _ = popup }
+    }
+
+    private func present(_ outcome: CompletionScheduler.Outcome, metadataRevision: Int?) {
+        let t0 = MonotonicClock.nowNs()
+        lastOutcome = outcome
+        lastDeliveryLagMs = outcome.computedAtNs == 0 ? 0 : Double(t0 &- outcome.computedAtNs) / 1e6
+        defer { lastPresentMs = Double(MonotonicClock.nowNs() - t0) / 1e6 }
+        // The scheduler refused other generations; the caret must also still
+        // be where the request was made and the range must fit the text.
+        let caret = selectedRange()
+        guard caret.length == 0, caret.location == outcome.caretUTF16,
+              NSMaxRange(outcome.range) <= (string as NSString).length else { return }
+        guard !outcome.items.isEmpty else {
+            if session != nil { close(.noCandidates) }
             return
         }
-        super.keyDown(with: event)
+        var selected = 0
+        if let current = session?.selected, let i = outcome.items.firstIndex(where: { $0.label == current.label }) {
+            selected = i // the same item stays chosen while typing narrows the list
+        }
+        session = CompletionSession(items: outcome.items, range: outcome.range, selectedIndex: selected,
+                                    generation: outcome.generation, metadataRevision: metadataRevision)
+        showPopup()
+    }
+
+    private func showPopup() {
+        guard let session, let window else { return }
+        let caretRect = firstRect(forCharacterRange: NSRange(location: selectedRange().location, length: 0), actualRange: nil)
+        popup.show(items: session.items, selected: session.selectedIndex, below: caretRect, parent: window)
+    }
+
+    func close(_ reason: CloseReason) {
+        lastCloseReason = reason
+        guard session != nil else { return }
+        session = nil
+        popup.hide()
+    }
+
+    func moveSelection(by delta: Int) {
+        guard let s = session, !s.items.isEmpty else { return }
+        selectCompletion(at: (s.selectedIndex + delta + s.items.count) % s.items.count)
+    }
+
+    func selectCompletion(at index: Int) {
+        guard var s = session, s.items.indices.contains(index) else { return }
+        s.selectedIndex = index
+        session = s
+        popup.update(items: s.items, selected: index)
+    }
+
+    /// The list window (created on first use), for tests and evidence.
+    var completionPopup: CompletionPopup { popup }
+
+    /// Replaces the session's range with the selected item, as one undoable
+    /// edit, and closes the list. Refused when the text or caret changed since
+    /// the items were computed.
+    func acceptSelectedCompletion() {
+        guard let s = session, let item = s.selected else { return }
+        guard !hasMarkedText() else { return } // IME composition owns the text until it ends
+        guard s.generation == scheduler.generation, NSMaxRange(s.range) <= (string as NSString).length,
+              selectedRange() == NSRange(location: NSMaxRange(s.range), length: 0) else {
+            close(.textChanged)
+            return
+        }
+        applyingCompletion = true
+        if let snippet = item.snippet {
+            insertSnippet(snippet, replacing: s.range, kind: item.kind)
+        } else {
+            insertCompletion(item.insertText, forPartialWordRange: s.range, movement: NSReturnTextMovement, isFinal: true)
+        }
+        applyingCompletion = false
+        scheduler.cancel()
+        close(.accepted)
+    }
+
+    /// One undo step: the typed partial token is closed off first so ⌘Z
+    /// removes exactly the snippet and restores the token.
+    private func insertSnippet(_ snippet: Completion.Snippet, replacing range: NSRange, kind: Completion.Kind) {
+        breakUndoCoalescing()
+        guard shouldChangeText(in: range, replacementString: snippet.text) else { return }
+        textStorage?.replaceCharacters(in: range, with: snippet.text)
+        didChangeText() // registers the undo step, fires textDidChange
+        undoManager?.setActionName(kind == .environment ? "Insert Environment" : "Insert Snippet")
+        setSelectedRange(NSRange(location: range.location + snippet.caretUTF16, length: 0))
+        breakUndoCoalescing()
+    }
+
+    // MARK: events
+
+    override func keyDown(with event: NSEvent) {
+        if hasMarkedText() { super.keyDown(with: event); return } // IME composition owns the keys (mac-editor-accessibility)
+        if event.modifierFlags.contains(.control), event.charactersIgnoringModifiers == " " {
+            requestCompletion()
+            return
+        }
+        guard session != nil else {
+            // Esc opens the list (AppKit's own `cancelOperation:` → `complete:`
+            // binding is not reliable outside a key window, so it is explicit).
+            if event.keyCode == 53, event.modifierFlags.intersection([.command, .option, .control]).isEmpty {
+                requestCompletion()
+            } else {
+                super.keyDown(with: event)
+            }
+            return
+        }
+        if event.modifierFlags.contains(.command) {
+            // Shortcuts (⌘Z, ⌘A, …) act on the editor, never on the list.
+            scheduler.cancel()
+            close(.caretMoved)
+            super.keyDown(with: event)
+            return
+        }
+        switch event.keyCode {
+        case 125: moveSelection(by: 1) // ↓
+        case 126: moveSelection(by: -1) // ↑
+        case 48: moveSelection(by: event.modifierFlags.contains(.shift) ? -1 : 1) // Tab next, ⇧Tab previous (wrapping)
+        case 36, 76: acceptSelectedCompletion() // Return, Enter
+        case 53: scheduler.cancel(); close(.escape) // Esc
+        case 123, 124, 115, 119, 116, 121: // ←, →, Home, End, Page Up/Down leave the token
+            close(.caretMoved)
+            super.keyDown(with: event)
+        default:
+            // Ordinary typing (and Delete) narrows or widens the list: the
+            // keystroke goes to the editor unchanged and a fresh scan is queued.
+            typingThroughSession = true
+            super.keyDown(with: event)
+            typingThroughSession = false
+            if session != nil { requestCompletion() }
+        }
+    }
+
+    override func setSelectedRanges(_ ranges: [NSValue], affinity: NSSelectionAffinity, stillSelecting stillSelectingFlag: Bool) {
+        super.setSelectedRanges(ranges, affinity: affinity, stillSelecting: stillSelectingFlag)
+        guard !typingThroughSession, !applyingCompletion else { return }
+        let caret = selectedRange()
+        guard let last = lastCaret, caret != last else { return }
+        lastCaret = caret
+        scheduler.cancel()
+        if session != nil { close(.caretMoved) }
+    }
+
+    override func didChangeText() {
+        super.didChangeText()
+        textChanged()
+    }
+
+    // MARK: VoiceOver rotor (EditorRotor.swift)
+
+    /// Headings/environments rotor search over this view's text; created on
+    /// first use so views that never reach VoiceOver pay nothing.
+    private(set) lazy var rotorSearch = EditorRotorSearch(textView: self)
+
+    override func accessibilityCustomRotors() -> [NSAccessibilityCustomRotor] {
+        rotorSearch.rotors + (super.accessibilityCustomRotors() ?? [])
+    }
+
+    /// Programmatic replacement (`string =`, the owner's `replaceCharacters`)
+    /// does not call `didChangeText`; the storage notification covers it.
+    private func observeStorageIfNeeded() {
+        guard storageObserver == nil, let storage = textStorage else { return }
+        storageObserver = NotificationCenter.default.addObserver(forName: NSTextStorage.didProcessEditingNotification,
+                                                                 object: storage, queue: nil) { [weak self] note in
+            guard let storage = note.object as? NSTextStorage, storage.editedMask.contains(.editedCharacters) else { return }
+            self?.textChanged()
+        }
+    }
+
+    private func textChanged() {
+        guard !typingThroughSession, !applyingCompletion else { return }
+        scheduler.cancel()
+        if session != nil { close(.textChanged) }
+    }
+
+    override func resignFirstResponder() -> Bool {
+        let ok = super.resignFirstResponder()
+        if ok, session != nil { scheduler.cancel(); close(.resignedFirstResponder) }
+        return ok
     }
 }

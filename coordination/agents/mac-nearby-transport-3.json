@@ -1,0 +1,37 @@
+{
+  "agent_id": "mac-nearby-transport-3",
+  "allocation_id": "claude-mac20x-nearby-transport-3",
+  "assignment_acknowledgements": {},
+  "branch": "agent/mac-nearby-transport-3/lan-advertise",
+  "capabilities": [
+    "swift",
+    "network-framework",
+    "bonjour",
+    "xctest"
+  ],
+  "code_revision": "63557959",
+  "eta_minutes": {
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 10
+  },
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "abbe88a5275b89d99357815846de3cbe76a91810",
+  "next_action": "Parent reviews and merges the branch into mac-shell; no parent-retained file diffs requested",
+  "reviewed_peers": {
+    "origin/agent/mac-claude-a/mac-shell": {
+      "sha": "9ba9851c",
+      "reviewed_utc": "2026-09-12T18:28:00Z",
+      "adaptation": "Merged 9ba9851c forward (font-lane handback, mac-live attribution evidence); no overlap with Nearby*/Pairing files, clean merge, swift build clean"
+    }
+  },
+  "schema_version": 1,
+  "state": "ready_for_integration",
+  "summary": "agent/mac-nearby-transport-3/lan-advertise: NearbyLANInterfaceTests (5) measure the all-interface listener on the Mac's real en* IPv4 + link-local IPv6 addresses (interface-scoped client, Bonjour per interface, per-interface DNSServiceResolve, wrong-key/foreign-fp refusal, reconnect via a second address, frame timeout 0.51 s on en0/en9); NearbyState owns the ack memory across stopAdvertising and persists acknowledged entries (bounded 64) with the pairing record, seeded on relaunch; NearbyAckPersistenceTests (4)",
+  "tool": "Claude Code subagent (parent mac-claude-a)",
+  "updated_utc": "2026-09-12T18:30:00Z",
+  "usage": {
+    "evidence": "63557959: swift build clean; NearbyAckPersistenceTests 4/4; NearbyLANInterfaceTests 4/5 + 1 load-aware skip (load 59.5). c1167c8f: 5/5 + 4/4, Nearby|Pairing|Capture 146/0 failures",
+    "status": "Shared Claude Max quota with parent mac-claude-a; no purchases"
+  }
+}

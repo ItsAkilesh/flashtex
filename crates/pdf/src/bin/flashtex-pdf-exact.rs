@@ -126,6 +126,14 @@ fn from_v2(args: &[&str]) -> Result<u8, String> {
         report.rules,
         rendered.bytes.len()
     );
+    eprintln!(
+        "note: searchable text: {} word gap(s) of >= {}/1000 em, {} ambiguous gap(s) in [{}, {})/1000 em (docs/proposals/pdf-searchable-text.md)",
+        report.word_gaps,
+        flashtex_pdf::v2::WORD_GAP_EM,
+        report.ambiguous_gaps,
+        flashtex_pdf::v2::CHAR_GAP_EM,
+        flashtex_pdf::v2::WORD_GAP_EM
+    );
     Ok(0)
 }
 
