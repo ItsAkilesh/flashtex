@@ -95,3 +95,6 @@ Integrated18335688/report7943d17e. Commander reran --historical audit without wo
 
 ## Sender and native review integration
 Integrated dfa69e19, runtime1027d3ae and renderer a177cc3c. Independent five sender lifecycle tests pass. Child error surfaces after existing blocked Client.read deadline (up to15s), not immediate interrupt; helper reap failure does not prove all handles cleaned. Root adding fragmented large-transfer gate before one authorized quiet-window pair; no other heavy job. Native census correction and patch-only scope clarification recorded in RESOURCES. GH31 source matches fix but Mac adoption/evidence pending; GH36 remains no app-only acceptance.
+
+
+Sender fragmented-transfer f240daec integrated; all six independent Python lifecycle tests pass. Root one approved processsender pair terminal28584/90464, exact guards pass; artifacts publishing, no repeat authorized. Reported send lateness0.105/0.092ms, final80.34/141.40ms current/history onepair notcausal/native. Renderer discovered actual producer0b09be57 discovery at7ca34cec; oldhandoff not proof but this separateownercommit is source evidence. Packagingref stillabsent, override ordering and actualsealedapp acceptance pending. Runtime FT049r29 awaits publishedpair independentaudit.
