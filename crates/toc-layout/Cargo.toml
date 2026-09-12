@@ -10,3 +10,9 @@ name = "flashtex_toc_layout"
 path = "src/lib.rs"
 
 [dependencies]
+
+# Real-producer integration fixture only (tests/); the library itself still
+# has zero dependencies. See tests/support/mod.rs for the grep evidence that
+# no other crate exposes prebuilt section/page records to consume instead.
+[dev-dependencies]
+flashtex-compiler = { path = "../compiler" }
