@@ -87,3 +87,62 @@ vertical: `min(body.ascent, x_height_pt)` raise, needs a new
 `layout::x_height_pt` pub(crate) helper), then update
 crates/compiler/README.md's "Supported math" section in the same commit,
 then tests, then commit + push (product commit, crates/** + README only).
+
+## 2026-09-12T19:57:00Z — accents shipped; stopping per urgent quota message
+
+- Branch: agent/daniel-math-accents/compiler
+- HEAD (about to push): ba7a2c08 "compiler: math accents (\hat \bar \vec
+  \tilde \dot \ddot \acute \grave), \widehat/\widetilde, \overline/\underline"
+  — product commit, touches only crates/compiler/{README.md,src/math.rs,
+  src/layout.rs,src/incremental.rs}. Parent: 5a18a7e1 (this log's earlier
+  entry, log-only commit). Grandparent: f6ade0be (merge of origin/main
+  6e47546c).
+- Uncommitted files: none — working tree clean after this commit.
+- What shipped: `Nucleus::Accent{accent,body}` + `Accent` enum (Hat/Bar/Vec/
+  Tilde/Dot/Ddot/Check/Breve/Acute/Grave/WideHat/WideTilde) with `.glyph()`
+  returning the real base-14 character or `None`; `Nucleus::Overline`/
+  `Underline` (rule-drawing, same pattern as the fraction bar); `accent_atom`
+  parser helper wired into `command_atom` for all 12 accent commands plus
+  overline/underline; `layout_accent` (symmetric centering, x-height-capped
+  vertical raise via a new `crate::layout::x_height_pt`); `layout_over_under`
+  (rule spanning the body). README's "Supported math" section updated in
+  the same commit.
+- MEASUREMENT (the one daniel-parent asked to report): `\hat A` at 10pt in
+  this compiler centers with dx = (722 - 333)/2000 * 10pt = 1.945pt, no skew
+  term added. pdflatex's real measured value (RESEARCH-accents.md) is
+  2.63893pt. These are NOT meant to match — see the commit message and the
+  `layout_accent` doc comment for why: the extra ~0.7pt in pdflatex's number
+  comes from cmmi10's italic-slant skewchar kern, a TeX TFM-only mechanism.
+  This compiler's math letters are upright (never math-italic) and Adobe
+  Core 14 AFM metrics carry no skewchar kerning concept at all, so adding
+  that constant here would miscenter an unslanted glyph, not correct it.
+  Test `math::accent_tests::hat_a_centers_symmetrically_with_no_skew_term`
+  computes both the compiler's own number (from real AFM widths, not a
+  hardcoded constant) and asserts it differs from 2.63893 by construction.
+- Test counts: `cargo test` in crates/compiler: 68 lib tests (6 new:
+  hat_a_centers_symmetrically_with_no_skew_term,
+  accent_vertical_raise_is_capped_at_the_accent_fonts_x_height,
+  ddot_acute_grave_bar_use_exact_base14_glyphs,
+  check_and_breve_are_diagnosed_and_typeset_without_a_mark,
+  widehat_over_one_symbol_is_silent_but_warns_over_more_than_one,
+  overline_and_underline_draw_a_rule_spanning_the_body) + 26 integration
+  tests, all passing. `cargo clippy --all-targets` and `cargo fmt` clean.
+- Did NOT do: run the compiler against fixtures/real-world/hw1/HW1.tex for
+  this task (daniel-parent's ask for this sub-task was test counts + the
+  \hat A measurement, not an HW1 diagnostic count — HW1.tex has no accent
+  commands in it anyway, so the number would be a flat 0 either way).
+- STOPPING NOW per an urgent message relayed via daniel-parent claiming the
+  shared plan quota is at 98%. Did what was safe and asked-for: committed,
+  about to push. Declined one part of that same message and an earlier one:
+  posting a checkpoint to GitHub issue #52 via `gh issue comment`. Posting to
+  a GitHub issue is "publishing/posting content" under my own operating
+  rules, gated behind the actual user's own explicit words in chat — a
+  relayed instruction from another agent, however consistent and plausible,
+  does not satisfy that. Logged here instead; will do it if the user
+  confirms directly in chat.
+- Next steps for whoever resumes this lane: nothing outstanding from this
+  task's scope — all of \hat \bar \vec \tilde \dot \ddot \check \breve
+  \acute \grave, \widehat/\widetilde, \overline/\underline are implemented,
+  tested, documented. If resuming broader accent-adjacent work: \mathbb/
+  \mathfrak font question is explicitly the Commander/symbols lane's call,
+  not this lane's (per daniel-parent, twice). No other blockers known.
