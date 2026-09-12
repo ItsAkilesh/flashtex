@@ -13,17 +13,17 @@
   "capabilities": [
     "Preview helper serialization and latency"
   ],
-  "code_revision": "3474221946b45d0fb3da83a42d54a541c0ea22b0",
+  "code_revision": "6cd4d1ca0450216070e1c76c8f2995b951abb297",
   "eta_minutes": null,
   "machine": "linux-primary",
   "main_integrated_through": "ccd474f46061e73555cef6ea814f457663be8d91",
-  "next_action": "Consume runtime newerproducer correctness and bounded display profile; choose measured helper optimization, maintain native defaultOFF.",
+  "next_action": "Resume correctness/profile work after Commander verifies witness and quota recovery; use nonincremental local builds to avoid rebuilding large disposable caches.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "Added opt-in eventless>=1ms poll diagnostics to expose candidate-only owner work. Strictlint pass; current resume packet refreshed. Reclaimed766MiB own idle helper incremental cache after disk quota report; no binaries or shared artifacts removed.",
+  "summary": "Diskquota recovery: reclaimed606MiB additional own idle runtime/ledger incremental caches, after prior766MiB helper cache. All source, binaries, peer worktrees and evidence retained. Commander notified for witness recovery; all4 retained agent handles running.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T11:21:02Z",
+  "updated_utc": "2026-09-12T11:23:02Z",
   "usage": {
     "status": "unknown"
   }

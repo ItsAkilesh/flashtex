@@ -48,3 +48,12 @@ none count as successful full rendering. Keep display/history opt-ins default OF
 All source/history/receipt/permanent-ID semantics remain unchanged. No page dropping,
 metadata repair or silent fallback to reference compiler. Preserve direct Git
 Cursor-quota exception and truthful implementation/executor/coauthor trailers.
+
+Disk-quota recovery checkpoint: after verifying no cargo/rustc process in this
+worktree, removed only generated target/debug/incremental directories for
+preview-controller (766 MiB), document-runtime (141 MiB), and edit-ledger (465 MiB).
+All executable artifacts, source and benchmark evidence remain. Runtime owner and
+Commander were notified. Use CARGO_INCREMENTAL=0 for subsequent local verification
+builds while quota pressure persists; do not change global Cargo settings. Do not
+infer witness recovery from free-space reports: Commander must verify its exact
+service/process and journal after the observed OSError122 failure.
