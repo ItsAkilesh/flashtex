@@ -16,15 +16,15 @@
     "rust",
     "macos-simulators"
   ],
-  "code_revision": "40d53b784876d128b7d54f5a10438c71d7b1b756",
+  "code_revision": "6f4ee944051ffb2346fe0724532b95dc03607eb2",
   "eta_minutes": {
     "likely": 120,
     "optimistic": 60,
     "pessimistic": 240
   },
   "machine": "mac-m1max-a",
-  "main_integrated_through": "277a0910811fdb27bd156ecd92b92b50f277c750",
-  "next_action": "Integrate lanes as they land; native historical consumer when the helper publishes; unblock live exact export on the producer raw-sha256 fix",
+  "main_integrated_through": "3ac69c3ed109fa0902af39f4e2187d572a61c075",
+  "next_action": "Integrate lanes as they land; hybrid release policy measurement; render-pipeline incremental cache; packaging signing groundwork",
   "reviewed_peers": {
     "origin/agent/aarush-macbook/companion-capture": {
       "adaptation": "Peer cannot run xcodebuild; will verify their branch from this Mac. No contract change.",
@@ -47,18 +47,18 @@
       "sha": "25a92a9c591a92a3d49071e536ecf8f129112c24"
     },
     "origin/main": {
-      "adaptation": "main through f0f4877 read (compiler e75741e serializer, helper 4db4a7a, font-resources TTC/required_tfm notes for other lanes); rebuilt helpers and re-measured; no apps/mac interface change",
-      "reviewed_utc": "2026-09-12T09:51:52Z",
-      "sha": "f0f48776d82c7f410b02305429047a7fd3bf0ce6"
+      "adaptation": "main through 60c40c1 read: 2f2605d history cache consumed and re-measured; #29 (helper frame ceiling) is runtime-owned \u2014 the native FastJSON/16 MiB client bound is unaffected; no apps/mac interface change",
+      "reviewed_utc": "2026-09-12T10:37:00Z",
+      "sha": "60c40c12f3c8db2050694c9f76817db909853338"
     }
   },
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "FT-003 rev 7: mac-shell 40d53b7 \u2014 381/381 native tests with eight real helpers; 15 lane deliveries integrated; exact PDF export (File > Export PDF (exact, v2)) wired; direct route 60 KB 96/113/119 ms p50/p95/p99 with compiler e75741e; helper 191/262/273; completed-snapshot contract ACCEPTED with conditions (5645120420); census 16 running child sessions (5645147878).",
+  "summary": "FT-003 rev 7: mac-shell 6f4ee94 \u2014 456/456 native tests with eight real helpers; 21 lane deliveries integrated (latest: bridge/ledger relaunch, multi-file projects, reviewed reload, helper navigation, completion vocabulary, IME, explanations, historical consumer OFF by default, accessibility help/landmarks, typing-bench all routes); render-pipeline geometry 0.00/0.01 pt vs MacTeX on text+math; helper 2f2605d re-measured (historical mode still starves current paints on 60 KB: 2.9 s p50 \u2192 OFF); LM Math vendored; boundary oracle run matched 5/5.",
   "tool": "Claude Code",
-  "updated_utc": "2026-09-12T09:51:52Z",
+  "updated_utc": "2026-09-12T10:37:00Z",
   "usage": {
-    "evidence": "docs/evidence/typing-bench-2026-09-12T094500Z.md, T094540Z.md; issue #2 5645120420, 5645147878",
-    "status": "Claude Max 20x usable; 16 subagents + parent; no overage"
+    "evidence": "docs/evidence/historical-preview-2026-09-12T1029Z/README.md; docs/evidence/typing-bench-2026-09-12T102033Z.md; tools/native-validation/mac-live/reports/20260912T095354Z.md",
+    "status": "Claude Max 20x usable; 11 subagents + parent; no overage"
   }
 }
