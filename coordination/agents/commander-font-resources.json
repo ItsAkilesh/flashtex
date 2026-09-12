@@ -13,7 +13,7 @@
   "capabilities": [
     "rust-font-resources"
   ],
-  "code_revision": "5e8d30a39b66bf0f61d97c04343a8f3335a8e67d",
+  "code_revision": "7fc273c5f0cc74ffa0d15fb0a190335e162aaf95",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
@@ -21,13 +21,13 @@
   },
   "machine": "linux-primary",
   "main_integrated_through": "1b53ec22cb376309e868962fcf2604263cdb3016",
-  "next_action": "Commander integrates passive checkpoint; await TTC owner publication or oracle adjudication/next bounded task. No dirty product files/paid calls/peer writes or pending operations.",
+  "next_action": "Commander integrate record-stage checkpoint; TTC only after owner published patch, independent boundary oracle pending. No peer writes/provider calls/pending operations. Await next bounded task.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "Published5e8d30a passive binary eexec inspection: seed55665/prefix4, bounded immutable decrypted output, full encrypted PFB/license identity and original ranges retained, ambiguous ASCIIhex prefixes refused. Synthetic known vector at all record splits and actual lmr10 ciphertext02262ab3 ->112949bytes SHA bd88b122 pass; full tests/clippy clean. No PS execution/dictionary/outline activation. TTC awaits peer publication.",
+  "summary": "Published strict passive Type1 record extraction: exact reader definitions/literal lengths, bounded metadata/counts, original names/subrindices/plaintext ranges/resource identity; unknown executable forms refuse. Shared seed4330/lenIV decryption passes Adobe published vector. Actual LM822glyphs/882subrs decrypt; pinned A/notdef digests, all tests/clippy pass. Opaque OtherSubrs exact known declaration only; no execution/outlines.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T10:08:59Z",
+  "updated_utc": "2026-09-12T10:14:36Z",
   "usage": {
     "evidence": "crates/font-resources/README.md; test suite; installed font SHA pinned.",
     "status": "Hosted allocation; no external provider calls; account remainder unknown."
