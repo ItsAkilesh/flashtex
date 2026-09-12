@@ -122,3 +122,7 @@ Integrated9f4a3105 immutablefailedcapture;17compressed/raw hashes pass. Independ
 
 ## Consumer compatibility and failed-prefix clarification integrated
 Integrated renderer57e37a1b/report92ff8c37 and runtimefailedprefix4052d311/e2eee183. Independentnew10/12PDF/text hashes pass; reported99/20hit/carettopdeltas each minusonetick retained, not fulldisplayparity. Runtime49rowprefixaudit passed previously; proxyinputlognotchildreceipt/outputlogprefixnotpartialemission. Rootpumpfix4deterministicfaulttests reportedpass, finalreviewpending, no workloadrerun. NewMacpackaging7be5396d/product4f06cdb3 published sandboxdirect/helper evidence plus9pinned/23supplementarymetrics; rendererreview exactsource/artifacts and overrideprecedencebeforeGH36closure. No authoritativeSwiftmerge yet. Local/tmpquota laterobservation retained; useown/home scratch, no pinnedcleanup.
+
+
+## Proxy fault propagation tested and one correctness recovery authorized
+Integrated77c8cab1, independentfivefaulttestsPASS under/home. Best-effortnonblockingFIFOstderr uses independentfdflags; regularfile/socketscope notuniversaldeadline. ExistingPDEATH termination notallchildreapingclaim; reopenedprestoplogcoverage explicitlypartial. AuthorizeONE same298helper/158producer corrected-harness fullcorrectnesscapture under/home, exactsource/durable/reopen/clean/receipts; no performancecomparison or originalcause inference. Failed9farchivepreserved. RendererFT023r22 reviews actualMacpackaging7be sandboxartifacts and overridepriority, no nativeauthoritativeedit.

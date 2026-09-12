@@ -9,16 +9,16 @@
   "branch": "agent/commander-preview-performance/preview-performance",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "6bd43ca976bb9b1af5f0856ca861727b32868a50",
-  "objective": "Propagate capture-proxy output pump failures as source-free stage type errno and terminal exit",
+  "input_main_sha": "c314b86620f8a209d950a14b093aff47c91e4a75",
+  "objective": "Run one corrected-harness end-to-end correctness gate under owned home scratch with unchanged helper producer and source",
   "owned_paths": [
     "crates/preview-controller",
     "crates/edit-ledger"
   ],
-  "revision": 28,
+  "revision": 29,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-048",
   "timebox_minutes": 40,
-  "updated_utc": "2026-09-12T13:57:42.777424+00:00"
+  "updated_utc": "2026-09-12T14:02:06.894794+00:00"
 }

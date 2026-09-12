@@ -11,15 +11,15 @@
   "branch": "agent/commander-runtime-display/display-runtime",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "d5a13c42f627ea0776d67b41a82bafd96711bc87",
-  "objective": "Review proxy pump exception propagation child lifetime and retained error evidence without peer edits",
+  "input_main_sha": "c314b86620f8a209d950a14b093aff47c91e4a75",
+  "objective": "Review exact published proxy fault propagation and bounded diagnostic limitations",
   "owned_paths": [
     "crates/document-runtime"
   ],
-  "revision": 36,
+  "revision": 37,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-049",
   "timebox_minutes": 40,
-  "updated_utc": "2026-09-12T14:01:47Z"
+  "updated_utc": "2026-09-12T14:02:06.894794+00:00"
 }

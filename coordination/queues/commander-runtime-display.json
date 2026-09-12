@@ -1,6 +1,6 @@
 {
   "agent_id": "commander-runtime-display",
-  "next_index": 2,
+  "next_index": 1,
   "schema_version": 1,
   "steps": [
     {
@@ -12,8 +12,8 @@
         "Publish bounded candidate API for existing helper owner; if deep validation is deferred, the type and contract must remain explicitly untrusted until existing native/core validator accepts it"
       ],
       "allocation_id": "hosted-openai-product",
-      "name": "Independently verify failed capture prefix and missing reopen acceptance from immutable archived artifacts",
-      "objective": "Independently verify failed capture prefix and missing reopen acceptance from immutable archived artifacts",
+      "name": "Review exact published proxy fault propagation and bounded diagnostic limitations",
+      "objective": "Review exact published proxy fault propagation and bounded diagnostic limitations",
       "owned_paths": [
         "crates/document-runtime"
       ],
@@ -28,8 +28,8 @@
         "Publish bounded candidate API for existing helper owner; if deep validation is deferred, the type and contract must remain explicitly untrusted until existing native/core validator accepts it"
       ],
       "allocation_id": "hosted-openai-product",
-      "name": "Review proxy pump exception propagation child lifetime and retained error evidence without peer edits",
-      "objective": "Review proxy pump exception propagation child lifetime and retained error evidence without peer edits",
+      "name": "Independently audit one corrected-harness correctness capture including reopened source and clean final request response",
+      "objective": "Independently audit one corrected-harness correctness capture including reopened source and clean final request response",
       "owned_paths": [
         "crates/document-runtime"
       ],
@@ -44,8 +44,8 @@
         "Publish bounded candidate API for existing helper owner; if deep validation is deferred, the type and contract must remain explicitly untrusted until existing native/core validator accepts it"
       ],
       "allocation_id": "hosted-openai-product",
-      "name": "Publish exact failure boundaries and deterministic-test review without inferring original cause or rerunning throughput",
-      "objective": "Publish exact failure boundaries and deterministic-test review without inferring original cause or rerunning throughput",
+      "name": "Preserve original failed capture and distinguish new acceptance from proof of original cause without workload rerun",
+      "objective": "Preserve original failed capture and distinguish new acceptance from proof of original cause without workload rerun",
       "owned_paths": [
         "crates/document-runtime"
       ],

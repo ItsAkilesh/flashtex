@@ -4,8 +4,8 @@
   "schema_version": 1,
   "steps": [
     {
-      "name": "Propagate capture-proxy output pump failures as source-free stage type errno and terminal exit",
-      "objective": "Propagate capture-proxy output pump failures as source-free stage type errno and terminal exit",
+      "name": "Run one corrected-harness end-to-end correctness gate under owned home scratch with unchanged helper producer and source",
+      "objective": "Run one corrected-harness end-to-end correctness gate under owned home scratch with unchanged helper producer and source",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"
@@ -19,8 +19,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Retain reopened helper stderr and events and verify deterministic injected read log and forward faults without compiler rerun",
-      "objective": "Retain reopened helper stderr and events and verify deterministic injected read log and forward faults without compiler rerun",
+      "name": "Verify exact durable reopen clean final and permanent receipts while retaining proxy error and reopen evidence",
+      "objective": "Verify exact durable reopen clean final and permanent receipts while retaining proxy error and reopen evidence",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"
@@ -34,8 +34,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Publish bounded diagnostic repair while preserving original failed capture and unknown cause",
-      "objective": "Publish bounded diagnostic repair while preserving original failed capture and unknown cause",
+      "name": "Publish successful or failed acceptance without performance comparison or inference about prior failure cause",
+      "objective": "Publish successful or failed acceptance without performance comparison or inference about prior failure cause",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"
