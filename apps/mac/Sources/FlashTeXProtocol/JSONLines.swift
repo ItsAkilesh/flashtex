@@ -36,17 +36,32 @@ public extension RuntimeV1 {
 }
 
 /// Splits a byte stream into complete lines, keeping a partial trailing line.
+/// Scanning resumes where the previous append stopped, so a long unterminated
+/// line costs O(n) overall rather than O(n²).
 public struct LineSplitter {
     private var buffer = Data()
+    private var scanned = 0
     public init() {}
 
     public mutating func append(_ data: Data) -> [Data] {
         buffer.append(data)
         var lines: [Data] = []
-        while let nl = buffer.firstIndex(of: 0x0A) {
-            lines.append(buffer.subdata(in: buffer.startIndex..<nl))
-            buffer.removeSubrange(buffer.startIndex...nl)
+        var start = 0
+        buffer.withUnsafeBytes { (raw: UnsafeRawBufferPointer) in
+            var i = scanned
+            let n = raw.count
+            while i < n {
+                if raw[i] == 0x0A {
+                    lines.append(Data(raw[start..<i]))
+                    start = i + 1
+                }
+                i += 1
+            }
         }
+        if start > 0 {
+            buffer.removeSubrange(0..<start)
+        }
+        scanned = buffer.count
         return lines
     }
 

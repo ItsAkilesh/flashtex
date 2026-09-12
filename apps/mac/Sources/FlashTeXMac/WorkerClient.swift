@@ -21,6 +21,8 @@ final class WorkerClient {
     private let queue: DispatchQueue
     private let handler: (Event) -> Void
     private let lock = NSLock()
+    private let stateLock = NSLock()
+    private var violated = false
 
     init(executable: URL, arguments: [String] = [], queue: DispatchQueue = .main,
          handler: @escaping (Event) -> Void) throws {
@@ -45,6 +47,14 @@ final class WorkerClient {
             guard let self else { return }
             self.stdout.fileHandleForReading.readabilityHandler = nil
             self.stderr.fileHandleForReading.readabilityHandler = nil
+            // Drain whatever is left, then flag an unterminated trailing line:
+            // a partial JSON object at EOF is a protocol failure, not silence.
+            let rest = self.stdout.fileHandleForReading.readDataToEndOfFile()
+            self.consume(rest)
+            let pending = self.stateLock.withLock { self.splitter.pendingBytes }
+            if pending > 0 {
+                self.queue.async { self.handler(.protocolViolation("worker exited with \(pending) unterminated trailing bytes")) }
+            }
             self.queue.async { self.handler(.exited(p.terminationStatus)) }
         }
         try process.run()
@@ -65,16 +75,29 @@ final class WorkerClient {
 
     private func consume(_ data: Data) {
         guard !data.isEmpty else { return }
-        let lines = splitter.append(data)
-        if splitter.pendingBytes > RuntimeV1.maxLineBytes {
-            queue.async { self.handler(.protocolViolation("line exceeds \(RuntimeV1.maxLineBytes) bytes")) }
-            terminate()
+        let (lines, pending, alreadyViolated) = stateLock.withLock {
+            (splitter.append(data), splitter.pendingBytes, violated)
+        }
+        guard !alreadyViolated else { return }
+        // Both a complete oversized line and an oversized partial buffer are rejected.
+        if let big = lines.first(where: { $0.count > RuntimeV1.maxLineBytes }) {
+            violate("line of \(big.count) bytes exceeds the \(RuntimeV1.maxLineBytes)-byte limit")
+            return
+        }
+        if pending > RuntimeV1.maxLineBytes {
+            violate("unterminated line exceeds the \(RuntimeV1.maxLineBytes)-byte limit")
             return
         }
         for line in lines where !line.isEmpty {
             let event = Self.decode(line)
             queue.async { self.handler(event) }
         }
+    }
+
+    private func violate(_ message: String) {
+        stateLock.withLock { violated = true; splitter = LineSplitter() }
+        queue.async { self.handler(.protocolViolation(message)) }
+        terminate()
     }
 
     static func decode(_ line: Data) -> Event {

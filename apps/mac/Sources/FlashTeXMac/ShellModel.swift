@@ -41,7 +41,8 @@ final class ShellModel: ObservableObject {
     /// Text each document had when the current `result` was produced, so stale
     /// byte offsets can be rebased (or refused) after edits.
     private(set) var compiledDocuments: [String: String] = [:]
-    private var inFlightRequests: [String: (documents: [RuntimeV1.Document], sentAt: Date)] = [:]
+    struct InFlight { var projectId: String; var revision: Int; var documents: [RuntimeV1.Document]; var sentAt: Date }
+    private(set) var inFlightRequests: [String: InFlight] = [:]
     @Published var autoCompile = true
     @Published private(set) var lastLatencyMs: Double?
     @Published private(set) var latenciesMs: [Double] = []
@@ -318,7 +319,8 @@ final class ShellModel: ObservableObject {
             documents: documents)
         do {
             try worker.send(request, id: id)
-            inFlightRequests[id] = (documents, Date())
+            inFlightRequests[id] = InFlight(projectId: request.projectId, revision: request.revision,
+                                            documents: documents, sentAt: Date())
             inFlightRevision = editorRevision
             workerStatus = "compiling revision \(editorRevision) (\(id))…"
         } catch {
@@ -332,23 +334,36 @@ final class ShellModel: ObservableObject {
         switch event {
         case .result(let env):
             let incoming = env.payload
+            // Correlate to the exact in-flight request: id, project, and revision must
+            // all match. Unsolicited or mismatched results are logged and never applied.
+            guard let sent = inFlightRequests[env.id] else {
+                log("ignored compile_result with unknown id \(env.id) (revision \(incoming.revision))")
+                return
+            }
+            guard incoming.projectId == sent.projectId, incoming.revision == sent.revision else {
+                inFlightRequests.removeValue(forKey: env.id)
+                if inFlightRevision == sent.revision { inFlightRevision = nil }
+                let msg = "compile_result \(env.id) reports project \(incoming.projectId) revision \(incoming.revision); request was project \(sent.projectId) revision \(sent.revision)"
+                log("rejected mismatched " + msg)
+                workerStatus = "protocol violation: " + msg
+                return
+            }
+            inFlightRequests.removeValue(forKey: env.id)
             // Contract: never replace a newer preview with an older revision.
             if let current = result, previewSource != .fixture, incoming.revision < current.revision {
                 log("ignored stale compile_result revision \(incoming.revision) < \(current.revision)")
+                if inFlightRevision == incoming.revision { inFlightRevision = nil }
                 return
             }
             result = incoming
             resultID = env.id
             previewSource = .worker(worker?.executable.lastPathComponent ?? "worker")
-            var latencyText = ""
-            if let sent = inFlightRequests.removeValue(forKey: env.id) {
-                compiledDocuments = Dictionary(uniqueKeysWithValues: sent.documents.map { ($0.path, $0.text) })
-                let ms = Date().timeIntervalSince(sent.sentAt) * 1000
-                lastLatencyMs = ms
-                latenciesMs.append(ms)
-                if latenciesMs.count > 100 { latenciesMs.removeFirst(latenciesMs.count - 100) }
-                latencyText = String(format: " in %.0f ms", ms)
-            }
+            compiledDocuments = Dictionary(uniqueKeysWithValues: sent.documents.map { ($0.path, $0.text) })
+            let ms = Date().timeIntervalSince(sent.sentAt) * 1000
+            lastLatencyMs = ms
+            latenciesMs.append(ms)
+            if latenciesMs.count > 100 { latenciesMs.removeFirst(latenciesMs.count - 100) }
+            let latencyText = String(format: " in %.0f ms", ms)
             if inFlightRevision == incoming.revision { inFlightRevision = nil }
             workerStatus = "revision \(incoming.revision): \(incoming.status.rawValue), \(incoming.diagnostics.count) diagnostics\(latencyText)"
             selection = nil

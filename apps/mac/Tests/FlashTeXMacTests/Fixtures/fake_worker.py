@@ -28,6 +28,25 @@ for raw in sys.stdin:
     if text.startswith("%garbage"):
         print("this is not json", flush=True)
         continue
+    if text.startswith("%huge"):
+        # One complete line larger than the shell's 16 MiB cap.
+        sys.stdout.write('{"protocol_version":1,"id":"%s","type":"compile_result","payload":{"x":"' % env["id"])
+        sys.stdout.write("x" * (16 * 1024 * 1024 + 64))
+        sys.stdout.write('"}}\n')
+        sys.stdout.flush()
+        continue
+    if text.startswith("%trailing"):
+        # Partial JSON with no newline, then exit: unterminated bytes at EOF.
+        sys.stdout.write('{"protocol_version":1,"id":"%s","type":"compile_result","pay' % env["id"])
+        sys.stdout.flush()
+        sys.exit(0)
+    if text.startswith("%wrongid"):
+        # Valid-looking result that answers a request nobody sent.
+        env["id"] = "never-sent"
+        text = text[len("%wrongid"):]
+    if text.startswith("%wrongrev"):
+        p["revision"] = p["revision"] + 1000
+        text = text[len("%wrongrev"):]
     first = text.split("\n", 1)[0]
     end = len(first.encode("utf-8"))
     print("fake_worker: compiling revision %d" % p["revision"], file=sys.stderr, flush=True)

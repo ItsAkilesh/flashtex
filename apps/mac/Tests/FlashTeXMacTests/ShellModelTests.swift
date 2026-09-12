@@ -84,6 +84,46 @@ final class ShellModelWorkerTests: XCTestCase {
         XCTAssertFalse(model.workerAttached)
     }
 
+    func testUnsolicitedAndMismatchedResultsAreNeverApplied() async throws {
+        let model = ShellModel()
+        model.attachWorker(at: WorkerClientTests.python, arguments: [WorkerClientTests.fakeWorker.path])
+        model.autoCompile = false
+        let fixtureResult = model.result
+
+        // 1. A result whose id was never sent: ignored, fixture stays.
+        let unsolicited = RuntimeV1.Envelope(protocolVersion: 1, id: "never-sent", type: "compile_result",
+            payload: RuntimeV1.CompileResult(projectId: "demo", revision: 99, status: .ok, pages: [], diagnostics: [], pdfPath: nil))
+        model.handleForTesting(.result(unsolicited))
+        XCTAssertEqual(model.result, fixtureResult)
+        XCTAssertTrue(model.isFixture)
+        XCTAssertTrue(model.workerLog.last?.contains("unknown id") == true)
+
+        // 2. Worker answers with the wrong id for a real request: not applied, request stays pending until timeout logic (here: still in flight).
+        model.updateActiveText("%wrongid first\n")
+        model.compile()
+        try await Task.sleep(nanoseconds: 400_000_000)
+        XCTAssertTrue(model.isFixture, "result with unknown id must not be applied")
+        XCTAssertNotNil(model.inFlightRevision)
+        model.detachWorker()
+
+        // 3. Right id but wrong revision/project: rejected as a protocol violation.
+        model.attachWorker(at: WorkerClientTests.python, arguments: [WorkerClientTests.fakeWorker.path])
+        model.updateActiveText("%wrongrev second\n")
+        model.compile()
+        try await waitUntil { model.inFlightRevision == nil }
+        XCTAssertTrue(model.isFixture, "mismatched revision must not be applied")
+        XCTAssertTrue(model.workerStatus.contains("protocol violation"), model.workerStatus)
+        XCTAssertTrue(model.inFlightRequests.isEmpty)
+
+        // 4. Same id, matching project and revision: applied.
+        model.updateActiveText("third\n")
+        model.compile()
+        try await waitUntil { model.inFlightRevision == nil }
+        XCTAssertFalse(model.isFixture)
+        XCTAssertEqual(model.result?.revision, model.editorRevision)
+        model.detachWorker()
+    }
+
     func testAutoCompileDebouncesAndCoalescesEdits() async throws {
         let model = ShellModel()
         model.attachWorker(at: WorkerClientTests.python, arguments: [WorkerClientTests.fakeWorker.path])

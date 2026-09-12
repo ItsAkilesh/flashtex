@@ -64,7 +64,12 @@ present. `⌘R` reloads.
   buffers as a `compile` envelope with the editor revision. The banner badge
   switches from `FIXTURE` to `WORKER`; an older `compile_result` never replaces a
   newer one. `error` envelopes, undecodable lines, unsupported versions, and worker
-  exit are reported in the banner. Oversized lines (>16 MiB) terminate the worker.
+  exit are reported in the banner. Any line over 16 MiB — complete or still
+  unterminated — is a protocol violation that terminates the worker, and a worker
+  that exits leaving unterminated trailing bytes is reported as a violation too.
+  A `compile_result` is applied only if its `id` matches an in-flight request and
+  its `project_id` and `revision` match that request; unsolicited or mismatched
+  results are logged and never shown.
 
 - Capture review and insertion (contract "Capture and insertion", Mac side):
   `Edit > Pin Insertion Point` (⌘⇧P) records the caret as a `destination_id`
@@ -141,7 +146,7 @@ banner shows; the shell rejects response lines over 16 MiB.
 
 - `FlashTeXProtocol` — Codable models for runtime v1 and byte-offset conversion.
 - `FlashTeXMac` — the app.
-- Tests (41): inline diagnostic marks (byte→UTF-16, rebase/drop, path filter,
+- Tests (44): oversized complete line, trailing bytes at EOF, unsolicited/mismatched result correlation; inline diagnostic marks (byte→UTF-16, rebase/drop, path filter,
   sample slice, temporary-attribute-only); Rust-writer export (gated on
   `FLASHTEX_PDF`), missing-binary error; source mapping (shift/refuse/multi-byte/expected-text), stale
   navigation refusal and rebase, auto-compile debounce/coalescing, latency; PDF export (fixture → 612×792 page containing the item text,

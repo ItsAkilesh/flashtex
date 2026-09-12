@@ -72,6 +72,39 @@ final class WorkerClientTests: XCTestCase {
         wait(for: [err, bad], timeout: 10)
     }
 
+    func testCompleteOversizedLineIsRejectedAndWorkerTerminated() throws {
+        let bad = expectation(description: "violation"), exited = expectation(description: "exited")
+        var message = ""
+        let client = try makeClient { event in
+            switch event {
+            case .protocolViolation(let m): message = m; bad.fulfill()
+            case .exited: exited.fulfill()
+            case .result: XCTFail("oversized line must not be delivered as a result")
+            default: break
+            }
+        }
+        try client.send(.init(projectId: "p", revision: 1, entryPath: "m", documents: [.init(path: "m", text: "%huge")]), id: "h1")
+        wait(for: [bad, exited], timeout: 30)
+        XCTAssertTrue(message.contains("exceeds"), message)
+        XCTAssertFalse(client.isRunning)
+    }
+
+    func testUnterminatedTrailingBytesAtEOFAreAViolation() throws {
+        let bad = expectation(description: "violation"), exited = expectation(description: "exited")
+        var message = ""
+        let client = try makeClient { event in
+            switch event {
+            case .protocolViolation(let m): message = m; bad.fulfill()
+            case .exited: exited.fulfill()
+            case .result: XCTFail("partial line must not be delivered")
+            default: break
+            }
+        }
+        try client.send(.init(projectId: "p", revision: 1, entryPath: "m", documents: [.init(path: "m", text: "%trailing")]), id: "t1")
+        wait(for: [bad, exited], timeout: 10)
+        XCTAssertTrue(message.contains("unterminated"), message)
+    }
+
     func testExitIsReported() throws {
         let exited = expectation(description: "exited")
         let client = try makeClient { if case .exited = $0 { exited.fulfill() } }
