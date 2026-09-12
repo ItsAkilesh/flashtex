@@ -13,7 +13,7 @@
   "capabilities": [
     "rust-font-resources"
   ],
-  "code_revision": "7fc273c5f0cc74ffa0d15fb0a190335e162aaf95",
+  "code_revision": "da0ab4a1ee8771ced2ee391d0a3af9968bb6e5ae",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
@@ -21,13 +21,13 @@
   },
   "machine": "linux-primary",
   "main_integrated_through": "1b53ec22cb376309e868962fcf2604263cdb3016",
-  "next_action": "Commander integrate record-stage checkpoint; TTC only after owner published patch, independent boundary oracle pending. No peer writes/provider calls/pending operations. Await next bounded task.",
+  "next_action": "Next blockers explicit hint metadata policy and exact division, then OtherSubrs/flex/seac only when separately assigned. TTC awaits existing owner publication; boundary oracle pending. Clean product checkpoint, no peer writes/providers/pending commands.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "Published strict passive Type1 record extraction: exact reader definitions/literal lengths, bounded metadata/counts, original names/subrindices/plaintext ranges/resource identity; unknown executable forms refuse. Shared seed4330/lenIV decryption passes Adobe published vector. Actual LM822glyphs/882subrs decrypt; pinned A/notdef digests, all tests/clippy pass. Opaque OtherSubrs exact known declaration only; no execution/outlines.",
+  "summary": "Publishedda0ab4a: exact Type1 width/move/line/cubic/closepath and bounded subroutine subset using shared geometry, preserving glyph/fullresource identity and command sourcechains. Synthetic width/cycle/stack/step/output tests and full suite/clippy pass. Actual pinned822glyph inventory6accepted (one marking path),353hstem/4vstem/4hstem3/455div unsupported; categories pinned. No PS/FontMatrix/PaintType/render activation.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T10:14:36Z",
+  "updated_utc": "2026-09-12T10:23:37Z",
   "usage": {
     "evidence": "crates/font-resources/README.md; test suite; installed font SHA pinned.",
     "status": "Hosted allocation; no external provider calls; account remainder unknown."
