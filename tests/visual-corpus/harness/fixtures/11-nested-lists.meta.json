@@ -1,0 +1,16 @@
+{
+  "fixture": "11-nested-lists.tex",
+  "purpose": "Nested itemize/enumerate: list indentation, bullets, numbering, vertical spacing.",
+  "expected_engines": [
+    "pdflatex",
+    "xelatex",
+    "lualatex"
+  ],
+  "flashtex_features": [
+    "itemize/enumerate (EXPECTED UNSUPPORTED by both current compiler builds)"
+  ],
+  "expected_unsupported": true,
+  "notes": "The oracle is still rendered; FlashTeX is expected to emit diagnostics and/or render the item text as plain paragraphs. Large deltas are the expected, documented gap.",
+  "page_size": "US letter 612x792pt (geometry default paper for article is letterpaper)",
+  "preamble_policy": "engine-specific apples-to-apples preamble is substituted by the harness; FlashTeX gets the body only"
+}

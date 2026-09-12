@@ -1,0 +1,16 @@
+{
+  "fixture": "16-heading-page-break.tex",
+  "purpose": "A section heading that lands at the bottom of page 1: LaTeX's club/widow and heading-keep rules move it to page 2.",
+  "expected_engines": [
+    "pdflatex",
+    "xelatex",
+    "lualatex"
+  ],
+  "flashtex_features": [
+    "\\section",
+    "page breaking (no keep-with-next expected)"
+  ],
+  "notes": "Where the heading falls is the whole point; compare page 1 bottom and page 2 top.",
+  "page_size": "US letter 612x792pt (geometry default paper for article is letterpaper)",
+  "preamble_policy": "engine-specific apples-to-apples preamble is substituted by the harness; FlashTeX gets the body only"
+}

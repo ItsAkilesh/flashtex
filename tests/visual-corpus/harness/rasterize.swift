@@ -27,6 +27,11 @@
 //       native preview capture. --mask-caption paints the preview's "page N"
 //       caption area (bottom-right 60x16 pt of the page) white.
 //
+//   rasterize annotate <in.png> <out.png> <footer text>
+//       Append a white footer band and draw the text (CoreText, Helvetica 11 px, up to
+//       two lines split at " | ") so the provenance travels inside the PNG pixels; the
+//       same text is also stored in the PNG tEXt/iTXt "Description" metadata.
+//
 //   rasterize window-id <owner name>
 //       JSON list of on-screen windows owned by that app (CGWindowList), no Accessibility.
 //
@@ -253,6 +258,48 @@ func cropScale(_ input: String, prefix: String, args: [String]) {
     print("{\"cropped_px\":[\(cropped.width),\(cropped.height)],\"out_px\":[\(tw),\(th)]}")
 }
 
+// MARK: annotate (provenance footer burned into overlay/heatmap PNGs)
+
+func annotate(_ input: String, _ output: String, _ text: String) {
+    guard let src = CGImageSourceCreateWithURL(URL(fileURLWithPath: input) as CFURL, nil),
+          let img = CGImageSourceCreateImageAtIndex(src, 0, nil) else { fail("cannot read \(input)") }
+    let w = img.width, h = img.height
+    let fontSize = max(9.0, min(11.0, Double(w) / 110.0))
+    let font = CTFontCreateWithName("Helvetica" as CFString, fontSize, nil)
+    // Split into lines that fit the width.
+    var lines: [String] = []
+    var current = ""
+    for part in text.components(separatedBy: " | ") {
+        let candidate = current.isEmpty ? part : current + " | " + part
+        let attr = NSAttributedString(string: candidate, attributes: [kCTFontAttributeName as NSAttributedString.Key: font])
+        if CTLineGetTypographicBounds(CTLineCreateWithAttributedString(attr), nil, nil, nil) > Double(w) - 8, !current.isEmpty {
+            lines.append(current); current = part
+        } else { current = candidate }
+    }
+    if !current.isEmpty { lines.append(current) }
+    let lineH = Int(fontSize * 1.35) + 1
+    let band = lineH * lines.count + 6
+    let ctx = makeContext(widthPx: w, heightPx: h + band)
+    ctx.draw(img, in: CGRect(x: 0, y: band, width: w, height: h))
+    ctx.setFillColor(CGColor(srgbRed: 0.85, green: 0.85, blue: 0.85, alpha: 1))
+    ctx.fill(CGRect(x: 0, y: band - 1, width: w, height: 1))
+    ctx.textMatrix = .identity
+    for (i, line) in lines.enumerated() {
+        let attr = NSAttributedString(string: line, attributes: [
+            kCTFontAttributeName as NSAttributedString.Key: font,
+            kCTForegroundColorAttributeName as NSAttributedString.Key: CGColor(srgbRed: 0.2, green: 0.2, blue: 0.2, alpha: 1)])
+        ctx.textPosition = CGPoint(x: 4, y: Double(band - 3 - lineH * (i + 1)) + fontSize * 0.3)
+        CTLineDraw(CTLineCreateWithAttributedString(attr), ctx)
+    }
+    guard let out = ctx.makeImage() else { fail("makeImage") }
+    guard let dest = CGImageDestinationCreateWithURL(URL(fileURLWithPath: output) as CFURL, UTType.png.identifier as CFString, 1, nil)
+    else { fail("cannot create \(output)") }
+    let png: [String: Any] = [kCGImagePropertyPNGDescription as String: text, kCGImagePropertyPNGTitle as String: "FlashTeX visual corpus evidence"]
+    CGImageDestinationAddImage(dest, out, [kCGImagePropertyPNGDictionary as String: png] as CFDictionary)
+    guard CGImageDestinationFinalize(dest) else { fail("cannot write \(output)") }
+    print("{\"lines\":\(lines.count),\"band_px\":\(band)}")
+}
+
 // MARK: window-id / find-page (native preview capture)
 
 func windowIDs(_ owner: String) {
@@ -379,6 +426,9 @@ case "crop-scale":
     cropScale(args[0], prefix: args[1], args: Array(args.dropFirst(2)))
 case "window-id":
     windowIDs(args[0])
+case "annotate":
+    guard args.count == 3 else { fail("usage: rasterize annotate <in.png> <out.png> <text>") }
+    annotate(args[0], args[1], args[2])
 case "find-page":
     findPage(args[0])
 default:

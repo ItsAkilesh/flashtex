@@ -3,10 +3,10 @@
   "allocation_id": "claude-mac20x-visual-oracle",
   "assignment_acknowledgements": {
     "FT-017": {
-      "acknowledged_utc": "2026-09-12T05:25:05Z",
-      "adaptation": "Accepted FT-017 rev 1 from main 998e566. Reusing native-verification oracle approach (PDFKit word boxes, apples-to-apples preamble B); adding CoreGraphics fixed-DPI rasterizer shared by all sides, pixel/SSIM/overlay/heatmap diffs, preview-equivalent CoreText raster. Owned paths only: tests/visual-corpus/{harness,evidence}. Engines: pdflatex/xelatex/lualatex present at /Library/TeX/texbin; availability of Times New Roman via fontspec to be verified in run.",
-      "main_sha": "984fa28f2537feadb9f848eb90f69de0327d1fa5",
-      "revision": 1
+      "acknowledged_utc": "2026-09-12T06:30:11Z",
+      "adaptation": "Accepted rev 2 (input 41c4616): expanding corpus to 18 fixtures, projection-based page registration with registration vs post-registration rendering error in every table, region metrics (text area/header/footer/display boxes), SHA footers + PNG tEXt in overlays/heatmaps via rasterize annotate, tolerant pipeline build reporting. Merged origin/main a949f5b.",
+      "main_sha": "a949f5b773a1bc7f1be7ae2d79581856af88a97b",
+      "revision": 2
     }
   },
   "branch": "agent/mac-visual-oracle/reference-raster",
@@ -14,14 +14,14 @@
     "xcode",
     "tex-oracle"
   ],
-  "code_revision": "07af3da4b868b0bb19a499a87e55801201df1f44",
+  "code_revision": "b45bd17b8ffabcca8dd98537d9c97ad03ab962dd",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
     "pessimistic": 0
   },
   "machine": "mac-m1max-a",
-  "main_integrated_through": "984fa28f2537feadb9f848eb90f69de0327d1fa5",
+  "main_integrated_through": "a949f5b773a1bc7f1be7ae2d79581856af88a97b",
   "next_action": "Await Commander review; queue step 0/1 refinements (region metrics, Retina capture route) if assigned",
   "reviewed_peers": {
     "origin/main": {
@@ -31,10 +31,10 @@
     }
   },
   "schema_version": 1,
-  "state": "ready_for_integration",
+  "state": "accepted",
   "summary": "FT-017 rev1 delivered at 07af3da (agent/mac-visual-oracle/reference-raster): 9-fixture declared corpus, shared CoreGraphics 144-DPI rasterizer, pdflatex/xelatex/lualatex x Times/Latin-Modern oracles (all available, all fixtures exit 0), FlashTeX export + preview-equivalent + native screencapture sides, stdlib diff (histogram/SSIM/overlay/heatmap/word boxes/rule rows/registration), exact-equality gates + pinned PDF profile, thresholds/regress as diagnostics. Evidence 20260912T053804Z and 20260912T055841Z. Native capture is 1x-display upsampled x2.84 (stated). pipeline branch absent.",
   "tool": "Claude Code subagent (parent mac-claude-a)",
-  "updated_utc": "2026-09-12T06:13:06Z",
+  "updated_utc": "2026-09-12T06:30:11Z",
   "usage": {
     "evidence": "Claude Max 20x shared quota; no readout available to this subagent; no in-flight calls",
     "status": "unknown"

@@ -151,8 +151,11 @@ def ssim_blocks(a, b, n=8):
     return statistics.fmean(vals) if vals else 1.0, len(vals), sum(1 for v in vals if v < 0.9), worst[:10]
 
 
-def write_png(path, w, h, rgb, max_bytes=None):
-    """Write RGB bytes as PNG; if larger than max_bytes, box-downsample by 2 and retry."""
+def write_png(path, w, h, rgb, max_bytes=None, footer=None, rasterize=None):
+    """Write RGB bytes as PNG; if larger than max_bytes, box-downsample by 2 and retry.
+    With `footer` and a `rasterize` binary, the provenance footer is burned into the
+    pixels (and XMP description) by `rasterize annotate` after each encode."""
+    import subprocess
     def encode(w, h, rgb):
         if HAVE_PIL:
             im = Image.frombytes("RGB", (w, h), rgb)
@@ -165,6 +168,14 @@ def write_png(path, w, h, rgb, max_bytes=None):
             png = b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0))
             png += chunk(b"IDAT", zlib.compress(raw, 9)) + chunk(b"IEND", b"")
             open(path, "wb").write(png)
+        if footer and rasterize:
+            tmp = path + ".raw.png"
+            os.replace(path, tmp)
+            r = subprocess.run([rasterize, "annotate", tmp, path, footer], capture_output=True)
+            if r.returncode != 0 or not os.path.exists(path):
+                os.replace(tmp, path)
+            else:
+                os.remove(tmp)
         return os.path.getsize(path)
     size = encode(w, h, rgb)
     scale = 1
@@ -301,23 +312,126 @@ def shifted(g, dx, dy):
     return Gray(g.w, g.h, bytes(out))
 
 
-def registration_diagnostics(ref, ours, dpi):
-    """Global translation between the two rasters (ink-centroid difference), and the
-    pixel metrics after undoing it. Diagnostic only: separates 'everything is shifted'
-    from 'shapes differ'. Never used for acceptance."""
+def ink_projections(g, dark=128):
+    """(column ink counts, row ink counts) for pixels darker than `dark`."""
+    if HAVE_PIL:
+        im = Image.frombytes("L", (g.w, g.h), g.data).point(lambda v: 255 if v < dark else 0)
+        cols = list(im.resize((g.w, 1), Image.BOX).tobytes())
+        rows = list(im.resize((1, g.h), Image.BOX).tobytes())
+        return cols, rows
+    cols, rows = [0] * g.w, [0] * g.h
+    for y in range(g.h):
+        row = g.data[y * g.w:(y + 1) * g.w]
+        c = 0
+        for x, v in enumerate(row):
+            if v < dark:
+                cols[x] += 1
+                c += 1
+        rows[y] = c
+    return cols, rows
+
+
+def best_shift(a, b, max_shift):
+    """Shift d maximising sum(a[i] * b[i + d]) over |d| <= max_shift (b moved by -d aligns to a)."""
+    n = len(a)
+    best, best_d = -1.0, 0
+    for d in range(-max_shift, max_shift + 1):
+        lo, hi = max(0, -d), min(n, n - d)
+        sc = 0.0
+        for i in range(lo, hi):
+            if a[i]:
+                sc += a[i] * b[i + d]
+        if sc > best:
+            best, best_d = sc, d
+    return best_d
+
+
+def crop(g, x0, y0, x1, y1):
+    x0, y0 = max(0, x0), max(0, y0)
+    x1, y1 = min(g.w, x1), min(g.h, y1)
+    if x1 <= x0 or y1 <= y0:
+        return None
+    if HAVE_PIL:
+        return Gray(x1 - x0, y1 - y0, Image.frombytes("L", (g.w, g.h), g.data).crop((x0, y0, x1, y1)).tobytes())
+    return Gray(x1 - x0, y1 - y0, b"".join(g.data[y * g.w + x0:y * g.w + x1] for y in range(y0, y1)))
+
+
+def pair_metrics(ref, ours):
+    d = absdiff(ref, ours)
+    h = histogram(d)
+    total = ref.w * ref.h
+    ssim, nb, low, _ = ssim_blocks(ref, ours)
+    return {"diff_mean": round(sum(i * c for i, c in enumerate(h)) / total, 4),
+            "differing_fraction": round((total - h[0]) / total, 6),
+            "ssim_8x8_mean": round(ssim, 4), "ssim_blocks": nb}
+
+
+def registration_diagnostics(ref, ours, dpi, max_shift_pt=60):
+    """Global translation between the rasters by 1-D ink-projection correlation
+    (column profile -> dx, row profile -> dy), plus the ink-centroid estimate; the
+    rendering error is then re-measured with the translation undone. Scale is NOT
+    estimated: both sides are rasterized from equal MediaBoxes at the same DPI
+    (the native capture's resample factor is recorded separately). Diagnostic
+    only: separates 'everything is offset' from 'shapes/positions differ'."""
     cr, co = ink_centroid(ref), ink_centroid(ours)
     if not cr or not co:
         return {"available": False}
-    dx, dy = int(round(co[0] - cr[0])), int(round(co[1] - cr[1]))
+    rc, rr = ink_projections(ref)
+    oc, orr = ink_projections(ours)
+    m = int(round(max_shift_pt * dpi / 72))
+    dx = best_shift(rc, oc, m)
+    dy = best_shift(rr, orr, m)
     reg = shifted(ours, -dx, -dy)
-    d = absdiff(ref, reg)
-    h = histogram(d)
-    total = ref.w * ref.h
-    ssim, _, _, _ = ssim_blocks(ref, reg)
-    return {"available": True, "shift_px": [dx, dy], "shift_pt": [round(dx * 72 / dpi, 2), round(dy * 72 / dpi, 2)],
-            "registered_diff_mean": round(sum(i * c for i, c in enumerate(h)) / total, 4),
-            "registered_differing_fraction": round((total - h[0]) / total, 6),
-            "registered_ssim_8x8_mean": round(ssim, 4)}
+    after = pair_metrics(ref, reg)
+    return {"available": True, "method": "1-D ink projection cross-correlation (dx from columns, dy from rows), search ±%d pt; scale assumed 1" % max_shift_pt,
+            "shift_px": [dx, dy], "shift_pt": [round(dx * 72 / dpi, 2), round(dy * 72 / dpi, 2)],
+            "centroid_shift_pt": [round((co[0] - cr[0]) * 72 / dpi, 2), round((co[1] - cr[1]) * 72 / dpi, 2)],
+            "registered_diff_mean": after["diff_mean"], "registered_differing_fraction": after["differing_fraction"],
+            "registered_ssim_8x8_mean": after["ssim_8x8_mean"]}
+
+
+def display_boxes_from_words(words, page, dpi, left_pt=72, right_pt=540):
+    """Display-math boxes on `page` from PDFKit word boxes: lines whose ink is
+    indented on BOTH sides by >= 24 pt relative to the text measure; consecutive
+    such lines merge; 4 pt margin. Returned in px."""
+    lines = {}
+    for w in words:
+        if w["page"] != page:
+            continue
+        key = round(w["bottom"] / 0.6)
+        lines.setdefault(key, []).append(w)
+    boxes = []
+    for key in sorted(lines):
+        ws = lines[key]
+        x0, x1 = min(w["x"] for w in ws), max(w["right"] for w in ws)
+        y0, y1 = min(w["top"] for w in ws), max(w["bottom"] for w in ws)
+        if x0 >= left_pt + 24 and x1 <= right_pt - 24:
+            if boxes and y0 - boxes[-1][3] < 14:
+                b = boxes[-1]
+                boxes[-1] = [min(b[0], x0), b[1], max(b[2], x1), max(b[3], y1)]
+            else:
+                boxes.append([x0, y0, x1, y1])
+    s = dpi / 72
+    return [{"name": f"display-{i + 1}", "pt": [round(b[0] - 4, 1), round(b[1] - 4, 1), round(b[2] + 4, 1), round(b[3] + 4, 1)],
+             "px": [int((b[0] - 4) * s), int((b[1] - 4) * s), int((b[2] + 4) * s), int((b[3] + 4) * s)]} for i, b in enumerate(boxes)]
+
+
+def region_metrics(ref, ours, reg_shift, regions):
+    """Raw and post-registration metrics per region (regions in px)."""
+    out = []
+    dx, dy = reg_shift
+    reg_img = shifted(ours, -dx, -dy) if (dx or dy) else ours
+    for r in regions:
+        x0, y0, x1, y1 = r["px"]
+        a, b, c = crop(ref, x0, y0, x1, y1), crop(ours, x0, y0, x1, y1), crop(reg_img, x0, y0, x1, y1)
+        if a is None or b is None or a.w < 8 or a.h < 8:
+            out.append({"name": r["name"], "px": r["px"], "skipped": "empty region"})
+            continue
+        raw, post = pair_metrics(a, b), pair_metrics(a, c)
+        ink_a = sum(histogram(a)[:128])
+        out.append({"name": r["name"], "pt": r.get("pt"), "px": r["px"], "ink_pixels_ref": ink_a,
+                    "raw": raw, "registered": post})
+    return out
 
 
 def sha256_file(path):
@@ -401,7 +515,8 @@ def page_prefixes(d, stem):
     return out
 
 
-def compare_pages(ref_prefixes, our_prefixes, out_dir, tag, threshold, dpi, max_png, root, images=True):
+def compare_pages(ref_prefixes, our_prefixes, out_dir, tag, threshold, dpi, max_png, root, images=True,
+                  ref_words=None, footer=None, rasterize=None):
     os.makedirs(out_dir, exist_ok=True)
     pages = []
     for n in range(max(len(ref_prefixes), len(our_prefixes))):
@@ -427,14 +542,23 @@ def compare_pages(ref_prefixes, our_prefixes, out_dir, tag, threshold, dpi, max_
         ink_ours = sum(histogram(ours)[:128])
         ov = os.path.join(out_dir, f"{tag}-p{n + 1}-overlay.png")
         hm = os.path.join(out_dir, f"{tag}-p{n + 1}-heatmap.png")
+        page_footer = (footer + f" | page {n + 1}") if footer else None
         if images:
-            ov_size, ov_scale = write_png(ov, w1, h1, overlay_rgb(ref, ours), max_png)
-            hm_size, hm_scale = write_png(hm, w1, h1, heatmap_rgb(diff), max_png)
+            ov_size, ov_scale = write_png(ov, w1, h1, overlay_rgb(ref, ours), max_png, page_footer, rasterize)
+            hm_size, hm_scale = write_png(hm, w1, h1, heatmap_rgb(diff), max_png, page_footer, rasterize)
         else:
             ov = hm = None
             ov_size = hm_size = ov_scale = hm_scale = 0
         min_run = int(round(10 * dpi / 72))  # >= 10pt of continuous ink
         registration = registration_diagnostics(ref, ours, dpi)
+        # Regions (pt -> px): text area inside the 1in margins, header/footer bands, display boxes from reference words.
+        sc = dpi / 72
+        regions = [{"name": "text-area", "pt": [72, 72, 540, 720], "px": [int(72 * sc), int(72 * sc), int(540 * sc), int(720 * sc)]},
+                   {"name": "header-band", "pt": [0, 0, 612, 72], "px": [0, 0, w1, int(72 * sc)]},
+                   {"name": "footer-band", "pt": [0, 720, 612, 792], "px": [0, int(720 * sc), w1, h1]}]
+        if ref_words:
+            regions += display_boxes_from_words(ref_words, n + 1, dpi)
+        regions_out = region_metrics(ref, ours, registration.get("shift_px", [0, 0]) if registration.get("available") else [0, 0], regions)
         rr, ro = ink_rows(ref, min_run), ink_rows(ours, min_run)
         # Match each FlashTeX rule to the nearest reference rule (centre distance in pt).
         matched = []
@@ -460,7 +584,7 @@ def compare_pages(ref_prefixes, our_prefixes, out_dir, tag, threshold, dpi, max_
             "ink_ratio": round(ink_ours / ink_ref, 4) if ink_ref else None,
             "overlay": os.path.relpath(ov, root) if ov else None, "overlay_bytes": ov_size, "overlay_downscale": ov_scale,
             "heatmap": os.path.relpath(hm, root) if hm else None, "heatmap_bytes": hm_size, "heatmap_downscale": hm_scale,
-            "registration": registration,
+            "registration": registration, "regions": regions_out,
             "rules_ref": len(rr), "rules_ours": len(ro), "rule_matches": matched[:10],
             "rules_ref_px": rr[:10], "rules_ours_px": ro[:10],
         })
@@ -477,6 +601,11 @@ def summarise(pages):
             "differing_fraction": round(statistics.fmean(p["differing_fraction"] for p in ok), 6),
             "above_threshold_fraction": round(statistics.fmean(p["above_threshold_fraction"] for p in ok), 6),
             "ssim_8x8_mean": round(statistics.fmean(p["ssim_8x8_mean"] for p in ok), 4),
+            "registration_shift_pt": [p.get("registration", {}).get("shift_pt") for p in ok],
+            "registered_diff_mean": round(statistics.fmean(p["registration"]["registered_diff_mean"] for p in ok if p.get("registration", {}).get("available")), 4)
+                if any(p.get("registration", {}).get("available") for p in ok) else None,
+            "registered_ssim_8x8_mean": round(statistics.fmean(p["registration"]["registered_ssim_8x8_mean"] for p in ok if p.get("registration", {}).get("available")), 4)
+                if any(p.get("registration", {}).get("available") for p in ok) else None,
             "rules_ref": sum(p["rules_ref"] for p in ok), "rules_ours": sum(p["rules_ours"] for p in ok)}
 
 
@@ -594,6 +723,12 @@ def build_report(entries, prov, evidence, thresholds_result, regress_result, arg
     L.append(f"- DPI: {args.dpi} (every raster: CoreGraphics bitmap, sRGB IEC61966-2.1, 8-bit RGBA, white opaque background, "
              f"MediaBox mapped to width_pt*{args.dpi}/72 px; text antialiased, font smoothing off, subpixel positioning on)")
     L.append(f"- Overlay/heatmap PNGs emitted for engines: {args.images_for_engines}, sides: {args.images_for_sides} (metrics are computed for every engine and side; PNGs are downscaled by 2 until ≤{args.max_png_bytes} B)")
+    L.append("- Every overlay/heatmap PNG carries a burned-in footer (and XMP dc:description) with the fixture SHA-256, oracle engine+version+font, "
+             "compiler and flashtex-pdf SHAs, side, DPI/colour profile and run stamp; `metrics.json` repeats them per entry under `provenance`.")
+    L.append("- Registration: global (dx,dy) between reference and candidate estimated by 1-D ink-projection cross-correlation (±60 pt search; "
+             "scale assumed 1 because both sides are rasterized from equal MediaBoxes at the same DPI — the native capture's resample factor is "
+             "recorded separately). Tables show raw error, the registration shift, and the rendering error after undoing the shift. "
+             "Regions: text area (1in margins), header/footer bands, and display-math boxes derived from the reference word boxes.")
     L.append(f"- Pixel threshold for `above_threshold_fraction`: |Δluma| ≥ {args.threshold}/255; SSIM: 8×8 blocks, K1=0.01, K2=0.03")
     L.append(f"- Arithmetic backend: {'Pillow ' + prov.get('pillow', '?') + ' (accelerator; identical integer results to the stdlib path)' if HAVE_PIL else 'pure Python stdlib'}")
     L.append("")
@@ -620,7 +755,10 @@ def build_report(entries, prov, evidence, thresholds_result, regress_result, arg
              "(checked per page from the MediaBox). LaTeX package versions: see `provenance.json` → `packages`.\n")
     L.append("### FlashTeX builds under test\n")
     for c in prov.get("compilers", []):
-        L.append(f"- compiler `{c['label']}`: `{c['ref']}` @ `{c['sha']}` — {c.get('note', '')}")
+        if c.get("build_ok") is False:
+            L.append(f"- compiler `{c['label']}`: `{c['ref']}` @ `{c['sha']}` ({c.get('crate')}/{c.get('binary')}) — **DID NOT BUILD**, not compared: `{c.get('build_error')}`")
+        else:
+            L.append(f"- compiler `{c['label']}`: `{c['ref']}` @ `{c['sha']}` ({c.get('crate', 'crates/compiler')}) — {c.get('note', '')}")
     p = prov.get("pdf_writer", {})
     L.append(f"- PDF writer: `{p.get('ref')}` @ `{p.get('sha')}` (`flashtex-pdf --verify{' --embed-font auto' if p.get('embed') else ''}`; "
              f"body font Times-Roman standard-14, Unicode fallback subset of {p.get('embed_font', 'none')})")
@@ -651,17 +789,20 @@ def build_report(entries, prov, evidence, thresholds_result, regress_result, arg
             return
         L.append(f"## {title}\n")
         L.append(note + "\n")
-        L.append("| Fixture | Engine | Compiler | Pages ref/ours | Status | mean\\|Δ\\| | max | differing | ≥thr | SSIM₈ | words ref/ours/aligned | seq= | mean\\|dx\\| pt | mean\\|dy\\| pt | line-start agree | rules ref/ours | overlay |")
-        L.append("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|")
+        L.append("| Fixture | Engine | Compiler | Pages ref/ours | Status | mean\\|Δ\\| raw | SSIM₈ raw | registration Δ pt (dx,dy per page) | mean\\|Δ\\| after reg | SSIM₈ after reg | max | differing | ≥thr | words ref/ours/aligned | seq= | mean\\|dx\\| pt | mean\\|dy\\| pt | line-start agree | rules ref/ours | overlay |")
+        L.append("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|")
         for e in rows:
             r, w = e.get("raster") or {}, e.get("words") or {}
             pg = e.get("pages", [])
             first = next((p for p in pg if p.get("overlay")), None)
             link = f"[p1]({first['overlay']})" if first else "-"
-            L.append("| {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} |".format(
+            L.append("| {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} |".format(
                 e["fixture"], e["engine"], e["compiler"], f"{e.get('ref_pages', '-')}/{e.get('our_pages', '-')}",
-                e.get("status", "-"), fmt(r.get("diff_mean")), fmt(r.get("diff_max")), fmt(r.get("differing_fraction"), 4),
-                fmt(r.get("above_threshold_fraction"), 4), fmt(r.get("ssim_8x8_mean")),
+                e.get("status", "-"), fmt(r.get("diff_mean")), fmt(r.get("ssim_8x8_mean")),
+                "; ".join(f"({v[0]:g},{v[1]:g})" for v in (r.get("registration_shift_pt") or []) if v) or "-",
+                fmt(r.get("registered_diff_mean")), fmt(r.get("registered_ssim_8x8_mean")),
+                fmt(r.get("diff_max")), fmt(r.get("differing_fraction"), 4),
+                fmt(r.get("above_threshold_fraction"), 4),
                 f"{w.get('ref_words', '-')}/{w.get('ours_words', '-')}/{w.get('aligned', '-')}",
                 "yes" if w.get("sequence_equal") else ("no" if w else "-"),
                 fmt(w.get("dx_abs_mean"), 2), fmt(w.get("dy_abs_mean"), 2), fmt(w.get("line_start_agreement")),
@@ -681,6 +822,14 @@ def build_report(entries, prov, evidence, thresholds_result, regress_result, arg
           f"display backing {npv.get('backing_scale_factors')} px/pt; see provenance). The 'page N' caption corner is masked white. "
           "Word-box metrics are unavailable (a screenshot has no text layer). This is a separate, independent comparison from the "
           "export table above and from the weaker preview-equivalent table.")
+    missing = [e for e in (npv.get("entries") or []) if not e.get("native_raster")]
+    if missing:
+        L.append("Native captures NOT available (reported, not skipped silently):\n")
+        for e in missing:
+            L.append(f"- {e['fixture']}/{e['compiler']}: {e.get('reason', 'no capture')}")
+        L.append("")
+    if npv.get("per_entry_resample_scale"):
+        L.append("Per-entry resample factor (capture px → raster px): " + ", ".join(f"{k} ×{v}" for k, v in npv["per_entry_resample_scale"].items()) + "\n")
 
     L.append("## Per-fixture diagnostic details (export side)\n")
     for e in entries:
@@ -706,9 +855,15 @@ def build_report(entries, prov, evidence, thresholds_result, regress_result, arg
                         f"[heatmap]({p['heatmap']}) ({p['heatmap_bytes']} B, ÷{p['heatmap_downscale']})" if p.get("overlay") else "; images not emitted for this engine"))
             reg = p.get("registration") or {}
             if reg.get("available"):
-                L.append(f"  - registration (diagnostic): ink-centroid shift {reg['shift_pt']} pt; after undoing it: mean|Δ| "
+                L.append(f"  - registration error (diagnostic): global shift {reg['shift_pt']} pt by ink-projection correlation "
+                         f"(centroid estimate {reg['centroid_shift_pt']} pt); rendering error after undoing it: mean|Δ| "
                          f"{reg['registered_diff_mean']}, differing {reg['registered_differing_fraction']}, SSIM₈ {reg['registered_ssim_8x8_mean']} "
-                         f"(vs unregistered {p['diff_mean']}, {p['differing_fraction']}, {p['ssim_8x8_mean']}) — the remainder is rendering/layout error, not offset")
+                         f"(raw {p['diff_mean']}, {p['differing_fraction']}, {p['ssim_8x8_mean']})")
+            if p.get("regions"):
+                L.append("  - regions (raw → after registration, SSIM₈ / mean|Δ|): " + "; ".join(
+                    f"{rg['name']} {rg['raw']['ssim_8x8_mean']}→{rg['registered']['ssim_8x8_mean']} / {rg['raw']['diff_mean']}→{rg['registered']['diff_mean']}"
+                    + (f" [{rg['pt'][0]:g},{rg['pt'][1]:g}–{rg['pt'][2]:g},{rg['pt'][3]:g} pt]" if rg['name'].startswith('display') else "")
+                    for rg in p["regions"] if "raw" in rg))
             if p["rule_matches"]:
                 L.append("  - rules (FlashTeX → nearest reference ink row, pt): " + "; ".join(
                     f"Δx {m['dx_pt']} Δy {m['dy_pt']} len {m['ours_len_pt']} vs {m['ref_len_pt']}, thickness px {m['ours_thick_px']} vs {m['ref_thick_px']}"
@@ -775,6 +930,7 @@ def main():
     ap.add_argument("--profile", default=None, help="pinned reference profile JSON (raw PDF SHA-256 per fixture/compiler)")
     ap.add_argument("--pin-profile", action="store_true", help="write the current PDF SHA-256s into --profile (explicit re-baseline)")
     ap.add_argument("--gate", action="store_true", help="exit 5 when any exact-equality gate fails")
+    ap.add_argument("--rasterize", default=None, help="rasterize binary; enables provenance footers burned into overlay/heatmap PNGs")
     ap.add_argument("--images-for-sides", default="export,native",
                     help="comma-separated sides (export, preview, native) whose PNGs are written; metrics are computed for all")
     ap.add_argument("--images-for-engines", default="pdflatex,pdflatex-lm",
@@ -814,7 +970,19 @@ def main():
                     sys.stderr.write(f"== {fx}/{eng}/{comp}/{side}\n")
                     want_images = (args.images_for_engines == "all" or eng in args.images_for_engines.split(",")) \
                         and side in args.images_for_sides.split(",")
-                    pages = compare_pages(ref_pages, our_pages, out_dir, tag, args.threshold, args.dpi, args.max_png_bytes, args.evidence, want_images)
+                    fx_sha = next((f["sha256"] for f in prov.get("fixtures", []) if f["name"] == fx + ".tex"), "")
+                    comp_info = next((c for c in prov.get("compilers", []) if c["label"] == comp), {})
+                    eng_ver = prov.get("engines", {}).get(eng.split("-")[0], {}).get("version", "?")
+                    font = ("times/T1" if eng == "pdflatex" else "lmodern/T1" if eng == "pdflatex-lm"
+                            else "Latin Modern OTF" if eng.endswith("-lm") else "Times New Roman TTF")
+                    entry["provenance"] = {"fixture_sha256": fx_sha, "engine": eng, "engine_version": eng_ver, "font": font,
+                                           "compiler_sha": comp_info.get("sha"), "pdf_writer_sha": (prov.get("pdf_writer") or {}).get("sha"),
+                                           "dpi": args.dpi, "color_space": "sRGB IEC61966-2.1", "pixel_format": "RGBA8",
+                                           "side": side, "run": prov.get("generated_utc")}
+                    footer = (f"fixture {fx}.tex sha256 {fx_sha[:16]} | oracle {eng} {eng_ver} {font} | compiler {comp}@{(comp_info.get('sha') or '')[:12]}"
+                              f" | flashtex-pdf {((prov.get('pdf_writer') or {}).get('sha') or '')[:12]} | side {side} | {args.dpi:g} DPI sRGB RGBA8 | run {prov.get('generated_utc')}")
+                    pages = compare_pages(ref_pages, our_pages, out_dir, tag, args.threshold, args.dpi, args.max_png_bytes, args.evidence, want_images,
+                                          ref_words=ref_words, footer=footer, rasterize=args.rasterize)
                     entry["pages"] = pages
                     entry["raster"] = summarise(pages)
                     if side == "export" and ref_words is not None:

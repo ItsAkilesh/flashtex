@@ -1,0 +1,20 @@
+{
+  "fixture": "13-math-display-rich.tex",
+  "purpose": "Display math with \\int and \\sum limits, \\frac, \\sqrt, superscripts and a \\left( ... \\right) pair.",
+  "expected_engines": [
+    "pdflatex",
+    "xelatex",
+    "lualatex"
+  ],
+  "flashtex_features": [
+    "\\[...\\]",
+    "\\int",
+    "\\sum",
+    "\\frac",
+    "\\sqrt",
+    "\\left/\\right (support unknown)"
+  ],
+  "notes": "Display box region metrics use this fixture; \\left( \\right) delimiters may be unsupported by the current compiler.",
+  "page_size": "US letter 612x792pt (geometry default paper for article is letterpaper)",
+  "preamble_policy": "engine-specific apples-to-apples preamble is substituted by the harness; FlashTeX gets the body only"
+}

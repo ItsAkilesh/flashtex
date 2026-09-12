@@ -1,0 +1,16 @@
+{
+  "fixture": "17-apostrophes.tex",
+  "purpose": "ASCII apostrophes and TeX quote ligatures: quotesingle vs quoteright glyph and advance width (regression for the metrics bug found in issue #2).",
+  "expected_engines": [
+    "pdflatex",
+    "xelatex",
+    "lualatex"
+  ],
+  "flashtex_features": [
+    "' -> quoteright",
+    "`` '' -> quotedblleft/right"
+  ],
+  "notes": "In TeX, ' is typeset as quoteright (’), not quotesingle; a compiler using quotesingle metrics drifts by the width difference per apostrophe.",
+  "page_size": "US letter 612x792pt (geometry default paper for article is letterpaper)",
+  "preamble_policy": "engine-specific apples-to-apples preamble is substituted by the harness; FlashTeX gets the body only"
+}

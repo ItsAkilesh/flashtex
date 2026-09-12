@@ -1,0 +1,16 @@
+{
+  "fixture": "12-justified-paragraphs.tex",
+  "purpose": "Four justified multi-line paragraphs: interword stretch, hyphenation, paragraph skip accumulation.",
+  "expected_engines": [
+    "pdflatex",
+    "xelatex",
+    "lualatex"
+  ],
+  "flashtex_features": [
+    "paragraph",
+    "greedy ragged-right breaking (no justification, no hyphenation)"
+  ],
+  "notes": "Isolates justification from everything else; compare with 02-wrapping-paragraph (two paragraphs).",
+  "page_size": "US letter 612x792pt (geometry default paper for article is letterpaper)",
+  "preamble_policy": "engine-specific apples-to-apples preamble is substituted by the harness; FlashTeX gets the body only"
+}

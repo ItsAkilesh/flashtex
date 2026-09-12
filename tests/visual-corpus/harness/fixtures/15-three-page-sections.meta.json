@@ -1,0 +1,16 @@
+{
+  "fixture": "15-three-page-sections.tex",
+  "purpose": "Three pages, one section per page, forced with \\newpage: page count, per-page heading position, top margin on pages 2-3.",
+  "expected_engines": [
+    "pdflatex",
+    "xelatex",
+    "lualatex"
+  ],
+  "flashtex_features": [
+    "\\section",
+    "\\newpage (support unknown; if ignored the page breaks come from overflow instead)"
+  ],
+  "notes": "Each section also has enough text to nearly fill a page so the layout is comparable even where \\newpage is ignored.",
+  "page_size": "US letter 612x792pt (geometry default paper for article is letterpaper)",
+  "preamble_policy": "engine-specific apples-to-apples preamble is substituted by the harness; FlashTeX gets the body only"
+}

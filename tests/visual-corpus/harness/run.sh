@@ -67,30 +67,45 @@ mkdir -p "$WORK" "$BUILDS" "$EVIDENCE"
 echo "work: $WORK"; echo "evidence: $EVIDENCE"
 
 # --- builds (git archive of the pinned commit; no checkout/worktree side effects)
-build_crate() {  # label ref crate-dir binary
+build_crate() {  # label ref crate-dir binary -> "<sha> <bin-or-FAILED> <build log>"
   local label="$1" ref="$2" crate="$3" bin="$4" sha dir
   sha="$(git -C "$REPO" rev-parse --verify "$ref^{commit}")"
   dir="$BUILDS/$label-$sha"
   if [[ $SKIP_BUILD -eq 0 || ! -x "$dir/$crate/target/release/$bin" ]]; then
     rm -rf "$dir"; mkdir -p "$dir"
-    git -C "$REPO" archive "$sha" "$crate" | tar -x -C "$dir"
-    echo "== cargo build --release: $label = $ref @ $sha"
-    ( cd "$dir/$crate" && cargo build --release 2>&1 | tail -1 )
+    # The whole crates/ tree is exported: some crates depend on siblings by path.
+    git -C "$REPO" archive "$sha" crates | tar -x -C "$dir"
+    echo "== cargo build --release: $label = $ref @ $sha" >&2
+    if ! ( cd "$dir/$crate" && cargo build --release > "$dir/build.log" 2>&1 ); then
+      echo "   build FAILED: $(grep -m1 -E '^error' "$dir/build.log" || tail -1 "$dir/build.log")" >&2
+    fi
   fi
-  echo "$sha $dir/$crate/target/release/$bin"
+  if [[ -x "$dir/$crate/target/release/$bin" ]]; then
+    echo "$sha $dir/$crate/target/release/$bin $dir/build.log"
+  else
+    echo "$sha FAILED $dir/build.log"
+  fi
 }
 COMPILER_ARGS=(); COMPILER_JSON="["
 for spec in "${COMPILER_REFS[@]}"; do
   label="${spec%%=*}"; rest="${spec#*=}"
   IFS=: read -r ref crate binname <<<"$rest"
   crate="${crate:-crates/compiler}"; binname="${binname:-flashtex-compiler}"
-  read -r sha bin < <(build_crate "$label" "$ref" "$crate" "$binname" | tail -1)
-  COMPILER_ARGS+=(--compiler "$label=$bin")
+  read -r sha bin blog < <(build_crate "$label" "$ref" "$crate" "$binname" | tail -1)
   subject="$(git -C "$REPO" log -1 --format=%s "$sha")"
-  COMPILER_JSON+="{\"label\":\"$label\",\"ref\":\"$ref\",\"sha\":\"$sha\",\"crate\":\"$crate\",\"binary\":\"$binname\",\"note\":$(python3 -c 'import json,sys;print(json.dumps(sys.argv[1]))' "$subject")},"
+  if [[ "$bin" == "FAILED" ]]; then
+    err="$(grep -m1 -E '^error' "$blog" 2>/dev/null || tail -1 "$blog" 2>/dev/null || echo unknown)"
+    COMPILER_JSON+="{\"label\":\"$label\",\"ref\":\"$ref\",\"sha\":\"$sha\",\"crate\":\"$crate\",\"binary\":\"$binname\",\"build_ok\":false,\"build_error\":$(python3 -c 'import json,sys;print(json.dumps(sys.argv[1][:300]))' "$err"),\"note\":$(python3 -c 'import json,sys;print(json.dumps(sys.argv[1]))' "$subject")},"
+    echo "compiler $label ($ref @ $sha) did not build; reported, not used"
+    continue
+  fi
+  COMPILER_ARGS+=(--compiler "$label=$bin")
+  COMPILER_JSON+="{\"label\":\"$label\",\"ref\":\"$ref\",\"sha\":\"$sha\",\"crate\":\"$crate\",\"binary\":\"$binname\",\"build_ok\":true,\"note\":$(python3 -c 'import json,sys;print(json.dumps(sys.argv[1]))' "$subject")},"
 done
 COMPILER_JSON="${COMPILER_JSON%,}]"
-read -r pdf_sha PDF_BIN < <(build_crate pdf "$PDF_REF" crates/pdf flashtex-pdf | tail -1)
+[[ ${#COMPILER_ARGS[@]} -gt 0 ]] || { echo "no compiler built" >&2; exit 1; }
+read -r pdf_sha PDF_BIN pdf_log < <(build_crate pdf "$PDF_REF" crates/pdf flashtex-pdf | tail -1)
+[[ "$PDF_BIN" != "FAILED" ]] || { echo "flashtex-pdf did not build ($pdf_log)" >&2; exit 1; }
 
 echo "== swiftc rasterize.swift"
 swiftc -O "$HERE/rasterize.swift" -o "$WORK/rasterize"
@@ -181,7 +196,7 @@ PY
 
 # --- diff + report
 DIFF_ARGS=(--reference "$WORK/reference" --flashtex "$WORK/flashtex" --evidence "$EVIDENCE" --dpi "$DPI" \
-  --threshold "$THRESHOLD" --provenance "$EVIDENCE/provenance.json")
+  --threshold "$THRESHOLD" --provenance "$EVIDENCE/provenance.json" --rasterize "$WORK/rasterize")
 [[ -f "$THRESHOLDS" ]] && DIFF_ARGS+=(--thresholds "$THRESHOLDS")
 DIFF_ARGS+=(--profile "$PROFILE")
 [[ $PIN -eq 1 ]] && DIFF_ARGS+=(--pin-profile)

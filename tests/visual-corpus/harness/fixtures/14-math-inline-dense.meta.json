@@ -1,0 +1,19 @@
+{
+  "fixture": "14-math-inline-dense.tex",
+  "purpose": "Many short inline math fragments in one wrapping line: inline math widths, script placement, line breaking around math.",
+  "expected_engines": [
+    "pdflatex",
+    "xelatex",
+    "lualatex"
+  ],
+  "flashtex_features": [
+    "$...$",
+    "scripts",
+    "\\frac",
+    "\\sqrt",
+    "Greek"
+  ],
+  "notes": "Compiler build main has no math (recovered).",
+  "page_size": "US letter 612x792pt (geometry default paper for article is letterpaper)",
+  "preamble_policy": "engine-specific apples-to-apples preamble is substituted by the harness; FlashTeX gets the body only"
+}

@@ -1,0 +1,14 @@
+% FlashTeX visual corpus fixture. The preamble below is the pdflatex form of the
+% apples-to-apples oracle preamble; render_reference.sh replaces everything before
+% \begin{document} with the engine-specific preamble, and render_flashtex.sh
+% strips it. Only the body is the declared fixture content.
+\documentclass[12pt]{article}
+\usepackage[T1]{fontenc}
+\usepackage{times}
+\usepackage[margin=1in]{geometry}
+\setlength{\parindent}{0pt}
+\setcounter{secnumdepth}{0}
+\pagestyle{empty}
+\begin{document}
+Dense inline: $a^2+b^2=c^2$, $\alpha\beta\gamma$, $\frac{1}{x}$, $\sqrt{2}$, $x_i^j$, $e^{i\pi}+1=0$, $\sum_n a_n$, $f(x)=\int g$, $\lambda\mu\nu$, $y=mx+b$, $z^{2}$, $p_{1}$, $\sigma^2$, $\pi r^2$, $\delta x$, $n!$, $\frac{a+b}{c}$, $\sqrt{x+y}$, $u_{k}^{2}$, $\theta$ and $\phi$ mixed with words in one long line that must wrap.
+\end{document}

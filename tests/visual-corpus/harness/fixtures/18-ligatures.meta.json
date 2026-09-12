@@ -1,0 +1,15 @@
+{
+  "fixture": "18-ligatures.tex",
+  "purpose": "ff/fi/fl/ffi/ffl ligature words: TeX substitutes ligature glyphs, changing advance widths and line breaks.",
+  "expected_engines": [
+    "pdflatex",
+    "xelatex",
+    "lualatex"
+  ],
+  "flashtex_features": [
+    "no ligatures (documented gap)"
+  ],
+  "notes": "Word dx accumulates by the ligature width difference per occurrence; PDFKit may extract ligatures as U+FB00-FB04 (folded by the word normaliser).",
+  "page_size": "US letter 612x792pt (geometry default paper for article is letterpaper)",
+  "preamble_policy": "engine-specific apples-to-apples preamble is substituted by the harness; FlashTeX gets the body only"
+}

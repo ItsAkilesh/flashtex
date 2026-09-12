@@ -1,0 +1,16 @@
+{
+  "fixture": "10-unicode-paragraph.tex",
+  "purpose": "Long UTF-8 paragraph: many accented letters, em/en dashes, curly and angle quotes, currency signs; wraps over several lines.",
+  "expected_engines": [
+    "pdflatex",
+    "xelatex",
+    "lualatex"
+  ],
+  "flashtex_features": [
+    "utf-8 literal text",
+    "paragraph"
+  ],
+  "notes": "Measures Unicode glyph coverage/advance widths and line breaking with non-ASCII words; pdflatex needs T1/utf8 — characters outside T1 (e.g. ǅ, ¥ in some encodings) may be reported as missing by the oracle log.",
+  "page_size": "US letter 612x792pt (geometry default paper for article is letterpaper)",
+  "preamble_policy": "engine-specific apples-to-apples preamble is substituted by the harness; FlashTeX gets the body only"
+}
