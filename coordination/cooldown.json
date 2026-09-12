@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "commander_id": "orchestrator-astra",
+  "start_utc": "2026-09-12T07:39:08Z",
+  "resume_utc": "2026-09-12T08:20:35.242464+00:00",
+  "state": "lifted_by_explicit_user_override",
+  "dispatch_issues": [
+    2,
+    23
+  ],
+  "heavy_work_machine": "daniel-new",
+  "jaysen_during_cooldown": "small tasks only using explicitly authorized existing remaining usage credits; no purchases",
+  "resume_prompt": "IMMEDIATE USER-AUTHORIZED TANDEM DISPATCH: the user says Jaysen plan should now be reset and explicitly lifts the cooldown NOW. Jaysen parent: verify currently usable authorized route and start the prepared15 independent engineering lanes in coordination/machines/mac-m1max-a-resume.json immediately. Do not wait08:21. Daniel continues16 assigned lanes including transferred paragraph/font-engine/math; do not reclaim those paths. Preserve already running sessions rather than duplicate them. Publish exact assignment ACKs, actual child session IDs/count and current quota response immediately. No purchases or unapproved overages. If a route still rejects, report exact blocker and continue other eligible existing resources. This dispatch is not a running-session claim; Commander will verify pickup.",
+  "previous_resume_utc": "2026-09-12T08:21:08Z"
+}

@@ -1,19 +1,25 @@
 //! Layout: turns parsed blocks into positioned items on pages.
 //!
-//! Line placement uses real Adobe Core 14 advance widths: Times-Roman for body
-//! text and Times-Bold for headings. Still missing before any compatibility
-//! claim: kerning pairs, ligatures, hyphenation, and TeX's optimal paragraph
-//! breaking — breaking here remains greedy.
+//! Line placement uses the shared font engine's Adobe Core 14 shaping:
+//! Times-Roman for body text, Times-Bold for headings, and Symbol for supported
+//! math glyphs. Kerning and available ligatures are applied. Hyphenation and
+//! TeX's optimal paragraph breaking remain missing; breaking here is greedy.
 //!
 //! One item is emitted per word rather than per line. That keeps each item's
 //! source span exact, which is what click-to-source navigation (FT-003) needs.
 
 use crate::diagnostics::Diagnostic;
+use crate::export::{self, ExportFont};
 use crate::math::{self, MathBox};
-use crate::metrics::{self, Font};
 use crate::parser::{Block, Inline};
 use crate::Span;
+use flashtex_font_engine::core14::Core14;
+use flashtex_font_engine::shape::{shape, ShapeOptions, Shaped};
+use flashtex_font_engine::Core14Face;
 use std::collections::BTreeMap;
+use std::sync::OnceLock;
+
+pub use flashtex_font_engine::core14::Core14 as Font;
 
 pub const PAGE_WIDTH_PT: f64 = 612.0;
 pub const PAGE_HEIGHT_PT: f64 = 792.0;
@@ -50,11 +56,134 @@ impl Default for LayoutConstraints {
 /// Retained only so math's script-size boxes can be measured consistently with
 /// body text while math moves onto real metrics too.
 pub fn text_width(text: &str, size: f64, font: Font) -> f64 {
-    metrics::string_width(font, text, size)
+    shape_text(font, text).map_or(0.0, |shaped| shaped.width_pt(size))
 }
 
 pub fn word_space(size: f64, font: Font) -> f64 {
-    metrics::advance_width(font, ' ', size)
+    text_width(" ", size, font)
+}
+
+fn face(font: Font) -> &'static Core14Face {
+    static TIMES_ROMAN: OnceLock<Core14Face> = OnceLock::new();
+    static TIMES_BOLD: OnceLock<Core14Face> = OnceLock::new();
+    static TIMES_ITALIC: OnceLock<Core14Face> = OnceLock::new();
+    static TIMES_BOLD_ITALIC: OnceLock<Core14Face> = OnceLock::new();
+    static HELVETICA: OnceLock<Core14Face> = OnceLock::new();
+    static COURIER: OnceLock<Core14Face> = OnceLock::new();
+    static SYMBOL: OnceLock<Core14Face> = OnceLock::new();
+    match font {
+        Core14::TimesRoman => TIMES_ROMAN.get_or_init(|| Core14Face::new(font)),
+        Core14::TimesBold => TIMES_BOLD.get_or_init(|| Core14Face::new(font)),
+        Core14::TimesItalic => TIMES_ITALIC.get_or_init(|| Core14Face::new(font)),
+        Core14::TimesBoldItalic => TIMES_BOLD_ITALIC.get_or_init(|| Core14Face::new(font)),
+        Core14::Helvetica => HELVETICA.get_or_init(|| Core14Face::new(font)),
+        Core14::Courier => COURIER.get_or_init(|| Core14Face::new(font)),
+        Core14::Symbol => SYMBOL.get_or_init(|| Core14Face::new(font)),
+    }
+}
+
+fn shape_text(font: Font, text: &str) -> Result<Shaped, flashtex_font_engine::Error> {
+    shape(face(font), text, &ShapeOptions::default())
+}
+
+/// Select the same Core 14 face that the export mapping assigns to a math glyph.
+pub(crate) fn math_font(text: &str) -> Font {
+    if !text.is_empty()
+        && text.chars().all(|ch| {
+            matches!(
+                export::map_char(ch),
+                export::Glyph::Encodable {
+                    font: ExportFont::Symbol,
+                    ..
+                }
+            )
+        })
+    {
+        Font::Symbol
+    } else {
+        Font::TimesRoman
+    }
+}
+
+fn source_span(text: &str, span: Span, shaped: &Shaped) -> Span {
+    let Some(first) = shaped.clusters.first() else {
+        return span;
+    };
+    let last = shaped.clusters.last().expect("first cluster exists");
+    for cluster in &shaped.clusters {
+        debug_assert_eq!(
+            text.get(cluster.source_range.clone()),
+            Some(cluster.text.as_str())
+        );
+    }
+    if span.end - span.start == text.len() {
+        Span::in_document(
+            span.document,
+            span.start + first.source_range.start,
+            span.start + last.source_range.end,
+        )
+    } else {
+        // Macro replacement bytes do not exist in the document. Preserve the
+        // invocation attribution instead of leaking shaping-relative offsets.
+        span
+    }
+}
+
+fn relative_span(text: &str, span: Span, start: usize, end: usize) -> Span {
+    if span.end - span.start == text.len() && text.get(start..end).is_some() {
+        Span::in_document(span.document, span.start + start, span.start + end)
+    } else {
+        span
+    }
+}
+
+pub(crate) fn shaped_width(
+    text: &str,
+    size: f64,
+    font: Font,
+    span: Span,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> (f64, Span) {
+    match shape_text(font, text) {
+        Ok(shaped) => {
+            for missing in &shaped.missing {
+                let missing_span = relative_span(
+                    text,
+                    span,
+                    missing.byte_offset,
+                    missing.byte_offset + missing.ch.len_utf8(),
+                );
+                diagnostics.push(Diagnostic::warning(
+                    format!(
+                        "{} has no glyph for {:?} (U+{:04X})",
+                        font.header().font_name,
+                        missing.ch,
+                        missing.ch as u32
+                    ),
+                    Some(missing_span),
+                    Some("emitted the face's explicit .notdef glyph and continued".into()),
+                ));
+            }
+            (shaped.width_pt(size), source_span(text, span, &shaped))
+        }
+        Err(error) => {
+            let error_span = match error {
+                flashtex_font_engine::Error::UnsupportedScript {
+                    ch, byte_offset, ..
+                } => relative_span(text, span, byte_offset, byte_offset + ch.len_utf8()),
+                _ => span,
+            };
+            diagnostics.push(Diagnostic::error(
+                format!(
+                    "could not shape text with {}: {error}",
+                    font.header().font_name
+                ),
+                Some(error_span),
+                Some("kept the source item with zero advance and continued".into()),
+            ));
+            (0.0, span)
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -85,17 +214,8 @@ pub struct Page {
     pub items: Vec<TextItem>,
 }
 
-/// Body text is Times-Roman; the larger heading sizes are set in Times-Bold.
-pub fn font_for_size(size: f64) -> Font {
-    if size == BODY_SIZE_PT {
-        Font::TimesRoman
-    } else {
-        Font::TimesBold
-    }
-}
-
-fn glyph_width(text: &str, size: f64) -> f64 {
-    metrics::string_width(font_for_size(size), text, size)
+fn glyph_width(text: &str, size: f64, font: Font) -> f64 {
+    text_width(text, size, font)
 }
 
 /// Geometry needed to resume the one authoritative layout engine.
@@ -140,6 +260,7 @@ pub struct LayoutCursor {
     resolved_labels: BTreeMap<String, ReferenceValue>,
     collected_labels: BTreeMap<String, ReferenceValue>,
     emit_heading_numbers: bool,
+    diagnostics: Vec<Diagnostic>,
 }
 
 impl LayoutCursor {
@@ -169,6 +290,7 @@ impl LayoutCursor {
             resolved_labels,
             collected_labels: BTreeMap::new(),
             emit_heading_numbers,
+            diagnostics: Vec::new(),
         }
     }
 
@@ -199,9 +321,8 @@ impl LayoutCursor {
         self.y += gap;
     }
 
-    fn place(&mut self, text: String, size: f64, span: Span) {
-        let font = font_for_size(size);
-        let w = glyph_width(&text, size);
+    fn place(&mut self, text: String, size: f64, span: Span, font: Font) {
+        let (w, span) = shaped_width(&text, size, font, span, &mut self.diagnostics);
         if self.x > MARGIN_PT && self.x + w > self.right_edge() {
             self.newline(size);
         }
@@ -220,7 +341,7 @@ impl LayoutCursor {
             .expect("at least one page")
             .items
             .push(item);
-        self.x += w + metrics::advance_width(font_for_size(size), ' ', size);
+        self.x += w + word_space(size, font);
     }
 
     fn ensure_extents(&mut self, ascent: f64, descent: f64) {
@@ -246,6 +367,7 @@ impl LayoutCursor {
         let base_y = self.y;
         let page = self.pages.last_mut().expect("at least one page");
         for item in b.items {
+            let font = math_font(&item.text);
             let rule = item.rule.map(|rule| RuleGeometry {
                 y_pt: round2(base_y + rule.y),
                 width_pt: round2(rule.width),
@@ -257,11 +379,11 @@ impl LayoutCursor {
                 baseline_y_pt: round2(base_y + item.baseline),
                 font_size_pt: item.size,
                 span: item.span,
-                font: Font::TimesRoman,
+                font,
                 rule,
             });
         }
-        self.x += b.width + metrics::advance_width(font_for_size(size), ' ', size);
+        self.x += b.width + word_space(size, Font::TimesRoman);
     }
 
     fn display_math(&mut self, b: MathBox, size: f64, number: Option<(&str, Span)>) {
@@ -278,7 +400,7 @@ impl LayoutCursor {
         self.place_math(b, size);
         if let Some((number, span)) = number {
             let text = format!("({number})");
-            let width = glyph_width(&text, size);
+            let width = glyph_width(&text, size, Font::TimesRoman);
             let x_pt = round2(self.right_edge() - width);
             let page = self.pages.last_mut().expect("at least one page");
             page.items.push(TextItem {
@@ -287,7 +409,7 @@ impl LayoutCursor {
                 baseline_y_pt: round2(self.y),
                 font_size_pt: size,
                 span,
-                font: font_for_size(size),
+                font: Font::TimesRoman,
                 rule: None,
             });
         }
@@ -332,7 +454,7 @@ impl LayoutCursor {
         let starts: Vec<usize> = self.pages.iter().map(|page| page.items.len()).collect();
         let body_size = self.constraints.font_size_pt;
         match block {
-            Block::Paragraph(inlines) => emit(self, inlines, body_size),
+            Block::Paragraph(inlines) => emit(self, inlines, body_size, Font::TimesRoman),
             Block::Heading {
                 level,
                 number,
@@ -344,9 +466,15 @@ impl LayoutCursor {
                         number.clone(),
                         heading_size(*level, body_size),
                         *number_span,
+                        Font::TimesBold,
                     );
                 }
-                emit(self, content, heading_size(*level, body_size));
+                emit(
+                    self,
+                    content,
+                    heading_size(*level, body_size),
+                    Font::TimesBold,
+                );
                 self.newline(body_size);
                 self.vertical_gap(PARAGRAPH_GAP_PT);
                 self.x = MARGIN_PT;
@@ -356,13 +484,14 @@ impl LayoutCursor {
                     .iter()
                     .map(|inline| match inline {
                         Inline::Text { text, .. } => {
-                            glyph_width(text, body_size) + word_space(body_size, Font::TimesRoman)
+                            glyph_width(text, body_size, Font::TimesRoman)
+                                + word_space(body_size, Font::TimesRoman)
                         }
                         _ => 0.0,
                     })
                     .sum();
                 self.x = MARGIN_PT + (self.constraints.measure_pt - width).max(0.0) / 2.0;
-                emit(self, content, body_size);
+                emit(self, content, body_size, Font::TimesRoman);
                 self.newline(body_size);
             }
         }
@@ -392,7 +521,12 @@ impl LayoutCursor {
     }
 
     /// Restore a cached block whose prepared state matched the current state.
-    pub fn append_reused(&mut self, placed: &[PlacedItem], end: FlowState) {
+    pub fn append_reused(
+        &mut self,
+        placed: &[PlacedItem],
+        diagnostics: &[Diagnostic],
+        end: FlowState,
+    ) {
         while self.pages.len() <= end.page_index {
             let number = self.pages.len() as u32 + 1;
             self.pages.push(Page {
@@ -415,14 +549,27 @@ impl LayoutCursor {
             .items
             .len()
             .saturating_sub(end.trailing_line_items);
+        self.diagnostics.extend_from_slice(diagnostics);
+    }
+
+    pub fn diagnostics_len(&self) -> usize {
+        self.diagnostics.len()
+    }
+
+    pub fn diagnostics_since(&self, start: usize) -> &[Diagnostic] {
+        &self.diagnostics[start..]
     }
 
     pub fn into_pages(self) -> Vec<Page> {
         self.pages
     }
 
-    fn into_result(self) -> (Vec<Page>, BTreeMap<String, ReferenceValue>) {
-        (self.pages, self.collected_labels)
+    pub fn into_pages_and_diagnostics(self) -> (Vec<Page>, Vec<Diagnostic>) {
+        (self.pages, self.diagnostics)
+    }
+
+    fn into_result(self) -> (Vec<Page>, BTreeMap<String, ReferenceValue>, Vec<Diagnostic>) {
+        (self.pages, self.collected_labels, self.diagnostics)
     }
 }
 
@@ -464,6 +611,7 @@ pub fn layout_converged(
 ) -> (Vec<Page>, Vec<Diagnostic>) {
     let mut labels = BTreeMap::new();
     let mut last_pages = Vec::new();
+    let mut diagnostics = Vec::new();
     let mut converged = false;
     for _ in 0..REFERENCE_ITERATION_LIMIT {
         let mut cursor = LayoutCursor::with_labels(constraints, labels.clone(), true);
@@ -471,8 +619,9 @@ pub fn layout_converged(
             cursor.prepare_block(block);
             cursor.render_prepared_block(block);
         }
-        let (pages, next_labels) = cursor.into_result();
+        let (pages, next_labels, shape_diagnostics) = cursor.into_result();
         last_pages = pages;
+        diagnostics = shape_diagnostics;
         if next_labels == labels {
             converged = true;
             labels = next_labels;
@@ -481,7 +630,6 @@ pub fn layout_converged(
         labels = next_labels;
     }
 
-    let mut diagnostics = Vec::new();
     visit_references(blocks, &mut |key, span| {
         if !labels.contains_key(key) {
             diagnostics.push(Diagnostic::warning(
@@ -517,10 +665,10 @@ fn visit_references(blocks: &[Block], visitor: &mut impl FnMut(&str, Span)) {
     }
 }
 
-fn emit(c: &mut LayoutCursor, inlines: &[Inline], size: f64) {
+fn emit(c: &mut LayoutCursor, inlines: &[Inline], size: f64, font: Font) {
     for inline in inlines {
         match inline {
-            Inline::Text { text, span } => c.place(text.clone(), size, *span),
+            Inline::Text { text, span } => c.place(text.clone(), size, *span, font),
             Inline::LineBreak { .. } => c.newline(size),
             Inline::Math {
                 list,
@@ -529,7 +677,7 @@ fn emit(c: &mut LayoutCursor, inlines: &[Inline], size: f64) {
                 number_span,
                 span,
             } => {
-                let b = math::layout(list, size);
+                let b = math::layout(list, size, &mut c.diagnostics);
                 if *display {
                     c.display_math(
                         b,
@@ -563,7 +711,7 @@ fn emit(c: &mut LayoutCursor, inlines: &[Inline], size: f64) {
                         }
                     },
                 );
-                c.place(text, size, *span);
+                c.place(text, size, *span, font);
             }
         }
     }
@@ -597,7 +745,11 @@ mod tests {
         let y = item_at(&pages, source.find('y').unwrap());
         assert_eq!(x.font_size_pt, BODY_SIZE_PT);
         assert_eq!(x.baseline_y_pt, item_at(&pages, 0).baseline_y_pt);
-        assert!((y.x_pt - (PAGE_WIDTH_PT - glyph_width("y", BODY_SIZE_PT)) / 2.0).abs() < 0.02);
+        assert!(
+            (y.x_pt - (PAGE_WIDTH_PT - glyph_width("y", BODY_SIZE_PT, Font::TimesRoman)) / 2.0)
+                .abs()
+                < 0.02
+        );
         assert!(y.baseline_y_pt > x.baseline_y_pt);
     }
 
@@ -675,5 +827,80 @@ mod tests {
         let plain_gap = item_at(&plain, 6).baseline_y_pt - item_at(&plain, 0).baseline_y_pt;
         let tall_gap = item_at(&tall, 20).baseline_y_pt - item_at(&tall, 0).baseline_y_pt;
         assert!(tall_gap > plain_gap);
+    }
+
+    #[test]
+    fn core14_shaping_applies_kerning_and_keeps_document_byte_identity() {
+        let unkerned = text_width("A", BODY_SIZE_PT, Font::TimesRoman)
+            + text_width("V", BODY_SIZE_PT, Font::TimesRoman);
+        let kerned = text_width("AV", BODY_SIZE_PT, Font::TimesRoman);
+        assert!(kerned < unkerned, "the Times-Roman AV pair must kern");
+
+        let source = "é AV";
+        let (_, pages) = laid_out(source);
+        let item = item_at(&pages, source.find("AV").unwrap());
+        assert_eq!(&source[item.span.start..item.span.end], "AV");
+    }
+
+    #[test]
+    fn shaping_missing_glyph_diagnostic_uses_document_not_relative_offset() {
+        let source = "prefix 東京";
+        let output = crate::incremental::compile_full(source, LayoutConstraints::default());
+        let tokyo = source.find('東').unwrap();
+        assert!(output.diagnostics.iter().any(|diagnostic| {
+            diagnostic.span == Some(Span::new(tokyo, tokyo + '東'.len_utf8()))
+                && diagnostic.message.contains("U+6771")
+        }));
+
+        let origin = Span::in_document(crate::DocumentId(4), 100, 104);
+        let mut diagnostics = Vec::new();
+        let (_, shaped_span) = shaped_width(
+            "A日",
+            BODY_SIZE_PT,
+            Font::TimesRoman,
+            origin,
+            &mut diagnostics,
+        );
+        assert_eq!(shaped_span, origin);
+        assert_eq!(
+            diagnostics[0].span,
+            Some(Span::in_document(crate::DocumentId(4), 101, 104))
+        );
+    }
+
+    #[test]
+    fn body_and_heading_faces_do_not_depend_on_numeric_font_size() {
+        let parsed = parser::parse("body\n\n\\section{heading}\n");
+        let pages = layout_with_constraints(
+            &parsed.blocks,
+            LayoutConstraints {
+                font_size_pt: 11.0,
+                measure_pt: LayoutConstraints::default().measure_pt,
+            },
+        );
+        let body = pages
+            .iter()
+            .flat_map(|page| &page.items)
+            .find(|item| item.text == "body")
+            .unwrap();
+        let heading = pages
+            .iter()
+            .flat_map(|page| &page.items)
+            .find(|item| item.text == "heading")
+            .unwrap();
+        assert_eq!(body.font, Font::TimesRoman);
+        assert_eq!(heading.font, Font::TimesBold);
+    }
+
+    #[test]
+    fn unsupported_shaping_is_an_explicit_source_mapped_error() {
+        let source = "before אב";
+        let output = crate::incremental::compile_full(source, LayoutConstraints::default());
+        let start = source.find('א').unwrap();
+        assert!(output.diagnostics.iter().any(|diagnostic| {
+            diagnostic.span == Some(Span::new(start, start + 'א'.len_utf8()))
+                && diagnostic.message.contains("could not shape text")
+                && diagnostic.message.contains("Hebrew needs bidi reordering")
+        }));
     }
 }

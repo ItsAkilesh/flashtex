@@ -9,16 +9,15 @@
   "branch": "agent/mac-contract-review/edit-ledger",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "47645249b66f7f5814f0ddd576971ca7a3eec7b7",
-  "objective": "Exercise multi-session background service saturation and crash recovery with exact revision-tagged results and native adapter fixtures.",
+  "input_main_sha": "5b6911090e2dcbe807c6fb4d9e75cd4f214a2440",
+  "objective": "Atomic checkpoint rotation and interrupted-write recovery",
   "owned_paths": [
     "crates/edit-ledger"
   ],
-  "revision": 3,
+  "revision": 6,
   "schema_version": 1,
-  "state": "paused_by_user",
+  "state": "assigned",
   "task_id": "FT-026",
   "timebox_minutes": 30,
-  "updated_utc": "2026-09-12T06:32:12.639657+00:00",
-  "pause_reason": "Local active-agent cap reduced from7to4; preserve work, no automatic revival/replacement/remote reallocation."
+  "updated_utc": "2026-09-12T08:33:09Z"
 }

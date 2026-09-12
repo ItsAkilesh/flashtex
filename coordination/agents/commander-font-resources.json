@@ -3,31 +3,31 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-024": {
-      "acknowledged_utc": "2026-09-12T06:47:16Z",
-      "adaptation": "Proceed with current authorized CFF regression evidence and immutable full-font/table identity cache. Prior unhinted/flex/matrix stage already published at569fe9c; no repeated implementation.",
-      "main_sha": "13ee88dff72631bf2bc7a7f9f9d1f3a966a13fc6",
-      "revision": 5
+      "acknowledged_utc": "2026-09-12T07:20:48Z",
+      "adaptation": "Reviewed current adapter assignment; consuming exact published font-engine f418238 unchanged, preserving distinct engine and raw-font identities and source clusters. No shaper duplication.",
+      "main_sha": "2fd302675040308c2b07d346c07389a051518979",
+      "revision": 7
     }
   },
   "branch": "agent/commander-corpus/font-resources",
   "capabilities": [
     "rust-font-resources"
   ],
-  "code_revision": "061555f7ae2f51872cb4f303e6c8a0cb637e9587",
+  "code_revision": "9335f3de0fdbb02e766390472ac45f1497fcc6c5",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
     "pessimistic": 0
   },
   "machine": "linux-primary",
-  "main_integrated_through": "8cf7304f4c5d46733a6c8b6c648761038526610d",
-  "next_action": "Rendering-core adapts shared Arc outcomes and validated table-range binding; visual/native/hinted oracle gates remain pending.",
+  "main_integrated_through": "4b4647e399349c46d5cd0f146f5c0997cd111ac2",
+  "next_action": "Renderer handoff sent; registry CFF and mixedgeneration/cache invalidation followup complete. Ready next assigned product task.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "Immutable full-font/CFF outline cache and pinned STIX evidence published; 79 normal tests, opt-in 2221-glyph replay and strict clippy pass. Warm replay 0.251ms; no native latency or parity claim.",
+  "summary": "Published9335f3d rooted CFF registry extension.92tests/clippy and pinned mixedSTIX/Liberation registry replay pass. Typed backend resources preserve fullfont/CFFtable/face/license identity via existing engine/CFF parser; generation invalidates license-provenance changes and heldgeometry survives externalfont edits unchanged. No peer edits/fonts vendored/visualparity claim.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T06:50:59Z",
+  "updated_utc": "2026-09-12T07:46:22Z",
   "usage": {
     "evidence": "crates/font-resources/README.md; test suite; installed font SHA pinned.",
     "status": "Hosted allocation; no external provider calls; account remainder unknown."
