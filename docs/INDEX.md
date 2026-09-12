@@ -49,3 +49,8 @@ report and resolve the discrepancy instead of silently choosing a convenient one
 Keep startup material short. Keep detailed findings in linked topic files, and
 retain concise evidence summaries rather than huge terminal transcripts. Never
 commit credentials, access tokens, login URLs, or private captures.
+
+- [Autonomous worker startup and continuation](autonomous-workers.md): one-time
+  machine launch, noninteractive permissions, quota behavior, next-task queues.
+- [Machine capability evidence](resources/machines/README.md): per-machine reports;
+  resource authority remains coordination/RESOURCES.md.

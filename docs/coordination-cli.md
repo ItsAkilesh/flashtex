@@ -90,8 +90,7 @@ Commander treats submitted patches as untrusted changes and inspects them first.
 python3 scripts/coord.py watch --interval 60
 ```
 
-The watcher fetches once per minute, updates local snapshots, and exits at the
-fixed deadline. It never calls models, creates commits, pushes, applies changes,
+The watcher fetches once per minute, updates local snapshots, and continues until stopped (or the optional `--until` timestamp). It never calls models, creates commits, pushes, applies changes,
 or marks anything reviewed. Run under a session/service manager for persistence.
 It discovers work; an active agent or human still performs review/dispatch.
 
@@ -154,3 +153,22 @@ in the integration worktree and never pushes. If no valid commit exists, inspect
 and repair deliberately rather than retrying a model blindly. Store the relevant
 validation evidence and resulting main SHA in the Commander handoff at publication;
 the local execution packet alone is not a cross-machine handoff.
+
+
+The current autonomous startup and next-task process is in
+[autonomous-workers.md](autonomous-workers.md). New Cursor commits additionally
+coauthor the authenticated GitHub user; publication verifies the exact trailer.
+The documented mac-m1max-a primary-author exception is preserved.
+
+Commander dispatch daemon (dedicated clean worktree):
+
+```sh
+python3 scripts/dispatch_loop.py --watch --interval 30 --publish --allocation cursor-continuous-dispatch
+```
+
+This consumes only explicit queued work and matching completion reports. It archives
+completion evidence, advances assignment revision and next-task pointer, and uses
+Cursor to publish the update. It does not invent work when a queue is exhausted,
+mark reported-ready work integrated, or automatically spend another provider's funds.
+Commander replenishes queues and performs actual integration in parallel. The daemon
+fast-forwards its clean checkout when main advances and honors project stop control.

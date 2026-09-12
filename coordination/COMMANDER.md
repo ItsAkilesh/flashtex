@@ -59,3 +59,30 @@ Update ID: CMD-005. Updated: 2026-09-12T03:43:54Z.
 - Next action: publish merge tooling, then exercise it on the reviewed Kabir
   machine-inventory branch; preserve its capability evidence on main and report
   actual validation. Continue looking for worker acknowledgements.
+
+
+## Current override and execution packet — CMD-006
+
+- User removed the deadline stop. Continue until explicitly stopped or fully tested
+  whole-project completion, including extras; control.json is running with no time stop.
+- Actual main baseline: d432341; real Cursor inventory merge verified with 22 tests.
+- Implementing worker and completion-dispatch loops, new GitHub coauthor requirement,
+  and safe worker-main sync. Initial task IDs remain FT-002/003/004 for the same agents.
+- Dispatch issues: #1 Kabir/claude Rust; #2 mac-claude-a native Mac; #3 aarush companion.
+  At last check no worker ACK or running-process evidence; do not claim remote start.
+- Shared next-task pointers and two follow-on stages per worker are prepared. Queue
+  steps preserve the existing owner/branch and do not imply integrated/verified work.
+- Next action: test and publish loops via Cursor; launch Commander dispatcher in a
+  dedicated worktree after publication; send remote startup commands to each issue.
+  Obtain actual startup PID/auth/preflight evidence and integrate first work checkpoints.
+- Local watcher/awake services were originally deadline-limited: adjust scoped services
+  to new user override only after the continuous-control code is published and verified.
+
+- Latest user expansion: assign two hosted product subagents here (FT-011 corpus,
+  FT-012 runtime validation) and two children on the authorized Mac Claude20x plan
+  (FT-009 PDF output, FT-010 native verification). Parent keeps live editor/transport.
+- All 64 infrastructure tests pass. Local Codex unattended preflight succeeded.
+- Mac FT-003 is ready at f13979c; compiler FT-002 accepted at25fe5c4. Dispatcher will
+  immediately consume Mac's ready report and publish its transport-stage revision.
+- New Cursor commits coauthor authenticated GitHub user; preserve the remote Mac
+  primary-author exception from d685879 rather than rewriting its history.

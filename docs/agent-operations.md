@@ -1,3 +1,8 @@
+> Current scoped user override: the 20x Claude Max account on mac-m1max-a is
+> explicitly authorized for project tasks and subagents. The older API-only rule
+> below continues to apply to other protected Claude accounts. See AGENTS.md and
+> coordination/RESOURCES.md; do not enable overages or purchases.
+
 # Agent operations: resources, persistence, and context
 
 Owner: integration/resource coordinator when assigned.

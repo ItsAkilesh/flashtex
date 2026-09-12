@@ -126,7 +126,7 @@ class CoordinationTests(unittest.TestCase):
         coord.checkpoint(worktree, emit=False)
         self.assertTrue((coord.local_state(worktree) / 'checkpoint.json').exists())
         with patch.object(coord, 'DEADLINE', '2000-01-01T00:00:00Z'), patch.object(coord, 'checkpoint') as check:
-            coord.watch(worktree, SimpleNamespace(interval=60))
+            coord.watch(worktree, SimpleNamespace(interval=60, until='2000-01-01T00:00:00Z'))
             check.assert_not_called()
 
     def test_dispatch_rejects_overlap_but_not_similar_prefix(self):
@@ -159,12 +159,14 @@ class CoordinationTests(unittest.TestCase):
     def fake_cursor(self, mutate=False):
         original = coord.run
         def fake(argv, cwd=None, timeout=45, check=True):
+            if argv[:3] == ['gh', 'api', 'user']:
+                return subprocess.CompletedProcess(argv, 0, '{"login":"fixture-user","id":123}', '')
             if argv[0] != 'cursor-agent':
                 return original(argv, cwd=cwd, timeout=timeout, check=check)
             if mutate:
                 (Path(cwd) / 'change').write_text('unexpected mutation')
                 original(['git', 'add', 'change'], cwd=cwd)
-            return original(['git', 'commit', '-m', 'fixture\n\nImplementation-Agent: Test double\nCommit-Executor: Cursor CLI'], cwd=cwd)
+            return original(['git', 'commit', '-m', 'fixture\n\nImplementation-Agent: Test double\nCommit-Executor: Cursor CLI\nCo-authored-by: fixture-user <123+fixture-user@users.noreply.github.com>'], cwd=cwd)
         return fake
 
     def test_publish_requires_actual_subprocess_then_verifies_exact_tree(self):

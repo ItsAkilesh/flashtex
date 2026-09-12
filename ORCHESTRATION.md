@@ -1,3 +1,10 @@
+> Current user override (September 12): continue autonomously until explicit user
+> stop or verified whole-project completion. The former 10am deadline/stabilization
+> cutoffs below are historical planning only. Read docs/autonomous-workers.md and
+> coordination/control.json. New commits must also coauthor the authenticated local
+> GitHub user. Ongoing eligible OpenAI work is authorized; Claude/billing restrictions
+> remain in force.
+
 # FlashTeX orchestration master plan
 
 Owner: Commander — the primary Codex agent on `linux-primary`, designated by the

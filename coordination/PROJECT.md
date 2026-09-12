@@ -1,26 +1,21 @@
 # Project control
 
-Status: deadline and Commander recorded; awaiting worker registrations.
+Status: three workers assigned; autonomous startup acknowledgement pending.
 Updated: 2026-09-12T03:17:32Z.
 Coordinator: primary Codex agent on `linux-primary`, appointed Commander by user.
 Dispatch and reporting: [ORCHESTRATION.md](../ORCHESTRATION.md).
 
-## Deadline
+## Completion and duration
 
-- Deadline UTC: `2026-09-12T14:00:00Z`.
-- Deadline Pittsburgh: Saturday, September 12, 2026, 10:00 a.m. EDT
-  (`America/New_York`, UTC−04:00).
-- User said Pittsburgh and 10 a.m.; the date is interpreted as the next 10 a.m.
-  from September 11, 2026, 11:11 p.m. EDT. Correct it if the user specifies another date.
-- At recording: approximately 10 hours 49 minutes remained. This is a snapshot;
-  calculate current remaining time against the absolute deadline each checkpoint.
-- Planned final integration/verification window: 7:50–10:00 a.m. EDT on September
-  12 (approximately 130 minutes, 20% of remaining time when recorded).
-- Begin the final verification window at `2026-09-12T11:50:00Z`. Do not repeatedly
-  move this cutoff later by recalculating 20% at each checkpoint. Integrate throughout
-  development too; during this final window focus on stabilization and demo checks.
-- Earlier five-hour demo goal is superseded by this absolute schedule. Do not
-  start a fresh clock on another machine, task, or resumed session.
+The user explicitly superseded the 10am stop on September 12: continue until the
+user stops work or the entire project is fully implemented and tested. There is
+no current automatic time deadline or demo-only completion rule. The earlier
+`2026-09-12T14:00:00Z` is historical planning data, not authorization to stop.
+Model calls remain bounded; timeboxes are checkpoints, not silent abandonment.
+
+Authoritative machine-readable control: `coordination/control.json`. Only Commander
+updates it, based on the user or verified whole-project acceptance evidence.
+Individual worker completion never changes the global control to complete.
 
 ## Acceptance gates
 

@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "agent_id": "aarush-macbook",
+  "task_id": "FT-004",
+  "revision": 1,
+  "branch": "agent/aarush-macbook/companion-capture",
+  "action": "work",
+  "assignment_path": "coordination/assignments/FT-004.json",
+  "issue_number": 3
+}

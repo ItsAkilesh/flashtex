@@ -13,7 +13,7 @@ Full process: [orchestration master plan](../ORCHESTRATION.md).
 | FT-004 / 1 | Pencil and camera capture | aarush-macbook | assigned; acknowledgement pending | runtime-v1; confirm OpenAI tool readiness; no protected Claude |
 | FT-005 / 1 | Rust layout/output and source mapping | Unassigned | unassigned | FT-002 |
 | FT-006 / 1 | Incremental reuse and recovery evidence | Unassigned | unassigned | FT-005 |
-| FT-007 / 1 | Grok/transfer and reviewed insertion | Unassigned | unassigned | FT-001/003/004, Grok funding |
+| FT-007 / 1 | Rust bridge: Grok/transfer and reviewed insertion | commander | assigned; begins after loop publication | FT-001/003/004, Grok funding |
 | FT-008 / 1 | Integrated demo verification | commander + future Mac worker | unassigned | FT-003/005/006/007 |
 
 ## Dispatch record required before changing a task to assigned
@@ -37,3 +37,21 @@ ownership, branch, timebox, acceptance criteria, and funding references. Workers
 should migrate their legacy Markdown registration with `scripts/coord.py register`
 on the assigned branch, then acknowledge the published assignment. If local Cursor
 is unavailable, submit a patch plus report via a repository issue for central commit.
+
+## Commander implementation queue (current user instruction)
+
+1. ORCH-003/004: worker execution, completion dispatch, resource/recovery reporting,
+   coauthor enforcement, and real autonomous-startup verification.
+2. FT-007: original Rust capture bridge and transfer-v1 consumer contract under
+   crates/bridge; deduplication, revision-safe review and context/provider tests.
+3. Integration: review and combine compiler/Mac/companion checkpoints, resolve
+   conflicts and validate combined behavior; do not make workers wait on review
+   when an independent next stage is already approved.
+4. FT-008: end-to-end test scenarios, compatibility corpus and measured responsiveness;
+   distinguish actual device/native evidence from Linux or protocol-only checks.
+
+Compiler FT-002 acknowledgement is published at 25fe5c4. Mac FT-003 revision1 reports
+ready at f13979c: six native tests/builds reported; Commander inspected package,
+README and ShellModel and identified stale-source navigation as a follow-up check.
+Mac next queued work now prioritizes real JSONLines subprocess transport, matching
+its stated next experiment. Initial iPad acknowledgement remains pending.
