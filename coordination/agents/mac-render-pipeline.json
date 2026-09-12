@@ -15,7 +15,7 @@
   },
   "machine": "mac-m1max-a",
   "main_integrated_through": "7fea005b0611e2cc565ec38b9a705eff7cc4532c",
-  "next_action": "integrator review; un-vendor siblings as they merge; schema decision on opentype-cff",
+  "next_action": "math fixtures 07/09/13/14 vs pdflatex (math-layout gaps to issue #2); then large-edit cost and provenance evidence",
   "reviewed_peers": {
     "main": "7fea005b0611e2cc565ec38b9a705eff7cc4532c",
     "agent/mac-font-engine/tex-fonts": "f418238",
@@ -26,10 +26,10 @@
     "agent/mac-visual-oracle/reference-raster": "63f0cf5"
   },
   "schema_version": 1,
-  "state": "ready_for_integration",
-  "summary": "render-pipeline crate + flashtex-render worker: v2 display list, runtime-v1 fallback with layout-capability negotiation, TeX page builder, LaTeX structure; 35 tests; 18-fixture oracle table vs MacTeX 2026 pdflatex; v2 validated by main rendering-core except the opentype-cff font profile",
+  "state": "in_progress",
+  "summary": "render-pipeline: TFM-exact text metrics; all text fixtures at 0.00/0.01pt vs MacTeX 2026 pdflatex; 36 tests; math fixtures next",
   "tool": "Claude Code subagent Opus (parent mac-claude-a)",
-  "updated_utc": "2026-09-12T08:05:00Z",
+  "updated_utc": "2026-09-12T09:05:00Z",
   "usage": {
     "evidence": "shared 20x Max quota; not observable from a subagent",
     "status": "unknown"

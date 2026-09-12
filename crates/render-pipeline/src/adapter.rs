@@ -84,6 +84,9 @@ pub enum Item {
     Quad { em: f64 },
     /// `\label{key}`: no material; records where the key's page is.
     Label { key: String },
+    /// `\/` after a `\textit`/`\emph`/`\textbf` argument (LaTeX's
+    /// `\text@command` adds it unless `.` or `,` follows).
+    ItalicCorrection,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -789,8 +792,10 @@ fn items_from_inlines(texts: &[&str], inlines: &[Inline], styles: &[Vec<(usize, 
             }
             Inline::Math { list, span, .. } => {
                 if space_between(prev_end, prev_span, *span) {
+                    // The glue is the current font's where the space sits.
+                    let gap_style = space_style(texts, styles, prev_end, *span, TextStyle::default());
                     items.push(Item::Space {
-                        style: TextStyle::default(),
+                        style: gap_style,
                         factor,
                         no_break: false,
                     });
@@ -812,8 +817,13 @@ fn items_from_inlines(texts: &[&str], inlines: &[Inline], styles: &[Vec<(usize, 
                 let style = style_at(styles_of(span.document), span.start);
                 let has_space = space_between(prev_end, prev_span, *span);
                 if has_space {
+                    // TeX sizes an interword space with the font current
+                    // where the space token is read ("Plain, \textbf{bold}"
+                    // gets a regular space, "\textbf{bold words}" a bold one,
+                    // "\textbf{\emph{x}} y" a regular one).
+                    let gap_style = space_style(texts, styles, prev_end, *span, style);
                     items.push(Item::Space {
-                        style,
+                        style: gap_style,
                         factor,
                         no_break: false,
                     });
@@ -895,12 +905,46 @@ fn items_from_inlines(texts: &[&str], inlines: &[Inline], styles: &[Vec<(usize, 
                     run.push((ch, src));
                 }
                 flush(&mut run, &mut items, &mut factor);
+                // A style group closing right after this text: LaTeX's
+                // \text@command appends \/ (`\maybe@ic`) unless the next
+                // token is in \nocorrlist (`,` and `.`) or the enclosing
+                // font is itself slanted (`\fontdimen1 > 0`).
+                if styles_of(span.document).iter().any(|(_, end, _)| *end == span.end)
+                    && source.as_bytes().get(span.end) == Some(&b'}')
+                    && !matches!(source.as_bytes().get(span.end + 1), Some(b'.') | Some(b','))
+                    && !style_at(styles_of(span.document), span.end + 1).italic
+                    && matches!(items.last(), Some(Item::Word(_)))
+                {
+                    items.push(Item::ItalicCorrection);
+                }
                 prev_end = Some(span.end);
                 prev_span = Some(*span);
             }
         }
     }
     items
+}
+
+/// The style in force where TeX reads the space token between the previous
+/// inline (ending at `prev_end`) and `span`: the first whitespace byte of
+/// the gap, which sits inside or outside the closing braces around it.
+/// `fallback` when the gap cannot be located.
+fn space_style(
+    texts: &[&str],
+    styles: &[Vec<(usize, usize, StyleKind)>],
+    prev_end: Option<usize>,
+    span: Span,
+    fallback: TextStyle,
+) -> TextStyle {
+    let Some(pe) = prev_end else { return fallback };
+    let Some(src) = texts.get(span.document.0) else { return fallback };
+    let no_styles: Vec<(usize, usize, StyleKind)> = Vec::new();
+    let intervals = styles.get(span.document.0).map_or(&no_styles[..], |v| &v[..]);
+    let Some(gap) = src.get(pe..span.start) else { return fallback };
+    match gap.find(|c: char| c.is_whitespace()) {
+        Some(off) => style_at(intervals, pe + off),
+        None => style_at(intervals, pe),
+    }
 }
 
 /// Appends a segment to the current word or starts a new word.

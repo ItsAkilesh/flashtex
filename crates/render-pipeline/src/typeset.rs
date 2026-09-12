@@ -43,6 +43,8 @@ const MATH_SENTINEL: pl::FontId = pl::FontId::from_label("flashtex:math-box");
 #[derive(Debug, Clone)]
 pub struct GlyphRec {
     pub gid: u16,
+    /// TFM italic correction in fixwords (0 without a TFM).
+    pub italic_fix: i32,
     pub x_offset_units: i32,
     pub y_offset_units: i32,
     pub y_max_units: i32,
@@ -240,10 +242,35 @@ impl<'a> Context<'a> {
         }
     }
 
+    /// `\fontdimen`s of the face for `style` at `size`: the face's TFM
+    /// when it has one (exact fixwords), else the transcribed table.
+    fn text_params(&self, style: TextStyle, size: f64) -> params::TextParamsPt {
+        let r = self.fonts.resolve(
+            self.style.family,
+            Role::Text {
+                bold: style.bold,
+                italic: style.italic,
+            },
+            size,
+        );
+        if let (None, Some(tfm)) = (&r.substituted, &r.face.tfm) {
+            let dim = |n: usize| tfm.param(n).map_or(0.0, |v| crate::tfm::Tfm::pt(v, size));
+            return params::TextParamsPt {
+                space: dim(2),
+                stretch: dim(3),
+                shrink: dim(4),
+                x_height: dim(5),
+                quad: dim(6),
+                extra_space: dim(7),
+            };
+        }
+        let design = design_size(self.style.family, size);
+        params::text_params(self.style.family, style.bold, style.italic, design).at(size)
+    }
+
     /// Interword glue for the face/style at `size` with TeX's space factor.
     fn space_glue(&self, style: TextStyle, size: f64, factor: u32) -> pl::Glue {
-        let design = design_size(self.style.family, size);
-        let p = params::text_params(self.style.family, style.bold, style.italic, design).at(size);
+        let p = self.text_params(style, size);
         let f = f64::from(factor.max(1));
         let mut width = p.space;
         if factor >= 2000 {
@@ -303,6 +330,7 @@ impl<'a> Context<'a> {
                 });
                 recs.push(GlyphRec {
                     gid: g.gid.0,
+                    italic_fix: g.italic,
                     x_offset_units: g.x_offset,
                     y_offset_units: g.y_offset,
                     y_max_units: g.y_max,
@@ -322,7 +350,7 @@ impl<'a> Context<'a> {
         let run = pl::GlyphRun::from_shaped(
             face.layout_id(),
             size,
-            f64::from(face.units_per_em),
+            shaped.units_per_em as f64,
             f64::from(shaped.height_units),
             -f64::from(shaped.depth_units),
             &glyphs,
@@ -428,12 +456,26 @@ impl<'a> Context<'a> {
                     push(&mut out, &mut recs, pl::Item::penalty(pl::FORCED_BREAK), None);
                 }
                 AItem::Quad { em } => {
-                    let quad = params::text_params(self.style.family, base.bold, base.italic, design_size(self.style.family, size))
-                        .at(size)
-                        .quad;
+                    let quad = self.text_params(base, size).quad;
                     push(&mut out, &mut recs, pl::Item::Glue(pl::Glue::fixed(em * quad)), None);
                 }
                 AItem::Label { key } => labels.push((key.clone(), out.len())),
+                AItem::ItalicCorrection => {
+                    // `\/`: a kern of the last character's TFM italic
+                    // correction (§1113); nothing when the last node is not
+                    // a character or the metrics carry no correction.
+                    let last = recs.iter().rev().find_map(|r| *r).and_then(|r| match &self.recs[r] {
+                        BoxRec::Text { glyphs, size, .. } if matches!(out.last(), Some(pl::Item::Box(_))) => {
+                            glyphs.last().map(|g| crate::tfm::Tfm::pt(g.italic_fix, *size))
+                        }
+                        _ => None,
+                    });
+                    if let Some(ic) = last {
+                        if ic > 0.0 {
+                            push(&mut out, &mut recs, pl::Item::Glue(pl::Glue::fixed(ic)), None);
+                        }
+                    }
+                }
             }
         }
         // TeX's paragraph end: drop trailing glue, then
@@ -590,9 +632,7 @@ impl<'a> Context<'a> {
             diagnostics: Vec::new(),
             height: 0.0,
         };
-        let quad = params::text_params(s.family, false, false, design_size(s.family, s.body_size_pt))
-            .at(s.body_size_pt)
-            .quad;
+        let quad = self.text_params(TextStyle::default(), s.body_size_pt).quad;
         let vertical = VBlock {
             lines: vec![(0.0, 0.0)],
             penalty_before: None,
@@ -656,7 +696,7 @@ impl<'a> Context<'a> {
             };
             if let Some((nrun, nrec)) = self.text_box(&seg, size) {
                 e = nrun.width;
-                q = e + params::text_params(self.style.family, false, false, design_size(self.style.family, size)).at(size).quad;
+                q = e + self.text_params(TextStyle::default(), size).quad;
                 height = height.max(nrun.height);
                 depth = depth.max(nrun.depth);
                 eqno = Some((nrun, nrec));
@@ -874,9 +914,7 @@ pub fn convert_math(list: &flashtex_compiler::math::MathList) -> ml::MathList {
 pub fn build(ctx: &mut Context, doc: &Doc) -> Laid {
     let mut blocks: Vec<BuiltBlock> = Vec::new();
     let mut after_heading = false;
-    let quad = params::text_params(ctx.style.family, false, false, design_size(ctx.style.family, ctx.style.body_size_pt))
-        .at(ctx.style.body_size_pt)
-        .quad;
+    let quad = ctx.text_params(TextStyle::default(), ctx.style.body_size_pt).quad;
     for block in &doc.blocks {
         match block {
             Block::Heading { level, items, eject_before } => {

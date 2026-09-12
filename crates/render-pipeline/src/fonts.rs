@@ -23,6 +23,7 @@ use flashtex_font_engine::truetype::{Outlines, TrueTypeFace};
 use flashtex_font_engine::{sha256, Face};
 
 use crate::cff::{self, Cff};
+use crate::tfm::Tfm;
 use crate::ids::GlyphId;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -86,6 +87,47 @@ pub fn default_font_dirs() -> Vec<PathBuf> {
     dirs
 }
 
+/// Where the `.tfm` metrics of the text faces are looked for:
+/// `FLASHTEX_TFM_DIRS` (colon separated), then every font directory with
+/// `/opentype/` replaced by `/tfm/` (the TeX Live layout:
+/// `fonts/opentype/public/lm` ↔ `fonts/tfm/public/lm`), then the font
+/// directories themselves.
+pub fn default_tfm_dirs() -> Vec<PathBuf> {
+    let mut dirs: Vec<PathBuf> = Vec::new();
+    if let Ok(v) = std::env::var("FLASHTEX_TFM_DIRS") {
+        dirs.extend(v.split(':').filter(|s| !s.is_empty()).map(PathBuf::from));
+    }
+    for d in default_font_dirs() {
+        let text = d.to_string_lossy().replace("/opentype/", "/tfm/");
+        let p = PathBuf::from(text);
+        if !dirs.contains(&p) {
+            dirs.push(p);
+        }
+        if !dirs.contains(&d) {
+            dirs.push(d);
+        }
+    }
+    dirs
+}
+
+/// The `ec-lm*` TFM that `t1lm*.fd` pairs with a Latin Modern text file:
+/// `lmroman12-regular` → `ec-lmr12`, `-bold` → `ec-lmbx12`, `-italic` →
+/// `ec-lmri12`, `-bolditalic` → `ec-lmbxi10`. `None` for the math face and
+/// for names this table does not know.
+pub fn latin_modern_tfm(otf_stem: &str) -> Option<String> {
+    let rest = otf_stem.strip_prefix("lmroman")?;
+    let (digits, style) = rest.split_once('-')?;
+    let d: u32 = digits.parse().ok()?;
+    let series = match style {
+        "regular" => "r",
+        "bold" => "bx",
+        "italic" => "ri",
+        "bolditalic" => "bxi",
+        _ => return None,
+    };
+    Some(format!("ec-lm{series}{d}.tfm"))
+}
+
 /// Glyph extents in font units: `[x_min, y_min, x_max, y_max]`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Bounds {
@@ -122,6 +164,11 @@ pub struct LoadedFace {
     /// `core14-afm` (metrics only, no program).
     pub format: &'static str,
     pub path: Option<PathBuf>,
+    /// The TeX metrics pdfTeX lays this face out with (`ec-lm*.tfm`), when
+    /// found; shaping then takes widths/kerns/ligatures/heights from here.
+    pub tfm: Option<Rc<Tfm>>,
+    /// Why no TFM is attached (reported once by the typesetter).
+    pub tfm_missing: Option<String>,
     bounds_cache: RefCell<BTreeMap<u16, Bounds>>,
 }
 
@@ -220,6 +267,7 @@ pub struct FontSet {
     by_name: RefCell<BTreeMap<String, usize>>,
     /// File names that failed to load, with the reason (reported once).
     failures: RefCell<BTreeMap<String, String>>,
+    tfm_dirs: Vec<PathBuf>,
 }
 
 pub struct Resolved {
@@ -252,7 +300,17 @@ impl FontSet {
 
     pub fn new(dirs: Vec<PathBuf>) -> FontSet {
         let mut search = FontSearch::new();
+        let mut tfm_dirs: Vec<PathBuf> = Vec::new();
+        if let Ok(v) = std::env::var("FLASHTEX_TFM_DIRS") {
+            tfm_dirs.extend(v.split(':').filter(|s| !s.is_empty()).map(PathBuf::from));
+        }
         for d in dirs {
+            let sibling = PathBuf::from(d.to_string_lossy().replace("/opentype/", "/tfm/"));
+            for p in [sibling, d.clone()] {
+                if !tfm_dirs.contains(&p) {
+                    tfm_dirs.push(p);
+                }
+            }
             search = search.with_dir(d);
         }
         FontSet {
@@ -260,6 +318,7 @@ impl FontSet {
             faces: RefCell::new(Vec::new()),
             by_name: RefCell::new(BTreeMap::new()),
             failures: RefCell::new(BTreeMap::new()),
+            tfm_dirs,
         }
     }
 
@@ -398,6 +457,8 @@ impl FontSet {
             format: "core14-afm",
             path: None,
             kind: FaceKind::Core14(f),
+            tfm: None,
+            tfm_missing: None,
             bounds_cache: RefCell::new(BTreeMap::new()),
         };
         self.insert(name, loaded)
@@ -446,6 +507,23 @@ impl FontSet {
             }
         };
         let sha = face.id().content_sha256;
+        let (tfm, tfm_missing) = match latin_modern_tfm(&name) {
+            Some(tfm_file) => match self.tfm_dirs.iter().map(|d| d.join(&tfm_file)).find(|p| p.is_file()) {
+                Some(p) => match Tfm::load(&p) {
+                    Ok(t) if t.has_boundary() => (None, Some(format!("{tfm_file} declares a boundary character program, which this reader does not run"))),
+                    Ok(t) => (Some(Rc::new(t)), None),
+                    Err(e) => (None, Some(e)),
+                },
+                None => (
+                    None,
+                    Some(format!(
+                        "{tfm_file} not found in {}",
+                        self.tfm_dirs.iter().map(|d| d.display().to_string()).collect::<Vec<_>>().join(", ")
+                    )),
+                ),
+            },
+            None => (None, None),
+        };
         let loaded = LoadedFace {
             font_id: sha256::hex(&sha),
             name: name.clone(),
@@ -457,6 +535,8 @@ impl FontSet {
             format,
             path: Some(path),
             kind: FaceKind::Otf { face, cff },
+            tfm,
+            tfm_missing,
             bounds_cache: RefCell::new(BTreeMap::new()),
         };
         Ok(self.insert(name, loaded))
