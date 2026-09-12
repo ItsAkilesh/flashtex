@@ -1,6 +1,6 @@
 {
   "agent_id": "mac-claude-a",
-  "next_index": 1,
+  "next_index": 3,
   "schema_version": 1,
   "steps": [
     {
@@ -27,6 +27,34 @@
       "allocation_id": "claude-mac20x-shell-stage3",
       "name": "Native editor and preview quality",
       "objective": "Improve native source editing, UTF-8 navigation, dark preview with white exported document, keyboard shortcuts, and diagnostic presentation. Use real Rust output when available; label fixtures explicitly.",
+      "owned_paths": [
+        "apps/mac"
+      ],
+      "timebox_minutes": 45
+    },
+    {
+      "acceptance": [
+        "Transfer-v1 bridge client authenticates pairing and persists exactly-once native apply receipts across restart",
+        "PDF export preserves supported Unicode or emits an explicit faithful fallback without silent question-mark loss",
+        "Native end-to-end suite covers capture receipt/retry, reviewed accept/reject, stale context, and document recompile"
+      ],
+      "allocation_id": "claude-mac20x-shell-stage4",
+      "name": "Bridge, nearby transport, and Unicode export",
+      "objective": "Integrate the six Jaysen child streams for durable bridge insertion, authenticated nearby transport, Unicode PDF output, source-aware completion/navigation, packaging, and native end-to-end validation. Preserve exact child file ownership and test before merging.",
+      "owned_paths": [
+        "apps/mac"
+      ],
+      "timebox_minutes": 45
+    },
+    {
+      "acceptance": [
+        "Packaged app launches and completes the pinned demo with measured edit/capture/export latency",
+        "Crash/restart, disconnect/retry, stale preview, accessibility, and update paths have reproducible evidence",
+        "Device, signing, notarization, provider, and visual gaps remain explicit"
+      ],
+      "allocation_id": "claude-mac20x-shell-stage5",
+      "name": "Packaged native recovery and responsiveness",
+      "objective": "Harden the packaged Mac workflow and repeat native recovery, accessibility, nearby-device, responsiveness, and non-regression gates using exact integrated component SHAs.",
       "owned_paths": [
         "apps/mac"
       ],

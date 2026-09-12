@@ -1,0 +1,23 @@
+{
+  "acceptance": [
+    "Pinned repaired branch parses, builds unsigned, and runs its XCTest scheme",
+    "Harness detects regressions in project structure, MIME bytes, deduplication, cancellation, and retry",
+    "Binary-safe repair evidence remains reproducible and owner-reviewed"
+  ],
+  "agent_id": "chatgpt-a",
+  "allocation_id": "openai-aarush-chatgpt-ft014-stage2",
+  "branch": "agent/chatgpt-a/companion-validation",
+  "deadline_utc": null,
+  "dependencies": [],
+  "input_main_sha": "609640558cafc6b02b650fd8757eada4d42fa604",
+  "objective": "Extend the independent harness to validate the FT-004 owner's repaired branch, including real XCTest target execution, payload MIME bytes, cancellation/retry, and exact source SHA evidence without editing apps/companion.",
+  "owned_paths": [
+    "tools/companion-validation"
+  ],
+  "revision": 2,
+  "schema_version": 1,
+  "state": "assigned",
+  "task_id": "FT-014",
+  "timebox_minutes": 45,
+  "updated_utc": "2026-09-12T05:18:57Z"
+}

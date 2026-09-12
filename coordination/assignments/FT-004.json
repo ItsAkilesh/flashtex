@@ -1,23 +1,24 @@
 {
   "acceptance": [
-    "Native target builds with Xcode; report simulator/device availability and exact validation",
-    "Drawing and camera/photo paths each produce the same documented capture payload; mark device-only tests pending if unavailable",
-    "Submit patch through repository issue for centralized Cursor commit if local Cursor is unavailable; no new non-Cursor commits"
+    "xcodebuild -list parses the project; unsigned generic iOS Simulator build succeeds on an Xcode Mac",
+    "The committed test target runs payload, deduplication, image-size/orientation, cancellation, and retry tests",
+    "PNG/JPEG bytes match declared MIME type and base64 decodes; report physical Pencil/camera evidence or exact device-only gap",
+    "Publish an exact rev 2 ACK plus actual local worker PID/session and current non-secret quota/auth evidence; use central Cursor broker if local Cursor remains unavailable"
   ],
   "agent_id": "aarush-macbook",
   "allocation_id": "openai-aarush-plus-ft004",
   "branch": "agent/aarush-macbook/companion-capture",
-  "deadline_utc": "2026-09-12T14:00:00Z",
+  "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "276bb1c8586aa84fd548520c84423bc1812f9713",
-  "objective": "Build native PencilKit and camera/photo capture under apps/companion using runtime-v1 capture_submit; work through an available user-provided OpenAI account, do not consume protected Claude included usage.",
+  "input_main_sha": "7a1760114a706e8f76f17b957af84921be832340",
+  "objective": "Repair the committed iOS companion project so native build and tests run, then finish capture payload correctness. Regenerate malformed project.pbxproj, add the real test target and scheme, use an available or generic simulator destination, and ensure declared MIME type matches encoded image bytes. Preserve user work and runtime-v1 capture_submit.",
   "owned_paths": [
     "apps/companion"
   ],
-  "revision": 1,
+  "revision": 2,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-004",
   "timebox_minutes": 45,
-  "updated_utc": "2026-09-12T03:42:26Z"
+  "updated_utc": "2026-09-12T04:41:56Z"
 }

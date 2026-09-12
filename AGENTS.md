@@ -19,6 +19,15 @@ Read `docs/autonomous-workers.md` for the executable startup and task loop.
 
 ## Command and dispatch
 
+Current sole orchestrator: **orchestrator-astra**, hosted agent handle
+`/root/runtime_validator`, on linux-primary, explicitly selected by the user.
+All organizational work, resources, queues and global integration belong to this
+role. The six hosted Astra engineers perform product work only. The root agent
+continues product engineering and does not concurrently write main/control files.
+Read `coordination/authority.json` before every global mutation; obsolete role names
+below are historical. Sol explicitly handed over after stopping publication jobs.
+
+
 The user designated the primary Codex agent on `linux-primary` as **Commander**,
 responsible for orchestration, task/resource assignment, and integration of main.
 Read `ORCHESTRATION.md` and `coordination/COMMANDER.md` at startup and after
@@ -38,6 +47,26 @@ Use `publish` for guarded Cursor execution of staged commits and task-branch pus
 Workers without authenticated Cursor may submit patches via a repository issue
 for Commander/Cursor to commit; do not create non-Cursor commits as a workaround.
 
+There is exactly one active Commander. A successor may claim command only after
+either (a) the current Commander publishes an explicit quiesced handoff naming that
+successor and confirms its publication/integration jobs are stopped, or (b) the
+successor independently verifies the exact Commander process/session terminated
+and every Commander publication/dispatch/integration job is stopped. Silence, a
+missed heartbeat, stale Git state, timeout, quota suspicion, or network failure is
+never proof the Commander is offline. The successor fetches and pins current main,
+selects one leader identity, publishes an atomic non-force authority claim, and
+rereads that claim immediately before every main/control write. An old Commander
+that resumes must reread authority and remain quiesced unless explicitly handed
+command again. See `docs/autonomous-workers.md`.
+
+Every blocked worker opens a GitHub recovery issue with task/revision, exact branch
+and SHA, failing command, non-secret error, process state, resource state, and any
+possibly in-flight call. The Commander triages each open recovery issue, assigns
+one or more eligible non-overlapping resolvers after rereading every machine's
+latest resource report, verifies the fix, and only then closes the issue. A comment
+or task row is not proof that a local worker started; require an ACK plus actual
+PID/session or equivalent live-process evidence.
+
 ## Current Claude Max authorization
 
 The user explicitly requested more tasks and subagents on the 20x Claude Max plan
@@ -46,6 +75,13 @@ allowance for assigned project work and supervise `mac-pdf` and `mac-validation`
 in separate worktrees. These share one account quota; they are not independent
 balances. This scoped authorization supersedes older blanket Claude prohibitions
 for that plan only. No overages/purchases or unrelated protected account use.
+
+On `linux-primary`, Claude is API-only under the latest user instruction.
+Never launch the local Max subscription, OAuth/keychain, or extra-usage route.
+Opus work may start only after an existing funded API credential, actual available
+credits, a provider-side cap, and a bounded project grant are verified. This grants
+no purchase, new charge, auto-recharge, or overage. The Max 20x authorization above
+remains confined to `mac-m1max-a`.
 
 ## Resource, deadline, and recovery rules — read first
 
@@ -79,6 +115,18 @@ using a paid CLI/API, changing resource allocations, or making commits.
   account totals must remain unknown.
 
 ### Commit identity and truthful provenance
+
+**Latest explicit user override (all computers):** when Cursor usage limits are
+hit, the current implementing agent may execute Git commits directly. Do not wait
+for Cursor quota, purchase more usage, or mislabel execution. Use the actual agent
+identity and truthful `Implementation-Agent` / `Commit-Executor` trailers, plus
+`Co-authored-by` for the GitHub user authenticated on that computer. Preserve the
+mac-m1max-a primary-author exception. This supersedes older mandatory-Cursor wording
+only for the observed Cursor-limit fallback; actual Cursor commits remain truthful.
+The local Cursor limit was confirmed by terminal ActionRequiredError on the Astra
+authority and bridge recovery publication attempts. Product work and publication
+continue through direct-agent Git execution under this user authorization.
+
 
 New agent-generated commits use the project automation identity:
 `Cursor <cursor@flashtex.invalid>`. This is a project label with a deliberately

@@ -1,3 +1,13 @@
+# Current publication override — September 12
+
+Local Cursor returned terminal `ActionRequiredError: usage limit` on authority and
+bridge publication. The user explicitly authorizes direct commits by the current
+agent on ALL computers when Cursor limits are hit. No additional Cursor call,
+purchase, or overage is required. Preserve truthful tool/executor identity, local
+GitHub user coauthorship, and Jaysen primary-author exception. Other resource and
+Linux Claude API-only restrictions remain unchanged. The broker #15 is superseded
+once Astra publishes this direct authority claim and verifies remote main.
+
 # Resource authority and allocation register
 
 Status: user confirmed £75 is Pro/Max extra usage and included allowance must not
@@ -239,3 +249,28 @@ Hosted Commander grants `openai-commander-corpus` (FT-011) and
 `openai-commander-protocol` (FT-012): two independent 30-minute product-validation
 subtasks in isolated worktrees, no descendants or additional external model calls.
 These share the already-authorized Commander account; usage/cost unknown.
+
+## Current additional worker evidence — September 12, 04:42 UTC
+
+`chatgpt-a` on `aarush-macbook-chatgpt` reports Codex CLI, Xcode 26.6, Swift,
+Python, and Git push capability at registration `1d34323`; quota remains unknown.
+Grant `openai-aarush-chatgpt-ft014` authorizes the independent FT-014 companion
+validation harness under `tools/companion-validation`, using existing OpenAI
+subscription access only. It does not authorize API purchases or overlapping
+writes to FT-004's `apps/companion` ownership.
+
+The Linux Claude credential metadata reports subscription type Max and tier
+`default_claude_max_20x`, but the latest user instruction prohibits that local
+subscription/extra-usage route. The CLI reports logged out with no access or
+refresh token and no eligible API environment key. Pool `claude-linux-api` is the
+only eligible route and remains blocked until an existing funded API credential,
+actual available credits, a provider-side cap, and a bounded grant covering the
+whole call are verified. Grant `claude-linux-api-ft015` and its queued stages
+reserve no spend and authorize no inference while those checks are absent. New
+charges, purchases, auto-recharge, overages, and subscription fallback are
+prohibited. No inference has run; recovery issue #6 remains open.
+
+Grant `openai-commander-supervisor` covers one bounded hosted OpenAI engineering
+task, FT-016, to implement and test the deterministic Claude supervisor. It does
+not authorize Claude inference; all supervisor tests use isolated test doubles.
+Usage/cost is unknown under the existing Commander account authorization.

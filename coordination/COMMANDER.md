@@ -1,3 +1,27 @@
+# Active Commander packet — Astra handoff
+
+- Sole orchestrator is `orchestrator-astra`, hosted handle `/root/runtime_validator`.
+- Sol explicitly quiesced. Independently verified main9da7e48, dispatcher inactive/PID0,
+  no active global publishers, rootFT016056170d complete. This claim uses non-force Git.
+- Six hosted PRODUCT engineers are active/acknowledged: root proposal validation;
+  bridge-context journal recovery/invariant fix; compiler-corpus visual manifest;
+  render-schema semantic validation; corpus-continuation raster comparison;
+  mac-integration-review native bridge regression. Organization belongs to Astra only.
+- Existing remote dispatch remains valid: Kabir FT002r3, Aarush FT004r2, chatgpt-a
+  FT014r2. Their latest ACKs lag; pickup requests on issues1/3/5 require exact ACK,
+  live process/session and non-secret current resource evidence. Do not equate issue
+  comments with running workers. Jaysen FT003r4 accepted, childrenFT017–020 pending proof.
+- Immediate next steps: authority-fenced dispatcher restart, current+two queued tasks
+  per eligible worker, publish frozenFT012/FT011 and rendering proposal, integrate
+  rootFT016056170d after23-test review, then relay native bridge issue evidence.
+- Linux Claude remains API-only and blocked on verified existing funding/key/cap;
+  no subscription fallback, purchases or unverified credit spending. Mac Max20x is
+  authorized only on mac-m1max-a. Current quota values remain unknown/stale until measured.
+- Coordination: cheap Git polling30seconds; active Commander completion review at
+  most2minutes between useful checkpoints. No repeated model call on ambiguous failures.
+
+---
+
 # Commander bulletin and recovery packet
 
 Owner: primary Codex agent on linux-primary, appointed by the user.
@@ -86,3 +110,33 @@ Update ID: CMD-005. Updated: 2026-09-12T03:43:54Z.
   immediately consume Mac's ready report and publish its transport-stage revision.
 - New Cursor commits coauthor authenticated GitHub user; preserve the remote Mac
   primary-author exception from d685879 rather than rewriting its history.
+
+## Active execution packet — CMD-007
+
+- Operational command was explicitly handed to `orchestrator-sol` on
+  `linux-primary`; the prior root agent is quiesced from main writes and continues
+  FT-007 product implementation. `coordination/authority.json` is the durable
+  single-leader claim. Every global writer fetches and rereads it before writing.
+- Dispatcher failure was positively identified as pre-execution (`cursor-agent`
+  missing from the service PATH, no commit created). The exact staged tree was
+  committed by Cursor as `09031ef`, validated with 16 dispatcher tests, promoted
+  non-force, journal-reconciled, and restarted with an explicit PATH. It later
+  advanced Mac FT-003 rev 2 to rev 3 on main at `4d17c62`.
+- Deadline-limited watcher and awake units were replaced with temporary,
+  control-driven services. No permanent power setting changed.
+- FT-011 corpus increment 1 is integrated on main at `2e619e4`: 14 projects,
+  25 UTF-8 witnesses, six corpus tests plus all 64 coordination tests passed.
+  Corpus/compiler follow-up evidence reports 5 failing and 9 unsupported cases at
+  compiler `9f1033b`; no compatibility claim is inferred.
+- FT-012 first increment is published at `efcf650` and pending integration. Later
+  uncommitted increments have 25 tests plus real compiler evidence and a bounded
+  live probe; Commander must publish/integrate their combined final checkpoint.
+- Active hosted engineers: root FT-007, commander-corpus FT-011 follow-up, and
+  commander-protocol FT-012 follow-up. Keep at least three engineering agents active
+  while useful work exists, excluding the single Commander.
+- External recovery/startup requests are on issues #1 (Kabir FT-002 rev 2), #2
+  (Mac transport/correlation defects), and #3 (Aarush corrupt Xcode project/test
+  target). A comment is not startup evidence; require exact ACK plus PID/session.
+- At every checkpoint and before dispatch, reread all current machine/resource
+  reports. Unknown quota stays unknown. mac-m1max-a's expressly authorized 20x Max
+  pool is scoped to that machine; Linux protected Claude remains prohibited.

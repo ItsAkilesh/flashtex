@@ -1,23 +1,23 @@
 {
   "acceptance": [
-    "cargo test passes with Unicode source offsets and math fixtures",
-    "Positioned output reflects actual source edits; no existing TeX engine is invoked",
-    "Publish supported constructs and reproducible rendering evidence"
+    "Corpus macro, scope, comments/escapes, and include cases improve without losing any passing check",
+    "Included output preserves exact source file identity and UTF-8 byte ranges",
+    "Compiler and PDF paths share one layout/font representation or document a tested adapter"
   ],
   "agent_id": "claude",
-  "allocation_id": "openai-kabir-plus-ft002-stage2",
+  "allocation_id": "openai-kabir-plus-ft002-stage4",
   "branch": "agent/claude/compiler-foundation",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "25a92a9c591a92a3d49071e536ecf8f129112c24",
-  "objective": "Extend the original Rust compiler with displayed and inline math, fractions, superscripts/subscripts, multiline layout, and source mapping. Preserve runtime-v1 and document unsupported TeX honestly.",
+  "input_main_sha": "81f02dc739a650a6a704157bf96eadeb5d13c392",
+  "objective": "Integrate the four Kabir child streams: reusable incremental state, scoped macro expansion, project-relative multifile dependencies, and independent equivalence/performance evidence. Resolve issues #8 and #9 without duplicating layout or silently substituting unsupported glyphs.",
   "owned_paths": [
     "crates/compiler"
   ],
-  "revision": 2,
+  "revision": 4,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-002",
   "timebox_minutes": 45,
-  "updated_utc": "2026-09-12T04:21:55Z"
+  "updated_utc": "2026-09-12T05:41:35Z"
 }

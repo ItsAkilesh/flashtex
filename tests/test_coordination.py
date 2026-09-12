@@ -169,6 +169,20 @@ class CoordinationTests(unittest.TestCase):
             return original(['git', 'commit', '-m', 'fixture\n\nImplementation-Agent: Test double\nCommit-Executor: Cursor CLI\nCo-authored-by: fixture-user <123+fixture-user@users.noreply.github.com>'], cwd=cwd)
         return fake
 
+    def test_explicit_direct_fallback_never_calls_cursor_and_preserves_coauthor(self):
+        args = self.prepare_publish()
+        args.direct_agent_commit = True
+        trailer = 'Co-authored-by: fixture <123+fixture@users.noreply.github.com>'
+        with patch.object(coord, 'current_git_user_trailer', return_value=trailer), patch.object(coord, 'run', wraps=coord.run) as run:
+            coord.publish(self.a, args)
+        self.assertFalse(any(call.args[0][0] == 'cursor-agent' for call in run.call_args_list))
+        message = self.cmd(self.a, 'show', '-s', '--format=%B', 'HEAD')
+        self.assertIn('Commit-Executor: git via current agent (authorized Cursor-limit fallback)', message)
+        self.assertIn(trailer, message)
+        self.assertNotIn('Commit-Executor: Cursor CLI', message)
+        self.assertEqual(self.cmd(self.a, 'show', '-s', '--format=%an', 'HEAD'), 'Test double')
+        self.assertEqual(self.cmd(self.a, 'rev-parse', 'HEAD'), self.cmd(self.origin, 'rev-parse', 'refs/heads/agent/test/publish'))
+
     def test_publish_requires_actual_subprocess_then_verifies_exact_tree(self):
         args = self.prepare_publish()
         with patch.object(coord, 'run', side_effect=self.fake_cursor()) as invocation:

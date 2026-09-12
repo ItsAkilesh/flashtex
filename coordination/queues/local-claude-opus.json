@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "agent_id": "local-claude-opus",
+  "task_id": "FT-015",
+  "next_index": 0,
+  "steps": [
+    {
+      "name": "Fault injection and recovery matrix",
+      "objective": "Extend the end-to-end harness with deterministic process crashes, truncated JSONLines, delayed responses, duplicate captures, and restart recovery. Preserve exact component revisions and never call an unfunded provider.",
+      "acceptance": [
+        "Every injected fault has an expected safe state and repeatable recovery check",
+        "No stale or duplicate result mutates the accepted document revision",
+        "All evidence identifies fixture versus live-provider behavior"
+      ],
+      "owned_paths": ["tools/e2e", "tests/e2e"],
+      "timebox_minutes": 60,
+      "allocation_id": "claude-linux-api-ft015-stage2"
+    },
+    {
+      "name": "Compatibility and performance gate",
+      "objective": "Integrate the corpus and PDF evidence into a single non-regression command with measured cold, warm, edit, capture, and export timings. Keep unsupported constructs explicit and reject evidence from stale component SHAs.",
+      "acceptance": [
+        "Gate distinguishes new passes, regressions, unsupported cases, and unverified visual/device behavior",
+        "Latency results include sample counts and exact environment rather than unsupported targets",
+        "A component SHA mismatch or missing native evidence fails closed"
+      ],
+      "owned_paths": ["tools/e2e", "tests/e2e"],
+      "timebox_minutes": 60,
+      "allocation_id": "claude-linux-api-ft015-stage3"
+    }
+  ]
+}

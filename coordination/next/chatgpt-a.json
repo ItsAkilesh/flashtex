@@ -1,0 +1,10 @@
+{
+  "agent_id": "chatgpt-a",
+  "assignment_path": "coordination/assignments/FT-014.json",
+  "branch": "agent/chatgpt-a/companion-validation",
+  "previous_report_sha": "555d5f94b643828191b94a196ea03374b5e8abc1",
+  "revision": 2,
+  "schema_version": 1,
+  "task_id": "FT-014",
+  "updated_utc": "2026-09-12T05:18:57Z"
+}

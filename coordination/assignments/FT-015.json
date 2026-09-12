@@ -1,0 +1,25 @@
+{
+  "acceptance": [
+    "One reproducible command builds pinned Rust components and runs compile-to-reviewed-insert-to-recompile-to-PDF using labeled offline fixtures",
+    "Tests cover stale revision rejection, duplicate capture idempotency, reject/accept paths, crash/restart journal recovery, Unicode source offsets, and structural PDF evidence",
+    "Evidence records exact input SHAs, commands, outputs, latency samples, and unsupported/live-provider limitations; no full compatibility claim",
+    "Worker publishes exact rev 1 ACK, actual Claude PID/session, auth state, current plan/quota evidence, and no in-flight ambiguity"
+  ],
+  "agent_id": "local-claude-opus",
+  "allocation_id": "claude-linux-api-ft015",
+  "branch": "agent/local-claude-opus/e2e-harness",
+  "deadline_utc": null,
+  "dependencies": [],
+  "input_main_sha": "b40c84bf25b5005c58c339e5ad0578af94df4d5c",
+  "objective": "Build a substantial Linux end-to-end demo and regression harness under tools/e2e and tests/e2e. Consume pinned compiler, bridge, runtime validator, corpus, and PDF branch artifacts without modifying their owned paths; exercise compile, capture conversion fixture, reviewed anchored insertion, recompilation, PDF output, crash/restart recovery, and preserve exact provenance/latency evidence. Live Grok remains optional and credential-gated; labeled deterministic provider fixtures are required.",
+  "owned_paths": [
+    "tools/e2e",
+    "tests/e2e"
+  ],
+  "revision": 1,
+  "schema_version": 1,
+  "state": "assigned",
+  "task_id": "FT-015",
+  "timebox_minutes": 60,
+  "updated_utc": "2026-09-12T04:45:04Z"
+}

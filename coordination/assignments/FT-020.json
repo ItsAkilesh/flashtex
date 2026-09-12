@@ -1,0 +1,24 @@
+{
+  "acceptance": [
+    "Golden geometry tests cover nested scripts, stacked fractions, radicals, delimiter sizing, operators/limits, accents and math spacing classes",
+    "Reference comparisons declare TeX engine/font/version/DPI and quantify glyph/rule/baseline differences with overlays",
+    "Output carries glyph/font identity and explicit rule geometry for consistent preview/PDF rendering",
+    "Publish exact rev1 ACK plus Opus worker PID/session, branch, current+two followups, shared Max quota/reset/usage and in-flight calls"
+  ],
+  "agent_id": "mac-math-layout",
+  "allocation_id": "claude-mac20x-math-layout",
+  "branch": "agent/mac-math-layout/math-boxes",
+  "deadline_utc": null,
+  "dependencies": [],
+  "input_main_sha": "998e566c3a23bffeca141c0ce6688c217655b87a",
+  "objective": "Implement an original Rust TeX-style math layout crate on Jaysen mac-m1max-a using Opus. Build explicit math boxes for scripts, fractions/rules, roots, delimiters, operators, accents, spacing classes, and nested style changes; do not edit compiler-owned math.rs during parallel work.",
+  "owned_paths": [
+    "crates/math-layout"
+  ],
+  "revision": 1,
+  "schema_version": 1,
+  "state": "assigned",
+  "task_id": "FT-020",
+  "timebox_minutes": 45,
+  "updated_utc": "2026-09-12T05:20:27Z"
+}

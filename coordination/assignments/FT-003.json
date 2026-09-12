@@ -1,24 +1,23 @@
 {
   "acceptance": [
-    "Prove actual Rust output changes when source changes",
-    "Delayed older responses cannot replace newer output",
-    "Report measured edit-to-preview latency and native build command",
-    "After source edits, do not navigate with stale byte offsets unless a validated edit mapping rebases them; cover this in tests"
+    "Transfer-v1 bridge client authenticates pairing and persists exactly-once native apply receipts across restart",
+    "PDF export preserves supported Unicode or emits an explicit faithful fallback without silent question-mark loss",
+    "Native end-to-end suite covers capture receipt/retry, reviewed accept/reject, stale context, and document recompile"
   ],
   "agent_id": "mac-claude-a",
-  "allocation_id": "claude-mac20x-shell-stage2",
+  "allocation_id": "claude-mac20x-shell-stage4",
   "branch": "agent/mac-claude-a/mac-shell",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "25a92a9c591a92a3d49071e536ecf8f129112c24",
-  "objective": "Connect the Mac app to the original Rust runtime over runtime-v1 JSONLines. Add debounced edits, revision ordering, cancellation/coalescing, and clear build status. Original compiler arrival may lag: implement and test the real subprocess transport now using a clearly labeled protocol test child; switch to crates/compiler when available. Preserve existing dark preview and Unicode navigation.",
+  "input_main_sha": "609640558cafc6b02b650fd8757eada4d42fa604",
+  "objective": "Integrate the six Jaysen child streams for durable bridge insertion, authenticated nearby transport, Unicode PDF output, source-aware completion/navigation, packaging, and native end-to-end validation. Preserve exact child file ownership and test before merging.",
   "owned_paths": [
     "apps/mac"
   ],
-  "revision": 2,
+  "revision": 4,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-003",
   "timebox_minutes": 45,
-  "updated_utc": "2026-09-12T04:21:55Z"
+  "updated_utc": "2026-09-12T05:18:58Z"
 }

@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "commander_id": "orchestrator-astra",
+  "machine": "linux-primary",
+  "authority_state": "active",
+  "claim_mode": "explicit_quiesced_handoff",
+  "predecessor": "orchestrator-sol",
+  "predecessor_main_writes_quiesced": true,
+  "claim_base_main": "9da7e48148d91872dc0514119e1a04568ebfcb51",
+  "dispatch_service": "flashtex-dispatch.service",
+  "dispatch_service_pid_at_claim": 0,
+  "publication_rule": "Before each main/control write, fetch and reread this record; only commander_id may write unless a newer non-force claim is authoritative.",
+  "revival_rule": "Require explicit quiesced handoff or positive exact process/session termination plus stopped publication jobs; silence, timeout, stale heartbeat, quota error, and network failure are insufficient.",
+  "updated_utc": "2026-09-12T05:29:29Z",
+  "agent_handle": "/root/runtime_validator",
+  "model": "Astra",
+  "handoff_evidence": "Sol explicitly named this successor and quiesced all global writes; independent inspection confirmed dispatcher inactive/dead PID0, no active Cursor/integration/global publisher; root FT016056170d publication finished and clean.",
+  "claim_commit_executor": "git via Codex Astra, explicit user-authorized Cursor-limit fallback",
+  "cursor_quota_state": "terminal usage limit observed; no purchase or retry"
+}

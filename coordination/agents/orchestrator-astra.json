@@ -1,0 +1,24 @@
+{
+  "agent_id": "orchestrator-astra",
+  "allocation_id": "openai-commander",
+  "assignment_acknowledgements": {},
+  "branch": "agent/orchestrator-astra/authority-and-dispatch",
+  "capabilities": [
+    "orchestration",
+    "git-integration"
+  ],
+  "code_revision": "9da7e48148d91872dc0514119e1a04568ebfcb51",
+  "eta_minutes": null,
+  "machine": "linux-primary",
+  "main_integrated_through": "9da7e48148d91872dc0514119e1a04568ebfcb51",
+  "next_action": "Await and acknowledge assignment",
+  "reviewed_peers": {},
+  "schema_version": 1,
+  "state": "registered",
+  "summary": "Available for Commander assignment",
+  "tool": "Codex Astra orchestrator",
+  "updated_utc": "2026-09-12T05:29:30Z",
+  "usage": {
+    "status": "unknown"
+  }
+}
