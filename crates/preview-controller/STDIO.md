@@ -209,3 +209,24 @@ limits. Full v1 must still fit; a very small user budget can be too small even
 for a failure response. Other compilers may ignore this producer-specific setting,
 so runtime framing checks remain authoritative. Native latency is not established
 by the launch policy.
+
+### Edit admission correlation
+
+Full and metadata `edit` results include nullable `compile_request_id` and
+`compile_revision`. A non-null pair identifies the compile admitted for that
+operation; it may be queued, superseded, or immediately followed by a failed
+update. It does not prove dispatch, compilation, paint or source-action authority.
+`preview_error: null` likewise is not completion proof. If indexing/submission
+fails, both fields are null while the acknowledged source remains durable.
+Document revision and compile revision are different counters. Match updates by
+session and request ID rather than guessing IDs from document revisions.
+`discarded` updates now retain the original preview's `compile_revision`;
+`stale` already carries it. Reviewed `apply`, undo and redo wire result schemas are unchanged.
+
+`apply_group` full and metadata results also carry nullable `compile_request_id`
+and `compile_revision` with the same admission-only meaning. An exact permanent
+command retry preserves `history.command_revision` and `replayed_command`, and
+returns the currently saved document. If that retry admits another compile, its
+compile identity is fresh and refers to that current document, not the original
+command's historical source. Failure still returns null identities with the
+existing saved-source/error result. Undo and redo wire schemas are unchanged.

@@ -1,24 +1,23 @@
 {
   "acceptance": [
-    "xcodebuild -list parses the project; unsigned generic iOS Simulator build succeeds on an Xcode Mac",
-    "The committed test target runs payload, deduplication, image-size/orientation, cancellation, and retry tests",
-    "PNG/JPEG bytes match declared MIME type and base64 decodes; report physical Pencil/camera evidence or exact device-only gap",
-    "Publish an exact rev 2 ACK plus actual local worker PID/session and current non-secret quota/auth evidence; use central Cursor broker if local Cursor remains unavailable"
+    "Both input paths produce protocol-compatible payloads",
+    "Cancellation and retry preserve user work and do not duplicate submission IDs",
+    "Xcode build passes; document simulator and device test coverage honestly"
   ],
   "agent_id": "aarush-macbook",
-  "allocation_id": "openai-aarush-plus-ft004",
+  "allocation_id": "openai-aarush-plus-ft004-stage2",
   "branch": "agent/aarush-macbook/companion-capture",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "7a1760114a706e8f76f17b957af84921be832340",
-  "objective": "Repair the committed iOS companion project so native build and tests run, then finish capture payload correctness. Regenerate malformed project.pbxproj, add the real test target and scheme, use an available or generic simulator destination, and ensure declared MIME type matches encoded image bytes. Preserve user work and runtime-v1 capture_submit.",
+  "input_main_sha": "a744cd869544dcdb91b87d11381c8c82aabac684",
+  "objective": "Improve Pencil and camera capture with image orientation handling, context input, retained destination ID/revision, review-before-send UI, and accessibility. Keep capture_submit protocol unchanged.",
   "owned_paths": [
     "apps/companion"
   ],
-  "revision": 2,
+  "revision": 3,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-004",
   "timebox_minutes": 45,
-  "updated_utc": "2026-09-12T04:41:56Z"
+  "updated_utc": "2026-09-12T15:22:31Z"
 }

@@ -1,6 +1,6 @@
 {
   "agent_id": "commander-runtime-display",
-  "next_index": 2,
+  "next_index": 1,
   "schema_version": 1,
   "steps": [
     {
@@ -12,8 +12,8 @@
         "Publish bounded candidate API for existing helper owner; if deep validation is deferred, the type and contract must remain explicitly untrusted until existing native/core validator accepts it"
       ],
       "allocation_id": "hosted-openai-product",
-      "name": "Review existing producer cap parsing and shared helper launch policy, then audit actual oversized decline acceptance without runtime relaxation",
-      "objective": "Review existing producer cap parsing and shared helper launch policy, then audit actual oversized decline acceptance without runtime relaxation",
+      "name": "Audit isolated HW1 combined and quantifier candidate artifact provenance and exact diagnostic source-span changes",
+      "objective": "Audit isolated HW1 combined and quantifier candidate artifact provenance and exact diagnostic source-span changes",
       "owned_paths": [
         "crates/document-runtime"
       ],
@@ -28,8 +28,8 @@
         "Publish bounded candidate API for existing helper owner; if deep validation is deferred, the type and contract must remain explicitly untrusted until existing native/core validator accepts it"
       ],
       "allocation_id": "hosted-openai-product",
-      "name": "Audit published actual producer decline and following current preview source durability evidence",
-      "objective": "Audit published actual producer decline and following current preview source durability evidence",
+      "name": "Preserve standalone missing stdin and rebuilt binary limitations; distinguish archived combined proof",
+      "objective": "Preserve standalone missing stdin and rebuilt binary limitations; distinguish archived combined proof",
       "owned_paths": [
         "crates/document-runtime"
       ],
@@ -44,8 +44,8 @@
         "Publish bounded candidate API for existing helper owner; if deep validation is deferred, the type and contract must remain explicitly untrusted until existing native/core validator accepts it"
       ],
       "allocation_id": "hosted-openai-product",
-      "name": "Publish exact policy limitations without relaxed sibling validation or new wire format",
-      "objective": "Publish exact policy limitations without relaxed sibling validation or new wire format",
+      "name": "Publish source and protocol evidence only with no authoritative compiler edits or native parity claim",
+      "objective": "Publish source and protocol evidence only with no authoritative compiler edits or native parity claim",
       "owned_paths": [
         "crates/document-runtime"
       ],

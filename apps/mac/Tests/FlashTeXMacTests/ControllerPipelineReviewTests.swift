@@ -170,7 +170,7 @@ final class ControllerPipelineReviewTests: XCTestCase {
         weak var weakModel = model
         let project = model!.project
         // An edit whose preview is slow to arrive: the flush polls the in-flight slot for it.
-        model!.controllerState.inFlight = ("review-held", "main.tex", model!.editorRevision, Date(), model!.activeText, 99)
+        model!.controllerState.inFlight = ("review-held", "main.tex", model!.editorRevision, Date(), model!.activeText, 99, nil)
         model!.inFlightRevision = model!.editorRevision
         let flush = Task { @MainActor in await project.flushToHelper("main.tex", timeout: 0.5) }
         await Task.yield()

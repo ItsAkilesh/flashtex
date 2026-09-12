@@ -4,8 +4,8 @@
   "schema_version": 1,
   "steps": [
     {
-      "name": "Implement operation-specific nullable compile admission identity for full and metadata edit ACKs plus actual discarded preview revision; preserve source authority and failure durability",
-      "objective": "Implement operation-specific nullable compile admission identity for full and metadata edit ACKs plus actual discarded preview revision; preserve source authority and failure durability",
+      "name": "Prepare isolated exact-base vee and Rightarrow compiler command/export candidate using verified Adobe and downstream mappings; preserve unsupported mid setminus Longrightarrow diagnostics",
+      "objective": "Prepare isolated exact-base vee and Rightarrow compiler command/export candidate using verified Adobe and downstream mappings; preserve unsupported mid setminus Longrightarrow diagnostics",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"
@@ -19,8 +19,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Verify held-child supersession and failed or absent compiler admission without returning old identities",
-      "objective": "Verify held-child supersession and failed or absent compiler admission without returning old identities",
+      "name": "Archive exact standalone source request outputs and binary before combined build; audit exact seven command diagnostic removals",
+      "objective": "Archive exact standalone source request outputs and binary before combined build; audit exact seven command diagnostic removals",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"
@@ -34,8 +34,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Publish additive edit-only contract and owner handoff; group history paths remain separately scoped",
-      "objective": "Publish additive edit-only contract and owner handoff; group history paths remain separately scoped",
+      "name": "Publish reproducible combined patch for existing compiler owner with remaining HW1 gaps explicit; no authoritative adoption or native parity claim",
+      "objective": "Publish reproducible combined patch for existing compiler owner with remaining HW1 gaps explicit; no authoritative adoption or native parity claim",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"

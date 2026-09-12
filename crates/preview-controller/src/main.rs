@@ -429,8 +429,11 @@ fn run(config: Value) -> Result<(), String> {
                     bindings.retire_through(preview.compile_revision);
                     wire::preview_payload(preview)
                 }
-                Update::Discarded { request_id } => {
-                    json!({"kind":"discarded","request_id":request_id})
+                Update::Discarded {
+                    request_id,
+                    compile_revision,
+                } => {
+                    json!({"kind":"discarded","request_id":request_id,"compile_revision":compile_revision})
                 }
                 Update::Runtime(event) => match event {
                     Event::Superseded { id, by_id } => {
@@ -708,13 +711,13 @@ fn handle(
                 )?;
                 return Ok(
                     json!({"response_mode":"metadata", "document":result.document,
-                    "preview_error":result.preview_error,"save_and_submit_ms":result.save_and_submit_ms}),
+                    "compile_request_id":result.compile_admission.as_ref().map(|a| &a.request_id),"compile_revision":result.compile_admission.as_ref().map(|a| a.compile_revision),"preview_error":result.preview_error,"save_and_submit_ms":result.save_and_submit_ms}),
                 );
             }
             let result =
                 controller.replace_document(&edit.path, edit.revision, &edit.sha256, edit.text)?;
             Ok(
-                json!({"document":result.document,"preview_error":result.preview_error,"save_and_submit_ms":result.save_and_submit_ms}),
+                json!({"document":result.document,"compile_request_id":result.compile_admission.as_ref().map(|a| &a.request_id),"compile_revision":result.compile_admission.as_ref().map(|a| a.compile_revision),"preview_error":result.preview_error,"save_and_submit_ms":result.save_and_submit_ms}),
             )
         }
         "project_status" => {
@@ -843,15 +846,26 @@ fn handle(
         }
         "apply_group" | "undo" | "redo" => {
             let input = take_history_input(request)?;
-            if input.metadata_only {
+            let is_group = matches!(&input.action, HistoryAction::Group(_));
+            let (mut payload, admission) = if input.metadata_only {
                 let result = controller.apply_history_metadata(&input.path, input.action)?;
-                return Ok(json!({"response_mode":"metadata","history":result.history,
-                    "preview_error":result.preview_error,"save_and_submit_ms":result.save_and_submit_ms}));
+                (
+                    json!({"response_mode":"metadata","history":result.history,
+                    "preview_error":result.preview_error,"save_and_submit_ms":result.save_and_submit_ms}),
+                    result.compile_admission,
+                )
+            } else {
+                let outcome = controller.apply_history(&input.path, input.action)?;
+                (
+                    json!({"history":outcome.history,"preview_error":outcome.source.preview_error,"save_and_submit_ms":outcome.source.save_and_submit_ms}),
+                    outcome.source.compile_admission,
+                )
+            };
+            if is_group {
+                payload["compile_request_id"] = json!(admission.as_ref().map(|a| &a.request_id));
+                payload["compile_revision"] = json!(admission.as_ref().map(|a| a.compile_revision));
             }
-            let outcome = controller.apply_history(&input.path, input.action)?;
-            Ok(
-                json!({"history":outcome.history,"preview_error":outcome.source.preview_error,"save_and_submit_ms":outcome.source.save_and_submit_ms}),
-            )
+            Ok(payload)
         }
         "configure_layout" => {
             if p["renderer_support_confirmed"] != true {
