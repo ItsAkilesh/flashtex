@@ -1,6 +1,6 @@
 # mac-pairing-ui-3 handoff
 
-- Updated UTC: 2026-09-12T14:30Z
+- Updated UTC: 2026-09-12T14:32Z
 - Agent / parent / machine alias: `mac-pairing-ui-3` (Claude Code subagent) /
   `mac-claude-a` / `mac-m1max-a`
 - Task: Commander replenishment (issue #2 comment 5646989044) item 14 follow-ups
@@ -101,6 +101,11 @@ the existing `.nearbyCompanion` command).
 
 ## Checkpoint
 
-- Branch `agent/mac-pairing-ui-3/qr-permissions`; implementation commit follows 706508d5; then merge
-  `origin/agent/mac-claude-a/mac-shell` 9ba9851c forward and re-run the classes above.
-- Consumed main: 486b759c (parent tip 9ba9851c). Billing: shared Claude Max quota via parent; no purchases.
+- Branch `agent/mac-pairing-ui-3/qr-permissions`: c7e354ef (implementation) + 755b980d (merge of
+  parent tip 9ba9851c, clean) + this coord refresh. Dirty files: none after this commit.
+- Post-merge verification (14:31Z, load 1-min 37 — full `swift test` skipped per the ≥15 rule):
+  `swift build --build-tests` clean; CommandTableTests 8, CompanionPermissionTests 3,
+  NearbyViewControllerTests 13, PairingFlowMachineTests 32, PairingPersistenceTests 7,
+  PairingQRTests 4 → 67/67 passed. nearby-client package 50/50 (pre-merge tree, unchanged by the merge).
+- Next for the parent: merge this branch into mac-shell; no parent-retained file diffs are needed.
+- Consumed main: 486b759c; parent tip 9ba9851c. Billing: shared Claude Max quota via parent; no purchases.
