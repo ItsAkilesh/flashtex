@@ -14,6 +14,10 @@ enum RustPDFExport {
         if let env = ProcessInfo.processInfo.environment["FLASHTEX_PDF"], fm.isExecutableFile(atPath: env) {
             return URL(fileURLWithPath: env)
         }
+        if let bundled = Bundle.main.executableURL?.deletingLastPathComponent().appendingPathComponent("flashtex-pdf"),
+           fm.isExecutableFile(atPath: bundled.path) {
+            return bundled
+        }
         guard let root = ShellModel.locateRepoRoot() else { return nil }
         for profile in ["release", "debug"] {
             let url = root.appendingPathComponent("crates/pdf/target/\(profile)/flashtex-pdf")

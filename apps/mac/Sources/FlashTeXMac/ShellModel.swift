@@ -110,8 +110,7 @@ final class ShellModel: ObservableObject {
                 compile()
             }
         }
-        if let root = Self.locateRepoRoot() {
-            let fixtures = root.appendingPathComponent("protocol/fixtures")
+        if let fixtures = Self.locateFixturesDirectory() {
             loadFixtures(request: fixtures.appendingPathComponent("compile-request.json"),
                          result: fixtures.appendingPathComponent("compile-result.json"))
         } else {
@@ -246,6 +245,10 @@ final class ShellModel: ObservableObject {
         let fm = FileManager.default
         if let env = ProcessInfo.processInfo.environment["FLASHTEX_COMPILER"], fm.isExecutableFile(atPath: env) {
             return URL(fileURLWithPath: env)
+        }
+        if let bundled = Bundle.main.executableURL?.deletingLastPathComponent().appendingPathComponent("flashtex-compiler"),
+           fm.isExecutableFile(atPath: bundled.path) {
+            return bundled
         }
         guard let root = locateRepoRoot() else { return nil }
         for profile in ["release", "debug"] {
@@ -497,6 +500,17 @@ final class ShellModel: ObservableObject {
     }
 
     // MARK: repo discovery
+
+    /// Fixtures directory: `Contents/Resources/Samples` when running as a packaged
+    /// `FlashTeX.app` (see `scripts/make-app.sh`), else `protocol/fixtures` under
+    /// the repo root.
+    static func locateFixturesDirectory() -> URL? {
+        if let samples = Bundle.main.resourceURL?.appendingPathComponent("Samples"),
+           FileManager.default.fileExists(atPath: samples.appendingPathComponent("compile-result.json").path) {
+            return samples
+        }
+        return locateRepoRoot()?.appendingPathComponent("protocol/fixtures")
+    }
 
     static func locateRepoRoot() -> URL? {
         var candidates: [URL] = []

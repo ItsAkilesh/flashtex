@@ -23,6 +23,26 @@ loads another `compile_result` JSON, with a sibling `compile-request.json` (or
 `<name>-request.json` for a `<name>-result.json`) used to seed the editor when
 present. `⌘R` reloads.
 
+## Packaging
+
+A bare `swift build` product has no Finder/Dock identity: `open -a` fails on it
+and macOS cannot grant it per-app permissions (e.g. local network, later).
+`scripts/make-app.sh` wraps the built executable in a minimal `FlashTeX.app`:
+
+```sh
+apps/mac/scripts/make-app.sh [--debug] [--compiler <path>] [--pdf <path>] [--open]
+```
+
+It builds `FlashTeXMac` (release by default), assembles
+`apps/mac/build/FlashTeX.app` (`CFBundleIdentifier tech.jay3332.flashtex.mac`),
+copies `protocol/fixtures/compile-{request,result}.json` and `Samples/*` into
+`Contents/Resources/Samples` (so a bundled app finds fixtures via
+`Bundle.main.resourceURL`), bundles `flashtex-compiler`/`flashtex-pdf` into
+`Contents/MacOS` when built at `crates/{compiler,pdf}/target/release/…` under
+the repo root (or passed via `--compiler`/`--pdf`), and ad-hoc codesigns the
+result. Launch with `open apps/mac/build/FlashTeX.app` or pass `--open`.
+`apps/mac/build/` is gitignored.
+
 ## Behavior
 
 - Editor: `NSTextView` (monospaced, undo, no smart substitutions). Footer shows
