@@ -6,7 +6,7 @@
   "capabilities": ["rust", "parsing", "color"],
   "branch": "agent/daniel-color/color-expressions",
   "state": "ready_for_integration",
-  "summary": "crates/color-expressions rev2: added gray:/rgb:/cmyk: literal colour syntax (typed UnsupportedColorModel/InvalidComponentCount/ComponentOutOfRange errors, no invented colour space, no silent default) and independently hand-derived CMYK-CMYK/CMYK-RGB/CMYK-Gray mixing fixtures citing vector-graphics's documented naive to_rgb formula instead of asserting the resolver's own output. 63 unit tests + 1 doctest pass; cargo clippy --all-targets -- -D warnings clean.",
+  "summary": "crates/color-expressions rev3: adversarial-bounds test suite in src/parser.rs and src/lib.rs (paren/negation/mix-chain depth and 512-byte cap right at and one past each bound, percentage 0/100/101/huge-overflow, unterminated paren, empty model component list, wrong component count for every model, out-of-range and leading-minus components, lone '!'/',' separators, multi-byte characters at length/depth boundaries), every case asserting an exact ColorExprError variant, never just is_err(); plus a new tests/identity_regressions.rs pinning 16 resolve(...) calls to literal, hand-derived Color values (plain name, negation, 0/25/50/75/100% mixes, mix-against-white, nested/negated parens, a 3-term chain, literal-vs-named equivalence, CMYK-cross-variant), none produced by calling this crate's own resolver. 92 unit + 16 integration + 1 doctest = 109 tests pass; cargo clippy --all-targets -- -D warnings clean. Handoff states explicitly which xcolor behaviours are syntax-compatible (names, -negate, !mix, parens) vs not implemented/not parity-tested (xcolor colour tables, hue-aware negate, HTML/RGB255/hsb models, non-integer or >100 weights, any numeric comparison against real xcolor output).",
   "next_action": "Await Commander integration; no further work planned this revision",
   "eta_minutes": {
     "optimistic": 0,
@@ -19,17 +19,17 @@
     "evidence": "Shared Claude Max 20x subscription quota on mac-m5pro-dq222; no purchases or overages made or requested"
   },
   "reviewed_peers": {
-    "origin/main": "2fc45df69f0d397706174117116777f19619dfe2"
+    "origin/main": "967703ebb4e8140feaf4db02d27cb3ac63c573f6"
   },
   "assignment_acknowledgements": {
     "FT-035": {
-      "acknowledged_utc": "2026-09-12T09:23:26Z",
-      "revision": 2,
-      "main_sha": "2fc45df69f0d397706174117116777f19619dfe2",
-      "adaptation": "Interpreted 'expand exact supported color model/mix evaluation' as adding a model:components literal atom (gray/rgb/cmyk only, matching vector-graphics::Color exactly) alongside named-palette lookup, and 'independently specified fixtures' as expected values worked out by hand in comments from documented formulas (this crate's own lerp rule and vector-graphics's documented naive to_rgb conversion), never by calling this crate's own resolve()/mix(). Did not add CMYK entries to base_palette since the new literal syntax already gives exact CMYK access; did not attempt to re-derive vector-graphics's to_rgb formula's own design choice, since that is documented, not independently specifiable, and said so explicitly in coordination/daniel-color.md."
+      "acknowledged_utc": "2026-09-12T16:30:07Z",
+      "revision": 3,
+      "main_sha": "967703ebb4e8140feaf4db02d27cb3ac63c573f6",
+      "adaptation": "Interpreted 'adversarial bounds' as one exact-variant assert_eq! per hostile shape listed in the assignment (deep parens/negation/mix-chain at and past MAX_DEPTH, input at and past the 512-byte cap, percentage 0/100/101/huge-overflow, unterminated paren, empty component list, wrong component count, out-of-range components, lone separator, multi-byte-at-boundary), added in src/parser.rs and src/lib.rs. Interpreted 'exact identity regressions' as a dedicated tests/identity_regressions.rs pinning resolve(...) output to hand-derived literal Color constants, following rev2's discipline of never deriving expectations by calling this crate's own resolver (one dyadic-fraction correction made mid-work after 1.0-0.8 proved not exactly 0.2 in f64). Because 'invalid UTF-8' cannot reach this crate's public &str-only API without unsafe code, substituted the closest constructible adjacent attack (multi-byte characters sitting exactly on length/depth scanning boundaries) and said so explicitly rather than silently skipping the case. Wrote an explicit compatibility statement in coordination/daniel-color.md naming which xcolor behaviours are and are not implemented, since this crate has never been numerically compared against real xcolor/LaTeX output and does not claim to be."
     }
   },
-  "updated_utc": "2026-09-12T09:23:26Z",
-  "code_revision": "b9ea73f8940b66a8dcdb853aa40f56b207c46210",
-  "main_integrated_through": "2fc45df69f0d397706174117116777f19619dfe2"
+  "updated_utc": "2026-09-12T16:30:07Z",
+  "code_revision": "PENDING_COMMIT_SHA",
+  "main_integrated_through": "967703ebb4e8140feaf4db02d27cb3ac63c573f6"
 }

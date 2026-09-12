@@ -614,4 +614,289 @@ mod tests {
         };
         assert_eq!(e, expected);
     }
+
+    // --- Revision 3: adversarial bounds ---------------------------------
+    //
+    // Every case below is a hostile or boundary input that must come back
+    // as a specific, exactly-asserted `ColorExprError` variant — never a
+    // panic, never a hang, never unbounded allocation. Where a bound is
+    // exercised, both "right at the bound" (must succeed) and "one past
+    // the bound" (must fail with the typed bound error) are covered, so a
+    // future off-by-one in `spend_depth`/`MAX_INPUT_LEN` fails loudly.
+
+    /// Depth spent by `N` nested `(...)` wrapping a single leaf atom: one
+    /// unit per `(` plus one for the leaf itself.
+    fn atoms_for_paren_nesting(n: usize) -> usize {
+        n + 1
+    }
+
+    #[test]
+    fn paren_depth_exactly_at_bound_succeeds() {
+        // atoms_for_paren_nesting(MAX_DEPTH - 1) == MAX_DEPTH: the last
+        // atom() call that is allowed to succeed.
+        let n = MAX_DEPTH - 1;
+        assert_eq!(atoms_for_paren_nesting(n), MAX_DEPTH);
+        let opens = "(".repeat(n);
+        let closes = ")".repeat(n);
+        assert!(parse(&format!("{opens}red{closes}")).is_ok());
+    }
+
+    #[test]
+    fn paren_depth_one_past_bound_is_too_deep() {
+        let n = MAX_DEPTH; // atoms_for_paren_nesting(MAX_DEPTH) == MAX_DEPTH + 1
+        let opens = "(".repeat(n);
+        let closes = ")".repeat(n);
+        let hostile = format!("{opens}red{closes}");
+        assert!(hostile.len() <= MAX_INPUT_LEN, "keep this a depth attack");
+        assert_eq!(
+            parse(&hostile),
+            Err(ColorExprError::TooDeep { max: MAX_DEPTH })
+        );
+    }
+
+    #[test]
+    fn negation_chain_exactly_at_bound_succeeds() {
+        // m dashes + 1 leaf atom == m + 1 atom() calls.
+        let m = MAX_DEPTH - 1;
+        assert!(parse(&format!("{}red", "-".repeat(m))).is_ok());
+    }
+
+    #[test]
+    fn negation_chain_one_past_bound_is_too_deep() {
+        let m = MAX_DEPTH;
+        assert_eq!(
+            parse(&format!("{}red", "-".repeat(m))),
+            Err(ColorExprError::TooDeep { max: MAX_DEPTH })
+        );
+    }
+
+    #[test]
+    fn mix_chain_exactly_at_bound_succeeds() {
+        // 1 initial atom + k `!50!red` terms == k + 1 atom() calls.
+        let k = MAX_DEPTH - 1;
+        let mut expr = String::from("red");
+        for _ in 0..k {
+            expr.push_str("!50!red");
+        }
+        assert!(parse(&expr).is_ok());
+    }
+
+    #[test]
+    fn mix_chain_one_past_bound_is_too_deep() {
+        let k = MAX_DEPTH;
+        let mut expr = String::from("red");
+        for _ in 0..k {
+            expr.push_str("!50!red");
+        }
+        assert_eq!(
+            parse(&expr),
+            Err(ColorExprError::TooDeep { max: MAX_DEPTH })
+        );
+    }
+
+    #[test]
+    fn input_exactly_at_byte_cap_is_not_too_long() {
+        // A single MAX_INPUT_LEN-byte ASCII identifier: passes the length
+        // gate (no TooLong), and is a syntactically valid single atom.
+        let at_cap = "a".repeat(MAX_INPUT_LEN);
+        assert_eq!(at_cap.len(), MAX_INPUT_LEN);
+        assert!(parse(&at_cap).is_ok());
+    }
+
+    #[test]
+    fn input_one_byte_past_cap_is_too_long() {
+        let past_cap = "a".repeat(MAX_INPUT_LEN + 1);
+        assert_eq!(
+            parse(&past_cap),
+            Err(ColorExprError::TooLong {
+                len: MAX_INPUT_LEN + 1,
+                max: MAX_INPUT_LEN
+            })
+        );
+    }
+
+    #[test]
+    fn percentage_zero_is_valid() {
+        let e = parse("red!0!blue").unwrap();
+        assert_eq!(
+            e,
+            Expr::Mix {
+                left: Box::new(Expr::Name("red".into())),
+                pct: 0,
+                right: Some(Box::new(Expr::Name("blue".into()))),
+            }
+        );
+    }
+
+    #[test]
+    fn percentage_one_hundred_is_valid() {
+        let e = parse("red!100!blue").unwrap();
+        assert_eq!(
+            e,
+            Expr::Mix {
+                left: Box::new(Expr::Name("red".into())),
+                pct: 100,
+                right: Some(Box::new(Expr::Name("blue".into()))),
+            }
+        );
+    }
+
+    #[test]
+    fn percentage_101_is_invalid_by_one() {
+        assert_eq!(
+            parse("red!101!blue"),
+            Err(ColorExprError::InvalidPercentage {
+                pos: 4,
+                text: "101".to_string()
+            })
+        );
+    }
+
+    #[test]
+    fn percentage_huge_number_overflowing_u32_is_invalid_percentage_not_a_panic() {
+        // 11 nines is well past u32::MAX (4294967295); digits.parse::<u32>()
+        // fails, hitting the same typed InvalidPercentage path as "101" —
+        // never a panic or a wrapped/truncated value.
+        assert_eq!(
+            parse("red!99999999999!blue"),
+            Err(ColorExprError::InvalidPercentage {
+                pos: 4,
+                text: "99999999999".to_string()
+            })
+        );
+    }
+
+    #[test]
+    fn unterminated_open_paren_is_unexpected_end() {
+        assert_eq!(parse("(red"), Err(ColorExprError::UnexpectedEnd));
+    }
+
+    #[test]
+    fn empty_model_component_list_is_unexpected_end() {
+        for model in ["gray", "rgb", "cmyk"] {
+            let input = format!("{model}:");
+            assert_eq!(
+                parse(&input),
+                Err(ColorExprError::UnexpectedEnd),
+                "model {model:?} with no components"
+            );
+        }
+    }
+
+    #[test]
+    fn wrong_component_count_for_cmyk_is_a_typed_error() {
+        assert_eq!(
+            parse("cmyk:0,0,0"),
+            Err(ColorExprError::InvalidComponentCount {
+                model: "cmyk".to_string(),
+                expected: 4,
+                found: 3,
+            })
+        );
+    }
+
+    #[test]
+    fn component_boundary_values_zero_and_one_are_valid() {
+        assert_eq!(
+            parse("rgb:0,0,0").unwrap(),
+            Expr::Literal(Color::Rgb(0.0, 0.0, 0.0))
+        );
+        assert_eq!(
+            parse("rgb:1,1,1").unwrap(),
+            Expr::Literal(Color::Rgb(1.0, 1.0, 1.0))
+        );
+    }
+
+    #[test]
+    fn component_with_leading_minus_sign_is_unexpected_char_not_out_of_range() {
+        // A negative component is never parsed as a (negative) number: '-'
+        // isn't a digit, so this fails at the first character of the
+        // component, distinct from the in-range-but-too-large case.
+        assert_eq!(
+            parse("rgb:-1,0,0"),
+            Err(ColorExprError::UnexpectedChar { pos: 4, found: '-' })
+        );
+    }
+
+    #[test]
+    fn lone_bang_is_unexpected_char() {
+        assert_eq!(
+            parse("!"),
+            Err(ColorExprError::UnexpectedChar { pos: 0, found: '!' })
+        );
+    }
+
+    #[test]
+    fn lone_comma_at_top_level_is_unexpected_char() {
+        assert_eq!(
+            parse(","),
+            Err(ColorExprError::UnexpectedChar { pos: 0, found: ',' })
+        );
+    }
+
+    #[test]
+    fn lone_comma_as_first_component_is_unexpected_char() {
+        assert_eq!(
+            parse("rgb:,"),
+            Err(ColorExprError::UnexpectedChar { pos: 4, found: ',' })
+        );
+    }
+
+    // --- Multi-byte characters at scanning-position boundaries ---------
+    //
+    // The public API only accepts `&str`, which Rust's type system already
+    // guarantees is valid UTF-8 — a raw invalid byte sequence can never
+    // reach `parse`. The adjacent, constructible attack is a multi-byte
+    // character sitting exactly on a scanning boundary (the length cap, or
+    // the last atom the depth budget allows): every position this parser
+    // reports or slices at comes from `self.pos` advanced by
+    // `char::len_utf8()` (see `Parser::bump`), never a raw byte index, so
+    // it is always on a char boundary. These tests pin that down instead
+    // of merely hoping for it.
+
+    #[test]
+    fn multibyte_char_pushing_input_one_byte_past_cap_is_too_long_not_a_panic() {
+        // U+1D11E (musical symbol G clef) is 4 bytes. 509 ASCII bytes + 4
+        // = 513: one byte past MAX_INPUT_LEN, with the excess entirely
+        // inside the multi-byte character. The length check compares
+        // `input.len()` as a whole — no slicing at byte 512 — so this
+        // can't split the character or panic.
+        let prefix = "a".repeat(MAX_INPUT_LEN - 3);
+        let hostile = format!("{prefix}\u{1D11E}");
+        assert_eq!(hostile.len(), MAX_INPUT_LEN + 1);
+        assert_eq!(
+            parse(&hostile),
+            Err(ColorExprError::TooLong {
+                len: MAX_INPUT_LEN + 1,
+                max: MAX_INPUT_LEN
+            })
+        );
+    }
+
+    #[test]
+    fn multibyte_char_immediately_past_depth_bound_is_too_deep_not_panic() {
+        // MAX_DEPTH dashes spend exactly MAX_DEPTH atom() calls; the next
+        // (leaf) atom() call is the one that would read '🎨', but
+        // spend_depth rejects it before the character is even peeked, so
+        // this is TooDeep, not UnexpectedChar, and never panics on the
+        // multi-byte char.
+        let hostile = format!("{}\u{1F3A8}", "-".repeat(MAX_DEPTH));
+        assert_eq!(
+            parse(&hostile),
+            Err(ColorExprError::TooDeep { max: MAX_DEPTH })
+        );
+    }
+
+    #[test]
+    fn multibyte_char_right_after_open_paren_reports_correct_byte_offset() {
+        // '(' is 1 byte, so the emoji starts at byte offset 1 — not 0 and
+        // not mis-sliced into the middle of its own 4 bytes.
+        assert_eq!(
+            parse("(\u{1F3A8}"),
+            Err(ColorExprError::UnexpectedChar {
+                pos: 1,
+                found: '🎨'
+            })
+        );
+    }
 }

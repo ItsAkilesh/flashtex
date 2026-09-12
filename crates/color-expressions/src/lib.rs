@@ -329,4 +329,72 @@ mod tests {
             Err(ColorExprError::ComponentOutOfRange { .. })
         ));
     }
+
+    // --- Revision 3: adversarial bounds, exercised end to end -----------
+    //
+    // These mirror `parser`'s unit-level boundary tests but go through the
+    // public `resolve` entry point, confirming the typed error survives
+    // the palette-resolution step unchanged (`ast.eval` never runs on a
+    // parse failure, and never converts a parse error into a different
+    // variant).
+
+    #[test]
+    fn resolve_propagates_too_long_unchanged() {
+        let past_cap = "a".repeat(MAX_INPUT_LEN + 1);
+        assert_eq!(
+            resolve(&past_cap, &palette()),
+            Err(ColorExprError::TooLong {
+                len: MAX_INPUT_LEN + 1,
+                max: MAX_INPUT_LEN
+            })
+        );
+    }
+
+    #[test]
+    fn resolve_propagates_unterminated_paren_as_unexpected_end() {
+        assert_eq!(
+            resolve("(red", &palette()),
+            Err(ColorExprError::UnexpectedEnd)
+        );
+    }
+
+    #[test]
+    fn resolve_propagates_huge_percentage_as_invalid_percentage_not_a_panic() {
+        assert_eq!(
+            resolve("red!99999999999!blue", &palette()),
+            Err(ColorExprError::InvalidPercentage {
+                pos: 4,
+                text: "99999999999".to_string()
+            })
+        );
+    }
+
+    #[test]
+    fn resolve_propagates_lone_separator_as_unexpected_char() {
+        assert_eq!(
+            resolve("!", &palette()),
+            Err(ColorExprError::UnexpectedChar { pos: 0, found: '!' })
+        );
+        assert_eq!(
+            resolve(",", &palette()),
+            Err(ColorExprError::UnexpectedChar { pos: 0, found: ',' })
+        );
+    }
+
+    #[test]
+    fn resolve_propagates_empty_component_list_as_unexpected_end() {
+        assert_eq!(
+            resolve("rgb:", &palette()),
+            Err(ColorExprError::UnexpectedEnd)
+        );
+    }
+
+    #[test]
+    fn resolve_multibyte_char_past_depth_bound_is_too_deep_not_panic() {
+        let hostile = format!("{}\u{1F3A8}", "-".repeat(MAX_DEPTH));
+        assert_eq!(
+            resolve(&hostile, &palette()),
+            Err(ColorExprError::TooDeep { max: MAX_DEPTH })
+        );
+    }
 }
