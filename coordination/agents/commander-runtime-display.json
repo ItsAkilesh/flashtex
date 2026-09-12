@@ -3,27 +3,27 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-049": {
-      "acknowledged_utc": "2026-09-12T14:08:05Z",
-      "adaptation": "Read FT049r39; e2072fe3 capturedfalse/true followup reviewed readonly. Await one approved /home same298helper/158producer correctnesscapture, artifactaudit only, no speed/causecomparison or ownrun.",
-      "main_sha": "d923951262af359cee6018ca6c834c1d63698b3b",
-      "revision": 39
+      "acknowledged_utc": "2026-09-12T14:25:11Z",
+      "adaptation": "Read FT049r41; exact9aa unchangedarchive offlinebuildPASS347429f4,18fullruntimepairsPASS, rawbyte3+6comparisonPASS andcap1explicitfailed verified. Completing resource/source/hash evidence+publication, no timing or oldgeometryoracle.",
+      "main_sha": "ad922ea13be340f48af110f11d393c6e53afa605",
+      "revision": 41
     }
   },
   "branch": "agent/commander-runtime-display/display-runtime",
   "capabilities": [
     "rust-runtime"
   ],
-  "code_revision": "33238d636c5c9bc6f216961a38a2916641238413",
+  "code_revision": "e0554929c164a76ba98bc082e5c021c5fd8c6d66",
   "eta_minutes": null,
   "machine": "linux-primary",
-  "main_integrated_through": "ff1e8dd62661c44db634363ddee9630b9368afad",
-  "next_action": "Commander integration/next productassignment; furthertelemetry paused, no poststopimplementation. No activejobs or runtimeproductionchanges.",
+  "main_integrated_through": "4da0f772cf8f30259b502af09bfe2fa701c699af",
+  "next_action": "Commander integrate e0554929; root may consume exact published binary/manifest for authorized small three-state helper replay. No active jobs; await next bounded product assignment.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "FT049r39 exact7a7fd4f2 correctnessauditPASS:24archive/78asset hashes+actual298helper/158producer rehashed,20source/ACK,5historical/current21,receipts/reopen/clean verified. TraceINCOMPLETE partialtail/missingterminal preserved. Bothartifactmodes pass,oldfailedJSON unchanged; no workload/perf/causeclaim.",
+  "summary": "FT049r41 e0554929 complete: unchanged 9aaec57a offline release binary 347429f4; 18 existing large/multidoc fresh-persistent runtime pairs plus 2 cap1 failure/control pairs pass. Nine direct requests have byte-identical stdout; 33429 UTF8 spans and 4 delivered font bindings verified; 61 hash-bound evidence files. Focused clippy and diff check pass. No timing/native/old-geometry parity claim.",
   "tool": "codex",
-  "updated_utc": "2026-09-12T14:13:31Z",
+  "updated_utc": "2026-09-12T14:32:01Z",
   "usage": {
     "status": "unknown"
   }
