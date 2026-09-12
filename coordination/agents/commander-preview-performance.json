@@ -13,23 +13,23 @@
   "capabilities": [
     "Preview helper serialization and latency"
   ],
-  "code_revision": "846ff03d5275e144202cb566f9d8e2e5dfb2092a",
+  "code_revision": "f8bb23892aa01bee3b7c436493feb824ae491cbe",
   "eta_minutes": {
     "likely": 30,
     "optimistic": 15,
     "pessimistic": 60
   },
   "machine": "linux-primary",
-  "main_integrated_through": "518a2ce3ad7d4058828c4057495a562fcc757c69",
-  "next_action": "Commander integration review; inspect producer reply-cap environment for bounded helper startup/restart fix.",
+  "main_integrated_through": "71049ffa90db021375617a59bdf7440fcaf4a369",
+  "next_action": "Commander review correlation design; implement only agreed additive submission identity semantics.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "GH38 corrected isolated starred-heading patch846ff03d: actual immutableHW1 119 to112 diagnostics, preserving all14 unsupported title commands. Final41library+50integration pass;3ignored; strictlint pass.",
+  "summary": "Publishedf8bb2389 actual producer accept-decline-accept and complete fallback/reopen proof. Added reviewed launch-boundary tests and read-only edit compile-correlation design.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T14:44:20Z",
+  "updated_utc": "2026-09-12T14:51:38Z",
   "usage": {
-    "evidence": "crates/preview-controller/docs/handoffs/hw1-starred-sections;846ff03d",
-    "status": "Retained hosted engineer; no paid calls; quota unknown; all local test processes terminal."
+    "evidence": "f8bb2389; docs/proposals/edit-compile-correlation.md",
+    "status": "Hosted retained engineer, no paid calls, quota unknown; no running commands."
   }
 }
