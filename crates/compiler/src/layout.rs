@@ -891,4 +891,16 @@ mod tests {
         assert_eq!(body.font, Font::TimesRoman);
         assert_eq!(heading.font, Font::TimesBold);
     }
+
+    #[test]
+    fn unsupported_shaping_is_an_explicit_source_mapped_error() {
+        let source = "before אב";
+        let output = crate::incremental::compile_full(source, LayoutConstraints::default());
+        let start = source.find('א').unwrap();
+        assert!(output.diagnostics.iter().any(|diagnostic| {
+            diagnostic.span == Some(Span::new(start, start + 'א'.len_utf8()))
+                && diagnostic.message.contains("could not shape text")
+                && diagnostic.message.contains("Hebrew needs bidi reordering")
+        }));
+    }
 }
