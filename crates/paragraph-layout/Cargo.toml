@@ -10,3 +10,4 @@ name = "flashtex_paragraph_layout"
 path = "src/lib.rs"
 
 [dependencies]
+flashtex-document-style = { path = "../document-style" }

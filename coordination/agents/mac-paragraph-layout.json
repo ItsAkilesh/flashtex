@@ -3,10 +3,10 @@
   "allocation_id": "claude-mac20x-paragraph",
   "assignment_acknowledgements": {
     "FT-019": {
-      "acknowledged_utc": "2026-09-12T06:12:30Z",
-      "adaptation": "Merged origin/main c59aa5b into the branch (a95e14d, no conflicts). Plan: Liang pattern hyphenator behind Hyphenator with a documented subset of TeX Live hyph-en-us.tex (Kuiken 2005-05-30, permissive licence) plus hyphenmins/penalties; emergency-stretch third pass test; hfuzz/hbadness diagnostics citing run source ranges in runtime-v1 shape; relayout with reuse of unaffected paragraphs and a random-edit equality property; oracle pdflatex hyphenation sample measured via the native-verification extractor.",
-      "main_sha": "0a3d8e22fe4abc5cf15c39cce889aaa125f38bb6",
-      "revision": 2
+      "acknowledged_utc": "2026-09-12T06:29:49Z",
+      "adaptation": "Merged origin/main a949f5b (no conflicts). Plan: style adapter from crates/document-style (on main) into PageParams/LineBreakParams/section blocks; 2-page golden tests for page/baseline metrics; pdflatex oracle for page geometry (default article 12pt letter margins and 1in) comparing every baseline and the page-break word; preview/PDF agreement via runtime-v1 JSON through crates/pdf and a CoreText Swift script, word boxes compared with PDFKit.",
+      "main_sha": "a949f5b773a1bc7f1be7ae2d79581856af88a97b",
+      "revision": 3
     }
   },
   "branch": "agent/mac-paragraph-layout/linebreak",
@@ -14,14 +14,14 @@
     "rust",
     "typesetting"
   ],
-  "code_revision": "92eb5ba7d25fcff57464375eea206658248bbf12",
+  "code_revision": "341dce89aa575522254bd201dfb39aa6605408a7",
   "eta_minutes": {
     "likely": 5,
     "optimistic": 0,
     "pessimistic": 15
   },
   "machine": "mac-m1max-a",
-  "main_integrated_through": "df9e26e44a74b4322f86bcbcfe0cf2312afaece0",
+  "main_integrated_through": "a949f5b773a1bc7f1be7ae2d79581856af88a97b",
   "next_action": "Await orchestrator review/integration; follow-ups on request (more patterns, parshape).",
   "reviewed_peers": {
     "origin/agent/mac-font-engine/tex-fonts": {
@@ -36,10 +36,10 @@
     }
   },
   "schema_version": 1,
-  "state": "ready_for_integration",
+  "state": "accepted",
   "summary": "FT-019 rev 2 delivered: Liang pattern hyphenator (420 Knuth patterns from hyph-en-us.tex, licence quoted; 110/110 words equal pdflatex showhyphens), TeX word/first-word rules and hyphen penalties, emergency-stretch third pass test, hfuzz/hbadness diagnostics in runtime-v1 shape citing every box's source range, document::relayout with 300-random-edit equality property, oracle hyphenating sample: 92/92 line starts, 5/5 hyphenated line ends, mean|dx| 0.003 bp.",
   "tool": "Claude Code subagent (parent mac-claude-a)",
-  "updated_utc": "2026-09-12T06:27:02Z",
+  "updated_utc": "2026-09-12T06:29:49Z",
   "usage": {
     "evidence": "cargo test: 34 passed; cargo clippy --all-targets: 0 warnings",
     "status": "Claude Max 20x shared quota; remaining unknown"

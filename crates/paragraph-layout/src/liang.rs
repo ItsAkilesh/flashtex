@@ -1,10 +1,10 @@
 //! Liang's pattern hyphenation (the algorithm TeX uses), original
 //! implementation, behind the [`Hyphenator`] trait.
 //!
-//! Word rules mirror TeX: the hyphenatable part is the leading run of letters
-//! of the word (a word starting with a non-letter is not hyphenated, trailing
-//! punctuation is allowed, but a letter after a non-letter disqualifies the
-//! word — TeX §896–899); uppercase letters are lower-cased (`\uchyph=1`); a
+//! Word rules mirror TeX §896–899: leading non-letters (`\lccode` 0) are
+//! skipped, the hyphenatable part is the first maximal run of letters, and the
+//! character nodes after it are ignored (so "engine's" hyphenates "engine" and
+//! "(documentation)" is hyphenated); uppercase letters are lower-cased (`\uchyph=1`); a
 //! word shorter than `left_min + right_min` letters is left alone; explicit
 //! `\-` markers switch the word to explicit-only discretionaries, as a
 //! discretionary node ends TeX's letter run. Exceptions (`\hyphenation{}`)
@@ -141,23 +141,24 @@ impl Hyphenator for LiangHyphenator {
         if word.contains("\\-") {
             return crate::hyphenate::ExplicitDiscretionary.hyphenate(word);
         }
+        // TeX §896–899: skip leading non-letters (their `\lccode` is 0), take
+        // the maximal run of letters, and ignore whatever character nodes
+        // follow it ("engine's" hyphenates "engine"; "(documentation)" is
+        // hyphenated; "docu(mentation" only sees "docu"). Verified against
+        // pdflatex's `\showhyphens` in the tests below.
         let mut letters = String::new();
         let mut byte_at_char: Vec<usize> = Vec::new();
-        let mut end = 0;
+        let mut started = false;
         for (i, ch) in word.char_indices() {
             if ch.is_alphabetic() {
+                started = true;
                 byte_at_char.push(i);
                 letters.extend(ch.to_lowercase());
-                end = i + ch.len_utf8();
-            } else {
+            } else if started {
                 break;
             }
         }
         if letters.is_empty() {
-            return Vec::new();
-        }
-        // A letter after the run (e.g. "wo)rd") disqualifies the word.
-        if word[end..].chars().any(|c| c.is_alphabetic()) {
             return Vec::new();
         }
         self.positions(&letters)
@@ -764,10 +765,25 @@ mod tests {
     #[test]
     fn tex_word_rules() {
         let h = LiangHyphenator::en_us_subset();
-        // Trailing punctuation is fine; a leading non-letter or a letter after
-        // a non-letter disables hyphenation; short words are left alone.
+        // pdflatex `\showhyphens{engine's (documentation) don't}` gives
+        // en-gine's (doc-u-men-ta-tion) don't: leading and trailing non-letters
+        // are skipped, the letter run after a non-letter is ignored; short
+        // words are left alone.
         assert!(!h.hyphenate("documentation,").is_empty());
-        assert!(h.hyphenate("(documentation").is_empty());
+        assert_eq!(
+            h.hyphenate("(documentation)")
+                .iter()
+                .map(|p| p.offset)
+                .collect::<Vec<_>>(),
+            vec![4, 5, 8, 10]
+        );
+        assert_eq!(
+            h.hyphenate("engine's")
+                .iter()
+                .map(|p| p.offset)
+                .collect::<Vec<_>>(),
+            vec![2]
+        );
         assert!(h.hyphenate("docu(mentation").is_empty());
         assert!(h.hyphenate("lines").is_empty());
         // Exceptions override patterns.

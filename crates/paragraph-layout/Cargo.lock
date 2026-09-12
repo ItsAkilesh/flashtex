@@ -3,5 +3,12 @@
 version = 4
 
 [[package]]
+name = "flashtex-document-style"
+version = "0.1.0"
+
+[[package]]
 name = "flashtex-paragraph-layout"
 version = "0.1.0"
+dependencies = [
+ "flashtex-document-style",
+]
