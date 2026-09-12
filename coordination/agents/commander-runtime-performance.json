@@ -13,17 +13,17 @@
   "capabilities": [
     "Runtime profiling and exact source validation"
   ],
-  "code_revision": "2508e1d095b809067a9bcc2d3b99be0a15439aac",
+  "code_revision": "e5a804d96e4f5a40c69ce2184a47ee6c1ddb0ae7",
   "eta_minutes": null,
   "machine": "linux-primary",
-  "main_integrated_through": "5b6911090e2dcbe807c6fb4d9e75cd4f214a2440",
-  "next_action": "Commander integrate instrumentation/parser; continue measured validation optimization after review.",
+  "main_integrated_through": "e5a804d96e4f5a40c69ce2184a47ee6c1ddb0ae7",
+  "next_action": "Integrate validation checkpoint; scope higher-impact native helper bridge latency work with Commander.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "FT047 UTF8-once parser: paired median10.25% reduction,19/20wins, exact Values; 180 repeat scaling samples exact-clean. Existing20tests plus invalidUTF8 regression and strict Clippy pass.",
+  "summary": "FT047 one-pass display fields: isolated20/20pairs faster,median35.1% validation reduction,exact Values; first40full-pipeline samples exact-clean. Reverse run both binaries timed out during confirmed integration contention.21tests+strictlint pass.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T08:49:19Z",
+  "updated_utc": "2026-09-12T08:55:25Z",
   "usage": {
     "status": "unknown"
   }
