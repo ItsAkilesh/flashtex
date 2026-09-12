@@ -1,0 +1,74 @@
+{
+  "agent_id": "bridge-context-jobs",
+  "archived_utc": "2026-09-12T08:24:59Z",
+  "assignment": {
+    "acceptance": [
+      "Meaningful tests and strict lint pass",
+      "Publish truthful execution provenance and exact tested SHA",
+      "No native integration or PDF parity claim without measured evidence"
+    ],
+    "agent_id": "bridge-context-jobs",
+    "allocation_id": "hosted-openai-product",
+    "branch": "agent/bridge-context/conversion-jobs",
+    "deadline_utc": null,
+    "dependencies": [],
+    "input_main_sha": "df9e26e44a74b4322f86bcbcfe0cf2312afaece0",
+    "objective": "Durable review-inbox expiry/recovery and context-revocation consistency; preserve exact PreparedEdit approval",
+    "owned_paths": [
+      "crates/conversion-jobs"
+    ],
+    "pause_reason": "Local active-agent cap reduced from7to4; preserve work, no automatic revival/replacement/remote reallocation.",
+    "revision": 5,
+    "schema_version": 1,
+    "state": "assigned",
+    "task_id": "FT-022",
+    "timebox_minutes": 30,
+    "updated_utc": "2026-09-12T08:18:56.142617+00:00"
+  },
+  "report": {
+    "agent_id": "bridge-context-jobs",
+    "allocation_id": "hosted-openai-product",
+    "assignment_acknowledgements": {
+      "FT-022": {
+        "acknowledged_utc": "2026-09-12T08:23:17Z",
+        "adaptation": "Reviewed r5 exact assignment: durable expiry, bounded recovered selection, sticky context revocation and actual bridge restart regression. Scheduler and source approval APIs preserved.",
+        "main_sha": "ddc5bc6944a56815a4bb6b66a9c7fb2dd52ca8b4",
+        "revision": 5
+      }
+    },
+    "branch": "agent/bridge-context/conversion-jobs",
+    "capabilities": [
+      "rust",
+      "conversion-jobs",
+      "bridge-journal"
+    ],
+    "code_revision": "5854be53e00010b5d68739b811d01fc56a2fcfcc",
+    "eta_minutes": {
+      "likely": 0,
+      "optimistic": 0,
+      "pessimistic": 0
+    },
+    "machine": "linux-primary",
+    "main_integrated_through": "c655cb29c71e04750db855764d42ab4a75b9c70c",
+    "next_action": "Integrate tested 5854be5. Native callers use open_at/decide_at/validate_handoff_at and refresh_from_bridge before recovered handoff; exact PreparedEdit approval remains separate.",
+    "schema_version": 1,
+    "state": "ready_for_integration",
+    "summary": "FT-022 r5 complete: durable caller-clock expiry, bounded recovered selection, sticky context revocation and actual bridge restart stale acceptance refusal.",
+    "tool": "Codex Astra hosted /root/bridge_context",
+    "updated_utc": "2026-09-12T08:24:39.763848+00:00",
+    "usage": {
+      "evidence": "43 all-feature/all-target tests and strict Clippy/fmt pass. Actual BridgeAdapter conversion and journal recovery tested; no provider calls, no Scheduler API changes.",
+      "status": "Hosted OpenAI quota unknown; no paid provider calls or Cursor retry. Direct Git fallback authorized."
+    }
+  },
+  "report_age_seconds": 19,
+  "report_path": "coordination/agents/bridge-context-jobs.json",
+  "review_required": true,
+  "revision": 5,
+  "schema_version": 1,
+  "stale_completion": false,
+  "state": "reported_ready",
+  "task_id": "FT-022",
+  "worker_branch": "agent/bridge-context/conversion-jobs",
+  "worker_report_sha": "4583da97119fa8e14d3b7e3bd70fe8ebd2d1c4f2"
+}

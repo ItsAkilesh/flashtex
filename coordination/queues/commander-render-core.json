@@ -5,27 +5,29 @@
   "next_index": 0,
   "steps": [
     {
-      "name": "Consume latest font arithmetic/device context with exact cache identities",
-      "objective": "Consume latest font arithmetic/device context with exact cache identities",
+      "name": "Multi-font generation replacement invalidates stale leases while retained frames stay immutable",
+      "objective": "Multi-font generation replacement invalidates stale leases while retained frames stay immutable",
       "owned_paths": [
         "crates/rendering-core"
       ],
       "acceptance": [
-        "Meaningful bounded behavior tests and strict lint pass",
-        "Preserve exact identities; publish measured evidence and unsupported gates"
+        "Meaningful tests and strict lint pass",
+        "Publish truthful execution provenance and exact tested SHA",
+        "No native integration or PDF parity claim without measured evidence"
       ],
       "allocation_id": "hosted-openai-product",
       "timebox_minutes": 30
     },
     {
-      "name": "Export reproducible mismatch records for pinned reference comparison and closure tracking",
-      "objective": "Export reproducible mismatch records for pinned reference comparison and closure tracking",
+      "name": "Bounded source-aware hit testing across shaped font changes with exact cluster provenance",
+      "objective": "Bounded source-aware hit testing across shaped font changes with exact cluster provenance",
       "owned_paths": [
         "crates/rendering-core"
       ],
       "acceptance": [
-        "Meaningful bounded behavior tests and strict lint pass",
-        "Preserve exact identities; publish measured evidence and unsupported gates"
+        "Meaningful tests and strict lint pass",
+        "Publish truthful execution provenance and exact tested SHA",
+        "No native integration or PDF parity claim without measured evidence"
       ],
       "allocation_id": "hosted-openai-product",
       "timebox_minutes": 30

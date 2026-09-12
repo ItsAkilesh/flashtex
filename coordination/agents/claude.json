@@ -3,10 +3,10 @@
   "allocation_id": "openai-kabir-plus-ft002",
   "assignment_acknowledgements": {
     "FT-002": {
-      "acknowledged_utc": "2026-09-12T06:34:14Z",
-      "adaptation": "Accepted FT-002 revision 5 at input main ac17097 under allocation openai-kabir-plus-ft002-stage5: harden incremental restart/recovery and run a pinned-corpus non-regression gate, recording supported, failed, unsupported and unverified behaviour honestly. Note that crates/compiler is now integrated on main, so this branch is finally building on integrated work. Running rules-v1 and font-hints-v1 negotiation in parallel in a separate worktree, because the layout-capabilities contract published at a949f5b is what finally allows issue #9 to be closed properly: the fraction bar can become a real rule primitive instead of a box-drawing stand-in.",
-      "main_sha": "0b7076ad9f3b8b8ac8e9e7f80960c97af2c8e7b3",
-      "revision": 5
+      "acknowledged_utc": "2026-09-12T07:40:44Z",
+      "adaptation": "Accepted FT-002 rev 7: standing compiler bottleneck repair at 5KB/50KB/500KB with p50/p95/p99, superlinear hot-path removal, and proof that incremental equals clean. Directly relevant precedent on this branch: rev 6 re-measurement already caught a quadratic reuse lookup that had pushed a one-word edit to 178 ms p95, so the superlinear risk is real and measured, not hypothetical. Open issue #21 reports a valid 500KB project exceeding the runtime output frame limit, which is the same scale boundary this revision targets; will read and address it as part of this work.",
+      "main_sha": "7fea005b0611e2cc565ec38b9a705eff7cc4532c",
+      "revision": 7
     }
   },
   "branch": "agent/claude/compiler-foundation",
@@ -16,29 +16,29 @@
     "cursor-commit",
     "coordination"
   ],
-  "code_revision": "0fd0b4571bebdc1ab5b613e77dbc8507f8d3a5d5",
+  "code_revision": "63f2988c94df178b297ad9a922a2e10a88edc0e2",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
     "pessimistic": 0
   },
   "machine": "mac-m5pro-kabir",
-  "main_integrated_through": "3ae7d9b76e6503fcb60f33cb2258b78250baf8bc",
-  "next_action": "Close issue #9 and notify FT-009 that the producer side of migration gate 1 is done. Available for the next dispatch.",
+  "main_integrated_through": "70e4aabc579bb7783187cb397b81857200a4de53",
+  "next_action": "Available for dispatch. Remaining known bottleneck is that every keystroke still reparses the whole document; incremental parsing would be the next structural step.",
   "reviewed_peers": {
     "origin/main": {
-      "adaptation": "Verified the contract trap myself rather than trusting the worker: sessions are keyed by project and path, not by capability set, so a cached result could have been returned to a request with a different set. It is bound correctly. Also confirmed rule geometry is top-left with the numerator above and denominator below, dimensions positive and within the magnitude cap, and the source range naming the generating \\\\frac command.",
-      "reviewed_utc": "2026-09-12T06:46:58Z",
-      "sha": "0b7076ad9f3b8b8ac8e9e7f80960c97af2c8e7b3"
+      "adaptation": "I chased the wrong suspect twice before measuring properly. I first indexed the reuse candidate lookup and then made candidate shifting lazy, which together bought only 474->420 ms. Measuring the parse share showed parse was 402 of the 420 ms, so the reuse machinery was never the problem. The actual cause was that every macro invocation removed its token and then spliced the expansion into the gap, moving the token tail twice per invocation.",
+      "reviewed_utc": "2026-09-12T07:59:11Z",
+      "sha": "7fea005b0611e2cc565ec38b9a705eff7cc4532c"
     }
   },
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "rules-v1 and font-hints-v1 negotiation implemented, closing the compiler half of issue #9. Fraction bars are now real rule primitives when negotiated; the legacy text-bar route and its export warning are unchanged for clients that do not request the capability. 83 tests across 12 suites.",
+  "summary": "FT-002 rev 7 delivered: scaling benchmark at 5KB/50KB/500KB with p50/p95/p99 and input+binary hashes, and a 14x speedup from removing a quadratic in the parser. A 500KB one-word edit went from 420.606 ms to 29.401 ms p95 and scaling is now approximately linear. Incremental equals clean full build at all three sizes.",
   "tool": "Codex",
-  "updated_utc": "2026-09-12T06:46:58Z",
+  "updated_utc": "2026-09-12T07:59:11Z",
   "usage": {
-    "evidence": "cargo test 83 pass; clippy -D warnings clean; fmt clean; legacy harness 21/21 unchanged; corpus 9 ok unchanged; one-word edit p95 30.715 ms so no latency regression; capability cache binding verified independently by compiling the same document with rules-v1, then without on the same session, then with again, and confirming the rule primitive does not leak to the request that did not ask for it",
-    "status": "Codex used for the implementation; verification and merge done directly"
+    "evidence": "scaling_bench prints sha256 of each input and the binary; one-word edit p95 5KB 0.801->0.551 ms, 50KB 7.402->2.541 ms, 500KB 420.606->29.401 ms; parse at 500KB 402.586->12.254 ms; 14 suites pass; clippy -D warnings clean; fmt clean; harness 21/21; pinned byte-exact fixtures unchanged, proving output identical",
+    "status": "Codex hit its usage limit three times and did no work this revision; all of it written directly"
   }
 }

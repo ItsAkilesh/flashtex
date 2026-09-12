@@ -9,7 +9,7 @@ use crate::{
 };
 use flashtex_font_resources::FontCollection;
 /// Stable within a project/revision/page batch, independent of retained vector order.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize)]
 pub struct PrimitiveId {
     pub item_index: usize,
     pub glyph_index: Option<usize>,

@@ -3,12 +3,14 @@
   "task_id": "FT-028",
   "agent_id": "orchestrator-jaysen-opus",
   "branch": "agent/orchestrator-jaysen-opus/standby",
-  "revision": 1,
+  "revision": 2,
   "state": "assigned",
-  "objective": "Prepare the explicitly requested Jaysen Opus standby. Implement/test local deterministic witness-branch monitor and one-shot guarded revival invocation; remain read-only for global authority/control until independently verified Astra termination and stopped publishers. Publish actual session/PID/auth route and end-to-end synthetic handoff evidence.",
+  "objective": "Adapt existing read-only standby to dynamic successor selection. Prefer linux-primary while usable; after exact terminal/quiescence select currently working registered machine with greatest fresh comparable verified authorized remaining capacity. Jaysen is a candidate, not fixed successor. Do not launch new inference for polling.",
   "owned_paths": [
     "tools/commander-standby",
-    "coordination/agents/orchestrator-jaysen-opus.json"
+    "coordination/agents/orchestrator-jaysen-opus.json",
+    "tools/standby",
+    "coordination/orchestrator-jaysen-opus.md"
   ],
   "dependencies": [],
   "acceptance": [
@@ -21,5 +23,5 @@
   "timebox_minutes": 30,
   "deadline_utc": null,
   "input_main_sha": "d128b48b839263b723794384dc16741d9d8cebe8",
-  "updated_utc": "2026-09-12T07:12:41.734519+00:00"
+  "updated_utc": "2026-09-12T07:45:00Z"
 }

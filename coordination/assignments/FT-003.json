@@ -9,15 +9,15 @@
   "branch": "agent/mac-claude-a/mac-shell",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "2d67b0da5a0a4fd83e700558e33168624d250f2d",
-  "objective": "Harden the packaged Mac workflow and repeat native recovery, accessibility, nearby-device, responsiveness, and non-regression gates using exact integrated component SHAs.",
+  "input_main_sha": "59a49ab895df3598b3f5d895b593b4fbd3dd7972",
+  "objective": "Integrate original Rust preview-controller and document/runtime/ledger/font pipeline behind background adapters; measure typing-to-visible p95/p99 including actual native paint, and exact PDF byte/pixel gaps.",
   "owned_paths": [
     "apps/mac"
   ],
-  "revision": 5,
+  "revision": 6,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-003",
   "timebox_minutes": 45,
-  "updated_utc": "2026-09-12T06:16:47Z"
+  "updated_utc": "2026-09-12T08:21:08Z"
 }

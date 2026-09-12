@@ -1,0 +1,73 @@
+{
+  "agent_id": "commander-assistant-context",
+  "archived_utc": "2026-09-12T07:57:30Z",
+  "assignment": {
+    "acceptance": [
+      "Exact source revision/digest and UTF8 range guards reject stale context",
+      "Bounded multi-document prompt and response proposals preserve explicit user intent",
+      "No credentials, model calls or automatic edits; meaningful tests and strict lint pass"
+    ],
+    "agent_id": "commander-assistant-context",
+    "allocation_id": "hosted-openai-product",
+    "branch": "agent/commander/assistant-context",
+    "deadline_utc": null,
+    "dependencies": [],
+    "input_main_sha": "cdc47170f4aa7990d8a8de8ff80482a555f98a86",
+    "objective": "Bounded native assistant request lifecycle with exact context routing, cancellation and stale revocation",
+    "owned_paths": [
+      "crates/assistant-context"
+    ],
+    "revision": 3,
+    "schema_version": 1,
+    "state": "assigned",
+    "task_id": "FT-029",
+    "timebox_minutes": 30,
+    "updated_utc": "2026-09-12T07:52:57.718501+00:00"
+  },
+  "report": {
+    "agent_id": "commander-assistant-context",
+    "allocation_id": "hosted-openai-product",
+    "assignment_acknowledgements": {
+      "FT-029": {
+        "acknowledged_utc": "2026-09-12T07:57:06Z",
+        "adaptation": "Added Unix bounded pipe client in owned crate, no shell or retries; deadline covers writes and reads, inherited descriptors cannot retain reader threads.",
+        "main_sha": "dae486e9449f30a7050886d7d3a7306c212b97f4",
+        "revision": 3
+      }
+    },
+    "branch": "agent/commander/assistant-context",
+    "capabilities": [
+      "rust",
+      "diagnostic-context"
+    ],
+    "code_revision": "2aa1d72c541ab8b77e011b8a87c25a80e5657ede",
+    "eta_minutes": {
+      "likely": 25,
+      "optimistic": 10,
+      "pessimistic": 45
+    },
+    "machine": "linux-primary",
+    "main_integrated_through": "94c76ee510e7bf043ef6e9a02ffc287581dd921e",
+    "next_action": "Review native integration interface and connect consumer under ownership assignment.",
+    "reviewed_peers": {},
+    "schema_version": 1,
+    "state": "ready_for_integration",
+    "summary": "Unix supervised helper client implemented;14 tests plus stalledstdin/stdout/late/EOF/inheritedpipe/oversize fixtures and strict clippy pass.",
+    "tool": "Codex GPT-6 Astra",
+    "updated_utc": "2026-09-12T07:57:06Z",
+    "usage": {
+      "evidence": "cargo test include-ignored14passed; expanded supervised_client test passed; strict clippy passed",
+      "status": "Hosted OpenAI; no provider calls."
+    }
+  },
+  "report_age_seconds": 24,
+  "report_path": "coordination/agents/commander-assistant-context.json",
+  "review_required": true,
+  "revision": 3,
+  "schema_version": 1,
+  "stale_completion": false,
+  "state": "reported_ready",
+  "task_id": "FT-029",
+  "worker_branch": "agent/commander/assistant-context",
+  "worker_report_sha": "7469b2ad4804a87be4436159a05a83063e67adec"
+}

@@ -1,0 +1,85 @@
+{
+  "agent_id": "mac-visual-oracle",
+  "archived_utc": "2026-09-12T08:21:08Z",
+  "assignment": {
+    "acceptance": [
+      "Every artifact pins engine/font/version/DPI/color profile",
+      "Registration error is separated from rendering error",
+      "Overlays retain fixture and component SHAs"
+    ],
+    "agent_id": "mac-visual-oracle",
+    "allocation_id": "claude-mac20x-visual-oracle-stage2",
+    "branch": "agent/mac-visual-oracle/reference-raster",
+    "deadline_utc": null,
+    "dependencies": [],
+    "input_main_sha": "41c461612a49931815849552b470231dda4ab1e4",
+    "objective": "Expand declared visual fixtures across text, Unicode, paragraphs, math and multipage cases; add page registration, crop/alignment diagnostics and region metrics.",
+    "owned_paths": [
+      "tests/visual-corpus/harness",
+      "tests/visual-corpus/evidence"
+    ],
+    "revision": 2,
+    "schema_version": 1,
+    "state": "assigned",
+    "task_id": "FT-017",
+    "timebox_minutes": 45,
+    "updated_utc": "2026-09-12T06:13:32Z"
+  },
+  "report": {
+    "agent_id": "mac-visual-oracle",
+    "allocation_id": "claude-mac20x-visual-oracle-stage2",
+    "assignment_acknowledgements": {
+      "FT-017": {
+        "acknowledged_utc": "2026-09-12T06:30:11Z",
+        "adaptation": "Accepted rev 2 (input 41c4616): expanding corpus to 18 fixtures, projection-based page registration with registration vs post-registration rendering error in every table, region metrics (text area/header/footer/display boxes), SHA footers + PNG tEXt in overlays/heatmaps via rasterize annotate, tolerant pipeline build reporting. Merged origin/main a949f5b.",
+        "main_sha": "a949f5b773a1bc7f1be7ae2d79581856af88a97b",
+        "revision": 2
+      }
+    },
+    "branch": "agent/mac-visual-oracle/reference-raster",
+    "capabilities": [
+      "xcode",
+      "tex-oracle"
+    ],
+    "code_revision": "c462e254d5146d9eb4b9165a4226c2cc82d6690f",
+    "eta_minutes": {
+      "likely": 0,
+      "optimistic": 0,
+      "pessimistic": 0
+    },
+    "machine": "mac-m1max-a",
+    "main_integrated_through": "a949f5b773a1bc7f1be7ae2d79581856af88a97b",
+    "next_action": "Await Commander review; re-pin reference-profile.json to 18 fixtures and pin pipeline SHA if requested; merge origin/main at next clean checkpoint",
+    "reviewed_peers": {
+      "origin/agent/mac-render-pipeline/unified": {
+        "adaptation": "Reviewed c000dad (secnumdepth parsing): crates/render-pipeline builds via git archive of crates/; added as pipeline label; finding: matches LM oracle word sequence on 17-apostrophes (|dx| 0.02 pt), display-math boxes weakest region.",
+        "reviewed_utc": "2026-09-12T07:42:12Z",
+        "sha": "c000dadcb637293ac1963decc2387b323b0cefe4"
+      },
+      "origin/main": {
+        "adaptation": "Built and compared origin/main as label `main` (462fb27 then 5f9f4ec during this session); crates/compiler changed in 17 files since integrated base a949f5b, runtime-v1 compile_result and U+2500 rule convention unchanged; merge of main into the branch deferred to next clean checkpoint.",
+        "reviewed_utc": "2026-09-12T07:42:12Z",
+        "sha": "7fea005b0611e2cc565ec38b9a705eff7cc4532c"
+      }
+    },
+    "schema_version": 1,
+    "state": "ready_for_integration",
+    "summary": "FT-017 rev 2 delivered on agent/mac-visual-oracle/reference-raster: 18 declared fixtures (incl. apostrophe/quoteright regression, ligatures, nested lists, dense inline math, 3-page doc); registration (guarded ink-projection correlation, confidence-labelled) reported separately from post-registration rendering error; region metrics (text area, header/footer bands, display boxes); overlays/heatmaps with burned-in provenance footer + XMP + PNG tEXt (fixture+component SHAs, engine/version/font, DPI/colour, run). Reference reuse when no engine is installed (--reference-from; 'reference unavailable' never fails). Evidence: 20260912T065946Z (all 108 references reused from BasicTeX run 064032Z) and 20260912T072838Z (MacTeX 2026 full live oracles, 108/108 exit 0; live rasters pixel-identical to recorded ones, PDF bytes differ in timestamps/IDs only). pipeline build auto-added (c000dad builds). selftest.py 18 checks green.",
+    "tool": "Claude Code subagent (parent mac-claude-a)",
+    "updated_utc": "2026-09-12T07:42:12Z",
+    "usage": {
+      "evidence": "Claude Max 20x shared quota on mac-m1max-a; no programmatic readout; this session only",
+      "status": "unknown"
+    }
+  },
+  "report_age_seconds": 2336,
+  "report_path": "coordination/agents/mac-visual-oracle.json",
+  "review_required": true,
+  "revision": 2,
+  "schema_version": 1,
+  "stale_completion": true,
+  "state": "reported_ready",
+  "task_id": "FT-017",
+  "worker_branch": "agent/mac-visual-oracle/reference-raster",
+  "worker_report_sha": "62b44d8a9696c185f1028633924958df4961677d"
+}
