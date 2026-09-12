@@ -4,9 +4,9 @@
   "assignment_acknowledgements": {
     "FT-023": {
       "acknowledged_utc": "2026-09-12T12:56:02.314604+00:00",
+      "adaptation": "Read actual FT023r15. Private validated PipelineCff PageIndex with fresh CurrentHelper guard; no inferred caret mapping/native activation. GH34 existing official10pt asset handoff is authorized bounded followup.",
       "main_sha": "eb5ae874fdb8b2fde2dfbc0fe11aebc272b0fe26",
-      "revision": 15,
-      "adaptation": "Read actual FT023r15. Private validated PipelineCff PageIndex with fresh CurrentHelper guard; no inferred caret mapping/native activation. GH34 existing official10pt asset handoff is authorized bounded followup."
+      "revision": 15
     }
   },
   "branch": "agent/commander-render-core/rendering-core",
@@ -14,23 +14,23 @@
     "rust",
     "rendering"
   ],
-  "code_revision": "fce554f1acf79a05891c4aca90bdb50e25ae6b3d",
+  "code_revision": "e10e22bc34b4f3c38c64a62800296127b4f5cb8f",
   "eta_minutes": {
-    "likely": 3,
+    "likely": 2,
     "optimistic": 1,
-    "pessimistic": 5
+    "pessimistic": 3
   },
   "machine": "linux-primary",
-  "main_integrated_through": "6c22fe809178c26b947f322c7a475f1e0db3bacd",
-  "next_action": "Commander integration of fce554f1 plus evidence. Root owns separately labeled GH34 replay using verified official10pt asset; await actual multi-document capture for bounded hit/source acceptance.",
+  "main_integrated_through": "b7dedddf0708b5a7525aea1d68b13dfb37832213",
+  "next_action": "Commander integration; actual chapter hit and all3source identity acceptance published, await next bounded consumer task.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "accepted",
-  "summary": "Hit query product fce554f1:175Rusttests/2ignored and strictClippy pass; actual ffi/full escaped spans and stale guards covered.",
+  "summary": "Actual corrected eca6ab25 multi-document capture accepted without repair; original recovered e680d2ef preserved.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T12:41:45Z",
+  "updated_utc": "2026-09-12T13:02:07Z",
   "usage": {
-    "evidence": "175Rusttests/2ignored, strictClippy,6Python pass. Replay27855 terminal expectedexit3: allfive exactPDF/raster/text/validity unchanged; existing602/1244/979/337pixel reference gaps preserved. No paid calls.",
-    "status": "Hosted OpenAI only; no descendants/providers. Context telemetry/native compaction unavailable; durable checkpoint records exact branch and terminal checks."
+    "evidence": "13 focused helper tests +strictClippy pass. Six byte-identical request pairs: control6recovered, verified6ok/nodiag. Rawbody exact; chapter hit/current searchable export pass; stale chapter/bibliography/membership refuse. No native/reference parity claim.",
+    "status": "Hosted OpenAI only; no providers/descendants. No context telemetry/native compaction control. All checks terminal; exact branch retained."
   }
 }
