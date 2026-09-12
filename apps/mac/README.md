@@ -39,6 +39,13 @@ present. `⌘R` reloads.
   `CaretSync.itemsContaining`) get a secondary highlight (15% accent fill +
   underline) on every page. Empty ranges match only an exactly equal byte. The
   preview does not auto-scroll to the highlighted item.
+- Inline diagnostics: each diagnostic with a `source` in the active document is
+  underlined in the editor (red dotted for errors, orange for warnings); hovering
+  shows the message and, when present, the `recovery` text (`EditorDiagnostics`).
+  Marks are layout-manager temporary attributes, so undo and the text binding are
+  unaffected. After edits a mark is rebased through `SourceMapping` or dropped when
+  it overlaps the edited region — never drawn under the wrong text. Diagnostics
+  with null `source` appear only in the preview's diagnostics list.
 - Dark preview toggle in the toolbar (page and text colors only).
 - Stale offsets are never applied. Each `compile_result` remembers the exact
   document text it was produced for; after edits, a span is rebased through the
@@ -117,7 +124,9 @@ banner shows; the shell rejects response lines over 16 MiB.
 
 - `FlashTeXProtocol` — Codable models for runtime v1 and byte-offset conversion.
 - `FlashTeXMac` — the app.
-- Tests (36): Rust-writer export (gated on `FLASHTEX_PDF`), missing-binary error; source mapping (shift/refuse/multi-byte/expected-text), stale
+- Tests (41): inline diagnostic marks (byte→UTF-16, rebase/drop, path filter,
+  sample slice, temporary-attribute-only); Rust-writer export (gated on
+  `FLASHTEX_PDF`), missing-binary error; source mapping (shift/refuse/multi-byte/expected-text), stale
   navigation refusal and rebase, auto-compile debounce/coalescing, latency; PDF export (fixture → 612×792 page containing the item text,
   two-page synthetic sizes, unknown-kind skipping, page-less result); anchor/rebase/reselection logic, review flow with duplicate
   suppression, capture fixture decoding; caret sync (multi-page sample slices

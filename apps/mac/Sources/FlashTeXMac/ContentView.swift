@@ -105,6 +105,7 @@ struct ContentView: View {
                 text: Binding(get: { model.activeText }, set: { model.updateActiveText($0) }),
                 selection: model.selection,
                 pendingEdit: model.pendingEdit,
+                marks: model.editorMarks,
                 onCaretChange: { model.caretUTF16 = $0 },
                 onEditApplied: { model.editApplied($0, newText: $1) }
             )

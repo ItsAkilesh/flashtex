@@ -69,6 +69,14 @@ final class ShellModel: ObservableObject {
         get { documents.first { $0.path == activePath }?.text ?? "" }
     }
 
+    /// Diagnostic underlines for the active document, rebased across edits or
+    /// dropped (see `EditorDiagnostics`).
+    var editorMarks: [EditorDiagnostics.Mark] {
+        guard let result else { return [] }
+        return EditorDiagnostics.marks(for: result, path: activePath,
+                                       compiledText: compiledDocuments[activePath], currentText: activeText)
+    }
+
     // MARK: caret sync (source -> preview)
 
     /// UTF-8 byte offset of the editor caret in `activeText`, or nil when the

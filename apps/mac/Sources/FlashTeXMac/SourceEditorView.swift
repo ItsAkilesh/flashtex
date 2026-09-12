@@ -1,12 +1,15 @@
 import AppKit
 import SwiftUI
 
-/// NSTextView wrapper. Uses a monospaced font, reports edits, and applies
-/// UTF-16 selections requested by preview navigation.
+/// NSTextView wrapper. Uses a monospaced font, reports edits, applies UTF-16
+/// selections requested by preview navigation, and underlines diagnostic marks
+/// with layout-manager temporary attributes (never touching the text storage,
+/// so undo and the `text` binding are unaffected).
 struct SourceEditorView: NSViewRepresentable {
     @Binding var text: String
     var selection: ShellModel.Selection?
     var pendingEdit: ShellModel.PendingEdit?
+    var marks: [EditorDiagnostics.Mark] = []
     var onCaretChange: (Int) -> Void = { _ in }
     var onEditApplied: (ShellModel.PendingEdit, String) -> Void = { _, _ in }
 
@@ -47,8 +50,14 @@ struct SourceEditorView: NSViewRepresentable {
             DispatchQueue.main.async { onEditApplied(edit, tv.string) }
             return
         }
+        var textReset = false
         if tv.string != text {
-            tv.string = text
+            tv.string = text // drops temporary attributes; reapply marks below
+            textReset = true
+        }
+        if textReset || marks != context.coordinator.lastMarks {
+            context.coordinator.lastMarks = marks
+            Self.applyMarks(marks, to: tv)
         }
         if let selection, selection.token != context.coordinator.appliedToken {
             context.coordinator.appliedToken = selection.token
@@ -62,10 +71,34 @@ struct SourceEditorView: NSViewRepresentable {
         }
     }
 
+    /// Replaces underline/tooltip temporary attributes over the whole text.
+    /// Ranges outside the current string are skipped; errors are applied after
+    /// warnings so an error wins where they overlap.
+    static func applyMarks(_ marks: [EditorDiagnostics.Mark], to tv: NSTextView) {
+        guard let lm = tv.layoutManager else { return }
+        let length = (tv.string as NSString).length
+        let whole = NSRange(location: 0, length: length)
+        for key in [NSAttributedString.Key.underlineStyle, .underlineColor, .toolTip] {
+            lm.removeTemporaryAttribute(key, forCharacterRange: whole)
+        }
+        let ordered = marks.filter { $0.severity == .warning } + marks.filter { $0.severity == .error }
+        for mark in ordered {
+            let r = mark.nsRange
+            guard r.location >= 0, r.length > 0, NSMaxRange(r) <= length else { continue }
+            let color: NSColor = mark.severity == .error ? .systemRed : .systemOrange
+            lm.addTemporaryAttributes([
+                .underlineStyle: NSUnderlineStyle.thick.rawValue | NSUnderlineStyle.patternDot.rawValue,
+                .underlineColor: color,
+                .toolTip: mark.toolTip,
+            ], forCharacterRange: r)
+        }
+    }
+
     final class Coordinator: NSObject, NSTextViewDelegate {
         var parent: SourceEditorView
         var appliedToken = 0
         var appliedEditToken = 0
+        var lastMarks: [EditorDiagnostics.Mark] = []
         init(_ parent: SourceEditorView) { self.parent = parent }
 
         func textDidChange(_ notification: Notification) {
