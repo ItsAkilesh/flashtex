@@ -11,3 +11,12 @@ path = "src/lib.rs"
 
 [dependencies]
 flashtex-document-style = { path = "../document-style" }
+
+[dev-dependencies]
+# Rev 4 consumer-integration fixture (tests/consumer_integration.rs): the
+# closest real callers in this repo to what an actual title-layout consumer
+# would supply, since nothing in this repo calls this crate (see that file's
+# module docs for the search). Dev-only: this crate's own library code still
+# depends on nothing but flashtex-document-style.
+flashtex-compiler = { path = "../compiler" }
+flashtex-font-engine = { path = "../font-engine", default-features = false }
