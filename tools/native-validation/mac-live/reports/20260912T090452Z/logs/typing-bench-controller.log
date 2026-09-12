@@ -1,0 +1,28 @@
+==> building FlashTeXMac (release)
+Build complete! (0.46s)
+    seed demo       5909 bytes
+    seed body60k   63899 bytes
+    seed fixture      16 bytes
+==> run compiler-fixture-30ms
+    2026-09-12T09:08:00Z	bench: done (all keystrokes painted); keystrokes 200, painted 200, coalesced 6, p50 51.656 ms
+==> run compiler-fixture-0ms
+    2026-09-12T09:08:09Z	bench: done (all keystrokes painted); keystrokes 200, painted 200, coalesced 20, p50 53.115458 ms
+==> run compiler-demo-30ms
+    2026-09-12T09:08:18Z	bench: done (all keystrokes painted); keystrokes 200, painted 200, coalesced 66, p50 86.061417 ms
+==> run compiler-demo-0ms
+    2026-09-12T09:08:24Z	bench: done (all keystrokes painted); keystrokes 200, painted 200, coalesced 73, p50 74.54875 ms
+==> run compiler-body60k-30ms
+    2026-09-12T09:08:38Z	bench: done (all keystrokes painted); keystrokes 200, painted 200, coalesced 139, p50 335.035041 ms
+==> run compiler-body60k-0ms
+    2026-09-12T09:08:49Z	bench: done (all keystrokes painted); keystrokes 200, painted 200, coalesced 136, p50 278.257292 ms
+==> writing /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/reports/20260912T090452Z/typing-bench-controller/typing-bench.md
+# Typing bench: keystroke → paint latency (2026-09-12T090748Z)
+
+Branch `HEAD` @ `d8baed6`; Apple M1 Max; macOS 26.3.1; release build of `FlashTeXMac` (`swift build -c release`).
+Script: `tools/typing-bench/run.sh`; raw JSON summaries in `typing-bench-2026-09-12T090748Z/`.
+| flashtex-preview-controller | body60k | 64103 | 0ms | 200 | 65 | 136 | 278 | 345 | 361 | 376 | 102 | 118 | 16 | 19 | 0 |
+| flashtex-preview-controller | body60k | 64103 | 30ms | 200 | 62 | 139 | 335 | 437 | 465 | 510 | 120 | 142 | 20 | 23 | 0 |
+| flashtex-preview-controller | demo | 6113 | 0ms | 200 | 128 | 73 | 75 | 123 | 145 | 155 | 27 | 46 | 12 | 19 | 0 |
+| flashtex-preview-controller | demo | 6113 | 30ms | 200 | 135 | 66 | 86 | 136 | 177 | 191 | 33 | 57 | 11 | 16 | 0 |
+| flashtex-preview-controller | fixture | 220 | 0ms | 200 | 181 | 20 | 53 | 77 | 87 | 96 | 16 | 25 | 17 | 20 | 0 |
+| flashtex-preview-controller | fixture | 220 | 30ms | 200 | 194 | 6 | 52 | 71 | 87 | 93 | 16 | 29 | 17 | 21 | 0 |

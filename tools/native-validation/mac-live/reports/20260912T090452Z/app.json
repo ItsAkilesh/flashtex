@@ -1,0 +1,12 @@
+{
+ "binary": "/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/d8baed6bc2ef1e333ecad48d3d056478a9f984fd/apps/mac/.build/release/FlashTeXMac",
+ "branch": "origin/agent/mac-claude-a/mac-shell",
+ "built_ok": true,
+ "bytes": 5721928,
+ "path": "/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/d8baed6bc2ef1e333ecad48d3d056478a9f984fd/apps/mac/.build/release/FlashTeXMac",
+ "sha": "d8baed6bc2ef1e333ecad48d3d056478a9f984fd",
+ "sha256": "d97f333196e88ade7965431d29dd5dc29e954832ed44329f6b39bba8d652ede9",
+ "sha256_content": "728a0ad4b85ca618cddeacbe82b99a0c0fabe7cb9fde7ce1217abd9590ab3492",
+ "sha256_unsigned": "dea9a4ac08d62d5abfea075e7a314396f4940f2beeccb7be9e1778d1938e62a7",
+ "signature": "Signature=adhoc"
+}
