@@ -110,9 +110,32 @@ pub struct V2Report {
     /// viewer's text extraction keeps word boundaries only when the pen
     /// after a glyph lands where the next glyph actually starts).
     pub display_widths: usize,
+    /// Gaps between consecutive same-baseline glyphs (the next origin minus
+    /// the pen after the previous glyph's written `/W` width) of at least
+    /// [`WORD_GAP_EM`] of the previous glyph's font size: the word boundaries
+    /// the export relies on extractors to read from geometry
+    /// (`docs/proposals/pdf-searchable-text.md`).
+    pub word_gaps: usize,
+    /// Gaps in `[`[`CHAR_GAP_EM`]`, `[`WORD_GAP_EM`]`)`: extractor-dependent
+    /// (measured on mac-m1max-a: PDFKit/Spotlight break a word from 100/1000
+    /// em, Ghostscript `txtwrite` from 250, Poppler `-raw` from its
+    /// `minWordSpacing` 150); typically a math italic correction. The first
+    /// few are named in `notes`.
+    pub ambiguous_gaps: usize,
     pub diagnostics: Vec<String>,
     pub notes: Vec<String>,
 }
+
+/// Gap, in thousandths of the font size, that the export promises as a word
+/// boundary for PDFKit/Spotlight (measured: from 100) and Poppler `-raw`
+/// (its `minWordSpacing`, 150). A Computer Modern word space shrunk to its
+/// TeX minimum is still above it (cmr12: 326 - 109 = 217). Ghostscript
+/// `txtwrite` needs about 250 and is not promised.
+pub const WORD_GAP_EM: i128 = 150;
+/// Gap, in thousandths of the font size, below which no measured extractor
+/// breaks a word (Poppler's `maxCharSpacing`; PDFKit measured to keep `ab`
+/// at 80); kerns and rounding live here.
+pub const CHAR_GAP_EM: i128 = 30;
 
 fn f(v: Option<&Value>, what: &str) -> Result<f64, String> {
     v.and_then(Value::as_f64)
@@ -364,6 +387,7 @@ pub fn from_v2(envelope: &str, options: &V2Options) -> Result<(ExactDocument, V2
         origin_x: i128,
         y_pdf: i128,
         advance_y: i128,
+        text: String,
     }
     enum Pending {
         Run {
@@ -449,6 +473,7 @@ pub fn from_v2(envelope: &str, options: &V2Options) -> Result<(ExactDocument, V2
                             .ok_or_else(|| format!("{gw}: cluster {cluster} is out of range"))?;
                         let a = f(cv.get("text_start_byte"), "cluster.text_start_byte")? as usize;
                         let b = f(cv.get("text_end_byte"), "cluster.text_end_byte")? as usize;
+                        let cluster_text = text.get(a..b).unwrap_or("").to_string();
                         if let Some(t) = text.get(a..b) {
                             match u.to_unicode.get(&gid) {
                                 Some(prev) if prev != t => u.conflicts += 1,
@@ -474,6 +499,7 @@ pub fn from_v2(envelope: &str, options: &V2Options) -> Result<(ExactDocument, V2
                             origin_x,
                             y_pdf: height - baseline_y,
                             advance_y,
+                            text: cluster_text,
                         });
                         report.glyphs += 1;
                     }
@@ -629,8 +655,12 @@ pub fn from_v2(envelope: &str, options: &V2Options) -> Result<(ExactDocument, V2
 
     // Pass 3: finish the glyph runs now that advances are known.
     let mut pages = Vec::with_capacity(pages_ops.len());
-    for (width, height, items, page_fonts) in pages_ops {
+    for (pi, (width, height, items, page_fonts)) in pages_ops.into_iter().enumerate() {
         let mut ops = Vec::new();
+        // The pen after the last glyph placed on this page (ticks), its
+        // baseline, size and text: gaps across run boundaries are the word
+        // boundaries an extractor reads from geometry.
+        let mut last: Option<(i128, i128, i128, String)> = None;
         for item in items {
             let (resource, size_ticks, rgb, glyphs) = match item {
                 Pending::Ops(o) => {
@@ -648,6 +678,31 @@ pub fn from_v2(envelope: &str, options: &V2Options) -> Result<(ExactDocument, V2
             let mut placed = Vec::with_capacity(glyphs.len());
             let mut prev: Option<&Glyph> = None;
             for g in &glyphs {
+                if let Some((pen, y, size, ref ptext)) = last
+                    && y == g.y_pdf
+                {
+                    // gap / size in thousandths, compared as integers.
+                    let gap = (g.origin_x - pen) * 1000;
+                    if gap >= WORD_GAP_EM * size {
+                        report.word_gaps += 1;
+                    } else if gap >= CHAR_GAP_EM * size {
+                        report.ambiguous_gaps += 1;
+                        if report.ambiguous_gaps <= 8 {
+                            report.notes.push(format!(
+                                "page {}: gap of {}/1000 em between {ptext:?} and {:?} is between {CHAR_GAP_EM} and {WORD_GAP_EM}/1000 em; extractors disagree on a word boundary there (geometry is the producer's and is kept)",
+                                pi + 1,
+                                gap / size,
+                                g.text
+                            ));
+                        }
+                    }
+                }
+                let w = widths
+                    .get(&g.gid)
+                    .map_or(Ratio::int(1000), Ratio::from_decimal);
+                // pen = origin + w/1000 * size, rounded down to a tick.
+                let pen = g.origin_x + w.num * size_ticks / (1000 * w.den);
+                last = Some((pen, g.y_pdf, size_ticks, g.text.clone()));
                 // Continue the previous glyph's segment when the gap between
                 // the envelope origin and the natural advance is an exactly
                 // representable TJ adjustment: with `w` the written /W width
