@@ -13,17 +13,17 @@
   "capabilities": [
     "rust-runtime"
   ],
-  "code_revision": "551371625898078095046ea82dcbe0e29007f5d0",
+  "code_revision": "72672e6781405de152f2c59ff72130c316fb268a",
   "eta_minutes": null,
   "machine": "linux-primary",
   "main_integrated_through": "5d12255f26c07de0bef07dced4bb89c3bcf84cd9",
-  "next_action": "Send exact large-v2 decline boundary to Commander/helper owner. Await concrete runtime consumer feedback; preserve current candidate/profile contracts, no peer/provider writes.",
+  "next_action": "After root measurement release, optional single unchanged --v2 artifact size check can distinguish conservative estimate from actual oversized envelope. No builds/replays started during window; preserve current runtime boundary and pinned binaries.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "Authorized multipage acceptance: three26-page states exact fresh/persistent runtime page/item equality plus direct raw byte equality, default and2M producer limits. Item counts10979/10979/10980, frames1745747/1745768/1745905bytes; final sentinel and hashes intact. Actual v2 estimates27,152,372bytes and explicitly declines under16MiB;96 overfull warnings preserved. No cap/performance change. Actual replay/clippy pass.",
+  "summary": "Read-only size contract checkpoint72672e6: exact6e69661 independently caps estimated/exact v2 and exact v1, removes v2 acceptance on decline/failed fallback. Runtime default8MiB includes newline versus producer16MiB excludes newline.27MB is preflight estimate only; no exact serialized size inferred. No cap/source/build changes.",
   "tool": "codex",
-  "updated_utc": "2026-09-12T11:29:14Z",
+  "updated_utc": "2026-09-12T11:33:17Z",
   "usage": {
     "status": "unknown"
   }
