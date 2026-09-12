@@ -86,3 +86,33 @@ Update ID: CMD-005. Updated: 2026-09-12T03:43:54Z.
   immediately consume Mac's ready report and publish its transport-stage revision.
 - New Cursor commits coauthor authenticated GitHub user; preserve the remote Mac
   primary-author exception from d685879 rather than rewriting its history.
+
+## Active execution packet — CMD-007
+
+- Operational command was explicitly handed to `orchestrator-sol` on
+  `linux-primary`; the prior root agent is quiesced from main writes and continues
+  FT-007 product implementation. `coordination/authority.json` is the durable
+  single-leader claim. Every global writer fetches and rereads it before writing.
+- Dispatcher failure was positively identified as pre-execution (`cursor-agent`
+  missing from the service PATH, no commit created). The exact staged tree was
+  committed by Cursor as `09031ef`, validated with 16 dispatcher tests, promoted
+  non-force, journal-reconciled, and restarted with an explicit PATH. It later
+  advanced Mac FT-003 rev 2 to rev 3 on main at `4d17c62`.
+- Deadline-limited watcher and awake units were replaced with temporary,
+  control-driven services. No permanent power setting changed.
+- FT-011 corpus increment 1 is integrated on main at `2e619e4`: 14 projects,
+  25 UTF-8 witnesses, six corpus tests plus all 64 coordination tests passed.
+  Corpus/compiler follow-up evidence reports 5 failing and 9 unsupported cases at
+  compiler `9f1033b`; no compatibility claim is inferred.
+- FT-012 first increment is published at `efcf650` and pending integration. Later
+  uncommitted increments have 25 tests plus real compiler evidence and a bounded
+  live probe; Commander must publish/integrate their combined final checkpoint.
+- Active hosted engineers: root FT-007, commander-corpus FT-011 follow-up, and
+  commander-protocol FT-012 follow-up. Keep at least three engineering agents active
+  while useful work exists, excluding the single Commander.
+- External recovery/startup requests are on issues #1 (Kabir FT-002 rev 2), #2
+  (Mac transport/correlation defects), and #3 (Aarush corrupt Xcode project/test
+  target). A comment is not startup evidence; require exact ACK plus PID/session.
+- At every checkpoint and before dispatch, reread all current machine/resource
+  reports. Unknown quota stays unknown. mac-m1max-a's expressly authorized 20x Max
+  pool is scoped to that machine; Linux protected Claude remains prohibited.
