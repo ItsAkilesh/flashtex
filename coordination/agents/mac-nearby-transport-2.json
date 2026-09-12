@@ -1,0 +1,25 @@
+{
+  "agent_id": "mac-nearby-transport-2",
+  "allocation_id": "claude-mac20x-nearby-transport-2",
+  "assignment_acknowledgements": {},
+  "branch": "agent/mac-nearby-transport-2/reconnect",
+  "capabilities": ["swift", "network-framework", "tls-psk", "xctest"],
+  "code_revision": "cd58fc2e",
+  "eta_minutes": {"likely": 60, "optimistic": 45, "pessimistic": 90},
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "c11c005",
+  "next_action": "Implement listener-side timeouts, typed frame errors, per-pairing ack memory; tests; report",
+  "reviewed_peers": {
+    "origin/agent/mac-claude-a/mac-shell": {
+      "adaptation": "Base branch; coverage audit in coordination/mac-nearby-transport-2.md lists the covered tests",
+      "reviewed_utc": "2026-09-12T19:16:00Z",
+      "sha": "cd58fc2e"
+    }
+  },
+  "schema_version": 1,
+  "state": "in_progress",
+  "summary": "Nearby transport item 12: coverage audit done; implementing uncovered disconnect/reconnect and bounded-decoding parts",
+  "tool": "Claude Code subagent (parent mac-claude-a)",
+  "updated_utc": "2026-09-12T19:16:00Z",
+  "usage": {"evidence": "none yet", "status": "Shared Claude Max quota with parent mac-claude-a; no purchases"}
+}
