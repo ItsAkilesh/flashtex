@@ -11,15 +11,15 @@
   "branch": "agent/commander-runtime-display/display-runtime",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "dbfeee073c9d3bcff4788e2dad2cfb0833ee23d1",
-  "objective": "Check historical and current frame separation original producer correlation and retry scope without workload rerun",
+  "input_main_sha": "581a12e406f8614a8731d9812e5e80d64137d5ba",
+  "objective": "Review helper diagnostic sequence identity through required and optional admission replacement dequeue and write failure",
   "owned_paths": [
     "crates/document-runtime"
   ],
-  "revision": 30,
+  "revision": 31,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-049",
   "timebox_minutes": 40,
-  "updated_utc": "2026-09-12T13:43:07Z"
+  "updated_utc": "2026-09-12T13:44:21.060827+00:00"
 }

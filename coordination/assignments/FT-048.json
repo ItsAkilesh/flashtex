@@ -9,16 +9,16 @@
   "branch": "agent/commander-preview-performance/preview-performance",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "d34865e807f3fa327ae9c26bc814101e123956a7",
-  "objective": "Attribute existing processsender pair diagnostics to helper encoding writer and receiver stages without a workload rerun",
+  "input_main_sha": "581a12e406f8614a8731d9812e5e80d64137d5ba",
+  "objective": "Implement opt-in source-free output admission queue write and receiver-decode diagnostic scalars",
   "owned_paths": [
     "crates/preview-controller",
     "crates/edit-ledger"
   ],
-  "revision": 25,
+  "revision": 26,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-048",
   "timebox_minutes": 40,
-  "updated_utc": "2026-09-12T13:40:53.443568+00:00"
+  "updated_utc": "2026-09-12T13:44:21.060827+00:00"
 }

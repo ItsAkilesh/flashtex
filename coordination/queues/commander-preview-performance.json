@@ -4,8 +4,8 @@
   "schema_version": 1,
   "steps": [
     {
-      "name": "Attribute existing processsender pair diagnostics to helper encoding writer and receiver stages without a workload rerun",
-      "objective": "Attribute existing processsender pair diagnostics to helper encoding writer and receiver stages without a workload rerun",
+      "name": "Implement opt-in source-free output admission queue write and receiver-decode diagnostic scalars",
+      "objective": "Implement opt-in source-free output admission queue write and receiver-decode diagnostic scalars",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"
@@ -19,8 +19,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Identify missing scalar telemetry before proposing a measured product optimization and qualify cleanup limits",
-      "objective": "Identify missing scalar telemetry before proposing a measured product optimization and qualify cleanup limits",
+      "name": "Verify sequence correlation replacement overflow writer failure and watchdog without altering priority limits or source guards",
+      "objective": "Verify sequence correlation replacement overflow writer failure and watchdog without altering priority limits or source guards",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"
@@ -34,8 +34,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Implement only a reviewed bounded instrumentation or product change with meaningful gates and no native/default promotion",
-      "objective": "Implement only a reviewed bounded instrumentation or product change with meaningful gates and no native/default promotion",
+      "name": "Publish tested bounded instrumentation with clock and failure limitations before any further measured capture",
+      "objective": "Publish tested bounded instrumentation with clock and failure limitations before any further measured capture",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"
