@@ -1,24 +1,145 @@
 # FT-041: editor-snippets
 
-Status: complete through revision 3, standalone additive crate. No other
-crate was touched.
+Status: complete through revision 4, standalone additive crate. No other
+crate was touched (a dev-only path dependency on `crates/edit-ledger` was
+added to this crate's own `Cargo.toml`; that crate's files were not edited).
 
-## Tested commit (revision 3)
+## Tested commit (revision 4)
 
 ```
-9e9f9b4ca0284ca026094099dd590d2516e8ebb7
+a9bccc94007821a0be83a60b04219e701c1f0c99
 ```
 
 On branch `agent/daniel-snippets/editor-snippets`, main integrated through
-`967703ebb4e8140feaf4db02d27cb3ac63c573f6`. At this exact SHA, inside
+`abbe88a5275b89d99357815846de3cbe76a91810`. At this exact SHA, inside
 `crates/editor-snippets`:
 
 - `cargo build` — clean.
-- `cargo test` — 41 rev-1 tests + 17 rev-2 plan tests + 15 new adversarial
-  bounds tests + 5 new stale-identity acceptance tests + 2 doc-tests, all
-  passing (80 total).
+- `cargo test` — 41 rev-1 + 17 rev-2 plan + 15 rev-3 adversarial bounds + 5
+  rev-3 stale-identity + 4 new real-consumer + 3 new corpus-coverage tests +
+  2 doc-tests, all passing (87 total).
 - `cargo clippy --all-targets -- -D warnings` — clean, zero warnings.
 - `cargo fmt --check` — clean.
+
+## Revision 4: real consumer fixture, and measured (not listed) snippet coverage
+
+No src/ file changed; two new integration test files only, plus a
+`[dev-dependencies]` path dependency on `flashtex-edit-ledger` (dev-only —
+absent from the published library's own dependency graph).
+
+### Objective 1: the actual existing consumer, exercised
+
+`apps/mac` (the Swift editor) has **no dependency on this crate, or on any
+Rust crate, today.** `apps/mac/Package.swift` builds `FlashTeXMac` only
+against the pure-Swift `FlashTeXProtocol`/`FlashTeXAccessibility` targets,
+and a repo-wide grep for `editor-snippets` / `flashtex_editor_snippets` /
+`SnippetPlan` outside this crate's own directory returns nothing. So this
+is genuinely a language boundary with no FFI/Cargo edge to cross — there is
+nothing honest to call from a Rust test into Swift, and the assignment's own
+framing anticipated exactly this.
+
+What Mac and the Rust worker actually share is a JSON Lines wire contract
+(`docs/contracts/runtime-v1.md`, `docs/contracts/transfer-v1.md`): snake_case
+fields, zero-based end-exclusive UTF-8 byte offsets, which Swift converts
+explicitly (`apps/mac/Sources/FlashTeXProtocol/ByteOffsets.swift`). The exact
+edit shape that contract carries is `flashtex_edit_ledger::PreparedEdit`
+(its own doc comment: "Wire-compatible with transfer-v1 `PreparedEdit`"),
+and `docs/contracts/transfer-v1.md` names its exact field list
+(`capture_id,edit_id,project_id,path,expected_revision,start_byte,end_byte,
+removed_text,replacement,document_before_sha256`) — byte-for-byte what
+`TransferV1.CaptureEdit` in `apps/mac/Sources/FlashTeXProtocol/TransferV1.swift`
+decodes via `CodingKeys`. `tests/real_consumer_edit_ledger.rs`'s
+`field_names_match_the_transfer_v1_wire_contract` pins this crate's output,
+carried inside `PreparedEdit`, against that exact field set via
+`PreparedEdit`'s own `Serialize` impl — the contract the bridge actually
+carries, not a pretense of invoking Swift.
+
+`crates/edit-ledger` ("Durable document and reviewed-edit transactions for
+FlashTeX native consumers") is the real, in-repo, same-language production
+consumer that turns a byte-offset edit into a mutated, durable document.
+Because it's same-language, it is exercised directly rather than
+reimplemented — added only as a dev-dependency, never edited:
+
+- `snippet_plan_insertion_survives_the_real_edit_ledger_store` computes a
+  `SnippetPlan` for a linked `\begin{X}...\end{X}` snippet, opens a real
+  `flashtex_edit_ledger::Store` (real filesystem, lock file, fsync), and
+  applies the plan's expansion via the actual `Store::apply(PreparedEdit)`
+  path. Every occurrence `Expansion::occurrences_of(1)` reported is checked
+  against the *post-application* real document text.
+- `linked_placeholder_edit_propagates_through_a_grouped_edit_transaction`
+  simulates the user tabbing to the linked placeholder and retyping it: it
+  builds one `SourceEdit` per linked occurrence from this crate's own
+  offsets and applies them via the real `Store::apply_group(GroupedEdit)` —
+  edit-ledger's actual mechanism for "nonoverlapping byte ranges in the same
+  original source snapshot" as one atomic transaction — proving both
+  linked occurrences update together through the real consumer.
+- `stale_plan_is_rejected_by_the_real_store_exactly_when_this_crate_predicts`
+  ties rev 2's staleness contract to the real consumer: an unrelated real
+  edit advances the store's revision out from under a computed plan; this
+  crate's own `staleness()` call is asserted stale first, and the real
+  store's own `Store::apply` is then independently shown to refuse the same
+  stale `PreparedEdit`.
+
+### Objective 2: measured LaTeX snippet coverage
+
+`tests/corpus_snippet_coverage.rs` derives 22 realistic snippet shapes from
+the commands/environments that actually appear in
+`tests/tex-corpus/cases/**/main.tex` (`\documentclass`, `\begin`/`\end`
+`document`/`tikzpicture`, `\newcommand`, `\renewcommand`, `\input`,
+`\usepackage`, `\draw`, `\frac`, inline/display math, and the escaped
+specials `\$ \% \& \_ \#`), written the way a real LaTeX snippet library —
+and the corpus itself — naturally writes LaTeX: a single backslash before a
+command name. Each candidate's exact `Snippet::parse` outcome is asserted
+and the aggregate counts are pinned so they cannot silently drift.
+
+| Measurement | Count | Share |
+|---|---|---|
+| Realistic corpus-derived snippet shapes | 22 | 100% |
+| Parse successfully today | 1 | 5% |
+| Rejected as `InvalidEscape` (see finding below) | 21 | 95% |
+| ...of which need **no** fuller-LSP feature at all | 13 of 14 `None`-tagged shapes | — |
+| Intended feature: numbered placeholders only (`None`) | 14 | 64% |
+| Intended feature: choice placeholder (`${1\|a,b\|}`) | 4 | 18% |
+| Intended feature: named/special variable (`$TM_...`) | 3 | 14% |
+| Intended feature: transform (`${1/re/rep/}`) | 1 | 5% |
+
+**Top offender, and not one of the three previously-documented gaps:** this
+crate's `\` is reserved entirely for its own escape grammar — only `\$ \} \\`
+are valid escapes (`src/parser.rs::parse_escape`) — so a literal LaTeX
+command name (`\begin`, `\newcommand`, `\input`, `\usepackage`, `\draw`,
+`\frac`, ...) or even LaTeX's own escaped specials other than `\$` (`\%
+\& \_ \#`) are rejected as `SnippetError::InvalidEscape` before the
+placeholder grammar is ever reached. This dominates the three documented
+gaps combined: **13 of the 14 shapes that need zero fuller-LSP features
+still fail**, purely on this. Only `\$${1:x}\$` (inline math, which happens
+to need only the one escape this crate supports) parses. A snippet author
+can work around it today only by doubling every such backslash (`\\begin{...`
+— confirmed parseable, used in the rev-4 consumer fixture's own snippet),
+which is undocumented and not how any real LaTeX source or LaTeX snippet
+library is written.
+
+Isolated probes (`tests/corpus_snippet_coverage.rs`,
+`isolated_lsp_feature_probes_match_their_exact_measured_outcome` and
+`bare_named_variable_silently_misparses_instead_of_erroring`), each free of
+the backslash finding above, independently confirm the three previously-
+documented gaps and rank them by how they fail:
+
+| Feature | Needed by (of 22) | Outcome when isolated |
+|---|---|---|
+| Choice placeholder | 4 (most frequent of the three) | Hard rejection: `UnterminatedPlaceholder` |
+| Named/special variable (braced, `${TM_...}`) | 3 | Hard rejection: `InvalidPlaceholderIndex` |
+| Named/special variable (bare, `$TM_...`) | (same 3) | **Silent misparse** — parses, output unchanged, no error at all |
+| Transform | 1 (least frequent) | Hard rejection: `UnterminatedPlaceholder` |
+
+The bare-named-variable case is the sharpest latent bug of the three: a
+lone `$` not followed by a digit or `{` is treated as literal text
+(`parse_dollar`'s fallback arm), so `$TM_SELECTED_TEXT` "parses" and
+expands to itself, byte for byte — nothing signals that the intended
+substitution never happened.
+
+Rev 1-3 (linked edits, tab order, UTF-8 safety, plan identity/staleness,
+adversarial bounds, stale-identity matrix, no mutating method) are
+unchanged and still pass unmodified.
 
 ## Revision 3: bounded adversarial and stale-identity acceptance tests
 
