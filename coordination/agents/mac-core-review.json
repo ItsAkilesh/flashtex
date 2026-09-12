@@ -4,22 +4,22 @@
   "assignment_acknowledgements": {},
   "branch": "agent/mac-core-review/pipeline",
   "capabilities": ["swift", "appkit", "review", "python-fakes"],
-  "code_revision": "d1828e6a",
-  "eta_minutes": {"likely": 5, "optimistic": 3, "pessimistic": 15},
+  "code_revision": "fc7a3841",
+  "eta_minutes": {"likely": 0, "optimistic": 0, "pessimistic": 5},
   "machine": "mac-m1max-a",
-  "main_integrated_through": "6fb77efd",
-  "next_action": "Parent reviews the three defect commits (fc89836b, a7fea28f, d1828e6a) and the reported-only list in coordination/mac-core-review.md; decides on finding 4 (helper-side compile_request_id) and 8 (pending edit vs marked text)",
+  "main_integrated_through": "3162b89a",
+  "next_action": "Parent reviews pass-2 commits e32852b7 (pending edit vs IME composition, refusal path, monotonic tokens; touches SourceEditorView/ContentView/ShellModel/ShellModel+Bridge), e0cd128d (worker error recompile), 59a3c78d (completion ids across relaunch; detach resumes waiters). #7 (search reconcile overwrite window) remains reported-only with its reproduction; #4 relayed to the Commander; lane stops at the quota bound.",
   "reviewed_peers": {
     "origin/agent/mac-claude-a/mac-shell": {
-      "adaptation": "Branched from 6fb77efd; reviewed ShellModel, ShellModel+Controller, PreviewControllerClient, WorkerClient, ControllerRelease, HistoricalPreview, DocumentFiles, ProjectDocuments, ProjectSearchPanel, EditHistoryPanel, SourceEditorView pending-edit path, DocumentKinds, TypingBench; three reproduced defects fixed with tests, seven reported with reproductions",
-      "reviewed_utc": "2026-09-12T10:35:00Z",
-      "sha": "6fb77efd"
+      "adaptation": "Merged 3162b89a (fast-forward; includes the parent's conflict resolution: oversized failed -> OutputBoundNotice first, other failed/cancelled -> durable in-flight release). Re-checked findings 5-9 against that tip; the display-candidate negotiation adds one ready-time request (document is pc-2, first edit pc-8), which the #6 test derives from the observed numbering.",
+      "reviewed_utc": "2026-09-12T14:52:00Z",
+      "sha": "3162b89a"
     }
   },
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "Adversarial correctness review of the edit -> durable -> preview pipeline. Fixed (test + fix each): failed/cancelled helper compile left the edit in flight forever (typing stall); Cmd-S through a session-rooted helper wrote the temp copy and cleared the dirty flag (data loss); ProjectDocuments unowned model read after awaits (fatal unowned read). Reported only: stale-guard unit mismatch, save continuation leak on detach, completion-id collision after relaunch, search reconcile overwrite window, pending edit vs marked text, worker error drops the queued compile, TypingBench pattern.",
+  "summary": "Adversarial correctness review of the edit -> durable -> preview pipeline. Pass 1 (integrated at 3162b89a): failed/cancelled compile left the edit in flight forever; Cmd-S via a session-rooted helper wrote the temp copy; ProjectDocuments unowned model read after awaits. Pass 2: capture approved during IME composition misplaced/duplicated (+ token collision skipping a second capture); worker error dropped the queued recompile; completion ids swallowed the relaunched helper's document reply; explicit detach hung awaiting saves. Reported only: stale-guard unit mismatch (#4, relayed), search reconcile overwrite window (#7), TypingBench pattern (#10).",
   "tool": "Claude Code subagent (parent mac-claude-a, Fable)",
-  "updated_utc": "2026-09-12T10:35:00Z",
-  "usage": {"evidence": "ControllerPipelineReviewTests 3/3 with real helper + fake; controller/document/project suites green after each fix; full swift test result in coordination/mac-core-review.md", "status": "Shared Claude Max quota with parent mac-claude-a; no purchases"}
+  "updated_utc": "2026-09-12T14:52:00Z",
+  "usage": {"evidence": "ControllerPipelineReviewTests 7/7 with real helper + fake + IMEHarness; pass-2 tests verified failing with fixes reverted; filtered 78/78 (review, PreviewController, Completion, WorkerClient, ShellModel, DocumentFiles, SourceEditorView, IMEComposition); full swift test at fc7a3841: 642 / 13 env-gated skips / 0 failures", "status": "Shared Claude Max quota with parent mac-claude-a (41% of the 5 h window at wrap-up, allocation to 60%); no purchases"}
 }
