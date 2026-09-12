@@ -292,7 +292,7 @@ final class ProposalPreview: ObservableObject {
         case .protocolViolation(let message):
             inFlight.removeAll()
             state = .failed("protocol violation: \(message)")
-        case .stderr:
+        case .stderr, .displayList: // the shadow compile never requests display-list-v2
             break
         case .exited(let code):
             let lost = !inFlight.isEmpty

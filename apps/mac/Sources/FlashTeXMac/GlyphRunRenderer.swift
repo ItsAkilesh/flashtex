@@ -141,6 +141,9 @@ struct V2PreparedPage: @unchecked Sendable {
         items.reserveCapacity(page.items.count)
         var glyphs = 0
         let q = V2PreparedPage.serialized
+        // One CTFont per (font, size) on this page: CTFontCreateWithGraphicsFont
+        // per run cost ~20 µs × 973 runs on a two-page document.
+        var ctFonts: [String: CTFont] = [:]
         for item in page.items {
             switch item {
             case .rule(let r):
@@ -150,7 +153,10 @@ struct V2PreparedPage: @unchecked Sendable {
                 guard let font = fonts[run.fontId] else {
                     throw RenderingV2.ValidationError(code: "invalid_resource", message: "page \(page.number): font resource '\(run.fontId)' did not resolve")
                 }
-                let ct = font.ctFont(size: q(RenderingV2.points(run.fontSize)))
+                let size = q(RenderingV2.points(run.fontSize))
+                let key = "\(run.fontId)@\(size)"
+                let ct: CTFont
+                if let cached = ctFonts[key] { ct = cached } else { ct = font.ctFont(size: size); ctFonts[key] = ct }
                 items.append(.run(Run(font: ct,
                                       glyphs: run.glyphs.map { CGGlyph($0.gid) },
                                       positions: run.glyphs.map { CGPoint(x: q(RenderingV2.points($0.originX)), y: q(heightPt - RenderingV2.points($0.baselineY))) },
@@ -170,7 +176,13 @@ struct V2PreparedPage: @unchecked Sendable {
     /// half a unit in the 7th digit (5e-5 pt for coordinates below 1000 pt).
     static func serialized(_ v: Double) -> Double {
         guard v != 0, v.isFinite else { return v }
-        return Double(String(format: "%.7g", v)) ?? v
+        // Round to 7 significant digits arithmetically (String(format:) per
+        // coordinate cost ~15 ms on a two-page document). The result is the
+        // nearest double to a ≤7-digit decimal, which the writer's `%.7g`
+        // reproduces exactly, so preview and export still share the numbers.
+        let e = floor(log10(abs(v)))
+        let scale = pow(10.0, 6 - e)
+        return (v * scale).rounded() / scale
     }
 }
 
@@ -226,7 +238,16 @@ struct V2Frame: @unchecked Sendable {
 enum GlyphRunRenderer {
     /// `dark` inverts paint colors for the on-screen dark preview only; export
     /// callers pass `false` so the document keeps the list's colors.
-    static func draw(_ page: V2PreparedPage, in ctx: CGContext, dark: Bool = false) {
+    /// `glyphByGlyph`: one `CTFontDrawGlyphs` call per glyph. Required on a PDF
+    /// context: CoreGraphics' PDF writer merges a run's glyphs into `Tj`
+    /// strings positioned by the font's own advances plus integer 1/1000 em
+    /// `TJ` adjustments, so origins that deviate from those advances (TeX/TFM
+    /// metrics on an OpenType font) drift by up to a pixel over a line; a
+    /// glyph drawn alone gets its own `Tm`/`Td` at 7 significant digits — the
+    /// value the preparation already quantized to. Bitmap contexts take the
+    /// positions array exactly, so the preview batches (measured: 0 differing
+    /// pixels either way when positions match the advances).
+    static func draw(_ page: V2PreparedPage, in ctx: CGContext, dark: Bool = false, glyphByGlyph: Bool = false) {
         ctx.textMatrix = .identity
         for item in page.items {
             switch item {
@@ -241,7 +262,15 @@ enum GlyphRunRenderer {
                 ctx.fillPath()
             case .run(let run):
                 ctx.setFillColor(color(run.paint, dark: dark))
-                CTFontDrawGlyphs(run.font, run.glyphs, run.positions, run.glyphs.count, ctx)
+                if glyphByGlyph {
+                    run.glyphs.withUnsafeBufferPointer { g in
+                        run.positions.withUnsafeBufferPointer { p in
+                            for i in 0..<g.count { CTFontDrawGlyphs(run.font, g.baseAddress! + i, p.baseAddress! + i, 1, ctx) }
+                        }
+                    }
+                } else {
+                    CTFontDrawGlyphs(run.font, run.glyphs, run.positions, run.glyphs.count, ctx)
+                }
             }
         }
     }
@@ -306,7 +335,7 @@ enum GlyphRunRenderer {
             ctx.beginPDFPage([kCGPDFContextMediaBox as String: NSData(bytes: &mediaBox, length: MemoryLayout<CGRect>.size)] as CFDictionary)
             ctx.setFillColor(CGColor(gray: 1, alpha: 1))
             ctx.fill(mediaBox)
-            draw(page, in: ctx, dark: false)
+            draw(page, in: ctx, dark: false, glyphByGlyph: true)
             ctx.endPDFPage()
         }
         ctx.closePDF()

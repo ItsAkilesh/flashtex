@@ -2,40 +2,40 @@
   "agent_id": "mac-preview-v2",
   "allocation_id": "claude-mac20x-preview-v2",
   "assignment_acknowledgements": {},
-  "branch": "agent/mac-preview-v2/exact-glyphs",
+  "branch": "agent/mac-preview-v2/live",
   "capabilities": [
     "swift",
     "coregraphics",
     "rendering-v2"
   ],
-  "code_revision": "0dbdf77929da9a504aada29f0ddf2fbb5bf71d67",
+  "code_revision": "72f37394a8a8342e5f91801e52c48712db073604",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
     "pessimistic": 0
   },
   "machine": "mac-m1max-a",
-  "main_integrated_through": "780f1458c125d9702b994ab9df377aed96a1113f",
-  "next_action": "Parent cherry-picks 8cb9ade (ShellModel +2, ContentView +4/-1, FlashTeXMacApp +1) or re-applies; next lane candidates: render-format negotiation with the worker instead of file input; in-app hover/caret repaint timing; bundle latinmodern-math.otf decision (GUST license) for math lists.",
+  "main_integrated_through": "c35ca8bc4e3801fbbe308ee731d718af7ebe78eb",
+  "next_action": "Parent integrates the shared edits and records the contract; re-measure on a quiet machine; leaner sibling line with the producer lane; preview-controller route forwarding; hover/caret repaint timing.",
   "reviewed_peers": {
     "origin/agent/mac-render-pipeline/unified": {
-      "adaptation": "Swift validator applies rendering-core's DisplayList::validate structural rules (feature declaration, cluster-glyph mapping, exact-range ticks, bounds); main dd75e15 changes only coordination queues (mac-preview-v2 lane unchanged); pipeline display.rs unchanged between 79ba728 (scratch-built for the fixtures) and ba5611f (space factor + TFM metrics only; manifest hash/format conventions unchanged), still emits opentype-cff and bytes+face0 hashes (documented deviations kept); its --pdf is the legacy v1 writer, so parity is against the Mac CG export",
-      "reviewed_utc": "2026-09-12T09:11:14Z",
-      "sha": "ba5611fc8954456db54731576cd1ac75b2f566c9"
+      "adaptation": "Consumed the producer's sibling-line implementation as proposed (4888a67; c4848b2 only rewrites the compile_result serializer, extra_lines unchanged) and noted its two additions in the contract (status recovered + code display_list_declined on decline; 16 MiB limit); main advanced 164 commits since dd75e15 with no changes to docs/contracts, protocol or apps/mac that touch this lane (mac-shell 04a4eaa carries main and is merged); adapted the parent's new ExactPDFExport to V2Source so live frames export too",
+      "reviewed_utc": "2026-09-12T10:35:56Z",
+      "sha": "c4848b2c19297375ecd5cda99ddf17267931ac6d"
     },
     "origin/main": {
-      "adaptation": "Swift validator applies rendering-core's DisplayList::validate structural rules (feature declaration, cluster-glyph mapping, exact-range ticks, bounds); main dd75e15 changes only coordination queues (mac-preview-v2 lane unchanged); pipeline display.rs unchanged between 79ba728 (scratch-built for the fixtures) and ba5611f (space factor + TFM metrics only; manifest hash/format conventions unchanged), still emits opentype-cff and bytes+face0 hashes (documented deviations kept); its --pdf is the legacy v1 writer, so parity is against the Mac CG export",
-      "reviewed_utc": "2026-09-12T09:11:14Z",
-      "sha": "dd75e15f32e5a0616939e3d32078b4434db8a2d7"
+      "adaptation": "Consumed the producer's sibling-line implementation as proposed (4888a67; c4848b2 only rewrites the compile_result serializer, extra_lines unchanged) and noted its two additions in the contract (status recovered + code display_list_declined on decline; 16 MiB limit); main advanced 164 commits since dd75e15 with no changes to docs/contracts, protocol or apps/mac that touch this lane (mac-shell 04a4eaa carries main and is merged); adapted the parent's new ExactPDFExport to V2Source so live frames export too",
+      "reviewed_utc": "2026-09-12T10:35:56Z",
+      "sha": "60c40c12f3c8db2050694c9f76817db909853338"
     }
   },
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "agent/mac-preview-v2/exact-glyphs tip 0dbdf77 (mac-shell 312cabc merged): rendering-v2 consumer with exact glyph runs by original GID and typed rules; validator applies rendering-core rules; off-main immutable page preparation with load tickets (stale results dropped, previous frame retained with STALE indicator); off-main bounded page raster cache blitted 1:1; zero-tolerance export/preview parity 0 px at 1 and 2 px/pt on 22 real pipeline pages (rules as path fills + 7-significant-digit serialized coordinates), fractional-scale CoreGraphics residual documented; full swift test 339/339 (5 skipped for other lanes' optional helpers). Shared shell edits isolated in commit 8cb9ade for the parent.",
+  "summary": "agent/mac-preview-v2/live tip 72f3739 (mac-shell 04a4eaa merged, 449/449 native tests, 20 skipped for other lanes' helpers): v2 pane LIVE while typing via the per-request layout capability display-list-v2 (docs/contracts/runtime-v1-display-list-v2.md; ACKed+implemented by mac-render-pipeline at 4888a67); sibling display_list line applied only for the applied result's id, stale/unsolicited dropped; coalescing + typed fast reader (75->9 ms) + pre-rasterized publish keep every frame painted: keystroke->paint p50 89 ms (p95 116) through the v2 pane vs 40 ms v1 pane with the same producer, 200/200 painted; six consecutive live frames 0 differing pixels vs the CG export after making PDF glyph positions exact under TFM-metric layout (444 -> 0). Shared edits isolated in 6a9bb15/fea1ef1 + ExactPDFExport adaptation in 72f3739.",
   "tool": "Claude Code subagent (parent mac-claude-a)",
-  "updated_utc": "2026-09-12T09:20:25Z",
+  "updated_utc": "2026-09-12T10:35:56Z",
   "usage": {
-    "evidence": "docs/evidence/mac-preview-v2-parity-2026-09-12.md (+ parity JSON, window capture by id with FLASHTEX_NO_ACTIVATE=1); apps/mac swift test 339 tests, 5 skipped, 0 failures after merging mac-shell 312cabc; v2 suites 33/33",
+    "evidence": "docs/evidence/mac-preview-v2-live-2026-09-12.md (+ directory: bench summaries, six live parity reports, window capture by id, keystroke timeline, input SHA-256s); docs/evidence/mac-preview-v2-parity-2026-09-12.md; full swift test 449/449 at 72f3739",
     "status": "Shared Claude Max 20x quota with parent mac-claude-a; no purchases; no paid network calls"
   }
 }

@@ -334,9 +334,9 @@ final class PreviewV2ShellTests: XCTestCase {
     func testRefusedDisplayListShowsNoFrame() throws {
         let model = try model()
         load(model, Self.fixtures.appendingPathComponent("display-list-v2-missing-font.json"))
-        guard case .failed(let error, let url) = model.displayListV2 else { return XCTFail("expected refusal") }
+        guard case .failed(let error, let source) = model.displayListV2 else { return XCTFail("expected refusal") }
         XCTAssertEqual(error.code, "font_resource_unavailable")
-        XCTAssertEqual(url.lastPathComponent, "display-list-v2-missing-font.json")
+        XCTAssertEqual(source.url?.lastPathComponent, "display-list-v2-missing-font.json")
         XCTAssertNil(model.displayListV2?.frame)
         XCTAssertTrue(model.captureNote?.hasPrefix("Display list refused: font_resource_unavailable") == true, model.captureNote ?? "")
         // A runtime-v1 fixture is not a display list either.
@@ -356,8 +356,8 @@ final class PreviewV2ShellTests: XCTestCase {
         // A second load: the first frame stays paintable, explicitly stale.
         let done = expectation(description: "reload")
         model.loadDisplayListV2(url: text) { done.fulfill() }
-        guard case .loading(let url, let ticket, let previous) = model.displayListV2 else { return XCTFail("expected .loading, got \(String(describing: model.displayListV2))") }
-        XCTAssertEqual(url, text)
+        guard case .loading(let source, let ticket, let previous, _) = model.displayListV2 else { return XCTFail("expected .loading, got \(String(describing: model.displayListV2))") }
+        XCTAssertEqual(source, .file(text))
         XCTAssertEqual(previous?.preparedNonce, first.preparedNonce, "the previous verified frame is retained while loading")
         XCTAssertEqual(model.displayListV2?.frame?.preparedNonce, first.preparedNonce)
         XCTAssertTrue(model.captureNote?.hasPrefix("Loading display list") == true)
@@ -379,26 +379,30 @@ final class PreviewV2ShellTests: XCTestCase {
         let dropped = V2Loader.staleResultsDropped
         // A result for a ticket that is not the one in flight is dropped whether
         // it is a frame or a refusal, and the state is untouched.
-        XCTAssertFalse(model.deliverDisplayListV2(ticket: -1, url: text, outcome: .failed(RenderingV2.ValidationError(code: "x", message: "stale"))))
+        XCTAssertFalse(model.deliverDisplayListV2(ticket: -1, source: .file(text), outcome: .failed(RenderingV2.ValidationError(code: "x", message: "stale"))))
         guard case .loaded(let still, _) = model.displayListV2 else { return XCTFail("stale refusal must not replace the frame") }
         XCTAssertEqual(still.preparedNonce, frame.preparedNonce)
-        XCTAssertFalse(model.deliverDisplayListV2(ticket: -2, url: text, outcome: .loaded(frame)))
+        XCTAssertFalse(model.deliverDisplayListV2(ticket: -2, source: .file(text), outcome: .loaded(frame)))
         XCTAssertEqual(V2Loader.staleResultsDropped, dropped + 2)
-        // Two loads back to back: the first result is superseded by the second
-        // ticket and dropped; only the second is published.
-        let published = V2Loader.resultsPublished
-        let a = expectation(description: "a"), b = expectation(description: "b")
+        // Three loads back to back: one preparation in flight (a), the newest
+        // arrival waits (c), the one in between is dropped undecoded (b, coalesced).
+        // a publishes (it is newer than what is on screen), then c; the final
+        // state is c's refusal.
+        let published = V2Loader.resultsPublished, coalesced = V2Loader.coalescedLoads
+        let a = expectation(description: "a"), b = expectation(description: "b"), c = expectation(description: "c")
         model.loadDisplayListV2(url: text) { a.fulfill() }
         let ticketA = model.displayListV2?.ticket
-        model.loadDisplayListV2(url: Self.fixtures.appendingPathComponent("display-list-v2-missing-font.json")) { b.fulfill() }
-        let ticketB = model.displayListV2?.ticket
-        XCTAssertNotEqual(ticketA, ticketB)
-        wait(for: [a, b], timeout: 20, enforceOrder: true)
-        guard case .failed(let error, let url) = model.displayListV2 else { return XCTFail("the newer load (a refusal) is the final state") }
-        XCTAssertEqual(url.lastPathComponent, "display-list-v2-missing-font.json")
+        model.loadDisplayListV2(url: text) { b.fulfill() }
+        XCTAssertEqual(model.displayListV2?.ticket, ticketA, "b waits behind a; no new ticket yet")
+        XCTAssertNotNil(model.displayListV2?.queued)
+        model.loadDisplayListV2(url: Self.fixtures.appendingPathComponent("display-list-v2-missing-font.json")) { c.fulfill() }
+        XCTAssertEqual(V2Loader.coalescedLoads, coalesced + 1, "b was dropped undecoded")
+        wait(for: [b, a, c], timeout: 20, enforceOrder: true)
+        guard case .failed(let error, let source) = model.displayListV2 else { return XCTFail("the newest load (a refusal) is the final state") }
+        XCTAssertEqual(source.url?.lastPathComponent, "display-list-v2-missing-font.json")
         XCTAssertEqual(error.code, "font_resource_unavailable")
-        XCTAssertEqual(V2Loader.staleResultsDropped, dropped + 3, "the superseded text load was dropped on arrival")
-        XCTAssertEqual(V2Loader.resultsPublished, published + 1)
+        XCTAssertEqual(V2Loader.staleResultsDropped, dropped + 2, "nothing prepared was dropped after preparation")
+        XCTAssertEqual(V2Loader.resultsPublished, published + 2, "a and c were published, b never prepared")
     }
 
     func testPreparedPagesCarryPDFSpaceGeometryForEveryItem() throws {
@@ -500,6 +504,171 @@ final class PreviewV2ShellTests: XCTestCase {
         XCTAssertEqual(rasterizer.retainedBytes, 0)
         XCTAssertTrue(rasterizer.images.isEmpty)
     }
+}
+
+/// The negotiated live route (docs/contracts/runtime-v1-display-list-v2.md):
+/// `display-list-v2` requested while the pane is visible, the worker's sibling
+/// `display_list` line applied only for the applied compile_result.
+@MainActor
+final class PreviewV2LiveTests: XCTestCase {
+    static let fixtures = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent("Fixtures")
+    static let fakeWorker = fixtures.appendingPathComponent("fake_worker_v2.py")
+    static let template = fixtures.appendingPathComponent("display-list-v2-text.json")
+    static let python = URL(fileURLWithPath: "/usr/bin/python3")
+
+    private func fixtureText() throws -> String {
+        try String(contentsOf: Self.fixtures.appendingPathComponent("display-list-v2-text.tex"), encoding: .utf8)
+    }
+
+    /// A model with the fake v2 producer attached and the pane "visible".
+    private func liveModel(text: String) -> ShellModel {
+        let model = ShellModel()
+        model.autoCompile = false
+        model.replaceProject(entryText: text)
+        model.attachWorker(at: Self.python, arguments: [Self.fakeWorker.path, Self.template.path])
+        model.previewV2 = true
+        model.setLiveV2(true) // what PreviewV2Pane.onAppear does
+        return model
+    }
+
+    private func waitUntil(timeout: TimeInterval = 15, _ cond: () -> Bool) async throws {
+        let start = Date()
+        while !cond() {
+            if Date().timeIntervalSince(start) > timeout { throw XCTSkip("timeout") }
+            try await Task.sleep(nanoseconds: 30_000_000)
+        }
+    }
+
+    func testWorkerClientRoutesTheSiblingLineAndRejectsOtherV2Messages() throws {
+        let line = try Data(contentsOf: Self.template)
+        guard case .displayList(let id, let bytes) = WorkerClient.decode(line) else { return XCTFail("expected .displayList") }
+        XCTAssertEqual(id, "req-1")
+        XCTAssertEqual(bytes, line, "the raw line is handed on; decoding happens in V2Loader")
+        let other = Data("{\"protocol_version\":2,\"id\":\"x\",\"type\":\"render_capabilities\",\"payload\":{}}".utf8)
+        guard case .protocolViolation(let message) = WorkerClient.decode(other) else { return XCTFail("other v2 messages stay violations") }
+        XCTAssertTrue(message.contains("protocol_version 2"), message)
+    }
+
+    func testPaneVisibilityRequestsTheCapability() {
+        let model = ShellModel()
+        XCTAssertFalse(model.requestedLayoutCapabilities.contains(V2Live.capability), "never requested by default (gate: consumer tests first)")
+        model.setLiveV2(true)
+        XCTAssertEqual(model.requestedLayoutCapabilities.filter { $0 == V2Live.capability }.count, 1)
+        model.setLiveV2(true)
+        XCTAssertEqual(model.requestedLayoutCapabilities.filter { $0 == V2Live.capability }.count, 1, "idempotent")
+        model.setLiveV2(false)
+        XCTAssertFalse(model.requestedLayoutCapabilities.contains(V2Live.capability))
+        XCTAssertEqual(model.requestedLayoutCapabilities, ShellModel.defaultLayoutCapabilities(), "the other capabilities are untouched")
+    }
+
+    func testLiveFrameArrivesWithTheCompileResultAndNavigates() async throws {
+        let tex = try fixtureText()
+        let model = liveModel(text: tex)
+        let accepted = V2Live.linesAccepted
+        model.compile()
+        try await waitUntil { model.inFlightRevision == nil && model.displayListV2?.frame != nil && model.displayListV2?.isLoading == false }
+        XCTAssertTrue(model.liveV2Accepted)
+        XCTAssertEqual(model.acceptedLayoutCapabilities, [V2Live.capability])
+        guard case .loaded(let frame, let source) = model.displayListV2 else { return XCTFail("\(String(describing: model.displayListV2))") }
+        guard case .worker(let id, let project, let revision, let line) = source else { return XCTFail("live source expected") }
+        XCTAssertEqual(try RenderingV2.decode(line).payload.revision, revision, "the live line's bytes are retained with the frame")
+        XCTAssertEqual(try Data(contentsOf: try source.listFileURL()), line, "and can be handed to file-taking tools")
+        XCTAssertEqual(id, model.resultID)
+        XCTAssertEqual(revision, model.result?.revision)
+        XCTAssertEqual(project, model.result?.projectId)
+        XCTAssertEqual(frame.list.revision, model.result?.revision)
+        XCTAssertEqual(frame.list.documents[0].sha256, SourceDigest.sha256Hex(tex), "the producer attests the request text")
+        XCTAssertEqual(V2Live.linesAccepted, accepted + 1)
+        XCTAssertTrue(model.captureNote?.hasPrefix("Live display list live \(id)") == true, model.captureNote ?? "")
+        // Cluster → source navigation works on the live frame (digest matches the buffer).
+        let page = frame.list.pages[0]
+        guard case .glyphRun(let office) = page.items[4] else { return XCTFail() }
+        let ffi = office.clusters[1].hitRects[0]
+        model.navigateV2(try XCTUnwrap(V2Geometry.hit(page: page, tickX: ffi.x + ffi.width / 2, tickY: ffi.top + ffi.height / 2)))
+        XCTAssertEqual((model.activeText as NSString).substring(with: try XCTUnwrap(model.selection).nsRange), "ffi")
+        // Zero-tolerance parity holds on the live frame too.
+        XCTAssertTrue(V2Parity.compare(frame: frame, scale: 2).identical)
+        // A second edit: the previous frame stays (stale-labelled) until the new one is verified, then is replaced.
+        let firstNonce = frame.preparedNonce
+        model.updateActiveText(tex + "% edit\n")
+        model.compile()
+        try await waitUntil { model.result?.revision == model.editorRevision && model.displayListV2?.isLoading == false && (model.displayListV2?.frame?.preparedNonce ?? firstNonce) != firstNonce }
+        XCTAssertEqual(model.displayListV2?.frame?.list.revision, model.editorRevision)
+        model.detachWorker()
+    }
+
+    func testOldProducerWithoutTheCapabilityKeepsTheV1PreviewOnly() async throws {
+        let model = liveModel(text: "%v2nocap\n" + (try fixtureText()))
+        model.compile()
+        try await waitUntil { model.inFlightRevision == nil }
+        XCTAssertFalse(model.liveV2Accepted)
+        XCTAssertEqual(model.result?.status, .ok)
+        XCTAssertNil(model.displayListV2, "no line, no frame; the v1 pages are the preview")
+        model.detachWorker()
+    }
+
+    func testDeclinedPerRequestCarriesTheWarningAndNoFrame() async throws {
+        let model = liveModel(text: "%v2decline\n" + (try fixtureText()))
+        model.compile()
+        try await waitUntil { model.inFlightRevision == nil }
+        XCTAssertFalse(model.liveV2Accepted)
+        XCTAssertTrue(model.result?.diagnostics.contains { $0.severity == .warning && $0.message.hasPrefix("display-list-v2 declined:") } == true)
+        XCTAssertNil(model.displayListV2)
+        model.detachWorker()
+    }
+
+    func testFailedResultSendsNoLine() async throws {
+        let model = liveModel(text: "%v2failed\n" + (try fixtureText()))
+        model.compile()
+        try await waitUntil { model.inFlightRevision == nil }
+        XCTAssertEqual(model.result?.status, .failed)
+        XCTAssertTrue(model.liveV2Accepted)
+        try await Task.sleep(nanoseconds: 200_000_000)
+        XCTAssertNil(model.displayListV2)
+        model.detachWorker()
+    }
+
+    func testStaleUnsolicitedAndMismatchedLinesNeverApply() async throws {
+        let tex = try fixtureText()
+        // Stale/unknown id: dropped and counted, no state change.
+        let stale = liveModel(text: "%v2stale\n" + tex)
+        let dropped = V2Live.staleLinesDropped
+        stale.compile()
+        try await waitUntil { roundTripDone(stale) && V2Live.staleLinesDropped == dropped + 1 }
+        XCTAssertNil(stale.displayListV2)
+        XCTAssertTrue(stale.liveV2Accepted)
+        stale.detachWorker()
+        // Unsolicited: the line arrives although acceptance was not echoed → violation, dropped.
+        let unsolicited = liveModel(text: "%v2unsolicited\n" + tex)
+        let rejected = V2Live.unsolicitedLinesDropped
+        unsolicited.compile()
+        try await waitUntil { roundTripDone(unsolicited) && V2Live.unsolicitedLinesDropped == rejected + 1 }
+        XCTAssertNil(unsolicited.displayListV2)
+        XCTAssertTrue(unsolicited.workerStatus.hasPrefix("protocol violation: display_list"), unsolicited.workerStatus)
+        unsolicited.detachWorker()
+        // Correlation mismatch inside the payload: refused with a diagnostic, nothing painted.
+        let mismatch = liveModel(text: "%v2mismatch\n" + tex)
+        mismatch.compile()
+        try await waitUntil { roundTripDone(mismatch) && mismatch.displayListV2 != nil && mismatch.displayListV2?.isLoading == false }
+        guard case .failed(let error, let source) = mismatch.displayListV2 else { return XCTFail("\(String(describing: mismatch.displayListV2))") }
+        XCTAssertEqual(error.code, "correlation_mismatch")
+        XCTAssertTrue(source.isLive)
+        XCTAssertNil(mismatch.displayListV2?.frame)
+        mismatch.detachWorker()
+        // Direct: a line for an id that is not the applied result never touches a loaded frame.
+        let model = liveModel(text: tex)
+        model.compile()
+        try await waitUntil { model.inFlightRevision == nil && model.displayListV2?.frame != nil && model.displayListV2?.isLoading == false }
+        let nonce = model.displayListV2?.frame?.preparedNonce
+        let before = V2Live.staleLinesDropped
+        model.receiveDisplayListV2(id: "mac-999", line: try Data(contentsOf: Self.template))
+        XCTAssertEqual(V2Live.staleLinesDropped, before + 1)
+        XCTAssertEqual(model.displayListV2?.frame?.preparedNonce, nonce)
+        model.detachWorker()
+    }
+
+    /// The compile round trip finished.
+    private func roundTripDone(_ m: ShellModel) -> Bool { m.inFlightRevision == nil && m.result != nil }
 }
 
 /// Export-versus-preview identity with NO tolerance, on real pipeline output.

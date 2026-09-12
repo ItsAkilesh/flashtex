@@ -83,8 +83,13 @@ extension ShellModel {
     /// Export the loaded v2 display list through the exact route. The list's
     /// source JSON (already verified by the pane) is handed to the tool as is.
     func exportPDFExact() {
-        guard case .loaded(let frame, let listURL)? = displayListV2 else {
+        guard case .loaded(let frame, let source)? = displayListV2 else {
             captureNote = displayListV2?.isLoading == true ? "Nothing to export yet: a display list is still loading." : "Nothing to export: no v2 display list loaded (File > Open Display List (v2)…)."
+            return
+        }
+        let listURL: URL
+        do { listURL = try source.listFileURL() } catch { // a live frame's line is written to a temporary file (V2Source)
+            captureNote = "Exact export: could not write the live display list to a file: \(error.localizedDescription)"
             return
         }
         guard let tool = ExactPDFExport.locateTool() else {
