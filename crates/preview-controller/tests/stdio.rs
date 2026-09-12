@@ -491,3 +491,39 @@ fn helper_membership_and_bounded_status_preserve_detached_source() {
     );
     assert!(!root.path().join("extra.tex").exists());
 }
+
+#[test]
+#[ignore = "requires explicitly configured original compiler"]
+fn configured_large_result_reaches_real_helper_without_dropping_pages() {
+    let compiler = std::env::var("FLASHTEX_TEST_COMPILER").unwrap();
+    let root = tempfile::tempdir().unwrap();
+    let private = tempfile::tempdir().unwrap();
+    let config_dir = tempfile::tempdir().unwrap();
+    let text = "Measured paragraph with ordinary words and spaces.\n\n".repeat(9804);
+    std::fs::write(root.path().join("main.tex"), &text).unwrap();
+    let config = json!({"session_id":"session1","project_id":"p","entry_path":"main.tex","project_root":root.path(),"private_ledger_root":private.path(),"compiler_path":compiler,"compiler_max_frame_bytes":12*1024*1024});
+    let client = Client::configured(config_dir.path(), config);
+    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    loop {
+        let event = client
+            .output
+            .recv_timeout(deadline.saturating_duration_since(std::time::Instant::now()))
+            .unwrap();
+        assert_ne!(event["type"], "error", "{event}");
+        if event["type"] != "update" {
+            continue;
+        }
+        assert_ne!(event["payload"]["kind"], "failed");
+        if event["payload"]["kind"] == "preview" {
+            let result = &event["payload"]["result"];
+            assert_eq!(result["payload"]["status"], "ok");
+            assert!(serde_json::to_vec(result).unwrap().len() > 8 * 1024 * 1024);
+            let pages = result["payload"]["pages"].as_array().unwrap();
+            assert!(pages.len() > 250);
+            for (index, page) in pages.iter().enumerate() {
+                assert_eq!(page["number"], index + 1);
+            }
+            break;
+        }
+    }
+}

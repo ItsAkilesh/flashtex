@@ -13,7 +13,7 @@
   "capabilities": [
     "rust"
   ],
-  "code_revision": "3d3194ad5b5290747306f44b012c35f8e03b23e6",
+  "code_revision": "0699623d6399176e01e341ebf25417172f7c6c2c",
   "eta_minutes": {
     "likely": 20,
     "optimistic": 10,
@@ -21,15 +21,15 @@
   },
   "machine": "linux-primary",
   "main_integrated_through": "3e8861e4403f5934c5a4c0a387f2393d4870a5f5",
-  "next_action": "Publish evidence; resolve bounded large-result transport with commander assignment.",
+  "next_action": "Publish bounded large-frame option; design negotiated compact/chunked contract with compiler/native owners while persistent latency resolver proceeds.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "Pinned 5KB/50KB/500KB scaling harness:40 exact clean fresh/persistent matches; 500KB valid10.1MB output exceeds runtime8MiB frame. GH21 opened.",
+  "summary": "Explicit helper compiler_max_frame_bytes up to12MiB tested against real >8MiB output; all35 controller tests and strict clippy pass. Defaults remain8MiB, helper16MiB output bound enforced.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T07:03:16Z",
+  "updated_utc": "2026-09-12T07:08:04Z",
   "usage": {
     "evidence": "unknown",
-    "status": "Existing hosted Astra only; no provider calls. Deterministic compiler probes only."
+    "status": "Existing Astra; no new model calls or staffing."
   }
 }
