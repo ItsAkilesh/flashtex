@@ -14,27 +14,27 @@
     "rust",
     "fonts"
   ],
-  "code_revision": "4c29b3ac6d89cf9c27347078e429d793c76ab329",
+  "code_revision": "293572198dca30cee17c2fd3bad76064d07f820f",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
     "pessimistic": 0
   },
   "machine": "mac-m1max-a",
-  "main_integrated_through": "36e501e18bf173e116390c5f33182596e6124064",
-  "next_action": "Await Commander ABI review; follow-ups: CFF subsetting, MathVariants",
+  "main_integrated_through": "d0c64cfc81ee08216247fff091aee006aaf2ebb9",
+  "next_action": "Await Commander review; follow-ups: CFF subsetting, MathVariants, MarkToMark, font-resources opentype-cff acceptance",
   "reviewed_peers": {
     "origin/main": {
-      "adaptation": "rendering-v2-proposal.md font identity/original gids/clusters/missing-font rules match the crate design; no change needed",
-      "reviewed_utc": "2026-09-12T06:03:32Z",
-      "sha": "a77e697faa51866607f8c9cf9f5d2a65a63e1521"
+      "adaptation": "font-resources on main has TFM parsing and the EncodingManifest adapter; its loader still accepts only static-truetype, so the pinned LM (opentype-cff) manifest is validated in font-engine with the same fields; fixtures/tfm/ec-lmr10 is in its EncodingManifest shape; no overlap with owned paths",
+      "reviewed_utc": "2026-09-12T06:27:18Z",
+      "sha": "df9e26e44a74b4322f86bcbcfe0cf2312afaece0"
     }
   },
   "schema_version": 1,
-  "state": "accepted",
-  "summary": "font-engine crate complete for FT-018 rev 1: TrueType+OTTO parsing, Core14 tables, GPOS/kern/GSUB shaping with source clusters, subsetting, ToUnicode, MATH; 45 tests; CoreText-exact",
+  "state": "ready_for_integration",
+  "summary": "FT-018 rev 2 complete: pinned LM manifest+GUST FL, explicit deterministic fallback with per-cluster FontId, GPOS MarkToBase, CIDFontType0C CFF embedding, PDFKit extraction and CoreText render checks (exact / pixel-identical), reproducible subset+ToUnicode, EncodingCode newtype, ec-lmr10 TFM fixture for Commander; 57 tests",
   "tool": "Claude Code subagent (parent mac-claude-a)",
-  "updated_utc": "2026-09-12T06:06:29Z",
+  "updated_utc": "2026-09-12T06:27:18Z",
   "usage": {
     "evidence": "Shared Max quota not observable from subagent",
     "status": "unknown"
