@@ -8,9 +8,9 @@ Worktree: `/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a1798a96df2c
 (local branch `rp/resume`, pushed as `agent/mac-render-pipeline/unified`)
 State: geometry lane done for every fixture the compiler can parse; incremental reuse
 shipped (byte-identical); math roman family on optical faces with resource-profile provenance;
-every pushed SHA is a tested checkpoint (`cargo test --release`: 43 passed + 1 ignored at
-7ca34cec; metrics_provenance 5 + lib 21 + cli_e2e 3 focused at 421a2049 — full run deferred
-while the machine's 1-min load is 25–120). Session was cut by a Claude Max 429 at ~11:2xZ
+every pushed SHA is a tested checkpoint (`cargo test --release`: 45 passed + 1 ignored at
+1673d82a, load 9.4; 7c12dee4 re-pins font-resources/project-files at main d5440b0 with focused
+tests; origin/main d5440b0 merged at 51289c9b). Session was cut by a Claude Max 429 at ~11:2xZ
 (reset 13:20Z, no purchase); the WIP (assembled-items cache, adapter cache) was verified and
 committed on resume.
 Owned paths: `crates/render-pipeline/**` (this lane), plus `docs/proposals/rendering-abi.md`,
@@ -19,9 +19,9 @@ Rules in force: no purchases; crates/font-engine, crates/paragraph-layout, crate
 are transferred to another machine and are NOT edited (consumed as vendored pins; gaps go to
 issue #2 with fixture + numbers); commits by the implementing agent with truthful trailers,
 jay3332 as primary author on this machine.
-Main integrated through: merged origin/main 60c40c1 (d556519); compiler vendored from main
-745f327; font-resources and project-files pinned at main 60c40c1 (crates last changed by
-79bdada / d92db37).
+Main integrated through: merged origin/main d5440b0 (51289c9b); compiler vendored from main
+745f327; font-resources and project-files pinned at main d5440b0 (crates last changed by
+5c89501 / d92db37).
 
 ## Completed behavior (all on the branch)
 - TFM-exact text metrics through the shared font-resources reader (cb4ff5f): widths, kerns,
@@ -57,6 +57,10 @@ Main integrated through: merged origin/main 60c40c1 (d556519); compiler vendored
   source slice + style state + label table, relocated on hit. 27 pages in-process: adapt
   9.1 -> 6.1 ms, stage sum 38.2 -> 32.6 ms; worker over the protocol median 39.7 ms wall /
   40.4 ms CPU per edit at load 14.8 (fresh process 86.4 ms). Target "well under 30" NOT met.
+- Reply construction (6711f3cd, 1673d82a): one FontHint per font resource, direct decimal
+  writer (byte-identical: `scalar_fast_paths_match_fmt` + golden fixtures), font ids as
+  `Rc<str>`. 27 pages in-process: v1 4.9 -> 1.2 ms, JSON 6.7 -> 3.8, assemble 7.3 -> 6.8;
+  stage sum 27.1 ms; worker over the protocol median 33.6 ms wall / 34.1 ms CPU (load 8.4).
 - GH36 producer discovery (421a2049, adapts main 6472a5d's reviewable
   `producer-discovery.patch`): `fonts::Discovery` (env overrides + exe dir) with pure
   `font_dirs()` / `tfm_dirs_for()`; order = `FLASHTEX_FONT_DIRS`/`FLASHTEX_TFM_DIRS`/
@@ -80,16 +84,16 @@ stages -- file.tex 2`.
 - 13/14 need compiler math parser support for `\left`/`\right` and Greek control words.
 - Lists (11), `ǅ` (10), extensible delimiter assemblies (no OTF mapping → `math_glyph_unmapped`),
   `\emph{\textbf{x}} y` outer-group italic correction.
-- 27 pages ≈ 32.6 ms in-process / 40 ms worker CPU per edit (7ca34cec; target "well under 30"
-  not met: parse+typeset 8.5 ms fixed, reply construction assemble+v1+JSON 18 ms for a 4.3 MB
-  reply the protocol requires in full); 107 pages exceed the 16 MiB v1 reply.
+- 27 pages ≈ 27 ms in-process / 33.6 ms worker wall per edit (1673d82a; "well under 30" over
+  the protocol not met: parse+adapt+typeset 15 ms, assemble+v1+JSON 12 ms for a 4.3 MB reply
+  the protocol requires in full, ~6 ms request parse + pipe); 107 pages exceed the 16 MiB v1
+  reply. Next in-process lever would be lazy placement of cached runs (display.rs refactor,
+  ~4 ms); the larger lever is page-scoped/delta replies (protocol, asked on issue #2).
 - Provenance pins exist only for the 12 pt set; other sizes' TFMs warn (`tfm_missing`).
 
 ## Next steps (in order)
-1. Reply-side lever for the 30 ms target: the remaining 18 ms at 27 pages is building and
-   serialising the full 4.3 MB reply per edit; propose page-scoped / delta replies to
-   mac-preview-v2 on issue #2 (protocol change, not a cache), or accept the measured floor.
-   Full `cargo test --release` re-run when 1-min load < 15 (record `uptime`).
+1. Reply-side lever for the 30 ms target (asked on issue #2: page-scoped / delta replies);
+   until answered, optional lazy placement of cached runs (~4 ms).
 2. Extensible delimiter/radical assemblies → LM Math glyph assemblies (math-layout API ask).
 3. When the compiler adds `\left`/`\right`/Greek, re-run 13/14 and update the evidence table.
 4. Keep `docs/oracle-evidence.md` and README in step; un-vendor siblings as they merge.
@@ -101,8 +105,9 @@ compiler main 745f327 (crates/compiler 75c8018), font-engine f418238, paragraph-
 
 ## Running commands / messages
 No background jobs (the quiet-machine measurement finished; numbers in docs/oracle-evidence.md).
-Latest pushed: 7ca34cec (adapter cache), 421a2049 (GH36 producer discovery) — mac-packaging-tfm
-builds `flashtex-render` from this tip for the app-only acceptance. Coordinator items answered on issue #2: geometry report (9bb7b27),
+Latest pushed: 7ca34cec (adapter cache), 421a2049 (GH36 producer discovery), 6711f3cd /
+1673d82a (reply construction), 51289c9b (merge main d5440b0), 7c12dee4 (re-pin) —
+mac-packaging-tfm builds `flashtex-render` from this tip for the app-only acceptance. Coordinator items answered on issue #2: geometry report (9bb7b27),
 display-list-v2 ACK + tfm_missing (4888a67), font-resources adoption + raw digests + blocking
 required metrics (919ad8b), incremental reuse (a8e39c1). Commander's rendering-core ef350d2
 check of 02-wrapping-paragraph (+0.0054 bp = pdfTeX TJ/Tf rounding, no layout displacement)
@@ -110,4 +115,4 @@ is recorded in docs/oracle-evidence.md.
 
 Attach to the Mac app: `FLASHTEX_COMPILER=<repo>/crates/render-pipeline/target/release/flashtex-render`.
 Resource state: shared 20x Max quota on mac-m1max-a; usage not observable from a subagent.
-Updated: 2026-09-12T13:44:16Z
+Updated: 2026-09-12T13:55:14Z
