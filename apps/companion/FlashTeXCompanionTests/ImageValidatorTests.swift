@@ -1,4 +1,5 @@
 import XCTest
+import PencilKit
 @testable import FlashTeXCompanion
 
 /// Tests image validation per runtime-v1 constraints.
@@ -37,5 +38,18 @@ final class ImageValidatorTests: XCTestCase {
         XCTAssertTrue(ImageValidator.acceptedMIMETypes.contains("image/png"))
         XCTAssertTrue(ImageValidator.acceptedMIMETypes.contains("image/jpeg"))
         XCTAssertFalse(ImageValidator.acceptedMIMETypes.contains("image/gif"))
+    }
+
+    func testDrawingExportUsesOpaqueWhiteCanvas() throws {
+        let image = opaqueDrawingImage(
+            PKDrawing(),
+            from: CGRect(x: 0, y: 0, width: 20, height: 20),
+            scale: 1
+        )
+        let cgImage = try XCTUnwrap(image.cgImage)
+        XCTAssertTrue(
+            [.none, .noneSkipFirst, .noneSkipLast].contains(cgImage.alphaInfo),
+            "Pencil exports must be opaque so transparent background pixels become white"
+        )
     }
 }

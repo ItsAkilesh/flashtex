@@ -113,12 +113,26 @@ struct DrawingCanvasView: View {
         let bounds = canvasView.drawing.bounds
         guard !bounds.isEmpty else { return }
         let exportRect = bounds.insetBy(dx: -24, dy: -24)
-        let image = canvasView.drawing.image(from: exportRect, scale: 2.0)
+        let image = opaqueDrawingImage(canvasView.drawing, from: exportRect, scale: 2.0)
         let note = instructions.trimmingCharacters(in: .whitespacesAndNewlines)
         let effectiveInstructions = note.isEmpty
             ? "Faithfully transcribe this handwriting or equation; preserve all notation."
             : note
         store.addCapture(source: .pencil, image: image, instructions: effectiveInstructions)
+    }
+}
+
+/// Rasterize PencilKit strokes on white rather than preserving transparent pixels.
+/// The capture protocol accepts PNG, but a transparent drawing renders differently
+/// in downstream conversion tools that composite against a non-white background.
+func opaqueDrawingImage(_ drawing: PKDrawing, from rect: CGRect, scale: CGFloat) -> UIImage {
+    let format = UIGraphicsImageRendererFormat()
+    format.opaque = true
+    format.scale = scale
+    return UIGraphicsImageRenderer(size: rect.size, format: format).image { context in
+        UIColor.white.setFill()
+        context.fill(CGRect(origin: .zero, size: rect.size))
+        drawing.image(from: rect, scale: scale).draw(in: CGRect(origin: .zero, size: rect.size))
     }
 }
 
