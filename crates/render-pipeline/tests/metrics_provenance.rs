@@ -28,7 +28,12 @@ fn required_metrics_load_digest_bound_and_a_clean_compile_means_tex_metrics() {
     }
     let docs = [SourceDocument { path: "main.tex", text: "\\begin{document}Body $x^2$ text.\\end{document}" }];
     let r = render(&docs, "main.tex", 1, "p", &fonts, &RenderOptions::default());
-    assert!(r.v2.diagnostics.is_empty(), "{:?}", r.v2.diagnostics);
+    // The only diagnostics are the outline-resource profile notes for the
+    // math families that have no optical OpenType sibling (lmmi12/lmmi8
+    // drawn from Latin Modern Math); metrics are the pinned TFMs.
+    let others: Vec<_> = r.v2.diagnostics.iter().filter(|d| d.code != "math_resource_profile").collect();
+    assert!(others.is_empty(), "{others:?}");
+    assert!(r.v2.diagnostics.iter().any(|d| d.code == "math_resource_profile" && d.message.starts_with("lmmi12")), "{:?}", r.v2.diagnostics);
     let body = fonts.by_name("lmroman12-regular").expect("text face loaded");
     assert_eq!(body.tfm_status, TfmStatus::Loaded);
     assert_eq!(body.tfm.as_ref().unwrap().sha256(), REQUIRED_TFMS[0].1);

@@ -110,11 +110,11 @@ impl MathProvider {
             MathProvider::Otf(o) => o,
         }
     }
-    /// Original glyph id in the drawn face for a placed glyph.
-    pub fn otf_gid(&self, g: &ml::PositionedGlyph) -> Option<u16> {
+    /// The face and original glyph id that draw a placed glyph.
+    pub fn otf_glyph(&self, g: &ml::PositionedGlyph) -> Option<(Rc<LoadedFace>, u16)> {
         match self {
-            MathProvider::Tex(t) => t.otf_gid(g.font_id, g.gid as u8, g.ch),
-            MathProvider::Otf(_) => Some(g.gid),
+            MathProvider::Tex(t) => t.otf_glyph(g.font_id, g.gid as u8, g.ch),
+            MathProvider::Otf(o) => Some((o.face().clone(), g.gid)),
         }
     }
 }
@@ -1386,8 +1386,7 @@ pub fn assemble(
                     }
                     BoxRec::Math(mi) => {
                         let m = &laid.maths[*mi];
-                        used.entry(m.face.font_id.clone()).or_insert_with(|| m.face.clone());
-                        math_items(run, m, &source_of, &mut items);
+                        math_items(run, m, &source_of, &mut items, &mut used);
                     }
                 }
             }
@@ -1398,6 +1397,31 @@ pub fn assemble(
             height: Tick::from_tex_pt(page.height),
             items,
         });
+    }
+    // Resource selection provenance: which outline resource drew each TFM
+    // font's glyphs. The roman family has exact optical siblings
+    // (lmroman12/8/6 for lmr12/8/6); the italic, symbol and extension
+    // families only exist as the single-design Latin Modern Math, which is
+    // reported rather than passed off as the reference's lmmi/lmsy/lmex.
+    // Collected over every provider (cached blocks keep the provider that
+    // built them), then emitted in TFM-name order without a source so the
+    // report does not depend on which block was built first.
+    let mut profiles: BTreeMap<String, String> = BTreeMap::new();
+    for m in &laid.maths {
+        if let MathProvider::Tex(t) = &m.metrics {
+            for (tfm, face, exact) in t.take_resources() {
+                if !exact {
+                    profiles.entry(tfm).or_insert(face);
+                }
+            }
+        }
+    }
+    for (tfm, face) in profiles {
+        diagnostics.push(Diagnostic::warning(
+            "math_resource_profile",
+            format!("{tfm}: glyphs drawn from {face} (one 10pt design); no optical-size OpenType outline resource exists for this family, so the outlines are not the reference's {tfm} design"),
+            Vec::new(),
+        ));
     }
     // Glyphs TeX's metrics placed that the OpenType face cannot draw
     // (extensible assemblies, unknown chains): reported, not faked.
@@ -1541,10 +1565,17 @@ fn text_item(
     }))
 }
 
-fn math_items(run: &pl::PositionedRun, m: &MathRec, source_of: &dyn Fn(Span) -> SourceRange, items: &mut Vec<display::Item>) {
+fn math_items(
+    run: &pl::PositionedRun,
+    m: &MathRec,
+    source_of: &dyn Fn(Span) -> SourceRange,
+    items: &mut Vec<display::Item>,
+    used: &mut BTreeMap<String, Rc<LoadedFace>>,
+) {
     let flat = ml::positioned_runs(&m.root, (run.x, run.baseline_y - m.root.height));
     let src = source_of(m.span);
-    // Group consecutive glyphs of one size into a run; each glyph is a cluster.
+    // Group consecutive glyphs of one face and size into a run; each glyph
+    // is a cluster.
     let mut current: Option<GlyphRun> = None;
     let flush = |current: &mut Option<GlyphRun>, items: &mut Vec<display::Item>| {
         if let Some(r) = current.take() {
@@ -1554,16 +1585,17 @@ fn math_items(run: &pl::PositionedRun, m: &MathRec, source_of: &dyn Fn(Span) -> 
         }
     };
     for g in &flat.glyphs {
-        let Some(gid) = m.metrics.otf_gid(g) else { continue };
+        let Some((face, gid)) = m.metrics.otf_glyph(g) else { continue };
         if gid == 0 {
             continue;
         }
+        used.entry(face.font_id.clone()).or_insert_with(|| face.clone());
         let size_tick = Tick::from_tex_pt(g.size);
-        if current.as_ref().is_some_and(|r| r.font_size != size_tick) {
+        if current.as_ref().is_some_and(|r| r.font_size != size_tick || r.font_id != face.font_id) {
             flush(&mut current, items);
         }
         let r = current.get_or_insert_with(|| GlyphRun {
-            font_id: m.face.font_id.clone(),
+            font_id: face.font_id.clone(),
             font_size: size_tick,
             text: String::new(),
             glyphs: Vec::new(),
@@ -1571,12 +1603,12 @@ fn math_items(run: &pl::PositionedRun, m: &MathRec, source_of: &dyn Fn(Span) -> 
             paint: Paint::BLACK,
             role: display::RunRole::Math,
         });
-        let b = m.face.bounds(crate::ids::GlyphId(gid), Some(g.ch));
-        let adv = m.face.pt(i64::from(m.face.face().advance(crate::ids::GlyphId(gid)).unwrap_or(0)), g.size);
+        let b = face.bounds(crate::ids::GlyphId(gid), Some(g.ch));
+        let adv = face.pt(i64::from(face.face().advance(crate::ids::GlyphId(gid)).unwrap_or(0)), g.size);
         let (h, d) = if b.empty {
             (0.0, 0.0)
         } else {
-            (m.face.pt(i64::from(b.y_max), g.size), m.face.pt(-i64::from(b.y_min), g.size))
+            (face.pt(i64::from(b.y_max), g.size), face.pt(-i64::from(b.y_min), g.size))
         };
         let start = r.text.len();
         r.text.push(g.ch);

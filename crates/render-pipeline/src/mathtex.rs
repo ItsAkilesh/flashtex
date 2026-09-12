@@ -24,7 +24,7 @@ use flashtex_math_layout::cm_tfm;
 use flashtex_math_layout::metrics::Extensible;
 use flashtex_math_layout::{FontId as MathFontId, Glyph, MathFontMetrics, MathParams, SizeClass};
 
-use crate::fonts::{FontSet, LoadedFace, TfmStatus};
+use crate::fonts::{FontSet, LoadedFace, Role, TfmStatus};
 use crate::mathfont::{MathFonts, MathSizes};
 use crate::tfm::Tfm;
 
@@ -36,6 +36,15 @@ pub struct TexMathMetrics {
     /// Why a roman TFM is absent (the first failure), blocking when it is
     /// a required asset.
     roman_status: Option<TfmStatus>,
+    /// The text faces that draw the roman family at text/script/
+    /// scriptscript size: `lmroman12/8/6` are the OpenType siblings of the
+    /// `lmr12/8/6` Type 1 designs the TFMs describe, so digits, parentheses
+    /// and operators keep their optical design instead of Latin Modern
+    /// Math's single 10 pt design.
+    roman_faces: [Option<Rc<LoadedFace>>; 3],
+    /// Resource selection actually made per TFM font: `(face name, exact
+    /// optical design?)`, for the provenance report.
+    resources: RefCell<std::collections::BTreeMap<String, (String, bool)>>,
     /// The OpenType face drawn (Latin Modern Math) and its variant table.
     otf: Rc<MathFonts>,
     unmapped: RefCell<Vec<(String, u8, char)>>,
@@ -82,14 +91,52 @@ impl TexMathMetrics {
             }
         };
         let roman = [load(roman_names[0]), load(roman_names[1]), load(roman_names[2])];
+        let text_face = |size: f64| -> Option<Rc<LoadedFace>> {
+            let r = fonts.resolve(crate::fonts::Family::LatinModern, Role::Text { bold: false, italic: false }, size);
+            if r.substituted.is_some() { None } else { Some(r.face) }
+        };
+        let roman_faces = [text_face(cm.sizes[0]), text_face(cm.sizes[1]), text_face(cm.sizes[2])];
         TexMathMetrics {
             cm,
             sizes,
             roman,
             roman_status,
+            roman_faces,
             otf,
             unmapped: RefCell::new(Vec::new()),
+            resources: RefCell::new(std::collections::BTreeMap::new()),
         }
+    }
+
+    /// `(TFM font, face drawn, exact optical design)` for every TFM font a
+    /// glyph was mapped from, drained for the provenance report.
+    pub fn take_resources(&self) -> Vec<(String, String, bool)> {
+        std::mem::take(&mut *self.resources.borrow_mut())
+            .into_iter()
+            .map(|(k, (f, e))| (k, f, e))
+            .collect()
+    }
+
+    /// The face and original glyph id that draw a placed TFM glyph: the
+    /// optical-size text face for the roman family, Latin Modern Math (one
+    /// 10 pt design) for the italic, symbol and extension families.
+    pub fn otf_glyph(&self, font: MathFontId, code: u8, ch: char) -> Option<(Rc<LoadedFace>, u16)> {
+        let name = self.cm.font_name(font);
+        if name.starts_with("cmr") {
+            let idx = (0..3).find(|i| self.cm.families[0][*i].name == name).unwrap_or(0);
+            if let Some(face) = &self.roman_faces[idx] {
+                if let Some(gid) = face.face().glyph_id(ch) {
+                    self.resources.borrow_mut().entry(lm_name(&name)).or_insert((face.name.clone(), true));
+                    return Some((face.clone(), gid.0));
+                }
+            }
+        }
+        let gid = self.otf_gid(font, code, ch)?;
+        self.resources
+            .borrow_mut()
+            .entry(lm_name(&name))
+            .or_insert((self.otf.face().name.clone(), false));
+        Some((self.otf.face().clone(), gid))
     }
 
     /// The first roman-TFM failure, if any.
@@ -256,4 +303,10 @@ impl MathFontMetrics for TexMathMetrics {
             self.cm.text_glyph(ch, size)
         }
     }
+}
+
+/// The Latin Modern TFM that carries the same metrics as a CM table name
+/// (`cmmi12` → `lmmi12`), for provenance messages.
+fn lm_name(cm: &str) -> String {
+    cm.replacen("cm", "lm", 1)
 }
