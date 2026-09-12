@@ -283,3 +283,22 @@ a separate field. Explicit scale/hint policies carry through rational cubic
 placement. Missing mappings, .notdef, wrong cache identity and total glyph/command
 overflow fail without returning a partial run. This is explicit encoding, not
 Unicode shaping or TeX scaled-point rounding.
+
+`CffRun::fixture_bytes` serializes exact TFM metrics, kerns, input intervals and
+full cubic outline evidence through the same bounded writer as mixed batches.
+The pinned STIX named-glyph harness checks the installed font and OFL license
+hashes, the previously validated CFF range, explicit `A` name -> original GID 3,
+and an original synthetic 10-point TFM with half-em advances.
+
+```sh
+cargo run --manifest-path crates/rendering-core/Cargo.toml --example cff_tfm_probe -- \
+  /usr/share/fonts/stix-fonts/STIXTwoText-Regular.otf /usr/share/licenses/stix-fonts/OFL.txt
+```
+
+Two encoded A slots produce 48 exact commands and 6,346 evidence bytes, identical
+for cold and warm runs. SHA256:
+`f0210698b7d382171727f4768b3fb437a2fb6f2a63ccb492df603dae096e42e1`.
+`tests/fixtures/stix-cff-tfm.json` pins the font/license/TFM and records reference
+gaps. No matched distribution TFM/encoding pair or TeX rounding/native/PDF oracle
+is claimed. The synthetic name-mapping test also compares direct and cached
+resolved encodings, preserving independent TFM and outline advances.

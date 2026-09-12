@@ -445,3 +445,50 @@ fn cff_tfm_missing_notdef_and_wrong_cache_fail_without_partial_run() {
     .is_err());
     assert!(CffRun::prepare(&binding, &consumer, b"AA", placement, RunLimits::default()).is_ok());
 }
+#[test]
+fn synthetic_cff_name_mapping_replays_exact_metrics_and_bounds_fixture_bytes() {
+    use flashtex_font_resources::cff::{BoundCffTfmFont, CacheLimits, CffEncodingCache};
+    use flashtex_rendering_core::{
+        cff_run::*,
+        tex_adapter::{MetricPolicy, RunScale},
+        Tick, MAX_MESSAGE_BYTES,
+    };
+    let tfm = encoded_tfm(true);
+    let cache = encoded_cache(0);
+    let manifest = encoded_manifest(&tfm, &cache, "space");
+    let direct = BoundCffTfmFont::new(&tfm, &cache, &manifest).unwrap();
+    let mut encoding_cache = CffEncodingCache::new(
+        &cache,
+        CacheLimits {
+            max_entries: 4,
+            max_bytes: 100000,
+        },
+    )
+    .unwrap();
+    let resolved = encoding_cache.lookup(&tfm, &manifest).unwrap();
+    let cached = BoundCffTfmFont::from_resolved(&tfm, resolved.encoding).unwrap();
+    let consumer = CachedCffConsumer::new(cache);
+    let placement = RunPlacement {
+        scale: RunScale::canonical(Tick(1), MetricPolicy::ExactRationalNoTexRounding).unwrap(),
+        origin: origin(),
+        hints: HintPolicy::Unhinted,
+    };
+    let a = CffRun::prepare(&direct, &consumer, b"AB", placement, RunLimits::default()).unwrap();
+    let b = CffRun::prepare(&cached, &consumer, b"AB", placement, RunLimits::default()).unwrap();
+    let encoded = a.fixture_bytes(MAX_MESSAGE_BYTES).unwrap();
+    assert_eq!(encoded, b.fixture_bytes(MAX_MESSAGE_BYTES).unwrap());
+    let value: serde_json::Value = serde_json::from_slice(&encoded).unwrap();
+    assert_eq!(value["items"][0]["tfm_code"], 65);
+    assert_eq!(value["items"][0]["original_gid"], 1);
+    assert_eq!(
+        value["items"][0]["tfm_advance"],
+        serde_json::json!(["1", "2"])
+    );
+    assert_eq!(value["items"][1]["exact"], serde_json::json!(["-1", "4"]));
+    assert_eq!(value["items"][2]["pen_x"], serde_json::json!(["1", "4"]));
+    assert_eq!(a.fixture_bytes(encoded.len()).unwrap(), encoded);
+    assert!(matches!(
+        a.fixture_bytes(encoded.len() - 1),
+        Err(RunError::Budget)
+    ));
+}

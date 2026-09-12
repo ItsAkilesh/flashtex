@@ -207,3 +207,68 @@ pub struct RunPlacement {
     pub origin: OutlinePoint,
     pub hints: HintPolicy,
 }
+impl CffRun {
+    /// Bounded canonical evidence encoding. This is not rendering wire and does
+    /// not make the synthetic TFM metrics a reference-engine oracle.
+    pub fn fixture_bytes(&self, max_bytes: usize) -> RunResult<Vec<u8>> {
+        if !(1..=MAX_MESSAGE_BYTES).contains(&max_bytes) {
+            return Err(RunError::Budget);
+        }
+        let mut output = crate::mixed::BoundedOutput {
+            bytes: vec![],
+            limit: max_bytes,
+        };
+        serde_json::to_writer(&mut output, self).map_err(|_| RunError::Budget)?;
+        Ok(output.bytes)
+    }
+}
+impl serde::Serialize for CffRun {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> std::result::Result<S::Ok, S::Error> {
+        use serde::ser::SerializeStruct;
+        let mut s = serializer.serialize_struct("CffRun", 9)?;
+        s.serialize_field("format", "flashtex-cff-tfm-run-v1")?;
+        s.serialize_field("font_identity",&serde_json::json!({"font_sha256":self.identity.font_sha256,"cff_sha256":self.identity.cff_sha256,"face_index":self.identity.face_index,"table_range":[self.identity.table_range.start,self.identity.table_range.end]}))?;
+        s.serialize_field("tfm_sha256", &self.tfm_sha256)?;
+        s.serialize_field("encoding_sha256", &self.encoding_sha256)?;
+        s.serialize_field("metric_policy", "exact-rational-no-tex-rounding")?;
+        s.serialize_field(
+            "advance",
+            &[
+                self.advance.numerator().to_string(),
+                self.advance.denominator().to_string(),
+            ],
+        )?;
+        s.serialize_field("commands", &self.commands)?;
+        s.serialize_field("hinting_applied", &false)?;
+        s.serialize_field("items", &RunItems(&self.items))?;
+        s.end()
+    }
+}
+struct RunItems<'a>(&'a [CffRunItem]);
+impl serde::Serialize for RunItems<'_> {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> std::result::Result<S::Ok, S::Error> {
+        use serde::ser::SerializeSeq;
+        use serde_json::json;
+        let scalar =
+            |v: OutlineCoordinate| json!([v.numerator().to_string(), v.denominator().to_string()]);
+        let mut seq = serializer.serialize_seq(Some(self.0.len()))?;
+        for item in self.0 {
+            let value = match item {
+                CffRunItem::Kern { tfm, exact } => {
+                    json!({"kind":"kern","tfm_raw":tfm.0,"exact":scalar(*exact)})
+                }
+                CffRunItem::Glyph(g) => {
+                    json!({"kind":"glyph","tfm_code":g.tfm_code,"original_gid":g.original_gid,"glyph_name":g.glyph_name,"input_interval":[g.input.start,g.input.end],"metrics_raw":[g.metrics.width.0,g.metrics.height.0,g.metrics.depth.0,g.metrics.italic.0],"metrics_tag":g.metrics.tag,"metrics_remainder":g.metrics.remainder,"tfm_advance":scalar(g.tfm_advance),"pen_x":scalar(g.pen_x),"outline":crate::mixed::cubic_geometry_value(&g.outline)})
+                }
+            };
+            seq.serialize_element(&value)?;
+        }
+        seq.end()
+    }
+}

@@ -14,7 +14,7 @@
     "rust",
     "rendering"
   ],
-  "code_revision": "f2e09ba413f68c7f73436ab71b7c96bb6d2d01dd",
+  "code_revision": "3c880b09a277f1610812839ecc47cb005aff3c99",
   "eta_minutes": {
     "likely": 20,
     "optimistic": 10,
@@ -22,15 +22,15 @@
   },
   "machine": "linux-primary",
   "main_integrated_through": "63a93717865920014d15fa113102698572494976",
-  "next_action": "Run pinned STIX named-glyph and synthetic TFM equivalence fixture replay; document reference gaps.",
+  "next_action": "Publish pinned replay checkpoint and continue next assigned product task.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "BoundCffTfmFont consumer integrated into exact cubic runs with independent TFM spacing and outline advances. 103 Rust tests pass.",
+  "summary": "Pinned real STIX named-glyph plus synthetic TFM run replay implemented; direct/cached encoding equivalence and bounded exact evidence output verified. 104 Rust tests pass.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T07:06:18Z",
+  "updated_utc": "2026-09-12T07:10:47Z",
   "usage": {
-    "evidence": "103 Rust tests and strict all-target clippy pass. Explicit slot/name/GID identity, fractional positions, signed kerns, wrong resource/.notdef/absent mappings and atomic budgets covered. Peer1fe2b47 merged unchanged.",
+    "evidence": "104 Rust tests and strict all-target clippy pass. Pinned font/license probe: A GID3,48 commands,6346 bytes SHA f0210698b7d382171727f4768b3fb437a2fb6f2a63ccb492df603dae096e42e1; synthetic TFM, no native/TeX oracle.",
     "status": "Hosted OpenAI authorized; no external provider calls or purchases."
   }
 }
