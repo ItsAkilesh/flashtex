@@ -58,6 +58,11 @@ final class PreviewControllerClient {
         var storePaths: [URL] = []
         var compilerPath: URL?
         var compilerMaxFrameBytes: Int?
+        /// Explicit bibliography declarations (rooted non-entry paths, no
+        /// duplicates) the helper indexes as `bibliography` at startup; the
+        /// helper never infers a kind from an extension, and declarations
+        /// must be supplied on every launch (DocumentKinds.swift persists them).
+        var bibliographyPaths: [String] = []
 
         func json() -> JSONObject {
             var o: JSONObject = ["session_id": sessionID, "project_id": projectID, "entry_path": entryPath]
@@ -66,6 +71,7 @@ final class PreviewControllerClient {
             if !storePaths.isEmpty { o["store_paths"] = storePaths.map(\.path) }
             if let compilerPath { o["compiler_path"] = compilerPath.path }
             if let compilerMaxFrameBytes { o["compiler_max_frame_bytes"] = compilerMaxFrameBytes }
+            if !bibliographyPaths.isEmpty { o["bibliography_paths"] = bibliographyPaths }
             return o
         }
     }
