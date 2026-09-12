@@ -3,10 +3,10 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-023": {
-      "acknowledged_utc": "2026-09-12T11:19:24Z",
-      "adaptation": "Read exact b1c83a7 FT023r10. Import unchanged PDF20e5277857b2cd37f102fb07acdd164f82bb49db tree; all-target consumer check passes, compare existing five original outputs via owner parser/expanded charstrings and exact glyph position replay, no native activation.",
-      "main_sha": "b1c83a796d8aa46ff5cab4894bc2476b17f2510f",
-      "revision": 10
+      "acknowledged_utc": "2026-09-12T11:30:02Z",
+      "adaptation": "Read d44459e FT023r11. Helper-display branch not yet published at remote check; inspect exact direct Swift9dbdb01 source/ticket/font guards and map migration acceptance from actual8876279 fixtures. Read-only until root timing release, no native edits.",
+      "main_sha": "d44459e1969d1179ffc2fede6ad001fd3382cc03",
+      "revision": 11
     }
   },
   "branch": "agent/commander-render-core/rendering-core",
@@ -14,23 +14,23 @@
     "rust",
     "rendering"
   ],
-  "code_revision": "f0e5a7d8b9c5daacf67516a14dc0ee2a1aafaa59",
+  "code_revision": "720a5be8b3985e3d99f4f354fbcb96740f23ae6f",
   "eta_minutes": {
-    "likely": 3,
-    "optimistic": 1,
-    "pessimistic": 5
+    "likely": 5,
+    "optimistic": 2,
+    "pessimistic": 10
   },
   "machine": "linux-primary",
-  "main_integrated_through": "4ca51d941a2ab871696ca35cbf57adc01097016a",
-  "next_action": "Publish final tool/aggregate evidence, then next bounded product dispatch; no new corpus.",
+  "main_integrated_through": "720a5be8b3985e3d99f4f354fbcb96740f23ae6f",
+  "next_action": "Publish owner handoff; existing helper-display lane must compile/apply/native-test patch and freshness/fallback cases; await exact published route for recheck.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "FT023r10 unchanged subsetter uptake f0e5a7d8 and fresh five-fixture rebaseline verified: new smaller PDF hashes match tested artifacts, all prior raster/text outcomes unchanged.",
+  "summary": "FT023r11 current native consumer reviewed; GH31 confirms first-resolve raw font identity gap. Minimal pinned Swift patch and8actual helper migration cases prepared without native edits.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T11:28:06Z",
+  "updated_utc": "2026-09-12T11:34:38Z",
   "usage": {
-    "evidence": "165rendering+82PDF tests and both strictClippy pass;6Python gates pass. Fresh all-five runner matches new PDF snapshots and0/602/1244/979/337pixels. GH2comment5645596949.",
-    "status": "Hosted OpenAI only; no providers/descendants/native activation; quota telemetry unavailable."
+    "evidence": "4focused helper_candidate tests pass including8migration cases; strictall-targetClippy pass. Patch git-apply check passes in isolated exact1fd5ba0b source. No native execution claim; GH31 open and Commander assigned existing owner.",
+    "status": "Hosted OpenAI only; no providers/descendants/native activation; no quota telemetry."
   }
 }
