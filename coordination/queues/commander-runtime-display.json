@@ -1,0 +1,56 @@
+{
+  "agent_id": "commander-runtime-display",
+  "next_index": 3,
+  "schema_version": 1,
+  "steps": [
+    {
+      "acceptance": [
+        "Start from integrated decoder ecbaf7c on main; preserve four raw frames plus one decoded permit and joined shutdown",
+        "Exactly one contiguous sibling only after requested and accepted nonfailed result; bind ID/project/revision/document hashes and reject malformed, unsolicited, missing or out-of-order frames",
+        "Default legacy requests unchanged; preserve line limits and source epochs, no duplicate renderer parser or automatic native activation",
+        "Use corrected actual producer65dbe7d or later raw-byte font hashes; old contract SHA-bytes-plus-face deviation is historical, not accepted resource evidence",
+        "Publish bounded candidate API for existing helper owner; if deep validation is deferred, the type and contract must remain explicitly untrusted until existing native/core validator accepts it"
+      ],
+      "allocation_id": "hosted-openai-product",
+      "name": "Implement bounded opt-in runtime-v1 display-list-v2 sibling consumption with exact request/source correlation and explicit downstream rendering-validation boundary",
+      "objective": "Implement bounded opt-in runtime-v1 display-list-v2 sibling consumption with exact request/source correlation and explicit downstream rendering-validation boundary",
+      "owned_paths": [
+        "crates/document-runtime"
+      ],
+      "timebox_minutes": 40
+    },
+    {
+      "acceptance": [
+        "Start from integrated decoder ecbaf7c on main; preserve four raw frames plus one decoded permit and joined shutdown",
+        "Exactly one contiguous sibling only after requested and accepted nonfailed result; bind ID/project/revision/document hashes and reject malformed, unsolicited, missing or out-of-order frames",
+        "Default legacy requests unchanged; preserve line limits and source epochs, no duplicate renderer parser or automatic native activation",
+        "Use corrected actual producer65dbe7d or later raw-byte font hashes; old contract SHA-bytes-plus-face deviation is historical, not accepted resource evidence",
+        "Publish bounded candidate API for existing helper owner; if deep validation is deferred, the type and contract must remain explicitly untrusted until existing native/core validator accepts it"
+      ],
+      "allocation_id": "hosted-openai-product",
+      "name": "Validate actual published producer and legacy compiler negotiation/correlation with exact source identity and explicit refusal cases",
+      "objective": "Validate actual published producer and legacy compiler negotiation/correlation with exact source identity and explicit refusal cases",
+      "owned_paths": [
+        "crates/document-runtime"
+      ],
+      "timebox_minutes": 40
+    },
+    {
+      "acceptance": [
+        "Start from integrated decoder ecbaf7c on main; preserve four raw frames plus one decoded permit and joined shutdown",
+        "Exactly one contiguous sibling only after requested and accepted nonfailed result; bind ID/project/revision/document hashes and reject malformed, unsolicited, missing or out-of-order frames",
+        "Default legacy requests unchanged; preserve line limits and source epochs, no duplicate renderer parser or automatic native activation",
+        "Use corrected actual producer65dbe7d or later raw-byte font hashes; old contract SHA-bytes-plus-face deviation is historical, not accepted resource evidence",
+        "Publish bounded candidate API for existing helper owner; if deep validation is deferred, the type and contract must remain explicitly untrusted until existing native/core validator accepts it"
+      ],
+      "allocation_id": "hosted-openai-product",
+      "name": "Consume helper/native feedback through the runtime-only contract, preserving bounded queues and cancellation under slow validation; no peer implementation writes",
+      "objective": "Consume helper/native feedback through the runtime-only contract, preserving bounded queues and cancellation under slow validation; no peer implementation writes",
+      "owned_paths": [
+        "crates/document-runtime"
+      ],
+      "timebox_minutes": 40
+    }
+  ],
+  "task_id": "FT-049"
+}

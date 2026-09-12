@@ -7,10 +7,13 @@ use std::{
     io::{BufRead, BufReader, Read, Write},
     path::Path,
     process::{Child, Command, Stdio},
-    sync::mpsc::{self, Receiver, SyncSender, TryRecvError},
+    sync::mpsc::{self, SyncSender, TryRecvError},
     thread,
     time::{Duration, Instant},
 };
+
+mod decode_lane;
+use decode_lane::{Decoder, Input, RawInput};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Document {
@@ -74,7 +77,10 @@ pub struct ResponseProfile {
     pub request_id: String,
     pub response_bytes: usize,
     pub encode_ms: f64,
+    /// Waiting after decode completion for the serialized owner to poll.
     pub reader_delivery_wait_ms: f64,
+    /// Raw-frame wait for the single decoding/validation permit.
+    pub decode_queue_wait_ms: f64,
     pub dispatch_to_first_byte_ms: f64,
     pub frame_read_ms: f64,
     pub parse_ms: f64,
@@ -100,14 +106,10 @@ struct Pending {
     queued: Instant,
     sent: Option<Instant>,
 }
-enum Input {
-    Frame(Vec<u8>, Instant, Instant),
-    Failure(String),
-}
 struct Process {
     child: Child,
     writer: SyncSender<Vec<u8>>,
-    reader: Receiver<Input>,
+    reader: Decoder,
 }
 impl Process {
     fn spawn(mut command: Command, limit: usize) -> Result<Self, String> {
@@ -126,7 +128,7 @@ impl Process {
         thread::spawn(move || {
             while let Ok(bytes) = rx.recv() {
                 if stdin.write_all(&bytes).and_then(|_| stdin.flush()).is_err() {
-                    let _ = failures.send(Input::Failure("compiler input closed".into()));
+                    let _ = failures.send(RawInput::Failure("compiler input closed".into()));
                     break;
                 }
             }
@@ -136,7 +138,7 @@ impl Process {
             loop {
                 let mut frame = Vec::new();
                 if reader.fill_buf().is_err() {
-                    let _ = out_tx.send(Input::Failure("compiler output read failed".into()));
+                    let _ = out_tx.send(RawInput::Failure("compiler output read failed".into()));
                     break;
                 }
                 let first_byte = Instant::now();
@@ -146,19 +148,19 @@ impl Process {
                     .read_until(b'\n', &mut frame);
                 match result {
                     Ok(0) => {
-                        let _ = out_tx.send(Input::Failure("compiler output closed".into()));
+                        let _ = out_tx.send(RawInput::Failure("compiler output closed".into()));
                         break;
                     }
                     Ok(_) if frame.len() <= limit && frame.last() == Some(&b'\n') => {
                         if out_tx
-                            .send(Input::Frame(frame, first_byte, Instant::now()))
+                            .send(RawInput::Frame(frame, first_byte, Instant::now()))
                             .is_err()
                         {
                             break;
                         }
                     }
                     _ => {
-                        let _ = out_tx.send(Input::Failure(
+                        let _ = out_tx.send(RawInput::Failure(
                             "compiler output malformed, truncated or oversized".into(),
                         ));
                         break;
@@ -178,7 +180,7 @@ impl Process {
         Ok(Self {
             child,
             writer: tx,
-            reader: out_rx,
+            reader: Decoder::spawn(out_rx),
         })
     }
 }
@@ -416,26 +418,13 @@ impl Session {
                     self.fail(&reason);
                     break;
                 }
-                Ok(Input::Frame(bytes, first_byte, reader_done)) => {
-                    let reader_delivery_wait_ms = reader_done.elapsed().as_secs_f64() * 1000.0;
+                Ok(Input::Frame(mut frame)) => {
+                    let reader_delivery_wait_ms = frame.decoded_at.elapsed().as_secs_f64() * 1000.0;
                     let Some(pending) = self.active.as_ref() else {
                         self.fail("unsolicited compiler reply");
                         break;
                     };
-                    let parsed_at = Instant::now();
-                    // Validate UTF-8 once for the whole frame instead of once per JSON string.
-                    // Keep the same Value and semantic validation path below.
-                    let parsed: Value = match std::str::from_utf8(&bytes)
-                        .map_err(|_| ())
-                        .and_then(|text| serde_json::from_str(text).map_err(|_| ()))
-                    {
-                        Ok(value) => value,
-                        Err(_) => {
-                            self.fail("compiler returned malformed JSON");
-                            break;
-                        }
-                    };
-                    let parse_ms = parsed_at.elapsed().as_secs_f64() * 1000.0;
+                    let parsed = frame.value.take().expect("decoded frame consumed once");
                     let validate_at = Instant::now();
                     let result =
                         match validate_reply_value(parsed, &pending.request, &pending.capabilities)
@@ -448,18 +437,21 @@ impl Session {
                         };
                     self.last_profile = Some(ResponseProfile {
                         request_id: pending.request.id.clone(),
-                        response_bytes: bytes.len(),
+                        response_bytes: frame.response_bytes,
                         encode_ms: pending.encode_ms,
                         reader_delivery_wait_ms,
-                        dispatch_to_first_byte_ms: first_byte
+                        decode_queue_wait_ms: frame.decode_queue_wait_ms,
+                        dispatch_to_first_byte_ms: frame
+                            .first_byte
                             .saturating_duration_since(pending.sent.unwrap())
                             .as_secs_f64()
                             * 1000.0,
-                        frame_read_ms: reader_done
-                            .saturating_duration_since(first_byte)
+                        frame_read_ms: frame
+                            .reader_done
+                            .saturating_duration_since(frame.first_byte)
                             .as_secs_f64()
                             * 1000.0,
-                        parse_ms,
+                        parse_ms: frame.parse_ms,
                         validation_ms: validate_at.elapsed().as_secs_f64() * 1000.0,
                     });
                     let pending = self.active.take().unwrap();

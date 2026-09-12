@@ -3,10 +3,10 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-023": {
-      "acknowledged_utc": "2026-09-12T09:36:11Z",
-      "adaptation": "Use unchanged pipeline9bb7b27 and committed established-LaTeX PDF; preserve source transformations and ABI limitations.",
-      "main_sha": "284369de3fd2af4384c3de2d2403801dffbcf94b",
-      "revision": 7
+      "acknowledged_utc": "2026-09-12T10:39:37Z",
+      "adaptation": "Read actual published602pixel classification objective. Use existing owner dumps and pinned raster/font data; no speculative geometry patch or invented reference GIDs.",
+      "main_sha": "ca3f9e8e7931245cc3d9d407069a63ae634e1a50",
+      "revision": 8
     }
   },
   "branch": "agent/commander-render-core/rendering-core",
@@ -14,23 +14,23 @@
     "rust",
     "rendering"
   ],
-  "code_revision": "59b974e9c6bce6e090aaf7570bbe3950efb3d662",
+  "code_revision": "8b06436cd5bc74d2b5a2a3c9e2e7a45522c47a42",
   "eta_minutes": {
     "likely": 15,
     "optimistic": 5,
     "pessimistic": 25
   },
   "machine": "linux-primary",
-  "main_integrated_through": "dd09e2352ef85ab3769858dc23461a3caeb13b69",
-  "next_action": "Obtain existing Mac LMmath asset/fixture for math cluster extraction evidence; preserve explicit text ambiguity guards. Prior211pixel run classified fallback/error, not matched acceptance.",
+  "main_integrated_through": "a45e71b0ec92ba99dd089988ee6f87ac3c58aada",
+  "next_action": "Send precise font-binding handoff to existing producer/font owners, then classify a second existing math fixture as queued; no speculative coordinate patch.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "Corrected required-metrics setup: untouched65dbe7d with rooted pinned assets and zero diagnostics yields identical plain fixture raster/text to pdfTeX reference. Added error-diagnostic export/ref gates and actual escaped-text evidence.",
+  "summary": "FT023r8 classified602pixel math mismatch read-only:582math-associated,20colon; exact checked origins/rules differ under0.001bp, observed math resource/optical-family distinction; no verified consumergeometry bug.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T10:11:55Z",
+  "updated_utc": "2026-09-12T10:41:05Z",
   "usage": {
-    "evidence": "157tests and strictclippy pass. Clean originalPDF6308c8a95726a980ec341ad53af15a0b12654d27c9021d5a74306b8b807c9cb1;144DPI1224x1584 RGB0pixels differ, extractedtext equal. Escaped%_&#{}andffi/fi exact extraction verified; source spans retainTeX. Matching LMmath asset unavailable. No pending calls.",
+    "evidence": "Existing owner dump binary and rawtraces/bboxes pinned; directRGB602 count reconciles disjoint windows. Fractionrule and radicalrule interior0diff. CandidateoriginalGIDs/origins retained; referenceType1codes not GIDs. No builds during root timing; window nowreleased. No pending calls.",
     "status": "Hosted OpenAI only; no providers or descendants. Context telemetry/native compaction unavailable."
   }
 }

@@ -3,27 +3,27 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-048": {
-      "acknowledged_utc": "2026-09-12T10:08:35Z",
-      "adaptation": "Read main0dc50da ownership extension: profile retained-history cost before optimization; prefer immutable sharing/validation reuse preserving exact schema bytes, receipts and undo recovery, with existing root only.",
-      "main_sha": "0dc50da7dfc8237e533d3a34ceb2321400c5d386",
-      "revision": 4
+      "acknowledged_utc": "2026-09-12T10:54:16Z",
+      "adaptation": "Runtime ownership released to FT049; only helper and ledger edits. History metadata64829a0 published. Adding explicit snapshot document_kinds for native project-settings persistence.",
+      "main_sha": "eed1847e923b42dbbc02d25309e9e432bd6e3aa0",
+      "revision": 6
     }
   },
   "branch": "agent/commander-preview-performance/preview-performance",
   "capabilities": [
     "Preview helper serialization and latency"
   ],
-  "code_revision": "397bff7",
+  "code_revision": "64829a0db4eb7bd6d0dbad4e50ab72257880f210",
   "eta_minutes": null,
   "machine": "linux-primary",
-  "main_integrated_through": "ab945e65d23797918e4d6ee21a6b856e00151723",
-  "next_action": "Commander integrate then Mac/root measure real save/ACK/nativepath underfullhistory withunchangedsource. Cache adds boundedmemory; fullstatefilewrite remains.",
+  "main_integrated_through": "a885b394b50175690cd98965ec6c9c02b5ff03e2",
+  "next_action": "Agree minimal current-only opt-in display-list candidate interface with FT049; preserve existing helper required-output priority and source identity.",
   "reviewed_peers": {},
   "schema_version": 1,
-  "state": "accepted",
-  "summary": "Bounded immutablehistory JSONcache preservesexactlegacybytes.18/18alternatingserializerpairs equal/faster;20entrymedian41vs94ms componentonly.67ledger tests/lint and53serialhelpergates pass; defaultformat/historyunchanged,cachecoldonload.",
+  "state": "in_progress",
+  "summary": "FT048r6 ACK: explicit document_kinds now included in same-source snapshot, allowing native project settings to preserve bibliography declarations.17 ordinary stdio tests and strict Clippy pass;2 explicit compiler tests not rerun for metadata-only change.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T10:22:28Z",
+  "updated_utc": "2026-09-12T10:54:30Z",
   "usage": {
     "status": "unknown"
   }

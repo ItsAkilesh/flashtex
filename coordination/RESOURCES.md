@@ -327,3 +327,8 @@ Jaysen07:31UTC report: five workers terminated by HTTP429 monthly spend limit,
 reported reset4:20am America/New_York; parent/render-pipeline/visual-oracle remain
 reported active, standby setup completed on its branch. Treat reset as reported,
 not permission to purchase or proof quota has renewed. Dirty WIP stays preserved.
+
+
+### Retained-slot ownership transfer 2026-09-12T10:53:39.658079+00:00
+
+The existing `/root/compiler_corpus` handle moves from completed font checkpoint5c89501/report55bfd48 to FT049 `commander-runtime-display`; no new process slot or provider allocation is authorized. FT024 is cancelled only to suspend its remaining flex queue, preserving all published work. The old agent ID is paused; the handle is not paused. Root explicitly confirmed no runtime mutations afterecbaf7c and retains FT048 preview-controller/edit-ledger ownership. Four local active slots remain the cap; the three user-drained handles remain stopped. Registration/ACK of FT049 is still required before claiming task pickup.
