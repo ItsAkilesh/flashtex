@@ -40,11 +40,11 @@ final class ShellModel: ObservableObject {
     /// UTF-16 length of the editor selection starting at `caretUTF16` (0 = caret only).
     @Published var caretLengthUTF16: Int = 0
     // Capture bridge (contract: transfer-v1). See ShellModel+Bridge.swift.
-    @Published var bridgeStatus: String = "no bridge attached"
+    @Published var bridgeStatus: String = "no bridge attached" { didSet { FlashTeXLog.write("bridge: " + bridgeStatus) } }
     @Published var bridgeCaptures: [BridgeSession.Capture] = []
     @Published var bridgeDestination: TransferV1.Anchor?
     private(set) var bridge: BridgeSession?
-    @Published var workerStatus: String = "no worker attached"
+    @Published var workerStatus: String = "no worker attached" { didSet { FlashTeXLog.write("status: " + workerStatus) } }
     @Published var workerLog: [String] = []
     private var worker: WorkerClient?
     private var nextRequestID = 1
@@ -451,6 +451,7 @@ final class ShellModel: ObservableObject {
     }
 
     private func log(_ line: String) {
+        FlashTeXLog.write(line)
         workerLog.append(line)
         if workerLog.count > 200 { workerLog.removeFirst(workerLog.count - 200) }
     }

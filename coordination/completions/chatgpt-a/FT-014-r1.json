@@ -1,0 +1,81 @@
+{
+  "agent_id": "chatgpt-a",
+  "archived_utc": "2026-09-12T05:18:57Z",
+  "assignment": {
+    "acceptance": [
+      "Owned tools/companion-validation harness pins and reports exact FT-004 SHA, Xcode/SDK/destination, commands, exit codes, and concise logs",
+      "Tests reproduce malformed project and missing test target, validate repaired patch in disposable checkout, and check MIME bytes against declarations",
+      "No writes under apps/companion or overlap with FT-004; repair patch is submitted through a recovery issue for owner/Commander review",
+      "Publish exact FT-014 rev 1 ACK plus actual local worker PID/session and current non-secret Codex quota/auth evidence"
+    ],
+    "agent_id": "chatgpt-a",
+    "allocation_id": "openai-aarush-chatgpt-ft014",
+    "branch": "agent/chatgpt-a/companion-validation",
+    "deadline_utc": null,
+    "dependencies": [],
+    "input_main_sha": "6944368dea5e529ca96563b82d36e42c332761de",
+    "objective": "Build an independent native validation and repair-broker harness for FT-004. In a disposable read-only checkout of the pinned companion branch, run Xcode project parsing/build/tests, detect malformed pbxproj and missing test targets, validate PNG/JPEG MIME bytes, and emit a minimal binary-safe repair patch/evidence for the FT-004 owner without editing apps/companion on this branch.",
+    "owned_paths": [
+      "tools/companion-validation"
+    ],
+    "revision": 1,
+    "schema_version": 1,
+    "state": "assigned",
+    "task_id": "FT-014",
+    "timebox_minutes": 45,
+    "updated_utc": "2026-09-12T04:43:03Z"
+  },
+  "report": {
+    "agent_id": "chatgpt-a",
+    "allocation_id": "openai-aarush-chatgpt-ft014",
+    "assignment_acknowledgements": {
+      "FT-014": {
+        "acknowledged_utc": "2026-09-12T04:50:08Z",
+        "adaptation": "Accepted independent validation harness under tools/companion-validation. Prior repair 699e1bf is isolated and submitted to owner; this task will validate pinned original and patched disposable copies, not edit apps/companion.",
+        "main_sha": "11dc30f8f33caa39c60a49548892b8af6a2d2b89",
+        "revision": 1
+      }
+    },
+    "branch": "agent/chatgpt-a/companion-validation",
+    "capabilities": [
+      "xcode",
+      "swift",
+      "python"
+    ],
+    "code_revision": "3c6ec6e18c3b924e556ca8721e3b57916ff9d56a",
+    "eta_minutes": {
+      "likely": 0,
+      "optimistic": 0,
+      "pessimistic": 0
+    },
+    "machine": "aarush-macbook-chatgpt",
+    "main_integrated_through": "11dc30f8f33caa39c60a49548892b8af6a2d2b89",
+    "next_action": "Await Commander review/integration or revised FT-014 assignment.",
+    "reviewed_peers": {
+      "origin/main": {
+        "adaptation": "No assignment revision or owned-path change; expanded only FT-014 validation evidence under tools/companion-validation.",
+        "reviewed_utc": "2026-09-12T05:08:09Z",
+        "sha": "342e1e029f80e7a5b472ad202ae87d597274127b"
+      }
+    },
+    "schema_version": 1,
+    "state": "ready_for_integration",
+    "summary": "FT-014 harness now records Xcode 26.6, SDK and simulator-runtime inventories, concrete destination, commands and exit codes alongside structural and MIME findings.",
+    "tool": "Codex",
+    "updated_utc": "2026-09-12T05:08:09Z",
+    "usage": {
+      "evidence": "6/6 unit tests pass; candidate validation command exits [0,0,0] for list, destinations, and unsigned simulator-SDK build; original list exits 74. Xcode 26.6 build 17F113; xcrun reports no installed simulator runtimes.",
+      "status": "Codex Desktop session active; quota dashboard is not exposed. No external API calls, purchases, or Claude use."
+    }
+  },
+  "report_age_seconds": 648,
+  "report_path": "coordination/agents/chatgpt-a.json",
+  "review_required": true,
+  "revision": 1,
+  "schema_version": 1,
+  "stale_completion": true,
+  "state": "reported_ready",
+  "task_id": "FT-014",
+  "worker_branch": "agent/chatgpt-a/companion-validation",
+  "worker_report_sha": "555d5f94b643828191b94a196ea03374b5e8abc1"
+}

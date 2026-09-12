@@ -67,6 +67,13 @@ in separate worktrees. These share one account quota; they are not independent
 balances. This scoped authorization supersedes older blanket Claude prohibitions
 for that plan only. No overages/purchases or unrelated protected account use.
 
+On `linux-primary`, Claude is API-only under the latest user instruction.
+Never launch the local Max subscription, OAuth/keychain, or extra-usage route.
+Opus work may start only after an existing funded API credential, actual available
+credits, a provider-side cap, and a bounded project grant are verified. This grants
+no purchase, new charge, auto-recharge, or overage. The Max 20x authorization above
+remains confined to `mac-m1max-a`.
+
 ## Resource, deadline, and recovery rules — read first
 
 Read `docs/INDEX.md`, `coordination/PROJECT.md`, and `coordination/RESOURCES.md`

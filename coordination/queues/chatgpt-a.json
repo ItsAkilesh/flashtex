@@ -1,0 +1,36 @@
+{
+  "agent_id": "chatgpt-a",
+  "next_index": 1,
+  "schema_version": 1,
+  "steps": [
+    {
+      "acceptance": [
+        "Pinned repaired branch parses, builds unsigned, and runs its XCTest scheme",
+        "Harness detects regressions in project structure, MIME bytes, deduplication, cancellation, and retry",
+        "Binary-safe repair evidence remains reproducible and owner-reviewed"
+      ],
+      "allocation_id": "openai-aarush-chatgpt-ft014-stage2",
+      "name": "Companion repaired-branch regression",
+      "objective": "Extend the independent harness to validate the FT-004 owner's repaired branch, including real XCTest target execution, payload MIME bytes, cancellation/retry, and exact source SHA evidence without editing apps/companion.",
+      "owned_paths": [
+        "tools/companion-validation"
+      ],
+      "timebox_minutes": 45
+    },
+    {
+      "acceptance": [
+        "Exact SHAs and Xcode/device/simulator environment are recorded",
+        "Duplicate capture, disconnect/retry, stale destination, and reviewed insertion paths are verified",
+        "Missing device, permission, signing, or network evidence fails closed"
+      ],
+      "allocation_id": "openai-aarush-chatgpt-ft014-stage3",
+      "name": "Companion-to-Mac native interop gate",
+      "objective": "Run the independent native validation harness across pinned companion, transfer bridge, and Mac receiver revisions, measuring receipt/retry and preserving explicit physical-device/network gaps.",
+      "owned_paths": [
+        "tools/companion-validation"
+      ],
+      "timebox_minutes": 45
+    }
+  ],
+  "task_id": "FT-014"
+}
