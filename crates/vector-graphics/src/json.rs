@@ -37,10 +37,21 @@
 //! exponent notation), so parsing them back yields the identical value.
 //! Object keys are emitted in a fixed order, which makes the output
 //! deterministic and byte-comparable.
+//!
+//! Nesting limits (GH46): [`parse`] refuses arrays/objects nested deeper than
+//! [`MAX_JSON_DEPTH`] and [`read_display_list`] refuses groups nested deeper
+//! than [`MAX_GROUP_DEPTH`], both with [`JsonError::NestingTooDeep`] returned
+//! before any further recursion, so adversarial input yields an error rather
+//! than a stack-overflow abort. Both readers are the only entry points that
+//! accept text from outside the process; the writers, `flatten`, and the PDF
+//! generator walk in-process trees and are bounded by the same group limit
+//! whenever the tree came from [`read_display_list`] or passes
+//! [`DisplayList::validate`], which reports deeper trees without descending
+//! into them.
 
 use crate::clip::{Clip, ClipStack};
 use crate::color::{Color, Paint};
-use crate::display_list::{DeviceItem, DeviceList, DeviceShape, DisplayList};
+use crate::display_list::{DeviceItem, DeviceList, DeviceShape, DisplayList, MAX_GROUP_DEPTH};
 use crate::geom::{Point, Rect, Size, Transform};
 use crate::item::{Group, Image, Item, ItemId, PathFill, PathStroke, Rule, SourceRange};
 use crate::path::{Dash, FillRule, LineCap, LineJoin, Path, PathCommand, StrokeStyle};
@@ -439,13 +450,45 @@ pub fn string(s: &str) -> String {
 // Reading
 // ---------------------------------------------------------------------------
 
-/// A parse or schema error with a short message.
+/// Maximum nesting of arrays/objects [`parse`] accepts; deeper input returns
+/// [`JsonError::NestingTooDeep`] instead of recursing (GH46).
+///
+/// Rationale: the display-list contract states no nesting bound, so this is
+/// the crate's own. The deepest legal display-list document is
+/// `2 * MAX_GROUP_DEPTH + 2` levels (each group is an object plus its `items`
+/// array, under the root object and its `items`), i.e. 130 with the group
+/// limit of 64, and no other schema field nests past depth 3; 256 leaves that
+/// with headroom while staying far below what the recursive parser can take
+/// in a debug `cargo test` worker thread (2 MiB): 1200 nested arrays parsed
+/// and 1500 overflowed on mac-m1max-a, so 256 keeps ~4.7x headroom.
+pub const MAX_JSON_DEPTH: usize = 256;
+
+/// A parse or schema error.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct JsonError(pub String);
+pub enum JsonError {
+    /// Malformed text or a schema violation, with a short message.
+    Message(String),
+    /// Arrays/objects nested more than [`MAX_JSON_DEPTH`] levels, or groups
+    /// nested more than [`crate::display_list::MAX_GROUP_DEPTH`] levels
+    /// (`limit` says which). `depth` is the level that exceeded it.
+    NestingTooDeep { depth: usize, limit: usize },
+}
+
+impl JsonError {
+    /// The human-readable message (every variant has one).
+    pub fn message(&self) -> String {
+        self.to_string()
+    }
+}
 
 impl std::fmt::Display for JsonError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.0)
+        match self {
+            JsonError::Message(m) => f.write_str(m),
+            JsonError::NestingTooDeep { depth, limit } => {
+                write!(f, "nesting depth {depth} exceeds the limit of {limit}")
+            }
+        }
     }
 }
 
@@ -472,13 +515,13 @@ impl Value {
 
     fn require(&self, key: &str) -> Result<&Value, JsonError> {
         self.get(key)
-            .ok_or_else(|| JsonError(format!("missing field `{key}`")))
+            .ok_or_else(|| JsonError::Message(format!("missing field `{key}`")))
     }
 
     fn as_f64(&self) -> Result<f64, JsonError> {
         match self {
             Value::Number(n) => Ok(*n),
-            other => Err(JsonError(format!(
+            other => Err(JsonError::Message(format!(
                 "expected number, found {}",
                 other.kind()
             ))),
@@ -488,7 +531,7 @@ impl Value {
     fn as_str(&self) -> Result<&str, JsonError> {
         match self {
             Value::String(s) => Ok(s),
-            other => Err(JsonError(format!(
+            other => Err(JsonError::Message(format!(
                 "expected string, found {}",
                 other.kind()
             ))),
@@ -498,7 +541,10 @@ impl Value {
     fn as_array(&self) -> Result<&[Value], JsonError> {
         match self {
             Value::Array(a) => Ok(a),
-            other => Err(JsonError(format!("expected array, found {}", other.kind()))),
+            other => Err(JsonError::Message(format!(
+                "expected array, found {}",
+                other.kind()
+            ))),
         }
     }
 
@@ -507,7 +553,7 @@ impl Value {
         if n >= 0.0 && n.fract() == 0.0 && n <= usize::MAX as f64 {
             Ok(n as usize)
         } else {
-            Err(JsonError(format!(
+            Err(JsonError::Message(format!(
                 "expected non-negative integer, found {n}"
             )))
         }
@@ -518,7 +564,7 @@ impl Value {
         if n >= 0.0 && n.fract() == 0.0 && n <= u64::MAX as f64 {
             Ok(n as u64)
         } else {
-            Err(JsonError(format!(
+            Err(JsonError::Message(format!(
                 "expected non-negative integer, found {n}"
             )))
         }
@@ -541,12 +587,16 @@ pub fn parse(text: &str) -> Result<Value, JsonError> {
     let mut p = Parser {
         bytes: text.as_bytes(),
         pos: 0,
+        depth: 0,
     };
     p.skip_ws();
     let v = p.value()?;
     p.skip_ws();
     if p.pos != p.bytes.len() {
-        return Err(JsonError(format!("trailing characters at byte {}", p.pos)));
+        return Err(JsonError::Message(format!(
+            "trailing characters at byte {}",
+            p.pos
+        )));
     }
     Ok(v)
 }
@@ -554,9 +604,29 @@ pub fn parse(text: &str) -> Result<Value, JsonError> {
 struct Parser<'a> {
     bytes: &'a [u8],
     pos: usize,
+    /// Number of arrays/objects currently open; bounded by [`MAX_JSON_DEPTH`].
+    depth: usize,
 }
 
 impl Parser<'_> {
+    /// Enters one container level, failing before any further recursion once
+    /// the level would exceed [`MAX_JSON_DEPTH`].
+    fn enter(&mut self) -> Result<(), JsonError> {
+        let depth = self.depth + 1;
+        if depth > MAX_JSON_DEPTH {
+            return Err(JsonError::NestingTooDeep {
+                depth,
+                limit: MAX_JSON_DEPTH,
+            });
+        }
+        self.depth = depth;
+        Ok(())
+    }
+
+    fn leave(&mut self) {
+        self.depth -= 1;
+    }
+
     fn skip_ws(&mut self) {
         while self.pos < self.bytes.len()
             && matches!(self.bytes[self.pos], b' ' | b'\n' | b'\r' | b'\t')
@@ -574,7 +644,7 @@ impl Parser<'_> {
             self.pos += 1;
             Ok(())
         } else {
-            Err(JsonError(format!(
+            Err(JsonError::Message(format!(
                 "expected '{}' at byte {}",
                 b as char, self.pos
             )))
@@ -590,11 +660,11 @@ impl Parser<'_> {
             Some(b'f') => self.literal("false", Value::Bool(false)),
             Some(b'n') => self.literal("null", Value::Null),
             Some(b'-' | b'0'..=b'9') => self.number(),
-            Some(c) => Err(JsonError(format!(
+            Some(c) => Err(JsonError::Message(format!(
                 "unexpected '{}' at byte {}",
                 c as char, self.pos
             ))),
-            None => Err(JsonError("unexpected end of input".into())),
+            None => Err(JsonError::Message("unexpected end of input".into())),
         }
     }
 
@@ -603,7 +673,10 @@ impl Parser<'_> {
             self.pos += word.len();
             Ok(v)
         } else {
-            Err(JsonError(format!("invalid literal at byte {}", self.pos)))
+            Err(JsonError::Message(format!(
+                "invalid literal at byte {}",
+                self.pos
+            )))
         }
     }
 
@@ -618,10 +691,10 @@ impl Parser<'_> {
             self.pos += 1;
         }
         let text = std::str::from_utf8(&self.bytes[start..self.pos])
-            .map_err(|e| JsonError(e.to_string()))?;
+            .map_err(|e| JsonError::Message(e.to_string()))?;
         text.parse::<f64>()
             .map(Value::Number)
-            .map_err(|_| JsonError(format!("invalid number `{text}` at byte {start}")))
+            .map_err(|_| JsonError::Message(format!("invalid number `{text}` at byte {start}")))
     }
 
     fn string(&mut self) -> Result<String, JsonError> {
@@ -637,7 +710,7 @@ impl Parser<'_> {
             }
             out.push_str(
                 std::str::from_utf8(&self.bytes[start..self.pos])
-                    .map_err(|e| JsonError(e.to_string()))?,
+                    .map_err(|e| JsonError::Message(e.to_string()))?,
             );
             match self.peek() {
                 Some(b'"') => {
@@ -648,7 +721,7 @@ impl Parser<'_> {
                     self.pos += 1;
                     let esc = self
                         .peek()
-                        .ok_or_else(|| JsonError("unterminated escape".into()))?;
+                        .ok_or_else(|| JsonError::Message("unterminated escape".into()))?;
                     self.pos += 1;
                     match esc {
                         b'"' => out.push('"'),
@@ -667,26 +740,32 @@ impl Parser<'_> {
                                     self.pos += 2;
                                     let low = self.hex4()?;
                                     if !(0xDC00..0xE000).contains(&low) {
-                                        return Err(JsonError("invalid low surrogate".into()));
+                                        return Err(JsonError::Message(
+                                            "invalid low surrogate".into(),
+                                        ));
                                     }
                                     0x10000 + ((cp - 0xD800) << 10) + (low - 0xDC00)
                                 } else {
-                                    return Err(JsonError("lone high surrogate".into()));
+                                    return Err(JsonError::Message("lone high surrogate".into()));
                                 }
                             } else {
                                 cp
                             };
                             out.push(
-                                char::from_u32(ch)
-                                    .ok_or_else(|| JsonError("invalid code point".into()))?,
+                                char::from_u32(ch).ok_or_else(|| {
+                                    JsonError::Message("invalid code point".into())
+                                })?,
                             );
                         }
                         other => {
-                            return Err(JsonError(format!("invalid escape '\\{}'", other as char)));
+                            return Err(JsonError::Message(format!(
+                                "invalid escape '\\{}'",
+                                other as char
+                            )));
                         }
                     }
                 }
-                _ => return Err(JsonError("unterminated string".into())),
+                _ => return Err(JsonError::Message("unterminated string".into())),
             }
         }
     }
@@ -696,14 +775,22 @@ impl Parser<'_> {
             .bytes
             .get(self.pos..self.pos + 4)
             .and_then(|b| std::str::from_utf8(b).ok())
-            .ok_or_else(|| JsonError("truncated \\u escape".into()))?;
-        let v = u32::from_str_radix(s, 16).map_err(|_| JsonError("invalid \\u escape".into()))?;
+            .ok_or_else(|| JsonError::Message("truncated \\u escape".into()))?;
+        let v = u32::from_str_radix(s, 16)
+            .map_err(|_| JsonError::Message("invalid \\u escape".into()))?;
         self.pos += 4;
         Ok(v)
     }
 
     fn array(&mut self) -> Result<Value, JsonError> {
         self.expect(b'[')?;
+        self.enter()?;
+        let v = self.array_body();
+        self.leave();
+        v
+    }
+
+    fn array_body(&mut self) -> Result<Value, JsonError> {
         let mut items = Vec::new();
         self.skip_ws();
         if self.peek() == Some(b']') {
@@ -721,7 +808,7 @@ impl Parser<'_> {
                     return Ok(Value::Array(items));
                 }
                 _ => {
-                    return Err(JsonError(format!(
+                    return Err(JsonError::Message(format!(
                         "expected ',' or ']' at byte {}",
                         self.pos
                     )));
@@ -732,6 +819,13 @@ impl Parser<'_> {
 
     fn object(&mut self) -> Result<Value, JsonError> {
         self.expect(b'{')?;
+        self.enter()?;
+        let v = self.object_body();
+        self.leave();
+        v
+    }
+
+    fn object_body(&mut self) -> Result<Value, JsonError> {
         let mut fields = Vec::new();
         self.skip_ws();
         if self.peek() == Some(b'}') {
@@ -754,7 +848,7 @@ impl Parser<'_> {
                     return Ok(Value::Object(fields));
                 }
                 _ => {
-                    return Err(JsonError(format!(
+                    return Err(JsonError::Message(format!(
                         "expected ',' or '}}' at byte {}",
                         self.pos
                     )));
@@ -769,26 +863,33 @@ pub fn read_display_list(text: &str) -> Result<DisplayList, JsonError> {
     let v = parse(text)?;
     let format = v.require("format")?.as_str()?;
     if format != DISPLAY_LIST_FORMAT {
-        return Err(JsonError(format!("unsupported format `{format}`")));
+        return Err(JsonError::Message(format!("unsupported format `{format}`")));
     }
     let version = v.require("version")?.as_u64()?;
     if version != FORMAT_VERSION {
-        return Err(JsonError(format!("unsupported version {version}")));
+        return Err(JsonError::Message(format!("unsupported version {version}")));
     }
     let ps = v.require("page_size")?;
     let page_size = Size::new(
         ps.require("width_pt")?.as_f64()?,
         ps.require("height_pt")?.as_f64()?,
     );
-    let items = read_items(v.require("items")?)?;
+    let items = read_items(v.require("items")?, 0)?;
     Ok(DisplayList { page_size, items })
 }
 
-fn read_items(v: &Value) -> Result<Vec<Item>, JsonError> {
-    v.as_array()?.iter().map(read_item).collect()
+/// `group_depth` is the number of groups enclosing these items; nesting past
+/// [`MAX_GROUP_DEPTH`] is refused before descending (GH46). The bound is
+/// separate from [`MAX_JSON_DEPTH`] because a `read_item` frame is far
+/// heavier than a parser frame.
+fn read_items(v: &Value, group_depth: usize) -> Result<Vec<Item>, JsonError> {
+    v.as_array()?
+        .iter()
+        .map(|item| read_item(item, group_depth))
+        .collect()
 }
 
-fn read_item(v: &Value) -> Result<Item, JsonError> {
+fn read_item(v: &Value, group_depth: usize) -> Result<Item, JsonError> {
     let kind = v.require("kind")?.as_str()?;
     let id = ItemId(v.require("id")?.as_u64()?);
     let source = read_source(v.get("source"))?;
@@ -822,18 +923,27 @@ fn read_item(v: &Value) -> Result<Item, JsonError> {
             alpha: v.require("alpha")?.as_f64()?,
             source,
         }),
-        "group" => Item::Group(Group {
-            id,
-            transform: read_transform(v.require("transform")?)?,
-            clip: match v.get("clip") {
-                None | Some(Value::Null) => None,
-                Some(c) => Some(read_clip(c)?),
-            },
-            opacity: v.require("opacity")?.as_f64()?,
-            items: read_items(v.require("items")?)?,
-            source,
-        }),
-        other => return Err(JsonError(format!("unknown item kind `{other}`"))),
+        "group" => {
+            let depth = group_depth + 1;
+            if depth > MAX_GROUP_DEPTH {
+                return Err(JsonError::NestingTooDeep {
+                    depth,
+                    limit: MAX_GROUP_DEPTH,
+                });
+            }
+            Item::Group(Group {
+                id,
+                transform: read_transform(v.require("transform")?)?,
+                clip: match v.get("clip") {
+                    None | Some(Value::Null) => None,
+                    Some(c) => Some(read_clip(c)?),
+                },
+                opacity: v.require("opacity")?.as_f64()?,
+                items: read_items(v.require("items")?, depth)?,
+                source,
+            })
+        }
+        other => return Err(JsonError::Message(format!("unknown item kind `{other}`"))),
     })
 }
 
@@ -860,7 +970,7 @@ fn read_rect(v: &Value) -> Result<Rect, JsonError> {
 fn read_transform(v: &Value) -> Result<Transform, JsonError> {
     let a = v.as_array()?;
     if a.len() != 6 {
-        return Err(JsonError(format!(
+        return Err(JsonError::Message(format!(
             "transform needs 6 numbers, found {}",
             a.len()
         )));
@@ -884,7 +994,11 @@ fn read_color(v: &Value) -> Result<Color, JsonError> {
             v.require("y")?.as_f64()?,
             v.require("k")?.as_f64()?,
         ),
-        other => return Err(JsonError(format!("unknown colour space `{other}`"))),
+        other => {
+            return Err(JsonError::Message(format!(
+                "unknown colour space `{other}`"
+            )));
+        }
     })
 }
 
@@ -899,7 +1013,7 @@ fn read_fill_rule(v: &Value) -> Result<FillRule, JsonError> {
     match v.as_str()? {
         "nonzero" => Ok(FillRule::NonZero),
         "evenodd" => Ok(FillRule::EvenOdd),
-        other => Err(JsonError(format!("unknown fill rule `{other}`"))),
+        other => Err(JsonError::Message(format!("unknown fill rule `{other}`"))),
     }
 }
 
@@ -908,13 +1022,13 @@ fn read_stroke_style(v: &Value) -> Result<StrokeStyle, JsonError> {
         "butt" => LineCap::Butt,
         "round" => LineCap::Round,
         "square" => LineCap::Square,
-        other => return Err(JsonError(format!("unknown cap `{other}`"))),
+        other => return Err(JsonError::Message(format!("unknown cap `{other}`"))),
     };
     let join = match v.require("join")?.as_str()? {
         "miter" => LineJoin::Miter,
         "round" => LineJoin::Round,
         "bevel" => LineJoin::Bevel,
-        other => return Err(JsonError(format!("unknown join `{other}`"))),
+        other => return Err(JsonError::Message(format!("unknown join `{other}`"))),
     };
     let dash = match v.get("dash") {
         None | Some(Value::Null) => None,
@@ -946,7 +1060,7 @@ fn read_path(v: &Value) -> Result<Path, JsonError> {
         let parts = cmd.as_array()?;
         let op = parts
             .first()
-            .ok_or_else(|| JsonError("empty path command".into()))?
+            .ok_or_else(|| JsonError::Message("empty path command".into()))?
             .as_str()?;
         let nums: Result<Vec<f64>, _> = parts[1..].iter().map(Value::as_f64).collect();
         let n = nums?;
@@ -954,7 +1068,7 @@ fn read_path(v: &Value) -> Result<Path, JsonError> {
             if n.len() == k {
                 Ok(())
             } else {
-                Err(JsonError(format!(
+                Err(JsonError::Message(format!(
                     "path op `{op}` needs {k} numbers, found {}",
                     n.len()
                 )))
@@ -985,7 +1099,7 @@ fn read_path(v: &Value) -> Result<Path, JsonError> {
                 need(0)?;
                 PathCommand::Close
             }
-            other => return Err(JsonError(format!("unknown path op `{other}`"))),
+            other => return Err(JsonError::Message(format!("unknown path op `{other}`"))),
         });
     }
     Ok(Path::from_commands(commands))
@@ -998,7 +1112,7 @@ fn read_clip(v: &Value) -> Result<Clip, JsonError> {
             path: read_path(v.require("path")?)?,
             rule: read_fill_rule(v.require("fill_rule")?)?,
         }),
-        other => Err(JsonError(format!("unknown clip kind `{other}`"))),
+        other => Err(JsonError::Message(format!("unknown clip kind `{other}`"))),
     }
 }
 

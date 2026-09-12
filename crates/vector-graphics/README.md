@@ -80,6 +80,17 @@ PDF serializer does the same via per-leaf `gs`. This is *not* a PDF
 transparency group: overlapping children of a translucent group show through
 each other. Real knockout/isolated groups are out of scope.
 
+### Nesting limits
+
+Groups may nest at most `display_list::MAX_GROUP_DEPTH` (64) deep and the JSON
+reader accepts at most `json::MAX_JSON_DEPTH` (256) nested arrays/objects.
+Deeper input returns `json::JsonError::NestingTooDeep { depth, limit }` and a
+deeper in-memory tree is reported by `validate()` as
+`ValidationError::NestingTooDeep`; neither recurses past its limit, so
+adversarial documents produce an error instead of a stack-overflow abort
+(GH46). The display-list contract states no bound of its own; the rationale
+for these values is on the constants.
+
 ## Unsupported
 
 - Gradients and shading, tiling patterns, blend modes, soft masks.
