@@ -2,9 +2,9 @@
   "agent_id": "commander-preview-controller",
   "assignment_path": "coordination/assignments/FT-027.json",
   "branch": "agent/commander/preview-controller",
-  "revision": 3,
+  "previous_report_sha": "929940d653ced50ee21e49a061bc69a9fcc6c39c",
+  "revision": 4,
   "schema_version": 1,
   "task_id": "FT-027",
-  "updated_utc": "2026-09-12T06:34:25.106201+00:00",
-  "dispatch_reason": "Commander scope extension for newly authoritative runtime-v1 layout capabilities; prior helper stages completed, no extra agent allocation."
+  "updated_utc": "2026-09-12T06:38:17Z"
 }
