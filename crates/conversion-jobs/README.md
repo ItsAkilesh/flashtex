@@ -160,3 +160,19 @@ writer that stops before exceeding its output budget (maximum 512 KiB); it never
 returns partial JSON. Unknown fields/types and mismatched identities fail closed.
 Provider failure messages are bounded to 2048 UTF-8 bytes. Twenty-five tests,
 strict Clippy and formatting pass for this checkpoint. No new CLI/provider call.
+
+## Ledger handoff and concurrent projects
+
+The optional-feature suite now contains 28 passing tests. The actual edit-ledger
+handoff test verifies its durable document bytes remain unchanged throughout
+conversion and proposal promotion. Only the explicit caller then prepares/reviews
+an edit, applies it through edit-ledger, acknowledges the bridge receipt, and
+confirms the ledger transaction. Reopening both stores and replaying the same
+receipt does not insert twice. This verifies storage handoff, not native review UI
+or compiler acceptance. Conversion jobs do not write document source.
+
+A two-project test holds one converter pending while another project completes;
+cancelling the first does not cancel or overwrite the second. Admission is bounded
+FIFO with fixed worker count, not weighted per-project quota scheduling. Native
+reconciliation also revokes exposed status when a full snapshot replacement
+invalidates the original anchor and no current context can be assembled.

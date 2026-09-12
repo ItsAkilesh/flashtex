@@ -330,7 +330,20 @@ impl NativeService {
                 .cloned()
                 .ok_or_else(|| error("not_admitted", "Admit the durable capture first"))?;
             if matches!(request.command, Command::Reconcile { .. }) {
-                let current = Self::context_identity(bridge, &id, binding.supported.clone())?;
+                let current = match Self::context_identity(bridge, &id, binding.supported.clone()) {
+                    Ok(current) => current,
+                    Err(error) => {
+                        if binding.started
+                            && expected.project_id == binding.original.project_id
+                            && expected.path == binding.original.path
+                        {
+                            // Invalidation/reselection must revoke exposed status,
+                            // even when no new context identity can be assembled.
+                            self.adapter.reconcile(bridge, &id).map_err(adapter_error)?;
+                        }
+                        return Err(error);
+                    }
+                };
                 if current != expected {
                     return Err(error(
                         "context_identity_mismatch",

@@ -258,3 +258,58 @@ fn recovered_intent_is_visible_during_admission_without_retry() {
         .unwrap();
     assert_eq!(calls.load(Ordering::SeqCst), 0);
 }
+#[test]
+fn missing_current_context_revokes_pending_status_without_journaling() {
+    let (_dir, mut bridge, mut service) = setup();
+    let context = NativeService::context_identity(&bridge, "capture", vec![]).unwrap();
+    service
+        .execute(
+            &mut bridge,
+            req(Command::Admit {
+                capture_id: "capture".into(),
+                context: context.clone(),
+                supported_features: vec![],
+            }),
+        )
+        .unwrap();
+    service
+        .execute(
+            &mut bridge,
+            req(Command::Start {
+                capture_id: "capture".into(),
+                context: context.clone(),
+            }),
+        )
+        .unwrap();
+    wait(&service.status_handle(), &context);
+    bridge
+        .open_document(Document {
+            project_id: "project".into(),
+            path: "main.tex".into(),
+            revision: 2,
+            text: "replaced whole snapshot".into(),
+        })
+        .unwrap();
+    assert_eq!(
+        service
+            .execute(
+                &mut bridge,
+                req(Command::Reconcile {
+                    capture_id: "capture".into(),
+                    context: context.clone()
+                })
+            )
+            .unwrap_err()
+            .code,
+        "context_unavailable"
+    );
+    assert!(matches!(
+        service
+            .status_handle()
+            .snapshot("capture", &context)
+            .unwrap()
+            .conversion,
+        ConversionState::StaleContext
+    ));
+    assert!(bridge.store.require("capture").unwrap().proposal.is_none());
+}
