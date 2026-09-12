@@ -108,3 +108,9 @@ result files are retained in the capture's sender directory, including failures.
 Nested cleanup guarantees helper shutdown and event-file closure even if sender
 cleanup raises. A forcibly killed parent is not an immediate child-death guarantee:
 the child still has its absolute deadline; that case is not claimed by these tests.
+
+A sixth lifecycle test transfers two large UTF-8/ASCII frames through many pipe
+writes and fragmented reads, checking every byte and frame order. Child failure
+polling does not interrupt an already-blocked helper read: its existing 15-second
+read deadline can elapse before the recorded sender error is surfaced. This is
+bounded eventual reporting, not an immediate child-exit wakeup.
