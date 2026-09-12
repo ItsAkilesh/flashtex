@@ -18,6 +18,10 @@ public enum NearbyCLI {
       status [--seconds 2]        stored pairings and which Macs are visible now
       browse [--seconds 2]        every _flashtex._tcp service and its TXT record
       forget --mac <name|fp>
+      doctor [--mac <name|fp>] [--host H --port N] [--seconds 5] [--json]
+             validate one stored pairing against the running listener: store,
+             discovery, TLS-PSK connect, TLS params, hello, destination; each
+             line "check <name>: ok|warn|FAIL code=<exact code>"; no capture sent
 
     common: --store <path> (default $NEARBY_CLIENT_STORE or
             ~/Library/Application Support/FlashTeX/nearby-client-pairs.json),
@@ -40,6 +44,7 @@ public enum NearbyCLI {
     /// Returns the process exit code. `emit` receives output lines (stdout).
     public static func run(_ arguments: [String], emit: @escaping (String) -> Void) async -> Int32 {
         do {
+            if arguments.first == "doctor" { return try await doctor(parse(arguments), emit: emit) }
             try await main(arguments, emit: emit)
             return 0
         } catch let f as Failure {
@@ -119,6 +124,7 @@ public enum NearbyCLI {
         o.command = cmd
         while let a = it.next() {
             if a == "-v" || a == "--verbose" { o.verbose = true; continue }
+            if a == "--json" { o.values["json"] = "1"; continue }
             guard a.hasPrefix("--") else { throw Failure(code: 64, message: "unexpected argument \(a)\n\(usage)") }
             let key = String(a.dropFirst(2))
             if let eq = key.firstIndex(of: "=") {
@@ -336,6 +342,20 @@ public enum NearbyCLI {
             let txt = m.txt.keys.sorted().map { "\($0)=\(m.txt[$0]!)" }.joined(separator: " ")
             emit("\(m.name): \(txt)\(m.unsupportedReason.map { " — unsupported: \($0)" } ?? "")")
         }
+    }
+
+    /// `doctor`: see `NearbyDoctor`. Exit code is the report's; `--json` adds
+    /// the whole report as one JSON line after the summary.
+    static func doctor(_ o: Options, emit: @escaping (String) -> Void) async throws -> Int32 {
+        let file = try store(o)
+        var fixed: NWEndpoint?
+        if o.string("host") != nil { fixed = try await resolveEndpoint(o, emit: emit).0 }
+        let options = NearbyDoctor.Options(store: file, macKey: o.string("mac"), fixedEndpoint: fixed,
+                                           browseSeconds: try o.double("seconds", default: 5),
+                                           connectTimeout: try o.double("timeout", default: 10), onLine: lineLogger(o, emit: emit))
+        let report = await NearbyDoctor.run(options, emit: emit)
+        if o.values["json"] != nil { emit(report.json) }
+        return report.exit
     }
 
     static func forget(_ o: Options, emit: @escaping (String) -> Void) throws {

@@ -339,6 +339,61 @@ final class NearbyReferenceClientTests: XCTestCase {
         state.stopAdvertising()
     }
 
+    /// `nearby-client doctor` against the real stack: healthy through Bonjour
+    /// after pairing; `handshake_refused` (exit 3) once the Mac forgets the
+    /// pairing; `not_advertised` (exit 1) once it stops advertising. Read-only:
+    /// nothing reaches the inbox.
+    func testDoctorReportsExactCodesAgainstNearbyState() async throws {
+        let store = PairStore(url: tmp.appendingPathComponent("mac-pairs.json"))
+        let model = ShellModel()
+        model.caretUTF16 = 6
+        model.pinAnchorAtCaret()
+        let anchor = try XCTUnwrap(model.nearbyDestination)
+        let macName = "FlashTeX Doctor \(UUID().uuidString.prefix(6))"
+        let state = NearbyState(store: store, macName: macName, loopbackOnly: true)
+        state.attach(sink: model, destinations: model)
+        state.startAdvertising()
+        try await waitUntil("advertising") { state.isAdvertising && state.port != nil }
+        state.beginPairing()
+        let code = try XCTUnwrap(state.pairingCode)
+        try await waitUntil("restarted with bootstrap key") { state.log.filter { $0.hasPrefix("ready on port") }.count >= 2 }
+        let port = try XCTUnwrap(state.port)
+        let ep = NWEndpoint.hostPort(host: "127.0.0.1", port: NWEndpoint.Port(rawValue: port)!)
+        let (pair, boot) = try await NearbyClient.pair(endpoint: ep, salt: store.salt, fingerprint: state.fingerprint, macName: state.macName,
+                                                       code: code, companionName: "Doctor iPad")
+        boot.close()
+        try await waitUntil("pair stored") { state.pairs.count == 1 && state.pairingCode == nil }
+        try await waitUntil("restarted with long-term key") { state.log.filter { $0.hasPrefix("ready on port") }.count >= 3 }
+        let clientStore = tmp.appendingPathComponent("client-pairs.json").path
+        try PairFile(url: URL(fileURLWithPath: clientStore)).upsert(pair)
+
+        let healthy = await cli(["doctor", "--store", clientStore, "--seconds", "10", "--json"])
+        XCTAssertEqual(healthy.code, 0, healthy.out.joined(separator: "\n"))
+        XCTAssertTrue(healthy.out.contains { $0.hasPrefix("check discovery: ok — \(macName) fp=\(state.fingerprint) v=1 at") }, "\(healthy.out)")
+        XCTAssertTrue(healthy.out.contains("check tls: ok — 1.2 suite 0xa8"), "\(healthy.out)")
+        XCTAssertTrue(healthy.out.contains("check hello: ok — hello_ack from \"\(macName)\""), "\(healthy.out)")
+        XCTAssertTrue(healthy.out.contains("check destination: ok — \(anchor.destinationId) (\(anchor.projectId)/\(anchor.path) @ rev \(anchor.baseRevision))"), "\(healthy.out)")
+        XCTAssertTrue(healthy.out.contains("doctor: healthy (exit 0)"), "\(healthy.out)")
+        let report = try JSONDecoder().decode(NearbyDoctor.Report.self, from: Data(try XCTUnwrap(healthy.out.last(where: { $0.hasPrefix("{") })).utf8))
+        XCTAssertEqual(report.checks.map(\.name), ["store", "discovery", "connect", "tls", "hello", "destination"])
+        XCTAssertTrue(model.nearbyInbox.received.isEmpty, "doctor sends no capture")
+        try await waitUntil("doctor session closed") { state.connectedPairIds.isEmpty }
+
+        state.forget(pairId: pair.pairId)
+        try await waitUntil("restarted without the key") { state.log.filter { $0.hasPrefix("ready on port") }.count >= 4 }
+        let revoked = await cli(["doctor", "--store", clientStore, "--host", "127.0.0.1", "--port", "\(port)"])
+        XCTAssertEqual(revoked.code, 3, revoked.out.joined(separator: "\n"))
+        XCTAssertTrue(revoked.out.contains { $0.hasPrefix("check connect: FAIL code=handshake_refused — TLS-PSK refused for pair_id \(pair.pairId)") }, "\(revoked.out)")
+        XCTAssertTrue(revoked.out.contains { $0.hasPrefix("doctor: FAIL code=handshake_refused (exit 3)") }, "\(revoked.out)")
+
+        state.stopAdvertising()
+        try await waitUntil("stopped") { !state.isAdvertising }
+        let gone = await cli(["doctor", "--store", clientStore, "--seconds", "2"])
+        XCTAssertEqual(gone.code, 1, gone.out.joined(separator: "\n"))
+        XCTAssertTrue(gone.out.contains { $0.hasPrefix("check discovery: FAIL code=not_advertised — no _flashtex._tcp service with fp \(state.fingerprint)") }, "\(gone.out)")
+        XCTAssertTrue(model.nearbyInbox.received.isEmpty)
+    }
+
     /// Revoked destination: the Mac's pinned insertion point disappears
     /// (project replaced) or moves (re-pinned) between building a capture and
     /// delivering it. The client refuses with `destinationChanged` — on a

@@ -473,7 +473,20 @@ Bounded disconnect/reconnect (`NearbyReconnector`, actor):
   **5 destination changed on the Mac, reselect and send again** · 64/65/66
   usage/not an image/unreadable file.
 
-Tests: `swift test` in `tools/nearby-client` (40: vectors, wire shapes, TXT
+`nearby-client doctor [--mac <name|fp>] [--host H --port N] [--seconds 5]
+[--json]` validates one stored pairing against the running listener without
+sending a capture: checks `store` (`no_pairing`, `ambiguous_pairing`,
+`bad_pair_psk`), `discovery` (`not_advertised`, `unsupported_service`,
+`fp_mismatch` — same Mac name, another fp: re-pair), `connect` (`unreachable`,
+`handshake_refused`, `connect_timeout`), `tls` (`tls_not_1_2`,
+`tls_suite_mismatch`), `hello` (the Mac's error code verbatim, e.g.
+`pair_mismatch`, `too_many_sessions`; `hello_timeout`, `closed`,
+`protocol_violation`) and `destination` (warn `no_destination`). One line per
+check, `check <name>: ok|warn|FAIL code=<code>`, a summary with a hint, and
+with `--json` the whole report as one line; exit 0 healthy (warnings allowed)
+· 1 no pairing / not advertised · 3 re-pair · 4 try later · 2 other.
+
+Tests: `swift test` in `tools/nearby-client` (47: vectors, wire shapes, TXT
 validation, pair file, and a loopback-only `FakeMac` with fault injection —
 drop before ack → identical re-send, idle drop, refused key terminal, remote
 error terminal, destination changed/unpinned/re-pinned, deadline, cancellation,
@@ -486,12 +499,16 @@ revocation — key removed by a same-port listener restart, and `pair_mismatch`
 at hello — and idle-drop reconnect and compares every wire line and reconnector
 event with the captured client-side transcripts in `tools/nearby-client/
 Tests/Fixtures/*.jsonl`, ids/nonce/proof normalised; re-record after a
-deliberate wire change with `NEARBY_CLIENT_RECORD_FIXTURES=1`). `swift test` here runs the same client against the real
+deliberate wire change with `NEARBY_CLIENT_RECORD_FIXTURES=1`; `NearbyDoctorTests`:
+every doctor code and exit code against the fake Mac, Bonjour discovery,
+re-salted Mac, refused port in 0.004 s). `swift test` here runs the same client against the real
 stack in `NearbyReferenceClientTests` (Bonjour pair → send → identical retry →
 conflict → status → forget; direct mode and listener refusals; listener
 dropped after the inbox stored a capture and restarted on the same port →
 duplicate delivery acknowledged, stored once; `NearbyState.forget` with a
-live session → one refused reconnect, terminal, CLI exit 3;
+live session → one refused reconnect, terminal, CLI exit 3; `doctor` healthy
+through Bonjour, `handshake_refused` exit 3 after `forget`, `not_advertised`
+exit 1 after advertising stops, nothing in the inbox;
 `replaceProject`/re-pin → `destinationChanged` on reused and fresh
 connections, nothing in the inbox until rebuilt; with lowered
 `NearbyReceiveLimits`: `too_many_in_flight` and `inbox_full` while an
