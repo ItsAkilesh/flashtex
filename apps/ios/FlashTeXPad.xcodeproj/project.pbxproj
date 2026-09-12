@@ -7,6 +7,10 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		E61ADC75D2613BC05A89C79F /* CaptureView.swift in Sources */ = {
+			isa = PBXBuildFile;
+			fileRef = DAB5331096CACE1D1611C89C;
+		};
 		09CB227A124543638E92BA22 /* ContentView.swift in Sources */ = {
 			isa = PBXBuildFile;
 			fileRef = 4FDDBCFB400C1F50ACD45711;
@@ -31,6 +35,10 @@
 			isa = PBXBuildFile;
 			fileRef = DF516A2769098DAFFC545638;
 		};
+		7B96FABAB641BC15070A5149 /* sample-capture.png in Resources */ = {
+			isa = PBXBuildFile;
+			fileRef = B06BAEBE69778185CEF5702F;
+		};
 		BCD3BDDACBAEF96A6285F2EC /* FlashTeXPadKit in Frameworks */ = {
 			isa = PBXBuildFile;
 			productRef = 85E6D96FADC9313C36D00656 /* FlashTeXPadKit */;
@@ -46,6 +54,10 @@
 		8852E4C9E3130B7E00B73EA9 /* AcceptanceSliceTests.swift in Sources */ = {
 			isa = PBXBuildFile;
 			fileRef = 9350128EF36336405FA0A78F;
+		};
+		5D3BA29BB7D8E223A38ED5BC /* CaptureQueueTests.swift in Sources */ = {
+			isa = PBXBuildFile;
+			fileRef = 61E5796C7F96C2C8B3E99B01;
 		};
 		72B8562FE1F50D30C56A9348 /* FakeMac.swift in Sources */ = {
 			isa = PBXBuildFile;
@@ -63,9 +75,21 @@
 			isa = PBXBuildFile;
 			productRef = 58EED07B157162499BC602AE /* FlashTeXProtocol */;
 		};
+		C7C127377FB47913308A63AC /* CaptureFlowUITests.swift in Sources */ = {
+			isa = PBXBuildFile;
+			fileRef = 350C61371C77C7DF6188D8F9;
+		};
+		B8893983D5B15983E38B2BD0 /* FakeMac.swift in Sources */ = {
+			isa = PBXBuildFile;
+			fileRef = 52C5885AA93684C7DAB7FFF8;
+		};
 		3D8DF49128A8BFCD6B6033DF /* FlashTeXPadUITests.swift in Sources */ = {
 			isa = PBXBuildFile;
 			fileRef = 7ED15C813756AF08F402B731;
+		};
+		240B28C2CC7B927EFF347587 /* NearbyClient in Frameworks */ = {
+			isa = PBXBuildFile;
+			productRef = E1D1674AC7999CBBDA3ADA3F /* NearbyClient */;
 		};
 /* End PBXBuildFile section */
 
@@ -87,6 +111,12 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		DAB5331096CACE1D1611C89C /* CaptureView.swift */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.swift;
+			path = "CaptureView.swift";
+			sourceTree = "<group>";
+		};
 		4FDDBCFB400C1F50ACD45711 /* ContentView.swift */ = {
 			isa = PBXFileReference;
 			lastKnownFileType = sourcecode.swift;
@@ -123,6 +153,12 @@
 			path = "Resources/review-workflow.json";
 			sourceTree = "<group>";
 		};
+		B06BAEBE69778185CEF5702F /* Resources/sample-capture.png */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = text;
+			path = "Resources/sample-capture.png";
+			sourceTree = "<group>";
+		};
 		B5A6CD6B3CE7282A17A0900C /* Info.plist */ = {
 			isa = PBXFileReference;
 			lastKnownFileType = text.plist.xml;
@@ -142,6 +178,12 @@
 			path = "AcceptanceSliceTests.swift";
 			sourceTree = "<group>";
 		};
+		61E5796C7F96C2C8B3E99B01 /* CaptureQueueTests.swift */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.swift;
+			path = "CaptureQueueTests.swift";
+			sourceTree = "<group>";
+		};
 		8EA2299F037B17191402BB8E /* FakeMac.swift */ = {
 			isa = PBXFileReference;
 			lastKnownFileType = sourcecode.swift;
@@ -154,6 +196,18 @@
 			includeInIndex = 0;
 			path = "FlashTeXPadTests.xctest";
 			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		350C61371C77C7DF6188D8F9 /* CaptureFlowUITests.swift */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.swift;
+			path = "CaptureFlowUITests.swift";
+			sourceTree = "<group>";
+		};
+		52C5885AA93684C7DAB7FFF8 /* FakeMac.swift */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.swift;
+			path = "FakeMac.swift";
+			sourceTree = "<group>";
 		};
 		7ED15C813756AF08F402B731 /* FlashTeXPadUITests.swift */ = {
 			isa = PBXFileReference;
@@ -201,6 +255,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				240B28C2CC7B927EFF347587,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -210,12 +265,14 @@
 		93831774EC18A36A0D602512 /* FlashTeXPad */ = {
 			isa = PBXGroup;
 			children = (
+				DAB5331096CACE1D1611C89C,
 				4FDDBCFB400C1F50ACD45711,
 				8154323B8EA2D5445564B276,
 				3CCE5357B9F6A9468F70115A,
 				B814BF36B6E3FFF2A9D456D9,
 				696D572EB552F1B485EC7FD4,
 				DF516A2769098DAFFC545638,
+				B06BAEBE69778185CEF5702F,
 				B5A6CD6B3CE7282A17A0900C,
 			);
 			path = "FlashTeXPad";
@@ -225,6 +282,7 @@
 			isa = PBXGroup;
 			children = (
 				9350128EF36336405FA0A78F,
+				61E5796C7F96C2C8B3E99B01,
 				8EA2299F037B17191402BB8E,
 			);
 			path = "FlashTeXPadTests";
@@ -233,6 +291,8 @@
 		F6DACFB5EF322A77BC9A2FCB /* FlashTeXPadUITests */ = {
 			isa = PBXGroup;
 			children = (
+				350C61371C77C7DF6188D8F9,
+				52C5885AA93684C7DAB7FFF8,
 				7ED15C813756AF08F402B731,
 			);
 			path = "FlashTeXPadUITests";
@@ -321,6 +381,7 @@
 			);
 			name = FlashTeXPadUITests;
 			packageProductDependencies = (
+				E1D1674AC7999CBBDA3ADA3F /* NearbyClient */,
 			);
 			productName = FlashTeXPadUITests;
 			productReference = 0A12BEB07D79164C6E0CDDD0 /* FlashTeXPadUITests.xctest */;
@@ -375,6 +436,7 @@
 				A87D4C8E0CAD968374E177C5,
 				BC0A22AF45038EEAE34C7CD7,
 				BD32D5321034B632D5392E0B,
+				7B96FABAB641BC15070A5149,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -399,6 +461,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				E61ADC75D2613BC05A89C79F,
 				09CB227A124543638E92BA22,
 				045BB3308B2C5DD1D387C7D2,
 				01A4FCBFEF9A261F77159BC4,
@@ -410,6 +473,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				8852E4C9E3130B7E00B73EA9,
+				5D3BA29BB7D8E223A38ED5BC,
 				72B8562FE1F50D30C56A9348,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -418,6 +482,8 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				C7C127377FB47913308A63AC,
+				B8893983D5B15983E38B2BD0,
 				3D8DF49128A8BFCD6B6033DF,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -696,6 +762,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = BBC34697956E0474D55D9DCE /* XCLocalSwiftPackageReference "Packages/FlashTeXPadKit" */;
 			productName = FlashTeXProtocol;
+		};
+		E1D1674AC7999CBBDA3ADA3F /* NearbyClient */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BBC34697956E0474D55D9DCE /* XCLocalSwiftPackageReference "Packages/FlashTeXPadKit" */;
+			productName = NearbyClient;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

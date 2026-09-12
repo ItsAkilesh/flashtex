@@ -5,21 +5,25 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 enum Panel: String, CaseIterable, Identifiable {
-    case editor = "Editor", diagnostics = "Diagnostics", review = "Review", mac = "Mac link"
+    case capture = "Capture", mac = "Mac link"
+    case editor = "Editor", diagnostics = "Diagnostics", review = "Review"
     var id: String { rawValue }
     var symbol: String {
         switch self {
+        case .capture: return "pencil.and.outline"
+        case .mac: return "laptopcomputer.and.ipad"
         case .editor: return "doc.text"
         case .diagnostics: return "exclamationmark.triangle"
         case .review: return "checkmark.seal"
-        case .mac: return "laptopcomputer.and.ipad"
         }
     }
+    static let primary: [Panel] = [.capture, .mac]
+    static let reference: [Panel] = [.editor, .diagnostics, .review]
 }
 
 struct ContentView: View {
     @EnvironmentObject var model: PadModel
-    @State private var panel: Panel? = .editor
+    @State private var panel: Panel? = .capture
     @State private var importingTex = false
     @State private var importingResult = false
 
@@ -27,9 +31,17 @@ struct ContentView: View {
 
     var body: some View {
         NavigationSplitView {
-            List(Panel.allCases, selection: $panel) { p in
-                Label(p.rawValue, systemImage: p.symbol).tag(p)
-                    .accessibilityIdentifier("panel.\(p.rawValue)")
+            List(selection: $panel) {
+                Section("Capture companion") {
+                    ForEach(Panel.primary) { p in
+                        Label(p.rawValue, systemImage: p.symbol).tag(p).accessibilityIdentifier("panel.\(p.rawValue)")
+                    }
+                }
+                Section("Reference (.tex on the Mac; not the product)") {
+                    ForEach(Panel.reference) { p in
+                        Label(p.rawValue, systemImage: p.symbol).tag(p).accessibilityIdentifier("panel.\(p.rawValue)")
+                    }
+                }
             }
             .navigationTitle("FlashTeXPad")
             .safeAreaInset(edge: .bottom) {
@@ -48,7 +60,8 @@ struct ContentView: View {
                 .background(.bar)
             }
         } detail: {
-            switch panel ?? .editor {
+            switch panel ?? .capture {
+            case .capture: CaptureView()
             case .editor: EditorPanel()
             case .diagnostics: DiagnosticsPanel(importing: $importingResult)
             case .review: ReviewPanel()

@@ -1,34 +1,31 @@
-# FlashTeXPad — iPad client of the Mac (acceptance slice)
+# FlashTeXPad — iPad capture companion for the Mac app (acceptance slice)
 
 Owner: lane `mac-ios-app` (parent `mac-claude-a`, machine `mac-m1max-a`).
-Issue #51 / issue #2 comment 5647841253. iPad **simulator only**; no device run.
+Issue #51 / issue #2 comment 5647841253, re-centred per the user's scope
+correction: the iPad is the **capture companion** (FT-004's original idea) —
+draw with Apple Pencil or photograph a sketch/matrix, add an instruction, send
+it to the Mac, and the Mac's bridge converts it into a reviewed LaTeX/TikZ
+proposal that the Mac user approves. iPad **simulator only**; no device run.
 
-## What this is, truthfully
-
-iOS cannot spawn the Rust helpers (`flashtex-compiler`, `preview-controller`,
-`flashtex-assistant-context` are subprocess binaries), so the iPad is a
-**client of the Mac** over the contracts that already exist, and adds no
-second protocol:
+## What is real vs. not carried (truthful table)
 
 | Flow | Real on the wire? | Contract | Where |
 |---|---|---|---|
-| Pairing with the Mac's code (HKDF → TLS-PSK → `hello`/`hello_ack`, `pair_psk`) | **Yes** | nearby-v1 §2/§4 | `Packages/FlashTeXPadKit/Sources/NearbyClient` (symlink to `apps/mac/tools/nearby-client`) |
-| Current pinned destination (`hello_ack.destination`, `destination_query`) | **Yes** | nearby-v1 §4 | `MacLink.swift` |
-| `capture_submit` → `capture_received {capture_id, durable, has_proposal, applied}` | **Yes** | transfer-v1 via nearby-v1 | `MacLink.submitCapture` |
-| Reviewed proposal display → explicit approve/cancel → single insertion with revision + SHA-256 + exact `removed_text` checks | **Local** | assistant-context `proposal_review` / `approved_group` (`crates/assistant-context/README.md`, recorded in `examples/review-workflow.json`) | `ReviewedProposal.swift`, `ReviewSession.swift` |
-| Diagnostics list | **Local** | runtime-v1 `compile_result.diagnostics` | `Diagnostics.swift`; bundled fixture or a `compile_result` JSON the user opens |
-| Completions | **Local** | none (source-derived, same first four sources as the Mac's `Completion`) | `LocalCompletion.swift` |
-| UTF-8 offset discipline (caret UTF-16 ↔ UTF-8 bytes, scalar-boundary refusal) | shared code | runtime-v1 | `FlashTeXProtocol` symlink (`ByteOffsets.swift`) |
+| Pairing with the Mac's code (HKDF → TLS-PSK → `hello`/`hello_ack`, `pair_psk` stored) | **Yes** | nearby-v1 §2/§4 | `Packages/FlashTeXPadKit/Sources/NearbyClient` (symlink to `apps/mac/tools/nearby-client`), `MacLink.swift` |
+| Current pinned destination (`hello_ack.destination`, `destination_query`) | **Yes** | nearby-v1 §4 | `MacLink.swift`, shown on the Capture screen |
+| Apple Pencil canvas (PencilKit `PKCanvasView`, tool picker, finger allowed) → PNG | local | — | `CaptureView.swift` (`PencilCanvas`) |
+| Photo picker (`PhotosPicker`) and bundled sample image (`sample-capture.png`) → PNG | local | — | `CaptureView.swift` (camera does not exist in the simulator) |
+| Instruction text (≤ 4096 bytes) | local | transfer-v1 `capture_submit.instructions` | `CaptureQueue.validate` |
+| **Send to Mac**: `capture_submit {capture_id, destination_id, base_revision, image{png}, instructions}` → `capture_received {capture_id, durable, has_proposal, applied}` | **Yes** | transfer-v1 over nearby-v1, exactly as the reference client | `CaptureQueue.send` |
+| Per-capture status list: drafted → sending → received (durable / not) · refused `{code}` · not acknowledged (retry same `capture_id`) · discarded | **Yes** (from the receipt / error) | nearby-v1 §4, §8 | `CaptureQueue.swift`, `CapturesList` |
+| Duplicate/retry: after a disconnect the same `capture_id` + payload is re-sent; the Mac de-duplicates | **Yes** | nearby-v1 §4 | `CaptureQueue.send` (`attempt` counter), test `testRetryAfterDisconnectReusesCaptureID` |
+| Conversion progress after the receipt — "proposal ready", "inserted", "rejected" — and the returned LaTeX/TikZ text | **NOT carried** | nearby-v1 §6: "No companion → Mac notification of proposals or insertion results; the companion only learns `capture_received`." `capture_status` is a Mac↔bridge request; the Mac's listener answers an identical retry with the *cached* ack (`NearbyAckMemory`), so re-sending is a delivery guarantee, not a status probe. | Banner in the list: "Returned LaTeX/TikZ: not carried by transfer-v1 — review it on the Mac." Nothing is faked. |
+| QR pairing | not built | — | code entry only (no camera in the simulator); host/port/salt/fp typed from the Mac's Nearby window; `NearbyBrowser` (Bonjour) is linked but has no scan UI yet |
+| `.tex` editor / diagnostics / reviewed-proposal gate | local, **reference only** | runtime-v1 / assistant-context shapes | kept under the sidebar section "Reference (.tex on the Mac; not the product)" from the first iteration; tested, small, not the product |
 
-**Not carried by transfer-v1 / nearby-v1** (proposal §6, verbatim: "No
-companion → Mac notification of proposals or insertion results; the companion
-only learns `capture_received`. Proposal review stays on the Mac."): compile
-results, diagnostics, completions, proposals, insertion receipts. The app shows
-a banner on each such panel naming the provenance (`PadModel.Provenance`); the
-review the iPad performs is against the recorded assistant-context fixture
-(`provider_called:false`), never presented as a Mac reply. Extending the
-transport is a contract change for the Commander, not something this slice
-invents.
+Extending the transport so the iPad learns the proposal/insertion outcome is
+a contract change for the Commander (e.g. carrying `capture_status` over the
+nearby session) — not invented here.
 
 ## Layout
 
@@ -39,13 +36,13 @@ apps/ios/
   Packages/FlashTeXPadKit/          SwiftPM package (iOS 17 / macOS 14)
     Sources/FlashTeXProtocol  -> ../../../../mac/Sources/FlashTeXProtocol            (symlink, read-only reuse)
     Sources/NearbyClient      -> ../../../../mac/tools/nearby-client/Sources/NearbyClient (symlink, read-only reuse)
-    Sources/FlashTeXPadKit/   PadDocument, ReviewedProposal, ReviewSession, MacLink, LocalCompletion, Diagnostics
-  FlashTeXPad/                      SwiftUI app: sidebar (Editor / Diagnostics / Review / Mac link), file importer, UITextView editor
-    Resources/demo.tex              copy of apps/mac/Samples/demo.tex
-    Resources/review-workflow.json  copy of crates/assistant-context/examples/review-workflow.json
-    Resources/compile-result.json   copy of protocol/fixtures/compile-result.json
-  FlashTeXPadTests/                 XCTest (hosted in the app): FakeMac fixture + AcceptanceSliceTests
-  FlashTeXPadUITests/               XCUITest: open sample → review pending → cancel → approve → receipt
+    Sources/FlashTeXPadKit/   CaptureQueue (product), MacLink, PadDocument, ReviewedProposal, ReviewSession, LocalCompletion, Diagnostics
+  FlashTeXPad/                      SwiftUI app: Capture (primary), Mac link, reference .tex panels
+    CaptureView.swift               PencilKit canvas, PhotosPicker, sample image, instruction, Prepare/Discard/Send, status list
+    Resources/sample-capture.png    320×240 sketch (triangle with a right-angle mark), generated
+    Resources/demo.tex, review-workflow.json, compile-result.json   reference-panel fixtures
+  FlashTeXPadTests/                 XCTest hosted in the app: FakeMac + CaptureQueueTests + AcceptanceSliceTests
+  FlashTeXPadUITests/               XCUITest: CaptureFlowUITests (runner hosts FakeMac), FlashTeXPadUITests (.tex reference)
 ```
 
 ## Build and test (Xcode 26.3, iOS 26.3 simulator runtime)
@@ -59,47 +56,51 @@ xcodebuild -project FlashTeXPad.xcodeproj -scheme FlashTeXPad \
   -destination 'platform=iOS Simulator,name=iPad Air 11-inch (M3)' test
 ```
 
-`xcrun simctl list devices available | grep iPad` for the names this Xcode
-offers (iPad Pro 13-inch (M5), iPad Air 11/13-inch (M3), iPad mini (A17 Pro),
-iPad (A16)). Evidence for the recorded run: `docs/evidence/ios-acceptance-2026-09-12/`.
+`xcrun simctl list devices available | grep iPad` lists the names this Xcode
+offers. Evidence for the recorded run: `docs/evidence/ios-acceptance-2026-09-12/`.
 
-Deterministic launch for screenshots: `xcrun simctl launch <udid>
-tech.jay3332.flashtex.FlashTeXPad -flashtexpad-open sample|fixture`.
+Automation hooks (launch arguments, no network unless given):
+`-flashtexpad-test-mac host:port:saltHex:fp:code` pairs with a listener at
+launch; `-flashtexpad-open sample|fixture` opens a reference document.
 
-## The tests (all in the simulator)
+## The proofs (all in the simulator)
 
-`AcceptanceSliceTests` starts a `FakeMac` **inside the test process** (a copy
-of the reference client's test fixture: same TLS-PSK parameters as
-`NearbyListener`, verifies `hello.proof`, issues `pair_psk` on the bootstrap
-key, answers `destination_query` and `capture_submit`; loopback only; no
-provider, no Grok, no Rust helper). Then:
+Mac-side fixture: `FakeMac` — a copy of the reference client's test fixture
+(same TLS-PSK parameters as `NearbyListener`, verifies `hello.proof`, issues
+`pair_psk` on the bootstrap key, answers `destination_query` and
+`capture_submit` with an in-memory `durable:false` receipt, errors on anything
+else; loopback only; no provider, no Grok, no Rust helper). It is hosted in
+the test process (unit tests) or in the XCUITest runner (UI tests).
 
-- (a) `testOpensBundledSample` — opens `demo.tex`, checks UTF-8/UTF-16 caret mapping on "Résumé".
-- (b) `testPairAndCaptureReceiptOverNearbyV1` — pairs with the code, receives
-  `hello_ack` with the destination, sends one capture, gets `capture_received`
-  echoed; the transcript never contains the `pair_psk`.
-- (c) `testCancelPendingProposalInsertsNothing` — pending review from the
-  fixture, cancel → document byte-identical, no receipt, later approve refused.
-- (d) `testApproveInsertsExactlyOnceAndEchoesReceipt` — paired, capture sent,
-  approve → exactly one `Example text` insertion at the receipt's byte range,
-  revision +1, SHA-256 after matches; second approve refused (`notPending`).
-- `testApproveRefusedWhenBufferDrifted` — an edited buffer fails the SHA check and nothing is written.
-- `testWrongPairingCodeIsRefused`, `testLocalCompletionsFromSource`.
-
-`FlashTeXPadUITests.testOpenSampleThenCancelThenApprove` drives the same
-gate through the UI and attaches screenshots.
+- `CaptureFlowUITests.testDrawSendReceipt` — app pairs with the runner's
+  FakeMac at launch; three finger drags draw a triangle on the PencilKit
+  canvas; instruction "Convert this triangle to TikZ"; Prepare → Send; the
+  list shows "received — Mac inbox…"; the runner asserts the Mac got one
+  `capture_submit` with a structurally valid PNG (`NearbyWire.checkImage`),
+  the instruction, `destination_id dest-tikz`, `base_revision 3`.
+- `CaptureFlowUITests.testDiscardBeforeSendSendsNothing` — draw, Prepare,
+  Discard → status "discarded before sending", the Mac received nothing.
+- `CaptureFlowUITests.testSampleImagePath` — bundled sample image → Prepare →
+  Send → receipt; PNG valid on the Mac side.
+- `CaptureQueueTests` (hosted): PencilKit drawing → PNG → sent bytes arrive
+  unchanged with the instruction and destination; discarded draft never
+  leaves; retry after a dropped connection reconnects with the stored
+  `pair_psk` and re-sends the same `capture_id` (Mac sees it once); local
+  refusal of a bad image / oversized instruction; no pinned destination →
+  refused, nothing sent.
+- `AcceptanceSliceTests` / `FlashTeXPadUITests` — the first-iteration `.tex`
+  reference flow (open sample, pair, capture receipt, cancel inserts nothing,
+  approve inserts exactly once with the receipt echoed).
 
 ## Gaps (honest)
 
+- No proposal/insertion outcome on the iPad (contract gap above); the Mac
+  user reviews and approves there.
 - Signing: `CODE_SIGN_IDENTITY=-`, no team; simulator only. A device build
-  needs a team and the Local Network entitlement prompt flow.
-- Persistence: pairings go to `PairFile` (Application Support JSON, 0600), not
-  the Keychain — same caveat the reference client documents. Documents are
-  not saved back (no `UIDocument`); the file importer reads only.
-- Discovery: `NearbyBrowser` (Bonjour) is linked but the pairing screen takes
-  host/port/salt/fp typed from the Mac's window so the simulator run is
-  deterministic; no scan UI.
-- Offline / App Store / iPhone layout: not addressed. `TARGETED_DEVICE_FAMILY=2`.
-- No compile on the iPad; no Mac-side proposal reaches the iPad (contract gap
-  above). Photo capture (camera/PhotosPicker) is not wired; the capture button
-  sends the 1×1 PNG fixture from `protocol/fixtures/capture-submission.json`.
+  needs a team and the Local Network prompt flow (`NSLocalNetworkUsageDescription`
+  and `NSBonjourServices` are in Info.plist).
+- Persistence: pairings in `PairFile` (Application Support JSON, 0600), not
+  the Keychain; drafts and receipts are in memory only.
+- No QR scan, no Bonjour browse UI, no camera path (simulator has none;
+  `PhotosPicker` and the bundled sample stand in), no offline queue beyond
+  the in-memory retry, no App Store packaging, iPad only (`TARGETED_DEVICE_FAMILY=2`).

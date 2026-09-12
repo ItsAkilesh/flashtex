@@ -12,6 +12,7 @@ struct FlashTeXPadApp: App {
                     // Deterministic launch states for tests and screenshots
                     // (`-flashtexpad-open sample|fixture`); no network is touched.
                     let args = ProcessInfo.processInfo.arguments
+                    model.pairFromLaunchArgument()
                     if let i = args.firstIndex(of: "-flashtexpad-open"), i + 1 < args.count {
                         switch args[i + 1] {
                         case "sample": model.openBundledSample()

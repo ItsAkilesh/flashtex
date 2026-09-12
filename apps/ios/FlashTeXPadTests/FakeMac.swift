@@ -41,7 +41,7 @@ final class FakeMac {
         return ["destination_id": d.destinationId, "project_id": d.projectId, "path": d.path, "base_revision": d.baseRevision]
     }
 
-    init(keys: [Key], macName: String = "Fake Mac", destination: NearbyWire.Destination? = nil) throws {
+    init(keys: [Key], macName: String = "Fake Mac", destination: NearbyWire.Destination? = nil, port: UInt16 = 0) throws {
         self.keys = keys
         self.macName = macName
         self._destination = destination
@@ -58,7 +58,7 @@ final class FakeMac {
         let params = NWParameters(tls: tls, tcp: NWProtocolTCP.Options())
         params.allowLocalEndpointReuse = true
         params.requiredInterfaceType = .loopback
-        listener = try NWListener(using: params, on: .any)
+        listener = try NWListener(using: params, on: port == 0 ? .any : NWEndpoint.Port(rawValue: port)!)
         listener.stateUpdateHandler = { [weak self] state in
             guard let self else { return }
             if case .ready = state { self.port = self.listener.port?.rawValue ?? 0; self.ready.signal() }
@@ -73,6 +73,25 @@ final class FakeMac {
     }
 
     func stop() { listener.cancel(); queue.sync { connections.forEach { $0.cancel() }; connections.removeAll() } }
+
+    /// Stops `previous` and starts a replacement on its port with `keys` — the
+    /// Mac after pairing, whose key table now holds the long-term `pair_psk`
+    /// under the same `pair_id` (retrying the bind while the socket is released).
+    static func restart(_ previous: FakeMac, keys: [Key]) throws -> FakeMac {
+        let port = previous.port
+        previous.stop()
+        var last: Error?
+        for _ in 0..<50 {
+            do {
+                let m = try FakeMac(keys: keys, macName: previous.macName, destination: previous.destination, port: port)
+                m.start()
+                if m.port == port { return m }
+                m.stop()
+            } catch { last = error }
+            Thread.sleep(forTimeInterval: 0.05)
+        }
+        throw last ?? NearbyError.unreachable("could not rebind FakeMac on port \(port)")
+    }
 
     var destination: NearbyWire.Destination? {
         get { queue.sync { _destination } }

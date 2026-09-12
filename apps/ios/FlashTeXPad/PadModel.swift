@@ -51,10 +51,43 @@ final class PadModel: ObservableObject {
     @Published var lastCaptureReceived: NearbyWire.CaptureReceived?
     @Published var pairedMac: PairedMac?
 
+    // Captures (the product: draw/pick → capture_submit → receipt)
+    let queue: CaptureQueue
+    @Published var captures: [CaptureRecord] = []
+
     init(link: MacLink = MacLink(store: try? PairFile(url: PairFile.defaultURL()))) {
         self.link = link
+        self.queue = CaptureQueue(link: link)
         link.onTranscript = { [weak self] line in Task { @MainActor in self?.transcript.append(line) } }
         if let p = link.store?.pairs.last { pairedMac = p; linkStatus = "stored pairing: \(p.macName) (\(p.pairId))" }
+    }
+
+    // MARK: captures
+
+    @discardableResult
+    func draft(_ r: CaptureRecord) -> CaptureRecord {
+        let d = queue.draft(r)
+        captures = queue.records
+        return d
+    }
+
+    func discard(_ id: String) { queue.discard(id); captures = queue.records }
+
+    func send(_ id: String) async {
+        captures = queue.records
+        await queue.send(id)
+        captures = queue.records
+        destination = link.destination
+    }
+
+    /// Test/automation hook: `-flashtexpad-test-mac host:port:saltHex:fp:code`
+    /// pairs with a listener the UI-test runner hosts on loopback.
+    func pairFromLaunchArgument() {
+        let args = ProcessInfo.processInfo.arguments
+        guard let i = args.firstIndex(of: "-flashtexpad-test-mac"), i + 1 < args.count else { return }
+        let parts = args[i + 1].split(separator: ":").map(String.init)
+        guard parts.count == 5 else { linkError = "bad -flashtexpad-test-mac argument"; return }
+        Task { await pair(host: parts[0], port: parts[1], saltHex: parts[2], fingerprint: parts[3], macName: "Test Mac", code: parts[4]) }
     }
 
     // MARK: documents

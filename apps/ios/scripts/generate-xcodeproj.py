@@ -195,7 +195,7 @@ def main():
     app_dir = "FlashTeXPad"
     app_tid, app_grp, app_prod = target(
         "FlashTeXPad", "com.apple.product-type.application", app_dir,
-        sources(app_dir), ["Resources/" + f for f in sources(app_dir + "/Resources", (".tex", ".json"))],
+        sources(app_dir), ["Resources/" + f for f in sources(app_dir + "/Resources", (".tex", ".json", ".png"))],
         app_settings, products=("FlashTeXPadKit", "NearbyClient", "FlashTeXProtocol"))
 
     unit_settings = dict(common, **{
@@ -218,7 +218,7 @@ def main():
     })
     ui_tid, ui_grp, ui_prod = target(
         "FlashTeXPadUITests", "com.apple.product-type.bundle.ui-testing", "FlashTeXPadUITests",
-        sources("FlashTeXPadUITests"), [], ui_settings, extra_deps_on=("FlashTeXPad",))
+        sources("FlashTeXPadUITests"), [], ui_settings, products=("NearbyClient",), extra_deps_on=("FlashTeXPad",))
 
     products_grp = group("Products", None, [app_prod, unit_prod, ui_prod], id_name="Products")
     pkg_dir_ref = oid("ref:" + PACKAGE_PATH)

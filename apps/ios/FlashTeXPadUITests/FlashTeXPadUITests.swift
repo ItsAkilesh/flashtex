@@ -39,6 +39,7 @@ final class FlashTeXPadUITests: XCTestCase {
 
         XCTAssertTrue(el(app, "open.sample").waitForExistence(timeout: 10))
         el(app, "open.sample").tap()
+        app.staticTexts.matching(NSPredicate(format: "label == %@", "Editor")).firstMatch.tap()
         XCTAssertTrue(text(app, startingWith: "demo.tex · revision 1").waitForExistence(timeout: 5), app.debugDescription)
         XCTAssertTrue(app.textViews.firstMatch.waitForExistence(timeout: 5))
         XCTAssertTrue(String(describing: app.textViews.firstMatch.value).contains("FlashTeX demo"))
