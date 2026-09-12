@@ -60,6 +60,37 @@ const SYMBOL_ENCODING: &[(char, u8)] = &[
     ('\u{2211}', 0xE5), // summation
     ('\u{222B}', 0xF2), // integral
     ('\u{221A}', 0xD6), // radical
+    ('\u{393}', 0x47),  // Gamma
+    ('\u{394}', 0x44),  // Delta
+    ('\u{398}', 0x51),  // Theta
+    ('\u{39B}', 0x4C),  // Lambda
+    ('\u{39E}', 0x58),  // Xi
+    ('\u{3A0}', 0x50),  // Pi
+    ('\u{3A3}', 0x53),  // Sigma
+    ('\u{3A5}', 0x55),  // Upsilon
+    ('\u{3A6}', 0x46),  // Phi
+    ('\u{3A8}', 0x59),  // Psi
+    ('\u{3A9}', 0x57),  // Omega
+    ('\u{2202}', 0xB6), // partial
+    ('\u{2207}', 0xD1), // nabla
+    ('\u{2208}', 0xCE), // in
+    ('\u{220F}', 0xD5), // prod
+    ('\u{2192}', 0xAE), // to
+    ('\u{2190}', 0xAC), // gets
+    ('\u{21D2}', 0xDE), // Rightarrow
+    ('\u{21D4}', 0xDB), // Leftrightarrow
+    ('\u{2227}', 0xD9), // wedge
+    ('\u{2228}', 0xDA), // vee
+    ('\u{AC}', 0xD8),   // neg
+    ('\u{2200}', 0x22), // forall
+    ('\u{2203}', 0x24), // exists
+    ('\u{2205}', 0xC6), // emptyset
+    ('\u{2261}', 0xBA), // equiv
+    ('\u{223C}', 0x7E), // sim
+    ('\u{2282}', 0xCC), // subset
+    ('\u{2286}', 0xCD), // subseteq
+    ('\u{22A5}', 0x5E), // perp
+    ('\u{2220}', 0xD0), // angle
 ];
 
 /// WinAnsiEncoding's 0x80..0x9F block, which is NOT Latin-1.

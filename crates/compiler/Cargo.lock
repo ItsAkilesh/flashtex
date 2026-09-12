@@ -7,8 +7,13 @@ name = "flashtex-compiler"
 version = "0.1.0"
 dependencies = [
  "flashtex-font-engine",
+ "flashtex-paragraph-layout",
 ]
 
 [[package]]
 name = "flashtex-font-engine"
+version = "0.1.0"
+
+[[package]]
+name = "flashtex-paragraph-layout"
 version = "0.1.0"

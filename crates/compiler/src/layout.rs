@@ -2,8 +2,10 @@
 //!
 //! Line placement uses the shared font engine's Adobe Core 14 shaping:
 //! Times-Roman for body text, Times-Bold for headings, and Symbol for supported
-//! math glyphs. Kerning and available ligatures are applied. Hyphenation and
-//! TeX's optimal paragraph breaking remain missing; breaking here is greedy.
+//! math glyphs. Kerning and available ligatures are applied. Paragraphs use
+//! the shared paragraph-layout crate's TeX-style total-fit breaker. Its
+//! explicit discretionary hyphenation is supported; that crate does not yet
+//! ship an automatic pattern hyphenator.
 //!
 //! One item is emitted per word rather than per line. That keeps each item's
 //! source span exact, which is what click-to-source navigation (FT-003) needs.
@@ -15,7 +17,11 @@ use crate::parser::{Block, Inline};
 use crate::Span;
 use flashtex_font_engine::core14::Core14;
 use flashtex_font_engine::shape::{shape, ShapeOptions, Shaped};
-use flashtex_font_engine::Core14Face;
+use flashtex_font_engine::{Core14Face, Face as _};
+use flashtex_paragraph_layout::{
+    layout_paragraph, ExplicitDiscretionary, Glue, Glyph, GlyphRun, Hyphenator, Item,
+    LineBreakParams, Penalty, FORCED_BREAK, INFINITE_PENALTY,
+};
 use std::collections::BTreeMap;
 use std::sync::OnceLock;
 
@@ -186,6 +192,88 @@ pub(crate) fn shaped_width(
     }
 }
 
+fn shaped_paragraph_run(
+    text: &str,
+    size: f64,
+    font: Font,
+    span: Span,
+    source: std::ops::Range<usize>,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> GlyphRun {
+    let shaped = match shape_text(font, text) {
+        Ok(shaped) => shaped,
+        Err(error) => {
+            let error_span = match error {
+                flashtex_font_engine::Error::UnsupportedScript {
+                    ch, byte_offset, ..
+                } => relative_span(text, span, byte_offset, byte_offset + ch.len_utf8()),
+                _ => span,
+            };
+            diagnostics.push(Diagnostic::error(
+                format!(
+                    "could not shape text with {}: {error}",
+                    font.header().font_name
+                ),
+                Some(error_span),
+                Some("kept the source item with zero advance and continued".into()),
+            ));
+            return GlyphRun {
+                font: flashtex_paragraph_layout::FontId(face(font).id().content_sha256),
+                size,
+                glyphs: Vec::new(),
+                width: 0.0,
+                height: size,
+                depth: size * (LINE_SPACING - 1.0),
+                source,
+            };
+        }
+    };
+
+    for missing in &shaped.missing {
+        let missing_span = relative_span(
+            text,
+            span,
+            missing.byte_offset,
+            missing.byte_offset + missing.ch.len_utf8(),
+        );
+        diagnostics.push(Diagnostic::warning(
+            format!(
+                "{} has no glyph for {:?} (U+{:04X})",
+                font.header().font_name,
+                missing.ch,
+                missing.ch as u32
+            ),
+            Some(missing_span),
+            Some("emitted the face's explicit .notdef glyph and continued".into()),
+        ));
+    }
+
+    let scale = size / f64::from(shaped.units_per_em);
+    let mut glyphs = Vec::new();
+    for cluster in &shaped.clusters {
+        let cluster_source = source.start + cluster.source_range.start
+            ..source.start + cluster.source_range.end;
+        for glyph in &cluster.glyphs {
+            glyphs.push(Glyph {
+                gid: u32::from(glyph.gid.0),
+                advance: f64::from(glyph.advance) * scale,
+                kern: 0.0,
+                cluster: cluster_source.clone(),
+            });
+        }
+    }
+    let metrics = face(font).vertical_metrics();
+    GlyphRun {
+        font: flashtex_paragraph_layout::FontId(face(font).id().content_sha256),
+        size,
+        glyphs,
+        width: shaped.width_pt(size),
+        height: f64::from(metrics.ascender) * scale,
+        depth: -f64::from(metrics.descender) * scale,
+        source,
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct TextItem {
     pub text: String,
@@ -245,6 +333,71 @@ impl FlowState {
 pub struct PlacedItem {
     pub page_index: usize,
     pub item: TextItem,
+}
+
+#[derive(Debug, Clone)]
+enum ParagraphSource {
+    Text {
+        text: String,
+        span: Span,
+        font: Font,
+    },
+    Math(MathBox),
+    Label { key: String, value: String },
+}
+
+#[derive(Debug, Clone)]
+struct SourceEntry {
+    range: std::ops::Range<usize>,
+    source: ParagraphSource,
+}
+
+struct ParagraphItems {
+    items: Vec<Item>,
+    sources: Vec<SourceEntry>,
+    next_source: usize,
+    needs_space: bool,
+}
+
+impl ParagraphItems {
+    fn new() -> Self {
+        Self {
+            items: Vec::new(),
+            sources: Vec::new(),
+            next_source: 1,
+            needs_space: false,
+        }
+    }
+
+    fn allocate(&mut self, len: usize, source: ParagraphSource) -> std::ops::Range<usize> {
+        let start = self.next_source;
+        let end = start + len.max(1);
+        self.next_source = end + 1;
+        let range = start..end;
+        self.sources.push(SourceEntry {
+            range: range.clone(),
+            source,
+        });
+        range
+    }
+
+    fn space(&mut self, size: f64, font: Font) {
+        if self.needs_space {
+            let width = word_space(size, font);
+            self.items
+                .push(Item::Glue(Glue::finite(width, width * 0.6, width * 0.24)));
+        }
+    }
+
+    fn finish(mut self) -> (Vec<Item>, Vec<SourceEntry>) {
+        while matches!(self.items.last(), Some(Item::Glue(_))) {
+            self.items.pop();
+        }
+        self.items.push(Item::penalty(INFINITE_PENALTY));
+        self.items.push(Item::Glue(Glue::fil()));
+        self.items.push(Item::penalty(FORCED_BREAK));
+        (self.items, self.sources)
+    }
 }
 
 /// Resumable layout cursor shared by clean and incremental compilation.
@@ -342,6 +495,203 @@ impl LayoutCursor {
             .items
             .push(item);
         self.x += w + word_space(size, font);
+    }
+
+    fn push_paragraph_text(
+        &mut self,
+        paragraph: &mut ParagraphItems,
+        text: &str,
+        span: Span,
+        size: f64,
+        font: Font,
+        add_space: bool,
+    ) {
+        if add_space {
+            paragraph.space(size, font);
+        }
+        let source = paragraph.allocate(
+            text.len(),
+            ParagraphSource::Text {
+                text: text.to_string(),
+                span,
+                font,
+            },
+        );
+        let run = shaped_paragraph_run(
+            text,
+            size,
+            font,
+            span,
+            source,
+            &mut self.diagnostics,
+        );
+        paragraph.items.push(Item::Box(run));
+        paragraph.needs_space = true;
+    }
+
+    fn push_paragraph_hyphen(
+        &mut self,
+        paragraph: &mut ParagraphItems,
+        size: f64,
+        font: Font,
+        word_span: Span,
+    ) {
+        let source = paragraph.allocate(
+            1,
+            ParagraphSource::Text {
+                text: "-".to_string(),
+                span: word_span,
+                font,
+            },
+        );
+        let hyphen = shaped_paragraph_run(
+            "-",
+            size,
+            font,
+            word_span,
+            source,
+            &mut self.diagnostics,
+        );
+        paragraph.items.push(Item::Penalty(Penalty {
+            value: 50,
+            flagged: true,
+            pre_break: Some(hyphen),
+            automatic: false,
+        }));
+        paragraph.needs_space = false;
+    }
+
+    fn push_paragraph_math(
+        &mut self,
+        paragraph: &mut ParagraphItems,
+        math: MathBox,
+        size: f64,
+    ) {
+        paragraph.space(size, Font::TimesRoman);
+        let source = paragraph.allocate(1, ParagraphSource::Math(math.clone()));
+        paragraph.items.push(Item::Box(GlyphRun {
+            font: flashtex_paragraph_layout::FontId(
+                face(Font::TimesRoman).id().content_sha256,
+            ),
+            size,
+            glyphs: vec![Glyph {
+                gid: 0,
+                advance: math.width,
+                kern: 0.0,
+                cluster: source.clone(),
+            }],
+            width: math.width,
+            height: math.ascent,
+            depth: math.descent,
+            source,
+        }));
+        paragraph.needs_space = true;
+    }
+
+    fn push_paragraph_label(
+        &mut self,
+        paragraph: &mut ParagraphItems,
+        key: String,
+        value: String,
+        size: f64,
+    ) {
+        let source = paragraph.allocate(1, ParagraphSource::Label { key, value });
+        paragraph.items.push(Item::Box(GlyphRun {
+            font: flashtex_paragraph_layout::FontId(
+                face(Font::TimesRoman).id().content_sha256,
+            ),
+            size,
+            glyphs: Vec::new(),
+            width: 0.0,
+            height: 0.0,
+            depth: 0.0,
+            source,
+        }));
+    }
+
+    fn place_paragraph_lines(
+        &mut self,
+        paragraph: ParagraphItems,
+        size: f64,
+        base_x: f64,
+    ) {
+        if paragraph.items.is_empty() {
+            return;
+        }
+        let (items, sources) = paragraph.finish();
+        let mut params = LineBreakParams::article_12pt_letter_1in();
+        params.line_width = (self.right_edge() - base_x).max(0.0);
+        params.baselineskip = size * LINE_SPACING;
+        params.lineskip = size;
+        let lines = layout_paragraph(&items, &params);
+
+        for (line_index, line) in lines.lines.iter().enumerate() {
+            if line_index > 0 {
+                self.newline(size);
+            }
+            self.ensure_extents(
+                line.height.max(size),
+                line.depth.max(size * (LINE_SPACING - 1.0)),
+            );
+            let mut line_end = base_x;
+            for run in &line.runs {
+                let source = sources
+                    .binary_search_by_key(&run.source.start, |entry| entry.range.start)
+                    .ok()
+                    .and_then(|index| sources.get(index))
+                    .filter(|entry| entry.range == run.source)
+                    .expect("paragraph layout must return an input source range");
+                let x = base_x + run.x;
+                match &source.source {
+                    ParagraphSource::Text { text, span, font } => {
+                        self.pages
+                            .last_mut()
+                            .expect("at least one page")
+                            .items
+                            .push(TextItem {
+                                text: text.clone(),
+                                x_pt: round2(x),
+                                baseline_y_pt: round2(self.y),
+                                font_size_pt: run.size,
+                                span: *span,
+                                font: *font,
+                                rule: None,
+                            });
+                    }
+                    ParagraphSource::Math(math) => {
+                        let page = self.pages.last_mut().expect("at least one page");
+                        for item in &math.items {
+                            let font = math_font(&item.text);
+                            let rule = item.rule.map(|rule| RuleGeometry {
+                                y_pt: round2(self.y + rule.y),
+                                width_pt: round2(rule.width),
+                                height_pt: round2(rule.height),
+                            });
+                            page.items.push(TextItem {
+                                text: item.text.clone(),
+                                x_pt: round2(x + item.x),
+                                baseline_y_pt: round2(self.y + item.baseline),
+                                font_size_pt: item.size,
+                                span: item.span,
+                                font,
+                                rule,
+                            });
+                        }
+                    }
+                    ParagraphSource::Label { key, value } => {
+                        self.collected_labels.insert(
+                            key.clone(),
+                            ReferenceValue {
+                                number: value.clone(),
+                                page: self.pages.len() as u32,
+                            },
+                        );
+                    }
+                }
+                line_end = line_end.max(x + run.width);
+            }
+            self.x = line_end;
+        }
     }
 
     fn ensure_extents(&mut self, ascent: f64, descent: f64) {
@@ -665,40 +1015,107 @@ fn visit_references(blocks: &[Block], visitor: &mut impl FnMut(&str, Span)) {
     }
 }
 
-fn emit(c: &mut LayoutCursor, inlines: &[Inline], size: f64, font: Font) {
-    for inline in inlines {
-        match inline {
-            Inline::Text { text, span } => c.place(text.clone(), size, *span, font),
-            Inline::LineBreak { .. } => c.newline(size),
-            Inline::Math {
-                list,
-                display,
-                number,
-                number_span,
-                span,
-            } => {
-                let b = math::layout(list, size, &mut c.diagnostics);
-                if *display {
-                    c.display_math(
-                        b,
-                        size,
-                        number
-                            .as_deref()
-                            .zip(*number_span)
-                            .or_else(|| number.as_deref().map(|number| (number, *span))),
-                    );
-                } else {
-                    c.place_math(b, size);
+fn is_explicit_discretionary(left: &Inline, marker: &Inline, right: &Inline) -> bool {
+    let (
+        Inline::Text {
+            span: left_span, ..
+        },
+        Inline::Text {
+            text: marker_text,
+            span: marker_span,
+        },
+        Inline::Text {
+            span: right_span, ..
+        },
+    ) = (left, marker, right)
+    else {
+        return false;
+    };
+    marker_text == "-"
+        && marker_span.end - marker_span.start == 2
+        && left_span.document == marker_span.document
+        && marker_span.document == right_span.document
+        && left_span.end == marker_span.start
+        && marker_span.end == right_span.start
+}
+
+fn emit_segment(c: &mut LayoutCursor, inlines: &[Inline], size: f64, font: Font) {
+    let base_x = c.x;
+    let mut paragraph = ParagraphItems::new();
+    let mut index = 0;
+    while index < inlines.len() {
+        match &inlines[index] {
+            Inline::Text { text, span } => {
+                let mut end = index;
+                while end + 2 < inlines.len()
+                    && is_explicit_discretionary(
+                        &inlines[end],
+                        &inlines[end + 1],
+                        &inlines[end + 2],
+                    )
+                {
+                    end += 2;
                 }
+                if end == index {
+                    c.push_paragraph_text(&mut paragraph, text, *span, size, font, true);
+                    index += 1;
+                    continue;
+                }
+
+                let last_span = match &inlines[end] {
+                    Inline::Text { span, .. } => *span,
+                    _ => unreachable!("a discretionary chain ends in text"),
+                };
+                let word_span = span.merge(last_span);
+                let mut marked_word = text.clone();
+                let mut cursor = index;
+                while cursor < end {
+                    marked_word.push_str("\\-");
+                    if let Inline::Text { text, .. } = &inlines[cursor + 2] {
+                        marked_word.push_str(text);
+                    }
+                    cursor += 2;
+                }
+                let points = ExplicitDiscretionary.hyphenate(&marked_word);
+                debug_assert_eq!(points.len(), (end - index) / 2);
+
+                c.push_paragraph_text(&mut paragraph, text, *span, size, font, true);
+                cursor = index;
+                for _ in points {
+                    c.push_paragraph_hyphen(&mut paragraph, size, font, word_span);
+                    if let Inline::Text {
+                        text: fragment,
+                        span: fragment_span,
+                    } = &inlines[cursor + 2]
+                    {
+                        c.push_paragraph_text(
+                            &mut paragraph,
+                            fragment,
+                            *fragment_span,
+                            size,
+                            font,
+                            false,
+                        );
+                    }
+                    cursor += 2;
+                }
+                index = end + 1;
+            }
+            Inline::LineBreak { .. } => {
+                paragraph.items.push(Item::Glue(Glue::fil()));
+                paragraph.items.push(Item::penalty(FORCED_BREAK));
+                paragraph.needs_space = false;
+                index += 1;
+            }
+            Inline::Math { list, display, .. } => {
+                debug_assert!(!display, "display math is split before emit_segment");
+                let math = math::layout(list, size, &mut c.diagnostics);
+                c.push_paragraph_math(&mut paragraph, math, size);
+                index += 1;
             }
             Inline::Label { key, value, .. } => {
-                c.collected_labels.insert(
-                    key.clone(),
-                    ReferenceValue {
-                        number: value.clone(),
-                        page: c.pages.len() as u32,
-                    },
-                );
+                c.push_paragraph_label(&mut paragraph, key.clone(), value.clone(), size);
+                index += 1;
             }
             Inline::Reference { key, page, span } => {
                 let text = c.resolved_labels.get(key).map_or_else(
@@ -711,10 +1128,40 @@ fn emit(c: &mut LayoutCursor, inlines: &[Inline], size: f64, font: Font) {
                         }
                     },
                 );
-                c.place(text, size, *span, font);
+                c.push_paragraph_text(&mut paragraph, &text, *span, size, font, true);
+                index += 1;
             }
         }
     }
+    c.place_paragraph_lines(paragraph, size, base_x);
+}
+
+fn emit(c: &mut LayoutCursor, inlines: &[Inline], size: f64, font: Font) {
+    let mut start = 0;
+    for (index, inline) in inlines.iter().enumerate() {
+        let Inline::Math {
+            list,
+            display: true,
+            number,
+            number_span,
+            span,
+        } = inline
+        else {
+            continue;
+        };
+        emit_segment(c, &inlines[start..index], size, font);
+        let math = math::layout(list, size, &mut c.diagnostics);
+        c.display_math(
+            math,
+            size,
+            number
+                .as_deref()
+                .zip(*number_span)
+                .or_else(|| number.as_deref().map(|number| (number, *span))),
+        );
+        start = index + 1;
+    }
+    emit_segment(c, &inlines[start..], size, font);
 }
 
 #[cfg(test)]
@@ -943,5 +1390,32 @@ mod tests {
         // keeps click-to-source correct through a ligature.
         assert_eq!(ligated.clusters[0].source_range, 0..2);
         assert_eq!(ligated.clusters[0].text, "fi");
+    }
+
+    #[test]
+    fn explicit_discretionary_splits_the_word_and_keeps_exact_source_identity() {
+        let source = "xxxx yyyy\\-zzzz";
+        let parsed = parser::parse(source);
+        let pages = layout_with_constraints(
+            &parsed.blocks,
+            LayoutConstraints {
+                font_size_pt: 12.0,
+                measure_pt: 35.0,
+            },
+        );
+        let items: Vec<_> = pages.iter().flat_map(|page| &page.items).collect();
+        let left = items.iter().find(|item| item.text == "yyyy").unwrap();
+        let right = items.iter().find(|item| item.text == "zzzz").unwrap();
+        let hyphen = items.iter().find(|item| item.text == "-").unwrap();
+
+        assert_eq!(&source[left.span.start..left.span.end], "yyyy");
+        assert_eq!(&source[right.span.start..right.span.end], "zzzz");
+        assert_eq!(left.baseline_y_pt, hyphen.baseline_y_pt);
+        assert!(right.baseline_y_pt > hyphen.baseline_y_pt);
+        assert_eq!(
+            &source[hyphen.span.start..hyphen.span.end],
+            "yyyy\\-zzzz",
+            "the generated hyphen is attributed to the word that produced it"
+        );
     }
 }

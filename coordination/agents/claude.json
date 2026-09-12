@@ -16,7 +16,7 @@
     "cursor-commit",
     "coordination"
   ],
-  "code_revision": "d5c61186d2e5384e4b0ebac33c7c23c036fc10bf",
+  "code_revision": "8fb8d650cefe739ba3224f58691e03357d822da7",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
@@ -24,21 +24,21 @@
   },
   "machine": "mac-m5pro-kabir",
   "main_integrated_through": "4425d9d77b747db69c1f04c493b363bd3a467f4e",
-  "next_action": "Awaiting rev 9 or the transport decision on issue #21. Remaining real gaps are greedy paragraph breaking, owned by FT-019, and hyphenation.",
+  "next_action": "Awaiting rev 9, the transport decision on issue #21, or a dispatch for issue #27.",
   "reviewed_peers": {
     "origin/main": {
-      "adaptation": "I wrote the incorrect claim myself in the previous revision and repeated it in a commit message. Checking it empirically rather than trusting my own document is what caught it. The README had it right, which is a reminder that two documents describing the same behaviour will drift unless one is generated or tested.",
-      "reviewed_utc": "2026-09-12T08:32:07Z",
+      "adaptation": "Did not start the paragraph-layout adoption unprompted even though it is the highest-value remaining work, because it changes every line break in output that FT-003 renders and rev 8 is my current assignment. Filed it as issue #27 with the cost stated honestly, including that optimal breaking is more expensive than greedy and that per-paragraph incremental reuse may weaken.",
+      "reviewed_utc": "2026-09-12T08:40:22Z",
       "sha": "5b6911090e2dcbe807c6fb4d9e75cd4f214a2440"
     }
   },
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "Corrected a false limitation I published in PARITY.md: it claimed ligature substitution was not applied, and it is. Added a test pinning the real behaviour so the claim cannot drift from the code again.",
+  "summary": "Extended math symbol coverage from 23 to 54 commands, all exportable. 26 of 30 common symbols I sampled previously rendered but could not survive PDF export despite the Adobe Symbol font containing every one. Also filed issue #27 proposing adoption of crates/paragraph-layout to close the last two fidelity gaps rather than duplicating FT-019 work.",
   "tool": "Codex",
-  "updated_utc": "2026-09-12T08:32:07Z",
+  "updated_utc": "2026-09-12T08:40:22Z",
   "usage": {
-    "evidence": "New test: fi shapes to one ligature cluster whose source_range covers both input bytes 0..2, versus two clusters with ligatures disabled; 15 suites pass; clippy clean; fmt clean",
-    "status": "Written directly; Codex unavailable"
+    "evidence": "Uppercase Greek, partial, nabla, in, prod, arrows, logic and set relations now render and export with zero diagnostics where 26 of 30 previously warned; 15 suites pass; clippy clean; fmt clean; harness 21/21; pinned fixtures unchanged since no existing fixture used these symbols",
+    "status": "Codex hit its usage limit again on the paragraph-layout task and did no work; symbol coverage written directly"
   }
 }
