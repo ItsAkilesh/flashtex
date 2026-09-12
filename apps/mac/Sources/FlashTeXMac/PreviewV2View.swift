@@ -859,9 +859,10 @@ private struct V2PaneHeader: View {
                         .accessibilityIdentifier("v2-behind")
                 }
                 if case .loading(let source, _, let previous, _, _) = model.displayListV2 {
-                    ProgressView().controlSize(.small)
-                    Text(previous == nil ? "loading \(source.label)…" : "STALE — showing the previous frame while \(source.label) is verified")
-                        .font(.caption.bold()).foregroundStyle(.orange).lineLimit(1)
+                    // Quiet progress indicator: the previous frame stays on screen; no flashing text.
+                    ProgressView().controlSize(.mini)
+                        .help(previous == nil ? "loading \(source.label)…" : "showing the previous frame while \(source.label) is verified")
+                        .accessibilityLabel(previous == nil ? "loading \(source.label)" : "verifying \(source.label); previous frame shown")
                         .accessibilityIdentifier("v2-stale")
                 }
                 Spacer()
@@ -997,8 +998,10 @@ private struct PageV2View: View, Equatable {
         let size = CGSize(width: page.widthPt * scale, height: page.heightPt * scale)
         // Reading the slot through `image(for:)` subscribes this page to its bitmap's arrival.
         let bitmap = V2PageRasterizer.shared.image(for: prepared, pageToken: pageToken, pixelsPerPoint: Double(scale * displayScale), dark: dark)
-        let label = bitmap == nil ? "page \(page.number) · v2 · rasterizing…" : (stale ? "page \(page.number) · v2 · STALE" : "page \(page.number) · v2")
-        let labelColor: Color = stale ? .orange : (dark ? Color(white: 0.7) : Color(white: 0.35))
+        // A stale page keeps its label and colour: the previous frame stays on screen
+        // unchanged while the next one is verified (typing must not flash the pages).
+        let label = bitmap == nil ? "page \(page.number) · v2 · rasterizing…" : "page \(page.number) · v2"
+        let labelColor: Color = dark ? Color(white: 0.7) : Color(white: 0.35)
         let pageBackground: Color = dark ? Color(white: 0.16) : .white
         // The bitmap is the contents of a CALayer (PageBitmapLayer): CoreAnimation
         // composites it on every later pass without any drawing on the main thread;
@@ -1014,7 +1017,6 @@ private struct PageV2View: View, Equatable {
                 }
             }
         canvas
-            .overlay { if stale { Color.orange.opacity(0.08).allowsHitTesting(false) } }
             .contentShape(Rectangle())
             .onContinuousHover { phase in
                 switch phase {

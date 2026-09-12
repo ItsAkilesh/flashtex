@@ -321,7 +321,7 @@ private struct PreviewHeader: View {
                          ?? (model.workerAttached
                          ? (model.autoCompile ? "editor at r\(model.editorRevision) — compiling…" : "editor at r\(model.editorRevision) — ⌘B to compile")
                          : "editor at r\(model.editorRevision) — no producer attached"))
-                        .font(.caption).foregroundStyle(.orange).lineLimit(1)
+                        .font(.caption).foregroundStyle(model.outputBound != nil || !model.workerAttached ? .orange : .secondary).lineLimit(1) // routine "compiling…" is quiet; only bounds/no-producer are highlighted
                 }
             } else if let err = model.loadError {
                 Text(err).font(.caption).foregroundStyle(.red).lineLimit(1).help(err)
