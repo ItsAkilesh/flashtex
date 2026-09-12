@@ -78,3 +78,19 @@ consumer preflight for its unchecked initial path, but is not a race-proof roote
 IO capability. Export is explicitly disabled pending shared rooted-save issue GH18.
 Import is durable per document, not an atomic project-wide transaction. The shared
 graph's discovery IO limits and native file UI integration remain outstanding.
+
+A repeatable release-helper latency probe runs complete durable edit round trips:
+
+```sh
+python3 crates/preview-controller/examples/helper_latency.py \
+  --helper /absolute/flashtex-preview-controller \
+  --compiler /absolute/original/flashtex-compiler --edits 100
+```
+
+It uses temporary file-project storage, sequential edits to one 20-paragraph source,
+validates clean compile status and exact source revision, and records both executable
+hashes. One Linux run measured p50 3.07ms, p95 3.61ms, p99 4.09ms, max 4.22ms across
+100 edits. This is a narrow local observation, not a native responsiveness guarantee:
+it excludes UI event handling and painting, uses the temporary filesystem, and does
+not exercise complex packages or reference-PDF parity. The probe caps edits below
+ledger history capacity and never evicts history to improve the measurement.
