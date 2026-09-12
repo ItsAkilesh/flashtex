@@ -1,36 +1,36 @@
 {
-  "schema_version": 1,
   "agent_id": "daniel-spelling",
-  "task_id": "FT-039",
-  "next_index": 0,
+  "next_index": 1,
+  "schema_version": 1,
   "steps": [
     {
+      "acceptance": [
+        "Meaningful tests and strict Rust lint pass with bounded malformed/Unicode inputs",
+        "Preserve exact source/revision and resource identities; no implicit approximation or parity claim",
+        "Do not edit peer compiler/native/layout files; publish typed adapter contract and exact tested SHA"
+      ],
+      "allocation_id": "daniel-claude20x-shared",
       "name": "Revision-bound spelling suggestions: bounded adversarial and stale-identity acceptance tests",
       "objective": "Revision-bound spelling suggestions: bounded adversarial and stale-identity acceptance tests",
       "owned_paths": [
         "crates/spellcheck"
       ],
+      "timebox_minutes": 30
+    },
+    {
       "acceptance": [
         "Meaningful tests and strict Rust lint pass with bounded malformed/Unicode inputs",
         "Preserve exact source/revision and resource identities; no implicit approximation or parity claim",
         "Do not edit peer compiler/native/layout files; publish typed adapter contract and exact tested SHA"
       ],
       "allocation_id": "daniel-claude20x-shared",
-      "timebox_minutes": 30
-    },
-    {
       "name": "Revision-bound spelling suggestions: actual existing consumer fixture and exact measured limitations",
       "objective": "Revision-bound spelling suggestions: actual existing consumer fixture and exact measured limitations",
       "owned_paths": [
         "crates/spellcheck"
       ],
-      "acceptance": [
-        "Meaningful tests and strict Rust lint pass with bounded malformed/Unicode inputs",
-        "Preserve exact source/revision and resource identities; no implicit approximation or parity claim",
-        "Do not edit peer compiler/native/layout files; publish typed adapter contract and exact tested SHA"
-      ],
-      "allocation_id": "daniel-claude20x-shared",
       "timebox_minutes": 30
     }
-  ]
+  ],
+  "task_id": "FT-039"
 }
