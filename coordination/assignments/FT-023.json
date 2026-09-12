@@ -8,15 +8,15 @@
   "branch": "agent/commander-render-core/rendering-core",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "02a9858dd15aebcb62879a2577467e207a203348",
-  "objective": "Review Commander full-snapshot consolidation draft against current strict renderer pairing and helper source authority",
+  "input_main_sha": "467538c77e84e4c3febc5308d49b53e1ca7f3d65",
+  "objective": "Review actual pinned producer delta proposal against installed base and complete reconstruction authority",
   "owned_paths": [
     "crates/rendering-core"
   ],
-  "revision": 25,
+  "revision": 26,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-023",
   "timebox_minutes": 40,
-  "updated_utc": "2026-09-12T14:23:56.570752+00:00"
+  "updated_utc": "2026-09-12T14:40:56.951261+00:00"
 }

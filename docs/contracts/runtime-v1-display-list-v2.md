@@ -32,7 +32,11 @@ producer envelope are compile revisions; they are not individual editor revision
 An accepted but missing sibling remains subject to the original request timeout.
 Duplicate, interleaved, unsolicited, malformed or wrongly correlated siblings must
 not become render candidates. Stale or cancelled work cannot acquire currentness
-by arriving later. A transport failure must leave durable source state intact.
+by arriving later. Runtime may emit the v1 Preview before validating its promised
+sibling; a missing or malformed sibling can fail afterward. This is not atomic
+render installation. Stale or cancelled accepted v1 work still drains and validates
+its one promised sibling before the next dispatch. A transport failure must leave
+durable source state intact.
 
 The complete snapshot includes all ordered pages, with page numbers1..N, document
 metadata, font declarations, required features, diagnostics and source/hit/caret
@@ -66,9 +70,13 @@ Source ranges contain paths/offsets; their revision identity comes from the glob
 source metadata and current caller state, not from the range alone.
 
 Recovery policy is API-specific. The strict paired helper consumer refuses
-`tfm_missing`, `required_metrics_unavailable` and error diagnostics when TeX metrics
-are required. Standalone searchable CFF export refuses error diagnostics but can
-export warning-only output. Neither outcome establishes reference fidelity.
+`tfm_missing`, `required_metrics_unavailable` and error diagnostics in the v1
+`compile_result` when TeX metrics are required. Standalone searchable CFF export
+checks v2 display diagnostics and refuses errors but can export warning-only output.
+Pairing does not compare the two diagnostic sequences. PipelineCff binding checks
+v2 diagnostic provenance without itself rejecting error severity; export applies
+that refusal. Do not infer a blanket bind or hit refusal from a v2-only error.
+Neither outcome establishes reference fidelity.
 
 ## Helper boundary and currentness
 

@@ -11,15 +11,15 @@
   "branch": "agent/commander-runtime-display/display-runtime",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "eeabbb6671b3552c5ea91dc9c818cfca8736934f",
-  "objective": "Preserve full pages source resources and raw sibling bytes with distinct accepted declined and failed cap outcomes",
+  "input_main_sha": "467538c77e84e4c3febc5308d49b53e1ca7f3d65",
+  "objective": "Audit exact 518a2ce3 helper capture hashes raw bodies source generations and durable reopen without rerun",
   "owned_paths": [
     "crates/document-runtime"
   ],
-  "revision": 42,
+  "revision": 43,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-049",
   "timebox_minutes": 40,
-  "updated_utc": "2026-09-12T14:32:18Z"
+  "updated_utc": "2026-09-12T14:40:56.951261+00:00"
 }

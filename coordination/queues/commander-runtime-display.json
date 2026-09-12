@@ -1,6 +1,6 @@
 {
   "agent_id": "commander-runtime-display",
-  "next_index": 2,
+  "next_index": 1,
   "schema_version": 1,
   "steps": [
     {
@@ -12,8 +12,8 @@
         "Publish bounded candidate API for existing helper owner; if deep validation is deferred, the type and contract must remain explicitly untrusted until existing native/core validator accepts it"
       ],
       "allocation_id": "hosted-openai-product",
-      "name": "Verify exact9aa unchanged producer archive and full-output fresh persistent equality on existing large and multidocument cases",
-      "objective": "Verify exact9aa unchanged producer archive and full-output fresh persistent equality on existing large and multidocument cases",
+      "name": "Audit exact 518a2ce3 helper capture hashes raw bodies source generations and durable reopen without rerun",
+      "objective": "Audit exact 518a2ce3 helper capture hashes raw bodies source generations and durable reopen without rerun",
       "owned_paths": [
         "crates/document-runtime"
       ],
@@ -28,8 +28,8 @@
         "Publish bounded candidate API for existing helper owner; if deep validation is deferred, the type and contract must remain explicitly untrusted until existing native/core validator accepts it"
       ],
       "allocation_id": "hosted-openai-product",
-      "name": "Preserve full pages source resources and raw sibling bytes with distinct accepted declined and failed cap outcomes",
-      "objective": "Preserve full pages source resources and raw sibling bytes with distinct accepted declined and failed cap outcomes",
+      "name": "Review isolated HW1 starred-section handoff producer heading projection without compiler edits",
+      "objective": "Review isolated HW1 starred-section handoff producer heading projection without compiler edits",
       "owned_paths": [
         "crates/document-runtime"
       ],
@@ -44,8 +44,8 @@
         "Publish bounded candidate API for existing helper owner; if deep validation is deferred, the type and contract must remain explicitly untrusted until existing native/core validator accepts it"
       ],
       "allocation_id": "hosted-openai-product",
-      "name": "Publish exact source binary dependency asset and capture provenance without benchmark or page delta import",
-      "objective": "Publish exact source binary dependency asset and capture provenance without benchmark or page delta import",
+      "name": "Record bounded full-snapshot compatibility findings preserving accepted declined failed distinctions",
+      "objective": "Record bounded full-snapshot compatibility findings preserving accepted declined failed distinctions",
       "owned_paths": [
         "crates/document-runtime"
       ],
