@@ -11,6 +11,12 @@ Owned paths: `apps/mac/Sources/FlashTeXMac/TypingBench.swift`,
 `SourceEditorView.swift`, `PreviewView.swift`, `FlashTeXMacApp.swift`.
 Main integrated through: not merged; branch is mac-shell f1bf50a + this work.
 
+Refill numbers (keystroke→paint p50/p95 ms, mac-shell 40d53b7 + this branch):
+compiler demo 22/39 (30 ms) 23/40 (0 ms), fixture 21/38, 18/36, body60k 146/179, 149/184;
+render demo 40/45, 39/50, fixture 21/37, 21/40, body60k 150/177, 147/182;
+controller (origin/main 4248b49) demo 51/76, 50/61, fixture 37/46, 41/80,
+body60k 228/310, 382/671. v2: documented stub (no live paint hooks yet).
+
 Ready behavior:
 - `keystroke: revision N at <ns>` / `paint: revision N at <ns>` FLASHTEX_LOG
   lines on one monotonic clock (`CLOCK_UPTIME_RAW` = mach_absolute_time ns);
