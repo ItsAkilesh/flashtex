@@ -1,24 +1,23 @@
 {
   "acceptance": [
-    "Tests cover Latin, Unicode, combining marks, ligatures, kerning, deterministic subsetting, ToUnicode, and no silent question-mark loss",
-    "Reference font files/licenses/hashes and engine comparisons are documented; generated metrics are reproducible",
-    "API supports preview and PDF consumers consistently and reports unsupported shaping honestly",
-    "Publish exact rev1 ACK plus Opus worker PID/session, branch, current+two followups, shared Max quota/reset/usage and in-flight calls"
+    "Roundtrip extraction and native rendering preserve supported Unicode",
+    "Fallback is explicit and deterministic",
+    "Subset bytes are reproducible"
   ],
   "agent_id": "mac-font-engine",
-  "allocation_id": "claude-mac20x-font-engine",
+  "allocation_id": "claude-mac20x-font-engine-stage2",
   "branch": "agent/mac-font-engine/tex-fonts",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "998e566c3a23bffeca141c0ce6688c217655b87a",
-  "objective": "Implement an original Rust TeX-oriented font/shaping/metrics and PDF embedding crate on Jaysen mac-m1max-a using Opus. Consume declared visual fixtures and expose stable glyph IDs, advances, clusters, font identity, subset embedding, Unicode maps, and explicit missing-glyph behavior without modifying compiler-owned files.",
+  "input_main_sha": "a77e697faa51866607f8c9cf9f5d2a65a63e1521",
+  "objective": "Extend glyph clustering, kerning, combining marks, fallback identity, subset embedding and ToUnicode with licensed pinned fonts.",
   "owned_paths": [
     "crates/font-engine"
   ],
-  "revision": 1,
+  "revision": 2,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-018",
   "timebox_minutes": 45,
-  "updated_utc": "2026-09-12T05:20:26Z"
+  "updated_utc": "2026-09-12T06:04:03Z"
 }

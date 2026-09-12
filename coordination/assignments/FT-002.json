@@ -1,23 +1,23 @@
 {
   "acceptance": [
-    "Compare incremental results with clean builds after edits and macro changes",
-    "Measure cold/warm/edit latency on documented fixtures; report actual sub-200ms result or gap",
-    "Malformed-input examples retain partial output and explicit source diagnostics"
+    "Corpus macro, scope, comments/escapes, and include cases improve without losing any passing check",
+    "Included output preserves exact source file identity and UTF-8 byte ranges",
+    "Compiler and PDF paths share one layout/font representation or document a tested adapter"
   ],
   "agent_id": "claude",
-  "allocation_id": "openai-kabir-plus-ft002-stage3",
+  "allocation_id": "openai-kabir-plus-ft002-stage4",
   "branch": "agent/claude/compiler-foundation",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "60ceb5c3caedad2cb06d2862836d3f97dc04067b",
-  "objective": "Add dependency-aware invalidation and cached reusable compiler work to the original Rust implementation. Preserve state semantics; recover malformed input with marked diagnostics.",
+  "input_main_sha": "81f02dc739a650a6a704157bf96eadeb5d13c392",
+  "objective": "Integrate the four Kabir child streams: reusable incremental state, scoped macro expansion, project-relative multifile dependencies, and independent equivalence/performance evidence. Resolve issues #8 and #9 without duplicating layout or silently substituting unsupported glyphs.",
   "owned_paths": [
     "crates/compiler"
   ],
-  "revision": 3,
+  "revision": 4,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-002",
   "timebox_minutes": 45,
-  "updated_utc": "2026-09-12T04:49:19Z"
+  "updated_utc": "2026-09-12T05:41:35Z"
 }
