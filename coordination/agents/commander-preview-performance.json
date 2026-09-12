@@ -13,17 +13,17 @@
   "capabilities": [
     "Preview helper serialization and latency"
   ],
-  "code_revision": "f72c44cd760620895705d63ca518ba4e08272e25",
+  "code_revision": "bb4fa4899c4b513df2a0371aecc5925e9660d276",
   "eta_minutes": null,
   "machine": "linux-primary",
   "main_integrated_through": "e5901797e8a7ebdd8d714ecdee6793e1097515a9",
-  "next_action": "Commander/native consumer agree opt-in negotiation and queue priorities; then implement controlled helper delivery.",
+  "next_action": "Commander/native remeasure integratedserializer; continue snapshot negotiation afterconsumeragreement.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "FT048 internal50KB30msburst:off2current,on14historical+2current. Bothfinalclean/reopen exact; finalafterlastsend56.48/51.996ms notstablegainclaim. Driverbounded andstrictlintpass; nativewireunchanged.",
+  "summary": "Serializer-onlye757 audit:20/20full301page replies byte-identical to4425;120sameharnesssamples exactclean.500KBmedian278\u2192153ms,p952048\u2192843ms,tailcauseunknown. Fulloutputretained,no universal200ms/nativeclaim.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T09:30:37Z",
+  "updated_utc": "2026-09-12T09:35:31Z",
   "usage": {
     "status": "unknown"
   }
