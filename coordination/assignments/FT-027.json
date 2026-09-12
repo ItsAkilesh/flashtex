@@ -11,15 +11,16 @@
   "deadline_utc": null,
   "dependencies": [],
   "input_main_sha": "cab39a20278914747f92ee703f6da40a26b72a93",
-  "objective": "Enable rooted file export with explicit conflict and uncertain-durability outcomes",
+  "objective": "Dynamic rooted project membership with additive atomic index membership replacement preserving monotonic generation and stale snapshot refusal",
   "owned_paths": [
     "crates/preview-controller",
-    "crates/document-runtime"
+    "crates/document-runtime",
+    "crates/project-index"
   ],
-  "revision": 5,
+  "revision": 6,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-027",
   "timebox_minutes": 30,
-  "updated_utc": "2026-09-12T06:46:32Z"
+  "updated_utc": "2026-09-12T06:52:47Z"
 }
