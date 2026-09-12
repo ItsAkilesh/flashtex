@@ -337,3 +337,251 @@ fn write_string(s: &str, out: &mut String) {
     }
     out.push('"');
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── parse: primitives ──────────────────────────────────────────────────────
+
+    #[test]
+    fn parse_null() {
+        assert_eq!(parse("null").unwrap(), Value::Null);
+    }
+
+    #[test]
+    fn parse_bool_true() {
+        assert_eq!(parse("true").unwrap(), Value::Bool(true));
+    }
+
+    #[test]
+    fn parse_bool_false() {
+        assert_eq!(parse("false").unwrap(), Value::Bool(false));
+    }
+
+    #[test]
+    fn parse_integer() {
+        assert_eq!(parse("42").unwrap(), Value::Num(42.0));
+    }
+
+    #[test]
+    fn parse_negative_integer() {
+        assert_eq!(parse("-7").unwrap(), Value::Num(-7.0));
+    }
+
+    #[test]
+    fn parse_float() {
+        let v = parse("3.14").unwrap();
+        if let Value::Num(n) = v {
+            assert!((n - 3.14).abs() < 1e-10);
+        } else {
+            panic!("expected Num");
+        }
+    }
+
+    #[test]
+    fn parse_string_plain() {
+        assert_eq!(parse(r#""hello""#).unwrap(), Value::Str("hello".into()));
+    }
+
+    #[test]
+    fn parse_string_escape_sequences() {
+        let v = parse(r#""\"\\\n\r\t""#).unwrap();
+        assert_eq!(v, Value::Str("\"\\\n\r\t".into()));
+    }
+
+    #[test]
+    fn parse_string_unicode_escape_bmp() {
+        // A = 'A'
+        let v = parse(r#""A""#).unwrap();
+        assert_eq!(v, Value::Str("A".into()));
+    }
+
+    #[test]
+    fn parse_string_surrogate_pair() {
+        // 😀 = 😀 (U+1F600)
+        let v = parse(r#""😀""#).unwrap();
+        assert_eq!(v, Value::Str("😀".into()));
+    }
+
+    #[test]
+    fn parse_empty_array() {
+        assert_eq!(parse("[]").unwrap(), Value::Arr(vec![]));
+    }
+
+    #[test]
+    fn parse_array_with_elements() {
+        let v = parse("[1,2,3]").unwrap();
+        assert_eq!(v, Value::Arr(vec![Value::Num(1.0), Value::Num(2.0), Value::Num(3.0)]));
+    }
+
+    #[test]
+    fn parse_empty_object() {
+        assert_eq!(parse("{}").unwrap(), Value::obj());
+    }
+
+    #[test]
+    fn parse_object_with_fields() {
+        let v = parse(r#"{"a":1,"b":"x"}"#).unwrap();
+        assert_eq!(v.get("a"), Some(&Value::Num(1.0)));
+        assert_eq!(v.get("b"), Some(&Value::Str("x".into())));
+    }
+
+    #[test]
+    fn parse_whitespace_is_ignored() {
+        assert_eq!(parse("  42  ").unwrap(), Value::Num(42.0));
+    }
+
+    // ── parse: error cases ─────────────────────────────────────────────────────
+
+    #[test]
+    fn parse_error_trailing_content() {
+        assert!(parse("1 2").is_err(), "trailing content must be an error");
+    }
+
+    #[test]
+    fn parse_error_unterminated_string() {
+        assert!(parse(r#""hello"#).is_err());
+    }
+
+    #[test]
+    fn parse_error_bad_escape() {
+        assert!(parse(r#""\q""#).is_err());
+    }
+
+    #[test]
+    fn parse_error_empty_input() {
+        assert!(parse("").is_err());
+    }
+
+    #[test]
+    fn parse_error_unpaired_high_surrogate() {
+        assert!(parse(r#""\uD800""#).is_err(), "unpaired high surrogate must fail");
+    }
+
+    // ── write: formatting ──────────────────────────────────────────────────────
+
+    #[test]
+    fn write_null() {
+        assert_eq!(write(&Value::Null), "null");
+    }
+
+    #[test]
+    fn write_bool() {
+        assert_eq!(write(&Value::Bool(true)), "true");
+        assert_eq!(write(&Value::Bool(false)), "false");
+    }
+
+    #[test]
+    fn write_integer_as_integer() {
+        // Whole-number f64 values within range are written without decimal point.
+        assert_eq!(write(&Value::Num(42.0)), "42");
+        assert_eq!(write(&Value::Num(-7.0)), "-7");
+        assert_eq!(write(&Value::Num(0.0)), "0");
+    }
+
+    #[test]
+    fn write_float_preserves_decimal() {
+        let s = write(&Value::Num(3.14));
+        assert!(s.contains('.'), "float must include decimal point, got {}", s);
+    }
+
+    #[test]
+    fn write_non_finite_as_null() {
+        // JSON has no NaN/Infinity; the spec mandates serialising them as null.
+        assert_eq!(write(&Value::Num(f64::NAN)), "null");
+        assert_eq!(write(&Value::Num(f64::INFINITY)), "null");
+        assert_eq!(write(&Value::Num(f64::NEG_INFINITY)), "null");
+    }
+
+    #[test]
+    fn write_string_escapes_special_chars() {
+        let s = write(&Value::Str("a\nb\tc\"d\\e".into()));
+        assert_eq!(s, r#""a\nb\tc\"d\\e""#);
+    }
+
+    #[test]
+    fn write_control_char_below_0x20() {
+        // U+0001 must be escaped as \u0001, not emitted as a raw control char.
+        let s = write(&Value::Str("\u{1}".into()));
+        assert_eq!(s, "\"\\u0001\"");
+    }
+
+    #[test]
+    fn write_multibyte_utf8_passthrough() {
+        // Non-ASCII printable chars do not need escaping.
+        let s = write(&Value::Str("héllo".into()));
+        assert_eq!(s, r#""héllo""#);
+    }
+
+    #[test]
+    fn write_array() {
+        let v = Value::Arr(vec![Value::Num(1.0), Value::Null]);
+        assert_eq!(write(&v), "[1,null]");
+    }
+
+    #[test]
+    fn write_object_keys_sorted() {
+        // BTreeMap ensures alphabetical key order in output.
+        let mut v = Value::obj();
+        v.set("z", Value::Num(2.0));
+        v.set("a", Value::Num(1.0));
+        let s = write(&v);
+        let a_pos = s.find("\"a\"").expect("key a");
+        let z_pos = s.find("\"z\"").expect("key z");
+        assert!(a_pos < z_pos, "BTreeMap must produce alphabetical key order");
+    }
+
+    // ── round-trip ─────────────────────────────────────────────────────────────
+
+    #[test]
+    fn round_trip_nested_object() {
+        let original = r#"{"diags":[{"msg":"oops","code":42}],"ok":true}"#;
+        let parsed = parse(original).unwrap();
+        let rewritten = write(&parsed);
+        let reparsed = parse(&rewritten).unwrap();
+        assert_eq!(parsed, reparsed, "parse → write → parse must be stable");
+    }
+
+    #[test]
+    fn round_trip_string_with_escapes() {
+        let s = "line1\nline2\ttab\"quote\\backslash";
+        let json = write(&Value::Str(s.into()));
+        let back = parse(&json).unwrap();
+        assert_eq!(back, Value::Str(s.into()));
+    }
+
+    // ── Value helpers ──────────────────────────────────────────────────────────
+
+    #[test]
+    fn as_str_returns_some_for_str() {
+        assert_eq!(Value::Str("x".into()).as_str(), Some("x"));
+    }
+
+    #[test]
+    fn as_str_returns_none_for_non_str() {
+        assert_eq!(Value::Num(1.0).as_str(), None);
+    }
+
+    #[test]
+    fn as_i64_returns_int_for_whole_number() {
+        assert_eq!(Value::Num(99.0).as_i64(), Some(99i64));
+    }
+
+    #[test]
+    fn as_i64_returns_none_for_non_finite() {
+        assert_eq!(Value::Num(f64::NAN).as_i64(), None);
+    }
+
+    #[test]
+    fn as_arr_returns_some_for_arr() {
+        let v = Value::Arr(vec![Value::Null]);
+        assert!(v.as_arr().is_some());
+    }
+
+    #[test]
+    fn get_returns_none_for_missing_key() {
+        let v = Value::obj();
+        assert!(v.get("missing").is_none());
+    }
+}
