@@ -16,6 +16,8 @@ use std::sync::Arc;
 
 pub struct PipelineCff {
     list: DisplayList,
+    original: Vec<u8>,
+    resources: BTreeMap<String, Arc<CffFontResource>>,
     fonts: BTreeMap<String, CachedCffConsumer>,
 }
 impl PipelineCff {
@@ -88,7 +90,12 @@ impl PipelineCff {
         for d in &list.diagnostics {
             validate_source_bytes(&d.sources, documents)?;
         }
-        Ok(Self { list, fonts })
+        Ok(Self {
+            list,
+            fonts,
+            original: bytes.to_vec(),
+            resources: resources.clone(),
+        })
     }
     /// Producer advances remain distinct from CFF outline advances; absolute origins
     /// drive painting and the immutable display retains the original metrics.
@@ -192,5 +199,110 @@ impl PipelineCff {
             primitives,
             limits,
         )
+    }
+}
+
+/// Searchable PDF emitted by the existing PDF owner, after immutable input gates.
+/// ToUnicode is exact only for the accepted one-glyph-per-cluster profile.
+pub struct SearchablePdf {
+    pub bytes: Vec<u8>,
+    pub input_sha256: String,
+    pub report: flashtex_pdf::v2::V2Report,
+}
+impl PipelineCff {
+    pub fn export_searchable(&self, max_pdf_bytes: usize) -> Result<SearchablePdf> {
+        require(
+            !self
+                .list
+                .diagnostics
+                .iter()
+                .any(|d| matches!(d.severity, Severity::Error)),
+            "error diagnostics prevent searchable export",
+        )?;
+        require(
+            max_pdf_bytes > 0 && max_pdf_bytes <= 64 * 1024 * 1024,
+            "PDF output budget",
+        )?;
+        require(self.list.pages.len() <= 256, "PDF page budget")?;
+        let mut mappings: BTreeMap<(&str, u32), &str> = BTreeMap::new();
+        let mut glyphs = 0usize;
+        for page in &self.list.pages {
+            for item in &page.items {
+                if let Item::GlyphRun(run) = item {
+                    glyphs = glyphs
+                        .checked_add(run.glyphs.len())
+                        .ok_or_else(|| ValidationError("glyph budget".into()))?;
+                    require(glyphs <= 100000, "glyph budget")?;
+                    let mut counts = vec![0usize; run.clusters.len()];
+                    for g in &run.glyphs {
+                        counts[g.cluster as usize] += 1;
+                    }
+                    require(
+                        counts.iter().all(|n| *n == 1),
+                        "multi-glyph cluster requires ActualText support",
+                    )?;
+                    for g in &run.glyphs {
+                        let c = &run.clusters[g.cluster as usize];
+                        let text = &run.text[c.text_start_byte as usize..c.text_end_byte as usize];
+                        require(
+                            !text.is_empty(),
+                            "empty cluster requires ActualText support",
+                        )?;
+                        if let Some(previous) = mappings.insert((&run.font_id, g.gid), text) {
+                            require(
+                                previous == text,
+                                "ambiguous GID text requires ActualText support",
+                            )?;
+                        }
+                    }
+                }
+            }
+        }
+        let directory = tempfile::tempdir()
+            .map_err(|e| ValidationError(format!("private font staging: {e}")))?;
+        let mut total = 0usize;
+        let mut expected = BTreeMap::new();
+        for f in &self.list.fonts {
+            let bytes = self.resources[&f.font_id].bytes();
+            total = total
+                .checked_add(bytes.len())
+                .ok_or_else(|| ValidationError("font byte budget".into()))?;
+            require(total <= 64 * 1024 * 1024, "font byte budget")?;
+            let path = directory.path().join(format!("{}.otf", f.sha256));
+            std::fs::write(&path, bytes)
+                .map_err(|e| ValidationError(format!("font staging: {e}")))?;
+            expected.insert(f.font_id.as_str(), path);
+        }
+        let input = std::str::from_utf8(&self.original)
+            .map_err(|_| ValidationError("UTF8 envelope".into()))?;
+        let (document, report) = flashtex_pdf::v2::from_v2(
+            input,
+            &flashtex_pdf::v2::V2Options {
+                font_dirs: vec![directory.path().to_path_buf()],
+            },
+        )
+        .map_err(ValidationError)?;
+        for font in &report.fonts {
+            require(
+                expected.get(font.font_id.as_str()) == Some(&font.path),
+                "unexpected font resolver path",
+            )?;
+            require(
+                font.hash_form == flashtex_pdf::v2::HashForm::Bytes,
+                "raw font identity required",
+            )?;
+        }
+        let output = flashtex_pdf::exact::render_exact(&document)
+            .map_err(|e| ValidationError(format!("PDF export: {e:?}")))?;
+        require(output.bytes.len() <= max_pdf_bytes, "PDF output budget")?;
+        require(
+            output.warnings.is_empty(),
+            "PDF export warnings require review",
+        )?;
+        Ok(SearchablePdf {
+            bytes: output.bytes,
+            input_sha256: digest(&self.original),
+            report,
+        })
     }
 }

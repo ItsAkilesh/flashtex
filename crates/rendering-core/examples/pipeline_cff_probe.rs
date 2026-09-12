@@ -12,8 +12,8 @@ use flashtex_rendering_core::{
 use std::{collections::BTreeMap, path::Path};
 fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     let a: Vec<_> = std::env::args().collect();
-    if a.len() != 6 {
-        return Err("DISPLAY REQUEST FONT LICENSE OUTPUT_PREFIX".into());
+    if a.len() != 6 && !(a.len() == 7 && a[6] == "--searchable") {
+        return Err("DISPLAY REQUEST FONT LICENSE OUTPUT_PREFIX [--searchable]".into());
     }
     let bytes = std::fs::read(&a[1])?;
     let Message::DisplayList(list) = parse(&bytes)?.message else {
@@ -94,6 +94,21 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         &docs,
         &BTreeMap::from([(f.font_id.clone(), resource)]),
     )?;
+    if a.len() == 7 {
+        let pdf = adapter.export_searchable(64 * 1024 * 1024)?;
+        std::fs::write(format!("{}.pdf", a[5]), &pdf.bytes)?;
+        let evidence = serde_json::json!({"format":"flashtex-verified-searchable-pipeline-probe-v1","input_sha256":pdf.input_sha256,"pdf_sha256":digest(&pdf.bytes),"font_sha256":digest(&font),"license_sha256":digest(&license),"documents":adapter.display().documents,"glyphs":pdf.report.glyphs,"pages":pdf.report.pages,"visual_parity":null,"source_text_policy":"producer-cluster-text; source spans retained separately","registry_generation":registry.generation()});
+        std::fs::write(
+            format!("{}.evidence.json", a[5]),
+            serde_json::to_vec_pretty(&evidence)?,
+        )?;
+        println!(
+            "searchable_pdf_sha256={} input_sha256={}",
+            digest(&pdf.bytes),
+            pdf.input_sha256
+        );
+        return Ok(());
+    }
     let mut streams = Vec::new();
     for i in 0..adapter.display().pages.len() {
         let batch = adapter

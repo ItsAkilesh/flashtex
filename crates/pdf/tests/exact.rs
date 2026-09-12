@@ -101,6 +101,7 @@ fn cid_font_from_synthetic(gids: &[u16]) -> ExactFont {
     }
     ExactFont::CidCff(CidFont {
         base_font: format!("{}+SynthFont", subset_tag(&set, "synthetic")),
+        descendant_base_font: None,
         program: FontProgram::Cff(sub.bytes),
         widths,
         default_width: d("1000"),
@@ -114,8 +115,11 @@ fn cid_font_from_synthetic(gids: &[u16]) -> ExactFont {
             stem_v: d("80"),
             x_height: None,
             char_set: None,
+            extra: Vec::new(),
         },
         to_unicode: BTreeMap::from([(1u16, "a".to_string()), (3, "ffi".to_string())]),
+        to_unicode_verbatim: None,
+        cid_set: None,
         glyphs: set,
     })
 }
@@ -168,6 +172,7 @@ fn sample_document() -> ExactDocument {
                 width: d("612"),
                 height: d("792"),
                 content: Content::Ops(ops),
+                fonts: None,
             },
             ExactPage {
                 width: d("595.276"),
@@ -175,6 +180,7 @@ fn sample_document() -> ExactDocument {
                 content: Content::Verbatim(
                     b"BT\n/F1 9.5 Tf\n1 0 0 1 50 800 Tm\n(\\000\\001) Tj\nET\n".to_vec(),
                 ),
+                fonts: Some(vec!["F1".into()]),
             },
         ],
         fonts: BTreeMap::from([("F1".to_string(), cid_font_from_synthetic(&[1, 3, 5]))]),
@@ -345,6 +351,14 @@ fn validation_rejects_unbalanced_state_unknown_fonts_and_foreign_operators() {
             String::from_utf8_lossy(&content)
         );
     }
+    doc.pages[0].content = Content::Verbatim(b"BT /F1 10 Tf ET".to_vec());
+    doc.pages[0].fonts = Some(vec![]);
+    let e = render_exact(&doc).unwrap_err().to_string();
+    assert!(e.contains("not in this page's resources"), "{e}");
+    doc.pages[0].fonts = Some(vec!["F2".into()]);
+    let e = render_exact(&doc).unwrap_err().to_string();
+    assert!(e.contains("/F2 is not declared in the document"), "{e}");
+    doc.pages[0].fonts = None;
     doc.pages[0].content = Content::Verbatim(b"0 0 m 1 1 l S".to_vec());
     doc.pages[0].width = d("0");
     assert!(
@@ -395,6 +409,14 @@ fn pdftex_style_simple_type1_font_round_trips_through_reader_and_reemit() {
             stem_v: d("85"),
             x_height: Some(d("450")),
             char_set: Some("/T/fi/fl".into()),
+            extra: vec![
+                ("AvgWidth".into(), "537".into()),
+                (
+                    "Style".into(),
+                    "<</Panose (\\000\\000\\000\\000\\005\\000\\000\\000\\000\\000\\000\\000)>>"
+                        .into(),
+                ),
+            ],
         }),
         to_unicode: Some(b"%!PS-Adobe-3.0 Resource-CMap\n(fake cmap body)\n".to_vec()),
     });
@@ -404,6 +426,7 @@ fn pdftex_style_simple_type1_font_round_trips_through_reader_and_reemit() {
             width: d("612"),
             height: d("792"),
             content: Content::Verbatim(content.clone()),
+            fonts: None,
         }],
         fonts: BTreeMap::from([("F44".to_string(), font.clone())]),
     };
@@ -585,6 +608,7 @@ fn latin_modern_cff_subset_preserves_gids_and_renders_in_coregraphics() {
             width: d("612"),
             height: d("792"),
             content: Content::Ops(run.to_ops().unwrap()),
+            fonts: None,
         }],
         fonts: BTreeMap::from([("F1".to_string(), exact)]),
     };
@@ -717,4 +741,143 @@ fn pdflatex_reference_reemits_with_identical_content_and_font_programs() {
     let again = render_exact(&compare::reemit(&ours).unwrap()).unwrap();
     assert_eq!(again.bytes, out.bytes);
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// Oracle only: xelatex (xdvipdfmx) writes CID-keyed CFF subsets under
+/// `Type0`/`Identity-H`, the same font form this crate's exact route
+/// produces, so its output exercises the CID side of the reader/re-emit.
+fn xelatex() -> Option<PathBuf> {
+    [
+        "/usr/local/texlive/2026/bin/universal-darwin/xelatex",
+        "/Library/TeX/texbin/xelatex",
+    ]
+    .iter()
+    .map(PathBuf::from)
+    .find(|p| p.is_file())
+}
+
+#[test]
+fn xelatex_reference_with_cid_keyed_cff_reemits_identically() {
+    let (Some(tex), Some(lm)) = (xelatex(), latin_modern()) else {
+        eprintln!("skipped: xelatex oracle or Latin Modern not installed");
+        return;
+    };
+    let lm_dir = lm.parent().unwrap().to_string_lossy().into_owned();
+    let dir = std::env::temp_dir().join(format!("flashtex-pdf-exact-xe-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("main.tex"),
+        format!(
+            "\\documentclass[12pt]{{article}}\\usepackage{{fontspec}}\\setmainfont{{lmroman10-regular.otf}}[Path={lm_dir}/,BoldFont=lmroman10-bold.otf]\\usepackage[margin=1in]{{geometry}}\\setlength{{\\parindent}}{{0pt}}\\pagestyle{{empty}}\\begin{{document}}Efficient \\textbf{{bold}} text: $\\alpha+\\frac{{a}}{{b}}$.\\end{{document}}\n"
+        ),
+    )
+    .unwrap();
+    let status = std::process::Command::new(&tex)
+        .current_dir(&dir)
+        .args(["-interaction=batchmode", "-halt-on-error", "main.tex"])
+        .output()
+        .unwrap();
+    let reference = dir.join("main.pdf");
+    if !status.status.success() || !reference.is_file() {
+        eprintln!(
+            "skipped: xelatex failed ({})",
+            String::from_utf8_lossy(&status.stdout)
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+        return;
+    }
+    let file = PdfFile::parse(&std::fs::read(&reference).unwrap()).unwrap();
+    let doc = compare::reemit(&file).unwrap();
+    let cid_fonts: Vec<&CidFont> = doc
+        .fonts
+        .values()
+        .filter_map(|f| match f {
+            ExactFont::CidCff(c) => Some(c),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        cid_fonts.len() >= 2,
+        "regular and bold Latin Modern as CIDFontType0C"
+    );
+    for c in &cid_fonts {
+        let program = CffFont::parse(c.program.bytes()).unwrap();
+        assert!(
+            program.is_cid_keyed(),
+            "xdvipdfmx embeds CID-keyed CFF subsets"
+        );
+        assert!(c.to_unicode_verbatim.is_some() && c.cid_set.is_some());
+        assert!(
+            c.descendant_base_font.is_some(),
+            "Type0 name carries -Identity-H"
+        );
+    }
+    let out = render_exact(&doc).unwrap();
+    verify::check_structure(&out.bytes).unwrap();
+    let ours = PdfFile::parse(&out.bytes).unwrap();
+    let report = compare::classify(&file, &ours, "xelatex", "exact");
+    eprintln!("{}", report.text());
+    assert!(report.content_byte_identical.iter().all(|&x| x));
+    assert!(
+        !report.font_program_identical.is_empty()
+            && report.font_program_identical.values().all(|&x| x)
+    );
+    let allowed = BTreeSet::from([
+        Category::ObjectLayout,
+        Category::Compression,
+        Category::DocumentIdentity,
+    ]);
+    assert!(report.categories.is_subset(&allowed), "{}", report.text());
+    let again = render_exact(&compare::reemit(&ours).unwrap()).unwrap();
+    assert_eq!(again.bytes, out.bytes, "fixed point");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// Issue #28: identical bytes must not imply operator equality when the
+/// stream is outside the bounded set.
+#[test]
+fn classify_reports_identical_unsupported_streams_as_unsupported_not_identical() {
+    let doc = sample_document();
+    let a = render_exact(&doc).unwrap();
+    // Same byte length, same container: turn the ` rg` in page 1's content
+    // into ` gs`, which the exact parser refuses.
+    let needle = b" rg\n";
+    let at = a
+        .bytes
+        .windows(needle.len())
+        .position(|w| w == needle)
+        .expect("page 1 content has an rg operator");
+    let mut bytes = a.bytes.clone();
+    bytes[at + 1..at + 3].copy_from_slice(b"gs");
+    let file = PdfFile::parse(&bytes).unwrap();
+    verify::check_structure(&bytes).unwrap();
+    let report = compare::classify(&file, &file, "a", "b");
+    assert_eq!(
+        report.content_byte_identical,
+        vec![true, true],
+        "bytes really are identical"
+    );
+    assert_eq!(
+        report.content_ops_identical,
+        vec![false, true],
+        "page 1 is unknown (unsupported), page 2 is parsed-identical"
+    );
+    assert!(
+        report.categories.contains(&Category::ContentUnsupported),
+        "{}",
+        report.text()
+    );
+    assert!(
+        report
+            .lines
+            .iter()
+            .any(|l| l.contains("outside the bounded operator set")),
+        "{}",
+        report.text()
+    );
+    // The unmodified file compared with itself is parsed-identical on both pages.
+    let good = PdfFile::parse(&a.bytes).unwrap();
+    let report = compare::classify(&good, &good, "a", "b");
+    assert_eq!(report.content_ops_identical, vec![true, true]);
+    assert!(report.categories.is_empty(), "{}", report.text());
 }
