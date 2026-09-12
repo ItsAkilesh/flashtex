@@ -128,9 +128,16 @@ pub struct VBlock {
     pub space_after: Option<(f64, f64, f64)>,
     /// `\nointerlineskip` before the first line (TeX's `ignore_depth`).
     pub no_interline_first: bool,
+    /// The block leaves `prev_depth` at `ignore_depth` (an `\hrule`, §1056):
+    /// no interline glue before whatever follows.
+    pub no_interline_after: bool,
     /// `\baselineskip` in force while this block's lines are appended (a
     /// heading's `\Large` value); `None` uses the page's.
     pub baselineskip: Option<f64>,
+    /// `\vskip` glue appended right after line `i` (`\\[<dimen>]`:
+    /// LaTeX's `\vadjust{\vskip <dimen>}`, §888 adjust material, before
+    /// the interline penalty); entries past the end are 0.
+    pub vskip_after: Vec<f64>,
 }
 
 /// Builds the vertical list with interline glue and penalties.
@@ -170,7 +177,12 @@ pub fn vlist(p: &PageParams, blocks: &[VBlock]) -> Vec<VItem> {
                 depth: *d,
                 payload: (bi, li),
             });
-            prev_depth = Some(*d);
+            prev_depth = if li + 1 == n && b.no_interline_after { None } else { Some(*d) };
+            if let Some(&v) = b.vskip_after.get(li) {
+                if v != 0.0 {
+                    out.push(glue((v, 0.0, 0.0)));
+                }
+            }
             if li + 1 < n {
                 let mut pen = b.interline_penalty;
                 if li == 0 {
@@ -410,7 +422,9 @@ mod tests {
             penalty_after: None,
             space_after: None,
             no_interline_first: false,
+            no_interline_after: false,
             baselineskip: None,
+            vskip_after: Vec::new(),
         }
     }
 
@@ -467,6 +481,8 @@ mod tests {
             penalty_after: Some(INF_PENALTY),
             space_after: Some((12.4, 1.0, 0.0)),
             no_interline_first: false,
+            no_interline_after: false,
+            vskip_after: Vec::new(),
             baselineskip: Some(22.0),
         };
         let mut after = para(3);
