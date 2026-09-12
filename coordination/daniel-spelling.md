@@ -10,7 +10,124 @@ Owned paths: `crates/spellcheck/**`, `coordination/daniel-spelling.md`,
 `coordination/agents/daniel-spelling.json`. No other crate or coordination
 file was touched.
 
-## Revision 2 (current)
+## Revision 3 (current)
+
+Objective: revision-bound spelling suggestions — bounded adversarial tests
+and stale-identity acceptance tests, written as a specification.
+
+**Exact tested commit: `9ba0dd7fb5cd9e1b89eeb5588f1b6ba915e7f4cd`**
+(`agent/daniel-spelling/spellcheck`, "spellcheck: revision-bound results
+plus adversarial/stale-identity tests"). `origin/main` at
+`486b759ce906cf987e4d7ebba9033c56b15a499b` was already an ancestor of this
+branch (verified via `git merge-base --is-ancestor`; `git fetch origin &&
+git merge origin/main --no-edit` reported "Already up to date"). `cargo
+test` (62 passed, 0 failed) and `cargo clippy --all-targets -- -D
+warnings` (clean) both ran against this exact commit's `crates/spellcheck`
+tree.
+
+**Salvage assessment of the interrupted prior run.** This session started
+with uncommitted, never-verified work on this branch: `CheckResult::
+is_stale_for` + a private `text_fingerprint` field in `lib.rs`, plus two
+new untracked test files (`adversarial_bounds.rs`, `stale_identity_
+acceptance.rs`). The `lib.rs` diff was sound as written and needed no
+changes. The test files were well-structured and matched the assignment's
+required case list, but running them (never done before this session)
+surfaced 4 failures — not flaky timing, but real, reproducible:
+
+- Two were genuine **product bugs** the tests were specifically designed
+  to catch: `check_impl`'s per-token exclusion check re-scanned the full
+  `excluded_ranges` list for every word token (`O(tokens * excluded_
+  ranges)`), which took ~5 minutes on the adversarial nested/unbalanced-
+  delimiter case (a ~660KB input, not even megabyte-scale) instead of
+  completing promptly; and `suggest()` recomputed the full bounded edit-
+  distance search for every *occurrence* of a misspelled word rather than
+  once per distinct word, which took ~17s (over the test's 10s bound) on
+  a megabyte document with one typo repeated 100,000 times.
+- Two were **bugs in the test assertions themselves**, unrelated to the
+  product: a dictionary generator that produced all 26 "c_t" words
+  including "cxt" — the exact word the test then checked, expecting it to
+  be a misspelling — made that word a dictionary entry instead; and a
+  command-exclusion test asserted a word would be flagged when, given the
+  command around it is correctly excluded and the word is a known
+  dictionary entry, the correct outcome is zero misspellings.
+
+Verdict: **partly salvageable, not discardable and not usable as-is.**
+Kept the `lib.rs` diff and both test files' structure/spec content
+unchanged in intent; fixed the two product bugs in `lib.rs` and the two
+incorrect assertions in `adversarial_bounds.rs`. All 62 tests now pass
+and the two previously-blowing-up cases (nested delimiters, megabyte
+document) each now run in a small fraction of a second, proving the
+bounds actually bind rather than merely being asserted.
+
+### New/changed public API surface
+
+- `CheckResult::is_stale_for(current_revision, current_text) -> bool`:
+  additive alongside rev 2's `is_stale(current_revision)`. Returns true if
+  either the revision moved on, *or* the revision is unchanged but
+  `current_text` is not byte-identical to what the result was computed
+  against — the case a naive revision-only check cannot see (a caller
+  that forgot to bump its revision counter after the text changed).
+  Backed by a new private `CheckResult::text_fingerprint: u64` field
+  (a `DefaultHasher` hash of the checked text, comparison-only, never
+  exposed, not a security hash) set by `check_revision` and
+  `check_cancellable`'s `Completed` path. `is_stale` itself is unchanged.
+
+### Product fixes made while verifying the above
+
+- `check_impl`: the exclusion-overlap check is now a two-pointer merge
+  (`excl_idx` advances monotonically across the whole token loop) instead
+  of calling a since-removed `overlaps_any` helper that rescanned all of
+  `excluded` per token. Sound because both `excluded_ranges` and
+  `tokenize_words` build their output via one left-to-right scan, so both
+  lists are already sorted and non-overlapping by construction.
+- `check_impl`: added a per-call `suggestion_cache: HashMap<&str,
+  Vec<String>>` keyed by the misspelled word, so a document repeating the
+  same typo many times pays for the bounded edit-distance search once,
+  not once per occurrence. Suggestions are a pure function of `(word,
+  dictionary)` within one call, so this is unobservable except in timing.
+
+### New tests (27, on top of the 35 rev 1+2 tests — 62 total)
+
+`tests/adversarial_bounds.rs` (21 tests) — one or more per required
+hostile-input category: megabyte-scale document (exact-match assertions,
+not just "didn't crash"), a single enormous (3,000,000-char) word, text
+of only math delimiters (single and mixed), unbalanced and nested math
+delimiters (both a repeated-unit stress case and a single deeply-
+unbalanced case), a command that runs off the end of input, an enormous
+(3,000,000-char) command name, a user dictionary exactly at and one past
+default/custom/zero capacity (asserting the exact typed
+`UserDictionaryError::CapacityExceeded`), empty-string and very-long
+dictionary/user-dictionary entries, text of only combining marks / zero-
+width characters / RTL overrides (individually and mixed with real words,
+with char-boundary assertions), and an always-true cancellation callback
+— proven to short-circuit by asserting the poll counter is exactly 1
+regardless of input size (50,000 words), not merely that the outcome is
+`Cancelled`. A cross-cutting test also checks `usize::MAX` `max_
+suggestions`/`max_edit_distance` config extremes stay bounded. Every case
+asserts a bounded/typed outcome — never a panic — and several (the
+timing-sensitive ones) assert elapsed wall-clock time against a generous
+10s ceiling to prove the bound actually binds, not just "seemed fast."
+
+`tests/stale_identity_acceptance.rs` (6 tests) — written to read as a
+specification of the revision contract rather than implementation-detail
+tests: (1) a result from one revision is stale against a later revision,
+via both `is_stale` and `is_stale_for`; (2) same revision + same text is
+fresh via both methods; (3) same revision + *changed* text is still
+detected as stale via `is_stale_for` specifically — the case `is_stale`
+alone cannot see, documented as such rather than treated as a defect in
+`is_stale`; plus a same-misspelling-count insensitivity check and
+confirmation the same three specifications hold through `check_
+cancellable`'s `Completed` path, not just `check_revision`.
+
+Rev 1's math/command exclusion tests and UTF-8 safety tests, and rev 2's
+`UserDictionary`/`LayeredDictionary`/cancellation tests, all still pass
+unmodified.
+
+Unfinished / out of scope for rev 3 as specified: no persistence, no
+consumer wiring (unchanged from rev 1/2); no change to the documented
+rev 1 limitations (math environments, ASCII-only suggestion alphabet).
+
+## Revision 2
 
 Objective: bounded user dictionary layered over the caller dictionary,
 source-revision-aware results, cancellation, and confirming no automatic
