@@ -11,7 +11,7 @@
 use crate::diagnostics::Diagnostic;
 use crate::export::{self, ExportFont};
 use crate::math::{self, MathBox};
-use crate::parser::{Block, Inline, MathRow, ParagraphStyle};
+use crate::parser::{Block, Inline, MathRow, ParagraphStyle, TextFamily, TextStyle};
 use crate::Span;
 use flashtex_font_engine::core14::Core14;
 use flashtex_font_engine::shape::{shape, ShapeOptions, Shaped};
@@ -561,7 +561,7 @@ impl LayoutCursor {
             .map(|row| {
                 row.cells
                     .iter()
-                    .map(|cell| math::layout(cell, size, &mut self.diagnostics))
+                    .map(|cell| math::layout_display(cell, size, &mut self.diagnostics))
                     .collect()
             })
             .collect();
@@ -915,10 +915,26 @@ fn visit_references(blocks: &[Block], visitor: &mut impl FnMut(&str, Span)) {
     }
 }
 
+/// The Core 14 face for a text style. Times has all four weight/shape
+/// variants; the engine carries only upright medium Helvetica and Courier, so
+/// bold or italic sans/typewriter text uses those faces unchanged.
+pub(crate) fn style_font(style: TextStyle) -> Font {
+    match (style.family, style.bold, style.italic) {
+        (TextFamily::Sans, ..) => Font::Helvetica,
+        (TextFamily::Mono, ..) => Font::Courier,
+        (TextFamily::Roman, false, false) => Font::TimesRoman,
+        (TextFamily::Roman, true, false) => Font::TimesBold,
+        (TextFamily::Roman, false, true) => Font::TimesItalic,
+        (TextFamily::Roman, true, true) => Font::TimesBoldItalic,
+    }
+}
+
 fn emit(c: &mut LayoutCursor, inlines: &[Inline], size: f64, font: Font) {
     for inline in inlines {
         match inline {
-            Inline::Text { text, span } => c.place(text.clone(), size, *span, font),
+            Inline::Text { text, span, style } => {
+                c.place(text.clone(), size, *span, style_font(*style))
+            }
             Inline::LineBreak { .. } => c.newline(size),
             Inline::Math {
                 list,
@@ -927,7 +943,11 @@ fn emit(c: &mut LayoutCursor, inlines: &[Inline], size: f64, font: Font) {
                 number_span,
                 span,
             } => {
-                let b = math::layout(list, size, &mut c.diagnostics);
+                let b = if *display {
+                    math::layout_display(list, size, &mut c.diagnostics)
+                } else {
+                    math::layout(list, size, &mut c.diagnostics)
+                };
                 if *display {
                     c.display_math(
                         b,

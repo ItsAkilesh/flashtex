@@ -46,6 +46,20 @@ pub enum Nucleus {
         denominator: MathList,
     },
     Radical(MathList),
+    /// `\mathbf{...}`: literal text in the bold roman face.
+    Bold(String),
+    /// `\boxed`, `\overline` and `\underline`: a list with real rules.
+    Framed {
+        body: MathList,
+        frame: Frame,
+    },
+    /// `\overset`, `\underset`, `\stackrel`: a base with a script-size list
+    /// centred directly above or below it.
+    Stacked {
+        base: MathList,
+        over: Option<MathList>,
+        under: Option<MathList>,
+    },
     /// `array`, `cases` and the amsmath matrix environments: a grid of cells
     /// with per-column alignment (`l`, `c`, `r`) and optional stretched fences.
     Matrix {
@@ -54,6 +68,13 @@ pub enum Nucleus {
         left: String,
         right: String,
     },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Frame {
+    Box,
+    Over,
+    Under,
 }
 
 /// Math-mode environments implemented as grids: (name, default column
@@ -69,6 +90,8 @@ const GRID_ENVIRONMENTS: &[(&str, char, &str, &str)] = &[
     ("Vmatrix", 'c', "‖", "‖"),
     ("cases", 'l', "{", ""),
     ("aligned", 'c', "", ""),
+    ("alignedat", 'c', "", ""),
+    ("split", 'c', "", ""),
     ("gathered", 'c', "", ""),
 ];
 
@@ -109,6 +132,7 @@ pub fn parse_tokens(tokens: &[Token], diagnostics: &mut Vec<Diagnostic>) -> Math
         i: 0,
         depth: 0,
         diagnostics,
+        pending: Vec::new(),
     }
     .list(false)
 }
@@ -119,13 +143,19 @@ pub fn parse_tokens(tokens: &[Token], diagnostics: &mut Vec<Diagnostic>) -> Math
 /// recurses once per opener. Without a bound, a pathological file — or a
 /// half-typed one — overflows the stack and kills the worker mid-keystroke.
 /// Exceeding the bound is an explicit diagnostic, not a crash.
-pub const MAX_MATH_DEPTH: usize = 256;
+// Keep ample headroom for the command parser's stack frame on the macOS Swift
+// app's worker thread as the supported command set grows. The previous 256
+// limit could exhaust that thread before the guard was reached.
+pub const MAX_MATH_DEPTH: usize = 128;
 
 struct MathParser<'a> {
     tokens: &'a [Token],
     i: usize,
     depth: usize,
     diagnostics: &'a mut Vec<Diagnostic>,
+    /// Atoms produced by the last `atom()` call beyond the one it returned
+    /// (a flattened style group, a root index), in order after it.
+    pending: Vec<MathAtom>,
 }
 
 impl MathParser<'_> {
@@ -169,6 +199,41 @@ impl MathParser<'_> {
                     self.i += 1;
                     atoms.extend(self.list(true).atoms);
                 }
+                // Limit-placement switches produce no atom, so a following
+                // script still attaches to the operator (`\lim\limits_{x}`).
+                TokenKind::Command(ref switch) if switch == "limits" || switch == "nolimits" => {
+                    self.i += 1;
+                }
+                TokenKind::Command(ref infix) if infix == "choose" || infix == "over" => {
+                    // TeX infix forms: everything before in this group is the
+                    // top, everything after (to the group's end) the bottom.
+                    self.i += 1;
+                    let top = MathList {
+                        atoms: std::mem::take(&mut atoms),
+                    };
+                    let bottom = self.list(stop_at_brace);
+                    let nucleus = if infix == "over" {
+                        Nucleus::Fraction {
+                            numerator: top,
+                            denominator: bottom,
+                        }
+                    } else {
+                        Nucleus::Matrix {
+                            rows: vec![vec![top], vec![bottom]],
+                            columns: "c".into(),
+                            left: "(".into(),
+                            right: ")".into(),
+                        }
+                    };
+                    return MathList {
+                        atoms: vec![MathAtom {
+                            nucleus,
+                            span: token.span,
+                            superscript: None,
+                            subscript: None,
+                        }],
+                    };
+                }
                 TokenKind::Superscript | TokenKind::Subscript => {
                     self.i += 1;
                     let script = self.script_argument(token.span);
@@ -196,6 +261,7 @@ impl MathParser<'_> {
                 _ => {
                     if let Some(atom) = self.atom() {
                         atoms.push(atom);
+                        atoms.append(&mut self.pending);
                     }
                 }
             }
@@ -226,7 +292,9 @@ impl MathParser<'_> {
             return self.list(true);
         }
         if let Some(atom) = self.atom() {
-            MathList { atoms: vec![atom] }
+            let mut atoms = vec![atom];
+            atoms.append(&mut self.pending);
+            MathList { atoms }
         } else {
             self.diagnostics.push(Diagnostic::error(
                 "math script is missing its argument",
@@ -267,12 +335,17 @@ impl MathParser<'_> {
                 if token.span.end - token.span.start == 2 {
                     let mu = match ch {
                         ',' => 3.0,
-                        ':' => 4.0,
+                        ':' | '>' => 4.0,
                         ';' => 5.0,
+                        ' ' => 6.0,
+                        '!' => -3.0,
                         _ => 0.0,
                     };
-                    if mu > 0.0 {
+                    if mu != 0.0 {
                         return Some(space(mu / 18.0, token.span));
+                    }
+                    if ch == '|' {
+                        return Some(symbol("∣∣".into(), token.span));
                     }
                 }
                 Some(symbol(ch.to_string(), span))
@@ -298,7 +371,38 @@ impl MathParser<'_> {
     }
 
     fn command_atom(&mut self, name: String, span: Span) -> MathAtom {
+        if let Some(operator) = OPERATOR_NAMES.iter().find(|op| **op == name) {
+            return text_atom(operator.to_string(), span);
+        }
         match name.as_str() {
+            "operatorname" => {
+                self.skip_star();
+                let (text, argument_span) = self.required_text_group("operatorname", span);
+                text_atom(text, span.merge(argument_span))
+            }
+            // Upright roman is already the math default in this subset, and
+            // the other style switches have no distinct face yet: keep the
+            // argument's content rather than dropping or garbling it.
+            "mathrm" | "mathit" | "mathsf" | "mathtt" | "mathnormal" | "boldsymbol" | "bm"
+            | "mbox" | "hbox" | "textrm" | "textit" | "textnormal" => {
+                let body = self.required_group(&name, span);
+                self.group_atom(body, span)
+            }
+            "displaystyle" | "textstyle" | "scriptstyle" | "scriptscriptstyle" | "nonumber"
+            | "notag" | "middle" => space(0.0, span),
+            "left" | "right" | "big" | "Big" | "bigg" | "Bigg" | "bigm" | "Bigm" | "biggm"
+            | "Biggm" | "Bigl" | "Bigr" | "biggl" | "biggr" | "Biggl" | "Biggr" => {
+                self.take_delimiter(&name, span)
+            }
+            "dots" | "ldots" | "dotsc" | "dotso" => text_atom("...".into(), span),
+            "cdots" | "dotsb" | "dotsm" | "dotsi" => symbol("⋅⋅⋅".into(), span),
+            // Symbol has no U+222C/U+222D: repeated real integral glyphs.
+            "iint" => symbol("∫∫".into(), span),
+            "lbrace" => symbol("{".into(), span),
+            "rbrace" => symbol("}".into(), span),
+            "iiint" => symbol("∫∫∫".into(), span),
+            "bmod" | "mod" => text_atom("mod".into(), span),
+            "dfrac" | "tfrac" | "cfrac" => self.command_atom("frac".into(), span),
             "frac" => {
                 let numerator = self.required_group("frac", span);
                 let denominator = self.required_group("frac", span);
@@ -313,12 +417,96 @@ impl MathParser<'_> {
                 }
             }
             "begin" => self.grid_environment(span),
-            "sqrt" => MathAtom {
-                nucleus: Nucleus::Radical(self.required_group("sqrt", span)),
-                span,
-                superscript: None,
-                subscript: None,
-            },
+            "sqrt" => {
+                let index = self.optional_bracket_list();
+                let radical = MathAtom {
+                    nucleus: Nucleus::Radical(self.required_group("sqrt", span)),
+                    span,
+                    superscript: None,
+                    subscript: None,
+                };
+                match index {
+                    // The root index sits as a raised script ahead of the sign.
+                    Some(index) if !index.atoms.is_empty() => {
+                        self.pending.push(radical);
+                        MathAtom {
+                            superscript: Some(index),
+                            ..space(0.0, span)
+                        }
+                    }
+                    _ => radical,
+                }
+            }
+            "overset" | "stackrel" | "underset" => {
+                let script = self.required_group(&name, span);
+                let base = self.required_group(&name, span);
+                let (over, under) = if name == "underset" {
+                    (None, Some(script))
+                } else {
+                    (Some(script), None)
+                };
+                MathAtom {
+                    nucleus: Nucleus::Stacked { base, over, under },
+                    span,
+                    superscript: None,
+                    subscript: None,
+                }
+            }
+            "binom" | "dbinom" | "tbinom" => {
+                let top = self.required_group(&name, span);
+                let bottom = self.required_group(&name, span);
+                MathAtom {
+                    nucleus: Nucleus::Matrix {
+                        rows: vec![vec![top], vec![bottom]],
+                        columns: "c".into(),
+                        left: "(".into(),
+                        right: ")".into(),
+                    },
+                    span,
+                    superscript: None,
+                    subscript: None,
+                }
+            }
+            "mathbf" | "textbf" => {
+                let (text, argument_span) = self.required_text_group(&name, span);
+                MathAtom {
+                    nucleus: Nucleus::Bold(text),
+                    span: span.merge(argument_span),
+                    superscript: None,
+                    subscript: None,
+                }
+            }
+            "boxed" | "overline" | "underline" => {
+                let body = self.required_group(&name, span);
+                let frame = match name.as_str() {
+                    "boxed" => Frame::Box,
+                    "overline" => Frame::Over,
+                    _ => Frame::Under,
+                };
+                MathAtom {
+                    nucleus: Nucleus::Framed { body, frame },
+                    span,
+                    superscript: None,
+                    subscript: None,
+                }
+            }
+            "tag" => {
+                let starred = matches!(self.tokens.get(self.i).map(|t| &t.kind), Some(TokenKind::Word(w)) if w == "*");
+                self.skip_star();
+                let (text, argument_span) = self.required_text_group("tag", span);
+                let label = if starred { text } else { format!("({text})") };
+                self.pending
+                    .push(text_atom(label, span.merge(argument_span)));
+                space(2.0 * QUAD_EM, span)
+            }
+            "pmod" => {
+                let body = self.required_group("pmod", span);
+                self.pending.push(text_atom("(mod".into(), span));
+                self.pending.push(space(6.0 / 18.0, span));
+                self.pending.extend(body.atoms);
+                self.pending.push(text_atom(")".into(), span));
+                space(QUAD_EM, span)
+            }
             "text" => {
                 let (text, argument_span) = self.required_text_group("text", span);
                 MathAtom {
@@ -348,6 +536,67 @@ impl MathParser<'_> {
         }
     }
 
+    /// Returns the first atom of `body` and queues the rest, so the group
+    /// flattens into the surrounding list exactly like a bare `{...}` group.
+    fn group_atom(&mut self, body: MathList, span: Span) -> MathAtom {
+        let mut atoms = body.atoms.into_iter();
+        match atoms.next() {
+            Some(first) => {
+                self.pending.extend(atoms);
+                first
+            }
+            None => space(0.0, span),
+        }
+    }
+
+    /// An optional `[...]` math argument, as in `\sqrt[n]{x}`.
+    fn optional_bracket_list(&mut self) -> Option<MathList> {
+        let mut cursor = self.i;
+        while matches!(
+            self.tokens.get(cursor).map(|t| &t.kind),
+            Some(TokenKind::Space)
+        ) {
+            cursor += 1;
+        }
+        if !matches!(self.tokens.get(cursor).map(|t| &t.kind), Some(TokenKind::Word(w)) if w == "[")
+        {
+            return None;
+        }
+        let start = cursor + 1;
+        let mut depth = 0usize;
+        let mut end = start;
+        while let Some(token) = self.tokens.get(end) {
+            match &token.kind {
+                TokenKind::LBrace => depth += 1,
+                TokenKind::RBrace => depth = depth.saturating_sub(1),
+                TokenKind::Word(w) if w == "]" && depth == 0 => break,
+                _ => {}
+            }
+            end += 1;
+        }
+        if end >= self.tokens.len() {
+            return None;
+        }
+        self.i = end + 1;
+        Some(
+            MathParser {
+                tokens: &self.tokens[start..end],
+                i: 0,
+                depth: self.depth,
+                diagnostics: self.diagnostics,
+                pending: Vec::new(),
+            }
+            .list(false),
+        )
+    }
+
+    fn skip_star(&mut self) {
+        if matches!(self.tokens.get(self.i).map(|t| &t.kind), Some(TokenKind::Word(w)) if w == "*")
+        {
+            self.i += 1;
+        }
+    }
+
     fn take_delimiter(&mut self, command: &str, span: Span) -> MathAtom {
         while matches!(
             self.tokens.get(self.i).map(|t| &t.kind),
@@ -363,6 +612,19 @@ impl MathParser<'_> {
             ));
             return symbol(String::new(), span);
         };
+        if let TokenKind::Command(name) = &token.kind {
+            let glyph = match name.as_str() {
+                "lbrace" => Some("{"),
+                "rbrace" => Some("}"),
+                "vert" => Some("|"),
+                "Vert" => Some("∣∣"),
+                other => command_glyph(other).filter(|_| DELIMITER_COMMANDS.contains(&other)),
+            };
+            if let Some(glyph) = glyph {
+                self.i += 1;
+                return symbol(glyph.into(), span.merge(token.span));
+            }
+        }
         let TokenKind::Word(delimiter) = &token.kind else {
             self.diagnostics.push(Diagnostic::error(
                 format!("\\{command} requires a following delimiter"),
@@ -371,7 +633,16 @@ impl MathParser<'_> {
             ));
             return symbol(String::new(), span);
         };
-        if delimiter.chars().count() != 1 || !"()[]{}|./".contains(delimiter.as_str()) {
+        if delimiter == "." {
+            // The null delimiter: an invisible fence (`\left.` / `\right.`).
+            self.i += 1;
+            return space(0.0, span.merge(token.span));
+        }
+        if delimiter == "|" && token.span.end - token.span.start == 2 {
+            self.i += 1;
+            return symbol("∣∣".into(), span.merge(token.span));
+        }
+        if delimiter.chars().count() != 1 || !"()[]{}|./<>".contains(delimiter.as_str()) {
             self.diagnostics.push(Diagnostic::error(
                 format!("\\{command} does not support delimiter {delimiter:?}"),
                 Some(span.merge(token.span)),
@@ -562,7 +833,11 @@ impl MathParser<'_> {
                 }
             }
         }
-        if name == "aligned" {
+        if name == "alignedat" {
+            // The column-pair count argument; the grid sizes itself from cells.
+            let _ = self.required_text_group("alignedat", span);
+        }
+        if matches!(name.as_str(), "aligned" | "alignedat" | "split") {
             columns = "rl".repeat(8);
         }
         let mut rows: Vec<Vec<Vec<Token>>> = vec![vec![Vec::new()]];
@@ -640,6 +915,7 @@ impl MathParser<'_> {
                             i: 0,
                             depth: self.depth,
                             diagnostics: self.diagnostics,
+                            pending: Vec::new(),
                         }
                         .list(false)
                     })
@@ -723,6 +999,92 @@ pub const COMMAND_GLYPHS: &[(&str, &str)] = &[
     ("sigma", "σ"),
     ("phi", "φ"),
     ("omega", "ω"),
+    // Handwritten-homework coverage (Adobe Symbol encodes every glyph below).
+    // Symbol has only the open-form epsilon (0x65), no lunate U+03F5, so
+    // `\epsilon` shares `\varepsilon`'s glyph; the README states this.
+    ("epsilon", "ε"),
+    ("varepsilon", "ε"),
+    ("zeta", "ζ"),
+    ("eta", "η"),
+    ("vartheta", "ϑ"),
+    ("iota", "ι"),
+    ("kappa", "κ"),
+    ("nu", "ν"),
+    ("xi", "ξ"),
+    ("varpi", "ϖ"),
+    ("rho", "ρ"),
+    ("varsigma", "ς"),
+    ("tau", "τ"),
+    ("upsilon", "υ"),
+    ("varphi", "ϕ"),
+    ("chi", "χ"),
+    ("psi", "ψ"),
+    ("Gamma", "Γ"),
+    ("Delta", "Δ"),
+    ("Theta", "Θ"),
+    ("Lambda", "Λ"),
+    ("Xi", "Ξ"),
+    ("Pi", "Π"),
+    ("Sigma", "Σ"),
+    ("Upsilon", "Υ"),
+    ("Phi", "Φ"),
+    ("Psi", "Ψ"),
+    ("Omega", "Ω"),
+    ("le", "≤"),
+    ("ge", "≥"),
+    ("ne", "≠"),
+    ("equiv", "≡"),
+    ("sim", "∼"),
+    ("cong", "≅"),
+    ("propto", "∝"),
+    ("perp", "⊥"),
+    ("partial", "∂"),
+    ("nabla", "∇"),
+    ("prod", "∏"),
+    ("ast", "∗"),
+    ("prime", "′"),
+    ("cup", "∪"),
+    ("cap", "∩"),
+    ("subset", "⊂"),
+    ("subseteq", "⊆"),
+    ("supset", "⊃"),
+    ("supseteq", "⊇"),
+    ("notin", "∉"),
+    ("ni", "∋"),
+    ("emptyset", "∅"),
+    ("varnothing", "∅"),
+    ("oplus", "⊕"),
+    ("otimes", "⊗"),
+    ("wedge", "∧"),
+    ("land", "∧"),
+    ("lor", "∨"),
+    ("to", "→"),
+    ("rightarrow", "→"),
+    ("leftarrow", "←"),
+    ("gets", "←"),
+    ("uparrow", "↑"),
+    ("downarrow", "↓"),
+    ("leftrightarrow", "↔"),
+    ("implies", "⇒"),
+    ("Leftarrow", "⇐"),
+    ("impliedby", "⇐"),
+    ("Leftrightarrow", "⇔"),
+    ("iff", "⇔"),
+    ("Uparrow", "⇑"),
+    ("Downarrow", "⇓"),
+    ("therefore", "∴"),
+    ("angle", "∠"),
+    ("aleph", "ℵ"),
+    ("Re", "ℜ"),
+    ("Im", "ℑ"),
+    ("wp", "℘"),
+    ("langle", "〈"),
+    ("rangle", "〉"),
+    ("lvert", "∣"),
+    ("rvert", "∣"),
+    // Symbol has no double bar U+2016: two real verticalbar glyphs.
+    ("lVert", "∣∣"),
+    ("rVert", "∣∣"),
     ("times", "×"),
     ("div", "÷"),
     ("pm", "±"),
@@ -730,7 +1092,7 @@ pub const COMMAND_GLYPHS: &[(&str, &str)] = &[
     ("geq", "≥"),
     ("neq", "≠"),
     ("approx", "≈"),
-    ("cdot", "·"),
+    ("cdot", "⋅"),
     ("infty", "∞"),
     ("sum", "∑"),
     ("int", "∫"),
@@ -747,6 +1109,38 @@ pub const COMMAND_GLYPHS: &[(&str, &str)] = &[
     // no size scaling).
     ("Longrightarrow", "⇒"),
 ];
+
+/// Named operators typeset as upright roman words (`\sin x`, `\lim_{x\to 0}`).
+const OPERATOR_NAMES: &[&str] = &[
+    "sin", "cos", "tan", "cot", "sec", "csc", "arcsin", "arccos", "arctan", "sinh", "cosh", "tanh",
+    "coth", "log", "ln", "lg", "exp", "lim", "liminf", "limsup", "max", "min", "sup", "inf", "det",
+    "gcd", "deg", "dim", "ker", "arg", "hom", "Pr", "sgn",
+];
+
+/// Named commands that `\left`, `\right` and `\big...` accept as fences.
+const DELIMITER_COMMANDS: &[&str] = &[
+    "langle",
+    "rangle",
+    "lvert",
+    "rvert",
+    "lVert",
+    "rVert",
+    "lbrace",
+    "rbrace",
+    "uparrow",
+    "downarrow",
+    "Uparrow",
+    "Downarrow",
+];
+
+fn text_atom(text: String, span: Span) -> MathAtom {
+    MathAtom {
+        nucleus: Nucleus::Text(text),
+        span,
+        superscript: None,
+        subscript: None,
+    }
+}
 
 /// The rule character used to draw fraction bars.
 ///
@@ -766,11 +1160,40 @@ pub fn layout(list: &MathList, size: f64, diagnostics: &mut Vec<Diagnostic>) -> 
     layout_list(list, size, size, 0, diagnostics)
 }
 
+/// Display-style layout: scripts on `\lim`-like operators, `\sum` and `\prod`
+/// at the top level stack centred above and below the operator, as in TeX.
+pub fn layout_display(list: &MathList, size: f64, diagnostics: &mut Vec<Diagnostic>) -> MathBox {
+    layout_list_with(list, size, size, 0, true, diagnostics)
+}
+
+/// Operators whose display-style scripts become limits.
+fn takes_display_limits(nucleus: &Nucleus) -> bool {
+    match nucleus {
+        Nucleus::Text(name) => matches!(
+            name.as_str(),
+            "lim" | "liminf" | "limsup" | "max" | "min" | "sup" | "inf" | "det" | "gcd" | "Pr"
+        ),
+        Nucleus::Symbol(glyph) => matches!(glyph.as_str(), "∑" | "∏"),
+        _ => false,
+    }
+}
+
 fn layout_list(
     list: &MathList,
     size: f64,
     root_size: f64,
     level: usize,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> MathBox {
+    layout_list_with(list, size, root_size, level, false, diagnostics)
+}
+
+fn layout_list_with(
+    list: &MathList,
+    size: f64,
+    root_size: f64,
+    level: usize,
+    display: bool,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> MathBox {
     let mut out = MathBox {
@@ -781,6 +1204,50 @@ fn layout_list(
     };
     for atom in &list.atoms {
         let mut nucleus = layout_nucleus(atom, size, root_size, level, diagnostics);
+        if display
+            && level == 0
+            && (atom.superscript.is_some() || atom.subscript.is_some())
+            && takes_display_limits(&atom.nucleus)
+        {
+            let script_size = root_size * SCRIPT_SCALE;
+            let sup = atom
+                .superscript
+                .as_ref()
+                .map(|l| layout_list(l, script_size, root_size, level + 1, diagnostics));
+            let sub = atom
+                .subscript
+                .as_ref()
+                .map(|l| layout_list(l, script_size, root_size, level + 1, diagnostics));
+            let width = [Some(&nucleus), sup.as_ref(), sub.as_ref()]
+                .into_iter()
+                .flatten()
+                .map(|b| b.width)
+                .fold(0.0, f64::max);
+            offset_items(
+                &mut nucleus.items,
+                out.width + (width - nucleus.width) / 2.0,
+                0.0,
+            );
+            out.ascent = out.ascent.max(nucleus.ascent);
+            out.descent = out.descent.max(nucleus.descent);
+            out.items.extend(nucleus.items);
+            // Limit baselines clear the operator's cap height / descender by
+            // a small gap; box ascents include font-size headroom.
+            if let Some(mut b) = sup {
+                let dy = -0.8 * size - 0.12 * size - b.descent;
+                offset_items(&mut b.items, out.width + (width - b.width) / 2.0, dy);
+                out.ascent = out.ascent.max(b.ascent - dy);
+                out.items.extend(b.items);
+            }
+            if let Some(mut b) = sub {
+                let dy = 0.2 * size + 0.12 * size + 0.75 * script_size;
+                offset_items(&mut b.items, out.width + (width - b.width) / 2.0, dy);
+                out.descent = out.descent.max(b.descent + dy);
+                out.items.extend(b.items);
+            }
+            out.width += width;
+            continue;
+        }
         let nucleus_width = nucleus.width;
         offset_items(&mut nucleus.items, out.width, 0.0);
         out.ascent = out.ascent.max(nucleus.ascent);
@@ -848,6 +1315,113 @@ fn layout_nucleus(
             ascent: size,
             descent: 0.2 * size,
         },
+        Nucleus::Bold(text) => MathBox {
+            items: vec![MathItem {
+                font: Some(crate::layout::Font::TimesBold),
+                text: text.clone(),
+                x: 0.0,
+                baseline: 0.0,
+                size,
+                span: atom.span,
+                rule: None,
+            }],
+            width: crate::layout::shaped_width(
+                text,
+                size,
+                crate::layout::Font::TimesBold,
+                atom.span,
+                diagnostics,
+            )
+            .0,
+            ascent: size,
+            descent: 0.2 * size,
+        },
+        Nucleus::Stacked { base, over, under } => {
+            let script_size = if level == 0 {
+                root_size * SCRIPT_SCALE
+            } else {
+                root_size * SECOND_ORDER_SCRIPT_SCALE
+            };
+            let mut b = layout_list(base, size, root_size, level, diagnostics);
+            let over = over
+                .as_ref()
+                .map(|l| layout_list(l, script_size, root_size, level + 1, diagnostics));
+            let under = under
+                .as_ref()
+                .map(|l| layout_list(l, script_size, root_size, level + 1, diagnostics));
+            let width = [Some(&b), over.as_ref(), under.as_ref()]
+                .into_iter()
+                .flatten()
+                .map(|m| m.width)
+                .fold(0.0, f64::max);
+            offset_items(&mut b.items, (width - b.width) / 2.0, 0.0);
+            let mut out = MathBox {
+                items: b.items,
+                width,
+                ascent: b.ascent,
+                descent: b.descent,
+            };
+            if let Some(mut m) = over {
+                let dy = -0.75 * size - 0.1 * size - m.descent;
+                offset_items(&mut m.items, (width - m.width) / 2.0, dy);
+                out.ascent = out.ascent.max(m.ascent - dy);
+                out.items.extend(m.items);
+            }
+            if let Some(mut m) = under {
+                let dy = 0.2 * size + 0.1 * size + 0.75 * script_size;
+                offset_items(&mut m.items, (width - m.width) / 2.0, dy);
+                out.descent = out.descent.max(m.descent + dy);
+                out.items.extend(m.items);
+            }
+            out
+        }
+        Nucleus::Framed { body, frame } => {
+            let mut b = layout_list(body, size, root_size, level, diagnostics);
+            let rule = FRACTION_RULE_EM * size;
+            let pad = if *frame == Frame::Box {
+                0.25 * size
+            } else {
+                0.0
+            };
+            offset_items(&mut b.items, pad, 0.0);
+            let width = b.width + 2.0 * pad;
+            // Content extents: ascent/descent carry font-size headroom, so the
+            // rules sit a small gap outside the nominal glyph box.
+            let top = -(0.75 * size) - 0.15 * size - pad * 0.4;
+            let bottom = 0.2 * size + 0.1 * size + pad * 0.4;
+            let rule_item = |x: f64, y: f64, w: f64, h: f64| MathItem {
+                font: None,
+                text: FRACTION_RULE_CHAR.to_string(),
+                x,
+                baseline: y + h,
+                size,
+                span: atom.span,
+                rule: Some(MathRule {
+                    y,
+                    width: w,
+                    height: h,
+                }),
+            };
+            let mut rules = Vec::new();
+            if matches!(frame, Frame::Box | Frame::Over) {
+                rules.push(rule_item(0.0, top - rule, width, rule));
+            }
+            if matches!(frame, Frame::Box | Frame::Under) {
+                rules.push(rule_item(0.0, bottom, width, rule));
+            }
+            if *frame == Frame::Box {
+                let height = bottom - top + 2.0 * rule;
+                rules.push(rule_item(0.0, top - rule, rule, height));
+                rules.push(rule_item(width - rule, top - rule, rule, height));
+            }
+            b.items.extend(rules);
+            MathBox {
+                items: b.items,
+                width,
+                ascent: b.ascent.max(-(top - rule)),
+                descent: b.descent.max(bottom + rule),
+            }
+        }
         Nucleus::Space { em } => MathBox {
             items: Vec::new(),
             width: em * size,
@@ -1125,6 +1699,16 @@ fn shift_atom(atom: &MathAtom, delta: isize) -> MathAtom {
                 denominator: shift_list(denominator, delta),
             },
             Nucleus::Radical(inner) => Nucleus::Radical(shift_list(inner, delta)),
+            Nucleus::Bold(s) => Nucleus::Bold(s.clone()),
+            Nucleus::Framed { body, frame } => Nucleus::Framed {
+                body: shift_list(body, delta),
+                frame: *frame,
+            },
+            Nucleus::Stacked { base, over, under } => Nucleus::Stacked {
+                base: shift_list(base, delta),
+                over: over.as_ref().map(|l| shift_list(l, delta)),
+                under: under.as_ref().map(|l| shift_list(l, delta)),
+            },
             Nucleus::Matrix {
                 rows,
                 columns,
@@ -1178,6 +1762,147 @@ mod parse_tests {
         assert_eq!(glyphs, ["∈", "∀", "∃", "∨", "⇒", "∣"]);
         let _ = layout(&list, 12.0, &mut diagnostics);
         assert!(diagnostics.is_empty(), "{diagnostics:?}");
+    }
+
+    #[test]
+    fn display_limits_stack_under_lim_but_stay_beside_inline_and_on_integrals() {
+        let mut diagnostics = Vec::new();
+        let tokens = crate::lexer::tokenize(r"\lim_{x\to 0} f \int_0^1 g");
+        let list = parse_tokens(&tokens, &mut diagnostics);
+        let x_of = |b: &MathBox, text: &str| {
+            b.items
+                .iter()
+                .find(|item| item.text == text)
+                .map(|item| (item.x, item.baseline))
+                .unwrap()
+        };
+        let display = layout_display(&list, 12.0, &mut diagnostics);
+        let inline = layout(&list, 12.0, &mut diagnostics);
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
+        let (lim_x, _) = x_of(&display, "lim");
+        let (sub_x, sub_y) = x_of(&display, "x");
+        // Stacked: the limit starts under the operator, not after it.
+        assert!(
+            sub_x <= lim_x + 1.0 && sub_y > 0.5 * 12.0,
+            "{lim_x} {sub_x} {sub_y}"
+        );
+        let (_, inline_sub_y) = x_of(&inline, "x");
+        assert!(inline_sub_y < sub_y);
+        // Integrals keep side scripts in display style.
+        let (int_x, _) = x_of(&display, "∫");
+        let zero_x = display
+            .items
+            .iter()
+            .rev()
+            .find(|item| item.text == "0")
+            .unwrap()
+            .x;
+        assert!(zero_x > int_x);
+        assert!(display.width < inline.width);
+    }
+
+    #[test]
+    fn stacked_scripts_and_infix_choose_over_build_real_atoms() {
+        let mut diagnostics = Vec::new();
+        let tokens = crate::lexer::tokenize(
+            r"\overset{?}{=} \underset{x}{\min} {n \choose k} {a \over b} \lim\limits_{x}",
+        );
+        let list = parse_tokens(&tokens, &mut diagnostics);
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
+        let nuclei: Vec<&Nucleus> = list.atoms.iter().map(|atom| &atom.nucleus).collect();
+        assert_eq!(nuclei.len(), 5, "{nuclei:?}");
+        assert!(
+            list.atoms[4].subscript.is_some(),
+            "limits keeps the script on lim"
+        );
+        assert!(matches!(
+            nuclei[0],
+            Nucleus::Stacked {
+                over: Some(_),
+                under: None,
+                ..
+            }
+        ));
+        assert!(matches!(
+            nuclei[1],
+            Nucleus::Stacked {
+                over: None,
+                under: Some(_),
+                ..
+            }
+        ));
+        assert!(matches!(nuclei[2], Nucleus::Matrix { rows, .. } if rows.len() == 2));
+        assert!(matches!(nuclei[3], Nucleus::Fraction { .. }));
+        let laid = layout(&list, 12.0, &mut diagnostics);
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
+        let question = laid.items.iter().find(|item| item.text == "?").unwrap();
+        let equals = laid.items.iter().find(|item| item.text == "=").unwrap();
+        assert!(question.baseline < equals.baseline - 6.0, "? sits above =");
+    }
+
+    #[test]
+    fn structural_homework_commands_build_real_atoms() {
+        let mut diagnostics = Vec::new();
+        let tokens = crate::lexer::tokenize(
+            r"\binom{n}{k} \sqrt[3]{8} \mathbf{F} \boxed{x=4} \overline{AB} a \pmod{n} \tag{2}",
+        );
+        let list = parse_tokens(&tokens, &mut diagnostics);
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
+        let nuclei: Vec<&Nucleus> = list.atoms.iter().map(|atom| &atom.nucleus).collect();
+        assert!(
+            matches!(nuclei[0], Nucleus::Matrix { rows, left, .. } if rows.len() == 2 && left == "(")
+        );
+        assert!(
+            list.atoms[1].superscript.is_some(),
+            "root index is a raised script"
+        );
+        assert!(matches!(nuclei[2], Nucleus::Radical(_)));
+        assert_eq!(nuclei[3], &Nucleus::Bold("F".into()));
+        assert!(matches!(
+            nuclei[4],
+            Nucleus::Framed {
+                frame: Frame::Box,
+                ..
+            }
+        ));
+        assert!(matches!(
+            nuclei[5],
+            Nucleus::Framed {
+                frame: Frame::Over,
+                ..
+            }
+        ));
+        assert!(nuclei.contains(&&Nucleus::Text("(2)".into())));
+        let laid = layout(&list, 12.0, &mut diagnostics);
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
+        // The box contributes four real rules and the overline one, beside
+        // the binomial's none.
+        assert_eq!(
+            laid.items.iter().filter(|item| item.rule.is_some()).count(),
+            5
+        );
+    }
+
+    #[test]
+    fn handwritten_homework_constructs_parse_and_shape_without_diagnostics() {
+        let mut diagnostics = Vec::new();
+        let tokens = crate::lexer::tokenize(
+            r"\lim_{n\to\infty}\left(1+\frac{1}{n}\right)^n \sin\theta \operatorname*{rank}(A)
+              \mathrm{d}x \Gamma\Delta\partial\nabla\equiv\propto\cup\subseteq\notin\emptyset
+              \iff\langle u\rangle \big\{ \bigr\} \left. \right| \dfrac{1}{2} a\!b\cdots\dots",
+        );
+        let list = parse_tokens(&tokens, &mut diagnostics);
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
+        let _ = layout(&list, 12.0, &mut diagnostics);
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
+        assert!(list
+            .atoms
+            .iter()
+            .any(|atom| atom.nucleus == Nucleus::Text("lim".into()) && atom.subscript.is_some()));
+        assert!(list
+            .atoms
+            .iter()
+            .any(|atom| atom.nucleus == Nucleus::Text("rank".into())));
     }
 
     #[test]
@@ -1260,6 +1985,16 @@ mod shift_tests {
                             denominator,
                         } => min_start(numerator).min(min_start(denominator)),
                         Nucleus::Radical(inner) => min_start(inner),
+                        Nucleus::Bold(_) => usize::MAX,
+                        Nucleus::Framed { body, .. } => min_start(body),
+                        Nucleus::Stacked { base, over, under } => {
+                            [Some(base), over.as_ref(), under.as_ref()]
+                                .into_iter()
+                                .flatten()
+                                .map(min_start)
+                                .min()
+                                .unwrap_or(usize::MAX)
+                        }
                         Nucleus::Matrix { rows, .. } => rows
                             .iter()
                             .flatten()

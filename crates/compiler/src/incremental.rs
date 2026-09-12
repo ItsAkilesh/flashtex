@@ -412,7 +412,8 @@ fn shift_inlines(
     inlines
         .iter()
         .map(|inline| match inline {
-            Inline::Text { text, span } => Some(Inline::Text {
+            Inline::Text { text, span, style } => Some(Inline::Text {
+                style: *style,
                 text: text.clone(),
                 span: mapped_span(*span, changes, deltas)?,
             }),
@@ -503,6 +504,22 @@ fn shift_math_list(
                         Nucleus::Radical(list) => {
                             Nucleus::Radical(shift_math_list(list, changes, deltas)?)
                         }
+                        Nucleus::Bold(text) => Nucleus::Bold(text.clone()),
+                        Nucleus::Framed { body, frame } => Nucleus::Framed {
+                            body: shift_math_list(body, changes, deltas)?,
+                            frame: *frame,
+                        },
+                        Nucleus::Stacked { base, over, under } => Nucleus::Stacked {
+                            base: shift_math_list(base, changes, deltas)?,
+                            over: match over {
+                                Some(list) => Some(shift_math_list(list, changes, deltas)?),
+                                None => None,
+                            },
+                            under: match under {
+                                Some(list) => Some(shift_math_list(list, changes, deltas)?),
+                                None => None,
+                            },
+                        },
                         Nucleus::Matrix {
                             rows,
                             columns,
