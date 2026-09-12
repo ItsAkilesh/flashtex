@@ -1,0 +1,16 @@
+{"step":"fetch","exit":0,"seconds":1,"log":"logs/fetch.log"}
+{"step":"helpers-clone","exit":0,"seconds":0,"log":"logs/helpers-clone.log"}
+{"step":"helpers-checkout","exit":0,"seconds":1,"log":"logs/helpers-checkout.log"}
+{"step":"helpers-build-compiler","exit":0,"seconds":20,"log":"logs/helpers-build-compiler.log"}
+{"step":"helpers-build-pdf","exit":0,"seconds":16,"log":"logs/helpers-build-pdf.log"}
+{"step":"helpers-build-bridge","exit":0,"seconds":11,"log":"logs/helpers-build-bridge.log"}
+{"step":"helpers-build-edit-ledger","exit":0,"seconds":14,"log":"logs/helpers-build-edit-ledger.log"}
+{"step":"helpers-build-preview-controller","exit":0,"seconds":21,"log":"logs/helpers-build-preview-controller.log"}
+{"step":"render-clone","exit":0,"seconds":0,"log":"logs/render-clone.log"}
+{"step":"render-checkout","exit":0,"seconds":1,"log":"logs/render-checkout.log"}
+{"step":"render-build","exit":0,"seconds":35,"log":"logs/render-build.log"}
+{"step":"project-files-clone","exit":0,"seconds":1,"log":"logs/project-files-clone.log"}
+{"step":"project-files-checkout","exit":0,"seconds":1,"log":"logs/project-files-checkout.log"}
+{"step":"project-files-build","exit":0,"seconds":6,"log":"logs/project-files-build.log"}
+{"step":"app-clone","exit":0,"seconds":0,"log":"logs/app-clone.log"}
+{"step":"app-checkout","exit":0,"seconds":2,"log":"logs/app-checkout.log"}

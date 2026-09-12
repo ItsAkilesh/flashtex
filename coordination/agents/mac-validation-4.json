@@ -1,0 +1,37 @@
+{
+  "agent_id": "mac-validation-4",
+  "allocation_id": "claude-mac20x-validation",
+  "assignment_acknowledgements": {},
+  "branch": "agent/mac-validation-4/mac-live-4",
+  "capabilities": [
+    "bash",
+    "python3",
+    "macos-native-validation",
+    "typing-bench"
+  ],
+  "code_revision": "cd58fc2e",
+  "eta_minutes": {
+    "likely": 60,
+    "optimistic": 45,
+    "pessimistic": 90
+  },
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "c11c005b90c1b495889dea7c664aae4b8a9424c4",
+  "next_action": "Package the current tips (run.sh --skip-* build/package), run lib/typing_attribution.py on the bundle for fixture/demo/hw1/render27/body60k x v1/v1-render/v2/controller, then the full mac-live acceptance and quiet-window.sh",
+  "reviewed_peers": {
+    "origin/agent/mac-claude-a/mac-shell": {
+      "adaptation": "Based the lane on cd58fc2e; the runner packages whatever the remote tip is at run time (fb16d07d during this lane) and records it",
+      "reviewed_utc": "2026-09-12T12:05:00Z",
+      "sha": "cd58fc2e"
+    }
+  },
+  "schema_version": 1,
+  "state": "in_progress",
+  "summary": "Typing latency on the packaged FlashTeX.app attributed per stage (producer wall/CPU, decode, main hop, apply, v2 prepare/preraster/publish, paint) across small/medium/large seeds on the direct v1, direct v2 and helper routes; mac-live acceptance rerun; unattended quiet-window runner",
+  "tool": "Claude Code subagent (parent mac-claude-a)",
+  "updated_utc": "2026-09-12T12:22:00Z",
+  "usage": {
+    "evidence": "coverage audit in coordination/mac-validation-4.md; builds in progress",
+    "status": "Shared Claude Max quota with parent mac-claude-a; no purchases"
+  }
+}
