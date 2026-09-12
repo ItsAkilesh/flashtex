@@ -3,27 +3,27 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-048": {
-      "acknowledged_utc": "2026-09-12T14:09:39Z",
-      "adaptation": "One approved unchangedbinary correctness77486 passed full durable/reopen/clean gates; stricttrace rightlyrefused partiallive stderr. Preserve both outcomes, no extra run.",
-      "main_sha": "d923951262af359cee6018ca6c834c1d63698b3b",
-      "revision": 31
+      "acknowledged_utc": "2026-09-12T14:15:29Z",
+      "adaptation": "Pausedtelemetrycandidate preserved outsideworktree; helperpage/delta reviewonly with exactinstalledbase, fullresync and boundedcost constraints.",
+      "main_sha": "c364f838c8dc783064ae489e2bcf2c69172a1871",
+      "revision": 32
     }
   },
   "branch": "agent/commander-preview-performance/preview-performance",
   "capabilities": [
     "Preview helper serialization and latency"
   ],
-  "code_revision": "e2072fe3e181ee17ab87a193c9477abd62f88ec6",
+  "code_revision": "7a7fd4f26290c2ee41115734631991d2557672bd",
   "eta_minutes": null,
   "machine": "linux-primary",
-  "main_integrated_through": "e693368bf280ffebf223b75cd5cd75080c3f5c8f",
-  "next_action": "Independent archive audit; bounded final diagnostic snapshot after helper termination with retainedfd.",
+  "main_integrated_through": "7a7fd4f26290c2ee41115734631991d2557672bd",
+  "next_action": "Commander/producer/Mac crossowner schema agreement, reconcile renderingreview bba26e82 before implementation.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "FT048r31 correctnessPASS; traceINCOMPLETE from livepartialtail, no performancecomparison. Originalcompleteprovenance archived.",
+  "summary": "FT048r32 helperpage/delta review prepared, no wirechange/activation; identifies fullv1cost/resynclimit and deliveredbaseACK requirements.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T14:09:39Z",
+  "updated_utc": "2026-09-12T14:15:30Z",
   "usage": {
     "status": "unknown"
   }
