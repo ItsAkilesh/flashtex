@@ -49,6 +49,12 @@ pub struct ReviewEntry {
     pub proposal_sha256: String,
     pub sequence: u64,
     pub cancelled: bool,
+    #[serde(default)]
+    pub expires_at: Option<u64>,
+    #[serde(default)]
+    pub expired: bool,
+    #[serde(default)]
+    pub context_revoked: bool,
     pub decision_id: Option<String>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -70,6 +76,7 @@ pub enum ReviewState {
     RejectedIntent,
     Cancelled,
     StaleContext,
+    Expired,
 }
 #[derive(Debug)]
 pub enum InboxError {
@@ -84,6 +91,7 @@ pub enum InboxError {
     Cancelled,
     Retired,
     RecoveryRequired,
+    Expired,
 }
 type InboxResult<T> = std::result::Result<T, InboxError>;
 impl From<std::io::Error> for InboxError {
@@ -138,7 +146,7 @@ impl ReviewInbox {
             .write(true)
             .open(root.join(".review.lock"))?;
         lock.try_lock_exclusive().map_err(|_| InboxError::Busy)?;
-        let state = match File::open(root.join("inbox.json")) {
+        let mut state: InboxSnapshot = match File::open(root.join("inbox.json")) {
             Ok(file) => {
                 let mut bytes = Vec::new();
                 file.take(limits.bytes as u64 + 1).read_to_end(&mut bytes)?;
@@ -158,6 +166,9 @@ impl ReviewInbox {
             },
             Err(e) => return Err(e.into()),
         };
+        for entry in state.entries.values_mut() {
+            entry.context_revoked |= entry.context != entry.current_context;
+        }
         validate(&state, limits)?;
         let view = InboxView(
             Arc::new(RwLock::new(Arc::new(state.clone()))),
@@ -171,6 +182,61 @@ impl ReviewInbox {
             view,
             events: navigation::Hub::new(),
         })
+    }
+    /// Recover using the caller's persisted-clock domain and apply due expiry
+    /// before making recovered selection or decisions visible to the caller.
+    pub fn open_at(root: impl AsRef<Path>, limits: InboxLimits, now: u64) -> InboxResult<Self> {
+        let mut inbox = Self::open(root, limits)?;
+        inbox.expire_due(now)?;
+        Ok(inbox)
+    }
+    /// Refresh against actual bridge documents. Missing context revokes the
+    /// card durably instead of preserving an old accepted status.
+    pub fn refresh_from_bridge(
+        &mut self,
+        bridge: &Bridge,
+        id: &str,
+        supported_features: Vec<String>,
+    ) -> InboxResult<()> {
+        self.ready()?;
+        if !self.state.entries.contains_key(id) {
+            return Err(InboxError::Missing);
+        }
+        match super::native::NativeService::context_identity(bridge, id, supported_features) {
+            Ok(current)
+                if {
+                    let entry = &self.state.entries[id];
+                    current.project_id == entry.context.project_id
+                        && current.path == entry.context.path
+                        && current.revision >= entry.current_context.revision
+                } =>
+            {
+                self.update_context(id, current)
+            }
+            _ => {
+                let mut next = self.state.clone();
+                next.entries.get_mut(id).unwrap().context_revoked = true;
+                self.commit(next)?;
+                Err(InboxError::StaleContext)
+            }
+        }
+    }
+    pub fn decide_at(
+        &mut self,
+        request: DecisionRequest,
+        now: u64,
+    ) -> InboxResult<ReviewIntentHandoff> {
+        self.expire_due(now)?;
+        self.decide(request)
+    }
+    pub fn validate_handoff_at(
+        &mut self,
+        token: &ReviewIntentHandoff,
+        current: &ContextIdentity,
+        now: u64,
+    ) -> InboxResult<()> {
+        self.expire_due(now)?;
+        self.validate_handoff(token, current)
     }
     pub fn view(&self) -> InboxView {
         self.view.clone()
@@ -228,6 +294,9 @@ impl ReviewInbox {
                 proposal_sha256: hash,
                 sequence,
                 cancelled: false,
+                expires_at: None,
+                expired: false,
+                context_revoked: false,
                 decision_id: None,
             },
         );
@@ -253,8 +322,46 @@ impl ReviewInbox {
             return Err(InboxError::Conflict);
         }
         let mut next = self.state.clone();
-        next.entries.get_mut(id).unwrap().current_context = current;
+        let updated = next.entries.get_mut(id).unwrap();
+        updated.context_revoked |= updated.context != current;
+        updated.current_context = current;
         self.commit(next)
+    }
+    /// Set a caller-clock deadline before deciding. Existing deadlines may only
+    /// become earlier. Call expire_due with the same clock before decisions and
+    /// immediately after recovery; clock rollback never revives expired cards.
+    pub fn set_expiry(&mut self, id: &str, expires_at: u64) -> InboxResult<()> {
+        self.ready()?;
+        let entry = self.state.entries.get(id).ok_or(InboxError::Missing)?;
+        if entry.expired {
+            return Err(InboxError::Expired);
+        }
+        if entry.decision_id.is_some() || entry.expires_at.is_some_and(|old| expires_at > old) {
+            return Err(InboxError::Conflict);
+        }
+        let mut next = self.state.clone();
+        next.entries.get_mut(id).unwrap().expires_at = Some(expires_at);
+        self.commit(next)
+    }
+    /// Atomically expire at most the configured retained-entry bound. Selection
+    /// is cleared if its card expires; cards/history are never silently evicted.
+    pub fn expire_due(&mut self, now: u64) -> InboxResult<usize> {
+        self.ready()?;
+        let mut next = self.state.clone();
+        let mut count = 0;
+        for entry in next.entries.values_mut() {
+            if !entry.expired && entry.expires_at.is_some_and(|deadline| now >= deadline) {
+                entry.expired = true;
+                count += 1;
+                if next.selected_capture.as_deref() == Some(&entry.capture_id) {
+                    next.selected_capture = None;
+                }
+            }
+        }
+        if count > 0 {
+            self.commit(next)?;
+        }
+        Ok(count)
     }
     pub fn cancel(&mut self, id: &str) -> InboxResult<()> {
         self.ready()?;
@@ -289,6 +396,9 @@ impl ReviewInbox {
         if self.state.selected_capture.as_deref() != Some(request.capture_id.as_str()) {
             return Err(InboxError::SelectionRequired);
         }
+        if entry.expired {
+            return Err(InboxError::Expired);
+        }
         if entry.cancelled {
             return Err(InboxError::Cancelled);
         }
@@ -302,7 +412,7 @@ impl ReviewInbox {
             return Err(InboxError::StaleContext);
         }
         if request.intent == ReviewIntent::AcceptForPreparation
-            && entry.context != entry.current_context
+            && (entry.context_revoked || entry.context != entry.current_context)
         {
             return Err(InboxError::StaleContext);
         }
@@ -338,13 +448,18 @@ impl ReviewInbox {
             .entries
             .get(&saved.capture_id)
             .ok_or(InboxError::Retired)?;
+        if entry.expired {
+            return Err(InboxError::Expired);
+        }
         if entry.cancelled {
             return Err(InboxError::Cancelled);
         }
         if current != &entry.current_context || current != &saved.expected_context {
             return Err(InboxError::StaleContext);
         }
-        if saved.intent == ReviewIntent::AcceptForPreparation && current != &entry.context {
+        if saved.intent == ReviewIntent::AcceptForPreparation
+            && (entry.context_revoked || current != &entry.context)
+        {
             return Err(InboxError::StaleContext);
         }
         Ok(())
@@ -352,10 +467,13 @@ impl ReviewInbox {
     pub fn state(&self, id: &str) -> InboxResult<ReviewState> {
         self.ready()?;
         let entry = self.state.entries.get(id).ok_or(InboxError::Missing)?;
+        if entry.expired {
+            return Ok(ReviewState::Expired);
+        }
         if entry.cancelled {
             return Ok(ReviewState::Cancelled);
         }
-        if entry.context != entry.current_context {
+        if entry.context_revoked || entry.context != entry.current_context {
             return Ok(ReviewState::StaleContext);
         }
         Ok(
@@ -376,7 +494,7 @@ impl ReviewInbox {
     pub fn retire(&mut self, id: &str) -> InboxResult<()> {
         self.ready()?;
         let entry = self.state.entries.get(id).ok_or(InboxError::Missing)?;
-        if !entry.cancelled && entry.decision_id.is_none() {
+        if !entry.cancelled && !entry.expired && entry.decision_id.is_none() {
             return Err(InboxError::Conflict);
         }
         if self.state.retired.len() >= self.limits.history {
@@ -497,6 +615,7 @@ fn validate(state: &InboxSnapshot, limits: InboxLimits) -> InboxResult<()> {
         valid_context(&entry.current_context)?;
         entry.proposal.validate().map_err(|_| InboxError::Invalid)?;
         if id != &entry.capture_id
+            || (entry.expired && entry.expires_at.is_none())
             || state.retired.contains(id)
             || entry.context.project_id != entry.current_context.project_id
             || entry.context.path != entry.current_context.path

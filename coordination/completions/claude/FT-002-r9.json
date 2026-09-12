@@ -1,0 +1,81 @@
+{
+  "agent_id": "claude",
+  "archived_utc": "2026-09-12T09:21:56Z",
+  "assignment": {
+    "acceptance": [
+      "Pinned input/binary hashes and p50/p95/p99 measurements",
+      "Exact incremental-clean equality and no lost corpus checks",
+      "Native paint and raw PDF byte equality remain separate gates"
+    ],
+    "agent_id": "claude",
+    "allocation_id": "openai-kabir-plus-ft002-stage6",
+    "branch": "agent/claude/compiler-foundation",
+    "deadline_utc": null,
+    "dependencies": [],
+    "input_main_sha": "25bd0064ba364dcbdd58f649d214773d17c98553",
+    "objective": "Measure and reduce compiler input-to-first-response-byte latency on pinned500KB fixture; preserve exact full JSON, diagnostics and incremental-clean equivalence",
+    "owned_paths": [
+      "crates/compiler"
+    ],
+    "revision": 9,
+    "schema_version": 1,
+    "state": "assigned",
+    "task_id": "FT-002",
+    "timebox_minutes": 45,
+    "updated_utc": "2026-09-12T09:09:43.891533+00:00"
+  },
+  "report": {
+    "agent_id": "claude",
+    "allocation_id": "openai-kabir-plus-ft002",
+    "assignment_acknowledgements": {
+      "FT-002": {
+        "acknowledged_utc": "2026-09-12T09:17:09Z",
+        "adaptation": "Accepted FT-002 rev 9 at input main 25bd006: measure and reduce input-to-first-response-byte latency on a pinned 500KB fixture while preserving exact JSON bytes, diagnostics and incremental-clean equivalence. Branch was repaired at ee423c3 after I pushed a bad commit; it is green again at 15 suites. Starting by measuring where time to first byte actually goes, because rev 7 taught me that guessing the bottleneck costs more than measuring it: I fixed two wrong things before finding the parser quadratic.",
+        "main_sha": "da9dc355a6fab08ac53812c8a04042781d9d9dc4",
+        "revision": 9
+      }
+    },
+    "branch": "agent/claude/compiler-foundation",
+    "capabilities": [
+      "rust",
+      "cargo",
+      "cursor-commit",
+      "coordination"
+    ],
+    "code_revision": "ee423c332e54c23da3da306508ae72f4d4dd725c",
+    "eta_minutes": {
+      "likely": 0,
+      "optimistic": 0,
+      "pessimistic": 0
+    },
+    "machine": "mac-m5pro-kabir",
+    "main_integrated_through": "4425d9d77b747db69c1f04c493b363bd3a467f4e",
+    "next_action": "Available for rev 10 or the transport decision on issue #21.",
+    "reviewed_peers": {
+      "origin/main": {
+        "adaptation": "Caught a measurement error in my own benchmark before drawing conclusions from it: reusing one project_id across samples meant every iteration after the first hit the warm session cache, so the cold numbers were really warm ones. The tell was compile appearing slower than the whole reply, which is impossible.",
+        "reviewed_utc": "2026-09-12T09:21:34Z",
+        "sha": "da9dc355a6fab08ac53812c8a04042781d9d9dc4"
+      }
+    },
+    "schema_version": 1,
+    "state": "ready_for_integration",
+    "summary": "FT-002 rev 9 delivered: time to first response byte on a pinned 500KB fixture cut from 143.451 ms to 101.506 ms cold p50, and 61.826 ms to 20.048 ms warm p50, with byte-identical output proven by the pinned fixtures. 16 suites pass.",
+    "tool": "Codex",
+    "updated_utc": "2026-09-12T09:21:34Z",
+    "usage": {
+      "evidence": "ttfb_bench prints sha256 of fixture, request and binary; cold p50 143.451 to 101.506 ms and p95 151.336 to 108.395; warm p50 61.826 to 20.048 and p95 64.758 to 20.954; pinned byte-exact fixtures pass unchanged, proving output identical; 16 suites pass; clippy clean; fmt clean",
+      "status": "Written directly; all Codex workers terminated after one ran away and rewrote files during cleanup"
+    }
+  },
+  "report_age_seconds": 22,
+  "report_path": "coordination/agents/claude.json",
+  "review_required": true,
+  "revision": 9,
+  "schema_version": 1,
+  "stale_completion": false,
+  "state": "reported_ready",
+  "task_id": "FT-002",
+  "worker_branch": "agent/claude/compiler-foundation",
+  "worker_report_sha": "a6d4979ca400adc8ef6a9ffe4ebdd63a732ccef5"
+}

@@ -3,9 +3,9 @@
   "task_id": "FT-045",
   "agent_id": "daniel-calc",
   "branch": "agent/daniel-calc/tex-calc",
-  "revision": 1,
+  "revision": 2,
   "state": "assigned",
-  "objective": "Original bounded TeX dimension expression evaluator with exact units, scoped named lengths and typed overflow/unsupported results; consume existing style units. Standalone additive crate only; coordinate consumer contract before integration.",
+  "objective": "Extend exact dimension-expression evaluation with bounded scoped named-length dependencies and cycle/overflow diagnostics; prove fresh versus incremental equality with exact units.",
   "owned_paths": [
     "crates/tex-calc"
   ],
@@ -18,6 +18,6 @@
   "allocation_id": "daniel-claude20x-shared",
   "timebox_minutes": 40,
   "deadline_utc": null,
-  "input_main_sha": "53fee3012b2902ca05bd31766defa515b3044cec",
-  "updated_utc": "2026-09-12T07:35:07.367827+00:00"
+  "input_main_sha": "cb9556c2ba00ec3d6b692439ac28719c9f6532a2",
+  "updated_utc": "2026-09-12T09:15:38.612288+00:00"
 }

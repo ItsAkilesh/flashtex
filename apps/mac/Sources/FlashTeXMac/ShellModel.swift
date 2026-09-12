@@ -1,57 +1,62 @@
 import AppKit
 import Combine
+import Observation
 import FlashTeXProtocol
 
 /// State for the editor/preview shell. The preview is fixture-backed: nothing
 /// here compiles LaTeX. `isFixture` is surfaced in the UI so the shell never
 /// implies a real compiler ran.
+/// `@Observable`: SwiftUI tracks the properties each view actually reads, so a
+/// keystroke (documents/editorRevision) re-evaluates the editor pane and the
+/// footer, and a compile result the preview — not the whole window.
 @MainActor
-final class ShellModel: ObservableObject {
+@Observable
+final class ShellModel {
     struct Selection: Equatable {
         var path: String
         var nsRange: NSRange
         var token = 0 // bump so the same range re-applies
     }
 
-    @Published var documents: [RuntimeV1.Document] = []
-    @Published var activePath: String = "main.tex"
-    @Published var result: RuntimeV1.CompileResult?
-    @Published var resultID: String?
-    @Published var fixtureURL: URL?
-    @Published var loadError: String?
-    @Published var selection: Selection?
-    @Published var navigationNote: String?
-    @Published var darkPreview = false
-    @Published var previewSource: PreviewSource = .none
+    var documents: [RuntimeV1.Document] = []
+    var activePath: String = "main.tex"
+    var result: RuntimeV1.CompileResult?
+    var resultID: String?
+    var fixtureURL: URL?
+    var loadError: String?
+    var selection: Selection?
+    var navigationNote: String?
+    var darkPreview = false
+    var previewSource: PreviewSource = .none
     /// File backing the entry document, if any, and its last saved contents.
-    @Published var documentURL: URL?
-    @Published var savedText: String?
-    @Published var recoverableBuffer: RecoverableBuffer?
+    var documentURL: URL?
+    var savedText: String?
+    var recoverableBuffer: RecoverableBuffer?
 
     // Capture review / insertion (contract: "Capture and insertion").
     struct PendingEdit: Equatable { var path: String; var nsRange: NSRange; var text: String; var token: Int }
-    @Published var caretUTF16: Int = 0
-    @Published var anchor: InsertionAnchor?
-    @Published var proposals: [RuntimeV1.CaptureProposal] = []
-    @Published var reviewing: RuntimeV1.CaptureProposal?
-    @Published var pendingEdit: PendingEdit?
-    @Published var captureNote: String?
+    var caretUTF16: Int = 0
+    var anchor: InsertionAnchor?
+    var proposals: [RuntimeV1.CaptureProposal] = []
+    var reviewing: RuntimeV1.CaptureProposal?
+    var pendingEdit: PendingEdit?
+    var captureNote: String?
     var appliedCaptureIDs: Set<String> = []
     var nextAnchorNumber = 1
     /// UTF-16 length of the editor selection starting at `caretUTF16` (0 = caret only).
-    @Published var caretLengthUTF16: Int = 0
+    var caretLengthUTF16: Int = 0
     // Capture bridge (contract: transfer-v1). See ShellModel+Bridge.swift.
-    @Published var bridgeStatus: String = "no bridge attached" { didSet { FlashTeXLog.write("bridge: " + bridgeStatus) } }
-    @Published var bridgeCaptures: [BridgeSession.Capture] = []
-    @Published var bridgeDestination: TransferV1.Anchor?
+    var bridgeStatus: String = "no bridge attached" { didSet { FlashTeXLog.write("bridge: " + bridgeStatus) } }
+    var bridgeCaptures: [BridgeSession.Capture] = []
+    var bridgeDestination: TransferV1.Anchor?
     private(set) var bridge: BridgeSession?
     /// Deadline for each `capture_status` during restart reconciliation.
     var bridgeStatusTimeout: TimeInterval = 15
-    @Published var workerStatus: String = "no worker attached" { didSet { FlashTeXLog.write("status: " + workerStatus) } }
+    var workerStatus: String = "no worker attached" { didSet { FlashTeXLog.write("status: " + workerStatus) } }
     let nearbyInbox = NearbyInbox() // captures from paired companions (ShellModel+Nearby.swift)
-    @Published var workerLog: [String] = []
-    private var worker: WorkerClient?
-    private var nextRequestID = 1
+    var workerLog: [String] = []
+    @ObservationIgnored private var worker: WorkerClient?
+    @ObservationIgnored private var nextRequestID = 1
     /// Text each document had when the current `result` was produced, so stale
     /// byte offsets can be rebased (or refused) after edits.
     private(set) var compiledDocuments: [String: String] = [:]
@@ -61,23 +66,36 @@ final class ShellModel: ObservableObject {
         var layoutCapabilities: [String] = []
     }
     private(set) var inFlightRequests: [String: InFlight] = [:]
+    /// Id of the most recently sent compile request. A reply to any older
+    /// request is valid but stale (`scripts/check_runtime.py`: `stale_ignore`):
+    /// it is checked, logged and dropped, and never changes the preview or the
+    /// renderer mode. Only one request is normally in flight (edits coalesce);
+    /// a capability-set switch is the exception and goes out immediately.
+    private(set) var latestRequestID: String?
+    /// Optional verbatim JSON Lines record for `scripts/check_runtime.py`
+    /// (`FLASHTEX_TRANSCRIPT=<path>`; tests inject their own).
+    var transcript: RuntimeTranscript? = RuntimeTranscript.fromEnvironment()
 
     // MARK: negotiated layout capabilities (runtime-v1-layout-capabilities.md)
 
     /// Capabilities sent with every compile request. Default: `rules-v1` and
     /// `font-hints-v1` (gate 3: consumer tests pass), overridable with
     /// `FLASHTEX_LAYOUT_CAPABILITIES` (comma-separated; empty string disables).
-    @Published var requestedLayoutCapabilities: [String] = ShellModel.defaultLayoutCapabilities()
+    /// Changing the set is a mode switch: with auto-compile on, the current
+    /// buffers are re-requested at the *same* revision under the new set.
+    var requestedLayoutCapabilities: [String] = ShellModel.defaultLayoutCapabilities() {
+        didSet { if oldValue != requestedLayoutCapabilities, autoCompile, workerAttached { compile() } }
+    }
     /// Negotiation bound to the *applied* result: what its own request asked for
     /// and what the producer accepted. A late reply for another request never
     /// changes this (results are correlated by id + project + revision first).
-    @Published private(set) var negotiation: LayoutNegotiation = .legacy
+    private(set) var negotiation: LayoutNegotiation = .legacy
     var acceptedLayoutCapabilities: [String] { negotiation.accepted }
     /// Font hints the applied result carries that could not be honored exactly.
-    @Published private(set) var fontSubstitutions: [PreviewFonts.Substitution] = []
+    private(set) var fontSubstitutions: [PreviewFonts.Substitution] = []
     /// Source-aware errors for unknown primitives in the applied result
     /// (negotiated route only; the legacy route still skips unknown kinds).
-    @Published private(set) var layoutDiagnostics: [RuntimeV1.Diagnostic] = []
+    private(set) var layoutDiagnostics: [RuntimeV1.Diagnostic] = []
     /// Producer diagnostics followed by the shell's own layout diagnostics.
     var displayedDiagnostics: [RuntimeV1.Diagnostic] { (result?.diagnostics ?? []) + layoutDiagnostics }
 
@@ -87,8 +105,9 @@ final class ShellModel: ObservableObject {
         negotiation.missing.map { "capability \($0) not accepted by the worker" } + fontSubstitutions.map(\.description)
     }
 
-    // Gate 3 (contract): stays empty until the consumer tests pass.
-    static let builtInLayoutCapabilities: [String] = []
+    /// Gate 3 (contract): requested by default now that the consumer tests
+    /// (LayoutCapabilityTests, LayoutCapabilityConsumerTests) pass.
+    static let builtInLayoutCapabilities = RuntimeV1.LayoutCapabilities.supported
 
     /// `FLASHTEX_LAYOUT_CAPABILITIES` (unset → built-in default; "" → none).
     static func defaultLayoutCapabilities(environment: [String: String] = ProcessInfo.processInfo.environment) -> [String] {
@@ -104,11 +123,11 @@ final class ShellModel: ObservableObject {
         for note in capabilityNotes { log(note) }
         for d in layoutDiagnostics { log(d.message) }
     }
-    @Published var autoCompile = true
-    @Published private(set) var lastLatencyMs: Double?
-    @Published private(set) var latenciesMs: [Double] = []
-    private var debounce: DispatchWorkItem?
-    private var compileQueued = false
+    var autoCompile = true
+    private(set) var lastLatencyMs: Double?
+    private(set) var latenciesMs: [Double] = []
+    @ObservationIgnored private var debounce: DispatchWorkItem?
+    @ObservationIgnored private var compileQueued = false
     /// Keystroke-to-compile delay. The compiler answers in ~1–9 ms for typical
     /// documents, so the default is 0: every edit submits immediately and the
     /// one-in-flight coalescing absorbs bursts. `FLASHTEX_DEBOUNCE_MS` overrides.
@@ -117,10 +136,10 @@ final class ShellModel: ObservableObject {
         return 0
     }()
     /// Revision of the compile request currently in flight (nil if idle).
-    @Published private(set) var inFlightRevision: Int?
+    private(set) var inFlightRevision: Int?
     /// Revision the editor buffer corresponds to. Bumps on every edit so the
     /// UI can say when the preview's source ranges no longer match the buffer.
-    @Published private(set) var editorRevision = 1
+    private(set) var editorRevision = 1
 
     enum PreviewSource: Equatable { case none, fixture, worker(String) }
 
@@ -139,7 +158,12 @@ final class ShellModel: ObservableObject {
     /// Restart reconciliation may need the editor revision to pass a revision
     /// the bridge already confirmed; revisions only ever advance.
     func advanceEditorRevision(atLeast revision: Int) {
-        if revision > editorRevision { editorRevision = revision }
+        guard revision > editorRevision else { return }
+        editorRevision = revision
+        // The buffer did not change, but a result compiled at the old revision
+        // would now read as stale forever (until the next keystroke); recompile
+        // so the preview and caret sync bind to the revision the bridge knows.
+        if result != nil { scheduleAutoCompile() }
     }
 
     var isFixture: Bool { previewSource == .fixture }
@@ -159,9 +183,17 @@ final class ShellModel: ObservableObject {
     /// dropped (see `EditorDiagnostics`).
     var editorMarks: [EditorDiagnostics.Mark] {
         guard let result else { return [] }
-        return EditorDiagnostics.marks(for: result, path: activePath,
-                                       compiledText: compiledDocuments[activePath], currentText: activeText)
+        // Memoized: ContentView reads this on every body evaluation and the
+        // rebase compares the compiled and current texts in full.
+        let key = EditorMarksKey(resultID: resultID, resultRevision: result.revision, editorRevision: editorRevision, path: activePath)
+        if let cached = editorMarksCache, cached.key == key { return cached.marks }
+        let marks = EditorDiagnostics.marks(for: result, path: activePath,
+                                            compiledText: compiledDocuments[activePath], currentText: activeText)
+        editorMarksCache = (key, marks)
+        return marks
     }
+    private struct EditorMarksKey: Equatable { var resultID: String?; var resultRevision: Int; var editorRevision: Int; var path: String }
+    @ObservationIgnored private var editorMarksCache: (key: EditorMarksKey, marks: [EditorDiagnostics.Mark])?
 
     // MARK: caret sync (source -> preview)
 
@@ -303,10 +335,11 @@ final class ShellModel: ObservableObject {
 
     func updateActiveText(_ text: String) {
         guard let i = documents.firstIndex(where: { $0.path == activePath }) else { return }
-        guard documents[i].text != text else { return }
+        guard !documents[i].text.sameBytes(as: text) else { return }
         let old = documents[i].text, base = editorRevision
         documents[i].text = text
         editorRevision += 1
+        TypingBench.shared.noteRevision(editorRevision) // keystroke -> paint instrumentation
         scheduleAutoCompile()
         bridgeTextChanged(path: activePath, old: old, new: text, base: base, revision: editorRevision)
     }
@@ -405,7 +438,7 @@ final class ShellModel: ObservableObject {
     func attachWorker(at url: URL, arguments: [String] = []) {
         detachWorker()
         do {
-            worker = try WorkerClient(executable: url, arguments: arguments) { [weak self] event in
+            worker = try WorkerClient(executable: url, arguments: arguments, transcript: transcript) { [weak self] event in
                 self?.handle(event)
             }
             workerStatus = "attached: \(url.lastPathComponent)"
@@ -421,27 +454,37 @@ final class ShellModel: ObservableObject {
         worker?.terminate()
         worker = nil
         inFlightRequests.removeAll()
+        latestRequestID = nil
         inFlightRevision = nil
         compileQueued = false
         if previewSource != .fixture { workerStatus = "no worker attached" }
     }
 
     /// Sends the current buffers as a `compile` request. Never blocks the UI.
+    ///
+    /// Edits coalesce behind the request in flight (the newest buffer goes out
+    /// when it returns). A layout-capability switch does not wait: it is sent
+    /// at once under a new id — at the same revision when the buffer has not
+    /// changed — and the older request's reply is then classified stale.
     func compile() {
         guard let worker, worker.isRunning else {
             workerStatus = "no worker attached"
             return
         }
         debounce?.cancel()
-        if inFlightRevision != nil {
-            // Coalesce: one request in flight; the newest buffer goes out when it returns.
-            compileQueued = true
-            return
+        let capabilities = requestedLayoutCapabilities
+        if let latestID = latestRequestID, let latest = inFlightRequests[latestID] {
+            guard latest.layoutCapabilities != capabilities else {
+                compileQueued = true
+                return
+            }
+            log("layout capability switch while \(latestID) is in flight: re-requesting revision \(editorRevision) under \(LayoutNegotiation.describe(capabilities))")
+        } else if let current = result, previewSource != .fixture, current.revision == editorRevision,
+                  negotiation.requested == capabilities {
+            return // buffers and capability set unchanged since the applied result
         }
-        if let current = result, previewSource != .fixture, current.revision == editorRevision { return }
         let id = "mac-\(nextRequestID)"
         nextRequestID += 1
-        let capabilities = requestedLayoutCapabilities
         let request = RuntimeV1.CompileRequest(
             projectId: result?.projectId ?? "demo",
             revision: editorRevision,
@@ -449,9 +492,11 @@ final class ShellModel: ObservableObject {
             documents: documents,
             layoutCapabilities: capabilities.isEmpty ? nil : capabilities)
         do {
+            if TypingBench.shared.isActive { FlashTeXLog.write("compile: sending revision \(editorRevision) at \(MonotonicClock.nowNs())") }
             try worker.send(request, id: id)
             inFlightRequests[id] = InFlight(projectId: request.projectId, revision: request.revision,
                                             documents: documents, sentAt: Date(), layoutCapabilities: capabilities)
+            latestRequestID = id
             inFlightRevision = editorRevision
             workerStatus = "compiling revision \(editorRevision) (\(id))…"
         } catch {
@@ -459,7 +504,28 @@ final class ShellModel: ObservableObject {
         }
     }
 
-    func handleForTesting(_ event: WorkerClient.Event) { handle(event) }
+    /// Delivers an event as if the worker had sent it; a `compile_result` or
+    /// `error` is also written to the transcript (re-encoded) so hand-delivered
+    /// asynchronous replies are visible to `check_runtime.py`.
+    func handleForTesting(_ event: WorkerClient.Event) {
+        if let transcript {
+            switch event {
+            case .result(let env):
+                if let line = try? RuntimeV1.encodeLine(env) { transcript.record(line) }
+            case .error(let id, let message):
+                let env = RuntimeV1.Envelope(protocolVersion: RuntimeV1.protocolVersion, id: id, type: "error",
+                                             payload: RuntimeV1.ErrorPayload(message: message))
+                if let line = try? RuntimeV1.encodeLine(env) { transcript.record(line) }
+            default: break
+            }
+        }
+        handle(event)
+    }
+
+    /// `inFlightRevision` tracks the latest request while it is unanswered.
+    private func refreshInFlightRevision() {
+        inFlightRevision = latestRequestID.flatMap { inFlightRequests[$0]?.revision }
+    }
 
     private func handle(_ event: WorkerClient.Event) {
         switch event {
@@ -471,28 +537,33 @@ final class ShellModel: ObservableObject {
                 log("ignored compile_result with unknown id \(env.id) (revision \(incoming.revision))")
                 return
             }
+            inFlightRequests.removeValue(forKey: env.id)
+            refreshInFlightRevision()
             guard incoming.projectId == sent.projectId, incoming.revision == sent.revision else {
-                inFlightRequests.removeValue(forKey: env.id)
-                if inFlightRevision == sent.revision { inFlightRevision = nil }
                 let msg = "compile_result \(env.id) reports project \(incoming.projectId) revision \(incoming.revision); request was project \(sent.projectId) revision \(sent.revision)"
                 log("rejected mismatched " + msg)
                 workerStatus = "protocol violation: " + msg
                 return
             }
-            inFlightRequests.removeValue(forKey: env.id)
             // Layout capabilities are per request: the reply may only claim what
             // this request asked for, and may only carry negotiated shapes.
             if let violation = LayoutNegotiation.violation(in: incoming, requested: sent.layoutCapabilities) {
-                if inFlightRevision == sent.revision { inFlightRevision = nil }
                 let msg = "compile_result \(env.id): \(violation)"
                 log("rejected " + msg)
                 workerStatus = "protocol violation: " + msg
                 return
             }
+            // Superseded: a newer request went out after this one (capability
+            // switch, or an edit sent after an error). Valid, but stale for the
+            // preview — check_runtime.py's `stale_ignore` — so it never changes
+            // the result or the renderer mode.
+            if let latest = latestRequestID, latest != env.id {
+                log("ignored stale compile_result \(env.id) (revision \(incoming.revision), \(LayoutNegotiation.describe(sent.layoutCapabilities))): superseded by \(latest)")
+                return
+            }
             // Contract: never replace a newer preview with an older revision.
             if let current = result, previewSource != .fixture, incoming.revision < current.revision {
                 log("ignored stale compile_result revision \(incoming.revision) < \(current.revision)")
-                if inFlightRevision == incoming.revision { inFlightRevision = nil }
                 return
             }
             result = incoming
@@ -501,21 +572,22 @@ final class ShellModel: ObservableObject {
             bindLayout(of: incoming, requested: sent.layoutCapabilities)
             compiledDocuments = Dictionary(uniqueKeysWithValues: sent.documents.map { ($0.path, $0.text) })
             let ms = Date().timeIntervalSince(sent.sentAt) * 1000
+            TypingBench.shared.noteCompile(revision: incoming.revision, ms: ms)
+            if TypingBench.shared.isActive { FlashTeXLog.write("compile: applied revision \(incoming.revision) at \(MonotonicClock.nowNs())") }
             lastLatencyMs = ms
             latenciesMs.append(ms)
             if latenciesMs.count > 100 { latenciesMs.removeFirst(latenciesMs.count - 100) }
             let latencyText = String(format: " in %.0f ms", ms)
-            if inFlightRevision == incoming.revision { inFlightRevision = nil }
             workerStatus = "revision \(incoming.revision): \(incoming.status.rawValue), \(incoming.diagnostics.count) diagnostics\(latencyText)"
             selection = nil
             if compileQueued {
                 compileQueued = false
-                if editorRevision != incoming.revision { compile() }
+                compile() // no-op when buffers and capability set are unchanged
             }
         case .error(let id, let message):
             inFlightRequests.removeValue(forKey: id)
-            inFlightRevision = nil
-            compileQueued = false
+            refreshInFlightRevision()
+            if inFlightRevision == nil { compileQueued = false }
             workerStatus = "worker error for \(id): \(message)"
             log("error \(id): \(message)")
         case .protocolViolation(let message):
@@ -525,6 +597,7 @@ final class ShellModel: ObservableObject {
             log(text.trimmingCharacters(in: .whitespacesAndNewlines))
         case .exited(let code):
             inFlightRequests.removeAll()
+            latestRequestID = nil
             inFlightRevision = nil
             compileQueued = false
             workerStatus = "worker exited (\(code))"

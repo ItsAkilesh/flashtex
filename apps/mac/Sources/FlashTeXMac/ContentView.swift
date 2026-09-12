@@ -3,18 +3,19 @@ import FlashTeXProtocol
 import FlashTeXAccessibility
 
 struct ContentView: View {
-    @EnvironmentObject var model: ShellModel
+    @Environment(ShellModel.self) var model
 
     var body: some View {
+        @Bindable var model = model
         VStack(spacing: 0) {
-            statusBanner
+            StatusBanner()
             Divider()
             HSplitView {
-                editorPane.frame(minWidth: 320)
-                previewPane.frame(minWidth: 400)
+                EditorPane().frame(minWidth: 320)
+                PreviewPane().frame(minWidth: 400)
             }
             Divider()
-            footer
+            Footer()
         }
         .toolbar {
             ToolbarItem {
@@ -38,10 +39,19 @@ struct ContentView: View {
             }
         }
     }
+}
 
-    // MARK: pieces
+// MARK: pieces
+//
+// Each pane is its own view reading the model from the environment, so
+// `@Observable` tracking scopes invalidation: a keystroke (documents,
+// editorRevision) re-evaluates EditorPane and Footer; a compile result the
+// StatusBanner and PreviewPane; bridge traffic the bridge bar only.
 
-    private var statusBanner: some View {
+private struct StatusBanner: View {
+    @Environment(ShellModel.self) var model
+
+    var body: some View {
         HStack(spacing: 12) {
             sourceBadge
             if let r = model.result {
@@ -110,7 +120,16 @@ struct ContentView: View {
         }
     }
 
-    private var editorPane: some View {
+    private func statusColor(_ s: RuntimeV1.Status) -> Color {
+        switch s { case .ok: .green; case .recovered: .orange; case .failed: .red }
+    }
+}
+
+private struct EditorPane: View {
+    @Environment(ShellModel.self) var model
+
+    var body: some View {
+        @Bindable var model = model
         VStack(spacing: 0) {
             HStack {
                 Picker("Document", selection: $model.activePath) {
@@ -139,12 +158,16 @@ struct ContentView: View {
                 onSelectionChange: { model.caretLengthUTF16 = $0.length },
                 onEditApplied: { model.editApplied($0, newText: $1) }
             )
-            captureBar
-            bridgeBar
+            CaptureBar()
+            BridgeBar()
         }
     }
+}
 
-    private var captureBar: some View {
+private struct CaptureBar: View {
+    @Environment(ShellModel.self) var model
+
+    var body: some View {
         HStack(spacing: 8) {
             Button("Pin insertion point") { model.pinAnchorAtCaret() }
                 .help("Use the caret as the destination for capture proposals (⌘⇧P)")
@@ -169,10 +192,14 @@ struct ContentView: View {
             ProposalReviewSheet(proposal: item.proposal)
         }
     }
+}
 
-    /// Bridge lifecycle line: attached/error status, the pinned bridge
-    /// destination, and the latest capture's state (plain text, never a prompt).
-    private var bridgeBar: some View {
+/// Bridge lifecycle line: attached/error status, the pinned bridge
+/// destination, and the latest capture's state (plain text, never a prompt).
+private struct BridgeBar: View {
+    @Environment(ShellModel.self) var model
+
+    var body: some View {
         HStack(spacing: 8) {
             Text("bridge:").font(.caption.bold())
             Text(model.bridgeStatus).font(.caption)
@@ -194,8 +221,12 @@ struct ContentView: View {
         .padding(.horizontal, 8).padding(.vertical, 3)
         .background(.bar)
     }
+}
 
-    private var previewPane: some View {
+private struct PreviewPane: View {
+    @Environment(ShellModel.self) var model
+
+    var body: some View {
         VStack(spacing: 0) {
             if let result = model.result {
                 PreviewView(result: result, dark: model.darkPreview, caretItems: model.caretItems) { source, text in
@@ -243,8 +274,12 @@ struct ContentView: View {
             .frame(minHeight: 80, maxHeight: 180)
         }
     }
+}
 
-    private var footer: some View {
+private struct Footer: View {
+    @Environment(ShellModel.self) var model
+
+    var body: some View {
         HStack {
             Text(model.navigationNote ?? "Click text in the preview to select its source range.")
                 .font(.caption).foregroundStyle(.secondary).lineLimit(1)
@@ -255,12 +290,7 @@ struct ContentView: View {
         }
         .padding(.horizontal, 12).padding(.vertical, 4)
     }
-
-    private func statusColor(_ s: RuntimeV1.Status) -> Color {
-        switch s { case .ok: .green; case .recovered: .orange; case .failed: .red }
-    }
 }
-
 
 private struct ReviewItem: Identifiable {
     let proposal: RuntimeV1.CaptureProposal
@@ -270,7 +300,7 @@ private struct ReviewItem: Identifiable {
 /// Review sheet: the reviewer sees ambiguities and dependencies, may edit the
 /// LaTeX, and explicitly approves or rejects. Nothing is inserted otherwise.
 private struct ProposalReviewSheet: View {
-    @EnvironmentObject var model: ShellModel
+    @Environment(ShellModel.self) var model
     @Environment(\.dismiss) private var dismiss
     let proposal: RuntimeV1.CaptureProposal
     @State private var latex: String = ""

@@ -102,6 +102,17 @@ impl MathParams {
     }
 }
 
+/// An extensible (stackable) glyph recipe: `bot`, `rep`×n, `mid`, `rep`×n,
+/// `top`, as in TFM extensible recipes and OpenType `MathVariants` vertical
+/// assemblies. Pieces are stacked with no gaps.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Extensible {
+    pub top: Option<Glyph>,
+    pub mid: Option<Glyph>,
+    pub bot: Option<Glyph>,
+    pub rep: Glyph,
+}
+
 /// Everything the layout engine needs from a font set.
 pub trait MathFontMetrics {
     /// Parameters at a size class.
@@ -124,6 +135,22 @@ pub trait MathFontMetrics {
 
     /// Accent glyph variants, narrowest first (Rule 12).
     fn accent_sizes(&self, ch: char, size: SizeClass) -> Vec<Glyph>;
+
+    /// The extensible recipe used once every delimiter size is too small.
+    fn delimiter_extensible(&self, _ch: char, _size: SizeClass) -> Option<Extensible> {
+        None
+    }
+
+    /// The extensible radical-sign recipe.
+    fn radical_extensible(&self, _size: SizeClass) -> Option<Extensible> {
+        None
+    }
+
+    /// A character of upright operator text (`\lim`, `\sin`): the roman
+    /// text font at this size. Defaults to [`MathFontMetrics::glyph`].
+    fn text_glyph(&self, ch: char, size: SizeClass) -> Option<Glyph> {
+        self.glyph(ch, size)
+    }
 }
 
 /// The subset of OpenType `MathConstants` (font units) needed to derive TeX's

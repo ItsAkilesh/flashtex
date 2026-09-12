@@ -4,8 +4,8 @@
   "schema_version": 1,
   "steps": [
     {
-      "name": "Bind boundary-program output through existing explicit8bit encoding/GID adapter",
-      "objective": "Bind boundary-program output through existing explicit8bit encoding/GID adapter",
+      "name": "Declarative font encoding loading: bounded adversarial and stale-identity acceptance tests",
+      "objective": "Declarative font encoding loading: bounded adversarial and stale-identity acceptance tests",
       "owned_paths": [
         "crates/font-resources"
       ],
@@ -17,8 +17,8 @@
       "timebox_minutes": 30
     },
     {
-      "name": "Pinned real-TFM boundary replay and malformed/cycle regression evidence",
-      "objective": "Pinned real-TFM boundary replay and malformed/cycle regression evidence",
+      "name": "Declarative font encoding loading: actual existing consumer fixture and exact measured limitations",
+      "objective": "Declarative font encoding loading: actual existing consumer fixture and exact measured limitations",
       "owned_paths": [
         "crates/font-resources"
       ],
