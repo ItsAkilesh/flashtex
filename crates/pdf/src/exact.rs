@@ -862,6 +862,11 @@ pub struct FontDescriptor {
     pub x_height: Option<Decimal>,
     /// `/CharSet` string for Type 1 subsets, written verbatim when present.
     pub char_set: Option<String>,
+    /// Further descriptor entries carried verbatim as `(key, value)` where
+    /// the value is direct-object PDF syntax (`/AvgWidth 537`,
+    /// `/Style << /Panose (...) >>`). Keys the struct already covers and
+    /// stream references are refused by [`render_exact`].
+    pub extra: Vec<(String, String)>,
 }
 
 /// A simple font's encoding.
@@ -898,7 +903,12 @@ pub struct SimpleFont {
 /// source font's glyph ids.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CidFont {
+    /// `/BaseFont` of the Type0 font.
     pub base_font: String,
+    /// `/BaseFont` of the descendant CID font and `/FontName` of its
+    /// descriptor when they differ from `base_font` (xdvipdfmx appends
+    /// `-Identity-H` to the Type0 name only).
+    pub descendant_base_font: Option<String>,
     pub program: FontProgram,
     /// `/W` entries per CID (1000/em units, verbatim). CIDs absent here use
     /// `default_width`.
@@ -906,11 +916,25 @@ pub struct CidFont {
     pub default_width: Decimal,
     pub descriptor: FontDescriptor,
     /// Unicode text for CIDs, for `ToUnicode`; a CID may map to several
-    /// scalars (ligatures). Empty means no ToUnicode stream.
+    /// scalars (ligatures). Empty means no ToUnicode stream unless
+    /// `to_unicode_verbatim` is set.
     pub to_unicode: BTreeMap<u16, String>,
+    /// A complete ToUnicode CMap stream body written unchanged; takes
+    /// precedence over `to_unicode`.
+    pub to_unicode_verbatim: Option<Vec<u8>>,
+    /// `/CIDSet` stream bytes (one bit per CID), written unchanged when
+    /// present and referenced from the descriptor.
+    pub cid_set: Option<Vec<u8>>,
     /// Glyph ids the caller may show; a code outside this set is an error.
-    /// Empty means "any CID with a width".
+    /// Empty means unconstrained (a program carried over from another
+    /// producer, whose `/W` may omit CIDs at the default width).
     pub glyphs: BTreeSet<u16>,
+}
+
+impl CidFont {
+    fn has_to_unicode(&self) -> bool {
+        self.to_unicode_verbatim.is_some() || !self.to_unicode.is_empty()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -924,7 +948,7 @@ impl ExactFont {
     fn object_count(&self) -> usize {
         match self {
             ExactFont::CidCff(c) | ExactFont::CidTrueType(c) => {
-                4 + usize::from(!c.to_unicode.is_empty())
+                4 + usize::from(c.has_to_unicode()) + usize::from(c.cid_set.is_some())
             }
             ExactFont::Simple(s) => {
                 1 + usize::from(s.descriptor.is_some())
@@ -1047,6 +1071,7 @@ impl ExactFont {
             stem_v: Decimal::from_i64(80),
             x_height: None,
             char_set: None,
+            extra: Vec::new(),
         };
         let (program, outcome, base_font) = match font.outlines {
             Outlines::Cff => {
@@ -1089,11 +1114,14 @@ impl ExactFont {
         }
         let cid = CidFont {
             base_font,
+            descendant_base_font: None,
             program,
             widths,
             default_width: Decimal::from_i64(1000),
             descriptor,
             to_unicode,
+            to_unicode_verbatim: None,
+            cid_set: None,
             glyphs: gids.clone(),
         };
         let font = match outcome {
@@ -1119,6 +1147,11 @@ pub struct ExactPage {
     pub width: Decimal,
     pub height: Decimal,
     pub content: Content,
+    /// Font resource names this page declares in its `/Resources`. `None`
+    /// declares every document font (convenient for hand-built documents);
+    /// `Some` lists exactly these, the way pdfTeX writes per-page
+    /// resources, and each must exist in [`ExactDocument::fonts`].
+    pub fonts: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -1196,6 +1229,7 @@ fn validate(
     page_index: usize,
     ops: &[Op],
     fonts: &BTreeMap<String, ExactFont>,
+    page_fonts: Option<&[String]>,
 ) -> Result<(), ExactError> {
     let err = |op: usize, m: String| ExactError::Content {
         page: page_index + 1,
@@ -1233,14 +1267,12 @@ fn validate(
                     if !bytes.len().is_multiple_of(2) {
                         return Err(err(i, "odd byte count for a two-byte CID font".into()));
                     }
+                    if c.glyphs.is_empty() {
+                        return Ok(());
+                    }
                     for pair in bytes.chunks(2) {
                         let cid = u16::from_be_bytes([pair[0], pair[1]]);
-                        let known = if c.glyphs.is_empty() {
-                            c.widths.contains_key(&cid)
-                        } else {
-                            c.glyphs.contains(&cid)
-                        };
-                        if !known {
+                        if !c.glyphs.contains(&cid) {
                             return Err(err(
                                 i,
                                 format!("glyph id {cid} is not in the font's subset"),
@@ -1276,6 +1308,12 @@ fn validate(
                 let f = fonts
                     .get(name)
                     .ok_or_else(|| err(i, format!("font resource /{name} is not declared")))?;
+                if page_fonts.is_some_and(|list| !list.iter().any(|n| n == name)) {
+                    return Err(err(
+                        i,
+                        format!("font resource /{name} is not in this page's resources"),
+                    ));
+                }
                 if size.approx() == 0.0 || !size.approx().is_finite() {
                     return Err(err(i, format!("font size {size} is zero or not finite")));
                 }
@@ -1395,6 +1433,16 @@ pub fn render_exact(doc: &ExactDocument) -> Result<crate::PdfOutput, ExactError>
         if program_len > MAX_FONT_BYTES {
             return Err(ExactError::Limit("font program bytes"));
         }
+        match f {
+            ExactFont::CidCff(c) | ExactFont::CidTrueType(c) => {
+                check_descriptor(name, &c.descriptor)?;
+            }
+            ExactFont::Simple(s) => {
+                if let Some(desc) = &s.descriptor {
+                    check_descriptor(name, desc)?;
+                }
+            }
+        }
         if let ExactFont::Simple(s) = f
             && s.first_char as usize + s.widths.len() > 256
         {
@@ -1409,6 +1457,44 @@ pub fn render_exact(doc: &ExactDocument) -> Result<crate::PdfOutput, ExactError>
         }
     }
 
+    // Object numbering: 1 catalog, 2 pages, 3 info, then page/content pairs,
+    // then fonts in resource-name order.
+    let page_count = doc.pages.len();
+    let first_page = 4;
+    let mut next = first_page + 2 * page_count;
+    let mut font_objects: BTreeMap<&str, usize> = BTreeMap::new();
+    for (name, f) in &doc.fonts {
+        font_objects.insert(name, next);
+        next += f.object_count();
+    }
+    let mut page_resources: Vec<String> = Vec::with_capacity(page_count);
+    for (i, page) in doc.pages.iter().enumerate() {
+        let mut resources = String::from("/Font <<");
+        match &page.fonts {
+            None => {
+                for (name, obj) in &font_objects {
+                    let _ = write!(resources, " /{name} {obj} 0 R");
+                }
+            }
+            Some(names) => {
+                let mut seen = BTreeSet::new();
+                for name in names {
+                    let obj = font_objects.get(name.as_str()).ok_or_else(|| {
+                        ExactError::Invalid(format!(
+                            "page {}: font resource /{name} is not declared in the document",
+                            i + 1
+                        ))
+                    })?;
+                    if seen.insert(name) {
+                        let _ = write!(resources, " /{name} {obj} 0 R");
+                    }
+                }
+            }
+        }
+        resources.push_str(" >>");
+        page_resources.push(resources);
+    }
+
     // Validate and serialise each page's content first so errors surface
     // before any object is written.
     let mut contents: Vec<Vec<u8>> = Vec::with_capacity(doc.pages.len());
@@ -1418,7 +1504,7 @@ pub fn render_exact(doc: &ExactDocument) -> Result<crate::PdfOutput, ExactError>
                 if ops.len() > MAX_OPERATORS {
                     return Err(ExactError::Limit("operators per page"));
                 }
-                validate(i, ops, &doc.fonts)?;
+                validate(i, ops, &doc.fonts, page.fonts.as_deref())?;
                 serialize(ops)
             }
             Content::Verbatim(bytes) => {
@@ -1430,28 +1516,12 @@ pub fn render_exact(doc: &ExactDocument) -> Result<crate::PdfOutput, ExactError>
                     },
                     other => other,
                 })?;
-                validate(i, &ops, &doc.fonts)?;
+                validate(i, &ops, &doc.fonts, page.fonts.as_deref())?;
                 bytes.clone()
             }
         };
         contents.push(bytes);
     }
-
-    // Object numbering: 1 catalog, 2 pages, 3 info, then page/content pairs,
-    // then fonts in resource-name order.
-    let page_count = doc.pages.len();
-    let first_page = 4;
-    let mut next = first_page + 2 * page_count;
-    let mut font_objects: BTreeMap<&str, usize> = BTreeMap::new();
-    for (name, f) in &doc.fonts {
-        font_objects.insert(name, next);
-        next += f.object_count();
-    }
-    let mut resources = String::from("/Font <<");
-    for (name, obj) in &font_objects {
-        let _ = write!(resources, " /{name} {obj} 0 R");
-    }
-    resources.push_str(" >>");
 
     let mut d = Document::new();
     d.object(1, b"<< /Type /Catalog /Pages 2 0 R >>");
@@ -1472,9 +1542,10 @@ pub fn render_exact(doc: &ExactDocument) -> Result<crate::PdfOutput, ExactError>
         d.object(
             page_obj,
             format!(
-                "<< /Type /Page /Parent 2 0 R /MediaBox [ 0 0 {} {} ] /Resources << {resources} >> /Contents {} 0 R >>",
+                "<< /Type /Page /Parent 2 0 R /MediaBox [ 0 0 {} {} ] /Resources << {} >> /Contents {} 0 R >>",
                 page.width,
                 page.height,
+                page_resources[i],
                 page_obj + 1
             )
             .as_bytes(),
@@ -1510,9 +1581,53 @@ fn descriptor_body(d: &FontDescriptor, name: &str, file_entry: &str) -> String {
     if let Some(c) = &d.char_set {
         let _ = write!(s, " /CharSet ({})", escape_pdf_string(c));
     }
+    for (k, v) in &d.extra {
+        let _ = write!(s, " /{k} {v}");
+    }
     s.push_str(file_entry);
     s.push_str(" >>");
     s
+}
+
+/// Keys [`FontDescriptor`] writes itself; `extra` may not repeat them.
+const DESCRIPTOR_KEYS: [&str; 13] = [
+    "Type",
+    "FontName",
+    "Flags",
+    "FontBBox",
+    "ItalicAngle",
+    "Ascent",
+    "Descent",
+    "CapHeight",
+    "StemV",
+    "XHeight",
+    "CharSet",
+    "FontFile",
+    "FontFile2",
+];
+
+fn check_descriptor(resource: &str, d: &FontDescriptor) -> Result<(), ExactError> {
+    for (k, v) in &d.extra {
+        let bad = DESCRIPTOR_KEYS.contains(&k.as_str())
+            || k == "FontFile3"
+            || k == "CIDSet"
+            || k.is_empty()
+            || !k
+                .bytes()
+                .all(|b| b.is_ascii_graphic() && b != b'/' && b != b'#')
+            || v.is_empty()
+            || v.contains(" R")
+            || v.contains("stream");
+        if bad {
+            return Err(ExactError::Font {
+                resource: resource.to_string(),
+                message: format!(
+                    "descriptor extra /{k} {v}: keys the descriptor already writes and indirect references are not accepted"
+                ),
+            });
+        }
+    }
+    Ok(())
 }
 
 fn escape_pdf_string(s: &str) -> String {
@@ -1570,11 +1685,17 @@ fn write_font(d: &mut Document, obj: usize, f: &ExactFont) {
             let cid_obj = obj + 1;
             let desc_obj = obj + 2;
             let file_obj = obj + 3;
-            let tounicode = if c.to_unicode.is_empty() {
-                String::new()
-            } else {
-                format!(" /ToUnicode {} 0 R", obj + 4)
-            };
+            let mut next = obj + 4;
+            let tounicode_obj = c.has_to_unicode().then(|| {
+                next += 1;
+                next - 1
+            });
+            let cidset_obj = c.cid_set.is_some().then(|| {
+                next += 1;
+                next - 1
+            });
+            let tounicode = tounicode_obj.map_or(String::new(), |n| format!(" /ToUnicode {n} 0 R"));
+            let descendant = c.descendant_base_font.as_deref().unwrap_or(&c.base_font);
             d.object(
                 obj,
                 format!(
@@ -1596,8 +1717,8 @@ fn write_font(d: &mut Document, obj: usize, f: &ExactFont) {
             d.object(
                 cid_obj,
                 format!(
-                    "<< /Type /Font /Subtype /{subtype} /BaseFont /{} /CIDSystemInfo << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >> /FontDescriptor {desc_obj} 0 R /DW {} /W {w}{gid_map} >>",
-                    c.base_font, c.default_width
+                    "<< /Type /Font /Subtype /{subtype} /BaseFont /{descendant} /CIDSystemInfo << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >> /FontDescriptor {desc_obj} 0 R /DW {} /W {w}{gid_map} >>",
+                    c.default_width
                 )
                 .as_bytes(),
             );
@@ -1608,19 +1729,24 @@ fn write_font(d: &mut Document, obj: usize, f: &ExactFont) {
                 FontProgram::Cff(_) => "FontFile3",
                 FontProgram::TrueType(_) => "FontFile2",
             };
+            let mut file_entry = format!(" /{file_key} {file_obj} 0 R");
+            if let Some(n) = cidset_obj {
+                let _ = write!(file_entry, " /CIDSet {n} 0 R");
+            }
             d.object(
                 desc_obj,
-                descriptor_body(
-                    &c.descriptor,
-                    &c.base_font,
-                    &format!(" /{file_key} {file_obj} 0 R"),
-                )
-                .as_bytes(),
+                descriptor_body(&c.descriptor, descendant, &file_entry).as_bytes(),
             );
             let written = program_stream(d, file_obj, &c.program, true);
             debug_assert_eq!(written, file_key);
-            if !c.to_unicode.is_empty() {
-                d.stream(obj + 4, &to_unicode_cmap(&c.to_unicode));
+            if let Some(n) = tounicode_obj {
+                match &c.to_unicode_verbatim {
+                    Some(bytes) => d.stream(n, bytes),
+                    None => d.stream(n, &to_unicode_cmap(&c.to_unicode)),
+                }
+            }
+            if let (Some(n), Some(bytes)) = (cidset_obj, &c.cid_set) {
+                d.stream(n, bytes);
             }
         }
         ExactFont::Simple(s) => {
