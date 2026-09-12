@@ -9,16 +9,15 @@
   "branch": "agent/bridge-context/conversion-jobs",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "df9e26e44a74b4322f86bcbcfe0cf2312afaece0",
-  "objective": "Durable review-inbox expiry/recovery and context-revocation consistency; preserve exact PreparedEdit approval",
+  "input_main_sha": "ad9fec2ca0be52e0d9102ec275877c66a23e080d",
+  "objective": "Review handoff and event-backpressure recovery",
   "owned_paths": [
     "crates/conversion-jobs"
   ],
-  "revision": 5,
+  "revision": 6,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-022",
   "timebox_minutes": 30,
-  "updated_utc": "2026-09-12T08:18:56.142617+00:00",
-  "pause_reason": "Local active-agent cap reduced from7to4; preserve work, no automatic revival/replacement/remote reallocation."
+  "updated_utc": "2026-09-12T08:24:59Z"
 }
