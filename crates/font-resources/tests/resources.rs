@@ -768,3 +768,53 @@ fn nested_vf_output_cap_is_global_across_packets() {
         .to_string()
         .contains("output budget"));
 }
+
+#[test]
+fn cff_encoding_binds_actual_names_and_resource_hashes() {
+    use flashtex_font_resources::cff::*;
+    // Header/name/top/string/global indexes plus a two-entry CharStrings INDEX;
+    // ISOAdobe SID1 is space, not a Unicode or TFM-code cast.
+    let mut bytes = b"OTTOxxxx".to_vec();
+    bytes.extend([
+        1, 0, 4, 4, 0, 1, 1, 1, 2, b'F', 0, 1, 1, 1, 3, 160, 17, 0, 0, 0, 0, 0, 2, 1, 1, 2, 3, 14,
+        14,
+    ]);
+    let cache = CffOutlineCache::from_font_table(
+        &bytes,
+        0,
+        8..bytes.len(),
+        CacheLimits {
+            max_entries: 2,
+            max_bytes: 10000,
+        },
+    )
+    .unwrap();
+    let tfm = tfm_for_encoding();
+    let identity = cache.identity();
+    let manifest = CffEncodingManifest {
+        font_sha256: identity.font_sha256.clone(),
+        cff_sha256: identity.cff_sha256.clone(),
+        tfm_sha256: tfm.source_sha256.clone(),
+        face_index: 0,
+        encoding: vec![flashtex_font_resources::encoding::EncodingEntry {
+            code: 65,
+            glyph_name: "space".into(),
+        }],
+    };
+    let bound = BoundCffTfmFont::new(&tfm, &cache, &manifest).unwrap();
+    assert_eq!(
+        bound.map_code(65).unwrap().0,
+        flashtex_font_resources::encoding::GlyphIdentity::Original(1)
+    );
+    assert!(bound.map_code(66).is_err());
+    assert!(bound.validate_cache(&cache).is_ok());
+    let mut bad = manifest.clone();
+    bad.encoding[0].glyph_name = "A".into();
+    assert!(BoundCffTfmFont::new(&tfm, &cache, &bad).is_err());
+    bad = manifest.clone();
+    bad.cff_sha256 = "0".repeat(64);
+    assert!(BoundCffTfmFont::new(&tfm, &cache, &bad).is_err());
+    bad = manifest.clone();
+    bad.encoding.push(bad.encoding[0].clone());
+    assert!(BoundCffTfmFont::new(&tfm, &cache, &bad).is_err());
+}
