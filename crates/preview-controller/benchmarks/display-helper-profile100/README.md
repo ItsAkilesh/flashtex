@@ -51,3 +51,14 @@ This isolates serialization and is not comparable to the loaded replay above.
 The production optional path adopts this batching with an additional bounded
 8 KiB scratch buffer. Flush must succeed before complete-frame admission; neither
 partial frames nor changed numeric encoding reach the output queue.
+
+## Raw output feasibility (no runtime activation)
+
+`raw-serialization-probe.json` adds ten alternating pairs comparing buffered
+`Value` encoding with buffered copying of its pre-encoded canonical `RawValue`.
+All 1,150,821 bytes match, with the same exact-limit/one-byte-overflow checks.
+Value encoding measured 1.851–2.866 ms; raw copying 0.050–0.085 ms. Canonical
+pre-encoding and RawValue construction occurred outside timing: this isolates
+output work, not parsing, source validation, queue waits or native paint. Input,
+example source and executable hashes are recorded. This supports continuing the
+runtime-owned validated raw-body experiment; production still uses Value.

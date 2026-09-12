@@ -24,6 +24,7 @@ def main():
     parser.add_argument('--reply-limit', type=int)
     parser.add_argument('--helper-source-sha')
     parser.add_argument('--compress-artifacts', action='store_true')
+    parser.add_argument('--display-transport', choices=('value', 'raw-prototype'), default='value')
     args = parser.parse_args()
     if not 1 <= args.repeat <= 2000:
         parser.error('--repeat must be 1..2000')
@@ -51,9 +52,14 @@ def main():
         (root / 'private').mkdir()
         (root / 'project/main.tex').write_text(source)
         config = root / 'config.json'
-        config.write_text(json.dumps(dict(session_id='benchmark', project_id='p', entry_path='main.tex',
+        settings = dict(session_id='benchmark', project_id='p', entry_path='main.tex',
             project_root=str(root/'project'), private_ledger_root=str(root/'private'),
-            compiler_path=str(Path(args.producer).resolve()), diagnostic_timings=True)))
+            compiler_path=str(Path(args.producer).resolve()), diagnostic_timings=True)
+        if args.display_transport == 'raw-prototype':
+            settings['display_transport'] = 'raw-prototype'
+        capability = ('display-candidates-raw-v1' if args.display_transport == 'raw-prototype'
+                      else 'display-candidates-v1')
+        config.write_text(json.dumps(settings))
         client = Client(args.helper, config, capture_diagnostics=True)
         try:
             document = snapshot_after_initial_preview(client)
@@ -63,7 +69,7 @@ def main():
                 ack_ms = v1_ms = candidate_ms = None
                 candidate = current = None
                 if step == 0:
-                    client.send('enable', 'configure_display_candidates', dict(capability='display-candidates-v1',
+                    client.send('enable', 'configure_display_candidates', dict(capability=capability,
                         enabled=True, renderer_support_confirmed=True))
                     reply_id = 'enable'
                 else:
@@ -82,6 +88,8 @@ def main():
                     assert payload.get('kind') != 'failed', event
                     if event.get('id') == reply_id:
                         assert event['type'] == 'result'
+                        if step == 0:
+                            assert payload['capability'] == capability and payload['enabled'] is True
                         acknowledged = True
                         ack_ms = (received - started) * 1000
                         if step:
@@ -101,6 +109,8 @@ def main():
                         assert candidate['untrusted'] and not candidate['source_actions_enabled']
                         assert candidate['source_versions'] == {'main.tex': document['revision']}
                         assert candidate['request_id'] in previews, 'candidate preceded matching v1'
+                        assert current is not None and candidate['request_id'] == current['request_id']
+                        assert candidate['compile_revision'] == current['compile_revision']
                         break
                 request = dict(protocol_version=1, type='compile', id=current['request_id'], payload=dict(
                     project_id='p', revision=current['compile_revision'], entry_path='main.tex',
@@ -137,6 +147,7 @@ def main():
         producer_sha256=digest(args.producer), producer_source_sha=expected['producer_sha'],
         producer_evidence_sha256=digest(args.producer_evidence), fixture_sha256=digest(args.fixture),
         assets=expected['assets'], diagnostics=diagnostics, repeat=args.repeat, reply_limit=args.reply_limit,
+        display_transport=args.display_transport, negotiated_capability=capability,
         native_rendering='not performed', native_latency='not measured')
     evidence['helper_source_sha'] = args.helper_source_sha
     evidence['replay_script_sha256'] = digest(__file__)
