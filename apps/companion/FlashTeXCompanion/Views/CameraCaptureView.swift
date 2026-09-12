@@ -6,7 +6,6 @@ import PhotosUI
 struct CameraCaptureView: View {
     @Environment(CaptureStore.self) private var store
     @State private var showCamera = false
-    @State private var showPhotoPicker = false
     @State private var selectedPhoto: PhotosPickerItem?
 
     var body: some View {
@@ -22,6 +21,13 @@ struct CameraCaptureView: View {
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
                 .padding(.horizontal)
+
+            if let error = store.lastError {
+                Text(error)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .padding(.horizontal)
+            }
 
             VStack(spacing: 12) {
                 Button(action: { showCamera = true }) {
