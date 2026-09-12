@@ -13,17 +13,17 @@
   "capabilities": [
     "Preview helper serialization and latency"
   ],
-  "code_revision": "64829a0db4eb7bd6d0dbad4e50ab72257880f210",
+  "code_revision": "8876279e278581c1401f046ef73ac36ec1c113ae",
   "eta_minutes": null,
   "machine": "linux-primary",
-  "main_integrated_through": "a885b394b50175690cd98965ec6c9c02b5ff03e2",
-  "next_action": "Agree minimal current-only opt-in display-list candidate interface with FT049; preserve existing helper required-output priority and source identity.",
+  "main_integrated_through": "6e515bef475f14d51a736c94ba4e0adc943d0dc8",
+  "next_action": "Coordinate native helper rendering and measured responsiveness; watch integration runtime parallel-test fix without changing peer ownership.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "FT048r6 ACK: explicit document_kinds now included in same-source snapshot, allowing native project settings to preserve bibliography declarations.17 ordinary stdio tests and strict Clippy pass;2 explicit compiler tests not rerun for metadata-only change.",
+  "summary": "Full-size optional output gates pass:5.6MB compact sibling exceeds16MiB only on reserialization, is refused, then edit ACK/reopen remain exact.1MiB admitted optional frame with unreadstdout triggerswatchdog ~2s and source survives. Strictlint pass; no production changes.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T10:54:30Z",
+  "updated_utc": "2026-09-12T11:13:19Z",
   "usage": {
     "status": "unknown"
   }

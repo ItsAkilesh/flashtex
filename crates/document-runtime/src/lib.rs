@@ -13,7 +13,9 @@ use std::{
 };
 
 mod decode_lane;
+mod display_candidate;
 use decode_lane::{Decoder, Input, RawInput};
+pub use display_candidate::{SourceBinding, UntrustedDisplayCandidate};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Document {
@@ -97,6 +99,8 @@ pub struct CompletedSnapshot {
     pub result: Value,
 }
 struct Pending {
+    awaiting_display: bool,
+    display_epoch: u64,
     snapshot_origin: Option<(u64, String)>,
     encode_ms: f64,
     capabilities: Vec<String>,
@@ -192,6 +196,9 @@ impl Drop for Process {
 }
 
 pub struct Session {
+    display_enabled: bool,
+    display_epoch: u64,
+    display_candidate: Option<UntrustedDisplayCandidate>,
     process: Option<Process>,
     limits: Limits,
     active: Option<Pending>,
@@ -219,6 +226,9 @@ impl Session {
         }
         let process = Process::spawn(command, limits.max_frame)?;
         Ok(Self {
+            display_enabled: false,
+            display_epoch: 0,
+            display_candidate: None,
             process: Some(process),
             limits,
             active: None,
@@ -244,6 +254,11 @@ impl Session {
     /// Enable historical completion retention explicitly. Toggling invalidates old origins.
     /// Disabled by default; at most one completed result is retained across all projects.
     pub fn set_completed_snapshots_enabled(&mut self, enabled: bool) -> Result<(), String> {
+        if enabled && self.display_enabled {
+            return Err(
+                "display candidates and historical snapshots are mutually exclusive".into(),
+            );
+        }
         if self.completed_snapshots_enabled != enabled {
             self.completed_snapshot = None;
             self.completed_snapshots_enabled = false;
@@ -277,6 +292,26 @@ impl Session {
     pub fn take_completed_snapshot(&mut self) -> Option<CompletedSnapshot> {
         self.completed_snapshot.take()
     }
+    /// Opt-in source-bound transport candidates, never rendering validation.
+    /// Mutually exclusive with the historical optional-output slot.
+    pub fn set_display_candidates_enabled(&mut self, enabled: bool) -> Result<(), String> {
+        if enabled && self.completed_snapshots_enabled {
+            return Err(
+                "display candidates and historical snapshots are mutually exclusive".into(),
+            );
+        }
+        self.display_candidate = None;
+        self.display_epoch = self
+            .display_epoch
+            .checked_add(1)
+            .ok_or("display epoch exhausted")?;
+        self.display_enabled = enabled;
+        Ok(())
+    }
+    /// Moves untrusted data; downstream must validate rendering and live source/session epochs.
+    pub fn take_current_display_candidate(&mut self) -> Option<UntrustedDisplayCandidate> {
+        self.display_candidate.take()
+    }
     fn submit_internal(
         &mut self,
         request: Request,
@@ -284,6 +319,9 @@ impl Session {
         snapshot_origin: Option<(u64, String)>,
     ) -> Result<(), String> {
         validate_layout_capabilities(&capabilities)?;
+        if capabilities.iter().any(|c| c == "display-list-v2") && !self.display_enabled {
+            return Err("display candidates disabled".into());
+        }
         if self.events.len() >= self.limits.max_pending_events {
             return Err("poll pending events before submitting more edits".into());
         }
@@ -326,7 +364,10 @@ impl Session {
             request.project_id.clone(),
             (request.revision, request.id.clone()),
         );
+        self.display_candidate = None;
         self.queue.push_back(Pending {
+            awaiting_display: false,
+            display_epoch: self.display_epoch,
             snapshot_origin,
             encode_ms,
             capabilities,
@@ -352,6 +393,7 @@ impl Session {
         {
             self.completed_snapshot = None;
         }
+        self.display_candidate = None;
         self.latest.remove(project_id);
         if let Some(active) = self.active.as_mut() {
             if active.request.project_id == project_id && !active.cancelled {
@@ -395,6 +437,7 @@ impl Session {
         }
     }
     fn fail(&mut self, reason: &str) {
+        self.display_candidate = None;
         self.completed_snapshot = None;
         self.process.take();
         if let Some(p) = self.active.take().filter(|p| !p.cancelled) {
@@ -425,6 +468,30 @@ impl Session {
                         break;
                     };
                     let parsed = frame.value.take().expect("decoded frame consumed once");
+                    if pending.awaiting_display {
+                        let candidate = match display_candidate::validate(parsed, &pending.request)
+                        {
+                            Ok(candidate) => candidate,
+                            Err(reason) => {
+                                self.fail(&reason);
+                                break;
+                            }
+                        };
+                        if self.display_enabled
+                            && pending.display_epoch == self.display_epoch
+                            && !pending.cancelled
+                            && self.latest.get(&pending.request.project_id).is_some_and(
+                                |(rev, id)| {
+                                    *rev == pending.request.revision && id == &pending.request.id
+                                },
+                            )
+                        {
+                            self.display_candidate = Some(candidate);
+                        }
+                        self.active.take();
+                        self.dispatch();
+                        continue;
+                    }
                     let validate_at = Instant::now();
                     let result =
                         match validate_reply_value(parsed, &pending.request, &pending.capabilities)
@@ -454,8 +521,15 @@ impl Session {
                         parse_ms: frame.parse_ms,
                         validation_ms: validate_at.elapsed().as_secs_f64() * 1000.0,
                     });
-                    let pending = self.active.take().unwrap();
+                    let mut pending = self.active.take().unwrap();
+                    pending.awaiting_display = result["payload"]["status"] != "failed"
+                        && result["payload"]["layout_capabilities"]
+                            .as_array()
+                            .is_some_and(|caps| caps.iter().any(|c| c == "display-list-v2"));
                     if pending.cancelled {
+                        if pending.awaiting_display {
+                            self.active = Some(pending);
+                        }
                         self.dispatch();
                         continue;
                     }
@@ -474,8 +548,8 @@ impl Session {
                             self.completed_snapshot = None;
                         }
                         self.events.push_back(Event::Preview {
-                            id: pending.request.id,
-                            project_id: pending.request.project_id,
+                            id: pending.request.id.clone(),
+                            project_id: pending.request.project_id.clone(),
                             revision: pending.request.revision,
                             result,
                             queue_ms: sent.duration_since(pending.queued).as_secs_f64() * 1000.0,
@@ -483,7 +557,7 @@ impl Session {
                             total_ms: now.duration_since(pending.queued).as_secs_f64() * 1000.0,
                         });
                     } else {
-                        if let Some((epoch, origin)) = pending.snapshot_origin {
+                        if let Some((epoch, origin)) = pending.snapshot_origin.clone() {
                             if self.completed_snapshots_enabled && epoch == self.snapshot_epoch {
                                 self.completed_snapshot = Some(CompletedSnapshot {
                                     request_id: pending.request.id.clone(),
@@ -495,9 +569,12 @@ impl Session {
                             }
                         }
                         self.events.push_back(Event::Stale {
-                            id: pending.request.id,
+                            id: pending.request.id.clone(),
                             revision: pending.request.revision,
                         });
+                    }
+                    if pending.awaiting_display {
+                        self.active = Some(pending);
                     }
                     self.dispatch();
                 }
@@ -650,7 +727,11 @@ fn validate_reply_value(v: Value, r: &Request, requested: &[String]) -> Result<V
     };
     validate_layout_capabilities(&accepted)?;
     if accepted.iter().any(|cap| {
-        !requested.contains(cap) || !matches!(cap.as_str(), "rules-v1" | "font-hints-v1")
+        !requested.contains(cap)
+            || !matches!(
+                cap.as_str(),
+                "rules-v1" | "font-hints-v1" | "display-list-v2"
+            )
     }) {
         return Err("compiler accepted unknown or unrequested capability".into());
     }

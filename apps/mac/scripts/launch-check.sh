@@ -5,14 +5,25 @@
 # turn to exercise crash recovery, and asserts the app itself survives and
 # logs each recovery.
 #
-# Usage: apps/mac/scripts/launch-check.sh [--app <path to .app>] [--evidence <file>]
+# Usage: apps/mac/scripts/launch-check.sh [--app <path to .app> | --dmg <path to .dmg>]
+#                                          [--evidence <file>]
+#
+# --dmg mounts the image read-only at a private mount point, runs every check
+# against the FlashTeX.app inside it, and detaches it afterwards.
+# The app is launched with `open -n --env FLASHTEX_NO_ACTIVATE=1` (override
+# with FLASHTEX_NO_ACTIVATE=0 in the environment) so it never takes keyboard
+# focus. Only the process this script launched is ever signalled: the instance
+# is identified by pid (new pid whose executable lives inside the bundle under
+# test), never by process name, so another running FlashTeX is left alone.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MAC_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 APP_DIR="$MAC_DIR/build/FlashTeX.app"
+DMG_PATH=""
 EVIDENCE_FILE=""
+NO_ACTIVATE="${FLASHTEX_NO_ACTIVATE:-1}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -20,12 +31,16 @@ while [[ $# -gt 0 ]]; do
       APP_DIR="$2"
       shift 2
       ;;
+    --dmg)
+      DMG_PATH="$2"
+      shift 2
+      ;;
     --evidence)
       EVIDENCE_FILE="$2"
       shift 2
       ;;
     -h|--help)
-      sed -n '2,8p' "${BASH_SOURCE[0]}"
+      sed -n '2,17p' "${BASH_SOURCE[0]}"
       exit 0
       ;;
     *)
@@ -34,11 +49,6 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
-
-if [[ ! -d "$APP_DIR" ]]; then
-  echo "launch-check.sh: $APP_DIR not found; run make-app.sh first" >&2
-  exit 1
-fi
 
 REPORT_LINES=()
 step() { echo "==> $1"; REPORT_LINES+=("" "## $1" ""); }
@@ -62,35 +72,98 @@ wait_for_log() {
 # cleans up everything (macOS mktemp only substitutes a trailing run of X's,
 # so templates need a real trailing XXXXXX with no suffix after it).
 WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/flashtex-launch-check.XXXXXX")"
-trap 'rm -rf "$WORK_DIR"' EXIT
+MOUNT_POINT=""
+APP_PID=""
+cleanup() {
+  # Only ever signal the pid this script launched.
+  if [[ -n "$APP_PID" ]] && kill -0 "$APP_PID" 2>/dev/null; then
+    kill -TERM "$APP_PID" 2>/dev/null || true
+    for _ in $(seq 1 10); do kill -0 "$APP_PID" 2>/dev/null || break; sleep 0.5; done
+  fi
+  if [[ -n "$MOUNT_POINT" ]]; then
+    for _ in $(seq 1 10); do
+      hdiutil detach "$MOUNT_POINT" >/dev/null 2>&1 && { MOUNT_POINT=""; break; }
+      sleep 1
+    done
+    [[ -n "$MOUNT_POINT" ]] && hdiutil detach "$MOUNT_POINT" -force >/dev/null 2>&1 || true
+  fi
+  rm -rf "$WORK_DIR"
+}
+trap cleanup EXIT
 
-# --- 1. Compile a tiny CGWindowList probe on the fly -----------------------
-# `pid` -> exit 0 if that pid owns an on-screen window, else 1.
+# --- 0. Mount the DMG when asked -------------------------------------------
+if [[ -n "$DMG_PATH" ]]; then
+  if [[ ! -f "$DMG_PATH" ]]; then
+    echo "launch-check.sh: $DMG_PATH not found; run make-app.sh --dmg first" >&2
+    exit 1
+  fi
+  MOUNT_POINT="$WORK_DIR/mnt"
+  mkdir -p "$MOUNT_POINT"
+  step "Mounting $DMG_PATH read-only at $MOUNT_POINT"
+  if hdiutil attach -nobrowse -readonly -noautoopen -mountpoint "$MOUNT_POINT" "$DMG_PATH" >"$WORK_DIR/hdiutil.log" 2>&1; then
+    note "mounted (hdiutil attach -nobrowse -readonly -mountpoint)"
+  else
+    MOUNT_POINT=""
+    echo "launch-check.sh: hdiutil attach failed for $DMG_PATH:" >&2
+    cat "$WORK_DIR/hdiutil.log" >&2
+    exit 1
+  fi
+  APP_DIR="$MOUNT_POINT/FlashTeX.app"
+  if [[ -d "$APP_DIR" ]]; then
+    note "image contains FlashTeX.app$( [[ -L "$MOUNT_POINT/Applications" ]] && echo ' and an /Applications symlink')"
+  else
+    fail "no FlashTeX.app at the root of the mounted image"
+    exit 1
+  fi
+fi
+
+if [[ ! -d "$APP_DIR" ]]; then
+  echo "launch-check.sh: $APP_DIR not found; run make-app.sh first" >&2
+  exit 1
+fi
+# ps reports the resolved executable path; compare against both spellings.
+APP_REAL="$(cd "$APP_DIR" && pwd -P)"
+
+# --- 1. Compile a tiny CGWindowList/NSRunningApplication probe on the fly ----
+# `probe window <pid>` -> exit 0 if that pid owns an on-screen window, else 1.
+# `probe quit <pid>`   -> asks exactly that process to quit (NSRunningApplication
+#                         .terminate(), the same request Finder/Dock send);
+#                         exit 0 if the request was delivered.
 PROBE_SRC="$WORK_DIR/probe.swift"
 PROBE_BIN="$WORK_DIR/probe"
 cat > "$PROBE_SRC" <<'SWIFT'
+import AppKit
 import CoreGraphics
 import Foundation
 
-guard CommandLine.arguments.count > 1, let pid = Int32(CommandLine.arguments[1]) else {
-    FileHandle.standardError.write("usage: probe <pid>\n".data(using: .utf8)!)
+let args = CommandLine.arguments
+guard args.count > 2, let pid = Int32(args[2]) else {
+    FileHandle.standardError.write("usage: probe window|quit <pid>\n".data(using: .utf8)!)
     exit(2)
 }
-let options: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
-guard let list = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: AnyObject]] else {
-    exit(1)
+switch args[1] {
+case "window":
+    let options: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
+    guard let list = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: AnyObject]] else {
+        exit(1)
+    }
+    let owned = list.contains { entry in
+        (entry[kCGWindowOwnerPID as String] as? Int32) == pid
+    }
+    exit(owned ? 0 : 1)
+case "quit":
+    guard let app = NSRunningApplication(processIdentifier: pid) else { exit(1) }
+    exit(app.terminate() ? 0 : 1)
+default:
+    exit(2)
 }
-let owned = list.contains { entry in
-    (entry[kCGWindowOwnerPID as String] as? Int32) == pid
-}
-exit(owned ? 0 : 1)
 SWIFT
 
-step "Compiling CGWindowList window-probe"
+step "Compiling window/quit probe"
 if swiftc -O "$PROBE_SRC" -o "$PROBE_BIN" 2>"$WORK_DIR/probe-build.log"; then
   note "probe compiled at $PROBE_BIN"
 else
-  note "probe failed to compile (see $WORK_DIR/probe-build.log); window check will be skipped"
+  note "probe failed to compile (see $WORK_DIR/probe-build.log); window check will be skipped and quit falls back to SIGTERM on the launched pid"
   PROBE_BIN=""
 fi
 
@@ -100,34 +173,45 @@ BRIDGE_IN_BUNDLE="$APP_DIR/Contents/MacOS/flashtex-bridge"
 LOG_FILE="$WORK_DIR/flashtex.log"
 : > "$LOG_FILE"
 step "Launching $APP_DIR"
-pkill -x FlashTeX >/dev/null 2>&1 || true
-sleep 1
+PIDS_BEFORE=" $( (pgrep -x FlashTeX || true) | tr '\n' ' ') "
+if [[ "$PIDS_BEFORE" != "  " ]]; then
+  note "other FlashTeX instance(s) already running (pids:$PIDS_BEFORE) — left untouched; a new instance is launched with open -n"
+fi
+OPEN_ENV=(--env "FLASHTEX_NO_ACTIVATE=$NO_ACTIVATE" --env "FLASHTEX_LOG=$LOG_FILE")
 if [[ -x "$COMPILER_IN_BUNDLE" || -x "$BRIDGE_IN_BUNDLE" ]]; then
-  open --env FLASHTEX_AUTOATTACH=1 --env "FLASHTEX_LOG=$LOG_FILE" "$APP_DIR"
-  note "bundled compiler/bridge present; launched with FLASHTEX_AUTOATTACH=1 FLASHTEX_LOG=$LOG_FILE"
+  open -n "${OPEN_ENV[@]}" --env FLASHTEX_AUTOATTACH=1 "$APP_DIR"
+  note "bundled compiler/bridge present; launched with open -n --env FLASHTEX_NO_ACTIVATE=$NO_ACTIVATE --env FLASHTEX_AUTOATTACH=1 --env FLASHTEX_LOG=$LOG_FILE"
 else
-  open --env "FLASHTEX_LOG=$LOG_FILE" "$APP_DIR"
-  note "no bundled flashtex-compiler/flashtex-bridge in $APP_DIR/Contents/MacOS; rebuild with 'make-app.sh --compiler <path> --bridge <path>' to exercise the attach/kill/log checks below"
+  open -n "${OPEN_ENV[@]}" "$APP_DIR"
+  note "launched with open -n --env FLASHTEX_NO_ACTIVATE=$NO_ACTIVATE --env FLASHTEX_LOG=$LOG_FILE; no bundled flashtex-compiler/flashtex-bridge in $APP_DIR/Contents/MacOS; rebuild with 'make-app.sh --compiler <path> --bridge <path>' to exercise the attach/kill/log checks below"
 fi
 
-APP_PID=""
+# The launched instance is the new FlashTeX pid whose executable lives inside
+# the bundle under test.
 for _ in $(seq 1 20); do
-  APP_PID="$(pgrep -x FlashTeX || true)"
-  [[ -n "$APP_PID" ]] && break
+  for pid in $(pgrep -x FlashTeX || true); do
+    [[ "$PIDS_BEFORE" == *" $pid "* ]] && continue
+    exe="$(ps -p "$pid" -o comm= 2>/dev/null || true)"
+    if [[ "$exe" == "$APP_DIR/"* || "$exe" == "$APP_REAL/"* ]]; then
+      APP_PID="$pid"
+      break 2
+    fi
+  done
   sleep 0.5
 done
 if [[ -z "$APP_PID" ]]; then
-  fail "FlashTeX process did not appear within 10s"
+  fail "no new FlashTeX process running from $APP_DIR appeared within 10s"
   exit 1
 fi
 note "FlashTeX running, pid=$APP_PID"
+note "executable: $(ps -p "$APP_PID" -o comm= 2>/dev/null)"
 
 # --- 3. Wait for a window ----------------------------------------------------
 step "Waiting for a window owned by pid $APP_PID"
 WINDOW_SEEN=0
 if [[ -n "$PROBE_BIN" ]]; then
   for _ in $(seq 1 15); do
-    if "$PROBE_BIN" "$APP_PID"; then
+    if "$PROBE_BIN" window "$APP_PID"; then
       WINDOW_SEEN=1
       break
     fi
@@ -242,14 +326,44 @@ if [[ -n "$BRIDGE_PID" ]]; then
   fi
 fi
 
-# --- 6. Quit -----------------------------------------------------------------
-step "Quitting FlashTeX"
-osascript -e 'tell application "FlashTeX" to quit' >/dev/null 2>&1 || pkill -x FlashTeX >/dev/null 2>&1 || true
-sleep 1
-if pgrep -x FlashTeX >/dev/null 2>&1; then
-  fail "FlashTeX (pid $APP_PID) is still running after quit"
+# --- 6. Quit (only pid $APP_PID) ---------------------------------------------
+step "Quitting FlashTeX (pid $APP_PID)"
+QUIT_HOW=""
+if [[ -n "$PROBE_BIN" ]] && "$PROBE_BIN" quit "$APP_PID" 2>/dev/null; then
+  QUIT_HOW="NSRunningApplication.terminate() on pid $APP_PID"
 else
-  note "FlashTeX quit cleanly"
+  kill -TERM "$APP_PID" 2>/dev/null || true
+  QUIT_HOW="SIGTERM to pid $APP_PID"
+fi
+for _ in $(seq 1 10); do
+  kill -0 "$APP_PID" 2>/dev/null || break
+  sleep 0.5
+done
+if kill -0 "$APP_PID" 2>/dev/null; then
+  fail "FlashTeX (pid $APP_PID) is still running 5s after $QUIT_HOW"
+else
+  note "FlashTeX quit cleanly ($QUIT_HOW)"
+  APP_PID=""
+fi
+if [[ "$PIDS_BEFORE" != "  " ]]; then
+  STILL=""
+  for pid in $PIDS_BEFORE; do kill -0 "$pid" 2>/dev/null && STILL="$STILL $pid"; done
+  note "pre-existing FlashTeX instance(s) untouched:${STILL:- (none still running)}"
+fi
+
+if [[ -n "$MOUNT_POINT" ]]; then
+  step "Detaching $MOUNT_POINT"
+  DETACHED=0
+  for _ in $(seq 1 10); do
+    if hdiutil detach "$MOUNT_POINT" >/dev/null 2>&1; then DETACHED=1; break; fi
+    sleep 1
+  done
+  if [[ "$DETACHED" -eq 1 ]]; then
+    note "image detached cleanly (no -force needed)"
+    MOUNT_POINT=""
+  else
+    fail "hdiutil detach kept failing for 10s (something still holds the image); forcing in cleanup"
+  fi
 fi
 
 if [[ -n "$EVIDENCE_FILE" ]]; then
@@ -257,6 +371,8 @@ if [[ -n "$EVIDENCE_FILE" ]]; then
     echo "# launch-check.sh run — $(date -u +%Y-%m-%dT%H:%M:%SZ)"
     echo
     echo "App: $APP_DIR"
+    [[ -n "$DMG_PATH" ]] && echo "DMG: $DMG_PATH"
+    echo "FLASHTEX_NO_ACTIVATE: $NO_ACTIVATE"
     echo "Compiler bundled: $([[ -x "$COMPILER_IN_BUNDLE" ]] && echo yes || echo no)"
     echo "Bridge bundled: $([[ -x "$BRIDGE_IN_BUNDLE" ]] && echo yes || echo no)"
     echo

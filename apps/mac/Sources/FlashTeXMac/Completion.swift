@@ -1474,6 +1474,7 @@ final class CompletingTextView: NSTextView {
     /// Copies the text and enqueues the scan; the popup opens (or refreshes)
     /// when the outcome is delivered and still current.
     func requestCompletion() {
+        guard EditorPreferences.shared.completionPopup else { return } // preference: list disabled
         observeStorageIfNeeded()
         let caret = selectedRange()
         guard caret.length == 0, !hasMarkedText() else { return }
