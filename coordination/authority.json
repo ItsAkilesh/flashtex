@@ -1,22 +1,23 @@
 {
   "schema_version": 1,
-  "commander_id": "claude",
+  "commander_id": "codex-kabir-commander",
   "machine": "mac-m5pro-kabir",
   "authority_state": "active",
-  "claim_mode": "explicit_quiesced_handoff",
-  "predecessor": "orchestrator-astra",
+  "claim_mode": "explicit_user_directed_handoff_with_verified_predecessor_termination",
+  "predecessor": "claude",
   "predecessor_main_writes_quiesced": true,
-  "claim_base_main": "7f7d4186f3f6b98a770635b2ee158c8bd1d165f5",
-  "dispatch_service": "com.flashtex.commander-supervisor",
-  "dispatch_service_pid_at_claim": 24574,
+  "claim_base_main": "64c7bade434b810db5bf1b0149f8206a509a4e5f",
+  "dispatch_service": null,
+  "dispatch_service_pid_at_claim": null,
   "publication_rule": "Before each main/control write, fetch and reread this record; only commander_id may write unless a newer non-force claim is authoritative.",
   "revival_rule": "Require explicit quiesced handoff or positive exact process/session termination plus stopped publication jobs; silence, timeout, stale heartbeat, quota error, and network failure are insufficient.",
-  "updated_utc": "2026-09-12T17:15:00Z",
-  "agent_session": "session_01Xd5Hmwh5GHNTiAmHUJ1MZu",
-  "parent_pid_at_claim": 55790,
-  "model": "Claude Sonnet 5",
-  "handoff_evidence": "orchestrator-astra explicitly named this successor and published coordination/KABIR-QUIESCED-HANDOFF.md and coordination/kabir-quiescence-evidence.json at 7f7d4186f3f6b98a770635b2ee158c8bd1d165f5, confirming all three Astra services (dispatch, witness, coordination-watch) ActiveState=inactive/dead MainPID=0 and publication journal reconciled. Astra remains read-only after that push.",
-  "claim_commit_executor": "git, direct, explicit user authorization",
+  "updated_utc": "2026-09-12T19:33:37Z",
+  "agent_session": "codex-ECA8936A-6AA8-4023-829F-5A6CB2776FEB",
+  "session_pid_at_claim": 66334,
+  "session_started_utc": "2026-09-12T19:32:38Z",
+  "model": "OpenAI Codex",
+  "handoff_evidence": "The user explicitly directed this interactive Codex session to take over after Claude published coordination/COMMANDER-HANDOFF-CODEX.md at 64c7bade434b810db5bf1b0149f8206a509a4e5f. The exact predecessor Claude session PID 94250 and its session-local pollers PIDs 10919 and 78137 were terminated, then an unrestricted process census at 2026-09-12T19:32:31Z confirmed they were absent and found no dispatch_loop, integrate.py, coord.py publish, Cursor publication, or promotion process. The remaining com.flashtex.commander-supervisor PID 24574 is deterministic fetch/report-only monitoring and performs no repository writes, model calls, dispatch, integration, or publication.",
+  "claim_commit_executor": "OpenAI Codex, direct Git under explicit user-directed takeover",
   "monitor": {
     "kind": "deterministic launchd supervisor, no model calls",
     "label": "com.flashtex.commander-supervisor",
@@ -25,5 +26,5 @@
     "limitations": "Monitors and reports on-disk/git state only; no automatic Claude inference revival exists; no zero-downtime guarantee. Known followups per Astra review: fetch-error/branch-age mapping accuracy is routine maintenance, not a standing gap."
   },
   "designated_successor": null,
-  "quiesced_handoff_path": "coordination/KABIR-QUIESCED-HANDOFF.md"
+  "quiesced_handoff_path": "coordination/COMMANDER-HANDOFF-CODEX.md"
 }
