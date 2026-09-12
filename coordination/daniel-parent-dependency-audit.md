@@ -290,3 +290,40 @@ one lane's read-only unowned dependency) of which all 7 operational unsafe block
 are soundly justified, plus one crate (`editor-snippets`) that forbids `unsafe`
 outright.** The one open item is the `zmij` lockfile anomaly, which needs
 network access to resolve, not a code change.
+
+---
+
+## Resolved after publication: the `zmij` lockfile entry is benign
+
+The audit above flagged one item as needing network follow-up: the lockfiles for
+`font-resources`, `font-engine` and `editor-snippets` record `serde_json`
+depending on a package named `zmij` where its historical dependency `ryu`
+belongs, with `ryu` absent from those three lockfiles.
+
+**This is not a supply-chain substitution, and it needed no network to settle.**
+Both `ryu-1.0.23` and `zmij-1.0.23` are present in this machine's local crates.io
+registry cache, and reading `zmij`'s own extracted source resolves it:
+
+- `authors = ["David Tolnay <dtolnay@gmail.com>"]` — the same author as both
+  `ryu` and `serde_json` itself.
+- `repository = "https://github.com/dtolnay/zmij"`, `source = "registry+https://github.com/rust-lang/crates.io-index"` —
+  the official index, not a mirror or a git override.
+- `description = "A double-to-string conversion algorithm based on Schubfach and xjb"`,
+  and its README states it is a line-by-line port of Victor Zverovich's C++
+  implementation.
+
+It is a *different algorithm*, not an imitation of `ryu`. The source layouts share
+nothing: `zmij` has `lib.rs`, `traits.rs`, `stdarch_x86.rs`, `tests.rs`, while
+`ryu` has `d2s.rs`, `f2s.rs`, `s2d.rs`, `d2s_full_table.rs` and the rest. A
+typosquat imitates the original's API and file structure to be drop-in; this does
+the opposite and documents itself as a replacement. `serde_json` moving its float
+formatting from `ryu` to `zmij` is an ordinary upstream dependency change.
+
+Worth recording *why* this looked alarming, because the same pattern will recur:
+both crates sit at version `1.0.23`, which reads like a substitution swapped in at
+matching version. That is coincidence, not evidence. Stopping at the lockfile name
+would have produced a confident false alarm and sent a peer machine chasing a
+non-issue. The facts that settled it were authorship, registry provenance and
+source structure — all available offline.
+
+No action needed. The three lockfiles are correct as committed.
