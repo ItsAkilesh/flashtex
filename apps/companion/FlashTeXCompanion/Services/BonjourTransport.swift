@@ -141,7 +141,14 @@ final class BonjourTransport {
             guard let self else { return }
             if let data { self.receiveBuffer.append(data) }
             self.processBuffer()
-            if !isComplete && error == nil {
+            if let error {
+                self.connection?.cancel()
+                self.connection = nil
+                self.state = .failed("Receive: \(error.localizedDescription)")
+            } else if isComplete {
+                self.connection = nil
+                self.state = .idle
+            } else {
                 self.startReceiving()
             }
         }
