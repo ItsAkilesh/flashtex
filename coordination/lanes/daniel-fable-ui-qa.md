@@ -50,3 +50,15 @@ Pushed: 06425f56 (ranked list + evidence). NOT yet pushed: 40c6bb5b (gap categor
 ## 2026-09-12T19:53Z — log moved into git per relayed user instruction
 HEAD bf0be455 pushed. Fix commits so far: 40c6bb5b (gap counts), bf0be455 (gap gutter/underline).
 Uncommitted: DiagnosticsPanel.swift (row "line N" + controlSize(.small)) — commit 3, building next.
+
+## 2026-09-12T19:56Z — STOP (quota 98%, per daniel-parent)
+Fix commits on agent/daniel-fable-ui-qa/mac (each swift build + named tests green; cherry-pickable):
+  40c6bb5b gap category counts (sidebar/panel/status/list icon) + test
+  bf0be455 grey gutter dot + grey underline for gaps
+  7937e371 Problems rows "main.tex line N" + controlSize(.small)
+  2aa98243 Problems panel capped at 40% window height; idle bridge line hidden; header no-wrap
+  166e9b4c "not supported in the document preamble" is a gap (HW1 → 0 errors / 30 not implemented)
+  6871be19 Problems rows: location beside title (two lines per row)
+After-screenshots (scratchpad only, not committed): HW1 sidebar reads "5 errors / 0 warnings / 25 not implemented" before 166e9b4c; bridge strip gone; grey gutter dots on package lines.
+Not done: after-screenshots into docs/evidence, fix table in coordination/daniel-fable-ui-qa.md, items 6-10 (owner's call), light-mode capture, hover anchor, completion truncation.
+Next for whoever resumes: relaunch (commands above), capture 06/07 after-shots into docs/evidence/daniel-fable-ui-qa-2026-09-12/, fill the SHA table in coordination/daniel-fable-ui-qa.md.
