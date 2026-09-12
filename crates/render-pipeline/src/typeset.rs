@@ -24,7 +24,7 @@ use flashtex_font_engine::sha256;
 use flashtex_math_layout as ml;
 use flashtex_paragraph_layout as pl;
 
-use crate::adapter::{self, Block, Doc, Item as AItem, ParaPart, TextStyle};
+use crate::adapter::{self, Block, Doc, Item as AItem, ParaPart, ParaStyle, TextStyle};
 use crate::display::{
     self, Caret, Cluster, Diagnostic, DisplayList, DocumentResource, FontResource, Glyph, GlyphRun, Paint, Provenance,
     Rect, Rule, SourceRange, Tick,
@@ -77,6 +77,9 @@ pub enum BoxRec {
         depth: f64,
     },
     Math(usize),
+    /// `\hrule`: a filled rectangle `width` x `height` sitting on the line's
+    /// baseline (depth 0), painted as a display-list rule.
+    Rule { width: f64, height: f64, span: Span },
 }
 
 #[derive(Clone)]
@@ -751,7 +754,12 @@ impl<'a> Context<'a> {
 
     /// Builds a horizontal list. Returns paragraph-layout items, the
     /// per-item box record and the `\label` keys with the item they precede.
-    fn hlist(&mut self, items: &[AItem], size: f64, base: TextStyle) -> (Vec<pl::Item>, Vec<Option<usize>>, Vec<(String, usize)>) {
+    fn hlist(&mut self, items: &[AItem], size: f64, base: TextStyle, style: ParaStyle) -> (Vec<pl::Item>, Vec<Option<usize>>, Vec<(String, usize)>) {
+        // `\centering`/`\raggedleft` set `\parfillskip 0pt` and make `\\`
+        // end the paragraph (`\@centercr`); the fil glue of the skips
+        // fills the line. Elsewhere `\\` is `\hfil\break` and the paragraph
+        // ends with `\parfillskip 0pt plus 1fil`.
+        let fills = !matches!(style, ParaStyle::Center | ParaStyle::FlushRight);
         let mut out: Vec<pl::Item> = Vec::new();
         let mut recs: Vec<Option<usize>> = Vec::new();
         let mut labels: Vec<(String, usize)> = Vec::new();
@@ -796,7 +804,9 @@ impl<'a> Context<'a> {
                     }
                 }
                 AItem::LineBreak => {
-                    push(&mut out, &mut recs, pl::Item::Glue(pl::Glue::fil()), None);
+                    if fills {
+                        push(&mut out, &mut recs, pl::Item::Glue(pl::Glue::fil()), None);
+                    }
                     push(&mut out, &mut recs, pl::Item::penalty(pl::FORCED_BREAK), None);
                 }
                 AItem::Quad { em } => {
@@ -831,16 +841,29 @@ impl<'a> Context<'a> {
             recs.pop();
         }
         push(&mut out, &mut recs, pl::Item::penalty(pl::INFINITE_PENALTY), None);
-        push(&mut out, &mut recs, pl::Item::Glue(pl::Glue::fil()), None);
+        push(&mut out, &mut recs, pl::Item::Glue(if fills { pl::Glue::fil() } else { pl::Glue::fixed(0.0) }), None);
         push(&mut out, &mut recs, pl::Item::penalty(pl::FORCED_BREAK), None);
         (out, recs, labels)
     }
 
-    fn line_params(&self, indent: bool, baselineskip: f64) -> pl::LineBreakParams {
+    fn line_params(&self, indent: bool, baselineskip: f64, style: ParaStyle) -> pl::LineBreakParams {
         let s = self.style;
+        // `\centering`: `\leftskip`/`\rightskip` `0pt plus 1fil`; `\raggedleft`:
+        // `\leftskip` alone; `\raggedright`: `\rightskip` (the crate's ragged
+        // mode); `quote`: `\list` with `\leftmargin=\rightmargin=\leftmargini`
+        // (`\parshape` in LaTeX; the same lines as fixed skips here).
+        let fil = pl::Glue::fil();
+        let margin = pl::Glue::fixed(s.leftmargini_pt);
+        let (mode, left_skip, right_skip) = match style {
+            ParaStyle::Plain => (pl::BreakMode::Justified, pl::Glue::fixed(0.0), pl::Glue::fixed(0.0)),
+            ParaStyle::Center => (pl::BreakMode::Justified, fil.clone(), fil),
+            ParaStyle::FlushRight => (pl::BreakMode::Justified, fil, pl::Glue::fixed(0.0)),
+            ParaStyle::FlushLeft => (pl::BreakMode::RaggedRight, pl::Glue::fixed(0.0), pl::Glue::fixed(0.0)),
+            ParaStyle::Quote => (pl::BreakMode::Justified, margin.clone(), margin),
+        };
         pl::LineBreakParams {
             line_width: s.text_width_pt,
-            mode: pl::BreakMode::Justified,
+            mode,
             algorithm: pl::Algorithm::TotalFit,
             pretolerance: s.pretolerance,
             tolerance: s.tolerance,
@@ -850,8 +873,8 @@ impl<'a> Context<'a> {
             double_hyphen_demerits: 10_000.0,
             final_hyphen_demerits: 5_000.0,
             parindent: if indent { s.parindent_pt } else { 0.0 },
-            left_skip: pl::Glue::fixed(0.0),
-            right_skip: pl::Glue::fixed(0.0),
+            left_skip,
+            right_skip,
             baselineskip,
             lineskip: s.lineskip_pt,
             lineskiplimit: s.lineskiplimit_pt,
@@ -863,14 +886,14 @@ impl<'a> Context<'a> {
     /// A body paragraph (or the part of one before/after a display).
     /// `starts_paragraph` adds `\parskip`; `after_heading` is LaTeX's
     /// `\@afterheading` (`\clubpenalty 10000`).
-    fn paragraph_block(&mut self, items: &[AItem], indent: bool, starts_paragraph: bool, after_heading: bool) -> Option<BuiltBlock> {
+    fn paragraph_block(&mut self, items: &[AItem], indent: bool, starts_paragraph: bool, after_heading: bool, style: ParaStyle) -> Option<BuiltBlock> {
         let size = self.style.body_size_pt;
-        let (mut list, mut recs, labels) = self.hlist(items, size, TextStyle::default());
+        let (mut list, mut recs, labels) = self.hlist(items, size, TextStyle::default(), style);
         if !list.iter().any(|i| matches!(i, pl::Item::Box(_))) {
             return None;
         }
         self.drop_trailing_break(items, &mut list, &mut recs);
-        let lines = pl::layout_paragraph(&list, &self.line_params(indent, self.style.baselineskip_pt));
+        let lines = pl::layout_paragraph(&list, &self.line_params(indent, self.style.baselineskip_pt, style));
         self.report_overfull(&lines, &list, &recs);
         let vertical = VBlock {
             lines: line_extents(&lines),
@@ -883,6 +906,7 @@ impl<'a> Context<'a> {
             penalty_after: None,
             space_after: None,
             no_interline_first: false,
+            no_interline_after: false,
             baselineskip: None,
         };
         Some(BuiltBlock {
@@ -959,11 +983,12 @@ impl<'a> Context<'a> {
                 bold: h.bold,
                 italic: false,
             },
+            ParaStyle::Plain,
         );
         if !list.iter().any(|i| matches!(i, pl::Item::Box(_))) {
             return None;
         }
-        let lines = pl::layout_paragraph(&list, &self.line_params(false, h.baselineskip_pt));
+        let lines = pl::layout_paragraph(&list, &self.line_params(false, h.baselineskip_pt, ParaStyle::Plain));
         self.report_overfull(&lines, &list, &recs);
         // The heading's lines are appended under its own \baselineskip
         // (`\Large` is in force inside \@sect's group); the before/after
@@ -982,6 +1007,7 @@ impl<'a> Context<'a> {
             penalty_after: Some(pagebuild::INF_PENALTY),
             space_after: Some(skip_tuple(h.after)),
             no_interline_first: false,
+            no_interline_after: false,
             baselineskip: Some(h.baselineskip_pt),
         };
         Some(BuiltBlock {
@@ -1048,6 +1074,7 @@ impl<'a> Context<'a> {
             penalty_after: None,
             space_after: None,
             no_interline_first: bracket,
+            no_interline_after: false,
             baselineskip: None,
         };
         (
@@ -1061,6 +1088,81 @@ impl<'a> Context<'a> {
             },
             width + 2.0 * quad,
         )
+    }
+
+    /// `\hrule` in vertical mode (TeX §1056): a rule node of the full
+    /// measure, `0.4pt` high and `0pt` deep, appended with no interline glue
+    /// before it and `prev_depth` left at `ignore_depth` after it. Set as a
+    /// one-line block whose single box is a [`BoxRec::Rule`].
+    fn rule_block(&mut self, span: Span) -> BuiltBlock {
+        const HRULE_HEIGHT: f64 = 0.4;
+        let width = self.style.text_width_pt;
+        self.recs.push(BoxRec::Rule {
+            width,
+            height: HRULE_HEIGHT,
+            span,
+        });
+        let rec = self.recs.len() - 1;
+        let run = pl::GlyphRun {
+            font: MATH_SENTINEL,
+            size: self.style.body_size_pt,
+            glyphs: Vec::new(),
+            width,
+            height: HRULE_HEIGHT,
+            depth: 0.0,
+            source: span.start..span.end,
+        };
+        let line = pl::Line {
+            index: 0,
+            runs: vec![position_run(&run, 0.0, HRULE_HEIGHT)],
+            baseline_y: HRULE_HEIGHT,
+            height: HRULE_HEIGHT,
+            depth: 0.0,
+            natural_width: width,
+            set_width: width,
+            ratio: 0.0,
+            badness: 0.0,
+            items: 0..1,
+            hyphenated: false,
+        };
+        let lines = pl::Lines {
+            lines: vec![line],
+            breaks: Vec::new(),
+            stats: pl::Stats {
+                algorithm: pl::Algorithm::TotalFit,
+                lines: 1,
+                pass: 1,
+                total_demerits: 0.0,
+                overfull: Vec::new(),
+                underfull: Vec::new(),
+                hyphenated_lines: 0,
+                emergency_pass_used: false,
+            },
+            diagnostics: Vec::new(),
+            height: HRULE_HEIGHT,
+        };
+        let vertical = VBlock {
+            lines: vec![(HRULE_HEIGHT, 0.0)],
+            penalty_before: None,
+            space_before: None,
+            parskip: None,
+            interline_penalty: 0,
+            club_penalty: 0,
+            widow_penalty: 0,
+            penalty_after: None,
+            space_after: None,
+            no_interline_first: true,
+            no_interline_after: true,
+            baselineskip: None,
+        };
+        BuiltBlock {
+            block: pl::ParagraphBlock::body(lines),
+            items: vec![pl::Item::Box(run)],
+            recs: vec![Some(rec)],
+            vertical,
+            labels: Vec::new(),
+            cache_key: None,
+        }
     }
 
     /// A display equation. `pre_display_size` is TeX's measure of the line
@@ -1197,6 +1299,7 @@ impl<'a> Context<'a> {
             penalty_after: None,
             space_after: Some(skip_tuple(below)),
             no_interline_first: false,
+            no_interline_after: false,
             baselineskip: None,
         };
         Some(BuiltBlock {
@@ -1224,6 +1327,7 @@ impl<'a> Context<'a> {
                 .filter_map(|r| match &self.recs[r] {
                     BoxRec::Text { clusters, .. } => clusters.first().map(|c| c.span),
                     BoxRec::Math(m) => Some(self.maths[*m].span),
+                    BoxRec::Rule { span, .. } => Some(*span),
                 })
                 .next();
             let _ = list;
@@ -1598,6 +1702,16 @@ fn symbol_atoms(c: char) -> Vec<ml::Atom> {
     }
 }
 
+/// Adds `\addvspace` glue (a list environment's `\topsep`) to the block's
+/// before-skip; `None` is a no-op.
+fn add_skip_before(v: &mut pagebuild::VBlock, skip: Option<(f64, f64, f64)>) {
+    let Some((n, s, k)) = skip else { return };
+    v.space_before = Some(match v.space_before {
+        Some((n0, s0, k0)) => (n0 + n, s0 + s, k0 + k),
+        None => (n, s, k),
+    });
+}
+
 /// Adds `pt` points of `\vspace` glue (compiler `Block::VSpace`) to the
 /// block's before-skip. Zero is a no-op so cached blocks stay identical.
 fn add_vspace(v: &mut pagebuild::VBlock, pt: f64) {
@@ -1655,12 +1769,26 @@ pub fn build(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCache>) -> Laid 
             Block::Paragraph {
                 parts,
                 indent,
+                style,
+                env_open,
+                env_close,
                 eject_before,
                 vspace_before,
             } => {
                 let mut first = true;
                 let mut eject = *eject_before;
                 let mut vspace = *vspace_before;
+                // `\begin{center}`/`\begin{quote}`: `\addvspace{\topsep}` (plus
+                // `\partopsep` from vertical mode) before the first paragraph;
+                // `\end{...}` adds the same after the last (`\@endparenv`).
+                let env_skip = |vmode: bool| {
+                    let t = ctx.style.topsep;
+                    let p = if vmode { ctx.style.partopsep } else { crate::style::Skip::default() };
+                    (t.natural + p.natural, t.stretch + p.stretch, t.shrink + p.shrink)
+                };
+                let mut env_before = env_open.map(|e| env_skip(e.vmode));
+                let env_after = env_close.then(|| env_skip(env_open.is_some_and(|e| e.vmode)));
+                let first_block = blocks.len();
                 // TeX's pre_display_size: the width of the line before a
                 // display plus 2em; -infinity when nothing precedes it.
                 let mut pre_display: Option<f64> = None;
@@ -1671,13 +1799,15 @@ pub fn build(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCache>) -> Laid 
                             // display's closing `$$` (§1200 resume_after_display).
                             let items = if !first && matches!(items.first(), Some(AItem::Space { .. })) { &items[1..] } else { &items[..] };
                             let (ind, starts, ah) = (*indent && first, first, after_heading && first);
-                            let (key, origin) = key_for(b'P', items, &[u64::from(ind), u64::from(starts), u64::from(ah)]);
-                            if let Some(mut b) = ctx.cached(cache, key, origin, |c| c.paragraph_block(items, ind, starts, ah)) {
+                            let (key, origin) = key_for(b'P', items, &[u64::from(ind), u64::from(starts), u64::from(ah), *style as u64]);
+                            let st = *style;
+                            if let Some(mut b) = ctx.cached(cache, key, origin, |c| c.paragraph_block(items, ind, starts, ah, st)) {
                                 pre_display = b.block.lines.lines.last().map(|l| l.natural_width + 2.0 * quad);
                                 if std::mem::take(&mut eject) {
                                     b.vertical.penalty_before = Some(pagebuild::EJECT_PENALTY);
                                 }
                                 add_vspace(&mut b.vertical, std::mem::take(&mut vspace));
+                                add_skip_before(&mut b.vertical, env_before.take());
                                 blocks.push(b);
                             }
                         }
@@ -1693,6 +1823,7 @@ pub fn build(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCache>) -> Laid 
                                     opener.vertical.penalty_before = Some(pagebuild::EJECT_PENALTY);
                                 }
                                 add_vspace(&mut opener.vertical, std::mem::take(&mut vspace));
+                                add_skip_before(&mut opener.vertical, env_before.take());
                                 blocks.push(opener);
                                 pre_display = Some(size);
                             }
@@ -1722,6 +1853,29 @@ pub fn build(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCache>) -> Laid 
                     }
                     first = false;
                 }
+                if let Some(skip) = env_after {
+                    if blocks.len() > first_block {
+                        if let Some(last) = blocks.last_mut() {
+                            last.vertical.space_after = Some(match last.vertical.space_after {
+                                Some((n, s, k)) => (n + skip.0, s + skip.1, k + skip.2),
+                                None => skip,
+                            });
+                        }
+                    }
+                }
+                after_heading = false;
+            }
+            Block::Rule {
+                span,
+                eject_before,
+                vspace_before,
+            } => {
+                let mut b = ctx.rule_block(*span);
+                if *eject_before {
+                    b.vertical.penalty_before = Some(pagebuild::EJECT_PENALTY);
+                }
+                add_vspace(&mut b.vertical, *vspace_before);
+                blocks.push(b);
                 after_heading = false;
             }
         }
@@ -1791,6 +1945,7 @@ pub fn build(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCache>) -> Laid 
             .and_then(|r| match &ctx.recs[r] {
                 BoxRec::Text { clusters, .. } => clusters.first().map(|c| c.span),
                 BoxRec::Math(m) => Some(ctx.maths[*m].span),
+                BoxRec::Rule { span, .. } => Some(*span),
             });
         let src = span.map(|sp| vec![ctx.source(sp)]).unwrap_or_default();
         ctx.diagnostics.push(Diagnostic::warning(
@@ -1927,6 +2082,7 @@ pub fn assemble(
             if reported.insert((font.clone(), *code)) {
                 let span = block.recs.iter().flatten().find_map(|r| match &laid.recs[*r] {
                     BoxRec::Math(mi) => Some(laid.maths[*mi].span),
+                    BoxRec::Rule { span, .. } => Some(*span),
                     BoxRec::Text { .. } => None,
                 });
                 diagnostics.push(Diagnostic::warning(
@@ -2028,6 +2184,17 @@ fn assemble_block(
                         resources.extend(t.take_resources());
                         unmapped.extend(t.take_unmapped());
                     }
+                }
+                BoxRec::Rule { width, height, span } => {
+                    // Line-local like text: the rule's bottom is the baseline.
+                    items.push(display::Item::Rule(Rule {
+                        x: Tick::from_tex_pt(local.x),
+                        top: Tick::from_tex_pt(-height),
+                        width: Tick::from_tex_pt(*width).max(Tick(1)),
+                        height: Tick::from_tex_pt(*height).max(Tick(1)),
+                        paint: Paint::BLACK,
+                        provenance: Provenance::Source(source_of(*span)),
+                    }));
                 }
             }
         }

@@ -109,11 +109,46 @@ pub enum ParaPart {
     },
 }
 
+/// LaTeX paragraph-shape environments (compiler `Block::Styled`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum ParaStyle {
+    #[default]
+    Plain,
+    /// `center`: `\centering` (`\leftskip`/`\rightskip` `0pt plus 1fil`,
+    /// `\parfillskip 0pt`).
+    Center,
+    /// `flushleft`: `\raggedright`.
+    FlushLeft,
+    /// `flushright`: `\raggedleft`.
+    FlushRight,
+    /// `quote`/`quotation`: a level-1 list with `\rightmargin=\leftmargin`.
+    Quote,
+}
+
+impl ParaStyle {
+    fn of(style: flashtex_compiler::parser::ParagraphStyle) -> ParaStyle {
+        use flashtex_compiler::parser::ParagraphStyle as P;
+        match style {
+            P::Center => ParaStyle::Center,
+            P::FlushLeft => ParaStyle::FlushLeft,
+            P::FlushRight => ParaStyle::FlushRight,
+            P::Quote => ParaStyle::Quote,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Block {
     Paragraph {
         parts: Vec<ParaPart>,
         indent: bool,
+        style: ParaStyle,
+        /// The paragraph opens its `center`/`quote`/... environment
+        /// (`\trivlist`/`\list`: `\topsep` glue before it, plus
+        /// `\partopsep` when the environment began in vertical mode) and/or
+        /// closes it (`\@endparenv`: the same glue after it).
+        env_open: Option<EnvOpen>,
+        env_close: bool,
         /// `\newpage`/`\clearpage`/`\pagebreak` stood between the previous
         /// block and this one (the compiler reports and drops the command;
         /// the break is recovered from the source bytes).
@@ -129,6 +164,22 @@ pub enum Block {
         eject_before: bool,
         vspace_before: f64,
     },
+    /// `\hrule` in vertical mode: a full-measure rule 0.4pt high with no
+    /// interline glue on either side (TeX §1056 sets `prev_depth` to
+    /// `ignore_depth`).
+    Rule {
+        span: Span,
+        eject_before: bool,
+        vspace_before: f64,
+    },
+}
+
+/// How a paragraph-shape environment began (see [`Block::Paragraph`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EnvOpen {
+    /// `\begin{...}` was read in vertical mode (after a blank line, a
+    /// heading, a rule or at the document start): `\partopsep` is added.
+    pub vmode: bool,
 }
 
 #[derive(Debug)]
@@ -278,7 +329,20 @@ pub fn adapt_cached(
                 });
                 after_heading = true;
             }
-            UnitKind::Paragraph { inlines, caption, styled } => {
+            UnitKind::Rule { span } => {
+                blocks.push(Block::Rule {
+                    span,
+                    eject_before,
+                    vspace_before,
+                });
+                after_heading = false;
+            }
+            UnitKind::Paragraph {
+                inlines,
+                caption,
+                styled,
+                env_open,
+            } => {
                 for inline in inlines {
                     if let Inline::MathRows { rows, aligned, span } = inline {
                         let env = if *aligned { "align" } else { "gather" };
@@ -326,13 +390,36 @@ pub fn adapt_cached(
                 if parts.is_empty() || only_labels {
                     continue;
                 }
+                // `\centering` sets `\parindent 0pt`; a list item's first
+                // paragraph carries no indent and `quote` sets
+                // `\listparindent 0pt` for the ones after it.
                 blocks.push(Block::Paragraph {
                     parts,
-                    indent: !after_heading && !caption && !styled,
+                    indent: !after_heading && !caption && styled.is_none(),
+                    style: styled.unwrap_or_default(),
+                    env_open,
+                    env_close: false,
                     eject_before,
                     vspace_before,
                 });
                 after_heading = false;
+            }
+        }
+    }
+    // `\end{...}`: the last paragraph of a run of same-style paragraphs
+    // closes the environment (two adjacent environments of one style are
+    // read as one; the compiler does not mark the boundary).
+    let styles: Vec<ParaStyle> = blocks
+        .iter()
+        .map(|b| match b {
+            Block::Paragraph { style, .. } => *style,
+            _ => ParaStyle::Plain,
+        })
+        .collect();
+    for (i, block) in blocks.iter_mut().enumerate() {
+        if let Block::Paragraph { style, env_close, .. } = block {
+            if *style != ParaStyle::Plain {
+                *env_close = styles.get(i + 1).is_none_or(|next| *next != *style);
             }
         }
     }
@@ -379,9 +466,14 @@ enum UnitKind<'p> {
     Paragraph {
         inlines: &'p [Inline],
         caption: bool,
-        /// A compiler `Styled` paragraph (`center`, `quote`, ...): set as a
-        /// plain unindented paragraph and reported.
-        styled: bool,
+        /// A compiler `Styled` paragraph (`center`, `quote`, ...).
+        styled: Option<ParaStyle>,
+        /// The unit is the first paragraph of its environment (the gap
+        /// before it holds `\begin{...}`); see [`EnvOpen`].
+        env_open: Option<EnvOpen>,
+    },
+    Rule {
+        span: Span,
     },
 }
 
@@ -405,6 +497,8 @@ fn split_at_page_breaks<'p>(texts: &[&str], parsed: &'p Parsed) -> Vec<Unit<'p>>
     let mut pending_eject = false;
     let mut pending_vspace = 0.0f64;
     let mut pending_limitations: Vec<(&'static str, Span, String)> = Vec::new();
+    // The previous unit left TeX in vertical mode (a heading or a rule).
+    let mut prev_vmode = false;
     for block in &parsed.blocks {
         match block {
             CBlock::PageBreak => {
@@ -416,7 +510,15 @@ fn split_at_page_breaks<'p>(texts: &[&str], parsed: &'p Parsed) -> Vec<Unit<'p>>
                 continue;
             }
             CBlock::Rule { span } => {
-                pending_limitations.push(("unsupported_block", *span, "\\hrule dropped: the pipeline has no rule block yet".to_string()));
+                let eject = std::mem::take(&mut pending_eject) || prev_end.is_some_and(|p| gap_has_page_break(texts, p, *span));
+                units.push(Unit {
+                    kind: UnitKind::Rule { span: *span },
+                    eject_before: eject,
+                    vspace_before: std::mem::take(&mut pending_vspace),
+                    limitations: std::mem::take(&mut pending_limitations),
+                });
+                prev_end = Some(*span);
+                prev_vmode = true;
                 continue;
             }
             _ => {}
@@ -427,12 +529,28 @@ fn split_at_page_breaks<'p>(texts: &[&str], parsed: &'p Parsed) -> Vec<Unit<'p>>
         };
         let mut eject = std::mem::take(&mut pending_eject) || matches!((prev_end, first), (Some(p), Some(f)) if gap_has_page_break(texts, p, f));
         let vspace_before = std::mem::take(&mut pending_vspace);
-        let mut limitations = std::mem::take(&mut pending_limitations);
-        if let CBlock::Styled { style, .. } = block {
-            if let Some(span) = first {
-                limitations.push(("unsupported_block", span, format!("{style:?} paragraph set as a plain justified paragraph (no paragraph-style support yet)")));
-            }
-        }
+        let limitations = std::mem::take(&mut pending_limitations);
+        let styled = match block {
+            CBlock::Styled { style, .. } => Some(ParaStyle::of(*style)),
+            _ => None,
+        };
+        // The environment opens here when the gap before the block holds
+        // its `\begin`; `\partopsep` applies when that `\begin` was read in
+        // vertical mode (nothing before it, or a blank line / `\par` between
+        // the previous material and it).
+        let env_open = styled.and_then(|_| {
+            let f = first?;
+            let gap = match prev_end {
+                Some(p) if p.document == f.document && p.end <= f.start => texts.get(f.document.0).and_then(|t| t.get(p.end..f.start))?,
+                Some(_) => return None,
+                None => texts.get(f.document.0).and_then(|t| t.get(..f.start))?,
+            };
+            let begin = rfind_command(gap, "begin")?;
+            let before = &gap[..begin];
+            let vmode = prev_vmode || prev_end.is_none() || has_blank_line(before) || find_command(before, "par").is_some();
+            Some(EnvOpen { vmode })
+        });
+        prev_vmode = matches!(block, CBlock::Heading { .. });
         match block {
             CBlock::Heading {
                 level,
@@ -454,7 +572,7 @@ fn split_at_page_breaks<'p>(texts: &[&str], parsed: &'p Parsed) -> Vec<Unit<'p>>
             }
             CBlock::Paragraph(inlines) | CBlock::FigureCaption { content: inlines } | CBlock::Styled { content: inlines, .. } => {
                 let caption = matches!(block, CBlock::FigureCaption { .. });
-                let styled = matches!(block, CBlock::Styled { .. });
+                let mut env_open = env_open;
                 let mut start = 0usize;
                 let mut vspace_before = vspace_before;
                 let mut limitations = limitations;
@@ -465,6 +583,7 @@ fn split_at_page_breaks<'p>(texts: &[&str], parsed: &'p Parsed) -> Vec<Unit<'p>>
                                 inlines: &inlines[start..i],
                                 caption,
                                 styled,
+                                env_open: env_open.take(),
                             },
                             eject_before: eject,
                             vspace_before: std::mem::take(&mut vspace_before),
@@ -479,6 +598,7 @@ fn split_at_page_breaks<'p>(texts: &[&str], parsed: &'p Parsed) -> Vec<Unit<'p>>
                         inlines: &inlines[start..],
                         caption,
                         styled,
+                        env_open,
                     },
                     eject_before: eject,
                     vspace_before,
@@ -671,6 +791,36 @@ fn find_command(source: &str, name: &str) -> Option<usize> {
         i += 1;
     }
     None
+}
+
+/// Byte offset of the last `\<name>` in `source` outside comments.
+fn rfind_command(source: &str, name: &str) -> Option<usize> {
+    let mut last = None;
+    let mut from = 0;
+    while let Some(at) = find_command(&source[from..], name) {
+        last = Some(from + at);
+        from += at + 1;
+    }
+    last
+}
+
+/// Whether `source` holds a blank line (TeX's `\par` from an empty line):
+/// two newlines with only blanks between them.
+fn has_blank_line(source: &str) -> bool {
+    let mut newlines = 0;
+    for c in source.chars() {
+        match c {
+            '\n' => {
+                newlines += 1;
+                if newlines >= 2 {
+                    return true;
+                }
+            }
+            ' ' | '\t' | '\r' => {}
+            _ => newlines = 0,
+        }
+    }
+    false
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
