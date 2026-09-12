@@ -50,6 +50,16 @@ pub const MAX_CONVERGENCE_ITERATIONS: usize = 8;
 pub enum ConvergenceError {
     /// Every one of the `bound + 1` candidates tried was distinct: the
     /// page count never repeated a prior value and never settled.
+    ///
+    /// This is also what a *true* oscillation whose period is longer than
+    /// [`MAX_CONVERGENCE_ITERATIONS`] looks like from here: a period-`p`
+    /// cycle only produces a detectable repeat once the `bound + 1`-entry
+    /// history reaches `p + 1` samples, so `p <= bound` is required for
+    /// [`Cycle`](ConvergenceError::Cycle) to be provable. A model that
+    /// genuinely cycles with `p > bound` is indistinguishable, from this
+    /// bounded observation window, from one that never repeats at all, and
+    /// is reported here rather than misclassified as a proven `Cycle` on
+    /// evidence the window never actually saw.
     Unresolved {
         bound: usize,
         /// Every candidate tried, in order, starting with the initial guess.
