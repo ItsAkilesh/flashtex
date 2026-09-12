@@ -166,6 +166,8 @@ protocol DestinationProvider: AnyObject {
 protocol PairingConfirmer: AnyObject {
     func confirmPairing(pairId: String, companionName: String, generation: Int?) -> Data?
     func notePairSeen(pairId: String)
+    /// An accepted (acknowledged) capture from a paired session.
+    func noteCapture(pairId: String, captureId: String)
 }
 
 // MARK: - receive limits and accounting
@@ -715,7 +717,7 @@ final class NearbySession {
         }
         let work: () -> Void = { [weak self] in
             guard let self else { reservation?.release(); return }
-            let decoded = self.decodeAndValidate(line: line, id: id)
+            let decoded = self.decodeAndDigest(line: line, id: id)
             self.onStateQueue { [weak self] in
                 guard let self, !self.ended else { release(); return }
                 switch decoded {
@@ -727,19 +729,23 @@ final class NearbySession {
                 }
             }
         }
+        offQueue(work)
+    }
+
+    private func offQueue(_ work: @escaping () -> Void) {
         if let decodeQueue { decodeQueue.async(execute: work) } else { work() }
     }
 
-    struct Validated {
+    struct Parsed {
         var envelope: RuntimeV1.Envelope<RuntimeV1.CaptureSubmit>
         var digest: Data
-        var image: NearbyImageCheck.Info
     }
     struct Refusal: Error { var captureId: String?; var code: String; var message: String }
 
-    /// Decode queue: JSON, field checks, image validation, payload digest.
+    /// Decode queue, first pass: JSON, cheap field checks and the payload
+    /// digest, so a duplicate is recognised before the image is validated.
     /// Touches no session state.
-    func decodeAndValidate(line: Data, id: String) -> Result<Validated, Refusal> {
+    func decodeAndDigest(line: Data, id: String) -> Result<Parsed, Refusal> {
         let env: RuntimeV1.Envelope<RuntimeV1.CaptureSubmit>
         do { env = try RuntimeV1.decodeCaptureSubmit(line) } catch {
             return .failure(.init(captureId: nil, code: "bad_request", message: "undecodable capture_submit: \(error)"))
@@ -757,12 +763,15 @@ final class NearbySession {
         guard p.baseRevision >= 0 else {
             return .failure(.init(captureId: p.captureId, code: "bad_request", message: "base_revision must be non-negative"))
         }
-        let image: NearbyImageCheck.Info
+        return .success(Parsed(envelope: env, digest: Self.digest(of: p)))
+    }
+
+    /// Decode queue, second pass (new captures only): the image itself.
+    func validateImage(_ p: RuntimeV1.CaptureSubmit) -> Result<NearbyImageCheck.Info, Refusal> {
         switch NearbyImageCheck.validate(base64: p.image.dataBase64, mimeType: p.image.mimeType, limits: limits) {
-        case .success(let i): image = i
+        case .success(let i): return .success(i)
         case .failure(let f): return .failure(.init(captureId: p.captureId, code: f.code, message: f.message))
         }
-        return .success(Validated(envelope: env, digest: Self.digest(of: p), image: image))
     }
 
     /// Payload identity for dedup: everything but `capture_id`/`base_revision`,
@@ -776,8 +785,10 @@ final class NearbySession {
         return Data(h.finalize())
     }
 
-    /// State queue: dedup by (session, capture_id, base_revision, digest), then deliver.
-    private func deliver(_ v: Validated, id: String, release: @escaping () -> Void, emit: @escaping (Data) -> Void) {
+    /// State queue: dedup by (session, capture_id, base_revision, digest);
+    /// a new capture is remembered as pending, validated off-queue, then
+    /// delivered (or forgotten and refused, with any coalesced retries).
+    private func deliver(_ v: Parsed, id: String, release: @escaping () -> Void, emit: @escaping (Data) -> Void) {
         let p = v.envelope.payload
         let captureId = p.captureId
         if let known = remembered[captureId] {
@@ -808,8 +819,32 @@ final class NearbySession {
             return
         }
         remember(captureId, Remembered(baseRevision: p.baseRevision, digest: v.digest, ack: nil))
+        offQueue { [weak self] in
+            guard let self else { release(); return }
+            let checked = self.validateImage(p)
+            self.onStateQueue { [weak self] in
+                guard let self, !self.ended else { release(); return }
+                switch checked {
+                case .failure(let e):
+                    let waiting = self.remembered[captureId]?.waiting ?? []
+                    self.forget(captureId)
+                    release()
+                    self.refuse(id: id, captureId: captureId, code: e.code, message: e.message, emit: emit)
+                    for w in waiting { w.emit(NearbyV1.errorLine(id: w.id, code: e.code, message: e.message)) }
+                case .success:
+                    self.submit(v.envelope, to: sink, id: id, release: release, emit: emit)
+                }
+            }
+        }
+    }
+
+    /// State queue: hand a validated, remembered capture to the sink and
+    /// answer it (and any coalesced retries) from the sink's reply.
+    private func submit(_ envelope: RuntimeV1.Envelope<RuntimeV1.CaptureSubmit>, to sink: CaptureSink, id: String,
+                        release: @escaping () -> Void, emit: @escaping (Data) -> Void) {
+        let captureId = envelope.payload.captureId
         let events = events
-        sink.submit(v.envelope) { [weak self] reply in
+        sink.submit(envelope) { [weak self] reply in
             let finish: () -> Void = { [weak self] in
                 guard let self else { release(); return }
                 release()
@@ -818,6 +853,7 @@ final class NearbySession {
                 if let header = try? RuntimeV1.header(of: reply), header.type == "capture_received",
                    let env = try? JSONDecoder().decode(RuntimeV1.Envelope<NearbyV1.CaptureReceived>.self, from: reply) {
                     self.remembered[captureId]?.ack = env.payload
+                    if let pairId = self.pairId { self.pairing?.noteCapture(pairId: pairId, captureId: captureId) }
                     events(.capture(captureId: captureId))
                     emit(reply)
                     for w in waiting { w.emit(NearbyV1.line(id: w.id, type: "capture_received", env.payload)) }

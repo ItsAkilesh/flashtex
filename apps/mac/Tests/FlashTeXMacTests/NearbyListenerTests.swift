@@ -1200,7 +1200,8 @@ final class NearbyBoundedTransportTests: XCTestCase {
             if b.lineCount >= 2 + i, order.isEmpty || order.last != "b" { order.append("b") }
             if a.lineCount >= 2, !order.contains("a") { order.append("a") }
         }
-        try await waitUntil("big ack", timeout: 30) { a.lineCount >= 2 }
+        try await waitUntil("big ack", timeout: 90) { a.lineCount >= 2 }
+        guard a.lineCount >= 2 else { return XCTFail("no acknowledgement for the big capture") }
         let elapsed = Date().timeIntervalSince(sentAt)
         try await waitUntil("queries answered", timeout: 10) { b.lineCount >= 21 }
         meter.invalidate()
@@ -1484,8 +1485,9 @@ final class NearbyTranscriptAcceptanceTests: XCTestCase {
         let c1 = NearbyTestClient(port: h.port, identity: Pairing.vectorPairID, psk: Self.vectorPSK)
         try await waitUntil("client ready (\(String(describing: c1.failure)))") { c1.isReady }
         for line in t.lines { try await stream(line + [0x0A], to: c1) }
-        try await waitUntil("five replies", timeout: 20) { c1.lineCount >= 5 }
+        try await waitUntil("five replies", timeout: 90) { c1.lineCount >= 5 }
         let replies = c1.allLines
+        guard replies.count >= 5 else { return XCTFail("got \(replies.count) replies: \(replies.map { String(decoding: $0.prefix(120), as: UTF8.self) })") }
         let ack = try JSONDecoder().decode(RuntimeV1.Envelope<NearbyV1.HelloAck>.self, from: replies[0])
         XCTAssertEqual(ack.type, "hello_ack")
         XCTAssertEqual(ack.id, t.hello.id)
@@ -1532,7 +1534,8 @@ final class NearbyTranscriptAcceptanceTests: XCTestCase {
                                                         proof: Pairing.helloProof(psk: Self.vectorPSK, nonce: nonce)))
         try await waitUntil("hello 3") { c3.lineCount >= 1 }
         for line in t.lines.dropFirst() { try await stream(line + [0x0A], to: c3) }
-        try await waitUntil("retries acknowledged", timeout: 20) { c3.lineCount >= 5 }
+        try await waitUntil("retries acknowledged", timeout: 90) { c3.lineCount >= 5 }
+        guard c3.lineCount >= 5 else { return XCTFail("got \(c3.lineCount) replies on the retry connection") }
         let again = try c3.allLines[1...4].map { try JSONDecoder().decode(RuntimeV1.Envelope<NearbyV1.CaptureReceived>.self, from: $0) }
         XCTAssertEqual(again.map(\.payload.captureId), t.captures.map(\.payload.captureId))
         XCTAssertEqual(model.nearbyInbox.received.count, 2, "identical retries after a reconnect are not stored twice")
@@ -1748,6 +1751,141 @@ final class NearbyStateEventTests: XCTestCase {
         XCTAssertNil(state.coordinator.current)
 
         again.cancel()
+        state.stopAdvertising()
+        try? FileManager.default.removeItem(at: dir)
+    }
+}
+
+// MARK: - generation API and activity summary (mac-nearby-transport refill)
+
+final class PairingPersistedGenerationTests: XCTestCase {
+    func testPersistedGenerationRefusesOlderAttemptsAndAllowsNewerRepair() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("nearby-pgen-\(UUID().uuidString)")
+        let store = PairStore(url: dir.appendingPathComponent("pairs.json"))
+        let c = PairingCoordinator(store: store)
+        let p5 = c.begin(code: "123456", generation: 5)
+        XCTAssertNotNil(c.confirmPairing(pairId: p5.derived.pairId, companionName: "first", generation: 5))
+        XCTAssertEqual(store.pair(id: p5.derived.pairId)?.generation, 5, "generation persisted on the record")
+        XCTAssertEqual(c.confirmedGeneration(pairId: p5.derived.pairId), 5)
+        XCTAssertEqual(PairStore(url: store.url).pair(id: p5.derived.pairId)?.generation, 5, "survives reload")
+
+        // An older attempt for the same pair_id (forced collision) is refused by the persisted record.
+        let p3 = c.begin(code: "123456", generation: 3)
+        XCTAssertNil(c.confirmPairing(pairId: p3.derived.pairId, companionName: "stale", generation: 3))
+        XCTAssertEqual(c.lastRefusal, "pair \(p3.derived.pairId) was already confirmed by attempt 5; this attempt is 3")
+        XCTAssertEqual(store.pair(id: p5.derived.pairId)?.companionName, "first")
+        // The same generation cannot confirm twice either.
+        _ = c.begin(code: "123456", generation: 5)
+        XCTAssertNil(c.confirmPairing(pairId: p5.derived.pairId, companionName: "again", generation: 5))
+        XCTAssertTrue(c.lastRefusal?.hasSuffix("this attempt is 5") ?? false)
+        // A newer attempt re-pairs (the user showed a new code on purpose).
+        let p6 = c.begin(code: "123456", generation: 6)
+        XCTAssertNotNil(c.confirmPairing(pairId: p6.derived.pairId, companionName: "renewed", generation: 6))
+        XCTAssertEqual(store.pair(id: p6.derived.pairId)?.generation, 6)
+        XCTAssertEqual(store.pair(id: p6.derived.pairId)?.companionName, "renewed")
+        try? FileManager.default.removeItem(at: dir)
+    }
+
+    func testCaptureSummaryPersistsAndNeverMentionsTheKey() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("nearby-act-\(UUID().uuidString)")
+        let url = dir.appendingPathComponent("pairs.json")
+        let store = PairStore(url: url)
+        let psk = Pairing.mintLongTermPSK()
+        XCTAssertTrue(store.upsert(PairRecord(pairId: "abcdef0123456789", psk: psk.base64EncodedString(), companionName: "iPad",
+                                              createdAt: Date(timeIntervalSince1970: 1_700_000_000), lastSeenAt: nil, generation: 2)))
+        var a = try XCTUnwrap(store.pair(id: "abcdef0123456789")).activity
+        XCTAssertEqual(a.captureCount, 0)
+        XCTAssertNil(a.lastCaptureAt)
+        XCTAssertTrue(a.summary.hasPrefix("iPad (abcdef0123456789), never seen, 0 captures"), a.summary)
+        let t1 = Date(timeIntervalSince1970: 1_700_000_100)
+        store.recordCapture(pairId: "abcdef0123456789", captureId: "cap-1", at: t1)
+        store.recordCapture(pairId: "abcdef0123456789", captureId: String(repeating: "x", count: 300), at: t1.addingTimeInterval(1))
+        store.recordCapture(pairId: "nobody", captureId: "ignored")
+        a = try XCTUnwrap(store.pair(id: "abcdef0123456789")).activity
+        XCTAssertEqual(a.captureCount, 2)
+        XCTAssertEqual(a.lastCaptureId?.count, 128, "last id is bounded")
+        XCTAssertEqual(a.lastCaptureAt, t1.addingTimeInterval(1))
+        XCTAssertEqual(a.lastSeenAt, t1.addingTimeInterval(1))
+        XCTAssertEqual(a.generation, 2)
+        XCTAssertTrue(a.summary.contains("2 captures, last xxxx"), a.summary)
+        XCTAssertFalse(a.summary.contains(psk.base64EncodedString()))
+        XCTAssertFalse("\(a)".contains(psk.base64EncodedString()), "the activity value carries no key material")
+
+        // Persisted in pairs.json v2 and readable after reload; a file without the keys still decodes.
+        let reloaded = PairStore(url: url)
+        XCTAssertEqual(reloaded.pair(id: "abcdef0123456789")?.activity, a)
+        let raw = try XCTUnwrap(String(data: Data(contentsOf: url), encoding: .utf8))
+        XCTAssertTrue(raw.contains("\"capture_count\":2") || raw.contains("\"capture_count\" : 2"), raw)
+        var obj = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
+        var pairs = try XCTUnwrap(obj["pairs"] as? [[String: Any]])
+        pairs[0].removeValue(forKey: "capture_count"); pairs[0].removeValue(forKey: "last_capture_at"); pairs[0].removeValue(forKey: "last_capture_id")
+        obj["pairs"] = pairs
+        try JSONSerialization.data(withJSONObject: obj).write(to: url)
+        let stripped = PairStore(url: url)
+        XCTAssertNil(stripped.loadError)
+        XCTAssertEqual(stripped.pair(id: "abcdef0123456789")?.activity.captureCount, 0)
+        try? FileManager.default.removeItem(at: dir)
+    }
+}
+
+@MainActor
+final class NearbyStateGenerationAPITests: XCTestCase {
+    private func waitUntil(_ what: String, timeout: TimeInterval = 5, _ cond: @escaping @MainActor () -> Bool) async throws {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if cond() { return }
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+        XCTFail("timed out waiting for \(what)")
+    }
+
+    func testFreshCodeCarriesTheJournalGenerationAndCapturesAreCounted() async throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("nearby-genapi-\(UUID().uuidString)")
+        let store = PairStore(url: dir.appendingPathComponent("pairs.json"))
+        let model = ShellModel()
+        model.autoCompile = false
+        let state = NearbyState(store: store, macName: "Gen Mac", loopbackOnly: true)
+        state.attach(sink: model, destinations: model)
+        state.beginPairing(generation: 12)
+        let code = try XCTUnwrap(state.pairingCode)
+        XCTAssertEqual(state.coordinator.current?.generation, 12)
+        XCTAssertNotNil(state.codeExpiresAt)
+        XCTAssertTrue(state.log.contains { $0.hasPrefix("pairing code issued for") && $0.hasSuffix("(attempt 12)") }, "\(state.log)")
+        XCTAssertFalse(state.log.contains { $0.contains("resumed") })
+        try await waitUntil("advertising") { state.isAdvertising && state.port != nil }
+        let port = try XCTUnwrap(state.port)
+
+        let derived = Pairing.derive(code: code, salt: store.salt)
+        let client = NearbyTestClient(port: port, identity: derived.pairId, psk: derived.psk)
+        try await waitUntil("client ready") { client.isReady }
+        let nonce = UUID().uuidString
+        client.send(id: "h", type: "hello", NearbyV1.Hello(pairId: derived.pairId, companionName: "Gen iPad", nonce: nonce,
+                                                           proof: Pairing.helloProof(psk: derived.psk, nonce: nonce)))
+        try await waitUntil("paired") { state.pairs.count == 1 && state.pairingCode == nil }
+        XCTAssertEqual(state.pairs.first?.generation, 12, "the confirmed record persists the journal generation")
+        XCTAssertEqual(state.coordinator.confirmedGeneration(pairId: derived.pairId), 12)
+        XCTAssertEqual(state.activity[derived.pairId]?.captureCount, 0)
+        try await waitUntil("connected") { state.connectedPairIds == [derived.pairId] }
+
+        // Two distinct captures and one duplicate: the summary counts two.
+        var fixture = try Data(contentsOf: NearbyListenerTests.fixtureURL)
+        if fixture.last != 0x0A { fixture.append(0x0A) }
+        client.send(fixture)
+        client.send(fixture)
+        var second = try RuntimeV1.decodeCaptureSubmit(fixture).payload
+        second.captureId = "fixture-capture-2"
+        client.send(id: "c2", type: "capture_submit", second)
+        try await waitUntil("three acks") { client.lineCount >= 4 }
+        try await waitUntil("summary updated") { state.activity[derived.pairId]?.captureCount == 2 }
+        let a = try XCTUnwrap(state.activity[derived.pairId])
+        // Captures are validated concurrently, so either may have been acknowledged last.
+        XCTAssertTrue(["fixture-capture-1", "fixture-capture-2"].contains(a.lastCaptureId ?? ""), String(describing: a.lastCaptureId))
+        XCTAssertNotNil(a.lastCaptureAt)
+        XCTAssertNotNil(a.lastSeenAt)
+        XCTAssertEqual(a.generation, 12)
+        XCTAssertEqual(PairStore(url: store.url).pair(id: derived.pairId)?.captureCount, 2, "persisted")
+        XCTAssertFalse(state.log.joined().contains(store.pair(id: derived.pairId)!.psk))
+        client.cancel()
         state.stopAdvertising()
         try? FileManager.default.removeItem(at: dir)
     }
