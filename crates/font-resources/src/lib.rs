@@ -93,6 +93,15 @@ fn valid_hash(value: &str) -> bool {
             .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
 fn check_entry(entry: &ManifestEntry) -> Result<()> {
+    check_entry_common(entry)?;
+    if entry.font.format != "static-truetype" || entry.font.face_index != 0 {
+        return Err(Error::UnsupportedFont(
+            "rendering-v2 permits static TrueType face 0 only".into(),
+        ));
+    }
+    Ok(())
+}
+fn check_entry_common(entry: &ManifestEntry) -> Result<()> {
     let f = &entry.font;
     if f.font_id.is_empty()
         || f.font_id.len() > 128
@@ -107,11 +116,6 @@ fn check_entry(entry: &ManifestEntry) -> Result<()> {
     {
         return Err(Error::InvalidManifest(
             "invalid font identity, digest or byte length".into(),
-        ));
-    }
-    if f.format != "static-truetype" || f.face_index != 0 {
-        return Err(Error::UnsupportedFont(
-            "rendering-v2 permits static TrueType face 0 only".into(),
         ));
     }
     if !(16..=16384).contains(&f.units_per_em)

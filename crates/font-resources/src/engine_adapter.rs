@@ -77,7 +77,7 @@ impl BoundShapedRun {
         Ok(self.source.range.start + range.start..self.source.range.start + range.end)
     }
 }
-fn engine_error(error: flashtex_font_engine::Error) -> Error {
+pub(crate) fn engine_error(error: flashtex_font_engine::Error) -> Error {
     match error {
         flashtex_font_engine::Error::Unsupported(_)
         | flashtex_font_engine::Error::UnsupportedFeature { .. }

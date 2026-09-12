@@ -429,9 +429,8 @@ family-name guessing, case folding, system-font fallback or font-byte vendoring.
 Schema1 contains `entries: [{ binding: { family, weight, style }, resource: ... }]`;
 `resource` is the existing `ManifestEntry`, declaring font ID/path/full SHA/face,
 metrics and license path/hash/provenance. Style is `upright`, `italic` or `oblique`,
-weight1..1000, and family lookup is exact. This stage accepts the existing
-`static-truetype` resource profile (face0); CFF registry entries remain explicitly
-unsupported, although the separate CFF adapter can already shape a bound CFF font.
+weight1..1000, and family lookup is exact. Registry resources accept `static-truetype` and `static-cff`, both face0; their
+backends remain explicit and separate from rendering-v2 wire negotiation.
 Declared style is an application binding, not an inferred OpenType style.
 
 Typed outcomes distinguish missing files/bindings, ambiguous duplicate bindings,
@@ -451,3 +450,17 @@ callers must reload/check at project-update boundaries. Reads are individually
 rooted, not a transactional snapshot of all project files. Consumer caches should
 bind project-instance identity plus registry generation and their existing exact
 shape/device/build keys; equal generations do not authorize cross-project access.
+
+
+`ProjectFontRegistry::resource` returns `RegistryResource::{TrueType,Cff}` with
+shared immutable backend resources. The existing `get` accessor stays TrueType-only
+and explicitly refuses CFF. `CffFontResource` exposes verified descriptor/license,
+full font bytes, exact CFF table SHA/range/face identity, `outline_cache(limits)` and
+`shape_adapter()`. The original font-engine accessor selects the CFF table and
+validates metadata; the existing CFF parser validates its container/glyph count.
+No sfnt/CFF parser is duplicated. Cache construction retains explicit budgets and
+Unhinted policy requirements. Registry generation covers both backend declarations
+and full-font/license hashes. Synthetic and pinned mixed STIX/Liberation tests
+verify stale-generation rejection and unchanged held CFF geometry after project
+font bytes change. No fonts are copied into the repository; installed-font tests
+use disposable temporary project directories.

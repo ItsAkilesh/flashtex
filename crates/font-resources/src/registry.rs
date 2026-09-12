@@ -71,7 +71,7 @@ pub struct DiscoveryMetadata {
 }
 /// Frozen snapshot: external file edits never mutate already returned resources.
 pub struct ProjectFontRegistry {
-    resources: BTreeMap<StyleBinding, Arc<FontResource>>,
+    resources: BTreeMap<StyleBinding, RegistryResource>,
     discovery: Vec<DiscoveryMetadata>,
     generation: String,
     loaded_bytes: u64,
@@ -189,13 +189,17 @@ impl ProjectFontRegistry {
                 &path(&entry.license.text_path)?,
                 crate::MAX_LICENSE_BYTES as u64,
             )?;
-            let resource = FontResource::from_bytes(&entry, &bytes, &license).map_err(|error| {
-                RegistryError::ResourceMismatch {
-                    path: entry.path.clone(),
-                    error,
-                }
+            let resource = (match entry.font.format.as_str() {
+                "static-cff" => CffFontResource::from_bytes(&entry, &bytes, &license)
+                    .map(|v| RegistryResource::Cff(Arc::new(v))),
+                _ => FontResource::from_bytes(&entry, &bytes, &license)
+                    .map(|v| RegistryResource::TrueType(Arc::new(v))),
+            })
+            .map_err(|error| RegistryError::ResourceMismatch {
+                path: entry.path.clone(),
+                error,
             })?;
-            resources.insert(binding.clone(), Arc::new(resource));
+            resources.insert(binding.clone(), resource);
             discovery.push(DiscoveryMetadata {
                 binding,
                 resource: entry,
@@ -228,7 +232,19 @@ impl ProjectFontRegistry {
     pub fn files_read(&self) -> usize {
         self.files_read
     }
+    /// Existing TrueType-only accessor remains explicit about CFF bindings.
     pub fn get(&self, binding: &StyleBinding) -> Result<Arc<FontResource>> {
+        match self.resource(binding)? {
+            RegistryResource::TrueType(resource) => Ok(resource),
+            RegistryResource::Cff(_) => Err(RegistryError::ResourceMismatch {
+                path: binding.family.clone(),
+                error: crate::Error::UnsupportedFont(
+                    "use typed CFF registry resource accessor".into(),
+                ),
+            }),
+        }
+    }
+    pub fn resource(&self, binding: &StyleBinding) -> Result<RegistryResource> {
         self.resources
             .get(binding)
             .cloned()
@@ -242,5 +258,117 @@ impl ProjectFontRegistry {
             });
         }
         Ok(())
+    }
+}
+
+/// Distinct backends preserve the production TrueType-only schema boundary.
+#[derive(Clone)]
+pub enum RegistryResource {
+    TrueType(Arc<FontResource>),
+    Cff(Arc<CffFontResource>),
+}
+pub struct CffFontResource {
+    descriptor: crate::FontDescriptor,
+    license: crate::LicenseMetadata,
+    bytes: Arc<[u8]>,
+    license_text: Arc<[u8]>,
+    identity: crate::cff::CffIdentity,
+}
+impl CffFontResource {
+    fn from_bytes(entry: &ManifestEntry, bytes: &[u8], license: &[u8]) -> crate::Result<Self> {
+        use flashtex_font_engine::{Face, TrueTypeFace};
+        crate::check_entry_common(entry)?;
+        if entry.font.format != "static-cff" || entry.font.face_index != 0 {
+            return Err(crate::Error::UnsupportedFont(
+                "registry requires static CFF face0".into(),
+            ));
+        }
+        if bytes.len() > crate::MAX_FONT_BYTES || license.len() > crate::MAX_LICENSE_BYTES {
+            return Err(crate::Error::SizeLimit);
+        }
+        if bytes.len() as u64 != entry.font.byte_length {
+            return Err(crate::Error::MetadataMismatch("byte_length"));
+        }
+        if sha256(bytes) != entry.font.sha256 {
+            return Err(crate::Error::DigestMismatch);
+        }
+        if license.is_empty() || sha256(license) != entry.license.text_sha256 {
+            return Err(crate::Error::LicenseDigestMismatch);
+        }
+        // The original reader owns this allocation without moving its contents;
+        // its table slice establishes the actual selected byte range.
+        let storage = bytes.to_vec();
+        let base = storage.as_ptr() as usize;
+        let face = TrueTypeFace::parse(storage).map_err(crate::engine_adapter::engine_error)?;
+        if face.units_per_em() as u32 != entry.font.units_per_em
+            || face.num_glyphs() as u32 != entry.font.glyph_count
+            || face.postscript_name() != entry.font.postscript_name
+        {
+            return Err(crate::Error::MetadataMismatch("CFF metrics/name"));
+        }
+        let table = face
+            .cff_table()
+            .ok_or_else(|| crate::invalid("registry declared CFF has no CFF table"))?;
+        let start = (table.as_ptr() as usize)
+            .checked_sub(base)
+            .ok_or_else(|| crate::invalid("CFF accessor allocation range"))?;
+        let end = start
+            .checked_add(table.len())
+            .ok_or_else(|| crate::invalid("CFF accessor range overflow"))?;
+        if bytes.get(start..end) != Some(table) {
+            return Err(crate::invalid("CFF accessor selected bytes mismatch"));
+        }
+        let cache = crate::cff::CffOutlineCache::from_font_table(
+            bytes,
+            0,
+            start..end,
+            crate::cff::CacheLimits {
+                max_entries: 0,
+                max_bytes: 0,
+            },
+        )?;
+        if cache.glyph_count() != entry.font.glyph_count as usize {
+            return Err(crate::Error::MetadataMismatch("CFF charstring glyph_count"));
+        }
+        Ok(Self {
+            descriptor: entry.font.clone(),
+            license: entry.license.clone(),
+            bytes: bytes.into(),
+            license_text: license.into(),
+            identity: cache.identity().clone(),
+        })
+    }
+    pub fn descriptor(&self) -> &crate::FontDescriptor {
+        &self.descriptor
+    }
+    pub fn license(&self) -> &crate::LicenseMetadata {
+        &self.license
+    }
+    pub fn bytes(&self) -> &[u8] {
+        &self.bytes
+    }
+    pub fn license_text(&self) -> &[u8] {
+        &self.license_text
+    }
+    pub fn identity(&self) -> &crate::cff::CffIdentity {
+        &self.identity
+    }
+    pub fn outline_cache(
+        &self,
+        limits: crate::cff::CacheLimits,
+    ) -> crate::Result<crate::cff::CffOutlineCache> {
+        crate::cff::CffOutlineCache::from_font_table(
+            &self.bytes,
+            self.identity.face_index,
+            self.identity.table_range.clone(),
+            limits,
+        )
+    }
+    pub fn shape_adapter(&self) -> crate::Result<crate::engine_adapter::EngineFontAdapter> {
+        let cache = self.outline_cache(crate::cff::CacheLimits {
+            max_entries: 0,
+            max_bytes: 0,
+        })?;
+        crate::engine_adapter::EngineFontAdapter::from_cff(&self.bytes, &cache)
     }
 }
