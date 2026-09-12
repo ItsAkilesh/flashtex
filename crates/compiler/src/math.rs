@@ -1309,6 +1309,9 @@ fn text_atom(text: String, span: Span) -> MathAtom {
 /// the export adapter and is reported rather than silently substituted.
 pub const FRACTION_RULE_CHAR: char = '\u{2500}';
 
+/// The glyph a math-mode ASCII `-` renders as (U+2212, Symbol `minus`).
+pub const MINUS_SIGN: &str = "\u{2212}";
+
 fn command_glyph(name: &str) -> Option<&'static str> {
     COMMAND_GLYPHS
         .iter()
@@ -1338,6 +1341,111 @@ fn takes_display_limits(nucleus: &Nucleus) -> bool {
     }
 }
 
+/// TeX's atom classes (TeXbook Chapter 17), which drive inter-atom spacing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AtomClass {
+    Ord,
+    Op,
+    Bin,
+    Rel,
+    Open,
+    Close,
+    Punct,
+    Inner,
+}
+
+/// The class of `atom`, or `None` for explicit glue (`\,`, `\quad`, a null
+/// `\left.`), which TeX skips when pairing atoms for spacing.
+///
+/// The parser does not keep TeX's class through `\left`/`\right` or
+/// `\operatorname`, so a fence is classified by its glyph (open/close, not
+/// inner) and `\operatorname{...}` text is ordinary.
+fn atom_class(atom: &MathAtom) -> Option<AtomClass> {
+    use AtomClass::*;
+    Some(match &atom.nucleus {
+        Nucleus::Space { .. } if atom.superscript.is_none() && atom.subscript.is_none() => {
+            return None
+        }
+        Nucleus::Symbol(glyph) => symbol_class(glyph),
+        Nucleus::Text(text) if OPERATOR_NAMES.contains(&text.as_str()) => Op,
+        Nucleus::Text(text) if text == "mod" => Bin,
+        Nucleus::Text(text) if text == "..." => Inner,
+        Nucleus::Fraction { .. } => Inner,
+        Nucleus::Matrix { left, right, .. } if !left.is_empty() || !right.is_empty() => Inner,
+        // amsmath's `\overset`/`\stackrel` keep a relation or binary base's class.
+        Nucleus::Stacked { base, .. } if base.atoms.len() == 1 => {
+            match atom_class(&base.atoms[0]) {
+                Some(class @ (Rel | Bin)) => class,
+                _ => Ord,
+            }
+        }
+        _ => Ord,
+    })
+}
+
+fn symbol_class(glyph: &str) -> AtomClass {
+    use AtomClass::*;
+    match glyph {
+        "=" | "<" | ">" | ":" | "≤" | "≥" | "≠" | "≈" | "≡" | "∼" | "≅" | "∝" | "⊥" | "∈" | "∉"
+        | "∋" | "⊂" | "⊆" | "⊃" | "⊇" | "∣" | "→" | "←" | "↔" | "⇒" | "⇐" | "⇔" | "⟹" | "↑"
+        | "↓" | "⇑" | "⇓" | "∴" => Rel,
+        "+" | "-" | "−" | "*" | "±" | "×" | "÷" | "⋅" | "·" | "∗" | "∪" | "∩" | "∨" | "∧" | "⊕"
+        | "⊗" | "∖" => Bin,
+        "(" | "[" | "{" | "〈" | "⟨" => Open,
+        ")" | "]" | "}" | "〉" | "⟩" | "!" | "?" => Close,
+        "," | ";" => Punct,
+        "∑" | "∏" | "∫" | "∫∫" | "∫∫∫" => Op,
+        "⋅⋅⋅" => Inner,
+        _ => Ord,
+    }
+}
+
+/// Resolves each atom's class for spacing: TeX turns a binary operator with
+/// no left operand (list start, or after Bin/Op/Rel/Open/Punct) into Ord, and
+/// likewise one directly followed by Rel/Close/Punct or ending the list.
+fn spacing_classes(list: &MathList) -> Vec<Option<AtomClass>> {
+    use AtomClass::*;
+    let mut classes: Vec<Option<AtomClass>> = list.atoms.iter().map(atom_class).collect();
+    let mut previous: Option<usize> = None;
+    for i in 0..classes.len() {
+        let Some(class) = classes[i] else { continue };
+        let before = previous.and_then(|p| classes[p]);
+        match class {
+            Bin if matches!(before, None | Some(Bin | Op | Rel | Open | Punct)) => {
+                classes[i] = Some(Ord)
+            }
+            Rel | Close | Punct if before == Some(Bin) => classes[previous.unwrap()] = Some(Ord),
+            _ => {}
+        }
+        previous = Some(i);
+    }
+    if let Some(last) = previous {
+        if classes[last] == Some(Bin) {
+            classes[last] = Some(Ord);
+        }
+    }
+    classes
+}
+
+/// The TeXbook Chapter 18 spacing table, in mu (thin 3, medium 4, thick 5).
+/// Entries TeX parenthesises apply only in display and text styles.
+fn inter_atom_mu(left: AtomClass, right: AtomClass, script: bool) -> f64 {
+    use AtomClass::*;
+    let (mu, text_styles_only) = match (left, right) {
+        (Ord | Close, Op) | (Op, Ord | Op) | (Inner, Op) => (3.0, false),
+        (Ord | Op | Close | Inner, Bin) | (Bin, Ord | Op | Open | Inner) => (4.0, true),
+        (Ord | Op | Close | Inner, Rel) | (Rel, Ord | Op | Open | Inner) => (5.0, true),
+        (Ord | Op | Close, Inner) | (Inner, Ord | Open | Punct | Inner) => (3.0, true),
+        (Punct, Ord | Op | Rel | Open | Close | Punct | Inner) => (3.0, true),
+        _ => (0.0, false),
+    };
+    if script && text_styles_only {
+        0.0
+    } else {
+        mu
+    }
+}
+
 fn layout_list(
     list: &MathList,
     size: f64,
@@ -1362,7 +1470,17 @@ fn layout_list_with(
         ascent: size,
         descent: 0.2 * size,
     };
-    for atom in &list.atoms {
+    let classes = spacing_classes(list);
+    let mut previous_class = None;
+    for (atom, class) in list.atoms.iter().zip(classes) {
+        if let Some(class) = class {
+            if let Some(previous) = previous_class {
+                // Scripts and fraction parts are the only lists laid out
+                // below level 0, so `level > 0` is TeX's script style.
+                out.width += inter_atom_mu(previous, class, level > 0) / 18.0 * size;
+            }
+            previous_class = Some(class);
+        }
         let mut nucleus = layout_nucleus(atom, size, root_size, level, diagnostics);
         if display
             && level == 0
@@ -1449,6 +1567,19 @@ fn layout_nucleus(
     diagnostics: &mut Vec<Diagnostic>,
 ) -> MathBox {
     match &atom.nucleus {
+        // TeX's math `-` is the minus sign (Symbol `minus`), not a hyphen.
+        Nucleus::Symbol(text) if text == "-" => layout_nucleus(
+            &MathAtom {
+                nucleus: Nucleus::Symbol(MINUS_SIGN.into()),
+                span: atom.span,
+                superscript: None,
+                subscript: None,
+            },
+            size,
+            root_size,
+            level,
+            diagnostics,
+        ),
         Nucleus::Symbol(text) | Nucleus::Text(text) => MathBox {
             items: vec![MathItem {
                 font: matches!(atom.nucleus, Nucleus::Text(_))
@@ -2390,6 +2521,94 @@ mod accent_tests {
         assert!(under_rule.height > 0.0);
         // Drawn below the body: strictly positive (downward) y.
         assert!(under_rule.y > 0.0);
+    }
+}
+
+#[cfg(test)]
+mod spacing_tests {
+    use super::*;
+
+    const SIZE: f64 = 18.0; // 1mu = 1pt
+
+    fn laid_out(source: &str, size: f64) -> MathBox {
+        let mut diagnostics = Vec::new();
+        let list = parse_tokens(&crate::lexer::tokenize(source), &mut diagnostics);
+        let b = layout(&list, size, &mut diagnostics);
+        assert!(diagnostics.is_empty(), "{source}: {diagnostics:?}");
+        b
+    }
+
+    fn width(source: &str, size: f64) -> f64 {
+        laid_out(source, size).width
+    }
+
+    fn x(b: &MathBox, text: &str) -> f64 {
+        b.items.iter().find(|i| i.text == text).unwrap().x
+    }
+
+    fn close(actual: f64, expected: f64) {
+        assert!((actual - expected).abs() < 1e-9, "{actual} != {expected}");
+    }
+
+    #[test]
+    fn relations_get_thick_space_on_both_sides() {
+        let b = laid_out("a=b", SIZE);
+        close(x(&b, "="), width("a", SIZE) + 5.0);
+        close(x(&b, "b"), x(&b, "=") + width("=", SIZE) + 5.0);
+    }
+
+    #[test]
+    fn binary_operators_get_medium_space() {
+        let b = laid_out("a+b", SIZE);
+        close(x(&b, "+"), width("a", SIZE) + 4.0);
+        close(x(&b, "b"), x(&b, "+") + width("+", SIZE) + 4.0);
+    }
+
+    #[test]
+    fn a_leading_or_post_relation_minus_is_ordinary_and_a_real_minus_sign() {
+        let b = laid_out("-x", SIZE);
+        assert!(b.items.iter().all(|i| i.text != "-"), "{:?}", b.items);
+        close(x(&b, "x"), width("-", SIZE));
+        close(b.width, width("-", SIZE) + width("x", SIZE));
+        // After a relation: thick space before the minus, none after it.
+        let b = laid_out("a=-x", SIZE);
+        close(x(&b, MINUS_SIGN), x(&b, "=") + width("=", SIZE) + 5.0);
+        close(x(&b, "x"), x(&b, MINUS_SIGN) + width("-", SIZE));
+    }
+
+    #[test]
+    fn script_style_drops_relation_space() {
+        let script = SIZE * SCRIPT_SCALE;
+        let b = laid_out("a_{i=1}", SIZE);
+        close(
+            b.width,
+            width("a", SIZE) + width("i", script) + width("=", script) + width("1", script),
+        );
+    }
+
+    #[test]
+    fn math_punctuation_gets_thin_space_after_only() {
+        let b = laid_out("f(x),y", SIZE);
+        close(x(&b, "("), width("f", SIZE));
+        close(x(&b, "y"), x(&b, ",") + width(",", SIZE) + 3.0);
+        close(b.width, width("f(x),y", SIZE));
+        close(
+            b.width,
+            ["f", "(", "x", ")", ",", "y"]
+                .iter()
+                .map(|s| width(s, SIZE))
+                .sum::<f64>()
+                + 3.0,
+        );
+    }
+
+    #[test]
+    fn explicit_glue_adds_to_the_table_spacing() {
+        close(width(r"a\,=b", SIZE), width("a=b", SIZE) + 3.0);
+        close(
+            width(r"\sin x", SIZE),
+            width(r"\sin", SIZE) + width("x", SIZE) + 3.0,
+        );
     }
 }
 

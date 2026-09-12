@@ -117,8 +117,8 @@ Required, outstanding — this is a foundation, not a LaTeX implementation:
 
 - No `\def`, `\let`, mutable category codes, registers, or conditionals.
 - Math remains a declared subset: matrices, alignment environments,
-  `\left`/`\right` delimiter sizing, real math-font parameters, and operator
-  spacing classes are not implemented.
+  `\left`/`\right` delimiter sizing and real math-font parameters are not
+  implemented.
 - Package declarations are recognised but packages are not loaded: package
   commands, TikZ, bibliographies, and `\cite` remain missing.
 - Image loading (`\includegraphics`), tables, and float placement remain
@@ -256,7 +256,13 @@ requested delimiter at ordinary size (`.` is the invisible null delimiter).
 `\mathrm`, `\mathit`, `\mathsf`, `\mathtt`, `\boldsymbol` and `\mbox` typeset
 their argument in the current math face (no distinct face yet). `\displaystyle`,
 `\textstyle`, `\limits` and `\nolimits` are accepted without changing size.
-`\,` `\:` `\>` `\;` `\ ` and `\!` are math spaces. The math environments
+`\,` `\:` `\>` `\;` `\ ` and `\!` are math spaces, added to TeX's
+inter-atom spacing: atoms are classed ord/op/bin/rel/open/close/punct/inner
+and spaced by the TeXbook Chapter 18 table (thin 3mu, medium 4mu, thick 5mu
+of the current math size; scripts keep only the unparenthesised thin
+entries), and a binary operator with no left operand is ordinary. Fences are
+classed by glyph as open/close rather than inner, `\operatorname{name}` is
+ordinary, and a math `-` is the minus sign U+2212. The math environments
 `split`, `aligned`, `alignedat` and `gathered` lay out as grids.
 
 `\binom{n}{k}` (and `\dbinom`, `\tbinom`) is a two-row grid in parentheses.
