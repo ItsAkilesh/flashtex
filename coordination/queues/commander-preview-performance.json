@@ -4,8 +4,8 @@
   "schema_version": 1,
   "steps": [
     {
-      "name": "Align child producer reply cap with runtime frame capacity at startup and restart using existing env policy, preserving stricter valid cap and newline headroom",
-      "objective": "Align child producer reply cap with runtime frame capacity at startup and restart using existing env policy, preserving stricter valid cap and newline headroom",
+      "name": "Implement operation-specific nullable compile admission identity for full and metadata edit ACKs plus actual discarded preview revision; preserve source authority and failure durability",
+      "objective": "Implement operation-specific nullable compile admission identity for full and metadata edit ACKs plus actual discarded preview revision; preserve source authority and failure durability",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"
@@ -19,8 +19,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Verify existing producer parsing edge cases and startup restart consistency without runtime limit relaxation",
-      "objective": "Verify existing producer parsing edge cases and startup restart consistency without runtime limit relaxation",
+      "name": "Verify held-child supersession and failed or absent compiler admission without returning old identities",
+      "objective": "Verify held-child supersession and failed or absent compiler admission without returning old identities",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"
@@ -34,8 +34,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Publish exact bounded producer decline versus accepted sibling behavior and preserve independent helper output limits",
-      "objective": "Publish exact bounded producer decline versus accepted sibling behavior and preserve independent helper output limits",
+      "name": "Publish additive edit-only contract and owner handoff; group history paths remain separately scoped",
+      "objective": "Publish additive edit-only contract and owner handoff; group history paths remain separately scoped",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"

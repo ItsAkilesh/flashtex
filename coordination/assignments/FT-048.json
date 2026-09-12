@@ -9,16 +9,16 @@
   "branch": "agent/commander-preview-performance/preview-performance",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "64a92dd7f8a8b3d74fe42fbb58bb3de51fc66187",
-  "objective": "Align child producer reply cap with runtime frame capacity at startup and restart using existing env policy, preserving stricter valid cap and newline headroom",
+  "input_main_sha": "b741484d6bcda6e0dfa2623f77e62d834ddaf77c",
+  "objective": "Implement operation-specific nullable compile admission identity for full and metadata edit ACKs plus actual discarded preview revision; preserve source authority and failure durability",
   "owned_paths": [
     "crates/preview-controller",
     "crates/edit-ledger"
   ],
-  "revision": 35,
+  "revision": 36,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-048",
   "timebox_minutes": 40,
-  "updated_utc": "2026-09-12T14:46:03.348225+00:00"
+  "updated_utc": "2026-09-12T14:53:23.065609+00:00"
 }
