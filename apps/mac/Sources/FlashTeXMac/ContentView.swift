@@ -147,6 +147,7 @@ private struct EditorPane: View {
                 }
                 .labelsHidden().frame(maxWidth: 260)
                 ProjectMenu()
+                DocumentKindIndicator() // DocumentKinds.swift: helper-reported bibliography kind, read-only
                 if let url = model.documentURL {
                     let dirty = model.project.isDirty(model.activePath)
                     let name = model.activePath == model.project.entryPath ? url.lastPathComponent : model.activePath
@@ -231,6 +232,7 @@ private struct ProjectMenu: View {
                 }
                 .help("Session only: " + ProjectDocuments.detachScopeNote)
             }
+            DocumentKindsMenuSection() // DocumentKinds.swift: declare/undeclare bibliography sources
         } label: {
             Label("Project", systemImage: "doc.on.doc")
         }
