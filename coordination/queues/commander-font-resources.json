@@ -4,8 +4,8 @@
   "schema_version": 1,
   "steps": [
     {
-      "name": "Bind boundary-program output through existing explicit8bit encoding/GID adapter",
-      "objective": "Bind boundary-program output through existing explicit8bit encoding/GID adapter",
+      "name": "Paired pinned-font query performance and cached/direct exact equivalence",
+      "objective": "Paired pinned-font query performance and cached/direct exact equivalence",
       "owned_paths": [
         "crates/font-resources"
       ],
@@ -17,8 +17,8 @@
       "timebox_minutes": 30
     },
     {
-      "name": "Pinned real-TFM boundary replay and malformed/cycle regression evidence",
-      "objective": "Pinned real-TFM boundary replay and malformed/cycle regression evidence",
+      "name": "Cache eviction, unsupported outcomes and stale registry/device generation tests",
+      "objective": "Cache eviction, unsupported outcomes and stale registry/device generation tests",
       "owned_paths": [
         "crates/font-resources"
       ],

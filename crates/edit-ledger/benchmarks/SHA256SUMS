@@ -1,0 +1,6 @@
+78ed1991d3ac72715b384d45ec5b50b57ca2686d92c76c965085a109916d7a91  crates/edit-ledger/src/cost_benchmark.rs
+087a346a2f0144d01412c5b0245212a38cbb9a2dc84b19dae9ddffc3ec9a78d5  crates/edit-ledger/src/checkpoint.rs
+d1c55fb17c6088fb052bf1328e8c1421bb80d7741dd0a73fdfef0ead46742aaf  crates/edit-ledger/src/lib.rs
+18271de804932547f7cf9c39b7c2004e39ada33dd202a95006460f3d36310866  crates/edit-ledger/benchmarks/baseline-tmpfs.txt
+0e14c60361086ed4efe9954da9cfb9506bfe939ed3c9e8b9c27fd0f63a2f08d9  crates/edit-ledger/benchmarks/optimized-tmpfs.txt
+9e3c84dc543877fef6a18fa52447d7fa2e6ec8ee62301de41734c7595afe0ba1  crates/edit-ledger/benchmarks/btrfs-paired.txt
