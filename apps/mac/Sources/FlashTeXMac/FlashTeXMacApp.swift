@@ -34,8 +34,15 @@ struct FlashTeXMacApp: App {
                     .keyboardShortcut("i", modifiers: [.command, .shift])
             }
             CommandGroup(replacing: .newItem) {
-                Button("Open Compile Result Fixture…") { model.openFixturePanel() }
+                Button("Open LaTeX File…") { model.openTexPanel() }
                     .keyboardShortcut("o")
+                Button("Save") { model.saveTex() }
+                    .keyboardShortcut("s")
+                Button("Save As…") { model.saveTexAs() }
+                    .keyboardShortcut("s", modifiers: [.command, .shift])
+                Divider()
+                Button("Open Compile Result Fixture…") { model.openFixturePanel() }
+                    .keyboardShortcut("o", modifiers: [.command, .shift])
                 Button("Reload Fixture") { model.reloadFixture() }
                     .keyboardShortcut("r")
                 Button("Export PDF…") { model.exportPDF() }

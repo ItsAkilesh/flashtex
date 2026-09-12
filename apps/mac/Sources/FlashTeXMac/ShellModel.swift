@@ -23,6 +23,9 @@ final class ShellModel: ObservableObject {
     @Published var navigationNote: String?
     @Published var darkPreview = false
     @Published var previewSource: PreviewSource = .none
+    /// File backing the entry document, if any, and its last saved contents.
+    @Published var documentURL: URL?
+    @Published var savedText: String?
 
     // Capture review / insertion (contract: "Capture and insertion").
     struct PendingEdit: Equatable { var path: String; var nsRange: NSRange; var text: String; var token: Int }
@@ -179,6 +182,19 @@ final class ShellModel: ObservableObject {
     }
 
     // MARK: editing
+
+    /// Replaces the whole project with one entry document (File > Open).
+    func replaceProject(entryText text: String) {
+        documents = [.init(path: "main.tex", text: text)]
+        activePath = "main.tex"
+        compiledDocuments = [:]
+        result = nil
+        resultID = nil
+        previewSource = .none
+        selection = nil
+        anchor = nil
+        editorRevision += 1
+    }
 
     func updateActiveText(_ text: String) {
         guard let i = documents.firstIndex(where: { $0.path == activePath }) else { return }

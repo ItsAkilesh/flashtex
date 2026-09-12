@@ -107,6 +107,13 @@ struct ContentView: View {
                     ForEach(model.documents, id: \.path) { Text($0.path).tag($0.path) }
                 }
                 .labelsHidden().frame(maxWidth: 220)
+                if let url = model.documentURL {
+                    Text(url.lastPathComponent + (model.isDirty ? " — edited" : ""))
+                        .font(.caption).foregroundStyle(model.isDirty ? .orange : .secondary)
+                        .help(url.path)
+                } else {
+                    Text("unsaved buffer").font(.caption).foregroundStyle(.secondary)
+                }
                 Spacer()
                 Text("\(model.activeText.utf8.count) UTF-8 bytes · \((model.activeText as NSString).length) UTF-16 units")
                     .font(.caption).foregroundStyle(.secondary)

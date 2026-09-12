@@ -147,3 +147,32 @@ final class ShellModelWorkerTests: XCTestCase {
         }
     }
 }
+
+@MainActor
+final class DocumentFileTests: XCTestCase {
+    func testOpenAndSaveRoundTripWithDirtyTracking() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("flashtex-doc-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let url = dir.appendingPathComponent("paper.tex")
+        try "Café naïve\n".write(to: url, atomically: true, encoding: .utf8)
+
+        let model = ShellModel()
+        XCTAssertNotNil(model.result, "fixture loaded first")
+        model.openTex(at: url)
+        XCTAssertEqual(model.activeText, "Café naïve\n")
+        XCTAssertEqual(model.documentURL, url)
+        XCTAssertNil(model.result, "opening a file clears the fixture preview")
+        XCTAssertFalse(model.isDirty)
+
+        model.updateActiveText("Café naïve — edited\n")
+        XCTAssertTrue(model.isDirty)
+        XCTAssertTrue(model.saveTex())
+        XCTAssertFalse(model.isDirty)
+        XCTAssertEqual(try String(contentsOf: url, encoding: .utf8), "Café naïve — edited\n")
+
+        model.openTex(at: dir.appendingPathComponent("missing.tex"))
+        XCTAssertTrue(model.captureNote?.contains("Could not open") == true)
+        XCTAssertEqual(model.activeText, "Café naïve — edited\n", "failed open leaves the buffer alone")
+    }
+}

@@ -127,7 +127,9 @@ glyphs; real font metrics are the compiler's FT-005 work, not a shell bug.
 
 | Shortcut | Action |
 |---|---|
-| ⌘O | Open compile result fixture… (sibling `-request.json` seeds the editor) |
+| ⌘O | Open LaTeX file… (becomes the `main.tex` entry document; compiles if a worker is attached) |
+| ⌘S / ⌘⇧S | Save / Save As… (UTF-8; header shows "— edited" when dirty) |
+| ⌘⇧O | Open compile result fixture… (sibling `-request.json` seeds the editor) |
 | ⌘R | Reload fixture |
 | ⌘⇧K | Attach built compiler (`$FLASHTEX_COMPILER` or `crates/compiler/target/…`) |
 | ⌘K | Attach worker executable… |
