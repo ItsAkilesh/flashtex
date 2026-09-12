@@ -1,45 +1,45 @@
 {
   "agent_id": "commander-render-core",
-  "next_index": 1,
+  "next_index": 2,
   "schema_version": 1,
   "steps": [
     {
+      "acceptance": [
+        "Meaningful bounded tests and strict lint pass; exact identities and typed unsupported outcomes preserved",
+        "No new worker/provider/native activation, copied reference implementation or unsupported parity claim"
+      ],
+      "allocation_id": "hosted-openai-product",
       "name": "Review current strict full-display invariants for proposed opt-in page delta reconstruction",
       "objective": "Review current strict full-display invariants for proposed opt-in page delta reconstruction",
       "owned_paths": [
         "crates/rendering-core"
       ],
+      "timebox_minutes": 40
+    },
+    {
       "acceptance": [
         "Meaningful bounded tests and strict lint pass; exact identities and typed unsupported outcomes preserved",
         "No new worker/provider/native activation, copied reference implementation or unsupported parity claim"
       ],
       "allocation_id": "hosted-openai-product",
-      "timebox_minutes": 40
-    },
-    {
       "name": "Specify complete page resource source diagnostic and hit authority validation with bounded retained state and wrong-base refusal",
       "objective": "Specify complete page resource source diagnostic and hit authority validation with bounded retained state and wrong-base refusal",
       "owned_paths": [
         "crates/rendering-core"
       ],
+      "timebox_minutes": 40
+    },
+    {
       "acceptance": [
         "Meaningful bounded tests and strict lint pass; exact identities and typed unsupported outcomes preserved",
         "No new worker/provider/native activation, copied reference implementation or unsupported parity claim"
       ],
       "allocation_id": "hosted-openai-product",
-      "timebox_minutes": 40
-    },
-    {
       "name": "Publish consumer contract constraints without incomplete export source actions new parser or activation",
       "objective": "Publish consumer contract constraints without incomplete export source actions new parser or activation",
       "owned_paths": [
         "crates/rendering-core"
       ],
-      "acceptance": [
-        "Meaningful bounded tests and strict lint pass; exact identities and typed unsupported outcomes preserved",
-        "No new worker/provider/native activation, copied reference implementation or unsupported parity claim"
-      ],
-      "allocation_id": "hosted-openai-product",
       "timebox_minutes": 40
     }
   ],
