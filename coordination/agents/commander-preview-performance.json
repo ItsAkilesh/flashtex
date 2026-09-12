@@ -13,17 +13,17 @@
   "capabilities": [
     "Preview helper serialization and latency"
   ],
-  "code_revision": "f8177134d4f3d869bc4d6e6c4f76d5d2d2f45b21",
+  "code_revision": "f4fd96ff3e2d1808bbc7abb9fdf86980406d87d6",
   "eta_minutes": null,
   "machine": "linux-primary",
-  "main_integrated_through": "7a7fd4f26290c2ee41115734631991d2557672bd",
-  "next_action": "Commander reconcile draft corrections and integrate GH37 guard; next independent helper product work.",
+  "main_integrated_through": "f4fd96ff3e2d1808bbc7abb9fdf86980406d87d6",
+  "next_action": "Run existingthree-state rawfullsibling correctnessgate with frozen298helper and published347producer under/home.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "Fullsnapshotcontract draftreview completed: configurealreadyenrolls/submits; enabled/preview_error/produceracceptance distinct; precise layerframebounds required.",
+  "summary": "FT048r33 actualnewproducerhelper replay prepared;78resourcehashes and existingbasefixture verified; waiting runtime exactpublication before execution.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T14:22:24Z",
+  "updated_utc": "2026-09-12T14:28:11Z",
   "usage": {
     "status": "unknown"
   }
