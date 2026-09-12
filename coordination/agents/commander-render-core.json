@@ -3,10 +3,10 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-023": {
-      "acknowledged_utc": "2026-09-12T11:37:02Z",
-      "adaptation": "Read36c0629 FT023r12. Test actual raw/helper-normalized representations against existing parser/binder, exact numbers/escapes and duplicate-field behavior. Current nested payload Value collapse is a candidate compatibility gap; no parser/transport/native activation.",
-      "main_sha": "36c062924dd56ad15a0ddc5772cb262e84113541",
-      "revision": 12
+      "acknowledged_utc": "2026-09-12T12:04:24Z",
+      "adaptation": "Read3b0fa70e FT023r13. Attribute existing f552 raw helper binder phases/allocation before any replacement, preserve GH32 finite/depth/duplicate/current resource gates; coordinate measurement windows.",
+      "main_sha": "3b0fa70e1bb55e31d013828a54ba3416ad47e8e2",
+      "revision": 13
     }
   },
   "branch": "agent/commander-render-core/rendering-core",
@@ -14,23 +14,23 @@
     "rust",
     "rendering"
   ],
-  "code_revision": "8fa2c2b13cc1bdea2265a4c2090535c9e300eb7b",
+  "code_revision": "02da05688d8f931698b9c2f0f8be85acb2d05536",
   "eta_minutes": {
-    "likely": 2,
+    "likely": 3,
     "optimistic": 1,
     "pessimistic": 5
   },
   "machine": "linux-primary",
-  "main_integrated_through": "8fa2c2b13cc1bdea2265a4c2090535c9e300eb7b",
-  "next_action": "Publish actual raw helper fixtures/handoff. Native acceptance and mode activation remain separate; ready for next bounded Commander consumer task.",
+  "main_integrated_through": "3040a0ce37256999db73ac73fd7b9df693aad1a1",
+  "next_action": "Commander integration of tested visitor/evidence. Remaining pair+resource parsing costs exceed new preflight; future reuse must preserve complete source/resource authority. No native activation.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "accepted",
-  "summary": "FT023r12 followup: actual f5524794 raw helper100 three states reach strict original-byte binding and searchable export; exact raw/normalized/escaped PDFs equal.",
+  "summary": "FT023r13 complete: equivalent serde preflight02da0568 measured0 allocations on3actual raw captures; removes up to11.85MB requested capacity. Five original PDFs and reference outcomes unchanged.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T12:00:56Z",
+  "updated_utc": "2026-09-12T12:25:32Z",
   "usage": {
-    "evidence": "9 helper tests pass, strict all-target Clippy pass. Original candidate and producer-body hashes pinned; editor1/2/3 differs compile2/3/4. Nested/escaped duplicate, sourceSHA, exponent integer and source-action escalation refuse. Stale source/membership refuses export. Production/dependency tree unchanged from b797b21a.",
-    "status": "Hosted OpenAI only; no providers or descendants; quota telemetry unavailable. All focused jobs terminal."
+    "evidence": "172 Rust tests/2ignored and strict Clippy pass;6Python tests pass.138 candidate measured bindings; all nonpreflight allocation medians unchanged. Five replay PDF/raster/text hashes exact baseline equality; existing0/602/1244/979/337 reference gaps retained. No RSS or calibrated speedup claim.",
+    "status": "Hosted OpenAI only; no providers or descendants; quota telemetry unavailable. Candidate18856 and replay76868 terminal; runtime owner has released measurement window."
   }
 }

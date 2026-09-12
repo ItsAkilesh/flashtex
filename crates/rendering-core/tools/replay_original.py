@@ -16,7 +16,7 @@ import tarfile
 import tempfile
 
 PRODUCER = "65dbe7da7a182e99322070e2c9763cc3b69a342b"
-CONSUMER = "b797b21ae74cb5d0e30afb3e5494e80975f7609a"
+CONSUMER = "02da05688d8f931698b9c2f0f8be85acb2d05536"
 FIXTURE_MANIFEST_SHA256 = "4cb8dec58408efa560288adfe848f3d7fedf6bb0967a6b2160f633f89df4a412"
 ASSETS = {
     "fonts/tfm/public/lm/ec-lmr12.tfm": "299021120f0a29ef61278a2363903bd8defbb8faaade458eb79067342aecb56f",

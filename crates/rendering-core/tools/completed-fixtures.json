@@ -136,5 +136,14 @@
     "all_five_original_pdf_hashes_unchanged": true,
     "all_five_raster_and_text_metrics_unchanged": true,
     "scope": "Stricter duplicate-field refusal does not alter these five valid inputs. Existing four reference raster mismatches and display-math ToUnicode oracle limitation remain; no activation or general parity."
+  },
+  "syntax_preflight_validation": {
+    "consumer_commit": "02da05688d8f931698b9c2f0f8be85acb2d05536",
+    "report": "evidence/syntax-five-fixtures.json",
+    "report_sha256": "6db640f412f3078413e29d747c64d32d10bae7f7c18c5566fa95488a6b58679e",
+    "comparison_baseline": "evidence/raw-payload-five-fixtures.json",
+    "all_five_original_pdf_hashes_unchanged": true,
+    "all_five_raster_and_text_metrics_unchanged": true,
+    "scope": "Equivalent serde preflight does not alter existing five valid inputs. Four existing reference mismatches and display-math ToUnicode oracle limitation remain; no native activation."
   }
 }
