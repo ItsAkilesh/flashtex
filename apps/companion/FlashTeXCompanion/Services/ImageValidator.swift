@@ -19,33 +19,57 @@ enum ImageValidator {
         let error: String?
     }
 
-    /// Validate and optionally downscale an image for capture submission.
+    // MARK: – Orientation normalization
+
+    /// Returns a copy of `image` whose `imageOrientation` is `.up`.
+    ///
+    /// UIImagePickerController and PHAsset deliver images whose pixel buffer is
+    /// correct but whose `imageOrientation` property tells renderers to rotate it.
+    /// Left un-normalised, the base-64 JPEG or PNG sent in a capture_submit payload
+    /// embeds the orientation in EXIF; many recipients (including the FlashTeX
+    /// runtime) don't apply EXIF rotation and receive a mis-rotated image.
+    /// Drawing through UIGraphicsImageRenderer bakes the transform into pixels and
+    /// strips the EXIF flag so the output is always correctly oriented.
+    static func normalizeOrientation(_ image: UIImage) -> UIImage {
+        guard image.imageOrientation != .up else { return image }
+        let size = image.size
+        return UIGraphicsImageRenderer(size: size).image { context in
+            image.draw(in: CGRect(origin: .zero, size: size))
+        }
+    }
+
+    // MARK: – Validation pipeline
+
+    /// Validate, orient-normalise, and optionally downscale an image for capture submission.
     static func validate(_ image: UIImage) -> ValidationResult {
-        // Check dimensions and downscale if needed
+        // 1. Normalise orientation first — must happen before downscaling so the
+        //    scale math operates on the true width/height, not the rotated one.
+        let oriented = normalizeOrientation(image)
+
+        // 2. Downscale if either dimension exceeds the maximum.
         let processed: UIImage
-        if image.size.width > maxDimension || image.size.height > maxDimension {
-            let scale = min(maxDimension / image.size.width,
-                           maxDimension / image.size.height)
-            let newSize = CGSize(width: image.size.width * scale,
-                                height: image.size.height * scale)
+        if oriented.size.width > maxDimension || oriented.size.height > maxDimension {
+            let scale = min(maxDimension / oriented.size.width,
+                           maxDimension / oriented.size.height)
+            let newSize = CGSize(width: oriented.size.width * scale,
+                                height: oriented.size.height * scale)
             processed = UIGraphicsImageRenderer(size: newSize).image { _ in
-                image.draw(in: CGRect(origin: .zero, size: newSize))
+                oriented.draw(in: CGRect(origin: .zero, size: newSize))
             }
         } else {
-            processed = image
+            processed = oriented
         }
 
-        // Check data size
+        // 3. Check encoded data size.
         guard let pngData = processed.pngData() else {
             return ValidationResult(isValid: false, image: nil,
                                    error: "Failed to generate PNG data")
         }
 
         if pngData.count > maxDataSize {
-            // Try JPEG as fallback for large images
+            // Try JPEG as fallback for large images.
             if let jpegData = processed.jpegData(compressionQuality: 0.85),
                jpegData.count <= maxDataSize {
-                // Reconstruct as JPEG-backed UIImage
                 if let jpegImage = UIImage(data: jpegData) {
                     return ValidationResult(isValid: true, image: jpegImage, error: nil)
                 }
