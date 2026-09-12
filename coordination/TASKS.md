@@ -5,7 +5,7 @@ Full process: [orchestration master plan](../ORCHESTRATION.md).
 
 | ID / revision | Task | Owner | State | Dependencies |
 |---|---|---|---|---|
-| ORCH-001 / 1 | Publish orchestration plan, roster, dispatch board, and discovery links | commander | ready_for_publication_after_commit | Cursor commit done locally; parent Commander push next |
+| ORCH-001 / 1 | Publish orchestration plan, roster, dispatch board, and discovery links | commander | integrated: 567d84b on main | Self-registration clarification follow-up |
 | FT-001 / 1 | Shared compile/edit/capture contracts and fixtures | Unassigned | unassigned | Register eligible worker / define supported sample |
 | FT-002 / 1 | Original Rust compiler foundation | Unassigned | unassigned | FT-001 |
 | FT-003 / 1 | Native Mac shell | Unassigned | unassigned | Mac worker, FT-001 |

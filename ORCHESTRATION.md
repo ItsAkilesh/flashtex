@@ -63,9 +63,18 @@ the authoritative files. This reduces write conflicts and ambiguous ownership.
 
 ## 4. Registration and starting an agent
 
+The user confirmed that agents will populate the system themselves. No manual
+machine inventory from the user is required. On joining the repository, each
+worker publishes its own registration; the Commander discovers these through
+fetched `agent/*/register` branches and assigns work based on reported capabilities.
+
 Give every process a unique agent ID, such as `mac-ui-a`, and every computer a
 non-sensitive machine alias. Do not share one working tree between concurrent
 agents. Use independent clones across computers and separate worktrees locally.
+If no identity was assigned, choose a role/machine alias with a short random suffix
+to avoid collisions. Check existing branch names before publishing. Publishing a
+registration does not need a prior implementation assignment; it is authorized
+bootstrap work, still subject to the Cursor commit and resource rules.
 
 To register, publish a small handoff on `agent/<id>/register` containing:
 
@@ -76,7 +85,8 @@ To register, publish a small handoff on `agent/<id>/register` containing:
 - Cursor CLI availability/authentication for required commit execution.
 - Readiness to receive work and last reviewed main SHA.
 
-The Commander adds the worker to the roster and assigns an eligible ready task.
+The Commander checks for new registration branches at every active checkpoint,
+adds the worker to the roster, and assigns an eligible ready task.
 A worker is not counted as active until its acceptance acknowledgement is received.
 Creating a task row does not launch a process or prove someone is working on it.
 
@@ -303,7 +313,8 @@ unresolved costs, critical path, user decisions, and next dispatch actions.
 
 ## 13. First actions after publishing this plan
 
-1. User starts available remote agents with the startup instruction above.
+1. Joining agents read the startup instruction and self-register; no pre-filled
+   machine list is needed from the user.
 2. Workers publish registrations; Commander acknowledges them in the roster.
 3. Commander dispatches FT-001 and hardware-eligible independent setup work.
 4. All workers acknowledge assignments and report their first acceptance step.

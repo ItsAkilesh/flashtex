@@ -70,7 +70,8 @@ Reserve 20% of confirmed allocatable funds for integration unless directed other
 | Allocation ID | Pool | Agent/machine alias | Maximum | Spent | Reserved in-flight | State |
 |---|---|---|---|---|---|---|
 | cursor-docs-commit-001 | cursor-project | Cursor CLI / linux-primary | One bounded documentation commit session; monetary cost unknown | One completed session; monetary cost unknown | Charge unresolved; no inference in flight | Completed: b37237b committed by Cursor and pushed by Commander; zero Claude calls |
-| cursor-orchestration-commit-002 | cursor-project | Cursor CLI / linux-primary | One bounded orchestration-docs commit session; monetary cost unknown | In use this session; monetary cost unknown | One session | Active: Cursor CLI reviewing and committing orchestration docs; zero Claude calls; no nested model tasks; push not claimed |
+| cursor-orchestration-commit-002 | cursor-project | Cursor CLI / linux-primary | One bounded orchestration-docs commit session; monetary cost unknown | One completed session; monetary cost unknown | Charge unresolved; no inference in flight | Completed: 567d84b committed by Cursor and pushed to main; zero Claude calls |
+| cursor-registration-commit-003 | cursor-project | Cursor CLI / linux-primary | One bounded self-registration clarification commit session | Pending; monetary cost unknown | One session | Authorized follow-up commit; no nested calls |
 | commander-orch-001 | openai-commander | commander / linux-primary | Current orchestration task under user's account authorization | Usage unknown to repository | Unknown | Active; no delegated development agents started |
 
 The Cursor grant records the user's explicit tool-specific commit authorization,
