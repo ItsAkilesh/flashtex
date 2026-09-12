@@ -6,6 +6,7 @@
 //! See `README.md` for the API tour, parameter defaults and coordinate
 //! conventions, and `docs/comparison.md` for the pdflatex oracle comparison.
 
+pub mod adapter;
 pub mod core14;
 pub mod hyphenate;
 pub mod items;
@@ -13,6 +14,7 @@ pub mod linebreak;
 pub mod metrics;
 pub mod pages;
 
+pub use adapter::{LayoutError, MAX_DIMEN_PT, MAX_DIMEN_SP, MAX_ITEMS, try_layout_paragraph};
 pub use hyphenate::{ExplicitDiscretionary, HyphenationPoint, Hyphenator, NoHyphenation};
 pub use items::{
     FORCED_BREAK, Glue, GlueOrder, Glyph, GlyphRun, INFINITE_PENALTY, Item, Kern, ParagraphBuilder,
