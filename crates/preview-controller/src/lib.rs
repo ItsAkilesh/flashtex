@@ -1,4 +1,6 @@
 //! Worker-thread editor controller. Durable source precedes disposable caches.
+pub mod completed_protocol;
+pub mod experimental_delivery;
 pub mod file_project;
 mod historical;
 use flashtex_document_runtime::{Document as InputDocument, Event, Limits, Request, Session};
@@ -338,6 +340,10 @@ impl Controller {
         self.layout_capabilities = capabilities;
         self.submitted = None;
         self.compile_current()
+    }
+    /// Latest successfully admitted compiler generation.
+    pub fn compile_revision(&self) -> u64 {
+        self.generation
     }
     pub fn compile_current(&mut self) -> Result<(), String> {
         let started = Instant::now();

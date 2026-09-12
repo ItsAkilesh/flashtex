@@ -154,12 +154,15 @@ not enumerated. No source text or disk contents are read by this query.
 Compiler restart now advances index generation instead of resetting it, so a
 previously invalid index snapshot cannot become valid again after restarting.
 
-Optional startup `compiler_max_frame_bytes` accepts128..12,582,912 (12MiB),
+Optional startup `compiler_max_frame_bytes` accepts128..15,728,640 (15MiB),
 default8MiB. Startup and compiler restart use the same limit. Ready advertises the
-selected compiler limit and16MiB helper output limit. Twelve MiB leaves4MiB for
-helper envelope/serialization headroom; the actual serialized helper bound is
-still checked, so excess fails explicitly. This opt-in admits the measured~10MB
-positioned result; it does not promise arbitrary document sizes or200ms latency.
+selected compiler limit and16MiB helper output limit. Fifteen MiB reserves1MiB for
+typical helper metadata; path lengths and JSON reserialization mean this reserve
+is not a guarantee that every admitted compiler result fits. The complete serialized
+helper envelope, including newline, is checked against16MiB before publication.
+Overflow produces one small error frame, never a partial preview; durable source
+and subsequent acknowledgements remain independent. This explicit opt-in admits
+the measured13,117,053-byte positioned result; it does not promise arbitrary document sizes or200ms latency.
 
 The output queue remains8 frames with16MiB per-frame serialization bounds
 (128MiB queued encoded payload, plus writer/producer buffers). Parsed JSON,
@@ -167,3 +170,11 @@ compiler memory and allocator overhead are additional; this is not an RSS cap.
 The native client must continuously drain large replies off its UI thread.
 Chunked or compact output requires a separate negotiated contract; no pages are
 silently omitted under the current JSON protocol.
+
+
+For developer diagnostics, optional startup `diagnostic_timings:true` writes JSON
+phase records to stderr containing only durations and event counts, never source
+or tokens. It does not alter protocol stdout. Consumers enabling this option must
+drain stderr; normal callers should leave it off. The replay driver's `--phases`
+option captures these records in a temporary file and bounds the parsed capture
+at1MiB. Timing records are attribution data, not latency guarantees.

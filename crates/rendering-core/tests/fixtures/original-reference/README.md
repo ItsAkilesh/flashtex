@@ -108,3 +108,101 @@ The fresh `4888-legacy.pdf` and `4888-comparison.json` rerun the legacy route
 against the same reference: bytes/operators differ, visual equality unknown.
 Earlier producer comparisons remain separately pinned. Current blocker
 verification: https://github.com/flash-tex/flashtex/issues/2#issuecomment-5645134718.
+
+## Existing PDF owner subsetter integration
+
+`PipelineCff::export_searchable(max_pdf_bytes)` consumes the unchanged PDF owner's
+654f626 `v2::from_v2` and `exact::render_exact`. Verified immutable registry bytes
+are staged in a private temporary directory; the returned resolver paths must
+match that staging and `HashForm::Bytes`. The raw-hash refusal occurs at binding,
+before this API. It does not permit the owner's compatibility interpretation of
+an engine hash as a raw hash. No second subsetter, PDF writer or font parser was
+added. The temporary paths in its report are audit evidence, not durable assets.
+
+The narrow accepted extraction profile has exactly one glyph per nonempty
+cluster and one text value per original GID within each font. Ligatures such as
+`fi` are retained as multi-character ToUnicode mappings. Empty/multiple-glyph
+clusters or conflicting mappings return explicit errors because the owner API
+does not implement marked-content ActualText. Text extraction support is not
+proof of global reading order or established-LaTeX visual parity.
+
+The adapter caps 256 pages,100000 glyphs,64MiB staged font bytes and a caller PDF
+output cap up to64MiB. The PDF output cap is checked after owner serialization;
+it is not a hard ceiling on the owner's transient allocation. Existing opaque
+paint and exact numeric refusals remain in the owner implementation. The owned
+regression verifies the original-GID CID-CFF subset and `H`/`fi` ToUnicode with
+the explicitly hypothetical corrected contract, and rejects ambiguous mappings.
+Actual producer4888a67 remains refused until it publishes its raw SHA correctly.
+
+PDF classifier fix654f626 is merged unchanged. The existing independent
+unsupported-identical guard and all seven PDF comparison tests continue to pass.
+
+## Historical65dbe7d run: raw hash verified, required metrics unavailable
+
+Correction: the first run below used the old FLASHTEX_TFM_DIRS layout and
+contained an error diagnostic. Its211-pixel result is fallback-metrics evidence,
+not matched-metrics acceptance. The corrected zero-diagnostic run is documented
+next; searchable export now refuses error diagnostics.
+
+The owner published the raw digest correction in919ad8b, followed by65dbe7d.
+An untouched archived build of65dbe7d now emits valid raw font identities and
+passes PipelineCff with the actual font/source snapshots. No producer output was
+rewritten. The regression recreates `65dbe7d-searchable.pdf` byte-for-byte through
+the existing owner subsetter/writer. Earlier refusal and scratch-candidate records
+remain historical evidence, not current blockers.
+
+`65dbe7d-measurement.json` pins the published commit, resources and every output.
+The same request, recorded preamble transformation and established pdfTeX reference
+are used. Poppler26.01.0 extracts identical UTF-8 text from the original PDF and
+reference. At144DPI both rasterizations are1224×1584 RGB and211 pixels differ.
+Thus text extraction equality is observed, visual equality is false at that
+configuration, and raw bytes/parsed operators differ. No threshold was relaxed.
+
+Poppler reports13 equal word strings in order. Maximum xMin/xMax box differences
+are0.064160/0.064083bp. yMin/yMax differ5.236173/1.028306bp; these are extractor
+font-metric boxes, not verified glyph baselines or outline distances. Raster
+and box evidence must not be substituted for each other. The existing PDF
+comparison preserves unknown cross-producer operator/source correspondence.
+
+Reproduce export by passing `65dbe7d-v2.json`, unchanged `request.jsonl`, the
+pinned font/license and an output prefix to `pipeline_cff_probe --searchable`.
+This mode emits the owner's CID-CFF PDF and a separate verified-input evidence
+sidecar. It does not use the outline-only exporter. Run `pdf_compare` without
+passing that sidecar (the comparison's outline-span evidence format is distinct),
+then `pdftotext -enc UTF-8` and `pdftoppm -r 144 -singlefile -png` on both PDFs.
+
+## Corrected rooted-assets run and source-text semantics
+
+The new producer requires four pinned TFM files and the exact license under a
+rooted layout: `fonts/tfm/public/lm/{ec-lmr12,rm-lmr12,rm-lmr8,rm-lmr6}.tfm` and
+`doc/fonts/lm/GUST-FONT-LICENSE.TXT`. FLASHTEX_TFM_DIRS must name that full TFM
+directory, not the old flat download directory. With these unchanged official
+assets the producer reports zero diagnostics. `65dbe7d-clean-*` pins this run.
+
+The original searchable PDF SHA6308c8a95726a980ec341ad53af15a0b12654d27c9021d5a74306b8b807c9cb1
+reproduces exactly from unmodified producer JSON. Poppler26.01 extracted text
+matches the established reference, and144DPI1224×1584 RGB pixels are identical.
+This establishes one fixture/configuration's raster and extraction equality;
+it is not all-document, all-resolution or PDF byte/operator equality. The latter
+still differ. Word-box x differences are at most0.007259bp; y box differences
+remain font-metric extraction differences, not proven baseline differences.
+
+The historical error-bearing display is retained as
+`65dbe7d-required-unavailable.json` and now exercises a refusal before searchable
+export. Partial geometry remains available through the separate page API. The
+reference frame gate refuses both old `tfm_missing` and new
+`required_metrics_unavailable`/error diagnostics, preventing this setup mistake
+from being labeled successful reference acceptance again.
+
+Actual published-producer `escaped-*` fixtures retain visible `% _ & # { }`
+cluster strings while their source spans include the original backslash escapes.
+Actual exported PDF text is `Escaped % _ & # { } and office fi.`; no extraction
+text is inferred from source spelling or reverse-mapped from a GID. `ffi`/`fi`
+clusters retain their logical strings. Therefore no new policy refusal is needed
+for these demonstrated cases. Source ranges remain navigation provenance.
+
+The actual math emitter appends its laid-out `g.ch` into logical cluster text,
+while source ranges can cover the enclosing TeX expression. No matching
+`latinmodern-math.otf` is installed on this host, so a real matching-font math
+extraction probe is still unavailable; there is no new math-text parity claim.
+The ActualText proposal and existing ambiguous-mapping refusals remain in force.

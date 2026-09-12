@@ -527,3 +527,122 @@ fn configured_large_result_reaches_real_helper_without_dropping_pages() {
         }
     }
 }
+
+#[test]
+#[cfg(unix)]
+fn negotiated_history_echoes_original_token_and_restart_requires_renegotiation() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = tempfile::tempdir().unwrap();
+    let compiler = dir.path().join("gated.py");
+    std::fs::write(&compiler, r#"#!/usr/bin/python3
+import json,sys,pathlib,time
+root=pathlib.Path(__file__).parent
+for line in sys.stdin:
+ r=json.loads(line);p=r['payload'];revision=p['revision']
+ (root/('started'+str(revision))).touch()
+ while revision>1 and not (root/('release'+str(revision))).exists(): time.sleep(.001)
+ print(json.dumps({'protocol_version':1,'type':'compile_result','id':r['id'],'payload':{'project_id':p['project_id'],'revision':revision,'status':'ok','pages':[],'diagnostics':[]}}),flush=True)
+"#).unwrap();
+    std::fs::set_permissions(&compiler, std::fs::Permissions::from_mode(0o700)).unwrap();
+    let mut client = Client::with_compiler(dir.path(), Some(&compiler));
+    loop {
+        let event = client.output.recv_timeout(Duration::from_secs(3)).unwrap();
+        assert_ne!(event["payload"]["kind"], "completed_snapshot");
+        if event["payload"]["kind"] == "preview" {
+            break;
+        }
+    }
+    client.send(
+        "configure",
+        "configure_completed_snapshots",
+        json!({"capability":"completed-snapshots-v1","enabled":true}),
+    );
+    assert_eq!(client.reply("configure")["payload"]["enabled"], true);
+    client.send(
+        "a",
+        "compile",
+        json!({"source_binding_token":"editor-A:α\nopaque"}),
+    );
+    assert_eq!(client.reply("a")["type"], "result");
+    let deadline = std::time::Instant::now() + Duration::from_secs(3);
+    while !dir.path().join("started2").exists() {
+        assert!(std::time::Instant::now() < deadline);
+        thread::sleep(Duration::from_millis(1));
+    }
+    client.send("get", "document", json!({"path":"main.tex"}));
+    let doc = client.reply("get")["payload"]["document"].clone();
+    client.send("b", "edit", json!({"path":"main.tex","expected_revision":1,"expected_sha256":doc["source_sha256"],"text":"new durable source","source_binding_token":"editor-B"}));
+    assert_eq!(client.reply("b")["payload"]["document"]["revision"], 2);
+    std::fs::write(dir.path().join("release2"), b"ok").unwrap();
+    let historical = loop {
+        let event = client.output.recv_timeout(Duration::from_secs(3)).unwrap();
+        if event["payload"]["kind"] == "completed_snapshot" {
+            break event["payload"].clone();
+        }
+    };
+    assert_eq!(historical["source_binding_token"], "editor-A:α\nopaque");
+    assert_eq!(historical["source_versions"]["main.tex"], 1);
+    assert_eq!(historical["compile_revision"], 2);
+    assert_eq!(historical["current_compile_revision"], 3);
+    assert_eq!(historical["project_id"], "p");
+    assert_eq!(historical["session_id"], "session1");
+    assert_eq!(historical["is_current"], false);
+    assert_eq!(historical["source_actions_enabled"], false);
+    assert_eq!(historical["result"]["payload"]["revision"], 2);
+    std::fs::write(dir.path().join("release3"), b"ok").unwrap();
+    loop {
+        let event = client.output.recv_timeout(Duration::from_secs(3)).unwrap();
+        if event["payload"]["kind"] == "preview" {
+            assert_eq!(event["payload"]["source_versions"]["main.tex"], 2);
+            break;
+        }
+    }
+    client.send("restart", "restart", json!({}));
+    assert_eq!(client.reply("restart")["type"], "result");
+    std::fs::write(dir.path().join("release4"), b"ok").unwrap();
+    loop {
+        let event = client.output.recv_timeout(Duration::from_secs(3)).unwrap();
+        assert_ne!(event["payload"]["kind"], "completed_snapshot");
+        if event["payload"]["kind"] == "preview" {
+            break;
+        }
+    }
+    client.send(
+        "after-restart-a",
+        "compile",
+        json!({"source_binding_token":"must-not-enroll"}),
+    );
+    assert_eq!(client.reply("after-restart-a")["type"], "result");
+    let deadline = std::time::Instant::now() + Duration::from_secs(3);
+    while !dir.path().join("started5").exists() {
+        assert!(std::time::Instant::now() < deadline);
+        thread::sleep(Duration::from_millis(1));
+    }
+    client.send(
+        "after-restart-b",
+        "compile",
+        json!({"source_binding_token":"newer"}),
+    );
+    assert_eq!(client.reply("after-restart-b")["type"], "result");
+    std::fs::write(dir.path().join("release5"), b"ok").unwrap();
+    loop {
+        let event = client.output.recv_timeout(Duration::from_secs(3)).unwrap();
+        assert_ne!(event["payload"]["kind"], "completed_snapshot");
+        if event["payload"]["kind"] == "stale" {
+            assert_eq!(event["payload"]["compile_revision"], 5);
+            break;
+        }
+    }
+    client.send(
+        "config-check",
+        "configure_completed_snapshots",
+        json!({"capability":"wrong","enabled":true}),
+    );
+    assert_eq!(client.reply("config-check")["type"], "error");
+    client.send("get2", "document", json!({"path":"main.tex"}));
+    let saved = client.reply("get2")["payload"]["document"].clone();
+    client.send("badtoken", "edit", json!({"path":"main.tex","expected_revision":2,"expected_sha256":saved["source_sha256"],"text":"must not save","source_binding_token":"α".repeat(65)}));
+    assert_eq!(client.reply("badtoken")["type"], "error");
+    client.send("get3", "document", json!({"path":"main.tex"}));
+    assert_eq!(client.reply("get3")["payload"]["document"], saved);
+}
