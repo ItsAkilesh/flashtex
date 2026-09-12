@@ -109,6 +109,21 @@ bytes, dictionaries) and at the raster.
   CFF form is the one dvipdfmx has written for years, so other viewers are
   expected to agree, but no other viewer was run.
 
+## Contrast: the runtime-v1 route against the same reference
+
+For scale, the same classifier was run on fixture 01 produced the existing
+way (compiler `origin/main` → runtime-v1 `compile_result` → `flashtex-pdf
+--embed-font auto`, Latin Modern as the document face) against the pdflatex
+`times` reference. Result (informative, not a test): `ContentOperators`
+(5 operators vs 66: one `Tj` per word at compiler coordinates, `72 708 Td`
+vs `72 708.045 Td`, `/F3 12 Tf` vs `/F44 11.9552 Tf`, no `TJ` kerning),
+`FontResources` (`/F1 /F2 /F3` vs `/F44`), plus the same
+`ObjectLayout`/`Compression`/`DocumentIdentity`; CoreGraphics raster: 6,257
+of 1,938,816 pixels differ; classifier exit 3. That is the expected shape of
+the gap: it lives in what the producer hands the writer (glyph selection,
+metrics, positions), which is exactly what the exact route lets a producer
+state precisely, and the container itself adds nothing to it.
+
 ## Reproduction
 
 Oracle-only steps (MacTeX and PyObjC needed; nothing here is in the product
