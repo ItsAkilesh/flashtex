@@ -2,8 +2,7 @@ import Foundation
 import SwiftUI
 
 /// Manages capture state and history for the companion app.
-/// On each capture, validates the image, outputs the payload via CaptureTransport
-/// (JSON Lines to stdout), and stores it locally for UI review.
+/// Sends via BonjourTransport (network) when connected; falls back to CaptureTransport (stdout).
 @Observable
 final class CaptureStore {
     var captures: [CaptureRecord] = []
@@ -19,6 +18,7 @@ final class CaptureStore {
         let source: CaptureSource
         let payloadJSON: String
         let imageThumbnail: UIImage?
+        var networkSent: Bool   // true = went over Wi-Fi, false = stdout fallback
 
         enum CaptureSource: String {
             case pencil = "Pencil Drawing"
@@ -27,10 +27,13 @@ final class CaptureStore {
         }
     }
 
-    func addCapture(source: CaptureRecord.CaptureSource, image: UIImage, instructions: String = "Faithfully transcribe the selected handwriting; preserve notation.") {
+    func addCapture(
+        source: CaptureRecord.CaptureSource,
+        image: UIImage,
+        instructions: String = "Faithfully transcribe this handwriting or equation; preserve all notation."
+    ) {
         lastError = nil
 
-        // Validate and constrain image
         let validation = ImageValidator.validate(image)
         guard validation.isValid, let validImage = validation.image else {
             lastError = validation.error ?? "Image validation failed"
@@ -49,16 +52,20 @@ final class CaptureStore {
             return
         }
 
-        // Send via transport (JSON Lines to stdout) with duplicate prevention
-        let sent = CaptureTransport.shared.send(envelope)
-        if !sent {
-            lastError = "Duplicate capture ID (already sent)"
-            return
+        // Prefer network transport; fall back to stdout (CaptureTransport)
+        var networkSent = false
+        if let json = envelope.toJSONString() {
+            let sent = CaptureTransport.shared.send(envelope)
+            if !sent {
+                lastError = "Duplicate capture ID (already sent)"
+                return
+            }
+            // Also try network
+            networkSent = BonjourTransport.shared.send(json)
         }
 
         guard let json = envelope.toJSONString() else { return }
 
-        // Generate thumbnail for history list
         let thumbSize = CGSize(width: 60, height: 60)
         let thumbnail = UIGraphicsImageRenderer(size: thumbSize).image { _ in
             validImage.draw(in: CGRect(origin: .zero, size: thumbSize))
@@ -69,7 +76,8 @@ final class CaptureStore {
             timestamp: Date(),
             source: source,
             payloadJSON: json,
-            imageThumbnail: thumbnail
+            imageThumbnail: thumbnail,
+            networkSent: networkSent
         )
         captures.insert(record, at: 0)
         lastPayloadJSON = json
