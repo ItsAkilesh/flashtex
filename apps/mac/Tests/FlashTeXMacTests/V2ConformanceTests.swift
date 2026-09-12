@@ -21,6 +21,86 @@ final class V2ConformanceTests: XCTestCase {
         }
     }
 
+    // MARK: D1 — the direct route binds every declared document to the request text BEFORE paint
+
+    func testDirectRouteRefusesASiblingWhoseDocumentsAreNotTheRequestTextAndKeepsTheLastFrame() async throws {
+        let tex = try String(contentsOf: Self.fixtures.appendingPathComponent("display-list-v2-text.tex"), encoding: .utf8)
+        let python = URL(fileURLWithPath: "/usr/bin/python3")
+        guard FileManager.default.isExecutableFile(atPath: python.path) else { throw XCTSkip("python3 missing") }
+        let model = ShellModel()
+        model.autoCompile = false
+        model.replaceProject(entryText: tex)
+        model.attachWorker(at: python, arguments: [Self.fixtures.appendingPathComponent("fake_worker_v2.py").path,
+                                                   Self.fixtures.appendingPathComponent("display-list-v2-text.json").path])
+        model.previewV2 = true
+        model.setLiveV2(true)
+        model.compile()
+        try await waitUntil { model.inFlightRevision == nil && model.displayListV2?.frame != nil && model.displayListV2?.isLoading == false }
+        guard case .loaded(let first, let firstSource)? = model.displayListV2, case .worker(let id, _, _, let line) = firstSource else { return XCTFail() }
+        XCTAssertEqual(id, model.resultID)
+        var envelope = try JSONSerialization.jsonObject(with: line) as! [String: Any]
+        var payload = envelope["payload"] as! [String: Any]
+        var docs = payload["documents"] as! [[String: Any]]
+        XCTAssertEqual(docs[0]["sha256"] as? String, SourceDigest.sha256Hex(tex), "the accepted sibling attests the request text")
+
+        func deliver(_ mutate: (inout [String: Any]) -> Void, file: StaticString = #filePath, fileLine: UInt = #line) async throws -> RenderingV2.ValidationError? {
+            var doc = docs[0]; mutate(&doc); var d = docs; d[0] = doc
+            payload["documents"] = d; envelope["payload"] = payload
+            let done = expectation(description: "delivered")
+            let refused = V2Live.sourceMismatchesRefused, accepted = V2Live.linesAccepted
+            var seen: RenderingV2.ValidationError?
+            let last = V2Live.lastLiveRefusal
+            model.receiveDisplayListV2(id: id, line: try JSONSerialization.data(withJSONObject: envelope)) {
+                if let now = V2Live.lastLiveRefusal, now != last { seen = now }
+                done.fulfill()
+            }
+            await fulfillment(of: [done], timeout: 20)
+            XCTAssertEqual(V2Live.linesAccepted, accepted + 1, "the line was for the applied result", file: file, line: fileLine)
+            if seen?.code == "source_mismatch" { XCTAssertEqual(V2Live.sourceMismatchesRefused, refused + 1, file: file, line: fileLine) }
+            return seen
+        }
+        // Same length, different bytes: refused by the raw SHA-256 before paint; the verified frame stays.
+        let sha = docs[0]["sha256"] as! String
+        let bySha = try await deliver { $0["sha256"] = String(sha.reversed()) }
+        XCTAssertEqual(bySha?.code, "source_mismatch")
+        XCTAssertTrue(bySha?.message.contains("main.tex sha256 \(String(sha.reversed()).prefix(12))… differs from the requested text") == true, bySha?.message ?? "nil")
+        XCTAssertEqual(model.displayListV2?.frame?.preparedNonce, first.preparedNonce, "the last verified frame is kept")
+        XCTAssertFalse(model.displayListV2?.isLoading == true)
+        XCTAssertTrue(model.workerStatus.hasPrefix("display_list refused: [source_mismatch]"), model.workerStatus)
+        // Wrong byte_length: refused before hashing.
+        let byLength = try await deliver { $0["byte_length"] = (docs[0]["byte_length"] as! Int) + 1 }
+        XCTAssertEqual(byLength?.code, "source_mismatch")
+        XCTAssertTrue(byLength?.message.contains("byte_length \(tex.utf8.count + 1) differs from the requested text (\(tex.utf8.count) bytes)") == true, byLength?.message ?? "nil")
+        XCTAssertEqual(model.displayListV2?.frame?.preparedNonce, first.preparedNonce)
+        // A document the request did not carry: the structural validator refuses first (the run's provenance
+        // names main.tex, which is no longer declared); the frame is kept either way.
+        let byPath = try await deliver { $0["path"] = "other.tex" }
+        XCTAssertEqual(byPath?.code, "invalid_display_list")
+        XCTAssertEqual(model.displayListV2?.frame?.preparedNonce, first.preparedNonce)
+        // …and the binding itself refuses an undeclared-by-request document when the structure is fine.
+        XCTAssertEqual(V2Live.sourceBindingFailure(of: first.list, requestID: id, compiled: [:])?.message,
+                       "display_list \(id) declares main.tex, which the compile request did not carry")
+        XCTAssertEqual(V2Live.sourceBindingFailure(of: first.list, requestID: id, compiled: ["main.tex": tex]), nil)
+        // No documents at all: refused.
+        payload["documents"] = [[String: Any]](); envelope["payload"] = payload
+        let none = expectation(description: "none")
+        model.receiveDisplayListV2(id: id, line: try JSONSerialization.data(withJSONObject: envelope)) { none.fulfill() }
+        await fulfillment(of: [none], timeout: 20)
+        XCTAssertTrue(model.captureNote?.contains("Display list refused") == true, model.captureNote ?? "")
+        XCTAssertEqual(model.displayListV2?.frame?.preparedNonce, first.preparedNonce)
+        // The untouched sibling for the same result still verifies (a new frame instance replaces the kept one).
+        let ok = try await deliver { _ in }
+        XCTAssertNil(ok)
+        XCTAssertNotEqual(model.displayListV2?.frame?.preparedNonce, first.preparedNonce)
+        XCTAssertEqual(model.displayListV2?.frame?.list.revision, model.result?.revision)
+        // The binding is to the REQUEST text, not the live buffer: typing after the compile does not refuse the sibling
+        // (the v1 preview is shown for the same request text), while a sibling for the typed text is not the request's.
+        model.updateActiveText(tex + "% typed\n")
+        let stillRequestText = try await deliver { _ in }
+        XCTAssertNil(stillRequestText, "typing after the compile does not invalidate the request's own sibling")
+        model.detachWorker()
+    }
+
     // MARK: D2 — the helper candidate's membership_generation must be the project's current one
 
     private func candidate(generation: Int, session: String = "s1", request: String = "pc-7", project: String = "demo",
@@ -105,6 +185,65 @@ final class V2ConformanceTests: XCTestCase {
         XCTAssertEqual(model.displayListV2?.frame?.preparedNonce, first.preparedNonce, "the previously verified frame stays")
         XCTAssertNotNil(model.result, "v1 untouched")
         model.detachController()
+    }
+
+    // MARK: D9 — the direct route with a runtime-v1 fixture on screen
+
+    static let protocolFixtures = fixtures.deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        .deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("protocol/fixtures")
+
+    /// Review row D9 read `receiveDisplayListV2` as dropping the sibling while a
+    /// fixture is shown. Measured behaviour on the direct route: a fixture is
+    /// replaced by the worker's compile_result BEFORE its sibling arrives, so the
+    /// sibling is applied; only a line whose id is the FIXTURE's own applied id
+    /// (no worker result for it) is dropped, counted, and the fixture stays.
+    func testFixtureOnScreenDoesNotLoseTheNextLiveFrameAndAFixtureIdLineIsDropped() async throws {
+        let tex = try String(contentsOf: Self.fixtures.appendingPathComponent("display-list-v2-text.tex"), encoding: .utf8)
+        let model = ShellModel()
+        model.autoCompile = false
+        model.replaceProject(entryText: tex)
+        let fixture = Self.protocolFixtures.appendingPathComponent("compile-result.json")
+        guard FileManager.default.fileExists(atPath: fixture.path) else { throw XCTSkip("protocol/fixtures/compile-result.json missing") }
+        model.loadFixtures(request: nil, result: fixture)
+        XCTAssertEqual(model.previewSource, .fixture)
+        XCTAssertNil(model.loadError, model.loadError ?? "")
+        let fixtureID = try XCTUnwrap(model.resultID)
+        model.previewV2 = true
+        model.setLiveV2(true) // pane visible
+        XCTAssertTrue(model.requestedLayoutCapabilities.contains(V2Live.capability))
+        // A sibling line for the fixture's own id while the fixture is applied: dropped, counted, fixture untouched.
+        var line = try JSONSerialization.jsonObject(with: try Data(contentsOf: Self.fixtures.appendingPathComponent("display-list-v2-text.json"))) as! [String: Any]
+        line["id"] = fixtureID
+        let dropped = V2Live.staleLinesDropped
+        model.receiveDisplayListV2(id: fixtureID, line: try JSONSerialization.data(withJSONObject: line))
+        XCTAssertEqual(V2Live.staleLinesDropped, dropped + 1)
+        XCTAssertNil(model.displayListV2)
+        XCTAssertEqual(model.previewSource, .fixture)
+        XCTAssertEqual(model.resultID, fixtureID)
+        // The next compile from the fixture state: the worker's result replaces the fixture, its sibling is applied.
+        let python = URL(fileURLWithPath: "/usr/bin/python3")
+        guard FileManager.default.isExecutableFile(atPath: python.path) else { throw XCTSkip("python3 missing") }
+        model.attachWorker(at: python, arguments: [Self.fixtures.appendingPathComponent("fake_worker_v2.py").path,
+                                                   Self.fixtures.appendingPathComponent("display-list-v2-text.json").path])
+        let accepted = V2Live.linesAccepted
+        // The fixture's sibling compile-request.json seeded a 16-byte editor; the fake producer's
+        // template geometry is for the v2 text fixture, so edit back to that text before compiling.
+        model.updateActiveText(tex)
+        XCTAssertEqual(model.previewSource, .fixture, "editing does not leave the fixture state")
+        model.compile()
+        do {
+            try await waitUntil { model.inFlightRevision == nil && model.displayListV2?.frame != nil && model.displayListV2?.isLoading == false }
+        } catch {
+            XCTFail("timeout: status=\(model.workerStatus) source=\(model.previewSource) v2=\(String(describing: model.displayListV2?.source)) note=\(model.captureNote ?? "") log=\(model.workerLog.suffix(2))")
+            throw error
+        }
+        XCTAssertEqual(model.previewSource, .worker("python3"))
+        XCTAssertEqual(V2Live.linesAccepted, accepted + 1)
+        XCTAssertEqual(V2Live.staleLinesDropped, dropped + 1, "nothing dropped: the fixture never cost a live frame")
+        guard case .loaded(let frame, let source)? = model.displayListV2 else { return XCTFail() }
+        XCTAssertTrue(source.isLive)
+        XCTAssertEqual(frame.list.revision, model.result?.revision)
+        model.detachWorker()
     }
 
     // MARK: D6 — outgoing helper lines are bounded at the helper's measured 1 MiB stdin limit
