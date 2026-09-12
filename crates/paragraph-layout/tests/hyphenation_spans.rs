@@ -33,7 +33,7 @@ use flashtex_font_engine::adapters::paragraph::FaceMetrics;
 use flashtex_font_engine::core14::{Core14, Core14Face};
 use flashtex_paragraph_layout::core14::Core14Times;
 use flashtex_paragraph_layout::hyphenate::{ExplicitDiscretionary, HyphenationPoint, Hyphenator};
-use flashtex_paragraph_layout::items::{GlyphRun, Item, Penalty, ParagraphBuilder};
+use flashtex_paragraph_layout::items::{GlyphRun, Item, ParagraphBuilder, Penalty};
 
 /// A single fixed automatic (pattern-hyphenator-shaped) break point, with no
 /// marker bytes, standing in for a real dictionary hyphenator. Only
@@ -126,13 +126,15 @@ fn explicit_discretionary_halves_slice_back_to_the_original_word() {
     for (p, expected_start) in penalties.iter().zip(expected_marker_starts) {
         assert!(p.flagged);
         assert!(!p.automatic);
-        let hy = p.pre_break.as_ref().expect("discretionary carries a hyphen");
+        let hy = p
+            .pre_break
+            .as_ref()
+            .expect("discretionary carries a hyphen");
         assert_eq!(hy.glyphs.len(), 1, "the hyphen is one glyph");
         let cluster = hy.glyphs[0].cluster.clone();
         assert_eq!(cluster, expected_start..expected_start + 2);
         assert_eq!(
-            &doc[cluster],
-            "\\-",
+            &doc[cluster], "\\-",
             "marker span must slice to the literal marker bytes"
         );
     }
@@ -144,8 +146,7 @@ fn explicit_discretionary_halves_slice_back_to_the_original_word() {
     let word_end = word_start + word.len();
     assert_eq!(&doc[word_start..word_end], word);
     assert_eq!(
-        boxes[0].source.end,
-        expected_marker_starts[0],
+        boxes[0].source.end, expected_marker_starts[0],
         "\"un\" ends exactly where the first marker begins"
     );
     assert_eq!(
@@ -154,8 +155,7 @@ fn explicit_discretionary_halves_slice_back_to_the_original_word() {
         "\"believ\" begins exactly where the first marker ends"
     );
     assert_eq!(
-        boxes[1].source.end,
-        expected_marker_starts[1],
+        boxes[1].source.end, expected_marker_starts[1],
         "\"believ\" ends exactly where the second marker begins"
     );
     assert_eq!(
@@ -207,8 +207,7 @@ fn automatic_hyphenation_point_leaves_a_hyphen_with_no_source_span() {
         "automatic hyphen span must be empty, not a false claim on real bytes"
     );
     assert_eq!(
-        &doc[cluster],
-        "",
+        &doc[cluster], "",
         "an empty span slices to the empty string: no false span"
     );
 

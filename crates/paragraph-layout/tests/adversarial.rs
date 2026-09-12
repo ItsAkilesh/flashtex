@@ -19,7 +19,9 @@
 
 use flashtex_font_engine::adapters::paragraph::FaceMetrics;
 use flashtex_font_engine::core14::{Core14, Core14Face};
-use flashtex_paragraph_layout::adapter::{LayoutError, MAX_DIMEN_PT, MAX_ITEMS, try_layout_paragraph};
+use flashtex_paragraph_layout::adapter::{
+    LayoutError, MAX_DIMEN_PT, MAX_ITEMS, try_layout_paragraph,
+};
 use flashtex_paragraph_layout::core14::Core14Times;
 use flashtex_paragraph_layout::hyphenate::NoHyphenation;
 use flashtex_paragraph_layout::items::{Glue, GlyphRun, Item, ParagraphBuilder, shape_run};
@@ -29,7 +31,10 @@ fn params(width: f64) -> LineBreakParams {
     LineBreakParams::article_12pt_letter_1in().with_width(width)
 }
 
-fn build(text: &str, font: &dyn flashtex_paragraph_layout::metrics::FontMetricsSource) -> Vec<Item> {
+fn build(
+    text: &str,
+    font: &dyn flashtex_paragraph_layout::metrics::FontMetricsSource,
+) -> Vec<Item> {
     let h = NoHyphenation;
     let mut b = ParagraphBuilder::new(&h);
     b.text(font, 12.0, text, 0);
@@ -97,7 +102,8 @@ fn rtl_override_characters_do_not_panic() {
     // that the resulting visual order is correct.
     let text = "before \u{202E}\u{05E9}\u{05DC}\u{05D5}\u{05DD}\u{202C} after";
     let items = build(text, &m);
-    let lines = try_layout_paragraph(&items, &params(400.0)).expect("valid Unicode, bidi unmodelled");
+    let lines =
+        try_layout_paragraph(&items, &params(400.0)).expect("valid Unicode, bidi unmodelled");
     assert!(!lines.lines.is_empty());
 }
 
@@ -107,7 +113,8 @@ fn nul_bytes_in_text_do_not_panic() {
     let m = FaceMetrics::new(&times);
     let text = "before\u{0}after \u{0}\u{0}\u{0} more text";
     let items = build(text, &m);
-    let lines = try_layout_paragraph(&items, &params(400.0)).expect("NUL is a valid Unicode scalar");
+    let lines =
+        try_layout_paragraph(&items, &params(400.0)).expect("NUL is a valid Unicode scalar");
     assert!(!lines.lines.is_empty());
 }
 
@@ -122,7 +129,11 @@ fn a_single_unbreakable_word_far_wider_than_the_line_is_reported_overfull_not_dr
     let items = build(&word, &m);
     let lines =
         try_layout_paragraph(&items, &params(10.0)).expect("overfull is reported, not an error");
-    assert_eq!(lines.lines.len(), 1, "no legal break exists inside the word");
+    assert_eq!(
+        lines.lines.len(),
+        1,
+        "no legal break exists inside the word"
+    );
     assert_eq!(lines.stats.overfull.len(), 1);
     assert!(
         lines.stats.overfull[0].excess > 1000.0,
@@ -138,12 +149,20 @@ fn a_single_unbreakable_word_far_wider_than_the_line_is_reported_overfull_not_dr
 fn absurdly_long_paragraph_completes_without_panic_and_without_dropping_content() {
     let times = Core14Face::new(Core14::TimesRoman);
     let m = FaceMetrics::new(&times);
-    let text = std::iter::repeat_n("word", 8_000).collect::<Vec<_>>().join(" ");
+    let text = std::iter::repeat_n("word", 8_000)
+        .collect::<Vec<_>>()
+        .join(" ");
     let total_len = text.len();
     let items = build(&text, &m);
-    assert!(items.len() < MAX_ITEMS, "sanity: this fixture stays under the bound");
+    assert!(
+        items.len() < MAX_ITEMS,
+        "sanity: this fixture stays under the bound"
+    );
     let lines = try_layout_paragraph(&items, &params(300.0)).expect("large but bounded input");
-    assert!(lines.lines.len() > 100, "8000 short words wrap across many lines");
+    assert!(
+        lines.lines.len() > 100,
+        "8000 short words wrap across many lines"
+    );
     // Every byte of the original text is covered by exactly one run's span;
     // nothing was dropped or duplicated across the huge input.
     let mut covered = 0usize;
@@ -155,7 +174,10 @@ fn absurdly_long_paragraph_completes_without_panic_and_without_dropping_content(
     // "word" x 8000 = 32000 bytes of actual box content; the spaces between
     // words are glue, not boxes, so they are not run-covered bytes.
     assert_eq!(covered, 4 * 8_000);
-    assert!(total_len > covered, "sanity: spaces exist and are not box-covered");
+    assert!(
+        total_len > covered,
+        "sanity: spaces exist and are not box-covered"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -269,14 +291,23 @@ fn penalty_at_infinite_penalty_forbids_the_only_candidate_break() {
     let width = half_width;
 
     for forbidden in [INFINITE_PENALTY, INFINITE_PENALTY + 1] {
-        let items = vec![box_of(half), penalty(forbidden), box_of(half), Item::penalty(FORCED_BREAK)];
+        let items = vec![
+            box_of(half),
+            penalty(forbidden),
+            box_of(half),
+            Item::penalty(FORCED_BREAK),
+        ];
         let lines = try_layout_paragraph(&items, &params(width)).unwrap();
         assert_eq!(
             lines.lines.len(),
             1,
             "penalty {forbidden} must not be a legal break point"
         );
-        assert_eq!(lines.stats.overfull.len(), 1, "forced onto one overfull line");
+        assert_eq!(
+            lines.stats.overfull.len(),
+            1,
+            "forced onto one overfull line"
+        );
     }
 
     let items = vec![
@@ -291,7 +322,10 @@ fn penalty_at_infinite_penalty_forbids_the_only_candidate_break() {
         2,
         "penalty 9999 is one under the bound: it is a legal break"
     );
-    assert!(lines.stats.overfull.is_empty(), "clean break, nothing overfull");
+    assert!(
+        lines.stats.overfull.is_empty(),
+        "clean break, nothing overfull"
+    );
 }
 
 #[test]
@@ -302,7 +336,12 @@ fn penalty_at_forced_break_always_splits_even_when_it_fits() {
     let generous_width = combined_width * 4.0; // both fit on one line easily
 
     for forced in [FORCED_BREAK, FORCED_BREAK - 1] {
-        let items = vec![box_of(a), penalty(forced), box_of(b), Item::penalty(FORCED_BREAK)];
+        let items = vec![
+            box_of(a),
+            penalty(forced),
+            box_of(b),
+            Item::penalty(FORCED_BREAK),
+        ];
         let lines = try_layout_paragraph(&items, &params(generous_width)).unwrap();
         assert_eq!(
             lines.lines.len(),
@@ -315,7 +354,12 @@ fn penalty_at_forced_break_always_splits_even_when_it_fits() {
     // spot: nothing compels a split, and splitting a paragraph that fits
     // easily into two short, badly-filled lines is strictly worse under
     // total-fit's demerits, so the breaker keeps it on one line.
-    let items = vec![box_of(a), penalty(0), box_of(b), Item::penalty(FORCED_BREAK)];
+    let items = vec![
+        box_of(a),
+        penalty(0),
+        box_of(b),
+        Item::penalty(FORCED_BREAK),
+    ];
     let lines = try_layout_paragraph(&items, &params(generous_width)).unwrap();
     assert_eq!(
         lines.lines.len(),

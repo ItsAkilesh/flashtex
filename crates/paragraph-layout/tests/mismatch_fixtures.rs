@@ -130,20 +130,62 @@ struct Pinned {
 }
 
 const PINNED: [Pinned; 14] = [
-    Pinned { compiler: &[0, 95, 190], mine: &[0, 95, 190] },
-    Pinned { compiler: &[0, 93, 186], mine: &[0, 97, 194] },
-    Pinned { compiler: &[0], mine: &[0] },
-    Pinned { compiler: &[0, 94, 188], mine: &[0, 98, 195] },
-    Pinned { compiler: &[0, 95, 192], mine: &[0, 95, 192] },
-    Pinned { compiler: &[0, 90, 184], mine: &[0, 98, 197] },
-    Pinned { compiler: &[0, 93, 191], mine: &[0, 93, 191] },
-    Pinned { compiler: &[0, 96, 188], mine: &[0, 96, 188] },
-    Pinned { compiler: &[0, 97, 191], mine: &[0, 97, 191] },
-    Pinned { compiler: &[0, 99, 195], mine: &[0, 99, 202] },
-    Pinned { compiler: &[0, 95, 196], mine: &[0, 95, 201] },
-    Pinned { compiler: &[0, 97, 194], mine: &[0, 97, 194] },
-    Pinned { compiler: &[0, 97, 195], mine: &[0, 97, 195] },
-    Pinned { compiler: &[0], mine: &[0] },
+    Pinned {
+        compiler: &[0, 95, 190],
+        mine: &[0, 95, 190],
+    },
+    Pinned {
+        compiler: &[0, 93, 186],
+        mine: &[0, 97, 194],
+    },
+    Pinned {
+        compiler: &[0],
+        mine: &[0],
+    },
+    Pinned {
+        compiler: &[0, 94, 188],
+        mine: &[0, 98, 195],
+    },
+    Pinned {
+        compiler: &[0, 95, 192],
+        mine: &[0, 95, 192],
+    },
+    Pinned {
+        compiler: &[0, 90, 184],
+        mine: &[0, 98, 197],
+    },
+    Pinned {
+        compiler: &[0, 93, 191],
+        mine: &[0, 93, 191],
+    },
+    Pinned {
+        compiler: &[0, 96, 188],
+        mine: &[0, 96, 188],
+    },
+    Pinned {
+        compiler: &[0, 97, 191],
+        mine: &[0, 97, 191],
+    },
+    Pinned {
+        compiler: &[0, 99, 195],
+        mine: &[0, 99, 202],
+    },
+    Pinned {
+        compiler: &[0, 95, 196],
+        mine: &[0, 95, 201],
+    },
+    Pinned {
+        compiler: &[0, 97, 194],
+        mine: &[0, 97, 194],
+    },
+    Pinned {
+        compiler: &[0, 97, 195],
+        mine: &[0, 97, 195],
+    },
+    Pinned {
+        compiler: &[0],
+        mine: &[0],
+    },
 ];
 
 /// The exact set of documents (0-based index into [`CORPUS`]) where the two
@@ -169,8 +211,14 @@ fn pinned_break_positions_match_both_engines_exactly() {
 
         // Pin the exact arrays: a change in either engine's output for this
         // corpus fails here, not just in the aggregate counts below.
-        assert_eq!(c_starts, PINNED[i].compiler, "doc {i}: compiler line starts changed");
-        assert_eq!(m_starts, PINNED[i].mine, "doc {i}: this crate's line starts changed");
+        assert_eq!(
+            c_starts, PINNED[i].compiler,
+            "doc {i}: compiler line starts changed"
+        );
+        assert_eq!(
+            m_starts, PINNED[i].mine,
+            "doc {i}: this crate's line starts changed"
+        );
 
         let max_len = c_starts.len().max(m_starts.len());
         let diff_positions = (0..max_len)
@@ -247,7 +295,10 @@ fn pinned_glyph_position_mismatch_for_doc1_word_how() {
                 .map(|r| (i, r))
         })
         .expect("\"how\" is placed exactly once");
-    assert_eq!(line_index, 0, "\"how\" is on this crate's first line, not its second");
+    assert_eq!(
+        line_index, 0,
+        "\"how\" is on this crate's first line, not its second"
+    );
     assert_eq!(run.x, 447.6360000000001);
     assert_eq!(run.baseline_y, 8.196);
 
