@@ -7,29 +7,29 @@
     "rust",
     "cargo"
   ],
-  "code_revision": "6da9f2ffbeea5b005309d8e2f8e8e6c33741f0d6",
+  "code_revision": "14dc3707f47248cb6cdb1951bd992b6edb381cd7",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
     "pessimistic": 0
   },
   "machine": "mac-m1max-a",
-  "main_integrated_through": "1dd26c5e0dd5e04a39f0b8e55c90abebf635c863",
-  "next_action": "Await parent (mac-claude-a) decision on process-vs-FFI adapter; then add JSON Lines adapter + binary under crates/project-files",
+  "main_integrated_through": "df9e26e44a74b4322f86bcbcfe0cf2312afaece0",
+  "next_action": "Commander review of #18 against d92db37; parent decision on process-vs-FFI adapter",
   "reviewed_peers": {
     "origin/main": {
-      "adaptation": "254193c: c89ca86 added project-index, edit-ledger, document-runtime and other crates plus FT-021..026 (none for this worker); 056170d/254193c add the API-only Claude supervisor scripts only. No path overlap. README documents how documents()/revisions feed project-index, how save/diff complement edit-ledger, and that RecoveryJournal is redundant for ledger-backed documents.",
-      "reviewed_utc": "2026-09-12T05:55:40Z",
-      "sha": "254193c175534e78bfd9e5206b4850b86123cbe6"
+      "adaptation": "Merged df9e26e into branch (210e7e1, no conflicts); 38155b1..1654e8a are coordination/protocol only, nothing under crates/project-files; preview-controller on main does not write .tex exports and is the intended consumer of ProjectRoot",
+      "reviewed_utc": "2026-09-12T06:38:45Z",
+      "sha": "1654e8ac0ecf5aff20ac17316a6e698bf3bda119"
     }
   },
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "crates/project-files complete: ProjectPath normalization, span-carrying reference scanner, ProjectGraph discovery with cycle/missing/escape diagnostics and runtime-v1 documents export, hand-written SHA-256, RevisionTracker, atomic hash-checked saves, snapshot/diff external-change conflicts, recovery journal; README with guarantees, sibling-crate relationship and native integration proposal. 35 tests, clippy -D warnings, fmt, rustdoc clean. No assignment file exists for this dispatch, so no ack.",
+  "summary": "Issue #18 fixed at d92db378f25cc0b882a7a45e0a83a96f58ca1306: ProjectRoot (O_DIRECTORY|O_NOFOLLOW root, openat(O_NOFOLLOW) per component via direct libc bindings, dev/ino parent check), bounded rooted reads, flock(LOCK_EX|LOCK_NB) project lock held across check+write+fsync+rename+dir fsync, pre-rename re-verify and post-rename identity/hash verification reporting ModifiedDuringSave, DirectorySync hard error, NewFile no longer clobbers a concurrently created target; recovery journal routed through the rooted lock. README states the concurrency/durability contract honestly. 47 tests incl. exact #18 repro and injected/thread races.",
   "tool": "Claude Code subagent (parent mac-claude-a)",
-  "updated_utc": "2026-09-12T05:55:40Z",
+  "updated_utc": "2026-09-12T06:38:45Z",
   "usage": {
-    "evidence": "cargo test 35 pass; cargo clippy --all-targets -D warnings clean; cargo fmt --check clean; RUSTDOCFLAGS=-D warnings cargo doc clean; temp dirs only",
+    "evidence": "cargo test 47 pass; clippy --all-targets -D warnings clean; fmt --check clean; rustdoc -D warnings clean; racing outcomes ok/refused/conflict=[0,267,133], outside file untouched",
     "status": "unknown"
   }
 }
