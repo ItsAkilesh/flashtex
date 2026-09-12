@@ -5,48 +5,45 @@
   "steps": [
     {
       "acceptance": [
-        "Consume already-published index APIs without duplicate parser or index implementation",
-        "Actual helper tests cover Unicode, comments/verbatim, multiple documents, stale version maps, bounded output and malformed requests",
-        "No automatic source edits or project-wide atomicity claim; existing approval and permanent-ID ledger guards remain authoritative"
+        "Preserve exact source revision/hash, durable approval and permanent-ID guarantees; history metadata is source-free and does not change retention",
+        "Do not edit crates/document-runtime after published ecbaf7c handoff; consume FT049 reviewed API only",
+        "Helper v2 forwarding remains default OFF, preserves required-output priority and complete frame limits, and never claims native rendering validation"
       ],
       "allocation_id": "hosted-openai-product",
-      "name": "Expose existing project-index literal replacement and citation rename plans through exact-version guarded bounded native helper commands; preserve separate explicit durable application",
-      "objective": "Expose existing project-index literal replacement and citation rename plans through exact-version guarded bounded native helper commands; preserve separate explicit durable application",
+      "name": "Expose source-bound history metadata and consume the separately owned runtime display-list-v2 candidate interface through bounded opt-in helper forwarding",
+      "objective": "Expose source-bound history metadata and consume the separately owned runtime display-list-v2 candidate interface through bounded opt-in helper forwarding",
       "owned_paths": [
         "crates/preview-controller",
-        "crates/document-runtime",
         "crates/edit-ledger"
       ],
       "timebox_minutes": 40
     },
     {
       "acceptance": [
-        "Consume already-published index APIs without duplicate parser or index implementation",
-        "Actual helper tests cover Unicode, comments/verbatim, multiple documents, stale version maps, bounded output and malformed requests",
-        "No automatic source edits or project-wide atomicity claim; existing approval and permanent-ID ledger guards remain authoritative"
+        "Preserve exact source revision/hash, durable approval and permanent-ID guarantees; history metadata is source-free and does not change retention",
+        "Do not edit crates/document-runtime after published ecbaf7c handoff; consume FT049 reviewed API only",
+        "Helper v2 forwarding remains default OFF, preserves required-output priority and complete frame limits, and never claims native rendering validation"
       ],
       "allocation_id": "hosted-openai-product",
-      "name": "Apply explicitly reviewed per-document plans through existing durable grouped edits, with permanent request IDs and exact current source guards; report per-document outcomes without project-wide atomicity",
-      "objective": "Apply explicitly reviewed per-document plans through existing durable grouped edits, with permanent request IDs and exact current source guards; report per-document outcomes without project-wide atomicity",
+      "name": "Wire the reviewed FT049 candidate API with exact session/project/source identity and bounded optional delivery; default legacy behavior unchanged",
+      "objective": "Wire the reviewed FT049 candidate API with exact session/project/source identity and bounded optional delivery; default legacy behavior unchanged",
       "owned_paths": [
         "crates/preview-controller",
-        "crates/document-runtime",
         "crates/edit-ledger"
       ],
       "timebox_minutes": 40
     },
     {
       "acceptance": [
-        "Consume already-published index APIs without duplicate parser or index implementation",
-        "Actual helper tests cover Unicode, comments/verbatim, multiple documents, stale version maps, bounded output and malformed requests",
-        "No automatic source edits or project-wide atomicity claim; existing approval and permanent-ID ledger guards remain authoritative"
+        "Preserve exact source revision/hash, durable approval and permanent-ID guarantees; history metadata is source-free and does not change retention",
+        "Do not edit crates/document-runtime after published ecbaf7c handoff; consume FT049 reviewed API only",
+        "Helper v2 forwarding remains default OFF, preserves required-output priority and complete frame limits, and never claims native rendering validation"
       ],
       "allocation_id": "hosted-openai-product",
-      "name": "Verify subprocess kill/retry/stale-plan recovery and publish exact native search/history consumer handoff using existing helper boundaries",
-      "objective": "Verify subprocess kill/retry/stale-plan recovery and publish exact native search/history consumer handoff using existing helper boundaries",
+      "name": "Verify actual producer/helper v2 negotiation, stale/oversize/cancel/backpressure and native handoff without claiming native paint acceptance",
+      "objective": "Verify actual producer/helper v2 negotiation, stale/oversize/cancel/backpressure and native handoff without claiming native paint acceptance",
       "owned_paths": [
         "crates/preview-controller",
-        "crates/document-runtime",
         "crates/edit-ledger"
       ],
       "timebox_minutes": 40
