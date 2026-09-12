@@ -1,8 +1,10 @@
 //! Bounded background adapter. Admission/polling never perform filesystem or
 //! pipe I/O. Native consumers must discard events from superseded session IDs.
 use crate::{
-    recovery::RecoveryImport, retention::RetentionPolicy, AppliedReceipt, Document, Error,
-    PreparedEdit, Result, Store,
+    history::{GroupedEdit, HistoryMove, HistoryRetentionPolicy},
+    recovery::RecoveryImport,
+    retention::RetentionPolicy,
+    AppliedReceipt, Document, Error, PreparedEdit, Result, Store,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -79,6 +81,19 @@ enum Operation {
     Compact {
         policy: RetentionPolicy,
     },
+    ApplyGroup {
+        group: GroupedEdit,
+    },
+    Undo {
+        command: HistoryMove,
+    },
+    Redo {
+        command: HistoryMove,
+    },
+    RetainHistory {
+        policy: HistoryRetentionPolicy,
+    },
+    HistoryStatus,
 }
 fn execute(store: &mut Store, operation: Operation) -> Result<Value> {
     match operation {
@@ -107,6 +122,11 @@ fn execute(store: &mut Store, operation: Operation) -> Result<Value> {
         Operation::RecoveryExport => Ok(json!(store.export_recovery()?)),
         Operation::RecoveryImport { recovery } => Ok(json!(store.import_recovery(recovery)?)),
         Operation::Compact { policy } => Ok(json!(store.compact(policy)?)),
+        Operation::ApplyGroup { group } => Ok(json!(store.apply_group(group)?)),
+        Operation::Undo { command } => Ok(json!(store.undo(command)?)),
+        Operation::Redo { command } => Ok(json!(store.redo(command)?)),
+        Operation::RetainHistory { policy } => Ok(json!(store.retain_history(policy)?)),
+        Operation::HistoryStatus => Ok(json!(store.history_status()?)),
     }
 }
 struct Work {
