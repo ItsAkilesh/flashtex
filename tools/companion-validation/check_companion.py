@@ -111,6 +111,7 @@ def validate_tree(source: Path, xcodebuild: str, build: bool) -> dict[str, Any]:
     validator = source / VALIDATOR
     result: dict[str, Any] = {
         "project": str(PROJECT),
+        "destination": "sdk: iphonesimulator (direct SDK build; no named simulator required)",
         "pbx_findings": [],
         "test_target_findings": [],
         "mime_findings": [],
@@ -128,6 +129,10 @@ def validate_tree(source: Path, xcodebuild: str, build: bool) -> dict[str, Any]:
         )
     project_bundle = project.parent
     result["commands"].append(run([xcodebuild, "-list", "-project", str(project_bundle)]))
+    if result["commands"][-1]["exit_code"] == 0:
+        result["commands"].append(
+            run([xcodebuild, "-showdestinations", "-project", str(project_bundle), "-scheme", "FlashTeXCompanion"])
+        )
     if build and result["commands"][-1]["exit_code"] == 0:
         result["commands"].append(
             run(
@@ -179,6 +184,11 @@ def main(argv: list[str] | None = None) -> int:
         "repair_ref": args.repair_ref,
         "repo": str(repo),
         "xcodebuild": shutil.which(args.xcodebuild) or args.xcodebuild,
+        "toolchain": {
+            "xcode_version": run([args.xcodebuild, "-version"]),
+            "available_sdks": run([args.xcodebuild, "-showsdks"]),
+            "simulator_runtimes": run(["xcrun", "simctl", "list", "runtimes"]),
+        },
         "validations": {},
     }
     with tempfile.TemporaryDirectory(prefix="flashtex-companion-") as temporary:

@@ -15,7 +15,7 @@
     "swift",
     "python"
   ],
-  "code_revision": "74521f4c8fd8910ec1d339b3a53093e7f132e6b3",
+  "code_revision": "3c6ec6e18c3b924e556ca8721e3b57916ff9d56a",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
@@ -23,21 +23,21 @@
   },
   "machine": "aarush-macbook-chatgpt",
   "main_integrated_through": "11dc30f8f33caa39c60a49548892b8af6a2d2b89",
-  "next_action": "Commander/FT-004 owner review the harness and repair candidate; next queued work only after dispatch.",
+  "next_action": "Await Commander review/integration or revised FT-014 assignment.",
   "reviewed_peers": {
     "origin/main": {
-      "adaptation": "Main advanced to 342e1e0; FT-014 remains revision 1 with tools/companion-validation ownership, so the harness stays isolated from apps/companion.",
-      "reviewed_utc": "2026-09-12T04:55:37Z",
+      "adaptation": "No assignment revision or owned-path change; expanded only FT-014 validation evidence under tools/companion-validation.",
+      "reviewed_utc": "2026-09-12T05:08:09Z",
       "sha": "342e1e029f80e7a5b472ad202ae87d597274127b"
     }
   },
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "FT-014 companion validation harness is complete: it exports pinned revisions, detects malformed PBX lists, missing XCTest target, and JPEG/PNG mismatch, then validates repair candidates and emits a binary-safe patch.",
+  "summary": "FT-014 harness now records Xcode 26.6, SDK and simulator-runtime inventories, concrete destination, commands and exit codes alongside structural and MIME findings.",
   "tool": "Codex",
-  "updated_utc": "2026-09-12T04:55:37Z",
+  "updated_utc": "2026-09-12T05:08:09Z",
   "usage": {
-    "evidence": "6/6 Python tests pass. Full local run: pinned FT-004 xcodebuild -list exit 74 with PBX findings; candidate 699e1bf has xcodebuild -list exit 0 and unsigned simulator-SDK build exit 0; patch 4442 bytes.",
-    "status": "No external API calls, purchases, or Claude use. Existing authorized OpenAI subscription route only; quota not exposed."
+    "evidence": "6/6 unit tests pass; candidate validation command exits [0,0,0] for list, destinations, and unsigned simulator-SDK build; original list exits 74. Xcode 26.6 build 17F113; xcrun reports no installed simulator runtimes.",
+    "status": "Codex Desktop session active; quota dashboard is not exposed. No external API calls, purchases, or Claude use."
   }
 }

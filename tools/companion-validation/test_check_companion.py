@@ -55,8 +55,9 @@ class CompanionValidationTests(unittest.TestCase):
             payload.write_text('image.pngData()\n mimeType: "image/png"')
             validator.write_text("")
             with patch.object(check_companion, "run", return_value={"exit_code": 0}) as runner:
-                check_companion.validate_tree(root, "xcodebuild", False)
-            self.assertEqual(runner.call_args.args[0][-1], str(project.parent))
+                result = check_companion.validate_tree(root, "xcodebuild", False)
+            self.assertEqual(runner.call_args_list[0].args[0][-1], str(project.parent))
+            self.assertEqual(result["destination"], "sdk: iphonesimulator (direct SDK build; no named simulator required)")
 
 
 if __name__ == "__main__":
