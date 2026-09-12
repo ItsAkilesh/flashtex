@@ -8,7 +8,7 @@
 use std::collections::{BTreeMap, HashMap};
 
 use crate::diagnostics::Diagnostic;
-use crate::lexer::{tokenize, tokenize_document, Token, TokenKind};
+use crate::lexer::{apply_text_ligatures, tokenize, tokenize_document, Token, TokenKind};
 use crate::math::{self, MathList};
 use crate::{DocumentId, Span};
 
@@ -29,6 +29,7 @@ pub enum Inline {
     Text {
         text: String,
         span: Span,
+        style: TextStyle,
     },
     LineBreak {
         span: Span,
@@ -97,6 +98,100 @@ pub enum Block {
     PageBreak,
 }
 
+/// Font selection for one text item, as set by `\textbf`, `\itshape`, etc.
+/// Slanted shapes (`\textsl`, `\slshape`) are recorded as italic: the Core 14
+/// faces have no slanted Times.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Hash)]
+pub struct TextStyle {
+    pub bold: bool,
+    pub italic: bool,
+    pub family: TextFamily,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Hash)]
+pub enum TextFamily {
+    #[default]
+    Roman,
+    Sans,
+    Mono,
+}
+
+impl TextStyle {
+    pub const BOLD: TextStyle = TextStyle {
+        bold: true,
+        italic: false,
+        family: TextFamily::Roman,
+    };
+}
+
+/// Argument-taking style commands (`\textbf{...}`).
+fn style_command(name: &str) -> bool {
+    matches!(
+        name,
+        "textbf"
+            | "textmd"
+            | "textit"
+            | "textsl"
+            | "textup"
+            | "emph"
+            | "texttt"
+            | "textrm"
+            | "textsf"
+            | "textnormal"
+    )
+}
+
+/// Group-scoped style declarations (`\bfseries`, `{\bf ...}`).
+fn style_declaration(name: &str) -> bool {
+    matches!(
+        name,
+        "bfseries"
+            | "mdseries"
+            | "itshape"
+            | "slshape"
+            | "upshape"
+            | "ttfamily"
+            | "rmfamily"
+            | "sffamily"
+            | "normalfont"
+            | "em"
+            | "bf"
+            | "it"
+            | "sl"
+            | "tt"
+            | "rm"
+            | "sf"
+    )
+}
+
+/// The style after applying one style command or declaration to `style`.
+fn apply_style(style: TextStyle, name: &str) -> TextStyle {
+    let mut next = style;
+    match name {
+        "textbf" | "bfseries" => next.bold = true,
+        "textmd" | "mdseries" => next.bold = false,
+        "textit" | "textsl" | "itshape" | "slshape" => next.italic = true,
+        "textup" | "upshape" => next.italic = false,
+        "emph" | "em" => next.italic = !style.italic,
+        "texttt" | "ttfamily" => next.family = TextFamily::Mono,
+        "textrm" | "rmfamily" => next.family = TextFamily::Roman,
+        "textsf" | "sffamily" => next.family = TextFamily::Sans,
+        "textnormal" | "normalfont" => next = TextStyle::default(),
+        // LaTeX 2.09 forms reset the other attributes: `\bf` is
+        // `\normalfont\bfseries`.
+        "bf" => next = TextStyle::BOLD,
+        "it" | "sl" => {
+            next = TextStyle {
+                italic: true,
+                ..TextStyle::default()
+            }
+        }
+        "tt" | "rm" | "sf" => next = apply_style(TextStyle::default(), &format!("{name}family")),
+        _ => {}
+    }
+    next
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ParagraphStyle {
     Center,
@@ -136,8 +231,15 @@ const BUILT_INS: &[&str] = &[
     "section",
     "subsection",
     "textbf",
+    "textmd",
     "emph",
     "textit",
+    "textsl",
+    "textup",
+    "texttt",
+    "textrm",
+    "textsf",
+    "textnormal",
     "begin",
     "end",
     "par",
@@ -157,6 +259,20 @@ const BUILT_INS: &[&str] = &[
     "hfill",
     "normalfont",
     "bfseries",
+    "mdseries",
+    "itshape",
+    "slshape",
+    "upshape",
+    "ttfamily",
+    "rmfamily",
+    "sffamily",
+    "em",
+    "bf",
+    "it",
+    "sl",
+    "tt",
+    "rm",
+    "sf",
     "vspace",
     "hrule",
     "newpage",
@@ -166,7 +282,7 @@ const BUILT_INS: &[&str] = &[
 /// Parses a LaTeX dimension (`12pt`, `1.5em`, `0.5in`, `2cm`, `10mm`) to points.
 /// `em` is relative to the compiler's fixed body size since there is no
 /// declaration-scoped font state to read a current size from (see the
-/// `hfill`/`normalfont`/`bfseries` comment below).
+/// `hfill` comment below).
 pub(crate) fn parse_dimen_pt(text: &str) -> Option<f64> {
     let text = text.trim();
     let unit_len = text
@@ -269,6 +385,9 @@ pub fn parse_project(documents: &[SourceDocument<'_>], entry_path: &str) -> Pars
         list_stack: Vec::new(),
         paragraph_styles: Vec::new(),
         document_global_state: false,
+        style: TextStyle::default(),
+        style_stack: Vec::new(),
+        env_styles: Vec::new(),
     };
     let blocks = p.document();
 
@@ -328,6 +447,11 @@ struct P<'a> {
     list_stack: Vec<(String, u32, Option<String>)>,
     paragraph_styles: Vec<ParagraphStyle>,
     document_global_state: bool,
+    /// Current text style; saved on `{` and environment entry, restored on
+    /// the matching `}` or `\end`.
+    style: TextStyle,
+    style_stack: Vec<TextStyle>,
+    env_styles: Vec<TextStyle>,
 }
 
 impl P<'_> {
@@ -361,8 +485,9 @@ impl P<'_> {
                     self.i += 1;
                     if render {
                         para.push(Inline::Text {
-                            text: word,
+                            text: apply_text_ligatures(&word),
                             span: tok.span,
+                            style: self.style,
                         });
                     }
                 }
@@ -377,8 +502,7 @@ impl P<'_> {
                 }
                 TokenKind::LBrace => {
                     self.i += 1;
-                    self.brace_stack.push(tok.span);
-                    self.macro_scopes.push(HashMap::new());
+                    self.open_group(tok.span);
                 }
                 TokenKind::RBrace => {
                     self.i += 1;
@@ -392,6 +516,9 @@ impl P<'_> {
                         }
                     } else {
                         self.restore_scope();
+                        if let Some(style) = self.style_stack.pop() {
+                            self.style = style;
+                        }
                     }
                 }
                 TokenKind::MathShift if render => self.dollar_math(tok.span, para),
@@ -472,7 +599,7 @@ impl P<'_> {
                 if !starred {
                     self.current_counter = Some(number.clone());
                 }
-                let content = self.inlines_from_tokens(tokens);
+                let content = self.inlines_from_tokens(tokens, TextStyle::BOLD);
                 if content.is_empty() {
                     // A missing/empty heading is already diagnosed where
                     // applicable and has nothing to position. Do not create an
@@ -531,7 +658,8 @@ impl P<'_> {
                         Some(span),
                         Some("typeset the caption text as an ordinary paragraph".into()),
                     ));
-                    para.extend(self.inlines_from_tokens(tokens));
+                    let style = self.style;
+                    para.extend(self.inlines_from_tokens(tokens, style));
                 } else {
                     self.flush_paragraph(blocks, para);
                     self.figure_counter += 1;
@@ -539,8 +667,9 @@ impl P<'_> {
                     let mut content = vec![Inline::Text {
                         text: format!("Figure {}:", self.figure_counter),
                         span,
+                        style: TextStyle::default(),
                     }];
-                    content.extend(self.inlines_from_tokens(tokens));
+                    content.extend(self.inlines_from_tokens(tokens, TextStyle::default()));
                     blocks.push(Block::FigureCaption { content });
                     self.finish_block_dependencies();
                 }
@@ -558,7 +687,11 @@ impl P<'_> {
                         } else {
                             "•".to_string()
                         };
-                        para.push(Inline::Text { text: marker, span });
+                        para.push(Inline::Text {
+                            text: marker,
+                            span,
+                            style: TextStyle::default(),
+                        });
                     }
                     None => self.diags.push(Diagnostic::error(
                         "\\item is only supported inside itemize or enumerate",
@@ -576,14 +709,25 @@ impl P<'_> {
                     Some("omitted the image and continued".into()),
                 ));
             }
-            "textbf" | "emph" | "textit" => {
-                let (tokens, _) = self.required_group(name, span);
-                para.extend(self.inlines_from_tokens(tokens));
+            _ if style_command(name) => {
+                self.skip_spaces();
+                let next = apply_style(self.style, name);
+                if let Some(open) = self.closed_group_start() {
+                    // Re-enter the argument as an ordinary group so math and
+                    // other commands inside it are parsed normally.
+                    self.i += 1;
+                    self.open_group(open);
+                    self.style = next;
+                } else {
+                    let (tokens, _) = self.required_group(name, span);
+                    para.extend(self.inlines_from_tokens(tokens, next));
+                }
             }
-            // The current layout model has no stretchable horizontal glue or
-            // declaration-scoped font state. These commands are explicit no-ops:
-            // they never consume or alter surrounding content.
-            "hfill" | "normalfont" | "bfseries" => {}
+            _ if style_declaration(name) => self.style = apply_style(self.style, name),
+            // The current layout model has no stretchable horizontal glue. This
+            // command is an explicit no-op: it never consumes or alters
+            // surrounding content.
+            "hfill" => {}
             "par" => self.flush_paragraph(blocks, para),
             "vspace" => {
                 let (tokens, argument_span) = self.required_group(name, span);
@@ -1035,10 +1179,17 @@ impl P<'_> {
             }
             self.env_stack
                 .push((environment, span.merge(argument_span)));
+            self.env_styles.push(self.style);
             return;
         }
 
-        match self.env_stack.pop() {
+        let popped = self.env_stack.pop();
+        if popped.is_some() {
+            if let Some(style) = self.env_styles.pop() {
+                self.style = style;
+            }
+        }
+        match popped {
             Some((open, _)) if open == environment => {}
             Some((open, _)) => self.diags.push(Diagnostic::error(
                 format!(
@@ -1580,7 +1731,35 @@ impl P<'_> {
         }
     }
 
-    fn inlines_from_tokens(&mut self, tokens: Vec<InputToken>) -> Vec<Inline> {
+    /// The `{` span when the next token opens a group that closes in this
+    /// token stream. Unclosed arguments keep `required_group`'s diagnostics.
+    fn closed_group_start(&self) -> Option<Span> {
+        let open = self
+            .peek()
+            .filter(|token| token.kind == TokenKind::LBrace)?;
+        let mut depth = 0usize;
+        for input in &self.t[self.i..] {
+            match input.token.kind {
+                TokenKind::LBrace => depth += 1,
+                TokenKind::RBrace => {
+                    depth -= 1;
+                    if depth == 0 {
+                        return Some(open.span);
+                    }
+                }
+                _ => {}
+            }
+        }
+        None
+    }
+
+    fn open_group(&mut self, span: Span) {
+        self.brace_stack.push(span);
+        self.macro_scopes.push(HashMap::new());
+        self.style_stack.push(self.style);
+    }
+
+    fn inlines_from_tokens(&mut self, tokens: Vec<InputToken>, base: TextStyle) -> Vec<Inline> {
         let outer_tokens = std::mem::replace(&mut self.t, tokens);
         let outer_index = std::mem::replace(&mut self.i, 0);
         let mut expanded = Vec::new();
@@ -1595,11 +1774,32 @@ impl P<'_> {
         self.i = outer_index;
 
         let mut content = Vec::new();
+        let mut style = base;
+        let mut saved = Vec::new();
+        let mut pending = None;
         for input in expanded {
             match input.token.kind {
+                TokenKind::Command(name) if style_command(&name) => {
+                    pending = Some(apply_style(style, &name));
+                }
+                TokenKind::Command(name) if style_declaration(&name) => {
+                    style = apply_style(style, &name);
+                }
+                TokenKind::LBrace => {
+                    saved.push(style);
+                    if let Some(next) = pending.take() {
+                        style = next;
+                    }
+                }
+                TokenKind::RBrace => {
+                    if let Some(previous) = saved.pop() {
+                        style = previous;
+                    }
+                }
                 TokenKind::Word(text) => content.push(Inline::Text {
-                    text,
+                    text: apply_text_ligatures(&text),
                     span: input.token.span,
+                    style,
                 }),
                 TokenKind::LineBreak => content.push(Inline::LineBreak {
                     span: input.token.span,
@@ -2107,6 +2307,46 @@ mod tests {
     }
 
     #[test]
+    fn tex_input_ligatures_convert_in_ordinary_text() {
+        // The exact shape found in fixtures/real-world/hw1/HW1.tex: a ligature
+        // pair straddling a word boundary and one embedded inside a single
+        // compound word with no surrounding whitespace.
+        let source = "``Quoted'' and a turn---after dash, don't stop.\n";
+        let (parsed, items) = items(source);
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        let texts: Vec<&str> = items.iter().map(|item| item.text.as_str()).collect();
+        assert!(texts.contains(&"\u{201C}Quoted\u{201D}"), "{texts:?}");
+        assert!(texts.contains(&"turn\u{2014}after"), "{texts:?}");
+        assert!(texts.iter().any(|t| t.contains('\u{2019}')), "{texts:?}");
+    }
+
+    #[test]
+    fn tex_input_ligatures_convert_in_headings_and_text_style_arguments() {
+        let source = "\\section{Notes---Continued}\n\\textbf{can't---won't}\n";
+        let (parsed, items) = items(source);
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        let texts: Vec<&str> = items.iter().map(|item| item.text.as_str()).collect();
+        assert!(texts.iter().any(|t| t.contains('\u{2014}')), "{texts:?}");
+        assert!(
+            texts.iter().any(|t| t.contains('\u{2019}')),
+            "expected a converted apostrophe in {texts:?}"
+        );
+    }
+
+    #[test]
+    fn tex_input_ligatures_never_apply_inside_math() {
+        // Math is parsed through an entirely separate path (`math::parse_tokens`)
+        // that this function is never wired into; a literal double-hyphen inside
+        // `$...$` must stay two literal hyphens, never an en dash.
+        let source = "Text. $a--b$ more text.\n";
+        let (parsed, items) = items(source);
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        assert!(!items.iter().any(|item| item.text.contains('\u{2013}')));
+        assert!(!items.iter().any(|item| item.text.contains('\u{2014}')));
+        assert!(items.iter().any(|item| item.text == "-"));
+    }
+
+    #[test]
     fn zero_argument_macro_maps_literal_output_to_invocation() {
         let source = "\\newcommand{\\hi}{Hello} \\hi";
         let (parsed, items) = items(source);
@@ -2348,5 +2588,73 @@ mod tests {
             })
             .collect();
         assert_eq!(labels, [("h", "1"), ("j", "2")]);
+    }
+
+    fn font_of(items: &[crate::layout::TextItem], text: &str) -> layout::Font {
+        items
+            .iter()
+            .find(|item| item.text == text)
+            .unwrap_or_else(|| panic!("no item {text:?}"))
+            .font
+    }
+
+    #[test]
+    fn text_style_commands_select_real_core14_variants() {
+        use layout::Font;
+        let source = r"a \textbf{b $x$ c} \textit{d \textbf{e}} \emph{f \emph{g}} \textsl{h} \texttt{i} \textsf{j} \textbf{\textrm{k}} l";
+        let (parsed, items) = items(source);
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        for (text, font) in [
+            ("a", Font::TimesRoman),
+            ("b", Font::TimesBold),
+            ("x", Font::TimesRoman),
+            ("c", Font::TimesBold),
+            ("d", Font::TimesItalic),
+            ("e", Font::TimesBoldItalic),
+            ("f", Font::TimesItalic),
+            ("g", Font::TimesRoman),
+            ("h", Font::TimesItalic),
+            ("i", Font::Courier),
+            ("j", Font::Helvetica),
+            ("k", Font::TimesBold),
+            ("l", Font::TimesRoman),
+        ] {
+            assert_eq!(font_of(&items, text), font, "{text}");
+        }
+    }
+
+    #[test]
+    fn style_declarations_are_scoped_to_groups_and_environments() {
+        use layout::Font;
+        let source = "\\begin{document}{\\bf a} b {\\it c \\bfseries d} e \\begin{center}\\itshape f\n\ng\\end{center} h {\\ttfamily i \\normalfont j} \\bfseries k\\end{document}";
+        let (parsed, items) = items(source);
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        for (text, font) in [
+            ("a", Font::TimesBold),
+            ("b", Font::TimesRoman),
+            ("c", Font::TimesItalic),
+            ("d", Font::TimesBoldItalic),
+            ("e", Font::TimesRoman),
+            ("f", Font::TimesItalic),
+            ("g", Font::TimesItalic),
+            ("h", Font::TimesRoman),
+            ("i", Font::Courier),
+            ("j", Font::TimesRoman),
+            ("k", Font::TimesBold),
+        ] {
+            assert_eq!(font_of(&items, text), font, "{text}");
+        }
+    }
+
+    #[test]
+    fn heading_styles_start_bold_and_honour_normalfont() {
+        use layout::Font;
+        let source = r"\newcommand{\problem}[2]{\subsection*{Problem #1 \normalfont[#2 \textit{pts}]}}\problem{1}{4}";
+        let (parsed, items) = items(source);
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        assert_eq!(font_of(&items, "Problem"), Font::TimesBold);
+        assert_eq!(font_of(&items, "["), Font::TimesRoman);
+        assert_eq!(font_of(&items, "4"), Font::TimesRoman);
+        assert_eq!(font_of(&items, "pts"), Font::TimesItalic);
     }
 }

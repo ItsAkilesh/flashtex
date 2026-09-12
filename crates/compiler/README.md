@@ -28,8 +28,10 @@ This revision supports:
   approximation remains and produces the existing PDF-export warning.
 - `font-hints-v1`: every text item adds a `font` object containing the family,
   `normal` or `bold` weight, and `normal` or `italic` style selected by layout.
-  Current body text reports Times-Roman, headings report Times-Bold, and
-  supported mathematical symbols report Symbol.
+  Body text reports the face its text style selects (Times-Roman by default;
+  Times-Bold, Times-Italic, Times-BoldItalic, Helvetica or Courier under the
+  style commands), headings start in Times-Bold, and supported mathematical
+  symbols report Symbol.
 
 This additive extension is not rendering-v2 activation or a claim of exact
 LaTeX PDF identity. Font hints do not identify font bytes, glyph IDs, shaping,
@@ -72,6 +74,20 @@ Implemented and tested:
   are enabled. Every shaping cluster retains the exact input byte range and text.
   Literal cluster-relative ranges are translated back into the originating
   document, while generated macro text keeps its real invocation span.
+- TeX's classic text-mode input ligatures are converted before layout: a
+  double backtick or a double apostrophe becomes a curly double quote, a lone
+  backtick or apostrophe becomes a curly single quote (a lone apostrophe is
+  always the right-hand form, exactly as plain typing behaves), three hyphens
+  become an em dash, two hyphens become an en dash, and an exclamation or
+  question mark followed by a backtick becomes the inverted exclamation or
+  question mark. Conversion runs on ordinary text words only — math is parsed
+  through an entirely separate path and is never touched, and this milestone
+  has no verbatim, `\texttt`, or `\ttfamily` state to exclude in the first
+  place. A converted word's item keeps its exact original source span; only
+  its rendered text changes, the same rule already used for a
+  command-substituted glyph such as `\alpha`. All eight resulting codepoints
+  (curly quotes, en/em dash, inverted `!`/`?`) have Times-Roman AFM widths and
+  encode to WinAnsi, so none of this produces a new PDF-export warning.
 - Greedy line breaking and page breaking onto 612×792 pt pages.
 - Inline math (`$...$`) and display math (`$$...$$` and `\[...\]`), including
   nested fractions, square roots, superscripts, and subscripts.
@@ -109,8 +125,10 @@ Required, outstanding — this is a foundation, not a LaTeX implementation:
 - No bidi, joining, complex-script reordering, hyphenation, or TeX optimal
   paragraph breaking. The font engine reports unsupported shaping and missing
   glyphs explicitly; the compiler never silently substitutes a missing glyph.
-- `\textbf`, `\emph`, and `\textit` are parsed and their text is typeset, but the
-  visual weight and slant are not yet applied.
+- Text styles use only the Core 14 metric faces. Times has real bold, italic
+  and bold-italic variants; slanted shapes (`\textsl`, `\slshape`) use
+  Times-Italic, and sans/typewriter text uses upright Helvetica/Courier even
+  when bold or italic is also requested (the engine has no other variants).
 
 ## Supported commands
 
@@ -119,6 +137,11 @@ Required, outstanding — this is a foundation, not a LaTeX implementation:
 `\renewcommand{\name}{body}`, `\renewcommand{\name}[n]{body}`,
 `\section{...}`, `\subsection{...}`, `\label{key}`, `\ref{key}`,
 `\pageref{key}`, `\caption{...}`, `\textbf`, `\emph`, `\textit`,
+`\textsl`, `\texttt`, `\textrm`, `\textsf`, `\textmd`, `\textup`,
+`\textnormal`, the group- and environment-scoped declarations `\bfseries`,
+`\mdseries`, `\itshape`, `\slshape`, `\upshape`, `\ttfamily`, `\rmfamily`,
+`\sffamily`, `\normalfont`, `\em`, and the LaTeX 2.09 forms `\bf`, `\it`,
+`\sl`, `\tt`, `\rm`, `\sf`,
 `\begin`/`\end` for `document`, `equation`, `figure`, `itemize`, and
 `enumerate`, `\item`, `\par`, and `\\`. Macro
 argument counts are decimal integers from 0 through 9, and replacement
@@ -168,8 +191,8 @@ the compiler does not yet read a real math font.
 
 ## Font shaping and layout limits
 
-Layout measures Times-Roman body text, Times-Bold headings, and supported math
-symbols in Symbol through `flashtex-font-engine::shape`. The returned cluster
+Layout measures body text in the Core 14 face its text style selects, headings
+in Times-Bold unless restyled, and supported math symbols in Symbol through `flashtex-font-engine::shape`. The returned cluster
 advances already include AFM pair kerning and enabled standard ligatures. One
 item is still emitted per word rather than per line; its span is derived from the
 shaped clusters and remains an exact document byte range for literal text.
