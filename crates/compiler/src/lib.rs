@@ -43,3 +43,61 @@ impl Span {
     }
 }
 pub mod pdf;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn span_new_stores_bounds() {
+        let s = Span::new(3, 10);
+        assert_eq!(s.start, 3);
+        assert_eq!(s.end, 10);
+    }
+
+    #[test]
+    fn span_is_empty_when_start_equals_end() {
+        assert!(Span::new(5, 5).is_empty());
+    }
+
+    #[test]
+    fn span_is_not_empty_when_start_less_than_end() {
+        assert!(!Span::new(0, 1).is_empty());
+    }
+
+    #[test]
+    fn span_merge_covers_both() {
+        let a = Span::new(2, 5);
+        let b = Span::new(4, 9);
+        let m = a.merge(b);
+        assert_eq!(m.start, 2);
+        assert_eq!(m.end, 9);
+    }
+
+    #[test]
+    fn span_merge_is_commutative() {
+        let a = Span::new(0, 4);
+        let b = Span::new(7, 12);
+        assert_eq!(a.merge(b), b.merge(a));
+    }
+
+    #[test]
+    fn span_merge_with_adjacent_spans() {
+        // Adjacent (non-overlapping) spans merge to cover both exactly.
+        let a = Span::new(0, 3);
+        let b = Span::new(3, 6);
+        assert_eq!(a.merge(b), Span::new(0, 6));
+    }
+
+    #[test]
+    fn span_merge_with_self_is_identity() {
+        let s = Span::new(2, 8);
+        assert_eq!(s.merge(s), s);
+    }
+
+    #[test]
+    fn span_equality() {
+        assert_eq!(Span::new(1, 4), Span::new(1, 4));
+        assert_ne!(Span::new(1, 4), Span::new(1, 5));
+    }
+}
