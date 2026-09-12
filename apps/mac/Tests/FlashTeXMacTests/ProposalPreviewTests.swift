@@ -543,7 +543,8 @@ final class ProposalPreviewTests: XCTestCase {
 
     func testExplanationIsCancelledWhenProposalOrRevisionChangesAndLateRepliesAreDropped() async throws {
         let preview = makePreview(explanation: fakeExplanation(provider: true))
-        let doc = input("A %slowexplain\n%diag:1 tail\n", anchorByte: 15)
+        // Both doubles sleep 600 ms so each cancellation lands mid-flight.
+        let doc = input("A %slowexplain %slowprovider\n%diag:1 tail\n", anchorByte: 29)
         preview.update(input: doc, latex: "%diag:0 new")
         try await waitForReady(preview)
         preview.explain()
