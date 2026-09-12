@@ -51,3 +51,34 @@ identity; the evidence does not justify calling those older results current.
 An optional historical-display experiment can evaluate visible progress separately
 with explicit stale labels, original source bindings and source actions disabled.
 It must not change the default or claim current/native/every-keystroke acceptance.
+
+## Explicit historical preview observation
+
+`benchmarks/typing-burst-50kb-historical` uses the existing explicit
+completed-snapshots-v1 option with one source-binding token for each burst edit.
+It preserves the same source,20 command payloads (apart from those tokens), target
+30ms schedule and release binaries. The default remains off and no native feature
+is activated. Historical display is disabled again before old command retry tests.
+
+All20 ACKs succeeded. Seven historical snapshots arrived at approximately86,172,
+254,338,423,509 and595ms, binding editor revisions2,4,7,10,12,15 and18 respectively.
+Six arrived before the last send at570ms. Each was explicitly is_current=false and
+source_actions_enabled=false, with its exact original binding token and original
+producer result/request source. Only revision21 was current, about98.92ms after
+the last send. Clean final compilation, exact reopen and receipt/conflict gates pass.
+
+The Python sender thread lagged its intended schedule by up to23.91ms, compared
+with0.23ms in the earlier current-only capture. Maximum observed ACK arrival latency
+was36.56ms. Receiving/decoding large historical frames can contend with the sender
+in the same Python process; these measurements do not isolate that effect or
+establish a matched-cadence latency tradeoff. They demonstrate source-bound older
+visual progress, not current output for each keystroke or native paint performance.
+A separately scheduled sender with deterministic lifecycle tests is needed before
+any future controlled cadence comparison. No additional comparison run was made.
+
+Post-capture review strengthened the harness to require the historical result ID
+and compile revision to match its envelope and to locate a unique request/output
+pair within the same captured producer stream. All seven original historical
+results pass this audit; altered result IDs and compile revisions are rejected.
+`correlation-review.json` records this later verification separately; original
+measurement provenance and captured bytes remain unchanged.

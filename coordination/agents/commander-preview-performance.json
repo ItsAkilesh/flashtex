@@ -3,27 +3,27 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-048": {
-      "acknowledged_utc": "2026-09-12T13:16:15Z",
-      "adaptation": "Newtyping_burst.py20grouped@30ms onreleasepair; actualsend schedule recorded, allpredictedrevisionrefusals fail, finalactualrequest cleancompile/reopen/20IDs/oldandlatestretry/conflict outside measurement.",
-      "main_sha": "367aba68e2ee689cca8db4da2a8427d82f3de72b",
-      "revision": 21
+      "acknowledged_utc": "2026-09-12T13:25:05Z",
+      "adaptation": "Published d6b3df2b source-bound disposition audit first. Now one --historical20@30ms explicitcompleted-snapshot opt-in, tokens/stale/sourceactionsfalse and separatecounts, samebinaries/source, defaultunchanged. Disableaftermeasurement beforeoldreceiptchecks.",
+      "main_sha": "dda0b624bf5505b2db81a932c0f0d707f42295c0",
+      "revision": 22
     }
   },
   "branch": "agent/commander-preview-performance/preview-performance",
   "capabilities": [
     "Preview helper serialization and latency"
   ],
-  "code_revision": "de574ec71b4f918388ff588d32b83a44ac84e4b3",
+  "code_revision": "d6b3df2b567a2cb9593a6c13abcf7f9ca6215db0",
   "eta_minutes": null,
   "machine": "linux-primary",
-  "main_integrated_through": "58d27314c83cbc62fa20e81dd1f5532a82849fef",
-  "next_action": "Commander integrate and prioritize continuouspreview gapGH21; no broaderlatencyclaim or extra repeats.",
+  "main_integrated_through": "de574ec71b4f918388ff588d32b83a44ac84e4b3",
+  "next_action": "Independent artifactreview; nextboundedsenderprocess implementation beforefuturecadencecomparisons, noadditionalrun now.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "FT048r21 sustained20grouped@30ms acceptance: allACKs durable, onlyfinalcurrentpreview; cleancompile/reopen/receiptretry/conflict pass.",
+  "summary": "FT048r22 historicalopt-in observation delivers6historicalsnapshotsduringburst+1after, then current21; defaults/sourceguards unchanged.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T13:19:22Z",
+  "updated_utc": "2026-09-12T13:27:30Z",
   "usage": {
     "status": "unknown"
   }
