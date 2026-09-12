@@ -1,32 +1,32 @@
 {
   "agent_id": "commander-font-resources",
-  "next_index": 0,
+  "next_index": 1,
   "schema_version": 1,
   "steps": [
     {
-      "name": "Bind boundary-program output through existing explicit8bit encoding/GID adapter",
-      "objective": "Bind boundary-program output through existing explicit8bit encoding/GID adapter",
-      "owned_paths": [
-        "crates/font-resources"
-      ],
       "acceptance": [
         "Meaningful bounded behavior tests and strict lint pass",
         "Preserve exact identities; publish measured evidence and unsupported gates"
       ],
       "allocation_id": "hosted-openai-product",
+      "name": "Validate actual pipeline consumer migration against matching metrics and fix only demonstrated shared-adapter gaps",
+      "objective": "Validate actual pipeline consumer migration against matching metrics and fix only demonstrated shared-adapter gaps",
+      "owned_paths": [
+        "crates/font-resources"
+      ],
       "timebox_minutes": 30
     },
     {
-      "name": "Pinned real-TFM boundary replay and malformed/cycle regression evidence",
-      "objective": "Pinned real-TFM boundary replay and malformed/cycle regression evidence",
-      "owned_paths": [
-        "crates/font-resources"
-      ],
       "acceptance": [
         "Meaningful bounded behavior tests and strict lint pass",
         "Preserve exact identities; publish measured evidence and unsupported gates"
       ],
       "allocation_id": "hosted-openai-product",
+      "name": "Preserve exact source/resource/provenance replay and explicit missing-resource gates after consumer feedback",
+      "objective": "Preserve exact source/resource/provenance replay and explicit missing-resource gates after consumer feedback",
+      "owned_paths": [
+        "crates/font-resources"
+      ],
       "timebox_minutes": 30
     }
   ],

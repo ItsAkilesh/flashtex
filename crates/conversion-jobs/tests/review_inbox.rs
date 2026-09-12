@@ -229,3 +229,100 @@ fn corrupted_decision_project_cannot_restore_as_an_accepted_intent() {
         Err(InboxError::Invalid)
     ));
 }
+
+#[test]
+fn expiry_clears_selection_revokes_token_and_survives_clock_rollback() {
+    let dir = tempfile::tempdir().unwrap();
+    let token;
+    {
+        let mut inbox = ReviewInbox::open(dir.path(), InboxLimits::default()).unwrap();
+        inbox.admit("capture", context(1), proposal()).unwrap();
+        inbox.set_expiry("capture", 100).unwrap();
+        assert!(matches!(
+            inbox.set_expiry("capture", 101),
+            Err(InboxError::Conflict)
+        ));
+        inbox.select(Some("capture")).unwrap();
+        token = inbox
+            .decide(request("d", "capture", ReviewIntent::AcceptForPreparation))
+            .unwrap();
+        assert_eq!(inbox.expire_due(99).unwrap(), 0);
+        assert_eq!(inbox.expire_due(100).unwrap(), 1);
+        assert!(inbox.view().snapshot().unwrap().selected_capture.is_none());
+        assert!(matches!(
+            inbox.validate_handoff(&token, &context(1)),
+            Err(InboxError::Expired)
+        ));
+    }
+    let mut inbox = ReviewInbox::open(dir.path(), InboxLimits::default()).unwrap();
+    assert_eq!(inbox.expire_due(0).unwrap(), 0);
+    assert_eq!(inbox.state("capture").unwrap(), ReviewState::Expired);
+    assert!(matches!(
+        inbox.decide(token.decision.clone()),
+        Err(InboxError::Expired)
+    ));
+    inbox.retire("capture").unwrap();
+    assert!(matches!(
+        inbox.admit("capture", context(1), proposal()),
+        Err(InboxError::Retired)
+    ));
+}
+
+#[test]
+fn changed_dependency_cannot_restore_acceptance_when_hash_returns_to_original() {
+    let dir = tempfile::tempdir().unwrap();
+    let token;
+    {
+        let mut inbox = ReviewInbox::open(dir.path(), InboxLimits::default()).unwrap();
+        inbox.admit("capture", context(1), proposal()).unwrap();
+        inbox.select(Some("capture")).unwrap();
+        token = inbox
+            .decide(request("d", "capture", ReviewIntent::AcceptForPreparation))
+            .unwrap();
+        let mut changed = context(1);
+        changed.sha256 = "c".repeat(64);
+        inbox.update_context("capture", changed).unwrap();
+    }
+    let mut inbox = ReviewInbox::open(dir.path(), InboxLimits::default()).unwrap();
+    inbox.update_context("capture", context(1)).unwrap();
+    assert_eq!(inbox.state("capture").unwrap(), ReviewState::StaleContext);
+    assert!(matches!(
+        inbox.validate_handoff(&token, &context(1)),
+        Err(InboxError::StaleContext)
+    ));
+    assert!(matches!(
+        inbox.decide(token.decision),
+        Err(InboxError::StaleContext)
+    ));
+}
+
+#[test]
+fn recovered_bounded_selection_expires_without_selecting_another_card() {
+    let dir = tempfile::tempdir().unwrap();
+    let limits = InboxLimits {
+        entries: 2,
+        ..InboxLimits::default()
+    };
+    {
+        let mut inbox = ReviewInbox::open(dir.path(), limits).unwrap();
+        for id in ["one", "two"] {
+            inbox.admit(id, context(1), proposal()).unwrap();
+        }
+        inbox.set_expiry("one", 10).unwrap();
+        inbox.select(Some("one")).unwrap();
+    }
+    let mut inbox = ReviewInbox::open_at(dir.path(), limits, 10).unwrap();
+    assert_eq!(inbox.expire_due(10).unwrap(), 0);
+    assert!(inbox.view().snapshot().unwrap().selected_capture.is_none());
+    assert!(matches!(
+        inbox.admit("three", context(1), proposal()),
+        Err(InboxError::Capacity)
+    ));
+    inbox.retire("one").unwrap();
+    inbox.admit("three", context(1), proposal()).unwrap();
+    assert_eq!(
+        inbox.state("two").unwrap(),
+        ReviewState::AwaitingSelectionOrDecision
+    );
+    assert!(inbox.view().snapshot().unwrap().selected_capture.is_none());
+}

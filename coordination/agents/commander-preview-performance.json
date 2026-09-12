@@ -1,0 +1,30 @@
+{
+  "agent_id": "commander-preview-performance",
+  "allocation_id": "hosted-openai-product",
+  "assignment_acknowledgements": {
+    "FT-048": {
+      "acknowledged_utc": "2026-09-12T09:18:15Z",
+      "adaptation": "Current main merged; exclusive document-runtime and preview-controller scope. Prototype bounded opt-in historical completion side channel with immutable identity; no Event::Preview semantics or native wire activation change.",
+      "main_sha": "e5901797e8a7ebdd8d714ecdee6793e1097515a9",
+      "revision": 3
+    }
+  },
+  "branch": "agent/commander-preview-performance/preview-performance",
+  "capabilities": [
+    "Preview helper serialization and latency"
+  ],
+  "code_revision": "b04237d",
+  "eta_minutes": null,
+  "machine": "linux-primary",
+  "main_integrated_through": "e5901797e8a7ebdd8d714ecdee6793e1097515a9",
+  "next_action": "Native owner consume documented negotiated helper contract; root extend actual-helper burst evidence with separate historical lag/current latency and durable recovery. No native activation or pixelparity claim.",
+  "reviewed_peers": {},
+  "schema_version": 1,
+  "state": "in_progress",
+  "summary": "Negotiated completed-snapshots-v1 stdio adapter implemented, default off. Original token/version binding, bounded one optional frame behind required traffic, restart reset. Full52 tests with actualcompiler gates and strictlint pass; gated subprocess proves historical/current lifecycle and invalidtoken pre-mutation rejection.",
+  "tool": "Codex GPT-6 Astra",
+  "updated_utc": "2026-09-12T09:56:22Z",
+  "usage": {
+    "status": "unknown"
+  }
+}

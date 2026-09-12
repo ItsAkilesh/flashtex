@@ -69,7 +69,30 @@ pub enum Event {
         reason: String,
     },
 }
+#[derive(Clone, Debug, serde::Serialize)]
+pub struct ResponseProfile {
+    pub request_id: String,
+    pub response_bytes: usize,
+    pub encode_ms: f64,
+    pub reader_delivery_wait_ms: f64,
+    pub dispatch_to_first_byte_ms: f64,
+    pub frame_read_ms: f64,
+    pub parse_ms: f64,
+    pub validation_ms: f64,
+}
+/// Optional historical display data. This is never a current-preview/source-action grant.
+/// `origin` is opaque caller metadata captured with the original submitted request.
+#[derive(Debug)]
+pub struct CompletedSnapshot {
+    pub request_id: String,
+    pub project_id: String,
+    pub revision: u64,
+    pub origin: String,
+    pub result: Value,
+}
 struct Pending {
+    snapshot_origin: Option<(u64, String)>,
+    encode_ms: f64,
     capabilities: Vec<String>,
     cancelled: bool,
     request: Request,
@@ -78,7 +101,7 @@ struct Pending {
     sent: Option<Instant>,
 }
 enum Input {
-    Frame(Vec<u8>),
+    Frame(Vec<u8>, Instant, Instant),
     Failure(String),
 }
 struct Process {
@@ -112,6 +135,11 @@ impl Process {
             let mut reader = BufReader::new(stdout);
             loop {
                 let mut frame = Vec::new();
+                if reader.fill_buf().is_err() {
+                    let _ = out_tx.send(Input::Failure("compiler output read failed".into()));
+                    break;
+                }
+                let first_byte = Instant::now();
                 let result = reader
                     .by_ref()
                     .take(limit as u64 + 1)
@@ -122,7 +150,10 @@ impl Process {
                         break;
                     }
                     Ok(_) if frame.len() <= limit && frame.last() == Some(&b'\n') => {
-                        if out_tx.send(Input::Frame(frame)).is_err() {
+                        if out_tx
+                            .send(Input::Frame(frame, first_byte, Instant::now()))
+                            .is_err()
+                        {
                             break;
                         }
                     }
@@ -165,6 +196,10 @@ pub struct Session {
     queue: VecDeque<Pending>,
     latest: BTreeMap<String, (u64, String)>,
     events: VecDeque<Event>,
+    last_profile: Option<ResponseProfile>,
+    snapshot_epoch: u64,
+    completed_snapshots_enabled: bool,
+    completed_snapshot: Option<CompletedSnapshot>,
 }
 impl Session {
     pub fn spawn(executable: impl AsRef<Path>, limits: Limits) -> Result<Self, String> {
@@ -188,6 +223,10 @@ impl Session {
             queue: VecDeque::new(),
             latest: BTreeMap::new(),
             events: VecDeque::new(),
+            last_profile: None,
+            snapshot_epoch: 0,
+            completed_snapshots_enabled: false,
+            completed_snapshot: None,
         })
     }
     pub fn submit(&mut self, request: Request) -> Result<(), String> {
@@ -198,6 +237,50 @@ impl Session {
         request: Request,
         capabilities: Vec<String>,
     ) -> Result<(), String> {
+        self.submit_internal(request, capabilities, None)
+    }
+    /// Enable historical completion retention explicitly. Toggling invalidates old origins.
+    /// Disabled by default; at most one completed result is retained across all projects.
+    pub fn set_completed_snapshots_enabled(&mut self, enabled: bool) -> Result<(), String> {
+        if self.completed_snapshots_enabled != enabled {
+            self.completed_snapshot = None;
+            self.completed_snapshots_enabled = false;
+            self.snapshot_epoch = self
+                .snapshot_epoch
+                .checked_add(1)
+                .ok_or("snapshot epoch exhausted")?;
+            self.completed_snapshots_enabled = enabled;
+        }
+        Ok(())
+    }
+    /// Caller must bind this token to immutable source versions and its session incarnation.
+    /// Existing submit APIs never opt a request into historical completion retention.
+    pub fn submit_with_snapshot_origin(
+        &mut self,
+        request: Request,
+        capabilities: Vec<String>,
+        origin: String,
+    ) -> Result<(), String> {
+        if !self.completed_snapshots_enabled
+            || origin.is_empty()
+            || origin.len() > 1024
+            || origin.chars().any(char::is_control)
+        {
+            return Err("historical snapshots disabled or invalid origin token".into());
+        }
+        self.submit_internal(request, capabilities, Some((self.snapshot_epoch, origin)))
+    }
+    /// Move the last validated historical completion out. Poll first; no cloning or recompile.
+    /// Consumers still must reject obsolete session/project/display generations.
+    pub fn take_completed_snapshot(&mut self) -> Option<CompletedSnapshot> {
+        self.completed_snapshot.take()
+    }
+    fn submit_internal(
+        &mut self,
+        request: Request,
+        capabilities: Vec<String>,
+        snapshot_origin: Option<(u64, String)>,
+    ) -> Result<(), String> {
         validate_layout_capabilities(&capabilities)?;
         if self.events.len() >= self.limits.max_pending_events {
             return Err("poll pending events before submitting more edits".into());
@@ -207,7 +290,9 @@ impl Session {
                 "compiler session failed; create a new session with complete snapshots".into(),
             );
         }
+        let encode_start = Instant::now();
         let bytes = encode(&request, self.limits.max_frame, &capabilities)?;
+        let encode_ms = encode_start.elapsed().as_secs_f64() * 1000.0;
         if self.latest.values().any(|(_, id)| id == &request.id)
             || self
                 .active
@@ -240,6 +325,8 @@ impl Session {
             (request.revision, request.id.clone()),
         );
         self.queue.push_back(Pending {
+            snapshot_origin,
+            encode_ms,
             capabilities,
             cancelled: false,
             request,
@@ -255,6 +342,13 @@ impl Session {
     pub fn close_project(&mut self, project_id: &str) -> Result<(), String> {
         if self.events.len() >= self.limits.max_pending_events {
             return Err("poll pending events before closing projects".into());
+        }
+        if self
+            .completed_snapshot
+            .as_ref()
+            .is_some_and(|snapshot| snapshot.project_id == project_id)
+        {
+            self.completed_snapshot = None;
         }
         self.latest.remove(project_id);
         if let Some(active) = self.active.as_mut() {
@@ -299,6 +393,7 @@ impl Session {
         }
     }
     fn fail(&mut self, reason: &str) {
+        self.completed_snapshot = None;
         self.process.take();
         if let Some(p) = self.active.take().filter(|p| !p.cancelled) {
             self.events.push_back(Event::Failed {
@@ -321,19 +416,52 @@ impl Session {
                     self.fail(&reason);
                     break;
                 }
-                Ok(Input::Frame(bytes)) => {
+                Ok(Input::Frame(bytes, first_byte, reader_done)) => {
+                    let reader_delivery_wait_ms = reader_done.elapsed().as_secs_f64() * 1000.0;
                     let Some(pending) = self.active.as_ref() else {
                         self.fail("unsolicited compiler reply");
                         break;
                     };
+                    let parsed_at = Instant::now();
+                    // Validate UTF-8 once for the whole frame instead of once per JSON string.
+                    // Keep the same Value and semantic validation path below.
+                    let parsed: Value = match std::str::from_utf8(&bytes)
+                        .map_err(|_| ())
+                        .and_then(|text| serde_json::from_str(text).map_err(|_| ()))
+                    {
+                        Ok(value) => value,
+                        Err(_) => {
+                            self.fail("compiler returned malformed JSON");
+                            break;
+                        }
+                    };
+                    let parse_ms = parsed_at.elapsed().as_secs_f64() * 1000.0;
+                    let validate_at = Instant::now();
                     let result =
-                        match validate_reply(&bytes, &pending.request, &pending.capabilities) {
-                            Ok(v) => v,
+                        match validate_reply_value(parsed, &pending.request, &pending.capabilities)
+                        {
+                            Ok(value) => value,
                             Err(reason) => {
                                 self.fail(&reason);
                                 break;
                             }
                         };
+                    self.last_profile = Some(ResponseProfile {
+                        request_id: pending.request.id.clone(),
+                        response_bytes: bytes.len(),
+                        encode_ms: pending.encode_ms,
+                        reader_delivery_wait_ms,
+                        dispatch_to_first_byte_ms: first_byte
+                            .saturating_duration_since(pending.sent.unwrap())
+                            .as_secs_f64()
+                            * 1000.0,
+                        frame_read_ms: reader_done
+                            .saturating_duration_since(first_byte)
+                            .as_secs_f64()
+                            * 1000.0,
+                        parse_ms,
+                        validation_ms: validate_at.elapsed().as_secs_f64() * 1000.0,
+                    });
                     let pending = self.active.take().unwrap();
                     if pending.cancelled {
                         self.dispatch();
@@ -348,6 +476,11 @@ impl Session {
                             *rev == pending.request.revision && id == &pending.request.id
                         })
                     {
+                        if self.completed_snapshot.as_ref().is_some_and(|snapshot| {
+                            snapshot.project_id == pending.request.project_id
+                        }) {
+                            self.completed_snapshot = None;
+                        }
                         self.events.push_back(Event::Preview {
                             id: pending.request.id,
                             project_id: pending.request.project_id,
@@ -358,6 +491,17 @@ impl Session {
                             total_ms: now.duration_since(pending.queued).as_secs_f64() * 1000.0,
                         });
                     } else {
+                        if let Some((epoch, origin)) = pending.snapshot_origin {
+                            if self.completed_snapshots_enabled && epoch == self.snapshot_epoch {
+                                self.completed_snapshot = Some(CompletedSnapshot {
+                                    request_id: pending.request.id.clone(),
+                                    project_id: pending.request.project_id.clone(),
+                                    revision: pending.request.revision,
+                                    origin,
+                                    result,
+                                });
+                            }
+                        }
                         self.events.push_back(Event::Stale {
                             id: pending.request.id,
                             revision: pending.request.revision,
@@ -381,6 +525,11 @@ impl Session {
             self.fail("compiler response timeout");
         }
         self.events.drain(..).collect()
+    }
+    /// Last fully validated response, including stale/cancelled work. Match its
+    /// request ID; these phases do not measure native paint or compiler CPU alone.
+    pub fn last_profile(&self) -> Option<&ResponseProfile> {
+        self.last_profile.as_ref()
     }
     pub fn is_alive(&self) -> bool {
         self.process.is_some()
@@ -452,6 +601,44 @@ fn encode(r: &Request, limit: usize, capabilities: &[String]) -> Result<Vec<u8>,
 fn validate_reply(bytes: &[u8], r: &Request, requested: &[String]) -> Result<Value, String> {
     let v: Value = serde_json::from_slice(bytes).map_err(|_| "compiler returned malformed JSON")?;
     validate_reply_value(v, r, requested)
+}
+// Gather common text fields in one traversal; preserve absence separately for source/font.
+struct DisplayFields<'a> {
+    kind: &'a Value,
+    text: &'a Value,
+    font_size: &'a Value,
+    x: &'a Value,
+    baseline: &'a Value,
+    source: Option<&'a Value>,
+    font: Option<&'a Value>,
+}
+impl<'a> DisplayFields<'a> {
+    fn read(item: &'a Value) -> Self {
+        let mut fields = Self {
+            kind: &Value::Null,
+            text: &Value::Null,
+            font_size: &Value::Null,
+            x: &Value::Null,
+            baseline: &Value::Null,
+            source: None,
+            font: None,
+        };
+        if let Some(object) = item.as_object() {
+            for (key, value) in object {
+                match key.as_str() {
+                    "kind" => fields.kind = value,
+                    "text" => fields.text = value,
+                    "font_size_pt" => fields.font_size = value,
+                    "x_pt" => fields.x = value,
+                    "baseline_y_pt" => fields.baseline = value,
+                    "source" => fields.source = Some(value),
+                    "font" => fields.font = Some(value),
+                    _ => (),
+                }
+            }
+        }
+        fields
+    }
 }
 fn validate_reply_value(v: Value, r: &Request, requested: &[String]) -> Result<Value, String> {
     if v["protocol_version"] != 1
@@ -530,7 +717,8 @@ fn validate_reply_value(v: Value, r: &Request, requested: &[String]) -> Result<V
             return Err("invalid page geometry".into());
         }
         for item in page["items"].as_array().ok_or("missing page items")? {
-            if item["kind"] == "rule" {
+            let fields = DisplayFields::read(item);
+            if fields.kind == "rule" {
                 if !accepted.iter().any(|cap| cap == "rules-v1")
                     || !["x_pt", "y_pt"].iter().all(|key| {
                         item[*key]
@@ -549,7 +737,7 @@ fn validate_reply_value(v: Value, r: &Request, requested: &[String]) -> Result<V
                 span(&item["source"])?;
                 continue;
             }
-            if let Some(font) = item.get("font") {
+            if let Some(font) = fields.font {
                 if !accepted.iter().any(|cap| cap == "font-hints-v1")
                     || !font["family"].as_str().is_some_and(|name| {
                         !name.is_empty() && name.len() <= 128 && !name.chars().any(char::is_control)
@@ -560,19 +748,20 @@ fn validate_reply_value(v: Value, r: &Request, requested: &[String]) -> Result<V
                     return Err("unrequested or malformed font hint".into());
                 }
             }
-            if item["kind"] != "text"
-                || !item["text"].is_string()
-                || !item["font_size_pt"]
+            if fields.kind != "text"
+                || !fields.text.is_string()
+                || !fields
+                    .font_size
                     .as_f64()
                     .is_some_and(|n| n.is_finite() && n > 0.0)
-                || !["x_pt", "baseline_y_pt"]
+                || ![fields.x, fields.baseline]
                     .iter()
-                    .all(|key| item[*key].as_f64().is_some_and(f64::is_finite))
-                || item.get("source").is_none()
+                    .all(|value| value.as_f64().is_some_and(f64::is_finite))
+                || fields.source.is_none()
             {
                 return Err("unsupported or malformed display item".into());
             }
-            span(&item["source"])?;
+            span(fields.source.unwrap())?;
         }
     }
     Ok(v)

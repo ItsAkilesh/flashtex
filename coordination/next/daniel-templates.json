@@ -1,9 +1,10 @@
 {
-  "schema_version": 1,
   "agent_id": "daniel-templates",
-  "task_id": "FT-040",
-  "revision": 1,
-  "branch": "agent/daniel-templates/project-templates",
   "assignment_path": "coordination/assignments/FT-040.json",
-  "updated_utc": "2026-09-12T07:35:07.367827+00:00"
+  "branch": "agent/daniel-templates/project-templates",
+  "previous_report_sha": "83bc75210de778af4e93542abf46a45bc1dca0e5",
+  "revision": 3,
+  "schema_version": 1,
+  "task_id": "FT-040",
+  "updated_utc": "2026-09-12T09:48:23Z"
 }

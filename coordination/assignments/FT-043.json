@@ -1,23 +1,23 @@
 {
-  "schema_version": 1,
-  "task_id": "FT-043",
-  "agent_id": "daniel-bundle",
-  "branch": "agent/daniel-bundle/project-bundle",
-  "revision": 1,
-  "state": "assigned",
-  "objective": "Deterministic explicit project export bundle with rooted dependency reads, SHA manifest, reproducible ordering and no implicit filesystem discovery. Standalone additive crate only; coordinate consumer contract before integration.",
-  "owned_paths": [
-    "crates/project-bundle"
-  ],
-  "dependencies": [],
   "acceptance": [
     "Meaningful tests and strict Rust lint pass with bounded malformed/Unicode inputs",
     "Preserve exact source/revision and resource identities; no implicit approximation or parity claim",
     "Do not edit peer compiler/native/layout files; publish typed adapter contract and exact tested SHA"
   ],
+  "agent_id": "daniel-bundle",
   "allocation_id": "daniel-claude20x-shared",
-  "timebox_minutes": 40,
+  "branch": "agent/daniel-bundle/project-bundle",
   "deadline_utc": null,
-  "input_main_sha": "53fee3012b2902ca05bd31766defa515b3044cec",
-  "updated_utc": "2026-09-12T07:35:07.367827+00:00"
+  "dependencies": [],
+  "input_main_sha": "8e7546dfb4721c780036f03c21b14e6002062142",
+  "objective": "Bounded project bundle recovery: bounded adversarial and stale-identity acceptance tests",
+  "owned_paths": [
+    "crates/project-bundle"
+  ],
+  "revision": 3,
+  "schema_version": 1,
+  "state": "assigned",
+  "task_id": "FT-043",
+  "timebox_minutes": 30,
+  "updated_utc": "2026-09-12T09:36:00Z"
 }

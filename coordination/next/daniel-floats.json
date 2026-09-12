@@ -1,10 +1,10 @@
 {
-  "schema_version": 1,
   "agent_id": "daniel-floats",
-  "task_id": "FT-031",
-  "revision": 2,
-  "branch": "agent/daniel-floats/float-layout",
   "assignment_path": "coordination/assignments/FT-031.json",
-  "updated_utc": "2026-09-12T07:35:07.367827+00:00",
-  "instruction": "Continue released Jaysen font-engine heavy work. Parent reported old worker terminal after spend limit. Inspect published WIP 7342245 and request exact dirty patch/base before reconstructing unpublished changes. WIP is not integration-ready. Own crates/font-engine exclusively under this transfer; existing agent name is retained to keep Daniel16 slots."
+  "branch": "agent/daniel-floats/float-layout",
+  "previous_report_sha": "4422cff89998c7fa275ffdbc74e1be2810357691",
+  "revision": 4,
+  "schema_version": 1,
+  "task_id": "FT-031",
+  "updated_utc": "2026-09-12T09:46:48Z"
 }

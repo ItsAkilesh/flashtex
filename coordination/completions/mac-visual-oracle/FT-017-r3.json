@@ -1,0 +1,85 @@
+{
+  "agent_id": "mac-visual-oracle",
+  "archived_utc": "2026-09-12T09:12:36Z",
+  "assignment": {
+    "acceptance": [
+      "Exact zero pixel difference and separate raw PDF byte equality; report mismatches honestly without normalization",
+      "Native preview/export differences are classified",
+      "Narrow corpus scope remains explicit"
+    ],
+    "agent_id": "mac-visual-oracle",
+    "allocation_id": "claude-mac20x-visual-oracle-stage3",
+    "branch": "agent/mac-visual-oracle/reference-raster",
+    "deadline_utc": null,
+    "dependencies": [],
+    "input_main_sha": "59a49ab895df3598b3f5d895b593b4fbd3dd7972",
+    "objective": "Gate exact native preview/export raster equality and separate raw PDF byte identity against pinned reference profile. Diagnostic tolerances or registration never count as acceptance.",
+    "owned_paths": [
+      "tests/visual-corpus/harness",
+      "tests/visual-corpus/evidence"
+    ],
+    "revision": 3,
+    "schema_version": 1,
+    "state": "assigned",
+    "task_id": "FT-017",
+    "timebox_minutes": 45,
+    "updated_utc": "2026-09-12T08:21:08Z"
+  },
+  "report": {
+    "agent_id": "mac-visual-oracle",
+    "allocation_id": "claude-mac20x-visual-oracle-stage3",
+    "assignment_acknowledgements": {
+      "FT-017": {
+        "acknowledged_utc": "2026-09-12T08:32:11Z",
+        "adaptation": "Accepted rev 3 (input 59a49ab; GH-24): split acceptance into (1) FlashTeX self-regression vs pinned prior FlashTeX bytes, (2) candidate vs established engine \u2014 raw unmodified PDF bytes vs pinned MacTeX oracle PDF (oracle-profile.json, pinned render environment SOURCE_DATE_EPOCH=0 FORCE_SOURCE_DATE=1 + LuaTeX trailerid, verified byte-reproducible 108/108) and zero-pixel raster equality per page, (3) native/export parity; plain no-parity statement while comparisons differ. Merged origin/main ddc5bc6.",
+        "main_sha": "5b6911090e2dcbe807c6fb4d9e75cd4f214a2440",
+        "revision": 3
+      }
+    },
+    "branch": "agent/mac-visual-oracle/reference-raster",
+    "capabilities": [
+      "xcode",
+      "tex-oracle"
+    ],
+    "code_revision": "a1e218660bf283ac6711028657bff451d39247cb",
+    "eta_minutes": {
+      "likely": 0,
+      "optimistic": 0,
+      "pessimistic": 0
+    },
+    "machine": "mac-m1max-a",
+    "main_integrated_through": "ddc5bc6944a56815a4bb6b66a9c7fb2dd52ca8b4",
+    "next_action": "Await Commander review of GH-24; re-baseline reference-profile.json to 18 fixtures only if requested (--pin-profile, baseline not pass).",
+    "reviewed_peers": {
+      "origin/agent/mac-render-pipeline/unified": {
+        "adaptation": "Reviewed c000dad (secnumdepth parsing): crates/render-pipeline builds via git archive of crates/; added as pipeline label; finding: matches LM oracle word sequence on 17-apostrophes (|dx| 0.02 pt), display-math boxes weakest region.",
+        "reviewed_utc": "2026-09-12T07:42:12Z",
+        "sha": "c000dadcb637293ac1963decc2387b323b0cefe4"
+      },
+      "origin/main": {
+        "adaptation": "Merged origin/main (ddc5bc6) into the branch: no changes under tests/visual-corpus or coordination/mac-visual-oracle*; rev 3 assignment + GH-24 read and acked.",
+        "reviewed_utc": "2026-09-12T08:32:11Z",
+        "sha": "5b6911090e2dcbe807c6fb4d9e75cd4f214a2440"
+      }
+    },
+    "schema_version": 1,
+    "state": "ready_for_integration",
+    "summary": "FT-017 rev 3 / GH-24 delivered on agent/mac-visual-oracle/reference-raster: report and metrics split into (1) FlashTeX self-regression vs pinned prior FlashTeX bytes, (2) candidate vs established engine \u2014 raw unmodified PDF bytes vs pinned MacTeX 2026 oracle PDF (oracle-profile.json, 108 pairs, pinned render env SOURCE_DATE_EPOCH=0/FORCE_SOURCE_DATE=1 + LuaTeX trailerid, verified byte-reproducible and live 108/108) and zero-pixel raster equality per page, (3) native/export parity; plain statement: parity NOT claimed (0/324 bytes, 0/324 pixels, self-regression 9/54, export=native 0/54 of 54 captures). Evidence tests/visual-corpus/evidence/20260912T083316Z (492 PNGs <= 300 KB, native overlays included). capture_native.sh no longer kills FlashTeXMac by name (a1e2186). selftest.py 25 checks green.",
+    "tool": "Claude Code subagent (parent mac-claude-a)",
+    "updated_utc": "2026-09-12T09:11:59Z",
+    "usage": {
+      "evidence": "Claude Max 20x shared quota on mac-m1max-a; no programmatic readout; this session only",
+      "status": "unknown"
+    }
+  },
+  "report_age_seconds": 36,
+  "report_path": "coordination/agents/mac-visual-oracle.json",
+  "review_required": true,
+  "revision": 3,
+  "schema_version": 1,
+  "stale_completion": false,
+  "state": "reported_ready",
+  "task_id": "FT-017",
+  "worker_branch": "agent/mac-visual-oracle/reference-raster",
+  "worker_report_sha": "10e80be98a59a6c6317cb21348cee07370ebf1b0"
+}

@@ -1,9 +1,13 @@
 //! Worker-thread editor controller. Durable source precedes disposable caches.
+pub mod completed_protocol;
+pub mod experimental_delivery;
 pub mod file_project;
+mod historical;
 use flashtex_document_runtime::{Document as InputDocument, Event, Limits, Request, Session};
 use flashtex_edit_ledger::history::{GroupedEdit, HistoryMove, HistoryResult, HistoryStatus};
 use flashtex_edit_ledger::{AppliedReceipt, AppliedTransaction, Document, PreparedEdit, Store};
 use flashtex_project_index::{ProjectIndex, VersionSnapshot};
+pub use historical::HistoricalPreview;
 use serde_json::Value;
 use std::{collections::BTreeMap, process::Command, time::Instant};
 
@@ -58,6 +62,7 @@ pub enum Update {
 }
 
 pub struct Controller {
+    historical: historical::HistoricalState,
     project_id: String,
     entry_path: String,
     stores: BTreeMap<String, Store>,
@@ -107,6 +112,7 @@ impl Controller {
             return Err("entry store missing".into());
         }
         Ok(Self {
+            historical: historical::HistoricalState::default(),
             project_id,
             entry_path,
             stores: by_path,
@@ -184,7 +190,9 @@ impl Controller {
             .collect();
         self.index
             .replace_membership(expected, &members)
-            .map_err(|e| e.to_string())
+            .map_err(|e| e.to_string())?;
+        self.historical.invalidate();
+        Ok(())
     }
     /// Exclude a source from this session, releasing its lock but never deleting
     /// its ledger or disk file. Opening the project again restores retained sources.
@@ -328,9 +336,14 @@ impl Controller {
             return Err("project closed".into());
         }
         flashtex_document_runtime::validate_layout_capabilities(&capabilities)?;
+        self.historical.invalidate();
         self.layout_capabilities = capabilities;
         self.submitted = None;
         self.compile_current()
+    }
+    /// Latest successfully admitted compiler generation.
+    pub fn compile_revision(&self) -> u64 {
+        self.generation
     }
     pub fn compile_current(&mut self) -> Result<(), String> {
         let started = Instant::now();
@@ -358,22 +371,58 @@ impl Controller {
             });
         }
         let id = format!("preview-{generation}");
-        self.runtime
+        let origin = self.historical.origin(generation);
+        let request = Request {
+            id: id.clone(),
+            project_id: self.project_id.clone(),
+            revision: generation,
+            entry_path: self.entry_path.clone(),
+            documents,
+        };
+        let runtime = self
+            .runtime
             .as_mut()
-            .ok_or("compiler unavailable; source remains saved")?
-            .submit_with_capabilities(
-                Request {
-                    id: id.clone(),
-                    project_id: self.project_id.clone(),
-                    revision: generation,
-                    entry_path: self.entry_path.clone(),
-                    documents,
-                },
+            .ok_or("compiler unavailable; source remains saved")?;
+        if let Some(origin) = origin {
+            runtime.submit_with_snapshot_origin(
+                request,
                 self.layout_capabilities.clone(),
+                origin.clone(),
             )?;
+            self.historical
+                .record(generation, origin, id.clone(), indexed);
+        } else {
+            runtime.submit_with_capabilities(request, self.layout_capabilities.clone())?;
+        }
         self.generation = generation;
         self.submitted = Some((id, self.index.snapshot(), started));
         Ok(())
+    }
+    /// Internal opt-in only; this does not negotiate or activate any native helper messages.
+    pub fn configure_completed_snapshots(&mut self, enabled: bool) -> Result<(), String> {
+        if self.closed {
+            return Err("project closed".into());
+        }
+        self.historical.configure(enabled)?;
+        if let Some(runtime) = self.runtime.as_mut() {
+            runtime.set_completed_snapshots_enabled(false)?;
+            runtime.set_completed_snapshots_enabled(enabled)?;
+        }
+        Ok(())
+    }
+    pub fn take_completed_snapshot(&mut self) -> Option<HistoricalPreview> {
+        self.historical.take()
+    }
+    /// Call immediately before historical display on the controller's serialized owner.
+    /// A true result grants display only, never current-source actions or export authority.
+    pub fn claim_historical_display(&mut self, preview: &HistoricalPreview) -> bool {
+        !self.closed
+            && self
+                .historical
+                .claim(preview, &self.project_id, self.generation)
+    }
+    pub fn historical_binding_count(&self) -> usize {
+        self.historical.binding_count()
     }
     /// Recheck immediately before applying a retained result on the UI thread.
     /// Dispatching a preview event is not permission to paint it after a newer edit.
@@ -390,6 +439,12 @@ impl Controller {
             return Vec::new();
         };
         let events = runtime.poll();
+        if let Some(completed) = runtime.take_completed_snapshot() {
+            self.historical.consume(completed);
+        }
+        for event in &events {
+            self.historical.retire(event);
+        }
         if events.is_empty() {
             return Vec::new();
         }
@@ -454,7 +509,8 @@ impl Controller {
         }
         let expected = self.index.snapshot();
         let documents = self.membership_documents(None)?;
-        let runtime = Session::spawn_command(command, limits)?;
+        let mut runtime = Session::spawn_command(command, limits)?;
+        runtime.set_completed_snapshots_enabled(self.historical.enabled)?;
         self.replace_membership(&expected, &documents)?;
         self.runtime = Some(runtime);
         self.submitted = None;
@@ -464,6 +520,7 @@ impl Controller {
         if let Some(runtime) = self.runtime.as_mut() {
             runtime.close_project(&self.project_id)?;
         }
+        self.historical.invalidate();
         self.closed = true;
         self.submitted = None;
         Ok(())

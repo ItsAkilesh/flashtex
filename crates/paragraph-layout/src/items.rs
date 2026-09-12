@@ -43,9 +43,12 @@ pub struct GlyphRun {
     pub glyphs: Vec<Glyph>,
     /// Sum of `advance + kern` over the glyphs.
     pub width: f64,
-    /// Extent above the baseline (font ascender scaled to `size`).
+    /// Extent above the baseline: the tallest glyph box in the run
+    /// ([`FontMetricsSource::glyph_height`], scaled to `size`), which is the
+    /// font ascender for a metrics source without per-glyph boxes.
     pub height: f64,
-    /// Extent below the baseline, positive (font descender scaled to `size`).
+    /// Extent below the baseline, positive: the deepest glyph box in the run
+    /// ([`FontMetricsSource::glyph_depth`], scaled to `size`).
     pub depth: f64,
     /// Source byte range covered by the whole run.
     pub source: Range<usize>,
@@ -448,6 +451,9 @@ pub fn shape_run(
     }
     let mut glyphs = Vec::with_capacity(chars.len());
     let mut width = 0.0;
+    // TeX box rule: a run is as tall/deep as its tallest/deepest glyph.
+    let mut height: f64 = 0.0;
+    let mut depth: f64 = 0.0;
     for (idx, (ch, cluster)) in chars.iter().enumerate() {
         let advance = font.advance(*ch) * scale;
         let kern = match chars.get(idx + 1) {
@@ -455,6 +461,8 @@ pub fn shape_run(
             None => 0.0,
         };
         width += advance + kern;
+        height = height.max(font.glyph_height(*ch) * scale);
+        depth = depth.max(font.glyph_depth(*ch) * scale);
         glyphs.push(Glyph {
             gid: font.glyph_id(*ch),
             advance,
@@ -467,8 +475,8 @@ pub fn shape_run(
         size,
         glyphs,
         width,
-        height: font.ascender() * scale,
-        depth: -font.descender() * scale,
+        height,
+        depth,
         source: source_start..source_start + text.len(),
     }
 }
@@ -491,6 +499,75 @@ mod tests {
         assert_eq!(run.glyphs[0].cluster, 10..12);
         assert_eq!(run.width, 556.0);
         assert_eq!(run.glyphs[0].gid, 0xFB01);
+    }
+
+    #[test]
+    fn shape_run_height_depth_default_to_ascender_descender() {
+        // Core14Times has no per-glyph boxes, so glyph_height/glyph_depth fall
+        // back to the trait defaults: every run is exactly the font's
+        // ascender/descender scaled to size, regardless of which glyphs it
+        // holds (Times-Roman: ascender 683, descender -217, both in 1/1000 em
+        // so size 1000 leaves them unscaled).
+        let run = shape_run(&Core14Times::ROMAN, 1000.0, "Ay,", 0);
+        assert_eq!(run.height, 683.0);
+        assert_eq!(run.depth, 217.0);
+    }
+
+    /// A metrics source with real per-glyph boxes (TFM-style `charht`/`chardp`)
+    /// for a couple of test characters, to exercise the non-default path of
+    /// `glyph_height`/`glyph_depth`. Everything else defers to `Core14Times`.
+    struct BoxFont;
+
+    impl FontMetricsSource for BoxFont {
+        fn font_id(&self) -> FontId {
+            Core14Times::ROMAN.font_id()
+        }
+        fn units_per_em(&self) -> f64 {
+            Core14Times::ROMAN.units_per_em()
+        }
+        fn advance(&self, ch: char) -> f64 {
+            Core14Times::ROMAN.advance(ch)
+        }
+        fn kern(&self, left: char, right: char) -> f64 {
+            Core14Times::ROMAN.kern(left, right)
+        }
+        fn glyph_id(&self, ch: char) -> u32 {
+            Core14Times::ROMAN.glyph_id(ch)
+        }
+        fn ascender(&self) -> f64 {
+            Core14Times::ROMAN.ascender()
+        }
+        fn descender(&self) -> f64 {
+            Core14Times::ROMAN.descender()
+        }
+        fn line_gap(&self) -> f64 {
+            0.0
+        }
+        fn space(&self) -> f64 {
+            Core14Times::ROMAN.space()
+        }
+        // 'b' is a tall ascender box (above the font ascender); 'y' is a deep
+        // descender box (below the font descender). Every other character
+        // keeps the trait default (ascender / -descender).
+        fn glyph_height(&self, ch: char) -> f64 {
+            if ch == 'b' { 900.0 } else { self.ascender() }
+        }
+        fn glyph_depth(&self, ch: char) -> f64 {
+            if ch == 'y' { 500.0 } else { -self.descender() }
+        }
+    }
+
+    #[test]
+    fn shape_run_height_depth_track_the_tallest_deepest_glyph() {
+        // height = max(glyph_height('a')=683 default, 'b'=900, 'y'=683 default) = 900.
+        // depth = max(glyph_depth('a')=217 default, 'b'=217 default, 'y'=500) = 500.
+        let run = shape_run(&BoxFont, 1000.0, "aby", 0);
+        assert_eq!(run.height, 900.0);
+        assert_eq!(run.depth, 500.0);
+        // A run without the tall/deep glyphs is back to the font defaults.
+        let run = shape_run(&BoxFont, 1000.0, "aa", 0);
+        assert_eq!(run.height, 683.0);
+        assert_eq!(run.depth, 217.0);
     }
 
     #[test]

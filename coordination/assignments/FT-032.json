@@ -1,15 +1,4 @@
 {
-  "schema_version": 1,
-  "task_id": "FT-032",
-  "agent_id": "daniel-footnotes",
-  "branch": "agent/daniel-footnotes/footnote-layout",
-  "revision": 2,
-  "state": "assigned",
-  "objective": "Continue released Jaysen math-layout heavy work. Parent reported old worker terminal after spend limit. Inspect published WIP ac3bf0b and request exact dirty patch/base before reconstructing unpublished changes. WIP is not integration-ready. Own crates/math-layout exclusively under this transfer; existing agent name is retained to keep Daniel16 slots.",
-  "owned_paths": [
-    "crates/math-layout"
-  ],
-  "dependencies": [],
   "acceptance": [
     "Meaningful tests and strict Rust lint pass with bounded malformed/Unicode inputs",
     "Preserve exact source/revision and resource identities; no implicit approximation or parity claim",
@@ -17,9 +6,20 @@
     "Register Daniel machine and exact assignment ACK/session before working",
     "Preserve old WIP and test before publication; no automatic return of paths at cooldown end"
   ],
+  "agent_id": "daniel-footnotes",
   "allocation_id": "daniel-claude20x-shared",
-  "timebox_minutes": 40,
+  "branch": "agent/daniel-footnotes/footnote-layout",
   "deadline_utc": null,
-  "input_main_sha": "53fee3012b2902ca05bd31766defa515b3044cec",
-  "updated_utc": "2026-09-12T07:35:07.367827+00:00"
+  "dependencies": [],
+  "input_main_sha": "e4e0c69edba4d22206a498db9ad94ef45f75e7cd",
+  "objective": "Math layout consumer regressions: adversarial bounds and exact identity regressions",
+  "owned_paths": [
+    "crates/math-layout"
+  ],
+  "revision": 4,
+  "schema_version": 1,
+  "state": "assigned",
+  "task_id": "FT-032",
+  "timebox_minutes": 30,
+  "updated_utc": "2026-09-12T09:56:20Z"
 }

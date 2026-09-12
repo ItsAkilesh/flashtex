@@ -9,16 +9,16 @@
   "branch": "agent/mac-contract-review/edit-ledger",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "47645249b66f7f5814f0ddd576971ca7a3eec7b7",
-  "objective": "Finish preserved atomic checkpoint rotation and interrupted-write recovery with bounded retention and explicit import",
+  "input_main_sha": "5b6911090e2dcbe807c6fb4d9e75cd4f214a2440",
+  "objective": "Atomic checkpoint rotation and interrupted-write recovery",
   "owned_paths": [
     "crates/edit-ledger"
   ],
-  "revision": 4,
+  "revision": 6,
   "schema_version": 1,
-  "state": "assigned",
+  "state": "integrated",
   "task_id": "FT-026",
   "timebox_minutes": 30,
-  "updated_utc": "2026-09-12T08:18:56.142617+00:00",
-  "pause_reason": "Local active-agent cap reduced from7to4; preserve work, no automatic revival/replacement/remote reallocation."
+  "updated_utc": "2026-09-12T08:33:09Z",
+  "integration_evidence": "Integrated tested product checkpoint bded7bd; current user staffing rule leaves this engineer stopped with queue paused."
 }

@@ -14,9 +14,14 @@ public enum SourceMapping {
     }
 
     public static func rebase(start: Int, end: Int, from old: String, to new: String) -> Outcome {
-        if old == new { return .unchanged }
-        let region = changedRegion(from: old, to: new)
-        let delta = new.utf8.count - old.utf8.count
+        if old.sameBytes(as: new) { return .unchanged }
+        return rebase(start: start, end: end, across: changedRegion(from: old, to: new))
+    }
+
+    /// Rebases across an already computed region (callers mapping many ranges
+    /// across the same edit compute `changedRegion` once).
+    public static func rebase(start: Int, end: Int, across region: ChangedRegion) -> Outcome {
+        let delta = region.newEndByte - region.oldEndByte
         if end <= region.startByte { return .rebased(start: start, end: end) }
         if start >= region.oldEndByte { return .rebased(start: start + delta, end: end + delta) }
         return .overlapsEdit
@@ -39,7 +44,11 @@ public enum SourceMapping {
     }
 
     public static func changedRegion(from old: String, to new: String) -> ChangedRegion {
-        let o = Array(old.utf8), n = Array(new.utf8)
+        var oldCopy = old, newCopy = new
+        return oldCopy.withUTF8 { o in newCopy.withUTF8 { n in changedRegion(o, n) } }
+    }
+
+    private static func changedRegion(_ o: UnsafeBufferPointer<UInt8>, _ n: UnsafeBufferPointer<UInt8>) -> ChangedRegion {
         func isContinuation(_ b: UInt8) -> Bool { b & 0xC0 == 0x80 }
         var prefix = 0
         while prefix < o.count, prefix < n.count, o[prefix] == n[prefix] { prefix += 1 }

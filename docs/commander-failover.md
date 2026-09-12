@@ -14,13 +14,13 @@ publisher-stop or non-force authority gate. Before claim rerun with fresh eviden
 name the selected machine’s actual unique orchestrator ID. The former Jaysen standby
 remains read-only unless selected. No new model calls are needed for polling.
 
-# Jaysen Opus standby Commander
+## Standby scope
 
-The user explicitly requested one NEW Opus standby on Jaysen's Mac. This is the
-only added staffing exception. Linux stays at four active agents; the three paused
-agents stay paused. Astra remains Commander until verified termination and a
-serialized handoff. The standby must not run a shadow dispatcher or mutate main.
-Use only the already-authorized Jaysen Max20x allowance, without overages/purchases.
+The existing Jaysen standby is a candidate, not the predetermined successor.
+Select the eligible machine using fresh comparable evidence as described above.
+Use only that machine's existing authorized billing route; no purchases or
+unapproved overages. Follow the latest staffing override in AGENTS.md and
+coordination/control.json. A standby must not run a shadow dispatcher or mutate main.
 
 ## Current operational boundary
 
@@ -58,7 +58,7 @@ publisher, journal reconciliation and serialized authority claim in an isolated
 fixture. Do not weaken a gate merely to make the standby report green. Quota text,
 heartbeat age, an idle turn and an inaccessible Linux machine are insufficient.
 
-## Revival prompt for orchestrator-jaysen-opus
+## Copyable revival prompt for the selected successor
 
 > You are a candidate standby; the fresh resource selector chooses the successor. Remain read-only while
 > orchestrator-astra is active. Fetch main and read AGENTS.md, ORCHESTRATION.md,
@@ -74,9 +74,11 @@ heartbeat age, an idle turn and an inaccessible Linux machine are insufficient.
 > Positive evidence must come from the actual host/runtime, not a heartbeat timer.
 >
 > After verified quiescence, prepare ONE authority-only claim from exact fetched
-> main, naming the selected actual orchestrator ID and the evidence SHA/identity. Use truthful
-> local primary author jay3332 and actual executor trailers. Push non-force. If
-> main changes, discard the unpublished claim and rebuild after rereading authority;
+> main, naming the selected actual orchestrator ID and the evidence SHA/identity. Use the executing
+> machine’s truthful primary author, authenticated local coauthor and actual
+> executor trailers; preserve Jaysen’s primary-author exception when applicable.
+> Push non-force. If main changes or publication is uncertain, stop and reconcile
+> the claim journal and current authority; never automatically retry;
 > if another successor already claimed, remain quiesced. Reread your successful
 > claim before every global mutation. Resume global queues, integration, resource
 > accounting and 30-second deterministic polling under your explicit authority.
@@ -123,3 +125,11 @@ and resource evidence. A script being published does not prove that remote hooku
 or a quota-to-terminal host adapter works. After successful claim, the selected
 parent invokes its already-authorized orchestrator session and resumes queues;
 first reread authority. Re-pin the new host witness before future succession.
+
+## Local publication serialization
+
+Commander main/control publishers must hold `dispatch_loop.publication_lock(root)`
+from fresh fetch/authority check through the non-force push. It resolves Git common
+state across linked worktrees; dispatcher scans hold the same lock. Remote races
+still fail closed and require journal reconciliation. The worktree dispatcher lock
+continues to reject duplicate dispatchers. This lock is not takeover authority.

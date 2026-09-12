@@ -1,5 +1,31 @@
 # Project source index
 
+`plan_citation_rename(snapshot, old_name, new_name)` proposes exact citation-key
+edits across one declared bibliography definition and indexed cite uses. It requires
+one well-formed bibliography record; duplicate definitions (including bibitem
+collisions), malformed/duplicate-field records, and bibitem-only definitions fail.
+Missing field macros do not invalidate the literal key. New names must fit the
+shared literal key syntax and 4096-byte bound; collisions include unresolved cite
+uses. A same-name request produces no edits after validating the definition.
+
+Only indexed key spans change: multi-key commas, optional arguments, comments,
+known verbatim environments and key-looking metadata text remain intact.
+`plan_citation_rename_at` requires a complete current definition/reference span.
+`validate_citation_rename_plan` regenerates the full plan, rejecting stale snapshots,
+tampered expected text, missing/reordered/overlapping edits and changed revisions.
+Plans are bounded to 100,000 edits and 8 MiB of aggregate edit text. Caller approval
+and transactional application remain mandatory; no source is mutated here.
+This is lexical navigation over explicitly declared project files, not TeX/BibTeX
+semantic renaming, bibliography inclusion inference or macro expansion.
+
+`serialize_citation_rename_plan(plan, max_bytes)` reuses the bounded snapshot/edit
+proposal envelope, with schema `flashtex.citation-rename-plan.v1` and explicit kind
+`citation_key_rename`. Its `rename` object identifies old/new names; it does not
+claim an exhaustive literal search. The self-contained schema is
+`citation-rename-plan.schema.json`; `cargo run --offline --manifest-path
+crates/project-index/Cargo.toml --example citation_rename_wire` prints a native
+consumer example. Existing literal replacement wire format is unchanged.
+
 `search_literal(snapshot, &SearchRequest, cancelled)` searches raw document text,
 including comments and verbatim, independently of lexical symbol/metadata parsing.
 Matching is case-sensitive, nonoverlapping, with no Unicode normalization or regex.
@@ -15,6 +41,42 @@ asserts absence of later matches. A reached match limit conservatively reports
 are checked initially and before every comparison and must not block. Callback
 runtime, snapshot/path validation, allocation, and document selection are outside
 the comparison budget; this is not a wall-clock deadline guarantee.
+
+`plan_literal_replacement(&complete_search, replacement)` creates reviewable
+multi-document edits only after regenerating the exact complete match set against
+its full project snapshot. Partial/cancelled, stale, omitted, reordered, or altered
+results fail. `validate_literal_replacement_plan(&plan)` regenerates that plan and
+checks every expected-text, revision, range, replacement and edit ordering guard.
+Aggregate expected/replacement text is capped at 8 MiB. Empty replacement deletes
+matches; empty match sets produce empty plans. The caller must explicitly approve
+and transactionally apply a validated plan, in reverse byte order within each file,
+against the same revisions. This library never applies edits. Validation establishes
+consistency, not user approval or authentication of the caller's intended query.
+
+`serialize_literal_replacement_plan(&plan, max_bytes)` validates the plan and
+returns standalone UTF8 JSON conforming to `replacement-plan.schema.json`.
+Output never exceeds the caller's byte limit or the 32 MiB hard ceiling; failure
+returns `SerializationLimit` with no partial output. Decimal strings encode all
+revisions, generation, offsets, and work/match counts exactly; native consumers
+must parse them with checked integer conversion. Offsets are half-open UTF8 byte
+positions, not UTF16 indices. Snapshot documents, selected paths, and edits have
+deterministic order. The full project snapshot is included even for selected-file
+searches. JSON escapes control characters, quotes, and backslashes, preserving
+other Unicode characters without normalization.
+
+The schema describes wire structure only. A consumer must independently enforce
+integer ranges, byte limits, project identity, the complete snapshot, exact expected
+UTF8 slices, nonoverlap, consistent replacements, and user approval before applying.
+Schema conformance alone proves neither source consistency nor user authorization.
+There is no deserialization/application endpoint in this crate. For a standalone
+native-consumable example, run:
+
+```sh
+cargo run --offline --manifest-path crates/project-index/Cargo.toml --example replacement_wire
+```
+
+The example prints a deterministic proposal with Unicode text, escaped controls,
+and a maximum u64 document revision; it does not write or modify documents.
 
 `citation_metadata(snapshot, key)` inspects bounded bibliography values locally.
 Records retain entry/key, field-name/expression, and atom UTF8 source spans.

@@ -1,0 +1,76 @@
+{
+  "agent_id": "daniel-links",
+  "archived_utc": "2026-09-12T09:36:00Z",
+  "assignment": {
+    "acceptance": [
+      "Meaningful tests and strict Rust lint pass with bounded malformed/Unicode inputs",
+      "Preserve exact source/revision and resource identities; no implicit approximation or parity claim",
+      "Do not edit peer compiler/native/layout files; publish typed adapter contract and exact tested SHA"
+    ],
+    "agent_id": "daniel-links",
+    "allocation_id": "daniel-claude20x-shared",
+    "branch": "agent/daniel-links/link-annotations",
+    "deadline_utc": null,
+    "dependencies": [],
+    "input_main_sha": "83f65e08ae60b312609f49ec0a2b6cae25c8e353",
+    "objective": "Bind safe link annotations to exact source revision/hash/ranges and exportable page targets; preserve URI scheme allowlist and typed unresolved references.",
+    "owned_paths": [
+      "crates/link-annotations"
+    ],
+    "revision": 2,
+    "schema_version": 1,
+    "state": "assigned",
+    "task_id": "FT-037",
+    "timebox_minutes": 40,
+    "updated_utc": "2026-09-12T09:08:31.372212+00:00"
+  },
+  "report": {
+    "agent_id": "daniel-links",
+    "allocation_id": "daniel-claude20x-shared",
+    "assignment_acknowledgements": {
+      "FT-037": {
+        "acknowledged_utc": "2026-09-12T09:26:09Z",
+        "adaptation": "Accepted FT-037 rev 2 objective as scoped: bound LinkAnnotation to an exact SourceIdentity (revision id + content hash + UTF-8-safe byte range) with explicit staleness detection, added a pure page::PageTarget data model for PDF export, kept InternalTarget resolution a typed error path, and preserved the rev-1 URI allowlist unmodified. No workspace root Cargo.toml touched; no other crate edited.",
+        "main_sha": "e5901797e8a7ebdd8d714ecdee6793e1097515a9",
+        "revision": 2
+      }
+    },
+    "branch": "agent/daniel-links/link-annotations",
+    "capabilities": [
+      "rust",
+      "link-annotations",
+      "pdf-export-data-model"
+    ],
+    "code_revision": "193b363c1d1f48d27380575d50174a5a4e87996e",
+    "eta_minutes": {
+      "likely": 0,
+      "optimistic": 0,
+      "pessimistic": 0
+    },
+    "machine": "mac-m5pro-dq222",
+    "main_integrated_through": "e5901797e8a7ebdd8d714ecdee6793e1097515a9",
+    "next_action": "Await review/integration assignment; no consumer crate depends on this one yet, so no breaking-change coordination is needed. Open question carried from rev 1: whether tel: should be added to the URI allowlist.",
+    "reviewed_peers": {
+      "origin/main": "e5901797e8a7ebdd8d714ecdee6793e1097515a9"
+    },
+    "schema_version": 1,
+    "state": "ready_for_integration",
+    "summary": "crates/link-annotations rev 2: preserved the rev-1 URI allowlist (http/https/mailto only, mixed-case-bypass test, length-check-before-parse) byte-for-byte untouched (uri.rs has zero diff). Added source::SourceIdentity binding each annotation to an exact revision id + FNV-1a content hash + byte range, with check_fresh() returning typed Staleness (RevisionChanged/ContentChanged/RangeInvalid) when checked against a different revision or edited source; byte ranges are validated as UTF-8 char-boundary-safe against real source text at bind time and re-check time (tested with CJK multi-byte source). Added page::PageTarget (PageIndex + Rect), a pure data model with no I/O; LabelSet now maps each label to its PageTarget and a resolved InternalTarget carries it. Unresolved labels remain a typed TargetError::Unresolved, never a dangling destination. LinkAnnotation now carries a SourceIdentity instead of a bare SourceSpan.",
+    "tool": "Claude Code on Claude Max 20x",
+    "updated_utc": "2026-09-12T09:26:09Z",
+    "usage": {
+      "evidence": "Shared Claude Max 20x quota (allocation daniel-claude20x-shared); no purchases or overages",
+      "status": "unknown"
+    }
+  },
+  "report_age_seconds": 591,
+  "report_path": "coordination/agents/daniel-links.json",
+  "review_required": true,
+  "revision": 2,
+  "schema_version": 1,
+  "stale_completion": false,
+  "state": "reported_ready",
+  "task_id": "FT-037",
+  "worker_branch": "agent/daniel-links/link-annotations",
+  "worker_report_sha": "5edebe64798dd1f9809bf4befede3e64497638a2"
+}

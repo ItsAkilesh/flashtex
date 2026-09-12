@@ -127,7 +127,9 @@ fn check_entry_common(entry: &ManifestEntry) -> Result<()> {
             "invalid declared font metrics/name".into(),
         ));
     }
-    let l = &entry.license;
+    check_license_metadata(&entry.license)
+}
+fn check_license_metadata(l: &LicenseMetadata) -> Result<()> {
     if [&l.identifier, &l.copyright, &l.source]
         .iter()
         .any(|s| s.trim().is_empty() || s.len() > 8192)
@@ -543,6 +545,7 @@ mod path;
 pub use path::{PathCommand, QuadraticPath};
 
 pub mod tfm;
+pub mod tfm_run;
 
 pub mod encoding;
 
@@ -557,3 +560,17 @@ pub mod engine_adapter;
 
 /// Explicit project-scoped font registry using the rooted file layer.
 pub mod registry;
+
+pub mod math_adapter;
+
+pub mod math_variants;
+
+pub mod math_fit;
+
+pub mod math_kern;
+
+pub mod math_device;
+
+pub mod math_cache;
+
+pub mod enc_file;

@@ -464,3 +464,370 @@ and full-font/license hashes. Synthetic and pinned mixed STIX/Liberation tests
 verify stale-generation rejection and unchanged held CFF geometry after project
 font bytes change. No fonts are copied into the repository; installed-font tests
 use disposable temporary project directories.
+
+Registry transport version2 adds `generation` and per-entry `cff_table`:
+`{ sha256, offset, byte_length }` for CFF, `null` for TrueType. `export_manifest()`
+returns typed data; `export_json(max_bytes)` produces deterministic compact JSON
+through a bounded writer (hard1MiB cap). Export includes declarations and identities,
+never font/license bytes. Callers may save through the existing rooted atomic-save
+API; serialization itself has no filesystem side effects. Existing schema1 inputs
+remain accepted. Version2 import uses the same rooted load and resource validators,
+then checks the claimed generation and exact selected CFF table against those
+verified bytes. Unknown fields and duplicate JSON keys are rejected by direct
+strict-struct deserialization, without a map intermediary that overwrites keys.
+
+`enumerate(expected_generation, MetadataFilter { family_prefix, weight, style },
+offset, limit)` returns a serializable `MetadataPage` with generation, total matches,
+next offset and typed export entries including CFF table identity. It scans only
+the bounded declared registry: exact case-sensitive prefix/style/weight filtering,
+1..64 results per page, offset<=128, prefix<=256bytes. Stale generation is refused
+before enumeration. No filesystem discovery or implicit fallback occurs. Roundtrip
+and pagination tests cover both synthetic resources and the pinned mixed licensed
+STIX/Liberation registry; no native wire negotiation or visual parity is implied.
+
+TFM run interpretation now honors implicit left/right boundaries from the first
+and last lig/kern marker records. The authoritative format rules are in TeX's
+TFM specification, `tex.web` sections on the lig/kern array:
+https://raw.githubusercontent.com/TeX-Live/texlive-source/trunk/texk/web2c/tex.web
+The original interpreter uses distinct invisible boundary sentinels; these are
+never emitted as glyphs or cast to Unicode/GIDs. Left-boundary programs and
+right-boundary matching support exact ligature retention/advance and signed kerns.
+A real encoded glyph matching the boundary byte remains a real glyph. Replacement
+intervals cover participating real input; boundary sentinels contribute only
+zero-length start/end intervals. Missing input glyphs are rejected.
+
+`apply_ligatures_kerns_with_boundaries(input, BoundaryOptions { left, right })`
+allows explicit suppression; the existing method enables both. Both
+`BoundTfmFont` and `BoundCffTfmFont` expose `map_run_with_boundaries` and preserve
+explicit encoding mappings, missing-map errors, metrics and input intervals.
+Empty runs produce nothing.4096 input bytes,8192 working items (including
+sentinels), and65536 combined run/program steps bound malformed cycles and scans.
+Cache consumers must bind TFM hash, explicit encoding/font identity, boundary
+options, input bytes and implementation version. No TeX token scanning, automatic
+font-run segmentation, hyphenation/discretionary reconstruction, or scaled-point
+rounding is added.
+
+Boundary-specific fixtures are hand-checked synthetic programs for left/right
+kerns and ligatures, retention, suppression, cycles, invalid addresses and encoded
+mapping. The existing licensed peer `ec-lmr10.tfm` (SHA cd13479f463b9a575d053dd7bf0884daa46bfdeffe4b7f537c193861652ac9e5)
+provides real fi->slot28 and AV kern(-116509 fix_word) regression evidence, but it
+has no boundary marker/program. No real-font boundary oracle is claimed.
+
+`registry::vf_project::ResolvedVfProject` resolves explicit VF dependencies through
+the same rooted reader and immutable project font registry. No published real VF
+fixture was available; the only special fixture contains `ps`, so no special
+semantics were guessed. All specials remain explicit unsupported expansion results.
+
+Dependency schema1 binds `registry_generation`, a root node ID, and physical or
+virtual nodes. Each TFM/VF asset declares path/full SHA/license provenance and
+license hash; physical nodes declare a registry StyleBinding and explicit encoding
+manifest. Virtual nodes map every local font ID to an explicit target node ID.
+There is no path/name/font fallback. Load verifies bytes/licenses, TFM/VF headers,
+local checksum/design size, complete local-ID bindings, unique resource identities,
+missing nodes and dependency cycles before returning an immutable resolved project.
+
+Limits reuse RegistryLimits (128nodes,257reads,1MiB manifest,256MiB total maximum),
+plus131068bytes per TFM,16MiB per VF and32 graph-depth limit. `expand(code,
+registry_generation)` refuses stale context and builds borrowed bindings for the
+existing ResourceGraph exact expansion/source-chain implementation. It does not
+reimplement packet execution. Physical endpoints explicitly select TrueType BoundTfmFont or CFF BoundCffTfmFont
+through separate node variants; no backend inference occurs.
+
+`generation`, `manifest`, `loaded_bytes` and retained license texts provide
+recoverable provenance. Node/local-ID ordering is normalized before generation
+hashing; explicit encoding declarations are preserved. Caller caches must bind
+project instance, registry/dependency generations, character and implementation
+profile. Synthetic rooted-project tests cover originalGID/source-chain expansion,
+missing/duplicate/cyclic dependencies, changed bytes, missing licenses, symlinks,
+read budgets, retained snapshots and explicit unknown-special rejection. These do
+not establish real VF special or visual reference equivalence.
+
+
+VF graphs now accept `Resource::CffPhysical(&BoundCffTfmFont)` with a distinct
+`ResourceKey::CffPhysical` binding full-font SHA, CFF SHA, TFM SHA, canonical encoding
+SHA and face. Existing TrueType keys/API stay intact. Physical mapping reuses the
+bound CFF encoding and exact TFM dimensions; missing mappings and `.notdef` fail.
+Nested packets preserve original GIDs, exact scaling and complete source chains.
+Rooted dependency schema1 adds explicit `kind: "cff_physical"` nodes with a CFF
+encoding manifest and registry StyleBinding. Assets retain the same license/read
+bounds; a wrong backend/hash cannot silently resolve to another resource.
+
+99tests and strictclippy cover flat/nested CFF equivalence, mixed TrueType/CFF
+packets, explicit missing/.notdef errors and rooted CFF binding mismatch. Specials
+remain unsupported. Renderer adoption requires new exhaustive-match handling:
+read-only compile of rendering-core5c5e3f89dd51cc0c1517b915b95c9a65a654bd89 against
+this candidate identified `tex_adapter.rs:602`, `graph_cache.rs:149` and
+`mixed.rs:380`. These consumer files were not edited; no integrated renderer
+compatibility claim is made until its owner publishes that adaptation.
+
+### Registry-bound MATH
+
+`math_adapter::BoundMathFont::from_registry` reuses font-engine's existing MATH
+parser, binding immutable registry generation, explicit style, full declaration
+(including project font path and license), original engine/full-font/face identity,
+and MATH table SHA/length. `constants` preserves all 56 exact integer fields;
+`glyphs` accepts at most 256 original GIDs and rejects out-of-range IDs.
+`MathPolicy::UnhintedDesignUnits` is mandatory. Device adjustments (including their
+validation), variants, math kerns and extended-shape coverage remain typed
+unsupported capabilities. Missing accent data stays `None`; italic absence uses
+the peer's zero default. No font selection fallback or new MATH parser is added.
+
+`scale_design_units` takes a positive exact rational size and returns exact lengths;
+`percent_ratio` treats percentage constants as dimensionless. Neither performs
+hinting, device rounding, TeX layout, or proves visual/PDF-byte parity.
+
+The opt-in `math_adapter` integration test pins installed STIXTwoMath-Regular.otf
+SHA `3a5f3f26f40d5698b3c62dd085d48d6663696a3f80825aab8b553d5097518e8c`
+and its OFL license. Observed MATH table SHA
+`0af4bf095e9d3a968b460b83d589b5c0a6dc58762fe1f3cb3dece03fd5344c4a`,
+27408 bytes: all 6760 GIDs agree exactly with the reused peer parser. This is
+adapter-equivalence evidence, not an independent layout oracle. Synthetic tests
+cover missing MATH, signed/unsigned metric boundaries, lookup bounds, stale
+registry generations, and exact scaling/overflow.
+
+`BoundMathFont::variants()` separately parses the previously unsupported variants
+subtable and returns `BoundMathVariants` retaining its complete parent identity.
+The constants-only `require(Variants)` remains unsupported; use this explicit
+fallible extension. `MathVariants` preserves original GIDs, variant advances,
+assembly italic correction, connector lengths, extender flags and direction.
+Limits: 4 MiB table, 4096 constructions, 65536 aggregate variant/part records.
+Coverage formats 1/2 are checked locally because the peer helper is private.
+
+`select` returns the first ready-made variant meeting a requested integer advance,
+`AssemblyRequired`, or `Unavailable`. `assemble` accepts caller-selected equal
+extender repetitions and exact per-join overlaps; it enforces connector bounds
+and returns exact design-unit positions and original part/instance provenance.
+It caps repetitions at1024 and output at4096 parts. This is not automatic target
+fitting or baseline placement. Device corrections remain explicitly unevaluated;
+nonzero device offsets are range-checked, but device table bodies are not parsed.
+Pinned STIX Math replay observes165 constructions,633 variants and69 assemblies.
+Connector lengths are preserved even when longer than advance: these are distinct
+font measurements. Semantics reference:
+https://learn.microsoft.com/en-us/typography/opentype/spec/math
+
+`BoundMathVariants::fit` adds exact target fitting with the explicit strategy
+`EqualExtendersProportionalConnectorFlexibility`. It chooses a sufficient
+ready-made variant first. Otherwise it tries equal extender counts in increasing
+order, computes each valid extent interval, and distributes overlap reduction
+proportionally to available connector flexibility using checked rationals.
+A successful assembly reaches the target exactly; a variant can exceed it.
+No overlap exceeds either connector or falls below the font's minimum overlap.
+Caller limits may only tighten the1024 repetition/4096 part ceilings. Outcomes
+separate invalid inputs, absent construction, unrepresentable size, exhausted
+budget and arithmetic failure. Repetition budgets do not imply a font is invalid.
+
+Bound results retain the full MATH resource identity, direction, requested target,
+base GID, original part indices and repeat-instance provenance. Source-document
+selection and vertical baseline placement remain the consumer's responsibility.
+No hinting or general TeX delimiter parity is claimed. Pinned STIXMath at5000.5
+units gives66 accepted/3 refused assembly-bearing constructions (horizontal
+GIDs1510,1514,1532 exhaust this strategy's budget). At5000 units, parentheses,
+brackets and integral GIDs1064–1067/1698 all fit. Synthetic tests hand-check exact
+fractional and unequal connector overlaps, extent boundaries, gaps, impossible
+joins, output/repetition limits and arithmetic overflow.
+
+`BoundMathFont::kerns()` independently decodes MathKernInfo and returns immutable
+`BoundMathKern` with the same full resource identity. The original constants/glyph
+consumer is unchanged. Original-GID/corner queries use exact rational heights and
+binary upper-bound lookup: equality at a correction height selects the following
+kern interval. An absent glyph/corner entry returns the specified zero correction;
+out-of-font GIDs fail. Values remain signed design units. Parsing caps coverage at
+4096 glyphs and aggregate correction/kern records at65536, with strict increasing
+heights and bounded table/coverage/device offsets. Device adjustment bodies remain
+explicitly unevaluated and unvalidated; presence is exposed with each value.
+
+Pinned STIX Math has219 corner tables and217 correction heights, with no device
+records. Replay tests every exact boundary and half a unit below it. Synthetic
+fixtures cover negative values, missing corners, truncated prefixes, invalid GIDs,
+counts/offsets/heights, device-offset bounds and rational comparison overflow.
+This establishes data/lookup behavior, not a script-placement or visual oracle.
+
+`math_device::DeviceTable` decodes OpenType packed signed2/4/8-bit pixel deltas,
+validating the entire declared payload and zero padding before answering a query.
+VariationIndex0x8000 and unknown formats return typed unsupported errors, including
+when the requested ppem would otherwise lie outside the range. `DeviceContext`
+requires an explicit positive integer ppem. Out-of-range valid Device data gives
+zero as specified. No implicit point-size/axis/pixel conversion is performed.
+
+`BoundMathFont::constant_device(ConstantDeviceRecord,DeviceContext)` exposes this
+additively for the51 MathValueRecords in constants, reusing the peer's constants
+parser and original raw table selection. A result retains parent identity, record
+index, context, pixel delta and exact referenced device-table hash/offset. The
+unhinted API remains unchanged; other MATH value families are not automatically
+device-adjusted. Synthetic tests establish signed packing, word boundaries,
+truncation, padding, parent-relative offsets and variation rejection. Installed
+STIX/Noto Math constant inventory observes no positive device records; exact
+font/table/license hashes are in `fixtures/math-device-inventory.json`.
+OpenType contract: https://learn.microsoft.com/en-us/typography/opentype/spec/chapter2#device-and-variationindex-tables
+
+`glyph_device` and `kern_device` add identity-bound corrections for glyph italics,
+top accents and corner kerns. Raw design units remain separate from pixel deltas.
+Glyph value extraction is checked against the existing peer MATH parser. Kern
+queries reuse the original parsed corner records and Device decoder; horizontal
+and vertical ppem are explicit separately. Correction-height deltas are converted
+exactly into design units using vertical ppem/UPEM before upper-bound selection;
+selected kern deltas use horizontal ppem. Crossed corrected heights are refused,
+not sorted into a different font program. At most4096 correction heights are
+visited per query. VariationIndex remains unsupported even outside the size range.
+
+The expanded pinned STIX inventory finds four actual glyph device records: top
+accent GIDs3309/3316/3326 and italic GID4010. At12ppem, GID3326 has a +1pixel accent
+correction; all four exact device hashes are retained in the inventory manifest.
+All6760 glyph italic/accent values still match the peer's raw metrics. Synthetic
+fixtures additionally verify negative pixel deltas, corrected-height equality,
+outside-range zero, variation refusal and nonmonotone corrected-height refusal.
+This is metric correction only; it neither grid-fits outlines nor proves raster
+or TeX script-layout parity.
+
+`math_cache::MathQueryCache` borrows one immutable `BoundMathFont`. Its namespace
+is the complete registry/style/declaration/font/engine/MATH identity, checked on
+every call; query keys include record/GID/corner, rational height/target, ppem,
+strategy and fitting limits. Replies retain that identity and share immutable
+`Arc<Result<Value,QueryError>>`, including typed negative outcomes. Stale identity
+is refused before lookup. The caller must supply the new identity after a registry
+reload; this cache does not discover external file changes.
+
+Variants and kerns reuse one bounded parsed table per cache when budget allows.
+LRU query retention has separate entry/byte caps; oversized values bypass storage.
+Defaults are128 entries,8MiB query charge and8MiB parsed charge; hard limits4096
+entries/64MiB/16MiB. Conservative charges include preallocated queue storage,
+result payloads and parsed vector/tree storage. Borrowed font bytes and externally
+retained result Arcs are outside the cache's ownership/budget. These caches are
+process-local and cannot outlive their borrowed font or cross decoder builds.
+
+Pinned STIX GID3/TopRight height0 ppem12 replay observed100 identical queries
+reduce from100 kern parses to1 parse/99 hits, with exactly equal outputs. One Linux
+debug run measured56.27ms uncached versus0.618ms cached; host-load variation was
+substantial, so tests assert no timing threshold or native performance claim.
+`fixtures/math-cache-replay.json` preserves measured source/hash/context evidence.
+Tests also cover device-context changes, exact fitted-shape equality, stale
+identity, eviction, disabled budgets, and cached VariationIndex refusal.
+
+### Explicit collection consumer and remaining resolver dependency
+
+`registry::collections::CollectionRegistry::load` is a separate opt-in consumer
+requiring a `VerifiedCollectionResolver`. No built-in resolver is supplied and
+no existing rendering-v2 registry format is silently broadened. The resolver must
+provide a complete, structurally verified collection layout; completeness is a
+trusted parser contract, not something this consumer can infer from partial data.
+The consumer bounds128 faces/256 tables per face, validates supplied directory and
+table bounds/overlaps, permits exact same-tag shared tables across distinct faces,
+and compares every supplied selected-face table range with the existing peer
+accessor. Rooted reads, full collection SHA/face index, original engine ID, exact
+table SHA/ranges, descriptor, license and stale-generation gates are retained.
+
+Reviewed peer `8080c90` exposes `parse_with_source` and `table(tag)` but lacks
+complete validated directory enumeration (and does not reject duplicate tags or
+partial overlaps itself). Its `truetype.rs` is byte-identical to the currently
+linked original reader: SHA
+`2aca31389307f63cb8df88388dea0810b291d44ba0702b56fa5cbc0db78e0b77`.
+The concrete dependency is an original-engine API returning every face directory
+and table range after checking TTC header/version/counts, duplicate records and
+shared-table rules. This crate does not add another directory parser to fill it.
+Collection resources expose the original selected `TrueTypeFace`; existing
+single-face outline/cache adapters remain unchanged.
+
+Synthetic two-face fixtures establish explicit face identity, table matching,
+shared-table versus partial-overlap checks, bounds and immutable stale snapshots.
+The installed NotoSansCJK-VF.ttc inventory (font SHA
+`d3d8256cdec8dbcb3552284bc6b20c734dd60c2ee9df83b5758e34807c4bac32`)
+currently yields peer `MissingTable("CFF ")` for face0. Its license hash and exact
+refusal are pinned in `tests/collection_inventory.rs`; this is not successful
+collection-rendering evidence. Production collection activation awaits the
+verified resolver and downstream outline support.
+
+### Literal .enc files
+
+`enc_file::EncFile` parses one bounded declaration:
+`/EncodingName [ /glyph0 ... /glyph255 ] [readonly] def`, with ASCII whitespace
+and `%` line comments. The brackets around `readonly` here mean optional grammar,
+not extra file tokens. There must be exactly256 positional names; duplicate array
+definitions, extra/missing slots, numeric assignment, strings and unknown operators
+are rejected. Repeated names (especially `.notdef`) are valid and do not duplicate
+slots. Names are preserved literally; no escape decoding, execution or evaluation
+occurs. Input is capped at64KiB and names at256 bytes.
+
+`load` uses rooted no-symlink reads with an expected file SHA. Binding wrappers
+preserve the encoding-file SHA/name/project path alongside existing exact
+`BoundTfmFont` or `BoundCffTfmFont`. TrueType mappings still require explicit named
+GID declarations; CFF uses its already validated original-name index. Missing
+names and `.notdef` semantics come from those binders, with no Unicode casts or
+fallback. Consumers must include the wrapper's file identity in provenance/cache
+keys when source-file identity matters, even if two files declare equal slots.
+
+The peer has no runtime `.enc` parser; its fixture-generation Python utility has
+a narrow source-extraction helper. The published licensed `lm-ec.enc` (SHA
+`7f9932c402d22a937b853406cfdf4166b80260e3ff21a03fe9a4c05105a2918c`)
+is parsed as256 slots and compared against all253 mapped slots in the peer's
+encoding manifest. The existing GUST license is hash-verified by the test. No
+reference bytes are copied and no production PostScript engine is introduced.
+
+Rooted TFM/VF dependency schema2 adds `physical_encoding_asset` and
+`cff_physical_encoding_asset` node kinds. Each specifies the existing licensed
+`Asset { path, sha256, license }` as `encoding_asset`, plus TFM asset and explicit
+registry binding. TrueType also requires `declared_glyphs`; CFF uses its verified
+name index. Slot maps are loaded through `EncFile` and existing binders. Schema1
+inline nodes remain unchanged; new node kinds are rejected under schema1.
+Asset reads share existing byte/file/license budgets. Project generation includes
+the exact encoding asset path/SHA/license; ResourceKey variants are unchanged, so
+consumers must retain the project generation when caching across loaded projects.
+
+`ResolvedVfProject::physical_run` exposes the existing bounded TFM ligature/kern
+mapping for one loaded physical endpoint, returning project/registry generation,
+node ID, exact TFM words and original8bit input intervals. Virtual endpoints remain
+explicitly unsupported by this run API; their existing packet expansion is intact.
+Tests exercise both TT/CFF asset nodes, nested expansion, file-hash refusal and
+schema gating with synthetic fonts. Existing real Latin Modern TFM and encoding
+fixtures are hash-pinned, including `fi`->slot28 and AV kern-116509 evidence.
+
+The full matching-font test is deliberately opt-in:
+`FLASHTEX_LM_FONT=/exact/lmroman10-regular.otf cargo test --offline --manifest-path crates/font-resources/Cargo.toml --test rooted_lm_encoding -- --ignored`.
+It requires font SHA `1aa18cfefa58132c52ce5de70db1fd1154201c19cd2b2cdaffba4906a33e6852`
+and verifies exact TFM/encoding/license hashes, rooted loading, fi interval0..2,
+AV intervals0..1/1..2 and exact kern. The exact matching font was subsequently obtained from the official GUST
+distribution into a temporary evidence directory; the test now passes with the
+explicit declarations described below. No substitute font is used.
+
+
+CFF encoding-asset nodes may explicitly opt into `declarations`, binding the
+encoding-file/full-font/CFF hashes and face index. Each alias declares its literal
+source name, literal font target name and exact original GID. Duplicate, conflicting,
+unknown or `.notdef` aliases are refused. Explicit unavailable slots must match the
+literal vector and actually lack a font name; requesting one fails, never substitutes.
+The default without declarations remains strict. Resolved mappings retain literal
+source names; their semantic digest includes the declaration hash, and rooted
+project generation retains the entire declaration and licensed asset provenance.
+
+The official GUST archive supplied exact font SHA1aa18cf...; the initially failing
+full rooted test exposed the documented five LM ligature aliases and three missing
+slots. With those exact fixture-bound declarations it now passes fi->originalGID125,
+input0..2, AV kern-116509 with intervals0..1/1..2, and all three unavailable-slot
+refusals. `fixtures/rooted-lm-download.json` preserves official URLs, archive/font/
+license hashes and the initial failure. The freshly downloaded license differs in
+line endings/URL spelling/whitespace from the pinned fixture; its normalized terms
+agree, but the two raw hashes remain distinct in evidence. Assets are temporary,
+not installed or copied into the repository.
+
+The bounded `rooted-lm-replay.json` now records five real ligatures (`fi`, `ff`,
+`fl`, `ffi`, `ffl`), three signed kern pairs (`AV`, `To`, `WA`), exact metric
+fix-words, original GIDs, code intervals and rejected unavailable slots. The opt-in
+matching-font test compares the complete generated value against this artifact
+and checks identical repeated runs. `rooted-lm-replay-provenance.json` pins source
+and artifact hashes plus the reproduction command. Regeneration writes only to
+an explicitly supplied `FLASHTEX_LM_REPLAY_OUTPUT` path for review; ordinary replay
+never updates expectations. This measures actual resource mapping, not independent
+TeX layout agreement or visual fidelity.
+
+Collection API followup reviewed Daniel supervisor tip
+`e61c176dc71048e1fcbba2ae5df187f07cbd5ba4` and font-engine tip
+`73422451ec367269d8ce2ba4554ba5103224a262`: no complete layout resolver is published.
+Daniel's `src/truetype.rs` still hashes
+`2aca31389307f63cb8df88388dea0810b291d44ba0702b56fa5cbc0db78e0b77`, identical to the
+linked file. Lines 83–90 select one TTC directory, and lines 109–126 validate
+selected table ends then insert into a map; they do not enumerate every face,
+reject duplicate tags or establish collection-wide overlap safety. The explicit
+`VerifiedCollectionResolver::complete_layout` dependency remains necessary.
+A peer implementation must validate the full TTC header/face list and all directory
+and table ranges, distinguish allowed exact sharing from partial overlaps, and
+expose that verified layout without losing full collection identity. No second
+parser or unverified production adapter has been added.
