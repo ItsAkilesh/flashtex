@@ -1,0 +1,36 @@
+{
+  "agent_id": "commander-render-core",
+  "allocation_id": "hosted-openai-product",
+  "assignment_acknowledgements": {
+    "FT-023": {
+      "acknowledged_utc": "2026-09-12T05:55:11Z",
+      "adaptation": "Reviewed FT-023 rev1 and exact runtime-v1 preservation gate. Published typed rendering core, hit index, immutable cache and font-resource adapter through25d159d; now implement original checked coordinate transforms and clips only within crates/rendering-core, with no native/PDF activation.",
+      "main_sha": "254193c175534e78bfd9e5206b4850b86123cbe6",
+      "revision": 1
+    }
+  },
+  "branch": "agent/commander-render-core/rendering-core",
+  "capabilities": [
+    "rust",
+    "rendering"
+  ],
+  "code_revision": "25d159d652204b61479a86f3910431039a052d50",
+  "eta_minutes": {
+    "likely": 20,
+    "optimistic": 10,
+    "pessimistic": 30
+  },
+  "machine": "linux-primary",
+  "main_integrated_through": "25d159d652204b61479a86f3910431039a052d50",
+  "next_action": "Implement bounded validated serialization with typed unsupported messages, then consume published font outlines.",
+  "reviewed_peers": {},
+  "schema_version": 1,
+  "state": "in_progress",
+  "summary": "FT-023 exact transforms and clip/hit consistency implemented after published typed core, immutable cache and actual font loader adapter. 37 Rust tests pass; no production wire or native/PDF activation.",
+  "tool": "Codex Astra",
+  "updated_utc": "2026-09-12T05:59:05Z",
+  "usage": {
+    "evidence": "cargo test --offline: 37 passed; cargo clippy --offline -- -D warnings passed; actual LiberationSans resource identity verified in prior checkpoint.",
+    "status": "Hosted OpenAI authorized; no auxiliary provider calls or Cursor spending. Direct git fallback explicitly authorized."
+  }
+}

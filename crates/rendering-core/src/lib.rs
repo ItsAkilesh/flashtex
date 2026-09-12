@@ -6,6 +6,7 @@
 pub mod cache;
 pub mod font_adapter;
 pub mod hit_test;
+pub mod transform;
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
