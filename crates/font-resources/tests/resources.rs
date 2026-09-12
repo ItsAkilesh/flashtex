@@ -1832,7 +1832,7 @@ fn math_binding_synthetic_limits_and_missing_table() {
     be16(&mut math, 10, 80);
     be16(&mut math, 14, u16::MAX);
     be16(&mut math, 22, i16::MIN as u16); // axis-height signed boundary
-    while bytes.len() % 4 != 0 {
+    while !bytes.len().is_multiple_of(4) {
         bytes.push(0);
     }
     let off = bytes.len();
