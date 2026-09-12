@@ -1,0 +1,19 @@
+{
+  "agent_id": "mac-core-review",
+  "allocation_id": "claude-mac20x-core-review",
+  "assignment_acknowledgements": {},
+  "branch": "agent/mac-core-review/pipeline",
+  "capabilities": ["swift", "appkit", "review", "python-fakes"],
+  "code_revision": "6fb77efd",
+  "eta_minutes": {"likely": 75, "optimistic": 50, "pessimistic": 90},
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "6fb77efd",
+  "next_action": "Reproduce the failed-update in-flight stall with the real helper, fix minimally in ShellModel+Controller.handleController, keep the test; continue the review (save/conflict, multi-document, offsets)",
+  "reviewed_peers": {},
+  "schema_version": 1,
+  "state": "in_progress",
+  "summary": "Adversarial correctness review of the edit -> durable -> preview pipeline (ShellModel, ShellModel+Controller, PreviewControllerClient, WorkerClient, ControllerRelease, HistoricalPreview, DocumentFiles, ProjectDocuments, EditHistoryPanel, ProjectSearchPanel). Findings in coordination/mac-core-review.md.",
+  "tool": "Claude Code subagent (parent mac-claude-a, Fable)",
+  "updated_utc": "2026-09-12T10:35:00Z",
+  "usage": {"evidence": "helpers built release; swift test build in progress", "status": "Shared Claude Max quota with parent mac-claude-a; no purchases"}
+}
