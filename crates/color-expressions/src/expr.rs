@@ -15,6 +15,12 @@ use flashtex_vector_graphics::Color;
 pub(crate) enum Expr {
     /// A bare palette name, e.g. `red`.
     Name(String),
+    /// A `model:components` literal (e.g. `rgb:1,0,0`, `cmyk:0,0,0,1`,
+    /// `gray:0.5`) resolved directly to a [`Color`] at parse time, without
+    /// any palette lookup. Only the three colour models
+    /// [`flashtex_vector_graphics::Color`] already has are recognised; see
+    /// [`crate::parser`] for the exact grammar and bounds.
+    Literal(Color),
     /// `-e`: the component-wise complement of `e` (see [`negate`]).
     Negate(Box<Expr>),
     /// `left!pct!right`: `pct`% of `left` mixed with `(100 - pct)`% of
@@ -83,6 +89,7 @@ impl Expr {
             Expr::Name(name) => palette
                 .get(name)
                 .ok_or_else(|| ColorExprError::UnknownColor { name: name.clone() }),
+            Expr::Literal(color) => Ok(*color),
             Expr::Negate(inner) => Ok(negate(inner.eval(palette)?)),
             Expr::Mix { left, pct, right } => {
                 let l = left.eval(palette)?;
@@ -141,4 +148,76 @@ mod tests {
         assert_eq!(mix(a, 100, b), a);
         assert_eq!(mix(a, 0, b), b);
     }
+
+    // --- Independently-specified fixtures ------------------------------
+    //
+    // Every expected value below is a literal computed by hand from the
+    // channel-wise linear-interpolation rule this module documents on
+    // `mix` (`pct% * a + (100-pct)% * b`, per-channel) — the same rule the
+    // real xcolor LaTeX package documents for its `!`-mix operator on
+    // same-model colours. None of these expectations are produced by
+    // calling `mix`, `resolve`, or any other crate code; each is a
+    // constant, with the arithmetic shown in the comment beside it, so the
+    // test can only pass if the implementation matches the independently
+    // worked-out number. Dyadic fractions (halves, quarters, eighths) are
+    // used throughout so the `f64` lerp is bit-exact, not just
+    // approximately right.
+
+    #[test]
+    fn mix_cmyk_same_variant_is_exact_lerp() {
+        // 25% of Cmyk(1,0,0,0.5) + 75% of Cmyk(0,1,0.5,0):
+        //   c: 0.25*1   + 0.75*0   = 0.25
+        //   m: 0.25*0   + 0.75*1   = 0.75
+        //   y: 0.25*0   + 0.75*0.5 = 0.375
+        //   k: 0.25*0.5 + 0.75*0   = 0.125
+        let got = mix(
+            Color::Cmyk(1.0, 0.0, 0.0, 0.5),
+            25,
+            Color::Cmyk(0.0, 1.0, 0.5, 0.0),
+        );
+        assert_eq!(got, Color::Cmyk(0.25, 0.75, 0.375, 0.125));
+    }
+
+    #[test]
+    fn mix_cmyk_with_rgb_uses_documented_naive_to_rgb() {
+        // flashtex_vector_graphics::Color::to_rgb documents its CMYK->RGB
+        // conversion as `1 - min(1, channel + k)`. Working that out by hand
+        // for Cmyk(0.5, 0.25, 0.0, 0.25):
+        //   r: 1 - min(1, 0.5  + 0.25) = 1 - 0.75 = 0.25
+        //   g: 1 - min(1, 0.25 + 0.25) = 1 - 0.5  = 0.5
+        //   b: 1 - min(1, 0.0  + 0.25) = 1 - 0.25 = 0.75
+        // so the CMYK side enters the lerp as Rgb(0.25, 0.5, 0.75). Mixing
+        // that 50/50 with Rgb(1.0, 0.0, 0.0):
+        //   r: 0.5*0.25 + 0.5*1.0 = 0.625
+        //   g: 0.5*0.5  + 0.5*0.0 = 0.25
+        //   b: 0.5*0.75 + 0.5*0.0 = 0.375
+        let got = mix(
+            Color::Cmyk(0.5, 0.25, 0.0, 0.25),
+            50,
+            Color::Rgb(1.0, 0.0, 0.0),
+        );
+        assert_eq!(got, Color::Rgb(0.625, 0.25, 0.375));
+    }
+
+    #[test]
+    fn mix_cmyk_with_gray_uses_documented_naive_to_rgb() {
+        // Gray(g)'s naive RGB form is (g, g, g) (the identity case of the
+        // same documented conversion). Cmyk(0.0, 0.0, 1.0, 0.0) -> RGB:
+        //   r: 1 - min(1, 0 + 0) = 1
+        //   g: 1 - min(1, 0 + 0) = 1
+        //   b: 1 - min(1, 1 + 0) = 0
+        // so this is Rgb(1,1,0) mixed 75/25 with Gray(0.2) == Rgb(0.2,0.2,0.2):
+        //   r: 0.75*1 + 0.25*0.2 = 0.8
+        //   g: 0.75*1 + 0.25*0.2 = 0.8
+        //   b: 0.75*0 + 0.25*0.2 = 0.05
+        let got = mix(Color::Cmyk(0.0, 0.0, 1.0, 0.0), 75, Color::Gray(0.2));
+        assert_eq!(got, Color::Rgb(0.8, 0.8, 0.05));
+    }
+
+    // What we did NOT try to independently pin down: the *design choice*
+    // behind the naive CMYK->RGB formula itself (why `c + k` rather than,
+    // say, `(1-k)*(1-c)`) is `flashtex-vector-graphics`'s own documented
+    // decision, not an external spec we can derive from first principles —
+    // we only verify this crate applies that already-documented formula
+    // correctly, not that the formula is "the right" one.
 }

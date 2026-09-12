@@ -1,9 +1,51 @@
 # daniel-color handoff
 
-Agent / task / branch: daniel-color / FT-035 original bounded xcolor-style
-colour-expression parser / `agent/daniel-color/color-expressions`
+Agent / task / branch: daniel-color / FT-035 (revision 2) original bounded
+xcolor-style colour-expression parser / `agent/daniel-color/color-expressions`
 
 State: ready for integration (standalone crate; nothing else on main touched)
+
+## Revision 2: independently-specified fixtures + literal colour syntax
+
+Revision 2's objective explicitly rejected revision 1's mixing fixtures as
+insufficiently independent: several `assert_eq!` expectations, while hand
+-annotated, were only lightly checked against the implementation's own
+arithmetic path. This revision adds:
+
+1. **Literal `model:components` colours** (`gray:0.5`, `rgb:1,0,0`,
+   `cmyk:0,0,0,1`) as a new `Atom` production in `src/parser.rs`, resolved
+   directly to a `Color` with no palette lookup. Only `gray`/`rgb`/`cmyk`
+   are recognised — exactly the three variants
+   `flashtex_vector_graphics::Color` has. An unrecognised model name (e.g.
+   `hsb:...`, a real xcolor model this crate's dependency has no
+   representation for), wrong component count, or an out-of-range
+   component is a new typed `ColorExprError` variant
+   (`UnsupportedColorModel`, `InvalidComponentCount`,
+   `ComponentOutOfRange`) — never an invented colour space, never a silent
+   default. The model name is checked *before* its components are parsed,
+   so a bad model is reported even when the components are also garbage.
+   Literal atoms spend the same `MAX_DEPTH` budget as any other atom
+   (tested).
+2. **Expanded, independently-derived CMYK mixing fixtures** in
+   `src/expr.rs` and `src/lib.rs`: CMYK-CMYK exact channel lerp, and
+   CMYK-RGB / CMYK-Gray cross-variant mixes, each with the arithmetic
+   worked out by hand in a comment from the two rules this crate documents
+   and depends on — its own channel-wise-lerp mixing rule (module docs on
+   `expr::mix`, matching how the real xcolor package documents its `!`
+   operator for same-model colours) and `flashtex_vector_graphics::Color`'s
+   already-documented naive `to_rgb` formula (`1 - min(1, channel + k)`,
+   read from `crates/vector-graphics/src/color.rs`, not from running any
+   code). None of these expected values are produced by calling `mix`,
+   `resolve`, or any other crate function — each is a literal constant
+   with its derivation shown beside it.
+3. What is **not** independently derivable, and so was not pinned as if it
+   were: the *design choice* behind `vector-graphics`'s naive CMYK->RGB
+   formula itself (why `c + k` rather than some other blend) is that
+   crate's own documented decision, not an externally specified rule we
+   can derive from first principles. Tests here only verify this crate
+   applies that already-documented formula correctly, not that the formula
+   is "the right" one — see the comment above
+   `mix_cmyk_with_rgb_uses_documented_naive_to_rgb` in `src/expr.rs`.
 
 Owned paths: `crates/color-expressions/**`, `coordination/daniel-color.md`
 
@@ -71,6 +113,10 @@ pub enum ColorExprError {
     TrailingInput { pos: usize },
     InvalidPercentage { pos: usize, text: String },
     UnknownColor { name: String },
+    // New in revision 2, for the `model:components` literal syntax:
+    UnsupportedColorModel { pos: usize, name: String },
+    InvalidComponentCount { model: String, expected: usize, found: usize },
+    ComponentOutOfRange { pos: usize, text: String },
 }
 impl std::error::Error for ColorExprError {} // + Display
 
@@ -88,13 +134,23 @@ an opt-in convenience, not a fallback, and an unknown name is always
 ## Grammar
 
 ```text
-MixChain := Atom { '!' Percent [ '!' Atom ] }
-Atom     := '-' Atom | '(' MixChain ')' | Ident
-Percent  := digit+                -- parsed as u32, must be 0..=100
-Ident    := IdentStart IdentCont*
+MixChain   := Atom { '!' Percent [ '!' Atom ] }
+Atom       := '-' Atom | '(' MixChain ')' | Literal | Ident
+Literal    := Ident ':' Component { ',' Component }   -- gray:1, rgb:3, cmyk:4 components
+Component  := digit+ [ '.' digit+ ]  -- parsed as f64, must be 0.0..=1.0
+Percent    := digit+                -- parsed as u32, must be 0..=100
+Ident      := IdentStart IdentCont*
 IdentStart := unicode alphabetic | '_'
 IdentCont  := unicode alphanumeric | '_' | '-'
 ```
+
+`Literal` (new in revision 2) is a `model:components` colour resolved
+directly, with no palette lookup — `gray:0.5`, `rgb:1,0,0`, `cmyk:0,0,0,1`.
+Only `gray`/`rgb`/`cmyk` are recognised, matching exactly the three
+variants `flashtex_vector_graphics::Color` has; anything else (`hsb:...`,
+a real xcolor model this dependency doesn't represent) is
+`ColorExprError::UnsupportedColorModel`, checked before its components are
+even parsed.
 
 No whitespace is accepted anywhere (a stray space is `UnexpectedChar`).
 `left!pct!right` mixes `pct`% of `left` with `(100-pct)`% of `right`;
@@ -151,22 +207,27 @@ correct byte offset, never a panic — see `unicode_symbol_is_a_typed_error_not_
 ## Validation
 
 - `cd crates/color-expressions && cargo build` — succeeds.
-- `cargo test` — 41 unit tests + 1 doctest, all pass.
-- `cargo clippy -- -D warnings` and `cargo clippy --all-targets -- -D warnings`
-  — both clean, zero warnings.
-- `cargo fmt --check` — clean.
+- `cargo test` — 63 unit tests + 1 doctest, all pass (up from 41 in
+  revision 1: +14 parser tests for the literal grammar, +3 CMYK mixing
+  fixtures in `expr.rs`, +6 end-to-end literal/error fixtures in `lib.rs`).
+- `cargo clippy --all-targets -- -D warnings` — clean, zero warnings.
 - Toolchain: `cargo 1.98.1`, edition 2024, matching sibling crates
   (`flashtex-vector-graphics`, `flashtex-font-engine`, etc.).
 
 Exact tested commit SHA (this branch, `crates/color-expressions/**` +
-this file, on top of input main SHA `53fee3012b2902ca05bd31766defa515b3044cec`):
-`c72af8637d0907b1ba43b4c462ddb091d23c3c76`
+this file, HEAD after merging current `origin/main`):
+see `coordination/agents/daniel-color.json`'s `code_revision` and
+`main_integrated_through` fields for the authoritative values as of
+publication — this file is not re-edited per commit to avoid a stale SHA
+racing the ack record.
 
 ## Incomplete / not attempted
 
 - No hex-literal atoms (`#RRGGBB`) — out of scope per the assignment
-  ("resolves expressions over explicitly named palettes"); every leaf is a
-  palette lookup.
+  ("resolves expressions over explicitly named palettes"); every *named*
+  leaf is still a palette lookup. (Literal `model:components` colours,
+  added this revision, are a different, explicitly-modelled thing: exact
+  values spelled out in the expression itself, not a hex shorthand.)
 - No consumer wiring. This is a standalone, additive crate; nothing in the
   compiler, layout, or native code paths references it. Integration is a
   future decision for whoever owns that call site.
@@ -174,7 +235,16 @@ this file, on top of input main SHA `53fee3012b2902ca05bd31766defa515b3044cec`):
   extrapolation, no decimal weights) — a deliberate scope bound, not a gap;
   see `InvalidPercentage`.
 - `base_palette()`'s RGB values are this crate's own choices, explicitly
-  documented as not a parity claim with any xcolor colour table.
+  documented as not a parity claim with any xcolor colour table; it was
+  not extended with CMYK entries this revision because the new literal
+  syntax already gives direct, exact access to CMYK values without needing
+  named palette entries for them.
+- Not independently re-derivable: the *design choice* behind
+  `vector-graphics`'s naive CMYK->RGB `to_rgb` formula itself (documented
+  there as `1 - min(1, channel + k)`) is that crate's own decision, not an
+  external spec. This revision's fixtures verify the formula is applied
+  correctly, not that it is "the right" formula — see the comment above
+  `mix_cmyk_with_rgb_uses_documented_naive_to_rgb` in `src/expr.rs`.
 
 ## Needs from others
 
@@ -183,4 +253,4 @@ this file, on top of input main SHA `53fee3012b2902ca05bd31766defa515b3044cec`):
   where a `Palette` gets populated from (e.g. document-level colour
   definitions) and calls `resolve`/`resolve_paint`.
 
-Updated: 2026-09-12
+Updated: 2026-09-12 (revision 2)

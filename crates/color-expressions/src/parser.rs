@@ -3,10 +3,12 @@
 //! Grammar (no whitespace anywhere — any stray space is a parse error):
 //!
 //! ```text
-//! MixChain := Atom { '!' Percent [ '!' Atom ] }
-//! Atom     := '-' Atom | '(' MixChain ')' | Ident
-//! Percent  := digit+                    -- parsed as u32, must be 0..=100
-//! Ident    := IdentStart IdentCont*
+//! MixChain   := Atom { '!' Percent [ '!' Atom ] }
+//! Atom       := '-' Atom | '(' MixChain ')' | Literal | Ident
+//! Literal    := Ident ':' Component { ',' Component }
+//! Component  := digit+ [ '.' digit+ ]   -- parsed as f64, must be 0.0..=1.0
+//! Percent    := digit+                  -- parsed as u32, must be 0..=100
+//! Ident      := IdentStart IdentCont*
 //! IdentStart := unicode alphabetic | '_'
 //! IdentCont  := unicode alphanumeric | '_' | '-'
 //! ```
@@ -14,6 +16,17 @@
 //! `left!pct!right` mixes `pct`% of `left` with `(100-pct)`% of `right`;
 //! `left!pct` (no second `!`) mixes against white. `-atom` is the
 //! component-wise complement of `atom`. See [`crate::expr`] for evaluation.
+//!
+//! A `Literal` is a `model:components` colour spelled out in full, resolved
+//! directly to a [`flashtex_vector_graphics::Color`] with no palette lookup
+//! (e.g. `rgb:1,0,0`, `cmyk:0,0,0,1`, `gray:0.5`) — the same three, and
+//! only the three, colour models `flashtex_vector_graphics::Color` already
+//! has. `model` is any identifier immediately followed by `:`; if it is not
+//! exactly `gray`, `rgb`, or `cmyk`, or the component count doesn't match
+//! that model's arity, or a component isn't a `0.0..=1.0` decimal, parsing
+//! fails with a typed [`crate::ColorExprError`] — never a silent
+//! approximation and never a colour space this crate's dependency doesn't
+//! represent.
 //!
 //! Boundedness: the whole input is rejected up front if longer than
 //! [`crate::MAX_INPUT_LEN`] bytes. Every call to [`Parser::atom`] — which is
@@ -27,6 +40,7 @@
 use crate::error::ColorExprError;
 use crate::expr::Expr;
 use crate::{MAX_DEPTH, MAX_INPUT_LEN};
+use flashtex_vector_graphics::Color;
 
 struct Parser<'a> {
     src: &'a str,
@@ -109,7 +123,16 @@ impl<'a> Parser<'a> {
                     None => Err(ColorExprError::UnexpectedEnd),
                 }
             }
-            Some(c) if is_ident_start(c) => Ok(self.ident()),
+            Some(c) if is_ident_start(c) => {
+                let start = self.pos;
+                let name = self.ident_text();
+                if self.peek() == Some(':') {
+                    self.bump();
+                    self.literal(start, name)
+                } else {
+                    Ok(Expr::Name(name))
+                }
+            }
             Some(found) => Err(ColorExprError::UnexpectedChar {
                 pos: self.pos,
                 found,
@@ -117,7 +140,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn ident(&mut self) -> Expr {
+    fn ident_text(&mut self) -> String {
         let start = self.pos;
         self.bump(); // the ident-start char, already validated by the caller
         while let Some(c) = self.peek() {
@@ -127,7 +150,104 @@ impl<'a> Parser<'a> {
                 break;
             }
         }
-        Expr::Name(self.src[start..self.pos].to_string())
+        self.src[start..self.pos].to_string()
+    }
+
+    /// Parses the `Component { ',' Component }` tail of a `model:...`
+    /// literal (the `model:` prefix has already been consumed) and
+    /// resolves it into a [`Color`], given the model name and its start
+    /// byte offset (for error reporting). Bounded the same way the rest of
+    /// the grammar is: it only ever consumes bytes already covered by
+    /// [`crate::MAX_INPUT_LEN`], never loops without making progress, and
+    /// every failure is a typed [`ColorExprError`].
+    fn literal(&mut self, model_pos: usize, model: String) -> Result<Expr, ColorExprError> {
+        // Checked before parsing any components, so an unsupported model
+        // name (e.g. `hsb:...`) is always reported as such, regardless of
+        // what follows the colon.
+        let expected = match model.as_str() {
+            "gray" => 1,
+            "rgb" => 3,
+            "cmyk" => 4,
+            _ => {
+                return Err(ColorExprError::UnsupportedColorModel {
+                    pos: model_pos,
+                    name: model,
+                });
+            }
+        };
+        let mut components = vec![self.component()?];
+        while self.peek() == Some(',') {
+            self.bump();
+            components.push(self.component()?);
+        }
+        if components.len() != expected {
+            return Err(ColorExprError::InvalidComponentCount {
+                model,
+                expected,
+                found: components.len(),
+            });
+        }
+        let color = match model.as_str() {
+            "gray" => Color::Gray(components[0]),
+            "rgb" => Color::Rgb(components[0], components[1], components[2]),
+            "cmyk" => Color::Cmyk(components[0], components[1], components[2], components[3]),
+            _ => unreachable!("model already validated above"),
+        };
+        Ok(Expr::Literal(color))
+    }
+
+    /// Parses one `digit+ ('.' digit+)?` component of a `model:...` literal
+    /// and checks it falls in `0.0..=1.0`.
+    fn component(&mut self) -> Result<f64, ColorExprError> {
+        let start = self.pos;
+        let mut text = String::new();
+        while let Some(c) = self.peek() {
+            if c.is_ascii_digit() {
+                text.push(c);
+                self.bump();
+            } else {
+                break;
+            }
+        }
+        if text.is_empty() {
+            return Err(match self.peek() {
+                Some(found) => ColorExprError::UnexpectedChar {
+                    pos: self.pos,
+                    found,
+                },
+                None => ColorExprError::UnexpectedEnd,
+            });
+        }
+        if self.peek() == Some('.') {
+            text.push('.');
+            self.bump();
+            let mut frac_digits = 0usize;
+            while let Some(c) = self.peek() {
+                if c.is_ascii_digit() {
+                    text.push(c);
+                    self.bump();
+                    frac_digits += 1;
+                } else {
+                    break;
+                }
+            }
+            if frac_digits == 0 {
+                return Err(match self.peek() {
+                    Some(found) => ColorExprError::UnexpectedChar {
+                        pos: self.pos,
+                        found,
+                    },
+                    None => ColorExprError::UnexpectedEnd,
+                });
+            }
+        }
+        let value: f64 = text
+            .parse()
+            .expect("text is a validated digit+('.'digit+)? pattern");
+        if !(0.0..=1.0).contains(&value) {
+            return Err(ColorExprError::ComponentOutOfRange { pos: start, text });
+        }
+        Ok(value)
     }
 
     fn percent(&mut self) -> Result<u8, ColorExprError> {
@@ -349,6 +469,134 @@ mod tests {
                 pct: 50,
                 right: None
             }
+        );
+    }
+
+    #[test]
+    fn literal_rgb_parses() {
+        let e = parse("rgb:1,0,0.5").unwrap();
+        assert_eq!(e, Expr::Literal(Color::Rgb(1.0, 0.0, 0.5)));
+    }
+
+    #[test]
+    fn literal_gray_parses() {
+        let e = parse("gray:0.25").unwrap();
+        assert_eq!(e, Expr::Literal(Color::Gray(0.25)));
+    }
+
+    #[test]
+    fn literal_cmyk_parses() {
+        let e = parse("cmyk:0,0.5,1,0.25").unwrap();
+        assert_eq!(e, Expr::Literal(Color::Cmyk(0.0, 0.5, 1.0, 0.25)));
+    }
+
+    #[test]
+    fn literal_integer_components_are_whole_units() {
+        // No decimal point required: "1" means 1.0, not an error.
+        let e = parse("rgb:1,0,1").unwrap();
+        assert_eq!(e, Expr::Literal(Color::Rgb(1.0, 0.0, 1.0)));
+    }
+
+    #[test]
+    fn literal_can_appear_inside_a_mix_chain_and_be_negated() {
+        let e = parse("-rgb:1,0,0!50!cmyk:0,0,0,1").unwrap();
+        assert_eq!(
+            e,
+            Expr::Mix {
+                left: Box::new(Expr::Negate(Box::new(Expr::Literal(Color::Rgb(
+                    1.0, 0.0, 0.0
+                ))))),
+                pct: 50,
+                right: Some(Box::new(Expr::Literal(Color::Cmyk(0.0, 0.0, 0.0, 1.0)))),
+            }
+        );
+    }
+
+    #[test]
+    fn unsupported_color_model_is_a_typed_error_never_black() {
+        // "hsb" is a real xcolor model, but flashtex-vector-graphics::Color
+        // has no HSB variant, so this must be a typed error, not an
+        // invented conversion or a silent default.
+        assert_eq!(
+            parse("hsb:0.5,1,1"),
+            Err(ColorExprError::UnsupportedColorModel {
+                pos: 0,
+                name: "hsb".to_string()
+            })
+        );
+    }
+
+    #[test]
+    fn unsupported_color_model_is_reported_even_with_malformed_components() {
+        // The model name is checked before its components are parsed, so
+        // this is still UnsupportedColorModel, not a component error.
+        assert_eq!(
+            parse("hsb:not-a-number"),
+            Err(ColorExprError::UnsupportedColorModel {
+                pos: 0,
+                name: "hsb".to_string()
+            })
+        );
+    }
+
+    #[test]
+    fn wrong_component_count_is_a_typed_error() {
+        assert_eq!(
+            parse("rgb:1,0"),
+            Err(ColorExprError::InvalidComponentCount {
+                model: "rgb".to_string(),
+                expected: 3,
+                found: 2,
+            })
+        );
+        assert_eq!(
+            parse("gray:0,0"),
+            Err(ColorExprError::InvalidComponentCount {
+                model: "gray".to_string(),
+                expected: 1,
+                found: 2,
+            })
+        );
+    }
+
+    #[test]
+    fn component_over_one_is_out_of_range() {
+        // "rgb:" is 4 bytes, so the offending component starts at byte 4.
+        assert_eq!(
+            parse("rgb:1.5,0,0"),
+            Err(ColorExprError::ComponentOutOfRange {
+                pos: 4,
+                text: "1.5".to_string()
+            })
+        );
+    }
+
+    #[test]
+    fn component_missing_fraction_digits_is_unexpected_char() {
+        // "rgb:1." is 6 bytes; a trailing '.' with no fractional digit
+        // can't complete a component, and the next char ends the match.
+        assert_eq!(
+            parse("rgb:1.,0,0"),
+            Err(ColorExprError::UnexpectedChar { pos: 6, found: ',' })
+        );
+    }
+
+    #[test]
+    fn component_non_digit_is_unexpected_char() {
+        assert_eq!(
+            parse("rgb:x,0,0"),
+            Err(ColorExprError::UnexpectedChar { pos: 4, found: 'x' })
+        );
+    }
+
+    #[test]
+    fn literal_atom_spends_the_depth_budget_like_any_other_atom() {
+        // A run of negated literals should hit the same TooDeep bound as a
+        // run of negated names.
+        let hostile = format!("{}gray:0.5", "-".repeat(MAX_DEPTH + 5));
+        assert_eq!(
+            parse(&hostile),
+            Err(ColorExprError::TooDeep { max: MAX_DEPTH })
         );
     }
 

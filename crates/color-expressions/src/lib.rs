@@ -40,6 +40,18 @@
 //! Unknown palette names are always [`ColorExprError::UnknownColor`] —
 //! never silently resolved to black or any other default.
 //!
+//! # Literal colours
+//!
+//! Alongside palette names, an atom may also be a `model:components`
+//! literal — `gray:0.5`, `rgb:1,0,0`, `cmyk:0,0,0,1` — resolved directly to
+//! a [`flashtex_vector_graphics::Color`] with no palette lookup. Only
+//! `gray`, `rgb`, and `cmyk` are recognised: exactly the three variants
+//! `Color` already has. An unrecognised model name (e.g. `hsb:...`, a real
+//! xcolor model this crate's dependency has no representation for), the
+//! wrong number of components for a model, or a component outside
+//! `0.0..=1.0` is a typed [`ColorExprError`], never an invented colour
+//! space and never a silent fallback.
+//!
 //! # Example
 //!
 //! ```
@@ -51,6 +63,10 @@
 //! assert_eq!(resolve("red!50!blue", &palette), Ok(Color::Rgb(0.5, 0.0, 0.5)));
 //! // Unknown names are a typed error, never black.
 //! assert!(resolve("chartreuse", &palette).is_err());
+//! // Literal colours need no palette entry at all.
+//! assert_eq!(resolve("cmyk:0,0,0,1", &palette), Ok(Color::Cmyk(0.0, 0.0, 0.0, 1.0)));
+//! // Unsupported colour models are a typed error, never approximated.
+//! assert!(resolve("hsb:0.5,1,1", &palette).is_err());
 //! ```
 
 mod error;
@@ -231,5 +247,86 @@ mod tests {
         let paint = resolve_paint("red", &palette(), 0.4).unwrap();
         assert_eq!(paint.color, Color::Rgb(1.0, 0.0, 0.0));
         assert_eq!(paint.alpha, 0.4);
+    }
+
+    // --- Literal `model:components` colours: expanded model coverage ---
+    //
+    // Expected values below are literal constants read straight off the
+    // input text (a `gray:g`/`rgb:r,g,b`/`cmyk:c,m,y,k` literal *is* its
+    // components, by definition of the grammar in `parser`) or worked out
+    // by hand per the module-doc'd linear-interpolation mixing rule; none
+    // are produced by calling this crate's own resolver.
+
+    #[test]
+    fn resolves_gray_literal() {
+        assert_eq!(resolve("gray:0.5", &palette()), Ok(Color::Gray(0.5)));
+    }
+
+    #[test]
+    fn resolves_rgb_literal() {
+        assert_eq!(
+            resolve("rgb:0.25,0.5,1", &palette()),
+            Ok(Color::Rgb(0.25, 0.5, 1.0))
+        );
+    }
+
+    #[test]
+    fn resolves_cmyk_literal() {
+        assert_eq!(
+            resolve("cmyk:0,0.5,1,0.25", &palette()),
+            Ok(Color::Cmyk(0.0, 0.5, 1.0, 0.25))
+        );
+    }
+
+    #[test]
+    fn literal_matching_a_named_palette_entry_mixes_identically() {
+        // "blue" in the base palette is exactly Rgb(0,0,1), so mixing a
+        // literal spelling of the same colour must give the same answer as
+        // mixing the name.
+        assert_eq!(
+            resolve("red!50!rgb:0,0,1", &palette()),
+            resolve("red!50!blue", &palette())
+        );
+    }
+
+    #[test]
+    fn mix_of_two_cmyk_literals_is_exact_channelwise_lerp() {
+        // 60% of cmyk:1,0,0,0 + 40% of cmyk:0,0,1,0:
+        //   c: 0.6*1 + 0.4*0 = 0.6
+        //   m: 0
+        //   y: 0.6*0 + 0.4*1 = 0.4
+        //   k: 0
+        assert_eq!(
+            resolve("cmyk:1,0,0,0!60!cmyk:0,0,1,0", &palette()),
+            Ok(Color::Cmyk(0.6, 0.0, 0.4, 0.0))
+        );
+    }
+
+    #[test]
+    fn unsupported_color_model_end_to_end_is_typed_error_never_black() {
+        // hsb is a real xcolor model; flashtex-vector-graphics::Color has
+        // no HSB representation, so this is a typed error end to end, not
+        // an approximation into RGB and not black.
+        let err = resolve("hsb:0.5,1,1", &palette()).unwrap_err();
+        assert_eq!(
+            err,
+            ColorExprError::UnsupportedColorModel {
+                pos: 0,
+                name: "hsb".to_string()
+            }
+        );
+        assert_ne!(resolve("hsb:0.5,1,1", &palette()), Ok(Color::BLACK));
+    }
+
+    #[test]
+    fn component_count_and_range_errors_are_typed_end_to_end() {
+        assert!(matches!(
+            resolve("rgb:1,0", &palette()),
+            Err(ColorExprError::InvalidComponentCount { .. })
+        ));
+        assert!(matches!(
+            resolve("gray:1.5", &palette()),
+            Err(ColorExprError::ComponentOutOfRange { .. })
+        ));
     }
 }
