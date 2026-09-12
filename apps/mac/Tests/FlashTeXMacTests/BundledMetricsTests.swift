@@ -93,17 +93,17 @@ final class BundledMetricsTests: XCTestCase {
                        Self.vendoredRoot.appendingPathComponent(BundledMetrics.tfmSubdirectory).standardizedFileURL.path)
     }
 
-    func testPrependingKeepsExplicitEntriesInOrderAfterTheBundledDirectory() {
-        XCTAssertEqual(BundledMetrics.prepending("/b", to: nil), "/b")
-        XCTAssertEqual(BundledMetrics.prepending("/b", to: ""), "/b")
-        XCTAssertEqual(BundledMetrics.prepending("/b", to: "/u1:/u2"), "/b:/u1:/u2")
-        XCTAssertEqual(BundledMetrics.prepending("/b", to: "/u1::/b:/u2:"), "/b:/u1:/u2", "empty entries dropped, bundled repeat dropped")
+    func testExplicitEntriesComeFirstAndTheBundledDirectoryIsTheFallback() {
+        XCTAssertEqual(BundledMetrics.merged(bundled: "/b", withExplicit: nil), "/b")
+        XCTAssertEqual(BundledMetrics.merged(bundled: "/b", withExplicit: ""), "/b")
+        XCTAssertEqual(BundledMetrics.merged(bundled: "/b", withExplicit: "/u1:/u2"), "/u1:/u2:/b")
+        XCTAssertEqual(BundledMetrics.merged(bundled: "/b", withExplicit: "/u1::/b:/u2:"), "/u1:/u2:/b", "empty entries dropped, bundled repeat dropped, bundled last")
     }
 
-    func testProducerEnvironmentPrependsAndPassesEverythingElseThrough() {
+    func testProducerEnvironmentAppendsAndPassesEverythingElseThrough() {
         let base = ["PATH": "/usr/bin", "FLASHTEX_TFM_DIRS": "/user/tfm", "FLASHTEX_RENDER": "/x"]
         let env = BundledMetrics.producerEnvironment(base: base, bundledDirectory: URL(fileURLWithPath: "/App/Contents/Resources/texmf/fonts/tfm/public/lm"))
-        XCTAssertEqual(env["FLASHTEX_TFM_DIRS"], "/App/Contents/Resources/texmf/fonts/tfm/public/lm:/user/tfm")
+        XCTAssertEqual(env["FLASHTEX_TFM_DIRS"], "/user/tfm:/App/Contents/Resources/texmf/fonts/tfm/public/lm")
         XCTAssertEqual(env["PATH"], "/usr/bin")
         XCTAssertEqual(env["FLASHTEX_RENDER"], "/x")
         XCTAssertEqual(env.count, 3)
@@ -126,6 +126,8 @@ final class BundledMetricsTests: XCTestCase {
     private struct ProducerRun {
         var results: Int
         var missing: [(id: String, code: String, message: String)]
+        /// Every diagnostic (id, code, message) — for override checks that key on a named file.
+        var all: [(id: String, code: String, message: String)] = []
     }
 
     /// Runs `FLASHTEX_RENDER` on the 10 pt multi-document request (the
@@ -179,6 +181,7 @@ final class BundledMetricsTests: XCTestCase {
             let diags = (obj["payload"] as? [String: Any])?["diagnostics"] as? [[String: Any]] ?? []
             for d in diags {
                 let code = d["code"] as? String ?? ""
+                run.all.append((id, code, d["message"] as? String ?? ""))
                 if Self.missingMetricCodes.contains(code) {
                     run.missing.append((id, code, d["message"] as? String ?? ""))
                 }
@@ -204,10 +207,22 @@ final class BundledMetricsTests: XCTestCase {
         XCTAssertEqual(routed.results, 5)
         XCTAssertTrue(routed.missing.isEmpty, "env route must leave no missing-metric diagnostics: \(routed.missing)")
 
-        // User entries preserved after the bundled directory: still clean.
-        let withUser = try runProducer(render, tfmDirs: tfmDirs + ":" + home.appendingPathComponent("user").path, home: home)
-        XCTAssertEqual(withUser.results, 5)
-        XCTAssertTrue(withUser.missing.isEmpty, "\(withUser.missing)")
+        // A POPULATED explicit user directory overrides the bundle for a
+        // name-resolved metric: the user's ec-lmr10.tfm is truncated to one byte,
+        // so the 10 pt request can only degrade if the producer read the user's
+        // copy first (the intact bundled copy sits behind it in the list).
+        let user = home.appendingPathComponent("user")
+        let userLM = user.appendingPathComponent(BundledMetrics.tfmSubdirectory)
+        try FileManager.default.createDirectory(at: userLM, withIntermediateDirectories: true)
+        try Data([0]).write(to: userLM.appendingPathComponent("ec-lmr10.tfm"))
+        let overridden = try runProducer(render, tfmDirs: BundledMetrics.merged(bundled: tfmDirs, withExplicit: userLM.path), home: home)
+        XCTAssertEqual(overridden.results, 5)
+        XCTAssertTrue(overridden.all.contains { $0.id == "preview-1" && $0.message.contains("ec-lmr10") },
+                      "the explicit user copy must be the one read (a diagnostic naming ec-lmr10 on the 10 pt request): \(overridden.all)")
+        // An unpopulated explicit directory changes nothing (bundle answers).
+        let empty = try runProducer(render, tfmDirs: BundledMetrics.merged(bundled: tfmDirs, withExplicit: home.appendingPathComponent("empty").path), home: home)
+        XCTAssertEqual(empty.results, 5)
+        XCTAssertTrue(empty.missing.isEmpty, "\(empty.missing)")
 
         // One metric removed from a copy of the tree: an explicit failure, never silence.
         let copy = home.appendingPathComponent("texmf")

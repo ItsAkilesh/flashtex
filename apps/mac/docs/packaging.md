@@ -330,8 +330,9 @@ directory is verified with `crates/rendering-core/tools/verify_bundle_resources.
 before any signing. `components.json` gains a `"resources"` entry with the nine
 verified SHA-256/byte pairs and the manifest hash; `resource-coverage.json` is
 the verifier's full report. Both are sealed by the app signature (they are
-written before `codesign`). The producer gets the bundled directory prepended to
-`FLASHTEX_TFM_DIRS` by `BundledMetrics.swift` on both launch routes
+written before `codesign`). The producer gets the bundled directory appended to
+`FLASHTEX_TFM_DIRS` (after any explicit user entries, which override it) by
+`BundledMetrics.swift` on both launch routes
 (`WorkerClient`, `PreviewControllerClient`); see `README.md` "Rooted TeX
 metrics" and the acceptance script `scripts/texmf-acceptance.sh` (bundled
 producer, host TeX denied by `sandbox-exec`, 10 pt multi-document + 12 pt

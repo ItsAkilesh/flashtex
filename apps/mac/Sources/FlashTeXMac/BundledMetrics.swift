@@ -9,11 +9,12 @@ import Foundation
 /// from those entries (`<root>/doc/fonts/lm/GUST-FONT-LICENSE.TXT` must sit
 /// beside them). `make-app.sh` stages the five pinned TFMs and the license
 /// under `Contents/Resources/texmf/…` with that exact shape; this type finds
-/// that directory and prepends it to the child producer's `FLASHTEX_TFM_DIRS`
+/// that directory and appends it to the child producer's `FLASHTEX_TFM_DIRS`
 /// so the packaged app never depends on a host TeX installation for the
-/// 10 pt / 12 pt text and 12 pt roman-math metrics. Explicit user entries are
-/// kept, in their order, after the bundled directory; every other variable is
-/// passed through untouched. Both producer routes share it: the directly
+/// 10 pt / 12 pt text and 12 pt roman-math metrics. Policy (GH36 review):
+/// explicit user entries come FIRST, in their order — a populated user
+/// directory overrides the bundled metrics — and the bundled directory is the
+/// fallback after them; every other variable is passed through untouched. Both producer routes share it: the directly
 /// attached worker (`WorkerClient`) and the helper-spawned producer
 /// (`PreviewControllerClient` → `flashtex-preview-controller` → compiler
 /// child, which inherits the helper's environment).
@@ -57,28 +58,29 @@ enum BundledMetrics {
     }
 
     /// `existing` (`FLASHTEX_TFM_DIRS` as the user set it, possibly nil or
-    /// empty) with `bundled` prepended: the bundled path first, then every
-    /// non-empty explicit entry in its original order, minus repeats of the
-    /// bundled path. Explicit entries stay in effect for anything the bundle
-    /// does not carry (bold/italic/other design sizes).
-    static func prepending(_ bundled: String, to existing: String?) -> String {
-        var entries = [bundled]
+    /// empty) with `bundled` appended: every non-empty explicit entry first,
+    /// in its original order, then the bundled path (repeats of it dropped).
+    /// Explicit entries therefore override the bundle for any metric they
+    /// carry, and the bundle answers for everything they do not.
+    static func merged(bundled: String, withExplicit existing: String?) -> String {
+        var entries: [String] = []
         for entry in (existing ?? "").split(separator: ":", omittingEmptySubsequences: true) {
             let s = String(entry)
             if s != bundled { entries.append(s) }
         }
+        entries.append(bundled)
         return entries.joined(separator: ":")
     }
 
     /// The environment to launch a producer (or the helper that spawns one)
     /// with: `base` unchanged except `FLASHTEX_TFM_DIRS`, which gets the
-    /// bundled directory prepended. Returns `base` untouched when no bundled
+    /// bundled directory appended after the explicit entries. Returns `base` untouched when no bundled
     /// directory exists, so a bare build behaves exactly as before.
     static func producerEnvironment(base: [String: String] = ProcessInfo.processInfo.environment,
                                     bundledDirectory: URL? = tfmDirectory()) -> [String: String] {
         guard let bundledDirectory else { return base }
         var env = base
-        env[environmentKey] = prepending(bundledDirectory.path, to: base[environmentKey])
+        env[environmentKey] = merged(bundled: bundledDirectory.path, withExplicit: base[environmentKey])
         return env
     }
 }

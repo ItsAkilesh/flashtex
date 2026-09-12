@@ -74,11 +74,15 @@ established fixtures need (`ec-lmr10`, `ec-lmr12`, `rm-lmr12`, `rm-lmr8`,
   the app signature.
 - `BundledMetrics` (`BundledMetrics.swift`) finds the bundled directory (bundle
   `Resources/texmf`, else the repository copy for `swift build` products) and
-  prepends it to `FLASHTEX_TFM_DIRS` for every producer launch — the directly
+  appends it to `FLASHTEX_TFM_DIRS` for every producer launch — the directly
   attached worker (`WorkerClient`) and the helper-spawned producer
   (`PreviewControllerClient` → `flashtex-preview-controller` → compiler child,
-  which inherits the helper's environment). Explicit user entries stay in
-  effect after the bundled directory; nothing else in the environment changes.
+  which inherits the helper's environment). Policy: explicit user entries come
+  first and override the bundle (a populated user directory wins — verified by
+  `BundledMetricsTests` with a truncated user `ec-lmr10.tfm`, which the producer
+  then reads and reports as `tfm_missing … InvalidFont` although an intact copy
+  sits behind it); the bundled directory is the fallback for everything the user
+  entries do not carry; nothing else in the environment changes.
   A producer at or after render-pipeline 421a2049 also discovers
   `<exe>/../Resources/texmf` by itself (explicit env first, then the bundle,
   then host TeX); the env route keeps older producers and explicit overrides
