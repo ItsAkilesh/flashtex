@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "agent_id": "commander-font-resources",
+  "task_id": "FT-024",
+  "next_index": 0,
+  "steps": [
+    {
+      "name": "Simple glyph outline decoding",
+      "objective": "Simple glyph outline decoding",
+      "owned_paths": [
+        "crates/font-resources"
+      ],
+      "acceptance": [
+        "Meaningful tests and strict lint pass",
+        "Publish truthful execution provenance and exact tested SHA",
+        "No native integration or PDF parity claim without measured evidence"
+      ],
+      "timebox_minutes": 30,
+      "allocation_id": "hosted-openai-product"
+    },
+    {
+      "name": "Composite transform geometry and exact bounds",
+      "objective": "Composite transform geometry and exact bounds",
+      "owned_paths": [
+        "crates/font-resources"
+      ],
+      "acceptance": [
+        "Meaningful tests and strict lint pass",
+        "Publish truthful execution provenance and exact tested SHA",
+        "No native integration or PDF parity claim without measured evidence"
+      ],
+      "timebox_minutes": 30,
+      "allocation_id": "hosted-openai-product"
+    }
+  ]
+}

@@ -58,6 +58,19 @@
         "crates/compiler"
       ],
       "timebox_minutes": 45
+    },
+    {
+      "name": "Exact rendering convergence",
+      "objective": "Connect original compiler to negotiated original Rust font/layout pipeline with exact source identity. Separate raw PDF bytes, pixel equality and incremental-clean equivalence; no reference engine in production.",
+      "owned_paths": [
+        "crates/compiler"
+      ],
+      "acceptance": [
+        "Pinned fixture evidence reports every byte/pixel mismatch without normalization",
+        "Warm edit timing includes compiler work and leaves native paint gate explicit"
+      ],
+      "timebox_minutes": 45,
+      "allocation_id": "openai-kabir-plus-ft002-stage6"
     }
   ],
   "task_id": "FT-002"
