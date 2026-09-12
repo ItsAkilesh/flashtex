@@ -9,29 +9,29 @@
     "swiftui",
     "network-framework"
   ],
-  "code_revision": "cd58fc2e",
+  "code_revision": "1e436184",
   "eta_minutes": {
-    "likely": 60,
-    "optimistic": 45,
-    "pessimistic": 75
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 5
   },
   "machine": "mac-m1max-a",
   "main_integrated_through": "c11c005",
-  "next_action": "Implement the uncovered pairing gaps (step indicator, pairing_cancelled to the companion, reconnect announcements, Nearby panel focus-order table + README parity)",
+  "next_action": "Parent merges agent/mac-pairing-ui-2/pairing-gaps into mac-shell (no parent-retained file diffs); follow-ups 1 (QR/copyable code) and 2 (per-companion permissions) remain unstarted",
   "reviewed_peers": {
     "origin/agent/mac-claude-a/mac-shell": {
-      "adaptation": "Audit of existing Pairing/NearbyView/NearbyListener/NearbyReferenceClient coverage written to coordination/mac-pairing-ui-2.md; only uncovered parts are implemented",
+      "adaptation": "Audit of existing Pairing/NearbyView/NearbyListener/NearbyReferenceClient coverage written to coordination/mac-pairing-ui-2.md; only uncovered parts were implemented",
       "reviewed_utc": "2026-09-12T12:20:00Z",
       "sha": "cd58fc2e"
     }
   },
   "schema_version": 1,
-  "state": "in_progress",
-  "summary": "Pairing UI item 14: coverage audit done; implementing step indicator, cancelled-companion notice, reconnect announcements, accessibility panel table parity",
+  "state": "ready_for_integration",
+  "summary": "Item 14 pairing gaps: PairingFlow.Step + step indicator (real listener state), listener sends error pairing_cancelled to an unauthenticated bootstrap session before closing, known-companion reconnect/disconnect announced, Nearby Companion panel in PanelFocusOrder/Accessibility Help/README; +4 tests (2 machine, 2 real loopback listener), 6 real-app window captures",
   "tool": "Claude Code subagent (parent mac-claude-a)",
-  "updated_utc": "2026-09-12T12:20:00Z",
+  "updated_utc": "2026-09-12T12:22:00Z",
   "usage": {
-    "evidence": "none yet",
+    "evidence": "swift build clean; PairingFlowMachineTests 32/32, PairingPersistenceTests 7/7, NearbyViewControllerTests 13/13 x3 (load 24-44), CommandTableTests 8/8, listener/state/reference-client 26 (1 env skip); evidence docs/evidence/nearby-pairing-2026-09-12/ui-2; full swift test with real helpers recorded in the handoff",
     "status": "Shared Claude Max quota with parent mac-claude-a; no purchases"
   }
 }

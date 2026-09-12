@@ -70,18 +70,58 @@ Already covered on mac-shell cd58fc2e (file: test):
   8 hosted-view states, 6 real-app states), validation report
   `tools/native-validation/mac-live/reports/20260912T110944Z.md` (open-window/nearby PASS).
 
-## Plan (uncovered parts only)
+## Delivered (current task, item 14) — branch tip 1e436184
 
-1. `PairingFlow.Step` (pure) + step indicator row in `NearbyFlowView`; tests.
-2. Listener tells an unauthenticated bootstrap session `pairing_cancelled`
-   before closing when the bootstrap key is withdrawn; test asserts no record.
-3. Reconnect/disconnect of a known companion announced to VoiceOver.
-4. `PanelFocusOrder` Nearby panel + `CommandTableTests` + README row.
+1. PROGRESS: `PairingFlow.Step` (Pairing.swift, pure from the phase: 4 steps —
+   show a code / companion enters the code / verify the companion / paired;
+   interrupted at the step the attempt reached; nil while receiving or on the
+   error banner) and `PairingStepIndicator` (NearbyView.swift) under the
+   status row, one spoken element "Pairing step n of 4: …, in progress. Done: …",
+   identifier `nearby.pairing.steps`, short capsule captions at min width.
+2. CANCELLATION: `NearbyListener.adoptConnections` sends `error
+   pairing_cancelled` (id null, "the Mac withdrew the pairing code before
+   hello") and closes behind it when a session opened with a bootstrap key the
+   new table no longer serves (cancel/expiry/replace/consumed); documented in
+   `apps/mac/docs/nearby-v1-proposal.md`. No record can be written after a
+   cancel (only `PairingCoordinator.confirm` writes one, and cancel clears it).
+3. RECONNECT: machine inputs `companionConnected` / `companionDisconnected`
+   (controller sends them for `hello(bootstrap:false)` and for a closed
+   session whose pair id is in the store): "X reconnected." / "X disconnected:
+   reason." announced, phase untouched; not announced during a receive from
+   that pair (peerGone already reports it) or on the error banner. A revoked
+   companion fails the TLS-PSK handshake (no name, nothing announced; the log
+   says "closed unauthenticated: handshake failed…") — by design, no reason
+   can be delivered before authentication.
+4. ACCESSIBILITY: `PanelFocusOrder` "Nearby Companion" panel (14 controls in
+   source = Tab order, when each is present, keyboard-only pairing: Return
+   shows/resumes, Esc cancels/dismisses); `CommandTableTests` now reads
+   `NearbyView.swift` (4 panels); Accessibility Help VoiceOver note; ⌘⇧N
+   command description and README row spell the in-window keys and Tab order.
+   `NearbyView` refused-capture section moved into `refusedSection(_:)`
+   declared after the paired rows so source order is the Tab order.
+
+Tests added: `PairingFlowMachineTests` +2 (`testStepIndicatorFollowsThePhase`,
+`testKnownCompanionReconnectAndDisconnectAreAnnouncedWithoutChangingThePhase`),
+`NearbyViewControllerTests` +2 against the real loopback listener
+(`testCancelDuringVerifyingTellsTheCompanionAndLeavesNoRecord`,
+`testKnownCompanionReconnectIsAnnouncedAndRevokedIsRefused`);
+`CommandTableTests.testPanelFocusOrderMatchesThePanelSources` extended.
+
+Measured: `swift build` clean; `PairingFlowMachineTests` 32/32,
+`PairingPersistenceTests` 7/7, `NearbyViewControllerTests` 13/13 (3 consecutive
+runs at load 24–44), `CommandTableTests` 8/8, `OverlayTests` 10 (1 env skip),
+listener/state/reference-client suites 26 (1 env skip) — all 0 failures.
+Evidence: `docs/evidence/nearby-pairing-2026-09-12/ui-2/` (6 real-app window
+captures through a loopback pairing, `FLASHTEX_NO_ACTIVATE=1`, never activated).
+Full `swift test` with real helpers: see the final report / registration usage field.
+
+Follow-up 1 (QR/code display + copyable fallback) and follow-up 2
+(per-companion permissions) — NOT started inside the ~75 min bound; the
+`textSelection(.enabled)` on the code is the only copy path today.
 
 ## Checkpoint
 
-- Branch `agent/mac-pairing-ui-2/pairing-gaps` @ cd58fc2e (no commits yet).
-- Dirty: this file, `coordination/agents/mac-pairing-ui-2.json`.
-- Next: implement 1–4, `swift build`, `swift test --filter "Pairing|NearbyView|CommandTable"`, commit, push.
+- Branch `agent/mac-pairing-ui-2/pairing-gaps` @ 1e436184, pushed. Dirty: this file, registration.
+- No parent-retained files changed; no diffs requested from the parent.
 - Consumed main: c11c005 (via mac-shell cd58fc2e).
 - Billing: shared Claude Max quota via parent; no purchases.
