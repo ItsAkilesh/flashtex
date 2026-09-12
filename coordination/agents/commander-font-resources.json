@@ -13,7 +13,7 @@
   "capabilities": [
     "rust-font-resources"
   ],
-  "code_revision": "1fe2b47390e9ad3406682eb03babde7a3a3b9d38",
+  "code_revision": "2f770fd0379c1e6c8044971060d73bb2140347f0",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
@@ -21,13 +21,13 @@
   },
   "machine": "linux-primary",
   "main_integrated_through": "63a93717865920014d15fa113102698572494976",
-  "next_action": "Rendering-core may consume BoundCffTfmFont and CffEncodingCache; ready for next assigned product stage.",
+  "next_action": "Renderer may consume without wire or cache-key changes; ready for next assigned exact-font stage.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "FT024 r5 followup published: CFF glyph-name resolution f02f834, exact immutable resolved encoding cache. 83 tests and strict all-target clippy pass; pinned STIX2221 name roundtrips and exact name digest verified. Full font/CFF/face/range plus TFM/encoding identity preserved; 128-entry/8MiB LRU cap, explicit oversize bypass; no visual/hinted parity claim.",
+  "summary": "Published2f770fd original bounded Type2 arithmetic/stack/transient operations.86tests, strictclippy, pinned STIXgeometrySHA replay pass. Installed inventory63OTF:62CFFfonts/71688glyphs accepted Unhinted; CantarellVF missing CFF table accessor rejection. Random/non-dyadic quotient/irrationalroot explicitUnsupportedFont. Visual/PDF mismatch and prior acceptance delta unverified.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T07:02:52Z",
+  "updated_utc": "2026-09-12T07:09:08Z",
   "usage": {
     "evidence": "crates/font-resources/README.md; test suite; installed font SHA pinned.",
     "status": "Hosted allocation; no external provider calls; account remainder unknown."

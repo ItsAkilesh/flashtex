@@ -6,12 +6,16 @@ fn be32(data: &mut [u8], at: usize, n: u32) {
     data[at..at + 4].copy_from_slice(&n.to_be_bytes());
 }
 pub fn fixture() -> Vec<u8> {
-    build(false)
+    build(false, false)
 }
 pub fn triangle_fixture() -> Vec<u8> {
-    build(true)
+    build(true, false)
 }
-fn build(triangle: bool) -> Vec<u8> {
+#[allow(dead_code)]
+pub fn grid_fixture() -> Vec<u8> {
+    build(true, true)
+}
+fn build(triangle: bool, grid: bool) -> Vec<u8> {
     let mut tables = BTreeMap::new();
     let mut head = vec![0; 54];
     be32(&mut head, 0, 0x00010000);
@@ -31,6 +35,15 @@ fn build(triangle: bool) -> Vec<u8> {
                 0, 1, 0, 0, 0, 0, 0, 100, 0, 100, 0, 2, 0, 0, 0x31, 0x33, 0x27, 100, 100, 100,
             ],
         );
+        if grid {
+            // Glyph2 is glyph1 translated by (+50,-50) with ROUND_XY_TO_GRID.
+            // Glyph1 stays original; UPEM1000 gives half-pixel ties at10ppem.
+            let mut component = vec![
+                0xff, 0xff, 0, 0, 0, 0, 0, 100, 0, 100, 0, 7, 0, 1, 0, 50, 0xff, 0xce,
+            ];
+            tables.get_mut(b"glyf").unwrap().append(&mut component);
+            tables.insert(*b"loca", vec![0, 0, 0, 0, 0, 10, 0, 19]);
+        }
     } else {
         tables.insert(*b"loca", vec![0; 8]);
         tables.insert(*b"glyf", vec![]);

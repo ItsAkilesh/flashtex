@@ -329,3 +329,29 @@ run SHA above. A synthetic add-operated curve matches literal-coordinate output
 exactly through direct and cached placement, while retaining distinct input hashes.
 Non-dyadic Type2 division stays an explicit unsupported result. This exercises the
 new arithmetic without changing default hint, wire or device-grid policies.
+
+`device_grid::DevicePathCache` is a separate opt-in cache for composites requiring
+an explicit device grid. Keys retain font SHA/face/GID, ppem X/Y, tie rule, declared
+outline-policy/build hash and transform order (declared offset transform before
+grid rounding; child assembly before parent transform). Missing context fails;
+changing context clears device entries. The size-independent unhinted cache and
+its unsupported outcomes remain unchanged. Retained byte charges exclude map
+overhead and external Arcs; entry and payload caps stay explicit.
+
+Device paths serialize only to `flashtex-internal-device-v1` comparison fixtures.
+The geometry-diff tool validates this opt-in format and reports device policy changes
+as resource-context differences; it does not infer equivalence to mixed/display
+formats. Fractional placement remains exact, and `hinting_applied` remains false.
+
+```sh
+cargo run --manifest-path crates/rendering-core/Cargo.toml --example device_grid_probe -- \
+  /usr/share/fonts/liberation-sans-fonts/LiberationSans-Regular.ttf \
+  /usr/share/licenses/liberation-sans-fonts/LICENSE
+```
+
+Pinned 16-ppem/AwayFromZero replay: 2,619 non-.notdef device glyphs, 63,782 commands,
+2,619 direct/cache matches and warm hits. Default expansion remains 1,678 accepted
+and 941 explicitly unsupported non-.notdef glyphs. Geometry SHA256:
+`a33a8836d80b2bd9fa89ba017c60df0ef175d563d930b5620e0b7e75f9dfa3b5`.
+The fixture records font/license/policy pins. Device policy is not TrueType
+instruction execution or a hinted raster/native/PDF parity claim.
