@@ -1,14 +1,9 @@
 #!/bin/zsh
-# FlashTeX Commander supervisor — session-independent.
+# FlashTeX Commander deterministic supervisor. Launchd-managed, session-independent.
 #
-# Survives the Claude session that launched it. Polls the fleet, and when
-# something changes, spends a Codex call to triage it. Codex carries the load
-# because it has the usage headroom; the Commander reads the reports.
-#
-# SAFETY, deliberate and non-negotiable:
-#   - read-only. No commits, no pushes, no killing or restarting anything.
-#   - never infers an agent is dead from one observation; reports elapsed time.
-#   - writes reports only; every decision stays with the Commander.
+# DETERMINISTIC ONLY: no model calls of any kind. Reads git state via git/python,
+# writes a factual assignment-state report. Decisions and analysis stay with the
+# active Claude parent session; this script only detects and reports change.
 REPO=/Users/kubar/code/flashtex
 HOME_DIR=$HOME/flashtex-supervisor
 LOG=$HOME_DIR/supervisor.log
@@ -17,8 +12,8 @@ STATE=$HOME_DIR/last-state.txt
 INTERVAL=${1:-90}
 
 log() { echo "[$(date -u +%H:%M:%SZ)] $*" >> "$LOG"; }
-log "supervisor start pid=$$ interval=${INTERVAL}s"
 echo "$$" > "$HOME_DIR/supervisor.pid"
+log "supervisor start pid=$$ interval=${INTERVAL}s (deterministic, no model calls)"
 
 snapshot() {
   git -C "$REPO" fetch origin --prune --quiet 2>/dev/null
@@ -33,33 +28,47 @@ print(d['task_id'],d['revision'],d['state'],d['agent_id'])
       done | sort | tr '\n' ';'
 }
 
+write_report() {
+  local now_epoch=$(date -u +%s)
+  {
+    echo "# Fleet report, deterministic, generated $(date -u +%H:%M:%SZ)"
+    echo
+    echo "main: $(git -C "$REPO" log -1 --format=%h origin/main 2>/dev/null), $(( (now_epoch - $(git -C "$REPO" log -1 --format=%ct origin/main 2>/dev/null)) / 60 ))m ago"
+    echo
+    echo "| task | rev | state | agent | branch age (min) |"
+    echo "|---|---|---|---|---|"
+    for f in $(git -C "$REPO" ls-tree --name-only origin/main coordination/assignments/ 2>/dev/null); do
+      python3 -c "
+import json,subprocess,sys
+try:
+    d=json.loads(subprocess.check_output(['git','-C','$REPO','show','origin/main:$f']))
+except Exception:
+    sys.exit()
+agent=d.get('agent_id','')
+age='?'
+try:
+    ts=subprocess.check_output(['git','-C','$REPO','log','-1','--format=%ct',
+        f'origin/agent/{agent}']).decode().strip()
+    if ts: age=str(($now_epoch - int(ts))//60)
+except Exception:
+    pass
+print(f\"| {d['task_id']} | {d['revision']} | {d['state']} | {agent} | {age} |\")
+" 2>/dev/null
+    done
+  } > "$REPORT.tmp"
+  mv "$REPORT.tmp" "$REPORT" 2>/dev/null
+}
+
 while true; do
   NOW=$(snapshot)
   PREV=$(cat "$STATE" 2>/dev/null)
   MAIN=$(git -C "$REPO" log -1 --format=%h origin/main 2>/dev/null)
 
   if [ -n "$NOW" ] && [ "$NOW" != "$PREV" ]; then
-    log "change detected; invoking codex triage"
+    log "change detected (deterministic diff); writing report"
     echo "$NOW" > "$STATE"
-    codex exec --skip-git-repo-check --sandbox read-only --cd "$REPO" \
-      -c model_reasoning_effort="low" \
-      "You are the FlashTeX Commander's fleet triage agent. READ ONLY: make no
-edits, commits, pushes, and never kill or restart anything.
-
-Using git on origin/main and remote branches, produce a report under 40 lines:
-
-1. Every assignment whose state is 'assigned': task id, revision, agent_id, and
-   minutes since that agent's branch last committed.
-2. Classify: ACTIVE (<45m), QUIET (45-120m), STALLED (>120m).
-3. A section 'NEEDS COMMANDER ATTENTION' listing ONLY stalled assigned tasks and
-   any assignment whose revision changed since the previous report.
-4. One line on main: short sha and how many minutes since its last commit.
-
-Report elapsed times as facts. Do NOT conclude an agent is dead: a quiet branch
-may be completed work awaiting integration. State uncertainty plainly." \
-      </dev/null 2>>"$LOG" | tail -n 60 > "$REPORT.tmp"
-    mv "$REPORT.tmp" "$REPORT" 2>/dev/null
-    log "triage written to $REPORT (main=$MAIN)"
+    write_report
+    log "report written to $REPORT (main=$MAIN)"
   else
     log "no change (main=$MAIN)"
   fi

@@ -1,30 +1,6 @@
-FT-004	4	aarush-macbook	agent/aarush-macbook/companion-capture	50	4
-FT-007	1	commander	agent/commander/capture-bridge	710	1
-FT-009	1	mac-pdf	agent/mac-pdf/pdf-output	598	1
-FT-010	1	mac-validation	agent/mac-validation/native-verification	602	1
-FT-014	2	chatgpt-a	agent/chatgpt-a/companion-validation	31	2
-FT-015	1	local-claude-opus	agent/local-claude-opus/e2e-harness	None	1
-FT-017	4	mac-visual-oracle	agent/mac-visual-oracle/reference-raster	382	4
-FT-023	28	commander-render-core	agent/commander-render-core/rendering-core	3	28
-FT-028	2	orchestrator-jaysen-opus	agent/orchestrator-jaysen-opus/standby	557	2
-FT-030	3	daniel-tables	agent/daniel-tables/table-layout	470	3
-FT-031	5	daniel-floats	agent/daniel-floats/float-layout	5	4
-FT-032	4	daniel-footnotes	agent/daniel-footnotes/footnote-layout	4	4
-FT-033	4	daniel-title	agent/daniel-title/title-layout	7	4
-FT-034	4	daniel-contents	agent/daniel-contents/toc-layout	8	4
-FT-035	4	daniel-color	agent/daniel-color/color-expressions	8	4
-FT-036	2	daniel-images	agent/daniel-images/image-assets	432	2
-FT-037	3	daniel-links	agent/daniel-links/link-annotations	7	3
-FT-038	4	daniel-math-access	agent/daniel-math-access/math-accessibility	4	3
-FT-039	3	daniel-spelling	agent/daniel-spelling/spellcheck	433	3
-FT-040	3	daniel-templates	agent/daniel-templates/project-templates	12	3
-FT-041	4	daniel-snippets	agent/daniel-snippets/editor-snippets	4	3
-FT-042	4	daniel-statistics	agent/daniel-statistics/document-statistics	6	4
-FT-043	3	daniel-bundle	agent/daniel-bundle/project-bundle	426	3
-FT-044	3	daniel-collaboration	agent/daniel-collaboration/collaboration-core	417	3
-FT-045	3	daniel-calc	agent/daniel-calc/tex-calc	11	3
-FT-046	5	daniel-parent	agent/daniel-parent/supervisor	1	5
-FT-048	46	commander-preview-performance	agent/commander-preview-performance/preview-performance	1	45
-FT-049	49	commander-runtime-display	agent/commander-runtime-display/display-runtime	5	49
-MAIN 486b759c 1
-
+[16:42:21Z] no change (main=486b759c)
+[16:43:44Z] supervisor start pid=18270 interval=90s (deterministic, no model calls)
+[16:43:45Z] no change (main=486b759c)
+[16:44:07Z] supervisor start pid=19064 interval=90s (deterministic, no model calls)
+[16:44:09Z] change detected (deterministic diff); writing report
+[16:44:10Z] report written to /Users/kubar/flashtex-supervisor/latest-report.md (main=486b759c)
