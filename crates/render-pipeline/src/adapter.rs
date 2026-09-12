@@ -672,15 +672,33 @@ fn gap_has_space(gap: &str) -> bool {
     false
 }
 
-/// TeX's space factor after `ch` (Appendix H: sfcodes of plain/LaTeX).
+/// TeX's space factor after `ch` (§1034 with plain.tex's `\sfcode`s, which
+/// LaTeX keeps): `.?!` 3000, `:` 2000, `;` 1500, `,` 1250, closing
+/// delimiters and quotes 0 (keep), uppercase 999. A code above 1000 does
+/// not take effect while the factor is below 1000 (after an uppercase
+/// letter "A." keeps 1000), which is why the update runs per character.
 fn space_factor(ch: char, previous: u32) -> u32 {
-    match ch {
+    let code = match ch {
         '.' | '?' | '!' => 3000,
+        ':' => 2000,
+        ';' => 1500,
         ',' => 1250,
-        ';' | ':' => 1500,
-        ')' | ']' | '\'' | '’' | '”' | '"' => previous,
+        ')' | ']' | '\'' | '’' | '”' | '"' => 0,
         c if c.is_uppercase() => 999,
         _ => 1000,
+    };
+    if code == 1000 {
+        1000
+    } else if code < 1000 {
+        if code > 0 {
+            code
+        } else {
+            previous
+        }
+    } else if previous < 1000 {
+        1000
+    } else {
+        code
     }
 }
 
@@ -857,8 +875,8 @@ fn items_from_inlines(texts: &[&str], inlines: &[Inline], styles: &[Vec<(usize, 
                     }
                     let text: String = run.iter().map(|(c, _)| *c).collect();
                     let srcs: Vec<CharSrc> = run.iter().map(|(_, s)| *s).collect();
-                    if let Some((last, _)) = run.last() {
-                        *factor = space_factor(*last, *factor);
+                    for (c, _) in run.iter() {
+                        *factor = space_factor(*c, *factor);
                     }
                     push_segment(items, text, srcs, style);
                     run.clear();
@@ -1042,7 +1060,7 @@ mod tests {
 
     #[test]
     fn space_factor_follows_sentence_punctuation() {
-        let it = items("End. Next, more");
+        let it = items("End. Next, more: A. B; (c.) d");
         let factors: Vec<u32> = it
             .iter()
             .filter_map(|i| match i {
@@ -1050,6 +1068,8 @@ mod tests {
                 _ => None,
             })
             .collect();
-        assert_eq!(factors, vec![3000, 1250]);
+        // "A." and "B;" stay 1000 (§1034: a code above 1000 after an uppercase
+        // letter), ")" keeps the factor of the "." before it.
+        assert_eq!(factors, vec![3000, 1250, 2000, 1000, 1000, 3000]);
     }
 }
