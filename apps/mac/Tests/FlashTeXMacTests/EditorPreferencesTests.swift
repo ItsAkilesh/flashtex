@@ -392,4 +392,27 @@ final class EditorPreferencesTests: XCTestCase {
         XCTAssertEqual(p.fontSize, 30)
         window.orderOut(nil)
     }
+
+    /// Evidence: renders the settings view (with non-default values) to the
+    /// PNG named by FLASHTEX_PREFS_EVIDENCE. Off-screen, never key.
+    func testWritesSettingsViewEvidenceWhenRequested() throws {
+        guard let path = ProcessInfo.processInfo.environment["FLASHTEX_PREFS_EVIDENCE"] else {
+            throw XCTSkip("set FLASHTEX_PREFS_EVIDENCE=<png path> to render the settings view")
+        }
+        let p = EditorPreferences(defaults: defaults)
+        p.fontFamily = monoFamily; p.fontSize = 15; p.tabWidth = 2; p.appearance = .dark
+        let host = NSHostingView(rootView: EditorPreferencesView(preferences: p))
+        host.frame = NSRect(x: 0, y: 0, width: 480, height: 660)
+        let window = NSWindow(contentRect: host.frame, styleMask: [.titled], backing: .buffered, defer: false)
+        window.title = "Editor Preferences"
+        window.contentView = host
+        host.layoutSubtreeIfNeeded()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.3))
+        let rep = try XCTUnwrap(host.bitmapImageRepForCachingDisplay(in: host.bounds))
+        host.cacheDisplay(in: host.bounds, to: rep)
+        let png = try XCTUnwrap(rep.representation(using: .png, properties: [:]))
+        try png.write(to: URL(fileURLWithPath: path))
+        XCTAssertGreaterThan(png.count, 1000)
+        window.orderOut(nil)
+    }
 }
