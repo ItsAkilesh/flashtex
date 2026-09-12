@@ -1,27 +1,34 @@
-# daniel-math-access handoff — FT-038 rev 1
+# daniel-math-access handoff — FT-038 rev 2
 
-- Agent / task / branch: `daniel-math-access` / FT-038 "original semantic math
-  accessibility adapter over published math-layout nodes" /
-  `agent/daniel-math-access/math-accessibility`
-- State: ready for integration — acceptance criteria met, standalone additive
-  crate, no consumer wiring yet (none was in scope).
+- Agent / task / branch: `daniel-math-access` / FT-038 "expand typed
+  structured math accessibility with exact source-node identity, bounded
+  tree traversal and explicit unsupported nodes; no guessed speech" /
+  `agent/daniel-math-access/math-accessibility`.
+- State: ready for integration — acceptance criteria met, standalone
+  additive crate, no consumer wiring yet (none was in scope).
 - Owned paths: `crates/math-accessibility/**`,
-  `coordination/daniel-math-access.md`. No other path was read-write; no
-  edits were made to `crates/math-layout` or any other crate.
-- Exact tested commit SHA: `c108171c8b8931333cd68d64efc504f1a964d03b` on
+  `coordination/daniel-math-access.md`,
+  `coordination/agents/daniel-math-access.json`. No other path was
+  read-write; no edits were made to `crates/math-layout` or any other crate.
+- Exact tested commit SHA: `0b2d8e74a7d557f9419b1d51aa247568784dc843` on
   `agent/daniel-math-access/math-accessibility`. `cargo build`, `cargo test`,
-  `cargo clippy --all-targets -- -D warnings`, and `cargo fmt -- --check` were
-  all run against the working tree at this exact commit (clean, nothing
+  `cargo clippy --all-targets -- -D warnings`, and `cargo fmt -- --check`
+  were all run against the working tree at this exact commit (clean, nothing
   further staged) inside `crates/math-accessibility`.
-- Base verified against: `math-layout` was read at the checked-out tree, not
-  assumed. Its current `Nucleus::Radical` is `Radical(MathList)` — a plain
-  tuple variant, no degree field — confirmed by reading
-  `crates/math-layout/src/mathlist.rs` directly (matches the tip of `main`
-  and this task's `input_main_sha` `53fee3012b2902ca05bd31766defa515b3044cec`).
-  A struct-variant `Radical { radicand, degree }` does exist in this
-  repository's history, but only on unrelated/abandoned commits (a cancelled
-  `mac-math-layout/math-boxes` lane and `mml-rev4`) that are not ancestors of
-  `main` or of this branch — built against what is actually in the tree.
+- `main` integrated through `284369de3fd2af4384c3de2d2403801dffbcf94b`
+  (merged into this branch with `git merge origin/main --no-edit`, no
+  conflicts — nothing else on `main` touches this crate).
+- Base re-verified against the CURRENT tree, not assumed or carried over
+  from rev 1: read `crates/math-layout/src/mathlist.rs` directly at this
+  branch's merged-in `main`. Two things had changed since rev 1's
+  verification: `Nucleus::Radical` is now the struct variant
+  `Radical { radicand: MathList, degree: Option<MathList> }` (rev 1 built
+  against the plain tuple variant `Radical(MathList)`, which no longer
+  exists), and four new variants were added: `Text(String)`,
+  `Overline(MathList)`, `Underline(MathList)`, and
+  `Styled { style: Style, body: MathList }`. Rev 1's code would not compile
+  against the current tree; this revision handles all eleven current
+  `Nucleus` variants.
 
 ## Public typed contract
 
@@ -30,87 +37,107 @@ one dependency: `flashtex-math-layout` (path `../math-layout`).
 
 ```rust
 pub const DEFAULT_MAX_DEPTH: usize = 64;
+pub const DEFAULT_MAX_NODES: usize = 100_000;
 
 pub struct MathAccessibility { /* ... */ }
 impl MathAccessibility {
-    pub fn new() -> Self;                              // DEFAULT_MAX_DEPTH
-    pub fn with_max_depth(max_depth: usize) -> Self;
+    pub fn new() -> Self;                                    // both defaults
+    pub fn with_max_depth(max_depth: usize) -> Self;          // default max_nodes
+    pub fn with_max_nodes(max_nodes: usize) -> Self;          // default max_depth
+    pub fn with_bounds(max_depth: usize, max_nodes: usize) -> Self;
     pub fn describe(&self, list: &MathList) -> Result<Description, AccessibilityError>;
 }
 impl Default for MathAccessibility { /* -> Self::new() */ }
 
 pub struct Description {
-    pub readable: String,             // structured, screen-reader-style text
-    pub mathml: String,               // standalone <math ...>...</math>, XML-escaped
-    pub unsupported: Vec<Unsupported>,// every node with no semantic name, in order
+    pub readable: String,
+    pub mathml: String,
+    pub nodes: Vec<DescribedNode>,     // NEW rev2: every emitted node, with its exact identity
+    pub unsupported: Vec<Unsupported>,
 }
 impl Description {
-    pub fn is_fully_supported(&self) -> bool; // unsupported.is_empty()
+    pub fn is_fully_supported(&self) -> bool;
 }
 
-pub struct Unsupported { pub path: NodePath, pub reason: UnsupportedReason }
+pub struct DescribedNode { pub id: NodeId, pub readable: String } // NEW rev2
+
+/// Exact, stable identity of a source node — built only from structural
+/// position (atom index / child slot at each level), never memory
+/// addresses or run-to-run incidentals. Same input, rebuilt from scratch,
+/// always yields the same ids.
+pub struct NodeId(/* private */);                                 // NEW rev2
+impl NodeId {
+    pub fn path(&self) -> &[PathStep];
+}
+impl std::fmt::Display for NodeId { /* e.g. "atom0/numerator/atom0" */ }
+
+pub struct Unsupported { pub id: NodeId, pub reason: UnsupportedReason } // id was `path: NodePath` in rev1
 pub type NodePath = Vec<PathStep>;
 pub enum PathStep {
     Atom(usize), Group, Superscript, Subscript, Numerator, Denominator,
-    Radicand, AccentBase, AccentGlyph, DelimitedBody, LeftDelimiter, RightDelimiter,
+    Radicand, Degree, AccentBase, AccentGlyph, DelimitedBody, LeftDelimiter,
+    RightDelimiter, OverlineBody, UnderlineBody, StyledBody,     // last 4 + Degree are NEW rev2
 }
 pub enum UnsupportedReason {
     UnknownSymbolName(char), UnknownAccentName(char), ControlCharacter(char),
 }
 
 pub enum AccessibilityError {
-    RecursionLimitExceeded { max_depth: usize, path: NodePath },
+    RecursionLimitExceeded { max_depth: usize, id: NodeId },
+    NodeCountExceeded { max_nodes: usize, id: NodeId },          // NEW rev2
 }
 // impl std::error::Error + Display for AccessibilityError
 ```
 
-Consumes `flashtex_math_layout::{Atom, MathList, Nucleus}` (the semantic math
-list, not the laid-out box tree) exactly as published: `Nucleus::{Symbol,
-List, Fraction{numerator,denominator,thickness}, Radical(MathList),
-Accent{accent,base}, Delimited{left,right,body}, Empty}`, `Atom{class,
-nucleus, superscript, subscript, limits}`.
+Consumes `flashtex_math_layout::{Atom, MathList, Nucleus, StyleLevel}`
+exactly as published on the merged-in `main`.
 
-## Behavior
+## Behavior (rev2 additions on top of rev1)
 
-- Every one of the six `Nucleus` variants is handled; none are silently
-  skipped. "Unsupported" applies only to individual **symbol/accent
-  characters** with no entry in the built-in spoken-name tables (common
-  operators/relations/delimiters/Greek letters). Those never get a guessed
-  spoken word — they render as an explicit `[unsupported symbol U+XXXX]` /
-  `[unsupported accent U+XXXX]` marker in `readable` and are recorded in
-  `Description.unsupported` with the exact `NodePath` and character.
-- MathML always preserves the literal source glyph (XML-escaped: `&`, `<`,
-  `>`), even for characters with no spoken name — visual identity is never
-  approximated, only the spoken name is ever withheld. The one exception is
-  control characters, which are not legal literal XML text at all; those
-  become an explicit `<merror><mtext>unsupported control character
-  U+XXXX</mtext></merror>` in MathML (and the analogous bracketed marker in
-  `readable`), instead of emitting an invalid raw byte.
-- Fraction rule thickness (`Some(t)`) is carried verbatim into MathML as
-  `linethickness="{t}pt"` rather than collapsed into a thin/thick guess.
-- Recursion (groups, fraction numerator/denominator, radicands, accent
-  bases, delimited bodies, sub/superscripts) is bounded by `max_depth`
-  (64 by default). Exceeding it returns
-  `Err(AccessibilityError::RecursionLimitExceeded)` before recursing further —
-  verified with a 10,000-level nested-group fixture (built iteratively, and
-  leaked with `mem::forget` after the assertion since dropping that fixture
-  recursively — a math-layout data-structure property outside this crate's
-  ownership — would itself overflow the stack; the traversal under test
-  never gets near that depth).
+- **Exact source-node identity**: every `DescribedNode` and every
+  `Unsupported` carries a `NodeId` built purely from the node's structural
+  coordinate in the input (which atom index at each nesting level, which
+  named child slot — numerator/denominator/radicand/degree/accent-base/
+  accent-glyph/delimited-body/left-delimiter/right-delimiter/overline-body/
+  underline-body/styled-body/superscript/subscript/group). It has a stable
+  `Display` (e.g. `atom0/numerator/atom0`) usable as a map key. Proven
+  rebuild-stable by `identity_is_stable_across_rebuild`: two independently
+  constructed (different `Vec`/`String` allocations, asserted via pointer
+  inequality), structurally identical trees produce identical `nodes`,
+  identical `unsupported`, and identical `readable`/`mathml` output.
+- **Bounded tree traversal, two ways**: nesting depth (`max_depth`,
+  `RecursionLimitExceeded`, unchanged from rev1) bounds a deep-but-narrow
+  tree; total node count (`max_nodes`, new `NodeCountExceeded`) bounds a
+  wide-but-shallow tree that a depth bound alone cannot catch — a flat list
+  of 200 atoms stays at depth 1 throughout but still trips a 100-node bound
+  at exactly the 101st atom (`wide_shallow_list_fails_on_node_count_not_depth`,
+  which also asserts the exact `NodeId` of the atom that tripped it).
+- **Explicit unsupported nodes, no guessed speech**: unchanged rule from
+  rev1 — an unknown symbol or accent character never gets an invented
+  spoken word; it becomes an explicit `[unsupported symbol/accent U+XXXX]`
+  marker in `readable`, the literal glyph preserved in `mathml`, and a typed
+  `Unsupported` entry. `Nucleus::Text` (`\lim`, `\sin`, …) is spoken exactly
+  as given — that's not a guess, it's already a name, not a symbol we'd
+  have to invent a name for. All eleven `Nucleus` variants are structurally
+  handled; "unsupported" only ever applies to individual unnamed
+  symbol/accent characters, never to a whole node kind.
+- New constructs: `\sqrt[degree]{radicand}` → `<mroot>` (radicand, then
+  index, per MathML's required child order) and "start root, index
+  {degree}, {radicand}, end root"; `\overline`/`\underline` →
+  `<mover>`/`<munder>` with the literal bar/underscore glyph; `{\displaystyle
+  ...}` (`Nucleus::Styled`) → `<mstyle displaystyle="true|false">`, the
+  source `StyleLevel` carried verbatim into the attribute rather than
+  dropped, body otherwise read transparently.
+- XML escaping and control-character handling are unchanged from rev1:
+  `&`/`<`/`>` escaped, non-ASCII glyphs kept literal, control characters
+  degrade to `<merror><mtext>...</mtext></merror>` instead of a raw byte.
 
 ## Validation
 
-`cargo test` in `crates/math-accessibility`: 17 passed. Includes exact
-hand-worked `readable` + `mathml` string assertions (not just non-empty
-checks) for: an ordinary relation (`x + y = z`), `\frac{1}{2}`, `\sqrt{2}`,
-`\hat{x}`, `\left(x\right)`, a null-delimiter case, `x^2`, `x_i^2` (asserting
-MathML's `msubsup` base/sub/sup child order), a known Unicode Greek letter
-(`\pi`), an unknown Unicode symbol (U+1F600, asserting the explicit marker
-and the `Unsupported` entry, not a guess), a control character (U+0007,
-asserting `<merror>` and no raw control byte anywhere in the MathML string),
-an XML-special + non-ASCII round-trip (`<`, `&`, `é`, decoded back and
-compared to the source characters), the depth-bound failure, and an
-empty-list/empty-nucleus case.
+`cargo test` in `crates/math-accessibility`: **25 passed** (up from 17 in
+rev1; 8 new tests cover degree-bearing roots, `Text`/`Overline`/`Underline`/
+`Styled`, the node-count bound both tripped and within-bound, rebuild
+identity stability, and `NodeId::Display`'s exact string form).
 
 `cargo clippy --all-targets -- -D warnings`: clean, zero warnings.
 `cargo fmt -- --check`: clean.
@@ -118,10 +145,10 @@ empty-list/empty-nucleus case.
 ## Incomplete / out of scope
 
 - No OpenType MathML `intent`/semantics annotations, no matrices/arrays
-  (`Nucleus` doesn't have them yet either).
-- Spoken-name coverage is common operators, relations, delimiters, and the
-  Greek alphabet; anything else is reported through `unsupported` rather than
-  silently passed through or guessed.
+  (`Nucleus` doesn't have them).
+- Spoken-name coverage is unchanged: common operators, relations,
+  delimiters, and the Greek alphabet; anything else goes through
+  `unsupported` rather than being silently passed through or guessed.
 - No consumer integration performed (none was requested); this is an
   additive, standalone crate only.
 
