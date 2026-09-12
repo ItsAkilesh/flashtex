@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "agent_id": "bridge-context-jobs",
+  "branch": "agent/bridge-context/conversion-jobs",
+  "machine": "linux-primary",
+  "tool": "Codex Astra hosted /root/bridge_context",
+  "capabilities": [
+    "rust",
+    "conversion-jobs",
+    "bridge-journal"
+  ],
+  "allocation_id": "hosted-openai-product",
+  "state": "in_progress",
+  "updated_utc": "2026-09-12T05:55:46.584469+00:00",
+  "assignment_acknowledgements": {
+    "FT-022": {
+      "revision": 1,
+      "acknowledged_utc": "2026-09-12T05:55:46.584469+00:00",
+      "main_sha": "254193c175534e78bfd9e5206b4850b86123cbe6",
+      "adaptation": "Exact assignment pair manually acknowledged under orchestrator authorization while coord.py branch-alias check is fixed. Own optional async bridge adapter only inside conversion-jobs; no global/core edits."
+    }
+  },
+  "summary": "Published scheduler, durable recovery, events and actual bridge offline example. Implementing reusable asynchronous bridge adapter.",
+  "usage": {
+    "status": "Hosted OpenAI quota unknown; no paid provider calls or Cursor retry. Direct Git fallback authorized.",
+    "evidence": "17 all-target tests passed after main merge4f44bc0; prior strict Clippy/fmt/example pass."
+  },
+  "eta_minutes": {
+    "optimistic": 15,
+    "likely": 25,
+    "pessimistic": 40
+  },
+  "next_action": "Implement adapter APIs/nonblockingpoll/durable intent and restart/fairness regressions."
+}
