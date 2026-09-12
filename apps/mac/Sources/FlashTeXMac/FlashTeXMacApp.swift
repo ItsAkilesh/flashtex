@@ -94,6 +94,12 @@ struct FlashTeXMacApp: App {
         }
         .commands {
             NavigationCommands(model: model) // Navigation.swift
+            CommandGroup(after: .toolbar) {
+                // Helper display-candidate route (ShellModel+DisplayCandidates.swift): default OFF; untrusted v2 siblings painted in the v2 pane.
+                Toggle("Helper Display Candidates", isOn: Binding(get: { model.displayCandidates.requested }, set: { model.setDisplayCandidates($0) }))
+                    .disabled(!model.controllerAttached)
+                    .help("Ask the attached preview controller to forward the producer's display-list-v2 sibling (untrusted; validated natively before paint). Status: \(model.displayCandidates.status)")
+            }
             CommandGroup(after: .help) {
                 Button("FlashTeX Accessibility Help") { openWindow(id: AccessibilityHelpView.windowID) }
             }
