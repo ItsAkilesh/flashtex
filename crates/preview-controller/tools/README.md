@@ -28,3 +28,19 @@ any trailing output is refused. Request IDs are checked when present; compile
 results additionally match project and revision. Error replies remain errors with
 matching IDs. Two additional tests cover trailing output and a wrong reference ID.
 Cleanup reaps the direct child; it does not claim process-tree supervision.
+
+Large-frame scanning update: exchange now searches only the newly read chunk for
+newline. Earlier chunks contain no newline because that would already have ended
+or refused the exchange. This avoids rescanning the accumulated frame on every
+read (quadratic work for fragmented large replies). Existing bounds, exact final
+newline framing, failure prefixes, deadlines and identity checks remain unchanged.
+Ten real-child tests now include a large fragmented reply with separately written
+newline, and refusal of a newline followed by trailing bytes in a later chunk.
+
+scan-observation.json records five alternating old/new isolated measurements for
+8MiB received in8KiB chunks: accumulation+scan median121.44ms→0.50ms. This is NOT
+compiler or native latency. Historical benchmark timings are unchanged; do not
+retroactively subtract this synthetic overhead from them. Reproduce by accumulating
+1024 chunks (last byte newline) into a bytearray; compare searching the growing
+array each iteration against chunk.find, using perf_counter and retaining both
+raw sample sets. First allocation/caching effects are visible in the samples.

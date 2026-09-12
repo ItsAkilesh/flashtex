@@ -42,8 +42,11 @@ def exchange(process, request, timeout, max_reply, failure_prefix=None):
                     reply.extend(chunk)
                     if len(reply) > max_reply:
                         raise ValueError("response exceeds configured byte bound")
-                    if b"\n" in reply:
-                        if sent != len(request) or reply.index(b"\n") != len(reply) - 1:
+                    # Earlier chunks had no newline, otherwise exchange already
+                    # returned/refused. Scan each byte once, not the growing frame.
+                    newline = chunk.find(b"\n")
+                    if newline != -1:
+                        if sent != len(request) or newline != len(chunk) - 1:
                             raise ValueError("unexpected response framing")
                         return bytes(reply), (time.perf_counter() - start) * 1000
 

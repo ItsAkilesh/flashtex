@@ -1,0 +1,49 @@
+{
+  "scope": "isolated accumulating/scanning cost, not compiler/native latency",
+  "reply_bytes": 8388608,
+  "chunk_bytes": 8192,
+  "rows": [
+    {
+      "old": true,
+      "ms": 121.43878600909375
+    },
+    {
+      "old": false,
+      "ms": 3.0914050003048033
+    },
+    {
+      "old": false,
+      "ms": 0.5017369985580444
+    },
+    {
+      "old": true,
+      "ms": 121.06336599390488
+    },
+    {
+      "old": true,
+      "ms": 121.51499401079491
+    },
+    {
+      "old": false,
+      "ms": 0.4995880008209497
+    },
+    {
+      "old": false,
+      "ms": 0.48251300177071244
+    },
+    {
+      "old": true,
+      "ms": 121.14118300087284
+    },
+    {
+      "old": true,
+      "ms": 129.02487900282722
+    },
+    {
+      "old": false,
+      "ms": 0.4928370035486296
+    }
+  ],
+  "old_median_ms": 121.43878600909375,
+  "new_median_ms": 0.4995880008209497
+}

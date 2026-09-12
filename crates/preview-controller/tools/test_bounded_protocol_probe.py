@@ -67,6 +67,24 @@ class BoundedProbeTests(unittest.TestCase):
         self.exercise('for line in sys.stdin:\n sys.stdout.write(line); sys.stdout.flush()\n',
                       request=b'{}\n{"x":1}\n', expected=b'{}\n{"x":1}\n')
 
+    def test_large_fragmented_reply_and_separate_newline(self):
+        response = b'{"x":"' + b'a' * 262144 + b'"}\n'
+        self.exercise(
+            'for line in sys.stdin:\n'
+            ' body = b\'{"x":"\' + b"a" * 262144 + b\'"}\'\n'
+            ' for i in range(0, len(body), 4096):\n'
+            '  sys.stdout.buffer.write(body[i:i+4096]); sys.stdout.buffer.flush()\n'
+            ' sys.stdout.buffer.write(b"\\n"); sys.stdout.buffer.flush()\n',
+            request=b'{}\n{}\n', expected=response * 2, limit=len(response))
+
+    def test_newline_inside_later_chunk_refuses_trailing_bytes(self):
+        self.exercise(
+            'sys.stdin.readline()\n'
+            'sys.stdout.write("x" * 128); sys.stdout.flush()\n'
+            'time.sleep(.02)\n'
+            'sys.stdout.write("x\\nextra"); sys.stdout.flush()\n',
+            error=ValueError)
+
 
 if __name__ == '__main__':
     unittest.main()
