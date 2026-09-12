@@ -39,9 +39,11 @@ enum PreviewFonts {
     /// (Core-14 Times metrics today) → `.times`. `FLASHTEX_PREVIEW_FACE` overrides.
     static var producerFace: Face = .times
 
-    static var requested: Face {
-        Face(rawValue: ProcessInfo.processInfo.environment["FLASHTEX_PREVIEW_FACE"] ?? "") ?? producerFace
-    }
+    /// `FLASHTEX_PREVIEW_FACE` read once: `ProcessInfo.environment` copies the
+    /// whole environment on every access and this is consulted per drawn item.
+    private static let environmentFace: Face? = Face(rawValue: ProcessInfo.processInfo.environment["FLASHTEX_PREVIEW_FACE"] ?? "")
+
+    static var requested: Face { environmentFace ?? producerFace }
 
     /// Active face: Latin Modern when requested and registered, else Times.
     static var active: Face { requested == .latinModern && latinModernRegistered ? .latinModern : .times }

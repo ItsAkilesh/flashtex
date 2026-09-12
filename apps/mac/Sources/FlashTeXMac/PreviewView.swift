@@ -1,4 +1,5 @@
 import SwiftUI
+import CoreText
 import FlashTeXProtocol
 import FlashTeXAccessibility
 
@@ -25,11 +26,16 @@ struct PreviewView: View {
             // Fit the widest page to the pane (never upscale past 100%).
             let scale = min(1, max(0.2, (geo.size.width - 48) / widest))
             ScrollView([.vertical, .horizontal]) {
+                // Lazy: only pages near the viewport are laid out and drawn;
+                // `.equatable()`: a page whose items, caret set and scale did not
+                // change keeps its display list, so a keystroke re-draws only the
+                // pages whose layout (or source offsets) actually moved.
                 VStack(spacing: 24) {
                     ForEach(result.pages, id: \.number) { page in
                         PageView(page: page, dark: dark, caretItems: caretItems[page.number] ?? [], scale: scale,
                                  rulesNegotiated: result.layoutCapabilities?.contains(RuntimeV1.LayoutCapabilities.rulesV1) == true,
                                  onSelect: onSelect)
+                            .equatable()
                             .id(page.number)
                     }
                 }
@@ -46,7 +52,7 @@ struct PreviewView: View {
     }
 }
 
-private struct PageView: View {
+private struct PageView: View, Equatable {
     let page: RuntimeV1.Page
     let dark: Bool
     var caretItems: Set<Int> = []
@@ -54,6 +60,12 @@ private struct PageView: View {
     var scale: CGFloat = 1.0
     var rulesNegotiated = false
     let onSelect: (RuntimeV1.SourceRange?, String?) -> Void
+
+    /// Everything that affects the drawing; `onSelect` is the same closure for
+    /// every page and revision, so it is not part of identity.
+    static func == (a: PageView, b: PageView) -> Bool {
+        a.page == b.page && a.dark == b.dark && a.caretItems == b.caretItems && a.scale == b.scale && a.rulesNegotiated == b.rulesNegotiated
+    }
 
     var body: some View {
         let size = CGSize(width: page.widthPt * scale, height: page.heightPt * scale)
@@ -80,44 +92,44 @@ private struct HitTestCanvas: View {
     var rulesNegotiated = false
     let onSelect: (RuntimeV1.SourceRange?, String?) -> Void
 
-    /// Hit rects keyed by `page.items` index so hover, click, and caret
-    /// highlights agree even when non-text items are interleaved.
-    @State private var hitRects: [(index: Int, rect: CGRect, source: RuntimeV1.SourceRange?, text: String?)] = []
     @State private var hover: Int?
+
+    /// Hit rects keyed by `page.items` index, computed on demand from the
+    /// cached line metrics (`PreviewHitRects`) — not published from the draw
+    /// closure, which would re-invalidate the view after every paint.
+    private var hitRects: [PreviewHitRects.Hit] {
+        PreviewHitRects.compute(page: page, scale: scale, rulesNegotiated: rulesNegotiated)
+    }
 
     var body: some View {
         Canvas { context, _ in
-            var rects: [(index: Int, rect: CGRect, source: RuntimeV1.SourceRange?, text: String?)] = []
+            let cache = PreviewTextCache.shared
+            let ink: Color = dark ? .white : .black
+            let inkCG: CGColor = dark ? CGColor(gray: 1, alpha: 1) : CGColor(gray: 0, alpha: 1)
             for (index, item) in page.items.enumerated() {
                 if case .rule(let rule) = item {
                     // Typed rule: top-left anchored contract geometry (dark preview only recolors).
                     let rect = RuleGeometry.previewRect(rule, scale: scale)
-                    context.fill(Path(rect), with: .color(dark ? .white : .black))
+                    context.fill(Path(rect), with: .color(ink))
                     if hover == index {
                         context.fill(Path(rect.insetBy(dx: -2, dy: -2)), with: .color(Color.accentColor.opacity(0.25)))
                     }
-                    rects.append((index, rect, rule.source, nil))
                     continue
                 }
                 guard case .text(let t) = item else { continue }
                 if !rulesNegotiated, let r = RuleConvention.rect(for: t) {
                     // Legacy approximation of the compiler's fraction bars.
                     let rect = CGRect(x: r.x * scale, y: r.y * scale, width: r.width * scale, height: max(0.5, r.height * scale))
-                    context.fill(Path(rect), with: .color(dark ? .white : .black))
-                    rects.append((index, rect, t.source, t.text))
+                    context.fill(Path(rect), with: .color(ink))
                     continue
                 }
                 // Draw with the hinted face when the result carries one (font-hints-v1),
                 // else the face the layout was measured with (Latin Modern by default,
-                // Times fallback); `.serif` would be New York, which is wider.
-                let font = Font.custom(PreviewFonts.resolve(hint: t.font, size: t.fontSizePt).postScriptName, size: t.fontSizePt * scale)
-                var text = Text(t.text).font(font)
-                text = text.foregroundColor(dark ? .white : .black)
-                let resolved = context.resolve(text)
-                let measured = resolved.measure(in: CGSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude))
-                let baseline = resolved.firstBaseline(in: measured)
-                let origin = CGPoint(x: t.xPt * scale, y: t.baselineYPt * scale - baseline)
-                let rect = CGRect(origin: origin, size: measured)
+                // Times fallback). One cached CTLine per distinct (text, face, size).
+                let name = PreviewFonts.resolve(hint: t.font, size: t.fontSizePt).postScriptName
+                let line = cache.line(for: PreviewTextCache.key(text: t.text, postScriptName: name, size: t.fontSizePt * scale))
+                let baselineY = t.baselineYPt * scale
+                let rect = CGRect(x: t.xPt * scale, y: baselineY - line.ascent, width: line.width, height: line.ascent + line.descent)
                 if caretItems.contains(index) {
                     // Secondary (caret) highlight: subtle fill plus an underline.
                     context.fill(Path(rect.insetBy(dx: -2, dy: -1)),
@@ -132,21 +144,28 @@ private struct HitTestCanvas: View {
                     context.fill(Path(rect.insetBy(dx: -2, dy: -1)),
                                  with: .color(Color.accentColor.opacity(0.25)))
                 }
-                context.draw(resolved, at: origin, anchor: .topLeading)
-                rects.append((index, rect, t.source, t.text))
+                context.withCGContext { cg in
+                    // The canvas context is y-down; flip the text matrix so glyphs
+                    // stand upright and the pen sits on the item's baseline.
+                    cg.textMatrix = CGAffineTransform(scaleX: 1, y: -1)
+                    cg.setFillColor(inkCG)
+                    cg.textPosition = CGPoint(x: t.xPt * scale, y: baselineY)
+                    CTLineDraw(line.line, cg)
+                }
             }
             TypingBench.shared.didDraw(page: page.number) // paint instrumentation (TypingBench.swift)
-            DispatchQueue.main.async { hitRects = rects }
         }
         .contentShape(Rectangle())
         .onContinuousHover { phase in
             switch phase {
-            case .active(let p): hover = hitRects.first { $0.rect.contains(p) }?.index
+            case .active(let p):
+                let h = PreviewHitRects.hit(hitRects, at: p)?.index
+                if h != hover { hover = h }
             case .ended: hover = nil
             }
         }
         .onTapGesture { location in
-            if let hit = hitRects.first(where: { $0.rect.contains(location) }) {
+            if let hit = PreviewHitRects.hit(hitRects, at: location) {
                 onSelect(hit.source, hit.text)
             }
         }

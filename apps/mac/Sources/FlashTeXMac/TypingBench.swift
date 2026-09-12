@@ -299,15 +299,18 @@ final class TypingBench {
 
     private func finishPaint(_ revision: Int) {
         guard revision == renderingRevision, revision > recorder.lastPaintedRevision else { return }
-        // Normally every page canvas drew inside the same pass as `body`; allow two
-        // more turns in case SwiftUI deferred the draw, then record honestly.
-        if drawnPages < expectedPages, expectedPages > 0, paintHops < 2 {
+        // The pages whose layout changed draw inside the same pass as `body`
+        // (unchanged pages keep their display list and never draw — PageView is
+        // Equatable). Allow two more turns only when nothing drew at all, in case
+        // SwiftUI deferred the pass, then record honestly.
+        if drawnPages == 0, expectedPages > 0, paintHops < 2 {
             paintHops += 1
             DispatchQueue.main.async { [self] in finishPaint(revision) }
             return
         }
         let redrawn = drawnPages > 0
         if paintHops > 0 { FlashTeXLog.write("paint: revision \(revision) needed \(paintHops) extra turn(s); drew \(drawnPages)/\(expectedPages) pages") }
+        else if drawnPages < expectedPages { FlashTeXLog.write("paint: revision \(revision) redrew \(drawnPages)/\(expectedPages) pages") }
         recorder.paint(revision: revision, at: MonotonicClock.nowNs(), redrawn: redrawn,
                        renderStartNs: renderStartNs, drawEndNs: drawEndNs)
         onPaint?(revision)
