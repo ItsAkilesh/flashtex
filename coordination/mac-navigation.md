@@ -1,33 +1,73 @@
 # mac-navigation handoff — exact source ↔ preview navigation
 
-- Updated UTC: 2026-09-12T08:55Z
+- Updated UTC: 2026-09-12T10:05Z
 - Agent / parent / machine: `mac-navigation` (Claude Code subagent) / parent
   `mac-claude-a` / `mac-m1max-a`
-- Lane: "Exact source-to-preview and preview-to-source navigation" (parent
-  dispatch, issue #2). Follow-ups: "UTF8 cluster/ligature stale selection
-  tests" (done, see tests), "Multi-file current revision navigation
-  acceptance" (done at the model level; live-app click evidence not possible
-  without Accessibility permission, see limitations).
+- Lanes: (1) "Exact source-to-preview and preview-to-source navigation" —
+  integrated into mac-shell at 40d53b7 with the parent diff applied;
+  (2) refill "Go to Matching through the helper's lexical project index" —
+  branch `agent/mac-navigation/helper-navigate` (from mac-shell 40d53b7,
+  merged 271a366), pushed, ready for integration.
 - Owned paths: `apps/mac/Sources/FlashTeXMac/Navigation.swift`,
   `apps/mac/Sources/FlashTeXMac/CaretSync.swift`,
   `apps/mac/Tests/FlashTeXMacTests/NavigationTests.swift`,
   `apps/mac/Tests/FlashTeXMacTests/CaretSyncTests.swift`, this file,
   `coordination/agents/mac-navigation.json`.
-- Branch / worktree: `agent/mac-navigation/exact` (pushed) in
-  `.claude/worktrees/agent-aa3ca1d9a088b9f09`; based on
-  `origin/agent/mac-claude-a/mac-shell` 6b43a3a, merged mac-shell b973b89 and
-  71675cd and `origin/main` 254f662 + c9f1b9e. Dirty files: none besides this handoff
-  and the agents JSON at the time of writing.
-- Rules honoured: no purchases; no edits outside owned paths (ShellModel,
-  ContentView, PreviewView untouched — diffs below); transferred crates
-  (font-engine, paragraph-layout, math-layout) untouched; no app launched;
-  commits carry the user as primary author with truthful trailers.
-- Context usage: the harness does not expose an exact percentage to this
-  worker; the session-level token budget readout shows well under 20% of the
-  1M-context budget consumed, so no compaction is expected. This checkpoint is
-  written to the user's context-checkpoint policy regardless.
+- Worktree: `.claude/worktrees/agent-aa3ca1d9a088b9f09`. Dirty files: none
+  besides this handoff and the agents JSON at the time of writing.
+- Rules honoured: no purchases; no edits outside owned paths; transferred
+  crates untouched; no app launched; user is primary author, truthful trailers.
+- Context usage: not exposed as a percentage to this worker; the session
+  token-budget readout is well under 20% of the 1M budget.
 
-## Ready behavior (on the branch)
+## Refill: helper-backed Go to Matching (branch helper-navigate, 37c7970)
+
+- With `flashtex-preview-controller` attached and ready, ⌘⇧D on
+  `\ref`/`\eqref`/`\pageref`/`\autoref`/`\cref`/`\nameref`, the `\cite`
+  family, and user commands (`\mycmd` → its `\newcommand`) goes to the
+  helper's lexical index (STDIO.md): `snapshot` → exact `source_versions`
+  → `navigate {source_versions, path, byte_offset}`. `\begin`/`\end` stay
+  in-buffer; without a helper the in-buffer matcher (`goToMatchingInBuffer`)
+  is unchanged.
+- Refusals (never guessed): the active buffer differs from the durable text
+  the helper indexed for the snapshot's revision ("has edits the helper has
+  not indexed yet; try again"); the helper's stale-version error ("Project
+  changed while looking up the index …"); a reported location whose revision
+  is no longer the snapshot's; a location that overlaps an edit made since.
+- Selection: the definition (or, from a definition, the next reference in
+  helper path order via `complete` occurrences, wrapping) is selected
+  exactly in its document. A project document not open in the window
+  (chapter.tex discovered through `\input`) is read with `document` (the
+  parent's handler records durable text/revision) and appended to
+  `documents` at its durable revision, then made active. An open buffer that
+  moved on is rebased across the edit with `Navigation.rebaseExactly`.
+- `Navigation.helperProbeOffset(in:caretByte:)`: the index keys symbols by
+  name bytes (the argument of `\ref{…}`, the letters after the backslash),
+  so a caret on the backslash/command name is moved onto the name; inside an
+  argument the caret is sent as is (the helper picks the `\cite{a, b}` item).
+- Request/reply: `controllerState.awaiting[id]` + `controller.send` (the
+  `controllerSave`/`controllerFileStatus` pattern). Both are internal, so
+  **no ShellModel/ShellModel+Controller diff was needed**.
+- Validation: `NavigationHelperProbeTests` (2, pure), `NavigationHelperTests`
+  (3; two run against the real helper + real compiler with
+  `FLASHTEX_PREVIEW_CONTROLLER`/`FLASHTEX_COMPILER` set — they ran here;
+  skip otherwise). Full apps/mac suite with compiler/pdf/bridge/edit-ledger/
+  preview-controller binaries from the main checkout: **386 tests, 9
+  skipped (other lanes' optional routes), 0 failures** at 37c7970.
+- Risk found for the parent/document-files owner (not in my paths): once a
+  second project document is active (`activePath == "chapter.tex"`),
+  `ShellModel.isDirty` compares `savedText` (main.tex) with `activeText`
+  and `saveTex()` writes `activeText` to `documentURL` (main.tex). The menu
+  save with the helper attached goes through `controllerSave` (exports
+  `activePath` — correct), but the direct `saveTex()` callers (quit flow in
+  FlashTeXMacApp, `openTex(.saveFirst)`) would write chapter text into
+  main.tex. Suggested guard in `saveTex()`: `guard documentURL?.lastPathComponent
+  == activePath else { captureNote = "\(activePath) is saved through the
+  preview controller"; return false }` (or route to `controllerSave`). This
+  predates the refill (the fixture route already switches documents) but
+  the helper route makes it reachable in a real project.
+
+## Lane 1 (integrated into mac-shell 40d53b7): ready behavior
 
 - `ShellModel.navigateExactly(to:expectedText:)` (Navigation.swift):
   preview click / diagnostic "Go to source" route with these guarantees:
