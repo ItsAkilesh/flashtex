@@ -15,6 +15,7 @@ failures in those are written up in `reports/` for their owners.
 | `check_pdf_export.py` | Stdlib inspector for a PDF exported by the app (`File > Export PDF…`): page count, MediaBoxes, and the page background fill colour before the first rectangle fill; exit 1 when a page background is not white. Validated against CoreGraphics PDFs painted `gray 1.0` (`1.0 sc`, PASS) and `gray 0.16` (`0.16 sc`, FAIL); not yet against an app-exported file (save panel needs a human). | manual input |
 | `oracle_compare.sh` / `oracle_compare.py` / `oracle_extract.swift` | Reference-oracle comparison (issue #10): pdflatex is run **only as a measuring stick, never by the product**. For each `oracle-samples/*.tex` and each oracle variant: pdflatex (`-interaction=batchmode`, temp dir) -> oracle PDF; FlashTeX compiler (preamble stripped) -> `compile_result` -> `flashtex-pdf --verify` -> our PDF; PDFKit word boxes for both (`oracle_extract.swift`, no third-party packages); page count / MediaBox equality, word-sequence equality after normalisation, per-word x/y deltas (mean/max, 10 largest), line-start agreement. Writes `reports/oracle-<UTC>.md` and a compact `.json` with every per-word delta. Exit 1 only when a tool fails; layout disagreement is a finding, not a failure. | findings |
 | `e2e_native.sh` + `e2e_latency.py`, `e2e_bridge.py`, `e2e_nonregression.py`, `window_probe.swift` | Native end-to-end (issue #2): builds Mac shell + its `crates/compiler`, PDF writer and bridge from refs; (1) launches `FlashTeXMac` with `FLASHTEX_AUTOATTACH=1 FLASHTEX_SEED_FILE=oracle-samples/wrap-sample.tex` and observes process, `flashtex-compiler` child (`pgrep -P`), window (`CGWindowListCopyWindowInfo`, no Accessibility needed) and a screenshot by window id, then runs the CLI-equivalent `flashtex-compiler -> flashtex-pdf --verify -> PDFKit` for the same input; (2) 20x CLI round trip over `Samples/demo.tex` while attached + `swift test --filter RealCompilerTests` REAL-COMPILER LATENCY; (3) SIGKILL compiler child (app must survive 5 s), relaunch re-attaches, SIGKILL app, relaunch shows a window within 5 s; (4) re-runs `run_all.sh` and `oracle_compare.sh --only fixture-hello` and diffs headline numbers against the newest previous reports; (5) bridge receipt path against the real `flashtex-bridge`. Only its own app instance (PID from `$!`) is ever signalled. Writes `reports/e2e-<UTC>.md` + PNGs <= 300 KB. | yes (exit 1 on FAIL; findings and diffs are INFO/FINDING) |
+| `probe_devices.sh` | Report-only: paired physical devices (`xcrun devicectl list devices --json-output`: model, identifier, connection/pairing state, OS), available simulators, `xctrace` device list, Wi-Fi interface. Names/hostnames redacted. Writes `reports/devices-<UTC>.md`. | no |
 | `expectations.md` | Human checklist for what automation cannot verify here: visual click-to-source, Unicode selection, stale-preview banner, dark preview vs export, capture review. | manual |
 
 ## Running
@@ -242,3 +243,11 @@ Findings from the two preceding trial runs (05:21 and 05:27 UTC, reports not com
 - **This suite:** the earlier `check_ui_capabilities.sh` recorded the wrapper shell's PID instead of
   the app's and its fallback `pkill -x FlashTeXMac` could have killed another agent's instance;
   fixed (`exec`, own PID only). Other agents on this Mac do run their own `FlashTeXMac`.
+
+## Devices and simulators — probe 2026-09-12T05:36:22Z (`reports/devices-20260912T053622Z.md`)
+
+Two paired physical devices, both `unavailable` at probe time (not on USB, not reachable):
+iPhone 17 Pro (iOS 26.4) and iPad Air 11-inch M4 (iPadOS 26.4.1). Eleven iOS 26.3 simulators;
+one (iPad Pro 13-inch M5) was already booted by someone else on this Mac. Nothing was paired,
+booted or installed; no nearby-transfer channel was exercised. Real-device FT-004 evidence
+still needs a person to connect a device.
