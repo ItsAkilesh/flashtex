@@ -1,34 +1,36 @@
 {
   "agent_id": "commander-preview-performance",
-  "next_index": 1,
+  "next_index": 0,
   "schema_version": 1,
   "steps": [
     {
+      "name": "Exact immutable-origin snapshot identity and bounded retention/cancellation tests",
+      "objective": "Exact immutable-origin snapshot identity and bounded retention/cancellation tests",
+      "owned_paths": [
+        "crates/preview-controller",
+        "crates/document-runtime"
+      ],
       "acceptance": [
         "Meaningful tests and strict lint pass",
         "Publish truthful execution provenance and exact tested SHA",
         "No native integration or PDF parity claim without measured evidence"
       ],
       "allocation_id": "hosted-openai-product",
-      "name": "Measure real helper result delivery with exact current-source and lost-reply recovery gates",
-      "objective": "Measure real helper result delivery with exact current-source and lost-reply recovery gates",
-      "owned_paths": [
-        "crates/preview-controller"
-      ],
       "timebox_minutes": 30
     },
     {
+      "name": "Opt-in controller consumption and burst-progress evidence with strict default and source-action refusal",
+      "objective": "Opt-in controller consumption and burst-progress evidence with strict default and source-action refusal",
+      "owned_paths": [
+        "crates/preview-controller",
+        "crates/document-runtime"
+      ],
       "acceptance": [
         "Meaningful tests and strict lint pass",
         "Publish truthful execution provenance and exact tested SHA",
         "No native integration or PDF parity claim without measured evidence"
       ],
       "allocation_id": "hosted-openai-product",
-      "name": "Bound helper serialization and stalled-output residency without altering durable source guarantees",
-      "objective": "Bound helper serialization and stalled-output residency without altering durable source guarantees",
-      "owned_paths": [
-        "crates/preview-controller"
-      ],
       "timebox_minutes": 30
     }
   ],
