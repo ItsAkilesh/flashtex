@@ -284,3 +284,14 @@ Grant `openai-commander-supervisor` covers one bounded hosted OpenAI engineering
 task, FT-016, to implement and test the deterministic Claude supervisor. It does
 not authorize Claude inference; all supervisor tests use isolated test doubles.
 Usage/cost is unknown under the existing Commander account authorization.
+
+## Observed Linux quota telemetry — 2026-09-12T07:23:22.588442+00:00
+
+Current Codex rollout token_count reports plan_type=pro, primary used_percent=68.0
+(window10080 minutes), credits.has_credits=false, credits.balance=0, and
+rate_limit_reached_type=null. This is provider-reported window telemetry, not a
+dollar balance or proof that a future call is authorized. All retained local
+slots share this account; do not sum their snapshots as separate resources.
+Transient model-capacity errors on font/render resolved on one same-slot retry
+(GH22); no model, billing route or staffing increase occurred. Jaysen standby
+FT028 is the explicit sole new standby exception; Mac ACK/session remains pending.
