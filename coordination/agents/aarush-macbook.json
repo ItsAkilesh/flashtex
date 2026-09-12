@@ -3,10 +3,10 @@
   "allocation_id": "openai-aarush-plus-ft004",
   "assignment_acknowledgements": {
     "FT-004": {
-      "acknowledged_utc": "2026-09-12T15:21:54Z",
-      "adaptation": "Accepted FT-004 rev 2. pbxproj fully rewritten at a96df663: BonjourTransport.swift registered in all phases, duplicate Services group removed, FlashTeXCompanionTests target added with BUNDLE_LOADER/TEST_HOST. xcodebuild verification requires physical macOS \u2014 device bridge runs Linux VM. Capture payload tests (MIME, base64, dedup, cancellation, retry) in CompanionTests.swift. Session: Claude Cowork claude-sonnet-4-6; protected allowance maintained; commits via git with Cursor identity per convention; no local Cursor.",
-      "main_sha": "a744cd869544dcdb91b87d11381c8c82aabac684",
-      "revision": 2
+      "acknowledged_utc": "2026-09-12T15:37:59Z",
+      "adaptation": "Accepted FT-004 rev 3. Implementing: (1) image orientation normalization in ImageValidator, (2) context input UI in both CameraCaptureView and DrawingCanvasView, (3) persisted destination ID/revision via UserDefaults, (4) review-before-send staging flow in CaptureStore + PayloadPreviewView, (5) accessibility labels/hints. xcodebuild unavailable on Linux VM \u2014 build verification requires Mac owner. Protocol unchanged.",
+      "main_sha": "e67fe2a5",
+      "revision": 3
     }
   },
   "branch": "agent/aarush-macbook/companion-capture",
@@ -28,9 +28,9 @@
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "FT-004 rev 2: pbxproj repaired (a96df663), BonjourTransport.swift registered, FlashTeXCompanionTests target added. FT-005/006 bonus: PDF output + incremental LRU cache on agent/aarush-macbook/incremental-reuse (0236aa0a), 125 compiler tests passing.",
+  "summary": "FT-004 rev 3: orientation normalization, context TextField, UserDefaults persistence, review-before-send (stagePendingCapture/confirmAndSend/discardPending), CaptureReviewSheet, accessibility labels/hints across DrawingCanvasView, CameraCaptureView, SettingsView.",
   "tool": "Claude Cowork",
-  "updated_utc": "2026-09-12T15:22:02Z",
+  "updated_utc": "2026-09-12T15:37:59Z",
   "usage": {
     "status": "unknown"
   }
