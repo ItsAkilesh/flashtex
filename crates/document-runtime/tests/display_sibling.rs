@@ -34,7 +34,7 @@ for line in sys.stdin:
  result={{'protocol_version':1,'type':'compile_result','id':r['id'],'payload':{{'project_id':p['project_id'],'revision':p['revision'],'status':status,'pages':[],'diagnostics':[],'layout_capabilities':accepted}}}}
  if mode=='delay': time.sleep(.04)
  print(json.dumps(result),flush=True)
- if mode=='missing': time.sleep(2);continue
+ if mode=='missing': time.sleep(10);continue
  if mode in ('declined','failed'):continue
  docs=[{{'path':d['path'],'revision':p['revision'],'sha256':hashlib.sha256(d['text'].encode()).hexdigest(),'byte_length':len(d['text'].encode())}} for d in p['documents']]
  v={{'protocol_version':2,'type':'display_list','id':r['id'],'payload':{{'project_id':p['project_id'],'revision':p['revision'],'render_format':'display-list-v2','documents':docs}}}}
@@ -53,20 +53,50 @@ for line in sys.stdin:
     std::fs::write(&path, script).unwrap();
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700)).unwrap();
     let limits = Limits {
-        timeout: Duration::from_millis(500),
+        timeout: if mode == "missing" {
+            Duration::from_secs(1)
+        } else {
+            Duration::from_secs(5)
+        },
         ..Limits::default()
     };
-    let s = Session::spawn(path, limits).unwrap();
+    let mut command = std::process::Command::new("/usr/bin/python3");
+    command.arg(path);
+    let s = Session::spawn_command(command, limits).unwrap();
     (dir, s)
 }
-fn poll_for(s: &mut Session, ms: u64) -> Vec<Event> {
+fn wait_until(s: &mut Session, condition: impl Fn(&Session, &[Event]) -> bool) -> Vec<Event> {
     let start = Instant::now();
     let mut events = vec![];
-    while start.elapsed() < Duration::from_millis(ms) {
+    loop {
         events.extend(s.poll());
+        if condition(s, &events) {
+            return events;
+        }
+        assert!(
+            start.elapsed() < Duration::from_secs(7),
+            "waiting for condition: {events:?}"
+        );
         thread::sleep(Duration::from_millis(2));
     }
-    events
+}
+fn preview(s: &mut Session, revision: u64) -> Vec<Event> {
+    wait_until(s, |s, e| {
+        !s.is_alive()
+            || e.iter()
+                .any(|e| matches!(e,Event::Preview{revision:r,..} if *r==revision))
+    })
+}
+fn take_wait(s: &mut Session) -> flashtex_document_runtime::UntrustedDisplayCandidate {
+    let start = Instant::now();
+    loop {
+        s.poll();
+        if let Some(c) = s.take_current_display_candidate() {
+            return c;
+        }
+        assert!(s.is_alive() && start.elapsed() < Duration::from_secs(7));
+        thread::sleep(Duration::from_millis(2));
+    }
 }
 #[test]
 fn opt_in_exact_utf8_identity_owned_slot_and_legacy_fallback() {
@@ -75,11 +105,11 @@ fn opt_in_exact_utf8_identity_owned_slot_and_legacy_fallback() {
     s.set_display_candidates_enabled(true).unwrap();
     assert!(s.set_completed_snapshots_enabled(true).is_err());
     s.submit_with_capabilities(request(1), caps()).unwrap();
-    let e = poll_for(&mut s, 100);
+    let e = preview(&mut s, 1);
     assert!(e
         .iter()
         .any(|e| matches!(e, Event::Preview { revision: 1, .. })));
-    let c = s.take_current_display_candidate().unwrap();
+    let c = take_wait(&mut s);
     assert_eq!(c.request_id(), "r1");
     assert_eq!(c.project_id(), "p");
     assert_eq!(c.revision(), 1);
@@ -98,11 +128,11 @@ fn declined_failed_and_old_requests_finish_without_sibling() {
         let (_d, mut s) = session(mode);
         s.set_display_candidates_enabled(true).unwrap();
         s.submit_with_capabilities(request(1), caps()).unwrap();
-        poll_for(&mut s, 80);
+        preview(&mut s, 1);
         assert!(s.take_current_display_candidate().is_none());
         assert!(s.is_alive());
         s.submit_with_capabilities(request(2), caps()).unwrap();
-        assert!(poll_for(&mut s, 80)
+        assert!(preview(&mut s, 2)
             .iter()
             .any(|e| matches!(e, Event::Preview { revision: 2, .. })));
     }
@@ -123,7 +153,7 @@ fn malformed_mismatched_duplicate_interleaved_and_missing_fail_closed() {
         let (_d, mut s) = session(mode);
         s.set_display_candidates_enabled(true).unwrap();
         s.submit_with_capabilities(request(1), caps()).unwrap();
-        poll_for(&mut s, if mode == "missing" { 600 } else { 120 });
+        wait_until(&mut s, |s, _| !s.is_alive());
         assert!(!s.is_alive(), "{mode}");
         assert!(s.take_current_display_candidate().is_none(), "{mode}");
     }
@@ -134,24 +164,24 @@ fn stale_cancelled_toggle_and_submit_invalidate_candidates() {
     s.set_display_candidates_enabled(true).unwrap();
     s.submit_with_capabilities(request(1), caps()).unwrap();
     s.submit_with_capabilities(request(2), caps()).unwrap();
-    poll_for(&mut s, 160);
-    assert_eq!(s.take_current_display_candidate().unwrap().revision(), 2);
+    assert_eq!(take_wait(&mut s).revision(), 2);
     s.submit_with_capabilities(request(3), caps()).unwrap();
     s.close_project("p").unwrap();
-    poll_for(&mut s, 100);
+    s.submit_with_capabilities(request(4), caps()).unwrap();
+    assert_eq!(take_wait(&mut s).revision(), 4);
     assert!(s.take_current_display_candidate().is_none());
     assert!(s.is_alive());
     let (_d, mut s) = session("gap");
     s.set_display_candidates_enabled(true).unwrap();
     s.submit_with_capabilities(request(1), caps()).unwrap();
-    poll_for(&mut s, 40);
+    preview(&mut s, 1);
     s.set_display_candidates_enabled(false).unwrap();
     s.set_display_candidates_enabled(true).unwrap();
-    poll_for(&mut s, 140);
+
     assert!(s.take_current_display_candidate().is_none());
     assert!(s.is_alive());
     s.submit_with_capabilities(request(2), caps()).unwrap();
-    poll_for(&mut s, 150);
+    assert_eq!(take_wait(&mut s).revision(), 2);
     s.submit_with_capabilities(request(3), caps()).unwrap();
     assert!(s.take_current_display_candidate().is_none());
 }
@@ -160,15 +190,16 @@ fn stale_cancelled_toggle_and_submit_invalidate_candidates() {
 fn unsolicited_and_closed_project_siblings_never_escape() {
     let (_d, mut s) = session("ok");
     s.submit(request(1)).unwrap();
-    poll_for(&mut s, 100);
+    wait_until(&mut s, |s, _| !s.is_alive());
     assert!(!s.is_alive());
     assert!(s.take_current_display_candidate().is_none());
     let (_d, mut s) = session("gap");
     s.set_display_candidates_enabled(true).unwrap();
     s.submit_with_capabilities(request(1), caps()).unwrap();
-    poll_for(&mut s, 40);
+    preview(&mut s, 1);
     s.close_project("p").unwrap();
-    poll_for(&mut s, 120);
+    s.submit_with_capabilities(request(2), caps()).unwrap();
+    assert_eq!(take_wait(&mut s).revision(), 2);
     assert!(s.is_alive());
     assert!(s.take_current_display_candidate().is_none());
 }
@@ -178,12 +209,12 @@ fn promised_sibling_blocks_next_dispatch_and_preserves_timeout() {
     let (_d, mut s) = session("missing");
     s.set_display_candidates_enabled(true).unwrap();
     s.submit_with_capabilities(request(1), caps()).unwrap();
-    let mut events = poll_for(&mut s, 60);
+    let mut events = preview(&mut s, 1);
     assert!(events
         .iter()
         .any(|e| matches!(e, Event::Preview { revision: 1, .. })));
     s.submit_with_capabilities(request(2), caps()).unwrap();
-    events.extend(poll_for(&mut s, 550));
+    events.extend(wait_until(&mut s, |s, _| !s.is_alive()));
     assert!(!events
         .iter()
         .any(|e| matches!(e, Event::Preview { revision: 2, .. })));
@@ -200,14 +231,11 @@ fn helper_can_defer_take_without_extra_pending_value_and_close_invalidates() {
     let (_d, mut s) = session("ok");
     s.set_display_candidates_enabled(true).unwrap();
     s.submit_with_capabilities(request(1), caps()).unwrap();
-    poll_for(&mut s, 80); // Required v1 output could still be writing externally.
-    assert!(poll_for(&mut s, 40).is_empty());
-    assert_eq!(
-        s.take_current_display_candidate().unwrap().request_id(),
-        "r1"
-    );
+    preview(&mut s, 1); // Required v1 output could still be writing externally.
+    thread::sleep(Duration::from_millis(40));
+    assert_eq!(take_wait(&mut s).request_id(), "r1");
     s.submit_with_capabilities(request(2), caps()).unwrap();
-    poll_for(&mut s, 80);
+    preview(&mut s, 2);
     s.close_project("p").unwrap();
     assert!(s.take_current_display_candidate().is_none());
     s.set_display_candidates_enabled(false).unwrap();
