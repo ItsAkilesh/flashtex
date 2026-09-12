@@ -18,7 +18,7 @@
 //! (LaTeX's `fontmath.ltx` uses the same slots for these symbols).
 
 use crate::cm_tfm::*;
-use crate::metrics::{FontId, Glyph, MathFontMetrics, MathParams, SizeClass};
+use crate::metrics::{Extensible, FontId, Glyph, MathFontMetrics, MathParams, SizeClass};
 use crate::tfm::{TfmChar, TfmFont, scale};
 
 /// Family 0: roman (`cmr`), 1: math italic (`cmmi`), 2: symbols (`cmsy`),
@@ -111,6 +111,35 @@ impl CmMathMetrics {
         let (font, font_id, at) = self.font(family, size);
         let c = font.char(code)?;
         Some(glyph_from(c, font_id, ch, at))
+    }
+
+    /// The extensible recipe at the end of the family-3 chain from `code`.
+    fn extension_recipe(&self, code: u8, ch: char, size: SizeClass) -> Option<Extensible> {
+        let (font, font_id, at) = self.font(Family::Extension, size);
+        let mut cur = font.char(code)?;
+        let mut guard = 0;
+        while !font.is_extensible(cur) {
+            cur = font.next_larger(cur)?;
+            guard += 1;
+            if guard > 8 {
+                return None;
+            }
+        }
+        // TFM order: top, mid, bot, rep; 0 means "no piece".
+        let piece = |c: u8| -> Option<Glyph> {
+            if c == 0 || c == u8::MAX {
+                None
+            } else {
+                font.char(c).map(|p| glyph_from(p, font_id, ch, at))
+            }
+        };
+        let [top, mid, bot, rep] = cur.extensible;
+        Some(Extensible {
+            top: piece(top),
+            mid: piece(mid),
+            bot: piece(bot),
+            rep: piece(rep)?,
+        })
     }
 
     /// Follows the `next_larger` chain in family 3 starting at `code`,
@@ -396,6 +425,21 @@ impl MathFontMetrics for CmMathMetrics {
         }
         self.extension_chain(0x70, '\u{221A}', size, &mut out);
         out
+    }
+
+    fn delimiter_extensible(&self, ch: char, size: SizeClass) -> Option<Extensible> {
+        let (_, large) = delimiter_slot(ch)?;
+        self.extension_recipe(large, ch, size)
+    }
+
+    fn radical_extensible(&self, size: SizeClass) -> Option<Extensible> {
+        self.extension_recipe(0x70, '\u{221A}', size)
+    }
+
+    /// `\operator@font` is the roman family (cmr) at the current size.
+    fn text_glyph(&self, ch: char, size: SizeClass) -> Option<Glyph> {
+        let code = if ch.is_ascii() { ch as u8 } else { return None };
+        self.make_glyph(Family::Roman, code, ch, size)
     }
 
     fn accent_sizes(&self, ch: char, size: SizeClass) -> Vec<Glyph> {
