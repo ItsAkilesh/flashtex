@@ -1,0 +1,89 @@
+# launch-check.sh run — 2026-09-12T11:17:30Z
+
+App: /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/build/FlashTeX.app
+FLASHTEX_NO_ACTIVATE: 1
+Compiler bundled: yes
+Bridge bundled: yes
+
+
+## Compiling window/quit probe
+
+- probe compiled at /var/folders/_0/d71mvr2d4_177qkm0506xl200000gn/T//flashtex-launch-check.rdiF3a/probe
+
+## Launching /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/build/FlashTeX.app
+
+- bundled compiler/bridge present; launched with open -n --env FLASHTEX_NO_ACTIVATE=1 --env FLASHTEX_AUTOATTACH=1 --env FLASHTEX_LOG=/var/folders/_0/d71mvr2d4_177qkm0506xl200000gn/T//flashtex-launch-check.rdiF3a/flashtex.log
+- FlashTeX running, pid=13009
+- executable: /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/build/FlashTeX.app/Contents/MacOS/FlashTeX
+
+## Waiting for a window owned by pid 13009
+
+- CGWindowListCopyWindowInfo confirms an on-screen window owned by pid 13009
+
+## Checking for a flashtex-compiler child of pid 13009
+
+- flashtex-compiler attached, pid=13019 (child of 13009)
+
+## Checking FLASHTEX_LOG for an 'attached:' status line
+
+- log shows an 'attached:' status line within 10s
+
+## Checking FLASHTEX_LOG for 'revision 1: ok' (auto-compile completed)
+
+- log shows 'revision 1: ok' within 10s
+
+## Killing flashtex-compiler (pid 13019) and checking app survival
+
+- FlashTeX (pid 13009) is still running after its compiler child was killed
+- flashtex-compiler (pid 13019) confirmed gone
+
+## Checking FLASHTEX_LOG for a 'worker exited (' status line
+
+- log shows a 'worker exited (' status line within 5s
+
+## Checking for a flashtex-bridge child of pid 13009
+
+- flashtex-bridge attached, pid=13296 (child of 13009)
+
+## Checking FLASHTEX_LOG for a bridge 'attached:' status line
+
+- log shows a bridge 'attached:' status line within 10s
+
+## Killing flashtex-bridge (pid 13296) and checking app survival
+
+- FlashTeX (pid 13009) is still running after its bridge child was killed
+- flashtex-bridge (pid 13296) confirmed gone
+
+## Checking FLASHTEX_LOG for a 'bridge exited (' status line
+
+- log shows a 'bridge exited (' status line within 5s
+
+## Quitting FlashTeX (pid 13009)
+
+- FlashTeX quit cleanly (NSRunningApplication.terminate() on pid 13009)
+
+## FLASHTEX_LOG (/var/folders/_0/d71mvr2d4_177qkm0506xl200000gn/T//flashtex-launch-check.rdiF3a/flashtex.log)
+
+```
+2026-09-12T11:17:24Z	status: attached: flashtex-compiler
+2026-09-12T11:17:24Z	launched /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/build/FlashTeX.app/Contents/MacOS/flashtex-compiler (preview face: times)
+2026-09-12T11:17:24Z	status: compiling revision 1 (mac-1)…
+2026-09-12T11:17:24Z	status: revision 1: ok, 0 diagnostics in 169 ms
+2026-09-12T11:17:25Z	paint: revision 1 at 88082202472916 (covers 0 keystrokes, redrawn true)
+2026-09-12T11:17:25Z	bridge: attached: flashtex-bridge
+2026-09-12T11:17:25Z	bridge: attached: flashtex-bridge
+2026-09-12T11:17:25Z	bridge: attached: flashtex-bridge
+2026-09-12T11:17:25Z	bridge: attached: flashtex-bridge · main.tex open at revision 1
+2026-09-12T11:17:25Z	status: worker exited (15)
+2026-09-12T11:17:25Z	worker exited with status 15
+2026-09-12T11:17:25Z	status: worker exited (15); relaunching in 0.2 s
+2026-09-12T11:17:25Z	relaunching flashtex-compiler in 0.2 s (attempt 1)
+2026-09-12T11:17:26Z	status: attached: flashtex-compiler
+2026-09-12T11:17:26Z	launched /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/build/FlashTeX.app/Contents/MacOS/flashtex-compiler (preview face: times)
+2026-09-12T11:17:26Z	relaunched flashtex-compiler
+2026-09-12T11:17:27Z	bridge: bridge exited (15); relaunching in 0.2 s
+2026-09-12T11:17:28Z	bridge: relaunched flashtex-bridge; reconciling…
+2026-09-12T11:17:28Z	bridge: relaunched flashtex-bridge; reconciling…
+2026-09-12T11:17:28Z	bridge: attached: flashtex-bridge · relaunched 1× · main.tex open at revision 1
+2026-09-12T11:17:28Z	bridge: attached: flashtex-bridge · relaunched 1× · main.tex open at revision 1
+```

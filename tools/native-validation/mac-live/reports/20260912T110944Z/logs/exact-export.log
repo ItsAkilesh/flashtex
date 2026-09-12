@@ -1,0 +1,9 @@
+    PASS bundled flashtex-pdf-exact present -- /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/a
+    PASS flashtex-pdf-exact from-v2 exit 0 --  TJ kern), 0 rule(s), 18055 bytes -> /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/reports/2026091
+    PASS PDF written -- /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/reports/20260912T110944Z/exact-export/exact-export.p
+    PASS PDFKit page count == fixture pages (1) -- 1
+    PASS PDFKit text contains 'Office fixtures' -- Office fixtures The A V office fixed the fi ligature: office, bold, and café. 
+    PASS PDFKit text contains 'office' -- Office fixtures The A V office fixed the fi ligature: office, bold, and café. 
+    PASS PDFKit text contains 'bold' -- Office fixtures The A V office fixed the fi ligature: office, bold, and café. 
+    PASS PDFKit text contains 'caf' -- Office fixtures The A V office fixed the fi ligature: office, bold, and café. 
+exact-export: 8 passed, 0 failed
