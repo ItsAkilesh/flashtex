@@ -1,24 +1,24 @@
 {
   "acceptance": [
-    "Preserve exact source revision/hash, durable approval and permanent-ID guarantees; history metadata is source-free and does not change retention",
-    "Do not edit crates/document-runtime after published ecbaf7c handoff; consume FT049 reviewed API only",
-    "Helper v2 forwarding remains default OFF, preserves required-output priority and complete frame limits, and never claims native rendering validation"
+    "Preserve full/metadata and permanent-command semantics, exact source hashes and currentness",
+    "No runtime/producer/native changes or unrelated benchmark sweep",
+    "No optimization claim without concrete measured or ownership proof"
   ],
   "agent_id": "commander-preview-performance",
   "allocation_id": "hosted-openai-product",
   "branch": "agent/commander-preview-performance/preview-performance",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "62da4b3d6f8e18cd7f78900c9339ef8438f0a835",
-  "objective": "Publish exact compiler candidate and reviewed producer hash shift Ord Text adapter handoff; no authoritative compiler producer or native adoption",
+  "input_main_sha": "376a264baa7775e0de7f1ed71406a300d3129ac9",
+  "objective": "Publish bounded evidence and hand off to successor; no native timing claim",
   "owned_paths": [
     "crates/preview-controller",
     "crates/edit-ledger"
   ],
-  "revision": 43,
+  "revision": 46,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-048",
   "timebox_minutes": 40,
-  "updated_utc": "2026-09-12T15:58:04Z"
+  "updated_utc": "2026-09-12T16:38:51Z"
 }
