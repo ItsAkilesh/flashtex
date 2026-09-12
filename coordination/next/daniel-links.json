@@ -1,9 +1,10 @@
 {
-  "schema_version": 1,
   "agent_id": "daniel-links",
-  "task_id": "FT-037",
-  "revision": 2,
-  "branch": "agent/daniel-links/link-annotations",
   "assignment_path": "coordination/assignments/FT-037.json",
-  "updated_utc": "2026-09-12T09:08:31.372212+00:00"
+  "branch": "agent/daniel-links/link-annotations",
+  "previous_report_sha": "5edebe64798dd1f9809bf4befede3e64497638a2",
+  "revision": 3,
+  "schema_version": 1,
+  "task_id": "FT-037",
+  "updated_utc": "2026-09-12T09:36:00Z"
 }

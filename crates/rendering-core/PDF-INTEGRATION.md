@@ -102,3 +102,47 @@ Independent local Poppler `pdfinfo` and `pdftoppm` accept the actual STIX output
 That is parser/raster smoke evidence, not a reference-layout or visual-parity
 comparison. Nonterminating exact rationals, alpha and backend-unsupported
 operators remain explicit errors. Native integration is still opt-in.
+
+## Compare actual candidate and reference PDFs
+
+`pdf_compare::compare` calls the PDF owner's reader and classifier; it never
+re-emits a reference as a substitute compilation result. The bounded report keeps
+raw PDF hashes/byte equality, parsed-operator equality and unknown visual equality
+separate. It reports exact operand text, page/operator membership, geometry,
+paint, font resource/program metadata and object/compression categories. Numeric
+operand spelling is preserved; no numeric tolerance or normalization is implied.
+
+`examples/pdf_compare.rs` accepts `CANDIDATE.pdf REFERENCE.pdf REPORT.json` and an
+optional candidate export-evidence path. Candidate provenance is used only after
+PDF-hash binding and regeneration of exact content from its original fixture.
+Primitive spans are recomputed, not trusted from supplied JSON. Source/font/GID
+claims remain explicitly unverified by this comparison tool. Matching opcode at
+an ordinal is not proof of reference glyph identity; reference correspondence
+stays unknown. Black shaped replay and mixed replay evidence are supported;
+other shaped paint profiles require a future explicit paint-provenance field.
+
+Limits bound PDF/evidence bytes, object/page counts, decoded and concatenated
+content, operators, difference records and report output. Typed-object preflight
+rejects repeated page-tree nodes before the owner's page walk and bounds repeated
+content references before concatenation. The reader itself may transiently decode
+up to its64MiB per-stream cap before aggregate checks; these are not RSS limits.
+Truncated/unsupported comparison never reports parsed-operator equality. Raw-byte
+equality remains independently knowable. The owner's d25a647 identical-content
+shortcut skipped unsupported-operator parsing; the adapter handles this safely
+and the underlying classifier fix is tracked in
+[issue28](https://github.com/flash-tex/flashtex/issues/28).
+
+Tests compare the actual STIX export, altered exact geometry/paint with validated
+candidate spans, identical unsupported streams, raw-only differences, truncation,
+budgets and repeated page/content graphs. A separately supplied existing legacy
+FlashTeX corpus PDF (`pdf-a0855dd/plain-paragraphs.pdf`, SHA
+`ca65e836026239ece90053a638c48055bffd69497b491f10028414fbd62fd9b6`)
+exercises real differing reference input. It is not a TeX oracle and is not
+expected to match the STIX sample. No independent TeX reference PDF was available
+in this checked-out fixture set. Native/reference raster parity remains unknown.
+
+Comparison CLI exit codes:0 means byte-identical PDFs with supported parsed
+operators;3 means different PDF bytes (read the report for structural versus
+operator differences);4 means unsupported or truncated comparison;1 means input,
+validation or budget failure. Report creation succeeds before exits3/4. No code
+claims visual or original-compilation equivalence.

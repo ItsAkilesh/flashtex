@@ -797,6 +797,63 @@ fn cff_encoding_binds_actual_names_and_resource_hashes() {
     )
     .unwrap();
     let tfm = tfm_for_encoding();
+    let mut enc_names = vec!["/.notdef"; 256];
+    enc_names[65] = "/space";
+    let enc_source = format!("/Literal[{}]def", enc_names.join(" "));
+    let enc =
+        enc_file::EncFile::parse(enc_source.as_bytes(), &sha256(enc_source.as_bytes())).unwrap();
+    let encoded = enc.bind_cff(&tfm, &cache).unwrap();
+    assert_eq!(
+        encoded.font().map_code(65).unwrap().0,
+        encoding::GlyphIdentity::Original(1)
+    );
+    assert_eq!(
+        encoded.font().map_code(66).unwrap().0,
+        encoding::GlyphIdentity::Notdef
+    );
+    assert_eq!(encoded.source().file_sha256, sha256(enc_source.as_bytes()));
+    let mut aliases_names = vec!["/.notdef"; 256];
+    aliases_names[65] = "/alias";
+    aliases_names[66] = "/absent";
+    let alias_source = format!("/Declared[{}]def", aliases_names.join(" "));
+    let enc = enc_file::EncFile::parse(alias_source.as_bytes(), &sha256(alias_source.as_bytes()))
+        .unwrap();
+    assert!(enc.bind_cff(&tfm, &cache).is_err());
+    let declarations = enc_file::CffMappingDeclarations {
+        encoding_file_sha256: sha256(alias_source.as_bytes()),
+        font_sha256: cache.identity().font_sha256.clone(),
+        cff_sha256: cache.identity().cff_sha256.clone(),
+        face_index: 0,
+        aliases: vec![enc_file::GlyphNameAlias {
+            literal_name: "alias".into(),
+            font_name: "space".into(),
+            original_gid: 1,
+        }],
+        unavailable_slots: vec![enc_file::UnavailableSlot {
+            code: 66,
+            literal_name: "absent".into(),
+        }],
+    };
+    let bound_alias = enc.bind_cff_declared(&tfm, &cache, &declarations).unwrap();
+    assert_eq!(
+        bound_alias.font().map_code(65).unwrap().0,
+        encoding::GlyphIdentity::Original(1)
+    );
+    assert_eq!(bound_alias.font().encoding().glyph_name(65), Some("alias"));
+    assert!(bound_alias.font().map_code(66).is_err());
+    assert!(bound_alias.declarations().is_some());
+    for fault in 0..6 {
+        let mut bad = declarations.clone();
+        match fault {
+            0 => bad.font_sha256 = "0".repeat(64),
+            1 => bad.aliases[0].original_gid = 0,
+            2 => bad.aliases.push(bad.aliases[0].clone()),
+            3 => bad.unavailable_slots.push(bad.unavailable_slots[0].clone()),
+            4 => bad.unavailable_slots[0].code = 65,
+            _ => bad.encoding_file_sha256 = "0".repeat(64),
+        }
+        assert!(enc.bind_cff_declared(&tfm, &cache, &bad).is_err());
+    }
     let identity = cache.identity();
     let manifest = CffEncodingManifest {
         font_sha256: identity.font_sha256.clone(),
@@ -1342,6 +1399,48 @@ fn synthetic_cff_registry_reuses_peer_parser_and_validates_declared_identity() {
         assert!(
             matches!(&result.placements[0],vf_graph::NestedPlacement::Glyph{resource:vf_graph::ResourceKey::CffPhysical{..},glyph_id:1,source,..} if source.len()==2)
         );
+        let mut names = vec!["/.notdef"; 256];
+        names[65] = "/space";
+        let enc = format!("/Cff[{}]def", names.join(" "));
+        std::fs::write(dir.path().join("cff.enc"), enc.as_bytes()).unwrap();
+        let mut asset_deps = dependencies.clone();
+        asset_deps.schema_version = 2;
+        let Node::CffPhysical {
+            id, tfm, binding, ..
+        } = asset_deps.nodes[0].clone()
+        else {
+            panic!()
+        };
+        asset_deps.nodes[0] = Node::CffPhysicalEncodingAsset {
+            declarations: None,
+            id,
+            tfm,
+            binding,
+            encoding_asset: Asset {
+                path: "cff.enc".into(),
+                sha256: sha256(enc.as_bytes()),
+                license: resource.license.clone(),
+            },
+        };
+        write(&asset_deps);
+        let from_asset =
+            ResolvedVfProject::load(&root, "cff-deps.json", &registry, Default::default()).unwrap();
+        let expanded = from_asset.expand(65, registry.generation()).unwrap();
+        assert!(
+            matches!(&expanded.placements[0],vf_graph::NestedPlacement::Glyph{glyph_id:1,source,..} if source.len()==2)
+        );
+        assert!(matches!(
+            from_asset
+                .physical_run("cff", b"A", registry.generation())
+                .unwrap()
+                .items
+                .as_slice(),
+            [encoding::MappedItem::Glyph {
+                input_start: 0,
+                input_end: 1,
+                ..
+            }]
+        ));
         let Node::CffPhysical { encoding, .. } = &mut dependencies.nodes[0] else {
             panic!()
         };
@@ -1559,6 +1658,60 @@ fn rooted_vf_dependencies_bind_licenses_graph_identity_and_reject_specials() {
     }
     assert_eq!(resolved.license_texts().len(), 3);
     assert!(resolved.expand(65, &"0".repeat(64)).is_err());
+    let mut literal_names = vec!["/.notdef"; 256];
+    literal_names[65] = "/A.alt";
+    let literal = format!("/Project[{}]def", literal_names.join(" "));
+    std::fs::write(dir.path().join("project.enc"), literal.as_bytes()).unwrap();
+    let mut v2 = manifest.clone();
+    v2.schema_version = 2;
+    let Node::Physical {
+        id,
+        tfm,
+        binding,
+        encoding,
+    } = v2.nodes[0].clone()
+    else {
+        panic!()
+    };
+    v2.nodes[0] = Node::PhysicalEncodingAsset {
+        id,
+        tfm,
+        binding,
+        encoding_asset: Asset {
+            path: "project.enc".into(),
+            sha256: sha256(literal.as_bytes()),
+            license: resource.license.clone(),
+        },
+        declared_glyphs: encoding.declared_glyphs,
+    };
+    write(&v2);
+    let from_asset = load().unwrap();
+    assert_eq!(
+        from_asset.expand(65, registry.generation()).unwrap(),
+        packet
+    );
+    assert_ne!(from_asset.generation(), resolved.generation());
+    let run = from_asset
+        .physical_run("physical", b"A", registry.generation())
+        .unwrap();
+    assert_eq!(run.project_generation, from_asset.generation());
+    assert!(matches!(
+        run.items.as_slice(),
+        [encoding::MappedItem::Glyph {
+            input_start: 0,
+            input_end: 1,
+            ..
+        }]
+    ));
+    let mut wrong_version = v2.clone();
+    wrong_version.schema_version = 1;
+    write(&wrong_version);
+    assert!(load().is_err());
+    write(&v2);
+    std::fs::write(dir.path().join("project.enc"), b"changed").unwrap();
+    assert!(load().is_err());
+    std::fs::write(dir.path().join("project.enc"), literal.as_bytes()).unwrap();
+    write(&manifest);
     manifest.nodes.reverse();
     write(&manifest);
     assert_eq!(load().unwrap().generation(), resolved.generation());
@@ -1951,4 +2104,182 @@ fn math_binding_synthetic_limits_and_missing_table() {
         bound.glyphs(&[0; 257]),
         Err(MathError::LookupBudget)
     ));
+}
+
+#[test]
+fn explicit_collection_resolver_registry_identity_and_bounds() {
+    use flashtex_font_engine::Face;
+    use registry::{collections::*, *};
+    struct SyntheticResolver(CollectionLayout);
+    impl VerifiedCollectionResolver for SyntheticResolver {
+        fn implementation_identity(&self) -> &str {
+            "synthetic-complete-layout-v1-test-only"
+        }
+        fn complete_layout(&self, _: &[u8]) -> Result<CollectionLayout> {
+            Ok(self.0.clone())
+        }
+    }
+    let original = fixture();
+    let n = u16::from_be_bytes(original[4..6].try_into().unwrap()) as usize;
+    let mut bytes = vec![0; 20];
+    bytes[..4].copy_from_slice(b"ttcf");
+    be32(&mut bytes, 4, 0x00010000);
+    be32(&mut bytes, 8, 2);
+    let mut layout = CollectionLayout {
+        header: 0..20,
+        faces: Vec::new(),
+    };
+    for index in 0..2 {
+        while !bytes.len().is_multiple_of(4) {
+            bytes.push(0)
+        }
+        let base = bytes.len();
+        be32(&mut bytes, 12 + index * 4, base as u32);
+        let mut font = original.clone();
+        let mut tables = Vec::new();
+        for i in 0..n {
+            let pos = 12 + i * 16;
+            let start =
+                u32::from_be_bytes(font[pos + 8..pos + 12].try_into().unwrap()) as usize + base;
+            let len = u32::from_be_bytes(font[pos + 12..pos + 16].try_into().unwrap()) as usize;
+            be32(&mut font, pos + 8, start as u32);
+            tables.push(TableRange {
+                tag: font[pos..pos + 4].try_into().unwrap(),
+                range: start..start + len,
+            });
+        }
+        layout.faces.push(FaceLayout {
+            directory: base..base + 12 + n * 16,
+            tables,
+        });
+        bytes.extend(font);
+    }
+    let resolver = SyntheticResolver(layout.clone());
+    let dir = tempfile::tempdir().unwrap();
+    let root = flashtex_project_files::ProjectRoot::open(dir.path()).unwrap();
+    let mut resource = entry(&bytes);
+    resource.font.format = "collection-truetype".into();
+    resource.font.face_index = 1;
+    let binding = StyleBinding {
+        family: "Explicit Collection".into(),
+        weight: 400,
+        style: FontStyle::Upright,
+    };
+    let write = |resource: ManifestEntry| {
+        std::fs::write(
+            dir.path().join("fonts.json"),
+            serde_json::to_vec(&RegistryManifest {
+                schema_version: 1,
+                entries: vec![RegistryEntry {
+                    binding: binding.clone(),
+                    resource,
+                }],
+            })
+            .unwrap(),
+        )
+        .unwrap();
+    };
+    std::fs::write(dir.path().join(&resource.path), &bytes).unwrap();
+    std::fs::write(
+        dir.path().join(&resource.license.text_path),
+        b"test license",
+    )
+    .unwrap();
+    write(resource.clone());
+    let first = CollectionRegistry::load(&root, "fonts.json", RegistryLimits::default(), &resolver)
+        .unwrap();
+    let held = first.get(&binding, first.generation()).unwrap();
+    assert_eq!(held.declaration().font.face_index, 1);
+    assert_eq!(held.bytes(), bytes);
+    assert_eq!(held.face().num_glyphs(), 3);
+    assert_eq!(held.tables().len(), n);
+    resource.font.face_index = 0;
+    write(resource.clone());
+    let second =
+        CollectionRegistry::load(&root, "fonts.json", RegistryLimits::default(), &resolver)
+            .unwrap();
+    assert_ne!(first.generation(), second.generation());
+    assert!(second.get(&binding, first.generation()).is_err());
+    assert_ne!(
+        held.face().id(),
+        second
+            .get(&binding, second.generation())
+            .unwrap()
+            .face()
+            .id()
+    );
+    resource.font.face_index = 2;
+    write(resource.clone());
+    assert!(
+        CollectionRegistry::load(&root, "fonts.json", RegistryLimits::default(), &resolver)
+            .is_err()
+    );
+    resource.font.face_index = 0;
+    write(resource);
+    let mut overlap = layout.clone();
+    overlap.faces[1].directory = overlap.faces[0].directory.clone();
+    assert!(CollectionRegistry::load(
+        &root,
+        "fonts.json",
+        RegistryLimits::default(),
+        &SyntheticResolver(overlap)
+    )
+    .is_err());
+    let mut mismatch = layout;
+    mismatch.faces[0].tables[0].range.start += 4;
+    assert!(CollectionRegistry::load(
+        &root,
+        "fonts.json",
+        RegistryLimits::default(),
+        &SyntheticResolver(mismatch)
+    )
+    .is_err());
+    std::fs::write(dir.path().join("font.ttf"), b"changed").unwrap();
+    assert!(
+        CollectionRegistry::load(&root, "fonts.json", RegistryLimits::default(), &resolver)
+            .is_err()
+    );
+    assert_eq!(held.bytes(), bytes);
+}
+
+#[test]
+fn literal_encoding_feeds_existing_exact_ttf_binding() {
+    use enc_file::*;
+    let bytes = fixture();
+    let font = FontResource::from_bytes(&entry(&bytes), &bytes, b"test license").unwrap();
+    let tfm = tfm_for_encoding();
+    let mut names = vec!["/.notdef"; 256];
+    names[65] = "/A.alt";
+    let source = format!("/Explicit[{}]def", names.join(" "));
+    let file = EncFile::parse(source.as_bytes(), &sha256(source.as_bytes())).unwrap();
+    let bound = file
+        .bind_truetype(
+            &tfm,
+            &font,
+            &[encoding::NamedGlyph {
+                glyph_name: "A.alt".into(),
+                glyph_id: 2,
+            }],
+        )
+        .unwrap();
+    assert_eq!(bound.source().file_sha256, sha256(source.as_bytes()));
+    assert_eq!(
+        bound.font().map_code(65).unwrap().0,
+        encoding::GlyphIdentity::Original(2)
+    );
+    assert_eq!(
+        bound.font().map_code(66).unwrap().0,
+        encoding::GlyphIdentity::Notdef
+    );
+    assert!(file.bind_truetype(&tfm, &font, &[]).is_err());
+    assert!(file
+        .bind_truetype(
+            &tfm,
+            &font,
+            &[encoding::NamedGlyph {
+                glyph_name: "A.alt".into(),
+                glyph_id: 0
+            }]
+        )
+        .is_err());
 }

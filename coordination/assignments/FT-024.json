@@ -8,15 +8,15 @@
   "branch": "agent/commander-corpus/font-resources",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "83f65e08ae60b312609f49ec0a2b6cae25c8e353",
-  "objective": "Implement bounded non-executable .enc literal-array subset feeding exact existing TFM/font bindings; explicit unsupported syntax and file SHA identity.",
+  "input_main_sha": "6c56263b4f3b8cf85370b6a9cedfd56566b26c1a",
+  "objective": "Validate actual pipeline consumer migration against matching metrics and fix only demonstrated shared-adapter gaps",
   "owned_paths": [
     "crates/font-resources"
   ],
-  "revision": 13,
+  "revision": 15,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-024",
   "timebox_minutes": 30,
-  "updated_utc": "2026-09-12T09:08:31.372212+00:00"
+  "updated_utc": "2026-09-12T09:45:44Z"
 }

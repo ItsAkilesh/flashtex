@@ -1,0 +1,76 @@
+{
+  "agent_id": "daniel-statistics",
+  "archived_utc": "2026-09-12T09:36:00Z",
+  "assignment": {
+    "acceptance": [
+      "Meaningful tests and strict Rust lint pass with bounded malformed/Unicode inputs",
+      "Preserve exact source/revision and resource identities; no implicit approximation or parity claim",
+      "Do not edit peer compiler/native/layout files; publish typed adapter contract and exact tested SHA"
+    ],
+    "agent_id": "daniel-statistics",
+    "allocation_id": "daniel-claude20x-shared",
+    "branch": "agent/daniel-statistics/document-statistics",
+    "deadline_utc": null,
+    "dependencies": [],
+    "input_main_sha": "83f65e08ae60b312609f49ec0a2b6cae25c8e353",
+    "objective": "Cache document statistics by exact source identity with dependency-aware project aggregation; prove incremental equals fresh and bound scanned bytes.",
+    "owned_paths": [
+      "crates/document-statistics"
+    ],
+    "revision": 2,
+    "schema_version": 1,
+    "state": "assigned",
+    "task_id": "FT-042",
+    "timebox_minutes": 40,
+    "updated_utc": "2026-09-12T09:08:31.372212+00:00"
+  },
+  "report": {
+    "agent_id": "daniel-statistics",
+    "allocation_id": "daniel-claude20x-shared",
+    "assignment_acknowledgements": {
+      "FT-042": {
+        "acknowledged_utc": "2026-09-12T09:27:47Z",
+        "adaptation": "Accepted FT-042 rev 2 as owner of crates/document-statistics only. Kept rev 1's pure Statistics::compute and its word-counting/CJK honesty tests unchanged. Added ScanLimit/ScanTooLarge (typed cap on scanned bytes, enforced in Statistics::compute_bounded) and ProjectCache (per-document cache keyed by source+revision+content fingerprint, with dependency-aware project_totals summing only currently-cached entries so an unrelated document's entry survives a sibling's update). Proved incremental equals fresh with a hand-rolled deterministic-PRNG property test over 40 sequences / 1160 total steps, asserting exact agreement after every step and that incremental scanning (127436 bytes) is well under fresh recomputation (326335 bytes). No workspace root Cargo.toml touched, no peer crate edited, no push/merge to main performed.",
+        "main_sha": "e5901797e8a7ebdd8d714ecdee6793e1097515a9",
+        "revision": 2
+      }
+    },
+    "branch": "agent/daniel-statistics/document-statistics",
+    "capabilities": [
+      "rust",
+      "document-statistics",
+      "caching"
+    ],
+    "code_revision": "e56b2e56a9a4ca9409a74b43014039f2db051bb4",
+    "eta_minutes": {
+      "likely": 0,
+      "optimistic": 0,
+      "pessimistic": 0
+    },
+    "machine": "mac-m5pro-dq222",
+    "main_integrated_through": "e5901797e8a7ebdd8d714ecdee6793e1097515a9",
+    "next_action": "Await Commander integration; no consumer wired up yet (deferred per FT-042 negotiation).",
+    "reviewed_peers": {
+      "origin/main": "e5901797e8a7ebdd8d714ecdee6793e1097515a9"
+    },
+    "schema_version": 1,
+    "state": "ready_for_integration",
+    "summary": "crates/document-statistics rev 2: ProjectCache keyed by exact source identity (RevisionId + FNV-1a content fingerprint) with per-document invalidation and dependency-aware project totals; ScanLimit/ScanTooLarge bounds scanned bytes; property test over 40 edit sequences (1160 steps) proves incremental equals fresh at every step and measures incremental scanning 127436 bytes vs 326335 fresh. 46 tests pass, clippy and fmt clean.",
+    "tool": "Claude Code on Claude Max 20x",
+    "updated_utc": "2026-09-12T09:27:47Z",
+    "usage": {
+      "evidence": "Shared Claude Max 20x subscription quota; no purchases or overages; live consumption not exposed to this agent.",
+      "status": "unknown"
+    }
+  },
+  "report_age_seconds": 493,
+  "report_path": "coordination/agents/daniel-statistics.json",
+  "review_required": true,
+  "revision": 2,
+  "schema_version": 1,
+  "stale_completion": false,
+  "state": "reported_ready",
+  "task_id": "FT-042",
+  "worker_branch": "agent/daniel-statistics/document-statistics",
+  "worker_report_sha": "a3c49ec3d612eef8535c5bba8a5d7ab849307817"
+}

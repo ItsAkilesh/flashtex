@@ -1,36 +1,36 @@
 {
-  "schema_version": 1,
   "agent_id": "daniel-collaboration",
-  "task_id": "FT-044",
-  "next_index": 0,
+  "next_index": 1,
+  "schema_version": 1,
   "steps": [
     {
+      "acceptance": [
+        "Meaningful tests and strict Rust lint pass with bounded malformed/Unicode inputs",
+        "Preserve exact source/revision and resource identities; no implicit approximation or parity claim",
+        "Do not edit peer compiler/native/layout files; publish typed adapter contract and exact tested SHA"
+      ],
+      "allocation_id": "daniel-claude20x-shared",
       "name": "Integrate an explicit published consumer adapter without peer ownership edits",
       "objective": "Offline bounded collaborative text operation core with stable IDs, causal/replay dedup and convergence fixtures; no network or ledger replacement. Integrate an explicit published consumer adapter without peer ownership edits",
       "owned_paths": [
         "crates/collaboration-core"
       ],
+      "timebox_minutes": 40
+    },
+    {
       "acceptance": [
         "Meaningful tests and strict Rust lint pass with bounded malformed/Unicode inputs",
         "Preserve exact source/revision and resource identities; no implicit approximation or parity claim",
         "Do not edit peer compiler/native/layout files; publish typed adapter contract and exact tested SHA"
       ],
       "allocation_id": "daniel-claude20x-shared",
-      "timebox_minutes": 40
-    },
-    {
       "name": "Expand measured fixtures and adversarial bounds with reproducible compatibility evidence",
       "objective": "Offline bounded collaborative text operation core with stable IDs, causal/replay dedup and convergence fixtures; no network or ledger replacement. Expand measured fixtures and adversarial bounds with reproducible compatibility evidence",
       "owned_paths": [
         "crates/collaboration-core"
       ],
-      "acceptance": [
-        "Meaningful tests and strict Rust lint pass with bounded malformed/Unicode inputs",
-        "Preserve exact source/revision and resource identities; no implicit approximation or parity claim",
-        "Do not edit peer compiler/native/layout files; publish typed adapter contract and exact tested SHA"
-      ],
-      "allocation_id": "daniel-claude20x-shared",
       "timebox_minutes": 40
     }
-  ]
+  ],
+  "task_id": "FT-044"
 }
