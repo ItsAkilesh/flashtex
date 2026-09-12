@@ -47,7 +47,10 @@ fn megabyte_scale_document_is_bounded_and_exact() {
     // "hello wrold " is 12 bytes; 100_000 repeats is 1_200_000 bytes.
     const REPEATS: usize = 100_000;
     let text = "hello wrold ".repeat(REPEATS);
-    assert!(text.len() > 1_000_000, "test setup must exceed one megabyte");
+    assert!(
+        text.len() > 1_000_000,
+        "test setup must exceed one megabyte"
+    );
 
     let out = assert_bounded("megabyte-scale document", || checker.check(&text, &d));
 
@@ -56,7 +59,9 @@ fn megabyte_scale_document_is_bounded_and_exact() {
     // correctness at scale.
     assert_eq!(out.len(), REPEATS);
     assert!(out.iter().all(|m| m.word == "wrold"));
-    assert!(out.iter().all(|m| m.suggestions == vec!["world".to_string()]));
+    assert!(out
+        .iter()
+        .all(|m| m.suggestions == vec!["world".to_string()]));
 }
 
 // ---------------------------------------------------------------------
@@ -92,7 +97,10 @@ fn text_of_only_dollar_delimiters_is_bounded_and_produces_no_words() {
 
     let text = "$".repeat(200_000);
     let out = assert_bounded("all-dollar-delimiter text", || checker.check(&text, &d));
-    assert!(out.is_empty(), "a text with no alphabetic runs can flag nothing: {out:?}");
+    assert!(
+        out.is_empty(),
+        "a text with no alphabetic runs can flag nothing: {out:?}"
+    );
 }
 
 #[test]
@@ -102,7 +110,10 @@ fn text_of_only_mixed_delimiters_is_bounded_and_produces_no_words() {
 
     let text = r"\(\)\[\]$$".repeat(50_000);
     let out = assert_bounded("all-mixed-delimiter text", || checker.check(&text, &d));
-    assert!(out.is_empty(), "no alphabetic content exists to flag: {out:?}");
+    assert!(
+        out.is_empty(),
+        "no alphabetic content exists to flag: {out:?}"
+    );
 }
 
 // ---------------------------------------------------------------------
@@ -122,7 +133,9 @@ fn unbalanced_and_nested_math_delimiters_do_not_panic_and_are_bounded() {
     let unit = r"$a \( b $ c \) d \[ e $$ f \] g ";
     let text = unit.repeat(20_000);
 
-    let out = assert_bounded("unbalanced/nested math delimiters", || checker.check(&text, &d));
+    let out = assert_bounded("unbalanced/nested math delimiters", || {
+        checker.check(&text, &d)
+    });
     // No panic and a plain Vec came back is the assertion; ranges must
     // still all be char-boundary safe and round-trip to their own word.
     for m in &out {
@@ -139,7 +152,10 @@ fn deeply_unbalanced_single_run_reaches_end_of_input_without_panicking() {
     // One opening delimiter of each kind, never closed, then real prose.
     let text = r"$ \( \[ start of math that never closes hello";
     let out = checker.check(text, &d);
-    assert!(out.is_empty(), "everything after the first '$' is excluded to end of input: {out:?}");
+    assert!(
+        out.is_empty(),
+        "everything after the first '$' is excluded to end of input: {out:?}"
+    );
 }
 
 // ---------------------------------------------------------------------
@@ -193,10 +209,15 @@ fn user_dictionary_accepts_up_to_exactly_the_default_capacity_then_rejects() {
     let mut ud = UserDictionary::default();
 
     for i in 0..USER_DICTIONARY_DEFAULT_MAX_ENTRIES {
-        ud.add_word(&format!("word{i}"))
-            .unwrap_or_else(|e| panic!("entry {i} of {USER_DICTIONARY_DEFAULT_MAX_ENTRIES} must fit: {e}"));
+        ud.add_word(&format!("word{i}")).unwrap_or_else(|e| {
+            panic!("entry {i} of {USER_DICTIONARY_DEFAULT_MAX_ENTRIES} must fit: {e}")
+        });
     }
-    assert_eq!(ud.len(), USER_DICTIONARY_DEFAULT_MAX_ENTRIES, "must be exactly at capacity, not over");
+    assert_eq!(
+        ud.len(),
+        USER_DICTIONARY_DEFAULT_MAX_ENTRIES,
+        "must be exactly at capacity, not over"
+    );
 
     let err = ud
         .add_word("one_word_past_capacity")
@@ -207,7 +228,11 @@ fn user_dictionary_accepts_up_to_exactly_the_default_capacity_then_rejects() {
             max_entries: USER_DICTIONARY_DEFAULT_MAX_ENTRIES
         }
     );
-    assert_eq!(ud.len(), USER_DICTIONARY_DEFAULT_MAX_ENTRIES, "a rejected entry must not be stored");
+    assert_eq!(
+        ud.len(),
+        USER_DICTIONARY_DEFAULT_MAX_ENTRIES,
+        "a rejected entry must not be stored"
+    );
 }
 
 #[test]
@@ -277,7 +302,9 @@ fn dictionary_with_very_long_entry_is_bounded_and_still_matches_exactly() {
     let checker = SpellChecker::default();
 
     let text = format!("hello {huge_word} wrold");
-    let out = assert_bounded("dictionary with a very long entry", || checker.check(&text, &words));
+    let out = assert_bounded("dictionary with a very long entry", || {
+        checker.check(&text, &words)
+    });
 
     // The huge word is itself a dictionary entry (direct hash lookup,
     // independent of its length) so it is not flagged; "wrold" still is.
@@ -309,7 +336,10 @@ fn text_of_only_combining_marks_is_bounded_and_flags_nothing() {
     // start or extend a word token on its own.
     let text = "\u{0301}".repeat(100_000);
     let out = assert_bounded("combining-marks-only text", || checker.check(&text, &d));
-    assert!(out.is_empty(), "combining marks alone contain no word to flag: {out:?}");
+    assert!(
+        out.is_empty(),
+        "combining marks alone contain no word to flag: {out:?}"
+    );
 }
 
 #[test]
@@ -319,7 +349,10 @@ fn text_of_only_zero_width_characters_is_bounded_and_flags_nothing() {
     // U+200B ZERO WIDTH SPACE, U+200D ZERO WIDTH JOINER: not `Alphabetic`.
     let text = "\u{200B}\u{200D}".repeat(100_000);
     let out = assert_bounded("zero-width-only text", || checker.check(&text, &d));
-    assert!(out.is_empty(), "zero-width characters alone contain no word to flag: {out:?}");
+    assert!(
+        out.is_empty(),
+        "zero-width characters alone contain no word to flag: {out:?}"
+    );
 }
 
 #[test]
@@ -330,7 +363,10 @@ fn text_of_only_rtl_overrides_is_bounded_and_flags_nothing() {
     // not `Alphabetic`.
     let text = "\u{202E}\u{202C}".repeat(100_000);
     let out = assert_bounded("RTL-override-only text", || checker.check(&text, &d));
-    assert!(out.is_empty(), "directional-override characters alone contain no word to flag: {out:?}");
+    assert!(
+        out.is_empty(),
+        "directional-override characters alone contain no word to flag: {out:?}"
+    );
 }
 
 #[test]
@@ -387,7 +423,11 @@ fn always_true_cancellation_callback_never_yields_a_completed_outcome() {
     let long_text = "wrold ".repeat(1000);
     for text in ["", "hello", "hello wrold", long_text.as_str()] {
         let outcome = checker.check_cancellable(text, 7, &d, &|| true);
-        assert_eq!(outcome, CheckOutcome::Cancelled { revision: 7 }, "input: {text:?}");
+        assert_eq!(
+            outcome,
+            CheckOutcome::Cancelled { revision: 7 },
+            "input: {text:?}"
+        );
     }
 }
 
@@ -418,7 +458,10 @@ fn max_suggestions_and_edit_distance_extremes_stay_bounded_together() {
         max_word_length_for_suggestions: 20,
     };
     let checker = SpellChecker::new(cfg);
-    assert_eq!(checker.config().max_edit_distance, SpellChecker::MAX_ALLOWED_EDIT_DISTANCE);
+    assert_eq!(
+        checker.config().max_edit_distance,
+        SpellChecker::MAX_ALLOWED_EDIT_DISTANCE
+    );
 
     let out = assert_bounded("extreme config against a large dictionary", || {
         checker.check("cxt", &d)

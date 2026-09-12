@@ -179,7 +179,8 @@ impl SpellChecker {
     /// only ever reads `text` and returns byte ranges into it.
     pub fn check(&self, text: &str, dictionary: &dyn Dictionary) -> Vec<Misspelling> {
         // `&|| false` never cancels, so this always returns `Some`.
-        self.check_impl(text, dictionary, &|| false).unwrap_or_default()
+        self.check_impl(text, dictionary, &|| false)
+            .unwrap_or_default()
     }
 
     /// Same as [`Self::check`], but tags the result with `revision` (a
@@ -266,8 +267,7 @@ impl SpellChecker {
             while excl_idx < excluded.len() && excluded[excl_idx].end <= range.start {
                 excl_idx += 1;
             }
-            let excluded_here =
-                excl_idx < excluded.len() && excluded[excl_idx].start < range.end;
+            let excluded_here = excl_idx < excluded.len() && excluded[excl_idx].start < range.end;
             if excluded_here {
                 continue;
             }
@@ -658,7 +658,10 @@ impl std::fmt::Display for UserDictionaryError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             UserDictionaryError::CapacityExceeded { max_entries } => {
-                write!(f, "user dictionary capacity exceeded (max {max_entries} entries)")
+                write!(
+                    f,
+                    "user dictionary capacity exceeded (max {max_entries} entries)"
+                )
             }
         }
     }
@@ -859,7 +862,10 @@ mod tests {
         let checker = SpellChecker::new(cfg);
         let out = checker.check("cxt", &d);
         assert_eq!(out.len(), 1);
-        assert_eq!(out[0].suggestions, vec!["cat".to_string(), "cot".to_string()]);
+        assert_eq!(
+            out[0].suggestions,
+            vec!["cat".to_string(), "cot".to_string()]
+        );
     }
 
     #[test]
@@ -936,7 +942,10 @@ mod tests {
         let text = r"\wrold*{heading}";
         let checker = SpellChecker::default();
         let out = checker.check(text, &d);
-        assert!(out.is_empty(), "starred command name must not be flagged: {out:?}");
+        assert!(
+            out.is_empty(),
+            "starred command name must not be flagged: {out:?}"
+        );
     }
 
     #[test]
@@ -1020,7 +1029,10 @@ mod tests {
         let text = r"\\word";
         let checker = SpellChecker::default();
         let out = checker.check(text, &d);
-        assert!(out.is_empty(), "\\\\ is a line-break control symbol, 'word' is known: {out:?}");
+        assert!(
+            out.is_empty(),
+            "\\\\ is a line-break control symbol, 'word' is known: {out:?}"
+        );
     }
 
     #[test]
@@ -1135,7 +1147,10 @@ mod tests {
         let d: BTreeSet<String> = ["hello", "world"].iter().map(|s| s.to_string()).collect();
         let checker = SpellChecker::default();
         assert!(checker.check("hello world", &d).is_empty());
-        assert_eq!(checker.check("wrold", &d)[0].suggestions, vec!["world".to_string()]);
+        assert_eq!(
+            checker.check("wrold", &d)[0].suggestions,
+            vec!["world".to_string()]
+        );
     }
 
     // ---- User dictionary: bounded, additions vs. ignores -------------------
@@ -1146,7 +1161,10 @@ mod tests {
         ud.add_word("alpha").unwrap();
         ud.add_word("beta").unwrap();
         let err = ud.add_word("gamma").unwrap_err();
-        assert_eq!(err, UserDictionaryError::CapacityExceeded { max_entries: 2 });
+        assert_eq!(
+            err,
+            UserDictionaryError::CapacityExceeded { max_entries: 2 }
+        );
         // Re-adding an already-present word is always fine, even at capacity.
         ud.add_word("alpha").unwrap();
         assert_eq!(ud.len(), 2);
@@ -1157,7 +1175,10 @@ mod tests {
         let mut ud = UserDictionary::new(1);
         ud.ignore_word("todo").unwrap();
         let err = ud.add_word("other").unwrap_err();
-        assert_eq!(err, UserDictionaryError::CapacityExceeded { max_entries: 1 });
+        assert_eq!(
+            err,
+            UserDictionaryError::CapacityExceeded { max_entries: 1 }
+        );
     }
 
     #[test]
@@ -1190,7 +1211,11 @@ mod tests {
 
         let checker = SpellChecker::default();
         let out = checker.check("hello flashtex wrold unknownword", &layered);
-        assert_eq!(out.len(), 1, "only the truly unknown word should be flagged: {out:?}");
+        assert_eq!(
+            out.len(),
+            1,
+            "only the truly unknown word should be flagged: {out:?}"
+        );
         assert_eq!(out[0].word, "unknownword");
 
         // The caller-supplied base dictionary itself is never mutated.
@@ -1207,8 +1232,14 @@ mod tests {
         let result = checker.check_revision("helo", 5, &d);
         assert_eq!(result.revision, 5);
         assert_eq!(result.misspellings.len(), 1);
-        assert!(!result.is_stale(5), "a result checked at the current revision is not stale");
-        assert!(result.is_stale(6), "a result checked at an older revision must be detectably stale");
+        assert!(
+            !result.is_stale(5),
+            "a result checked at the current revision is not stale"
+        );
+        assert!(
+            result.is_stale(6),
+            "a result checked at an older revision must be detectably stale"
+        );
     }
 
     // ---- Cancellation --------------------------------------------------------
@@ -1247,7 +1278,9 @@ mod tests {
 
         match outcome {
             CheckOutcome::Cancelled { revision } => assert_eq!(revision, 7),
-            CheckOutcome::Completed(_) => panic!("expected cancellation to short-circuit the check"),
+            CheckOutcome::Completed(_) => {
+                panic!("expected cancellation to short-circuit the check")
+            }
         }
         assert!(
             calls.get() <= 5,
