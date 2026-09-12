@@ -3,27 +3,27 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-048": {
-      "acknowledged_utc": "2026-09-12T13:41:52Z",
-      "adaptation": "Existing hash-verified diagnostics only; no workloads while renderer builds. Cannot discriminate writer/receiver costs; propose minimal correlated instrumentation.",
-      "main_sha": "04840a863290843dff3ef7be6154266a860f9888",
-      "revision": 25
+      "acknowledged_utc": "2026-09-12T13:49:30Z",
+      "adaptation": "Opt-in scalar output lifecycle and bounded receiver timings implemented; independent review addressed lock, generation and clock identity gaps. No timing run.",
+      "main_sha": "2c2455fef0f3dafc7537929bc4d18567273ac2dc",
+      "revision": 26
     }
   },
   "branch": "agent/commander-preview-performance/preview-performance",
   "capabilities": [
     "Preview helper serialization and latency"
   ],
-  "code_revision": "c5518be3b38d9682da3bea993587bc4e4ba49c38",
+  "code_revision": "69bffa06de407eac37315858688aa999b45f111f",
   "eta_minutes": null,
   "machine": "linux-primary",
-  "main_integrated_through": "f240daecda41e955a90ff0fc9fb75f78bbf75566",
-  "next_action": "Review minimal diagnostic metadata proposal with Commander before instrumentation.",
+  "main_integrated_through": "69bffa06de407eac37315858688aa999b45f111f",
+  "next_action": "Publish for exact-SHA independent review and integration; measured diagnostic capture requires separate quiet-window gate.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "FT048r25 existing diagnostics quantify29.19ms optional offer/serialization and9.89MB historical output; attribution gap remains writer/receiver time and unlogged eligibility skips.",
+  "summary": "FT048r26 diagnostic instrumentation passes16binary/30stdio tests and strictalltargetlint; generation-correlated eviction and stalled-write timeout verified.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T13:41:53Z",
+  "updated_utc": "2026-09-12T13:49:30Z",
   "usage": {
     "status": "unknown"
   }

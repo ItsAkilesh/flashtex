@@ -22,13 +22,22 @@ pub fn offer<T: Serialize + ?Sized>(
     value: &T,
     limit: usize,
 ) -> Outcome {
+    offer_with_generation(sender, epoch, value, limit, None)
+}
+pub fn offer_with_generation<T: Serialize + ?Sized>(
+    sender: &Sender,
+    epoch: u64,
+    value: &T,
+    limit: usize,
+    generation: Option<u64>,
+) -> Outcome {
     if !sender.can_offer(epoch) {
         return Outcome::BusyOrObsolete;
     }
     let Ok(bytes) = output_buffer::serialize(value, limit) else {
         return Outcome::SerializationRefused;
     };
-    if sender.optional(epoch, bytes) {
+    if sender.optional_with_generation(epoch, bytes, generation) {
         Outcome::Admitted
     } else {
         Outcome::BusyOrObsolete

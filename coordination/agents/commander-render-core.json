@@ -3,10 +3,10 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-023": {
-      "acknowledged_utc": "2026-09-12T13:35:53.670040+00:00",
-      "adaptation": "Read FT023r19. Bound current native evidence review to exact published SHAs; no native execution or speculative patch.",
-      "main_sha": "620c349ccfa3796201290300a77c558024a1ffd3",
-      "revision": 19
+      "revision": 20,
+      "main_sha": "04840a863290843dff3ef7be6154266a860f9888",
+      "acknowledged_utc": "2026-09-12T13:46:49.486523+00:00",
+      "adaptation": "ReadFT023r20, authorized offline-j2 build window andeight bounded actualLinux siblinglayout cases; no nativeclaim/authoritativeedit/download."
     }
   },
   "branch": "agent/commander-render-core/rendering-core",
@@ -14,23 +14,23 @@
     "rust",
     "rendering"
   ],
-  "code_revision": "290b7c664895f1688229ab6152053ce5f4e2611d",
+  "code_revision": "2efd9af50a75b96eb5563f33ec7995867e157773",
   "eta_minutes": {
     "likely": 3,
     "optimistic": 1,
     "pessimistic": 5
   },
   "machine": "linux-primary",
-  "main_integrated_through": "a177cc3c99eb0a70e59045d421aa1bf330354a3b",
-  "next_action": "Review actual builtproducer+sealedstage feasibility with existing assets. GH36 requires nohostTeX/override evidence; do not blindly apply oldproducerpatch.",
+  "main_integrated_through": "68f94f647f864212ca4b4f587d75fa75833e1984",
+  "next_action": "Commander route actual rooted-before-flat behavior to Mac owners; native sealed/direct/helper nohostTeX acceptance still required. Existing producer build under target/gh36-producer-7ca34cec reusable exactSHA.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "accepted",
-  "summary": "Native followup290b7c66 corrects census interval and handoff-vs-adoption; new authoritativeproducer0b09be57 included7ca34cec implements rooted/flat metric discovery.",
+  "summary": "FT023r20 actual unchanged7ca producer offlinebuild +eight Linux siblinglayout probes pass; exact10/12bundledsuccess and typed missing/corrupt/override outcomes retained.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T13:39:12Z",
+  "updated_utc": "2026-09-12T13:46:49Z",
   "usage": {
-    "evidence": "Clock correction5646213168 recorded;4timeoutsload121 and passes80-94 remainnonisolated. Exactnewfonts.rs hash pinned. TFMenvoverrides precede paths, but requiredloader alltexmfroots beforeflatdirs; nextactualconsumerprobe needed. Packagingrefabsent.",
-    "status": "Hosted OpenAI only; no providers/descendants. Docs-only source review, no jobs or nativecalls. Context telemetry/native compaction unavailable."
+    "evidence": "Binaryd002742d/375sourcefilesunchanged; archive2bba68a7.9resourceverifierpass; all12defaulthostpathsabsent andcleanenv.8actualcases pass;10override selected beforebundle, required12roots beforeflat. Originalrawoutputs+hashes under linux-7ca34cec.",
+    "status": "Hosted OpenAI only; no providers/descendants. Build42542 andall8probes terminal; no nativecalls/timingclaims. Context telemetry/native compaction unavailable; buildreceipt+rawoutputs durable."
   }
 }

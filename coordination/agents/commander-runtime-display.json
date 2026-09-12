@@ -3,27 +3,27 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-049": {
-      "acknowledged_utc": "2026-09-12T13:38:41Z",
-      "adaptation": "Read exact FT049r29; await published processsender pair for artifact-only audit. Reviewed f240daec fragmented greater-than-PIPE_BUF transfer test read-only; no workload rerun or native claim.",
-      "main_sha": "86afb290fbbfaaac3f6ce2afdb1373ae9f81ef5c",
-      "revision": 29
+      "acknowledged_utc": "2026-09-12T13:44:48Z",
+      "adaptation": "Read FT049r31 scalar-only diagnostic review. Reviewing helper candidate readonly: numericrequest/outputseq, no externalIDs/source/paths/tokens, lifecycle and within-process clock scope. No runtime edits or heavytests during renderer42542.",
+      "main_sha": "37137adaa0654d95f43c6678e476b8513c3a09ef",
+      "revision": 31
     }
   },
   "branch": "agent/commander-runtime-display/display-runtime",
   "capabilities": [
     "rust-runtime"
   ],
-  "code_revision": "d8db4e1538d3c4686dbd5d73357f123771d0974e",
+  "code_revision": "d8a9f7a8e7d32f5ef6fced54723725e0bc2e4426",
   "eta_minutes": null,
   "machine": "linux-primary",
-  "main_integrated_through": "1027d3ae7d00f7f9684b0d74026b6bb3f4e002a1",
-  "next_action": "Commander integration/next bounded assignment. No active jobs; root69bffa06 instrumentation proposal available for later review if assigned.",
+  "main_integrated_through": "513926ce2160b1db18dead25acc650b3d749f924",
+  "next_action": "Commander integration/next bounded assignment; preserve timing/clock/loss caveats. No active jobs or native activation.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "FT049r29 exact c5518be3 process pair audit passes4 modes. Sender frames/provenance/source chain and crosspair clean bytes equal. Current8stale11superseded; historical6delivered12superseded plus completed15 undelivered;only current21. No loss-cause/native claim or workload rerun.",
+  "summary": "FT049r31 final read-only e8b5a6fa review: generation/frame identity gap closed, numeric counter exhaustion safe, queue traces outside lock, receiver fullordinal/decode scope/cap correct. Owner88555 tests+lint reportedPASS; no independent heavytest or workloadrun. No remaining concrete blocker.",
   "tool": "codex",
-  "updated_utc": "2026-09-12T13:42:55Z",
+  "updated_utc": "2026-09-12T13:50:11Z",
   "usage": {
     "status": "unknown"
   }
