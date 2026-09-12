@@ -13,17 +13,17 @@
   "capabilities": [
     "Runtime profiling and exact source validation"
   ],
-  "code_revision": "5b6911090e2dcbe807c6fb4d9e75cd4f214a2440",
+  "code_revision": "2508e1d095b809067a9bcc2d3b99be0a15439aac",
   "eta_minutes": null,
   "machine": "linux-primary",
   "main_integrated_through": "5b6911090e2dcbe807c6fb4d9e75cd4f214a2440",
-  "next_action": "Compare safe UTF8-once JSON parsing against pinned baseline; preserve full validation.",
+  "next_action": "Commander integrate instrumentation/parser; continue measured validation optimization after review.",
   "reviewed_peers": {},
   "schema_version": 1,
-  "state": "in_progress",
-  "summary": "FT047 phase instrumentation: 60 exact-clean samples; 20 tests and strict Clippy pass. 500KB median357.649ms, parse85.843ms, validation23.374ms.",
+  "state": "ready_for_integration",
+  "summary": "FT047 UTF8-once parser: paired median10.25% reduction,19/20wins, exact Values; 180 repeat scaling samples exact-clean. Existing20tests plus invalidUTF8 regression and strict Clippy pass.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T08:45:28Z",
+  "updated_utc": "2026-09-12T08:49:19Z",
   "usage": {
     "status": "unknown"
   }

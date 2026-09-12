@@ -353,7 +353,12 @@ impl Session {
                         break;
                     };
                     let parsed_at = Instant::now();
-                    let parsed: Value = match serde_json::from_slice(&bytes) {
+                    // Validate UTF-8 once for the whole frame instead of once per JSON string.
+                    // Keep the same Value and semantic validation path below.
+                    let parsed: Value = match std::str::from_utf8(&bytes)
+                        .map_err(|_| ())
+                        .and_then(|text| serde_json::from_str(text).map_err(|_| ()))
+                    {
                         Ok(value) => value,
                         Err(_) => {
                             self.fail("compiler returned malformed JSON");
