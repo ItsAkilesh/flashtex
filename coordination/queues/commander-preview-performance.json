@@ -4,8 +4,8 @@
   "schema_version": 1,
   "steps": [
     {
-      "name": "Capture actual multi-document explicit bibliography helper flow with distinct editor and compile revisions using pinned producer",
-      "objective": "Capture actual multi-document explicit bibliography helper flow with distinct editor and compile revisions using pinned producer",
+      "name": "Move owned history command JSON into existing typed parser without cloning large grouped text",
+      "objective": "Move owned history command JSON into existing typed parser without cloning large grouped text",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"
@@ -19,8 +19,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Verify cancel restart renegotiation exact source tokens and durable reopen on the same actual helper capture",
-      "objective": "Verify cancel restart renegotiation exact source tokens and durable reopen on the same actual helper capture",
+      "name": "Verify invalid command remains premutation and exact full metadata retry undo redo and source token behavior persists",
+      "objective": "Verify invalid command remains premutation and exact full metadata retry undo redo and source token behavior persists",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"
@@ -34,8 +34,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Publish exact original wire and provenance for independent runtime consumer without native or bibliography layout claims",
-      "objective": "Publish exact original wire and provenance for independent runtime consumer without native or bibliography layout claims",
+      "name": "Measure one large grouped command ownership transfer and preserve actual multi-document capture evidence",
+      "objective": "Measure one large grouped command ownership transfer and preserve actual multi-document capture evidence",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"

@@ -9,16 +9,16 @@
   "branch": "agent/commander-preview-performance/preview-performance",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "ee5c1fd072bb3a96a1e194f484a941ced871c0c2",
-  "objective": "Capture actual multi-document explicit bibliography helper flow with distinct editor and compile revisions using pinned producer",
+  "input_main_sha": "a7388f6966f047b39403d6b2196179a95f1ad17f",
+  "objective": "Move owned history command JSON into existing typed parser without cloning large grouped text",
   "owned_paths": [
     "crates/preview-controller",
     "crates/edit-ledger"
   ],
-  "revision": 16,
+  "revision": 17,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-048",
   "timebox_minutes": 40,
-  "updated_utc": "2026-09-12T12:47:39.531062+00:00"
+  "updated_utc": "2026-09-12T12:54:28.039845+00:00"
 }
