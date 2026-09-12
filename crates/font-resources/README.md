@@ -132,3 +132,12 @@ slots, not Unicode or TrueType GIDs; consumers need an explicit encoding binding
 Specification reference: [TeX Live tex.web TFM format documentation](https://github.com/TeX-Live/texlive-source/blob/trunk/texk/web2c/tex.web).
 No existing TeX engine is linked or invoked. No installed TFM oracle was found;
 current tests use declared synthetic format fixtures, not measured font parity.
+
+`apply_ligatures_kerns` interprets already encoded runs with exact kern FixWords
+and ligature keep-left/keep-right/advance semantics. Each output glyph retains
+its contributing input index interval; inserted kerns stay separate typed items.
+Input is limited to 4096 bytes, output to 8192 items and execution to 65536 steps;
+cyclic ligature programs fail rather than hanging. Fonts declaring boundary
+programs are explicitly unsupported by this run interpreter (pair inspection
+remains available). It does not perform Unicode encoding, hyphenation,
+discretionaries, TeX scaled-point rounding or TrueType glyph selection.
