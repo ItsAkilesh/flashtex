@@ -1,4 +1,4 @@
-Generated from commit `8bd5e667d1c6c85a454b4969f1d11697826a7601` by `cargo test --test recovery generate_recovery_evidence -- --ignored --exact`.
+Generated from commit `79986817cb0b3065d86f730e827891304af36a03` by `cargo test --test recovery generate_recovery_evidence -- --ignored --exact`.
 
 # FlashTeX recovery evidence
 
@@ -112,12 +112,11 @@ Status: `recovered`
 
 Diagnostics:
 
-- `\frobnicate is not supported by this compiler version; unrestricted TeX math mode is not implemented` — recovery: `skipped the command; any braced argument was typeset as plain text`; byte range: `8..19`
+- `\frobnicate is not supported by this compiler version; unrestricted TeX math mode is not implemented` — recovery: `skipped the command and its argument, which looked like a parameter rather than text`; byte range: `8..19`
 
 Positioned text items:
 
 - `Visible` — byte range `0..7`
-- `argument` — byte range `20..28`
 - `Tail.` — byte range `30..35`
 
 ## include of a file the request did not supply

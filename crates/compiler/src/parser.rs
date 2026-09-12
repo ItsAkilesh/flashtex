@@ -57,6 +57,23 @@ pub enum Inline {
         page: bool,
         span: Span,
     },
+    /// `\hfill`/`\hfil`: infinite horizontal stretch. Multiple fills on one
+    /// line share the line's leftover width equally, as real TeX glue does;
+    /// unlike TeX, `\hfil` and `\hfill` are not distinguished by stretch
+    /// order (this layout has only one order of infinite glue), an accepted
+    /// simplification. See `layout::LayoutCursor::resolve_hfill`.
+    HFill {
+        span: Span,
+    },
+    /// `\hspace{<dimen>}`/`\hspace*{<dimen>}`: a fixed, non-stretching space.
+    /// `pt` is already converted (see `parse_dimen_pt`). Real TeX also lets
+    /// plain `\hspace` glue (unlike the starred form) be discarded when it
+    /// falls at a line break; this layout never discards glue at a line
+    /// start, so both forms behave identically here.
+    HSpace {
+        pt: f64,
+        span: Span,
+    },
 }
 
 /// One `\\`-separated row of a multi-row display; cells are split on `&`.
@@ -155,6 +172,8 @@ const BUILT_INS: &[&str] = &[
     "item",
     "includegraphics",
     "hfill",
+    "hfil",
+    "hspace",
     "normalfont",
     "bfseries",
     "vspace",
@@ -163,10 +182,15 @@ const BUILT_INS: &[&str] = &[
     "pagestyle",
 ];
 
-/// Parses a LaTeX dimension (`12pt`, `1.5em`, `0.5in`, `2cm`, `10mm`) to points.
-/// `em` is relative to the compiler's fixed body size since there is no
-/// declaration-scoped font state to read a current size from (see the
-/// `hfill`/`normalfont`/`bfseries` comment below).
+/// Parses a LaTeX dimension (`12pt`, `1.5em`, `0.5in`, `2cm`, `10mm`, `2ex`,
+/// `12bp`) to points. `em`/`ex` are relative to the compiler's fixed body size
+/// since there is no declaration-scoped font state to read a current size
+/// from (see the `hfill`/`normalfont`/`bfseries` comment below); `ex` uses the
+/// common TeX-metrics approximation of half an em, since no real x-height is
+/// read from the font. `bp` ("big point") is exactly this compiler's own
+/// internal point (both are 1/72 inch, matching the 612×792pt page in
+/// `layout.rs`), unlike `in`/`cm`/`mm` below, which follow TeX's own
+/// 72.27-per-inch point.
 pub(crate) fn parse_dimen_pt(text: &str) -> Option<f64> {
     let text = text.trim();
     let unit_len = text
@@ -181,14 +205,30 @@ pub(crate) fn parse_dimen_pt(text: &str) -> Option<f64> {
     let (number, unit) = text.split_at(split);
     let value: f64 = number.trim().parse().ok()?;
     let per_pt = match unit {
-        "pt" => 1.0,
+        "pt" | "bp" => 1.0,
         "in" => 72.27,
         "cm" => 72.27 / 2.54,
         "mm" => 72.27 / 25.4,
         "em" => crate::layout::BODY_SIZE_PT,
+        "ex" => crate::layout::BODY_SIZE_PT * 0.5,
         _ => return None,
     };
     Some(value * per_pt)
+}
+
+/// True when `content` (already trimmed) is safe for the unsupported-command
+/// recovery policy to assume is a parameter rather than prose — see the
+/// policy comment on `unsupported` below for the full rationale. A dimension
+/// (reusing `parse_dimen_pt`, so `\vspace{0.6em}`-style values match) or a
+/// single lowercase keyword (`empty`, `arabic`, ...) both qualify. A
+/// single-*character* word is deliberately excluded: real LaTeX keyword
+/// parameters are essentially always two or more letters (`empty`, `plain`,
+/// `arabic`, ...), while a single lowercase letter is far more likely to be
+/// genuine one-letter prose or a macro body (`\def\x{y}`) that must not be
+/// silently dropped.
+fn looks_like_recoverable_argument(content: &str) -> bool {
+    parse_dimen_pt(content).is_some()
+        || (content.chars().count() > 1 && content.chars().all(|ch| ch.is_ascii_lowercase()))
 }
 
 /// Project-relative paths only: no absolute paths or parent traversal.
@@ -580,10 +620,34 @@ impl P<'_> {
                 let (tokens, _) = self.required_group(name, span);
                 para.extend(self.inlines_from_tokens(tokens));
             }
-            // The current layout model has no stretchable horizontal glue or
-            // declaration-scoped font state. These commands are explicit no-ops:
-            // they never consume or alter surrounding content.
-            "hfill" | "normalfont" | "bfseries" => {}
+            // The current layout model has no declaration-scoped font state.
+            // These commands are explicit no-ops: they never consume or alter
+            // surrounding content.
+            "normalfont" | "bfseries" => {}
+            "hfill" | "hfil" => para.push(Inline::HFill { span }),
+            "hspace" => {
+                // The star only affects whether the glue survives being
+                // discarded at a line break in real TeX, which this layout
+                // never does anyway (see the `Inline::HSpace` comment), so
+                // both forms are parsed identically.
+                let _starred = self.take_optional_star();
+                let (tokens, argument_span) = self.required_group(name, span);
+                let raw = token_text(&tokens);
+                match parse_dimen_pt(&raw) {
+                    Some(pt) => para.push(Inline::HSpace {
+                        pt,
+                        span: span.merge(argument_span),
+                    }),
+                    None => self.diags.push(Diagnostic::error(
+                        format!(
+                            "\\hspace requires a recognised dimension, got '{}'",
+                            raw.trim()
+                        ),
+                        Some(span.merge(argument_span)),
+                        Some("ignored the malformed \\hspace argument".into()),
+                    )),
+                }
+            }
             "par" => self.flush_paragraph(blocks, para),
             "vspace" => {
                 let (tokens, argument_span) = self.required_group(name, span);
@@ -1716,16 +1780,129 @@ impl P<'_> {
         ));
     }
 
+    /// Recovery policy for a command this compiler does not implement.
+    ///
+    /// The diagnostic naming the command must always survive — that is the
+    /// contract that lets an author discover the gap; it is never hidden or
+    /// weakened by what follows. What varies is only whether the following
+    /// brace/bracket argument is also consumed. Left alone, the main token
+    /// loop just keeps walking: a `{` opens an anonymous group and its
+    /// contents fall through to ordinary paragraph text, so the argument
+    /// itself becomes visible body text (e.g. `\vspace{0.6em}` used to leak
+    /// the word "0.6em" onto the page, before `\vspace` gained its own
+    /// implementation). That is fine — even correct — for a command whose
+    /// argument IS meant to be read as prose: an unknown macro someone typoed,
+    /// `\mycommand{Some real sentence}`, must keep that sentence visible, or
+    /// the recovery would silently eat the author's content.
+    ///
+    /// So the argument is only skipped when it is conservatively safe to
+    /// assume it is a parameter, not prose:
+    ///   1. `name` is in `KNOWN_ARITY_UNIMPLEMENTED`: a command this compiler
+    ///      recognises by name as taking a fixed count of non-prose
+    ///      arguments it does not yet implement. Its whole arity is consumed
+    ///      unconditionally — the command name alone is enough context.
+    ///   2. Otherwise, for a genuinely unrecognised command, only the ONE
+    ///      immediately following `{...}` group is inspected, and only
+    ///      consumed if its full (trimmed) contents look like a dimension or
+    ///      a keyword — see `looks_like_recoverable_argument`. Anything else
+    ///      (multiple words, punctuation, a capitalized word, a lone letter)
+    ///      is left in place and typeset as text, exactly as before.
+    /// Either way, the diagnostic's recovery note records whether an argument
+    /// was skipped, so the choice itself stays auditable from the output.
     fn unsupported(&mut self, name: &str, span: Span) {
         debug_assert!(!BUILT_INS.contains(&name));
+        let skipped = self.skip_recoverable_argument(name);
         self.diags.push(Diagnostic::error(
             format!(
                 "\\{} is not supported by this compiler version; unrestricted TeX math mode is not implemented",
                 name
             ),
             Some(span),
-            Some("skipped the command; any braced argument was typeset as plain text".into()),
+            Some(if skipped {
+                "skipped the command and its argument, which looked like a parameter rather than text".into()
+            } else {
+                "skipped the command; any braced argument was typeset as plain text".into()
+            }),
         ));
+    }
+
+    /// Commands this compiler recognises by name as taking a fixed count of
+    /// non-prose arguments it does not implement. Each listed argument is
+    /// always skipped, regardless of content — the command name alone gives
+    /// enough context to know the text was never meant to reach the page.
+    /// Deliberately excludes `\vspace`/`\hrule`/`\newpage`/`\pagestyle` (and
+    /// `\Large`/`\setlength`): those already have, or are gaining, their own
+    /// real implementations elsewhere, so hardcoding them here would fight
+    /// that work instead of falling out of it automatically.
+    fn skip_recoverable_argument(&mut self, name: &str) -> bool {
+        const KNOWN_ARITY_UNIMPLEMENTED: &[(&str, usize)] = &[
+            // `\linespread{1.5}`: a bare scale factor with no unit suffix, so
+            // the dimension heuristic below would never catch it on its own.
+            ("linespread", 1),
+        ];
+        if let Some(&(_, arity)) = KNOWN_ARITY_UNIMPLEMENTED
+            .iter()
+            .find(|(known, _)| *known == name)
+        {
+            let mut skipped_any = false;
+            for _ in 0..arity {
+                if self.try_skip_braced_group(None) {
+                    skipped_any = true;
+                } else {
+                    break;
+                }
+            }
+            return skipped_any;
+        }
+        self.try_skip_braced_group(Some(looks_like_recoverable_argument))
+    }
+
+    /// Skips one `{...}` group immediately ahead (after whitespace), if one
+    /// is there — and, when `predicate` is given, only when the group's
+    /// trimmed text content satisfies it. Never emits a diagnostic of its
+    /// own and never advances past anything on a rejected attempt: the
+    /// missing- or non-matching-argument case is silent by design, since the
+    /// ordinary token loop is what typesets it as text afterwards.
+    fn try_skip_braced_group(&mut self, predicate: Option<fn(&str) -> bool>) -> bool {
+        let mut cursor = self.i;
+        while matches!(
+            self.t.get(cursor).map(|input| &input.token.kind),
+            Some(TokenKind::Space | TokenKind::Comment)
+        ) {
+            cursor += 1;
+        }
+        if !matches!(
+            self.t.get(cursor).map(|input| &input.token.kind),
+            Some(TokenKind::LBrace)
+        ) {
+            return false;
+        }
+        let mut depth = 1usize;
+        let mut scan = cursor + 1;
+        let close = loop {
+            match self.t.get(scan).map(|input| &input.token.kind) {
+                Some(TokenKind::LBrace) => depth += 1,
+                Some(TokenKind::RBrace) => {
+                    depth -= 1;
+                    if depth == 0 {
+                        break scan;
+                    }
+                }
+                Some(_) => {}
+                // Unterminated group: leave it for ordinary recovery rather
+                // than guessing where it would have closed.
+                None => return false,
+            }
+            scan += 1;
+        };
+        if let Some(predicate) = predicate {
+            let content = token_text(&self.t[cursor + 1..close]);
+            if !predicate(content.trim()) {
+                return false;
+            }
+        }
+        self.i = close + 1;
+        true
     }
 }
 

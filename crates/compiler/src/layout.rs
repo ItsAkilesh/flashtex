@@ -262,6 +262,15 @@ pub struct LayoutCursor {
     line_ascent: f64,
     line_descent: f64,
     line_start: usize,
+    /// The pen position right after the most recently placed glyph/box or
+    /// `\hspace`, deliberately excluding any trailing inter-word space. Kept
+    /// in sync only by `place`, `place_math`, `hspace`, and reset by
+    /// `newline`; that is every way `x` can advance while an `\hfill` mark
+    /// might be pending; see `resolve_hfill`.
+    content_end: f64,
+    /// Page-item-index boundaries recorded by `mark_hfill` for the current
+    /// line, resolved (and cleared) by `resolve_hfill` when the line closes.
+    line_fills: Vec<usize>,
     first_block: bool,
     constraints: LayoutConstraints,
     resolved_labels: BTreeMap<String, ReferenceValue>,
@@ -294,6 +303,8 @@ impl LayoutCursor {
             line_ascent: constraints.font_size_pt,
             line_descent: constraints.font_size_pt * (LINE_SPACING - 1.0),
             line_start: 0,
+            content_end: MARGIN_PT,
+            line_fills: Vec::new(),
             first_block: true,
             constraints,
             resolved_labels,
@@ -337,8 +348,10 @@ impl LayoutCursor {
     }
 
     fn newline(&mut self, size: f64) {
+        self.resolve_hfill();
         self.align_current_line();
         self.x = self.left_edge();
+        self.content_end = self.x;
         self.y += self.line_descent + size;
         self.line_ascent = size;
         self.line_descent = size * (LINE_SPACING - 1.0);
@@ -358,6 +371,58 @@ impl LayoutCursor {
     fn vertical_gap(&mut self, gap: f64) {
         self.x = self.left_edge();
         self.y += gap;
+    }
+
+    /// Records an `\hfill`/`\hfil` mark at the current position on the line
+    /// being built. `resolve_hfill` turns this into an actual shift once the
+    /// line's full width is known.
+    fn mark_hfill(&mut self) {
+        let boundary = self
+            .pages
+            .last()
+            .expect("at least one page")
+            .items
+            .len();
+        self.line_fills.push(boundary);
+    }
+
+    /// `\hspace{<dimen>}`/`\hspace*`: a fixed space with no visible glyph.
+    /// Real TeX lets this glue break a line; this layout does not check for
+    /// overflow here, matching how the rest of this line model only checks
+    /// for a break before placing the next word (see `place`).
+    fn hspace(&mut self, pt: f64) {
+        self.x += pt;
+        self.content_end = self.x;
+    }
+
+    /// Distributes the current line's leftover width across every
+    /// `\hfill`/`\hfil` mark collected since the line began, then clears
+    /// them. Called from `newline`, right before the line closes, so both an
+    /// explicit `\\` and an ordinary word-wrap resolve any pending fills —
+    /// this is the one place a line is known to be complete. Multiple fills
+    /// on one line share the leftover space equally, as real TeX glue does.
+    fn resolve_hfill(&mut self) {
+        if self.line_fills.is_empty() {
+            return;
+        }
+        let boundaries = std::mem::take(&mut self.line_fills);
+        let slack = (self.right_edge() - self.content_end).max(0.0);
+        if slack <= 0.0 {
+            return;
+        }
+        let per_fill = slack / boundaries.len() as f64;
+        let Some(page) = self.pages.last_mut() else {
+            return;
+        };
+        let mut shift = 0.0;
+        let mut boundaries = boundaries.into_iter().peekable();
+        for (index, item) in page.items.iter_mut().enumerate().skip(self.line_start) {
+            while boundaries.peek().is_some_and(|&boundary| boundary <= index) {
+                boundaries.next();
+                shift += per_fill;
+            }
+            item.x_pt = round2(item.x_pt + shift);
+        }
     }
 
     /// `\newpage`: start a fresh page unconditionally, even if the current
@@ -396,6 +461,7 @@ impl LayoutCursor {
             .expect("at least one page")
             .items
             .push(item);
+        self.content_end = self.x + w;
         self.x += w + word_space(size, font);
     }
 
@@ -438,6 +504,7 @@ impl LayoutCursor {
                 rule,
             });
         }
+        self.content_end = self.x + b.width;
         self.x += b.width + word_space(size, Font::TimesRoman);
     }
 
@@ -896,6 +963,8 @@ fn emit(c: &mut LayoutCursor, inlines: &[Inline], size: f64, font: Font) {
                 );
                 c.place(text, size, *span, font);
             }
+            Inline::HFill { .. } => c.mark_hfill(),
+            Inline::HSpace { pt, .. } => c.hspace(*pt),
         }
     }
 }
