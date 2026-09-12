@@ -1,24 +1,24 @@
 {
-  "schema_version": 1,
-  "task_id": "FT-027",
-  "agent_id": "commander-preview-controller",
-  "branch": "agent/commander/preview-controller",
-  "revision": 1,
-  "state": "assigned",
-  "objective": "Native-consumable original Rust preview controller joins durable source/edit-ledger, source index and original compiler session. Add bounded JSONLines helper and exact revision/session guards.",
-  "owned_paths": [
-    "crates/preview-controller"
-  ],
   "acceptance": [
     "Parallel controller and real original compiler tests pass",
     "Durable source succeeds independently of missing compiler",
     "Reviewed insertion is explicit; never automatically approve provider text",
     "Native paint and full PDF equality remain separate measured gates"
   ],
-  "dependencies": [],
+  "agent_id": "commander-preview-controller",
   "allocation_id": "hosted-openai-product",
-  "timebox_minutes": 30,
+  "branch": "agent/commander/preview-controller",
   "deadline_utc": null,
-  "input_main_sha": "56c003f8f82dee63507205f69f4d3b8c353442e0",
-  "updated_utc": "2026-09-12T06:09:29.165922+00:00"
+  "dependencies": [],
+  "input_main_sha": "b44eb68dda46385bf98cc8d1ebb539ee85eeef2c",
+  "objective": "Subprocess crash/restart and reviewed receipt recovery",
+  "owned_paths": [
+    "crates/preview-controller"
+  ],
+  "revision": 2,
+  "schema_version": 1,
+  "state": "assigned",
+  "task_id": "FT-027",
+  "timebox_minutes": 30,
+  "updated_utc": "2026-09-12T06:22:04Z"
 }

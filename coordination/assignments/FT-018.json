@@ -1,23 +1,23 @@
 {
   "acceptance": [
-    "Roundtrip extraction and native rendering preserve supported Unicode",
-    "Fallback is explicit and deterministic",
-    "Subset bytes are reproducible"
+    "One shared metric source drives all three consumers",
+    "Visual corpus quantifies remaining differences",
+    "Unsupported shaping fails explicitly"
   ],
   "agent_id": "mac-font-engine",
-  "allocation_id": "claude-mac20x-font-engine-stage2",
+  "allocation_id": "claude-mac20x-font-engine-stage3",
   "branch": "agent/mac-font-engine/tex-fonts",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "a77e697faa51866607f8c9cf9f5d2a65a63e1521",
-  "objective": "Extend glyph clustering, kerning, combining marks, fallback identity, subset embedding and ToUnicode with licensed pinned fonts.",
+  "input_main_sha": "d783fbe9249642379aa965a749901a85a7784d3a",
+  "objective": "Provide adapters and evidence so compiler layout, native preview and PDF use identical font identity, advances, clusters and glyph mapping.",
   "owned_paths": [
     "crates/font-engine"
   ],
-  "revision": 2,
+  "revision": 3,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-018",
   "timebox_minutes": 45,
-  "updated_utc": "2026-09-12T06:04:03Z"
+  "updated_utc": "2026-09-12T06:27:58Z"
 }

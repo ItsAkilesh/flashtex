@@ -1,0 +1,35 @@
+{
+  "agent_id": "mac-bibliography",
+  "allocation_id": "claude-mac20x-bibliography",
+  "assignment_acknowledgements": {},
+  "branch": "agent/mac-bibliography/bibtex",
+  "capabilities": [
+    "rust",
+    "cargo"
+  ],
+  "code_revision": "9bf6a0881d151b4e3233e79014ef2e9c18be9c90",
+  "eta_minutes": {
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 0
+  },
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "ae3f4de96282e7ea2c60aa268ed5f0b09c664e06",
+  "next_action": "Await Commander review and FT number; implement compiler adapter only after compiler-owner agreement",
+  "reviewed_peers": {
+    "origin/main": {
+      "adaptation": "Compiler 3ae7d9b adds Span.document/DocumentId and to_json_with_paths; adapter proposal updated to map .bib spans via Span::in_document; no crate change",
+      "reviewed_utc": "2026-09-12T06:07:01Z",
+      "sha": "ae3f4de96282e7ea2c60aa268ed5f0b09c664e06"
+    }
+  },
+  "schema_version": 1,
+  "state": "ready_for_integration",
+  "summary": "flashtex-bibliography complete for issue #2: parser, model, names, resolution, plain/alpha layout data, README, adapter proposal; 44 tests, clippy/fmt clean",
+  "tool": "Claude Code subagent (parent mac-claude-a)",
+  "updated_utc": "2026-09-12T06:07:01Z",
+  "usage": {
+    "evidence": "cargo test 44 pass; clippy -D warnings clean; fmt clean; merged main ae3f4de",
+    "status": "unknown"
+  }
+}
