@@ -17,7 +17,10 @@ fn v1_items_are_positioned_exactly_where_v2_glyph_runs_start() {
     }
     let r = render_one(MATH_DOC);
     let v1 = v1_of(&r, Capabilities { rules: true, font_hints: true, display_list: false });
-    assert_eq!(v1.status, "ok", "{:?}", v1.diagnostics);
+    // Only the outline-resource profile notes for lmmi/lmex (drawn from
+    // Latin Modern Math) are expected; they make the status `recovered`.
+    assert!(v1.diagnostics.iter().all(|d| d.code == "math_resource_profile"), "{:?}", v1.diagnostics);
+    assert_eq!(v1.status, "recovered");
     let mut v2_origins: Vec<(f64, f64, String)> = Vec::new();
     let mut v2_rules = 0;
     for page in &r.v2.pages {

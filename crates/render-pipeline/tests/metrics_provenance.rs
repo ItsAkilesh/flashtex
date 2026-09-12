@@ -69,3 +69,38 @@ fn missing_required_metrics_are_a_blocking_diagnostic_not_a_silent_fallback() {
     assert!(!r.v2.pages.is_empty(), "the document is still laid out (OpenType metrics) so the editor shows something");
     let _ = std::fs::remove_dir_all(&tmp);
 }
+
+/// The layout an app bundle can ship: one flat directory with the OTFs,
+/// the four required TFMs and the GUST licence (`Contents/Resources/Fonts`,
+/// or any `FLASHTEX_FONT_DIRS` entry); the required set loads from it
+/// digest-bound, exactly like from a texmf tree.
+#[test]
+fn a_flat_bundle_directory_with_tfms_and_licence_satisfies_the_required_set() {
+    if !lm_available() {
+        eprintln!("skipping: Latin Modern not installed");
+        return;
+    }
+    let real = FontSet::with_default_dirs(&[]);
+    let src_dir = real.dirs().iter().find(|d| d.join("lmroman12-regular.otf").is_file()).unwrap().clone();
+    let math_dir = real.dirs().iter().find(|d| d.join("latinmodern-math.otf").is_file()).unwrap().clone();
+    let tfm_dir = real.tfm_dirs().iter().find(|d| d.join("ec-lmr12.tfm").is_file()).unwrap().clone();
+    let texmf = tfm_dir.to_string_lossy().trim_end_matches("/fonts/tfm/public/lm").to_string();
+    let tmp = std::env::temp_dir().join(format!("flashtex-flat-bundle-{}", std::process::id()));
+    let flat = tmp.join("Fonts");
+    std::fs::create_dir_all(&flat).unwrap();
+    for f in ["lmroman12-regular.otf", "lmroman12-bold.otf", "lmroman12-italic.otf", "lmroman10-regular.otf", "lmroman8-regular.otf", "lmroman6-regular.otf"] {
+        let _ = std::fs::copy(src_dir.join(f), flat.join(f));
+    }
+    let _ = std::fs::copy(math_dir.join("latinmodern-math.otf"), flat.join("latinmodern-math.otf"));
+    for (f, _) in REQUIRED_TFMS {
+        std::fs::copy(tfm_dir.join(f), flat.join(f)).unwrap();
+    }
+    std::fs::copy(format!("{texmf}/doc/fonts/lm/GUST-FONT-LICENSE.TXT"), flat.join("GUST-FONT-LICENSE.TXT")).unwrap();
+    let fonts = FontSet::new(vec![flat.clone()]);
+    fonts.required_metrics().expect("flat layout loads the pinned set");
+    assert_eq!(fonts.tfm("ec-lmr12.tfm").unwrap().sha256(), REQUIRED_TFMS[0].1);
+    let docs = [SourceDocument { path: "main.tex", text: "\\begin{document}Body $x^2$ text.\\end{document}" }];
+    let r = render(&docs, "main.tex", 1, "p", &fonts, &RenderOptions::default());
+    assert!(r.v2.diagnostics.iter().all(|d| d.code == "math_resource_profile"), "{:?}", r.v2.diagnostics);
+    let _ = std::fs::remove_dir_all(&tmp);
+}

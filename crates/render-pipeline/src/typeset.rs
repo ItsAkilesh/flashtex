@@ -132,6 +132,9 @@ pub struct BuiltBlock {
     pub vertical: VBlock,
     /// `\label` keys and the item index they precede.
     pub labels: Vec<(String, usize)>,
+    /// `(cache key, first source byte)` when the block came through the
+    /// cache, so its assembled items can be cached too.
+    pub cache_key: Option<(u64, DocumentId, usize)>,
 }
 
 /// LaTeX/plain penalties (article defaults).
@@ -240,6 +243,7 @@ impl<'a> Context<'a> {
         let path = self.paths.get(document.0).copied().unwrap_or("").to_string();
         if let Some(c) = cache.get(key) {
             if c.document == document && *c.path == *path {
+                let _ = &c.block.cache_key;
                 let rec_delta = self.recs.len() as isize - c.rec_base as isize;
                 let math_delta = self.maths.len() as isize - c.math_base as isize;
                 let mut block = c.block.clone();
@@ -258,6 +262,7 @@ impl<'a> Context<'a> {
                 let mut diags = c.diagnostics.clone();
                 let delta = base as isize - c.base as isize;
                 incremental::relocate_block(&mut block, &mut recs, &mut maths, &mut diags, &path, delta);
+                block.cache_key = Some((key, document, base));
                 self.recs.extend(recs);
                 self.maths.extend(maths);
                 for (k, d) in diags {
@@ -269,9 +274,12 @@ impl<'a> Context<'a> {
         let rec_base = self.recs.len();
         let math_base = self.maths.len();
         let outer = self.capture.replace(Vec::new());
-        let built = build(self);
+        let mut built = build(self);
         let captured = self.capture.take().unwrap_or_default();
         self.capture = outer;
+        if let Some(b) = &mut built {
+            b.cache_key = Some((key, document, base));
+        }
         if let Some(b) = &built {
             cache.insert(
                 key,
@@ -750,6 +758,7 @@ impl<'a> Context<'a> {
             recs,
             vertical,
             labels,
+            cache_key: None,
         })
     }
 
@@ -798,6 +807,7 @@ impl<'a> Context<'a> {
             recs,
             vertical,
             labels,
+            cache_key: None,
         })
     }
 
@@ -859,6 +869,7 @@ impl<'a> Context<'a> {
                 recs: Vec::new(),
                 vertical,
                 labels: Vec::new(),
+                cache_key: None,
             },
             width + 2.0 * quad,
         )
@@ -1011,6 +1022,7 @@ impl<'a> Context<'a> {
             recs,
             vertical,
             labels: Vec::new(),
+            cache_key: None,
         })
     }
 
@@ -1336,6 +1348,7 @@ pub fn assemble(
     _fonts: &FontSet,
     laid: Laid,
     mut diagnostics: Vec<Diagnostic>,
+    cache: Option<&RenderCache>,
 ) -> DisplayList {
     let paths: Vec<Rc<str>> = documents.iter().map(|d| Rc::from(d.path)).collect();
     let empty: Rc<str> = Rc::from("");
@@ -1345,50 +1358,42 @@ pub fn assemble(
         end_byte: span.end,
     };
     let mut used: BTreeMap<String, Rc<LoadedFace>> = BTreeMap::new();
+    // Every block's lines are assembled once in line-local coordinates
+    // (cached across requests by the block's key), then placed per page by
+    // integer tick/byte moves.
+    let text_x = style.text_x_pt;
+    let mut assembled: Vec<Option<Rc<incremental::AssembledBlock>>> = Vec::with_capacity(laid.blocks.len());
+    for block in &laid.blocks {
+        let hit = block
+            .cache_key
+            .and_then(|(k, _, _)| cache.and_then(|c| c.assembled(k)))
+            .filter(|a| block.cache_key.is_some_and(|(_, d, _)| *a.path == *paths.get(d.0).map_or("", |p| &**p)));
+        let a = match hit {
+            Some(a) => a,
+            None => {
+                let built = assemble_block(block, &laid.recs, &laid.maths, text_x, &source_of, &paths, &empty);
+                match (cache, block.cache_key) {
+                    (Some(c), Some((k, _, _))) => c.insert_assembled(k, built),
+                    _ => Rc::new(built),
+                }
+            }
+        };
+        for f in &a.faces {
+            used.entry(f.font_id.clone()).or_insert_with(|| f.clone());
+        }
+        assembled.push(Some(a));
+    }
     let mut pages = Vec::new();
     for page in &laid.pages.pages {
         let mut items: Vec<display::Item> = Vec::new();
-        let mut runs = page.runs.iter();
         for placed in &page.lines {
             let block = &laid.blocks[placed.paragraph];
-            let line = &block.block.lines.lines[placed.line];
-            // Boxes of this line in item order pair with its runs in order.
-            let boxes: Vec<usize> = line
-                .items
-                .clone()
-                .filter(|i| matches!(block.items.get(*i), Some(pl::Item::Box(_))))
-                .filter_map(|i| block.recs.get(i).copied().flatten())
-                .collect();
-            let n = line.runs.len();
-            let line_runs: Vec<&pl::PositionedRun> = runs.by_ref().take(n).collect();
-            let mut bi = 0usize;
-            for run in line_runs {
-                if run.is_hyphen {
-                    continue;
-                }
-                let Some(&rec) = boxes.get(bi) else { break };
-                bi += 1;
-                match &laid.recs[rec] {
-                    BoxRec::Text {
-                        face,
-                        size,
-                        text,
-                        clusters,
-                        glyphs,
-                        height,
-                        depth,
-                        ..
-                    } => {
-                        used.entry(face.font_id.clone()).or_insert_with(|| face.clone());
-                        if let Some(item) = text_item(run, face, *size, text, clusters, glyphs, *height, *depth, &source_of) {
-                            items.push(item);
-                        }
-                    }
-                    BoxRec::Math(mi) => {
-                        let m = &laid.maths[*mi];
-                        math_items(run, m, &source_of, &mut items, &mut used);
-                    }
-                }
+            let Some(a) = assembled[placed.paragraph].as_ref() else { continue };
+            let Some(line_items) = a.lines.get(placed.line) else { continue };
+            let dy = Tick::from_tex_pt(placed.baseline_y);
+            let delta = block.cache_key.map_or(0, |(_, _, b)| b as isize - a.base as isize);
+            for it in line_items {
+                items.push(incremental::place_item(it, dy, &a.path, delta));
             }
         }
         pages.push(display::Page {
@@ -1407,12 +1412,10 @@ pub fn assemble(
     // built them), then emitted in TFM-name order without a source so the
     // report does not depend on which block was built first.
     let mut profiles: BTreeMap<String, String> = BTreeMap::new();
-    for m in &laid.maths {
-        if let MathProvider::Tex(t) = &m.metrics {
-            for (tfm, face, exact) in t.take_resources() {
-                if !exact {
-                    profiles.entry(tfm).or_insert(face);
-                }
+    for a in assembled.iter().flatten() {
+        for (tfm, face, exact) in &a.resources {
+            if !exact {
+                profiles.entry(tfm.clone()).or_insert(face.clone());
             }
         }
     }
@@ -1426,16 +1429,19 @@ pub fn assemble(
     // Glyphs TeX's metrics placed that the OpenType face cannot draw
     // (extensible assemblies, unknown chains): reported, not faked.
     let mut reported = BTreeSet::new();
-    for m in &laid.maths {
-        if let MathProvider::Tex(t) = &m.metrics {
-            for (font, code, ch) in t.take_unmapped() {
-                if reported.insert((font.clone(), code)) {
-                    diagnostics.push(Diagnostic::warning(
-                        "math_glyph_unmapped",
-                        format!("{font} code {code:#04x} ('{ch}') has no Latin Modern Math glyph mapping; nothing drawn for it"),
-                        vec![source_of(m.span)],
-                    ));
-                }
+    for (block, a) in laid.blocks.iter().zip(assembled.iter()) {
+        let Some(a) = a else { continue };
+        for (font, code, ch) in &a.unmapped {
+            if reported.insert((font.clone(), *code)) {
+                let span = block.recs.iter().flatten().find_map(|r| match &laid.recs[*r] {
+                    BoxRec::Math(mi) => Some(laid.maths[*mi].span),
+                    BoxRec::Text { .. } => None,
+                });
+                diagnostics.push(Diagnostic::warning(
+                    "math_glyph_unmapped",
+                    format!("{font} code {code:#04x} ('{ch}') has no Latin Modern Math glyph mapping; nothing drawn for it"),
+                    span.map(|s| vec![source_of(s)]).unwrap_or_default(),
+                ));
             }
         }
     }
@@ -1473,6 +1479,79 @@ pub fn assemble(
     }
 }
 
+/// Assembles one block's lines in line-local coordinates.
+#[allow(clippy::too_many_arguments)]
+fn assemble_block(
+    block: &BuiltBlock,
+    recs: &[BoxRec],
+    maths: &[MathRec],
+    text_x: f64,
+    source_of: &dyn Fn(Span) -> SourceRange,
+    paths: &[Rc<str>],
+    empty: &Rc<str>,
+) -> incremental::AssembledBlock {
+    let mut used: BTreeMap<String, Rc<LoadedFace>> = BTreeMap::new();
+    let mut lines = Vec::with_capacity(block.block.lines.lines.len());
+    let mut resources = Vec::new();
+    let mut unmapped = Vec::new();
+    for line in &block.block.lines.lines {
+        let mut items: Vec<display::Item> = Vec::new();
+        // Boxes of this line in item order pair with its runs in order.
+        let boxes: Vec<usize> = line
+            .items
+            .clone()
+            .filter(|i| matches!(block.items.get(*i), Some(pl::Item::Box(_))))
+            .filter_map(|i| block.recs.get(i).copied().flatten())
+            .collect();
+        let mut bi = 0usize;
+        for run in &line.runs {
+            if run.is_hyphen {
+                continue;
+            }
+            let Some(&rec) = boxes.get(bi) else { break };
+            bi += 1;
+            let mut local = run.clone();
+            local.x += text_x;
+            local.baseline_y = 0.0;
+            match &recs[rec] {
+                BoxRec::Text {
+                    face,
+                    size,
+                    text,
+                    clusters,
+                    glyphs,
+                    height,
+                    depth,
+                    ..
+                } => {
+                    used.entry(face.font_id.clone()).or_insert_with(|| face.clone());
+                    if let Some(item) = text_item(&local, face, *size, text, clusters, glyphs, *height, *depth, source_of) {
+                        items.push(item);
+                    }
+                }
+                BoxRec::Math(mi) => {
+                    let m = &maths[*mi];
+                    math_items(&local, m, source_of, &mut items, &mut used);
+                    if let MathProvider::Tex(t) = &m.metrics {
+                        resources.extend(t.take_resources());
+                        unmapped.extend(t.take_unmapped());
+                    }
+                }
+            }
+        }
+        lines.push(items);
+    }
+    let (document, base) = block.cache_key.map_or((DocumentId(0), 0), |(_, d, b)| (d, b));
+    incremental::AssembledBlock {
+        lines,
+        faces: used.into_values().collect(),
+        base,
+        path: paths.get(document.0).cloned().unwrap_or_else(|| empty.clone()),
+        resources,
+        unmapped,
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn text_item(
     run: &pl::PositionedRun,
@@ -1485,7 +1564,10 @@ fn text_item(
     depth: f64,
     source_of: &dyn Fn(Span) -> SourceRange,
 ) -> Option<display::Item> {
-    let baseline = run.baseline_y;
+    // Line-local: the baseline is 0 and every y is an offset from it; the
+    // page position is added as an integer tick move when the line is
+    // placed, so a block placed anywhere yields identical ticks.
+    let baseline = 0.0;
     let top = Tick::from_tex_pt(baseline - height);
     let box_height = Tick::from_tex_pt(height + depth);
     let mut glyphs = Vec::with_capacity(run.glyphs.len());
@@ -1572,7 +1654,7 @@ fn math_items(
     items: &mut Vec<display::Item>,
     used: &mut BTreeMap<String, Rc<LoadedFace>>,
 ) {
-    let flat = ml::positioned_runs(&m.root, (run.x, run.baseline_y - m.root.height));
+    let flat = ml::positioned_runs(&m.root, (run.x, -m.root.height));
     let src = source_of(m.span);
     // Group consecutive glyphs of one face and size into a run; each glyph
     // is a cluster.

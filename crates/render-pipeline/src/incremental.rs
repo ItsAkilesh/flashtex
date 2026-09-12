@@ -47,9 +47,26 @@ pub struct CachedBlock {
     pub path: String,
 }
 
+/// The display items of one block's lines in line-local coordinates
+/// (x absolute on the page, y relative to the line baseline) with source
+/// offsets as of the request that built it (`base` is the block's first
+/// source byte then). Placing a line adds the baseline tick to every y
+/// and the byte delta to every source; both are exact integer moves.
+pub struct AssembledBlock {
+    pub lines: Vec<Vec<crate::display::Item>>,
+    pub faces: Vec<Rc<crate::fonts::LoadedFace>>,
+    pub base: usize,
+    pub path: Rc<str>,
+    /// `(tfm font, face, exact)` resource selections made for math glyphs.
+    pub resources: Vec<(String, String, bool)>,
+    /// `(tfm font, code, char)` math glyphs with no outline mapping.
+    pub unmapped: Vec<(String, u8, char)>,
+}
+
 #[derive(Default)]
 pub struct RenderCache {
     blocks: RefCell<HashMap<u64, Rc<CachedBlock>>>,
+    assembled: RefCell<HashMap<u64, Rc<AssembledBlock>>>,
     hits: RefCell<u64>,
     misses: RefCell<u64>,
 }
@@ -73,8 +90,23 @@ impl RenderCache {
         let mut b = self.blocks.borrow_mut();
         if b.len() >= MAX_BLOCKS {
             b.clear();
+            self.assembled.borrow_mut().clear();
         }
         b.insert(key, Rc::new(block));
+    }
+
+    pub fn assembled(&self, key: u64) -> Option<Rc<AssembledBlock>> {
+        self.assembled.borrow().get(&key).cloned()
+    }
+
+    pub fn insert_assembled(&self, key: u64, block: AssembledBlock) -> Rc<AssembledBlock> {
+        let rc = Rc::new(block);
+        let mut a = self.assembled.borrow_mut();
+        if a.len() >= MAX_BLOCKS {
+            a.clear();
+        }
+        a.insert(key, rc.clone());
+        rc
     }
 
     pub fn len(&self) -> usize {
@@ -285,4 +317,47 @@ pub fn style_fingerprint(style: &crate::style::Stylesheet) -> u64 {
     let mut h = DefaultHasher::new();
     format!("{style:?}").hash(&mut h);
     h.finish()
+}
+
+/// Places a line-local item: every y moves by `dy` ticks and every source
+/// offset in `path` by `delta` bytes.
+pub fn place_item(item: &crate::display::Item, dy: crate::display::Tick, path: &str, delta: isize) -> crate::display::Item {
+    use crate::display::{Item, Provenance, Tick};
+    let add = |t: Tick| Tick(t.0 + dy.0);
+    let shift_prov = |p: &Provenance| -> Provenance {
+        if delta == 0 {
+            return p.clone();
+        }
+        match p {
+            Provenance::Source(s) if &*s.path == path => Provenance::Source(crate::display::SourceRange {
+                path: s.path.clone(),
+                start_byte: shift(s.start_byte, delta),
+                end_byte: shift(s.end_byte, delta),
+            }),
+            other => other.clone(),
+        }
+    };
+    match item {
+        Item::GlyphRun(r) => {
+            let mut r = r.clone();
+            for g in &mut r.glyphs {
+                g.baseline_y = add(g.baseline_y);
+            }
+            for c in &mut r.clusters {
+                c.hit_rect.top = add(c.hit_rect.top);
+                c.carets.first.top = add(c.carets.first.top);
+                if let Some(l) = &mut c.carets.last {
+                    l.top = add(l.top);
+                }
+                c.provenance = shift_prov(&c.provenance);
+            }
+            Item::GlyphRun(r)
+        }
+        Item::Rule(rule) => {
+            let mut rule = rule.clone();
+            rule.top = add(rule.top);
+            rule.provenance = shift_prov(&rule.provenance);
+            Item::Rule(rule)
+        }
+    }
 }

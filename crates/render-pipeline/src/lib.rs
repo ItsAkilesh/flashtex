@@ -138,7 +138,7 @@ pub fn render_cached(
                 ));
             }
         }
-        let v2 = typeset::assemble(project_id, revision, documents, &doc.style, fonts, laid, diagnostics);
+        let v2 = typeset::assemble(project_id, revision, documents, &doc.style, fonts, laid, diagnostics, cache);
         return Rendered {
             v2,
             elapsed_ms: started.elapsed().as_secs_f64() * 1000.0,

@@ -48,15 +48,33 @@ pub const REQUIRED_LICENSE: (&str, &str) = (
     "49ea6cb9257bbee0a3979c48a774cd221550ac1c20c95549efe45fc99cc18050",
 );
 
-fn required_manifest() -> RequiredManifest {
+/// The two directory layouts the required set is accepted in, both read
+/// through the rooted, digest-bound loader:
+///
+/// * **texmf** — a TeX Live style tree rooted at `<root>`:
+///   `<root>/fonts/tfm/public/lm/{ec-lmr12,rm-lmr12,rm-lmr8,rm-lmr6}.tfm`
+///   and `<root>/doc/fonts/lm/GUST-FONT-LICENSE.TXT` (MacTeX:
+///   `/usr/local/texlive/2026/texmf-dist`; an app bundle can ship
+///   `Contents/Resources/texmf/...` and point `FLASHTEX_FONT_DIRS` /
+///   `FLASHTEX_TFM_DIRS` at `<root>/fonts/{opentype,tfm}/public/lm`, or
+///   rely on the `../Resources/texmf` default below).
+/// * **flat** — every TFM directory itself as the root, the four TFMs and
+///   `GUST-FONT-LICENSE.TXT` directly inside it (a bundle's
+///   `Contents/Resources/Fonts` next to the OTFs, or `FLASHTEX_TFM_DIRS`).
+fn required_manifest(flat: bool) -> RequiredManifest {
+    let (prefix, license) = if flat {
+        (String::new(), "GUST-FONT-LICENSE.TXT".to_string())
+    } else {
+        (format!("{REQUIRED_TFM_DIR}/"), REQUIRED_LICENSE.0.to_string())
+    };
     RequiredManifest {
         schema_version: 1,
         metrics: REQUIRED_TFMS
             .iter()
             .map(|(file, sha)| MetricAsset {
-                path: format!("{REQUIRED_TFM_DIR}/{file}"),
+                path: format!("{prefix}{file}"),
                 sha256: (*sha).to_string(),
-                license_path: REQUIRED_LICENSE.0.to_string(),
+                license_path: license.clone(),
                 license_sha256: REQUIRED_LICENSE.1.to_string(),
             })
             .collect(),
@@ -129,6 +147,13 @@ pub fn default_font_dirs() -> Vec<PathBuf> {
     }
     if let Ok(exe) = std::env::current_exe() {
         if let Some(dir) = exe.parent() {
+            // A bundled texmf tree (OTFs, TFMs and the GUST licence in the
+            // TeX Live layout) or a flat Fonts directory next to the
+            // executable / in the app bundle's Resources.
+            for root in [dir.join("../Resources/texmf"), dir.join("texmf")] {
+                dirs.push(root.join("fonts/opentype/public/lm"));
+                dirs.push(root.join("fonts/opentype/public/lm-math"));
+            }
             dirs.push(dir.join("Fonts"));
             dirs.push(dir.join("../Resources/Fonts"));
         }
@@ -326,6 +351,8 @@ pub struct FontSet {
     tfm_dirs: Vec<PathBuf>,
     /// The required 12 pt set, loaded once on first use.
     required: RefCell<Option<Result<Rc<RequiredMetrics>, String>>>,
+    /// Whether the required set was found in the flat layout.
+    required_flat: RefCell<bool>,
     /// Non-required TFMs parsed so far, by file name.
     tfms: RefCell<BTreeMap<String, Result<Rc<Tfm>, String>>>,
     /// Shaped words, keyed by (face, text); shaping is size-independent and
@@ -383,6 +410,7 @@ impl FontSet {
             failures: RefCell::new(BTreeMap::new()),
             tfm_dirs,
             required: RefCell::new(None),
+            required_flat: RefCell::new(false),
             tfms: RefCell::new(BTreeMap::new()),
             shaper: crate::shape::Shaper::new(),
         }
@@ -412,25 +440,35 @@ impl FontSet {
         if let Some(r) = &*self.required.borrow() {
             return r.clone();
         }
-        let manifest = required_manifest();
-        let roots = self.texmf_roots();
+        // texmf roots first (TeX Live / bundled tree), then every TFM
+        // directory as a flat root.
+        let candidates: Vec<(PathBuf, bool)> = self
+            .texmf_roots()
+            .into_iter()
+            .map(|r| (r, false))
+            .chain(self.tfm_dirs.iter().filter(|d| d.is_dir()).map(|d| (d.clone(), true)))
+            .collect();
         let mut errors = Vec::new();
         let mut result = Err(String::new());
-        for root in &roots {
+        for (root, flat) in &candidates {
             match ProjectRoot::open(root) {
-                Ok(pr) => match RequiredMetrics::load(&pr, &manifest) {
+                Ok(pr) => match RequiredMetrics::load(&pr, &required_manifest(*flat)) {
                     Ok(m) => {
                         result = Ok(Rc::new(m));
+                        *self.required_flat.borrow_mut() = *flat;
                         break;
                     }
-                    Err(e) => errors.push(format!("{}: {e:?}", root.display())),
+                    Err(e) => errors.push(format!("{}{}: {e:?}", root.display(), if *flat { " (flat)" } else { "" })),
                 },
                 Err(e) => errors.push(format!("{}: {e:?}", root.display())),
             }
         }
         if result.is_err() {
-            result = Err(if roots.is_empty() {
-                format!("no texmf-dist root among the TFM directories ({})", self.tfm_dirs.iter().map(|d| d.display().to_string()).collect::<Vec<_>>().join(", "))
+            result = Err(if candidates.is_empty() {
+                format!(
+                    "no TFM directory exists among ({})",
+                    self.tfm_dirs.iter().map(|d| d.display().to_string()).collect::<Vec<_>>().join(", ")
+                )
             } else {
                 errors.join("; ")
             });
@@ -444,9 +482,8 @@ impl FontSet {
     pub fn tfm(&self, file: &str) -> Result<Rc<Tfm>, TfmStatus> {
         if REQUIRED_TFMS.iter().any(|(f, _)| *f == file) {
             let set = self.required_metrics().map_err(TfmStatus::RequiredUnavailable)?;
-            let (_, t) = set
-                .get(&format!("{REQUIRED_TFM_DIR}/{file}"))
-                .map_err(|e| TfmStatus::RequiredUnavailable(format!("{e:?}")))?;
+            let key = if *self.required_flat.borrow() { file.to_string() } else { format!("{REQUIRED_TFM_DIR}/{file}") };
+            let (_, t) = set.get(&key).map_err(|e| TfmStatus::RequiredUnavailable(format!("{e:?}")))?;
             return Ok(Rc::new(Tfm::from_shared(t.clone())));
         }
         if let Some(r) = self.tfms.borrow().get(file) {
