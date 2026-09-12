@@ -1,0 +1,17 @@
+{
+  "fixture": "14-mixed-text-math.tex",
+  "purpose": "Mixed text/math line: roman words with interword space around an inline formula; math spacing of Bin/Rel.",
+  "expected_engines": [
+    "pdflatex"
+  ],
+  "flashtex_features": [
+    "text",
+    "inline math",
+    "$...$"
+  ],
+  "corpus_compiler": "flashtex-math-corpus (crates/math-layout): recognises this body verbatim and lays it out with CmMathMetrics::latex_12pt; it is a declared-case lookup, not a LaTeX parser",
+  "structural_oracle": "pdflatex on the committed fixture (12pt article, OT1 Computer Modern), content-stream glyph/rule origins (tools/structural_gate.py); the harness raster reference uses its own times/lm preambles",
+  "notes": "Single line starting at the text-area origin (geometry margin=1in): x = 1in, first baseline = 1in + max(\\topskip, line height). Display centring and display skips are not exercised.",
+  "page_size": "US letter 612x792pt",
+  "preamble_policy": "engine-specific apples-to-apples preamble is substituted by the harness; FlashTeX gets the body only"
+}
