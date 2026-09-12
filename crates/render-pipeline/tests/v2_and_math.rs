@@ -16,7 +16,7 @@ fn v1_items_are_positioned_exactly_where_v2_glyph_runs_start() {
         return;
     }
     let r = render_one(MATH_DOC);
-    let v1 = v1_of(&r, Capabilities { rules: true, font_hints: true });
+    let v1 = v1_of(&r, Capabilities { rules: true, font_hints: true, display_list: false });
     assert_eq!(v1.status, "ok", "{:?}", v1.diagnostics);
     let mut v2_origins: Vec<(f64, f64, String)> = Vec::new();
     let mut v2_rules = 0;
@@ -122,7 +122,7 @@ fn fraction_bars_are_explicit_rules_in_v2_and_negotiated_in_v1() {
     assert!((dash.0 * 0.0857 - rule.height.to_bp()).abs() < 1e-6);
     assert!((dash.1 - (rule.top.to_bp() + rule.height.to_bp())).abs() < 1e-6);
     // Negotiated route: typed rule with top-left corner and source.
-    let typed = v1_of(&r, Capabilities { rules: true, font_hints: false });
+    let typed = v1_of(&r, Capabilities { rules: true, font_hints: false, display_list: false });
     let typed_rule = typed
         .pages[0]
         .items

@@ -18,12 +18,17 @@ use crate::display::{self, DisplayList, Provenance, Severity, SourceRange};
 
 pub const CAP_RULES: &str = "rules-v1";
 pub const CAP_FONT_HINTS: &str = "font-hints-v1";
+/// `docs/contracts/runtime-v1-display-list-v2.md` (mac-preview-v2 proposal,
+/// ACKed by this lane): the rendering-v2 `display_list` envelope follows
+/// the `compile_result` as one sibling line.
+pub const CAP_DISPLAY_LIST: &str = "display-list-v2";
 
 /// Capabilities the producer accepted for one request.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Capabilities {
     pub rules: bool,
     pub font_hints: bool,
+    pub display_list: bool,
 }
 
 impl Capabilities {
@@ -41,6 +46,10 @@ impl Capabilities {
                 }
                 CAP_FONT_HINTS if !caps.font_hints => {
                     caps.font_hints = true;
+                    accepted.push(r.clone());
+                }
+                CAP_DISPLAY_LIST if !caps.display_list => {
+                    caps.display_list = true;
                     accepted.push(r.clone());
                 }
                 _ => {}
@@ -353,8 +362,11 @@ mod tests {
         assert_eq!(c, Capabilities::default());
         assert!(acc.is_empty());
         let (c, acc) = Capabilities::negotiate(&["font-hints-v1".into(), "rules-v2".into(), "rules-v1".into()]);
-        assert!(c.rules && c.font_hints);
+        assert!(c.rules && c.font_hints && !c.display_list);
         assert_eq!(acc, vec!["font-hints-v1".to_string(), "rules-v1".to_string()]);
+        let (c, acc) = Capabilities::negotiate(&["display-list-v2".into(), "display-list-v2".into()]);
+        assert!(c.display_list && !c.rules);
+        assert_eq!(acc, vec!["display-list-v2".to_string()]);
         let (c, acc) = Capabilities::negotiate(&["unknown".into()]);
         assert_eq!(c, Capabilities::default());
         assert!(acc.is_empty());

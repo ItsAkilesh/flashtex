@@ -445,6 +445,11 @@ impl FontSet {
     }
 
     fn core14(&self, which: Core14) -> Rc<LoadedFace> {
+        // Look the face up before constructing it: `Core14Face::new` hashes
+        // the metrics (SHA-256) and `resolve` runs once per word.
+        if let Some(existing) = self.by_name(which.header().font_name) {
+            return existing;
+        }
         let f = Core14Face::new(which);
         let name = f.postscript_name().to_string();
         if let Some(existing) = self.by_name(&name) {

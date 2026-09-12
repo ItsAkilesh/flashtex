@@ -1,8 +1,10 @@
 //! runtime-v1 JSON Lines transport for `flashtex-render`: reads `compile`
-//! envelopes, replies with `compile_result` (the v1 fallback) and can keep
-//! the v2 display list of the last request for `--v2`/`--pdf`. Unknown
-//! protocol versions, message types and unsafe paths are rejected with the
-//! compiler's error envelopes — never a silent partial success.
+//! envelopes, replies with `compile_result` (the v1 fallback), follows it
+//! with the rendering-v2 `display_list` line when `display-list-v2` was
+//! negotiated (`docs/contracts/runtime-v1-display-list-v2.md`), and can
+//! keep the v2 display list of the last request for `--v2`/`--pdf`.
+//! Unknown protocol versions, message types and unsafe paths are rejected
+//! with the compiler's error envelopes — never a silent partial success.
 
 use flashtex_compiler::json::{self, Value};
 use flashtex_compiler::parser::SourceDocument;
@@ -12,6 +14,18 @@ use crate::v1::Capabilities;
 use crate::{render, FontSet, RenderOptions, Rendered};
 
 pub const MAX_LINE_BYTES: usize = flashtex_compiler::protocol::MAX_LINE_BYTES;
+/// Largest reply line the Mac reader accepts (`JSONLines.maxLineBytes`);
+/// a larger result is failed explicitly instead of being cut off.
+/// `FLASHTEX_MAX_REPLY_BYTES` lowers it (tests exercise the limit paths).
+pub const MAX_REPLY_BYTES: usize = 16 * 1024 * 1024;
+
+pub fn max_reply_bytes() -> usize {
+    std::env::var("FLASHTEX_MAX_REPLY_BYTES")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        .filter(|v| *v > 0)
+        .map_or(MAX_REPLY_BYTES, |v| v.min(MAX_REPLY_BYTES))
+}
 pub const MAX_CAPABILITIES: usize = 16;
 pub const MAX_CAPABILITY_BYTES: usize = 64;
 
@@ -30,6 +44,9 @@ pub fn path_is_safe(path: &str) -> bool {
 pub struct Reply {
     /// The JSON Lines reply to write.
     pub line: String,
+    /// Lines to write right after `line`, before any later reply: the
+    /// `display_list` envelope when `display-list-v2` was accepted.
+    pub extra_lines: Vec<String>,
     /// The render, when the request compiled (for `--v2`/`--pdf`).
     pub rendered: Option<Rendered>,
     pub id: String,
@@ -67,6 +84,7 @@ fn result_envelope(id: &str, payload: Value) -> Value {
 pub fn handle_line(line: &str, fonts: &FontSet, options: &RenderOptions) -> Reply {
     let err = |id: &str, code: &str, msg: &str| Reply {
         line: json::write(&error_envelope(id, code, msg)),
+        extra_lines: Vec::new(),
         rendered: None,
         id: id.to_string(),
     };
@@ -107,6 +125,7 @@ pub fn handle_line(line: &str, fonts: &FontSet, options: &RenderOptions) -> Repl
         let Some(arr) = caps.as_arr() else {
             return Reply {
                 line: json::write(&failed(&id, &project_id, revision, "layout_capabilities must be an array of strings", None)),
+                extra_lines: Vec::new(),
                 rendered: None,
                 id,
             };
@@ -124,6 +143,7 @@ pub fn handle_line(line: &str, fonts: &FontSet, options: &RenderOptions) -> Repl
                             "layout_capabilities entries must be unique nonempty strings of at most 64 bytes",
                             None,
                         )),
+                        extra_lines: Vec::new(),
                         rendered: None,
                         id,
                     };
@@ -133,6 +153,7 @@ pub fn handle_line(line: &str, fonts: &FontSet, options: &RenderOptions) -> Repl
         if list.len() > MAX_CAPABILITIES {
             return Reply {
                 line: json::write(&failed(&id, &project_id, revision, "layout_capabilities lists more than 16 entries", None)),
+                extra_lines: Vec::new(),
                 rendered: None,
                 id,
             };
@@ -161,6 +182,7 @@ pub fn handle_line(line: &str, fonts: &FontSet, options: &RenderOptions) -> Repl
                     &format!("rejected document path '{p}': paths must be project-relative with no parent traversal"),
                     accepted,
                 )),
+                extra_lines: Vec::new(),
                 rendered: None,
                 id,
             };
@@ -176,6 +198,7 @@ pub fn handle_line(line: &str, fonts: &FontSet, options: &RenderOptions) -> Repl
                 &format!("rejected entry_path '{entry}': paths must be project-relative with no parent traversal"),
                 accepted,
             )),
+            extra_lines: Vec::new(),
             rendered: None,
             id,
         };
@@ -183,6 +206,7 @@ pub fn handle_line(line: &str, fonts: &FontSet, options: &RenderOptions) -> Repl
     if project.is_empty() {
         return Reply {
             line: json::write(&failed(&id, &project_id, revision, "no documents supplied to compile", accepted)),
+            extra_lines: Vec::new(),
             rendered: None,
             id,
         };
@@ -200,9 +224,55 @@ pub fn handle_line(line: &str, fonts: &FontSet, options: &RenderOptions) -> Repl
         })
         .collect();
     let rendered = render(&sources, &entry_path, revision.max(0) as u64, &project_id, fonts, options);
-    let payload = crate::v1::fallback(&rendered.v2, caps, accepted).to_json();
+    let limit = max_reply_bytes();
+    let mut v1 = crate::v1::fallback(&rendered.v2, caps, accepted.clone());
+    // display-list-v2: the envelope is serialised first because declining it
+    // (over the line limit) changes the echoed capabilities and diagnostics
+    // of the compile_result that precedes it.
+    let mut extra_lines = Vec::new();
+    if caps.display_list && v1.status != "failed" {
+        let dl = json::write(&rendered.v2.to_json(&id));
+        if dl.len() > limit {
+            v1.accepted = v1.accepted.map(|a| a.into_iter().filter(|c| c != crate::v1::CAP_DISPLAY_LIST).collect());
+            v1.diagnostics.push(crate::display::Diagnostic::warning(
+                "display_list_declined",
+                format!(
+                    "display-list-v2 declined: the display_list line would be {} bytes for {} pages, over the {limit}-byte line limit",
+                    dl.len(),
+                    rendered.v2.pages.len()
+                ),
+                Vec::new(),
+            ));
+            if v1.status == "ok" {
+                v1.status = "recovered";
+            }
+        } else {
+            extra_lines.push(dl);
+        }
+    }
+    let accepted = v1.accepted.clone();
+    let line = json::write(&result_envelope(&id, v1.to_json()));
+    if line.len() > limit {
+        let pages = rendered.v2.pages.len();
+        return Reply {
+            line: json::write(&failed(
+                &id,
+                &project_id,
+                revision,
+                &format!(
+                    "compile_result would be {} bytes for {pages} pages, over the {limit}-byte reply limit; split the project or compile fewer pages",
+                    line.len(),
+                ),
+                accepted.map(|a| a.into_iter().filter(|c| c != crate::v1::CAP_DISPLAY_LIST).collect()),
+            )),
+            extra_lines: Vec::new(),
+            rendered: Some(rendered),
+            id,
+        };
+    }
     Reply {
-        line: json::write(&result_envelope(&id, payload)),
+        line,
+        extra_lines,
         rendered: Some(rendered),
         id,
     }

@@ -71,6 +71,7 @@ fn main() {
                 Ok(line) => protocol::handle_line(line, &fonts, &options),
                 Err(_) => protocol::Reply {
                     line: json::write(&error_envelope("", "invalid_utf8", "request line is not valid UTF-8")),
+                    extra_lines: Vec::new(),
                     rendered: None,
                     id: String::new(),
                 },
@@ -81,6 +82,7 @@ fn main() {
                     "payload_too_large",
                     &format!("line exceeds the {}-byte limit", protocol::MAX_LINE_BYTES),
                 )),
+                extra_lines: Vec::new(),
                 rendered: None,
                 id: String::new(),
             },
@@ -92,6 +94,11 @@ fn main() {
         };
         if writeln!(out, "{}", reply.line).is_err() {
             break;
+        }
+        for extra in &reply.extra_lines {
+            if writeln!(out, "{extra}").is_err() {
+                break;
+            }
         }
         let _ = out.flush();
         if let Some(r) = &reply.rendered {

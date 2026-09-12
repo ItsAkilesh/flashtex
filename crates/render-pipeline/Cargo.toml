@@ -24,3 +24,4 @@ flashtex-paragraph-layout = { path = "vendor/paragraph-layout" }
 flashtex-math-layout = { path = "vendor/math-layout" }
 flashtex-document-style = { path = "vendor/document-style" }
 flashtex-pdf = { path = "vendor/pdf" }
+flashtex-font-resources = { path = "vendor/font-resources" }

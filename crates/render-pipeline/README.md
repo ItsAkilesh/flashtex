@@ -81,9 +81,18 @@ height_pt,source}` with top-left semantics; without it the legacy U+2500
 approximation is emitted (run of box-drawing characters at the size whose
 0.0857 em equals the rule height). `font-hints-v1` adds
 `font:{family,weight,style}` (`Latin Modern Roman`/`Latin Modern Math`/
-`Times`) to text items. The v1 payload is derived from the immutable v2
-display list per request, so the same source with the same accepted set is
-byte-identical whether or not a previous request warmed the worker.
+`Times`) to text items. `display-list-v2` (mac-preview-v2's proposal,
+`docs/contracts/runtime-v1-display-list-v2.md` on its branch, ACKed here)
+makes the worker write the rendering-v2 `display_list` envelope as one
+sibling line right after the `compile_result` (same `id`, project,
+revision, document digests) for `ok`/`recovered` results; a line over the
+16 MiB reply limit declines the capability for that request with a
+`display-list-v2 declined:` warning. The v1 payload is derived from the
+immutable v2 display list per request, so the same source with the same
+accepted set is byte-identical whether or not a previous request warmed the
+worker. Replies larger than 16 MiB (the Mac reader's line limit) fail the
+request explicitly rather than being cut off (`FLASHTEX_MAX_REPLY_BYTES`
+lowers the limit for tests).
 
 ## Runtime-v1 items
 
