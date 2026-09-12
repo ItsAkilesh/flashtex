@@ -547,3 +547,6 @@ pub mod vf;
 pub mod vf_graph;
 
 pub mod cff;
+
+/// Identity-preserving adapter to the original sibling font engine.
+pub mod engine_adapter;

@@ -949,3 +949,54 @@ fn cff_encoding_cache_identity_canonicalization_eviction_and_bounds() {
     )
     .is_err());
 }
+
+#[test]
+fn original_engine_adapter_resource_identity_and_request_gates() {
+    use flashtex_font_engine::ShapeOptions;
+    use flashtex_font_resources::engine_adapter::*;
+    let bytes = fixture();
+    let resource = FontResource::from_bytes(&entry(&bytes), &bytes, b"test license").unwrap();
+    let adapter = EngineFontAdapter::from_resource(&resource).unwrap();
+    assert_eq!(adapter.identity().font_sha256, sha256(&bytes));
+    let mut engine_bytes = bytes.clone();
+    engine_bytes.extend(0u32.to_be_bytes());
+    assert_eq!(
+        adapter.identity().engine_font_id.content_hex(),
+        sha256(&engine_bytes)
+    );
+    let source = "";
+    let hash = sha256(source.as_bytes());
+    let request = || ShapeRequest {
+        source,
+        source_sha256: &hash,
+        path: "main.tex",
+        revision: 1,
+        range: 0..0,
+        font_sha256: &resource.descriptor().sha256,
+        face_index: 0,
+        encoding: InputEncoding::Unicode,
+        variation_coordinates: &[],
+        options: ShapeOptions::PLAIN,
+    };
+    let empty = adapter.shape(request()).unwrap();
+    assert!(empty.shaped().clusters.is_empty());
+    let mut wrong = request();
+    wrong.face_index = 1;
+    assert!(adapter.shape(wrong).is_err());
+    let mut wrong = request();
+    wrong.encoding = InputEncoding::TexEightBit;
+    assert!(adapter.shape(wrong).is_err());
+    let mut wrong = request();
+    let variations = [(*b"wght", 400)];
+    wrong.variation_coordinates = &variations;
+    assert!(adapter.shape(wrong).is_err());
+    let mut wrong = request();
+    wrong.range = 1..2;
+    assert!(adapter.shape(wrong).is_err());
+    let mut wrong = request();
+    wrong.source_sha256 = "bad";
+    assert!(adapter.shape(wrong).is_err());
+    let mut other = request();
+    other.revision = 2;
+    assert_ne!(adapter.shape(other).unwrap().cache_key(), empty.cache_key());
+}
