@@ -348,65 +348,9 @@ private struct PreviewPane: View {
     }
 
     private func diagnosticsList(_ diags: [RuntimeV1.Diagnostic]) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            // Identical diagnostics (same severity and message) are one row with
-            // a count and a per-occurrence jump (EditorDiagnostics.groups).
-            let groups = EditorDiagnostics.groups(of: diags, documentOrder: model.documents.map(\.path))
-            Text("Diagnostics (\(diags.count)\(groups.count < diags.count ? " in \(groups.count) groups" : "")) — the preview above is still shown; errors are not hidden")
-                .font(.caption.bold()).padding(.horizontal, 8).padding(.vertical, 4)
-            if let carried = model.editorMarkReport.carried {
-                Text("Underlines \(carried.line); the list below is the failed result's.")
-                    .font(.caption).foregroundStyle(.orange).padding(.horizontal, 8).padding(.bottom, 4)
-            }
-            List(groups) { g in
-                let i = g.first
-                let d = diags[i]
-                HStack(alignment: .top) {
-                    Image(systemName: d.severity == .error ? "xmark.octagon.fill" : "exclamationmark.triangle.fill")
-                        .foregroundStyle(d.severity == .error ? .red : .orange)
-                    VStack(alignment: .leading) {
-                        Text(g.title)
-                        if let line = EditorDiagnostics.recoveryLine(recovery: d.recovery, status: model.result?.status ?? .ok) {
-                            Text("↳ \(line)").font(.caption).foregroundStyle(d.recovery == nil ? .tertiary : .secondary)
-                        }
-                        if let explain = model.explanations.explanation(resultID: model.resultID, index: i)?.line {
-                            Text("↳ \(explain)").font(.caption).foregroundStyle(.secondary)
-                        }
-                        if let result = model.result,
-                           let id = EditorDiagnostics.identity(resultID: model.resultID, index: i, in: result),
-                           model.editorMarkReport.staleIdentities.contains(id) {
-                            Text("underline withheld: span edited since the compile").font(.caption2).foregroundStyle(.orange)
-                        }
-                        if let src = d.source {
-                            Text("\(src.path) bytes \(src.startByte)..<\(src.endByte)\(g.count > 1 ? " (first of \(g.count))" : "")").font(.caption2).foregroundStyle(.tertiary)
-                        } else {
-                            Text("no source mapping").font(.caption2).foregroundStyle(.tertiary)
-                        }
-                    }
-                    Spacer()
-                    if g.count > 1 {
-                        Menu("\(g.count) places") {
-                            ForEach(0..<g.count, id: \.self) { k in
-                                Button(EditorDiagnostics.occurrenceLabel(k, of: g, in: diags, texts: model.compiledDocuments)) {
-                                    model.navigate(to: EditorDiagnostics.occurrence(k, of: g, in: diags))
-                                }
-                                .disabled(EditorDiagnostics.occurrence(k, of: g, in: diags) == nil)
-                            }
-                        }
-                        .fixedSize()
-                        .help("Jump to one occurrence of this diagnostic")
-                    } else if d.source != nil { Button("Go to source") { model.navigate(to: d.source) } }
-                    if let x = model.explanations.explanation(resultID: model.resultID, index: i),
-                       x.suggestions.contains(where: { !$0.edits.isEmpty }) {
-                        Button("Fix…") { model.previewQuickFix(diagnosticIndex: i) }
-                            .help(x.suggestions.first { !$0.edits.isEmpty }?.text ?? "Preview a suggested fix")
-                    }
-                }
-                .accessibleDiagnostic(d, index: i, total: diags.count, status: model.result?.status ?? .ok,
-                                      explanation: model.explanations.explanation(resultID: model.resultID, index: i)?.line) { model.navigate(to: d.source) } // FlashTeXAccessibility
-            }
-            .frame(minHeight: 80, maxHeight: 180)
-        }
+        // Grouped rows with a selection, Return / Esc / ⌘C and the spoken group
+        // count/occurrence (DiagnosticsPanel.swift, mac-diagnostics-3).
+        DiagnosticsListView(diagnostics: diags)
     }
 }
 
