@@ -6,12 +6,22 @@ use crate::entry::EntryRecord;
 use crate::measure::{InvalidWidth, TextMeasure, checked_width};
 
 /// The fixed geometry a contents/list-of-figures line is laid out into.
+///
+/// `width` and `indent_unit` are deliberately private: [`LineBox::new`] is
+/// the only way to build one, so both are always finite and `indent_unit`
+/// is always non-negative for every live `LineBox`. If the fields were
+/// `pub`, a caller could assemble a `LineBox { width, indent_unit }`
+/// struct literal directly, skip that check, and hand [`layout_entry`] an
+/// `indent_unit: f64::NAN` — `NaN > line.width` is always `false`, so the
+/// overflow guard never trips, and `f64::min`'s NaN-propagation rule then
+/// turns `leader_count` into `u32::MAX`, silently, in both debug and
+/// release.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct LineBox {
     /// Full usable width of one line, in the measurer's unit.
-    pub width: f64,
+    width: f64,
     /// Width added per nesting level (see [`EntryRecord::level`]).
-    pub indent_unit: f64,
+    indent_unit: f64,
 }
 
 /// A malformed [`LineBox`]: non-finite, or a width/indent that cannot hold
@@ -43,6 +53,41 @@ impl LineBox {
         } else {
             Err(LineBoxError { width, indent_unit })
         }
+    }
+
+    /// Full usable width of one line, in the measurer's unit.
+    pub fn width(&self) -> f64 {
+        self.width
+    }
+
+    /// Width added per nesting level (see [`EntryRecord::level`]).
+    pub fn indent_unit(&self) -> f64 {
+        self.indent_unit
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Regression test for a defect where `LineBox`'s fields being `pub`
+    /// let a caller build one via a `LineBox { width, indent_unit }`
+    /// struct literal, skipping `new`'s finiteness/positivity check
+    /// entirely. An `indent_unit: f64::NAN` built that way defeated
+    /// `layout_entry`'s overflow guard (`NaN > line.width` is always
+    /// `false`) and, through `f64::min`'s NaN-propagation rule, turned
+    /// `leader_count` into `u32::MAX` — silently, in both debug and
+    /// release.
+    ///
+    /// Now that the fields are private, `LineBox::new` is the only way to
+    /// build one (the struct-literal bypass is a compile error from
+    /// outside this module), so this same NaN indent_unit must come back
+    /// as a typed `LineBoxError`, never a constructed `LineBox`.
+    #[test]
+    fn nan_indent_unit_is_a_typed_error_not_a_bypassable_field() {
+        let err = LineBox::new(50.0, f64::NAN).unwrap_err();
+        assert_eq!(err.width, 50.0);
+        assert!(err.indent_unit.is_nan());
     }
 }
 

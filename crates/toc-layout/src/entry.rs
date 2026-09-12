@@ -91,11 +91,20 @@ impl EntryRecord {
 /// however many pages the front matter (this entry's own list) ends up
 /// occupying. See [`crate::converge::converge_front_matter_pages`] for how
 /// that page count is found.
+/// `title`, `level`, and `body_offset` are deliberately private:
+/// [`RelativeEntry::new`] is the only way to build one, so `body_offset`
+/// is never zero for any live `RelativeEntry`. If the fields were `pub`,
+/// a caller could assemble a `RelativeEntry { title, level, body_offset }`
+/// struct literal directly, skip that check, and hand [`RelativeEntry::resolve`]
+/// a `body_offset: 0` — `front_matter_pages.checked_add(0)` never
+/// overflows, so `resolve` would succeed with `page == front_matter_pages`,
+/// silently landing a body entry on the front matter's own last page
+/// instead of the first page of the body, with no error anywhere.
 #[derive(Debug, Clone, PartialEq)]
 pub struct RelativeEntry {
-    pub title: String,
-    pub level: u8,
-    pub body_offset: PageNumber,
+    title: String,
+    level: u8,
+    body_offset: PageNumber,
 }
 
 impl RelativeEntry {
@@ -126,6 +135,21 @@ impl RelativeEntry {
         })
     }
 
+    /// The entry's title.
+    pub fn title(&self) -> &str {
+        &self.title
+    }
+
+    /// The entry's nesting level (see [`EntryRecord::level`]).
+    pub fn level(&self) -> u8 {
+        self.level
+    }
+
+    /// Pages into the body this entry resolves to (never zero).
+    pub fn body_offset(&self) -> PageNumber {
+        self.body_offset
+    }
+
     /// Resolves this entry to an absolute [`EntryRecord`] once the number
     /// of front-matter pages preceding the body is known.
     pub fn resolve(&self, front_matter_pages: PageNumber) -> Result<EntryRecord, EntryError> {
@@ -133,5 +157,28 @@ impl RelativeEntry {
             .checked_add(self.body_offset)
             .ok_or(EntryError::PageOverflow)?;
         EntryRecord::new(self.title.clone(), page, self.level)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Regression test for a defect where `RelativeEntry`'s fields being
+    /// `pub` let a caller build one via a
+    /// `RelativeEntry { title, level, body_offset }` struct literal,
+    /// skipping `new`'s `body_offset != 0` check entirely. A
+    /// `body_offset: 0` built that way made `resolve` succeed with
+    /// `page == front_matter_pages` — silently landing a body entry on
+    /// the front matter's own last page, with no error anywhere.
+    ///
+    /// Now that the fields are private, `RelativeEntry::new` is the only
+    /// way to build one (the struct-literal bypass is a compile error
+    /// from outside this module), so this same zero body offset must be
+    /// rejected at construction, never reach `resolve` at all.
+    #[test]
+    fn zero_body_offset_is_a_typed_error_not_a_bypassable_field() {
+        let err = RelativeEntry::new("Chapter 1", 0, 0).unwrap_err();
+        assert_eq!(err, EntryError::BodyOffsetZero);
     }
 }
