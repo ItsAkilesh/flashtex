@@ -160,3 +160,15 @@ retaining input intervals and separate exact kerns. No Unicode casting, font
 fallback, hidden `.notdef` drawing, or TrueType metric substitution occurs.
 The caller must handle Notdef explicitly and establish the declared encoding's
 provenance. This adapter does not establish TFM-to-outline visual equivalence.
+
+## Virtual font packets
+
+`vf::VirtualFont::parse` preserves VF checksum/design size, raw font names/areas,
+local font definitions, short/long character packets, exact signed movement/rule
+units and typed glyph/font/register/stack commands. Names never trigger disk or
+network resolution. Missing font references, malformed packet lengths, duplicate
+IDs/codes, prohibited opcodes and unbalanced/deep stacks fail. Bounds: 16MiB file,
+4096 fonts, 65536 packets, 1MiB/100000 commands per packet, 1000000 commands total,
+and 64 stack entries. Specials remain explicit typed byte payloads; parsing does
+not execute or silently discard them. [VF format documentation](https://github.com/TeX-Live/texlive-source/blob/trunk/texk/web2c/vftovp.web)
+was consulted; no existing VF/DVI implementation is used in production.
