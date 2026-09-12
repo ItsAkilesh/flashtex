@@ -78,8 +78,12 @@ final class LineProcessClient {
     /// Bytes accepted for writing but not yet handed to the pipe.
     var pendingWriteBytes: Int { stateLock.withLock { queuedBytes } }
     var isRunning: Bool { process.isRunning }
+    var processIdentifier: Int32 { process.processIdentifier }
 
+    /// `environment` nil inherits the app's environment; a helper that must
+    /// see (or must not see) a credential gets an explicit dictionary.
     init(executable: URL, arguments: [String], label: String, queue: DispatchQueue = .main,
+         environment: [String: String]? = nil,
          classify: @escaping (Data) -> Classified?, events: @escaping (Event) -> Void) throws {
         self.executable = executable
         self.label = label
@@ -91,6 +95,7 @@ final class LineProcessClient {
         signal(SIGPIPE, SIG_IGN)
         process.executableURL = executable
         process.arguments = arguments
+        if let environment { process.environment = environment }
         process.standardInput = stdin
         process.standardOutput = stdout
         process.standardError = stderr

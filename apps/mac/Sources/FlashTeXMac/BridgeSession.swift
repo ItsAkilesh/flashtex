@@ -52,7 +52,9 @@ final class BridgeSession {
     let storeDirectory: URL
     private(set) var status: String
     private(set) var running = true
-    private let bridgeLaunch: (executable: URL, arguments: [String], enableGrok: Bool)
+    private let bridgeLaunch: (executable: URL, arguments: [String], enableGrok: Bool, environment: [String: String]?)
+    /// True when the bridge was launched `--enable-grok` (a key was present at attach time).
+    var grokEnabled: Bool { bridgeLaunch.enableGrok }
 
     // MARK: automatic relaunch (policy mirrors ShellModel's worker relaunch)
 
@@ -117,11 +119,11 @@ final class BridgeSession {
     var ledgerUsable: Bool { ledger?.isRunning == true && ledgerError == nil }
     private var ledgerLaunch: (executable: URL, arguments: [String], store: URL)?
 
-    init(executable: URL, arguments: [String] = [], storeDirectory: URL, enableGrok: Bool = false,
+    init(executable: URL, arguments: [String] = [], storeDirectory: URL, enableGrok: Bool = false, environment: [String: String]? = nil,
          projectId: String) throws {
         self.projectId = projectId
         self.storeDirectory = storeDirectory
-        bridgeLaunch = (executable, arguments, enableGrok)
+        bridgeLaunch = (executable, arguments, enableGrok, environment)
         status = "launching \(executable.lastPathComponent)"
         let (c, bind) = try Self.makeBridgeClient(bridgeLaunch, storeDirectory: storeDirectory)
         client = c
@@ -132,11 +134,11 @@ final class BridgeSession {
     /// Launches the bridge and returns it with a binder: once bound, its events
     /// reach the session only while it is still `session.client` (a replaced
     /// process's queued exit never overwrites the relaunched one).
-    private static func makeBridgeClient(_ launch: (executable: URL, arguments: [String], enableGrok: Bool),
+    private static func makeBridgeClient(_ launch: (executable: URL, arguments: [String], enableGrok: Bool, environment: [String: String]?),
                                          storeDirectory: URL) throws -> (BridgeClient, (BridgeSession) -> Void) {
         var events: ((BridgeClient.Event) -> Void)?
         let c = try BridgeClient(executable: launch.executable, arguments: launch.arguments, storeDirectory: storeDirectory,
-                                 enableGrok: launch.enableGrok) { events?($0) }
+                                 enableGrok: launch.enableGrok, environment: launch.environment) { events?($0) }
         return (c, { session in
             events = { [weak session, weak c] event in
                 Task { @MainActor in

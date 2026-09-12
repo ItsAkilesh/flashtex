@@ -1,0 +1,46 @@
+{
+  "ambiguities" : 4,
+  "bridge" : "\/Users\/jay3332\/Projects\/flashtex\/.claude\/worktrees\/agent-a2b5f9da704bfbf4b\/crates\/bridge\/target\/release\/flashtex-bridge",
+  "bridge_env_has_key" : true,
+  "bridge_env_sensitive_names_other_than_key" : [
+
+  ],
+  "capture_id" : "grok-live-cb1962b0",
+  "compile_gate" : {
+    "compiled" : true,
+    "compiler" : "\/Users\/jay3332\/Projects\/flashtex\/.claude\/worktrees\/agent-a2b5f9da704bfbf4b\/crates\/compiler\/target\/release\/flashtex-compiler",
+    "nearby_diagnostics" : 0,
+    "new_diagnostics" : 0,
+    "new_errors" : 0,
+    "new_messages" : [
+
+    ],
+    "pages" : 1,
+    "status" : "ok",
+    "zero_errors" : true
+  },
+  "context_revision" : 2,
+  "enable_grok" : true,
+  "image_bytes" : 197602,
+  "key_source" : "Keychain",
+  "latex_bytes" : 68,
+  "latex_commands" : [
+    "\\alpha",
+    "\\beta",
+    "\\int",
+    "\\leq"
+  ],
+  "latex_environments" : [
+
+  ],
+  "model" : "grok-4.20-0309-non-reasoning",
+  "note" : "xAI response id\/usage are not surfaced by the bridge's capture_proposal (helper request R4 in apps\/mac\/docs\/grok-live.md)",
+  "outcome" : "proposal",
+  "recorded_utc" : "2026-09-12T19:12:14Z",
+  "required_dependencies" : [
+
+  ],
+  "seconds" : 2.8244140148162842,
+  "supported_features_count" : 21,
+  "supported_features_sha" : "49e6eb43808ac8fccb08d620b23667403fcb8667"
+}
