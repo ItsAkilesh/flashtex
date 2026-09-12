@@ -6,29 +6,29 @@
   "capabilities": [
     "rust"
   ],
-  "code_revision": "1dd26c5e0dd5e04a39f0b8e55c90abebf635c863",
+  "code_revision": "294fc2711ffcb2ba5b8aa92e75157bedfd43f42f",
   "eta_minutes": {
-    "likely": 45,
-    "optimistic": 30,
-    "pessimistic": 70
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 0
   },
   "machine": "mac-m1max-a",
-  "main_integrated_through": "1dd26c5e0dd5e04a39f0b8e55c90abebf635c863",
-  "next_action": "Implement crate, tests, README; push agent/mac-diagnostic-explanations/explain",
+  "main_integrated_through": "d9dd2d2f9731353acb6afd8d653542970aadbd72",
+  "next_action": "Await Commander review/integration; mac-claude-a to pick transport for Explain/Preview fix panel actions per README proposal",
   "reviewed_peers": {
     "origin/main": {
-      "adaptation": "Cataloged diagnostic strings from origin/main 1dd26c5 and origin/agent/claude/compiler-foundation (de1020c, 6b13034); compiler files untouched",
-      "reviewed_utc": "2026-09-12T05:38:54Z",
-      "sha": "1dd26c5e0dd5e04a39f0b8e55c90abebf635c863"
+      "adaptation": "Merged main; compiler sources unchanged since 1dd26c5 so catalog pins hold; new runtime/index crates emit no new diagnostic messages",
+      "reviewed_utc": "2026-09-12T06:00:44Z",
+      "sha": "d9dd2d2f9731353acb6afd8d653542970aadbd72"
     }
   },
   "schema_version": 1,
-  "state": "in_progress",
-  "summary": "Issue #2 (no FT number yet, no assignment file to ack): building crates/diagnostic-explanations (catalog, source-context suggestions, explain API, JSON, fix previews)",
+  "state": "ready_for_integration",
+  "summary": "crates/diagnostic-explanations: 38-entry/45-template catalog pinned to main 1dd26c5 + compiler-foundation de1020c/6b13034, byte-exact Edit suggestions, scalar-safe context, JSON, fix previews with SourceMapping-equivalent rebase; 59 tests, clippy clean",
   "tool": "Claude Code subagent (parent mac-claude-a)",
-  "updated_utc": "2026-09-12T05:38:54Z",
+  "updated_utc": "2026-09-12T06:00:44Z",
   "usage": {
-    "evidence": "Claude Code subagent; quota not observable",
+    "evidence": "Claude Code subagent on parent Max 20x allocation; quota not observable",
     "status": "unknown"
   }
 }
