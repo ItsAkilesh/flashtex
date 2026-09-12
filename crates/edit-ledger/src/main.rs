@@ -1,5 +1,6 @@
 //! Local JSON Lines adapter. Keep it on private pipes, never an anonymous port.
 use flashtex_edit_ledger::recovery::RecoveryImport;
+use flashtex_edit_ledger::retention::RetentionPolicy;
 use flashtex_edit_ledger::{AppliedReceipt, Document, PreparedEdit, Store};
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -33,6 +34,9 @@ enum Operation {
     RecoveryImport {
         recovery: RecoveryImport,
     },
+    Compact {
+        policy: RetentionPolicy,
+    },
 }
 fn execute(store: &mut Store, operation: Operation) -> flashtex_edit_ledger::Result<Value> {
     match operation {
@@ -60,6 +64,7 @@ fn execute(store: &mut Store, operation: Operation) -> flashtex_edit_ledger::Res
         }
         Operation::RecoveryExport => Ok(json!(store.export_recovery()?)),
         Operation::RecoveryImport { recovery } => Ok(json!(store.import_recovery(recovery)?)),
+        Operation::Compact { policy } => Ok(json!(store.compact(policy)?)),
     }
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> {

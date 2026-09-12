@@ -13,6 +13,7 @@ use std::{
 };
 
 pub mod recovery;
+pub mod retention;
 
 pub const MAX_DOCUMENT_BYTES: usize = 8 * 1024 * 1024;
 pub const MAX_REPLACEMENT_BYTES: usize = 64 * 1024;
@@ -114,6 +115,8 @@ struct State {
     schema_version: u8,
     document: Document,
     transactions: BTreeMap<String, AppliedTransaction>,
+    #[serde(default)]
+    retained_ids: BTreeMap<String, retention::RetainedEditId>,
 }
 
 pub fn digest(text: &str) -> String {
@@ -202,7 +205,10 @@ fn apply_to(document: &Document, edit: &PreparedEdit) -> Result<Document> {
 impl State {
     fn validate(&self) -> Result<()> {
         self.document.validate()?;
-        if self.schema_version != 1 || self.transactions.len() > MAX_EDIT_IDS {
+        if !matches!(self.schema_version, 1 | 2)
+            || (self.schema_version == 1 && !self.retained_ids.is_empty())
+            || self.transactions.len() + self.retained_ids.len() > MAX_EDIT_IDS
+        {
             return Err(Error::new(
                 "invalid_store",
                 "unknown schema or too many edit IDs",
@@ -256,6 +262,32 @@ impl State {
                 return Err(Error::new(
                     "invalid_store",
                     "current document disagrees with latest transaction",
+                ));
+            }
+        }
+        for (id, retained) in &self.retained_ids {
+            identifier(id)?;
+            identifier(&retained.receipt.capture_id)?;
+            if self.transactions.contains_key(id)
+                || id != &retained.receipt.edit_id
+                || !capture_ids.insert(&retained.receipt.capture_id)
+                || retained.receipt.new_revision > self.document.revision
+                || retained.prepared_sha256.len() != 64
+                || !retained
+                    .prepared_sha256
+                    .bytes()
+                    .all(|b| b.is_ascii_hexdigit())
+                || retained.document_after_sha256.len() != 64
+                || !retained
+                    .document_after_sha256
+                    .bytes()
+                    .all(|b| b.is_ascii_hexdigit())
+                || (retained.receipt.new_revision == self.document.revision
+                    && retained.document_after_sha256 != self.document.source_sha256)
+            {
+                return Err(Error::new(
+                    "invalid_store",
+                    "retained edit-ID identity/hash mismatch",
                 ));
             }
         }
@@ -364,6 +396,7 @@ impl Store {
             schema_version: 1,
             document,
             transactions: BTreeMap::new(),
+            retained_ids: BTreeMap::new(),
         })
     }
     /// Atomic source+ledger application. An identical retry returns its original
@@ -374,6 +407,16 @@ impl Store {
             .state
             .as_ref()
             .ok_or_else(|| Error::new("document_missing", "initialize source first"))?;
+        if let Some(retained) = state.retained_ids.get(&edit.edit_id) {
+            return if retained.prepared_sha256 == retention::prepared_digest(&edit)? {
+                Ok(retained.receipt.clone())
+            } else {
+                Err(Error::new(
+                    "edit_id_conflict",
+                    "retained edit ID binds different prepared fields",
+                ))
+            };
+        }
         if let Some(tx) = state.transactions.get(&edit.edit_id) {
             return if tx.edit == edit {
                 Ok(tx.receipt.clone())
@@ -388,13 +431,17 @@ impl Store {
             .transactions
             .values()
             .any(|t| t.edit.capture_id == edit.capture_id)
+            || state
+                .retained_ids
+                .values()
+                .any(|t| t.receipt.capture_id == edit.capture_id)
         {
             return Err(Error::new(
                 "capture_id_conflict",
                 "capture already applied under another edit ID",
             ));
         }
-        if state.transactions.len() >= MAX_EDIT_IDS {
+        if state.transactions.len() + state.retained_ids.len() >= MAX_EDIT_IDS {
             return Err(Error::new(
                 "ledger_full",
                 "edit IDs cannot be evicted; archive the document explicitly",
@@ -459,6 +506,16 @@ impl Store {
             .state
             .clone()
             .ok_or_else(|| Error::new("document_missing", "initialize source first"))?;
+        if let Some(retained) = next.retained_ids.get(&receipt.edit_id) {
+            return if retained.receipt == *receipt {
+                Ok(())
+            } else {
+                Err(Error::new(
+                    "receipt_conflict",
+                    "acknowledgement differs from retained receipt",
+                ))
+            };
+        }
         let tx = next
             .transactions
             .get_mut(&receipt.edit_id)
