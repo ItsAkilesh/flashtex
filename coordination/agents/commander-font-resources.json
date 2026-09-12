@@ -3,31 +3,31 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-024": {
-      "acknowledged_utc": "2026-09-12T06:03:43Z",
-      "adaptation": "Prior 74c3682 already implements bounded exact composite transforms and quadratic paths. Continue current authorized point-attachment acceptance and explicit offset-policy checks, without repeating prior stage.",
-      "main_sha": "a77e697faa51866607f8c9cf9f5d2a65a63e1521",
-      "revision": 2
+      "acknowledged_utc": "2026-09-12T06:08:59Z",
+      "adaptation": "Composite transform stage already satisfied by 74c3682 and point attachments by 60aa3ed. Latest direct Commander assignment adds original TFM parser and bounded ligature/kern interpretation; no repeated outline work.",
+      "main_sha": "56c003f8f82dee63507205f69f4d3b8c353442e0",
+      "revision": 3
     }
   },
   "branch": "agent/commander-corpus/font-resources",
   "capabilities": [
     "rust-font-resources"
   ],
-  "code_revision": "60aa3ed1c288d6efa7126c3922562cf9c4abb3b3",
+  "code_revision": "d74ba726ba57e116abaf2b97c11f4ffbeb518315",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
     "pessimistic": 0
   },
   "machine": "linux-primary",
-  "main_integrated_through": "894a9ce582fee1f0bea2706b58d79d7d631a1259",
-  "next_action": "Consumer integration; grid rounding still requires explicit ppem/device-grid/hint policy.",
+  "main_integrated_through": "d643b6ec5aa63a1ce2b9ce97ab5292baf5205b5c",
+  "next_action": "Layout/font-engine consumer binds explicit TFM encoding slots to Unicode and original TrueType GIDs; validate real TFM oracle on Mac.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "39 tests and clippy pass; exact transformed point attachment and explicit offset-policy checks implemented. Real-font 1679 accepted, 941 unsupported grid-rounded offsets.",
+  "summary": "Original bounded TFM parser and encoded ligature/kern interpreter published. 46 tests and clippy pass; exact fix_word metrics and input intervals. Boundary run interpretation unsupported.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T06:04:10Z",
+  "updated_utc": "2026-09-12T06:08:59Z",
   "usage": {
     "evidence": "crates/font-resources/README.md; test suite; installed font SHA pinned.",
     "status": "Hosted allocation; no external provider calls; account remainder unknown."
