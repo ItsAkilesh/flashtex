@@ -38,9 +38,26 @@
 //! character indices (never byte offsets), no operation can ever split a
 //! multi-byte UTF-8 character: [`Document::text`] always returns a valid
 //! `String` built by collecting whole `char`s.
+//!
+//! # Revision 2: checkpoints and interrupted delivery
+//!
+//! [`Document::checkpoint`] takes a bounded, serializable snapshot of the
+//! full document (structure plus the causal frontier of applied operation
+//! ids) so a replica can resume from it with `Document::from(checkpoint)`
+//! instead of replaying every operation from the beginning; see
+//! [`Checkpoint`] for the format, the size bound, and the equivalence
+//! guarantee. [`PendingOps`] buffers operations that arrive before their
+//! dependency (e.g. a reordered backlog after a reconnect) instead of
+//! rejecting them; see it for the chosen recovery strategy.
 
 use std::collections::HashSet;
 use std::fmt;
+
+mod checkpoint;
+mod recovery;
+
+pub use checkpoint::{Checkpoint, CheckpointDecodeError, CheckpointError};
+pub use recovery::PendingOps;
 
 /// Identifies one replica (site) participating in a collaboration session.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -91,6 +108,10 @@ pub enum ApplyOutcome {
     Applied,
     /// This exact operation ID was already applied; nothing changed.
     Duplicate,
+    /// The operation's dependency is not yet applied; [`recovery::PendingOps`]
+    /// has buffered it instead of erroring. Never returned by
+    /// [`Document::apply`] itself, only by [`recovery::PendingOps::receive`].
+    Buffered,
 }
 
 /// Failure modes of [`Document::apply`]. All are bounded, non-panicking
@@ -111,6 +132,10 @@ pub enum CrdtError {
     /// ([`Document::with_max_elements`]); the insert was rejected instead of
     /// growing without limit.
     DocumentFull,
+    /// [`recovery::PendingOps`]'s buffer of operations waiting on a missing
+    /// dependency is already at its configured bound; the operation was
+    /// rejected instead of buffering without limit.
+    PendingBufferFull { max_pending: usize },
 }
 
 impl fmt::Display for CrdtError {
@@ -123,6 +148,10 @@ impl fmt::Display for CrdtError {
                 write!(f, "operation id {id:?} reused with different content")
             }
             CrdtError::DocumentFull => write!(f, "document is at its bounded element limit"),
+            CrdtError::PendingBufferFull { max_pending } => write!(
+                f,
+                "pending-operation buffer is at its bound ({max_pending} operations)"
+            ),
         }
     }
 }
@@ -136,13 +165,13 @@ impl std::error::Error for CrdtError {}
 /// authoritative large document once reconciled.
 pub const DEFAULT_MAX_ELEMENTS: usize = 200_000;
 
-#[derive(Debug, Clone)]
-struct Element {
-    id: OpId,
-    left: Option<OpId>,
-    right: Option<OpId>,
-    value: char,
-    deleted: bool,
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Element {
+    pub(crate) id: OpId,
+    pub(crate) left: Option<OpId>,
+    pub(crate) right: Option<OpId>,
+    pub(crate) value: char,
+    pub(crate) deleted: bool,
 }
 
 /// One replica's view of a collaboratively edited text.
@@ -202,6 +231,35 @@ impl Document {
     /// Whether `id` has already been applied to this document.
     pub fn is_applied(&self, id: OpId) -> bool {
         self.applied.contains(&id)
+    }
+
+    /// Crate-internal: the full structural element list, in document order,
+    /// for [`checkpoint`] to snapshot verbatim.
+    pub(crate) fn elements_slice(&self) -> &[Element] {
+        &self.elements
+    }
+
+    /// Crate-internal: every applied operation id (inserts and deletes
+    /// alike), for [`checkpoint`] to compute the causal frontier.
+    pub(crate) fn applied_set(&self) -> &HashSet<OpId> {
+        &self.applied
+    }
+
+    /// Crate-internal: this document's configured element bound.
+    pub(crate) fn max_elements_bound(&self) -> usize {
+        self.max_elements
+    }
+
+    /// Crate-internal: reconstruct a document directly from its parts
+    /// (used by [`checkpoint`] to restore from a [`Checkpoint`] without
+    /// re-running integration - the stored element order already *is* the
+    /// integrated structural order).
+    pub(crate) fn from_parts(elements: Vec<Element>, applied: HashSet<OpId>, max_elements: usize) -> Self {
+        Self {
+            elements,
+            applied,
+            max_elements,
+        }
     }
 
     /// The stable ID of the visible character currently at `index`
