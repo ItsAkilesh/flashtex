@@ -1,0 +1,69 @@
+{
+  "agent_id": "commander-runtime-display",
+  "archived_utc": "2026-09-12T11:54:18Z",
+  "assignment": {
+    "acceptance": [
+      "Start from integrated decoder ecbaf7c on main; preserve four raw frames plus one decoded permit and joined shutdown",
+      "Exactly one contiguous sibling only after requested and accepted nonfailed result; bind ID/project/revision/document hashes and reject malformed, unsolicited, missing or out-of-order frames",
+      "Default legacy requests unchanged; preserve line limits and source epochs, no duplicate renderer parser or automatic native activation",
+      "Use corrected actual producer65dbe7d or later raw-byte font hashes; old contract SHA-bytes-plus-face deviation is historical, not accepted resource evidence",
+      "Publish bounded candidate API for existing helper owner; if deep validation is deferred, the type and contract must remain explicitly untrusted until existing native/core validator accepts it"
+    ],
+    "agent_id": "commander-runtime-display",
+    "allocation_id": "hosted-openai-product",
+    "branch": "agent/commander-runtime-display/display-runtime",
+    "deadline_utc": null,
+    "dependencies": [],
+    "input_main_sha": "36797512287440dbb4ef4229c1d77a4df86b891f",
+    "objective": "Verify raw versus current candidate equivalence, malformed and duplicate fields, source/epoch invalidation and exact frame bounds",
+    "owned_paths": [
+      "crates/document-runtime"
+    ],
+    "revision": 6,
+    "schema_version": 1,
+    "state": "assigned",
+    "task_id": "FT-049",
+    "timebox_minutes": 40,
+    "updated_utc": "2026-09-12T11:48:45Z"
+  },
+  "report": {
+    "agent_id": "commander-runtime-display",
+    "allocation_id": "hosted-openai-product",
+    "assignment_acknowledgements": {
+      "FT-049": {
+        "acknowledged_utc": "2026-09-12T11:51:13Z",
+        "adaptation": "Read r6. Preserve raw/current equivalence and refusal gates while authorized internal existing-serde pass reduction keeps fixed-session API/default unchanged; no extra queues or custom parser.",
+        "main_sha": "4ff60ac08ba55894338ced8cd822b3bf75f11551",
+        "revision": 6
+      }
+    },
+    "branch": "agent/commander-runtime-display/display-runtime",
+    "capabilities": [
+      "rust-runtime"
+    ],
+    "code_revision": "7817e4e8cd1e2e820665c63ebb169c09700a8bd8",
+    "eta_minutes": null,
+    "machine": "linux-primary",
+    "main_integrated_through": "217ec7dfc7ff586c90e5211039229589e461699e",
+    "next_action": "Send tested unchanged API dependency to helper/renderer and continue concrete malformed/source compatibility feedback. Preserve opaque bytes, downstream strict rendering validation, source epoch checks; no custom JSON parser/unsafe tokens or additional concurrency.",
+    "reviewed_peers": {},
+    "schema_version": 1,
+    "state": "ready_for_integration",
+    "summary": "FT049r6: two-pass internal raw path preserves API/default/queue gates. Existing serde visitor combines full syntax finite/depth/duplicate-safe metadata and order-independent classification; safe RawValue construction second pass. Full prior suite passes plus4 focused raw tests including payload-first/MAXrevision/source mismatch; strict lint passes. Sameframe raw39.5/41.6ms peak6.8-6.9MB vs Value52.4/59.9ms peak18.2MB. No native latency/default promotion.",
+    "tool": "codex",
+    "updated_utc": "2026-09-12T11:53:59Z",
+    "usage": {
+      "status": "unknown"
+    }
+  },
+  "report_age_seconds": 19,
+  "report_path": "coordination/agents/commander-runtime-display.json",
+  "review_required": true,
+  "revision": 6,
+  "schema_version": 1,
+  "stale_completion": false,
+  "state": "reported_ready",
+  "task_id": "FT-049",
+  "worker_branch": "agent/commander-runtime-display/display-runtime",
+  "worker_report_sha": "0450f558a67ecc078e9fc6e4ba888caabf1b5b30"
+}

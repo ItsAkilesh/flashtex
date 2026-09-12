@@ -1,0 +1,69 @@
+{
+  "agent_id": "commander-runtime-display",
+  "archived_utc": "2026-09-12T12:07:55Z",
+  "assignment": {
+    "acceptance": [
+      "Start from integrated decoder ecbaf7c on main; preserve four raw frames plus one decoded permit and joined shutdown",
+      "Exactly one contiguous sibling only after requested and accepted nonfailed result; bind ID/project/revision/document hashes and reject malformed, unsolicited, missing or out-of-order frames",
+      "Default legacy requests unchanged; preserve line limits and source epochs, no duplicate renderer parser or automatic native activation",
+      "Use corrected actual producer65dbe7d or later raw-byte font hashes; old contract SHA-bytes-plus-face deviation is historical, not accepted resource evidence",
+      "Publish bounded candidate API for existing helper owner; if deep validation is deferred, the type and contract must remain explicitly untrusted until existing native/core validator accepts it"
+    ],
+    "agent_id": "commander-runtime-display",
+    "allocation_id": "hosted-openai-product",
+    "branch": "agent/commander-runtime-display/display-runtime",
+    "deadline_utc": null,
+    "dependencies": [],
+    "input_main_sha": "35616393ec6447900b8c680f59447f8c98cafe59",
+    "objective": "Assess malformed raw metadata allocation and propose early bounded validation without arbitrary legacy restrictions",
+    "owned_paths": [
+      "crates/document-runtime"
+    ],
+    "revision": 8,
+    "schema_version": 1,
+    "state": "assigned",
+    "task_id": "FT-049",
+    "timebox_minutes": 40,
+    "updated_utc": "2026-09-12T12:03:26.044120+00:00"
+  },
+  "report": {
+    "agent_id": "commander-runtime-display",
+    "allocation_id": "hosted-openai-product",
+    "assignment_acknowledgements": {
+      "FT-049": {
+        "acknowledged_utc": "2026-09-12T12:05:06Z",
+        "adaptation": "Read exactr8. Bound proposal uses exact accepted pending request source count, existing128-byte identity cap and request-derived path length, not arbitraryglobal doc cap. Measure modest malformed metadata allocation before implementation; preserve default/legacy behavior and single permit.",
+        "main_sha": "3b0fa70e1bb55e31d013828a54ba3416ad47e8e2",
+        "revision": 8
+      }
+    },
+    "branch": "agent/commander-runtime-display/display-runtime",
+    "capabilities": [
+      "rust-runtime"
+    ],
+    "code_revision": "dcac0108f593653c505644b18b6a2171f49a177e",
+    "eta_minutes": null,
+    "machine": "linux-primary",
+    "main_integrated_through": "217ec7dfc7ff586c90e5211039229589e461699e",
+    "next_action": "Commander review request-derived capture design, then implement only authorized bounds with original request held through stale/cancelled sibling and full serde validation for nonretained entries. No extra queues/threads, globallegacycaps or provider calls.",
+    "reviewed_peers": {},
+    "schema_version": 1,
+    "state": "ready_for_integration",
+    "summary": "FT049r8 analysis/probe complete: malformed150145B/50k emptydocs peaks7528KB vs3748KB baseline;512KBidentity peaks4928KB. All reject/no candidate. Proposed actual-request source-count/path budgets and existing128byte IDs/SHA64, no arbitraryglobal documents cap. Explicit pre-v1/payload-first bounded-retention markers preserve v1 unknown-field policy; no code bounds implemented yet. Probe/example strictlint pass.",
+    "tool": "codex",
+    "updated_utc": "2026-09-12T12:07:35Z",
+    "usage": {
+      "status": "unknown"
+    }
+  },
+  "report_age_seconds": 20,
+  "report_path": "coordination/agents/commander-runtime-display.json",
+  "review_required": true,
+  "revision": 8,
+  "schema_version": 1,
+  "stale_completion": false,
+  "state": "reported_ready",
+  "task_id": "FT-049",
+  "worker_branch": "agent/commander-runtime-display/display-runtime",
+  "worker_report_sha": "c23ecefa46ce77363026b799e377c59444593bbc"
+}

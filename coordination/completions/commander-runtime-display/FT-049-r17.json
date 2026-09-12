@@ -1,0 +1,69 @@
+{
+  "agent_id": "commander-runtime-display",
+  "archived_utc": "2026-09-12T12:44:38Z",
+  "assignment": {
+    "acceptance": [
+      "Start from integrated decoder ecbaf7c on main; preserve four raw frames plus one decoded permit and joined shutdown",
+      "Exactly one contiguous sibling only after requested and accepted nonfailed result; bind ID/project/revision/document hashes and reject malformed, unsolicited, missing or out-of-order frames",
+      "Default legacy requests unchanged; preserve line limits and source epochs, no duplicate renderer parser or automatic native activation",
+      "Use corrected actual producer65dbe7d or later raw-byte font hashes; old contract SHA-bytes-plus-face deviation is historical, not accepted resource evidence",
+      "Publish bounded candidate API for existing helper owner; if deep validation is deferred, the type and contract must remain explicitly untrusted until existing native/core validator accepts it"
+    ],
+    "agent_id": "commander-runtime-display",
+    "allocation_id": "hosted-openai-product",
+    "branch": "agent/commander-runtime-display/display-runtime",
+    "deadline_utc": null,
+    "dependencies": [],
+    "input_main_sha": "135e5d3ad5881f14c38c01f3e03269b0a0771686",
+    "objective": "Verify thirty sequential normal and stopped-reader session lifecycles return child thread and descriptor observations to baseline",
+    "owned_paths": [
+      "crates/document-runtime"
+    ],
+    "revision": 17,
+    "schema_version": 1,
+    "state": "assigned",
+    "task_id": "FT-049",
+    "timebox_minutes": 40,
+    "updated_utc": "2026-09-12T12:41:34.786216+00:00"
+  },
+  "report": {
+    "agent_id": "commander-runtime-display",
+    "allocation_id": "hosted-openai-product",
+    "assignment_acknowledgements": {
+      "FT-049": {
+        "acknowledged_utc": "2026-09-12T12:43:47Z",
+        "adaptation": "30 sequential normal/stopped Value/raw sessions restore4FD/2thread/emptychild baseline after three I/O terminal witnesses and child reaping. No production change or accumulation demonstrated; complete per-cycle evidence preserved.",
+        "main_sha": "fec22f105a028313962b69fa155b0621e3faf247",
+        "revision": 17
+      }
+    },
+    "branch": "agent/commander-runtime-display/display-runtime",
+    "capabilities": [
+      "rust-runtime"
+    ],
+    "code_revision": "106bca6ec3f2855a85faa023a66c6f07085d7d61",
+    "eta_minutes": null,
+    "machine": "linux-primary",
+    "main_integrated_through": "0333be37e546273b6bcbe30a1f0745ad8a5e93c5",
+    "next_action": "Commander integration review. All probe/build processes terminal. Clean checkpoint after report publication; docs/blocked-writer.md and benchmarks/session-cycles contain scope, exact PIDs and counters. No RSS/all-production-thread-join/worst-case-time claim.",
+    "reviewed_peers": {},
+    "schema_version": 1,
+    "state": "ready_for_integration",
+    "summary": "FT049 r17 product106bca6e:30 sequential normal/stopped-reader Value/raw cycles restore baseline4FD/2thread/emptychild after writer/stdout/stderr witnesses, decoder join and PID reaping. No accumulation demonstrated; production unchanged.49 ordinary tests pass/10 opt-in ignored;30-cycle gate and strict lint pass.",
+    "tool": "codex",
+    "updated_utc": "2026-09-12T12:44:10Z",
+    "usage": {
+      "status": "unknown"
+    }
+  },
+  "report_age_seconds": 28,
+  "report_path": "coordination/agents/commander-runtime-display.json",
+  "review_required": true,
+  "revision": 17,
+  "schema_version": 1,
+  "stale_completion": false,
+  "state": "reported_ready",
+  "task_id": "FT-049",
+  "worker_branch": "agent/commander-runtime-display/display-runtime",
+  "worker_report_sha": "704fd6363e335846e98c2a73521755deac605bf9"
+}

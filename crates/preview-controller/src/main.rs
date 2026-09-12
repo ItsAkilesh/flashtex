@@ -1,6 +1,7 @@
 //! Local stdio adapter. Native callers must put pipe IO on a dedicated worker.
 use flashtex_document_runtime::{Event, Limits};
 use flashtex_edit_ledger::{AppliedReceipt, PreparedEdit, Store};
+use flashtex_preview_controller::completed_protocol::{SubmissionBindings, CAPABILITY};
 use flashtex_preview_controller::file_project::{DiskState, FileProject};
 use flashtex_preview_controller::{ApprovedEdit, Controller, HistoryAction, Update};
 use flashtex_project_index::{Category, SearchRequest, SearchTermination, SourceSpan};
@@ -12,20 +13,25 @@ use std::{
     process::Command,
     sync::{
         atomic::{AtomicBool, Ordering},
-        mpsc::{self, SyncSender},
+        mpsc::{self},
         Arc, Mutex,
     },
     thread,
     time::Duration,
 };
+mod optional_output;
 mod output_buffer;
+mod output_delivery;
+mod raw_wire;
+mod source_plans;
 mod wire;
-use output_buffer::OutputBuffer;
 const MAX_OUTPUT_BYTES: usize = 16 * 1024 * 1024;
 
 const MAX_FRAME: usize = 1024 * 1024;
-// Leave four MiB below the helper frame bound for its wrapping metadata.
-const MAX_COMPILER_FRAME: usize = 12 * 1024 * 1024;
+// Reserve one MiB for typical wrapping metadata; this is not a proof that every
+// compiler frame fits after reserialization. OutputBuffer checks the complete JSONL.
+const COMPILER_ENVELOPE_RESERVE: usize = 1024 * 1024;
+const MAX_COMPILER_FRAME: usize = MAX_OUTPUT_BYTES - COMPILER_ENVELOPE_RESERVE;
 fn compiler_limits(config: &Value) -> Result<Limits, String> {
     let mut limits = Limits::default();
     if let Some(value) = config.get("compiler_max_frame_bytes") {
@@ -33,9 +39,34 @@ fn compiler_limits(config: &Value) -> Result<Limits, String> {
             .as_u64()
             .and_then(|n| usize::try_from(n).ok())
             .filter(|n| (128..=MAX_COMPILER_FRAME).contains(n))
-            .ok_or("compiler_max_frame_bytes must be 128..12582912")?;
+            .ok_or("compiler_max_frame_bytes must be 128..15728640")?;
     }
     Ok(limits)
+}
+// The producer counts JSON bytes; runtime framing also counts the newline.
+// Invalid inherited settings have the producer's default semantics. A stricter
+// positive setting remains authoritative even if too small for a useful reply.
+fn producer_command(path: &str, limits: &Limits) -> Command {
+    producer_command_with_limit(
+        path,
+        limits,
+        std::env::var_os("FLASHTEX_MAX_REPLY_BYTES").as_deref(),
+    )
+}
+fn producer_command_with_limit(
+    path: &str,
+    limits: &Limits,
+    inherited: Option<&std::ffi::OsStr>,
+) -> Command {
+    let ceiling = limits.max_frame.saturating_sub(1);
+    let cap = inherited
+        .and_then(|value| value.to_str())
+        .and_then(|value| value.parse::<usize>().ok())
+        .filter(|value| *value > 0)
+        .map_or(ceiling, |value| value.min(ceiling));
+    let mut command = Command::new(path);
+    command.env("FLASHTEX_MAX_REPLY_BYTES", cap.to_string());
+    command
 }
 fn string<'a>(v: &'a Value, name: &str) -> Result<&'a str, String> {
     v[name].as_str().ok_or(format!("missing string {name}"))
@@ -43,21 +74,27 @@ fn string<'a>(v: &'a Value, name: &str) -> Result<&'a str, String> {
 fn number(v: &Value, name: &str) -> Result<u64, String> {
     v[name].as_u64().ok_or(format!("missing integer {name}"))
 }
-fn emit(tx: &SyncSender<Vec<u8>>, stopped: &AtomicBool, value: Value) {
-    let mut buffer = OutputBuffer::new(MAX_OUTPUT_BYTES);
-    if serde_json::to_writer(&mut buffer, &value).is_err() {
-        buffer = OutputBuffer::new(MAX_OUTPUT_BYTES);
+fn metadata_response_mode(payload: &Value) -> Result<bool, String> {
+    match payload.get("response_mode") {
+        None => Ok(false),
+        Some(Value::String(mode)) if mode == "full" => Ok(false),
+        Some(Value::String(mode)) if mode == "metadata" => Ok(true),
+        _ => Err("response_mode must be full or metadata".into()),
+    }
+}
+fn emit(tx: &output_delivery::Sender, stopped: &AtomicBool, value: Value) {
+    emit_with_limit(tx, stopped, value, MAX_OUTPUT_BYTES);
+}
+fn emit_with_limit(tx: &output_delivery::Sender, stopped: &AtomicBool, value: Value, limit: usize) {
+    let bytes = output_buffer::serialize(&value, limit).or_else(|_| {
         let error = failure(
             value["session_id"].as_str().unwrap_or(""),
             value["id"].clone(),
             "response exceeds output limit; source may already be durable",
         );
-        if serde_json::to_writer(&mut buffer, &error).is_err() {
-            stopped.store(true, Ordering::SeqCst);
-            return;
-        }
-    }
-    let Ok(bytes) = buffer.finish() else {
+        output_buffer::serialize(&error, limit)
+    });
+    let Ok(bytes) = bytes else {
         stopped.store(true, Ordering::SeqCst);
         return;
     };
@@ -74,17 +111,32 @@ fn run(config: Value) -> Result<(), String> {
         return Err("invalid session identity".into());
     }
     let limits = compiler_limits(&config)?;
+    let raw_display = match config.get("display_transport") {
+        None => false,
+        Some(Value::String(mode)) if mode == "value" => false,
+        Some(Value::String(mode)) if mode == "raw-prototype" => true,
+        _ => return Err("display_transport must be value or raw-prototype".into()),
+    };
+    let diagnostic_timings = config["diagnostic_timings"].as_bool().unwrap_or(false);
     let project = string(&config, "project_id")?.to_owned();
     let entry = string(&config, "entry_path")?.to_owned();
+    let bibliography_paths: Vec<String> = serde_json::from_value(
+        config
+            .get("bibliography_paths")
+            .cloned()
+            .unwrap_or(json!([])),
+    )
+    .map_err(|e| e.to_string())?;
     let (mut controller, file_project) = if config.get("project_root").is_some() {
         if config.get("store_paths").is_some() {
             return Err("choose project_root or store_paths, not both".into());
         }
-        let (files, controller) = FileProject::open(
+        let (files, controller) = FileProject::open_with_bibliography(
             std::path::Path::new(string(&config, "project_root")?),
             std::path::Path::new(string(&config, "private_ledger_root")?),
             &project,
             &entry,
+            &bibliography_paths,
         )?;
         (controller, Some(files))
     } else {
@@ -102,7 +154,7 @@ fn run(config: Value) -> Result<(), String> {
             })
             .collect::<Result<Vec<_>, String>>()?;
         (
-            Controller::open_without_compiler(project, entry, stores)?,
+            Controller::open_with_bibliography(project, entry, stores, &bibliography_paths)?,
             None,
         )
     };
@@ -110,29 +162,43 @@ fn run(config: Value) -> Result<(), String> {
         .get("compiler_path")
         .and_then(Value::as_str)
         .map(str::to_owned);
-    let compiler_error = compiler
-        .as_ref()
-        .and_then(|path| controller.restart(Command::new(path), limits.clone()).err());
+    if raw_display {
+        controller.select_raw_display_prototype()?;
+    }
+    let compiler_error = compiler.as_ref().and_then(|path| {
+        controller
+            .restart(producer_command(path, &limits), limits.clone())
+            .err()
+    });
     let (input_tx, input_rx) = mpsc::sync_channel::<Value>(16);
-    let (output_tx, output_rx) = mpsc::sync_channel::<Vec<u8>>(8);
+    let (output_tx, output_rx) = output_delivery::channel_with_diagnostics(8, diagnostic_timings);
     let stopped = Arc::new(AtomicBool::new(false));
     let output_stopped = stopped.clone();
     let output_done = Arc::new(AtomicBool::new(false));
     let writer_done = output_done.clone();
-    let writing_since = Arc::new(Mutex::new(None::<std::time::Instant>));
+    let writing_since = Arc::new(Mutex::new(None::<(std::time::Instant, Option<u64>)>));
     let writer_clock = writing_since.clone();
     thread::spawn(move || {
         let mut stdout = io::stdout().lock();
-        for bytes in output_rx {
-            *writer_clock.lock().unwrap() = Some(std::time::Instant::now());
+        loop {
+            let frame = match output_rx.next(Duration::from_millis(2)) {
+                Ok(frame) => frame,
+                Err(mpsc::RecvTimeoutError::Timeout) => continue,
+                Err(mpsc::RecvTimeoutError::Disconnected) => break,
+            };
+            *writer_clock.lock().unwrap() = Some((std::time::Instant::now(), frame.sequence()));
+            frame.trace("write_started");
             if stdout
-                .write_all(&bytes)
+                .write_all(&frame.bytes)
                 .and_then(|_| stdout.flush())
                 .is_err()
             {
+                frame.trace("write_failed");
                 output_stopped.store(true, Ordering::SeqCst);
                 break;
             }
+            frame.trace("write_finished");
+            output_rx.written(&frame);
             *writer_clock.lock().unwrap() = None;
         }
         *writer_clock.lock().unwrap() = None;
@@ -189,17 +255,35 @@ fn run(config: Value) -> Result<(), String> {
         json!({"protocol_version":1,"session_id":session,"id":null,"type":"ready","payload":{"compiler_error":compiler_error,"compiler_max_frame_bytes":limits.max_frame,"helper_max_output_bytes":16*1024*1024}}),
     );
     let mut reviews: BTreeMap<String, PreparedEdit> = BTreeMap::new();
+    let mut bindings = SubmissionBindings::default();
+    let mut last_display_profile_key = None;
+    let mut output_epoch = output_tx.reset_optional();
+    let mut request_sequence = Some(0u64);
     while !stopped.load(Ordering::SeqCst) {
-        if writing_since
+        let stalled = writing_since
             .lock()
             .unwrap()
-            .is_some_and(|start| start.elapsed() >= Duration::from_secs(2))
-        {
+            .as_ref()
+            .and_then(|(start, sequence)| {
+                (start.elapsed() >= Duration::from_secs(2)).then_some(*sequence)
+            });
+        if let Some(sequence) = stalled {
+            if diagnostic_timings {
+                eprintln!(
+                    "{}",
+                    json!({"phase":"output_watchdog","sequence":sequence,"outcome":"timeout"})
+                );
+            }
             stopped.store(true, Ordering::SeqCst);
             break;
         }
         match input_rx.recv_timeout(Duration::from_millis(2)) {
-            Ok(request) => {
+            Ok(mut request) => {
+                request_sequence = request_sequence.and_then(|sequence| sequence.checked_add(1));
+                let diagnostic_started_ms = diagnostic_timings
+                    .then(|| output_tx.diagnostic_ms())
+                    .flatten();
+                let request_started = std::time::Instant::now();
                 let id = request["id"].clone();
                 let response = if request["protocol_version"] != 1
                     || request["session_id"] != session
@@ -207,29 +291,149 @@ fn run(config: Value) -> Result<(), String> {
                 {
                     Err("invalid version, session or request identity".into())
                 } else {
-                    handle(
-                        &mut controller,
-                        &mut reviews,
-                        &request,
-                        compiler.as_deref(),
-                        &limits,
-                        file_project.as_ref(),
-                    )
+                    (|| -> Result<Value, String> {
+                        let token = request["payload"]
+                            .get("source_binding_token")
+                            .map(|value| {
+                                value
+                                    .as_str()
+                                    .ok_or("source_binding_token must be a string")
+                            })
+                            .transpose()?
+                            .map(str::to_owned);
+                        if let Some(token) = token.as_deref() {
+                            SubmissionBindings::validate_token(token)?;
+                        }
+                        if request["type"] == "configure_display_candidates" {
+                            let capability = controller.display_candidate_capability();
+                            if request["payload"]["capability"] != capability {
+                                return Err("unsupported display candidate capability".into());
+                            }
+                            let enabled = request["payload"]["enabled"]
+                                .as_bool()
+                                .ok_or("enabled must be boolean")?;
+                            if enabled && request["payload"]["renderer_support_confirmed"] != true {
+                                return Err(
+                                    "explicit renderer support confirmation required".into()
+                                );
+                            }
+                            let preview_error = controller.configure_display_candidates(enabled)?;
+                            output_epoch = output_tx.reset_optional();
+                            return Ok(
+                                json!({"capability":capability,"enabled":enabled,"preview_error":preview_error}),
+                            );
+                        }
+                        if request["type"] == "configure_completed_snapshots" {
+                            if request["payload"]["capability"] != CAPABILITY {
+                                return Err("unsupported completed snapshot capability".into());
+                            }
+                            let enabled = request["payload"]["enabled"]
+                                .as_bool()
+                                .ok_or("enabled must be boolean")?;
+                            controller.configure_completed_snapshots(enabled)?;
+                            bindings.configure(enabled)?;
+                            output_epoch = output_tx.reset_optional();
+                            return Ok(json!({"capability":CAPABILITY,"enabled":enabled}));
+                        }
+                        if request["type"] == "restart" || request["type"] == "close" {
+                            controller.configure_completed_snapshots(false)?;
+                            bindings.configure(false)?;
+                            output_epoch = output_tx.reset_optional();
+                        }
+                        let before = controller.compile_revision();
+                        let result = handle(
+                            &mut controller,
+                            &mut reviews,
+                            &mut request,
+                            compiler.as_deref(),
+                            &limits,
+                            file_project.as_ref(),
+                        );
+                        let after = controller.compile_revision();
+                        if after != before && bindings.enabled() {
+                            if let Some(token) = token.as_deref() {
+                                // Synchronous request handling captured this exact admitted generation.
+                                // Optional metadata failure must not replace a durable operation's reply.
+                                let _ = bindings.record(after, token);
+                            }
+                        }
+                        result
+                    })()
                 };
                 let output = match response {
                     Ok(payload) => wire::envelope(&session, id, "result", payload),
                     Err(reason) => failure(&session, id, reason),
                 };
+                let handling_ms = request_started.elapsed().as_secs_f64() * 1000.0;
+                let serialization_started = std::time::Instant::now();
                 emit(&output_tx, &stopped, output);
+                if diagnostic_timings {
+                    eprintln!(
+                        "{}",
+                        json!({"phase":"request","sequence":request_sequence,"started_ms":diagnostic_started_ms,"handling_ms":handling_ms,
+                        "response_serialization_ms":serialization_started.elapsed().as_secs_f64()*1000.0})
+                    );
+                }
             }
             Err(mpsc::RecvTimeoutError::Timeout) => {}
             Err(mpsc::RecvTimeoutError::Disconnected) => break,
         }
-        for update in controller.poll() {
+        let poll_started = std::time::Instant::now();
+        let updates = controller.poll();
+        let poll_ms = poll_started.elapsed().as_secs_f64() * 1000.0;
+        if diagnostic_timings {
+            if let Some(profile) = controller.last_display_profile() {
+                let key = (
+                    profile.request_id.clone(),
+                    profile.revision,
+                    profile.display_epoch,
+                );
+                if last_display_profile_key.as_ref() != Some(&key) {
+                    eprintln!("{}", json!({"phase":"display_transport","profile":profile}));
+                    last_display_profile_key = Some(key);
+                }
+            } else {
+                last_display_profile_key = None;
+            }
+        }
+        // Candidate-only processing and discarded-value destruction may produce
+        // no events. Capture slow owner turns without logging every idle poll.
+        if diagnostic_timings && (!updates.is_empty() || poll_ms >= 1.0) {
+            eprintln!(
+                "{}",
+                json!({"phase":"compiler_poll","events":updates.len(),
+                "duration_ms":poll_ms})
+            );
+        }
+        let historical = controller.take_completed_snapshot().and_then(|snapshot| {
+            let token = bindings.take(bindings.epoch(), snapshot.compile_revision());
+            if diagnostic_timings && token.is_none() {
+                eprintln!(
+                    "{}",
+                    json!({"phase":"historical_eligibility",
+                    "compile_revision":snapshot.compile_revision(),"outcome":"binding_unavailable"})
+                );
+            }
+            token.map(|token| (snapshot, token))
+        });
+        for update in updates {
+            // A negotiated historical frame replaces its legacy stale notification.
+            // Do not enqueue that notification ahead of its own optional replacement.
+            if matches!(&update, Update::Runtime(Event::Stale { id, .. })
+                if historical.as_ref().is_some_and(|(snapshot, _)| snapshot.request_id() == id))
+            {
+                continue;
+            }
             let payload = match update {
-                Update::Preview(preview) => wire::preview_payload(preview),
-                Update::Discarded { request_id } => {
-                    json!({"kind":"discarded","request_id":request_id})
+                Update::Preview(preview) => {
+                    bindings.retire_through(preview.compile_revision);
+                    wire::preview_payload(preview)
+                }
+                Update::Discarded {
+                    request_id,
+                    compile_revision,
+                } => {
+                    json!({"kind":"discarded","request_id":request_id,"compile_revision":compile_revision})
                 }
                 Update::Runtime(event) => match event {
                     Event::Superseded { id, by_id } => {
@@ -251,6 +455,75 @@ fn run(config: Value) -> Result<(), String> {
                 wire::envelope(&session, Value::Null, "update", payload),
             );
         }
+        if let Some((snapshot, token)) = historical {
+            let eligible = output_tx.can_offer(output_epoch);
+            let claimed = eligible && controller.claim_historical_display(&snapshot);
+            if diagnostic_timings && !claimed {
+                eprintln!(
+                    "{}",
+                    json!({"phase":"historical_eligibility",
+                    "compile_revision":snapshot.compile_revision(),
+                    "outcome":if eligible {"claim_refused"} else {"queue_ineligible"}})
+                );
+            }
+            if claimed {
+                let generation = snapshot.compile_revision();
+                let mut payload = json!({"kind":"completed_snapshot",
+                        "project_id":snapshot.source_versions().project_id,
+                        "session_id":session,"source_versions":snapshot.source_versions().documents,
+                        "request_id":snapshot.request_id(),"compile_revision":snapshot.compile_revision(),
+                        "current_compile_revision":controller.compile_revision(),
+                        "is_current":false,"source_actions_enabled":false,"source_binding_token":token});
+                payload["result"] = snapshot.into_result();
+                let value = wire::envelope(&session, Value::Null, "update", payload);
+                let started = std::time::Instant::now();
+                let outcome = optional_output::offer_with_generation(
+                    &output_tx,
+                    output_epoch,
+                    &value,
+                    MAX_OUTPUT_BYTES,
+                    Some(generation),
+                );
+                if diagnostic_timings {
+                    eprintln!(
+                        "{}",
+                        json!({"phase":"optional_output","kind":"completed_snapshot","compile_revision":generation,
+                        "outcome":outcome.label(),"serialization_ms":started.elapsed().as_secs_f64()*1000.0})
+                    );
+                }
+            }
+        }
+        if output_tx.can_offer(output_epoch) {
+            if let Some(payload) = controller.take_current_raw_display_payload() {
+                let value = raw_wire::envelope(&session, &payload);
+                let started = std::time::Instant::now();
+                let outcome =
+                    optional_output::offer(&output_tx, output_epoch, &value, MAX_OUTPUT_BYTES);
+                if diagnostic_timings {
+                    eprintln!(
+                        "{}",
+                        json!({"phase":"optional_output","kind":"display_candidate",
+                        "transport":"raw-prototype","outcome":outcome.label(),
+                        "serialization_ms":started.elapsed().as_secs_f64()*1000.0})
+                    );
+                }
+            }
+        }
+        if output_tx.can_offer(output_epoch) {
+            if let Some(payload) = controller.take_current_display_payload() {
+                let value = wire::envelope(&session, Value::Null, "update", payload);
+                let started = std::time::Instant::now();
+                let outcome =
+                    optional_output::offer(&output_tx, output_epoch, &value, MAX_OUTPUT_BYTES);
+                if diagnostic_timings {
+                    eprintln!(
+                        "{}",
+                        json!({"phase":"optional_output","kind":"display_candidate",
+                        "outcome":outcome.label(),"serialization_ms":started.elapsed().as_secs_f64()*1000.0})
+                    );
+                }
+            }
+        }
     }
     // Drain normal EOF replies, bounded even if the native reader stopped.
     drop(output_tx);
@@ -271,10 +544,61 @@ fn run(config: Value) -> Result<(), String> {
 fn source_json(source: &SourceSpan) -> Value {
     json!({"path":source.file,"revision":source.revision,"start_byte":source.start_byte,"end_byte":source.end_byte})
 }
+struct OwnedEditInput {
+    path: String,
+    revision: u64,
+    sha256: String,
+    text: String,
+    metadata_only: bool,
+}
+fn take_edit_input(payload: &mut Value) -> Result<OwnedEditInput, String> {
+    let metadata_only = metadata_response_mode(payload)?;
+    let path = string(payload, "path")?.to_owned();
+    let revision = number(payload, "expected_revision")?;
+    let sha256 = string(payload, "expected_sha256")?.to_owned();
+    string(payload, "text")?; // Validate every field before consuming owned text.
+    let Value::String(text) = payload["text"].take() else {
+        unreachable!("validated string")
+    };
+    Ok(OwnedEditInput {
+        path,
+        revision,
+        sha256,
+        text,
+        metadata_only,
+    })
+}
+struct OwnedHistoryInput {
+    path: String,
+    metadata_only: bool,
+    action: HistoryAction,
+}
+fn take_history_input(request: &mut Value) -> Result<OwnedHistoryInput, String> {
+    let kind = match string(request, "type")? {
+        "apply_group" => 0,
+        "undo" => 1,
+        "redo" => 2,
+        _ => return Err("unsupported history action".into()),
+    };
+    let payload = &mut request["payload"];
+    let metadata_only = metadata_response_mode(payload)?;
+    let path = string(payload, "path")?.to_owned();
+    let command = payload["command"].take();
+    let action = match kind {
+        0 => HistoryAction::Group(serde_json::from_value(command).map_err(|e| e.to_string())?),
+        1 => HistoryAction::Undo(serde_json::from_value(command).map_err(|e| e.to_string())?),
+        _ => HistoryAction::Redo(serde_json::from_value(command).map_err(|e| e.to_string())?),
+    };
+    Ok(OwnedHistoryInput {
+        path,
+        metadata_only,
+        action,
+    })
+}
 fn handle(
     controller: &mut Controller,
     reviews: &mut BTreeMap<String, PreparedEdit>,
-    request: &Value,
+    request: &mut Value,
     compiler: Option<&str>,
     limits: &Limits,
     file_project: Option<&FileProject>,
@@ -284,9 +608,29 @@ fn handle(
         "document" => Ok(json!({"document":controller.document(string(p,"path")?)?})),
         "snapshot" => {
             let snapshot = controller.index().snapshot();
+            let document_kinds = snapshot
+                .documents
+                .keys()
+                .map(|path| {
+                    let kind = controller
+                        .index()
+                        .document_kind(&snapshot, path)
+                        .map_err(|e| e.to_string())?;
+                    Ok((
+                        path.clone(),
+                        match kind {
+                            flashtex_project_index::DocumentKind::Latex => "latex",
+                            flashtex_project_index::DocumentKind::Bibliography => "bibliography",
+                        },
+                    ))
+                })
+                .collect::<Result<BTreeMap<_, _>, String>>()?;
             Ok(
-                json!({"project_id":snapshot.project_id,"source_versions":snapshot.documents,"membership_generation":snapshot.generation}),
+                json!({"project_id":snapshot.project_id,"source_versions":snapshot.documents,"membership_generation":snapshot.generation,"document_kinds":document_kinds}),
             )
+        }
+        "plan_literal_replacement" | "plan_citation_rename" | "plan_citation_rename_at" => {
+            source_plans::handle(controller.index(), string(request, "type")?, p)
         }
         "search_literal" => {
             let snapshot = controller.index().snapshot();
@@ -357,14 +701,23 @@ fn handle(
         }
 
         "edit" => {
-            let result = controller.replace_document(
-                string(p, "path")?,
-                number(p, "expected_revision")?,
-                string(p, "expected_sha256")?,
-                string(p, "text")?.to_owned(),
-            )?;
+            let edit = take_edit_input(&mut request["payload"])?;
+            if edit.metadata_only {
+                let result = controller.replace_document_metadata(
+                    &edit.path,
+                    edit.revision,
+                    &edit.sha256,
+                    edit.text,
+                )?;
+                return Ok(
+                    json!({"response_mode":"metadata", "document":result.document,
+                    "compile_request_id":result.compile_admission.as_ref().map(|a| &a.request_id),"compile_revision":result.compile_admission.as_ref().map(|a| a.compile_revision),"preview_error":result.preview_error,"save_and_submit_ms":result.save_and_submit_ms}),
+                );
+            }
+            let result =
+                controller.replace_document(&edit.path, edit.revision, &edit.sha256, edit.text)?;
             Ok(
-                json!({"document":result.document,"preview_error":result.preview_error,"save_and_submit_ms":result.save_and_submit_ms}),
+                json!({"document":result.document,"compile_request_id":result.compile_admission.as_ref().map(|a| &a.request_id),"compile_revision":result.compile_admission.as_ref().map(|a| a.compile_revision),"preview_error":result.preview_error,"save_and_submit_ms":result.save_and_submit_ms}),
             )
         }
         "project_status" => {
@@ -396,9 +749,17 @@ fn handle(
             }
             let path = string(p, "path")?;
             let (document, preview_error) = if request["type"] == "open_document" {
+                let kind = match p.get("document_kind").and_then(Value::as_str) {
+                    None if p.get("document_kind").is_none() => {
+                        flashtex_project_index::DocumentKind::Latex
+                    }
+                    Some("latex") => flashtex_project_index::DocumentKind::Latex,
+                    Some("bibliography") => flashtex_project_index::DocumentKind::Bibliography,
+                    _ => return Err("document_kind must be latex or bibliography".into()),
+                };
                 let result = file_project
                     .ok_or("helper was not opened from a file project")?
-                    .open_document(controller, &expected, path)?;
+                    .open_document_with_kind(controller, &expected, path, kind)?;
                 (Some(result.document), result.preview_error)
             } else {
                 (None, controller.detach_document(&expected, path)?)
@@ -468,24 +829,43 @@ fn handle(
                 json!({"exported":true,"path":receipt.path.as_str(),"sha256":receipt.sha256_hex(),"bytes":receipt.bytes}),
             )
         }
-        "history_status" => Ok(json!({"history":controller.history_status(string(p,"path")?)?})),
-        "apply_group" | "undo" | "redo" => {
-            let command = p["command"].clone();
-            let action = match request["type"].as_str().unwrap() {
-                "apply_group" => HistoryAction::Group(
-                    serde_json::from_value(command).map_err(|e| e.to_string())?,
-                ),
-                "undo" => {
-                    HistoryAction::Undo(serde_json::from_value(command).map_err(|e| e.to_string())?)
-                }
-                _ => {
-                    HistoryAction::Redo(serde_json::from_value(command).map_err(|e| e.to_string())?)
-                }
+        "history_status" => {
+            use flashtex_edit_ledger::history::{
+                MAX_HISTORY_BYTES, MAX_HISTORY_COMMAND_IDS, MAX_HISTORY_ENTRIES,
             };
-            let outcome = controller.apply_history(string(p, "path")?, action)?;
-            Ok(
-                json!({"history":outcome.history,"preview_error":outcome.source.preview_error,"save_and_submit_ms":outcome.source.save_and_submit_ms}),
-            )
+            let path = string(p, "path")?;
+            let history = controller.history_status(path)?;
+            let document = controller.document(path)?;
+            // Both reads occur on the same owner turn; callers can use this exact
+            // revision/hash for a later guarded undo, without fetching full text.
+            Ok(json!({"history":history,
+                "document":{"project_id":document.project_id,"path":document.path,
+                    "revision":document.revision,"source_sha256":document.source_sha256},
+                "limits":{"history_bytes":MAX_HISTORY_BYTES,"history_entries":MAX_HISTORY_ENTRIES,
+                    "permanent_command_ids":MAX_HISTORY_COMMAND_IDS}}))
+        }
+        "apply_group" | "undo" | "redo" => {
+            let input = take_history_input(request)?;
+            let is_group = matches!(&input.action, HistoryAction::Group(_));
+            let (mut payload, admission) = if input.metadata_only {
+                let result = controller.apply_history_metadata(&input.path, input.action)?;
+                (
+                    json!({"response_mode":"metadata","history":result.history,
+                    "preview_error":result.preview_error,"save_and_submit_ms":result.save_and_submit_ms}),
+                    result.compile_admission,
+                )
+            } else {
+                let outcome = controller.apply_history(&input.path, input.action)?;
+                (
+                    json!({"history":outcome.history,"preview_error":outcome.source.preview_error,"save_and_submit_ms":outcome.source.save_and_submit_ms}),
+                    outcome.source.compile_admission,
+                )
+            };
+            if is_group {
+                payload["compile_request_id"] = json!(admission.as_ref().map(|a| &a.request_id));
+                payload["compile_revision"] = json!(admission.as_ref().map(|a| a.compile_revision));
+            }
+            Ok(payload)
         }
         "configure_layout" => {
             if p["renderer_support_confirmed"] != true {
@@ -503,7 +883,7 @@ fn handle(
         }
         "restart" => {
             controller.restart(
-                Command::new(compiler.ok_or("compiler not configured")?),
+                producer_command(compiler.ok_or("compiler not configured")?, limits),
                 limits.clone(),
             )?;
             Ok(json!({"submitted":true}))
@@ -591,11 +971,117 @@ fn main() {
 mod configuration_tests {
     use super::*;
     #[test]
+    fn owned_history_input_reuses_large_replacement_and_preserves_envelope() {
+        let source = json!({"protocol_version":1,"session_id":"s","id":"request",
+            "type":"apply_group","payload":{"path":"main.tex","response_mode":"metadata",
+            "source_binding_token":"binding","command":{"command_id":"group","expected_revision":7,
+            "expected_sha256":"a".repeat(64),"label":"large replacement",
+            "edits":[{"start_byte":0,"end_byte":0,"removed_text":"","replacement":"β".repeat(32768)}]}}});
+        let mut request: Value =
+            serde_json::from_slice(&serde_json::to_vec(&source).unwrap()).unwrap();
+        let pointer = request["payload"]["command"]["edits"][0]["replacement"]
+            .as_str()
+            .unwrap()
+            .as_ptr();
+        let old_copy = request["payload"]["command"].clone();
+        assert_ne!(
+            pointer,
+            old_copy["edits"][0]["replacement"]
+                .as_str()
+                .unwrap()
+                .as_ptr()
+        );
+        let input = take_history_input(&mut request).unwrap();
+        let HistoryAction::Group(group) = input.action else {
+            panic!("wrong action")
+        };
+        assert_eq!(group.edits[0].replacement.as_ptr(), pointer);
+        assert_eq!(group.edits[0].replacement.len(), 65536);
+        assert_eq!(serde_json::to_value(&group).unwrap(), old_copy);
+        assert_eq!(input.path, "main.tex");
+        assert!(input.metadata_only);
+        assert!(request["payload"]["command"].is_null());
+        assert_eq!(request["payload"]["source_binding_token"], "binding");
+        for key in ["protocol_version", "session_id", "id", "type"] {
+            assert_eq!(request[key], source[key]);
+        }
+        eprintln!("history replacement moved in place:65536bytes; prior Value clone retained distinct65536byte text");
+        for (field, bad) in [("response_mode", json!(false)), ("path", Value::Null)] {
+            let mut invalid = source.clone();
+            invalid["payload"][field] = bad;
+            let before = invalid.clone();
+            assert!(take_history_input(&mut invalid).is_err());
+            assert!(invalid == before, "invalid policy/path consumed command");
+        }
+        for kind in ["undo", "redo"] {
+            let mut r = json!({"type":kind,"payload":{"path":"main.tex","command":{
+                "command_id":"history","expected_revision":8,"expected_sha256":"b".repeat(64)}}});
+            let parsed = take_history_input(&mut r).unwrap();
+            assert!(!parsed.metadata_only);
+            match (kind, parsed.action) {
+                ("undo", HistoryAction::Undo(c)) | ("redo", HistoryAction::Redo(c)) => {
+                    assert_eq!(c.command_id, "history");
+                    assert_eq!(c.expected_revision, 8);
+                }
+                _ => panic!("wrong action"),
+            }
+        }
+        let mut malformed = source;
+        malformed["payload"]["command"]["edits"] = json!(true);
+        assert!(take_history_input(&mut malformed).is_err());
+    }
+    #[test]
+    fn owned_edit_input_moves_parsed_source_after_validation() {
+        let wire = serde_json::to_vec(&json!({"path":"main.tex","expected_revision":1,
+            "expected_sha256":"a".repeat(64),"text":"α".repeat(250_000),"response_mode":"metadata"})).unwrap();
+        let mut payload: Value = serde_json::from_slice(&wire).unwrap();
+        let parsed = payload["text"].as_str().unwrap();
+        let pointer = parsed.as_ptr();
+        let old_copy = parsed.to_owned();
+        assert_ne!(pointer, old_copy.as_ptr());
+        let input = take_edit_input(&mut payload).unwrap();
+        assert_eq!(input.text.as_ptr(), pointer);
+        assert_eq!(input.text, old_copy);
+        assert!(input.metadata_only);
+        assert_eq!(input.revision, 1);
+        assert_eq!(input.path, "main.tex");
+        assert_eq!(input.sha256, "a".repeat(64));
+        assert!(payload["text"].is_null());
+        eprintln!(
+            "parsed_source_bytes={} moved_capacity={} avoided_clone_capacity={}",
+            input.text.len(),
+            input.text.capacity(),
+            old_copy.capacity()
+        );
+        for (key, bad) in [
+            ("response_mode", json!(true)),
+            ("path", Value::Null),
+            ("expected_revision", json!(-1)),
+            ("expected_sha256", json!(42)),
+            ("text", json!(false)),
+        ] {
+            let mut invalid: Value = serde_json::from_slice(&wire).unwrap();
+            invalid[key] = bad;
+            let before = invalid.clone();
+            assert!(take_edit_input(&mut invalid).is_err());
+            assert!(invalid == before, "invalid input was consumed at {key}");
+        }
+        for policy in [None, Some(json!("full"))] {
+            let mut p: Value = serde_json::from_slice(&wire).unwrap();
+            if let Some(policy) = policy {
+                p["response_mode"] = policy;
+            } else {
+                p.as_object_mut().unwrap().remove("response_mode");
+            }
+            assert!(!take_edit_input(&mut p).unwrap().metadata_only);
+        }
+    }
+    #[test]
     fn oversized_result_error_does_not_retain_large_output_allocation() {
-        let (tx, rx) = mpsc::sync_channel(1);
+        let (tx, rx) = output_delivery::channel(1);
         let stopped = AtomicBool::new(false);
         emit(&tx, &stopped, Value::String("x".repeat(MAX_OUTPUT_BYTES)));
-        let bytes = rx.try_recv().unwrap();
+        let bytes = rx.next(Duration::ZERO).unwrap().bytes;
         assert!(!stopped.load(Ordering::SeqCst));
         assert!(bytes.capacity() < 4096);
         assert_eq!(bytes.last(), Some(&b'\n'));
@@ -607,6 +1093,93 @@ mod configuration_tests {
             .contains("durable"));
     }
 
+    #[test]
+    fn compiler_result_and_metadata_share_complete_output_budget_without_partial_frame() {
+        let (tx, rx) = output_delivery::channel(2);
+        let stopped = AtomicBool::new(false);
+        // A result admitted below the compiler ceiling can still have too much
+        // helper metadata. No fixed reserve can guarantee arbitrary path lengths.
+        let mut payload = json!({"kind":"preview","result":"r".repeat(MAX_COMPILER_FRAME-128)});
+        payload["source_versions"] = json!({"long-path":"m".repeat(COMPILER_ENVELOPE_RESERVE+256)});
+        emit(
+            &tx,
+            &stopped,
+            wire::envelope("s", Value::Null, "update", payload),
+        );
+        emit(
+            &tx,
+            &stopped,
+            wire::envelope("s", json!("saved"), "result", json!({"durable":true})),
+        );
+        let rejected = rx.next(Duration::ZERO).unwrap();
+        assert!(rejected.bytes.capacity() < 4096);
+        let error: Value = serde_json::from_slice(&rejected.bytes).unwrap();
+        assert_eq!(error["type"], "error");
+        assert_eq!(error["session_id"], "s");
+        rx.written(&rejected);
+        let ack = rx.next(Duration::ZERO).unwrap();
+        assert_eq!(
+            serde_json::from_slice::<Value>(&ack.bytes).unwrap()["id"],
+            "saved"
+        );
+        assert!(!stopped.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn producer_launch_bounds_reply_and_preserves_stricter_settings() {
+        let limits = compiler_limits(&json!({"compiler_max_frame_bytes":4096})).unwrap();
+        for (inherited, expected) in [
+            (None, "4095"),
+            (Some("8192"), "4095"),
+            (Some("2048"), "2048"),
+            (Some("1"), "1"),
+            (Some("0"), "4095"),
+            (Some("invalid"), "4095"),
+            (Some(" 7"), "4095"),
+            (Some("7 "), "4095"),
+            (Some("-1"), "4095"),
+            (Some("+7"), "7"),
+            (Some("0007"), "7"),
+            (Some("99999999999999999999999999999999999"), "4095"),
+        ] {
+            let mut command = producer_command_with_limit(
+                "/bin/sh",
+                &limits,
+                inherited.map(std::ffi::OsStr::new),
+            );
+            // Exercise the actual child environment without changing the test
+            // process environment or racing other test threads.
+            let output = command
+                .args(["-c", "printf '%s' \"$FLASHTEX_MAX_REPLY_BYTES\""])
+                .output()
+                .unwrap();
+            assert!(output.status.success());
+            assert_eq!(String::from_utf8(output.stdout).unwrap(), expected);
+        }
+    }
+    #[test]
+    fn producer_budget_boundary_and_non_utf8_settings() {
+        use std::os::unix::ffi::OsStrExt;
+        for frame in [128, 8 * 1024 * 1024, MAX_COMPILER_FRAME] {
+            let limits = compiler_limits(&json!({"compiler_max_frame_bytes":frame})).unwrap();
+            let equal = (frame - 1).to_string();
+            for inherited in [
+                None,
+                Some(std::ffi::OsStr::new("")),
+                Some(std::ffi::OsStr::from_bytes(&[0xff])),
+                Some(std::ffi::OsStr::new(&equal)),
+            ] {
+                let command = producer_command_with_limit("unused", &limits, inherited);
+                let budget = command
+                    .get_envs()
+                    .find(|(key, _)| *key == "FLASHTEX_MAX_REPLY_BYTES")
+                    .unwrap()
+                    .1
+                    .unwrap();
+                assert_eq!(budget, std::ffi::OsStr::new(&equal));
+            }
+        }
+    }
     #[test]
     fn compiler_frame_configuration_preserves_helper_headroom() {
         assert_eq!(
@@ -629,5 +1202,46 @@ mod configuration_tests {
         ] {
             assert!(compiler_limits(&json!({"compiler_max_frame_bytes":value})).is_err());
         }
+    }
+    #[test]
+    fn required_serialization_refusal_delivers_error_then_next_ack() {
+        let (tx, rx) = output_delivery::channel(2);
+        let stopped = AtomicBool::new(false);
+        emit_with_limit(
+            &tx,
+            &stopped,
+            wire::envelope(
+                "s",
+                json!("large"),
+                "result",
+                json!({"body":"x".repeat(20000)}),
+            ),
+            512,
+        );
+        emit_with_limit(
+            &tx,
+            &stopped,
+            wire::envelope("s", json!("ack"), "result", json!({"durable":true})),
+            512,
+        );
+        assert!(!stopped.load(Ordering::SeqCst));
+        let first = rx.next(Duration::ZERO).unwrap();
+        let error: Value = serde_json::from_slice(&first.bytes).unwrap();
+        assert_eq!(error["type"], "error");
+        assert_eq!(error["id"], "large");
+        assert!(error["payload"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("source may already be durable"));
+        rx.written(&first);
+        let second = rx.next(Duration::ZERO).unwrap();
+        let ack: Value = serde_json::from_slice(&second.bytes).unwrap();
+        assert_eq!(ack["id"], "ack");
+        assert_eq!(ack["payload"]["durable"], true);
+        rx.written(&second);
+        assert!(rx.next(Duration::ZERO).is_err());
+        emit_with_limit(&tx, &stopped, json!({"too":"large"}), 1);
+        assert!(stopped.load(Ordering::SeqCst));
+        assert!(rx.next(Duration::ZERO).is_err());
     }
 }

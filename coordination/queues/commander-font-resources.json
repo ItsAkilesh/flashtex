@@ -1,33 +1,46 @@
 {
   "agent_id": "commander-font-resources",
-  "next_index": 0,
+  "next_index": 2,
   "schema_version": 1,
   "steps": [
     {
-      "name": "Validate actual pipeline consumer migration against matching metrics and fix only demonstrated shared-adapter gaps",
-      "objective": "Validate actual pipeline consumer migration against matching metrics and fix only demonstrated shared-adapter gaps",
+      "acceptance": [
+        "Meaningful bounded tests and strict lint pass; exact identities and typed unsupported outcomes preserved",
+        "No new worker/provider/native activation, copied reference implementation or unsupported parity claim"
+      ],
+      "allocation_id": "hosted-openai-product",
+      "name": "Add a bounded exact-rational Type1 outline API for currently unrepresentable division while preserving strict defaults and conditional-context refusal gates",
+      "objective": "Add a bounded exact-rational Type1 outline API for currently unrepresentable division while preserving strict defaults and conditional-context refusal gates",
       "owned_paths": [
         "crates/font-resources"
       ],
-      "acceptance": [
-        "Meaningful bounded behavior tests and strict lint pass",
-        "Preserve exact identities; publish measured evidence and unsupported gates"
-      ],
-      "allocation_id": "hosted-openai-product",
-      "timebox_minutes": 30
+      "timebox_minutes": 40
     },
     {
-      "name": "Preserve exact source/resource/provenance replay and explicit missing-resource gates after consumer feedback",
-      "objective": "Preserve exact source/resource/provenance replay and explicit missing-resource gates after consumer feedback",
+      "acceptance": [
+        "Meaningful bounded tests and strict lint pass; exact identities and typed unsupported outcomes preserved",
+        "No new worker/provider/native activation, copied reference implementation or unsupported parity claim"
+      ],
+      "allocation_id": "hosted-openai-product",
+      "name": "Feed exact rational outlines through existing matrix APIs only with verified declarative context; preserve widths and immutable identities",
+      "objective": "Feed exact rational outlines through existing matrix APIs only with verified declarative context; preserve widths and immutable identities",
       "owned_paths": [
         "crates/font-resources"
       ],
+      "timebox_minutes": 40
+    },
+    {
       "acceptance": [
-        "Meaningful bounded behavior tests and strict lint pass",
-        "Preserve exact identities; publish measured evidence and unsupported gates"
+        "Meaningful bounded tests and strict lint pass; exact identities and typed unsupported outcomes preserved",
+        "No new worker/provider/native activation, copied reference implementation or unsupported parity claim"
       ],
       "allocation_id": "hosted-openai-product",
-      "timebox_minutes": 30
+      "name": "Implement only explicitly supported standard Type1 flex semantics with bounded recognized OtherSubrs profile; arbitrary PostScript and unknown forms remain refused",
+      "objective": "Implement only explicitly supported standard Type1 flex semantics with bounded recognized OtherSubrs profile; arbitrary PostScript and unknown forms remain refused",
+      "owned_paths": [
+        "crates/font-resources"
+      ],
+      "timebox_minutes": 40
     }
   ],
   "task_id": "FT-024"

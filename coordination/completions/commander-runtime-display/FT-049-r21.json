@@ -1,0 +1,69 @@
+{
+  "agent_id": "commander-runtime-display",
+  "archived_utc": "2026-09-12T13:03:02Z",
+  "assignment": {
+    "acceptance": [
+      "Start from integrated decoder ecbaf7c on main; preserve four raw frames plus one decoded permit and joined shutdown",
+      "Exactly one contiguous sibling only after requested and accepted nonfailed result; bind ID/project/revision/document hashes and reject malformed, unsolicited, missing or out-of-order frames",
+      "Default legacy requests unchanged; preserve line limits and source epochs, no duplicate renderer parser or automatic native activation",
+      "Use corrected actual producer65dbe7d or later raw-byte font hashes; old contract SHA-bytes-plus-face deviation is historical, not accepted resource evidence",
+      "Publish bounded candidate API for existing helper owner; if deep validation is deferred, the type and contract must remain explicitly untrusted until existing native/core validator accepts it"
+    ],
+    "agent_id": "commander-runtime-display",
+    "allocation_id": "hosted-openai-product",
+    "branch": "agent/commander-runtime-display/display-runtime",
+    "deadline_utc": null,
+    "dependencies": [],
+    "input_main_sha": "a45f7e28c0ed7c2bcc159bed7bfcf8e956ced749",
+    "objective": "Independently verify correctedeca6ab25 actual helper capture hashes source identities and zero diagnostics for GH34",
+    "owned_paths": [
+      "crates/document-runtime"
+    ],
+    "revision": 21,
+    "schema_version": 1,
+    "state": "assigned",
+    "task_id": "FT-049",
+    "timebox_minutes": 40,
+    "updated_utc": "2026-09-12T13:01:24.315354+00:00"
+  },
+  "report": {
+    "agent_id": "commander-runtime-display",
+    "allocation_id": "hosted-openai-product",
+    "assignment_acknowledgements": {
+      "FT-049": {
+        "acknowledged_utc": "2026-09-12T13:02:40Z",
+        "adaptation": "Corrected eca6 capture all hashes/archive/license verified; unchanged six requests and all corrected statuses ok/no diagnostics. Existing captured-byte consumer and raw-wrapper/source checks pass; no runtime/API change.",
+        "main_sha": "e7134a3392d86b051de476cfad50cea7fc540c57",
+        "revision": 21
+      }
+    },
+    "branch": "agent/commander-runtime-display/display-runtime",
+    "capabilities": [
+      "rust-runtime"
+    ],
+    "code_revision": "fd379ad9731e2689cbe77b2ab1b401dac182d32a",
+    "eta_minutes": null,
+    "machine": "linux-primary",
+    "main_integrated_through": "c4178a54dccf4bf5a94c151c759fa18cb3096462",
+    "next_action": "Commander GH34/integration handoff. All probe/publish commands terminal after final push; clean checkpoint. Preserve recovered prior artifacts and distinct earlier helper-binary provenance. No native/pixel/visual parity claim.",
+    "reviewed_peers": {},
+    "schema_version": 1,
+    "state": "ready_for_integration",
+    "summary": "FT049 r21 product fd379ad9: independent corrected eca6ab25 capture artifact/assets/archive/license checks pass; six requests unchanged, all corrected statuses ok/no diagnostics, exact raw/source identities. Existing capture consumer passes restart/stale assertions. Data/docs only, no runtime/API change or redundant full-suite run.",
+    "tool": "codex",
+    "updated_utc": "2026-09-12T13:02:54Z",
+    "usage": {
+      "status": "unknown"
+    }
+  },
+  "report_age_seconds": 8,
+  "report_path": "coordination/agents/commander-runtime-display.json",
+  "review_required": true,
+  "revision": 21,
+  "schema_version": 1,
+  "stale_completion": false,
+  "state": "reported_ready",
+  "task_id": "FT-049",
+  "worker_branch": "agent/commander-runtime-display/display-runtime",
+  "worker_report_sha": "b49c1142af7158af8aa642b80e51cd9cb5d4fe05"
+}

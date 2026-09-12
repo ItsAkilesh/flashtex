@@ -293,6 +293,7 @@ fn add_accepted_capabilities(payload: &mut Value, capabilities: &NegotiatedCapab
     }
 }
 
+#[cfg(test)]
 fn font_json(font: Font) -> Value {
     let (family, weight, style) = match font {
         Font::TimesRoman => ("Times-Roman", "normal", "normal"),
@@ -375,7 +376,7 @@ fn pages_json(pages: &[Page], paths: &[&str], capabilities: &AcceptedCapabilitie
                 json::write_number_into(it.baseline_y_pt, &mut out);
                 if capabilities.font_hints_v1 {
                     out.push_str(",\"font\":");
-                    out.push_str(&json::write(&font_json(it.font)));
+                    out.push_str(font_json_literal(it.font));
                 }
                 out.push_str(",\"font_size_pt\":");
                 json::write_number_into(it.font_size_pt, &mut out);
@@ -396,6 +397,20 @@ fn pages_json(pages: &[Page], paths: &[&str], capabilities: &AcceptedCapabilitie
     }
     out.push(']');
     Value::Raw(out)
+}
+
+fn font_json_literal(font: Font) -> &'static str {
+    match font {
+        Font::TimesRoman => r#"{"family":"Times-Roman","style":"normal","weight":"normal"}"#,
+        Font::TimesBold => r#"{"family":"Times-Bold","style":"normal","weight":"bold"}"#,
+        Font::TimesItalic => r#"{"family":"Times-Italic","style":"italic","weight":"normal"}"#,
+        Font::TimesBoldItalic => {
+            r#"{"family":"Times-BoldItalic","style":"italic","weight":"bold"}"#
+        }
+        Font::Helvetica => r#"{"family":"Helvetica","style":"normal","weight":"normal"}"#,
+        Font::Courier => r#"{"family":"Courier","style":"normal","weight":"normal"}"#,
+        Font::Symbol => r#"{"family":"Symbol","style":"normal","weight":"normal"}"#,
+    }
 }
 
 /// Sorted: end_byte, path, start_byte
@@ -670,4 +685,30 @@ fn compile(id: &str, payload: &Value) -> Value {
     p.set("pdf_path", Value::Null);
     add_accepted_capabilities(&mut p, &capabilities);
     result_envelope(id, p)
+}
+
+#[cfg(test)]
+mod font_literal_tests {
+    use super::*;
+
+    /// The literal and the structured form must stay byte-identical. If someone
+    /// changes font_json, this fails rather than silently changing wire output.
+    #[test]
+    fn every_font_literal_matches_its_serialised_value() {
+        for font in [
+            Font::TimesRoman,
+            Font::TimesBold,
+            Font::TimesItalic,
+            Font::TimesBoldItalic,
+            Font::Helvetica,
+            Font::Courier,
+            Font::Symbol,
+        ] {
+            assert_eq!(
+                font_json_literal(font),
+                json::write(&font_json(font)),
+                "{font:?} literal drifted from its serialised form"
+            );
+        }
+    }
 }
