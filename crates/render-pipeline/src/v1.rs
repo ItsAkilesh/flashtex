@@ -61,7 +61,7 @@ impl Capabilities {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FontHint {
-    pub family: String,
+    pub family: std::rc::Rc<str>,
     pub weight: &'static str,
     pub style: &'static str,
 }
@@ -123,7 +123,7 @@ fn hint_for(font: &display::FontResource) -> FontHint {
         ps
     };
     FontHint {
-        family: family.to_string(),
+        family: std::rc::Rc::from(family),
         weight: if lower.contains("bold") { "bold" } else { "normal" },
         style: if lower.contains("italic") || lower.contains("oblique") { "italic" } else { "normal" },
     }
@@ -148,13 +148,14 @@ fn union_of<'a>(mut sources: impl Iterator<Item = &'a SourceRange>) -> Option<So
 /// `layout_capabilities` field (the field is then omitted in the reply).
 pub fn fallback(v2: &DisplayList, caps: Capabilities, accepted: Option<Vec<String>>) -> V1Payload {
     let mut pages = Vec::with_capacity(v2.pages.len());
+    // One hint per font resource, shared by every run that uses it.
+    let hints: Vec<Option<FontHint>> = v2.fonts.iter().map(|f| caps.font_hints.then(|| hint_for(f))).collect();
     for page in &v2.pages {
-        let mut items = Vec::new();
+        let mut items = Vec::with_capacity(page.items.len());
         for item in &page.items {
             match item {
                 display::Item::GlyphRun(run) => {
-                    let font = v2.fonts.iter().find(|f| f.font_id == run.font_id);
-                    let hint = if caps.font_hints { font.map(hint_for) } else { None };
+                    let hint = v2.fonts.iter().position(|f| f.font_id == run.font_id).and_then(|i| hints[i].as_ref());
                     let size = run.font_size.to_bp();
                     match run.role {
                         display::RunRole::Text => {
@@ -165,7 +166,7 @@ pub fn fallback(v2: &DisplayList, caps: Capabilities, accepted: Option<Vec<Strin
                                 baseline_y_pt: first.baseline_y.to_bp(),
                                 font_size_pt: size,
                                 source,
-                                font: hint.clone(),
+                                font: hint.cloned(),
                             });
                         }
                         display::RunRole::Math => {
@@ -178,7 +179,7 @@ pub fn fallback(v2: &DisplayList, caps: Capabilities, accepted: Option<Vec<Strin
                                     baseline_y_pt: g.baseline_y.to_bp(),
                                     font_size_pt: size,
                                     source,
-                                    font: hint.clone(),
+                                    font: hint.cloned(),
                                 });
                             }
                         }
@@ -306,7 +307,7 @@ impl V1Payload {
                                                 o.set("source", source_json(source));
                                                 if let Some(f) = font {
                                                     let mut fo = Value::obj();
-                                                    fo.set("family", json::str_(f.family.clone()));
+                                                    fo.set("family", json::str_(f.family.to_string()));
                                                     fo.set("weight", json::str_(f.weight));
                                                     fo.set("style", json::str_(f.style));
                                                     o.set("font", fo);
@@ -357,6 +358,12 @@ use std::fmt::Write as _;
 
 fn js(out: &mut String, s: &str) {
     out.push('"');
+    if s.bytes().all(|b| b >= 0x20 && b != b'"' && b != b'\\') {
+        // Nothing to escape (the common case: paths, words, codes).
+        out.push_str(s);
+        out.push('"');
+        return;
+    }
     for c in s.chars() {
         match c {
             '"' => out.push_str("\\\""),
@@ -375,7 +382,7 @@ fn js(out: &mut String, s: &str) {
 
 fn jn(out: &mut String, n: f64) {
     if n.is_finite() && n == n.trunc() && n.abs() < 1e15 {
-        let _ = write!(out, "{}", n as i64);
+        ji(out, n as i64);
     } else if n.is_finite() {
         let _ = write!(out, "{}", n);
     } else {
@@ -383,8 +390,59 @@ fn jn(out: &mut String, n: f64) {
     }
 }
 
+/// `i` in decimal, byte-identical to `{}` without going through `fmt`.
+fn ji(out: &mut String, i: i64) {
+    let mut buf = [0u8; 20];
+    let mut n = i.unsigned_abs();
+    let mut pos = buf.len();
+    loop {
+        pos -= 1;
+        buf[pos] = b'0' + (n % 10) as u8;
+        n /= 10;
+        if n == 0 {
+            break;
+        }
+    }
+    if i < 0 {
+        out.push('-');
+    }
+    out.push_str(std::str::from_utf8(&buf[pos..]).unwrap());
+}
+
+/// A point value rounded to three decimals, written as the shortest
+/// round-trip decimal — byte-identical to `jn(out, (v * 1000).round() /
+/// 1000)`: for |v| < 10^11 the rounded value has at most 15 significant
+/// digits, so its shortest representation is the milli-unit integer with
+/// trailing zeros trimmed, and `{}` prints exactly that.
 fn jpt(out: &mut String, v: f64) {
-    jn(out, (v * 1000.0).round() / 1000.0);
+    let m = (v * 1000.0).round();
+    if !m.is_finite() || m.abs() >= 1e11 {
+        jn(out, m / 1000.0);
+        return;
+    }
+    let m = m as i64;
+    if m == 0 {
+        out.push('0');
+        return;
+    }
+    if m < 0 {
+        out.push('-');
+    }
+    let a = m.unsigned_abs();
+    ji(out, (a / 1000) as i64);
+    let frac = a % 1000;
+    if frac != 0 {
+        out.push('.');
+        let digits = [b'0' + (frac / 100) as u8, b'0' + (frac / 10 % 10) as u8, b'0' + (frac % 10) as u8];
+        let keep = if digits[2] != b'0' {
+            3
+        } else if digits[1] != b'0' {
+            2
+        } else {
+            1
+        };
+        out.push_str(std::str::from_utf8(&digits[..keep]).unwrap());
+    }
 }
 
 fn jsource(out: &mut String, s: &SourceRange) {
@@ -617,5 +675,56 @@ mod tests {
         none.diagnostics.clear();
         env.set("payload", none.to_json());
         assert_eq!(none.write_envelope("r-1"), json::write(&env));
+    }
+
+    /// `jpt`/`js` fast paths print exactly what `fmt` printed before.
+    #[test]
+    fn scalar_fast_paths_match_fmt() {
+        let reference = |v: f64| {
+            let n = (v * 1000.0).round() / 1000.0;
+            if n == n.trunc() && n.abs() < 1e15 {
+                format!("{}", n as i64)
+            } else {
+                format!("{}", n)
+            }
+        };
+        let mut values: Vec<f64> = vec![
+            0.0,
+            -0.0,
+            -0.0001,
+            0.0004,
+            0.0005,
+            0.0015,
+            0.5,
+            -0.5,
+            1.0,
+            -1.0,
+            12.3,
+            612.0,
+            791.999,
+            1e10,
+            -99999.001,
+            84362432.0 / 1048576.0 * 0.75,
+        ];
+        let mut x: u64 = 0x9e3779b97f4a7c15;
+        for _ in 0..20000 {
+            x ^= x << 13;
+            x ^= x >> 7;
+            x ^= x << 17;
+            let mag = (x % 100_000_000) as f64 / 1000.0 - 50_000.0;
+            values.push(mag);
+            values.push(mag / 7.0);
+            values.push(mag / 1024.0);
+        }
+        for v in values {
+            let mut out = String::new();
+            jpt(&mut out, v);
+            assert_eq!(out, reference(v), "{v}");
+        }
+        for s in ["", "main.tex", "a\"b", "back\\slash", "tab\there", "\u{1}", "ünïcode—ok"] {
+            let mut out = String::new();
+            js(&mut out, s);
+            assert_eq!(out, json::write(&Value::Str(s.to_string())), "{s}");
+        }
     }
 }

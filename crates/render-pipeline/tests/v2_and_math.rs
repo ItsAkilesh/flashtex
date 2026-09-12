@@ -79,7 +79,7 @@ fn v1_items_are_positioned_exactly_where_v2_glyph_runs_start() {
         .items
         .iter()
         .filter_map(|i| match i {
-            V1Item::Text { font: Some(f), .. } => Some(f.family.clone()),
+            V1Item::Text { font: Some(f), .. } => Some(f.family.to_string()),
             _ => None,
         })
         .collect();

@@ -28,7 +28,7 @@ pub struct PdfOut {
 
 fn hint(h: &v1::FontHint) -> FontHint {
     FontHint {
-        family: h.family.clone(),
+        family: h.family.to_string(),
         weight: if h.weight == "bold" { Weight::Bold } else { Weight::Normal },
         style: if h.style == "italic" { Style::Italic } else { Style::Normal },
     }

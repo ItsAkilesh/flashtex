@@ -232,25 +232,36 @@ pages). Measured at 1-min load 14.8 (`uptime` recorded by
 `scratchpad/rp/measure_quiet.sh`; still not a quiet machine — 12 lanes
 were compiling), 27 pages, in-process stage timings (`examples/stages`):
 
-| stage | `a8e39c1` | `0b09be57` | **`7ca34cec`** |
-|---|---|---|---|
-| parse | 3.4 ms | 3.4 | 3.4 |
-| adapt | 9.1 | 9.1 | **6.1** |
-| typeset (cached blocks) | 5.4 | 5.4 | 5.1 |
-| assemble v2 | 8.6 | 7.1 | 6.6 |
-| v1 fallback | 4.8 | 4.8 | 4.7 |
-| JSON (4.27 MB) | 6.9 | 6.9 | 6.7 |
-| **sum** | 38.2 | 36.7 | **32.6** |
+| stage | `a8e39c1` | `0b09be57` | `7ca34cec` | **reply writer** |
+|---|---|---|---|---|
+| parse | 3.4 ms | 3.4 | 3.4 | 3.4 |
+| adapt | 9.1 | 9.1 | **6.1** | 6.3 |
+| typeset (cached blocks) | 5.4 | 5.4 | 5.1 | 5.6 |
+| assemble v2 | 8.6 | 7.1 | 6.6 | 7.3 |
+| v1 fallback | 4.8 | 4.8 | 4.7 | **1.2** |
+| JSON (4.27 MB) | 6.9 | 6.9 | 6.7 | **3.8** |
+| **sum** | 38.2 | 36.7 | 32.6 | **27.6** |
 
-Persistent worker over the protocol (one-word edits, 30 per run, wall
-under the same load): 27 pages median **39.7 ms** (min 38.9, max 44.3;
-CPU 40.4 ms per request incl. the first), fresh process 86.4 ms; 3 pages
-median 4.3 ms (CPU 5.2), fresh 33.3 ms. The "well under 30 ms" target at
-27 pages is **not met**: ~7 ms of the in-process 32.6 ms is fixed
-compiler parse + typeset, and 18 ms is producing and serialising a 4.3 MB
-reply (assemble + v1 + JSON) that the protocol requires in full for every
-edit. The next lever is on the reply side (page-scoped or delta replies),
-which is a protocol change to agree with mac-preview-v2, not a cache.
+Persistent worker over the protocol (one-word edits, 30 per run, wall):
+at `7ca34cec` (load 14.8) 27 pages median **39.7 ms** (min 38.9, max
+44.3; CPU 40.4 ms per request incl. the first), fresh process 86.4 ms; 3
+pages median 4.3 ms (CPU 5.2), fresh 33.3 ms. With the reply writer
+(`uptime` 9:47, load 8.4 / 14.9 / 19.5): 27 pages median **33.6 ms** (min
+32.6, max 36.0; CPU 34.1 ms), fresh 80.4 ms.
+
+The reply writer change: `v1::fallback` computes one `FontHint` per font
+resource instead of lowercasing the PostScript name per run (4.9 → 1.2
+ms), and the envelope writer prints integers and 1/1000-pt values
+directly (a rounded value below 10^11 has at most 15 significant digits,
+so the milli-unit integer with trailing zeros trimmed is exactly the
+shortest round-trip form `{}` printed; `scalar_fast_paths_match_fmt`
+sweeps 60 000 values against `fmt`, `writer_matches_value_tree` and the
+golden v1 fixtures keep the bytes). In-process the 27-page edit is now
+under 30 ms; over the protocol it is 33.6 ms wall, of which ~6 ms is the
+request parse plus moving a 4.3 MB line through the pipe to the harness.
+"Well under 30 ms" at 27 pages therefore still needs the reply side to
+shrink (page-scoped or delta replies) — a protocol change to agree with
+mac-preview-v2, not a cache.
 
 Independent check (Commander, rendering-core `ef350d2`, issue #2 11:00Z):
 02-wrapping-paragraph rendered from `65dbe7d` with rooted LM 2.004 assets
