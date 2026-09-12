@@ -1,0 +1,24 @@
+\documentclass[11pt]{article}
+\usepackage[T1]{fontenc}
+\usepackage[margin=1in]{geometry}
+\usepackage[ruled,vlined,linesnumbered]{algorithm2e}
+\SetKwProg{Fn}{Function}{:}{}
+\SetKw{KwBreak}{break}
+\begin{document}
+\pagestyle{empty}
+\begin{algorithm}[H]
+  \KwData{A list $a_1,\ldots,a_n$ and a target $x$}
+  \KwResult{An index $i$ with $a_i=x$, or $\bot$}
+  \Fn{Locate$(a,x)$}{
+    $i\gets 1$\;\label{line:start}
+    \While{$i\le n$}{
+      \If{$a_i=x$}{\Return $i$\;}
+      \ElseIf{$a_i>x$}{\KwBreak\;}
+      $i\gets i+1$\;\label{line:advance}
+    }
+    \Return $\bot$\;
+  }
+  \caption{A numbered, ruled, nested algorithm}\label{alg:locate}
+\end{algorithm}
+Line~\ref{line:start} initializes the invariant; line~\ref{line:advance} advances it.
+\end{document}

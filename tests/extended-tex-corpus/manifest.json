@@ -1302,6 +1302,33 @@
       ]
     },
     {
+      "id": "diagrams-amscd",
+      "entry": "main.tex",
+      "engine": "pdflatex",
+      "features": ["amscd", "commutative-diagram", "CD", "arrow-labels", "vertical-arrows", "equality-arrow"],
+      "expect": "success", "diagnostic": null, "workflow": ["tex", "tex", "tex"], "files": ["main.tex"],
+      "authorship": "Original fixture authored by Codex for FlashTeX; repository license applies.",
+      "assertions": ["Two commutative diagrams preserve horizontal/vertical arrow direction, label placement, equality and opposing-arrow spacing."]
+    },
+    {
+      "id": "diagrams-tikzcd",
+      "entry": "main.tex",
+      "engine": "pdflatex",
+      "features": ["tikz-cd", "commutative-diagram", "arrow-labels", "dashed-arrow", "bend", "hook", "two-heads"],
+      "expect": "success", "diagnostic": null, "workflow": ["tex", "tex", "tex"], "files": ["main.tex"],
+      "authorship": "Original fixture authored by Codex for FlashTeX; repository license applies.",
+      "assertions": ["Diagram matrix spacing, crossing diagonal, dashed and bent arrows, hook/two-head tips, and swap labels match the reference." ]
+    },
+    {
+      "id": "packages-algorithm2e",
+      "entry": "main.tex",
+      "engine": "pdflatex",
+      "features": ["algorithm2e", "algorithm", "ruled", "vlined", "line-numbers", "while", "if", "else-if", "labels", "cross-reference"],
+      "expect": "success", "diagnostic": null, "workflow": ["tex", "tex", "tex"], "files": ["main.tex"],
+      "authorship": "Original fixture authored by Codex for FlashTeX; repository license applies.",
+      "assertions": ["Ruled caption, nested vertical rules, line numbers, keywords, math, labels and resolved line references match the reference." ]
+    },
+    {
       "id": "graphics-included-raster",
       "entry": "main.tex",
       "engine": "pdflatex",

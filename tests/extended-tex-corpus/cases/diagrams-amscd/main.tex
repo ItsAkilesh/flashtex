@@ -1,0 +1,25 @@
+\documentclass[11pt]{article}
+\usepackage[T1]{fontenc}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amscd}
+\begin{document}
+\pagestyle{empty}
+\section*{Commutative diagrams with amscd}
+
+The square commutes when $h\alpha=\beta f$ and $k\beta=\gamma g$:
+\[
+\begin{CD}
+  A @>{f}>> B @>{g}>> C \\
+  @V{\alpha}VV @V{\beta}VV @VV{\gamma}V \\
+  D @>>{h}> E @>>{k}> F
+\end{CD}
+\]
+The same arrow grid includes equality, a dashed label, and opposing vertical arrows:
+\[
+\begin{CD}
+  X @= Y @>{u}>> Z \\
+  @AAA @V{\scriptstyle s}VV @VV{\scriptstyle t}V \\
+  P @<<{v}< Q @<<{w}< R
+\end{CD}
+\]
+\end{document}

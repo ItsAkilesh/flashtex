@@ -1,0 +1,22 @@
+\documentclass[11pt]{article}
+\usepackage[T1]{fontenc}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,tikz-cd}
+\begin{document}
+\pagestyle{empty}
+\section*{TikZ-cd arrows, labels, and crossings}
+\[
+\begin{tikzcd}[column sep=large,row sep=large]
+  A \arrow[r, "f"] \arrow[d, swap, "\alpha"] \arrow[dr, dashed, "\delta"] &
+  B \arrow[r, "g"] \arrow[d, "\beta"] & C \arrow[d, "\gamma"] \\
+  D \arrow[r, swap, "h"] & E \arrow[r, swap, "k"] & F
+\end{tikzcd}
+\]
+\[
+\begin{tikzcd}[column sep=huge, row sep=large]
+  X \arrow[r, bend left=18, "p"] \arrow[d, hook, swap, "i"] &
+  Y \arrow[l, bend left=18, "q"] \arrow[d, two heads, "\pi"] \\
+  U \arrow[r, swap, "\bar p"] & V
+\end{tikzcd}
+\]
+\end{document}
