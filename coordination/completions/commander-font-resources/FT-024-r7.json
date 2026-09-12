@@ -1,0 +1,71 @@
+{
+  "agent_id": "commander-font-resources",
+  "archived_utc": "2026-09-12T07:47:39Z",
+  "assignment": {
+    "acceptance": [
+      "Focused regression tests and strict lint pass",
+      "Publish exact tested source revision and honest consumer limitations"
+    ],
+    "agent_id": "commander-font-resources",
+    "allocation_id": "hosted-openai-product",
+    "branch": "agent/commander-corpus/font-resources",
+    "deadline_utc": null,
+    "dependencies": [],
+    "input_main_sha": "cfdda8b312adcec7551bd5990b24975f041b22a7",
+    "objective": "Identity-preserving adapter to original font-engine metrics/shaping without duplicate parsers",
+    "owned_paths": [
+      "crates/font-resources"
+    ],
+    "revision": 7,
+    "schema_version": 1,
+    "state": "assigned",
+    "task_id": "FT-024",
+    "timebox_minutes": 30,
+    "updated_utc": "2026-09-12T07:19:21.938673+00:00"
+  },
+  "report": {
+    "agent_id": "commander-font-resources",
+    "allocation_id": "hosted-openai-product",
+    "assignment_acknowledgements": {
+      "FT-024": {
+        "acknowledged_utc": "2026-09-12T07:20:48Z",
+        "adaptation": "Reviewed current adapter assignment; consuming exact published font-engine f418238 unchanged, preserving distinct engine and raw-font identities and source clusters. No shaper duplication.",
+        "main_sha": "2fd302675040308c2b07d346c07389a051518979",
+        "revision": 7
+      }
+    },
+    "branch": "agent/commander-corpus/font-resources",
+    "capabilities": [
+      "rust-font-resources"
+    ],
+    "code_revision": "9335f3de0fdbb02e766390472ac45f1497fcc6c5",
+    "eta_minutes": {
+      "likely": 0,
+      "optimistic": 0,
+      "pessimistic": 0
+    },
+    "machine": "linux-primary",
+    "main_integrated_through": "4b4647e399349c46d5cd0f146f5c0997cd111ac2",
+    "next_action": "Renderer handoff sent; registry CFF and mixedgeneration/cache invalidation followup complete. Ready next assigned product task.",
+    "reviewed_peers": {},
+    "schema_version": 1,
+    "state": "ready_for_integration",
+    "summary": "Published9335f3d rooted CFF registry extension.92tests/clippy and pinned mixedSTIX/Liberation registry replay pass. Typed backend resources preserve fullfont/CFFtable/face/license identity via existing engine/CFF parser; generation invalidates license-provenance changes and heldgeometry survives externalfont edits unchanged. No peer edits/fonts vendored/visualparity claim.",
+    "tool": "Codex Astra",
+    "updated_utc": "2026-09-12T07:46:22Z",
+    "usage": {
+      "evidence": "crates/font-resources/README.md; test suite; installed font SHA pinned.",
+      "status": "Hosted allocation; no external provider calls; account remainder unknown."
+    }
+  },
+  "report_age_seconds": 77,
+  "report_path": "coordination/agents/commander-font-resources.json",
+  "review_required": true,
+  "revision": 7,
+  "schema_version": 1,
+  "stale_completion": false,
+  "state": "reported_ready",
+  "task_id": "FT-024",
+  "worker_branch": "agent/commander-corpus/font-resources",
+  "worker_report_sha": "89629b712a30f9afe82115e923c47ce05d2be1fe"
+}

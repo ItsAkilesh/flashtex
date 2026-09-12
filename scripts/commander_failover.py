@@ -11,10 +11,19 @@ import argparse
 from datetime import datetime, timezone
 import json
 import os
+import re
 from pathlib import Path
 import subprocess
 import tempfile
 import time
+
+
+def validate_pin(pin):
+    for key in ('pid', 'start_ticks'):
+        if type(pin.get(key)) is not int or pin[key] <= 0:
+            raise ValueError('invalid pinned process ' + key)
+    if not isinstance(pin.get('boot_id'), str) or not pin['boot_id']:
+        raise ValueError('missing pinned boot identity')
 
 
 def process_identity(pid, proc=Path('/proc')):
@@ -58,6 +67,18 @@ def journal_blockers(common):
     return blocked
 
 
+def looks_like_publisher(args):
+    text = ' '.join(args)
+    tokens = re.split(r'[\s;|&()]+', text)
+    # Include shell wrappers that may publish after a currently running build.
+    return ((any(Path(t.strip('"\'')).name == 'git' for t in tokens)
+             and any(t.strip('"\'') in ('push', 'commit', 'merge') for t in tokens))
+            or ('coord.py' in text and 'publish' in text)
+            or 'dispatch_loop.py' in text
+            or ('integrate.py' in text and any(t in text for t in ('promote', 'merge', 'sync')))
+            or (args and Path(args[0]).name in ('cursor-agent', 'cursor')))
+
+
 def publication_processes(proc=Path('/proc')):
     found = []
     for directory in proc.iterdir():
@@ -71,13 +92,7 @@ def publication_processes(proc=Path('/proc')):
             if not args:
                 continue
             # Retain only process identity, never command contents/secrets in reports.
-            text = ' '.join(args)
-            executable = Path(args[0]).name
-            if (('git' in executable and any(a in ('push', 'commit', 'merge') for a in args))
-                    or ('coord.py' in text and 'publish' in args)
-                    or 'dispatch_loop.py' in text
-                    or ('integrate.py' in text and any(a in ('promote', 'merge', 'sync') for a in args))
-                    or executable in ('cursor-agent', 'cursor')):
+            if looks_like_publisher(args):
                 identity = process_identity(int(directory.name), proc)
                 if identity and identity['state'] not in ('Z', 'X'):
                     found.append(identity)
@@ -91,11 +106,7 @@ def publication_processes(proc=Path('/proc')):
 def evaluate(config, authority, observed, services, journals, processes):
     reasons = []
     pin = config['process']
-    for key in ('pid', 'start_ticks'):
-        if type(pin.get(key)) is not int or pin[key] <= 0:
-            raise ValueError('invalid pinned process ' + key)
-    if not isinstance(pin.get('boot_id'), str) or not pin['boot_id']:
-        raise ValueError('missing pinned boot identity')
+    validate_pin(pin)
     if authority.get('commander_id') != config['predecessor_id'] or authority.get('authority_state') != 'active':
         reasons.append('authority_changed')
     if not terminal(pin, observed):
@@ -121,22 +132,27 @@ def quiesce_after_terminal(config, authority, observed, stop):
     Does not stop the hosting process or arbitrary jobs; remaining jobs/journals
     keep the witness blocked. A changed authority prevents this old monitor acting.
     """
+    validate_pin(config['process'])
     if (config.get('allow_dispatcher_stop_after_process_exit') is not True
             or authority.get('commander_id') != config['predecessor_id']
             or authority.get('authority_state') != 'active'
             or not terminal(config['process'], observed)):
         return False
-    for unit in config['publisher_services']:
-        if unit != 'flashtex-dispatch.service':
-            raise ValueError('unreviewed service stop target')
-        stop(unit)
+    if config['publisher_services'] != ['flashtex-dispatch.service']:
+        raise ValueError('unreviewed service stop target')
+    stop('flashtex-dispatch.service')
     return True
 
 
 def inspect(config, root):
     def git(*args):
         return subprocess.check_output(['git', *args], cwd=root, text=True, timeout=30).strip()
+    validate_pin(config['process'])
     authority = json.loads(git('show', 'origin/main:coordination/authority.json'))
+    control = json.loads(git('show', 'origin/main:coordination/control.json'))
+    if control.get('state') in ('stop_requested', 'stopped'):
+        return {'state': 'blocked', 'claim_authorized': False, 'reasons': ['explicit_user_stop']}
+
     common = Path(git('rev-parse', '--git-common-dir'))
     if not common.is_absolute():
         common = (root / common).resolve()

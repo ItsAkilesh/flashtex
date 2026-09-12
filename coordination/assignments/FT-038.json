@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "task_id": "FT-038",
+  "agent_id": "daniel-math-access",
+  "branch": "agent/daniel-math-access/math-accessibility",
+  "revision": 1,
+  "state": "assigned",
+  "objective": "Original semantic math accessibility adapter over published math-layout nodes: structured readable/MathML output with explicit unsupported nodes and source identity. Standalone additive crate only; coordinate consumer contract before integration.",
+  "owned_paths": [
+    "crates/math-accessibility"
+  ],
+  "dependencies": [],
+  "acceptance": [
+    "Meaningful tests and strict Rust lint pass with bounded malformed/Unicode inputs",
+    "Preserve exact source/revision and resource identities; no implicit approximation or parity claim",
+    "Do not edit peer compiler/native/layout files; publish typed adapter contract and exact tested SHA"
+  ],
+  "allocation_id": "daniel-claude20x-shared",
+  "timebox_minutes": 40,
+  "deadline_utc": null,
+  "input_main_sha": "53fee3012b2902ca05bd31766defa515b3044cec",
+  "updated_utc": "2026-09-12T07:35:07.367827+00:00"
+}

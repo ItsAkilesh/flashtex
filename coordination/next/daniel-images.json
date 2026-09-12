@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "agent_id": "daniel-images",
+  "task_id": "FT-036",
+  "revision": 1,
+  "branch": "agent/daniel-images/image-assets",
+  "assignment_path": "coordination/assignments/FT-036.json",
+  "updated_utc": "2026-09-12T07:35:07.367827+00:00"
+}

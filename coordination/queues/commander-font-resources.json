@@ -4,8 +4,8 @@
   "schema_version": 1,
   "steps": [
     {
-      "name": "Validate licensed-font shaped cluster/GID/resource equivalence",
-      "objective": "Validate licensed-font shaped cluster/GID/resource equivalence",
+      "name": "Bind boundary-program output through existing explicit8bit encoding/GID adapter",
+      "objective": "Bind boundary-program output through existing explicit8bit encoding/GID adapter",
       "owned_paths": [
         "crates/font-resources"
       ],
@@ -17,8 +17,8 @@
       "timebox_minutes": 30
     },
     {
-      "name": "Cache adapter results by full font/face/variation/source identity with strict bounds",
-      "objective": "Cache adapter results by full font/face/variation/source identity with strict bounds",
+      "name": "Pinned real-TFM boundary replay and malformed/cycle regression evidence",
+      "objective": "Pinned real-TFM boundary replay and malformed/cycle regression evidence",
       "owned_paths": [
         "crates/font-resources"
       ],

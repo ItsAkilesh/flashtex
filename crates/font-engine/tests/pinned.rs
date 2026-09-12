@@ -223,3 +223,77 @@ fn subset_and_to_unicode_bytes_are_reproducible_across_runs() {
     assert_eq!(a.to_unicode_cmap, b.to_unicode_cmap);
     assert_eq!(a.w_array(), b.w_array());
 }
+
+#[test]
+fn tfm_fixture_matches_the_pinned_font() {
+    use flashtex_font_engine::manifest::EncodingManifest;
+    let dir = Path::new(CRATE).join("fixtures/tfm");
+    let tfm = std::fs::read(dir.join("ec-lmr10.tfm")).unwrap();
+    let digest =
+        |b: &[u8]| flashtex_font_engine::sha256::hex(&flashtex_font_engine::sha256::digest(b));
+    assert_eq!(
+        digest(&tfm),
+        "cd13479f463b9a575d053dd7bf0884daa46bfdeffe4b7f537c193861652ac9e5"
+    );
+    let text = std::fs::read_to_string(dir.join("ec-lmr10.encoding.json")).unwrap();
+    let m = EncodingManifest::from_json(&text).unwrap();
+    assert_eq!(m.tfm_sha256, digest(&tfm));
+    assert_eq!(m.face_index, 0);
+    let manifest = pinned_latin_modern();
+    let roman_entry = &manifest.resources[0];
+    assert_eq!(roman_entry.font.font_id, "lm.roman10.regular");
+    assert_eq!(m.font_sha256, roman_entry.font.sha256);
+    assert_eq!(m.encoding.len(), 253);
+    assert_eq!(m.declared_glyphs.len(), 254);
+    assert_eq!(m.glyph_id_of_name(".notdef"), Some(0));
+    // Every encoding name is declared exactly once, with a non-zero GID.
+    for (code, name) in &m.encoding {
+        let gid = m
+            .glyph_id_of_name(name)
+            .unwrap_or_else(|| panic!("slot {code} name {name} undeclared"));
+        assert_ne!(gid, 0, "slot {code}");
+    }
+    assert_eq!(m.name_of_code(65), Some("A"));
+    assert_eq!(m.name_of_code(28), Some("fi"));
+    assert_eq!(m.name_of_code(233), Some("eacute"));
+    assert_eq!(
+        m.name_of_code(223),
+        None,
+        "Germandbls has no LM glyph; left undeclared"
+    );
+    // The licence text is the same file the pinned set hashes.
+    let lic = std::fs::read(dir.join("GUST-FONT-LICENSE.txt")).unwrap();
+    assert_eq!(digest(&lic), roman_entry.license.text_sha256);
+
+    // Re-derive the quoted GIDs through this crate's cmap and compare advances
+    // with the TFM widths (fix_word / 2^20 * 10 pt vs units / 1000 * 10 pt).
+    let Some(set) = pinned() else { return };
+    let roman = set.face("lm.roman10.regular").unwrap();
+    for (name, ch, width_fix) in [
+        ("A", 'A', 786432i64),
+        ("V", 'V', 786432),
+        ("a", 'a', 524288),
+        ("eacute", 'é', 466040),
+        ("f", 'f', 320392),
+        ("i", 'i', 291269),
+        ("fi", '\u{FB01}', 582536),
+    ] {
+        let gid = roman.glyph_id(ch).unwrap();
+        assert_eq!(Some(gid.0), m.glyph_id_of_name(name), "{name}");
+        let tfm_pt = width_fix as f64 / f64::from(1u32 << 20) * 10.0;
+        let otf_pt = roman.to_points(i64::from(roman.advance(gid).unwrap()), 10.0);
+        // TFM widths keep half-unit precision the OTF rounds away (é 444.5 vs 444).
+        assert!(
+            (tfm_pt - otf_pt).abs() <= 0.005,
+            "{name}: tfm {tfm_pt} otf {otf_pt}"
+        );
+    }
+    // The TFM's A/V kern (-116509 fix_word = -1.1111 pt) and LM's GPOS value.
+    let (adj, _) = roman.kerning(roman.glyph_id('A').unwrap(), roman.glyph_id('V').unwrap());
+    let gpos_pt = roman.to_points(i64::from(adj), 10.0);
+    let tfm_pt = -116509.0 / f64::from(1u32 << 20) * 10.0;
+    assert!(
+        (gpos_pt - tfm_pt).abs() < 0.002,
+        "AV kern: gpos {gpos_pt} tfm {tfm_pt}"
+    );
+}

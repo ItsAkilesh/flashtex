@@ -3,33 +3,33 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-027": {
-      "acknowledged_utc": "2026-09-12T06:57:08Z",
-      "adaptation": "Narrow additive replace_membership API implemented in current worktree only; paused index worktree untouched. Preserve revision watermarks and monotonic membership generation.",
-      "main_sha": "7adb02158256181b82de419c0a5f80025576c49b",
-      "revision": 6
+      "acknowledged_utc": "2026-09-12T07:23:12Z",
+      "adaptation": "Implementing provisional page sink, bounded residency and final digest gate using explicitly authorized existing project-files SHA256 dependency.",
+      "main_sha": "2fd302675040308c2b07d346c07389a051518979",
+      "revision": 7
     }
   },
   "branch": "agent/commander/preview-controller",
   "capabilities": [
     "rust"
   ],
-  "code_revision": "61d29a0222925c311d697a62940744fa9db4a534",
+  "code_revision": "9e1835dbf9a9286b38c0876b4af02959c9279d53",
   "eta_minutes": {
     "likely": 20,
     "optimistic": 10,
     "pessimistic": 35
   },
   "machine": "linux-primary",
-  "main_integrated_through": "00321006a7b16391117258420f853e303fa27dac",
-  "next_action": "Publish membership; helper operation integration tests and bounded project status followup.",
+  "main_integrated_through": "3e8861e4403f5934c5a4c0a387f2393d4870a5f5",
+  "next_action": "Integrate experimental stage; move same root slot to assigned assistant-context product work.",
   "reviewed_peers": {},
   "schema_version": 1,
-  "state": "in_progress",
-  "summary": "Dynamic rooted open/detach/reopen implemented; 31 controller tests and 66 index tests pass, both strict clippy pass. Added single blocked output write timeout regression.",
+  "state": "ready_for_integration",
+  "summary": "Experimental provisional-page stage complete. Added corruption, invalid UTF8-source sink exclusion, expired/stale completion regressions; all6 chunk tests and strict clippy pass.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T06:57:08Z",
+  "updated_utc": "2026-09-12T07:25:16Z",
   "usage": {
     "evidence": "unknown",
-    "status": "Existing hosted Astra only; no added agents or API calls."
+    "status": "Existing hosted Astra only; no inference calls or staffing changes."
   }
 }

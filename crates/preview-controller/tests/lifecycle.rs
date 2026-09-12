@@ -608,3 +608,23 @@ fn membership_change_discards_pending_preview_and_reopens_same_source_revision()
     assert!(current.generation > added.generation);
     assert_eq!(controller.document("extra.tex").unwrap().revision, 1);
 }
+
+#[test]
+fn compiler_restart_never_revalidates_older_index_snapshot() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut controller =
+        Controller::open_without_compiler("p".into(), "main.tex".into(), vec![store(dir.path())])
+            .unwrap();
+    let initial = controller.index().snapshot();
+    controller
+        .restart(command(dir.path(), ECHO), Limits::default())
+        .unwrap();
+    let restarted = controller.index().snapshot();
+    assert!(restarted.generation > initial.generation);
+    assert_eq!(restarted.documents, initial.documents);
+    assert!(controller.index().symbols(&initial).is_err());
+    controller
+        .restart(command(dir.path(), ECHO), Limits::default())
+        .unwrap();
+    assert!(controller.index().snapshot().generation > restarted.generation);
+}
