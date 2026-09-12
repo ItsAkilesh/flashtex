@@ -28,7 +28,10 @@ struct ControllerState {
     /// publishes only previews matching its current source, so submitting a
     /// newer edit while one is compiling discards that preview — under
     /// continuous typing nothing would ever paint (measured: 1.3 s gaps).
-    var inFlight: (id: String, path: String, editorRevision: Int, sentAt: Date, text: String, durableRevision: Int?)?
+    /// `admitted` is the compile the helper admitted for this edit (its reply's
+    /// `compile_request_id`/`compile_revision`, AdmissionCorrelation.swift);
+    /// nil until the reply, or for a helper without the pair (numeric fallback).
+    var inFlight: (id: String, path: String, editorRevision: Int, sentAt: Date, text: String, durableRevision: Int?, admitted: ControllerCompileAdmission?)?
     /// Newest buffer changed while an edit was in flight.
     var queued = false
     /// How the next edit is released behind the one in flight
@@ -152,7 +155,7 @@ extension ShellModel {
             let id = try controller.edit(path: activePath, expectedRevision: durable.revision,
                                          expectedSHA256: durable.sha256, text: text,
                                          sourceBindingToken: historicalToken(forEditorRevision: editorRevision))
-            controllerState.inFlight = (id, activePath, editorRevision, Date(), text, nil)
+            controllerState.inFlight = (id, activePath, editorRevision, Date(), text, nil, nil)
             controllerState.queued = false
             inFlightRevision = editorRevision
         } catch {
@@ -246,12 +249,12 @@ extension ShellModel {
             handleDisplayCandidate(candidate) // ShellModel+DisplayCandidates.swift
         case .update(let kind, let payload):
             // stale / discarded previews name the request they replaced; nothing
-            // to paint. If it was the preview our in-flight edit waits for, the
-            // helper will not send it: release the pipeline.
-            if kind == "stale" || kind == "discarded" {
-                if let inFlight = controllerState.inFlight, let want = inFlight.durableRevision,
-                   let rev = payload["compile_revision"] as? Int, rev >= want {
-                    log("controller \(kind) preview for durable r\(rev) (in flight r\(want))")
+            // to paint. If it was the compile our in-flight edit waits for, the
+            // helper will not send its preview: release the pipeline. Matched by
+            // the admitted request id (AdmissionCorrelation.swift); `superseded`
+            // rebinds the wait to the superseding request.
+            if kind == "stale" || kind == "discarded" || kind == "superseded" {
+                if controllerAdmissionReleases(kind: kind, payload: payload) {
                     controllerReleaseInFlight()
                 }
             } else if outputBoundHandleControllerUpdate(kind: kind, payload: payload) {
@@ -262,11 +265,12 @@ extension ShellModel {
                 // in-flight edit that is already durable would otherwise wait
                 // forever and every later keystroke would queue behind it. An
                 // edit not yet durable is released by its own reply's
-                // `preview_error` (applyDurableDocument).
+                // `preview_error` (applyDurableDocument). The runtime reports
+                // every admitted compile separately, so the admitted id is matched.
                 let detail = (payload["reason"] as? String).map { ": \($0)" } ?? ""
                 log("controller \(kind) compile \(payload["request_id"] as? String ?? "-")\(detail)")
                 controllerStatus = "preview \(kind)\(detail)"
-                if let inFlight = controllerState.inFlight, inFlight.durableRevision != nil {
+                if controllerAdmissionReleases(kind: kind, payload: payload) {
                     controllerReleaseInFlight()
                 }
             } else {
@@ -355,6 +359,7 @@ extension ShellModel {
                 outputBoundHandlePreviewError(e) // restarts the compiler once the document shrank after an overflow
             } else {
                 controllerState.inFlight?.durableRevision = revision
+                controllerState.inFlight?.admitted = ControllerCompileAdmission.from(editResult: payload) // nil for an older helper or a history result
                 if let ms = payload["save_and_submit_ms"] as? Double { controllerStatus = String(format: "durable r%d in %.1f ms", revision, ms) }
                 switch controllerState.releasePolicy {
                 case .hybrid:
@@ -408,7 +413,7 @@ extension ShellModel {
             updateActiveText(text) // bumps editorRevision; controllerSubmitEdit sees the text is already durable
         }
         if path == activePath, text.sameBytes(as: activeText), controllerState.inFlight == nil {
-            controllerState.inFlight = (requestID, path, editorRevision, Date(), text, nil)
+            controllerState.inFlight = (requestID, path, editorRevision, Date(), text, nil, nil)
             controllerState.queued = false
             inFlightRevision = editorRevision
         }
@@ -462,10 +467,11 @@ extension ShellModel {
         if let rev = versionForActive, let sent = controllerState.sentAtByDurable[activePath]?[rev] {
             controllerState.lastEditToPreviewMs = Date().timeIntervalSince(sent) * 1000 // the hybrid bound's input
         }
-        // The in-flight edit names its own path: after a document switch the
-        // active path's version says nothing about it.
-        if let inFlight = controllerState.inFlight, let want = inFlight.durableRevision,
-           let got = update.sourceVersions[inFlight.path], got >= want {
+        // The in-flight edit waits for its admitted compile's outcome, matched by
+        // request id (AdmissionCorrelation.swift; the numeric fallback names the
+        // in-flight edit's own path: after a document switch the active path's
+        // version says nothing about it).
+        if controllerAdmissionReleases(preview: update) {
             // Held briefly for this request's display-candidate sibling when that route is
             // negotiated (ShellModel+DisplayCandidates.swift); otherwise released now.
             displayCandidatesAfterSibling(of: update.requestID, acceptedLayout: update.result.payload.layoutCapabilities ?? [], holdsRelease: true) { [weak self] in

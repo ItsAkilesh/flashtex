@@ -84,7 +84,7 @@ final class OutputBoundsTests: XCTestCase {
         model.documents = [.init(path: "main.tex", text: Self.prose(bytes: 560 * 1024))]
         model.activePath = "main.tex"
         model.outputBoundNoteReady(compilerMaxFrameBytes: 15_728_640, helperMaxOutputBytes: 16_777_216)
-        model.controllerState.inFlight = ("pc-9", "main.tex", 4, Date(), model.documents[0].text, 2)
+        model.controllerState.inFlight = ("pc-9", "main.tex", 4, Date(), model.documents[0].text, 2, nil)
         model.inFlightRevision = 4
         XCTAssertFalse(model.outputBoundHandleControllerUpdate(kind: "stale", payload: ["compile_revision": 2]))
         XCTAssertFalse(model.outputBoundHandleControllerUpdate(kind: "failed", payload: ["reason": "compiler input closed"]), "other failures are not size overflows")
