@@ -9,16 +9,16 @@
   "branch": "agent/commander-preview-performance/preview-performance",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "b22331f7963fae46c6efcb8fa5fed16a2160ba38",
-  "objective": "Verify sustained50KB grouped typing with twenty edits at30ms on the exact release helper producer pair",
+  "input_main_sha": "ff5e0cd7ddad4e8ca82977fb0bfee35309a48f58",
+  "objective": "Trace completed intermediate compiler generations to stale notifications in the existing sustained typing capture",
   "owned_paths": [
     "crates/preview-controller",
     "crates/edit-ledger"
   ],
-  "revision": 21,
+  "revision": 22,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-048",
   "timebox_minutes": 40,
-  "updated_utc": "2026-09-12T13:14:19.489283+00:00"
+  "updated_utc": "2026-09-12T13:24:35.346350+00:00"
 }

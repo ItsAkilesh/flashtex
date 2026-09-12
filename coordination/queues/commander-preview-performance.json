@@ -4,8 +4,8 @@
   "schema_version": 1,
   "steps": [
     {
-      "name": "Verify sustained50KB grouped typing with twenty edits at30ms on the exact release helper producer pair",
-      "objective": "Verify sustained50KB grouped typing with twenty edits at30ms on the exact release helper producer pair",
+      "name": "Trace completed intermediate compiler generations to stale notifications in the existing sustained typing capture",
+      "objective": "Trace completed intermediate compiler generations to stale notifications in the existing sustained typing capture",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"
@@ -19,8 +19,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Count durable acknowledgements current previews superseded work and post-last-edit completion with exact final source preview and reopen",
-      "objective": "Count durable acknowledgements current previews superseded work and post-last-edit completion with exact final source preview and reopen",
+      "name": "Measure one explicit completed-snapshots opt-in burst with exact origin tokens and separate historical and current counts",
+      "objective": "Measure one explicit completed-snapshots opt-in burst with exact origin tokens and separate historical and current counts",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"
@@ -34,8 +34,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Verify permanent receipt retry and publish one bounded sustained-typing observation without native or every-keystroke claims",
-      "objective": "Verify permanent receipt retry and publish one bounded sustained-typing observation without native or every-keystroke claims",
+      "name": "Verify source authority final clean preview durable reopen and receipt retry while preserving default OFF and report limitations",
+      "objective": "Verify source authority final clean preview durable reopen and receipt retry while preserving default OFF and report limitations",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"
