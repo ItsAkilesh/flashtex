@@ -3,8 +3,8 @@
   "assignment_path": "coordination/assignments/FT-023.json",
   "branch": "agent/commander-render-core/rendering-core",
   "previous_report_sha": "bba26e82de5a55dc78a45870d0d73bec6ffadea8",
-  "revision": 24,
+  "revision": 25,
   "schema_version": 1,
   "task_id": "FT-023",
-  "updated_utc": "2026-09-12T14:14:42Z"
+  "updated_utc": "2026-09-12T14:23:56.570752+00:00"
 }

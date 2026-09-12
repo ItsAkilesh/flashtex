@@ -8,15 +8,15 @@
   "branch": "agent/commander-render-core/rendering-core",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "228c5fa11b892bf74e5ed5aad86a2013e930e988",
-  "objective": "Specify complete page resource source diagnostic and hit authority validation with bounded retained state and wrong-base refusal",
+  "input_main_sha": "02a9858dd15aebcb62879a2577467e207a203348",
+  "objective": "Review Commander full-snapshot consolidation draft against current strict renderer pairing and helper source authority",
   "owned_paths": [
     "crates/rendering-core"
   ],
-  "revision": 24,
+  "revision": 25,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-023",
   "timebox_minutes": 40,
-  "updated_utc": "2026-09-12T14:14:42Z"
+  "updated_utc": "2026-09-12T14:23:56.570752+00:00"
 }

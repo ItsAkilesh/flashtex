@@ -4,8 +4,8 @@
   "schema_version": 1,
   "steps": [
     {
-      "name": "Review helper-side opt-in page delta proposal capability base source epoch identity and full resynchronization requirements",
-      "objective": "Review helper-side opt-in page delta proposal capability base source epoch identity and full resynchronization requirements",
+      "name": "Verify explicit current compile-generation predicate regression and review consolidated full-snapshot contract",
+      "objective": "Verify explicit current compile-generation predicate regression and review consolidated full-snapshot contract",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"
@@ -19,8 +19,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Specify bounded retained state output priority resource closure and refusal rules without wire activation",
-      "objective": "Specify bounded retained state output priority resource closure and refusal rules without wire activation",
+      "name": "After published runtime9aa acceptance replay existing actual helper three-state full snapshots against unchanged new producer",
+      "objective": "After published runtime9aa acceptance replay existing actual helper three-state full snapshots against unchanged new producer",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"
@@ -34,8 +34,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Publish reviewable contract handoff coordinated with existing native producer and renderer owners; defer further trace completion work",
-      "objective": "Publish reviewable contract handoff coordinated with existing native producer and renderer owners; defer further trace completion work",
+      "name": "Verify exact direct result source authority restart and durable reopen without new wire modes or timing comparisons",
+      "objective": "Verify exact direct result source authority restart and durable reopen without new wire modes or timing comparisons",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"
