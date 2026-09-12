@@ -4,8 +4,8 @@
   "schema_version": 1,
   "steps": [
     {
-      "name": "Consume exact new producer valid10pt and12pt outputs through existing strict renderer and searchable exporter",
-      "objective": "Consume exact new producer valid10pt and12pt outputs through existing strict renderer and searchable exporter",
+      "name": "Verify actual missing and corrupt metric consumer refusal with negotiated sibling versus explicit v2 file distinction",
+      "objective": "Verify actual missing and corrupt metric consumer refusal with negotiated sibling versus explicit v2 file distinction",
       "owned_paths": [
         "crates/rendering-core"
       ],
@@ -17,8 +17,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Compare matching source font and semantic identities with established fixtures while retaining geometry differences",
-      "objective": "Compare matching source font and semantic identities with established fixtures while retaining geometry differences",
+      "name": "Review published Mac packaging7be5396d exact sandbox acceptance artifacts resource tiers and environment precedence",
+      "objective": "Review published Mac packaging7be5396d exact sandbox acceptance artifacts resource tiers and environment precedence",
       "owned_paths": [
         "crates/rendering-core"
       ],
@@ -30,8 +30,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Publish bounded compatibility evidence without signed-app native or broad parity claims",
-      "objective": "Publish bounded compatibility evidence without signed-app native or broad parity claims",
+      "name": "Publish actionable owner review preserving native adoption scope and explicit override limitations",
+      "objective": "Publish actionable owner review preserving native adoption scope and explicit override limitations",
       "owned_paths": [
         "crates/rendering-core"
       ],
