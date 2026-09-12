@@ -162,6 +162,20 @@ impl TexMathMetrics {
         &self.otf
     }
 
+    /// The TFM box `(height, depth)` in pt of a placed extension-family
+    /// (cmex) glyph, `None` for every other font. cmex outlines hang from
+    /// the origin (`\big(`: 0.04 em above, 1.16 em below; `\sum`: nothing
+    /// above) and their TFM box is that ink, while the Latin Modern Math
+    /// variants drawn for them sit on the axis relative to their own
+    /// origin, so the painter re-centres the drawn ink on this box.
+    pub fn extension_box(&self, font: MathFontId, code: u8, size: f64) -> Option<(f64, f64)> {
+        if !self.cm.font_name(font).starts_with("cmex") {
+            return None;
+        }
+        let c = cm_tfm::CMEX10.char(code)?;
+        Some((mtfm::scale(c.height, size), mtfm::scale(c.depth, size)))
+    }
+
     /// Glyphs the layout placed that have no OpenType counterpart
     /// (`(tfm font, code, char)`), drained for diagnostics.
     pub fn take_unmapped(&self) -> Vec<(String, u8, char)> {
@@ -254,7 +268,7 @@ impl TexMathMetrics {
                     let mut found = None;
                     while let Some(c) = cur {
                         if c.code == code {
-                            found = Some(k);
+                            found = Some((k, c));
                             break;
                         }
                         cur = font.next_larger(c);
@@ -267,10 +281,21 @@ impl TexMathMetrics {
                         // The text-size glyph of a cmex-based symbol (`\sum`)
                         // is the base glyph; delimiters/radicals start their
                         // chain one step above the cmr/cmsy base glyph.
-                        Some(0) if cm::symbol_slot(ch).is_some_and(|(f, _)| f == Family::Extension) => Some(base_gid),
-                        Some(k) => {
-                            let idx = if cm::symbol_slot(ch).is_some_and(|(f, _)| f == Family::Extension) { k } else { k + 1 };
-                            self.otf.variant_gid(base_gid, idx)
+                        Some((0, _)) if cm::symbol_slot(ch).is_some_and(|(f, _)| f == Family::Extension) => Some(base_gid),
+                        // The variant whose ink box is nearest the TFM box of
+                        // the placed cmex glyph (both at the cmex design size:
+                        // only the ratio matters). Latin Modern Math lists
+                        // more delimiter sizes than cmex's `\big`…`\Bigg`
+                        // chain, so the chain index alone selects a glyph
+                        // TeX would not (`\Big(` = cmex 0x10, 18 pt, is the
+                        // 4th larger variant, not the 2nd).
+                        Some((k, c)) => {
+                            let at = font.design_size;
+                            let wanted = mtfm::scale(c.height, at) + mtfm::scale(c.depth, at);
+                            self.otf.variant_nearest(ch, at, wanted).or_else(|| {
+                                let idx = if cm::symbol_slot(ch).is_some_and(|(f, _)| f == Family::Extension) { k } else { k + 1 };
+                                self.otf.variant_gid(base_gid, idx)
+                            })
                         }
                         None => None,
                     }

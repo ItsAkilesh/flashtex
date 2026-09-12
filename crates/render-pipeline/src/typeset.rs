@@ -109,6 +109,18 @@ impl MathRec {
         }
         self.metrics.otf_glyph(g)
     }
+
+    /// The TFM box a placed cmex glyph was laid out with; see
+    /// [`TexMathMetrics::extension_box`].
+    pub fn extension_box(&self, g: &ml::PositionedGlyph) -> Option<(f64, f64)> {
+        if g.font_id.0 >= crate::mathtext::RUN_FONT_BASE {
+            return None;
+        }
+        match &self.metrics {
+            MathProvider::Tex(t) => t.extension_box(g.font_id, g.gid as u8, g.size),
+            MathProvider::Otf(_) => None,
+        }
+    }
 }
 
 /// Which metrics lay math out: TeX's TFMs (pdfLaTeX's geometry) when the
@@ -2030,6 +2042,14 @@ fn math_items(
         } else {
             (face.pt(i64::from(b.y_max), g.size), face.pt(-i64::from(b.y_min), g.size))
         };
+        // A cmex glyph was laid out as its TFM box, which is the Type 1
+        // outline hanging from the origin; the OpenType variant painted for
+        // it is centred on the axis relative to its own origin, so its
+        // baseline moves to put the drawn ink's centre on the TFM box's.
+        let baseline_y = match m.extension_box(g) {
+            Some((th, td)) if !b.empty => g.baseline_y + ((td - th) - (d - h)) / 2.0,
+            _ => g.baseline_y,
+        };
         let start = r.text.len();
         match m.run_glyph(g) {
             // A `\text` cluster keeps its whole source text (`ffi`).
@@ -2037,12 +2057,12 @@ fn math_items(
             None => r.text.push(g.ch),
         }
         let ci = r.clusters.len() as u32;
-        let top = Tick::from_tex_pt(g.baseline_y - h);
+        let top = Tick::from_tex_pt(baseline_y - h);
         let hh = Tick::from_tex_pt((h + d).max(0.01));
         r.glyphs.push(Glyph {
             gid,
             origin_x: Tick::from_tex_pt(g.x),
-            baseline_y: Tick::from_tex_pt(g.baseline_y),
+            baseline_y: Tick::from_tex_pt(baseline_y),
             advance_x: Tick::from_tex_pt(adv),
             advance_y: Tick(0),
             cluster: ci,
