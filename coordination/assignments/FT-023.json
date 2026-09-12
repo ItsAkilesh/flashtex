@@ -8,15 +8,15 @@
   "branch": "agent/commander-render-core/rendering-core",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "0aac2b7f97578c7c04cd24599e4b75bea9a140c2",
-  "objective": "Consume unchanged published PDF subsetter and verify existing actual fixtures preserve original glyphs, extraction and raster evidence with measured output sizes",
+  "input_main_sha": "052363664cc5e78ea3a61cfe74cc450d0d98abec",
+  "objective": "Review native helper display source and font freshness interoperability against actual rendering candidate fixtures; publish concrete gaps without peer edits or duplicate validators",
   "owned_paths": [
     "crates/rendering-core"
   ],
-  "revision": 10,
+  "revision": 11,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-023",
   "timebox_minutes": 40,
-  "updated_utc": "2026-09-12T11:18:51.563812+00:00"
+  "updated_utc": "2026-09-12T11:29:28.429953+00:00"
 }
