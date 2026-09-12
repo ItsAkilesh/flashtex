@@ -360,6 +360,11 @@ pub struct ProposedEdit {
     pub location: Location,
     pub removed_text: String,
     pub replacement: String,
+    /// True when `location` is not where the provider put it: the provider's
+    /// offsets did not hold `removed_text`, which occurred exactly once inside
+    /// the supplied snippets, so the edit was moved there (`validate_response`).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub relocated: bool,
 }
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -367,10 +372,75 @@ pub struct ExplanationProposal {
     pub context_id: String,
     pub explanation: String,
     pub edits: Vec<ProposedEdit>,
+    /// One line per provider edit dropped during validation because it could
+    /// not be located (its `removed_text` is absent from, or not unique
+    /// within, the supplied snippets). The explanation and the remaining edits
+    /// still reach the caller; a dropped edit is never applied or guessed.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub notes: Vec<String>,
 }
 impl Context {
+    /// True when `loc` lies inside one of the supplied snippets (diagnostic
+    /// excerpts and related heads): the only bytes a provider ever saw.
+    fn supplied(&self, loc: &Location) -> bool {
+        self.payload
+            .diagnostics
+            .iter()
+            .filter_map(|d| d.snippet.as_ref())
+            .chain(self.payload.related.iter())
+            .any(|s| {
+                s.location.path == loc.path
+                    && loc.start_byte >= s.location.start_byte
+                    && loc.end_byte <= s.location.end_byte
+            })
+    }
+    /// True when `loc` lies inside an explicit destination, or none were set.
+    fn allowed(&self, loc: &Location) -> bool {
+        match &self.payload.allowed_edits {
+            Some(allowed) => allowed.iter().any(|range| {
+                range.path == loc.path
+                    && loc.start_byte >= range.start_byte
+                    && loc.end_byte <= range.end_byte
+            }),
+            None => true,
+        }
+    }
+    /// The unique occurrence of `removed_text` in `doc` that lies inside the
+    /// supplied snippets and the explicit destinations, or why there is none
+    /// (absent, or more than one candidate). Empty removed text (a pure
+    /// insertion) cannot be located.
+    fn relocate(&self, doc: &Document, removed_text: &str) -> Result<Location, &'static str> {
+        if removed_text.is_empty() {
+            return Err("an insertion has no removed text to locate");
+        }
+        let mut found: Option<Location> = None;
+        for (offset, _) in doc.text.match_indices(removed_text) {
+            let candidate = Location {
+                path: doc.path.clone(),
+                start_byte: offset,
+                end_byte: offset + removed_text.len(),
+            };
+            if !self.supplied(&candidate) || !self.allowed(&candidate) {
+                continue;
+            }
+            if found.is_some() {
+                return Err("the removed text occurs more than once in the supplied context");
+            }
+            found = Some(candidate);
+        }
+        found.ok_or("the removed text does not occur in the supplied context")
+    }
     /// Validates data only. The caller must separately show and explicitly approve
     /// any proposed edit through the durable editor's existing review boundary.
+    ///
+    /// An edit whose offsets do not hold its `removed_text` (or are not a
+    /// valid range at all) is relocated to the unique occurrence of that text
+    /// inside the supplied snippets and explicit destinations and marked
+    /// `relocated`; without such a unique occurrence the edit is dropped and a
+    /// line is added to `notes`, so the explanation and the remaining edits
+    /// still reach the caller. An edit whose offsets do hold its text is
+    /// checked exactly as before: outside the destination or the supplied
+    /// context, or overlapping another edit, refuses the whole proposal.
     pub fn validate_response(
         &self,
         bytes: &[u8],
@@ -386,52 +456,77 @@ impl Context {
             || proposal.explanation.trim().is_empty()
             || proposal.explanation.len() > 16384
             || proposal.edits.len() > 8
+            || proposal.notes.len() > 8
+            || proposal.notes.iter().any(|n| n.len() > 512)
         {
             return Err("invalid explanation identity or bounds".into());
         }
         let docs: BTreeMap<_, _> = current.iter().map(|d| (d.path.as_str(), d)).collect();
-        for (index, edit) in proposal.edits.iter().enumerate() {
+        let mut kept: Vec<ProposedEdit> = Vec::new();
+        let mut notes = proposal.notes;
+        for (index, edit) in proposal.edits.into_iter().enumerate() {
             if edit.replacement.len() > 8192 {
                 return Err("replacement exceeds8KiB".into());
             }
+            let doc = *docs
+                .get(edit.location.path.as_str())
+                .ok_or("unknown diagnostic source")?;
             let value = serde_json::to_value(&edit.location).map_err(|e| e.to_string())?;
-            let loc = location(&value, &docs)?;
-            if let Some(allowed) = &self.payload.allowed_edits {
-                if !allowed.iter().any(|range| {
-                    range.path == loc.path
-                        && loc.start_byte >= range.start_byte
-                        && loc.end_byte <= range.end_byte
-                }) {
-                    return Err("proposed edit is outside explicit destination".into());
+            let (loc, relocated) = match location(&value, &docs) {
+                Ok(loc) if doc.text[loc.start_byte..loc.end_byte] == edit.removed_text => {
+                    (loc, edit.relocated)
                 }
+                _ => match self.relocate(doc, &edit.removed_text) {
+                    Ok(loc) => (loc, true),
+                    Err(why) => {
+                        notes.push(format!(
+                            "edit {} dropped: removed source differs at {} bytes {}..{}, and {}",
+                            index + 1,
+                            edit.location.path,
+                            edit.location.start_byte,
+                            edit.location.end_byte,
+                            why
+                        ));
+                        continue;
+                    }
+                },
+            };
+            if !self.allowed(&loc) {
+                return Err("proposed edit is outside explicit destination".into());
             }
-            let doc = docs[loc.path.as_str()];
-            if doc.text[loc.start_byte..loc.end_byte] != edit.removed_text {
-                return Err("removed source differs".into());
-            }
-            let supplied = self
-                .payload
-                .diagnostics
-                .iter()
-                .filter_map(|d| d.snippet.as_ref())
-                .chain(self.payload.related.iter())
-                .any(|s| {
-                    s.location.path == loc.path
-                        && loc.start_byte >= s.location.start_byte
-                        && loc.end_byte <= s.location.end_byte
-                });
-            if !supplied {
+            if !self.supplied(&loc) {
                 return Err("proposed edit is outside supplied context".into());
             }
-            if proposal.edits[..index].iter().any(|other| {
+            if kept.iter().any(|other| {
                 other.location.path == loc.path
                     && other.location.start_byte <= loc.end_byte
                     && loc.start_byte <= other.location.end_byte
             }) {
+                if relocated {
+                    notes.push(format!(
+                        "edit {} dropped: its relocated range {}..{} overlaps another edit",
+                        index + 1,
+                        loc.start_byte,
+                        loc.end_byte
+                    ));
+                    continue;
+                }
                 return Err("proposed edits overlap or share a boundary".into());
             }
+            kept.push(ProposedEdit {
+                location: loc,
+                removed_text: edit.removed_text,
+                replacement: edit.replacement,
+                relocated,
+            });
         }
-        Ok(proposal)
+        notes.truncate(8);
+        Ok(ExplanationProposal {
+            context_id: proposal.context_id,
+            explanation: proposal.explanation,
+            edits: kept,
+            notes,
+        })
     }
 }
 

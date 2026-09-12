@@ -58,10 +58,110 @@ fn response_is_only_a_source_bound_proposal() {
     assert!(context
         .validate_response(&serde_json::to_vec(&stale).unwrap(), &docs)
         .is_err());
+    // Offsets that do not hold the removed text (here: not even a char
+    // boundary) relocate the edit to the unique occurrence of that text inside
+    // the supplied snippet; the proposal says so (`relocated`), never guesses.
     let mut malformed = response;
     malformed["edits"][0]["location"]["start_byte"] = json!(1);
-    assert!(context
+    let relocated = context
         .validate_response(&serde_json::to_vec(&malformed).unwrap(), &docs)
+        .unwrap();
+    assert_eq!(relocated.edits.len(), 1);
+    assert!(relocated.edits[0].relocated);
+    assert_eq!(relocated.edits[0].location.start_byte, 3);
+    assert_eq!(relocated.edits[0].location.end_byte, 7);
+    assert!(relocated.notes.is_empty());
+    assert!(!validated.edits[0].relocated);
+}
+/// The fast non-reasoning model returns wrong byte offsets (live evidence
+/// docs/evidence/grok-live-20260912T210600Z: refused 2/2 with "removed source
+/// differs"). Unique removed text is relocated; absent or ambiguous removed
+/// text drops that edit with a note while the explanation still validates.
+#[test]
+fn misplaced_edits_are_relocated_or_dropped_with_a_note_never_refused() {
+    let text = "\\section{A}\n\\bad x\n\\bad y\nunique token\n".to_owned();
+    let docs = vec![Document::new("p".into(), "main.tex".into(), 1, text).unwrap()];
+    let binding = CompileBinding::capture("r", "p", 7, &docs).unwrap();
+    let context =
+        Context::build(binding, &docs, &result(), "Fix it", &["main.tex".into()]).unwrap();
+    let id = context.payload().context_id.clone();
+    // 1: wrong offsets, unique text -> relocated. 2: wrong offsets, text at two
+    // places -> dropped. 3: text absent -> dropped. 4: exact -> unchanged.
+    let response = json!({"context_id":id,"explanation":"Rename the token and fix a command.","edits":[
+        {"location":{"path":"main.tex","start_byte":0,"end_byte":12},"removed_text":"unique token","replacement":"renamed token"},
+        {"location":{"path":"main.tex","start_byte":0,"end_byte":4},"removed_text":"\\bad","replacement":"\\good"},
+        {"location":{"path":"main.tex","start_byte":0,"end_byte":6},"removed_text":"absent","replacement":"present"},
+        {"location":{"path":"main.tex","start_byte":1,"end_byte":8},"removed_text":"section","replacement":"chapter"}
+    ]});
+    let validated = context
+        .validate_response(&serde_json::to_vec(&response).unwrap(), &docs)
+        .unwrap();
+    assert_eq!(validated.explanation, "Rename the token and fix a command.");
+    assert_eq!(validated.edits.len(), 2, "{validated:?}");
+    assert!(validated.edits[0].relocated);
+    assert_eq!(validated.edits[0].location.start_byte, 26);
+    assert_eq!(validated.edits[0].location.end_byte, 38);
+    assert_eq!(
+        &docs[0].text[validated.edits[0].location.start_byte..validated.edits[0].location.end_byte],
+        "unique token"
+    );
+    assert!(!validated.edits[1].relocated);
+    assert_eq!(validated.edits[1].location.start_byte, 1);
+    assert_eq!(validated.notes.len(), 2, "{:?}", validated.notes);
+    assert!(validated.notes[0].starts_with("edit 2 dropped: removed source differs at main.tex bytes 0..4, and the removed text occurs more than once"), "{}", validated.notes[0]);
+    assert!(validated.notes[1].starts_with("edit 3 dropped: removed source differs at main.tex bytes 0..6, and the removed text does not occur"), "{}", validated.notes[1]);
+    // The serialized proposal carries the flag and the notes, and re-validates
+    // as-is (the host's review step feeds the validated proposal back in).
+    let bytes = serde_json::to_vec(&validated).unwrap();
+    let again = context.validate_response(&bytes, &docs).unwrap();
+    assert_eq!(again.edits.len(), 2);
+    assert!(again.edits[0].relocated, "the flag survives the round trip");
+    assert_eq!(again.notes, validated.notes);
+    let value: Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(value["edits"][0]["relocated"], true);
+    assert!(
+        value["edits"][1].get("relocated").is_none(),
+        "false is omitted"
+    );
+    // Relocation never leaves the supplied context or the explicit destination:
+    // with a destination that excludes the only occurrence, the edit is dropped.
+    let restricted = context
+        .restrict_edits(
+            vec![flashtex_assistant_context::Location {
+                path: "main.tex".into(),
+                start_byte: 0,
+                end_byte: 11,
+            }],
+            &docs,
+        )
+        .unwrap();
+    let outside = json!({"context_id":restricted.payload().context_id,"explanation":"Rename.","edits":[
+        {"location":{"path":"main.tex","start_byte":0,"end_byte":12},"removed_text":"unique token","replacement":"renamed"}
+    ]});
+    let dropped = restricted
+        .validate_response(&serde_json::to_vec(&outside).unwrap(), &docs)
+        .unwrap();
+    assert!(dropped.edits.is_empty());
+    assert_eq!(dropped.notes.len(), 1);
+    // A pure insertion at wrong offsets has nothing to locate: dropped, noted.
+    let insertion = json!({"context_id":restricted.payload().context_id,"explanation":"Insert.","edits":[
+        {"location":{"path":"main.tex","start_byte":40,"end_byte":41},"removed_text":"","replacement":"x"}
+    ]});
+    let noted = restricted
+        .validate_response(&serde_json::to_vec(&insertion).unwrap(), &docs)
+        .unwrap();
+    assert!(noted.edits.is_empty());
+    assert!(
+        noted.notes[0].contains("an insertion has no removed text to locate"),
+        "{}",
+        noted.notes[0]
+    );
+    // Exact edits keep the strict refusals: outside the destination is an error.
+    let exact_outside = json!({"context_id":restricted.payload().context_id,"explanation":"Rename.","edits":[
+        {"location":{"path":"main.tex","start_byte":26,"end_byte":38},"removed_text":"unique token","replacement":"renamed"}
+    ]});
+    assert!(restricted
+        .validate_response(&serde_json::to_vec(&exact_outside).unwrap(), &docs)
         .is_err());
 }
 #[test]

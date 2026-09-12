@@ -69,6 +69,17 @@ native UI thread. Fields: `operation` (`prepare` or `validate`), `binding`, `sou
 and `current_sources`. It reconstructs/checks the same bound context, returns a
 `validated_proposal` with `applied:false`, and never writes source. `prepare`
 returns `prepared_context`. Errors return `type:error` and nonzero exit status.
+
+Validation locates each proposed edit by its `removed_text`: when the provider's
+byte offsets do not hold that text (or are not a valid range), the edit is moved
+to the unique occurrence of the text inside the supplied snippets and explicit
+destinations and carries `relocated:true`; when there is no unique occurrence
+(absent, ambiguous, or a pure insertion) that edit is dropped and a line is added
+to the proposal's `notes` (at most 8, 512 bytes each) instead of refusing the
+whole proposal, so the explanation still reaches the host. Edits whose offsets
+do hold their text keep the strict refusals (outside the destination or the
+supplied context, overlapping). Live evidence for the need: the non-reasoning
+model returned wrong offsets 2/2 (`docs/evidence/grok-live-20260912T210600Z`).
 Provider transport and actual user approval remain separate native operations.
 
 Source binding rejects more than32MiB of aggregate source before hashing, more
