@@ -3,10 +3,10 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-023": {
-      "acknowledged_utc": "2026-09-12T07:21:50Z",
-      "adaptation": "Read exact revision3 geometry-diff assignment. Implemented bounded exact comparison of validated mixed/display inputs with stable IDs, raw hashes, mismatch categories and undecided equality on truncation/unsupported; no production/native activation.",
-      "main_sha": "2fd302675040308c2b07d346c07389a051518979",
-      "revision": 3
+      "acknowledged_utc": "2026-09-12T09:16:30Z",
+      "adaptation": "Read exact origin/main FT023r6. Consumed mac-pdf d25a647 unchanged; own pdf_export adapter uses ExactDocument/Verbatim path content, no PDF-owner edits or duplicate container. Actual STIX output/readback/Poppler smoke pass. Outline identities retained in sidecar; no embedded text/native or oracle parity claim.",
+      "main_sha": "da9dc355a6fab08ac53812c8a04042781d9d9dc4",
+      "revision": 6
     }
   },
   "branch": "agent/commander-render-core/rendering-core",
@@ -14,23 +14,23 @@
     "rust",
     "rendering"
   ],
-  "code_revision": "4d1248237fc9883c5edc61dc2cf98a5c90d62eb8",
+  "code_revision": "d5e26ae2a41e6e19b680dedcce34af41a039bfd4",
   "eta_minutes": {
     "likely": 15,
     "optimistic": 5,
     "pessimistic": 25
   },
   "machine": "linux-primary",
-  "main_integrated_through": "cb19024b34762f82c1ed609ff740bb880040139a",
-  "next_action": "Next rendering-core product assignment after published replay checkpoint.",
+  "main_integrated_through": "528ef7e4a1afb9a1872a1c8e63d3df59e066f089",
+  "next_action": "Publish tested checkpoint and issue25 owner handoff, then next Commander product assignment. Worktree /home/natkarri/flashtex-rendering-core branch agent/commander-render-core/rendering-core. Own crate/report changes only plus unchanged peer merge ancestry; git diff d25a647 -- crates/pdf empty. No providers/descendants/native/schema activation. Outline export has no embedded fonts/searchable text; nonterminating rational/alpha refused. Context telemetry/native compaction unavailable; no pending test process.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "Exact shaped-run replay and geometry-diff integration complete; malformed and stale fixtures reject.",
+  "summary": "FT023r6 exact PDF export complete against unchanged d25a647. Real PDF+bounded original GID/fullfont/source/operator sidecar, xref/page/content readback; corrected empty-space fill while retaining span. 140 ordinary tests, strict all-target clippy, both pinned registry tests pass. STIX4219bytePDF SHAd9df3bf55c2b2dcb126717b9a479965b7a7fd71f39733ff1c52a10d4cd019714;245operators. Poppler parse/raster smoke passed.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T07:48:21Z",
+  "updated_utc": "2026-09-12T09:16:30Z",
   "usage": {
-    "evidence": "123 Rust tests, strict all-target clippy and actual geometry-diff CLI pass. Pinned STIX replay 27951 bytes SHA 19d16580b3342bc1af03c44a4bc9046c529b3e74c29fb1fa0af9f5d46b320234; 11 verified warm hits and 100 identical replays. Debug sample cold placement 757121ns, warm 324294ns, 100 placement+serialization iterations 152082236ns; not paint latency. Font/source evidence boundaries remain explicit.",
-    "status": "Hosted OpenAI allocation only; no auxiliary paid calls or new agents."
+    "evidence": "Four PDF tests include checked-in synthetic/STIX real outputs, exact operators/provenance, budgets/nonterminating refusal and empty glyph regression. Pinned full font/license probe verified source beforeexport; contentSHA e67b45a267111a19dce157d3492b62ddc54ef357e1916b94e351ce2b8abebac3. Owner issue25 comment5644924145; no visual oracle parity claim.",
+    "status": "Hosted OpenAI only; no providers or descendants."
   }
 }

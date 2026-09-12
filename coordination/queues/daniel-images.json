@@ -5,8 +5,8 @@
   "next_index": 0,
   "steps": [
     {
-      "name": "Integrate an explicit published consumer adapter without peer ownership edits",
-      "objective": "Rooted bounded document PNG/JPEG asset loader with immutable SHA identity, dimensions and explicit includegraphics sizing/crop metadata; reuse existing decoders. Integrate an explicit published consumer adapter without peer ownership edits",
+      "name": "Rooted image asset safety: adversarial bounds and exact identity regressions",
+      "objective": "Rooted image asset safety: adversarial bounds and exact identity regressions",
       "owned_paths": [
         "crates/image-assets"
       ],
@@ -16,11 +16,11 @@
         "Do not edit peer compiler/native/layout files; publish typed adapter contract and exact tested SHA"
       ],
       "allocation_id": "daniel-claude20x-shared",
-      "timebox_minutes": 40
+      "timebox_minutes": 30
     },
     {
-      "name": "Expand measured fixtures and adversarial bounds with reproducible compatibility evidence",
-      "objective": "Rooted bounded document PNG/JPEG asset loader with immutable SHA identity, dimensions and explicit includegraphics sizing/crop metadata; reuse existing decoders. Expand measured fixtures and adversarial bounds with reproducible compatibility evidence",
+      "name": "Rooted image asset safety: existing consumer integration fixture and measured unsupported gaps",
+      "objective": "Rooted image asset safety: existing consumer integration fixture and measured unsupported gaps",
       "owned_paths": [
         "crates/image-assets"
       ],
@@ -30,7 +30,7 @@
         "Do not edit peer compiler/native/layout files; publish typed adapter contract and exact tested SHA"
       ],
       "allocation_id": "daniel-claude20x-shared",
-      "timebox_minutes": 40
+      "timebox_minutes": 30
     }
   ]
 }

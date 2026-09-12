@@ -9,6 +9,7 @@ public enum AccessibilityCommand: String, CaseIterable, Equatable {
     case attachBuiltCompiler, attachWorker, compile
     case exportPDF, exportPDFViaRust
     case pinInsertionPoint, openCaptureProposal, submitSampleCapture, convertCapture, nearbyCompanion
+    case restoreDiscardedBuffer
     case undo, completion
     case goToMatching, nextDiagnostic, previousDiagnostic, revealCaretInPreview
     case selectPreviewItemSource
@@ -103,6 +104,10 @@ public enum AccessibilityCommand: String, CaseIterable, Equatable {
             return Entry(command: self, title: "Reveal caret in preview", shortcuts: ["⌘⇧J"], menu: "Navigate",
                          description: "Selects the source span of the preview item under the caret and names its page and item.",
                          requires: "a compile result")
+        case .restoreDiscardedBuffer:
+            return Entry(command: self, title: "Restore Discarded Buffer", shortcuts: ["Edit > Restore Discarded Buffer"], menu: "Edit",
+                         description: "Brings back the unsaved text replaced by a Discard decision when another file was opened; the restored buffer stays unsaved.",
+                         requires: "a discarded buffer from this session")
         case .selectPreviewItemSource:
             return Entry(command: self, title: "Go to source of a preview item", shortcuts: ["Click preview text"], menu: "Preview",
                          description: "Selects the item's source in the editor; with VoiceOver, use the “Go to source” action on the item.",

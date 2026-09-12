@@ -3,9 +3,9 @@
   "task_id": "FT-030",
   "agent_id": "daniel-tables",
   "branch": "agent/daniel-tables/table-layout",
-  "revision": 2,
+  "revision": 3,
   "state": "assigned",
-  "objective": "Continue released Jaysen paragraph-layout heavy work. Parent reported old worker terminal after spend limit. Inspect published WIP bad0666 and request exact dirty patch/base before reconstructing unpublished changes. WIP is not integration-ready. Own crates/paragraph-layout exclusively under this transfer; existing agent name is retained to keep Daniel16 slots.",
+  "objective": "Consume exact existing metrics/encoding callbacks and produce pinned paragraph break/position mismatch fixtures; no copied reference engine.",
   "owned_paths": [
     "crates/paragraph-layout"
   ],
@@ -20,6 +20,6 @@
   "allocation_id": "daniel-claude20x-shared",
   "timebox_minutes": 40,
   "deadline_utc": null,
-  "input_main_sha": "53fee3012b2902ca05bd31766defa515b3044cec",
-  "updated_utc": "2026-09-12T07:35:07.367827+00:00"
+  "input_main_sha": "5499e419b09868e2e248c413351a5646db74fac1",
+  "updated_utc": "2026-09-12T09:02:36.189558+00:00"
 }

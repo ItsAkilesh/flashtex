@@ -1,25 +1,25 @@
 {
-  "schema_version": 1,
-  "task_id": "FT-046",
-  "agent_id": "daniel-parent",
-  "branch": "agent/daniel-parent/supervisor",
-  "revision": 1,
-  "state": "assigned",
-  "objective": "Bootstrap Daniel machine supervisor NOW: register actual machine/auth/toolchain and launch16 assigned disjoint product lanes FT030\u2013045, prioritizing transferred layout/font/math. Read coordination/machines/daniel-new.json. Publish exact ACK/session evidence and keep current+2 tasks; no global authority/control writes.",
-  "owned_paths": [
-    "tools/daniel-supervisor",
-    "coordination/agents/daniel-parent.json",
-    "coordination/daniel-parent.md"
-  ],
-  "dependencies": [],
   "acceptance": [
     "Actual registered machine and authorized usable route, no secret values",
     "16distinct existing-machine engineering sessions with exact assignments and unique worktrees; report actual count separately",
     "No purchases/unapproved overages or duplicate transferred ownership; no global Commander claim"
   ],
+  "agent_id": "daniel-parent",
   "allocation_id": "daniel-claude20x-shared",
-  "timebox_minutes": 30,
+  "branch": "agent/daniel-parent/supervisor",
   "deadline_utc": null,
-  "input_main_sha": "60a498aff541e6ff982086c522877ef36f5c42dd",
-  "updated_utc": "2026-09-12T08:26:53.728263+00:00"
+  "dependencies": [],
+  "input_main_sha": "cb9556c2ba00ec3d6b692439ac28719c9f6532a2",
+  "objective": "IMMEDIATE standing supervision: resume ALL16 current lane assignments, including completed-lane followups, without waiting for main integration. Publish actual child execution IDs and current count. Implement and verify owned tools/daniel-supervisor30second free task polling/current+2refill so finishing initial tasks never exits orchestration; no additional agents or global authority changes.",
+  "owned_paths": [
+    "tools/daniel-supervisor",
+    "coordination/agents/daniel-parent.json",
+    "coordination/daniel-parent.md"
+  ],
+  "revision": 4,
+  "schema_version": 1,
+  "state": "assigned",
+  "task_id": "FT-046",
+  "timebox_minutes": 30,
+  "updated_utc": "2026-09-12T09:15:38.612288+00:00"
 }

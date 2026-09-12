@@ -5,7 +5,8 @@ distribution.
 This is a development-time data extraction tool, not part of the product path:
 the crate never reads TFM files or runs TeX at runtime. It embeds the fontdimen
 parameters and per-character width/height/depth/italic-correction fixwords of
-cmr/cmmi/cmsy at 10/7/5 pt and cmex10, plus each character's next-larger
+cmr/cmmi/cmsy at 10/7/5 pt (LaTeX 10pt), cmr/cmmi at 12/8/6 pt with cmsy8/6
+(LaTeX 12pt) and cmex10, plus each character's next-larger
 successor, extensible recipe, and the kern against the font's skew character
 (plain.tex: \skewchar\tenmi='177, \skewchar\tensy='60).
 
@@ -21,8 +22,10 @@ import subprocess
 import sys
 
 FONTS = ["cmr10", "cmr7", "cmr5", "cmmi10", "cmmi7", "cmmi5",
+         "cmr12", "cmr8", "cmr6", "cmmi12", "cmmi8", "cmmi6", "cmsy8", "cmsy6",
          "cmsy10", "cmsy7", "cmsy5", "cmex10"]
 SKEW = {"cmmi10": 0o177, "cmmi7": 0o177, "cmmi5": 0o177,
+        "cmmi12": 0o177, "cmmi8": 0o177, "cmmi6": 0o177, "cmsy8": 0o60, "cmsy6": 0o60,
         "cmsy10": 0o60, "cmsy7": 0o60, "cmsy5": 0o60}
 
 

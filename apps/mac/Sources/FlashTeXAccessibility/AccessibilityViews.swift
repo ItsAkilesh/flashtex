@@ -3,18 +3,22 @@ import SwiftUI
 import FlashTeXProtocol
 
 /// Invisible, hit-test-free accessibility elements laid over one preview
-/// page: a container per page, one element per line, one per item, in the
+/// page: a container per page, one element per item, in the
 /// `AccessibleDocumentModel` reading order. Items with a source expose a
 /// "Go to source" action that calls the same closure as a mouse click.
 /// The visible rendering and mouse behavior are untouched.
+///
+/// The elements are `NSAccessibilityElement`s built lazily inside one
+/// `NSView` the first time an assistive client asks for the page's children
+/// (and rebuilt after the page changes). A SwiftUI `ForEach` of ~1000
+/// per-item views cost ~200 ms of diffing on every compile result; the lazy
+/// tree costs nothing per keystroke unless VoiceOver is reading the page.
 public struct AccessibilityOverlay: View {
     let page: RuntimeV1.Page
     let totalPages: Int
     let scale: CGFloat
+    let fontName: (Double) -> String
     let onSelect: (RuntimeV1.SourceRange?, String?) -> Void
-    let lines: [AccessibleDocumentModel.Line]
-    /// Elements in reading order with their frames; higher sort priority reads first.
-    let slots: [Slot]
 
     struct Slot: Identifiable {
         let element: AccessibleDocumentModel.Element
@@ -36,29 +40,31 @@ public struct AccessibilityOverlay: View {
         self.page = page
         self.totalPages = totalPages
         self.scale = scale
+        self.fontName = fontName
         self.onSelect = onSelect
-        let lines = AccessibleDocumentModel.lines(of: page, documents: [:], compiledDocuments: nil)
-        self.lines = lines
+    }
+
+    /// Reading-order lines of the page (computed on demand, not per render).
+    var lines: [AccessibleDocumentModel.Line] {
+        AccessibleDocumentModel.lines(of: page, documents: [:], compiledDocuments: nil)
+    }
+
+    /// Elements in reading order with their frames; higher sort priority reads first.
+    var slots: [Slot] { Self.slots(page: page, scale: scale, fontName: fontName, lines: lines) }
+
+    static func slots(page: RuntimeV1.Page, scale: CGFloat, fontName: (Double) -> String,
+                      lines: [AccessibleDocumentModel.Line]) -> [Slot] {
         let ordered = lines.flatMap(\.elements)
-        self.slots = ordered.enumerated().map { i, e in
-            Slot(element: e, frame: Self.frame(for: e, in: page, scale: scale, fontName: fontName),
+        return ordered.enumerated().map { i, e in
+            Slot(element: e, frame: frame(for: e, in: page, scale: scale, fontName: fontName),
                  priority: Double(ordered.count - i))
         }
     }
 
     public var body: some View {
-        ZStack(alignment: .topLeading) {
-            ForEach(slots) { slot in
-                ElementView(element: slot.element, onSelect: onSelect)
-                    .frame(width: slot.frame.width, height: slot.frame.height)
-                    .position(x: slot.frame.midX, y: slot.frame.midY)
-                    .accessibilitySortPriority(slot.priority)
-            }
-        }
-        .frame(width: page.widthPt * scale, height: page.heightPt * scale, alignment: .topLeading)
-        .allowsHitTesting(false)
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel(pageLabel)
+        PageAccessibilityView(page: page, totalPages: totalPages, scale: scale, fontName: fontName, onSelect: onSelect)
+            .frame(width: page.widthPt * scale, height: page.heightPt * scale, alignment: .topLeading)
+            .allowsHitTesting(false)
     }
 
     var pageLabel: String {
@@ -80,24 +86,86 @@ public struct AccessibilityOverlay: View {
         let height = Double(font.ascender - font.descender)
         return CGRect(x: item.xPt * scale, y: top * scale, width: max(1, width * scale), height: max(1, height * scale))
     }
+}
 
-    private struct ElementView: View {
-        let element: AccessibleDocumentModel.Element
-        let onSelect: (RuntimeV1.SourceRange?, String?) -> Void
+/// Hosts `PageAXView`; updates hand it the new page and drop the cached tree.
+private struct PageAccessibilityView: NSViewRepresentable {
+    let page: RuntimeV1.Page
+    let totalPages: Int
+    let scale: CGFloat
+    let fontName: (Double) -> String
+    let onSelect: (RuntimeV1.SourceRange?, String?) -> Void
 
-        var body: some View {
-            let base = Color.clear
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel(element.label)
-                .accessibilityValue(element.value)
-                .accessibilityHint("Page \(element.page), line \(element.line)")
-                .accessibilityAddTraits(.isStaticText)
-            if let source = element.source {
-                base.accessibilityAction(named: "Go to source") { onSelect(source, element.text) }
-            } else {
-                base
+    func makeNSView(context: Context) -> PageAXView { PageAXView() }
+
+    func updateNSView(_ view: PageAXView, context: Context) {
+        view.update(page: page, totalPages: totalPages, scale: scale, fontName: fontName, onSelect: onSelect)
+    }
+}
+
+/// The page container: a group whose children are one static-text element
+/// per item, created only when asked for. Never hit-tested, never drawn.
+final class PageAXView: NSView {
+    private var page: RuntimeV1.Page?
+    private var totalPages = 0
+    private var scale: CGFloat = 1
+    private var fontName: (Double) -> String = { _ in "Times-Roman" }
+    private var onSelect: (RuntimeV1.SourceRange?, String?) -> Void = { _, _ in }
+    private var cached: [NSAccessibilityElement]?
+    private var cachedLabel: String?
+
+    override var isFlipped: Bool { true }
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    override var isOpaque: Bool { false }
+
+    func update(page: RuntimeV1.Page, totalPages: Int, scale: CGFloat,
+                fontName: @escaping (Double) -> String, onSelect: @escaping (RuntimeV1.SourceRange?, String?) -> Void) {
+        let changed = self.page != page || self.totalPages != totalPages || self.scale != scale
+        self.page = page; self.totalPages = totalPages; self.scale = scale
+        self.fontName = fontName; self.onSelect = onSelect
+        guard changed else { return }
+        let hadTree = cached != nil
+        cached = nil; cachedLabel = nil
+        // Only a client that already read this page needs to hear about the change.
+        if hadTree { NSAccessibility.post(element: self, notification: .layoutChanged) }
+    }
+
+    override func isAccessibilityElement() -> Bool { true }
+    override func accessibilityRole() -> NSAccessibility.Role? { .group }
+    override func accessibilityLabel() -> String? {
+        if let cachedLabel { return cachedLabel }
+        guard let page else { return nil }
+        let lines = AccessibleDocumentModel.lines(of: page, documents: [:], compiledDocuments: nil)
+        let label = AccessibleDocumentModel.PageSummary(number: page.number, lines: lines, totalPages: totalPages).label
+        cachedLabel = label
+        return label
+    }
+
+    override func accessibilityChildren() -> [Any]? { elements() }
+
+    /// Builds the per-item elements on first request; `AccessibilityOverlay.slots`
+    /// defines the order and frames so the two stay identical.
+    private func elements() -> [NSAccessibilityElement] {
+        if let cached { return cached }
+        guard let page else { return [] }
+        let lines = AccessibleDocumentModel.lines(of: page, documents: [:], compiledDocuments: nil)
+        let slots = AccessibilityOverlay.slots(page: page, scale: scale, fontName: fontName, lines: lines)
+        let onSelect = self.onSelect
+        let out: [NSAccessibilityElement] = slots.map { slot in
+            let e = slot.element
+            let ax = NSAccessibilityElement.element(withRole: .staticText, frame: slot.frame, label: e.label, parent: self)
+                as! NSAccessibilityElement
+            ax.setAccessibilityValue(e.value)
+            ax.setAccessibilityHelp("Page \(e.page), line \(e.line)")
+            if let source = e.source {
+                ax.setAccessibilityCustomActions([
+                    NSAccessibilityCustomAction(name: "Go to source") { onSelect(source, e.text); return true },
+                ])
             }
+            return ax
         }
+        cached = out
+        return out
     }
 }
 
