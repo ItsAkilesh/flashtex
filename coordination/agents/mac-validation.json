@@ -1,0 +1,42 @@
+{
+  "agent_id": "mac-validation",
+  "allocation_id": "claude-mac20x-validation",
+  "assignment_acknowledgements": {
+    "FT-010": {
+      "acknowledged_utc": "2026-09-12T04:39:22Z",
+      "adaptation": "Accepted FT-010 rev 1 as child of mac-claude-a; delivered tools/native-validation (run_all.sh, check_protocol.py, check_ui_capabilities.sh, check_pdf_export.py, expectations.md) and first evidence run; found fixture end_byte bug (FT-001) and dark-export regression (fixed by parent at a336754).",
+      "main_sha": "2e619e41b5698f64bb2c4559e8826d546a03b3f2",
+      "revision": 1
+    }
+  },
+  "branch": "agent/mac-validation/native-verification",
+  "capabilities": [
+    "xcode",
+    "validation"
+  ],
+  "code_revision": "e4cedc3b557aaea0a44730df5e5b8a155dcc3006",
+  "eta_minutes": {
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 0
+  },
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "25a92a9c591a92a3d49071e536ecf8f129112c24",
+  "next_action": "Re-run against mac-shell b41ef87 after integration; human runs expectations.md",
+  "reviewed_peers": {
+    "origin/main": {
+      "adaptation": "No product code edited; failures published for owners",
+      "reviewed_utc": "2026-09-12T04:39:22Z",
+      "sha": "2e619e41b5698f64bb2c4559e8826d546a03b3f2"
+    }
+  },
+  "schema_version": 1,
+  "state": "ready_for_integration",
+  "summary": "tools/native-validation: build/test/xcodebuild/protocol checks; 20 PASS 1 FAIL (fixture end_byte) 6 INFO; compiler pipe latency 0.26-0.41 ms; Screen Recording works, Accessibility blocked",
+  "tool": "Claude Code subagent (parent mac-claude-a)",
+  "updated_utc": "2026-09-12T04:39:22Z",
+  "usage": {
+    "evidence": "Shared Claude Max quota with parent; no purchases",
+    "status": "unknown"
+  }
+}
