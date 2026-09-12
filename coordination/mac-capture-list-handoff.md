@@ -44,7 +44,7 @@ compiled changed). `swift build` not run for the same reason.
 - Task: capture-list contract handoff (brief `prompt-mac-capture-list-handoff.md`); branch
   `agent/mac-capture-list-handoff/capture-list`; worktree `.claude/worktrees/agent-a85652b485b294f2d`.
 - Consumed: mac-shell 6fb77efd; main ffe199d (origin/main tip at start d9239512, not consumed).
-- Dirty files: none after the final commit (see `git log` on the branch).
+- Dirty files: none. Tip: 4da26cec (handoff doc + coordination) followed by this revision-pinning commit.
 - Next commands (parent): review `apps/mac/docs/handoffs/transfer-v1-capture-list.md`; merge the branch; relay the
   handoff path to the Commander on issue #2 (bridge owner) for the contract decision. No swift test needed for this lane.
 - Decisions: `rejected` kept as its own listed status (durable terminal state in the journal) in addition to the brief's
