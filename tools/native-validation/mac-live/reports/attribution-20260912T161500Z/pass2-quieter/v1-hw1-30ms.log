@@ -1,0 +1,2034 @@
+2026-09-12T16:45:51Z	status: no worker attached
+2026-09-12T16:45:51Z	status: attached: flashtex-compiler
+2026-09-12T16:45:51Z	launched /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/fb16d07d1e0d062a59188fb267e98227a33c2d28/apps/mac/build/FlashTeX.app/Contents/MacOS/flashtex-compiler (preview face: times)
+2026-09-12T16:45:51Z	status: compiling revision 2 (mac-1)…
+2026-09-12T16:45:51Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:51Z	status: revision 2: recovered, 119 diagnostics in 124 ms
+2026-09-12T16:45:51Z	bench: waiting for attach + first paint (200 keystrokes, 30.0 ms)
+2026-09-12T16:45:51Z	paint: revision 2 at 107788844641166 (covers 0 keystrokes, redrawn true)
+2026-09-12T16:45:51Z	bench: typing 200 keystrokes at UTF-16 offset 5111 every 30.0 ms
+2026-09-12T16:45:51Z	paint: revision 2 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T16:45:51Z	paint: revision 2 at 107788887564666 (covers 0 keystrokes, redrawn false)
+2026-09-12T16:45:51Z	keystroke: revision 3 at 107788913933666 (delegate 107788915473916, revision 107788915707500)
+2026-09-12T16:45:51Z	compile: sending revision 3 at 107788915882750
+2026-09-12T16:45:51Z	status: compiling revision 3 (mac-2)…
+2026-09-12T16:45:51Z	worker: line 221932 B decoded in 3.731167 ms at 107788922887500
+2026-09-12T16:45:51Z	worker: event on main at 107788922980083
+2026-09-12T16:45:51Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:51Z	compile: applied revision 3 at 107788924307041
+2026-09-12T16:45:51Z	status: revision 3: recovered, 119 diagnostics in 8 ms
+2026-09-12T16:45:51Z	paint: revision 3 redrew 1/2 pages
+2026-09-12T16:45:51Z	paint: revision 3 at 107788969990583 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:45:51Z	bridge: attached: flashtex-bridge
+2026-09-12T16:45:51Z	keystroke: revision 4 at 107789003466458 (delegate 107789003998291, revision 107789004351583)
+2026-09-12T16:45:51Z	compile: sending revision 4 at 107789004403250
+2026-09-12T16:45:51Z	status: compiling revision 4 (mac-3)…
+2026-09-12T16:45:51Z	worker: line 221933 B decoded in 3.726375 ms at 107789011390583
+2026-09-12T16:45:52Z	worker: event on main at 107789033975916
+2026-09-12T16:45:52Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:52Z	compile: applied revision 4 at 107789035619083
+2026-09-12T16:45:52Z	status: revision 4: recovered, 119 diagnostics in 31 ms
+2026-09-12T16:45:52Z	paint: revision 4 needed 2 extra turn(s); drew 1/2 pages
+2026-09-12T16:45:52Z	paint: revision 4 at 107789094420625 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:45:52Z	keystroke: revision 5 at 107789094559000 (delegate 107789095099875, revision 107789095426750)
+2026-09-12T16:45:52Z	compile: sending revision 5 at 107789095456958
+2026-09-12T16:45:52Z	status: compiling revision 5 (mac-4)…
+2026-09-12T16:45:52Z	worker: line 221934 B decoded in 3.747 ms at 107789102258875
+2026-09-12T16:45:52Z	worker: event on main at 107789139269208
+2026-09-12T16:45:52Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:52Z	compile: applied revision 5 at 107789140870666
+2026-09-12T16:45:52Z	status: revision 5: recovered, 119 diagnostics in 45 ms
+2026-09-12T16:45:52Z	bridge: attached: flashtex-bridge
+2026-09-12T16:45:52Z	bridge: bridge exited (1); relaunching in 0.2 s
+2026-09-12T16:45:52Z	paint: revision 5 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T16:45:52Z	paint: revision 5 at 107789201414416 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:45:52Z	keystroke: revision 6 at 107789201582208 (delegate 107789202184000, revision 107789202544291)
+2026-09-12T16:45:52Z	compile: sending revision 6 at 107789202586208
+2026-09-12T16:45:52Z	status: compiling revision 6 (mac-5)…
+2026-09-12T16:45:52Z	worker: line 221934 B decoded in 3.313083 ms at 107789208862458
+2026-09-12T16:45:52Z	worker: event on main at 107789238442250
+2026-09-12T16:45:52Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:52Z	compile: applied revision 6 at 107789239968041
+2026-09-12T16:45:52Z	status: revision 6: recovered, 119 diagnostics in 37 ms
+2026-09-12T16:45:52Z	paint: revision 6 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T16:45:52Z	paint: revision 6 at 107789294001708 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:45:52Z	keystroke: revision 7 at 107789294179666 (delegate 107789294766583, revision 107789295069250)
+2026-09-12T16:45:52Z	compile: sending revision 7 at 107789295111125
+2026-09-12T16:45:52Z	status: compiling revision 7 (mac-6)…
+2026-09-12T16:45:52Z	worker: line 222144 B decoded in 3.186458 ms at 107789300985416
+2026-09-12T16:45:52Z	worker: event on main at 107789331240208
+2026-09-12T16:45:52Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:52Z	compile: applied revision 7 at 107789332744208
+2026-09-12T16:45:52Z	status: revision 7: recovered, 119 diagnostics in 38 ms
+2026-09-12T16:45:52Z	bridge: bridge exited (1); relaunching in 0.2 s
+2026-09-12T16:45:52Z	paint: revision 7 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T16:45:52Z	paint: revision 7 at 107789372513333 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:45:52Z	keystroke: revision 8 at 107789372629083 (delegate 107789373092208, revision 107789373432708)
+2026-09-12T16:45:52Z	compile: sending revision 8 at 107789373459541
+2026-09-12T16:45:52Z	status: compiling revision 8 (mac-7)…
+2026-09-12T16:45:52Z	bridge: bridge exited (1); relaunching in 0.2 s · durable document diverged from the editor (store at revision 3, edit based on 7); reattach to reconcile
+2026-09-12T16:45:52Z	worker: line 222145 B decoded in 3.284291 ms at 107789379482041
+2026-09-12T16:45:52Z	worker: event on main at 107789398459125
+2026-09-12T16:45:52Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:52Z	compile: applied revision 8 at 107789399928958
+2026-09-12T16:45:52Z	status: revision 8: recovered, 119 diagnostics in 26 ms
+2026-09-12T16:45:52Z	bridge: bridge exited (1); relaunching in 0.2 s · durable document diverged from the editor (store at revision 3, edit based on 7); reattach to reconcile
+2026-09-12T16:45:52Z	bridge: relaunched flashtex-bridge; reconciling… · durable document diverged from the editor (store at revision 3, edit based on 7); reattach to reconcile
+2026-09-12T16:45:52Z	paint: revision 8 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T16:45:52Z	paint: revision 8 at 107789440290166 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:45:52Z	keystroke: revision 9 at 107789440977375 (delegate 107789441453791, revision 107789441753375)
+2026-09-12T16:45:52Z	compile: sending revision 9 at 107789441796750
+2026-09-12T16:45:52Z	status: compiling revision 9 (mac-8)…
+2026-09-12T16:45:52Z	worker: line 222146 B decoded in 3.171417 ms at 107789447588833
+2026-09-12T16:45:52Z	worker: event on main at 107789465982000
+2026-09-12T16:45:52Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:52Z	compile: applied revision 9 at 107789467443583
+2026-09-12T16:45:52Z	status: revision 9: recovered, 119 diagnostics in 26 ms
+2026-09-12T16:45:52Z	paint: revision 9 redrew 1/2 pages
+2026-09-12T16:45:52Z	paint: revision 9 at 107789522083583 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:45:52Z	bridge: document_open failed — process is not running · durable document diverged from the editor (store at revision 3, edit based on 7); reattach to reconcile
+2026-09-12T16:45:52Z	keystroke: revision 10 at 107789525186208 (delegate 107789525655791, revision 107789525950583)
+2026-09-12T16:45:52Z	compile: sending revision 10 at 107789525992083
+2026-09-12T16:45:52Z	status: compiling revision 10 (mac-9)…
+2026-09-12T16:45:52Z	worker: line 222148 B decoded in 3.123875 ms at 107789531744125
+2026-09-12T16:45:52Z	worker: event on main at 107789560689291
+2026-09-12T16:45:52Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:52Z	compile: applied revision 10 at 107789562170500
+2026-09-12T16:45:52Z	status: revision 10: recovered, 119 diagnostics in 36 ms
+2026-09-12T16:45:52Z	bridge: document_open failed — process is not running · durable document diverged from the editor (store at revision 3, edit based on 7); reattach to reconcile
+2026-09-12T16:45:52Z	bridge: bridge exited (1); relaunching in 1.0 s · durable document diverged from the editor (store at revision 3, edit based on 7); reattach to reconcile
+2026-09-12T16:45:52Z	bridge: bridge exited (1); relaunching in 1.0 s · durable document diverged from the editor (store at revision 3, edit based on 7); reattach to reconcile
+2026-09-12T16:45:52Z	bridge: bridge exited (1); relaunching in 1.0 s · durable document diverged from the editor (store at revision 3, edit based on 7); reattach to reconcile
+2026-09-12T16:45:52Z	paint: revision 10 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T16:45:52Z	paint: revision 10 at 107789618605333 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:45:52Z	keystroke: revision 11 at 107789618807083 (delegate 107789619312375, revision 107789619628166)
+2026-09-12T16:45:52Z	compile: sending revision 11 at 107789619663166
+2026-09-12T16:45:52Z	status: compiling revision 11 (mac-10)…
+2026-09-12T16:45:52Z	worker: line 222150 B decoded in 3.255084 ms at 107789625562875
+2026-09-12T16:45:52Z	worker: event on main at 107789654302208
+2026-09-12T16:45:52Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:52Z	compile: applied revision 11 at 107789655786791
+2026-09-12T16:45:52Z	status: revision 11: recovered, 119 diagnostics in 36 ms
+2026-09-12T16:45:52Z	paint: revision 11 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T16:45:52Z	paint: revision 11 at 107789708395875 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:45:52Z	keystroke: revision 12 at 107789708669041 (delegate 107789709159416, revision 107789709468041)
+2026-09-12T16:45:52Z	compile: sending revision 12 at 107789709498500
+2026-09-12T16:45:52Z	status: compiling revision 12 (mac-11)…
+2026-09-12T16:45:52Z	worker: line 222151 B decoded in 3.206 ms at 107789715394791
+2026-09-12T16:45:52Z	worker: event on main at 107789744404916
+2026-09-12T16:45:52Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:52Z	compile: applied revision 12 at 107789746014541
+2026-09-12T16:45:52Z	status: revision 12: recovered, 119 diagnostics in 36 ms
+2026-09-12T16:45:52Z	paint: revision 12 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T16:45:52Z	paint: revision 12 at 107789800289000 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:45:52Z	keystroke: revision 13 at 107789800471833 (delegate 107789800968125, revision 107789801319166)
+2026-09-12T16:45:52Z	compile: sending revision 13 at 107789801353333
+2026-09-12T16:45:52Z	status: compiling revision 13 (mac-12)…
+2026-09-12T16:45:52Z	worker: line 222152 B decoded in 3.255959 ms at 107789807233250
+2026-09-12T16:45:52Z	worker: event on main at 107789835783500
+2026-09-12T16:45:52Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:52Z	compile: applied revision 13 at 107789837306791
+2026-09-12T16:45:52Z	status: revision 13: recovered, 119 diagnostics in 36 ms
+2026-09-12T16:45:52Z	paint: revision 13 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T16:45:52Z	paint: revision 13 at 107789891439125 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:45:52Z	keystroke: revision 14 at 107789891601625 (delegate 107789892108791, revision 107789892424500)
+2026-09-12T16:45:52Z	compile: sending revision 14 at 107789892458166
+2026-09-12T16:45:52Z	status: compiling revision 14 (mac-13)…
+2026-09-12T16:45:52Z	worker: line 222153 B decoded in 3.178084 ms at 107789898326250
+2026-09-12T16:45:52Z	worker: event on main at 107789929077291
+2026-09-12T16:45:52Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:52Z	compile: applied revision 14 at 107789930622791
+2026-09-12T16:45:52Z	status: revision 14: recovered, 119 diagnostics in 38 ms
+2026-09-12T16:45:52Z	paint: revision 14 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T16:45:52Z	paint: revision 14 at 107789985870916 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:45:52Z	keystroke: revision 15 at 107789986165416 (delegate 107789986619125, revision 107789986932166)
+2026-09-12T16:45:52Z	compile: sending revision 15 at 107789986962208
+2026-09-12T16:45:52Z	status: compiling revision 15 (mac-14)…
+2026-09-12T16:45:52Z	worker: line 222154 B decoded in 3.155375 ms at 107789992800458
+2026-09-12T16:45:52Z	worker: event on main at 107790021510625
+2026-09-12T16:45:52Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:52Z	compile: applied revision 15 at 107790023113000
+2026-09-12T16:45:52Z	status: revision 15: recovered, 119 diagnostics in 36 ms
+2026-09-12T16:45:53Z	paint: revision 15 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T16:45:53Z	paint: revision 15 at 107790076575250 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:45:53Z	keystroke: revision 16 at 107790077673041 (delegate 107790078157708, revision 107790078452375)
+2026-09-12T16:45:53Z	compile: sending revision 16 at 107790078482500
+2026-09-12T16:45:53Z	status: compiling revision 16 (mac-15)…
+2026-09-12T16:45:53Z	worker: line 222154 B decoded in 3.170834 ms at 107790084259375
+2026-09-12T16:45:53Z	worker: event on main at 107790114552833
+2026-09-12T16:45:53Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:53Z	compile: applied revision 16 at 107790116180583
+2026-09-12T16:45:53Z	status: revision 16: recovered, 119 diagnostics in 38 ms
+2026-09-12T16:45:53Z	paint: revision 16 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T16:45:53Z	paint: revision 16 at 107790169714458 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:45:53Z	keystroke: revision 17 at 107790169870833 (delegate 107790170363375, revision 107790170708291)
+2026-09-12T16:45:53Z	compile: sending revision 17 at 107790170734000
+2026-09-12T16:45:53Z	status: compiling revision 17 (mac-16)…
+2026-09-12T16:45:53Z	worker: line 222365 B decoded in 3.206291 ms at 107790176567916
+2026-09-12T16:45:53Z	worker: event on main at 107790205841541
+2026-09-12T16:45:53Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:53Z	compile: applied revision 17 at 107790207335125
+2026-09-12T16:45:53Z	status: revision 17: recovered, 119 diagnostics in 37 ms
+2026-09-12T16:45:53Z	paint: revision 17 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T16:45:53Z	paint: revision 17 at 107790261671500 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:45:53Z	keystroke: revision 18 at 107790261860208 (delegate 107790262368875, revision 107790262705375)
+2026-09-12T16:45:53Z	compile: sending revision 18 at 107790262736375
+2026-09-12T16:45:53Z	status: compiling revision 18 (mac-17)…
+2026-09-12T16:45:53Z	worker: line 222366 B decoded in 3.159917 ms at 107790268628833
+2026-09-12T16:45:53Z	worker: event on main at 107790298096333
+2026-09-12T16:45:53Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:53Z	compile: applied revision 18 at 107790299682083
+2026-09-12T16:45:53Z	status: revision 18: recovered, 119 diagnostics in 37 ms
+2026-09-12T16:45:53Z	paint: revision 18 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T16:45:53Z	paint: revision 18 at 107790338994250 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:45:53Z	keystroke: revision 19 at 107790339116791 (delegate 107790339598083, revision 107790339891625)
+2026-09-12T16:45:53Z	compile: sending revision 19 at 107790339918000
+2026-09-12T16:45:53Z	status: compiling revision 19 (mac-18)…
+2026-09-12T16:45:53Z	worker: line 222367 B decoded in 3.25625 ms at 107790345825916
+2026-09-12T16:45:53Z	worker: event on main at 107790363080958
+2026-09-12T16:45:53Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:53Z	compile: applied revision 19 at 107790364508291
+2026-09-12T16:45:53Z	status: revision 19: recovered, 119 diagnostics in 24 ms
+2026-09-12T16:45:53Z	paint: revision 19 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T16:45:53Z	paint: revision 19 at 107790399945041 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:45:53Z	keystroke: revision 20 at 107790400431166 (delegate 107790400860583, revision 107790401129916)
+2026-09-12T16:45:53Z	compile: sending revision 20 at 107790401156125
+2026-09-12T16:45:53Z	status: compiling revision 20 (mac-19)…
+2026-09-12T16:45:53Z	worker: line 222368 B decoded in 3.193625 ms at 107790406970708
+2026-09-12T16:45:53Z	worker: event on main at 107790423152750
+2026-09-12T16:45:53Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:53Z	compile: applied revision 20 at 107790424505083
+2026-09-12T16:45:53Z	status: revision 20: recovered, 119 diagnostics in 23 ms
+2026-09-12T16:45:53Z	paint: revision 20 redrew 1/2 pages
+2026-09-12T16:45:53Z	paint: revision 20 at 107790475725333 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:45:53Z	keystroke: revision 21 at 107790475964458 (delegate 107790476413375, revision 107790476709458)
+2026-09-12T16:45:53Z	compile: sending revision 21 at 107790476742833
+2026-09-12T16:45:53Z	status: compiling revision 21 (mac-20)…
+2026-09-12T16:45:53Z	worker: line 222368 B decoded in 3.236791 ms at 107790482602291
+2026-09-12T16:45:53Z	worker: event on main at 107790509948791
+2026-09-12T16:45:53Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:53Z	compile: applied revision 21 at 107790511413083
+2026-09-12T16:45:53Z	status: revision 21: recovered, 119 diagnostics in 35 ms
+2026-09-12T16:45:53Z	paint: revision 21 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T16:45:53Z	paint: revision 21 at 107790548161250 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:45:53Z	keystroke: revision 22 at 107790548621291 (delegate 107790549033916, revision 107790549303833)
+2026-09-12T16:45:53Z	compile: sending revision 22 at 107790549329541
+2026-09-12T16:45:53Z	status: compiling revision 22 (mac-21)…
+2026-09-12T16:45:53Z	worker: line 222579 B decoded in 3.174167 ms at 107790555087250
+2026-09-12T16:45:53Z	worker: event on main at 107790571609666
+2026-09-12T16:45:53Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:53Z	compile: applied revision 22 at 107790573001958
+2026-09-12T16:45:53Z	status: revision 22: recovered, 119 diagnostics in 24 ms
+2026-09-12T16:45:53Z	paint: revision 22 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T16:45:53Z	paint: revision 22 at 107790609059708 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:45:53Z	keystroke: revision 23 at 107790622678583 (delegate 107790623114958, revision 107790623414666)
+2026-09-12T16:45:53Z	compile: sending revision 23 at 107790623454166
+2026-09-12T16:45:53Z	status: compiling revision 23 (mac-22)…
+2026-09-12T16:45:53Z	worker: line 222580 B decoded in 3.245584 ms at 107790629339750
+2026-09-12T16:45:53Z	worker: event on main at 107790658122916
+2026-09-12T16:45:53Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:53Z	compile: applied revision 23 at 107790659569000
+2026-09-12T16:45:53Z	status: revision 23: recovered, 119 diagnostics in 36 ms
+2026-09-12T16:45:53Z	bridge: relaunched flashtex-bridge; reconciling… · durable document diverged from the editor (store at revision 3, edit based on 7); reattach to reconcile
+2026-09-12T16:45:53Z	paint: revision 23 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T16:45:53Z	paint: revision 23 at 107790712221750 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:45:53Z	keystroke: revision 24 at 107790712585375 (delegate 107790713003666, revision 107790713286416)
+2026-09-12T16:45:53Z	compile: sending revision 24 at 107790713314333
+2026-09-12T16:45:53Z	status: compiling revision 24 (mac-23)…
+2026-09-12T16:45:53Z	worker: line 222581 B decoded in 3.19275 ms at 107790719135000
+2026-09-12T16:45:53Z	worker: event on main at 107790736896958
+2026-09-12T16:45:53Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:53Z	compile: applied revision 24 at 107790738318208
+2026-09-12T16:45:53Z	status: revision 24: recovered, 119 diagnostics in 25 ms
+2026-09-12T16:45:53Z	bridge: relaunched flashtex-bridge; reconciling… · durable document diverged from the editor (store at revision 3, edit based on 7); reattach to reconcile
+2026-09-12T16:45:53Z	bridge: bridge exited (1); relaunching in 3.0 s · durable document diverged from the editor (store at revision 3, edit based on 7); reattach to reconcile
+2026-09-12T16:45:53Z	bridge: bridge exited (1); relaunching in 3.0 s · durable document diverged from the editor (store at revision 3, edit based on 7); reattach to reconcile
+2026-09-12T16:45:53Z	bridge: bridge exited (1); relaunching in 3.0 s · durable document diverged from the editor (store at revision 3, edit based on 7); reattach to reconcile
+2026-09-12T16:45:53Z	paint: revision 24 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T16:45:53Z	paint: revision 24 at 107790773629083 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:45:53Z	keystroke: revision 25 at 107790774070166 (delegate 107790774465583, revision 107790774729541)
+2026-09-12T16:45:53Z	compile: sending revision 25 at 107790774754250
+2026-09-12T16:45:53Z	status: compiling revision 25 (mac-24)…
+2026-09-12T16:45:53Z	worker: line 222581 B decoded in 3.135666 ms at 107790780496916
+2026-09-12T16:45:53Z	worker: event on main at 107790797377166
+2026-09-12T16:45:53Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:53Z	compile: applied revision 25 at 107790798798833
+2026-09-12T16:45:53Z	status: revision 25: recovered, 119 diagnostics in 24 ms
+2026-09-12T16:45:53Z	paint: revision 25 redrew 1/2 pages
+2026-09-12T16:45:53Z	paint: revision 25 at 107790845327250 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:45:53Z	keystroke: revision 26 at 107790845537625 (delegate 107790845960833, revision 107790846256208)
+2026-09-12T16:45:53Z	compile: sending revision 26 at 107790846283000
+2026-09-12T16:45:53Z	status: compiling revision 26 (mac-25)…
+2026-09-12T16:45:53Z	worker: line 222792 B decoded in 3.299959 ms at 107790852311875
+2026-09-12T16:45:53Z	worker: event on main at 107790870818875
+2026-09-12T16:45:53Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:53Z	compile: applied revision 26 at 107790872231208
+2026-09-12T16:45:53Z	status: revision 26: recovered, 119 diagnostics in 26 ms
+2026-09-12T16:45:53Z	paint: revision 26 redrew 1/2 pages
+2026-09-12T16:45:53Z	paint: revision 26 at 107790919663458 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:45:53Z	keystroke: revision 27 at 107790919802708 (delegate 107790920275166, revision 107790920599958)
+2026-09-12T16:45:53Z	compile: sending revision 27 at 107790920624708
+2026-09-12T16:45:53Z	status: compiling revision 27 (mac-26)…
+2026-09-12T16:45:53Z	worker: line 222793 B decoded in 3.167333 ms at 107790926355583
+2026-09-12T16:45:53Z	worker: event on main at 107790953568083
+2026-09-12T16:45:53Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:53Z	compile: applied revision 27 at 107790955043083
+2026-09-12T16:45:53Z	status: revision 27: recovered, 119 diagnostics in 34 ms
+2026-09-12T16:45:53Z	paint: revision 27 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T16:45:53Z	paint: revision 27 at 107791005310791 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:45:53Z	keystroke: revision 28 at 107791005462416 (delegate 107791005937083, revision 107791006234708)
+2026-09-12T16:45:53Z	compile: sending revision 28 at 107791006259500
+2026-09-12T16:45:53Z	status: compiling revision 28 (mac-27)…
+2026-09-12T16:45:53Z	worker: line 222794 B decoded in 3.167416 ms at 107791012151666
+2026-09-12T16:45:54Z	worker: event on main at 107791030457291
+2026-09-12T16:45:54Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:54Z	compile: applied revision 28 at 107791031954208
+2026-09-12T16:45:54Z	status: revision 28: recovered, 119 diagnostics in 26 ms
+2026-09-12T16:45:54Z	paint: revision 28 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T16:45:54Z	paint: revision 28 at 107791069211875 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:45:54Z	keystroke: revision 29 at 107791069640208 (delegate 107791070108541, revision 107791070388083)
+2026-09-12T16:45:54Z	compile: sending revision 29 at 107791070421458
+2026-09-12T16:45:54Z	status: compiling revision 29 (mac-28)…
+2026-09-12T16:45:54Z	worker: line 222795 B decoded in 3.206625 ms at 107791076277000
+2026-09-12T16:45:54Z	worker: event on main at 107791093101541
+2026-09-12T16:45:54Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:54Z	compile: applied revision 29 at 107791094516250
+2026-09-12T16:45:54Z	status: revision 29: recovered, 119 diagnostics in 24 ms
+2026-09-12T16:45:54Z	paint: revision 29 redrew 1/2 pages
+2026-09-12T16:45:54Z	paint: revision 29 at 107791139940333 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:45:54Z	keystroke: revision 30 at 107791140167375 (delegate 107791140598541, revision 107791140894875)
+2026-09-12T16:45:54Z	compile: sending revision 30 at 107791140925291
+2026-09-12T16:45:54Z	status: compiling revision 30 (mac-29)…
+2026-09-12T16:45:54Z	worker: line 222795 B decoded in 3.267333 ms at 107791146833458
+2026-09-12T16:45:54Z	worker: event on main at 107791174662916
+2026-09-12T16:45:54Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:54Z	compile: applied revision 30 at 107791176127541
+2026-09-12T16:45:54Z	status: revision 30: recovered, 119 diagnostics in 35 ms
+2026-09-12T16:45:54Z	paint: revision 30 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T16:45:54Z	paint: revision 30 at 107791223827875 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:45:54Z	keystroke: revision 31 at 107791224259666 (delegate 107791224695583, revision 107791224976458)
+2026-09-12T16:45:54Z	compile: sending revision 31 at 107791225001541
+2026-09-12T16:45:54Z	status: compiling revision 31 (mac-30)…
+2026-09-12T16:45:54Z	worker: line 223006 B decoded in 3.174417 ms at 107791230740333
+2026-09-12T16:45:54Z	worker: event on main at 107791257283958
+2026-09-12T16:45:54Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:54Z	compile: applied revision 31 at 107791258702083
+2026-09-12T16:45:54Z	status: revision 31: recovered, 119 diagnostics in 34 ms
+2026-09-12T16:45:54Z	paint: revision 31 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T16:45:54Z	paint: revision 31 at 107791308407833 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:45:54Z	keystroke: revision 32 at 107791308501458 (delegate 107791309024291, revision 107791309322625)
+2026-09-12T16:45:54Z	compile: sending revision 32 at 107791309350791
+2026-09-12T16:45:54Z	status: compiling revision 32 (mac-31)…
+2026-09-12T16:45:54Z	worker: line 223007 B decoded in 3.156083 ms at 107791315222208
+2026-09-12T16:45:54Z	worker: event on main at 107791343335750
+2026-09-12T16:45:54Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:54Z	compile: applied revision 32 at 107791344810708
+2026-09-12T16:45:54Z	status: revision 32: recovered, 119 diagnostics in 35 ms
+2026-09-12T16:45:54Z	paint: revision 32 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T16:45:54Z	paint: revision 32 at 107791394950166 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:45:54Z	keystroke: revision 33 at 107791395028166 (delegate 107791395478541, revision 107791395762625)
+2026-09-12T16:45:54Z	compile: sending revision 33 at 107791395786791
+2026-09-12T16:45:54Z	status: compiling revision 33 (mac-32)…
+2026-09-12T16:45:54Z	worker: line 223008 B decoded in 3.300459 ms at 107791401678125
+2026-09-12T16:45:54Z	worker: event on main at 107791428218291
+2026-09-12T16:45:54Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:54Z	compile: applied revision 33 at 107791429630416
+2026-09-12T16:45:54Z	status: revision 33: recovered, 119 diagnostics in 34 ms
+2026-09-12T16:45:54Z	paint: revision 33 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T16:45:54Z	paint: revision 33 at 107791480943541 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:45:54Z	keystroke: revision 34 at 107791481015916 (delegate 107791481446541, revision 107791481761791)
+2026-09-12T16:45:54Z	compile: sending revision 34 at 107791481787291
+2026-09-12T16:45:54Z	status: compiling revision 34 (mac-33)…
+2026-09-12T16:45:54Z	worker: line 223009 B decoded in 3.180709 ms at 107791487640250
+2026-09-12T16:45:54Z	worker: event on main at 107791516448125
+2026-09-12T16:45:54Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:54Z	compile: applied revision 34 at 107791517921041
+2026-09-12T16:45:54Z	status: revision 34: recovered, 119 diagnostics in 36 ms
+2026-09-12T16:45:54Z	paint: revision 34 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T16:45:54Z	paint: revision 34 at 107791568078083 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:45:54Z	keystroke: revision 35 at 107791568145458 (delegate 107791568606750, revision 107791568909000)
+2026-09-12T16:45:54Z	compile: sending revision 35 at 107791568936000
+2026-09-12T16:45:54Z	status: compiling revision 35 (mac-34)…
+2026-09-12T16:45:54Z	worker: line 223010 B decoded in 3.187 ms at 107791574745666
+2026-09-12T16:45:54Z	worker: event on main at 107791602687208
+2026-09-12T16:45:54Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:54Z	compile: applied revision 35 at 107791604126458
+2026-09-12T16:45:54Z	status: revision 35: recovered, 119 diagnostics in 35 ms
+2026-09-12T16:45:54Z	paint: revision 35 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T16:45:54Z	paint: revision 35 at 107791657166250 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:45:54Z	keystroke: revision 36 at 107791657236666 (delegate 107791657681291, revision 107791657970875)
+2026-09-12T16:45:54Z	compile: sending revision 36 at 107791657998666
+2026-09-12T16:45:54Z	status: compiling revision 36 (mac-35)…
+2026-09-12T16:45:54Z	worker: line 223011 B decoded in 3.172 ms at 107791663744666
+2026-09-12T16:45:54Z	worker: event on main at 107791690505208
+2026-09-12T16:45:54Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:54Z	compile: applied revision 36 at 107791691957958
+2026-09-12T16:45:54Z	status: revision 36: recovered, 119 diagnostics in 34 ms
+2026-09-12T16:45:54Z	paint: revision 36 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T16:45:54Z	paint: revision 36 at 107791743041250 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:45:54Z	keystroke: revision 37 at 107791743123000 (delegate 107791743632750, revision 107791743935208)
+2026-09-12T16:45:54Z	compile: sending revision 37 at 107791743969791
+2026-09-12T16:45:54Z	status: compiling revision 37 (mac-36)…
+2026-09-12T16:45:54Z	worker: line 223012 B decoded in 3.251458 ms at 107791749864708
+2026-09-12T16:45:54Z	worker: event on main at 107791777141166
+2026-09-12T16:45:54Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:54Z	compile: applied revision 37 at 107791778607708
+2026-09-12T16:45:54Z	status: revision 37: recovered, 119 diagnostics in 35 ms
+2026-09-12T16:45:54Z	paint: revision 37 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T16:45:54Z	paint: revision 37 at 107791828690125 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:45:54Z	keystroke: revision 38 at 107791828777708 (delegate 107791829293250, revision 107791829598666)
+2026-09-12T16:45:54Z	compile: sending revision 38 at 107791829631875
+2026-09-12T16:45:54Z	status: compiling revision 38 (mac-37)…
+2026-09-12T16:45:54Z	worker: line 223013 B decoded in 3.233417 ms at 107791835469375
+2026-09-12T16:45:54Z	worker: event on main at 107791854466541
+2026-09-12T16:45:54Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:54Z	compile: applied revision 38 at 107791855911583
+2026-09-12T16:45:54Z	status: revision 38: recovered, 119 diagnostics in 26 ms
+2026-09-12T16:45:54Z	paint: revision 38 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T16:45:54Z	paint: revision 38 at 107791893039083 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:45:54Z	keystroke: revision 39 at 107791893064500 (delegate 107791893728583, revision 107791894005666)
+2026-09-12T16:45:54Z	compile: sending revision 39 at 107791894029833
+2026-09-12T16:45:54Z	status: compiling revision 39 (mac-38)…
+2026-09-12T16:45:54Z	worker: line 223014 B decoded in 3.196458 ms at 107791899832958
+2026-09-12T16:45:54Z	worker: event on main at 107791916961666
+2026-09-12T16:45:54Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:54Z	compile: applied revision 39 at 107791918437291
+2026-09-12T16:45:54Z	status: revision 39: recovered, 119 diagnostics in 24 ms
+2026-09-12T16:45:54Z	paint: revision 39 redrew 1/2 pages
+2026-09-12T16:45:54Z	paint: revision 39 at 107791963837750 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:45:54Z	keystroke: revision 40 at 107791963909500 (delegate 107791964387625, revision 107791964674750)
+2026-09-12T16:45:54Z	compile: sending revision 40 at 107791964698583
+2026-09-12T16:45:54Z	status: compiling revision 40 (mac-39)…
+2026-09-12T16:45:54Z	worker: line 223014 B decoded in 3.17775 ms at 107791970461208
+2026-09-12T16:45:54Z	worker: event on main at 107791987094083
+2026-09-12T16:45:54Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:54Z	compile: applied revision 40 at 107791988464791
+2026-09-12T16:45:54Z	status: revision 40: recovered, 119 diagnostics in 24 ms
+2026-09-12T16:45:55Z	paint: revision 40 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T16:45:55Z	paint: revision 40 at 107792030662875 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:45:55Z	keystroke: revision 41 at 107792030805208 (delegate 107792031271583, revision 107792031560250)
+2026-09-12T16:45:55Z	compile: sending revision 41 at 107792031584625
+2026-09-12T16:45:55Z	status: compiling revision 41 (mac-40)…
+2026-09-12T16:45:55Z	worker: line 223225 B decoded in 3.14575 ms at 107792037254375
+2026-09-12T16:45:55Z	worker: event on main at 107792053972291
+2026-09-12T16:45:55Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:55Z	compile: applied revision 41 at 107792055346625
+2026-09-12T16:45:55Z	status: revision 41: recovered, 119 diagnostics in 24 ms
+2026-09-12T16:45:55Z	paint: revision 41 redrew 1/2 pages
+2026-09-12T16:45:55Z	paint: revision 41 at 107792099950541 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:45:55Z	keystroke: revision 42 at 107792100030375 (delegate 107792100546250, revision 107792100838750)
+2026-09-12T16:45:55Z	compile: sending revision 42 at 107792100864416
+2026-09-12T16:45:55Z	status: compiling revision 42 (mac-41)…
+2026-09-12T16:45:55Z	worker: line 223226 B decoded in 3.159542 ms at 107792106615625
+2026-09-12T16:45:55Z	worker: event on main at 107792132673500
+2026-09-12T16:45:55Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:55Z	compile: applied revision 42 at 107792134116458
+2026-09-12T16:45:55Z	status: revision 42: recovered, 119 diagnostics in 33 ms
+2026-09-12T16:45:55Z	paint: revision 42 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T16:45:55Z	paint: revision 42 at 107792172062375 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:45:55Z	keystroke: revision 43 at 107792172107000 (delegate 107792172631833, revision 107792172924041)
+2026-09-12T16:45:55Z	compile: sending revision 43 at 107792172947958
+2026-09-12T16:45:55Z	status: compiling revision 43 (mac-42)…
+2026-09-12T16:45:55Z	worker: line 223227 B decoded in 3.178542 ms at 107792178711125
+2026-09-12T16:45:55Z	worker: event on main at 107792196381875
+2026-09-12T16:45:55Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:55Z	compile: applied revision 43 at 107792197812416
+2026-09-12T16:45:55Z	status: revision 43: recovered, 119 diagnostics in 25 ms
+2026-09-12T16:45:55Z	paint: revision 43 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T16:45:55Z	paint: revision 43 at 107792235473208 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:45:55Z	keystroke: revision 44 at 107792235506916 (delegate 107792236064875, revision 107792236361625)
+2026-09-12T16:45:55Z	compile: sending revision 44 at 107792236390041
+2026-09-12T16:45:55Z	status: compiling revision 44 (mac-43)…
+2026-09-12T16:45:55Z	worker: line 223228 B decoded in 3.212917 ms at 107792242172625
+2026-09-12T16:45:55Z	worker: event on main at 107792259377500
+2026-09-12T16:45:55Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:55Z	compile: applied revision 44 at 107792260761625
+2026-09-12T16:45:55Z	status: revision 44: recovered, 119 diagnostics in 24 ms
+2026-09-12T16:45:55Z	paint: revision 44 redrew 1/2 pages
+2026-09-12T16:45:55Z	paint: revision 44 at 107792313166083 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:45:55Z	keystroke: revision 45 at 107792313262333 (delegate 107792313770291, revision 107792314105291)
+2026-09-12T16:45:55Z	compile: sending revision 45 at 107792314131666
+2026-09-12T16:45:55Z	status: compiling revision 45 (mac-44)…
+2026-09-12T16:45:55Z	worker: line 223229 B decoded in 3.166792 ms at 107792319894375
+2026-09-12T16:45:55Z	worker: event on main at 107792338142250
+2026-09-12T16:45:55Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:55Z	compile: applied revision 45 at 107792339699041
+2026-09-12T16:45:55Z	status: revision 45: recovered, 119 diagnostics in 25 ms
+2026-09-12T16:45:55Z	paint: revision 45 redrew 1/2 pages
+2026-09-12T16:45:55Z	paint: revision 45 at 107792386455625 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:45:55Z	keystroke: revision 46 at 107792386528583 (delegate 107792387032833, revision 107792387331000)
+2026-09-12T16:45:55Z	compile: sending revision 46 at 107792387354708
+2026-09-12T16:45:55Z	status: compiling revision 46 (mac-45)…
+2026-09-12T16:45:55Z	worker: line 223229 B decoded in 3.186792 ms at 107792393171833
+2026-09-12T16:45:55Z	worker: event on main at 107792419647458
+2026-09-12T16:45:55Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:55Z	compile: applied revision 46 at 107792421115125
+2026-09-12T16:45:55Z	status: revision 46: recovered, 119 diagnostics in 34 ms
+2026-09-12T16:45:55Z	paint: revision 46 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T16:45:55Z	paint: revision 46 at 107792468737583 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:45:55Z	keystroke: revision 47 at 107792468816166 (delegate 107792469311000, revision 107792469596541)
+2026-09-12T16:45:55Z	compile: sending revision 47 at 107792469623875
+2026-09-12T16:45:55Z	status: compiling revision 47 (mac-46)…
+2026-09-12T16:45:55Z	worker: line 223440 B decoded in 3.212 ms at 107792475606500
+2026-09-12T16:45:55Z	worker: event on main at 107792502676000
+2026-09-12T16:45:55Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:55Z	compile: applied revision 47 at 107792504139208
+2026-09-12T16:45:55Z	status: revision 47: recovered, 119 diagnostics in 34 ms
+2026-09-12T16:45:55Z	paint: revision 47 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T16:45:55Z	paint: revision 47 at 107792540298083 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:45:55Z	keystroke: revision 48 at 107792540342458 (delegate 107792540858791, revision 107792541139666)
+2026-09-12T16:45:55Z	compile: sending revision 48 at 107792541170250
+2026-09-12T16:45:55Z	status: compiling revision 48 (mac-47)…
+2026-09-12T16:45:55Z	worker: line 223441 B decoded in 3.210833 ms at 107792547119291
+2026-09-12T16:45:55Z	worker: event on main at 107792564927166
+2026-09-12T16:45:55Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:55Z	compile: applied revision 48 at 107792566382750
+2026-09-12T16:45:55Z	status: revision 48: recovered, 119 diagnostics in 25 ms
+2026-09-12T16:45:55Z	paint: revision 48 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T16:45:55Z	paint: revision 48 at 107792603529625 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:45:55Z	keystroke: revision 49 at 107792617765875 (delegate 107792618241083, revision 107792618541583)
+2026-09-12T16:45:55Z	compile: sending revision 49 at 107792618583708
+2026-09-12T16:45:55Z	status: compiling revision 49 (mac-48)…
+2026-09-12T16:45:55Z	worker: line 223442 B decoded in 3.175875 ms at 107792624380958
+2026-09-12T16:45:55Z	worker: event on main at 107792651671833
+2026-09-12T16:45:55Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:55Z	compile: applied revision 49 at 107792653144375
+2026-09-12T16:45:55Z	status: revision 49: recovered, 119 diagnostics in 34 ms
+2026-09-12T16:45:55Z	paint: revision 49 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T16:45:55Z	paint: revision 49 at 107792704850875 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:45:55Z	keystroke: revision 50 at 107792704921625 (delegate 107792705416916, revision 107792705738583)
+2026-09-12T16:45:55Z	compile: sending revision 50 at 107792705764916
+2026-09-12T16:45:55Z	status: compiling revision 50 (mac-49)…
+2026-09-12T16:45:55Z	worker: line 223442 B decoded in 3.159167 ms at 107792711557583
+2026-09-12T16:45:55Z	worker: event on main at 107792730684458
+2026-09-12T16:45:55Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:55Z	compile: applied revision 50 at 107792732240416
+2026-09-12T16:45:55Z	status: revision 50: recovered, 119 diagnostics in 26 ms
+2026-09-12T16:45:55Z	paint: revision 50 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T16:45:55Z	paint: revision 50 at 107792770110750 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:45:55Z	keystroke: revision 51 at 107792770142166 (delegate 107792770671875, revision 107792770945625)
+2026-09-12T16:45:55Z	compile: sending revision 51 at 107792770970416
+2026-09-12T16:45:55Z	status: compiling revision 51 (mac-50)…
+2026-09-12T16:45:55Z	worker: line 223653 B decoded in 3.185125 ms at 107792776776500
+2026-09-12T16:45:55Z	worker: event on main at 107792793374000
+2026-09-12T16:45:55Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:55Z	compile: applied revision 51 at 107792794782791
+2026-09-12T16:45:55Z	status: revision 51: recovered, 119 diagnostics in 24 ms
+2026-09-12T16:45:55Z	paint: revision 51 redrew 1/2 pages
+2026-09-12T16:45:55Z	paint: revision 51 at 107792839896416 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:45:55Z	keystroke: revision 52 at 107792839985000 (delegate 107792840472500, revision 107792840747083)
+2026-09-12T16:45:55Z	compile: sending revision 52 at 107792840771125
+2026-09-12T16:45:55Z	status: compiling revision 52 (mac-51)…
+2026-09-12T16:45:55Z	worker: line 223654 B decoded in 3.253459 ms at 107792846727500
+2026-09-12T16:45:55Z	worker: event on main at 107792872607875
+2026-09-12T16:45:55Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:55Z	compile: applied revision 52 at 107792874079583
+2026-09-12T16:45:55Z	status: revision 52: recovered, 119 diagnostics in 33 ms
+2026-09-12T16:45:55Z	paint: revision 52 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T16:45:55Z	paint: revision 52 at 107792925676791 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:45:55Z	keystroke: revision 53 at 107792925767916 (delegate 107792926271750, revision 107792926575625)
+2026-09-12T16:45:55Z	compile: sending revision 53 at 107792926603708
+2026-09-12T16:45:55Z	status: compiling revision 53 (mac-52)…
+2026-09-12T16:45:55Z	worker: line 223655 B decoded in 3.176041 ms at 107792932370416
+2026-09-12T16:45:55Z	worker: event on main at 107792959077500
+2026-09-12T16:45:55Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:55Z	compile: applied revision 53 at 107792960523500
+2026-09-12T16:45:55Z	status: revision 53: recovered, 119 diagnostics in 34 ms
+2026-09-12T16:45:55Z	paint: revision 53 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T16:45:55Z	paint: revision 53 at 107792997582666 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:45:55Z	keystroke: revision 54 at 107792997637916 (delegate 107792998116708, revision 107792998382375)
+2026-09-12T16:45:55Z	compile: sending revision 54 at 107792998404916
+2026-09-12T16:45:55Z	status: compiling revision 54 (mac-53)…
+2026-09-12T16:45:55Z	worker: line 223656 B decoded in 3.172667 ms at 107793004320250
+2026-09-12T16:45:55Z	worker: event on main at 107793020385333
+2026-09-12T16:45:55Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:55Z	compile: applied revision 54 at 107793021781791
+2026-09-12T16:45:55Z	status: revision 54: recovered, 119 diagnostics in 23 ms
+2026-09-12T16:45:56Z	paint: revision 54 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T16:45:56Z	paint: revision 54 at 107793056913125 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:45:56Z	keystroke: revision 55 at 107793056934291 (delegate 107793057419000, revision 107793057684291)
+2026-09-12T16:45:56Z	compile: sending revision 55 at 107793057711458
+2026-09-12T16:45:56Z	status: compiling revision 55 (mac-54)…
+2026-09-12T16:45:56Z	worker: line 223657 B decoded in 3.164334 ms at 107793063575000
+2026-09-12T16:45:56Z	worker: event on main at 107793079899375
+2026-09-12T16:45:56Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:56Z	compile: applied revision 55 at 107793081301291
+2026-09-12T16:45:56Z	status: revision 55: recovered, 119 diagnostics in 24 ms
+2026-09-12T16:45:56Z	paint: revision 55 redrew 1/2 pages
+2026-09-12T16:45:56Z	paint: revision 55 at 107793129894875 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:45:56Z	keystroke: revision 56 at 107793129984666 (delegate 107793130472708, revision 107793130761291)
+2026-09-12T16:45:56Z	compile: sending revision 56 at 107793130790416
+2026-09-12T16:45:56Z	status: compiling revision 56 (mac-55)…
+2026-09-12T16:45:56Z	worker: line 223658 B decoded in 3.177875 ms at 107793136711000
+2026-09-12T16:45:56Z	worker: event on main at 107793153464250
+2026-09-12T16:45:56Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:56Z	compile: applied revision 56 at 107793154835041
+2026-09-12T16:45:56Z	status: revision 56: recovered, 119 diagnostics in 24 ms
+2026-09-12T16:45:56Z	paint: revision 56 redrew 1/2 pages
+2026-09-12T16:45:56Z	paint: revision 56 at 107793199791625 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:45:56Z	keystroke: revision 57 at 107793199873875 (delegate 107793200348458, revision 107793200638000)
+2026-09-12T16:45:56Z	compile: sending revision 57 at 107793200662291
+2026-09-12T16:45:56Z	status: compiling revision 57 (mac-56)…
+2026-09-12T16:45:56Z	worker: line 223659 B decoded in 3.177625 ms at 107793206386833
+2026-09-12T16:45:56Z	worker: event on main at 107793232726583
+2026-09-12T16:45:56Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:56Z	compile: applied revision 57 at 107793234167708
+2026-09-12T16:45:56Z	status: revision 57: recovered, 119 diagnostics in 33 ms
+2026-09-12T16:45:56Z	paint: revision 57 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T16:45:56Z	paint: revision 57 at 107793285007166 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:45:56Z	keystroke: revision 58 at 107793285091291 (delegate 107793285595375, revision 107793285902333)
+2026-09-12T16:45:56Z	compile: sending revision 58 at 107793285926458
+2026-09-12T16:45:56Z	status: compiling revision 58 (mac-57)…
+2026-09-12T16:45:56Z	worker: line 223659 B decoded in 3.178083 ms at 107793291741458
+2026-09-12T16:45:56Z	worker: event on main at 107793319551791
+2026-09-12T16:45:56Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:56Z	compile: applied revision 58 at 107793321019875
+2026-09-12T16:45:56Z	status: revision 58: recovered, 119 diagnostics in 35 ms
+2026-09-12T16:45:56Z	paint: revision 58 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T16:45:56Z	paint: revision 58 at 107793369707375 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:45:56Z	keystroke: revision 59 at 107793369785208 (delegate 107793370275791, revision 107793370564250)
+2026-09-12T16:45:56Z	compile: sending revision 59 at 107793370589125
+2026-09-12T16:45:56Z	status: compiling revision 59 (mac-58)…
+2026-09-12T16:45:56Z	worker: line 223870 B decoded in 3.194666 ms at 107793376432166
+2026-09-12T16:45:56Z	worker: event on main at 107793404066833
+2026-09-12T16:45:56Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:56Z	compile: applied revision 59 at 107793405543583
+2026-09-12T16:45:56Z	status: revision 59: recovered, 119 diagnostics in 35 ms
+2026-09-12T16:45:56Z	paint: revision 59 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T16:45:56Z	paint: revision 59 at 107793456399916 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:45:56Z	keystroke: revision 60 at 107793456463166 (delegate 107793456906375, revision 107793457196250)
+2026-09-12T16:45:56Z	compile: sending revision 60 at 107793457219666
+2026-09-12T16:45:56Z	status: compiling revision 60 (mac-59)…
+2026-09-12T16:45:56Z	worker: line 223871 B decoded in 3.188709 ms at 107793463191125
+2026-09-12T16:45:56Z	worker: event on main at 107793490051750
+2026-09-12T16:45:56Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:56Z	compile: applied revision 60 at 107793491472625
+2026-09-12T16:45:56Z	status: revision 60: recovered, 119 diagnostics in 34 ms
+2026-09-12T16:45:56Z	paint: revision 60 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T16:45:56Z	paint: revision 60 at 107793540887916 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:45:56Z	keystroke: revision 61 at 107793540948250 (delegate 107793541416166, revision 107793541704541)
+2026-09-12T16:45:56Z	compile: sending revision 61 at 107793541739958
+2026-09-12T16:45:56Z	status: compiling revision 61 (mac-60)…
+2026-09-12T16:45:56Z	worker: line 223872 B decoded in 3.162667 ms at 107793547541333
+2026-09-12T16:45:56Z	worker: event on main at 107793574878416
+2026-09-12T16:45:56Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:56Z	compile: applied revision 61 at 107793576371291
+2026-09-12T16:45:56Z	status: revision 61: recovered, 119 diagnostics in 35 ms
+2026-09-12T16:45:56Z	paint: revision 61 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T16:45:56Z	paint: revision 61 at 107793613687541 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:45:56Z	keystroke: revision 62 at 107793613724791 (delegate 107793614234208, revision 107793614508833)
+2026-09-12T16:45:56Z	compile: sending revision 62 at 107793614532875
+2026-09-12T16:45:56Z	status: compiling revision 62 (mac-61)…
+2026-09-12T16:45:56Z	worker: line 223873 B decoded in 3.200834 ms at 107793620303250
+2026-09-12T16:45:56Z	worker: event on main at 107793636962583
+2026-09-12T16:45:56Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:56Z	compile: applied revision 62 at 107793638369000
+2026-09-12T16:45:56Z	status: revision 62: recovered, 119 diagnostics in 24 ms
+2026-09-12T16:45:56Z	paint: revision 62 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T16:45:56Z	paint: revision 62 at 107793674022333 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:45:56Z	keystroke: revision 63 at 107793674046166 (delegate 107793674544416, revision 107793674813083)
+2026-09-12T16:45:56Z	compile: sending revision 63 at 107793674843250
+2026-09-12T16:45:56Z	status: compiling revision 63 (mac-62)…
+2026-09-12T16:45:56Z	worker: line 223874 B decoded in 3.223875 ms at 107793680770833
+2026-09-12T16:45:56Z	worker: event on main at 107793697096708
+2026-09-12T16:45:56Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:56Z	compile: applied revision 63 at 107793698493875
+2026-09-12T16:45:56Z	status: revision 63: recovered, 119 diagnostics in 24 ms
+2026-09-12T16:45:56Z	paint: revision 63 redrew 1/2 pages
+2026-09-12T16:45:56Z	paint: revision 63 at 107793753341791 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:45:56Z	keystroke: revision 64 at 107793753441416 (delegate 107793754043250, revision 107793754362541)
+2026-09-12T16:45:56Z	compile: sending revision 64 at 107793754399333
+2026-09-12T16:45:56Z	status: compiling revision 64 (mac-63)…
+2026-09-12T16:45:56Z	worker: line 223875 B decoded in 3.282584 ms at 107793760898875
+2026-09-12T16:45:56Z	worker: event on main at 107793790716750
+2026-09-12T16:45:56Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:56Z	compile: applied revision 64 at 107793792214458
+2026-09-12T16:45:56Z	status: revision 64: recovered, 119 diagnostics in 38 ms
+2026-09-12T16:45:56Z	paint: revision 64 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T16:45:56Z	paint: revision 64 at 107793848871500 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:45:56Z	keystroke: revision 65 at 107793848949625 (delegate 107793849487291, revision 107793849799791)
+2026-09-12T16:45:56Z	compile: sending revision 65 at 107793849831500
+2026-09-12T16:45:56Z	status: compiling revision 65 (mac-64)…
+2026-09-12T16:45:56Z	worker: line 223876 B decoded in 3.462167 ms at 107793856126375
+2026-09-12T16:45:56Z	worker: event on main at 107793884365541
+2026-09-12T16:45:56Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:56Z	compile: applied revision 65 at 107793885845208
+2026-09-12T16:45:56Z	status: revision 65: recovered, 119 diagnostics in 36 ms
+2026-09-12T16:45:56Z	bridge: relaunched flashtex-bridge; reconciling… · durable document diverged from the editor (store at revision 3, edit based on 7); reattach to reconcile
+2026-09-12T16:45:56Z	paint: revision 65 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T16:45:56Z	paint: revision 65 at 107793939512333 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:45:56Z	keystroke: revision 66 at 107793939576250 (delegate 107793940074958, revision 107793940367208)
+2026-09-12T16:45:56Z	compile: sending revision 66 at 107793940396583
+2026-09-12T16:45:56Z	status: compiling revision 66 (mac-65)…
+2026-09-12T16:45:56Z	worker: line 223876 B decoded in 3.268208 ms at 107793946291458
+2026-09-12T16:45:56Z	worker: event on main at 107793974086125
+2026-09-12T16:45:56Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:56Z	compile: applied revision 66 at 107793975511458
+2026-09-12T16:45:56Z	status: revision 66: recovered, 119 diagnostics in 35 ms
+2026-09-12T16:45:56Z	paint: revision 66 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T16:45:56Z	paint: revision 66 at 107794023337750 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:45:56Z	keystroke: revision 67 at 107794023394958 (delegate 107794023898000, revision 107794024211000)
+2026-09-12T16:45:56Z	compile: sending revision 67 at 107794024241375
+2026-09-12T16:45:56Z	status: compiling revision 67 (mac-66)…
+2026-09-12T16:45:57Z	worker: line 224087 B decoded in 3.178958 ms at 107794030072708
+2026-09-12T16:45:57Z	worker: event on main at 107794058154208
+2026-09-12T16:45:57Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:57Z	compile: applied revision 67 at 107794059623333
+2026-09-12T16:45:57Z	status: revision 67: recovered, 119 diagnostics in 35 ms
+2026-09-12T16:45:57Z	bridge: relaunched flashtex-bridge; reconciling… · durable document diverged from the editor (store at revision 3, edit based on 7); reattach to reconcile
+2026-09-12T16:45:57Z	bridge: bridge exited (1); not relaunched: 3 relaunches in the last minute — Edit > Attach Capture Bridge to retry · durable document diverged from the editor (store at revision 3, edit based on 7); reattach to reconcile
+2026-09-12T16:45:57Z	bridge: bridge exited (1); not relaunched: 3 relaunches in the last minute — Edit > Attach Capture Bridge to retry · durable document diverged from the editor (store at revision 3, edit based on 7); reattach to reconcile
+2026-09-12T16:45:57Z	bridge: bridge exited (1); not relaunched: 3 relaunches in the last minute — Edit > Attach Capture Bridge to retry · durable document diverged from the editor (store at revision 3, edit based on 7); reattach to reconcile
+2026-09-12T16:45:57Z	paint: revision 67 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T16:45:57Z	paint: revision 67 at 107794098655375 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:45:57Z	keystroke: revision 68 at 107794098705750 (delegate 107794099292708, revision 107794099617541)
+2026-09-12T16:45:57Z	compile: sending revision 68 at 107794099651208
+2026-09-12T16:45:57Z	status: compiling revision 68 (mac-67)…
+2026-09-12T16:45:57Z	worker: line 224088 B decoded in 3.1745 ms at 107794105431916
+2026-09-12T16:45:57Z	worker: event on main at 107794123033583
+2026-09-12T16:45:57Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:57Z	compile: applied revision 68 at 107794124467125
+2026-09-12T16:45:57Z	status: revision 68: recovered, 119 diagnostics in 25 ms
+2026-09-12T16:45:57Z	paint: revision 68 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T16:45:57Z	paint: revision 68 at 107794161323333 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:45:57Z	keystroke: revision 69 at 107794175292750 (delegate 107794175769916, revision 107794176054375)
+2026-09-12T16:45:57Z	compile: sending revision 69 at 107794176088875
+2026-09-12T16:45:57Z	status: compiling revision 69 (mac-68)…
+2026-09-12T16:45:57Z	worker: line 224089 B decoded in 3.289459 ms at 107794182165125
+2026-09-12T16:45:57Z	worker: event on main at 107794208694333
+2026-09-12T16:45:57Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:57Z	compile: applied revision 69 at 107794210140166
+2026-09-12T16:45:57Z	status: revision 69: recovered, 119 diagnostics in 34 ms
+2026-09-12T16:45:57Z	paint: revision 69 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T16:45:57Z	paint: revision 69 at 107794247132416 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:45:57Z	keystroke: revision 70 at 107794247169166 (delegate 107794247680833, revision 107794247951208)
+2026-09-12T16:45:57Z	compile: sending revision 70 at 107794247973750
+2026-09-12T16:45:57Z	status: compiling revision 70 (mac-69)…
+2026-09-12T16:45:57Z	worker: line 224090 B decoded in 3.185833 ms at 107794253869833
+2026-09-12T16:45:57Z	worker: event on main at 107794270053791
+2026-09-12T16:45:57Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:57Z	compile: applied revision 70 at 107794271409416
+2026-09-12T16:45:57Z	status: revision 70: recovered, 119 diagnostics in 23 ms
+2026-09-12T16:45:57Z	paint: revision 70 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T16:45:57Z	paint: revision 70 at 107794306540000 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:45:57Z	keystroke: revision 71 at 107794306565083 (delegate 107794307040375, revision 107794307305041)
+2026-09-12T16:45:57Z	compile: sending revision 71 at 107794307329375
+2026-09-12T16:45:57Z	status: compiling revision 71 (mac-70)…
+2026-09-12T16:45:57Z	worker: line 224090 B decoded in 3.218375 ms at 107794313331208
+2026-09-12T16:45:57Z	worker: event on main at 107794329313625
+2026-09-12T16:45:57Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:57Z	compile: applied revision 71 at 107794330667708
+2026-09-12T16:45:57Z	status: revision 71: recovered, 119 diagnostics in 23 ms
+2026-09-12T16:45:57Z	paint: revision 71 redrew 1/2 pages
+2026-09-12T16:45:57Z	paint: revision 71 at 107794379402833 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:45:57Z	keystroke: revision 72 at 107794379562625 (delegate 107794380020750, revision 107794380308541)
+2026-09-12T16:45:57Z	compile: sending revision 72 at 107794380334250
+2026-09-12T16:45:57Z	status: compiling revision 72 (mac-71)…
+2026-09-12T16:45:57Z	worker: line 224301 B decoded in 3.27975 ms at 107794386223375
+2026-09-12T16:45:57Z	worker: event on main at 107794403572833
+2026-09-12T16:45:57Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:57Z	compile: applied revision 72 at 107794404974083
+2026-09-12T16:45:57Z	status: revision 72: recovered, 119 diagnostics in 25 ms
+2026-09-12T16:45:57Z	paint: revision 72 redrew 1/2 pages
+2026-09-12T16:45:57Z	paint: revision 72 at 107794448985416 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:45:57Z	keystroke: revision 73 at 107794449072291 (delegate 107794449651166, revision 107794449966833)
+2026-09-12T16:45:57Z	compile: sending revision 73 at 107794450003708
+2026-09-12T16:45:57Z	status: compiling revision 73 (mac-72)…
+2026-09-12T16:45:57Z	worker: line 224302 B decoded in 3.152375 ms at 107794455702125
+2026-09-12T16:45:57Z	worker: event on main at 107794484465333
+2026-09-12T16:45:57Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:57Z	compile: applied revision 73 at 107794485937250
+2026-09-12T16:45:57Z	status: revision 73: recovered, 119 diagnostics in 36 ms
+2026-09-12T16:45:57Z	paint: revision 73 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T16:45:57Z	paint: revision 73 at 107794537618916 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:45:57Z	keystroke: revision 74 at 107794537692250 (delegate 107794538257458, revision 107794538551500)
+2026-09-12T16:45:57Z	compile: sending revision 74 at 107794538579666
+2026-09-12T16:45:57Z	status: compiling revision 74 (mac-73)…
+2026-09-12T16:45:57Z	worker: line 224303 B decoded in 3.209416 ms at 107794544418291
+2026-09-12T16:45:57Z	worker: event on main at 107794561588916
+2026-09-12T16:45:57Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:57Z	compile: applied revision 74 at 107794563000791
+2026-09-12T16:45:57Z	status: revision 74: recovered, 119 diagnostics in 24 ms
+2026-09-12T16:45:57Z	paint: revision 74 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T16:45:57Z	paint: revision 74 at 107794598536416 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:45:57Z	keystroke: revision 75 at 107794598573458 (delegate 107794599061916, revision 107794599325250)
+2026-09-12T16:45:57Z	compile: sending revision 75 at 107794599350166
+2026-09-12T16:45:57Z	status: compiling revision 75 (mac-74)…
+2026-09-12T16:45:57Z	worker: line 224304 B decoded in 3.226667 ms at 107794605143125
+2026-09-12T16:45:57Z	worker: event on main at 107794621107375
+2026-09-12T16:45:57Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:57Z	compile: applied revision 75 at 107794622466791
+2026-09-12T16:45:57Z	status: revision 75: recovered, 119 diagnostics in 23 ms
+2026-09-12T16:45:57Z	paint: revision 75 redrew 1/2 pages
+2026-09-12T16:45:57Z	paint: revision 75 at 107794668727458 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:45:57Z	keystroke: revision 76 at 107794668820875 (delegate 107794669399000, revision 107794669698125)
+2026-09-12T16:45:57Z	compile: sending revision 76 at 107794669733458
+2026-09-12T16:45:57Z	status: compiling revision 76 (mac-75)…
+2026-09-12T16:45:57Z	worker: line 224305 B decoded in 3.178208 ms at 107794675531583
+2026-09-12T16:45:57Z	worker: event on main at 107794704032166
+2026-09-12T16:45:57Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:57Z	compile: applied revision 76 at 107794705608791
+2026-09-12T16:45:57Z	status: revision 76: recovered, 119 diagnostics in 36 ms
+2026-09-12T16:45:57Z	paint: revision 76 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T16:45:57Z	paint: revision 76 at 107794757766083 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:45:57Z	keystroke: revision 77 at 107794757851583 (delegate 107794758344291, revision 107794758632500)
+2026-09-12T16:45:57Z	compile: sending revision 77 at 107794758656416
+2026-09-12T16:45:57Z	status: compiling revision 77 (mac-76)…
+2026-09-12T16:45:57Z	worker: line 224306 B decoded in 3.195125 ms at 107794764582666
+2026-09-12T16:45:57Z	worker: event on main at 107794791277500
+2026-09-12T16:45:57Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:57Z	compile: applied revision 77 at 107794792745000
+2026-09-12T16:45:57Z	status: revision 77: recovered, 119 diagnostics in 34 ms
+2026-09-12T16:45:57Z	paint: revision 77 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T16:45:57Z	paint: revision 77 at 107794848304000 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:45:57Z	keystroke: revision 78 at 107794848411166 (delegate 107794849032375, revision 107794849343791)
+2026-09-12T16:45:57Z	compile: sending revision 78 at 107794849381916
+2026-09-12T16:45:57Z	status: compiling revision 78 (mac-77)…
+2026-09-12T16:45:57Z	worker: line 224307 B decoded in 3.3245 ms at 107794855937625
+2026-09-12T16:45:57Z	worker: event on main at 107794886841875
+2026-09-12T16:45:57Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:57Z	compile: applied revision 78 at 107794888299500
+2026-09-12T16:45:57Z	status: revision 78: recovered, 119 diagnostics in 39 ms
+2026-09-12T16:45:57Z	paint: revision 78 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T16:45:57Z	paint: revision 78 at 107794943600791 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:45:57Z	keystroke: revision 79 at 107794943698041 (delegate 107794944294625, revision 107794944615750)
+2026-09-12T16:45:57Z	compile: sending revision 79 at 107794944649541
+2026-09-12T16:45:57Z	status: compiling revision 79 (mac-78)…
+2026-09-12T16:45:57Z	worker: line 224308 B decoded in 3.280667 ms at 107794950576458
+2026-09-12T16:45:57Z	worker: event on main at 107794978576625
+2026-09-12T16:45:57Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:57Z	compile: applied revision 79 at 107794980017375
+2026-09-12T16:45:57Z	status: revision 79: recovered, 119 diagnostics in 35 ms
+2026-09-12T16:45:58Z	paint: revision 79 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T16:45:58Z	paint: revision 79 at 107795030600875 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:45:58Z	keystroke: revision 80 at 107795030679916 (delegate 107795031181166, revision 107795031469958)
+2026-09-12T16:45:58Z	compile: sending revision 80 at 107795031496916
+2026-09-12T16:45:58Z	status: compiling revision 80 (mac-79)…
+2026-09-12T16:45:58Z	worker: line 224309 B decoded in 3.236959 ms at 107795037483625
+2026-09-12T16:45:58Z	worker: event on main at 107795056102875
+2026-09-12T16:45:58Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:58Z	compile: applied revision 80 at 107795057539916
+2026-09-12T16:45:58Z	status: revision 80: recovered, 119 diagnostics in 26 ms
+2026-09-12T16:45:58Z	paint: revision 80 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T16:45:58Z	paint: revision 80 at 107795094340958 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:45:58Z	keystroke: revision 81 at 107795094368291 (delegate 107795094922791, revision 107795095202666)
+2026-09-12T16:45:58Z	compile: sending revision 81 at 107795095230666
+2026-09-12T16:45:58Z	status: compiling revision 81 (mac-80)…
+2026-09-12T16:45:58Z	worker: line 224310 B decoded in 3.190209 ms at 107795101100750
+2026-09-12T16:45:58Z	worker: event on main at 107795117719666
+2026-09-12T16:45:58Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:58Z	compile: applied revision 81 at 107795119150541
+2026-09-12T16:45:58Z	status: revision 81: recovered, 119 diagnostics in 24 ms
+2026-09-12T16:45:58Z	paint: revision 81 redrew 1/2 pages
+2026-09-12T16:45:58Z	paint: revision 81 at 107795163895375 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:45:58Z	keystroke: revision 82 at 107795163968458 (delegate 107795164465416, revision 107795164740291)
+2026-09-12T16:45:58Z	compile: sending revision 82 at 107795164763666
+2026-09-12T16:45:58Z	status: compiling revision 82 (mac-81)…
+2026-09-12T16:45:58Z	worker: line 224310 B decoded in 3.20275 ms at 107795170598666
+2026-09-12T16:45:58Z	worker: event on main at 107795187127250
+2026-09-12T16:45:58Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:58Z	compile: applied revision 82 at 107795188495541
+2026-09-12T16:45:58Z	status: revision 82: recovered, 119 diagnostics in 24 ms
+2026-09-12T16:45:58Z	paint: revision 82 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T16:45:58Z	paint: revision 82 at 107795229278750 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:45:58Z	keystroke: revision 83 at 107795229400541 (delegate 107795229875375, revision 107795230172458)
+2026-09-12T16:45:58Z	compile: sending revision 83 at 107795230201833
+2026-09-12T16:45:58Z	status: compiling revision 83 (mac-82)…
+2026-09-12T16:45:58Z	worker: line 224521 B decoded in 3.1785 ms at 107795235975666
+2026-09-12T16:45:58Z	worker: event on main at 107795253111583
+2026-09-12T16:45:58Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:58Z	compile: applied revision 83 at 107795254506416
+2026-09-12T16:45:58Z	status: revision 83: recovered, 119 diagnostics in 24 ms
+2026-09-12T16:45:58Z	paint: revision 83 redrew 1/2 pages
+2026-09-12T16:45:58Z	paint: revision 83 at 107795297892708 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:45:58Z	keystroke: revision 84 at 107795297963125 (delegate 107795298452458, revision 107795298750958)
+2026-09-12T16:45:58Z	compile: sending revision 84 at 107795298774708
+2026-09-12T16:45:58Z	status: compiling revision 84 (mac-83)…
+2026-09-12T16:45:58Z	worker: line 224522 B decoded in 3.185791 ms at 107795304553291
+2026-09-12T16:45:58Z	worker: event on main at 107795332765166
+2026-09-12T16:45:58Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:58Z	compile: applied revision 84 at 107795334283291
+2026-09-12T16:45:58Z	status: revision 84: recovered, 119 diagnostics in 35 ms
+2026-09-12T16:45:58Z	paint: revision 84 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T16:45:58Z	paint: revision 84 at 107795385099500 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:45:58Z	keystroke: revision 85 at 107795385181291 (delegate 107795385679416, revision 107795385967666)
+2026-09-12T16:45:58Z	compile: sending revision 85 at 107795385992666
+2026-09-12T16:45:58Z	status: compiling revision 85 (mac-84)…
+2026-09-12T16:45:58Z	worker: line 224523 B decoded in 3.180208 ms at 107795391751791
+2026-09-12T16:45:58Z	worker: event on main at 107795419432500
+2026-09-12T16:45:58Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:58Z	compile: applied revision 85 at 107795420870375
+2026-09-12T16:45:58Z	status: revision 85: recovered, 119 diagnostics in 35 ms
+2026-09-12T16:45:58Z	paint: revision 85 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T16:45:58Z	paint: revision 85 at 107795470740791 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:45:58Z	keystroke: revision 86 at 107795470820041 (delegate 107795471308791, revision 107795471619916)
+2026-09-12T16:45:58Z	compile: sending revision 86 at 107795471649333
+2026-09-12T16:45:58Z	status: compiling revision 86 (mac-85)…
+2026-09-12T16:45:58Z	worker: line 224524 B decoded in 3.182834 ms at 107795477487125
+2026-09-12T16:45:58Z	worker: event on main at 107795495536250
+2026-09-12T16:45:58Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:58Z	compile: applied revision 86 at 107795497145375
+2026-09-12T16:45:58Z	status: revision 86: recovered, 119 diagnostics in 25 ms
+2026-09-12T16:45:58Z	paint: revision 86 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T16:45:58Z	paint: revision 86 at 107795534325625 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:45:58Z	keystroke: revision 87 at 107795534348291 (delegate 107795535006125, revision 107795535282125)
+2026-09-12T16:45:58Z	compile: sending revision 87 at 107795535305875
+2026-09-12T16:45:58Z	status: compiling revision 87 (mac-86)…
+2026-09-12T16:45:58Z	worker: line 224525 B decoded in 3.1795 ms at 107795541156791
+2026-09-12T16:45:58Z	worker: event on main at 107795557539875
+2026-09-12T16:45:58Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:58Z	compile: applied revision 87 at 107795558933083
+2026-09-12T16:45:58Z	status: revision 87: recovered, 119 diagnostics in 24 ms
+2026-09-12T16:45:58Z	paint: revision 87 redrew 1/2 pages
+2026-09-12T16:45:58Z	paint: revision 87 at 107795602647291 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:45:58Z	keystroke: revision 88 at 107795602718166 (delegate 107795603236833, revision 107795603519083)
+2026-09-12T16:45:58Z	compile: sending revision 88 at 107795603547500
+2026-09-12T16:45:58Z	status: compiling revision 88 (mac-87)…
+2026-09-12T16:45:58Z	worker: line 224525 B decoded in 3.17025 ms at 107795609352333
+2026-09-12T16:45:58Z	worker: event on main at 107795637992083
+2026-09-12T16:45:58Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:58Z	compile: applied revision 88 at 107795639496083
+2026-09-12T16:45:58Z	status: revision 88: recovered, 119 diagnostics in 36 ms
+2026-09-12T16:45:58Z	paint: revision 88 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T16:45:58Z	paint: revision 88 at 107795689422625 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:45:58Z	keystroke: revision 89 at 107795689503708 (delegate 107795690016916, revision 107795690313500)
+2026-09-12T16:45:58Z	compile: sending revision 89 at 107795690339666
+2026-09-12T16:45:58Z	status: compiling revision 89 (mac-88)…
+2026-09-12T16:45:58Z	worker: line 224736 B decoded in 3.217458 ms at 107795696184708
+2026-09-12T16:45:58Z	worker: event on main at 107795722212958
+2026-09-12T16:45:58Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:58Z	compile: applied revision 89 at 107795723614666
+2026-09-12T16:45:58Z	status: revision 89: recovered, 119 diagnostics in 33 ms
+2026-09-12T16:45:58Z	paint: revision 89 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T16:45:58Z	paint: revision 89 at 107795774073916 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:45:58Z	keystroke: revision 90 at 107795774170541 (delegate 107795774702375, revision 107795775032708)
+2026-09-12T16:45:58Z	compile: sending revision 90 at 107795775060208
+2026-09-12T16:45:58Z	status: compiling revision 90 (mac-89)…
+2026-09-12T16:45:58Z	worker: line 224737 B decoded in 3.219292 ms at 107795780889750
+2026-09-12T16:45:58Z	worker: event on main at 107795809320833
+2026-09-12T16:45:58Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:58Z	compile: applied revision 90 at 107795810835666
+2026-09-12T16:45:58Z	status: revision 90: recovered, 119 diagnostics in 36 ms
+2026-09-12T16:45:58Z	paint: revision 90 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T16:45:58Z	paint: revision 90 at 107795848651833 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:45:58Z	keystroke: revision 91 at 107795848712875 (delegate 107795849223208, revision 107795849500875)
+2026-09-12T16:45:58Z	compile: sending revision 91 at 107795849523666
+2026-09-12T16:45:58Z	status: compiling revision 91 (mac-90)…
+2026-09-12T16:45:58Z	worker: line 224738 B decoded in 3.202375 ms at 107795855336625
+2026-09-12T16:45:58Z	worker: event on main at 107795872245625
+2026-09-12T16:45:58Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:58Z	compile: applied revision 91 at 107795873673375
+2026-09-12T16:45:58Z	status: revision 91: recovered, 119 diagnostics in 24 ms
+2026-09-12T16:45:58Z	paint: revision 91 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T16:45:58Z	paint: revision 91 at 107795909336875 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:45:58Z	keystroke: revision 92 at 107795924362625 (delegate 107795924952375, revision 107795925283500)
+2026-09-12T16:45:58Z	compile: sending revision 92 at 107795925334250
+2026-09-12T16:45:58Z	status: compiling revision 92 (mac-91)…
+2026-09-12T16:45:58Z	worker: line 224739 B decoded in 3.197292 ms at 107795931243583
+2026-09-12T16:45:58Z	worker: event on main at 107795958958083
+2026-09-12T16:45:58Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:58Z	compile: applied revision 92 at 107795960422833
+2026-09-12T16:45:58Z	status: revision 92: recovered, 119 diagnostics in 35 ms
+2026-09-12T16:45:58Z	paint: revision 92 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T16:45:58Z	paint: revision 92 at 107795997675166 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:45:58Z	keystroke: revision 93 at 107795997728250 (delegate 107795998212333, revision 107795998480750)
+2026-09-12T16:45:58Z	compile: sending revision 93 at 107795998503875
+2026-09-12T16:45:58Z	status: compiling revision 93 (mac-92)…
+2026-09-12T16:45:58Z	worker: line 224740 B decoded in 3.19925 ms at 107796004426666
+2026-09-12T16:45:58Z	worker: event on main at 107796020658750
+2026-09-12T16:45:58Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:58Z	compile: applied revision 93 at 107796022085375
+2026-09-12T16:45:58Z	status: revision 93: recovered, 119 diagnostics in 23 ms
+2026-09-12T16:45:59Z	paint: revision 93 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T16:45:59Z	paint: revision 93 at 107796058154875 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:45:59Z	keystroke: revision 94 at 107796058182500 (delegate 107796058707458, revision 107796059009291)
+2026-09-12T16:45:59Z	compile: sending revision 94 at 107796059042958
+2026-09-12T16:45:59Z	status: compiling revision 94 (mac-93)…
+2026-09-12T16:45:59Z	worker: line 224741 B decoded in 3.1905 ms at 107796064819958
+2026-09-12T16:45:59Z	worker: event on main at 107796081236291
+2026-09-12T16:45:59Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:59Z	compile: applied revision 94 at 107796082654666
+2026-09-12T16:45:59Z	status: revision 94: recovered, 119 diagnostics in 24 ms
+2026-09-12T16:45:59Z	paint: revision 94 redrew 1/2 pages
+2026-09-12T16:45:59Z	paint: revision 94 at 107796131388666 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:45:59Z	keystroke: revision 95 at 107796131482083 (delegate 107796131991125, revision 107796132275791)
+2026-09-12T16:45:59Z	compile: sending revision 95 at 107796132302958
+2026-09-12T16:45:59Z	status: compiling revision 95 (mac-94)…
+2026-09-12T16:45:59Z	worker: line 224741 B decoded in 3.197208 ms at 107796138253541
+2026-09-12T16:45:59Z	worker: event on main at 107796164430250
+2026-09-12T16:45:59Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:59Z	compile: applied revision 95 at 107796165878416
+2026-09-12T16:45:59Z	status: revision 95: recovered, 119 diagnostics in 33 ms
+2026-09-12T16:45:59Z	paint: revision 95 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T16:45:59Z	paint: revision 95 at 107796214734666 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:45:59Z	keystroke: revision 96 at 107796214785166 (delegate 107796215306291, revision 107796215601750)
+2026-09-12T16:45:59Z	compile: sending revision 96 at 107796215630666
+2026-09-12T16:45:59Z	status: compiling revision 96 (mac-95)…
+2026-09-12T16:45:59Z	worker: line 224952 B decoded in 3.263917 ms at 107796221553250
+2026-09-12T16:45:59Z	worker: event on main at 107796248779750
+2026-09-12T16:45:59Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:59Z	compile: applied revision 96 at 107796250293041
+2026-09-12T16:45:59Z	status: revision 96: recovered, 119 diagnostics in 35 ms
+2026-09-12T16:45:59Z	paint: revision 96 needed 1 extra turn(s); drew 1/2 pages
+2026-09-12T16:45:59Z	paint: revision 96 at 107796300789000 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:45:59Z	keystroke: revision 97 at 107796300854875 (delegate 107796301368250, revision 107796301664666)
+2026-09-12T16:45:59Z	compile: sending revision 97 at 107796301689875
+2026-09-12T16:45:59Z	status: compiling revision 97 (mac-96)…
+2026-09-12T16:45:59Z	worker: line 224952 B decoded in 3.18725 ms at 107796307486291
+2026-09-12T16:45:59Z	worker: event on main at 107796335062583
+2026-09-12T16:45:59Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:59Z	compile: applied revision 97 at 107796336577875
+2026-09-12T16:45:59Z	status: revision 97: recovered, 119 diagnostics in 35 ms
+2026-09-12T16:45:59Z	paint: revision 97 needed 2 extra turn(s); drew 0/2 pages
+2026-09-12T16:45:59Z	paint: revision 97 at 107796386669375 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:45:59Z	keystroke: revision 98 at 107796386737000 (delegate 107796387330166, revision 107796387656750)
+2026-09-12T16:45:59Z	compile: sending revision 98 at 107796387687333
+2026-09-12T16:45:59Z	status: compiling revision 98 (mac-97)…
+2026-09-12T16:45:59Z	worker: line 225210 B decoded in 3.197583 ms at 107796393450833
+2026-09-12T16:45:59Z	worker: event on main at 107796423299500
+2026-09-12T16:45:59Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:59Z	compile: applied revision 98 at 107796424914083
+2026-09-12T16:45:59Z	status: revision 98: recovered, 119 diagnostics in 37 ms
+2026-09-12T16:45:59Z	paint: revision 98 needed 1 extra turn(s); drew 1/3 pages
+2026-09-12T16:45:59Z	paint: revision 98 at 107796483195583 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:45:59Z	keystroke: revision 99 at 107796483286916 (delegate 107796483921708, revision 107796484238541)
+2026-09-12T16:45:59Z	compile: sending revision 99 at 107796484277458
+2026-09-12T16:45:59Z	status: compiling revision 99 (mac-98)…
+2026-09-12T16:45:59Z	worker: line 225211 B decoded in 3.202042 ms at 107796490193125
+2026-09-12T16:45:59Z	worker: event on main at 107796517494458
+2026-09-12T16:45:59Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:59Z	compile: applied revision 99 at 107796518917625
+2026-09-12T16:45:59Z	status: revision 99: recovered, 119 diagnostics in 35 ms
+2026-09-12T16:45:59Z	paint: revision 99 needed 1 extra turn(s); drew 1/3 pages
+2026-09-12T16:45:59Z	paint: revision 99 at 107796569550000 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:45:59Z	keystroke: revision 100 at 107796569639583 (delegate 107796570246500, revision 107796570552250)
+2026-09-12T16:45:59Z	compile: sending revision 100 at 107796570578583
+2026-09-12T16:45:59Z	status: compiling revision 100 (mac-99)…
+2026-09-12T16:45:59Z	worker: line 225214 B decoded in 3.219792 ms at 107796576443125
+2026-09-12T16:45:59Z	worker: event on main at 107796604842458
+2026-09-12T16:45:59Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:59Z	compile: applied revision 100 at 107796606308083
+2026-09-12T16:45:59Z	status: revision 100: recovered, 119 diagnostics in 36 ms
+2026-09-12T16:45:59Z	paint: revision 100 needed 1 extra turn(s); drew 1/3 pages
+2026-09-12T16:45:59Z	paint: revision 100 at 107796653792916 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:45:59Z	keystroke: revision 101 at 107796653852875 (delegate 107796654361791, revision 107796654643541)
+2026-09-12T16:45:59Z	compile: sending revision 101 at 107796654667625
+2026-09-12T16:45:59Z	status: compiling revision 101 (mac-100)…
+2026-09-12T16:45:59Z	worker: line 225216 B decoded in 3.239042 ms at 107796660478708
+2026-09-12T16:45:59Z	worker: event on main at 107796677682458
+2026-09-12T16:45:59Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:59Z	compile: applied revision 101 at 107796679105875
+2026-09-12T16:45:59Z	status: revision 101: recovered, 119 diagnostics in 24 ms
+2026-09-12T16:45:59Z	paint: revision 101 needed 2 extra turn(s); drew 0/3 pages
+2026-09-12T16:45:59Z	paint: revision 101 at 107796714577958 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:45:59Z	keystroke: revision 102 at 107796714600166 (delegate 107796715115833, revision 107796715392916)
+2026-09-12T16:45:59Z	compile: sending revision 102 at 107796715422458
+2026-09-12T16:45:59Z	status: compiling revision 102 (mac-101)…
+2026-09-12T16:45:59Z	worker: line 225217 B decoded in 3.201834 ms at 107796721227125
+2026-09-12T16:45:59Z	worker: event on main at 107796737360916
+2026-09-12T16:45:59Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:59Z	compile: applied revision 102 at 107796738748625
+2026-09-12T16:45:59Z	status: revision 102: recovered, 119 diagnostics in 23 ms
+2026-09-12T16:45:59Z	paint: revision 102 redrew 1/3 pages
+2026-09-12T16:45:59Z	paint: revision 102 at 107796781674958 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:45:59Z	keystroke: revision 103 at 107796781861125 (delegate 107796782374458, revision 107796782667250)
+2026-09-12T16:45:59Z	compile: sending revision 103 at 107796782695750
+2026-09-12T16:45:59Z	status: compiling revision 103 (mac-102)…
+2026-09-12T16:45:59Z	worker: line 225217 B decoded in 3.190792 ms at 107796788583833
+2026-09-12T16:45:59Z	worker: event on main at 107796815187958
+2026-09-12T16:45:59Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:59Z	compile: applied revision 103 at 107796816637791
+2026-09-12T16:45:59Z	status: revision 103: recovered, 119 diagnostics in 34 ms
+2026-09-12T16:45:59Z	paint: revision 103 needed 2 extra turn(s); drew 0/3 pages
+2026-09-12T16:45:59Z	paint: revision 103 at 107796865186750 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:45:59Z	keystroke: revision 104 at 107796865249791 (delegate 107796865802666, revision 107796866116833)
+2026-09-12T16:45:59Z	compile: sending revision 104 at 107796866145166
+2026-09-12T16:45:59Z	status: compiling revision 104 (mac-103)…
+2026-09-12T16:45:59Z	worker: line 225425 B decoded in 3.230416 ms at 107796871985666
+2026-09-12T16:45:59Z	worker: event on main at 107796899698500
+2026-09-12T16:45:59Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:59Z	compile: applied revision 104 at 107796901176416
+2026-09-12T16:45:59Z	status: revision 104: recovered, 119 diagnostics in 35 ms
+2026-09-12T16:45:59Z	paint: revision 104 needed 2 extra turn(s); drew 0/3 pages
+2026-09-12T16:45:59Z	paint: revision 104 at 107796940280500 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:45:59Z	keystroke: revision 105 at 107796940327833 (delegate 107796940900041, revision 107796941232875)
+2026-09-12T16:45:59Z	compile: sending revision 105 at 107796941264791
+2026-09-12T16:45:59Z	status: compiling revision 105 (mac-104)…
+2026-09-12T16:45:59Z	worker: line 225426 B decoded in 3.246583 ms at 107796947234791
+2026-09-12T16:45:59Z	worker: event on main at 107796964440583
+2026-09-12T16:45:59Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:45:59Z	compile: applied revision 105 at 107796965880541
+2026-09-12T16:45:59Z	status: revision 105: recovered, 119 diagnostics in 25 ms
+2026-09-12T16:45:59Z	paint: revision 105 needed 2 extra turn(s); drew 0/3 pages
+2026-09-12T16:45:59Z	paint: revision 105 at 107797002401625 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:45:59Z	keystroke: revision 106 at 107797015939416 (delegate 107797016523166, revision 107797016824291)
+2026-09-12T16:45:59Z	compile: sending revision 106 at 107797016869083
+2026-09-12T16:45:59Z	status: compiling revision 106 (mac-105)…
+2026-09-12T16:45:59Z	worker: line 225427 B decoded in 3.207958 ms at 107797022780791
+2026-09-12T16:46:00Z	worker: event on main at 107797052051708
+2026-09-12T16:46:00Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:00Z	compile: applied revision 106 at 107797053774541
+2026-09-12T16:46:00Z	status: revision 106: recovered, 119 diagnostics in 37 ms
+2026-09-12T16:46:00Z	paint: revision 106 needed 1 extra turn(s); drew 1/3 pages
+2026-09-12T16:46:00Z	paint: revision 106 at 107797107428958 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:46:00Z	keystroke: revision 107 at 107797107510208 (delegate 107797108106750, revision 107797108436833)
+2026-09-12T16:46:00Z	compile: sending revision 107 at 107797108470166
+2026-09-12T16:46:00Z	status: compiling revision 107 (mac-106)…
+2026-09-12T16:46:00Z	worker: line 225429 B decoded in 3.25625 ms at 107797114515041
+2026-09-12T16:46:00Z	worker: event on main at 107797142551250
+2026-09-12T16:46:00Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:00Z	compile: applied revision 107 at 107797143994750
+2026-09-12T16:46:00Z	status: revision 107: recovered, 119 diagnostics in 35 ms
+2026-09-12T16:46:00Z	paint: revision 107 needed 2 extra turn(s); drew 0/3 pages
+2026-09-12T16:46:00Z	paint: revision 107 at 107797181216625 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:46:00Z	keystroke: revision 108 at 107797181253625 (delegate 107797181805083, revision 107797182083625)
+2026-09-12T16:46:00Z	compile: sending revision 108 at 107797182107333
+2026-09-12T16:46:00Z	status: compiling revision 108 (mac-107)…
+2026-09-12T16:46:00Z	worker: line 225430 B decoded in 3.185958 ms at 107797188054583
+2026-09-12T16:46:00Z	worker: event on main at 107797204552000
+2026-09-12T16:46:00Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:00Z	compile: applied revision 108 at 107797205928541
+2026-09-12T16:46:00Z	status: revision 108: recovered, 119 diagnostics in 24 ms
+2026-09-12T16:46:00Z	paint: revision 108 needed 2 extra turn(s); drew 0/3 pages
+2026-09-12T16:46:00Z	paint: revision 108 at 107797241597458 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:46:00Z	keystroke: revision 109 at 107797241620875 (delegate 107797242208916, revision 107797242499333)
+2026-09-12T16:46:00Z	compile: sending revision 109 at 107797242526958
+2026-09-12T16:46:00Z	status: compiling revision 109 (mac-108)…
+2026-09-12T16:46:00Z	worker: line 225430 B decoded in 3.201708 ms at 107797248408583
+2026-09-12T16:46:00Z	worker: event on main at 107797264774041
+2026-09-12T16:46:00Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:00Z	compile: applied revision 109 at 107797266196583
+2026-09-12T16:46:00Z	status: revision 109: recovered, 119 diagnostics in 24 ms
+2026-09-12T16:46:00Z	paint: revision 109 redrew 1/3 pages
+2026-09-12T16:46:00Z	paint: revision 109 at 107797317103916 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:46:00Z	keystroke: revision 110 at 107797317295041 (delegate 107797317877291, revision 107797318217583)
+2026-09-12T16:46:00Z	compile: sending revision 110 at 107797318243083
+2026-09-12T16:46:00Z	status: compiling revision 110 (mac-109)…
+2026-09-12T16:46:00Z	worker: line 225638 B decoded in 3.242833 ms at 107797324100041
+2026-09-12T16:46:00Z	worker: event on main at 107797352329458
+2026-09-12T16:46:00Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:00Z	compile: applied revision 110 at 107797353782333
+2026-09-12T16:46:00Z	status: revision 110: recovered, 119 diagnostics in 35 ms
+2026-09-12T16:46:00Z	paint: revision 110 needed 1 extra turn(s); drew 1/3 pages
+2026-09-12T16:46:00Z	paint: revision 110 at 107797402968708 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:46:00Z	keystroke: revision 111 at 107797403048875 (delegate 107797403607000, revision 107797403901666)
+2026-09-12T16:46:00Z	compile: sending revision 111 at 107797403931291
+2026-09-12T16:46:00Z	status: compiling revision 111 (mac-110)…
+2026-09-12T16:46:00Z	worker: line 225639 B decoded in 3.2295 ms at 107797409749791
+2026-09-12T16:46:00Z	worker: event on main at 107797437895916
+2026-09-12T16:46:00Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:00Z	compile: applied revision 111 at 107797439454416
+2026-09-12T16:46:00Z	status: revision 111: recovered, 119 diagnostics in 35 ms
+2026-09-12T16:46:00Z	paint: revision 111 needed 1 extra turn(s); drew 1/3 pages
+2026-09-12T16:46:00Z	paint: revision 111 at 107797490286916 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:46:00Z	keystroke: revision 112 at 107797490370208 (delegate 107797490921916, revision 107797491212166)
+2026-09-12T16:46:00Z	compile: sending revision 112 at 107797491241833
+2026-09-12T16:46:00Z	status: compiling revision 112 (mac-111)…
+2026-09-12T16:46:00Z	worker: line 225639 B decoded in 3.192084 ms at 107797497043750
+2026-09-12T16:46:00Z	worker: event on main at 107797524250416
+2026-09-12T16:46:00Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:00Z	compile: applied revision 112 at 107797525826750
+2026-09-12T16:46:00Z	status: revision 112: recovered, 119 diagnostics in 34 ms
+2026-09-12T16:46:00Z	paint: revision 112 needed 2 extra turn(s); drew 0/3 pages
+2026-09-12T16:46:00Z	paint: revision 112 at 107797565157166 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:46:00Z	keystroke: revision 113 at 107797565219041 (delegate 107797565779833, revision 107797566068083)
+2026-09-12T16:46:00Z	compile: sending revision 113 at 107797566091000
+2026-09-12T16:46:00Z	status: compiling revision 113 (mac-112)…
+2026-09-12T16:46:00Z	worker: line 225847 B decoded in 3.192458 ms at 107797571896083
+2026-09-12T16:46:00Z	worker: event on main at 107797588462208
+2026-09-12T16:46:00Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:00Z	compile: applied revision 113 at 107797589852333
+2026-09-12T16:46:00Z	status: revision 113: recovered, 119 diagnostics in 24 ms
+2026-09-12T16:46:00Z	paint: revision 113 needed 2 extra turn(s); drew 0/3 pages
+2026-09-12T16:46:00Z	paint: revision 113 at 107797625337750 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:46:00Z	keystroke: revision 114 at 107797625363333 (delegate 107797625952708, revision 107797626227458)
+2026-09-12T16:46:00Z	compile: sending revision 114 at 107797626250208
+2026-09-12T16:46:00Z	status: compiling revision 114 (mac-113)…
+2026-09-12T16:46:00Z	worker: line 225848 B decoded in 3.2305 ms at 107797632203833
+2026-09-12T16:46:00Z	worker: event on main at 107797648229750
+2026-09-12T16:46:00Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:00Z	compile: applied revision 114 at 107797649618500
+2026-09-12T16:46:00Z	status: revision 114: recovered, 119 diagnostics in 23 ms
+2026-09-12T16:46:00Z	paint: revision 114 redrew 1/3 pages
+2026-09-12T16:46:00Z	paint: revision 114 at 107797696943833 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:46:00Z	keystroke: revision 115 at 107797697031791 (delegate 107797697564583, revision 107797697853291)
+2026-09-12T16:46:00Z	compile: sending revision 115 at 107797697881333
+2026-09-12T16:46:00Z	status: compiling revision 115 (mac-114)…
+2026-09-12T16:46:00Z	worker: line 225848 B decoded in 3.247167 ms at 107797703883208
+2026-09-12T16:46:00Z	worker: event on main at 107797720879041
+2026-09-12T16:46:00Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:00Z	compile: applied revision 115 at 107797722452041
+2026-09-12T16:46:00Z	status: revision 115: recovered, 119 diagnostics in 24 ms
+2026-09-12T16:46:00Z	paint: revision 115 needed 2 extra turn(s); drew 0/3 pages
+2026-09-12T16:46:00Z	paint: revision 115 at 107797767561083 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:46:00Z	keystroke: revision 116 at 107797767703458 (delegate 107797768237125, revision 107797768555083)
+2026-09-12T16:46:00Z	compile: sending revision 116 at 107797768588000
+2026-09-12T16:46:00Z	status: compiling revision 116 (mac-115)…
+2026-09-12T16:46:00Z	worker: line 226056 B decoded in 3.205167 ms at 107797774451625
+2026-09-12T16:46:00Z	worker: event on main at 107797801474375
+2026-09-12T16:46:00Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:00Z	compile: applied revision 116 at 107797802926500
+2026-09-12T16:46:00Z	status: revision 116: recovered, 119 diagnostics in 34 ms
+2026-09-12T16:46:00Z	paint: revision 116 needed 2 extra turn(s); drew 0/3 pages
+2026-09-12T16:46:00Z	paint: revision 116 at 107797839292833 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:46:00Z	keystroke: revision 117 at 107797839330500 (delegate 107797839887041, revision 107797840165000)
+2026-09-12T16:46:00Z	compile: sending revision 117 at 107797840194208
+2026-09-12T16:46:00Z	status: compiling revision 117 (mac-116)…
+2026-09-12T16:46:00Z	worker: line 226057 B decoded in 3.275 ms at 107797846166375
+2026-09-12T16:46:00Z	worker: event on main at 107797863953291
+2026-09-12T16:46:00Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:00Z	compile: applied revision 117 at 107797865360291
+2026-09-12T16:46:00Z	status: revision 117: recovered, 119 diagnostics in 25 ms
+2026-09-12T16:46:00Z	paint: revision 117 needed 2 extra turn(s); drew 0/3 pages
+2026-09-12T16:46:00Z	paint: revision 117 at 107797903109833 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:46:00Z	keystroke: revision 118 at 107797903133291 (delegate 107797903718125, revision 107797904005666)
+2026-09-12T16:46:00Z	compile: sending revision 118 at 107797904032166
+2026-09-12T16:46:00Z	status: compiling revision 118 (mac-117)…
+2026-09-12T16:46:00Z	worker: line 226058 B decoded in 3.214875 ms at 107797910010500
+2026-09-12T16:46:00Z	worker: event on main at 107797927467708
+2026-09-12T16:46:00Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:00Z	compile: applied revision 118 at 107797928861750
+2026-09-12T16:46:00Z	status: revision 118: recovered, 119 diagnostics in 25 ms
+2026-09-12T16:46:00Z	paint: revision 118 redrew 1/3 pages
+2026-09-12T16:46:00Z	paint: revision 118 at 107797978100625 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:46:00Z	keystroke: revision 119 at 107797978196166 (delegate 107797978788083, revision 107797979080375)
+2026-09-12T16:46:00Z	compile: sending revision 119 at 107797979108833
+2026-09-12T16:46:00Z	status: compiling revision 119 (mac-118)…
+2026-09-12T16:46:00Z	worker: line 226059 B decoded in 3.269959 ms at 107797984998500
+2026-09-12T16:46:00Z	worker: event on main at 107798013131166
+2026-09-12T16:46:00Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:00Z	compile: applied revision 119 at 107798014622916
+2026-09-12T16:46:00Z	status: revision 119: recovered, 119 diagnostics in 35 ms
+2026-09-12T16:46:01Z	paint: revision 119 needed 1 extra turn(s); drew 1/3 pages
+2026-09-12T16:46:01Z	paint: revision 119 at 107798065049583 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:46:01Z	keystroke: revision 120 at 107798065120541 (delegate 107798065699125, revision 107798066018041)
+2026-09-12T16:46:01Z	compile: sending revision 120 at 107798066048041
+2026-09-12T16:46:01Z	status: compiling revision 120 (mac-119)…
+2026-09-12T16:46:01Z	worker: line 226059 B decoded in 3.213458 ms at 107798071910791
+2026-09-12T16:46:01Z	worker: event on main at 107798100310750
+2026-09-12T16:46:01Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:01Z	compile: applied revision 120 at 107798101834500
+2026-09-12T16:46:01Z	status: revision 120: recovered, 119 diagnostics in 36 ms
+2026-09-12T16:46:01Z	paint: revision 120 needed 2 extra turn(s); drew 0/3 pages
+2026-09-12T16:46:01Z	paint: revision 120 at 107798152458083 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:46:01Z	keystroke: revision 121 at 107798152515875 (delegate 107798153067833, revision 107798153387291)
+2026-09-12T16:46:01Z	compile: sending revision 121 at 107798153418333
+2026-09-12T16:46:01Z	status: compiling revision 121 (mac-120)…
+2026-09-12T16:46:01Z	worker: line 226269 B decoded in 3.213916 ms at 107798159259166
+2026-09-12T16:46:01Z	worker: event on main at 107798186353916
+2026-09-12T16:46:01Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:01Z	compile: applied revision 121 at 107798187782166
+2026-09-12T16:46:01Z	status: revision 121: recovered, 119 diagnostics in 34 ms
+2026-09-12T16:46:01Z	paint: revision 121 needed 1 extra turn(s); drew 1/3 pages
+2026-09-12T16:46:01Z	paint: revision 121 at 107798236030041 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:46:01Z	keystroke: revision 122 at 107798236114083 (delegate 107798236677750, revision 107798237000416)
+2026-09-12T16:46:01Z	compile: sending revision 122 at 107798237027375
+2026-09-12T16:46:01Z	status: compiling revision 122 (mac-121)…
+2026-09-12T16:46:01Z	worker: line 226269 B decoded in 3.215625 ms at 107798242877208
+2026-09-12T16:46:01Z	worker: event on main at 107798270443791
+2026-09-12T16:46:01Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:01Z	compile: applied revision 122 at 107798271890791
+2026-09-12T16:46:01Z	status: revision 122: recovered, 119 diagnostics in 35 ms
+2026-09-12T16:46:01Z	paint: revision 122 needed 2 extra turn(s); drew 0/3 pages
+2026-09-12T16:46:01Z	paint: revision 122 at 107798319851750 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:46:01Z	keystroke: revision 123 at 107798319938458 (delegate 107798320537875, revision 107798320827958)
+2026-09-12T16:46:01Z	compile: sending revision 123 at 107798320855250
+2026-09-12T16:46:01Z	status: compiling revision 123 (mac-122)…
+2026-09-12T16:46:01Z	worker: line 226477 B decoded in 3.241417 ms at 107798326708708
+2026-09-12T16:46:01Z	worker: event on main at 107798354488250
+2026-09-12T16:46:01Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:01Z	compile: applied revision 123 at 107798355976625
+2026-09-12T16:46:01Z	status: revision 123: recovered, 119 diagnostics in 35 ms
+2026-09-12T16:46:01Z	paint: revision 123 needed 1 extra turn(s); drew 1/3 pages
+2026-09-12T16:46:01Z	paint: revision 123 at 107798404545083 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:46:01Z	keystroke: revision 124 at 107798404610916 (delegate 107798405164916, revision 107798405454083)
+2026-09-12T16:46:01Z	compile: sending revision 124 at 107798405477750
+2026-09-12T16:46:01Z	status: compiling revision 124 (mac-123)…
+2026-09-12T16:46:01Z	worker: line 226478 B decoded in 3.31575 ms at 107798411606916
+2026-09-12T16:46:01Z	worker: event on main at 107798429207375
+2026-09-12T16:46:01Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:01Z	compile: applied revision 124 at 107798430636333
+2026-09-12T16:46:01Z	status: revision 124: recovered, 119 diagnostics in 25 ms
+2026-09-12T16:46:01Z	paint: revision 124 needed 2 extra turn(s); drew 0/3 pages
+2026-09-12T16:46:01Z	paint: revision 124 at 107798466634083 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:46:01Z	keystroke: revision 125 at 107798466657791 (delegate 107798467189375, revision 107798467456666)
+2026-09-12T16:46:01Z	compile: sending revision 125 at 107798467478708
+2026-09-12T16:46:01Z	status: compiling revision 125 (mac-124)…
+2026-09-12T16:46:01Z	worker: line 226479 B decoded in 3.229833 ms at 107798473435833
+2026-09-12T16:46:01Z	worker: event on main at 107798489415416
+2026-09-12T16:46:01Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:01Z	compile: applied revision 125 at 107798490854041
+2026-09-12T16:46:01Z	status: revision 125: recovered, 119 diagnostics in 23 ms
+2026-09-12T16:46:01Z	paint: revision 125 redrew 1/3 pages
+2026-09-12T16:46:01Z	paint: revision 125 at 107798535124375 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:46:01Z	keystroke: revision 126 at 107798535211000 (delegate 107798535974833, revision 107798536328958)
+2026-09-12T16:46:01Z	compile: sending revision 126 at 107798536374500
+2026-09-12T16:46:01Z	status: compiling revision 126 (mac-125)…
+2026-09-12T16:46:01Z	worker: line 226479 B decoded in 3.229125 ms at 107798542281000
+2026-09-12T16:46:01Z	worker: event on main at 107798570902875
+2026-09-12T16:46:01Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:01Z	compile: applied revision 126 at 107798572368208
+2026-09-12T16:46:01Z	status: revision 126: recovered, 119 diagnostics in 36 ms
+2026-09-12T16:46:01Z	paint: revision 126 needed 2 extra turn(s); drew 0/3 pages
+2026-09-12T16:46:01Z	paint: revision 126 at 107798619815750 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:46:01Z	keystroke: revision 127 at 107798619899041 (delegate 107798620433166, revision 107798620734500)
+2026-09-12T16:46:01Z	compile: sending revision 127 at 107798620760708
+2026-09-12T16:46:01Z	status: compiling revision 127 (mac-126)…
+2026-09-12T16:46:01Z	worker: line 226687 B decoded in 3.227291 ms at 107798626652666
+2026-09-12T16:46:01Z	worker: event on main at 107798654138583
+2026-09-12T16:46:01Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:01Z	compile: applied revision 127 at 107798655627041
+2026-09-12T16:46:01Z	status: revision 127: recovered, 119 diagnostics in 35 ms
+2026-09-12T16:46:01Z	paint: revision 127 needed 1 extra turn(s); drew 1/3 pages
+2026-09-12T16:46:01Z	paint: revision 127 at 107798703268541 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:46:01Z	keystroke: revision 128 at 107798703326458 (delegate 107798703861500, revision 107798704144250)
+2026-09-12T16:46:01Z	compile: sending revision 128 at 107798704171625
+2026-09-12T16:46:01Z	status: compiling revision 128 (mac-127)…
+2026-09-12T16:46:01Z	worker: line 226688 B decoded in 3.214583 ms at 107798710084458
+2026-09-12T16:46:01Z	worker: event on main at 107798737136500
+2026-09-12T16:46:01Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:01Z	compile: applied revision 128 at 107798738586833
+2026-09-12T16:46:01Z	status: revision 128: recovered, 119 diagnostics in 34 ms
+2026-09-12T16:46:01Z	paint: revision 128 needed 1 extra turn(s); drew 1/3 pages
+2026-09-12T16:46:01Z	paint: revision 128 at 107798787638833 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:46:01Z	keystroke: revision 129 at 107798787708833 (delegate 107798788257208, revision 107798788546250)
+2026-09-12T16:46:01Z	compile: sending revision 129 at 107798788574875
+2026-09-12T16:46:01Z	status: compiling revision 129 (mac-128)…
+2026-09-12T16:46:01Z	worker: line 226689 B decoded in 3.281 ms at 107798794515208
+2026-09-12T16:46:01Z	worker: event on main at 107798813314875
+2026-09-12T16:46:01Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:01Z	compile: applied revision 129 at 107798814769666
+2026-09-12T16:46:01Z	status: revision 129: recovered, 119 diagnostics in 26 ms
+2026-09-12T16:46:01Z	paint: revision 129 needed 2 extra turn(s); drew 0/3 pages
+2026-09-12T16:46:01Z	paint: revision 129 at 107798850662625 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:46:01Z	keystroke: revision 130 at 107798850688916 (delegate 107798851231333, revision 107798851500250)
+2026-09-12T16:46:01Z	compile: sending revision 130 at 107798851524250
+2026-09-12T16:46:01Z	status: compiling revision 130 (mac-129)…
+2026-09-12T16:46:01Z	worker: line 226690 B decoded in 3.219958 ms at 107798857481041
+2026-09-12T16:46:01Z	worker: event on main at 107798873502500
+2026-09-12T16:46:01Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:01Z	compile: applied revision 130 at 107798874862875
+2026-09-12T16:46:01Z	status: revision 130: recovered, 119 diagnostics in 23 ms
+2026-09-12T16:46:01Z	paint: revision 130 redrew 1/3 pages
+2026-09-12T16:46:01Z	paint: revision 130 at 107798919605541 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:46:01Z	keystroke: revision 131 at 107798919708208 (delegate 107798920383333, revision 107798920707625)
+2026-09-12T16:46:01Z	compile: sending revision 131 at 107798920742625
+2026-09-12T16:46:01Z	status: compiling revision 131 (mac-130)…
+2026-09-12T16:46:01Z	worker: line 226691 B decoded in 3.240875 ms at 107798926708125
+2026-09-12T16:46:01Z	worker: event on main at 107798955890375
+2026-09-12T16:46:01Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:01Z	compile: applied revision 131 at 107798957447666
+2026-09-12T16:46:01Z	status: revision 131: recovered, 119 diagnostics in 37 ms
+2026-09-12T16:46:01Z	paint: revision 131 needed 1 extra turn(s); drew 1/3 pages
+2026-09-12T16:46:01Z	paint: revision 131 at 107799007141500 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:46:01Z	keystroke: revision 132 at 107799007206750 (delegate 107799007763291, revision 107799008057666)
+2026-09-12T16:46:01Z	compile: sending revision 132 at 107799008085291
+2026-09-12T16:46:01Z	status: compiling revision 132 (mac-131)…
+2026-09-12T16:46:01Z	worker: line 226692 B decoded in 3.239875 ms at 107799014119541
+2026-09-12T16:46:02Z	worker: event on main at 107799041543958
+2026-09-12T16:46:02Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:02Z	compile: applied revision 132 at 107799042948625
+2026-09-12T16:46:02Z	status: revision 132: recovered, 119 diagnostics in 35 ms
+2026-09-12T16:46:02Z	paint: revision 132 needed 2 extra turn(s); drew 0/3 pages
+2026-09-12T16:46:02Z	paint: revision 132 at 107799081890416 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:46:02Z	keystroke: revision 133 at 107799081934041 (delegate 107799082526791, revision 107799082827166)
+2026-09-12T16:46:02Z	compile: sending revision 133 at 107799082850666
+2026-09-12T16:46:02Z	status: compiling revision 133 (mac-132)…
+2026-09-12T16:46:02Z	worker: line 226692 B decoded in 3.226292 ms at 107799088853000
+2026-09-12T16:46:02Z	worker: event on main at 107799105921791
+2026-09-12T16:46:02Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:02Z	compile: applied revision 133 at 107799107395583
+2026-09-12T16:46:02Z	status: revision 133: recovered, 119 diagnostics in 24 ms
+2026-09-12T16:46:02Z	paint: revision 133 needed 2 extra turn(s); drew 0/3 pages
+2026-09-12T16:46:02Z	paint: revision 133 at 107799144504833 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:46:02Z	keystroke: revision 134 at 107799144536208 (delegate 107799145232041, revision 107799145506416)
+2026-09-12T16:46:02Z	compile: sending revision 134 at 107799145531375
+2026-09-12T16:46:02Z	status: compiling revision 134 (mac-133)…
+2026-09-12T16:46:02Z	worker: line 226900 B decoded in 3.216041 ms at 107799151416916
+2026-09-12T16:46:02Z	worker: event on main at 107799168245125
+2026-09-12T16:46:02Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:02Z	compile: applied revision 134 at 107799169736541
+2026-09-12T16:46:02Z	status: revision 134: recovered, 119 diagnostics in 24 ms
+2026-09-12T16:46:02Z	paint: revision 134 redrew 1/3 pages
+2026-09-12T16:46:02Z	paint: revision 134 at 107799217408041 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:46:02Z	keystroke: revision 135 at 107799217512500 (delegate 107799218143125, revision 107799218447083)
+2026-09-12T16:46:02Z	compile: sending revision 135 at 107799218484583
+2026-09-12T16:46:02Z	status: compiling revision 135 (mac-134)…
+2026-09-12T16:46:02Z	worker: line 226901 B decoded in 3.235166 ms at 107799224389166
+2026-09-12T16:46:02Z	worker: event on main at 107799252411000
+2026-09-12T16:46:02Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:02Z	compile: applied revision 135 at 107799253907291
+2026-09-12T16:46:02Z	status: revision 135: recovered, 119 diagnostics in 35 ms
+2026-09-12T16:46:02Z	paint: revision 135 needed 1 extra turn(s); drew 1/3 pages
+2026-09-12T16:46:02Z	paint: revision 135 at 107799305238125 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:46:02Z	keystroke: revision 136 at 107799305318375 (delegate 107799305955375, revision 107799306252791)
+2026-09-12T16:46:02Z	compile: sending revision 136 at 107799306281000
+2026-09-12T16:46:02Z	status: compiling revision 136 (mac-135)…
+2026-09-12T16:46:02Z	worker: line 226902 B decoded in 3.236166 ms at 107799312199416
+2026-09-12T16:46:02Z	worker: event on main at 107799342177208
+2026-09-12T16:46:02Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:02Z	compile: applied revision 136 at 107799343691541
+2026-09-12T16:46:02Z	status: revision 136: recovered, 119 diagnostics in 37 ms
+2026-09-12T16:46:02Z	paint: revision 136 needed 2 extra turn(s); drew 0/3 pages
+2026-09-12T16:46:02Z	paint: revision 136 at 107799381069208 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:46:02Z	keystroke: revision 137 at 107799381108166 (delegate 107799381647375, revision 107799381917333)
+2026-09-12T16:46:02Z	compile: sending revision 137 at 107799381946291
+2026-09-12T16:46:02Z	status: compiling revision 137 (mac-136)…
+2026-09-12T16:46:02Z	worker: line 226903 B decoded in 3.238708 ms at 107799387871333
+2026-09-12T16:46:02Z	worker: event on main at 107799404478333
+2026-09-12T16:46:02Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:02Z	compile: applied revision 137 at 107799405913708
+2026-09-12T16:46:02Z	status: revision 137: recovered, 119 diagnostics in 24 ms
+2026-09-12T16:46:02Z	paint: revision 137 needed 2 extra turn(s); drew 0/3 pages
+2026-09-12T16:46:02Z	paint: revision 137 at 107799442852125 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:46:02Z	keystroke: revision 138 at 107799442879416 (delegate 107799443499458, revision 107799443779541)
+2026-09-12T16:46:02Z	compile: sending revision 138 at 107799443809250
+2026-09-12T16:46:02Z	status: compiling revision 138 (mac-137)…
+2026-09-12T16:46:02Z	worker: line 226904 B decoded in 3.22225 ms at 107799449763416
+2026-09-12T16:46:02Z	worker: event on main at 107799466202333
+2026-09-12T16:46:02Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:02Z	compile: applied revision 138 at 107799467602333
+2026-09-12T16:46:02Z	status: revision 138: recovered, 119 diagnostics in 24 ms
+2026-09-12T16:46:02Z	paint: revision 138 redrew 1/3 pages
+2026-09-12T16:46:02Z	paint: revision 138 at 107799514304833 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:46:02Z	keystroke: revision 139 at 107799514408041 (delegate 107799514970750, revision 107799515282875)
+2026-09-12T16:46:02Z	compile: sending revision 139 at 107799515312166
+2026-09-12T16:46:02Z	status: compiling revision 139 (mac-138)…
+2026-09-12T16:46:02Z	worker: line 226904 B decoded in 3.233459 ms at 107799521348250
+2026-09-12T16:46:02Z	worker: event on main at 107799547995166
+2026-09-12T16:46:02Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:02Z	compile: applied revision 139 at 107799549495750
+2026-09-12T16:46:02Z	status: revision 139: recovered, 119 diagnostics in 34 ms
+2026-09-12T16:46:02Z	paint: revision 139 needed 2 extra turn(s); drew 0/3 pages
+2026-09-12T16:46:02Z	paint: revision 139 at 107799590033583 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:46:02Z	keystroke: revision 140 at 107799590083958 (delegate 107799590733416, revision 107799591065291)
+2026-09-12T16:46:02Z	compile: sending revision 140 at 107799591096250
+2026-09-12T16:46:02Z	status: compiling revision 140 (mac-139)…
+2026-09-12T16:46:02Z	worker: line 227112 B decoded in 3.319333 ms at 107799597150583
+2026-09-12T16:46:02Z	worker: event on main at 107799615770708
+2026-09-12T16:46:02Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:02Z	compile: applied revision 140 at 107799617292166
+2026-09-12T16:46:02Z	status: revision 140: recovered, 119 diagnostics in 26 ms
+2026-09-12T16:46:02Z	paint: revision 140 needed 2 extra turn(s); drew 0/3 pages
+2026-09-12T16:46:02Z	paint: revision 140 at 107799656083916 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:46:02Z	keystroke: revision 141 at 107799656103250 (delegate 107799656718541, revision 107799657036125)
+2026-09-12T16:46:02Z	compile: sending revision 141 at 107799657066166
+2026-09-12T16:46:02Z	status: compiling revision 141 (mac-140)…
+2026-09-12T16:46:02Z	worker: line 227113 B decoded in 3.256292 ms at 107799663044708
+2026-09-12T16:46:02Z	worker: event on main at 107799680628541
+2026-09-12T16:46:02Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:02Z	compile: applied revision 141 at 107799682131375
+2026-09-12T16:46:02Z	status: revision 141: recovered, 119 diagnostics in 25 ms
+2026-09-12T16:46:02Z	paint: revision 141 redrew 1/3 pages
+2026-09-12T16:46:02Z	paint: revision 141 at 107799734912458 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:46:02Z	keystroke: revision 142 at 107799735027833 (delegate 107799735695041, revision 107799736004208)
+2026-09-12T16:46:02Z	compile: sending revision 142 at 107799736029750
+2026-09-12T16:46:02Z	status: compiling revision 142 (mac-141)…
+2026-09-12T16:46:02Z	worker: line 227114 B decoded in 3.292583 ms at 107799741985791
+2026-09-12T16:46:02Z	worker: event on main at 107799770921833
+2026-09-12T16:46:02Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:02Z	compile: applied revision 142 at 107799772385416
+2026-09-12T16:46:02Z	status: revision 142: recovered, 119 diagnostics in 36 ms
+2026-09-12T16:46:02Z	paint: revision 142 needed 1 extra turn(s); drew 1/3 pages
+2026-09-12T16:46:02Z	paint: revision 142 at 107799823583791 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:46:02Z	keystroke: revision 143 at 107799823664708 (delegate 107799824289208, revision 107799824643083)
+2026-09-12T16:46:02Z	compile: sending revision 143 at 107799824686041
+2026-09-12T16:46:02Z	status: compiling revision 143 (mac-142)…
+2026-09-12T16:46:02Z	worker: line 227115 B decoded in 3.308125 ms at 107799830639041
+2026-09-12T16:46:02Z	worker: event on main at 107799860512083
+2026-09-12T16:46:02Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:02Z	compile: applied revision 143 at 107799862119958
+2026-09-12T16:46:02Z	status: revision 143: recovered, 119 diagnostics in 37 ms
+2026-09-12T16:46:02Z	paint: revision 143 needed 1 extra turn(s); drew 1/3 pages
+2026-09-12T16:46:02Z	paint: revision 143 at 107799915453791 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:46:02Z	keystroke: revision 144 at 107799915565666 (delegate 107799916222375, revision 107799916535916)
+2026-09-12T16:46:02Z	compile: sending revision 144 at 107799916561875
+2026-09-12T16:46:02Z	status: compiling revision 144 (mac-143)…
+2026-09-12T16:46:02Z	worker: line 227115 B decoded in 3.265375 ms at 107799922563833
+2026-09-12T16:46:02Z	worker: event on main at 107799952127250
+2026-09-12T16:46:02Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:02Z	compile: applied revision 144 at 107799953844791
+2026-09-12T16:46:02Z	status: revision 144: recovered, 119 diagnostics in 37 ms
+2026-09-12T16:46:02Z	paint: revision 144 needed 2 extra turn(s); drew 0/3 pages
+2026-09-12T16:46:02Z	paint: revision 144 at 107800007785958 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:46:02Z	keystroke: revision 145 at 107800007868500 (delegate 107800008476208, revision 107800008799333)
+2026-09-12T16:46:02Z	compile: sending revision 145 at 107800008832166
+2026-09-12T16:46:02Z	status: compiling revision 145 (mac-144)…
+2026-09-12T16:46:02Z	worker: line 227323 B decoded in 3.279417 ms at 107800014806000
+2026-09-12T16:46:03Z	worker: event on main at 107800044943041
+2026-09-12T16:46:03Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:03Z	compile: applied revision 145 at 107800046521166
+2026-09-12T16:46:03Z	status: revision 145: recovered, 119 diagnostics in 38 ms
+2026-09-12T16:46:03Z	paint: revision 145 needed 1 extra turn(s); drew 1/3 pages
+2026-09-12T16:46:03Z	paint: revision 145 at 107800099810583 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:46:03Z	keystroke: revision 146 at 107800099896875 (delegate 107800100518375, revision 107800100818791)
+2026-09-12T16:46:03Z	compile: sending revision 146 at 107800100846833
+2026-09-12T16:46:03Z	status: compiling revision 146 (mac-145)…
+2026-09-12T16:46:03Z	worker: line 227324 B decoded in 3.227042 ms at 107800106799083
+2026-09-12T16:46:03Z	worker: event on main at 107800136958916
+2026-09-12T16:46:03Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:03Z	compile: applied revision 146 at 107800138469083
+2026-09-12T16:46:03Z	status: revision 146: recovered, 119 diagnostics in 38 ms
+2026-09-12T16:46:03Z	paint: revision 146 needed 1 extra turn(s); drew 1/3 pages
+2026-09-12T16:46:03Z	paint: revision 146 at 107800190104291 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:46:03Z	keystroke: revision 147 at 107800190197833 (delegate 107800190850541, revision 107800191176333)
+2026-09-12T16:46:03Z	compile: sending revision 147 at 107800191213583
+2026-09-12T16:46:03Z	status: compiling revision 147 (mac-146)…
+2026-09-12T16:46:03Z	worker: line 227325 B decoded in 3.261541 ms at 107800197203291
+2026-09-12T16:46:03Z	worker: event on main at 107800226315625
+2026-09-12T16:46:03Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:03Z	compile: applied revision 147 at 107800227882791
+2026-09-12T16:46:03Z	status: revision 147: recovered, 119 diagnostics in 37 ms
+2026-09-12T16:46:03Z	paint: revision 147 needed 1 extra turn(s); drew 1/3 pages
+2026-09-12T16:46:03Z	paint: revision 147 at 107800281346750 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:46:03Z	keystroke: revision 148 at 107800281440125 (delegate 107800282062583, revision 107800282364333)
+2026-09-12T16:46:03Z	compile: sending revision 148 at 107800282393083
+2026-09-12T16:46:03Z	status: compiling revision 148 (mac-147)…
+2026-09-12T16:46:03Z	worker: line 227326 B decoded in 3.305792 ms at 107800288446833
+2026-09-12T16:46:03Z	worker: event on main at 107800317424041
+2026-09-12T16:46:03Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:03Z	compile: applied revision 148 at 107800319097458
+2026-09-12T16:46:03Z	status: revision 148: recovered, 119 diagnostics in 37 ms
+2026-09-12T16:46:03Z	paint: revision 148 needed 1 extra turn(s); drew 1/3 pages
+2026-09-12T16:46:03Z	paint: revision 148 at 107800372317916 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:46:03Z	keystroke: revision 149 at 107800372416125 (delegate 107800373085125, revision 107800373451666)
+2026-09-12T16:46:03Z	compile: sending revision 149 at 107800373478541
+2026-09-12T16:46:03Z	status: compiling revision 149 (mac-148)…
+2026-09-12T16:46:03Z	worker: line 227327 B decoded in 3.227958 ms at 107800379358791
+2026-09-12T16:46:03Z	worker: event on main at 107800408495875
+2026-09-12T16:46:03Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:03Z	compile: applied revision 149 at 107800410040250
+2026-09-12T16:46:03Z	status: revision 149: recovered, 119 diagnostics in 36 ms
+2026-09-12T16:46:03Z	paint: revision 149 needed 1 extra turn(s); drew 1/3 pages
+2026-09-12T16:46:03Z	paint: revision 149 at 107800461695333 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:46:03Z	keystroke: revision 150 at 107800461799333 (delegate 107800462474208, revision 107800462778333)
+2026-09-12T16:46:03Z	compile: sending revision 150 at 107800462807875
+2026-09-12T16:46:03Z	status: compiling revision 150 (mac-149)…
+2026-09-12T16:46:03Z	worker: line 227327 B decoded in 3.340167 ms at 107800468943833
+2026-09-12T16:46:03Z	worker: event on main at 107800497501666
+2026-09-12T16:46:03Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:03Z	compile: applied revision 150 at 107800499009875
+2026-09-12T16:46:03Z	status: revision 150: recovered, 119 diagnostics in 36 ms
+2026-09-12T16:46:03Z	paint: revision 150 needed 2 extra turn(s); drew 0/3 pages
+2026-09-12T16:46:03Z	paint: revision 150 at 107800549522541 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:46:03Z	keystroke: revision 151 at 107800549616375 (delegate 107800550327041, revision 107800550659833)
+2026-09-12T16:46:03Z	compile: sending revision 151 at 107800550695208
+2026-09-12T16:46:03Z	status: compiling revision 151 (mac-150)…
+2026-09-12T16:46:03Z	worker: line 227534 B decoded in 3.235 ms at 107800556624250
+2026-09-12T16:46:03Z	worker: event on main at 107800585543083
+2026-09-12T16:46:03Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:03Z	compile: applied revision 151 at 107800587124708
+2026-09-12T16:46:03Z	status: revision 151: recovered, 119 diagnostics in 36 ms
+2026-09-12T16:46:03Z	paint: revision 151 needed 1 extra turn(s); drew 1/3 pages
+2026-09-12T16:46:03Z	paint: revision 151 at 107800639748625 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:46:03Z	keystroke: revision 152 at 107800639845666 (delegate 107800640488291, revision 107800640791291)
+2026-09-12T16:46:03Z	compile: sending revision 152 at 107800640823250
+2026-09-12T16:46:03Z	status: compiling revision 152 (mac-151)…
+2026-09-12T16:46:03Z	worker: line 227535 B decoded in 3.231125 ms at 107800646777958
+2026-09-12T16:46:03Z	worker: event on main at 107800675630500
+2026-09-12T16:46:03Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:03Z	compile: applied revision 152 at 107800677225208
+2026-09-12T16:46:03Z	status: revision 152: recovered, 119 diagnostics in 36 ms
+2026-09-12T16:46:03Z	paint: revision 152 needed 1 extra turn(s); drew 1/3 pages
+2026-09-12T16:46:03Z	paint: revision 152 at 107800729649375 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:46:03Z	keystroke: revision 153 at 107800729740125 (delegate 107800730308333, revision 107800730606833)
+2026-09-12T16:46:03Z	compile: sending revision 153 at 107800730633000
+2026-09-12T16:46:03Z	status: compiling revision 153 (mac-152)…
+2026-09-12T16:46:03Z	worker: line 227536 B decoded in 3.351291 ms at 107800736782291
+2026-09-12T16:46:03Z	worker: event on main at 107800754968166
+2026-09-12T16:46:03Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:03Z	compile: applied revision 153 at 107800756398291
+2026-09-12T16:46:03Z	status: revision 153: recovered, 119 diagnostics in 26 ms
+2026-09-12T16:46:03Z	paint: revision 153 needed 2 extra turn(s); drew 0/3 pages
+2026-09-12T16:46:03Z	paint: revision 153 at 107800795144916 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:46:03Z	keystroke: revision 154 at 107800795170583 (delegate 107800795787333, revision 107800796104916)
+2026-09-12T16:46:03Z	compile: sending revision 154 at 107800796134041
+2026-09-12T16:46:03Z	status: compiling revision 154 (mac-153)…
+2026-09-12T16:46:03Z	worker: line 227537 B decoded in 3.259042 ms at 107800802133458
+2026-09-12T16:46:03Z	worker: event on main at 107800820312375
+2026-09-12T16:46:03Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:03Z	compile: applied revision 154 at 107800821752291
+2026-09-12T16:46:03Z	status: revision 154: recovered, 119 diagnostics in 26 ms
+2026-09-12T16:46:03Z	paint: revision 154 redrew 1/3 pages
+2026-09-12T16:46:03Z	paint: revision 154 at 107800867633875 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:46:03Z	keystroke: revision 155 at 107800867719458 (delegate 107800868362541, revision 107800868663666)
+2026-09-12T16:46:03Z	compile: sending revision 155 at 107800868689708
+2026-09-12T16:46:03Z	status: compiling revision 155 (mac-154)…
+2026-09-12T16:46:03Z	worker: line 227538 B decoded in 3.284625 ms at 107800874606208
+2026-09-12T16:46:03Z	worker: event on main at 107800904497875
+2026-09-12T16:46:03Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:03Z	compile: applied revision 155 at 107800906048916
+2026-09-12T16:46:03Z	status: revision 155: recovered, 119 diagnostics in 37 ms
+2026-09-12T16:46:03Z	paint: revision 155 needed 1 extra turn(s); drew 1/3 pages
+2026-09-12T16:46:03Z	paint: revision 155 at 107800957294958 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:46:03Z	keystroke: revision 156 at 107800957382500 (delegate 107800958075708, revision 107800958390208)
+2026-09-12T16:46:03Z	compile: sending revision 156 at 107800958447333
+2026-09-12T16:46:03Z	status: compiling revision 156 (mac-155)…
+2026-09-12T16:46:03Z	worker: line 227539 B decoded in 3.294875 ms at 107800964397333
+2026-09-12T16:46:03Z	worker: event on main at 107800992957708
+2026-09-12T16:46:03Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:03Z	compile: applied revision 156 at 107800994489750
+2026-09-12T16:46:03Z	status: revision 156: recovered, 119 diagnostics in 36 ms
+2026-09-12T16:46:04Z	paint: revision 156 needed 1 extra turn(s); drew 1/3 pages
+2026-09-12T16:46:04Z	paint: revision 156 at 107801046868666 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:46:04Z	keystroke: revision 157 at 107801046945791 (delegate 107801047541250, revision 107801047837333)
+2026-09-12T16:46:04Z	compile: sending revision 157 at 107801047863125
+2026-09-12T16:46:04Z	status: compiling revision 157 (mac-156)…
+2026-09-12T16:46:04Z	worker: line 227540 B decoded in 3.349542 ms at 107801053934833
+2026-09-12T16:46:04Z	worker: event on main at 107801072060500
+2026-09-12T16:46:04Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:04Z	compile: applied revision 157 at 107801073525375
+2026-09-12T16:46:04Z	status: revision 157: recovered, 119 diagnostics in 26 ms
+2026-09-12T16:46:04Z	paint: revision 157 needed 2 extra turn(s); drew 0/3 pages
+2026-09-12T16:46:04Z	paint: revision 157 at 107801111922458 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:46:04Z	keystroke: revision 158 at 107801111950958 (delegate 107801112598333, revision 107801112893541)
+2026-09-12T16:46:04Z	compile: sending revision 158 at 107801112918791
+2026-09-12T16:46:04Z	status: compiling revision 158 (mac-157)…
+2026-09-12T16:46:04Z	worker: line 227541 B decoded in 3.230583 ms at 107801118805166
+2026-09-12T16:46:04Z	worker: event on main at 107801136590791
+2026-09-12T16:46:04Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:04Z	compile: applied revision 158 at 107801138074166
+2026-09-12T16:46:04Z	status: revision 158: recovered, 119 diagnostics in 25 ms
+2026-09-12T16:46:04Z	paint: revision 158 redrew 1/3 pages
+2026-09-12T16:46:04Z	paint: revision 158 at 107801183829833 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:46:04Z	keystroke: revision 159 at 107801183909000 (delegate 107801184481375, revision 107801184776416)
+2026-09-12T16:46:04Z	compile: sending revision 159 at 107801184801916
+2026-09-12T16:46:04Z	status: compiling revision 159 (mac-158)…
+2026-09-12T16:46:04Z	worker: line 227542 B decoded in 3.260541 ms at 107801190883666
+2026-09-12T16:46:04Z	worker: event on main at 107801219016708
+2026-09-12T16:46:04Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:04Z	compile: applied revision 159 at 107801220612833
+2026-09-12T16:46:04Z	status: revision 159: recovered, 119 diagnostics in 36 ms
+2026-09-12T16:46:04Z	paint: revision 159 needed 1 extra turn(s); drew 1/3 pages
+2026-09-12T16:46:04Z	paint: revision 159 at 107801273603000 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:46:04Z	keystroke: revision 160 at 107801273712625 (delegate 107801274448083, revision 107801274801291)
+2026-09-12T16:46:04Z	compile: sending revision 160 at 107801274833166
+2026-09-12T16:46:04Z	status: compiling revision 160 (mac-159)…
+2026-09-12T16:46:04Z	worker: line 227542 B decoded in 3.287375 ms at 107801280858083
+2026-09-12T16:46:04Z	worker: event on main at 107801310418291
+2026-09-12T16:46:04Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:04Z	compile: applied revision 160 at 107801311971750
+2026-09-12T16:46:04Z	status: revision 160: recovered, 119 diagnostics in 37 ms
+2026-09-12T16:46:04Z	paint: revision 160 needed 2 extra turn(s); drew 0/3 pages
+2026-09-12T16:46:04Z	paint: revision 160 at 107801364091666 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:46:04Z	keystroke: revision 161 at 107801364162666 (delegate 107801364858083, revision 107801365224375)
+2026-09-12T16:46:04Z	compile: sending revision 161 at 107801365252041
+2026-09-12T16:46:04Z	status: compiling revision 161 (mac-160)…
+2026-09-12T16:46:04Z	worker: line 227750 B decoded in 3.231 ms at 107801371291791
+2026-09-12T16:46:04Z	worker: event on main at 107801401686875
+2026-09-12T16:46:04Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:04Z	compile: applied revision 161 at 107801403259708
+2026-09-12T16:46:04Z	status: revision 161: recovered, 119 diagnostics in 38 ms
+2026-09-12T16:46:04Z	paint: revision 161 needed 1 extra turn(s); drew 1/3 pages
+2026-09-12T16:46:04Z	paint: revision 161 at 107801455941541 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:46:04Z	keystroke: revision 162 at 107801456009000 (delegate 107801456596541, revision 107801456894625)
+2026-09-12T16:46:04Z	compile: sending revision 162 at 107801456919458
+2026-09-12T16:46:04Z	status: compiling revision 162 (mac-161)…
+2026-09-12T16:46:04Z	worker: line 227751 B decoded in 3.265 ms at 107801462849125
+2026-09-12T16:46:04Z	worker: event on main at 107801491867625
+2026-09-12T16:46:04Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:04Z	compile: applied revision 162 at 107801493417958
+2026-09-12T16:46:04Z	status: revision 162: recovered, 119 diagnostics in 36 ms
+2026-09-12T16:46:04Z	paint: revision 162 needed 1 extra turn(s); drew 1/3 pages
+2026-09-12T16:46:04Z	paint: revision 162 at 107801546755166 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:46:04Z	keystroke: revision 163 at 107801546835541 (delegate 107801547429750, revision 107801547728708)
+2026-09-12T16:46:04Z	compile: sending revision 163 at 107801547754458
+2026-09-12T16:46:04Z	status: compiling revision 163 (mac-162)…
+2026-09-12T16:46:04Z	worker: line 227752 B decoded in 3.289584 ms at 107801553687125
+2026-09-12T16:46:04Z	worker: event on main at 107801573285375
+2026-09-12T16:46:04Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:04Z	compile: applied revision 163 at 107801574818000
+2026-09-12T16:46:04Z	status: revision 163: recovered, 119 diagnostics in 27 ms
+2026-09-12T16:46:04Z	paint: revision 163 needed 2 extra turn(s); drew 0/3 pages
+2026-09-12T16:46:04Z	paint: revision 163 at 107801614481833 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:46:04Z	keystroke: revision 164 at 107801614504541 (delegate 107801615150958, revision 107801615470250)
+2026-09-12T16:46:04Z	compile: sending revision 164 at 107801615495208
+2026-09-12T16:46:04Z	status: compiling revision 164 (mac-163)…
+2026-09-12T16:46:04Z	worker: line 227753 B decoded in 3.25875 ms at 107801621391916
+2026-09-12T16:46:04Z	worker: event on main at 107801639501833
+2026-09-12T16:46:04Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:04Z	compile: applied revision 164 at 107801640978500
+2026-09-12T16:46:04Z	status: revision 164: recovered, 119 diagnostics in 25 ms
+2026-09-12T16:46:04Z	paint: revision 164 redrew 1/3 pages
+2026-09-12T16:46:04Z	paint: revision 164 at 107801688003500 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:46:04Z	keystroke: revision 165 at 107801688091208 (delegate 107801688808750, revision 107801689139041)
+2026-09-12T16:46:04Z	compile: sending revision 165 at 107801689168916
+2026-09-12T16:46:04Z	status: compiling revision 165 (mac-164)…
+2026-09-12T16:46:04Z	worker: line 227754 B decoded in 3.234167 ms at 107801695066458
+2026-09-12T16:46:04Z	worker: event on main at 107801713046041
+2026-09-12T16:46:04Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:04Z	compile: applied revision 165 at 107801714482583
+2026-09-12T16:46:04Z	status: revision 165: recovered, 119 diagnostics in 25 ms
+2026-09-12T16:46:04Z	paint: revision 165 redrew 1/3 pages
+2026-09-12T16:46:04Z	paint: revision 165 at 107801759292416 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:46:04Z	keystroke: revision 166 at 107801759388625 (delegate 107801760059875, revision 107801760378083)
+2026-09-12T16:46:04Z	compile: sending revision 166 at 107801760413583
+2026-09-12T16:46:04Z	status: compiling revision 166 (mac-165)…
+2026-09-12T16:46:04Z	worker: line 227754 B decoded in 3.332042 ms at 107801766428458
+2026-09-12T16:46:04Z	worker: event on main at 107801795161208
+2026-09-12T16:46:04Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:04Z	compile: applied revision 166 at 107801796771666
+2026-09-12T16:46:04Z	status: revision 166: recovered, 119 diagnostics in 36 ms
+2026-09-12T16:46:04Z	paint: revision 166 needed 2 extra turn(s); drew 0/3 pages
+2026-09-12T16:46:04Z	paint: revision 166 at 107801850709000 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:46:04Z	keystroke: revision 167 at 107801850806750 (delegate 107801851574875, revision 107801851949375)
+2026-09-12T16:46:04Z	compile: sending revision 167 at 107801851986375
+2026-09-12T16:46:04Z	status: compiling revision 167 (mac-166)…
+2026-09-12T16:46:04Z	worker: line 227962 B decoded in 3.273792 ms at 107801858035958
+2026-09-12T16:46:04Z	worker: event on main at 107801887140166
+2026-09-12T16:46:04Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:04Z	compile: applied revision 167 at 107801888622500
+2026-09-12T16:46:04Z	status: revision 167: recovered, 119 diagnostics in 37 ms
+2026-09-12T16:46:04Z	paint: revision 167 needed 1 extra turn(s); drew 1/3 pages
+2026-09-12T16:46:04Z	paint: revision 167 at 107801942790541 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:46:04Z	keystroke: revision 168 at 107801942876416 (delegate 107801943563750, revision 107801943880833)
+2026-09-12T16:46:04Z	compile: sending revision 168 at 107801943918458
+2026-09-12T16:46:04Z	status: compiling revision 168 (mac-167)…
+2026-09-12T16:46:04Z	worker: line 227963 B decoded in 3.272334 ms at 107801949898500
+2026-09-12T16:46:04Z	worker: event on main at 107801980301166
+2026-09-12T16:46:04Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:04Z	compile: applied revision 168 at 107801981803833
+2026-09-12T16:46:04Z	status: revision 168: recovered, 119 diagnostics in 38 ms
+2026-09-12T16:46:05Z	paint: revision 168 needed 1 extra turn(s); drew 1/3 pages
+2026-09-12T16:46:05Z	paint: revision 168 at 107802035616875 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:46:05Z	keystroke: revision 169 at 107802035705166 (delegate 107802036396208, revision 107802036704458)
+2026-09-12T16:46:05Z	compile: sending revision 169 at 107802036730083
+2026-09-12T16:46:05Z	status: compiling revision 169 (mac-168)…
+2026-09-12T16:46:05Z	worker: line 227964 B decoded in 3.305583 ms at 107802042752041
+2026-09-12T16:46:05Z	worker: event on main at 107802072492708
+2026-09-12T16:46:05Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:05Z	compile: applied revision 169 at 107802074074416
+2026-09-12T16:46:05Z	status: revision 169: recovered, 119 diagnostics in 37 ms
+2026-09-12T16:46:05Z	paint: revision 169 needed 1 extra turn(s); drew 1/3 pages
+2026-09-12T16:46:05Z	paint: revision 169 at 107802129917125 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:46:05Z	keystroke: revision 170 at 107802129991291 (delegate 107802130593625, revision 107802130919583)
+2026-09-12T16:46:05Z	compile: sending revision 170 at 107802130946875
+2026-09-12T16:46:05Z	status: compiling revision 170 (mac-169)…
+2026-09-12T16:46:05Z	worker: line 227965 B decoded in 3.346292 ms at 107802136933958
+2026-09-12T16:46:05Z	worker: event on main at 107802155484541
+2026-09-12T16:46:05Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:05Z	compile: applied revision 170 at 107802157037416
+2026-09-12T16:46:05Z	status: revision 170: recovered, 119 diagnostics in 26 ms
+2026-09-12T16:46:05Z	paint: revision 170 needed 2 extra turn(s); drew 0/3 pages
+2026-09-12T16:46:05Z	paint: revision 170 at 107802195821916 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:46:05Z	keystroke: revision 171 at 107802195847458 (delegate 107802196507000, revision 107802196805541)
+2026-09-12T16:46:05Z	compile: sending revision 171 at 107802196831833
+2026-09-12T16:46:05Z	status: compiling revision 171 (mac-170)…
+2026-09-12T16:46:05Z	worker: line 227965 B decoded in 3.255875 ms at 107802202930875
+2026-09-12T16:46:05Z	worker: event on main at 107802220467750
+2026-09-12T16:46:05Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:05Z	compile: applied revision 171 at 107802221906416
+2026-09-12T16:46:05Z	status: revision 171: recovered, 119 diagnostics in 25 ms
+2026-09-12T16:46:05Z	paint: revision 171 redrew 1/3 pages
+2026-09-12T16:46:05Z	paint: revision 171 at 107802268228583 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:46:05Z	keystroke: revision 172 at 107802268413541 (delegate 107802268999958, revision 107802269296666)
+2026-09-12T16:46:05Z	compile: sending revision 172 at 107802269325000
+2026-09-12T16:46:05Z	status: compiling revision 172 (mac-171)…
+2026-09-12T16:46:05Z	worker: line 228173 B decoded in 3.209083 ms at 107802275140833
+2026-09-12T16:46:05Z	worker: event on main at 107802304310208
+2026-09-12T16:46:05Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:05Z	compile: applied revision 172 at 107802305851583
+2026-09-12T16:46:05Z	status: revision 172: recovered, 119 diagnostics in 36 ms
+2026-09-12T16:46:05Z	paint: revision 172 needed 1 extra turn(s); drew 1/3 pages
+2026-09-12T16:46:05Z	paint: revision 172 at 107802357728083 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:46:05Z	keystroke: revision 173 at 107802357818541 (delegate 107802358523750, revision 107802358828666)
+2026-09-12T16:46:05Z	compile: sending revision 173 at 107802358860208
+2026-09-12T16:46:05Z	status: compiling revision 173 (mac-172)…
+2026-09-12T16:46:05Z	worker: line 228174 B decoded in 3.246333 ms at 107802364757208
+2026-09-12T16:46:05Z	worker: event on main at 107802394892750
+2026-09-12T16:46:05Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:05Z	compile: applied revision 173 at 107802396438083
+2026-09-12T16:46:05Z	status: revision 173: recovered, 119 diagnostics in 37 ms
+2026-09-12T16:46:05Z	paint: revision 173 needed 1 extra turn(s); drew 1/3 pages
+2026-09-12T16:46:05Z	paint: revision 173 at 107802449325708 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:46:05Z	keystroke: revision 174 at 107802449434791 (delegate 107802450069333, revision 107802450370708)
+2026-09-12T16:46:05Z	compile: sending revision 174 at 107802450408041
+2026-09-12T16:46:05Z	status: compiling revision 174 (mac-173)…
+2026-09-12T16:46:05Z	worker: line 228175 B decoded in 3.237416 ms at 107802456522791
+2026-09-12T16:46:05Z	worker: event on main at 107802484117750
+2026-09-12T16:46:05Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:05Z	compile: applied revision 174 at 107802485740083
+2026-09-12T16:46:05Z	status: revision 174: recovered, 119 diagnostics in 35 ms
+2026-09-12T16:46:05Z	paint: revision 174 needed 1 extra turn(s); drew 1/3 pages
+2026-09-12T16:46:05Z	paint: revision 174 at 107802539984416 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:46:05Z	keystroke: revision 175 at 107802540074458 (delegate 107802540777791, revision 107802541111166)
+2026-09-12T16:46:05Z	compile: sending revision 175 at 107802541146666
+2026-09-12T16:46:05Z	status: compiling revision 175 (mac-174)…
+2026-09-12T16:46:05Z	worker: line 228176 B decoded in 3.2485 ms at 107802547035083
+2026-09-12T16:46:05Z	worker: event on main at 107802577040333
+2026-09-12T16:46:05Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:05Z	compile: applied revision 175 at 107802578585500
+2026-09-12T16:46:05Z	status: revision 175: recovered, 119 diagnostics in 37 ms
+2026-09-12T16:46:05Z	paint: revision 175 needed 1 extra turn(s); drew 1/3 pages
+2026-09-12T16:46:05Z	paint: revision 175 at 107802630203041 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:46:05Z	keystroke: revision 176 at 107802630285458 (delegate 107802630897625, revision 107802631193208)
+2026-09-12T16:46:05Z	compile: sending revision 176 at 107802631219416
+2026-09-12T16:46:05Z	status: compiling revision 176 (mac-175)…
+2026-09-12T16:46:05Z	worker: line 228177 B decoded in 3.405417 ms at 107802637373958
+2026-09-12T16:46:05Z	worker: event on main at 107802655522125
+2026-09-12T16:46:05Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:05Z	compile: applied revision 176 at 107802656976291
+2026-09-12T16:46:05Z	status: revision 176: recovered, 119 diagnostics in 26 ms
+2026-09-12T16:46:05Z	paint: revision 176 needed 2 extra turn(s); drew 0/3 pages
+2026-09-12T16:46:05Z	paint: revision 176 at 107802695839916 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:46:05Z	keystroke: revision 177 at 107802695865666 (delegate 107802696481791, revision 107802696769125)
+2026-09-12T16:46:05Z	compile: sending revision 177 at 107802696793875
+2026-09-12T16:46:05Z	status: compiling revision 177 (mac-176)…
+2026-09-12T16:46:05Z	worker: line 228178 B decoded in 3.294625 ms at 107802702885416
+2026-09-12T16:46:05Z	worker: event on main at 107802721034500
+2026-09-12T16:46:05Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:05Z	compile: applied revision 177 at 107802722560916
+2026-09-12T16:46:05Z	status: revision 177: recovered, 119 diagnostics in 26 ms
+2026-09-12T16:46:05Z	paint: revision 177 redrew 1/3 pages
+2026-09-12T16:46:05Z	paint: revision 177 at 107802770529958 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:46:05Z	keystroke: revision 178 at 107802770610583 (delegate 107802771235083, revision 107802771566541)
+2026-09-12T16:46:05Z	compile: sending revision 178 at 107802771591750
+2026-09-12T16:46:05Z	status: compiling revision 178 (mac-177)…
+2026-09-12T16:46:05Z	worker: line 228178 B decoded in 3.285916 ms at 107802777549666
+2026-09-12T16:46:05Z	worker: event on main at 107802796160750
+2026-09-12T16:46:05Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:05Z	compile: applied revision 178 at 107802797578791
+2026-09-12T16:46:05Z	status: revision 178: recovered, 119 diagnostics in 26 ms
+2026-09-12T16:46:05Z	paint: revision 178 needed 2 extra turn(s); drew 0/3 pages
+2026-09-12T16:46:05Z	paint: revision 178 at 107802843789208 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:46:05Z	keystroke: revision 179 at 107802843952125 (delegate 107802844642250, revision 107802844939333)
+2026-09-12T16:46:05Z	compile: sending revision 179 at 107802844979791
+2026-09-12T16:46:05Z	status: compiling revision 179 (mac-178)…
+2026-09-12T16:46:05Z	worker: line 228386 B decoded in 3.302833 ms at 107802850952541
+2026-09-12T16:46:05Z	worker: event on main at 107802880362958
+2026-09-12T16:46:05Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:05Z	compile: applied revision 179 at 107802881848541
+2026-09-12T16:46:05Z	status: revision 179: recovered, 119 diagnostics in 37 ms
+2026-09-12T16:46:05Z	paint: revision 179 needed 2 extra turn(s); drew 0/3 pages
+2026-09-12T16:46:05Z	paint: revision 179 at 107802921777750 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:46:05Z	keystroke: revision 180 at 107802921834875 (delegate 107802922549041, revision 107802922853208)
+2026-09-12T16:46:05Z	compile: sending revision 180 at 107802922888833
+2026-09-12T16:46:05Z	status: compiling revision 180 (mac-179)…
+2026-09-12T16:46:05Z	worker: line 228387 B decoded in 3.245834 ms at 107802928828250
+2026-09-12T16:46:05Z	worker: event on main at 107802947868541
+2026-09-12T16:46:05Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:05Z	compile: applied revision 180 at 107802949317458
+2026-09-12T16:46:05Z	status: revision 180: recovered, 119 diagnostics in 26 ms
+2026-09-12T16:46:05Z	paint: revision 180 needed 2 extra turn(s); drew 0/3 pages
+2026-09-12T16:46:05Z	paint: revision 180 at 107802988583916 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:46:05Z	keystroke: revision 181 at 107802988610041 (delegate 107802989379083, revision 107802989668458)
+2026-09-12T16:46:05Z	compile: sending revision 181 at 107802989699250
+2026-09-12T16:46:05Z	status: compiling revision 181 (mac-180)…
+2026-09-12T16:46:05Z	worker: line 228388 B decoded in 3.31225 ms at 107802995676833
+2026-09-12T16:46:05Z	worker: event on main at 107803013980500
+2026-09-12T16:46:05Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:05Z	compile: applied revision 181 at 107803015397208
+2026-09-12T16:46:05Z	status: revision 181: recovered, 119 diagnostics in 26 ms
+2026-09-12T16:46:06Z	paint: revision 181 redrew 1/3 pages
+2026-09-12T16:46:06Z	paint: revision 181 at 107803068844500 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:46:06Z	keystroke: revision 182 at 107803068944458 (delegate 107803069568541, revision 107803069864333)
+2026-09-12T16:46:06Z	compile: sending revision 182 at 107803069893000
+2026-09-12T16:46:06Z	status: compiling revision 182 (mac-181)…
+2026-09-12T16:46:06Z	worker: line 228388 B decoded in 3.246375 ms at 107803075859958
+2026-09-12T16:46:06Z	worker: event on main at 107803104232666
+2026-09-12T16:46:06Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:06Z	compile: applied revision 182 at 107803105692583
+2026-09-12T16:46:06Z	status: revision 182: recovered, 119 diagnostics in 36 ms
+2026-09-12T16:46:06Z	paint: revision 182 needed 2 extra turn(s); drew 0/3 pages
+2026-09-12T16:46:06Z	paint: revision 182 at 107803157004083 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:46:06Z	keystroke: revision 183 at 107803157089833 (delegate 107803157743041, revision 107803158047125)
+2026-09-12T16:46:06Z	compile: sending revision 183 at 107803158076416
+2026-09-12T16:46:06Z	status: compiling revision 183 (mac-182)…
+2026-09-12T16:46:06Z	worker: line 228595 B decoded in 3.258583 ms at 107803164018708
+2026-09-12T16:46:06Z	worker: event on main at 107803193597166
+2026-09-12T16:46:06Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:06Z	compile: applied revision 183 at 107803195208083
+2026-09-12T16:46:06Z	status: revision 183: recovered, 119 diagnostics in 37 ms
+2026-09-12T16:46:06Z	paint: revision 183 needed 1 extra turn(s); drew 1/3 pages
+2026-09-12T16:46:06Z	paint: revision 183 at 107803246638833 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:46:06Z	keystroke: revision 184 at 107803246736375 (delegate 107803247325916, revision 107803247617333)
+2026-09-12T16:46:06Z	compile: sending revision 184 at 107803247643291
+2026-09-12T16:46:06Z	status: compiling revision 184 (mac-183)…
+2026-09-12T16:46:06Z	worker: line 228596 B decoded in 3.369542 ms at 107803253707000
+2026-09-12T16:46:06Z	worker: event on main at 107803272257291
+2026-09-12T16:46:06Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:06Z	compile: applied revision 184 at 107803273722208
+2026-09-12T16:46:06Z	status: revision 184: recovered, 119 diagnostics in 26 ms
+2026-09-12T16:46:06Z	paint: revision 184 needed 2 extra turn(s); drew 0/3 pages
+2026-09-12T16:46:06Z	paint: revision 184 at 107803312790541 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:46:06Z	keystroke: revision 185 at 107803312814916 (delegate 107803313448958, revision 107803313763125)
+2026-09-12T16:46:06Z	compile: sending revision 185 at 107803313790125
+2026-09-12T16:46:06Z	status: compiling revision 185 (mac-184)…
+2026-09-12T16:46:06Z	worker: line 228597 B decoded in 3.358125 ms at 107803319849125
+2026-09-12T16:46:06Z	worker: event on main at 107803338069833
+2026-09-12T16:46:06Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:06Z	compile: applied revision 185 at 107803339492333
+2026-09-12T16:46:06Z	status: revision 185: recovered, 119 diagnostics in 26 ms
+2026-09-12T16:46:06Z	paint: revision 185 redrew 1/3 pages
+2026-09-12T16:46:06Z	paint: revision 185 at 107803387170041 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:46:06Z	keystroke: revision 186 at 107803387250541 (delegate 107803387877833, revision 107803388186833)
+2026-09-12T16:46:06Z	compile: sending revision 186 at 107803388215000
+2026-09-12T16:46:06Z	status: compiling revision 186 (mac-185)…
+2026-09-12T16:46:06Z	worker: line 228598 B decoded in 3.288209 ms at 107803394216375
+2026-09-12T16:46:06Z	worker: event on main at 107803412135291
+2026-09-12T16:46:06Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:06Z	compile: applied revision 186 at 107803413564291
+2026-09-12T16:46:06Z	status: revision 186: recovered, 119 diagnostics in 25 ms
+2026-09-12T16:46:06Z	paint: revision 186 redrew 1/3 pages
+2026-09-12T16:46:06Z	paint: revision 186 at 107803460636000 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:46:06Z	keystroke: revision 187 at 107803460727875 (delegate 107803461336041, revision 107803461647666)
+2026-09-12T16:46:06Z	compile: sending revision 187 at 107803461673125
+2026-09-12T16:46:06Z	status: compiling revision 187 (mac-186)…
+2026-09-12T16:46:06Z	worker: line 228598 B decoded in 3.255334 ms at 107803467714625
+2026-09-12T16:46:06Z	worker: event on main at 107803497390333
+2026-09-12T16:46:06Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:06Z	compile: applied revision 187 at 107803498947833
+2026-09-12T16:46:06Z	status: revision 187: recovered, 119 diagnostics in 37 ms
+2026-09-12T16:46:06Z	paint: revision 187 needed 2 extra turn(s); drew 0/3 pages
+2026-09-12T16:46:06Z	paint: revision 187 at 107803539686958 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:46:06Z	keystroke: revision 188 at 107803539747041 (delegate 107803540432500, revision 107803540748041)
+2026-09-12T16:46:06Z	compile: sending revision 188 at 107803540781416
+2026-09-12T16:46:06Z	status: compiling revision 188 (mac-187)…
+2026-09-12T16:46:06Z	worker: line 228806 B decoded in 3.315666 ms at 107803546794416
+2026-09-12T16:46:06Z	worker: event on main at 107803564831125
+2026-09-12T16:46:06Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:06Z	compile: applied revision 188 at 107803566324500
+2026-09-12T16:46:06Z	status: revision 188: recovered, 119 diagnostics in 25 ms
+2026-09-12T16:46:06Z	paint: revision 188 needed 2 extra turn(s); drew 0/3 pages
+2026-09-12T16:46:06Z	paint: revision 188 at 107803605013166 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:46:06Z	keystroke: revision 189 at 107803605038125 (delegate 107803605657916, revision 107803605971708)
+2026-09-12T16:46:06Z	compile: sending revision 189 at 107803606004250
+2026-09-12T16:46:06Z	status: compiling revision 189 (mac-188)…
+2026-09-12T16:46:06Z	worker: line 228807 B decoded in 3.380292 ms at 107803612079625
+2026-09-12T16:46:06Z	worker: event on main at 107803629407375
+2026-09-12T16:46:06Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:06Z	compile: applied revision 189 at 107803630866875
+2026-09-12T16:46:06Z	status: revision 189: recovered, 119 diagnostics in 25 ms
+2026-09-12T16:46:06Z	paint: revision 189 redrew 1/3 pages
+2026-09-12T16:46:06Z	paint: revision 189 at 107803681880916 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:46:06Z	keystroke: revision 190 at 107803681990833 (delegate 107803682605416, revision 107803682934958)
+2026-09-12T16:46:06Z	compile: sending revision 190 at 107803682968833
+2026-09-12T16:46:06Z	status: compiling revision 190 (mac-189)…
+2026-09-12T16:46:06Z	worker: line 228808 B decoded in 3.283958 ms at 107803688906291
+2026-09-12T16:46:06Z	worker: event on main at 107803718270333
+2026-09-12T16:46:06Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:06Z	compile: applied revision 190 at 107803719754583
+2026-09-12T16:46:06Z	status: revision 190: recovered, 119 diagnostics in 37 ms
+2026-09-12T16:46:06Z	paint: revision 190 needed 1 extra turn(s); drew 1/3 pages
+2026-09-12T16:46:06Z	paint: revision 190 at 107803771577708 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:46:06Z	keystroke: revision 191 at 107803771654250 (delegate 107803772298208, revision 107803772610166)
+2026-09-12T16:46:06Z	compile: sending revision 191 at 107803772638833
+2026-09-12T16:46:06Z	status: compiling revision 191 (mac-190)…
+2026-09-12T16:46:06Z	worker: line 228809 B decoded in 3.30025 ms at 107803778634083
+2026-09-12T16:46:06Z	worker: event on main at 107803797013958
+2026-09-12T16:46:06Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:06Z	compile: applied revision 191 at 107803798499041
+2026-09-12T16:46:06Z	status: revision 191: recovered, 119 diagnostics in 26 ms
+2026-09-12T16:46:06Z	paint: revision 191 needed 2 extra turn(s); drew 0/3 pages
+2026-09-12T16:46:06Z	paint: revision 191 at 107803837638291 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:46:06Z	keystroke: revision 192 at 107803837668541 (delegate 107803838311291, revision 107803838614250)
+2026-09-12T16:46:06Z	compile: sending revision 192 at 107803838642166
+2026-09-12T16:46:06Z	status: compiling revision 192 (mac-191)…
+2026-09-12T16:46:06Z	worker: line 228808 B decoded in 3.243667 ms at 107803844517500
+2026-09-12T16:46:06Z	worker: event on main at 107803862563375
+2026-09-12T16:46:06Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:06Z	compile: applied revision 192 at 107803864020541
+2026-09-12T16:46:06Z	status: revision 192: recovered, 119 diagnostics in 25 ms
+2026-09-12T16:46:06Z	paint: revision 192 redrew 1/3 pages
+2026-09-12T16:46:06Z	paint: revision 192 at 107803911458666 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:46:06Z	keystroke: revision 193 at 107803911559583 (delegate 107803912274208, revision 107803912602208)
+2026-09-12T16:46:06Z	compile: sending revision 193 at 107803912635083
+2026-09-12T16:46:06Z	status: compiling revision 193 (mac-192)…
+2026-09-12T16:46:06Z	worker: line 228808 B decoded in 3.233709 ms at 107803918528625
+2026-09-12T16:46:06Z	worker: event on main at 107803947821291
+2026-09-12T16:46:06Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:06Z	compile: applied revision 193 at 107803949397958
+2026-09-12T16:46:06Z	status: revision 193: recovered, 119 diagnostics in 37 ms
+2026-09-12T16:46:06Z	paint: revision 193 needed 2 extra turn(s); drew 0/3 pages
+2026-09-12T16:46:06Z	paint: revision 193 at 107803988982500 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:46:06Z	keystroke: revision 194 at 107803989052000 (delegate 107803989705000, revision 107803990058666)
+2026-09-12T16:46:06Z	compile: sending revision 194 at 107803990083875
+2026-09-12T16:46:06Z	status: compiling revision 194 (mac-193)…
+2026-09-12T16:46:06Z	worker: line 229018 B decoded in 3.302 ms at 107803996123250
+2026-09-12T16:46:06Z	worker: event on main at 107804013964708
+2026-09-12T16:46:06Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:06Z	compile: applied revision 194 at 107804015447750
+2026-09-12T16:46:06Z	status: revision 194: recovered, 119 diagnostics in 25 ms
+2026-09-12T16:46:07Z	paint: revision 194 needed 2 extra turn(s); drew 0/3 pages
+2026-09-12T16:46:07Z	paint: revision 194 at 107804054397250 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:46:07Z	keystroke: revision 195 at 107804054419791 (delegate 107804055058500, revision 107804055351541)
+2026-09-12T16:46:07Z	compile: sending revision 195 at 107804055378500
+2026-09-12T16:46:07Z	status: compiling revision 195 (mac-194)…
+2026-09-12T16:46:07Z	worker: line 229019 B decoded in 3.245459 ms at 107804061445250
+2026-09-12T16:46:07Z	worker: event on main at 107804079341375
+2026-09-12T16:46:07Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:07Z	compile: applied revision 195 at 107804080920583
+2026-09-12T16:46:07Z	status: revision 195: recovered, 119 diagnostics in 25 ms
+2026-09-12T16:46:07Z	paint: revision 195 redrew 1/3 pages
+2026-09-12T16:46:07Z	paint: revision 195 at 107804134115166 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:46:07Z	keystroke: revision 196 at 107804134253583 (delegate 107804134978916, revision 107804135276791)
+2026-09-12T16:46:07Z	compile: sending revision 196 at 107804135320541
+2026-09-12T16:46:07Z	status: compiling revision 196 (mac-195)…
+2026-09-12T16:46:07Z	worker: line 229020 B decoded in 3.296334 ms at 107804141271000
+2026-09-12T16:46:07Z	worker: event on main at 107804170995916
+2026-09-12T16:46:07Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:07Z	compile: applied revision 196 at 107804172524333
+2026-09-12T16:46:07Z	status: revision 196: recovered, 119 diagnostics in 37 ms
+2026-09-12T16:46:07Z	paint: revision 196 needed 1 extra turn(s); drew 1/3 pages
+2026-09-12T16:46:07Z	paint: revision 196 at 107804225711041 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:46:07Z	keystroke: revision 197 at 107804225792083 (delegate 107804226433000, revision 107804226742791)
+2026-09-12T16:46:07Z	compile: sending revision 197 at 107804226774875
+2026-09-12T16:46:07Z	status: compiling revision 197 (mac-196)…
+2026-09-12T16:46:07Z	worker: line 229020 B decoded in 3.284 ms at 107804232845000
+2026-09-12T16:46:07Z	worker: event on main at 107804262659583
+2026-09-12T16:46:07Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:07Z	compile: applied revision 197 at 107804264152333
+2026-09-12T16:46:07Z	status: revision 197: recovered, 119 diagnostics in 37 ms
+2026-09-12T16:46:07Z	paint: revision 197 needed 2 extra turn(s); drew 0/3 pages
+2026-09-12T16:46:07Z	paint: revision 197 at 107804315693750 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:46:07Z	keystroke: revision 198 at 107804315769125 (delegate 107804316408583, revision 107804316707791)
+2026-09-12T16:46:07Z	compile: sending revision 198 at 107804316736625
+2026-09-12T16:46:07Z	status: compiling revision 198 (mac-197)…
+2026-09-12T16:46:07Z	worker: line 229229 B decoded in 3.333833 ms at 107804322765041
+2026-09-12T16:46:07Z	worker: event on main at 107804351792916
+2026-09-12T16:46:07Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:07Z	compile: applied revision 198 at 107804353349500
+2026-09-12T16:46:07Z	status: revision 198: recovered, 119 diagnostics in 37 ms
+2026-09-12T16:46:07Z	paint: revision 198 needed 1 extra turn(s); drew 1/3 pages
+2026-09-12T16:46:07Z	paint: revision 198 at 107804404947708 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:46:07Z	keystroke: revision 199 at 107804405016250 (delegate 107804405579625, revision 107804405870583)
+2026-09-12T16:46:07Z	compile: sending revision 199 at 107804405897833
+2026-09-12T16:46:07Z	status: compiling revision 199 (mac-198)…
+2026-09-12T16:46:07Z	worker: line 229230 B decoded in 3.258666 ms at 107804411901416
+2026-09-12T16:46:07Z	worker: event on main at 107804430470291
+2026-09-12T16:46:07Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:07Z	compile: applied revision 199 at 107804431948916
+2026-09-12T16:46:07Z	status: revision 199: recovered, 119 diagnostics in 26 ms
+2026-09-12T16:46:07Z	paint: revision 199 needed 2 extra turn(s); drew 0/3 pages
+2026-09-12T16:46:07Z	paint: revision 199 at 107804470873916 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:46:07Z	keystroke: revision 200 at 107804470899708 (delegate 107804471556875, revision 107804471856458)
+2026-09-12T16:46:07Z	compile: sending revision 200 at 107804471888250
+2026-09-12T16:46:07Z	status: compiling revision 200 (mac-199)…
+2026-09-12T16:46:07Z	worker: line 229231 B decoded in 3.279208 ms at 107804477809791
+2026-09-12T16:46:07Z	worker: event on main at 107804496150291
+2026-09-12T16:46:07Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:07Z	compile: applied revision 200 at 107804497620833
+2026-09-12T16:46:07Z	status: revision 200: recovered, 119 diagnostics in 26 ms
+2026-09-12T16:46:07Z	paint: revision 200 redrew 1/3 pages
+2026-09-12T16:46:07Z	paint: revision 200 at 107804544460708 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:46:07Z	keystroke: revision 201 at 107804544568708 (delegate 107804545250583, revision 107804545565541)
+2026-09-12T16:46:07Z	compile: sending revision 201 at 107804545594375
+2026-09-12T16:46:07Z	status: compiling revision 201 (mac-200)…
+2026-09-12T16:46:07Z	worker: line 229232 B decoded in 3.300333 ms at 107804551703958
+2026-09-12T16:46:07Z	worker: event on main at 107804580721750
+2026-09-12T16:46:07Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:07Z	compile: applied revision 201 at 107804582212833
+2026-09-12T16:46:07Z	status: revision 201: recovered, 119 diagnostics in 37 ms
+2026-09-12T16:46:07Z	paint: revision 201 needed 1 extra turn(s); drew 1/3 pages
+2026-09-12T16:46:07Z	paint: revision 201 at 107804633460750 (covers 1 keystrokes, redrawn true)
+2026-09-12T16:46:07Z	keystroke: revision 202 at 107804633537291 (delegate 107804634291125, revision 107804634622708)
+2026-09-12T16:46:07Z	compile: sending revision 202 at 107804634671875
+2026-09-12T16:46:07Z	status: compiling revision 202 (mac-201)…
+2026-09-12T16:46:07Z	worker: line 229232 B decoded in 3.30275 ms at 107804640648666
+2026-09-12T16:46:07Z	worker: event on main at 107804670945916
+2026-09-12T16:46:07Z	font substituted: Symbol → Times-Roman
+2026-09-12T16:46:07Z	compile: applied revision 202 at 107804672465750
+2026-09-12T16:46:07Z	status: revision 202: recovered, 119 diagnostics in 38 ms
+2026-09-12T16:46:07Z	paint: revision 202 needed 2 extra turn(s); drew 0/3 pages
+2026-09-12T16:46:07Z	paint: revision 202 at 107804724272083 (covers 1 keystrokes, redrawn false)
+2026-09-12T16:46:07Z	bench: done (all keystrokes painted); keystrokes 200, painted 200, coalesced 0, p50 77.825625 ms

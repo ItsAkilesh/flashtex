@@ -426,6 +426,9 @@ BUNDLE_OK=0
 if [[ $APP_OK == 1 && $HELPERS_OK == 1 ]]; then
   step "make-app.sh (bundle with the four helpers${EXTRA_RENDER:+ + flashtex-render}${EXTRA_PDF_EXACT:+ + flashtex-pdf-exact})"
   MAKE_APP_ARGS=(--compiler "$(helper_path compiler)" --pdf "$(helper_path pdf)" --bridge "$(helper_path bridge)" --ledger "$(helper_path edit-ledger)")
+  # The helper route of the packaged app (typing-attribution cells) needs the
+  # bundled preview controller; make-app.sh records it in components.json.
+  [[ -x "$(helper_path preview-controller)" ]] && MAKE_APP_ARGS+=(--controller "$(helper_path preview-controller)")
   [[ -n "$EXTRA_RENDER" ]] && MAKE_APP_ARGS+=(--render "$EXTRA_RENDER")
   [[ -n "$EXTRA_PDF_EXACT" ]] && MAKE_APP_ARGS+=(--pdf-exact "$EXTRA_PDF_EXACT")
   cmd make-app bash "$MAC/scripts/make-app.sh" "${MAKE_APP_ARGS[@]}"
