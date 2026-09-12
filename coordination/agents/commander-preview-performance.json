@@ -3,27 +3,27 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-048": {
-      "acknowledged_utc": "2026-09-12T13:58:57Z",
-      "adaptation": "Fix observed proxy thread-exception propagation gap and retain reopened diagnostics; four injected-fault tests, no compiler workload rerun or cause inference.",
-      "main_sha": "ae37bf0d75687005621c9899d8e66c637ed202f6",
-      "revision": 28
+      "acknowledged_utc": "2026-09-12T14:09:39Z",
+      "adaptation": "One approved unchangedbinary correctness77486 passed full durable/reopen/clean gates; stricttrace rightlyrefused partiallive stderr. Preserve both outcomes, no extra run.",
+      "main_sha": "d923951262af359cee6018ca6c834c1d63698b3b",
+      "revision": 31
     }
   },
   "branch": "agent/commander-preview-performance/preview-performance",
   "capabilities": [
     "Preview helper serialization and latency"
   ],
-  "code_revision": "77c8cab12fff96d5ad882568551c5b2843f9486f",
+  "code_revision": "e2072fe3e181ee17ab87a193c9477abd62f88ec6",
   "eta_minutes": null,
   "machine": "linux-primary",
-  "main_integrated_through": "77c8cab12fff96d5ad882568551c5b2843f9486f",
-  "next_action": "Independent review and publication of pread snapshot repair; no workload rerun until approved.",
+  "main_integrated_through": "e693368bf280ffebf223b75cd5cd75080c3f5c8f",
+  "next_action": "Independent archive audit; bounded final diagnostic snapshot after helper termination with retainedfd.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "FT048 correctedrun58242 faileddiagnosticJSON before reopen; positional snapshot repair and fourdeterministic tests pass; original remainingfailure artifacts preserved.",
+  "summary": "FT048r31 correctnessPASS; traceINCOMPLETE from livepartialtail, no performancecomparison. Originalcompleteprovenance archived.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T14:05:50Z",
+  "updated_utc": "2026-09-12T14:09:39Z",
   "usage": {
     "status": "unknown"
   }

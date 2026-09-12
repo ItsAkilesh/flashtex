@@ -14,23 +14,23 @@
     "rust",
     "rendering"
   ],
-  "code_revision": "73401a5aa5cd2faca06031cf094a3228fc2fa845",
+  "code_revision": "2293f8dfe5fad05f90e705b9cacc9e09e0f83d04",
   "eta_minutes": {
     "likely": 3,
     "optimistic": 1,
     "pessimistic": 5
   },
   "machine": "linux-primary",
-  "main_integrated_through": "92ff8c3766f29c63094c280d90fd4b8702759f4a",
-  "next_action": "Prioritize read-only actual packaging7be5396 artifact review, including bundle-before-user override ordering and supplementary asset provenance. No native edits/rebuild.",
+  "main_integrated_through": "2293f8dfe5fad05f90e705b9cacc9e09e0f83d04",
+  "next_action": "Existing Mac owner should correct route-specific acceptance and prove explicit override policy; await next bounded consumer assignment.",
   "reviewed_peers": {},
   "schema_version": 1,
-  "state": "accepted",
-  "summary": "Actual recovery standalone export: warning10pt permits labeled fallback, error12pt refuses noPDF. Strict paired/helper rules inspected unchanged;12pt sidefile was not negotiated stdout.",
+  "state": "ready_for_integration",
+  "summary": "Reviewed exact Mac packaging 7be5396d: 32 resource hashes verified; helper configuration error and explicit override test gaps recorded.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T14:02:03Z",
+  "updated_utc": "2026-09-12T14:09:05Z",
   "usage": {
-    "evidence": "Report retains originalsource/diagnostic hashes/spans, consumerbinary41d9cc1f, warningfallbackPDFde995170 and errornoPDF. Pair true rejects both by existing source rule; permissive12 sidefile would mismatch capabilities. No new policy/nativeclaim.",
-    "status": "Hosted OpenAI only; no providers/descendants. Four lightweight existing exporter calls terminal, no builds. Context telemetry/native compaction unavailable."
+    "evidence": "crates/rendering-core/docs/handoffs/native-assets/packaging-7be5396d/review.json",
+    "status": "Existing OpenAI session only; no providers, descendants, builds or native execution. No exact context telemetry or compaction control available."
   }
 }

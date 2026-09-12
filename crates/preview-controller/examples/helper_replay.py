@@ -25,7 +25,7 @@ class Client:
         self.receiver_timings = []
         self.receiver_timings_dropped = 0
         self.last_diagnostics_raw = b''
-        self.diagnostics_status = {}
+        self.diagnostics_status = dict(captured=False, scope="no diagnostic snapshot taken")
 
     def send(self, identity, kind, payload):
         value = dict(protocol_version=1, session_id="benchmark", id=identity,
@@ -81,7 +81,7 @@ class Client:
         # must not seek the helper's concurrently used write offset.
         raw = os.pread(self.diagnostic_file.fileno(), 1024 * 1024 + 1, 0)
         self.last_diagnostics_raw = raw
-        self.diagnostics_status = dict(truncated=len(raw)>1024*1024,
+        self.diagnostics_status = dict(captured=True, truncated=len(raw)>1024*1024,
             partial_tail=bool(raw and not raw.endswith(b'\n')), non_json=False,
             scope='live positional snapshot; later stderr may be absent')
         return raw
