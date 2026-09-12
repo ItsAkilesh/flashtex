@@ -293,6 +293,9 @@ fn add_accepted_capabilities(payload: &mut Value, capabilities: &NegotiatedCapab
     }
 }
 
+/// The structured font object. Retained as the authoritative reference that
+/// [`font_json_literal`] is tested against; the hot path uses the literal.
+#[cfg(test)]
 fn font_json(font: Font) -> Value {
     let (family, weight, style) = match font {
         Font::TimesRoman => ("Times-Roman", "normal", "normal"),
@@ -338,6 +341,11 @@ fn valid_rule_geometry(x_pt: f64, rule: crate::layout::RuleGeometry) -> bool {
 /// time-to-first-byte.
 fn pages_json(pages: &[Page], paths: &[&str], capabilities: &AcceptedCapabilities) -> Value {
     // Rough capacity guess: replies are large and reallocation is the cost.
+    //
+    // Tuning this was measured and rejected: 96 bytes per item (the fixture
+    // averages 86) helped the negotiated case and hurt the legacy one, and the
+    // difference was within run-to-run noise either way. Left as it was so this
+    // revision isolates a single improvement rather than bundling a wash.
     let item_count: usize = pages.iter().map(|p| p.items.len()).sum();
     let mut out = String::with_capacity(item_count * 160 + 256);
     out.push('[');
@@ -375,7 +383,7 @@ fn pages_json(pages: &[Page], paths: &[&str], capabilities: &AcceptedCapabilitie
                 json::write_number_into(it.baseline_y_pt, &mut out);
                 if capabilities.font_hints_v1 {
                     out.push_str(",\"font\":");
-                    out.push_str(&json::write(&font_json(it.font)));
+                    out.push_str(font_json_literal(it.font));
                 }
                 out.push_str(",\"font_size_pt\":");
                 json::write_number_into(it.font_size_pt, &mut out);
@@ -396,6 +404,29 @@ fn pages_json(pages: &[Page], paths: &[&str], capabilities: &AcceptedCapabilitie
     }
     out.push(']');
     Value::Raw(out)
+}
+
+/// The font hint as a precomputed literal, byte-identical to serialising
+/// [`font_json`].
+///
+/// `Font` has seven variants whose family, weight and style are fixed, so the
+/// object never varies per item. Building a `Value` and stringifying it per item
+/// cost one allocation for every positioned item: 96 571 of them on the pinned
+/// fixture, which measured as 13 ms of the warm reply when font-hints-v1 was
+/// negotiated. A test asserts each literal equals the serialised form, so the
+/// two cannot drift.
+fn font_json_literal(font: Font) -> &'static str {
+    match font {
+        Font::TimesRoman => r#"{"family":"Times-Roman","style":"normal","weight":"normal"}"#,
+        Font::TimesBold => r#"{"family":"Times-Bold","style":"normal","weight":"bold"}"#,
+        Font::TimesItalic => r#"{"family":"Times-Italic","style":"italic","weight":"normal"}"#,
+        Font::TimesBoldItalic => {
+            r#"{"family":"Times-BoldItalic","style":"italic","weight":"bold"}"#
+        }
+        Font::Helvetica => r#"{"family":"Helvetica","style":"normal","weight":"normal"}"#,
+        Font::Courier => r#"{"family":"Courier","style":"normal","weight":"normal"}"#,
+        Font::Symbol => r#"{"family":"Symbol","style":"normal","weight":"normal"}"#,
+    }
 }
 
 /// Sorted: end_byte, path, start_byte
@@ -734,4 +765,30 @@ fn bound_pages(
         kept.push(page.clone());
     }
     (kept, 0)
+}
+
+#[cfg(test)]
+mod font_literal_tests {
+    use super::*;
+
+    /// The literal and the structured form must stay byte-identical. If someone
+    /// changes font_json, this fails rather than silently changing wire output.
+    #[test]
+    fn every_font_literal_matches_its_serialised_value() {
+        for font in [
+            Font::TimesRoman,
+            Font::TimesBold,
+            Font::TimesItalic,
+            Font::TimesBoldItalic,
+            Font::Helvetica,
+            Font::Courier,
+            Font::Symbol,
+        ] {
+            assert_eq!(
+                font_json_literal(font),
+                json::write(&font_json(font)),
+                "{font:?} literal drifted from its serialised form"
+            );
+        }
+    }
 }

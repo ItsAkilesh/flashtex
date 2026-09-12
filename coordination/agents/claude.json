@@ -3,10 +3,10 @@
   "allocation_id": "openai-kabir-plus-ft002",
   "assignment_acknowledgements": {
     "FT-002": {
-      "acknowledged_utc": "2026-09-12T09:42:42Z",
-      "adaptation": "Accepted FT-002 rev 10 at input main e590179: isolate layout and page construction from JSON serialisation using the exact pinned fixture. Rev 9 already split compile from serialisation and cut serialisation from 61 ms to 20 ms by rendering pages directly; rev 10 needs the finer split so the remaining cost is attributed precisely rather than lumped as compile. Acknowledged 20 minutes late because nothing was watching the board; a background watcher now polls for new dispatches so that does not recur.",
-      "main_sha": "277a0910811fdb27bd156ecd92b92b50f277c750",
-      "revision": 10
+      "acknowledged_utc": "2026-09-12T09:46:03Z",
+      "adaptation": "Accepted FT-002 rev 11: one measured output allocation or reuse improvement with exact clean equivalence. Rev 10 isolated the phases, so I am targeting a measured allocation in the output path rather than guessing: the direct page renderer still allocates a String per item for the font hint via json::write(font_json(..)), which is 96571 allocations on the pinned fixture when font-hints-v1 is negotiated, and the reply buffer reservation is roughly twice the measured bytes per item.",
+      "main_sha": "6c56263b4f3b8cf85370b6a9cedfd56566b26c1a",
+      "revision": 11
     }
   },
   "branch": "agent/claude/compiler-foundation",
@@ -16,7 +16,7 @@
     "cursor-commit",
     "coordination"
   ],
-  "code_revision": "a6d4979ca400adc8ef6a9ffe4ebdd63a732ccef5",
+  "code_revision": "a5ceece154c2166c2839a3fd10ff3f734acc5e22",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
@@ -24,21 +24,21 @@
   },
   "machine": "mac-m5pro-kabir",
   "main_integrated_through": "4425d9d77b747db69c1f04c493b363bd3a467f4e",
-  "next_action": "Layout is the next target if latency work continues: it is 64 percent of cold TTFB and contains the cross-reference convergence passes. Watcher armed for the next dispatch.",
+  "next_action": "Rev 12 just dispatched; starting it now.",
   "reviewed_peers": {
     "origin/main": {
-      "adaptation": "Acknowledged rev 10 twenty minutes after dispatch because nothing was watching the board. A background watcher now polls origin every 45 seconds and wakes this session on any revision change, so idle time between a dispatch and its acknowledgement should not recur.",
-      "reviewed_utc": "2026-09-12T09:44:44Z",
-      "sha": "277a0910811fdb27bd156ecd92b92b50f277c750"
+      "adaptation": "Measured and rejected a second change in the same revision rather than bundling it: resizing the reply reservation from 160 to 96 bytes per item helped the negotiated case and hurt the legacy one, within run-to-run noise either way. Isolating the font literal alone produced a better result than either variant, which is why rev 11 asks for one improvement rather than several.",
+      "reviewed_utc": "2026-09-12T09:50:28Z",
+      "sha": "9e05acdbf9fa7e1825d67cb03570a69a387bf833"
     }
   },
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "FT-002 rev 10 delivered: layout and page construction isolated from JSON serialisation on the exact pinned fixture. Layout dominates at 63.300 ms p50, 64 percent of a 99.289 ms cold reply; serialisation is 16.159 ms, parse 11.867 ms, writing 0.105 ms. 16 suites pass.",
+  "summary": "FT-002 rev 11 delivered: the font hint is now a precomputed literal instead of a Value built and stringified per item. Warm reply with font-hints-v1 cut from 32.601 ms to 16.152 ms p50, a 50 percent reduction, with byte-identical output proven by the pinned fixtures. 16 suites pass.",
   "tool": "Codex",
-  "updated_utc": "2026-09-12T09:44:44Z",
+  "updated_utc": "2026-09-12T09:50:28Z",
   "usage": {
-    "evidence": "ttfb_bench prints sha256 of fixture, request and binary and reports p50/p95/p99 per phase on 691 pages and 96571 items; parse 11.867, layout 63.300, warm compile 3.299, warm reply 19.458 so serialisation 16.159, write 0.105; phases sum to about 91 ms against 99.289 ms cold with the remainder in request parsing, path validation and diagnostics",
-    "status": "Written directly; no Codex worker used"
+    "evidence": "warm reply font-hints-v1 p50 32.601 to 16.152 ms and p95 33.655 to 17.007; 96571 per-item allocations removed on the pinned fixture; a test asserts every literal is byte-identical to serialising the structured form; pinned byte-exact fixtures unchanged; 16 suites pass; clippy clean; fmt clean",
+    "status": "Written directly; no Codex worker"
   }
 }

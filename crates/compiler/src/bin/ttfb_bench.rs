@@ -85,6 +85,22 @@ fn request(text: &str) -> String {
     request_for(text, "ttfb")
 }
 
+/// Same request with both capabilities negotiated.
+fn request_with_caps(text: &str, project: &str) -> String {
+    use flashtex_compiler::json::{self, Value};
+    let base = request_for(text, project);
+    let mut parsed = json::parse(&base).expect("request parses");
+    if let Value::Obj(ref mut env) = parsed {
+        if let Some(Value::Obj(payload)) = env.get_mut("payload") {
+            payload.insert(
+                "layout_capabilities".into(),
+                Value::Arr(vec![json::str_("rules-v1"), json::str_("font-hints-v1")]),
+            );
+        }
+    }
+    json::write(&parsed)
+}
+
 fn main() {
     let text = fixture();
     let line = request(&text);
@@ -125,6 +141,19 @@ fn main() {
         black_box(reply);
     }
     report("COLD reply built (= TTFB today)", cold);
+
+    // Negotiated mode: font-hints-v1 is where the output path allocates per item.
+    {
+        let mut negotiated = Vec::with_capacity(SAMPLES);
+        let line_caps = request_with_caps(&text, "ttfb-caps");
+        handle_line(&line_caps);
+        for _ in 0..SAMPLES {
+            let start = Instant::now();
+            black_box(handle_line(black_box(&line_caps)));
+            negotiated.push(start.elapsed());
+        }
+        report("WARM reply, font-hints-v1", negotiated);
+    }
 
     // WARM: the same document recompiled, which is what an editing session does.
     let mut warm = Vec::with_capacity(SAMPLES);

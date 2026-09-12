@@ -334,6 +334,26 @@ attacking it again would win little. The phases sum to about 91 ms against a
 99 ms cold reply, and the remainder is request parsing, path validation and
 diagnostic assembly.
 
+### Output allocation: the font hint
+
+With `font-hints-v1` negotiated, every positioned item carried a font object that
+was built as a `Value` and stringified per item: 96 571 allocations on the pinned
+fixture. `Font` has seven variants whose family, weight and style are fixed, so
+the object never varies. It is now a precomputed literal.
+
+| | before | after |
+|---|---|---|
+| Warm reply, font-hints-v1 | p50 32.601 ms, p95 33.655 ms | **p50 16.152 ms, p95 17.007 ms** |
+
+Half the cost of the negotiated reply was allocating the same seven strings over
+and over. A test asserts each literal is byte-identical to serialising the
+structured form, so the two cannot drift apart.
+
+Measured and rejected in the same revision: resizing the reply buffer reservation
+from 160 to 96 bytes per item, which the fixture's 86-byte average suggested.
+It helped the negotiated case and hurt the legacy one, within run-to-run noise
+either way, so it was left alone rather than bundled in as an apparent win.
+
 ## Recovery behaviour
 
 `status` is `ok` with no diagnostics, `recovered` when diagnostics were produced
