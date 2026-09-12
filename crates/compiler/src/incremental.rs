@@ -235,15 +235,11 @@ impl Session {
         // budget. The signature is the block's first and last source offsets,
         // which are already computed; full structural equality still gates
         // acceptance, so a signature collision can never cause a wrong reuse.
-        // Index WITHOUT shifting. A shifted block's signature is derivable from
-        // the cached block's spans and the byte delta, so the index costs a few
-        // integer operations per cached block instead of a deep clone.
-        //
-        // Eagerly shifting every cached block made per-keystroke work
-        // proportional to the whole document rather than to the edit: at 500 KB
-        // a one-word edit cost 405 ms against a 457 ms cold compile, so reusing
-        // 7 753 of 7 754 blocks saved almost nothing. Only the block that
-        // actually matches is shifted now.
+        // Build the index without eagerly materializing a second copy of the
+        // whole cache. A shifted signature needs only the boundary spans. Each
+        // signature hit is still shifted and compared structurally below, and
+        // every reused placed item still needs a current-revision source span;
+        // those confirmation/output walks are linear in reused content.
         let mut candidate_index: HashMap<BlockSignature, Vec<usize>> = HashMap::new();
         if can_reuse {
             if let Some(previous) = self.previous.as_ref() {
