@@ -10,8 +10,8 @@
     "bridge-journal"
   ],
   "allocation_id": "hosted-openai-product",
-  "state": "in_progress",
-  "updated_utc": "2026-09-12T06:08:08.930252+00:00",
+  "state": "ready_for_integration",
+  "updated_utc": "2026-09-12T06:11:54.150257+00:00",
   "assignment_acknowledgements": {
     "FT-022": {
       "revision": 2,
@@ -20,16 +20,16 @@
       "adaptation": "Progress/backpressure already published2d90e01; continue explicit orchestrator instruction for typed bounded native command/event API and multi-project ledger-handoff tests. No repeated implementation of completed stage."
     }
   },
-  "summary": "FT-022 optional reusable async bridge adapter complete: durable single-attempt intents, nonblocking status handles, exact source context check before journal promotion; 22 tests, strict clippy, fmt pass.",
+  "summary": "FT022r2 typed bounded background API and real ledger/multi-project tests complete. Admission, durable intent, proposal-ready and recovery remain distinct; unavailable context revokes exposed status.",
   "usage": {
     "status": "Hosted OpenAI quota unknown; no paid provider calls or Cursor retry. Direct Git fallback authorized.",
-    "evidence": "cargo test --all-features --all-targets:22 pass; cargo clippy same flags -D warnings:pass; cargo fmt --check:pass. No provider calls."
+    "evidence": "28 all-features/all-targets tests passed, strict Clippy and fmt passed. Actual bridge/edit-ledger owner reopen and receipt replay tested; no provider calls/native parity claim."
   },
   "eta_minutes": {
-    "optimistic": 10,
-    "likely": 20,
-    "pessimistic": 30
+    "optimistic": 0,
+    "likely": 0,
+    "pessimistic": 0
   },
-  "next_action": "Publish typed native API then add multi-project cancellation/real edit-ledger handoff checks; no bridge CLI edits.",
-  "code_revision": "296f16efeb69fd386a80fd25a7d2010b7977d402"
+  "next_action": "Integrate exact code_revision; native/bridge CLI transport remains explicit later assignment. Preserve no ambiguous retry guarantee.",
+  "code_revision": "bdfa2fa13745b5a147337a31c050601b29418a95"
 }
