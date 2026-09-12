@@ -332,3 +332,49 @@ mod tests {
         assert!(validate_layout(&layout, 96).is_err());
     }
 }
+
+#[cfg(test)]
+mod contract_tests {
+    use super::*;
+    fn layout() -> CollectionLayout {
+        CollectionLayout {
+            header: 0..16,
+            faces: vec![FaceLayout {
+                directory: 32..60,
+                tables: vec![TableRange {
+                    tag: *b"cmap",
+                    range: 96..104,
+                }],
+            }],
+        }
+    }
+    #[test]
+    fn complete_descriptor_must_keep_tables_out_of_header_and_directories() {
+        assert!(validate_layout(&layout(), 128).is_ok());
+        for range in [0..8, 32..40] {
+            let mut value = layout();
+            value.faces[0].tables[0].range = range;
+            assert!(validate_layout(&value, 128).is_err());
+        }
+        let mut value = layout();
+        value.faces[0].directory = 8..36;
+        assert!(validate_layout(&value, 128).is_err());
+    }
+    #[test]
+    fn bounded_contract_and_same_tag_exact_sharing_are_required() {
+        let mut value = layout();
+        value.faces.push(FaceLayout {
+            directory: 64..92,
+            tables: value.faces[0].tables.clone(),
+        });
+        assert!(validate_layout(&value, 128).is_ok());
+        value.faces[1].tables[0].tag = *b"head";
+        assert!(validate_layout(&value, 128).is_err());
+        value = layout();
+        value.faces = vec![value.faces[0].clone(); 129];
+        assert!(validate_layout(&value, 128).is_err());
+        value = layout();
+        value.faces[0].tables = vec![value.faces[0].tables[0].clone(); 257];
+        assert!(validate_layout(&value, 128).is_err());
+    }
+}
