@@ -255,6 +255,15 @@ Explicit user instructions can authorize a direct push or expedited integration;
 preserve the same fetch, review, and verification discipline. The initial
 collaboration-documents bootstrap is being pushed directly at the user's request.
 
+### Executable merge resolution
+
+Commander uses `scripts/integrate.py prepare`, `finish`, and `promote` as documented
+in `docs/coordination-cli.md`. Concurrent changes are combined in a separate
+worktree. Cursor resolves conflict paths and executes any new merge commit;
+validation gates branch publication, and promotion rejects a changed main.
+Never blindly choose ours/theirs or discard tests to make a merge pass. Inspect
+preserved state after failures/timeouts before spending another model call.
+
 ## What these instructions can and cannot enforce
 
 This protocol requires active agents to check, understand, and adapt. Git does

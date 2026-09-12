@@ -1,7 +1,7 @@
 # Commander bulletin and recovery packet
 
 Owner: primary Codex agent on linux-primary, appointed by the user.
-Update ID: CMD-004. Updated: 2026-09-12T03:43:54Z.
+Update ID: CMD-005. Updated: 2026-09-12T03:43:54Z.
 
 - Objective: execute coordination and shared-interface work while dispatching Mac tasks.
 - Current integrated baseline: `6d096a3`; coordination code, tests, runtime
@@ -49,3 +49,13 @@ Update ID: CMD-004. Updated: 2026-09-12T03:43:54Z.
   installation needed for this task. Assignment acknowledgement remains pending.
 - Local working branch: agent/commander/coordination-tools. Watcher and temporary
   sleep inhibitor active; neither runs model sessions or wakes remote agents.
+
+- ORCH-003: Commander implementing isolated concurrent integration and automatic
+  Cursor conflict resolution with post-commit validation and guarded promotion.
+  Tool tests cover synthetic clean/conflicted merges, timeout resume, validator
+  mutation/failure, unrelated changes, pinned candidates, and concurrent main.
+- Latest integrated baseline before this batch: b932149. All three product
+  assignments are published and still pending acknowledgements as of 03:50Z.
+- Next action: publish merge tooling, then exercise it on the reviewed Kabir
+  machine-inventory branch; preserve its capability evidence on main and report
+  actual validation. Continue looking for worker acknowledgements.

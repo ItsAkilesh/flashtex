@@ -105,3 +105,52 @@ Tests use temporary bare remotes/clones/worktrees and synthetic commits. Cursor 
 replaced by a test double ONLY inside those isolated fixtures; no model calls or
 real repository commits occur during testing. Production publication invokes the
 real Cursor executable and verifies its output.
+
+## Integrate concurrent work and resolve conflicts
+
+Commander reviews the candidate diff and handoff, then pins its full fetched SHA:
+
+```sh
+python3 scripts/integrate.py prepare --ref origin/agent/worker-a/task --sha FULL_REVIEWED_SHA --name worker-a-task --worktree /absolute/new/worktree
+```
+
+This creates a separate `agent/commander/integrate-...` worktree based on current
+main and performs `git merge --no-commit --no-ff`. It preserves the active checkout.
+Input revisions, clean index entries, conflicts, and execution phases persist in
+the worktree's Git metadata. Existing worktree destinations are never overwritten.
+
+In that worktree, run:
+
+```sh
+python3 scripts/integrate.py finish --allocation AUTHORIZED_CURSOR_GRANT --check '["python3","-m","unittest","discover","-s","tests","-q"]'
+```
+
+Supply checks appropriate to the changed product too, using repeated `--check`
+JSON argv arrays; commands execute without an implicit shell. Rust changes need
+Rust checks; native changes require validation on a Mac. A trivial exit-zero
+command is not acceptance evidence. Choose commands from reviewed project code.
+
+The helper invokes Cursor once to resolve conflicted paths using both parents'
+intent and execute the merge commit. It rejects edits to cleanly merged paths,
+wrong parents/identity/provenance, dirty results, and failing validation. It checks
+the final commit again after validation. Only a passing result is pushed to its
+integration branch. No blanket ours/theirs policy is allowed; ambiguous intent or
+changes beyond conflict paths require an active integration agent to investigate.
+
+After reviewing the resulting diff and validation, promote the exact merge:
+
+```sh
+python3 scripts/integrate.py promote --sha FULL_VALIDATED_MERGE_SHA
+```
+
+Promotion fetches again, requires main still equals the prepared baseline, and
+uses a non-force push. If main advanced, prepare a new combined integration and
+validate it. Repository branch protections still apply.
+
+A Cursor timeout can leave a valid commit. `finish` records its spending phase
+before calling Cursor, so repeating `finish` reconciles existing Git state and
+never starts a second paid call automatically. Failed validation leaves everything
+in the integration worktree and never pushes. If no valid commit exists, inspect
+and repair deliberately rather than retrying a model blindly. Store the relevant
+validation evidence and resulting main SHA in the Commander handoff at publication;
+the local execution packet alone is not a cross-machine handoff.
