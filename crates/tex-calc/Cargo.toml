@@ -1,0 +1,13 @@
+[package]
+name = "flashtex-tex-calc"
+version = "0.1.0"
+edition = "2024"
+description = "Original FlashTeX bounded TeX dimension expression evaluator: exact integer scaled-point arithmetic, scoped named lengths, and typed overflow/unsupported-unit results."
+publish = false
+
+[lib]
+name = "flashtex_tex_calc"
+path = "src/lib.rs"
+
+[dependencies]
+flashtex-document-style = { path = "../document-style" }
