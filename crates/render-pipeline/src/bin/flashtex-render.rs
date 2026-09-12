@@ -11,6 +11,8 @@
 //!                      the TeX Live defaults; `FLASHTEX_FONT_DIRS` too)
 //!   --class-options <opts>  class options assumed for body-only input
 //!                      (default `12pt`, the compiler's implicit preamble)
+//!   --secnumdepth <n>  section numbering depth when the source does not
+//!                      set the counter (default 2; the oracle preamble is 0)
 //!   --timing           print per-request wall time to stderr
 
 use std::io::{self, Write};
@@ -41,9 +43,14 @@ fn main() {
                     options.default_class_options = o;
                 }
             }
+            "--secnumdepth" => {
+                if let Some(n) = args.next().and_then(|n| n.parse::<u8>().ok()) {
+                    options.default_secnumdepth = n;
+                }
+            }
             "--timing" => timing = true,
             "-h" | "--help" => {
-                eprintln!("usage: flashtex-render [--v2 out.json] [--pdf out.pdf] [--font-dir DIR]... [--class-options OPTS] [--timing]");
+                eprintln!("usage: flashtex-render [--v2 out.json] [--pdf out.pdf] [--font-dir DIR]... [--class-options OPTS] [--secnumdepth N] [--timing]");
                 return;
             }
             other => {

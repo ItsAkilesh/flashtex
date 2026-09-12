@@ -55,6 +55,11 @@ pub struct RenderOptions {
     pub default_class_options: String,
     /// `\parindent` when the source sets neither a class nor the length.
     pub default_parindent_pt: f64,
+    /// `secnumdepth` when the source does not set the counter: 2 numbers
+    /// `\section` and `\subsection` (article); 0 numbers nothing (the
+    /// visual-oracle preamble, which the harness strips before sending the
+    /// body).
+    pub default_secnumdepth: u8,
 }
 
 impl Default for RenderOptions {
@@ -62,6 +67,7 @@ impl Default for RenderOptions {
         RenderOptions {
             default_class_options: "12pt".into(),
             default_parindent_pt: 0.0,
+            default_secnumdepth: 2,
         }
     }
 }

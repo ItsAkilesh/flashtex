@@ -178,6 +178,7 @@ pub fn adapt(texts: &[&str], entry: usize, parsed: &Parsed, options: &RenderOpti
         None => None,
     };
     let style = Stylesheet::from_document(&class_options, &parsed.packages, geometry, parindent);
+    let secnumdepth = counter(source, "secnumdepth").unwrap_or(options.default_secnumdepth);
     let styles: Vec<Vec<(usize, usize, StyleKind)>> = texts.iter().map(|t| style_intervals(t)).collect();
     let mut blocks = Vec::new();
     let mut after_heading = false;
@@ -192,7 +193,7 @@ pub fn adapt(texts: &[&str], entry: usize, parsed: &Parsed, options: &RenderOpti
                 // LaTeX `\@seccntformat`: the counter, then `\quad`, then the
                 // title; the number's bytes are the `\section` command's.
                 let mut items = Vec::new();
-                if !number.is_empty() {
+                if !number.is_empty() && *level <= secnumdepth {
                     let chars = number
                         .chars()
                         .map(|_| CharSrc {
@@ -314,6 +315,25 @@ pub fn class_size(options: &str) -> u32 {
         .filter_map(|n| n.parse::<u32>().ok())
         .find(|n| matches!(n, 10 | 11 | 12))
         .unwrap_or(10)
+}
+
+/// `\setcounter{<name>}{<n>}`, the last one in the source.
+pub fn counter(source: &str, name: &str) -> Option<u8> {
+    let mut from = 0;
+    let mut value = None;
+    while let Some(at) = find_command(&source[from..], "setcounter") {
+        let abs = from + at;
+        let rest = source[abs + "\\setcounter".len()..].trim_start();
+        if let Some(r) = rest.strip_prefix('{').and_then(|r| r.strip_prefix(name)).and_then(|r| r.strip_prefix('}')) {
+            if let Some(r) = r.trim_start().strip_prefix('{') {
+                if let Some(end) = r.find('}') {
+                    value = r[..end].trim().parse::<u8>().ok().or(value);
+                }
+            }
+        }
+        from = abs + 1;
+    }
+    value
 }
 
 /// `\setlength{\parindent}{<dim>}` in points; `em` is resolved against the
