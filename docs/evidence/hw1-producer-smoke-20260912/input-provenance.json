@@ -1,0 +1,72 @@
+{
+  "fixtures": [
+    {
+      "case": "hw1-blackboard-macros-original",
+      "source_sha256": "f12a58284dade0aa1410d1f357c0abc480d4acea61b66762a6c9929620ca2766",
+      "reference_pdf_sha256": "94bfb14e7de4217f554e673bdfc4e2287d70ac42695faf6109b1fe34b70e2cb4"
+    },
+    {
+      "case": "hw1-blackboard-macros-edited",
+      "source_sha256": "390f39dcfae2e27647fdd221a3585074febf510718a7a337a2fe36d836bc3f1a",
+      "reference_pdf_sha256": "204cdbc0856cf14e71b36102f1dc968876bffa5ed2c564acc93f47edce5dbfa1"
+    },
+    {
+      "case": "hw1-array-cases-original",
+      "source_sha256": "9d8127eecf56471bc660133547c2c7072f60d3e5014a864397e7f5a0b69d1fb5",
+      "reference_pdf_sha256": "6ea22eea5c71928f04873de20a855f3324f5d76168bddf3bc9d89878c144f975"
+    },
+    {
+      "case": "hw1-array-cases-edited",
+      "source_sha256": "11912b6cf507bace1eb0eec94c288856d67a636af778cf43798a46cf0e3e3965",
+      "reference_pdf_sha256": "ecd680f4714c9b07a8eb137f0dfc75a7a801edf1e15e0c6a62c5afa783d48a95"
+    },
+    {
+      "case": "hw1-delimiters-kerns-original",
+      "source_sha256": "e2a7151d24e66b22b4b85e322a4dcf676d9715a3b07b2efbbd60d8c82852d26d",
+      "reference_pdf_sha256": "65354882c5348c2d07f4c080b84d35c5f1e75514d78639c4abb0a0f79d439246"
+    },
+    {
+      "case": "hw1-delimiters-kerns-edited",
+      "source_sha256": "3baaba85b61affb39530e5462b8709a399710398231be04333a6d08bb4ea1fef",
+      "reference_pdf_sha256": "e301ff5f3b0ac3871fa4ff2c9bfd0fedd52017ae9a51ee3f3311576a58eca577"
+    },
+    {
+      "case": "hw1-title-size-scope-original",
+      "source_sha256": "bf1a5cfea78e102a377851063a3ed38f1ce2075d2508b3f0faae360587ee6360",
+      "reference_pdf_sha256": "a1710c8959bf735e40d91c8f589c407e359a3eb63da067c9dad258bce7e5feed"
+    },
+    {
+      "case": "hw1-title-size-scope-edited",
+      "source_sha256": "8f2c6fbf34e9f4573a98913eba3332e69014b01c56cda4c884122381fd3efd4e",
+      "reference_pdf_sha256": "060c695ce179a56206f4e95aee360858535db7c9635eb03d062d41314a02d275"
+    },
+    {
+      "case": "hw1-paragraph-registers-original",
+      "source_sha256": "092eed611741250a55360bdea7785a22badf9bff5bb7fa66ebf13cc500b0e7f1",
+      "reference_pdf_sha256": "228ed3cd34ef6656ff183259d2ec3f4a7699132979253a11075ab9e720e6549c"
+    },
+    {
+      "case": "hw1-paragraph-registers-edited",
+      "source_sha256": "983b122d08cfb4324d89230fdf32d9dcb73f7bbf6998d2cf407d6b59daa26aff",
+      "reference_pdf_sha256": "a4138bc64d283606d3e8253628b4e15ebe5300924eba80daf50edcae83bb9c3a"
+    },
+    {
+      "case": "hw1-heading-hfill-original",
+      "source_sha256": "2b5bdf77ec86f538ddaedffba6a647f16939dbfcbfd2c8c20e809aaee10b1abd",
+      "reference_pdf_sha256": "1c09204799e807fd975363d481827c863f30863e54906adc79abfd1b695efc51"
+    },
+    {
+      "case": "hw1-heading-hfill-edited",
+      "source_sha256": "7f61ddf27034249a10e2b2fac6c802fc977a9b1fea49642eb5b338a81ad90e9f",
+      "reference_pdf_sha256": "89f221ba6c97764fbd49a927cbd7468385592976939d51dfb30181ecab68e175"
+    }
+  ],
+  "hashes_before": {
+    "/Users/jay3332/Projects/flashtex/crates/compiler/target/release/flashtex-compiler": "1d615ef71e59435a45846aaf5b763d4e17589e6ce5ee1b55d4a47859c1c98238",
+    "/Users/jay3332/Projects/flashtex/apps/mac/build/FlashTeX.app/Contents/MacOS/flashtex-render": "7a7c63e427541c2fed9eb23ac376afcd3c15ec108a8a7568abdf4614a4a2abd1",
+    "/Users/jay3332/Projects/flashtex/tools/real-world-corpus/run.py": "75a96ff4f0c228658f49daaa6ee201bd1773116051b763212c00fe5df0dc0a4e"
+  },
+  "worker_timeout_seconds": 20,
+  "build_source_revisions": "unknown; do not infer from checkout",
+  "no_pdf_route": true
+}

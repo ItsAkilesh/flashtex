@@ -1,0 +1,149 @@
+{
+  "results": [
+    {
+      "case": "hw1-array-cases-edited",
+      "producer": "compiler",
+      "correlated_single_reply": true,
+      "reply_sha256": "f172b33c0e84bc318c209637c95861027d2985e43d07dc4a2ee81d07b230ff2f"
+    },
+    {
+      "case": "hw1-array-cases-edited",
+      "producer": "render",
+      "correlated_single_reply": true,
+      "reply_sha256": "139509b015d3f0f643cafde8cfcb90851f53200be18774682f8fc6e64618309d"
+    },
+    {
+      "case": "hw1-array-cases-original",
+      "producer": "compiler",
+      "correlated_single_reply": true,
+      "reply_sha256": "0ce15f2062389e6ebb97f6f4f5dd88e6d9645744f9efb0e7d636bc25fd1ce5ce"
+    },
+    {
+      "case": "hw1-array-cases-original",
+      "producer": "render",
+      "correlated_single_reply": true,
+      "reply_sha256": "7980bb617466f667cf9e1e38c8c8eee7b9d06ec62be770b2b057e6f2164dfa1e"
+    },
+    {
+      "case": "hw1-blackboard-macros-edited",
+      "producer": "compiler",
+      "correlated_single_reply": true,
+      "reply_sha256": "ded367406d578b9a3ef3477538c9dbb97db31f270ffc2b3bec39bde6f49d3d24"
+    },
+    {
+      "case": "hw1-blackboard-macros-edited",
+      "producer": "render",
+      "correlated_single_reply": true,
+      "reply_sha256": "d657074288b7aaecbcbd9bcff8c8c7340ce5afb566e71e2dacb9a733f404cf08"
+    },
+    {
+      "case": "hw1-blackboard-macros-original",
+      "producer": "compiler",
+      "correlated_single_reply": true,
+      "reply_sha256": "2779455eba316a5810a7f54fe611705e86d02611022ce79e89cf13b864c0c7c9"
+    },
+    {
+      "case": "hw1-blackboard-macros-original",
+      "producer": "render",
+      "correlated_single_reply": true,
+      "reply_sha256": "72a47242cfb65f425a6db8238cf85de06c87dec9284ab82fd28707cdffaa9bd1"
+    },
+    {
+      "case": "hw1-delimiters-kerns-edited",
+      "producer": "compiler",
+      "correlated_single_reply": true,
+      "reply_sha256": "0ff941471ee2ba4e0cbfbfdaa2f77194732026c675115de4e7ae0a07132996f3"
+    },
+    {
+      "case": "hw1-delimiters-kerns-edited",
+      "producer": "render",
+      "correlated_single_reply": true,
+      "reply_sha256": "64d2b9dacdda81df33b4d8419d06adcebceddf0c1402e012a9e71be4cc6337e3"
+    },
+    {
+      "case": "hw1-delimiters-kerns-original",
+      "producer": "compiler",
+      "correlated_single_reply": true,
+      "reply_sha256": "1128ba9313672a48d50ecb5518352228465944a87487c3ea480e787592dd50c5"
+    },
+    {
+      "case": "hw1-delimiters-kerns-original",
+      "producer": "render",
+      "correlated_single_reply": true,
+      "reply_sha256": "f855f04335b0058183cd4f6038231716b908271be20b90115e5f5a8b6890b232"
+    },
+    {
+      "case": "hw1-heading-hfill-edited",
+      "producer": "compiler",
+      "correlated_single_reply": true,
+      "reply_sha256": "b3a0eff880d9ea07b2696fa2731b1445ef476785091212cd06c28c658b7ded22"
+    },
+    {
+      "case": "hw1-heading-hfill-edited",
+      "producer": "render",
+      "correlated_single_reply": true,
+      "reply_sha256": "b40009d58449fe76e2676d18148af33554d2400a86b195458cddbcf60a8a7a03"
+    },
+    {
+      "case": "hw1-heading-hfill-original",
+      "producer": "compiler",
+      "correlated_single_reply": true,
+      "reply_sha256": "3ac4e50010f5e424de43f768b0ec97627ebc45af72fc3e936d3bbdfd29d18978"
+    },
+    {
+      "case": "hw1-heading-hfill-original",
+      "producer": "render",
+      "correlated_single_reply": true,
+      "reply_sha256": "005aa7906e51df85d275a84f7b104eab35ab0f2a473eca7f097c9cb6d647d7e2"
+    },
+    {
+      "case": "hw1-paragraph-registers-edited",
+      "producer": "compiler",
+      "correlated_single_reply": true,
+      "reply_sha256": "178190a49a5f68e2e797aa411c06c2e827a5c16c6eeec12e0dd68e8734cae817"
+    },
+    {
+      "case": "hw1-paragraph-registers-edited",
+      "producer": "render",
+      "correlated_single_reply": true,
+      "reply_sha256": "57b9469001a3c94fe6d5db2895227936004345c92c7ee4bfa04e1f6a86bca371"
+    },
+    {
+      "case": "hw1-paragraph-registers-original",
+      "producer": "compiler",
+      "correlated_single_reply": true,
+      "reply_sha256": "f847966b83b1cef971bfe6eae12a777dc580b26fd88b393986c9acaf43a8d237"
+    },
+    {
+      "case": "hw1-paragraph-registers-original",
+      "producer": "render",
+      "correlated_single_reply": true,
+      "reply_sha256": "647b24813d3b567b2bab0c85fc235bccdd5eed8c29553b449db182322319f397"
+    },
+    {
+      "case": "hw1-title-size-scope-edited",
+      "producer": "compiler",
+      "correlated_single_reply": true,
+      "reply_sha256": "41e09009941cfc1d1d18abf13e870d0a0357ed297d1e16fb507fceabd6a05fef"
+    },
+    {
+      "case": "hw1-title-size-scope-edited",
+      "producer": "render",
+      "correlated_single_reply": true,
+      "reply_sha256": "26edf79346b9e56ad0802360dbeeccd3df928fed19f233e3acdd269d70dde0c7"
+    },
+    {
+      "case": "hw1-title-size-scope-original",
+      "producer": "compiler",
+      "correlated_single_reply": true,
+      "reply_sha256": "7841afbd0bd72873aef031911885d8442f14f179d8d1b0ecac6dd7b595a76009"
+    },
+    {
+      "case": "hw1-title-size-scope-original",
+      "producer": "render",
+      "correlated_single_reply": true,
+      "reply_sha256": "7efed7c2dd50f9d0c77079affc4f3b630ff6ee34bdcabed921a7df6848486ef7"
+    }
+  ],
+  "request_reconstruction": "exact deterministic request recipe from unchanged fixture files; reconstructed after run, not captured stdin"
+}
