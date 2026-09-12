@@ -13,7 +13,7 @@
   "capabilities": [
     "rust-font-resources"
   ],
-  "code_revision": "0ef4037e3927aa0132e6f892239a8d496803cf64",
+  "code_revision": "ea5b8beb7d404e658e24f8fb069b90c4e138d1ab",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
@@ -21,13 +21,13 @@
   },
   "machine": "linux-primary",
   "main_integrated_through": "1b53ec22cb376309e868962fcf2604263cdb3016",
-  "next_action": "Existing Mac lane runs node-list oracle and adjudicates raw results; do not infer parity from shared selftests. Await repaired TTC peer or next bounded task. No paid calls/install/newworkers or pending processes.",
+  "next_action": "Commander integrate passive container checkpoint; await existing TTC/oracle feedback or bounded next task. Worktree product committed, no peer writes/provider calls/pending processes.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "Published0ef4037: five exact synthetic boundary font programs/SHA/input intervals/actions plus bounded existing-TeX node-list oracle harness and local missing-tool evidence. Strengthened precise retained-boundary expectations; test/clippy pass. Independent oracle remains pending because no TeX tooling installed; existing Mac request issue2 comment5645161706. Prior TTC gate unchanged.",
+  "summary": "Publishedea5b8be: original passive PFB framing/resource validator after confirming no peer parser. Strict bounded segment order/length/end/trailing checks; immutable fullSHA/license identity; typed EncryptedOutlinesUnsupported. Three unit tests plus actual official lmr10.pfb SHA84eb0124 container test pass; full crate tests/all-target clippy clean. Primary references and exact real segment ranges documented. No PostScript execution/outline activation.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T09:54:08Z",
+  "updated_utc": "2026-09-12T10:00:19Z",
   "usage": {
     "evidence": "crates/font-resources/README.md; test suite; installed font SHA pinned.",
     "status": "Hosted allocation; no external provider calls; account remainder unknown."
