@@ -7,6 +7,7 @@ pub enum DeviceError {
     UnsupportedFormat(u16),
     InvalidPpem,
     InvalidRecord,
+    NonMonotoneHeights,
     Bounds,
 }
 impl From<crate::Error> for DeviceError {
@@ -163,6 +164,105 @@ pub(crate) fn constant_correction(
         device_table_sha256: sha,
     })
 }
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GlyphDeviceKind {
+    ItalicCorrection,
+    TopAccentAttachment,
+}
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RecordCorrection {
+    pub design_units: i16,
+    pub delta_pixels: i8,
+    pub context: DeviceContext,
+    pub device_table_offset: Option<usize>,
+    pub device_table_sha256: Option<String>,
+}
+pub(crate) fn record_correction(
+    math: &[u8],
+    parent: usize,
+    record: usize,
+    context: DeviceContext,
+) -> Result<RecordCorrection, DeviceError> {
+    let design_units = u16at(math, record)? as i16;
+    let relative = u16at(math, record + 2)?;
+    let (delta_pixels, device_table_offset, device_table_sha256) = if relative == 0 {
+        (0, None, None)
+    } else {
+        let offset = parent
+            .checked_add(usize::from(relative))
+            .ok_or(DeviceError::Bounds)?;
+        let table = DeviceTable::parse(math, offset)?;
+        (
+            table.correction(context),
+            Some(offset),
+            Some(crate::sha256(&math[offset..offset + table.byte_length()])),
+        )
+    };
+    Ok(RecordCorrection {
+        design_units,
+        delta_pixels,
+        context,
+        device_table_offset,
+        device_table_sha256,
+    })
+}
+pub(crate) fn glyph_record(
+    math: &[u8],
+    gid: u16,
+    glyph_count: u16,
+    kind: GlyphDeviceKind,
+    context: DeviceContext,
+) -> Result<Option<RecordCorrection>, DeviceError> {
+    if gid >= glyph_count {
+        return Err(DeviceError::InvalidRecord);
+    }
+    if u16at(math, 6)? == 0 {
+        return Ok(None);
+    }
+    let info = crate::math_variants::offset(math, 0, 6)?;
+    let pos = info
+        + match kind {
+            GlyphDeviceKind::ItalicCorrection => 0,
+            GlyphDeviceKind::TopAccentAttachment => 2,
+        };
+    if u16at(math, pos)? == 0 {
+        return Ok(None);
+    }
+    let base = crate::math_variants::offset(math, info, pos)?;
+    let count = u16at(math, base + 2)? as usize;
+    if count > 4096 {
+        return Err(DeviceError::Bounds);
+    }
+    let coverage = crate::math_variants::coverage(
+        math,
+        crate::math_variants::offset(math, base, base)?,
+        count,
+        glyph_count,
+    )?;
+    match coverage.binary_search(&gid) {
+        Ok(index) => Ok(Some(record_correction(
+            math,
+            base,
+            base + 4 + index * 4,
+            context,
+        )?)),
+        Err(_) => Ok(None),
+    }
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct KernDeviceContext {
+    pub horizontal: DeviceContext,
+    pub vertical: DeviceContext,
+}
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct KernCorrection {
+    pub glyph_id: u16,
+    pub corner: crate::math_kern::Corner,
+    pub query_height: crate::cff::Rational,
+    pub context: KernDeviceContext,
+    pub selected_interval: usize,
+    pub correction: RecordCorrection,
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -214,6 +314,63 @@ mod tests {
         assert!(DeviceTable::parse(&b, usize::MAX).is_err());
         assert!(DeviceContext::new(0).is_err());
         assert!(ConstantDeviceRecord::new(51).is_err());
+    }
+    #[test]
+    fn glyph_record_device_offsets_signed_and_absent() {
+        let mut b = vec![0; 40];
+        for (at, n) in [
+            (6, 10u16),
+            (10, 8),
+            (12, 8),
+            (18, 8),
+            (20, 1),
+            (22, 65516),
+            (24, 14),
+            (26, 1),
+            (28, 1),
+            (30, 2),
+        ] {
+            b[at..at + 2].copy_from_slice(&n.to_be_bytes())
+        }
+        b[32..40].copy_from_slice(&table(2, 12, 12, &[0xf000]));
+        for kind in [
+            GlyphDeviceKind::ItalicCorrection,
+            GlyphDeviceKind::TopAccentAttachment,
+        ] {
+            let value = glyph_record(&b, 2, 5, kind, DeviceContext::new(12).unwrap())
+                .unwrap()
+                .unwrap();
+            assert_eq!(value.design_units, -20);
+            assert_eq!(value.delta_pixels, -1);
+            assert_eq!(value.device_table_offset, Some(32));
+            assert_eq!(
+                glyph_record(&b, 2, 5, kind, DeviceContext::new(13).unwrap())
+                    .unwrap()
+                    .unwrap()
+                    .delta_pixels,
+                0
+            );
+        }
+        assert!(glyph_record(
+            &b,
+            3,
+            5,
+            GlyphDeviceKind::ItalicCorrection,
+            DeviceContext::new(12).unwrap()
+        )
+        .unwrap()
+        .is_none());
+        b[36..38].copy_from_slice(&0x8000u16.to_be_bytes());
+        assert!(matches!(
+            glyph_record(
+                &b,
+                2,
+                5,
+                GlyphDeviceKind::TopAccentAttachment,
+                DeviceContext::new(13).unwrap()
+            ),
+            Err(DeviceError::UnsupportedVariationIndex)
+        ));
     }
     #[test]
     fn constant_parent_offset_and_absence() {

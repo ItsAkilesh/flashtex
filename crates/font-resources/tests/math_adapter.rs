@@ -245,6 +245,83 @@ fn pinned_math_registry_equivalence() {
         assert_eq!(correction.correction().delta_pixels, 0);
         assert_eq!(correction.correction().device_table_offset, None);
     }
+    use flashtex_font_resources::math_device::{GlyphDeviceKind, KernDeviceContext};
+    let context = DeviceContext::new(12).unwrap();
+    let mut glyph_device_records = 0;
+    for gid in 0..bound.glyph_count() {
+        for kind in [
+            GlyphDeviceKind::ItalicCorrection,
+            GlyphDeviceKind::TopAccentAttachment,
+        ] {
+            let result = bound.glyph_device(gid, kind, context).unwrap();
+            assert_eq!(result.identity(), bound.identity());
+            let expected = match kind {
+                GlyphDeviceKind::ItalicCorrection => Some(
+                    face.math()
+                        .unwrap()
+                        .italics_correction(flashtex_font_engine::GlyphId(gid)),
+                ),
+                GlyphDeviceKind::TopAccentAttachment => face
+                    .math()
+                    .unwrap()
+                    .top_accent_attachment(flashtex_font_engine::GlyphId(gid)),
+            };
+            assert_eq!(result.design_units(), expected);
+            if result
+                .correction()
+                .is_some_and(|r| r.device_table_offset.is_some())
+            {
+                let (expected_sha, expected_delta) = match gid {
+                    3309 => (
+                        "ab2eb9ea308cd688fdf24e8195634163507dd7f547f36fb1f98956f83811d741",
+                        0,
+                    ),
+                    3316 => (
+                        "c447e66453f3bd7a9d32f0913d4961fb205bd25ad46ebcef056f26609709b583",
+                        0,
+                    ),
+                    3326 => (
+                        "cd26325e3c7a478bc246d4a9019d275d88037e830e9a581cdc79d1ea5b1c175e",
+                        1,
+                    ),
+                    4010 => (
+                        "5d892fad4a022dfec134f4da2a1f75a9bba80c4f35bbf439bffbb0fb62fcbaf1",
+                        0,
+                    ),
+                    _ => panic!("unexpected device record"),
+                };
+                assert_eq!(
+                    result.correction().unwrap().device_table_sha256.as_deref(),
+                    Some(expected_sha)
+                );
+                assert_eq!(result.correction().unwrap().delta_pixels, expected_delta);
+                println!("device GID {gid} {kind:?}: {:?}", result.correction());
+                glyph_device_records += 1;
+            }
+        }
+    }
+    for (&(gid, corner), table) in kerns.data().records() {
+        let height = Rational::new(0, 1).unwrap();
+        let result = bound
+            .kern_device(
+                gid,
+                corner,
+                height,
+                KernDeviceContext {
+                    horizontal: context,
+                    vertical: context,
+                },
+            )
+            .unwrap();
+        assert_eq!(result.identity(), bound.identity());
+        assert_eq!(
+            result.correction().correction.design_units,
+            table.lookup(height).unwrap().design_units
+        );
+        assert_eq!(result.correction().correction.delta_pixels, 0);
+    }
+    println!("STIX glyph italic/accent device records {glyph_device_records}");
+    assert_eq!(glyph_device_records, 4);
     // Held registry resources remain immutable when the project file changes.
     std::fs::write(dir.path().join(&resource.path), b"changed").unwrap();
     assert_eq!(bound.constants(), &face.math().unwrap().constants);

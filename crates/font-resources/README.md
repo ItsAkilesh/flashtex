@@ -659,3 +659,22 @@ truncation, padding, parent-relative offsets and variation rejection. Installed
 STIX/Noto Math constant inventory observes no positive device records; exact
 font/table/license hashes are in `fixtures/math-device-inventory.json`.
 OpenType contract: https://learn.microsoft.com/en-us/typography/opentype/spec/chapter2#device-and-variationindex-tables
+
+`glyph_device` and `kern_device` add identity-bound corrections for glyph italics,
+top accents and corner kerns. Raw design units remain separate from pixel deltas.
+Glyph value extraction is checked against the existing peer MATH parser. Kern
+queries reuse the original parsed corner records and Device decoder; horizontal
+and vertical ppem are explicit separately. Correction-height deltas are converted
+exactly into design units using vertical ppem/UPEM before upper-bound selection;
+selected kern deltas use horizontal ppem. Crossed corrected heights are refused,
+not sorted into a different font program. At most4096 correction heights are
+visited per query. VariationIndex remains unsupported even outside the size range.
+
+The expanded pinned STIX inventory finds four actual glyph device records: top
+accent GIDs3309/3316/3326 and italic GID4010. At12ppem, GID3326 has a +1pixel accent
+correction; all four exact device hashes are retained in the inventory manifest.
+All6760 glyph italic/accent values still match the peer's raw metrics. Synthetic
+fixtures additionally verify negative pixel deltas, corrected-height equality,
+outside-range zero, variation refusal and nonmonotone corrected-height refusal.
+This is metric correction only; it neither grid-fits outlines nor proves raster
+or TeX script-layout parity.

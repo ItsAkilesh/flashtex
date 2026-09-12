@@ -1,7 +1,11 @@
 {
   "schema_version": 1,
-  "scope": "MATH MathConstants device offsets only; no real positive device corrections observed",
-  "device_formats": [1, 2, 3],
+  "scope": "MATH constants and STIX glyph italic/top-accent/corner-kern device inventory; explicit ppem12 replay",
+  "device_formats": [
+    1,
+    2,
+    3
+  ],
   "variation_index": "typed unsupported",
   "fonts": [
     {
@@ -11,7 +15,38 @@
       "license_path": "/usr/share/licenses/stix-fonts/OFL.txt",
       "license_sha256": "0c8825913b60d858aacdb33c4ca6660a7d64b0d6464702efbb19313f5765861a",
       "constant_records": 51,
-      "constant_device_records": 0
+      "constant_device_records": 0,
+      "glyph_device_records": [
+        {
+          "gid": 3309,
+          "kind": "top_accent",
+          "offset": 15872,
+          "sha256": "ab2eb9ea308cd688fdf24e8195634163507dd7f547f36fb1f98956f83811d741",
+          "delta_pixels_at_12": 0
+        },
+        {
+          "gid": 3316,
+          "kind": "top_accent",
+          "offset": 15886,
+          "sha256": "c447e66453f3bd7a9d32f0913d4961fb205bd25ad46ebcef056f26609709b583",
+          "delta_pixels_at_12": 0
+        },
+        {
+          "gid": 3326,
+          "kind": "top_accent",
+          "offset": 15894,
+          "sha256": "cd26325e3c7a478bc246d4a9019d275d88037e830e9a581cdc79d1ea5b1c175e",
+          "delta_pixels_at_12": 1
+        },
+        {
+          "gid": 4010,
+          "kind": "italic",
+          "offset": 5044,
+          "sha256": "5d892fad4a022dfec134f4da2a1f75a9bba80c4f35bbf439bffbb0fb62fcbaf1",
+          "delta_pixels_at_12": 0
+        }
+      ],
+      "kern_device_records": 0
     },
     {
       "path": "/usr/share/fonts/google-noto/NotoSansMath-Regular.ttf",
