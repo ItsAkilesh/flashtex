@@ -566,6 +566,20 @@ extension ShellModel {
 
     /// Menu-driven save: on a conflict, asks the user how to resolve it.
     func saveTexInteractive() {
+        // With the durable helper attached the export goes through its rooted,
+        // locked save so the ledger text and the .tex never diverge; the
+        // result is reported asynchronously (never blocks the UI).
+        if controllerAttached, documentURL != nil {
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                switch await controllerSave() {
+                case .saved: break
+                case .conflict: resolveConflictPanel()
+                case .failed(let why): captureNote = "Save through the preview controller failed: \(why)"
+                }
+            }
+            return
+        }
         if !saveTex(), files.conflict != nil { resolveConflictPanel() }
     }
 

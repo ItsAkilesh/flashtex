@@ -64,6 +64,49 @@ final class PreviewControllerTests: XCTestCase {
         model2.detachController()
     }
 
+    func testControllerSaveExportsDurableSourceAndRefusesChangedDisk() async throws {
+        guard let helper = Self.helper, FileManager.default.isExecutableFile(atPath: helper.path),
+              ShellModel.locateCompiler() != nil else {
+            throw XCTSkip("set FLASHTEX_PREVIEW_CONTROLLER and FLASHTEX_COMPILER to built binaries")
+        }
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("pc-save-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root.appendingPathComponent("project"), withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let tex = root.appendingPathComponent("project/main.tex")
+        try "\\begin{document}\nSave me.\n\\end{document}\n".write(to: tex, atomically: true, encoding: .utf8)
+        setenv("FLASHTEX_CONTROLLER_LEDGER_ROOT", root.appendingPathComponent("ledger").path, 1)
+        defer { unsetenv("FLASHTEX_CONTROLLER_LEDGER_ROOT") }
+        let model = ShellModel()
+        model.autoCompile = true
+        XCTAssertEqual(model.openTex(at: tex), .opened)
+        model.attachController(at: helper)
+        try await waitUntil { model.result?.revision == model.editorRevision && model.controllerState.durable["main.tex"] != nil }
+
+        // Edit, save through the helper: the file holds exactly the buffer, the buffer is clean.
+        model.updateActiveText("\\begin{document}\nSave me, durably.\n\\end{document}\n")
+        XCTAssertTrue(model.isDirty)
+        let saved = await model.controllerSave()
+        guard case .saved(let sha) = saved else { return XCTFail("\(saved)") }
+        XCTAssertEqual(try String(contentsOf: tex, encoding: .utf8), model.activeText)
+        XCTAssertEqual(sha, SourceDigest.sha256Hex(model.activeText))
+        XCTAssertFalse(model.isDirty)
+        let disk = await model.controllerFileStatus(path: "main.tex")
+        XCTAssertEqual(disk?.state, "matches_source")
+
+        // Someone else changes the file: the next save is refused as a conflict, nothing overwritten.
+        try "external edit\n".write(to: tex, atomically: true, encoding: .utf8)
+        model.updateActiveText("\\begin{document}\nSave me again.\n\\end{document}\n")
+        let refused = await model.controllerSave()
+        guard case .conflict(let c) = refused else { return XCTFail("expected a conflict, got \(refused)") }
+        XCTAssertTrue(c.viaHelper)
+        XCTAssertEqual(c.kind, .modifiedExternally)
+        XCTAssertEqual(c.theirs, SourceDigest.sha256Hex("external edit\n"), "the conflict names the hash now on disk")
+        XCTAssertEqual(try String(contentsOf: tex, encoding: .utf8), "external edit\n", "the external edit was not overwritten")
+        XCTAssertTrue(model.isDirty, "the buffer stays dirty and intact")
+        XCTAssertNotNil(model.files.conflict)
+        model.detachController()
+    }
+
     private func waitUntil(timeout: TimeInterval = 15, _ cond: () -> Bool) async throws {
         let start = Date()
         while !cond() {

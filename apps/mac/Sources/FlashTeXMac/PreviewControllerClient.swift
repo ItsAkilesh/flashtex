@@ -144,6 +144,17 @@ final class PreviewControllerClient {
     }
 
     func compile() throws -> String { try send("compile", [:]) }
+
+    /// `export`: writes exactly the durable source at (`expectedRevision`,
+    /// `expectedSHA256`) through the rooted project-files lock. The disk
+    /// expectation is mandatory: the hash of the file we last saw, or `nil`
+    /// (JSON null) for a file that must not exist yet.
+    func export(path: String, expectedRevision: Int, expectedSHA256: String, expectedDiskSHA256: String?) throws -> String {
+        try send("export", ["path": path, "expected_revision": expectedRevision, "expected_sha256": expectedSHA256,
+                            "expected_disk_sha256": expectedDiskSHA256 ?? NSNull()])
+    }
+
+    func fileStatus(path: String) throws -> String { try send("file_status", ["path": path]) }
     func restart() throws -> String { try send("restart", [:]) }
     func snapshot() throws -> String { try send("snapshot", [:]) }
 
