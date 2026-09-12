@@ -3,27 +3,27 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-049": {
-      "acknowledged_utc": "2026-09-12T11:37:39Z",
-      "adaptation": "Read exactr5. Separate opt-in raw sibling prototype, preserve legacy default and decoder queue invariant; coordinate duplicate-field/source identity semantics before activation. No peer parser duplication or concurrency changes.",
-      "main_sha": "36c062924dd56ad15a0ddc5772cb262e84113541",
-      "revision": 5
+      "acknowledged_utc": "2026-09-12T11:51:13Z",
+      "adaptation": "Read r6. Preserve raw/current equivalence and refusal gates while authorized internal existing-serde pass reduction keeps fixed-session API/default unchanged; no extra queues or custom parser.",
+      "main_sha": "4ff60ac08ba55894338ced8cd822b3bf75f11551",
+      "revision": 6
     }
   },
   "branch": "agent/commander-runtime-display/display-runtime",
   "capabilities": [
     "rust-runtime"
   ],
-  "code_revision": "217ec7dfc7ff586c90e5211039229589e461699e",
+  "code_revision": "7817e4e8cd1e2e820665c63ebb169c09700a8bd8",
   "eta_minutes": null,
   "machine": "linux-primary",
-  "main_integrated_through": "551371625898078095046ea82dcbe0e29007f5d0",
-  "next_action": "Authorized bounded existing-serde scan reduction next; currently four passes. Coordinate helper/core raw API and preserve duplicate/numeric/source/epoch policies; no custom tokenizer/unsafe RawValue/private serializer tokens. Native integration remains separate gate.",
+  "main_integrated_through": "217ec7dfc7ff586c90e5211039229589e461699e",
+  "next_action": "Send tested unchanged API dependency to helper/renderer and continue concrete malformed/source compatibility feedback. Preserve opaque bytes, downstream strict rendering validation, source epoch checks; no custom JSON parser/unsafe tokens or additional concurrency.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "FT049r5 raw prototype complete: fixed-session opt-in constructor, exact raw getters/move, typed duplicate-safe identity/source metadata, full serde syntax/finite/depth checks. Raw4/decoded1/joined shutdown unchanged, default Value unchanged. Full tests8unit/6chunks/9sibling/19session and strict lint pass. Final loaded-host replay Value652/974ms peak18.2-18.4MB vs raw1359/1615ms peak6.9-7.0MB: memory benefit but parse regression, no default promotion.",
+  "summary": "FT049r6: two-pass internal raw path preserves API/default/queue gates. Existing serde visitor combines full syntax finite/depth/duplicate-safe metadata and order-independent classification; safe RawValue construction second pass. Full prior suite passes plus4 focused raw tests including payload-first/MAXrevision/source mismatch; strict lint passes. Sameframe raw39.5/41.6ms peak6.8-6.9MB vs Value52.4/59.9ms peak18.2MB. No native latency/default promotion.",
   "tool": "codex",
-  "updated_utc": "2026-09-12T11:48:11Z",
+  "updated_utc": "2026-09-12T11:53:59Z",
   "usage": {
     "status": "unknown"
   }
