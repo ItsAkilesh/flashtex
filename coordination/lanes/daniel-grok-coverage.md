@@ -29,3 +29,8 @@
 - Product commit ef53bbdf (crates/compiler math.rs, incremental.rs, README): Nucleus::Stacked for \overset/\stackrel/\underset; infix \choose/\over in list_inner.
 - Tests: cargo test -q 107 passed 0 failed; clippy 0; fmt clean. Coverage 48/63.
 - Next: merge origin/main, push, issue #52 checkpoint; stop by 20:30Z.
+
+## 2026-09-12T19:56Z  STOP (quota 98%, parent instruction)
+- Product commit 8e46adb4: \limits/\nolimits no longer create a zero-width atom that stole the script. Tests 107 passed 0 failed, clippy 0, fmt clean.
+- Cherry-pick order (crates only): 6437c274 5a1278ab 86e0ae28 ef53bbdf 8e46adb4. Coverage 48/63.
+- Next steps for a resumer: vdots/ddots as constructed dot stacks; \frac12 unbraced single-token args; tabular \hline (text lane); accents lane for \vec \hat \bar; Mac Completion vocabulary sync with README/COMMAND_GLYPHS.
