@@ -768,6 +768,11 @@ final class ProjectDocuments {
         diskBaselines[path] = diskSHA256
         detachedBuffers.removeValue(forKey: path)
         model.log("project: opened \(path) (\(text.utf8.count) bytes, \(origin)) — \(model.documents.count) documents")
+        // Unsaved text kept for this member by an earlier session or detach is
+        // offered (DirtySnapshots.swift), never applied over the opened text.
+        if let root = projectRoot, let offered = model.offerDirtySnapshot(for: root.appendingPathComponent(path), currentText: text) {
+            status = "opened \(path); unsaved text from before is available (\(offered.reason))"
+        }
     }
 
     // MARK: detach
@@ -801,7 +806,12 @@ final class ProjectDocuments {
                 return note(.refused("helper refused detach of \(path): \(e.message)"))
             }
         }
-        if isDirty(path) { detachedBuffers[path] = doc.text }
+        if isDirty(path) {
+            detachedBuffers[path] = doc.text
+            // Session memory plus a durable snapshot (the helper's ledger drops
+            // a detached document's text with the membership).
+            if let root = projectRoot { model.preserveDirtyText(doc.text, at: root.appendingPathComponent(path), reason: "detached from the project with unsaved edits") }
+        }
         model.documents.removeAll { $0.path == path }
         roles.removeValue(forKey: path); origins.removeValue(forKey: path); baselines.removeValue(forKey: path)
         carets.removeValue(forKey: path); diskBaselines.removeValue(forKey: path)
@@ -917,12 +927,14 @@ final class ProjectDocuments {
                 baselines[path] = text
                 diskBaselines[path] = sha
                 saveConflict = nil
+                model.snapshotSaved(url: url, text: text)
                 return noteSave(.saved(path: path, sha256: sha), extra: " through the preview controller (durable r\(durable.revision))")
             case .failure(let e):
                 guard let kind = ShellModel.conflictKind(inExportRefusal: e.message) else { return noteSave(.failed(e.message)) }
                 let theirs = await diskSHA256(of: path)
                 let conflict = DocumentConflict(url: url, kind: kind, ours: expectedDisk, theirs: theirs, size: nil, mtimeUnixMs: nil, viaHelper: true)
                 saveConflict = conflict
+                model.preserveDirtyText(text, at: url, reason: "save refused: file changed on disk")
                 return noteSave(.conflict(conflict))
             }
         }
@@ -948,9 +960,11 @@ final class ProjectDocuments {
             baselines[path] = text
             diskBaselines[path] = sha
             saveConflict = nil
+            model.snapshotSaved(url: url, text: text)
             return noteSave(.saved(path: path, sha256: sha))
         case .conflict(let c):
             saveConflict = c
+            model.preserveDirtyText(text, at: url, reason: "save refused: file changed on disk")
             return noteSave(.conflict(c))
         case .failed(let why):
             return noteSave(.failed(why))

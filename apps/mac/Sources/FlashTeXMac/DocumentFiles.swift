@@ -70,6 +70,9 @@ final class DocumentFilesState {
     private(set) var backend: Backend?
     private(set) var status = "no file operation yet"
     var conflict: DocumentConflict?
+    /// Durable unsaved-text snapshots found for the open project that still
+    /// differ from disk (DirtySnapshots.swift); the UI offers Restore/Discard.
+    var offeredSnapshots: [DirtySnapshot] = []
     /// Result of the last `status` query for the open document.
     private(set) var lastDiskState: ProjectFilesV1.DiskState?
     /// Bounded wait for one helper reply.
@@ -500,6 +503,12 @@ extension ShellModel {
             adoptOpenedText(text, url: url, discarding: discarding)
             captureNote = "Opened \(url.lastPathComponent) (\(text.utf8.count) bytes)"
                 + (recoverableBuffer == nil ? "" : "; previous unsaved buffer kept (Edit > Restore Discarded Buffer)")
+            // A snapshot kept by an earlier session (or an earlier discard) of
+            // this file is offered, never applied: the disk text is what opened.
+            files.offeredSnapshots = []
+            if let offered = offerDirtySnapshot(for: url, currentText: text) {
+                captureNote! += "; unsaved text from before is available (\(offered.reason); File > Restore Unsaved Snapshot…)"
+            }
             return .opened
         case .missing:
             captureNote = "Could not open \(url.lastPathComponent): no such file"
@@ -514,7 +523,14 @@ extension ShellModel {
     /// Only a successful read consumes a discard decision: a failed open leaves
     /// the dirty buffer in place, not "discarded".
     private func adoptOpenedText(_ text: String, url: URL, discarding: RecoverableBuffer?) {
-        if let discarding { recoverableBuffer = discarding }
+        if let discarding {
+            recoverableBuffer = discarding
+            // Session memory is one slot; the store keeps one per file across
+            // sessions (the ledger route keeps it in undo history instead).
+            if let from = discarding.url {
+                preserveDirtyText(discarding.text, at: from, reason: from == url ? "discarded by a reload from disk" : "discarded when \(url.lastPathComponent) was opened")
+            }
+        }
         replaceProject(entryText: text)
         documentURL = url
         savedText = text
@@ -950,6 +966,11 @@ extension ShellModel {
             files.conflict = DocumentConflict(url: url, kind: .modifiedExternally, ours: baselineSha256, theirs: sha256,
                                               size: bytes, mtimeUnixMs: mtimeUnixMs, viaHelper: viaHelper)
             captureNote = files.conflict?.summary
+            // Both texts are now recoverable: the disk text through the reviewed
+            // reload, the unsaved buffer durably (unless the ledger holds it).
+            if url == documentURL, isDirty, !controllerRoutesFiles(for: url) {
+                preserveDirtyText(activeText, at: url, reason: "file changed on disk while the buffer was unsaved")
+            }
         }
     }
 
@@ -1004,9 +1025,11 @@ extension ShellModel {
             savedText = text
             captureNote = "Saved \(url.lastPathComponent)" + (recreated ? " (recreated; it had been deleted on disk)" : "")
             bridgeSourceSaved(url: url, text: text)
+            snapshotSaved(url: url, text: text)
             return true
         case .conflict(let conflict):
             captureNote = conflict.summary
+            if url == documentURL { preserveDirtyText(text, at: url, reason: "save refused: file changed on disk") }
             return false
         case .failed(let reason):
             captureNote = "Save failed: \(reason)"
