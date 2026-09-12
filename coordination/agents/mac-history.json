@@ -1,0 +1,36 @@
+{
+  "agent_id": "mac-history",
+  "allocation_id": "claude-mac20x-history",
+  "assignment_acknowledgements": {},
+  "branch": "agent/mac-history/panel",
+  "capabilities": [
+    "swift",
+    "swiftui",
+    "preview-controller-history"
+  ],
+  "code_revision": "bfcc84b6bc1d19ff171cf286edd1687665de3690",
+  "eta_minutes": {
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 0
+  },
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "796b982c7f3c1961b27c87feacb65454ad8589ef",
+  "next_action": "Parent cherry-picks 53e56a0, 2e60041e, bfcc84b6 (or re-applies the diffs in coordination/mac-history.md) and merges the branch; follow-ups: apply_group through issue(_:), shared model.history client so reloads are annotated, retention UI once the helper exposes it, opt-cmd-Z once mac-accessibility adds the table entry.",
+  "reviewed_peers": {
+    "origin/main": {
+      "adaptation": "Merged main (clean, no apps/mac changes); adopted history_status document identity + limits from 64829a0d: usage measured against reported limits, local refusal + re-read when the on-screen stacks describe a different revision than the shell's durable snapshot; fallback to built-in constants for older helpers, both tested",
+      "reviewed_utc": "2026-09-12T11:12:33Z",
+      "sha": "84c052b49edd6e045618839369dec35051f32880"
+    }
+  },
+  "schema_version": 1,
+  "state": "ready_for_integration",
+  "summary": "agent/mac-history/panel tip bfcc84b6 (origin/main 796b982c merged): EditHistoryPanel.swift \u2014 durable undo/redo on the helper's ledger: history_status stacks (typing runs collapsed, capture insertions, annotated reloads, group labels) with retention usage against helper-reported limits (256 steps/32 MiB/4096 ids), explicit Undo/Redo guarded by exact durable revision/sha, document_conflict -> refuse + re-read, lost/untrusted reply -> uncertain + Retry with the SAME command id (ledger replays, never moves twice), documented + tested behaviour across helper detach/relaunch, VoiceOver labels on every row/control. EditHistoryTests 12/12 against the real helper+compiler (both helper generations), repeated 9x no flakes; full swift test 476/476 (11 skipped, other lanes' helpers) with all real binaries. Parent diffs applied locally in labelled commits 53e56a0 (controllerAdoptHistoryResult hook), 2e60041e + bfcc84b6 (window + Edit menu item).",
+  "tool": "Claude Code subagent (parent mac-claude-a)",
+  "updated_utc": "2026-09-12T11:12:33Z",
+  "usage": {
+    "evidence": "docs/evidence/mac-history/README.md + panel-seeded-ledger.jpg; EditHistoryTests 12/12 (old + new helper); full swift test 476 tests, 11 skipped, 0 failures at 6b595ed and bfcc84b6",
+    "status": "Shared Claude Max 20x quota with parent mac-claude-a; no purchases; no paid network calls"
+  }
+}
