@@ -1,59 +1,58 @@
-# mac-reference-corpus — user-assigned reference testing
+# Temporary Opus font-bundling continuation
 
-State: local reference increment ready; publication/notification blocked.
-Agent: Codex on mac-m1max-a. Assignment: direct user request 2026-09-12;
-no Commander task/revision issued, no ACK invented.
-Capabilities: Python, installed MacTeX 2026 pdfTeX/pdfLaTeX/LuaLaTeX/XeLaTeX,
-BibTeX/Biber, Ghostscript, native image contact-sheet review.
+Agent: Codex mac-reference-corpus / mac-m1max-a.
+Authorization: user directly requested 20-minute temporary continuation of tasks
+left by exhausted Opus, starting 2026-09-12T18:00:50Z, ending 18:20:50Z.
+Branch: agent/mac-reference-corpus/opus-fonts-takeover.
+Worktree: /private/tmp/flashtex-opus-fonts-takeover.
+Baseline: mac-shell 7a2f63f4; unmerged dependency explicitly user-authorized continuation.
+Owned scope: resume preserved mac-fonts-bundle lane, packaging/font files and tests.
+Original dirty lane .claude/worktrees/agent-a21e49ed38432e2dd is unchanged.
+No main/control mutation, other lane integration, child agents or Claude calls.
+Commander: claude/mac-m5pro-kabir per fetched origin/main authority, not local stale record.
+Reviewed: lane prompt, actual dirty diff, supplementary face provenance and tests.
+Adaptation: verify archive hashes, finish docs/acceptance, run tests, publish branch.
+Resource: current Codex session only; quota/cost unknown. No purchases/overages.
+Next gate: verify 22 faces, packaging refusal paths, native font resolution,
+no-host-TeX producer/export evidence. Reserve final four minutes for publication.
 
-Owned paths: `tests/extended-tex-corpus/`, `tools/extended-tex-corpus/`, this handoff.
-Role: original test projects and development-only reference outputs; no compiler,
-native product, existing corpus, shared interfaces or global control mutations.
+## Final checkpoint
 
-Ready: [corpus guide](../tests/extended-tex-corpus/README.md), 49 original projects,
-42 positive PDFs/51 pages, seven expected diagnostic cases, eight exact UTF-8 edit
-scenarios, package/font/dependency/source/PDF hashes and full logs. Covers TeX
-execution, broad math/alignment, layout/tables, graphics/TikZ/PGFPlots, packages,
-multifile/class/bibliography projects and Unicode profiles. Finite coverage only.
-Validation: all 42 positive sources compiled with their declared engines; all 51
-positive pages rasterized and inspected in contact sheets plus full-size spot
-checks; seven negative diagnostic fragments observed. Seven harness tests pass:
-`python3 -m unittest discover -s tools/extended-tex-corpus -v`.
-`python3 tools/extended-tex-corpus/reference.py --validate`: 49 projects.
-Incomplete: product compiler comparison, exhaustive coverage and remote integration.
-Required next acceptance gate: original-compiler results against pinned references;
-unsupported is not a rendering pass. Binary PNG case needs project-files adapter.
+Implementation checkpoint: 56f9da95; final acceptance changes/evidence to publish
+in the next commit on this same branch. Gates: packaging32/32; native5/5;
+9aaec57a and f762f82a signed app-only exports7/7 each with host TeX denied;
+optical Roman8/6 emitted and removal refuses exact export naming Roman8;
+explicit-environment metric acceptance7/7. Full Swift broad suite stalled in
+DisplayListDeltaTests worker-read test and was deliberately stopped; not a pass.
+Parent shell remains out of scope. Evidence README records all limitations.
 
-Reviewed: local product plan, existing tex-corpus/visual-corpus/real-world-corpus
-READMEs and runtime-v1 compile contract. Adaptation: separate namespace; preserve
-all existing ownership, distinguish engine profiles/diagnostics/pixels/bytes.
-No fresh remote peer-diff review claimed after sandbox/network failures.
-Git: actual local branch main at 82376ac9b028e3895fb98b7739703859cbd2eddb;
-last successful fetched origin/main 7fad3182. Intended task branch
-agent/mac-reference-corpus/extended-suite NOT created. Worktree path remains
-/Users/jay3332/Projects/flashtex. All owned changes are new untracked files.
-Unrelated existing .claude/, Cargo.toml, Cargo.lock, src/ preserved; no tracked diff.
+All test/publication jobs owned by this continuation will be stopped before
+handoff. Original Opus dirty lane and main checkout are preserved unchanged.
+Exact parent baseline: 7a2f63f4265404900ed54883896ef22b2f9f1aa0.
+Reviewed main abbe88a5275b89d99357815846de3cbe76a91810 authority and relevant
+font/staging differences; branch deliberately stacks on unmerged mac-shell.
+No task-revision ACK invented; this is direct user temporary continuation.
+Resource: no paid inference/purchases/children; confirmed monetary balance unknown.
+Next: parent/Commander review and integrate this lane after parent shell, decide
+producer optical profile adoption independently, triage broad Swift hang.
+No continuing task queue claimed after the user-authorized temporary window.
+Context usage telemetry/native compaction controls unavailable; no percentages
+invented. This handoff is the durable resumption packet.
 
-Blockers: Git worktree creation cannot write .git refs; coord.py checkpoint cannot
-write .git/flashtex/checkpoint.lock; coord.py register refuses main. Approval policy
-never. GitHub issue creation failed connecting to api.github.com. Therefore neither
-role notice nor recovery issue was delivered remotely; no commit/push exists.
-[Prepared orchestrator notice](../tools/extended-tex-corpus/orchestrator-notice.md)
-contains precise recovery evidence and requested role registration/integration.
+## Published handback
 
-Resources: current user-authorized Codex session only, quota/cost unknown; zero
-child agents, external inference, Cursor/Claude calls, purchases or overages.
-No build jobs or uncertain publications remain in flight. Initial oracle failures
-were cache/font lookup and two unintended overfull paragraphs; corrected/rebuilt.
-Scratch evidence: /private/tmp/flashtex-extended-reference-v1 through -v4;
-final relevant PDFs/logs/provenance copied into owned repository paths.
-ETA: local initial gate complete; publication/integration blocked, time unknown.
-Next commands when access is restored: fetch, create intended branch in a separate
-worktree from current origin/main, copy ONLY owned new paths, run seven tests,
-review/stage those paths, publish using authorized truthful Mac author/provenance.
-Do not merge the divergent local main wholesale. Send prepared issue body through
-`gh issue create --repo flash-tex/flashtex --title 'mac-reference-corpus: reference suite' --body-file tools/extended-tex-corpus/orchestrator-notice.md`.
-Further coverage priorities are listed in the corpus guide.
-Context telemetry/native compaction control unavailable; no percentage inferred.
-
-Updated: 2026-09-12T15:30:13.468589+00:00
+Code/evidence revision: 22bddb4c, pushed non-force; affected-consumer final
+regression18/18 at that revision. Draft stacked PR49:
+https://github.com/flash-tex/flashtex/pull/49.
+Recovery50: https://github.com/flash-tex/flashtex/issues/50 (blocking delta test
+read with inherited ordinary compiler; parent lane owns fix).
+Initial Commander notice: issue2#issuecomment-5647693931; final notice pending
+one explicit handback comment after this final docs-only commit push.
+All owned tests exited; exact xctest63296 stopped/reaped, SwiftPM62593 exited1;
+no paid calls or potentially uncertain publication remains. The preserved Opus
+process is not claimed terminated; its original worktree is unchanged.
+Temporary job is complete early within20min; no staffing reassignment requested.
+Exact next commands for parent: inspect PR49 against mac-shell, read evidence,
+review supplemental face pins/staging, then integrate through Commander route.
+Final handoff notes/log commit may follow22bddb4c; no implementation changes after
+the tested revision. Clean branch status must be verified after final push.

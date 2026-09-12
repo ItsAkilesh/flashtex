@@ -1,0 +1,138 @@
+warning: 'mac': found 20 file(s) which are unhandled; explicitly declare them as resources or exclude from the target
+    /private/tmp/flashtex-opus-fonts-takeover/apps/mac/Tests/FlashTeXMacTests/Fixtures/fake_worker.py
+    /private/tmp/flashtex-opus-fonts-takeover/apps/mac/Tests/FlashTeXMacTests/Fixtures/fake_pdf_writer.py
+    /private/tmp/flashtex-opus-fonts-takeover/apps/mac/Tests/FlashTeXMacTests/Fixtures/delaying_assistant_context_proxy.py
+    /private/tmp/flashtex-opus-fonts-takeover/apps/mac/Tests/FlashTeXMacTests/Fixtures/fake_assistant_provider.py
+    /private/tmp/flashtex-opus-fonts-takeover/apps/mac/Tests/FlashTeXMacTests/Fixtures/display-list-v2-text.tex
+    /private/tmp/flashtex-opus-fonts-takeover/apps/mac/Tests/FlashTeXMacTests/Fixtures/fake_assistant_context.py
+    /private/tmp/flashtex-opus-fonts-takeover/apps/mac/Tests/FlashTeXMacTests/Fixtures/holding_preview_controller_proxy.py
+    /private/tmp/flashtex-opus-fonts-takeover/apps/mac/Tests/FlashTeXMacTests/Fixtures/fake_project_files.py
+    /private/tmp/flashtex-opus-fonts-takeover/apps/mac/Tests/FlashTeXMacTests/Fixtures/build_assistant_context.sh
+    /private/tmp/flashtex-opus-fonts-takeover/apps/mac/Tests/FlashTeXMacTests/Fixtures/display-list-v2-math-rules.json
+    /private/tmp/flashtex-opus-fonts-takeover/apps/mac/Tests/FlashTeXMacTests/Fixtures/fake_edit_ledger.py
+    /private/tmp/flashtex-opus-fonts-takeover/apps/mac/Tests/FlashTeXMacTests/Fixtures/fake_preview_controller.py
+    /private/tmp/flashtex-opus-fonts-takeover/apps/mac/Tests/FlashTeXMacTests/Fixtures/display-list-v2-missing-font.json
+    /private/tmp/flashtex-opus-fonts-takeover/apps/mac/Tests/FlashTeXMacTests/Fixtures/display-list-v2-math.json
+    /private/tmp/flashtex-opus-fonts-takeover/apps/mac/Tests/FlashTeXMacTests/Fixtures/nearby-companion-session.jsonl
+    /private/tmp/flashtex-opus-fonts-takeover/apps/mac/Tests/FlashTeXMacTests/Fixtures/controlled_assistant_provider.py
+    /private/tmp/flashtex-opus-fonts-takeover/apps/mac/Tests/FlashTeXMacTests/Fixtures/display-list-v2-math-rules.tex
+    /private/tmp/flashtex-opus-fonts-takeover/apps/mac/Tests/FlashTeXMacTests/Fixtures/display-list-v2-text.json
+    /private/tmp/flashtex-opus-fonts-takeover/apps/mac/Tests/FlashTeXMacTests/Fixtures/fake_bridge.py
+    /private/tmp/flashtex-opus-fonts-takeover/apps/mac/Tests/FlashTeXMacTests/Fixtures/fake_worker_v2.py
+[0/1] Planning build
+Building for debugging...
+[0/5] Write sources
+[1/5] Write swift-version--58304C5D6DBC2206.txt
+[3/5] Emitting module FlashTeXMacTests
+/private/tmp/flashtex-opus-fonts-takeover/apps/mac/Tests/FlashTeXMacTests/EditorPreferencesTests.swift:290:24: warning: call to main actor-isolated initializer 'init()' in a synchronous nonisolated context [#ActorIsolatedCall]
+288 |         final class Probe: NSObject, NSTextViewDelegate {
+289 |             var changes = 0
+290 |             let undo = UndoManager()
+    |                        `- warning: call to main actor-isolated initializer 'init()' in a synchronous nonisolated context [#ActorIsolatedCall]
+291 |             func textDidChange(_ notification: Notification) { changes += 1 }
+292 |             func undoManager(for view: NSTextView) -> UndoManager? { undo }
+
+/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.2.sdk/usr/include/objc/NSObject.h:66:1: note: calls to initializer 'init()' from outside of its actor context are implicitly asynchronous
+ 64 | 
+ 65 | + (void)initialize;
+ 66 | - (instancetype)init
+    | `- note: calls to initializer 'init()' from outside of its actor context are implicitly asynchronous
+ 67 | #if NS_ENFORCE_NSOBJECT_DESIGNATED_INITIALIZER
+ 68 |     NS_DESIGNATED_INITIALIZER
+
+/private/tmp/flashtex-opus-fonts-takeover/apps/mac/Tests/FlashTeXMacTests/NearbyInterfaceTests.swift:31:82: warning: main actor-isolated static property 'pairId' can not be referenced from a nonisolated context; this is an error in the Swift 6 language mode
+ 14 | final class NearbyInterfaceTests: XCTestCase {
+ 15 |     static let psk = Data(repeating: 0x6B, count: 32)
+ 16 |     static let pairId = "pair-v6"
+    |                `- note: static property declared here
+ 17 |     let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("nearby-if-\(UUID().uuidString)")
+ 18 | 
+    :
+ 29 |         private(set) var isClosed = false
+ 30 |         private(set) var failure: NWError?
+ 31 |         init(host: String, port: UInt16, identity: String = NearbyInterfaceTests.pairId, psk: Data = NearbyInterfaceTests.psk) {
+    |                                                                                  `- warning: main actor-isolated static property 'pairId' can not be referenced from a nonisolated context; this is an error in the Swift 6 language mode
+ 32 |             connection = NWConnection(host: NWEndpoint.Host(host), port: NWEndpoint.Port(rawValue: port)!,
+ 33 |                                       using: NearbyListener.clientParameters(identity: identity, psk: psk))
+
+/private/tmp/flashtex-opus-fonts-takeover/apps/mac/Tests/FlashTeXMacTests/NearbyInterfaceTests.swift:31:123: warning: main actor-isolated static property 'psk' can not be referenced from a nonisolated context; this is an error in the Swift 6 language mode
+ 13 | @MainActor
+ 14 | final class NearbyInterfaceTests: XCTestCase {
+ 15 |     static let psk = Data(repeating: 0x6B, count: 32)
+    |                `- note: static property declared here
+ 16 |     static let pairId = "pair-v6"
+ 17 |     let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("nearby-if-\(UUID().uuidString)")
+    :
+ 29 |         private(set) var isClosed = false
+ 30 |         private(set) var failure: NWError?
+ 31 |         init(host: String, port: UInt16, identity: String = NearbyInterfaceTests.pairId, psk: Data = NearbyInterfaceTests.psk) {
+    |                                                                                                                           `- warning: main actor-isolated static property 'psk' can not be referenced from a nonisolated context; this is an error in the Swift 6 language mode
+ 32 |             connection = NWConnection(host: NWEndpoint.Host(host), port: NWEndpoint.Port(rawValue: port)!,
+ 33 |                                       using: NearbyListener.clientParameters(identity: identity, psk: psk))
+
+[#ActorIsolatedCall]: <https://docs.swift.org/compiler/documentation/diagnostics/actor-isolated-call>
+[4/5] Compiling FlashTeXMacTests BundledFacesTests.swift
+[4/6] Write Objects.LinkFileList
+[5/6] Linking FlashTeXMacPackageTests
+Build complete! (3.86s)
+Test Suite 'Selected tests' started at 2026-09-12 14:13:56.524.
+Test Suite 'FlashTeXMacPackageTests.xctest' started at 2026-09-12 14:13:56.525.
+Test Suite 'BundledFacesTests' started at 2026-09-12 14:13:56.525.
+Test Case '-[FlashTeXMacTests.BundledFacesTests testEveryPreviewMasterResolvesToARealCoreTextFace]' started.
+Test Case '-[FlashTeXMacTests.BundledFacesTests testEveryPreviewMasterResolvesToARealCoreTextFace]' passed (0.033 seconds).
+Test Case '-[FlashTeXMacTests.BundledFacesTests testEveryProducerRequestableFaceIsVendoredAndPinned]' started.
+Test Case '-[FlashTeXMacTests.BundledFacesTests testEveryProducerRequestableFaceIsVendoredAndPinned]' passed (0.010 seconds).
+Test Case '-[FlashTeXMacTests.BundledFacesTests testMasterBoundariesMirrorTheProducer]' started.
+Test Case '-[FlashTeXMacTests.BundledFacesTests testMasterBoundariesMirrorTheProducer]' passed (0.000 seconds).
+Test Case '-[FlashTeXMacTests.BundledFacesTests testPackagingCheckVerifiesFacesAndRefusesDrift]' started.
+Test Case '-[FlashTeXMacTests.BundledFacesTests testPackagingCheckVerifiesFacesAndRefusesDrift]' passed (0.434 seconds).
+Test Case '-[FlashTeXMacTests.BundledFacesTests testRealProducerNeedsNoSubstitutionForSmallMastersWithHostTeXExcluded]' started.
+Test Case '-[FlashTeXMacTests.BundledFacesTests testRealProducerNeedsNoSubstitutionForSmallMastersWithHostTeXExcluded]' passed (0.340 seconds).
+Test Suite 'BundledFacesTests' passed at 2026-09-12 14:13:57.343.
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.817 (0.818) seconds
+Test Suite 'FontHintResolutionTests' started at 2026-09-12 14:13:57.343.
+Test Case '-[FlashTeXMacTests.FontHintResolutionTests testBundledLatinModernBoldHintResolvesToLMRoman12BoldWithoutSubstitution]' started.
+Test Case '-[FlashTeXMacTests.FontHintResolutionTests testBundledLatinModernBoldHintResolvesToLMRoman12BoldWithoutSubstitution]' passed (0.001 seconds).
+Test Case '-[FlashTeXMacTests.FontHintResolutionTests testCompilerCore14FaceNamesResolveWithoutSubstitution]' started.
+Test Case '-[FlashTeXMacTests.FontHintResolutionTests testCompilerCore14FaceNamesResolveWithoutSubstitution]' passed (0.008 seconds).
+Test Case '-[FlashTeXMacTests.FontHintResolutionTests testSubstitutionsInResultAreDeduplicatedInFirstSeenOrder]' started.
+Test Case '-[FlashTeXMacTests.FontHintResolutionTests testSubstitutionsInResultAreDeduplicatedInFirstSeenOrder]' passed (0.000 seconds).
+Test Case '-[FlashTeXMacTests.FontHintResolutionTests testTimesFamiliesMapToCore14FacesWithWeightAndStyleAndNoSubstitution]' started.
+Test Case '-[FlashTeXMacTests.FontHintResolutionTests testTimesFamiliesMapToCore14FacesWithWeightAndStyleAndNoSubstitution]' passed (0.000 seconds).
+Test Case '-[FlashTeXMacTests.FontHintResolutionTests testUnknownFamilyIsAnExplicitSubstitutionAndNilHintIsLegacySelection]' started.
+Test Case '-[FlashTeXMacTests.FontHintResolutionTests testUnknownFamilyIsAnExplicitSubstitutionAndNilHintIsLegacySelection]' passed (0.000 seconds).
+Test Suite 'FontHintResolutionTests' passed at 2026-09-12 14:13:57.353.
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.009 (0.010) seconds
+Test Suite 'LayoutCapabilityPDFExportTests' started at 2026-09-12 14:13:57.353.
+Test Case '-[FlashTeXMacTests.LayoutCapabilityPDFExportTests testLegacyRouteStillApproximatesBoxDrawingRunsAsBars]' started.
+Test Case '-[FlashTeXMacTests.LayoutCapabilityPDFExportTests testLegacyRouteStillApproximatesBoxDrawingRunsAsBars]' passed (0.046 seconds).
+Test Case '-[FlashTeXMacTests.LayoutCapabilityPDFExportTests testTypedRuleAndFontHintExportToAValidPDFWithTheTextIntact]' started.
+Test Case '-[FlashTeXMacTests.LayoutCapabilityPDFExportTests testTypedRuleAndFontHintExportToAValidPDFWithTheTextIntact]' passed (0.004 seconds).
+Test Suite 'LayoutCapabilityPDFExportTests' passed at 2026-09-12 14:13:57.404.
+	 Executed 2 tests, with 0 failures (0 unexpected) in 0.050 (0.051) seconds
+Test Suite 'PreviewFontsTests' started at 2026-09-12 14:13:57.404.
+Test Case '-[FlashTeXMacTests.PreviewFontsTests testLatinModernRegistersFromBasicTeXWhenPresent]' started.
+Test Case '-[FlashTeXMacTests.PreviewFontsTests testLatinModernRegistersFromBasicTeXWhenPresent]' passed (0.000 seconds).
+Test Case '-[FlashTeXMacTests.PreviewFontsTests testLatinModernRegistrationIsAGenerationAndRecordsItsDirectory]' started.
+Test Case '-[FlashTeXMacTests.PreviewFontsTests testLatinModernRegistrationIsAGenerationAndRecordsItsDirectory]' passed (0.000 seconds).
+Test Case '-[FlashTeXMacTests.PreviewFontsTests testResourceGenerationMovesOnlyWhenAnInputOfResolutionChanges]' started.
+Test Case '-[FlashTeXMacTests.PreviewFontsTests testResourceGenerationMovesOnlyWhenAnInputOfResolutionChanges]' passed (0.000 seconds).
+Test Case '-[FlashTeXMacTests.PreviewFontsTests testTimesFallbackNamesAreBase14]' started.
+Test Case '-[FlashTeXMacTests.PreviewFontsTests testTimesFallbackNamesAreBase14]' passed (0.000 seconds).
+Test Suite 'PreviewFontsTests' passed at 2026-09-12 14:13:57.405.
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.001 (0.001) seconds
+Test Suite 'RuleGeometryTests' started at 2026-09-12 14:13:57.405.
+Test Case '-[FlashTeXMacTests.RuleGeometryTests testLegacyBarStillHugsBaselineOnlyThroughRuleConvention]' started.
+Test Case '-[FlashTeXMacTests.RuleGeometryTests testLegacyBarStillHugsBaselineOnlyThroughRuleConvention]' passed (0.000 seconds).
+Test Case '-[FlashTeXMacTests.RuleGeometryTests testTypedRuleMapsTopLeftCornerNotBaseline]' started.
+Test Case '-[FlashTeXMacTests.RuleGeometryTests testTypedRuleMapsTopLeftCornerNotBaseline]' passed (0.000 seconds).
+Test Suite 'RuleGeometryTests' passed at 2026-09-12 14:13:57.405.
+	 Executed 2 tests, with 0 failures (0 unexpected) in 0.000 (0.000) seconds
+Test Suite 'FlashTeXMacPackageTests.xctest' passed at 2026-09-12 14:13:57.405.
+	 Executed 18 tests, with 0 failures (0 unexpected) in 0.878 (0.880) seconds
+Test Suite 'Selected tests' passed at 2026-09-12 14:13:57.405.
+	 Executed 18 tests, with 0 failures (0 unexpected) in 0.878 (0.881) seconds
+◇ Test run started.
+↳ Testing Library Version: 1501
+↳ Target Platform: arm64e-apple-macos14.0
+✔ Test run with 0 tests in 0 suites passed after 0.001 seconds.

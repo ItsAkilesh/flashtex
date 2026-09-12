@@ -1,0 +1,1859 @@
+{
+  "coalesced" : 2,
+  "compile_ms" : {
+    "count" : 200,
+    "max_ms" : 24.826292,
+    "mean_ms" : 16.269073515,
+    "min_ms" : 12.428666999999999,
+    "p50_ms" : 16.368375,
+    "p95_ms" : 18.749875,
+    "p99_ms" : 20.406291
+  },
+  "compiles" : 200,
+  "debounce_ms" : 0,
+  "document_bytes_after" : 6113,
+  "document_bytes_before" : 5909,
+  "elapsed_ms" : 6871.596792,
+  "interval_ms" : 30,
+  "keystroke_to_paint_ms" : {
+    "count" : 200,
+    "max_ms" : 69.187458,
+    "mean_ms" : 47.41093062500001,
+    "min_ms" : 26.620459,
+    "p50_ms" : 46.676875,
+    "p95_ms" : 59.625083,
+    "p99_ms" : 65.447666
+  },
+  "keystrokes" : 200,
+  "paint_point" : "first main-queue turn after the run-loop iteration whose SwiftUI render pass evaluated PreviewView for the revision (Canvas draw closures of every page ran inside that pass); the CoreAnimation commit has completed, the display's next vsync scan-out is not observed",
+  "painted" : 200,
+  "paints" : 198,
+  "paints_without_redraw" : 81,
+  "per_keystroke" : [
+    {
+      "compile_ms" : 14.343,
+      "delegate_ns" : 107816258480541,
+      "keystroke_ns" : 107816257767125,
+      "paint_ns" : 107816313667291,
+      "painted_by_revision" : 3,
+      "redrawn" : true,
+      "revision" : 3
+    },
+    {
+      "compile_ms" : 19.870375,
+      "delegate_ns" : 107816315942166,
+      "keystroke_ns" : 107816315306708,
+      "paint_ns" : 107816356163583,
+      "painted_by_revision" : 4,
+      "redrawn" : false,
+      "revision" : 4
+    },
+    {
+      "compile_ms" : 12.848666999999999,
+      "delegate_ns" : 107816367248666,
+      "keystroke_ns" : 107816366819416,
+      "paint_ns" : 107816393439875,
+      "painted_by_revision" : 5,
+      "redrawn" : true,
+      "revision" : 5
+    },
+    {
+      "compile_ms" : 12.867791,
+      "delegate_ns" : 107816373250625,
+      "keystroke_ns" : 107816372952041,
+      "paint_ns" : 107816432244375,
+      "painted_by_revision" : 6,
+      "redrawn" : false,
+      "revision" : 6
+    },
+    {
+      "compile_ms" : 13.897417,
+      "delegate_ns" : 107816431705625,
+      "keystroke_ns" : 107816431254666,
+      "paint_ns" : 107816479990750,
+      "painted_by_revision" : 7,
+      "redrawn" : true,
+      "revision" : 7
+    },
+    {
+      "compile_ms" : 13.246,
+      "delegate_ns" : 107816480861125,
+      "keystroke_ns" : 107816480369208,
+      "paint_ns" : 107816531041458,
+      "painted_by_revision" : 8,
+      "redrawn" : true,
+      "revision" : 8
+    },
+    {
+      "compile_ms" : 16.844708999999998,
+      "delegate_ns" : 107816531621333,
+      "keystroke_ns" : 107816531159625,
+      "paint_ns" : 107816567442583,
+      "painted_by_revision" : 9,
+      "redrawn" : true,
+      "revision" : 9
+    },
+    {
+      "compile_ms" : 13.500207999999999,
+      "delegate_ns" : 107816552590750,
+      "keystroke_ns" : 107816552160500,
+      "paint_ns" : 107816602506375,
+      "painted_by_revision" : 10,
+      "redrawn" : true,
+      "revision" : 10
+    },
+    {
+      "compile_ms" : 13.301125,
+      "delegate_ns" : 107816618045541,
+      "keystroke_ns" : 107816617430125,
+      "paint_ns" : 107816665759500,
+      "painted_by_revision" : 11,
+      "redrawn" : true,
+      "revision" : 11
+    },
+    {
+      "compile_ms" : 13.960291,
+      "delegate_ns" : 107816666381208,
+      "keystroke_ns" : 107816665846708,
+      "paint_ns" : 107816706865791,
+      "painted_by_revision" : 12,
+      "redrawn" : false,
+      "revision" : 12
+    },
+    {
+      "compile_ms" : 12.428666999999999,
+      "delegate_ns" : 107816683738083,
+      "keystroke_ns" : 107816683273000,
+      "paint_ns" : 107816725527708,
+      "painted_by_revision" : 13,
+      "redrawn" : false,
+      "revision" : 13
+    },
+    {
+      "compile_ms" : 15.1075,
+      "delegate_ns" : 107816707410625,
+      "keystroke_ns" : 107816706908041,
+      "paint_ns" : 107816755192500,
+      "painted_by_revision" : 14,
+      "redrawn" : false,
+      "revision" : 14
+    },
+    {
+      "compile_ms" : 14.938917,
+      "delegate_ns" : 107816757160458,
+      "keystroke_ns" : 107816756691083,
+      "paint_ns" : 107816797605000,
+      "painted_by_revision" : 15,
+      "redrawn" : true,
+      "revision" : 15
+    },
+    {
+      "compile_ms" : 13.360166,
+      "delegate_ns" : 107816772807000,
+      "keystroke_ns" : 107816772291000,
+      "paint_ns" : 107816815249541,
+      "painted_by_revision" : 16,
+      "redrawn" : false,
+      "revision" : 16
+    },
+    {
+      "compile_ms" : 13.735709,
+      "delegate_ns" : 107816814924208,
+      "keystroke_ns" : 107816814397125,
+      "paint_ns" : 107816876308250,
+      "painted_by_revision" : 18,
+      "redrawn" : true,
+      "revision" : 17
+    },
+    {
+      "compile_ms" : 13.735709,
+      "delegate_ns" : 107816829613916,
+      "keystroke_ns" : 107816829156750,
+      "paint_ns" : 107816876308250,
+      "painted_by_revision" : 18,
+      "redrawn" : true,
+      "revision" : 18
+    },
+    {
+      "compile_ms" : 14.041292,
+      "delegate_ns" : 107816890564791,
+      "keystroke_ns" : 107816890024791,
+      "paint_ns" : 107816925138875,
+      "painted_by_revision" : 19,
+      "redrawn" : true,
+      "revision" : 19
+    },
+    {
+      "compile_ms" : 13.848792,
+      "delegate_ns" : 107816938455875,
+      "keystroke_ns" : 107816937876541,
+      "paint_ns" : 107816981513708,
+      "painted_by_revision" : 20,
+      "redrawn" : true,
+      "revision" : 20
+    },
+    {
+      "compile_ms" : 14.056249999999999,
+      "delegate_ns" : 107816954952666,
+      "keystroke_ns" : 107816954443875,
+      "paint_ns" : 107816998523166,
+      "painted_by_revision" : 21,
+      "redrawn" : false,
+      "revision" : 21
+    },
+    {
+      "compile_ms" : 14.322292000000001,
+      "delegate_ns" : 107816998163916,
+      "keystroke_ns" : 107816997618916,
+      "paint_ns" : 107817040314166,
+      "painted_by_revision" : 22,
+      "redrawn" : true,
+      "revision" : 22
+    },
+    {
+      "compile_ms" : 14.1545,
+      "delegate_ns" : 107817013855916,
+      "keystroke_ns" : 107817013344125,
+      "paint_ns" : 107817057473458,
+      "painted_by_revision" : 23,
+      "redrawn" : true,
+      "revision" : 23
+    },
+    {
+      "compile_ms" : 13.374875,
+      "delegate_ns" : 107817070625041,
+      "keystroke_ns" : 107817070133291,
+      "paint_ns" : 107817116797041,
+      "painted_by_revision" : 24,
+      "redrawn" : true,
+      "revision" : 24
+    },
+    {
+      "compile_ms" : 13.41225,
+      "delegate_ns" : 107817117451625,
+      "keystroke_ns" : 107817116858375,
+      "paint_ns" : 107817161991000,
+      "painted_by_revision" : 25,
+      "redrawn" : false,
+      "revision" : 25
+    },
+    {
+      "compile_ms" : 15.744292,
+      "delegate_ns" : 107817132635625,
+      "keystroke_ns" : 107817132165958,
+      "paint_ns" : 107817190520208,
+      "painted_by_revision" : 26,
+      "redrawn" : true,
+      "revision" : 26
+    },
+    {
+      "compile_ms" : 14.155833,
+      "delegate_ns" : 107817191162625,
+      "keystroke_ns" : 107817190597958,
+      "paint_ns" : 107817225263750,
+      "painted_by_revision" : 27,
+      "redrawn" : true,
+      "revision" : 27
+    },
+    {
+      "compile_ms" : 13.665999999999999,
+      "delegate_ns" : 107817238777291,
+      "keystroke_ns" : 107817238189541,
+      "paint_ns" : 107817278015916,
+      "painted_by_revision" : 28,
+      "redrawn" : true,
+      "revision" : 28
+    },
+    {
+      "compile_ms" : 13.958165999999999,
+      "delegate_ns" : 107817245246416,
+      "keystroke_ns" : 107817244752083,
+      "paint_ns" : 107817303017208,
+      "painted_by_revision" : 29,
+      "redrawn" : true,
+      "revision" : 29
+    },
+    {
+      "compile_ms" : 24.826292,
+      "delegate_ns" : 107817279307875,
+      "keystroke_ns" : 107817278847833,
+      "paint_ns" : 107817330788625,
+      "painted_by_revision" : 30,
+      "redrawn" : false,
+      "revision" : 30
+    },
+    {
+      "compile_ms" : 17.023291999999998,
+      "delegate_ns" : 107817303609791,
+      "keystroke_ns" : 107817303143500,
+      "paint_ns" : 107817356188500,
+      "painted_by_revision" : 31,
+      "redrawn" : false,
+      "revision" : 31
+    },
+    {
+      "compile_ms" : 16.426625,
+      "delegate_ns" : 107817332759083,
+      "keystroke_ns" : 107817332168375,
+      "paint_ns" : 107817388966958,
+      "painted_by_revision" : 32,
+      "redrawn" : true,
+      "revision" : 32
+    },
+    {
+      "compile_ms" : 15.022125,
+      "delegate_ns" : 107817362627666,
+      "keystroke_ns" : 107817362055583,
+      "paint_ns" : 107817407545291,
+      "painted_by_revision" : 33,
+      "redrawn" : true,
+      "revision" : 33
+    },
+    {
+      "compile_ms" : 16.528791000000002,
+      "delegate_ns" : 107817419808541,
+      "keystroke_ns" : 107817419265666,
+      "paint_ns" : 107817455792083,
+      "painted_by_revision" : 34,
+      "redrawn" : false,
+      "revision" : 34
+    },
+    {
+      "compile_ms" : 15.400832999999999,
+      "delegate_ns" : 107817433869291,
+      "keystroke_ns" : 107817433410250,
+      "paint_ns" : 107817480986750,
+      "painted_by_revision" : 35,
+      "redrawn" : false,
+      "revision" : 35
+    },
+    {
+      "compile_ms" : 17.308708999999997,
+      "delegate_ns" : 107817456298875,
+      "keystroke_ns" : 107817455831000,
+      "paint_ns" : 107817511752208,
+      "painted_by_revision" : 36,
+      "redrawn" : true,
+      "revision" : 36
+    },
+    {
+      "compile_ms" : 14.995542,
+      "delegate_ns" : 107817487036833,
+      "keystroke_ns" : 107817486537750,
+      "paint_ns" : 107817537991333,
+      "painted_by_revision" : 37,
+      "redrawn" : true,
+      "revision" : 37
+    },
+    {
+      "compile_ms" : 14.130042000000001,
+      "delegate_ns" : 107817512475125,
+      "keystroke_ns" : 107817511951666,
+      "paint_ns" : 107817567621583,
+      "painted_by_revision" : 38,
+      "redrawn" : true,
+      "revision" : 38
+    },
+    {
+      "compile_ms" : 14.020625,
+      "delegate_ns" : 107817568407125,
+      "keystroke_ns" : 107817567665375,
+      "paint_ns" : 107817603401208,
+      "painted_by_revision" : 39,
+      "redrawn" : true,
+      "revision" : 39
+    },
+    {
+      "compile_ms" : 14.22825,
+      "delegate_ns" : 107817585544958,
+      "keystroke_ns" : 107817585032750,
+      "paint_ns" : 107817642818250,
+      "painted_by_revision" : 40,
+      "redrawn" : false,
+      "revision" : 40
+    },
+    {
+      "compile_ms" : 13.418959,
+      "delegate_ns" : 107817630117541,
+      "keystroke_ns" : 107817629612583,
+      "paint_ns" : 107817679537958,
+      "painted_by_revision" : 41,
+      "redrawn" : true,
+      "revision" : 41
+    },
+    {
+      "compile_ms" : 14.682458,
+      "delegate_ns" : 107817680068375,
+      "keystroke_ns" : 107817679558750,
+      "paint_ns" : 107817713845666,
+      "painted_by_revision" : 42,
+      "redrawn" : false,
+      "revision" : 42
+    },
+    {
+      "compile_ms" : 15.277166,
+      "delegate_ns" : 107817698200791,
+      "keystroke_ns" : 107817697719875,
+      "paint_ns" : 107817749234541,
+      "painted_by_revision" : 43,
+      "redrawn" : true,
+      "revision" : 43
+    },
+    {
+      "compile_ms" : 14.04425,
+      "delegate_ns" : 107817749895875,
+      "keystroke_ns" : 107817749307958,
+      "paint_ns" : 107817792762750,
+      "painted_by_revision" : 44,
+      "redrawn" : true,
+      "revision" : 44
+    },
+    {
+      "compile_ms" : 13.579374999999999,
+      "delegate_ns" : 107817765066500,
+      "keystroke_ns" : 107817764530208,
+      "paint_ns" : 107817806867708,
+      "painted_by_revision" : 45,
+      "redrawn" : true,
+      "revision" : 45
+    },
+    {
+      "compile_ms" : 13.743165999999999,
+      "delegate_ns" : 107817793373041,
+      "keystroke_ns" : 107817792826125,
+      "paint_ns" : 107817840710291,
+      "painted_by_revision" : 46,
+      "redrawn" : false,
+      "revision" : 46
+    },
+    {
+      "compile_ms" : 14.012625,
+      "delegate_ns" : 107817844991875,
+      "keystroke_ns" : 107817844409000,
+      "paint_ns" : 107817890018625,
+      "painted_by_revision" : 47,
+      "redrawn" : true,
+      "revision" : 47
+    },
+    {
+      "compile_ms" : 15.827875000000002,
+      "delegate_ns" : 107817890689416,
+      "keystroke_ns" : 107817890072750,
+      "paint_ns" : 107817931193166,
+      "painted_by_revision" : 48,
+      "redrawn" : true,
+      "revision" : 48
+    },
+    {
+      "compile_ms" : 13.720875000000001,
+      "delegate_ns" : 107817904094208,
+      "keystroke_ns" : 107817903580083,
+      "paint_ns" : 107817946607083,
+      "painted_by_revision" : 49,
+      "redrawn" : true,
+      "revision" : 49
+    },
+    {
+      "compile_ms" : 14.246333,
+      "delegate_ns" : 107817932617291,
+      "keystroke_ns" : 107817932075083,
+      "paint_ns" : 107817987760166,
+      "painted_by_revision" : 50,
+      "redrawn" : false,
+      "revision" : 50
+    },
+    {
+      "compile_ms" : 16.738875,
+      "delegate_ns" : 107817974758583,
+      "keystroke_ns" : 107817974176500,
+      "paint_ns" : 107818015784625,
+      "painted_by_revision" : 51,
+      "redrawn" : false,
+      "revision" : 51
+    },
+    {
+      "compile_ms" : 14.838166999999999,
+      "delegate_ns" : 107818015428500,
+      "keystroke_ns" : 107818014879208,
+      "paint_ns" : 107818056767125,
+      "painted_by_revision" : 52,
+      "redrawn" : true,
+      "revision" : 52
+    },
+    {
+      "compile_ms" : 15.800249999999998,
+      "delegate_ns" : 107818029023666,
+      "keystroke_ns" : 107818028456416,
+      "paint_ns" : 107818076002916,
+      "painted_by_revision" : 53,
+      "redrawn" : false,
+      "revision" : 53
+    },
+    {
+      "compile_ms" : 17.401041,
+      "delegate_ns" : 107818057455125,
+      "keystroke_ns" : 107818056893041,
+      "paint_ns" : 107818098848875,
+      "painted_by_revision" : 54,
+      "redrawn" : true,
+      "revision" : 54
+    },
+    {
+      "compile_ms" : 17.616584,
+      "delegate_ns" : 107818084774833,
+      "keystroke_ns" : 107818084178333,
+      "paint_ns" : 107818130986125,
+      "painted_by_revision" : 55,
+      "redrawn" : true,
+      "revision" : 55
+    },
+    {
+      "compile_ms" : 17.383583,
+      "delegate_ns" : 107818133694958,
+      "keystroke_ns" : 107818133123291,
+      "paint_ns" : 107818172159416,
+      "painted_by_revision" : 56,
+      "redrawn" : false,
+      "revision" : 56
+    },
+    {
+      "compile_ms" : 16.235458,
+      "delegate_ns" : 107818149068750,
+      "keystroke_ns" : 107818148513500,
+      "paint_ns" : 107818197740291,
+      "painted_by_revision" : 57,
+      "redrawn" : false,
+      "revision" : 57
+    },
+    {
+      "compile_ms" : 16.90625,
+      "delegate_ns" : 107818172706791,
+      "keystroke_ns" : 107818172202708,
+      "paint_ns" : 107818230895750,
+      "painted_by_revision" : 58,
+      "redrawn" : false,
+      "revision" : 58
+    },
+    {
+      "compile_ms" : 17.020583,
+      "delegate_ns" : 107818230538875,
+      "keystroke_ns" : 107818229991875,
+      "paint_ns" : 107818276183041,
+      "painted_by_revision" : 59,
+      "redrawn" : true,
+      "revision" : 59
+    },
+    {
+      "compile_ms" : 14.999459,
+      "delegate_ns" : 107818248706750,
+      "keystroke_ns" : 107818248147708,
+      "paint_ns" : 107818303707875,
+      "painted_by_revision" : 60,
+      "redrawn" : true,
+      "revision" : 60
+    },
+    {
+      "compile_ms" : 16.2945,
+      "delegate_ns" : 107818276894208,
+      "keystroke_ns" : 107818276321208,
+      "paint_ns" : 107818328816208,
+      "painted_by_revision" : 61,
+      "redrawn" : true,
+      "revision" : 61
+    },
+    {
+      "compile_ms" : 16.341874999999998,
+      "delegate_ns" : 107818304401541,
+      "keystroke_ns" : 107818303852000,
+      "paint_ns" : 107818355059000,
+      "painted_by_revision" : 62,
+      "redrawn" : true,
+      "revision" : 62
+    },
+    {
+      "compile_ms" : 16.761125000000003,
+      "delegate_ns" : 107818329549166,
+      "keystroke_ns" : 107818328991000,
+      "paint_ns" : 107818372649333,
+      "painted_by_revision" : 63,
+      "redrawn" : false,
+      "revision" : 63
+    },
+    {
+      "compile_ms" : 15.882125,
+      "delegate_ns" : 107818355748083,
+      "keystroke_ns" : 107818355211416,
+      "paint_ns" : 107818398477250,
+      "painted_by_revision" : 64,
+      "redrawn" : true,
+      "revision" : 64
+    },
+    {
+      "compile_ms" : 16.777667,
+      "delegate_ns" : 107818411979500,
+      "keystroke_ns" : 107818411374166,
+      "paint_ns" : 107818448508083,
+      "painted_by_revision" : 65,
+      "redrawn" : true,
+      "revision" : 65
+    },
+    {
+      "compile_ms" : 16.763417,
+      "delegate_ns" : 107818457155083,
+      "keystroke_ns" : 107818456660708,
+      "paint_ns" : 107818499624458,
+      "painted_by_revision" : 66,
+      "redrawn" : false,
+      "revision" : 66
+    },
+    {
+      "compile_ms" : 16.320209,
+      "delegate_ns" : 107818474363333,
+      "keystroke_ns" : 107818473739041,
+      "paint_ns" : 107818528381958,
+      "painted_by_revision" : 67,
+      "redrawn" : true,
+      "revision" : 67
+    },
+    {
+      "compile_ms" : 14.650875000000001,
+      "delegate_ns" : 107818502889166,
+      "keystroke_ns" : 107818502309166,
+      "paint_ns" : 107818557702875,
+      "painted_by_revision" : 68,
+      "redrawn" : true,
+      "revision" : 68
+    },
+    {
+      "compile_ms" : 16.919209000000002,
+      "delegate_ns" : 107818558390000,
+      "keystroke_ns" : 107818557753083,
+      "paint_ns" : 107818590999583,
+      "painted_by_revision" : 69,
+      "redrawn" : false,
+      "revision" : 69
+    },
+    {
+      "compile_ms" : 16.110333,
+      "delegate_ns" : 107818573064583,
+      "keystroke_ns" : 107818572452250,
+      "paint_ns" : 107818612321583,
+      "painted_by_revision" : 70,
+      "redrawn" : true,
+      "revision" : 70
+    },
+    {
+      "compile_ms" : 15.622625,
+      "delegate_ns" : 107818599848000,
+      "keystroke_ns" : 107818599288041,
+      "paint_ns" : 107818647394958,
+      "painted_by_revision" : 71,
+      "redrawn" : false,
+      "revision" : 71
+    },
+    {
+      "compile_ms" : 15.296833,
+      "delegate_ns" : 107818648002333,
+      "keystroke_ns" : 107818647467375,
+      "paint_ns" : 107818681379333,
+      "painted_by_revision" : 72,
+      "redrawn" : false,
+      "revision" : 72
+    },
+    {
+      "compile_ms" : 17.334208,
+      "delegate_ns" : 107818653618583,
+      "keystroke_ns" : 107818653245458,
+      "paint_ns" : 107818704300583,
+      "painted_by_revision" : 73,
+      "redrawn" : false,
+      "revision" : 73
+    },
+    {
+      "compile_ms" : 20.406291,
+      "delegate_ns" : 107818688798541,
+      "keystroke_ns" : 107818688189166,
+      "paint_ns" : 107818736917416,
+      "painted_by_revision" : 74,
+      "redrawn" : true,
+      "revision" : 74
+    },
+    {
+      "compile_ms" : 17.664666,
+      "delegate_ns" : 107818713200416,
+      "keystroke_ns" : 107818712613791,
+      "paint_ns" : 107818763593375,
+      "painted_by_revision" : 75,
+      "redrawn" : true,
+      "revision" : 75
+    },
+    {
+      "compile_ms" : 17.272458,
+      "delegate_ns" : 107818764315125,
+      "keystroke_ns" : 107818763670208,
+      "paint_ns" : 107818806791708,
+      "painted_by_revision" : 76,
+      "redrawn" : false,
+      "revision" : 76
+    },
+    {
+      "compile_ms" : 14.914208,
+      "delegate_ns" : 107818782689291,
+      "keystroke_ns" : 107818782077833,
+      "paint_ns" : 107818824872833,
+      "painted_by_revision" : 77,
+      "redrawn" : false,
+      "revision" : 77
+    },
+    {
+      "compile_ms" : 15.631167000000001,
+      "delegate_ns" : 107818806566541,
+      "keystroke_ns" : 107818806029458,
+      "paint_ns" : 107818845690541,
+      "painted_by_revision" : 78,
+      "redrawn" : true,
+      "revision" : 78
+    },
+    {
+      "compile_ms" : 15.848332999999998,
+      "delegate_ns" : 107818832800875,
+      "keystroke_ns" : 107818832152125,
+      "paint_ns" : 107818872005708,
+      "painted_by_revision" : 79,
+      "redrawn" : true,
+      "revision" : 79
+    },
+    {
+      "compile_ms" : 16.104750000000003,
+      "delegate_ns" : 107818881306583,
+      "keystroke_ns" : 107818880786666,
+      "paint_ns" : 107818925157250,
+      "painted_by_revision" : 80,
+      "redrawn" : true,
+      "revision" : 80
+    },
+    {
+      "compile_ms" : 15.155999999999999,
+      "delegate_ns" : 107818898917916,
+      "keystroke_ns" : 107818898339333,
+      "paint_ns" : 107818941972500,
+      "painted_by_revision" : 81,
+      "redrawn" : true,
+      "revision" : 81
+    },
+    {
+      "compile_ms" : 16.829875,
+      "delegate_ns" : 107818925871791,
+      "keystroke_ns" : 107818925295958,
+      "paint_ns" : 107818978399375,
+      "painted_by_revision" : 82,
+      "redrawn" : false,
+      "revision" : 82
+    },
+    {
+      "compile_ms" : 15.183957999999999,
+      "delegate_ns" : 107818954498875,
+      "keystroke_ns" : 107818953969708,
+      "paint_ns" : 107819004752541,
+      "painted_by_revision" : 83,
+      "redrawn" : true,
+      "revision" : 83
+    },
+    {
+      "compile_ms" : 19.16325,
+      "delegate_ns" : 107819005340583,
+      "keystroke_ns" : 107819004791375,
+      "paint_ns" : 107819039288000,
+      "painted_by_revision" : 84,
+      "redrawn" : true,
+      "revision" : 84
+    },
+    {
+      "compile_ms" : 16.024791,
+      "delegate_ns" : 107819019221250,
+      "keystroke_ns" : 107819018731750,
+      "paint_ns" : 107819065806583,
+      "painted_by_revision" : 85,
+      "redrawn" : false,
+      "revision" : 85
+    },
+    {
+      "compile_ms" : 15.821124999999999,
+      "delegate_ns" : 107819065451666,
+      "keystroke_ns" : 107819064848708,
+      "paint_ns" : 107819108970416,
+      "painted_by_revision" : 86,
+      "redrawn" : true,
+      "revision" : 86
+    },
+    {
+      "compile_ms" : 17.025375,
+      "delegate_ns" : 107819081190291,
+      "keystroke_ns" : 107819080438708,
+      "paint_ns" : 107819137925458,
+      "painted_by_revision" : 87,
+      "redrawn" : true,
+      "revision" : 87
+    },
+    {
+      "compile_ms" : 18.132458,
+      "delegate_ns" : 107819138593458,
+      "keystroke_ns" : 107819137962791,
+      "paint_ns" : 107819188811916,
+      "painted_by_revision" : 88,
+      "redrawn" : false,
+      "revision" : 88
+    },
+    {
+      "compile_ms" : 15.621584,
+      "delegate_ns" : 107819188444666,
+      "keystroke_ns" : 107819187811666,
+      "paint_ns" : 107819228631291,
+      "painted_by_revision" : 89,
+      "redrawn" : true,
+      "revision" : 89
+    },
+    {
+      "compile_ms" : 15.641542000000001,
+      "delegate_ns" : 107819201951875,
+      "keystroke_ns" : 107819201455125,
+      "paint_ns" : 107819255291041,
+      "painted_by_revision" : 90,
+      "redrawn" : true,
+      "revision" : 90
+    },
+    {
+      "compile_ms" : 16.053833,
+      "delegate_ns" : 107819229387458,
+      "keystroke_ns" : 107819228777791,
+      "paint_ns" : 107819279556500,
+      "painted_by_revision" : 91,
+      "redrawn" : true,
+      "revision" : 91
+    },
+    {
+      "compile_ms" : 16.41525,
+      "delegate_ns" : 107819255986708,
+      "keystroke_ns" : 107819255438625,
+      "paint_ns" : 107819299388666,
+      "painted_by_revision" : 92,
+      "redrawn" : true,
+      "revision" : 92
+    },
+    {
+      "compile_ms" : 14.090708000000001,
+      "delegate_ns" : 107819313216250,
+      "keystroke_ns" : 107819312554875,
+      "paint_ns" : 107819348111250,
+      "painted_by_revision" : 93,
+      "redrawn" : true,
+      "revision" : 93
+    },
+    {
+      "compile_ms" : 15.990541,
+      "delegate_ns" : 107819357318958,
+      "keystroke_ns" : 107819356793208,
+      "paint_ns" : 107819400510416,
+      "painted_by_revision" : 94,
+      "redrawn" : true,
+      "revision" : 94
+    },
+    {
+      "compile_ms" : 16.507834,
+      "delegate_ns" : 107819373650166,
+      "keystroke_ns" : 107819373091208,
+      "paint_ns" : 107819423111833,
+      "painted_by_revision" : 95,
+      "redrawn" : false,
+      "revision" : 95
+    },
+    {
+      "compile_ms" : 16.059125,
+      "delegate_ns" : 107819402802375,
+      "keystroke_ns" : 107819402218333,
+      "paint_ns" : 107819447997208,
+      "painted_by_revision" : 96,
+      "redrawn" : true,
+      "revision" : 96
+    },
+    {
+      "compile_ms" : 14.040042000000001,
+      "delegate_ns" : 107819457241875,
+      "keystroke_ns" : 107819456712125,
+      "paint_ns" : 107819497662666,
+      "painted_by_revision" : 97,
+      "redrawn" : false,
+      "revision" : 97
+    },
+    {
+      "compile_ms" : 15.927833,
+      "delegate_ns" : 107819463309583,
+      "keystroke_ns" : 107819462797083,
+      "paint_ns" : 107819513266291,
+      "painted_by_revision" : 98,
+      "redrawn" : false,
+      "revision" : 98
+    },
+    {
+      "compile_ms" : 15.358375,
+      "delegate_ns" : 107819497429250,
+      "keystroke_ns" : 107819496828041,
+      "paint_ns" : 107819539256625,
+      "painted_by_revision" : 99,
+      "redrawn" : false,
+      "revision" : 99
+    },
+    {
+      "compile_ms" : 17.59025,
+      "delegate_ns" : 107819538933208,
+      "keystroke_ns" : 107819538279083,
+      "paint_ns" : 107819578598208,
+      "painted_by_revision" : 100,
+      "redrawn" : true,
+      "revision" : 100
+    },
+    {
+      "compile_ms" : 16.283584,
+      "delegate_ns" : 107819553938500,
+      "keystroke_ns" : 107819553335833,
+      "paint_ns" : 107819597891666,
+      "painted_by_revision" : 101,
+      "redrawn" : true,
+      "revision" : 101
+    },
+    {
+      "compile_ms" : 16.504416000000003,
+      "delegate_ns" : 107819606758833,
+      "keystroke_ns" : 107819606229791,
+      "paint_ns" : 107819654499083,
+      "painted_by_revision" : 102,
+      "redrawn" : true,
+      "revision" : 102
+    },
+    {
+      "compile_ms" : 16.91875,
+      "delegate_ns" : 107819612683250,
+      "keystroke_ns" : 107819612163333,
+      "paint_ns" : 107819681350791,
+      "painted_by_revision" : 103,
+      "redrawn" : false,
+      "revision" : 103
+    },
+    {
+      "compile_ms" : 17.446208000000002,
+      "delegate_ns" : 107819680959458,
+      "keystroke_ns" : 107819680286916,
+      "paint_ns" : 107819718361541,
+      "painted_by_revision" : 104,
+      "redrawn" : true,
+      "revision" : 104
+    },
+    {
+      "compile_ms" : 19.17075,
+      "delegate_ns" : 107819731561791,
+      "keystroke_ns" : 107819730966875,
+      "paint_ns" : 107819781933666,
+      "painted_by_revision" : 105,
+      "redrawn" : true,
+      "revision" : 105
+    },
+    {
+      "compile_ms" : 17.876167,
+      "delegate_ns" : 107819782648791,
+      "keystroke_ns" : 107819781981666,
+      "paint_ns" : 107819825702875,
+      "painted_by_revision" : 106,
+      "redrawn" : true,
+      "revision" : 106
+    },
+    {
+      "compile_ms" : 17.824167,
+      "delegate_ns" : 107819798202916,
+      "keystroke_ns" : 107819797622291,
+      "paint_ns" : 107819847835500,
+      "painted_by_revision" : 107,
+      "redrawn" : true,
+      "revision" : 107
+    },
+    {
+      "compile_ms" : 17.951041,
+      "delegate_ns" : 107819826475416,
+      "keystroke_ns" : 107819825837958,
+      "paint_ns" : 107819872514833,
+      "painted_by_revision" : 108,
+      "redrawn" : false,
+      "revision" : 108
+    },
+    {
+      "compile_ms" : 15.790624999999999,
+      "delegate_ns" : 107819856874458,
+      "keystroke_ns" : 107819856352250,
+      "paint_ns" : 107819898404166,
+      "painted_by_revision" : 109,
+      "redrawn" : false,
+      "revision" : 109
+    },
+    {
+      "compile_ms" : 18.237750000000002,
+      "delegate_ns" : 107819900342958,
+      "keystroke_ns" : 107819899768958,
+      "paint_ns" : 107819944316125,
+      "painted_by_revision" : 110,
+      "redrawn" : true,
+      "revision" : 110
+    },
+    {
+      "compile_ms" : 16.855917,
+      "delegate_ns" : 107819914452416,
+      "keystroke_ns" : 107819913889500,
+      "paint_ns" : 107819967613958,
+      "painted_by_revision" : 111,
+      "redrawn" : true,
+      "revision" : 111
+    },
+    {
+      "compile_ms" : 16.39825,
+      "delegate_ns" : 107819945063791,
+      "keystroke_ns" : 107819944372416,
+      "paint_ns" : 107819996919250,
+      "painted_by_revision" : 112,
+      "redrawn" : false,
+      "revision" : 112
+    },
+    {
+      "compile_ms" : 18.749875,
+      "delegate_ns" : 107819997561416,
+      "keystroke_ns" : 107819996973416,
+      "paint_ns" : 107820038374083,
+      "painted_by_revision" : 113,
+      "redrawn" : false,
+      "revision" : 113
+    },
+    {
+      "compile_ms" : 17.316584,
+      "delegate_ns" : 107820015891416,
+      "keystroke_ns" : 107820015234625,
+      "paint_ns" : 107820064655666,
+      "painted_by_revision" : 114,
+      "redrawn" : false,
+      "revision" : 114
+    },
+    {
+      "compile_ms" : 15.799500000000002,
+      "delegate_ns" : 107820038982208,
+      "keystroke_ns" : 107820038420083,
+      "paint_ns" : 107820088074208,
+      "painted_by_revision" : 115,
+      "redrawn" : true,
+      "revision" : 115
+    },
+    {
+      "compile_ms" : 17.757375,
+      "delegate_ns" : 107820064438875,
+      "keystroke_ns" : 107820063837750,
+      "paint_ns" : 107820107752166,
+      "painted_by_revision" : 116,
+      "redrawn" : true,
+      "revision" : 116
+    },
+    {
+      "compile_ms" : 16.247041,
+      "delegate_ns" : 107820120257750,
+      "keystroke_ns" : 107820119627166,
+      "paint_ns" : 107820163044083,
+      "painted_by_revision" : 117,
+      "redrawn" : true,
+      "revision" : 117
+    },
+    {
+      "compile_ms" : 17.968125,
+      "delegate_ns" : 107820134444958,
+      "keystroke_ns" : 107820133882375,
+      "paint_ns" : 107820181669500,
+      "painted_by_revision" : 118,
+      "redrawn" : false,
+      "revision" : 118
+    },
+    {
+      "compile_ms" : 16.683416,
+      "delegate_ns" : 107820163750583,
+      "keystroke_ns" : 107820163168250,
+      "paint_ns" : 107820204328916,
+      "painted_by_revision" : 119,
+      "redrawn" : true,
+      "revision" : 119
+    },
+    {
+      "compile_ms" : 17.382749999999998,
+      "delegate_ns" : 107820191076416,
+      "keystroke_ns" : 107820190421000,
+      "paint_ns" : 107820242113833,
+      "painted_by_revision" : 120,
+      "redrawn" : false,
+      "revision" : 120
+    },
+    {
+      "compile_ms" : 18.888375,
+      "delegate_ns" : 107820241728291,
+      "keystroke_ns" : 107820241067208,
+      "paint_ns" : 107820281466666,
+      "painted_by_revision" : 121,
+      "redrawn" : true,
+      "revision" : 121
+    },
+    {
+      "compile_ms" : 17.783542,
+      "delegate_ns" : 107820290696583,
+      "keystroke_ns" : 107820290106041,
+      "paint_ns" : 107820330024625,
+      "painted_by_revision" : 122,
+      "redrawn" : false,
+      "revision" : 122
+    },
+    {
+      "compile_ms" : 16.74225,
+      "delegate_ns" : 107820307714875,
+      "keystroke_ns" : 107820307127750,
+      "paint_ns" : 107820356807625,
+      "painted_by_revision" : 123,
+      "redrawn" : false,
+      "revision" : 123
+    },
+    {
+      "compile_ms" : 16.214958000000003,
+      "delegate_ns" : 107820356363458,
+      "keystroke_ns" : 107820355764666,
+      "paint_ns" : 107820397762708,
+      "painted_by_revision" : 124,
+      "redrawn" : true,
+      "revision" : 124
+    },
+    {
+      "compile_ms" : 17.658041,
+      "delegate_ns" : 107820371889500,
+      "keystroke_ns" : 107820371298000,
+      "paint_ns" : 107820422464041,
+      "painted_by_revision" : 125,
+      "redrawn" : false,
+      "revision" : 125
+    },
+    {
+      "compile_ms" : 17.689458000000002,
+      "delegate_ns" : 107820398576500,
+      "keystroke_ns" : 107820397926375,
+      "paint_ns" : 107820464916625,
+      "painted_by_revision" : 126,
+      "redrawn" : false,
+      "revision" : 126
+    },
+    {
+      "compile_ms" : 17.585625,
+      "delegate_ns" : 107820423079500,
+      "keystroke_ns" : 107820422502750,
+      "paint_ns" : 107820480366708,
+      "painted_by_revision" : 127,
+      "redrawn" : false,
+      "revision" : 127
+    },
+    {
+      "compile_ms" : 15.482125,
+      "delegate_ns" : 107820464588375,
+      "keystroke_ns" : 107820463979333,
+      "paint_ns" : 107820517152208,
+      "painted_by_revision" : 128,
+      "redrawn" : true,
+      "revision" : 128
+    },
+    {
+      "compile_ms" : 17.660208,
+      "delegate_ns" : 107820517842791,
+      "keystroke_ns" : 107820517175083,
+      "paint_ns" : 107820568063583,
+      "painted_by_revision" : 129,
+      "redrawn" : true,
+      "revision" : 129
+    },
+    {
+      "compile_ms" : 16.948958,
+      "delegate_ns" : 107820568821958,
+      "keystroke_ns" : 107820568121291,
+      "paint_ns" : 107820606458041,
+      "painted_by_revision" : 130,
+      "redrawn" : false,
+      "revision" : 130
+    },
+    {
+      "compile_ms" : 20.493542,
+      "delegate_ns" : 107820583624000,
+      "keystroke_ns" : 107820583035750,
+      "paint_ns" : 107820642963791,
+      "painted_by_revision" : 131,
+      "redrawn" : true,
+      "revision" : 131
+    },
+    {
+      "compile_ms" : 19.688417,
+      "delegate_ns" : 107820607100416,
+      "keystroke_ns" : 107820606504666,
+      "paint_ns" : 107820659947166,
+      "painted_by_revision" : 132,
+      "redrawn" : true,
+      "revision" : 132
+    },
+    {
+      "compile_ms" : 16.922041,
+      "delegate_ns" : 107820643759791,
+      "keystroke_ns" : 107820643109666,
+      "paint_ns" : 107820688823833,
+      "painted_by_revision" : 133,
+      "redrawn" : false,
+      "revision" : 133
+    },
+    {
+      "compile_ms" : 16.368375,
+      "delegate_ns" : 107820672609666,
+      "keystroke_ns" : 107820671935458,
+      "paint_ns" : 107820730321541,
+      "painted_by_revision" : 134,
+      "redrawn" : true,
+      "revision" : 134
+    },
+    {
+      "compile_ms" : 17.427833,
+      "delegate_ns" : 107820731053125,
+      "keystroke_ns" : 107820730366708,
+      "paint_ns" : 107820769684208,
+      "painted_by_revision" : 135,
+      "redrawn" : true,
+      "revision" : 135
+    },
+    {
+      "compile_ms" : 17.3705,
+      "delegate_ns" : 107820752800333,
+      "keystroke_ns" : 107820752109500,
+      "paint_ns" : 107820795718958,
+      "painted_by_revision" : 136,
+      "redrawn" : true,
+      "revision" : 136
+    },
+    {
+      "compile_ms" : 16.909042,
+      "delegate_ns" : 107820796332541,
+      "keystroke_ns" : 107820795785750,
+      "paint_ns" : 107820846809083,
+      "painted_by_revision" : 137,
+      "redrawn" : true,
+      "revision" : 137
+    },
+    {
+      "compile_ms" : 16.8935,
+      "delegate_ns" : 107820847448583,
+      "keystroke_ns" : 107820846859666,
+      "paint_ns" : 107820883477083,
+      "painted_by_revision" : 138,
+      "redrawn" : true,
+      "revision" : 138
+    },
+    {
+      "compile_ms" : 16.3885,
+      "delegate_ns" : 107820895897916,
+      "keystroke_ns" : 107820895310791,
+      "paint_ns" : 107820947386666,
+      "painted_by_revision" : 139,
+      "redrawn" : false,
+      "revision" : 139
+    },
+    {
+      "compile_ms" : 17.071459,
+      "delegate_ns" : 107820914880208,
+      "keystroke_ns" : 107820914288083,
+      "paint_ns" : 107820973913166,
+      "painted_by_revision" : 140,
+      "redrawn" : true,
+      "revision" : 140
+    },
+    {
+      "compile_ms" : 19.583917,
+      "delegate_ns" : 107820974680291,
+      "keystroke_ns" : 107820973958583,
+      "paint_ns" : 107821020297916,
+      "painted_by_revision" : 141,
+      "redrawn" : true,
+      "revision" : 141
+    },
+    {
+      "compile_ms" : 16.055166999999997,
+      "delegate_ns" : 107820992792833,
+      "keystroke_ns" : 107820992103000,
+      "paint_ns" : 107821036887291,
+      "painted_by_revision" : 142,
+      "redrawn" : true,
+      "revision" : 142
+    },
+    {
+      "compile_ms" : 15.507083,
+      "delegate_ns" : 107821022917125,
+      "keystroke_ns" : 107821022285291,
+      "paint_ns" : 107821063438791,
+      "painted_by_revision" : 143,
+      "redrawn" : true,
+      "revision" : 143
+    },
+    {
+      "compile_ms" : 16.225917,
+      "delegate_ns" : 107821064088916,
+      "keystroke_ns" : 107821063498333,
+      "paint_ns" : 107821116458625,
+      "painted_by_revision" : 144,
+      "redrawn" : false,
+      "revision" : 144
+    },
+    {
+      "compile_ms" : 18.723916,
+      "delegate_ns" : 107821116083083,
+      "keystroke_ns" : 107821115465750,
+      "paint_ns" : 107821164869625,
+      "painted_by_revision" : 145,
+      "redrawn" : true,
+      "revision" : 145
+    },
+    {
+      "compile_ms" : 18.228208,
+      "delegate_ns" : 107821165553625,
+      "keystroke_ns" : 107821164911000,
+      "paint_ns" : 107821205682333,
+      "painted_by_revision" : 146,
+      "redrawn" : false,
+      "revision" : 146
+    },
+    {
+      "compile_ms" : 16.662958,
+      "delegate_ns" : 107821181399166,
+      "keystroke_ns" : 107821180814291,
+      "paint_ns" : 107821230178125,
+      "painted_by_revision" : 147,
+      "redrawn" : false,
+      "revision" : 147
+    },
+    {
+      "compile_ms" : 17.8945,
+      "delegate_ns" : 107821205470791,
+      "keystroke_ns" : 107821204912833,
+      "paint_ns" : 107821257362125,
+      "painted_by_revision" : 148,
+      "redrawn" : false,
+      "revision" : 148
+    },
+    {
+      "compile_ms" : 17.040459000000002,
+      "delegate_ns" : 107821256906916,
+      "keystroke_ns" : 107821256318666,
+      "paint_ns" : 107821299913791,
+      "painted_by_revision" : 149,
+      "redrawn" : true,
+      "revision" : 149
+    },
+    {
+      "compile_ms" : 15.33875,
+      "delegate_ns" : 107821262833875,
+      "keystroke_ns" : 107821262327750,
+      "paint_ns" : 107821315772291,
+      "painted_by_revision" : 150,
+      "redrawn" : false,
+      "revision" : 150
+    },
+    {
+      "compile_ms" : 17.988958,
+      "delegate_ns" : 107821315430250,
+      "keystroke_ns" : 107821314811416,
+      "paint_ns" : 107821357879458,
+      "painted_by_revision" : 151,
+      "redrawn" : true,
+      "revision" : 151
+    },
+    {
+      "compile_ms" : 16.52475,
+      "delegate_ns" : 107821330375583,
+      "keystroke_ns" : 107821329754083,
+      "paint_ns" : 107821380316458,
+      "painted_by_revision" : 152,
+      "redrawn" : false,
+      "revision" : 152
+    },
+    {
+      "compile_ms" : 15.620375000000001,
+      "delegate_ns" : 107821358663375,
+      "keystroke_ns" : 107821358026666,
+      "paint_ns" : 107821403288000,
+      "painted_by_revision" : 153,
+      "redrawn" : false,
+      "revision" : 153
+    },
+    {
+      "compile_ms" : 16.085458,
+      "delegate_ns" : 107821387588083,
+      "keystroke_ns" : 107821386949708,
+      "paint_ns" : 107821440039208,
+      "painted_by_revision" : 154,
+      "redrawn" : true,
+      "revision" : 154
+    },
+    {
+      "compile_ms" : 17.854708,
+      "delegate_ns" : 107821440797250,
+      "keystroke_ns" : 107821440125083,
+      "paint_ns" : 107821473985750,
+      "painted_by_revision" : 155,
+      "redrawn" : false,
+      "revision" : 155
+    },
+    {
+      "compile_ms" : 16.737583,
+      "delegate_ns" : 107821456327166,
+      "keystroke_ns" : 107821455704208,
+      "paint_ns" : 107821513187708,
+      "painted_by_revision" : 156,
+      "redrawn" : true,
+      "revision" : 156
+    },
+    {
+      "compile_ms" : 16.191625000000002,
+      "delegate_ns" : 107821474567166,
+      "keystroke_ns" : 107821474012750,
+      "paint_ns" : 107821539460416,
+      "painted_by_revision" : 157,
+      "redrawn" : true,
+      "revision" : 157
+    },
+    {
+      "compile_ms" : 16.391333,
+      "delegate_ns" : 107821540146791,
+      "keystroke_ns" : 107821539525208,
+      "paint_ns" : 107821576147083,
+      "painted_by_revision" : 158,
+      "redrawn" : true,
+      "revision" : 158
+    },
+    {
+      "compile_ms" : 17.590333,
+      "delegate_ns" : 107821589689333,
+      "keystroke_ns" : 107821588960916,
+      "paint_ns" : 107821632137875,
+      "painted_by_revision" : 159,
+      "redrawn" : true,
+      "revision" : 159
+    },
+    {
+      "compile_ms" : 17.232917,
+      "delegate_ns" : 107821604759375,
+      "keystroke_ns" : 107821604171083,
+      "paint_ns" : 107821650376750,
+      "painted_by_revision" : 160,
+      "redrawn" : false,
+      "revision" : 160
+    },
+    {
+      "compile_ms" : 18.386375,
+      "delegate_ns" : 107821632858375,
+      "keystroke_ns" : 107821632259666,
+      "paint_ns" : 107821680802333,
+      "painted_by_revision" : 161,
+      "redrawn" : false,
+      "revision" : 161
+    },
+    {
+      "compile_ms" : 16.359790999999998,
+      "delegate_ns" : 107821659421083,
+      "keystroke_ns" : 107821658783708,
+      "paint_ns" : 107821718634708,
+      "painted_by_revision" : 162,
+      "redrawn" : true,
+      "revision" : 162
+    },
+    {
+      "compile_ms" : 16.337917,
+      "delegate_ns" : 107821687247791,
+      "keystroke_ns" : 107821686613375,
+      "paint_ns" : 107821747484541,
+      "painted_by_revision" : 163,
+      "redrawn" : true,
+      "revision" : 163
+    },
+    {
+      "compile_ms" : 16.172042,
+      "delegate_ns" : 107821720206041,
+      "keystroke_ns" : 107821719579250,
+      "paint_ns" : 107821774261291,
+      "painted_by_revision" : 164,
+      "redrawn" : true,
+      "revision" : 164
+    },
+    {
+      "compile_ms" : 16.232375,
+      "delegate_ns" : 107821774944416,
+      "keystroke_ns" : 107821774310541,
+      "paint_ns" : 107821814517583,
+      "painted_by_revision" : 165,
+      "redrawn" : true,
+      "revision" : 165
+    },
+    {
+      "compile_ms" : 16.104042,
+      "delegate_ns" : 107821823527791,
+      "keystroke_ns" : 107821822966000,
+      "paint_ns" : 107821867320666,
+      "painted_by_revision" : 166,
+      "redrawn" : false,
+      "revision" : 166
+    },
+    {
+      "compile_ms" : 16.882417,
+      "delegate_ns" : 107821840523208,
+      "keystroke_ns" : 107821839915791,
+      "paint_ns" : 107821885755541,
+      "painted_by_revision" : 167,
+      "redrawn" : true,
+      "revision" : 167
+    },
+    {
+      "compile_ms" : 13.663875,
+      "delegate_ns" : 107821867082416,
+      "keystroke_ns" : 107821866468208,
+      "paint_ns" : 107821913384250,
+      "painted_by_revision" : 168,
+      "redrawn" : true,
+      "revision" : 168
+    },
+    {
+      "compile_ms" : 15.844541,
+      "delegate_ns" : 107821914008083,
+      "keystroke_ns" : 107821913450750,
+      "paint_ns" : 107821964242833,
+      "painted_by_revision" : 169,
+      "redrawn" : true,
+      "revision" : 169
+    },
+    {
+      "compile_ms" : 16.60825,
+      "delegate_ns" : 107821964959500,
+      "keystroke_ns" : 107821964265666,
+      "paint_ns" : 107822008827458,
+      "painted_by_revision" : 170,
+      "redrawn" : true,
+      "revision" : 170
+    },
+    {
+      "compile_ms" : 15.475375,
+      "delegate_ns" : 107821982661125,
+      "keystroke_ns" : 107821982037458,
+      "paint_ns" : 107822024504375,
+      "painted_by_revision" : 171,
+      "redrawn" : false,
+      "revision" : 171
+    },
+    {
+      "compile_ms" : 17.804958,
+      "delegate_ns" : 107822024151000,
+      "keystroke_ns" : 107822023499291,
+      "paint_ns" : 107822065092958,
+      "painted_by_revision" : 172,
+      "redrawn" : false,
+      "revision" : 172
+    },
+    {
+      "compile_ms" : 16.541332999999998,
+      "delegate_ns" : 107822043435416,
+      "keystroke_ns" : 107822042664041,
+      "paint_ns" : 107822098155166,
+      "painted_by_revision" : 173,
+      "redrawn" : true,
+      "revision" : 173
+    },
+    {
+      "compile_ms" : 16.14225,
+      "delegate_ns" : 107822072692541,
+      "keystroke_ns" : 107822072031750,
+      "paint_ns" : 107822115477875,
+      "painted_by_revision" : 174,
+      "redrawn" : true,
+      "revision" : 174
+    },
+    {
+      "compile_ms" : 17.400292,
+      "delegate_ns" : 107822128515708,
+      "keystroke_ns" : 107822127842291,
+      "paint_ns" : 107822172380083,
+      "painted_by_revision" : 175,
+      "redrawn" : false,
+      "revision" : 175
+    },
+    {
+      "compile_ms" : 17.283958,
+      "delegate_ns" : 107822148751458,
+      "keystroke_ns" : 107822148116916,
+      "paint_ns" : 107822204830125,
+      "painted_by_revision" : 176,
+      "redrawn" : true,
+      "revision" : 176
+    },
+    {
+      "compile_ms" : 15.419458,
+      "delegate_ns" : 107822173013583,
+      "keystroke_ns" : 107822172421791,
+      "paint_ns" : 107822227175375,
+      "painted_by_revision" : 177,
+      "redrawn" : true,
+      "revision" : 177
+    },
+    {
+      "compile_ms" : 19.315709000000002,
+      "delegate_ns" : 107822206290750,
+      "keystroke_ns" : 107822205637541,
+      "paint_ns" : 107822253307791,
+      "painted_by_revision" : 178,
+      "redrawn" : false,
+      "revision" : 178
+    },
+    {
+      "compile_ms" : 17.466583,
+      "delegate_ns" : 107822227876083,
+      "keystroke_ns" : 107822227263291,
+      "paint_ns" : 107822286969083,
+      "painted_by_revision" : 179,
+      "redrawn" : true,
+      "revision" : 179
+    },
+    {
+      "compile_ms" : 16.573583,
+      "delegate_ns" : 107822254060083,
+      "keystroke_ns" : 107822253380666,
+      "paint_ns" : 107822314927375,
+      "painted_by_revision" : 180,
+      "redrawn" : true,
+      "revision" : 180
+    },
+    {
+      "compile_ms" : 16.440209,
+      "delegate_ns" : 107822315827166,
+      "keystroke_ns" : 107822314990750,
+      "paint_ns" : 107822351917666,
+      "painted_by_revision" : 181,
+      "redrawn" : true,
+      "revision" : 181
+    },
+    {
+      "compile_ms" : 16.391709000000002,
+      "delegate_ns" : 107822364594666,
+      "keystroke_ns" : 107822363908083,
+      "paint_ns" : 107822424122541,
+      "painted_by_revision" : 183,
+      "redrawn" : false,
+      "revision" : 182
+    },
+    {
+      "compile_ms" : 16.391709000000002,
+      "delegate_ns" : 107822381008583,
+      "keystroke_ns" : 107822380367083,
+      "paint_ns" : 107822424122541,
+      "painted_by_revision" : 183,
+      "redrawn" : false,
+      "revision" : 183
+    },
+    {
+      "compile_ms" : 16.570792,
+      "delegate_ns" : 107822423761708,
+      "keystroke_ns" : 107822423113750,
+      "paint_ns" : 107822464787333,
+      "painted_by_revision" : 184,
+      "redrawn" : false,
+      "revision" : 184
+    },
+    {
+      "compile_ms" : 16.16075,
+      "delegate_ns" : 107822441831083,
+      "keystroke_ns" : 107822441166083,
+      "paint_ns" : 107822498730250,
+      "painted_by_revision" : 185,
+      "redrawn" : true,
+      "revision" : 185
+    },
+    {
+      "compile_ms" : 17.581208,
+      "delegate_ns" : 107822465406791,
+      "keystroke_ns" : 107822464828291,
+      "paint_ns" : 107822517542875,
+      "painted_by_revision" : 186,
+      "redrawn" : false,
+      "revision" : 186
+    },
+    {
+      "compile_ms" : 17.257917000000003,
+      "delegate_ns" : 107822499501458,
+      "keystroke_ns" : 107822498853333,
+      "paint_ns" : 107822556074291,
+      "painted_by_revision" : 187,
+      "redrawn" : false,
+      "revision" : 187
+    },
+    {
+      "compile_ms" : 17.142667,
+      "delegate_ns" : 107822526100375,
+      "keystroke_ns" : 107822525490083,
+      "paint_ns" : 107822582169958,
+      "painted_by_revision" : 188,
+      "redrawn" : true,
+      "revision" : 188
+    },
+    {
+      "compile_ms" : 16.396292,
+      "delegate_ns" : 107822582907541,
+      "keystroke_ns" : 107822582245875,
+      "paint_ns" : 107822620026500,
+      "painted_by_revision" : 189,
+      "redrawn" : true,
+      "revision" : 189
+    },
+    {
+      "compile_ms" : 17.666749999999997,
+      "delegate_ns" : 107822632848708,
+      "keystroke_ns" : 107822632222333,
+      "paint_ns" : 107822673083041,
+      "painted_by_revision" : 190,
+      "redrawn" : false,
+      "revision" : 190
+    },
+    {
+      "compile_ms" : 17.764583000000002,
+      "delegate_ns" : 107822647516416,
+      "keystroke_ns" : 107822646878000,
+      "paint_ns" : 107822698490458,
+      "painted_by_revision" : 191,
+      "redrawn" : false,
+      "revision" : 191
+    },
+    {
+      "compile_ms" : 16.017958,
+      "delegate_ns" : 107822672833625,
+      "keystroke_ns" : 107822672171458,
+      "paint_ns" : 107822729520708,
+      "painted_by_revision" : 192,
+      "redrawn" : true,
+      "revision" : 192
+    },
+    {
+      "compile_ms" : 16.100333000000003,
+      "delegate_ns" : 107822730212041,
+      "keystroke_ns" : 107822729586666,
+      "paint_ns" : 107822783470625,
+      "painted_by_revision" : 193,
+      "redrawn" : false,
+      "revision" : 193
+    },
+    {
+      "compile_ms" : 16.675375,
+      "delegate_ns" : 107822748780208,
+      "keystroke_ns" : 107822748139583,
+      "paint_ns" : 107822798534250,
+      "painted_by_revision" : 194,
+      "redrawn" : false,
+      "revision" : 194
+    },
+    {
+      "compile_ms" : 15.472292,
+      "delegate_ns" : 107822783131541,
+      "keystroke_ns" : 107822782503541,
+      "paint_ns" : 107822816047291,
+      "painted_by_revision" : 195,
+      "redrawn" : false,
+      "revision" : 195
+    },
+    {
+      "compile_ms" : 16.716667,
+      "delegate_ns" : 107822799144333,
+      "keystroke_ns" : 107822798557041,
+      "paint_ns" : 107822853928500,
+      "painted_by_revision" : 196,
+      "redrawn" : true,
+      "revision" : 196
+    },
+    {
+      "compile_ms" : 17.129041,
+      "delegate_ns" : 107822854658625,
+      "keystroke_ns" : 107822854005916,
+      "paint_ns" : 107822897992250,
+      "painted_by_revision" : 197,
+      "redrawn" : false,
+      "revision" : 197
+    },
+    {
+      "compile_ms" : 17.842875,
+      "delegate_ns" : 107822898664083,
+      "keystroke_ns" : 107822898054833,
+      "paint_ns" : 107822938806541,
+      "painted_by_revision" : 198,
+      "redrawn" : false,
+      "revision" : 198
+    },
+    {
+      "compile_ms" : 17.463833,
+      "delegate_ns" : 107822916045250,
+      "keystroke_ns" : 107822915405625,
+      "paint_ns" : 107822964900375,
+      "painted_by_revision" : 199,
+      "redrawn" : false,
+      "revision" : 199
+    },
+    {
+      "compile_ms" : 16.52875,
+      "delegate_ns" : 107822946514958,
+      "keystroke_ns" : 107822945838416,
+      "paint_ns" : 107822988692916,
+      "painted_by_revision" : 200,
+      "redrawn" : false,
+      "revision" : 200
+    },
+    {
+      "compile_ms" : 16.466,
+      "delegate_ns" : 107822990677000,
+      "keystroke_ns" : 107822990032208,
+      "paint_ns" : 107823033235500,
+      "painted_by_revision" : 201,
+      "redrawn" : true,
+      "revision" : 201
+    },
+    {
+      "compile_ms" : 16.363041,
+      "delegate_ns" : 107823004425708,
+      "keystroke_ns" : 107823003707916,
+      "paint_ns" : 107823059304958,
+      "painted_by_revision" : 202,
+      "redrawn" : false,
+      "revision" : 202
+    }
+  ],
+  "producer" : "flashtex-preview-controller",
+  "render_pass_ms" : {
+    "count" : 117,
+    "max_ms" : 17.437959,
+    "mean_ms" : 10.351309794871796,
+    "min_ms" : 1.959917,
+    "p50_ms" : 9.757542,
+    "p95_ms" : 16.647083,
+    "p99_ms" : 17.391584
+  },
+  "result_to_paint_ms" : {
+    "count" : 198,
+    "max_ms" : 33.046291,
+    "mean_ms" : 18.15143077777778,
+    "min_ms" : 8.590167,
+    "p50_ms" : 16.239042,
+    "p95_ms" : 28.122167,
+    "p99_ms" : 31.31125
+  },
+  "script" : "\/Users\/jay3332\/Projects\/flashtex\/.claude\/worktrees\/agent-a807b85fa768eadf9\/tools\/typing-bench\/typed-200.txt",
+  "script_keystrokes" : 200,
+  "started_at" : "2026-09-12T16:46:19Z",
+  "typed" : 200,
+  "typing_budget_exhausted" : false,
+  "unpainted" : 0
+}

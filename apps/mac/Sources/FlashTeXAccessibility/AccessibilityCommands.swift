@@ -11,7 +11,7 @@ public enum AccessibilityCommand: String, CaseIterable, Equatable {
     case exportPDF, exportPDFViaRust, exportPDFExact
     case pinInsertionPoint, openCaptureProposal, submitSampleCapture, convertCapture, nearbyCompanion
     case restoreDiscardedBuffer
-    case undo, completion
+    case undo, completion, completionList
     case goToMatching, nextDiagnostic, previousDiagnostic, nextOccurrence, previousOccurrence, copyDiagnosticsAsText, revealCaretInPreview
     case selectPreviewItemSource
     case accessibilityHelp
@@ -126,7 +126,11 @@ public enum AccessibilityCommand: String, CaseIterable, Equatable {
                          description: "Undoes the last edit, including an approved capture insertion.")
         case .completion:
             return Entry(command: self, title: "Completion popup", shortcuts: ["Esc", "⌃Space"], menu: "Editor",
-                         description: "Lists supported commands, \\end{…} for open environments, labels, and document words; arrow keys choose, Return inserts.")
+                         description: "Lists supported commands, \\end{…} for open environments, labels, citation keys and document words for the token at the caret; the list never takes the keyboard from the editor.")
+        case .completionList:
+            return Entry(command: self, title: "Completion list keys", shortcuts: ["↑", "↓", "Tab", "⇧Tab", "Return"], menu: "Editor",
+                         description: "While the completion list is open: ↑/↓ or Tab/⇧Tab choose the candidate (wrapping; VoiceOver announces “n of m: candidate, kind, origin”), Return or Enter inserts it over the typed token, Esc closes without inserting; typing narrows the list and any other caret move closes it.",
+                         requires: "an open completion list")
         case .goToMatching:
             return Entry(command: self, title: "Go to matching", shortcuts: ["⌘⇧D"], menu: "Navigate",
                          description: "Selects the matching \\begin/\\end or \\label/\\ref for the command under the caret; misses are explained in the footer.",

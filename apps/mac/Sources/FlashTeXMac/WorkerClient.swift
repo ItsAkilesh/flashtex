@@ -140,7 +140,8 @@ final class WorkerClient {
             // runtime-v1-display-list-v2.md: the sibling line is ~2 MB; probe its
             // header with the payload skipped by a byte scan (JSONDecoder over the
             // whole line cost 11 ms p50 on this thread) and hand the bytes to V2Loader.
-            if let probe = RenderingV2Fast.header(line), probe.protocolVersion == 2, probe.type == "display_list" {
+            if let probe = RenderingV2Fast.header(line), probe.protocolVersion == 2,
+               probe.type == "display_list" || (probe.type == DisplayListDelta.messageType && DisplayListDelta.enabled) {
                 return .displayList(id: probe.id, line: line)
             }
             let header = try RuntimeV1.header(of: line)

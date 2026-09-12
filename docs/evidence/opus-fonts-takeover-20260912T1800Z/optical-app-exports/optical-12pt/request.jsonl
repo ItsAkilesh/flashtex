@@ -1,0 +1,1 @@
+{"protocol_version": 1, "id": "optical-12pt", "type": "compile", "payload": {"project_id": "faces", "revision": 7, "entry_path": "main.tex", "documents": [{"path": "main.tex", "text": "\\documentclass[12pt]{article}\\begin{document}Optical $x_{1_{2}} + \\frac{1}{2}$.\\end{document}"}], "layout_capabilities": ["display-list-v2"]}}
