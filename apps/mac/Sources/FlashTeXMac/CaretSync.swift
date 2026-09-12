@@ -167,6 +167,7 @@ extension ShellModel {
     /// `caretItems` through the sorted index: O(log n) per caret move instead
     /// of a scan over every page. Same values as `CaretSync.indicesByPage`.
     var exactCaretItems: [Int: Set<Int>] {
+        guard historicalPreview == nil else { return [:] } // no caret sync onto an older snapshot
         guard let index = caretIndex(), let byte = CaretSync.byteOffset(ofCaretUTF16: caretUTF16, in: activeText) else { return [:] }
         return index.indicesByPage(byte: byte)
     }
