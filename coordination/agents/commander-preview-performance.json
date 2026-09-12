@@ -13,17 +13,17 @@
   "capabilities": [
     "Preview helper serialization and latency"
   ],
-  "code_revision": "8876279e278581c1401f046ef73ac36ec1c113ae",
+  "code_revision": "ccd474f46061e73555cef6ea814f457663be8d91",
   "eta_minutes": null,
   "machine": "linux-primary",
-  "main_integrated_through": "6e515bef475f14d51a736c94ba4e0adc943d0dc8",
-  "next_action": "Coordinate native helper rendering and measured responsiveness; watch integration runtime parallel-test fix without changing peer ownership.",
+  "main_integrated_through": "ccd474f46061e73555cef6ea814f457663be8d91",
+  "next_action": "Await native helper paint gate and integration review; select next optimization from measured actual producer/helper phases, not receipt timing alone.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "Full-size optional output gates pass:5.6MB compact sibling exceeds16MiB only on reserialization, is refused, then edit ACK/reopen remain exact.1MiB admitted optional frame with unreadstdout triggerswatchdog ~2s and source survives. Strictlint pass; no production changes.",
+  "summary": "Measured actual helper scale100 at1462/2562/3762bytes: exactdirectv1/display, receipt35/66/132ms singlehost samples. Explicit1500producerbudget gives2recovered v2declines+1failedv1, no missing-sibling wait; exactsource/reopen allcases.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T11:13:19Z",
+  "updated_utc": "2026-09-12T11:17:47Z",
   "usage": {
     "status": "unknown"
   }
