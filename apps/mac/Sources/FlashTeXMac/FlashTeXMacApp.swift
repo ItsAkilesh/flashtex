@@ -159,7 +159,7 @@ struct FlashTeXMacApp: App {
                     .help("Attach flashtex-render (crates/render-pipeline) — the producer whose metrics are Latin Modern, so the preview shows Computer Modern-style text")
                 Button("Attach Worker Executable…") { model.attachWorkerPanel() }
                     .keyboardShortcut("k")
-                Button("Compile") { model.compile() }
+                Button("Compile") { if !model.outputBoundExplicitRetry() { model.compile() } }
                     .keyboardShortcut("b")
                     .disabled(!model.workerAttached)
                 Button("Detach Worker") { model.detachWorker() }
