@@ -252,22 +252,22 @@ impl SourceIdentity {
 /// so staleness detection re-validates the range exactly the way binding
 /// did rather than trusting stored offsets against new text.
 fn slice_for(source: &str, span: SourceSpan) -> Result<&str, SourceIdentityError> {
-    let start = span.start.offset as usize;
-    let end = span.end.offset as usize;
+    let start = span.start().offset as usize;
+    let end = span.end().offset as usize;
     if end > source.len() {
         return Err(SourceIdentityError::SpanOutOfBounds {
-            end: span.end.offset,
+            end: span.end().offset,
             source_len: source.len(),
         });
     }
     if !source.is_char_boundary(start) {
         return Err(SourceIdentityError::NotCharBoundary {
-            offset: span.start.offset,
+            offset: span.start().offset,
         });
     }
     if !source.is_char_boundary(end) {
         return Err(SourceIdentityError::NotCharBoundary {
-            offset: span.end.offset,
+            offset: span.end().offset,
         });
     }
     Ok(&source[start..end])
@@ -325,7 +325,7 @@ mod tests {
         let span = SourceSpan::new(SourcePos::new(4, 1, 5), SourcePos::new(37, 1, 38)).unwrap();
         let identity = SourceIdentity::bind(rev("r1"), source, span).unwrap();
         assert_eq!(identity.revision().as_str(), "r1");
-        assert_eq!(identity.span().start.offset, 4);
+        assert_eq!(identity.span().start().offset, 4);
         // Same bytes, hashed independently, must agree.
         let expected = ContentHash::of(&source.as_bytes()[4..37]);
         assert_eq!(identity.content_hash(), expected);

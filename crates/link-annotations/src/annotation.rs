@@ -84,7 +84,7 @@ mod tests {
 
         assert_eq!(annotation.rect.origin.x, 72.0);
         assert_eq!(annotation.rect.width, 120.0);
-        assert_eq!(annotation.source.span().start.offset, 10);
+        assert_eq!(annotation.source.span().start().offset, 10);
         assert_eq!(annotation.source.span().len(), 30);
         assert_eq!(annotation.source.revision().as_str(), "rev-1");
         match annotation.destination {

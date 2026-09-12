@@ -24,10 +24,18 @@ impl SourcePos {
 }
 
 /// A half-open span `[start, end)` in document source.
+///
+/// `start` and `end` are deliberately private: [`SourceSpan::new`] is the
+/// only way to build one, so `end.offset >= start.offset` holds for every
+/// live `SourceSpan`. If the fields were `pub`, a caller could assemble a
+/// `SourceSpan { start, end }` struct literal directly, skip that check, and
+/// hand [`SourceSpan::len`] an inverted span — `end.offset - start.offset`
+/// would then panic on overflow in a debug build but silently wrap to a huge
+/// `u32` in release.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SourceSpan {
-    pub start: SourcePos,
-    pub end: SourcePos,
+    start: SourcePos,
+    end: SourcePos,
 }
 
 impl SourceSpan {
@@ -39,7 +47,17 @@ impl SourceSpan {
         Ok(SourceSpan { start, end })
     }
 
-    /// Length in bytes.
+    pub fn start(&self) -> SourcePos {
+        self.start
+    }
+
+    pub fn end(&self) -> SourcePos {
+        self.end
+    }
+
+    /// Length in bytes. Safe by construction: every `SourceSpan` in
+    /// existence satisfies `end.offset >= start.offset` (see the struct
+    /// doc comment), so this subtraction can never underflow.
     pub fn len(&self) -> u32 {
         self.end.offset - self.start.offset
     }
@@ -95,5 +113,27 @@ mod tests {
         let span = SourceSpan::new(p, p).unwrap();
         assert!(span.is_empty());
         assert_eq!(span.len(), 0);
+    }
+
+    /// Regression test for a debug-panics/release-wraps defect: `start` and
+    /// `end` used to be `pub`, so a caller could skip `SourceSpan::new`'s
+    /// ordering check entirely via a `SourceSpan { start, end }` struct
+    /// literal. With an inverted, u32-extreme span like this one,
+    /// `len()`'s `end.offset - start.offset` panicked with "attempt to
+    /// subtract with overflow" under `cargo test`, but silently returned
+    /// 4294967201 (a nonsense length wrapped from -95) under
+    /// `cargo test --release` — a wrong value with no error anywhere.
+    ///
+    /// Now that the fields are private, `SourceSpan::new` is the only way
+    /// to build one (the struct-literal bypass is a compile error from
+    /// outside this module), so this same input must come back as a typed
+    /// `SpanError::Inverted` in every build profile — never a constructed
+    /// span, and never a value from `len()` at all.
+    #[test]
+    fn inverted_span_at_u32_extremes_is_a_typed_error_not_a_wrapped_length() {
+        let start = SourcePos::new(100, 1, 1);
+        let end = SourcePos::new(5, 1, 1);
+        let err = SourceSpan::new(start, end).unwrap_err();
+        assert_eq!(err, SpanError::Inverted { start, end });
     }
 }
