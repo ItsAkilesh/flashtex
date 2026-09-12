@@ -3,27 +3,27 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-049": {
-      "acknowledged_utc": "2026-09-12T11:01:59Z",
-      "adaptation": "Read origin/main FT049r2. Replay unchanged actual65dbe7d with pinned assets; root consumed f58b656 unchanged via854b041. Runtime-owned tests only; no helper/render edits.",
-      "main_sha": "d1bd76bb23ae94a293d3346806d50facd0732d33",
-      "revision": 2
+      "acknowledged_utc": "2026-09-12T11:10:50Z",
+      "adaptation": "Reviewed exact r3 and helper42425a5/8876279 optional admission and actual producer evidence. Runtime-only cancellation/deferred candidate replay with pinned65dbe7d; no peer mutations or rendering validation claim.",
+      "main_sha": "1884986fe54ba3ff8f602b1e7711c9cee324cd25",
+      "revision": 3
     }
   },
   "branch": "agent/commander-runtime-display/display-runtime",
   "capabilities": [
     "rust-runtime"
   ],
-  "code_revision": "b9240b0a1d9bf3ca512ac2b65ce5626d023944d2",
+  "code_revision": "9e4117fba15ca27cc25a23249871fe06e5ec6897",
   "eta_minutes": null,
   "machine": "linux-primary",
-  "main_integrated_through": "eed1847e923b42dbbc02d25309e9e432bd6e3aa0",
-  "next_action": "Integrate exact checkpoint; continue runtime-only consumer feedback and legacy compiler evidence if assigned. No native parity/latency claim; helper optional output and rendering validation remain downstream.",
+  "main_integrated_through": "c47139ffbbf49be640a7e7033abcbce0d9c3b60e",
+  "next_action": "Integrate published runtime-only checkpoints and continue concrete helper/native feedback when dispatched. No peer modifications, new providers or native latency/parity claim.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "FT049r2: actual65dbe7da7a182e99322070e2c9763cc3b69a342b archive355 files verified unchanged and rebuilt offline, binary4341bc53e6c16d3930266bc1c59c1fb93d7739f29390a3bf5879381e6ae30780. Requested/legacy/declined/failed direct replies equal runtime results; font raw SHAs match supplied assets. Full suite7 sibling tests plus existing tests and clippy pass; actual ignored producer probe explicitly executed. Reviewed helper854b041/c400d0a.",
+  "summary": "FT049r3: reviewed helper42425a5/8876279. c47139ff separately repairs parallel test observation assumptions; production timing unchanged. Actual pinned65dbe7d lifecycle replay passes cancellation, delayed single take, epoch-toggle refusal, v1 fallback2/3/5, exact source hashes and actual revision4 coalescing. Full parallel suite and strict lint pass; both ignored actual probes explicitly executed. Moved candidate cannot be revoked: downstream epoch checks remain required.",
   "tool": "codex",
-  "updated_utc": "2026-09-12T11:05:43Z",
+  "updated_utc": "2026-09-12T11:16:08Z",
   "usage": {
     "status": "unknown"
   }
