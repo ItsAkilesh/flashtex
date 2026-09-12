@@ -3,10 +3,10 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-023": {
-      "acknowledged_utc": "2026-09-12T12:56:02.314604+00:00",
-      "adaptation": "Read actual FT023r15. Private validated PipelineCff PageIndex with fresh CurrentHelper guard; no inferred caret mapping/native activation. GH34 existing official10pt asset handoff is authorized bounded followup.",
-      "main_sha": "eb5ae874fdb8b2fde2dfbc0fe11aebc272b0fe26",
-      "revision": 15
+      "revision": 16,
+      "main_sha": "ef1a964ecf851c10ffb44f16d212de21e0e1675e",
+      "acknowledged_utc": "2026-09-12T13:10:32.436313+00:00",
+      "adaptation": "Read FT023r16. Read-only source/asset packaging audit; exact native owners retain implementation and no-TeX native verification."
     }
   },
   "branch": "agent/commander-render-core/rendering-core",
@@ -22,15 +22,15 @@
   },
   "machine": "linux-primary",
   "main_integrated_through": "b7dedddf0708b5a7525aea1d68b13dfb37832213",
-  "next_action": "Commander integration; actual chapter hit and all3source identity acceptance published, await next bounded consumer task.",
+  "next_action": "Commander assign existing Mac packaging/pipeline owners GH36; review pinned manifest/setup and execute app-only/nohostTeX acceptance. No native edits from rendering worker.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "accepted",
-  "summary": "Actual corrected eca6ab25 multi-document capture accepted without repair; original recovered e680d2ef preserved.",
+  "summary": "GH36 confirmed static packaging gap: expected OTFs present, noTFMs shipped; current required12pt loader needs rooted metric/license layout.",
   "tool": "Codex Astra",
   "updated_utc": "2026-09-12T13:02:07Z",
   "usage": {
-    "evidence": "13 focused helper tests +strictClippy pass. Six byte-identical request pairs: control6recovered, verified6ok/nodiag. Rawbody exact; chapter hit/current searchable export pass; stale chapter/bibliography/membership refuse. No native/reference parity claim.",
-    "status": "Hosted OpenAI only; no providers/descendants. No context telemetry/native compaction control. All checks terminal; exact branch retained."
+    "evidence": "Pinned packageaf155e59/shell1fd5ba0b/scriptSHA identical; pipelinef762f82a lookup inspected. All3OTF and5officialTFM/license hashes verified; JSON manifests serialize. Documentation-only; no redundant builds or native claims.",
+    "status": "Hosted OpenAI only; no providers/descendants. All subprocesses terminal; native compaction/context telemetry unavailable. Durable own handoff native-assets/README.md."
   }
 }
