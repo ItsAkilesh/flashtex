@@ -50,10 +50,25 @@ def identifier(value):
     return value
 
 
+def published_branch_assignment(root, agent, name):
+    """Allow legacy branch names only through an exact fetched-main assignment."""
+    paths = git(root, 'ls-tree', '-r', '--name-only', 'origin/main',
+                'coordination/assignments', check=False).splitlines()
+    for path in paths:
+        if not path.endswith('.json'):
+            continue
+        obj = peer_json(root, 'origin/main', path)
+        if (obj.get('agent_id') == agent and obj.get('branch') == name
+                and obj.get('state') == 'assigned'):
+            return True
+    return False
+
+
 def branch(root, agent=None):
     name = git(root, 'symbolic-ref', '--quiet', '--short', 'HEAD')
     match = BRANCH.fullmatch(name)
-    if not match or '..' in name or (agent and match.group(1) != agent):
+    if not match or '..' in name or (agent and match.group(1) != agent
+            and not published_branch_assignment(root, agent, name)):
         raise ValueError('use your own agent/<id>/<task> branch, never main or detached HEAD')
     return name
 
@@ -164,7 +179,8 @@ def dispatch(root, args):
     task, agent = identifier(args.task), identifier(args.agent)
     if args.minutes <= 0:
         raise ValueError('timebox must be positive')
-    if not args.branch.startswith(f'agent/{agent}/') or not BRANCH.fullmatch(args.branch):
+    if not BRANCH.fullmatch(args.branch) or (not args.branch.startswith(f'agent/{agent}/')
+            and not published_branch_assignment(root, agent, args.branch)):
         raise ValueError('assignment branch must belong to the assignee')
     if run(['git', 'merge-base', '--is-ancestor', 'origin/main', 'HEAD'], cwd=root, check=False).returncode:
         raise ValueError('incorporate current origin/main before issuing assignments')

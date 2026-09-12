@@ -50,6 +50,31 @@ class CoordinationTests(unittest.TestCase):
         self.commit(root)
         self.cmd(root, 'push', '-u', 'origin', f'agent/{agent}/register')
 
+    def test_legacy_branch_requires_exact_published_assignment(self):
+        self.cmd(self.a, 'switch', '-c', 'agent/legacy/product')
+        folder = self.a / 'coordination' / 'assignments'
+        folder.mkdir(parents=True)
+        assignment = {'schema_version': 1, 'agent_id': 'worker',
+                      'branch': 'agent/legacy/product', 'state': 'assigned'}
+        (folder / 'TASK.json').write_text(json.dumps(assignment))
+        with self.assertRaises(ValueError):
+            coord.branch(self.a, 'worker')  # unpublished local claim cannot authorize
+        self.commit(self.a)
+        self.cmd(self.a, 'push', 'origin', 'HEAD:main')
+        self.assertEqual(coord.branch(self.a, 'worker'), 'agent/legacy/product')
+        with self.assertRaises(ValueError):
+            coord.branch(self.a, 'another-worker')
+        self.cmd(self.a, 'switch', '-c', 'agent/legacy/other-product')
+        with self.assertRaises(ValueError):
+            coord.branch(self.a, 'worker')
+        self.cmd(self.a, 'switch', 'agent/legacy/product')
+        assignment['state'] = 'cancelled'
+        (folder / 'TASK.json').write_text(json.dumps(assignment))
+        self.commit(self.a)
+        self.cmd(self.a, 'push', 'origin', 'HEAD:main')
+        with self.assertRaises(ValueError):
+            coord.branch(self.a, 'worker')
+
     def test_discovery_does_not_acknowledge_and_does_not_touch_work(self):
         self.register()
         (self.b / 'README').write_text('local unfinished work\n')
