@@ -61,7 +61,10 @@ apply/retry/reconcile core rather than duplicating it).
 - Branch `agent/mac-citation-rename/citation-rename`, worktree
   `/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-adb6b3377dd30855e`,
   base 1630fdbc (consumed main ffe199d via the parent branch).
-- Dirty files: this handoff, `coordination/agents/mac-citation-rename.json` (registration).
+- Dirty files (14:12Z, uncommitted): `apps/mac/Sources/FlashTeXMac/ProjectSearchPanel.swift`
+  (applyReviewedEdits/settleAfterApply/retryRetained factored out; `swift build` OK),
+  `apps/mac/Sources/FlashTeXMac/CitationRename.swift` (new, builds), this handoff.
+  Next: `CitationRenameTests.swift`, run tests, commit, push.
 - Helper binaries (built 13:30Z from a tree containing b4802cf1, verified to
   contain `plan_citation_rename`): `/Users/jay3332/Projects/flashtex/crates/
   {preview-controller,compiler}/target/release/flashtex-*`.
