@@ -1,0 +1,121 @@
+{
+  "owner": "65ce2dd9933d0bed40fd083c6cd4b39b90899e7b",
+  "consumer_binary": "/home/natkarri/flashtex-rendering-core/crates/rendering-core/target/debug/examples/pipeline_cff_probe",
+  "consumer_binary_sha256": "41d9cc1f624d6d85f5c2928b43738f9d7ff7c669d4a5de98ab4d5a9eb90d6c7a",
+  "consumer_current_source_sha256": "4eb1bee8b55d80c5c27c468946095d7ea99ef1b6d3eb8a503c33ace7adcd5159",
+  "font_sha256": "e6be218ae83e61aa8a29990d3cdc401c678c1962188cb9a4a8b6359e4f5e5870",
+  "license_sha256": "49ea6cb9257bbee0a3979c48a774cd221550ac1c20c95549efe45fc99cc18050",
+  "pdftotext_version": "pdftotext version 26.01.0\nCopyright 2005-2026 The Poppler Developers - http://poppler.freedesktop.org\nCopyright 1996-2011, 2022 Glyph & Cog, LLC\n",
+  "cases": [
+    {
+      "case": "five",
+      "returncode": 0,
+      "refusal": "",
+      "extracted": "(a) + (b) + (c) + (d) + and\n\f"
+    },
+    {
+      "case": "comment",
+      "returncode": 0,
+      "refusal": "",
+      "extracted": "and\n\f"
+    },
+    {
+      "case": "space",
+      "returncode": 0,
+      "refusal": "",
+      "extracted": "ab\n\f"
+    },
+    {
+      "case": "escaped",
+      "returncode": 0,
+      "refusal": "",
+      "extracted": "{x}\n\f"
+    },
+    {
+      "case": "ligature",
+      "returncode": 0,
+      "refusal": "",
+      "extracted": "ffi\n\f"
+    },
+    {
+      "case": "scripts",
+      "returncode": 1,
+      "refusal": "Error: \"probe requires one explicit CFF font\"\n",
+      "extracted": null
+    }
+  ],
+  "consumer_source_baseline": "fce554f1acf79a05891c4aca90bdb50e25ae6b3d",
+  "consumer_current_source_and_dependencies_diff_empty": true,
+  "stale_source_refusal": "ValidationError(\"source identity mismatch\")",
+  "space_extraction_modes": {
+    "owner_after": {
+      "default": "ab",
+      "layout": "ab",
+      "raw": "a b"
+    },
+    "f261_before": {
+      "default": "ab",
+      "layout": "ab",
+      "raw": "a b"
+    }
+  },
+  "space_regression_from_text_fix": false,
+  "scripts_scope": "example rejects multiple fonts before binder; not a core rejection or native result",
+  "files": {
+    "five/display.json": "92b10191de5df6c2c38d1e7adcafd5c28f0e28cfd587202f21b85c4951b3465b",
+    "five/request.jsonl": "31bd74eddd34b8209031645e95c7f6179cdd419f387c25ea57c10c16ba60d8ed",
+    "five/export.pdf": "b7a6d3262402cefbfc489951512e4c3a7a79746c1f6b9f6af8f792d59e0ebc9d",
+    "five/export.evidence.json": "f7867b7acee50db3601e0091a1617fca7167d15fe0fcb50d92aa6f7722115cfb",
+    "five/stdout.txt": "fd9bf060fa51ebd9454051a1440f10b6054ab4f8f4ea0b0398cc6e1d8744883b",
+    "five/stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "five/extracted.txt": "33227204b82e3c332b27bb495b9ed49fdc1355de2c74b2231bccb925ad8c2c7b",
+    "five/extract-stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "comment/display.json": "21dfe083b9ea3ae7d0aba61017227a505a8ecc32c51273ef86a955d42fd720f9",
+    "comment/request.jsonl": "9b7c4ebe90183f53386b70db3bf695c63c9c66410f44dc5955f3d077a01096e1",
+    "comment/export.pdf": "1e1d26908422d00616432f5e439c83c49048f0d436c55aa765734b2247b30f34",
+    "comment/export.evidence.json": "a8474fefc48049373ec40ce1443b8d5f4fc5d940992bc1f2db757682dc26bbfc",
+    "comment/stdout.txt": "2079b31ddf172f8fbfea95f3b3f2236a382405b1c28856ece20c78245686ab13",
+    "comment/stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "comment/extracted.txt": "7367047b88e631c6d9d84d0ba2d4e1f5d249f8d737ba8b952bd1bea821716db1",
+    "comment/extract-stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "space/display.json": "e4bac1983b3a7aeb9ac9a326e896886943d13b0bca0a5f33e853be70d6bfec4f",
+    "space/request.jsonl": "58c1b511829f6317c30df5a5ff56d27da564baa5a33e5dfa870f6fe3be38a4a2",
+    "space/export.pdf": "699717ab979da5958314bd037570281fd0de863b86e474ddb1fd11764b422555",
+    "space/export.evidence.json": "a191f9066f3b3421b1fa041fb8ac8ac59ccbd27c3746b7a7cb836d8d5c34300e",
+    "space/stdout.txt": "1a7263c13758fa6c595337ac16eb57d9e216bc47907ef071b69f496cf805edba",
+    "space/stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "space/extracted.txt": "57f430c8998c094843dc9f07927ea74fed2e32de96a4de0aa12fac470ccf23cd",
+    "space/extract-stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "space/stale-request.jsonl": "0d6b4e9bac7e20705004733f0d24044f20a764a210796ad6e6d27c3d13ce035c",
+    "space/stale-refusal.txt": "be19fad543ac8157dec65c164e933632a21cc1ba1cc36050e753267dce75c97a",
+    "space/extracted-raw.txt": "3a9d39dd7138aa61d6a02452d1b72fdce13a81e4c82dee3cc11ccfa493c20fc7",
+    "space/extracted-default.txt": "e9354feb84d0b7f01db41c9d3b1b06c0e9ccaffc56b0dd2e98ff68e4fa4cd89c",
+    "escaped/display.json": "344f3b55138a88bcd1bf8f3ee5ed363b9e0ea5dcc10bc890bb6ad90e18a1bfc1",
+    "escaped/request.jsonl": "5c52131d3bd4fc165f8736d4b23116e9d13fb03357e70c010a0ff4ebdb0ed5c2",
+    "escaped/export.pdf": "d962c40a7b1cb609d9b938d70c7b2897f81fd04a65f87e6f86a141b7ce6b1792",
+    "escaped/export.evidence.json": "997f24b8dbc0bf21dc0b934e9d05debb777011b1671ed7edcc25d992412f4775",
+    "escaped/stdout.txt": "89beaddd28287086344cdbd130cece1317903f9eb5c829451f28191a3e857e69",
+    "escaped/stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "escaped/extracted.txt": "c331ac808e3170784938ce6e60f889555e6b26334d2506d504d74a76ae5bacdc",
+    "escaped/extract-stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "ligature/display.json": "198f52bc0f0f6addde8264ff1e957dca185946a352671072448a7d0c82d132ed",
+    "ligature/request.jsonl": "b9290cd63a8ca42d503a97ee6d6ac50de36d5116b00212c9a2b98d21718bd729",
+    "ligature/export.pdf": "b2e129c7928c79a628be7dcb7b7b96000492ebcd3612c1ae77344ebeeed6bddb",
+    "ligature/export.evidence.json": "48fa2e291b567c22c4595a6383418243a4d22975c178ecff280d6530658dfdcb",
+    "ligature/stdout.txt": "2ee24c70e08609457f2d5eb723e023847931683b9eca876ac6711897c55b32fd",
+    "ligature/stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "ligature/extracted.txt": "2f9400ff52963db8984042e9f38d33c3ae5af7a3f1083de2e9031b8fc8eaa27b",
+    "ligature/extract-stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "scripts/display.json": "9a30f21325f003ff6b7cd9e502724f9964c973e7f59f2e43fb176377e8434aed",
+    "scripts/request.jsonl": "fb6e409d81e642fb3032e7fe0d5fc0f2dff75bc0c05c4b29d303ae3fd5c7814a",
+    "scripts/stdout.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "scripts/stderr.txt": "5738c438240e07710f21eb87ed36c040affc1772dc5699b469e1b90cff1f7d2e",
+    "space-before/export.pdf": "9b9f07d4483f1fce8b175bc80f452689446b7d30d651c8aa652bf76f956f2673",
+    "space-before/export.evidence.json": "06a05d3a6f51cff5ebeec940b4f2c75dc37d2beefa980b8dc8f9d4b04360adb9",
+    "space-before/stdout.txt": "32d6f44763a5bcee9eff0a7b851c8a404d92cc28665ed3f099c231c9efea734b",
+    "space-before/stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "space-before/default.txt": "e9354feb84d0b7f01db41c9d3b1b06c0e9ccaffc56b0dd2e98ff68e4fa4cd89c",
+    "space-before/layout.txt": "57f430c8998c094843dc9f07927ea74fed2e32de96a4de0aa12fac470ccf23cd",
+    "space-before/raw.txt": "3a9d39dd7138aa61d6a02452d1b72fdce13a81e4c82dee3cc11ccfa493c20fc7"
+  }
+}

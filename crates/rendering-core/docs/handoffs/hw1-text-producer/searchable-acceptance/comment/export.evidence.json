@@ -1,0 +1,20 @@
+{
+  "documents": [
+    {
+      "byte_length": 84,
+      "path": "main.tex",
+      "revision": 1,
+      "sha256": "d99b62d925c634b1e6225ee6e5f4ab4396fcf2ec429b044f072e08e747cc4e5b"
+    }
+  ],
+  "font_sha256": "e6be218ae83e61aa8a29990d3cdc401c678c1962188cb9a4a8b6359e4f5e5870",
+  "format": "flashtex-verified-searchable-pipeline-probe-v1",
+  "glyphs": 3,
+  "input_sha256": "21dfe083b9ea3ae7d0aba61017227a505a8ecc32c51273ef86a955d42fd720f9",
+  "license_sha256": "49ea6cb9257bbee0a3979c48a774cd221550ac1c20c95549efe45fc99cc18050",
+  "pages": 1,
+  "pdf_sha256": "1e1d26908422d00616432f5e439c83c49048f0d436c55aa765734b2247b30f34",
+  "registry_generation": "8d913a07a6969ffeaa2a9856dc8c9a1f41ccd2c882b3f4e91bf3f510bab438f9",
+  "source_text_policy": "producer-cluster-text; source spans retained separately",
+  "visual_parity": null
+}
