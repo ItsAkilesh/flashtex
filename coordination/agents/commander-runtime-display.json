@@ -3,27 +3,27 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-049": {
-      "acknowledged_utc": "2026-09-12T12:31:03Z",
-      "adaptation": "Deterministic queue capacities expose caller-reserve retention; accepted-only boxed compaction preserves exact wire/source/event/fairness and failed admissions. Full49 tests and strict lint pass; one prepared-input compaction cost observation awaits integration quiet-window release.",
-      "main_sha": "837db9000ca75de76bf538c040c59f06d875494e",
-      "revision": 13
+      "acknowledged_utc": "2026-09-12T12:37:33Z",
+      "adaptation": "Stopped-stdin acceptance passes three direct-child cases with one-byte datagram handshake, kill/reap and separately observed writer exit. Production unchanged. Final ordinary suite/lint held for rendering paired measurement window; exact evidence already preserved.",
+      "main_sha": "d4ee54f9687d11d194d8063ea916b7ef9c00befe",
+      "revision": 15
     }
   },
   "branch": "agent/commander-runtime-display/display-runtime",
   "capabilities": [
     "rust-runtime"
   ],
-  "code_revision": "0333be37e546273b6bcbe30a1f0745ad8a5e93c5",
+  "code_revision": "91f1764b4f48f420ab7e06b15cccf439d6e18def",
   "eta_minutes": null,
   "machine": "linux-primary",
-  "main_integrated_through": "e307eb42bbcd4e6179c5b76e5555b45a9b4b14a8",
-  "next_action": "Commander integration review. All timing/build handles terminal; clean after report publication. Preserve existing max_projects/max_frame/default acceptance. Writer-inflight and transient failed serialization explicitly excluded from retained accounting; next task needs dispatched scope.",
+  "main_integrated_through": "0333be37e546273b6bcbe30a1f0745ad8a5e93c5",
+  "next_action": "Commander integration review. All test/build/timing handles terminal; clean checkpoint after report publication. Preserve distinction between joined decoder and separately witnessed detached writer exit; no all-thread or worst-case deadline claim. Docs/evidence blocked-writer preserved.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "FT049 r13 product0333be37: accepted-only request/source/doc/encoded/capability/origin spare-capacity compaction. Deterministic queue string capacity4194380 to108 for32 unchanged source bytes; exact wire/events/fairness/refusal tests pass. Full49 tests pass/8 opt-in ignored; strict lint. Prepared1000x16KiB source trim0.709ms and encoded trim0.230ms total; no native claim.",
+  "summary": "FT049 r15 product91f1764b: deterministic stopped-stdin one-byte handshake; timeout/close-drop/direct-drop all reap direct child, separately witness writer exit, and emit no preview.49 ordinary tests pass/9 opt-in ignored; three-case probe and strict lint pass. Only Linux test instrumentation, no production defect demonstrated.",
   "tool": "codex",
-  "updated_utc": "2026-09-12T12:33:45Z",
+  "updated_utc": "2026-09-12T12:39:33Z",
   "usage": {
     "status": "unknown"
   }
