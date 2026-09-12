@@ -7,7 +7,9 @@ mod bibliography_values;
 pub use bibliography_values::*;
 mod search;
 pub use search::*;
+mod citation_rename;
 mod search_wire;
+pub use citation_rename::CitationRenamePlan;
 pub use search_wire::MAX_REPLACEMENT_WIRE_BYTES;
 
 pub const MAX_DOCUMENT_BYTES: usize = 8 * 1024 * 1024;
@@ -148,6 +150,11 @@ pub enum IndexError {
     InvalidSearchPlan,
     ReplacementPlanTooLarge,
     SerializationLimit,
+    InvalidCitationKey,
+    MissingBibliographyDefinition,
+    AmbiguousCitationDefinition,
+    MalformedBibliographyDefinition,
+    InvalidCitationRenamePlan,
     DocumentTooLarge {
         bytes: usize,
         limit: usize,

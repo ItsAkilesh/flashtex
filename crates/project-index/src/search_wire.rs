@@ -1,5 +1,7 @@
 //! Export-only, versioned JSON proposals. Native clients retain approval/application authority.
-use super::{IndexError, LiteralReplacementPlan, ProjectIndex};
+use super::{
+    CitationRenamePlan, IndexError, LiteralReplacementPlan, ProjectIndex, TextEdit, VersionSnapshot,
+};
 
 pub const MAX_REPLACEMENT_WIRE_BYTES: usize = 32 * 1024 * 1024;
 
@@ -30,6 +32,46 @@ impl Json {
     fn decimal(&mut self, value: impl std::fmt::Display) -> Result<(), IndexError> {
         self.string(&value.to_string())
     }
+    fn snapshot(&mut self, snapshot: &VersionSnapshot) -> Result<(), IndexError> {
+        self.raw("{\"project_id\":")?;
+        self.string(&snapshot.project_id)?;
+        self.raw(",\"generation\":")?;
+        self.decimal(snapshot.generation)?;
+        self.raw(",\"documents\":[")?;
+        for (at, (file, revision)) in snapshot.documents.iter().enumerate() {
+            if at != 0 {
+                self.raw(",")?;
+            }
+            self.raw("{\"file\":")?;
+            self.string(file)?;
+            self.raw(",\"revision\":")?;
+            self.decimal(revision)?;
+            self.raw("}")?;
+        }
+        self.raw("]}")
+    }
+    fn edits(&mut self, edits: &[TextEdit]) -> Result<(), IndexError> {
+        self.raw("[")?;
+        for (at, edit) in edits.iter().enumerate() {
+            if at != 0 {
+                self.raw(",")?;
+            }
+            self.raw("{\"file\":")?;
+            self.string(&edit.source.file)?;
+            self.raw(",\"revision\":")?;
+            self.decimal(edit.source.revision)?;
+            self.raw(",\"start_byte\":")?;
+            self.decimal(edit.source.start_byte)?;
+            self.raw(",\"end_byte\":")?;
+            self.decimal(edit.source.end_byte)?;
+            self.raw(",\"expected_text\":")?;
+            self.string(&edit.expected_text)?;
+            self.raw(",\"replacement\":")?;
+            self.string(&edit.replacement)?;
+            self.raw("}")?;
+        }
+        self.raw("]")
+    }
 }
 
 impl ProjectIndex {
@@ -46,22 +88,9 @@ impl ProjectIndex {
             text: String::new(),
             limit: max_bytes.min(MAX_REPLACEMENT_WIRE_BYTES),
         };
-        json.raw("{\"schema\":\"flashtex.literal-replacement-plan.v1\",\"proposal_only\":true,\"requires_user_approval\":true,\"application_order\":\"reverse_byte_offset_per_document\",\"snapshot\":{\"project_id\":")?;
-        json.string(&plan.search.snapshot.project_id)?;
-        json.raw(",\"generation\":")?;
-        json.decimal(plan.search.snapshot.generation)?;
-        json.raw(",\"documents\":[")?;
-        for (at, (file, revision)) in plan.search.snapshot.documents.iter().enumerate() {
-            if at != 0 {
-                json.raw(",")?;
-            }
-            json.raw("{\"file\":")?;
-            json.string(file)?;
-            json.raw(",\"revision\":")?;
-            json.decimal(revision)?;
-            json.raw("}")?;
-        }
-        json.raw("]},\"search\":{\"literal\":")?;
+        json.raw("{\"schema\":\"flashtex.literal-replacement-plan.v1\",\"proposal_only\":true,\"requires_user_approval\":true,\"application_order\":\"reverse_byte_offset_per_document\",\"snapshot\":")?;
+        json.snapshot(&plan.search.snapshot)?;
+        json.raw(",\"search\":{\"literal\":")?;
         json.string(&plan.search.request.literal)?;
         json.raw(",\"documents\":")?;
         if let Some(paths) = &plan.search.request.documents {
@@ -84,26 +113,36 @@ impl ProjectIndex {
         json.decimal(plan.search.work_used)?;
         json.raw(",\"termination\":\"complete\"},\"replacement\":")?;
         json.string(&plan.replacement)?;
-        json.raw(",\"edits\":[")?;
-        for (at, edit) in plan.edits.iter().enumerate() {
-            if at != 0 {
-                json.raw(",")?;
-            }
-            json.raw("{\"file\":")?;
-            json.string(&edit.source.file)?;
-            json.raw(",\"revision\":")?;
-            json.decimal(edit.source.revision)?;
-            json.raw(",\"start_byte\":")?;
-            json.decimal(edit.source.start_byte)?;
-            json.raw(",\"end_byte\":")?;
-            json.decimal(edit.source.end_byte)?;
-            json.raw(",\"expected_text\":")?;
-            json.string(&edit.expected_text)?;
-            json.raw(",\"replacement\":")?;
-            json.string(&edit.replacement)?;
-            json.raw("}")?;
-        }
-        json.raw("]}")?;
+        json.raw(",\"edits\":")?;
+        json.edits(&plan.edits)?;
+        json.raw("}")?;
+        Ok(json.text)
+    }
+
+    /// Citation rename uses the same proposal/snapshot/edit envelope, with an
+    /// explicit kind and separate schema. It never presents a lexical rename as
+    /// an exhaustive literal search or an engine-semantic rewrite.
+    pub fn serialize_citation_rename_plan(
+        &self,
+        plan: &CitationRenamePlan,
+        max_bytes: usize,
+    ) -> Result<String, IndexError> {
+        self.validate_citation_rename_plan(plan)?;
+        let mut json = Json {
+            text: String::new(),
+            limit: max_bytes.min(MAX_REPLACEMENT_WIRE_BYTES),
+        };
+        json.raw("{\"schema\":\"flashtex.citation-rename-plan.v1\",\"kind\":\"citation_key_rename\",\"proposal_only\":true,\"requires_user_approval\":true,\"application_order\":\"reverse_byte_offset_per_document\",\"snapshot\":")?;
+        json.snapshot(&plan.snapshot)?;
+        json.raw(",\"rename\":{\"old_name\":")?;
+        json.string(&plan.old_name)?;
+        json.raw(",\"new_name\":")?;
+        json.string(&plan.new_name)?;
+        json.raw("},\"replacement\":")?;
+        json.string(&plan.new_name)?;
+        json.raw(",\"edits\":")?;
+        json.edits(&plan.edits)?;
+        json.raw("}")?;
         Ok(json.text)
     }
 }

@@ -1,5 +1,31 @@
 # Project source index
 
+`plan_citation_rename(snapshot, old_name, new_name)` proposes exact citation-key
+edits across one declared bibliography definition and indexed cite uses. It requires
+one well-formed bibliography record; duplicate definitions (including bibitem
+collisions), malformed/duplicate-field records, and bibitem-only definitions fail.
+Missing field macros do not invalidate the literal key. New names must fit the
+shared literal key syntax and 4096-byte bound; collisions include unresolved cite
+uses. A same-name request produces no edits after validating the definition.
+
+Only indexed key spans change: multi-key commas, optional arguments, comments,
+known verbatim environments and key-looking metadata text remain intact.
+`plan_citation_rename_at` requires a complete current definition/reference span.
+`validate_citation_rename_plan` regenerates the full plan, rejecting stale snapshots,
+tampered expected text, missing/reordered/overlapping edits and changed revisions.
+Plans are bounded to 100,000 edits and 8 MiB of aggregate edit text. Caller approval
+and transactional application remain mandatory; no source is mutated here.
+This is lexical navigation over explicitly declared project files, not TeX/BibTeX
+semantic renaming, bibliography inclusion inference or macro expansion.
+
+`serialize_citation_rename_plan(plan, max_bytes)` reuses the bounded snapshot/edit
+proposal envelope, with schema `flashtex.citation-rename-plan.v1` and explicit kind
+`citation_key_rename`. Its `rename` object identifies old/new names; it does not
+claim an exhaustive literal search. The self-contained schema is
+`citation-rename-plan.schema.json`; `cargo run --offline --manifest-path
+crates/project-index/Cargo.toml --example citation_rename_wire` prints a native
+consumer example. Existing literal replacement wire format is unchanged.
+
 `search_literal(snapshot, &SearchRequest, cancelled)` searches raw document text,
 including comments and verbatim, independently of lexical symbol/metadata parsing.
 Matching is case-sensitive, nonoverlapping, with no Unicode normalization or regex.
