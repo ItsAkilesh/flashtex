@@ -128,7 +128,8 @@ diagnostics checks beyond the one-line contract fixture.
 
 ## Launch hooks and evidence
 
-`FLASHTEX_AUTOATTACH=1` attaches the discovered compiler at launch and compiles;
+`FLASHTEX_AUTOATTACH=1` attaches the discovered compiler at launch and compiles
+(a compiler bundled inside `FlashTeX.app` attaches by default; `=0` disables);
 `FLASHTEX_SEED_FILE=<path.tex>` seeds the editor. Example (from `apps/mac`):
 
 ```sh

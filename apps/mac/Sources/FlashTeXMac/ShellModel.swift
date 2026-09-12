@@ -108,7 +108,12 @@ final class ShellModel: ObservableObject {
                 compiledDocuments = [:]
                 editorRevision += 1
             }
-            if env["FLASHTEX_AUTOATTACH"] == "1", Self.locateCompiler() != nil {
+            // A compiler shipped inside the .app bundle attaches by default.
+            let bundledCompiler = Bundle.main.executableURL?.deletingLastPathComponent()
+                .appendingPathComponent("flashtex-compiler").path
+            let hasBundled = bundledCompiler.map { FileManager.default.isExecutableFile(atPath: $0) } ?? false
+            if env["FLASHTEX_AUTOATTACH"] != "0", (env["FLASHTEX_AUTOATTACH"] == "1" || hasBundled),
+               Self.locateCompiler() != nil {
                 attachDiscoveredWorker()
                 compile()
             }
