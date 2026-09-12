@@ -79,6 +79,7 @@ impl RenderLease {
         &self.resource.binding
     }
 }
+#[derive(Clone)]
 pub struct RegistryFrame {
     retained_resource: Arc<BoundResource>,
     binding: ResourceBinding,
@@ -388,3 +389,5 @@ impl RegistryRenderer {
         Ok(replay)
     }
 }
+
+pub mod selection;

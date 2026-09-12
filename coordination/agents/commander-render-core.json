@@ -14,23 +14,23 @@
     "rust",
     "rendering"
   ],
-  "code_revision": "84d581168eed75caa620f66350d629a23b0ce538",
+  "code_revision": "7d59f218c28c24417cc8bd1df9113c5b64bcdc83",
   "eta_minutes": {
-    "likely": 15,
+    "likely": 10,
     "optimistic": 5,
-    "pessimistic": 25
+    "pessimistic": 20
   },
   "machine": "linux-primary",
   "main_integrated_through": "84d581168eed75caa620f66350d629a23b0ce538",
-  "next_action": "Next rendering-core product assignment after registry binding checkpoint; font-owner additive manifest export cf427f9 available.",
+  "next_action": "Consume published cf427f9 manifest transport unchanged and test renderer registry roundtrip.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "Immutable registry-to-render binding adapter complete for explicit TTF/CFF styles, generation leases and provenance-bound replay.",
+  "summary": "Exact cluster hit/caret selection and stale insertion destination gates complete.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T07:55:14Z",
+  "updated_utc": "2026-09-12T08:00:00Z",
   "usage": {
-    "evidence": "125 ordinary tests and strict all-target clippy pass. Separate pinned mixed registry acceptance explicitly run and passes: STIX48 commands replaySHA9de5690675bb84381c937c2ab350f591e0dcfd8ba7eaa53a98f2736ae6693503; Liberation34 commands SHA1a4413fc598a0daa541d4b0d1e5e44affd9461475d096b1a0624e56b1e2c4acd. Font-byte/license changes invalidate caches and old epochs; retained frames byte-identical. Peer89629b7 merged unchanged; no native activation.",
-    "status": "Hosted OpenAI allocation only. No paid providers, descendants, or purchases."
+    "evidence": "126 ordinary tests and strict clippy pass; pinned mixed-font test explicitly passes with Liberation fi ligature range0..2. Empty UTF8 clusters retained, supplied exact geometry only, RTL unsupported, stale registry/source/frame destinations reject; historical reads remain immutable.",
+    "status": "Existing hosted OpenAI only; no paid providers or descendants."
   }
 }

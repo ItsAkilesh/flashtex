@@ -368,6 +368,60 @@ fn pinned_mixed_backend_registry_replay_and_replacement() {
             &snapshot
         )
         .is_err());
+    // A real ligature retains one indivisible two-byte source cluster.
+    use flashtex_rendering_core::registry_binding::selection::*;
+    let ligature_source = SourceSnapshot {
+        revision: 7,
+        text: "fi".into(),
+    };
+    let ligature_run = renderer
+        .shape(
+            &liberation,
+            ShapeRequest {
+                source: &ligature_source.text,
+                source_sha256: &digest(ligature_source.text.as_bytes()),
+                path: "main.tex",
+                revision: 7,
+                range: 0..2,
+                font_sha256: &liberation.binding().declaration.font.sha256,
+                face_index: 0,
+                encoding: InputEncoding::Unicode,
+                variation_coordinates: &[],
+                options: ShapeOptions::default(),
+            },
+        )
+        .unwrap();
+    assert_eq!(ligature_run.shaped().clusters.len(), 1);
+    let ligature_frame = renderer
+        .place(
+            &liberation,
+            &ligature_run,
+            &ligature_source,
+            placement(),
+            limits(),
+            HintPolicy::Unhinted,
+        )
+        .unwrap();
+    let index = renderer
+        .selection(
+            &liberation,
+            &ligature_frame,
+            "main.tex",
+            &ligature_source,
+            vec![cluster_geometry(0, true)],
+            SelectionDirection::LeftToRight,
+        )
+        .unwrap();
+    let hit = index
+        .inspect(OutlinePoint {
+            x: r(9, 1),
+            y: r(5, 1),
+        })
+        .unwrap()
+        .unwrap();
+    assert_eq!(hit.cluster.source_range, 0..2);
+    assert_eq!(hit.caret_byte, 2);
+    assert_eq!(hit.cluster.glyph_count, 1);
     // A provenance-only change also changes the global registry generation.
     manifest.entries[0].resource.license.source = "updated explicit provenance".into();
     save(dir.path(), &manifest);
@@ -384,4 +438,193 @@ fn pinned_mixed_backend_registry_replay_and_replacement() {
     assert_eq!(s.replay_bytes(1024 * 1024).unwrap(), s_bytes);
     assert_eq!(l.replay_bytes(1024 * 1024).unwrap(), l_bytes);
     println!("STIX replay SHA={} commands={} Liberation replay SHA={} commands={} immutable_retained=true native_painted=false",digest(&s_bytes),s.run().command_count(),digest(&l_bytes),l.run().command_count());
+}
+fn cluster_geometry(
+    index: usize,
+    bounds: bool,
+) -> flashtex_rendering_core::registry_binding::selection::ClusterGeometry {
+    use flashtex_rendering_core::registry_binding::selection::*;
+    let x = index as i128 * 10;
+    ClusterGeometry {
+        cluster_index: index,
+        bounds: bounds.then_some(ExactClip {
+            left: r(x, 1),
+            top: r(0, 1),
+            right: r(x + 10, 1),
+            bottom: r(10, 1),
+        }),
+        carets: ClusterCarets {
+            start: OutlinePoint {
+                x: r(x, 1),
+                y: r(5, 1),
+            },
+            end: OutlinePoint {
+                x: r(x + 10, 1),
+                y: r(5, 1),
+            },
+        },
+    }
+}
+#[test]
+fn source_aware_selection_preserves_empty_clusters_and_rejects_stale_edits() {
+    use flashtex_rendering_core::registry_binding::selection::*;
+    let dir = tempfile::tempdir().unwrap();
+    let root = ProjectRoot::open(dir.path()).unwrap();
+    let font = font_fixture::shaping_fixture();
+    let mut manifest = RegistryManifest {
+        schema_version: 1,
+        entries: vec![entry(&font, "body", "static-truetype", b"test")],
+    };
+    std::fs::write(dir.path().join("body.font"), &font).unwrap();
+    std::fs::write(dir.path().join("body.license"), b"test").unwrap();
+    save(dir.path(), &manifest);
+    let first = load(&root);
+    let mut renderer = RegistryRenderer::new(
+        "selection",
+        first.clone(),
+        RegistryRenderLimits {
+            max_bindings: 2,
+            max_cache_bytes: 100000,
+        },
+    )
+    .unwrap();
+    let lease = renderer
+        .bind(&selection("body"), first.generation())
+        .unwrap();
+    let snapshot = SourceSnapshot {
+        revision: 2,
+        text: "Aé\u{200b}A".into(),
+    };
+    let run = renderer
+        .shape(
+            &lease,
+            ShapeRequest {
+                source: &snapshot.text,
+                source_sha256: &digest(snapshot.text.as_bytes()),
+                path: "main.tex",
+                revision: 2,
+                range: 0..snapshot.text.len(),
+                font_sha256: &lease.binding().declaration.font.sha256,
+                face_index: 0,
+                encoding: InputEncoding::Unicode,
+                variation_coordinates: &[],
+                options: ShapeOptions::PLAIN,
+            },
+        )
+        .unwrap();
+    let frame = renderer
+        .place(
+            &lease,
+            &run,
+            &snapshot,
+            placement(),
+            limits(),
+            HintPolicy::Unhinted,
+        )
+        .unwrap();
+    let geometry = || {
+        vec![
+            cluster_geometry(0, true),
+            cluster_geometry(1, true),
+            cluster_geometry(2, false),
+            cluster_geometry(3, true),
+        ]
+    };
+    let index = renderer
+        .selection(
+            &lease,
+            &frame,
+            "main.tex",
+            &snapshot,
+            geometry(),
+            SelectionDirection::LeftToRight,
+        )
+        .unwrap();
+    let point = OutlinePoint {
+        x: r(18, 1),
+        y: r(5, 1),
+    };
+    let hit = index.inspect(point).unwrap().unwrap();
+    assert_eq!(hit.cluster.source_range, 1..3);
+    assert_eq!(hit.caret_byte, 3);
+    let empty = index.cluster(2).unwrap();
+    assert_eq!(empty.glyph_count, 0);
+    assert_eq!(empty.source_range, 3..6);
+    assert_eq!(empty.text, "\u{200b}");
+    assert!(index
+        .inspect(OutlinePoint {
+            x: r(25, 1),
+            y: r(5, 1)
+        })
+        .unwrap()
+        .is_none());
+    let destination = renderer
+        .destination(&lease, &index, point, "main.tex", &snapshot)
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        renderer
+            .validate_destination(&lease, &destination, "main.tex", &snapshot)
+            .unwrap(),
+        3
+    );
+    let stale = SourceSnapshot {
+        revision: 3,
+        ..snapshot.clone()
+    };
+    assert!(renderer
+        .destination(&lease, &index, point, "main.tex", &stale)
+        .is_err());
+    assert!(renderer
+        .validate_destination(&lease, &destination, "main.tex", &stale)
+        .is_err());
+    assert!(renderer
+        .validate_destination(&lease, &destination, "other.tex", &snapshot)
+        .is_err());
+    assert!(renderer
+        .selection(
+            &lease,
+            &frame,
+            "main.tex",
+            &snapshot,
+            geometry(),
+            SelectionDirection::RightToLeft
+        )
+        .is_err());
+    let mut duplicate = geometry();
+    duplicate[1].cluster_index = 0;
+    assert!(renderer
+        .selection(
+            &lease,
+            &frame,
+            "main.tex",
+            &snapshot,
+            duplicate,
+            SelectionDirection::LeftToRight
+        )
+        .is_err());
+    manifest.entries[0].resource.license.source = "new provenance".into();
+    save(dir.path(), &manifest);
+    let updated = load(&root);
+    renderer.replace(updated.clone()).unwrap();
+    let current = renderer
+        .bind(&selection("body"), updated.generation())
+        .unwrap();
+    assert_eq!(index.inspect(point).unwrap().unwrap(), hit);
+    assert!(renderer
+        .destination(&current, &index, point, "main.tex", &snapshot)
+        .is_err());
+    assert!(renderer
+        .validate_destination(&current, &destination, "main.tex", &snapshot)
+        .is_err());
+    assert!(renderer
+        .selection(
+            &current,
+            &frame,
+            "main.tex",
+            &snapshot,
+            geometry(),
+            SelectionDirection::LeftToRight
+        )
+        .is_err());
 }

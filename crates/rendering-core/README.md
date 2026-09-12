@@ -429,3 +429,18 @@ pinned TTF/CFF acceptance when those licensed installed resources are available:
 `cargo test --offline --manifest-path crates/rendering-core/Cargo.toml --test
 registry_binding pinned_mixed_backend_registry_replay_and_replacement -- --ignored
 --nocapture`. It pins both fonts/licenses before creating a temporary project.
+
+`registry_binding::selection` provides source-aware historical hit inspection and
+current insertion destinations. The caller supplies exact bounds and start/end
+carets for every shaped cluster; glyph advances are never treated as ink bounds.
+Clusters without hit bounds, including invisible characters, remain addressable
+through their complete source metadata. Ligatures expose their indivisible source
+range and supplied edge carets. RTL/reordered caret layouts are explicitly rejected
+until the shaping engine supports that ordering.
+
+Selection creation requires the current registry lease and exact source snapshot.
+Historical `inspect` remains available after replacement, but `destination` and
+`validate_destination` reject old epochs, foreign frames, source revisions/hashes
+or paths. Call `validate_destination` at the edit boundary: an earlier destination
+is not a permanent authorization to edit a changed document. Exact nearest-caret
+comparison can return a precision-bound error rather than round coordinates.
