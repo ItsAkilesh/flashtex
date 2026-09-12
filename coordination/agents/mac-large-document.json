@@ -4,7 +4,7 @@
   "assignment_acknowledgements": {},
   "branch": "agent/mac-large-document/large-document",
   "capabilities": ["swift", "appkit", "preview-controller-client"],
-  "code_revision": "PENDING",
+  "code_revision": "a109e254",
   "eta_minutes": {"likely": 0, "optimistic": 0, "pessimistic": 10},
   "machine": "mac-m1max-a",
   "main_integrated_through": "ffe199d",
