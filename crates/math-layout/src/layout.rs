@@ -6,7 +6,7 @@
 
 use crate::boxes::{BoxKind, Child, MathBox};
 use crate::mathlist::{Atom, AtomClass, Limits, MathList, Nucleus};
-use crate::metrics::{Glyph, MathFontMetrics, MathParams};
+use crate::metrics::{Extensible, Glyph, MathFontMetrics, MathParams};
 use crate::spacing::{Space, between};
 use crate::style::Style;
 
@@ -154,15 +154,119 @@ impl Engine<'_> {
                 0.0,
                 false,
             ),
-            Nucleus::Radical(radicand) => (self.make_radical(radicand, style), 0.0, false),
+            Nucleus::Radical { radicand, degree } => (
+                self.make_radical(radicand, degree.as_ref(), style),
+                0.0,
+                false,
+            ),
             Nucleus::Accent { accent, base } => {
-                (self.make_accent(*accent, base, style), 0.0, false)
+                // TeX moves scripts of an accented single character under
+                // the accent (`make_math_accent`); the accent then clears the
+                // scripted box. Otherwise scripts follow the accented base.
+                if let Some(b) = self.accent_over_scripted_char(*accent, base, atom, style) {
+                    return b;
+                }
+                (self.make_accent(*accent, base, None, style), 0.0, false)
             }
             Nucleus::Delimited { left, right, body } => {
                 (self.make_left_right(*left, *right, body, style), 0.0, false)
             }
+            Nucleus::Text(text) => (self.make_text(text, style), 0.0, false),
+            Nucleus::Overline(body) => (self.make_over(body, style), 0.0, false),
+            Nucleus::Underline(body) => (self.make_under(body, style), 0.0, false),
+            Nucleus::Styled { style: inner, body } => (self.clean_box(body, *inner), 0.0, false),
         };
         self.make_scripts(nucleus, delta, is_char, atom, style)
+    }
+
+    /// `make_math_accent` when the atom has scripts and its base is one
+    /// character: the scripts join the nucleus and the accent is lifted over
+    /// the resulting box (δ grows by the height gained).
+    fn accent_over_scripted_char(
+        &mut self,
+        accent: char,
+        base: &MathList,
+        atom: &Atom,
+        style: Style,
+    ) -> Option<MathBox> {
+        if atom.superscript.is_none() && atom.subscript.is_none() {
+            return None;
+        }
+        let [
+            Atom {
+                nucleus: Nucleus::Symbol(ch),
+                superscript: None,
+                subscript: None,
+                ..
+            },
+        ] = base.atoms.as_slice()
+        else {
+            return None;
+        };
+        let scripted = Atom {
+            class: AtomClass::Ord,
+            nucleus: Nucleus::Symbol(*ch),
+            superscript: atom.superscript.clone(),
+            subscript: atom.subscript.clone(),
+            limits: Limits::default(),
+        };
+        let g = self.m.glyph(*ch, style.size_class())?;
+        Some(self.make_accent(accent, &MathList::from(scripted), Some((*ch, g)), style))
+    }
+
+    /// Upright operator text: roman glyphs side by side. Characters followed
+    /// by another character of the same font are `math_text_char`s of a font
+    /// with a nonzero space, so they get no italic correction (tex.web §752);
+    /// the last one is a plain `math_char` and keeps it (pdfTeX \showbox:
+    /// `\kern0.05731` after `lim` in cmr12).
+    fn make_text(&mut self, text: &str, style: Style) -> MathBox {
+        let mut items = Vec::new();
+        let mut last_italic = 0.0;
+        for ch in text.chars() {
+            match self.m.text_glyph(ch, style.size_class()) {
+                Some(g) => {
+                    last_italic = g.italic;
+                    items.push(MathBox::glyph(&g));
+                }
+                None => self.limitations.push(Limitation::MissingGlyph(ch)),
+            }
+        }
+        if last_italic != 0.0 {
+            items.push(MathBox::kern(last_italic));
+        }
+        MathBox::hlist(items)
+    }
+
+    /// Rule 9 and `make_over`: `overbar(x, 3θ, θ)` with x in cramped style.
+    fn make_over(&mut self, body: &MathList, style: Style) -> MathBox {
+        let theta = self.params(style).default_rule_thickness;
+        let x = self.clean_box(body, style.cramped());
+        overbar(x, 3.0 * theta, theta)
+    }
+
+    /// Rule 10 and `make_under`: x, kern 3θ, rule θ, and θ of extra depth.
+    fn make_under(&mut self, body: &MathList, style: Style) -> MathBox {
+        let theta = self.params(style).default_rule_thickness;
+        let x = self.clean_box(body, style);
+        let w = x.width;
+        let rule_dy = x.depth + 3.0 * theta + theta;
+        MathBox {
+            width: w,
+            height: x.height,
+            depth: x.depth + 3.0 * theta + theta + theta,
+            kind: BoxKind::VBox(vec![
+                Child {
+                    dx: 0.0,
+                    dy: 0.0,
+                    content: x,
+                },
+                Child {
+                    dx: 0.0,
+                    dy: rule_dy,
+                    content: MathBox::rule(w, theta, 0.0),
+                },
+            ]),
+        }
     }
 
     /// Rule 13 / 13a and `make_op`.
@@ -437,25 +541,53 @@ impl Engine<'_> {
     fn var_delimiter(
         &mut self,
         sizes: &[Glyph],
+        extensible: Option<Extensible>,
         wanted: f64,
         on_missing: impl FnOnce(f64, f64) -> Limitation,
     ) -> Option<MathBox> {
-        let chosen = sizes
-            .iter()
-            .find(|g| g.total_height() >= wanted)
-            .or_else(|| sizes.last())?;
-        if chosen.total_height() < wanted {
-            self.limitations
-                .push(on_missing(wanted, chosen.total_height()));
+        if let Some(chosen) = sizes.iter().find(|g| g.total_height() >= wanted) {
+            let mut b = MathBox::glyph(chosen);
+            // `char_box` widths include the italic correction.
+            b.width += chosen.italic;
+            return Some(b);
         }
+        if let Some(recipe) = extensible {
+            return Some(stack_extensible(&recipe, wanted));
+        }
+        let chosen = sizes.last()?;
+        self.limitations
+            .push(on_missing(wanted, chosen.total_height()));
         let mut b = MathBox::glyph(chosen);
-        // `char_box` widths include the italic correction.
         b.width += chosen.italic;
         Some(b)
     }
 
     /// Rule 11 and `make_radical`.
-    fn make_radical(&mut self, radicand: &MathList, style: Style) -> MathBox {
+    fn make_radical(
+        &mut self,
+        radicand: &MathList,
+        degree: Option<&MathList>,
+        style: Style,
+    ) -> MathBox {
+        let z = self.make_sqrt(radicand, style);
+        let Some(degree) = degree else {
+            return z;
+        };
+        // LaTeX `\r@@t`: \mkern5mu \raise.6(ht-dp) {scriptscript degree}
+        // \mkern-10mu, then the radical box. `\m@th` sets the degree
+        // uncramped in scriptscript style.
+        let mu = self.params(style).mu();
+        let r = self.clean_box(degree, Style::SCRIPT_SCRIPT);
+        let raise = 0.6 * (z.height - z.depth);
+        MathBox::hbox(vec![
+            (0.0, MathBox::kern(5.0 * mu)),
+            (-raise, r),
+            (0.0, MathBox::kern(-10.0 * mu)),
+            (0.0, z),
+        ])
+    }
+
+    fn make_sqrt(&mut self, radicand: &MathList, style: Style) -> MathBox {
         let p = self.params(style);
         let x = self.clean_box(radicand, style.cramped());
         let theta = p.default_rule_thickness;
@@ -466,7 +598,8 @@ impl Engine<'_> {
         };
         let wanted = x.height + x.depth + clr + theta;
         let sizes = self.m.radical_sizes(style.size_class());
-        let Some(y) = self.var_delimiter(&sizes, wanted, |wanted, used| {
+        let ext = self.m.radical_extensible(style.size_class());
+        let Some(y) = self.var_delimiter(&sizes, ext, wanted, |wanted, used| {
             Limitation::RadicalTooSmall { wanted, used }
         }) else {
             self.limitations.push(Limitation::MissingGlyph('\u{221A}'));
@@ -504,30 +637,51 @@ impl Engine<'_> {
     }
 
     /// Rule 12 and `make_math_accent`.
-    fn make_accent(&mut self, accent: char, base: &MathList, style: Style) -> MathBox {
+    fn make_accent(
+        &mut self,
+        accent: char,
+        base: &MathList,
+        scripted_char: Option<(char, Glyph)>,
+        style: Style,
+    ) -> MathBox {
         let p = self.params(style);
-        let x = self.clean_box(base, style.cramped());
+        // tex.web §738/§742: a scripted character is re-boxed in the current
+        // (uncramped) style after its scripts move under the accent; a plain
+        // base is set cramped.
+        let x = match scripted_char {
+            Some(_) => self.clean_box(base, style),
+            None => self.clean_box(base, style.cramped()),
+        };
         let sizes = self.m.accent_sizes(accent, style.size_class());
         if sizes.is_empty() {
             self.limitations.push(Limitation::MissingAccent(accent));
             return x;
         }
-        let w = x.width;
-        let h = x.height;
-        // Skew only applies when the base is a single unscripted symbol.
-        let s = match base.atoms.as_slice() {
-            [
-                Atom {
-                    nucleus: Nucleus::Symbol(ch),
-                    superscript: None,
-                    subscript: None,
-                    ..
-                },
-            ] => self
-                .m
-                .glyph(*ch, style.size_class())
+        // The accent is centred over the bare character's width even when
+        // scripts follow it (`w` is taken before the swap).
+        let w = scripted_char.map(|(_, g)| g.width).unwrap_or(x.width);
+        let mut h = x.height;
+        // Skew only applies when the base is a single symbol (possibly with
+        // scripts moved under the accent, see `accent_over_scripted_char`).
+        let skew_of = |ch: char| {
+            self.m
+                .glyph(ch, style.size_class())
                 .map(|g| g.skew)
-                .unwrap_or(0.0),
+                .unwrap_or(0.0)
+        };
+        let s = match (scripted_char, base.atoms.as_slice()) {
+            (Some((ch, _)), _) => skew_of(ch),
+            (
+                None,
+                [
+                    Atom {
+                        nucleus: Nucleus::Symbol(ch),
+                        superscript: None,
+                        subscript: None,
+                        ..
+                    },
+                ],
+            ) => skew_of(*ch),
             _ => 0.0,
         };
         let mut chosen = &sizes[0];
@@ -538,9 +692,21 @@ impl Engine<'_> {
                 break;
             }
         }
-        let delta = h.min(p.x_height);
+        // δ from the bare character's height, then grown by the height the
+        // scripts added, so the accent clears them (make_math_accent).
+        let delta = match scripted_char {
+            Some((_, g)) => {
+                let d = g.height.min(p.x_height) + (x.height - g.height);
+                h = x.height;
+                d
+            }
+            None => h.min(p.x_height),
+        };
         let y = MathBox::glyph(chosen);
-        let accent_dx = s + (w - y.width) / 2.0;
+        // `char_box` widths include the italic correction (1.846pt for the
+        // cmmi12 \vec accent), which TeX centres with; the box itself keeps
+        // width 0 in TeX, so only the shift depends on it.
+        let accent_dx = s + (w - (y.width + chosen.italic)) / 2.0;
         // Stack: accent, kern −δ, base; baseline at the base's baseline.
         let accent_dy = -(h - delta) - y.depth;
         let mut height = (h - delta) + y.depth + y.height;
@@ -548,7 +714,7 @@ impl Engine<'_> {
             height = h;
         }
         MathBox {
-            width: w,
+            width: x.width,
             height,
             depth: x.depth,
             kind: BoxKind::VBox(vec![
@@ -595,7 +761,8 @@ impl Engine<'_> {
             return MathBox::kern(p.null_delimiter_space);
         };
         let sizes = self.m.delimiter_sizes(ch, style.size_class());
-        match self.var_delimiter(&sizes, wanted, |wanted, used| {
+        let ext = self.m.delimiter_extensible(ch, style.size_class());
+        match self.var_delimiter(&sizes, ext, wanted, |wanted, used| {
             Limitation::DelimiterTooSmall { ch, wanted, used }
         }) {
             // Centre the delimiter on the axis (`var_delimiter`'s last step).
@@ -608,5 +775,77 @@ impl Engine<'_> {
                 MathBox::kern(p.null_delimiter_space)
             }
         }
+    }
+}
+
+/// `overbar(b, k, t)`: vpack(kern t, rule t, kern k, b); baseline of `b`.
+fn overbar(b: MathBox, k: f64, t: f64) -> MathBox {
+    let w = b.width;
+    MathBox {
+        width: w,
+        height: b.height + k + 2.0 * t,
+        depth: b.depth,
+        kind: BoxKind::VBox(vec![
+            Child {
+                dx: 0.0,
+                dy: -(b.height + k),
+                content: MathBox::rule(w, t, 0.0),
+            },
+            Child {
+                dx: 0.0,
+                dy: 0.0,
+                content: b,
+            },
+        ]),
+    }
+}
+
+/// tex.web §713: stack `bot`, n×`rep`, `mid`, n×`rep`, `top` until the total
+/// reaches `wanted`. The box's baseline is the top piece's baseline
+/// (`height = h(top piece)`, `depth = total − height`), as TeX's vlist
+/// packing gives, so the caller's centring/raising arithmetic is unchanged.
+fn stack_extensible(r: &Extensible, wanted: f64) -> MathBox {
+    let hpd = |g: &Option<Glyph>| g.as_ref().map(Glyph::total_height).unwrap_or(0.0);
+    let u = r.rep.total_height();
+    let mut w = hpd(&r.bot) + hpd(&r.mid) + hpd(&r.top);
+    let mut n = 0usize;
+    if u > 0.0 {
+        while w < wanted {
+            w += u;
+            n += 1;
+            if r.mid.is_some() {
+                w += u;
+            }
+        }
+    }
+    // Top to bottom.
+    let mut pieces: Vec<&Glyph> = Vec::new();
+    if let Some(t) = &r.top {
+        pieces.push(t);
+    }
+    pieces.extend(std::iter::repeat_n(&r.rep, n));
+    if let Some(m) = &r.mid {
+        pieces.push(m);
+        pieces.extend(std::iter::repeat_n(&r.rep, n));
+    }
+    if let Some(b) = &r.bot {
+        pieces.push(b);
+    }
+    let height = pieces.first().map(|g| g.height).unwrap_or(0.0);
+    let mut children = Vec::with_capacity(pieces.len());
+    let mut y_top = -height;
+    for g in &pieces {
+        children.push(Child {
+            dx: 0.0,
+            dy: y_top + g.height,
+            content: MathBox::glyph(g),
+        });
+        y_top += g.total_height();
+    }
+    MathBox {
+        width: r.rep.width + r.rep.italic,
+        height,
+        depth: w - height,
+        kind: BoxKind::VBox(children),
     }
 }
