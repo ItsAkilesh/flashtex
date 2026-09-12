@@ -598,7 +598,7 @@ extension ShellModel {
         displayCandidates.status = "enabled; validating \(frame.requestID) (revision \(editorRev))"
         previewV2 = true
         let previousSource = displayListV2?.source
-        displayListV2 = .loading(source, ticket: ticket, previous: displayListV2?.frame)
+        displayListV2 = .loading(source, ticket: ticket, previous: displayListV2?.frame, previousSource: previousSource)
         let t0 = MonotonicClock.nowNs()
         if TypingBench.isBenchActive { FlashTeXLog.write("display-candidate: validating \(frame.requestID) as revision \(editorRev) ticket \(ticket) at \(t0)") }
         let rasterHint = V2PageRasterizer.shared.lastRequest
@@ -653,7 +653,7 @@ extension ShellModel {
             return
         }
         func restorePrevious() {
-            if case .loading(_, _, let previous, _)? = displayListV2, let previous, let previousSource {
+            if case .loading(_, _, let previous, _, _)? = displayListV2, let previous, let previousSource {
                 displayListV2 = .loaded(previous, previousSource)
             } else {
                 displayListV2 = nil

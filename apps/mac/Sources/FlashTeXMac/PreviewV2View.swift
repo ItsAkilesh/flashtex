@@ -59,11 +59,43 @@ enum V2Live {
     private(set) static var staleLinesDropped = 0
     private(set) static var unsolicitedLinesDropped = 0
     private(set) static var linesAccepted = 0
-    static func note(stale: Bool = false, unsolicited: Bool = false, accepted: Bool = false) {
+    /// Siblings refused before paint because a declared document's sha256 /
+    /// byte_length is not the text the applied compile_result was requested
+    /// with (D1); the previously verified frame stays on screen.
+    private(set) static var sourceMismatchesRefused = 0
+    /// The last live sibling refusal that kept the previous frame (tests/evidence).
+    private(set) static var lastLiveRefusal: RenderingV2.ValidationError?
+    static func note(stale: Bool = false, unsolicited: Bool = false, accepted: Bool = false, sourceMismatch: Bool = false, liveRefusal: RenderingV2.ValidationError? = nil) {
         lock.lock(); defer { lock.unlock() }
+        if let liveRefusal { lastLiveRefusal = liveRefusal }
         if stale { staleLinesDropped += 1 }
         if unsolicited { unsolicitedLinesDropped += 1 }
         if accepted { linesAccepted += 1 }
+        if sourceMismatch { sourceMismatchesRefused += 1 }
+    }
+
+    /// D1 (draft contract L28–30, L62): every document the sibling declares
+    /// must be one the applied compile_result was requested with, with that
+    /// text's exact byte length and raw SHA-256 — checked BEFORE paint, off
+    /// the main thread, against the request text (`compiledDocuments`), the
+    /// same binding the helper route applies to durable text
+    /// (`DisplayCandidateValidator.validate`). Returns the typed refusal.
+    static func sourceBindingFailure(of list: RenderingV2.DisplayList, requestID: String, compiled: [String: String]) -> RenderingV2.ValidationError? {
+        guard !list.documents.isEmpty else {
+            return RenderingV2.ValidationError(code: "source_mismatch", message: "display_list \(requestID) declares no documents")
+        }
+        for doc in list.documents {
+            guard let text = compiled[doc.path] else {
+                return RenderingV2.ValidationError(code: "source_mismatch", message: "display_list \(requestID) declares \(doc.path), which the compile request did not carry")
+            }
+            guard Int64(text.utf8.count) == doc.byteLength else {
+                return RenderingV2.ValidationError(code: "source_mismatch", message: "display_list \(requestID): \(doc.path) byte_length \(doc.byteLength) differs from the requested text (\(text.utf8.count) bytes)")
+            }
+            guard SourceDigest.sha256Hex(text) == doc.sha256 else {
+                return RenderingV2.ValidationError(code: "source_mismatch", message: "display_list \(requestID): \(doc.path) sha256 \(doc.sha256.prefix(12))… differs from the requested text")
+            }
+        }
+        return nil
     }
 }
 
@@ -82,29 +114,38 @@ enum V2PreviewState {
     /// A load is in flight. `previous` is the frame still on screen, shown
     /// with an explicit stale indicator until the new one is verified
     /// (rendering-v2 proposal: retain the old frame, label it stale).
-    /// `queued` is the newest list waiting for this preparation to finish.
-    case loading(V2Source, ticket: Int, previous: V2Frame?, queued: V2QueuedLoad? = nil)
+    /// `queued` is the newest list waiting for this preparation to finish;
+    /// `previousSource` is where `previous` came from (restored on a live refusal, D1).
+    case loading(V2Source, ticket: Int, previous: V2Frame?, queued: V2QueuedLoad? = nil, previousSource: V2Source? = nil)
     case loaded(V2Frame, V2Source)
     case failed(RenderingV2.ValidationError, V2Source)
 
     var source: V2Source {
         switch self {
-        case .loading(let s, _, _, _), .loaded(_, let s), .failed(_, let s): s
+        case .loading(let s, _, _, _, _), .loaded(_, let s), .failed(_, let s): s
         }
     }
-    var queued: V2QueuedLoad? { if case .loading(_, _, _, let q) = self { q } else { nil } }
+    var queued: V2QueuedLoad? { if case .loading(_, _, _, let q, _) = self { q } else { nil } }
     /// The file URL when the list came from a file (tests, evidence hook).
     var url: URL? { source.url }
     /// The verified frame the pane may paint (a stale one while loading).
     var frame: V2Frame? {
         switch self {
         case .loaded(let f, _): f
-        case .loading(_, _, let previous, _): previous
+        case .loading(_, _, let previous, _, _): previous
         case .failed: nil
         }
     }
     var isLoading: Bool { if case .loading = self { true } else { false } }
-    var ticket: Int? { if case .loading(_, let t, _, _) = self { t } else { nil } }
+    var ticket: Int? { if case .loading(_, let t, _, _, _) = self { t } else { nil } }
+    /// The previously verified frame retained while loading, with its source.
+    var retained: (frame: V2Frame, source: V2Source)? {
+        switch self {
+        case .loading(_, _, let previous?, _, let previousSource?): (previous, previousSource)
+        case .loaded(let f, let s): (f, s)
+        default: nil
+        }
+    }
 }
 
 /// Off-main preparation of display lists with monotonically increasing load
@@ -229,11 +270,18 @@ extension ShellModel {
         }
         V2Live.note(accepted: true)
         let expectedProject = result.projectId, expectedRevision = result.revision
+        let compiled = compiledDocuments // the exact text the applied compile_result was requested with (D1)
         startDisplayListV2(source: .worker(requestID: id, projectId: expectedProject, revision: expectedRevision, line: line), completion: completion) {
             switch V2Loader.prepare(data: line) {
             case .loaded(let frame) where frame.list.projectId != expectedProject || frame.list.revision != expectedRevision:
                 return .failed(RenderingV2.ValidationError(code: "correlation_mismatch",
                                                            message: "display_list \(id) is for project \(frame.list.projectId) revision \(frame.list.revision); the compile_result is project \(expectedProject) revision \(expectedRevision)"))
+            case .loaded(let frame):
+                if let refusal = V2Live.sourceBindingFailure(of: frame.list, requestID: id, compiled: compiled) {
+                    V2Live.note(sourceMismatch: true)
+                    return .failed(refusal)
+                }
+                return .loaded(frame)
             case let outcome: return outcome
             }
         }
@@ -245,17 +293,18 @@ extension ShellModel {
     /// main thread after the state was (or was not) published.
     private func startDisplayListV2(source: V2Source, completion: (() -> Void)?, prepare: @escaping @Sendable () -> V2Loader.Outcome) {
         // One preparation in flight; the newest arrival waits, older waiting ones are dropped undecoded.
-        if case .loading(let inFlight, let ticket, let previous, let queued) = displayListV2 {
+        if case .loading(let inFlight, let ticket, let previous, let queued, let previousSource) = displayListV2 {
             if let queued {
                 V2Loader.noteCoalesced()
                 if TypingBench.isBenchActive { FlashTeXLog.write("preview-v2: coalesced \(queued.source.label) behind \(source.label) at \(MonotonicClock.nowNs())") }
                 queued.completion?()
             }
-            displayListV2 = .loading(inFlight, ticket: ticket, previous: previous, queued: V2QueuedLoad(source: source, prepare: prepare, completion: completion))
+            displayListV2 = .loading(inFlight, ticket: ticket, previous: previous, queued: V2QueuedLoad(source: source, prepare: prepare, completion: completion), previousSource: previousSource)
             return
         }
         let ticket = V2Loader.issueTicket()
-        displayListV2 = .loading(source, ticket: ticket, previous: displayListV2?.frame)
+        let retained = displayListV2?.retained
+        displayListV2 = .loading(source, ticket: ticket, previous: retained?.frame, previousSource: retained?.source)
         if !source.isLive { captureNote = "Loading display list \(source.label)…" }
         let t0 = MonotonicClock.nowNs()
         if TypingBench.isBenchActive { FlashTeXLog.write("preview-v2: preparing \(source.label) ticket \(ticket) at \(t0)") }
@@ -305,9 +354,20 @@ extension ShellModel {
             captureNote = "\(source.isLive ? "Live display list" : "Loaded display list") \(source.label): \(frame.list.pages.count) page(s), \(frame.fonts.count) font(s) resolved by content hash, \(frame.prepared.reduce(0) { $0 + $1.glyphCount }) glyphs prepared"
             V2ParityEvidence.runIfRequested(frame: frame, source: source)
         case .failed(let error):
-            // A refusal drops the previous frame: nothing verified is on screen.
-            displayListV2 = .failed(error, source)
-            captureNote = "Display list refused: \(error)"
+            if source.isLive, let retained = displayListV2?.retained {
+                // A refused LIVE sibling (D1 source binding, correlation, validation) never
+                // un-verifies the frame already on screen: it stays, and is stale by the
+                // header's revision label (`v2-behind`) whenever the applied result moved on.
+                displayListV2 = .loaded(retained.frame, retained.source)
+                V2Live.note(liveRefusal: error)
+                captureNote = "Display list refused (previous frame kept): \(error)"
+                workerStatus = "display_list refused: [\(error.code)] \(error.message)"
+                log("preview-v2: refused \(source.label): [\(error.code)] \(error.message); keeping \(retained.source.label)")
+            } else {
+                // A refusal drops the previous frame: nothing verified is on screen.
+                displayListV2 = .failed(error, source)
+                captureNote = "Display list refused: \(error)"
+            }
         }
         return true
     }
@@ -542,7 +602,7 @@ struct PreviewV2Pane: View {
             case .loaded(let frame, _):
                 pages(frame, stale: false)
                 diagnostics(frame)
-            case .loading(_, _, let previous, _):
+            case .loading(_, _, let previous, _, _):
                 if let previous {
                     pages(previous, stale: true)
                 } else {
@@ -627,7 +687,7 @@ private struct V2PaneHeader: View {
                         .font(.caption.bold()).foregroundStyle(.orange).lineLimit(1)
                         .accessibilityIdentifier("v2-behind")
                 }
-                if case .loading(let source, _, let previous, _) = model.displayListV2 {
+                if case .loading(let source, _, let previous, _, _) = model.displayListV2 {
                     ProgressView().controlSize(.small)
                     Text(previous == nil ? "loading \(source.label)…" : "STALE — showing the previous frame while \(source.label) is verified")
                         .font(.caption.bold()).foregroundStyle(.orange).lineLimit(1)

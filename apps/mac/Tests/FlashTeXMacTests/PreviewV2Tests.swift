@@ -362,7 +362,7 @@ final class PreviewV2ShellTests: XCTestCase {
         // A second load: the first frame stays paintable, explicitly stale.
         let done = expectation(description: "reload")
         model.loadDisplayListV2(url: text) { done.fulfill() }
-        guard case .loading(let source, let ticket, let previous, _) = model.displayListV2 else { return XCTFail("expected .loading, got \(String(describing: model.displayListV2))") }
+        guard case .loading(let source, let ticket, let previous, _, _) = model.displayListV2 else { return XCTFail("expected .loading, got \(String(describing: model.displayListV2))") }
         XCTAssertEqual(source, .file(text))
         XCTAssertEqual(previous?.preparedNonce, first.preparedNonce, "the previous verified frame is retained while loading")
         XCTAssertEqual(model.displayListV2?.frame?.preparedNonce, first.preparedNonce)
