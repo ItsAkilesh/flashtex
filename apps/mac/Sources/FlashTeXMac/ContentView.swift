@@ -1,5 +1,6 @@
 import SwiftUI
 import FlashTeXProtocol
+import FlashTeXAccessibility
 
 struct ContentView: View {
     @EnvironmentObject var model: ShellModel
@@ -153,6 +154,7 @@ struct ContentView: View {
         }
         .padding(.horizontal, 8).padding(.vertical, 4)
         .background(.bar)
+        .accessibleCaptureBar(anchor: model.anchor.map { "\($0.id) at \($0.path) byte \($0.byteOffset), revision \($0.revision)" }, proposals: model.proposals.count) // FlashTeXAccessibility
         .sheet(item: Binding(get: { model.reviewing.map { ReviewItem(proposal: $0) } },
                              set: { model.reviewing = $0?.proposal })) { item in
             ProposalReviewSheet(proposal: item.proposal)
@@ -206,7 +208,7 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: 0) {
             Text("Diagnostics (\(diags.count)) — the preview above is still shown; errors are not hidden")
                 .font(.caption.bold()).padding(.horizontal, 8).padding(.vertical, 4)
-            List(Array(diags.enumerated()), id: \.offset) { _, d in
+            List(Array(diags.enumerated()), id: \.offset) { i, d in
                 HStack(alignment: .top) {
                     Image(systemName: d.severity == .error ? "xmark.octagon.fill" : "exclamationmark.triangle.fill")
                         .foregroundStyle(d.severity == .error ? .red : .orange)
@@ -226,6 +228,7 @@ struct ContentView: View {
                     Spacer()
                     if d.source != nil { Button("Go to source") { model.navigate(to: d.source) } }
                 }
+                .accessibleDiagnostic(d, index: i, total: diags.count) { model.navigate(to: d.source) } // FlashTeXAccessibility
             }
             .frame(minHeight: 80, maxHeight: 180)
         }
