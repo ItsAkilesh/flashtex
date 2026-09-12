@@ -1,0 +1,37 @@
+{
+  "agent_id": "mac-capture-acceptance",
+  "allocation_id": "claude-mac20x-capture-acceptance",
+  "assignment_acknowledgements": {},
+  "branch": "agent/mac-capture-acceptance/capture-acceptance",
+  "capabilities": [
+    "swift",
+    "xctest",
+    "nearby-transport",
+    "bridge-transfer-v1"
+  ],
+  "code_revision": "a9acc2a9",
+  "eta_minutes": {
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 5
+  },
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "dda0b62",
+  "next_action": "Parent merges the branch (test-only + evidence + coordination; no parent-retained file diffs needed) and runs the full suite with real helpers under load < 15",
+  "reviewed_peers": {
+    "origin/agent/mac-claude-a/mac-shell": {
+      "adaptation": "Branched from 5bc3fc0f; audited BridgeClient/BridgeRecovery/RealBridge/ShellModelBridge/Insertion/Pairing/NearbyListener/NearbyView/NearbyReferenceClient tests, mac-live 20260912T110944Z capture-cycle and nearby evidence before writing only the uncovered real-helper cases",
+      "reviewed_utc": "2026-09-12T13:45:00Z",
+      "sha": "5bc3fc0f"
+    }
+  },
+  "schema_version": 1,
+  "state": "ready_for_integration",
+  "summary": "Gap 7 coverage audit (coordination/mac-capture-acceptance.md) + CaptureAcceptanceTests.swift: 4 real-helper tests (real bridge drop/reconnect journaled once; app relaunch keeps one journaled capture, no duplicates; changed-anchor capture refused by the real bridge, never inserted; explicit insert rides the real preview controller as one durable edit). 4/4 with helpers, 4 skipped without. Findings reported, no product files changed.",
+  "tool": "Claude Code subagent (parent mac-claude-a)",
+  "updated_utc": "2026-09-12T13:47:00Z",
+  "usage": {
+    "evidence": "docs/evidence/capture-acceptance-2026-09-12T1340Z.md: swift test --filter CaptureAcceptanceTests 4/4 (run 2) with in-worktree release helpers, uptime load 10.94/29.27/25.05 under the shared heavy-build window; 4 skipped with non-executable helper paths; swift build --build-tests clean. Full swift test not run (parent's heavy-build notice).",
+    "status": "Shared Claude Max quota with parent mac-claude-a; no purchases; no provider calls"
+  }
+}
