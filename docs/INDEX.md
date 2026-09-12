@@ -7,6 +7,11 @@ your task; do not load the entire repository history into every prompt.
 |---|---|---|
 | Required collaboration behavior | [AGENTS.md](../AGENTS.md) | Integration owner with user direction |
 | Command, dispatch, reporting, integration | [ORCHESTRATION.md](../ORCHESTRATION.md) | Commander |
+| Actual coordination commands and patch submissions | [Coordination CLI](coordination-cli.md) | Commander |
+| Mac/Rust/capture message contract | [Runtime v1](contracts/runtime-v1.md) | Commander (FT-001) |
+| Wire examples | `protocol/fixtures/` | Commander (FT-001) |
+| Structured worker records | `coordination/agents/<id>.json` on worker branch | That worker |
+| Authoritative executable assignments | `coordination/assignments/<task>.json` on main | Commander |
 | Latest global update and recovery state | [COMMANDER.md](../coordination/COMMANDER.md) | Commander |
 | Worker identities and capabilities | [ROSTER.md](../coordination/ROSTER.md) | Commander |
 | Assignments, revisions, dependencies | [TASKS.md](../coordination/TASKS.md) | Commander |

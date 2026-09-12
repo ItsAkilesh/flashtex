@@ -3,6 +3,11 @@ super duper cool project
 
 ## Working with agents
 
+**Executable tools:** [coordination CLI](docs/coordination-cli.md).
+Run `python3 scripts/coord.py checkpoint` to fetch updates and discover assignments.
+Registration, reports, explicit acknowledgements, dispatch, guarded Cursor
+publication, and a deadline-bounded watcher are implemented with no Python dependencies.
+
 Start with the [orchestration master plan](ORCHESTRATION.md) and the
 [Commander bulletin](coordination/COMMANDER.md). The user designated the primary
 Codex agent on `linux-primary` as Commander. Workers register, acknowledge bounded

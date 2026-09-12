@@ -34,8 +34,12 @@ spending permissions, and deadline changes.
   execution route preserving included allowance has not been verified.
 - Other computers, running agents, and their funding/capabilities are unregistered.
 
-Git is the durable coordination channel. No cross-machine supervisor, transactional
-budget service, automatic wakeup system, or integration CI is claimed to exist.
+Git is the durable coordination channel. `scripts/coord.py` now implements
+registration/reporting, dispatch/acknowledgement, checkpoints, guarded Cursor
+publication, and deadline-bounded polling; see `docs/coordination-cli.md`.
+A 60-second discovery watcher is running on Commander via the temporary user
+service `flashtex-coordination-watch`, expiring at the deadline. No cross-machine
+model supervisor, transactional budget service, automatic model wakeup, or CI exists.
 An agent must be running and checking Git to receive instructions. When a worker
 stops, a human or an authorized launcher must restart it. The Commander is not
 continuously running merely because this plan exists.

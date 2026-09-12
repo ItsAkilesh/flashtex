@@ -54,6 +54,8 @@ not subtract usage estimates from $200 as though it were an API-credit deposit.
 | claude-personal | Personal subscription/billing | Subscription usage | Not queried | Unknown | PROHIBITED |
 | cursor-project | Authenticated Cursor account usage | Unknown | Unknown | Unknown | User explicitly authorized Cursor commit execution; no general development allocation |
 | openai-commander | User-reported $200 OpenAI account on linux-primary | Subscription/account usage; exact plan unverified | Unknown | Unknown | Commander orchestration authorized; no new API charges inferred |
+| openai-mac-plus | Worker-reported ChatGPT Plus on mac-m1max-a | Included subscription usage; no API credit reported | Unknown; prior quota snapshot stale | Reported weekly reset Sept 15, not independently verified | One bounded FT-003 task using user-provided OpenAI access; no API/overage purchases |
+| openai-aarush-plus | Worker-reported ChatGPT Plus on aarush-macbook | Included subscription usage; no API credit reported | Unknown | Unknown | FT-004 conditional on available authenticated OpenAI tool; no Claude fallback |
 | openai-project-api | Project API credits, proposed | Unknown | Unknown | Unknown | BLOCKED pending verification |
 | grok-product | Product conversion API | Unknown | Unknown | Unknown | Credentials/budget not audited here |
 
@@ -73,6 +75,11 @@ Reserve 20% of confirmed allocatable funds for integration unless directed other
 | cursor-orchestration-commit-002 | cursor-project | Cursor CLI / linux-primary | One bounded orchestration-docs commit session; monetary cost unknown | One completed session; monetary cost unknown | Charge unresolved; no inference in flight | Completed: 567d84b committed by Cursor and pushed to main; zero Claude calls |
 | cursor-registration-commit-003 | cursor-project | Cursor CLI / linux-primary | One bounded self-registration clarification commit session | Pending; monetary cost unknown | One session | Authorized follow-up commit; no nested calls |
 | commander-orch-001 | openai-commander | commander / linux-primary | Current orchestration task under user's account authorization | Usage unknown to repository | Unknown | Active; no delegated development agents started |
+| commander-orch-002 | openai-commander | commander / linux-primary | Coordination CLI, shared contracts, and dispatch implementation | Usage unknown | Unknown | Active; no new API funding inferred |
+| ORCH-002-R1 | openai-commander | coordination_review / linux-primary | One hosted read-only review, 5-minute timebox; no descendants | One completed review; quota/cost unknown | No model call in flight | Completed; findings incorporated; no external model/Claude/Cursor calls |
+| cursor-protocol-commit-004 | cursor-project | Cursor CLI / linux-primary | One bounded tooling/dispatch commit session | Pending; monetary cost unknown | One session | Authorized Cursor publish workflow; no nested calls |
+| openai-mac-plus-ft003 | openai-mac-plus | mac-claude-a / mac-m1max-a | One 45-minute native-shell task; no descendants or paid API calls | Unknown | Awaiting acceptance | Use available user-provided OpenAI subscription access; do not consume protected Claude allowance |
+| openai-aarush-plus-ft004 | openai-aarush-plus | aarush-macbook | One 45-minute capture task; no descendants or paid API calls | Unknown | Awaiting tool readiness/acceptance | No Claude fallback; report unavailable OpenAI tooling instead of purchasing |
 
 The Cursor grant records the user's explicit tool-specific commit authorization,
 not an invented dollar balance. Do not enable overages or change billing settings.

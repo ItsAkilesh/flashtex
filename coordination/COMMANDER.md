@@ -1,17 +1,25 @@
 # Commander bulletin and recovery packet
 
 Owner: primary Codex agent on linux-primary, appointed by the user.
-Update ID: CMD-002. Updated: 2026-09-12T03:23:15Z.
+Update ID: CMD-003. Updated: 2026-09-12T03:43:54Z.
 
-- Objective: publish an executable collaboration/dispatch model, then assign
-  implementation once workers register.
-- Current integrated baseline: `567d84b` — Cursor-executed orchestration master
-  plan pushed to main; no product implementation verified.
-- ORCH-001: plan published. Current follow-up: user clarified workers self-register;
-  updating bootstrap instructions on `agent/commander/orchestration-plan`.
-- Worker assignments: FT-001 through FT-008 are not staffed; see TASKS.md.
-  Unregistered workers are not claimed to be running.
-- Next gate: worker registration, contract ownership, and dispatch acknowledgements.
+- Objective: execute coordination and shared-interface work while dispatching Mac tasks.
+- Current integrated baseline: `276bb1c`; this batch contains real coordination
+  code, tests, runtime contract fixtures, roster updates, and first assignments.
+- ORCH-002: Commander built `scripts/coord.py`; 12 isolated Git integration tests
+  pass. A 60-second discovery service runs locally until the deadline; it performs
+  no model calls, commits, merges, or pushes.
+- FT-001: Commander owns `docs/contracts/runtime-v1.md` and `protocol/fixtures/`.
+- FT-003: mac-claude-a / mac-m1max-a assigned `apps/mac` for 45 minutes; use the
+  available Codex account, not protected Claude allowance. Preserve existing
+  untracked Cargo.toml/Cargo.lock/src/main.rs; they are outside this assignment.
+- FT-004: aarush-macbook assigned `apps/companion` for 45 minutes; Pencil and camera
+  use the same capture payload. Confirm eligible OpenAI tool readiness first.
+- Neither worker has acknowledged these assignments yet. Cursor login is blocked
+  on both workers, so submit patches/reports through repository issues for central
+  Cursor commits if local login is unavailable.
+- Next gate: publish tooling and assignments, receive worker acknowledgements,
+  integrate first native shell builds, and continue compiler workstream dispatch.
 - Required acknowledgement: every worker reads AGENTS.md and ORCHESTRATION.md,
   registers capabilities, and acknowledges its exact assignment before editing.
 - Deadline: September 12, 10 a.m. Pittsburgh / `2026-09-12T14:00:00Z`.
@@ -24,9 +32,13 @@ Update ID: CMD-002. Updated: 2026-09-12T03:23:15Z.
 - Registration: agents populate the system themselves. No user-supplied machine
   list is needed. Discover registration branches, record capabilities, dispatch,
   and wait for task acknowledgements before counting implementation as active.
-- Pending integrations: self-registration clarification only. No cancellations pending.
-- Last worker review: no remote implementation branches registered.
+- Pending integrations: coordination CLI/runtime contract/assignments batch.
+  No cancellations pending.
+- Last worker review: aarush-macbook 5db9d2ca61d29e0d4e3b60a8be2cbc3f204a6630;
+  mac-claude-a 431889cbb426f320e7080601eb8e9cbaeb3bfdca. Adaptation: assign native
+  work by hardware, keep stale quotas unknown, and add central Cursor patch route.
 - Resume: inspect actual branch/status, fetch, verify this baseline, read roster,
   task/resource registers and changed worker handoffs; continue next unmet step.
-- Next action: publish clarification, then fetch registration branches and dispatch
-  eligible tasks as workers join. Do not claim agents are running from task rows.
+- Next action: verify Cursor publication, review worker ACKs and issue submissions,
+  keep main integrated. Stop discovery service early with
+  `systemctl --user stop flashtex-coordination-watch.service` if needed.

@@ -1,0 +1,23 @@
+{
+  "acceptance": [
+    "Native target builds with Xcode; report simulator/device availability and exact validation",
+    "Drawing and camera/photo paths each produce the same documented capture payload; mark device-only tests pending if unavailable",
+    "Submit patch through repository issue for centralized Cursor commit if local Cursor is unavailable; no new non-Cursor commits"
+  ],
+  "agent_id": "aarush-macbook",
+  "allocation_id": "openai-aarush-plus-ft004",
+  "branch": "agent/aarush-macbook/companion-capture",
+  "deadline_utc": "2026-09-12T14:00:00Z",
+  "dependencies": [],
+  "input_main_sha": "276bb1c8586aa84fd548520c84423bc1812f9713",
+  "objective": "Build native PencilKit and camera/photo capture under apps/companion using runtime-v1 capture_submit; work through an available user-provided OpenAI account, do not consume protected Claude included usage.",
+  "owned_paths": [
+    "apps/companion"
+  ],
+  "revision": 1,
+  "schema_version": 1,
+  "state": "assigned",
+  "task_id": "FT-004",
+  "timebox_minutes": 45,
+  "updated_utc": "2026-09-12T03:42:26Z"
+}

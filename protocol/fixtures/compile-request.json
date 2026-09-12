@@ -1,0 +1,1 @@
+{"protocol_version":1,"id":"fixture-compile-1","type":"compile","payload":{"project_id":"demo","revision":1,"entry_path":"main.tex","documents":[{"path":"main.tex","text":"Hello FlashTeX.\n"}]}}

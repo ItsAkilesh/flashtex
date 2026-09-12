@@ -1,0 +1,23 @@
+{
+  "acceptance": [
+    "Xcode build succeeds on the Mac; report exact command and result",
+    "Edit source and display protocol/fixtures/compile-result.json with fixture status; click text to navigate via UTF-8 source range",
+    "Preserve pre-existing Cargo and src files; keep ownership under apps/mac"
+  ],
+  "agent_id": "mac-claude-a",
+  "allocation_id": "openai-mac-plus-ft003",
+  "branch": "agent/mac-claude-a/mac-shell",
+  "deadline_utc": "2026-09-12T14:00:00Z",
+  "dependencies": [],
+  "input_main_sha": "276bb1c8586aa84fd548520c84423bc1812f9713",
+  "objective": "Build the native macOS source editor and fixture-backed preview shell using docs/contracts/runtime-v1.md; use the available Codex account, not protected Claude allowance.",
+  "owned_paths": [
+    "apps/mac"
+  ],
+  "revision": 1,
+  "schema_version": 1,
+  "state": "assigned",
+  "task_id": "FT-003",
+  "timebox_minutes": 45,
+  "updated_utc": "2026-09-12T03:42:26Z"
+}

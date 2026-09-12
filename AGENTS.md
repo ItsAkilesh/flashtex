@@ -17,6 +17,15 @@ state, and reviewed peer revisions at the required checkpoints. Task rows do not
 prove agents are running. Follow the orchestration plan's ownership and reporting
 rules; do not independently assign overlapping work or spend another agent's grant.
 
+The protocol is executable: read `docs/coordination-cli.md` and use
+`python3 scripts/coord.py checkpoint` at each checkpoint. Structured registrations
+and reports live in `coordination/agents/<id>.json`; published assignments live in
+`coordination/assignments/<task>.json` on main. Fetch/display never counts as review.
+Use `ack` and `report --review ... --adaptation ...` after actually reading changes.
+Use `publish` for guarded Cursor execution of staged commits and task-branch pushes.
+Workers without authenticated Cursor may submit patches via a repository issue
+for Commander/Cursor to commit; do not create non-Cursor commits as a workaround.
+
 ## Resource, deadline, and recovery rules — read first
 
 Read `docs/INDEX.md`, `coordination/PROJECT.md`, and `coordination/RESOURCES.md`
@@ -60,7 +69,7 @@ Record the actual contributors using truthful trailers, for example:
 
 ```text
 Implementation-Agent: Codex
-Commit-Executor: git via Codex
+Commit-Executor: Cursor CLI
 ```
 
 The user explicitly requires Cursor CLI itself to execute every new agent commit;
