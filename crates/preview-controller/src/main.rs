@@ -1,6 +1,7 @@
 //! Local stdio adapter. Native callers must put pipe IO on a dedicated worker.
 use flashtex_document_runtime::{Event, Limits};
 use flashtex_edit_ledger::{AppliedReceipt, PreparedEdit, Store};
+use flashtex_preview_controller::file_project::{DiskState, FileProject};
 use flashtex_preview_controller::{ApprovedEdit, Controller, HistoryAction, Update};
 use flashtex_project_index::{Category, SourceSpan};
 use serde_json::{json, Value};
@@ -66,19 +67,36 @@ fn run(config: Value) -> Result<(), String> {
     }
     let project = string(&config, "project_id")?.to_owned();
     let entry = string(&config, "entry_path")?.to_owned();
-    let paths = config["store_paths"]
-        .as_array()
-        .ok_or("store_paths array required")?;
-    if paths.is_empty() || paths.len() > 256 {
-        return Err("expected 1..256 stores".into());
-    }
-    let stores = paths
-        .iter()
-        .map(|p| {
-            Store::open(p.as_str().ok_or("store path must be string")?).map_err(|e| e.to_string())
-        })
-        .collect::<Result<Vec<_>, String>>()?;
-    let mut controller = Controller::open_without_compiler(project, entry, stores)?;
+    let (mut controller, file_project) = if config.get("project_root").is_some() {
+        if config.get("store_paths").is_some() {
+            return Err("choose project_root or store_paths, not both".into());
+        }
+        let (files, controller) = FileProject::open(
+            std::path::Path::new(string(&config, "project_root")?),
+            std::path::Path::new(string(&config, "private_ledger_root")?),
+            &project,
+            &entry,
+        )?;
+        (controller, Some(files))
+    } else {
+        let paths = config["store_paths"]
+            .as_array()
+            .ok_or("store_paths array required")?;
+        if paths.is_empty() || paths.len() > 256 {
+            return Err("expected 1..256 stores".into());
+        }
+        let stores = paths
+            .iter()
+            .map(|p| {
+                Store::open(p.as_str().ok_or("store path must be string")?)
+                    .map_err(|e| e.to_string())
+            })
+            .collect::<Result<Vec<_>, String>>()?;
+        (
+            Controller::open_without_compiler(project, entry, stores)?,
+            None,
+        )
+    };
     let compiler = config
         .get("compiler_path")
         .and_then(Value::as_str)
@@ -169,7 +187,13 @@ fn run(config: Value) -> Result<(), String> {
                 {
                     Err("invalid version, session or request identity".into())
                 } else {
-                    handle(&mut controller, &mut reviews, &request, compiler.as_deref())
+                    handle(
+                        &mut controller,
+                        &mut reviews,
+                        &request,
+                        compiler.as_deref(),
+                        file_project.as_ref(),
+                    )
                 };
                 let output = match response {
                     Ok(payload) => {
@@ -235,6 +259,7 @@ fn handle(
     reviews: &mut BTreeMap<String, PreparedEdit>,
     request: &Value,
     compiler: Option<&str>,
+    file_project: Option<&FileProject>,
 ) -> Result<Value, String> {
     let p = &request["payload"];
     match string(request, "type")? {
@@ -289,6 +314,35 @@ fn handle(
             Ok(
                 json!({"document":result.document,"preview_error":result.preview_error,"save_and_submit_ms":result.save_and_submit_ms}),
             )
+        }
+        "file_status" => {
+            let files = file_project.ok_or("helper was not opened from a file project")?;
+            let state = match files.inspect(controller, string(p, "path")?)? {
+                DiskState::MatchesSource { sha256 } => {
+                    json!({"state":"matches_source","sha256":sha256})
+                }
+                DiskState::DiffersFromSource {
+                    disk_sha256,
+                    source_sha256,
+                } => {
+                    json!({"state":"differs_from_source","disk_sha256":disk_sha256,"source_sha256":source_sha256})
+                }
+                DiskState::Missing => json!({"state":"missing"}),
+                DiskState::Unavailable { reason } => json!({"state":"unavailable","reason":reason}),
+            };
+            Ok(
+                json!({"path":string(p,"path")?,"disk":state,"discovery_diagnostics":files.diagnostics(),"export_available":false}),
+            )
+        }
+        "export" => {
+            file_project
+                .ok_or("helper was not opened from a file project")?
+                .export(
+                    controller,
+                    string(p, "path")?,
+                    p["expected_disk_sha256"].as_str(),
+                )?;
+            Ok(json!({"exported":true}))
         }
         "history_status" => Ok(json!({"history":controller.history_status(string(p,"path")?)?})),
         "apply_group" | "undo" | "redo" => {

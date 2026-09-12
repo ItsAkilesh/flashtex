@@ -29,8 +29,14 @@ impl Client {
                     .unwrap();
             }
         }
+        Self::configured(
+            root,
+            json!({"session_id":"session1","project_id":"p","entry_path":"main.tex","store_paths":[path],"compiler_path":compiler}),
+        )
+    }
+    fn configured(root: &std::path::Path, value: Value) -> Self {
         let config = root.join("config.json");
-        std::fs::write(&config,serde_json::to_vec(&json!({"session_id":"session1","project_id":"p","entry_path":"main.tex","store_paths":[path],"compiler_path":compiler})).unwrap()).unwrap();
+        std::fs::write(&config, serde_json::to_vec(&value).unwrap()).unwrap();
         let mut child = Command::new(env!("CARGO_BIN_EXE_flashtex-preview-controller"))
             .arg(config)
             .stdin(Stdio::piped())
@@ -304,5 +310,39 @@ fn wrong_session_cannot_edit_authoritative_source() {
     assert_eq!(
         client.reply("get")["payload"]["document"]["text"],
         "α original"
+    );
+}
+
+#[test]
+fn file_project_helper_reports_external_change_without_overwrite() {
+    let root = tempfile::tempdir().unwrap();
+    let private = tempfile::tempdir().unwrap();
+    let config_dir = tempfile::tempdir().unwrap();
+    std::fs::write(root.path().join("main.tex"), "initial source").unwrap();
+    let config = json!({"session_id":"session1","project_id":"p","entry_path":"main.tex","project_root":root.path(),"private_ledger_root":private.path()});
+    let mut client = Client::configured(config_dir.path(), config.clone());
+    client.send("status", "file_status", json!({"path":"main.tex"}));
+    assert_eq!(
+        client.reply("status")["payload"]["disk"]["state"],
+        "matches_source"
+    );
+    std::fs::write(root.path().join("main.tex"), "external source").unwrap();
+    client.send("status2", "file_status", json!({"path":"main.tex"}));
+    assert_eq!(
+        client.reply("status2")["payload"]["disk"]["state"],
+        "differs_from_source"
+    );
+    client.send("export", "export", json!({"path":"main.tex"}));
+    assert_eq!(client.reply("export")["type"], "error");
+    drop(client);
+    let mut reopened = Client::configured(config_dir.path(), config);
+    reopened.send("get", "document", json!({"path":"main.tex"}));
+    assert_eq!(
+        reopened.reply("get")["payload"]["document"]["text"],
+        "initial source"
+    );
+    assert_eq!(
+        std::fs::read_to_string(root.path().join("main.tex")).unwrap(),
+        "external source"
     );
 }

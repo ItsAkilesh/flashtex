@@ -81,3 +81,14 @@ command revision, retry flag and undo/redo availability, plus separate preview
 status. Undo advances source revision; it does not rewrite old revision numbers.
 Source, history and permanent retry IDs persist together. History capacity errors
 are explicit; native retention UI is still required before history is full.
+
+File-backed startup replaces `store_paths` with `project_root` and an existing
+application-owned `private_ledger_root`. These modes are mutually exclusive.
+The helper imports discovered source into private ledgers and preserves existing
+ledger edits on restart, even when disk source has changed or disappeared.
+`file_status:{path}` rereads disk and returns `matches_source`,
+`differs_from_source`, `missing` or `unavailable`, plus discovery diagnostics.
+It never implicitly reloads an external edit into the authoritative source.
+`export` currently returns an explicit error: shared rooted-save guarantees are
+being fixed under GH18. The response's `export_available:false` is intentional;
+clients must not offer a successful save action until that gate is implemented.
