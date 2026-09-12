@@ -453,6 +453,8 @@ fn shift_math_list(
                 Some(MathAtom {
                     nucleus: match &atom.nucleus {
                         Nucleus::Symbol(text) => Nucleus::Symbol(text.clone()),
+                        Nucleus::Text(text) => Nucleus::Text(text.clone()),
+                        Nucleus::Space { em } => Nucleus::Space { em: *em },
                         Nucleus::Fraction {
                             numerator,
                             denominator,
