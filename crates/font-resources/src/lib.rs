@@ -530,7 +530,10 @@ mod outline;
 pub use outline::{OutlinePoint, SimpleOutline};
 
 mod expansion;
-pub use expansion::{Coordinate, ExactPoint, ExpandedOutline, GlyphInstance};
+pub use expansion::{
+    CompositeDeviceGrid, Coordinate, DeviceExpandedOutline, ExactPoint, ExpandedOutline,
+    GlyphInstance, GridTieRule,
+};
 
 mod path;
 pub use path::{PathCommand, QuadraticPath};

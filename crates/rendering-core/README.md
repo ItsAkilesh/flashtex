@@ -231,3 +231,101 @@ round large integers. These limits bound encoded payload, not total process RSS 
 font-loader transient allocations. Legacy rendering wire and hinting flags remain
 unchanged. Tests combine explicit synthetic quadratic geometry with parsed original
 CFF fixture curves, plus exact byte-boundary, command-budget and culling checks.
+
+`mixed_replay::ReplayBatch` validates the internal fixture and converts its paths
+back to typed exact consumer geometry. It rejects duplicate keys recursively,
+unknown fields/primitives, mismatched command kinds, noncanonical rationals,
+invalid clips and altered total command counts. Full metadata remains available
+for lossless canonical replay. The replay does not verify referenced font/source
+bytes, and never marks a fixture paintable.
+
+```sh
+cargo run --manifest-path crates/rendering-core/Cargo.toml --example replay_mixed -- \
+  crates/rendering-core/tests/fixtures/synthetic-mixed.json
+```
+
+The checked-in illustrative fixture has three primitives and five commands;
+canonical output is 1,932 bytes with SHA256
+`aaa78b395c8740a53bb4c363076b0b4263c159287097f943c61591def2f8e7ff`.
+Tests also roundtrip numerators beyond 2^100 through typed geometry without float
+conversion, retaining exact source metadata and primitive identity.
+
+`CachedCffConsumer` shares the loader's immutable full-font cache behind a mutex.
+Its identity retains containing font SHA256, CFF table SHA256, face and validated
+range; the existing OpenType reader remains responsible for selecting that range.
+Direct and cached providers share exact placement code. Cache status explicitly
+distinguishes stored, hit and oversized bypass outcomes. Mixed batches retain the
+optional full-font identity and reject provider results that change GID, hint policy
+or claim applied hinting. Replay validates the optional identity while accepting
+earlier fixtures without it. The merged loader also explicitly rejects stroked CFF
+PaintType, which this fill-path consumer cannot implement.
+
+`residency::MixedResidency` keeps immutable prepared pages under explicit total
+page, encoded-byte and command budgets. `begin` verifies and captures source
+snapshots plus resource/configuration identities in a generation-bound lease;
+compile from `lease.snapshots()` and prepare through that same lease. Any changed
+source, resource or configuration invalidates prior jobs, even at the same project
+revision. Revision rollback is rejected. Preparation checks source UTF-8 boundaries
+and requires every retained font identity in the declared resource set.
+
+Installation rejects superseded work, conflicting outputs for one identity and
+oversized pages without replacing a good frame. LRU eviction removes residency
+while existing caller-held Arcs remain immutable. Encoded-byte and command limits
+do not claim to bound all allocator overhead, captured source snapshots or external
+Arcs. Source snapshots have their own 32 MiB input cap. A caller must capture its
+lease before compilation; a fresh lease cannot prove old output used new sources.
+
+`cff_run::CffRun` consumes the font loader's `BoundCffTfmFont` through the matching
+immutable full-font cache. It retains the original 8-bit code, resolved glyph name
+and original GID, TFM/encoding/full-font identities and input intervals. TFM widths
+and kerns alone advance the pen; the exact transformed charstring advance remains
+a separate field. Explicit scale/hint policies carry through rational cubic
+placement. Missing mappings, .notdef, wrong cache identity and total glyph/command
+overflow fail without returning a partial run. This is explicit encoding, not
+Unicode shaping or TeX scaled-point rounding.
+
+`CffRun::fixture_bytes` serializes exact TFM metrics, kerns, input intervals and
+full cubic outline evidence through the same bounded writer as mixed batches.
+The pinned STIX named-glyph harness checks the installed font and OFL license
+hashes, the previously validated CFF range, explicit `A` name -> original GID 3,
+and an original synthetic 10-point TFM with half-em advances.
+
+```sh
+cargo run --manifest-path crates/rendering-core/Cargo.toml --example cff_tfm_probe -- \
+  /usr/share/fonts/stix-fonts/STIXTwoText-Regular.otf /usr/share/licenses/stix-fonts/OFL.txt
+```
+
+Two encoded A slots produce 48 exact commands and 6,346 evidence bytes, identical
+for cold and warm runs. SHA256:
+`f0210698b7d382171727f4768b3fb437a2fb6f2a63ccb492df603dae096e42e1`.
+`tests/fixtures/stix-cff-tfm.json` pins the font/license/TFM and records reference
+gaps. No matched distribution TFM/encoding pair or TeX rounding/native/PDF oracle
+is claimed. The synthetic name-mapping test also compares direct and cached
+resolved encodings, preserving independent TFM and outline advances.
+
+`geometry_diff` compares two validated mixed fixtures or two display-list-v2
+envelopes with an explicit capability offer. Reports retain raw input/offer hashes,
+page and stable primitive identity, original values and exact right-minus-left
+rational deltas where representable. Categories distinguish resources/GIDs,
+advances/positions, baselines/rules, provenance and membership/order changes. It
+does not align pages, normalize geometry, substitute fonts or apply tolerances.
+Mixed and display formats are not assumed directly equivalent.
+
+```sh
+cargo run --manifest-path crates/rendering-core/Cargo.toml --example geometry_diff -- \
+  left.json right.json [--offer capabilities.json]
+```
+
+CLI exit codes: 0 for complete equality, 1 for complete differences, 2 for an
+incomplete/unsupported comparison. API limits bound traversal, difference count
+and serialized report bytes. `equal` is null whenever truncated or unsupported,
+including exact delta arithmetic that exceeds its i128/u128 representation budget.
+Source/font bytes are not verified by comparison, and equality is not a visual
+or reference-engine parity claim. Identical illustrative mixed inputs visit 141
+comparison nodes and produce an empty complete difference report.
+
+The Type2 arithmetic dependency checkpoint (`2f770fd`) preserves the pinned STIX
+run SHA above. A synthetic add-operated curve matches literal-coordinate output
+exactly through direct and cached placement, while retaining distinct input hashes.
+Non-dyadic Type2 division stays an explicit unsupported result. This exercises the
+new arithmetic without changing default hint, wire or device-grid policies.
