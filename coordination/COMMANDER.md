@@ -1,3 +1,27 @@
+# Active Commander packet — Astra handoff
+
+- Sole orchestrator is `orchestrator-astra`, hosted handle `/root/runtime_validator`.
+- Sol explicitly quiesced. Independently verified main9da7e48, dispatcher inactive/PID0,
+  no active global publishers, rootFT016056170d complete. This claim uses non-force Git.
+- Six hosted PRODUCT engineers are active/acknowledged: root proposal validation;
+  bridge-context journal recovery/invariant fix; compiler-corpus visual manifest;
+  render-schema semantic validation; corpus-continuation raster comparison;
+  mac-integration-review native bridge regression. Organization belongs to Astra only.
+- Existing remote dispatch remains valid: Kabir FT002r3, Aarush FT004r2, chatgpt-a
+  FT014r2. Their latest ACKs lag; pickup requests on issues1/3/5 require exact ACK,
+  live process/session and non-secret current resource evidence. Do not equate issue
+  comments with running workers. Jaysen FT003r4 accepted, childrenFT017–020 pending proof.
+- Immediate next steps: authority-fenced dispatcher restart, current+two queued tasks
+  per eligible worker, publish frozenFT012/FT011 and rendering proposal, integrate
+  rootFT016056170d after23-test review, then relay native bridge issue evidence.
+- Linux Claude remains API-only and blocked on verified existing funding/key/cap;
+  no subscription fallback, purchases or unverified credit spending. Mac Max20x is
+  authorized only on mac-m1max-a. Current quota values remain unknown/stale until measured.
+- Coordination: cheap Git polling30seconds; active Commander completion review at
+  most2minutes between useful checkpoints. No repeated model call on ambiguous failures.
+
+---
+
 # Commander bulletin and recovery packet
 
 Owner: primary Codex agent on linux-primary, appointed by the user.
