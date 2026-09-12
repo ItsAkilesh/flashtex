@@ -67,5 +67,11 @@
     "observed_behavior": "Producer mathtex::otf_gid uses base(ch) for ordinary non-extension TFM families. Reference employs MathItalic8/12, Roman8/12, MathSymbols10/Extension10, while original binds one LatinModernMath face. This is a demonstrated resource-selection difference, not proof that every differing pixel has that cause.",
     "owner_handoff": "Existing pipeline/font owners should preserve TFM family/size/code through verified optical resource/name/originalGID binding, or report explicit unavailable profile. Prove mapping from actual licensed resources; never cast reference Type1 codes or tune positions to the reference. No authoritative owner patch is justified until mapping evidence exists.",
     "acceptance": "Rerun same two math fixtures with recorded fullfont/TFM/code/GID provenance, keep metrics/raster/text statuses separate and retain missing reference sum mapping limitation. No new sweep needed."
+  },
+  "reviewed_rebaseline": {
+    "consumer_commit": "cdd5e979e87327ba4313b9a7bd8f1479bfb0ec5d",
+    "report": "evidence/helper-baseline-five-fixtures.json",
+    "report_sha256": "d6f9c43b63c81f958292842ee7e1a0c38f10dab6faef54844be07be327f18a84",
+    "result": "All five exact original PDF hashes, raster counts and extracted-text equality values match prior actual checkpoints. Existing mismatches remain mismatches."
   }
 }

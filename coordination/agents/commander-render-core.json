@@ -14,23 +14,23 @@
     "rust",
     "rendering"
   ],
-  "code_revision": "c3a5836b761cc81f49a2bd69bb96a192049216bf",
+  "code_revision": "cdd5e979e87327ba4313b9a7bd8f1479bfb0ec5d",
   "eta_minutes": {
-    "likely": 8,
-    "optimistic": 3,
-    "pessimistic": 15
+    "likely": 3,
+    "optimistic": 1,
+    "pessimistic": 5
   },
   "machine": "linux-primary",
   "main_integrated_through": "44b7779f5b2e171c63827bb3d7ea2d219d965aad",
-  "next_action": "Publish adapter/actual fixtures then explicitly rebaseline and replay existing five pinned acceptance cases after additive source change.",
+  "next_action": "Publish reviewed baseline re-run preserving all five exact PDF hashes and raster/text outcomes; next bounded queue needed.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "FT023r9 actual FT049 runtime/helper candidates reach immutable searchable export without metadata repair; stale/editor-generation/resource negatives refused.",
+  "summary": "FT023r9 actual runtime/helper candidate adapter published cdd5e979; all164Rust tests/lint pass, no metadata repair or native activation.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T11:15:01Z",
+  "updated_utc": "2026-09-12T11:17:14Z",
   "usage": {
-    "evidence": "Full164Rust tests pass, including3actual runtime/helper acceptance tests. Helper editor1/2/3 versus compile2/3/4 preserved. Exact candidate/direct export equality; no native/visual claim.",
-    "status": "Hosted OpenAI only; no providers/descendants/native activation; quota telemetry unavailable."
+    "evidence": "Fresh five-fixture runner on cdd5e979 matches every prior PDF hash and0/602/1244/979/337pixel counts; aggregate remains mismatch.6Python gates pass.",
+    "status": "Hosted OpenAI only; no providers/descendants; no quota telemetry."
   }
 }

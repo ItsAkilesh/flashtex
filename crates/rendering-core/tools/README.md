@@ -15,7 +15,7 @@ pdfTeX reference after verification; no fonts are downloaded or installed.
 The runner extracts untouched published producer65dbe7d, builds it offline with
 two jobs, requires status `ok`, zero diagnostics and exactly one page, then calls
 the existing immutable registry/CFF searchable export example. The current
-consumer and dependency sources must match acceptance baseline83d4a0e; changes
+consumer and dependency sources must match acceptance baselinecdd5e979; changes
 require a deliberate reviewed rebaseline. Original producer output is never
 rewritten. Source-preamble transformation remains recorded and explicit.
 
@@ -52,7 +52,7 @@ Add `--fixture plain`, `--fixture inline-math`, `--fixture display-math`, `--fix
 `--fixture all`. Default remains plain. `replay-fixtures.json` pins each actual
 source, request, reference PDF/engine metadata, font and license; its own digest
 is pinned in the runner. Metrics remain separately pinned. Consumer baseline is
-now83d4a0e and includes the multi-font exporter plus the reference CMap regression.
+nowcdd5e979 and includes the multi-font exporter plus the reference CMap regression.
 Source/dependency drift returns unknown before builds. Rebaseline is an explicit
 review decision, never automatic repair. One archived producer build serves all
 selected fixtures; each is measured even when another differs.
@@ -93,3 +93,8 @@ matching three-line word membership and extracted text. `all` now covers the
 five explicitly selected fixtures, not the complete corpus. The aggregate in
 completed-fixtures.json retains the actual report hashes for each checkpoint;
 it does not pretend these were one simultaneous benchmark run.
+
+Explicit source rebaseline cdd5e979 follows the additive helper_candidate adapter
+and164 passing Rust tests. It changes no producer/immutable export implementation;
+a fresh five-fixture run verifies exact prior PDFs and0/602/1244/979/337 raster
+counts. Historical report hashes are preserved; no unknown drift is auto-approved.
