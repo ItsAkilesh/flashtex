@@ -4,8 +4,8 @@
   "schema_version": 1,
   "steps": [
     {
-      "name": "Prepare isolated exact-base HW1 quantifier command and Symbol export candidate after renderer verifies forall and exists mapping chain",
-      "objective": "Prepare isolated exact-base HW1 quantifier command and Symbol export candidate after renderer verifies forall and exists mapping chain",
+      "name": "Prepare isolated exact-base vee and Rightarrow compiler command/export candidate using verified Adobe and downstream mappings; preserve unsupported mid setminus Longrightarrow diagnostics",
+      "objective": "Prepare isolated exact-base vee and Rightarrow compiler command/export candidate using verified Adobe and downstream mappings; preserve unsupported mid setminus Longrightarrow diagnostics",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"
@@ -19,8 +19,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Verify exact unsupported diagnostic removals source spans and incremental clean equality without hiding remaining HW1 gaps",
-      "objective": "Verify exact unsupported diagnostic removals source spans and incremental clean equality without hiding remaining HW1 gaps",
+      "name": "Archive exact standalone source request outputs and binary before combined build; audit exact seven command diagnostic removals",
+      "objective": "Archive exact standalone source request outputs and binary before combined build; audit exact seven command diagnostic removals",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"
@@ -34,8 +34,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Publish separate and combined candidate validation with exact provenance for existing compiler owner; no authoritative compiler or native edits",
-      "objective": "Publish separate and combined candidate validation with exact provenance for existing compiler owner; no authoritative compiler or native edits",
+      "name": "Publish reproducible combined patch for existing compiler owner with remaining HW1 gaps explicit; no authoritative adoption or native parity claim",
+      "objective": "Publish reproducible combined patch for existing compiler owner with remaining HW1 gaps explicit; no authoritative adoption or native parity claim",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"
