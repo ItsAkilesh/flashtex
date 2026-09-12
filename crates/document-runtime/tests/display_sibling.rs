@@ -353,3 +353,33 @@ fn raw_prototype_is_separate_current_only_and_preserves_failure_lifecycle() {
         assert!(s.take_current_raw_display_candidate().is_none());
     }
 }
+
+#[test]
+fn raw_cancelled_sibling_retains_old_budget_then_dispatches_new_document_set() {
+    let (_dir, mut s) = session_mode("gap", true);
+    s.set_display_candidates_enabled(true).unwrap();
+    s.submit_with_capabilities(request(1), caps()).unwrap();
+    preview(&mut s, 1);
+    s.close_project("p").unwrap();
+    let mut next = request(2);
+    next.documents.push(Document {
+        path: "chapters/東京-long.tex".into(),
+        text: "next".into(),
+    });
+    s.submit_with_capabilities(next, caps()).unwrap();
+    let start = Instant::now();
+    loop {
+        let events = s.poll();
+        assert!(
+            !events.iter().any(|e| matches!(e, Event::Failed { .. })),
+            "{events:?}"
+        );
+        if let Some(c) = s.take_current_raw_display_candidate() {
+            assert_eq!(c.request_id(), "r2");
+            assert_eq!(c.sources().len(), 2);
+            break;
+        }
+        assert!(start.elapsed() < Duration::from_secs(7));
+        thread::sleep(Duration::from_millis(2));
+    }
+}

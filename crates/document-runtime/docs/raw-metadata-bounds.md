@@ -52,3 +52,30 @@ retaining an entire empty struct per entry. Malformed content can terminate earl
 once failure is established, but no partial candidate may escape. Required v1,
 unknown fields, cancelled/stale siblings, mode epochs, output caps and joined
 shutdown remain regression gates before accepting any implementation.
+
+## Implemented request-bound capture (FT049 revision 9)
+
+The raw decoder now snapshots the active request's document count and maximum
+UTF-8 path length under the existing permit. Dispatch arms this budget before
+sending the request, and idle dispatch clears it. Queuing a later request does
+not replace the active request budget. The mutex is released before parsing.
+Before any request, document retention is zero.
+
+Serde seeds capture bounded strings and at most the requested number of complete
+document records. Missing/oversize records set an invalid marker; the parser still
+checks every entry's types, known duplicate keys, numeric range, syntax and depth.
+Only final v2 classification refuses that marker. V1 still runs the existing Value
+decode and preserves unknown documents arrays. No renderer 4096-path/document
+limit is imposed; a 5004-byte request path regression test pins that distinction.
+The raw frame cap still bounds scanning, serde escape scratch and transient key
+strings; this is not a global RSS or allocation-count bound. Vec capacity may
+round above the retained entry count. Existing four raw frames, one decoder permit
+and one retained candidate remain unchanged.
+
+Paired fixture hashes exactly match the previous measurement. Separate-process
+VmHWM observations changed from 3748/7528/4928 KiB (zero docs / 50000 empty docs /
+512-KiB ID) to 3620/3784/4060 KiB. These are small residency observations, not
+calibrated allocator counts or native speed claims. Full evidence is in
+`../benchmarks/raw-metadata-bounded`; rejected frames still produce no candidate.
+The empty-record unit test directly proves zero retained entries after 50001
+records. Permit and cancellation tests cover budget replacement and reset.
