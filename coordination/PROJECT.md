@@ -1,3 +1,5 @@
+> Latest explicit user acceptance correction: whole-PDF reference byte equality is NOT an acceptance gate. Valid serialization, metadata, compression and object ordering may differ. Preserve raw font/resource integrity hashes and protocol/source identity checks; keep navigation/search correctness separate from visual fidelity.
+
 > LATEST STAFFING OVERRIDE: this computer has FOUR active agents total: sole
 > commander orchestrator-astra, root preview-controller, compiler_corpus fonts,
 > supervisor_api_review rendering. Bridge-context, project-index and edit-ledger
@@ -7,8 +9,8 @@
 > and explicit-user-stop-only project continuity remain unchanged.
 
 > Latest user override: stop only on an explicit user instruction. A verified
-> completion milestone starts the next improvement cycle. Prioritize exact PDF
-> byte and pixel identity (separate gates), typing-to-visible preview below 200ms,
+> completion milestone starts the next improvement cycle. Prioritize pixel-perfect 1:1 rendered output at fixed renderer/settings,
+> page geometry, glyph placement and fonts, typing-to-visible preview below 200ms,
 > performance, native IDE polish, and broad TeX/LaTeX compatibility. Billing and
 > authentication restrictions remain; no autonomous purchases. This overrides
 > older completion/deadline stop wording below.

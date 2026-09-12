@@ -1,23 +1,23 @@
 {
-  "schema_version": 1,
-  "task_id": "FT-045",
-  "agent_id": "daniel-calc",
-  "branch": "agent/daniel-calc/tex-calc",
-  "revision": 2,
-  "state": "assigned",
-  "objective": "Extend exact dimension-expression evaluation with bounded scoped named-length dependencies and cycle/overflow diagnostics; prove fresh versus incremental equality with exact units.",
-  "owned_paths": [
-    "crates/tex-calc"
-  ],
-  "dependencies": [],
   "acceptance": [
     "Meaningful tests and strict Rust lint pass with bounded malformed/Unicode inputs",
     "Preserve exact source/revision and resource identities; no implicit approximation or parity claim",
     "Do not edit peer compiler/native/layout files; publish typed adapter contract and exact tested SHA"
   ],
+  "agent_id": "daniel-calc",
   "allocation_id": "daniel-claude20x-shared",
-  "timebox_minutes": 40,
+  "branch": "agent/daniel-calc/tex-calc",
   "deadline_utc": null,
-  "input_main_sha": "cb9556c2ba00ec3d6b692439ac28719c9f6532a2",
-  "updated_utc": "2026-09-12T09:15:38.612288+00:00"
+  "dependencies": [],
+  "input_main_sha": "58d83a5f0672b37faad816c9488937a2a2d3dfd8",
+  "objective": "Original bounded TeX dimension expression evaluator with exact units, scoped named lengths and typed overflow/unsupported results; consume existing style units. Integrate an explicit published consumer adapter without peer ownership edits",
+  "owned_paths": [
+    "crates/tex-calc"
+  ],
+  "revision": 3,
+  "schema_version": 1,
+  "state": "assigned",
+  "task_id": "FT-045",
+  "timebox_minutes": 40,
+  "updated_utc": "2026-09-12T09:48:56Z"
 }

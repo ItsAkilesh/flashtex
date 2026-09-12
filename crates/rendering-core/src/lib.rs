@@ -350,10 +350,10 @@ struct RawEnvelope {
     id: String,
     #[serde(rename = "type")]
     kind: String,
-    payload: serde_json::Value,
+    payload: Box<serde_json::value::RawValue>,
 }
-fn decode<T: serde::de::DeserializeOwned>(value: serde_json::Value) -> Result<T> {
-    serde_json::from_value(value)
+fn decode<T: serde::de::DeserializeOwned>(value: &serde_json::value::RawValue) -> Result<T> {
+    serde_json::from_str(value.get())
         .map_err(|error| ValidationError(format!("invalid typed payload: {error}")))
 }
 /// Parse bounded JSON. No unknown item or message is silently skipped.
@@ -367,10 +367,10 @@ pub fn parse(bytes: &[u8]) -> Result<Envelope> {
     )?;
     id(&raw.id)?;
     let message = match raw.kind.as_str() {
-        "render_capabilities" => Message::Offer(decode(raw.payload)?),
-        "render_format_selected" => Message::Selected(decode(raw.payload)?),
-        "render_format_rejected" => Message::Rejected(decode(raw.payload)?),
-        "display_list" => Message::DisplayList(decode(raw.payload)?),
+        "render_capabilities" => Message::Offer(decode(&raw.payload)?),
+        "render_format_selected" => Message::Selected(decode(&raw.payload)?),
+        "render_format_rejected" => Message::Rejected(decode(&raw.payload)?),
+        "display_list" => Message::DisplayList(decode(&raw.payload)?),
         _ => return Err(ValidationError("unsupported message type".into())),
     };
     Ok(Envelope {
@@ -447,6 +447,9 @@ fn offered(offer: Option<&Envelope>) -> Result<(&str, &Capabilities)> {
 
 impl DisplayList {
     pub fn validate(&self, capabilities: &Capabilities) -> Result<()> {
+        self.validate_profile(capabilities, false)
+    }
+    pub(crate) fn validate_profile(&self, capabilities: &Capabilities, cff: bool) -> Result<()> {
         capabilities.accepts(&self.required_features)?;
         require(
             self.render_format == RenderFormat::DisplayListV2
@@ -481,7 +484,8 @@ impl DisplayList {
                 "font byte length",
             )?;
             require(
-                font.format == "static-truetype" && font.face_index == 0,
+                (font.format == "static-truetype" || (cff && font.format == "opentype-cff"))
+                    && font.face_index == 0,
                 "unsupported font profile",
             )?;
             require(
@@ -526,13 +530,16 @@ impl DisplayList {
                     }
                     Item::GlyphRun(run) => {
                         used.insert(Feature::GlyphRun);
-                        used.insert(Feature::StaticTrueType);
+
                         run.font_size.positive()?;
                         run.paint.validate()?;
                         id(&run.font_id)?;
                         let font = fonts
                             .get(run.font_id.as_str())
                             .ok_or_else(|| ValidationError("unknown font ID".into()))?;
+                        if font.format == "static-truetype" {
+                            used.insert(Feature::StaticTrueType);
+                        }
                         text(&run.text, 1, 1048576, "run text length")?;
                         bounded_len(run.glyphs.len(), 1, 65536, "glyph count")?;
                         bounded_len(run.clusters.len(), 1, 65536, "cluster count")?;
@@ -780,5 +787,12 @@ pub mod shaped_replay;
 
 pub mod registry_binding;
 
+pub mod pdf_compare;
 pub mod pdf_export;
 pub mod pdf_stream;
+
+pub mod pipeline_cff;
+
+pub mod pipeline_frame;
+
+pub mod helper_candidate;

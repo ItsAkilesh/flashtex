@@ -222,6 +222,19 @@ def publish_terminal_receipt(config, result, root, journal):
     return commit
 
 
+def write_observation(output, result):
+    """A full disk must not terminate the read-only watcher or replace its last receipt."""
+    try:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        temporary = output.with_suffix('.tmp')
+        temporary.write_text(json.dumps(result, indent=2) + '\n')
+        temporary.replace(output)
+    except OSError as exc:
+        return {'state': 'observation_write_failed', 'claim_authorized': False,
+                'error': type(exc).__name__, 'errno': exc.errno}
+    return {'state': result['state'], 'claim_authorized': False}
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--config', type=Path, required=True)
@@ -243,11 +256,7 @@ def main():
                     result['witness_commit'] = receipt
         except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as exc:
             result = {'state': 'blocked', 'claim_authorized': False, 'error': type(exc).__name__}
-        args.output.parent.mkdir(parents=True, exist_ok=True)
-        temporary = args.output.with_suffix('.tmp')
-        temporary.write_text(json.dumps(result, indent=2) + '\n')
-        temporary.replace(args.output)
-        print(json.dumps({'state': result['state'], 'claim_authorized': False}), flush=True)
+        print(json.dumps(write_observation(args.output, result)), flush=True)
         if not args.watch:
             return 0
         time.sleep(args.interval)

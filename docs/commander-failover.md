@@ -125,3 +125,11 @@ and resource evidence. A script being published does not prove that remote hooku
 or a quota-to-terminal host adapter works. After successful claim, the selected
 parent invokes its already-authorized orchestrator session and resumes queues;
 first reread authority. Re-pin the new host witness before future succession.
+
+## Local publication serialization
+
+Commander main/control publishers must hold `dispatch_loop.publication_lock(root)`
+from fresh fetch/authority check through the non-force push. It resolves Git common
+state across linked worktrees; dispatcher scans hold the same lock. Remote races
+still fail closed and require journal reconciliation. The worktree dispatcher lock
+continues to reject duplicate dispatchers. This lock is not takeover authority.

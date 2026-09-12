@@ -1,10 +1,10 @@
 {
-  "schema_version": 1,
   "agent_id": "aarush-macbook",
-  "task_id": "FT-004",
-  "revision": 2,
-  "branch": "agent/aarush-macbook/companion-capture",
-  "action": "repair_and_validate",
   "assignment_path": "coordination/assignments/FT-004.json",
-  "issue_number": 3
+  "branch": "agent/aarush-macbook/companion-capture",
+  "previous_report_sha": "16496db49cdc51d67e41f5ee05a32650cadf975d",
+  "revision": 4,
+  "schema_version": 1,
+  "task_id": "FT-004",
+  "updated_utc": "2026-09-12T15:32:47.359100+00:00"
 }

@@ -1,0 +1,69 @@
+{
+  "agent_id": "commander-runtime-display",
+  "archived_utc": "2026-09-12T13:43:07Z",
+  "assignment": {
+    "acceptance": [
+      "Start from integrated decoder ecbaf7c on main; preserve four raw frames plus one decoded permit and joined shutdown",
+      "Exactly one contiguous sibling only after requested and accepted nonfailed result; bind ID/project/revision/document hashes and reject malformed, unsolicited, missing or out-of-order frames",
+      "Default legacy requests unchanged; preserve line limits and source epochs, no duplicate renderer parser or automatic native activation",
+      "Use corrected actual producer65dbe7d or later raw-byte font hashes; old contract SHA-bytes-plus-face deviation is historical, not accepted resource evidence",
+      "Publish bounded candidate API for existing helper owner; if deep validation is deferred, the type and contract must remain explicitly untrusted until existing native/core validator accepts it"
+    ],
+    "agent_id": "commander-runtime-display",
+    "allocation_id": "hosted-openai-product",
+    "branch": "agent/commander-runtime-display/display-runtime",
+    "deadline_utc": null,
+    "dependencies": [],
+    "input_main_sha": "4bcd708710d87ca5790fae5d11086a53b5226ff6",
+    "objective": "Independently audit published separate-process sender burst pair exact artifacts source identities and actual cadence",
+    "owned_paths": [
+      "crates/document-runtime"
+    ],
+    "revision": 29,
+    "schema_version": 1,
+    "state": "assigned",
+    "task_id": "FT-049",
+    "timebox_minutes": 40,
+    "updated_utc": "2026-09-12T13:38:12.447923+00:00"
+  },
+  "report": {
+    "agent_id": "commander-runtime-display",
+    "allocation_id": "hosted-openai-product",
+    "assignment_acknowledgements": {
+      "FT-049": {
+        "acknowledged_utc": "2026-09-12T13:38:41Z",
+        "adaptation": "Read exact FT049r29; await published processsender pair for artifact-only audit. Reviewed f240daec fragmented greater-than-PIPE_BUF transfer test read-only; no workload rerun or native claim.",
+        "main_sha": "86afb290fbbfaaac3f6ce2afdb1373ae9f81ef5c",
+        "revision": 29
+      }
+    },
+    "branch": "agent/commander-runtime-display/display-runtime",
+    "capabilities": [
+      "rust-runtime"
+    ],
+    "code_revision": "d8db4e1538d3c4686dbd5d73357f123771d0974e",
+    "eta_minutes": null,
+    "machine": "linux-primary",
+    "main_integrated_through": "1027d3ae7d00f7f9684b0d74026b6bb3f4e002a1",
+    "next_action": "Commander integration/next bounded assignment. No active jobs; root69bffa06 instrumentation proposal available for later review if assigned.",
+    "reviewed_peers": {},
+    "schema_version": 1,
+    "state": "ready_for_integration",
+    "summary": "FT049r29 exact c5518be3 process pair audit passes4 modes. Sender frames/provenance/source chain and crosspair clean bytes equal. Current8stale11superseded; historical6delivered12superseded plus completed15 undelivered;only current21. No loss-cause/native claim or workload rerun.",
+    "tool": "codex",
+    "updated_utc": "2026-09-12T13:42:55Z",
+    "usage": {
+      "status": "unknown"
+    }
+  },
+  "report_age_seconds": 12,
+  "report_path": "coordination/agents/commander-runtime-display.json",
+  "review_required": true,
+  "revision": 29,
+  "schema_version": 1,
+  "stale_completion": false,
+  "state": "reported_ready",
+  "task_id": "FT-049",
+  "worker_branch": "agent/commander-runtime-display/display-runtime",
+  "worker_report_sha": "513926ce2160b1db18dead25acc650b3d749f924"
+}
