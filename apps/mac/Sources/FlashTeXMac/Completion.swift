@@ -1048,6 +1048,11 @@ final class CompletionScheduler {
         let items: [Completion.Suggestion]
         /// Wall time of the off-main scan.
         let computeMs: Double
+        /// Time the job waited on the queue before the scan started.
+        var queuedMs: Double = 0
+        /// `MonotonicClock` stamp taken when the scan finished, so the
+        /// consumer can measure the run-loop delivery lag.
+        var computedAtNs: UInt64 = 0
     }
 
     struct Statistics: Equatable {
@@ -1099,14 +1104,16 @@ final class CompletionScheduler {
         let job = Job(generation: generation)
         pending = job
         statistics.scheduled += 1
+        let scheduledAt = MonotonicClock.nowNs()
         execute { [weak self] in
             let t0 = MonotonicClock.nowNs()
             let range = Completion.completionRange(in: request.text, caretUTF16: request.caretUTF16)
             let items = job.isCancelled ? [] : Completion.suggestions(in: request.text, caretUTF16: request.caretUTF16,
                                                                      metadata: request.metadata, supported: request.supported,
                                                                      cancelled: { job.isCancelled })
+            let t1 = MonotonicClock.nowNs()
             let outcome = Outcome(generation: job.generation, caretUTF16: request.caretUTF16, range: range, items: items,
-                                  computeMs: Double(MonotonicClock.nowNs() - t0) / 1e6)
+                                  computeMs: Double(t1 - t0) / 1e6, queuedMs: Double(t0 - scheduledAt) / 1e6, computedAtNs: t1)
             Self.onMain { [weak self] in
                 MainActor.assumeIsolated { [weak self] in
                     guard let self else { return }
@@ -1213,6 +1220,15 @@ final class CompletionPopup: NSPanel, NSTableViewDataSource, NSTableViewDelegate
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
 
+    /// The table's selected row, for tests and evidence.
+    var selectedRow: Int { table.selectedRow }
+
+    /// Shows (or refreshes) the list under `caretRect`. While the panel is
+    /// already on screen for the same parent, only what changed is touched:
+    /// the rows reload only when the items differ, the frame moves only when
+    /// the caret rect did, and the window is not re-ordered — each of those is
+    /// a window-server round trip that the typing-through-the-list path would
+    /// otherwise pay on every keystroke.
     func show(items: [Completion.Suggestion], selected: Int, below caretRect: NSRect, parent: NSWindow) {
         update(items: items, selected: selected)
         let rows = CGFloat(min(items.count, Completion.maxSuggestions))
@@ -1223,20 +1239,28 @@ final class CompletionPopup: NSPanel, NSTableViewDataSource, NSTableViewDelegate
             if origin.y < visible.minY { origin.y = caretRect.maxY + 2 } // flip above the caret
             origin.x = min(max(origin.x, visible.minX), max(visible.minX, visible.maxX - Self.width))
         }
-        setFrame(NSRect(origin: origin, size: NSSize(width: Self.width, height: height)), display: true)
+        let target = NSRect(origin: origin, size: NSSize(width: Self.width, height: height))
+        let onScreen = isVisible && self.parent === parent
+        if frame != target { setFrame(target, display: false) } // drawn once, by the display cycle that shows it
         if self.parent !== parent {
             self.parent?.removeChildWindow(self)
             parent.addChildWindow(self, ordered: .above)
         }
-        orderFront(nil)
+        if !onScreen { orderFront(nil) }
     }
 
+    /// Replaces the rows only when they changed; a pure selection move (arrow
+    /// keys) selects the row without reloading the table.
     func update(items: [Completion.Suggestion], selected: Int) {
-        self.items = items
         updatingSelection = true
-        table.reloadData()
+        if items != self.items {
+            self.items = items
+            table.reloadData()
+        }
         if items.indices.contains(selected) {
-            table.selectRowIndexes(IndexSet(integer: selected), byExtendingSelection: false)
+            if table.selectedRow != selected {
+                table.selectRowIndexes(IndexSet(integer: selected), byExtendingSelection: false)
+            }
             table.scrollRowToVisible(selected)
             announceSelection(items[selected], index: selected, total: items.count)
         }
@@ -1244,8 +1268,8 @@ final class CompletionPopup: NSPanel, NSTableViewDataSource, NSTableViewDelegate
     }
 
     func hide() {
-        parent?.removeChildWindow(self)
-        orderOut(nil)
+        if parent != nil { parent?.removeChildWindow(self) }
+        if isVisible { orderOut(nil) }
         items = []
         table.reloadData()
     }
@@ -1405,6 +1429,10 @@ final class CompletingTextView: NSTextView {
     private(set) var lastCloseReason: CloseReason?
     /// Latest outcome presented, for evidence (compute time off-main).
     private(set) var lastOutcome: CompletionScheduler.Outcome?
+    /// Evidence for the last delivered outcome: run-loop lag from the end of
+    /// the scan to `present`, and the time `present` spent (session + popup).
+    private(set) var lastDeliveryLagMs: Double = 0
+    private(set) var lastPresentMs: Double = 0
 
     /// The popup's mouse actions route back here (a click chooses, a
     /// double-click accepts); the session stays the single source of truth.
@@ -1490,10 +1518,16 @@ final class CompletingTextView: NSTextView {
         scheduler.schedule(request) { [weak self] outcome in
             self?.present(outcome, metadataRevision: metadata?.revision)
         }
+        // First use: build the panel now, while the scan runs off-main, so the
+        // delivery path only has to fill and show it.
+        if session == nil { _ = popup }
     }
 
     private func present(_ outcome: CompletionScheduler.Outcome, metadataRevision: Int?) {
+        let t0 = MonotonicClock.nowNs()
         lastOutcome = outcome
+        lastDeliveryLagMs = outcome.computedAtNs == 0 ? 0 : Double(t0 &- outcome.computedAtNs) / 1e6
+        defer { lastPresentMs = Double(MonotonicClock.nowNs() - t0) / 1e6 }
         // The scheduler refused other generations; the caret must also still
         // be where the request was made and the range must fit the text.
         let caret = selectedRange()

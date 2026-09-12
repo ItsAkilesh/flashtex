@@ -1255,6 +1255,15 @@ final class CompletionLiveHelperTests: XCTestCase {
         tv.keyDown(with: e)
     }
 
+    /// Same as `waitUntil` with 0.2 ms slices, for timing a delivery.
+    private func waitTight(_ what: String, timeout: TimeInterval = 20, _ cond: () -> Bool) async throws {
+        let start = Date()
+        while !cond() {
+            if Date().timeIntervalSince(start) > timeout { XCTFail("timed out waiting for \(what)"); return }
+            try await Task.sleep(nanoseconds: 200_000)
+        }
+    }
+
     /// Inserts `insert` before `\end{document}`, opens the list for it through
     /// the real view, returns the delivered items and removes the probe again.
     private func popupSession(_ tv: CompletingTextView, model: ShellModel, insert: String) async throws -> CompletionSession {
@@ -1351,6 +1360,37 @@ final class CompletionLiveHelperTests: XCTestCase {
         let cmds = try await popupSession(tv, model: model, insert: "\\my")
         XCTAssertEqual(cmds.items.map(\.label), ["\\myterm"])
         XCTAssertEqual(cmds.items.first?.detail, "declared in main.tex · \(myterm.occurrences) use\(myterm.occurrences == 1 ? "" : "s") · revision \(cmds.metadataRevision ?? -1)")
+        // Pickup through the real route, best of N: with index metadata bound
+        // to the caret's revision, ⌃Space on `\cite{` → list showing the key
+        // only the index knows. Timed from the keystroke to the session, run
+        // loop turning in 0.2 ms slices; printed with the load it ran under.
+        var pickupMs: [Double] = []
+        var boundMs: [Double] = []
+        for _ in 0..<10 {
+            let ns = tv.string as NSString
+            let at = ns.range(of: "\\end{document}").location
+            tv.setSelectedRange(NSRange(location: at, length: 0))
+            let edited = MonotonicClock.nowNs()
+            tv.insertText("\\cite{", replacementRange: NSRange(location: at, length: 0))
+            try await waitUntil("model text") { model.activeText == tv.string }
+            try await waitTight("index metadata for the probe revision") { tv.projectIndexMetadata?.revision == model.editorRevision && tv.editorRevision == model.editorRevision }
+            boundMs.append(Double(MonotonicClock.nowNs() - edited) / 1e6)
+            let t0 = MonotonicClock.nowNs()
+            key(tv, " ", code: 49, flags: .control)
+            try await waitTight("popup") { tv.session != nil }
+            pickupMs.append(Double(MonotonicClock.nowNs() - t0) / 1e6)
+            XCTAssertEqual(tv.session?.items.map(\.label), ["knuth84"])
+            XCTAssertEqual(tv.session?.metadataRevision, model.editorRevision)
+            key(tv, "\u{1B}", code: 53)
+            tv.insertText("", replacementRange: NSRange(location: at, length: 6))
+            try await waitUntil("model text restored") { model.activeText == tv.string }
+        }
+        let load = CompletionTests.loadAverage1
+        func summary(_ v: [Double], _ f: String) -> String {
+            "best \(String(format: f, v.min()!)) / median \(String(format: f, v.sorted()[v.count / 2])) / max \(String(format: f, v.max()!)) ms"
+        }
+        print("live helper: \\cite{ pickup (⌃Space → list with the index key, best of \(pickupMs.count), 1-min load \(String(format: "%.1f", load))): "
+              + summary(pickupMs, "%.2f") + "; edit → index metadata bound (helper compile + 3 complete replies): " + summary(boundMs, "%.1f"))
         // Probe edits raced the helper's snapshot: any query answered after the
         // next edit was refused as stale rather than shown (count reported).
         let racedRefusals = model.completionFetcher.refusals
