@@ -1,0 +1,30 @@
+{
+  "agent_id": "aarush-macbook",
+  "allocation_id": "openai-aarush-plus-ft004",
+  "assignment_acknowledgements": {},
+  "branch": "agent/aarush-macbook/test-coverage-v2",
+  "capabilities": [
+    "rust",
+    "swift",
+    "xcode",
+    "coordination"
+  ],
+  "code_revision": "7b9556c74f068c49871843bcb235a32354eccdae",
+  "eta_minutes": {
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 0
+  },
+  "machine": "mac-m5pro-aarush",
+  "main_integrated_through": "c11c005b90c1b495889dea7c664aae4b8a9424c4",
+  "next_action": "Available for new assignments.",
+  "reviewed_peers": {},
+  "schema_version": 1,
+  "state": "ready_for_integration",
+  "summary": "test-coverage-v2 (7b9556c7): 51 new unit tests for main-branch compiler \u2014 Span (16), Diagnostic (15), lexer (17 new). FT-004 ACKed at 16496db4. FT-005/006 at 0236aa0a (125 tests).",
+  "tool": "Claude Cowork",
+  "updated_utc": "2026-09-12T15:28:40Z",
+  "usage": {
+    "status": "unknown"
+  }
+}
