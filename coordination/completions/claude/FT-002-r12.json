@@ -1,0 +1,81 @@
+{
+  "agent_id": "claude",
+  "archived_utc": "2026-09-12T09:54:41Z",
+  "assignment": {
+    "acceptance": [
+      "Reproduce actual reference fixtures13/14 from render-pipeline evidence and remove only demonstrated parser blockers",
+      "Bound nesting and malformed delimiter recovery; preserve UTF8 source ranges and original font/glyph mapping gates",
+      "Full compiler tests and strict lint; no transferred math/paragraph/font edits, no raw PDF or native parity assertion"
+    ],
+    "agent_id": "claude",
+    "allocation_id": "openai-kabir-plus-ft002-stage6",
+    "branch": "agent/claude/compiler-foundation",
+    "deadline_utc": null,
+    "dependencies": [],
+    "input_main_sha": "47bb0e8028cf846adaeb998b0ea7431e48a50731",
+    "objective": "Resolve measured reference fixture parser gaps: bounded left/right math delimiters and missing nu Greek control word, preserving source ranges, typed unsupported export and exact incremental-clean equality.",
+    "owned_paths": [
+      "crates/compiler"
+    ],
+    "revision": 12,
+    "schema_version": 1,
+    "state": "assigned",
+    "task_id": "FT-002",
+    "timebox_minutes": 45,
+    "updated_utc": "2026-09-12T09:48:50.695736+00:00"
+  },
+  "report": {
+    "agent_id": "claude",
+    "allocation_id": "openai-kabir-plus-ft002",
+    "assignment_acknowledgements": {
+      "FT-002": {
+        "acknowledged_utc": "2026-09-12T09:50:43Z",
+        "adaptation": "Accepted FT-002 rev 12: bounded \\left and \\right math delimiters and the missing \\nu control word, from reference fixtures 13 and 14. Scope is explicitly narrow: remove only demonstrated parser blockers, bound nesting, recover from malformed delimiters, preserve UTF-8 source ranges and the existing font and glyph mapping gates, and assert nothing about raw PDF or native parity. The export adapter already has a guard test that fails if a math symbol lacks a decided export outcome, so adding \\nu forces its Symbol encoding at the same time.",
+        "main_sha": "9e05acdbf9fa7e1825d67cb03570a69a387bf833",
+        "revision": 12
+      }
+    },
+    "branch": "agent/claude/compiler-foundation",
+    "capabilities": [
+      "rust",
+      "cargo",
+      "cursor-commit",
+      "coordination"
+    ],
+    "code_revision": "a6a732cf27beab808f31b6cb5cd0101a3d28d621",
+    "eta_minutes": {
+      "likely": 0,
+      "optimistic": 0,
+      "pessimistic": 0
+    },
+    "machine": "mac-m5pro-kabir",
+    "main_integrated_through": "4425d9d77b747db69c1f04c493b363bd3a467f4e",
+    "next_action": "Watcher armed for rev 13.",
+    "reviewed_peers": {
+      "origin/main": {
+        "adaptation": "Found a correctness bug beyond the missing feature: \\left was previously typeset as the literal text backslash-left into rendered output, so the command name leaked onto the page rather than being interpreted. A test now asserts no command name appears in rendered output. Scope kept narrow as the revision requires: no math, paragraph or font crate edits, and no raw PDF or native parity assertion.",
+        "reviewed_utc": "2026-09-12T09:54:34Z",
+        "sha": "1d25ed009e7007b65258d4b684421cb9aadc59c2"
+      }
+    },
+    "schema_version": 1,
+    "state": "ready_for_integration",
+    "summary": "FT-002 rev 12 delivered: \\left and \\right delimiters parsed with bounded nesting and malformed-input recovery, and the missing \\nu control word added to both the math table and the export adapter. 17 suites pass.",
+    "tool": "Codex",
+    "updated_utc": "2026-09-12T09:54:34Z",
+    "usage": {
+      "evidence": "Balanced \\left(\\frac{a}{b}\\right) renders ( a rule b ) with no unsupported diagnostic; \\nu renders Greek nu and is exportable via Symbol 0x6E; unmatched \\left and stray \\right each recover with an explicit diagnostic and still typeset; nesting tested at 8, 64, 200 and 2000 pairs without crashing; every test asserts spans slice their source; 17 suites pass; clippy -D warnings clean; fmt clean",
+      "status": "Written directly; no Codex worker"
+    }
+  },
+  "report_age_seconds": 7,
+  "report_path": "coordination/agents/claude.json",
+  "review_required": true,
+  "revision": 12,
+  "schema_version": 1,
+  "stale_completion": false,
+  "state": "reported_ready",
+  "task_id": "FT-002",
+  "worker_branch": "agent/claude/compiler-foundation",
+  "worker_report_sha": "ce5bf48e618d01b5244c9ed6a41fa3aa47826828"
+}

@@ -1,9 +1,10 @@
 {
-  "schema_version": 1,
   "agent_id": "daniel-calc",
-  "task_id": "FT-045",
-  "revision": 2,
-  "branch": "agent/daniel-calc/tex-calc",
   "assignment_path": "coordination/assignments/FT-045.json",
-  "updated_utc": "2026-09-12T09:15:38.612288+00:00"
+  "branch": "agent/daniel-calc/tex-calc",
+  "previous_report_sha": "3e5c9fd1237a1f845defdc9a85a0b079bba30e69",
+  "revision": 3,
+  "schema_version": 1,
+  "task_id": "FT-045",
+  "updated_utc": "2026-09-12T09:48:56Z"
 }
