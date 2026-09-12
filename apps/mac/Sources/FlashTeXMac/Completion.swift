@@ -1632,6 +1632,16 @@ final class CompletingTextView: NSTextView {
         textChanged()
     }
 
+    // MARK: VoiceOver rotor (EditorRotor.swift)
+
+    /// Headings/environments rotor search over this view's text; created on
+    /// first use so views that never reach VoiceOver pay nothing.
+    private(set) lazy var rotorSearch = EditorRotorSearch(textView: self)
+
+    override func accessibilityCustomRotors() -> [NSAccessibilityCustomRotor] {
+        rotorSearch.rotors + (super.accessibilityCustomRotors() ?? [])
+    }
+
     /// Programmatic replacement (`string =`, the owner's `replaceCharacters`)
     /// does not call `didChangeText`; the storage notification covers it.
     private func observeStorageIfNeeded() {
