@@ -413,6 +413,7 @@ extension ShellModel {
         }
         guard case .success(let payload) = reply, let disk = payload["disk"] as? [String: Any],
               let state = disk["state"] as? String else { return nil }
-        return ControllerDiskStatus(state: state, diskSHA256: disk["disk_sha256"] as? String, reason: disk["reason"] as? String)
+        // `matches_source` replies carry `sha256`; the others `disk_sha256`.
+        return ControllerDiskStatus(state: state, diskSHA256: (disk["disk_sha256"] ?? disk["sha256"]) as? String, reason: disk["reason"] as? String)
     }
 }

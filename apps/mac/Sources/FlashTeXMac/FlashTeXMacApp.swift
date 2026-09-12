@@ -35,7 +35,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Coming back to the app rechecks the document on disk (external edits
     /// become an explicit conflict state, never a silent overwrite).
-    func applicationDidBecomeActive(_ notification: Notification) { _ = model?.checkDiskStatus() }
+    func applicationDidBecomeActive(_ notification: Notification) {
+        if let model { Task { @MainActor in await model.refreshDiskStatus() } } // helper route when attached
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
@@ -108,6 +110,8 @@ struct FlashTeXMacApp: App {
                     .keyboardShortcut("s")
                 Button("Resolve On-Disk Conflict…") { model.resolveConflictPanel() }
                     .disabled(model.files.conflict == nil)
+                Button("Reload From Disk…") { model.reloadFromDiskInteractive() }
+                    .disabled(model.documentURL == nil)
                 Button("Save As…") { model.saveTexAs() }
                     .keyboardShortcut("s", modifiers: [.command, .shift])
                 Divider()

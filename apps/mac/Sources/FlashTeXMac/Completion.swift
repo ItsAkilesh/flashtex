@@ -1312,7 +1312,7 @@ final class CompletingTextView: NSTextView {
     func requestCompletion() {
         observeStorageIfNeeded()
         let caret = selectedRange()
-        guard caret.length == 0 else { return }
+        guard caret.length == 0, !hasMarkedText() else { return }
         lastCaret = caret
         let metadata = boundMetadata
         let request = CompletionScheduler.Request(text: string, caretUTF16: caret.location, metadata: metadata,
@@ -1390,6 +1390,7 @@ final class CompletingTextView: NSTextView {
     // MARK: events
 
     override func keyDown(with event: NSEvent) {
+        if hasMarkedText() { super.keyDown(with: event); return } // IME composition owns the keys (mac-editor-accessibility)
         if event.modifierFlags.contains(.control), event.charactersIgnoringModifiers == " " {
             requestCompletion()
             return
