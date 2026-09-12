@@ -71,6 +71,8 @@ final class AcceptanceSliceTests: XCTestCase {
         XCTAssertTrue(sent.contains { $0.contains("\"type\":\"capture_submit\"") && $0.contains("<image bytes>") })
         XCTAssertTrue(model.link.transcript.contains { $0.direction == .received && $0.text.contains("\"type\":\"capture_received\"") })
         XCTAssertFalse(model.link.transcript.contains { $0.text.contains(mac.longTermPSK.base64EncodedString()) }, "pair_psk must be redacted")
+        // Evidence: the redacted wire transcript as the iPad saw it (stdout of the test run).
+        for l in model.link.transcript { print("NEARBY-TRANSCRIPT \(l.direction.rawValue) \(l.text)") }
     }
 
     func testWrongPairingCodeIsRefused() async throws {
