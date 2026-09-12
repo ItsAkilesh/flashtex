@@ -176,13 +176,13 @@ for n in ("demo", "body60k", "fixture"):
 PY
 
 # --- 4. Runs --------------------------------------------------------------
-wait_quiet() { # blocks until the 1-minute load is below QUIET_LOAD or QUIET_WAIT s passed
-  local waited=0 l
+wait_quiet() { # blocks until the 1-minute load is below QUIET_LOAD and no other
+  local waited=0 l other # FlashTeXMac (another bench/validation run) is alive, or QUIET_WAIT s passed
   while :; do
-    l="$(load1)"
-    if awk -v l="$l" -v q="$QUIET_LOAD" 'BEGIN { exit !(l < q) }'; then return 0; fi
-    if (( waited >= QUIET_WAIT )); then echo "    load $l still >= $QUIET_LOAD after $QUIET_WAIT s; running anyway" >&2; return 0; fi
-    (( waited == 0 )) && echo "    load $l >= $QUIET_LOAD; waiting for a quiet machine (up to $QUIET_WAIT s)"
+    l="$(load1)"; other="$(pgrep -x FlashTeXMac | wc -l | tr -d ' ')"
+    if awk -v l="$l" -v q="$QUIET_LOAD" 'BEGIN { exit !(l < q) }' && (( other == 0 )); then return 0; fi
+    if (( waited >= QUIET_WAIT )); then echo "    load $l / $other other FlashTeXMac after $QUIET_WAIT s; running anyway" >&2; return 0; fi
+    (( waited == 0 )) && echo "    load $l (limit $QUIET_LOAD), $other other FlashTeXMac process(es); waiting for a quiet machine (up to $QUIET_WAIT s)"
     sleep 10; waited=$((waited + 10))
   done
 }
