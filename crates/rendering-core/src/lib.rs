@@ -777,3 +777,7 @@ pub mod device_grid;
 pub mod shaped_run;
 
 pub mod shaped_replay;
+
+pub mod registry_binding;
+
+pub mod pdf_stream;

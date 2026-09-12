@@ -2,8 +2,8 @@
   "schema_version": 1,
   "agent_id": "daniel-math-access",
   "task_id": "FT-038",
-  "revision": 1,
+  "revision": 2,
   "branch": "agent/daniel-math-access/math-accessibility",
   "assignment_path": "coordination/assignments/FT-038.json",
-  "updated_utc": "2026-09-12T07:35:07.367827+00:00"
+  "updated_utc": "2026-09-12T09:08:31.372212+00:00"
 }

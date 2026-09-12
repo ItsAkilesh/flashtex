@@ -82,6 +82,7 @@ name = "flashtex-edit-ledger"
 version = "0.1.0"
 dependencies = [
  "fs2",
+ "getrandom",
  "serde",
  "serde_json",
  "sha2",

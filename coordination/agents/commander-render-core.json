@@ -3,10 +3,10 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-023": {
-      "acknowledged_utc": "2026-09-12T07:21:50Z",
-      "adaptation": "Read exact revision3 geometry-diff assignment. Implemented bounded exact comparison of validated mixed/display inputs with stable IDs, raw hashes, mismatch categories and undecided equality on truncation/unsupported; no production/native activation.",
-      "main_sha": "2fd302675040308c2b07d346c07389a051518979",
-      "revision": 3
+      "acknowledged_utc": "2026-09-12T08:50:08Z",
+      "adaptation": "Read exact published FT023 revision5. Current MathKernInfo exact source-bound replay implemented; synthetic tie/budget/tamper tests pass. Finish pinned boundary replay then device-context and cached/direct mixed-math followups; no script layout or wire activation.",
+      "main_sha": "e0887bcfd71749d35f4a1aa8c42d059599d5f88d",
+      "revision": 5
     }
   },
   "branch": "agent/commander-render-core/rendering-core",
@@ -14,23 +14,23 @@
     "rust",
     "rendering"
   ],
-  "code_revision": "4d1248237fc9883c5edc61dc2cf98a5c90d62eb8",
+  "code_revision": "fce561571abb1aa8c1b8b2edc4dd8c5ea63286a5",
   "eta_minutes": {
     "likely": 15,
     "optimistic": 5,
     "pessimistic": 25
   },
   "machine": "linux-primary",
-  "main_integrated_through": "cb19024b34762f82c1ed609ff740bb880040139a",
-  "next_action": "Next rendering-core product assignment after published replay checkpoint.",
+  "main_integrated_through": "84d581168eed75caa620f66350d629a23b0ce538",
+  "next_action": "Publish kern checkpoint then consume additive published device context in same owned crate; retain raw design values and pixel corrections separately, preserve unhinted default. Follow with bounded cached/direct mixed-math replay. Worktree /home/natkarri/flashtex-rendering-core branch agent/commander-render-core/rendering-core; no exposed native context telemetry/control.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "Exact shaped-run replay and geometry-diff integration complete; malformed and stale fixtures reject.",
+  "summary": "FT023r5 exact MathKern consumer complete, unchanged peer1fc71f3. 135 ordinary tests and strict clippy pass; pinned STIX293 boundary replays across219 tables plus66 assembly replays pass. Explicit query heights, original GIDs, raw/scaled kerns, device flags and immutable source/registry/MATH identity. No script layout.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T07:48:21Z",
+  "updated_utc": "2026-09-12T08:50:57Z",
   "usage": {
-    "evidence": "123 Rust tests, strict all-target clippy and actual geometry-diff CLI pass. Pinned STIX replay 27951 bytes SHA 19d16580b3342bc1af03c44a4bc9046c529b3e74c29fb1fa0af9f5d46b320234; 11 verified warm hits and 100 identical replays. Debug sample cold placement 757121ns, warm 324294ns, 100 placement+serialization iterations 152082236ns; not paint latency. Font/source evidence boundaries remain explicit.",
-    "status": "Hosted OpenAI allocation only; no auxiliary paid calls or new agents."
+    "evidence": "cargo test135 pass; cargo clippy all-targets -D warnings pass; pinned STIXMath source/license hashes checked,293 lookup cases/219 tables; synthetic negative/tie/absence/invalid GID/tamper/duplicate/stale/budget cases. No pending test process.",
+    "status": "Hosted OpenAI only; no providers or descendants."
   }
 }
