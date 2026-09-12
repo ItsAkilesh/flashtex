@@ -39,6 +39,30 @@ final class DiagnosticsPanelTests: XCTestCase {
         return m
     }
 
+    // MARK: gap category
+
+    /// The compiler's not-implemented / not-supported messages are gaps, not
+    /// errors or warnings, whatever severity they carry (daniel-fable-ui-qa #1).
+    func testNotImplementedDiagnosticsCountAsGapsNotErrors() {
+        let mk = { (s: RuntimeV1.Severity, m: String) in RuntimeV1.Diagnostic(severity: s, message: m, source: nil, recovery: nil) }
+        let diags = [
+            mk(.warning, "packages fontenc are recognised but not implemented"),
+            mk(.error, "\\setlength is not supported by this compiler version; unrestricted TeX math mode is not implemented"),
+            mk(.error, "\\mathbb is not supported in math mode"),
+            mk(.error, "environment 'tikzpicture' is not implemented; its body is typeset as plain text"),
+            mk(.error, "\\includegraphics is unsupported; image loading is not implemented"),
+            mk(.error, "\\setlength is not supported in the document preamble"),
+            mk(.error, "missing } inserted"),
+            mk(.warning, "Overfull line"),
+        ]
+        let c = EditorDiagnostics.counts(diags)
+        XCTAssertEqual(c.errors, 1)
+        XCTAssertEqual(c.warnings, 1)
+        XCTAssertEqual(c.gaps, 6)
+        XCTAssertFalse(EditorDiagnostics.isGap("missing } inserted"))
+        XCTAssertEqual(EditorDiagnostics.counts([]).gaps, 0)
+    }
+
     // MARK: copy text
 
     func testCopyLineFormat() {

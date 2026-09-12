@@ -404,6 +404,9 @@ enum EditorIntelligence {
 final class LineNumberGutter: NSRulerView {
     /// Line index → worst severity on that line.
     private(set) var severities: [Int: RuntimeV1.Severity] = [:]
+    /// Lines whose only marks are FlashTeX gaps (`EditorDiagnostics.isGap`):
+    /// a faint grey tick, never a red or orange dot.
+    private(set) var gapLines: Set<Int> = []
     /// Current line (caret), highlighted in the gutter.
     var currentLine: Int? { didSet { if currentLine != oldValue { needsDisplay = true } } }
     /// The model that answers "which line is this offset on".
@@ -424,12 +427,14 @@ final class LineNumberGutter: NSRulerView {
     func update(marks: [EditorDiagnostics.Mark]) {
         guard let table = lineTable?() else { return }
         var result: [Int: RuntimeV1.Severity] = [:]
+        var gaps: Set<Int> = []
         for mark in marks {
             guard mark.nsRange.location >= 0, mark.nsRange.location <= table.length else { continue }
             let line = table.line(at: mark.nsRange.location)
+            if EditorDiagnostics.isGap(mark.message) { gaps.insert(line); continue }
             if result[line] != .error { result[line] = mark.severity }
         }
-        if result != severities { severities = result; needsDisplay = true }
+        if result != severities || gaps != gapLines { severities = result; gapLines = gaps; needsDisplay = true }
     }
 
     /// Adjusts the width to the line count and the editor font.
@@ -497,6 +502,9 @@ final class LineNumberGutter: NSRulerView {
                 let dot = NSRect(x: 6, y: inRuler.midY - d / 2, width: d, height: d)
                 (severity == .error ? NSColor.systemRed : NSColor.systemOrange).setFill()
                 NSBezierPath(ovalIn: dot).fill()
+            } else if gapLines.contains(line) {
+                NSColor.tertiaryLabelColor.setFill()
+                NSBezierPath(ovalIn: NSRect(x: 7.5, y: inRuler.midY - 2, width: 4, height: 4)).fill()
             }
             line += 1
         }

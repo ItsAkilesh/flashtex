@@ -19,13 +19,16 @@ struct ProblemsPanel: View {
     var body: some View {
         @Bindable var model = model
         let diags = model.displayedDiagnostics
-        let errors = diags.filter { $0.severity == .error }.count
-        let warnings = diags.count - errors
+        let (errors, warnings, gaps) = EditorDiagnostics.counts(diags)
         VStack(spacing: 0) {
             HStack(spacing: 10) {
                 Label("Problems", systemImage: "exclamationmark.triangle").font(.caption.bold())
                 if errors > 0 { Label("\(errors)", systemImage: "xmark.octagon.fill").foregroundStyle(.red).font(.caption) }
                 if warnings > 0 { Label("\(warnings)", systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange).font(.caption) }
+                if gaps > 0 {
+                    Label("\(gaps) not implemented", systemImage: "puzzlepiece.extension").foregroundStyle(.secondary).font(.caption)
+                        .help("Commands, packages or environments FlashTeX does not implement yet — not mistakes in the source")
+                }
                 if diags.isEmpty { Text("none").font(.caption).foregroundStyle(.secondary) }
                 if let r = model.result, r.status != .ok {
                     Text(r.status == .recovered ? "recovered: preview shown with provisional rendering" : "compile failed: the previous preview is kept")
