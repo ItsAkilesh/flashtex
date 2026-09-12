@@ -735,3 +735,29 @@ currently yields peer `MissingTable("CFF ")` for face0. Its license hash and exa
 refusal are pinned in `tests/collection_inventory.rs`; this is not successful
 collection-rendering evidence. Production collection activation awaits the
 verified resolver and downstream outline support.
+
+### Literal .enc files
+
+`enc_file::EncFile` parses one bounded declaration:
+`/EncodingName [ /glyph0 ... /glyph255 ] [readonly] def`, with ASCII whitespace
+and `%` line comments. The brackets around `readonly` here mean optional grammar,
+not extra file tokens. There must be exactly256 positional names; duplicate array
+definitions, extra/missing slots, numeric assignment, strings and unknown operators
+are rejected. Repeated names (especially `.notdef`) are valid and do not duplicate
+slots. Names are preserved literally; no escape decoding, execution or evaluation
+occurs. Input is capped at64KiB and names at256 bytes.
+
+`load` uses rooted no-symlink reads with an expected file SHA. Binding wrappers
+preserve the encoding-file SHA/name/project path alongside existing exact
+`BoundTfmFont` or `BoundCffTfmFont`. TrueType mappings still require explicit named
+GID declarations; CFF uses its already validated original-name index. Missing
+names and `.notdef` semantics come from those binders, with no Unicode casts or
+fallback. Consumers must include the wrapper's file identity in provenance/cache
+keys when source-file identity matters, even if two files declare equal slots.
+
+The peer has no runtime `.enc` parser; its fixture-generation Python utility has
+a narrow source-extraction helper. The published licensed `lm-ec.enc` (SHA
+`7f9932c402d22a937b853406cfdf4166b80260e3ff21a03fe9a4c05105a2918c`)
+is parsed as256 slots and compared against all253 mapped slots in the peer's
+encoding manifest. The existing GUST license is hash-verified by the test. No
+reference bytes are copied and no production PostScript engine is introduced.

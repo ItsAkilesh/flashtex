@@ -797,6 +797,21 @@ fn cff_encoding_binds_actual_names_and_resource_hashes() {
     )
     .unwrap();
     let tfm = tfm_for_encoding();
+    let mut enc_names = vec!["/.notdef"; 256];
+    enc_names[65] = "/space";
+    let enc_source = format!("/Literal[{}]def", enc_names.join(" "));
+    let enc =
+        enc_file::EncFile::parse(enc_source.as_bytes(), &sha256(enc_source.as_bytes())).unwrap();
+    let encoded = enc.bind_cff(&tfm, &cache).unwrap();
+    assert_eq!(
+        encoded.font().map_code(65).unwrap().0,
+        encoding::GlyphIdentity::Original(1)
+    );
+    assert_eq!(
+        encoded.font().map_code(66).unwrap().0,
+        encoding::GlyphIdentity::Notdef
+    );
+    assert_eq!(encoded.source().file_sha256, sha256(enc_source.as_bytes()));
     let identity = cache.identity();
     let manifest = CffEncodingManifest {
         font_sha256: identity.font_sha256.clone(),
@@ -2087,4 +2102,46 @@ fn explicit_collection_resolver_registry_identity_and_bounds() {
             .is_err()
     );
     assert_eq!(held.bytes(), bytes);
+}
+
+#[test]
+fn literal_encoding_feeds_existing_exact_ttf_binding() {
+    use enc_file::*;
+    let bytes = fixture();
+    let font = FontResource::from_bytes(&entry(&bytes), &bytes, b"test license").unwrap();
+    let tfm = tfm_for_encoding();
+    let mut names = vec!["/.notdef"; 256];
+    names[65] = "/A.alt";
+    let source = format!("/Explicit[{}]def", names.join(" "));
+    let file = EncFile::parse(source.as_bytes(), &sha256(source.as_bytes())).unwrap();
+    let bound = file
+        .bind_truetype(
+            &tfm,
+            &font,
+            &[encoding::NamedGlyph {
+                glyph_name: "A.alt".into(),
+                glyph_id: 2,
+            }],
+        )
+        .unwrap();
+    assert_eq!(bound.source().file_sha256, sha256(source.as_bytes()));
+    assert_eq!(
+        bound.font().map_code(65).unwrap().0,
+        encoding::GlyphIdentity::Original(2)
+    );
+    assert_eq!(
+        bound.font().map_code(66).unwrap().0,
+        encoding::GlyphIdentity::Notdef
+    );
+    assert!(file.bind_truetype(&tfm, &font, &[]).is_err());
+    assert!(file
+        .bind_truetype(
+            &tfm,
+            &font,
+            &[encoding::NamedGlyph {
+                glyph_name: "A.alt".into(),
+                glyph_id: 0
+            }]
+        )
+        .is_err());
 }
