@@ -80,20 +80,29 @@ final class CommandTableTests: XCTestCase {
         var shortcut: String?
     }
 
+    /// Files whose `Commands` bodies wire menu items: the app, `Navigation.swift`
+    /// (`CommandMenu("Navigate")`) and `ProjectSearchPanel.swift`
+    /// (`ProjectSearchCommands`, Edit = `after: .textEditing`). In the panel
+    /// file only the text from its `Commands` type on is read, so the
+    /// window's own buttons (Search, Next Match ⌘G) are not menu items.
+    static let commandFiles = ["FlashTeXMacApp.swift", "Navigation.swift", "ProjectSearchPanel.swift"]
+
     /// `Button("Title")` items with their `keyboardShortcut` and enclosing
     /// menu from `FlashTeXMacApp.swift` (File = `replacing: .newItem`,
-    /// Edit = `after: .pasteboard`) and `Navigation.swift` (`CommandMenu("Navigate")`).
+    /// Edit = `after: .pasteboard` / `.textEditing`), `Navigation.swift`
+    /// (`CommandMenu("Navigate")`) and `ProjectSearchPanel.swift`.
     func wiredItems() throws -> [WiredItem] {
         var out: [WiredItem] = []
-        for file in ["FlashTeXMacApp.swift", "Navigation.swift"] {
-            let text = try String(contentsOf: Self.shellSources.appendingPathComponent(file), encoding: .utf8)
+        for file in Self.commandFiles {
+            var text = try String(contentsOf: Self.shellSources.appendingPathComponent(file), encoding: .utf8)
+            if file != "FlashTeXMacApp.swift", let r = text.range(of: ": Commands {") { text = String(text[r.lowerBound...]) }
             var menu = "?"
             let lines = text.components(separatedBy: "\n")
             var i = 0
             while i < lines.count {
                 let line = lines[i]
                 if line.contains("CommandGroup(replacing: .newItem)") { menu = "File" }
-                else if line.contains("CommandGroup(after: .pasteboard)") { menu = "Edit" }
+                else if line.contains("CommandGroup(after: .pasteboard)") || line.contains("CommandGroup(after: .textEditing)") { menu = "Edit" }
                 else if line.contains("CommandMenu(\"Navigate\")") { menu = "Navigate" }
                 else if line.contains("CommandGroup(replacing: .help)") || line.contains("CommandGroup(after: .help)") { menu = "Help" }
                 else if line.contains(" Window(\"") || line.contains("WindowGroup(\"") { menu = "?" }
@@ -138,8 +147,9 @@ final class CommandTableTests: XCTestCase {
         XCTAssertGreaterThan(wired.count, 20, "menu items parsed from the shell source")
         for e in AccessibilityCommand.entries {
             guard let item = e.menuItem else {
-                // Undo is the system Edit item; completion and the preview click are not menu items.
-                XCTAssertTrue([.undo, .completion, .selectPreviewItemSource].contains(e.command), "\(e.command) has no menu item")
+                // Undo and Settings (⌘,) are system items; completion, the preview
+                // click and the search window's ⌘G are not menu items.
+                XCTAssertTrue([.undo, .completion, .selectPreviewItemSource, .editorPreferences, .nextSearchMatch].contains(e.command), "\(e.command) has no menu item")
                 continue
             }
             let matches = wired.filter { $0.title == item }
@@ -152,9 +162,9 @@ final class CommandTableTests: XCTestCase {
                 XCTAssertEqual(e.shortcuts, ["\(w.menu) > \(item)"], "\(e.command): no key equivalent, so the README names the menu path")
             }
             // "Requires" claims a .disabled() modifier and vice versa.
-            let file = w.menu == "Navigate" ? "Navigation.swift" : "FlashTeXMacApp.swift"
-            let text = try String(contentsOf: Self.shellSources.appendingPathComponent(file), encoding: .utf8)
             let escaped = item.replacingOccurrences(of: "\\", with: "\\\\")
+            let texts = try Self.commandFiles.map { try String(contentsOf: Self.shellSources.appendingPathComponent($0), encoding: .utf8) }
+            let text = try XCTUnwrap(texts.first { $0.contains("Button(\"\(escaped)\")") }, item)
             let start = try XCTUnwrap(text.range(of: "Button(\"\(escaped)\")"))
             let tail = text[start.upperBound...]
             let next = tail.range(of: "Button(")?.lowerBound ?? tail.endIndex
@@ -242,7 +252,7 @@ final class CommandTableTests: XCTestCase {
 
     func testHelpViewCoversEveryCommandAndMenu() {
         let menus = AccessibilityHelpView.menus
-        XCTAssertEqual(menus.map(\.menu), ["File", "File / toolbar", "Edit", "Editor", "Navigate", "Preview", "Help"])
+        XCTAssertEqual(menus.map(\.menu), ["FlashTeX", "File", "File / toolbar", "Edit", "Editor", "Navigate", "Preview", "Help", "Find in Project window"])
         XCTAssertEqual(menus.flatMap(\.entries).count, AccessibilityCommand.allCases.count)
         XCTAssertEqual(AccessibilityHelpView.windowID, "a11y-help")
         XCTAssertEqual(AccessibilityHelpView.menuItem, "FlashTeX Accessibility Help")
@@ -253,5 +263,70 @@ final class CommandTableTests: XCTestCase {
         XCTAssertTrue(notes.contains(CompletionAccessibility.listLabel))
         XCTAssertTrue(notes.contains(PreviewAccessibility.goToSourceAction))
         XCTAssertTrue(notes.contains(DiagnosticRowAccessibility.noSourceHint))
+        // Each panel has a VoiceOver note and a focus-order line.
+        for p in PanelFocusOrder.panels {
+            XCTAssertTrue(notes.contains(p.name + " ("), p.name)
+            XCTAssertTrue(PanelFocusOrder.helpLines.contains { $0.hasPrefix(p.name + " (") }, p.name)
+        }
+    }
+
+    // MARK: panel focus order
+
+    /// The panel tables list every interactive control of the three panel
+    /// views in source order (SwiftUI's Tab order): every marker is found in
+    /// that order, every `Button(`/`Toggle(`/`Picker(`/`Slider(`/`Stepper(`/
+    /// `TextField(`/`List(` declaration of the view body is covered by a
+    /// marker (the search window's hidden Esc button is exempt), and each
+    /// panel's command is in the command table with its window's shortcut.
+    func testPanelFocusOrderMatchesThePanelSources() throws {
+        XCTAssertEqual(PanelFocusOrder.panels.map(\.name), ["Settings", "Durable History", "Find in Project"])
+        let controlPattern = try NSRegularExpression(pattern: #"\b(Button|Toggle|Picker|Slider|Stepper|TextField|List)\("#)
+        for panel in PanelFocusOrder.panels {
+            let text = try String(contentsOf: Self.shellSources.appendingPathComponent(panel.sourceFile), encoding: .utf8)
+            // 1. Markers appear in table order.
+            var cursor = text.startIndex
+            var markerOffsets: [Int] = []
+            for c in panel.controls {
+                let r = try XCTUnwrap(text.range(of: c.sourceMarker, range: cursor..<text.endIndex),
+                                      "\(panel.name): \(c.name) marker “\(c.sourceMarker)” after the previous control")
+                cursor = r.upperBound
+                markerOffsets.append(text.distance(from: text.startIndex, to: r.lowerBound))
+                XCTAssertFalse(c.name.isEmpty)
+            }
+            // 2. Every control declaration in the view body is covered: it is
+            //    a marker itself, or the next marker after it is an
+            //    accessibilityIdentifier line with no other control between.
+            let body = Self.viewBody(of: panel, in: text)
+            let bodyOffset = text.distance(from: text.startIndex, to: text.range(of: body)!.lowerBound)
+            let ns = body as NSString
+            let matches = controlPattern.matches(in: body, range: NSRange(location: 0, length: ns.length))
+            for (k, m) in matches.enumerated() {
+                let at = bodyOffset + body.distance(from: body.startIndex, to: Range(m.range, in: body)!.lowerBound)
+                let nextAt = k + 1 < matches.count
+                    ? bodyOffset + body.distance(from: body.startIndex, to: Range(matches[k + 1].range, in: body)!.lowerBound)
+                    : Int.max
+                let snippet = ns.substring(with: NSRange(location: m.range.location, length: min(48, ns.length - m.range.location)))
+                let region = text[text.index(text.startIndex, offsetBy: at)..<text.index(text.startIndex, offsetBy: min(nextAt, text.count))]
+                if region.contains(".hidden()") { continue } // the search window's Esc close button
+                let covered = markerOffsets.contains { $0 >= at && $0 < nextAt }
+                XCTAssertTrue(covered, "\(panel.name): control “\(snippet.replacingOccurrences(of: "\n", with: " "))” has no PanelFocusOrder entry")
+            }
+            // 3. The panel's command is in the table; its shortcut leads the help line.
+            XCTAssertTrue(AccessibilityCommand.allCases.contains(panel.command))
+            XCTAssertTrue(panel.helpLine.contains(panel.command.entry.shortcuts[0]))
+        }
+        XCTAssertEqual(PanelFocusOrder.helpLines.count, 3)
+        XCTAssertTrue(PanelFocusOrder.helpLines[0].hasPrefix("Settings (⌘,): opens with focus on the font family pop-up. Tab order: Editor font family → "))
+    }
+
+    /// The text of the panel's SwiftUI view declarations: from the first view
+    /// struct to the file's scene/commands types (which wire menu items, not
+    /// panel controls).
+    static func viewBody(of panel: PanelFocusOrder.Panel, in text: String) -> String {
+        let starts = ["struct EditorPreferencesView", "struct EditHistoryPanel", "struct ProjectSearchPanel"]
+        guard let start = starts.compactMap({ text.range(of: $0)?.lowerBound }).min() else { return text }
+        let rest = text[start...]
+        let end = rest.range(of: ": Scene {")?.lowerBound ?? rest.range(of: ": Commands {")?.lowerBound ?? rest.endIndex
+        return String(rest[..<end])
     }
 }
