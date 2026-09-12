@@ -9,6 +9,7 @@ use std::{
 };
 
 pub const MAX_CHECKPOINT_BYTES: usize = crate::MAX_STORE_BYTES as usize + 4096;
+pub mod archive;
 pub(crate) fn new_store_id() -> Result<String> {
     let mut bytes = [0u8; 32];
     getrandom::fill(&mut bytes).map_err(|e| Error::new("identity_unavailable", e.to_string()))?;

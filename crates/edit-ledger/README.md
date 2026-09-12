@@ -67,7 +67,7 @@ cargo clippy --manifest-path crates/edit-ledger/Cargo.toml --all-targets --offli
 cargo build --manifest-path crates/edit-ledger/Cargo.toml --release --offline
 ```
 
-Validation: 48 library tests and seven integration tests pass on Linux. They
+Validation: 55 library tests and eight integration tests pass on Linux. They
 exercise UTF-8 interiors and bad ranges, all snapshot guards, persisted replay,
 undo with durable deduplication, before/after-rename I/O failures, failed receipt
 confirmation, corrupted/unreadable journals, competing handles, stale snapshots,
@@ -149,6 +149,40 @@ implicit. Stores with history use at least schema 3 and are rejected by older re
 payload compaction preserves the newer schema instead of downgrading it.
 Legacy stores gain history for subsequent edits, not invented historical undo.
 
+## Atomic checkpoint rotation
+
+`rotate_checkpoint` writes internal backups under the private store's
+`checkpoints` directory. Explicit export and deletion acknowledgements are
+required. Retention keeps 1–32 latest complete checkpoints within a caller-set
+budget of at most 512 MiB; a single checkpoint that exceeds that budget is
+rejected before pruning. Source, receipt IDs, pending snapshots and retained
+history remain bundled in each backup. Rotation does not compact live IDs.
+
+Each checkpoint and its checksummed index use file sync, atomic rename and
+directory sync. Old backups are deleted only after the selected index is durable.
+An interrupted first rotation's valid unindexed backup is indexed before cleanup;
+subsequent retries reconcile unreferenced files. At steady state the retained
+files fit the policy; publication can temporarily add one checkpoint plus bounded
+index metadata. A reduced policy requires space for existing backups until safe
+pruning completes. Corrupt indexes, wrong identities and nonregular archive paths
+fail explicitly and never trigger automatic archive reset.
+
+`checkpoint_status` returns metadata without source text, including interrupted
+temporary files or unindexed generations. Status does not authorize deletion or
+source import. `checkpoint_read` reads only a committed generation. All service
+replies retain session, sequence and current document revision/hash; discard stale
+sessions in the native adapter. Inline checkpoint reads/imports remain subject
+to service frame/reply caps; use the Rust bounded encode/decode and import APIs
+for larger local files. These are ledger-local fields, not transfer-v1 additions.
+
+Linux tests inject failures before checkpoint publication, before index publication
+and after index publication. A real helper test kills an owner with an unread
+rotation request, reopens, rotates, restores into an explicitly approved empty
+store and verifies source, receipt deduplication, pending recovery and undo history
+after another restart. The kill's exact filesystem boundary is scheduler-dependent;
+the injected unit tests cover deterministic boundaries. No native/device or power
+loss validation is claimed.
+
 ## Internal checkpoint export and reviewed import
 
 `export_checkpoint` requires `acknowledge_private_source_export: true`; its result
@@ -203,6 +237,9 @@ the helper; startup errors arrive as service error replies. Request operations:
 | `undo`, `redo` | `command: {command_id,expected_revision,expected_sha256}` | current document, original command revision, replay flag, undo/redo availability |
 | `history_status` | none | undo/redo labels, permanent command count, payload bytes |
 | `retain_history` | `policy: {snapshot_token,acknowledge_undo_redo_loss,keep_latest_undo,keep_latest_redo}` | retained counts, dropped payload count, permanent command count |
+| `checkpoint_status` | none | store identity, current revision/hash, retained metadata/bytes, unindexed generations and interrupted-write flag |
+| `checkpoint_rotate` | `authorization: {acknowledge_private_source_export}`, `policy: {acknowledge_checkpoint_deletion,keep_latest,max_total_bytes}` | created checkpoint, retained metadata, removed filenames |
+| `checkpoint_read` | `generation` | validated checkpoint from the committed index |
 | `checkpoint_export` | `authorization: {acknowledge_private_source_export}` | internal checkpoint envelope |
 | `checkpoint_plan` | `checkpoint`, `expected_identity: {store_id,project_id,path}` | reviewed import plan or blocked plan with conflicts |
 | `checkpoint_import` | `checkpoint`, `plan`, `authorization: {approve_plan_id,allow_initialize_empty,allow_same_source_metadata}` | durable document after approved import |
