@@ -1,0 +1,37 @@
+{
+  "agent_id": "mac-navigation-3",
+  "allocation_id": "claude-mac20x-navigation-3",
+  "assignment_acknowledgements": {},
+  "branch": "agent/mac-navigation-3/unopened-math",
+  "capabilities": [
+    "swift",
+    "appkit",
+    "swiftui",
+    "rendering-v2-consumer"
+  ],
+  "code_revision": "82749c26",
+  "eta_minutes": {
+    "likely": 60,
+    "optimistic": 45,
+    "pessimistic": 90
+  },
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "82749c26",
+  "next_action": "Implement unopened-document navigation, formula-box caret highlight, no-glyph refusal naming the source span; tests with the real helper + flashtex-render 9aaec57a",
+  "reviewed_peers": {
+    "origin/agent/mac-claude-a/mac-shell": {
+      "adaptation": "Branch starts at 82749c26 (nearby-transport-2 + document-files-2 integrated); mac-navigation-2's Navigation.swift/PreviewV2View.swift/ShellModel+DisplayCandidates.swift changes are the base this lane extends",
+      "reviewed_utc": "2026-09-12T16:45:00Z",
+      "sha": "82749c26"
+    }
+  },
+  "schema_version": 1,
+  "state": "in_progress",
+  "summary": "Coverage audit written to coordination/mac-navigation-3.md; implementing the three navigation follow-ups (item 8) in new files",
+  "tool": "Claude Code subagent (parent mac-claude-a)",
+  "updated_utc": "2026-09-12T16:55:00Z",
+  "usage": {
+    "evidence": "audit only so far",
+    "status": "Shared Claude Max quota with parent mac-claude-a; no purchases"
+  }
+}
