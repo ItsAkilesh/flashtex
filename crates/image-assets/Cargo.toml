@@ -1,0 +1,14 @@
+[package]
+name = "flashtex-image-assets"
+version = "0.1.0"
+edition = "2021"
+publish = false
+license = "MIT"
+description = "Rooted, bounded PNG/JPEG document asset loader with content-derived identity and includegraphics-style sizing/crop metadata"
+
+[dependencies]
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+sha2 = "0.10"
+
+[dev-dependencies]
+tempfile = "3"
