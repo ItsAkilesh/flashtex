@@ -1,0 +1,69 @@
+{
+  "agent_id": "commander-runtime-display",
+  "archived_utc": "2026-09-12T12:57:19Z",
+  "assignment": {
+    "acceptance": [
+      "Start from integrated decoder ecbaf7c on main; preserve four raw frames plus one decoded permit and joined shutdown",
+      "Exactly one contiguous sibling only after requested and accepted nonfailed result; bind ID/project/revision/document hashes and reject malformed, unsolicited, missing or out-of-order frames",
+      "Default legacy requests unchanged; preserve line limits and source epochs, no duplicate renderer parser or automatic native activation",
+      "Use corrected actual producer65dbe7d or later raw-byte font hashes; old contract SHA-bytes-plus-face deviation is historical, not accepted resource evidence",
+      "Publish bounded candidate API for existing helper owner; if deep validation is deferred, the type and contract must remain explicitly untrusted until existing native/core validator accepts it"
+    ],
+    "agent_id": "commander-runtime-display",
+    "allocation_id": "hosted-openai-product",
+    "branch": "agent/commander-runtime-display/display-runtime",
+    "deadline_utc": null,
+    "dependencies": [],
+    "input_main_sha": "ee5c1fd072bb3a96a1e194f484a941ced871c0c2",
+    "objective": "Independently consume published actual multi-document bibliography helper capture with exact source and compile identity checks",
+    "owned_paths": [
+      "crates/document-runtime"
+    ],
+    "revision": 19,
+    "schema_version": 1,
+    "state": "assigned",
+    "task_id": "FT-049",
+    "timebox_minutes": 40,
+    "updated_utc": "2026-09-12T12:47:39.532752+00:00"
+  },
+  "report": {
+    "agent_id": "commander-runtime-display",
+    "allocation_id": "hosted-openai-product",
+    "assignment_acknowledgements": {
+      "FT-049": {
+        "acknowledged_utc": "2026-09-12T12:49:23Z",
+        "adaptation": "Exact helper contract9f28 reviewed with no runtime API gap. Root preparing actual capture; independent proxy review identified parent-death race and pre-forward log semantics, sent localized fix without peer edits. Await published capture for runtime verification.",
+        "main_sha": "a7388f6966f047b39403d6b2196179a95f1ad17f",
+        "revision": 19
+      }
+    },
+    "branch": "agent/commander-runtime-display/display-runtime",
+    "capabilities": [
+      "rust-runtime"
+    ],
+    "code_revision": "c4178a54dccf4bf5a94c151c759fa18cb3096462",
+    "eta_minutes": null,
+    "machine": "linux-primary",
+    "main_integrated_through": "0333be37e546273b6bcbe30a1f0745ad8a5e93c5",
+    "next_action": "Commander integration review. All test/build processes terminal; clean after report publication. Capture recovered tfm_missing remains unchanged; asset availability sent separately. Docs preserve proxy review/correction and log-before-forward limitations. No fresh helper/producer execution or native parity claim in this replay.",
+    "reviewed_peers": {},
+    "schema_version": 1,
+    "state": "ready_for_integration",
+    "summary": "FT049 r19 product c4178a54: independent exact-byte replay of actual helper capture e680d2ef passes all six requests, v1/raw equality, unequal editor/compile revisions, bibliography metadata, restart and stale5/current6. All capture hashes and77 assets verified.49 ordinary tests pass/11 opt-in ignored; explicit capture gate and strict lint pass. No runtime API gap or production change.",
+    "tool": "codex",
+    "updated_utc": "2026-09-12T12:56:49Z",
+    "usage": {
+      "status": "unknown"
+    }
+  },
+  "report_age_seconds": 30,
+  "report_path": "coordination/agents/commander-runtime-display.json",
+  "review_required": true,
+  "revision": 19,
+  "schema_version": 1,
+  "stale_completion": false,
+  "state": "reported_ready",
+  "task_id": "FT-049",
+  "worker_branch": "agent/commander-runtime-display/display-runtime",
+  "worker_report_sha": "78fa8398e7823c88ca194daf9385e0a9ea2ad678"
+}

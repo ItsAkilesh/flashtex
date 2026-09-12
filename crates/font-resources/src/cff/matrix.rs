@@ -65,7 +65,7 @@ impl Rational {
     fn coordinate(value: Coordinate) -> Result<Self> {
         Self::new(value.numerator(), 1i128 << value.shift())
     }
-    fn operand(value: &DictNumber) -> Result<Self> {
+    pub(crate) fn operand(value: &DictNumber) -> Result<Self> {
         match value {
             DictNumber::Integer(n) => Self::new(*n as i128, 1),
             DictNumber::Decimal(text) => {

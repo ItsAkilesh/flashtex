@@ -22,9 +22,9 @@ use std::{
 mod optional_output;
 mod output_buffer;
 mod output_delivery;
+mod raw_wire;
 mod source_plans;
 mod wire;
-use output_buffer::OutputBuffer;
 const MAX_OUTPUT_BYTES: usize = 16 * 1024 * 1024;
 
 const MAX_FRAME: usize = 1024 * 1024;
@@ -49,21 +49,27 @@ fn string<'a>(v: &'a Value, name: &str) -> Result<&'a str, String> {
 fn number(v: &Value, name: &str) -> Result<u64, String> {
     v[name].as_u64().ok_or(format!("missing integer {name}"))
 }
+fn metadata_response_mode(payload: &Value) -> Result<bool, String> {
+    match payload.get("response_mode") {
+        None => Ok(false),
+        Some(Value::String(mode)) if mode == "full" => Ok(false),
+        Some(Value::String(mode)) if mode == "metadata" => Ok(true),
+        _ => Err("response_mode must be full or metadata".into()),
+    }
+}
 fn emit(tx: &output_delivery::Sender, stopped: &AtomicBool, value: Value) {
-    let mut buffer = OutputBuffer::new(MAX_OUTPUT_BYTES);
-    if serde_json::to_writer(&mut buffer, &value).is_err() {
-        buffer = OutputBuffer::new(MAX_OUTPUT_BYTES);
+    emit_with_limit(tx, stopped, value, MAX_OUTPUT_BYTES);
+}
+fn emit_with_limit(tx: &output_delivery::Sender, stopped: &AtomicBool, value: Value, limit: usize) {
+    let bytes = output_buffer::serialize(&value, limit).or_else(|_| {
         let error = failure(
             value["session_id"].as_str().unwrap_or(""),
             value["id"].clone(),
             "response exceeds output limit; source may already be durable",
         );
-        if serde_json::to_writer(&mut buffer, &error).is_err() {
-            stopped.store(true, Ordering::SeqCst);
-            return;
-        }
-    }
-    let Ok(bytes) = buffer.finish() else {
+        output_buffer::serialize(&error, limit)
+    });
+    let Ok(bytes) = bytes else {
         stopped.store(true, Ordering::SeqCst);
         return;
     };
@@ -80,6 +86,12 @@ fn run(config: Value) -> Result<(), String> {
         return Err("invalid session identity".into());
     }
     let limits = compiler_limits(&config)?;
+    let raw_display = match config.get("display_transport") {
+        None => false,
+        Some(Value::String(mode)) if mode == "value" => false,
+        Some(Value::String(mode)) if mode == "raw-prototype" => true,
+        _ => return Err("display_transport must be value or raw-prototype".into()),
+    };
     let diagnostic_timings = config["diagnostic_timings"].as_bool().unwrap_or(false);
     let project = string(&config, "project_id")?.to_owned();
     let entry = string(&config, "entry_path")?.to_owned();
@@ -125,6 +137,9 @@ fn run(config: Value) -> Result<(), String> {
         .get("compiler_path")
         .and_then(Value::as_str)
         .map(str::to_owned);
+    if raw_display {
+        controller.select_raw_display_prototype()?;
+    }
     let compiler_error = compiler
         .as_ref()
         .and_then(|path| controller.restart(Command::new(path), limits.clone()).err());
@@ -211,6 +226,7 @@ fn run(config: Value) -> Result<(), String> {
     );
     let mut reviews: BTreeMap<String, PreparedEdit> = BTreeMap::new();
     let mut bindings = SubmissionBindings::default();
+    let mut last_display_profile_key = None;
     let mut output_epoch = output_tx.reset_optional();
     while !stopped.load(Ordering::SeqCst) {
         if writing_since
@@ -222,7 +238,7 @@ fn run(config: Value) -> Result<(), String> {
             break;
         }
         match input_rx.recv_timeout(Duration::from_millis(2)) {
-            Ok(request) => {
+            Ok(mut request) => {
                 let request_started = std::time::Instant::now();
                 let id = request["id"].clone();
                 let response = if request["protocol_version"] != 1
@@ -239,12 +255,14 @@ fn run(config: Value) -> Result<(), String> {
                                     .as_str()
                                     .ok_or("source_binding_token must be a string")
                             })
-                            .transpose()?;
-                        if let Some(token) = token {
+                            .transpose()?
+                            .map(str::to_owned);
+                        if let Some(token) = token.as_deref() {
                             SubmissionBindings::validate_token(token)?;
                         }
                         if request["type"] == "configure_display_candidates" {
-                            if request["payload"]["capability"] != "display-candidates-v1" {
+                            let capability = controller.display_candidate_capability();
+                            if request["payload"]["capability"] != capability {
                                 return Err("unsupported display candidate capability".into());
                             }
                             let enabled = request["payload"]["enabled"]
@@ -258,7 +276,7 @@ fn run(config: Value) -> Result<(), String> {
                             let preview_error = controller.configure_display_candidates(enabled)?;
                             output_epoch = output_tx.reset_optional();
                             return Ok(
-                                json!({"capability":"display-candidates-v1","enabled":enabled,"preview_error":preview_error}),
+                                json!({"capability":capability,"enabled":enabled,"preview_error":preview_error}),
                             );
                         }
                         if request["type"] == "configure_completed_snapshots" {
@@ -282,14 +300,14 @@ fn run(config: Value) -> Result<(), String> {
                         let result = handle(
                             &mut controller,
                             &mut reviews,
-                            &request,
+                            &mut request,
                             compiler.as_deref(),
                             &limits,
                             file_project.as_ref(),
                         );
                         let after = controller.compile_revision();
                         if after != before && bindings.enabled() {
-                            if let Some(token) = token {
+                            if let Some(token) = token.as_deref() {
                                 // Synchronous request handling captured this exact admitted generation.
                                 // Optional metadata failure must not replace a durable operation's reply.
                                 let _ = bindings.record(after, token);
@@ -318,11 +336,29 @@ fn run(config: Value) -> Result<(), String> {
         }
         let poll_started = std::time::Instant::now();
         let updates = controller.poll();
-        if diagnostic_timings && !updates.is_empty() {
+        let poll_ms = poll_started.elapsed().as_secs_f64() * 1000.0;
+        if diagnostic_timings {
+            if let Some(profile) = controller.last_display_profile() {
+                let key = (
+                    profile.request_id.clone(),
+                    profile.revision,
+                    profile.display_epoch,
+                );
+                if last_display_profile_key.as_ref() != Some(&key) {
+                    eprintln!("{}", json!({"phase":"display_transport","profile":profile}));
+                    last_display_profile_key = Some(key);
+                }
+            } else {
+                last_display_profile_key = None;
+            }
+        }
+        // Candidate-only processing and discarded-value destruction may produce
+        // no events. Capture slow owner turns without logging every idle poll.
+        if diagnostic_timings && (!updates.is_empty() || poll_ms >= 1.0) {
             eprintln!(
                 "{}",
                 json!({"phase":"compiler_poll","events":updates.len(),
-                "duration_ms":poll_started.elapsed().as_secs_f64()*1000.0})
+                "duration_ms":poll_ms})
             );
         }
         let historical = controller.take_completed_snapshot().and_then(|snapshot| {
@@ -389,6 +425,22 @@ fn run(config: Value) -> Result<(), String> {
             }
         }
         if output_tx.can_offer(output_epoch) {
+            if let Some(payload) = controller.take_current_raw_display_payload() {
+                let value = raw_wire::envelope(&session, &payload);
+                let started = std::time::Instant::now();
+                let outcome =
+                    optional_output::offer(&output_tx, output_epoch, &value, MAX_OUTPUT_BYTES);
+                if diagnostic_timings {
+                    eprintln!(
+                        "{}",
+                        json!({"phase":"optional_output","kind":"display_candidate",
+                        "transport":"raw-prototype","outcome":outcome.label(),
+                        "serialization_ms":started.elapsed().as_secs_f64()*1000.0})
+                    );
+                }
+            }
+        }
+        if output_tx.can_offer(output_epoch) {
             if let Some(payload) = controller.take_current_display_payload() {
                 let value = wire::envelope(&session, Value::Null, "update", payload);
                 let started = std::time::Instant::now();
@@ -423,10 +475,61 @@ fn run(config: Value) -> Result<(), String> {
 fn source_json(source: &SourceSpan) -> Value {
     json!({"path":source.file,"revision":source.revision,"start_byte":source.start_byte,"end_byte":source.end_byte})
 }
+struct OwnedEditInput {
+    path: String,
+    revision: u64,
+    sha256: String,
+    text: String,
+    metadata_only: bool,
+}
+fn take_edit_input(payload: &mut Value) -> Result<OwnedEditInput, String> {
+    let metadata_only = metadata_response_mode(payload)?;
+    let path = string(payload, "path")?.to_owned();
+    let revision = number(payload, "expected_revision")?;
+    let sha256 = string(payload, "expected_sha256")?.to_owned();
+    string(payload, "text")?; // Validate every field before consuming owned text.
+    let Value::String(text) = payload["text"].take() else {
+        unreachable!("validated string")
+    };
+    Ok(OwnedEditInput {
+        path,
+        revision,
+        sha256,
+        text,
+        metadata_only,
+    })
+}
+struct OwnedHistoryInput {
+    path: String,
+    metadata_only: bool,
+    action: HistoryAction,
+}
+fn take_history_input(request: &mut Value) -> Result<OwnedHistoryInput, String> {
+    let kind = match string(request, "type")? {
+        "apply_group" => 0,
+        "undo" => 1,
+        "redo" => 2,
+        _ => return Err("unsupported history action".into()),
+    };
+    let payload = &mut request["payload"];
+    let metadata_only = metadata_response_mode(payload)?;
+    let path = string(payload, "path")?.to_owned();
+    let command = payload["command"].take();
+    let action = match kind {
+        0 => HistoryAction::Group(serde_json::from_value(command).map_err(|e| e.to_string())?),
+        1 => HistoryAction::Undo(serde_json::from_value(command).map_err(|e| e.to_string())?),
+        _ => HistoryAction::Redo(serde_json::from_value(command).map_err(|e| e.to_string())?),
+    };
+    Ok(OwnedHistoryInput {
+        path,
+        metadata_only,
+        action,
+    })
+}
 fn handle(
     controller: &mut Controller,
     reviews: &mut BTreeMap<String, PreparedEdit>,
-    request: &Value,
+    request: &mut Value,
     compiler: Option<&str>,
     limits: &Limits,
     file_project: Option<&FileProject>,
@@ -529,12 +632,21 @@ fn handle(
         }
 
         "edit" => {
-            let result = controller.replace_document(
-                string(p, "path")?,
-                number(p, "expected_revision")?,
-                string(p, "expected_sha256")?,
-                string(p, "text")?.to_owned(),
-            )?;
+            let edit = take_edit_input(&mut request["payload"])?;
+            if edit.metadata_only {
+                let result = controller.replace_document_metadata(
+                    &edit.path,
+                    edit.revision,
+                    &edit.sha256,
+                    edit.text,
+                )?;
+                return Ok(
+                    json!({"response_mode":"metadata", "document":result.document,
+                    "preview_error":result.preview_error,"save_and_submit_ms":result.save_and_submit_ms}),
+                );
+            }
+            let result =
+                controller.replace_document(&edit.path, edit.revision, &edit.sha256, edit.text)?;
             Ok(
                 json!({"document":result.document,"preview_error":result.preview_error,"save_and_submit_ms":result.save_and_submit_ms}),
             )
@@ -664,19 +776,13 @@ fn handle(
                     "permanent_command_ids":MAX_HISTORY_COMMAND_IDS}}))
         }
         "apply_group" | "undo" | "redo" => {
-            let command = p["command"].clone();
-            let action = match request["type"].as_str().unwrap() {
-                "apply_group" => HistoryAction::Group(
-                    serde_json::from_value(command).map_err(|e| e.to_string())?,
-                ),
-                "undo" => {
-                    HistoryAction::Undo(serde_json::from_value(command).map_err(|e| e.to_string())?)
-                }
-                _ => {
-                    HistoryAction::Redo(serde_json::from_value(command).map_err(|e| e.to_string())?)
-                }
-            };
-            let outcome = controller.apply_history(string(p, "path")?, action)?;
+            let input = take_history_input(request)?;
+            if input.metadata_only {
+                let result = controller.apply_history_metadata(&input.path, input.action)?;
+                return Ok(json!({"response_mode":"metadata","history":result.history,
+                    "preview_error":result.preview_error,"save_and_submit_ms":result.save_and_submit_ms}));
+            }
+            let outcome = controller.apply_history(&input.path, input.action)?;
             Ok(
                 json!({"history":outcome.history,"preview_error":outcome.source.preview_error,"save_and_submit_ms":outcome.source.save_and_submit_ms}),
             )
@@ -785,6 +891,112 @@ fn main() {
 mod configuration_tests {
     use super::*;
     #[test]
+    fn owned_history_input_reuses_large_replacement_and_preserves_envelope() {
+        let source = json!({"protocol_version":1,"session_id":"s","id":"request",
+            "type":"apply_group","payload":{"path":"main.tex","response_mode":"metadata",
+            "source_binding_token":"binding","command":{"command_id":"group","expected_revision":7,
+            "expected_sha256":"a".repeat(64),"label":"large replacement",
+            "edits":[{"start_byte":0,"end_byte":0,"removed_text":"","replacement":"β".repeat(32768)}]}}});
+        let mut request: Value =
+            serde_json::from_slice(&serde_json::to_vec(&source).unwrap()).unwrap();
+        let pointer = request["payload"]["command"]["edits"][0]["replacement"]
+            .as_str()
+            .unwrap()
+            .as_ptr();
+        let old_copy = request["payload"]["command"].clone();
+        assert_ne!(
+            pointer,
+            old_copy["edits"][0]["replacement"]
+                .as_str()
+                .unwrap()
+                .as_ptr()
+        );
+        let input = take_history_input(&mut request).unwrap();
+        let HistoryAction::Group(group) = input.action else {
+            panic!("wrong action")
+        };
+        assert_eq!(group.edits[0].replacement.as_ptr(), pointer);
+        assert_eq!(group.edits[0].replacement.len(), 65536);
+        assert_eq!(serde_json::to_value(&group).unwrap(), old_copy);
+        assert_eq!(input.path, "main.tex");
+        assert!(input.metadata_only);
+        assert!(request["payload"]["command"].is_null());
+        assert_eq!(request["payload"]["source_binding_token"], "binding");
+        for key in ["protocol_version", "session_id", "id", "type"] {
+            assert_eq!(request[key], source[key]);
+        }
+        eprintln!("history replacement moved in place:65536bytes; prior Value clone retained distinct65536byte text");
+        for (field, bad) in [("response_mode", json!(false)), ("path", Value::Null)] {
+            let mut invalid = source.clone();
+            invalid["payload"][field] = bad;
+            let before = invalid.clone();
+            assert!(take_history_input(&mut invalid).is_err());
+            assert!(invalid == before, "invalid policy/path consumed command");
+        }
+        for kind in ["undo", "redo"] {
+            let mut r = json!({"type":kind,"payload":{"path":"main.tex","command":{
+                "command_id":"history","expected_revision":8,"expected_sha256":"b".repeat(64)}}});
+            let parsed = take_history_input(&mut r).unwrap();
+            assert!(!parsed.metadata_only);
+            match (kind, parsed.action) {
+                ("undo", HistoryAction::Undo(c)) | ("redo", HistoryAction::Redo(c)) => {
+                    assert_eq!(c.command_id, "history");
+                    assert_eq!(c.expected_revision, 8);
+                }
+                _ => panic!("wrong action"),
+            }
+        }
+        let mut malformed = source;
+        malformed["payload"]["command"]["edits"] = json!(true);
+        assert!(take_history_input(&mut malformed).is_err());
+    }
+    #[test]
+    fn owned_edit_input_moves_parsed_source_after_validation() {
+        let wire = serde_json::to_vec(&json!({"path":"main.tex","expected_revision":1,
+            "expected_sha256":"a".repeat(64),"text":"α".repeat(250_000),"response_mode":"metadata"})).unwrap();
+        let mut payload: Value = serde_json::from_slice(&wire).unwrap();
+        let parsed = payload["text"].as_str().unwrap();
+        let pointer = parsed.as_ptr();
+        let old_copy = parsed.to_owned();
+        assert_ne!(pointer, old_copy.as_ptr());
+        let input = take_edit_input(&mut payload).unwrap();
+        assert_eq!(input.text.as_ptr(), pointer);
+        assert_eq!(input.text, old_copy);
+        assert!(input.metadata_only);
+        assert_eq!(input.revision, 1);
+        assert_eq!(input.path, "main.tex");
+        assert_eq!(input.sha256, "a".repeat(64));
+        assert!(payload["text"].is_null());
+        eprintln!(
+            "parsed_source_bytes={} moved_capacity={} avoided_clone_capacity={}",
+            input.text.len(),
+            input.text.capacity(),
+            old_copy.capacity()
+        );
+        for (key, bad) in [
+            ("response_mode", json!(true)),
+            ("path", Value::Null),
+            ("expected_revision", json!(-1)),
+            ("expected_sha256", json!(42)),
+            ("text", json!(false)),
+        ] {
+            let mut invalid: Value = serde_json::from_slice(&wire).unwrap();
+            invalid[key] = bad;
+            let before = invalid.clone();
+            assert!(take_edit_input(&mut invalid).is_err());
+            assert!(invalid == before, "invalid input was consumed at {key}");
+        }
+        for policy in [None, Some(json!("full"))] {
+            let mut p: Value = serde_json::from_slice(&wire).unwrap();
+            if let Some(policy) = policy {
+                p["response_mode"] = policy;
+            } else {
+                p.as_object_mut().unwrap().remove("response_mode");
+            }
+            assert!(!take_edit_input(&mut p).unwrap().metadata_only);
+        }
+    }
+    #[test]
     fn oversized_result_error_does_not_retain_large_output_allocation() {
         let (tx, rx) = output_delivery::channel(1);
         let stopped = AtomicBool::new(false);
@@ -855,5 +1067,46 @@ mod configuration_tests {
         ] {
             assert!(compiler_limits(&json!({"compiler_max_frame_bytes":value})).is_err());
         }
+    }
+    #[test]
+    fn required_serialization_refusal_delivers_error_then_next_ack() {
+        let (tx, rx) = output_delivery::channel(2);
+        let stopped = AtomicBool::new(false);
+        emit_with_limit(
+            &tx,
+            &stopped,
+            wire::envelope(
+                "s",
+                json!("large"),
+                "result",
+                json!({"body":"x".repeat(20000)}),
+            ),
+            512,
+        );
+        emit_with_limit(
+            &tx,
+            &stopped,
+            wire::envelope("s", json!("ack"), "result", json!({"durable":true})),
+            512,
+        );
+        assert!(!stopped.load(Ordering::SeqCst));
+        let first = rx.next(Duration::ZERO).unwrap();
+        let error: Value = serde_json::from_slice(&first.bytes).unwrap();
+        assert_eq!(error["type"], "error");
+        assert_eq!(error["id"], "large");
+        assert!(error["payload"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("source may already be durable"));
+        rx.written(&first);
+        let second = rx.next(Duration::ZERO).unwrap();
+        let ack: Value = serde_json::from_slice(&second.bytes).unwrap();
+        assert_eq!(ack["id"], "ack");
+        assert_eq!(ack["payload"]["durable"], true);
+        rx.written(&second);
+        assert!(rx.next(Duration::ZERO).is_err());
+        emit_with_limit(&tx, &stopped, json!({"too":"large"}), 1);
+        assert!(stopped.load(Ordering::SeqCst));
+        assert!(rx.next(Duration::ZERO).is_err());
     }
 }

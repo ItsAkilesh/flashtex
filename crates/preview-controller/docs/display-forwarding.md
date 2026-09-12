@@ -111,3 +111,87 @@ stdout open but unread after startup, admits a 1 MiB optional display frame, and
 verifies the existing stalled-writer watchdog terminates the helper while source
 remains intact. These use transport fixtures and do not establish native paint
 performance or renderer validity.
+
+Timing interpretation: `compiler_poll` diagnostics include every eventful owner
+poll and eventless polls lasting at least 1 ms. Candidate-only processing or
+stale-value destruction can occur without a v1 event; older eventful-only traces
+must not be summed as complete owner CPU/wall time. Ordinary fast idle polls stay
+unlogged. Poll duration includes scheduling and owner work, not just source hashing,
+and does not include all background decoder CPU. Fine-grained candidate timing is
+owned by the runtime and remains separate from native renderer timing.
+
+With `diagnostic_timings:true`, helper stderr now emits `phase:display_transport`
+and the runtime's source-bound scalar `profile`, once per request/revision/display
+epoch. No repeated idle-poll measurements are emitted. A cleared runtime profile
+resets deduplication. Profile fields are request/project/revision/epoch, framed byte
+count, JSON parse time, decoder queue wait, owner delivery wait and source-binding
+validation time. They contain no document text or renderer resources. They remain
+transport measurements; native font/render validation and paint are not included.
+
+The actual oversized-frame helper test verifies exactly one logged profile after
+idle and document-query polls, framed bytes above5MB, and finite nonnegative stage
+durations before confirming that durable editing still works. Use these stages
+alongside optional-output serialization and end-to-end receipt timings; do not
+infer a full latency budget by summing phases from different requests or processes.
+
+
+Preparatory raw-body serializer boundary: optional admission accepts any typed
+`Serialize` value, so a future reviewed candidate wrapper can retain `RawValue`
+without first converting it back to `Value`. Current production callers still
+supply the original `Value` envelopes; no raw transport mode is activated by this
+change. A >8KiB raw-body test preserves exponent and Unicode-escape spelling,
+refuses a one-byte-over-budget frame after buffer flushing, confirms no optional
+bytes were admitted, then delivers a required ACK and an exact-limit frame.
+Source validation and duplicate/numeric/depth acceptance belong to the separate
+runtime contract and are not established by this serializer test.
+
+
+### Experimental raw helper contract (explicit opt-in only)
+
+Startup configuration `display_transport:"raw-prototype"` selects the fixed
+runtime decoder strategy before the first compiler session. Omitting it retains
+the existing Value strategy. Runtime restarts must preserve the selected strategy
+but reset candidate enablement; no already queued frame changes decoder strategy.
+The helper must reject unknown selectors before source import or compiler spawn.
+
+Enable via the existing `configure_display_candidates` request with the separate
+capability `display-candidates-raw-v1`, `enabled:true` and
+`renderer_support_confirmed:true`. Wait for an exact capability acknowledgement.
+Value-mode helpers must reject the raw capability and vice versa, without changing
+current source or optional epochs. Historical delivery remains mutually exclusive.
+The wire candidate shape remains the same; the nested display envelope preserves
+original JSON value spelling, excluding transport newline/outer whitespace.
+
+The existing replay harness now accepts `--display-transport raw-prototype` and
+requires exact acknowledgement; this fails against older Value-only
+helpers instead of silently measuring the wrong route. It also verifies the
+candidate request and compile generation match the already received current v1.
+Raw provenance records the startup selector and capability. Syntax/help checks
+pass. Helper raw integration now passes transport-fixture lifecycle, stale-source,
+corrupt-hash and durable-reopen checks. An actual producer raw replay and native
+acceptance have not yet run.
+
+Before native activation, require runtime proof of complete syntax/finite numbers/depth,
+duplicate identity/source rejection, exact source binding, cancellation and epoch
+fences. Native/core validation must reject ambiguous duplicate geometry fields.
+Raw `1e9` remains `1e9`; it does not inherit Value's reserialization expansion.
+Therefore raw optional overflow tests must use the actual whole output byte size,
+while the existing numeric expansion refusal gate remains on the Value route.
+Required v1/durable replies, complete-frame limits and explicit native paint
+acceptance remain mandatory in either route.
+
+
+Implementation consumes runtime `217ec7df` unchanged. `RawDisplayPayload` owns the
+runtime's immutable raw body and carries controller-checked current source versions
+and membership generation. Typed wrapper serialization never converts it back to
+Value. Both modes retain the same checked optional queue; default Value callers
+and required replies remain unchanged. Unknown/malformed startup selectors fail
+before source import. The startup strategy cannot be changed after a compiler
+session or request exists. Restart preserves strategy and disables candidates.
+
+The prototype is not a speed recommendation: the initial runtime experiment used
+less peak memory but took longer to parse because it repeated validation passes.
+Further runtime optimization and complete helper/native measurements remain open.
+
+Native consumer next steps and exact tested/replayed build distinctions are in
+[native-display-acceptance.md](native-display-acceptance.md).

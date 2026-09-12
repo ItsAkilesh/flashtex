@@ -89,3 +89,33 @@ pub fn pair(
     )?;
     Ok(Some(envelope))
 }
+
+/// Private proof that these exact immutable bytes produced this paired envelope.
+/// No mutable envelope accessor or unchecked constructor is exposed. The borrow
+/// lasts only through this binding call; successful resource binding retains bytes.
+pub(crate) struct PairedDisplay<'a> {
+    envelope: Envelope,
+    original: &'a [u8],
+}
+impl<'a> PairedDisplay<'a> {
+    pub(crate) fn envelope(&self) -> &Envelope {
+        &self.envelope
+    }
+    pub(crate) fn into_parts(self) -> (Envelope, &'a [u8]) {
+        (self.envelope, self.original)
+    }
+}
+pub(crate) fn pair_retained<'a>(
+    result: &[u8],
+    sibling: Option<&'a [u8]>,
+    require_tex_metrics: bool,
+) -> Result<Option<PairedDisplay<'a>>> {
+    let paired = pair(result, sibling, require_tex_metrics)?;
+    match (paired, sibling) {
+        (Some(envelope), Some(original)) => Ok(Some(PairedDisplay { envelope, original })),
+        (None, None) => Ok(None),
+        _ => Err(ValidationError(
+            "display sibling acceptance mismatch".into(),
+        )),
+    }
+}

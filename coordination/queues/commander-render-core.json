@@ -4,42 +4,42 @@
   "schema_version": 1,
   "steps": [
     {
+      "name": "Prepare minimal GH36 packaging and discovery patch against exact published owner sources in owned handoff only",
+      "objective": "Prepare minimal GH36 packaging and discovery patch against exact published owner sources in owned handoff only",
+      "owned_paths": [
+        "crates/rendering-core"
+      ],
       "acceptance": [
         "Meaningful bounded tests and strict lint pass; exact identities and typed unsupported outcomes preserved",
         "No new worker/provider/native activation, copied reference implementation or unsupported parity claim"
       ],
       "allocation_id": "hosted-openai-product",
-      "name": "Classify the actual pinned 602-pixel math mismatch using existing original/reference glyph, rule and resource evidence without invented correspondence",
-      "objective": "Classify the actual pinned 602-pixel math mismatch using existing original/reference glyph, rule and resource evidence without invented correspondence",
-      "owned_paths": [
-        "crates/rendering-core"
-      ],
       "timebox_minutes": 40
     },
     {
+      "name": "Verify patch applies to pinned source and reuses manifest verifier without overwriting explicit user resource overrides",
+      "objective": "Verify patch applies to pinned source and reuses manifest verifier without overwriting explicit user resource overrides",
+      "owned_paths": [
+        "crates/rendering-core"
+      ],
       "acceptance": [
         "Meaningful bounded tests and strict lint pass; exact identities and typed unsupported outcomes preserved",
         "No new worker/provider/native activation, copied reference implementation or unsupported parity claim"
       ],
       "allocation_id": "hosted-openai-product",
-      "name": "Prepare a minimal tested owner-scoped patch or exact unsupported correspondence contract for the demonstrated mismatch; no authoritative peer writes",
-      "objective": "Prepare a minimal tested owner-scoped patch or exact unsupported correspondence contract for the demonstrated mismatch; no authoritative peer writes",
-      "owned_paths": [
-        "crates/rendering-core"
-      ],
       "timebox_minutes": 40
     },
     {
+      "name": "Publish native owner nohostTeX app-bundle acceptance command and limitations without authoritative native edits",
+      "objective": "Publish native owner nohostTeX app-bundle acceptance command and limitations without authoritative native edits",
+      "owned_paths": [
+        "crates/rendering-core"
+      ],
       "acceptance": [
         "Meaningful bounded tests and strict lint pass; exact identities and typed unsupported outcomes preserved",
         "No new worker/provider/native activation, copied reference implementation or unsupported parity claim"
       ],
       "allocation_id": "hosted-openai-product",
-      "name": "Run the next existing pinned math fixture after the classified correction; keep text, geometry, pixel and source evidence separate",
-      "objective": "Run the next existing pinned math fixture after the classified correction; keep text, geometry, pixel and source evidence separate",
-      "owned_paths": [
-        "crates/rendering-core"
-      ],
       "timebox_minutes": 40
     }
   ],
