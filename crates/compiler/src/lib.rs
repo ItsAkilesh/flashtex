@@ -14,6 +14,7 @@ pub mod json;
 pub mod layout;
 pub mod lexer;
 pub mod parser;
+pub mod cache;
 pub mod protocol;
 
 /// A zero-based, end-exclusive UTF-8 byte range into a source document.

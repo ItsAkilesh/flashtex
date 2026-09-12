@@ -77,7 +77,7 @@ fn page_content(page: &Page) -> Vec<u8> {
     let mut c = Content::new();
 
     if page.items.is_empty() {
-        return c.finish();
+        return c.finish().to_vec();
     }
 
     c.begin_text();
@@ -92,14 +92,14 @@ fn page_content(page: &Page) -> Vec<u8> {
         // PDF origin is bottom-left; layout origin is top-left.
         let pdf_y = h - item.baseline_y_pt as f32;
         // Use absolute text matrix (Tm) so each word is placed exactly.
-        c.set_text_matrix(1.0, 0.0, 0.0, 1.0, item.x_pt as f32, pdf_y);
+        c.set_text_matrix([1.0, 0.0, 0.0, 1.0, item.x_pt as f32, pdf_y]);
         // Encode text: Latin-1 pass-through; non-encodable chars become '?'.
         let encoded = latin1_encode(&item.text);
         c.show(Str(&encoded));
     }
 
     c.end_text();
-    c.finish()
+    c.finish().to_vec()
 }
 
 /// Encode a &str into Windows-1252 bytes as best we can.
