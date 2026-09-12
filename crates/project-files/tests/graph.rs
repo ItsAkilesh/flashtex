@@ -363,6 +363,38 @@ fn toctou_symlink_race_never_leaks_outside_content_into_graph() {
     );
 }
 
+/// Issue #45 finding 3, exercised end to end through discovery: one
+/// physical file referenced once as NFC ('é' precomposed) and once as NFD
+/// ('e' + combining acute accent) must produce exactly one graph entry, not
+/// two — on a normalization-insensitive filesystem (confirmed for APFS)
+/// both spellings independently resolve to the same on-disk file, so
+/// `ProjectPath`'s identity, not just its raw bytes, must recognize them as
+/// the same target.
+#[test]
+fn nfc_nfd_reference_collision_does_not_duplicate_the_file() {
+    let t = TempDir::new("nfc-nfd-graph");
+    let nfc_stem = "caf\u{e9}"; // "café", 'é' precomposed (NFC)
+    let nfd_stem = "cafe\u{301}"; // "café", 'e' + combining acute (NFD)
+    t.write(&format!("{nfc_stem}.tex"), "Cafe content.");
+    t.write(
+        "main.tex",
+        &format!("\\input{{{nfc_stem}}} \\input{{{nfd_stem}}}"),
+    );
+    let g = ProjectGraph::discover(t.root(), &pp("main.tex")).unwrap();
+    let cafe_files: Vec<&str> = g
+        .files()
+        .iter()
+        .filter(|f| f.path.as_str() != "main.tex")
+        .map(|f| f.path.as_str())
+        .collect();
+    assert_eq!(
+        cafe_files.len(),
+        1,
+        "one physical file must be one graph entry, got {cafe_files:?}"
+    );
+    assert_eq!(g.edges().len(), 2, "both references still resolve");
+}
+
 #[test]
 fn project_path_display_and_ordering() {
     let mut v = [pp("b/a.tex"), pp("a.tex"), pp("a/z.tex")];
