@@ -81,6 +81,43 @@ fn user_parskip_delta_propagates_into_the_list_gaps() {
 }
 
 #[test]
+fn non_finite_parskip_is_rejected_not_returned_as_a_nan_gap() {
+    // Found by fuzzing: a NaN `\parskip` (reachable through the public
+    // `StyleDelta` API, e.g. from a hostile config/JSON source upstream)
+    // used to flow straight through `Skip::plus` into `gap_before_heading`
+    // and `gap_heading_to_body`, so `layout_abstract` returned `Ok` with a
+    // NaN skip instead of failing explicitly.
+    use flashtex_document_style::StyleDelta;
+    let sheet = sheet(BaseSize::Pt10).with_delta(StyleDelta {
+        rules: vec![],
+        parskip: Some(Skip::new(f64::NAN, 0.0, 0.0)),
+    });
+    // NaN is never equal to itself, so this matches the error shape and
+    // checks the payload's finiteness directly rather than using assert_eq!.
+    match layout_abstract(DocumentClass::Article, &sheet) {
+        Err(TitleLayoutError::InvalidParskip { value }) => {
+            assert!(value.pt.is_nan(), "expected the NaN pt to be preserved");
+        }
+        other => panic!("expected Err(InvalidParskip {{ .. }}), got {other:?}"),
+    }
+}
+
+#[test]
+fn infinite_parskip_stretch_is_also_rejected() {
+    use flashtex_document_style::StyleDelta;
+    let sheet = sheet(BaseSize::Pt10).with_delta(StyleDelta {
+        rules: vec![],
+        parskip: Some(Skip::new(0.0, f64::INFINITY, 0.0)),
+    });
+    assert_eq!(
+        layout_abstract(DocumentClass::Article, &sheet).unwrap_err(),
+        TitleLayoutError::InvalidParskip {
+            value: Skip::new(0.0, f64::INFINITY, 0.0)
+        }
+    );
+}
+
+#[test]
 fn unsupported_document_classes_fail_explicitly_never_approximate() {
     let sheet = sheet(BaseSize::Pt10);
     for class in [

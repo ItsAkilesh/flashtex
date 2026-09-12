@@ -1,6 +1,6 @@
 use std::fmt;
 
-use flashtex_document_style::Pt;
+use flashtex_document_style::{Pt, Skip};
 
 use crate::class::DocumentClass;
 use crate::title::RowKind;
@@ -67,6 +67,12 @@ pub enum TitleLayoutError {
         total_height: Pt,
         available_height: Pt,
     },
+    /// [`flashtex_document_style::Stylesheet::parskip`] has a non-finite
+    /// `pt`, `plus`, or `minus` component (NaN or infinite). This crate
+    /// never lets such a skip flow into [`crate::abstract_block::AbstractLayout`]'s
+    /// returned vertical gaps, where it would silently make every
+    /// downstream comparison against them meaningless.
+    InvalidParskip { value: Skip },
 }
 
 impl fmt::Display for TitleLayoutError {
@@ -128,6 +134,10 @@ impl fmt::Display for TitleLayoutError {
             } => write!(
                 f,
                 "the title block is {total_height} tall, taller than the page's usable text height {available_height}"
+            ),
+            TitleLayoutError::InvalidParskip { value } => write!(
+                f,
+                "the stylesheet's \\parskip is {value}, not usable (pt, plus, and minus must all be finite)"
             ),
         }
     }

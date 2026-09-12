@@ -79,6 +79,14 @@ fn require_article(class: DocumentClass) -> Result<(), TitleLayoutError> {
     }
 }
 
+/// A skip is only usable here when every component is finite. Unlike a
+/// glyph width, a natural skip may legitimately be negative (TeX glue can
+/// pull together), so this deliberately does not also require non-negative,
+/// matching `\parskip`'s own semantics — only NaN/infinite is rejected.
+fn is_finite_skip(s: Skip) -> bool {
+    s.pt.is_finite() && s.plus.is_finite() && s.minus.is_finite()
+}
+
 /// Measures the one-column `abstract` environment for `class` under `sheet`.
 ///
 /// Fails with [`TitleLayoutError::UnsupportedDocumentClass`] for anything
@@ -94,6 +102,9 @@ pub fn layout_abstract(
     let base = sheet.base_size();
     let small = font_size(base, SizeName::Small);
     let parskip = sheet.parskip();
+    if !is_finite_skip(parskip) {
+        return Err(TitleLayoutError::InvalidParskip { value: parskip });
+    }
     let lp = list_level(base, 1);
 
     let heading_skip = lp.topsep.plus(parskip);
