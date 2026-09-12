@@ -667,8 +667,9 @@ struct PairingStepIndicator: View {
                 HStack(spacing: 4) {
                     Image(systemName: symbol(status))
                         .foregroundStyle(color(status))
-                    Text(PairingFlow.Step.names[k - 1])
+                    Text(PairingFlow.Step.shortNames[k - 1])
                         .font(.caption.weight(status == .active || status == .interrupted ? .semibold : .regular))
+                        .lineLimit(1).fixedSize()
                         .foregroundStyle(status == .pending ? .secondary : .primary)
                 }
                 .padding(.horizontal, 6).padding(.vertical, 2)

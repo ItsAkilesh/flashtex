@@ -420,6 +420,7 @@ final class PairingFlowMachineTests: XCTestCase {
 
     func testStepIndicatorFollowsThePhase() {
         XCTAssertEqual(PairingFlow.Step.count, 4)
+        XCTAssertEqual(PairingFlow.Step.shortNames.count, PairingFlow.Step.names.count)
         XCTAssertEqual(P.off.step, .init(index: 1, status: .pending))
         XCTAssertEqual(P.advertising.step, .init(index: 1, status: .pending))
         XCTAssertEqual(P.codeShown(a1).step, .init(index: 2, status: .active))

@@ -782,6 +782,8 @@ extension PairingFlow {
     struct Step: Equatable {
         enum Status: String, Equatable { case pending, active, done, interrupted }
         static let names = ["Show a code", "Companion enters the code", "Verify the companion", "Paired"]
+        /// Capsule captions at the window's minimum width; `names` are spoken.
+        static let shortNames = ["Show code", "Enter code", "Verify", "Paired"]
         static var count: Int { names.count }
         /// 1-based index of the step the phase is at.
         var index: Int
