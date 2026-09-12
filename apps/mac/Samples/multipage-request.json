@@ -1,0 +1,16 @@
+{
+  "protocol_version": 1,
+  "id": "sample-multipage-1",
+  "type": "compile",
+  "payload": {
+    "project_id": "demo",
+    "revision": 1,
+    "entry_path": "main.tex",
+    "documents": [
+      {
+        "path": "main.tex",
+        "text": "\\documentclass{article}\n\\begin{document}\n\\section{Introduction}\nA naïve approach fails.\n\\newpage\n\\section{Method}\nRésumé of the steps.\nMissing brace here \\textbf{oops\n\\end{document}\n"
+      }
+    ]
+  }
+}

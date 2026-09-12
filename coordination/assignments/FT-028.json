@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "task_id": "FT-028",
+  "agent_id": "orchestrator-jaysen-opus",
+  "branch": "agent/orchestrator-jaysen-opus/standby",
+  "revision": 2,
+  "state": "assigned",
+  "objective": "Adapt existing read-only standby to dynamic successor selection. Prefer linux-primary while usable; after exact terminal/quiescence select currently working registered machine with greatest fresh comparable verified authorized remaining capacity. Jaysen is a candidate, not fixed successor. Do not launch new inference for polling.",
+  "owned_paths": [
+    "tools/commander-standby",
+    "coordination/agents/orchestrator-jaysen-opus.json",
+    "tools/standby",
+    "coordination/orchestrator-jaysen-opus.md"
+  ],
+  "dependencies": [],
+  "acceptance": [
+    "No main/control/dispatch writes while Astra remains active",
+    "Current+stale/recycled process pins, pending journals, competing claims and lost pushes fail closed",
+    "Publish actual Mac monitor/session evidence; do not claim live-quota failover without terminal hook",
+    "Use existing Jaysen Max20x only, no overages/purchases; sole new standby exception"
+  ],
+  "allocation_id": "jaysen-max20x-commander-standby",
+  "timebox_minutes": 30,
+  "deadline_utc": null,
+  "input_main_sha": "d128b48b839263b723794384dc16741d9d8cebe8",
+  "updated_utc": "2026-09-12T07:45:00Z"
+}

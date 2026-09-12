@@ -1,6 +1,6 @@
 # mac-pdf handoff — FT-009 PDF output
 
-- Updated UTC: 2026-09-12T06:50Z
+- Updated UTC: 2026-09-12T07:40Z
 - Agent / parent / machine alias: `mac-pdf` (Claude Code subagent; issue #2
   follow-up dispatched as worker `mac-pdf-unicode`, same agent and branch) /
   parent `mac-claude-a` / `mac-m1max-a`
@@ -8,7 +8,8 @@
   from runtime-v1 positioned pages". Serves acceptance gate 5 (a real exported
   document). Owned paths: `crates/pdf/`, `coordination/mac-pdf.md`.
 - Branch / code revision / main integrated through:
-  `agent/mac-pdf/pdf-output` / see commit / `25a92a9`
+  `agent/mac-pdf/pdf-output` / see commit / `0b7076a` (branch fast-forwarded
+  onto main after the earlier PDF commits were integrated)
 - State: ready for integration
 - Ready behavior and evidence:
   - `crates/pdf` (`flashtex-pdf`, edition 2024, zero dependencies) writes PDF 1.4
@@ -29,6 +30,16 @@
     lacks stay `?` with warnings; CLI prints a `note: N warning(s)` summary,
     exit 0. Verified on this Mac with both system fonts: rasterised output
     shows Cyrillic/CJK/ℝ and composite glyphs; `?` only where warned.
+  - Layout capabilities (contract a949f5b): `payload.layout_capabilities`
+    parsed; `rules-v1` typed rules drawn as `re f` from top-left geometry
+    (validated: positive finite, ≤1e6); a `rule` without `rules-v1` and any
+    unknown kind under negotiation are errors naming kind and source range;
+    legacy route keeps warn-and-skip and the U+2500 approximation (documented
+    as such); `font-hints-v1` resolves Latin Modern → per-face whole-CFF font
+    objects (`/F4`…), Times → base-14 variants, anything else → substitution
+    warning naming the replacement. Legacy fixtures byte-identical to the
+    c0f3837/d7f2c3a-era outputs (cmp). Rasterised: four LM faces + Times-Bold
+    + a typed fraction rule render natively; PDFKit extracts the text.
   - Document face (defect found by coordinator in e3e5e1e fixed): the
     embedded font was only a gap-filler behind Times, so LM was embedded but
     unused. `RenderOptions.face` / `--default-face embedded|lm|times`; Latin
@@ -59,7 +70,7 @@
     `unicode-literals` because the compiler assumes 0.5 em for glyphs it has
     no metrics for (`DEFAULT_ADVANCE_UNITS`); real ideographs are 1 em. The
     PDF writer places items where told and does not re-flow.
-  - `cargo test`: 39/39 pass (19 unit, 20 integration). Covers fixture page count
+  - `cargo test`: 45/45 pass (20 unit, 25 integration). Covers fixture page count
     and MediaBox, a 2-page synthetic result, multiline baselines, WinAnsi
     encoding (`é` → `0xE9`), unrepresentable chars (`中`, `😀`, `ℝ`) → `?` +
     warning, delimiter escaping, unsupported item kinds, bad envelopes,
@@ -98,8 +109,9 @@
 - Needs from others: compiler/contract owners to decide how the compiler
   learns embedded-font advances (or a width exchange in runtime-v1) so
   embedded wide glyphs do not collide; a font/weight field for headings.
-- Interface changes / consumer actions: none. Consumes runtime-v1 `compile_result`
-  unchanged. Relies on the compiler's convention that fraction rules are text
+- Interface changes / consumer actions: consumes runtime-v1 plus the
+  additive layout-capabilities contract; library model is now
+  `Item::{Text(TextItem), Rule(RuleItem)}` with `CompileResult.capabilities`. Relies on the compiler's convention that fraction rules are text
   items consisting only of U+2500 (0.5 em per dash, baseline at the bar's
   bottom edge, thickness 0.06/0.7 em of the item size); documented in README. Surfacing PDF warnings in the UI would need a contract addition
   (Commander's call); until then the worker can emit them as `warning` diagnostics.
@@ -113,7 +125,7 @@
   (500-unit fallback for non-Latin glyphs) plus GitHub issue #9 — adapted by
   rendering U+2500 runs as rules and adding the Symbol font.
 - Validation commands / results / artifact paths:
-  `cd crates/pdf && cargo test` (39 passed);
+  `cd crates/pdf && cargo test` (45 passed);
   `cargo run --bin flashtex-pdf -- in.json --out out.pdf --embed-font auto` (prints which font was embedded);
   `cargo run --bin flashtex-pdf -- tests/fixtures/math-compile-result.json --out math.pdf --verify` (exit 0, no warnings);
   `cargo run --bin flashtex-pdf -- --out out.pdf --verify < ../../protocol/fixtures/compile-result.json`;

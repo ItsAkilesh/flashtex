@@ -1,0 +1,64 @@
+{
+  "agent_id": "mac-claude-a",
+  "allocation_id": "openai-mac-plus-ft003",
+  "assignment_acknowledgements": {
+    "FT-003": {
+      "acknowledged_utc": "2026-09-12T06:17:21Z",
+      "adaptation": "Accepted FT-003 rev 5 (packaged recovery/responsiveness) at input main 2d67b0d; rev 4 delivered at b18ed2f (136/136 with real compiler/pdf/bridge/edit-ledger). Plan: packaging worker bundles bridge + edit-ledger helper into FlashTeX.app and reruns install/update/launch-check; native-e2e worker runs the pinned packaged demo with measured edit/capture/export latency, crash/restart, disconnect/retry, stale-preview and accessibility evidence using exact component SHAs; gaps stay explicit.",
+      "main_sha": "87d20e8fa3c80bffcb223a503dc5da0f4784eb58",
+      "revision": 5
+    }
+  },
+  "branch": "agent/mac-claude-a/mac-shell",
+  "capabilities": [
+    "swift",
+    "xcode",
+    "rust",
+    "macos-simulators"
+  ],
+  "code_revision": "abccbd6c92b3c27e8d48a50cb89174f8b02eddb1",
+  "eta_minutes": {
+    "likely": 60,
+    "optimistic": 30,
+    "pessimistic": 120
+  },
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "87d20e8fa3c80bffcb223a503dc5da0f4784eb58",
+  "next_action": "Packaged demo evidence run; bundle bridge+ledger",
+  "reviewed_peers": {
+    "origin/agent/aarush-macbook/companion-capture": {
+      "adaptation": "Peer cannot run xcodebuild; will verify their branch from this Mac. No contract change.",
+      "reviewed_utc": "2026-09-12T04:16:05Z",
+      "sha": "eb1c2fcb75b8f51cfe99d8facbec91c7c9857546"
+    },
+    "origin/agent/claude/compiler-foundation": {
+      "adaptation": "Compiler 9f1033b: rustfmt + 8 MiB request bound, no interface change; documented limit in README",
+      "reviewed_utc": "2026-09-12T04:36:12Z",
+      "sha": "9f1033ba75176236bc5fc66b5e64b8ebbfc15a37"
+    },
+    "origin/agent/commander/capture-bridge": {
+      "adaptation": "transfer-v1 read; Mac integration started as a child against exact commit b5ca96b (unmerged dependency recorded)",
+      "reviewed_utc": "2026-09-12T05:05:25Z",
+      "sha": "b5ca96bdaca634166a01023cd3321955f2bc5f70"
+    },
+    "origin/agent/commander/coordination-tools": {
+      "adaptation": "Acknowledged FT-009/FT-010 as parent and spawned both; will not build FT-007 bridge (Commander-owned); following queue step 0 acceptance",
+      "reviewed_utc": "2026-09-12T04:24:53Z",
+      "sha": "25a92a9c591a92a3d49071e536ecf8f129112c24"
+    },
+    "origin/main": {
+      "adaptation": "rev 5 dispatched; children assigned",
+      "reviewed_utc": "2026-09-12T06:17:21Z",
+      "sha": "87d20e8fa3c80bffcb223a503dc5da0f4784eb58"
+    }
+  },
+  "schema_version": 1,
+  "state": "in_progress",
+  "summary": "FT-003 rev 5 accepted; rev 4 ready at b18ed2f (136/136)",
+  "tool": "Claude Code",
+  "updated_utc": "2026-09-12T06:17:21Z",
+  "usage": {
+    "evidence": "Claude Max 20x; no purchases",
+    "status": "unknown"
+  }
+}

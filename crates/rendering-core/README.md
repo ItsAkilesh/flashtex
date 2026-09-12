@@ -613,3 +613,19 @@ and device replay: one kern parse, one variants parse,945 hits and946 computatio
 in the recorded run (178624 query bytes,130528 parsed bytes). These counts prove
 eliminated repeated parsing; they do not establish native paint latency or an
 end-to-end speedup.
+
+### Original PDF backend export
+
+`pdf_export::export` now connects exact mixed/shaped path streams to the PDF
+owner's unchanged `ExactDocument`/`Content::Verbatim` API. It produces actual
+PDF bytes plus bounded provenance evidence, verifies xref/page sizes/content
+readback, and never calls the legacy rounded-number text route. Glyphs remain
+resolved outlines; original GID/font/source identities stay in evidence rather
+than embedded searchable text. Empty glyphs preserve spans without invalid fills.
+Nonterminating decimals and alpha remain explicit unsupported conversions.
+
+`examples/pdf_export.rs` is an executable single-page fixture exporter.
+`shaped_run_probe` additionally emits and checks a real pinned STIX PDF and accepts
+an optional output directory after its font/license arguments. Checked-in
+synthetic and STIX PDF fixtures support deterministic byte/operator replay.
+See `PDF-INTEGRATION.md` for hashes, limits and remaining text/native/oracle gaps.

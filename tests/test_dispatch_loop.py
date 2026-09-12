@@ -14,6 +14,29 @@ import coord
 import dispatch_loop as loop
 
 
+class FetchRaceTests(unittest.TestCase):
+    def test_shared_ref_compare_and_swap_race_retries_read_only_fetch(self):
+        race = RuntimeError("cannot lock ref 'refs/remotes/origin/agent/a': is at abc but expected def")
+        with patch.object(coord, 'git', side_effect=[race, 'ok']) as git, patch.object(loop.time, 'sleep'):
+            self.assertEqual(loop.fetch_origin(Path('/tmp')), 'ok')
+            self.assertEqual(git.call_count, 2)
+            self.assertTrue(all(call.args[1:] == ('fetch', 'origin', '--prune') for call in git.call_args_list))
+
+    def test_auth_or_arbitrary_lock_failure_is_not_retried(self):
+        for text in ['authentication failed', 'cannot lock ref: lock exists', 'publication failed']:
+            with patch.object(coord, 'git', side_effect=RuntimeError(text)) as git:
+                with self.assertRaises(RuntimeError):
+                    loop.fetch_origin(Path('/tmp'))
+                self.assertEqual(git.call_count, 1)
+
+    def test_repeated_ref_race_stops_after_three_attempts(self):
+        race = RuntimeError("cannot lock ref 'refs/remotes/origin/x': is at abc but expected def")
+        with patch.object(coord, 'git', side_effect=race) as git, patch.object(loop.time, 'sleep'):
+            with self.assertRaises(RuntimeError):
+                loop.fetch_origin(Path('/tmp'))
+            self.assertEqual(git.call_count, 3)
+
+
 class DispatcherTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -278,6 +301,14 @@ class DispatcherTests(unittest.TestCase):
         bad = next(item for item in result['skipped'] if item['queue'].endswith('bad-worker.json'))
         self.assertTrue(bad['needs_commander_review'])
         self.assertIn('invalid queue', bad['reason'])
+
+    def test_paused_worker_cannot_be_redispatched(self):
+        self.write(self.root, 'coordination/control.json', {'schema_version': 1, 'state': 'running', 'paused_agents': ['worker']})
+        self.commit(self.root)
+        self.run_git(self.root, 'push', 'origin', 'HEAD:main')
+        result = loop.scan_once(self.root, self.args)
+        self.assertFalse(result['prepared'])
+        self.assertIn('paused', result['skipped'][0]['reason'])
 
     def test_verified_milestone_continues_dispatch(self):
         self.write(self.root, 'coordination/control.json', {'schema_version': 1, 'state': 'verified_complete'})

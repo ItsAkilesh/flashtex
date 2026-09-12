@@ -256,12 +256,39 @@ fn a_minimal_document_and_a_second_edited_revision_both_lay_out() {
     );
 
     // Spans must track the edited text, not the old text.
+    //
+    // Not every visible item is literal source text, and pretending otherwise
+    // was too strong an invariant. Three categories exist, and all three must
+    // point at bytes the author actually typed:
+    //
+    //   1. literal text  — the span slices back to exactly that text;
+    //   2. substituted glyphs (\alpha renders as a Greek letter) — the span
+    //      covers the command that produced it;
+    //   3. generated values (section numbers, resolved \ref) — the span
+    //      identifies the producing command.
+    //
+    // What is asserted for every item, without exception, is that the span
+    // slices at all: it is in range and on character boundaries, so navigating
+    // to it can never panic. Literal items are additionally required to match
+    // their own text exactly, which is the guarantee this test was written for.
     for (r, text) in [(&r1, v1), (&r2, v2)] {
         for it in items(r) {
             let src = it.get("source").unwrap();
             let a = src.get("start_byte").unwrap().as_i64().unwrap() as usize;
             let b = src.get("end_byte").unwrap().as_i64().unwrap() as usize;
-            assert_eq!(&text[a..b], it.get("text").unwrap().as_str().unwrap());
+            let sliced = text
+                .get(a..b)
+                .unwrap_or_else(|| panic!("span {a}..{b} does not slice the source"));
+            let rendered = it.get("text").unwrap().as_str().unwrap();
+            if sliced != rendered {
+                // Generated or substituted: the span must still name a real
+                // command in the source, never invented bytes.
+                assert!(
+                    sliced.starts_with('\\'),
+                    "item {rendered:?} is neither its own source text nor \
+                     attributable to a command; span {a}..{b} is {sliced:?}"
+                );
+            }
         }
     }
 

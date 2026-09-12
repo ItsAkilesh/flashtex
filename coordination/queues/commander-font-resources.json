@@ -1,76 +1,32 @@
 {
   "agent_id": "commander-font-resources",
-  "next_index": 3,
+  "next_index": 0,
   "schema_version": 1,
   "steps": [
     {
-      "acceptance": [
-        "Meaningful tests and strict lint pass",
-        "Publish truthful execution provenance and exact tested SHA",
-        "No native integration or PDF parity claim without measured evidence"
-      ],
-      "allocation_id": "hosted-openai-product",
-      "name": "Simple glyph outline decoding",
-      "objective": "Simple glyph outline decoding",
+      "name": "Bind boundary-program output through existing explicit8bit encoding/GID adapter",
+      "objective": "Bind boundary-program output through existing explicit8bit encoding/GID adapter",
       "owned_paths": [
         "crates/font-resources"
       ],
+      "acceptance": [
+        "Meaningful bounded behavior tests and strict lint pass",
+        "Preserve exact identities; publish measured evidence and unsupported gates"
+      ],
+      "allocation_id": "hosted-openai-product",
       "timebox_minutes": 30
     },
     {
-      "acceptance": [
-        "Meaningful tests and strict lint pass",
-        "Publish truthful execution provenance and exact tested SHA",
-        "No native integration or PDF parity claim without measured evidence"
-      ],
-      "allocation_id": "hosted-openai-product",
-      "name": "Composite transform geometry and exact bounds",
-      "objective": "Composite transform geometry and exact bounds",
+      "name": "Pinned real-TFM boundary replay and malformed/cycle regression evidence",
+      "objective": "Pinned real-TFM boundary replay and malformed/cycle regression evidence",
       "owned_paths": [
         "crates/font-resources"
       ],
-      "timebox_minutes": 30
-    },
-    {
       "acceptance": [
-        "Meaningful tests and strict lint pass",
-        "Publish truthful execution provenance and exact tested SHA",
-        "No native integration or PDF parity claim without measured evidence"
+        "Meaningful bounded behavior tests and strict lint pass",
+        "Preserve exact identities; publish measured evidence and unsupported gates"
       ],
       "allocation_id": "hosted-openai-product",
-      "name": "Exact TeX encoding to font-resource mapping",
-      "objective": "Exact TeX encoding to font-resource mapping",
-      "owned_paths": [
-        "crates/font-resources"
-      ],
-      "timebox_minutes": 30
-    },
-    {
-      "acceptance": [
-        "Meaningful tests and strict lint pass",
-        "Publish truthful execution provenance and exact tested SHA",
-        "No native integration or PDF parity claim without measured evidence"
-      ],
-      "allocation_id": "hosted-openai-product",
-      "name": "TFM metric and glyph binding consumer adapter",
-      "objective": "TFM metric and glyph binding consumer adapter",
-      "owned_paths": [
-        "crates/font-resources"
-      ],
-      "timebox_minutes": 30
-    },
-    {
-      "acceptance": [
-        "Meaningful tests and strict lint pass",
-        "Publish truthful execution provenance and exact tested SHA",
-        "No native integration or PDF parity claim without measured evidence"
-      ],
-      "allocation_id": "hosted-openai-product",
-      "name": "Real licensed font metric equivalence fixtures",
-      "objective": "Real licensed font metric equivalence fixtures",
-      "owned_paths": [
-        "crates/font-resources"
-      ],
       "timebox_minutes": 30
     }
   ],

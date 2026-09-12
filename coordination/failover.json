@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "predecessor_id": "orchestrator-astra",
+  "predecessor_handle": "/root/runtime_validator",
+  "successor_id": "dynamic-resource-selection",
+  "process": {
+    "pid": 268514,
+    "start_ticks": 30612338,
+    "boot_id": "f1d9f6a2-ccc1-4c85-bfcb-e629905e9820"
+  },
+  "publisher_services": [
+    "flashtex-dispatch.service"
+  ],
+  "mode": "read_only_standby",
+  "quota_terminal_adapter": "unverified",
+  "remote_witness_transport": "implemented terminal-only Git branch publication; end-to-end Mac claim unverified",
+  "mac_standby_ack": "4a46225 implementation reported; dynamic-selection adaptation pending",
+  "billing": "Only existing machine-scoped authorized routes; no purchases or unknown balances. Jaysen small-task existing usage credits additionally authorized during cooldown.",
+  "allow_dispatcher_stop_after_process_exit": true,
+  "publish_terminal_receipt": true,
+  "witness_branch": "agent/orchestrator-witness/astra-30612338",
+  "witness_coauthor": "sixnat <266300832+sixnat@users.noreply.github.com>",
+  "selection": {
+    "preferred_machine": "linux-primary",
+    "script": "scripts/select_successor.py",
+    "evidence_max_age_seconds": 300,
+    "eligible_machines": "registered currently working machines with verified authorized usable capacity; Daniel only after registration",
+    "rank": "greatest measured remaining capacity within identical comparison profile; unknown/incomparable require evidence, never plan multiplier",
+    "authority_gate": "selection never authorizes claim; exact terminal witness and publisher quiescence remain mandatory"
+  }
+}

@@ -1,0 +1,94 @@
+{
+  "agent_id": "mac-math-layout",
+  "archived_utc": "2026-09-12T07:08:41Z",
+  "assignment": {
+    "acceptance": [
+      "Raster overlays and structural geometry both gate changes",
+      "Preview/PDF consume identical boxes",
+      "Remaining unsupported constructs are explicit"
+    ],
+    "agent_id": "mac-math-layout",
+    "allocation_id": "claude-mac20x-math-layout-stage3",
+    "branch": "agent/mac-math-layout/math-boxes",
+    "deadline_utc": null,
+    "dependencies": [],
+    "input_main_sha": "a949f5b773a1bc7f1be7ae2d79581856af88a97b",
+    "objective": "Integrate declared math visual cases and tune spacing, scripts, rules, roots and delimiters against pinned TeX oracles without overclaiming beyond the corpus.",
+    "owned_paths": [
+      "crates/math-layout"
+    ],
+    "revision": 3,
+    "schema_version": 1,
+    "state": "assigned",
+    "task_id": "FT-020",
+    "timebox_minutes": 45,
+    "updated_utc": "2026-09-12T06:30:37Z"
+  },
+  "report": {
+    "agent_id": "mac-math-layout",
+    "allocation_id": "claude-mac20x-math-layout",
+    "assignment_acknowledgements": {
+      "FT-020": {
+        "acknowledged_utc": "2026-09-12T06:32:17Z",
+        "adaptation": "Accepted FT-020 rev 3: declare a math visual corpus (fixtures/visual, >=10 cases) wired to the mac-visual-oracle harness via tools/run_visual.sh, corpus-wide structural gate with thresholds and --regress, runtime-v1 compile_result emission with rules-v1/font-hints-v1 and a PDF-vs-CoreText box check, tuning only where the corpus shows deltas, explicit unsupported list.",
+        "main_sha": "0b7076ad9f3b8b8ac8e9e7f80960c97af2c8e7b3",
+        "revision": 3
+      }
+    },
+    "branch": "agent/mac-math-layout/math-boxes",
+    "capabilities": [
+      "rust",
+      "math"
+    ],
+    "code_revision": "f75cc201fc62b48ec2eb2e3096a5dc59142eb976",
+    "eta_minutes": {
+      "likely": 5,
+      "optimistic": 0,
+      "pessimistic": 30
+    },
+    "machine": "mac-m1max-a",
+    "main_integrated_through": "a089e17750ce9a3eeee0bc2a6d34fda70416fb61",
+    "next_action": "On MacTeX arrival: oracle-backed run_visual.sh, measured raster thresholds, re-pin the oracle",
+    "reviewed_peers": {
+      "origin/agent/mac-font-engine/tex-fonts": {
+        "adaptation": "font-engine parses MathConstants but not MathVariants; TFM-only extensible path shipped behind trait hooks, MathVariants requested in README",
+        "reviewed_utc": "2026-09-12T06:29:52Z",
+        "sha": "dca990c74c6d11fa3dc30e7a5e2b9e8c08b05803"
+      },
+      "origin/agent/mac-pdf/pdf-output": {
+        "adaptation": "FLASHTEX_LM_DIR and hint resolution read from crates/pdf README/embed.rs; run_visual.sh passes the variable through; writer pinned unmodified",
+        "reviewed_utc": "2026-09-12T07:08:25Z",
+        "sha": "4bd8c2e79f66c161b7fb6438f3262f8d980eb8c9"
+      },
+      "origin/agent/mac-visual-oracle/reference-raster": {
+        "adaptation": "tip 78b9a64 is an untested WIP (projection registration, burned-in footers); the gate stays pinned at db18236, harness not edited",
+        "reviewed_utc": "2026-09-12T07:08:25Z",
+        "sha": "67bfd129a707f232a05afbef696b77eb38776c95"
+      },
+      "origin/main": {
+        "adaptation": "crates/pdf 4bd8c2e merged on main equals the writer run_visual.sh pins; no contract or math-layout change; merged into the branch",
+        "reviewed_utc": "2026-09-12T07:08:25Z",
+        "sha": "a089e17750ce9a3eeee0bc2a6d34fda70416fb61"
+      }
+    },
+    "schema_version": 1,
+    "state": "ready_for_integration",
+    "summary": "FT-020 rev 3: 15-case declared math visual corpus; structural gate 15/15 vs pinned pdfTeX geometry (max 0.0055 bp, --regress clean); preview/PDF box parity 15/15 (PDF writer 0.00096 pt, CoreText 0.00000 pt, tol 0.05 pt); tools/run_visual.sh drives harness db18236 + crates/pdf 4bd8c2e; raster references NOT regenerable (no pdflatex on this machine, stated in the evidence); explicit unsupported table in README",
+    "tool": "Claude Code subagent (parent mac-claude-a)",
+    "updated_utc": "2026-09-12T07:08:25Z",
+    "usage": {
+      "evidence": "crates/math-layout/docs/visual-evidence/20260912T070234Z; docs/comparison.md stage 3; cargo test 37 passed, clippy clean",
+      "status": "unknown from this session (Claude Max 20x on mac-m1max-a, allocation claude-mac20x-math-layout)"
+    }
+  },
+  "report_age_seconds": 16,
+  "report_path": "coordination/agents/mac-math-layout.json",
+  "review_required": true,
+  "revision": 3,
+  "schema_version": 1,
+  "stale_completion": false,
+  "state": "reported_ready",
+  "task_id": "FT-020",
+  "worker_branch": "agent/mac-math-layout/math-boxes",
+  "worker_report_sha": "d84c88776bff49346d873fa1f296744233d07bfd"
+}

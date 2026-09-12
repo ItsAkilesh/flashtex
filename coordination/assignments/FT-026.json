@@ -9,15 +9,15 @@
   "branch": "agent/mac-contract-review/edit-ledger",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "47645249b66f7f5814f0ddd576971ca7a3eec7b7",
-  "objective": "Exercise multi-session background service saturation and crash recovery with exact revision-tagged results and native adapter fixtures.",
+  "input_main_sha": "ddc5bc6944a56815a4bb6b66a9c7fb2dd52ca8b4",
+  "objective": "Explicit integrity-bound backup recovery plans",
   "owned_paths": [
     "crates/edit-ledger"
   ],
-  "revision": 3,
+  "revision": 5,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-026",
   "timebox_minutes": 30,
-  "updated_utc": "2026-09-12T06:14:07Z"
+  "updated_utc": "2026-09-12T08:24:25Z"
 }

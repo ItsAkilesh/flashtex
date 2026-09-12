@@ -24,6 +24,7 @@ import selectors
 import signal
 import subprocess
 import time
+import unicodedata
 from pathlib import PurePosixPath, PureWindowsPath
 import sys
 
@@ -69,6 +70,17 @@ def object_value(value, label):
 
 def array(value, label):
     require(isinstance(value, list), label + ' must be an array')
+
+
+def layout_capabilities(payload):
+    values = payload.get('layout_capabilities', [])
+    array(values, 'layout_capabilities')
+    require(len(values) <= 16, 'layout_capabilities exceeds 16 entries')
+    for value in values:
+        string(value, 'layout capability', True)
+        require(len(value.encode('utf-8')) <= 64, 'layout capability exceeds 64 UTF-8 bytes')
+    require(len(set(values)) == len(values), 'duplicate layout capability')
+    return frozenset(values)
 
 
 def strict_object(pairs):
@@ -147,6 +159,7 @@ class Validator:
         self.requests = {}
         self.completed = set()
         self.latest = {}
+        self.latest_request = {}
         self.results = []
         self.captures = {}
         self.capture_requests = {}
@@ -241,12 +254,17 @@ class Validator:
                 require(name not in mapped, 'duplicate document path: ' + name)
                 mapped[name] = text
             require(payload['entry_path'] in mapped, 'entry_path must exist in request documents')
-            self.requests[ident] = (project, revision, mapped)
+            requested = layout_capabilities(payload)
+            self.requests[ident] = (project, revision, mapped, requested)
+            self.latest_request[project] = ident
             self.latest[project] = revision
             return
         require(ident in self.requests, 'compile_result has no matching request id')
         require(ident not in self.completed, 'duplicate terminal response id')
-        expected_project, expected_revision, documents = self.requests[ident]
+        expected_project, expected_revision, documents, requested = self.requests[ident]
+        accepted = layout_capabilities(payload)
+        require(accepted <= requested, 'result accepted an unrequested layout capability')
+        require(accepted <= {'rules-v1', 'font-hints-v1'}, 'result accepted an unknown layout capability')
         require((project, revision) == (expected_project, expected_revision),
                 'compile_result project_id/revision does not match its request id')
         require(payload.get('status') in ('ok', 'recovered', 'failed'), 'invalid compile_result status')
@@ -264,11 +282,31 @@ class Validator:
             array(page.get('items'), 'page.items')
             for item in page['items']:
                 object_value(item, 'item')
-                require(item.get('kind') == 'text', 'runtime-v1 supports text items only')
-                string(item.get('text'), 'item.text')
-                for field in ('x_pt', 'baseline_y_pt', 'font_size_pt'):
-                    require(number(item.get(field)), field + ' must be a finite number')
-                require(item['font_size_pt'] > 0, 'font_size_pt must be positive')
+                kind = item.get('kind')
+                require(kind in ('text', 'rule'), 'unsupported layout primitive kind')
+                if kind == 'rule':
+                    require('rules-v1' in accepted, 'rule requires accepted rules-v1')
+                    for field in ('x_pt', 'y_pt', 'width_pt', 'height_pt'):
+                        require(number(item.get(field)) and abs(item[field]) <= 1000000,
+                                'rule ' + field + ' must be finite and bounded')
+                    require(item['width_pt'] > 0 and item['height_pt'] > 0,
+                            'rule dimensions must be positive')
+                else:
+                    string(item.get('text'), 'item.text')
+                    for field in ('x_pt', 'baseline_y_pt', 'font_size_pt'):
+                        require(number(item.get(field)), field + ' must be a finite number')
+                    require(item['font_size_pt'] > 0, 'font_size_pt must be positive')
+                    if 'font' in item:
+                        require('font-hints-v1' in accepted, 'font requires accepted font-hints-v1')
+                        font = item['font']
+                        object_value(font, 'item.font')
+                        family = font.get('family')
+                        string(family, 'font.family', True)
+                        require(len(family.encode('utf-8')) <= 128 and
+                                all(unicodedata.category(c) != 'Cc' for c in family),
+                                'font.family must be bounded and contain no control characters')
+                        require(font.get('weight') in ('normal', 'bold'), 'invalid font.weight')
+                        require(font.get('style') in ('normal', 'italic'), 'invalid font.style')
                 self.source(item.get('source'), documents)
         for diagnostic in diagnostics:
             object_value(diagnostic, 'diagnostic')
@@ -284,7 +322,9 @@ class Validator:
         self.completed.add(ident)
         self.results.append({'id': ident, 'project_id': project, 'revision': revision,
                              'status': payload['status'],
-                             'preview': 'stale_ignore' if revision < self.latest[project] else 'current'})
+                             'accepted_layout_capabilities': sorted(accepted),
+                             'missing_layout_capabilities': sorted(requested - accepted),
+                             'preview': 'stale_ignore' if ident != self.latest_request[project] else 'current'})
 
 
 class TransferValidator:

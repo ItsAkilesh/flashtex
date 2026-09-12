@@ -1,5 +1,7 @@
 //! Worker-thread editor controller. Durable source precedes disposable caches.
+pub mod file_project;
 use flashtex_document_runtime::{Document as InputDocument, Event, Limits, Request, Session};
+use flashtex_edit_ledger::history::{GroupedEdit, HistoryMove, HistoryResult, HistoryStatus};
 use flashtex_edit_ledger::{AppliedReceipt, AppliedTransaction, Document, PreparedEdit, Store};
 use flashtex_project_index::{ProjectIndex, VersionSnapshot};
 use serde_json::Value;
@@ -22,6 +24,16 @@ impl ApprovedEdit {
         Self(edit)
     }
 }
+pub enum HistoryAction {
+    Group(GroupedEdit),
+    Undo(HistoryMove),
+    Redo(HistoryMove),
+}
+#[derive(Debug)]
+pub struct HistoryOutcome {
+    pub history: HistoryResult,
+    pub source: EditOutcome,
+}
 #[derive(Debug)]
 pub struct AppliedOutcome {
     pub receipt: AppliedReceipt,
@@ -29,6 +41,7 @@ pub struct AppliedOutcome {
 }
 #[derive(Debug)]
 pub struct Preview {
+    pub missing_layout_capabilities: Vec<String>,
     pub request_id: String,
     pub compile_revision: u64,
     pub source_versions: VersionSnapshot,
@@ -51,6 +64,7 @@ pub struct Controller {
     index: ProjectIndex,
     runtime: Option<Session>,
     generation: u64,
+    layout_capabilities: Vec<String>,
     submitted: Option<(String, VersionSnapshot, Instant)>,
     closed: bool,
 }
@@ -99,6 +113,7 @@ impl Controller {
             index,
             runtime: None,
             generation: 0,
+            layout_capabilities: Vec::new(),
             submitted: None,
             closed: false,
         })
@@ -114,6 +129,84 @@ impl Controller {
             .map_err(|e| e.to_string())?
             .ok_or("uninitialized document".into())
     }
+    /// Add an initialized durable source to this live session. Membership checks
+    /// use the whole prior snapshot so stale UI requests cannot change the project.
+    pub fn attach_document(
+        &mut self,
+        expected: &VersionSnapshot,
+        store: Store,
+    ) -> Result<EditOutcome, String> {
+        if self.closed || expected != &self.index.snapshot() {
+            return Err("project closed or membership snapshot is stale".into());
+        }
+        if self.stores.len() >= 256 {
+            return Err("project exceeds 256 source stores".into());
+        }
+        let document = store
+            .document()
+            .map_err(|e| e.to_string())?
+            .ok_or("uninitialized document")?
+            .clone();
+        if document.project_id != self.project_id || self.stores.contains_key(&document.path) {
+            return Err("wrong project or document already attached".into());
+        }
+        let started = Instant::now();
+        let mut members = self.membership_documents(None)?;
+        members.push(document.clone());
+        self.replace_membership(expected, &members)?;
+        self.submitted = None;
+        self.stores.insert(document.path.clone(), store);
+        Ok(self.after_save(document, started))
+    }
+
+    fn membership_documents(&self, omitted: Option<&str>) -> Result<Vec<Document>, String> {
+        self.stores
+            .keys()
+            .filter(|path| omitted != Some(path.as_str()))
+            .map(|path| self.document(path).cloned())
+            .collect()
+    }
+    fn replace_membership(
+        &mut self,
+        expected: &VersionSnapshot,
+        documents: &[Document],
+    ) -> Result<(), String> {
+        let members: Vec<_> = documents
+            .iter()
+            .map(|doc| {
+                (
+                    doc.path.as_str(),
+                    doc.revision,
+                    doc.text.as_str(),
+                    flashtex_project_index::DocumentKind::Latex,
+                )
+            })
+            .collect();
+        self.index
+            .replace_membership(expected, &members)
+            .map_err(|e| e.to_string())
+    }
+    /// Exclude a source from this session, releasing its lock but never deleting
+    /// its ledger or disk file. Opening the project again restores retained sources.
+    pub fn detach_document(
+        &mut self,
+        expected: &VersionSnapshot,
+        path: &str,
+    ) -> Result<Option<String>, String> {
+        if self.closed || expected != &self.index.snapshot() {
+            return Err("project closed or membership snapshot is stale".into());
+        }
+        if path == self.entry_path {
+            return Err("cannot detach the entry document".into());
+        }
+        self.document(path)?;
+        let members = self.membership_documents(Some(path))?;
+        self.replace_membership(expected, &members)?;
+        self.submitted = None;
+        self.stores.remove(path);
+        Ok(self.compile_current().err())
+    }
+
     /// An Err means the save did not report success; on storage uncertainty reopen
     /// the authoritative ledger before retry. A compile error is an Ok outcome.
     pub fn replace_document(
@@ -199,6 +292,46 @@ impl Controller {
             .confirm(receipt)
             .map_err(|e| e.to_string())
     }
+    pub fn history_status(&self, path: &str) -> Result<HistoryStatus, String> {
+        self.stores
+            .get(path)
+            .ok_or("unknown document")?
+            .history_status()
+            .map_err(|e| e.to_string())
+    }
+    /// Ordinary explicitly requested editor history operations. Permanent command
+    /// IDs and source changes are committed by the authoritative ledger together.
+    pub fn apply_history(
+        &mut self,
+        path: &str,
+        action: HistoryAction,
+    ) -> Result<HistoryOutcome, String> {
+        if self.closed {
+            return Err("project closed".into());
+        }
+        let started = Instant::now();
+        self.submitted = None;
+        let store = self.stores.get_mut(path).ok_or("unknown document")?;
+        let history = match action {
+            HistoryAction::Group(group) => store.apply_group(group),
+            HistoryAction::Undo(command) => store.undo(command),
+            HistoryAction::Redo(command) => store.redo(command),
+        }
+        .map_err(|e| e.to_string())?;
+        let source = self.after_save(history.document.clone(), started);
+        Ok(HistoryOutcome { history, source })
+    }
+    /// Explicit native opt-in after implementing the requested draw capabilities.
+    /// Empty restores legacy output. Every subsequent compile binds this request.
+    pub fn configure_layout(&mut self, capabilities: Vec<String>) -> Result<(), String> {
+        if self.closed {
+            return Err("project closed".into());
+        }
+        flashtex_document_runtime::validate_layout_capabilities(&capabilities)?;
+        self.layout_capabilities = capabilities;
+        self.submitted = None;
+        self.compile_current()
+    }
     pub fn compile_current(&mut self) -> Result<(), String> {
         let started = Instant::now();
         if self.closed {
@@ -228,13 +361,16 @@ impl Controller {
         self.runtime
             .as_mut()
             .ok_or("compiler unavailable; source remains saved")?
-            .submit(Request {
-                id: id.clone(),
-                project_id: self.project_id.clone(),
-                revision: generation,
-                entry_path: self.entry_path.clone(),
-                documents,
-            })?;
+            .submit_with_capabilities(
+                Request {
+                    id: id.clone(),
+                    project_id: self.project_id.clone(),
+                    revision: generation,
+                    entry_path: self.entry_path.clone(),
+                    documents,
+                },
+                self.layout_capabilities.clone(),
+            )?;
         self.generation = generation;
         self.submitted = Some((id, self.index.snapshot(), started));
         Ok(())
@@ -250,12 +386,15 @@ impl Controller {
             })
     }
     pub fn poll(&mut self) -> Vec<Update> {
-        let current = self.index.snapshot();
         let Some(runtime) = self.runtime.as_mut() else {
             return Vec::new();
         };
-        runtime
-            .poll()
+        let events = runtime.poll();
+        if events.is_empty() {
+            return Vec::new();
+        }
+        let current = self.index.snapshot();
+        events
             .into_iter()
             .map(|event| match event {
                 Event::Preview {
@@ -273,7 +412,19 @@ impl Controller {
                                 expected == &id && snapshot == &current
                             })
                     {
+                        let accepted = result["payload"]["layout_capabilities"].as_array();
+                        let missing_layout_capabilities = self
+                            .layout_capabilities
+                            .iter()
+                            .filter(|cap| {
+                                !accepted.is_some_and(|items| {
+                                    items.iter().any(|item| item.as_str() == Some(cap.as_str()))
+                                })
+                            })
+                            .cloned()
+                            .collect();
                         Update::Preview(Preview {
+                            missing_layout_capabilities,
                             request_id: id,
                             compile_revision: revision,
                             source_versions: current.clone(),
@@ -301,19 +452,11 @@ impl Controller {
         if self.closed {
             return Err("project closed".into());
         }
-        let mut index = ProjectIndex::new(&self.project_id).map_err(|e| e.to_string())?;
-        for store in self.stores.values() {
-            let document = store
-                .document()
-                .map_err(|e| e.to_string())?
-                .ok_or("uninitialized document")?;
-            index
-                .replace_document(&document.path, document.revision, &document.text)
-                .map_err(|e| e.to_string())?;
-        }
+        let expected = self.index.snapshot();
+        let documents = self.membership_documents(None)?;
         let runtime = Session::spawn_command(command, limits)?;
+        self.replace_membership(&expected, &documents)?;
         self.runtime = Some(runtime);
-        self.index = index;
         self.submitted = None;
         self.compile_current()
     }

@@ -58,3 +58,9 @@ a secure network implementation.
 - FT-004: drawing and camera produce a `capture_submit` message. Real photographs
   and Pencil input are required for acceptance; generated fixtures are insufficient.
 - Commander: owns v1 changes until an interface owner is explicitly reassigned.
+
+## Optional negotiated layout extension
+
+See [runtime-v1-layout-capabilities.md](runtime-v1-layout-capabilities.md) for per-request
+`rules-v1` and `font-hints-v1`. They do not change output for unnegotiated clients.
+Unknown primitives must be explicitly rejected, never silently omitted.

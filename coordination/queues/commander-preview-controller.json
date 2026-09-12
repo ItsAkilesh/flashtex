@@ -1,36 +1,36 @@
 {
   "agent_id": "commander-preview-controller",
-  "next_index": 1,
+  "next_index": 0,
   "schema_version": 1,
   "steps": [
     {
+      "name": "Measure first-page readiness and complete-result equality on pinned scaling fixtures",
+      "objective": "Measure first-page readiness and complete-result equality on pinned scaling fixtures",
+      "owned_paths": [
+        "crates/preview-controller",
+        "crates/document-runtime",
+        "crates/project-index"
+      ],
       "acceptance": [
-        "Parallel controller and real original compiler tests pass",
-        "Durable source succeeds independently of missing compiler",
-        "Reviewed insertion is explicit; never automatically approve provider text",
-        "Native paint and full PDF equality remain separate measured gates"
+        "Meaningful bounded behavior tests and strict lint pass",
+        "Preserve exact identities; publish measured evidence and unsupported gates"
       ],
       "allocation_id": "hosted-openai-product",
-      "name": "Subprocess crash/restart and reviewed receipt recovery",
-      "objective": "Subprocess crash/restart and reviewed receipt recovery",
-      "owned_paths": [
-        "crates/preview-controller"
-      ],
       "timebox_minutes": 30
     },
     {
+      "name": "Prototype negotiated native chunk consumption only after compiler/native contract agreement",
+      "objective": "Prototype negotiated native chunk consumption only after compiler/native contract agreement",
+      "owned_paths": [
+        "crates/preview-controller",
+        "crates/document-runtime",
+        "crates/project-index"
+      ],
       "acceptance": [
-        "Parallel controller and real original compiler tests pass",
-        "Durable source succeeds independently of missing compiler",
-        "Reviewed insertion is explicit; never automatically approve provider text",
-        "Native paint and full PDF equality remain separate measured gates"
+        "Meaningful bounded behavior tests and strict lint pass",
+        "Preserve exact identities; publish measured evidence and unsupported gates"
       ],
       "allocation_id": "hosted-openai-product",
-      "name": "Consume authoritative ledger undo/redo and background event integration",
-      "objective": "Consume authoritative ledger undo/redo and background event integration",
-      "owned_paths": [
-        "crates/preview-controller"
-      ],
       "timebox_minutes": 30
     }
   ],

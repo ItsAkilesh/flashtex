@@ -10,15 +10,17 @@
   "branch": "agent/commander/preview-controller",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "b44eb68dda46385bf98cc8d1ebb539ee85eeef2c",
-  "objective": "Subprocess crash/restart and reviewed receipt recovery",
+  "input_main_sha": "cab39a20278914747f92ee703f6da40a26b72a93",
+  "objective": "Experimental bounded page assembly with provisional revision-tagged page events and atomic final completion",
   "owned_paths": [
-    "crates/preview-controller"
+    "crates/preview-controller",
+    "crates/document-runtime"
   ],
-  "revision": 2,
+  "revision": 7,
   "schema_version": 1,
-  "state": "assigned",
+  "state": "awaiting_integration",
   "task_id": "FT-027",
   "timebox_minutes": 30,
-  "updated_utc": "2026-09-12T06:22:04Z"
+  "updated_utc": "2026-09-12T07:26:21.086531+00:00",
+  "ownership_note": "Temporary root membership API completed and integrated; index ownership returned to reactivatedFT025"
 }

@@ -1,23 +1,26 @@
 {
   "acceptance": [
-    "Golden tests cover nested and extensible constructs",
-    "No flattened fraction or fake rule glyph",
-    "Reference geometry deltas are measured"
+    "Raster overlays and structural geometry both gate changes",
+    "Preview/PDF consume identical boxes",
+    "Remaining unsupported constructs are explicit"
   ],
   "agent_id": "mac-math-layout",
-  "allocation_id": "claude-mac20x-math-layout-stage2",
+  "allocation_id": "claude-mac20x-math-layout-stage3",
   "branch": "agent/mac-math-layout/math-boxes",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "0a3d8e22fe4abc5cf15c39cce889aaa125f38bb6",
-  "objective": "Add operators, accents, extensible delimiters, nested styles and font-derived math constants with explicit glyph/rule geometry.",
+  "input_main_sha": "a089e17750ce9a3eeee0bc2a6d34fda70416fb61",
+  "objective": "Exact TeX math spacing and size-dependent symbol metrics",
   "owned_paths": [
     "crates/math-layout"
   ],
-  "revision": 2,
+  "revision": 4,
   "schema_version": 1,
-  "state": "assigned",
+  "state": "cancelled",
   "task_id": "FT-020",
   "timebox_minutes": 45,
-  "updated_utc": "2026-09-12T06:12:26Z"
+  "updated_utc": "2026-09-12T07:08:41Z",
+  "transfer_to": "FT-032",
+  "resume_rule": "Do not resume these owned files after cooldown; ownership is transferred to Daniel until explicit return",
+  "cancellation_reason": "User-authorized ownership transfer to Daniel during Jaysen quota cooldown; old work preserved, old worker must not resume these paths"
 }
