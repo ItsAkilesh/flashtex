@@ -1,7 +1,8 @@
 # mac-pdf handoff — v2-adapter follow-up (from-v2 feeds the exact route) and issue #28
 
-- Updated UTC: 2026-09-12T10:40Z (follow-up 2 below added; branch merged
-  with origin/main `9e05acd`)
+- Updated UTC: 2026-09-12T11:30Z (refill 3 below added; branch merged with
+  origin/main `60c40c1`, which carries the Commander's Type 1 reader in
+  font-resources and the replay runner)
 - Agent / parent / machine: `mac-pdf` (Claude Code subagent) / parent
   `mac-claude-a` / `mac-m1max-a`. Context usage at this checkpoint: about 4%
   of the session budget (14.39 M of 15 M tokens remaining per the runtime
@@ -21,6 +22,25 @@
   `agent/mac-pdf/exact-export` is superseded by this branch for everything
   after `d25a647`.
 - State: ready for integration.
+- Refill 3 (coordinator): (1) Type 1 subsetting `crates/pdf/src/type1.rs`
+  (`da302d2`): PFB/Length1-2-3 reader, eexec+charstring decryption, Subrs/
+  CharStrings records, subset keeping needed charstrings/subrs byte-identical
+  (callsubr, hint replacement, seac components), unused subrs blanked,
+  deterministic re-encryption, Length3 0; `ExactFont::type1_subset`; the
+  classifier compares embedded Type 1 programs charstring by charstring
+  (`[same] … Type 1 charstrings …`, `Report::font_charstrings_identical`).
+  Oracle test: pdfTeX's lmr12 subset vs ours, 21/21 glyphs and their subrs
+  identical. Consumed the Commander's font-resources conventions (same
+  seeds/lenIV/record forms), no code copied and no dependency (zero-dep
+  crate); wiring Type 1 into runtime-v1/from-v2 needs a code→name source
+  (.enc) and is not done. (2) rendering-core math-reference fixture
+  (8b06436) classified: ContentOperators, FontProgram, FontMetadata,
+  FontResources (+ layout/compression/identity); CoreGraphics 645 px vs
+  their Poppler 602; ink-only 38/51, shift 0. (3) from-v2 green on
+  render-pipeline tip `d556519` (raw-bytes sha256, deviation note gone,
+  fixture regenerated, old form still accepted/tested); 18-fixture rerun:
+  only math fixtures changed, all better on the producer side. 86 tests,
+  clippy clean.
 - Follow-up 2 (coordinator, after the Mac app adopted from-v2): (1) exact
   `TJ` kerning — `PlacedGlyph.adjust`, `GlyphRun::to_ops` emits `TJ`
   segments, `exact::Ratio` + `glyph_positions` replay text operators
