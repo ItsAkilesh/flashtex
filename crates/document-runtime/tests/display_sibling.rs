@@ -245,3 +245,43 @@ fn helper_can_defer_take_without_extra_pending_value_and_close_invalidates() {
         .submit_with_snapshot_origin(request(3), vec![], "origin3".into())
         .is_ok());
 }
+
+#[test]
+fn display_profile_is_current_scalar_only_and_clears_on_invalidation() {
+    let (_d, mut s) = session("ok");
+    assert!(s.last_display_profile().is_none());
+    s.set_display_candidates_enabled(true).unwrap();
+    s.submit_with_capabilities(request(1), caps()).unwrap();
+    take_wait(&mut s);
+    let p = s.last_display_profile().unwrap();
+    assert_eq!((&*p.request_id, &*p.project_id, p.revision), ("r1", "p", 1));
+    assert!(p.response_bytes > 0);
+    for elapsed in [
+        p.parse_ms,
+        p.decode_queue_wait_ms,
+        p.reader_delivery_wait_ms,
+        p.source_binding_ms,
+    ] {
+        assert!(elapsed.is_finite() && elapsed >= 0.0);
+    }
+    let epoch = p.display_epoch;
+    let scalar = serde_json::to_value(p).unwrap();
+    assert!(!scalar.to_string().contains("東京"));
+    s.set_display_candidates_enabled(true).unwrap(); // same policy explicitly resets epoch
+    assert!(s.last_display_profile().is_none());
+    s.submit_with_capabilities(request(2), caps()).unwrap();
+    take_wait(&mut s);
+    assert!(s.last_display_profile().unwrap().display_epoch > epoch);
+    s.submit_with_capabilities(request(3), caps()).unwrap();
+    assert!(s.last_display_profile().is_none());
+    s.submit_with_capabilities(request(4), caps()).unwrap();
+    assert_eq!(take_wait(&mut s).revision(), 4);
+    assert_eq!(s.last_display_profile().unwrap().revision, 4);
+    s.close_project("p").unwrap();
+    assert!(s.last_display_profile().is_none());
+    let (_d, mut s) = session("duplicate");
+    s.set_display_candidates_enabled(true).unwrap();
+    s.submit_with_capabilities(request(1), caps()).unwrap();
+    wait_until(&mut s, |s, _| !s.is_alive());
+    assert!(s.last_display_profile().is_none());
+}

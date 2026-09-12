@@ -88,6 +88,20 @@ pub struct ResponseProfile {
     pub parse_ms: f64,
     pub validation_ms: f64,
 }
+/// Scalar transport timings for the last current source-bound candidate only.
+/// No native decoding, font validation, rendering, paint or source text is included.
+#[derive(Clone, Debug, serde::Serialize)]
+pub struct DisplayResponseProfile {
+    pub request_id: String,
+    pub project_id: String,
+    pub revision: u64,
+    pub display_epoch: u64,
+    pub response_bytes: usize,
+    pub parse_ms: f64,
+    pub decode_queue_wait_ms: f64,
+    pub reader_delivery_wait_ms: f64,
+    pub source_binding_ms: f64,
+}
 /// Optional historical display data. This is never a current-preview/source-action grant.
 /// `origin` is opaque caller metadata captured with the original submitted request.
 #[derive(Debug)]
@@ -199,6 +213,7 @@ pub struct Session {
     display_enabled: bool,
     display_epoch: u64,
     display_candidate: Option<UntrustedDisplayCandidate>,
+    last_display_profile: Option<DisplayResponseProfile>,
     process: Option<Process>,
     limits: Limits,
     active: Option<Pending>,
@@ -229,6 +244,7 @@ impl Session {
             display_enabled: false,
             display_epoch: 0,
             display_candidate: None,
+            last_display_profile: None,
             process: Some(process),
             limits,
             active: None,
@@ -301,6 +317,7 @@ impl Session {
             );
         }
         self.display_candidate = None;
+        self.last_display_profile = None;
         self.display_epoch = self
             .display_epoch
             .checked_add(1)
@@ -365,6 +382,7 @@ impl Session {
             (request.revision, request.id.clone()),
         );
         self.display_candidate = None;
+        self.last_display_profile = None;
         self.queue.push_back(Pending {
             awaiting_display: false,
             display_epoch: self.display_epoch,
@@ -394,6 +412,7 @@ impl Session {
             self.completed_snapshot = None;
         }
         self.display_candidate = None;
+        self.last_display_profile = None;
         self.latest.remove(project_id);
         if let Some(active) = self.active.as_mut() {
             if active.request.project_id == project_id && !active.cancelled {
@@ -438,6 +457,7 @@ impl Session {
     }
     fn fail(&mut self, reason: &str) {
         self.display_candidate = None;
+        self.last_display_profile = None;
         self.completed_snapshot = None;
         self.process.take();
         if let Some(p) = self.active.take().filter(|p| !p.cancelled) {
@@ -469,6 +489,7 @@ impl Session {
                     };
                     let parsed = frame.value.take().expect("decoded frame consumed once");
                     if pending.awaiting_display {
+                        let binding_start = Instant::now();
                         let candidate = match display_candidate::validate(parsed, &pending.request)
                         {
                             Ok(candidate) => candidate,
@@ -486,6 +507,17 @@ impl Session {
                                 },
                             )
                         {
+                            self.last_display_profile = Some(DisplayResponseProfile {
+                                request_id: pending.request.id.clone(),
+                                project_id: pending.request.project_id.clone(),
+                                revision: pending.request.revision,
+                                display_epoch: pending.display_epoch,
+                                response_bytes: frame.response_bytes,
+                                parse_ms: frame.parse_ms,
+                                decode_queue_wait_ms: frame.decode_queue_wait_ms,
+                                reader_delivery_wait_ms,
+                                source_binding_ms: binding_start.elapsed().as_secs_f64() * 1000.0,
+                            });
                             self.display_candidate = Some(candidate);
                         }
                         self.active.take();
@@ -594,6 +626,11 @@ impl Session {
             self.fail("compiler response timeout");
         }
         self.events.drain(..).collect()
+    }
+    /// Last current display transport timing; survives candidate take, but clears
+    /// on submit, close, policy reset or failure. Epoch is local to this Session.
+    pub fn last_display_profile(&self) -> Option<&DisplayResponseProfile> {
+        self.last_display_profile.as_ref()
     }
     /// Last fully validated response, including stale/cancelled work. Match its
     /// request ID; these phases do not measure native paint or compiler CPU alone.
