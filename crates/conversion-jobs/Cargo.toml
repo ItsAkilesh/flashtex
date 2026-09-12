@@ -16,6 +16,7 @@ flashtex-bridge = { path = "../bridge", optional = true }
 sha2 = { version = "0.10", optional = true }
 
 [dev-dependencies]
+flashtex-edit-ledger = { path = "../edit-ledger" }
 flashtex-bridge = { path = "../bridge" }
 base64 = "0.22"
 image = { version = "0.25", default-features = false, features = ["png"] }

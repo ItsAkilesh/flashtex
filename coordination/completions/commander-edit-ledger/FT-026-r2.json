@@ -1,0 +1,84 @@
+{
+  "agent_id": "commander-edit-ledger",
+  "archived_utc": "2026-09-12T06:14:06Z",
+  "assignment": {
+    "acceptance": [
+      "Meaningful tests and strict lint pass",
+      "Publish truthful execution provenance and exact tested SHA",
+      "No native integration or PDF parity claim without measured evidence"
+    ],
+    "agent_id": "commander-edit-ledger",
+    "allocation_id": "hosted-openai-product",
+    "branch": "agent/mac-contract-review/edit-ledger",
+    "deadline_utc": null,
+    "dependencies": [],
+    "input_main_sha": "bce4982f5db9e0b08063c7bc3200f9a1e5bcf711",
+    "objective": "Implement guarded durable grouped source history with restart-safe undo/redo while preserving capture IDs and receipt dedup; explicit bounded retention only.",
+    "owned_paths": [
+      "crates/edit-ledger"
+    ],
+    "revision": 2,
+    "schema_version": 1,
+    "state": "assigned",
+    "task_id": "FT-026",
+    "timebox_minutes": 30,
+    "updated_utc": "2026-09-12T06:01:55Z"
+  },
+  "report": {
+    "agent_id": "commander-edit-ledger",
+    "allocation_id": "hosted-openai-product",
+    "assignment_acknowledgements": {
+      "FT-026": {
+        "acknowledged_utc": "2026-09-12T06:04:23Z",
+        "adaptation": "Accepted grouped durable undo/redo and native adapter stress stage; editing only crates/edit-ledger and own report. Recovery/service earlier stages remain completed.",
+        "main_sha": "1befb923fb8c248a704a1ff5148d77b5f581130f",
+        "revision": 2
+      }
+    },
+    "branch": "agent/mac-contract-review/edit-ledger",
+    "capabilities": [
+      "rust",
+      "linux-tests"
+    ],
+    "code_revision": "a41dbc4075dc3ebd209688f51929045f93d3ce63",
+    "eta_minutes": {
+      "likely": 0,
+      "optimistic": 0,
+      "pessimistic": 0
+    },
+    "machine": "linux-primary",
+    "main_integrated_through": "239ab97f7ee6498f161ec07efced59f8b9d57f39",
+    "next_action": "Integrate exact code revision; native owner wires grouped history and asynchronous shutdown/recovery. All requested undo/service-stress stages are complete; await new non-overlapping product objective.",
+    "reviewed_peers": {
+      "origin/agent/commander/capture-bridge": {
+        "adaptation": "Matched PreparedEdit fields; all service/recovery/retention fields are ledger-local and do not alter bridge wire messages.",
+        "reviewed_utc": "2026-09-12T05:59:00Z",
+        "sha": "b5ca96bdaca634166a01023cd3321955f2bc5f70"
+      },
+      "origin/agent/mac-contract-review/lock-release": {
+        "adaptation": "Merged explicit unlock cleanup after deterministic reproduction; schema 3 preserves history and payload compaction no longer downgrades schema.",
+        "reviewed_utc": "2026-09-12T06:13:42Z",
+        "sha": "239ab97f7ee6498f161ec07efced59f8b9d57f39"
+      }
+    },
+    "schema_version": 1,
+    "state": "ready_for_integration",
+    "summary": "FT-026 rev 2 complete: grouped durable source edits, guarded restart-safe undo/redo with permanent command dedup, explicitly acknowledged history retention, service shutdown proof and multi-session/native-adapter crash fixtures. Includes verified fork-lock cleanup 239ab97. 48 Linux tests, strict clippy and release build pass.",
+    "tool": "Codex Astra",
+    "updated_utc": "2026-09-12T06:13:42Z",
+    "usage": {
+      "evidence": "41 library plus 7 integration tests; four services and sixteen writers persist 160 groups; actual killed helper after undo recovers source, pending receipt and redo; fork regression failed before explicit unlock and passes after. No Xcode or paid calls.",
+      "status": "unknown"
+    }
+  },
+  "report_age_seconds": 24,
+  "report_path": "coordination/agents/commander-edit-ledger.json",
+  "review_required": true,
+  "revision": 2,
+  "schema_version": 1,
+  "stale_completion": false,
+  "state": "reported_ready",
+  "task_id": "FT-026",
+  "worker_branch": "agent/mac-contract-review/edit-ledger",
+  "worker_report_sha": "eb42eba5a5506a69ce1d0d842d65c9143ae9182a"
+}
