@@ -56,7 +56,7 @@ fi
 for bin in "$helper" "$bridge"; do
   [ -x "$bin" ] || { echo "grok-live-check: missing $bin (run without --no-build)" >&2; exit 2; }
 done
-if ! "$helper" --provider-session probe grok-4.6 </dev/null 2>&1 | grep -q "explicit provider credential missing"; then
+if ! "$helper" --provider-session probe "$model" </dev/null 2>&1 | grep -q "explicit provider credential missing"; then
   echo "grok-live-check: $helper was not built with --features grok" >&2; exit 2
 fi
 
@@ -67,7 +67,9 @@ mkdir -p "$evidence"
 sha=$(git -C "$root" rev-parse HEAD)
 model="${FLASHTEX_GROK_MODEL:-grok-4.6}"
 capture_model="${FLASHTEX_GROK_CAPTURE_MODEL:-grok-4.20-0309-non-reasoning}"
-timeout_s="${FLASHTEX_ASSISTANT_TIMEOUT_S:-110}"
+# The sheet's own bound: 30 s for non-reasoning ids, 100 s otherwise (GrokCredential.providerTimeout).
+case "$model" in *non-reasoning*) default_timeout=30 ;; *) default_timeout=100 ;; esac
+timeout_s="${FLASHTEX_ASSISTANT_TIMEOUT_S:-$default_timeout}"
 
 # 4. The three live calls, through the Mac test target (GrokLiveAcceptanceTests).
 echo "grok-live-check: running GrokLiveAcceptanceTests (explanation model $model, capture model $capture_model, timeout ${timeout_s}s); evidence -> $evidence"

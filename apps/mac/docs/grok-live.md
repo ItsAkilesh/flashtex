@@ -39,12 +39,20 @@ process environment (`inject(into:as:)`) and the probe's bearer header.
 ## Selecting Grok for editor assistance
 
 - `FLASHTEX_ASSISTANT_PROVIDER=grok` in the environment, or
-- Preferences → Grok (xAI) → **Use Grok (xAI) for editor assistance**
-  (`UserDefaults` `FlashTeX.Grok.v1.providerEnabled`; the environment variable,
-  when set to anything, wins — a path still selects a local provider command).
-- Model: `FLASHTEX_GROK_MODEL`, else the Preferences model field
-  (`FlashTeX.Grok.v1.model`), else `grok-4.6` (the bridge's default). One model
-  id serves both helpers.
+- Preferences → Grok (xAI) → **Use Grok (xAI) for editor assistance**:
+  *Automatic* (default: Grok exactly when a key resolves, else the local
+  provider or none), *Always*, or *Never* (`UserDefaults`
+  `FlashTeX.Grok.v1.providerMode`; a legacy `providerEnabled` true/false
+  migrates to Always/Never). The environment variable, when set to anything,
+  wins — a path still selects a local provider command. The status bar shows
+  `Grok: on (model)` / `Grok: off` (`GrokStatusPill`, re-read on every
+  preference or key change).
+- Model: `FLASHTEX_GROK_MODEL`, else the Preferences picker
+  (`FlashTeX.Grok.v1.model`: `grok-4.6`, `grok-4.20-0309-non-reasoning`, or a
+  typed id), else `grok-4.6`. The provider bound is 100 s for reasoning ids and
+  30 s for `*non-reasoning*` ids (`GrokCredential.providerTimeout`); the sheet
+  shows "Asking Grok (model)… N s" with a Cancel that terminates the session
+  child.
 
 The review sheet's "Explain" then runs, per request:
 
@@ -218,6 +226,13 @@ edit the helper refused ("removed source differs" — validation as designed).
 Defaults after this: explanations `grok-4.6`, captures `grok-4.20-0309-non-reasoning`
 (`FLASHTEX_GROK_CAPTURE_MODEL`, else `FLASHTEX_GROK_MODEL`, else the preference).
 HTTP 401/403/429 were not observed with the supplied key.
+
+Run 20260912T210600Z (docs/evidence/grok-live-20260912T210600Z) tried the fast
+model as the explanation default through the app's real flow: 4.06 s and
+4.94 s end to end, both refused by the helper with "removed source differs"
+(the model's `removed_text`/byte offsets do not match the source). The gate is
+correct; the explanation default therefore stays `grok-4.6` until the helper
+can locate a non-reasoning model's edits itself (assistant-context follow-up).
 
 ## `supported_features` (demo gate, issue #2)
 

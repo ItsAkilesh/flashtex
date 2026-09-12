@@ -81,6 +81,8 @@ final class GrokLiveAcceptanceTests: XCTestCase {
         let seconds = Date().timeIntervalSince(started)
         var evidence: [String: Any] = [
             "helper": helper.path, "model": config.grok?.model ?? "?", "key_source": credential.source.rawValue,
+            "model_is_default": config.grok?.model == GrokCredential.defaultModel,
+            "provider_timeout_s": config.providerTimeout,
             "seconds": seconds, "launches": preview.childLaunches.map { "\($0.role):\($0.stage)" },
             "session_id": preview.lastGrokLaunch?.sessionId ?? "",
             "session_argv_has_key": preview.lastGrokLaunch?.arguments.contains { $0.contains("xai-") } ?? false,
@@ -107,6 +109,8 @@ final class GrokLiveAcceptanceTests: XCTestCase {
         guard case .ready(let e) = final else { return XCTFail("\(final)") }
         XCTAssertFalse(e.text.isEmpty)
         XCTAssertFalse(e.applied)
+        XCTAssertNil(preview.providerStartedAt, "the elapsed counter stops when the reply lands")
+        XCTAssertLessThan(seconds, config.providerTimeout, "the whole flow (prepare, live call, review) fits the sheet's bound")
     }
 
     /// The deterministic "photo-simulated" capture: handwriting-style text of a

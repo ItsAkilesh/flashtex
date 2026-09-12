@@ -1,0 +1,28 @@
+{
+  "failure" : "provider refused (provider): helper refused poll: removed source differs",
+  "helper" : "\/Users\/jay3332\/Projects\/flashtex\/.claude\/worktrees\/agent-ad770e4f16ba9f695\/crates\/assistant-context\/target\/release\/flashtex-assistant-context",
+  "key_source" : "Keychain",
+  "launches" : [
+    "helper:probe",
+    "helper:prepare",
+    "grok:provider"
+  ],
+  "model" : "grok-4.20-0309-non-reasoning",
+  "model_is_default" : true,
+  "note" : "xAI response id\/model\/usage are not surfaced by the helper's provider session (helper request R4 in apps\/mac\/docs\/grok-live.md)",
+  "outcome" : "failed",
+  "provider_timeout_s" : 30,
+  "recorded_utc" : "2026-09-12T21:06:54Z",
+  "seconds" : 4.9448000192642212,
+  "session_argv_has_key" : false,
+  "session_env_keys" : [
+    "FLASHTEX_GROK_API_KEY",
+    "HOME",
+    "LANG",
+    "PATH",
+    "SHELL",
+    "TMPDIR",
+    "USER"
+  ],
+  "session_id" : "mac-explain-1-d2d0226d"
+}
