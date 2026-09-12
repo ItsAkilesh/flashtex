@@ -722,6 +722,21 @@ impl LayoutCursor {
                     self.vertical_gap(self.constraints.parskip_pt.unwrap_or(PARAGRAPH_GAP_PT));
                 }
             }
+            // Same base inter-block gap as an ordinary paragraph (so a
+            // custom `\parskip` still applies), plus any `\setlist`
+            // itemsep/topsep override before this item.
+            Block::ListItem {
+                extra_gap_before_pt,
+                ..
+            } => {
+                if !self.first_block {
+                    self.newline(body_size);
+                    self.vertical_gap(
+                        self.constraints.parskip_pt.unwrap_or(PARAGRAPH_GAP_PT)
+                            + extra_gap_before_pt,
+                    );
+                }
+            }
             Block::Heading { level, .. } => {
                 let size = heading_size(*level, body_size);
                 if !self.first_block {
@@ -735,17 +750,11 @@ impl LayoutCursor {
                     self.vertical_gap(PARAGRAPH_GAP_PT);
                 }
             }
-            // Same inter-block gap as an ordinary paragraph: list items are
-            // still `parskip`-spaced paragraphs, just indented. Vertical
-            // list-specific spacing (`itemsep`/`topsep`) is a separate change.
-            Block::ListItem { .. } => {
-                if !self.first_block {
-                    self.newline(body_size);
-                    self.vertical_gap(self.constraints.parskip_pt.unwrap_or(PARAGRAPH_GAP_PT));
-                }
-            }
             Block::VSpace { pt } => {
-                if !self.first_block {
+                // Only end a line that has content: after a rule or another
+                // vertical block there is no text line to finish, and TeX adds
+                // no interline glue there either.
+                if !self.first_block && self.state().trailing_line_items > 0 {
                     self.newline(body_size);
                 }
                 self.vertical_gap(*pt);
@@ -784,6 +793,8 @@ impl LayoutCursor {
                 level,
                 label,
                 content,
+                extra_gap_after_pt,
+                ..
             } => {
                 self.list_margin_pt = list_margin_pt(*level, body_size);
                 if let Some((text, span)) = label {
@@ -792,6 +803,9 @@ impl LayoutCursor {
                 self.x = self.left_edge();
                 emit(self, content, body_size, Font::TimesRoman);
                 self.list_margin_pt = 0.0;
+                if *extra_gap_after_pt != 0.0 {
+                    self.vertical_gap(*extra_gap_after_pt);
+                }
             }
             Block::Heading {
                 level,
@@ -853,7 +867,8 @@ impl LayoutCursor {
                     .expect("at least one page")
                     .items
                     .push(item);
-                self.newline(body_size);
+                // A rule has no depth: end its line without adding a text line.
+                self.newline(0.0);
             }
         }
         // A block is the incremental cache unit. Resolve its final line before
@@ -1037,10 +1052,10 @@ fn visit_references(blocks: &[Block], visitor: &mut impl FnMut(&str, Span)) {
     for block in blocks {
         let inlines: &[Inline] = match block {
             Block::Paragraph(inlines) => inlines,
-            Block::Heading { content, .. }
+            Block::ListItem { content, .. }
+            | Block::Heading { content, .. }
             | Block::FigureCaption { content }
-            | Block::Styled { content, .. }
-            | Block::ListItem { content, .. } => content,
+            | Block::Styled { content, .. } => content,
             Block::VSpace { .. } | Block::Rule { .. } | Block::PageBreak => &[],
         };
         for inline in inlines {
