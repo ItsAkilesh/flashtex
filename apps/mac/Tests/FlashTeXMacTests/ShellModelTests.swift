@@ -176,3 +176,42 @@ final class DocumentFileTests: XCTestCase {
         XCTAssertEqual(model.activeText, "Café naïve — edited\n", "failed open leaves the buffer alone")
     }
 }
+
+/// Issue #19 (2): opening another file must not discard unsaved edits without
+/// an explicit decision, and a discarded buffer stays recoverable.
+@MainActor
+final class DirtyOpenTests: XCTestCase {
+    func testOpenIsBlockedWhileDirtyAndDiscardKeepsTheBufferRecoverable() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("flashtex-dirty-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let a = dir.appendingPathComponent("a.tex"), b = dir.appendingPathComponent("b.tex")
+        try "A original\n".write(to: a, atomically: true, encoding: .utf8)
+        try "B text\n".write(to: b, atomically: true, encoding: .utf8)
+
+        let model = ShellModel()
+        XCTAssertEqual(model.openTex(at: a), .opened)
+        model.updateActiveText("A edited but unsaved\n")
+        XCTAssertTrue(model.isDirty)
+
+        // Default: refused, nothing replaced.
+        XCTAssertEqual(model.openTex(at: b), .blockedByUnsavedEdits)
+        XCTAssertEqual(model.activeText, "A edited but unsaved\n")
+        XCTAssertEqual(model.documentURL, a)
+
+        // Discard: replaced, but the prior source is recoverable.
+        XCTAssertEqual(model.openTex(at: b, dirty: .discard), .opened)
+        XCTAssertEqual(model.activeText, "B text\n")
+        XCTAssertEqual(model.recoverableBuffer, .init(url: a, text: "A edited but unsaved\n"))
+        XCTAssertEqual(try String(contentsOf: a, encoding: .utf8), "A original\n", "disk untouched by discard")
+        XCTAssertTrue(model.restoreDiscardedBuffer())
+        XCTAssertEqual(model.activeText, "A edited but unsaved\n")
+        XCTAssertTrue(model.isDirty, "restored buffer is still unsaved")
+        XCTAssertNil(model.recoverableBuffer)
+
+        // Save first: the edit reaches disk, then the open proceeds.
+        XCTAssertEqual(model.openTex(at: b, dirty: .saveFirst), .opened)
+        XCTAssertEqual(try String(contentsOf: a, encoding: .utf8), "A edited but unsaved\n")
+        XCTAssertFalse(model.isDirty)
+    }
+}

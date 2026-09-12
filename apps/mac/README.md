@@ -259,6 +259,11 @@ diagnostics checks beyond the one-line contract fixture.
   is set; when attached to today's `flashtex-compiler` (Core-14 Times metrics) they
   draw Times-Roman so glyph widths match the positions. Optical masters follow
   LaTeX (lmroman5/7/8/9/10/12/17).
+- Opening another file while the buffer is dirty asks Save / Discard / Cancel;
+  a discarded buffer stays recoverable for the session (Edit > Restore
+  Discarded Buffer). The Rust-writer export runs off the main actor with both
+  child pipes drained concurrently (bounded capture, 30 s timeout), so a chatty
+  or stuck writer can neither deadlock nor freeze the UI (issue #19).
 - Export is always white: dark preview is a viewing mode only. `File > Export
   PDF…` (⌘⇧E) uses CoreGraphics; `File > Export PDF via Rust Writer…` (⌘⌥E) pipes
   the current `compile_result` envelope to the FT-009 `flashtex-pdf --verify`
@@ -417,6 +422,7 @@ explain that nothing is loaded.
 |---|---|
 | ⌘O | Open LaTeX file… (becomes the `main.tex` entry document; compiles if a worker is attached) |
 | ⌘S / ⌘⇧S | Save / Save As… (UTF-8; header shows "— edited" when dirty) |
+| Edit > Restore Discarded Buffer | Brings back the unsaved text replaced by a "Discard" decision when opening another file |
 | ⌘⇧O | Open compile result fixture… (sibling `-request.json` seeds the editor) |
 | ⌘R | Reload fixture |
 | ⌘⇧K | Attach built compiler (`$FLASHTEX_COMPILER` or `crates/compiler/target/…`) |

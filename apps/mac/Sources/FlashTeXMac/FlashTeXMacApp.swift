@@ -60,6 +60,8 @@ struct FlashTeXMacApp: App {
                     .keyboardShortcut("p", modifiers: [.command, .shift])
                 Button("Open Capture Proposal…") { model.openProposalPanel() }
                     .keyboardShortcut("i", modifiers: [.command, .shift])
+                Button("Restore Discarded Buffer") { model.restoreDiscardedBuffer() }
+                    .disabled(model.recoverableBuffer == nil)
                 Divider()
                 Button("Attach Capture Bridge") { model.attachDiscoveredBridge() }
                 Button("Detach Capture Bridge") { model.detachBridge() }

@@ -26,6 +26,7 @@ final class ShellModel: ObservableObject {
     /// File backing the entry document, if any, and its last saved contents.
     @Published var documentURL: URL?
     @Published var savedText: String?
+    @Published var recoverableBuffer: RecoverableBuffer?
 
     // Capture review / insertion (contract: "Capture and insertion").
     struct PendingEdit: Equatable { var path: String; var nsRange: NSRange; var text: String; var token: Int }

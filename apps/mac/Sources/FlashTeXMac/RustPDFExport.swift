@@ -26,9 +26,11 @@ enum RustPDFExport {
         return nil
     }
 
-    /// Runs the writer synchronously (it is fast); returns its stderr (warnings).
-    @discardableResult
-    static func export(_ result: RuntimeV1.CompileResult, id: String, writer: URL, to output: URL) throws -> String {
+    /// Runs the writer off the main actor with both output pipes drained
+    /// concurrently (bounded), so a chatty writer can never fill a pipe and
+    /// deadlock against the parent. Returns the writer's notes (stderr+stdout).
+    nonisolated static func export(_ result: RuntimeV1.CompileResult, id: String, writer: URL, to output: URL,
+                                   timeout: TimeInterval = 30, maxCapturedBytes: Int = 4 * 1024 * 1024) throws -> String {
         let envelope = RuntimeV1.Envelope(protocolVersion: RuntimeV1.protocolVersion, id: id,
                                           type: "compile_result", payload: result)
         let input = try RuntimeV1.encodeLine(envelope)
@@ -39,16 +41,74 @@ enum RustPDFExport {
         process.standardInput = stdin
         process.standardError = stderr
         process.standardOutput = stdout
-        try process.run()
-        try stdin.fileHandleForWriting.write(contentsOf: input)
-        try stdin.fileHandleForWriting.close()
-        process.waitUntilExit()
-        let err = String(decoding: stderr.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
-        let out = String(decoding: stdout.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
-        guard process.terminationStatus == 0 else {
-            throw Failure(description: "flashtex-pdf exited \(process.terminationStatus): \(err.isEmpty ? out : err)")
+
+        // Drain both pipes on background threads from the moment the child
+        // starts; keep at most `maxCapturedBytes` per stream, discard the rest.
+        let group = DispatchGroup()
+        let lock = NSLock()
+        var captured: [Int32: Data] = [:]
+        var truncated: Set<Int32> = []
+        func drain(_ handle: FileHandle, tag: Int32) {
+            group.enter()
+            DispatchQueue.global(qos: .userInitiated).async {
+                defer { group.leave() }
+                var buffer = Data()
+                while true {
+                    let chunk = handle.availableData
+                    if chunk.isEmpty { break }
+                    lock.lock()
+                    if buffer.count < maxCapturedBytes {
+                        buffer.append(chunk.prefix(maxCapturedBytes - buffer.count))
+                        if buffer.count >= maxCapturedBytes { truncated.insert(tag) }
+                    } else { truncated.insert(tag) }
+                    lock.unlock()
+                }
+                lock.lock(); captured[tag] = buffer; lock.unlock()
+            }
         }
-        return (err + out).trimmingCharacters(in: .whitespacesAndNewlines)
+        try process.run()
+        drain(stdout.fileHandleForReading, tag: 1)
+        drain(stderr.fileHandleForReading, tag: 2)
+        // Write the request on its own thread too: a writer that emits before
+        // reading could otherwise block us on a full stdin pipe.
+        var writeError: Error?
+        group.enter()
+        DispatchQueue.global(qos: .userInitiated).async {
+            defer { group.leave() }
+            do {
+                try stdin.fileHandleForWriting.write(contentsOf: input)
+                try stdin.fileHandleForWriting.close()
+            } catch { lock.lock(); writeError = error; lock.unlock() }
+        }
+        let deadline = DispatchTime.now() + timeout
+        if group.wait(timeout: deadline) == .timedOut || !waitForExit(process, until: deadline) {
+            process.terminate()
+            _ = group.wait(timeout: .now() + 2)
+            throw Failure(description: "flashtex-pdf did not finish within \(Int(timeout)) s; terminated")
+        }
+        lock.lock()
+        let err = String(decoding: captured[2] ?? Data(), as: UTF8.self)
+        let out = String(decoding: captured[1] ?? Data(), as: UTF8.self)
+        let cut = truncated
+        let werr = writeError
+        lock.unlock()
+        if let werr, process.terminationStatus == 0 {
+            throw Failure(description: "could not send the document to flashtex-pdf: \(werr.localizedDescription)")
+        }
+        let note = cut.isEmpty ? "" : " (writer output truncated to \(maxCapturedBytes) bytes)"
+        guard process.terminationStatus == 0 else {
+            throw Failure(description: "flashtex-pdf exited \(process.terminationStatus): \((err.isEmpty ? out : err).prefix(2000))\(note)")
+        }
+        return (err + out).trimmingCharacters(in: .whitespacesAndNewlines) + note
+    }
+
+    /// Polls for exit until the deadline without blocking the caller's queue forever.
+    nonisolated private static func waitForExit(_ process: Process, until deadline: DispatchTime) -> Bool {
+        while process.isRunning {
+            if DispatchTime.now() >= deadline { return false }
+            Thread.sleep(forTimeInterval: 0.01)
+        }
+        return true
     }
 }
 
@@ -67,11 +127,16 @@ extension ShellModel {
         panel.nameFieldStringValue = "\(result.projectId)-r\(result.revision)-rust.pdf"
         panel.message = "Export via the original Rust PDF writer (crates/pdf); always white"
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        do {
-            let notes = try RustPDFExport.export(result, id: resultID ?? "mac-export", writer: writer, to: url)
-            captureNote = "Rust writer exported \(url.lastPathComponent)" + (notes.isEmpty ? "" : " — \(notes)")
-        } catch {
-            captureNote = "Rust PDF export failed: \(error)"
+        let id = resultID ?? "mac-export"
+        captureNote = "Exporting \(url.lastPathComponent) via flashtex-pdf…"
+        Task.detached(priority: .userInitiated) {
+            let outcome: Result<String, Error> = Result { try RustPDFExport.export(result, id: id, writer: writer, to: url) }
+            await MainActor.run {
+                switch outcome {
+                case .success(let notes): self.captureNote = "Rust writer exported \(url.lastPathComponent)" + (notes.isEmpty ? "" : " — \(notes)")
+                case .failure(let error): self.captureNote = "Rust PDF export failed: \(error)"
+                }
+            }
         }
     }
 }
