@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "agent_id": "daniel-calc",
+  "machine": "mac-m5pro-dq222",
+  "tool": "Claude Code on Claude Max 20x",
+  "capabilities": [
+    "rust",
+    "tex-dimension-arithmetic",
+    "exact-integer-arithmetic",
+    "dependency-graph-tracking"
+  ],
+  "branch": "agent/daniel-calc/tex-calc",
+  "state": "ready_for_integration",
+  "summary": "crates/tex-calc rev 2: LengthTable adds scoped named-length dependency tracking (free_names respects rev1 shadowing) with incremental recompute after redefinition, invalidating exactly the transitively-stale set. Proved eval_all_fresh() == eval_all_incremental() by exact HashMap equality over 5 varied graphs (linear chain, diamond, unrelated branch, shadowed-inner-definition, cycle-then-overflow). CyclicLength now carries the full chain (e.g. [a,b,c,a]); Overflow now carries OverflowInfo{op,operands} naming the exact operation and operand values. All rev1 exactness preserved (i64 sp, i128 rational literals, tex.web unit ratios, MAX_DIMEN_SP boundaries, typed div-by-zero, 72.26999pt fidelity). 66 unit tests + 1 doctest, cargo clippy --all-targets -D warnings clean, cargo fmt --check clean.",
+  "next_action": "Await Commander/integration review; no further work planned on this lane unless requested.",
+  "eta_minutes": {
+    "optimistic": 0,
+    "likely": 0,
+    "pessimistic": 0
+  },
+  "allocation_id": "daniel-claude20x-shared",
+  "usage": {
+    "status": "unknown",
+    "evidence": "Shared Claude Max 20x allocation daniel-claude20x-shared; no purchases or overages made or requested."
+  },
+  "reviewed_peers": {
+    "origin/main": "155e6ff84c60353aeab1422a0b86897d5fd17fd7"
+  },
+  "assignment_acknowledgements": {
+    "FT-045": {
+      "acknowledged_utc": "2026-09-12T09:44:55Z",
+      "revision": 2,
+      "main_sha": "155e6ff84c60353aeab1422a0b86897d5fd17fd7",
+      "adaptation": "Implemented LengthTable (crates/tex-calc/src/deps.rs) reusing eval.rs's existing lazy-thunk/blackhole machinery via new pub(crate) helpers (define_in, invalidate, lookup, force_named, value_to_sp) rather than a parallel evaluator, so cycle detection, overflow checks, and MAX_RESOLUTION_DEPTH are identical to plain evaluate(). Changed CyclicLength and Overflow payload shapes to carry diagnostics; updated every existing test that matched them (no test loosened). No peer files touched; document-style still consumed read-only via Pt boundary conversion only."
+    }
+  },
+  "updated_utc": "2026-09-12T09:44:55Z",
+  "code_revision": "09c049a43ff25854724fc794651a4e8691145be1",
+  "main_integrated_through": "155e6ff84c60353aeab1422a0b86897d5fd17fd7"
+}
