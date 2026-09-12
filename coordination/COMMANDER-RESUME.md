@@ -98,3 +98,7 @@ Integrated dfa69e19, runtime1027d3ae and renderer a177cc3c. Independent five sen
 
 
 Sender fragmented-transfer f240daec integrated; all six independent Python lifecycle tests pass. Root one approved processsender pair terminal28584/90464, exact guards pass; artifacts publishing, no repeat authorized. Reported send lateness0.105/0.092ms, final80.34/141.40ms current/history onepair notcausal/native. Renderer discovered actual producer0b09be57 discovery at7ca34cec; oldhandoff not proof but this separateownercommit is source evidence. Packagingref stillabsent, override ordering and actualsealedapp acceptance pending. Runtime FT049r29 awaits publishedpair independentaudit.
+
+
+## Process pair archive and discovery update
+Integrated c5518be3 and native docs68f94f64/290b7c66. Independently verified34 compressed/raw archive hashes, same initial/final source and clean parsed producer output across modes. Runtime fullpair audit ongoing: historical completedrevision15 lacks historical/stale delivery, so sixdelivered+onecompletedundelivered, no cause asserted. Root FT048r25 inspecting existing diagnostics, no new benchmark. Renderer FT023r20 exact7ca unchanged offline release-j2 build42542 active under owned/home target, no nativeappclaim; preserve quiet build window until terminal. Formalqueues04840a86 current. Native actual0b09be57 discovery separate fromhand-off; packagingapp-onlyacceptance pending.
