@@ -25,6 +25,10 @@ struct PreviewView: View {
             let widest = result.pages.map(\.widthPt).max() ?? 612
             // Fit the widest page to the pane (never upscale past 100%).
             let scale = min(1, max(0.2, (geo.size.width - 48) / widest))
+            // Scroll anchoring (PreviewAnchor.swift): the (page, fraction) under the
+            // viewport's top edge survives a result with another page count and a
+            // pane resize; a result with the same page geometry never moves the scroll.
+            let layout = PreviewPageLayout(pages: result.pages.map { PreviewPageLayout.Page(number: $0.number, widthPt: $0.widthPt, heightPt: $0.heightPt) }, scale: scale)
             ScrollView([.vertical, .horizontal]) {
                 // Lazy: only pages near the viewport are laid out and drawn;
                 // `.equatable()`: a page whose items, caret set and scale did not
@@ -40,6 +44,7 @@ struct PreviewView: View {
                     }
                 }
                 .padding(24)
+                .background(PreviewAnchorKeeper(layout: layout))
             }
             .onChange(of: caretPage) { _, page in
                 // Page-level only: keeps the page under the caret in view when the
