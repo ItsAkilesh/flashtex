@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "agent_id": "orchestrator-sol",
+  "machine": "linux-primary",
+  "tool": "Codex Sol",
+  "branch": "agent/commander/orchestrator-sol",
+  "state": "in_progress",
+  "summary": "Sole global orchestrator; dispatcher and watcher active; cross-machine queues replenished; API-only Linux Claude correction pending publication.",
+  "code_revision": "63823751c1240b6b7767fa18879587982b515f4f",
+  "main_integrated_through": "342e1e029f80e7a5b472ad202ae87d597274127b",
+  "allocation_id": "commander-orch-002",
+  "capabilities": ["coordination", "git", "integration", "cursor-publication"],
+  "services": {
+    "dispatcher": {"unit": "flashtex-dispatch.service", "pid": 195402, "state": "active", "interval_seconds": 30},
+    "watcher": {"unit": "flashtex-coordination-watch.service", "pid": 195134, "state": "active", "interval_seconds": 60}
+  },
+  "active_integrations": [
+    {"task": "FT-007", "candidate": "b5ca96bdaca634166a01023cd3321955f2bc5f70", "worktree": "/home/natkarri/flashtex-integrate-ft007", "state": "blocked: 16 tests pass, clippy -D warnings rejects Bridge::edit too_many_arguments; no process in flight"},
+    {"task": "FT-011", "candidate": "7bb67f758d9c21eb31cd5fe39777dd90d484317a", "state": "published branch plus frozen uncommitted seventh increment"},
+    {"task": "FT-012", "candidate": "efcf65036f1a6c65479a769c1623f44b0f154e3a", "state": "first increment integrated; later validation work uncommitted"}
+  ],
+  "external_state": {
+    "kabir": "FT-002 rev3 assigned; rev2 completion consumed; no verified current lead PID/session",
+    "jaysen": "FT-003 rev3 ready; historical 8 spawned, two reported running; six-current-worker PID evidence requested",
+    "aarush_cowork": "FT-004 rev2 assigned; structured ACK/process evidence pending",
+    "aarush_chatgpt": "FT-014 rev1 ACK at 74521f4; completion 3c6ec6e reported; PID/session absent",
+    "linux_claude": "API-only; subscription prohibited; no verified API credits/auth; no inference launched"
+  },
+  "next_action": "Publish API-only rules and two-follow-up queues, then reconcile FT-007 integration journal and publish frozen FT-011/FT-012 checkpoints.",
+  "usage": {"status": "unknown", "evidence": "Cursor publications authorized; no Linux Claude inference"},
+  "updated_utc": "2026-09-12T05:11:53Z"
+}
