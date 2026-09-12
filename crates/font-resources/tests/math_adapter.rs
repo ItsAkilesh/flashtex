@@ -1,0 +1,130 @@
+use flashtex_font_engine::{Face, TrueTypeFace};
+use flashtex_font_resources::{registry::*, *};
+use flashtex_project_files::ProjectRoot;
+fn declaration(bytes: &[u8], license: &[u8], id: &str, format: &str) -> ManifestEntry {
+    let face = TrueTypeFace::parse(bytes.to_vec()).unwrap();
+    ManifestEntry {
+        font: FontDescriptor {
+            font_id: id.into(),
+            sha256: sha256(bytes),
+            byte_length: bytes.len() as u64,
+            format: format.into(),
+            face_index: 0,
+            units_per_em: face.units_per_em() as u32,
+            glyph_count: face.num_glyphs() as u32,
+            postscript_name: face.postscript_name().into(),
+        },
+        path: format!("{id}.font"),
+        license: LicenseMetadata {
+            identifier: "OFL-1.1".into(),
+            copyright: "see exact pinned license".into(),
+            source: "installed licensed resource".into(),
+            text_path: format!("{id}.license"),
+            text_sha256: sha256(license),
+            embedding_permission: EmbeddingPermission::Allowed,
+        },
+    }
+}
+use flashtex_font_resources::math_adapter::*;
+#[test]
+#[ignore = "requires pinned installed STIX Math and OFL; parser equivalence, not visual oracle"]
+fn pinned_math_registry_equivalence() {
+    let bytes = std::fs::read("/usr/share/fonts/stix-fonts/STIXTwoMath-Regular.otf").unwrap();
+    let license = std::fs::read("/usr/share/licenses/stix-fonts/OFL.txt").unwrap();
+    assert_eq!(
+        sha256(&bytes),
+        "3a5f3f26f40d5698b3c62dd085d48d6663696a3f80825aab8b553d5097518e8c"
+    );
+    assert_eq!(
+        sha256(&license),
+        "0c8825913b60d858aacdb33c4ca6660a7d64b0d6464702efbb19313f5765861a"
+    );
+    let face = TrueTypeFace::parse(bytes.clone()).unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let root = ProjectRoot::open(dir.path()).unwrap();
+    let resource = declaration(&bytes, &license, "math", "static-cff");
+    let binding = StyleBinding {
+        family: "Explicit Math".into(),
+        weight: 400,
+        style: FontStyle::Upright,
+    };
+    std::fs::write(dir.path().join(&resource.path), &bytes).unwrap();
+    std::fs::write(dir.path().join(&resource.license.text_path), &license).unwrap();
+    std::fs::write(
+        dir.path().join("fonts.json"),
+        serde_json::to_vec(&RegistryManifest {
+            schema_version: 1,
+            entries: vec![RegistryEntry {
+                binding: binding.clone(),
+                resource: resource.clone(),
+            }],
+        })
+        .unwrap(),
+    )
+    .unwrap();
+    let registry =
+        ProjectFontRegistry::load(&root, "fonts.json", RegistryLimits::default()).unwrap();
+    assert!(BoundMathFont::from_registry(
+        &registry,
+        &binding,
+        "stale",
+        MathPolicy::UnhintedDesignUnits
+    )
+    .is_err());
+    let bound = BoundMathFont::from_registry(
+        &registry,
+        &binding,
+        registry.generation(),
+        MathPolicy::UnhintedDesignUnits,
+    )
+    .unwrap();
+    assert_eq!(&bound.identity().declaration, &resource);
+    assert_eq!(&bound.identity().font.engine_font_id, face.id());
+    assert_eq!(
+        bound.identity().math_table_sha256,
+        sha256(face.table(b"MATH").unwrap())
+    );
+    assert_eq!(bound.constants(), &face.math().unwrap().constants);
+    for start in (0..face.num_glyphs()).step_by(256) {
+        let ids: Vec<_> = (start..start.saturating_add(256).min(face.num_glyphs())).collect();
+        for actual in bound.glyphs(&ids).unwrap() {
+            let gid = flashtex_font_engine::GlyphId(actual.glyph_id);
+            assert_eq!(
+                actual.italic_correction,
+                face.math().unwrap().italics_correction(gid)
+            );
+            assert_eq!(
+                actual.top_accent_attachment,
+                face.math().unwrap().top_accent_attachment(gid)
+            );
+        }
+    }
+    assert!(matches!(
+        bound.glyphs(&[face.num_glyphs()]),
+        Err(MathError::GlyphOutOfBounds(_))
+    ));
+    assert!(matches!(
+        bound.glyphs(&[0; 257]),
+        Err(MathError::LookupBudget)
+    ));
+    for capability in [
+        Capability::DeviceAdjustments,
+        Capability::Variants,
+        Capability::MathKern,
+        Capability::ExtendedShapeCoverage,
+    ] {
+        assert!(
+            matches!(bound.require(capability),Err(MathError::Unsupported(c)) if c==capability)
+        );
+    }
+    // Held registry resources remain immutable when the project file changes.
+    std::fs::write(dir.path().join(&resource.path), b"changed").unwrap();
+    assert_eq!(bound.constants(), &face.math().unwrap().constants);
+    assert!(ProjectFontRegistry::load(&root, "fonts.json", RegistryLimits::default()).is_err());
+    println!(
+        "MATH SHA {} bytes {} glyphs {}",
+        bound.identity().math_table_sha256,
+        bound.identity().math_table_byte_length,
+        bound.glyph_count()
+    );
+}

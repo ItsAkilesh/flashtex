@@ -1769,3 +1769,97 @@ fn cff_vf_flat_nested_and_mixed_original_identity() {
         assert!(g.expand(&key, 65).is_err());
     }
 }
+
+#[test]
+fn math_binding_synthetic_limits_and_missing_table() {
+    use math_adapter::*;
+    use registry::*;
+    let dir = tempfile::tempdir().unwrap();
+    let root = flashtex_project_files::ProjectRoot::open(dir.path()).unwrap();
+    let binding = StyleBinding {
+        family: "Synthetic".into(),
+        weight: 400,
+        style: FontStyle::Upright,
+    };
+    let load = |bytes: &[u8]| {
+        let resource = entry(bytes);
+        std::fs::write(dir.path().join(&resource.path), bytes).unwrap();
+        std::fs::write(
+            dir.path().join(&resource.license.text_path),
+            b"test license",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.path().join("fonts.json"),
+            serde_json::to_vec(&RegistryManifest {
+                schema_version: 1,
+                entries: vec![RegistryEntry {
+                    binding: binding.clone(),
+                    resource,
+                }],
+            })
+            .unwrap(),
+        )
+        .unwrap();
+        ProjectFontRegistry::load(&root, "fonts.json", RegistryLimits::default()).unwrap()
+    };
+    let original = fixture();
+    let absent = load(&original);
+    assert!(matches!(
+        BoundMathFont::from_registry(
+            &absent,
+            &binding,
+            absent.generation(),
+            MathPolicy::UnhintedDesignUnits
+        ),
+        Err(MathError::MissingMathTable)
+    ));
+    // Insert one directory record, relocating existing table offsets by16.
+    let n = u16::from_be_bytes(original[4..6].try_into().unwrap()) as usize;
+    let end = 12 + n * 16;
+    let mut bytes = original[..end].to_vec();
+    bytes.extend([0; 16]);
+    bytes.extend_from_slice(&original[end..]);
+    be16(&mut bytes, 4, (n + 1) as u16);
+    for i in 0..n {
+        let at = 12 + i * 16 + 8;
+        let old = u32::from_be_bytes(bytes[at..at + 4].try_into().unwrap());
+        be32(&mut bytes, at, old + 16);
+    }
+    let mut math = vec![0; 224];
+    be32(&mut math, 0, 0x00010000);
+    be16(&mut math, 4, 10);
+    be16(&mut math, 10, 80);
+    be16(&mut math, 14, u16::MAX);
+    be16(&mut math, 22, i16::MIN as u16); // axis-height signed boundary
+    while bytes.len() % 4 != 0 {
+        bytes.push(0);
+    }
+    let off = bytes.len();
+    bytes.extend(&math);
+    bytes[end..end + 4].copy_from_slice(b"MATH");
+    be32(&mut bytes, end + 8, off as u32);
+    be32(&mut bytes, end + 12, math.len() as u32);
+    let registry = load(&bytes);
+    let bound = BoundMathFont::from_registry(
+        &registry,
+        &binding,
+        registry.generation(),
+        MathPolicy::UnhintedDesignUnits,
+    )
+    .unwrap();
+    assert_eq!(bound.constants().axis_height, i16::MIN);
+    assert_eq!(bound.constants().delimited_sub_formula_min_height, u16::MAX);
+    assert_eq!(
+        bound.glyphs(&[0, 2]).unwrap()[1].top_accent_attachment,
+        None
+    );
+    assert!(matches!(
+        bound.glyphs(&[3]),
+        Err(MathError::GlyphOutOfBounds(3))
+    ));
+    assert!(matches!(
+        bound.glyphs(&[0; 257]),
+        Err(MathError::LookupBudget)
+    ));
+}
