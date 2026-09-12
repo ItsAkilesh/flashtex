@@ -8,8 +8,9 @@
 //!   - Zero external dependencies: uses a bare FNV-1a hash.
 //!   - Single-threaded by design: the JSON Lines main loop is
 //!     sequential; no locks required.
-//!   - Size-bounded: evicts least-recently-used entries beyond
-//!     MAX_ENTRIES to prevent unbounded growth during long sessions.
+//!   - Size-bounded: evicts the least-recently-used entry beyond
+//!     MAX_ENTRIES. A hit promotes the entry to the back of the list so
+//!     the front always holds the least-recently-accessed entry.
 //!   - Cache is per-process; no persistence across restarts.
 //!
 //! Incremental correctness guarantee: a cache hit is returned only when
@@ -55,13 +56,18 @@ impl CompileCache {
     /// `None` on a miss.
     pub fn get(&mut self, project_id: &str, text: &str) -> Option<&mut CachedResult> {
         let hash = fnv1a(text.as_bytes());
-        for (pid, h, entry) in &mut self.entries {
-            if *h == hash && pid.as_str() == project_id && entry.exact_text == text {
-                entry.hit_count += 1;
-                return Some(entry);
-            }
+        let pos = self.entries.iter().position(|(pid, h, entry)| {
+            *h == hash && pid.as_str() == project_id && entry.exact_text == text
+        });
+        if let Some(idx) = pos {
+            // Promote hit to the back so the front remains least-recently-used.
+            let mut entry = self.entries.remove(idx);
+            entry.2.hit_count += 1;
+            self.entries.push(entry);
+            self.entries.last_mut().map(|(_, _, r)| r)
+        } else {
+            None
         }
-        None
     }
 
     /// Insert a new result. Evicts the oldest entry when the cache is full.
@@ -193,6 +199,24 @@ mod tests {
         assert_eq!(cache.len(), super::MAX_ENTRIES);
         assert!(cache.get("proj", "document 0").is_none(), "evicted entry must be gone");
         assert!(cache.get("proj", "document extra").is_some(), "new entry must be present");
+    }
+
+    #[test]
+    fn lru_not_fifo_eviction() {
+        // Fill the cache completely.
+        let mut cache = CompileCache::new();
+        for i in 0..super::MAX_ENTRIES {
+            let text = format!("doc_{}", i);
+            cache.insert("proj", &text, make_result(&text));
+        }
+        // Touch entry "doc_0" — it becomes the most-recently-used.
+        assert!(cache.get("proj", "doc_0").is_some());
+        // Insert one more entry to trigger eviction.
+        cache.insert("proj", "doc_extra", make_result("doc_extra"));
+        assert_eq!(cache.len(), super::MAX_ENTRIES);
+        // "doc_0" was promoted past "doc_1", so "doc_1" is the LRU victim.
+        assert!(cache.get("proj", "doc_0").is_some(), "promoted entry must survive eviction");
+        assert!(cache.get("proj", "doc_1").is_none(), "least-recently-used must be evicted");
     }
 
     #[test]

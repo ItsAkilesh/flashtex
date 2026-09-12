@@ -280,3 +280,144 @@ impl P {
         (content, Span::new(open.start, end))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn words(parsed: &Parsed) -> Vec<String> {
+        parsed.blocks.iter().flat_map(|b| {
+            let inlines: &[Inline] = match b {
+                Block::Paragraph(v) => v,
+                Block::Heading { content, .. } => content,
+            };
+            inlines.iter().filter_map(|i| match i {
+                Inline::Text { text, .. } => Some(text.clone()),
+                Inline::LineBreak { .. } => None,
+            })
+        }).collect()
+    }
+
+    fn error_messages(parsed: &Parsed) -> Vec<&str> {
+        parsed.diagnostics.iter()
+            .filter(|d| d.severity == crate::diagnostics::Severity::Error)
+            .map(|d| d.message.as_str())
+            .collect()
+    }
+
+    #[test]
+    fn plain_text_becomes_single_paragraph() {
+        let p = parse("hello world");
+        assert_eq!(p.blocks.len(), 1);
+        assert!(matches!(&p.blocks[0], Block::Paragraph(_)));
+        assert!(p.diagnostics.is_empty());
+    }
+
+    #[test]
+    fn blank_line_splits_paragraphs() {
+        let p = parse("first paragraph\n\nsecond paragraph");
+        assert_eq!(p.blocks.len(), 2, "blank line must separate two paragraphs");
+    }
+
+    #[test]
+    fn section_command_produces_heading_block() {
+        let p = parse(r"\section{Introduction}");
+        assert!(p.blocks.iter().any(|b| matches!(b, Block::Heading { level: 1, .. })),
+            "\\section must produce a level-1 heading");
+    }
+
+    #[test]
+    fn subsection_produces_level_2() {
+        let p = parse(r"\subsection{Sub}");
+        assert!(p.blocks.iter().any(|b| matches!(b, Block::Heading { level: 2, .. })));
+    }
+
+    #[test]
+    fn textbf_text_is_included_in_paragraph() {
+        let p = parse(r"\textbf{bold text}");
+        let w = words(&p);
+        assert!(w.contains(&"bold".to_string()), "\\textbf content must be typeset");
+        assert!(w.contains(&"text".to_string()));
+    }
+
+    #[test]
+    fn unknown_command_produces_error_diagnostic() {
+        let p = parse(r"\unknowncommand{arg}");
+        assert!(!p.diagnostics.is_empty(), "unknown command must produce a diagnostic");
+        let errs = error_messages(&p);
+        assert!(errs.iter().any(|m| m.contains("unknowncommand")),
+            "error must name the unknown command");
+    }
+
+    #[test]
+    fn unmatched_open_brace_produces_error() {
+        let p = parse("hello {world");
+        let errs = error_messages(&p);
+        assert!(errs.iter().any(|m| m.contains("unmatched '{'")),
+            "unclosed brace must produce an error diagnostic");
+    }
+
+    #[test]
+    fn unmatched_close_brace_produces_error() {
+        let p = parse("hello }world");
+        let errs = error_messages(&p);
+        assert!(errs.iter().any(|m| m.contains("unmatched '}'")));
+    }
+
+    #[test]
+    fn math_shift_produces_error() {
+        let p = parse("$x^2$");
+        let errs = error_messages(&p);
+        assert!(errs.iter().any(|m| m.contains("math mode")),
+            "math mode must produce an error since it is not implemented");
+    }
+
+    #[test]
+    fn section_heading_text_is_correct() {
+        let p = parse(r"\section{My Title}");
+        let heading = p.blocks.iter().find(|b| matches!(b, Block::Heading { .. })).unwrap();
+        let Block::Heading { content, .. } = heading else { panic!() };
+        let text: Vec<_> = content.iter().filter_map(|i| match i {
+            Inline::Text { text, .. } => Some(text.as_str()),
+            _ => None,
+        }).collect();
+        assert_eq!(text, vec!["My", "Title"]);
+    }
+
+    #[test]
+    fn explicit_linebreak_is_preserved() {
+        let p = parse("line one\\\\\nline two");
+        let inlines: Vec<_> = p.blocks.iter().flat_map(|b| match b {
+            Block::Paragraph(v) => v.as_slice(),
+            Block::Heading { content, .. } => content.as_slice(),
+        }).collect();
+        assert!(inlines.iter().any(|i| matches!(i, Inline::LineBreak { .. })),
+            "explicit \\\\\\ must produce a LineBreak inline");
+    }
+
+    #[test]
+    fn spans_map_back_to_source_bytes() {
+        let text = "hello world";
+        let p = parse(text);
+        let Block::Paragraph(inlines) = &p.blocks[0] else { panic!() };
+        for inline in inlines {
+            if let Inline::Text { text: word, span } = inline {
+                let slice = &text[span.start..span.end];
+                assert_eq!(slice, word, "span must index the exact word");
+            }
+        }
+    }
+
+    #[test]
+    fn par_command_splits_paragraph() {
+        let p = parse(r"first \par second");
+        assert_eq!(p.blocks.len(), 2, "\\par must split into two paragraphs");
+    }
+
+    #[test]
+    fn empty_document_produces_no_blocks_and_no_diagnostics() {
+        let p = parse("");
+        assert!(p.blocks.is_empty());
+        assert!(p.diagnostics.is_empty());
+    }
+}
