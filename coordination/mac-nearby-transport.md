@@ -1,6 +1,6 @@
 # mac-nearby-transport handoff
 
-- Updated UTC: 2026-09-12T09:16Z
+- Updated UTC: 2026-09-12T11:02Z
 - Agent / parent / machine alias: mac-nearby-transport (Claude Code subagent) /
   mac-claude-a / mac-m1max-a
 - Task / acceptance gate / owned paths: lane "Bounded nearby receive and
@@ -14,11 +14,11 @@
   `coordination/mac-nearby-transport.md`, `coordination/agents/mac-nearby-transport.json`
   (plus a documentation-only edit to `apps/mac/docs/nearby-v1-proposal.md` §4/§5)
 - Branch / code revision / main integrated through:
-  `agent/mac-nearby-transport/events` (from origin/agent/mac-claude-a/mac-shell
-  d8baed6, which integrated the first lane at 1d76c2e; merged mac-shell
-  691d68a) / see JSON / origin/main as contained in mac-shell 7a316e6. Earlier branch
-  `agent/mac-nearby-transport/bounded` (b3baa25) is merged.
-- State: ready for integration (events follow-up requested by mac-pairing-ui)
+  `agent/mac-nearby-transport/generation-api` (from origin/agent/mac-claude-a/
+  mac-shell 6f4ee94, merged 5222b86) / see JSON / origin/main as contained in
+  mac-shell 5222b86. Earlier branches `bounded` (b3baa25) and `events`
+  (0d77baa) are merged into mac-shell.
+- State: ready for integration (generation-api refill)
 - Ready behavior and evidence:
   - `NearbyReceiveLimits` (frame 12 MiB, image 8 MiB / 8192² / 64 MiB decoded,
     per-session in-flight 24 MiB, listener-wide in-flight 64 MiB, 4 sessions
@@ -62,7 +62,23 @@
     `PSKEntry.generation` and checked by `confirmPairing(pairId:companionName:
     generation:)` (`PairingConfirmer` signature changed), `lastRefusal`,
     `confirmedGeneration(pairId:)`.
+  - Generation-api refill: `NearbyState.beginPairing(generation:)` (fresh
+    code with the journal generation, "issued … (attempt N)" log line);
+    `PairingCoordinator.confirmPairing` reads the persisted
+    `PairRecord.generation` (older-or-equal attempt refused, newer re-pairs;
+    in-memory map removed; `confirmedGeneration` reads the store);
+    pairs.json v2 activity summary `capture_count` / `last_capture_at` /
+    `last_capture_id` (≤128 bytes, optional keys) via `PairStore.recordCapture`
+    ← `PairingConfirmer.noteCapture` from the session on each acknowledged
+    non-duplicate capture; `NearbyState.activity: [pairId: PairActivity]`
+    (`summary` line never carries key material) refreshed on `.capture`.
+    Pipeline: dedup before image validation (retries of large captures are
+    answered from memory without re-validating).
 - Incomplete behavior / blockers / needs from others:
+  - `Pairing.swift` (mac-pairing-ui) received the additive v2 fields and
+    `PairStore.recordCapture` here (the coordinator asked for the summary to
+    be persisted in pairs.json v2); no schema version bump — the keys are
+    optional and v1/v2 files without them decode. Please review.
   - pairs.json v2 (`PairRecord.generation`, `PairStore.schemaVersion = 2`,
     `upgrade`) lives in `Pairing.swift` (mac-pairing-ui); requested diff is in
     the final report. Until then the confirming generation is kept in memory
@@ -96,11 +112,14 @@
   follow-up will replay a recorded-shape transcript on loopback.
 - Validation commands / results / artifact paths:
   `cd apps/mac && swift build` clean; `swift test --filter 'Nearby|Pairing'`
-  79 tests pass (3 consecutive runs, 1 opt-in screenshot test skipped); full
-  `swift test` with FLASHTEX_COMPILER/PDF/BRIDGE/EDIT_LEDGER/
-  PREVIEW_CONTROLLER/PROJECT_FILES real binaries after merging mac-shell
-  7a316e6: 336 tests, 0 failures, 4 skipped (all env opt-ins of other lanes:
-  nearby screenshot dir, assistant-context helper ×2, evidence dir).
+  96 tests pass (2 env opt-in skips); full `swift test` with
+  FLASHTEX_COMPILER/PDF/BRIDGE/EDIT_LEDGER/PREVIEW_CONTROLLER/PROJECT_FILES
+  real binaries after merging mac-shell 5222b86: 489 tests, 0 failures,
+  11 env-gated skips of other lanes. Note: under load average 40–77 (12+
+  lanes on this Mac) three latency-budget tests of other lanes
+  (BridgeRecovery stalled-bridge, Completion 1 MB / keystroke budgets)
+  failed once in a full run and passed in isolation and in the next full
+  runs; Nearby tests passed in every run.
 - Exact deadline UTC / remaining time / integration reserve: no fixed deadline
   (continuous authorization); 20% reserve kept for integration.
 - ETA remaining: 0 / 0 / 0 (lane and follow-ups done; awaiting review).
@@ -118,15 +137,15 @@
   Cancelling an accepted `NWConnection` before `start()` does release it (the
   client sees a reset in `.waiting`, never `.ready`).
 - Exact next action or command: none pending; parent to review/integrate
-  `agent/mac-nearby-transport/events`; mac-pairing-ui to apply the pairs.json
-  v2 diff and review the `observe(_:)` arm.
+  `agent/mac-nearby-transport/generation-api`; mac-pairing-ui to consume
+  `beginPairing(generation:)` and `activity`.
 - Resume reading list: this file, `apps/mac/docs/nearby-v1-proposal.md` §4–5,
   `docs/evidence/companion-simulator/README.md` §5 (the recorded companion
   output shape).
 - Context checkpoint (docs/context-checkpoints.md): worktree
   `/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-ac78436e7821c1d3e`,
-  branch `agent/mac-nearby-transport/events`, HEAD = the commit carrying this
-  file, base d8baed6, merged 7a316e6. Context usage at this checkpoint is roughly a quarter of
+  branch `agent/mac-nearby-transport/generation-api`, HEAD = the commit
+  carrying this file, base 6f4ee94, merged 5222b86. Context usage at this checkpoint is roughly a quarter of
   the 1M window (counted from the session's token budget; no exact percentage
   is exposed to the subagent). Rules carried: no purchases/overages,
   transferred crates (font-engine, paragraph-layout, math-layout) untouched,

@@ -105,10 +105,16 @@ struct PairRecord: Codable, Equatable, Identifiable, CustomStringConvertible, Cu
     /// `PairingJournal`) that confirmed this record; nil for records written
     /// by schema v1 files.
     var generation: Int? = nil
+    /// Bounded activity summary (mac-nearby-transport): captures accepted from
+    /// this pairing, and the last one. Optional so v1/v2 files without them decode.
+    var captureCount: Int? = nil
+    var lastCaptureAt: Date? = nil
+    var lastCaptureId: String? = nil
     var id: String { pairId }
     enum CodingKeys: String, CodingKey {
         case pairId = "pair_id", psk, companionName = "companion_name"
         case createdAt = "created_at", lastSeenAt = "last_seen_at", generation
+        case captureCount = "capture_count", lastCaptureAt = "last_capture_at", lastCaptureId = "last_capture_id"
     }
     var pskData: Data? { Data(base64Encoded: psk) }
 
@@ -240,6 +246,19 @@ final class PairStore {
         lock.withLock {
             guard let i = file.pairs.firstIndex(where: { $0.pairId == pairId }) else { return }
             file.pairs[i].lastSeenAt = Date()
+            _ = try? persist()
+        }
+    }
+
+    /// Records one accepted capture on the pairing's bounded summary
+    /// (count, last id ≤ 128 bytes, timestamp) and marks it seen.
+    func recordCapture(pairId: String, captureId: String, at date: Date = Date()) {
+        lock.withLock {
+            guard let i = file.pairs.firstIndex(where: { $0.pairId == pairId }) else { return }
+            file.pairs[i].captureCount = (file.pairs[i].captureCount ?? 0) + 1
+            file.pairs[i].lastCaptureAt = date
+            file.pairs[i].lastCaptureId = String(captureId.prefix(128))
+            file.pairs[i].lastSeenAt = date
             _ = try? persist()
         }
     }

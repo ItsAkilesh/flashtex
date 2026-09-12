@@ -19,9 +19,6 @@ final class PairingCoordinator: PairingConfirmer {
     private let lock = NSLock()
     private var pending: Pending?
     private var lastGeneration = 0
-    /// Generation that confirmed each pairing, in memory (pairs.json v2 will
-    /// persist it on `PairRecord.generation`).
-    private var confirmed: [String: Int] = [:]
     /// Called (on an arbitrary queue) when a bootstrap connection became a pairing.
     var onConfirmed: ((PairRecord) -> Void)?
     /// Why the last `confirmPairing` refused, for the window and tests.
@@ -30,7 +27,8 @@ final class PairingCoordinator: PairingConfirmer {
     init(store: PairStore) { self.store = store }
 
     var current: Pending? { lock.withLock { pending } }
-    func confirmedGeneration(pairId: String) -> Int? { lock.withLock { confirmed[pairId] } }
+    /// Generation that confirmed a pairing, from pairs.json v2 (`PairRecord.generation`).
+    func confirmedGeneration(pairId: String) -> Int? { store.pair(id: pairId)?.generation }
 
     /// Starts (or resumes) an attempt. Pass the journal's `generation` to
     /// resume one; otherwise the next internal generation is used. Any earlier
@@ -67,11 +65,16 @@ final class PairingCoordinator: PairingConfirmer {
                 return nil
             }
             guard Date() < p.expiresAt else { lastRefusal = "pairing code expired"; return nil }
+            // Persisted defence: a pairing already confirmed by this or a newer
+            // attempt cannot be re-confirmed by an older bootstrap session.
+            if let existing = store.pair(id: pairId)?.generation, existing >= p.generation {
+                lastRefusal = "pair \(pairId) was already confirmed by attempt \(existing); this attempt is \(p.generation)"
+                return nil
+            }
             let psk = Pairing.mintLongTermPSK()
             let r = PairRecord(pairId: pairId, psk: psk.base64EncodedString(), companionName: companionName,
                                createdAt: Date(), lastSeenAt: Date(), generation: p.generation) // pairs.json v2
             guard store.upsert(r) else { lastRefusal = "pair store refused the record"; return nil } // not persisted → not paired
-            confirmed[pairId] = p.generation
             lastRefusal = nil
             pending = nil
             return r
@@ -82,6 +85,7 @@ final class PairingCoordinator: PairingConfirmer {
     }
 
     func notePairSeen(pairId: String) { store.touch(pairId: pairId) }
+    func noteCapture(pairId: String, captureId: String) { store.recordCapture(pairId: pairId, captureId: captureId) }
 }
 
 /// UI-facing state for the nearby listener: advertising, port, pairing code,
@@ -253,6 +257,7 @@ final class NearbyState: ObservableObject {
             note(bootstrap ? "paired \(name) (\(id))" : "hello from \(name) (\(id))")
         case .capture(let id):
             lastReceivedCaptureId = id
+            pairs = store.pairs // capture_count / last_capture_* summaries moved
             note("capture \(id)")
         case .captureRefused(let pairId, let captureId, let code, let message):
             let e = ReceiveError(id: UUID(), date: Date(), pairId: pairId, captureId: captureId, code: code, message: message)
@@ -277,11 +282,15 @@ final class NearbyState: ObservableObject {
 
     /// Shows a fresh code for `Pairing.codeLifetime`; the derived bootstrap PSK
     /// is accepted only until then.
-    func beginPairing() {
+    func beginPairing() { beginPairing(generation: nil) }
+
+    /// Shows a fresh code carrying the caller's journal `generation` (nil =
+    /// the coordinator's next one), so the confirmed record persists it.
+    func beginPairing(generation: Int?) {
         if !wantAdvertising { wantAdvertising = true }
-        let p = coordinator.begin()
+        let p = coordinator.begin(generation: generation)
         show(p)
-        note("pairing code issued for \(p.derived.pairId)")
+        note("pairing code issued for \(p.derived.pairId) (attempt \(p.generation))")
         restartListener()
     }
 
@@ -355,6 +364,11 @@ final class NearbyState: ObservableObject {
 
     func refreshPairs() { pairs = store.pairs }
 
+    /// Activity summaries for the window, keyed by pair_id; never includes the key.
+    var activity: [String: PairActivity] {
+        Dictionary(uniqueKeysWithValues: pairs.map { ($0.pairId, $0.activity) })
+    }
+
     /// Acknowledges the error state in the UI; the log keeps its lines.
     func clearReceiveErrors() {
         lastReceiveError = nil
@@ -364,5 +378,35 @@ final class NearbyState: ObservableObject {
     private func note(_ line: String) {
         log.append(line)
         if log.count > 100 { log.removeFirst(log.count - 100) }
+    }
+}
+
+/// What the pairing window shows per companion: seen/captured timestamps and
+/// counts from pairs.json v2. Built from a `PairRecord` without its key.
+struct PairActivity: Equatable {
+    var pairId: String
+    var companionName: String
+    var createdAt: Date
+    var lastSeenAt: Date?
+    var captureCount: Int
+    var lastCaptureAt: Date?
+    var lastCaptureId: String?
+    var generation: Int?
+
+    /// One line for logs and captions; no PSK material can appear here.
+    var summary: String {
+        var parts = ["\(companionName) (\(pairId))"]
+        parts.append(lastSeenAt.map { "seen \(Pairing.stamp($0))" } ?? "never seen")
+        parts.append("\(captureCount) capture\(captureCount == 1 ? "" : "s")")
+        if let id = lastCaptureId, let at = lastCaptureAt { parts.append("last \(id) at \(Pairing.stamp(at))") }
+        if let g = generation { parts.append("attempt \(g)") }
+        return parts.joined(separator: ", ")
+    }
+}
+
+extension PairRecord {
+    var activity: PairActivity {
+        .init(pairId: pairId, companionName: companionName, createdAt: createdAt, lastSeenAt: lastSeenAt,
+              captureCount: captureCount ?? 0, lastCaptureAt: lastCaptureAt, lastCaptureId: lastCaptureId, generation: generation)
     }
 }
