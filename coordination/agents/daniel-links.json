@@ -12,8 +12,8 @@
   ],
   "branch": "agent/daniel-links/link-annotations",
   "state": "ready_for_integration",
-  "summary": "FT-037 rev 3: crates/link-annotations, no production code changed (src/uri.rs unchanged since rev 1, src/source.rs unchanged since rev 2). Added tests/adversarial.rs (21 cases: scheme casing/whitespace vs control-character handling, scheme-like prefix with no colon, nested/repeated schemes, percent-encoded blocked schemes - never decoded, so not a bypass in either direction -, URI length boundary exactly-at and one-past, empty/50MB labels, inverted/out-of-bounds/mid-character byte ranges at both start and end, non-finite/negative rectangles; each asserts the exact typed error variant) and tests/staleness_acceptance.rs (readable specification of the SourceIdentity staleness contract: revision-only, content-only, both changed [RevisionChanged wins, checked first], range invalid [shrunk source and multibyte-misaligned boundary], unchanged [fresh]). cargo test: 94/94 passing (58 unit + 8+21+6 integration + 1 doctest). cargo clippy --all-targets -- -D warnings: 0 warnings. cargo fmt --check: clean.",
-  "next_action": "Await FT-037 rev 4 assignment or an integration owner; no other crate consumes flashtex-link-annotations yet, so there is nothing pending to coordinate for a breaking change.",
+  "summary": "FT-037: crates/link-annotations. Repaired coordination/daniel-links.md, whose rev 3 commit had deleted the full API contract section without replacing it (it just said 'see rev 2 notes below', which no longer existed). Rebuilt the contract from current source (all signatures re-verified against src/*.rs), enumerated all 8 public error/status enums (22 variants total; rev 2 had omitted UriError::Empty and UriError::TooLong from its prose), added two worked, actually-compiling examples (external + internal destination paths), and documented an undocumented post-rev-3 bugfix commit (4538dae3: SourceSpan::start/end fields made private with new start()/end() accessors, closing a real u32-underflow/wraparound bug in len() on a struct-literal-constructed inverted span). Grepped crates/*/Cargo.toml for consumers: none found, real or dev-dependency; this crate has zero consumers as of this commit. cargo test: 95/95 passing (59 unit + 8+21+6 integration + 1 doctest). cargo clippy --all-targets -- -D warnings: 0 warnings. cargo fmt --check: clean. No src/ production code was changed by this repair; only coordination/daniel-links.md and coordination/agents/daniel-links.json were touched.",
+  "next_action": "Await FT-037 rev 4 assignment or an integration owner; no other crate consumes flashtex-link-annotations yet (confirmed via grep), so there is nothing pending to coordinate for a breaking change. An integration owner should note the SourceSpan field-to-accessor-method change in the tested commit before writing new code against this crate.",
   "eta_minutes": {
     "optimistic": 0,
     "likely": 0,
@@ -22,7 +22,7 @@
   "allocation_id": "daniel-claude20x-shared",
   "usage": {
     "status": "unknown",
-    "evidence": "Shared Claude Max 20x quota; no purchases or overages; single-crate, additive-tests-only revision completed within the 30-minute timebox."
+    "evidence": "Shared Claude Max 20x quota; no purchases or overages; documentation-repair pass plus verification of the pre-existing post-rev-3 bugfix commit, no new src/ changes."
   },
   "reviewed_peers": {
     "origin/main": "0294d2ca48cbfd497c6b549deb7575fbcec4a4b8"
@@ -32,10 +32,10 @@
       "acknowledged_utc": "2026-09-12T16:32:41Z",
       "revision": 3,
       "main_sha": "8e7546dfb4721c780036f03c21b14e6002062142",
-      "adaptation": "Implemented the bounded adversarial suite and stale-identity acceptance suite named by the rev 3 objective, entirely as new integration tests against the existing rev 1/rev 2 public API; made no src/ changes so the rev 1 allowlist and rev 2 binding/staleness behavior keep passing unchanged."
+      "adaptation": "Implemented the bounded adversarial suite and stale-identity acceptance suite named by the rev 3 objective, entirely as new integration tests against the existing rev 1/rev 2 public API. A further commit (4538dae3) then fixed a real bug (SourceSpan's pub fields let a caller bypass the ordering check and hit a u32 underflow/wraparound in len()) by making the fields private with accessor methods. This repair pass rebuilt coordination/daniel-links.md's contract section, which the rev 3 commit had deleted without replacement, from the current source rather than from rev 2's now-stale text."
     }
   },
-  "updated_utc": "2026-09-12T16:32:41Z",
-  "code_revision": "ea79df238095b57564d869cdffe10ef57aa17de1",
+  "updated_utc": "2026-09-12T17:41:54Z",
+  "code_revision": "4538dae3740c1dafeeb4555827837c2f523fb8b2",
   "main_integrated_through": "0294d2ca48cbfd497c6b549deb7575fbcec4a4b8"
 }
