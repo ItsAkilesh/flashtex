@@ -39,7 +39,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
             return allSaved && !model.project.anyDirty ? .terminateNow : .terminateCancel
-        case .alertSecondButtonReturn: return .terminateNow
+        case .alertSecondButtonReturn:
+            // Every dirty member stays recoverable next launch (DirtySnapshots.swift); nothing is written to the files.
+            model.preserveDirtyBuffers(reason: "quit without saving")
+            return .terminateNow
         default: return .terminateCancel
         }
     }
@@ -141,6 +144,8 @@ struct FlashTeXMacApp: App {
                     .disabled(model.files.conflict == nil)
                 Button("Reload From Disk…") { model.reloadFromDiskInteractive() }
                     .disabled(model.documentURL == nil)
+                Button("Restore Unsaved Snapshot…") { model.restoreDirtySnapshotsInteractive() } // DirtySnapshots.swift
+                    .disabled(model.files.offeredSnapshots.isEmpty)
                 Button("Save As…") { model.saveTexAs() }
                     .keyboardShortcut("s", modifiers: [.command, .shift])
                 Divider()
