@@ -1,35 +1,39 @@
 {
-  "schema_version": 1,
   "agent_id": "daniel-contents",
-  "machine": "mac-m5pro-dq222",
-  "tool": "Claude Code on Claude Max 20x",
-  "capabilities": ["rust", "toc-layout", "fixed-point-convergence"],
-  "branch": "agent/daniel-contents/toc-layout",
-  "state": "ready_for_integration",
-  "summary": "crates/toc-layout rev 2: ConvergenceError is now Cycle{cycle_start,cycle}/Unresolved(distinguished by scanning the completed 8-pass history for the earliest repeated candidate); new stabilize.rs adds stabilize_toc, resolving a whole SourcedEntry list against one converged front-matter fixed point, sorted by explicit sequence (not caller iteration order) into a StabilizedToc; every entry carries an exact SourceId{document,revision} and StabilizedEntry::is_stale detects a mismatched revision or document. 30 tests + 1 doctest pass; determinism proven by feeding identical entries through a Vec, a HashMap drain, and a reversed Vec and asserting identical output.",
-  "next_action": "Await Commander integration; open item is a real TextMeasure/FrontMatterModel consumer wiring (font-engine/compiler/native layout), unchanged from rev 1 scope",
-  "eta_minutes": {
-    "optimistic": 0,
-    "likely": 0,
-    "pessimistic": 0
-  },
   "allocation_id": "daniel-claude20x-shared",
-  "usage": {
-    "status": "unknown",
-    "evidence": "Shared Claude Max 20x subscription quota; no purchases or overages; per-session token cost not exposed to this agent"
-  },
-  "reviewed_peers": {
-    "origin/main": "85a0b58bb152dda9ddf1c7c52b8b078bae37287f"
-  },
   "assignment_acknowledgements": {
     "FT-034": {
       "acknowledged_utc": "2026-09-12T09:23:13Z",
-      "revision": 2,
+      "adaptation": "Extended rev 1's converge.rs (bounded fixed-point, 8-pass cap, full history) rather than replacing it: ConvergenceError became an enum with Cycle (found by scanning the completed history for the earliest repeated candidate, proven to loop forever since pages_for is a pure function of its candidate) and Unresolved (no repeat within the bound) variants, still always running the full 8 passes so history length never depends on when a cycle could have been detected early. Added crates/toc-layout/src/stabilize.rs (SourceId, SourcedEntry, StabilizedEntry, StabilizedToc, StabilizationError, stabilize_toc) as a thin layer on top of converge_front_matter_pages plus RelativeEntry::resolve, rather than redesigning the FrontMatterModel trait, to keep the fixed point at one scalar as rev 1 established. Kept rev 1's leader-measurement, malformed-input, and Unicode tests passing unmodified.",
       "main_sha": "85a0b58bb152dda9ddf1c7c52b8b078bae37287f",
-      "adaptation": "Extended rev 1's converge.rs (bounded fixed-point, 8-pass cap, full history) rather than replacing it: ConvergenceError became an enum with Cycle (found by scanning the completed history for the earliest repeated candidate, proven to loop forever since pages_for is a pure function of its candidate) and Unresolved (no repeat within the bound) variants, still always running the full 8 passes so history length never depends on when a cycle could have been detected early. Added crates/toc-layout/src/stabilize.rs (SourceId, SourcedEntry, StabilizedEntry, StabilizedToc, StabilizationError, stabilize_toc) as a thin layer on top of converge_front_matter_pages plus RelativeEntry::resolve, rather than redesigning the FrontMatterModel trait, to keep the fixed point at one scalar as rev 1 established. Kept rev 1's leader-measurement, malformed-input, and Unicode tests passing unmodified."
+      "revision": 2
     }
   },
+  "branch": "agent/daniel-contents/toc-layout",
+  "capabilities": [
+    "rust",
+    "toc-layout",
+    "fixed-point-convergence"
+  ],
+  "code_revision": "c3492c94db9a7e73200ae269438050bd2665c3c6",
+  "eta_minutes": {
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 0
+  },
+  "machine": "mac-m5pro-dq222",
+  "main_integrated_through": "85a0b58bb152dda9ddf1c7c52b8b078bae37287f",
+  "next_action": "Await Commander integration; open item is a real TextMeasure/FrontMatterModel consumer wiring (font-engine/compiler/native layout), unchanged from rev 1 scope",
+  "reviewed_peers": {
+    "origin/main": "85a0b58bb152dda9ddf1c7c52b8b078bae37287f"
+  },
+  "schema_version": 1,
+  "state": "ready_for_integration",
+  "summary": "crates/toc-layout rev 2: ConvergenceError is now Cycle{cycle_start,cycle}/Unresolved(distinguished by scanning the completed 8-pass history for the earliest repeated candidate); new stabilize.rs adds stabilize_toc, resolving a whole SourcedEntry list against one converged front-matter fixed point, sorted by explicit sequence (not caller iteration order) into a StabilizedToc; every entry carries an exact SourceId{document,revision} and StabilizedEntry::is_stale detects a mismatched revision or document. 30 tests + 1 doctest pass; determinism proven by feeding identical entries through a Vec, a HashMap drain, and a reversed Vec and asserting identical output.",
+  "tool": "Claude Code on Claude Max 20x",
   "updated_utc": "2026-09-12T09:29:00Z",
-  "code_revision": "754c7579baa37b304eca772fbb3dbbbdbd619cb9",
-  "main_integrated_through": "85a0b58bb152dda9ddf1c7c52b8b078bae37287f"
+  "usage": {
+    "evidence": "Shared Claude Max 20x subscription quota; no purchases or overages; per-session token cost not exposed to this agent",
+    "status": "unknown"
+  }
 }
