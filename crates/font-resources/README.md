@@ -245,3 +245,31 @@ CFF SHA `c5d11bab6a95e75a568e1b72fd30fdd5e4c95abe68a72f02c0c4329ee948b532`:
 explicitly unsupported due to hints/masks. No invalid-font failures occurred.
 This does not establish useful visible coverage, Latin Modern support or parity;
 no font file was copied into the repository and no schema activation occurred.
+
+## Explicit unhinted CFF geometry and FontMatrix
+
+`cubic_outline_with_policy(gid, HintPolicy::Unhinted)` validates/records stem
+operands and hint/counter masks without applying grid fitting. It enforces the
+96-stem limit, exact ceil(stems/8) mask payload length, zero unused bits, stem
+ordering and operand counts. HintMetadata records policy, raw stem deltas/widths,
+mask bytes and flex depths. The default `cubic_outline` retains Reject policy.
+All four flex forms emit their two exact cubic curves under Unhinted policy;
+no device-dependent flattening is performed. Arithmetic/seac/CID/CFF2 remain
+explicitly unsupported. This supersedes the earlier stage's blanket hint/flex
+rejection only when Unhinted is deliberately selected.
+
+`matrix_outline(gid, policy)` applies the exact six-term FontMatrix and returns
+separate MatrixCommand/MatrixOutline types. Coordinates use normalized checked
+i128 Rational values with positive denominators, so decimal 0.001 is exactly
+1/1000, not a binary approximation. The default matrix is applied explicitly.
+Translation affects points but not the advance vector. Decimal scale/mantissa
+budgets and arithmetic overflow return errors. Output is CFF font/text space,
+not raw charstring units or rendering-v2 page ticks. Rasterizers must make their
+size/grid policy separately; no schema or production font-profile switch occurs.
+
+Under Unhinted plus matrix application, the same pinned STIX font above now
+accepts all 2221 glyphs, with zero unsupported/invalid decoder outcomes. The old
+Reject-policy results remain valid and unchanged in meaning. This proves bounded
+parser/geometry acceptance only, not outline equality against an oracle, hinted
+raster fidelity, Latin Modern coverage or PDF parity. Synthetic tests cover exact
+masks, malformed operands, all flex forms, decimal matrices and overflow.

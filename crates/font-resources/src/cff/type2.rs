@@ -16,12 +16,37 @@ pub enum CubicCommand {
     },
     Close,
 }
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HintPolicy {
+    Reject,
+    Unhinted,
+}
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StemHint {
+    pub vertical: bool,
+    pub delta: Coordinate,
+    pub width: Coordinate,
+}
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HintMask {
+    pub counter: bool,
+    pub stem_count: usize,
+    pub bytes: Vec<u8>,
+}
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HintMetadata {
+    pub policy: HintPolicy,
+    pub stems: Vec<StemHint>,
+    pub masks: Vec<HintMask>,
+    pub flex_depths: Vec<Coordinate>,
+}
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CubicOutline {
     pub cff_sha256: String,
     pub glyph_id: u16,
     pub width: Coordinate,
     pub commands: Vec<CubicCommand>,
+    pub hints: HintMetadata,
 }
 struct Decoder<'a> {
     cff: &'a Cff,
@@ -33,6 +58,9 @@ struct Decoder<'a> {
     commands: Vec<CubicCommand>,
     calls: Vec<(bool, usize)>,
     steps: usize,
+    hints: HintMetadata,
+    hint_phase: u8,
+    path_started: bool,
 }
 #[derive(PartialEq)]
 enum Flow {
@@ -43,6 +71,9 @@ impl Cff {
     /// Raw charstring-space cubic geometry. FontMatrix is preserved in Top DICT,
     /// not silently applied or replaced; consumer must interpret it explicitly.
     pub fn cubic_outline(&self, gid: u16) -> Result<CubicOutline> {
+        self.cubic_outline_with_policy(gid, HintPolicy::Reject)
+    }
+    pub fn cubic_outline_with_policy(&self, gid: u16, policy: HintPolicy) -> Result<CubicOutline> {
         let zero = Coordinate::from_integer(0);
         let mut d = Decoder {
             cff: self,
@@ -54,6 +85,14 @@ impl Cff {
             commands: Vec::new(),
             calls: Vec::new(),
             steps: 0,
+            hints: HintMetadata {
+                policy,
+                stems: Vec::new(),
+                masks: Vec::new(),
+                flex_depths: Vec::new(),
+            },
+            hint_phase: 0,
+            path_started: false,
         };
         if d.execute(self.charstring(gid)?, false)? != Flow::End {
             return Err(invalid("Type2 glyph lacks endchar"));
@@ -63,6 +102,7 @@ impl Cff {
             glyph_id: gid,
             width: d.width,
             commands: d.commands,
+            hints: d.hints,
         })
     }
 }
@@ -106,6 +146,114 @@ impl Decoder<'_> {
         }
         Ok(())
     }
+    fn stem_operands(&mut self, vertical: bool, allow_empty: bool) -> Result<()> {
+        if !self.width_seen {
+            if self.operands.len() % 2 == 1 {
+                let width = self.operands.remove(0);
+                self.width =
+                    Coordinate::from_integer(number(&self.cff.private, 21, Some(0))?).add(width)?;
+            }
+            self.width_seen = true;
+        }
+        if !self.operands.len().is_multiple_of(2) || (!allow_empty && self.operands.is_empty()) {
+            return Err(invalid("Type2 stem operand count"));
+        }
+        if !self.operands.is_empty() {
+            if self.path_started || self.hint_phase > u8::from(vertical) {
+                return Err(invalid("Type2 stems after mask/path or out of order"));
+            }
+            self.hint_phase = u8::from(vertical);
+            let operands = std::mem::take(&mut self.operands);
+            for pair in operands.as_chunks::<2>().0 {
+                if pair[1].numerator() < 0
+                    && pair[1] != Coordinate::from_integer(-20)
+                    && pair[1] != Coordinate::from_integer(-21)
+                {
+                    return Err(invalid("Type2 undefined negative stem width"));
+                }
+                self.hints.stems.push(StemHint {
+                    vertical,
+                    delta: pair[0],
+                    width: pair[1],
+                });
+                if self.hints.stems.len() > 96 {
+                    return Err(invalid("Type2 stem budget"));
+                }
+            }
+        }
+        Ok(())
+    }
+    fn flex(&mut self, op: u8) -> Result<()> {
+        if self.hints.policy != HintPolicy::Unhinted {
+            return Err(unsupported("Type2 flex requires explicit Unhinted policy"));
+        }
+        let v = std::mem::take(&mut self.operands);
+        let zero = Coordinate::from_integer(0);
+        let neg = |v: Coordinate| {
+            Coordinate::new(
+                v.numerator()
+                    .checked_neg()
+                    .ok_or_else(|| invalid("Type2 coordinate overflow"))?,
+                v.shift(),
+            )
+        };
+        let (a, b, depth) = match (op, v.len()) {
+            (34, 7) => (
+                [v[0], zero, v[1], v[2], v[3], zero],
+                [v[4], zero, v[5], neg(v[2])?, v[6], zero],
+                Coordinate::from_integer(50),
+            ),
+            (35, 13) => (
+                v[..6].try_into().unwrap(),
+                v[6..12].try_into().unwrap(),
+                v[12],
+            ),
+            (36, 9) => (
+                [v[0], v[1], v[2], v[3], v[4], zero],
+                [
+                    v[5],
+                    zero,
+                    v[6],
+                    v[7],
+                    v[8],
+                    neg(v[1].add(v[3])?.add(v[7])?)?,
+                ],
+                Coordinate::from_integer(50),
+            ),
+            (37, 11) => {
+                let dx = v[0].add(v[2])?.add(v[4])?.add(v[6])?.add(v[8])?;
+                let dy = v[1].add(v[3])?.add(v[5])?.add(v[7])?.add(v[9])?;
+                let common = dx.shift().max(dy.shift());
+                let ax = dx
+                    .numerator()
+                    .checked_abs()
+                    .and_then(|n| n.checked_mul(1i128 << (common - dx.shift())))
+                    .ok_or_else(|| invalid("Type2 flex comparison overflow"))?;
+                let ay = dy
+                    .numerator()
+                    .checked_abs()
+                    .and_then(|n| n.checked_mul(1i128 << (common - dy.shift())))
+                    .ok_or_else(|| invalid("Type2 flex comparison overflow"))?;
+                let (last_x, last_y) = if ax > ay {
+                    (v[10], neg(dy)?)
+                } else {
+                    (neg(dx)?, v[10])
+                };
+                (
+                    v[..6].try_into().unwrap(),
+                    [v[6], v[7], v[8], v[9], last_x, last_y],
+                    Coordinate::from_integer(50),
+                )
+            }
+            _ => return Err(invalid("Type2 flex operand count")),
+        };
+        if depth.numerator() < 0 {
+            return Err(invalid("Type2 negative flex depth"));
+        }
+        self.hints.flex_depths.push(depth);
+        self.curve(&a)?;
+        self.curve(&b)
+    }
     fn execute(&mut self, data: &[u8], subroutine: bool) -> Result<Flow> {
         let mut at = 0;
         let zero = Coordinate::from_integer(0);
@@ -130,10 +278,42 @@ impl Decoder<'_> {
                 continue;
             }
             match op {
-                1 | 3 | 18 | 19 | 20 | 23 => {
-                    return Err(unsupported(
-                        "Type2 hints/masks unsupported in staged unhinted decoder",
-                    ))
+                1 | 3 | 18 | 23 => {
+                    if self.hints.policy != HintPolicy::Unhinted {
+                        return Err(unsupported(
+                            "Type2 hints/masks unsupported in staged unhinted decoder",
+                        ));
+                    }
+                    self.stem_operands(op == 3 || op == 23, false)?;
+                }
+                19 | 20 => {
+                    if self.hints.policy != HintPolicy::Unhinted {
+                        return Err(unsupported(
+                            "Type2 hints/masks unsupported in staged unhinted decoder",
+                        ));
+                    }
+                    self.stem_operands(true, true)?;
+                    let count = self.hints.stems.len();
+                    if count == 0 {
+                        return Err(invalid("Type2 mask without stems"));
+                    }
+                    let length = count.div_ceil(8);
+                    let mask = data
+                        .get(at..at + length)
+                        .ok_or_else(|| invalid("Type2 truncated hint mask"))?
+                        .to_vec();
+                    at += length;
+                    if !count.is_multiple_of(8)
+                        && mask[length - 1] & ((1u8 << (8 - count % 8)) - 1) != 0
+                    {
+                        return Err(invalid("Type2 nonzero unused mask bits"));
+                    }
+                    self.hint_phase = 2;
+                    self.hints.masks.push(HintMask {
+                        counter: op == 20,
+                        stem_count: count,
+                        bytes: mask,
+                    });
                 }
                 10 | 29 => {
                     let index = self
@@ -210,6 +390,7 @@ impl Decoder<'_> {
                     let point = self.delta(x, y)?;
                     self.emit(CubicCommand::MoveTo(point))?;
                     self.open = true;
+                    self.path_started = true;
                 }
                 5 => {
                     let v = std::mem::take(&mut self.operands);
@@ -310,9 +491,13 @@ impl Decoder<'_> {
                 }
                 12 => {
                     let escaped = byte(data, &mut at)?;
-                    return Err(unsupported(&format!(
-                        "Type2 escaped operator {escaped} unsupported (including flex/arithmetic)"
-                    )));
+                    if (34..=37).contains(&escaped) {
+                        self.flex(escaped)?;
+                    } else {
+                        return Err(unsupported(&format!(
+                            "Type2 escaped operator {escaped} unsupported"
+                        )));
+                    }
                 }
                 _ => return Err(invalid("Type2 reserved/unsupported operator")),
             }
@@ -321,9 +506,9 @@ impl Decoder<'_> {
     }
 }
 #[cfg(test)]
-mod tests {
+pub(super) mod tests {
     use super::*;
-    fn font(program: &[u8], subr: Option<&[u8]>) -> Cff {
+    pub(crate) fn font(program: &[u8], subr: Option<&[u8]>) -> Cff {
         let mut c = Cff::parse(&super::super::tests::fixture()).unwrap();
         let mut bytes = c.bytes.to_vec();
         let start = bytes.len();
@@ -336,6 +521,83 @@ mod tests {
         }
         c.bytes = bytes.into();
         c
+    }
+    #[test]
+    fn unhinted_masks_have_exact_byte_accounting_and_policy() {
+        let mut program = vec![149];
+        for _ in 0..9 {
+            program.extend([139, 149]);
+        }
+        program.extend([18, 19, 255, 128, 139, 139, 21, 14]);
+        let c = font(&program, None);
+        assert!(c.cubic_outline(0).is_err());
+        let out = c
+            .cubic_outline_with_policy(0, HintPolicy::Unhinted)
+            .unwrap();
+        assert_eq!(out.width, Coordinate::from_integer(10));
+        assert_eq!(out.hints.stems.len(), 9);
+        assert_eq!(out.hints.masks[0].bytes, vec![255, 128]);
+        assert_eq!(out.hints.policy, HintPolicy::Unhinted);
+        let mask = program.len() - 5;
+        program[mask] = 129;
+        assert!(font(&program, None)
+            .cubic_outline_with_policy(0, HintPolicy::Unhinted)
+            .is_err());
+    }
+    #[test]
+    fn malformed_masks_stems_and_budget_fail() {
+        for program in [
+            vec![19, 14],
+            vec![139, 149, 18, 19],
+            vec![139, 139, 21, 139, 149, 18, 14],
+            vec![139, 149, 18, 139, 3, 14],
+        ] {
+            assert!(font(&program, None)
+                .cubic_outline_with_policy(0, HintPolicy::Unhinted)
+                .is_err());
+        }
+        let mut program = Vec::new();
+        for _ in 0..5 {
+            for _ in 0..20 {
+                program.extend([139, 149]);
+            }
+            program.push(18);
+        }
+        program.push(14);
+        assert!(font(&program, None)
+            .cubic_outline_with_policy(0, HintPolicy::Unhinted)
+            .is_err());
+    }
+    #[test]
+    fn all_flex_forms_keep_two_exact_unhinted_curves() {
+        for (op, args) in [
+            (34, vec![10, 10, 5, 10, 10, 10, 10]),
+            (35, vec![10, 0, 10, 5, 10, 0, 10, 0, 10, -5, 10, 0, 50]),
+            (36, vec![10, 2, 10, 3, 10, 10, 10, -2, 10]),
+            (37, vec![10, 2, 10, 3, 10, 0, 10, 0, 10, -2, 10]),
+        ] {
+            let mut program = vec![139, 139, 21];
+            program.extend(args.iter().map(|n| (n + 139) as u8));
+            program.extend([12, op, 14]);
+            let c = font(&program, None);
+            assert!(c.cubic_outline(0).is_err());
+            let out = c
+                .cubic_outline_with_policy(0, HintPolicy::Unhinted)
+                .unwrap();
+            assert_eq!(out.commands.len(), 4);
+            assert_eq!(out.hints.flex_depths, vec![Coordinate::from_integer(50)]);
+            match out.commands[2] {
+                CubicCommand::CurveTo { end, .. } => {
+                    assert_eq!(end.x, Coordinate::from_integer(60));
+                    assert_eq!(end.y, Coordinate::from_integer(0));
+                }
+                _ => panic!("curve expected"),
+            }
+            program.remove(3);
+            assert!(font(&program, None)
+                .cubic_outline_with_policy(0, HintPolicy::Unhinted)
+                .is_err());
+        }
     }
     #[test]
     fn exact_cubic_points_and_width() {

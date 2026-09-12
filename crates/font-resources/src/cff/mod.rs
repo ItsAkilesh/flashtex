@@ -419,4 +419,9 @@ mod tests {
 }
 
 mod type2;
-pub use type2::{CubicCommand, CubicOutline, CubicPoint};
+pub use type2::{
+    CubicCommand, CubicOutline, CubicPoint, HintMask, HintMetadata, HintPolicy, StemHint,
+};
+
+mod matrix;
+pub use matrix::{MatrixCommand, MatrixOutline, Rational, RationalPoint};
