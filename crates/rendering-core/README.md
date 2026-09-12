@@ -87,3 +87,19 @@ positions for caret choice; integer floor is used only for exact membership test
 against integer rectangle edges. No pixel rounding changes caret selection.
 Rational denominators are bounded to one million; checked distance arithmetic
 returns an explicit error if an extreme query exceeds its i128 budget.
+
+`wire::parse_validated` and `wire::serialize_validated` form the opt-in consumer
+boundary. They validate capabilities and semantic references, return typed errors
+for unsupported versions/messages/primitives, and never emit a partial oversized
+frame. The serializer defaults to the caller's requested cap, bounded above by
+32 MiB. Resource verification remains separate from wire validity.
+
+```sh
+cargo run --manifest-path crates/rendering-core/Cargo.toml --example validate_display -- \
+  crates/rendering-core/tests/fixtures/synthetic-display-list.json \
+  crates/rendering-core/tests/fixtures/capabilities.json
+```
+
+The offline harness validates, serializes, reparses and verifies a stable canonical
+roundtrip. It reports `paintable: false`; a synthetic glyph fixture is not a native
+rendering or font-shaping test.
