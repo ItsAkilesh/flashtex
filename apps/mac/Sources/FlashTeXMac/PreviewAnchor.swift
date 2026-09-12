@@ -141,6 +141,13 @@ final class PreviewAnchorProbe: NSView {
     private var settleGeneration = 0
     /// How long after a layout change the anchor is enforced.
     static let settleWindow: TimeInterval = 0.15
+    /// Reduce-motion source, read at each layout change (`ReduceMotion.swift`);
+    /// replaceable so tests drive both paths without touching the system setting.
+    var reduceMotion: () -> Bool = { ReduceMotion.isEnabled }
+    /// Under reduce motion, the end-of-window step does not scroll; when the
+    /// content had drifted from the anchor by then, the drift is counted here
+    /// (evidence) and the anchor is re-captured where the content is.
+    private(set) var driftsLeftUncorrected = 0
     private(set) var corrections: [PreviewAnchorCorrection] = []
     /// Event trace for the acceptance harness: (ms since first event, event, visible top, document height).
     private(set) var trace: [(ms: Double, event: String, top: CGFloat, docHeight: CGFloat)] = []
@@ -214,17 +221,35 @@ final class PreviewAnchorProbe: NSView {
         if let anchor, pending == nil { pending = anchor }
         settleGeneration += 1
         let generation = settleGeneration
+        let reduced = reduceMotion()
         // SwiftUI resizes the document view after this update pass and then
         // re-imposes its stored offset; the observers re-apply the anchor at
         // each step until the settle window closes.
         applyPending()
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.settleWindow) { [weak self] in
             guard let self, self.settleGeneration == generation else { return }
-            self.applyPending()
-            self.note("settled")
+            if reduced {
+                // Reduce motion: no scroll from a timer on a drawn frame (see
+                // ReduceMotion.swift); the synchronous corrections above and in
+                // the observers already ran inside the layout passes.
+                if self.pendingDrift() { self.driftsLeftUncorrected += 1; self.note("drift left (reduce motion)") }
+                self.note("settled (reduce motion)")
+            } else {
+                self.applyPending()
+                self.note("settled")
+            }
             self.pending = nil
             self.capture()
         }
+    }
+
+    /// True when the visible top differs from the pending anchor's restore
+    /// target by more than the correction threshold (0.5 pt).
+    private func pendingDrift() -> Bool {
+        guard let pending, let layout, let scroll = enclosingScrollView, let doc = scroll.documentView,
+              let target = pending.restore(in: layout, visibleSize: scroll.contentView.bounds.size, contentSize: doc.bounds.size),
+              let before = documentVisibleRectTopDown?.origin else { return false }
+        return abs(before.y - target.y) > 0.5
     }
 
     private func applyPending() {

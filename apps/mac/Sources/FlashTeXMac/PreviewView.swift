@@ -49,7 +49,7 @@ struct PreviewView: View {
             .onChange(of: caretPage) { _, page in
                 // Page-level only: keeps the page under the caret in view when the
                 // editor moves across pages; no scrolling within a page.
-                if let page { withAnimation { proxy.scrollTo(page, anchor: .top) } }
+                if let page { ReduceMotion.animate { proxy.scrollTo(page, anchor: .top) } }
             }
         }
         }

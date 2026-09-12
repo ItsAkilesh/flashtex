@@ -404,7 +404,49 @@ extension ShellModel {
     /// region (`Navigation.rebaseExactly`: refused when the span overlaps the
     /// edit, verified to spell the same bytes otherwise). Any other mismatch
     /// is refused: a click on a stale frame never lands on other bytes.
+    ///
+    /// A hit naming a document that is not open in this window (the helper
+    /// compiled an include this window never read) opens it through the
+    /// helper first (ShellModel+UnopenedNavigation.swift): the navigation
+    /// then completes asynchronously, or is refused typed when the durable
+    /// revision differs from the declared one.
     func navigateV2(_ hit: V2Geometry.Hit) {
+        if hit.syntheticReason == nil, let source = hit.sources.first, !documents.contains(where: { $0.path == source.path }),
+           controllerAttached, displayListV2?.frame?.list.documents.contains(where: { $0.path == source.path }) == true {
+            navigationNote = "Opening \(source.path) through the helper to navigate…"
+            Task { @MainActor [weak self] in _ = await self?.navigateV2Opening(hit) }
+            return
+        }
+        navigateV2Now(hit)
+    }
+
+    /// `navigateV2` for a hit whose document is not open: opens it at the
+    /// declared durable revision, then navigates on the (re-read) current
+    /// frame. Returns the open verdict (nil when the document was open).
+    @discardableResult
+    func navigateV2Opening(_ hit: V2Geometry.Hit) async -> UnopenedNavigation.Verdict? {
+        guard hit.syntheticReason == nil, let source = hit.sources.first else { navigateV2Now(hit); return nil }
+        guard !documents.contains(where: { $0.path == source.path }) else { navigateV2Now(hit); return nil }
+        guard let declared = displayListV2?.frame?.list.documents.first(where: { $0.path == source.path }) else {
+            navigationNote = "Display list does not declare document \(source.path)."
+            return nil
+        }
+        if let why = historicalRefusal(of: "navigation") { navigationNote = why; return nil }
+        // The comparator is the helper's durable version the applied preview was compiled
+        // from (`compiledRevision(for:)`), never the producer's `documents[].revision`
+        // (its compile revision); the declared sha256 binds the opened bytes exactly.
+        let verdict = await openForNavigation(path: source.path, compiledRevision: compiledRevision(for: source.path), compiledSHA256: declared.sha256)
+        guard case .opened(_, let revision) = verdict else {
+            if case .alreadyOpen = verdict { navigateV2Now(hit); return verdict }
+            navigationNote = "Preview → source: " + verdict.note
+            return verdict
+        }
+        navigateV2Now(hit)
+        if navigationNote?.hasPrefix("Selected") == true { navigationNote! += " (opened \(source.path) at durable r\(revision))" }
+        return verdict
+    }
+
+    private func navigateV2Now(_ hit: V2Geometry.Hit) {
         if let reason = hit.syntheticReason {
             navigationNote = "Generated content (\(reason)) has no source range."
             return
@@ -671,13 +713,30 @@ struct PreviewV2Pane: View {
                 } description: {
                     Text("\(source.label)\n[\(error.code)] \(error.message)")
                         .textSelection(.enabled)
+                } actions: {
+                    refusalActions(source: error.source, v1Revision: model.result?.revision)
                 }
                 .accessibilityIdentifier("v2-refusal")
                 case nil:
-                    ContentUnavailableView("No v2 display list yet", systemImage: "doc.richtext",
-                                           description: Text(model.workerAttached
-                                                             ? "Requesting display-list-v2 from the attached worker (\(model.liveV2Accepted ? "accepted" : "not accepted yet")); or use File > Open Display List (v2)…"
-                                                             : "Attach a producer that accepts display-list-v2, or use File > Open Display List (v2)… with a flashtex-render --v2 JSON file."))
+                    if let refusal = model.displayCandidates.lastInvalidCandidate {
+                        // The helper's candidate for the applied v1 preview was refused by the
+                        // validator: name it, point at the source span it named, and offer the
+                        // v1 preview of that revision (on screen in the product pane) as the fallback.
+                        ContentUnavailableView {
+                            Label("Display candidate refused — nothing rendered", systemImage: "xmark.octagon")
+                        } description: {
+                            Text("\(refusal.requestID) for revision \(refusal.editorRevision)\n\(refusal.why)")
+                                .textSelection(.enabled)
+                        } actions: {
+                            refusalActions(source: refusal.source, v1Revision: refusal.editorRevision)
+                        }
+                        .accessibilityIdentifier("v2-candidate-refusal")
+                    } else {
+                        ContentUnavailableView("No v2 display list yet", systemImage: "doc.richtext",
+                                               description: Text(model.workerAttached
+                                                                 ? "Requesting display-list-v2 from the attached worker (\(model.liveV2Accepted ? "accepted" : "not accepted yet")); or use File > Open Display List (v2)…"
+                                                                 : "Attach a producer that accepts display-list-v2, or use File > Open Display List (v2)… with a flashtex-render --v2 JSON file."))
+                    }
                 }
             }
         }
@@ -700,6 +759,25 @@ struct PreviewV2Pane: View {
         case .loaded(let frame, _): (frame, false)
         case .loading(_, _, let previous?, _, _): (previous, true)
         case .loading(_, _, nil, _, _), .failed, nil: nil
+        }
+    }
+
+    /// Under a refusal: the source span the validator named (navigable) and
+    /// the v1 preview of the same revision, which stays the product preview.
+    @ViewBuilder
+    private func refusalActions(source: RuntimeV1.SourceRange?, v1Revision: Int?) -> some View {
+        VStack(spacing: 6) {
+            if let source {
+                Button("Go to source (\(source.path) bytes \(source.startByte)..<\(source.endByte))") {
+                    Task { @MainActor in await model.navigateOpeningIfNeeded(to: source) }
+                }
+                .accessibilityIdentifier("v2-refusal-go-to-source")
+            }
+            if let v1Revision {
+                Text("The v1 preview of revision \(v1Revision) remains the product preview (fallback frame); its items navigate exactly.")
+                    .font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                    .accessibilityIdentifier("v2-refusal-v1-fallback")
+            }
         }
     }
 
@@ -834,7 +912,7 @@ struct PreviewV2View: View {
                             PageV2View(page: page, prepared: prepared, pageToken: frame.pageToken(at: index), frameRevision: frame.list.revision, expectedDraws: expectedDraws,
                                        dark: dark, stale: stale, scale: scale, displayScale: displayScale,
                                        // Only pages whose cluster sources can contain the caret walk their clusters.
-                                       caretMatches: caretByte.flatMap { prepared.mayContain(byte: $0, path: caretPath) ? V2Geometry.clusters(containing: $0, path: caretPath, in: page) : nil } ?? [],
+                                       caretHighlights: caretByte.flatMap { prepared.mayContain(byte: $0, path: caretPath) ? V2Geometry.caretHighlights(containing: $0, path: caretPath, in: page) : nil } ?? [],
                                        onSelect: onSelect)
                                 .equatable()
                                 .id(page.number)
@@ -904,13 +982,15 @@ private struct PageV2View: View, Equatable {
     let stale: Bool
     let scale: CGFloat
     let displayScale: CGFloat
-    let caretMatches: [V2Geometry.CaretMatch]
+    /// Exact caret / whole cluster for text, the enclosing formula box for a
+    /// caret inside math (MathCaretHighlight.swift).
+    let caretHighlights: [V2Geometry.CaretHighlight]
     let onSelect: (V2Geometry.Hit) -> Void
     @State private var hover: V2Geometry.Hit?
 
     static func == (a: PageV2View, b: PageV2View) -> Bool {
         a.pageToken == b.pageToken && a.page.number == b.page.number
-            && a.dark == b.dark && a.stale == b.stale && a.scale == b.scale && a.displayScale == b.displayScale && a.caretMatches == b.caretMatches
+            && a.dark == b.dark && a.stale == b.stale && a.scale == b.scale && a.displayScale == b.displayScale && a.caretHighlights == b.caretHighlights
     }
 
     var body: some View {
@@ -929,8 +1009,8 @@ private struct PageV2View: View, Equatable {
             .frame(width: size.width, height: size.height)
             .background(Rectangle().fill(pageBackground).shadow(radius: 4))
             .overlay {
-                if !caretMatches.isEmpty || hover != nil {
-                    PageV2Marks(scale: scale, caretMatches: caretMatches, hover: hover).equatable().allowsHitTesting(false)
+                if !caretHighlights.isEmpty || hover != nil {
+                    PageV2Marks(scale: scale, caretHighlights: caretHighlights, hover: hover).equatable().allowsHitTesting(false)
                 }
             }
         canvas
@@ -1026,7 +1106,7 @@ final class PageBitmapView: NSView {
 /// Caret and hover marks over a page, drawn only when there is something to mark.
 private struct PageV2Marks: View, Equatable {
     let scale: CGFloat
-    let caretMatches: [V2Geometry.CaretMatch]
+    let caretHighlights: [V2Geometry.CaretHighlight]
     let hover: V2Geometry.Hit?
 
     private func viewRect(_ r: RenderingV2.Rect) -> CGRect {
@@ -1037,14 +1117,24 @@ private struct PageV2Marks: View, Equatable {
     var body: some View {
         Canvas(rendersAsynchronously: false) { context, _ in
             // Caret highlight: exact caret bar when the compiler supplied one for
-            // that byte, else the whole cluster's hit rectangles (documented fallback).
-            for m in caretMatches {
-                if let k = m.caret {
-                    let bar = CGRect(x: RenderingV2.points(k.x) * scale - 0.75, y: RenderingV2.points(k.top) * scale, width: 1.5, height: RenderingV2.points(k.height) * scale)
-                    context.fill(Path(bar), with: .color(Color.accentColor))
-                    for r in m.hitRects { context.fill(Path(viewRect(r)), with: .color(Color.accentColor.opacity(0.10))) }
-                } else {
-                    for r in m.hitRects { context.fill(Path(viewRect(r)), with: .color(Color.accentColor.opacity(0.22))) }
+            // that byte, else the whole cluster's hit rectangles (documented fallback);
+            // a caret inside a formula gets the enclosing formula box (every glyph
+            // cluster and rule carrying the formula's span, MathCaretHighlight.swift).
+            for h in caretHighlights {
+                switch h {
+                case .cluster(let m):
+                    if let k = m.caret {
+                        let bar = CGRect(x: RenderingV2.points(k.x) * scale - 0.75, y: RenderingV2.points(k.top) * scale, width: 1.5, height: RenderingV2.points(k.height) * scale)
+                        context.fill(Path(bar), with: .color(Color.accentColor))
+                        for r in m.hitRects { context.fill(Path(viewRect(r)), with: .color(Color.accentColor.opacity(0.10))) }
+                    } else {
+                        for r in m.hitRects { context.fill(Path(viewRect(r)), with: .color(Color.accentColor.opacity(0.22))) }
+                    }
+                case .formula(let box):
+                    let outline = viewRect(box.bounds).insetBy(dx: -2, dy: -2)
+                    context.fill(Path(roundedRect: outline, cornerRadius: 2), with: .color(Color.accentColor.opacity(0.10)))
+                    context.stroke(Path(roundedRect: outline, cornerRadius: 2), with: .color(Color.accentColor.opacity(0.8)), lineWidth: 1)
+                    for r in box.rects { context.fill(Path(viewRect(r)), with: .color(Color.accentColor.opacity(0.12))) }
                 }
             }
             if let hover { context.fill(Path(viewRect(hover.rect).insetBy(dx: -1, dy: -1)), with: .color(Color.accentColor.opacity(0.25))) }

@@ -1,0 +1,36 @@
+{
+  "agent_id": "mac-vector-graphics-2",
+  "allocation_id": "claude-mac20x-vector-graphics-2",
+  "assignment_acknowledgements": {
+    "GH46": "acknowledged on branch agent/mac-vector-graphics-2/json-depth; parent mac-claude-a granted the crates/vector-graphics edit override (unowned crate, Commander triage on #46 assigned the mac-vector-graphics lane)"
+  },
+  "branch": "agent/mac-vector-graphics-2/json-depth",
+  "capabilities": [
+    "rust"
+  ],
+  "code_revision": "f5b370fe1e4a4005fe078e178c4dd34fe1a52bde",
+  "eta_minutes": {
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 0
+  },
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "9ba9851c",
+  "next_action": "Parent reviews and posts the fix SHA on #46; merge the branch into agent/mac-claude-a/mac-shell (crate-only change, no parent-retained files touched)",
+  "reviewed_peers": {
+    "origin/agent/mac-claude-a/mac-shell": {
+      "adaptation": "Branch base; crates/vector-graphics unchanged there since e78c6115, so the fix applies cleanly. d-q222's unpushed local branch agent/daniel-parent/vg-ds-fix (e4b8b877) was not consumable (not on origin); its debug-thread measurement was re-measured here and credited on the constant.",
+      "reviewed_utc": "2026-09-12T18:35:00Z",
+      "sha": "9ba9851c"
+    }
+  },
+  "schema_version": 1,
+  "state": "ready_for_integration",
+  "summary": "GH46 fixed at f5b370fe: json::parse bounded by MAX_JSON_DEPTH=256 and the schema reader by display_list::MAX_GROUP_DEPTH=64, both returning JsonError::NestingTooDeep { depth, limit } (JsonError is now an enum; Message(String) keeps existing text); DisplayList::validate reports ValidationError::NestingTooDeep without descending; README documents the limits. 12 new tests in crates/vector-graphics/tests/json_depth.rs; 52/52 pass in debug and release; clippy -D warnings and fmt clean; parse throughput unchanged within noise.",
+  "tool": "Claude Code subagent (parent mac-claude-a)",
+  "updated_utc": "2026-09-12T18:35:00Z",
+  "usage": {
+    "evidence": "Pre-fix reproduction at 9ba9851c: 100 000 nested arrays -> SIGABRT stack overflow in a release test thread. Post-fix: cargo test and cargo test --release 14 unit + 12 json_depth + 26 primitives pass; debug test-thread limits measured with the constants temporarily lifted: groups 190 ok / 200 overflow, arrays 1200 ok / 1500 overflow; release groups 1000 ok / 5000 overflow. Timing: 128 KB 200-group document median 1.40 ms before and after (release, interleaved, load 40-120).",
+    "status": "Shared Claude Max quota with parent mac-claude-a; no purchases"
+  }
+}

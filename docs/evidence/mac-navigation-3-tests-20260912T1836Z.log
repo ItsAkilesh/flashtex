@@ -1,0 +1,76 @@
+14:36  up 1 day, 13:29, 3 users, load averages: 312.79 158.74 76.21
+helper=0abadb9f flashtex-preview-controller (main checkout build 11:23); render=flashtex-render 9aaec57a; branch=a29c82de
+Test Suite 'Selected tests' started at 2026-09-12 14:36:32.593.
+Test Suite 'FlashTeXMacPackageTests.xctest' started at 2026-09-12 14:36:32.595.
+Test Suite 'DisplayCandidateTests' started at 2026-09-12 14:36:32.595.
+Test Case '-[FlashTeXMacTests.DisplayCandidateTests testDecoderAcceptsOnlyContractShapedCandidates]' passed (0.121 seconds).
+Test Case '-[FlashTeXMacTests.DisplayCandidateTests testGateRefusesStaleForeignAndToggledIdentities]' passed (0.021 seconds).
+Test Case '-[FlashTeXMacTests.DisplayCandidateTests testHeldWorkRunsOnCandidateTimeoutOrSupersessionNeverDropped]' passed (0.209 seconds).
+Test Case '-[FlashTeXMacTests.DisplayCandidateTests testHelperCandidatesPaintAndBindToEditorRevisions]' passed (0.265 seconds).
+/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a50fd432339d8dfc0/apps/mac/Tests/FlashTeXMacTests/DisplayCandidateTests.swift:329: -[FlashTeXMacTests.DisplayCandidateTests testHelperDeclinedProducerKeepsV1Only] : Test skipped - set FLASHTEX_PREVIEW_CONTROLLER and FLASHTEX_COMPILER (main's flashtex-compiler, which declines display-list-v2)
+Test Case '-[FlashTeXMacTests.DisplayCandidateTests testHelperDeclinedProducerKeepsV1Only]' skipped (0.001 seconds).
+Test Case '-[FlashTeXMacTests.DisplayCandidateTests testHelperDefaultOffProducesOrdinaryV1Only]' passed (0.127 seconds).
+Test Case '-[FlashTeXMacTests.DisplayCandidateTests testHelperDisableRestartAndCloseRequireFreshOptIn]' passed (0.286 seconds).
+Test Case '-[FlashTeXMacTests.DisplayCandidateTests testHelperOrderingEnableBeforeLayoutWithDisplayListV2]' passed (0.193 seconds).
+Test Case '-[FlashTeXMacTests.DisplayCandidateTests testHelperRefusesCandidatesWhileCompletedSnapshotsAreNegotiated]' passed (0.086 seconds).
+Test Case '-[FlashTeXMacTests.DisplayCandidateTests testModelRefusesCandidatesWhileOffAndKeepsTheV1Result]' passed (0.015 seconds).
+Test Case '-[FlashTeXMacTests.DisplayCandidateTests testStateKeepsOnePendingAndInvalidationVoidsEverything]' passed (0.013 seconds).
+Test Case '-[FlashTeXMacTests.DisplayCandidateTests testValidatorBindsEnvelopeToExactDurableText]' passed (0.044 seconds).
+Test Suite 'DisplayCandidateTests' passed at 2026-09-12 14:36:33.978.
+	 Executed 12 tests, with 1 test skipped and 0 failures (0 unexpected) in 1.381 (1.383) seconds
+Test Suite 'MathCaretHighlightTests' started at 2026-09-12 14:36:33.978.
+Test Case '-[FlashTeXMacTests.MathCaretHighlightTests testExactClusterWinsOverAFannedOutSpan]' passed (0.005 seconds).
+Test Case '-[FlashTeXMacTests.MathCaretHighlightTests testInlineFormulaWithFracAndScriptsIsOneEnclosingBox]' passed (0.005 seconds).
+Test Case '-[FlashTeXMacTests.MathCaretHighlightTests testModelReportsTheFormulaBoxUnderTheEditorCaret]' passed (0.016 seconds).
+Test Case '-[FlashTeXMacTests.MathCaretHighlightTests testSingleGlyphFormulaAndLigaturesKeepTheClusterFallback]' passed (0.022 seconds).
+Test Case '-[FlashTeXMacTests.MathCaretHighlightTests testSqrtOverbarIsPartOfTheBoxAndDisplayMathHasTwoRules]' passed (0.020 seconds).
+Test Suite 'MathCaretHighlightTests' passed at 2026-09-12 14:36:34.048.
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.067 (0.070) seconds
+Test Suite 'NavigationMultiFileV2Tests' started at 2026-09-12 14:36:34.048.
+Test Case '-[FlashTeXMacTests.NavigationMultiFileV2Tests testHelperEditsRebaseOrRefuseOnTheStaleFrameAndTheNextRevisionNavigatesExactly]' passed (0.279 seconds).
+Test Case '-[FlashTeXMacTests.NavigationMultiFileV2Tests testHelperMultiFileClustersNavigateToExactBytesInBothDocuments]' passed (0.140 seconds).
+Test Suite 'NavigationMultiFileV2Tests' passed at 2026-09-12 14:36:34.467.
+	 Executed 2 tests, with 0 failures (0 unexpected) in 0.419 (0.419) seconds
+Test Suite 'NoGlyphRefusalTests' started at 2026-09-12 14:36:34.467.
+Test Case '-[FlashTeXMacTests.NoGlyphRefusalTests testCandidateRouteCarriesTheSpanAndOffersTheV1Preview]' passed (0.012 seconds).
+Test Case '-[FlashTeXMacTests.NoGlyphRefusalTests testValidatorNamesTheOrphanedClusterTextAndSourceSpan]' passed (0.002 seconds).
+Test Suite 'NoGlyphRefusalTests' passed at 2026-09-12 14:36:34.482.
+	 Executed 2 tests, with 0 failures (0 unexpected) in 0.014 (0.015) seconds
+Test Suite 'PreviewV2Tests' started at 2026-09-12 14:36:34.482.
+Test Case '-[FlashTeXMacTests.PreviewV2Tests testCaretMapsToExactClusterCaretOrWholeClusterFallback]' passed (0.008 seconds).
+Test Case '-[FlashTeXMacTests.PreviewV2Tests testGlyphRunMatchesCTLineDrawPixelForPixel]' passed (0.115 seconds).
+Test Case '-[FlashTeXMacTests.PreviewV2Tests testHitTestPrefersLaterPaintedItemAndFindsRules]' passed (0.000 seconds).
+Test Case '-[FlashTeXMacTests.PreviewV2Tests testHitTestReturnsLigatureClusterWithTwoSourceBytes]' passed (0.001 seconds).
+Test Case '-[FlashTeXMacTests.PreviewV2Tests testManifestMismatchWithBundledBytesIsRefused]' passed (0.000 seconds).
+Test Case '-[FlashTeXMacTests.PreviewV2Tests testObsoleteBytesFace0DigestIsRefusedAsUnknown]' passed (0.001 seconds).
+Test Case '-[FlashTeXMacTests.PreviewV2Tests testPDFExportRasterEqualsPreviewRaster]' passed (0.134 seconds).
+Test Case '-[FlashTeXMacTests.PreviewV2Tests testUnavailableFontHashFailsTheWholeFrame]' passed (0.001 seconds).
+Test Suite 'PreviewV2Tests' passed at 2026-09-12 14:36:34.744.
+	 Executed 8 tests, with 0 failures (0 unexpected) in 0.261 (0.262) seconds
+Test Suite 'RenderingV2Tests' started at 2026-09-12 14:36:34.744.
+Test Case '-[FlashTeXMacTests.RenderingV2Tests testDecodesRealPipelineDisplayListAndConsumesItsFields]' passed (0.003 seconds).
+Test Case '-[FlashTeXMacTests.RenderingV2Tests testDecodesRealPipelineRulesAndMathFontManifest]' passed (0.005 seconds).
+Test Case '-[FlashTeXMacTests.RenderingV2Tests testDocumentPathsAndByteLengthsAreChecked]' passed (0.002 seconds).
+Test Case '-[FlashTeXMacTests.RenderingV2Tests testEnvelopeConstantsAndFeaturesAreChecked]' passed (0.002 seconds).
+Test Case '-[FlashTeXMacTests.RenderingV2Tests testFastReaderMatchesCodableAndFallsBack]' passed (0.034 seconds).
+Test Case '-[FlashTeXMacTests.RenderingV2Tests testFontManifestIsChecked]' passed (0.002 seconds).
+Test Case '-[FlashTeXMacTests.RenderingV2Tests testGlyphAndClusterGeometryIsChecked]' passed (0.005 seconds).
+Test Case '-[FlashTeXMacTests.RenderingV2Tests testMathFixtureFailsClosedWithoutTheMathFontBundled]' passed (0.001 seconds).
+Test Case '-[FlashTeXMacTests.RenderingV2Tests testMinimalEnvelopeIsValid]' passed (0.000 seconds).
+Test Case '-[FlashTeXMacTests.RenderingV2Tests testRealTextFixturePreparesAgainstBundledFontsByRawByteHash]' passed (0.160 seconds).
+Test Case '-[FlashTeXMacTests.RenderingV2Tests testRuleAndPageGeometryIsChecked]' passed (0.002 seconds).
+Test Case '-[FlashTeXMacTests.RenderingV2Tests testUnknownItemKindIsRefusedNotSkipped]' passed (0.001 seconds).
+Test Case '-[FlashTeXMacTests.RenderingV2Tests testUnknownProtocolVersionAndTypeAreRefused]' passed (0.003 seconds).
+Test Case '-[FlashTeXMacTests.RenderingV2Tests testValidationErrorCarriesADiagnostic]' passed (0.001 seconds).
+Test Suite 'RenderingV2Tests' passed at 2026-09-12 14:36:34.967.
+	 Executed 14 tests, with 0 failures (0 unexpected) in 0.221 (0.223) seconds
+Test Suite 'UnopenedNavigationTests' started at 2026-09-12 14:36:34.967.
+Test Case '-[FlashTeXMacTests.UnopenedNavigationTests testHelperOpensTheUnopenedIncludeAtItsDurableRevisionAndNavigatesExactly]' passed (0.175 seconds).
+Test Case '-[FlashTeXMacTests.UnopenedNavigationTests testHelperRefusesTypedWhenTheDurableRevisionDiffersFromTheCompiledOne]' passed (0.203 seconds).
+Test Case '-[FlashTeXMacTests.UnopenedNavigationTests testVerdictsWithoutAHelperAreTypedAndNeverPlaceACaret]' passed (0.004 seconds).
+Test Suite 'UnopenedNavigationTests' passed at 2026-09-12 14:36:35.349.
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.382 (0.382) seconds
+Test Suite 'FlashTeXMacPackageTests.xctest' passed at 2026-09-12 14:36:35.349.
+	 Executed 46 tests, with 1 test skipped and 0 failures (0 unexpected) in 2.746 (2.755) seconds
+Test Suite 'Selected tests' passed at 2026-09-12 14:36:35.349.
+	 Executed 46 tests, with 1 test skipped and 0 failures (0 unexpected) in 2.746 (2.756) seconds

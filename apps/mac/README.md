@@ -158,7 +158,16 @@ established fixtures need (`ec-lmr10`, `ec-lmr12`, `rm-lmr12`, `rm-lmr8`,
   identical diagnostics (same severity and message) into one row — "12× `\in`
   is not supported in math mode" — with an "N places" menu that jumps to each
   occurrence ("3 of 12: main.tex line 41"); Fix… and the explanation line
-  belong to the first occurrence (`EditorDiagnostics.groups`).
+  belong to the first occurrence (`EditorDiagnostics.groups`). The panel
+  (`DiagnosticsListView`, DiagnosticsPanel.swift) has a keyboard selection:
+  ↑/↓ pick a row, Return jumps to the row's current occurrence, Esc gives the
+  keyboard back to the editor at its caret, ⌘⌥] / ⌘⌥[ (Navigate) step through
+  the selected group's places (wrapping) and the row — and its VoiceOver label
+  — then reads "12 places, 3 of 12, main.tex line 41". ⌘C on the focused list
+  or Edit > Copy Diagnostics as Text (⌘⌥C) copies `path:line: error: message`
+  lines for the selected row (every place; all diagnostics when none is
+  selected; `-:0:` for unsourced ones) for pasting into an issue
+  (`DiagnosticsPanelTests`).
 - Dark preview toggle in the toolbar (page and text colors only).
 - Stale offsets are never applied. Each `compile_result` remembers the exact
   document text it was produced for; after edits, a span is rebased through the
@@ -801,6 +810,8 @@ explain that nothing is loaded.
 | ↑ / ↓ / Tab / ⇧Tab / Return | Completion list keys, while the list is open: ↑/↓ or Tab/⇧Tab choose the candidate (wrapping; VoiceOver announces “n of m: candidate, kind, origin”), Return/Enter inserts it over the typed token, Esc closes without inserting; typing narrows the list, any other caret move closes it |
 | ⌘⇧D | Go to matching `\begin`/`\end` or `\label`/`\ref` |
 | ⌘⇧] / ⌘⇧[ | Next / previous diagnostic (refused if its span was edited since the compile) |
+| ⌘⌥] / ⌘⌥[ | Next / previous occurrence within the diagnostics panel's selected group (wrapping; the row reads "k of n") |
+| ⌘⌥C | Copy diagnostics as text (`path:line: error/warning: message` lines for the selected row, all when none; ⌘C while the list has the keyboard) |
 | ⌘⇧J | Reveal caret in preview (selects the item's source span) |
 | Click preview text | Select its source (UTF-8 span → UTF-16; refused if edited since compile) |
 | Help > FlashTeX Accessibility Help | Help window: focus order, what VoiceOver reads in each pane, every command above |

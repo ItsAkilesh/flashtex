@@ -102,7 +102,7 @@ final class DisplayCandidateTests: XCTestCase {
         XCTAssertEqual(frame.list.pages.count, 1)
         XCTAssertFalse(frame.fonts.isEmpty)
         func refused(_ outcome: DisplayCandidateValidator.Outcome, _ contains: String, file: StaticString = #filePath, line: UInt = #line) {
-            guard case .refused(let why) = outcome else { return XCTFail("expected refusal containing '\(contains)'", file: file, line: line) }
+            guard case .refused(let why, _) = outcome else { return XCTFail("expected refusal containing '\(contains)'", file: file, line: line) }
             XCTAssertTrue(why.contains(contains), why, file: file, line: line)
         }
         // One byte more: the length check refuses before hashing.

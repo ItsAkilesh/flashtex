@@ -459,7 +459,20 @@ public enum RenderingV2 {
                         }
                     }
                     guard referencedClusters.count == run.clusters.count else {
-                        throw fail("invalid_display_list", "\(at): \(run.clusters.count - referencedClusters.count) cluster(s) have no glyph (every cluster needs at least one glyph)")
+                        // Name the offending cluster(s): index, logical text and source
+                        // span(s), so the refusal points at the source that produced them
+                        // (measured on flashtex-render 9aaec57a: a missing-glyph scalar glued
+                        // to a word, `😀shuffle`, yields a cluster with no glyph).
+                        let orphaned = run.clusters.indices.filter { !referencedClusters.contains($0) }
+                        let named = orphaned.map { ci -> String in
+                            let c = run.clusters[ci]
+                            let where_ = c.sources.map { $0.map { "\($0.path) bytes \($0.startByte)..<\($0.endByte)" }.joined(separator: ", ") }
+                                ?? c.syntheticReason.map { "generated: \($0)" } ?? "no provenance"
+                            return "cluster \(ci) “\(run.clusterText(ci))” (\(where_))"
+                        }.joined(separator: "; ")
+                        throw ValidationError(code: "invalid_display_list",
+                                              message: "\(at): \(orphaned.count) cluster(s) have no glyph (every cluster needs at least one glyph): \(named)",
+                                              source: orphaned.first.flatMap { run.clusters[$0].sources?.first })
                     }
                     let textBytes = Array(run.text.utf8)
                     var expectedStart = 0

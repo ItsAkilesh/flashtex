@@ -203,6 +203,12 @@ final class DisplayCandidateState {
     var status = "off"
     /// The helper's last refusal or preview_error for the negotiation, if any.
     var lastError: String?
+    /// The last candidate the validator refused for the CURRENT applied v1
+    /// preview, with the typed source span of the refusal when the validator
+    /// named one (a cluster with no glyph), so the pane can point at the
+    /// source and offer the v1 preview of that revision as the fallback
+    /// (lane mac-navigation-3). Cleared when a later candidate is painted.
+    var lastInvalidCandidate: DisplayCandidateRefusal?
 
     @ObservationIgnored var sessionID: String?
     @ObservationIgnored var projectID: String?
@@ -353,11 +359,22 @@ final class DisplayCandidateState {
     }
 }
 
+/// One validator refusal the pane can act on: the request, the editor
+/// revision whose v1 preview is the fallback frame, and the source span the
+/// validator named (nil for refusals without one).
+struct DisplayCandidateRefusal: Equatable {
+    var requestID: String
+    var editorRevision: Int
+    var why: String
+    var source: RuntimeV1.SourceRange?
+}
+
 /// Off-main validation of one candidate: pure, no model access.
 enum DisplayCandidateValidator {
     enum Outcome {
         case verified(V2Frame)
-        case refused(String)
+        /// `source` is the span the rendering-v2 validator named, if any.
+        case refused(String, source: RuntimeV1.SourceRange? = nil)
     }
 
     /// Decodes/validates the envelope (RenderingV2), resolves fonts by
@@ -369,7 +386,7 @@ enum DisplayCandidateValidator {
     static func validate(_ frame: DisplayCandidateFrame, texts: [String: String], store: V2FontStore = .shared) -> Outcome {
         let prepared: V2Frame
         switch V2Loader.prepare(data: frame.displayList, store: store) {
-        case .failed(let error): return .refused("[\(error.code)] \(error.message)")
+        case .failed(let error): return .refused("[\(error.code)] \(error.message)", source: error.source)
         case .loaded(let f): prepared = f
         }
         let list = prepared.list
@@ -751,8 +768,9 @@ extension ShellModel {
             }
         }
         switch outcome {
-        case .refused(let why):
+        case .refused(let why, let refusedSource):
             displayCandidates.noteInvalid(why)
+            displayCandidates.lastInvalidCandidate = DisplayCandidateRefusal(requestID: frame.requestID, editorRevision: editorRevision, why: why, source: refusedSource)
             displayCandidates.status = "enabled; invalid \(frame.requestID): \(why)"
             log("display-candidate: invalid \(frame.requestID) (generation \(frame.compileRevision)): \(why)")
             restorePrevious()
@@ -782,6 +800,7 @@ extension ShellModel {
             if let prerastered { V2PageRasterizer.shared.preinstall(prerastered, frame: verified) }
             V2Loader.notePublished()
             displayListV2 = .loaded(verified, source)
+            displayCandidates.lastInvalidCandidate = nil
             displayCandidates.notePublished(editorRevision: editorRevision, validationMs: validationMs)
             let current = editorRevision == self.editorRevision
             displayCandidates.status = String(format: "enabled; painted %@ as revision %d (generation %d, %d page(s), validated in %.1f ms)%@",

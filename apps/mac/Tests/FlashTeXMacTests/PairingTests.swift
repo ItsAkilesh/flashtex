@@ -36,7 +36,7 @@ final class PairingFlowMachineTests: XCTestCase {
         XCTAssertEqual(m.generation, 1)
         XCTAssertTrue(m.isAdvertising, "a code implies the listener is up")
         XCTAssertEqual(out.effects.first, .persist(a1))
-        XCTAssertEqual(out.effects.last, .announce("Pairing code 1 2 3 4 5 6, valid for 120 seconds."))
+        XCTAssertEqual(out.effects.last, .announce("Pairing code 1 2, 3 4, 5 6, valid for 120 seconds."))
     }
 
     func testCodeIssuedWithOlderGenerationIsStale() {
@@ -272,7 +272,7 @@ final class PairingFlowMachineTests: XCTestCase {
         XCTAssertEqual(m.phase, .interrupted(a1, .peerGone, detail: "handshake failed"))
         let r = m.apply(.resume, now: later)
         XCTAssertEqual(m.phase, .codeShown(a1))
-        XCTAssertEqual(r.effects, [.announce("Resumed pairing code 1 2 3 4 5 6, 110 seconds left.")], "key still served; no transport effect")
+        XCTAssertEqual(r.effects, [.announce("Resumed pairing code 1 2, 3 4, 5 6, 110 seconds left.")], "key still served; no transport effect")
     }
 
     func testPeerGoneWhileCodeShownWithoutSessionIsIgnored() {
@@ -404,16 +404,18 @@ final class PairingFlowMachineTests: XCTestCase {
         let shown = P.codeShown(a1)
         XCTAssertEqual(shown.title, "Pairing code shown")
         XCTAssertEqual(shown.detail(now: t0.addingTimeInterval(30)), "Enter the code on the companion. Expires in 90 s.")
-        XCTAssertEqual(shown.accessibilityValue(now: t0), "Code 1 2 3 4 5 6. Enter it on the companion.")
+        XCTAssertEqual(shown.accessibilityValue(now: t0), "Code 1 2, 3 4, 5 6. Enter it on the companion, or scan the QR code.")
         XCTAssertEqual(P.verifying(a1).detail(now: t0.addingTimeInterval(119.5)), "A companion connected with the code; waiting for its hello. Expires in 1 s.")
         let inter = P.interrupted(a1, .peerGone, detail: "peer closed")
         XCTAssertEqual(inter.detail(now: t0), "The companion disconnected (peer closed). Code 123 456 is still valid for 120 s: resume or cancel.")
         XCTAssertEqual(inter.detail(now: t0.addingTimeInterval(121)), "The companion disconnected (peer closed); the code has expired. Dismiss it or show a new code.")
-        XCTAssertEqual(inter.accessibilityValue(now: t0), "peer closed. Code 1 2 3 4 5 6 is still valid.")
+        XCTAssertEqual(inter.accessibilityValue(now: t0), "peer closed. Code 1 2, 3 4, 5 6 is still valid.")
         XCTAssertEqual(P.failed(reason: "boom", generation: 1).detail(now: t0), "boom")
         XCTAssertEqual(P.paired(.init(pairId: "p", companionName: "iPad", generation: 1)).detail(now: t0), "Paired with iPad (p).")
         XCTAssertEqual(Pairing.displayCode("123456"), "123 456")
-        XCTAssertEqual(Pairing.spokenCode("907"), "9 0 7")
+        XCTAssertEqual(Pairing.spokenCode("907"), "9 0, 7")
+        XCTAssertEqual(Pairing.spokenCode("123456"), "1 2, 3 4, 5 6")
+        XCTAssertEqual(Pairing.clipboardCode("123 456"), "123456")
     }
 
     // MARK: step indicator and reconnect announcements (mac-pairing-ui-2)
@@ -486,11 +488,13 @@ final class PairingFlowMachineTests: XCTestCase {
         let r = PairRecord(pairId: "abc", psk: "k", companionName: "iPad", createdAt: t0, lastSeenAt: nil)
         let a = PairingAccessibility.deviceRow(r, connected: true)
         XCTAssertEqual(a.label, "Companion iPad, pair id abc")
-        XCTAssertTrue(a.value.hasPrefix("Connected. Paired "), a.value)
+        XCTAssertTrue(a.value.hasPrefix("Connected. Permission: captures allowed. Paired "), a.value)
         XCTAssertFalse(a.value.contains("Last seen"))
         var seen = r
         seen.lastSeenAt = t0
-        XCTAssertTrue(PairingAccessibility.deviceRow(seen, connected: false).value.hasPrefix("Not connected. Paired "))
+        XCTAssertTrue(PairingAccessibility.deviceRow(seen, connected: false).value.hasPrefix("Not connected. Permission: captures allowed. Paired "))
+        seen.permission = .viewOnly
+        XCTAssertTrue(PairingAccessibility.deviceRow(seen, connected: false).value.hasPrefix("Not connected. Permission: view only, captures refused. Paired "))
         XCTAssertTrue(PairingAccessibility.deviceRow(seen, connected: false).value.contains("Last seen"))
 
         let inbox = PairingAccessibility.CaptureRow(captureId: "c1", source: .inbox, state: "received", durable: false, note: "image/png")
@@ -561,10 +565,15 @@ final class PairingPersistenceTests: XCTestCase {
         """.utf8)
         // Schema v2 (per-record `generation`): a v1 file is upgraded in place, its records keep generation nil.
         XCTAssertEqual(try PairStore.decode(ok).get().1, .upgraded(from: 1))
-        let current = Data("""
+        // Schema v3 (per-record `permission`): a v2 file is upgraded too; v3 loads as is.
+        let v2 = Data("""
         {"version": 2, "salt": "000102030405060708090a0b0c0d0e0f", "pairs": []}
         """.utf8)
-        XCTAssertEqual(try PairStore.decode(current).get().1, .loaded(version: 2))
+        XCTAssertEqual(try PairStore.decode(v2).get().1, .upgraded(from: 2))
+        let current = Data("""
+        {"version": 3, "salt": "000102030405060708090a0b0c0d0e0f", "pairs": []}
+        """.utf8)
+        XCTAssertEqual(try PairStore.decode(current).get().1, .loaded(version: 3))
         let badSalt = Data("""
         {"version": 1, "salt": "0001", "pairs": []}
         """.utf8)

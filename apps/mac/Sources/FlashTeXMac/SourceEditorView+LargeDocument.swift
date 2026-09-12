@@ -30,3 +30,38 @@ extension SourceEditorView.BraceMatcher {
         return false
     }
 }
+
+/// Bounded selection announcement (lane mac-editor-a11y-3).
+///
+/// A selection change is announced as "Selected N characters, line a column b
+/// to line c column d". The character count is a grapheme walk over the
+/// selected text — O(n) in the selection, 2.6 ms for a 560 KB select-all
+/// (LargeDocumentEditorTests, debug build) — and it is the only O(n) work the
+/// coordinator does for a large selection: the delimiter highlight is already
+/// skipped for any non-empty selection, and the line/column lookups are
+/// `memchr` over the prefix (0.27 ms at the end of that buffer). The rest of a
+/// select-all (33–250 ms measured) is AppKit/TextKit 1 laying out the
+/// selection and is not reachable from here.
+///
+/// Above `largeSelectionAnnouncementLimit` the announcement names the line
+/// span instead of the character count, so the announcement cost is bounded
+/// by the limit (≈0.3 ms) whatever the selection size. Both forms stay exact.
+extension SourceEditorView {
+    /// UTF-16 length above which a selection is announced by its line span.
+    /// 64 K units is beyond any selection that fits on a screen and costs a
+    /// ~0.3 ms grapheme walk at most.
+    static let largeSelectionAnnouncementLimit = 65_536
+
+    /// `selectionAnnouncement(text:range:)` up to the limit; above it,
+    /// "Selected N lines, line a column b to line c column d" where N counts
+    /// the lines the selection covers (a selection ending at column 1 of a
+    /// line does not count that line). Nil for an invalid range, as the
+    /// unbounded form.
+    static func boundedSelectionAnnouncement(text: String, range: NSRange) -> String? {
+        guard range.length > largeSelectionAnnouncementLimit else { return selectionAnnouncement(text: text, range: range) }
+        guard range.location >= 0, let start = lineColumn(text: text, utf16: range.location),
+              let end = lineColumn(text: text, utf16: NSMaxRange(range)) else { return nil }
+        let lines = end.line - start.line + (end.column > 1 ? 1 : 0)
+        return "Selected \(lines) lines, line \(start.line) column \(start.column) to line \(end.line) column \(end.column)"
+    }
+}

@@ -981,7 +981,7 @@ struct SourceEditorView: NSViewRepresentable {
         }
 
         func announceNow(text: String, range: NSRange, prefix: String, suffix: String = "") {
-            guard let message = SourceEditorView.selectionAnnouncement(text: text, range: range) else { return }
+            guard let message = SourceEditorView.boundedSelectionAnnouncement(text: text, range: range) else { return }
             announcements.append(prefix + message + suffix)
             if announcements.count > 64 { announcements.removeFirst(announcements.count - 64) }
             announce(prefix + message + suffix)

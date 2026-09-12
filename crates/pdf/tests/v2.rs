@@ -455,3 +455,133 @@ fn content_hash_with_face_index_is_still_accepted_and_reported() {
         report.notes
     );
 }
+
+/// The searchable-text contract (`docs/proposals/pdf-searchable-text.md`):
+/// word boundaries are the producer's own inter-glyph gaps, replayed exactly
+/// (pen after the written `/W` width → next origin), and the report counts
+/// them. `v2-text-a-b.json` is the published `\text{a b}` display list from
+/// GH48 (rendering-core handoff 647c50c5: two one-glyph runs with glue
+/// between them and no space cluster); `v2-searchable-mixed.json` is the
+/// bundled producer's list for `The AV office fixed a b: $\forall x\, f(x)$
+/// and ffi.` (kerned `AV`, `ffi`/`fi` ligatures, math italic corrections).
+/// Fonts come from `apps/mac/Fonts` or an installed Latin Modern; skipped
+/// otherwise.
+#[test]
+fn searchable_text_word_gaps_are_the_producers_and_are_counted() {
+    use exact::{ExactFont, Ratio};
+    let options = V2Options {
+        font_dirs: vec![PathBuf::from(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../apps/mac/Fonts"
+        ))],
+    };
+    let ab = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/v2-text-a-b.json"
+    );
+    let (doc, report) = match v2::from_v2_file(Path::new(ab), &options) {
+        Ok(x) => x,
+        Err(e) if e.contains("was not found") => {
+            eprintln!("skipped: {e}");
+            return;
+        }
+        Err(e) => panic!("{e}"),
+    };
+    assert_eq!((report.runs, report.glyphs), (2, 2));
+    // One word gap (cmr12's word space, 0.326 em), nothing ambiguous.
+    assert_eq!(
+        (report.word_gaps, report.ambiguous_gaps),
+        (1, 0),
+        "{report:?}"
+    );
+    let out = exact::render_exact(&doc).unwrap();
+    let content = ops_text(&out.bytes, 5);
+    let ops = exact::parse(content.as_bytes()).unwrap();
+    // Both glyphs replay to their envelope origins.
+    assert_positions_round_trip(&ops, &doc, ab);
+    // The pen after `a` (its written /W width) lands 0.326 em before `b`:
+    // the boundary is geometry only — no space glyph, ActualText or Tw.
+    let ExactFont::CidCff(cid) = &doc.fonts["F1"] else {
+        panic!("expected CIDFontType0C")
+    };
+    let (a_origin, b_origin, size) = (134_651_073i128, 144_879_963i128, 12_535_902i128);
+    let w_a = Ratio::from_decimal(&cid.widths[&28]);
+    let gap = b_origin - (a_origin + w_a.num * size / (1000 * w_a.den));
+    assert!(
+        gap * 1000 >= v2::WORD_GAP_EM * size && gap * 1000 < 330 * size,
+        "gap {gap} ticks is {}/1000 em",
+        gap * 1000 / size
+    );
+    assert_eq!(
+        cid.widths.len(),
+        2,
+        "only a and b are embedded: {:?}",
+        cid.widths
+    );
+    assert!(!content.contains("Tw"), "{content}");
+    assert!(!content.contains("ActualText"), "{content}");
+    // ToUnicode as written (parsed back from the PDF bytes).
+    let file = PdfFile::parse(&out.bytes).unwrap();
+    let page = file.pages().unwrap()[0];
+    let fonts = file.page_fonts(page);
+    let ExactFont::CidCff(re) = flashtex_pdf::compare::font_from_dict(&file, fonts["F1"]).unwrap()
+    else {
+        panic!("expected CIDFontType0C")
+    };
+    let tu = exact::parse_to_unicode(re.to_unicode_verbatim.as_deref().unwrap()).unwrap();
+    assert_eq!(tu.get(&28).map(String::as_str), Some("a"));
+    assert_eq!(tu.get(&35).map(String::as_str), Some("b"));
+    assert_eq!(tu.len(), 2);
+
+    let mixed = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/v2-searchable-mixed.json"
+    );
+    let (doc, report) = match v2::from_v2_file(Path::new(mixed), &options) {
+        Ok(x) => x,
+        Err(e) if e.contains("was not found") => {
+            eprintln!("skipped (mixed): {e}");
+            return;
+        }
+        Err(e) => panic!("{e}"),
+    };
+    // Nine word gaps (The|AV|office|fixed|a|b:|∀…, `\,` at 0.161 em, )|and,
+    // and|ffi.) and two ambiguous ones: the 0.099 em italic correction after
+    // math `f` before `o` and before `(`. Kerns inside `AVAV` are below 30.
+    assert_eq!(
+        (report.word_gaps, report.ambiguous_gaps),
+        (9, 2),
+        "{report:?}"
+    );
+    let named: Vec<&String> = report
+        .notes
+        .iter()
+        .filter(|n| n.contains("gap of 99/1000 em"))
+        .collect();
+    assert_eq!(named.len(), 2, "{:?}", report.notes);
+    assert!(named[0].contains("between \"f\" and \"o\""), "{}", named[0]);
+    assert!(named[1].contains("between \"f\" and \"(\""), "{}", named[1]);
+    // Ligatures and every other cluster reach ToUnicode as their text.
+    let out = exact::render_exact(&doc).unwrap();
+    let file = PdfFile::parse(&out.bytes).unwrap();
+    let page = file.pages().unwrap()[0];
+    let fonts = file.page_fonts(page);
+    let mut texts = Vec::new();
+    for obj in fonts.values() {
+        let ExactFont::CidCff(cid) = flashtex_pdf::compare::font_from_dict(&file, obj).unwrap()
+        else {
+            panic!("expected CIDFontType0C")
+        };
+        let tu = exact::parse_to_unicode(cid.to_unicode_verbatim.as_deref().unwrap()).unwrap();
+        texts.extend(tu.into_values());
+    }
+    for t in ["ffi", "fi", "A", "V", "\\", "(", "x"] {
+        assert!(
+            texts.iter().any(|x| x == t),
+            "{t:?} missing from ToUnicode: {texts:?}"
+        );
+    }
+    let content = ops_text(&out.bytes, 5);
+    let ops = exact::parse(content.as_bytes()).unwrap();
+    assert_positions_round_trip(&ops, &doc, mixed);
+}

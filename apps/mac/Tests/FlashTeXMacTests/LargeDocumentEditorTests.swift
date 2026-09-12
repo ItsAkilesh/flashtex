@@ -420,4 +420,86 @@ extension LargeDocumentEditorTests {
         XCTAssertEqual(d5.sha256, SourceDigest.sha256Hex(model.activeText))
         print("large-document durable (real helper, \(model.activeText.utf8.count) bytes): paste \(paste), durable after \(Int(pasteDurableMs)) ms; keystrokes at the start \(Self.stats(keys)), durable after \(Int(typingDurableMs)) ms; \(IMEHarness.uptime())")
     }
+
+    // MARK: bounded selection announcement (lane mac-editor-a11y-3)
+
+    /// Below the limit the bounded form is the unbounded one; above it the
+    /// line-span form, exact at both ends, including a selection that ends at
+    /// column 1 (that line is not counted) and an invalid range (nil).
+    func testBoundedSelectionAnnouncementSwitchesToLineSpanAboveTheLimit() {
+        let limit = SourceEditorView.largeSelectionAnnouncementLimit
+        let small = "ab\ncdé\nf"
+        for range in [NSRange(location: 0, length: 0), NSRange(location: 1, length: 4), NSRange(location: 0, length: 8)] {
+            XCTAssertEqual(SourceEditorView.boundedSelectionAnnouncement(text: small, range: range),
+                           SourceEditorView.selectionAnnouncement(text: small, range: range), "\(range)")
+        }
+        // 1 000 lines of 70 UTF-16 units (some non-ASCII), 70 000 > limit.
+        let line = "Naïve café patrons — résumé in hand — watched the tide turn twice ok.\n"
+        XCTAssertEqual(line.utf16.count, 70)
+        let big = String(repeating: line, count: 1_000)
+        let all = NSRange(location: 0, length: big.utf16.count)
+        XCTAssertGreaterThan(all.length, limit)
+        XCTAssertEqual(SourceEditorView.boundedSelectionAnnouncement(text: big, range: all),
+                       "Selected 1000 lines, line 1 column 1 to line 1001 column 1")
+        // 65 537 units from offset 3 end at unit 65 540 = line 937 (65540 / 70 + 1), column 21.
+        XCTAssertEqual(SourceEditorView.boundedSelectionAnnouncement(text: big, range: NSRange(location: 3, length: limit + 1)),
+                       "Selected 937 lines, line 1 column 4 to line 937 column 21")
+        // Exactly at the limit: still the exact grapheme count (65 536 units end at line 937 column 17).
+        let atLimit = NSRange(location: 0, length: limit)
+        let unbounded = SourceEditorView.selectionAnnouncement(text: big, range: atLimit)
+        XCTAssertEqual(SourceEditorView.boundedSelectionAnnouncement(text: big, range: atLimit), unbounded)
+        let graphemes = String(big.utf16.prefix(limit))?.count ?? -1
+        XCTAssertEqual(graphemes, limit, "precomposed BMP prose: one grapheme per unit")
+        XCTAssertEqual(unbounded, "Selected \(graphemes) characters, line 1 column 1 to line 937 column 17")
+        XCTAssertNil(SourceEditorView.boundedSelectionAnnouncement(text: big, range: NSRange(location: 0, length: all.length + 1)))
+        XCTAssertNil(SourceEditorView.boundedSelectionAnnouncement(text: big, range: NSRange(location: -1, length: limit + 2)))
+    }
+
+    /// Whole-document selection on the 560 KB buffer, once more: the select-all
+    /// through the hosted editor as it stands, then the two announcement forms
+    /// timed directly on the same text. Figures are printed with `uptime`;
+    /// the only assertion is that the bounded form stays under 5 ms CPU.
+    func testWholeDocumentSelectionCostAndBoundedAnnouncement() async throws {
+        let uptime = try requireCalmMachine()
+        let text = Self.proseDocument(bytes: 560_000)
+        let ns = text as NSString
+        let model = ShellModel()
+        model.replaceProject(entryText: text)
+        let probe = Probe()
+        let (window, tv) = try await host(model, probe: probe)
+        defer { window.orderOut(nil) }
+        let co = try XCTUnwrap(probe.coordinator)
+        let lm = try XCTUnwrap(tv.layoutManager)
+        var announced: [String] = []
+        co.announce = { announced.append($0) }
+        lm.ensureLayout(forCharacterRange: NSRange(location: 0, length: ns.length))
+        try await turn()
+        var selectAlls: [Sample] = []
+        for _ in 0..<3 {
+            tv.setSelectedRange(NSRange(location: 0, length: 0))
+            try await turn()
+            announced = []
+            selectAlls.append(Self.timedWithTurn { tv.selectAll(nil) })
+            try await turn()
+        }
+        let all = NSRange(location: 0, length: ns.length)
+        let native = co.currentText(of: tv)
+        _ = SourceEditorView.lineColumn(text: native, utf16: ns.length) // breadcrumbs warm, as in the coordinator
+        var unbounded: [Sample] = [], bounded: [Sample] = []
+        var messages: (String?, String?) = (nil, nil)
+        for _ in 0..<5 {
+            unbounded.append(Self.timed { messages.0 = SourceEditorView.selectionAnnouncement(text: native, range: all) })
+            bounded.append(Self.timed { messages.1 = SourceEditorView.boundedSelectionAnnouncement(text: native, range: all) })
+        }
+        let boundedCpu = LatencyStats(bounded.map(\.cpu))
+        print("""
+            whole-document selection (560 KB, \(ns.length) UTF-16): select all ×3 \(Self.stats(selectAlls)); \
+            announced through the coordinator: \(announced.first?.prefix(70) ?? "nothing"); \
+            announcement alone, unbounded \(Self.stats(unbounded)) → "\(messages.0 ?? "nil")"; \
+            bounded \(Self.stats(bounded)) → "\(messages.1 ?? "nil")"; \(uptime)
+            """)
+        XCTAssertLessThan(boundedCpu.p50Ms ?? .infinity, 5, "bounded announcement stays cheap")
+        XCTAssertEqual(messages.1?.hasPrefix("Selected ") ?? false, true)
+        XCTAssertTrue(messages.1?.contains(" lines, line 1 column 1 to line ") ?? false, messages.1 ?? "nil")
+    }
 }

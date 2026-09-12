@@ -97,6 +97,7 @@ struct FlashTeXMacApp: App {
         }
         .commands {
             NavigationCommands(model: model) // Navigation.swift
+            DiagnosticsCommands(model: model) // DiagnosticsPanel.swift: Edit > Copy Diagnostics as Text (⌘⌥C)
             ProjectSearchCommands(openWindow: openWindow) // ProjectSearchPanel.swift: ⌘⇧F Find in Project…
             CitationRenameCommands(openWindow: openWindow) // CitationRename.swift: Edit > Rename Citation… (no shortcut)
             CommandGroup(after: .toolbar) {

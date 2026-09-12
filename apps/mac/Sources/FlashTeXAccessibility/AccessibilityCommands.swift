@@ -12,7 +12,7 @@ public enum AccessibilityCommand: String, CaseIterable, Equatable {
     case pinInsertionPoint, openCaptureProposal, submitSampleCapture, convertCapture, nearbyCompanion
     case restoreDiscardedBuffer
     case undo, completion, completionList
-    case goToMatching, nextDiagnostic, previousDiagnostic, revealCaretInPreview
+    case goToMatching, nextDiagnostic, previousDiagnostic, nextOccurrence, previousOccurrence, copyDiagnosticsAsText, revealCaretInPreview
     case selectPreviewItemSource
     case accessibilityHelp
     case durableHistory, findInProject, nextSearchMatch
@@ -119,7 +119,7 @@ public enum AccessibilityCommand: String, CaseIterable, Equatable {
                          menuItem: "Convert Capture")
         case .nearbyCompanion:
             return Entry(command: self, title: "Nearby Companion", shortcuts: ["⌘⇧N"], menu: "Edit",
-                         description: "Opens the window that advertises this Mac to a paired iPad/iPhone companion: pairing code, paired devices, received captures (nearby-v1 proposal). Return shows or resumes a pairing code, Esc cancels it or dismisses a banner; the status row, step indicator and every announcement are VoiceOver text.",
+                         description: "Opens the window that advertises this Mac to a paired iPad/iPhone companion: pairing code (also as a QR image; Copy code or ⌘C on the code copies the digits), paired devices with a per-companion permission pop-up (Captures allowed / View only), received captures (nearby-v1 proposal). Return shows or resumes a pairing code, Esc cancels it or dismisses a banner; the status row, step indicator and every announcement are VoiceOver text.",
                          menuItem: "Nearby Companion…")
         case .undo:
             return Entry(command: self, title: "Undo", shortcuts: ["⌘Z"], menu: "Edit",
@@ -145,6 +145,21 @@ public enum AccessibilityCommand: String, CaseIterable, Equatable {
                          description: "Selects the previous diagnostic with a source in the active document (wrapping).",
                          requires: "a compile result",
                          menuItem: "Previous Diagnostic")
+        case .nextOccurrence:
+            return Entry(command: self, title: "Next occurrence", shortcuts: ["⌘⌥]"], menu: "Navigate",
+                         description: "Steps to the next place of the diagnostics panel's selected group (else the group under the current diagnostic), wrapping within the group; the row then reads “k of n”.",
+                         requires: "the diagnostics panel (a result with diagnostics)",
+                         menuItem: "Next Occurrence")
+        case .previousOccurrence:
+            return Entry(command: self, title: "Previous occurrence", shortcuts: ["⌘⌥["], menu: "Navigate",
+                         description: "Steps to the previous place of the selected group, wrapping within the group.",
+                         requires: "the diagnostics panel (a result with diagnostics)",
+                         menuItem: "Previous Occurrence")
+        case .copyDiagnosticsAsText:
+            return Entry(command: self, title: "Copy diagnostics as text", shortcuts: ["⌘⌥C"], menu: "Edit",
+                         description: "Copies the selected diagnostics row as “path:line: error/warning: message” lines (every place of a grouped row; all diagnostics when nothing is selected); ⌘C does the same while the list has the keyboard.",
+                         requires: "the diagnostics panel (a result with diagnostics)",
+                         menuItem: "Copy Diagnostics as Text")
         case .revealCaretInPreview:
             return Entry(command: self, title: "Reveal caret in preview", shortcuts: ["⌘⇧J"], menu: "Navigate",
                          description: "Selects the source span of the preview item under the caret and names its page and item.",
@@ -227,7 +242,7 @@ public enum FocusOrder {
              rationale: "Follows the editor column so a user can check what the last edit produced, page by page, without leaving the keyboard.",
              container: "PreviewPane", sourceMarker: "PreviewView("),
         Pane(name: "Diagnostics",
-             contents: "List of the compile result's diagnostics: “Diagnostic n of m: Error/Warning: message”, the recovery note as the value, “Go to source” when it has a source.",
+             contents: "List of the compile result's diagnostics, identical ones folded into one row: “Diagnostic n of m: Error/Warning: message, 12 places, 3 of 12, main.tex line 41”, the recovery note as the value, “Go to source” when it has a source. ↑/↓ select a row, Return jumps to its current occurrence, Esc returns the keyboard to the editor, ⌘C copies the selection as path:line: message lines.",
              rationale: "Comes after the preview because the preview is still shown when errors exist; diagnostics refine, not replace, it.",
              container: "PreviewPane", sourceMarker: "diagnosticsList("),
     ]
@@ -342,12 +357,14 @@ public enum PanelFocusOrder {
                 Control(name: "Dismiss", sourceMarker: "accessibilityIdentifier(\"nearby.pairing.dismiss\")", when: "paired banner"),
                 Control(name: "Cancel receiving", sourceMarker: "accessibilityLabel(\"Cancel receiving\")", when: "receiving a capture"),
                 Control(name: "Show Pairing Code / Show New Code", sourceMarker: "Button(title) { controller.showCode() }", when: "idle, paired, error or expired"),
-                Control(name: "Pairing code (spoken as digits)", sourceMarker: "accessibilityIdentifier(\"nearby.pairing.code\")", when: "code shown or verifying"),
+                Control(name: "Pairing code (spoken as digits in pairs; ⌘C copies it; a QR image of the same payload sits beside it)", sourceMarker: "accessibilityIdentifier(\"nearby.pairing.code\")", when: "code shown or verifying"),
+                Control(name: "Copy code", sourceMarker: "Button(\"Copy code\")", when: "code shown or verifying"),
                 Control(name: "Cancel pairing", sourceMarker: "accessibilityLabel(\"Cancel pairing\")", when: "code shown or verifying"),
                 Control(name: "Resume", sourceMarker: "accessibilityIdentifier(\"nearby.pairing.resume\")", when: "interrupted, code still valid"),
                 Control(name: "Cancel interrupted pairing", sourceMarker: "accessibilityLabel(\"Cancel interrupted pairing\")", when: "interrupted, code still valid"),
                 Control(name: "Dismiss", sourceMarker: "accessibilityIdentifier(\"nearby.pairing.dismiss\")", when: "interrupted, code expired"),
                 Control(name: "Show New Code", sourceMarker: "showCodeButton(title: \"Show New Code\")", when: "interrupted, code expired"),
+                Control(name: "Permission for <companion> (pop-up: Captures allowed / View only)", sourceMarker: "Picker(\"Permission\"", when: "one per paired companion"),
                 Control(name: "Forget <companion>", sourceMarker: "Button(\"Forget\")", when: "one per paired companion"),
                 Control(name: "Clear refused captures", sourceMarker: "Button(\"Clear\")", when: "after a refused capture"),
               ],

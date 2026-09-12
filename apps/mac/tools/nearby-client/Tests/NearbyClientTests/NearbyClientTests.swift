@@ -112,6 +112,50 @@ final class DiscoveredMacTests: XCTestCase {
     }
 }
 
+final class NearbyBootstrapPayloadTests: XCTestCase {
+    /// Pinned vector (salt 00…0f, code 123456): the Mac's PairingQRTests
+    /// encode exactly this string into its QR image.
+    func testPayloadRoundTripAndPinnedString() throws {
+        let salt = try XCTUnwrap(NearbyCrypto.data(hex: "000102030405060708090a0b0c0d0e0f"))
+        let p = NearbyBootstrapPayload(code: "123456", salt: salt, macName: "Jay's Mac Studio")
+        XCTAssertEqual(p.fingerprint, "0e712816d64b7c47")
+        XCTAssertEqual(p.urlString,
+                       "flashtex-nearby://pair?v=1&code=123456&salt=000102030405060708090a0b0c0d0e0f&fp=0e712816d64b7c47&name=Jay's%20Mac%20Studio")
+        XCTAssertEqual(try NearbyBootstrapPayload.parse(p.urlString), p)
+        XCTAssertEqual(try NearbyBootstrapPayload.parse(" \(p.urlString)\n"), p, "scanner whitespace is tolerated")
+    }
+
+    func testPayloadRefusals() throws {
+        let salt = "000102030405060708090a0b0c0d0e0f"
+        func reason(_ s: String) -> String {
+            do { _ = try NearbyBootstrapPayload.parse(s); return "accepted" } catch let e as NearbyError { return e.description } catch { return "\(error)" }
+        }
+        XCTAssertEqual(reason("https://example.com/pair?v=1"), "invalid input: not a flashtex-nearby://pair payload")
+        XCTAssertEqual(reason("flashtex-nearby://pair?v=2&code=123456&salt=\(salt)&fp=0e712816d64b7c47"), "invalid input: payload version 2 is not 1")
+        XCTAssertEqual(reason("flashtex-nearby://pair?v=1&code=12345&salt=\(salt)&fp=0e712816d64b7c47"), "invalid input: payload code must be 6 digits")
+        XCTAssertEqual(reason("flashtex-nearby://pair?v=1&code=123456&salt=0001&fp=0e712816d64b7c47"), "invalid input: payload salt must be 16 hex bytes")
+        XCTAssertEqual(reason("flashtex-nearby://pair?v=1&code=123456&salt=\(salt)&fp=deadbeefdeadbeef"), "invalid input: payload fp does not match its salt")
+        XCTAssertEqual(reason("flashtex-nearby://pair?v=1&code=123456&salt=\(salt)&fp=0e712816d64b7c47"), "accepted", "name is optional")
+    }
+
+    /// `capture_not_permitted` is its own class: pairing intact (no re-pair),
+    /// same capture later (no new capture), not backpressure, not retried.
+    func testCaptureNotPermittedIsNeitherRepairNorNewCapture() {
+        let e = NearbyError.remote(code: "capture_not_permitted", message: "view-only")
+        XCTAssertTrue(e.needsPermission)
+        XCTAssertFalse(e.needsRepair)
+        XCTAssertFalse(e.needsNewCapture)
+        XCTAssertFalse(e.needsNewDestination)
+        XCTAssertFalse(e.isRetryable)
+        XCTAssertFalse(e.isBackpressure)
+        XCTAssertFalse(e.isClosing)
+        XCTAssertFalse(NearbyError.remote(code: "pair_mismatch", message: "").needsPermission)
+        var lines: [String] = []
+        XCTAssertEqual(NearbyCLI.exitCode(for: e) { lines.append($0) }, 6)
+        XCTAssertTrue(lines[0].contains("view-only") && lines[0].contains("no re-pair"), "\(lines)")
+    }
+}
+
 final class PairFileTests: XCTestCase {
     func testRoundTripAndPermissions() throws {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("nearby-client-\(UUID().uuidString)")
