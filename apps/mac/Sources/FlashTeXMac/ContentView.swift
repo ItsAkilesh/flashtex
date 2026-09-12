@@ -16,7 +16,6 @@ struct ContentView: View {
     @State private var columns: NavigationSplitViewVisibility = .all
     /// Height of the Problems panel; remembered across launches.
     @AppStorage("FlashTeX.workspace.problemsHeight") private var problemsHeight: Double = ProblemsPanel.idealHeight
-    @ObservedObject private var demo = GrokDemoModel.shared // TEMPORARY demo hook
 
     var body: some View {
         @Bindable var model = model
@@ -29,7 +28,6 @@ struct ContentView: View {
                     HSplitView {
                         EditorPane().frame(minWidth: 340, maxWidth: .infinity)
                         PreviewPane().frame(minWidth: 380, maxWidth: .infinity)
-                        if GrokDemo.enabled(), demo.panelShown { GrokDemoPanel() } // TEMPORARY demo hook (GrokDemoMode.swift)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     if model.problemsVisible {
@@ -135,7 +133,6 @@ private struct WorkspaceToolbar: ToolbarContent {
             }
             .toggleStyle(.button)
             .help("Show or hide the Problems panel (View, ⌘⇧M)")
-            if GrokDemo.enabled() { GrokDemoToolbarButton() } // TEMPORARY demo hook
             Button { model.commandPaletteShown = true } label: { Label("Commands", systemImage: "command") }
                 .help("Command Palette… (View, ⌘⇧P): every command with its shortcut")
                 .accessibilityIdentifier("toolbar.command-palette")
@@ -384,7 +381,6 @@ private struct StatusBar: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            if GrokDemo.enabled() { GrokDemoStatusPill() } // TEMPORARY demo hook
             Label("r\(model.editorRevision)", systemImage: "pencil.line")
                 .help("Editor revision (increments on every edit)")
             if let durable = model.controllerState.durable[model.activePath]?.revision {

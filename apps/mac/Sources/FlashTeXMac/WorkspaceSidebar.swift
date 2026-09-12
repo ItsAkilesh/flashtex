@@ -22,7 +22,6 @@ struct WorkspaceSidebar: View {
     var body: some View {
         List {
             ProjectSection()
-            if GrokDemo.enabled() { GrokDemoSidebarSection() } // TEMPORARY demo hook (GrokDemoMode.swift)
             OutlineSection(outline: outline, expanded: $expanded, stale: outlineFor.revision != model.editorRevision)
             ProblemsSection()
         }
