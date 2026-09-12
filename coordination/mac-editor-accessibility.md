@@ -1,6 +1,6 @@
 # mac-editor-accessibility (Claude Code subagent, parent mac-claude-a)
 
-- Updated UTC: 2026-09-12T06:05Z
+- Updated UTC: 2026-09-12T07:00Z
 - Agent / parent / machine alias: mac-editor-accessibility / mac-claude-a / mac-m1max-a
 - Task / acceptance gate / owned paths: lane "Responsive native editor
   accessibility and selection semantics" plus its follow-ups "Keyboard/edit
@@ -13,13 +13,72 @@
   see below). Transferred crates (font-engine, paragraph-layout, math-layout)
   untouched.
 - Branch / code revision / main integrated through:
-  refill task on `agent/mac-editor-accessibility/ime`, based on
-  `origin/agent/mac-claude-a/mac-shell` 40d53b7 (my first lane,
-  `agent/mac-editor-accessibility/responsive` 1643f86, is merged there).
+  refill task 2 on `agent/mac-editor-accessibility/braces`, based on
+  `origin/agent/mac-claude-a/mac-shell` dbcf9c3 (≥ 6f4ee94; both earlier
+  lanes — `responsive` 1643f86 and `ime` f545519 — are merged there, and the
+  completion lane applied the Esc/marked-text guard).
   Worktree: `.claude/worktrees/agent-ac192954cb317fe5e`.
-- State: ready for integration (parent review). Lane items and the refill
-  task (input-method correctness) done; one diff needed in Completion.swift
-  (other lane's file) is listed below, not applied.
+- State: ready for integration (parent review). Lane items, refill 1
+  (input methods) and refill 2 (delimiter pairs) done; one two-line model/
+  ContentView diff for the auto-close setting is requested below.
+
+## Refill 2: LaTeX-aware delimiter pairs (exact, undo-correct)
+
+- `SourceEditorView.BraceMatcher` (pure, UTF-8 bytes of the native text,
+  line by line): partner of the `{}` / `[]` / `$…$` delimiter before (else
+  after) the caret; an escaping backslash hides the next byte (`\{`, `\$`,
+  `\\`), an unescaped `%` hides the rest of the line, a `\verb<d>…<d>` /
+  `\verb*` argument is skipped; brackets match by kind with depth counting;
+  `$$` is one token pairing only with `$$`; a `$` is an opener when an even
+  number of `$` tokens precede it in its paragraph (back to the last blank
+  line), inline math never crosses a blank line; the scan is bounded to
+  32 KB per direction (an unmatched opener in a huge file costs < 20 ms CPU,
+  the common case parses one line). Multi-byte text before the pair keeps the
+  UTF-16 offsets exact (é, ZWJ emoji cases).
+- Highlight: both delimiters get a temporary `.backgroundColor` (the marks
+  painter owns other keys); recomputed on every caret move / user edit, only
+  the two ranges are touched; cleared for selections, during compositions and
+  by a text reset. VoiceOver: caret announcements gain ", matches line L
+  column C" (partner farthest from the caret); typing a closer (or typing over
+  an auto-inserted one) announces "matches line L column C" even though
+  typing is otherwise silent.
+- Auto-close (`autoClosePairs`, default `["{"]`; `[` and `$` when the owner
+  enables them): the opener the user types gets its closer inserted through
+  `insertText` in the same text change (one binding push, one revision) and
+  the caret sits between; AppKit coalesces the closer with the typed opener,
+  so ⌘Z after `{}` leaves nothing (and ⇧⌘Z brings `{}` back). Gate: code
+  only (not escaped, not in a comment or `\verb`), caret insertion (never
+  over a selection), next character is end/whitespace/closer, never while
+  marked text exists, and never for an input-method commit.
+- Type-over: typing the closer at an auto-inserted closer's position steps
+  over it — no text change, no revision (`shouldChangeTextIn` returns false).
+  Auto-inserted closer positions are tracked and shifted across edits;
+  an edit overlapping one drops it, a text reset or capture insertion drops
+  all.
+- Backspace between an auto-inserted pair removes both characters (delegate
+  `doCommandBy: deleteBackward`), pushed to the model as one change; it is
+  its own undo step (⌘Z restores the pair). Observed and worked around: a
+  programmatic range deletion without `breakUndoCoalescing` is folded into
+  AppKit's open typing group and its undo then removes the preceding typing
+  too.
+- Boundary: `\begin{env}` typed by hand (Return after `}`) offers nothing in
+  the editor; the `\end{env}` snippet belongs to the completion lane.
+- Tests (SourceEditorViewTests, +3 = 20): pure matcher table (escapes,
+  comments, verb, `$`/`$$` parity, blank lines, depth, kinds, multi-byte,
+  budget, auto-close gate); hosted auto-close / type-over / backspace with
+  undo-redo and caret-byte exactness incl. `é`, disabled `[`, escaped, comment,
+  selection, before-letter, IME commit; hosted highlight + announcements on
+  caret moves, navigation, typed closer, and reset.
+
+Diff requested in parent-retained files (not applied):
+```
+// ShellModel.swift
++    /// Openers the editor auto-closes (`{`, `[`, `$`); braces only by default.
++    var autoClosePairs: Set<Character> = ["{"]
+// ContentView.swift, SourceEditorView(...)
++                autoClosePairs: model.autoClosePairs,
+```
+Without it the editor uses its own default (`{` only).
 
 ## Refill: input-method correctness (marked text)
 
@@ -134,9 +193,9 @@ tried and inserts the literal characters.
   (AppKit setup + layout), not repeated; the round trip never includes it.
 
 Validation: `swift test` in apps/mac with the four real worker binaries
-(FLASHTEX_COMPILER/PDF/BRIDGE/EDIT_LEDGER) on the ime branch: 384 tests,
-0 failures, 12 pre-existing env-gated skips. `SourceEditorViewTests` 17/17,
-repeated 6× consecutively without failure. Under a heavy concurrent load
+(FLASHTEX_COMPILER/PDF/BRIDGE/EDIT_LEDGER) on the braces branch: 459 tests,
+0 failures, 21 pre-existing env-gated skips. `SourceEditorViewTests` 20/20,
+repeated 3× consecutively without failure (17/17 ×6 on the ime branch). Under a heavy concurrent load
 burst (full suite at 103 s instead of 33 s) one run of the keystroke bench
 exceeded the whole-keystroke CPU budget (TextKit layout inflates under
 contention), and another lane's wall-clock bench (`CompletionTests`
