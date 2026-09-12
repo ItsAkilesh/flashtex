@@ -3,10 +3,10 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-023": {
-      "acknowledged_utc": "2026-09-12T05:55:11Z",
-      "adaptation": "Reviewed FT-023 rev1 and exact runtime-v1 preservation gate. Published typed rendering core, hit index, immutable cache and font-resource adapter through25d159d; now implement original checked coordinate transforms and clips only within crates/rendering-core, with no native/PDF activation.",
-      "main_sha": "254193c175534e78bfd9e5206b4850b86123cbe6",
-      "revision": 1
+      "acknowledged_utc": "2026-09-12T06:48:21Z",
+      "adaptation": "Read current published mixed quadratic/cubic/rule assignment. Implementing only rendering-core opt-in exact batch and replay APIs; stable primitive/source identity, strict byte and command budgets, no legacy wire activation.",
+      "main_sha": "1b17778ba97f638b8e8e003e16e6f8ee77b68b20",
+      "revision": 2
     }
   },
   "branch": "agent/commander-render-core/rendering-core",
@@ -14,23 +14,23 @@
     "rust",
     "rendering"
   ],
-  "code_revision": "a16e4f4586dca6af70c5f5790843b120a302dfd6",
+  "code_revision": "410a5b102546397caf7b8a86151bfdcc74d285c9",
   "eta_minutes": {
     "likely": 20,
     "optimistic": 10,
     "pessimistic": 30
   },
   "machine": "linux-primary",
-  "main_integrated_through": "9d69d6ed0b2a3300fb3fd5351af150707f062824",
-  "next_action": "Publish CFF consumer and continue next assigned product increment.",
+  "main_integrated_through": "410a5b102546397caf7b8a86151bfdcc74d285c9",
+  "next_action": "Implement exact mixed fixture replay and consumer conversion harness, then bounded residency/stale-source gates.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "Separate CFF1 cubic consumer implemented with immutable table digest, explicit hint policy, exact FontMatrix and rational page placement. 84 Rust tests pass.",
+  "summary": "Mixed quadratic/cubic/rule batches implemented with stable traced identity, exact per-primitive clips and atomic command/serialized-byte budgets. 88 Rust tests pass.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T06:42:54Z",
+  "updated_utc": "2026-09-12T06:49:21Z",
   "usage": {
-    "evidence": "84 Rust tests and strict all-target clippy pass. Installed STIXTwoText-Regular: 2220 non-notdef exact placements accepted, 55177 commands, no native painting. Peer 8cf7304 merged unchanged.",
+    "evidence": "88 Rust tests and strict all-target clippy pass; byte limit tested at exact size and one byte under. FT023 actual revision2 ACKed from main1b17778.",
     "status": "Hosted OpenAI authorized; no external provider calls or purchases."
   }
 }
