@@ -35,13 +35,16 @@ impl Client {
         )
     }
     fn configured(root: &std::path::Path, value: Value) -> Self {
+        Self::configured_stderr(root, value, Stdio::null())
+    }
+    fn configured_stderr(root: &std::path::Path, value: Value, stderr: Stdio) -> Self {
         let config = root.join("config.json");
         std::fs::write(&config, serde_json::to_vec(&value).unwrap()).unwrap();
         let mut child = Command::new(env!("CARGO_BIN_EXE_flashtex-preview-controller"))
             .arg(config)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::null())
+            .stderr(stderr)
             .spawn()
             .unwrap();
         let stdout = child.stdout.take().unwrap();
@@ -990,7 +993,10 @@ for line in sys.stdin:
   while not pathlib.Path(__file__+'.release').exists():time.sleep(.002)
  docs=[{'path':d['path'],'revision':p['revision'],'sha256':hashlib.sha256(d['text'].encode()).hexdigest(),'byte_length':len(d['text'].encode())} for d in p['documents']]
  if mode=='hash':docs[0]['sha256']='0'*64
- print(json.dumps({'protocol_version':2,'type':'display_list','id':r['id'],'payload':{'project_id':p['project_id'],'revision':p['revision'],'render_format':'display-list-v2','documents':docs}}),flush=True)
+ wire=json.dumps({'protocol_version':2,'type':'display_list','id':r['id'],'payload':{'project_id':p['project_id'],'revision':p['revision'],'render_format':'display-list-v2','documents':docs}})
+ if mode=='oversize':wire=wire[:-2]+',"stress":['+','.join(['1e9']*1400000)+']}}'
+ if mode=='large':wire=wire[:-2]+',"stress":'+json.dumps('x'*1048576)+'}}'
+ print(wire,flush=True)
 "#.replace("MODE", mode);
     std::fs::write(&path, script).unwrap();
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700)).unwrap();
@@ -1072,5 +1078,140 @@ fn corrupt_display_hash_fails_preview_but_preserves_durable_edit_and_reopen() {
     assert_eq!(
         reopened.reply("doc")["payload"]["document"]["text"],
         "durable despite compiler failure"
+    );
+}
+
+#[test]
+#[cfg(unix)]
+fn full_size_optional_expansion_drops_candidate_and_keeps_edit_ack_and_reopen() {
+    let dir = tempfile::tempdir().unwrap();
+    // Initialize the existing durable store without creating any renderer dependency.
+    drop(Client::start(dir.path()));
+    let compiler = display_failure_fixture(dir.path(), "oversize");
+    let diagnostic_path = dir.path().join("diagnostics.jsonl");
+    let diagnostic_file = std::fs::File::create(&diagnostic_path).unwrap();
+    let config = json!({"session_id":"session1","project_id":"p","entry_path":"main.tex",
+        "store_paths":[dir.path().join("store")],"compiler_path":compiler,"diagnostic_timings":true});
+    let mut client = Client::configured_stderr(dir.path(), config, Stdio::from(diagnostic_file));
+    enable_display(&mut client);
+    // Fixture's 5.6 MB line fits the runtime 8 MiB limit but reserialization of
+    // its compact numbers exceeds the helper's actual 16 MiB complete-frame limit.
+    let deadline = std::time::Instant::now() + Duration::from_secs(15);
+    loop {
+        let diagnostics = std::fs::read_to_string(&diagnostic_path).unwrap();
+        if diagnostics
+            .lines()
+            .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+            .any(|v| {
+                v["phase"] == "optional_output"
+                    && v["kind"] == "display_candidate"
+                    && v["outcome"] == "serialization_refused"
+            })
+        {
+            break;
+        }
+        assert!(
+            client.child.try_wait().unwrap().is_none(),
+            "helper terminated"
+        );
+        assert!(
+            std::time::Instant::now() < deadline,
+            "no full-size serialization refusal: {diagnostics}"
+        );
+        thread::sleep(Duration::from_millis(2));
+    }
+    for event in client.output.try_iter() {
+        assert_ne!(event["payload"]["kind"], "display_candidate");
+        assert_ne!(event["payload"]["kind"], "failed", "{event}");
+    }
+    client.send("doc", "document", json!({"path":"main.tex"}));
+    let doc = client.reply("doc")["payload"]["document"].clone();
+    client.send(
+        "edit",
+        "edit",
+        json!({"path":"main.tex","expected_revision":doc["revision"],
+        "expected_sha256":doc["source_sha256"],"text":"durable after oversized optional frame"}),
+    );
+    let response = client.reply("edit");
+    assert_eq!(response["type"], "result");
+    assert_eq!(response["payload"]["document"]["revision"], 2);
+    drop(client);
+    let mut client = Client::start(dir.path());
+    client.send("doc", "document", json!({"path":"main.tex"}));
+    assert_eq!(
+        client.reply("doc")["payload"]["document"]["text"],
+        "durable after oversized optional frame"
+    );
+}
+
+#[test]
+#[cfg(unix)]
+fn stalled_optional_display_write_triggers_watchdog_with_no_source_loss() {
+    let dir = tempfile::tempdir().unwrap();
+    drop(Client::start(dir.path()));
+    let compiler = display_failure_fixture(dir.path(), "large");
+    let diagnostics = dir.path().join("optional-stall.jsonl");
+    let config = dir.path().join("stall-config.json");
+    std::fs::write(
+        &config,
+        serde_json::to_vec(&json!({"session_id":"session1","project_id":"p",
+        "entry_path":"main.tex","store_paths":[dir.path().join("store")],"compiler_path":compiler,
+        "diagnostic_timings":true}))
+        .unwrap(),
+    )
+    .unwrap();
+    let mut child = Command::new(env!("CARGO_BIN_EXE_flashtex-preview-controller"))
+        .arg(config)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::from(std::fs::File::create(&diagnostics).unwrap()))
+        .spawn()
+        .unwrap();
+    let mut unread = BufReader::new(child.stdout.take().unwrap());
+    let input = child.stdin.take();
+    let (_sender, output) = mpsc::channel();
+    let mut client = Client {
+        child,
+        input,
+        output,
+    };
+    let mut line = String::new();
+    unread.read_line(&mut line).unwrap();
+    assert_eq!(
+        serde_json::from_str::<Value>(&line).unwrap()["type"],
+        "ready"
+    );
+    client.send(
+        "enable",
+        "configure_display_candidates",
+        json!({"capability":"display-candidates-v1",
+        "enabled":true,"renderer_support_confirmed":true}),
+    );
+    // Keep stdout open but unread: small required frames fit, optional 1 MiB does not.
+    let deadline = std::time::Instant::now() + Duration::from_secs(6);
+    loop {
+        if let Some(status) = client.child.try_wait().unwrap() {
+            assert!(!status.success());
+            break;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "optional writer did not terminate"
+        );
+        thread::sleep(Duration::from_millis(5));
+    }
+    let log = std::fs::read_to_string(&diagnostics).unwrap();
+    assert!(log
+        .lines()
+        .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+        .any(|v| v["phase"] == "optional_output"
+            && v["kind"] == "display_candidate"
+            && v["outcome"] == "admitted"));
+    drop(client);
+    let mut reopened = Client::start(dir.path());
+    reopened.send("doc", "document", json!({"path":"main.tex"}));
+    assert_eq!(
+        reopened.reply("doc")["payload"]["document"]["text"],
+        "α original"
     );
 }

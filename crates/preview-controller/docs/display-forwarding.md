@@ -102,3 +102,12 @@ With existing `diagnostic_timings:true`, stderr includes `phase:optional_output`
 `serialization_ms`. These diagnostics contain no source text or payload data.
 Admission is queue acceptance, not proof of native receipt or paint. As with other
 phase diagnostics, clients must drain stderr while enabled.
+
+Full-size helper failure-path tests now cover a roughly 5.6 MB numeric sibling that
+fits the runtime's default input bound but expands beyond the real 16 MiB helper
+output bound. The test waits for explicit `serialization_refused` diagnostics,
+then verifies an intact edit ACK and exact durable reopen. Another test keeps
+stdout open but unread after startup, admits a 1 MiB optional display frame, and
+verifies the existing stalled-writer watchdog terminates the helper while source
+remains intact. These use transport fixtures and do not establish native paint
+performance or renderer validity.
