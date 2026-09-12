@@ -239,6 +239,38 @@ final class ShellModel {
     @ObservationIgnored private var explanationClient: ExplanationClient?
     var explanationStatus: String?
 
+    /// A reviewed quick fix being previewed (sheet); nil when none.
+    var quickFix: EditorDiagnostics.QuickFix.Preview?
+    var quickFixIndex: Int?
+
+    /// "Fix…" on a diagnostics row: prepare the suggestion against the current
+    /// buffer and show the preview; refusals go to the footer.
+    func previewQuickFix(diagnosticIndex: Int, suggestion: Int = 0) {
+        guard let x = explanations.explanation(resultID: resultID, index: diagnosticIndex) else {
+            navigationNote = "No explanation for this diagnostic yet."; return
+        }
+        switch EditorDiagnostics.QuickFix.prepare(x, suggestion: suggestion, path: activePath,
+                                                  in: activeText, compiledText: compiledDocuments[activePath]) {
+        case .success(let preview): quickFix = preview; quickFixIndex = diagnosticIndex; navigationNote = nil
+        case .failure(let why): quickFix = nil; navigationNote = "Fix not applied: " + why.text
+        }
+    }
+
+    /// "Apply" in the preview sheet: one grouped replacement through the
+    /// existing pendingEdit path (single undoable edit, never automatic).
+    func applyQuickFix() {
+        guard let preview = quickFix else { return }
+        let grouped = preview.apply()
+        guard grouped.path == activePath, grouped.matches(activeText) else {
+            navigationNote = "Fix not applied: the document changed since the preview; open Fix… again."
+            quickFix = nil; return
+        }
+        pendingEdit = .init(path: grouped.path, nsRange: grouped.nsRange, text: grouped.text,
+                            token: (pendingEdit?.token ?? 0) + 1)
+        navigationNote = "Applied: \(preview.summary) (undo with ⌘Z)"
+        quickFix = nil
+    }
+
     /// Asks the helper once per result; the cache is read by `editorMarkReport`.
     private func fetchExplanations(for result: RuntimeV1.CompileResult, id: String, documents: [RuntimeV1.Document]) {
         guard explanations[id] == nil else { return }
@@ -672,6 +704,8 @@ final class ShellModel {
                 compileQueued = false
                 compile() // no-op when buffers and capability set are unchanged
             }
+        case .displayList(let id, let line):
+            receiveDisplayListV2(id: id, line: line) // negotiated live v2 frame (PreviewV2View.swift)
         case .error(let id, let message):
             inFlightRequests.removeValue(forKey: id)
             refreshInFlightRevision()

@@ -1,0 +1,29 @@
+{
+  "frameId" : "mac-2",
+  "identical" : true,
+  "pages" : [
+    {
+      "differingPixels" : 0,
+      "exportSha256" : "269a77e71e57044c3899c47f1198496a4fb53b492681ce278d8410f92a75843b",
+      "heightPx" : 1584,
+      "page" : 1,
+      "previewSha256" : "269a77e71e57044c3899c47f1198496a4fb53b492681ce278d8410f92a75843b",
+      "widthPx" : 1224
+    },
+    {
+      "differingPixels" : 0,
+      "exportSha256" : "35fd27146fc47ba0bd0b7e3eb8ab6dcd2aed52eeed2c9059e4dbff5cc6d738c9",
+      "heightPx" : 1584,
+      "page" : 2,
+      "previewSha256" : "35fd27146fc47ba0bd0b7e3eb8ab6dcd2aed52eeed2c9059e4dbff5cc6d738c9",
+      "widthPx" : 1224
+    }
+  ],
+  "pdfBytes" : 117811,
+  "projectId" : "demo",
+  "revision" : 2,
+  "scale" : 2,
+  "source" : "live mac-2 (revision 2)",
+  "tolerance" : 0,
+  "total_differing_pixels" : 0
+}

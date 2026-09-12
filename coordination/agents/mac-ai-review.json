@@ -2,13 +2,13 @@
   "agent_id": "mac-ai-review",
   "allocation_id": "claude-mac20x-ai-review",
   "assignment_acknowledgements": {},
-  "branch": "agent/mac-ai-review/assistant-context",
+  "branch": "agent/mac-ai-review/bundled",
   "capabilities": [
     "swift",
     "rust",
     "macos"
   ],
-  "code_revision": "4b1dad510071cb9a74825a1609fe42583fe1d74b",
+  "code_revision": "0d14820",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
@@ -16,7 +16,7 @@
   },
   "machine": "mac-m1max-a",
   "main_integrated_through": "c9f1b9edbc872085949da89a7d3e4875ce17cd54",
-  "next_action": "Await parent review/merge into mac-shell; optional ContentView patch to feed preview.amendedProposalLatex into the sheet's latex draft; helper location for the packaged app is the parent's call (bundle flashtex-assistant-context next to the executable or set FLASHTEX_ASSISTANT_CONTEXT).",
+  "next_action": "Parent merges agent/mac-ai-review/bundled into mac-shell; packaging lane adds make-app.sh --assistant <path> (cp to Contents/MacOS/flashtex-assistant-context); optional README line for FLASHTEX_ASSISTANT_CONTEXT/PROVIDER.",
   "reviewed_peers": {
     "origin/agent/commander/assistant-context": {
       "adaptation": "Consumed the one-request helper's prepare/validate/review/approve exactly as published in main.rs/review.rs at c8a3e1b; the persistent --session JSONL mode and grok feature are not used (no credentials, no network from the app); Tests replay examples/review-workflow.json (c93bf0d) against the pinned binary.",
@@ -31,11 +31,11 @@
   },
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "Lane 'Consume assistant-context helper with explicit proposal review boundary' + follow-ups (cancellation/out-of-order rejection; never-apply + native recovery) at agent/mac-ai-review/assistant-context tip 4b1dad5 (base mac-shell 6b43a3a; main merged through c9f1b9e). ProposalPreview.swift runs the pinned flashtex-assistant-context (origin/agent/commander/assistant-context: interface c8a3e1b, fixture c93bf0d; built by Tests/FlashTeXMacTests/Fixtures/build_assistant_context.sh into apps/mac/build, sha256 0910d690...) as a one-request child process on the shadow compile: prepare (probe + explicit destinations = proposal body), optional user-enabled provider command (FLASHTEX_ASSISTANT_PROVIDER; disabled by default; app makes no network calls), validate/review, and explicit approve (user_approved + exact review_id) mapped onto the proposal text only (amendedProposalLatex); never writes the buffer. Cancel on any input/proposal change or close; replies routed by request id + stage, stale ones counted and dropped. swift test 195 (1 opt-in skipped)/0 failures with real compiler/pdf/bridge/edit-ledger and the pinned helper; ProposalPreviewTests 20/20 x3; pinned helper reproduces examples/review-workflow.json byte for byte on this Mac. ContentView/ShellModel untouched (optional 1-line sheet patch in handoff).",
+  "summary": "Refill on agent/mac-ai-review/bundled 0d14820 (from mac-shell 6f4ee94, which merged the first lane 3272399 + sheet diff): bundled helper discovery in Contents/MacOS (make-app.sh --assistant requested from packaging), provider identity in the assistant header, helper launched with empty argv and a credential-free minimal environment (recorded in childLaunches; pinned binary scanned for the grok endpoint), provider path proven end to end from FLASHTEX_ASSISTANT_CONTEXT + FLASHTEX_ASSISTANT_PROVIDER with the local fake provider launched by path (explanation -> review -> explicit approve -> amended draft; cancellation mid-provider; oversized reply refused). swift test 460/0 failures on 6f4ee94 tip; ProposalPreviewTests 25/25. Previous lane summary: Lane 'Consume assistant-context helper with explicit proposal review boundary' + follow-ups (cancellation/out-of-order rejection; never-apply + native recovery) at agent/mac-ai-review/assistant-context tip 4b1dad5 (base mac-shell 6b43a3a; main merged through c9f1b9e). ProposalPreview.swift runs the pinned flashtex-assistant-context (origin/agent/commander/assistant-context: interface c8a3e1b, fixture c93bf0d; built by Tests/FlashTeXMacTests/Fixtures/build_assistant_context.sh into apps/mac/build, sha256 0910d690...) as a one-request child process on the shadow compile: prepare (probe + explicit destinations = proposal body), optional user-enabled provider command (FLASHTEX_ASSISTANT_PROVIDER; disabled by default; app makes no network calls), validate/review, and explicit approve (user_approved + exact review_id) mapped onto the proposal text only (amendedProposalLatex); never writes the buffer. Cancel on any input/proposal change or close; replies routed by request id + stage, stale ones counted and dropped. swift test 195 (1 opt-in skipped)/0 failures with real compiler/pdf/bridge/edit-ledger and the pinned helper; ProposalPreviewTests 20/20 x3; pinned helper reproduces examples/review-workflow.json byte for byte on this Mac. ContentView/ShellModel untouched (optional 1-line sheet patch in handoff).",
   "tool": "Claude Code subagent (parent mac-claude-a)",
-  "updated_utc": "2026-09-12T09:06:00Z",
+  "updated_utc": "2026-09-12T10:50:00Z",
   "usage": {
-    "evidence": "apps/mac: swift test 195 tests, 0 failures, 1 skipped (opt-in evidence test) at tip 4b1dad5, 2026-09-12T09:05Z, with FLASHTEX_COMPILER/PDF/BRIDGE/EDIT_LEDGER = main-checkout release builds and the pinned helper apps/mac/build/assistant-context (c93bf0d, sha256 0910d690...); docs/evidence/mac-ai-review-assistant-{reviewed,approved}-2026-09-12.png",
+    "evidence": "apps/mac: swift test 460 tests, 0 failures, 19 skipped (other lanes' gated helpers + opt-in evidence) at 0d14820, 2026-09-12T10:47Z, real compiler/pdf/bridge/edit-ledger + pinned helper c93bf0d; docs/evidence/mac-ai-review-assistant-{reviewed,approved}-2026-09-12.png regenerated",
     "status": "Shared Claude Max 20x quota with parent mac-claude-a (mac-m1max-a); no purchases; no API spend; cannot read exact context percentage (estimate: well under 60%)"
   }
 }

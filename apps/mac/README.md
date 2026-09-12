@@ -454,6 +454,8 @@ is a stand-in, the real listener is only exercised from `apps/mac`.
 
 ## Launch hooks and evidence
 
+Assistant: `FLASHTEX_ASSISTANT_CONTEXT` (helper, offline), `FLASHTEX_ASSISTANT_PROVIDER` (optional local provider command — the only thing that may reach a network, by the user's choice).
+
 `FLASHTEX_NO_ACTIVATE=1` launches without activating/focusing the window (for
 automation; never steals keyboard focus). `FLASHTEX_DEBOUNCE_MS` sets the
 keystroke-to-compile delay (default 0: every edit submits immediately; one
@@ -468,7 +470,6 @@ were `current` and which `stale_ignore`).
 `FLASHTEX_AUTOATTACH=1` attaches the discovered compiler at launch and compiles
 (a compiler bundled inside `FlashTeX.app` attaches by default; `=0` disables);
 `FLASHTEX_SEED_FILE=<path.tex>` seeds the editor. Example (from `apps/mac`):
-
 ```sh
 FLASHTEX_REPO=$(git rev-parse --show-toplevel) FLASHTEX_AUTOATTACH=1 \
   FLASHTEX_SEED_FILE=Samples/recovery-demo.tex .build/debug/FlashTeXMac
@@ -754,11 +755,36 @@ not a negotiated production wire). The runtime-v1 preview above stays the defaul
 this pane only exists to prove the consumer gates on real pipeline output. It does
 not replace, negotiate, or change the v1 path.
 
-- Input: a `display_list` JSON envelope written by `flashtex-render --v2 out.json`
-  (crates/render-pipeline, branch `agent/mac-render-pipeline/unified`). Open it with
-  `File > Open Display List (v2)…`, or launch with `FLASHTEX_V2_FILE=<json>`
+- Input, live: while the pane is visible the shell adds `display-list-v2` to the
+  compile request's `layout_capabilities` (`docs/contracts/runtime-v1-display-list-v2.md`;
+  `ShellModel.setLiveV2`). A producer that accepts it (flashtex-render ≥ 4888a67) echoes
+  it and writes the `display_list` envelope as one sibling line right after the
+  `compile_result`; `WorkerClient.decode` routes `protocol_version: 2` + `display_list`
+  lines (header probed by a byte scan, `RenderingV2Fast.header`) to
+  `ShellModel.receiveDisplayListV2`, which applies a line only when its `id` is the applied
+  result's id and that result accepted the capability — anything else is stale or
+  unsolicited and is dropped (`V2Live` counters; unsolicited → protocol-violation status).
+  The header shows LIVE / "v1 only" and "frame revision N — applied result is M" when a
+  result came without a frame (failed or declined per request). The v1 pages of the same
+  result paint first and stay the product preview. Old producers ignore the capability;
+  the pane never requests it while hidden. The preview-controller (helper) route does not
+  forward the line yet.
+- Input, file: a `display_list` JSON envelope written by `flashtex-render --v2 out.json`.
+  Open it with `File > Open Display List (v2)…`, or launch with `FLASHTEX_V2_FILE=<json>`
   (`FLASHTEX_PREVIEW_V2=1` starts with the toolbar toggle on). The toolbar's
   "v2 preview" switch flips between the v1 and v2 panes.
+- Keeping up with typing (`docs/evidence/mac-preview-v2-live-2026-09-12.md`): one
+  preparation in flight, the newest arrival waits and lists in between are dropped
+  undecoded (coalescing; strict supersession alone starved visible progress: only the last
+  frame painted); `RenderingV2Fast`, a typed byte-level reader for the envelope (9 ms for
+  the 1.9 MB two-page demo envelope against 75 ms with JSONDecoder, same values, JSONDecoder
+  remains the arbiter of what is rejected); a new frame is pre-rasterized off-main at the
+  pane's last pixels-per-point and its bitmaps are installed right before it is published,
+  so the pass that shows it blits at once; the header is its own view, bitmaps are observed
+  per page and page views are Equatable, so a bitmap or caret change redraws one page.
+  Measured with flashtex-render 4888a67 on demo.tex: keystroke→paint p50 89 ms (p95 116)
+  through the v2 pane, 40 ms through the v1 pane with the same producer; every keystroke
+  painted, every frame published.
 - Fail closed (`FlashTeXProtocol/RenderingV2.swift`): unknown `protocol_version`,
   message `type`, item `kind`, `required_features`, font `format`, or an undeclared
   font/document reference, a glyph ID outside `1..<glyph_count`, a cluster that does
@@ -799,7 +825,10 @@ not replace, negotiate, or change the v1 path.
   1 unit = 1 pt) paints a prepared page's items in list order — rules as path fills,
   glyph runs with `CTFontDrawGlyphs` by ORIGINAL glyph ID at the absolute origins
   (advances are never re-added, no reshaping/kerning). `Export PDF (v2)…` calls it on
-  a PDF context; the pane does not draw glyphs on the main thread at all: `V2PageRasterizer`
+  a PDF context with one glyph per call (`glyphByGlyph`): CG's PDF writer otherwise
+  merges glyphs into `Tj` strings positioned by the font's advances plus integer
+  1/1000 em `TJ` adjustments, which drifted up to a pixel at line ends once the producer
+  laid text out with TeX/TFM metrics (444 differing pixels per frame, now 0); the pane does not draw glyphs on the main thread at all: `V2PageRasterizer`
   (`@Observable`, bounded bytes, LRU) rasterizes each page once through
   `GlyphRunRenderer.rasterize` at the pane's pixels-per-point on its own queue and the
   canvas blits that bitmap 1:1 (device pixels) under the hover/caret overlays, so a
@@ -842,7 +871,7 @@ not replace, negotiate, or change the v1 path.
   false`; clusters must partition the run and source paths must name a declared
   document (stricter than the schema, as crates/rendering-core requires).
 - Tests (`RenderingV2Tests`, `PreviewV2Tests`, `PreviewV2ShellTests`,
-  `PreviewV2ParityTests`): real `flashtex-render --v2` fixtures
+  `PreviewV2ParityTests`, `PreviewV2LiveTests`): real `flashtex-render --v2` fixtures
   (`Tests/FlashTeXMacTests/Fixtures/display-list-v2-*.json`: text and math from
   pipeline 7094ef7 with `apps/mac/Fonts` only; `display-list-v2-math-rules.json` from
   79ba728 with three typed fraction rules and Latin Modern Math) decode, resolve by
@@ -853,15 +882,21 @@ not replace, negotiate, or change the v1 path.
   drawing a run built from CoreText's own glyph positions matches `CTLineDraw` with 0
   differing pixels; export equals preview with 0 differing pixels at the pinned
   scales; prepared geometry is verified against the tick geometry; stale load results
-  and stale page bitmaps are dropped; retention is bounded. Evidence:
+  and stale page bitmaps are dropped; retention is bounded; the fast reader equals
+  Codable on every fixture and falls back on anything else; the live route against
+  `Fixtures/fake_worker_v2.py` (a producer double that rebinds the real text envelope to
+  each request): line routing, capability toggling, frame arrives/navigates/passes
+  parity, second edit replaces it, old producer, per-request decline, failed result,
+  stale/unsolicited/mismatched lines. Evidence:
   `docs/evidence/mac-preview-v2-latin-modern-2026-09-12.png`,
-  `docs/evidence/mac-preview-v2-parity-2026-09-12.md`.
-- Not done: no negotiation (`render_capabilities`/`render_format_selected`) — the list
-  is opened from a file, not received from the worker; no clip/rotation/image
-  primitives (rejected as unknown kinds/features); v1 → v2 caret sync uses the v2
-  clusters only while the pane is visible; the pipeline's own `--pdf` is still the
-  legacy v1 writer, so parity is against the Mac CoreGraphics export (the product
-  exporter is crates/pdf).
+  `docs/evidence/mac-preview-v2-parity-2026-09-12.md`,
+  `docs/evidence/mac-preview-v2-live-2026-09-12.md`.
+- Not done: the rendering-v2 proposal's own `render_capabilities`/`render_format_selected`
+  handshake (the live route negotiates per request through `layout_capabilities`
+  instead); the preview-controller route; no clip/rotation/image primitives (rejected as
+  unknown kinds/features); v1 → v2 caret sync uses the v2 clusters only while the pane
+  is visible; the pipeline's own `--pdf` is still the legacy v1 writer, so parity is
+  against the Mac CoreGraphics export (the product exporter is crates/pdf).
 
 ## Known upstream issue
 
