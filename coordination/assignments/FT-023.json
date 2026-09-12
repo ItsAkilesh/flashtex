@@ -8,15 +8,15 @@
   "branch": "agent/commander-render-core/rendering-core",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "a6270d4962c420668838e411c8408de8f1decdba",
-  "objective": "Review current strict full-display invariants for proposed opt-in page delta reconstruction",
+  "input_main_sha": "228c5fa11b892bf74e5ed5aad86a2013e930e988",
+  "objective": "Specify complete page resource source diagnostic and hit authority validation with bounded retained state and wrong-base refusal",
   "owned_paths": [
     "crates/rendering-core"
   ],
-  "revision": 23,
+  "revision": 24,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-023",
   "timebox_minutes": 40,
-  "updated_utc": "2026-09-12T14:13:44.310590+00:00"
+  "updated_utc": "2026-09-12T14:14:42Z"
 }
