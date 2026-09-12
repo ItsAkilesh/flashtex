@@ -15,20 +15,58 @@ import FlashTeXProtocol
 // Page bitmaps are rasterized off-main by `V2PageRasterizer` and installed
 // only while their frame is still the one on screen.
 
+/// Where a v2 display list came from.
+enum V2Source: Equatable {
+    /// `File > Open Display List (v2)…` / `FLASHTEX_V2_FILE`.
+    case file(URL)
+    /// The negotiated `display_list` sibling line of a `compile_result`
+    /// (docs/contracts/runtime-v1-display-list-v2.md): request id, project, revision.
+    case worker(requestID: String, projectId: String, revision: Int)
+
+    var label: String {
+        switch self {
+        case .file(let u): u.lastPathComponent
+        case .worker(let id, _, let revision): "live \(id) (revision \(revision))"
+        }
+    }
+    var url: URL? { if case .file(let u) = self { u } else { nil } }
+    var isLive: Bool { if case .worker = self { true } else { false } }
+}
+
+/// The negotiated live route: `display-list-v2` in `layout_capabilities`
+/// (docs/contracts/runtime-v1-display-list-v2.md). Requested only while the
+/// v2 pane is visible; the sibling line is applied only for the currently
+/// applied compile_result.
+enum V2Live {
+    static let capability = "display-list-v2"
+    private static let lock = NSLock()
+    private(set) static var staleLinesDropped = 0
+    private(set) static var unsolicitedLinesDropped = 0
+    private(set) static var linesAccepted = 0
+    static func note(stale: Bool = false, unsolicited: Bool = false, accepted: Bool = false) {
+        lock.lock(); defer { lock.unlock() }
+        if stale { staleLinesDropped += 1 }
+        if unsolicited { unsolicitedLinesDropped += 1 }
+        if accepted { linesAccepted += 1 }
+    }
+}
+
 /// What the shell holds for the v2 pane.
 enum V2PreviewState {
     /// A load is in flight. `previous` is the frame still on screen, shown
     /// with an explicit stale indicator until the new one is verified
     /// (rendering-v2 proposal: retain the old frame, label it stale).
-    case loading(URL, ticket: Int, previous: V2Frame?)
-    case loaded(V2Frame, URL)
-    case failed(RenderingV2.ValidationError, URL)
+    case loading(V2Source, ticket: Int, previous: V2Frame?)
+    case loaded(V2Frame, V2Source)
+    case failed(RenderingV2.ValidationError, V2Source)
 
-    var url: URL {
+    var source: V2Source {
         switch self {
-        case .loading(let u, _, _), .loaded(_, let u), .failed(_, let u): u
+        case .loading(let s, _, _), .loaded(_, let s), .failed(_, let s): s
         }
     }
+    /// The file URL when the list came from a file (tests, evidence hook).
+    var url: URL? { source.url }
     /// The verified frame the pane may paint (a stale one while loading).
     var frame: V2Frame? {
         switch self {
@@ -66,7 +104,16 @@ enum V2Loader {
     /// Pure preparation: file → decoded, validated, font-resolved, page-prepared frame.
     static func prepare(url: URL, store: V2FontStore = .shared) -> Outcome {
         do {
-            let data = try Data(contentsOf: url)
+            return prepare(data: try Data(contentsOf: url), store: store)
+        } catch {
+            return .failed(RenderingV2.ValidationError(code: "io_error", message: error.localizedDescription))
+        }
+    }
+
+    /// Pure preparation of one `display_list` envelope's bytes (a file or the
+    /// worker's sibling line).
+    static func prepare(data: Data, store: V2FontStore = .shared) -> Outcome {
+        do {
             let envelope = try RenderingV2.decode(data)
             return .loaded(try V2Frame.prepare(envelope, store: store))
         } catch let error as RenderingV2.ValidationError {
@@ -97,15 +144,70 @@ extension ShellModel {
     /// ticket is no longer current is dropped. `completion` runs on the main
     /// thread after the state was (or was not) published.
     func loadDisplayListV2(url: URL, completion: (() -> Void)? = nil) {
-        let ticket = V2Loader.issueTicket()
-        displayListV2 = .loading(url, ticket: ticket, previous: displayListV2?.frame)
         previewV2 = true
-        captureNote = "Loading display list \(url.lastPathComponent)…"
+        startDisplayListV2(source: .file(url), completion: completion) { V2Loader.prepare(url: url) }
+    }
+
+    /// Requests (or stops requesting) the negotiated live route while the v2
+    /// pane is visible: `display-list-v2` joins `requestedLayoutCapabilities`,
+    /// whose change re-requests the current revision under auto-compile. The
+    /// v1 pages of every result keep painting the product preview.
+    func setLiveV2(_ on: Bool) {
+        let has = requestedLayoutCapabilities.contains(V2Live.capability)
+        if on, !has { requestedLayoutCapabilities.append(V2Live.capability) }
+        if !on, has { requestedLayoutCapabilities.removeAll { $0 == V2Live.capability } }
+    }
+
+    /// Whether the applied result negotiated the live route.
+    var liveV2Accepted: Bool { negotiation.accepted.contains(V2Live.capability) }
+
+    /// The worker's `display_list` sibling line for request `id`
+    /// (`WorkerClient.Event.displayList`). Applied only when `id` is the id of
+    /// the currently applied `compile_result` and that result accepted
+    /// `display-list-v2`; anything else is stale or unsolicited and is dropped
+    /// — a late v2 frame never replaces a newer one. Preparation is off-main;
+    /// the payload's project/revision must match the applied result.
+    func receiveDisplayListV2(id: String, line: Data, completion: (() -> Void)? = nil) {
+        guard let result, resultID == id, previewSource != .fixture else {
+            V2Live.note(stale: true)
+            log("ignored stale display_list \(id) (\(line.count) B): applied result is \(resultID ?? "none")")
+            completion?()
+            return
+        }
+        guard liveV2Accepted else {
+            V2Live.note(unsolicited: true)
+            let msg = "display_list \(id) arrived but \(V2Live.capability) was not accepted for that result (accepted: \(negotiation.accepted.joined(separator: ", ")))"
+            log("rejected unsolicited " + msg)
+            workerStatus = "protocol violation: " + msg
+            completion?()
+            return
+        }
+        V2Live.note(accepted: true)
+        let expectedProject = result.projectId, expectedRevision = result.revision
+        startDisplayListV2(source: .worker(requestID: id, projectId: expectedProject, revision: expectedRevision), completion: completion) {
+            switch V2Loader.prepare(data: line) {
+            case .loaded(let frame) where frame.list.projectId != expectedProject || frame.list.revision != expectedRevision:
+                return .failed(RenderingV2.ValidationError(code: "correlation_mismatch",
+                                                           message: "display_list \(id) is for project \(frame.list.projectId) revision \(frame.list.revision); the compile_result is project \(expectedProject) revision \(expectedRevision)"))
+            case let outcome: return outcome
+            }
+        }
+    }
+
+    /// Starts an off-main preparation. The previous verified frame (if any)
+    /// stays on screen with a stale indicator until it finishes; a result
+    /// whose ticket is no longer current is dropped. `completion` runs on the
+    /// main thread after the state was (or was not) published.
+    private func startDisplayListV2(source: V2Source, completion: (() -> Void)?, prepare: @escaping @Sendable () -> V2Loader.Outcome) {
+        let ticket = V2Loader.issueTicket()
+        displayListV2 = .loading(source, ticket: ticket, previous: displayListV2?.frame)
+        if !source.isLive { captureNote = "Loading display list \(source.label)…" }
+        if TypingBench.isBenchActive { FlashTeXLog.write("preview-v2: preparing \(source.label) ticket \(ticket) at \(MonotonicClock.nowNs())") }
         V2Loader.queue.async {
-            let outcome = V2Loader.prepare(url: url)
+            let outcome = prepare()
             V2Loader.deliverOnMain {
                 MainActor.assumeIsolated {
-                    self.deliverDisplayListV2(ticket: ticket, url: url, outcome: outcome)
+                    self.deliverDisplayListV2(ticket: ticket, source: source, outcome: outcome)
                     completion?()
                 }
             }
@@ -117,21 +219,22 @@ extension ShellModel {
     /// reset) is dropped: a stale frame never overwrites a newer state.
     /// Returns whether the result was published.
     @discardableResult
-    func deliverDisplayListV2(ticket: Int, url: URL, outcome: V2Loader.Outcome) -> Bool {
+    func deliverDisplayListV2(ticket: Int, source: V2Source, outcome: V2Loader.Outcome) -> Bool {
         guard displayListV2?.ticket == ticket else {
             V2Loader.noteDropped()
-            FlashTeXLog.write("preview-v2: dropped stale load result ticket \(ticket) for \(url.lastPathComponent) (current: \(displayListV2?.ticket.map(String.init) ?? "none"))")
+            FlashTeXLog.write("preview-v2: dropped stale load result ticket \(ticket) for \(source.label) (current: \(displayListV2?.ticket.map(String.init) ?? "none"))")
             return false
         }
         V2Loader.notePublished()
         switch outcome {
         case .loaded(let frame):
-            displayListV2 = .loaded(frame, url)
-            captureNote = "Loaded display list \(url.lastPathComponent): \(frame.list.pages.count) page(s), \(frame.fonts.count) font(s) resolved by content hash, \(frame.prepared.reduce(0) { $0 + $1.glyphCount }) glyphs prepared"
-            V2ParityEvidence.runIfRequested(frame: frame, url: url)
+            displayListV2 = .loaded(frame, source)
+            if TypingBench.isBenchActive { FlashTeXLog.write("preview-v2: published \(source.label) revision \(frame.list.revision) at \(MonotonicClock.nowNs())") }
+            captureNote = "\(source.isLive ? "Live display list" : "Loaded display list") \(source.label): \(frame.list.pages.count) page(s), \(frame.fonts.count) font(s) resolved by content hash, \(frame.prepared.reduce(0) { $0 + $1.glyphCount }) glyphs prepared"
+            V2ParityEvidence.runIfRequested(frame: frame, source: source)
         case .failed(let error):
             // A refusal drops the previous frame: nothing verified is on screen.
-            displayListV2 = .failed(error, url)
+            displayListV2 = .failed(error, source)
             captureNote = "Display list refused: \(error)"
         }
         return true
@@ -290,11 +393,12 @@ final class V2PageRasterizer {
 /// `page-N-export.png` there (evidence capture; never in the product path).
 /// `FLASHTEX_V2_PARITY_SCALE` sets pixels per point (default 2).
 enum V2ParityEvidence {
-    static func runIfRequested(frame: V2Frame, url: URL) {
+    static func runIfRequested(frame: V2Frame, source: V2Source) {
         guard let dir = ProcessInfo.processInfo.environment["FLASHTEX_V2_PARITY_OUT"], !dir.isEmpty else { return }
         let scale = Double(ProcessInfo.processInfo.environment["FLASHTEX_V2_PARITY_SCALE"] ?? "") ?? 2
         V2Loader.queue.async {
-            let out = URL(fileURLWithPath: dir)
+            var out = URL(fileURLWithPath: dir)
+            if case .worker(let id, _, let revision) = source { out.appendPathComponent("live-\(id)-r\(revision)") }
             try? FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
             let report = V2Parity.compare(frame: frame, scale: scale) { page in
                 write(page.preview, to: out.appendingPathComponent("page-\(page.page)-preview.png"))
@@ -304,13 +408,13 @@ enum V2ParityEvidence {
             let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
             var object: [String: Any] = [:]
             if let data = try? encoder.encode(report), let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] { object = json }
-            object["source"] = url.path
+            object["source"] = source.url?.path ?? source.label
             object["identical"] = report.identical
             object["total_differing_pixels"] = report.totalDifferingPixels
             if let data = try? JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted, .sortedKeys]) {
                 try? data.write(to: out.appendingPathComponent("parity.json"))
             }
-            FlashTeXLog.write("preview-v2: parity \(report.identical ? "identical" : "DIFFERS") — \(report.totalDifferingPixels) differing pixel(s) over \(report.pages.count) page(s) at \(scale)px/pt → \(out.path)")
+            FlashTeXLog.write("preview-v2: parity \(report.identical ? "identical" : "DIFFERS") — \(report.totalDifferingPixels) differing pixel(s) over \(report.pages.count) page(s) at \(scale)px/pt for \(source.label) → \(out.path)")
         }
     }
 
@@ -338,25 +442,30 @@ struct PreviewV2Pane: View {
                 } else {
                     ContentUnavailableView("Loading display list…", systemImage: "hourglass")
                 }
-            case .failed(let error, let url):
+            case .failed(let error, let source):
                 ContentUnavailableView {
                     Label("Display list refused — nothing rendered", systemImage: "xmark.octagon")
                 } description: {
-                    Text("\(url.lastPathComponent)\n[\(error.code)] \(error.message)")
+                    Text("\(source.label)\n[\(error.code)] \(error.message)")
                         .textSelection(.enabled)
                 }
                 .accessibilityIdentifier("v2-refusal")
             case nil:
-                ContentUnavailableView("No v2 display list loaded", systemImage: "doc.richtext",
-                                       description: Text("Use File > Open Display List (v2)… with a flashtex-render --v2 JSON file."))
+                ContentUnavailableView("No v2 display list yet", systemImage: "doc.richtext",
+                                       description: Text(model.workerAttached
+                                                         ? "Requesting display-list-v2 from the attached worker (\(model.liveV2Accepted ? "accepted" : "not accepted yet")); or use File > Open Display List (v2)…"
+                                                         : "Attach a producer that accepts display-list-v2, or use File > Open Display List (v2)… with a flashtex-render --v2 JSON file."))
             }
         }
         .onAppear {
+            // While visible, the pane asks the producer for the live route.
+            model.setLiveV2(true)
             // Automation hook: FLASHTEX_V2_FILE seeds the pane at launch.
             if model.displayListV2 == nil, let path = ProcessInfo.processInfo.environment["FLASHTEX_V2_FILE"] {
                 model.loadDisplayListV2(url: URL(fileURLWithPath: path))
             }
         }
+        .onDisappear { model.setLiveV2(false) }
     }
 
     private func pages(_ frame: V2Frame, stale: Bool) -> some View {
@@ -390,9 +499,23 @@ struct PreviewV2Pane: View {
             HStack(spacing: 8) {
                 Text("V2").font(.caption.bold()).padding(.horizontal, 6).padding(.vertical, 2).background(Color.purple.opacity(0.25), in: Capsule())
                 Text("experimental display-list-v2 — not the default path").font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                if case .loading(let url, _, let previous) = model.displayListV2 {
+                if model.workerAttached {
+                    Text(model.liveV2Accepted ? "LIVE" : "v1 only")
+                        .font(.caption.bold()).padding(.horizontal, 6).padding(.vertical, 2)
+                        .background((model.liveV2Accepted ? Color.green : Color.gray).opacity(0.25), in: Capsule())
+                        .help(model.liveV2Accepted ? "The applied compile_result accepted display-list-v2; frames arrive with each compile."
+                                                   : "The applied compile_result did not accept display-list-v2 (producer without the capability, or declined for this request).")
+                        .accessibilityIdentifier("v2-live")
+                }
+                if let frame = model.displayListV2?.frame, model.displayListV2?.source.isLive == true,
+                   let applied = model.result?.revision, applied != frame.list.revision {
+                    Text("frame revision \(frame.list.revision) — applied result is revision \(applied) (no v2 frame for it)")
+                        .font(.caption.bold()).foregroundStyle(.orange).lineLimit(1)
+                        .accessibilityIdentifier("v2-behind")
+                }
+                if case .loading(let source, _, let previous) = model.displayListV2 {
                     ProgressView().controlSize(.small)
-                    Text(previous == nil ? "loading \(url.lastPathComponent)…" : "STALE — showing the previous frame while \(url.lastPathComponent) is verified")
+                    Text(previous == nil ? "loading \(source.label)…" : "STALE — showing the previous frame while \(source.label) is verified")
                         .font(.caption.bold()).foregroundStyle(.orange).lineLimit(1)
                         .accessibilityIdentifier("v2-stale")
                 }
@@ -403,7 +526,7 @@ struct PreviewV2Pane: View {
             }
             if let frame = model.displayListV2?.frame {
                 let fonts = frame.fonts.values.map { "\($0.resource.postscriptName) \($0.resource.sha256.prefix(8))" }.sorted().joined(separator: ", ")
-                Text("\(model.displayListV2?.url.lastPathComponent ?? "") · id \(frame.id) · project \(frame.list.projectId) · revision \(frame.list.revision) · \(frame.list.pages.count) page(s) · fonts by hash: \(fonts)")
+                Text("\(model.displayListV2?.source.label ?? "") · id \(frame.id) · project \(frame.list.projectId) · revision \(frame.list.revision) · \(frame.list.pages.count) page(s) · fonts by hash: \(fonts)")
                     .font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
                     .help(frame.fonts.values.map { "\($0.resource.postscriptName): \($0.resource.sha256) → \($0.file.url.lastPathComponent) (\($0.hashConvention))" }.sorted().joined(separator: "\n"))
             }
@@ -435,7 +558,8 @@ struct PreviewV2View: View {
                 LazyVStack(spacing: 24) {
                     ForEach(frame.prepared, id: \.number) { prepared in
                         if let page = frame.page(number: prepared.number) {
-                            PageV2View(page: page, prepared: prepared, frameToken: frameToken, dark: dark, stale: stale, scale: scale, displayScale: displayScale,
+                            PageV2View(page: page, prepared: prepared, frameToken: frameToken, frameRevision: frame.list.revision, pageCount: frame.prepared.count,
+                                       dark: dark, stale: stale, scale: scale, displayScale: displayScale,
                                        caretMatches: caretByte.map { V2Geometry.clusters(containing: $0, path: caretPath, in: page) } ?? [],
                                        onSelect: onSelect)
                                 .id(page.number)
@@ -462,6 +586,9 @@ private struct PageV2View: View {
     let page: RenderingV2.Page
     let prepared: V2PreparedPage
     let frameToken: String
+    /// Display-list revision and page count, for the typing bench's paint point.
+    var frameRevision = 0
+    var pageCount = 1
     let dark: Bool
     let stale: Bool
     let scale: CGFloat
@@ -480,8 +607,13 @@ private struct PageV2View: View {
         let rasterizer = V2PageRasterizer.shared
         // Reading `images` through `image(for:)` subscribes this page to bitmap arrivals.
         let bitmap = rasterizer.image(for: prepared, frameToken: frameToken, pixelsPerPoint: Double(scale * displayScale), dark: dark)
+        // Paint instrumentation (TypingBench.swift): the v2 paint point is the render
+        // pass that blits a page bitmap of the frame's revision; pages whose bitmap is
+        // still rasterizing do not count as drawn (finishPaint logs drew n/expected).
+        let _ = bitmap == nil ? () : TypingBench.shared.willRender(revision: frameRevision, pages: pageCount)
         Canvas(rendersAsynchronously: false) { context, _ in
             if let bitmap {
+                TypingBench.shared.didDraw(page: page.number) // paint instrumentation
                 // The off-main raster of this page, blitted 1:1 onto device
                 // pixels (no resampling): the same bitmap the parity check compares.
                 context.withCGContext { cg in
