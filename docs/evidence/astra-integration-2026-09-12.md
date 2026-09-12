@@ -57,3 +57,14 @@ are separate acceptance gates. Compiler/helper timings exclude native paint.
 Nonzero font/line/rule deltas remain exact-parity failures. Completion forecasts
 must use pinned comparisons and observed mismatch closure rather than speculative
 calendar estimates. Improvement continues until explicit user stop.
+
+## Subsequent backpressure resolution and promotion
+
+Main `4de2c9e` promotes the later Rust batch after replacing the controller
+candidate with `3e8861e`. The owner found a concrete separate hole: a single
+blocked large reply never filled the output queue, so queue saturation alone
+could not terminate it. A writer deadline and focused single-reply regression
+fix that hole. The full rebuilt controller suite passes31 tests including the
+real compiler, and atomic project membership passes66 index tests. The original
+concurrent-load failure is not retroactively attributed with certainty. Mac
+GH19 remains an independent held integration.
