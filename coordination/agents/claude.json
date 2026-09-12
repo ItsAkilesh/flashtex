@@ -3,10 +3,10 @@
   "allocation_id": "openai-kabir-plus-ft002",
   "assignment_acknowledgements": {
     "FT-002": {
-      "acknowledged_utc": "2026-09-12T07:40:44Z",
-      "adaptation": "Accepted FT-002 rev 7: standing compiler bottleneck repair at 5KB/50KB/500KB with p50/p95/p99, superlinear hot-path removal, and proof that incremental equals clean. Directly relevant precedent on this branch: rev 6 re-measurement already caught a quadratic reuse lookup that had pushed a one-word edit to 178 ms p95, so the superlinear risk is real and measured, not hypothetical. Open issue #21 reports a valid 500KB project exceeding the runtime output frame limit, which is the same scale boundary this revision targets; will read and address it as part of this work.",
-      "main_sha": "7fea005b0611e2cc565ec38b9a705eff7cc4532c",
-      "revision": 7
+      "acknowledged_utc": "2026-09-12T08:05:56Z",
+      "adaptation": "Accepted FT-002 rev 8: broader pinned corpus, repeated burst-edit and recovery performance gates, preserved source and capability identity, and byte/pixel parity published separately from compiler latency. Rev 7 just removed a parser quadratic that made a 500KB one-word edit 420ms; burst editing is the natural next risk because it is what real typing looks like and it is where reuse state could degrade across many consecutive edits rather than one. Note that open issue #21 remains unaddressed and is mine: a valid 500KB project emits 10.1MB in one reply and exceeds the 8 MiB runtime frame.",
+      "main_sha": "23c30247b5fb421c5da05b3c9f7a714099622b7e",
+      "revision": 8
     }
   },
   "branch": "agent/claude/compiler-foundation",
@@ -16,7 +16,7 @@
     "cursor-commit",
     "coordination"
   ],
-  "code_revision": "63f2988c94df178b297ad9a922a2e10a88edc0e2",
+  "code_revision": "4425d9d77b747db69c1f04c493b363bd3a467f4e",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
@@ -24,21 +24,21 @@
   },
   "machine": "mac-m5pro-kabir",
   "main_integrated_through": "70e4aabc579bb7783187cb397b81857200a4de53",
-  "next_action": "Available for dispatch. Remaining known bottleneck is that every keystroke still reparses the whole document; incremental parsing would be the next structural step.",
+  "next_action": "Issue #21 remains open and is mine: a valid 500KB project emits 10.1MB in one reply and exceeds the 8 MiB runtime frame.",
   "reviewed_peers": {
     "origin/main": {
-      "adaptation": "I chased the wrong suspect twice before measuring properly. I first indexed the reuse candidate lookup and then made candidate shifting lazy, which together bought only 474->420 ms. Measuring the parse share showed parse was 402 of the 420 ms, so the reuse machinery was never the problem. The actual cause was that every macro invocation removed its token and then spliced the expansion into the gap, moving the token tail twice per invocation.",
-      "reviewed_utc": "2026-09-12T07:59:11Z",
-      "sha": "7fea005b0611e2cc565ec38b9a705eff7cc4532c"
+      "adaptation": "Correcting my own earlier report: I described a pinned-fixture design of 16 files that was not what got committed. Codex partial rev6b run had written its own tests/pinned_fixtures.rs, which overwrote mine on disk before I staged, so the committed design was its aggregated JSONL evidence and my 16 files were orphans nothing referenced. I have removed the orphans and extended the committed design instead of reinstating mine.",
+      "reviewed_utc": "2026-09-12T08:09:41Z",
+      "sha": "23c30247b5fb421c5da05b3c9f7a714099622b7e"
     }
   },
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "FT-002 rev 7 delivered: scaling benchmark at 5KB/50KB/500KB with p50/p95/p99 and input+binary hashes, and a 14x speedup from removing a quadratic in the parser. A 500KB one-word edit went from 420.606 ms to 29.401 ms p95 and scaling is now approximately linear. Incremental equals clean full build at all three sizes.",
+  "summary": "FT-002 rev 8 delivered: burst-edit and recovery performance gates, pinned corpus breadth doubled from 7 to 14 fixtures in both capability modes, and PARITY.md publishing unresolved byte/pixel parity separately from compiler latency. 15 suites pass. Also removed 16 orphaned fixture files I had committed by mistake.",
   "tool": "Codex",
-  "updated_utc": "2026-09-12T07:59:11Z",
+  "updated_utc": "2026-09-12T08:09:41Z",
   "usage": {
-    "evidence": "scaling_bench prints sha256 of each input and the binary; one-word edit p95 5KB 0.801->0.551 ms, 50KB 7.402->2.541 ms, 500KB 420.606->29.401 ms; parse at 500KB 402.586->12.254 ms; 14 suites pass; clippy -D warnings clean; fmt clean; harness 21/21; pinned byte-exact fixtures unchanged, proving output identical",
-    "status": "Codex hit its usage limit three times and did no work this revision; all of it written directly"
+    "evidence": "15 suites pass; clippy -D warnings clean; fmt clean; harness 21/21; pinned evidence grew from 18609 to 40380 bytes across 14 fixtures x 2 modes; burst gates cover 33 consecutive keystrokes, typing through broken syntax, 25 break-repair cycles and 20 capability switches",
+    "status": "Codex hit its usage limit three times on rev 7 and did no work; rev 8 written directly"
   }
 }

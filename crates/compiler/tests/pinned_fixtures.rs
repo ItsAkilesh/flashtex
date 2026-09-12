@@ -66,6 +66,53 @@ const FIXTURES: &[Fixture] = &[
         entry: "main.tex",
         documents: &[("main.tex", "AV Wa To Ty\n")],
     },
+    Fixture {
+        id: "lists",
+        entry: "main.tex",
+        documents: &[(
+            "main.tex",
+            "\\begin{itemize}\\item First\\item Second\\end{itemize}\n\\begin{enumerate}\\item One\\item Two\\end{enumerate}\n",
+        )],
+    },
+    Fixture {
+        id: "figure-caption",
+        entry: "main.tex",
+        documents: &[(
+            "main.tex",
+            "\\begin{figure}\\caption{A plot}\\label{fig:p}\\end{figure}\nSee \\ref{fig:p}.\n",
+        )],
+    },
+    Fixture {
+        id: "nested-macro",
+        entry: "main.tex",
+        documents: &[(
+            "main.tex",
+            "\\newcommand{\\inner}[1]{<#1>}\\newcommand{\\outer}[1]{\\inner{#1}!}\\outer{x}\n",
+        )],
+    },
+    Fixture {
+        id: "deep-math",
+        entry: "main.tex",
+        documents: &[("main.tex", "$$\\frac{a^{b^{c}}}{\\sqrt{d_{e}}}$$\n")],
+    },
+    Fixture {
+        id: "preamble",
+        entry: "main.tex",
+        documents: &[(
+            "main.tex",
+            "\\documentclass[12pt]{article}\n\\usepackage{amsmath,tikz}\n\\begin{document}\nBody only.\n\\end{document}\n",
+        )],
+    },
+    Fixture {
+        id: "broken-math",
+        entry: "main.tex",
+        documents: &[("main.tex", "Before $x^ and after.\n")],
+    },
+    Fixture {
+        id: "unicode-and-cjk",
+        entry: "main.tex",
+        documents: &[("main.tex", "Caf\u{e9} na\u{ef}ve \u{2014} \u{6771}\u{4eac}.\n")],
+    },
 ];
 
 fn request(fixture: &Fixture, capabilities: bool) -> String {
