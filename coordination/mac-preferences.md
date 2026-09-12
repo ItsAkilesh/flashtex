@@ -13,7 +13,7 @@
   below and in the final report.
 - Branch / code revision / main integrated through:
   `agent/mac-preferences/editor` from `origin/agent/mac-claude-a/mac-shell`
-  `f4c8aea`, merged forward to `7c11d65` (braces lane integrated) / see the
+  `f4c8aea`, merged forward to `a73bdf2` (braces and nearby lanes integrated) / see the
   agents JSON `code_revision` / main as merged into mac-shell at that tip.
   `agent/mac-preferences/editor-applied` carries one labelled LOCAL
   APPLICATION commit of the requested diffs (compiled and captured here; not
