@@ -4,8 +4,8 @@
   "schema_version": 1,
   "steps": [
     {
-      "name": "Measure bounded helper serialization improvements and coordinate opt-in raw sibling forwarding without changing required output or source gates",
-      "objective": "Measure bounded helper serialization improvements and coordinate opt-in raw sibling forwarding without changing required output or source gates",
+      "name": "Measure and, if justified, batch required-output serialization while preserving exact bounded fallback and durable ACK semantics",
+      "objective": "Measure and, if justified, batch required-output serialization while preserving exact bounded fallback and durable ACK semantics",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"
@@ -19,8 +19,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Consume reviewed runtime raw candidate API only after publication, preserving exact bounded optional output and legacy fallback",
-      "objective": "Consume reviewed runtime raw candidate API only after publication, preserving exact bounded optional output and legacy fallback",
+      "name": "Verify full-size flush and fallback recovery with actual required envelopes and exact byte equality",
+      "objective": "Verify full-size flush and fallback recovery with actual required envelopes and exact byte equality",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"
@@ -34,8 +34,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Verify actual producer helper source recovery and report isolated serialization/receipt costs without native speed claims",
-      "objective": "Verify actual producer helper source recovery and report isolated serialization/receipt costs without native speed claims",
+      "name": "Publish measured phase attribution and native consumer handoff without changing defaults or claiming paint latency",
+      "objective": "Publish measured phase attribution and native consumer handoff without changing defaults or claiming paint latency",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"

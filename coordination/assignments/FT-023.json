@@ -8,15 +8,15 @@
   "branch": "agent/commander-render-core/rendering-core",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "81b482cc3730758c48b3c98d3ea55706fc425df6",
-  "objective": "Verify existing rendering validation on actual raw versus normalized helper candidate JSON with exact numeric, duplicate field and source/resource gates",
+  "input_main_sha": "35616393ec6447900b8c680f59447f8c98cafe59",
+  "objective": "Measure raw helper rendering preflight allocation and validation phases on existing actual candidate before optimizing",
   "owned_paths": [
     "crates/rendering-core"
   ],
-  "revision": 12,
+  "revision": 13,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-023",
   "timebox_minutes": 40,
-  "updated_utc": "2026-09-12T11:36:16.558654+00:00"
+  "updated_utc": "2026-09-12T12:03:26.044120+00:00"
 }

@@ -11,15 +11,15 @@
   "branch": "agent/commander-runtime-display/display-runtime",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "4ff60ac08ba55894338ced8cd822b3bf75f11551",
-  "objective": "Measure isolated parse/residency effect and coordinate reviewed helper consumption before any default behavior change",
+  "input_main_sha": "35616393ec6447900b8c680f59447f8c98cafe59",
+  "objective": "Assess malformed raw metadata allocation and propose early bounded validation without arbitrary legacy restrictions",
   "owned_paths": [
     "crates/document-runtime"
   ],
-  "revision": 7,
+  "revision": 8,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-049",
   "timebox_minutes": 40,
-  "updated_utc": "2026-09-12T11:54:18Z"
+  "updated_utc": "2026-09-12T12:03:26.044120+00:00"
 }

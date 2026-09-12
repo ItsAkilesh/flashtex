@@ -9,16 +9,16 @@
   "branch": "agent/commander-preview-performance/preview-performance",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "81b482cc3730758c48b3c98d3ea55706fc425df6",
-  "objective": "Measure bounded helper serialization improvements and coordinate opt-in raw sibling forwarding without changing required output or source gates",
+  "input_main_sha": "35616393ec6447900b8c680f59447f8c98cafe59",
+  "objective": "Measure and, if justified, batch required-output serialization while preserving exact bounded fallback and durable ACK semantics",
   "owned_paths": [
     "crates/preview-controller",
     "crates/edit-ledger"
   ],
-  "revision": 8,
+  "revision": 9,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-048",
   "timebox_minutes": 40,
-  "updated_utc": "2026-09-12T11:36:16.558654+00:00"
+  "updated_utc": "2026-09-12T12:03:26.044120+00:00"
 }
