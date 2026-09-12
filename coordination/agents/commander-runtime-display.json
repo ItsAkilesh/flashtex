@@ -13,17 +13,17 @@
   "capabilities": [
     "rust-runtime"
   ],
-  "code_revision": "5d12255f26c07de0bef07dced4bb89c3bcf84cd9",
+  "code_revision": "72672e6781405de152f2c59ff72130c316fb268a",
   "eta_minutes": null,
   "machine": "linux-primary",
-  "main_integrated_through": "c47139ffbbf49be640a7e7033abcbce0d9c3b60e",
-  "next_action": "Send additive API to helper owner for eventless display profiling. Await concrete consumer feedback; preserve pinned binaries and owned crate boundary. No extra workers/providers.",
+  "main_integrated_through": "5d12255f26c07de0bef07dced4bb89c3bcf84cd9",
+  "next_action": "After root measurement release, optional single unchanged --v2 artifact size check can distinguish conservative estimate from actual oversized envelope. No builds/replays started during window; preserve current runtime boundary and pinned binaries.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "Authorized r4 followup scalar DisplayResponseProfile published: exact request/project/revision/display_epoch, framed bytes, parse/decode-wait/owner-wait/source-binding timings; current only, clears submit/close/policy/failure, survives candidate take. Full tests8 siblings and strict clippy pass; actual6e69661 requested4434bytes profile recorded, legacy/declined/failed None. Single uncalibrated observation, no native/render validation claim.",
+  "summary": "Read-only size contract checkpoint72672e6: exact6e69661 independently caps estimated/exact v2 and exact v1, removes v2 acceptance on decline/failed fallback. Runtime default8MiB includes newline versus producer16MiB excludes newline.27MB is preflight estimate only; no exact serialized size inferred. No cap/source/build changes.",
   "tool": "codex",
-  "updated_utc": "2026-09-12T11:24:02Z",
+  "updated_utc": "2026-09-12T11:33:17Z",
   "usage": {
     "status": "unknown"
   }

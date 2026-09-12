@@ -1,0 +1,57 @@
+# Experimental raw display candidate (FT049r5)
+
+The default constructors and Value candidate stay unchanged.
+`Session::spawn_command_raw_display_prototype(command, limits)` explicitly selects
+a fixed raw decoding strategy for a new Session; candidate delivery is still OFF
+until `set_display_candidates_enabled(true)`. Do not switch decoder strategies on
+an in-flight session. Helper opt-in should create a new raw session with complete
+snapshots and preserve its own source/session generations.
+
+`take_current_raw_display_candidate()` moves one
+`UntrustedRawDisplayCandidate`. Its immutable request_id/project_id/revision/sources
+getters match the Value API; `raw()` borrows RawValue and `into_raw()` moves the
+whole Box<RawValue>. Framing newline and exterior whitespace are excluded; every
+byte within the JSON value is retained, including escaped keys, exponent spelling,
+and opaque rendering duplicates. This is transport/source proof, not rendering
+validation. Downstream must consume these raw bytes through its strict validator
+without an intermediate Value conversion and recheck current epochs before paint.
+
+## Validation and compatibility
+
+Serde handles all tokenization: a full syntax visitor traverses without constructing
+a Value tree and checks numeric finite decoding, strings and standard depth limits.
+Typed envelope/payload/document structs reject duplicate known identity/source fields
+(including escaped equivalent keys), integer coercions, wrong paths/revisions/hash/
+lengths and duplicate document paths. A malformed or duplicate discriminator fails
+rather than falling back to normalized Value. Unknown rendering fields remain exact
+raw bytes for the existing renderer's stricter validation. Opaque geometry duplicates
+are deliberately not declared valid here. Unknown nested unpaired Unicode surrogate
+keys reject, matching Value; paired valid keys pass unchanged.
+
+This is a stricter boundary than Value normalization for binding duplicates. Raw
+exponent tokens also retain their spelling, so helper serialization/frame-admission
+behavior may differ. No default compatibility or native activation is claimed.
+Tests cover exact bytes, escape equivalence, opaque duplicates, duplicate bindings,
+1e400, depth, trailing JSON, current/source epochs, oversize lines and missing/invalid
+siblings. The existing four-raw-frame queue, one decoder permit and joined shutdown
+remain unchanged; no new worker or queue is introduced. Raw and Value candidate
+slots are mutually exclusive in actual decoder output and clear together.
+
+## Measured tradeoff, not a speed promotion
+
+`examples/raw_display_compare.rs` replays a pinned producer-derived1.15MB envelope
+through separate processes. The fixture was compactly reserialized from the published
+helper evidence, not claimed original wire bytes. Both modes produce equivalent JSON;
+the raw mode additionally retains exact fixture bytes. Four alternating debug runs
+recorded Value parsing652/974ms versus raw1359/1615ms on the loaded host, with
+process high-water memory about18.2–18.4MB versus6.9–7.0MB before verification allocations. Exact profiles/provenance are
+in `benchmarks/raw-display-prototype`. This demonstrates a concrete memory reduction
+but a parse-time regression, not native responsiveness or a reason to enable by default.
+
+The raw implementation currently makes multiple full serde passes (discriminator,
+syntax, typed metadata and RawValue construction). It retains raw bytes plus typed
+metadata instead of a large Value tree. Original input storage and RawValue conversion
+can coexist transiently; four queued raw frames and one retained candidate are extra.
+No claim of one-buffer total memory, strict RSS cap or allocation-count measurement
+is made. A future pass reduction needs the same syntax/duplicate/numeric/refusal gates;
+unsafe unchecked JSON construction or a custom parser is not an acceptable shortcut.

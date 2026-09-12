@@ -14,8 +14,10 @@ use std::{
 
 mod decode_lane;
 mod display_candidate;
+mod raw_display;
 use decode_lane::{Decoder, Input, RawInput};
 pub use display_candidate::{SourceBinding, UntrustedDisplayCandidate};
+pub use raw_display::UntrustedRawDisplayCandidate;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Document {
@@ -130,7 +132,7 @@ struct Process {
     reader: Decoder,
 }
 impl Process {
-    fn spawn(mut command: Command, limit: usize) -> Result<Self, String> {
+    fn spawn(mut command: Command, limit: usize, raw_display: bool) -> Result<Self, String> {
         let mut child = command
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -198,7 +200,7 @@ impl Process {
         Ok(Self {
             child,
             writer: tx,
-            reader: Decoder::spawn(out_rx),
+            reader: Decoder::spawn_mode(out_rx, raw_display),
         })
     }
 }
@@ -210,6 +212,7 @@ impl Drop for Process {
 }
 
 pub struct Session {
+    raw_candidate: Option<UntrustedRawDisplayCandidate>,
     display_enabled: bool,
     display_epoch: u64,
     display_candidate: Option<UntrustedDisplayCandidate>,
@@ -231,6 +234,17 @@ impl Session {
     }
     /// Allows explicit original compiler flags/environment without shell parsing.
     pub fn spawn_command(command: Command, limits: Limits) -> Result<Self, String> {
+        Self::spawn_mode(command, limits, false)
+    }
+    /// Experimental fixed-session raw decoding strategy. Candidate delivery stays disabled
+    /// until explicitly enabled; downstream rendering validation remains mandatory.
+    pub fn spawn_command_raw_display_prototype(
+        command: Command,
+        limits: Limits,
+    ) -> Result<Self, String> {
+        Self::spawn_mode(command, limits, true)
+    }
+    fn spawn_mode(command: Command, limits: Limits, raw_display: bool) -> Result<Self, String> {
         if limits.max_frame < 128
             || limits.max_frame > 64 * 1024 * 1024
             || limits.max_projects == 0
@@ -239,8 +253,9 @@ impl Session {
         {
             return Err("invalid runtime limits".into());
         }
-        let process = Process::spawn(command, limits.max_frame)?;
+        let process = Process::spawn(command, limits.max_frame, raw_display)?;
         Ok(Self {
+            raw_candidate: None,
             display_enabled: false,
             display_epoch: 0,
             display_candidate: None,
@@ -317,6 +332,7 @@ impl Session {
             );
         }
         self.display_candidate = None;
+        self.raw_candidate = None;
         self.last_display_profile = None;
         self.display_epoch = self
             .display_epoch
@@ -326,6 +342,9 @@ impl Session {
         Ok(())
     }
     /// Moves untrusted data; downstream must validate rendering and live source/session epochs.
+    pub fn take_current_raw_display_candidate(&mut self) -> Option<UntrustedRawDisplayCandidate> {
+        self.raw_candidate.take()
+    }
     pub fn take_current_display_candidate(&mut self) -> Option<UntrustedDisplayCandidate> {
         self.display_candidate.take()
     }
@@ -382,6 +401,7 @@ impl Session {
             (request.revision, request.id.clone()),
         );
         self.display_candidate = None;
+        self.raw_candidate = None;
         self.last_display_profile = None;
         self.queue.push_back(Pending {
             awaiting_display: false,
@@ -412,6 +432,7 @@ impl Session {
             self.completed_snapshot = None;
         }
         self.display_candidate = None;
+        self.raw_candidate = None;
         self.last_display_profile = None;
         self.latest.remove(project_id);
         if let Some(active) = self.active.as_mut() {
@@ -457,6 +478,7 @@ impl Session {
     }
     fn fail(&mut self, reason: &str) {
         self.display_candidate = None;
+        self.raw_candidate = None;
         self.last_display_profile = None;
         self.completed_snapshot = None;
         self.process.take();
@@ -487,11 +509,17 @@ impl Session {
                         self.fail("unsolicited compiler reply");
                         break;
                     };
-                    let parsed = frame.value.take().expect("decoded frame consumed once");
+                    let parsed = frame.value.take();
                     if pending.awaiting_display {
                         let binding_start = Instant::now();
-                        let candidate = match display_candidate::validate(parsed, &pending.request)
-                        {
+                        let candidate = match frame
+                            .raw
+                            .take()
+                            .map(|raw| raw.validate(&pending.request).map(|c| (None, Some(c))))
+                            .unwrap_or_else(|| {
+                                display_candidate::validate(parsed.unwrap(), &pending.request)
+                                    .map(|c| (Some(c), None))
+                            }) {
                             Ok(candidate) => candidate,
                             Err(reason) => {
                                 self.fail(&reason);
@@ -518,22 +546,25 @@ impl Session {
                                 reader_delivery_wait_ms,
                                 source_binding_ms: binding_start.elapsed().as_secs_f64() * 1000.0,
                             });
-                            self.display_candidate = Some(candidate);
+                            self.display_candidate = candidate.0;
+                            self.raw_candidate = candidate.1;
                         }
                         self.active.take();
                         self.dispatch();
                         continue;
                     }
                     let validate_at = Instant::now();
-                    let result =
-                        match validate_reply_value(parsed, &pending.request, &pending.capabilities)
-                        {
-                            Ok(value) => value,
-                            Err(reason) => {
-                                self.fail(&reason);
-                                break;
-                            }
-                        };
+                    let result = match parsed
+                        .ok_or_else(|| "unexpected raw sibling".to_string())
+                        .and_then(|parsed| {
+                            validate_reply_value(parsed, &pending.request, &pending.capabilities)
+                        }) {
+                        Ok(value) => value,
+                        Err(reason) => {
+                            self.fail(&reason);
+                            break;
+                        }
+                    };
                     self.last_profile = Some(ResponseProfile {
                         request_id: pending.request.id.clone(),
                         response_bytes: frame.response_bytes,
