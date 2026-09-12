@@ -346,36 +346,6 @@ mod tests {
     }
 
     #[test]
-    fn probe_huge_pt_literal() {
-        let r = std::panic::catch_unwind(|| Unit::Pt.to_sp(1i128 << 120, 1));
-        match r {
-            Ok(v) => eprintln!("PROBE: to_sp returned {v:?}"),
-            Err(_) => eprintln!("PROBE: to_sp panicked"),
-        }
-    }
-
-    #[test]
-    fn probe_huge_mul_scalar() {
-        let one_pt = Sp(65536);
-        let r = std::panic::catch_unwind(|| one_pt.checked_mul_scalar(1i128 << 112, 1));
-        match r {
-            Ok(v) => eprintln!("PROBE: checked_mul_scalar returned {v:?}"),
-            Err(_) => eprintln!("PROBE: checked_mul_scalar panicked"),
-        }
-    }
-
-    #[test]
-    fn probe_huge_div_scalar_denominator() {
-        let one_pt = Sp(65536);
-        // scalar = 1 / 10^37 (huge denominator from many fractional digits)
-        let r = std::panic::catch_unwind(|| one_pt.checked_div_scalar(1, 10i128.pow(37)));
-        match r {
-            Ok(v) => eprintln!("PROBE: checked_div_scalar returned {v:?}"),
-            Err(_) => eprintln!("PROBE: checked_div_scalar panicked"),
-        }
-    }
-
-    #[test]
     fn inch_matches_tex_72_26999pt_quirk() {
         // 1in = 7227/100 pt exactly = 4736286.72sp -> truncates to 4736286,
         // which is the real, famous pdfTeX `\showthe` output of 72.26999pt
