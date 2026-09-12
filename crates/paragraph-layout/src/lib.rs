@@ -14,6 +14,7 @@ pub mod liang;
 pub mod linebreak;
 pub mod metrics;
 pub mod pages;
+pub mod runtime_v1;
 pub mod style;
 
 pub use document::{

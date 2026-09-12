@@ -161,3 +161,91 @@ Scope of the claim: the embedded pattern set is a documented subset, so words
 outside the two samples may receive fewer hyphenation points than TeX
 (never wrong ones, since every embedded pattern is Knuth's). Extending the
 subset is a data change, not an algorithm change.
+
+## Page geometry (FT-019 rev 3): `docs/pages-default.tex`, `docs/pages-geometry1in.tex`
+
+Executable: `cargo test --test oracle_pages -- --nocapture`.
+
+| Item | Value |
+|---|---|
+| Sample | 16 justified paragraphs (the two hyphen-sample paragraphs, the wrap-sample long paragraph and its short last paragraph, repeated four times), 668 words, no headings |
+| Oracle | `/Library/TeX/texbin/pdflatex` = pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026), `times`, T1, `\pagestyle{empty}`, default `\parindent` (1.5em = 17.62482pt) and default hyphenation, compiled once on 2026-09-12 (oracle only) |
+| Variant `default` | article-class default margins — exactly what `flashtex-document-style` computes for `[12pt]{article}` on Letter: text area origin (111.27, 126.27) pt, 390 × 548.5 pt (`\textheight` = 37 × 14.5 + `\topskip` 12), i.e. 38 baselines per page. pdflatex's log reports 4 `Overfull \hbox (1.03694pt too wide)` boxes. |
+| Variant `geometry1in` | `\usepackage[margin=1in]{geometry}`: origin (72.27, 72.27) pt, 469.755 × 650.43 pt, 45 baselines per page |
+| Ours | `style::ArticleLayout::new(ClassOptions { Letter, Pt12 }, geometry)` → `PageParams`/`LineBreakParams` from document-style, `LiangHyphenator::en_us_subset()`, `document::layout_document` |
+| Word boxes | PDFKit (`oracle_extract.swift`), PDF points, top-left origin, no DPI |
+
+Headline:
+
+```
+default:     pages [(38, 138.27, 674.77), (38, 138.27, 674.77)] pt; line starts 668/668; page assignment 668/668;
+             page 2 starts with oracle "Reproducibility" / ours "Reproducibility"; mean|dx| 0.002 bp; max|dx| 0.007 bp;
+             max|dy| 0.013 bp; overfull lines 4
+geometry1in: pages [(45, 84.27, 722.27), (19, 84.27, 345.27)] pt; line starts 668/668; page assignment 668/668;
+             page 2 starts with oracle "how" / ours "how"; mean|dx| 0.002 bp; max|dx| 0.007 bp; max|dy| 0.013 bp;
+             overfull lines 0
+```
+
+* **Every baseline agrees**: 76 (default) and 64 (1in) baselines, each within 0.013 bp
+  of the oracle's glyph-box bottom minus the AFM descent (the residual is the
+  0.217 em AFM descender vs PDFKit's font descent, constant across the document).
+  First baseline `\topskip` below the text area (138.27 / 84.27 pt), line pitch
+  14.5 pt, `\parskip` 0 pt, `\parindent` 17.62 pt on every paragraph's first line.
+* **Page break**: the same word starts page 2 in both variants; every word is on
+  the same page as in pdflatex (668/668).
+* **Overfull boxes reproduced**: on the 390 pt measure TeX cannot break
+  "Deliberately unbalanced paragraphs demonstrate emergency stretchability: ex-"
+  feasibly and sets it 1.03694 pt too wide (artificial demerits on the final
+  pass); the crate sets the identical line, overfull by 1.041 pt (the 0.004 pt
+  is AFM-vs-TFM width rounding), and reports it through `Lines.diagnostics`.
+* **Word-rule finding**: this document exposed that TeX skips leading
+  non-letters and ignores the character nodes after a word's letter run
+  (§896–899), so `engine's` hyphenates as `en-gine's` and `(documentation)` is
+  hyphenated; `src/liang.rs` now does the same (verified with `\showhyphens`).
+
+## Preview/PDF agreement (FT-019 rev 3)
+
+Executable: `tools/preview_pdf_agreement.sh [work-dir] [geometry1in]` (macOS;
+no pdflatex involved). Method:
+
+1. `examples/emit_runtime_v1.rs` lays out the `pages-default` document with the
+   document-style geometry and emits a runtime-v1 `compile_result` (protocol 1,
+   `kind: text` items only — **one item per word**, `x_pt`/`baseline_y_pt`/
+   `font_size_pt` in PDF points, `source {path, start_byte, end_byte}` exact
+   spans; a discretionary hyphen is appended to its fragment and the span covers
+   the `\-` marker bytes when present). No new item kinds.
+2. The same JSON is rendered twice: by `flashtex-pdf` (`crates/pdf` on this
+   checkout, identical to `origin/agent/mac-pdf/pdf-output` 52b3711 for the
+   writer, `--default-face times --verify`) and by `tools/coretext_render.swift`,
+   a 60-line CoreText/CoreGraphics program that links nothing from the Mac app
+   and draws each item with `CTLineDraw` at `(x_pt, height − baseline_y_pt)` in
+   macOS `Times-Roman`, platform kerning and ligatures disabled — the placement
+   contract rendering-v2 prescribes for the preview (supplied origins, no
+   re-measured baselines). This is a stand-in for the app's `PDFExport.render`,
+   which is not on main; it replicates the placement rule, not the app's code.
+3. PDFKit word boxes of both PDFs are compared with each other and with the
+   emitted origins (`tools/compare_word_boxes.py`).
+
+Result (668 words, 2 pages):
+
+```
+word sequences identical: True
+|x flashtex-pdf - x coretext|:            mean 0.0003  max 0.0005 pt
+|bottom flashtex-pdf - bottom coretext|:  mean 0.0003  max 0.0006 pt
+|top flashtex-pdf - top coretext|:        mean 0.0003  max 0.0007 pt
+|right flashtex-pdf - right coretext|:    mean 0.0065  max 0.0277 pt
+|x flashtex-pdf - x item|:                mean 0.0003  max 0.0005 pt
+|x coretext - x item|:                    mean 0.0000  max 0.0000 pt
+bottom - baseline: flashtex-pdf 2.9882..2.9892 pt; coretext 2.9888 pt (= 0.25 em glyph-box descent at 11.955 bp)
+```
+
+Every word origin and baseline agrees between the two renderers to < 0.001 pt
+and matches the compiler-supplied origin; word right edges agree to < 0.03 pt
+(the two Times programs — Adobe base-14 metrics in the PDF vs macOS Times in
+CoreText — differ by up to 0.028 pt over a 20-letter word). All below the
+0.05 pt acceptance. What this does *not* show: inside a word, both renderers
+use their font's unkerned advances while the layout kerned the glyphs; the
+next word still starts at the compiler's `x_pt`, so visible drift is bounded
+by one word's kern sum (≤ 0.4 pt in Times for the worst pairs). Per-glyph
+origins (rendering-v2) remove even that; the crate already exposes them
+(`PositionedGlyph.x_offset`).

@@ -7,8 +7,12 @@ glyph runs for the preview and PDF back ends. Edition 2024, no external crates,
 no TeX engine involved.
 
 ```
-cargo test            # 34 tests: unit, golden (hand-derived numbers), incremental property, pdflatex oracles
+cargo test            # 40 tests: unit, golden (hand-derived numbers), page metrics, incremental property, pdflatex oracles
+tools/preview_pdf_agreement.sh   # macOS: same runtime-v1 JSON through flashtex-pdf and CoreText, word boxes compared
 ```
+
+Dependencies: `flashtex-document-style` (path, on main) for page geometry and
+class spacing; nothing external.
 
 ## API tour
 
@@ -42,6 +46,32 @@ let pages: Pages = layout_pages(&blocks, &PageParams::article_12pt_letter_1in_te
 // pages.pages[p].runs: PositionedRun in absolute page coordinates
 // pages.overflow: every line that did not fit (never dropped)
 ```
+
+### Page geometry from `document-style`
+
+```rust
+use flashtex_document_style::{BaseSize, ClassOptions, Geometry, Paper, Pt};
+use flashtex_paragraph_layout::style::{ArticleLayout, heading_block};
+let a = ArticleLayout::new(ClassOptions { paper: Paper::Letter, size: BaseSize::Pt12 },
+                           Some(Geometry::margin(Pt::inches(1.0))));   // None = class default margins
+// a.page: PageParams (text area origin/size, \topskip, \maxdepth .5\topskip, \parskip, \baselineskip)
+// a.line: LineBreakParams (\hsize, \parindent, \baselineskip, alignment)
+// heading_block(level, ex_of_body_font, lines) -> \section spacing (3.5ex / 2.3ex ...), keep-with-next
+```
+
+`style::page_params`/`line_params`/`body_block` do the same for any
+`PageLayout` + `ResolvedStyle`. Article 12pt Letter defaults: text area
+(111.27, 126.27) pt, 390 × 548.5 pt, 38 baselines per page from 138.27 pt.
+
+### runtime-v1 emission
+
+`runtime_v1::compile_result_json(&pages, text, path, project_id, revision, scale)`
+writes a protocol-1 `compile_result` with one `kind: text` item per word
+(`runtime_v1::words` merges source-contiguous fragments and appends a
+discretionary hyphen), `x_pt`/`baseline_y_pt`/`font_size_pt` scaled to PDF
+points, and exact `source` spans. `examples/emit_runtime_v1.rs` and
+`tools/preview_pdf_agreement.sh` show it consumed by `flashtex-pdf` and by a
+CoreText renderer with < 0.001 pt origin agreement (`docs/comparison.md`).
 
 ### Documents and incremental relayout
 
@@ -203,6 +233,9 @@ article: before 3.5 ex (18.9 pt), after 2.3 ex (12.42 pt), keep-with-next. Use
 
 ## Algorithms
 
+* **Pages**: geometry and class spacing from `flashtex-document-style`;
+  measured against pdflatex on two two-page documents (default margins and
+  `geometry 1in`): every baseline and the page-break word agree.
 * **Incremental**: `document::relayout` (see above) — paragraph-granular reuse
   with offset shifting; output is provably identical to a clean layout because
   a paragraph's lines depend only on its text and start offset.

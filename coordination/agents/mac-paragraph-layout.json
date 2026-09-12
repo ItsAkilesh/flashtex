@@ -14,7 +14,7 @@
     "rust",
     "typesetting"
   ],
-  "code_revision": "341dce89aa575522254bd201dfb39aa6605408a7",
+  "code_revision": "b5c429a297970b493d9771720c18b28f14794774",
   "eta_minutes": {
     "likely": 5,
     "optimistic": 0,
@@ -22,7 +22,7 @@
   },
   "machine": "mac-m1max-a",
   "main_integrated_through": "a949f5b773a1bc7f1be7ae2d79581856af88a97b",
-  "next_action": "Await orchestrator review/integration; follow-ups on request (more patterns, parshape).",
+  "next_action": "Await orchestrator review/integration; follow-ups on request.",
   "reviewed_peers": {
     "origin/agent/mac-font-engine/tex-fonts": {
       "adaptation": "main: compiler layout.rs still greedy (1.2 spacing, 6pt gap) with de1020c metrics; paragraph-layout is the proposed replacement, no overlap; added FontId::to_hex for rendering-core hex sha256. FT-018: FontId [u8;32] matches content_sha256; added ShapedGlyph/GlyphRun::from_shaped; adapter documented, not stacked on the unmerged branch.",
@@ -30,18 +30,18 @@
       "sha": "6a20750efd70e67fe061c321c2cb7ebc99c4b043"
     },
     "origin/main": {
-      "adaptation": "main integrated the rev-1 crate unchanged (c689b1a); merged origin/main 3730c23 into the branch with no conflicts; later main commits (through df9e26e) do not touch crates/paragraph-layout.",
-      "reviewed_utc": "2026-09-12T06:27:02Z",
-      "sha": "df9e26e44a74b4322f86bcbcfe0cf2312afaece0"
+      "adaptation": "origin/main advanced only in coordination/other crates; crates/paragraph-layout, document-style and pdf unchanged since the merge at a949f5b, so no re-merge needed.",
+      "reviewed_utc": "2026-09-12T06:41:52Z",
+      "sha": "baa3b9f8053f7516f9a1404182a415a249a64b12"
     }
   },
   "schema_version": 1,
-  "state": "accepted",
-  "summary": "FT-019 rev 2 delivered: Liang pattern hyphenator (420 Knuth patterns from hyph-en-us.tex, licence quoted; 110/110 words equal pdflatex showhyphens), TeX word/first-word rules and hyphen penalties, emergency-stretch third pass test, hfuzz/hbadness diagnostics in runtime-v1 shape citing every box's source range, document::relayout with 300-random-edit equality property, oracle hyphenating sample: 92/92 line starts, 5/5 hyphenated line ends, mean|dx| 0.003 bp.",
+  "state": "ready_for_integration",
+  "summary": "FT-019 rev 3 delivered: page geometry from crates/document-style (style adapter, ArticleLayout), page/baseline golden tests, two-page pdflatex oracles (default article margins and 1in: 668/668 line starts and page assignments, same page-break word, every baseline within 0.013 bp, 4 overfull boxes reproduced), runtime-v1 emission with one item per word and exact spans, preview/PDF agreement flashtex-pdf vs CoreText: origins within 0.0005 pt, right edges within 0.028 pt on 668 words.",
   "tool": "Claude Code subagent (parent mac-claude-a)",
-  "updated_utc": "2026-09-12T06:29:49Z",
+  "updated_utc": "2026-09-12T06:41:52Z",
   "usage": {
-    "evidence": "cargo test: 34 passed; cargo clippy --all-targets: 0 warnings",
+    "evidence": "cargo test: 40 passed; cargo clippy --all-targets: 0 warnings; tools/preview_pdf_agreement.sh report in docs/comparison.md",
     "status": "Claude Max 20x shared quota; remaining unknown"
   }
 }

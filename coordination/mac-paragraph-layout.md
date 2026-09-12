@@ -1,10 +1,13 @@
-# mac-paragraph-layout — FT-019 rev 2
+# mac-paragraph-layout — FT-019 rev 3
 
 Agent / task / branch: `mac-paragraph-layout` (Claude Code subagent, parent
 `mac-claude-a`, mac-m1max-a) / FT-019 rev 1 paragraph line breaking + metrics
 crate / `agent/mac-paragraph-layout/linebreak`
 
-State: ready for integration — rev 2 delivered (Liang hyphenation with TeX
+State: ready for integration — rev 3 delivered (page geometry from
+document-style, two-page pdflatex page-geometry oracles, page/baseline
+golden tests, runtime-v1 emission and preview/PDF agreement measured); rev 2
+delivered (Liang hyphenation with TeX
 word rules and penalties, emergency-stretch pass, hfuzz/hbadness diagnostics
 with box provenance, incremental `relayout` with a random-edit equality
 property, oracle-measured hyphenating sample). Rev 1 scope unchanged.
@@ -73,6 +76,30 @@ Ready behavior:
   matching (doc-umentation, implemen-tation, incom-prehensible,
   counterproduc-tive, poly-syllabic), mean|dx| 0.003 bp, max 0.007 bp, both
   paragraphs through TeX's second pass.
+- Rev 3: `style.rs` adapter (path dependency on `flashtex-document-style`,
+  on main): `page_params`, `line_params`, `body_block`, `heading_block`,
+  `ArticleLayout::new(options, geometry)`; `tests/page_metrics.rs` (4 golden:
+  article 12pt Letter params (111.27, 126.27), 390 × 548.5, topskip 12,
+  maxdepth 6, parskip 0+1, parindent 17.62; two-page break after 38 lines with
+  first/last baselines 138.27/674.77 pt and widow pull-back; section spacing;
+  runtime-v1 word items with exact spans).
+- Rev 3 oracle (`tests/oracle_pages.rs`, `docs/pages-{default,geometry1in}.tex`,
+  pdflatex 1.40.29, times, default parindent + hyphenation): default margins
+  668/668 line starts and page assignments, page 2 starts with the same word,
+  38 baselines/page exact, pdflatex's 4 overfull boxes reproduced; 1in
+  variant 668/668, 45 + 19 lines, page 2 starts with "how"; max|dy| 0.013 bp.
+- Rev 3 preview/PDF agreement: `runtime_v1::compile_result_json` (one item
+  per word, exact spans, bp coordinates), `examples/emit_runtime_v1.rs`,
+  `tools/coretext_render.swift` (CoreText at supplied origins, links nothing
+  from the app), `tools/compare_word_boxes.py`, `tools/preview_pdf_agreement.sh`:
+  flashtex-pdf (`--default-face times`) vs CoreText on 668 words — x within
+  0.0005 pt, baseline within 0.0006 pt, right edges within 0.028 pt, both
+  equal to the emitted origins. Documented honestly in `docs/comparison.md`
+  (the Mac app's `PDFExport.render` is not on main; the script replicates the
+  rendering-v2 placement rule, not app code).
+- Rev 3 finding: TeX skips leading non-letters and ignores characters after
+  the letter run when hyphenating (`en-gine's`, `(doc-u-men-ta-tion)`);
+  `liang.rs` corrected and verified with `\showhyphens`.
 - Core-14 adapter: ASCII `'`/`` ` `` are TeX quoteright/quoteleft (333 + AFM
   kerns; U+2018/2019 share them) — found by the oracle (0.66 pt on "engine's").
 
@@ -88,9 +115,10 @@ FT-018 should implement `FontMetricsSource` for `font_engine::Face` or feed
 `Shaped` clusters to `GlyphRun::from_shaped` (mapping in README); the
 compiler's AST adapter is described in README "Proposed integration".
 
-Validation: `cargo test` in `crates/paragraph-layout` — 34 passed (10 unit,
-19 golden, 2 incremental, 3 oracle); `cargo clippy --all-targets` 0 warnings;
-`cargo fmt` applied.
+Validation: `cargo test` in `crates/paragraph-layout` — 40 passed (10 unit,
+19 golden, 4 page metrics, 2 incremental, 5 oracle); `cargo clippy
+--all-targets` 0 warnings; `cargo fmt`; `tools/preview_pdf_agreement.sh` run
+on mac-m1max-a (report in `docs/comparison.md`).
 
 Needs from others: none blocking. Commander review/integration.
 
@@ -117,4 +145,4 @@ Resource: Claude Max 20x plan on mac-m1max-a (allocation
 `claude-mac20x-paragraph`, shared account quota; remaining quota unknown to
 this worker).
 
-Updated: 2026-09-12T06:27Z
+Updated: 2026-09-12T06:45Z
