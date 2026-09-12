@@ -16,7 +16,7 @@ final class RenderingV2Tests: XCTestCase {
             "protocol_version": 2, "id": "r1", "type": "display_list",
             "payload": [
                 "render_format": "display-list-v2", "coordinate_unit": "bp_2pow20", "color_space": "srgb", "text_extraction": "cluster-actualtext",
-                "project_id": "p", "revision": 1, "required_features": ["glyph_run", "rule"],
+                "project_id": "p", "revision": 1, "required_features": ["glyph_run", "rule", "rgba-srgb", "cluster-actualtext"],
                 "documents": [["path": "main.tex", "revision": 1, "sha256": String(repeating: "0", count: 64), "byte_length": 3]],
                 "fonts": [["font_id": "f", "sha256": String(repeating: "1", count: 64), "byte_length": 10, "format": "static-truetype",
                            "face_index": 0, "units_per_em": 1000, "glyph_count": 300, "postscript_name": "Demo"]],
@@ -187,9 +187,50 @@ final class RenderingV2Tests: XCTestCase {
         XCTAssertEqual(Self.code { Self.setPayload(&$0, "text_extraction", "tounicode") }, "unsupported_text_extraction")
         XCTAssertEqual(Self.code { Self.setPayload(&$0, "required_features", ["glyph_run", "transparency-group"]) }, "unsupported_feature")
         XCTAssertEqual(Self.code { Self.setPayload(&$0, "required_features", []) }, "invalid_display_list")
+        // Used features must be declared (rendering-core "undeclared rendering feature").
+        XCTAssertEqual(Self.code { Self.setPayload(&$0, "required_features", ["glyph_run", "rgba-srgb", "cluster-actualtext"]) }, "invalid_display_list", "a rule is painted but 'rule' is undeclared")
+        XCTAssertEqual(Self.code { Self.setPayload(&$0, "required_features", ["rule", "rgba-srgb", "cluster-actualtext"]) }, "invalid_display_list", "a glyph run is painted but 'glyph_run' is undeclared")
+        XCTAssertEqual(Self.code { Self.setPayload(&$0, "required_features", ["glyph_run", "rule"]) }, "invalid_display_list", "rgba-srgb and cluster-actualtext are always used")
+        XCTAssertNil(Self.code { Self.setPayload(&$0, "required_features", ["glyph_run", "rule", "static-truetype", "rgba-srgb", "cluster-actualtext"]) }, "declaring more than is used is fine")
+        XCTAssertNil(Self.code { o in
+            // No rule on the page → 'rule' need not be declared.
+            Self.setPayload(&o, "required_features", ["glyph_run", "rgba-srgb", "cluster-actualtext"])
+            var p = o["payload"] as! [String: Any]; var pages = p["pages"] as! [[String: Any]]; var items = pages[0]["items"] as! [[String: Any]]
+            items.removeLast(); pages[0]["items"] = items; p["pages"] = pages; o["payload"] = p
+        })
         XCTAssertEqual(Self.code { Self.setPayload(&$0, "documents", []) }, "invalid_display_list")
         XCTAssertEqual(Self.code { Self.setPayload(&$0, "revision", -1) }, "invalid_display_list")
         XCTAssertEqual(Self.code { Self.setPayload(&$0, "revision", 1.5) }, "malformed_payload", "floating-point geometry/ids are rejected")
+    }
+
+    func testDocumentPathsAndByteLengthsAreChecked() {
+        func setDoc(_ o: inout [String: Any], _ edit: (inout [String: Any]) -> Void) {
+            var p = o["payload"] as! [String: Any]; var docs = p["documents"] as! [[String: Any]]; edit(&docs[0]); p["documents"] = docs; o["payload"] = p
+        }
+        // Source ranges name main.tex; a renamed document makes them undeclared,
+        // so these cases rename the range too and probe only the path rule.
+        func withPath(_ path: String) -> String? {
+            Self.code { o in
+                setDoc(&o) { $0["path"] = path }
+                Self.setCluster(&o) { $0["sources"] = [["path": path, "start_byte": 0, "end_byte": 2]] }
+            }
+        }
+        XCTAssertNil(withPath("chapters/one.tex"))
+        XCTAssertEqual(withPath("/abs.tex"), "invalid_resource")
+        XCTAssertEqual(withPath("a/../b.tex"), "invalid_resource")
+        XCTAssertEqual(withPath("./b.tex"), "invalid_resource")
+        XCTAssertEqual(withPath("a//b.tex"), "invalid_resource")
+        XCTAssertEqual(withPath("a\\b.tex"), "invalid_resource")
+        XCTAssertEqual(withPath("c:b.tex"), "invalid_resource")
+        XCTAssertEqual(withPath(""), "invalid_resource")
+        XCTAssertEqual(Self.code { setDoc(&$0) { $0["byte_length"] = 8_388_609 } }, "invalid_resource", "source over 8 MiB")
+        XCTAssertEqual(Self.code { setDoc(&$0) { $0["byte_length"] = -1 } }, "invalid_resource")
+        XCTAssertEqual(Self.code { setDoc(&$0) { $0["revision"] = -1 } }, "invalid_resource")
+        XCTAssertEqual(Self.code { o in
+            var p = o["payload"] as! [String: Any]; var docs = p["documents"] as! [[String: Any]]; docs.append(docs[0]); p["documents"] = docs; o["payload"] = p
+        }, "invalid_resource", "duplicate path")
+        XCTAssertEqual(Self.code { Self.setPayload(&$0, "diagnostics", [["code": "x", "message": "m", "severity": "warning", "sources": [["path": "main.tex", "start_byte": 0, "end_byte": 9]]]]) }, "invalid_display_list", "diagnostic source beyond the document")
+        XCTAssertNil(Self.code { Self.setPayload(&$0, "diagnostics", [["code": "x", "message": "m", "severity": "warning", "sources": [["path": "main.tex", "start_byte": 0, "end_byte": 3]]]]) })
     }
 
     func testFontManifestIsChecked() {
@@ -220,6 +261,24 @@ final class RenderingV2Tests: XCTestCase {
         XCTAssertEqual(Self.code { Self.setCluster(&$0) { $0["synthetic_reason"] = "x" } }, "invalid_display_list", "both provenance kinds")
         XCTAssertEqual(Self.code { Self.setCluster(&$0) { $0["sources"] = [["path": "other.tex", "start_byte": 0, "end_byte": 1]] } }, "invalid_display_list", "undeclared document")
         XCTAssertEqual(Self.code { Self.setCluster(&$0) { $0["sources"] = [["path": "main.tex", "start_byte": 2, "end_byte": 1]] } }, "invalid_display_list")
+        XCTAssertEqual(Self.code { Self.setCluster(&$0) { $0["sources"] = [["path": "main.tex", "start_byte": 2, "end_byte": 4]] } }, "invalid_display_list", "source range beyond the document's declared byte_length (3)")
+        XCTAssertNil(Self.code { Self.setCluster(&$0) { $0["sources"] = [["path": "main.tex", "start_byte": 3, "end_byte": 3]] } }, "an empty range at the end of the document is allowed")
+        XCTAssertEqual(Self.code { Self.setCluster(&$0) { $0["sources"] = [] } }, "invalid_display_list", "sources must not be empty")
+        // Every cluster needs at least one glyph (rendering-core "cluster without glyph mapping").
+        XCTAssertEqual(Self.code {
+            Self.setItem(&$0, 0) { run in
+                run["clusters"] = [["text_start_byte": 0, "text_end_byte": 1, "hit_rects": [["x": 0, "top": 0, "width": 1, "height": 1]], "carets": [], "sources": [["path": "main.tex", "start_byte": 0, "end_byte": 1]]],
+                                   ["text_start_byte": 1, "text_end_byte": 2, "hit_rects": [["x": 0, "top": 0, "width": 1, "height": 1]], "carets": [], "sources": [["path": "main.tex", "start_byte": 1, "end_byte": 2]]]]
+            }
+        }, "invalid_display_list", "two clusters, one glyph")
+        XCTAssertEqual(Self.code { Self.setCluster(&$0) { $0["text_end_byte"] = 0 } }, "invalid_display_list", "empty cluster")
+        // Exact-integer range: a tick beyond ±(2^53−1), or a sum that leaves it, is refused.
+        let huge = Int64(1) << 53
+        XCTAssertEqual(Self.code { Self.setItem(&$0, 0) { $0["glyphs"] = [["gid": 5, "origin_x": huge, "baseline_y": 0, "advance_x": 0, "advance_y": 0, "cluster": 0]] } }, "invalid_display_list")
+        XCTAssertEqual(Self.code { Self.setItem(&$0, 0) { $0["glyphs"] = [["gid": 5, "origin_x": huge - 1, "baseline_y": 0, "advance_x": 1, "advance_y": 0, "cluster": 0]] } }, "invalid_display_list", "origin + advance overflows the exact range")
+        XCTAssertEqual(Self.code { Self.setCluster(&$0) { $0["hit_rects"] = [["x": 0, "top": 0, "width": -1, "height": 1]] } }, "invalid_display_list")
+        XCTAssertEqual(Self.code { Self.setCluster(&$0) { $0["hit_rects"] = Array(repeating: ["x": 0, "top": 0, "width": 1, "height": 1], count: 129) } }, "invalid_display_list", "hit rect count bound")
+        XCTAssertEqual(Self.code { Self.setCluster(&$0) { $0["carets"] = Array(repeating: ["text_byte": 0, "x": 0, "top": 0, "height": 1], count: 129) } }, "invalid_display_list", "caret count bound")
         XCTAssertEqual(Self.code { Self.setItem(&$0, 0) { $0["paint"] = ["r": 0, "g": 0, "b": 0, "a": 2] } }, "invalid_display_list")
         // UTF-8 boundary inside a multi-byte scalar.
         XCTAssertEqual(Self.code {
@@ -236,6 +295,10 @@ final class RenderingV2Tests: XCTestCase {
         XCTAssertEqual(Self.code { Self.setItem(&$0, 1) { $0["height"] = -1 } }, "invalid_display_list")
         XCTAssertEqual(Self.code { Self.setItem(&$0, 1) { $0["synthetic_reason"] = nil } }, "invalid_display_list")
         XCTAssertEqual(Self.code { Self.setItem(&$0, 1) { $0["synthetic_reason"] = nil; $0["sources"] = [["path": "main.tex", "start_byte": 0, "end_byte": 3]] } }, nil)
+        XCTAssertEqual(Self.code { Self.setItem(&$0, 1) { $0["synthetic_reason"] = nil; $0["sources"] = [["path": "main.tex", "start_byte": 0, "end_byte": 4]] } }, "invalid_display_list", "rule source beyond the document")
+        XCTAssertEqual(Self.code { Self.setItem(&$0, 1) { $0["synthetic_reason"] = "" } }, "invalid_display_list", "empty synthetic reason")
+        XCTAssertEqual(Self.code { Self.setItem(&$0, 1) { $0["x"] = Int64(1) << 53 } }, "invalid_display_list", "rule x outside the exact range")
+        XCTAssertEqual(Self.code { Self.setItem(&$0, 1) { $0["x"] = (Int64(1) << 53) - 1 } }, "invalid_display_list", "rule x + width overflows the exact range")
         XCTAssertEqual(Self.code { o in
             var p = o["payload"] as! [String: Any]; var pages = p["pages"] as! [[String: Any]]; pages[0]["number"] = 2; p["pages"] = pages; o["payload"] = p
         }, "invalid_display_list")

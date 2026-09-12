@@ -134,6 +134,7 @@ final class PreviewV2Tests: XCTestCase {
         var (list, _) = Self.displayList(text: "Office", resource: resource, font: resolved.ctFont(size: size), size: size,
                                          origin: CGPoint(x: 6, y: 20), page: page)
         // Add a typed rule under the word so both primitives are covered.
+        list.requiredFeatures.insert("rule", at: 1)
         list.pages[0].items.append(.rule(RenderingV2.Rule(x: Self.t(6), top: Self.t(23), width: Self.t(40), height: Self.t(0.5), paint: .black,
                                                           sources: [RenderingV2.SourceRange(path: "main.tex", startByte: 0, endByte: 5)])))
         try RenderingV2.validate(list)
@@ -225,7 +226,7 @@ final class PreviewV2Tests: XCTestCase {
         let ok = RenderingV2.GlyphRun(fontId: "lm10", fontSize: Self.t(12), text: "a", glyphs: [.init(gid: 28, originX: 0, baselineY: Self.t(20), advanceX: 0, advanceY: 0, cluster: 0)],
                                       clusters: [.init(textStartByte: 0, textEndByte: 1, hitRects: [.init(x: 0, top: 0, width: 1, height: 1)], carets: [], sources: [.init(path: "main.tex", startByte: 0, endByte: 1)])], paint: .black)
         var bad = ok; bad.fontId = "ghost"
-        let list = RenderingV2.DisplayList(projectId: "p", revision: 1, requiredFeatures: ["glyph_run"],
+        let list = RenderingV2.DisplayList(projectId: "p", revision: 1, requiredFeatures: ["glyph_run", "rgba-srgb", "cluster-actualtext"],
                                            documents: [.init(path: "main.tex", revision: 1, sha256: String(repeating: "0", count: 64), byteLength: 1)],
                                            fonts: [resource, missing],
                                            pages: [.init(number: 1, width: Self.t(50), height: Self.t(50), items: [.glyphRun(ok), .glyphRun(bad)])], diagnostics: [])

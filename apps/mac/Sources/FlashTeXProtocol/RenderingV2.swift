@@ -29,7 +29,13 @@ import Foundation
 ///   rejected.
 /// - The schema does not require clusters to partition the run text or source
 ///   paths to name a declared document; this validator requires both (as
-///   crates/rendering-core does) because hit-testing depends on them.
+///   crates/rendering-core does) because hit-testing depends on them. It also
+///   applies rendering-core's other structural rules: every cluster is
+///   referenced by at least one glyph, source ranges lie within the declared
+///   document byte length, used features (`glyph_run`, `rule`, `rgba-srgb`,
+///   `cluster-actualtext`) are declared in `required_features`, all ticks and
+///   tick sums stay within ±(2^53−1), and collection sizes are bounded
+///   (`Bounds`). `static-truetype` is not derived from glyph runs (see above).
 public enum RenderingV2 {
     public static let protocolVersion = 2
     public static let messageType = "display_list"
@@ -38,6 +44,31 @@ public enum RenderingV2 {
     public static let colorSpace = "srgb"
     public static let textExtraction = "cluster-actualtext"
     public static let ticksPerPoint: Int64 = 1 << 20
+    /// Largest integer JSON carries exactly (2^53 − 1); every tick, revision and
+    /// byte count must stay within ±this, and tick sums are checked, as
+    /// crates/rendering-core's `Tick::validate`/`checked_add` do.
+    public static let maxExactInteger: Int64 = (1 << 53) - 1
+    /// Bounded collection sizes (crates/rendering-core `validate`): a list that
+    /// exceeds one is refused, never truncated.
+    public enum Bounds {
+        public static let documents = 1...4096
+        public static let fonts = 0...256
+        public static let pages = 0...10000
+        public static let pageItems = 0...100000
+        public static let diagnostics = 0...10000
+        public static let runTextBytes = 1...1_048_576
+        public static let glyphs = 1...65536
+        public static let clusters = 1...65536
+        public static let hitRects = 1...128
+        public static let carets = 0...128
+        public static let sourceRanges = 1...128
+        public static let diagnosticSources = 0...128
+        public static let diagnosticMessageBytes = 1...4096
+        public static let syntheticReasonBytes = 1...1024
+        public static let postscriptNameBytes = 1...256
+        public static let fontByteLength: ClosedRange<Int64> = 1...67_108_864
+        public static let documentByteLength: ClosedRange<Int64> = 0...8_388_608
+    }
     /// Features this consumer understands (schema `feature` enum).
     public static let knownFeatures: Set<String> = ["glyph_run", "rule", "static-truetype", "rgba-srgb", "cluster-actualtext"]
     /// Font formats whose bytes this consumer can paint from.
@@ -330,16 +361,20 @@ public enum RenderingV2 {
         for f in list.requiredFeatures where !knownFeatures.contains(f) {
             throw fail("unsupported_feature", "required feature '\(f)' is not supported by this consumer")
         }
-        guard list.revision >= 0 else { throw fail("invalid_display_list", "revision must be nonnegative") }
-        guard !list.documents.isEmpty else { throw fail("invalid_display_list", "documents must declare at least one source document") }
-        var documentPaths = Set<String>()
+        guard list.revision >= 0, Int64(list.revision) <= maxExactInteger else { throw fail("invalid_display_list", "revision must be a nonnegative exact integer") }
+        guard Bounds.documents.contains(list.documents.count) else { throw fail("invalid_display_list", "documents must declare 1...\(Bounds.documents.upperBound) source documents (found \(list.documents.count))") }
+        guard Bounds.fonts.contains(list.fonts.count) else { throw fail("invalid_display_list", "fonts must declare at most \(Bounds.fonts.upperBound) resources (found \(list.fonts.count))") }
+        guard Bounds.pages.contains(list.pages.count) else { throw fail("invalid_display_list", "at most \(Bounds.pages.upperBound) pages (found \(list.pages.count))") }
+        guard Bounds.diagnostics.contains(list.diagnostics.count) else { throw fail("invalid_display_list", "at most \(Bounds.diagnostics.upperBound) diagnostics (found \(list.diagnostics.count))") }
+        var documents: [String: DocumentResource] = [:]
         for d in list.documents {
-            guard !d.path.isEmpty, !d.path.hasPrefix("/"), !d.path.split(separator: "/").contains("..") else {
-                throw fail("invalid_resource", "document path '\(d.path)' must be project-relative without parent traversal")
+            guard isProjectPath(d.path) else {
+                throw fail("invalid_resource", "document path '\(d.path)' must be project-relative: no empty, '.' or '..' components, no backslash, colon or NUL")
             }
-            guard documentPaths.insert(d.path).inserted else { throw fail("invalid_resource", "document '\(d.path)' is declared twice") }
+            guard documents.updateValue(d, forKey: d.path) == nil else { throw fail("invalid_resource", "document '\(d.path)' is declared twice") }
             guard isHex64(d.sha256) else { throw fail("invalid_resource", "document '\(d.path)' sha256 is not 64 lowercase hex digits") }
-            guard d.revision >= 0, d.byteLength >= 0 else { throw fail("invalid_resource", "document '\(d.path)' has a negative revision or byte_length") }
+            guard d.revision >= 0, Int64(d.revision) <= maxExactInteger else { throw fail("invalid_resource", "document '\(d.path)' revision must be a nonnegative exact integer") }
+            guard Bounds.documentByteLength.contains(d.byteLength) else { throw fail("invalid_resource", "document '\(d.path)' byte_length \(d.byteLength) is outside 0...\(Bounds.documentByteLength.upperBound)") }
         }
         var fontsById: [String: FontResource] = [:]
         for f in list.fonts {
@@ -351,30 +386,44 @@ public enum RenderingV2 {
                 throw fail("unsupported_feature", "font resource \(f.fontId) format '\(f.format)' is not supported (paintable: \(paintableFontFormats.sorted().joined(separator: ", ")))")
             }
             guard f.faceIndex == 0 else { throw fail("unsupported_feature", "font resource \(f.fontId) face_index \(f.faceIndex): only face 0 is supported") }
-            guard f.isPaintable ? f.byteLength >= 1 : f.byteLength >= 0 else { throw fail("invalid_resource", "font resource \(f.fontId) byte_length must be positive") }
+            guard f.isPaintable ? Bounds.fontByteLength.contains(f.byteLength) : f.byteLength >= 0 else {
+                throw fail("invalid_resource", "font resource \(f.fontId) byte_length \(f.byteLength) is outside \(Bounds.fontByteLength)")
+            }
             guard (16...16384).contains(f.unitsPerEm) else { throw fail("invalid_resource", "font resource \(f.fontId) units_per_em \(f.unitsPerEm) is out of range") }
             guard (2...65536).contains(f.glyphCount) else { throw fail("invalid_resource", "font resource \(f.fontId) glyph_count \(f.glyphCount) is out of range") }
-            guard !f.postscriptName.isEmpty else { throw fail("invalid_resource", "font resource \(f.fontId) has an empty postscript_name") }
+            guard Bounds.postscriptNameBytes.contains(f.postscriptName.utf8.count) else { throw fail("invalid_resource", "font resource \(f.fontId) postscript_name must be 1...\(Bounds.postscriptNameBytes.upperBound) bytes") }
         }
+        // Features the list actually uses must all be declared (rendering-core:
+        // "undeclared rendering feature"). `static-truetype` is deliberately not
+        // derived from glyph runs: the pipeline declares it only for TrueType
+        // resources and paints Latin Modern as `opentype-cff` (documented deviation).
+        var usedFeatures: Set<String> = ["rgba-srgb", "cluster-actualtext"]
         var lastPage = 0
         for page in list.pages {
             guard page.number == lastPage + 1 else { throw fail("invalid_display_list", "page numbers must be contiguous from 1 (found \(page.number) after \(lastPage))") }
             lastPage = page.number
-            guard page.width > 0, page.height > 0 else { throw fail("invalid_display_list", "page \(page.number) must have positive width and height") }
+            guard isPositiveTick(page.width), isPositiveTick(page.height) else { throw fail("invalid_display_list", "page \(page.number) must have positive exact width and height") }
+            guard Bounds.pageItems.contains(page.items.count) else { throw fail("invalid_display_list", "page \(page.number) has \(page.items.count) items (limit \(Bounds.pageItems.upperBound))") }
             for (index, item) in page.items.enumerated() {
                 let at = "page \(page.number) item \(index)"
                 switch item {
                 case .rule(let r):
-                    guard r.width > 0, r.height > 0 else { throw fail("invalid_display_list", "\(at): rule width and height must be positive") }
+                    usedFeatures.insert("rule")
+                    guard isTick(r.x), isTick(r.top), isPositiveTick(r.width), isPositiveTick(r.height),
+                          isTick(r.x &+ r.width), isTick(r.top &+ r.height), isTick(page.height &- r.top &- r.height) else {
+                        throw fail("invalid_display_list", "\(at): rule needs positive width/height and exact-range coordinates")
+                    }
                     try validatePaint(r.paint, at)
-                    try validateProvenance(sources: r.sources, synthetic: r.syntheticReason, documentPaths: documentPaths, at)
+                    try validateProvenance(sources: r.sources, synthetic: r.syntheticReason, documents: documents, at)
                 case .glyphRun(let run):
+                    usedFeatures.insert("glyph_run")
                     guard let font = fontsById[run.fontId] else { throw fail("invalid_resource", "\(at): font resource '\(run.fontId)' is not declared in fonts") }
-                    guard run.fontSize > 0 else { throw fail("invalid_display_list", "\(at): font_size must be positive") }
-                    guard !run.text.isEmpty else { throw fail("invalid_display_list", "\(at): glyph run text is empty") }
-                    guard !run.glyphs.isEmpty else { throw fail("invalid_display_list", "\(at): glyph run has no glyphs") }
-                    guard !run.clusters.isEmpty else { throw fail("invalid_display_list", "\(at): glyph run has no clusters") }
+                    guard isPositiveTick(run.fontSize) else { throw fail("invalid_display_list", "\(at): font_size must be a positive exact tick count") }
+                    guard Bounds.runTextBytes.contains(run.text.utf8.count) else { throw fail("invalid_display_list", "\(at): glyph run text must be 1...\(Bounds.runTextBytes.upperBound) bytes") }
+                    guard Bounds.glyphs.contains(run.glyphs.count) else { throw fail("invalid_display_list", "\(at): glyph run must carry 1...\(Bounds.glyphs.upperBound) glyphs (found \(run.glyphs.count))") }
+                    guard Bounds.clusters.contains(run.clusters.count) else { throw fail("invalid_display_list", "\(at): glyph run must carry 1...\(Bounds.clusters.upperBound) clusters (found \(run.clusters.count))") }
                     try validatePaint(run.paint, at)
+                    var referencedClusters = Set<Int>()
                     for (gi, g) in run.glyphs.enumerated() {
                         guard g.gid >= 1, g.gid < font.glyphCount else {
                             throw fail("invalid_display_list", "\(at) glyph \(gi): gid \(g.gid) is outside 1..<\(font.glyphCount) of font \(font.postscriptName)")
@@ -382,29 +431,43 @@ public enum RenderingV2 {
                         guard g.cluster >= 0, g.cluster < run.clusters.count else {
                             throw fail("invalid_display_list", "\(at) glyph \(gi): cluster \(g.cluster) is outside 0..<\(run.clusters.count)")
                         }
+                        referencedClusters.insert(g.cluster)
+                        guard isTick(g.originX), isTick(g.baselineY), isTick(g.advanceX), isTick(g.advanceY),
+                              isTick(g.originX &+ g.advanceX), isTick(g.baselineY &+ g.advanceY), isTick(page.height &- g.baselineY) else {
+                            throw fail("invalid_display_list", "\(at) glyph \(gi): origin/advance outside the exact tick range")
+                        }
+                    }
+                    guard referencedClusters.count == run.clusters.count else {
+                        throw fail("invalid_display_list", "\(at): \(run.clusters.count - referencedClusters.count) cluster(s) have no glyph (every cluster needs at least one glyph)")
                     }
                     let textBytes = Array(run.text.utf8)
                     var expectedStart = 0
                     for (ci, c) in run.clusters.enumerated() {
                         let cat = "\(at) cluster \(ci)"
-                        guard c.textStartByte == expectedStart, c.textEndByte >= c.textStartByte, c.textEndByte <= textBytes.count else {
-                            throw fail("invalid_display_list", "\(cat): byte range \(c.textStartByte)..<\(c.textEndByte) does not partition the \(textBytes.count)-byte run text (expected start \(expectedStart))")
+                        guard c.textStartByte == expectedStart, c.textEndByte > c.textStartByte, c.textEndByte <= textBytes.count else {
+                            throw fail("invalid_display_list", "\(cat): byte range \(c.textStartByte)..<\(c.textEndByte) does not partition the \(textBytes.count)-byte run text (expected a nonempty range starting at \(expectedStart))")
                         }
                         guard isBoundary(textBytes, c.textStartByte), isBoundary(textBytes, c.textEndByte) else {
                             throw fail("invalid_display_list", "\(cat): byte range \(c.textStartByte)..<\(c.textEndByte) splits a UTF-8 sequence")
                         }
                         expectedStart = c.textEndByte
-                        guard !c.hitRects.isEmpty else { throw fail("invalid_display_list", "\(cat): hit_rects must not be empty") }
-                        for r in c.hitRects where r.width < 0 || r.height < 0 {
-                            throw fail("invalid_display_list", "\(cat): hit rect has negative size")
+                        guard Bounds.hitRects.contains(c.hitRects.count) else { throw fail("invalid_display_list", "\(cat): hit_rects must carry 1...\(Bounds.hitRects.upperBound) rectangles (found \(c.hitRects.count))") }
+                        guard Bounds.carets.contains(c.carets.count) else { throw fail("invalid_display_list", "\(cat): at most \(Bounds.carets.upperBound) carets (found \(c.carets.count))") }
+                        for r in c.hitRects {
+                            guard isTick(r.x), isTick(r.top), isTick(r.width), isTick(r.height), r.width >= 0, r.height >= 0,
+                                  isTick(r.x &+ r.width), isTick(r.top &+ r.height) else {
+                                throw fail("invalid_display_list", "\(cat): hit rect has a negative size or coordinates outside the exact tick range")
+                            }
                         }
                         for k in c.carets {
                             guard k.textByte >= c.textStartByte, k.textByte <= c.textEndByte, isBoundary(textBytes, k.textByte) else {
                                 throw fail("invalid_display_list", "\(cat): caret text_byte \(k.textByte) is outside the cluster or splits a UTF-8 sequence")
                             }
-                            guard k.height > 0 else { throw fail("invalid_display_list", "\(cat): caret height must be positive") }
+                            guard isTick(k.x), isTick(k.top), isPositiveTick(k.height), isTick(k.top &+ k.height) else {
+                                throw fail("invalid_display_list", "\(cat): caret needs a positive height and exact-range coordinates")
+                            }
                         }
-                        try validateProvenance(sources: c.sources, synthetic: c.syntheticReason, documentPaths: documentPaths, cat)
+                        try validateProvenance(sources: c.sources, synthetic: c.syntheticReason, documents: documents, cat)
                     }
                     guard expectedStart == textBytes.count else {
                         throw fail("invalid_display_list", "\(at): clusters cover \(expectedStart) of \(textBytes.count) text bytes")
@@ -413,8 +476,28 @@ public enum RenderingV2 {
             }
         }
         for d in list.diagnostics {
-            guard !d.code.isEmpty, !d.message.isEmpty else { throw fail("invalid_display_list", "diagnostics must carry a code and a message") }
+            guard !d.code.isEmpty, Bounds.diagnosticMessageBytes.contains(d.message.utf8.count) else {
+                throw fail("invalid_display_list", "diagnostics must carry a code and a 1...\(Bounds.diagnosticMessageBytes.upperBound)-byte message")
+            }
+            guard Bounds.diagnosticSources.contains(d.sources.count) else { throw fail("invalid_display_list", "diagnostic '\(d.code)' lists \(d.sources.count) sources (limit \(Bounds.diagnosticSources.upperBound))") }
+            for s in d.sources { try validateSource(s, documents: documents, "diagnostic '\(d.code)'") }
         }
+        let declared = Set(list.requiredFeatures)
+        let undeclared = usedFeatures.subtracting(declared).sorted()
+        guard undeclared.isEmpty else {
+            throw fail("invalid_display_list", "the list uses feature(s) \(undeclared.joined(separator: ", ")) that required_features does not declare (\(list.requiredFeatures.joined(separator: ", ")))")
+        }
+    }
+
+    /// `|t| <= 2^53 − 1`: representable exactly in JSON and in a Double.
+    static func isTick(_ t: Int64) -> Bool { t >= -maxExactInteger && t <= maxExactInteger }
+    static func isPositiveTick(_ t: Int64) -> Bool { t > 0 && t <= maxExactInteger }
+
+    /// crates/rendering-core `path`: no backslash, colon or NUL, and no empty,
+    /// `.` or `..` component (so no leading `/` either).
+    static func isProjectPath(_ p: String) -> Bool {
+        !p.isEmpty && !p.contains("\\") && !p.contains(":") && !p.contains("\0")
+            && p.split(separator: "/", omittingEmptySubsequences: false).allSatisfy { !($0.isEmpty || $0 == "." || $0 == "..") }
     }
 
     private static func isBoundary(_ bytes: [UInt8], _ i: Int) -> Bool {
@@ -427,22 +510,26 @@ public enum RenderingV2 {
         }
     }
 
-    private static func validateProvenance(sources: [SourceRange]?, synthetic: String?, documentPaths: Set<String>, _ at: String) throws {
+    /// A source range must name a declared document and lie within its
+    /// declared byte length (rendering-core `source`).
+    private static func validateSource(_ s: SourceRange, documents: [String: DocumentResource], _ at: String) throws {
+        guard let doc = documents[s.path] else {
+            throw ValidationError(code: "invalid_display_list", message: "\(at): source path '\(s.path)' is not a declared document", source: s)
+        }
+        guard s.startByte >= 0, s.endByte >= s.startByte, Int64(s.endByte) <= doc.byteLength else {
+            throw ValidationError(code: "invalid_display_list", message: "\(at): source range \(s.startByte)..<\(s.endByte) is malformed or outside \(s.path)'s \(doc.byteLength) bytes", source: s)
+        }
+    }
+
+    private static func validateProvenance(sources: [SourceRange]?, synthetic: String?, documents: [String: DocumentResource], _ at: String) throws {
         switch (sources, synthetic) {
         case (nil, nil): throw ValidationError(code: "invalid_display_list", message: "\(at): needs sources or synthetic_reason")
         case (.some, .some): throw ValidationError(code: "invalid_display_list", message: "\(at): sources and synthetic_reason are mutually exclusive")
         case (nil, .some(let reason)):
-            guard !reason.isEmpty else { throw ValidationError(code: "invalid_display_list", message: "\(at): synthetic_reason is empty") }
+            guard Bounds.syntheticReasonBytes.contains(reason.utf8.count) else { throw ValidationError(code: "invalid_display_list", message: "\(at): synthetic_reason must be 1...\(Bounds.syntheticReasonBytes.upperBound) bytes") }
         case (.some(let ranges), nil):
-            guard !ranges.isEmpty else { throw ValidationError(code: "invalid_display_list", message: "\(at): sources is empty") }
-            for s in ranges {
-                guard documentPaths.contains(s.path) else {
-                    throw ValidationError(code: "invalid_display_list", message: "\(at): source path '\(s.path)' is not a declared document", source: s)
-                }
-                guard s.startByte >= 0, s.endByte >= s.startByte else {
-                    throw ValidationError(code: "invalid_display_list", message: "\(at): source range \(s.startByte)..<\(s.endByte) is malformed", source: s)
-                }
-            }
+            guard Bounds.sourceRanges.contains(ranges.count) else { throw ValidationError(code: "invalid_display_list", message: "\(at): sources must list 1...\(Bounds.sourceRanges.upperBound) ranges (found \(ranges.count))") }
+            for s in ranges { try validateSource(s, documents: documents, at) }
         }
     }
 }
