@@ -4,8 +4,8 @@
   "schema_version": 1,
   "steps": [
     {
-      "name": "Preserve previous release and capture one instrumented historical typing workload with exact existing source guards",
-      "objective": "Preserve previous release and capture one instrumented historical typing workload with exact existing source guards",
+      "name": "Propagate capture-proxy output pump failures as source-free stage type errno and terminal exit",
+      "objective": "Propagate capture-proxy output pump failures as source-free stage type errno and terminal exit",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"
@@ -19,8 +19,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Analyze numeric output lifecycle and full receiver ordinals within explicit clock domains and retained-record bounds",
-      "objective": "Analyze numeric output lifecycle and full receiver ordinals within explicit clock domains and retained-record bounds",
+      "name": "Retain reopened helper stderr and events and verify deterministic injected read log and forward faults without compiler rerun",
+      "objective": "Retain reopened helper stderr and events and verify deterministic injected read log and forward faults without compiler rerun",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"
@@ -34,8 +34,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Publish exact trace artifacts incomplete outcomes and a justified next product target without repeated benchmark or native claims",
-      "objective": "Publish exact trace artifacts incomplete outcomes and a justified next product target without repeated benchmark or native claims",
+      "name": "Publish bounded diagnostic repair while preserving original failed capture and unknown cause",
+      "objective": "Publish bounded diagnostic repair while preserving original failed capture and unknown cause",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"

@@ -11,15 +11,15 @@
   "branch": "agent/commander-runtime-display/display-runtime",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "47a83acf4d380f25ff1fbb6e1a128824d94004c1",
-  "objective": "Audit one published instrumented capture against actual source result identities and successful write order",
+  "input_main_sha": "6bd43ca976bb9b1af5f0856ca861727b32868a50",
+  "objective": "Independently verify failed capture prefix and missing reopen acceptance from immutable archived artifacts",
   "owned_paths": [
     "crates/document-runtime"
   ],
-  "revision": 34,
+  "revision": 35,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-049",
   "timebox_minutes": 40,
-  "updated_utc": "2026-09-12T13:57:39Z"
+  "updated_utc": "2026-09-12T13:57:42.777424+00:00"
 }
