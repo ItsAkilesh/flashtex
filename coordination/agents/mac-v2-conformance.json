@@ -1,0 +1,37 @@
+{
+  "agent_id": "mac-v2-conformance",
+  "allocation_id": "claude-mac20x-v2-conformance",
+  "assignment_acknowledgements": {},
+  "branch": "agent/mac-v2-conformance/contract",
+  "capabilities": [
+    "swift",
+    "appkit",
+    "rendering-v2-consumer",
+    "preview-controller-client"
+  ],
+  "code_revision": "5997f372",
+  "eta_minutes": {
+    "likely": 60,
+    "optimistic": 45,
+    "pessimistic": 75
+  },
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "ad922ea1",
+  "next_action": "Coverage audit written; implementing D1, D2, D3, D9, D6 test-first, one commit each",
+  "reviewed_peers": {
+    "origin/agent/mac-claude-a/mac-shell": {
+      "adaptation": "Branch base; contract-draft review at docs/proposals/contract-draft-review-ad922ea.md is the task input",
+      "reviewed_utc": "2026-09-12T14:40:00Z",
+      "sha": "5997f372"
+    }
+  },
+  "schema_version": 1,
+  "state": "in_progress",
+  "summary": "Mac consumer conformance to the display-list-v2 draft: coverage audit done (none of D1/D2/D3/D9/D6 covered); implementing",
+  "tool": "Claude Code subagent (parent mac-claude-a)",
+  "updated_utc": "2026-09-12T14:40:00Z",
+  "usage": {
+    "evidence": "none yet",
+    "status": "Shared Claude Max quota with parent mac-claude-a; no purchases"
+  }
+}
