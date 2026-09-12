@@ -221,7 +221,7 @@ fails, both fields are null while the acknowledged source remains durable.
 Document revision and compile revision are different counters. Match updates by
 session and request ID rather than guessing IDs from document revisions.
 `discarded` updates now retain the original preview's `compile_revision`;
-`stale` already carries it. History/group/apply result schemas are unchanged.
+`stale` already carries it. Reviewed `apply`, undo and redo wire result schemas are unchanged.
 
 `apply_group` full and metadata results also carry nullable `compile_request_id`
 and `compile_revision` with the same admission-only meaning. An exact permanent
