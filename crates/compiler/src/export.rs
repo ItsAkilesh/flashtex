@@ -44,6 +44,7 @@ const SYMBOL_ENCODING: &[(char, u8)] = &[
     ('\u{3B8}', 0x71),  // theta
     ('\u{3BB}', 0x6C),  // lambda
     ('\u{3BC}', 0x6D),  // mu
+    ('\u{3BD}', 0x6E),  // nu
     ('\u{3C0}', 0x70),  // pi
     ('\u{3C3}', 0x73),  // sigma
     ('\u{3C6}', 0x66),  // phi

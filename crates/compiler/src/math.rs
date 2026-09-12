@@ -69,13 +69,27 @@ pub struct MathBox {
 
 pub fn parse_tokens(tokens: &[Token], diagnostics: &mut Vec<Diagnostic>) -> MathList {
     let split = split_word_tokens(tokens);
-    MathParser {
+    let last_span = split.last().map(|t| t.span);
+    let mut parser = MathParser {
         tokens: &split,
         i: 0,
         depth: 0,
+        delimiter_depth: 0,
         diagnostics,
+    };
+    let list = parser.list(false);
+    // A \left with no \right is an error in TeX, and silently accepting it would
+    // let a half-typed formula look finished. Reported here, at the end of the
+    // formula, because that is the first point at which it is known.
+    if parser.delimiter_depth > 0 {
+        let open = parser.delimiter_depth;
+        parser.diagnostics.push(Diagnostic::error(
+            format!("{open} \\left delimiter(s) without a matching \\right"),
+            last_span,
+            Some("typeset the opening delimiter and continued".into()),
+        ));
     }
-    .list(false)
+    list
 }
 
 /// Maximum nesting of braced math groups, scripts, fractions and radicals.
@@ -86,10 +100,16 @@ pub fn parse_tokens(tokens: &[Token], diagnostics: &mut Vec<Diagnostic>) -> Math
 /// Exceeding the bound is an explicit diagnostic, not a crash.
 pub const MAX_MATH_DEPTH: usize = 256;
 
+/// Maximum nesting of \left ... \right pairs.
+pub const MAX_DELIMITER_DEPTH: usize = 64;
+
 struct MathParser<'a> {
     tokens: &'a [Token],
     i: usize,
     depth: usize,
+    /// Open \left delimiters, so an unmatched \right is diagnosed rather than
+    /// silently accepted.
+    delimiter_depth: usize,
     diagnostics: &'a mut Vec<Diagnostic>,
 }
 
@@ -248,6 +268,29 @@ impl MathParser<'_> {
         }
     }
 
+    /// Consumes the delimiter after \left or \right.
+    ///
+    /// A full stop is TeX's null delimiter: it pairs but renders nothing.
+    fn take_delimiter(&mut self) -> Option<(String, Span)> {
+        while matches!(
+            self.tokens.get(self.i).map(|t| &t.kind),
+            Some(TokenKind::Space)
+        ) {
+            self.i += 1;
+        }
+        let token = self.tokens.get(self.i)?.clone();
+        let text = match &token.kind {
+            TokenKind::Word(w) if w == "." => String::new(),
+            TokenKind::Word(w) => w.clone(),
+            TokenKind::LBrace => "{".into(),
+            TokenKind::RBrace => "}".into(),
+            TokenKind::Command(c) => command_glyph(c).unwrap_or("").to_string(),
+            _ => return None,
+        };
+        self.i += 1;
+        Some((text, token.span))
+    }
+
     fn command_atom(&mut self, name: String, span: Span) -> MathAtom {
         match name.as_str() {
             "frac" => {
@@ -269,6 +312,45 @@ impl MathParser<'_> {
                 superscript: None,
                 subscript: None,
             },
+            // \left and \right delimit a subformula. The delimiter that follows
+            // is emitted as an ordinary symbol: this removes the blocker and the
+            // leaked literal text, but the delimiter is NOT grown to the height
+            // of its content, which real TeX does by assembling extensible
+            // pieces. That limitation is stated in README.md rather than implied.
+            "left" | "right" => {
+                let is_left = name == "left";
+                if is_left {
+                    self.delimiter_depth += 1;
+                    if self.delimiter_depth > MAX_DELIMITER_DEPTH {
+                        self.diagnostics.push(Diagnostic::error(
+                            format!(
+                                "\\left nesting deeper than {MAX_DELIMITER_DEPTH} levels is not supported"
+                            ),
+                            Some(span),
+                            Some("stopped tracking delimiter pairing at this depth".into()),
+                        ));
+                    }
+                } else if self.delimiter_depth == 0 {
+                    self.diagnostics.push(Diagnostic::error(
+                        "\\right has no matching \\left".to_string(),
+                        Some(span),
+                        Some("typeset the delimiter on its own and continued".into()),
+                    ));
+                } else {
+                    self.delimiter_depth -= 1;
+                }
+                match self.take_delimiter() {
+                    Some((text, delim_span)) => symbol(text, delim_span),
+                    None => {
+                        self.diagnostics.push(Diagnostic::error(
+                            format!("\\{name} must be followed by a delimiter"),
+                            Some(span),
+                            Some("used no delimiter and continued".into()),
+                        ));
+                        symbol(String::new(), span)
+                    }
+                }
+            }
             _ => match command_glyph(&name) {
                 Some(glyph) => symbol(glyph.into(), span),
                 None => {
@@ -329,6 +411,7 @@ pub const COMMAND_GLYPHS: &[(&str, &str)] = &[
     ("theta", "θ"),
     ("lambda", "λ"),
     ("mu", "μ"),
+    ("nu", "ν"),
     ("pi", "π"),
     ("sigma", "σ"),
     ("phi", "φ"),

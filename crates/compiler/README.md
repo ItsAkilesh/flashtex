@@ -354,6 +354,18 @@ from 160 to 96 bytes per item, which the fixture's 86-byte average suggested.
 It helped the negotiated case and hurt the legacy one, within run-to-run noise
 either way, so it was left alone rather than bundled in as an apparent win.
 
+### Math delimiters
+
+\left and \right are parsed and their delimiter is typeset, including TeX's
+null delimiter \left. which pairs but renders nothing. Nesting is bounded at 64
+pairs. An unmatched \left, or a \right with no \left, is an explicit
+diagnostic and the formula still typesets.
+
+Not implemented: the delimiter is NOT grown to the height of its content. Real
+TeX assembles extensible pieces so a tall fraction gets tall parentheses; here
+the delimiter is drawn at the surrounding size. A document using \left over a
+tall subformula will therefore differ visibly from a reference engine.
+
 ## Recovery behaviour
 
 `status` is `ok` with no diagnostics, `recovered` when diagnostics were produced
