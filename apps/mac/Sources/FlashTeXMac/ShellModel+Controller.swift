@@ -119,7 +119,7 @@ extension ShellModel {
             return // buffer already durable at this revision
         }
         do {
-            if TypingBench.shared.isActive { FlashTeXLog.write("compile: sending revision \(editorRevision) at \(MonotonicClock.nowNs())") }
+            if TypingBench.isBenchActive { FlashTeXLog.write("compile: sending revision \(editorRevision) at \(MonotonicClock.nowNs())") }
             let id = try controller.edit(path: activePath, expectedRevision: durable.revision,
                                          expectedSHA256: durable.sha256, text: text)
             controllerState.inFlight = (id, activePath, editorRevision, Date(), text, nil)
@@ -306,7 +306,7 @@ extension ShellModel {
         setCompiledDocuments(compiled)
         let ms = update.controllerTotalMs ?? update.runtimeTotalMs ?? 0
         TypingBench.shared.noteCompile(revision: editorRev, ms: ms)
-        if TypingBench.shared.isActive { FlashTeXLog.write("compile: applied revision \(editorRev) at \(MonotonicClock.nowNs())") }
+        if TypingBench.isBenchActive { FlashTeXLog.write("compile: applied revision \(editorRev) at \(MonotonicClock.nowNs())") }
         recordLatency(ms)
         workerStatus = String(format: "revision %d: %@, %d diagnostics in %.0f ms (durable r%d)", editorRev,
                               incoming.status.rawValue, incoming.diagnostics.count, ms, durableRevision)
