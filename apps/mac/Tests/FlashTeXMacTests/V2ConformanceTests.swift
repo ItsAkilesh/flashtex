@@ -21,6 +21,92 @@ final class V2ConformanceTests: XCTestCase {
         }
     }
 
+    // MARK: D2 — the helper candidate's membership_generation must be the project's current one
+
+    private func candidate(generation: Int, session: String = "s1", request: String = "pc-7", project: String = "demo",
+                           compileRevision: Int = 3, versions: [String: Int] = ["main.tex": 2], list: Data? = nil) throws -> DisplayCandidateFrame {
+        let bytes = try list ?? Data(contentsOf: Self.fixtures.appendingPathComponent("display-list-v2-text.json"))
+        return DisplayCandidateFrame(sessionID: session, requestID: request, projectID: project, compileRevision: compileRevision,
+                                     sourceVersions: versions, membershipGeneration: generation, displayList: bytes,
+                                     frameBytes: bytes.count, receivedNs: MonotonicClock.nowNs())
+    }
+
+    func testGateRefusesACandidateWhoseMembershipGenerationIsNotTheProjectsCurrentOne() throws {
+        let applied = DisplayCandidateAppliedPreview(requestID: "pc-7", compileRevision: 3, sourceVersions: ["main.tex": 2], editorRevision: 5)
+        var gate = DisplayCandidateGate(negotiated: true, sessionID: "s1", projectID: "demo", applied: applied, appliedResultID: "pc-7",
+                                        activePath: "main.tex", displayedEditorRevision: nil)
+        // No membership operation has run yet: the shell knows no generation, nothing to compare (documented).
+        XCTAssertNil(gate.membershipGeneration)
+        XCTAssertNil(gate.rejection(of: try candidate(generation: 1)))
+        // The project is at generation 4 (an open/detach happened): a candidate compiled at generation 3 is stale.
+        gate.membershipGeneration = 4
+        XCTAssertEqual(gate.rejection(of: try candidate(generation: 3)), "membership generation 3 is not the project's current generation 4")
+        XCTAssertEqual(gate.rejection(of: try candidate(generation: 5)), "membership generation 5 is not the project's current generation 4")
+        XCTAssertNil(gate.rejection(of: try candidate(generation: 4)))
+        // The generation check sits with the identity checks, before the applied-preview checks.
+        gate.applied = nil
+        XCTAssertTrue(gate.rejection(of: try candidate(generation: 3))!.hasPrefix("membership generation 3"))
+        // The model's gate carries the project's generation into admission (nil until learned).
+        let model = ShellModel()
+        XCTAssertNil(model.displayCandidates.gate(activePath: "main.tex", appliedResultID: nil, membershipGeneration: model.project.membershipGeneration).membershipGeneration)
+        XCTAssertEqual(model.displayCandidates.gate(activePath: "main.tex", appliedResultID: nil, membershipGeneration: 9).membershipGeneration, 9)
+    }
+
+    /// Real helper + real producer: a candidate that names the generation from
+    /// before an `open_document` is refused at admission; the previously
+    /// verified frame and the v1 preview stay.
+    func testRealHelperRefusesACandidateFromBeforeAnOpenDocument() async throws {
+        guard let helper = Self.helper, FileManager.default.isExecutableFile(atPath: helper.path),
+              let render = ProcessInfo.processInfo.environment["FLASHTEX_RENDER"].map({ URL(fileURLWithPath: $0) }),
+              FileManager.default.isExecutableFile(atPath: render.path) else {
+            throw XCTSkip("set FLASHTEX_PREVIEW_CONTROLLER and FLASHTEX_RENDER to built binaries")
+        }
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("v2conf-d2-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root.appendingPathComponent("project"), withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root); unsetenv("FLASHTEX_CONTROLLER_LEDGER_ROOT") }
+        let tex = root.appendingPathComponent("project/main.tex")
+        try "\\documentclass{article}\n\\begin{document}\nHello generations, fi.\n\\end{document}\n".write(to: tex, atomically: true, encoding: .utf8)
+        try "Appendix via helper.\n".write(to: root.appendingPathComponent("project/appendix.tex"), atomically: true, encoding: .utf8)
+        setenv("FLASHTEX_CONTROLLER_LEDGER_ROOT", root.appendingPathComponent("ledger").path, 1)
+        let fontsDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("Fonts")
+        if ProcessInfo.processInfo.environment["FLASHTEX_LM_DIR"] == nil { setenv("FLASHTEX_LM_DIR", fontsDir.path, 1) }
+        let previousCompiler = ProcessInfo.processInfo.environment["FLASHTEX_COMPILER"]
+        setenv("FLASHTEX_COMPILER", render.path, 1) // attachController hands the helper flashtex-render as its producer
+        defer { if let previousCompiler { setenv("FLASHTEX_COMPILER", previousCompiler, 1) } else { unsetenv("FLASHTEX_COMPILER") } }
+        setenv("FLASHTEX_DISPLAY_CANDIDATES", "1", 1)
+        defer { unsetenv("FLASHTEX_DISPLAY_CANDIDATES") }
+
+        let model = ShellModel()
+        model.autoCompile = true
+        XCTAssertEqual(model.openTex(at: tex), .opened)
+        model.attachController(at: helper)
+        try await waitUntil { model.displayCandidatesNegotiated }
+        try await waitUntil(timeout: 40) { if case .loaded? = model.displayListV2 { return true } else { return false } }
+        guard case .loaded(let first, let source)? = model.displayListV2, case .worker(_, _, _, let line) = source else { return XCTFail() }
+        // The shell learns the generation the candidate was compiled at.
+        let snapshot = await model.project.refreshSnapshot()
+        let before = try XCTUnwrap(snapshot).generation
+        // An open_document between the compile and the candidate: the generation advances.
+        let opened = await model.project.openDocument("appendix.tex")
+        XCTAssertEqual(opened, .opened(path: "appendix.tex"))
+        let after = try XCTUnwrap(model.project.membershipGeneration)
+        XCTAssertGreaterThan(after, before)
+        let applied = try XCTUnwrap(model.displayCandidates.applied)
+        let session = model.controller!.config.sessionID, projectID = model.controller!.config.projectID
+        // A candidate for the applied preview that still names the OLD generation: refused at admission.
+        let stale = try candidate(generation: before, session: session, request: applied.requestID, project: projectID,
+                                  compileRevision: applied.compileRevision, versions: applied.sourceVersions, list: line)
+        let refused = model.displayCandidates.refused, published = model.displayCandidates.published
+        model.handleDisplayCandidate(stale)
+        XCTAssertEqual(model.displayCandidates.refused, refused + 1)
+        XCTAssertEqual(model.displayCandidates.lastRefusal, "membership generation \(before) is not the project's current generation \(after)")
+        XCTAssertTrue(model.displayCandidates.status.contains("refused"), model.displayCandidates.status)
+        XCTAssertEqual(model.displayCandidates.published, published)
+        XCTAssertEqual(model.displayListV2?.frame?.preparedNonce, first.preparedNonce, "the previously verified frame stays")
+        XCTAssertNotNil(model.result, "v1 untouched")
+        model.detachController()
+    }
+
     // MARK: D6 — outgoing helper lines are bounded at the helper's measured 1 MiB stdin limit
 
     /// A text that makes an `edit` line of exactly `lineBytes` bytes (newline included).

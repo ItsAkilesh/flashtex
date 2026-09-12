@@ -21,7 +21,10 @@ import FlashTeXProtocol
 ///    the attached project's, and its `request_id`/`compile_revision`/
 ///    `source_versions` are exactly those of the v1 preview the shell has
 ///    APPLIED (the helper delivers v1 before the sibling; a candidate for
-///    any other request is stale or foreign and is refused);
+///    any other request is stale or foreign and is refused), and its
+///    `membership_generation` is the project's current generation whenever
+///    the shell has learned one (an open/detach between the compile and the
+///    candidate makes the candidate stale);
 /// 3. the v2 envelope decodes, validates, resolves every font by content
 ///    hash (GH31 byte identity) and prepares every page OFF the UI thread
 ///    (`V2Loader.queue`), and its `project_id`/`revision` and every declared
@@ -132,12 +135,23 @@ struct DisplayCandidateGate: Equatable {
     var activePath: String
     /// Editor revision of the v2 frame currently on screen from this route.
     var displayedEditorRevision: Int?
+    /// The project's current membership generation as the shell last learned
+    /// it from the helper (`ProjectDocuments.membershipGeneration`: snapshot,
+    /// open_document, detach_document, project_status), or nil when no
+    /// membership operation has run yet in this session. Draft contract L91:
+    /// the candidate's `membership_generation` must match fresh caller-owned
+    /// state — a candidate compiled before an open/detach names the older
+    /// generation and is refused (D2).
+    var membershipGeneration: Int? = nil
 
     /// Why `frame` may not be shown, or nil when it may (so far).
     func rejection(of frame: DisplayCandidateFrame) -> String? {
         guard negotiated else { return "display candidates not negotiated for this session" }
         guard frame.sessionID == sessionID else { return "session \(frame.sessionID) is not the negotiated \(sessionID ?? "none")" }
         guard frame.projectID == projectID else { return "project \(frame.projectID) is not the attached \(projectID ?? "none")" }
+        if let generation = membershipGeneration, frame.membershipGeneration != generation {
+            return "membership generation \(frame.membershipGeneration) is not the project's current generation \(generation)"
+        }
         guard let applied, appliedResultID == frame.requestID, applied.requestID == frame.requestID else {
             return "request \(frame.requestID) is not the applied v1 preview (\(appliedResultID ?? "none"))"
         }
@@ -263,9 +277,10 @@ final class DisplayCandidateState {
         return true
     }
 
-    func gate(activePath: String, appliedResultID: String?) -> DisplayCandidateGate {
+    func gate(activePath: String, appliedResultID: String?, membershipGeneration: Int? = nil) -> DisplayCandidateGate {
         DisplayCandidateGate(negotiated: negotiated, sessionID: sessionID, projectID: projectID, applied: applied,
-                             appliedResultID: appliedResultID, activePath: activePath, displayedEditorRevision: displayedEditorRevision)
+                             appliedResultID: appliedResultID, activePath: activePath, displayedEditorRevision: displayedEditorRevision,
+                             membershipGeneration: membershipGeneration)
     }
 
     enum Admission: Equatable { case queued, replacedPending(String), refused(String) }
@@ -550,7 +565,7 @@ extension ShellModel {
     /// validated off-main; a newer arrival replaces an unvalidated older one.
     func handleDisplayCandidate(_ frame: DisplayCandidateFrame) {
         displayCandidatesReleaseDeferred(for: frame.requestID)
-        let gate = displayCandidates.gate(activePath: activePath, appliedResultID: resultID)
+        let gate = displayCandidates.gate(activePath: activePath, appliedResultID: resultID, membershipGeneration: project.membershipGeneration)
         switch displayCandidates.admit(frame, gate: gate) {
         case .refused(let why):
             log("display-candidate: refused \(frame.requestID) (generation \(frame.compileRevision), \(frame.frameBytes) B): \(why)")
@@ -663,7 +678,7 @@ extension ShellModel {
                 log("display-candidate: dropped \(frame.requestID) at paint: helper session/project changed")
                 return
             }
-            if let why = displayCandidates.gate(activePath: activePath, appliedResultID: resultID).rejection(of: frame) {
+            if let why = displayCandidates.gate(activePath: activePath, appliedResultID: resultID, membershipGeneration: project.membershipGeneration).rejection(of: frame) {
                 displayCandidates.noteRefused(why); restorePrevious()
                 log("display-candidate: dropped \(frame.requestID) at paint: \(why)")
                 return
