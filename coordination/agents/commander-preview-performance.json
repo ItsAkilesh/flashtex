@@ -13,18 +13,23 @@
   "capabilities": [
     "Preview helper serialization and latency"
   ],
-  "code_revision": "f4fd96ff3e2d1808bbc7abb9fdf86980406d87d6",
-  "eta_minutes": null,
+  "code_revision": "518a2ce3ad7d4058828c4057495a562fcc757c69",
+  "eta_minutes": {
+    "likely": 30,
+    "optimistic": 15,
+    "pessimistic": 60
+  },
   "machine": "linux-primary",
   "main_integrated_through": "f4fd96ff3e2d1808bbc7abb9fdf86980406d87d6",
-  "next_action": "Run existingthree-state rawfullsibling correctnessgate with frozen298helper and published347producer under/home.",
+  "next_action": "Independent audit and isolated exact-base HW1 starred-section candidate under helper handoff; preserve compiler ownership.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "FT048r33 actualnewproducerhelper replay prepared;78resourcehashes and existingbasefixture verified; waiting runtime exactpublication before execution.",
+  "summary": "Published 518a2ce3: unchanged9aa producer347 through frozen298 helper; three full snapshots match direct v1/v2 and raw bytes, accepted without diagnostics; reopen exact.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T14:28:11Z",
+  "updated_utc": "2026-09-12T14:34:26Z",
   "usage": {
-    "status": "unknown"
+    "evidence": "518a2ce3; crates/preview-controller/benchmarks/helper-9aa-three-state/provenance.json",
+    "status": "Hosted retained engineer; no paid calls; quota unknown."
   }
 }
