@@ -33,3 +33,21 @@ nonincreasing preview revisions. An overall experiment deadline is checked aroun
 each bounded reader call. Failure remains a failure rather than an extended timing
 budget or permission wait. Original request/event/producer/clean-output/source and
 phase artifacts are deterministically compressed with original and compressed hashes.
+
+## Completed intermediate output and current-only delivery
+
+`completion-disposition.json` audits the existing checked capture without running
+another workload. It reconstructs every source revision from the original20 guarded
+commands, verifies removed bytes and prior hashes, and binds each producer input and
+emitted result to the helper event with the same request ID/generation.
+
+Actual generations2,3,5,7,9,11,13,14,16,18 and20 completed successfully and became11
+helper stale notifications. Eight pending generations were superseded. Only21 was
+forwarded as a current preview. The lack of intermediate current previews is thus
+not an absence of completed compiler results: completed results existed but no
+longer matched the latest submitted source. This behavior preserves current-source
+identity; the evidence does not justify calling those older results current.
+
+An optional historical-display experiment can evaluate visible progress separately
+with explicit stale labels, original source bindings and source actions disabled.
+It must not change the default or claim current/native/every-keystroke acceptance.
