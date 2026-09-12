@@ -8,23 +8,23 @@
     "xcode",
     "rust"
   ],
-  "code_revision": "4b0fc3b6bde766e710d749c7519d3cabf7af506b",
+  "code_revision": "b0a67dc025022924e8a81de46affcb340f6d17b7",
   "eta_minutes": {
-    "likely": 20,
-    "optimistic": 10,
-    "pessimistic": 30
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 0
   },
   "machine": "mac-m1max-a",
   "main_integrated_through": "9ba9851cefb3ba263ffe1d25f42cb7fdd27371c4",
-  "next_action": "Full-suite run, commit, push agent/mac-grok-live/wiring, report to parent with helper-owner requests R1-R5",
+  "next_action": "Parent review/merge of agent/mac-grok-live/wiring (b0a67dc0); helper-owner requests R1-R5 in apps/mac/docs/grok-live.md; a11y table entry for the Grok section",
   "reviewed_peers": {},
   "schema_version": 1,
-  "state": "in_progress",
-  "summary": "Live Grok wired and verified: probe 200; explanation READY via helper --provider-session (grok-4.6, 69.7s); capture->LaTeX via bridge --enable-grok (grok-4.20-0309-non-reasoning, 2.8s) compiles ok/0 diagnostics; 14 hermetic tests green; evidence docs/evidence/grok-live-20260912T191209Z",
+  "state": "ready_for_integration",
+  "summary": "Live Grok/xAI on the Mac verified against the user's Keychain key: probe HTTP 200 (0.17s); explanation READY via real helper --provider-session (grok-4.6, 69.7s, 1 reviewed edit); capture->LaTeX via real bridge --enable-grok (grok-4.20-0309-non-reasoning, 2.8s) compiles through flashtex-compiler ok/0 diagnostics with compiler-derived supported_features; full Mac suite 760/760 (124 skipped), 14 new hermetic tests + 3 gated live tests",
   "tool": "Claude Code",
-  "updated_utc": "2026-09-12T19:16:05Z",
+  "updated_utc": "2026-09-12T19:26:34Z",
   "usage": {
-    "evidence": "docs/evidence/grok-live-20260912T191209Z/README.md",
-    "status": "shares mac-claude-a Claude Max 20x quota; 5 live xAI runs (3 requests each at most) on the user's key"
+    "evidence": "docs/evidence/grok-live-20260912T191209Z/README.md; apps/mac/docs/grok-live.md",
+    "status": "shares mac-claude-a Claude Max 20x quota; 5 live check runs on the user's xAI key (<=3 requests each), no purchases"
   }
 }
