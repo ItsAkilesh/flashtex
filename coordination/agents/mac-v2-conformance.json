@@ -9,15 +9,15 @@
     "rendering-v2-consumer",
     "preview-controller-client"
   ],
-  "code_revision": "5997f372",
+  "code_revision": "3db01b6b",
   "eta_minutes": {
-    "likely": 60,
-    "optimistic": 45,
-    "pessimistic": 75
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 5
   },
   "machine": "mac-m1max-a",
   "main_integrated_through": "ad922ea1",
-  "next_action": "Coverage audit written; implementing D1, D2, D3, D9, D6 test-first, one commit each",
+  "next_action": "Parent reviews/merges agent/mac-v2-conformance/contract (5 product commits over 5997f372); no parent-retained diffs needed",
   "reviewed_peers": {
     "origin/agent/mac-claude-a/mac-shell": {
       "adaptation": "Branch base; contract-draft review at docs/proposals/contract-draft-review-ad922ea.md is the task input",
@@ -26,12 +26,12 @@
     }
   },
   "schema_version": 1,
-  "state": "in_progress",
-  "summary": "Mac consumer conformance to the display-list-v2 draft: coverage audit done (none of D1/D2/D3/D9/D6 covered); implementing",
+  "state": "ready_for_integration",
+  "summary": "D6 measured+fixed (helper stdin 1 MiB confirmed; typed local refusal), D2 membership-generation gate, D3 face0 alias dropped + fixtures rebound, D9 measured not reproducible (pinned), D1 pre-paint document binding + previous frame kept; 85/85 with real helper+compiler+flashtex-render 9aaec57a",
   "tool": "Claude Code subagent (parent mac-claude-a)",
-  "updated_utc": "2026-09-12T14:40:00Z",
+  "updated_utc": "2026-09-12T15:02:38Z",
   "usage": {
-    "evidence": "none yet",
+    "evidence": "swift test filter run 85/85 (0 skips) at load 10.3; docs/evidence/mac-v2-conformance-2026-09-12/",
     "status": "Shared Claude Max quota with parent mac-claude-a; no purchases"
   }
 }

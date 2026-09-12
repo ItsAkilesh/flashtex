@@ -37,3 +37,19 @@ Grepped `apps/mac/Tests/FlashTeXMacTests/*`, `tools/native-validation/mac-live/r
 - Real helpers built in this worktree: `crates/preview-controller/target/release/flashtex-preview-controller`, `crates/compiler/target/release/flashtex-compiler` (from 5997f372 sources).
 - Dirty files / next commands / decisions: see the per-item sections below (updated per commit).
 - Staffing/billing: Claude Max quota shared with parent; no purchases.
+
+## Results (branch pushed)
+
+| Item | Commit | Change | Test |
+|---|---|---|---|
+| D6 | a27972e7 | `PreviewControllerClient.maxRequestLineBytes = 1 MiB` (measured, see `docs/evidence/mac-v2-conformance-2026-09-12/`), typed `RequestTooLarge` before any write, SIGPIPE ignored; draft's 1 MiB figure CONFIRMED (1,048,576 admitted; 1,048,577 and 2,097,156 → `error {id:null, message:"truncated or oversized input"}` then helper EXIT). `TransferV1.maxLineBytes`/`LineProcessClient` untouched: they bound the bridge/ledger/project-files routes, not the helper. | `V2ConformanceTests.testHelperRequestAboveOneMiBIsRefusedLocallyBeforeSending`, `.testRealHelperAdmitsExactlyOneMiBAndStaysAliveBehindTheClientBound` |
+| D2 | 34028e7c | `DisplayCandidateGate.membershipGeneration` (project's current, nil until learned) compared at admission and pre-paint | `.testGateRefusesACandidateWhoseMembershipGenerationIsNotTheProjectsCurrentOne`, `.testRealHelperRefusesACandidateFromBeforeAnOpenDocument` |
+| D3 | 5e04015c | face0 alias removed from `V2FontStore`; `RenderingV2.swift` comment corrected; four fixtures rebound to raw digests (identity only) | `PreviewV2Tests.testObsoleteBytesFace0DigestIsRefusedAsUnknown`, `RenderingV2Tests.testRealTextFixturePreparesAgainstBundledFontsByRawByteHash`, `V2FontStoreIdentityTests` (3/3 green, obsolete spelling refused after a file change) |
+| D9 | 654575b2 | measured: not reproducible as a lost frame (compile_result replaces the fixture before the sibling); no consumer change, behaviour pinned | `.testFixtureOnScreenDoesNotLoseTheNextLiveFrameAndAFixtureIdLineIsDropped` |
+| D1 | 3db01b6b | `V2Live.sourceBindingFailure` (documents non-empty; each in `compiledDocuments` with exact byte_length + sha256) before paint; live refusals keep the previous frame (`V2PreviewState.loading` now carries `previousSource`) | `.testDirectRouteRefusesASiblingWhoseDocumentsAreNotTheRequestTextAndKeepsTheLastFrame` (test committed with 654575b2, implementation in 3db01b6b) |
+
+Evidence run (load 10.3/6.1 at 11:00 local, real helper + compiler built here, `FLASHTEX_RENDER` = 9aaec57a scratch build):
+`swift test --filter "PreviewV2Tests|PreviewV2ShellTests|PreviewV2LiveTests|PreviewV2ParityTests|RenderingV2Tests|DisplayCandidateTests|V2FontStoreIdentityTests|WorkerClientTests|BridgeClientTests|V2ConformanceTests|OutputBoundsTests|PreviewControllerTests"`
+→ Executed 85 tests, 0 failures, 0 skipped. Full `swift test` NOT run (1-min load 10.3 at that time; bounded lane).
+
+Parent-retained files: NO diffs required for any item (all hooks land in lane-owned files; `controllerSubmitEdit` already surfaces the thrown `RequestTooLarge` as `controllerStatus`). Optional parent improvement (not required): call `project.refreshSnapshot()` on helper `ready` so the membership generation is known from the first candidate (today it is nil until the first open/detach/snapshot, and the D2 check is then not applied).
