@@ -8,9 +8,9 @@ import FlashTeXProtocol
 /// capture is forwarded there instead and its durable acknowledgement returned.
 @MainActor
 final class NearbyInbox: ObservableObject {
-    @Published private(set) var received: [RuntimeV1.CaptureSubmit] = []
-    @Published private(set) var lastCaptureId: String?
-    @Published private(set) var lastNote: String?
+    private(set) var received: [RuntimeV1.CaptureSubmit] = []
+    private(set) var lastCaptureId: String?
+    private(set) var lastNote: String?
     static let maxRetained = 50
 
     /// Stores a capture; a repeated `capture_id` with an identical payload is

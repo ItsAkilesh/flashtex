@@ -1,10 +1,15 @@
 {
-  "schema_version": 1,
   "agent_id": "daniel-parent",
-  "task_id": "FT-046",
-  "next_index": 0,
+  "next_index": 1,
+  "schema_version": 1,
   "steps": [
     {
+      "acceptance": [
+        "Actual registered machine and authorized usable route, no secret values",
+        "16distinct existing-machine engineering sessions with exact assignments and unique worktrees; report actual count separately",
+        "No purchases/unapproved overages or duplicate transferred ownership; no global Commander claim"
+      ],
+      "allocation_id": "daniel-claude20x-shared",
       "name": "Verify all16 actual current session ACKs and rebalance only within approved exclusive lanes",
       "objective": "Verify all16 actual current session ACKs and rebalance only within approved exclusive lanes",
       "owned_paths": [
@@ -12,15 +17,15 @@
         "coordination/agents/daniel-parent.json",
         "coordination/daniel-parent.md"
       ],
+      "timebox_minutes": 30
+    },
+    {
       "acceptance": [
         "Actual registered machine and authorized usable route, no secret values",
         "16distinct existing-machine engineering sessions with exact assignments and unique worktrees; report actual count separately",
         "No purchases/unapproved overages or duplicate transferred ownership; no global Commander claim"
       ],
       "allocation_id": "daniel-claude20x-shared",
-      "timebox_minutes": 30
-    },
-    {
       "name": "Maintain two-minute completion checks and30second free deterministic pickup polling with resource evidence",
       "objective": "Maintain two-minute completion checks and30second free deterministic pickup polling with resource evidence",
       "owned_paths": [
@@ -28,13 +33,8 @@
         "coordination/agents/daniel-parent.json",
         "coordination/daniel-parent.md"
       ],
-      "acceptance": [
-        "Actual registered machine and authorized usable route, no secret values",
-        "16distinct existing-machine engineering sessions with exact assignments and unique worktrees; report actual count separately",
-        "No purchases/unapproved overages or duplicate transferred ownership; no global Commander claim"
-      ],
-      "allocation_id": "daniel-claude20x-shared",
       "timebox_minutes": 30
     }
-  ]
+  ],
+  "task_id": "FT-046"
 }

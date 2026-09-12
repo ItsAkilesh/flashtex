@@ -322,3 +322,83 @@ fn missing_current_context_revokes_pending_status_without_journaling() {
     ));
     assert!(bridge.store.require("capture").unwrap().proposal.is_none());
 }
+
+#[test]
+fn recovered_review_rejects_actual_bridge_context_loss_without_source_or_receipt_changes() {
+    use flashtex_conversion_jobs::bridge_adapter::review::*;
+    let (dir, mut bridge, mut service) = setup();
+    let context = NativeService::context_identity(&bridge, "capture", vec![]).unwrap();
+    for command in [
+        Command::Admit {
+            capture_id: "capture".into(),
+            context: context.clone(),
+            supported_features: vec![],
+        },
+        Command::Start {
+            capture_id: "capture".into(),
+            context: context.clone(),
+        },
+    ] {
+        service.execute(&mut bridge, req(command)).unwrap();
+    }
+    wait(&service.status_handle(), &context);
+    let ready = service
+        .execute(
+            &mut bridge,
+            req(Command::Reconcile {
+                capture_id: "capture".into(),
+                context: context.clone(),
+            }),
+        )
+        .unwrap()
+        .status;
+    let token;
+    {
+        let mut inbox =
+            ReviewInbox::open_at(dir.path().join("review"), Default::default(), 1).unwrap();
+        inbox.admit_ready(&ready).unwrap();
+        inbox.select(Some("capture")).unwrap();
+        token = inbox
+            .decide_at(
+                DecisionRequest {
+                    decision_id: "decision".into(),
+                    capture_id: "capture".into(),
+                    expected_context: context.clone(),
+                    expected_proposal_sha256: proposal_hash(match &ready.conversion {
+                        ConversionState::ProposalReady(p) => p,
+                        _ => panic!("proposal must be durable"),
+                    })
+                    .unwrap(),
+                    intent: ReviewIntent::AcceptForPreparation,
+                },
+                1,
+            )
+            .unwrap();
+    }
+    // Simulate process restart: capture journal survives, document snapshots and
+    // selected destination have not yet been restored by the native controller.
+    drop(service);
+    drop(bridge);
+    let bridge = Bridge::new(Store::open(dir.path().join("captures")).unwrap());
+    let before = serde_json::to_value(bridge.store.require("capture").unwrap()).unwrap();
+    let mut inbox = ReviewInbox::open_at(dir.path().join("review"), Default::default(), 2).unwrap();
+    assert!(matches!(
+        inbox.refresh_from_bridge(&bridge, "capture", vec![]),
+        Err(InboxError::StaleContext)
+    ));
+    assert!(matches!(
+        inbox.validate_handoff_at(&token, &context, 2),
+        Err(InboxError::StaleContext)
+    ));
+    assert_eq!(
+        serde_json::to_value(bridge.store.require("capture").unwrap()).unwrap(),
+        before
+    );
+    drop(inbox);
+    let inbox = ReviewInbox::open_at(dir.path().join("review"), Default::default(), 3).unwrap();
+    assert_eq!(inbox.state("capture").unwrap(), ReviewState::StaleContext);
+    assert!(matches!(
+        inbox.validate_handoff(&token, &context),
+        Err(InboxError::StaleContext)
+    ));
+}

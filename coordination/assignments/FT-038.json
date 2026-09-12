@@ -3,9 +3,9 @@
   "task_id": "FT-038",
   "agent_id": "daniel-math-access",
   "branch": "agent/daniel-math-access/math-accessibility",
-  "revision": 1,
+  "revision": 2,
   "state": "assigned",
-  "objective": "Original semantic math accessibility adapter over published math-layout nodes: structured readable/MathML output with explicit unsupported nodes and source identity. Standalone additive crate only; coordinate consumer contract before integration.",
+  "objective": "Expand typed structured math accessibility with exact source-node identity, bounded tree traversal and explicit unsupported nodes; no guessed speech for unknown constructs.",
   "owned_paths": [
     "crates/math-accessibility"
   ],
@@ -18,6 +18,6 @@
   "allocation_id": "daniel-claude20x-shared",
   "timebox_minutes": 40,
   "deadline_utc": null,
-  "input_main_sha": "53fee3012b2902ca05bd31766defa515b3044cec",
-  "updated_utc": "2026-09-12T07:35:07.367827+00:00"
+  "input_main_sha": "83f65e08ae60b312609f49ec0a2b6cae25c8e353",
+  "updated_utc": "2026-09-12T09:08:31.372212+00:00"
 }
