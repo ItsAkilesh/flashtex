@@ -45,12 +45,23 @@ struct FlashTeXMacApp: App {
                 .onAppear { appDelegate.model = model }
         }
         .commands {
+            NavigationCommands(model: model) // Navigation.swift
             CommandGroup(after: .pasteboard) {
                 Divider()
                 Button("Pin Insertion Point") { model.pinAnchorAtCaret() }
                     .keyboardShortcut("p", modifiers: [.command, .shift])
                 Button("Open Capture Proposal…") { model.openProposalPanel() }
                     .keyboardShortcut("i", modifiers: [.command, .shift])
+                Divider()
+                Button("Attach Capture Bridge") { model.attachDiscoveredBridge() }
+                Button("Detach Capture Bridge") { model.detachBridge() }
+                    .disabled(!model.bridgeAttached)
+                Button("Submit Sample Capture…") { model.submitSampleCapturePanel() }
+                    .keyboardShortcut("u", modifiers: [.command, .shift])
+                    .disabled(!model.bridgeAttached)
+                Button("Convert Capture") { model.convertLatestCapture() }
+                    .keyboardShortcut("g", modifiers: [.command, .shift])
+                    .disabled(model.latestConvertibleCapture == nil)
             }
             CommandGroup(replacing: .newItem) {
                 Button("Open LaTeX File…") { model.openTexPanel() }

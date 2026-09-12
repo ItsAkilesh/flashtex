@@ -18,6 +18,10 @@ Full process: [orchestration master plan](../ORCHESTRATION.md).
 | FT-014 / 1 | Independent companion native validation and repair broker | chatgpt-a | assigned; ACK/PID pending | FT-004 branch, Xcode 26.6; no overlapping writes |
 | FT-015 / 1 | Linux end-to-end demo, recovery, and regression harness | local-claude-opus | assigned; blocked on execution login | Compiler/bridge/PDF exact SHAs; offline fixtures required |
 | FT-016 / 1 | Deterministic Claude worker supervisor and recovery safety | commander-supervisor | assigned; implementation via Commander OpenAI route | Local Claude FT-015 and auth recovery issue #6 |
+| FT-017 / 1 | Reference TeX raster-diff visual oracle | mac-visual-oracle (Opus/Mac) | assigned; ACK/PID pending | Declared visual fixtures; test oracles only |
+| FT-018 / 1 | TeX font shaping, metrics, and PDF embedding | mac-font-engine (Opus/Mac) | assigned; ACK/PID pending | Visual oracle; compiler adapter later |
+| FT-019 / 1 | Paragraph line breaking, glue, kerning, and baselines | mac-paragraph-layout (Opus/Mac) | assigned; ACK/PID pending | FT-018 metric API |
+| FT-020 / 1 | TeX-style math boxes, rules, delimiters, and spacing | mac-math-layout (Opus/Mac) | assigned; ACK/PID pending | FT-018 metric API |
 
 ## Dispatch record required before changing a task to assigned
 

@@ -19,6 +19,10 @@ public extension RuntimeV1 {
             case captureId = "capture_id", destinationId = "destination_id"
             case baseRevision = "base_revision", image, instructions
         }
+        public init(captureId: String, destinationId: String, baseRevision: Int, image: CaptureImage, instructions: String) {
+            self.captureId = captureId; self.destinationId = destinationId; self.baseRevision = baseRevision
+            self.image = image; self.instructions = instructions
+        }
     }
 
     struct CaptureReceived: Codable, Equatable {
@@ -28,18 +32,24 @@ public extension RuntimeV1 {
     }
 
     /// Proposed LaTeX for a capture. Never inserted automatically.
+    /// `context_revision` (transfer-v1) is the source revision the bridge
+    /// assembled context from; absent in plain runtime-v1 proposal files.
     struct CaptureProposal: Codable, Equatable {
         public var captureId: String
         public var latex: String
         public var ambiguities: [String]
         public var requiredDependencies: [String]
+        public var contextRevision: Int?
         enum CodingKeys: String, CodingKey {
             case captureId = "capture_id", latex, ambiguities
             case requiredDependencies = "required_dependencies"
+            case contextRevision = "context_revision"
         }
-        public init(captureId: String, latex: String, ambiguities: [String], requiredDependencies: [String]) {
+        public init(captureId: String, latex: String, ambiguities: [String], requiredDependencies: [String],
+                    contextRevision: Int? = nil) {
             self.captureId = captureId; self.latex = latex
             self.ambiguities = ambiguities; self.requiredDependencies = requiredDependencies
+            self.contextRevision = contextRevision
         }
     }
 
