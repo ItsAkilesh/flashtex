@@ -2,6 +2,8 @@
 //! device evaluation, variants selection, implicit accent center or pixel rounding.
 use super::*;
 pub mod assembly;
+pub mod cache;
+pub mod device;
 pub mod kern;
 use crate::outlines::OutlineCoordinate as Q;
 use flashtex_font_resources::{

@@ -1848,6 +1848,95 @@ fn math_binding_synthetic_limits_and_missing_table() {
         MathPolicy::UnhintedDesignUnits,
     )
     .unwrap();
+    use math_cache::{CacheError, CacheStatus, Limits, MathQueryCache, Query};
+    use math_device::{ConstantDeviceRecord, DeviceContext};
+    let mut cache = MathQueryCache::new(
+        &bound,
+        Limits {
+            entries: 1,
+            query_bytes: 8192,
+            parsed_bytes: 0,
+        },
+    )
+    .unwrap();
+    let query = Query::Constant {
+        record: ConstantDeviceRecord::new(1).unwrap(),
+        context: DeviceContext::new(12).unwrap(),
+    };
+    let first = cache.query(bound.identity(), query.clone()).unwrap();
+    assert_eq!(first.status, CacheStatus::Stored);
+    let again = cache.query(bound.identity(), query.clone()).unwrap();
+    assert_eq!(again.status, CacheStatus::Hit);
+    assert!(std::sync::Arc::ptr_eq(&first.outcome, &again.outcome));
+    let mut stale = bound.identity().clone();
+    stale.registry_generation.push('x');
+    assert!(matches!(
+        cache.query(&stale, query.clone()),
+        Err(CacheError::StaleIdentity)
+    ));
+    let negative = Query::Fit {
+        glyph_id: 0,
+        direction: math_variants::Direction::Vertical,
+        target: cff::Rational::new(1, 1).unwrap(),
+        strategy: math_fit::FitStrategy::EqualExtendersProportionalConnectorFlexibility,
+        limits: math_fit::FitLimits::default(),
+    };
+    let failure = cache.query(bound.identity(), negative.clone()).unwrap();
+    assert!(failure.outcome.is_err());
+    let hit = cache.query(bound.identity(), negative).unwrap();
+    assert_eq!(hit.status, CacheStatus::Hit);
+    assert!(std::sync::Arc::ptr_eq(&failure.outcome, &hit.outcome));
+    assert_eq!(
+        cache.query(bound.identity(), query.clone()).unwrap().status,
+        CacheStatus::Stored
+    );
+    assert!(cache.stats().query_bytes <= 8192);
+    assert_eq!(cache.stats().parsed_bytes, 0);
+    let mut bypass = MathQueryCache::new(
+        &bound,
+        Limits {
+            entries: 0,
+            query_bytes: 0,
+            parsed_bytes: 0,
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        bypass.query(bound.identity(), query).unwrap().status,
+        CacheStatus::BypassedOversize
+    );
+    let mut variation_bytes = bytes.clone();
+    be16(&mut variation_bytes, off + 24, 214);
+    variation_bytes.extend([0; 8]);
+    be16(&mut variation_bytes, off + 224 + 4, 0x8000);
+    be32(&mut variation_bytes, end + 12, 232);
+    let variation_registry = load(&variation_bytes);
+    let variation_font = BoundMathFont::from_registry(
+        &variation_registry,
+        &binding,
+        variation_registry.generation(),
+        MathPolicy::UnhintedDesignUnits,
+    )
+    .unwrap();
+    let mut variation_cache = MathQueryCache::new(&variation_font, Limits::default()).unwrap();
+    let variation_query = Query::Constant {
+        record: ConstantDeviceRecord::new(1).unwrap(),
+        context: DeviceContext::new(12).unwrap(),
+    };
+    let rejected = variation_cache
+        .query(variation_font.identity(), variation_query.clone())
+        .unwrap();
+    assert!(matches!(
+        rejected.outcome.as_ref(),
+        Err(math_cache::QueryError::Device(
+            math_device::DeviceError::UnsupportedVariationIndex
+        ))
+    ));
+    let repeated = variation_cache
+        .query(variation_font.identity(), variation_query)
+        .unwrap();
+    assert_eq!(repeated.status, CacheStatus::Hit);
+    assert!(std::sync::Arc::ptr_eq(&rejected.outcome, &repeated.outcome));
     assert_eq!(bound.constants().axis_height, i16::MIN);
     assert_eq!(bound.constants().delimited_sub_formula_min_height, u16::MAX);
     assert_eq!(
