@@ -91,10 +91,7 @@ impl Crop {
 pub enum GeometryError {
     /// The crop rectangle does not fit inside the asset's real dimensions,
     /// or leaves nothing behind.
-    CropOutOfBounds {
-        crop: Crop,
-        dimensions: Dimensions,
-    },
+    CropOutOfBounds { crop: Crop, dimensions: Dimensions },
 }
 
 impl fmt::Display for GeometryError {
@@ -129,10 +126,13 @@ mod tests {
             top: 5,
         };
         let result = crop.validate(DIMS).unwrap();
-        assert_eq!(result, Dimensions {
-            width: 80,
-            height: 40
-        });
+        assert_eq!(
+            result,
+            Dimensions {
+                width: 80,
+                height: 40
+            }
+        );
     }
 
     #[test]

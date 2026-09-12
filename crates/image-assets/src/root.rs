@@ -47,10 +47,18 @@ impl fmt::Display for RootError {
                 write!(f, "asset root is not a directory: {}", p.display())
             }
             RootError::AbsolutePath(p) => {
-                write!(f, "asset path must be root-relative, not absolute: {}", p.display())
+                write!(
+                    f,
+                    "asset path must be root-relative, not absolute: {}",
+                    p.display()
+                )
             }
             RootError::PathTraversal(p) => {
-                write!(f, "asset path contains '..' and was rejected: {}", p.display())
+                write!(
+                    f,
+                    "asset path contains '..' and was rejected: {}",
+                    p.display()
+                )
             }
             RootError::SymlinkEscape(p) => write!(
                 f,
@@ -157,7 +165,10 @@ mod tests {
         write_file(&dir.path().join("a.png"), b"stub");
         let root = AssetRoot::new(dir.path()).unwrap();
         let resolved = root.resolve("a.png").unwrap();
-        assert_eq!(resolved, fs::canonicalize(dir.path().join("a.png")).unwrap());
+        assert_eq!(
+            resolved,
+            fs::canonicalize(dir.path().join("a.png")).unwrap()
+        );
     }
 
     #[test]

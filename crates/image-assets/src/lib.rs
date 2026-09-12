@@ -341,10 +341,13 @@ mod tests {
             .unwrap();
         let (format, dims) = decode_bounded(&buf).unwrap();
         assert_eq!(format, AssetFormat::Png);
-        assert_eq!(dims, Dimensions {
-            width: 37,
-            height: 19
-        });
+        assert_eq!(
+            dims,
+            Dimensions {
+                width: 37,
+                height: 19
+            }
+        );
     }
 
     #[test]

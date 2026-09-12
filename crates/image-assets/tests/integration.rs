@@ -114,8 +114,14 @@ fn a_single_changed_byte_in_the_stored_file_changes_the_identity() {
 
     assert_eq!(a.dimensions(), b.dimensions());
     assert_ne!(a.id(), b.id());
-    assert_eq!(a.id().to_hex(), sha256_hex(&fs::read(dir.path().join("a.png")).unwrap()));
-    assert_eq!(b.id().to_hex(), sha256_hex(&fs::read(dir.path().join("b.png")).unwrap()));
+    assert_eq!(
+        a.id().to_hex(),
+        sha256_hex(&fs::read(dir.path().join("a.png")).unwrap())
+    );
+    assert_eq!(
+        b.id().to_hex(),
+        sha256_hex(&fs::read(dir.path().join("b.png")).unwrap())
+    );
 }
 
 #[test]
@@ -174,7 +180,11 @@ fn rejects_truncated_png_cleanly_never_panics() {
 #[test]
 fn rejects_garbage_bytes_cleanly_never_panics() {
     let dir = tempfile::tempdir().unwrap();
-    fs::write(dir.path().join("bad.png"), b"this is not an image, just noise").unwrap();
+    fs::write(
+        dir.path().join("bad.png"),
+        b"this is not an image, just noise",
+    )
+    .unwrap();
 
     let loader = AssetLoader::new(AssetRoot::new(dir.path()).unwrap());
     let err = loader.load("bad.png").unwrap_err();
