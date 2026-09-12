@@ -101,7 +101,9 @@ unknown formats, versions, item kinds, and path operators.
 
 ## Integration note (rendering-v2)
 
-Rendering-v2 is under Commander review. Until an ABI is agreed:
+Rendering-v2 is under Commander review. A field-level mapping proposal
+against the draft schema lives in `docs/rendering-v2-integration.md`.
+Until an ABI is agreed:
 
 - `crates/pdf` is not changed. When adopted, its page writer would append
   `PdfFragment::content` to the page stream (wrapped in `q … Q`), register
