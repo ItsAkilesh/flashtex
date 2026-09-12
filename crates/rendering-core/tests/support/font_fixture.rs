@@ -190,3 +190,45 @@ pub fn math_fixture(axis: i16) -> Vec<u8> {
     be32(&mut bytes, end + 12, math.len() as u32);
     bytes
 }
+
+#[allow(dead_code)]
+pub fn math_assembly_fixture(horizontal: bool) -> Vec<u8> {
+    let mut b = math_fixture(0);
+    let count = u16::from_be_bytes(b[4..6].try_into().unwrap()) as usize;
+    let record = 12 + (count - 1) * 16;
+    let offset = u32::from_be_bytes(b[record + 8..record + 12].try_into().unwrap()) as usize;
+    let mut v = vec![0; 56];
+    // One coverage and shared construction; original GID1 triangle only.
+    for (at, n) in [
+        (0, 5),
+        (if horizontal { 4 } else { 2 }, 12),
+        (if horizontal { 8 } else { 6 }, 1),
+        (10, 18),
+        (12, 1),
+        (14, 1),
+        (16, 1),
+        (18, 12),
+        (20, 2),
+        (22, 1),
+        (24, 100),
+        (26, 1),
+        (28, 200),
+        (30, 0),
+        (34, 2),
+        (36, 1),
+        (38, 0),
+        (40, 20),
+        (42, 100),
+        (46, 1),
+        (48, 20),
+        (50, 20),
+        (52, 100),
+        (54, 1),
+    ] {
+        be16(&mut v, at, n)
+    }
+    be16(&mut b, offset + 8, 260);
+    b.extend(v);
+    be32(&mut b, record + 12, 316);
+    b
+}

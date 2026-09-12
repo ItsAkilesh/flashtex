@@ -14,7 +14,7 @@
     "rust",
     "rendering"
   ],
-  "code_revision": "89b4b864d9514da714340024524df7641093aafe",
+  "code_revision": "6b1c99ae4ce6b5477ab945ff57cf423c7e25db8f",
   "eta_minutes": {
     "likely": 15,
     "optimistic": 5,
@@ -22,15 +22,15 @@
   },
   "machine": "linux-primary",
   "main_integrated_through": "84d581168eed75caa620f66350d629a23b0ce538",
-  "next_action": "Next rendering-core product assignment after tested MATH checkpoint; additive variants fitter available separately.",
+  "next_action": "Publish this checkpoint then merge published MathKernInfo 1fc71f3 unchanged and implement exact metrics replay only; no script layout. Worktree /home/natkarri/flashtex-rendering-core branch agent/commander-render-core/rendering-core. No context telemetry/native compaction control exposed; this is durable recovery evidence.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "Registry-bound exact MATH constants and glyph metrics consumer implemented with source-aware replay.",
+  "summary": "Exact MATH assembly consumer complete: unchanged font f959fb5 dependency, rational horizontal/right and vertical/up placement, immutable BoundMathFit and source/registry metrics, original GID batches, typed atomic budgets. 134 ordinary tests, strict all-target clippy, both pinned registry tests pass; STIX 32 vertical + 34 horizontal exact assembly replays. No TeX/native parity claim.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T08:29:00Z",
+  "updated_utc": "2026-09-12T08:47:43Z",
   "usage": {
-    "evidence": "133 ordinary tests, strict clippy and both separately run pinned registry tests pass. MATH56 constants/6 original GIDs: table27408 bytes SHA0af4bf095e9d3a968b460b83d589b5c0a6dc58762fe1f3cb3dece03fd5344c4a; replay8944 bytes SHAd7f77e0e2ce27728e79e406648daf833fb19dd9a7675fd14181bcf8d742675d8. Exact signed scaling, dimensionless ratios, absent accents, tampered/duplicate replay and stale font/source gates tested. Peer51ecbd0 unchanged; no layout/native/device/variants claim.",
+    "evidence": "font f959fb5; cargo test --offline 134 ordinary tests; cargo clippy all-targets -D warnings; pinned STIXMath SHA3a5f3f26f40d5698b3c62dd085d48d6663696a3f80825aab8b553d5097518e8c; pending merge commit with own assembly.rs/tests/README/report only plus unchanged peer ancestry",
     "status": "Hosted OpenAI only; no paid providers or descendants."
   }
 }

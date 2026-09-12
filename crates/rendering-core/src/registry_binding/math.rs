@@ -1,6 +1,7 @@
 //! Exact registry-bound MATH metric consumer. No parser/layout duplication,
 //! device evaluation, variants selection, implicit accent center or pixel rounding.
 use super::*;
+pub mod assembly;
 use crate::outlines::OutlineCoordinate as Q;
 use flashtex_font_resources::{
     cff::Rational,

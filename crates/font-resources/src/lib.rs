@@ -561,3 +561,7 @@ pub mod engine_adapter;
 pub mod registry;
 
 pub mod math_adapter;
+
+pub mod math_variants;
+
+pub mod math_fit;

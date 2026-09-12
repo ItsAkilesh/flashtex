@@ -584,3 +584,44 @@ and its OFL license. Observed MATH table SHA
 adapter-equivalence evidence, not an independent layout oracle. Synthetic tests
 cover missing MATH, signed/unsigned metric boundaries, lookup bounds, stale
 registry generations, and exact scaling/overflow.
+
+`BoundMathFont::variants()` separately parses the previously unsupported variants
+subtable and returns `BoundMathVariants` retaining its complete parent identity.
+The constants-only `require(Variants)` remains unsupported; use this explicit
+fallible extension. `MathVariants` preserves original GIDs, variant advances,
+assembly italic correction, connector lengths, extender flags and direction.
+Limits: 4 MiB table, 4096 constructions, 65536 aggregate variant/part records.
+Coverage formats 1/2 are checked locally because the peer helper is private.
+
+`select` returns the first ready-made variant meeting a requested integer advance,
+`AssemblyRequired`, or `Unavailable`. `assemble` accepts caller-selected equal
+extender repetitions and exact per-join overlaps; it enforces connector bounds
+and returns exact design-unit positions and original part/instance provenance.
+It caps repetitions at1024 and output at4096 parts. This is not automatic target
+fitting or baseline placement. Device corrections remain explicitly unevaluated;
+nonzero device offsets are range-checked, but device table bodies are not parsed.
+Pinned STIX Math replay observes165 constructions,633 variants and69 assemblies.
+Connector lengths are preserved even when longer than advance: these are distinct
+font measurements. Semantics reference:
+https://learn.microsoft.com/en-us/typography/opentype/spec/math
+
+`BoundMathVariants::fit` adds exact target fitting with the explicit strategy
+`EqualExtendersProportionalConnectorFlexibility`. It chooses a sufficient
+ready-made variant first. Otherwise it tries equal extender counts in increasing
+order, computes each valid extent interval, and distributes overlap reduction
+proportionally to available connector flexibility using checked rationals.
+A successful assembly reaches the target exactly; a variant can exceed it.
+No overlap exceeds either connector or falls below the font's minimum overlap.
+Caller limits may only tighten the1024 repetition/4096 part ceilings. Outcomes
+separate invalid inputs, absent construction, unrepresentable size, exhausted
+budget and arithmetic failure. Repetition budgets do not imply a font is invalid.
+
+Bound results retain the full MATH resource identity, direction, requested target,
+base GID, original part indices and repeat-instance provenance. Source-document
+selection and vertical baseline placement remain the consumer's responsibility.
+No hinting or general TeX delimiter parity is claimed. Pinned STIXMath at5000.5
+units gives66 accepted/3 refused assembly-bearing constructions (horizontal
+GIDs1510,1514,1532 exhaust this strategy's budget). At5000 units, parentheses,
+brackets and integral GIDs1064–1067/1698 all fit. Synthetic tests hand-check exact
+fractional and unequal connector overlaps, extent boundaries, gaps, impossible
+joins, output/repetition limits and arithmetic overflow.

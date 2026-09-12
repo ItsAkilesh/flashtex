@@ -1164,6 +1164,7 @@ fn exact_math_units_glyphs_replay_and_stale_resource_gates() {
 fn pinned_stix_math_metric_consumer_replay() {
     use flashtex_font_resources::math_adapter::MathPolicy;
     use flashtex_rendering_core::registry_binding::math::*;
+    use flashtex_rendering_core::{Paint, Tick};
     let bytes = std::fs::read("/usr/share/fonts/stix-fonts/STIXTwoMath-Regular.otf").unwrap();
     let license = std::fs::read("/usr/share/licenses/stix-fonts/OFL.txt").unwrap();
     assert_eq!(
@@ -1211,6 +1212,121 @@ fn pinned_stix_math_metric_consumer_replay() {
         font_size: r(10485761, 3),
         original_gids: &ids,
     };
+    {
+        use flashtex_font_resources::{
+            cff::{HintPolicy, Rational},
+            math_adapter::BoundMathFont,
+            math_fit::{FitLimits, FitStrategy, FittedShape},
+            math_variants::Direction,
+        };
+        use flashtex_rendering_core::{
+            batch::ExactClip,
+            mixed::{MixedContext, MixedLimits},
+            registry_binding::math::assembly::AssemblyRequest,
+        };
+        let bound = BoundMathFont::from_registry(
+            &registry,
+            &selection("math"),
+            registry.generation(),
+            MathPolicy::UnhintedDesignUnits,
+        )
+        .unwrap();
+        let variants = bound.variants().unwrap();
+        let mut seen = [0, 0];
+        for (&(direction, gid), construction) in variants.data().constructions() {
+            if construction.assembly.is_none() {
+                continue;
+            }
+            let request = || AssemblyRequest {
+                metrics: query(),
+                direction,
+                original_gid: gid,
+                target: Rational::new(10001, 2).unwrap(),
+                strategy: FitStrategy::EqualExtendersProportionalConnectorFlexibility,
+                fit_limits: FitLimits::default(),
+                page: MixedContext {
+                    project_id: "pinned-math",
+                    revision: 5,
+                    page: 1,
+                    page_width: Tick(100000000),
+                    page_height: Tick(100000000),
+                    clip: ExactClip {
+                        left: r(0, 1),
+                        top: r(0, 1),
+                        right: r(100000000, 1),
+                        bottom: r(100000000, 1),
+                    },
+                },
+                origin: flashtex_rendering_core::outlines::OutlinePoint {
+                    x: r(1, 3),
+                    y: r(7, 2),
+                },
+                paint: Paint {
+                    r: 0.0,
+                    g: 0.0,
+                    b: 0.0,
+                    a: 1.0,
+                },
+                hint_policy: HintPolicy::Unhinted,
+            };
+            let frame = match renderer.math_assembly(&math, request(), MixedLimits::default()) {
+                Ok(v) => v,
+                Err(assembly::AssemblyError::Fit(_)) => continue,
+                Err(e) => panic!("{e:?}"),
+            };
+            if let FittedShape::Assembly(a) = &frame.fit().fit().shape {
+                assert_eq!(a.advance, Rational::new(10001, 2).unwrap());
+                assert_eq!(a.parts.len(), frame.batch().primitives().len());
+                assert_eq!(a.overlaps.len() + 1, a.parts.len());
+                for (i, p) in frame.batch().primitives().iter().enumerate() {
+                    assert_eq!(p.original_gid, Some(a.parts[i].glyph_id as u32));
+                    assert_eq!(p.identity.item_index, i);
+                }
+                seen[if direction == Direction::Vertical {
+                    0
+                } else {
+                    1
+                }] += 1;
+            }
+            frame
+                .require_current(&renderer, "main.tex", &source)
+                .unwrap();
+            assert!(frame
+                .require_current(
+                    &renderer,
+                    "main.tex",
+                    &SourceSnapshot {
+                        revision: 6,
+                        text: source.text.clone()
+                    }
+                )
+                .is_err());
+            assert!(matches!(
+                renderer.math_assembly(
+                    &math,
+                    request(),
+                    MixedLimits {
+                        max_primitives: 0,
+                        ..MixedLimits::default()
+                    }
+                ),
+                Err(assembly::AssemblyError::Budget)
+            ));
+            assert_eq!(
+                frame.batch().fixture_bytes(),
+                renderer
+                    .math_assembly(&math, request(), MixedLimits::default())
+                    .unwrap()
+                    .batch()
+                    .fixture_bytes()
+            );
+        }
+        assert!(seen[0] > 0 && seen[1] > 0, "{seen:?}");
+        eprintln!(
+            "exact MATH assembly consumer vertical={} horizontal={}",
+            seen[0], seen[1]
+        );
+    }
     let metrics = renderer.math_metrics(&math, query()).unwrap();
     let face = TrueTypeFace::parse(bytes).unwrap();
     let original = face.math().unwrap();
@@ -1250,4 +1366,176 @@ fn pinned_stix_math_metric_consumer_replay() {
         replay
     );
     println!("MATH consumer56 constants6 glyphs tableSHA={} tableBytes={} replayBytes={} replaySHA={} unhinted=true layout_performed=false",math.identity().math_table_sha256,math.identity().math_table_byte_length,replay.len(),digest(&replay));
+}
+
+#[test]
+fn fitted_math_exact_origins_overlaps_and_atomic_limits() {
+    use flashtex_font_resources::{
+        cff::Rational,
+        math_adapter::MathPolicy,
+        math_fit::{FitLimits, FitStrategy, FittedShape},
+        math_variants::Direction,
+    };
+    use flashtex_rendering_core::{
+        mixed::{MixedContext, MixedGeometry, MixedLimits},
+        outlines::PlacedPathCommand,
+        registry_binding::math::{assembly::*, MathQuery},
+        Paint, Tick,
+    };
+    for horizontal in [false, true] {
+        let font = font_fixture::math_assembly_fixture(horizontal);
+        let dir = tempfile::tempdir().unwrap();
+        let root = ProjectRoot::open(dir.path()).unwrap();
+        std::fs::write(dir.path().join("math.font"), &font).unwrap();
+        std::fs::write(dir.path().join("math.license"), b"test").unwrap();
+        save(
+            dir.path(),
+            &RegistryManifest {
+                schema_version: 1,
+                entries: vec![entry(&font, "math", "static-truetype", b"test")],
+            },
+        );
+        let registry = load(&root);
+        let mut renderer = RegistryRenderer::new(
+            "math",
+            registry.clone(),
+            RegistryRenderLimits {
+                max_bindings: 1,
+                max_cache_bytes: 100000,
+            },
+        )
+        .unwrap();
+        let lease = renderer
+            .bind(&selection("math"), registry.generation())
+            .unwrap();
+        let math = renderer
+            .math(&lease, MathPolicy::UnhintedDesignUnits)
+            .unwrap();
+        let source = SourceSnapshot {
+            revision: 7,
+            text: "α".into(),
+        };
+        let request = |target| AssemblyRequest {
+            metrics: MathQuery {
+                source_path: "main.tex",
+                snapshot: &source,
+                source_range: 0..2,
+                font_size: r(1000, 3),
+                original_gids: &[1],
+            },
+            direction: if horizontal {
+                Direction::Horizontal
+            } else {
+                Direction::Vertical
+            },
+            original_gid: 1,
+            target: Rational::new(target, 2).unwrap(),
+            strategy: FitStrategy::EqualExtendersProportionalConnectorFlexibility,
+            fit_limits: FitLimits::default(),
+            page: MixedContext {
+                project_id: "math",
+                revision: 7,
+                page: 1,
+                page_width: Tick(10000),
+                page_height: Tick(10000),
+                clip: ExactClip {
+                    left: r(0, 1),
+                    top: r(0, 1),
+                    right: r(10000, 1),
+                    bottom: r(10000, 1),
+                },
+            },
+            origin: OutlinePoint {
+                x: r(301, 3),
+                y: r(401, 3),
+            },
+            paint: Paint {
+                r: 0.0,
+                g: 0.0,
+                b: 0.0,
+                a: 1.0,
+            },
+            hint_policy: HintPolicy::Reject,
+        };
+        let frame = renderer
+            .math_assembly(&math, request(551), MixedLimits::default())
+            .unwrap();
+        let FittedShape::Assembly(a) = &frame.fit().fit().shape else {
+            panic!()
+        };
+        assert_eq!(a.overlaps, vec![Rational::new(49, 4).unwrap(); 2]);
+        assert_eq!(a.parts.len(), 3);
+        for (i, primitive) in frame.batch().primitives().iter().enumerate() {
+            let MixedGeometry::Quadratic(path) = &primitive.geometry else {
+                panic!()
+            };
+            let PlacedPathCommand::MoveTo(p) = path[0] else {
+                panic!()
+            };
+            let offset = r((i * 351) as i128, 12);
+            assert_eq!(
+                p,
+                OutlinePoint {
+                    x: if horizontal {
+                        r(301, 3).checked_add(offset).unwrap()
+                    } else {
+                        r(301, 3)
+                    },
+                    y: if horizontal {
+                        r(401, 3)
+                    } else {
+                        r(401, 3)
+                            .checked_add(r(-offset.numerator(), offset.denominator()))
+                            .unwrap()
+                    }
+                }
+            );
+        }
+        assert!(matches!(
+            renderer
+                .math_assembly(&math, request(380), MixedLimits::default())
+                .unwrap()
+                .fit()
+                .fit()
+                .shape,
+            FittedShape::Variant(_)
+        ));
+        for limits in [
+            MixedLimits {
+                max_primitives: 2,
+                ..MixedLimits::default()
+            },
+            MixedLimits {
+                max_commands: 1,
+                ..MixedLimits::default()
+            },
+            MixedLimits {
+                max_serialized_bytes: 1,
+                ..MixedLimits::default()
+            },
+        ] {
+            assert!(matches!(
+                renderer.math_assembly(&math, request(551), limits),
+                Err(AssemblyError::Budget)
+            ));
+        }
+        let mut bad = request(551);
+        bad.fit_limits.max_parts = 2;
+        assert!(matches!(
+            renderer.math_assembly(&math, bad, MixedLimits::default()),
+            Err(AssemblyError::Fit(_))
+        ));
+        let bytes = frame.batch().fixture_bytes().to_vec();
+        assert!(frame
+            .require_current(
+                &renderer,
+                "main.tex",
+                &SourceSnapshot {
+                    revision: 8,
+                    text: "β".into()
+                }
+            )
+            .is_err());
+        assert_eq!(frame.batch().fixture_bytes(), bytes);
+    }
 }

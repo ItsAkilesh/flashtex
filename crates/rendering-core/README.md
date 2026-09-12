@@ -503,3 +503,29 @@ and the already pinned OFL license. Its MATH table is27408 bytes, SHA
 It verifies56 constants,6 original GIDs and deterministic exact replay at a
 fractional size; this is consumer consistency, not a mathematical layout oracle
 or native painting claim.
+
+### Exact fitted MATH construction placement
+
+`registry_binding::math::assembly::RegistryRenderer::math_assembly` consumes the
+original font resource fitter through an explicit strategy and limits. The caller
+supplies target extent in design units, page font size, baseline origin, direction,
+clip, source range and CFF unhinted policy. Horizontal assembly offsets advance
+right; vertical offsets advance upward (one conversion to downward page y).
+No automatic baseline alignment or TeX delimiter policy is inferred.
+
+`MathAssemblyFrame` retains immutable bound MATH metrics, the complete fitted
+result (part/instance identity, exact offsets/overlaps, italic correction and
+strategy), and mixed quadratic/cubic batch. Stable primitive index corresponds to
+the fitted part index; the original GID and source range remain on every primitive.
+`require_current` gates reuse against registry lease and source revision/hash;
+retained geometry remains readable. Device-adjusted assemblies are explicitly
+unsupported. Budget failures return no partial frame. The mixed fixture is still
+an internal geometry format: retain the frame's fit/metrics provenance alongside
+it, since it does not serialize new MATH wire fields.
+
+The synthetic test proves exact fractional origins in both directions, overlaps,
+ready variants and primitive/command/byte/fit budget rejection. The pinned STIX
+acceptance exercises 32 vertical and 34 horizontal assemblies at target5000.5
+with cache/direct byte equality and stale-source refusal. Three other STIX
+constructions refuse the declared fit budget. These are consistency tests;
+TeX layout, native paint and visual parity are not established.
