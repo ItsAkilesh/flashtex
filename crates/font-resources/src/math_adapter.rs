@@ -121,6 +121,20 @@ impl BoundMathFont {
         };
         Ok(Self { engine, identity })
     }
+    pub fn constant_device(
+        &self,
+        record: crate::math_device::ConstantDeviceRecord,
+        context: crate::math_device::DeviceContext,
+    ) -> Result<BoundConstantDevice, crate::math_device::DeviceError> {
+        Ok(BoundConstantDevice {
+            identity: self.identity.clone(),
+            correction: crate::math_device::constant_correction(
+                self.engine.face().table(b"MATH").expect("bound MATH table"),
+                record,
+                context,
+            )?,
+        })
+    }
     pub fn kerns(&self) -> Result<BoundMathKern, MathError> {
         Ok(BoundMathKern {
             identity: self.identity.clone(),
@@ -257,6 +271,18 @@ impl BoundMathKern {
     }
     pub fn data(&self) -> &crate::math_kern::MathKern {
         &self.data
+    }
+}
+pub struct BoundConstantDevice {
+    identity: MathIdentity,
+    correction: crate::math_device::ConstantCorrection,
+}
+impl BoundConstantDevice {
+    pub fn identity(&self) -> &MathIdentity {
+        &self.identity
+    }
+    pub fn correction(&self) -> &crate::math_device::ConstantCorrection {
+        &self.correction
     }
 }
 #[cfg(test)]

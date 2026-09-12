@@ -641,3 +641,21 @@ records. Replay tests every exact boundary and half a unit below it. Synthetic
 fixtures cover negative values, missing corners, truncated prefixes, invalid GIDs,
 counts/offsets/heights, device-offset bounds and rational comparison overflow.
 This establishes data/lookup behavior, not a script-placement or visual oracle.
+
+`math_device::DeviceTable` decodes OpenType packed signed2/4/8-bit pixel deltas,
+validating the entire declared payload and zero padding before answering a query.
+VariationIndex0x8000 and unknown formats return typed unsupported errors, including
+when the requested ppem would otherwise lie outside the range. `DeviceContext`
+requires an explicit positive integer ppem. Out-of-range valid Device data gives
+zero as specified. No implicit point-size/axis/pixel conversion is performed.
+
+`BoundMathFont::constant_device(ConstantDeviceRecord,DeviceContext)` exposes this
+additively for the51 MathValueRecords in constants, reusing the peer's constants
+parser and original raw table selection. A result retains parent identity, record
+index, context, pixel delta and exact referenced device-table hash/offset. The
+unhinted API remains unchanged; other MATH value families are not automatically
+device-adjusted. Synthetic tests establish signed packing, word boundaries,
+truncation, padding, parent-relative offsets and variation rejection. Installed
+STIX/Noto Math constant inventory observes no positive device records; exact
+font/table/license hashes are in `fixtures/math-device-inventory.json`.
+OpenType contract: https://learn.microsoft.com/en-us/typography/opentype/spec/chapter2#device-and-variationindex-tables

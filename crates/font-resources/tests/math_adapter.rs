@@ -233,6 +233,18 @@ fn pinned_math_registry_equivalence() {
         "STIX kern corner tables {} heights {height_records} device records {device_records}",
         kerns.data().records().len()
     );
+    use flashtex_font_resources::math_device::{ConstantDeviceRecord, DeviceContext};
+    for index in 0..51 {
+        let correction = bound
+            .constant_device(
+                ConstantDeviceRecord::new(index).unwrap(),
+                DeviceContext::new(12).unwrap(),
+            )
+            .unwrap();
+        assert_eq!(correction.identity(), bound.identity());
+        assert_eq!(correction.correction().delta_pixels, 0);
+        assert_eq!(correction.correction().device_table_offset, None);
+    }
     // Held registry resources remain immutable when the project file changes.
     std::fs::write(dir.path().join(&resource.path), b"changed").unwrap();
     assert_eq!(bound.constants(), &face.math().unwrap().constants);
@@ -243,4 +255,44 @@ fn pinned_math_registry_equivalence() {
         bound.identity().math_table_byte_length,
         bound.glyph_count()
     );
+}
+
+#[test]
+#[ignore = "requires pinned installed Noto Math and license; inventory evidence only"]
+fn installed_noto_math_inventory() {
+    let bytes = std::fs::read("/usr/share/fonts/google-noto/NotoSansMath-Regular.ttf").unwrap();
+    let license = std::fs::read("/usr/share/licenses/google-noto-fonts-common/LICENSE").unwrap();
+    assert_eq!(
+        sha256(&bytes),
+        "d51afd5739c7ba6c44fcab35a88160e25dfb69a2d4ad0bd99533f8d894af1f96"
+    );
+    assert_eq!(
+        sha256(&license),
+        "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+    );
+    let face = TrueTypeFace::parse(bytes).unwrap();
+    println!(
+        "Noto Math MATH table present {}",
+        face.table(b"MATH").is_some()
+    );
+    let math = face.table(b"MATH").unwrap();
+    let read = |at: usize| u16::from_be_bytes(math[at..at + 2].try_into().unwrap()) as usize;
+    let base = read(4);
+    let mut present = 0;
+    for index in 0..51 {
+        let offset = read(base + 10 + index * 4);
+        if offset != 0 {
+            present += 1;
+            let table =
+                flashtex_font_resources::math_device::DeviceTable::parse(math, base + offset)
+                    .unwrap();
+            println!("Noto record {index} device range {:?}", table.range());
+        }
+    }
+    assert_eq!(present, 0);
+    assert_eq!(
+        sha256(math),
+        "e6ba971107625ed4c384230b1a84191c745e9a97b1b39ce12692d0d987126909"
+    );
+    println!("Noto MATH SHA {} constants devices {present}", sha256(math));
 }
