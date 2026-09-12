@@ -17,6 +17,7 @@ Full process: [orchestration master plan](../ORCHESTRATION.md).
 | FT-008 / 1 | Integrated demo verification | commander + future Mac worker | unassigned | FT-003/005/006/007 |
 | FT-014 / 1 | Independent companion native validation and repair broker | chatgpt-a | assigned; ACK/PID pending | FT-004 branch, Xcode 26.6; no overlapping writes |
 | FT-015 / 1 | Linux end-to-end demo, recovery, and regression harness | local-claude-opus | assigned; blocked on execution login | Compiler/bridge/PDF exact SHAs; offline fixtures required |
+| FT-016 / 1 | Deterministic Claude worker supervisor and recovery safety | commander-supervisor | assigned; implementation via Commander OpenAI route | Local Claude FT-015 and auth recovery issue #6 |
 
 ## Dispatch record required before changing a task to assigned
 

@@ -1,0 +1,26 @@
+{
+  "acceptance": [
+    "Unit tests cover logged-out startup, eligible saved Max auth, API fallback only with verified funded grant, missing/expired auth, timeout/ambiguous call recovery, task revision changes, stop control, path ownership, and no paid polling",
+    "Supervisor records exact PID/session, assignment ACK, provider plan/quota evidence, in-flight phase, usage returned by CLI, and recovery issue URL without secrets",
+    "No inference is launched in tests; test doubles are isolated and clearly synthetic; actual worker launch remains blocked until authentication succeeds",
+    "Documentation gives exact service/session startup and stop/recovery commands and preserves no-purchase/no-overage rules"
+  ],
+  "agent_id": "commander-supervisor",
+  "allocation_id": "openai-commander-supervisor",
+  "branch": "agent/commander-supervisor/claude-supervisor",
+  "deadline_utc": null,
+  "dependencies": [],
+  "input_main_sha": "60ceb5c3caedad2cb06d2862836d3f97dc04067b",
+  "objective": "Implement and verify a deterministic local Claude worker supervisor that polls authoritative assignments without inference, refuses execution until authenticated and resource-eligible, launches bounded headless Opus cycles with explicit allowed tools and no permission prompts, persists in-flight state before calls, never retries ambiguous calls automatically, uses actual Cursor publication, opens recovery issues on blockers, and stops on coordination/control.json.",
+  "owned_paths": [
+    "scripts/claude_worker.py",
+    "tests/test_claude_worker.py",
+    "docs/claude-worker.md"
+  ],
+  "revision": 1,
+  "schema_version": 1,
+  "state": "assigned",
+  "task_id": "FT-016",
+  "timebox_minutes": 45,
+  "updated_utc": "2026-09-12T04:49:10Z"
+}
