@@ -29,3 +29,25 @@ demonstrated in these cases, so no speculative shutdown refactor is included.
 Reproduce with `cargo test --lib blocked_writer -- --ignored --nocapture` using
 the document-runtime manifest. The test requires Linux and `/usr/bin/python3`,
 and does not run an external compiler or require font assets.
+
+## Repeated session acceptance
+
+The follow-up test runs 30 sequential sessions: 10 normal result/drop, 10
+stopped-reader timeout and 10 stopped-reader close/drop, split evenly between
+Value and raw constructors. Normal requests must produce a preview; stopped
+requests must not. The same one-byte handshake and near-limit admitted request
+profile establish blocked writes. Test-only stdout/stderr exit notifications
+complement the existing writer witness; the decoder remains explicitly joined.
+
+After all three I/O witnesses, exact child PID reaping and local handshake cleanup,
+a deadline-bounded condition loop checks `/proc/self/fd`, `/proc/self/task` and
+`/proc/thread-self/children`. The loop permits the small thread epilogue following
+an exit notification; it does not use a sleep as readiness evidence. All 30 cycles
+returned to the observed baseline: 4 descriptors, 2 threads, no children. Exact
+per-cycle PID/counters are preserved in `../benchmarks/session-cycles`.
+
+No accumulation was demonstrated in these direct-child cases. OS counters are
+not allocator/RSS evidence and do not establish production all-thread joining or
+a universal shutdown deadline. No production refactor is included. Run the ignored
+unit test `blocked_writer::repeated_sessions_return_to_os_baseline_after_worker_witnesses`
+alone, optionally setting `FLASHTEX_CYCLE_EVIDENCE` to an output JSON path.

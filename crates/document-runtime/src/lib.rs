@@ -129,6 +129,8 @@ struct Pending {
 struct Process {
     #[cfg(all(test, target_os = "linux"))]
     writer_finished: Option<mpsc::Receiver<()>>,
+    #[cfg(all(test, target_os = "linux"))]
+    io_finished: Option<[mpsc::Receiver<()>; 2]>,
     child: Child,
     writer: SyncSender<Vec<u8>>,
     reader: Decoder,
@@ -149,6 +151,10 @@ impl Process {
         let failures = out_tx.clone();
         #[cfg(all(test, target_os = "linux"))]
         let (writer_done, writer_finished) = mpsc::channel();
+        #[cfg(all(test, target_os = "linux"))]
+        let (stdout_done, stdout_finished) = mpsc::channel();
+        #[cfg(all(test, target_os = "linux"))]
+        let (stderr_done, stderr_finished) = mpsc::channel();
         thread::spawn(move || {
             while let Ok(bytes) = rx.recv() {
                 if stdin.write_all(&bytes).and_then(|_| stdin.flush()).is_err() {
@@ -193,6 +199,8 @@ impl Process {
                     }
                 }
             }
+            #[cfg(all(test, target_os = "linux"))]
+            let _ = stdout_done.send(());
         });
         // Drain continuously in a fixed buffer. Logs are not retained or exposed to UI.
         thread::spawn(move || {
@@ -202,8 +210,12 @@ impl Process {
                     break;
                 }
             }
+            #[cfg(all(test, target_os = "linux"))]
+            let _ = stderr_done.send(());
         });
         Ok(Self {
+            #[cfg(all(test, target_os = "linux"))]
+            io_finished: Some([stdout_finished, stderr_finished]),
             #[cfg(all(test, target_os = "linux"))]
             writer_finished: Some(writer_finished),
             child,
