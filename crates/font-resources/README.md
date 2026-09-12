@@ -71,3 +71,18 @@ Linux host measured 100000 synthetic format-12 lookups at 9.672ms rebuilding
 validation versus 0.358ms cached. This is one tiny synthetic font and excludes
 initialization, shaping, rendering and UI latency. Reproduce with
 `cargo test --offline --release --manifest-path crates/font-resources/Cargo.toml repeated_lookup_benchmark -- --ignored --nocapture`.
+
+`simple_outline(gid)` decodes closed simple-glyph contours into original points
+and inclusive contour endpoints. Coordinates are signed 16.16 fixed-point design
+units; no scaling or rounding is performed. On/off-curve flags, raw bounding box,
+overlap flag and unexecuted instruction bytes are preserved. Limits come from
+signed contour counts and 16-bit point endpoints (at most 65536 points), with
+checked flag repetitions, instruction/coordinate extents and signed coordinate
+accumulation. Missing bytes or invalid endpoints return errors. Composite glyphs
+explicitly return unsupported; implied quadratic midpoint expansion, hinting,
+composite transforms, shaping and rasterization are not implemented here.
+
+Real-font smoke decoded all 1544 simple/empty glyphs of the LiberationSans digest
+above, explicitly skipping 1076 composites. This proves decoder acceptance, not
+visual/byte parity. Reproduce by setting FLASHTEX_SMOKE_FONT to that explicit font
+path and running the ignored installed_simple_glyph_smoke test with --nocapture.

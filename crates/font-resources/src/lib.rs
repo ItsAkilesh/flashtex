@@ -525,3 +525,6 @@ pub use mapping::HorizontalMetrics;
 
 mod composite;
 pub use composite::MAX_COMPOSITE_DEPTH;
+
+mod outline;
+pub use outline::{OutlinePoint, SimpleOutline};
