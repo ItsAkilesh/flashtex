@@ -46,3 +46,11 @@ and glyph-ID bounds; adapt its FontValidator using `inspect_static_truetype` and
 return units_per_em/glyph_count. No dependency on rendering-core exists here.
 Visual identity, PDF byte identity and typing-to-visible latency remain separate,
 unmeasured integration gates. No reference LaTeX engine is used in this crate.
+
+Unicode access: `glyph_id(char)` returns the original GID or `None` for .notdef.
+It deterministically prefers Unicode format 12 over format 4, then first record
+in directory order; unsupported-only cmaps return an explicit error. It checks
+all selected subtable groups/segments and resulting GIDs before answering. Each
+lookup is bounded but currently rescans the selected table (no shaping cache).
+`horizontal_metrics(gid)` returns original unsigned advance and signed bearing,
+including the repeated final advance for trailing hmtx bearings.

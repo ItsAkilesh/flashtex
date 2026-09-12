@@ -516,3 +516,6 @@ fn parse_names(bytes: &[u8]) -> Result<Vec<String>> {
     }
     Ok(names)
 }
+
+mod mapping;
+pub use mapping::HorizontalMetrics;

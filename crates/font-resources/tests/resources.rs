@@ -330,3 +330,26 @@ fn symlink_outside_resource_root_is_rejected() {
     };
     assert!(FontCollection::load(root.path(), &manifest).is_err());
 }
+
+#[test]
+fn horizontal_metrics_keep_original_units_and_trailing_bearings() {
+    let mut bytes = fixture();
+    let at = table_record(&bytes, b"hmtx");
+    let start = u32::from_be_bytes(bytes[at + 8..at + 12].try_into().unwrap()) as usize;
+    be16(&mut bytes, start, 500);
+    be16(&mut bytes, start + 4, 700);
+    be16(&mut bytes, start + 8, (-30i16) as u16);
+    let resource = FontResource::from_bytes(&entry(&bytes), &bytes, b"test license").unwrap();
+    assert_eq!(
+        resource.horizontal_metrics(2).unwrap(),
+        HorizontalMetrics {
+            advance_width: 700,
+            left_side_bearing: -30
+        }
+    );
+    assert!(resource.horizontal_metrics(3).is_err());
+    assert!(matches!(
+        resource.glyph_id('A'),
+        Err(Error::UnsupportedFont(_))
+    ));
+}
