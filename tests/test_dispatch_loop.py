@@ -255,6 +255,20 @@ class DispatcherTests(unittest.TestCase):
             self.assertFalse(result['prepared'])
             self.assertFalse(self.run_git(self.root, 'status', '--porcelain'))
 
+    def test_published_legacy_owner_branch_remains_dispatchable(self):
+        assignment_path = self.root / 'coordination/assignments/TASK.json'
+        assignment = json.loads(assignment_path.read_text())
+        assignment['agent_id'] = 'legacy-worker'
+        assignment_path.write_text(json.dumps(assignment))
+        self.commit(self.root)
+        self.run_git(self.root, 'push', 'origin', 'HEAD:main')
+        queue = dict(self.queue, agent_id='legacy-worker')
+        plan, reason = loop.plan_step(self.root, 'coordination/queues/legacy-worker.json', queue, {'TASK': assignment}, datetime.now(timezone.utc), 600)
+        self.assertIsNone(plan)
+        self.assertEqual(reason, 'worker structured report not published')
+        self.assertTrue(coord.published_branch_assignment(self.root, 'legacy-worker', assignment['branch']))
+        self.assertFalse(coord.published_branch_assignment(self.root, 'other-worker', assignment['branch']))
+
     def test_verified_milestone_continues_dispatch(self):
         self.write(self.root, 'coordination/control.json', {'schema_version': 1, 'state': 'verified_complete'})
         self.commit(self.root)

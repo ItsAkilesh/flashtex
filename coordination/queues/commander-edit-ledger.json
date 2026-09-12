@@ -5,8 +5,8 @@
   "next_index": 0,
   "steps": [
     {
-      "name": "Recovery import/export and acknowledged snapshot compaction",
-      "objective": "Recovery import/export and acknowledged snapshot compaction",
+      "name": "Durable grouped undo and redo",
+      "objective": "Implement guarded durable grouped source history with restart-safe undo/redo while preserving capture IDs and receipt dedup; explicit bounded retention only.",
       "owned_paths": [
         "crates/edit-ledger"
       ],
@@ -19,8 +19,8 @@
       "allocation_id": "hosted-openai-product"
     },
     {
-      "name": "Background serialized IPC and exact stale-session response guards",
-      "objective": "Background serialized IPC and exact stale-session response guards",
+      "name": "Background service crash and concurrency gates",
+      "objective": "Exercise multi-session background service saturation and crash recovery with exact revision-tagged results and native adapter fixtures.",
       "owned_paths": [
         "crates/edit-ledger"
       ],
