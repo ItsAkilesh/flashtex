@@ -142,6 +142,9 @@ impl EngineFontAdapter {
         };
         Ok(Self { face, identity })
     }
+    pub(crate) fn face(&self) -> &TrueTypeFace {
+        &self.face
+    }
     pub fn identity(&self) -> &ShapeIdentity {
         &self.identity
     }

@@ -69,5 +69,6 @@ public struct LayoutNegotiation: Equatable {
         return out
     }
 
-    static func describe(_ caps: [String]) -> String { caps.isEmpty ? "none" : caps.joined(separator: ", ") }
+    /// "none" or the comma-joined set, for log and banner text.
+    public static func describe(_ caps: [String]) -> String { caps.isEmpty ? "none" : caps.joined(separator: ", ") }
 }
