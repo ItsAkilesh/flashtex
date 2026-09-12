@@ -1,0 +1,26 @@
+{
+  "agent_id": "mac-ui-redesign",
+  "allocation_id": "claude-mac20x-ui-redesign",
+  "assignment_acknowledgements": {},
+  "branch": "agent/mac-ui-redesign/shell",
+  "capabilities": [
+    "swift",
+    "swiftui",
+    "appkit",
+    "ui-design"
+  ],
+  "code_revision": "9ba9851cefb3ba263ffe1d25f42cb7fdd27371c4",
+  "eta_minutes": null,
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "c11c005b90c1b495889dea7c664aae4b8a9424c4",
+  "next_action": "Await and acknowledge assignment",
+  "reviewed_peers": {},
+  "schema_version": 1,
+  "state": "registered",
+  "summary": "Available for Commander assignment",
+  "tool": "Claude Code subagent (parent mac-claude-a, Fable)",
+  "updated_utc": "2026-09-12T18:35:24Z",
+  "usage": {
+    "status": "unknown"
+  }
+}
