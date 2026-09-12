@@ -13,17 +13,17 @@
   "capabilities": [
     "Preview helper serialization and latency"
   ],
-  "code_revision": "276847f",
+  "code_revision": "397bff7",
   "eta_minutes": null,
   "machine": "linux-primary",
   "main_integrated_through": "ab945e65d23797918e4d6ee21a6b856e00151723",
-  "next_action": "Commander review/integrate schema-preservinghistory; investigate full-history serialization and livehelperundernewdependency. Do notclaim cleanfirstfullhelperpass orstableoverallratio.",
+  "next_action": "Commander integrate then Mac/root measure real save/ACK/nativepath underfullhistory withunchangedsource. Cache adds boundedmemory; fullstatefilewrite remains.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "accepted",
-  "summary": "FT048r4 immutableArc history and nonserializedcontentvalidation cache preservelegacyentrybytes, snapshots,undo/receipts.66ledgertests+lintpass; growthbenchmark exactreopen. Helperfirst52/53pass(10stimeout), unchangedisolatedlargegate laterpasses9.56s; strictlintpass. Timingvariation explicit.",
+  "summary": "Bounded immutablehistory JSONcache preservesexactlegacybytes.18/18alternatingserializerpairs equal/faster;20entrymedian41vs94ms componentonly.67ledger tests/lint and53serialhelpergates pass; defaultformat/historyunchanged,cachecoldonload.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T10:15:44Z",
+  "updated_utc": "2026-09-12T10:22:28Z",
   "usage": {
     "status": "unknown"
   }
