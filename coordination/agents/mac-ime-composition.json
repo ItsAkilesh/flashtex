@@ -1,0 +1,37 @@
+{
+  "agent_id": "mac-ime-composition",
+  "allocation_id": "claude-mac20x-ime-composition",
+  "assignment_acknowledgements": {},
+  "branch": "agent/mac-ime-composition/ime",
+  "capabilities": [
+    "swift",
+    "appkit",
+    "xctest",
+    "nstextinputclient"
+  ],
+  "code_revision": "5bc3fc0f",
+  "eta_minutes": {
+    "likely": 60,
+    "optimistic": 45,
+    "pessimistic": 75
+  },
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "as merged into origin/agent/mac-claude-a/mac-shell 5bc3fc0f",
+  "next_action": "Coverage audit written; implementing IMEHarness + IMECompositionTests against the real preview controller",
+  "reviewed_peers": {
+    "origin/agent/mac-claude-a/mac-shell": {
+      "adaptation": "Branched from 5bc3fc0f; reuses the SourceEditorViewTests hosting pattern (NSHostingView, never key) and the EditHistoryTests real-helper fixture",
+      "reviewed_utc": "2026-09-12T13:45:00Z",
+      "sha": "5bc3fc0f"
+    }
+  },
+  "schema_version": 1,
+  "state": "in_progress",
+  "summary": "Gap 1 coverage audit: editor-side IME behaviour is covered with the fake worker; nothing exercises marked text against the real preview controller (document/file_status, preview mid-composition, kill-by-pid mid-composition, undo/history_status). Implementing the uncovered part as new test files only.",
+  "tool": "Claude Code subagent (parent mac-claude-a)",
+  "updated_utc": "2026-09-12T13:45:00Z",
+  "usage": {
+    "evidence": "none yet",
+    "status": "Shared Claude Max quota with parent mac-claude-a; no purchases"
+  }
+}
