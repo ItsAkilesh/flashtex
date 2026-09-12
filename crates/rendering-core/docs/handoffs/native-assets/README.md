@@ -44,3 +44,31 @@ Check both native direct and helper child process routes. Deliberately omit/chan
 one asset and retain explicit failure evidence. Native launching, signing, and
 render/reference parity remain unverified here. GH34 remains limited to its fixed
 Linux fixture; this is a separate packaging issue.
+
+## Read-only verifier for the Mac owner
+
+From the repository root, run:
+
+```sh
+python3 crates/rendering-core/tools/verify_bundle_resources.py /path/FlashTeX.app/Contents/Resources
+```
+
+Exit0 means the nine pinned resources (three fonts, five metrics, one license)
+match the proposed layout, byte lengths and SHA256. Exit1 reports resource refusal;
+exit2 reports setup/pinned-manifest refusal. It does not search host TeX, create
+files, install fonts, or claim the application actually discovers the verified
+resources. Extra files are explicitly not scanned. The bundled manifest itself
+is SHA-pinned so deleting an entry cannot silently lower the required coverage.
+
+Descriptor-relative no-follow traversal refuses symlinks and nonregular assets.
+Manifest paths reject absolute/traversal/empty components and duplicates; file,
+entry-count and total byte budgets bound the work. Hashing reads bounded chunks,
+checks length and metadata stability, and never prints font bytes. A successful
+read checks that observed snapshot only; it does not seal later native file use.
+
+`verifier-evidence.json` records an isolated assembled resource stage using existing
+pinned files: all nine verified. Missing10pt, same-length corrupted10pt,
+misrooted12pt and changed license stages each refused. The temporary stages were
+removed afterward; this is no native installation/execution evidence. Nine focused
+Python tests additionally cover unsafe paths, duplicate/changed manifests,
+symlink files/directories and a FIFO without blocking.
