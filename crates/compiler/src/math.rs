@@ -226,6 +226,12 @@ impl MathParser<'_> {
                     word.len(),
                     "word tokens must be split before math parsing"
                 );
+                // The lexer turns the control symbols `\,` `\:` `\;` into a
+                // one-character word spanning two source bytes; in math they are
+                // spacing commands, not punctuation.
+                if matches!(ch, ',' | ':' | ';') && token.span.end - token.span.start == 2 {
+                    return Some(symbol(" ".into(), token.span));
+                }
                 Some(symbol(ch.to_string(), span))
             }
             TokenKind::Command(name) => Some(self.command_atom(name, token.span)),

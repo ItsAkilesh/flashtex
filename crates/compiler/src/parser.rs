@@ -40,6 +40,13 @@ pub enum Inline {
         number_span: Option<Span>,
         span: Span,
     },
+    /// A multi-row amsmath display (`gather`, `align` and their starred forms).
+    /// `aligned` cells alternate right/left alignment around shared tab stops.
+    MathRows {
+        rows: Vec<MathRow>,
+        aligned: bool,
+        span: Span,
+    },
     Label {
         key: String,
         value: String,
@@ -50,6 +57,14 @@ pub enum Inline {
         page: bool,
         span: Span,
     },
+}
+
+/// One `\\`-separated row of a multi-row display; cells are split on `&`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct MathRow {
+    pub cells: Vec<MathList>,
+    pub number: Option<String>,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -845,8 +860,16 @@ impl P<'_> {
         let (tokens, argument_span) = self.required_group(kind, span);
         let environment = token_text(&tokens).trim().to_string();
         if kind == "begin" {
-            if environment == "equation" && self.in_body {
-                self.equation_environment(span, blocks, para);
+            if matches!(environment.as_str(), "equation" | "equation*") && self.in_body {
+                self.equation_environment(span, &environment, blocks, para);
+                return;
+            }
+            if matches!(
+                environment.as_str(),
+                "gather" | "gather*" | "align" | "align*"
+            ) && self.in_body
+            {
+                self.multirow_environment(span, &environment, blocks, para);
                 return;
             }
             if environment == "document" && self.has_document {
@@ -903,13 +926,17 @@ impl P<'_> {
     fn equation_environment(
         &mut self,
         open: Span,
+        name: &str,
         blocks: &mut Vec<Block>,
         para: &mut Vec<Inline>,
     ) {
         self.flush_paragraph(blocks, para);
-        self.equation_counter += 1;
+        let numbered = !name.ends_with('*');
+        if numbered {
+            self.equation_counter += 1;
+            self.current_counter = Some(self.equation_counter.to_string());
+        }
         let number = self.equation_counter.to_string();
-        self.current_counter = Some(number.clone());
         let mut raw = Vec::new();
         let mut labels = Vec::new();
         let mut end = open.end;
@@ -919,7 +946,7 @@ impl P<'_> {
             if self.expand_current_macro() {
                 continue;
             }
-            if let Some((after, end_span)) = environment_end_at(&self.t, self.i, "equation") {
+            if let Some((after, end_span)) = environment_end_at(&self.t, self.i, name) {
                 self.i = after;
                 end = end_span.end;
                 found_end = true;
@@ -953,7 +980,7 @@ impl P<'_> {
         }
         if !found_end {
             self.diags.push(Diagnostic::error(
-                "unterminated environment 'equation' — no matching \\end",
+                format!("unterminated environment '{name}' — no matching \\end"),
                 Some(open),
                 Some("closed the equation at end of input".into()),
             ));
@@ -962,8 +989,172 @@ impl P<'_> {
         para.push(Inline::Math {
             list,
             display: true,
-            number: Some(number),
-            number_span: Some(open),
+            number: numbered.then_some(number),
+            number_span: numbered.then_some(open),
+            span: Span::in_document(open.document, open.start, end),
+        });
+        para.extend(labels);
+        self.flush_paragraph(blocks, para);
+    }
+
+    /// amsmath `gather`/`align` (and starred forms): rows split on top-level
+    /// `\\`, `align` cells split on top-level `&`. Numbered forms number every
+    /// row except those carrying `\nonumber`/`\notag`.
+    fn multirow_environment(
+        &mut self,
+        open: Span,
+        name: &str,
+        blocks: &mut Vec<Block>,
+        para: &mut Vec<Inline>,
+    ) {
+        self.flush_paragraph(blocks, para);
+        let numbered = !name.ends_with('*');
+        let aligned = name.starts_with("align");
+        // Per row: (cells of raw tokens, unnumbered flag, labels).
+        type RawRow = (Vec<Vec<Token>>, bool, Vec<(String, Span)>);
+        let mut rows: Vec<RawRow> = vec![(vec![Vec::new()], false, Vec::new())];
+        let mut depth = 0usize;
+        let mut end = open.end;
+        let mut found_end = false;
+
+        while self.i < self.t.len() {
+            if self.expand_current_macro() {
+                continue;
+            }
+            if depth == 0 {
+                if let Some((after, end_span)) = environment_end_at(&self.t, self.i, name) {
+                    self.i = after;
+                    end = end_span.end;
+                    found_end = true;
+                    break;
+                }
+            }
+            let token = self.t[self.i].token.clone();
+            let row = rows.last_mut().expect("at least one row");
+            match &token.kind {
+                TokenKind::Command(command) if command == "label" => {
+                    self.i += 1;
+                    let (tokens, argument_span) = self.required_group("label", token.span);
+                    let key = token_text(&tokens).trim().to_string();
+                    if !key.is_empty() {
+                        let row = rows.last_mut().expect("at least one row");
+                        row.2.push((key, token.span.merge(argument_span)));
+                    }
+                    continue;
+                }
+                TokenKind::Command(command) if command == "nonumber" || command == "notag" => {
+                    row.1 = true;
+                }
+                TokenKind::LineBreak if depth == 0 => {
+                    rows.push((vec![Vec::new()], false, Vec::new()));
+                }
+                TokenKind::Word(word) if depth == 0 && word.contains('&') => {
+                    let exact = token.span.end - token.span.start == word.len();
+                    for (index, piece) in word.split('&').enumerate() {
+                        if index > 0 {
+                            row.0.push(Vec::new());
+                        }
+                        if piece.is_empty() {
+                            continue;
+                        }
+                        let offset = piece.as_ptr() as usize - word.as_ptr() as usize;
+                        let span = if exact {
+                            Span::in_document(
+                                token.span.document,
+                                token.span.start + offset,
+                                token.span.start + offset + piece.len(),
+                            )
+                        } else {
+                            token.span
+                        };
+                        row.0.last_mut().expect("at least one cell").push(Token {
+                            kind: TokenKind::Word(piece.to_string()),
+                            span,
+                        });
+                    }
+                }
+                _ => {
+                    match token.kind {
+                        TokenKind::LBrace => depth += 1,
+                        TokenKind::RBrace => depth = depth.saturating_sub(1),
+                        _ => {}
+                    }
+                    row.0
+                        .last_mut()
+                        .expect("at least one cell")
+                        .push(token.clone());
+                }
+            }
+            end = token.span.end;
+            self.i += 1;
+        }
+        if !found_end {
+            self.diags.push(Diagnostic::error(
+                format!("unterminated environment '{name}' — no matching \\end"),
+                Some(open),
+                Some("closed the display at end of input".into()),
+            ));
+        }
+        // A trailing `\\` before `\end` does not start a real row.
+        if rows.len() > 1
+            && rows.last().is_some_and(|(cells, _, labels)| {
+                labels.is_empty()
+                    && cells.iter().flatten().all(|t| {
+                        matches!(
+                            t.kind,
+                            TokenKind::Space | TokenKind::Comment | TokenKind::ParBreak
+                        )
+                    })
+            })
+        {
+            rows.pop();
+        }
+
+        let mut math_rows = Vec::new();
+        let mut labels = Vec::new();
+        for (cells, unnumbered, row_labels) in rows {
+            let span = cells
+                .iter()
+                .flatten()
+                .map(|t| t.span)
+                .reduce(Span::merge)
+                .unwrap_or(open);
+            let number = (numbered && !unnumbered).then(|| {
+                self.equation_counter += 1;
+                let number = self.equation_counter.to_string();
+                self.current_counter = Some(number.clone());
+                number
+            });
+            for (key, label_span) in row_labels {
+                self.document_global_state = true;
+                if self.seen_labels.insert(key.clone(), label_span).is_some() {
+                    self.diags.push(Diagnostic::warning(
+                        format!("duplicate \\label{{{key}}}; the second definition wins"),
+                        Some(label_span),
+                        Some("replaced the earlier label definition".into()),
+                    ));
+                }
+                labels.push(Inline::Label {
+                    key,
+                    value: number
+                        .clone()
+                        .unwrap_or_else(|| self.equation_counter.to_string()),
+                    span: label_span,
+                });
+            }
+            let cells = cells
+                .iter()
+                .map(|cell| math::parse_tokens(cell, &mut self.diags))
+                .collect();
+            math_rows.push(MathRow {
+                cells,
+                number,
+                span,
+            });
+        }
+        para.push(Inline::MathRows {
+            rows: math_rows,
+            aligned,
             span: Span::in_document(open.document, open.start, end),
         });
         para.extend(labels);
@@ -1602,5 +1793,68 @@ mod tests {
                     .message
                     .contains(&MACRO_RECURSION_LIMIT.to_string())
         }));
+    }
+
+    #[test]
+    fn gather_star_rows_are_math_with_no_diagnostics() {
+        let source = "\\documentclass{article}\\begin{document}\n\\begin{gather*}\\int_{0}^{\\infty} e^{-x^{2}}\\,dx = \\frac{\\sqrt{\\pi}}{2} \\\\ \\sum_{n=1}^{\\infty}\\frac{1}{n^{2}} = \\frac{\\pi^{2}}{6}\\end{gather*}\n\\end{document}";
+        let (parsed, items) = items(source);
+        let errors: Vec<_> = parsed
+            .diagnostics
+            .iter()
+            .filter(|d| d.severity == crate::diagnostics::Severity::Error)
+            .collect();
+        assert!(errors.is_empty(), "{errors:?}");
+        let Block::Paragraph(inlines) = &parsed.blocks[0] else {
+            panic!("expected a paragraph");
+        };
+        let Inline::MathRows { rows, aligned, .. } = &inlines[0] else {
+            panic!("expected multi-row math, got {inlines:?}");
+        };
+        assert!(!aligned);
+        assert_eq!(rows.len(), 2);
+        assert!(rows.iter().all(|row| row.number.is_none()));
+        let texts: Vec<_> = items.iter().map(|i| i.text.as_str()).collect();
+        for glyph in ["∫", "∑", "π", "∞"] {
+            assert!(texts.contains(&glyph), "{glyph} missing from {texts:?}");
+        }
+        assert!(!texts.contains(&","), "\\, must be spacing, not a comma");
+        let int_y = items.iter().find(|i| i.text == "∫").unwrap().baseline_y_pt;
+        let sum_y = items.iter().find(|i| i.text == "∑").unwrap().baseline_y_pt;
+        assert!(sum_y > int_y, "second row must sit below the first");
+    }
+
+    #[test]
+    fn align_shares_tab_stop_and_numbers_rows() {
+        let source = "\\begin{align}x^{2} &= y \\label{a}\\\\ 2xyz &= 1 \\nonumber\\\\ w &= 3\\\\\\end{align}\\ref{a}";
+        let (parsed, items) = items(source);
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        let equals: Vec<_> = items.iter().filter(|i| i.text == "=").collect();
+        assert_eq!(equals.len(), 3);
+        assert!(equals
+            .iter()
+            .all(|i| (i.x_pt - equals[0].x_pt).abs() < 0.01));
+        let numbers: Vec<_> = items
+            .iter()
+            .filter(|i| i.text.starts_with('('))
+            .map(|i| i.text.as_str())
+            .collect();
+        assert_eq!(numbers, ["(1)", "(2)"]);
+        let Block::Paragraph(inlines) = &parsed.blocks[0] else {
+            panic!("expected a paragraph");
+        };
+        assert!(inlines.iter().any(
+            |inline| matches!(inline, Inline::Label { key, value, .. } if key == "a" && value == "1")
+        ));
+    }
+
+    #[test]
+    fn equation_star_is_unnumbered_display_math() {
+        let (parsed, items) = items("\\begin{equation*}a=b\\end{equation*}");
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        assert_eq!(
+            items.iter().map(|i| i.text.as_str()).collect::<Vec<_>>(),
+            ["a", "=", "b"]
+        );
     }
 }

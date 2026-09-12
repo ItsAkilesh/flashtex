@@ -11,7 +11,7 @@
 use crate::diagnostics::Diagnostic;
 use crate::export::{self, ExportFont};
 use crate::math::{self, MathBox};
-use crate::parser::{Block, Inline};
+use crate::parser::{Block, Inline, MathRow};
 use crate::Span;
 use flashtex_font_engine::core14::Core14;
 use flashtex_font_engine::shape::{shape, ShapeOptions, Shaped};
@@ -27,6 +27,11 @@ pub const MARGIN_PT: f64 = 72.0;
 pub const BODY_SIZE_PT: f64 = 12.0;
 pub const LINE_SPACING: f64 = 1.2;
 pub const PARAGRAPH_GAP_PT: f64 = 6.0;
+/// amsmath `\jot`: extra gap between rows of a multi-row display. Measured
+/// against pdflatex (12pt article + amsmath): row gap = `\baselineskip` + 3pt.
+pub const JOT_PT: f64 = 3.0;
+/// Horizontal gap between right/left column pairs of an `align` row.
+pub const ALIGN_PAIR_GAP_EM: f64 = 2.0;
 /// References normally settle in two passes; the cap also covers page-number
 /// changes caused by a resolved reference changing line or page breaks.
 pub const REFERENCE_ITERATION_LIMIT: usize = 5;
@@ -399,19 +404,90 @@ impl LayoutCursor {
         self.x = MARGIN_PT + (self.right_edge() - MARGIN_PT - b.width).max(0.0) / 2.0;
         self.place_math(b, size);
         if let Some((number, span)) = number {
-            let text = format!("({number})");
-            let width = glyph_width(&text, size, Font::TimesRoman);
-            let x_pt = round2(self.right_edge() - width);
-            let page = self.pages.last_mut().expect("at least one page");
-            page.items.push(TextItem {
-                text,
-                x_pt,
-                baseline_y_pt: round2(self.y),
-                font_size_pt: size,
-                span,
-                font: Font::TimesRoman,
-                rule: None,
-            });
+            self.place_equation_number(number, span, size);
+        }
+        self.newline(self.constraints.font_size_pt);
+        self.vertical_gap(PARAGRAPH_GAP_PT);
+    }
+
+    fn place_equation_number(&mut self, number: &str, span: Span, size: f64) {
+        let text = format!("({number})");
+        let width = glyph_width(&text, size, Font::TimesRoman);
+        let x_pt = round2(self.right_edge() - width);
+        let page = self.pages.last_mut().expect("at least one page");
+        page.items.push(TextItem {
+            text,
+            x_pt,
+            baseline_y_pt: round2(self.y),
+            font_size_pt: size,
+            span,
+            font: Font::TimesRoman,
+            rule: None,
+        });
+    }
+
+    /// Multi-row display (`gather`/`align`). `gather` rows are centred one by
+    /// one; `align` cells alternate right/left alignment against column widths
+    /// shared by every row, and the whole block is centred.
+    fn display_rows(&mut self, rows: &[MathRow], aligned: bool, size: f64) {
+        if self.x > MARGIN_PT
+            || self
+                .pages
+                .last()
+                .is_some_and(|p| p.items.len() > self.line_start)
+        {
+            self.newline(size);
+        }
+        self.vertical_gap(PARAGRAPH_GAP_PT);
+        let boxes: Vec<Vec<MathBox>> = rows
+            .iter()
+            .map(|row| {
+                row.cells
+                    .iter()
+                    .map(|cell| math::layout(cell, size, &mut self.diagnostics))
+                    .collect()
+            })
+            .collect();
+        let columns = boxes.iter().map(Vec::len).max().unwrap_or(0);
+        let mut widths = vec![0.0f64; columns];
+        for row in &boxes {
+            for (column, b) in row.iter().enumerate() {
+                widths[column] = widths[column].max(b.width);
+            }
+        }
+        let gap = ALIGN_PAIR_GAP_EM * size;
+        let total: f64 = widths.iter().sum::<f64>() + gap * (columns / 2) as f64;
+        let measure = self.right_edge() - MARGIN_PT;
+        for (index, (row, cells)) in rows.iter().zip(boxes).enumerate() {
+            if index > 0 {
+                self.newline(size);
+                self.vertical_gap(JOT_PT);
+            }
+            if aligned {
+                let mut column_x = MARGIN_PT + (measure - total).max(0.0) / 2.0;
+                for (column, b) in cells.into_iter().enumerate() {
+                    let width = widths[column];
+                    // Even columns are right-aligned, odd columns left-aligned.
+                    self.x = if column % 2 == 0 {
+                        column_x + width - b.width
+                    } else {
+                        column_x
+                    };
+                    self.place_math(b, size);
+                    column_x += width + if column % 2 == 1 { gap } else { 0.0 };
+                }
+            } else {
+                let width: f64 = cells.iter().map(|b| b.width).sum();
+                self.x = MARGIN_PT + (measure - width).max(0.0) / 2.0;
+                for b in cells {
+                    let next = self.x + b.width;
+                    self.place_math(b, size);
+                    self.x = next;
+                }
+            }
+            if let Some(number) = &row.number {
+                self.place_equation_number(number, row.span, size);
+            }
         }
         self.newline(self.constraints.font_size_pt);
         self.vertical_gap(PARAGRAPH_GAP_PT);
@@ -691,6 +767,7 @@ fn emit(c: &mut LayoutCursor, inlines: &[Inline], size: f64, font: Font) {
                     c.place_math(b, size);
                 }
             }
+            Inline::MathRows { rows, aligned, .. } => c.display_rows(rows, *aligned, size),
             Inline::Label { key, value, .. } => {
                 c.collected_labels.insert(
                     key.clone(),

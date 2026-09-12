@@ -15,7 +15,7 @@
 use crate::diagnostics::Diagnostic;
 use crate::layout::{self, FlowState, LayoutCursor, Page, PlacedItem, TextItem};
 use crate::math::{MathAtom, MathList, Nucleus};
-use crate::parser::{self, Block, Inline, MacroDependency, SourceDocument};
+use crate::parser::{self, Block, Inline, MacroDependency, MathRow, SourceDocument};
 use crate::Span;
 use std::collections::HashMap;
 use std::ops::Range;
@@ -426,6 +426,28 @@ fn shift_inlines(
                 },
                 span: mapped_span(*span, changes, deltas)?,
             }),
+            Inline::MathRows {
+                rows,
+                aligned,
+                span,
+            } => Some(Inline::MathRows {
+                rows: rows
+                    .iter()
+                    .map(|row| {
+                        Some(MathRow {
+                            cells: row
+                                .cells
+                                .iter()
+                                .map(|cell| shift_math_list(cell, changes, deltas))
+                                .collect::<Option<Vec<_>>>()?,
+                            number: row.number.clone(),
+                            span: mapped_span(row.span, changes, deltas)?,
+                        })
+                    })
+                    .collect::<Option<Vec<_>>>()?,
+                aligned: *aligned,
+                span: mapped_span(*span, changes, deltas)?,
+            }),
             Inline::Label { key, value, span } => Some(Inline::Label {
                 key: key.clone(),
                 value: value.clone(),
@@ -544,6 +566,7 @@ fn block_signature(block: &Block) -> BlockSignature {
         Inline::Text { span, .. } => *span,
         Inline::LineBreak { span } => *span,
         Inline::Math { span, .. } => *span,
+        Inline::MathRows { span, .. } => *span,
         Inline::Label { span, .. } => *span,
         Inline::Reference { span, .. } => *span,
     };
@@ -577,6 +600,7 @@ fn shifted_signature(
         Inline::Text { span, .. } => *span,
         Inline::LineBreak { span } => *span,
         Inline::Math { span, .. } => *span,
+        Inline::MathRows { span, .. } => *span,
         Inline::Label { span, .. } => *span,
         Inline::Reference { span, .. } => *span,
     };
