@@ -3,27 +3,27 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-049": {
-      "acknowledged_utc": "2026-09-12T14:06:37Z",
-      "adaptation": "Read FT049r38; exacte693368b positional snapshot review. Pread/rawbeforeparse and deterministic offset tests reviewed readonly; missing58242raw and BrokenPipe chronology remain ambiguous; no rerun.",
-      "main_sha": "1975bb433d1477ab176aac596dbe62ab51f1ac10",
-      "revision": 38
+      "acknowledged_utc": "2026-09-12T14:08:05Z",
+      "adaptation": "Read FT049r39; e2072fe3 capturedfalse/true followup reviewed readonly. Await one approved /home same298helper/158producer correctnesscapture, artifactaudit only, no speed/causecomparison or ownrun.",
+      "main_sha": "d923951262af359cee6018ca6c834c1d63698b3b",
+      "revision": 39
     }
   },
   "branch": "agent/commander-runtime-display/display-runtime",
   "capabilities": [
     "rust-runtime"
   ],
-  "code_revision": "55d54f0c7f43ba734b57bf87dc0b7e82798d08d8",
+  "code_revision": "33238d636c5c9bc6f216961a38a2916641238413",
   "eta_minutes": null,
   "machine": "linux-primary",
   "main_integrated_through": "ff1e8dd62661c44db634363ddee9630b9368afad",
-  "next_action": "Commander integration/next bounded assignment; no activejobs, originalfailedreopen/clean/provenance gates staymissing. No remaining concrete review blocker inrepair.",
+  "next_action": "Commander integration/next productassignment; furthertelemetry paused, no poststopimplementation. No activejobs or runtimeproductionchanges.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "FT049r38 exacte693368b snapshot review complete: pread preserves sharedoffset, raw/status beforeparse, explicitpartial/truncation and completeinvalidrefusal. Owner4testsPASS attributed; sidecarhash verified BrokenPipe32 hasunknownchronology.58242/68918 causes unproven; no rerun.",
+  "summary": "FT049r39 exact7a7fd4f2 correctnessauditPASS:24archive/78asset hashes+actual298helper/158producer rehashed,20source/ACK,5historical/current21,receipts/reopen/clean verified. TraceINCOMPLETE partialtail/missingterminal preserved. Bothartifactmodes pass,oldfailedJSON unchanged; no workload/perf/causeclaim.",
   "tool": "codex",
-  "updated_utc": "2026-09-12T14:07:27Z",
+  "updated_utc": "2026-09-12T14:13:31Z",
   "usage": {
     "status": "unknown"
   }
