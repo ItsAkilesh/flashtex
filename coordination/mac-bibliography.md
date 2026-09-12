@@ -10,7 +10,7 @@ State: ready for integration
 Owned paths: `crates/bibliography/**`, `coordination/mac-bibliography.md`,
 `coordination/agents/mac-bibliography.json`. Compiler files are read-only.
 
-Main integrated through: 1befb923fb8c248a704a1ff5148d77b5f581130f
+Main integrated through: ae3f4de96282e7ea2c60aa268ed5f0b09c664e06
 
 Ready behavior (crate `flashtex-bibliography`, edition 2024, zero deps):
 - `.bib` parser: `@entry{key, f = {..} | ".." | 123 | macro # ..}`, `@string`
@@ -55,12 +55,14 @@ agreement before the adapter proposal becomes a contract.
 Next action: await Commander review/FT number; on compiler-owner agreement,
 implement the adapter per the proposal (compiler owner's paths, not mine).
 
-Peer revisions reviewed and adaptations: origin/main 1dd26c5 (branch base).
-`crates/compiler/src/diagnostics.rs` read; same severity/message/span/recovery
-shape mirrored in `crates/bibliography/src/diagnostics.rs` with a hand-written
-`to_json(path)`.
+Peer revisions reviewed and adaptations: origin/main 1dd26c5 (branch base);
+d9dd2d2, a77e697, 1befb92, 36e501e (coordination/corpus only, merged, no
+adaptation); ae3f4de (compiler 3ae7d9b multi-file: `Span` gains `document:
+DocumentId`, `Diagnostic::to_json_with_paths`) — adapted ADAPTER-PROPOSAL.md
+step 2/3 to map `.bib` spans with `Span::in_document(DocumentId(bib_index))`;
+no crate change needed since this crate's spans stay per-source byte ranges.
 
 Resource: allocation `claude-mac20x-bibliography` (Claude Max 20x on
 mac-m1max-a, shared account quota); usage unknown, no per-call figures exposed.
 
-Updated: 2026-09-12T06:15Z
+Updated: 2026-09-12T06:25Z

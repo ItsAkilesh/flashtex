@@ -34,14 +34,18 @@ explicitly, so no filesystem access is added.
    `\bibliography{stems}`. Optional `[note]` on `\cite` is kept as trailing
    text inside the brackets.
 2. **Load** each `.bib` document with `flashtex_bibliography::load(text)`.
-   Its `diagnostics` are forwarded unchanged with `source.path` set to that
-   `.bib` document's path (`Diagnostic::to_json(path)` or a field-wise copy
-   into the compiler's own `Diagnostic`; the shapes are identical). One-level
-   crossref and `@string` scope stay per file; multiple `.bib` files are
-   concatenated only if the owner prefers that over per-file loading — the
-   README lists the tradeoff.
+   Its `diagnostics` are forwarded by a field-wise copy into the compiler's
+   `Diagnostic`, converting each `bibliography::Span { start, end }` with
+   `compiler::Span::in_document(DocumentId(bib_index), start, end)` where
+   `bib_index` is the `.bib` document's position in the `documents` array
+   (main as of `3ae7d9b` gives spans a `document` field and serialises the
+   path through `to_json_with_paths`). The severity/message/recovery fields
+   map one-to-one. One-level crossref and `@string` scope stay per file;
+   multiple `.bib` files are concatenated only if the owner prefers that over
+   per-file loading — the README lists the tradeoff.
 3. **Resolve** with `resolve(&citations, &db, style)`. `missing` diagnostics
-   already carry the `.tex` key span; they are forwarded with the `.tex` path.
+   already carry the `.tex` key span; they are forwarded with the citing
+   document's `DocumentId`.
    `citations[i]` gives each `\cite` its item index; `items[j].label` the text
    to typeset.
 4. **Typeset citations**: replace each `\cite{...}` with `[label]`, joining
