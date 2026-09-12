@@ -160,7 +160,9 @@ final class BonjourTransport {
               let payload = json["payload"] as? [String: Any] else { return }
 
         if type_ == "capture_received",
-           let captureId = payload["capture_id"] as? String {
+           let captureId = payload["capture_id"] as? String,
+           let durable = payload["durable"] as? Bool,
+           durable {
             DispatchQueue.main.async {
                 self.receivedAcks.insert(captureId)
             }
