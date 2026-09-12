@@ -380,6 +380,16 @@ final class ProjectDocuments {
         self.model = model
         armActivePathTracking()
         armControllerTracking()
+        // Demo/automation hook (like FLASHTEX_SEED_FILE): open the entry
+        // document's includes at launch and optionally start in one of them.
+        let env = ProcessInfo.processInfo.environment
+        if env["FLASHTEX_OPEN_INCLUDES"] == "1" {
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                _ = await self.openDiscoveredIncludes()
+                if let path = env["FLASHTEX_ACTIVE_PATH"] { self.switchDocument(to: path) }
+            }
+        }
     }
 
     /// Drops metadata for paths no longer in `ShellModel.documents`
@@ -761,6 +771,22 @@ final class ProjectDocuments {
                 return noteSave(.conflict(conflict))
             }
         }
+        return saveDocumentNow(path)
+    }
+
+    /// Synchronous save of a non-entry member through the file layer's
+    /// rooted compare-and-replace (bounded helper wait inside), for flows
+    /// that cannot suspend (quit). Bypasses the preview controller's ledger
+    /// export exactly as `ShellModel.saveTex` does for the entry document.
+    @discardableResult
+    func saveDocumentNow(_ path: String) -> SaveOutcome {
+        prune()
+        guard path != entryPath else { return .failed("\(path) is the entry document; use Save (ShellModel.saveTex)") }
+        guard let doc = model.documents.first(where: { $0.path == path }) else { return .failed("\(path) is not open") }
+        guard let root = projectRoot else { return .failed("no project root") }
+        let url = root.appendingPathComponent(path)
+        let text = doc.text
+        let expectedDisk = diskBaselines[path] ?? nil
         let expected: ProjectFilesV1.Expected = expectedDisk.map { .hash($0) } ?? .newFile
         switch model.files.save(url, text: text, expected: expected, force: false) {
         case .saved(let sha):
