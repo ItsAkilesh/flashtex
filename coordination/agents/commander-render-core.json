@@ -3,10 +3,10 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-023": {
-      "acknowledged_utc": "2026-09-12T10:39:37Z",
-      "adaptation": "Read actual published602pixel classification objective. Use existing owner dumps and pinned raster/font data; no speculative geometry patch or invented reference GIDs.",
-      "main_sha": "ca3f9e8e7931245cc3d9d407069a63ae634e1a50",
-      "revision": 8
+      "acknowledged_utc": "2026-09-12T11:12:18Z",
+      "adaptation": "Read84c052b FT023r9. Consume exact b9240b0 runtime and8876279 helper artifacts; explicit compile versus document revision and membership/session source gates, existing immutable CFF export only.",
+      "main_sha": "84c052b49edd6e045618839369dec35051f32880",
+      "revision": 9
     }
   },
   "branch": "agent/commander-render-core/rendering-core",
@@ -14,23 +14,23 @@
     "rust",
     "rendering"
   ],
-  "code_revision": "ef350d2afb30cc847ee50ed0204ef9db87546bec",
+  "code_revision": "c3a5836b761cc81f49a2bd69bb96a192049216bf",
   "eta_minutes": {
-    "likely": 5,
-    "optimistic": 2,
-    "pessimistic": 10
+    "likely": 8,
+    "optimistic": 3,
+    "pessimistic": 15
   },
   "machine": "linux-primary",
   "main_integrated_through": "44b7779f5b2e171c63827bb3d7ea2d219d965aad",
-  "next_action": "Publish five-checkpoint aggregate and nominate demonstrated ordinary math optical-family resource selection gap to existing owner; no sweep.",
+  "next_action": "Publish adapter/actual fixtures then explicitly rebaseline and replay existing five pinned acceptance cases after additive source change.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "Existing18 ligatures: zero diagnostics, all five original ligature GIDs/source intervals and both declared Unicode maps verified; equal text/three lines,337pixel mismatch.",
+  "summary": "FT023r9 actual FT049 runtime/helper candidates reach immutable searchable export without metadata repair; stale/editor-generation/resource negatives refused.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T11:04:55Z",
+  "updated_utc": "2026-09-12T11:15:01Z",
   "usage": {
-    "evidence": "Fresh pinned ligatures runner reproduces exact PDF/337pixels. Focused Rust GID/source/CMap regression,6Python gates, strict all-target Clippy pass. Previous fixture reports pinned in aggregate; no native/general parity claim.",
-    "status": "Hosted OpenAI only; no providers or descendants; quota telemetry unavailable."
+    "evidence": "Full164Rust tests pass, including3actual runtime/helper acceptance tests. Helper editor1/2/3 versus compile2/3/4 preserved. Exact candidate/direct export equality; no native/visual claim.",
+    "status": "Hosted OpenAI only; no providers/descendants/native activation; quota telemetry unavailable."
   }
 }
