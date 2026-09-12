@@ -217,15 +217,12 @@ final class ShellModel {
     /// UTF-8 byte offset of the editor caret in `activeText`, or nil when the
     /// UTF-16 caret is out of range for the buffer.
     var caretByte: Int? {
-        activeText.utf8ByteRange(of: NSRange(location: caretUTF16, length: 0))?.start
+        CaretSync.byteOffset(ofCaretUTF16: caretUTF16, in: activeText) // mid-surrogate carets rounded, never split
     }
 
     /// Preview items under the caret, as `page number -> item indices`.
     /// Empty when there is no result or the caret maps to nothing.
-    var caretItems: [Int: Set<Int>] {
-        guard let result, let byte = caretByte else { return [:] }
-        return CaretSync.indicesByPage(byte: byte, path: activePath, in: result)
-    }
+    var caretItems: [Int: Set<Int>] { exactCaretItems } // CaretSync.swift: O(log n) index, memoized per result
 
     init() {
         let env = ProcessInfo.processInfo.environment
@@ -380,42 +377,15 @@ final class ShellModel {
 
     /// Converts the contract's UTF-8 byte range to a UTF-16 selection in the
     /// matching document and asks the editor to select it.
+    /// Preview/diagnostic navigation: see `navigateExactly` (Navigation.swift)
+    /// for the byte-exact staleness and cluster guarantees.
     func navigate(to source: RuntimeV1.SourceRange?) {
-        guard let source else {
-            navigationNote = "This item has no source mapping."
-            return
-        }
-        navigate(to: source, expectedText: nil)
+        navigateExactly(to: source, expectedText: nil)
     }
 
-    /// `expectedText` (an item's text) lets a rebased range be verified.
+    /// `expectedText` (an item's text) annotates generated text after a rebase.
     func navigate(to source: RuntimeV1.SourceRange, expectedText: String?) {
-        guard let doc = documents.first(where: { $0.path == source.path }) else {
-            navigationNote = "No open document named \(source.path)."
-            return
-        }
-        var target = source
-        var rebasedNote = ""
-        if let compiled = compiledDocuments[source.path], compiled != doc.text {
-            guard let mapped = SourceMapping.rebase(source, from: compiled, to: doc.text, expectedText: expectedText) else {
-                navigationNote = "Source for this item was edited since revision \(result?.revision ?? 0); recompile to navigate."
-                return
-            }
-            if mapped != source {
-                rebasedNote = " (rebased from \(source.startByte)..<\(source.endByte) across edits)"
-            }
-            target = mapped
-        } else if compiledDocuments[source.path] == nil, previewIsStale {
-            navigationNote = "Buffer edited since revision \(result?.revision ?? 0) and no compiled text is recorded; recompile to navigate."
-            return
-        }
-        guard let ns = doc.text.nsRange(utf8Bytes: target) else {
-            navigationNote = "Bytes \(target.startByte)..<\(target.endByte) are not a valid range in \(source.path) (buffer is \(doc.text.utf8.count) bytes)."
-            return
-        }
-        activePath = source.path
-        selection = .init(path: source.path, nsRange: ns, token: (selection?.token ?? 0) + 1)
-        navigationNote = "Selected \(source.path) bytes \(target.startByte)..<\(target.endByte) → UTF-16 \(ns.location)..<\(ns.location + ns.length)" + rebasedNote
+        navigateExactly(to: source, expectedText: expectedText)
     }
 
     // MARK: worker transport (runtime v1 JSON Lines)

@@ -101,7 +101,9 @@ final class PairingFlowController: ObservableObject {
         case .connectionClosed(let id, let reason): apply(.peerGone(pairId: id, reason: reason, generation: g))
         case .capture(let id): apply(.captureReceived(pairId: nil, captureId: id))
         case .failed(let why): apply(.listenerFailed(why))
-        case .ready, .stopped: break
+        // Refusals and acknowledged duplicates are shown by NearbyState's error
+        // state (mac-nearby-transport); they do not move the pairing flow.
+        case .ready, .stopped, .captureRefused, .captureDuplicate: break
         }
     }
 
@@ -286,6 +288,19 @@ struct NearbyFlowView: View {
             Divider()
             CapturesSection(inbox: model.nearbyInbox, bridgeCaptures: model.bridgeCaptures,
                             lastCaptureId: nearby.lastReceivedCaptureId)
+            if let e = nearby.lastReceiveError {
+                Divider()
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Refused capture").font(.headline).foregroundStyle(.red)
+                    Text(e.summary).font(.system(.callout, design: .monospaced)).textSelection(.enabled)
+                    HStack {
+                        Text("\(nearby.receiveErrors.count) refusal(s), \(nearby.duplicateCaptureCount) duplicate(s) acknowledged")
+                            .font(.caption).foregroundStyle(.secondary)
+                        Spacer()
+                        Button("Clear") { nearby.clearReceiveErrors() }
+                    }
+                }
+            }
             Divider()
             logSection
         }
