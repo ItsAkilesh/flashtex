@@ -3,27 +3,27 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-048": {
-      "acknowledged_utc": "2026-09-12T13:39:38Z",
-      "adaptation": "Commander-approved one controlled processsender pair after six lifecycle tests and explicit runtime/renderer quiet confirmations; both terminalPASS.",
-      "main_sha": "d34865e807f3fa327ae9c26bc814101e123956a7",
-      "revision": 24
+      "acknowledged_utc": "2026-09-12T13:41:52Z",
+      "adaptation": "Existing hash-verified diagnostics only; no workloads while renderer builds. Cannot discriminate writer/receiver costs; propose minimal correlated instrumentation.",
+      "main_sha": "04840a863290843dff3ef7be6154266a860f9888",
+      "revision": 25
     }
   },
   "branch": "agent/commander-preview-performance/preview-performance",
   "capabilities": [
     "Preview helper serialization and latency"
   ],
-  "code_revision": "f240daecda41e955a90ff0fc9fb75f78bbf75566",
+  "code_revision": "c5518be3b38d9682da3bea993587bc4e4ba49c38",
   "eta_minutes": null,
   "machine": "linux-primary",
   "main_integrated_through": "f240daecda41e955a90ff0fc9fb75f78bbf75566",
-  "next_action": "Independent original artifact audit; then profile remaining receiver/output cost before choosing product optimization.",
+  "next_action": "Review minimal diagnostic metadata proposal with Commander before instrumentation.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "FT048r24 processsender pair captured; current final80.34ms and historical141.40ms postlastsend, maxsendlateness below0.11ms; exact final/source/receipt gates pass.",
+  "summary": "FT048r25 existing diagnostics quantify29.19ms optional offer/serialization and9.89MB historical output; attribution gap remains writer/receiver time and unlogged eligibility skips.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T13:39:39Z",
+  "updated_utc": "2026-09-12T13:41:53Z",
   "usage": {
     "status": "unknown"
   }

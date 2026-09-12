@@ -3,27 +3,27 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-049": {
-      "acknowledged_utc": "2026-09-12T13:34:14Z",
-      "adaptation": "Read FT049r27; independently audited published8d913d2a historical bytes without workload rerun; sender lifecycle candidate pending root publication, no peer edits.",
-      "main_sha": "620c349ccfa3796201290300a77c558024a1ffd3",
-      "revision": 27
+      "acknowledged_utc": "2026-09-12T13:38:41Z",
+      "adaptation": "Read exact FT049r29; await published processsender pair for artifact-only audit. Reviewed f240daec fragmented greater-than-PIPE_BUF transfer test read-only; no workload rerun or native claim.",
+      "main_sha": "86afb290fbbfaaac3f6ce2afdb1373ae9f81ef5c",
+      "revision": 29
     }
   },
   "branch": "agent/commander-runtime-display/display-runtime",
   "capabilities": [
     "rust-runtime"
   ],
-  "code_revision": "18335688addc11518a739152e74ca46c6a415dee",
+  "code_revision": "d8db4e1538d3c4686dbd5d73357f123771d0974e",
   "eta_minutes": null,
   "machine": "linux-primary",
-  "main_integrated_through": "31f62559f2ed154b3c93e8bc2240690a565da672",
-  "next_action": "Read-only separate-process sender lifecycle review when root candidate available; no active jobs. Current audited maximum send lateness23.908608ms prevents fixed30ms cadence claim.",
+  "main_integrated_through": "1027d3ae7d00f7f9684b0d74026b6bb3f4e002a1",
+  "next_action": "Commander integration/next bounded assignment. No active jobs; root69bffa06 instrumentation proposal available for later review if assigned.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "FT049r27 historical audit passes exact8d913d2a:7 historical original same-stream results/token/source/currentness verified,12 superseded,only current21;20 source/ACK/receipt chain,clean equality. Both audit modes pass; no runtime production edits or throughput rerun.",
+  "summary": "FT049r29 exact c5518be3 process pair audit passes4 modes. Sender frames/provenance/source chain and crosspair clean bytes equal. Current8stale11superseded; historical6delivered12superseded plus completed15 undelivered;only current21. No loss-cause/native claim or workload rerun.",
   "tool": "codex",
-  "updated_utc": "2026-09-12T13:34:59Z",
+  "updated_utc": "2026-09-12T13:42:55Z",
   "usage": {
     "status": "unknown"
   }

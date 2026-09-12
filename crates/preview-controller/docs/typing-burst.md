@@ -105,8 +105,9 @@ The original archived threaded captures and their provenance remain unchanged.
 Independent review added sender-failure polling before/after reads and on read
 failure, so a recorded child error replaces a generic receiver timeout. Config and
 result files are retained in the capture's sender directory, including failures.
-Nested cleanup guarantees helper shutdown and event-file closure even if sender
-cleanup raises. A forcibly killed parent is not an immediate child-death guarantee:
+Nested cleanup attempts helper shutdown and guarantees event-file closure even if
+sender cleanup raises. If the helper kill/wait itself fails, Client.stop can leave
+its descriptors unclosed; this is not an all-path helper cleanup guarantee. A forcibly killed parent is not an immediate child-death guarantee:
 the child still has its absolute deadline; that case is not claimed by these tests.
 
 A sixth lifecycle test transfers two large UTF-8/ASCII frames through many pipe
@@ -145,3 +146,48 @@ arrival measurements include its handling of earlier frames. Neither the observe
 61ms final difference nor the ACK difference isolates a causal implementation cost.
 Native paint and current output during every keystroke remain unproven, and the
 historical feature remains off by default.
+
+
+## Existing trace attribution and next instrumentation
+
+`diagnostic-attribution.json`, reproducible with
+`examples/burst_diagnostic_attribution.py`, verifies archived hashes before deriving
+phase totals. The six delivered historical frames total9,892,397 bytes (~1.65MB
+per frame). Six admitted optional serialization/offer calls take3.51–6.89ms each,
+29.19ms total. That timing includes admission checks and queue offer; it does not
+measure writer completion or receiver decoding. Request handling peaks around
+2.6ms in either whole-session trace, which also includes setup and receipt checks.
+Those samples have no request IDs or absolute timestamps, so they cannot be
+correlated reliably with the maximum39.27ms ACK receipt observation.
+
+The final runtime/controller totals are72.81/74.51ms in current-only mode and
+135.40/137.04ms with historical output. These scopes overlap and include waiting;
+they are not additive CPU costs or proof that historical serialization caused the
+difference. The current writer preserves required FIFO priority but cannot preempt
+an optional frame already being written. Existing telemetry records neither actual
+write duration nor receiver decode duration, so serialization, pipe backpressure
+and receiver parsing cannot be separated from these captures.
+
+Independent audit also found producer revision15 completed in the historical run
+without a delivered historical or stale notification. Optional output is lossy.
+Six admitted offers do not prove why that other result was not delivered; the
+outer eligibility/claim branches have no diagnostic outcome. No loss cause is
+inferred from the missing frame.
+
+Before choosing an optimization, the minimal diagnostic extension should:
+
+- Attach request ID and a helper-relative monotonic timestamp to request timing.
+- Give admitted output frames a small diagnostic sequence number and admission
+  timestamp; record required/optional class, byte count, dequeue/start/end times
+  and write success. Pass metadata with the frame rather than reparsing its JSON.
+- Record skipped historical eligibility/claim outcomes with compile generation,
+  and distinguish serialized, queued, replaced, dequeued and written outcomes.
+- Record receiver frame completion and JSON-decode start/end separately in the
+  benchmark, preserving original wire bytes and avoiding body logging on stderr.
+
+Keep instrumentation behind diagnostic_timings, maintain existing queue bounds,
+source guards and defaults, and test required/optional replacement plus failed
+writes. Cross-process timestamps need an explicit shared clock/calibration before
+subtracting them; within-process durations alone cannot establish transport time.
+Only then should a bounded new capture test which stage dominates. This analysis
+runs solely over existing artifacts and makes no additional timing measurement.
