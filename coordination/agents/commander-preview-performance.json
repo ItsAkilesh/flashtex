@@ -3,33 +3,33 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-048": {
-      "acknowledged_utc": "2026-09-12T16:24:59Z",
-      "adaptation": "Read r44 owned preview edit/index/submit audit. Static inspection finds metadata replacement already moves source and borrows it for indexing; required full-source clone crosses owned runtime Request API. No speculative implementation or runtime edits; report audit and request owner coordination for substantive ownership change.",
-      "main_sha": "0294d2ca48cbfd497c6b549deb7575fbcec4a4b8",
-      "revision": 44
+      "acknowledged_utc": "2026-09-12T16:38:26Z",
+      "adaptation": "Read r45 ownership improvement gate. Static helper audit and runtime prototype9a749554 show no justified helper-only copy change; proof preparation worsens latency, so preserve owned requests. Commander subsequently assigned read-only producer Text/compiler/cache review; f9c2edb5 and0f91b645 published, GH43 awaits existing owner fix.",
+      "main_sha": "376a264baa7775e0de7f1ed71406a300d3129ac9",
+      "revision": 45
     }
   },
   "branch": "agent/commander-preview-performance/preview-performance",
   "capabilities": [
     "Preview helper serialization and latency"
   ],
-  "code_revision": "8dd9170dccc9f2a809c5537ca13c08459d4c91f5",
+  "code_revision": "0f91b6458abd95f6c0f75bf89f105eb314ca7dea",
   "eta_minutes": {
     "likely": 15,
     "optimistic": 5,
     "pessimistic": 30
   },
   "machine": "linux-primary",
-  "main_integrated_through": "8b676e7212042493c690848026cc33cc1900b0fe",
-  "next_action": "Commander coordinate runtime owner for borrowed/request ownership investigation if prioritized; root can adapt helper to a reviewed API. Await Kabir Text overlap acknowledgement. All owned processes terminal; ready for authority transfer fence.",
+  "main_integrated_through": "0f91b6458abd95f6c0f75bf89f105eb314ca7dea",
+  "next_action": "Review existing producer owner GH43 fix when published; await Kabir Text base ACK before tests or adoption. Commander owns continuous Kabir contact and handoff. Root clean; no active subprocess or paid calls.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "FT048r44 static audit completed at8dd9170d: metadata edits move replacement source into durable store, borrow saved source for indexing and return source-free metadata. Remaining full-source copy in compile_current_with_admission supplies runtime-owned InputDocument strings. No material removable source copy found within owned paths; no speculative code changes or benchmark sweep. Current-base Text handoff8b/8dd remains no-build and fenced.",
+  "summary": "Completed helper ownership audit without speculative changes. Independently reviewed runtime9a749554 proof proposal and preserved current path after measured preparation regression. Producer65ce2dd compiler/cache review f9c2edb5 identifies unapplied Text hash/shift arms and stale replay risk; bounds review0f91b645 opened GH43 for u16 glyph aliasing and Text handle overflow. Reviewed renderer4614248e script geometry/extraction limits.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T16:25:15Z",
+  "updated_utc": "2026-09-12T16:38:26Z",
   "usage": {
-    "evidence": "crates/preview-controller/src/metadata_edit.rs; crates/preview-controller/src/lib.rs:312; crates/preview-controller/src/lib.rs:444; crates/document-runtime/src/lib.rs:28",
-    "status": "Existing hosted allocation only; no paid API or CLI calls; remaining quota unknown."
+    "evidence": "crates/preview-controller/docs/handoffs/text-producer-bounds.md; crates/preview-controller/docs/handoffs/text-producer-65ce-review.md; GH43",
+    "status": "Hosted allocation only, quota unknown; no paid CLI/API calls."
   }
 }
