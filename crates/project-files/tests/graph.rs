@@ -302,14 +302,27 @@ fn toctou_symlink_race_never_leaks_outside_content_into_graph() {
         let stop = stop.clone();
         let target = target.clone();
         let victim = victim.clone();
+        // A sibling temp path used to stage the "safe" content so it can be
+        // installed with a single atomic `rename`, never a `fs::write`
+        // (open + truncate + write) directly over `target`. `fs::write`
+        // there would let a concurrent reader observe a transiently
+        // truncated (empty) file -- a torn read of the racer's *own*
+        // in-root content that has nothing to do with the symlink race
+        // under test, but which the loop below cannot tell apart from a
+        // real leak by hash alone. Only the symlink arm still needs a
+        // separate `remove_file` (symlink creation fails over an existing
+        // path); that produces a "missing" window, which the assertions
+        // already treat as a valid outcome.
+        let tmp = target.with_extension("tmp-racer");
         thread::spawn(move || {
             let mut flips = 0u32;
             while !stop.load(Ordering::Relaxed) {
-                let _ = fs::remove_file(&target);
                 if flips.is_multiple_of(2) {
+                    let _ = fs::remove_file(&target);
                     let _ = std::os::unix::fs::symlink(&victim, &target);
                 } else {
-                    let _ = fs::write(&target, "safe-inroot-content");
+                    fs::write(&tmp, "safe-inroot-content").unwrap();
+                    let _ = fs::rename(&tmp, &target);
                 }
                 flips += 1;
             }
@@ -360,6 +373,67 @@ fn toctou_symlink_race_never_leaks_outside_content_into_graph() {
     assert!(
         !leaked,
         "TOCTOU RACE WON: outside file content was read into the project graph as secret.tex"
+    );
+}
+
+/// Same property as
+/// [`toctou_symlink_race_never_leaks_outside_content_into_graph`], but for a
+/// file reached through an intermediate directory (`a/b/secret.tex`) rather
+/// than a direct root child. `ProjectRoot::walk` opens each intermediate
+/// component with `openat(O_NOFOLLOW)` and re-verifies it against the
+/// handle it was reached from before continuing (see `save.rs`); this test
+/// exercises that walk under the same kind of concurrent leaf-swapping,
+/// added because the original regression only ever covered a root-level
+/// target.
+#[cfg(unix)]
+#[test]
+fn toctou_symlink_race_never_leaks_outside_content_nested_path() {
+    let outside = TempDir::new("toctou-nested-outside");
+    let victim = outside.write("secret-data.txt", "OUTSIDE-SECRET-CONTENT");
+    let t = TempDir::new("toctou-nested-root");
+    t.write("main.tex", "\\input{a/b/secret}");
+    t.write("a/b/.keep", "");
+    let target = t.root().join("a/b/secret.tex");
+    fs::write(&target, "safe-inroot-content").unwrap();
+
+    let stop = Arc::new(AtomicBool::new(false));
+    let racer = {
+        let stop = stop.clone();
+        let target = target.clone();
+        let victim = victim.clone();
+        let tmp = target.with_extension("tmp-racer");
+        thread::spawn(move || {
+            let mut flips = 0u32;
+            while !stop.load(Ordering::Relaxed) {
+                if flips.is_multiple_of(2) {
+                    let _ = fs::remove_file(&target);
+                    let _ = std::os::unix::fs::symlink(&victim, &target);
+                } else {
+                    fs::write(&tmp, "safe-inroot-content").unwrap();
+                    let _ = fs::rename(&tmp, &target);
+                }
+                flips += 1;
+            }
+            flips
+        })
+    };
+
+    let safe_hash = sha256(b"safe-inroot-content");
+    let mut leaked = false;
+    for _ in 0..600 {
+        let g = ProjectGraph::discover(t.root(), &pp("main.tex")).unwrap();
+        if let Some(f) = g.file(&pp("a/b/secret.tex"))
+            && f.sha256 != safe_hash
+        {
+            leaked = true;
+        }
+    }
+    stop.store(true, Ordering::Relaxed);
+    let flips = racer.join().unwrap();
+    assert!(flips > 0);
+    assert!(
+        !leaked,
+        "TOCTOU RACE WON: outside file content was read into the project graph as a/b/secret.tex"
     );
 }
 
