@@ -72,8 +72,7 @@ def render_attach(a):
     open(log, "w").close()
     env = dict(os.environ)
     env.update({"FLASHTEX_AUTOATTACH": "1", "FLASHTEX_NO_ACTIVATE": "1", "FLASHTEX_COMPILER": render,
-                "FLASHTEX_LOG": log, "FLASHTEX_BRIDGE_STORE": os.path.join(a.work, "captures"),
-                "FLASHTEX_TRANSCRIPT": os.path.join(a.work, "transcript.jsonl")})
+                "FLASHTEX_LOG": log, "FLASHTEX_BRIDGE_STORE": os.path.join(a.work, "captures")})
     env.pop("FLASHTEX_PREVIEW_FACE", None)
     env.pop("FLASHTEX_PREVIEW_CONTROLLER", None)
     rec = {"app": app_bin, "render": describe(render), "env": {k: env[k] for k in ("FLASHTEX_AUTOATTACH", "FLASHTEX_NO_ACTIVATE", "FLASHTEX_COMPILER", "FLASHTEX_LOG")},
@@ -154,8 +153,9 @@ def base_env(work, extra=None):
     for k in list(env):
         if k.startswith("FLASHTEX_") and k not in ("FLASHTEX_LM_DIR", "FLASHTEX_FONT_DIRS"):
             env.pop(k)
+    # No FLASHTEX_TRANSCRIPT: it records every compile request in full (megabytes per run); FLASHTEX_LOG is the evidence.
     env.update({"FLASHTEX_NO_ACTIVATE": "1", "FLASHTEX_LOG": os.path.join(work, "flashtex.log"),
-                "FLASHTEX_BRIDGE_STORE": os.path.join(work, "captures"), "FLASHTEX_TRANSCRIPT": os.path.join(work, "transcript.jsonl")})
+                "FLASHTEX_BRIDGE_STORE": os.path.join(work, "captures")})
     env.update(extra or {})
     return env
 

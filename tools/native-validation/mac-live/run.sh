@@ -408,6 +408,10 @@ if [[ $SKIP_BENCH == 0 && $APP_OK == 1 && $HELPERS_OK == 1 ]]; then
       cmd historical-analyze python3 "$ANALYZE" "$HD/baseline" "$HD/historical"
       cp "$LOGS/historical-analyze.log" "$HD/analysis.txt"
       cp "$ANALYZE" "$HD/analyze.py"
+      # The inputs are copies of typing-bench*/…/controller-*.json|.log; keep the
+      # report directory small and record how to rebuild the layout instead.
+      rm -rf "$HD/baseline" "$HD/historical"
+      printf 'Inputs were copies of ../typing-bench*/typing-bench-*/controller-*.json (JSON under <mode>/typing-bench-*/, .log next to <mode>/); rebuild that layout from those files and run: python3 analyze.py baseline historical\n' > "$HD/README.txt"
     else
       note "analyze.py not found at $ANALYZE; historical classification skipped"
     fi

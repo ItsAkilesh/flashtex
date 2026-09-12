@@ -164,8 +164,11 @@ def main():
         latency_gated = not (max_load is not None and l1 is not None and l1 > max_load)
         if pg.get("per_seed_p50_ms_max"):
             affected = [c for c, d in runs[prod].items() if d.get("load_affected")]
-            if affected or not latency_gated:
-                gate(sec, "latency gates NOT applied to load-affected cells (bench --load-limit 10; before-pass 1-minute load %s): %s" % (l1, ", ".join(sorted(affected)) or "pass-level load > %s" % max_load), True, load_before[sub].get("uptime", ""))
+            per_cell = any("load_affected" in d for d in runs[prod].values())
+            if affected:
+                gate(sec, "latency gates NOT applied to load-affected cells (bench --load-limit 10): %s" % ", ".join(sorted(affected)), True, load_before[sub].get("uptime", ""))
+            elif not per_cell and not latency_gated:
+                gate(sec, "latency gates NOT applied to this pass (no per-cell load data; 1-minute load %s > %s before the pass)" % (l1, max_load), True, load_before[sub].get("uptime", ""))
         for cell in tg.get("required_cells", []):
             d = runs[prod].get(cell)
             if d is None:
@@ -369,7 +372,7 @@ def main():
     for sub in sorted(set(x[1] for x in producers)):
         lb = load_before.get(sub) or {}
         if lb:
-            L.append("- `%s` pass: producers `%s`; `uptime` right before: `%s`%s" % (sub, lb.get("producers"), lb.get("uptime", "").strip(), (" — latency gates NOT applied (1-minute load %s > %s)" % (load1(sub), max_load)) if (max_load is not None and load1(sub) is not None and load1(sub) > max_load) else ""))
+            L.append("- `%s` pass: producers `%s`; `uptime` right before: `%s` (each cell then waited for the bench's quiet-load condition; per-cell load before/after is in the table)" % (sub, lb.get("producers"), lb.get("uptime", "").strip()))
     L.append("")
     L.append("| producer | cell | bytes | typed | paints | coalesced | unpainted | k->p p50 | p95 | p99 | max | compile p50 | compile p95 | render p50 | render p95 | gate p50 <= | project target p50 <= %s / p95 <= %s |" % (targets.get("project_typing_to_visible_p50_ms"), targets.get("project_typing_to_visible_p95_ms")))
     L.append("|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|")
@@ -489,7 +492,7 @@ def main():
     L.append("## Historical previews: helper route, hold-until-preview vs FLASHTEX_COMPLETED_SNAPSHOTS=1")
     L.append("")
     if hist_analysis:
-        L.append("Classification by the branch's `docs/evidence/historical-preview-2026-09-12T1010Z/analyze.py` (copied to `reports/%s/historical/`), from each cell's `FLASHTEX_LOG`: a paint is *historical* when the log shows `compile: applied historical revision N` for the revision the bench recorded as `painted_by_revision`, else *current*. `baseline` = the `controller` rows above; `historical` = the `FLASHTEX_COMPLETED_SNAPSHOTS=1` pass. Full output: `reports/%s/historical/analysis.txt`." % (os.path.basename(rd), os.path.basename(rd)))
+        L.append("Classification by the branch's `docs/evidence/historical-preview-2026-09-12T1010Z/analyze.py` (copied to `reports/%s/historical/`; its inputs were copies of the `controller-*` JSON + `FLASHTEX_LOG` of the two passes, see `historical/README.txt`), from each cell's `FLASHTEX_LOG`: a paint is *historical* when the log shows `compile: applied historical revision N` for the revision the bench recorded as `painted_by_revision`, else *current*. `baseline` = the `controller` rows above; `historical` = the `FLASHTEX_COMPLETED_SNAPSHOTS=1` pass. Full output: `reports/%s/historical/analysis.txt`." % (os.path.basename(rd), os.path.basename(rd)))
         L.append("")
         for line in hist_analysis.splitlines():
             if line.startswith("|"):
@@ -518,10 +521,10 @@ def main():
     if relaunch and not relaunch.get("refused"):
         L.append("The app (pid %s, `FLASHTEX_AUTOATTACH=1 FLASHTEX_NO_ACTIVATE=1`) had its `flashtex-compiler` child killed with SIGKILL four times within one minute; the shell relaunches at most 3 times per minute with 0.2 / 1.0 / 3.0 s backoff, then leaves the exit visible." % relaunch.get("pid"))
         L.append("")
-        L.append("| kill | killed pid | relaunch scheduled after (s) | relaunched after (s) | new child | recompiled within 5 s | elapsed (s) | limit line after (s) |")
+        L.append("| kill | killed pid | relaunch scheduled after (s) | relaunched after (s) | new child | a later keystroke recompiled after (s) | elapsed (s) | limit line after (s) |")
         L.append("|---:|---:|---:|---:|---|---|---:|---:|")
         for k in relaunch.get("kills", []):
-            L.append("| %s | %s | %s | %s | %s | %s | %s | %s |" % (k.get("attempt"), k.get("killed_pid"), k.get("scheduled_seen_s", "—"), k.get("relaunched_seen_s", "—"), k.get("new_child", k.get("child_after", "—")), k.get("recompiled_within_5s", "—"), k.get("elapsed_s", "—"), k.get("limit_seen_s", "—")))
+            L.append("| %s | %s | %s | %s | %s | %s | %s | %s |" % (k.get("attempt"), k.get("killed_pid"), k.get("scheduled_after_s", "—"), k.get("relaunched_after_s", "—"), k.get("new_child", k.get("child_after", "—")), k.get("recompiled_after_s", "—"), k.get("elapsed_s", "—"), k.get("limit_after_s", "—")))
         L.append("")
         for c in relaunch.get("checks", []):
             L.append("- %s: %s — %s" % ("PASS" if c["ok"] else "FAIL", c["name"], str(c.get("detail", ""))[:200]))
@@ -552,7 +555,7 @@ def main():
     L.append("## Branch XCTests against the real helpers (save routing, quit-save, reviewed reload, conflict refusal, bounded relaunch)")
     L.append("")
     if app_tests:
-        L.append("`swift test --filter 'ProjectDocumentsTests|DocumentFilesTests|HistoricalPreviewTests|ShellModelTests/testCrashedWorkerIsRelaunchedWithBoundedBackoff'` in the pinned app clone with `FLASHTEX_COMPILER`, `FLASHTEX_PREVIEW_CONTROLLER`, `FLASHTEX_PROJECT_FILES`, `FLASHTEX_EDIT_LEDGER`, `FLASHTEX_BRIDGE`, `FLASHTEX_PDF` pointing at the binaries above: exit %s; %s passed, %s failed, %s skipped; totals `%s`." % (app_tests.get("exit_code"), app_tests.get("passed"), app_tests.get("failed"), app_tests.get("skipped"), json.dumps(app_tests.get("totals"))))
+        L.append("`swift test --filter 'ProjectDocumentsTests|DocumentFilesTests|DocumentFilesControllerTests|HistoricalPreviewTests|ShellModelWorkerTests/testCrashedWorkerIsRelaunchedWithBoundedBackoff'` in the pinned app clone with `FLASHTEX_COMPILER`, `FLASHTEX_PREVIEW_CONTROLLER`, `FLASHTEX_PROJECT_FILES`, `FLASHTEX_EDIT_LEDGER`, `FLASHTEX_BRIDGE`, `FLASHTEX_PDF` pointing at the binaries above: exit %s; %s passed, %s failed, %s skipped; totals `%s`." % (app_tests.get("exit_code"), app_tests.get("passed"), app_tests.get("failed"), app_tests.get("skipped"), json.dumps(app_tests.get("totals"))))
         L.append("")
         L.append("| test | result | seconds | note |")
         L.append("|---|---|---:|---|")

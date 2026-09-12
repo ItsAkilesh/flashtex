@@ -1,0 +1,69 @@
+{
+ "app": "/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/build/FlashTeX.app/Contents/MacOS/FlashTeX",
+ "app_alive_after_wait": true,
+ "app_exit": -15,
+ "checks": [
+  {
+   "detail": "/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/build/FlashTeX.app/Contents/MacOS/flashtex-render",
+   "name": "bundled flashtex-render present",
+   "ok": true
+  },
+  {
+   "detail": "seen after 0.111 s",
+   "name": "app launched flashtex-render with preview face latin-modern (FLASHTEX_LOG 'preview face: latin-modern')",
+   "ok": true
+  },
+  {
+   "detail": "seen after 0.111 s",
+   "name": "flashtex-render attached (status line)",
+   "ok": true
+  },
+  {
+   "detail": "seen after 0.326 s",
+   "name": "first compile through flashtex-render painted (revision 1: ok)",
+   "ok": true
+  },
+  {
+   "detail": "pids ['14271']",
+   "name": "flashtex-render child process under the app pid",
+   "ok": true
+  },
+  {
+   "detail": "exit None",
+   "name": "app still running after the wait (not activated)",
+   "ok": true
+  }
+ ],
+ "elapsed_s": 0.486,
+ "env": {
+  "FLASHTEX_AUTOATTACH": "1",
+  "FLASHTEX_COMPILER": "/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/build/FlashTeX.app/Contents/MacOS/flashtex-render",
+  "FLASHTEX_LOG": "/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/reports/20260912T110944Z/render-attach/flashtex.log",
+  "FLASHTEX_NO_ACTIVATE": "1"
+ },
+ "failed": 0,
+ "log_excerpt": [
+  "2026-09-12T11:17:31Z\tstatus: attached: flashtex-render",
+  "2026-09-12T11:17:31Z\tlaunched /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/build/FlashTeX.app/Contents/MacOS/flashtex-render (preview face: latin-modern)",
+  "2026-09-12T11:17:31Z\tstatus: compiling revision 1 (mac-1)\u2026",
+  "2026-09-12T11:17:31Z\tstatus: revision 1: ok, 0 diagnostics in 167 ms"
+ ],
+ "log_seen_after_s": {
+  "(preview face: latin-modern)": 0.111,
+  "revision 1: ok": 0.326,
+  "status: attached:": 0.111
+ },
+ "passed": 6,
+ "pid": 14243,
+ "render": {
+  "bytes": 1953520,
+  "path": "/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/build/FlashTeX.app/Contents/MacOS/flashtex-render",
+  "sha256": "58579281e812de4b0e6f8d7426735abe1231da951d22f2c9ddd38c7d748a58f6",
+  "sha256_content": "4040c6da70fd93c58a24cfc6359bbe8fc282f5a2fa4f8405d0f5e20c20f8fc9c",
+  "sha256_unsigned": "a6a5ab67a103845c624d590b3d1e9f33c34b23d09647fb0eef02f67988963c91",
+  "signature": "Signature=adhoc"
+ },
+ "render_child_pids": [
+  "14271"
+ ]
+}
