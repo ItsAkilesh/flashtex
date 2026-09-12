@@ -34,6 +34,16 @@ pub enum Inline {
     LineBreak {
         span: Span,
     },
+    /// Explicit text-mode horizontal glue (`\quad` is 1em, `\qquad` is 2em),
+    /// measured in ems of the surrounding body text size. Named distinctly
+    /// from `HSpace` below (a fixed-point `\hspace{<dimen>}` glue) since the
+    /// two behave differently at a line break: this discardable glue mirrors
+    /// TeX by breaking the line rather than overflowing it (see
+    /// `layout::LayoutCursor::text_glue`).
+    TextGlue {
+        em: f64,
+        span: Span,
+    },
     Math {
         list: MathList,
         display: bool,
@@ -292,6 +302,11 @@ const BUILT_INS: &[&str] = &[
     "tt",
     "rm",
     "sf",
+    "quad",
+    "qquad",
+    "bigskip",
+    "medskip",
+    "smallskip",
     "vspace",
     "hrule",
     "newpage",
@@ -347,6 +362,15 @@ fn looks_like_recoverable_argument(content: &str) -> bool {
     parse_dimen_pt(content).is_some()
         || (content.chars().count() > 1 && content.chars().all(|ch| ch.is_ascii_lowercase()))
 }
+
+/// Plain TeX's conventional `\smallskipamount`/`\medskipamount`/
+/// `\bigskipamount`, in points. Real TeX also gives each a `plus`/`minus`
+/// stretch component; this layout model has no rubber lengths (see
+/// `Block::VSpace`, which `\vspace` already feeds a flat point value), so
+/// these are the flat amounts with the stretch/shrink honestly dropped.
+const SMALL_SKIP_PT: f64 = 3.0;
+const MEDIUM_SKIP_PT: f64 = 6.0;
+const BIG_SKIP_PT: f64 = 12.0;
 
 /// Project-relative paths only: no absolute paths or parent traversal.
 pub(crate) fn path_is_safe(path: &str) -> bool {
@@ -798,7 +822,28 @@ impl P<'_> {
             // model, so there is nothing for \noindent to suppress: an honest
             // no-op rather than a fabricated indent to cancel.
             "noindent" => {}
+            // Text-mode horizontal glue. `\quad`/`\qquad` are also implemented
+            // in math mode (`src/math.rs`); this arm covers the same commands
+            // used directly in running text, 1em/2em of the body text size.
+            "quad" => para.push(Inline::TextGlue {
+                em: math::QUAD_EM,
+                span,
+            }),
+            "qquad" => para.push(Inline::TextGlue {
+                em: 2.0 * math::QUAD_EM,
+                span,
+            }),
             "par" => self.flush_paragraph(blocks, para),
+            "bigskip" | "medskip" | "smallskip" => {
+                let pt = match name {
+                    "bigskip" => BIG_SKIP_PT,
+                    "medskip" => MEDIUM_SKIP_PT,
+                    _ => SMALL_SKIP_PT,
+                };
+                self.flush_paragraph(blocks, para);
+                blocks.push(Block::VSpace { pt });
+                self.finish_block_dependencies();
+            }
             "vspace" => {
                 let (tokens, argument_span) = self.required_group(name, span);
                 let raw = token_text(&tokens);
