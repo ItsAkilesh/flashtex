@@ -3,8 +3,10 @@ import FlashTeXProtocol
 import FlashTeXAccessibility
 
 /// Draws `compile_result` pages. Coordinates are points, origin top-left;
-/// text items are positioned by baseline. Clicking a text item navigates to
-/// its UTF-8 source range.
+/// text items are positioned by baseline, typed `rule` items by their top-left
+/// corner (`RuleGeometry`). Clicking a text or rule item navigates to its
+/// UTF-8 source range. Unknown kinds are not drawn; the model reports them
+/// when a capability set was negotiated.
 struct PreviewView: View {
     let result: RuntimeV1.CompileResult
     let dark: Bool
@@ -24,7 +26,9 @@ struct PreviewView: View {
             ScrollView([.vertical, .horizontal]) {
                 VStack(spacing: 24) {
                     ForEach(result.pages, id: \.number) { page in
-                        PageView(page: page, dark: dark, caretItems: caretItems[page.number] ?? [], scale: scale, onSelect: onSelect)
+                        PageView(page: page, dark: dark, caretItems: caretItems[page.number] ?? [], scale: scale,
+                                 rulesNegotiated: result.layoutCapabilities?.contains(RuntimeV1.LayoutCapabilities.rulesV1) == true,
+                                 onSelect: onSelect)
                             .id(page.number)
                     }
                 }
@@ -47,11 +51,12 @@ private struct PageView: View {
     var caretItems: Set<Int> = []
     /// Display scale (1 = 1pt per screen point); the preview fits pages to width.
     var scale: CGFloat = 1.0
+    var rulesNegotiated = false
     let onSelect: (RuntimeV1.SourceRange?, String?) -> Void
 
     var body: some View {
         let size = CGSize(width: page.widthPt * scale, height: page.heightPt * scale)
-        HitTestCanvas(page: page, dark: dark, scale: scale, caretItems: caretItems, onSelect: onSelect)
+        HitTestCanvas(page: page, dark: dark, scale: scale, caretItems: caretItems, rulesNegotiated: rulesNegotiated, onSelect: onSelect)
             .frame(width: size.width, height: size.height)
             .overlay(alignment: .topLeading) { AccessibilityOverlay(page: page, scale: scale, fontName: { PreviewFonts.postScriptName(size: $0) }, onSelect: onSelect) } // FlashTeXAccessibility
             .background(dark ? Color(white: 0.16) : .white)
@@ -69,27 +74,42 @@ private struct HitTestCanvas: View {
     let scale: CGFloat
     /// Indices into `page.items` to mark as containing the editor caret.
     var caretItems: Set<Int> = []
+    /// Whether `rules-v1` was accepted for this result. Only when it was NOT
+    /// does the legacy U+2500 approximation apply to text runs.
+    var rulesNegotiated = false
     let onSelect: (RuntimeV1.SourceRange?, String?) -> Void
 
     /// Hit rects keyed by `page.items` index so hover, click, and caret
     /// highlights agree even when non-text items are interleaved.
-    @State private var hitRects: [(index: Int, rect: CGRect, source: RuntimeV1.SourceRange?, text: String)] = []
+    @State private var hitRects: [(index: Int, rect: CGRect, source: RuntimeV1.SourceRange?, text: String?)] = []
     @State private var hover: Int?
 
     var body: some View {
         Canvas { context, _ in
-            var rects: [(index: Int, rect: CGRect, source: RuntimeV1.SourceRange?, text: String)] = []
+            var rects: [(index: Int, rect: CGRect, source: RuntimeV1.SourceRange?, text: String?)] = []
             for (index, item) in page.items.enumerated() {
+                if case .rule(let rule) = item {
+                    // Typed rule: top-left anchored contract geometry (dark preview only recolors).
+                    let rect = RuleGeometry.previewRect(rule, scale: scale)
+                    context.fill(Path(rect), with: .color(dark ? .white : .black))
+                    if hover == index {
+                        context.fill(Path(rect.insetBy(dx: -2, dy: -2)), with: .color(Color.accentColor.opacity(0.25)))
+                    }
+                    rects.append((index, rect, rule.source, nil))
+                    continue
+                }
                 guard case .text(let t) = item else { continue }
-                if let r = RuleConvention.rect(for: t) {
+                if !rulesNegotiated, let r = RuleConvention.rect(for: t) {
+                    // Legacy approximation of the compiler's fraction bars.
                     let rect = CGRect(x: r.x * scale, y: r.y * scale, width: r.width * scale, height: max(0.5, r.height * scale))
                     context.fill(Path(rect), with: .color(dark ? .white : .black))
                     rects.append((index, rect, t.source, t.text))
                     continue
                 }
-                // Draw with the face the layout was measured with (Latin Modern by
-                // default, Times fallback); `.serif` would be New York, which is wider.
-                let font = Font.custom(PreviewFonts.postScriptName(size: t.fontSizePt), size: t.fontSizePt * scale)
+                // Draw with the hinted face when the result carries one (font-hints-v1),
+                // else the face the layout was measured with (Latin Modern by default,
+                // Times fallback); `.serif` would be New York, which is wider.
+                let font = Font.custom(PreviewFonts.resolve(hint: t.font, size: t.fontSizePt).postScriptName, size: t.fontSizePt * scale)
                 var text = Text(t.text).font(font)
                 text = text.foregroundColor(dark ? .white : .black)
                 let resolved = context.resolve(text)

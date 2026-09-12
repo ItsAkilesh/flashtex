@@ -48,14 +48,23 @@ struct ContentView: View {
                 Text("\(sourceName) · id \(model.resultID ?? "?") · project \(r.projectId) · revision \(r.revision)")
                 Text("status: \(r.status.rawValue)")
                     .foregroundStyle(statusColor(r.status)).bold()
-                let errors = r.diagnostics.filter { $0.severity == .error }.count
-                let warnings = r.diagnostics.count - errors
+                let diags = model.displayedDiagnostics
+                let errors = diags.filter { $0.severity == .error }.count
+                let warnings = diags.count - errors
                 if errors > 0 { Label("\(errors)", systemImage: "xmark.octagon.fill").foregroundStyle(.red) }
                 if warnings > 0 { Label("\(warnings)", systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange) }
                 if r.status == .recovered {
                     Text("recovered: preview shown with provisional rendering").foregroundStyle(.orange)
                 }
                 Text("pdf: \(r.pdfPath ?? "none")").foregroundStyle(.secondary)
+                Text("layout: " + (model.negotiation.accepted.isEmpty ? "legacy" : model.negotiation.accepted.joined(separator: ", ")))
+                    .font(.caption).foregroundStyle(.secondary)
+                    .help(model.negotiation.accepted.isEmpty
+                          ? "No layout capability accepted for this result: U+2500 fraction bars are an approximation."
+                          : "Capabilities the worker accepted for this result (typed rules / explicit font hints).")
+                ForEach(model.capabilityNotes, id: \.self) { note in
+                    Text(note).font(.caption).foregroundStyle(.orange).lineLimit(1).help(note)
+                }
                 if model.inFlightRevision != nil {
                     ProgressView().controlSize(.small)
                 }
@@ -193,9 +202,10 @@ struct ContentView: View {
                     guard let source else { model.navigationNote = "This item has no source mapping."; return }
                     model.navigate(to: source, expectedText: text)
                 }
-                if !result.diagnostics.isEmpty {
+                let diags = model.displayedDiagnostics
+                if !diags.isEmpty {
                     Divider()
-                    diagnosticsList(result.diagnostics)
+                    diagnosticsList(diags)
                 }
             } else {
                 ContentUnavailableView("No compile result loaded", systemImage: "doc.richtext",
