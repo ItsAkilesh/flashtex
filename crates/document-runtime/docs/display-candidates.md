@@ -70,3 +70,31 @@ Runtime tests retain it across polls, then move it once, or clear it on close. A
 failed mutually exclusive policy enable leaves the prior policy usable. Root's
 unchanged dependency uptake854b041 and forwarding contractc400d0a were reviewed;
 actual helper/native output admission remains their separate integration gate.
+
+## Delayed consumer and cancellation replay
+
+`real_display_producer` also exercises the unchanged actual producer with an
+injected60ms downstream pause (not a measured native validation cost). It cancels
+revision1 before polling, retains/moves revision2 exactly once, toggles policy
+around revision3 while preserving its v1 fallback, and submits revisions4/5 before
+consuming the next candidate. The returned revision5 has its exact edited source
+hash. Revision4 may be stale in flight or coalesced before dispatch depending on
+whether the previous sibling is still draining; evidence records the actual path,
+rather than asserting a scheduler-dependent branch. Both must suppress its preview.
+
+`benchmarks/display-lifecycle-65dbe7d` preserves actual candidates, outcomes and
+provenance referencing the matching four-mode replay. No global retained-byte/RSS
+or native latency claim follows from one runtime candidate slot. An already moved
+revision2 candidate remains immutable and cannot be revoked by the runtime. The
+helper/native consumer must reject it against current source/session epochs before
+painting; helper8876279 checks the controller snapshot before optional admission,
+while native post-validation epoch checking remains a separate requirement.
+
+Integration6c2061c's initial parallel test run failed all seven synthetic cases at
+short60–160ms observation windows; the same suite passed serially. Checkpointc47139ff
+replaces positive wall-time guesses with bounded observable-outcome waits and uses
+explicit /usr/bin/python3 for fake workers. Production timeouts and decoder permits
+are unchanged. The real replay similarly waits for previews/candidates rather than
+assuming a particular compile duration. Test failures are retained by the runner
+before it returns an error. No production boundary defect was established by these
+test scheduling failures.
