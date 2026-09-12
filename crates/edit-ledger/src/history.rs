@@ -64,6 +64,14 @@ pub(crate) struct HistoryState {
     command_ids: BTreeMap<String, CommandReceipt>,
 }
 impl HistoryState {
+    pub(crate) fn preserves(&self, older: &Self) -> bool {
+        older
+            .command_ids
+            .iter()
+            .all(|(id, receipt)| self.command_ids.get(id) == Some(receipt))
+            && self.undo.ends_with(&older.undo)
+            && self.redo.ends_with(&older.redo)
+    }
     pub(crate) fn is_empty(&self) -> bool {
         self.undo.is_empty() && self.redo.is_empty() && self.command_ids.is_empty()
     }
@@ -150,7 +158,7 @@ pub(crate) fn record(next: &mut State, before: &Document, label: String) -> Resu
         before_sha256: before.source_sha256.clone(),
         after_sha256: next.document.source_sha256.clone(),
     });
-    next.schema_version = 3;
+    next.schema_version = next.schema_version.max(3);
     next.history.validate(&next.document)
 }
 fn fingerprint<T: Serialize>(kind: &str, value: &T) -> Result<String> {
@@ -204,7 +212,7 @@ fn remember(next: &mut State, id: String, fingerprint: String) {
             revision: next.document.revision,
         },
     );
-    next.schema_version = 3;
+    next.schema_version = next.schema_version.max(3);
 }
 
 impl Store {

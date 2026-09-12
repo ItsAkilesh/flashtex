@@ -166,9 +166,10 @@ pub(super) fn describe(old: &InboxSnapshot, next: &InboxSnapshot) -> InboxEvent 
             Some(decision.capture_id.clone()),
         )
     } else if let Some(entry) = next.entries.values().find(|entry| {
-        old.entries
-            .get(&entry.capture_id)
-            .is_some_and(|before| before.current_context != entry.current_context)
+        old.entries.get(&entry.capture_id).is_some_and(|before| {
+            before.current_context != entry.current_context
+                || before.context_revoked != entry.context_revoked
+        })
     }) {
         (
             InboxEventKind::ContextChanged,

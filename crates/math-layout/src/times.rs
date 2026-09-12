@@ -167,6 +167,7 @@ impl MathFontMetrics for TimesApproxMetrics {
         let cm = CmMathMetrics {
             sizes: self.sizes,
             extension: crate::cm::ExtensionSizing::Scaled,
+            ..CmMathMetrics::latex_10pt()
         };
         cm.params(size)
     }

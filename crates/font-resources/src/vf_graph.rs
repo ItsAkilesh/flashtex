@@ -14,6 +14,13 @@ pub enum ResourceKey {
         tfm_sha256: String,
         face_index: u32,
     },
+    CffPhysical {
+        font_sha256: String,
+        cff_sha256: String,
+        tfm_sha256: String,
+        encoding_sha256: String,
+        face_index: u32,
+    },
     Virtual {
         vf_sha256: String,
         tfm_sha256: String,
@@ -26,6 +33,19 @@ fn valid_key(key: &ResourceKey) -> bool {
             tfm_sha256,
             face_index,
         } => crate::valid_hash(font_sha256) && crate::valid_hash(tfm_sha256) && *face_index == 0,
+        ResourceKey::CffPhysical {
+            font_sha256,
+            cff_sha256,
+            tfm_sha256,
+            encoding_sha256,
+            face_index,
+        } => {
+            crate::valid_hash(font_sha256)
+                && crate::valid_hash(cff_sha256)
+                && crate::valid_hash(tfm_sha256)
+                && crate::valid_hash(encoding_sha256)
+                && *face_index == 0
+        }
         ResourceKey::Virtual {
             vf_sha256,
             tfm_sha256,
@@ -34,6 +54,7 @@ fn valid_key(key: &ResourceKey) -> bool {
 }
 pub enum Resource<'a> {
     Physical(&'a BoundTfmFont<'a>),
+    CffPhysical(&'a crate::cff::BoundCffTfmFont<'a>),
     Virtual {
         vf: &'a VirtualFont,
         tfm: &'a Tfm,
@@ -48,6 +69,13 @@ impl Resource<'_> {
                 tfm_sha256: binding.tfm().source_sha256.clone(),
                 face_index: binding.font().descriptor().face_index,
             },
+            Self::CffPhysical(binding) => ResourceKey::CffPhysical {
+                font_sha256: binding.identity().font_sha256.clone(),
+                cff_sha256: binding.identity().cff_sha256.clone(),
+                tfm_sha256: binding.tfm().source_sha256.clone(),
+                encoding_sha256: binding.encoding().encoding_sha256().into(),
+                face_index: binding.identity().face_index,
+            },
             Self::Virtual { vf, tfm, .. } => ResourceKey::Virtual {
                 vf_sha256: vf.source_sha256.clone(),
                 tfm_sha256: tfm.source_sha256.clone(),
@@ -57,6 +85,7 @@ impl Resource<'_> {
     fn tfm(&self) -> &Tfm {
         match self {
             Self::Physical(b) => b.tfm(),
+            Self::CffPhysical(b) => b.tfm(),
             Self::Virtual { tfm, .. } => tfm,
         }
     }
@@ -170,8 +199,12 @@ impl<'a> ResourceGraph<'a> {
             .char_metrics(code)
             .ok_or_else(|| invalid("nested VF TFM character missing"))?
             .width;
-        if let Resource::Physical(binding) = resource {
-            let (identity, _) = binding.map_code(code)?;
+        let physical_identity = match resource {
+            Resource::Physical(binding) => Some(binding.map_code(code)?.0),
+            Resource::CffPhysical(binding) => Some(binding.map_code(code)?.0),
+            _ => None,
+        };
+        if let Some(identity) = physical_identity {
             let GlyphIdentity::Original(glyph_id) = identity else {
                 return Err(invalid("nested VF explicit .notdef"));
             };

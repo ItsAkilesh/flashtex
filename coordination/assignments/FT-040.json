@@ -3,9 +3,9 @@
   "task_id": "FT-040",
   "agent_id": "daniel-templates",
   "branch": "agent/daniel-templates/project-templates",
-  "revision": 1,
+  "revision": 2,
   "state": "assigned",
-  "objective": "Original undergraduate project templates and bounded manifest/instantiation API, explicit package support requirements and no arbitrary file overwrite. Standalone additive crate only; coordinate consumer contract before integration.",
+  "objective": "Add explicit creation receipt and interrupted-write recovery around existing template preflight, using rooted filesystem APIs; never overwrite existing user files.",
   "owned_paths": [
     "crates/project-templates"
   ],
@@ -18,6 +18,6 @@
   "allocation_id": "daniel-claude20x-shared",
   "timebox_minutes": 40,
   "deadline_utc": null,
-  "input_main_sha": "53fee3012b2902ca05bd31766defa515b3044cec",
-  "updated_utc": "2026-09-12T07:35:07.367827+00:00"
+  "input_main_sha": "83f65e08ae60b312609f49ec0a2b6cae25c8e353",
+  "updated_utc": "2026-09-12T09:08:31.372212+00:00"
 }
