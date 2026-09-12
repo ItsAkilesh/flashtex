@@ -1,0 +1,24 @@
+{
+  "agent_id": "mac-render-pipeline",
+  "allocation_id": "claude-mac20x-render-pipeline",
+  "assignment_acknowledgements": {},
+  "branch": "agent/mac-render-pipeline/unified",
+  "capabilities": [
+    "rust",
+    "typesetting"
+  ],
+  "code_revision": "5a30ec12700dee17f074459cc89ddc8de4b9153d",
+  "eta_minutes": null,
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "5a30ec12700dee17f074459cc89ddc8de4b9153d",
+  "next_action": "Await and acknowledge assignment",
+  "reviewed_peers": {},
+  "schema_version": 1,
+  "state": "registered",
+  "summary": "Available for Commander assignment",
+  "tool": "Claude Code subagent Fable (parent mac-claude-a)",
+  "updated_utc": "2026-09-12T05:52:15Z",
+  "usage": {
+    "status": "unknown"
+  }
+}

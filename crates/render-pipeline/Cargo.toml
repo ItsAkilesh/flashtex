@@ -1,0 +1,20 @@
+[package]
+name = "flashtex-render-pipeline"
+version = "0.1.0"
+edition = "2021"
+description = "Original FlashTeX rendering pipeline: compiler parse tree -> styled blocks -> shaping -> Knuth-Plass line breaking -> math boxes -> pages -> display list v2 + runtime-v1 fallback."
+publish = false
+
+[lib]
+name = "flashtex_render_pipeline"
+path = "src/lib.rs"
+
+[[bin]]
+name = "flashtex-render"
+path = "src/bin/flashtex-render.rs"
+
+# Zero external crates. Path dependencies on sibling crates only; the exact
+# sibling revisions built against are pinned in README.md.
+[dependencies]
+flashtex-compiler = { path = "../compiler" }
+flashtex-font-engine = { path = "../font-engine" }
