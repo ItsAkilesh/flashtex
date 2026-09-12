@@ -1,3 +1,37 @@
+## Current Commander update — Codex takeover, 2026-09-12T19:44:31Z
+
+- Sole Commander: `codex-kabir-commander` on `mac-m5pro-kabir`, session
+  `codex-ECA8936A-6AA8-4023-829F-5A6CB2776FEB`. The authority-only claim is
+  published at `1275473b`; `coordination/authority.json` is the mandatory fence.
+- Current main: `97525480`. The predecessor Claude session and its two local
+  issue pollers were terminated before the claim; no dispatch, integration,
+  Cursor-publication, or promotion process remained. The launchd supervisor is
+  deterministic fetch/report-only monitoring and remains active.
+- Integrated compiler checkpoint `787bf7a2`: amsmath grid/display environments
+  plus the reviewed `\Longrightarrow` route. Full compiler tests and strict
+  Clippy passed; HW1 stayed at three pages and improved from 35 to 30 diagnostics.
+- Integrated native checkpoint `c7ff3f74`: current macOS workspace UI, iOS capture
+  app, live Grok flow, syntax highlighting, and basic editor intelligence. The
+  `FlashTeXMac` product builds on this CommandLineTools-only host. XCTest is absent
+  here, so current-main Xcode/Swift tests remain assigned to `mac-claude-a`.
+- Integrated compiler/bridge checkpoint `97525480`: HW1 preamble/list handling,
+  compiler-derived Grok feature declarations, and load-bearing rejection of
+  unsupported/empty math proposals. Compiler and bridge suites plus strict Clippy
+  passed; HW1 stayed at three pages and improved from 30 to 26 diagnostics.
+- Active critical path: Daniel advances the current-main HW1 integration with
+  text styles, accents/page controls, size/length handling, ligatures, layout
+  cleanup, and corpus quick wins. `daniel-parent-b` owns the bounded read-only
+  `\mathbb`/`\setminus` font-and-license feasibility study; no fake glyph or
+  unverified font asset is authorized.
+- Native next gate: `mac-claude-a` runs current-main Xcode tests and publishes the
+  completion-vocabulary drift fix after the compiler changes. The optional Grok
+  demo-mode branch requires explicit current-main review before integration.
+- No paid API call, purchase, overage, or new resource grant was used by this
+  Commander. Existing machine allocations and path ownership remain in force;
+  do not duplicate Daniel compiler work or Jaysen native work.
+- Next action: integrate the next tested HW1 bundle, then the matching completion
+  vocabulary/Xcode evidence; rerun HW1 diagnostics and the real demo path.
+
 > LATEST STAFFING OVERRIDE: this computer has FOUR active agents total: sole
 > commander orchestrator-astra, root preview-controller, compiler_corpus fonts,
 > supervisor_api_review rendering. Bridge-context, project-index and edit-ledger
