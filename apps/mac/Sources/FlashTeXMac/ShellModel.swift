@@ -22,6 +22,8 @@ final class ShellModel: ObservableObject {
     @Published var selection: Selection?
     @Published var navigationNote: String?
     @Published var darkPreview = false
+    @Published var previewV2 = ProcessInfo.processInfo.environment["FLASHTEX_PREVIEW_V2"] == "1" // experimental v2 pane (PreviewV2View.swift)
+    @Published var displayListV2: V2PreviewState?
     @Published var previewSource: PreviewSource = .none
     /// File backing the entry document, if any, and its last saved contents.
     @Published var documentURL: URL?

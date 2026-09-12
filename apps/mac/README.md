@@ -506,6 +506,71 @@ banner shows; the shell rejects response lines over 16 MiB.
   (a Python test double, not a compiler) including error/garbage/exit paths and
   the stale-revision guard.
 
+## v2 preview (experimental)
+
+An opt-in consumer for the EXPERIMENTAL rendering-v2 display list
+(`docs/contracts/rendering-v2-proposal.md`, `protocol/rendering-v2.schema.json`;
+not a negotiated production wire). The runtime-v1 preview above stays the default;
+this pane only exists to prove the consumer gates on real pipeline output. It does
+not replace, negotiate, or change the v1 path.
+
+- Input: a `display_list` JSON envelope written by `flashtex-render --v2 out.json`
+  (crates/render-pipeline, branch `agent/mac-render-pipeline/unified`). Open it with
+  `File > Open Display List (v2)…`, or launch with `FLASHTEX_V2_FILE=<json>`
+  (`FLASHTEX_PREVIEW_V2=1` starts with the toolbar toggle on). The toolbar's
+  "v2 preview" switch flips between the v1 and v2 panes.
+- Fail closed (`FlashTeXProtocol/RenderingV2.swift`): unknown `protocol_version`,
+  message `type`, item `kind`, `required_features`, font `format`, or an undeclared
+  font/document reference, a glyph ID outside `1..<glyph_count`, a cluster that does
+  not partition the run text on UTF-8 boundaries, malformed carets/rects/paint, or
+  non-integer geometry is a diagnostic-bearing `ValidationError`. The pane then
+  shows the code and message and NO page: a refused list never renders partially.
+- Fonts by content hash only (`GlyphRunRenderer.swift`, `V2FontStore`): every
+  `.otf`/`.ttf` in the existing `PreviewFonts.latinModernSearchPaths` directories
+  (bundle `Fonts`, `apps/mac/Fonts`, `FLASHTEX_LM_DIR`) is SHA-256'd once; a
+  manifest entry resolves only if its `sha256` matches a file exactly, and the file's
+  byte length, glyph count, units per em and PostScript name must agree with the
+  manifest. A run whose font is not bundled refuses the whole frame with
+  `font_resource_unavailable: font resource <sha256> (<name>) unavailable`. Platform
+  font names are never an identity; nothing is substituted.
+- Drawing: one CoreGraphics routine (`GlyphRunRenderer.draw`) in PDF space (y up,
+  1 unit = 1 pt) paints items in list order — rules as filled rectangles, glyph runs
+  with `CTFontDrawGlyphs` by ORIGINAL glyph ID at the absolute origins (advances are
+  never re-added, no reshaping/kerning). The SwiftUI canvas flips into that space
+  and calls it; `Export PDF (v2)…` in the pane calls it on a PDF context, so preview
+  and export agree by construction. Dark preview inverts paint on screen only.
+- Hit/caret geometry (`V2Geometry`): click → the cluster whose `hit_rects` contain
+  the point (half-open, in ticks, later-painted wins) → its `sources`; the shell
+  checks the display list's document `sha256` against the current buffer and then
+  goes through `ShellModel.navigate(to:expectedText:)` (same stale-revision refusal
+  and rebase verification as v1). Synthetic clusters/rules report their
+  `synthetic_reason`. Editor caret → clusters whose sources contain the byte: an
+  exact caret bar when the cluster maps its bytes 1:1 and the compiler supplied a
+  caret at that byte, else the whole cluster's rectangles (documented fallback;
+  no width is divided by character count).
+- Deviations between the schema and the pipeline that the model accepts, explicitly:
+  `fonts[].format` is `opentype-cff` (Latin Modern) or `core14-afm` (metrics only,
+  `byte_length` 0, never paintable) where the schema allows only `static-truetype`;
+  `fonts[].sha256`/`font_id` is SHA-256(bytes ‖ face_index as u32 BE) (font-engine's
+  `content_sha256`), so the store indexes both that and plain SHA-256(bytes); unknown
+  JSON keys are ignored by `Codable` where the schema says `additionalProperties:
+  false`; clusters must partition the run and source paths must name a declared
+  document (stricter than the schema, as crates/rendering-core requires).
+- Tests (`RenderingV2Tests`, `PreviewV2Tests`, `PreviewV2ShellTests`): real
+  `flashtex-render --v2` fixtures (`Tests/FlashTeXMacTests/Fixtures/display-list-v2-*.json`,
+  pipeline 7094ef7, `apps/mac/Fonts` as the only font directory) decode, resolve by
+  hash and navigate ligature clusters (`ffi` = one glyph, three source bytes; `é`
+  from `\'e`); the math fixture fails closed on the unbundled `latinmodern-math.otf`
+  hash; every fail-closed rule above has a negative case; the shared routine drawing a
+  run built from CoreText's own glyph positions matches `CTLineDraw` with 0 differing
+  pixels; the PDF export rasterized with PDFKit matches the preview raster with
+  0 differing pixels. Evidence: `docs/evidence/mac-preview-v2-latin-modern-2026-09-12.png`.
+- Not done: no negotiation (`render_capabilities`/`render_format_selected`) — the list
+  is opened from a file, not received from the worker; no page cache/ticket model
+  (crates/rendering-core `cache`); no clip/rotation/image primitives (rejected as
+  unknown kinds/features); v1 → v2 caret sync uses the v2 clusters only while the
+  pane is visible.
+
 ## Known upstream issue
 
 `protocol/fixtures/compile-result.json` item text is `"Hello FlashTeX."` (15

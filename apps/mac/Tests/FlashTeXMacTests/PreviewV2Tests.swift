@@ -260,3 +260,79 @@ final class PreviewV2Tests: XCTestCase {
         XCTAssertEqual(byBytes.hashConvention, "bytes")
     }
 }
+
+/// Shell integration: opening a real display list and navigating from clusters.
+@MainActor
+final class PreviewV2ShellTests: XCTestCase {
+    static let fixtures = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent("Fixtures")
+
+    private func model(withFixtureText: Bool = true) throws -> ShellModel {
+        let model = ShellModel()
+        if withFixtureText {
+            let tex = try String(contentsOf: Self.fixtures.appendingPathComponent("display-list-v2-text.tex"), encoding: .utf8)
+            model.replaceProject(entryText: tex)
+        }
+        return model
+    }
+
+    func testOpeningTheRealDisplayListNavigatesLigatureClustersToSourceBytes() throws {
+        let model = try model()
+        XCTAssertFalse(model.previewV2, "v1 stays the default")
+        model.loadDisplayListV2(url: Self.fixtures.appendingPathComponent("display-list-v2-text.json"))
+        guard case .loaded(let frame, _) = model.displayListV2 else { return XCTFail("expected a prepared frame: \(String(describing: model.displayListV2))") }
+        XCTAssertTrue(model.previewV2)
+        let page = frame.list.pages[0]
+        guard case .glyphRun(let office) = page.items[4] else { return XCTFail() }
+        // Click the ffi ligature (one glyph, cluster 1, three source bytes).
+        let ffi = office.clusters[1].hitRects[0]
+        let hit = try XCTUnwrap(V2Geometry.hit(page: page, tickX: ffi.x + ffi.width / 2, tickY: ffi.top + ffi.height / 2))
+        XCTAssertEqual(hit.text, "ffi")
+        model.navigateV2(hit)
+        let sel = try XCTUnwrap(model.selection)
+        XCTAssertEqual(sel.path, "main.tex")
+        XCTAssertEqual((model.activeText as NSString).substring(with: sel.nsRange), "ffi")
+        XCTAssertTrue(model.navigationNote?.hasPrefix("Selected main.tex bytes 75..<78") == true, model.navigationNote ?? "")
+        // café: the é cluster maps to the three source bytes of \'e.
+        guard case .glyphRun(let cafe) = page.items[14] else { return XCTFail() }
+        let e = cafe.clusters[3].hitRects[0]
+        model.navigateV2(try XCTUnwrap(V2Geometry.hit(page: page, tickX: e.x, tickY: e.top)))
+        XCTAssertEqual((model.activeText as NSString).substring(with: try XCTUnwrap(model.selection).nsRange), "\\'e")
+        // Caret sync back into the preview: the editor caret inside \'e lights the é cluster (whole-cluster fallback).
+        let matches = V2Geometry.clusters(containing: 142, path: "main.tex", in: page)
+        XCTAssertEqual(matches.map(\.clusterIndex), [3])
+        XCTAssertNil(matches[0].caret)
+    }
+
+    func testStaleBufferIsRefusedAndSyntheticContentHasNoSource() throws {
+        let model = try model()
+        model.loadDisplayListV2(url: Self.fixtures.appendingPathComponent("display-list-v2-text.json"))
+        guard case .loaded(let frame, _) = model.displayListV2 else { return XCTFail() }
+        let page = frame.list.pages[0]
+        guard case .glyphRun(let run) = page.items[2] else { return XCTFail() }
+        let r = run.clusters[0].hitRects[0]
+        let hit = try XCTUnwrap(V2Geometry.hit(page: page, tickX: r.x, tickY: r.top))
+        model.updateActiveText("edited " + model.activeText)
+        model.selection = nil
+        model.navigateV2(hit)
+        XCTAssertNil(model.selection, "a display list for other bytes never selects")
+        XCTAssertTrue(model.navigationNote?.contains("differs from the current buffer") == true, model.navigationNote ?? "")
+        model.navigateV2(V2Geometry.Hit(itemIndex: 0, clusterIndex: nil, text: nil, sources: [], syntheticReason: "fraction bar", rect: r))
+        XCTAssertEqual(model.navigationNote, "Generated content (fraction bar) has no source range.")
+        XCTAssertNil(model.selection)
+    }
+
+    func testRefusedDisplayListShowsNoFrame() throws {
+        let model = try model()
+        model.loadDisplayListV2(url: Self.fixtures.appendingPathComponent("display-list-v2-math.json"))
+        guard case .failed(let error, let url) = model.displayListV2 else { return XCTFail("expected refusal") }
+        XCTAssertEqual(error.code, "font_resource_unavailable")
+        XCTAssertEqual(url.lastPathComponent, "display-list-v2-math.json")
+        XCTAssertNil(model.displayListV2?.frame)
+        XCTAssertTrue(model.captureNote?.hasPrefix("Display list refused: font_resource_unavailable") == true, model.captureNote ?? "")
+        // A runtime-v1 fixture is not a display list either.
+        model.loadDisplayListV2(url: Self.fixtures.deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("protocol/fixtures/compile-result.json"))
+        guard case .failed(let e2, _) = model.displayListV2 else { return XCTFail() }
+        XCTAssertEqual(e2.code, "unsupported_protocol_version")
+    }
+}
