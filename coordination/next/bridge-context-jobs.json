@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "agent_id": "bridge-context-jobs",
+  "task_id": "FT-022",
+  "revision": 1,
+  "branch": "agent/bridge-context/conversion-jobs",
+  "assignment_path": "coordination/assignments/FT-022.json",
+  "updated_utc": "2026-09-12T05:59:24.973775+00:00"
+}

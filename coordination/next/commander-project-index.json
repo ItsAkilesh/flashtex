@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "agent_id": "commander-project-index",
+  "task_id": "FT-025",
+  "revision": 1,
+  "branch": "agent/commander-project-index/source-navigation",
+  "assignment_path": "coordination/assignments/FT-025.json",
+  "updated_utc": "2026-09-12T05:59:24.973775+00:00"
+}
