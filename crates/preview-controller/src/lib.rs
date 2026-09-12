@@ -1,4 +1,5 @@
 //! Worker-thread editor controller. Durable source precedes disposable caches.
+pub mod experimental_delivery;
 pub mod file_project;
 mod historical;
 use flashtex_document_runtime::{Document as InputDocument, Event, Limits, Request, Session};

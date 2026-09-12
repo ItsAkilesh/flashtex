@@ -13,17 +13,17 @@
   "capabilities": [
     "Preview helper serialization and latency"
   ],
-  "code_revision": "c07f7ba69f18038821c406309e99080675c33b78",
+  "code_revision": "0154d27",
   "eta_minutes": null,
   "machine": "linux-primary",
   "main_integrated_through": "e5901797e8a7ebdd8d714ecdee6793e1097515a9",
-  "next_action": "Native parent remeasure integratedcompiler/helper on sameMac; await snapshot protocol agreement while maintainingstrictdefault.",
+  "next_action": "Implement explicitly negotiated completed-snapshots-v1 helper contract authorized by Commander; default off, token-bound origins, ACK/current priority, lifecycle reset. Native agreement issue2 comment5644981151.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "Samehelper50KB30msburst serializerbaseline1currentpreview\u2192candidate12,40/40durableACKs,2exactcleanfinals/reopens. Final90.477\u219243.166ms;8stale candidateframes remain,no perkeystroke/nativeclaim.",
+  "summary": "Internal delivery scheduler: reserved required slots/byte budget, one replace-latest optional frame, immutable epoch/generation, cancellation drains durable ACKs. Five deterministic tests and strict lint pass; previous full 41-test suite plus four initial scheduler tests passed with actual compiler.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T09:37:15Z",
+  "updated_utc": "2026-09-12T09:48:21Z",
   "usage": {
     "status": "unknown"
   }

@@ -79,3 +79,30 @@ Five new subprocess tests cover opt-in origin binding/take-once, default and ord
 `take_completed_snapshot()` yields a separate `HistoricalPreview` with private provenance and read-only result/version accessors. `claim_historical_display(&snapshot)` rechecks incarnation, epoch, project and monotonic display generation and marks a successful claim once. Existing current Preview delivery advances the display floor so an older queued callback cannot repaint over it. Membership/layout/policy changes, restart, close and runtime failure invalidate historical eligibility. This claim is strictly for historical display and does not grant navigation, edit or export authority.
 
 41 controller tests pass with strict all-target Clippy, including original compiler/stdout/backpressure recovery cases and three new lifecycle tests: original-version binding/current-output ordering; policy/layout/restart/close/other-controller invalidation;80 durable edits through the64-record metadata cap and exact reopen. Runtime's26-test checkpoint remains separately verified. Native consumer agreement, historical message scheduling/priority and real burst display measurements remain pending. Neither Rust API is enabled automatically for existing callers.
+
+## Internal delivery scheduler checkpoint
+
+`experimental_delivery::DeliveryQueue` is an isolated prototype, not connected to
+stdio. It reserves bounded required-frame slots and payload allocation capacity,
+keeps durable/current frames in FIFO order, and retains at most one replace-latest
+historical frame outside that budget. Rejected required admissions return the
+original frame to the caller. Successful current admission evicts older history;
+cancellation invalidates queued display work and late old-epoch arrivals while
+preserving durable acknowledgements for draining. Close prevents new admission.
+Frame payload and identity/origin allocation capacities are checked before retention.
+Allocator bookkeeping and other process allocations are not included in this bound.
+
+Five deterministic tests cover optional flooding, required slot/byte backpressure,
+exact returned ownership, generation supersession, lifecycle invalidation, wrong
+incarnation and oversized allocation rejection. Existing 41 controller tests also
+passed with the prototype present, including real compiler and stalled-reader gates;
+all-target strict Clippy passes after the allocation checks.
+
+Priority applies only before dequeue: an already-started JSONL frame cannot be
+preempted safely. The caller must validate serialized frames, preserve immutable
+submission provenance, and recheck display identity/floor at consumption. This queue
+alone does not establish end-to-end latency or paint safety. The negotiated helper
+adapter must additionally drop history before admission when required output is
+pending, reset negotiation on restart, and preserve the existing stopped-reader
+failure bound. Native agreement is recorded in issue 2 comment 5644981151; activation
+and actual Mac paint/source-action acceptance remain separate gates.
