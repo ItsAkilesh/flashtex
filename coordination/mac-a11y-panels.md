@@ -73,12 +73,50 @@ label/hint/identifier assertions, first-responder restoration to the editor
 text view, and the panels' commands in the command table / help window /
 README with the parity tests extended to the search lane's command file.
 
+## Delivered (commit 5ed664d1 on top of mac-shell 72b29e8f)
+
+- `apps/mac/Tests/FlashTeXMacTests/PanelAccessibilityTests.swift` (3 tests, 3/3
+  pass): per panel, hosted off-screen (never key) with the real
+  `SourceEditorView` first responder in its own window — every AppKit-backed
+  control takes keyboard focus via `makeFirstResponder` in reading order and
+  the previous one resigns; SwiftUI wired `nextKeyView` for each; the search
+  panel's `@FocusState` makes the literal field first responder on open;
+  `window.close()` leaves the editor text view first responder.
+- `AccessibilityCommands.swift`: `editorPreferences` (⌘,), `durableHistory`
+  (Edit > Durable History…), `findInProject` (⌘⇧F), `nextSearchMatch` (⌘G),
+  plus `PanelFocusOrder` (Tab order + spoken names per panel, with source
+  markers). `AccessibilityViews.swift`: three VoiceOver notes and a "Panels:
+  keyboard focus order" section in the help window. README: four rows.
+- `CommandTableTests.swift`: parser also reads `ProjectSearchPanel.swift`'s
+  `Commands` body (`.textEditing` = Edit); menus list updated; new
+  `testPanelFocusOrderMatchesThePanelSources` (markers in order, every
+  `Button(/Toggle(/Picker(/Slider(/Stepper(/TextField(/List(` covered). 8/8 pass.
+- Evidence: `docs/evidence/mac-a11y-panels/` (test logs + README).
+
+## Findings / limitations (honest)
+
+- In a never-key hosting window `nextValidKeyView`/`previousValidKeyView` are
+  nil for every SwiftUI-hosted control (SwiftUI's `_NSCoreHostingView` bridge
+  only answers for a key window), SwiftUI-native `Button`s are not AppKit
+  views, and SwiftUI does not materialise its AX tree (labels/hints/ids)
+  without an assistive client — the AX API on the test's own pid returns
+  kAXErrorAPIDisabled (-25208; Accessibility not granted). So the literal
+  Tab/Shift-Tab chain and the spoken labels are pinned by `PanelFocusOrder`
+  against the panel sources, not read from a live loop. Forcing full
+  keyboard access via swizzling `NSApplication.isFullKeyboardAccessEnabled`
+  did not change `canBecomeKeyView` (tried, removed).
+- No panel edits were needed: every control already has a title or
+  `.accessibilityLabel`; the history buttons carry identifiers. Gap in the
+  integrated tree that this branch fixes: ⌘⇧F / ⌘G / ⌘, / Durable History
+  were absent from the README table and command table, and the parity test
+  could not see `ProjectSearchCommands`.
+- Parent-retained files: none changed; no hooks needed.
+
 ## Durable checkpoint
 
-- Branch `agent/mac-a11y-panels/a11y-panels`; HEAD = see `git log -1`.
-- Dirty files: (none at commit time; refreshed before long steps)
-- Next commands: `cd apps/mac && swift build --build-tests && swift test --filter 'PanelAccessibilityTests|CommandTableTests'`
-- Consumed: mac-shell `5bc3fc0f`; search branch `origin/agent/mac-search/panel`
-  `00e7b098` (merged only on the local `…-applied` branch).
+- Branch `agent/mac-a11y-panels/a11y-panels`; HEAD 5ed664d1 (+ this coord commit).
+- Dirty files: none.
+- Next commands: `cd apps/mac && swift build --build-tests && FLASHTEX_NO_ACTIVATE=1 swift test --skip-build --filter 'CommandTableTests|PanelAccessibilityTests'`
+- Consumed: mac-shell `72b29e8f` (search lane ac31a02 integrated); main merge-base `527ae541`.
 - Staffing/billing: shared Claude Max quota with parent `mac-claude-a`; no
   purchases; bounded ~75 min from 13:30Z.
