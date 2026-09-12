@@ -3,31 +3,31 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-024": {
-      "acknowledged_utc": "2026-09-12T07:20:48Z",
-      "adaptation": "Reviewed current adapter assignment; consuming exact published font-engine f418238 unchanged, preserving distinct engine and raw-font identities and source clusters. No shaper duplication.",
-      "main_sha": "2fd302675040308c2b07d346c07389a051518979",
-      "revision": 7
+      "acknowledged_utc": "2026-09-12T08:50:11Z",
+      "adaptation": "Reviewed r10 objective and unchanged owned crate. Measure repeated pinned STIX kern/device/fit queries, retain only bounded exact-identity cache with demonstrated parse reduction.",
+      "main_sha": "e0887bcfd71749d35f4a1aa8c42d059599d5f88d",
+      "revision": 10
     }
   },
   "branch": "agent/commander-corpus/font-resources",
   "capabilities": [
     "rust-font-resources"
   ],
-  "code_revision": "a71ce7378f9613851d2370552d80f24ee9cbd4ff",
+  "code_revision": "7812318964aa575406da88818e99a2bd9b480639",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
     "pessimistic": 0
   },
   "machine": "linux-primary",
-  "main_integrated_through": "89629b712a30f9afe82115e923c47ce05d2be1fe",
-  "next_action": "Current dispatch completed. Fetched structured FT024r9 still describes old completed TFM boundary objective; Commander messages authorize current MATH stage. Worktree clean after report publication; renderer API handoff next. No paid calls/descendants. Context telemetry/native compaction control unavailable; durable branch/report preserve state.",
+  "main_integrated_through": "1fc71f31ee1e23eff0f3ab2fa1b04964b776594c",
+  "next_action": "Current task complete; consumer API and exact evidence handoff. Branch/worktree remain font-resources only; report commits preserve ACKr10 and resume state. No providers/descendants or pending tool sessions. Await next assigned correctness followup.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "Glyph italic/top-accent and MathKern device bindings complete:113 ordinary tests/clippy plus2 pinned inventory tests pass. STIX4 actual device records, GID3326 accent+1px at12ppem. Exact horizontal/vertical contexts, corrected-height ties, nonmonotone/variation refusals; no peer edits.",
+  "summary": "FT024r10 MATH cache implemented after measurement:113 ordinary tests/clippy+STIX paired query replay pass.100 identical queries reduce100 kern parses to1/99hits;56.27ms versus0.618ms observed locally, no threshold/native claim. Full identity/ppem/fit keys, bounded retention, negative/stale/eviction tests.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T08:48:05Z",
+  "updated_utc": "2026-09-12T08:55:39Z",
   "usage": {
     "evidence": "crates/font-resources/README.md; test suite; installed font SHA pinned.",
     "status": "Hosted allocation; no external provider calls; account remainder unknown."
