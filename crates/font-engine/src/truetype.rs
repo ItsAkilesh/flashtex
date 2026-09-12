@@ -45,7 +45,7 @@ impl TableRange {
 
 /// One face's table directory: where its `sfnt` header begins in the
 /// program, and the validated ranges of every table it lists.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FaceLayout {
     pub face_index: u32,
     pub sfnt_offset: usize,
@@ -104,12 +104,23 @@ pub fn collection_layout(data: &[u8]) -> Result<CollectionLayout, Error> {
 }
 
 /// Layout of every face of a font program; see [`collection_layout`].
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CollectionLayout {
     pub faces: Vec<FaceLayout>,
 }
 
 fn face_layout(data: &[u8], face_index: u32, sfnt_offset: usize) -> Result<FaceLayout, Error> {
+    if !sfnt_offset.is_multiple_of(4) {
+        return Err(Error::Malformed(format!(
+            "face {face_index} sfnt offset {sfnt_offset} is not 4-byte aligned"
+        )));
+    }
+    let sfnt_version = u32_at(data, sfnt_offset)?;
+    if !matches!(sfnt_version, 0x0001_0000 | 0x7472_7565 | 0x4F54_544F) {
+        return Err(Error::Malformed(format!(
+            "face {face_index} has unrecognized sfnt version 0x{sfnt_version:08X}"
+        )));
+    }
     let n_tables = usize::from(u16_at(data, sfnt_offset + 4)?);
     let dir_bytes = n_tables.checked_mul(16).ok_or_else(|| {
         Error::Malformed(format!(
@@ -149,10 +160,31 @@ fn face_layout(data: &[u8], face_index: u32, sfnt_offset: usize) -> Result<FaceL
                 tag_str(&record_tag)
             )));
         }
+        if length == 0 {
+            return Err(Error::Malformed(format!(
+                "face {face_index} table {} has zero length",
+                tag_str(&record_tag)
+            )));
+        }
+        if !offset.is_multiple_of(4) {
+            return Err(Error::Malformed(format!(
+                "face {face_index} table {} offset {offset} is not 4-byte aligned",
+                tag_str(&record_tag)
+            )));
+        }
         if tables.iter().any(|t| t.tag == record_tag) {
             return Err(Error::Malformed(format!(
                 "face {face_index} has duplicate table tag {}",
                 tag_str(&record_tag)
+            )));
+        }
+        if let Some(last) = tables.last()
+            && record_tag < last.tag
+        {
+            return Err(Error::Malformed(format!(
+                "face {face_index} table directory not in ascending tag order: {} follows {}",
+                tag_str(&record_tag),
+                tag_str(&last.tag),
             )));
         }
         let candidate = TableRange {
@@ -304,9 +336,27 @@ impl TrueTypeFace {
             let tag: [u8; 4] = slice(b, rec, 4)?.try_into().unwrap();
             let off = u32_at(b, rec + 8)? as usize;
             let len = u32_at(b, rec + 12)? as usize;
-            if off.checked_add(len).is_none_or(|end| end > b.len()) {
+            let end = off.checked_add(len).ok_or_else(|| {
+                Error::Malformed(format!(
+                    "table {} range overflows",
+                    String::from_utf8_lossy(&tag)
+                ))
+            })?;
+            if end > b.len() {
                 return Err(Error::Malformed(format!(
                     "table {} overruns file",
+                    String::from_utf8_lossy(&tag)
+                )));
+            }
+            if tables.contains_key(&tag) {
+                return Err(Error::Malformed(format!(
+                    "duplicate table tag {}",
+                    String::from_utf8_lossy(&tag)
+                )));
+            }
+            if tables.values().any(|&(o, l)| off < o + l && o < end) {
+                return Err(Error::Malformed(format!(
+                    "table {} overlaps another table in the directory",
                     String::from_utf8_lossy(&tag)
                 )));
             }

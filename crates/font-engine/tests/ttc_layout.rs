@@ -120,8 +120,10 @@ fn duplicate_table_tag_within_one_face_is_rejected() {
 fn partially_overlapping_tables_within_one_face_are_rejected() {
     let mut f = vec![0u8; 2000];
     f[0..4].copy_from_slice(&0x0001_0000u32.to_be_bytes());
-    // head at 500..516, hhea at 510..526: partial overlap, different tags.
-    let dir = sfnt_dir(&[(b"head", 500, 16), (b"hhea", 510, 16)]);
+    // head at 500..516, hhea at 508..524: partial overlap, different tags,
+    // both offsets 4-byte aligned so the overlap check (not the alignment
+    // check) is what rejects this.
+    let dir = sfnt_dir(&[(b"head", 500, 16), (b"hhea", 508, 16)]);
     f[0..dir.len()].copy_from_slice(&dir);
     let err = collection_layout(&f).unwrap_err();
     assert!(matches!(err, Error::Malformed(_)));
