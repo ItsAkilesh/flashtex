@@ -816,6 +816,23 @@ fn setlength(source: &str, name: &str, size: u32) -> Option<f64> {
     found
 }
 
+/// The class size (`10`/`11`/`12`) whose `\normalsize` is `body_pt`.
+pub fn class_size_of(body_pt: f64) -> u32 {
+    if body_pt >= 11.9 {
+        12
+    } else if body_pt >= 10.9 {
+        11
+    } else {
+        10
+    }
+}
+
+/// A TeX `<dimen>` in points; `em`/`ex` are those of the class's
+/// `\normalsize` (`size` is the class size).
+pub fn parse_dimen_pt(s: &str, size: u32) -> Option<f64> {
+    parse_dimen(s, size)
+}
+
 fn parse_dimen(s: &str, size: u32) -> Option<f64> {
     let s = s.trim();
     let split = s.find(|c: char| c.is_ascii_alphabetic())?;

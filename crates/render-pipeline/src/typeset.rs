@@ -647,18 +647,48 @@ impl<'a> Context<'a> {
         // inter-atom spacing TeX still inserts across glue (glue does not
         // reset `r_type`, §760). Glue inside a fence pair or a sub-formula
         // cannot be split out and stays reported.
+        // Likewise a top-level `array`/`cases`/matrix grid (compiler
+        // `Matrix`) is laid out on this side (`mathgrid`) from its cells,
+        // each a formula of its own; a grid nested in a sub-formula (a
+        // fraction, a script, inside `\left...\right`) stays reported.
         let segments = split_at_spaces(list, &fence);
         let ml_lists: Vec<ml::MathList> = segments.iter().map(|(atoms, _)| convert_math_fenced(&flashtex_compiler::math::MathList { atoms: atoms.clone() }, &mut sink, &fence)).collect();
         let mut grids = Vec::new();
-        math_grids(list, &mut grids);
+        for (atoms, _) in &segments {
+            for a in atoms {
+                match &a.nucleus {
+                    flashtex_compiler::math::Nucleus::Matrix { rows, .. } if a.superscript.is_none() && a.subscript.is_none() => {
+                        for cell in rows.iter().flatten() {
+                            math_grids(cell, &mut grids);
+                        }
+                    }
+                    _ => math_grids(&flashtex_compiler::math::MathList { atoms: vec![a.clone()] }, &mut grids),
+                }
+            }
+        }
         for (rows, cols) in grids {
             if rows > 1 {
                 let src = self.source(span);
-                let msg = format!("{rows}x{cols} array/cases/matrix set as a single row inside its fences: math-layout has no array atom");
+                let msg = format!("{rows}x{cols} array/cases/matrix inside a sub-formula set as a single row inside its fences: only a top-level grid is laid out as rows");
                 self.report_once(format!("mathlim:{msg}"), Diagnostic::warning("math_limitation", msg, vec![src]));
             }
         }
-        let nested_glue_em: f64 = segments.iter().map(|(atoms, _)| math_glue_em(&flashtex_compiler::math::MathList { atoms: atoms.clone() })).sum();
+        // Glue at a top-level grid cell's own top level is split out like
+        // the formula's; only deeper glue is dropped.
+        let nested_glue_em: f64 = segments
+            .iter()
+            .flat_map(|(atoms, _)| atoms.iter())
+            .map(|a| match &a.nucleus {
+                flashtex_compiler::math::Nucleus::Matrix { rows, .. } if a.superscript.is_none() && a.subscript.is_none() => rows
+                    .iter()
+                    .flatten()
+                    .flat_map(|cell| cell.atoms.iter())
+                    .filter(|c| !matches!(c.nucleus, flashtex_compiler::math::Nucleus::Space { .. }))
+                    .map(|c| math_glue_em(&flashtex_compiler::math::MathList { atoms: vec![c.clone()] }))
+                    .sum(),
+                _ => math_glue_em(&flashtex_compiler::math::MathList { atoms: vec![a.clone()] }),
+            })
+            .sum();
         if nested_glue_em.abs() > 0.0 {
             let src = self.source(span);
             let msg = format!("\\quad/\\qquad glue ({nested_glue_em} em in this formula) inside \\left...\\right or a sub-formula dropped: math-layout has no kern atom and only top-level glue can be split into separate runs");
@@ -671,36 +701,15 @@ impl<'a> Context<'a> {
             self.report_once(format!("mathlim:{msg}"), Diagnostic::warning("math_limitation", msg, vec![src]));
         }
         let style = if display { ml::Style::DISPLAY } else { ml::Style::TEXT };
+        let has_grid = segments.iter().flat_map(|(atoms, _)| atoms.iter()).any(|a| matches!(a.nucleus, flashtex_compiler::math::Nucleus::Matrix { .. }) && a.superscript.is_none() && a.subscript.is_none());
+        // Every `\text` must be collected before the metrics borrow the sink.
+        let grid_pieces = if has_grid { grid_pieces(&segments, &mut sink, &fence) } else { Vec::new() };
         let text_metrics = crate::mathtext::TextRunMetrics::new(fonts.metrics(), self.fonts, self.shaper, self.style.family, &sink.texts);
-        let mut laid = if ml_lists.len() == 1 {
-            ml::layout_with_report(&ml_lists[0], style, &text_metrics)
+        let mut laid = if has_grid {
+            self.grid_formula(&grid_pieces, style, &text_metrics, span)
         } else {
-            // Rules 5/6 (Bin -> Ord) over the whole formula, so the classes
-            // at each split are the ones TeX would space by.
-            let all_atoms: Vec<ml::Atom> = ml_lists.iter().flat_map(|l| l.atoms.iter().cloned()).collect();
-            let classes = ml::layout::effective_classes(&all_atoms);
-            let params = ml::MathFontMetrics::params(&text_metrics, style.size_class());
-            let (quad, mu) = (params.quad, params.mu());
-            let mut boxes = Vec::new();
-            let mut limitations = Vec::new();
-            let mut at = 0usize;
-            for (i, l) in ml_lists.iter().enumerate() {
-                let part = ml::layout_with_report(l, style, &text_metrics);
-                limitations.extend(part.limitations);
-                boxes.push((0.0, part.root));
-                at += l.atoms.len();
-                if let Some(em) = segments[i].1 {
-                    let spacing = match (at.checked_sub(1).and_then(|j| classes.get(j)), classes.get(at)) {
-                        (Some(&left), Some(&right)) => ml::between(left, right, style).mu() * mu,
-                        _ => 0.0,
-                    };
-                    boxes.push((0.0, ml::MathBox::kern(em * quad + spacing)));
-                }
-            }
-            ml::Layout {
-                root: ml::MathBox::hbox(boxes),
-                limitations,
-            }
+            let glue: Vec<Option<f64>> = segments.iter().map(|(_, em)| *em).collect();
+            layout_kerned(&ml_lists, &glue, style, &text_metrics)
         };
         let (text_runs, notices) = text_metrics.finish();
         crate::mathtext::substitute(&mut laid.root, &text_runs);
@@ -790,6 +799,123 @@ impl<'a> Context<'a> {
         let idx = self.maths.len() - 1;
         self.recs.push(BoxRec::Math(idx));
         Some(self.recs.len() - 1)
+    }
+
+    /// A formula holding a top-level grid: the top-level atoms are split
+    /// into runs (laid out by math-layout), kerns (`\quad`...) and grids
+    /// (`mathgrid`), joined in one hbox with the inter-atom spacing TeX
+    /// would insert between the neighbouring classes (a fenced grid is an
+    /// Inner atom, a bare `array` an Ord `\vcenter`).
+    fn grid_formula(&mut self, pieces: &[GridPiece], style: ml::Style, text_metrics: &crate::mathtext::TextRunMetrics<'_>, span: Span) -> ml::Layout {
+        // Classes of the whole formula for Rules 5/6 and the spacing at
+        // each join: a grid stands as one placeholder atom.
+        let mut all_atoms: Vec<ml::Atom> = Vec::new();
+        for piece in pieces {
+            match piece {
+                GridPiece::Run(l) => all_atoms.extend(l.atoms.iter().cloned()),
+                GridPiece::Grid { left, right, .. } => {
+                    let fenced = !(left.is_empty() && right.is_empty());
+                    all_atoms.push(ml::Atom::new(if fenced { ml::AtomClass::Inner } else { ml::AtomClass::Ord }, ml::Nucleus::Empty));
+                }
+                GridPiece::Kern(_) => {}
+            }
+        }
+        let classes = ml::layout::effective_classes(&all_atoms);
+        let params = ml::MathFontMetrics::params(text_metrics, style.size_class());
+        let mu = params.mu();
+        let pitch = crate::mathgrid::Pitch {
+            baselineskip: self.style.baselineskip_pt,
+            lineskip: self.style.lineskip_pt,
+            lineskiplimit: self.style.lineskiplimit_pt,
+        };
+        let src_text = self.texts.get(span.document.0).copied().unwrap_or("");
+        let size = crate::adapter::class_size_of(self.style.body_size_pt);
+        let mut boxes: Vec<(f64, ml::MathBox)> = Vec::new();
+        let mut limitations = Vec::new();
+        let mut at = 0usize;
+        // Class index of the last atom placed, for the spacing at a join.
+        let mut prev_class: Option<ml::AtomClass> = None;
+        let mut pending_kern = 0.0;
+        for piece in pieces {
+            let (b, n) = match piece {
+                GridPiece::Kern(em) => {
+                    pending_kern += em * params.quad;
+                    continue;
+                }
+                GridPiece::Run(l) => {
+                    let part = ml::layout_with_report(l, style, text_metrics);
+                    limitations.extend(part.limitations);
+                    (part.root, l.atoms.len())
+                }
+                GridPiece::Grid {
+                    rows,
+                    columns,
+                    left,
+                    right,
+                    span: grid_span,
+                } => {
+                    let spec = crate::mathgrid::GridSpec::from_source(src_text, *grid_span, size);
+                    let cells: Vec<Vec<ml::MathBox>> = rows
+                        .iter()
+                        .map(|row| {
+                            row.iter()
+                                .map(|(runs, glue)| {
+                                    let part = layout_kerned(runs, glue, spec.style, text_metrics);
+                                    limitations.extend(part.limitations);
+                                    part.root
+                                })
+                                .collect()
+                        })
+                        .collect();
+                    let grid = crate::mathgrid::layout_grid(cells, columns, &spec, pitch, &params);
+                    let fence_char = |s: &str| {
+                        let mut it = s.chars();
+                        match (it.next(), it.next()) {
+                            (Some(c), None) => Some(c),
+                            _ => None,
+                        }
+                    };
+                    let b = if left.is_empty() && right.is_empty() {
+                        grid
+                    } else {
+                        let (h, d) = (grid.height, grid.depth);
+                        let mut fenced = Vec::new();
+                        for ch in [fence_char(left), fence_char(right)] {
+                            let (b, short) = crate::mathgrid::delimiter(text_metrics, ch, h, d, style, &params);
+                            if let (Some(ch), Some((wanted, used))) = (ch, short) {
+                                limitations.push(ml::Limitation::DelimiterTooSmall { ch, wanted, used });
+                            }
+                            fenced.push(b);
+                        }
+                        let close = fenced.pop().expect("two fences");
+                        let open = fenced.pop().expect("two fences");
+                        ml::MathBox::hlist(vec![open, grid, close])
+                    };
+                    (b, 1)
+                }
+            };
+            // Spacing at the join: TeX's inter-atom space between the
+            // classes on either side (glue does not reset r_type).
+            if let (Some(left), Some(&right)) = (prev_class, classes.get(at)) {
+                let spacing = ml::between(left, right, style).mu() * mu;
+                if spacing + pending_kern != 0.0 {
+                    boxes.push((0.0, ml::MathBox::kern(spacing + pending_kern)));
+                }
+            } else if pending_kern != 0.0 {
+                boxes.push((0.0, ml::MathBox::kern(pending_kern)));
+            }
+            pending_kern = 0.0;
+            at += n;
+            prev_class = at.checked_sub(1).and_then(|j| classes.get(j)).copied();
+            boxes.push((0.0, b));
+        }
+        if pending_kern != 0.0 {
+            boxes.push((0.0, ml::MathBox::kern(pending_kern)));
+        }
+        ml::Layout {
+            root: ml::MathBox::hbox(boxes),
+            limitations,
+        }
     }
 
     /// Builds a horizontal list. Returns paragraph-layout items, the
@@ -1674,6 +1800,99 @@ pub fn convert_math_fenced(list: &flashtex_compiler::math::MathList, sink: &mut 
         atoms.extend(body);
     }
     ml::MathList::new(atoms)
+}
+
+/// Lays out the kern-split runs of one formula (`runs[i]` is followed by
+/// `glue[i]` ems of explicit glue, `None` for the last) and joins them
+/// with kerns of the glue plus the inter-atom spacing TeX still inserts
+/// across glue (glue does not reset `r_type`, §760). Rules 5/6 (Bin ->
+/// Ord) run over the whole formula, so the classes at each split are the
+/// ones TeX would space by.
+fn layout_kerned(runs: &[ml::MathList], glue: &[Option<f64>], style: ml::Style, metrics: &dyn ml::MathFontMetrics) -> ml::Layout {
+    if runs.len() == 1 && glue.first().is_none_or(|g| g.is_none()) {
+        return ml::layout_with_report(&runs[0], style, metrics);
+    }
+    let all_atoms: Vec<ml::Atom> = runs.iter().flat_map(|l| l.atoms.iter().cloned()).collect();
+    let classes = ml::layout::effective_classes(&all_atoms);
+    let params = metrics.params(style.size_class());
+    let (quad, mu) = (params.quad, params.mu());
+    let mut boxes = Vec::new();
+    let mut limitations = Vec::new();
+    let mut at = 0usize;
+    for (i, l) in runs.iter().enumerate() {
+        let part = ml::layout_with_report(l, style, metrics);
+        limitations.extend(part.limitations);
+        boxes.push((0.0, part.root));
+        at += l.atoms.len();
+        if let Some(em) = glue.get(i).copied().flatten() {
+            let spacing = match (at.checked_sub(1).and_then(|j| classes.get(j)), classes.get(at)) {
+                (Some(&left), Some(&right)) => ml::between(left, right, style).mu() * mu,
+                _ => 0.0,
+            };
+            boxes.push((0.0, ml::MathBox::kern(em * quad + spacing)));
+        }
+    }
+    ml::Layout {
+        root: ml::MathBox::hbox(boxes),
+        limitations,
+    }
+}
+
+/// One top-level part of a formula holding a grid (see
+/// `Context::grid_formula`): a run for math-layout, a kern in ems, or an
+/// `array`/`cases`/matrix grid with its cells already converted.
+pub enum GridPiece {
+    Run(ml::MathList),
+    Kern(f64),
+    Grid {
+        /// Each cell as its kern-split runs and the glue after each.
+        rows: Vec<Vec<(Vec<ml::MathList>, Vec<Option<f64>>)>>,
+        columns: String,
+        left: String,
+        right: String,
+        span: Span,
+    },
+}
+
+/// Converts the kern-split segments of a formula into [`GridPiece`]s,
+/// collecting every `\text` into `sink` (runs and cells alike).
+fn grid_pieces(segments: &[(Vec<flashtex_compiler::math::MathAtom>, Option<f64>)], sink: &mut crate::mathtext::TextSink, fence: &dyn Fn(&Span) -> Option<Fence>) -> Vec<GridPiece> {
+    use flashtex_compiler::math::{MathAtom, MathList as CList, Nucleus as N};
+    let mut pieces = Vec::new();
+    for (atoms, em) in segments {
+        let mut run: Vec<MathAtom> = Vec::new();
+        let flush = |run: &mut Vec<MathAtom>, pieces: &mut Vec<GridPiece>, sink: &mut crate::mathtext::TextSink| {
+            if !run.is_empty() {
+                pieces.push(GridPiece::Run(convert_math_fenced(&CList { atoms: std::mem::take(run) }, sink, fence)));
+            }
+        };
+        for a in atoms {
+            match &a.nucleus {
+                N::Matrix { rows, columns, left, right } if a.superscript.is_none() && a.subscript.is_none() => {
+                    flush(&mut run, &mut pieces, sink);
+                    let cell_runs = |cell: &CList, sink: &mut crate::mathtext::TextSink| {
+                        let parts = split_at_spaces(cell, fence);
+                        let runs = parts.iter().map(|(atoms, _)| convert_math_fenced(&CList { atoms: atoms.clone() }, sink, fence)).collect();
+                        let glue = parts.iter().map(|(_, em)| *em).collect();
+                        (runs, glue)
+                    };
+                    pieces.push(GridPiece::Grid {
+                        rows: rows.iter().map(|row| row.iter().map(|cell| cell_runs(cell, sink)).collect()).collect(),
+                        columns: columns.clone(),
+                        left: left.clone(),
+                        right: right.clone(),
+                        span: a.span,
+                    });
+                }
+                _ => run.push(a.clone()),
+            }
+        }
+        flush(&mut run, &mut pieces, sink);
+        if let Some(em) = em {
+            pieces.push(GridPiece::Kern(*em));
+        }
+    }
+    pieces
 }
 
 /// Splits `list` at its top-level `Space` atoms (outside `\left...\right`
