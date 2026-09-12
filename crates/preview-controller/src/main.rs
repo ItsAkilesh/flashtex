@@ -21,6 +21,7 @@ use std::{
 };
 mod output_buffer;
 mod output_delivery;
+mod source_plans;
 mod wire;
 use output_buffer::OutputBuffer;
 const MAX_OUTPUT_BYTES: usize = 16 * 1024 * 1024;
@@ -81,15 +82,23 @@ fn run(config: Value) -> Result<(), String> {
     let diagnostic_timings = config["diagnostic_timings"].as_bool().unwrap_or(false);
     let project = string(&config, "project_id")?.to_owned();
     let entry = string(&config, "entry_path")?.to_owned();
+    let bibliography_paths: Vec<String> = serde_json::from_value(
+        config
+            .get("bibliography_paths")
+            .cloned()
+            .unwrap_or(json!([])),
+    )
+    .map_err(|e| e.to_string())?;
     let (mut controller, file_project) = if config.get("project_root").is_some() {
         if config.get("store_paths").is_some() {
             return Err("choose project_root or store_paths, not both".into());
         }
-        let (files, controller) = FileProject::open(
+        let (files, controller) = FileProject::open_with_bibliography(
             std::path::Path::new(string(&config, "project_root")?),
             std::path::Path::new(string(&config, "private_ledger_root")?),
             &project,
             &entry,
+            &bibliography_paths,
         )?;
         (controller, Some(files))
     } else {
@@ -107,7 +116,7 @@ fn run(config: Value) -> Result<(), String> {
             })
             .collect::<Result<Vec<_>, String>>()?;
         (
-            Controller::open_without_compiler(project, entry, stores)?,
+            Controller::open_with_bibliography(project, entry, stores, &bibliography_paths)?,
             None,
         )
     };
@@ -390,9 +399,29 @@ fn handle(
         "document" => Ok(json!({"document":controller.document(string(p,"path")?)?})),
         "snapshot" => {
             let snapshot = controller.index().snapshot();
+            let document_kinds = snapshot
+                .documents
+                .keys()
+                .map(|path| {
+                    let kind = controller
+                        .index()
+                        .document_kind(&snapshot, path)
+                        .map_err(|e| e.to_string())?;
+                    Ok((
+                        path.clone(),
+                        match kind {
+                            flashtex_project_index::DocumentKind::Latex => "latex",
+                            flashtex_project_index::DocumentKind::Bibliography => "bibliography",
+                        },
+                    ))
+                })
+                .collect::<Result<BTreeMap<_, _>, String>>()?;
             Ok(
-                json!({"project_id":snapshot.project_id,"source_versions":snapshot.documents,"membership_generation":snapshot.generation}),
+                json!({"project_id":snapshot.project_id,"source_versions":snapshot.documents,"membership_generation":snapshot.generation,"document_kinds":document_kinds}),
             )
+        }
+        "plan_literal_replacement" | "plan_citation_rename" | "plan_citation_rename_at" => {
+            source_plans::handle(controller.index(), string(request, "type")?, p)
         }
         "search_literal" => {
             let snapshot = controller.index().snapshot();
@@ -502,9 +531,17 @@ fn handle(
             }
             let path = string(p, "path")?;
             let (document, preview_error) = if request["type"] == "open_document" {
+                let kind = match p.get("document_kind").and_then(Value::as_str) {
+                    None if p.get("document_kind").is_none() => {
+                        flashtex_project_index::DocumentKind::Latex
+                    }
+                    Some("latex") => flashtex_project_index::DocumentKind::Latex,
+                    Some("bibliography") => flashtex_project_index::DocumentKind::Bibliography,
+                    _ => return Err("document_kind must be latex or bibliography".into()),
+                };
                 let result = file_project
                     .ok_or("helper was not opened from a file project")?
-                    .open_document(controller, &expected, path)?;
+                    .open_document_with_kind(controller, &expected, path, kind)?;
                 (Some(result.document), result.preview_error)
             } else {
                 (None, controller.detach_document(&expected, path)?)
@@ -574,7 +611,21 @@ fn handle(
                 json!({"exported":true,"path":receipt.path.as_str(),"sha256":receipt.sha256_hex(),"bytes":receipt.bytes}),
             )
         }
-        "history_status" => Ok(json!({"history":controller.history_status(string(p,"path")?)?})),
+        "history_status" => {
+            use flashtex_edit_ledger::history::{
+                MAX_HISTORY_BYTES, MAX_HISTORY_COMMAND_IDS, MAX_HISTORY_ENTRIES,
+            };
+            let path = string(p, "path")?;
+            let history = controller.history_status(path)?;
+            let document = controller.document(path)?;
+            // Both reads occur on the same owner turn; callers can use this exact
+            // revision/hash for a later guarded undo, without fetching full text.
+            Ok(json!({"history":history,
+                "document":{"project_id":document.project_id,"path":document.path,
+                    "revision":document.revision,"source_sha256":document.source_sha256},
+                "limits":{"history_bytes":MAX_HISTORY_BYTES,"history_entries":MAX_HISTORY_ENTRIES,
+                    "permanent_command_ids":MAX_HISTORY_COMMAND_IDS}}))
+        }
         "apply_group" | "undo" | "redo" => {
             let command = p["command"].clone();
             let action = match request["type"].as_str().unwrap() {
