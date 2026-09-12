@@ -33,8 +33,10 @@ note separates the export's share of that from the producers'.
 | 3 | 94 490 | 29 475 / 29 892 | 27 074 / 27 491 | same |
 
 Every glyph/rule in the export is one the display list asked for, at the
-tick it asked for: the previous lane's replay test (`exact::glyph_positions`)
-holds on this list (5 fonts, 3 232 glyphs, 0 refused). The two rules
+tick it asked for: replaying the written `Tf`/`Tm`/`Tj` operators of all
+three pages in exact rational arithmetic (the `/W` widths for the joined
+glyphs) puts all 3 232 glyphs on their display-list origins, 0 mismatches
+(scratch `replay.py`, same rule as `exact::glyph_positions`). The two rules
 (`\sqrt` overbars, 457 548 ticks = 0.436 pt thick) land where the list puts
 them. So on HW1 there is no *painting* difference attributable to the export;
 the remaining export-owned property is searchable text, and that had a
