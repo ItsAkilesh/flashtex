@@ -5,7 +5,7 @@
 `good-key` -> 200, `rate-key` -> 429, `slow-key` -> no reply for 8 s,
 `server-key` -> 503, anything else -> 401. Any other path -> 404. Also answers
 `POST /v1/responses` the way the helper's `grok.rs` expects a completed reply,
-for when the helper gains a base-URL override (not yet; see docs/mac/grok-live.md).
+for when the helper gains a base-URL override (not yet; see apps/mac/docs/grok-live.md).
 Keys are compared, never printed. Exits on stdin EOF.
 """
 import json

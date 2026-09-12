@@ -143,6 +143,8 @@ final class ProposalPreview: ObservableObject {
     private var explanationProcess: OneShotProcess?
     /// The live Grok session child while the provider stage runs (GrokProvider.swift).
     private var grokSession: GrokProviderSession?
+    /// The Grok session's launch record while (or after) it ran, for tests/evidence.
+    private(set) var lastGrokLaunch: GrokProviderSession.Launch?
     private var explanationJob: ExplanationJob?
     private var explained: (input: Input, latex: String)?
     private var nextExplanationID = 1
@@ -665,7 +667,13 @@ extension ProposalPreview {
             } else if let p = selection, FileManager.default.isExecutableFile(atPath: p) {
                 c.provider = URL(fileURLWithPath: p)
             }
-            if let s = env["FLASHTEX_ASSISTANT_TIMEOUT_S"], let t = TimeInterval(s), t > 0 { c.providerTimeout = min(t, 120) }
+            if let s = env["FLASHTEX_ASSISTANT_TIMEOUT_S"], let t = TimeInterval(s), t > 0 {
+                c.providerTimeout = min(t, 120)
+            } else if c.grok != nil {
+                // Live grok-4.6 explanations measured 53–70 s (docs/evidence/grok-live-*);
+                // the helper's HTTP client gives up at 90 s, so the flight must outlive it.
+                c.providerTimeout = 100
+            }
             return c
         }
 
@@ -874,8 +882,6 @@ extension ProposalPreview {
         guard let p = explanationProcess, p.isRunning else { return nil }
         return p.processIdentifier
     }
-    /// The Grok session's launch record while (or after) it ran, for tests.
-    var lastGrokLaunch: GrokProviderSession.Launch? { grokSession?.launch }
     /// The exact JSON request the current job last sent (or will send) to the
     /// helper; introspection so a test can replay it against the real helper
     /// with a moved snapshot. Nil when no request is current.
@@ -1063,6 +1069,7 @@ extension ProposalPreview {
                 self?.handleExplanationReply(id: job.id, stage: .provider, result: result)
             }
             grokSession = session
+            lastGrokLaunch = session.launch
             childLaunches.append(ChildLaunch(role: .grok, executable: helper, arguments: session.launch.arguments,
                                              environmentKeys: session.launch.environmentKeys, stage: .provider))
             if childLaunches.count > 64 { childLaunches.removeFirst(childLaunches.count - 64) }

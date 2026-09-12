@@ -198,7 +198,7 @@ final class GrokLiveTests: XCTestCase {
         let launchNoKey = ShellModel.bridgeGrokLaunch(environment: ["FLASHTEX_KEYCHAIN_OFF": "1", "PATH": "/usr/bin"], keychain: MemoryKeychain(), preferences: GrokPreferences(defaults: temporaryDefaults()))
         XCTAssertFalse(launchNoKey.enableGrok); XCTAssertNil(launchNoKey.environment["XAI_API_KEY"]); XCTAssertNil(launchNoKey.credential)
         let launchKey = ShellModel.bridgeGrokLaunch(environment: ["FLASHTEX_KEYCHAIN_OFF": "1", "XAI_API_KEY": "k"], keychain: MemoryKeychain(), preferences: GrokPreferences(defaults: temporaryDefaults()))
-        XCTAssertTrue(launchKey.enableGrok); XCTAssertEqual(launchKey.environment["XAI_API_KEY"], "k"); XCTAssertEqual(launchKey.environment["FLASHTEX_GROK_MODEL"], "grok-4.6")
+        XCTAssertTrue(launchKey.enableGrok); XCTAssertEqual(launchKey.environment["XAI_API_KEY"], "k"); XCTAssertEqual(launchKey.environment["FLASHTEX_GROK_MODEL"], GrokCredential.defaultCaptureModel)
     }
 
     // MARK: the provider stage through the session double

@@ -7,7 +7,7 @@ import Security
 /// `XAI_API_KEY` in the child's environment, supplied by this adapter.
 ///
 /// Source order: the Keychain generic-password item (service
-/// `tech.jay3332.flashtex.xai`, account `XAI_API_KEY`), then the environment
+/// `tech.jay3332.flashtex.xai`, account `xai`, or `XAI_API_KEY`), then the environment
 /// (`XAI_API_KEY`, then `FLASHTEX_GROK_API_KEY`), else none.
 /// `FLASHTEX_KEYCHAIN_OFF=1` skips the Keychain (environment-only mode, used by
 /// tests and headless runs). The key is never logged, never placed in argv or
@@ -15,12 +15,16 @@ import Security
 /// "present (source)" or "absent".
 ///
 /// To supply a key without the Preferences window:
-/// `security add-generic-password -U -s tech.jay3332.flashtex.xai -a XAI_API_KEY -w '<key>'`
+/// `security add-generic-password -U -s tech.jay3332.flashtex.xai -a xai -w '<key>'`
 /// (`-U` updates an existing item); remove it with
-/// `security delete-generic-password -s tech.jay3332.flashtex.xai -a XAI_API_KEY`.
+/// `security delete-generic-password -s tech.jay3332.flashtex.xai -a xai`.
 enum GrokCredential {
     static let keychainService = "tech.jay3332.flashtex.xai"
-    static let keychainAccount = "XAI_API_KEY"
+    /// The account written by Preferences and read first; `legacyKeychainAccount`
+    /// is also read so an item stored under the environment-variable name works.
+    static let keychainAccount = "xai"
+    static let legacyKeychainAccount = "XAI_API_KEY"
+    static var keychainAccounts: [String] { [keychainAccount, legacyKeychainAccount] }
     /// Environment names consulted after the Keychain, in this order.
     static let environmentNames = ["XAI_API_KEY", "FLASHTEX_GROK_API_KEY"]
     static let keychainOffVariable = "FLASHTEX_KEYCHAIN_OFF"
@@ -101,6 +105,23 @@ enum GrokCredential {
         return defaultModel
     }
 
+    /// Model for capture-to-LaTeX (the bridge's vision request):
+    /// `FLASHTEX_GROK_CAPTURE_MODEL`, else the same as `model(...)`. Live runs
+    /// showed the reasoning model exceeding the bridge's fixed 90 s timeout on
+    /// an image while a non-reasoning model answered in ~3 s.
+    static let captureModelVariable = "FLASHTEX_GROK_CAPTURE_MODEL"
+    /// Live evidence 2026-09-12 (docs/evidence/grok-live-20260912T191209Z):
+    /// this id converted a 900×260 handwriting PNG in 2.8 s and the result
+    /// compiled with zero diagnostics; `grok-4.6` hit the bridge's 90 s timeout.
+    static let defaultCaptureModel = "grok-4.20-0309-non-reasoning"
+    static func captureModel(environment: [String: String] = ProcessInfo.processInfo.environment,
+                             preferences: GrokPreferences = .shared) -> String {
+        for candidate in [environment[captureModelVariable], environment[modelVariable], preferences.model] {
+            if let candidate, isValidModel(candidate) { return candidate }
+        }
+        return defaultCaptureModel
+    }
+
     static func isValidModel(_ model: String) -> Bool {
         !model.isEmpty && model.utf8.count <= 128
             && model.utf8.allSatisfy { ($0 >= 0x30 && $0 <= 0x39) || ($0 >= 0x41 && $0 <= 0x5a) || ($0 >= 0x61 && $0 <= 0x7a) || $0 == 0x2d || $0 == 0x2e || $0 == 0x5f }
@@ -136,14 +157,16 @@ enum GrokCredential {
         let skipped = environment[keychainOffVariable] == "1"
         var problem: String?
         if !skipped {
-            switch keychain.read(service: keychainService, account: keychainAccount) {
-            case .success(let stored?):
-                if case .success(let key) = validate(stored) {
-                    return Status(resolution: Resolution(key: key, source: .keychain, variable: nil), keychainSkipped: false, keychainProblem: nil)
+            accounts: for account in keychainAccounts {
+                switch keychain.read(service: keychainService, account: account) {
+                case .success(let stored?):
+                    if case .success(let key) = validate(stored) {
+                        return Status(resolution: Resolution(key: key, source: .keychain, variable: nil), keychainSkipped: false, keychainProblem: nil)
+                    }
+                    problem = "stored item (account \(account)) is not a usable key"
+                case .success(nil): continue accounts
+                case .failure(let why): problem = why.text; break accounts
                 }
-                problem = "stored item is not a usable key"
-            case .success(nil): break
-            case .failure(let why): problem = why.text
             }
         }
         for name in environmentNames {
@@ -166,8 +189,12 @@ enum GrokCredential {
         }
     }
 
+    /// Deletes both accounts (`xai` and the legacy `XAI_API_KEY`).
     static func remove(keychain: any GrokKeychainStore = SecItemKeychain.shared) -> Result<Void, StoreError> {
-        keychain.delete(service: keychainService, account: keychainAccount).mapError { .keychain($0) }
+        for account in keychainAccounts {
+            if case .failure(let e) = keychain.delete(service: keychainService, account: account) { return .failure(.keychain(e)) }
+        }
+        return .success(())
     }
 
     enum StoreError: Error, Equatable {

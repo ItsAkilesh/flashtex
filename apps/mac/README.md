@@ -323,9 +323,9 @@ timeout; (2) `replace_document` bumps exactly one revision, so aligning an
 older store to a newer editor revision takes one round trip per step (bounded
 at 10 000 here); a `set_revision`-style alignment would remove that loop.
 
-Not implemented here: the Mac credential adapter that would run the bridge with
-`--enable-grok` and supply the authorized `XAI_API_KEY` (so no real conversion
-happens from this shell), the companion network transport (captures come from
+Implemented in `GrokCredential.swift` (see `docs/grok-live.md`): the Mac credential adapter runs the bridge with
+`--enable-grok` and supplies the authorized `XAI_API_KEY` from the Keychain or the environment. Not implemented here:
+the companion network transport (captures come from
 a file picker), compiler validation of proposals before review, and ledger
 compaction.
 
@@ -564,7 +564,7 @@ is a stand-in, the real listener is only exercised from `apps/mac`.
 
 ## Launch hooks and evidence
 
-Assistant: `FLASHTEX_ASSISTANT_CONTEXT` (helper, offline), `FLASHTEX_ASSISTANT_PROVIDER` (optional local provider command — the only thing that may reach a network, by the user's choice).
+Assistant: `FLASHTEX_ASSISTANT_CONTEXT` (helper, offline), `FLASHTEX_ASSISTANT_PROVIDER` (`grok` for live xAI through the helper's `--provider-session`, or a local provider command — the only things that may reach a network, by the user's choice), `FLASHTEX_ASSISTANT_CONTEXT_GROK` (a `--features grok` helper build), `FLASHTEX_GROK_MODEL`, `XAI_API_KEY`/`FLASHTEX_GROK_API_KEY` (after the Keychain), `FLASHTEX_KEYCHAIN_OFF=1`, `FLASHTEX_GROK_BASE_URL` (probe only, loopback/https). See `docs/grok-live.md`.
 
 `FLASHTEX_NO_ACTIVATE=1` launches without activating/focusing the window (for
 automation; never steals keyboard focus). `FLASHTEX_DEBOUNCE_MS` sets the

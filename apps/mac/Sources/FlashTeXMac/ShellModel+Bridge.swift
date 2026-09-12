@@ -44,7 +44,7 @@ extension ShellModel {
                                  keychain: any GrokKeychainStore = SecItemKeychain.shared,
                                  preferences: GrokPreferences = .shared) -> (enableGrok: Bool, environment: [String: String], credential: GrokCredential.Resolution?) {
         let credential = GrokCredential.resolve(environment: environment, keychain: keychain)
-        let model = GrokCredential.model(environment: environment, preferences: preferences)
+        let model = GrokCredential.captureModel(environment: environment, preferences: preferences)
         return (credential != nil, GrokCredential.bridgeEnvironment(credential: credential, model: model, from: environment), credential)
     }
 
@@ -266,7 +266,7 @@ extension ShellModel {
     }
 
     @discardableResult
-    func submitCapture(imageAt url: URL, captureId: String? = nil, instructions: String = "Transcribe the selected handwriting to LaTeX; preserve notation.") async -> TransferV1.CaptureReceived? {
+    func submitCapture(imageAt url: URL, captureId: String? = nil, instructions: String = CaptureFeatures.defaultInstructions) async -> TransferV1.CaptureReceived? {
         guard let data = try? Data(contentsOf: url) else { captureNote = "Could not read \(url.lastPathComponent)."; return nil }
         let mime = url.pathExtension.lowercased() == "png" ? "image/png" : "image/jpeg"
         return await submitCapture(image: .init(mimeType: mime, dataBase64: data.base64EncodedString()),
@@ -305,7 +305,8 @@ extension ShellModel {
     }
 
     @discardableResult
-    func convertCapture(captureId: String, supportedFeatures: [String] = []) async -> RuntimeV1.CaptureProposal? {
+    /// `supportedFeatures` defaults to what our compiler renders (CaptureFeatures.swift).
+    func convertCapture(captureId: String, supportedFeatures: [String] = CaptureFeatures.supportedFeatures()) async -> RuntimeV1.CaptureProposal? {
         guard let bridge, bridge.running else { captureNote = "No bridge attached."; return nil }
         do {
             let proposal = try await bridge.convert(captureId: captureId, supportedFeatures: supportedFeatures)

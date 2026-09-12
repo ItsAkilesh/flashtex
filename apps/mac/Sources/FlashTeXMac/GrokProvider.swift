@@ -21,7 +21,7 @@ import FlashTeXProtocol
 /// Failures map onto `OneShotProcess.Failure` (an `error` JSON as an exit) so
 /// the sheet's wording and the recovery log are the same as for a local
 /// provider command. The helper's session collapses provider errors into
-/// `state:"failed"` without the HTTP class (see docs/mac/grok-live.md, helper
+/// `state:"failed"` without the HTTP class (see apps/mac/docs/grok-live.md, helper
 /// requests); the text says so rather than guessing.
 @MainActor
 final class GrokProviderSession {
@@ -236,7 +236,7 @@ final class GrokProviderSession {
 /// The one network call the Mac app makes itself, only when the user clicks
 /// "Test connection" in Preferences: `GET <base>/v1/models` with the key as a
 /// bearer token, reported as an HTTP class only (no body is read or shown).
-/// The helper has no probe command yet (see docs/mac/grok-live.md, helper
+/// The helper has no probe command yet (see apps/mac/docs/grok-live.md, helper
 /// requests); once it does, this moves behind the helper. `FLASHTEX_GROK_BASE_URL`
 /// (loopback `http://` or any `https://`) redirects the probe to a local stub in
 /// tests; the helper does not honour it (also requested).
@@ -294,7 +294,11 @@ enum GrokProbe {
     }
 
     /// Never logs; `completion` runs on the main queue with the class only.
+    /// `models` receives the model ids listed by a 2xx reply (`data[].id`, the
+    /// only part of the body read; no user data) so Preferences and the live
+    /// evidence can name valid ids.
     static func probe(credential: GrokCredential.Resolution, baseURL: URL = baseURL(), timeout: TimeInterval = 10,
+                      models: (@MainActor ([String]) -> Void)? = nil,
                       completion: @escaping @MainActor (Outcome) -> Void) {
         var request = URLRequest(url: baseURL.appendingPathComponent(path))
         request.httpMethod = "GET"
@@ -306,17 +310,26 @@ enum GrokProbe {
         configuration.httpShouldSetCookies = false
         configuration.urlCache = nil
         let session = URLSession(configuration: configuration, delegate: NoRedirects.shared, delegateQueue: nil)
-        let task = session.dataTask(with: request) { _, response, error in
+        let task = session.dataTask(with: request) { data, response, error in
             let outcome: Outcome
+            var ids: [String] = []
             if let error = error as NSError? {
                 outcome = error.code == NSURLErrorTimedOut ? .timeout : .transport(error.localizedDescription)
             } else if let http = response as? HTTPURLResponse {
                 outcome = classify(status: http.statusCode)
+                if (200..<300).contains(http.statusCode), let data, data.count <= 256 * 1024,
+                   let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let list = obj["data"] as? [[String: Any]] {
+                    ids = list.compactMap { $0["id"] as? String }.filter(GrokCredential.isValidModel).sorted()
+                }
             } else {
                 outcome = .transport("no HTTP response")
             }
             session.finishTasksAndInvalidate()
-            Task { @MainActor in completion(outcome) }
+            Task { @MainActor in
+                if let models, !ids.isEmpty { models(ids) }
+                completion(outcome)
+            }
         }
         task.resume()
     }

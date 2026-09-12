@@ -8,23 +8,23 @@
     "xcode",
     "rust"
   ],
-  "code_revision": "9ba9851cefb3ba263ffe1d25f42cb7fdd27371c4",
+  "code_revision": "4b0fc3b6bde766e710d749c7519d3cabf7af506b",
   "eta_minutes": {
-    "likely": 90,
-    "optimistic": 60,
-    "pessimistic": 120
+    "likely": 20,
+    "optimistic": 10,
+    "pessimistic": 30
   },
   "machine": "mac-m1max-a",
-  "main_integrated_through": "c11c005b90c1b495889dea7c664aae4b8a9424c4",
-  "next_action": "Implement GrokCredential.swift + GrokProvider.swift; thread environment through LineProcessClient/BridgeClient",
+  "main_integrated_through": "9ba9851cefb3ba263ffe1d25f42cb7fdd27371c4",
+  "next_action": "Full-suite run, commit, push agent/mac-grok-live/wiring, report to parent with helper-owner requests R1-R5",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "Grok/xAI wiring started: credential adapter, provider-session driver, bridge --enable-grok, preferences row, tests, live-check script",
+  "summary": "Live Grok wired and verified: probe 200; explanation READY via helper --provider-session (grok-4.6, 69.7s); capture->LaTeX via bridge --enable-grok (grok-4.20-0309-non-reasoning, 2.8s) compiles ok/0 diagnostics; 14 hermetic tests green; evidence docs/evidence/grok-live-20260912T191209Z",
   "tool": "Claude Code",
-  "updated_utc": "2026-09-12T18:34:18Z",
+  "updated_utc": "2026-09-12T19:16:05Z",
   "usage": {
-    "evidence": "branch agent/mac-grok-live/wiring from 9ba9851c",
-    "status": "shares mac-claude-a Claude Max 20x quota; no xAI key on this machine"
+    "evidence": "docs/evidence/grok-live-20260912T191209Z/README.md",
+    "status": "shares mac-claude-a Claude Max 20x quota; 5 live xAI runs (3 requests each at most) on the user's key"
   }
 }
