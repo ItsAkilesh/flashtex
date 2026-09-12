@@ -27,9 +27,17 @@ reads them from git and executes the shipped scripts.
    (the bench's own `render` producer, `FLASHTEX_RENDER` pointing at the
    scratch build below), and on the durable helper route (producer
    `controller`: `FLASHTEX_PREVIEW_CONTROLLER=<flashtex-preview-controller>`
-   exported, private `FLASHTEX_CONTROLLER_LEDGER_ROOT`). `uptime` is sampled
-   right before every pass; when the 1-minute load average is above 10 the
-   latency gates for that pass are reported only, never applied.
+   exported, private `FLASHTEX_CONTROLLER_LEDGER_ROOT`), all in one bench pass
+   (`--producers "compiler render controller"`), then the helper route again
+   with `FLASHTEX_COMPLETED_SNAPSHOTS=1` (historical previews), classified with
+   the branch's `docs/evidence/historical-preview-2026-09-12T1010Z/analyze.py`
+   (current vs historical paints, historical lag, keystroke -> current paint).
+   Every cell first waits for a quiet machine (bench `--quiet-load 8
+   --quiet-wait 300`, overridable with `--quiet-load/--quiet-wait`); the bench
+   records the 1-minute load before/after each cell and marks cells above its
+   load limit (10) load-affected — latency gates are applied only to unaffected
+   cells, the others are reported. `uptime` is recorded at start, before every
+   pass and at the end.
 3b. **Optional bundled routes.** `flashtex-render` from
    `origin/agent/mac-render-pipeline/unified` (`--render-ref`) and
    `flashtex-pdf-exact` from `origin/agent/mac-pdf/v2-adapter`
@@ -67,6 +75,28 @@ reads them from git and executes the shipped scripts.
    `apps/mac/Tests/FlashTeXMacTests/Fixtures/display-list-v2-text.json` with
    `--font-dir apps/mac/Fonts` and reads the PDF back through PDFKit
    (`lib/pdfkit_probe.swift`, compiled on the fly): page count and text.
+5c. **Windows, worker relaunch, multi-file project.** `open-window` launches the
+   bundle with `FLASHTEX_OPEN_WINDOW=a11y-help` / `nearby`, finds the window
+   through a CGWindowList probe (`lib/window_probe.swift`) and captures it by
+   id with `screencapture -x -l` (never activated). `worker-relaunch` kills the
+   bundled compiler child with SIGKILL four times while the typing bench keeps
+   editing and asserts the shell's bounded auto-relaunch (scheduled, relaunched
+   with a new child, a later keystroke recompiled — within 5 s — for three
+   kills, then `worker relaunch limit reached`). `multifile` opens a temp
+   project (`main.tex` + `\input{chapter}`) on the helper route with
+   `FLASHTEX_OPEN_INCLUDES=1 FLASHTEX_ACTIVE_PATH=chapter.tex`, types into the
+   active editor and asserts from the log, the helper ledger and the disk that
+   `chapter.tex` was opened through the helper and received the edit durably
+   while both files on disk stayed untouched. `flashtex-project-files` is built
+   from the app branch (its JSON Lines host is not on main yet).
+5d. **Branch XCTests against the real helpers.** Save routing to a member (⌘S),
+   quit-save of members, reviewed reload after an external edit and the on-disk
+   conflict refusal need the Save menu / quit alert / reload sheet, which cannot
+   be driven without Accessibility; `swift test --filter 'ProjectDocumentsTests|
+   DocumentFilesTests|HistoricalPreviewTests|ShellModelTests/
+   testCrashedWorkerIsRelaunchedWithBoundedBackoff'` runs those paths with
+   `FLASHTEX_*` pointing at the built helpers; per-test results (including skip
+   reasons) are gated (`--skip-tests` to leave it out).
 6. **Report.** `lib/report.py` writes `reports/<UTC>.md` with every number,
    binary hash, source SHA, machine/OS/Xcode/Swift/cargo version, the driving
    agent session and the exact commands (`reports/<UTC>/commands.log`), and
@@ -102,6 +132,11 @@ Gates fail the run; targets are reported only.
 | typing-bench (all) | p50 gates are applied only when the 1-minute load average before the pass is <= 10; above that the gate row says "NOT applied" and the numbers are reported only |
 | render-attach | bundled `flashtex-render` present; `preview face: latin-modern`, `status: attached:`, `revision 1: ok` in `FLASHTEX_LOG`; `flashtex-render` child under the app pid; app alive after the wait; launched with `FLASHTEX_NO_ACTIVATE=1` |
 | exact-export | `flashtex-pdf-exact from-v2` exit 0; PDF written; PDFKit page count == fixture pages; PDFKit text contains "Office fixtures", "office", "bold", "caf" |
+| open-window/* | app running; an on-screen window titled "Accessibility Help" / "Nearby Companion" owned by the app; `screencapture -l <id>` wrote a PNG > 4 KB and > 100x100 px |
+| worker-relaunch | compiler attached + bench typing; kills 1–3: relaunch scheduled, relaunched with a new child pid, a later keystroke recompiled, all within 5 s, app alive; kill 4: `worker relaunch limit reached`, no relaunch, app alive; app exits cleanly with the bench summary |
+| multifile | bench summary written; `project: opened chapter.tex`; helper attached; every keystroke painted; `main.tex` and `chapter.tex` on disk untouched; helper ledger: chapter.tex contains the typed text, main.tex does not |
+| app-tests | `swift test` exit 0 with 0 failures; the listed ProjectDocuments/DocumentFiles/ShellModel tests passed (not skipped) |
+| historical | analyze.py produced rows for the `FLASHTEX_COMPLETED_SNAPSHOTS=1` pass; >= 1 historical frame painted across it |
 | build (extras) | `flashtex-render` / `flashtex-pdf-exact` built from their refs (pinned clone HEAD == SHA); bundled copies carry the built object code; `components.json` `render` / `pdf_exact` SHAs == their branch SHAs |
 | typing-bench target (not a gate) | project target typing-to-visible p50 and p95 <= 200 ms, reported per cell as met / not met |
 | launch-check | zero `FAIL:` lines; compiler attached, `attached:` and `revision 1: ok` logged, app survives compiler kill, `worker exited (` logged; bridge attached, `bridge: attached:` logged, app survives bridge kill, `bridge exited (` logged; clean quit; launched with `FLASHTEX_NO_ACTIVATE=1` |
@@ -116,6 +151,8 @@ Gates fail the run; targets are reported only.
   export checks; `lib/pdfkit_probe.swift` — PDFKit page count/text probe;
   `lib/hashes.py` — as-shipped, signature-removed and signature-masked sha256;
   `lib/open-shim/open` — adds `--env` values to `open`.
+- `lib/window_probe.swift` — CGWindowList window list for a pid;
+  `lib/xctest_summary.py` — `swift test` log to JSON.
 - `fixtures/capture-proposal.json` — offline `capture_proposal` fixture.
 - `reports/<UTC>.md` + `reports/<UTC>/` — committed evidence: `env.json`,
   `helpers.json`, `app.json`, `bundle.json`, `steps.jsonl`, `commands.log`,

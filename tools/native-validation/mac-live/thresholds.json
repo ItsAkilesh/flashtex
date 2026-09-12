@@ -27,6 +27,11 @@
           "_comment": "flashtex-render (crates/render-pipeline branch) as a second direct producer; correctness gates only, latency reported",
           "expected_producer": "flashtex-render",
           "per_seed_p50_ms_max": {}
+        },
+        "historical": {
+          "_comment": "helper route with FLASHTEX_COMPLETED_SNAPSHOTS=1; correctness gates only, latency reported and classified (historical vs current paints)",
+          "expected_producer": "flashtex-preview-controller",
+          "per_seed_p50_ms_max": {}
         }
       },
       "required_cells": [
@@ -38,7 +43,7 @@
         "body60k-0ms"
       ],
       "latency_gate_max_load_average_1min": 10,
-      "_load_comment": "p50 gates apply only when the 1-minute load average sampled right before a bench pass is <= this; above it, latencies are reported and the gate row says it was not applied (shared machine)"
+      "_load_comment": "p50 gates apply only to cells the bench did not mark load-affected (1-minute load before/after the cell <= its --load-limit 10); every cell first waits for a quiet machine (--quiet-load 8, --quiet-wait). Older summaries without per-cell load fall back to the pass-level rule."
     },
     "targets": {
       "project_typing_to_visible_p50_ms": 200,
@@ -127,6 +132,50 @@
         "bold",
         "caf"
       ]
+    }
+  },
+  "open_window": {
+    "gates": {
+      "windows": {
+        "a11y-help": "Accessibility Help",
+        "nearby": "Nearby Companion"
+      },
+      "screenshot_min_bytes": 4096,
+      "screenshot_min_px": 100,
+      "no_activate": true
+    }
+  },
+  "worker_relaunch": {
+    "gates": {
+      "relaunches_within_5s": 3,
+      "then_limit_line": "worker relaunch limit reached",
+      "app_alive_throughout": true
+    }
+  },
+  "multifile": {
+    "gates": {
+      "opened_through_helper": true,
+      "typed_text_in_chapter_ledger_only": true,
+      "disk_untouched": true
+    }
+  },
+  "app_tests": {
+    "gates": {
+      "exit_code": 0,
+      "required_passed": [
+        "ProjectDocumentsTests/testHelperRouteOpensWithExactSnapshotAndDetaches",
+        "ProjectDocumentsTests/testHelperRouteSavesThroughExportAndFlushesOnSwitch",
+        "ProjectDocumentsTests/testDirectModeSavesNonEntryDocumentsAndRefusesChangedDisk",
+        "DocumentFilesTests/testHelperSaveRefusesExternalChangesUntilOverwriteOrReload",
+        "DocumentFilesTests/testReloadIsReviewedAndPinnedToTheReviewedSnapshot",
+        "DocumentFilesTests/testControllerReloadIsReviewedPinnedAndImportedIntoTheDurableSource",
+        "ShellModelTests/testCrashedWorkerIsRelaunchedWithBoundedBackoff"
+      ]
+    }
+  },
+  "historical": {
+    "gates": {
+      "historical_frames_painted_min": 1
     }
   }
 }

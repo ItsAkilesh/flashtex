@@ -43,6 +43,15 @@ def main():
     cycle = load(os.path.join(rd, "capture-cycle.json"))
     extras = load(os.path.join(rd, "extras.json"), {})
     render_attach = load(os.path.join(rd, "render-attach.json"))
+    windows = {wid: load(os.path.join(rd, "open-window-%s.json" % wid)) for wid in ("a11y-help", "nearby")}
+    relaunch = load(os.path.join(rd, "worker-relaunch.json"))
+    multifile = load(os.path.join(rd, "multifile.json"))
+    app_tests = load(os.path.join(rd, "app-tests.json"))
+    hist_analysis = ""
+    try:
+        hist_analysis = open(os.path.join(rd, "historical", "analysis.txt"), encoding="utf-8").read()
+    except Exception:
+        pass
     exact_export = load(os.path.join(rd, "exact-export.json"))
     steps = []
     try:
@@ -110,7 +119,7 @@ def main():
     tb = th.get("typing_bench", {})
     tg = tb.get("gates", {})
     # (producer, pass directory, file prefix typing-bench/run.sh gives that producer)
-    producers = [("compiler", "typing-bench", "compiler"), ("render", "typing-bench", "render"), ("controller", "typing-bench-controller", "compiler")]
+    producers = [("compiler", "typing-bench", "compiler"), ("render", "typing-bench", "render"), ("controller", "typing-bench", "controller"), ("historical", "typing-bench-historical", "controller")]
     runs = {}  # producer -> cell -> summary (first attempt wins; a retry pass fills cells the first attempt lost)
     retried = {}  # producer -> [cells taken from the retry pass]
     load_before = {}  # pass directory -> {"load_average": "{ 1 5 15 }", ...}
@@ -137,7 +146,13 @@ def main():
         except Exception:
             return None
     max_load = tg.get("latency_gate_max_load_average_1min")
-    present = {"compiler": True, "render": bool(runs["render"]), "controller": bool(runs["controller"]) or os.path.isdir(os.path.join(rd, "typing-bench-controller"))}
+    present = {"compiler": True, "render": bool(runs["render"]), "controller": bool(runs["controller"]), "historical": bool(runs["historical"]) or os.path.isdir(os.path.join(rd, "typing-bench-historical"))}
+
+    def cell_gated(d, pass_gated):
+        # The bench marks a cell load-affected when the 1-minute load before or after it exceeded --load-limit (10).
+        if "load_affected" in d:
+            return not d["load_affected"]
+        return pass_gated
     for prod, sub, prefix in producers:
         sec = "typing-bench/" + prod
         pg = tg.get("producers", {}).get(prod, {})
@@ -145,8 +160,10 @@ def main():
             continue
         l1 = load1(sub)
         latency_gated = not (max_load is not None and l1 is not None and l1 > max_load)
-        if pg.get("per_seed_p50_ms_max") and not latency_gated:
-            gate(sec, "latency gates for this pass: NOT applied (1-minute load average %s > %s before the pass; p50 reported only)" % (l1, max_load), True, load_before[sub].get("uptime", ""))
+        if pg.get("per_seed_p50_ms_max"):
+            affected = [c for c, d in runs[prod].items() if d.get("load_affected")]
+            if affected or not latency_gated:
+                gate(sec, "latency gates NOT applied to load-affected cells (bench --load-limit 10; before-pass 1-minute load %s): %s" % (l1, ", ".join(sorted(affected)) or "pass-level load > %s" % max_load), True, load_before[sub].get("uptime", ""))
         for cell in tg.get("required_cells", []):
             d = runs[prod].get(cell)
             if d is None:
@@ -166,8 +183,8 @@ def main():
                 gate(sec, "%s: producer reported by the app == %s" % (cell, expected_producer), d.get("producer") == expected_producer, d.get("producer"))
             seed = cell.rsplit("-", 1)[0]
             lim = pg.get("per_seed_p50_ms_max", {}).get(seed)
-            if lim is not None and latency_gated:
-                gate(sec, "%s: keystroke->paint p50 <= %s ms" % (cell, lim), k.get("p50_ms") is not None and k["p50_ms"] <= lim, "p50=%s ms; 1-minute load average before the pass %s" % (ms(k.get("p50_ms")), l1))
+            if lim is not None and cell_gated(d, latency_gated):
+                gate(sec, "%s: keystroke->paint p50 <= %s ms" % (cell, lim), k.get("p50_ms") is not None and k["p50_ms"] <= lim, "p50=%s ms; 1-minute load before/after the cell %s/%s" % (ms(k.get("p50_ms")), d.get("load_avg_before"), d.get("load_avg_after")))
     targets = tb.get("targets", {})
 
     # ---------------------------------------------------------- launch check
@@ -224,6 +241,58 @@ def main():
         else:
             for c in exact_export.get("checks", []):
                 gate(sec, c["name"], c["ok"], c.get("detail", ""))
+
+    for wid, rec in windows.items():
+        sec = "open-window/" + wid
+        if rec is None:
+            continue
+        if rec.get("refused"):
+            gate(sec, "window check ran", False, rec.get("reason"))
+            continue
+        for c in rec.get("checks", []):
+            gate(sec, c["name"], c["ok"], c.get("detail", ""))
+    sec = "worker-relaunch"
+    if relaunch is not None:
+        if relaunch.get("refused"):
+            gate(sec, "worker relaunch check ran", False, relaunch.get("reason"))
+        else:
+            for c in relaunch.get("checks", []):
+                gate(sec, c["name"], c["ok"], c.get("detail", ""))
+    sec = "multifile"
+    if multifile is not None:
+        if multifile.get("refused"):
+            gate(sec, "multi-file check ran", False, multifile.get("reason"))
+        else:
+            for c in multifile.get("checks", []):
+                gate(sec, c["name"], c["ok"], c.get("detail", ""))
+    sec = "app-tests"
+    if app_tests is not None:
+        tg2 = th.get("app_tests", {}).get("gates", {})
+        gate(sec, "swift test exit 0 (%d passed, %d failed, %d skipped)" % (app_tests.get("passed", 0), app_tests.get("failed", 0), app_tests.get("skipped", 0)), app_tests.get("exit_code") == 0 and app_tests.get("failed", 1) == 0, json.dumps(app_tests.get("totals")))
+        for name in tg2.get("required_passed", []):
+            c = app_tests.get("cases", {}).get(name)
+            gate(sec, "test %s passed (not skipped)" % name, c is not None and c.get("result") == "passed", (c or {}).get("skip_reason") or "; ".join((c or {}).get("failures", [])) or ("%s s" % (c or {}).get("seconds")))
+    sec = "historical"
+    if present.get("historical"):
+        hg = th.get("historical", {}).get("gates", {})
+        n_hist = sum(1 for l in hist_analysis.splitlines() if l.startswith("| historical |"))
+        gate(sec, "historical classification produced rows for the FLASHTEX_COMPLETED_SNAPSHOTS=1 pass", n_hist >= 1, "%d historical rows, %d baseline rows" % (n_hist, sum(1 for l in hist_analysis.splitlines() if l.startswith("| baseline |"))))
+        if hg.get("historical_frames_painted_min") is not None:
+            blocks, cur, depth = [], [], 0
+            for line in hist_analysis.splitlines():
+                if line.startswith("{"):
+                    cur, depth = [line], 1
+                elif depth:
+                    cur.append(line)
+                    if line.startswith("}"):
+                        try:
+                            blocks.append(json.loads("\n".join(cur)))
+                        except Exception:
+                            pass
+                        depth = 0
+            hist_blocks = [b for b in blocks if b.get("mode") == "historical"]
+            painted = sum(b.get("historical_frames_painted_log", 0) for b in hist_blocks)
+            gate(sec, "historical frames painted (log 'historical: painted') across the historical pass >= %d" % hg["historical_frames_painted_min"], painted >= hg["historical_frames_painted_min"], "painted %d, refused %d over %d cells" % (painted, sum(b.get("historical_frames_refused_log", 0) for b in hist_blocks), len(hist_blocks)))
 
     failed = [g for g in gates if not g[2]]
     verdict = "PASS" if not failed else "FAIL"
@@ -293,7 +362,7 @@ def main():
 
     L.append("## Typing bench: keystroke -> paint")
     L.append("")
-    L.append("Seeds `fixture` / `demo` / `body60k`, 200 typed characters each, at 30 ms (fast typist) and 0 ms (one keystroke per run-loop turn). Producer `flashtex-compiler` = the app's direct worker route with the scratch-built compiler from main; `flashtex-render` = the same direct route with the render-pipeline producer (Latin Modern metrics) from its branch; `flashtex-preview-controller` = the durable helper route (`FLASHTEX_PREVIEW_CONTROLLER`, built from main, owns the ledger and launches the main compiler). Definitions and limitations: `reports/%s/typing-bench*/typing-bench.md` (written by `tools/typing-bench/run.sh`)." % os.path.basename(rd))
+    L.append("Seeds `fixture` / `demo` / `body60k`, 200 typed characters each, at 30 ms (fast typist) and 0 ms (one keystroke per run-loop turn). Producer `flashtex-compiler` = the app's direct worker route with the scratch-built compiler from main; `flashtex-render` = the same direct route with the render-pipeline producer (Latin Modern metrics) from its branch; `flashtex-preview-controller` = the durable helper route (`FLASHTEX_PREVIEW_CONTROLLER`, built from main, owns the ledger and launches the main compiler); the `historical` rows are the same helper route with `FLASHTEX_COMPLETED_SNAPSHOTS=1` (every keystroke its own durable edit, completed older compiles painted labelled). Each cell waited for a quiet machine (bench `--quiet-load`/`--quiet-wait`) and carries the 1-minute load before/after it; a cell above the bench's load limit (10) is reported, not gated. Definitions and limitations: `reports/%s/typing-bench*/typing-bench.md` (written by `tools/typing-bench/run.sh`)." % os.path.basename(rd))
     L.append("")
     for sub in sorted(set(x[1] for x in producers)):
         lb = load_before.get(sub) or {}
@@ -319,9 +388,9 @@ def main():
             tp50 = targets.get("project_typing_to_visible_p50_ms"); tp95 = targets.get("project_typing_to_visible_p95_ms")
             tmet = (k.get("p50_ms") is not None and tp50 is not None and k["p50_ms"] <= tp50) and (k.get("p95_ms") is not None and tp95 is not None and k["p95_ms"] <= tp95)
             L.append("| %s | %s | %s | %s/%s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |" % (
-                d.get("producer", prod), cell + (" (retry)" if d.get("_attempt") == "retry" else ""), d.get("document_bytes_after"), d.get("typed"), d.get("script_keystrokes"), d.get("paints"), d.get("coalesced"), d.get("unpainted"),
+                (d.get("producer", prod) + (" +historical" if prod == "historical" else "")), cell + (" (retry)" if d.get("_attempt") == "retry" else "") + (" load %s/%s" % (d.get("load_avg_before"), d.get("load_avg_after")) if "load_avg_before" in d else ""), d.get("document_bytes_after"), d.get("typed"), d.get("script_keystrokes"), d.get("paints"), d.get("coalesced"), d.get("unpainted"),
                 ms(k.get("p50_ms")), ms(k.get("p95_ms")), ms(k.get("p99_ms")), ms(k.get("max_ms")), ms(c.get("p50_ms")), ms(c.get("p95_ms")), ms(r.get("p50_ms")), ms(r.get("p95_ms")),
-                (lim if gated_pass else "%s (not applied: load %s)" % (lim, l1)) if lim is not None else "— (not gated)", "met" if tmet else "not met"))
+                (lim if cell_gated(d, gated_pass) else "%s (not applied: load %s/%s)" % (lim, d.get("load_avg_before", l1), d.get("load_avg_after", "?"))) if lim is not None else "— (not gated)", "met" if tmet else "not met"))
     L.append("")
     for prod, sub, prefix in producers:
         if runs[prod]:
@@ -414,6 +483,81 @@ def main():
             L.append("- Tool stderr: `%s`" % exact_export["stderr_tail"].strip().replace("\n", " / ").replace("`", "'")[:400])
     else:
         L.append("Not run (no bundled flashtex-pdf-exact).")
+    L.append("")
+    L.append("## Historical previews: helper route, hold-until-preview vs FLASHTEX_COMPLETED_SNAPSHOTS=1")
+    L.append("")
+    if hist_analysis:
+        L.append("Classification by the branch's `docs/evidence/historical-preview-2026-09-12T1010Z/analyze.py` (copied to `reports/%s/historical/`), from each cell's `FLASHTEX_LOG`: a paint is *historical* when the log shows `compile: applied historical revision N` for the revision the bench recorded as `painted_by_revision`, else *current*. `baseline` = the `controller` rows above; `historical` = the `FLASHTEX_COMPLETED_SNAPSHOTS=1` pass. Full output: `reports/%s/historical/analysis.txt`." % (os.path.basename(rd), os.path.basename(rd)))
+        L.append("")
+        for line in hist_analysis.splitlines():
+            if line.startswith("|"):
+                L.append(line)
+    else:
+        L.append("Not run.")
+    L.append("")
+    L.append("## Secondary windows opened headlessly and captured by window id")
+    L.append("")
+    for wid, rec in windows.items():
+        if rec is None:
+            L.append("- `%s`: not run." % wid)
+            continue
+        if rec.get("refused"):
+            L.append("- `%s`: refused (%s)." % (wid, rec.get("reason")))
+            continue
+        sc = rec.get("screenshot") or {}
+        L.append("- `FLASHTEX_OPEN_WINDOW=%s` (expected title %r): windows owned by pid %s after %s s: %s; screenshot `%s` (%s bytes, %sx%s px, screencapture exit %s)." % (
+            wid, rec.get("expected_title"), rec.get("pid"), rec.get("seen_after_s"), json.dumps([(w.get("id"), w.get("name")) for w in rec.get("windows", [])]),
+            os.path.relpath(sc.get("path", ""), rd) if sc.get("path") else "none", sc.get("bytes"), sc.get("width"), sc.get("height"), sc.get("screencapture_exit")))
+        for c in rec.get("checks", []):
+            L.append("  - %s: %s" % ("PASS" if c["ok"] else "FAIL", c["name"]))
+    L.append("")
+    L.append("## Worker crash auto-relaunch (bundled compiler, SIGKILL x4)")
+    L.append("")
+    if relaunch and not relaunch.get("refused"):
+        L.append("The app (pid %s, `FLASHTEX_AUTOATTACH=1 FLASHTEX_NO_ACTIVATE=1`) had its `flashtex-compiler` child killed with SIGKILL four times within one minute; the shell relaunches at most 3 times per minute with 0.2 / 1.0 / 3.0 s backoff, then leaves the exit visible." % relaunch.get("pid"))
+        L.append("")
+        L.append("| kill | killed pid | relaunch scheduled after (s) | relaunched after (s) | new child | recompiled within 5 s | elapsed (s) | limit line after (s) |")
+        L.append("|---:|---:|---:|---:|---|---|---:|---:|")
+        for k in relaunch.get("kills", []):
+            L.append("| %s | %s | %s | %s | %s | %s | %s | %s |" % (k.get("attempt"), k.get("killed_pid"), k.get("scheduled_seen_s", "—"), k.get("relaunched_seen_s", "—"), k.get("new_child", k.get("child_after", "—")), k.get("recompiled_within_5s", "—"), k.get("elapsed_s", "—"), k.get("limit_seen_s", "—")))
+        L.append("")
+        for c in relaunch.get("checks", []):
+            L.append("- %s: %s — %s" % ("PASS" if c["ok"] else "FAIL", c["name"], str(c.get("detail", ""))[:200]))
+        L.append("")
+        L.append("Log excerpt: `%s`" % " / ".join(relaunch.get("log_excerpt", []))[:1200].replace("`", "'"))
+    elif relaunch:
+        L.append("Refused: %s" % relaunch.get("reason"))
+    else:
+        L.append("Not run.")
+    L.append("")
+    L.append("## Multi-file project through the helper (main.tex + \\input{chapter})")
+    L.append("")
+    if multifile and not multifile.get("refused"):
+        L.append("A temp project (`main.tex` with `\\input{chapter}`, `chapter.tex`) opened in the packaged app on the helper route with `FLASHTEX_OPEN_INCLUDES=1 FLASHTEX_ACTIVE_PATH=chapter.tex`; the typing bench typed `%s` into the active editor (`FLASHTEX_TYPING_BENCH_APPEND=1`), the app exited on its own; pid %s, exit %s. Bench: `%s`. Disk sha256 before/after: `%s`. Helper ledger documents: `%s`." % (
+            multifile.get("typed"), multifile.get("pid"), multifile.get("app_exit"), json.dumps(multifile.get("bench")), json.dumps(multifile.get("disk")), json.dumps(multifile.get("ledger_documents"))))
+        L.append("")
+        for c in multifile.get("checks", []):
+            L.append("- %s: %s — %s" % ("PASS" if c["ok"] else "FAIL", c["name"], str(c.get("detail", ""))[:200].replace("|", "/")))
+        L.append("")
+        L.append("Log excerpt: `%s`" % " / ".join(multifile.get("log_excerpt", []))[:1500].replace("`", "'"))
+        L.append("")
+        L.append("Save routing (⌘S to the member, entry untouched), quit-save of dirty members, reviewed reload after an external edit and the on-disk conflict refusal need the Save menu / quit alert / reload sheet, which cannot be driven without Accessibility; they are covered by the branch's XCTests below, run against the real helpers.")
+    elif multifile:
+        L.append("Refused: %s" % multifile.get("reason"))
+    else:
+        L.append("Not run.")
+    L.append("")
+    L.append("## Branch XCTests against the real helpers (save routing, quit-save, reviewed reload, conflict refusal, bounded relaunch)")
+    L.append("")
+    if app_tests:
+        L.append("`swift test --filter 'ProjectDocumentsTests|DocumentFilesTests|HistoricalPreviewTests|ShellModelTests/testCrashedWorkerIsRelaunchedWithBoundedBackoff'` in the pinned app clone with `FLASHTEX_COMPILER`, `FLASHTEX_PREVIEW_CONTROLLER`, `FLASHTEX_PROJECT_FILES`, `FLASHTEX_EDIT_LEDGER`, `FLASHTEX_BRIDGE`, `FLASHTEX_PDF` pointing at the binaries above: exit %s; %s passed, %s failed, %s skipped; totals `%s`." % (app_tests.get("exit_code"), app_tests.get("passed"), app_tests.get("failed"), app_tests.get("skipped"), json.dumps(app_tests.get("totals"))))
+        L.append("")
+        L.append("| test | result | seconds | note |")
+        L.append("|---|---|---:|---|")
+        for name, c in sorted(app_tests.get("cases", {}).items()):
+            L.append("| `%s` | %s | %s | %s |" % (name, c.get("result"), c.get("seconds"), (c.get("skip_reason") or "; ".join(c.get("failures", []))).replace("|", "/")[:200]))
+    else:
+        L.append("Not run.")
     L.append("")
     L.append("## Steps and exact commands")
     L.append("")
