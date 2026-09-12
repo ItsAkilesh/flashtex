@@ -9,16 +9,16 @@
   "branch": "agent/commander-preview-performance/preview-performance",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "11671e5390f676fbd896f23859b8fbea3e276954",
-  "objective": "Extend operation-local typed compile admission to apply_group full and metadata ACKs, separating permanent command receipt from fresh compile admission and preserving null failure semantics",
+  "input_main_sha": "3c6821d526885e8bc4235f21bf73a0e4d91ac49d",
+  "objective": "Prepare isolated exact-base HW1 set-membership command candidate in existing compiler recognition and Symbol export tables; preserve source ranges and deliver patch to unchanged FT002 owner",
   "owned_paths": [
     "crates/preview-controller",
     "crates/edit-ledger"
   ],
-  "revision": 37,
+  "revision": 38,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-048",
   "timebox_minutes": 40,
-  "updated_utc": "2026-09-12T14:57:45.703718+00:00"
+  "updated_utc": "2026-09-12T15:03:27.838395+00:00"
 }

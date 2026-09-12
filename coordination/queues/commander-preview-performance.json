@@ -4,8 +4,8 @@
   "schema_version": 1,
   "steps": [
     {
-      "name": "Extend operation-local typed compile admission to apply_group full and metadata ACKs, separating permanent command receipt from fresh compile admission and preserving null failure semantics",
-      "objective": "Extend operation-local typed compile admission to apply_group full and metadata ACKs, separating permanent command receipt from fresh compile admission and preserving null failure semantics",
+      "name": "Prepare isolated exact-base HW1 set-membership command candidate in existing compiler recognition and Symbol export tables; preserve source ranges and deliver patch to unchanged FT002 owner",
+      "objective": "Prepare isolated exact-base HW1 set-membership command candidate in existing compiler recognition and Symbol export tables; preserve source ranges and deliver patch to unchanged FT002 owner",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"
@@ -19,8 +19,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Verify exact retry at later document revision reports durable command revision separately from newly admitted compile identity",
-      "objective": "Verify exact retry at later document revision reports durable command revision separately from newly admitted compile identity",
+      "name": "Verify Symbol export mapping and incremental clean equality with actual immutable HW1 diagnostic preservation",
+      "objective": "Verify Symbol export mapping and incremental clean equality with actual immutable HW1 diagnostic preservation",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"
@@ -34,8 +34,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Publish group-only additive contract and failure durability tests; undo redo and native activation remain separately scoped",
-      "objective": "Publish group-only additive contract and failure durability tests; undo redo and native activation remain separately scoped",
+      "name": "Publish separate candidate and compatibility with starred heading patch; no authoritative compiler or producer edits and no full PDF parity claim",
+      "objective": "Publish separate candidate and compatibility with starred heading patch; no authoritative compiler or producer edits and no full PDF parity claim",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"
