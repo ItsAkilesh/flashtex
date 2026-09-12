@@ -79,6 +79,8 @@ public enum NearbyCLI {
             case "invalid_image": emit("hint: the Mac could not parse the image as the declared PNG/JPEG; re-export it and send again with a new --capture-id (exit 2)")
             case "revision_mismatch": emit("hint: this capture_id was already accepted at another base_revision; use a new --capture-id for the new revision (exit 2)")
             case "capture_id_conflict": emit("hint: this capture_id was already accepted with different content; use a new --capture-id (exit 2)")
+            case "destination_reselection_required": emit("hint: the Mac's bridge no longer holds the insertion point this capture targets (unpinned, or an edit overlapped it); reselect it on the Mac (Edit > Pin Insertion Point), read the new hello_ack destination and send again with a new --capture-id (exit 2)")
+            case "revision_conflict": emit("hint: the Mac's bridge says base_revision is not the pinned destination's revision; read the current hello_ack destination and send again with a new --capture-id (exit 2)")
             default: emit("hint: the Mac refused this capture as sent; fix the input and send again with a new --capture-id (exit 2)")
             }
             return 2

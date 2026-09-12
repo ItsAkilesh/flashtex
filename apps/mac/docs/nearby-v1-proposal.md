@@ -181,6 +181,21 @@ Error codes used: `bad_request`, `hello_required`, `pair_mismatch`,
 `capture_id_conflict`, `unavailable`. Codes are additive to the ones listed
 before; the nearby `protocol_version` stays 1 (no existing message changed).
 
+Bridge codes passed through verbatim (with a bridge attached; crates/bridge
+`validate`/`capture_anchor`/`receive`), all terminal for the capture as sent:
+`destination_reselection_required` (the pinned target was unpinned, an edit
+overlapped or sat exactly on it, or a restored pin no longer matches the
+capture's durable binding — reselect on the Mac; `hello_ack.destination` and
+`destination` then report `null` until a new pin), `revision_conflict`
+(`base_revision` is not the pin's revision), `capture_id_conflict` (bridge
+journal: same id, different content), `image_too_large`,
+`instructions_too_large`, `invalid_image`, `unsupported_image`, `invalid_id`.
+The reference client's `NearbyWire.captureInputErrorCodes` lists these; a
+client that checks `destination` before sending (`NearbyReconnector`) sees the
+dropped pin as `null` first. The Mac never re-pins on the companion's behalf:
+an edit that overlaps the pin drops the advertised destination (the row shows
+"(invalid)") and the user pins again.
+
 Acknowledgement semantics: `durable: true` may only be reported when the local
 bridge has journaled the capture (transfer-v1 `capture_received`). With a
 bridge attached (`Edit > Attach Capture Bridge`) the Mac forwards the capture
