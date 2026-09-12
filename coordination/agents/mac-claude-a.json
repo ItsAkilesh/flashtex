@@ -16,15 +16,15 @@
     "rust",
     "macos-simulators"
   ],
-  "code_revision": "44e7fb07da3853102a14515b41f32dda39c4dfdd",
+  "code_revision": "4d93a7fa3e012bad7f6ce5127ebb66127d60fcba",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
     "pessimistic": 0
   },
   "machine": "mac-m1max-a",
-  "main_integrated_through": "09031efa9feca80d7a34e29b0b6fc41d43c509c4",
-  "next_action": "Collect mac-validation (FT-010) and demo-sample; await next dispatch; merge main as it advances",
+  "main_integrated_through": "7a1760114a706e8f76f17b957af84921be832340",
+  "next_action": "Merge fontmetrics/app-bundle subagent branches when done; await next dispatch",
   "reviewed_peers": {
     "origin/agent/aarush-macbook/companion-capture": {
       "adaptation": "Peer cannot run xcodebuild; will verify their branch from this Mac. No contract change.",
@@ -42,18 +42,18 @@
       "sha": "25a92a9c591a92a3d49071e536ecf8f129112c24"
     },
     "origin/main": {
-      "adaptation": "Dispatcher advanced FT-003 to rev 3; acknowledged",
-      "reviewed_utc": "2026-09-12T04:34:05Z",
-      "sha": "4d17c62cb5a9cb524fd3a1313690a946ddb340ec"
+      "adaptation": "Main 7a17601: authority.json names orchestrator-sol as Commander; single-leader and recovery-issue rules read; no change to my work",
+      "reviewed_utc": "2026-09-12T04:45:56Z",
+      "sha": "7a1760114a706e8f76f17b957af84921be832340"
     }
   },
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "FT-003 rev 3 complete at 44e7fb0: white-only export (+Rust writer path), diagnostics panel + inline editor underlines with recovery, Unicode click-to-source tested with real compiler; 41/41 tests; xcodebuild OK. mac-pdf FT-009 ready at a0855dd.",
+  "summary": "FT-003 rev 3 ready at 4d93a7f incl. Commander findings: complete-line 16MiB cap, EOF trailing-bytes violation, id+project+revision correlation (44/44 tests w/ real compiler+pdf); children mac-pdf a0855dd, mac-validation b9c06ae ready",
   "tool": "Claude Code",
-  "updated_utc": "2026-09-12T04:36:12Z",
+  "updated_utc": "2026-09-12T04:45:56Z",
   "usage": {
-    "evidence": "Claude Max 20x per user + CMD-006; 6 subagents so far; one Codex exec (Plus) authorized by user; no purchases",
+    "evidence": "Claude Code session on Max 20x (claude PIDs: ); subagents: 8 spawned this session; 1 codex exec (gpt-6-astra, ~35k tokens); quota unknown; no purchases",
     "status": "unknown"
   }
 }
