@@ -72,6 +72,13 @@ final class ShellModel {
     private(set) var workerRelaunchCount = 0
     /// Durable-source helper (`flashtex-preview-controller`), see ShellModel+Controller.swift.
     @ObservationIgnored var controller: PreviewControllerClient?
+    /// Executable of the attached helper, so an abnormal exit can relaunch it
+    /// (same bound and delays as the worker); cleared by an explicit detach.
+    @ObservationIgnored var controllerLaunchURL: URL?
+    @ObservationIgnored var controllerRelaunchTimes: [Date] = []
+    @ObservationIgnored var controllerRelaunchWork: DispatchWorkItem?
+    /// Number of automatic helper relaunches performed so far (status/tests).
+    var controllerRelaunchCount = 0
     @ObservationIgnored var controllerState = ControllerState()
     /// Status of the helper route (attached / ready / durable revision / errors).
     var controllerStatus: String = "no preview controller attached"

@@ -97,6 +97,8 @@ extension ShellModel {
             config.compilerMaxFrameBytes = n
         }
         controllerState = ControllerState()
+        controllerLaunchURL = url
+        controllerRelaunchTimes = [] // an explicit attach starts a fresh relaunch budget
         do {
             controller = try PreviewControllerClient(executable: url, config: config) { [weak self] event in
                 self?.handleController(event)
@@ -112,6 +114,9 @@ extension ShellModel {
     }
 
     func detachController() {
+        controllerRelaunchWork?.cancel()
+        controllerRelaunchWork = nil
+        controllerLaunchURL = nil
         guard let controller else { return }
         controller.close()
         controller.terminate()
@@ -246,6 +251,7 @@ extension ShellModel {
         case .stderr(let text):
             log("controller: " + text.trimmingCharacters(in: .whitespacesAndNewlines))
         case .exited(let code):
+            let wasAttached = controller != nil // an explicit detach already cleared it: never relaunch
             for (_, waiter) in controllerState.awaiting { waiter(.failure(.init(message: "helper exited (\(code))"))) }
             controllerStatus = "helper exited (\(code))"
             workerStatus = "worker exited (\(code))"
@@ -254,7 +260,42 @@ extension ShellModel {
             controllerState = ControllerState()
             inFlightRevision = nil
             historicalInvalidate(reason: "helper exited")
+            if wasAttached { scheduleControllerRelaunch(afterExit: code) }
         }
+    }
+
+    /// An abnormal helper exit relaunches the same executable for the same
+    /// project after a short backoff, at most `maxWorkerRelaunches` times per
+    /// minute (the same policy as the direct worker). The helper reopens its
+    /// ledger, so the durable document comes back through the normal `document`
+    /// reply and the buffer is resubmitted only if it differs from it. A clean
+    /// exit (0) or an explicit detach never relaunches.
+    private func scheduleControllerRelaunch(afterExit code: Int32) {
+        guard code != 0, let url = controllerLaunchURL else { return }
+        let now = Date()
+        controllerRelaunchTimes = controllerRelaunchTimes.filter { now.timeIntervalSince($0) < 60 }
+        guard controllerRelaunchTimes.count < Self.maxWorkerRelaunches else {
+            controllerStatus = "helper exited (\(code)); not relaunched: \(Self.maxWorkerRelaunches) relaunches in the last minute — relaunch FlashTeX to retry"
+            workerStatus = controllerStatus
+            log("controller relaunch limit reached")
+            return
+        }
+        let delay = Self.workerRelaunchDelays[min(controllerRelaunchTimes.count, Self.workerRelaunchDelays.count - 1)]
+        controllerRelaunchTimes.append(now)
+        controllerStatus = String(format: "helper exited (%d); relaunching in %.1f s", code, delay)
+        workerStatus = controllerStatus
+        log("relaunching \(url.lastPathComponent) in \(delay) s (attempt \(controllerRelaunchTimes.count))")
+        let item = DispatchWorkItem { [weak self] in
+            guard let self, self.controller == nil, self.controllerLaunchURL == url else { return }
+            let times = self.controllerRelaunchTimes
+            self.attachController(at: url) // resets the relaunch bookkeeping…
+            self.controllerRelaunchTimes = times // …which must survive so the bound holds
+            self.controllerLaunchURL = url
+            self.controllerRelaunchCount += 1
+            if self.controller != nil { self.log("relaunched \(url.lastPathComponent)") }
+        }
+        controllerRelaunchWork = item
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: item)
     }
 
     /// A `document` or `edit` result: records the durable revision/hash and

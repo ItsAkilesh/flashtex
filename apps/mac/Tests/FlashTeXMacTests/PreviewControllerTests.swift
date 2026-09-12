@@ -107,6 +107,70 @@ final class PreviewControllerTests: XCTestCase {
         model.detachController()
     }
 
+    /// A killed helper (SIGKILL by the pid we launched) is relaunched for the
+    /// same project with bounded backoff; the ledger brings the durable text
+    /// back and a buffer that still matches it is not resubmitted. An explicit
+    /// detach never relaunches.
+    func testKilledHelperIsRelaunchedAndDurableTextSurvives() async throws {
+        guard let helper = Self.helper, FileManager.default.isExecutableFile(atPath: helper.path),
+              ShellModel.locateCompiler() != nil else {
+            throw XCTSkip("set FLASHTEX_PREVIEW_CONTROLLER and FLASHTEX_COMPILER to built binaries")
+        }
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("pc-test-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root.appendingPathComponent("project"), withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let tex = root.appendingPathComponent("project/main.tex")
+        try "\\begin{document}\nHello relaunch.\n\\end{document}\n".write(to: tex, atomically: true, encoding: .utf8)
+        setenv("FLASHTEX_CONTROLLER_LEDGER_ROOT", root.appendingPathComponent("ledger").path, 1)
+        defer { unsetenv("FLASHTEX_CONTROLLER_LEDGER_ROOT") }
+
+        let model = ShellModel()
+        model.autoCompile = true
+        XCTAssertEqual(model.openTex(at: tex), .opened)
+        model.attachController(at: helper)
+        try await waitUntil { model.result?.revision == model.editorRevision && model.inFlightRevision == nil && model.controllerState.durable["main.tex"] != nil }
+        model.updateActiveText("\\begin{document}\nHello relaunch, edited.\n\\end{document}\n")
+        try await waitUntil { model.result?.revision == model.editorRevision && model.inFlightRevision == nil }
+        let durable = try XCTUnwrap(model.controllerState.durable["main.tex"])
+        XCTAssertEqual(durable.revision, 2)
+        let lastResult = model.result
+
+        let pid = try XCTUnwrap(model.controller?.processIdentifier)
+        XCTAssertGreaterThan(pid, 0)
+        XCTAssertEqual(kill(pid, SIGKILL), 0, "kill(\(pid), SIGKILL)")
+        try await waitUntil { model.controllerRelaunchCount == 1 && model.controllerAttached }
+        XCTAssertEqual(model.result, lastResult, "the last preview survives the crash")
+        XCTAssertNotEqual(model.controller?.processIdentifier, pid, "a new helper process")
+        // The reopened ledger reports r2 = the buffer: no resubmission, preview bound again.
+        try await waitUntil { model.controllerState.durable["main.tex"]?.revision == 2 && model.result?.revision == model.editorRevision && model.inFlightRevision == nil }
+        XCTAssertEqual(model.controllerState.textByDurable["main.tex"]?[2], model.activeText)
+        XCTAssertTrue(model.controllerStatus.hasPrefix("ready") || model.controllerStatus.hasPrefix("durable") || model.controllerStatus.hasPrefix("attached"), model.controllerStatus)
+
+        // Typing after the relaunch is durable on the new helper.
+        model.updateActiveText("\\begin{document}\nHello relaunch, edited twice.\n\\end{document}\n")
+        try await waitUntil { model.controllerState.durable["main.tex"]?.revision == 3 && model.result?.revision == model.editorRevision && model.inFlightRevision == nil }
+
+        // Two more kills within the minute use the budget; a fourth abnormal exit is not relaunched.
+        for expected in 2...3 {
+            let p = try XCTUnwrap(model.controller?.processIdentifier)
+            XCTAssertEqual(kill(p, SIGKILL), 0)
+            try await waitUntil { model.controllerRelaunchCount == expected && model.controllerAttached }
+        }
+        let p = try XCTUnwrap(model.controller?.processIdentifier)
+        XCTAssertEqual(kill(p, SIGKILL), 0)
+        try await waitUntil(timeout: 5) { model.controllerStatus.contains("not relaunched") }
+        XCTAssertFalse(model.controllerAttached)
+        XCTAssertEqual(model.controllerRelaunchCount, ShellModel.maxWorkerRelaunches)
+
+        // Explicit attach then detach: no relaunch is pending or performed.
+        model.attachController(at: helper)
+        try await waitUntil { model.controllerState.durable["main.tex"] != nil }
+        model.detachController()
+        try await Task.sleep(nanoseconds: 500_000_000)
+        XCTAssertFalse(model.controllerAttached)
+        XCTAssertEqual(model.controllerRelaunchCount, ShellModel.maxWorkerRelaunches)
+    }
+
     private func waitUntil(timeout: TimeInterval = 15, _ cond: () -> Bool) async throws {
         let start = Date()
         while !cond() {
