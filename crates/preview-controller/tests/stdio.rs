@@ -1795,3 +1795,24 @@ for line in sys.stdin:
         }
     }
 }
+
+#[test]
+fn offline_full_and_metadata_edits_ack_save_without_compile_identity() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut client = Client::start(dir.path());
+    for mode in ["full", "metadata"] {
+        client.send("source", "document", json!({"path":"main.tex"}));
+        let doc = client.reply("source")["payload"]["document"].clone();
+        client.send("save", "edit", json!({"path":"main.tex", "expected_revision":doc["revision"], "expected_sha256":doc["source_sha256"], "text":mode, "response_mode":mode}));
+        let response = client.reply("save");
+        assert_eq!(response["type"], "result");
+        let payload = &response["payload"];
+        assert_eq!(payload.get("compile_request_id"), Some(&Value::Null));
+        assert_eq!(payload.get("compile_revision"), Some(&Value::Null));
+        assert!(payload["preview_error"].is_string());
+        assert_eq!(
+            payload["document"]["revision"].as_u64(),
+            Some(doc["revision"].as_u64().unwrap() + 1)
+        );
+    }
+}

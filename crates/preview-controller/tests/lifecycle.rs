@@ -809,3 +809,72 @@ fn preview_currentness_checks_compile_generation_even_with_matching_id_and_sourc
     assert!(controller.is_current_preview(&current));
     assert!(!controller.is_current_preview(&preview));
 }
+
+#[test]
+fn edit_admission_tracks_queued_supersession_and_failed_admission() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut controller =
+        Controller::open_without_compiler("p".into(), "main.tex".into(), vec![store(dir.path())])
+            .unwrap();
+    let old = controller.document("main.tex").unwrap().clone();
+    let saved = controller
+        .replace_document(
+            "main.tex",
+            old.revision,
+            &old.source_sha256,
+            "saved offline".into(),
+        )
+        .unwrap();
+    assert!(saved.compile_admission.is_none());
+    assert!(saved.preview_error.is_some());
+    let gated = "import json,sys,pathlib,time\nroot=pathlib.Path(__file__).parent\nfor line in sys.stdin:\n r=json.loads(line);p=r['payload'];(root/'started').touch()\n while not (root/'release').exists(): time.sleep(.001)\n print(json.dumps({'protocol_version':1,'type':'compile_result','id':r['id'],'payload':{'project_id':p['project_id'],'revision':p['revision'],'status':'ok','pages':[],'diagnostics':[]}}),flush=True)\n";
+    controller
+        .restart(command(dir.path(), gated), Limits::default())
+        .unwrap();
+    let deadline = Instant::now() + Duration::from_secs(3);
+    while !dir.path().join("started").exists() {
+        assert!(Instant::now() < deadline);
+        thread::sleep(Duration::from_millis(2));
+    }
+    let mut admissions = Vec::new();
+    for text in ["queued first", "queued second"] {
+        let doc = controller.document("main.tex").unwrap().clone();
+        let result = controller
+            .replace_document_metadata("main.tex", doc.revision, &doc.source_sha256, text.into())
+            .unwrap();
+        assert!(result.preview_error.is_none());
+        let admission = result.compile_admission.unwrap();
+        assert_ne!(admission.compile_revision, result.document.revision);
+        admissions.push(admission);
+    }
+    std::fs::write(dir.path().join("release"), "").unwrap();
+    let events = wait(&mut controller, |events| {
+        events.iter().any(
+            |event| matches!(event, Update::Preview(p) if p.request_id == admissions[1].request_id),
+        )
+    });
+    assert!(events.iter().any(|event| matches!(event, Update::Runtime(Event::Superseded {id,by_id}) if id == &admissions[0].request_id && by_id == &admissions[1].request_id)));
+    let limits = Limits {
+        max_frame: 512,
+        ..Limits::default()
+    };
+    controller
+        .restart(command(dir.path(), ECHO), limits)
+        .unwrap();
+    let doc = controller.document("main.tex").unwrap().clone();
+    let rejected = controller
+        .replace_document(
+            "main.tex",
+            doc.revision,
+            &doc.source_sha256,
+            "x".repeat(2048),
+        )
+        .unwrap();
+    assert!(rejected.preview_error.is_some());
+    assert!(rejected.compile_admission.is_none());
+    assert_eq!(
+        controller.document("main.tex").unwrap().text,
+        "x".repeat(2048)
+    );
+    controller.close().unwrap();
+}
