@@ -11,15 +11,15 @@
   "branch": "agent/commander-runtime-display/display-runtime",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "cdcfc63f8dbda433d94c4c49337ae4350ca86464",
-  "objective": "Audit aggregate queued source and encoded request residency across projects under existing admission limits",
+  "input_main_sha": "2bdee9e7d9ec9d7283f75c05bb1bd7f63e30e6d5",
+  "objective": "Inspect and deterministically verify timeout close and joined shutdown when child stops reading admitted request stdin",
   "owned_paths": [
     "crates/document-runtime"
   ],
-  "revision": 13,
+  "revision": 15,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-049",
   "timebox_minutes": 40,
-  "updated_utc": "2026-09-12T12:28:06.742430+00:00"
+  "updated_utc": "2026-09-12T12:34:42.495086+00:00"
 }

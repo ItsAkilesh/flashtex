@@ -9,16 +9,16 @@
   "branch": "agent/commander-preview-performance/preview-performance",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "cdcfc63f8dbda433d94c4c49337ae4350ca86464",
-  "objective": "Extend opt-in metadata acknowledgements to existing undo and redo commands preserving default full responses",
+  "input_main_sha": "39c0e1afffffeb8c930f9b28b9383ec73ad1e486",
+  "objective": "Factor source-free ledger history command status to avoid full document clone for metadata group undo and redo while preserving legacy APIs",
   "owned_paths": [
     "crates/preview-controller",
     "crates/edit-ledger"
   ],
-  "revision": 12,
+  "revision": 13,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-048",
   "timebox_minutes": 40,
-  "updated_utc": "2026-09-12T12:28:06.743631+00:00"
+  "updated_utc": "2026-09-12T12:32:53.479883+00:00"
 }
