@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Template for FlashTeX.app/Contents/Info.plist, instantiated by
+  apps/mac/scripts/make-app.sh. Placeholders (substituted verbatim, no other
+  processing): @VERSION@ (CFBundleShortVersionString), @GIT_SHA@ (short SHA of
+  the app repository; CFBundleVersion). Nothing here is time-dependent, so two
+  builds of the same commit produce a byte-identical Info.plist.
+-->
+<plist version="1.0">
+<dict>
+	<key>CFBundleName</key>
+	<string>FlashTeX</string>
+	<key>CFBundleDisplayName</key>
+	<string>FlashTeX</string>
+	<key>CFBundleIdentifier</key>
+	<string>tech.jay3332.flashtex.mac</string>
+	<key>CFBundleExecutable</key>
+	<string>FlashTeX</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>@VERSION@</string>
+	<key>CFBundleVersion</key>
+	<string>@GIT_SHA@</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>14.0</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSPrincipalClass</key>
+	<string>NSApplication</string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.productivity</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>FlashTeX uses the local network to discover and receive captures from nearby devices.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_flashtex._tcp</string>
+	</array>
+</dict>
+</plist>

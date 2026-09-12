@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Entitlements for FlashTeX.app when signed with a Developer ID identity and
+  the hardened runtime (`make-app.sh - -sign <identity>`; passed to codesign as
+  `- -entitlements` for the app bundle only). The bundled Rust helpers in
+  Contents/MacOS are signed with the hardened runtime and NO entitlements: they
+  are plain, statically linked executables (otool -L lists only /usr/lib and
+  /System frameworks) that read stdin, write stdout/files, and never load
+  plug-ins, JIT, or debug anything.
+
+  The dictionary below is deliberately EMPTY. Every entitlement the hardened
+  runtime or notarization could plausibly call for was checked against what
+  the app actually does (apps/mac/Sources/FlashTeXMac, revision this file was
+  committed with) and rejected:
+
+  * com.apple.security.app-sandbox — not requested. Notarization requires the
+    hardened runtime, not the App Sandbox; the app opens arbitrary user .tex
+    projects, spawns helpers from Contents/MacOS and writes ledgers under
+    ~/Library/Application Support/FlashTeX. Adopting the sandbox is a separate
+    product decision (Mac App Store), not a packaging one.
+
+  * com.apple.security.network.server / .network.client — sandbox-only keys;
+    they have no effect without app-sandbox. The Nearby listener
+    (NearbyListener.swift: NWListener over TLS 1.2 + PSK, Bonjour service
+    _flashtex._tcp, optionally loopback-only) and the loopback TLS companion
+    client need no entitlement under the hardened runtime. What they DO need
+    is Info.plist metadata, which make-app.sh already writes:
+    NSLocalNetworkUsageDescription (otherwise macOS 14+ silently denies the
+    local-network prompt) and NSBonjourServices listing _flashtex._tcp.
+
+  * com.apple.security.cs.disable-library-validation — not needed. The app
+    links only system frameworks and the Swift runtime shipped with macOS 14;
+    it loads no third-party dylibs, bundles, or plug-ins (no dlopen /
+    Bundle(path:) in the sources). The helpers are separate processes, started
+    with Foundation.Process; spawning a child never requires this key.
+
+  * com.apple.security.cs.allow-unsigned-executable-memory,
+    com.apple.security.cs.allow-jit — no JIT, no writable+executable pages.
+
+  * com.apple.security.cs.allow-dyld-environment-variables — the app reads
+    FLASHTEX_* environment variables (FLASHTEX_LOG, FLASHTEX_AUTOATTACH,
+    FLASHTEX_NO_ACTIVATE, helper overrides); those are ordinary variables, not
+    DYLD_*. Nothing injects libraries into the app or the helpers.
+
+  * com.apple.security.cs.debugger, com.apple.security.get-task-allow — the
+    app debugs nothing, and get-task-allow makes notarization reject the
+    submission; debugging a signed build is done with an ad-hoc build instead.
+
+  * com.apple.security.automation.apple-events — the app sends no Apple
+    Events (no NSAppleScript / NSAppleEventDescriptor in the sources). It only
+    RECEIVES the standard quit event from launch-check.sh / the user, which
+    needs nothing on the receiving side.
+
+  * com.apple.security.device.camera / .audio-input, personal-information.*,
+    files.user-selected.* , files.bookmarks.* — no camera, microphone,
+    contacts, calendar, photos or location use; file access outside a sandbox
+    is ordinary POSIX access.
+
+  If a future change needs one of these (for example the Nearby transport
+  moving into an XPC service, or a plug-in loader), add the key here with the
+  reason next to it, and re-run `make-app.sh - -sign` so the new entitlement is
+  visible in `codesign -d - -entitlements -` output.
+-->
+<plist version="1.0">
+<dict/>
+</plist>
