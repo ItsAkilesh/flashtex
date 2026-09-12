@@ -2,6 +2,10 @@
 
 Updated 2026-09-12T11:06:33.760495+00:00, baseline main 2d68926cf1cb7c311b633ff05724eeee2d278ac1. Historical detail remains in Git and committed evidence; this file records current handoff state.
 
+## Witness disk-quota recovery
+
+At11:19:46Z the old witness PID752107 terminated with OSError122 while writing its local observation; transient unit was collected. Dispatcher1099831 and exact Commander268514 remained live, no witness publication journal existed, and authority was unchanged. After scoped worker-owned cache cleanup, a one-shot observation succeeded and correctly blocked takeover. Restored witness is active PID1405586, fresh11:21:45Z observation, no journal blockers and claim_authorized=false. No dispatcher or Commander restart occurred. The write-error resilience fix and15 tests are committed here, but the already-running restored interpreter predates that fix; it takes effect on a future legitimate launch, no needless live-service restart. Remote quota-terminal hook remains unverified.
+
 ## Latest verified checkpoint (supersedes older pending lists below)
 
 Main e4c9252d integrates runtime b9240b0 and helper ccd474f4, including c47139ff observable-condition sibling test repair. Original parallel short-wall-deadline failures are retained; repaired default-parallel runtime, serial runtime, full real-compiler helper suite and strict lints pass. Full-size optional-output refusal/stall recovery passed. Main0aac2b7f integrates font5c89501 and rendering4ca51d94 with combined font/render suites+lints, actual pinned PFB and Python gates. Helper candidate adapter accepts real producer/runtime/helper fixtures without metadata repair; native mode stays OFF.
