@@ -35,8 +35,15 @@ final class ShellModel: ObservableObject {
     @Published var reviewing: RuntimeV1.CaptureProposal?
     @Published var pendingEdit: PendingEdit?
     @Published var captureNote: String?
-    private(set) var appliedCaptureIDs: Set<String> = []
-    private var nextAnchorNumber = 1
+    var appliedCaptureIDs: Set<String> = []
+    var nextAnchorNumber = 1
+    /// UTF-16 length of the editor selection starting at `caretUTF16` (0 = caret only).
+    @Published var caretLengthUTF16: Int = 0
+    // Capture bridge (contract: transfer-v1). See ShellModel+Bridge.swift.
+    @Published var bridgeStatus: String = "no bridge attached"
+    @Published var bridgeCaptures: [BridgeSession.Capture] = []
+    @Published var bridgeDestination: TransferV1.Anchor?
+    private(set) var bridge: BridgeSession?
     @Published var workerStatus: String = "no worker attached"
     @Published var workerLog: [String] = []
     private var worker: WorkerClient?
@@ -59,6 +66,24 @@ final class ShellModel: ObservableObject {
     @Published private(set) var editorRevision = 1
 
     enum PreviewSource: Equatable { case none, fixture, worker(String) }
+
+    /// Project ID used for compile requests and the bridge (`demo` until a
+    /// result names one). Bridge IDs must be 1–128 `[A-Za-z0-9_-]`.
+    var projectId: String { result?.projectId ?? "demo" }
+
+    func setBridge(_ session: BridgeSession?) {
+        bridge?.terminate()
+        bridge = session
+        bridgeDestination = nil
+        bridgeCaptures = session?.captures ?? []
+        bridgeStatus = session?.status ?? "no bridge attached"
+    }
+
+    /// Restart reconciliation may need the editor revision to pass a revision
+    /// the bridge already confirmed; revisions only ever advance.
+    func advanceEditorRevision(atLeast revision: Int) {
+        if revision > editorRevision { editorRevision = revision }
+    }
 
     var isFixture: Bool { previewSource == .fixture }
     var previewIsStale: Bool { (result?.revision ?? editorRevision) != editorRevision }
@@ -115,6 +140,13 @@ final class ShellModel: ObservableObject {
                Self.locateCompiler() != nil {
                 attachDiscoveredWorker()
                 compile()
+            }
+            let bundledBridge = Bundle.main.executableURL?.deletingLastPathComponent()
+                .appendingPathComponent("flashtex-bridge").path
+            let hasBundledBridge = bundledBridge.map { FileManager.default.isExecutableFile(atPath: $0) } ?? false
+            if env["FLASHTEX_AUTOATTACH"] != "0", (env["FLASHTEX_AUTOATTACH"] == "1" || hasBundledBridge),
+               BridgeClient.locateBridge() != nil {
+                attachDiscoveredBridge()
             }
         }
         if let fixtures = Self.locateFixturesDirectory() {
@@ -197,14 +229,17 @@ final class ShellModel: ObservableObject {
         selection = nil
         anchor = nil
         editorRevision += 1
+        bridgeDocumentReplaced()
     }
 
     func updateActiveText(_ text: String) {
         guard let i = documents.firstIndex(where: { $0.path == activePath }) else { return }
         guard documents[i].text != text else { return }
+        let old = documents[i].text, base = editorRevision
         documents[i].text = text
         editorRevision += 1
         scheduleAutoCompile()
+        bridgeTextChanged(path: activePath, old: old, new: text, base: base, revision: editorRevision)
     }
 
     private func scheduleAutoCompile() {
@@ -430,6 +465,7 @@ final class ShellModel: ObservableObject {
         nextAnchorNumber += 1
         self.anchor = anchor
         captureNote = "Pinned \(anchor.id) at \(anchor.path) byte \(anchor.byteOffset) (revision \(anchor.revision))."
+        bridgePin(anchor)
     }
 
     func openProposalPanel() {
@@ -467,16 +503,23 @@ final class ShellModel: ObservableObject {
         proposals.removeAll { $0.captureId == proposal.captureId }
         if reviewing?.captureId == proposal.captureId { reviewing = proposals.first }
         captureNote = "Rejected \(proposal.captureId)."
+        bridgeReject(captureId: proposal.captureId)
     }
 
-    enum ApproveOutcome: Equatable { case inserted(byteOffset: Int), needsReselection(String), duplicate, noAnchor }
+    enum ApproveOutcome: Equatable { case inserted(byteOffset: Int), needsReselection(String), duplicate, noAnchor, refused(String) }
 
     /// Applies one undoable edit after explicit approval. `latex` may have been
     /// edited by the reviewer. Returns what happened so the UI can explain it.
+    /// Bridge captures go through `approveBridgeProposal` (prepared edits are
+    /// verified against the bridge), never through this local path.
     @discardableResult
     func approveProposal(_ proposal: RuntimeV1.CaptureProposal, latex: String) -> ApproveOutcome {
         guard !appliedCaptureIDs.contains(proposal.captureId) else {
             rejectProposal(proposal); captureNote = "Capture \(proposal.captureId) already inserted."; return .duplicate
+        }
+        guard !isBridgeCapture(proposal.captureId) else {
+            captureNote = "Capture \(proposal.captureId) belongs to the bridge; approve it through the bridge review."
+            return .refused("bridge capture")
         }
         guard let anchor else {
             captureNote = "Pin an insertion point first (Edit > Pin Insertion Point)."; return .noAnchor

@@ -108,6 +108,77 @@ result. Launch with `open apps/mac/build/FlashTeX.app` or pass `--open`.
   PDF: no fonts beyond Times, no images/lines, no links or metadata. The dark
   toggle only changes page/text colors. Disabled when no result is loaded.
 
+## Capture bridge (transfer-v1)
+
+Built against the FT-007 bridge at commit **b5ca96b** on
+`agent/commander/capture-bridge` (`crates/bridge`, `docs/contracts/transfer-v1.md`),
+an unmerged dependency at the time of writing; no contract changes were made.
+The Mac owns UI review, the document transaction and the bridge lifecycle.
+
+`Edit > Attach Capture Bridge` launches `flashtex-bridge --store <dir>`
+(`$FLASHTEX_BRIDGE`, a bridge bundled next to the executable, or
+`crates/bridge/target/{release,debug}/flashtex-bridge`; the store is
+`$FLASHTEX_BRIDGE_STORE` or `~/Library/Application Support/FlashTeX/captures`).
+`FLASHTEX_AUTOATTACH=1` or a bundled bridge attaches at launch. The bridge line
+under the editor shows attached/error status (error codes as plain text), the
+pinned bridge destination, and the latest capture's state.
+
+What works offline (no key, no network — verified with `RealBridgeTests`):
+
+- On attach the shell first reconciles its edit ledger with `capture_status`
+  (below), then sends `document_open` for the active document at the current
+  editor revision. Every later edit is sent as one `document_edit` (byte range
+  + replacement, derived from the common prefix/suffix of old and new text and
+  widened to UTF-8 scalar boundaries); a refused edit triggers a `document_open`
+  resynchronization. `File > Open` re-opens the new document.
+- `Pin Insertion Point` (⌘⇧P) also sends `destination_pin` for the caret (or
+  selection) byte range and stores the returned anchor with its immutable
+  binding. The local context anchor remains for offline review.
+- `Edit > Submit Sample Capture…` (⌘⇧U) sends `capture_submit` for a chosen
+  PNG/JPEG (base64) with the pinned `destination_id` and `base_revision` =
+  the anchor's pinned revision. `capture_received {durable:true}` is shown;
+  identical retries return the same record, a different payload under the same
+  ID is `capture_id_conflict`, a non-decodable image is `invalid_image`.
+- `Edit > Convert Capture` (⌘⇧G) sends `capture_convert {capture_id,
+  supported_features: []}`. Without `--enable-grok` the bridge answers
+  `provider_disabled` (with it but no key, `provider_auth_missing`); both are
+  shown as text and never prompt for a key. A `capture_proposal` (with
+  `context_revision`) is queued in the existing review sheet.
+- Approving a bridge proposal sends `capture_prepare_insert {capture_id,
+  expected_revision: editorRevision, approved: true}` and verifies the returned
+  `capture_edit`: project/path, `expected_revision == editorRevision`, SHA-256 of
+  the current UTF-8 buffer == `document_before_sha256` (CryptoKit), scalar-aligned
+  `start_byte..end_byte`, and `removed_text` equal to those bytes. Only then is
+  the edit applied as one undoable editor edit (`pendingEdit`), recorded in the
+  ledger (`<store>/mac/edit-ledger.json`, prepared → applied → confirmed), and
+  confirmed with `capture_applied {capture_id, edit_id, new_revision}` — no
+  `document_edit` is sent for that change. The same `edit_id` is never applied
+  twice. Reviewer-edited LaTeX is refused (the contract has no field for it).
+  `Reject` sends `capture_reject`.
+- Restart reconciliation: for each ledger entry not yet confirmed, the shell
+  queries `capture_status` before opening the current document. A receipt the
+  bridge already holds is marked confirmed; an applied-but-unconfirmed edit is
+  replayed by reopening the pre-edit snapshot and resending `capture_applied`,
+  then the live source is resynchronized; a prepared-but-unapplied edit is
+  re-offered only if the buffer still hashes to `document_before_sha256`,
+  otherwise it is abandoned and reselection (new destination + capture ID) is
+  required. Nothing is ever reapplied to a changed document.
+
+Not implemented here: the Mac credential adapter that would run the bridge with
+`--enable-grok` and supply the authorized `XAI_API_KEY` (so no real conversion
+happens from this shell), the companion network transport (captures come from
+a file picker), and compiler validation of proposals before review. The
+document store is the in-memory buffer, so the ledger is transactional with
+respect to the shell's own edit application, not with respect to `File > Save`.
+
+`Tests/FlashTeXMacTests/Fixtures/fake_bridge.py` is a stdlib-Python test double
+of the bridge (in-memory journal, deterministic `\fakecapture{<id>}` proposal);
+`RealBridgeTests` runs only when `FLASHTEX_BRIDGE` points at a built binary and
+uses a temporary `--store`. Note: the 1×1 PNG in main's
+`protocol/fixtures/capture-submission.json` is rejected by the bridge's decoder
+(`invalid_image`); the bridge branch (ba89c9a) replaced it, and the real-bridge
+test carries that decodable image inline.
+
 ## Samples
 
 `Samples/multipage-result.json` + `multipage-request.json` (⌘O on the result):
@@ -167,6 +238,8 @@ reproducible until runtime-v1 carries a font field; the preview draws Times-Roma
 | ⌘⌥E | Export PDF via Rust writer… (`flashtex-pdf --verify`, always white) |
 | ⌘⇧P | Pin insertion point at caret (capture destination anchor) |
 | ⌘⇧I | Open capture proposal… (review sheet; ⏎ approves, inserts one undoable edit) |
+| ⌘⇧U | Submit sample capture… (PNG/JPEG → `capture_submit` through the attached bridge) |
+| ⌘⇧G | Convert capture (`capture_convert` for the latest received capture) |
 | ⌘Z | Undo (including an approved capture insertion) |
 | Click preview text | Select its source (UTF-8 span → UTF-16; refused if edited since compile) |
 
@@ -175,9 +248,23 @@ banner shows; the shell rejects response lines over 16 MiB.
 
 ## Targets
 
-- `FlashTeXProtocol` — Codable models for runtime v1 and byte-offset conversion.
-- `FlashTeXMac` — the app.
-- Tests (44): oversized complete line, trailing bytes at EOF, unsolicited/mismatched result correlation; inline diagnostic marks (byte→UTF-16, rebase/drop, path filter,
+- `FlashTeXProtocol` — Codable models for runtime v1 (`RuntimeV1`) and the
+  capture bridge (`TransferV1`), byte-offset conversion, changed-region diffing.
+- `FlashTeXMac` — the app. `BridgeClient` (JSON Lines transport, id-correlated
+  replies, 12 MiB line limit), `BridgeSession` (bridge-side document shadow,
+  destination, captures, edit ledger, reconciliation), `ShellModel+Bridge`.
+- Tests (59, of which `RealCompilerTests`, `RustPDFExportTests` and
+  `RealBridgeTests` are gated on `FLASHTEX_COMPILER`, `FLASHTEX_PDF` and
+  `FLASHTEX_BRIDGE`): bridge transport round trip of every transfer-v1 request
+  type incl. error envelopes, garbage/oversized/trailing lines and oversized
+  requests; ledger persistence; shell ↔ fake bridge flow (open → edit → pin →
+  submit → received → convert → review → prepare → verify → apply once →
+  `capture_applied`, duplicate approval no-op, edited-LaTeX refusal, buffer
+  changed between prepare and apply → reselection, provider error as text,
+  reject forwarded, restart reconciliation replaying a missing receipt and
+  abandoning prepared edits on a changed buffer); real bridge (durable receipt,
+  duplicate/conflict, `invalid_image`, `provider_disabled`, `proposal_missing`,
+  reject, `capture_missing`); plus the earlier: oversized complete line, trailing bytes at EOF, unsolicited/mismatched result correlation; inline diagnostic marks (byte→UTF-16, rebase/drop, path filter,
   sample slice, temporary-attribute-only); Rust-writer export (gated on
   `FLASHTEX_PDF`), missing-binary error; source mapping (shift/refuse/multi-byte/expected-text), stale
   navigation refusal and rebase, auto-compile debounce/coalescing, latency; PDF export (fixture → 612×792 page containing the item text,
