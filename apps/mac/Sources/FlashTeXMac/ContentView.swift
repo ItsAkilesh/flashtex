@@ -259,10 +259,12 @@ private struct PreviewPane: View {
             if model.previewV2 {
                 PreviewV2Pane() // experimental v2 path (PreviewV2View.swift); v1 below stays the default
             } else if let result = model.result {
-                PreviewView(result: result, dark: model.darkPreview, caretItems: model.caretItems) { source, text in
+                PreviewView(result: result, dark: model.darkPreview, caretItems: model.caretItems,
+                            zoom: model.previewZoom, onFitScale: { model.previewFitScale = $0 }) { source, text in
                     guard let source else { model.navigationNote = "This item has no source mapping."; return }
                     model.navigate(to: source, expectedText: text)
                 }
+                .modifier(PreviewMagnify()) // pinch to zoom (PreviewZoom.swift)
             } else {
                 ContentUnavailableView {
                     Label("No preview yet", systemImage: "doc.richtext")
@@ -329,6 +331,7 @@ private struct PreviewHeader: View {
                 Text("Preview").font(.caption.bold()).foregroundStyle(.secondary)
             }
             Spacer()
+            PreviewZoomControl() // PreviewZoom.swift: percentage and −/+
             ForEach(model.capabilityNotes, id: \.self) { note in
                 Image(systemName: "exclamationmark.circle").foregroundStyle(.orange).help(note)
                     .accessibilityLabel(note)

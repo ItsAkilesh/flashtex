@@ -13,6 +13,7 @@ public enum AccessibilityCommand: String, CaseIterable, Equatable {
     case restoreDiscardedBuffer
     case undo
     case commandPalette, toggleProblems
+    case zoomIn, zoomOut, actualSize, fitWidth, increaseEditorFontSize, decreaseEditorFontSize, resetEditorFontSize
     case completion, completionList
     case goToMatching, nextDiagnostic, previousDiagnostic, nextOccurrence, previousOccurrence, copyDiagnosticsAsText, revealCaretInPreview
     case selectPreviewItemSource
@@ -134,6 +135,34 @@ public enum AccessibilityCommand: String, CaseIterable, Equatable {
             return Entry(command: self, title: "Toggle Problems panel", shortcuts: ["⌘⇧M"], menu: "View",
                          description: "Shows or hides the Problems panel under the editor and preview: the grouped diagnostics list with a severity filter, jump, explanation lines and Fix…; the sidebar's Problems rows and the status bar counts open it too.",
                          menuItem: "Toggle Problems")
+        case .zoomIn:
+            return Entry(command: self, title: "Zoom in preview", shortcuts: ["⌘="], menu: "View",
+                         description: "Enlarges the preview by 25 % over its fit-to-width scale (up to 400 %); pages wider than the pane scroll horizontally. Pinching on the preview and the header's + button do the same.",
+                         menuItem: "Zoom In")
+        case .zoomOut:
+            return Entry(command: self, title: "Zoom out preview", shortcuts: ["⌘-"], menu: "View",
+                         description: "Shrinks the preview by 25 % (down to 25 % of fit-to-width); the header's − button does the same.",
+                         menuItem: "Zoom Out")
+        case .actualSize:
+            return Entry(command: self, title: "Actual size preview", shortcuts: ["⌘0"], menu: "View",
+                         description: "Sets the preview zoom so one PDF point is one screen point (100 %), whatever the pane width.",
+                         menuItem: "Actual Size")
+        case .fitWidth:
+            return Entry(command: self, title: "Fit width preview", shortcuts: ["⌘9"], menu: "View",
+                         description: "Resets the preview zoom to 1x so the widest page fits the pane width (the default); double-clicking the header percentage does the same.",
+                         menuItem: "Fit Width")
+        case .increaseEditorFontSize:
+            return Entry(command: self, title: "Increase editor font size", shortcuts: ["⌘⌥="], menu: "View",
+                         description: "Grows the editor font by 1 pt (up to 36 pt); the gutter and highlighting follow. The size is the Settings font-size preference, so it persists. Pinching over the editor does the same.",
+                         menuItem: "Increase Editor Font Size")
+        case .decreaseEditorFontSize:
+            return Entry(command: self, title: "Decrease editor font size", shortcuts: ["⌘⌥-"], menu: "View",
+                         description: "Shrinks the editor font by 1 pt (down to 8 pt); the gutter and highlighting follow and the preference persists.",
+                         menuItem: "Decrease Editor Font Size")
+        case .resetEditorFontSize:
+            return Entry(command: self, title: "Reset editor font size", shortcuts: ["⌘⌥0"], menu: "View",
+                         description: "Restores the editor font to the default 13 pt (the Settings font-size preference).",
+                         menuItem: "Reset Editor Font Size")
         case .completion:
             return Entry(command: self, title: "Completion popup", shortcuts: ["Esc", "⌃Space"], menu: "Editor",
                          description: "Lists supported commands, \\end{…} for open environments, labels, citation keys and document words for the token at the caret; the list never takes the keyboard from the editor.")

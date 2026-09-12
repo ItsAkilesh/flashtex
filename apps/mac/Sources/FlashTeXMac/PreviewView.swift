@@ -13,6 +13,10 @@ struct PreviewView: View {
     let dark: Bool
     /// Items under the editor caret, `page number -> item indices` (see `CaretSync`).
     var caretItems: [Int: Set<Int>] = [:]
+    /// Zoom multiplier over the fit-to-width scale (PreviewZoom.swift).
+    var zoom: CGFloat = 1
+    /// Reports the fit-to-width scale so the shell can compute Actual Size / the percentage.
+    var onFitScale: ((CGFloat) -> Void)? = nil
     let onSelect: (RuntimeV1.SourceRange?, String?) -> Void
 
     /// First page holding a caret item, or nil; drives page-level auto-scroll.
@@ -23,8 +27,9 @@ struct PreviewView: View {
         GeometryReader { geo in
         ScrollViewReader { proxy in
             let widest = result.pages.map(\.widthPt).max() ?? 612
-            // Fit the widest page to the pane (never upscale past 100%).
-            let scale = min(1, max(0.2, (geo.size.width - 48) / widest))
+            // Fit the widest page to the pane (never upscale past 100%), times the zoom.
+            let fit = min(1, max(0.2, (geo.size.width - 48) / widest))
+            let scale = PreviewZoom.scale(fit: fit, zoom: zoom)
             // Scroll anchoring (PreviewAnchor.swift): the (page, fraction) under the
             // viewport's top edge survives a result with another page count and a
             // pane resize; a result with the same page geometry never moves the scroll.
@@ -46,6 +51,7 @@ struct PreviewView: View {
                 .padding(24)
                 .background(PreviewAnchorKeeper(layout: layout))
             }
+            .onChange(of: fit, initial: true) { _, f in onFitScale?(f) }
             .onChange(of: caretPage) { _, page in
                 // Page-level only: keeps the page under the caret in view when the
                 // editor moves across pages; no scrolling within a page.
