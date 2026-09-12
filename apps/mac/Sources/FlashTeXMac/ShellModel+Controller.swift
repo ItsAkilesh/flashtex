@@ -1,0 +1,315 @@
+import AppKit
+import FlashTeXProtocol
+
+/// The durable helper route: `flashtex-preview-controller` owns the edit
+/// ledger, the lexical index and the original compiler (crates/preview-
+/// controller, STDIO.md). The shell keeps its in-memory buffer authoritative
+/// for typing; every edit is submitted as `edit {expected_revision,
+/// expected_sha256, text}` (one in flight, newest buffer coalesced), the
+/// helper answers with the durable document, and previews arrive as
+/// asynchronous `update {kind: preview, source_versions, result}` frames that
+/// are mapped back to the editor revision they were compiled from and
+/// refused when a newer edit was already submitted.
+///
+/// Measured cost of this route (M1 Max, demo.tex): edit → durable result
+/// 11–16 ms (fsync), edit → preview update 20–30 ms, versus 2 ms for the
+/// direct worker; see tools/typing-bench for the native keystroke → paint
+/// numbers of each route.
+struct ControllerState {
+    /// Durable revision and SHA-256 per document path, from the last `document`/`edit` result.
+    var durable: [String: (revision: Int, sha256: String)] = [:]
+    /// Editor revision that produced each durable revision (per path).
+    var editorRevisionByDurable: [String: [Int: Int]] = [:]
+    /// Text per durable revision (per path), for stale-diagnostic rebasing;
+    /// pruned to the last few revisions.
+    var textByDurable: [String: [Int: String]] = [:]
+    /// The edit in flight, if any. It stays in flight until the PREVIEW for its
+    /// durable revision arrived (not merely the durable receipt): the helper
+    /// publishes only previews matching its current source, so submitting a
+    /// newer edit while one is compiling discards that preview — under
+    /// continuous typing nothing would ever paint (measured: 1.3 s gaps).
+    var inFlight: (id: String, path: String, editorRevision: Int, sentAt: Date, text: String, durableRevision: Int?)?
+    /// Newest buffer changed while an edit was in flight.
+    var queued = false
+    var ready = false
+    var compilerError: String?
+    var lastPreviewRequestID: String?
+}
+
+extension ShellModel {
+    // MARK: attach / detach
+
+    /// Where the helper's private ledgers live: `FLASHTEX_CONTROLLER_LEDGER_ROOT`
+    /// or Application Support/FlashTeX/ledgers/<project root hash>.
+    static func controllerLedgerRoot(for projectRoot: URL) -> URL {
+        if let env = ProcessInfo.processInfo.environment["FLASHTEX_CONTROLLER_LEDGER_ROOT"], !env.isEmpty {
+            return URL(fileURLWithPath: env)
+        }
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? FileManager.default.temporaryDirectory
+        let key = SourceDigest.sha256Hex(projectRoot.standardizedFileURL.path).prefix(16)
+        return base.appendingPathComponent("FlashTeX/ledgers/\(key)")
+    }
+
+    /// Attaches the helper for the current project. A saved document's
+    /// directory is the rooted project; an unsaved buffer is written to a
+    /// session temporary project so the helper can import it.
+    func attachController(at url: URL) {
+        detachWorker()
+        detachController()
+        let projectRoot: URL
+        let entryPath: String
+        if let documentURL, documentURL.lastPathComponent == activePath {
+            // The helper names documents by their rooted path; the project's
+            // paths and the editor's must agree (a seeded buffer whose file name
+            // differs from the entry path uses a session project instead).
+            projectRoot = documentURL.deletingLastPathComponent()
+            entryPath = documentURL.lastPathComponent
+        } else {
+            projectRoot = FileManager.default.temporaryDirectory.appendingPathComponent("flashtex-project-\(UUID().uuidString)")
+            try? FileManager.default.createDirectory(at: projectRoot, withIntermediateDirectories: true)
+            entryPath = activePath
+            try? activeText.write(to: projectRoot.appendingPathComponent(entryPath), atomically: true, encoding: .utf8)
+        }
+        let ledgerRoot = Self.controllerLedgerRoot(for: projectRoot)
+        try? FileManager.default.createDirectory(at: ledgerRoot, withIntermediateDirectories: true)
+        var config = PreviewControllerClient.Config(sessionID: "mac-\(UUID().uuidString)", projectID: projectId,
+                                                    entryPath: entryPath, projectRoot: projectRoot,
+                                                    privateLedgerRoot: ledgerRoot, compilerPath: Self.locateCompiler())
+        if let s = ProcessInfo.processInfo.environment["FLASHTEX_CONTROLLER_MAX_FRAME_BYTES"], let n = Int(s) {
+            config.compilerMaxFrameBytes = n
+        }
+        controllerState = ControllerState()
+        do {
+            controller = try PreviewControllerClient(executable: url, config: config) { [weak self] event in
+                self?.handleController(event)
+            }
+            controllerStatus = "attached: \(url.lastPathComponent) (waiting for ready)"
+            workerStatus = "attached: \(url.lastPathComponent)"
+            PreviewFonts.producerFace = PreviewFonts.face(forProducer: config.compilerPath?.lastPathComponent)
+            log("launched \(url.path) for \(projectRoot.path) (ledger \(ledgerRoot.path))")
+        } catch {
+            controllerStatus = "launch failed: \(error.localizedDescription)"
+            workerStatus = controllerStatus
+        }
+    }
+
+    func detachController() {
+        guard let controller else { return }
+        controller.close()
+        controller.terminate()
+        self.controller = nil
+        controllerState = ControllerState()
+        inFlightRevision = nil
+        controllerStatus = "no preview controller attached"
+        if previewSource != .fixture { workerStatus = "no worker attached" }
+    }
+
+    // MARK: edits
+
+    /// Submits the active buffer as one durable edit (newest buffer coalesced
+    /// behind the edit in flight). Never blocks; the reply carries the durable
+    /// revision and, separately, any preview error.
+    func controllerSubmitEdit() {
+        guard let controller, controller.isRunning, controllerState.ready else { return }
+        if controllerState.inFlight != nil { controllerState.queued = true; return }
+        guard let durable = controllerState.durable[activePath] else { return }
+        let text = activeText
+        if let last = controllerState.textByDurable[activePath]?[durable.revision], last.sameBytes(as: text) {
+            return // buffer already durable at this revision
+        }
+        do {
+            if TypingBench.isBenchActive { FlashTeXLog.write("compile: sending revision \(editorRevision) at \(MonotonicClock.nowNs())") }
+            let id = try controller.edit(path: activePath, expectedRevision: durable.revision,
+                                         expectedSHA256: durable.sha256, text: text)
+            controllerState.inFlight = (id, activePath, editorRevision, Date(), text, nil)
+            controllerState.queued = false
+            inFlightRevision = editorRevision
+        } catch {
+            controllerStatus = "edit failed to send: \(error.localizedDescription)"
+            log(controllerStatus)
+        }
+    }
+
+    /// Explicit compile (⌘B): submits pending text first, else asks for a compile.
+    func controllerCompile() {
+        guard let controller, controller.isRunning, controllerState.ready else { return }
+        if let durable = controllerState.durable[activePath],
+           !(controllerState.textByDurable[activePath]?[durable.revision]?.sameBytes(as: activeText) ?? false) {
+            controllerSubmitEdit()
+            return
+        }
+        _ = try? controller.compile()
+    }
+
+    // MARK: events
+
+    func handleController(_ event: PreviewControllerClient.Event) {
+        guard let controller else { return }
+        switch event {
+        case .ready(let compilerError, let maxFrame, let maxOut):
+            controllerState.ready = true
+            controllerState.compilerError = compilerError
+            controllerStatus = "ready: compiler frames ≤ \(maxFrame / 1024 / 1024) MiB, helper output ≤ \(maxOut / 1024 / 1024) MiB"
+                + (compilerError.map { "; compiler unavailable: \($0)" } ?? "")
+            log("controller " + controllerStatus)
+            // Opt into the negotiated primitives the preview draws, then learn
+            // the durable document so edits can name the revision they expect.
+            if !requestedLayoutCapabilities.isEmpty {
+                _ = try? controller.configureLayout(capabilities: requestedLayoutCapabilities)
+            }
+            _ = try? controller.document(path: activePath)
+        case .result(let id, let payload):
+            if let doc = payload["document"] as? [String: Any] {
+                applyDurableDocument(doc, requestID: id, payload: payload)
+            } else if payload["submitted"] != nil || payload["closed"] != nil || payload["configured"] != nil {
+                break
+            } else {
+                log("controller result \(id): \(payload.keys.sorted().joined(separator: ","))")
+            }
+        case .error(let id, let message):
+            if let inFlight = controllerState.inFlight, inFlight.id == id {
+                controllerState.inFlight = nil
+                inFlightRevision = nil
+                log("controller refused edit \(id): \(message)")
+                controllerStatus = "edit refused: \(message)"
+                if message.hasPrefix("document_conflict") {
+                    // Our durable snapshot is stale (restart, external writer): re-read it.
+                    _ = try? controller.document(path: inFlight.path)
+                    controllerState.queued = true
+                }
+            } else {
+                log("controller error \(id ?? "-"): \(message)")
+                controllerStatus = "helper error: \(message)"
+            }
+        case .preview(let update):
+            applyControllerPreview(update)
+        case .update(let kind, let payload):
+            // stale / discarded previews name the request they replaced; nothing
+            // to paint. If it was the preview our in-flight edit waits for, the
+            // helper will not send it: release the pipeline.
+            if kind == "stale" || kind == "discarded" {
+                if let inFlight = controllerState.inFlight, let want = inFlight.durableRevision,
+                   let rev = payload["compile_revision"] as? Int, rev >= want {
+                    log("controller \(kind) preview for durable r\(rev) (in flight r\(want))")
+                    controllerReleaseInFlight()
+                }
+            } else {
+                log("controller update \(kind): \(payload.keys.sorted().joined(separator: ","))")
+            }
+        case .protocolViolation(let message):
+            controllerStatus = "protocol violation: \(message)"
+            workerStatus = controllerStatus
+            log("controller protocol violation: \(message)")
+        case .stderr(let text):
+            log("controller: " + text.trimmingCharacters(in: .whitespacesAndNewlines))
+        case .exited(let code):
+            controllerStatus = "helper exited (\(code))"
+            workerStatus = "worker exited (\(code))"
+            log("controller exited with status \(code)")
+            self.controller = nil
+            controllerState = ControllerState()
+            inFlightRevision = nil
+        }
+    }
+
+    /// A `document` or `edit` result: records the durable revision/hash and
+    /// maps it to the editor revision it came from, then sends any queued edit.
+    private func applyDurableDocument(_ doc: [String: Any], requestID: String, payload: [String: Any]) {
+        guard let path = doc["path"] as? String, let revision = doc["revision"] as? Int,
+              let sha = doc["source_sha256"] as? String, let text = doc["text"] as? String else {
+            log("controller document result \(requestID) is missing fields")
+            return
+        }
+        controllerState.durable[path] = (revision, sha)
+        controllerState.textByDurable[path, default: [:]][revision] = text
+        if let old = controllerState.textByDurable[path], old.count > 8 {
+            for key in old.keys.sorted().dropLast(8) { controllerState.textByDurable[path]?.removeValue(forKey: key) }
+        }
+        if let inFlight = controllerState.inFlight, inFlight.id == requestID {
+            controllerState.editorRevisionByDurable[path, default: [:]][revision] = inFlight.editorRevision
+            if let e = payload["preview_error"] as? String {
+                // Durable, but no preview will follow: release the pipeline now.
+                controllerState.inFlight = nil
+                controllerStatus = "durable r\(revision); preview error: \(e)"
+                log("controller preview_error: \(e)")
+            } else {
+                controllerState.inFlight?.durableRevision = revision
+                if let ms = payload["save_and_submit_ms"] as? Double { controllerStatus = String(format: "durable r%d in %.1f ms", revision, ms) }
+            }
+        } else {
+            // Initial `document` (or a re-read after a conflict): the ledger is
+            // authoritative for durability, the buffer for what the user sees.
+            // A differing ledger text is kept in history; the buffer is submitted.
+            controllerState.editorRevisionByDurable[path, default: [:]][revision] = editorRevision
+            if path == activePath, !text.sameBytes(as: activeText) {
+                log("controller durable r\(revision) differs from the buffer (\(text.utf8.count) vs \(activeText.utf8.count) bytes); submitting the buffer")
+                controllerState.queued = true
+            } else if path == activePath, result == nil || previewIsStale {
+                _ = try? controller?.compile()
+            }
+        }
+        if controllerState.inFlight == nil, controllerState.queued || (path == activePath && !text.sameBytes(as: activeText)) {
+            controllerState.queued = false
+            controllerSubmitEdit()
+        } else if controllerState.inFlight == nil {
+            inFlightRevision = nil
+        }
+    }
+
+    /// The preview for the in-flight edit arrived (or was dropped): release the
+    /// pipeline and send the newest buffer if it changed meanwhile.
+    private func controllerReleaseInFlight() {
+        controllerState.inFlight = nil
+        inFlightRevision = nil
+        if controllerState.queued {
+            controllerState.queued = false
+            controllerSubmitEdit()
+        }
+    }
+
+    /// A preview compiled from exact durable versions: bind it to the editor
+    /// revision that produced those versions and refuse anything older than the
+    /// preview already shown.
+    private func applyControllerPreview(_ update: PreviewControllerClient.PreviewUpdate) {
+        let versionForActive = update.sourceVersions[activePath]
+        if let inFlight = controllerState.inFlight, let want = inFlight.durableRevision, let got = versionForActive, got >= want {
+            controllerReleaseInFlight()
+        }
+        guard let durableRevision = versionForActive,
+              let editorRev = controllerState.editorRevisionByDurable[activePath]?[durableRevision] else {
+            log("ignored controller preview \(update.requestID): versions \(update.sourceVersions) unknown to this session")
+            return
+        }
+        if let current = result, previewSource != .fixture, editorRev < current.revision {
+            log("ignored stale controller preview \(update.requestID) (editor revision \(editorRev) < \(current.revision))")
+            return
+        }
+        var incoming = update.result.payload
+        incoming.revision = editorRev
+        let requested = requestedLayoutCapabilities
+        if let violation = LayoutNegotiation.violation(in: incoming, requested: requested) {
+            log("rejected controller preview \(update.requestID): \(violation)")
+            controllerStatus = "protocol violation: \(violation)"
+            return
+        }
+        result = incoming
+        resultID = update.result.id
+        previewSource = .worker("flashtex-preview-controller")
+        bindLayout(of: incoming, requested: requested)
+        if !update.missingLayoutCapabilities.isEmpty {
+            log("controller: compiler declined layout capabilities \(update.missingLayoutCapabilities)")
+        }
+        var compiled: [String: String] = [:]
+        for (path, rev) in update.sourceVersions { if let t = controllerState.textByDurable[path]?[rev] { compiled[path] = t } }
+        controllerState.lastPreviewRequestID = update.requestID
+        setCompiledDocuments(compiled)
+        let ms = update.controllerTotalMs ?? update.runtimeTotalMs ?? 0
+        TypingBench.shared.noteCompile(revision: editorRev, ms: ms)
+        if TypingBench.isBenchActive { FlashTeXLog.write("compile: applied revision \(editorRev) at \(MonotonicClock.nowNs())") }
+        recordLatency(ms)
+        workerStatus = String(format: "revision %d: %@, %d diagnostics in %.0f ms (durable r%d)", editorRev,
+                              incoming.status.rawValue, incoming.diagnostics.count, ms, durableRevision)
+        selection = nil
+    }
+}

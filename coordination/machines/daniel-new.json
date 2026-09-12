@@ -1,0 +1,159 @@
+{
+  "schema_version": 1,
+  "machine_id": "daniel-new",
+  "registration_state": "awaiting_machine_registration",
+  "tool": "Claude Code Opus on user-reported Claude20x plan",
+  "engineering_target": 16,
+  "active_engineers_verified": 0,
+  "target_basis": "At least historical explicit Jaysen15 engineers; latest Jaysen reports5 spend-limited terminations and no complete current census.16 is a reservation, not a liveness claim. Increase only if a fresh verified Jaysen engineering census exceeds16.",
+  "operating_system": "unknown",
+  "rust_toolchain": "unverified",
+  "xcode": "unverified",
+  "github_identity": "unverified",
+  "billing": {
+    "route": "existing Daniel Claude20x allowance only",
+    "shared_pool": true,
+    "remaining_usage": "unknown",
+    "no_overages": true,
+    "no_purchases": true,
+    "no_api_fallback_without_verified_grant": true
+  },
+  "registration_required": [
+    "Actual machine/OS/toolchain and repository access",
+    "Authenticated non-secret account route and observed quota",
+    "One parent supervisor plus16 distinct existing-machine engineering sessions with exact ACK and session/PID evidence",
+    "Exclusive worktrees/owned paths and current plus2 followups"
+  ],
+  "lanes": [
+    {
+      "agent_id": "daniel-tables",
+      "task_id": "FT-030",
+      "branch": "agent/daniel-tables/table-layout",
+      "owned_paths": [
+        "crates/table-layout"
+      ]
+    },
+    {
+      "agent_id": "daniel-floats",
+      "task_id": "FT-031",
+      "branch": "agent/daniel-floats/float-layout",
+      "owned_paths": [
+        "crates/float-layout"
+      ]
+    },
+    {
+      "agent_id": "daniel-footnotes",
+      "task_id": "FT-032",
+      "branch": "agent/daniel-footnotes/footnote-layout",
+      "owned_paths": [
+        "crates/footnote-layout"
+      ]
+    },
+    {
+      "agent_id": "daniel-title",
+      "task_id": "FT-033",
+      "branch": "agent/daniel-title/title-layout",
+      "owned_paths": [
+        "crates/title-layout"
+      ]
+    },
+    {
+      "agent_id": "daniel-contents",
+      "task_id": "FT-034",
+      "branch": "agent/daniel-contents/toc-layout",
+      "owned_paths": [
+        "crates/toc-layout"
+      ]
+    },
+    {
+      "agent_id": "daniel-color",
+      "task_id": "FT-035",
+      "branch": "agent/daniel-color/color-expressions",
+      "owned_paths": [
+        "crates/color-expressions"
+      ]
+    },
+    {
+      "agent_id": "daniel-images",
+      "task_id": "FT-036",
+      "branch": "agent/daniel-images/image-assets",
+      "owned_paths": [
+        "crates/image-assets"
+      ]
+    },
+    {
+      "agent_id": "daniel-links",
+      "task_id": "FT-037",
+      "branch": "agent/daniel-links/link-annotations",
+      "owned_paths": [
+        "crates/link-annotations"
+      ]
+    },
+    {
+      "agent_id": "daniel-math-access",
+      "task_id": "FT-038",
+      "branch": "agent/daniel-math-access/math-accessibility",
+      "owned_paths": [
+        "crates/math-accessibility"
+      ]
+    },
+    {
+      "agent_id": "daniel-spelling",
+      "task_id": "FT-039",
+      "branch": "agent/daniel-spelling/spellcheck",
+      "owned_paths": [
+        "crates/spellcheck"
+      ]
+    },
+    {
+      "agent_id": "daniel-templates",
+      "task_id": "FT-040",
+      "branch": "agent/daniel-templates/project-templates",
+      "owned_paths": [
+        "crates/project-templates"
+      ]
+    },
+    {
+      "agent_id": "daniel-snippets",
+      "task_id": "FT-041",
+      "branch": "agent/daniel-snippets/editor-snippets",
+      "owned_paths": [
+        "crates/editor-snippets"
+      ]
+    },
+    {
+      "agent_id": "daniel-statistics",
+      "task_id": "FT-042",
+      "branch": "agent/daniel-statistics/document-statistics",
+      "owned_paths": [
+        "crates/document-statistics"
+      ]
+    },
+    {
+      "agent_id": "daniel-bundle",
+      "task_id": "FT-043",
+      "branch": "agent/daniel-bundle/project-bundle",
+      "owned_paths": [
+        "crates/project-bundle"
+      ]
+    },
+    {
+      "agent_id": "daniel-collaboration",
+      "task_id": "FT-044",
+      "branch": "agent/daniel-collaboration/collaboration-core",
+      "owned_paths": [
+        "crates/collaboration-core"
+      ]
+    },
+    {
+      "agent_id": "daniel-calc",
+      "task_id": "FT-045",
+      "branch": "agent/daniel-calc/tex-calc",
+      "owned_paths": [
+        "crates/tex-calc"
+      ]
+    }
+  ],
+  "updated_utc": "2026-09-12T07:35:07.367827+00:00",
+  "cooldown_priority": "FT030 paragraph-layout, FT031 font-engine, FT032 math-layout replace initial additive lanes under user-authorized transfer; still16 total slots"
+}

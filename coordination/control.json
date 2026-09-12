@@ -16,6 +16,7 @@
     "/root/orchestrator_sol/corpus_continuation",
     "/root/orchestrator_sol/mac_integration_review"
   ],
-  "staffing_authorization": "Latest user instruction: retain commander, root controller, compiler_corpus fonts and supervisor_api_review rendering only on this computer; no replacement agents or compensating remote staffing increase.",
-  "no_compensating_reallocation": true
+  "staffing_authorization": "Latest user: retain three Astra engineers plus Commander; discontinued three may finish current task only, then stop. No followups, replacements or compensating remote expansion.",
+  "no_compensating_reallocation": true,
+  "updated_utc": "2026-09-12T08:35:11.897361+00:00"
 }

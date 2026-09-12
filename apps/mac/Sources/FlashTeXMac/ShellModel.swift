@@ -56,6 +56,11 @@ final class ShellModel {
     let nearbyInbox = NearbyInbox() // captures from paired companions (ShellModel+Nearby.swift)
     var workerLog: [String] = []
     @ObservationIgnored private var worker: WorkerClient?
+    /// Durable-source helper (`flashtex-preview-controller`), see ShellModel+Controller.swift.
+    @ObservationIgnored var controller: PreviewControllerClient?
+    @ObservationIgnored var controllerState = ControllerState()
+    /// Status of the helper route (attached / ready / durable revision / errors).
+    var controllerStatus: String = "no preview controller attached"
     @ObservationIgnored private var nextRequestID = 1
     /// Text each document had when the current `result` was produced, so stale
     /// byte offsets can be rebased (or refused) after edits.
@@ -116,7 +121,7 @@ final class ShellModel {
     }
 
     /// Binds a result's negotiation state, substitutions, and layout diagnostics.
-    private func bindLayout(of applied: RuntimeV1.CompileResult, requested: [String]) {
+    func bindLayout(of applied: RuntimeV1.CompileResult, requested: [String]) {
         negotiation = LayoutNegotiation(requested: requested, accepted: applied.layoutCapabilities ?? [])
         fontSubstitutions = PreviewFonts.substitutions(in: applied)
         layoutDiagnostics = LayoutNegotiation.unsupportedPrimitiveDiagnostics(in: applied, negotiation: negotiation)
@@ -136,7 +141,7 @@ final class ShellModel {
         return 0
     }()
     /// Revision of the compile request currently in flight (nil if idle).
-    private(set) var inFlightRevision: Int?
+    var inFlightRevision: Int?
     /// Revision the editor buffer corresponds to. Bumps on every edit so the
     /// UI can say when the preview's source ranges no longer match the buffer.
     private(set) var editorRevision = 1
@@ -173,7 +178,9 @@ final class ShellModel {
         let sorted = latenciesMs.sorted()
         return sorted[sorted.count / 2]
     }
-    var workerAttached: Bool { worker?.isRunning == true }
+    var workerAttached: Bool { worker?.isRunning == true || controller?.isRunning == true }
+    /// True when previews come from the durable helper instead of the direct worker.
+    var controllerAttached: Bool { controller?.isRunning == true }
 
     var activeText: String {
         get { documents.first { $0.path == activePath }?.text ?? "" }
@@ -181,19 +188,25 @@ final class ShellModel {
 
     /// Diagnostic underlines for the active document, rebased across edits or
     /// dropped (see `EditorDiagnostics`).
-    var editorMarks: [EditorDiagnostics.Mark] {
-        guard let result else { return [] }
-        // Memoized: ContentView reads this on every body evaluation and the
-        // rebase compares the compiled and current texts in full.
+    var editorMarks: [EditorDiagnostics.Mark] { editorMarkReport.marks }
+
+    /// Marks plus the diagnostics withheld after an edit; `staleNote` is
+    /// shown in the footer. Memoized: ContentView reads this on every body
+    /// evaluation and the rebase compares the compiled and current texts.
+    var editorMarkReport: EditorDiagnostics.Report {
+        guard let result else { return .empty }
         let key = EditorMarksKey(resultID: resultID, resultRevision: result.revision, editorRevision: editorRevision, path: activePath)
-        if let cached = editorMarksCache, cached.key == key { return cached.marks }
-        let marks = EditorDiagnostics.marks(for: result, path: activePath,
-                                            compiledText: compiledDocuments[activePath], currentText: activeText)
-        editorMarksCache = (key, marks)
-        return marks
+        if let cached = editorMarksCache, cached.key == key { return cached.report }
+        let report = EditorDiagnostics.report(for: result, resultID: resultID, path: activePath,
+                                              compiledText: compiledDocuments[activePath], currentText: activeText)
+        editorMarksCache = (key, report)
+        return report
     }
     private struct EditorMarksKey: Equatable { var resultID: String?; var resultRevision: Int; var editorRevision: Int; var path: String }
-    @ObservationIgnored private var editorMarksCache: (key: EditorMarksKey, marks: [EditorDiagnostics.Mark])?
+    @ObservationIgnored private var editorMarksCache: (key: EditorMarksKey, report: EditorDiagnostics.Report)?
+    /// Identity of the mark last reached by ⌘⇧]/⌘⇧[, so marks sharing a
+    /// start offset are each visited once (Navigation.swift).
+    @ObservationIgnored var currentDiagnosticID: String?
 
     // MARK: caret sync (source -> preview)
 
@@ -225,7 +238,12 @@ final class ShellModel {
             let bundledCompiler = Bundle.main.executableURL?.deletingLastPathComponent()
                 .appendingPathComponent("flashtex-compiler").path
             let hasBundled = bundledCompiler.map { FileManager.default.isExecutableFile(atPath: $0) } ?? false
-            if env["FLASHTEX_AUTOATTACH"] != "0", (env["FLASHTEX_AUTOATTACH"] == "1" || hasBundled),
+            if env["FLASHTEX_AUTOATTACH"] == "1", let helper = env["FLASHTEX_PREVIEW_CONTROLLER"],
+               FileManager.default.isExecutableFile(atPath: helper) {
+                // Durable helper route (STDIO.md): the helper owns the ledger and the
+                // compiler; the direct worker is not attached alongside it.
+                attachController(at: URL(fileURLWithPath: helper))
+            } else if env["FLASHTEX_AUTOATTACH"] != "0", (env["FLASHTEX_AUTOATTACH"] == "1" || hasBundled),
                Self.locateCompiler() != nil {
                 attachDiscoveredWorker()
                 compile()
@@ -346,6 +364,7 @@ final class ShellModel {
 
     private func scheduleAutoCompile() {
         guard autoCompile, workerAttached else { return }
+        if controllerAttached { controllerSubmitEdit(); return }
         debounce?.cancel()
         if Self.debounceInterval == 0 { compile(); return }
         let item = DispatchWorkItem { [weak self] in self?.compile() }
@@ -467,6 +486,7 @@ final class ShellModel {
     /// at once under a new id — at the same revision when the buffer has not
     /// changed — and the older request's reply is then classified stale.
     func compile() {
+        if controllerAttached { controllerCompile(); return }
         guard let worker, worker.isRunning else {
             workerStatus = "no worker attached"
             return
@@ -492,7 +512,7 @@ final class ShellModel {
             documents: documents,
             layoutCapabilities: capabilities.isEmpty ? nil : capabilities)
         do {
-            if TypingBench.shared.isActive { FlashTeXLog.write("compile: sending revision \(editorRevision) at \(MonotonicClock.nowNs())") }
+            if TypingBench.isBenchActive { FlashTeXLog.write("compile: sending revision \(editorRevision) at \(MonotonicClock.nowNs())") }
             try worker.send(request, id: id)
             inFlightRequests[id] = InFlight(projectId: request.projectId, revision: request.revision,
                                             documents: documents, sentAt: Date(), layoutCapabilities: capabilities)
@@ -573,7 +593,7 @@ final class ShellModel {
             compiledDocuments = Dictionary(uniqueKeysWithValues: sent.documents.map { ($0.path, $0.text) })
             let ms = Date().timeIntervalSince(sent.sentAt) * 1000
             TypingBench.shared.noteCompile(revision: incoming.revision, ms: ms)
-            if TypingBench.shared.isActive { FlashTeXLog.write("compile: applied revision \(incoming.revision) at \(MonotonicClock.nowNs())") }
+            if TypingBench.isBenchActive { FlashTeXLog.write("compile: applied revision \(incoming.revision) at \(MonotonicClock.nowNs())") }
             lastLatencyMs = ms
             latenciesMs.append(ms)
             if latenciesMs.count > 100 { latenciesMs.removeFirst(latenciesMs.count - 100) }
@@ -606,7 +626,17 @@ final class ShellModel {
         }
     }
 
-    private func log(_ line: String) {
+    /// Documents (path → text) the current result was compiled from.
+    func setCompiledDocuments(_ docs: [String: String]) { compiledDocuments = docs }
+
+    /// Records one producer round trip for the status line's latency summary.
+    func recordLatency(_ ms: Double) {
+        lastLatencyMs = ms
+        latenciesMs.append(ms)
+        if latenciesMs.count > 100 { latenciesMs.removeFirst(latenciesMs.count - 100) }
+    }
+
+    func log(_ line: String) {
         FlashTeXLog.write(line)
         workerLog.append(line)
         if workerLog.count > 200 { workerLog.removeFirst(workerLog.count - 200) }

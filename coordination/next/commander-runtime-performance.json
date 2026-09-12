@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "agent_id": "commander-runtime-performance",
+  "task_id": "FT-047",
+  "assignment_path": "coordination/assignments/FT-047.json",
+  "revision": 1,
+  "branch": "agent/commander-runtime-performance/runtime-performance"
+}

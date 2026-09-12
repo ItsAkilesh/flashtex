@@ -21,7 +21,33 @@ enum PreviewFonts {
         "/Library/TeX/Root/texmf-dist/fonts/opentype/public/lm",
     ].compactMap { $0 }
 
-    /// PostScript names after registration; nil if Latin Modern was not found.
+    // MARK: Resource generation
+
+    /// Monotonic generation of the font resource set the preview resolves
+    /// against. It moves whenever an input of name resolution or of what a
+    /// PostScript name denotes changes: Latin Modern registration
+    /// (`FLASHTEX_LM_DIR`, bundle, repository copy, TeX Live), a producer face
+    /// switch (`flashtex-compiler` Times ↔ `flashtex-render` Latin Modern), the
+    /// `FLASHTEX_PREVIEW_FACE` override, or an explicit `invalidateResources()`.
+    /// Consumers stamp what they build with the generation it was built at and
+    /// never serve an entry from another generation (`PreviewTextCache`), so
+    /// invalidation is keyed rather than a scattered `clear()`. Main-thread
+    /// state, like the cache: the draw closure, the shell's worker attach and
+    /// the CoreGraphics export all run there.
+    private(set) static var resourceGeneration: UInt64 = 0
+
+    /// Records a change of the font resource set that the other inputs do not
+    /// already cover (a caller registered or unregistered fonts itself).
+    static func invalidateResources() { resourceGeneration &+= 1 }
+
+    /// Directory Latin Modern was registered from, nil when not found. Only
+    /// meaningful after `latinModernRegistered` has been consulted.
+    private(set) static var latinModernDirectory: String?
+
+    /// Whether the Latin Modern Roman masters are registered with CoreText for
+    /// this process. Registration happens on first access and moves
+    /// `resourceGeneration`: an `LMRoman*` name asked for before it resolves to
+    /// a CoreText fallback, afterwards to the real font.
     private(set) static var latinModernRegistered: Bool = {
         for dir in latinModernSearchPaths {
             let url = URL(fileURLWithPath: dir)
@@ -29,6 +55,8 @@ enum PreviewFonts {
             let otfs = files.filter { $0.pathExtension == "otf" && $0.lastPathComponent.hasPrefix("lmroman") }
             guard !otfs.isEmpty else { continue }
             CTFontManagerRegisterFontURLs(otfs as CFArray, .process, true, nil)
+            latinModernDirectory = dir
+            invalidateResources()
             return true
         }
         return false
@@ -37,11 +65,22 @@ enum PreviewFonts {
     /// Set by the shell from the attached producer: `flashtex-render` (the new
     /// pipeline, Latin Modern metrics) → `.latinModern`; `flashtex-compiler`
     /// (Core-14 Times metrics today) → `.times`. `FLASHTEX_PREVIEW_FACE` overrides.
-    static var producerFace: Face = .times
+    /// A change moves `resourceGeneration`.
+    static var producerFace: Face = .times {
+        didSet { if oldValue != producerFace { invalidateResources() } }
+    }
 
     /// `FLASHTEX_PREVIEW_FACE` read once: `ProcessInfo.environment` copies the
     /// whole environment on every access and this is consulted per drawn item.
-    private static let environmentFace: Face? = Face(rawValue: ProcessInfo.processInfo.environment["FLASHTEX_PREVIEW_FACE"] ?? "")
+    /// `overrideEnvironmentFace` replaces it explicitly (tests, a future
+    /// preference) and moves `resourceGeneration`.
+    private(set) static var environmentFace: Face? = Face(rawValue: ProcessInfo.processInfo.environment["FLASHTEX_PREVIEW_FACE"] ?? "")
+
+    static func overrideEnvironmentFace(_ face: Face?) {
+        guard face != environmentFace else { return }
+        environmentFace = face
+        invalidateResources()
+    }
 
     static var requested: Face { environmentFace ?? producerFace }
 

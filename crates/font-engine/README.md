@@ -17,7 +17,7 @@ standard PDF fonts.
 
 ```sh
 cd crates/font-engine
-cargo test            # 45 tests; font-file tests skip with a message if a file is absent
+cargo test            # 63 tests + 2 compile_fail doctests; font-file tests skip with a message if a file is absent
 cargo clippy --all-targets
 swift examples/compare_coretext.swift   # macOS: CoreText cross-check (see "Engine comparison")
 ```
@@ -30,13 +30,15 @@ swift examples/compare_coretext.swift   # macOS: CoreText cross-check (see "Engi
 | Base-14 metrics | Times-Roman, Times-Bold, Times-Italic, Times-BoldItalic, Helvetica, Courier, Symbol: Adobe AFM widths for every AFM glyph with an Adobe Glyph List code point (322 code points per text face, 194 for Symbol), AFM `KPX` kerning pairs, header metrics (bbox, cap/x height, ascender/descender, italic angle, StdVW, underline) | Helvetica-Bold/Oblique variants, Courier variants, ZapfDingbats (the seven faces the task named are included; adding the rest is a one-line change in `tools/gen_tables.py`) |
 | Kerning | `GPOS` `kern` feature: PairPos format 1 and 2 (lookup type 2), including type 9 Extension wrappers; legacy `kern` table format 0 (Microsoft and Apple headers); AFM `KPX`. Features are selected through ScriptList: `DFLT` script (else `latn`, else the first script), default LangSys (else the first) | GPOS lookup types other than 2 under `kern` (contextual 7/8, single 1) — recorded in `Face::unsupported()`; `kern` formats 1–3, vertical and cross-stream subtables; second-glyph value records and placement (only `xAdvance` of the first glyph is applied); per-run language tags (only the default language system is used, so Latin Modern's Turkish/Polish `liga`/`kern` variants are never applied) |
 | Ligatures | `GSUB` `liga` feature: LigatureSubst (lookup type 4), including type 7 Extension wrappers, applied as one pass per lookup in LookupList order (so Latin Modern's `f`+`f`→`ff`, then `ff`+`i`→`ffi` works); cmap fallback for `ff fi fl ffi ffl` → U+FB00..U+FB04 as a final pass over single-character clusters (used by the Core 14 faces, and by fonts such as Times New Roman whose `liga` is Arabic-only); never applied to fixed-pitch faces | Every other GSUB feature (`dlig`, `clig`, `calt`, `smcp`, `locl`, …) and lookup type (single, multiple, alternate, contextual, chained, reverse); lookup flags (mark filtering, ignore-marks) |
-| Marks | Base + combining mark composed through canonical pairwise compositions (870 primary composites, Unicode 15.0.0 via Python `unicodedata`) when the face has the precomposed glyph; otherwise the mark glyph joins the base cluster with zero advance (centred for spacing marks); otherwise a missing glyph inside that cluster | GPOS mark attachment (`mark`/`mkmk`), so unattached marks are only approximately placed |
+| Marks | Base + combining mark composed through canonical pairwise compositions (870 primary composites, Unicode 15.0.0 via Python `unicodedata`) when the face has the precomposed glyph; otherwise the mark joins the base's cluster with zero advance, positioned by GPOS `mark` MarkToBase anchors (lookup type 4, +Extension) when the font has them (`Face::mark_attachment`), else by the documented approximation (zero-advance marks left where the designer hung them, spacing marks centred) | MarkToLigature (5) and MarkToMark (`mkmk`, 6) — recorded as unsupported; lookup flags |
 | Scripts | Latin, Greek, Cyrillic and other left-to-right scripts without reordering; CJK ideographs (1 em advances verified with Arial Unicode) | Hebrew, Arabic, Syriac, Thaana, NKo, Indic, Thai, Lao, Tibetan, Myanmar, Khmer, Mongolian and bidi control characters: `shape` returns `Error::UnsupportedScript { ch, byte_offset, reason }` and produces nothing (fail closed) |
 | Direction | Horizontal left-to-right | Vertical layout, right-to-left |
 | Subsetting | Deterministic glyf subset: `.notdef` + requested glyphs + transitive composite components, renumbered in ascending original order; `head`/`hhea`/`maxp`/`hmtx`/`loca`(long)/`glyf` rewritten, `cvt `/`fpgm`/`prep` copied; table checksums and `head.checkSumAdjustment`; `verify_checksums` re-checks a program | Subsetting of `cmap`/`name`/`OS/2`/`post`/`GPOS`/`GSUB` (deliberately dropped: the embedded program is glyph-addressed and already shaped); **CFF subsetting** (`subset` returns `Error::Unsupported` for CFF faces; whole-program embedding is used instead — a later follow-up) |
 | Embedding data | `PdfFontProgram`: `/BaseFont` (subset tag + name, or bare name for whole programs), `font_file` = `FontFile::TrueTypeSubset` (`/FontFile2`, `CIDFontType2`) or `FontFile::OpenTypeProgram` (`/FontFile3` `/Subtype /OpenType`, `CIDFontType0`, CIDs = original glyph ids), `/W` array as CID runs, `CIDToGIDMap /Identity`, `glyph_map` (original → CID), descriptor (flags, bbox, ascent, descent, cap height, x height, italic angle, placeholder StemV), `ToUnicode` CMap with multi-character `bfchar` destinations, OS/2 `fsType` | Writing PDF objects (a PDF crate does that); bare `/Subtype /Type1C` CFF streams (the whole OpenType wrapper is embedded instead); Type 1 embedding; `/Widths` arrays for standard-14 fonts beyond `embed::standard_font_widths` |
 | Math | `MATH` table: all 56 `MathConstants`, per-glyph italics correction and top-accent attachment (`TrueTypeFace::math()`, `math::MathTable`) | `MathVariants` (stretchy delimiter construction), `MathKernInfo`, extended-shape coverage, device tables |
-| Resolution | `FontSearch`: explicit directory list, `dir/<file name>` probes only, macOS system directories offered as a constant | Directory scanning, fontconfig, name matching, `FLASHTEX_*` environment lookups |
+| Resolution | `FontSearch`: explicit directory list, `dir/<file name>` probes only, macOS system directories offered as a constant; `manifest::PinnedFontSet` loads a declared, hashed set from an explicit root | Directory scanning, fontconfig, name matching, `FLASHTEX_*` environment lookups |
+| Fallback | `shape_with_fallback(&[faces], ..)`: explicit ordered chain, first face that has the character wins, per-cluster `Cluster::font` index into `Shaped::fonts` (FontIds), characters no face has → `.notdef` on the primary + `missing` | Any implicit or platform fallback; kerning/ligatures across a face boundary; faces with different `units_per_em` in one chain (error) |
+| TeX encodings | `encoding::EncodingCode(u8)` + `Encoding::{OT1, T1}::to_unicode` / `from_unicode`; the three identities `EncodingCode` / `char` / `GlyphId` have no conversions between them (compile_fail doctests) | TFM parsing (lives in `crates/font-resources`); other encodings (OMS, OML, TS1, LY1) |
 
 Everything in the right-hand column is either an error, an empty result, or an
 entry in `Face::unsupported()` (copied into every `Shaped`), never a silently
@@ -113,6 +115,95 @@ Units: `Face` and `Shaped` values are font units (`units_per_em` = 1000 for Core
 `to_pdf_units` (1/1000 em, rounded). Kerning is folded into the advance of the
 glyph before the pair; `x_offset`/`y_offset` are only non-zero for unattached
 marks.
+
+## Pinned licensed fonts (`fonts/manifest.json`)
+
+`manifest::pinned_latin_modern()` declares the default font set — Latin Modern
+Roman 10 (regular, bold, italic, bold italic), LM Sans 10, LM Mono 10 and
+Latin Modern Math — with the eight `FontDescriptor` fields and the
+`LicenseMetadata` fields of `crates/font-resources` (`schema_version: 1`),
+so the same JSON can be handed to that loader once it accepts
+`format: "opentype-cff"` (its current profile is `static-truetype` only; that
+is why `PinnedFontSet::load` performs the identical checks here: byte length,
+SHA-256, units per em, glyph count, PostScript name, licence-text SHA-256; any
+mismatch refuses the whole set). `fonts/manifest.json` is the byte-stable output
+of `cargo run --example write_manifest`; `fonts/GUST-FONT-LICENSE.txt` is the
+licence text (SHA-256 `49ea6cb9…8050`). Paths are relative to an explicit root
+(`BASICTEX_OPENTYPE_ROOT` on this project's Macs); font files are never
+committed. Times/Helvetica/Courier/Symbol stay available through the Core 14
+tables (`\usepackage{times}`).
+
+## Fallback identity
+
+```rust
+let chain: Vec<&dyn Face> = vec![&lm_roman, &lm_sans, &lm_mono, &symbol];
+let s = shape_with_fallback(&chain, "a\u{2211}b", &ShapeOptions::default())?;
+// s.clusters[1].font == 3  →  s.fonts[3] is Symbol's FontId; never silent.
+```
+
+The choice is a pure function of the chain order and the text (first face whose
+cmap has the scalar; a combining mark stays with its base's face so composition
+can apply); the test suite asserts identical output across runs and that
+reordering the chain changes the result exactly as declared.
+
+## TeX encodings and the three identities
+
+`EncodingCode(u8)` (a TFM slot), `char` (Unicode) and `GlyphId` (a font's
+original glyph order) are distinct newtypes with no `From`/`Into` between them;
+`encoding.rs` carries two `compile_fail` doctests proving that
+`let g: GlyphId = EncodingCode(0x41)` and `let c: char = EncodingCode(0x41)`
+do not compile. Mapping example (tested in `tests/pinned.rs`):
+
+```text
+OT1 slot 12  --Encoding::OT1.to_unicode-->  U+FB01 'ﬁ'  --Face::glyph_id-->  LM Roman gid 125
+T1  slot 0xE9 --Encoding::T1.to_unicode-->  U+00E9 'é'  --Face::glyph_id-->  LM Roman gid 251
+```
+
+TFM parsing itself is not duplicated here; `fixtures/tfm/` supplies the real
+`ec-lmr10` fixture for `crates/font-resources`' `BoundTfmFont` (see its README).
+
+## Native rendering and PDF round-trip checks (`tools/`)
+
+* `cargo run --example pdf_roundtrip -- <font> <size> <out.pdf> <text>` writes a
+  one-page PDF from `EmbedPlan` output (Type0 / Identity-H, `/W`, `ToUnicode`,
+  `TJ` runs carrying the shaper's kerning, `/Span << /ActualText >>` around
+  ligature and mark clusters) and prints the glyph positions it used.
+* `swift tools/pdf_extract_check.swift <pdf> <expected text> [png]` extracts
+  the page text with PDFKit and compares it with the original Unicode, and
+  renders the page with CoreGraphics to prove the embedded font loads.
+* `swift tools/render_check.swift <font> <size> <positions> <text> [prefix]`
+  draws the engine's glyph ids at the engine's positions with CoreText from
+  the SAME font file (A) and lets CoreText shape and draw the text itself (B),
+  then counts differing pixels at 8×.
+
+Results on macOS 26.3.1 (2026-09-12), 12 pt:
+
+| font | embedding | text | PDFKit extraction | render check (A vs B) |
+| --- | --- | --- | --- | --- |
+| lmroman10-regular.otf | `/FontFile3 /CIDFontType0C`, CIDFontType0, identity CIDs | "Efficient AV office, café — naïve “quoted” 100% ffi" | exact (`TEXT PASS`, incl. ffi/fi through ActualText+ToUnicode) | **0 differing pixels** of 25 420 |
+| Times New Roman.ttf | `/FontFile2` subset `HGXALI+TimesNewRomanPSMT`, CIDFontType2 | "Efficient AV office, café — naïve x́ “quoted” 100% ffi" | exact (`TEXT PASS`, x + U+0301 attached by MarkToBase) | 1.19 ratio — expected: CoreText applies no f-ligatures for TNR (Arabic-only `liga`), the engine's cmap fallback does; everything after "Effi" shifts |
+| Times New Roman.ttf | same | "Elegant AV noise, café — naïve x́ “quoted” 100% Today" (no f-ligatures) | exact | **0 differing pixels** of 31 398 (kern table and MarkToBase agree with CoreText) |
+
+`/CIDFontType0C` for the bare `CFF ` table is the subtype CoreGraphics accepts
+(PDF worker's finding); `/Type1C` is wrong for a CIDFont and the whole-sfnt
+`/OpenType` route is no longer used.
+
+## Consumer adapters (rev 3)
+
+`adapters::paragraph` (`FontMetricsSource` + `glyph_run`), `adapters::pdf`
+(`to_pdf_embedded_subset`), `adapters::math` (`MathFontMetrics` from `MATH`)
+and `adapters::preview` (`face_metrics.json`) let compiler layout, PDF, math
+and the native preview read one `Face`. The sibling crates are optional path
+dependencies behind the default features `paragraph`, `math`, `pdf`. Evidence
+and the remaining per-consumer gaps are quantified in
+[`docs/consumers.md`](docs/consumers.md): on the visual corpus, paragraph
+(shaped route), PDF `/W`+`TJ` and CoreText drawing of the exported positions
+all agree with the engine to 0.0000 pt and 0 differing pixels.
+
+Unsupported lookup types met by a *requested* feature are an error by default
+(`ShapeOptions::fail_on_unsupported_lookups`, `Error::UnsupportedFeature`) —
+for example Arial Unicode's MarkToLigature lookups when an unattached mark is
+shaped — never a silent approximation.
 
 ## Proposed ABI (non-authoritative until Commander accepts)
 
@@ -302,10 +393,19 @@ output: run the script; the table above is the 2026-09-12 run.
 
 ## Tests
 
-`cargo test` — 45 tests:
+`cargo test` — 63 tests (+ 2 `compile_fail` doctests):
 
-* unit (5): SHA-256 vectors; Core 14 values equal to compiler `metrics.rs`;
-  synthetic gid round trip for all seven faces; AFM kerning; stable identity.
+* unit (8): SHA-256 vectors; Core 14 values equal to compiler `metrics.rs`;
+  synthetic gid round trip for all seven faces; AFM kerning; stable identity;
+  manifest JSON round trip and stability; bounded manifest paths; OT1/T1 tables.
+* `tests/pinned.rs` (6): committed `fonts/manifest.json` equals the generator
+  output and parses back; the pinned set loads with every field verified and
+  refuses tampered glyph counts, digests and licence hashes; fallback chain
+  order, per-cluster FontId, missing on primary, determinism; OT1/T1 → Unicode
+  → LM gid mapping (and the three T1 slots LM lacks); subset + ToUnicode bytes
+  identical across runs for glyf and CFF; the `ec-lmr10` TFM fixture's hashes,
+  GIDs (re-derived through cmap) and widths (within half a unit of the OTF),
+  and its A/V kern equal to GPOS.
 * `tests/core14.rs` (14): "Hello" = 26.664 pt and "Mac" = 21.324 pt; ASCII and
   Latin-1 coverage of every text face; Unicode beyond Latin-1 (em dash, quotes,
   Euro, Greek Delta/Omega, summation; CJK absent); missing glyphs listed with
@@ -325,7 +425,7 @@ output: run the script; the table above is the 2026-09-12 run.
   widths and "ffi" in ToUnicode; MathConstants and italics corrections equal to
   the file; every listed LM text face parses and shapes, monospaced ones never
   ligate.
-* `tests/truetype.rs` (17, each skips with a message when its font is absent):
+* `tests/truetype.rs` (18, each skips with a message when its font is absent):
   metrics and content identity; "Hello" within 0.05 pt of Core 14; AV kerning
   negative via kern table; `fi` one glyph vs two with the same source bytes;
   mark composition via cmap; é/—/中 in Arial Unicode with byte-accurate
@@ -337,7 +437,8 @@ output: run the script; the table above is the 2026-09-12 run.
   and OTTO inputs are errors; GPOS PairPos in Arial equal to its legacy table;
   GPOS in Times New Roman Italic; GPOS Extension in Iowan Old Style; TNR's
   Latin ligatures come from cmap, not its Arabic-only `liga`; a real Latin GSUB
-  `liga` (Iowan, fi → gid 192) with the cmap fallback disabled. (TNR's
+  `liga` (Iowan, fi → gid 192) with the cmap fallback disabled; GPOS
+  MarkToBase places x + U+0301 at the anchor pair. (TNR's
   Arabic-only `liga` is no longer selected at all now that features go through
   the default language system.)
 

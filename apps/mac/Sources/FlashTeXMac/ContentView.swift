@@ -255,10 +255,13 @@ private struct PreviewPane: View {
                         .foregroundStyle(d.severity == .error ? .red : .orange)
                     VStack(alignment: .leading) {
                         Text(d.message)
-                        if let rec = d.recovery {
-                            Text("↳ recovery: \(rec)").font(.caption).foregroundStyle(.secondary)
-                        } else {
-                            Text("↳ no provisional rendering").font(.caption).foregroundStyle(.tertiary)
+                        if let line = EditorDiagnostics.recoveryLine(recovery: d.recovery, status: model.result?.status ?? .ok) {
+                            Text("↳ \(line)").font(.caption).foregroundStyle(d.recovery == nil ? .tertiary : .secondary)
+                        }
+                        if let result = model.result,
+                           let id = EditorDiagnostics.identity(resultID: model.resultID, index: i, in: result),
+                           model.editorMarkReport.staleIdentities.contains(id) {
+                            Text("underline withheld: span edited since the compile").font(.caption2).foregroundStyle(.orange)
                         }
                         if let src = d.source {
                             Text("\(src.path) bytes \(src.startByte)..<\(src.endByte)").font(.caption2).foregroundStyle(.tertiary)
@@ -281,7 +284,8 @@ private struct Footer: View {
 
     var body: some View {
         HStack {
-            Text(model.navigationNote ?? "Click text in the preview to select its source range.")
+            Text(model.navigationNote ?? model.editorMarkReport.staleNote
+                 ?? "Click text in the preview to select its source range.")
                 .font(.caption).foregroundStyle(.secondary).lineLimit(1)
             Spacer()
             if let note = model.captureNote {

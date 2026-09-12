@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "task_id": "FT-030",
+  "agent_id": "daniel-tables",
+  "branch": "agent/daniel-tables/table-layout",
+  "revision": 2,
+  "state": "assigned",
+  "objective": "Continue released Jaysen paragraph-layout heavy work. Parent reported old worker terminal after spend limit. Inspect published WIP bad0666 and request exact dirty patch/base before reconstructing unpublished changes. WIP is not integration-ready. Own crates/paragraph-layout exclusively under this transfer; existing agent name is retained to keep Daniel16 slots.",
+  "owned_paths": [
+    "crates/paragraph-layout"
+  ],
+  "dependencies": [],
+  "acceptance": [
+    "Meaningful tests and strict Rust lint pass with bounded malformed/Unicode inputs",
+    "Preserve exact source/revision and resource identities; no implicit approximation or parity claim",
+    "Do not edit peer compiler/native/layout files; publish typed adapter contract and exact tested SHA",
+    "Register Daniel machine and exact assignment ACK/session before working",
+    "Preserve old WIP and test before publication; no automatic return of paths at cooldown end"
+  ],
+  "allocation_id": "daniel-claude20x-shared",
+  "timebox_minutes": 40,
+  "deadline_utc": null,
+  "input_main_sha": "53fee3012b2902ca05bd31766defa515b3044cec",
+  "updated_utc": "2026-09-12T07:35:07.367827+00:00"
+}
