@@ -19,6 +19,7 @@ struct CaptureView: View {
     @State private var instructions = "Convert this drawing to TikZ"
     @State private var draft: CaptureRecord?
     @State private var problem: String?
+    @State private var toolsVisible = true
 
     var body: some View {
         VStack(spacing: 8) {
@@ -42,8 +43,8 @@ struct CaptureView: View {
                     }
                     .accessibilityIdentifier("capture.pickedImage")
             } else {
-                PencilCanvas(drawing: $drawing, size: $canvasSize)
-                    .frame(minHeight: 320)
+                PencilCanvas(drawing: $drawing, size: $canvasSize, toolsVisible: $toolsVisible)
+                    .frame(minHeight: model.captures.isEmpty ? 320 : 200, maxHeight: model.captures.isEmpty ? .infinity : 200)
                     .background(Color.white)
                     .overlay(RoundedRectangle(cornerRadius: 6).stroke(.gray.opacity(0.4)))
                     .padding(.horizontal)
@@ -51,7 +52,7 @@ struct CaptureView: View {
             }
 
             HStack {
-                Button { drawing = PKDrawing(); picked = nil } label: { Label("Clear", systemImage: "trash") }
+                Button { drawing = PKDrawing(); picked = nil; toolsVisible = true } label: { Label("Clear", systemImage: "trash") }
                     .accessibilityIdentifier("capture.clear")
                 PhotosPicker(selection: $photo, matching: .images) { Label("Photo…", systemImage: "photo") }
                     .accessibilityIdentifier("capture.photo")
@@ -121,6 +122,7 @@ struct CaptureView: View {
             png = d; source = .pencil; size = (Int(img.size.width * img.scale), Int(img.size.height * img.scale))
         }
         if let why = CaptureQueue.validate(png: png, instructions: instructions) { problem = why; return }
+        toolsVisible = false // hide the PencilKit tool picker so the status list is readable
         draft = model.draft(CaptureRecord(source: source, png: png, instructions: instructions, pixelSize: (width: size.0, height: size.1)))
     }
 }
@@ -128,6 +130,7 @@ struct CaptureView: View {
 struct PencilCanvas: UIViewRepresentable {
     @Binding var drawing: PKDrawing
     @Binding var size: CGSize
+    @Binding var toolsVisible: Bool
 
     func makeUIView(context: Context) -> PKCanvasView {
         let v = PKCanvasView()
@@ -148,6 +151,10 @@ struct PencilCanvas: UIViewRepresentable {
 
     func updateUIView(_ v: PKCanvasView, context: Context) {
         if v.drawing != drawing { v.drawing = drawing }
+        if let picker = context.coordinator.picker, picker.isVisible != toolsVisible {
+            picker.setVisible(toolsVisible, forFirstResponder: v)
+            if toolsVisible { DispatchQueue.main.async { v.becomeFirstResponder() } } else { DispatchQueue.main.async { v.resignFirstResponder() } }
+        }
         DispatchQueue.main.async { if v.bounds.size != .zero, size != v.bounds.size { size = v.bounds.size } }
     }
 
@@ -166,10 +173,6 @@ struct CapturesList: View {
 
     var body: some View {
         List {
-            Section {
-                Text("Status is what nearby-v1 returns to a companion: the capture_received receipt (durable / has_proposal / applied at receipt time) or an error code. Conversion and insertion happen on the Mac; their outcome is not carried back (proposal §6). Retry after a disconnect re-sends the same capture_id; the Mac de-duplicates.")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
             Section("Captures (\(model.captures.count))") {
                 if model.captures.isEmpty { Text("none yet").foregroundStyle(.secondary) }
                 ForEach(model.captures) { c in
@@ -204,6 +207,10 @@ struct CapturesList: View {
                     }
                     .accessibilityIdentifier("capture.row.\(c.id)")
                 }
+            }
+            Section {
+                Text("Status is what nearby-v1 returns to a companion: the capture_received receipt (durable / has_proposal / applied at receipt time) or an error code. Conversion and insertion happen on the Mac; their outcome is not carried back (proposal §6). Retry after a disconnect re-sends the same capture_id; the Mac de-duplicates.")
+                    .font(.caption).foregroundStyle(.secondary)
             }
         }
         .accessibilityIdentifier("captures.list")

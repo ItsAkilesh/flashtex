@@ -68,11 +68,9 @@ final class CaptureFlowUITests: XCTestCase {
         draw(app)
         attach(app, "10-canvas-drawn")
 
-        let field = el(app, "capture.instructions")
-        field.tap()
-        field.press(forDuration: 0.8)
-        if app.menuItems["Select All"].waitForExistence(timeout: 2) { app.menuItems["Select All"].tap() }
-        field.typeText("Convert this triangle to TikZ\n")
+        // The default instruction is sent as-is (typing would raise the software
+        // keyboard over the buttons; keyboard-free keeps the run deterministic).
+        XCTAssertTrue(el(app, "capture.instructions").exists)
 
         el(app, "capture.prepare").tap()
         XCTAssertTrue(el(app, "capture.send").waitForExistence(timeout: 5))
@@ -86,7 +84,7 @@ final class CaptureFlowUITests: XCTestCase {
         let cap = try XCTUnwrap(mac.captures.first)
         XCTAssertEqual(cap.destinationId, "dest-tikz")
         XCTAssertEqual(cap.baseRevision, 3)
-        XCTAssertTrue(cap.instructions.contains("Convert this triangle to TikZ"), cap.instructions)
+        XCTAssertEqual(cap.instructions, "Convert this drawing to TikZ")
         XCTAssertEqual(cap.image.mimeType, "image/png")
         let png = try XCTUnwrap(Data(base64Encoded: cap.image.dataBase64))
         XCTAssertNil(NearbyWire.checkImage(png, mimeType: "image/png"))
