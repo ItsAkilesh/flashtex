@@ -1,6 +1,6 @@
 # mac-history handoff
 
-- Updated UTC: 2026-09-12T11:13Z
+- Updated UTC: 2026-09-12T11:22Z
 - Agent / parent / machine alias: mac-history (Claude Code subagent) / mac-claude-a / mac-m1max-a
 - Task / acceptance gate / owned paths: Commander lane (issue #2, 10:41Z): durable
   undo history UI on the helper's ledger. Gate: panel shows undo/redo stacks with
@@ -14,7 +14,10 @@
 - Branch / code revision / main integrated through: `agent/mac-history/panel`
   from `origin/agent/mac-claude-a/mac-shell` f4c8aea; tip in the agent JSON.
   origin/main 796b982c merged in 05b247be (clean; no apps/mac changes on main; the merge message names 6e515bef, one of its commits)
-  to pick up the helper's `history_status` document identity + limits (64829a0d).
+  to pick up the helper's `history_status` document identity + limits (64829a0d);
+  parent shell branch ff574d73 merged in 7b1156ec (one conflict: both sides
+  added functions at the same spot in ShellModel+Controller.swift; kept the
+  parent's hybrid-release helpers and the applied hook).
 - State: ready for integration (parent must apply one hook; see below).
 
 ## Ready behavior and evidence
@@ -87,8 +90,16 @@ the release binaries built in the main checkout at 06:27/05:43 local):
   helper from the merged tree (identity guard + limits assertions run) and the
   06:27 binary in the main checkout (fallback paths; "predates 64829a0d" lines).
 - Full `swift test` with all real binaries (helper, compiler, pdf, bridge,
-  edit-ledger): 476 tests, 11 skipped (other lanes' helpers), 0 failures — at
-  6b595ed (old helper) and at bfcc84b6 (merged tree, new helper).
+  edit-ledger): 476 tests, 11 skipped (other lanes' helpers), 0 failures at
+  6b595ed (old helper) and bfcc84b6/daec4c64 (merged main, new helper); after
+  merging the parent's shell branch ff574d73: 504 tests, 13 skipped, 0 failures
+  at 7b1156ec.
+- Follow-ups done (daec4c64): `refresh(force:)` sends no `history_status` when
+  the last status' identity still equals the shell's durable snapshot (every
+  history change advances the revision) — typing no longer costs a status
+  round trip per keystroke on a helper ≥ 64829a0d; session annotations follow
+  their step across undo/redo (the client's own completed move disambiguates
+  "redo" from "new edit cleared the redo stack", which have identical counts).
 - Window capture: `docs/evidence/mac-history/panel-seeded-ledger.jpg` (+ README,
   seed script): the Durable History window on a seeded ledger — undo 1, redo
   run ×2, 574 B, 2 permanent ids, durable r6 — launched with FLASHTEX_NO_ACTIVATE=1.
@@ -149,9 +160,10 @@ the release binaries built in the main checkout at 06:27/05:43 local):
 
 ## Exact next action
 
-Parent: cherry-pick 53e56a0 (hook), 2e60041e and bfcc84b6 (app window/menu) onto
-`agent/mac-claude-a/mac-shell`, or re-apply the diffs above, then merge
-`agent/mac-history/panel`. Follow-ups for this lane if kept staffed: group
+Parent: merge `agent/mac-history/panel` (7b1156ec already contains mac-shell
+ff574d73 and the three labelled parent-diff commits 53e56a0, 2e60041e,
+bfcc84b6 resolved against the hybrid-release helpers), or re-apply the diffs
+above onto mac-shell and merge only the owned files. Follow-ups for this lane if kept staffed: group
 edits (`apply_group`) through `issue(_:)`; a shared `model.history` client so
 reloads are annotated; retention UI once the helper exposes it.
 
