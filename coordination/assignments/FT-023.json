@@ -3,21 +3,21 @@
   "task_id": "FT-023",
   "agent_id": "commander-render-core",
   "branch": "agent/commander-render-core/rendering-core",
-  "revision": 5,
+  "revision": 7,
   "state": "assigned",
-  "objective": "Consume published MathKernInfo into exact source-bound metrics replay without inventing script layout",
+  "objective": "Produce original compiler-to-renderer versus established LaTeX reference evidence for one pinned source; if original font/GID binding is missing, publish the exact reproducible consumer gate instead of substituting reference geometry.",
   "owned_paths": [
     "crates/rendering-core"
   ],
   "acceptance": [
-    "Meaningful tests and strict lint pass",
-    "Publish truthful execution provenance and exact tested SHA",
-    "No native integration or PDF parity claim without measured evidence"
+    "Pin source/compiler/font/reference hashes and preserve original provenance",
+    "Separate raw bytes, parsed geometry and visual evidence; unknown correspondence is explicit",
+    "No duplicate parser, compiler edits, provider calls or native activation; meaningful tests and strict lint"
   ],
   "dependencies": [],
   "allocation_id": "hosted-openai-product",
   "timebox_minutes": 30,
   "deadline_utc": null,
-  "input_main_sha": "28a4657f70269b800e963081b969572d3006644a",
-  "updated_utc": "2026-09-12T08:49:23.060270+00:00"
+  "input_main_sha": "27437b99a6923bfad6be1e212e79e5f4e9c67def",
+  "updated_utc": "2026-09-12T09:30:51.309960+00:00"
 }

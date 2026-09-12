@@ -5,29 +5,29 @@
   "next_index": 0,
   "steps": [
     {
-      "name": "Bind explicit MATH device correction context into existing metrics replay",
-      "objective": "Bind explicit MATH device correction context into existing metrics replay",
+      "name": "Classify and reproduce the largest measured reference mismatch or missing consumer identity contract without guessing mapping",
+      "objective": "Classify and reproduce the largest measured reference mismatch or missing consumer identity contract without guessing mapping",
       "owned_paths": [
         "crates/rendering-core"
       ],
       "acceptance": [
-        "Meaningful tests and strict lint pass",
-        "Publish truthful execution provenance and exact tested SHA",
-        "No native integration or PDF parity claim without measured evidence"
+        "Pin source/compiler/font/reference hashes and preserve original provenance",
+        "Separate raw bytes, parsed geometry and visual evidence; unknown correspondence is explicit",
+        "No duplicate parser, compiler edits, provider calls or native activation; meaningful tests and strict lint"
       ],
       "allocation_id": "hosted-openai-product",
       "timebox_minutes": 30
     },
     {
-      "name": "Exact cached/direct mixed math replay with stale source and resource refusal",
-      "objective": "Exact cached/direct mixed math replay with stale source and resource refusal",
+      "name": "Re-run the pinned original/reference comparison after the owner fix and publish exact closure evidence or remaining blocker",
+      "objective": "Re-run the pinned original/reference comparison after the owner fix and publish exact closure evidence or remaining blocker",
       "owned_paths": [
         "crates/rendering-core"
       ],
       "acceptance": [
-        "Meaningful tests and strict lint pass",
-        "Publish truthful execution provenance and exact tested SHA",
-        "No native integration or PDF parity claim without measured evidence"
+        "Pin source/compiler/font/reference hashes and preserve original provenance",
+        "Separate raw bytes, parsed geometry and visual evidence; unknown correspondence is explicit",
+        "No duplicate parser, compiler edits, provider calls or native activation; meaningful tests and strict lint"
       ],
       "allocation_id": "hosted-openai-product",
       "timebox_minutes": 30

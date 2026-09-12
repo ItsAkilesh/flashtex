@@ -122,9 +122,14 @@ struct FlashTeXMacApp: App {
                 Button("Export PDF via Rust Writer…") { model.exportPDFViaRust() }
                     .keyboardShortcut("e", modifiers: [.command, .option])
                     .disabled(model.result == nil)
+                Button("Export PDF (exact, v2)…") { model.exportPDFExact() } // ExactPDFExport.swift
+                    .disabled(model.displayListV2?.frame == nil)
                 Divider()
                 Button("Attach Built Compiler") { model.attachDiscoveredWorker() }
                     .keyboardShortcut("k", modifiers: [.command, .shift])
+                Button("Attach Render Pipeline (Latin Modern)") { model.attachDiscoveredRenderPipeline() }
+                    .keyboardShortcut("r", modifiers: [.command, .shift])
+                    .help("Attach flashtex-render (crates/render-pipeline) — the producer whose metrics are Latin Modern, so the preview shows Computer Modern-style text")
                 Button("Attach Worker Executable…") { model.attachWorkerPanel() }
                     .keyboardShortcut("k")
                 Button("Compile") { model.compile() }

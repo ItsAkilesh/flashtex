@@ -2,7 +2,8 @@
 //! the oracle comparison in `docs/comparison.md`. Each constructor documents
 //! the LaTeX source it models.
 
-use crate::mathlist::{Atom, MathList};
+use crate::mathlist::{Atom, Limits, MathList};
+use crate::style::Style;
 
 fn sym(s: &str) -> MathList {
     MathList::symbols(s)
@@ -93,6 +94,67 @@ pub fn a_comma_b() -> MathList {
     sym("a,b")
 }
 
+/// `\left\{\frac{\frac{\frac{a}{b}}{c}}{\frac{d}{\frac{e}{f}}}\right\}`:
+/// a stack taller than the largest `cmex10` brace, forcing the extensible
+/// recipe.
+pub fn tall_braces() -> MathList {
+    let top = Atom::frac(frac_a_b(), sym("c")).into();
+    let bottom = Atom::frac(sym("d"), Atom::frac(sym("e"), sym("f")).into()).into();
+    Atom::left_right(Some('{'), Some('}'), Atom::frac(top, bottom).into()).into()
+}
+
+/// `\sqrt[3]{\frac{a}{b}}`
+pub fn cube_root_frac() -> MathList {
+    Atom::root(sym("3"), frac_a_b()).into()
+}
+
+/// `\lim_{x\to 0}\frac{\sin x}{x}`
+pub fn lim_sin_x_over_x() -> MathList {
+    let mut to_zero = sym("x");
+    to_zero.atoms.push(Atom::symbol('\u{2192}'));
+    to_zero.atoms.push(Atom::symbol('0'));
+    let lim = Atom::text_op("lim").with_sub(to_zero);
+    let mut num: MathList = Atom::text_op("sin").with_limits(Limits::NoLimits).into();
+    num.atoms.push(Atom::symbol('x'));
+    MathList::new(vec![lim, Atom::frac(num, sym("x"))])
+}
+
+/// `\overline{x}`
+pub fn overline_x() -> MathList {
+    Atom::overline(sym("x")).into()
+}
+
+/// `\underline{x}`
+pub fn underline_x() -> MathList {
+    Atom::underline(sym("x")).into()
+}
+
+/// `\hat{x}^2`
+pub fn hat_x_squared() -> MathList {
+    Atom::accent('^', sym("x")).with_sup(sym("2")).into()
+}
+
+/// `\widehat{xyz}`
+pub fn widehat_xyz() -> MathList {
+    Atom::accent('\u{0302}', sym("xyz")).into()
+}
+
+/// `\sqrt{\frac{\frac{a}{b}}{\frac{c}{d}}}` in display: taller than every
+/// fixed radical sign, so the extensible radical is used.
+pub fn tall_sqrt() -> MathList {
+    let inner = Atom::frac(frac_a_b(), Atom::frac(sym("c"), sym("d")).into());
+    Atom::sqrt(inner.into()).into()
+}
+
+/// `{\displaystyle\sum_{i=1}^n}{\textstyle\frac{a}{b}}`: explicit style
+/// overrides inside whatever style the list is set in.
+pub fn styled_mix() -> MathList {
+    MathList::new(vec![
+        Atom::styled(Style::DISPLAY, sum_limits()),
+        Atom::styled(Style::TEXT, frac_a_b()),
+    ])
+}
+
 /// Every fixture with its LaTeX source.
 pub fn all() -> Vec<(&'static str, MathList)> {
     vec![
@@ -110,5 +172,20 @@ pub fn all() -> Vec<(&'static str, MathList)> {
         ("a=b", a_eq_b()),
         ("f(x)", f_of_x()),
         ("a,b", a_comma_b()),
+        (
+            "\\left\\{\\frac{\\frac{\\frac{a}{b}}{c}}{\\frac{d}{\\frac{e}{f}}}\\right\\}",
+            tall_braces(),
+        ),
+        ("\\sqrt[3]{\\frac{a}{b}}", cube_root_frac()),
+        ("\\lim_{x\\to 0}\\frac{\\sin x}{x}", lim_sin_x_over_x()),
+        ("\\overline{x}", overline_x()),
+        ("\\underline{x}", underline_x()),
+        ("\\hat{x}^2", hat_x_squared()),
+        ("\\widehat{xyz}", widehat_xyz()),
+        ("\\sqrt{\\frac{\\frac{a}{b}}{\\frac{c}{d}}}", tall_sqrt()),
+        (
+            "{\\displaystyle\\sum_{i=1}^n}{\\textstyle\\frac{a}{b}}",
+            styled_mix(),
+        ),
     ]
 }
