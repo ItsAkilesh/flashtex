@@ -2,25 +2,25 @@
   "agent_id": "mac-editor-diagnostics",
   "allocation_id": "claude-mac20x-editor-diagnostics",
   "assignment_acknowledgements": {},
-  "branch": "agent/mac-editor-diagnostics/explanations",
+  "branch": "agent/mac-editor-diagnostics/quick-fix",
   "capabilities": [
     "swift",
     "accessibility"
   ],
-  "code_revision": "f74d4650a5e2c89b32e1a4f18ae4ca1f1d60c0bc",
+  "code_revision": "1afd7036393cfa203de19a088ca56ba34d601429",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
     "pessimistic": 0
   },
   "machine": "mac-m1max-a",
-  "main_integrated_through": "277a0910811fdb27bd156ecd92b92b50f277c750",
-  "next_action": "Parent applies ShellModel/ContentView diffs; crate owner adds src/bin/flashtex-explain.rs (exact source in handoff); packaging ships flashtex-explain; re-run swift test with FLASHTEX_EXPLAIN set.",
+  "main_integrated_through": "3ac69c3ed109fa0902af39f4e2187d572a61c075",
+  "next_action": "Parent applies the Fix\u2026 diff in coordination/mac-editor-diagnostics.md; crate owner adds src/bin/flashtex-explain.rs; re-run swift test with FLASHTEX_EXPLAIN on a quieter machine (Nearby timing tests crash the whole-suite run at load 50-78 but pass alone).",
   "reviewed_peers": {
     "origin/agent/mac-claude-a/mac-shell": {
-      "adaptation": "Base 271a366 already contains my first lane and the parent diffs; the crate offers a Rust library only, so a 20-line JSON Lines front end over explain_all is the transport (built in scratch for tests, exact source handed to the crate owner); fixed-key Decodable mirror with index-matched attach and a fallback line for catalog_id null",
-      "reviewed_utc": "2026-09-12T10:08:01Z",
-      "sha": "271a3663789222b134151ece31b90dc8a56d23bf"
+      "adaptation": "Base 6f4ee94 contains both earlier lanes and the parent diffs; QuickFix builds only on SourceMapping and the explanation's context excerpt, and hands the editor a single covering replacement so the existing pendingEdit path applies it as one undo step",
+      "reviewed_utc": "2026-09-12T10:46:50Z",
+      "sha": "f4c8aeacbbc1b9656095a60ccabc95ef39777428"
     },
     "origin/agent/mac-diagnostic-explanations/explain": {
       "adaptation": "Base 271a366 already contains my first lane and the parent diffs; the crate offers a Rust library only, so a 20-line JSON Lines front end over explain_all is the transport (built in scratch for tests, exact source handed to the crate owner); fixed-key Decodable mirror with index-matched attach and a fallback line for catalog_id null",
@@ -30,11 +30,11 @@
   },
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "Refill: consume crates/diagnostic-explanations (library only, on origin/agent/mac-diagnostic-explanations/explain 2bf14cd, not on main) via a flashtex-explain JSON Lines child process; EditorDiagnostics.Explanation decoded/bounded (4 MiB, count==diagnostics, field caps), ExplanationCache per result id, attach by diagnostic index onto marks/tooltip/list/VoiceOver line; bench after first fetch 62 KB/200 diags best 1.07 ms median 1.10 ms (debug) < 2 ms; real-crate test (skips loudly without FLASHTEX_EXPLAIN) + fake malformed/oversized. swift test 387/387, 12 pre-existing skips.",
+  "summary": "Refill: EditorDiagnostics.QuickFix.prepare turns explanation suggestion edits into a preview + ONE grouped undoable replacement for the current buffer (byte-exact SourceMapping rebase; refuses spans edited since the compile, byte mismatches vs the explanation context or the buffer, invalid ranges, overlapping edits); never applied automatically. Tests: real flashtex-explain \\foo case (loud skip without FLASHTEX_EXPLAIN), multi-edit grouping, stale/overlap refusals, multi-byte ranges. 'Fix\u2026' button + preview sheet via pendingEdit is a requested ShellModel/ContentView diff.",
   "tool": "Claude Code subagent (parent mac-claude-a)",
-  "updated_utc": "2026-09-12T10:08:01Z",
+  "updated_utc": "2026-09-12T10:46:50Z",
   "usage": {
-    "evidence": "apps/mac swift test at f74d465: 387 tests, 0 failures, 12 skipped (other helpers); EditorDiagnosticsExplanationsTests 6/6 with FLASHTEX_EXPLAIN",
+    "evidence": "apps/mac at 1afd703: swift test --skip Nearby 408 tests 0 failures 18 pre-existing skips; swift test --filter Nearby 52 tests 0 failures 2 skips; EditorDiagnosticsQuickFixTests 4/4 with FLASHTEX_EXPLAIN",
     "status": "shared Claude Max quota with parent mac-claude-a; no purchases"
   }
 }

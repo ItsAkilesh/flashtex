@@ -34,6 +34,15 @@ enum Completion {
         let insertText: String
         let kind: Kind
         let detail: String
+        /// When set, accepting inserts this instead of `insertText` and places
+        /// the caret inside it (one undoable edit).
+        var snippet: Snippet? = nil
+    }
+
+    /// Replacement text plus the caret position inside it, in UTF-16 units.
+    struct Snippet: Equatable {
+        let text: String
+        let caretUTF16: Int
     }
 
     static let maxSuggestions = 12
@@ -66,6 +75,31 @@ enum Completion {
             var glyph: String? = nil
 
             var label: String { "\\" + name + arguments }
+
+            /// The argument shape as an insertion: every `{…}` becomes `{}`,
+            /// `[…]` optionals are dropped, and the caret lands in the first
+            /// braces (`\section{|}`, `\frac{|}{}`, `\newcommand{|}{}`).
+            /// Nil for commands without a braced argument.
+            var snippet: Completion.Snippet? {
+                var out = "\\" + name
+                var caret: Int?
+                var i = arguments.startIndex
+                while i < arguments.endIndex {
+                    let c = arguments[i]
+                    if c == "[" {
+                        i = arguments[i...].firstIndex(of: "]").map(arguments.index(after:)) ?? arguments.endIndex
+                    } else if c == "{" {
+                        out += "{"
+                        if caret == nil { caret = (out as NSString).length }
+                        out += "}"
+                        i = arguments[i...].firstIndex(of: "}").map(arguments.index(after:)) ?? arguments.endIndex
+                    } else {
+                        i = arguments.index(after: i)
+                    }
+                }
+                guard let caret else { return nil }
+                return Completion.Snippet(text: out, caretUTF16: caret)
+            }
             var detail: String {
                 switch mode {
                 case .text: return description
@@ -139,7 +173,7 @@ enum Completion {
         /// A run of letters, with what immediately precedes it (`\begin{`, `\ref{`, …).
         case word(text: String, start: Int, end: Int, context: Context)
 
-        enum Context: Equatable { case none, beginEnvironment, endEnvironment, reference, citation }
+        enum Context: Equatable { case none, beginEnvironment, endEnvironment, reference, citation, label }
 
         var start: Int {
             switch self { case .command(_, let s, _), .word(_, let s, _, _): return s }
@@ -187,6 +221,7 @@ enum Completion {
         guard start > 0, b[start - 1] == UInt8(ascii: "{") else { return .none }
         if endsWith(b, upTo: start, suffix: "\\begin{") { return .beginEnvironment }
         if endsWith(b, upTo: start, suffix: "\\end{") { return .endEnvironment }
+        if endsWith(b, upTo: start, suffix: "\\label{") { return .label }
         if endsWith(b, upTo: start, suffix: "\\ref{") || endsWith(b, upTo: start, suffix: "\\eqref{")
             || endsWith(b, upTo: start, suffix: "\\pageref{") || endsWith(b, upTo: start, suffix: "\\autoref{") {
             return .reference
@@ -239,6 +274,8 @@ enum Completion {
                 out = referenceSuggestions(prefix: prefix, text: text, metadata: metadata)
             case .citation:
                 out = citationSuggestions(prefix: prefix, text: text, metadata: metadata)
+            case .label:
+                out = labelSuggestions(prefix: prefix, tokenStart: token.start, text: text, metadata: metadata)
             case .none:
                 out = wordSuggestions(prefix: prefix, tokenStart: token.start, text: text)
             }
@@ -269,7 +306,8 @@ enum Completion {
                                       detail: item.detail(noun: "declared", revision: metadata.revision) + " · overrides the builtin"))
             } else {
                 let entry = Vocabulary.byName[name] ?? Vocabulary.generic(name)
-                out.append(Suggestion(label: entry.label, insertText: "\\" + name, kind: .command, detail: entry.detail))
+                out.append(Suggestion(label: entry.label, insertText: "\\" + name, kind: .command, detail: entry.detail,
+                                      snippet: entry.snippet))
             }
         }
         if let metadata {
@@ -299,12 +337,40 @@ enum Completion {
         names += documentEnvironments(in: text)
         var seen = Set<String>()
         var out: [Suggestion] = []
+        // Opening an environment inserts its body skeleton with the caret on
+        // the (indented) middle line; closing stays the exact name.
+        let indent = closing ? "" : lineIndent(in: text, beforeByte: tokenStart)
         for name in names where name.hasPrefix(prefix) && seen.insert(name).inserted {
             var detail = knownEnvironments.contains(name) ? "supported by this compiler" : "seen in this document"
             if let message = metadata?.diagnosticsByEnvironment[name] { detail += " — " + message }
-            out.append(Suggestion(label: name, insertText: name + "}", kind: .environment, detail: detail))
+            var snippet: Snippet?
+            if !closing {
+                let head = "\(name)}\n\(indent)"
+                snippet = Snippet(text: head + "\n\(indent)\\end{\(name)}", caretUTF16: (head as NSString).length)
+            }
+            out.append(Suggestion(label: name, insertText: name + "}", kind: .environment, detail: detail, snippet: snippet))
         }
         return Array(out.prefix(maxSuggestions))
+    }
+
+    /// One candidate for `\label{`: a key derived from the enclosing
+    /// `\section`/`\subsection` title (`sec:` + kebab-case), made unique against
+    /// the document's labels and the project index's labels at this revision.
+    private static func labelSuggestions(prefix: String, tokenStart: Int, text: String, metadata: Metadata?) -> [Suggestion] {
+        guard let heading = enclosingHeading(in: text, beforeByte: tokenStart) else { return [] }
+        let slug = kebabCase(heading.title)
+        guard !slug.isEmpty else { return [] }
+        var taken = Set(labels(in: text))
+        if let metadata { taken.formUnion(metadata.labels.map(\.name)) }
+        let base = "sec:" + slug
+        var key = base
+        var n = 2
+        while taken.contains(key) { key = "\(base)-\(n)"; n += 1 }
+        guard key.hasPrefix(prefix) else { return [] }
+        var detail = "unique key for \\\(heading.command){\(heading.title)}"
+        if key != base { detail += " (\(base) is taken)" }
+        if let metadata { detail += " · checked against \(metadata.labels.count) project label\(metadata.labels.count == 1 ? "" : "s") · revision \(metadata.revision)" }
+        return [Suggestion(label: key, insertText: key + "}", kind: .reference, detail: detail)]
     }
 
     private static func referenceSuggestions(prefix: String, text: String, metadata: Metadata?) -> [Suggestion] {
@@ -422,6 +488,75 @@ enum Completion {
             }
         }
         return out
+    }
+
+    struct Heading: Equatable { let command: String; let title: String }
+
+    /// The last `\section{…}`/`\subsection{…}` whose backslash lies before
+    /// `byte`. The title is the balanced brace group (nested braces allowed,
+    /// stops at a newline), so `\section{The \emph{Best} Idea}` is read whole.
+    static func enclosingHeading(in text: String, beforeByte byte: Int) -> Heading? {
+        var found: Heading?
+        withBytes(text) { b in
+            guard let p = b.baseAddress else { return }
+            forEachCommand(in: b, upTo: min(byte, b.count)) { name, nameStart, _ in
+                guard bytes(name, equal: "section") || bytes(name, equal: "subsection") else { return }
+                var j = nameStart + name.count
+                guard j < b.count, p[j] == UInt8(ascii: "{") else { return }
+                j += 1
+                var depth = 1
+                let start = j
+                while j < b.count, depth > 0, p[j] != UInt8(ascii: "\n") {
+                    if p[j] == UInt8(ascii: "{") { depth += 1 } else if p[j] == UInt8(ascii: "}") { depth -= 1 }
+                    j += 1
+                }
+                guard depth == 0 else { return }
+                let title = String(decoding: UnsafeBufferPointer(start: p + start, count: j - 1 - start), as: UTF8.self)
+                found = Heading(command: String(decoding: name, as: UTF8.self), title: title)
+            }
+        }
+        return found
+    }
+
+    /// `The \emph{Best} Idea!` → `the-best-idea`: control words and braces are
+    /// dropped, letters and digits (any script) are lowercased, every other run
+    /// becomes one hyphen, and the result is trimmed.
+    static func kebabCase(_ title: String) -> String {
+        var cleaned = ""
+        var skippingCommand = false
+        for ch in title {
+            if ch == "\\" { skippingCommand = true; continue }
+            if skippingCommand {
+                if ch.isLetter { continue }
+                skippingCommand = false
+            }
+            if ch == "{" || ch == "}" { continue }
+            cleaned.append(ch)
+        }
+        var out = ""
+        var pendingHyphen = false
+        for ch in cleaned.lowercased() {
+            if ch.isLetter || ch.isNumber {
+                if pendingHyphen, !out.isEmpty { out.append("-") }
+                pendingHyphen = false
+                out.append(ch)
+            } else {
+                pendingHyphen = true
+            }
+        }
+        return out
+    }
+
+    /// Leading spaces/tabs of the line containing `byte`.
+    static func lineIndent(in text: String, beforeByte byte: Int) -> String {
+        withBytes(text) { b in
+            guard let p = b.baseAddress else { return "" }
+            var lineStart = min(byte, b.count)
+            while lineStart > 0, p[lineStart - 1] != UInt8(ascii: "\n") { lineStart -= 1 }
+            var j = lineStart
+            while j < b.count, p[j] == UInt8(ascii: " ") || p[j] == UInt8(ascii: "\t") { j += 1 }
+            return String(decoding: UnsafeBufferPointer(start: p + lineStart, count: j - lineStart), as: UTF8.self)
+        }
     }
 
     /// Keys of `\bibitem{…}` anywhere in the document, in order. `\bibitem[x]{key}`
@@ -1404,16 +1539,33 @@ final class CompletingTextView: NSTextView {
     /// the items were computed.
     func acceptSelectedCompletion() {
         guard let s = session, let item = s.selected else { return }
+        guard !hasMarkedText() else { return } // IME composition owns the text until it ends
         guard s.generation == scheduler.generation, NSMaxRange(s.range) <= (string as NSString).length,
               selectedRange() == NSRange(location: NSMaxRange(s.range), length: 0) else {
             close(.textChanged)
             return
         }
         applyingCompletion = true
-        insertCompletion(item.insertText, forPartialWordRange: s.range, movement: NSReturnTextMovement, isFinal: true)
+        if let snippet = item.snippet {
+            insertSnippet(snippet, replacing: s.range, kind: item.kind)
+        } else {
+            insertCompletion(item.insertText, forPartialWordRange: s.range, movement: NSReturnTextMovement, isFinal: true)
+        }
         applyingCompletion = false
         scheduler.cancel()
         close(.accepted)
+    }
+
+    /// One undo step: the typed partial token is closed off first so ⌘Z
+    /// removes exactly the snippet and restores the token.
+    private func insertSnippet(_ snippet: Completion.Snippet, replacing range: NSRange, kind: Completion.Kind) {
+        breakUndoCoalescing()
+        guard shouldChangeText(in: range, replacementString: snippet.text) else { return }
+        textStorage?.replaceCharacters(in: range, with: snippet.text)
+        didChangeText() // registers the undo step, fires textDidChange
+        undoManager?.setActionName(kind == .environment ? "Insert Environment" : "Insert Snippet")
+        setSelectedRange(NSRange(location: range.location + snippet.caretUTF16, length: 0))
+        breakUndoCoalescing()
     }
 
     // MARK: events

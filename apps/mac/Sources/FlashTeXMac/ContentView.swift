@@ -187,36 +187,48 @@ private struct ProjectMenu: View {
 
     var body: some View {
         Menu {
-            let found = model.project.discoverIncludes()
-            if found.isEmpty {
+            // The transitive closure (chapter → section → …), depth-first in
+            // source order, indented by depth; cycles and missing files are
+            // listed with their reason. Bounded: 8 levels, 256 documents.
+            let closure = model.project.discoverClosure()
+            if closure.nodes.isEmpty {
                 Text("No \\input or \\include in \(model.project.entryPath)")
             }
-            ForEach(Array(found.enumerated()), id: \.offset) { _, d in
-                switch d.state {
+            ForEach(Array(closure.nodes.enumerated()), id: \.offset) { _, n in
+                let indent = String(repeating: "    ", count: max(0, n.depth))
+                let name = n.resolvedPath ?? n.reference.argument
+                switch n.state {
                 case .available:
-                    Button("Open \(d.resolvedPath ?? d.reference.argument)") {
-                        Task { await model.project.openInclude(d.reference.argument) }
-                    }
+                    Button(indent + "Open \(name)") { Task { await model.project.openDocument(name, role: .included(from: n.from)) } }
                 case .open:
-                    Button("Show \(d.resolvedPath ?? d.reference.argument)") {
-                        if let path = d.resolvedPath { model.project.switchDocument(to: path) }
-                    }
+                    Button(indent + "Show \(name)") { model.project.switchDocument(to: name) }
                 case .unresolvable(let why):
-                    Text("\\\(d.reference.kind.rawValue){\(d.reference.argument)}: \(why)")
+                    Text(indent + "\\\(n.reference.kind.rawValue){\(n.reference.argument)}: \(why)")
                 }
             }
-            if !found.isEmpty, found.contains(where: { $0.state == .available }) {
+            if closure.truncated { Text("closure truncated at \(ProjectDocuments.maxClosureDocuments) documents") }
+            if closure.nodes.contains(where: { $0.state == .available }) {
                 Button("Open All Includes") { Task { await model.project.openDiscoveredIncludes() } }
+                    .help("Opens the whole include closure in this order; unresolvable references are reported in the footer note")
+            }
+            if let report = model.project.lastOpenReport, !report.unresolvable.isEmpty {
+                Divider()
+                Text("Open All: \(report.unresolvable.count) unresolvable")
+                ForEach(Array(report.unresolvable.enumerated()), id: \.offset) { _, line in Text(line) }
             }
             if model.activePath != model.project.entryPath {
                 Divider()
                 Button("Save \(model.activePath)") { Task { await model.project.saveDocument(model.activePath) } }
                     .disabled(model.documentURL == nil)
-                Button("Detach \(model.activePath)") {
+                Button("Detach \(model.activePath) (this session)") {
                     Task {
-                        if case .refused(let why) = await model.project.detachDocument(model.activePath) { model.captureNote = why }
+                        switch await model.project.detachDocument(model.activePath) {
+                        case .refused(let why): model.captureNote = why
+                        case .detached(let path): model.captureNote = "Detached \(path) — " + ProjectDocuments.detachScopeNote
+                        }
                     }
                 }
+                .help("Session only: " + ProjectDocuments.detachScopeNote)
             }
         } label: {
             Label("Project", systemImage: "doc.on.doc")
@@ -307,6 +319,27 @@ private struct PreviewPane: View {
                                        description: Text("Use File > Open Compile Result Fixture…"))
             }
         }
+        .sheet(isPresented: Binding(get: { model.quickFix != nil }, set: { if !$0 { model.quickFix = nil } })) {
+            if let p = model.quickFix {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Suggested fix").font(.headline)
+                    Text(p.summary).font(.caption).foregroundStyle(.secondary)
+                    Text("Before").font(.caption.bold())
+                    Text(p.before).font(.system(.body, design: .monospaced)).textSelection(.enabled)
+                    Text("After").font(.caption.bold())
+                    Text(p.after).font(.system(.body, design: .monospaced)).textSelection(.enabled)
+                    Text("Heuristic suggestion from the explanation catalogue; applied as one undoable edit only when you choose Apply.")
+                        .font(.caption2).foregroundStyle(.tertiary)
+                    HStack {
+                        Spacer()
+                        Button("Cancel") { model.quickFix = nil }.keyboardShortcut(.cancelAction)
+                        Button("Apply") { model.applyQuickFix() }.keyboardShortcut(.defaultAction)
+                    }
+                }
+                .padding(16).frame(minWidth: 480)
+                .accessibilityElement(children: .contain).accessibilityLabel("Suggested fix preview")
+            }
+        }
     }
 
     private func diagnosticsList(_ diags: [RuntimeV1.Diagnostic]) -> some View {
@@ -338,6 +371,11 @@ private struct PreviewPane: View {
                     }
                     Spacer()
                     if d.source != nil { Button("Go to source") { model.navigate(to: d.source) } }
+                    if let x = model.explanations.explanation(resultID: model.resultID, index: i),
+                       x.suggestions.contains(where: { !$0.edits.isEmpty }) {
+                        Button("Fix…") { model.previewQuickFix(diagnosticIndex: i) }
+                            .help(x.suggestions.first { !$0.edits.isEmpty }?.text ?? "Preview a suggested fix")
+                    }
                 }
                 .accessibleDiagnostic(d, index: i, total: diags.count, status: model.result?.status ?? .ok,
                                       explanation: model.explanations.explanation(resultID: model.resultID, index: i)?.line) { model.navigate(to: d.source) } // FlashTeXAccessibility

@@ -135,6 +135,8 @@ final class ProposalPreview: ObservableObject {
     /// Helper/provider replies discarded because they answered a request that
     /// is no longer current (cancelled, superseded, or never sent).
     @Published private(set) var staleExplanationReplies = 0
+    /// Every helper/provider launch so far (bounded to the last 64).
+    @Published private(set) var childLaunches: [ChildLaunch] = []
     private var explanationProcess: OneShotProcess?
     private var explanationJob: ExplanationJob?
     private var explained: (input: Input, latex: String)?
@@ -292,7 +294,7 @@ final class ProposalPreview: ObservableObject {
         case .protocolViolation(let message):
             inFlight.removeAll()
             state = .failed("protocol violation: \(message)")
-        case .stderr:
+        case .stderr, .displayList: // the shadow compile never requests display-list-v2
             break
         case .exited(let code):
             let lost = !inFlight.isEmpty
@@ -509,6 +511,7 @@ final class OneShotProcess {
     /// has exited and both pipes reached EOF; dropping the last outside
     /// reference never loses the completion.
     init(executable: URL, arguments: [String], input: Data, timeout: TimeInterval, maxOutputBytes: Int,
+         environment: [String: String]? = nil,
          completion: @escaping (Result<Output, Failure>) -> Void) throws {
         self.executable = executable
         self.maxOutputBytes = maxOutputBytes
@@ -517,6 +520,7 @@ final class OneShotProcess {
         signal(SIGPIPE, SIG_IGN) // a helper that exits early must not kill the app
         process.executableURL = executable
         process.arguments = arguments
+        if let environment { process.environment = environment }
         process.standardInput = stdin
         process.standardOutput = stdout
         process.standardError = stderr
@@ -622,8 +626,9 @@ extension ProposalPreview {
 
         static let disabled = ExplanationConfiguration(helper: nil)
 
-        @MainActor static func fromEnvironment(_ env: [String: String] = ProcessInfo.processInfo.environment) -> ExplanationConfiguration {
-            var c = ExplanationConfiguration(helper: locateHelper(env))
+        @MainActor static func fromEnvironment(_ env: [String: String] = ProcessInfo.processInfo.environment,
+                                               bundleExecutableDirectory: URL? = Bundle.main.executableURL?.deletingLastPathComponent()) -> ExplanationConfiguration {
+            var c = ExplanationConfiguration(helper: locateHelper(env, bundleExecutableDirectory: bundleExecutableDirectory))
             if let p = env["FLASHTEX_ASSISTANT_PROVIDER"], FileManager.default.isExecutableFile(atPath: p) {
                 c.provider = URL(fileURLWithPath: p)
             }
@@ -631,13 +636,21 @@ extension ProposalPreview {
             return c
         }
 
-        /// `FLASHTEX_ASSISTANT_CONTEXT`, then a bundled binary, then the pinned
-        /// scratch build (`scratchHelperPath`), then the checkout's own crate build
-        /// (which may predate `review`/`approve`; those steps then fail honestly).
-        @MainActor static func locateHelper(_ env: [String: String] = ProcessInfo.processInfo.environment) -> URL? {
+        /// The helper's file name inside a packaged app (`FlashTeX.app/Contents/
+        /// MacOS/flashtex-assistant-context`, next to the other bundled helpers;
+        /// `scripts/make-app.sh --assistant <path>` is the packaging lane's entry).
+        static let bundledHelperName = "flashtex-assistant-context"
+
+        /// `FLASHTEX_ASSISTANT_CONTEXT`, then `bundledHelperName` in the bundle's
+        /// MacOS directory (`bundleExecutableDirectory`, the running executable's
+        /// directory by default), then the pinned scratch build
+        /// (`scratchHelperPath`), then the checkout's own crate build (which may
+        /// predate `review`/`approve`; those steps then fail honestly).
+        @MainActor static func locateHelper(_ env: [String: String] = ProcessInfo.processInfo.environment,
+                                            bundleExecutableDirectory: URL? = Bundle.main.executableURL?.deletingLastPathComponent()) -> URL? {
             let fm = FileManager.default
             if let p = env["FLASHTEX_ASSISTANT_CONTEXT"], fm.isExecutableFile(atPath: p) { return URL(fileURLWithPath: p) }
-            if let bundled = Bundle.main.executableURL?.deletingLastPathComponent().appendingPathComponent("flashtex-assistant-context"),
+            if let bundled = bundleExecutableDirectory?.appendingPathComponent(bundledHelperName),
                fm.isExecutableFile(atPath: bundled.path) {
                 return bundled
             }
@@ -648,6 +661,46 @@ extension ProposalPreview {
             }
             return candidates.first { fm.isExecutableFile(atPath: $0.path) }
         }
+
+        /// What the sheet shows for the provider: the enabled command's file
+        /// name (the user chose it) or "disabled". Never a URL or a key.
+        var providerIdentityText: String {
+            provider.map { "provider: \($0.lastPathComponent)" } ?? "provider disabled (set FLASHTEX_ASSISTANT_PROVIDER to a local command)"
+        }
+
+        enum ChildRole { case helper, provider }
+
+        /// Environment handed to a child. The helper gets a minimal offline
+        /// environment: no credential-, token- or proxy-like variables (the
+        /// helper's default build has no network code either; the `grok`
+        /// feature is off and `FLASHTEX_GROK_API_KEY` is always removed). The
+        /// provider is the user's own command and inherits the user's
+        /// environment unchanged, minus nothing this app adds.
+        static func childEnvironment(for role: ChildRole, from env: [String: String] = ProcessInfo.processInfo.environment) -> [String: String] {
+            switch role {
+            case .provider: return env
+            case .helper:
+                let keep: Set<String> = ["PATH", "HOME", "TMPDIR", "LANG", "LC_ALL", "LC_CTYPE", "USER", "SHELL", "RUST_BACKTRACE"]
+                return env.filter { keep.contains($0.key) && !isSensitiveVariable($0.key) }
+            }
+        }
+
+        static func isSensitiveVariable(_ name: String) -> Bool {
+            let upper = name.uppercased()
+            return upper == "FLASHTEX_GROK_API_KEY" || upper.contains("API_KEY") || upper.contains("APIKEY")
+                || upper.contains("TOKEN") || upper.contains("SECRET") || upper.contains("PASSWORD")
+                || upper.contains("CREDENTIAL") || upper.hasSuffix("_PROXY") || upper == "PROXY"
+        }
+    }
+
+    /// One child-process launch as the preview performed it (tests inspect argv
+    /// and environment; nothing here is a network operation).
+    struct ChildLaunch: Equatable {
+        var role: ExplanationConfiguration.ChildRole
+        var executable: URL
+        var arguments: [String]
+        var environmentKeys: [String]
+        var stage: ExplanationStage
     }
 
     struct ByteRange: Equatable {
@@ -781,14 +834,15 @@ extension ProposalPreview {
     var explanationStatusText: String {
         switch explanationState {
         case .idle: return explanationAvailable
-            ? "not requested — runs the local assistant-context helper; provider \(explanationProviderEnabled ? "enabled by you" : "disabled (set FLASHTEX_ASSISTANT_PROVIDER to enable)")"
-            : "unavailable: no flashtex-assistant-context helper found (build crates/assistant-context or set FLASHTEX_ASSISTANT_CONTEXT)"
+            ? "not requested — runs the local assistant-context helper (\(explanationConfiguration.helper?.lastPathComponent ?? "?")) offline; \(explanationConfiguration.providerIdentityText)"
+            : "unavailable: no flashtex-assistant-context helper found (bundle it, build crates/assistant-context, or set FLASHTEX_ASSISTANT_CONTEXT)"
         case .unavailable(let why): return "unavailable: \(why)"
         case .preparing: return "preparing bounded context…"
         case .prepared(let c):
             return "context \(c.contextId.prefix(8)) prepared for \(c.shadowRequestId): \(c.diagnosticCount) diagnostic\(c.diagnosticCount == 1 ? "" : "s")"
                 + (c.omittedDiagnostics > 0 ? " (\(c.omittedDiagnostics) omitted)" : "") + ", \(c.payloadBytes) bytes; edits: \(c.editBoundaryText). No provider is enabled — nothing was sent."
-        case .awaitingProvider(let c): return "context \(c.contextId.prefix(8)) sent to your provider command; waiting…"
+        case .awaitingProvider(let c):
+            return "context \(c.contextId.prefix(8)) handed to \(explanationConfiguration.provider?.lastPathComponent ?? "your provider command") on stdin; waiting…"
         case .validating(let c): return "validating the provider's reply against context \(c.contextId.prefix(8))…"
         case .ready(let e):
             let edits = "\(e.edits.count) proposed edit\(e.edits.count == 1 ? "" : "s"), none applied"
@@ -908,9 +962,15 @@ extension ProposalPreview {
 
     private func launch(_ executable: URL, arguments: [String], input: Data, timeout: TimeInterval, limit: Int,
                         id: String, stage: ExplanationStage) {
+        let role: ExplanationConfiguration.ChildRole = stage == .provider ? .provider : .helper
+        let environment = ExplanationConfiguration.childEnvironment(for: role)
+        childLaunches.append(ChildLaunch(role: role, executable: executable, arguments: arguments,
+                                         environmentKeys: environment.keys.sorted(), stage: stage))
+        if childLaunches.count > 64 { childLaunches.removeFirst(childLaunches.count - 64) }
         do {
             explanationProcess = try OneShotProcess(executable: executable, arguments: arguments, input: input,
-                                                    timeout: timeout, maxOutputBytes: limit) { [weak self] result in
+                                                    timeout: timeout, maxOutputBytes: limit,
+                                                    environment: environment) { [weak self] result in
                 self?.handleExplanationReply(id: id, stage: stage, result: result)
             }
         } catch {
@@ -1256,7 +1316,8 @@ struct ProposalExplanationView: View {
             HStack(spacing: 6) {
                 Image(systemName: "sparkles").font(.caption).foregroundStyle(.secondary)
                 Text("Assistant").font(.caption.bold())
-                Text("model output — never applied automatically").font(.caption2).foregroundStyle(.secondary)
+                Text("model output — never applied automatically · \(preview.explanationConfiguration.providerIdentityText)")
+                    .font(.caption2).foregroundStyle(.secondary).lineLimit(1)
                 Spacer()
                 if preview.explanationInFlight {
                     ProgressView().controlSize(.mini)
@@ -1265,7 +1326,7 @@ struct ProposalExplanationView: View {
                     Button(explainTitle) { preview.explain() }.controlSize(.mini).disabled(!preview.canExplain)
                 }
             }
-            .help("Runs crates/assistant-context as a child process on the shadow compile: bounded bytes, bound to this proposal's revision. A provider command runs only when you enabled one; nothing is applied without your approval.")
+            .help("Runs the local flashtex-assistant-context helper as a child process on the shadow compile (offline: no network, no credentials in its environment): bounded bytes, bound to this proposal's revision. A provider command runs only when you enabled one with FLASHTEX_ASSISTANT_PROVIDER; nothing is applied without your approval.")
             Text(preview.explanationStatusText).font(.caption2).foregroundStyle(.secondary).lineLimit(3)
             switch preview.explanationState {
             case .ready(let e), .approving(let e):

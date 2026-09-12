@@ -14,16 +14,72 @@
 - Owned paths: `apps/mac/Sources/FlashTeXMac/ProjectDocuments.swift` (new),
   `apps/mac/Tests/FlashTeXMacTests/ProjectDocumentsTests.swift` (new), this
   file, `coordination/agents/mac-multifile.json`.
-- Branch / worktree: `agent/mac-multifile/project-documents` (pushed) in
-  `.claude/worktrees/agent-a4c2c20d016d17c6d`, based on
-  `origin/agent/mac-claude-a/mac-shell` 92a052c. The last commit on the branch
-  is the clearly labelled **"requested parent diffs"** commit (ContentView,
-  ShellModel, ShellModel+Controller, DocumentFiles, FlashTeXMacApp) that the
-  parent can drop or cherry-pick; everything before it touches owned paths only.
+- Branch / worktree: first lane `agent/mac-multifile/project-documents`
+  (integrated by the parent into mac-shell 6f4ee94); refill
+  `agent/mac-multifile/transitive` (pushed) from mac-shell 6f4ee94, in
+  `.claude/worktrees/agent-a4c2c20d016d17c6d`. On each branch the last commit
+  is the clearly labelled **"requested parent diffs"** commit that the parent
+  can drop or cherry-pick; everything before it touches owned paths (plus the
+  requested `docs/evidence/` directory).
 - Rules honoured: no purchases; transferred crates untouched; parent-retained
   files changed only in the separate labelled commit; the app was launched
   only with `FLASHTEX_NO_ACTIVATE=1` for evidence; commits carry the user as
   primary author with truthful trailers.
+
+## Refill (branch `agent/mac-multifile/transitive`, from mac-shell 6f4ee94)
+
+The parent merged the first lane with the parent diffs (mac-shell 091cee8 →
+6f4ee94). Refill items:
+
+1. **Transitive discovery** — `ProjectDocuments.discoverClosure(maxDepth: 8)`:
+   depth-first in source order from the entry (chapter.tex → \input{section}
+   …), text from the open buffer else the rooted disk file (both routes),
+   bounded by `maxIncludeDepth` (8; a deeper reference is listed as
+   `nested deeper than 8 levels; not discovered`) and `maxClosureDocuments`
+   (256, `truncated`). A reference to a document on the current include chain
+   is refused as a cycle (`\input{main} closes an include cycle: main.tex →
+   chapter.tex → ch/section.tex → main.tex`, self-includes too); a document
+   reached again through another parent is listed once as `duplicate`
+   (diamond, not a cycle) and not rescanned. `discoverIncludes(in:)` (one
+   level) is unchanged and shares the resolver.
+2. **Open All** — `openDiscoveredIncludes()` now opens the closure in stable
+   order (parents before their includes; `role: .included(from: parent)`),
+   rediscovering after each open so a document read from the helper's ledger
+   contributes its includes; `lastOpenReport` lists opened / already open /
+   refused / unresolvable (`\input{x} in chapter.tex: why`) / truncated and
+   `status` carries the summary. The Project menu (parent diff, applied in
+   the labelled commit) lists the closure indented by depth and shows the
+   last report's unresolvable references.
+3. **Evidence** — `docs/evidence/multifile-project-2026-09-12/` (window.png,
+   app.log, project/, README.md): running app, real helper + compiler,
+   three-file project, `FLASHTEX_OPEN_INCLUDES=1 FLASHTEX_NO_ACTIVATE=1`,
+   window captured by id.
+4. **⌘S routing verified end to end** (`testSaveCommandWritesOnlyTheActive
+   NonEntryDocumentDirectly` / `…ThroughTheHelper`): with chapter.tex active,
+   `saveTexInteractive()` writes chapter.tex only — `main.tex` bytes asserted
+   unchanged, the entry `savedText` untouched, `captureNote == "Saved
+   chapter.tex"`, `file_status` `matches_source` on the helper route.
+5. **Detach persistence** — what the helper offers: nothing persistent.
+   STDIO.md: "Detach excludes a non-entry document for this session … Project
+   restart restores all retained documents; persistent exclusions are not
+   implemented." The direct route has no project file to record an exclusion
+   in either, and the include is rediscovered from the entry text on the next
+   Open All. So a detach is session-only by construction;
+   `ProjectDocuments.detachScopeNote` states it, the detach status/captureNote
+   carries it, and the picker's Detach item is labelled "(this session)" with
+   the note as help (parent diff). A persistent exclusion would need a helper
+   feature (or a project-side file) — not in this lane.
+
+Refill validation (full `swift test` with real workers on
+`agent/mac-multifile/transitive` + the ContentView diff): three runs at load
+47–78 — run 1 `461 tests, 8 skipped, 2 failures` (the filtered log lost the
+failure lines), run 2 `461 tests, 8 skipped, 1 failure`
+(`RuntimeTranscriptTests testShellAndValidatorBothRejectUnnegotiatedShapes…`:
+`compile_result has no matching request id`, direct-worker transcript checker;
+passes 3/3 in isolation; not this lane's code), run 3 **`Executed 461 tests,
+with 8 tests skipped and 0 failures`** (skips: FLASHTEX_EXPLAIN,
+FLASHTEX_PDF_EXACT, nearby evidence/serve env, an AX overlay probe,
+assistant-context helper, evidence dir). `ProjectDocumentsTests`: 18/18.
 
 ## Ready behaviour (owned files)
 
