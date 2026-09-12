@@ -237,6 +237,11 @@ final class NearbyListener {
     func adoptConnections(from other: NearbyListener) {
         precondition(other.queue === queue)
         let keep = Set(configuration.psks.map(\.identity))
+        // The pairing code this table stopped serving (cancelled, expired,
+        // replaced or consumed): a session that opened with it but has not
+        // said hello is told so before the close, instead of a bare FIN.
+        let oldBootstrap = other.configuration.psks.first(where: \.isBootstrap)
+        let codeWithdrawn = oldBootstrap != nil && oldBootstrap != configuration.psks.first(where: \.isBootstrap)
         queue.sync {
             for (k, c) in other.connections {
                 c.owner = self
@@ -245,6 +250,9 @@ final class NearbyListener {
                 // never said hello cannot be re-keyed and is dropped.
                 if let id = c.identity {
                     if !keep.contains(id) { c.close(reason: "pairing forgotten") }
+                } else if codeWithdrawn {
+                    c.refuse(code: "pairing_cancelled", message: "the Mac withdrew the pairing code before hello",
+                             reason: "pairing code withdrawn before hello")
                 } else {
                     c.close(reason: "key table changed before hello")
                 }
@@ -424,6 +432,14 @@ final class NearbyListener {
             closing = true
             nw.cancel()
             reportClosed(reason)
+        }
+
+        /// Sends one `error` line (no `id`: it answers no request) and then
+        /// closes behind it, so the peer learns why before the FIN.
+        func refuse(code: String, message: String, reason: String) {
+            guard !closing else { return }
+            send(NearbyV1.errorLine(id: nil, code: code, message: message))
+            closeAfterFlush(reason: reason)
         }
 
         /// Terminal state from the stack: the table entry is released only here,

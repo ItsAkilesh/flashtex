@@ -416,6 +416,72 @@ final class PairingFlowMachineTests: XCTestCase {
         XCTAssertEqual(Pairing.spokenCode("907"), "9 0 7")
     }
 
+    // MARK: step indicator and reconnect announcements (mac-pairing-ui-2)
+
+    func testStepIndicatorFollowsThePhase() {
+        XCTAssertEqual(PairingFlow.Step.count, 4)
+        XCTAssertEqual(PairingFlow.Step.shortNames.count, PairingFlow.Step.names.count)
+        XCTAssertEqual(P.off.step, .init(index: 1, status: .pending))
+        XCTAssertEqual(P.advertising.step, .init(index: 1, status: .pending))
+        XCTAssertEqual(P.codeShown(a1).step, .init(index: 2, status: .active))
+        XCTAssertEqual(P.verifying(a1).step, .init(index: 3, status: .active))
+        XCTAssertEqual(P.paired(.init(pairId: "p", companionName: "iPad", generation: 1)).step, .init(index: 4, status: .done))
+        XCTAssertEqual(P.interrupted(a1, .peerGone, detail: "x").step, .init(index: 3, status: .interrupted), "the peer got as far as the session")
+        XCTAssertEqual(P.interrupted(a1, .relaunch, detail: "x").step, .init(index: 2, status: .interrupted))
+        XCTAssertEqual(P.interrupted(a1, .transportStopped, detail: "x").step, .init(index: 2, status: .interrupted))
+        XCTAssertNil(P.receiving(.init(pairId: "p", companionName: nil, captureId: nil, bytes: 1, total: nil)).step)
+        XCTAssertNil(P.failed(reason: "boom", generation: 1).step)
+
+        // The indicator is one spoken element: position, name, state, what is done.
+        let s2 = P.codeShown(a1).step!
+        XCTAssertEqual(s2.name, "Companion enters the code")
+        XCTAssertEqual(s2.accessibilityLabel, "Pairing step 2 of 4: Companion enters the code, in progress. Done: Show a code.")
+        XCTAssertEqual((1...4).map(s2.status(of:)), [.done, .active, .pending, .pending])
+        XCTAssertEqual(P.off.step!.accessibilityLabel, "Pairing step 1 of 4: Show a code, not started.")
+        let s4 = P.paired(.init(pairId: "p", companionName: "iPad", generation: 1)).step!
+        XCTAssertEqual(s4.accessibilityLabel, "Pairing step 4 of 4: Paired, done. Done: Show a code, Companion enters the code, Verify the companion, Paired.")
+        XCTAssertEqual((1...4).map(s4.status(of:)), [.done, .done, .done, .done])
+        let s3 = P.interrupted(a1, .peerGone, detail: "x").step!
+        XCTAssertEqual(s3.accessibilityLabel, "Pairing step 3 of 4: Verify the companion, interrupted. Done: Show a code, Companion enters the code.")
+
+        // Machine-driven: the indicator moves with the real transitions.
+        var m = M()
+        m.apply(.advertising(true), now: t0)
+        m.apply(.codeIssued(a1), now: t0)
+        XCTAssertEqual(m.phase.step?.index, 2)
+        m.apply(.bootstrapSessionOpened(generation: 1), now: t0)
+        XCTAssertEqual(m.phase.step?.index, 3)
+        m.apply(.confirmed(pairId: a1.pairId, companionName: "iPad", generation: 1), now: t0)
+        XCTAssertEqual(m.phase.step, .init(index: 4, status: .done))
+        m.apply(.dismiss, now: t0)
+        XCTAssertEqual(m.phase.step, .init(index: 1, status: .pending))
+    }
+
+    func testKnownCompanionReconnectAndDisconnectAreAnnouncedWithoutChangingThePhase() {
+        var m = M(phase: .advertising, generation: 3, isAdvertising: true)
+        var o = m.apply(.companionConnected(pairId: "p", companionName: "iPad"), now: t0)
+        XCTAssertEqual(o.effects, [.announce("iPad reconnected.")])
+        XCTAssertEqual(m.phase, .advertising)
+        o = m.apply(.companionDisconnected(pairId: "p", companionName: "iPad", reason: "peer closed"), now: t0)
+        XCTAssertEqual(o.effects, [.announce("iPad disconnected: peer closed.")])
+        XCTAssertEqual(m.phase, .advertising)
+
+        // While a code is shown the reconnect is still announced and the code stays.
+        m.apply(.codeIssued(attempt(4)), now: t0)
+        o = m.apply(.companionConnected(pairId: "p", companionName: "iPad"), now: t0)
+        XCTAssertEqual(o.effects, [.announce("iPad reconnected.")])
+        XCTAssertEqual(m.phase, .codeShown(attempt(4)))
+
+        // A receive that failed is reported once, by peerGone; the disconnect
+        // notice does not repeat it, and nothing is announced on the error banner.
+        var r = M(phase: .advertising, generation: 3, isAdvertising: true)
+        r.apply(.receiving(pairId: "p", companionName: "iPad", captureId: nil, bytes: 10, total: nil), now: t0)
+        XCTAssertEqual(r.apply(.companionDisconnected(pairId: "p", companionName: "iPad", reason: "x"), now: t0), .ignoredInput)
+        r.apply(.peerGone(pairId: "p", reason: "reset", generation: 3), now: t0)
+        guard case .failed = r.phase else { return XCTFail("\(r.phase)") }
+        XCTAssertEqual(r.apply(.companionDisconnected(pairId: "p", companionName: "iPad", reason: "reset"), now: t0), .ignoredInput)
+    }
+
     func testRowAccessibilityText() {
         let r = PairRecord(pairId: "abc", psk: "k", companionName: "iPad", createdAt: t0, lastSeenAt: nil)
         let a = PairingAccessibility.deviceRow(r, connected: true)
