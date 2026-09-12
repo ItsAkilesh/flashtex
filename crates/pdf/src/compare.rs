@@ -703,13 +703,67 @@ pub fn classify(a: &PdfFile, b: &PdfFile, label_a: &str, label_b: &str) -> Repor
         }
         let fa = a.page_fonts(pa);
         let fb = b.page_fonts(pb);
-        let names: BTreeSet<&String> = fa.keys().chain(fb.keys()).collect();
-        for name in names {
+        // Pair fonts by resource name first; resources left over on both
+        // sides are paired by base font name with any subset tag removed
+        // (two producers rarely agree on /F numbers), and what remains is a
+        // FontResources difference.
+        type Dict = BTreeMap<String, Obj>;
+        let mut pairs: Vec<(String, &Dict, &Dict)> = Vec::new();
+        let mut only_a: BTreeMap<String, &BTreeMap<String, Obj>> = BTreeMap::new();
+        let mut only_b: BTreeMap<String, &BTreeMap<String, Obj>> = BTreeMap::new();
+        for name in fa.keys().chain(fb.keys()).collect::<BTreeSet<_>>() {
             match (fa.get(name), fb.get(name)) {
-                (Some(da), Some(db)) => {
+                (Some(da), Some(db)) => pairs.push((format!("/{name}"), da, db)),
+                (Some(da), None) => {
+                    only_a.insert(name.clone(), da);
+                }
+                (None, Some(db)) => {
+                    only_b.insert(name.clone(), db);
+                }
+                (None, None) => {}
+            }
+        }
+        let family = |f: &PdfFile, d: &BTreeMap<String, Obj>| -> String {
+            let base = f.get(d, "BaseFont").and_then(Obj::as_name).unwrap_or("");
+            let base = match base.split_once('+') {
+                Some((tag, rest))
+                    if tag.len() == 6 && tag.bytes().all(|c| c.is_ascii_uppercase()) =>
+                {
+                    rest
+                }
+                _ => base,
+            };
+            base.trim_end_matches("-Identity-H").to_string()
+        };
+        let mut unmatched_b: Vec<(String, &BTreeMap<String, Obj>)> = only_b.into_iter().collect();
+        let mut unmatched_a: Vec<(String, &BTreeMap<String, Obj>)> = Vec::new();
+        for (na, da) in only_a {
+            let fam = family(a, da);
+            if let Some(pos) = unmatched_b.iter().position(|(_, db)| family(b, db) == fam) {
+                let (nb, db) = unmatched_b.remove(pos);
+                pairs.push((format!("/{na}~/{nb} ({fam})"), da, db));
+            } else {
+                unmatched_a.push((na, da));
+            }
+        }
+        for (na, _) in &unmatched_a {
+            r.note(
+                Category::FontResources,
+                format!("page {n} /{na} only in {label_a}"),
+            );
+        }
+        for (nb, _) in &unmatched_b {
+            r.note(
+                Category::FontResources,
+                format!("page {n} /{nb} only in {label_b}"),
+            );
+        }
+        for (name, da, db) in pairs {
+            {
+                {
                     let x = font_facts(a, da);
                     let y = font_facts(b, db);
-                    let key = format!("page {n} /{name}");
+                    let key = format!("page {n} {name}");
                     if x.subtype != y.subtype {
                         r.note(
                             Category::FontMetadata,
@@ -806,15 +860,6 @@ pub fn classify(a: &PdfFile, b: &PdfFile, label_a: &str, label_b: &str) -> Repor
                         );
                     }
                 }
-                (Some(_), None) => r.note(
-                    Category::FontResources,
-                    format!("page {n} /{name} only in {label_a}"),
-                ),
-                (None, Some(_)) => r.note(
-                    Category::FontResources,
-                    format!("page {n} /{name} only in {label_b}"),
-                ),
-                (None, None) => {}
             }
         }
     }

@@ -1841,6 +1841,43 @@ fn write_font(d: &mut Document, obj: usize, f: &ExactFont) {
     }
 }
 
+/// Reads the `bfchar` entries of a ToUnicode CMap written by
+/// [`to_unicode_cmap`] back into CID → text (multi-scalar values allowed).
+pub fn parse_to_unicode(cmap: &[u8]) -> Result<BTreeMap<u16, String>, String> {
+    let text = std::str::from_utf8(cmap).map_err(|_| "CMap is not UTF-8")?;
+    let mut map = BTreeMap::new();
+    let mut in_bfchar = false;
+    for line in text.lines() {
+        if line.ends_with("beginbfchar") {
+            in_bfchar = true;
+            continue;
+        }
+        if line == "endbfchar" {
+            in_bfchar = false;
+            continue;
+        }
+        if !in_bfchar {
+            continue;
+        }
+        let (src, dst) = line
+            .split_once("> <")
+            .ok_or_else(|| format!("malformed bfchar line {line:?}"))?;
+        let cid = u16::from_str_radix(src.trim_start_matches('<'), 16).map_err(|_| "bad CID")?;
+        let dst = dst.trim_end_matches('>');
+        let units: Vec<u16> = dst
+            .as_bytes()
+            .chunks(4)
+            .map(|c| u16::from_str_radix(std::str::from_utf8(c).unwrap_or("zz"), 16))
+            .collect::<Result<_, _>>()
+            .map_err(|_| "bad UTF-16")?;
+        map.insert(
+            cid,
+            String::from_utf16(&units).map_err(|_| "bad UTF-16 sequence")?,
+        );
+    }
+    Ok(map)
+}
+
 /// A ToUnicode CMap mapping two-byte CIDs to UTF-16BE strings (`bfchar`,
 /// so a CID may expand to several scalars).
 pub fn to_unicode_cmap(map: &BTreeMap<u16, String>) -> Vec<u8> {
