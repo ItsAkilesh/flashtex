@@ -146,9 +146,9 @@ Source validation and duplicate/numeric/depth acceptance belong to the separate
 runtime contract and are not established by this serializer test.
 
 
-### Proposed experimental raw helper contract (not implemented/activated yet)
+### Experimental raw helper contract (explicit opt-in only)
 
-Startup configuration `display_transport:"raw-prototype"` will select the fixed
+Startup configuration `display_transport:"raw-prototype"` selects the fixed
 runtime decoder strategy before the first compiler session. Omitting it retains
 the existing Value strategy. Runtime restarts must preserve the selected strategy
 but reset candidate enablement; no already queued frame changes decoder strategy.
@@ -163,13 +163,15 @@ The wire candidate shape remains the same; the nested display envelope preserves
 original JSON value spelling, excluding transport newline/outer whitespace.
 
 The existing replay harness now accepts `--display-transport raw-prototype` and
-requires exact acknowledgement; this deliberately fails against today's Value-only
-helper instead of silently measuring the wrong route. It also verifies the
+requires exact acknowledgement; this fails against older Value-only
+helpers instead of silently measuring the wrong route. It also verifies the
 candidate request and compile generation match the already received current v1.
 Raw provenance records the startup selector and capability. Syntax/help checks
-pass; raw integration and raw replay have not yet run.
+pass. Helper raw integration now passes transport-fixture lifecycle, stale-source,
+corrupt-hash and durable-reopen checks. An actual producer raw replay and native
+acceptance have not yet run.
 
-Before activation, require runtime proof of complete syntax/finite numbers/depth,
+Before native activation, require runtime proof of complete syntax/finite numbers/depth,
 duplicate identity/source rejection, exact source binding, cancellation and epoch
 fences. Native/core validation must reject ambiguous duplicate geometry fields.
 Raw `1e9` remains `1e9`; it does not inherit Value's reserialization expansion.
@@ -177,3 +179,16 @@ Therefore raw optional overflow tests must use the actual whole output byte size
 while the existing numeric expansion refusal gate remains on the Value route.
 Required v1/durable replies, complete-frame limits and explicit native paint
 acceptance remain mandatory in either route.
+
+
+Implementation consumes runtime `217ec7df` unchanged. `RawDisplayPayload` owns the
+runtime's immutable raw body and carries controller-checked current source versions
+and membership generation. Typed wrapper serialization never converts it back to
+Value. Both modes retain the same checked optional queue; default Value callers
+and required replies remain unchanged. Unknown/malformed startup selectors fail
+before source import. The startup strategy cannot be changed after a compiler
+session or request exists. Restart preserves strategy and disables candidates.
+
+The prototype is not a speed recommendation: the initial runtime experiment used
+less peak memory but took longer to parse because it repeated validation passes.
+Further runtime optimization and complete helper/native measurements remain open.

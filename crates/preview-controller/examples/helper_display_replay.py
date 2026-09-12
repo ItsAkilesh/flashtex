@@ -60,7 +60,7 @@ def main():
         capability = ('display-candidates-raw-v1' if args.display_transport == 'raw-prototype'
                       else 'display-candidates-v1')
         config.write_text(json.dumps(settings))
-        client = Client(args.helper, config, capture_diagnostics=True)
+        client = Client(args.helper, config, capture_diagnostics=True, capture_wire=True)
         try:
             document = snapshot_after_initial_preview(client)
             assert document['text'] == source
@@ -68,6 +68,7 @@ def main():
                 started = time.monotonic()
                 ack_ms = v1_ms = candidate_ms = None
                 candidate = current = None
+                candidate_wire = None
                 if step == 0:
                     client.send('enable', 'configure_display_candidates', dict(capability=capability,
                         enabled=True, renderer_support_confirmed=True))
@@ -105,6 +106,7 @@ def main():
                     if payload.get('kind') == 'display_candidate':
                         assert acknowledged
                         candidate = payload
+                        candidate_wire = client.last_wire
                         candidate_ms = (received - started) * 1000
                         assert candidate['untrusted'] and not candidate['source_actions_enabled']
                         assert candidate['source_versions'] == {'main.tex': document['revision']}
@@ -115,7 +117,7 @@ def main():
                 request = dict(protocol_version=1, type='compile', id=current['request_id'], payload=dict(
                     project_id='p', revision=current['compile_revision'], entry_path='main.tex',
                     documents=[dict(path='main.tex', text=source)], layout_capabilities=['display-list-v2']))
-                direct = subprocess.run([args.producer], input=json.dumps(request)+'\n', text=True,
+                direct = subprocess.run([args.producer], input=(json.dumps(request)+'\n').encode(),
                     capture_output=True, check=True, timeout=20)
                 lines = [json.loads(line) for line in direct.stdout.splitlines()]
                 assert current is not None
@@ -127,11 +129,19 @@ def main():
                     binding = lines[1]['payload']['documents'][0]
                     assert binding['sha256'] == source_hash
                     assert binding['byte_length'] == len(source.encode())
+                    if args.display_transport == 'raw-prototype':
+                        # Typed helper wrapper writes display_list last in payload.
+                        # Assert the original nested body, not re-encoded JSON equality.
+                        body = direct.stdout.splitlines()[1].strip()
+                        assert candidate_wire.endswith(b'"display_list":' + body + b'}}\n'), 'raw producer spelling changed'
+                    (output/f'step-{step}.candidate.jsonl').write_bytes(candidate_wire)
                 else:
                     assert len(lines) == 1, 'declined producer sent unexpected sibling'
                 (output/f'step-{step}.json').write_text(json.dumps(dict(request=request, events=events, direct=lines), indent=2)+'\n')
+                (output/f'step-{step}.producer.jsonl').write_bytes(direct.stdout)
                 cases.append(dict(step=step, source_bytes=len(source.encode()), source_revision=document['revision'], compile_revision=current['compile_revision'],
                     exact_direct_v1=True, exact_direct_display=True if candidate else None, source_sha256=source_hash,
+                    exact_raw_body=True if candidate and args.display_transport == 'raw-prototype' else None,
                     v2_accepted=candidate is not None, status=lines[0]['payload']['status'], diagnostics=lines[0]['payload']['diagnostics'],
                     ack_receipt_ms=ack_ms, v1_receipt_ms=v1_ms, candidate_receipt_ms=candidate_ms))
             diagnostics = client.diagnostics()
@@ -152,8 +162,8 @@ def main():
     evidence['helper_source_sha'] = args.helper_source_sha
     evidence['replay_script_sha256'] = digest(__file__)
     if args.compress_artifacts:
-        for artifact in output.glob('step-*.json'):
-            artifact.with_suffix('.json.gz').write_bytes(gzip.compress(artifact.read_bytes(), mtime=0))
+        for artifact in list(output.glob('step-*.json')) + list(output.glob('step-*.jsonl')):
+            artifact.with_name(artifact.name + '.gz').write_bytes(gzip.compress(artifact.read_bytes(), mtime=0))
             artifact.unlink()
     evidence['artifact_encoding'] = 'gzip' if args.compress_artifacts else 'json'
     evidence['step_artifact_sha256'] = {p.name: digest(p) for p in sorted(output.glob('step-*.json*'))}

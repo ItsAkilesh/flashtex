@@ -1,6 +1,7 @@
 //! Worker-thread editor controller. Durable source precedes disposable caches.
 pub mod completed_protocol;
 mod display;
+pub use display::RawDisplayPayload;
 pub mod experimental_delivery;
 pub mod file_project;
 mod historical;
@@ -65,6 +66,7 @@ pub enum Update {
 pub struct Controller {
     historical: historical::HistoricalState,
     display_enabled: bool,
+    raw_display_prototype: bool,
     project_id: String,
     entry_path: String,
     stores: BTreeMap<String, Store>,
@@ -140,6 +142,7 @@ impl Controller {
         Ok(Self {
             historical: historical::HistoricalState::default(),
             display_enabled: false,
+            raw_display_prototype: false,
             project_id,
             entry_path,
             stores: by_path,
@@ -572,7 +575,11 @@ impl Controller {
         }
         let expected = self.index.snapshot();
         let documents = self.membership_documents(None)?;
-        let mut runtime = Session::spawn_command(command, limits)?;
+        let mut runtime = if self.raw_display_prototype {
+            Session::spawn_command_raw_display_prototype(command, limits)?
+        } else {
+            Session::spawn_command(command, limits)?
+        };
         self.display_enabled = false;
         self.layout_capabilities
             .retain(|cap| cap != "display-list-v2");

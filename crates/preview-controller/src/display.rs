@@ -1,8 +1,79 @@
 //! Current-source correlation only; forwarded display data still needs renderer validation.
 use crate::Controller;
+use serde::Serialize;
+use serde_json::value::RawValue;
 use serde_json::{json, Value};
+use std::collections::BTreeMap;
+
+#[derive(Serialize)]
+pub struct RawDisplayPayload {
+    kind: &'static str,
+    untrusted: bool,
+    source_actions_enabled: bool,
+    request_id: String,
+    project_id: String,
+    compile_revision: u64,
+    source_versions: BTreeMap<String, u64>,
+    membership_generation: u64,
+    display_list: Box<RawValue>,
+}
 
 impl Controller {
+    /// Fixed startup strategy, before any compiler request or session exists.
+    pub fn select_raw_display_prototype(&mut self) -> Result<(), String> {
+        if self.closed || self.runtime.is_some() || self.generation != 0 {
+            return Err("display decoder strategy is fixed before compiler startup".into());
+        }
+        self.raw_display_prototype = true;
+        Ok(())
+    }
+    pub fn display_candidate_capability(&self) -> &'static str {
+        if self.raw_display_prototype {
+            "display-candidates-raw-v1"
+        } else {
+            "display-candidates-v1"
+        }
+    }
+
+    pub fn take_current_raw_display_payload(&mut self) -> Option<RawDisplayPayload> {
+        if self.closed || !self.display_enabled || !self.raw_display_prototype {
+            return None;
+        }
+        let candidate = self
+            .runtime
+            .as_mut()?
+            .take_current_raw_display_candidate()?;
+        let (id, submitted, _) = self.submitted.as_ref()?;
+        let current = self.index.snapshot();
+        if candidate.request_id() != id
+            || candidate.project_id() != self.project_id
+            || candidate.revision() != self.generation
+            || submitted != &current
+            || candidate.sources().len() != current.documents.len()
+        {
+            return None;
+        }
+        for source in candidate.sources() {
+            let document = self.document(&source.path).ok()?;
+            if current.documents.get(&source.path) != Some(&document.revision)
+                || source.sha256 != document.source_sha256
+                || source.byte_length != document.text.len()
+            {
+                return None;
+            }
+        }
+        Some(RawDisplayPayload {
+            kind: "display_candidate",
+            untrusted: true,
+            source_actions_enabled: false,
+            request_id: candidate.request_id().into(),
+            project_id: candidate.project_id().into(),
+            compile_revision: candidate.revision(),
+            source_versions: current.documents,
+            membership_generation: current.generation,
+            display_list: candidate.into_raw(),
+        })
+    }
     /// Transport timing only; source text and renderer validation are excluded.
     pub fn last_display_profile(
         &self,

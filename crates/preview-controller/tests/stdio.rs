@@ -12,11 +12,44 @@ struct Client {
     input: Option<ChildStdin>,
     output: Receiver<Value>,
 }
+#[test]
+fn invalid_display_transport_is_rejected_before_source_import() {
+    let dir = tempfile::tempdir().unwrap();
+    let private = dir.path().join("must-not-be-created");
+    for mode in [json!("unknown"), Value::Null, json!(true)] {
+        let config = dir.path().join("bad-startup.json");
+        std::fs::write(
+            &config,
+            serde_json::to_vec(&json!({
+                "session_id":"session1", "display_transport":mode,
+                "project_id":"p", "entry_path":"main.tex",
+                "project_root":dir.path(), "private_ledger_root":private
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        let output = Command::new(env!("CARGO_BIN_EXE_flashtex-preview-controller"))
+            .arg(&config)
+            .output()
+            .unwrap();
+        assert!(!output.status.success());
+        assert!(String::from_utf8_lossy(&output.stderr)
+            .contains("display_transport must be value or raw-prototype"));
+        assert!(!private.exists());
+    }
+}
 impl Client {
     fn start(root: &std::path::Path) -> Self {
         Self::with_compiler(root, None)
     }
     fn with_compiler(root: &std::path::Path, compiler: Option<&std::path::Path>) -> Self {
+        Self::with_transport(root, compiler, false)
+    }
+    fn with_transport(
+        root: &std::path::Path,
+        compiler: Option<&std::path::Path>,
+        raw: bool,
+    ) -> Self {
         let path = root.join("store");
         {
             let mut store = Store::open(&path).unwrap();
@@ -31,7 +64,7 @@ impl Client {
         }
         Self::configured(
             root,
-            json!({"session_id":"session1","project_id":"p","entry_path":"main.tex","store_paths":[path],"compiler_path":compiler}),
+            json!({"session_id":"session1","project_id":"p","entry_path":"main.tex","store_paths":[path],"compiler_path":compiler,"display_transport":if raw {"raw-prototype"} else {"value"}}),
         )
     }
     fn configured(root: &std::path::Path, value: Value) -> Self {
@@ -893,6 +926,20 @@ fn history_status_binds_labels_and_limits_to_current_source_without_text() {
 #[test]
 #[cfg(unix)]
 fn display_candidate_opt_in_preserves_v1_and_individual_source_versions() {
+    display_candidate_lifecycle(false);
+}
+#[test]
+#[cfg(unix)]
+fn raw_display_candidate_lifecycle_preserves_default_fallback_and_restart_strategy() {
+    display_candidate_lifecycle(true);
+}
+#[cfg(unix)]
+fn display_candidate_lifecycle(raw: bool) {
+    let capability = if raw {
+        "display-candidates-raw-v1"
+    } else {
+        "display-candidates-v1"
+    };
     use std::os::unix::fs::PermissionsExt;
     let dir = tempfile::tempdir().unwrap();
     let compiler = dir.path().join("display-fixture.py");
@@ -907,14 +954,20 @@ for line in sys.stdin:
   print(json.dumps({'protocol_version':2,'type':'display_list','id':r['id'],'payload':{'project_id':p['project_id'],'revision':p['revision'],'render_format':'display-list-v2','documents':docs}}),flush=True)
 "#).unwrap();
     std::fs::set_permissions(&compiler, std::fs::Permissions::from_mode(0o700)).unwrap();
-    let mut client = Client::with_compiler(dir.path(), Some(&compiler));
+    let mut client = Client::with_transport(dir.path(), Some(&compiler), raw);
+    client.send("wrong-mode", "configure_display_candidates", json!({"capability":if raw {"display-candidates-v1"} else {"display-candidates-raw-v1"},"enabled":true,"renderer_support_confirmed":true}));
+    assert_eq!(client.reply("wrong-mode")["type"], "error");
     client.send(
         "unconfirmed",
         "configure_display_candidates",
-        json!({"capability":"display-candidates-v1","enabled":true}),
+        json!({"capability":capability,"enabled":true}),
     );
     assert_eq!(client.reply("unconfirmed")["type"], "error");
-    client.send("enable", "configure_display_candidates", json!({"capability":"display-candidates-v1","enabled":true,"renderer_support_confirmed":true}));
+    client.send(
+        "enable",
+        "configure_display_candidates",
+        json!({"capability":capability,"enabled":true,"renderer_support_confirmed":true}),
+    );
     assert_eq!(client.reply("enable")["payload"]["enabled"], true);
     let mut seen_v1 = Vec::new();
     loop {
@@ -952,7 +1005,7 @@ for line in sys.stdin:
     client.send(
         "disable",
         "configure_display_candidates",
-        json!({"capability":"display-candidates-v1","enabled":false}),
+        json!({"capability":capability,"enabled":false}),
     );
     assert_eq!(client.reply("disable")["payload"]["enabled"], false);
     client.send(
@@ -961,7 +1014,11 @@ for line in sys.stdin:
         json!({"capability":"completed-snapshots-v1","enabled":true}),
     );
     assert_eq!(client.reply("history")["payload"]["enabled"], true);
-    client.send("conflict2", "configure_display_candidates", json!({"capability":"display-candidates-v1","enabled":true,"renderer_support_confirmed":true}));
+    client.send(
+        "conflict2",
+        "configure_display_candidates",
+        json!({"capability":capability,"enabled":true,"renderer_support_confirmed":true}),
+    );
     assert_eq!(client.reply("conflict2")["type"], "error");
     client.send("restart", "restart", json!({}));
     assert_eq!(client.reply("restart")["type"], "result");
@@ -970,6 +1027,28 @@ for line in sys.stdin:
         let event = client.output.recv_timeout(Duration::from_secs(3)).unwrap();
         assert_ne!(event["payload"]["kind"], "display_candidate");
         if event["payload"]["kind"] == "preview" {
+            break;
+        }
+    }
+    client.send(
+        "history-off",
+        "configure_completed_snapshots",
+        json!({"capability":"completed-snapshots-v1","enabled":false}),
+    );
+    assert_eq!(client.reply("history-off")["type"], "result");
+    client.send(
+        "reenable",
+        "configure_display_candidates",
+        json!({"capability":capability,"enabled":true,"renderer_support_confirmed":true}),
+    );
+    assert_eq!(
+        client.reply("reenable")["payload"]["capability"],
+        capability
+    );
+    loop {
+        let event = client.output.recv_timeout(Duration::from_secs(3)).unwrap();
+        assert_ne!(event["payload"]["kind"], "failed");
+        if event["payload"]["kind"] == "display_candidate" {
             break;
         }
     }
@@ -1004,50 +1083,65 @@ for line in sys.stdin:
 }
 #[cfg(unix)]
 fn enable_display(client: &mut Client) {
-    client.send("enable", "configure_display_candidates", json!({"capability":"display-candidates-v1","enabled":true,"renderer_support_confirmed":true}));
+    enable_display_transport(client, false);
+}
+#[cfg(unix)]
+fn enable_display_transport(client: &mut Client, raw: bool) {
+    let capability = if raw {
+        "display-candidates-raw-v1"
+    } else {
+        "display-candidates-v1"
+    };
+    client.send(
+        "enable",
+        "configure_display_candidates",
+        json!({"capability":capability,"enabled":true,"renderer_support_confirmed":true}),
+    );
     assert_eq!(client.reply("enable")["payload"]["enabled"], true);
 }
 
 #[test]
 #[cfg(unix)]
 fn stale_display_sibling_after_durable_edit_never_reaches_optional_output() {
-    let dir = tempfile::tempdir().unwrap();
-    let compiler = display_failure_fixture(dir.path(), "hold");
-    let mut client = Client::with_compiler(dir.path(), Some(&compiler));
-    enable_display(&mut client);
-    let old_generation = loop {
-        let event = client.output.recv_timeout(Duration::from_secs(3)).unwrap();
-        let p = &event["payload"];
-        if p["kind"] == "preview"
-            && p["result"]["payload"]["layout_capabilities"]
-                .as_array()
-                .is_some_and(|caps| caps.iter().any(|cap| cap == "display-list-v2"))
-        {
-            break p["compile_revision"].as_u64().unwrap();
-        }
-    };
-    client.send("doc", "document", json!({"path":"main.tex"}));
-    let doc = client.reply("doc")["payload"]["document"].clone();
-    client.send("edit", "edit", json!({"path":"main.tex","expected_revision":doc["revision"],"expected_sha256":doc["source_sha256"],"text":"β current"}));
-    let edited = client.reply("edit")["payload"]["document"].clone();
-    assert_eq!(edited["revision"], 2);
-    std::fs::write(
-        compiler.with_file_name("display-failure.py.release"),
-        "release",
-    )
-    .unwrap();
-    loop {
-        let event = client.output.recv_timeout(Duration::from_secs(3)).unwrap();
-        let p = &event["payload"];
-        assert_ne!(p["kind"], "failed", "{event}");
-        if p["kind"] == "display_candidate" {
-            assert!(p["compile_revision"].as_u64().unwrap() > old_generation);
-            assert_eq!(p["source_versions"]["main.tex"], 2);
-            assert_eq!(
-                p["display_list"]["payload"]["documents"][0]["sha256"],
-                edited["source_sha256"]
-            );
-            break;
+    for raw in [false, true] {
+        let dir = tempfile::tempdir().unwrap();
+        let compiler = display_failure_fixture(dir.path(), "hold");
+        let mut client = Client::with_transport(dir.path(), Some(&compiler), raw);
+        enable_display_transport(&mut client, raw);
+        let old_generation = loop {
+            let event = client.output.recv_timeout(Duration::from_secs(3)).unwrap();
+            let p = &event["payload"];
+            if p["kind"] == "preview"
+                && p["result"]["payload"]["layout_capabilities"]
+                    .as_array()
+                    .is_some_and(|caps| caps.iter().any(|cap| cap == "display-list-v2"))
+            {
+                break p["compile_revision"].as_u64().unwrap();
+            }
+        };
+        client.send("doc", "document", json!({"path":"main.tex"}));
+        let doc = client.reply("doc")["payload"]["document"].clone();
+        client.send("edit", "edit", json!({"path":"main.tex","expected_revision":doc["revision"],"expected_sha256":doc["source_sha256"],"text":"β current"}));
+        let edited = client.reply("edit")["payload"]["document"].clone();
+        assert_eq!(edited["revision"], 2);
+        std::fs::write(
+            compiler.with_file_name("display-failure.py.release"),
+            "release",
+        )
+        .unwrap();
+        loop {
+            let event = client.output.recv_timeout(Duration::from_secs(3)).unwrap();
+            let p = &event["payload"];
+            assert_ne!(p["kind"], "failed", "{event}");
+            if p["kind"] == "display_candidate" {
+                assert!(p["compile_revision"].as_u64().unwrap() > old_generation);
+                assert_eq!(p["source_versions"]["main.tex"], 2);
+                assert_eq!(
+                    p["display_list"]["payload"]["documents"][0]["sha256"],
+                    edited["source_sha256"]
+                );
+                break;
+            }
         }
     }
 }
@@ -1055,30 +1149,32 @@ fn stale_display_sibling_after_durable_edit_never_reaches_optional_output() {
 #[test]
 #[cfg(unix)]
 fn corrupt_display_hash_fails_preview_but_preserves_durable_edit_and_reopen() {
-    let dir = tempfile::tempdir().unwrap();
-    let compiler = display_failure_fixture(dir.path(), "hash");
-    let mut client = Client::with_compiler(dir.path(), Some(&compiler));
-    enable_display(&mut client);
-    loop {
-        let event = client.output.recv_timeout(Duration::from_secs(3)).unwrap();
-        assert_ne!(event["payload"]["kind"], "display_candidate");
-        if event["payload"]["kind"] == "failed" {
-            break;
+    for raw in [false, true] {
+        let dir = tempfile::tempdir().unwrap();
+        let compiler = display_failure_fixture(dir.path(), "hash");
+        let mut client = Client::with_transport(dir.path(), Some(&compiler), raw);
+        enable_display_transport(&mut client, raw);
+        loop {
+            let event = client.output.recv_timeout(Duration::from_secs(3)).unwrap();
+            assert_ne!(event["payload"]["kind"], "display_candidate");
+            if event["payload"]["kind"] == "failed" {
+                break;
+            }
         }
+        client.send("doc", "document", json!({"path":"main.tex"}));
+        let doc = client.reply("doc")["payload"]["document"].clone();
+        client.send("edit", "edit", json!({"path":"main.tex","expected_revision":doc["revision"],"expected_sha256":doc["source_sha256"],"text":"durable despite compiler failure"}));
+        let response = client.reply("edit");
+        assert_eq!(response["type"], "result");
+        assert!(response["payload"]["preview_error"].is_string());
+        drop(client);
+        let mut reopened = Client::start(dir.path());
+        reopened.send("doc", "document", json!({"path":"main.tex"}));
+        assert_eq!(
+            reopened.reply("doc")["payload"]["document"]["text"],
+            "durable despite compiler failure"
+        );
     }
-    client.send("doc", "document", json!({"path":"main.tex"}));
-    let doc = client.reply("doc")["payload"]["document"].clone();
-    client.send("edit", "edit", json!({"path":"main.tex","expected_revision":doc["revision"],"expected_sha256":doc["source_sha256"],"text":"durable despite compiler failure"}));
-    let response = client.reply("edit");
-    assert_eq!(response["type"], "result");
-    assert!(response["payload"]["preview_error"].is_string());
-    drop(client);
-    let mut reopened = Client::start(dir.path());
-    reopened.send("doc", "document", json!({"path":"main.tex"}));
-    assert_eq!(
-        reopened.reply("doc")["payload"]["document"]["text"],
-        "durable despite compiler failure"
-    );
 }
 
 #[test]

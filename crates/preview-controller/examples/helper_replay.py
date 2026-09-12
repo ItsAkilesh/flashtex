@@ -12,11 +12,13 @@ import time
 
 
 class Client:
-    def __init__(self, binary, config, capture_diagnostics=False):
+    def __init__(self, binary, config, capture_diagnostics=False, capture_wire=False):
         self.diagnostic_file = tempfile.TemporaryFile() if capture_diagnostics else None
         self.proc = subprocess.Popen([binary, str(config)], stdin=subprocess.PIPE,
                                      stdout=subprocess.PIPE, stderr=self.diagnostic_file or subprocess.DEVNULL)
         self.buffer = bytearray()
+        self.capture_wire = capture_wire
+        self.last_wire = None
 
     def send(self, identity, kind, payload):
         value = dict(protocol_version=1, session_id="benchmark", id=identity,
@@ -39,6 +41,8 @@ class Client:
         line, _, tail = self.buffer.partition(b"\n")
         self.buffer = bytearray(tail)
         received = time.monotonic()
+        if self.capture_wire:
+            self.last_wire = bytes(line) + b"\n"
         return json.loads(line), received
 
     def memory_snapshot(self):

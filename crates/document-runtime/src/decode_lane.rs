@@ -87,21 +87,15 @@ impl Decoder {
                         let start = Instant::now();
                         let decode_queue_wait_ms =
                             start.saturating_duration_since(reader_done).as_secs_f64() * 1000.0;
-                        let raw_kind = if raw_display {
-                            crate::raw_display::is_display(&bytes)
+                        let parsed = if raw_display {
+                            crate::raw_display::decode(bytes)
                         } else {
-                            Ok(false)
-                        };
-                        let parsed = match raw_kind {
-                            Err(e) => Err(e),
-                            Ok(true) => crate::raw_display::Parsed::parse(bytes)
-                                .map(|raw| (None, Some(Box::new(raw)))),
-                            Ok(false) => std::str::from_utf8(&bytes)
+                            std::str::from_utf8(&bytes)
                                 .map_err(|e| e.to_string())
                                 .and_then(|text| {
                                     serde_json::from_str(text).map_err(|e| e.to_string())
                                 })
-                                .map(|value| (Some(value), None)),
+                                .map(|value| (Some(value), None))
                         };
                         let parse_ms = start.elapsed().as_secs_f64() * 1000.0;
                         if stop.load(Ordering::Acquire) {
