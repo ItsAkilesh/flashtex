@@ -202,11 +202,18 @@ final class PairingFlowMachineTests: XCTestCase {
         XCTAssertEqual(m.apply(.cancel, now: t0), .none)
         XCTAssertEqual(m.phase, .advertising)
 
-        // Receiving: not cancellable in v1 (no transport API); state is unchanged.
+        // Receiving: the Mac closes that pairing's session and says so; the
+        // close event that follows must not overwrite the notice.
         m = M(phase: .advertising, generation: 1, isAdvertising: true)
         m.apply(.receiving(pairId: "p", companionName: "c", captureId: nil, bytes: 10, total: 100), now: t0)
-        XCTAssertFalse(m.phase.canCancel(now: t0))
-        XCTAssertEqual(m.apply(.cancel, now: t0), .ignoredInput)
+        XCTAssertTrue(m.phase.canCancel(now: t0))
+        out = m.apply(.cancel, now: t0)
+        XCTAssertEqual(out.effects, [.closeSession(pairId: "p"), .announce("Receive cancelled.")])
+        XCTAssertEqual(m.phase, .failed(reason: "Receive from c cancelled after 10 bytes; the companion can resend it with the same capture_id.", generation: 1))
+        XCTAssertEqual(m.apply(.peerGone(pairId: "p", reason: "closed by the Mac", generation: 1), now: t0), .ignoredInput)
+        XCTAssertTrue(m.phase.canDismiss(now: t0))
+        // A resend while the notice is up replaces it with live progress.
+        XCTAssertEqual(m.apply(.receiving(pairId: "p", companionName: "c", captureId: nil, bytes: 5, total: nil), now: t0), .none)
         if case .receiving = m.phase {} else { XCTFail("\(m.phase)") }
 
         // Nothing to cancel.
@@ -329,7 +336,7 @@ final class PairingFlowMachineTests: XCTestCase {
         var m = M(phase: .advertising, generation: 1, isAdvertising: true)
         m.apply(.receiving(pairId: "p", companionName: "iPad", captureId: nil, bytes: 1024, total: nil), now: t0)
         XCTAssertEqual(m.phase.title, "Receiving capture")
-        XCTAssertEqual(m.phase.detail(now: t0), "Receiving 1024 bytes from iPad (size unknown until the line ends).")
+        XCTAssertEqual(m.phase.detail(now: t0), "Receiving 1024 bytes from iPad; total unknown until the line ends.")
         m.apply(.receiving(pairId: "p", companionName: "iPad", captureId: "c1", bytes: 4096, total: 8192), now: t0)
         XCTAssertEqual(m.phase.detail(now: t0), "Receiving 4096 of 8192 bytes from iPad.")
         let done = m.apply(.captureReceived(pairId: "p", captureId: "c1"), now: t0)
@@ -345,6 +352,20 @@ final class PairingFlowMachineTests: XCTestCase {
         XCTAssertTrue(m.apply(.peerGone(pairId: "q", reason: "x", generation: 1), now: t0).stale)
         m.apply(.peerGone(pairId: "p", reason: "reset", generation: 1), now: t0)
         XCTAssertEqual(m.phase, .failed(reason: "Connection to p closed while receiving: reset", generation: 1))
+    }
+
+    func testRefusedCaptureEndsReceivingOrIsJustAnnounced() {
+        var m = M(phase: .advertising, generation: 1, isAdvertising: true)
+        m.apply(.receiving(pairId: "p", companionName: "iPad", captureId: nil, bytes: 9, total: nil), now: t0)
+        XCTAssertTrue(m.apply(.captureRefused(pairId: "q", captureId: "x", code: "bad_request"), now: t0).stale)
+        let out = m.apply(.captureRefused(pairId: "p", captureId: "x", code: "unsupported_image"), now: t0)
+        XCTAssertEqual(m.phase, .advertising)
+        XCTAssertEqual(out.effects, [.announce("Capture x from iPad refused: unsupported_image.")])
+        XCTAssertEqual(m.apply(.captureRefused(pairId: nil, captureId: nil, code: "line_too_long"), now: t0).effects,
+                       [.announce("Capture ? refused: line_too_long.")])
+        var n = M()
+        n.apply(.codeIssued(a1), now: t0)
+        XCTAssertEqual(n.apply(.captureRefused(pairId: "p", captureId: "x", code: "c"), now: t0), .ignoredInput)
     }
 
     func testReceivingIsIgnoredWhileACodeIsShown() {
