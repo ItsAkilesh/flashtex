@@ -1,15 +1,20 @@
 # daniel-links handoff
 
-Agent / task / branch: daniel-links (FT-037 dispatch) / typed, source-mapped
-hyperlink destination and rectangle model for document export
-(`flashtex-link-annotations`) / `agent/daniel-links/link-annotations`
+Agent / task / branch: daniel-links (FT-037, revision 2) / typed,
+source-identity-bound hyperlink destination, page-target, and rectangle
+model for document export (`flashtex-link-annotations`) /
+`agent/daniel-links/link-annotations`
 State: ready for integration
 Owned paths: `crates/link-annotations/**`, `coordination/daniel-links.md`
-Input main SHA (assignment base): `53fee3012b2902ca05bd31766defa515b3044cec`
-Exact tested commit SHA: `dd9e99329040fd4d4190e8772bcc99b36943fb84`
+Rev 2 input main SHA (assignment base): `83f65e08ae60b312609f49ec0a2b6cae25c8e353`
+Main integrated through (merge-base): `e5901797e8a7ebdd8d714ecdee6793e1097515a9`
+Exact tested commit SHA (rev 2): `193b363c1d1f48d27380575d50174a5a4e87996e`
 (branch `agent/daniel-links/link-annotations`; `cargo build`, `cargo test`,
-and `cargo clippy --all-targets -- -D warnings` were run against exactly
-this commit inside `crates/link-annotations`, plus `cargo fmt --check`.)
+`cargo clippy --all-targets -- -D warnings`, and `cargo fmt --check` were
+all run against exactly this commit inside `crates/link-annotations`.)
+Prior rev 1 tested commit SHA: `dd9e99329040fd4d4190e8772bcc99b36943fb84`
+(URI allowlist module `src/uri.rs` has zero diff since that commit — the
+rev 1 security work is preserved byte-for-byte in rev 2.)
 
 ## Typed contract
 
@@ -52,19 +57,80 @@ Public surface (re-exported from `flashtex_link_annotations`):
 - `span::{SourcePos, SourceSpan, SpanError}`
   `SourceSpan::new(SourcePos, SourcePos) -> Result<SourceSpan, SpanError>`
   rejects an end offset preceding the start offset.
-- `annotation::{LinkAnnotation, LinkDestination}`
+- `source::{RevisionId, RevisionError, ContentHash, SourceIdentity,
+  SourceIdentityError, Staleness, MAX_REVISION_LEN}` **(new in rev 2)**
+  `SourceIdentity::bind(RevisionId, source: &str, SourceSpan) ->
+  Result<SourceIdentity, SourceIdentityError>` is the only way to build a
+  `SourceIdentity`: it validates the span against the real `source` text
+  (rejects an end past `source.len()`, rejects either offset that does not
+  fall on a UTF-8 character boundary — `SourceIdentityError::NotCharBoundary`
+  — so a range can never split a multi-byte character), then hashes exactly
+  those bytes (FNV-1a, non-cryptographic, drift-detection only — not a
+  security boundary). `SourceIdentity::check_fresh(&RevisionId, &str) ->
+  Result<(), Staleness>` re-validates the same span against a *current*
+  revision/source and returns a typed reason
+  (`RevisionChanged`/`ContentChanged`/`RangeInvalid`) the moment either the
+  revision id differs or the bytes at that exact range no longer hash the
+  same — there is no path that reports a stale binding as fresh.
+- `page::{PageIndex, PageTarget}` **(new in rev 2)**
+  Pure data, no I/O: `PageTarget { page: PageIndex, rect: Rect }` is what a
+  PDF exporter needs to build a `/GoTo` destination for a resolved internal
+  link.
+- `target::{LabelId, LabelSet, InternalTarget, LabelError, TargetError,
+  MAX_LABEL_LEN}` **(rev 2: `LabelSet` now maps labels to `PageTarget`)**
+  `LabelId::parse(&str) -> Result<LabelId, LabelError>` validates a label
+  reference (non-empty, <= 256 bytes checked before any scan, no control
+  characters). `LabelSet::insert(LabelId, PageTarget) -> Option<PageTarget>`
+  registers where a label resolves to for export.
+  `InternalTarget::resolve(LabelId, &LabelSet) -> Result<InternalTarget,
+  TargetError>` is the only way to build an `InternalTarget`; it returns
+  `Err(TargetError::Unresolved(label))` whenever `label` is not present in
+  the caller-supplied `LabelSet`, and otherwise carries that label's
+  `PageTarget`. There is no code path that produces an `InternalTarget` for
+  an unresolved label — never a silent dangling destination.
+- `geometry::{Point, Rect, RectError}`
+  `Rect::new(Point, width, height) -> Result<Rect, RectError>` rejects
+  non-finite origins/extents and negative extents.
+- `span::{SourcePos, SourceSpan, SpanError}`
+  `SourceSpan::new(SourcePos, SourcePos) -> Result<SourceSpan, SpanError>`
+  rejects an end offset preceding the start offset. (Offset-only shape
+  check; UTF-8 boundary and in-bounds checks against real source text now
+  live in `source::SourceIdentity::bind`.)
+- `annotation::{LinkAnnotation, LinkDestination}` **(rev 2: `span` field
+  replaced by `source: SourceIdentity`)**
   `LinkDestination::{External(ValidatedUri), Internal(InternalTarget)}`;
-  `LinkAnnotation { rect: Rect, span: SourceSpan, destination:
+  `LinkAnnotation { rect: Rect, source: SourceIdentity, destination:
   LinkDestination }` built via `LinkAnnotation::external(..)` /
   `::internal(..)`, both of which only accept already-validated/-resolved
-  destinations.
+  destinations and an already-bound `SourceIdentity`.
 
 ## Validation
 
-`cd crates/link-annotations && cargo test` -> 41 unit tests (in `uri`,
-`target`, `geometry`, `span`, `annotation`) + 5 integration tests
-(`tests/annotation.rs`) + 1 doctest, all passing. `cargo clippy
---all-targets -- -D warnings` -> 0 warnings. `cargo fmt --check` -> clean.
+`cd crates/link-annotations && cargo test` -> 58 unit tests (in `uri`,
+`target`, `geometry`, `span`, `annotation`, `source`, `page`) + 8
+integration tests (`tests/annotation.rs`) + 1 doctest, all passing. `cargo
+clippy --all-targets -- -D warnings` -> 0 warnings. `cargo fmt --check` ->
+clean.
+
+Rev 2 tests (new):
+- `source::tests::stale_when_revision_id_differs_even_if_bytes_are_identical`,
+  `annotation::tests::annotation_source_is_detectably_stale_against_a_different_revision`,
+  `tests/annotation.rs::source_identity_is_detectably_stale_against_a_different_revision_of_the_same_bytes`
+  — a link bound at one revision is a hard, typed `Staleness::RevisionChanged`
+  when checked against another, even with byte-identical source.
+- `source::tests::stale_when_source_bytes_at_the_span_changed_under_the_same_revision`,
+  `tests/annotation.rs::source_identity_is_detectably_stale_when_the_text_under_the_span_changes`
+  — same revision id, edited bytes under the same span -> `ContentChanged`.
+- `source::tests::rejects_span_that_splits_a_multibyte_character`,
+  `source::tests::accepts_multibyte_span_aligned_on_character_boundaries`,
+  `source::tests::stale_check_is_utf8_safe_when_multibyte_source_shifted`,
+  `tests/annotation.rs::multibyte_source_ranges_never_split_a_character`
+  — CJK (3-byte-per-character) source text; an offset landing inside a
+  character is `SourceIdentityError::NotCharBoundary`, never truncated.
+- `target::tests::resolves_known_label_and_carries_its_page_target`,
+  `tests/annotation.rs::internal_link_resolves_against_document_labels_and_carries_a_page_target`
+  — a resolved `InternalTarget` carries the exact `PageTarget` (page index +
+  rect) its label was registered with.
 
 Security-focused tests (allowlist, not denylist):
 - `uri::tests::rejects_javascript_scheme`, `rejects_data_scheme`,
@@ -98,23 +164,34 @@ label string) rather than only that a call returned `Ok`/`Err`.
 Incomplete behavior: no percent-encoding/normalization of URI paths (out of
 scope — this crate validates the scheme and shape, not full RFC 3986
 conformance of the rest of the URI); no host/path allowlisting beyond
-scheme; `LabelSet` is a flat set supplied by the caller — this crate does
-not itself discover or track document labels. No consumer wired yet.
+scheme; `LabelSet` is a flat map supplied by the caller — this crate does
+not itself discover or track document labels or page layout. The content
+hash (FNV-1a) is drift-detection only, not collision-resistant — that is a
+deliberate scope boundary, not a gap, since the allowlist (not the hash) is
+the security control. No consumer wired yet.
 
 ## Needs from others
 
 - An FT integration owner to decide which crate (likely `compiler` or a
   future PDF-annotation adapter) constructs `LinkAnnotation` values from
-  parsed `\href`/`\url`/`\ref`/`\label` source and calls `validate_uri` /
-  `InternalTarget::resolve` at that boundary. This crate deliberately does
-  not parse LaTeX or walk the document tree.
+  parsed `\href`/`\url`/`\ref`/`\label` source, supplies the `RevisionId` +
+  source text to `SourceIdentity::bind`, populates `LabelSet` with each
+  label's `PageTarget` (page index from layout, rect from the label's
+  bounding box), and calls `validate_uri` / `InternalTarget::resolve` at
+  that boundary. This crate deliberately does not parse LaTeX, walk the
+  document tree, or discover page layout itself.
 - Confirmation of the scheme allowlist (`http`, `https`, `mailto`) is
   sufficient for the export targets in scope, or whether e.g. `tel:` should
   be added — adding a scheme is a one-line, explicit change in
   `UriScheme::from_lowercase`.
+- Whether the eventual PDF exporter wants `check_fresh` invoked at export
+  time (to detect an annotation computed against a now-stale document
+  revision) or only as an internal consistency check during incremental
+  recompilation — this crate exposes the check either way but does not call
+  it itself.
 
 Next action: await review/integration assignment; no other crate depends on
 this one yet, so there is nothing to coordinate for a breaking change.
 
-Resource: allocation `daniel-claude20x-shared`; timebox 40 minutes.
+Resource: allocation `daniel-claude20x-shared`; timebox 40 minutes (rev 2).
 Updated: 2026-09-12
