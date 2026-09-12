@@ -4,8 +4,8 @@
   "schema_version": 1,
   "steps": [
     {
-      "name": "Label unobserved diagnostic snapshots explicitly and run one corrected correctness gate after positional-read repair",
-      "objective": "Label unobserved diagnostic snapshots explicitly and run one corrected correctness gate after positional-read repair",
+      "name": "Review helper-side opt-in page delta proposal capability base source epoch identity and full resynchronization requirements",
+      "objective": "Review helper-side opt-in page delta proposal capability base source epoch identity and full resynchronization requirements",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"
@@ -19,8 +19,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Verify raw snapshot status complete trace correlation durable reopen clean final and permanent receipts with unchanged binaries and source",
-      "objective": "Verify raw snapshot status complete trace correlation durable reopen clean final and permanent receipts with unchanged binaries and source",
+      "name": "Specify bounded retained state output priority resource closure and refusal rules without wire activation",
+      "objective": "Specify bounded retained state output priority resource closure and refusal rules without wire activation",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"
@@ -34,8 +34,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Publish exact successful or failed gate while preserving both earlier failures and avoiding performance or cause comparisons",
-      "objective": "Publish exact successful or failed gate while preserving both earlier failures and avoiding performance or cause comparisons",
+      "name": "Publish reviewable contract handoff coordinated with existing native producer and renderer owners; defer further trace completion work",
+      "objective": "Publish reviewable contract handoff coordinated with existing native producer and renderer owners; defer further trace completion work",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"

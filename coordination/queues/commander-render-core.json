@@ -4,8 +4,8 @@
   "schema_version": 1,
   "steps": [
     {
-      "name": "Verify actual missing and corrupt metric consumer refusal with negotiated sibling versus explicit v2 file distinction",
-      "objective": "Verify actual missing and corrupt metric consumer refusal with negotiated sibling versus explicit v2 file distinction",
+      "name": "Review current strict full-display invariants for proposed opt-in page delta reconstruction",
+      "objective": "Review current strict full-display invariants for proposed opt-in page delta reconstruction",
       "owned_paths": [
         "crates/rendering-core"
       ],
@@ -17,8 +17,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Review published Mac packaging7be5396d exact sandbox acceptance artifacts resource tiers and environment precedence",
-      "objective": "Review published Mac packaging7be5396d exact sandbox acceptance artifacts resource tiers and environment precedence",
+      "name": "Specify complete page resource source diagnostic and hit authority validation with bounded retained state and wrong-base refusal",
+      "objective": "Specify complete page resource source diagnostic and hit authority validation with bounded retained state and wrong-base refusal",
       "owned_paths": [
         "crates/rendering-core"
       ],
@@ -30,8 +30,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Publish actionable owner review preserving native adoption scope and explicit override limitations",
-      "objective": "Publish actionable owner review preserving native adoption scope and explicit override limitations",
+      "name": "Publish consumer contract constraints without incomplete export source actions new parser or activation",
+      "objective": "Publish consumer contract constraints without incomplete export source actions new parser or activation",
       "owned_paths": [
         "crates/rendering-core"
       ],
