@@ -12,6 +12,10 @@ cd crates/pdf
 cargo test
 cargo run --bin flashtex-pdf -- --out out.pdf < ../../protocol/fixtures/compile-result.json
 cargo run --bin flashtex-pdf -- result.json --out out.pdf --verify
+# Opt-in: embed a subset of a Unicode TrueType font for characters outside
+# WinAnsi and Symbol (see "Font embedding" below before redistributing output).
+cargo run --bin flashtex-pdf -- result.json --out out.pdf --embed-font /path/to/font.ttf
+FLASHTEX_UNICODE_FONT=/path/to/font.ttf cargo run --bin flashtex-pdf -- result.json --out out.pdf
 open out.pdf
 ```
 
@@ -46,9 +50,56 @@ open out.pdf
   U+2500 runs; rendered as rules.* A real rule item type in runtime-v1 would
   replace this and is Commander's call.
 - `(`, `)`, and `\` are escaped in literal strings.
+- **Font embedding (opt-in).** `RenderOptions { embed_font }`, `--embed-font
+  PATH|auto`, or `FLASHTEX_UNICODE_FONT` embed a subset of a Unicode TrueType
+  font as `/F3` for characters neither base-14 font has. See below.
 - Structural self-check (`flashtex_pdf::verify`) that parses the header, `startxref`,
   every xref entry, and confirms each offset lands on `N 0 obj`, plus a
   content-stream reader that recovers `Tf`/`Td`/`Tj` runs and `re f` rules for tests.
+
+## Font embedding
+
+Off by default. When enabled, every character that WinAnsi and Symbol cannot
+show is looked up in the supplied `.ttf`; the glyphs used (plus `.notdef` and
+the parts of any composite glyph) are copied into a new, densely renumbered
+TrueType program and embedded as `/FontFile2` under a Type0 font with a
+CIDFontType2 descendant, `Identity-H` encoding (two bytes per glyph, written as
+hex strings), `/CIDToGIDMap /Identity`, a `/W` widths array, and a `ToUnicode`
+CMap so text extraction and search return the original characters. The subset
+carries `head`, `hhea`, `maxp`, `hmtx`, `loca`, `glyf`, and, if present,
+`cvt `, `fpgm`, `prep`; table checksums and `head.checkSumAdjustment` are
+computed and `truetype::verify_checksums` reads them back in tests. The parser,
+subsetter, and CMap writer are hand-written (`src/truetype.rs`,
+`src/embed.rs`); the crate still has no dependencies.
+
+Characters the embedded font also lacks still become `?` and are named in
+`warnings` (one font-level warning listing them, plus the per-item warning).
+Nothing is ever dropped silently. The CLI prints every warning and a final
+`note: N warning(s)` line; exit status stays 0 because the PDF was written.
+
+**Which font.** `--embed-font PATH` uses that file. `--embed-font auto` (or
+setting `FLASHTEX_UNICODE_FONT` alone) uses `FLASHTEX_UNICODE_FONT` if set,
+otherwise, on macOS only, the first of these that exists:
+
+1. `/System/Library/Fonts/Supplemental/Times New Roman.ttf` — serif, matches
+   the base-14 Times visually; covers Latin, Greek, Cyrillic, but **not** CJK,
+   `ℝ`, or emoji.
+2. `/System/Library/Fonts/Supplemental/Arial Unicode.ttf` — sans, ~50 000
+   glyphs including CJK and most symbols; no emoji outlines.
+
+Both are Apple-supplied system fonts. Their licences permit use on the Mac;
+**embedding a subset into a PDF you redistribute is a licensing question the
+user must answer for themselves.** This crate does not choose a font unless
+asked, and it prints which one it embedded. No font is committed to this
+repository. Only TrueType outlines (`glyf`) are supported: CFF/OpenType
+(`OTTO`) and `.ttc` collections are rejected with a message, not guessed at.
+
+**Limits of the embedded route.** Glyph advances come from the font, so text
+spacing inside a run is right, but the *positions* of items still come from
+the compiler's own metrics, which do not know about this font. There is no
+shaping: combining marks, ligature substitution, and complex scripts are
+written glyph-by-glyph from the `cmap`. Emoji fonts with colour tables
+(`sbix`, `COLR`) are not supported. The subset is uncompressed (no Flate).
 
 ## Limitations, stated plainly
 
@@ -77,9 +128,11 @@ open out.pdf
 - **Unicode:** characters representable in WinAnsi (ASCII, Latin-1 such as
   `é ï ñ ü`, and the Windows-1252 block: `— – … € “ ” ‘ ’ Œ œ Š š Ž ž Ÿ ƒ ‰ • ™`)
   are written as their single WinAnsi byte via Times; characters Symbol covers
-  are written via Symbol. Anything else (blackboard bold, CJK, emoji, control
-  characters, combining marks) is written as `?` and reported in `warnings`
-  with its code point. It is never silently dropped.
+  are written via Symbol; with embedding enabled, anything the supplied font
+  has is written through the embedded subset. Whatever remains (by default:
+  Cyrillic, CJK, blackboard bold, emoji, control characters, combining marks)
+  is written as `?` and reported in `warnings` with its code point. It is
+  never silently dropped.
 - **Text and U+2500 rules only.** Item kinds other than `text` are skipped with
   a warning. No images, general paths, links, or annotations.
 - **Metrics come from the compiler, not from here.** The writer places each item
@@ -102,7 +155,7 @@ dark mode. `tests/render.rs::export_is_white_and_theme_independent` guards this.
 
 ## Verification performed
 
-- `cargo test`: 24 tests (13 unit, 11 integration) covering the fixture's page
+- `cargo test`: 32 tests (18 unit, 14 integration) covering the fixture's page
   count and MediaBox, a two-page synthetic result with distinct page sizes,
   multiline placement (every `Td` equals `(x_pt, height_pt - baseline_y_pt)`),
   WinAnsi encoding (`é` is byte `0xE9`, `—` is `0x97`), unrepresentable
@@ -118,12 +171,25 @@ dark mode. `tests/render.rs::export_is_white_and_theme_independent` guards this.
   `0xD6`, and every other item via `/F1` at the compiler's coordinates. A mixed
   item (`x∈ℝ→∞`) is checked to switch `/F1`/`/F2` inside one text object and
   both fonts are present in every page's `/Resources`.
+- Embedding: with a font found by the same discovery the CLI uses (skipped
+  with a message otherwise), `ж中ℝ😀` is rendered; the test asserts a Type0 /
+  CIDFontType2 / `FontFile2` / `ToUnicode` object chain, that each character
+  is either written through `/F3` with a ToUnicode entry mapping its glyph id
+  back to the code point or named in a warning, that the embedded program
+  re-parses with `verify_checksums` passing and glyph count equal to the
+  subset's map (used glyphs + `.notdef` + composite parts), that advances
+  survive subsetting, and that `sips` opens the CLI's output. Off by default
+  and bad font files are errors, not silent fallbacks.
 - Manual: the fixture and a two-page Unicode sample were rendered, opened by
   `sips` (`format: pdf`, `pixelWidth: 612.000`, `pixelHeight: 792.000`), and
   rasterised to PNG; the heading, three baselines, accented characters, escaped
   parentheses, the `?` substitution, a bottom-margin line, and page two all
   appeared where expected on a white page. The issue #9 math PDF rasterised by
   macOS shows `a` over a drawn bar over `b`, then `+α+√x`, with no `?`.
+- Embedding, rasterised by macOS: with Arial Unicode, `Latin café — Greek αβγ
+  — Cyrillic жизнь — CJK 中文 — ℝ ∫ 😀` shows every script and `ℝ`, with `?`
+  only for the emoji; `Ǆǅ Ŵŷ ő` (composite glyphs) render correctly. With
+  Times New Roman the same line shows `?` for CJK and `ℝ` exactly as warned.
 
 ## Integration with the Mac app
 

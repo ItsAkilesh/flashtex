@@ -6,8 +6,10 @@
 //!   and mathematical operators the FT-002 compiler emits as Unicode text.
 //!
 //! Both are placeholders until FlashTeX embeds its own fonts. A character is
-//! looked up in WinAnsi first, then Symbol; anything covered by neither is
-//! substituted with [`SUBSTITUTE`] and reported, never silently dropped.
+//! looked up in WinAnsi first, then Symbol, then (when the caller opted in to
+//! embedding, see `crate::embed`) an embedded TrueType subset; anything covered
+//! by none of them is substituted with [`SUBSTITUTE`] and reported, never
+//! silently dropped.
 
 /// The byte written for a character no font here can represent.
 pub const SUBSTITUTE: u8 = b'?';
@@ -19,6 +21,9 @@ pub enum Font {
     Times,
     /// Symbol with its built-in encoding, resource `/F2`.
     Symbol,
+    /// The embedded TrueType subset (Identity-H, two bytes per glyph),
+    /// resource `/F3`. Only present when embedding was requested.
+    Embedded,
 }
 
 impl Font {
@@ -26,13 +31,16 @@ impl Font {
         match self {
             Font::Times => "F1",
             Font::Symbol => "F2",
+            Font::Embedded => "F3",
         }
     }
 
+    /// Base-14 name; the embedded font's name is per document.
     pub fn base_font(self) -> &'static str {
         match self {
             Font::Times => "Times-Roman",
             Font::Symbol => "Symbol",
+            Font::Embedded => "(embedded)",
         }
     }
 }
@@ -244,25 +252,36 @@ impl Encoded {
 /// Encodes a string into font runs: WinAnsi/Times where possible, Symbol for
 /// what Times lacks, `?` in Times for everything else.
 pub fn encode(text: &str) -> Encoded {
+    encode_with(text, None)
+}
+
+/// True when neither base-14 font can show the character.
+pub fn needs_embedding(c: char) -> bool {
+    winansi_byte(c).is_none() && symbol_byte(c).is_none()
+}
+
+/// Like [`encode`], but characters outside both base-14 fonts are first
+/// offered to `embedded`, which returns the two-byte subset glyph id to write
+/// in an [`Font::Embedded`] run. `None` from it still means `?` + report.
+pub fn encode_with(text: &str, embedded: Option<&dyn Fn(char) -> Option<u16>>) -> Encoded {
     let mut runs: Vec<Run> = Vec::new();
     let mut unrepresentable = Vec::new();
     for c in text.chars() {
-        let (font, byte) = if let Some(b) = winansi_byte(c) {
-            (Font::Times, b)
+        let (font, bytes): (Font, Vec<u8>) = if let Some(b) = winansi_byte(c) {
+            (Font::Times, vec![b])
         } else if let Some(b) = symbol_byte(c) {
-            (Font::Symbol, b)
+            (Font::Symbol, vec![b])
+        } else if let Some(gid) = embedded.and_then(|f| f(c)) {
+            (Font::Embedded, gid.to_be_bytes().to_vec())
         } else {
             if !unrepresentable.contains(&c) {
                 unrepresentable.push(c);
             }
-            (Font::Times, SUBSTITUTE)
+            (Font::Times, vec![SUBSTITUTE])
         };
         match runs.last_mut() {
-            Some(run) if run.font == font => run.bytes.push(byte),
-            _ => runs.push(Run {
-                font,
-                bytes: vec![byte],
-            }),
+            Some(run) if run.font == font => run.bytes.extend_from_slice(&bytes),
+            _ => runs.push(Run { font, bytes }),
         }
     }
     Encoded {
@@ -345,6 +364,39 @@ mod tests {
         );
         assert_eq!(e.unrepresentable, vec!['😀']);
         assert_eq!(e.bytes(), b"a\xF2b\xF2?\x61\x62");
+    }
+
+    #[test]
+    fn embedded_lookup_is_consulted_only_after_both_base_fonts() {
+        let lookup = |c: char| match c {
+            '中' => Some(0x0102u16),
+            'a' | 'α' => Some(0xFFFF),
+            _ => None,
+        };
+        let e = encode_with("aα中😀", Some(&lookup));
+        assert_eq!(
+            e.runs,
+            vec![
+                Run {
+                    font: Font::Times,
+                    bytes: b"a".to_vec()
+                },
+                Run {
+                    font: Font::Symbol,
+                    bytes: vec![0x61]
+                },
+                Run {
+                    font: Font::Embedded,
+                    bytes: vec![0x01, 0x02]
+                },
+                Run {
+                    font: Font::Times,
+                    bytes: b"?".to_vec()
+                },
+            ]
+        );
+        assert_eq!(e.unrepresentable, vec!['😀']);
+        assert!(needs_embedding('中') && !needs_embedding('α') && !needs_embedding('a'));
     }
 
     #[test]

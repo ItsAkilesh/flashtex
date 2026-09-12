@@ -12,6 +12,11 @@
 //! | 6+2i   | page `i` (zero-based)                     |
 //! | 7+2i   | content stream of page `i`                |
 //!
+//! When a font is embedded (opt-in, see `crate::embed`), five more objects
+//! follow the last page, starting at `6 + 2 × pages`: the Type0 font `/F3`,
+//! its CIDFontType2 descendant, the font descriptor, the `/FontFile2` stream,
+//! and the ToUnicode CMap. Page numbering is unchanged either way.
+//!
 //! Every text item is emitted as its own `BT … ET` block with an absolute `Td`,
 //! so the content stream is trivially checkable: each `Td` carries exactly the
 //! item's PDF-space coordinates `(x_pt, height_pt - baseline_y_pt)`. Inside the
@@ -25,8 +30,9 @@
 //! each, with the item's baseline at the bottom edge of the bar. Such items are
 //! drawn here as filled rectangles (`re f`), never as glyphs.
 
+use crate::embed::EmbeddedSubset;
 use crate::encoding;
-use crate::{CompileResult, PdfError, PdfOutput};
+use crate::{CompileResult, PdfError, PdfOutput, RenderOptions};
 use std::io::Write;
 
 pub const PDF_HEADER: &[u8] = b"%PDF-1.4\n";
@@ -38,7 +44,12 @@ pub const RULE_DASH_EM: f64 = 0.5;
 pub const RULE_THICKNESS_EM: f64 = 0.06 / 0.7;
 pub const PRODUCER: &str = "FlashTeX flashtex-pdf 0.1.0";
 
-pub fn render(result: &CompileResult) -> Result<PdfOutput, PdfError> {
+/// Object number of the Type0 font when one is embedded.
+pub fn embedded_font_object(page_count: usize) -> usize {
+    FIRST_PAGE_OBJECT + 2 * page_count
+}
+
+pub fn render(result: &CompileResult, options: &RenderOptions) -> Result<PdfOutput, PdfError> {
     if result.pages.is_empty() {
         return Err(PdfError::Invalid("a PDF needs at least one page".into()));
     }
@@ -74,11 +85,52 @@ pub fn render(result: &CompileResult) -> Result<PdfOutput, PdfError> {
     }
 
     let mut warnings = Vec::new();
+    let page_count = result.pages.len();
+
+    // Decide the embedded subset up front: it needs every character on every
+    // page, and the pages need its glyph ids.
+    let embedded: Option<EmbeddedSubset> = match &options.embed_font {
+        None => None,
+        Some(font) => {
+            let wanted: std::collections::BTreeSet<char> = result
+                .pages
+                .iter()
+                .flat_map(|p| p.items.iter())
+                .filter(|item| !is_rule_item(&item.text))
+                .flat_map(|item| item.text.chars())
+                .filter(|&c| encoding::needs_embedding(c))
+                .collect();
+            let subset = font.subset_for(wanted.iter().copied()).map_err(|e| {
+                PdfError::Invalid(format!("embedding {}: {e}", font.source.display()))
+            })?;
+            let missing: Vec<String> = wanted
+                .iter()
+                .filter(|c| !subset.chars.contains_key(c))
+                .map(|c| format!("{c:?} (U+{:04X})", *c as u32))
+                .collect();
+            if !missing.is_empty() {
+                warnings.push(format!(
+                    "embedded font {} ({}) has no glyph for {}; those characters fall back to '?'",
+                    font.font.postscript_name,
+                    font.source.display(),
+                    missing.join(", ")
+                ));
+            }
+            Some(subset)
+        }
+    };
+    let lookup = embedded
+        .as_ref()
+        .map(|e| move |c: char| e.chars.get(&c).copied());
+    let lookup_ref: Option<&dyn Fn(char) -> Option<u16>> = match &lookup {
+        Some(f) => Some(f),
+        None => None,
+    };
+
     let mut doc = Document::new();
 
     doc.object(1, b"<< /Type /Catalog /Pages 2 0 R >>");
 
-    let page_count = result.pages.len();
     let mut kids = String::new();
     for i in 0..page_count {
         kids.push_str(&format!("{} 0 R ", FIRST_PAGE_OBJECT + 2 * i));
@@ -115,23 +167,84 @@ pub fn render(result: &CompileResult) -> Result<PdfOutput, PdfError> {
         .as_bytes(),
     );
 
+    let font_obj = embedded_font_object(page_count);
+    let mut fonts = format!(
+        "/{} 3 0 R /{} 4 0 R",
+        encoding::Font::Times.resource_name(),
+        encoding::Font::Symbol.resource_name()
+    );
+    if embedded.is_some() {
+        fonts.push_str(&format!(
+            " /{} {font_obj} 0 R",
+            encoding::Font::Embedded.resource_name()
+        ));
+    }
+
     for (i, page) in result.pages.iter().enumerate() {
         let page_obj = FIRST_PAGE_OBJECT + 2 * i;
         let content_obj = page_obj + 1;
-        let content = page_content(page, &mut warnings);
+        let content = page_content(page, lookup_ref, embedded.as_ref(), &mut warnings);
 
         doc.object(
             page_obj,
             format!(
-                "<< /Type /Page /Parent 2 0 R /MediaBox [ 0 0 {} {} ] /Resources << /Font << /{} 3 0 R /{} 4 0 R >> >> /Contents {content_obj} 0 R >>",
+                "<< /Type /Page /Parent 2 0 R /MediaBox [ 0 0 {} {} ] /Resources << /Font << {fonts} >> >> /Contents {content_obj} 0 R >>",
                 num(page.width_pt),
                 num(page.height_pt),
-                encoding::Font::Times.resource_name(),
-                encoding::Font::Symbol.resource_name()
             )
             .as_bytes(),
         );
         doc.stream(content_obj, &content);
+    }
+
+    if let Some(e) = &embedded {
+        let cid_obj = font_obj + 1;
+        let desc_obj = font_obj + 2;
+        let file_obj = font_obj + 3;
+        let tounicode_obj = font_obj + 4;
+        doc.object(
+            font_obj,
+            format!(
+                "<< /Type /Font /Subtype /Type0 /BaseFont /{} /Encoding /Identity-H /DescendantFonts [ {cid_obj} 0 R ] /ToUnicode {tounicode_obj} 0 R >>",
+                e.base_font
+            )
+            .as_bytes(),
+        );
+        doc.object(
+            cid_obj,
+            format!(
+                "<< /Type /Font /Subtype /CIDFontType2 /BaseFont /{} /CIDSystemInfo << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >> /FontDescriptor {desc_obj} 0 R /DW 1000 /W {} /CIDToGIDMap /Identity >>",
+                e.base_font,
+                e.widths_array()
+            )
+            .as_bytes(),
+        );
+        let d = &e.descriptor;
+        // Flags 4 = Symbolic: the font is used through glyph ids, not a
+        // standard Latin encoding. StemV is a nominal value; TrueType fonts
+        // carry no stem width and viewers do not rely on it for rendering.
+        doc.object(
+            desc_obj,
+            format!(
+                "<< /Type /FontDescriptor /FontName /{} /Flags 4 /FontBBox [ {} {} {} {} ] /ItalicAngle {} /Ascent {} /Descent {} /CapHeight {} /StemV 80 /FontFile2 {file_obj} 0 R >>",
+                e.base_font,
+                d.bbox[0],
+                d.bbox[1],
+                d.bbox[2],
+                d.bbox[3],
+                num(d.italic_angle),
+                d.ascent,
+                d.descent,
+                d.cap_height
+            )
+            .as_bytes(),
+        );
+        doc.stream_with(
+            file_obj,
+            &format!("/Length1 {}", e.subset.bytes.len()),
+            &e.subset.bytes,
+        );
+        doc.stream(tounicode_obj, &e.to_unicode_cmap());
     }
 
     Ok(PdfOutput {
@@ -148,7 +261,12 @@ pub fn is_rule_item(text: &str) -> bool {
 /// Builds one page's content stream. The page is left untouched (white) apart
 /// from black text and rules; there is deliberately no background fill and no
 /// theme input.
-fn page_content(page: &crate::Page, warnings: &mut Vec<String>) -> Vec<u8> {
+fn page_content(
+    page: &crate::Page,
+    lookup: Option<&dyn Fn(char) -> Option<u16>>,
+    embedded: Option<&EmbeddedSubset>,
+    warnings: &mut Vec<String>,
+) -> Vec<u8> {
     let mut out = Vec::new();
     // Non-stroking colour: black in DeviceGray. Set explicitly so output never
     // depends on viewer defaults.
@@ -173,15 +291,19 @@ fn page_content(page: &crate::Page, warnings: &mut Vec<String>) -> Vec<u8> {
             .expect("writing to Vec cannot fail");
             continue;
         }
-        let encoded = encoding::encode(&item.text);
+        let encoded = encoding::encode_with(&item.text, lookup);
         if !encoded.unrepresentable.is_empty() {
             let listed: Vec<String> = encoded
                 .unrepresentable
                 .iter()
                 .map(|c| format!("{c:?} (U+{:04X})", *c as u32))
                 .collect();
+            let fonts = match embedded {
+                Some(e) => format!("WinAnsiEncoding, Symbol, or embedded {}", e.base_font),
+                None => "WinAnsiEncoding or Symbol".to_string(),
+            };
             warnings.push(format!(
-                "page {}: item {i} {:?}: {} not representable in WinAnsiEncoding or Symbol; written as '{}'",
+                "page {}: item {i} {:?}: {} not representable in {fonts}; written as '{}'",
                 page.number,
                 item.text,
                 listed.join(", "),
@@ -192,15 +314,25 @@ fn page_content(page: &crate::Page, warnings: &mut Vec<String>) -> Vec<u8> {
         let y = page.height_pt - item.baseline_y_pt;
         writeln!(out, "BT\n{} {} Td", num(x), num(y)).expect("writing to Vec cannot fail");
         for run in &encoded.runs {
-            write!(
+            writeln!(
                 out,
-                "/{} {} Tf\n(",
+                "/{} {} Tf",
                 run.font.resource_name(),
                 num(item.font_size_pt)
             )
             .expect("writing to Vec cannot fail");
-            out.extend_from_slice(&escape_string(&run.bytes));
-            out.extend_from_slice(b") Tj\n");
+            if run.font == encoding::Font::Embedded {
+                // Identity-H: two bytes per glyph, written as a hex string.
+                out.push(b'<');
+                for b in &run.bytes {
+                    write!(out, "{b:02X}").expect("writing to Vec cannot fail");
+                }
+                out.extend_from_slice(b"> Tj\n");
+            } else {
+                out.push(b'(');
+                out.extend_from_slice(&escape_string(&run.bytes));
+                out.extend_from_slice(b") Tj\n");
+            }
         }
         out.extend_from_slice(b"ET\n");
     }
@@ -273,8 +405,20 @@ impl Document {
     }
 
     fn stream(&mut self, number: usize, data: &[u8]) {
+        self.stream_with(number, "", data);
+    }
+
+    /// A stream whose dictionary carries extra entries (e.g. `/Length1`).
+    fn stream_with(&mut self, number: usize, extra: &str, data: &[u8]) {
         self.begin(number);
-        write!(self.bytes, "<< /Length {} >>\nstream\n", data.len()).expect("Vec write");
+        write!(
+            self.bytes,
+            "<< /Length {}{}{} >>\nstream\n",
+            data.len(),
+            if extra.is_empty() { "" } else { " " },
+            extra
+        )
+        .expect("Vec write");
         self.bytes.extend_from_slice(data);
         self.bytes.extend_from_slice(b"\nendstream\nendobj\n");
     }

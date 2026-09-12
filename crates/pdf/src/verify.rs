@@ -168,7 +168,7 @@ pub fn placements(content: &[u8]) -> Result<Vec<Placement>, String> {
             let name = parts.next().unwrap_or("");
             let name = name
                 .strip_prefix('/')
-                .filter(|n| *n == "F1" || *n == "F2")
+                .filter(|n| *n == "F1" || *n == "F2" || *n == "F3")
                 .ok_or_else(|| format!("unexpected font resource {name}"))?;
             let size = parts
                 .next()
@@ -193,16 +193,27 @@ pub fn placements(content: &[u8]) -> Result<Vec<Placement>, String> {
                 .parse::<f64>()
                 .map_err(|_| "Td y")?;
             td = Some((x, y));
-        } else if line.starts_with(b"(") && line.ends_with(b") Tj") {
+        } else if line.ends_with(b") Tj") || line.ends_with(b"> Tj") {
             let (x, y) = td.ok_or("Tj without preceding Td")?;
             let (name, font_size) = font.clone().ok_or("Tj without Tf")?;
+            let body = &line[1..line.len() - 4];
+            let bytes = match line[0] {
+                b'(' => unescape(body),
+                b'<' => unhex(body)?,
+                _ => {
+                    return Err(format!(
+                        "unexpected Tj operand {:?}",
+                        String::from_utf8_lossy(line)
+                    ));
+                }
+            };
             out.push(Placement {
                 font: name,
                 font_size,
                 x,
                 y,
                 continues,
-                bytes: unescape(&line[1..line.len() - 4]),
+                bytes,
             });
             continues = true;
         } else if line == b"ET" {
@@ -238,6 +249,17 @@ pub fn rules(content: &[u8]) -> Result<Vec<Rule>, String> {
         });
     }
     Ok(out)
+}
+
+fn unhex(s: &[u8]) -> Result<Vec<u8>, String> {
+    let text = std::str::from_utf8(s).map_err(|_| "hex string not ASCII")?;
+    if text.len() % 2 != 0 {
+        return Err(format!("odd-length hex string {text:?}"));
+    }
+    (0..text.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&text[i..i + 2], 16).map_err(|_| format!("bad hex {text:?}")))
+        .collect()
 }
 
 fn unescape(s: &[u8]) -> Vec<u8> {

@@ -9,16 +9,19 @@
 //!
 //! - Text only. Every `kind: text` item becomes one `Tj` at its baseline. Any
 //!   other item kind is skipped and reported in the warnings list.
-//! - The only font is the standard base-14 `Times-Roman` with `WinAnsiEncoding`.
-//!   No font program is embedded, so glyph shapes and advance widths come from
-//!   the viewer's substitute font, not from FlashTeX. Characters outside
-//!   WinAnsi are written as `?` and reported, never silently dropped.
+//! - By default the only fonts are the base-14 `Times-Roman` (WinAnsiEncoding)
+//!   and `Symbol`; nothing is embedded, so glyph shapes and advance widths come
+//!   from the viewer's substitutes. Characters outside both are written as `?`
+//!   and reported, never silently dropped. Callers can opt in to embedding a
+//!   subset of a Unicode TrueType font for those characters ([`RenderOptions`]).
 //! - Pages are always white. The writer takes no theme input, so a dark preview
 //!   in the Mac app cannot leak into the export.
 
+pub mod embed;
 pub mod encoding;
 pub mod json;
 pub mod protocol;
+pub mod truetype;
 pub mod verify;
 pub mod writer;
 
@@ -76,17 +79,42 @@ impl std::fmt::Display for PdfError {
 
 impl std::error::Error for PdfError {}
 
-/// Renders positioned pages to PDF bytes. See the crate docs for scope.
-pub fn render_pdf(result: &CompileResult) -> Result<PdfOutput, PdfError> {
-    writer::render(result)
+/// Rendering choices. The default embeds nothing.
+#[derive(Debug, Clone, Default)]
+pub struct RenderOptions {
+    /// A Unicode TrueType font to subset and embed for characters outside
+    /// WinAnsi and Symbol. `None` keeps the `?` + warning behaviour.
+    pub embed_font: Option<embed::EmbedFont>,
 }
 
-/// Convenience: parse a runtime-v1 `compile_result` envelope and render it.
-/// Warnings from both stages (skipped item kinds, substituted characters) are
-/// concatenated in order.
+/// Renders positioned pages to PDF bytes with default options (no embedding).
+/// See the crate docs for scope.
+pub fn render_pdf(result: &CompileResult) -> Result<PdfOutput, PdfError> {
+    writer::render(result, &RenderOptions::default())
+}
+
+/// Renders positioned pages to PDF bytes with explicit options.
+pub fn render_pdf_with(
+    result: &CompileResult,
+    options: &RenderOptions,
+) -> Result<PdfOutput, PdfError> {
+    writer::render(result, options)
+}
+
+/// Convenience: parse a runtime-v1 `compile_result` envelope and render it
+/// with default options. Warnings from both stages (skipped item kinds,
+/// substituted characters) are concatenated in order.
 pub fn render_envelope(envelope_json: &str) -> Result<PdfOutput, PdfError> {
+    render_envelope_with(envelope_json, &RenderOptions::default())
+}
+
+/// [`render_envelope`] with explicit options.
+pub fn render_envelope_with(
+    envelope_json: &str,
+    options: &RenderOptions,
+) -> Result<PdfOutput, PdfError> {
     let parsed = protocol::parse_compile_result(envelope_json)?;
-    let mut out = render_pdf(&parsed.result)?;
+    let mut out = render_pdf_with(&parsed.result, options)?;
     let mut warnings = parsed.warnings;
     warnings.append(&mut out.warnings);
     out.warnings = warnings;

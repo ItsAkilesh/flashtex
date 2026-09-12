@@ -1,8 +1,9 @@
 # mac-pdf handoff — FT-009 PDF output
 
-- Updated UTC: 2026-09-12T04:55Z
-- Agent / parent / machine alias: `mac-pdf` (Claude Code subagent) / parent
-  `mac-claude-a` / `mac-m1max-a`
+- Updated UTC: 2026-09-12T05:20Z
+- Agent / parent / machine alias: `mac-pdf` (Claude Code subagent; issue #2
+  follow-up dispatched as worker `mac-pdf-unicode`, same agent and branch) /
+  parent `mac-claude-a` / `mac-m1max-a`
 - Task / acceptance gate / owned paths: FT-009 rev 1, "original Rust PDF output
   from runtime-v1 positioned pages". Serves acceptance gate 5 (a real exported
   document). Owned paths: `crates/pdf/`, `coordination/mac-pdf.md`.
@@ -18,7 +19,17 @@
     `re f` fraction rules, xref table, trailer. Library API
     `render_pdf` / `render_envelope` returning `{ bytes, warnings }`; CLI
     `flashtex-pdf [in.json] --out out.pdf [--verify]`.
-  - `cargo test`: 24/24 pass (13 unit, 11 integration). Covers fixture page count
+  - Issue #2 follow-up: opt-in TrueType embedding with subsetting, hand-written
+    (`src/truetype.rs`, `src/embed.rs`, still zero dependencies): Type0 /
+    CIDFontType2 / Identity-H / `CIDToGIDMap Identity` / `FontFile2` /
+    ToUnicode CMap. Enabled by `RenderOptions.embed_font`, `--embed-font
+    PATH|auto`, or `FLASHTEX_UNICODE_FONT`; `auto` falls back on macOS to
+    Times New Roman then Arial Unicode (Apple system fonts; redistribution
+    licence is the user's call, README says so). Characters the font also
+    lacks stay `?` with warnings; CLI prints a `note: N warning(s)` summary,
+    exit 0. Verified on this Mac with both system fonts: rasterised output
+    shows Cyrillic/CJK/ℝ and composite glyphs; `?` only where warned.
+  - `cargo test`: 32/32 pass (18 unit, 14 integration). Covers fixture page count
     and MediaBox, a 2-page synthetic result, multiline baselines, WinAnsi
     encoding (`é` → `0xE9`), unrepresentable chars (`中`, `😀`, `ℝ`) → `?` +
     warning, delimiter escaping, unsupported item kinds, bad envelopes,
@@ -37,7 +48,8 @@
     and page two on a white page.
   - `cargo build --release` and `cargo clippy --all-targets` clean.
 - Incomplete behavior / blockers / needs from others:
-  - Base-14 Times-Roman (WinAnsi) and Symbol only; no font embedding. Heading
+  - Embedding is opt-in; default output remains base-14 Times-Roman (WinAnsi)
+    and Symbol. No shaping, no colour emoji, no CFF/.ttc, no Flate. Heading
     weight is not reproduced: the compiler sets headings in Times-Bold but
     runtime-v1 carries no font field, and per issue #9 bold is not inferred from
     size. Needs a runtime-v1 font/weight field (proposed to Commander).
@@ -66,7 +78,8 @@
   (500-unit fallback for non-Latin glyphs) plus GitHub issue #9 — adapted by
   rendering U+2500 runs as rules and adding the Symbol font.
 - Validation commands / results / artifact paths:
-  `cd crates/pdf && cargo test` (24 passed);
+  `cd crates/pdf && cargo test` (32 passed);
+  `cargo run --bin flashtex-pdf -- in.json --out out.pdf --embed-font auto` (prints which font was embedded);
   `cargo run --bin flashtex-pdf -- tests/fixtures/math-compile-result.json --out math.pdf --verify` (exit 0, no warnings);
   `cargo run --bin flashtex-pdf -- --out out.pdf --verify < ../../protocol/fixtures/compile-result.json`;
   `/usr/bin/sips -g pixelWidth -g pixelHeight out.pdf`.

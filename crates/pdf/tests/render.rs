@@ -426,3 +426,215 @@ fn macos_sips_opens_the_fixture_pdf() {
 
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+// ---------------------------------------------------------------------------
+// Opt-in font embedding. These tests need a real TrueType font; they use the
+// same discovery as the CLI (`FLASHTEX_UNICODE_FONT`, then macOS system fonts)
+// and skip with a message when none exists.
+
+fn embed_font_or_skip(test: &str) -> Option<flashtex_pdf::embed::EmbedFont> {
+    match flashtex_pdf::embed::EmbedFont::discover() {
+        Ok(Some(f)) => Some(f),
+        Ok(None) => {
+            eprintln!(
+                "SKIPPED {test}: no TrueType font found (set {} or run on macOS)",
+                flashtex_pdf::embed::ENV_VAR
+            );
+            None
+        }
+        Err(e) => panic!("font discovery failed: {e}"),
+    }
+}
+
+/// Characters outside WinAnsi and Symbol: Cyrillic (in every candidate
+/// font), CJK and double-struck R (coverage varies), and an emoji (in none).
+const EMBED_TEXT: &str = "ж中ℝ😀";
+
+#[test]
+fn embedded_subset_font_covers_unicode_and_reports_the_rest() {
+    use flashtex_pdf::embed::parse_to_unicode;
+    use flashtex_pdf::truetype::{TrueTypeFont, verify_checksums};
+    let Some(font) = embed_font_or_skip("embedded_subset_font_covers_unicode_and_reports_the_rest")
+    else {
+        return;
+    };
+    let result = CompileResult {
+        pages: vec![page(
+            1,
+            612.0,
+            792.0,
+            vec![
+                item("plain", 72.0, 84.0, 12.0),
+                item(EMBED_TEXT, 72.0, 100.0, 12.0),
+            ],
+        )],
+    };
+    let options = flashtex_pdf::RenderOptions {
+        embed_font: Some(font.clone()),
+    };
+    let out = flashtex_pdf::render_pdf_with(&result, &options).unwrap();
+    let s = check_structure(&out.bytes).unwrap();
+    // 7 base objects + 5 font objects; FontFile2 and ToUnicode are streams.
+    assert_eq!(s.object_count, 12);
+    assert_eq!(s.stream_objects, vec![7, 11, 12]);
+    assert!(find(&out.bytes, b"/Subtype /Type0 /BaseFont /").is_some());
+    assert!(find(&out.bytes, b"/Encoding /Identity-H").is_some());
+    assert!(find(&out.bytes, b"/Subtype /CIDFontType2").is_some());
+    assert!(find(&out.bytes, b"/CIDToGIDMap /Identity").is_some());
+    assert!(find(&out.bytes, b"/FontFile2 11 0 R").is_some());
+    assert!(find(&out.bytes, b"/ToUnicode 12 0 R").is_some());
+    assert!(find(&out.bytes, b"/Font << /F1 3 0 R /F2 4 0 R /F3 8 0 R >>").is_some());
+
+    // Every character either went through /F3 with a ToUnicode entry mapping
+    // its glyph id back to it, or is named in a warning. Nothing vanishes.
+    let to_unicode = parse_to_unicode(&stream_data(&out.bytes, 12).unwrap()).unwrap();
+    let placed = placements(&stream_data(&out.bytes, 7).unwrap()).unwrap();
+    let mut embedded_chars = Vec::new();
+    for p in placed.iter().filter(|p| p.font == "F3") {
+        for gid in p.bytes.chunks(2) {
+            let gid = u16::from_be_bytes([gid[0], gid[1]]);
+            assert_ne!(gid, 0, "never write .notdef");
+            embedded_chars.push(
+                *to_unicode
+                    .get(&gid)
+                    .unwrap_or_else(|| panic!("gid {gid} has no ToUnicode entry")),
+            );
+        }
+    }
+    let warned = out.warnings.join("\n");
+    for c in EMBED_TEXT.chars() {
+        let code = format!("U+{:04X}", c as u32);
+        assert!(
+            embedded_chars.contains(&c) || warned.contains(&code),
+            "{c:?} neither embedded nor warned about; warnings: {warned}"
+        );
+    }
+    assert!(
+        embedded_chars.contains(&'ж'),
+        "Cyrillic must be in any candidate font"
+    );
+    assert!(
+        !embedded_chars.contains(&'😀'),
+        "no candidate font has colour emoji outlines"
+    );
+    assert!(warned.contains("U+1F600"), "{warned}");
+    assert!(warned.contains(&font.font.postscript_name), "{warned}");
+    // Substituted characters are still written as '?' in a Times run.
+    let substituted: Vec<u8> = placed
+        .iter()
+        .filter(|p| p.font == "F1" && p.y == 692.0)
+        .flat_map(|p| p.bytes.clone())
+        .collect();
+    assert!(substituted.iter().all(|&b| b == b'?'), "{substituted:?}");
+    assert_eq!(
+        substituted.len(),
+        EMBED_TEXT.chars().count() - embedded_chars.len()
+    );
+    assert_eq!(placed[0].font, "F1");
+    assert_eq!(placed[0].bytes, b"plain");
+
+    // The embedded program parses back as a consistent TrueType font whose
+    // glyph count is exactly the used glyphs plus .notdef plus the components
+    // composites pulled in, with valid table checksums.
+    let program = stream_data(&out.bytes, 11).unwrap();
+    verify_checksums(&program).unwrap();
+    let parsed = TrueTypeFont::parse(program.clone()).unwrap();
+    let subset = font.subset_for(EMBED_TEXT.chars()).unwrap();
+    assert_eq!(program, subset.subset.bytes, "deterministic subset");
+    assert_eq!(parsed.num_glyphs(), subset.subset.num_glyphs());
+    assert_eq!(subset.chars.len(), embedded_chars.len());
+    assert!(parsed.num_glyphs() as usize > embedded_chars.len());
+    assert_eq!(parsed.units_per_em, font.font.units_per_em);
+    let composites = parsed.num_glyphs() as usize - embedded_chars.len() - 1;
+    eprintln!(
+        "embedded {} from {}: {} glyphs ({} used + .notdef + {composites} composite parts), {} bytes",
+        font.font.postscript_name,
+        font.source.display(),
+        parsed.num_glyphs(),
+        embedded_chars.len(),
+        program.len()
+    );
+    for (&c, &gid) in &subset.chars {
+        assert_eq!(to_unicode.get(&gid), Some(&c));
+        let original = font.font.glyph_id(c).unwrap();
+        assert_eq!(parsed.advance(gid), font.font.advance(original));
+    }
+    assert!(
+        program.len() < 60_000,
+        "subset should be small, got {}",
+        program.len()
+    );
+}
+
+#[test]
+fn embedding_is_off_by_default_and_a_bad_font_path_is_an_error() {
+    let result = CompileResult {
+        pages: vec![page(1, 612.0, 792.0, vec![item("ж", 72.0, 84.0, 12.0)])],
+    };
+    let out = render_pdf(&result).unwrap();
+    assert!(find(&out.bytes, b"/Type0").is_none());
+    assert!(find(&out.bytes, b"/F3").is_none());
+    assert_eq!(out.warnings.len(), 1);
+    assert!(out.warnings[0].contains("U+0436"));
+
+    let missing =
+        flashtex_pdf::embed::EmbedFont::load(std::path::Path::new("/nonexistent/font.ttf"));
+    assert!(missing.is_err());
+    let not_a_font =
+        std::env::temp_dir().join(format!("flashtex-pdf-notafont-{}.ttf", std::process::id()));
+    std::fs::write(&not_a_font, b"OTTO this is not really a font").unwrap();
+    let err = flashtex_pdf::embed::EmbedFont::load(&not_a_font).unwrap_err();
+    assert!(err.contains("OTTO"), "{err}");
+    let _ = std::fs::remove_file(&not_a_font);
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn cli_embed_font_writes_a_pdf_that_sips_opens() {
+    let Some(font) = embed_font_or_skip("cli_embed_font_writes_a_pdf_that_sips_opens") else {
+        return;
+    };
+    let exe = env!("CARGO_BIN_EXE_flashtex-pdf");
+    let dir = std::env::temp_dir().join(format!("flashtex-pdf-embed-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let input = dir.join("unicode.json");
+    let json = format!(
+        r#"{{"protocol_version":1,"id":"u","type":"compile_result","payload":{{"pages":[{{"number":1,"width_pt":612,"height_pt":792,"items":[{{"kind":"text","text":"{EMBED_TEXT}","x_pt":72,"baseline_y_pt":84,"font_size_pt":12}}]}}]}}}}"#
+    );
+    std::fs::write(&input, json).unwrap();
+    let out = dir.join("unicode.pdf");
+    let output = std::process::Command::new(exe)
+        .arg(&input)
+        .arg("--out")
+        .arg(&out)
+        .arg("--verify")
+        .arg("--embed-font")
+        .arg(&font.source)
+        .output()
+        .unwrap();
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(output.status.success(), "{stderr}");
+    assert!(stderr.contains("note: embedding subset of"), "{stderr}");
+    assert!(
+        stderr.contains("warning:") && stderr.contains("U+1F600"),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains("warning(s); the PDF was written"),
+        "{stderr}"
+    );
+
+    let sips = std::process::Command::new("/usr/bin/sips")
+        .args(["-g", "pixelWidth", "-g", "pixelHeight"])
+        .arg(&out)
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&sips.stdout);
+    assert!(
+        sips.status.success(),
+        "{stdout}{}",
+        String::from_utf8_lossy(&sips.stderr)
+    );
+    assert!(stdout.contains("pixelWidth: 612"), "{stdout}");
+    let _ = std::fs::remove_dir_all(&dir);
+}
