@@ -717,6 +717,166 @@ mod tests {
         fs::remove_dir_all(&root).ok();
     }
 
+    /// Recursively snapshots every regular file under `dir` (relative path,
+    /// exact bytes), skipping `.flashtex` bookkeeping, so a target tree can
+    /// be asserted byte-identical before and after a call rather than
+    /// checked file by file.
+    fn snapshot(dir: &Path) -> std::collections::BTreeMap<PathBuf, Vec<u8>> {
+        let mut out = std::collections::BTreeMap::new();
+        snapshot_into(dir, dir, &mut out);
+        out
+    }
+
+    fn snapshot_into(root: &Path, dir: &Path, out: &mut std::collections::BTreeMap<PathBuf, Vec<u8>>) {
+        let Ok(entries) = fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.file_name().and_then(|n| n.to_str()) == Some(".flashtex") {
+                continue;
+            }
+            let Ok(file_type) = entry.file_type() else {
+                continue;
+            };
+            if file_type.is_dir() {
+                snapshot_into(root, &path, out);
+            } else if file_type.is_file()
+                && let Ok(bytes) = fs::read(&path)
+            {
+                out.insert(path.strip_prefix(root).unwrap().to_path_buf(), bytes);
+            }
+        }
+    }
+
+    /// Builds a 5-file template and a hook that fails exactly at
+    /// `fail_index`, then asserts the whole batch rolls back to a
+    /// byte-identical copy of `before` (the pre-call snapshot) with no
+    /// incomplete rollback.
+    fn assert_batch_rolls_back_to(root: &Path, opts: &InstantiateOptions, fail_index: usize) {
+        let t = Template {
+            id: "t".into(),
+            title: "T".into(),
+            description: "d".into(),
+            packages: vec![],
+            files: vec![
+                TemplateFile::new("a.tex", "NEW A"),
+                TemplateFile::new("b.tex", "NEW B"),
+                TemplateFile::new("c.tex", "NEW C"),
+                TemplateFile::new("d.tex", "NEW D"),
+                TemplateFile::new("e.tex", "NEW E"),
+            ],
+        };
+        let before = snapshot(root);
+        let fail_at = move |i: usize| -> io::Result<()> {
+            if i == fail_index {
+                Err(io::Error::other(format!("simulated failure at write index {i}")))
+            } else {
+                Ok(())
+            }
+        };
+        let hooks = Hooks {
+            before_write: Some(&fail_at),
+        };
+        let err = instantiate_with_hooks(&t, root, opts, &hooks).unwrap_err();
+        match &err {
+            InstantiateError::Rooted {
+                rollback_incomplete,
+                ..
+            } => assert!(
+                rollback_incomplete.is_empty(),
+                "rollback should have fully succeeded: {rollback_incomplete:?}"
+            ),
+            other => panic!("expected Rooted, got {other:?}"),
+        }
+        assert_eq!(
+            snapshot(root),
+            before,
+            "target must be byte-identical to its pre-call state after failure at index {fail_index}"
+        );
+    }
+
+    #[test]
+    fn failure_injected_at_the_first_write_of_a_batch_of_new_files_leaves_target_byte_identical() {
+        let root = tempdir("inject-first-new");
+        fs::create_dir_all(&root).unwrap();
+        assert_batch_rolls_back_to(&root, &opts("X"), 0);
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn failure_injected_at_the_middle_write_of_a_batch_of_new_files_leaves_target_byte_identical() {
+        let root = tempdir("inject-middle-new");
+        fs::create_dir_all(&root).unwrap();
+        assert_batch_rolls_back_to(&root, &opts("X"), 2);
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn failure_injected_at_the_last_write_of_a_batch_of_new_files_leaves_target_byte_identical() {
+        let root = tempdir("inject-last-new");
+        fs::create_dir_all(&root).unwrap();
+        assert_batch_rolls_back_to(&root, &opts("X"), 4);
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn failure_injected_at_the_first_write_of_a_batch_of_overwrites_leaves_target_byte_identical() {
+        let root = tempdir("inject-first-overwrite");
+        fs::create_dir_all(&root).unwrap();
+        for (name, content) in [
+            ("a.tex", "ORIGINAL A"),
+            ("b.tex", "ORIGINAL B"),
+            ("c.tex", "ORIGINAL C"),
+            ("d.tex", "ORIGINAL D"),
+            ("e.tex", "ORIGINAL E"),
+        ] {
+            fs::write(root.join(name), content).unwrap();
+        }
+        let mut options = opts("X");
+        options.overwrite = true;
+        assert_batch_rolls_back_to(&root, &options, 0);
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn failure_injected_at_the_middle_write_of_a_batch_of_overwrites_leaves_target_byte_identical() {
+        let root = tempdir("inject-middle-overwrite");
+        fs::create_dir_all(&root).unwrap();
+        for (name, content) in [
+            ("a.tex", "ORIGINAL A"),
+            ("b.tex", "ORIGINAL B"),
+            ("c.tex", "ORIGINAL C"),
+            ("d.tex", "ORIGINAL D"),
+            ("e.tex", "ORIGINAL E"),
+        ] {
+            fs::write(root.join(name), content).unwrap();
+        }
+        let mut options = opts("X");
+        options.overwrite = true;
+        assert_batch_rolls_back_to(&root, &options, 2);
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn failure_injected_at_the_last_write_of_a_batch_of_overwrites_leaves_target_byte_identical() {
+        let root = tempdir("inject-last-overwrite");
+        fs::create_dir_all(&root).unwrap();
+        for (name, content) in [
+            ("a.tex", "ORIGINAL A"),
+            ("b.tex", "ORIGINAL B"),
+            ("c.tex", "ORIGINAL C"),
+            ("d.tex", "ORIGINAL D"),
+            ("e.tex", "ORIGINAL E"),
+        ] {
+            fs::write(root.join(name), content).unwrap();
+        }
+        let mut options = opts("X");
+        options.overwrite = true;
+        assert_batch_rolls_back_to(&root, &options, 4);
+        fs::remove_dir_all(&root).ok();
+    }
+
     #[test]
     fn mid_batch_write_failure_during_overwrite_restores_original_content() {
         // Two files already exist with distinct content; overwrite: true is
