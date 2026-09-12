@@ -51,6 +51,21 @@ Status: `recovered`
 Diagnostics:
 
 - `\includegraphics is unsupported; image loading is not implemented` — recovery: omitted the image and continued
+## \setlist — enumitem list spacing
+
+List spacing keys are read and ignored; lists keep the default spacing.
+
+Input:
+
+```text
+\documentclass{article}\setlist[enumerate]{itemsep=1em}\begin{document}Text.\end{document}
+```
+
+Status: `recovered`
+
+Diagnostics:
+
+- `\setlist list spacing is recognised but not implemented` — recovery: lists use the compiler's default spacing
 ## tabular — tables
 
 Tables are typeset as plain text without column alignment or rules.

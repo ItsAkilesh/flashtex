@@ -385,7 +385,7 @@ final class CompletionTests: XCTestCase {
         let arms = matches("^\\s*((?:\"[a-z]+\"\\s*\\|\\s*)*\"[a-z]+\")\\s*=>", in: String(dispatch[..<dispatchEnd]), options: [.anchorsMatchLines])
             .flatMap { matches("\"([a-z]+)\"", in: $0[1]).map { $0[1] } }
         XCTAssertFalse(arms.isEmpty)
-        let diagnosticOnlyArms = ["includegraphics"]
+        let diagnosticOnlyArms = ["includegraphics", "setlist"]
         for arm in diagnosticOnlyArms {
             XCTAssertTrue(unsupportedMD.contains("\\\(arm)"), "\(arm) must be listed in UNSUPPORTED.md")
             XCTAssertNil(Completion.Vocabulary.byName[arm], "\(arm) is unsupported and must not be offered")
