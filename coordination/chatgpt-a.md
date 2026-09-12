@@ -1,12 +1,11 @@
-# chatgpt-a handoff — FT-014 rev 1
+# chatgpt-a handoff — FT-014 rev 2
 
 - Branch: `agent/chatgpt-a/companion-validation`.
 - Owned paths: `tools/companion-validation` only. No `apps/companion` files were changed.
-- State: ready for integration.
-- Ready behavior: `check_companion.py` exports pinned Git revisions to disposable directories, records exact Xcode commands/exit codes, detects malformed PBX object definitions in lists, detects no XCTest target, checks the PNG/JPEG serializer mismatch, and writes a binary-safe project repair diff plus JSON evidence.
-- Evidence: six harness unit tests pass. The report records Xcode 26.6 build 17F113, the installed SDK inventory, and `xcrun simctl list runtimes` (no simulator runtime installed). A full run against `origin/agent/aarush-macbook/companion-capture` reports `xcodebuild -list` exit 74, eight malformed-PBX findings, no XCTest target, and the MIME mismatch. It validates repair candidate `origin/agent/chatgpt-a/companion-project-repair` with exit 0 for Xcode project loading, destination discovery, and an unsigned direct `iphonesimulator` SDK build; emitted patch size is 4442 bytes.
-- Limits: this Mac has no installed simulator runtime, so no simulator launch or XCTest execution is claimed. The missing test target and MIME payload fix remain outstanding FT-004 work.
-- Reviewed: main `342e1e029f80e7a5b472ad202ae87d597274127b`; FT-014 remains revision 1 and no interface change is needed.
-- Worker evidence: active local Codex Desktop session; validation shell PID 14777 at the evidence checkpoint. Codex quota is not exposed. No external API calls, purchases, or Claude use.
-- Next: Commander or the FT-004 owner reviews/integrates the isolated harness and repair candidate. Exact rerun command is in `tools/companion-validation/README.md`.
-- Updated UTC: 2026-09-12T04:55:37Z.
+- State: in progress; revision 2 acknowledged.
+- Current behavior: the disposable-source harness validates PBX structure, XCTest target presence and independent Debug test-target compilation, actual fixture MIME bytes, and binary-safe repair application. It now also reports recovery gaps: a missing cancellation API, a missing retry API, and capture IDs consumed before serialization (which can suppress a retry after serialization failure).
+- Evidence: nine harness unit tests pass. The repaired candidate is `d764d54` on `agent/chatgpt-a/companion-reliability`; its unsigned Debug app and XCTest-target builds passed on Xcode 26.6. The owner branch `e7ce5b94a12e372a482a9578ac9e121b09c51c8a` remains malformed. This Mac has no installed iOS simulator runtime, so XCTest execution is explicitly pending and is not claimed.
+- Reviewed: main `9da7e48148d91872dc0514119e1a04568ebfcb51`; FT-014 revision 2.
+- Worker evidence: active local Codex Desktop session; Codex quota is not exposed. No external API calls, purchases, or Claude use.
+- Next: publish this checkpoint, then give FT-004 owner/Commander the deterministic cancellation/retry findings and rerun the target build against the owner-integrated repair when available.
+- Updated UTC: 2026-09-12T05:34:00Z.

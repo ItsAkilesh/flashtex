@@ -25,6 +25,8 @@ from typing import Any
 PROJECT = Path("apps/companion/FlashTeXCompanion.xcodeproj/project.pbxproj")
 PAYLOAD = Path("apps/companion/FlashTeXCompanion/Models/CapturePayload.swift")
 VALIDATOR = Path("apps/companion/FlashTeXCompanion/Services/ImageValidator.swift")
+STORE = Path("apps/companion/FlashTeXCompanion/Models/CaptureStore.swift")
+TRANSPORT = Path("apps/companion/FlashTeXCompanion/Services/CaptureTransport.swift")
 CAPTURE_FIXTURE = Path("protocol/fixtures/capture-submission.json")
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 JPEG_SIGNATURE = b"\xff\xd8\xff"
@@ -115,6 +117,28 @@ def source_mime_findings(payload_source: str, validator_source: str) -> list[str
     return findings
 
 
+def delivery_findings(store_source: str, transport_source: str) -> list[str]:
+    """Detect whether an interrupted submission can be cancelled or retried.
+
+    These are intentionally conservative source-level gates.  They do not claim
+    a network test occurred; instead they make missing recovery semantics visible
+    until a simulator/device test can exercise the concrete transport.
+    """
+    findings: list[str] = []
+    combined = store_source + "\n" + transport_source
+    if not re.search(r"\b(cancel|cancelCapture|cancelSubmission)\b", combined):
+        findings.append("no cancellation API found for an in-flight capture")
+    if not re.search(r"\b(retry|retryCapture|retrySubmission)\b", combined):
+        findings.append("no retry API found for a failed capture")
+    # A capture ID is consumed before serialization/output succeeds, so a
+    # recoverable failure cannot retry the same protocol identifier.
+    insert_at = transport_source.find("sentCaptureIDs.insert(captureID)")
+    serialize_at = transport_source.find("envelope.toJSONString()")
+    if insert_at >= 0 and serialize_at >= 0 and insert_at < serialize_at:
+        findings.append("capture ID is marked sent before serialization; retry may be suppressed after failure")
+    return findings
+
+
 def fixture_mime_findings(fixture: Path) -> list[str]:
     """Validate declared MIME type against decoded bytes in a capture fixture."""
     try:
@@ -135,12 +159,15 @@ def validate_tree(source: Path, xcodebuild: str, build: bool) -> dict[str, Any]:
     project = source / PROJECT
     payload = source / PAYLOAD
     validator = source / VALIDATOR
+    store = source / STORE
+    transport = source / TRANSPORT
     result: dict[str, Any] = {
         "project": str(PROJECT),
         "destination": "sdk: iphonesimulator (direct SDK build; no named simulator required)",
         "pbx_findings": [],
         "test_target_findings": [],
         "mime_findings": [],
+        "delivery_findings": [],
         "fixture_mime_findings": [],
         "commands": [],
     }
@@ -154,6 +181,12 @@ def validate_tree(source: Path, xcodebuild: str, build: bool) -> dict[str, Any]:
         result["mime_findings"] = source_mime_findings(
             payload.read_text(encoding="utf-8"), validator.read_text(encoding="utf-8")
         )
+    if store.exists() and transport.exists():
+        result["delivery_findings"] = delivery_findings(
+            store.read_text(encoding="utf-8"), transport.read_text(encoding="utf-8")
+        )
+    else:
+        result["delivery_findings"] = ["capture delivery sources missing"]
     fixture = source / CAPTURE_FIXTURE
     if fixture.exists():
         result["fixture_mime_findings"] = fixture_mime_findings(fixture)
@@ -175,6 +208,27 @@ def validate_tree(source: Path, xcodebuild: str, build: bool) -> dict[str, Any]:
                     str(project_bundle),
                     "-target",
                     "FlashTeXCompanion",
+                    "-sdk",
+                    "iphonesimulator",
+                    "CODE_SIGNING_ALLOWED=NO",
+                    "build",
+                ],
+                cwd=source,
+            )
+        )
+        # XCTest source compilation is a separate gate: it catches an orphaned
+        # test target even on hosts with no installed simulator runtime.
+        result["commands"].append(
+            run(
+                [
+                    xcodebuild,
+                    "-quiet",
+                    "-project",
+                    str(project_bundle),
+                    "-target",
+                    "FlashTeXCompanionTests",
+                    "-configuration",
+                    "Debug",
                     "-sdk",
                     "iphonesimulator",
                     "CODE_SIGNING_ALLOWED=NO",

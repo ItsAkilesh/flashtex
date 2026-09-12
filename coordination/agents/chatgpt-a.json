@@ -3,10 +3,10 @@
   "allocation_id": "openai-aarush-chatgpt-ft014",
   "assignment_acknowledgements": {
     "FT-014": {
-      "acknowledged_utc": "2026-09-12T04:50:08Z",
-      "adaptation": "Accepted independent validation harness under tools/companion-validation. Prior repair 699e1bf is isolated and submitted to owner; this task will validate pinned original and patched disposable copies, not edit apps/companion.",
-      "main_sha": "11dc30f8f33caa39c60a49548892b8af6a2d2b89",
-      "revision": 1
+      "acknowledged_utc": "2026-09-12T05:31:19Z",
+      "adaptation": "Acknowledged FT-014 revision 2 after reading main at 9da7e48 and the dedicated reliability repair d764d54. I will extend only tools/companion-validation to validate the repaired branch, XCTest target build/execution gate, payload MIME bytes, cancellation and retry; no apps/companion edits.",
+      "main_sha": "9da7e48148d91872dc0514119e1a04568ebfcb51",
+      "revision": 2
     }
   },
   "branch": "agent/chatgpt-a/companion-validation",
@@ -15,29 +15,29 @@
     "swift",
     "python"
   ],
-  "code_revision": "3c6ec6e18c3b924e556ca8721e3b57916ff9d56a",
+  "code_revision": "555d5f94b643828191b94a196ea03374b5e8abc1",
   "eta_minutes": {
-    "likely": 0,
-    "optimistic": 0,
-    "pessimistic": 0
+    "likely": 45,
+    "optimistic": 25,
+    "pessimistic": 70
   },
   "machine": "aarush-macbook-chatgpt",
   "main_integrated_through": "11dc30f8f33caa39c60a49548892b8af6a2d2b89",
-  "next_action": "Await Commander review/integration or revised FT-014 assignment.",
+  "next_action": "Add deterministic cancellation/retry coverage and validate the repaired candidate including its XCTest target; execute tests if a simulator runtime becomes available.",
   "reviewed_peers": {
     "origin/main": {
-      "adaptation": "No assignment revision or owned-path change; expanded only FT-014 validation evidence under tools/companion-validation.",
-      "reviewed_utc": "2026-09-12T05:08:09Z",
+      "adaptation": "No new assignment or owned-path change; final report adds immutable refs and disposable patch-application evidence.",
+      "reviewed_utc": "2026-09-12T05:13:14Z",
       "sha": "342e1e029f80e7a5b472ad202ae87d597274127b"
     }
   },
   "schema_version": 1,
-  "state": "ready_for_integration",
-  "summary": "FT-014 harness now records Xcode 26.6, SDK and simulator-runtime inventories, concrete destination, commands and exit codes alongside structural and MIME findings.",
+  "state": "in_progress",
+  "summary": "FT-014 revision 2 acknowledged; extending the isolated harness against the published repaired companion candidate.",
   "tool": "Codex",
-  "updated_utc": "2026-09-12T05:08:09Z",
+  "updated_utc": "2026-09-12T05:31:19Z",
   "usage": {
-    "evidence": "6/6 unit tests pass; candidate validation command exits [0,0,0] for list, destinations, and unsigned simulator-SDK build; original list exits 74. Xcode 26.6 build 17F113; xcrun reports no installed simulator runtimes.",
-    "status": "Codex Desktop session active; quota dashboard is not exposed. No external API calls, purchases, or Claude use."
+    "evidence": "Xcode 26.6 is installed; no iOS simulator runtime is installed. d764d54 passes unsigned Debug simulator-SDK builds for app and test targets; runtime XCTest execution is currently not available. No external API calls, purchases, or Claude use.",
+    "status": "unknown"
   }
 }

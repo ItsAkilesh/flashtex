@@ -43,6 +43,29 @@ class CompanionValidationTests(unittest.TestCase):
         )
         self.assertEqual(findings, ["validator may produce JPEG but envelope always serializes PNG with image/png"])
 
+    def test_requires_cancellation_retry_and_safe_retry_id(self):
+        findings = check_companion.delivery_findings(
+            "func addCapture() {}",
+            "let isNew = sentCaptureIDs.insert(captureID).inserted\n"
+            "guard let json = envelope.toJSONString() else { return false }",
+        )
+        self.assertEqual(
+            findings,
+            [
+                "no cancellation API found for an in-flight capture",
+                "no retry API found for a failed capture",
+                "capture ID is marked sent before serialization; retry may be suppressed after failure",
+            ],
+        )
+
+    def test_accepts_explicit_recovery_apis_and_post_serialization_tracking(self):
+        findings = check_companion.delivery_findings(
+            "func cancelCapture() {}\nfunc retryCapture() {}",
+            "guard let json = envelope.toJSONString() else { return false }\n"
+            "let isNew = sentCaptureIDs.insert(captureID).inserted",
+        )
+        self.assertEqual(findings, [])
+
     def test_validates_declared_fixture_mime_against_bytes(self):
         with tempfile.TemporaryDirectory() as temporary:
             fixture = Path(temporary) / "capture.json"
@@ -67,6 +90,12 @@ class CompanionValidationTests(unittest.TestCase):
             validator.parent.mkdir(parents=True)
             payload.write_text('image.pngData()\n mimeType: "image/png"')
             validator.write_text("")
+            store = root / check_companion.STORE
+            transport = root / check_companion.TRANSPORT
+            store.parent.mkdir(parents=True, exist_ok=True)
+            transport.parent.mkdir(parents=True, exist_ok=True)
+            store.write_text("func cancelCapture() {}\nfunc retryCapture() {}")
+            transport.write_text("let json = envelope.toJSONString()\nsentCaptureIDs.insert(captureID)")
             with patch.object(check_companion, "run", return_value={"exit_code": 0}) as runner:
                 result = check_companion.validate_tree(root, "xcodebuild", False)
             self.assertEqual(runner.call_args_list[0].args[0][-1], str(project.parent))

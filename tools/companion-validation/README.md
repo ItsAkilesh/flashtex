@@ -20,6 +20,11 @@ code for Xcode project loading and the optional unsigned simulator-SDK build. It
 also detects PBX object definitions that were inserted into reference lists, the
 absence of an XCTest target, the current JPEG/PNG serialization mismatch, and
 whether the runtime capture fixture's base64 bytes match its declared MIME type.
+It also builds the `FlashTeXCompanionTests` target independently (when builds are
+enabled), and reports conservative source-level recovery gates for cancellation,
+retry, and capture-ID consumption before serialization. A missing simulator
+runtime is recorded as a runtime-test limitation rather than being misreported as
+an XCTest pass.
 
 Run the harness unit tests with:
 
