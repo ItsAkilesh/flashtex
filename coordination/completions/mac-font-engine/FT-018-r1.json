@@ -1,0 +1,80 @@
+{
+  "agent_id": "mac-font-engine",
+  "archived_utc": "2026-09-12T06:04:03Z",
+  "assignment": {
+    "acceptance": [
+      "Tests cover Latin, Unicode, combining marks, ligatures, kerning, deterministic subsetting, ToUnicode, and no silent question-mark loss",
+      "Reference font files/licenses/hashes and engine comparisons are documented; generated metrics are reproducible",
+      "API supports preview and PDF consumers consistently and reports unsupported shaping honestly",
+      "Publish exact rev1 ACK plus Opus worker PID/session, branch, current+two followups, shared Max quota/reset/usage and in-flight calls"
+    ],
+    "agent_id": "mac-font-engine",
+    "allocation_id": "claude-mac20x-font-engine",
+    "branch": "agent/mac-font-engine/tex-fonts",
+    "deadline_utc": null,
+    "dependencies": [],
+    "input_main_sha": "998e566c3a23bffeca141c0ce6688c217655b87a",
+    "objective": "Implement an original Rust TeX-oriented font/shaping/metrics and PDF embedding crate on Jaysen mac-m1max-a using Opus. Consume declared visual fixtures and expose stable glyph IDs, advances, clusters, font identity, subset embedding, Unicode maps, and explicit missing-glyph behavior without modifying compiler-owned files.",
+    "owned_paths": [
+      "crates/font-engine"
+    ],
+    "revision": 1,
+    "schema_version": 1,
+    "state": "assigned",
+    "task_id": "FT-018",
+    "timebox_minutes": 45,
+    "updated_utc": "2026-09-12T05:20:26Z"
+  },
+  "report": {
+    "agent_id": "mac-font-engine",
+    "allocation_id": "claude-mac20x-font-engine",
+    "assignment_acknowledgements": {
+      "FT-018": {
+        "acknowledged_utc": "2026-09-12T05:25:01Z",
+        "adaptation": "Accepted FT-018 rev 1: new crate crates/font-engine (TrueType parsing, base-14 widths, shaping with clusters/missing glyphs, subsetting, ToUnicode). No compiler files edited; compiler may adopt later.",
+        "main_sha": "984fa28f2537feadb9f848eb90f69de0327d1fa5",
+        "revision": 1
+      }
+    },
+    "branch": "agent/mac-font-engine/tex-fonts",
+    "capabilities": [
+      "rust",
+      "fonts"
+    ],
+    "code_revision": "16c6d35860861162910020782cef3af73c5aef62",
+    "eta_minutes": {
+      "likely": 0,
+      "optimistic": 0,
+      "pessimistic": 0
+    },
+    "machine": "mac-m1max-a",
+    "main_integrated_through": "984fa28f2537feadb9f848eb90f69de0327d1fa5",
+    "next_action": "Await Commander ABI review; follow-ups: CFF subsetting, MathVariants",
+    "reviewed_peers": {
+      "origin/main": {
+        "adaptation": "rendering-v2-proposal.md font identity/original gids/clusters/missing-font rules match the crate design; no change needed",
+        "reviewed_utc": "2026-09-12T06:03:32Z",
+        "sha": "a77e697faa51866607f8c9cf9f5d2a65a63e1521"
+      }
+    },
+    "schema_version": 1,
+    "state": "ready_for_integration",
+    "summary": "font-engine crate complete for FT-018 rev 1: TrueType+OTTO parsing, Core14 tables, GPOS/kern/GSUB shaping with source clusters, subsetting, ToUnicode, MATH; 45 tests; CoreText-exact",
+    "tool": "Claude Code subagent (parent mac-claude-a)",
+    "updated_utc": "2026-09-12T06:03:32Z",
+    "usage": {
+      "evidence": "Shared Max quota not observable from subagent",
+      "status": "unknown"
+    }
+  },
+  "report_age_seconds": 30,
+  "report_path": "coordination/agents/mac-font-engine.json",
+  "review_required": true,
+  "revision": 1,
+  "schema_version": 1,
+  "stale_completion": false,
+  "state": "reported_ready",
+  "task_id": "FT-018",
+  "worker_branch": "agent/mac-font-engine/tex-fonts",
+  "worker_report_sha": "bd60519138bf3f99bd05a44b1a65e16bc660669d"
+}

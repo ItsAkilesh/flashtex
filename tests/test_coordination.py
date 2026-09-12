@@ -50,6 +50,31 @@ class CoordinationTests(unittest.TestCase):
         self.commit(root)
         self.cmd(root, 'push', '-u', 'origin', f'agent/{agent}/register')
 
+    def test_legacy_branch_requires_exact_published_assignment(self):
+        self.cmd(self.a, 'switch', '-c', 'agent/legacy/product')
+        folder = self.a / 'coordination' / 'assignments'
+        folder.mkdir(parents=True)
+        assignment = {'schema_version': 1, 'agent_id': 'worker',
+                      'branch': 'agent/legacy/product', 'state': 'assigned'}
+        (folder / 'TASK.json').write_text(json.dumps(assignment))
+        with self.assertRaises(ValueError):
+            coord.branch(self.a, 'worker')  # unpublished local claim cannot authorize
+        self.commit(self.a)
+        self.cmd(self.a, 'push', 'origin', 'HEAD:main')
+        self.assertEqual(coord.branch(self.a, 'worker'), 'agent/legacy/product')
+        with self.assertRaises(ValueError):
+            coord.branch(self.a, 'another-worker')
+        self.cmd(self.a, 'switch', '-c', 'agent/legacy/other-product')
+        with self.assertRaises(ValueError):
+            coord.branch(self.a, 'worker')
+        self.cmd(self.a, 'switch', 'agent/legacy/product')
+        assignment['state'] = 'cancelled'
+        (folder / 'TASK.json').write_text(json.dumps(assignment))
+        self.commit(self.a)
+        self.cmd(self.a, 'push', 'origin', 'HEAD:main')
+        with self.assertRaises(ValueError):
+            coord.branch(self.a, 'worker')
+
     def test_discovery_does_not_acknowledge_and_does_not_touch_work(self):
         self.register()
         (self.b / 'README').write_text('local unfinished work\n')
@@ -168,6 +193,20 @@ class CoordinationTests(unittest.TestCase):
                 original(['git', 'add', 'change'], cwd=cwd)
             return original(['git', 'commit', '-m', 'fixture\n\nImplementation-Agent: Test double\nCommit-Executor: Cursor CLI\nCo-authored-by: fixture-user <123+fixture-user@users.noreply.github.com>'], cwd=cwd)
         return fake
+
+    def test_explicit_direct_fallback_never_calls_cursor_and_preserves_coauthor(self):
+        args = self.prepare_publish()
+        args.direct_agent_commit = True
+        trailer = 'Co-authored-by: fixture <123+fixture@users.noreply.github.com>'
+        with patch.object(coord, 'current_git_user_trailer', return_value=trailer), patch.object(coord, 'run', wraps=coord.run) as run:
+            coord.publish(self.a, args)
+        self.assertFalse(any(call.args[0][0] == 'cursor-agent' for call in run.call_args_list))
+        message = self.cmd(self.a, 'show', '-s', '--format=%B', 'HEAD')
+        self.assertIn('Commit-Executor: git via current agent (authorized Cursor-limit fallback)', message)
+        self.assertIn(trailer, message)
+        self.assertNotIn('Commit-Executor: Cursor CLI', message)
+        self.assertEqual(self.cmd(self.a, 'show', '-s', '--format=%an', 'HEAD'), 'Test double')
+        self.assertEqual(self.cmd(self.a, 'rev-parse', 'HEAD'), self.cmd(self.origin, 'rev-parse', 'refs/heads/agent/test/publish'))
 
     def test_publish_requires_actual_subprocess_then_verifies_exact_tree(self):
         args = self.prepare_publish()

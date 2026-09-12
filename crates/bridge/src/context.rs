@@ -1,6 +1,6 @@
 //! Bounded lexical context, never a TeX interpreter or filesystem loader.
 //! Includes resolve only against snapshots already supplied to the bridge.
-use crate::{BridgeError, Context, Document, Result, MAX_CONTEXT_BYTES};
+use crate::{BridgeError, Context, ContextDependency, Document, Result, MAX_CONTEXT_BYTES};
 use std::collections::{BTreeMap, BTreeSet};
 
 const SCAN_BYTES: usize = 256 * 1024;
@@ -98,10 +98,15 @@ pub fn build<'a>(
         selected_source: doc.text[start..end].into(),
         source_after: doc.text[end..after].into(),
         definitions,
+        dependencies: connected
+            .iter()
+            .map(|path| files[path].dependency.clone())
+            .collect(),
         supported_features,
     })
 }
 struct Scanned {
+    dependency: ContextDependency,
     incomplete: bool,
     inputs: Vec<String>,
     declarations: Vec<String>,
@@ -195,6 +200,11 @@ fn scan(doc: &Document, limit: usize) -> Scanned {
     let source = &doc.text[..bound];
     let text = source.as_bytes();
     let mut result = Scanned {
+        dependency: ContextDependency {
+            path: doc.path.clone(),
+            revision: doc.revision,
+            source_sha256: crate::digest(doc.text.as_bytes()),
+        },
         incomplete: bound < doc.text.len(),
         inputs: vec![],
         declarations: vec![],
