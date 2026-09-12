@@ -87,6 +87,31 @@ pub struct MathRec {
     /// The metrics the box was laid out with; maps placed glyphs to the
     /// face's glyph ids.
     pub metrics: MathProvider,
+    /// `\text{...}` runs of this formula (`mathtext`), addressed by the
+    /// placed glyphs' `font_id` above `RUN_FONT_BASE`.
+    pub text_runs: Vec<crate::mathtext::TextRun>,
+}
+
+impl MathRec {
+    /// The `\text` run glyph a placed glyph stands for, if it is one.
+    pub fn run_glyph(&self, g: &ml::PositionedGlyph) -> Option<&crate::mathtext::RunGlyph> {
+        let i = g.font_id.0.checked_sub(crate::mathtext::RUN_FONT_BASE)?;
+        self.text_runs.get(i as usize)?.glyphs.get(usize::from(g.gid))
+    }
+
+    /// The face and original glyph id that draw a placed glyph: a `\text`
+    /// run's own shaped glyph (the text face's cmap id, 0 for its interword
+    /// space) or the math provider's mapping.
+    pub fn otf_glyph(&self, g: &ml::PositionedGlyph) -> Option<(Rc<LoadedFace>, u16)> {
+        match g.font_id.0.checked_sub(crate::mathtext::RUN_FONT_BASE) {
+            Some(i) => {
+                let run = self.text_runs.get(i as usize)?;
+                let glyph = run.glyphs.get(usize::from(g.gid))?;
+                Some((run.face.clone(), glyph.gid.0))
+            }
+            None => self.metrics.otf_glyph(g),
+        }
+    }
 }
 
 /// Which metrics lay math out: TeX's TFMs (pdfLaTeX's geometry) when the
@@ -586,9 +611,41 @@ impl<'a> Context<'a> {
 
     fn math_box(&mut self, list: &flashtex_compiler::math::MathList, span: Span, display: bool) -> Option<usize> {
         let fonts = self.math_fonts(span)?;
-        let ml_list = convert_math(list);
+        let mut sink = crate::mathtext::TextSink::default();
+        let ml_list = convert_math_with(list, &mut sink);
         let style = if display { ml::Style::DISPLAY } else { ml::Style::TEXT };
-        let laid = ml::layout_with_report(&ml_list, style, fonts.metrics());
+        let text_metrics = crate::mathtext::TextRunMetrics::new(fonts.metrics(), self.fonts, self.shaper, self.style.family, &sink.texts);
+        let mut laid = ml::layout_with_report(&ml_list, style, &text_metrics);
+        let (text_runs, notices) = text_metrics.finish();
+        crate::mathtext::substitute(&mut laid.root, &text_runs);
+        for n in notices {
+            use crate::mathtext::Notice;
+            match n {
+                // The same availability/TFM diagnostics the paragraph path
+                // reports for this face (once per face).
+                Notice::FaceUsed { size } => {
+                    let _ = self.face(TextStyle::default(), size, span);
+                }
+                Notice::Refused { word, reason } => {
+                    let src = self.source(span);
+                    self.emit(None, Diagnostic::error("unsupported_script", format!("cannot shape {word:?} in \\text: {reason}"), vec![src]));
+                }
+                Notice::MissingGlyph { ch, face } => {
+                    let src = self.source(span);
+                    self.report_once(
+                        format!("missing:{face}:{ch}"),
+                        Diagnostic::warning("missing_glyph", format!("U+{:04X} '{}' has no glyph in {}; nothing drawn for it", ch as u32, ch, face), vec![src]),
+                    );
+                }
+                Notice::TfmRunError { word, face, error } => {
+                    let src = self.source(span);
+                    self.report_once(
+                        format!("tfmrun:{face}:{error}"),
+                        Diagnostic::warning("tfm_run_error", format!("{face}: TFM ligature/kern program failed for {word:?} ({error}); OpenType metrics used for this word"), vec![src]),
+                    );
+                }
+            }
+        }
         for ch in fonts.otf().take_missing() {
             let src = self.source(span);
             self.report_once(
@@ -613,6 +670,7 @@ impl<'a> Context<'a> {
             span,
             face: fonts.otf().face().clone(),
             metrics: fonts.clone(),
+            text_runs,
         });
         let idx = self.maths.len() - 1;
         self.recs.push(BoxRec::Math(idx));
@@ -1057,7 +1115,7 @@ fn line_extents(lines: &pl::Lines) -> Vec<(f64, f64)> {
     lines.lines.iter().map(|l| (l.height, l.depth)).collect()
 }
 
-fn design_size(family: Family, size: f64) -> u32 {
+pub(crate) fn design_size(family: Family, size: f64) -> u32 {
     match family {
         Family::Times => 10,
         Family::LatinModern => {
@@ -1094,12 +1152,23 @@ fn math_run(root: &ml::MathBox, size: f64, span: Span) -> pl::GlyphRun {
 
 /// Compiler math list -> math-layout list. Symbols are single characters
 /// with plain.tex's default classification; an unsupported `\command` the
-/// compiler kept literally is spelled out as ordinary atoms.
+/// compiler kept literally is spelled out as ordinary atoms. `\text`
+/// arguments are dropped here (see [`convert_math_with`]).
 pub fn convert_math(list: &flashtex_compiler::math::MathList) -> ml::MathList {
+    convert_math_with(list, &mut crate::mathtext::TextSink::default())
+}
+
+/// [`convert_math`] collecting `\text{...}` arguments into `sink`, which
+/// hands back the ordinary atom standing for each run. The compiler arm
+/// exists only with the `compiler-text-nucleus` feature (the variant is an
+/// isolated compiler candidate, see `Cargo.toml`).
+pub fn convert_math_with(list: &flashtex_compiler::math::MathList, sink: &mut crate::mathtext::TextSink) -> ml::MathList {
     use flashtex_compiler::math::Nucleus as N;
     let mut atoms = Vec::new();
     for a in &list.atoms {
         let mut out: Vec<ml::Atom> = match &a.nucleus {
+            #[cfg(feature = "compiler-text-nucleus")]
+            N::Text(text) => vec![sink.atom(text)],
             N::Symbol(s) => {
                 let mut chars = s.chars();
                 match (chars.next(), chars.next()) {
@@ -1112,15 +1181,15 @@ pub fn convert_math(list: &flashtex_compiler::math::MathList) -> ml::MathList {
                     (None, _) => vec![ml::Atom::new(ml::AtomClass::Ord, ml::Nucleus::Empty)],
                 }
             }
-            N::Fraction { numerator, denominator } => vec![ml::Atom::frac(convert_math(numerator), convert_math(denominator))],
-            N::Radical(r) => vec![ml::Atom::sqrt(convert_math(r))],
+            N::Fraction { numerator, denominator } => vec![ml::Atom::frac(convert_math_with(numerator, sink), convert_math_with(denominator, sink))],
+            N::Radical(r) => vec![ml::Atom::sqrt(convert_math_with(r, sink))],
         };
         if let Some(last) = out.last_mut() {
             if let Some(sup) = &a.superscript {
-                last.superscript = Some(convert_math(sup));
+                last.superscript = Some(convert_math_with(sup, sink));
             }
             if let Some(sub) = &a.subscript {
-                last.subscript = Some(convert_math(sub));
+                last.subscript = Some(convert_math_with(sub, sink));
             }
         }
         atoms.extend(out);
@@ -1667,8 +1736,13 @@ fn math_items(
         }
     };
     for g in &flat.glyphs {
-        let Some((face, gid)) = m.metrics.otf_glyph(g) else { continue };
+        let Some((face, gid)) = m.otf_glyph(g) else { continue };
         if gid == 0 {
+            if g.ch == ' ' {
+                // A `\text` interword space: glue, no glyph; the run is
+                // split so the words stay separate items, as in paragraphs.
+                flush(&mut current, items);
+            }
             continue;
         }
         used.entry(face.font_id.clone()).or_insert_with(|| face.clone());
@@ -1693,7 +1767,11 @@ fn math_items(
             (face.pt(i64::from(b.y_max), g.size), face.pt(-i64::from(b.y_min), g.size))
         };
         let start = r.text.len();
-        r.text.push(g.ch);
+        match m.run_glyph(g) {
+            // A `\text` cluster keeps its whole source text (`ffi`).
+            Some(rg) => r.text.push_str(&rg.text),
+            None => r.text.push(g.ch),
+        }
         let ci = r.clusters.len() as u32;
         let top = Tick::from_tex_pt(g.baseline_y - h);
         let hh = Tick::from_tex_pt((h + d).max(0.01));

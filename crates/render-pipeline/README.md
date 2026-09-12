@@ -12,7 +12,7 @@ product path; pdflatex is used only as a test oracle (see
 ```sh
 cd crates/render-pipeline
 cargo build --release
-cargo test --release            # 29 tests; the Latin Modern ones skip (loudly) without the fonts
+cargo test --release            # 53 tests; the Latin Modern ones skip (loudly) without the fonts
 FLASHTEX_COMPILER=$PWD/target/release/flashtex-render   # drop-in worker for the Mac app
 ```
 
@@ -30,6 +30,9 @@ compiler::parser::parse_project      exact byte spans per document (Span.documen
   -> mathtex.rs / math-layout        TeX's math metrics (lmmi/lmsy/lmex = CM TFMs, rm-lmr*.tfm),
                                      Appendix G, explicit rules; Latin Modern Math glyphs painted
                                      (mathfont.rs: OpenType MATH fallback when no TFMs are installed)
+  -> mathtext.rs                     \text{...}: an hbox in the T1 text face (ec-lm* ligature/kern
+                                     program, \fontdimen2 glue with the space factor) at the math
+                                     style's size, entered through math-layout's Nucleus::Text
   -> pagebuild.rs                    TeX §980–1028 page builder (penalty costs, \topskip, \maxdepth,
                                      per-block \baselineskip, \nointerlineskip, \raggedbottom)
   -> display.rs                      display list v2 (ticks, original GIDs, clusters, carets, rules)
@@ -126,6 +129,17 @@ inline and display math (`$`, `\[`, `$$`, `equation` with `(n)` flush right,
 ranges and codes (`font_unavailable`, `missing_glyph`, `overfull_hbox`,
 `overfull_vbox`, `unsupported_script`, `math_limitation`, `labels_unstable`).
 
+`\text{...}` in math (`src/mathtext.rs`, `tests/math_text.rs`,
+`docs/evidence/hw1-text/`): the argument is an `\hbox` in the text face at the
+math style's size (12/8/6 pt), shaped like a paragraph word — T1 `ec-lm*`
+ligatures (`ffi` is one glyph), kerns, braces at their T1 slots, interword
+glue `\fontdimen2`(+7) with TeX's space factor at natural width — and laid
+out as an Ord atom. The compiler side (`Nucleus::Text`) is an isolated
+candidate (`crates/preview-controller/docs/handoffs/hw1-text-candidate/`), so
+the conversion arm is behind the `compiler-text-nucleus` feature until the
+compiler adopts it and `vendor/compiler` is re-pinned; without it `\text` is
+still the compiler's "not supported in math mode" error.
+
 Not implemented (reported, not approximated silently): hyphenation, lists
 (`\item` markers are set as plain paragraphs, no hanging indent), figures
 (`\includegraphics` is dropped by the compiler; captions are plain
@@ -153,6 +167,13 @@ also listed in `docs/proposals/rendering-abi.md`:
   Modern; this crate's `cff.rs` (Type 2 bounds) then goes away.
 - **paragraph-layout**: penalty-based page builder (this crate's
   `pagebuild.rs` would move there), per-block `\baselineskip`.
+- **math-layout**: `Nucleus::HBox(MathBox)` — a pre-typeset box as a nucleus
+  (TeX §1076, `\hbox` in math is an Ord). `mathtext.rs` currently passes a
+  placeholder through `Nucleus::Text` + `text_glyph` and substitutes the hbox
+  after layout; the variant removes that indirection.
+- **compiler**: adopt the `Nucleus::Text` candidate (hw1-text-candidate +
+  comment-fix) so `\text{...}` reaches the pipeline; then re-pin
+  `vendor/compiler` and drop the `compiler-text-nucleus` feature gate.
 - **pdf**: a glyph-run entry point (font id + original GIDs + tick
   positions) so `--pdf` stops re-encoding text by character.
 - **font-engine**: none new; the preview JSON export overlaps with `--v2`.

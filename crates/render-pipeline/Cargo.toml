@@ -18,6 +18,15 @@ path = "src/bin/flashtex-render.rs"
 # directory alone, which is how the visual-oracle harness builds it; the only
 # registry crates are font-resources' serde/serde_json/sha2. Repoint these at
 # ../<name> once the siblings merge.
+[features]
+# The compiler's `Nucleus::Text` (`\text{...}` in math) is an isolated
+# candidate (crates/preview-controller/docs/handoffs/hw1-text-candidate/
+# candidate.patch on compiler base 1c02a2bc, not on main nor in
+# vendor/compiler). This feature enables the pipeline's conversion arm for
+# it; it builds only against a compiler that carries the variant. Off by
+# default so the crate builds against the pinned vendor.
+compiler-text-nucleus = []
+
 [dependencies]
 flashtex-compiler = { path = "vendor/compiler" }
 flashtex-font-engine = { path = "vendor/font-engine" }
