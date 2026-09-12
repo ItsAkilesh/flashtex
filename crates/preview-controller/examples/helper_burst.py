@@ -28,6 +28,12 @@ def run(args):
         writer = None
         try:
             before = snapshot_after_initial_preview(client)
+            if args.historical:
+                client.send("negotiate", "configure_completed_snapshots",
+                            dict(capability="completed-snapshots-v1", enabled=True))
+                negotiated, _ = client.read()
+                assert negotiated["id"] == "negotiate"
+                assert negotiated["type"] == "result" and negotiated["payload"]["enabled"] is True
             sources = [text.replace("Alpha", f"Edit{i:03}", 1) for i in range(args.edits)]
             starts, finishes, failures = [], [], []
             def send_edits():
@@ -38,7 +44,8 @@ def run(args):
                         starts.append(started)
                         client.send(f"burst-{index}", "edit", dict(path="main.tex",
                             expected_revision=before["revision"] + index,
-                            expected_sha256=hashlib.sha256(previous.encode()).hexdigest(), text=source))
+                            expected_sha256=hashlib.sha256(previous.encode()).hexdigest(), text=source,
+                            **(dict(source_binding_token=f"editor-{index}") if args.historical else {})))
                         finishes.append(time.monotonic())
                         previous = source
                         time.sleep(max(0, args.interval_ms / 1000 - (time.monotonic() - started)))
@@ -50,6 +57,8 @@ def run(args):
             counts = Counter()
             latest_ack_revision = before["revision"]
             final = None
+            historical_samples, current_samples = [], []
+            display_floor = before["revision"]
             deadline = time.monotonic() + 30
             while len(acknowledged) < args.edits or final is None:
                 if time.monotonic() > deadline:
@@ -73,8 +82,31 @@ def run(args):
                     counts[kind] += 1
                 if kind == "failed":
                     raise RuntimeError(payload["reason"])
+                if kind == "completed_snapshot":
+                    assert args.historical
+                    assert event["session_id"] == payload["session_id"] == "benchmark"
+                    assert payload["project_id"] == "p"
+                    assert payload["is_current"] is False and payload["source_actions_enabled"] is False
+                    revision = payload["source_versions"]["main.tex"]
+                    index = revision - before["revision"] - 1
+                    assert 0 <= index < len(starts)
+                    assert payload["source_binding_token"] == f"editor-{index}"
+                    assert payload["compile_revision"] == payload["result"]["payload"]["revision"]
+                    assert payload["compile_revision"] < payload["current_compile_revision"]
+                    assert display_floor < revision <= latest_ack_revision
+                    display_floor = revision
+                    historical_samples.append(dict(source_revision=revision,
+                        delivery_after_original_send_ms=(received-starts[index])*1000,
+                        revisions_behind_latest_ack=latest_ack_revision-revision,
+                        revisions_behind_current_compile=payload["current_compile_revision"]-payload["compile_revision"]))
                 if kind == "preview":
                     revision = payload["source_versions"]["main.tex"]
+                    assert revision > display_floor
+                    display_floor = revision
+                    index = revision - before["revision"] - 1
+                    assert 0 <= index < len(starts)
+                    current_samples.append(dict(source_revision=revision,
+                        delivery_after_original_send_ms=(received-starts[index])*1000))
                     assert revision >= latest_ack_revision, "preview older than delivered durable acknowledgement"
                     if revision == before["revision"] + args.edits:
                         final, final_received = payload, received
@@ -99,6 +131,7 @@ def run(args):
         finally:
             client.stop()
         print(json.dumps(dict(source_bytes=len(sources[-1].encode()), edits=args.edits,
+            historical_negotiated=args.historical, historical_samples=historical_samples, current_samples=current_samples,
             intended_interval_ms=args.interval_ms, acknowledged=len(acknowledged), updates=dict(counts),
             actual_intervals_ms=[(b-a)*1000 for a,b in zip(starts, starts[1:])],
             send_duration_ms=[(b-a)*1000 for a,b in zip(starts, finishes)],
@@ -113,6 +146,7 @@ if __name__ == "__main__":
     parser.add_argument("--helper", required=True)
     parser.add_argument("--compiler", required=True)
     parser.add_argument("--size", type=int, default=50000)
+    parser.add_argument("--historical", action="store_true", help="explicitly negotiate completed-snapshots-v1")
     parser.add_argument("--edits", type=int, default=20)
     parser.add_argument("--interval-ms", type=int, default=30)
     args = parser.parse_args()

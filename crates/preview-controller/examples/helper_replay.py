@@ -54,6 +54,10 @@ def snapshot_after_initial_preview(client):
     preview = False
     while document is None or not preview:
         event, _ = client.read()
+        if event.get("type") == "error":
+            raise RuntimeError(event.get("payload", {}).get("message", "helper startup error"))
+        if event.get("payload", {}).get("kind") == "failed":
+            raise RuntimeError(event["payload"]["reason"])
         if event.get("id") == "snapshot-document":
             document = event["payload"]["document"]
         if event.get("payload", {}).get("kind") == "preview":
