@@ -23,8 +23,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// Held for the app's lifetime: without it App Nap and timer coalescing
+    /// quantize the main run loop of a backgrounded window to ~30 ms turns, so
+    /// a compile result that arrived in 1 ms waited a whole turn to be applied
+    /// (measured with tools/typing-bench: fixture keystroke->paint p50 80 ms).
+    private var liveActivity: NSObjectProtocol?
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
+        liveActivity = ProcessInfo.processInfo.beginActivity(
+            options: [.userInitiatedAllowingIdleSystemSleep, .latencyCritical],
+            reason: "Live LaTeX preview follows every keystroke")
         // Automation launches (validation suites, launch-check) must never steal
         // keyboard focus from a person typing at the machine.
         if ProcessInfo.processInfo.environment["FLASHTEX_NO_ACTIVATE"] != "1" {

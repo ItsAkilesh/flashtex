@@ -153,7 +153,12 @@ final class ShellModel: ObservableObject {
     /// Restart reconciliation may need the editor revision to pass a revision
     /// the bridge already confirmed; revisions only ever advance.
     func advanceEditorRevision(atLeast revision: Int) {
-        if revision > editorRevision { editorRevision = revision }
+        guard revision > editorRevision else { return }
+        editorRevision = revision
+        // The buffer did not change, but a result compiled at the old revision
+        // would now read as stale forever (until the next keystroke); recompile
+        // so the preview and caret sync bind to the revision the bridge knows.
+        if result != nil { scheduleAutoCompile() }
     }
 
     var isFixture: Bool { previewSource == .fixture }
@@ -173,9 +178,17 @@ final class ShellModel: ObservableObject {
     /// dropped (see `EditorDiagnostics`).
     var editorMarks: [EditorDiagnostics.Mark] {
         guard let result else { return [] }
-        return EditorDiagnostics.marks(for: result, path: activePath,
-                                       compiledText: compiledDocuments[activePath], currentText: activeText)
+        // Memoized: ContentView reads this on every body evaluation and the
+        // rebase compares the compiled and current texts in full.
+        let key = EditorMarksKey(resultID: resultID, resultRevision: result.revision, editorRevision: editorRevision, path: activePath)
+        if let cached = editorMarksCache, cached.key == key { return cached.marks }
+        let marks = EditorDiagnostics.marks(for: result, path: activePath,
+                                            compiledText: compiledDocuments[activePath], currentText: activeText)
+        editorMarksCache = (key, marks)
+        return marks
     }
+    private struct EditorMarksKey: Equatable { var resultID: String?; var resultRevision: Int; var editorRevision: Int; var path: String }
+    private var editorMarksCache: (key: EditorMarksKey, marks: [EditorDiagnostics.Mark])?
 
     // MARK: caret sync (source -> preview)
 
@@ -317,7 +330,7 @@ final class ShellModel: ObservableObject {
 
     func updateActiveText(_ text: String) {
         guard let i = documents.firstIndex(where: { $0.path == activePath }) else { return }
-        guard documents[i].text != text else { return }
+        guard !documents[i].text.sameBytes(as: text) else { return }
         let old = documents[i].text, base = editorRevision
         documents[i].text = text
         editorRevision += 1
@@ -474,6 +487,7 @@ final class ShellModel: ObservableObject {
             documents: documents,
             layoutCapabilities: capabilities.isEmpty ? nil : capabilities)
         do {
+            if TypingBench.shared.isActive { FlashTeXLog.write("compile: sending revision \(editorRevision) at \(MonotonicClock.nowNs())") }
             try worker.send(request, id: id)
             inFlightRequests[id] = InFlight(projectId: request.projectId, revision: request.revision,
                                             documents: documents, sentAt: Date(), layoutCapabilities: capabilities)
@@ -554,6 +568,7 @@ final class ShellModel: ObservableObject {
             compiledDocuments = Dictionary(uniqueKeysWithValues: sent.documents.map { ($0.path, $0.text) })
             let ms = Date().timeIntervalSince(sent.sentAt) * 1000
             TypingBench.shared.noteCompile(revision: incoming.revision, ms: ms)
+            if TypingBench.shared.isActive { FlashTeXLog.write("compile: applied revision \(incoming.revision) at \(MonotonicClock.nowNs())") }
             lastLatencyMs = ms
             latenciesMs.append(ms)
             if latenciesMs.count > 100 { latenciesMs.removeFirst(latenciesMs.count - 100) }

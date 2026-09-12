@@ -248,6 +248,11 @@ final class TypingBench {
     private var drawEndNs: UInt64?
     private var driver: TypingBenchDriver?
     var onPaint: ((Int) -> Void)?
+    /// True while a scripted bench run is typing: gates the extra timeline log
+    /// lines (send/decode/deliver/apply) that would be noise in normal use.
+    /// Read from any thread (set once on the main thread before typing starts).
+    nonisolated(unsafe) private(set) var isActive = false
+    func setActive(_ on: Bool) { isActive = on }
 
     /// Clears recorded events and render state (bench start, tests).
     func reset() { recorder.reset(); renderingRevision = 0; expectedPages = 0; drawnPages = 0; paintHops = 0; drawEndNs = nil }
@@ -289,7 +294,19 @@ final class TypingBench {
         paintHops = 0
         renderStartNs = MonotonicClock.nowNs()
         drawEndNs = nil
-        DispatchQueue.main.async { [self] in finishPaint(revision) }
+        Self.nextRunLoopTurn { [self] in finishPaint(revision) }
+    }
+
+    /// Runs `block` at the head of the next main run-loop iteration — after
+    /// this iteration's observers (SwiftUI render pass, CoreAnimation commit)
+    /// have run. The main dispatch queue is not used: AppKit drains it late
+    /// under typing, and worker results now arrive by the same run-loop path,
+    /// so a queued paint hop would otherwise lose its revision to a newer one.
+    static func nextRunLoopTurn(_ block: @escaping @MainActor () -> Void) {
+        CFRunLoopPerformBlock(CFRunLoopGetMain(), CFRunLoopMode.commonModes.rawValue) {
+            MainActor.assumeIsolated { block() }
+        }
+        CFRunLoopWakeUp(CFRunLoopGetMain())
     }
 
     /// Canvas draw closure of one page ran (nonisolated caller: SwiftUI's draw closure).
@@ -305,7 +322,7 @@ final class TypingBench {
         // SwiftUI deferred the pass, then record honestly.
         if drawnPages == 0, expectedPages > 0, paintHops < 2 {
             paintHops += 1
-            DispatchQueue.main.async { [self] in finishPaint(revision) }
+            Self.nextRunLoopTurn { [self] in finishPaint(revision) }
             return
         }
         let redrawn = drawnPages > 0
@@ -389,6 +406,7 @@ final class TypingBenchDriver {
         tv.setSelectedRange(NSRange(location: offset, length: 0))
         bytesBefore = tv.string.utf8.count
         bench.reset()
+        bench.setActive(true)
         startNs = MonotonicClock.nowNs()
         startedAt = Date()
         FlashTeXLog.write("bench: typing \(keys.count) keystrokes at UTF-16 offset \(offset) every \(config.intervalMs) ms")
@@ -457,6 +475,7 @@ final class TypingBenchDriver {
     private func finish(reason: String) {
         guard !finished else { return }
         finished = true
+        bench.setActive(false)
         timer?.invalidate()
         let s = summary()
         let enc = JSONEncoder()

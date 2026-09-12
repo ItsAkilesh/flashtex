@@ -44,7 +44,7 @@ final class WorkerClient {
             let d = fh.availableData
             guard let self, !d.isEmpty else { return }
             let s = String(decoding: d, as: UTF8.self)
-            self.queue.async { self.handler(.stderr(s)) }
+            self.deliver { self.handler(.stderr(s)) }
         }
         process.terminationHandler = { [weak self] p in
             guard let self else { return }
@@ -56,9 +56,9 @@ final class WorkerClient {
             self.consume(rest)
             let pending = self.stateLock.withLock { self.splitter.pendingBytes }
             if pending > 0 {
-                self.queue.async { self.handler(.protocolViolation("worker exited with \(pending) unterminated trailing bytes")) }
+                self.deliver { self.handler(.protocolViolation("worker exited with \(pending) unterminated trailing bytes")) }
             }
-            self.queue.async { self.handler(.exited(p.terminationStatus)) }
+            self.deliver { self.handler(.exited(p.terminationStatus)) }
         }
         try process.run()
     }
@@ -94,14 +94,36 @@ final class WorkerClient {
         }
         for line in lines where !line.isEmpty {
             transcript?.record(line)
+            let t0 = MonotonicClock.nowNs()
             let event = Self.decode(line)
-            queue.async { self.handler(event) }
+            let t1 = MonotonicClock.nowNs()
+            if TypingBench.shared.isActive { FlashTeXLog.write("worker: line \(line.count) B decoded in \(Double(t1 - t0) / 1e6) ms at \(t1)") }
+            deliver {
+                if TypingBench.shared.isActive { FlashTeXLog.write("worker: event on main at \(MonotonicClock.nowNs())") }
+                self.handler(event)
+            }
+        }
+    }
+
+    /// Hands a decoded event to the main thread. `DispatchQueue.main.async` is
+    /// only drained when AppKit's run loop gets around to the dispatch port,
+    /// which under typing was a full turn (~30 ms) after the result arrived
+    /// (typing-bench timeline: decoded → "event on main" 30 ms, worker 0.7 ms).
+    /// A run-loop block plus an explicit wake-up runs at the head of the next
+    /// iteration: send → applied p50 32 ms → 0.8 ms on a one-page document.
+    /// Other queues keep plain dispatch.
+    private func deliver(_ block: @escaping @Sendable () -> Void) {
+        if queue === DispatchQueue.main {
+            CFRunLoopPerformBlock(CFRunLoopGetMain(), CFRunLoopMode.commonModes.rawValue, block)
+            CFRunLoopWakeUp(CFRunLoopGetMain())
+        } else {
+            queue.async(execute: block)
         }
     }
 
     private func violate(_ message: String) {
         stateLock.withLock { violated = true; splitter = LineSplitter() }
-        queue.async { self.handler(.protocolViolation(message)) }
+        deliver { self.handler(.protocolViolation(message)) }
         terminate()
     }
 
