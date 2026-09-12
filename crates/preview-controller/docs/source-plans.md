@@ -18,7 +18,11 @@ Startup in either store or rooted-project mode may supply explicit
 Rooted mode imports declared files through the existing bounded project capability,
 preferring retained durable ledgers over disk. Declarations must be supplied again
 on reopen, including dynamically attached bibliography sources. No filename
-extension inference. The application owns persistence of its startup configuration.
+extension inference. The application owns persistence of its startup configuration. `snapshot` returns
+`document_kinds` from the same indexed snapshot as its versions/generation, mapping
+every attached path to `latex` or `bibliography`. Persist the bibliography paths
+from this map with the project settings after a successful typed open or detach;
+do not reconstruct kinds from file extensions.
 
 `open_document` accepts optional `document_kind`: `latex` (default) or
 `bibliography`. Source edits, undo/redo, compiler restart, and membership changes

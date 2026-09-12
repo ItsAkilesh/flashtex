@@ -730,6 +730,10 @@ fn rooted_bibliography_plans_survive_typed_attach_edit_and_reopen() {
     let plan = |client: &mut Client| {
         client.send("snap", "snapshot", json!({}));
         let mut request = client.reply("snap")["payload"].clone();
+        assert_eq!(
+            request["document_kinds"],
+            json!({"main.tex":"latex","references.data":"bibliography"})
+        );
         request["max_bytes"] = json!(100000);
         request["old_name"] = json!("old");
         request["new_name"] = json!("new");

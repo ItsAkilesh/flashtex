@@ -399,8 +399,25 @@ fn handle(
         "document" => Ok(json!({"document":controller.document(string(p,"path")?)?})),
         "snapshot" => {
             let snapshot = controller.index().snapshot();
+            let document_kinds = snapshot
+                .documents
+                .keys()
+                .map(|path| {
+                    let kind = controller
+                        .index()
+                        .document_kind(&snapshot, path)
+                        .map_err(|e| e.to_string())?;
+                    Ok((
+                        path.clone(),
+                        match kind {
+                            flashtex_project_index::DocumentKind::Latex => "latex",
+                            flashtex_project_index::DocumentKind::Bibliography => "bibliography",
+                        },
+                    ))
+                })
+                .collect::<Result<BTreeMap<_, _>, String>>()?;
             Ok(
-                json!({"project_id":snapshot.project_id,"source_versions":snapshot.documents,"membership_generation":snapshot.generation}),
+                json!({"project_id":snapshot.project_id,"source_versions":snapshot.documents,"membership_generation":snapshot.generation,"document_kinds":document_kinds}),
             )
         }
         "plan_literal_replacement" | "plan_citation_rename" | "plan_citation_rename_at" => {
