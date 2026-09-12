@@ -1,0 +1,59 @@
+{
+ "pdf_sha256": {
+  "01-plain-paragraph/de1020c": "88deda9f24394700197d5564ccfe4afc66bfb520aac46b614163f549aad4ad8e",
+  "01-plain-paragraph/main": "982579044f6e075e82ae414cc049ada3e85c7f43f9bbcf5ff40549b683b8fdaf",
+  "02-wrapping-paragraph/de1020c": "1bc0994be86d3ecef9fa354ff4ca820ab776574cdd151e607d8947a8c20acf47",
+  "02-wrapping-paragraph/main": "a648c982d1829fad73640c07e38242090121d102be17189547353ee50432fdbc",
+  "03-section-heading/de1020c": "7f0f7247434d3132eb853e91667bac5a3b53cfa555e4a26e18afd719ef127d8d",
+  "03-section-heading/main": "456aedda047b3d9fe44f0fcce8142e3ba3bd3dfcee4852dcffe53bf080de49c1",
+  "04-bold-emph/de1020c": "7a34b0a51a2992f4173ec871d66889d086c5e0ef1905779b9922a5d4b530a5d5",
+  "04-bold-emph/main": "483817723c7a07a7667d086df0aee6e800adec902fd5956ceee773eeef92ca63",
+  "05-unicode/de1020c": "e721656e20b80d47a40105876b6b73b684e5eb63c0fe9af881c9c4c65113424a",
+  "05-unicode/main": "4a9c9cd453fdc68b4df210863172a43b3db7ac6d74a2981e0ea7459a16d932e4",
+  "06-math-inline/de1020c": "0a1a2a6eebc4b2b1d1588bb7a62937c0db70dab6813f0380461851edd3b65515",
+  "06-math-inline/main": "055d64e818f4342af488ba84c7aa4ea4a8399e839c42a7ba22014ba8ae940e5f",
+  "07-math-display/de1020c": "915882632c74f40b808f4d7492125f557b4316b7f323ba9f8c629f73ab8df2bb",
+  "07-math-display/main": "ada42128ad2cb2f604905b1852f64654f521ba6ac8a7e0f007e4381e04552281",
+  "08-two-page/de1020c": "6e8c29a5f28f54296ef0ab84ba4b55668ab2f23b2f843d44577e44d73d42d076",
+  "08-two-page/main": "44e782b1fe089026d654b38f9530086a5d0f128b88600e58eb58c76d68991ce7",
+  "09-mixed-document/de1020c": "eb9ed31b44ff065e66bd967e7b48ce9add0023d1caba1662857ecb2e224995ed",
+  "09-mixed-document/main": "ed1c2d77c3510fb28d30db43749527898cc97cd4e774ec3a4ec6f39bdb12c6ce"
+ },
+ "pinned_utc": "2026-09-12T06:12:02Z",
+ "pdf_writer": {
+  "ref": "5b5f7b5",
+  "sha": "5b5f7b5bcbc44ba9376b3a237afe93ba1503d13c",
+  "path": "/private/tmp/claude-501/-Users-jay3332-Projects-flashtex/e30fd4a4-f46a-4c3f-a28c-cbb8617b4425/scratchpad/vc/builds/pdf-5b5f7b5bcbc44ba9376b3a237afe93ba1503d13c/crates/pdf/target/release/flashtex-pdf",
+  "embed": true,
+  "embed_font": "embedding subset of TimesNewRomanPSMT from /System/Library/Fonts/Supplemental/Times New Roman.ttf"
+ },
+ "compilers": [
+  {
+   "label": "main",
+   "ref": "origin/main",
+   "sha": "18ba1b3d33e1e0bb0eb54aebf381310ca14b5fbd",
+   "crate": "crates/compiler",
+   "binary": "flashtex-compiler",
+   "note": "fix: honor exact published worker branch assignments"
+  },
+  {
+   "label": "de1020c",
+   "ref": "de1020c",
+   "sha": "de1020cd0be7cede11be2691e00e7f5b15cb2224",
+   "crate": "crates/compiler",
+   "binary": "flashtex-compiler",
+   "note": "compiler: add math, real font metrics and PDF output"
+  }
+ ],
+ "fixtures": {
+  "01-plain-paragraph.tex": "223aac6742bf98c115d7205ebd17f8a1af86af09f40fbfcd706e930b8f40aa3b",
+  "02-wrapping-paragraph.tex": "e4f5d58b6d47897375a039282eec473f9c93af3c0569634e1f3585f9f112e624",
+  "03-section-heading.tex": "96fa8f8be5ebe02a615691c5b6cf67b9dc75a0aba961a241d60461ad10780c85",
+  "04-bold-emph.tex": "19ba4826ae3f479fedfadf597d6d9c68af38731392f4104d903694908b3daf83",
+  "05-unicode.tex": "3656f7c08076a0b2aa4954e16499456657dbd600b44df68e70dd5648a8013309",
+  "06-math-inline.tex": "f21876a4ef3db1c4f443e8fd4c3d6653390daefb9fbb30a78835d7e4e98cf6b6",
+  "07-math-display.tex": "73833d4b239902af54f40f0c252fad1c74f22dc53e053a4ef65df7c99815962a",
+  "08-two-page.tex": "1c7a5355db97a4ef1eb0e2c435702902d0b1704b04af555a86ce353eb9ba0026",
+  "09-mixed-document.tex": "3815168adff5d76cb1bf1bbc043a28cc2a48317d8d007e111d66c05d6e8823c9"
+ }
+}

@@ -14,18 +14,29 @@
     "xcode",
     "tex-oracle"
   ],
-  "code_revision": "984fa28f2537feadb9f848eb90f69de0327d1fa5",
-  "eta_minutes": null,
+  "code_revision": "322684073cc1cc86e84dfa1f8c67562df736959f",
+  "eta_minutes": {
+    "likely": 20,
+    "optimistic": 10,
+    "pessimistic": 40
+  },
   "machine": "mac-m1max-a",
   "main_integrated_through": "984fa28f2537feadb9f848eb90f69de0327d1fa5",
-  "next_action": "Await and acknowledge assignment",
-  "reviewed_peers": {},
+  "next_action": "Finish run 2, commit evidence + coordination, push; then queue step 0/1 refinements",
+  "reviewed_peers": {
+    "origin/main": {
+      "adaptation": "Reviewed b873340: FT-017 still rev 1; queue steps 0-1 published (registration diagnostics, exact gates) -> implemented as diagnostics vs acceptance split; crates/compiler unchanged since base so compiler=main is rebuilt from b873340 with identical sources.",
+      "reviewed_utc": "2026-09-12T05:58:52Z",
+      "sha": "984b77db504051dbd20b1bbae9f8a9f14e0cf1c7"
+    }
+  },
   "schema_version": 1,
-  "state": "accepted",
-  "summary": "Available for Commander assignment",
+  "state": "in_progress",
+  "summary": "FT-017 rev1: harness+first evidence pushed at 3226840 on agent/mac-visual-oracle/reference-raster. Second run in progress adding Latin Modern (-lm) oracle variants for all three engines, exact-equality gates (export vs preview-equivalent, export vs native screencapture, raw PDF SHA-256 vs pinned profile), registration diagnostics, native capture (capture_native.sh; 1x external display, upsample x2.82), pipeline build auto-detect (branch absent).",
   "tool": "Claude Code subagent (parent mac-claude-a)",
-  "updated_utc": "2026-09-12T05:25:05Z",
+  "updated_utc": "2026-09-12T05:58:52Z",
   "usage": {
+    "evidence": "Claude Max 20x shared quota; no programmatic readout available to this subagent",
     "status": "unknown"
   }
 }

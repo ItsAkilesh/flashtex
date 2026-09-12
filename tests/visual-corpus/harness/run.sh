@@ -7,18 +7,26 @@
 # invokes them.
 #
 # Usage:
-#   run.sh [--compiler-ref <label>=<ref> ...]   default: main=origin/main de1020c=de1020c
+#   run.sh [--compiler-ref <label>=<ref>[:<crate dir>:<binary>] ...]
+#              default: main=origin/main de1020c=de1020c, plus
+#              pipeline=origin/agent/mac-render-pipeline/unified:crates/render-pipeline:flashtex-render
+#              whenever that branch exists and contains the crate (same JSON Lines interface)
 #          [--pdf-ref <ref>]                     default: 5b5f7b5
 #          [--dpi 144] [--threshold 32] [--scratch <dir>] [--evidence-root <dir>]
 #          [--engine pdflatex ...] [--thresholds <json>] [--regress <prev evidence dir>|auto]
 #          [--native <dir>]   pre-captured native preview rasters (see capture_native.sh)
+#          [--app <FlashTeXMac binary>]  capture the native preview during this run (needs Screen Recording)
 #          [--skip-build]     reuse binaries already in <scratch>/builds
+#          [--profile <json>] pinned raw-PDF SHA-256 profile (default harness/reference-profile.json)
+#          [--pin-profile]    explicitly re-baseline the profile from this run's PDFs
+#          [--gate]           exit 5 when an exact-equality gate fails (default: report only)
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(git -C "$HERE" rev-parse --show-toplevel)"
 COMPILER_REFS=(); PDF_REF="5b5f7b5"; DPI=144; THRESHOLD=32
 SCRATCH="${TMPDIR:-/tmp}/flashtex-visual-corpus"; EVROOT="$REPO/tests/visual-corpus/evidence"
-ENGINES=(); THRESHOLDS="$HERE/thresholds.json"; REGRESS=""; NATIVE=""; SKIP_BUILD=0
+ENGINES=(); THRESHOLDS="$HERE/thresholds.json"; REGRESS=""; NATIVE=""; SKIP_BUILD=0; APP=""
+PROFILE="$HERE/reference-profile.json"; PIN=0; GATE=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --compiler-ref) COMPILER_REFS+=("$2"); shift 2 ;;
@@ -31,12 +39,26 @@ while [[ $# -gt 0 ]]; do
     --thresholds) THRESHOLDS="$2"; shift 2 ;;
     --regress) REGRESS="$2"; shift 2 ;;
     --native) NATIVE="$2"; shift 2 ;;
+    --app) APP="$2"; shift 2 ;;
     --skip-build) SKIP_BUILD=1; shift ;;
+    --profile) PROFILE="$2"; shift 2 ;;
+    --pin-profile) PIN=1; shift ;;
+    --gate) GATE=1; shift ;;
     -h|--help) sed -n '2,17p' "$0"; exit 0 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done
-[[ ${#COMPILER_REFS[@]} -gt 0 ]] || COMPILER_REFS=("main=origin/main" "de1020c=de1020c")
+if [[ ${#COMPILER_REFS[@]} -eq 0 ]]; then
+  COMPILER_REFS=("main=origin/main" "de1020c=de1020c")
+  PIPE_REF="origin/agent/mac-render-pipeline/unified"
+  if git -C "$REPO" rev-parse --verify -q "$PIPE_REF^{commit}" >/dev/null \
+     && git -C "$REPO" cat-file -e "$PIPE_REF:crates/render-pipeline/Cargo.toml" 2>/dev/null; then
+    COMPILER_REFS+=("pipeline=$PIPE_REF:crates/render-pipeline:flashtex-render")
+    echo "pipeline build available: $PIPE_REF"
+  else
+    echo "pipeline build not available yet ($PIPE_REF has no crates/render-pipeline); skipping"
+  fi
+fi
 [[ ${#ENGINES[@]} -gt 0 ]] || ENGINES=(pdflatex xelatex lualatex)
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 WORK="$SCRATCH/run-$STAMP"; BUILDS="$SCRATCH/builds"
@@ -59,11 +81,13 @@ build_crate() {  # label ref crate-dir binary
 }
 COMPILER_ARGS=(); COMPILER_JSON="["
 for spec in "${COMPILER_REFS[@]}"; do
-  label="${spec%%=*}"; ref="${spec#*=}"
-  read -r sha bin < <(build_crate "$label" "$ref" crates/compiler flashtex-compiler | tail -1)
+  label="${spec%%=*}"; rest="${spec#*=}"
+  IFS=: read -r ref crate binname <<<"$rest"
+  crate="${crate:-crates/compiler}"; binname="${binname:-flashtex-compiler}"
+  read -r sha bin < <(build_crate "$label" "$ref" "$crate" "$binname" | tail -1)
   COMPILER_ARGS+=(--compiler "$label=$bin")
   subject="$(git -C "$REPO" log -1 --format=%s "$sha")"
-  COMPILER_JSON+="{\"label\":\"$label\",\"ref\":\"$ref\",\"sha\":\"$sha\",\"note\":$(python3 -c 'import json,sys;print(json.dumps(sys.argv[1]))' "$subject")},"
+  COMPILER_JSON+="{\"label\":\"$label\",\"ref\":\"$ref\",\"sha\":\"$sha\",\"crate\":\"$crate\",\"binary\":\"$binname\",\"note\":$(python3 -c 'import json,sys;print(json.dumps(sys.argv[1]))' "$subject")},"
 done
 COMPILER_JSON="${COMPILER_JSON%,}]"
 read -r pdf_sha PDF_BIN < <(build_crate pdf "$PDF_REF" crates/pdf flashtex-pdf | tail -1)
@@ -76,6 +100,13 @@ ENGINE_ARGS=(); for e in "${ENGINES[@]}"; do ENGINE_ARGS+=(--engine "$e"); done
 "$HERE/render_reference.sh" --out "$WORK/reference" --rasterize "$WORK/rasterize" --dpi "$DPI" "${ENGINE_ARGS[@]}"
 "$HERE/render_flashtex.sh" --out "$WORK/flashtex" --rasterize "$WORK/rasterize" --pdf-bin "$PDF_BIN" \
   "${COMPILER_ARGS[@]}" --dpi "$DPI" --embed-font auto
+
+# --- native preview capture (optional; the actual SwiftUI preview, not the preview-equivalent raster)
+if [[ -n "$APP" ]]; then
+  NATIVE="$WORK/native"
+  "$HERE/capture_native.sh" --out "$NATIVE" --app "$APP" --repo "$REPO" --rasterize "$WORK/rasterize" \
+    "${COMPILER_ARGS[@]}" --dpi "$DPI" || echo "native capture failed (continuing without it)"
+fi
 
 # --- provenance
 python3 - "$WORK" "$EVIDENCE" "$REPO" "$HERE" "$COMPILER_JSON" "$PDF_REF" "$pdf_sha" "$PDF_BIN" "$DPI" "$NATIVE" <<'PY'
@@ -140,6 +171,7 @@ prov = {
         "rendered as plain text; `de1020c` typesets math with Unicode symbols and U+2500 rule runs.",
         "The preview-equivalent raster re-implements the app's CoreText draw; it is not a capture of the SwiftUI preview.",
         "Metrics are for these fixtures, this DPI, these builds and this machine only.",
+        "Exact-equality gates are the only acceptance signals; thresholds, SSIM, registration and regression numbers are diagnostics.",
     ],
 }
 if native and os.path.isdir(native) and os.path.exists(os.path.join(native, "capture.json")):
@@ -151,6 +183,9 @@ PY
 DIFF_ARGS=(--reference "$WORK/reference" --flashtex "$WORK/flashtex" --evidence "$EVIDENCE" --dpi "$DPI" \
   --threshold "$THRESHOLD" --provenance "$EVIDENCE/provenance.json")
 [[ -f "$THRESHOLDS" ]] && DIFF_ARGS+=(--thresholds "$THRESHOLDS")
+DIFF_ARGS+=(--profile "$PROFILE")
+[[ $PIN -eq 1 ]] && DIFF_ARGS+=(--pin-profile)
+[[ $GATE -eq 1 ]] && DIFF_ARGS+=(--gate)
 [[ -n "$NATIVE" ]] && DIFF_ARGS+=(--native "$NATIVE")
 if [[ "$REGRESS" == "auto" ]]; then
   REGRESS="$(ls -d "$EVROOT"/*/ 2>/dev/null | grep -v "$STAMP" | sort | tail -1 || true)"
@@ -161,5 +196,6 @@ python3 "$HERE/diff.py" "${DIFF_ARGS[@]}"
 rc=$?
 set -e
 cp "$THRESHOLDS" "$EVIDENCE/thresholds.used.json" 2>/dev/null || true
+cp "$PROFILE" "$EVIDENCE/reference-profile.used.json" 2>/dev/null || true
 echo "report: $EVIDENCE/report.md (diff exit $rc)"
 exit $rc

@@ -11,12 +11,18 @@
 #                page-p<N>.png|.rgba|.rgba.json|raster.json|engine.json|words.json
 # plus <out>/engines.json with versions/availability.
 #
-# Preambles (everything before \begin{document} in the fixture is replaced):
-#   pdflatex : 12pt article, T1 fontenc, times (URW Nimbus Roman clone via
-#              psnfss), geometry margin=1in, parindent 0, secnumdepth 0, empty
-#              pagestyle -- the native-validation oracle "B" preamble.
-#   xelatex/lualatex : same, but fontspec with \setmainfont{Times New Roman}
-#              (the macOS system TrueType face) instead of T1 + times.
+# Preambles (everything before \begin{document} in the fixture is replaced).
+# Two font variants per engine, written to <fixture>/<engine> and <fixture>/<engine>-lm:
+#   times (matches the current FlashTeX compiler's Times metrics):
+#     pdflatex : 12pt article, T1 fontenc, times (URW Nimbus Roman clone via
+#                psnfss), geometry margin=1in, parindent 0, secnumdepth 0, empty
+#                pagestyle -- the native-validation oracle "B" preamble.
+#     xelatex/lualatex : same, but fontspec \setmainfont{Times New Roman}.
+#   lm (LaTeX's real default look, Latin Modern = Computer Modern outlines; the
+#       primary target once the Latin-Modern-metrics render pipeline exists):
+#     pdflatex : T1 fontenc + lmodern instead of times.
+#     xelatex/lualatex : fontspec Latin Modern Roman loaded by explicit path from
+#                the TeX Live tree (lmroman12-*.otf), so no font lookup is involved.
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 OUT=""; RASTERIZE=""; DPI=144; TEXBIN=/Library/TeX/texbin; FIXTURES="$HERE/fixtures"
@@ -53,6 +59,24 @@ PRE_FONTSPEC='\documentclass[12pt]{article}
 \setcounter{secnumdepth}{0}
 \pagestyle{empty}
 '
+LM_DIR="$(dirname "$("$TEXBIN/kpsewhich" -var-value TEXMFDIST 2>/dev/null || echo /usr/local/texlive/2026basic/texmf-dist)")/texmf-dist/fonts/opentype/public/lm/"
+[[ -d "$LM_DIR" ]] || LM_DIR="/usr/local/texlive/2026basic/texmf-dist/fonts/opentype/public/lm/"
+PRE_PDFLATEX_LM='\documentclass[12pt]{article}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[margin=1in]{geometry}
+\setlength{\parindent}{0pt}
+\setcounter{secnumdepth}{0}
+\pagestyle{empty}
+'
+PRE_FONTSPEC_LM="\\documentclass[12pt]{article}
+\\usepackage{fontspec}
+\\setmainfont{lmroman12-regular.otf}[Path=$LM_DIR,BoldFont=lmroman12-bold.otf,ItalicFont=lmroman12-italic.otf,BoldItalicFont=lmroman10-bolditalic.otf]
+\\usepackage[margin=1in]{geometry}
+\\setlength{\\parindent}{0pt}
+\\setcounter{secnumdepth}{0}
+\\pagestyle{empty}
+"
 FLAGS=(-interaction=batchmode -halt-on-error -file-line-error)
 
 # Engine availability and versions, recorded honestly.
@@ -70,7 +94,7 @@ for e in engines:
 kp = os.path.join(texbin, "kpsewhich")
 pk = {}
 if os.access(kp, os.X_OK):
-    for sty in ["times.sty", "fontspec.sty", "geometry.sty", "t1enc.def", "utopia.sty"]:
+    for sty in ["times.sty", "lmodern.sty", "fontspec.sty", "geometry.sty", "t1enc.def"]:
         r = subprocess.run([kp, sty], capture_output=True, text=True).stdout.strip()
         pk[sty] = r or None
     r = subprocess.run([kp, "-var-value", "SELFAUTOPARENT"], capture_output=True, text=True).stdout.strip()
@@ -86,16 +110,20 @@ PY
 for tex in "$FIXTURES"/*.tex; do
   name="$(basename "$tex" .tex)"
   for engine in "${ENGINES[@]}"; do
+  for variant in times lm; do
     bin="$TEXBIN/$engine"
-    dir="$OUT/$name/$engine"
+    label="$engine"; [[ "$variant" == "lm" ]] && label="$engine-lm"
+    dir="$OUT/$name/$label"
     mkdir -p "$dir"
     if [[ ! -x "$bin" ]]; then
-      echo "{\"engine\":\"$engine\",\"available\":false}" > "$dir/engine.json"
-      echo "-- $name/$engine: not available"; continue
+      echo "{\"engine\":\"$engine\",\"variant\":\"$variant\",\"available\":false}" > "$dir/engine.json"
+      echo "-- $name/$label: not available"; continue
     fi
-    case "$engine" in
-      pdflatex) pre="$PRE_PDFLATEX" ;;
-      *) pre="$PRE_FONTSPEC" ;;
+    case "$engine-$variant" in
+      pdflatex-times) pre="$PRE_PDFLATEX" ;;
+      pdflatex-lm) pre="$PRE_PDFLATEX_LM" ;;
+      *-times) pre="$PRE_FONTSPEC" ;;
+      *) pre="$PRE_FONTSPEC_LM" ;;
     esac
     python3 - "$tex" "$dir/main.tex" "$pre" <<'PY'
 import re, sys
@@ -114,19 +142,20 @@ PY
       "$RASTERIZE" pdf "$dir/main.pdf" "$dir/page" --dpi "$DPI" > "$dir/raster.json"
       "$RASTERIZE" word-boxes "$dir/main.pdf" > "$dir/words.json"
     fi
-    python3 - "$dir" "$engine" "$bin" "$rc" "$secs" "${FLAGS[*]}" "$pre" <<'PY'
+    python3 - "$dir" "$label" "$bin" "$rc" "$secs" "${FLAGS[*]}" "$pre" "$variant" <<'PY'
 import json, re, sys, os
-d, engine, path, rc, secs, flags, pre = sys.argv[1:8]
+d, engine, path, rc, secs, flags, pre, variant = sys.argv[1:9]
 log = open(os.path.join(d, "main.log"), encoding="latin-1").read() if os.path.exists(os.path.join(d, "main.log")) else ""
 fonts = sorted(set(re.findall(r"(?:Font|font)\s+([A-Za-z0-9\-]+(?:/[A-Za-z0-9\-\[\]]+)?)", log)))[:20]
 errors = [l for l in log.splitlines() if l.startswith("!")][:5]
 warns = [l for l in log.splitlines() if "Warning" in l][:10]
 fontspec_font = re.findall(r"Font\s+'([^']+)'\s+\(([^)]+)\)", log)
-json.dump({"engine": engine, "available": True, "path": path, "exit": int(rc), "seconds": float(secs),
+json.dump({"engine": engine, "variant": variant, "available": True, "path": path, "exit": int(rc), "seconds": float(secs),
            "flags": flags.split(), "preamble": pre, "errors": errors, "warnings": warns,
            "fontspec_fonts": fontspec_font[:6], "pdf": os.path.exists(os.path.join(d, "main.pdf"))},
           open(os.path.join(d, "engine.json"), "w"), indent=2)
 PY
-    echo "-- $name/$engine: exit $rc (${secs}s)"
+    echo "-- $name/$label: exit $rc (${secs}s)"
+  done
   done
 done

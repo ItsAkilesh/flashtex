@@ -47,6 +47,13 @@ except Exception:  # pragma: no cover
 
 # --------------------------------------------------------------------------- images
 
+def _fdata(im):
+    """Float pixel values of an 'F' image as a list (avoids the deprecated getdata)."""
+    import struct as _st
+    b = im.tobytes()
+    return list(_st.unpack("<%df" % (len(b) // 4), b))
+
+
 class Gray:
     """8-bit grayscale page: width, height, bytes (row-major)."""
 
@@ -91,7 +98,7 @@ def block_means(g, n=8):
     bw, bh = g.w // n, g.h // n
     if HAVE_PIL:
         im = Image.frombytes("L", (g.w, g.h), g.data).crop((0, 0, bw * n, bh * n)).convert("F")
-        return list(im.resize((bw, bh), Image.BOX).getdata()), bw, bh
+        return _fdata(im.resize((bw, bh), Image.BOX)), bw, bh
     out = []
     d = g.data
     for by in range(bh):
@@ -111,7 +118,7 @@ def block_means_product(a, b, n=8):
         ia = Image.frombytes("L", (a.w, a.h), a.data).convert("F")
         ib = Image.frombytes("L", (b.w, b.h), b.data).convert("F")
         prod = ImageMath.lambda_eval(lambda args: args["x"] * args["y"], x=ia, y=ib)
-        return list(prod.crop((0, 0, bw * n, bh * n)).resize((bw, bh), Image.BOX).getdata())
+        return _fdata(prod.crop((0, 0, bw * n, bh * n)).resize((bw, bh), Image.BOX))
     out = []
     for by in range(bh):
         ra = [a.data[(by * n + k) * a.w:(by * n + k + 1) * a.w] for k in range(n)]
@@ -240,6 +247,84 @@ def ink_rows(g, min_run_px, dark=128):
     return rules
 
 
+def exact_compare(prefix_a, prefix_b):
+    """Byte-exact RGBA comparison of two rasters of the same size (no normalisation)."""
+    wa, ha, ra, _ = load_rgba(prefix_a)
+    wb, hb, rb, _ = load_rgba(prefix_b)
+    if (wa, ha) != (wb, hb):
+        return {"equal": False, "size_a": [wa, ha], "size_b": [wb, hb], "reason": "size mismatch"}
+    if ra == rb:
+        return {"equal": True, "differing_pixels": 0, "pixels": wa * ha}
+    ga, gb = to_gray(wa, ha, ra), to_gray(wb, hb, rb)
+    d = absdiff(ga, gb)
+    h = histogram(d)
+    return {"equal": False, "differing_pixels": wa * ha - h[0], "pixels": wa * ha,
+            "max_abs_diff": max(i for i, c in enumerate(h) if c), "reason": "pixel values differ"}
+
+
+def ink_centroid(g, dark=128):
+    """(cx, cy) of pixels darker than `dark`, in px; None if no ink."""
+    if HAVE_PIL:
+        im = Image.frombytes("L", (g.w, g.h), g.data).point(lambda v: 255 if v < dark else 0)
+        cols = list(im.resize((g.w, 1), Image.BOX).tobytes())
+        rows = list(im.resize((1, g.h), Image.BOX).tobytes())
+    else:
+        cols = [0] * g.w
+        rows = [0] * g.h
+        for y in range(g.h):
+            row = g.data[y * g.w:(y + 1) * g.w]
+            c = 0
+            for x, v in enumerate(row):
+                if v < dark:
+                    cols[x] += 1
+                    c += 1
+            rows[y] = c
+    tc, tr = sum(cols), sum(rows)
+    if tc == 0 or tr == 0:
+        return None
+    return sum(x * c for x, c in enumerate(cols)) / tc, sum(y * c for y, c in enumerate(rows)) / tr
+
+
+def shifted(g, dx, dy):
+    """Copy of g translated by (dx, dy) px, white-filled."""
+    if HAVE_PIL:
+        im = Image.new("L", (g.w, g.h), 255)
+        im.paste(Image.frombytes("L", (g.w, g.h), g.data), (dx, dy))
+        return Gray(g.w, g.h, im.tobytes())
+    out = bytearray(b"\xff" * (g.w * g.h))
+    for y in range(g.h):
+        ty = y + dy
+        if 0 <= ty < g.h:
+            row = g.data[y * g.w:(y + 1) * g.w]
+            x0, x1 = max(0, dx), min(g.w, g.w + dx)
+            out[ty * g.w + x0:ty * g.w + x1] = row[x0 - dx:x1 - dx]
+    return Gray(g.w, g.h, bytes(out))
+
+
+def registration_diagnostics(ref, ours, dpi):
+    """Global translation between the two rasters (ink-centroid difference), and the
+    pixel metrics after undoing it. Diagnostic only: separates 'everything is shifted'
+    from 'shapes differ'. Never used for acceptance."""
+    cr, co = ink_centroid(ref), ink_centroid(ours)
+    if not cr or not co:
+        return {"available": False}
+    dx, dy = int(round(co[0] - cr[0])), int(round(co[1] - cr[1]))
+    reg = shifted(ours, -dx, -dy)
+    d = absdiff(ref, reg)
+    h = histogram(d)
+    total = ref.w * ref.h
+    ssim, _, _, _ = ssim_blocks(ref, reg)
+    return {"available": True, "shift_px": [dx, dy], "shift_pt": [round(dx * 72 / dpi, 2), round(dy * 72 / dpi, 2)],
+            "registered_diff_mean": round(sum(i * c for i, c in enumerate(h)) / total, 4),
+            "registered_differing_fraction": round((total - h[0]) / total, 6),
+            "registered_ssim_8x8_mean": round(ssim, 4)}
+
+
+def sha256_file(path):
+    import hashlib
+    return hashlib.sha256(open(path, "rb").read()).hexdigest() if os.path.exists(path) else None
+
+
 # --------------------------------------------------------------------------- words
 
 def normalise_word(w):
@@ -349,6 +434,7 @@ def compare_pages(ref_prefixes, our_prefixes, out_dir, tag, threshold, dpi, max_
             ov = hm = None
             ov_size = hm_size = ov_scale = hm_scale = 0
         min_run = int(round(10 * dpi / 72))  # >= 10pt of continuous ink
+        registration = registration_diagnostics(ref, ours, dpi)
         rr, ro = ink_rows(ref, min_run), ink_rows(ours, min_run)
         # Match each FlashTeX rule to the nearest reference rule (centre distance in pt).
         matched = []
@@ -374,6 +460,7 @@ def compare_pages(ref_prefixes, our_prefixes, out_dir, tag, threshold, dpi, max_
             "ink_ratio": round(ink_ours / ink_ref, 4) if ink_ref else None,
             "overlay": os.path.relpath(ov, root) if ov else None, "overlay_bytes": ov_size, "overlay_downscale": ov_scale,
             "heatmap": os.path.relpath(hm, root) if hm else None, "heatmap_bytes": hm_size, "heatmap_downscale": hm_scale,
+            "registration": registration,
             "rules_ref": len(rr), "rules_ours": len(ro), "rule_matches": matched[:10],
             "rules_ref_px": rr[:10], "rules_ours_px": ro[:10],
         })
@@ -459,7 +546,7 @@ def fmt(v, nd=4):
     return str(v)
 
 
-def build_report(entries, prov, evidence, thresholds_result, regress_result, args):
+def build_report(entries, prov, evidence, thresholds_result, regress_result, args, gates=()):
     L = []
     L.append("# FlashTeX visual corpus: reference-render and raster-diff evidence\n")
     L.append(f"Generated {prov.get('generated_utc')} on {prov.get('machine', 'mac-m1max-a')} by `tests/visual-corpus/harness/run.sh`.\n")
@@ -467,26 +554,68 @@ def build_report(entries, prov, evidence, thresholds_result, regress_result, arg
              "They never claim general pixel perfection, LaTeX compatibility, or parity outside these fixtures, "
              "these engines, this font, this page size, this DPI and these builds. The reference engines are "
              "test oracles only; FlashTeX never invokes them and remains an original Rust implementation.\n")
+    L.append("**Acceptance vs diagnostics.** The only acceptance signals in this report are the exact-equality gates below "
+             "(zero pixel difference between FlashTeX's export raster and its preview rasters, and raw PDF byte identity against "
+             "the pinned profile). Every tolerance, threshold, SSIM, registration shift or regression comparison further down is a "
+             "diagnostic to explain *why* something differs; none of them ever counts as acceptance.\n")
+    L.append("## Exact-equality gates (acceptance)\n")
+    if not gates:
+        L.append("No FlashTeX outputs were available to gate.\n")
+    else:
+        L.append("| Fixture | Compiler | export = preview-equivalent | export = native preview capture | PDF bytes = pinned | PDF SHA-256 |")
+        L.append("|---|---|---|---|---|---|")
+        def cell(v):
+            if v == "unavailable":
+                return "unavailable"
+            if isinstance(v, list):
+                bad = [x for x in v if not x.get("equal")]
+                if not bad:
+                    return f"**EQUAL** ({len(v)} page{'s' if len(v) != 1 else ''})"
+                b = bad[0]
+                return f"DIFFERENT: {b.get('differing_pixels', '?')}/{b.get('pixels', '?')} px" + (f", max |Δ| {b['max_abs_diff']}" if "max_abs_diff" in b else f" ({b.get('reason')})")
+            return str(v)
+        for g in gates:
+            pdfc = {True: "**EQUAL**", False: "DIFFERENT", "unpinned": "unpinned (no reference profile entry)",
+                    "baseline": "baseline pinned in this run (not a pass)"}[g["pdf_byte_identity"]]
+            L.append(f"| {g['fixture']} | {g['compiler']} | {cell(g['export_vs_preview_equivalent'])} | {cell(g['export_vs_native_preview'])} | {pdfc} | `{(g['pdf_sha256'] or '')[:16]}…` |")
+        L.append("")
+        L.append(f"- Reference profile: `{os.path.basename(args.profile) if args.profile else 'none'}`"
+                 + (" — **pinned/re-baselined in this run** (explicit `--pin-profile`)." if args.pin_profile else "."))
+        L.append("- Classification of native-preview differences: the native capture comes from a screen capture at the display's "
+                 "backing scale, resampled to the raster size, so a DIFFERENT result there is expected to be dominated by "
+                 "resampling and text rasterization (CoreText on screen vs CoreGraphics PDF rendering); it is reported as-is, "
+                 "without normalisation. Preview-equivalent vs export differences isolate the drawing path (CoreText glyph "
+                 "run vs the PDF writer's text operators) from any capture effects.")
+        L.append("")
     L.append("## Provenance\n")
     for k in ("suite_branch", "suite_sha", "input_main_sha", "machine", "os", "swift", "cargo", "python", "pillow"):
         if k in prov:
             L.append(f"- {k}: `{prov[k]}`")
     L.append(f"- DPI: {args.dpi} (every raster: CoreGraphics bitmap, sRGB IEC61966-2.1, 8-bit RGBA, white opaque background, "
              f"MediaBox mapped to width_pt*{args.dpi}/72 px; text antialiased, font smoothing off, subpixel positioning on)")
-    L.append(f"- Overlay/heatmap PNGs emitted for engines: {args.images_for_engines} (metrics are computed for every engine)")
+    L.append(f"- Overlay/heatmap PNGs emitted for engines: {args.images_for_engines}, sides: {args.images_for_sides} (metrics are computed for every engine and side; PNGs are downscaled by 2 until ≤{args.max_png_bytes} B)")
     L.append(f"- Pixel threshold for `above_threshold_fraction`: |Δluma| ≥ {args.threshold}/255; SSIM: 8×8 blocks, K1=0.01, K2=0.03")
     L.append(f"- Arithmetic backend: {'Pillow ' + prov.get('pillow', '?') + ' (accelerator; identical integer results to the stdlib path)' if HAVE_PIL else 'pure Python stdlib'}")
     L.append("")
     L.append("### Reference engines (oracle only)\n")
     eng = prov.get("engines", {})
-    L.append("| Engine | Available | Version | Body font | Preamble |")
+    L.append("| Oracle | Available | Version | Body font | Preamble |")
     L.append("|---|---|---|---|---|")
-    for e in ("pdflatex", "xelatex", "lualatex"):
-        row = eng.get(e, {})
-        font = ("URW Nimbus Roman (`times` package, T1 fontenc)" if e == "pdflatex"
-                else "Times New Roman (`fontspec`, /System/Library/Fonts/Supplemental/Times New Roman.ttf)")
+    for e in ("pdflatex", "pdflatex-lm", "xelatex", "xelatex-lm", "lualatex", "lualatex-lm"):
+        base = e.split("-")[0]
+        row = eng.get(base, {})
+        if e == "pdflatex":
+            font = "URW Nimbus Roman (`times` package, T1 fontenc)"
+        elif e == "pdflatex-lm":
+            font = "Latin Modern Roman Type 1 (`lmodern` package, T1 fontenc) — LaTeX's default Computer Modern look"
+        elif e.endswith("-lm"):
+            font = "Latin Modern Roman OpenType (`fontspec`, lmroman12-*.otf from the TeX Live tree by explicit path; bold-italic uses lmroman10-bolditalic, the only LM bold-italic face)"
+        else:
+            font = "Times New Roman (`fontspec`, /System/Library/Fonts/Supplemental/Times New Roman.ttf)"
         pre = prov.get("preambles", {}).get(e, "").replace("\n", " ")
         L.append(f"| {e} | {'yes' if row.get('available') else 'NO'} | {row.get('version', '-')} | {font if row.get('available') else '-'} | `{pre}` |")
+    L.append("\nThe `-lm` oracles are the intended primary apples-to-apples target once a Latin-Modern-metrics FlashTeX pipeline "
+             "exists; the Times oracles match the current compiler's Times metrics. Both are reported for every fixture.")
     L.append(f"\nEngine flags: `{' '.join(prov.get('engine_flags', []))}`. Page size: US letter 612×792 pt for every producer "
              "(checked per page from the MediaBox). LaTeX package versions: see `provenance.json` → `packages`.\n")
     L.append("### FlashTeX builds under test\n")
@@ -500,7 +629,11 @@ def build_report(entries, prov, evidence, thresholds_result, regress_result, arg
              "`Times-Roman` at x_pt/baseline_y_pt/font_size_pt, U+2500 runs as 0.5em×0.0857em rules) straight into the bitmap. "
              "It links nothing from apps/mac and is **not** the SwiftUI preview; it is labelled preview-equivalent throughout.")
     if prov.get("native_preview"):
-        L.append(f"- native preview capture: {prov['native_preview']}")
+        npv = prov["native_preview"]
+        L.append(f"- native preview capture: {npv.get('method')}. App: `{npv.get('app')}`. Display(s): {npv.get('display')}. "
+                 f"Capture backing factor(s): {npv.get('backing_scale_factors')} px/pt; resample factor to the 144-DPI raster: "
+                 f"{npv.get('resample_scale_min')}–{npv.get('resample_scale_max')} (>1 means the capture was UPSAMPLED, so glyph edges are "
+                 f"interpolated and this comparison is coarser than the export one).")
     else:
         L.append("- native preview capture: not part of this run (see limitations).")
     L.append("")
@@ -535,17 +668,21 @@ def build_report(entries, prov, evidence, thresholds_result, regress_result, arg
                 f"{r.get('rules_ref', '-')}/{r.get('rules_ours', '-')}", link))
         L.append("")
 
-    table("export", "Export comparison (flashtex-pdf PDF vs reference PDF, both rasterized identically)",
-          "This is the PDF-output comparison. Word boxes come from PDFKit on both PDFs; rules are ink rows ≥10pt long.")
-    table("preview", "Preview-equivalent comparison (CoreText draw of compile_result vs reference PDF raster)",
+    table("export", "Diagnostic: export comparison (flashtex-pdf PDF vs reference PDF, both rasterized identically)",
+          "This is the PDF-output comparison against the oracle. Word boxes come from PDFKit on both PDFs; rules are ink rows ≥10pt long. "
+          "Diagnostic only.")
+    table("preview", "Diagnostic: preview-equivalent comparison (CoreText draw of compile_result vs reference PDF raster)",
           "Weaker than a capture of the real preview: it re-implements the app's draw code path rather than exercising the "
           "SwiftUI Canvas. Word-box metrics are not available for this side (no PDF), so they are omitted.")
-    table("native", "Native preview capture comparison (screen capture of the running FlashTeXMac preview vs reference PDF raster)",
-          "The actual SwiftUI preview, captured with `screencapture -l <window id>` on the Retina display, page region "
-          "detected and resampled to the reference raster size; the resampling scale is recorded in `provenance.json`. "
-          "Word-box metrics are unavailable (a screenshot has no text layer).")
+    npv = prov.get("native_preview") or {}
+    table("native", "Diagnostic: native preview capture comparison (screen capture of the running FlashTeXMac preview vs reference PDF raster)",
+          "The actual SwiftUI Canvas preview, captured with `screencapture -l <window id>`, page region detected and resampled "
+          f"to the reference raster size (resample factor {npv.get('resample_scale_min')}–{npv.get('resample_scale_max')}, "
+          f"display backing {npv.get('backing_scale_factors')} px/pt; see provenance). The 'page N' caption corner is masked white. "
+          "Word-box metrics are unavailable (a screenshot has no text layer). This is a separate, independent comparison from the "
+          "export table above and from the weaker preview-equivalent table.")
 
-    L.append("## Per-fixture details\n")
+    L.append("## Per-fixture diagnostic details (export side)\n")
     for e in entries:
         if e["side"] != "export":
             continue
@@ -567,6 +704,11 @@ def build_report(entries, prov, evidence, thresholds_result, regress_result, arg
                      f"{p['ssim_blocks_below_0.9']}/{p['ssim_blocks']}"
                      + (f"; [overlay]({p['overlay']}) ({p['overlay_bytes']} B, ÷{p['overlay_downscale']}), "
                         f"[heatmap]({p['heatmap']}) ({p['heatmap_bytes']} B, ÷{p['heatmap_downscale']})" if p.get("overlay") else "; images not emitted for this engine"))
+            reg = p.get("registration") or {}
+            if reg.get("available"):
+                L.append(f"  - registration (diagnostic): ink-centroid shift {reg['shift_pt']} pt; after undoing it: mean|Δ| "
+                         f"{reg['registered_diff_mean']}, differing {reg['registered_differing_fraction']}, SSIM₈ {reg['registered_ssim_8x8_mean']} "
+                         f"(vs unregistered {p['diff_mean']}, {p['differing_fraction']}, {p['ssim_8x8_mean']}) — the remainder is rendering/layout error, not offset")
             if p["rule_matches"]:
                 L.append("  - rules (FlashTeX → nearest reference ink row, pt): " + "; ".join(
                     f"Δx {m['dx_pt']} Δy {m['dy_pt']} len {m['ours_len_pt']} vs {m['ref_len_pt']}, thickness px {m['ours_thick_px']} vs {m['ref_thick_px']}"
@@ -581,7 +723,7 @@ def build_report(entries, prov, evidence, thresholds_result, regress_result, arg
         L.append("")
 
     if thresholds_result is not None:
-        L.append("## Per-fixture thresholds\n")
+        L.append("## Diagnostic thresholds (never acceptance)\n")
         L.append(f"Thresholds file: `harness/{os.path.basename(args.thresholds)}` (copied here as `thresholds.used.json`). A failure here is an acceptance signal for the narrow case only.\n")
         for e in entries:
             t = e.get("thresholds")
@@ -590,7 +732,7 @@ def build_report(entries, prov, evidence, thresholds_result, regress_result, arg
                          + ("**FAIL** " + "; ".join(t["failures"]) if t["failures"] else "pass"))
         L.append("")
     if regress_result is not None:
-        L.append("## Regression check\n")
+        L.append("## Diagnostic regression check vs previous evidence (never acceptance)\n")
         if "error" in regress_result:
             L.append(f"- {regress_result['error']}")
         else:
@@ -628,9 +770,14 @@ def main():
     ap.add_argument("--thresholds", default=None, help="JSON of per-fixture metric limits")
     ap.add_argument("--regress", default=None, help="previous evidence dir; exit 3 if any metric worsened")
     ap.add_argument("--regress-tolerance", type=float, default=0.002)
-    ap.add_argument("--max-png-bytes", type=int, default=300000)
+    ap.add_argument("--max-png-bytes", type=int, default=90000, help="downscale overlay/heatmap PNGs by 2 until under this size (hard cap 300 KB in the report contract)")
     ap.add_argument("--native", default=None, help="dir with <fixture>/<compiler>/native-p1.rgba captures")
-    ap.add_argument("--images-for-engines", default="pdflatex",
+    ap.add_argument("--profile", default=None, help="pinned reference profile JSON (raw PDF SHA-256 per fixture/compiler)")
+    ap.add_argument("--pin-profile", action="store_true", help="write the current PDF SHA-256s into --profile (explicit re-baseline)")
+    ap.add_argument("--gate", action="store_true", help="exit 5 when any exact-equality gate fails")
+    ap.add_argument("--images-for-sides", default="export,native",
+                    help="comma-separated sides (export, preview, native) whose PNGs are written; metrics are computed for all")
+    ap.add_argument("--images-for-engines", default="pdflatex,pdflatex-lm",
                     help="comma-separated engines whose overlay/heatmap PNGs are written (metrics are computed for all); 'all' for every engine")
     args = ap.parse_args()
 
@@ -665,7 +812,8 @@ def main():
                     out_dir = os.path.join(args.evidence, "images", fx)
                     tag = f"{eng}-{comp}-{side}"
                     sys.stderr.write(f"== {fx}/{eng}/{comp}/{side}\n")
-                    want_images = args.images_for_engines == "all" or eng in args.images_for_engines.split(",")
+                    want_images = (args.images_for_engines == "all" or eng in args.images_for_engines.split(",")) \
+                        and side in args.images_for_sides.split(",")
                     pages = compare_pages(ref_pages, our_pages, out_dir, tag, args.threshold, args.dpi, args.max_png_bytes, args.evidence, want_images)
                     entry["pages"] = pages
                     entry["raster"] = summarise(pages)
@@ -678,6 +826,37 @@ def main():
                         entry["thresholds"] = t
                     entries.append(entry)
 
+    # Exact-equality gates (acceptance): no tolerance, no registration, no normalisation.
+    gates = []
+    profile = json.load(open(args.profile)) if args.profile and os.path.exists(args.profile) else {"pdf_sha256": {}}
+    new_profile = {"pdf_sha256": {}, "pinned_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                   "pdf_writer": prov.get("pdf_writer"), "compilers": prov.get("compilers"), "fixtures": {f["name"]: f["sha256"] for f in prov.get("fixtures", [])}}
+
+    def allequal(v):
+        return isinstance(v, list) and bool(v) and all(x.get("equal") for x in v)
+    for fx in fixtures:
+        for comp in (sorted(os.listdir(os.path.join(args.flashtex, fx))) if os.path.isdir(os.path.join(args.flashtex, fx)) else []):
+            fdir = os.path.join(args.flashtex, fx, comp)
+            g = {"fixture": fx, "compiler": comp}
+            exp, pre = page_prefixes(fdir, "export"), page_prefixes(fdir, "preview")
+            nat = page_prefixes(os.path.join(args.native, fx, comp), "native") if args.native and os.path.isdir(os.path.join(args.native, fx, comp)) else []
+            g["export_vs_preview_equivalent"] = ([exact_compare(a, b) for a, b in zip(exp, pre)] if exp and pre else "unavailable")
+            g["export_vs_native_preview"] = ([exact_compare(a, b) for a, b in zip(exp, nat)] if exp and nat else "unavailable")
+            sha = sha256_file(os.path.join(fdir, "flashtex.pdf"))
+            key = f"{fx}/{comp}"
+            new_profile["pdf_sha256"][key] = sha
+            pinned = profile.get("pdf_sha256", {}).get(key)
+            g["pdf_sha256"] = sha
+            g["pdf_pinned_sha256"] = pinned
+            g["pdf_byte_identity"] = ("baseline" if args.pin_profile else "unpinned" if pinned is None else (sha == pinned))
+            g["pass_export_preview_equivalent"] = allequal(g["export_vs_preview_equivalent"])
+            g["pass_export_native"] = allequal(g["export_vs_native_preview"])
+            g["pass_pdf_bytes"] = g["pdf_byte_identity"] is True
+            gates.append(g)
+    if args.pin_profile and args.profile:
+        json.dump(new_profile, open(args.profile, "w"), indent=1)
+    gate_failures = [g for g in gates if not (g["pass_export_preview_equivalent"] and g["pass_export_native"] and g["pass_pdf_bytes"])]
+
     regress_result = None
     if args.regress:
         regress_result = regress(entries, args.regress, {"ssim_8x8_mean": args.regress_tolerance,
@@ -687,12 +866,16 @@ def main():
     if thresholds is not None:
         thresholds_result = [e for e in entries if e.get("thresholds", {}).get("failures")]
     metrics = {"generated_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), "dpi": args.dpi,
-               "threshold": args.threshold, "pillow": HAVE_PIL, "entries": entries,
+               "threshold": args.threshold, "pillow": HAVE_PIL, "entries": entries, "gates": gates,
+               "gate_failures": [f"{g['fixture']}/{g['compiler']}" for g in gate_failures],
                "regress": regress_result, "threshold_failures": [f"{e['fixture']}/{e['engine']}/{e['compiler']}/{e['side']}" for e in (thresholds_result or [])]}
     json.dump(metrics, open(os.path.join(args.evidence, "metrics.json"), "w"), indent=1)
     open(os.path.join(args.evidence, "report.md"), "w", encoding="utf-8").write(
-        build_report(entries, prov, args.evidence, thresholds_result, regress_result, args))
+        build_report(entries, prov, args.evidence, thresholds_result, regress_result, args, gates))
     rc = 0
+    if args.gate and gate_failures:
+        sys.stderr.write(f"exact-equality gate failures: {len(gate_failures)}\n")
+        rc = 5
     if thresholds_result:
         sys.stderr.write(f"threshold failures: {len(thresholds_result)}\n")
         rc = 4

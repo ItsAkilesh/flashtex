@@ -21,10 +21,19 @@
 //       PDFKit word boxes as JSON on stdout, same shape as the native-validation
 //       oracle_extract (x_pt, bottom_pt, top_pt, right_pt from the page's top-left).
 //
-//   rasterize crop-scale <in.png> <out-prefix> --page <x> <y> <w> <h> --width <px> --height <px>
+//   rasterize crop-scale <in.png> <out-prefix> --page <x> <y> <w> <h> --width <px> --height <px> [--mask-caption]
 //       Crop a rectangle out of a PNG (e.g. a screen capture) and resample it to the
 //       given pixel size, writing the same png/rgba/rgba.json triple. Used for the
-//       native preview capture.
+//       native preview capture. --mask-caption paints the preview's "page N"
+//       caption area (bottom-right 60x16 pt of the page) white.
+//
+//   rasterize window-id <owner name>
+//       JSON list of on-screen windows owned by that app (CGWindowList), no Accessibility.
+//
+//   rasterize find-page <capture.png>
+//       Detect the white page rectangle in a window capture: pixels that are not the
+//       pane background grey form runs per row; the widest consistent run in the right
+//       part of the window whose block is US-letter shaped is the page. JSON {found,x,y,w,h}.
 import CoreGraphics
 import CoreText
 import Foundation
@@ -230,14 +239,130 @@ func cropScale(_ input: String, prefix: String, args: [String]) {
     let ctx = makeContext(widthPx: tw, heightPx: th)
     ctx.interpolationQuality = .high
     ctx.draw(cropped, in: CGRect(x: 0, y: 0, width: tw, height: th))
+    let mask = args.contains("--mask-caption")
+    if mask {
+        // PreviewView overlays "page N" (caption2, padding 4) at the page's bottom-trailing corner.
+        let s = Double(tw) / 612.0
+        ctx.setFillColor(CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 1))
+        ctx.fill(CGRect(x: Double(tw) - 60 * s, y: 0, width: 60 * s, height: 16 * s))
+    }
     writeOutputs(ctx: ctx, prefix: prefix, page: 1, dpi: 0, source: input,
                  extra: ["crop_px": r, "resampled_from_px": [cropped.width, cropped.height],
-                         "scale_x": Double(tw) / Double(cropped.width), "scale_y": Double(th) / Double(cropped.height)])
+                         "scale_x": Double(tw) / Double(cropped.width), "scale_y": Double(th) / Double(cropped.height),
+                         "caption_masked": mask, "renderer": "native preview capture (screencapture), resampled"])
     print("{\"cropped_px\":[\(cropped.width),\(cropped.height)],\"out_px\":[\(tw),\(th)]}")
 }
 
+// MARK: window-id / find-page (native preview capture)
+
+func windowIDs(_ owner: String) {
+    let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: AnyObject]] ?? []
+    var out: [[String: Any]] = []
+    for e in list where (e[kCGWindowOwnerName as String] as? String) == owner {
+        out.append(["id": e[kCGWindowNumber as String] as? Int ?? -1,
+                    "bounds": e[kCGWindowBounds as String] as? [String: Any] ?? [:],
+                    "name": e[kCGWindowName as String] as? String ?? "",
+                    "pid": e[kCGWindowOwnerPID as String] as? Int ?? -1,
+                    "layer": e[kCGWindowLayer as String] as? Int ?? 0])
+    }
+    print(String(data: try! JSONSerialization.data(withJSONObject: out), encoding: .utf8)!)
+}
+
+func findPage(_ path: String) {
+    guard let src = CGImageSourceCreateWithURL(URL(fileURLWithPath: path) as CFURL, nil),
+          let img = CGImageSourceCreateImageAtIndex(src, 0, nil) else { fail("cannot read \(path)") }
+    let w = img.width, h = img.height
+    let ctx = makeContext(widthPx: w, heightPx: h)
+    ctx.draw(img, in: CGRect(x: 0, y: 0, width: w, height: h))
+    guard let data = ctx.data else { fail("no data") }
+    let px = data.bindMemory(to: UInt8.self, capacity: ctx.bytesPerRow * h)
+    // Background = the pane colour (light or dark appearance): the most common colour
+    // in a thin band just inside the window's right edge, middle 60% of its height.
+    var counts: [UInt32: Int] = [:]
+    for y in stride(from: h / 5, to: h * 4 / 5, by: 2) {
+        for x in (w - 12)..<(w - 4) {
+            let i = (y * ctx.bytesPerRow)  /* memory row 0 = top of the image */ + x * 4
+            counts[UInt32(px[i]) << 16 | UInt32(px[i + 1]) << 8 | UInt32(px[i + 2]), default: 0] += 1
+        }
+    }
+    let bg = counts.max { $0.value < $1.value }!.key
+    let bgr = Int(bg >> 16 & 0xff), bgg = Int(bg >> 8 & 0xff), bgb = Int(bg & 0xff)
+    func isBackground(_ x: Int, _ y: Int) -> Bool {
+        let i = (y * ctx.bytesPerRow)  /* memory row 0 = top of the image */ + x * 4
+        return abs(Int(px[i]) - bgr) <= 3 && abs(Int(px[i + 1]) - bgg) <= 3 && abs(Int(px[i + 2]) - bgb) <= 3
+    }
+    // Per row: rightmost run of non-background pixels (gaps <= 12 px bridged) wider than 200 px.
+    var runs: [Int: (Int, Int)] = [:]
+    var key: [String: Int] = [:]
+    for y in 0..<h {
+        var x = w - 1
+        var best: (Int, Int)? = nil
+        while x >= 0 {
+            if isBackground(x, y) { x -= 1; continue }
+            let x1 = x
+            var gap = 0
+            var x0 = x
+            while x0 >= 0 {
+                if isBackground(x0, y) { gap += 1; if gap > 12 { break } } else { gap = 0 }
+                x0 -= 1
+            }
+            let start = x0 + gap + 1
+            if x1 - start + 1 >= 200 { best = (start, x1); break }
+            x = x0
+        }
+        if let b = best {
+            runs[y] = b
+            key["\(b.0 / 4),\(b.1 / 4)", default: 0] += 1
+        }
+    }
+    guard let mode = key.max(by: { $0.value < $1.value })?.key else {
+        print("{\"found\":false,\"reason\":\"no wide runs\"}"); return
+    }
+    let parts = mode.split(separator: ",").map { Int($0)! * 4 }
+    let mx0 = parts[0], mx1 = parts[1]
+    // Rows whose run matches the mode within 6 px; largest contiguous block.
+    var bestBlock = (0, -1), cur = (0, -1)
+    for y in 0..<h {
+        if let r = runs[y], abs(r.0 - mx0) <= 6, abs(r.1 - mx1) <= 6 {
+            if cur.1 == y - 1 { cur.1 = y } else { cur = (y, y) }
+            if cur.1 - cur.0 > bestBlock.1 - bestBlock.0 { bestBlock = cur }
+        }
+    }
+    var xs0: [Int] = [], xs1: [Int] = []
+    for y in bestBlock.0...max(bestBlock.0, bestBlock.1) { if let r = runs[y] { xs0.append(r.0); xs1.append(r.1) } }
+    xs0.sort(); xs1.sort()
+    var x0 = xs0.isEmpty ? mx0 : xs0[xs0.count / 2], x1 = xs1.isEmpty ? mx1 : xs1[xs1.count / 2]
+    var y0 = bestBlock.0, y1 = bestBlock.1
+    // Refine each edge inward (up to 6 px) until the edge line is mostly paper
+    // white; the run detection includes the anti-aliased page border pixels.
+    func isWhite(_ x: Int, _ y: Int) -> Bool {
+        let i = (y * ctx.bytesPerRow) + x * 4
+        return px[i] >= 250 && px[i + 1] >= 250 && px[i + 2] >= 250
+    }
+    func colWhiteFraction(_ x: Int) -> Double {
+        var c = 0; for y in y0...y1 where isWhite(x, y) { c += 1 }; return Double(c) / Double(y1 - y0 + 1)
+    }
+    func rowWhiteFraction(_ y: Int) -> Double {
+        var c = 0; for x in x0...x1 where isWhite(x, y) { c += 1 }; return Double(c) / Double(x1 - x0 + 1)
+    }
+    var steps = 0
+    while steps < 6, x1 - x0 > 50, colWhiteFraction(x0) < 0.6 { x0 += 1; steps += 1 }
+    steps = 0
+    while steps < 6, x1 - x0 > 50, colWhiteFraction(x1) < 0.6 { x1 -= 1; steps += 1 }
+    steps = 0
+    while steps < 6, y1 - y0 > 50, rowWhiteFraction(y0) < 0.6 { y0 += 1; steps += 1 }
+    steps = 0
+    while steps < 6, y1 - y0 > 50, rowWhiteFraction(y1) < 0.6 { y1 -= 1; steps += 1 }
+    let pw = x1 - x0 + 1, ph = y1 - y0 + 1
+    let aspect = ph > 0 ? Double(pw) / Double(ph) : 0
+    let ok = ph > 0 && abs(aspect - 612.0 / 792.0) < 0.03
+    let out: [String: Any] = ["found": ok, "x": x0, "y": y0, "w": pw, "h": ph, "aspect": aspect, "raw_block": [bestBlock.0, bestBlock.1],
+                              "expected_aspect": 612.0 / 792.0, "background_rgb": [bgr, bgg, bgb], "image_px": [w, h]]
+    print(String(data: try! JSONSerialization.data(withJSONObject: out, options: [.sortedKeys]), encoding: .utf8)!)
+}
+
 var args = Array(CommandLine.arguments.dropFirst())
-guard args.count >= 2 else { fail("usage: rasterize pdf|preview|word-boxes|crop-scale ...") }
+guard args.count >= 2 else { fail("usage: rasterize pdf|preview|word-boxes|crop-scale|window-id|find-page ...") }
 let mode = args.removeFirst()
 switch mode {
 case "pdf":
@@ -252,6 +377,10 @@ case "word-boxes":
     wordBoxes(args[0])
 case "crop-scale":
     cropScale(args[0], prefix: args[1], args: Array(args.dropFirst(2)))
+case "window-id":
+    windowIDs(args[0])
+case "find-page":
+    findPage(args[0])
 default:
     fail("unknown mode \(mode)")
 }
