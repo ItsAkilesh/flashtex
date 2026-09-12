@@ -13,23 +13,23 @@
   "capabilities": [
     "Preview helper serialization and latency"
   ],
-  "code_revision": "ac0a860e7174b6e99ab184428141a3af99b63466",
+  "code_revision": "3354e31381eb3a9e6db68eeecdc326a437152e69",
   "eta_minutes": {
     "likely": 20,
     "optimistic": 10,
     "pessimistic": 40
   },
   "machine": "linux-primary",
-  "main_integrated_through": "1dde8d89f7fbe1e5c68812c64a008257c3bcefb7",
-  "next_action": "Commander integration and native uptake; next scoped product task after completed grouped handoff.",
+  "main_integrated_through": "da9b2f5c7d74e0710f09c4a68f72e0e78953de1d",
+  "next_action": "Existing compiler owner integration; Commander next scoped product assignment. No authoritative compiler writes.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "Grouped admissionac0a860e complete:32stdio pass/2ignored/strictlint; actual queued retry maps permanent commandrev2/currentdoc3 to fresh compile. Added bothmode encoding-refusal permanentretry+reopen test PASS.",
+  "summary": "Membership3354e313 and corrected starred candidate combine cleanly:93library/integration pass,3ignored,strictlint. ActualHW1 119\u2192100 diagnostics;12 membership glyphs; all14 unsupported title diagnostics retained.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T15:02:00Z",
+  "updated_utc": "2026-09-12T15:06:19Z",
   "usage": {
-    "evidence": "ac0a860e; lifecycle grouped_encoding_refusal_preserves_source_and_permanent_retry",
-    "status": "Hosted retained engineer; no paid calls; quota unknown; all tests terminal."
+    "evidence": "crates/preview-controller/docs/handoffs/hw1-membership/combined-evidence.json",
+    "status": "Hosted retained engineer; no paid calls; quota unknown; all scratch processes terminal."
   }
 }
