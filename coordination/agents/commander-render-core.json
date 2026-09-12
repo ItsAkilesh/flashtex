@@ -14,7 +14,7 @@
     "rust",
     "rendering"
   ],
-  "code_revision": "6367ac344eab893b9830347a28bf6e14dfef6bb1",
+  "code_revision": "c8dbe898cb74ab8c2918cf905edec5e2e904846e",
   "eta_minutes": {
     "likely": 3,
     "optimistic": 1,
@@ -22,15 +22,15 @@
   },
   "machine": "linux-primary",
   "main_integrated_through": "6367ac344eab893b9830347a28bf6e14dfef6bb1",
-  "next_action": "Commander/native owner reconcile scope and delta budget proof before activation.",
+  "next_action": "Existing delta owner replaces heuristic with complete bounded accounting; root combines quantifier candidate.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "Reviewed native8844 conformance adoption with D2 nil caveat/D1 request scope/D9 correction; r4 target policy improved but estimator and in-flight raster accounting remain.",
+  "summary": "R4 exact schema-valid document4214B versus200B estimator counterexample published; quantifier8daa source review passes bounded two-table scope.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T15:12:13Z",
+  "updated_utc": "2026-09-12T15:15:32Z",
   "usage": {
-    "evidence": "crates/rendering-core/docs/handoffs/native-evidence/conformance-8844fb59/source-pins.json",
-    "status": "Existing OpenAI; source/evidence only, no builds/native/providers/descendants."
+    "evidence": "crates/rendering-core/docs/handoffs/page-delta/long-document-charge-evidence.json",
+    "status": "Existing OpenAI; existing jsonschema venv only, no install/build/native/provider/descendant."
   }
 }
