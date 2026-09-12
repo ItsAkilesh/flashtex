@@ -1,9 +1,9 @@
-## Current Commander update — Codex takeover, 2026-09-12T19:44:31Z
+## Current Commander update — Codex local integration fleet, 2026-09-12T20:02:00Z
 
 - Sole Commander: `codex-kabir-commander` on `mac-m5pro-kabir`, session
   `codex-ECA8936A-6AA8-4023-829F-5A6CB2776FEB`. The authority-only claim is
   published at `1275473b`; `coordination/authority.json` is the mandatory fence.
-- Current main: `97525480`. The predecessor Claude session and its two local
+- Current main: `03f147d5`. The predecessor Claude session and its two local
   issue pollers were terminated before the claim; no dispatch, integration,
   Cursor-publication, or promotion process remained. The launchd supervisor is
   deterministic fetch/report-only monitoring and remains active.
@@ -18,19 +18,29 @@
   compiler-derived Grok feature declarations, and load-bearing rejection of
   unsupported/empty math proposals. Compiler and bridge suites plus strict Clippy
   passed; HW1 stayed at three pages and improved from 30 to 26 diagnostics.
-- Active critical path: Daniel advances the current-main HW1 integration with
-  text styles, accents/page controls, size/length handling, ligatures, layout
-  cleanup, and corpus quick wins. `daniel-parent-b` owns the bounded read-only
-  `\mathbb`/`\setminus` font-and-license feasibility study; no fake glyph or
-  unverified font asset is authorized.
-- Native next gate: `mac-claude-a` runs current-main Xcode tests and publishes the
-  completion-vocabulary drift fix after the compiler changes. The optional Grok
-  demo-mode branch requires explicit current-main review before integration.
+- Integrated compiler checkpoint `79986817`: real page controls and spacing;
+  compiler tests and strict Clippy passed, HW1 stayed at three pages and improved
+  from 26 to 23 diagnostics.
+- Integrated visual-fidelity checkpoint `03f147d5`: scoped text styles with
+  Base-14 font selection, TeX text ligatures, and correct Symbol font-hint
+  routing. Compiler reported 119 passed / 3 ignored, PDF reported 90 passed,
+  strict Clippy passed for both, and HW1 remains three pages / 23 diagnostics.
+- The user reports Daniel offline. His published branches are now static handoff
+  inputs; no further Daniel execution or quota is assumed. The clean sizes and
+  length slice `e00edb25` is held because it changes HW1 from three pages to four
+  despite reducing diagnostics from 23 to 17.
+- Three local Codex product engineers prepare isolated, product-only candidates:
+  Grok math coverage, HW1 recovery/accents/quick wins, and Mac completion/UI.
+  They do not publish main or control files; the Commander serializes integration.
+- Native next gate: integrate a current-main completion-vocabulary/UI candidate.
+  Full Xcode tests remain externally required because this host's Xcode license is
+  unaccepted; the Commander will not accept a legal agreement for the user. The
+  canned Grok demo-mode commit `17ce6dd7` remains explicitly held out of main.
 - No paid API call, purchase, overage, or new resource grant was used by this
   Commander. Existing machine allocations and path ownership remain in force;
   do not duplicate Daniel compiler work or Jaysen native work.
-- Next action: integrate the next tested HW1 bundle, then the matching completion
-  vocabulary/Xcode evidence; rerun HW1 diagnostics and the real demo path.
+- Next action: review and serialize the three local candidates, prioritizing real
+  HW1 math coverage without page-count regression, then rerun the real demo path.
 
 > LATEST STAFFING OVERRIDE: this computer has FOUR active agents total: sole
 > commander orchestrator-astra, root preview-controller, compiler_corpus fonts,
