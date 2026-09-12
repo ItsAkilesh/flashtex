@@ -3,10 +3,10 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-023": {
-      "revision": 16,
-      "main_sha": "ef1a964ecf851c10ffb44f16d212de21e0e1675e",
-      "acknowledged_utc": "2026-09-12T13:10:32.436313+00:00",
-      "adaptation": "Read FT023r16. Read-only source/asset packaging audit; exact native owners retain implementation and no-TeX native verification."
+      "revision": 17,
+      "main_sha": "291849d7d5ab67781d1c681f50ebc328fd8a996c",
+      "acknowledged_utc": "2026-09-12T13:16:34.309615+00:00",
+      "adaptation": "Read exact FT023r17. Bounded read-only pinned bundle asset verifier, isolated official asset stage and malformed/missing cases only; no native discovery claims."
     }
   },
   "branch": "agent/commander-render-core/rendering-core",
@@ -14,23 +14,23 @@
     "rust",
     "rendering"
   ],
-  "code_revision": "e10e22bc34b4f3c38c64a62800296127b4f5cb8f",
+  "code_revision": "8e6d2787ffb3463ae74199de5b67887ec8c21a2e",
   "eta_minutes": {
     "likely": 2,
     "optimistic": 1,
     "pessimistic": 3
   },
   "machine": "linux-primary",
-  "main_integrated_through": "b7dedddf0708b5a7525aea1d68b13dfb37832213",
-  "next_action": "Commander assign existing Mac packaging/pipeline owners GH36; review pinned manifest/setup and execute app-only/nohostTeX acceptance. No native edits from rendering worker.",
+  "main_integrated_through": "9d8931d5f948416ca9c7e915da47808b3f9fe10e",
+  "next_action": "Existing Mac owners run verifier against fixed signed bundle then separate native/nohostTeX discovery gate. No native implementation or activation by renderer.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "accepted",
-  "summary": "GH36 confirmed static packaging gap: expected OTFs present, noTFMs shipped; current required12pt loader needs rooted metric/license layout.",
+  "summary": "GH36 read-only pinned bundle verifier8e6d2787 complete: exact9assets/layout/license, bounded no-follow resource reads and manifest pin.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T13:02:07Z",
+  "updated_utc": "2026-09-12T13:16:22Z",
   "usage": {
-    "evidence": "Pinned packageaf155e59/shell1fd5ba0b/scriptSHA identical; pipelinef762f82a lookup inspected. All3OTF and5officialTFM/license hashes verified; JSON manifests serialize. Documentation-only; no redundant builds or native claims.",
-    "status": "Hosted OpenAI only; no providers/descendants. All subprocesses terminal; native compaction/context telemetry unavailable. Durable own handoff native-assets/README.md."
+    "evidence": "9Python tests pass. ActualCLI isolatedofficial9assetstage exit0; missing10pt/corrupt10pt/misrooted12pt/wronglicense stages refuse. CLIrefusal exit1/2 tested, sourcebytes unchanged. Evidence under native-assets/verifier-evidence.json.",
+    "status": "Hosted OpenAI only; no providers/descendants. All light Python checks terminal; no build/timing jobs. Context telemetry/native compaction unavailable."
   }
 }
