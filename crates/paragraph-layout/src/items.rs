@@ -176,6 +176,10 @@ pub struct ParagraphBuilder<'h> {
     space_factor: u32,
     /// Last glyph char and its font, for kerns across builder calls.
     last_char: Option<(char, FontId)>,
+    /// TeX only hyphenates a word that follows glue (so never the first word
+    /// of a paragraph, which follows the `\parindent` box); automatic points
+    /// are dropped elsewhere. Explicit `\-` is always honoured.
+    after_glue: bool,
 }
 
 impl<'h> ParagraphBuilder<'h> {
@@ -188,6 +192,7 @@ impl<'h> ParagraphBuilder<'h> {
             ex_hyphen_penalty: 50,
             space_factor: 1000,
             last_char: None,
+            after_glue: false,
         }
     }
 
@@ -228,7 +233,11 @@ impl<'h> ParagraphBuilder<'h> {
         word: &str,
         source_start: usize,
     ) {
-        let points = self.hyphenator.hyphenate(word);
+        let mut points = self.hyphenator.hyphenate(word);
+        if !self.after_glue {
+            points.retain(|p| !p.automatic);
+        }
+        self.after_glue = false;
         let mut frag_start = 0;
         for p in &points {
             let frag = &word[frag_start..p.offset];
@@ -329,20 +338,24 @@ impl<'h> ParagraphBuilder<'h> {
         }));
         self.space_factor = 1000;
         self.last_char = None;
+        self.after_glue = true;
     }
 
     pub fn glue(&mut self, glue: Glue) {
         self.items.push(Item::Glue(glue));
         self.last_char = None;
+        self.after_glue = true;
     }
 
     pub fn penalty(&mut self, value: i32) {
         self.items.push(Item::penalty(value));
+        self.after_glue = false;
     }
 
     pub fn kern(&mut self, width: f64) {
         self.items.push(Item::kern(width));
         self.last_char = None;
+        self.after_glue = false;
     }
 
     /// `\\`: fill the rest of the line and force a break (TeX: `\hfil\break`).
@@ -350,6 +363,7 @@ impl<'h> ParagraphBuilder<'h> {
         self.items.push(Item::Glue(Glue::fil()));
         self.items.push(Item::penalty(FORCED_BREAK));
         self.last_char = None;
+        self.after_glue = false;
     }
 
     /// Finishes the list TeX-style: trailing glue is removed, then
