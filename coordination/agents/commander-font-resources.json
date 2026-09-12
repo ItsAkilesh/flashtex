@@ -13,7 +13,7 @@
   "capabilities": [
     "rust-font-resources"
   ],
-  "code_revision": "d74ba726ba57e116abaf2b97c11f4ffbeb518315",
+  "code_revision": "bea66c762860dbab23616c43b1f1a65b1235717e",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
@@ -21,13 +21,13 @@
   },
   "machine": "linux-primary",
   "main_integrated_through": "d643b6ec5aa63a1ce2b9ce97ab5292baf5205b5c",
-  "next_action": "Layout/font-engine consumer binds explicit TFM encoding slots to Unicode and original TrueType GIDs; validate real TFM oracle on Mac.",
+  "next_action": "Mac font-engine supplies real licensed TFM/encoding/font-name mapping evidence; integrate adapter without Unicode/GID casts.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "Original bounded TFM parser and encoded ligature/kern interpreter published. 46 tests and clippy pass; exact fix_word metrics and input intervals. Boundary run interpretation unsupported.",
+  "summary": "Explicit TFM encoding map and original-GID/metrics run adapter published; 49 tests and strict clippy pass. Hash/face-bound declarations, explicit Notdef and missing mapping errors.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T06:08:59Z",
+  "updated_utc": "2026-09-12T06:11:55Z",
   "usage": {
     "evidence": "crates/font-resources/README.md; test suite; installed font SHA pinned.",
     "status": "Hosted allocation; no external provider calls; account remainder unknown."
