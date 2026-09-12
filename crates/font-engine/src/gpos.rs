@@ -261,7 +261,16 @@ impl MarkAttachment {
             let Some((bx, by)) = sub.bases.get(usize::from(bi))?.get(usize::from(class))? else {
                 continue;
             };
-            return Some((bx - mx, by - my));
+            // `bx`/`by` (base anchor) and `mx`/`my` (mark anchor) are
+            // unvalidated font values; a font with anchors near opposite
+            // ends of i16 makes this subtraction overflow. Debug panicked
+            // ("attempt to subtract with overflow"); release silently
+            // wrapped to a small, wrong offset (e.g. `i16::MIN - i16::MAX`
+            // wrapped to `1`) instead of the huge displacement the anchors
+            // actually describe — a wrong mark position with no signal.
+            // `?` here matches the lookups above: a subtable this internally
+            // inconsistent is treated as unusable rather than guessed at.
+            return Some((bx.checked_sub(mx)?, by.checked_sub(my)?));
         }
         None
     }
@@ -307,4 +316,74 @@ fn parse_mark_base(b: &[u8], at: usize) -> Result<MarkBaseSubtable, Error> {
         marks,
         bases,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Builds a minimal, well-formed (per the format) MarkBasePos subtable
+    /// with one mark (glyph 20, class 0, anchor x = i16::MAX) and one base
+    /// (glyph 10, class 0, anchor x = i16::MIN) so `bx - mx` in `attach`
+    /// underflows i16.
+    fn mark_base_bytes() -> Vec<u8> {
+        let mut b = vec![0u8; 60];
+        // Header (12 bytes @ 0).
+        b[0..2].copy_from_slice(&1u16.to_be_bytes()); // format
+        b[2..4].copy_from_slice(&12u16.to_be_bytes()); // markCoverageOffset
+        b[4..6].copy_from_slice(&18u16.to_be_bytes()); // baseCoverageOffset
+        b[6..8].copy_from_slice(&1u16.to_be_bytes()); // classCount
+        b[8..10].copy_from_slice(&24u16.to_be_bytes()); // markArrayOffset
+        b[10..12].copy_from_slice(&40u16.to_be_bytes()); // baseArrayOffset
+
+        // Mark coverage (format 1) @ 12: glyph 20.
+        b[12..14].copy_from_slice(&1u16.to_be_bytes());
+        b[14..16].copy_from_slice(&1u16.to_be_bytes());
+        b[16..18].copy_from_slice(&20u16.to_be_bytes());
+
+        // Base coverage (format 1) @ 18: glyph 10.
+        b[18..20].copy_from_slice(&1u16.to_be_bytes());
+        b[20..22].copy_from_slice(&1u16.to_be_bytes());
+        b[22..24].copy_from_slice(&10u16.to_be_bytes());
+
+        // MarkArray @ 24: 1 mark, class 0, anchor at markArray+8 = 32.
+        b[24..26].copy_from_slice(&1u16.to_be_bytes()); // markCount
+        b[26..28].copy_from_slice(&0u16.to_be_bytes()); // class
+        b[28..30].copy_from_slice(&8u16.to_be_bytes()); // markAnchorOffset
+
+        // Mark anchor (format 1) @ 32: x = i16::MAX, y = 0.
+        b[32..34].copy_from_slice(&1u16.to_be_bytes());
+        b[34..36].copy_from_slice(&i16::MAX.to_be_bytes());
+        b[36..38].copy_from_slice(&0i16.to_be_bytes());
+
+        // BaseArray @ 40: 1 base, class-0 anchor at baseArray+6 = 46.
+        b[40..42].copy_from_slice(&1u16.to_be_bytes()); // baseCount
+        b[42..44].copy_from_slice(&6u16.to_be_bytes()); // BaseRecord[0].anchorOffset[class 0]
+
+        // Base anchor (format 1) @ 46: x = i16::MIN, y = 0.
+        b[46..48].copy_from_slice(&1u16.to_be_bytes());
+        b[48..50].copy_from_slice(&i16::MIN.to_be_bytes());
+        b[50..52].copy_from_slice(&0i16.to_be_bytes());
+
+        b
+    }
+
+    /// A base anchor at `i16::MIN` and a mark anchor at `i16::MAX` overflow
+    /// `bx - mx`: debug panicked ("attempt to subtract with overflow"),
+    /// release silently wrapped to `Some((1, 0))` — a tiny, wrong mark
+    /// offset instead of either the huge displacement the anchors describe
+    /// or a clear refusal. `attach` must now return `None`, identically in
+    /// both profiles.
+    #[test]
+    fn mark_to_base_anchor_subtraction_overflow_is_none_not_wrapped() {
+        let bytes = mark_base_bytes();
+        let sub = parse_mark_base(&bytes, 0).expect("well-formed MarkBasePos subtable");
+        assert_eq!(sub.marks, vec![(0u16, i16::MAX, 0i16)]);
+        assert_eq!(sub.bases, vec![vec![Some((i16::MIN, 0i16))]]);
+        let attachment = MarkAttachment {
+            subtables: vec![sub],
+            unsupported: Vec::new(),
+        };
+        assert_eq!(attachment.attach(GlyphId(10), GlyphId(20)), None);
+    }
 }

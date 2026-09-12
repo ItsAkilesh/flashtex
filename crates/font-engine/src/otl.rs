@@ -46,7 +46,16 @@ impl Coverage {
                     return None;
                 }
                 let (start, end, base) = v[i - 1];
-                (gid <= end).then(|| base + (gid - start))
+                if gid > end {
+                    return None;
+                }
+                // `base` (startCoverageIndex) is an unvalidated font value;
+                // a hostile or corrupt table can set it near `u16::MAX` so
+                // this addition overflows. Treat overflow as "not covered"
+                // rather than panicking (debug) or wrapping to a bogus, but
+                // in-range, coverage index (release) that would then address
+                // the wrong entry in whatever table this coverage indexes.
+                base.checked_add(gid - start)
             }
         }
     }
@@ -235,4 +244,35 @@ pub fn lookup(b: &[u8], index: u16, ext_type: u16) -> Result<Lookup, Error> {
         lookup_type,
         subtables,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A Coverage format 2 range whose `startCoverageIndex` sits right at
+    /// `u16::MAX` overflows `base + (gid - start)` for any `gid` past
+    /// `start`: debug panicked ("attempt to add with overflow"), release
+    /// silently wrapped to a small, wrong-but-in-range coverage index
+    /// (`Some(0)`) that would then address the wrong entry in whatever
+    /// table (PairSet, LigatureSet, MarkArray, ...) this coverage indexes.
+    /// `index` must now report "not covered" instead, identically in both
+    /// profiles.
+    #[test]
+    fn coverage_format2_range_index_overflow_is_not_covered_not_wrapped() {
+        let mut b = vec![0u8; 10];
+        b[0..2].copy_from_slice(&2u16.to_be_bytes());
+        b[2..4].copy_from_slice(&1u16.to_be_bytes());
+        b[4..6].copy_from_slice(&0u16.to_be_bytes()); // start
+        b[6..8].copy_from_slice(&10u16.to_be_bytes()); // end
+        b[8..10].copy_from_slice(&65535u16.to_be_bytes()); // base (u16::MAX)
+        let cov = Coverage::parse(&b, 0).unwrap();
+        // gid=0: base+0 = 65535, no overflow, still reported.
+        assert_eq!(cov.index(0), Some(65535));
+        // gid=1: base+1 would overflow u16 -> "not covered", not a wrapped
+        // Some(0) and not a panic.
+        assert_eq!(cov.index(1), None);
+        // A glyph outside the range entirely is still "not covered".
+        assert_eq!(cov.index(11), None);
+    }
 }

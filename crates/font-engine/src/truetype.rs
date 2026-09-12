@@ -869,7 +869,17 @@ fn parse_cmap(cmap: &[u8]) -> Result<BTreeMap<u32, u16>, Error> {
                     return Err(Error::Malformed("cmap group range".into()));
                 }
                 for c in start..=end {
-                    let g = start_gid + (c - start);
+                    // `start_gid` is an unvalidated font value; a group near
+                    // the end of a large codepoint range with `start_gid`
+                    // near `u32::MAX` overflows this addition. Reject the
+                    // table instead of panicking (debug) or wrapping to a
+                    // small, wrong-but-plausible glyph id (release) that
+                    // would silently render the wrong glyph for `c`.
+                    let g = start_gid.checked_add(c - start).ok_or_else(|| {
+                        Error::Malformed(
+                            "cmap format 12 group glyph id overflows u32".into(),
+                        )
+                    })?;
                     if g != 0 && g <= 0xFFFF {
                         map.entry(c).or_insert(g as u16);
                     }
@@ -949,4 +959,47 @@ pub(crate) fn composite_components(data: &[u8]) -> Result<Vec<(u16, usize)>, Err
         }
     }
     Ok(parts)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A `cmap` with one Windows Unicode (3,10) format-12 subtable whose
+    /// single group has `startGlyphID` near `u32::MAX`, so
+    /// `start_gid + (c - start)` overflows partway through the group's
+    /// codepoint range.
+    fn cmap_format12_overflowing() -> Vec<u8> {
+        let mut b = vec![0u8; 40];
+        b[0..2].copy_from_slice(&0u16.to_be_bytes()); // version
+        b[2..4].copy_from_slice(&1u16.to_be_bytes()); // numTables
+        b[4..6].copy_from_slice(&3u16.to_be_bytes()); // platformID
+        b[6..8].copy_from_slice(&10u16.to_be_bytes()); // encodingID
+        b[8..12].copy_from_slice(&12u32.to_be_bytes()); // subtable offset
+        b[12..14].copy_from_slice(&12u16.to_be_bytes()); // format 12
+        b[14..16].copy_from_slice(&0u16.to_be_bytes()); // reserved
+        b[16..20].copy_from_slice(&28u32.to_be_bytes()); // length (unchecked)
+        b[20..24].copy_from_slice(&0u32.to_be_bytes()); // language
+        b[24..28].copy_from_slice(&1u32.to_be_bytes()); // numGroups
+        b[28..32].copy_from_slice(&100u32.to_be_bytes()); // startCharCode
+        b[32..36].copy_from_slice(&105u32.to_be_bytes()); // endCharCode
+        b[36..40].copy_from_slice(&(u32::MAX - 3).to_be_bytes()); // startGlyphID
+        b
+    }
+
+    /// A format-12 group with `startGlyphID` a few below `u32::MAX` overflows
+    /// `start_gid + (c - start)` partway through the group: debug panicked
+    /// ("attempt to add with overflow"), release silently produced
+    /// `Ok({105: 1})` — codepoint U+0069 mapped to glyph 1, an arbitrary
+    /// wrong glyph, instead of rejecting the malformed table. `parse_cmap`
+    /// must now return a typed error, identically in both profiles.
+    #[test]
+    fn cmap_format12_group_glyph_id_overflow_is_malformed_not_wrapped() {
+        let bytes = cmap_format12_overflowing();
+        let err = parse_cmap(&bytes).expect_err("overflowing group must be rejected");
+        assert!(
+            matches!(err, Error::Malformed(ref m) if m.contains("overflow")),
+            "unexpected error: {err:?}"
+        );
+    }
 }
