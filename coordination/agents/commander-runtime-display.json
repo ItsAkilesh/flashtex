@@ -3,27 +3,27 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-049": {
-      "acknowledged_utc": "2026-09-12T14:42:21Z",
-      "adaptation": "Read exact r43 helper518a2ce3 audit objective; completed c6fd04f6 without rerun. Exact captured raw/source bindings pass; reopen only owner assertion because snapshot not archived. No native claim.",
-      "main_sha": "cde5dd8385fb5449ed83077421cca287d2318cb3",
-      "revision": 43
+      "acknowledged_utc": "2026-09-12T14:51:23Z",
+      "adaptation": "Read r44 cap audit objective; independently verified f8bb2389 six-state Value capture and reopened documents, no rerun. Full source/body comparisons and decline-before-acceptance pass; wrapper boundary remains separate.",
+      "main_sha": "6b69149c2922b043aafd0e11c2cd1320506b0c74",
+      "revision": 44
     }
   },
   "branch": "agent/commander-runtime-display/display-runtime",
   "capabilities": [
     "rust-runtime"
   ],
-  "code_revision": "bd6190a954c97a8aae148280f645e3f75a3ab7cb",
+  "code_revision": "2006af19e89ac5c666cbf8bbe4184797162adca5",
   "eta_minutes": null,
   "machine": "linux-primary",
-  "main_integrated_through": "cf7650cbf0ad6dc56884fa6942c757418004f24a",
-  "next_action": "Commander integrate audit; await next bounded runtime assignment. No jobs, workload rerun, native or performance claim.",
+  "main_integrated_through": "a8790ce1616921c478c5c84fb988eb6fc66a5e25",
+  "next_action": "Commander integrate bounded capture audit; helper optional serialization remains separate boundary. No active jobs; await next assigned work.",
   "reviewed_peers": {},
   "schema_version": 1,
-  "state": "accepted",
-  "summary": "c6fd04f6 independent helper518a2ce3 audit PASS:9 compressed/original artifacts,78 assets, scripts and actual298/347 binaries verified;3 full v1/v2/raw and source/editor/compile bindings exact. Reopen assertion and reconstructed producer stdin limitations explicit. HW1 empty Heading.number already suppressed by9aa adapter; no production change.",
+  "state": "ready_for_integration",
+  "summary": "FT049r44 audit2006af19 PASS:15 compressed artifacts, original hashes,78 assets per capture, exact six v1/accepted v2 Value bodies and source revisions.6000-byte frames;5999JSON decline before acceptance; accepted-declined-accepted recovery and archived reopened documents equal final ACK. No rerun/raw spelling/native claim.",
   "tool": "codex",
-  "updated_utc": "2026-09-12T14:42:21Z",
+  "updated_utc": "2026-09-12T14:51:35Z",
   "usage": {
     "status": "unknown"
   }
