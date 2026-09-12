@@ -6,7 +6,7 @@ GID and typed rules from `flashtex-render --v2` envelopes, off-main immutable pa
 preparation with stale-paint suppression, zero-tolerance export/preview pixel parity /
 `agent/mac-preview-v2/exact-glyphs` (base `origin/agent/mac-claude-a/mac-shell` 6b43a3a;
 previous lane branch `agent/mac-claude-a/preview-v2` bc28c59 was rebased here)
-State: in progress
+State: ready for integration (checkpoint 0dbdf77; lane continues under the improvement policy)
 Worktree: `/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a93c86d3bd8db3ed3`
 Owned paths (lane, per `coordination/machines/mac-m1max-a-resume.json`):
 `apps/mac/Sources/FlashTeXMac/PreviewV2View.swift`, `apps/mac/Tests/FlashTeXMacTests/PreviewV2Tests.swift`.
@@ -19,9 +19,9 @@ integration" (ShellModel.swift +2, ContentView.swift +4/−1, FlashTeXMacApp.swi
 the parent cherry-picks or re-applies it. Never touched: crates/font-engine, paragraph-layout, math-layout.
 
 Main integrated through: origin/main dd75e15 reviewed (coordination-only changes since b1cf8b9);
-code base is mac-shell 6b43a3a (mac-shell has since advanced to 312cabc — merge pending at the next checkpoint).
+origin/agent/mac-claude-a/mac-shell 312cabc merged (08f8496); full suite green after the merge.
 
-## Completed behavior (tip 00e2e76, pushed)
+## Completed behavior (tip 0dbdf77, pushed)
 
 - c12346f: released lane files rebased onto the `@Observable` shell (`@Environment(ShellModel.self)`).
 - 8cb9ade: shared shell hooks for the parent (see above).
@@ -41,11 +41,21 @@ code base is mac-shell 6b43a3a (mac-shell has since advanced to 312cabc — merg
   PDF `re f` replay by one level along rule rows); prepared coordinates quantized to the 7
   significant digits CG's PDF writer serializes (≤5e-5 pt).
 
+- 08f8496: merge of mac-shell 312cabc (FastJSON decode, preview-controller client, nearby, …).
+- 0dbdf77: pane paints its off-main bitmap correctly (observed current-frame token so a page
+  requested before `setCurrent` re-requests; y-flip of the blit; page label legible on the page
+  background); README "v2 preview" section rewritten; evidence directory
+  `docs/evidence/mac-preview-v2-parity-2026-09-12/` (parity JSON for the math+rules list and the
+  20-page list, window capture by id with FLASHTEX_NO_ACTIVATE=1, input SHA-256s).
+
 ## Tests (exact evidence)
 
 `cd apps/mac && FLASHTEX_COMPILER=… FLASHTEX_PDF=… FLASHTEX_BRIDGE=… FLASHTEX_EDIT_LEDGER=… swift test`
 (release binaries from the main checkout `/Users/jay3332/Projects/flashtex/crates/*/target/release`):
-218 tests, 0 failures, 0 skipped (log: scratch `pv2/fulltest.log`).
+before the merge (00e2e76) 218 tests, 0 failures, 0 skipped; after merging mac-shell 312cabc
+(08f8496) 339 tests, 0 failures, 5 skipped (DocumentFilesTests ×3 need crates/project-files,
+NearbyViewScreenshotTests ×1 needs FLASHTEX_NEARBY_SCREENSHOT_DIR — other lanes' optional
+helpers). v2 suites re-run at 0dbdf77: 33/33.
 v2 suites 33/33: RenderingV2Tests 13, PreviewV2Tests 8, PreviewV2ShellTests 8, PreviewV2ParityTests 4.
 Parity measurements (V2Parity, sRGB premultiplied RGBA, AA on, font smoothing off, subpixel positioning on):
 - `display-list-v2-text.json` (pipeline 7094ef7, 1 page) and `display-list-v2-math-rules.json`
@@ -72,18 +82,20 @@ Parity measurements (V2Parity, sRGB premultiplied RGBA, AA on, font smoothing of
 
 ## Running commands / pending
 
-- Background: none (scratch flashtex-render build finished; tests finished).
-- Pending: merge origin/agent/mac-claude-a/mac-shell 312cabc; window screenshot by id with
-  `FLASHTEX_NO_ACTIVATE=1`; `FLASHTEX_V2_PARITY_OUT` evidence into `docs/evidence/`;
-  README v2 section update; then measure hover/caret repaint cost.
+- Background: none. App instances launched for evidence were killed. Scratch inputs
+  (`pv2/big.v2.json`, `pv2/math.v2.json`, flashtex-render scratch build from 79ba728) live in the
+  session scratchpad only.
+- Pending for the parent: cherry-pick or re-apply 8cb9ade (parent-retained files).
 
-## Immediate next steps
+## Immediate next steps (lane continuation candidates)
 
-1. `git merge origin/agent/mac-claude-a/mac-shell` → `swift test` → commit.
-2. Launch `.build/debug/FlashTeXMac` with `FLASHTEX_NO_ACTIVATE=1 FLASHTEX_V2_FILE=<big.v2.json>
-   FLASHTEX_V2_PARITY_OUT=<dir>`; `screencapture -l <windowid>`; write
-   `docs/evidence/mac-preview-v2-parity-2026-09-12.md` (+ parity.json, one PNG).
-3. README "v2 preview" section: threading model, parity gate, measured numbers.
+1. Render-format negotiation with the worker (`render_capabilities` / `render_format_selected`)
+   so the pane receives lists from the attached producer instead of a file.
+2. In-app timing of hover/caret repaints (now a bitmap blit + overlays; not measured in-app).
+3. Decide on bundling `latinmodern-math.otf` (GUST license, 733 KB) for math lists; until then
+   `FLASHTEX_LM_DIR` or a MacTeX `lm-math` directory must be present.
+4. Watch `origin/agent/mac-render-pipeline/unified` for a v2-exact `--pdf` writer; when it
+   exists, add preview-vs-pipeline-PDF parity next to the CG-export comparison.
 
 Dependency SHAs: origin/main dd75e15; mac-shell base 6b43a3a (advanced 312cabc);
 render-pipeline unified 79ba728 (scratch build used for fixtures; ba5611f current, display.rs unchanged);
@@ -92,4 +104,4 @@ Resources: shared Claude Max 20x quota with parent mac-claude-a; no purchases, n
 MacTeX fonts used as font assets only (never the TeX engine in the product path).
 Context usage: the harness does not expose an exact percentage to me; well below the 60% checkpoint
 threshold by token accounting (≈15% of a 1M window at this checkpoint).
-Updated: 2026-09-12T05:20:00Z
+Updated: 2026-09-12T09:25:00Z (local clock; app log timestamps are UTC 09:1x)
