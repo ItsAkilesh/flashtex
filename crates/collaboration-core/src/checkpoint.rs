@@ -90,12 +90,12 @@ impl Checkpoint {
     /// Bounded and non-panicking on malformed or truncated input: every
     /// field is read through a length-checked cursor, an out-of-range
     /// Unicode scalar value is rejected rather than producing an invalid
-    /// `char`, and — see [`Checkpoint::validate`] — the decoded structure's
-    /// referential integrity is checked before it is ever handed back as a
-    /// `Checkpoint`. `bytes` is untrusted input (from a peer or from disk),
-    /// so this is the boundary where it must be fully validated: nothing
-    /// downstream (in particular `From<Checkpoint> for Document`, and the
-    /// restored `Document`'s own `apply`) re-checks it.
+    /// `char`, and — via an internal `validate` step — the decoded
+    /// structure's referential integrity is checked before it is ever
+    /// handed back as a `Checkpoint`. `bytes` is untrusted input (from a
+    /// peer or from disk), so this is the boundary where it must be fully
+    /// validated: nothing downstream (in particular `From<Checkpoint> for
+    /// Document`, and the restored `Document`'s own `apply`) re-checks it.
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, CheckpointDecodeError> {
         let mut r = Reader::new(bytes);
         let max_elements = r.read_u64()? as usize;
@@ -322,8 +322,8 @@ impl From<Checkpoint> for Document {
     /// exposes exactly two ways to produce one, [`Document::checkpoint`]
     /// (whose source `Document` already satisfies every invariant `apply`
     /// enforces) and [`Checkpoint::from_bytes`] (which rejects a decoded
-    /// structure that doesn't satisfy them, see [`Checkpoint::validate`]).
-    /// There is no third, unvalidated path. Given that, reconstructing is
+    /// structure that doesn't satisfy them, via an internal `validate`
+    /// step). There is no third, unvalidated path. Given that, reconstructing is
     /// simply reinstating the stored element order and applied-id set
     /// verbatim (see the module docs for why this is exactly what
     /// checkpoint equivalence requires). If this crate ever grows another

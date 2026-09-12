@@ -470,8 +470,8 @@ impl OpBuilder {
     /// Build an insert of `value` so that, from `doc`'s current point of
     /// view, it becomes the character at visible index `index` (0-based;
     /// `index == doc.len_chars()` appends at the end). Returns `None` if
-    /// `index > doc.len_chars()`, or if this builder's counter is already
-    /// exhausted (see [`OpBuilder::next_id`]) — never panics or clamps.
+    /// `index > doc.len_chars()`, or if this builder's internal `next_id`
+    /// counter is already exhausted — never panics or clamps.
     pub fn insert_at(&mut self, doc: &Document, index: usize, value: char) -> Option<Op> {
         if index > doc.len_chars() {
             return None;
@@ -491,7 +491,7 @@ impl OpBuilder {
 
     /// Build a delete of the visible character currently at `index`.
     /// Returns `None` if `index >= doc.len_chars()`, or if this builder's
-    /// counter is already exhausted (see [`OpBuilder::next_id`]).
+    /// internal `next_id` counter is already exhausted.
     pub fn delete_at(&mut self, doc: &Document, index: usize) -> Option<Op> {
         let target = doc.char_id_at(index)?;
         let id = self.next_id()?;
