@@ -108,3 +108,31 @@ The fresh `4888-legacy.pdf` and `4888-comparison.json` rerun the legacy route
 against the same reference: bytes/operators differ, visual equality unknown.
 Earlier producer comparisons remain separately pinned. Current blocker
 verification: https://github.com/flash-tex/flashtex/issues/2#issuecomment-5645134718.
+
+## Existing PDF owner subsetter integration
+
+`PipelineCff::export_searchable(max_pdf_bytes)` consumes the unchanged PDF owner's
+654f626 `v2::from_v2` and `exact::render_exact`. Verified immutable registry bytes
+are staged in a private temporary directory; the returned resolver paths must
+match that staging and `HashForm::Bytes`. The raw-hash refusal occurs at binding,
+before this API. It does not permit the owner's compatibility interpretation of
+an engine hash as a raw hash. No second subsetter, PDF writer or font parser was
+added. The temporary paths in its report are audit evidence, not durable assets.
+
+The narrow accepted extraction profile has exactly one glyph per nonempty
+cluster and one text value per original GID within each font. Ligatures such as
+`fi` are retained as multi-character ToUnicode mappings. Empty/multiple-glyph
+clusters or conflicting mappings return explicit errors because the owner API
+does not implement marked-content ActualText. Text extraction support is not
+proof of global reading order or established-LaTeX visual parity.
+
+The adapter caps 256 pages,100000 glyphs,64MiB staged font bytes and a caller PDF
+output cap up to64MiB. The PDF output cap is checked after owner serialization;
+it is not a hard ceiling on the owner's transient allocation. Existing opaque
+paint and exact numeric refusals remain in the owner implementation. The owned
+regression verifies the original-GID CID-CFF subset and `H`/`fi` ToUnicode with
+the explicitly hypothetical corrected contract, and rejects ambiguous mappings.
+Actual producer4888a67 remains refused until it publishes its raw SHA correctly.
+
+PDF classifier fix654f626 is merged unchanged. The existing independent
+unsupported-identical guard and all seven PDF comparison tests continue to pass.

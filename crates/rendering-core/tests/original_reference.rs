@@ -181,6 +181,56 @@ fn explicit_cff_contract_binds_bytes_and_budgets_atomically() {
         .page(0, HintPolicy::Unhinted, MixedLimits::default())
         .unwrap();
     assert!(!batch.primitives().is_empty());
+    let searchable = bound.export_searchable(8 * 1024 * 1024).unwrap();
+    assert!(bound.export_searchable(1).is_err());
+    flashtex_pdf::verify::check_structure(&searchable.bytes).unwrap();
+    let pdf = flashtex_pdf::reader::PdfFile::parse(&searchable.bytes).unwrap();
+    let pages = pdf.pages().unwrap();
+    let fonts = pdf.page_fonts(pages[0]);
+    let exported_font = flashtex_pdf::compare::font_from_dict(&pdf, fonts["F1"]).unwrap();
+    let flashtex_pdf::exact::ExactFont::CidCff(cid) = exported_font else {
+        panic!("expected original-GID CFF subset")
+    };
+    let unicode =
+        flashtex_pdf::exact::parse_to_unicode(cid.to_unicode_verbatim.as_deref().unwrap()).unwrap();
+    assert_eq!(unicode.get(&62).map(String::as_str), Some("H"));
+    assert!(unicode.values().any(|s| s == "fi"));
+    let mut ambiguous = hypothetical.clone();
+    let repeated_gid = ambiguous["payload"]["pages"][0]["items"][0]["glyphs"][1]["gid"].clone();
+    ambiguous["payload"]["pages"][0]["items"][0]["glyphs"][0]["gid"] = repeated_gid;
+    let ambiguous = PipelineCff::bind(
+        &serde_json::to_vec(&ambiguous).unwrap(),
+        &caps,
+        &docs,
+        &resources,
+    )
+    .unwrap();
+    assert_eq!(
+        ambiguous
+            .export_searchable(8 * 1024 * 1024)
+            .err()
+            .unwrap()
+            .0,
+        "ambiguous GID text requires ActualText support"
+    );
+    let mut multiple = hypothetical.clone();
+    let g = multiple["payload"]["pages"][0]["items"][0]["glyphs"][0].clone();
+    multiple["payload"]["pages"][0]["items"][0]["glyphs"]
+        .as_array_mut()
+        .unwrap()
+        .push(g);
+    let multiple = PipelineCff::bind(
+        &serde_json::to_vec(&multiple).unwrap(),
+        &caps,
+        &docs,
+        &resources,
+    )
+    .unwrap();
+    assert_eq!(
+        multiple.export_searchable(8 * 1024 * 1024).err().unwrap().0,
+        "multi-glyph cluster requires ActualText support"
+    );
+
     assert!(batch
         .primitives()
         .iter()
