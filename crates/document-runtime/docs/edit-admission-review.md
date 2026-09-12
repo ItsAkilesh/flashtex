@@ -44,3 +44,38 @@ that scope. No owner tests were repeated. The additional grouped encode-refusal
 check is pending separately from this exact-SHA review. A minor stale STDIO line
 claiming all group schemas unchanged was reported for documentation cleanup; the
 new following paragraph and implementation clearly describe the additive change.
+
+Final followupda9b2f5c supplies the missing both-mode encode-refusal gate: large
+group and exact retry retain document/command revision2, toggle replayed status,
+return no admission with preview error, and reopen exact2048-byte source. The
+stale documentation sentence is corrected. Source review only; no repeated tests.
+
+## Native search reconciliation race
+
+Reviewed issue2 comment5646679011 and nativecd62f22
+`apps/mac/Sources/FlashTeXMac/ProjectSearchPanel.swift` sendApplyGroup/reconcile.
+After awaiting the helper, reconciliation unconditionally replaces active or
+inactive document text and associates the returned durable revision with the
+current editor revision. A pre-send buffer check cannot establish that equality
+after the await. Helper expected revision/hash guards protect the durable source
+it knows, not subsequent unsent keystrokes or marked IME text.
+
+Native owner requirements: capture helper/session and project membership identity,
+path, expected durable revision/hash, and per-document local edit/buffer epoch
+before send; recheck relevant identities after every await. Record a verified
+returned durable snapshot separately from local buffer state. Replace a local
+buffer only if its captured base and local epoch still match; otherwise preserve
+local edits and surface/reconcile the divergence explicitly. Do not label that
+buffer as the returned durable revision or let stale search completion overwrite
+a switched/reopened document. Exact bytes alone miss edit-and-undo/IME state, so
+use the editor's actual mutation/composition guard as well.
+
+A successful group may already be durable even when local reconciliation refuses;
+that is not a helper rejection and should not trigger a fresh permanent command.
+Uncertain retries retain the exact original command ID/payload. A replay can
+return a newer current document while preserving historical command_revision.
+Fresh compile admission identifies compilation of helper-current source, never
+permission to overwrite local edits. No runtime check can protect unsent bytes;
+no native code or runtime semantics were changed. Native reproduction/fix tests
+remain the existing owner's responsibility, including active/inactive typing,
+composition, document/session replacement and exact retry races.
