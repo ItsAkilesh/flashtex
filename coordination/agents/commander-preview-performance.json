@@ -13,17 +13,17 @@
   "capabilities": [
     "Preview helper serialization and latency"
   ],
-  "code_revision": "72af2d43594d4a472a1193ef2c0ab49ee9bc3397",
+  "code_revision": "35dc8648a1bbffd804252e961160fc760fa0dca3",
   "eta_minutes": null,
   "machine": "linux-primary",
   "main_integrated_through": "7af10301cee94abdb263f868dfa5bf99a4b181c1",
-  "next_action": "Investigate avoidable helper serialization cost preserving exact frames; coordinate runtime parse ownership with FT049.",
+  "next_action": "Publish tested batching then consume FT048r8 reviewed runtime raw-body proposal; preserve full syntax/source validation and explicit numeric/frame policy.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "FT048r7 actual repeat100 profile replay passes exact direct v1/v2 and durable reopen; parsing largest measured display stage, no native latency claim.",
+  "summary": "Buffered optional serializer preserves exact frames and halves encoding cost in ten alternating actual-candidate pairs.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T11:34:06Z",
+  "updated_utc": "2026-09-12T11:36:38Z",
   "usage": {
     "status": "unknown"
   }

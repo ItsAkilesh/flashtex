@@ -39,3 +39,15 @@ producer/provenance/fixture paths in the adjacent provenance, `--repeat 100`,
 `--compress-artifacts`, and a fresh `--output` directory. This run used the same
 command shape as the earlier scale100 evidence, with the helper rebuilt using
 `CARGO_INCREMENTAL=0 cargo build --release`.
+
+## Bounded writer experiment
+
+`serialization-probe.json` records ten alternating same-process pairs on the
+actual final candidate (1,150,821 output bytes). An 8 KiB `BufWriter` before the
+existing checked frame buffer produces byte-identical output in every pair;
+exact newline-inclusive limits succeed and one-byte-smaller limits fail.
+Buffered encoding measured 1.831–2.853 ms versus 3.953–5.507 ms direct.
+This isolates serialization and is not comparable to the loaded replay above.
+The production optional path adopts this batching with an additional bounded
+8 KiB scratch buffer. Flush must succeed before complete-frame admission; neither
+partial frames nor changed numeric encoding reach the output queue.
