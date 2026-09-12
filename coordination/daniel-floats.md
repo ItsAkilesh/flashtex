@@ -207,3 +207,169 @@ through the new validation, so existing callers see no behavior change.
 - No real (non-synthetic) TTC directory corruption fixture was available to
   test against; see the fixtures note above.
 - Did not touch `crates/font-resources` or any other peer crate.
+
+## Revision 4: adversarial bounds and exact identity regressions
+
+Tested SHA: see `code_revision` in `coordination/agents/daniel-floats.json`
+(this revision's implementation commit). Main integrated through
+`967703ebb4e8140feaf4db02d27cb3ac63c573f6`.
+
+### Adversarial bounds (`tests/ttc_adversarial.rs`, new)
+
+One table-driven test, `hostile_inputs_never_panic_and_always_error`, runs
+14 hostile byte buffers through `collection_layout` inside
+`std::panic::catch_unwind`, so a future regression that panics is reported
+as a named failing case instead of aborting the whole suite. Every case is
+asserted to return `Err(Error::Malformed(_))` — never `Ok`, never a panic.
+Adding a new hostile case is a one-line addition to the `cases` vec plus a
+small builder function.
+
+Cases, matching the assignment's minimum list exactly:
+
+- a file cut mid-header (`ttcf` tag only; `ttcf`+version with no numFonts)
+- a file cut mid-directory (`ttcf` claims 2 faces, offset table holds only 1)
+- `numFonts` at `u32::MAX`, `numTables` at `u16::MAX`
+- a face offset (in a `ttcf` offset table) pointing past end of file
+- a table offset+length that, on a 64-bit host, cannot overflow `usize`
+  (both operands are `u32`-bounded) but is still rejected by the
+  against-file-length bound check — the test comments explain why this
+  proves the bounds check is load-bearing, not the `checked_add` alone
+- a table length of zero
+- a misaligned table offset, and a misaligned face (`ttcf` sub-font) offset
+- a directory whose entries are not in ascending tag order
+- a file that is entirely zero bytes
+- a single zero byte, and a fully empty buffer
+
+**Two of these found real gaps in the rev-3 descriptor, now fixed in
+`face_layout`/`collection_layout`:**
+
+1. **All-zero-bytes file was silently accepted.** `collection_layout` never
+   validated the `sfnt` version field itself — only that the *directory*
+   fit in bounds. A 64-byte all-zero buffer parses as a valid non-`ttcf`
+   `sfnt` with `numTables == 0`, which is structurally well-formed but
+   nonsensical. Fixed by checking the sfnt version against the same three
+   values `TrueTypeFace::parse_with_source` already accepts
+   (`0x00010000`, `'true'`, `'OTTO'`) inside `face_layout`, so every face —
+   including each sub-font of a `ttcf` — is checked, not just the top-level
+   tag.
+2. **Zero-length tables, misaligned offsets, and non-ascending tag order
+   were accepted.** None of these can occur in a table produced by a real
+   font compiler (the OpenType spec requires 4-byte-aligned offsets and
+   ascending tag order; a zero-length table is meaningless), so rev 3's
+   directory walk had no reason to reject them but also never did. Added
+   three checks to `face_layout`: `length != 0`, `offset.is_multiple_of(4)`
+   (also applied to each face's own `sfnt_offset` in a `ttcf`), and a
+   strict ascending-tag-order check against the immediately preceding
+   table record.
+
+Before adding these three checks and the version check, I ran
+`collection_layout` over all 128 `.ttc`/`.ttf`/`.otf` files under
+`/System/Library/Fonts` and `/System/Library/Fonts/Supplemental` (a
+throwaway `examples/scan_ttc_scratch.rs`, removed before this commit) and
+confirmed zero anomalies against alignment, ordering, or zero-length —
+i.e. these stricter checks are things real font compilers already do, not
+constraints being invented ad hoc. Reran after the changes: still zero
+anomalies, and the full adversarial suite and `tests/ttc_layout.rs` /
+`tests/ttc_identity.rs` all still pass.
+
+### Exact identity regressions (`tests/ttc_identity.rs`, new)
+
+Three tests pin the *entire* `CollectionLayout` — every face's
+`sfnt_offset` and every `TableRange`'s tag/offset/length — via
+`assert_eq!` against a literal expected value, not a shape check:
+`single_face_otto_directory_is_pinned_exactly`,
+`three_face_ttc_with_one_shared_table_is_pinned_exactly` (also asserts the
+shared table really is the same `TableRange` value on both faces, not
+merely equal by coincidence), and `single_table_sfnt_is_pinned_exactly`.
+
+To make this possible, `FaceLayout` and `CollectionLayout` now derive
+`PartialEq, Eq` (in addition to their existing `Debug, Clone`) —
+`TableRange` already had them. Purely additive; no behavior change.
+
+Inputs are synthetic hand-built buffers, not real system fonts: a real
+`.ttc`'s exact byte offsets can shift across an OS update for reasons
+having nothing to do with this crate, which would make the pin flaky for
+the wrong reason. A synthetic buffer's bytes are fully known, so its
+expected `CollectionLayout` is exactly known and stable.
+
+### `parse_with_source`'s duplicate-tag/overlap follow-up: wired in
+
+Rev 3 flagged that `parse_with_source` silently overwrites a duplicate
+table tag via its `BTreeMap::insert` and runs no overlap check, unlike
+`collection_layout`. For this revision I wired both checks directly into
+`parse_with_source`'s own directory-reading loop (not by routing it through
+`collection_layout`, which would have meant either running the directory
+walk twice or a larger refactor than this revision's scope):
+
+- `tables.contains_key(&tag)` before insert → `Error::Malformed("duplicate
+  table tag ...")`.
+- `tables.values().any(|&(o, l)| off < o + l && o < end)` before insert →
+  `Error::Malformed("table ... overlaps another table in the
+  directory")`.
+- The existing overrun check was split into a `checked_add` step
+  (`"table ... range overflows"`) and a separate bounds step (`"table ...
+  overruns file"`), matching `face_layout`'s naming, so the overlap check
+  has a validated `end` to compare against.
+
+This does **not** add the zero-length/alignment/ascending-order checks to
+`parse_with_source` — those are new in this revision and scoped to
+`collection_layout` only, to keep this change to exactly the two gaps rev 3
+flagged.
+
+**Proof against real system fonts, not just reasoning:** a throwaway
+`examples/scan_parse_scratch.rs` (removed before this commit) ran
+`TrueTypeFace::parse_with_source` over every face of every `.ttc`/`.ttf`/
+`.otf` under the same two system directories (787 faces total). Before this
+change: 723 `Ok`, 10 `MissingTable`, 54 `Unsupported`, 0 `Malformed`. After:
+identical counts, byte for byte. No real font on this machine has a
+duplicate table tag or an overlapping table range, so the stricter checks
+change nothing for real input — they only close the hole rev 3 flagged.
+
+### Test counts
+
+- Before this revision: 73 passed, 0 failed (unit 8, adapters 6, core14 16,
+  latin_modern 9, pinned 6, truetype 18, ttc_layout 8, doctests 2).
+- After: **77 passed, 0 failed** — same as above plus `ttc_adversarial` (1
+  test covering 14 hostile cases) and `ttc_identity` (3 tests). One
+  existing `ttc_layout.rs` fixture (`partially_overlapping_tables_within_
+  one_face_are_rejected`) had its offsets shifted from `510` to `508` so it
+  still isolates the overlap check now that misaligned offsets are also
+  rejected (510 is not 4-byte-aligned).
+- `cargo test` (whole crate): clean.
+- `cargo clippy --all-targets -- -D warnings`: clean (one `is_multiple_of`
+  lint fixed after adding the alignment checks).
+- `cargo fmt --check`: clean.
+
+### API changes for consumers
+
+Additive/behavioral, both scoped to already-new-in-rev-3 or explicitly
+flagged surface:
+
+- `FaceLayout`/`CollectionLayout` gained `PartialEq, Eq` derives (additive).
+- `collection_layout` now rejects four additional malformed shapes it
+  previously accepted: unrecognized sfnt version, zero-length tables,
+  misaligned offsets (table or face), non-ascending tag order. Any caller
+  relying on `collection_layout` accepting one of these shapes would see a
+  new `Err` — none exist in this repository or in the 128 real fonts
+  checked.
+- `TrueTypeFace::parse`/`parse_with_source` now reject a duplicate table
+  tag or an overlapping table range with `Error::Malformed` instead of
+  silently keeping the last-seen table for a duplicate tag (previous
+  behavior) or ignoring overlaps entirely. Verified against 787 real faces
+  with no change in outcome; a font that does have a duplicate tag or
+  overlapping tables (which would previously have parsed with silently
+  wrong table data) now fails loudly instead.
+
+### What remains
+
+- The stricter directory checks added to `collection_layout` in this
+  revision (zero-length, alignment, ascending order, sfnt-version) are not
+  mirrored into `parse_with_source`. Only the two specific rev-3-flagged
+  gaps (duplicate tag, overlap) were wired into the main parse path this
+  revision, deliberately, to keep the main-path behavior change minimal and
+  fully covered by the real-font proof above. If `parse_with_source` should
+  also reject zero-length/misaligned/non-ascending directories by default,
+  that's a follow-up decision, not assumed here.
+- Identity pins are synthetic-only (see rationale above); no real-font
+  identity pin was added.
+- Did not touch `crates/font-resources` or any other peer crate.

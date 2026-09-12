@@ -6,8 +6,8 @@
   "capabilities": ["rust", "fonts", "truetype", "opentype"],
   "branch": "agent/daniel-floats/float-layout",
   "state": "ready_for_integration",
-  "summary": "crates/font-engine: added collection_layout() (CollectionLayout/FaceLayout/TableRange) exposing bounded, validated ttcf/sfnt face and table-directory byte ranges. Rejects duplicate table tags and any within-face table overlap; accepts cross-face tables at an exact (offset,length) match as legitimate ttcf sharing and rejects any other cross-face intersection as corruption. numFonts/numTables are bounds-checked against the buffer with checked arithmetic before any Vec sized by the claim is allocated. Reuses the existing bounded readers (reader.rs), no second parser. 8 new synthetic-fixture tests in tests/ttc_layout.rs; existing 65 tests untouched and passing (73 total).",
-  "next_action": "Await Commander integration. Follow-up option (not done, flagged as scope decision): route parse_with_source's own directory build through collection_layout's duplicate/overlap validation for stricter-by-default parsing.",
+  "summary": "crates/font-engine: FT-031 rev 4. Added tests/ttc_adversarial.rs (one table-driven test, 14 hostile buffers run through collection_layout inside catch_unwind: truncated mid-header/mid-directory, numFonts/numTables at u32/u16 max, face offset past EOF, table offset+length overrun, zero-length table, misaligned offsets, non-ascending directory order, all-zero-bytes file, empty/single-byte buffers) - every case asserted Error::Malformed, never a panic. Two cases exposed real rev-3 gaps, now fixed in face_layout/collection_layout: an unchecked sfnt version (an all-zero buffer parsed as a trivial valid zero-table sfnt) and unrejected zero-length tables/misaligned offsets/non-ascending tag order. Verified the new checks against all 128 .ttc/.ttf/.otf files under /System/Library/Fonts(/Supplemental): zero anomalies before or after. Added tests/ttc_identity.rs: 3 tests pinning the entire CollectionLayout (every sfnt_offset, every TableRange tag/offset/length) via assert_eq! against literal values, not shape checks; FaceLayout/CollectionLayout now derive PartialEq/Eq. Wired the rev-3-flagged parse_with_source follow-up in: duplicate table tags and overlapping table ranges now reject with Error::Malformed instead of the BTreeMap silently overwriting/ignoring them; verified against 787 real faces (723 Ok/10 MissingTable/54 Unsupported/0 Malformed, identical before and after). cargo test 77/77 (was 73), cargo clippy --all-targets -D warnings clean, cargo fmt --check clean.",
+  "next_action": "Await Commander integration. Open follow-up (not done, flagged): mirror collection_layout's new zero-length/alignment/ascending-order checks into parse_with_source's own directory walk if stricter-by-default main-path parsing is wanted; deferred this revision to keep the main-path behavior change limited to the two gaps rev 3 explicitly flagged (duplicate tag, overlap), both of which are now wired in and proven against real fonts.",
   "eta_minutes": {
     "optimistic": 0,
     "likely": 0,
@@ -19,17 +19,17 @@
     "evidence": "Runs on the user's Claude Max 20x subscription per this session's explicit direction; live token consumption is not exposed to this agent. No purchases, overages, or other accounts used."
   },
   "reviewed_peers": {
-    "origin/main": "277a0910811fdb27bd156ecd92b92b50f277c750"
+    "origin/main": "967703ebb4e8140feaf4db02d27cb3ac63c573f6"
   },
   "assignment_acknowledgements": {
     "FT-031": {
-      "acknowledged_utc": "2026-09-12T09:44:53Z",
-      "revision": 3,
-      "main_sha": "277a0910811fdb27bd156ecd92b92b50f277c750",
-      "adaptation": "Implemented as an additive inspection API (collection_layout + CollectionLayout/FaceLayout/TableRange) layered on the existing table-directory reading in truetype.rs rather than rewiring TrueTypeFace::parse_with_source itself, to keep the existing 65 tests' behavior unchanged under the timebox. Built synthetic ttcf/sfnt fixtures by hand for the duplicate-tag, overlap, and hostile-header cases since no real corrupted TTC fixture was available on this machine; the identical-shared-table acceptance test is built the same way against the documented ttcf structure, not diffed against a specific vendor font."
+      "acknowledged_utc": "2026-09-12T16:32:45Z",
+      "revision": 4,
+      "main_sha": "967703ebb4e8140feaf4db02d27cb3ac63c573f6",
+      "adaptation": "Implemented both revision-4 halves as additional test files plus targeted fixes in truetype.rs: adversarial bounds as one table-driven test over hostile buffers (tests/ttc_adversarial.rs), exact-identity regressions via literal assert_eq! on the full CollectionLayout (tests/ttc_identity.rs). While attacking the rev-3 descriptor, found and fixed two real gaps (unchecked sfnt version, unrejected zero-length/misaligned/non-ascending directories) rather than only testing existing behavior. Resolved the rev-3 parse_with_source follow-up by wiring duplicate-tag and overlap validation into its directory loop and proving 787 real system-font faces parse identically before/after, rather than deferring it again."
     }
   },
-  "updated_utc": "2026-09-12T09:44:53Z",
-  "code_revision": "f2fdb08a153de5940cc535e06bc0c496f5bf4eb5",
-  "main_integrated_through": "277a0910811fdb27bd156ecd92b92b50f277c750"
+  "updated_utc": "2026-09-12T16:34:26Z",
+  "code_revision": "b579632f0634587af7e74c2accf1877fd9a44ad0",
+  "main_integrated_through": "967703ebb4e8140feaf4db02d27cb3ac63c573f6"
 }
