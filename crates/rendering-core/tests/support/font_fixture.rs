@@ -232,3 +232,32 @@ pub fn math_assembly_fixture(horizontal: bool) -> Vec<u8> {
     be32(&mut b, record + 12, 316);
     b
 }
+
+#[allow(dead_code)]
+pub fn math_kern_fixture() -> Vec<u8> {
+    let mut b = math_fixture(0);
+    let count = u16::from_be_bytes(b[4..6].try_into().unwrap()) as usize;
+    let record = 12 + (count - 1) * 16;
+    let offset = u32::from_be_bytes(b[record + 8..record + 12].try_into().unwrap()) as usize;
+    be16(&mut b, offset + 230, 36);
+    let mut k = vec![0; 40];
+    for (at, n) in [
+        (0, 12),
+        (2, 1),
+        (4, 18),
+        (12, 1),
+        (14, 1),
+        (16, 1),
+        (18, 2),
+        (20, 65526),
+        (24, 20),
+        (28, 65533),
+        (32, 5),
+        (36, 8),
+    ] {
+        be16(&mut k, at, n)
+    }
+    b.extend(k);
+    be32(&mut b, record + 12, 300);
+    b
+}

@@ -529,3 +529,20 @@ acceptance exercises 32 vertical and 34 horizontal assemblies at target5000.5
 with cache/direct byte equality and stale-source refusal. Three other STIX
 constructions refuse the declared fit budget. These are consistency tests;
 TeX layout, native paint and visual parity are not established.
+
+### Source-bound MathKern metrics replay
+
+`RegistryRenderer::math_kerns` accepts up to256 explicit original-GID, corner and
+rational design-unit height queries. It consumes the original bounded parser's
+upper-bound tie policy, preserves raw kern values and scales them exactly to the
+requested page font size. Absent corners return the parser's zero value; invalid
+GIDs fail. Height-record and selected-value device flags remain separate and no
+device correction or script layout occurs.
+
+`MathKernSnapshot` retains the source/registry/MATH snapshot. Its bounded replay
+records query heights, tie policy, scaled values and consumer source hash;
+verification rejects tampering, duplicate JSON keys, stale source or stale lease.
+Synthetic checks cover negative heights/values, exact ties, missing corners and
+request/output limits. Pinned STIX replay compares every available corner table
+around its correction-height boundaries against the bound resource API. This
+is exact consumer consistency rather than an independent typesetting oracle.

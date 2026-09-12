@@ -625,3 +625,19 @@ GIDs1510,1514,1532 exhaust this strategy's budget). At5000 units, parentheses,
 brackets and integral GIDs1064–1067/1698 all fit. Synthetic tests hand-check exact
 fractional and unequal connector overlaps, extent boundaries, gaps, impossible
 joins, output/repetition limits and arithmetic overflow.
+
+`BoundMathFont::kerns()` independently decodes MathKernInfo and returns immutable
+`BoundMathKern` with the same full resource identity. The original constants/glyph
+consumer is unchanged. Original-GID/corner queries use exact rational heights and
+binary upper-bound lookup: equality at a correction height selects the following
+kern interval. An absent glyph/corner entry returns the specified zero correction;
+out-of-font GIDs fail. Values remain signed design units. Parsing caps coverage at
+4096 glyphs and aggregate correction/kern records at65536, with strict increasing
+heights and bounded table/coverage/device offsets. Device adjustment bodies remain
+explicitly unevaluated and unvalidated; presence is exposed with each value.
+
+Pinned STIX Math has219 corner tables and217 correction heights, with no device
+records. Replay tests every exact boundary and half a unit below it. Synthetic
+fixtures cover negative values, missing corners, truncated prefixes, invalid GIDs,
+counts/offsets/heights, device-offset bounds and rational comparison overflow.
+This establishes data/lookup behavior, not a script-placement or visual oracle.

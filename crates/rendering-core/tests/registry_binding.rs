@@ -1231,6 +1231,54 @@ fn pinned_stix_math_metric_consumer_replay() {
             MathPolicy::UnhintedDesignUnits,
         )
         .unwrap();
+        {
+            use flashtex_rendering_core::registry_binding::math::kern::KernQuery;
+            let kerns = bound.kerns().unwrap();
+            let mut count = 0;
+            for (&(gid, corner), table) in kerns.data().records() {
+                let heights: Vec<_> = if table.correction_heights().is_empty() {
+                    vec![0]
+                } else {
+                    table
+                        .correction_heights()
+                        .iter()
+                        .map(|v| v.design_units)
+                        .collect()
+                };
+                for height in heights {
+                    let requests: Vec<_> = [-1, 0, 1]
+                        .into_iter()
+                        .map(|delta| KernQuery {
+                            original_gid: gid,
+                            corner,
+                            height: Rational::new(i128::from(height) * 2 + delta, 2).unwrap(),
+                        })
+                        .collect();
+                    let snapshot = renderer.math_kerns(&math, query(), &requests).unwrap();
+                    for value in snapshot.values() {
+                        let raw = kerns
+                            .data()
+                            .lookup(gid, corner, value.query.height)
+                            .unwrap();
+                        assert_eq!(value.value.design_units, raw.design_units);
+                        assert_eq!(
+                            value.value_device_adjustment_present,
+                            raw.device_adjustment_present
+                        );
+                    }
+                    let bytes = snapshot.replay_bytes(100000).unwrap();
+                    snapshot
+                        .verify_replay(&renderer, "main.tex", &source, &bytes)
+                        .unwrap();
+                    count += 1;
+                }
+            }
+            assert!(count > 0);
+            eprintln!(
+                "MATH kern exact boundary consumer checks={count} tables={}",
+                kerns.data().records().len()
+            );
+        }
         let variants = bound.variants().unwrap();
         let mut seen = [0, 0];
         for (&(direction, gid), construction) in variants.data().constructions() {
@@ -1538,4 +1586,126 @@ fn fitted_math_exact_origins_overlaps_and_atomic_limits() {
             .is_err());
         assert_eq!(frame.batch().fixture_bytes(), bytes);
     }
+}
+
+#[test]
+fn math_kern_exact_ties_replay_and_source_gates() {
+    use flashtex_font_resources::{cff::Rational, math_adapter::MathPolicy, math_kern::Corner};
+    use flashtex_rendering_core::registry_binding::math::{kern::*, MathQuery};
+    let font = font_fixture::math_kern_fixture();
+    let dir = tempfile::tempdir().unwrap();
+    let root = ProjectRoot::open(dir.path()).unwrap();
+    std::fs::write(dir.path().join("math.font"), &font).unwrap();
+    std::fs::write(dir.path().join("math.license"), b"test").unwrap();
+    save(
+        dir.path(),
+        &RegistryManifest {
+            schema_version: 1,
+            entries: vec![entry(&font, "math", "static-truetype", b"test")],
+        },
+    );
+    let registry = load(&root);
+    let mut renderer = RegistryRenderer::new(
+        "math",
+        registry.clone(),
+        RegistryRenderLimits {
+            max_bindings: 1,
+            max_cache_bytes: 10000,
+        },
+    )
+    .unwrap();
+    let lease = renderer
+        .bind(&selection("math"), registry.generation())
+        .unwrap();
+    let math = renderer
+        .math(&lease, MathPolicy::UnhintedDesignUnits)
+        .unwrap();
+    let source = SourceSnapshot {
+        revision: 1,
+        text: "α".into(),
+    };
+    let query = || MathQuery {
+        source_path: "main.tex",
+        snapshot: &source,
+        source_range: 0..2,
+        font_size: r(1000, 3),
+        original_gids: &[1],
+    };
+    let requests: Vec<_> = [(-11, 1), (-10, 1), (39, 2), (20, 1)]
+        .into_iter()
+        .map(|(n, d)| KernQuery {
+            original_gid: 1,
+            corner: Corner::TopRight,
+            height: Rational::new(n, d).unwrap(),
+        })
+        .collect();
+    let result = renderer.math_kerns(&math, query(), &requests).unwrap();
+    assert_eq!(
+        result
+            .values()
+            .iter()
+            .map(|v| v.value.design_units)
+            .collect::<Vec<_>>(),
+        [-3, 5, 5, 8]
+    );
+    assert_eq!(
+        result
+            .values()
+            .iter()
+            .map(|v| v.value.ticks)
+            .collect::<Vec<_>>(),
+        [r(-1, 1), r(5, 3), r(5, 3), r(8, 3)]
+    );
+    assert!(result
+        .values()
+        .iter()
+        .all(|v| !v.value_device_adjustment_present && !v.height_device_adjustment_present));
+    let bytes = result.replay_bytes(100000).unwrap();
+    result
+        .verify_replay(&renderer, "main.tex", &source, &bytes)
+        .unwrap();
+    let mut value: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    value["values"][0]["raw"] = 99.into();
+    assert!(result
+        .verify_replay(
+            &renderer,
+            "main.tex",
+            &source,
+            &serde_json::to_vec(&value).unwrap()
+        )
+        .is_err());
+    let duplicate =
+        String::from_utf8(bytes.clone())
+            .unwrap()
+            .replacen('{', "{\"format\":\"duplicate\",", 1);
+    assert!(result
+        .verify_replay(&renderer, "main.tex", &source, duplicate.as_bytes())
+        .is_err());
+    assert!(result
+        .require_current(
+            &renderer,
+            "main.tex",
+            &SourceSnapshot {
+                revision: 2,
+                text: source.text.clone()
+            }
+        )
+        .is_err());
+    assert!(result.replay_bytes(1).is_err());
+    assert!(renderer
+        .math_kerns(&math, query(), &vec![requests[0]; 257])
+        .is_err());
+    let mut absent = requests[0];
+    absent.corner = Corner::BottomLeft;
+    assert_eq!(
+        renderer
+            .math_kerns(&math, query(), &[absent])
+            .unwrap()
+            .values()[0]
+            .value
+            .design_units,
+        0
+    );
+    absent.original_gid = 3;
+    assert!(renderer.math_kerns(&math, query(), &[absent]).is_err());
 }

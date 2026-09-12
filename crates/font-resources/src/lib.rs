@@ -565,3 +565,5 @@ pub mod math_adapter;
 pub mod math_variants;
 
 pub mod math_fit;
+
+pub mod math_kern;

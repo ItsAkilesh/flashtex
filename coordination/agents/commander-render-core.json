@@ -3,10 +3,10 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-023": {
-      "acknowledged_utc": "2026-09-12T07:21:50Z",
-      "adaptation": "Read exact revision3 geometry-diff assignment. Implemented bounded exact comparison of validated mixed/display inputs with stable IDs, raw hashes, mismatch categories and undecided equality on truncation/unsupported; no production/native activation.",
-      "main_sha": "2fd302675040308c2b07d346c07389a051518979",
-      "revision": 3
+      "acknowledged_utc": "2026-09-12T08:50:08Z",
+      "adaptation": "Read exact published FT023 revision5. Current MathKernInfo exact source-bound replay implemented; synthetic tie/budget/tamper tests pass. Finish pinned boundary replay then device-context and cached/direct mixed-math followups; no script layout or wire activation.",
+      "main_sha": "e0887bcfd71749d35f4a1aa8c42d059599d5f88d",
+      "revision": 5
     }
   },
   "branch": "agent/commander-render-core/rendering-core",
@@ -14,7 +14,7 @@
     "rust",
     "rendering"
   ],
-  "code_revision": "6b1c99ae4ce6b5477ab945ff57cf423c7e25db8f",
+  "code_revision": "fce561571abb1aa8c1b8b2edc4dd8c5ea63286a5",
   "eta_minutes": {
     "likely": 15,
     "optimistic": 5,
@@ -22,15 +22,15 @@
   },
   "machine": "linux-primary",
   "main_integrated_through": "84d581168eed75caa620f66350d629a23b0ce538",
-  "next_action": "Publish this checkpoint then merge published MathKernInfo 1fc71f3 unchanged and implement exact metrics replay only; no script layout. Worktree /home/natkarri/flashtex-rendering-core branch agent/commander-render-core/rendering-core. No context telemetry/native compaction control exposed; this is durable recovery evidence.",
+  "next_action": "Publish kern checkpoint then consume additive published device context in same owned crate; retain raw design values and pixel corrections separately, preserve unhinted default. Follow with bounded cached/direct mixed-math replay. Worktree /home/natkarri/flashtex-rendering-core branch agent/commander-render-core/rendering-core; no exposed native context telemetry/control.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "Exact MATH assembly consumer complete: unchanged font f959fb5 dependency, rational horizontal/right and vertical/up placement, immutable BoundMathFit and source/registry metrics, original GID batches, typed atomic budgets. 134 ordinary tests, strict all-target clippy, both pinned registry tests pass; STIX 32 vertical + 34 horizontal exact assembly replays. No TeX/native parity claim.",
+  "summary": "FT023r5 exact MathKern consumer complete, unchanged peer1fc71f3. 135 ordinary tests and strict clippy pass; pinned STIX293 boundary replays across219 tables plus66 assembly replays pass. Explicit query heights, original GIDs, raw/scaled kerns, device flags and immutable source/registry/MATH identity. No script layout.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T08:47:43Z",
+  "updated_utc": "2026-09-12T08:50:57Z",
   "usage": {
-    "evidence": "font f959fb5; cargo test --offline 134 ordinary tests; cargo clippy all-targets -D warnings; pinned STIXMath SHA3a5f3f26f40d5698b3c62dd085d48d6663696a3f80825aab8b553d5097518e8c; pending merge commit with own assembly.rs/tests/README/report only plus unchanged peer ancestry",
-    "status": "Hosted OpenAI only; no paid providers or descendants."
+    "evidence": "cargo test135 pass; cargo clippy all-targets -D warnings pass; pinned STIXMath source/license hashes checked,293 lookup cases/219 tables; synthetic negative/tie/absence/invalid GID/tamper/duplicate/stale/budget cases. No pending test process.",
+    "status": "Hosted OpenAI only; no providers or descendants."
   }
 }

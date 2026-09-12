@@ -44,7 +44,7 @@ pub struct MathVariants {
     min_overlap: u16,
     constructions: BTreeMap<(Direction, u16), Construction>,
 }
-fn u16at(b: &[u8], p: usize) -> Result<u16> {
+pub(crate) fn u16at(b: &[u8], p: usize) -> Result<u16> {
     Ok(u16::from_be_bytes(
         b.get(p..p + 2)
             .ok_or_else(|| invalid("MATH variants truncated"))?
@@ -52,7 +52,7 @@ fn u16at(b: &[u8], p: usize) -> Result<u16> {
             .unwrap(),
     ))
 }
-fn offset(b: &[u8], base: usize, p: usize) -> Result<usize> {
+pub(crate) fn offset(b: &[u8], base: usize, p: usize) -> Result<usize> {
     let n = u16at(b, p)? as usize;
     if n == 0 {
         return Err(invalid("MATH required offset is zero"));
@@ -72,7 +72,7 @@ fn gid(n: u16, count: u16) -> Result<u16> {
         Ok(n)
     }
 }
-fn coverage(b: &[u8], at: usize, expected: usize, glyph_count: u16) -> Result<Vec<u16>> {
+pub(crate) fn coverage(b: &[u8], at: usize, expected: usize, glyph_count: u16) -> Result<Vec<u16>> {
     let count = u16at(b, at + 2)? as usize;
     if count > 4096 {
         return Err(crate::Error::SizeLimit);
