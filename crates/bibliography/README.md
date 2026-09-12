@@ -8,7 +8,7 @@ emits each entry as styled runs for a layout consumer. It does not typeset.
 
 ```sh
 cd crates/bibliography
-cargo test                                   # 43 tests
+cargo test                                   # 44 tests
 cargo clippy --all-targets -- -D warnings
 ```
 

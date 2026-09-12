@@ -284,3 +284,65 @@ fn parsing_is_deterministic() {
     let b = load(src);
     assert_eq!(a, b);
 }
+
+#[test]
+fn pathological_inputs_never_panic() {
+    use flashtex_bibliography::{Citation, Span, Style, format_bibliography, resolve};
+    let inputs = [
+        "",
+        "@",
+        "@{",
+        "@}",
+        "@(",
+        "@string{",
+        "@string{x",
+        "@string{x=",
+        "@string{x=}",
+        "@preamble",
+        "@preamble{",
+        "@comment",
+        "@comment{",
+        "@a{",
+        "@a{k",
+        "@a{k,",
+        "@a{k,f",
+        "@a{k,f=",
+        "@a{k,f={",
+        "@a{k,f=\"",
+        "@a{k,f={}}",
+        "@a{k,f=\"\"}",
+        "@a{k,f=#}",
+        "@a{k,f=x#}",
+        "@a{k,f=1#\"}",
+        "@a(k,f={)})",
+        "}}}{{{",
+        "@article{k, author = {,}, title = {and}}",
+        "@article{k, author = {~ and ~}, title = {\\'}, year = {\\}}",
+        "@article{k, author = {{\\}}, editor = {A and and B}, pages = {-}}",
+        "@book{k, author = {von, , Jr}, title = {{}}}",
+        "@misc{k, author = {\\'{} \\\"{\\i} \\c \\v{} Jean-}, year = {x}}",
+        "@misc{ü, note = {ü}} @misc{, note = {}}",
+        "@article{k, author = {\\'E \\O \\o {\\relax} {\\'e}cole}, title = {a: b {c} \\AE}, year = 1, journal = {j}}",
+    ];
+    for src in inputs {
+        let db = load(src);
+        for d in &db.diagnostics {
+            if let Some(s) = d.span {
+                assert!(s.start <= s.end && s.end <= src.len(), "{src:?}: {d:?}");
+                assert!(src.is_char_boundary(s.start) && src.is_char_boundary(s.end));
+            }
+            let _ = d.to_json("x.bib");
+        }
+        for style in [Style::Unsrt, Style::Plain, Style::Alpha] {
+            let cites = [
+                Citation::new("k", Span::new(0, 1)),
+                Citation::new("*", Span::new(0, 1)),
+            ];
+            let res = resolve(&cites, &db, style);
+            for i in &format_bibliography(&db, &res) {
+                let _ = i.text();
+                let _ = i.to_bbl(style);
+            }
+        }
+    }
+}

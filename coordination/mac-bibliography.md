@@ -45,7 +45,7 @@ formatting, `@string` across files, styles other than unsrt/plain/alpha.
 Interface changes and required consumer actions: none; new crate, no shared
 contract touched. Diagnostics reuse the runtime-v1 shape and UTF-8 byte spans.
 
-Validation: `cd crates/bibliography && cargo test` (43 tests: 11 unit, 31
+Validation: `cd crates/bibliography && cargo test` (44 tests: 11 unit, 32
 integration, 1 doctest), `cargo clippy --all-targets -- -D warnings` clean,
 `cargo fmt --check` clean. rustc 1.99.0-nightly.
 
@@ -63,4 +63,4 @@ shape mirrored in `crates/bibliography/src/diagnostics.rs` with a hand-written
 Resource: allocation `claude-mac20x-bibliography` (Claude Max 20x on
 mac-m1max-a, shared account quota); usage unknown, no per-call figures exposed.
 
-Updated: 2026-09-12T06:05Z
+Updated: 2026-09-12T06:15Z
