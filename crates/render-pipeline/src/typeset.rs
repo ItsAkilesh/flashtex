@@ -794,7 +794,10 @@ impl<'a> Context<'a> {
 
     /// Builds a horizontal list. Returns paragraph-layout items, the
     /// per-item box record and the `\label` keys with the item they precede.
-    fn hlist(&mut self, items: &[AItem], size: f64, base: TextStyle, style: ParaStyle) -> (Vec<pl::Item>, Vec<Option<usize>>, Vec<(String, usize)>) {
+    /// `\\[<dimen>]` skips are returned as `(forced-break item, points)`;
+    /// [`vskips_of`] maps them onto the lines after breaking.
+    #[allow(clippy::type_complexity)]
+    fn hlist(&mut self, items: &[AItem], size: f64, base: TextStyle, style: ParaStyle) -> (Vec<pl::Item>, Vec<Option<usize>>, Vec<(String, usize)>, Vec<(usize, f64)>) {
         // `\centering`/`\raggedleft` set `\parfillskip 0pt` and make `\\`
         // end the paragraph (`\@centercr`); the fil glue of the skips
         // fills the line. Elsewhere `\\` is `\hfil\break` and the paragraph
@@ -803,6 +806,7 @@ impl<'a> Context<'a> {
         let mut out: Vec<pl::Item> = Vec::new();
         let mut recs: Vec<Option<usize>> = Vec::new();
         let mut labels: Vec<(String, usize)> = Vec::new();
+        let mut skips: Vec<(usize, f64)> = Vec::new();
         let push = |out: &mut Vec<pl::Item>, recs: &mut Vec<Option<usize>>, item: pl::Item, rec: Option<usize>| {
             out.push(item);
             recs.push(rec);
@@ -815,9 +819,10 @@ impl<'a> Context<'a> {
                             text: seg.text.clone(),
                             chars: seg.chars.clone(),
                             style: TextStyle {
-                                bold: seg.style.bold || base.bold,
+                                bold: seg.style.bold || (base.bold && !seg.style.medium),
                                 italic: seg.style.italic || base.italic,
                                 size_cpt: seg.style.size_cpt,
+                                medium: seg.style.medium,
                             },
                         };
                         // A size declaration in force (`{\Large ...}`) sets
@@ -830,9 +835,10 @@ impl<'a> Context<'a> {
                 }
                 AItem::Space { style, factor, no_break } => {
                     let style = TextStyle {
-                        bold: style.bold || base.bold,
+                        bold: style.bold || (base.bold && !style.medium),
                         italic: style.italic || base.italic,
                         size_cpt: style.size_cpt,
+                        medium: style.medium,
                     };
                     if *no_break {
                         push(&mut out, &mut recs, pl::Item::penalty(pl::INFINITE_PENALTY), None);
@@ -848,9 +854,12 @@ impl<'a> Context<'a> {
                         push(&mut out, &mut recs, pl::Item::Box(run), Some(rec));
                     }
                 }
-                AItem::LineBreak => {
+                AItem::LineBreak { skip_pt } => {
                     if fills {
                         push(&mut out, &mut recs, pl::Item::Glue(pl::Glue::fil()), None);
+                    }
+                    if *skip_pt != 0.0 {
+                        skips.push((out.len(), *skip_pt));
                     }
                     push(&mut out, &mut recs, pl::Item::penalty(pl::FORCED_BREAK), None);
                 }
@@ -858,7 +867,16 @@ impl<'a> Context<'a> {
                     let quad = self.text_params(base, size).quad;
                     push(&mut out, &mut recs, pl::Item::Glue(pl::Glue::fixed(em * quad)), None);
                 }
-                AItem::HFill => push(&mut out, &mut recs, pl::Item::Glue(pl::Glue::fil()), None),
+                AItem::HFill { fill } => {
+                    // `\hfill` is second-order glue: it beats the line's
+                    // `\parfillskip` (`\hfil`), as in a `\section` title
+                    // set as `Problem 1 \hfill [4 points]`.
+                    let mut glue = pl::Glue::fil();
+                    if *fill {
+                        glue.stretch_order = pl::GlueOrder::Fill;
+                    }
+                    push(&mut out, &mut recs, pl::Item::Glue(glue), None)
+                }
                 AItem::HSpace { pt } => push(&mut out, &mut recs, pl::Item::Glue(pl::Glue::fixed(*pt)), None),
                 AItem::Label { key } => labels.push((key.clone(), out.len())),
                 AItem::ItalicCorrection => {
@@ -888,7 +906,7 @@ impl<'a> Context<'a> {
         push(&mut out, &mut recs, pl::Item::penalty(pl::INFINITE_PENALTY), None);
         push(&mut out, &mut recs, pl::Item::Glue(if fills { pl::Glue::fil() } else { pl::Glue::fixed(0.0) }), None);
         push(&mut out, &mut recs, pl::Item::penalty(pl::FORCED_BREAK), None);
-        (out, recs, labels)
+        (out, recs, labels, skips)
     }
 
     fn line_params(&self, indent: bool, baselineskip: f64, style: ParaStyle) -> pl::LineBreakParams {
@@ -933,11 +951,11 @@ impl<'a> Context<'a> {
     /// `\@afterheading` (`\clubpenalty 10000`).
     fn paragraph_block(&mut self, items: &[AItem], indent: bool, starts_paragraph: bool, after_heading: bool, style: ParaStyle) -> Option<BuiltBlock> {
         let size = self.style.body_size_pt;
-        let (mut list, mut recs, labels) = self.hlist(items, size, TextStyle::default(), style);
+        let (mut list, mut recs, labels, mut skips) = self.hlist(items, size, TextStyle::default(), style);
         if !list.iter().any(|i| matches!(i, pl::Item::Box(_))) {
             return None;
         }
-        self.drop_trailing_break(items, &mut list, &mut recs);
+        let trailing_skip = self.drop_trailing_break(items, &mut list, &mut recs, &mut skips, style);
         let lines = pl::layout_paragraph(&list, &self.line_params(indent, self.style.baselineskip_pt, style));
         self.report_overfull(&lines, &list, &recs);
         let vertical = VBlock {
@@ -949,10 +967,17 @@ impl<'a> Context<'a> {
             club_penalty: if after_heading { pagebuild::INF_PENALTY } else { CLUB_PENALTY },
             widow_penalty: WIDOW_PENALTY,
             penalty_after: None,
-            space_after: None,
+            space_after: trailing_skip.map(|pt| {
+                // `\@xcentercr`: `\par \addvspace{-\parskip} \vskip <dimen>`;
+                // the paragraph that follows adds `\parskip` back, so under
+                // `\centering` only the `[<dimen>]` separates the lines.
+                let p = self.style.parskip;
+                if matches!(style, ParaStyle::Center | ParaStyle::FlushRight) { (pt - p.natural, -p.stretch, -p.shrink) } else { (pt, 0.0, 0.0) }
+            }),
             no_interline_first: false,
             no_interline_after: false,
             baselineskip: None,
+            vskip_after: vskips_of(&lines, &skips),
         };
         Some(BuiltBlock {
             block: pl::ParagraphBlock::body(lines),
@@ -974,7 +999,12 @@ impl<'a> Context<'a> {
     /// warning: the paragraph then sets as TeX would minus the empty last
     /// line (one baseline pitch short). `list` and `recs` are the parallel
     /// outputs of [`Self::hlist`].
-    fn drop_trailing_break(&mut self, items: &[AItem], list: &mut Vec<pl::Item>, recs: &mut Vec<Option<usize>>) -> bool {
+    ///
+    /// Under `\centering`/`\raggedleft` (`\@centercr`) a final `\\` is
+    /// exactly `\par`: no empty line, nothing to report; its `[<dimen>]`
+    /// is `\vskip`ped after the paragraph and returned (`Some(0.0)` for a
+    /// bare `\\`, so the caller still cancels the `\parskip`).
+    fn drop_trailing_break(&mut self, items: &[AItem], list: &mut Vec<pl::Item>, recs: &mut Vec<Option<usize>>, skips: &mut Vec<(usize, f64)>, style: ParaStyle) -> Option<f64> {
         // `hlist` appends `\penalty10000 \parfillskip \penalty-10000`; the
         // item before that triple is the last one of the paragraph proper.
         let trailing_break = |list: &[pl::Item]| {
@@ -982,10 +1012,15 @@ impl<'a> Context<'a> {
             n >= 4 && matches!(&list[n - 4], pl::Item::Penalty(p) if p.value <= pl::FORCED_BREAK)
         };
         if !trailing_break(list) {
-            return false;
+            return None;
         }
+        let centred = matches!(style, ParaStyle::Center | ParaStyle::FlushRight);
+        let mut trailing_skip = 0.0;
         while trailing_break(list) {
             let at = list.len() - 4;
+            if let Some(i) = skips.iter().position(|(item, _)| *item == at) {
+                trailing_skip += skips.remove(i).1;
+            }
             list.remove(at);
             recs.remove(at);
             // The `\hfil` glue `\\` carries plus any glue read before it
@@ -999,6 +1034,9 @@ impl<'a> Context<'a> {
                 list.remove(last - 1);
                 recs.remove(last - 1);
             }
+        }
+        if centred {
+            return Some(trailing_skip);
         }
         // Source: the last word/formula before the break (`\\` carries no
         // span of its own in the adapter's items).
@@ -1016,18 +1054,19 @@ impl<'a> Context<'a> {
                 sources,
             ),
         );
-        true
+        Some(trailing_skip)
     }
 
     fn heading_block(&mut self, level: u8, items: &[AItem]) -> Option<BuiltBlock> {
         let h = self.style.heading(level);
-        let (list, recs, labels) = self.hlist(
+        let (list, recs, labels, skips) = self.hlist(
             items,
             h.size_pt,
             TextStyle {
                 bold: h.bold,
                 italic: false,
                 size_cpt: 0,
+                medium: false,
             },
             ParaStyle::Plain,
         );
@@ -1055,6 +1094,7 @@ impl<'a> Context<'a> {
             no_interline_first: false,
             no_interline_after: false,
             baselineskip: Some(h.baselineskip_pt),
+            vskip_after: vskips_of(&lines, &skips),
         };
         Some(BuiltBlock {
             block: pl::ParagraphBlock {
@@ -1122,6 +1162,7 @@ impl<'a> Context<'a> {
             no_interline_first: bracket,
             no_interline_after: false,
             baselineskip: None,
+            vskip_after: Vec::new(),
         };
         (
             BuiltBlock {
@@ -1200,6 +1241,7 @@ impl<'a> Context<'a> {
             no_interline_first: true,
             no_interline_after: true,
             baselineskip: None,
+            vskip_after: Vec::new(),
         };
         BuiltBlock {
             block: pl::ParagraphBlock::body(lines),
@@ -1347,6 +1389,7 @@ impl<'a> Context<'a> {
             no_interline_first: false,
             no_interline_after: false,
             baselineskip: None,
+            vskip_after: Vec::new(),
         };
         Some(BuiltBlock {
             block: pl::ParagraphBlock {
@@ -1385,6 +1428,19 @@ impl<'a> Context<'a> {
             ));
         }
     }
+}
+
+/// The `\\[<dimen>]` skip after each line: a skip recorded at a forced
+/// break lands after the line that break ends.
+fn vskips_of(lines: &pl::Lines, skips: &[(usize, f64)]) -> Vec<f64> {
+    if skips.is_empty() {
+        return Vec::new();
+    }
+    lines
+        .breaks
+        .iter()
+        .map(|b| skips.iter().filter(|(item, _)| *item == b.item).map(|(_, pt)| *pt).sum())
+        .collect()
 }
 
 fn skip_tuple(s: crate::style::Skip) -> (f64, f64, f64) {
@@ -1813,6 +1869,9 @@ fn add_vspace(v: &mut pagebuild::VBlock, pt: f64) {
 pub fn build(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCache>) -> Laid {
     let mut blocks: Vec<BuiltBlock> = Vec::new();
     let mut after_heading = false;
+    // Whether the open paragraph-shape environment began in vertical mode
+    // (`\@topsepadd` keeps `\partopsep` for the closing skip too).
+    let mut env_vmode = false;
     let quad = ctx.text_params(TextStyle::default(), ctx.style.body_size_pt).quad;
     let style_fp = if cache.is_some() { incremental::style_fingerprint(ctx.style) } else { 0 };
     use std::hash::{Hash, Hasher};
@@ -1869,8 +1928,11 @@ pub fn build(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCache>) -> Laid 
                     let p = if vmode { ctx.style.partopsep } else { crate::style::Skip::default() };
                     (t.natural + p.natural, t.stretch + p.stretch, t.shrink + p.shrink)
                 };
+                if let Some(e) = env_open {
+                    env_vmode = e.vmode;
+                }
                 let mut env_before = env_open.map(|e| env_skip(e.vmode));
-                let env_after = env_close.then(|| env_skip(env_open.is_some_and(|e| e.vmode)));
+                let env_after = env_close.then(|| env_skip(env_vmode));
                 let first_block = blocks.len();
                 // TeX's pre_display_size: the width of the line before a
                 // display plus 2em; -infinity when nothing precedes it.

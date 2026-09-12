@@ -219,7 +219,10 @@ pub fn hash_items(items: &[Item], base: usize, h: &mut DefaultHasher) {
                 (span.start.wrapping_sub(base)).hash(h);
                 (span.end.wrapping_sub(base)).hash(h);
             }
-            Item::LineBreak => 3u8.hash(h),
+            Item::LineBreak { skip_pt } => {
+                3u8.hash(h);
+                skip_pt.to_bits().hash(h);
+            }
             Item::Quad { em } => {
                 4u8.hash(h);
                 em.to_bits().hash(h);
@@ -229,7 +232,10 @@ pub fn hash_items(items: &[Item], base: usize, h: &mut DefaultHasher) {
                 key.hash(h);
             }
             Item::ItalicCorrection => 6u8.hash(h),
-            Item::HFill => 7u8.hash(h),
+            Item::HFill { fill } => {
+                7u8.hash(h);
+                fill.hash(h);
+            }
             Item::HSpace { pt } => {
                 8u8.hash(h);
                 pt.to_bits().hash(h);

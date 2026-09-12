@@ -29,6 +29,9 @@ pub struct TextStyle {
     /// Font size set by a size declaration (`\Large`, ...) in force, in
     /// hundredths of a point; 0 keeps the paragraph's size.
     pub size_cpt: u16,
+    /// `\normalfont`/`\mdseries` in force inside a heading: the block's
+    /// own weight (`\bfseries` from `\@startsection`) is not applied.
+    pub medium: bool,
 }
 
 impl TextStyle {
@@ -91,8 +94,10 @@ pub enum Item {
     /// after sentence-ending punctuation, 999 after an uppercase letter).
     Space { style: TextStyle, factor: u32, no_break: bool },
     Math { list: MathList, span: Span },
-    /// `\\`
-    LineBreak,
+    /// `\\`; `skip_pt` is the optional `[<dimen>]` (LaTeX `\@xnewline`:
+    /// `\vadjust{\vskip <dimen>}` after the line, or `\vskip` after the
+    /// paragraph under `\@centercr`).
+    LineBreak { skip_pt: f64 },
     /// Fixed horizontal glue of `em` ems of the current font (`\quad`
     /// after a section number).
     Quad { em: f64 },
@@ -102,8 +107,11 @@ pub enum Item {
     /// `\text@command` adds it unless `.` or `,` follows).
     ItalicCorrection,
     /// `\hfill`/`\hfil` (compiler `Inline::HFill`): infinitely stretchable
-    /// glue; a legal break point that is discarded at a line break.
-    HFill,
+    /// glue; a legal break point that is discarded at a line break. `fill`
+    /// is the `\hfill` order (it beats `\parfillskip`'s `fil`); the
+    /// compiler does not distinguish the two, so the order is re-read from
+    /// the source bytes (`\hfill` when they are not `\hfil`).
+    HFill { fill: bool },
     /// `\hspace{<dimen>}` (compiler `Inline::HSpace`): fixed glue in points.
     HSpace { pt: f64 },
 }
@@ -309,11 +317,11 @@ pub fn adapt_cached(
         }
         h.finish()
     };
-    let items_for = |inlines: &[Inline]| -> Vec<Item> { items_cached(texts, inlines, &styles, labels, labels_fp, cache) };
+    let items_for = |inlines: &[Inline], heading: bool| -> Vec<Item> { items_cached(texts, inlines, &styles, labels, labels_fp, size, heading, cache) };
     let mut blocks = Vec::new();
     let mut limitations: Vec<(&'static str, Span, String)> = Vec::new();
     let mut after_heading = false;
-    for unit in split_at_page_breaks(texts, parsed) {
+    for unit in split_at_page_breaks(texts, parsed, size) {
         let eject_before = unit.eject_before;
         let vspace_before = unit.vspace_before;
         limitations.extend(unit.limitations);
@@ -339,7 +347,7 @@ pub fn adapt_cached(
                     push_segment(&mut items, number.to_string(), chars, TextStyle::default());
                     items.push(Item::Quad { em: 1.0 });
                 }
-                items.extend(items_for(content));
+                items.extend(items_for(content, true));
                 blocks.push(Block::Heading {
                     level,
                     items,
@@ -373,7 +381,7 @@ pub fn adapt_cached(
                         ));
                     }
                 }
-                let items = items_for(inlines);
+                let items = items_for(inlines, false);
                 let mut parts = Vec::new();
                 let mut current = Vec::new();
                 for item in items {
@@ -512,7 +520,7 @@ fn gap_has_page_break(texts: &[&str], prev: Span, next: Span) -> bool {
     PAGE_BREAKS.iter().any(|c| find_command(gap, c).is_some())
 }
 
-fn split_at_page_breaks<'p>(texts: &[&str], parsed: &'p Parsed) -> Vec<Unit<'p>> {
+fn split_at_page_breaks<'p>(texts: &[&str], parsed: &'p Parsed, size: u32) -> Vec<Unit<'p>> {
     let mut units = Vec::new();
     let mut prev_end: Option<Span> = None;
     // Carried from the compiler's own `PageBreak`/`VSpace`/`Rule` blocks
@@ -552,7 +560,22 @@ fn split_at_page_breaks<'p>(texts: &[&str], parsed: &'p Parsed) -> Vec<Unit<'p>>
             _ => inlines_of(block).iter().map(inline_span).next(),
         };
         let mut eject = std::mem::take(&mut pending_eject) || matches!((prev_end, first), (Some(p), Some(f)) if gap_has_page_break(texts, p, f));
-        let vspace_before = std::mem::take(&mut pending_vspace);
+        let mut vspace_before = std::mem::take(&mut pending_vspace);
+        // The compiler evaluates `em`/`ex` in `\vspace` at a fixed 12pt;
+        // LaTeX uses the class's `\normalsize`. Re-read the commands in
+        // the gap before this unit when they are all there.
+        if vspace_before != 0.0 {
+            if let Some(f) = first {
+                let gap = match prev_end {
+                    Some(p) if p.document == f.document && p.end <= f.start => texts.get(f.document.0).and_then(|t| t.get(p.end..f.start)),
+                    Some(_) => None,
+                    None => texts.get(f.document.0).and_then(|t| t.get(..f.start)),
+                };
+                if let Some(pt) = gap.and_then(|g| vspace_in_gap(g, size)) {
+                    vspace_before = pt;
+                }
+            }
+        }
         let limitations = std::mem::take(&mut pending_limitations);
         let styled = match block {
             CBlock::Styled { style, .. } => Some(ParaStyle::of(*style)),
@@ -1001,6 +1024,267 @@ fn continues_word(bytes: &[u8], at: usize) -> bool {
     at < bytes.len() && bytes[at].is_ascii_alphabetic()
 }
 
+/// The control word (`\name`, letters only) that starts at byte `at`, if
+/// the source holds one there and it ends before `end`.
+fn control_word_at(source: &str, at: usize, end: usize) -> Option<&str> {
+    let rest = source.get(at..end)?;
+    let rest = rest.strip_prefix('\\')?;
+    let len = rest.bytes().take_while(u8::is_ascii_alphabetic).count();
+    if len == 0 || len != rest.len() {
+        return None;
+    }
+    Some(&rest[..len])
+}
+
+/// Whether the bytes at `at` are exactly the control word `\<name>` (not
+/// a longer word: `\hfil` is not `\hfill`).
+fn is_control_word(source: &str, at: usize, name: &str) -> bool {
+    let bytes = source.as_bytes();
+    source.get(at..).is_some_and(|r| r.starts_with('\\') && r[1..].starts_with(name)) && !continues_word(bytes, at + 1 + name.len())
+}
+
+/// Whether `span` is a user-macro invocation (`\name` exactly, with a
+/// `\newcommand`-style definition in the source): the compiler gives every
+/// token of the replacement text this span.
+fn is_invocation_span(source: &str, span: Span) -> bool {
+    control_word_at(source, span.start, span.end).is_some_and(|name| macro_body(source, name, span.start).is_some())
+}
+
+/// The replacement text of the last `\newcommand`/`\renewcommand`/
+/// `\providecommand`/`\def` for `\<name>` before byte `before` (or the first
+/// one anywhere), as the bytes inside its braces.
+fn macro_body<'a>(source: &'a str, name: &str, before: usize) -> Option<&'a str> {
+    let bytes = source.as_bytes();
+    let mut defs: Vec<(usize, &str)> = Vec::new();
+    for command in ["newcommand", "renewcommand", "providecommand", "def"] {
+        let mut from = 0;
+        while let Some(at) = find_command(&source[from..], command) {
+            let abs = from + at;
+            from = abs + 1;
+            let mut i = abs + 1 + command.len();
+            let skip_ws = |i: &mut usize| {
+                while *i < bytes.len() && (bytes[*i] as char).is_whitespace() {
+                    *i += 1;
+                }
+            };
+            skip_ws(&mut i);
+            if bytes.get(i) == Some(&b'*') {
+                i += 1;
+                skip_ws(&mut i);
+            }
+            // `{\name}` or `\name`.
+            let braced = bytes.get(i) == Some(&b'{');
+            if braced {
+                i += 1;
+                skip_ws(&mut i);
+            }
+            let Some(rest) = source.get(i..) else { continue };
+            let Some(rest) = rest.strip_prefix('\\') else { continue };
+            let len = rest.bytes().take_while(u8::is_ascii_alphabetic).count();
+            if &rest[..len] != name {
+                continue;
+            }
+            i += 1 + len;
+            skip_ws(&mut i);
+            if braced {
+                if bytes.get(i) != Some(&b'}') {
+                    continue;
+                }
+                i += 1;
+            }
+            // `[n]`, `[default]` (LaTeX) or `#1#2` (`\def`).
+            loop {
+                skip_ws(&mut i);
+                match bytes.get(i) {
+                    Some(b'[') => match source[i..].find(']') {
+                        Some(close) => i += close + 1,
+                        None => break,
+                    },
+                    Some(b'#') => i += 2,
+                    _ => break,
+                }
+            }
+            if bytes.get(i) != Some(&b'{') {
+                continue;
+            }
+            let Some(close) = matching_brace(bytes, i) else { continue };
+            defs.push((abs, &source[i + 1..close]));
+        }
+    }
+    defs.sort_by_key(|(at, _)| *at);
+    defs.iter().rev().find(|(at, _)| *at < before).or(defs.first()).map(|(_, body)| *body)
+}
+
+/// For a macro invoked at `inv` (its `\name` span), the index (from 1) of
+/// the brace-delimited argument whose bytes contain `at`, and the macro's
+/// name.
+fn macro_arg_index(source: &str, inv: Span, at: usize) -> Option<(&str, usize)> {
+    let name = control_word_at(source, inv.start, inv.end)?;
+    let bytes = source.as_bytes();
+    let mut i = inv.end;
+    let mut k = 0usize;
+    loop {
+        while i < bytes.len() && (bytes[i] as char).is_whitespace() {
+            i += 1;
+        }
+        match bytes.get(i) {
+            Some(b'[') => {
+                let close = source[i..].find(']')?;
+                i += close + 1;
+            }
+            Some(b'{') => {
+                let close = matching_brace(bytes, i)?;
+                k += 1;
+                if at > i && at < close {
+                    return Some((name, k));
+                }
+                i = close + 1;
+            }
+            _ => return None,
+        }
+    }
+}
+
+/// Where the reader stands inside a macro's replacement text: the
+/// invocation (`\name` span the compiler gives every replacement token)
+/// and the byte offset in its definition body after the last token read.
+#[derive(Debug, Clone, Copy)]
+struct BodyCursor {
+    inv: Span,
+    at: usize,
+}
+
+/// The bytes TeX read between the previous token and this one, in the
+/// order it read them, so that [`gap_has_space`] and [`gap_fills`] can be
+/// applied to them uniformly: the source between two exact spans; the
+/// definition text between two tokens of one replacement (`\hfill
+/// \normalfont[` between `#1` and `[`); and across the boundary between a
+/// replacement token and an argument (the whitespace around `#k`). `text`
+/// is the token's text, used to find its place in a definition. `None`
+/// when nothing was read (the first token) or the place is unknown.
+fn token_gap(src: &str, prev_end: Option<usize>, prev_span: Option<Span>, span: Span, text: Option<&str>, cursor: &mut Option<BodyCursor>) -> Option<String> {
+    let source_gap = |pe: usize, ps: Span| -> Option<String> {
+        if ps.document != span.document {
+            // Crossing an \input boundary: TeX reads the newline that ends
+            // the \input line as a space.
+            Some(" ".to_string())
+        } else {
+            (pe <= span.start).then(|| src.get(pe..span.start).unwrap_or("").to_string())
+        }
+    };
+    let digits = |k: usize| 1 + k.to_string().len();
+    // A word of a replacement text.
+    if let Some(name) = control_word_at(src, span.start, span.end) {
+        if let Some(body) = macro_body(src, name, span.start) {
+            let (start, prefix) = match *cursor {
+                Some(c) if c.inv == span => (c.at, None),
+                _ => match prev_span.and_then(|ps| macro_arg_index(src, span, ps.start)) {
+                    // The previous token was an argument of this invocation.
+                    Some((_, k)) => (body.find(&format!("#{k}")).map_or(0, |p| p + digits(k)), None),
+                    None => (0, prev_end.zip(prev_span).map(|(pe, ps)| source_gap(pe, ps).unwrap_or_default())),
+                },
+            };
+            let Some(text) = text else {
+                // Glue or math of a replacement: its place is not searched;
+                // separate tokens of one replacement are taken as spaced.
+                *cursor = Some(BodyCursor { inv: span, at: start });
+                return prev_end.map(|_| " ".to_string());
+            };
+            match body.get(start..).and_then(|rest| rest.find(text)) {
+                Some(p) => {
+                    let pos = start + p;
+                    *cursor = Some(BodyCursor { inv: span, at: pos + text.len() });
+                    let gap = &body[start..pos];
+                    return Some(match prefix {
+                        Some(before) => format!("{before}{gap}"),
+                        None => gap.to_string(),
+                    });
+                }
+                None => {
+                    // Not found verbatim (ligatures rewrote it).
+                    *cursor = Some(BodyCursor { inv: span, at: start });
+                    return prev_end.map(|_| " ".to_string());
+                }
+            }
+        }
+    }
+    // An argument of the invocation being read.
+    if let Some(c) = *cursor {
+        if let Some((name, k)) = macro_arg_index(src, c.inv, span.start) {
+            if let Some(body) = macro_body(src, name, c.inv.start) {
+                if let Some(p) = body.get(c.at..).and_then(|rest| rest.find(&format!("#{k}"))) {
+                    let pos = c.at + p;
+                    let gap = body[c.at..pos].to_string();
+                    *cursor = Some(BodyCursor { inv: c.inv, at: pos + digits(k) });
+                    return Some(gap);
+                }
+                // Further tokens of the same argument: the source between
+                // them (the cursor stays after `#k`).
+                return prev_end.zip(prev_span).and_then(|(pe, ps)| source_gap(pe, ps));
+            }
+        }
+    }
+    *cursor = None;
+    prev_end.zip(prev_span).and_then(|(pe, ps)| source_gap(pe, ps))
+}
+
+/// The `\hfill`/`\hfil` control words in a gap (outside comments), each
+/// as its `fill` order, and whether an interword space follows the last
+/// one (`\hfill{} x`; the space right after the control word is eaten).
+fn gap_fills(gap: &str) -> (Vec<bool>, bool) {
+    let mut fills = Vec::new();
+    let mut after = 0usize;
+    let mut from = 0usize;
+    while let Some(at) = find_command(&gap[from..], "hfil").or_else(|| find_command(&gap[from..], "hfill")).map(|a| a + from) {
+        // `find_command` matches the whole word: pick whichever is here.
+        let fill = !is_control_word(gap, at, "hfil");
+        fills.push(fill);
+        after = at + if fill { "\\hfill".len() } else { "\\hfil".len() };
+        from = after;
+    }
+    let space_after = !fills.is_empty() && gap_has_space_after_control_word(&gap[after..]);
+    (fills, space_after)
+}
+
+/// [`gap_has_space`] for the bytes after a control word: the whitespace
+/// TeX eats right after the word does not count.
+fn gap_has_space_after_control_word(rest: &str) -> bool {
+    let rest = rest.trim_start_matches([' ', '\t']);
+    // A newline right after the word is eaten too (it is the same skip).
+    let rest = rest.strip_prefix('\n').unwrap_or(rest);
+    gap_has_space(rest)
+}
+
+/// The sum of every `\vspace{<dimen>}`/`\vspace*{<dimen>}` in `gap`, in
+/// points; `None` when there is none or one does not parse.
+fn vspace_in_gap(gap: &str, size: u32) -> Option<f64> {
+    let mut from = 0;
+    let mut total = 0.0;
+    let mut any = false;
+    while let Some(at) = find_command(&gap[from..], "vspace") {
+        let abs = from + at;
+        from = abs + 1;
+        let rest = gap[abs + "\\vspace".len()..].trim_start();
+        let rest = rest.strip_prefix('*').unwrap_or(rest).trim_start();
+        let inner = rest.strip_prefix('{')?;
+        let close = inner.find('}')?;
+        total += parse_dimen(&inner[..close], size)?;
+        any = true;
+    }
+    any.then_some(total)
+}
+
+/// The `[<dimen>]` of `\\[<dimen>]`/`\\*[<dimen>]` whose `\\` ends at byte
+/// `after`, in points.
+fn line_break_skip(source: &str, after: usize, size: u32) -> Option<f64> {
+    let rest = source.get(after..)?;
+    let rest = rest.strip_prefix('*').unwrap_or(rest);
+    let rest = rest.trim_start_matches([' ', '\t']);
+    let inner = rest.strip_prefix('[')?;
+    let close = inner.find(']')?;
+    parse_dimen(&inner[..close], size)
+}
+
 fn matching_brace(bytes: &[u8], open: usize) -> Option<usize> {
     let mut depth = 0usize;
     let mut i = open;
@@ -1175,19 +1459,22 @@ fn accent(mark: char, base: char) -> Option<char> {
 /// source bytes they sit in (gaps decide spaces, groups decide styles and
 /// italic corrections), the style in force at the start, and the label
 /// table; the value is relocated by the block's byte offset.
+#[allow(clippy::too_many_arguments)]
 fn items_cached(
     texts: &[&str],
     inlines: &[Inline],
     styles: &[Styles],
     labels: &Labels,
     labels_fp: u64,
+    size: u32,
+    heading: bool,
     cache: Option<&crate::incremental::RenderCache>,
 ) -> Vec<Item> {
     let Some(cache) = cache else {
-        return items_from_inlines(texts, inlines, styles, labels);
+        return items_from_inlines(texts, inlines, styles, labels, size, heading);
     };
     let Some(first) = inlines.first().map(inline_span) else {
-        return items_from_inlines(texts, inlines, styles, labels);
+        return items_from_inlines(texts, inlines, styles, labels, size, heading);
     };
     let document = first.document;
     let mut start = first.start;
@@ -1195,17 +1482,25 @@ fn items_cached(
     for i in inlines {
         let s = inline_span(i);
         if s.document != document {
-            return items_from_inlines(texts, inlines, styles, labels);
+            return items_from_inlines(texts, inlines, styles, labels, size, heading);
         }
         start = start.min(s.start);
         end = end.max(s.end);
     }
     let Some(src) = texts.get(document.0) else {
-        return items_from_inlines(texts, inlines, styles, labels);
+        return items_from_inlines(texts, inlines, styles, labels, size, heading);
     };
-    let slice_end = (end + 2).min(src.len());
+    // Macro replacement text carries the invocation's span: the spacing
+    // and weight of its words come from the definition (`macro_body`), so
+    // a block holding one cannot be keyed by its own bytes alone.
+    if inlines.iter().any(|i| is_invocation_span(src, inline_span(i))) {
+        return items_from_inlines(texts, inlines, styles, labels, size, heading);
+    }
+    // `\\[<dimen>]` reads past the block's last span: the key covers the
+    // rest of that line.
+    let slice_end = src[end.min(src.len())..].find('\n').map_or(src.len(), |n| end + n + 1).max((end + 2).min(src.len()));
     let Some(slice) = src.get(start..slice_end) else {
-        return items_from_inlines(texts, inlines, styles, labels);
+        return items_from_inlines(texts, inlines, styles, labels, size, heading);
     };
     use std::hash::{Hash, Hasher};
     let mut h = std::collections::hash_map::DefaultHasher::new();
@@ -1213,6 +1508,8 @@ fn items_cached(
     document.0.hash(&mut h);
     slice.hash(&mut h);
     labels_fp.hash(&mut h);
+    size.hash(&mut h);
+    heading.hash(&mut h);
     let no_styles = Styles::default();
     let st = styles.get(document.0).unwrap_or(&no_styles);
     let at = st.at(start);
@@ -1267,14 +1564,18 @@ fn items_cached(
     if let Some(a) = cache.adapted(key) {
         return crate::incremental::relocate_items(&a.items, start as isize - a.base as isize);
     }
-    let items = items_from_inlines(texts, inlines, styles, labels);
+    let items = items_from_inlines(texts, inlines, styles, labels, size, heading);
     cache.insert_adapted(key, crate::incremental::AdaptedBlock { items: items.clone(), base: start });
     items
 }
 
 /// Converts the compiler inlines into words, spaces, math and line breaks.
-/// `texts` and `styles` are indexed by `DocumentId`.
-fn items_from_inlines(texts: &[&str], inlines: &[Inline], styles: &[Styles], labels: &Labels) -> Vec<Item> {
+/// `texts` and `styles` are indexed by `DocumentId`; `size` is the class
+/// size (for `em` in `\\[<dimen>]`); `heading` marks `\section{...}`
+/// content, whose compiler styles start bold (`\normalfont` in it is read
+/// from the compiler's own style, since the macro-expanded bytes are not in
+/// the source at the invocation).
+fn items_from_inlines(texts: &[&str], inlines: &[Inline], styles: &[Styles], labels: &Labels, size: u32, heading: bool) -> Vec<Item> {
     // `\ref`/`\pageref` become ordinary text attributed to the command's
     // bytes; `\label` becomes a zero-width marker.
     let mut resolved: Vec<std::borrow::Cow<Inline>> = Vec::with_capacity(inlines.len());
@@ -1307,27 +1608,37 @@ fn items_from_inlines(texts: &[&str], inlines: &[Inline], styles: &[Styles], lab
     let no_styles = Styles::default();
     let styles_of = |d: DocumentId| -> &Styles { styles.get(d.0).unwrap_or(&no_styles) };
 
-    // Emits an interword space if the source between `prev` and `span` had one.
-    let space_between = |prev_end: Option<usize>, prev_span: Option<Span>, span: Span| -> bool {
-        match (prev_end, prev_span) {
-            (None, _) => false,
-            (Some(pe), Some(ps)) => {
-                if ps == span {
-                    // Same macro invocation span for both tokens: separate
-                    // word tokens in a replacement text were space-separated.
-                    true
-                } else if ps.document != span.document {
-                    // Crossing an \input boundary: TeX reads the newline that
-                    // ends the \input line as a space.
-                    true
-                } else if pe <= span.start {
-                    let src = text_of(span.document);
-                    src.get(pe..span.start).is_some_and(gap_has_space)
-                } else {
-                    false
-                }
+    // Where the reader stands in a macro's replacement text (`token_gap`).
+    let mut cursor: Option<BodyCursor> = None;
+    // Emits an interword space if the bytes TeX read between `prev` and
+    // `span` held one (`token_gap`); in a heading, also the `\hfill`
+    // glue the compiler drops from a title (as `Item::HFill`, with the
+    // space before it): `(space, fills, space after the fills)`. `text` is
+    // the current token's text (a word).
+    let mut space_between = |prev_end: Option<usize>, prev_span: Option<Span>, span: Span, text: Option<&str>| -> (bool, Vec<bool>, bool) {
+        let src = text_of(span.document);
+        match token_gap(src, prev_end, prev_span, span, text, &mut cursor) {
+            None => (false, Vec::new(), false),
+            Some(gap) => {
+                let (fills, space_after) = if heading { gap_fills(&gap) } else { (Vec::new(), false) };
+                let before = match fills.is_empty() {
+                    true => gap.as_str(),
+                    false => &gap[..find_command(&gap, "hfil").or_else(|| find_command(&gap, "hfill")).unwrap_or(0)],
+                };
+                (gap_has_space(before), fills, space_after)
             }
-            _ => false,
+        }
+    };
+    // Pushes the space/fills `space_between` found.
+    let push_gap = |items: &mut Vec<Item>, (space, fills, space_after): (bool, Vec<bool>, bool), style: TextStyle, factor: u32| {
+        if space {
+            items.push(Item::Space { style, factor, no_break: false });
+        }
+        for fill in fills {
+            items.push(Item::HFill { fill });
+        }
+        if space_after {
+            items.push(Item::Space { style, factor: 1000, no_break: false });
         }
     };
 
@@ -1336,7 +1647,8 @@ fn items_from_inlines(texts: &[&str], inlines: &[Inline], styles: &[Styles], lab
             Inline::Label { key, .. } => items.push(Item::Label { key: key.clone() }),
             Inline::Reference { .. } => unreachable!("references were resolved above"),
             Inline::LineBreak { span } => {
-                items.push(Item::LineBreak);
+                let skip_pt = line_break_skip(text_of(span.document), span.end, size).unwrap_or(0.0);
+                items.push(Item::LineBreak { skip_pt });
                 prev_end = Some(span.end);
                 prev_span = Some(*span);
                 factor = 1000;
@@ -1344,17 +1656,14 @@ fn items_from_inlines(texts: &[&str], inlines: &[Inline], styles: &[Styles], lab
             Inline::HFill { span } | Inline::HSpace { span, .. } => {
                 // Explicit horizontal glue: the interword space read before
                 // it stays (TeX keeps both glue nodes).
-                if space_between(prev_end, prev_span, *span) {
-                    let gap_style = space_style(texts, styles, prev_end, *span, TextStyle::default());
-                    items.push(Item::Space {
-                        style: gap_style,
-                        factor,
-                        no_break: false,
-                    });
-                }
+                let gap = space_between(prev_end, prev_span, *span, None);
+                let gap_style = space_style(texts, styles, prev_end, *span, TextStyle::default());
+                push_gap(&mut items, gap, gap_style, factor);
                 items.push(match &**inline {
                     Inline::HSpace { pt, .. } => Item::HSpace { pt: *pt },
-                    _ => Item::HFill,
+                    _ => Item::HFill {
+                        fill: !is_control_word(text_of(span.document), span.start, "hfil"),
+                    },
                 });
                 prev_end = Some(span.end);
                 prev_span = Some(*span);
@@ -1365,14 +1674,9 @@ fn items_from_inlines(texts: &[&str], inlines: &[Inline], styles: &[Styles], lab
                 // Each row becomes its own display item (`is_display`
                 // recognises the row spans); the environment's span ends
                 // the preceding text like `\[`.
-                if space_between(prev_end, prev_span, *span) {
-                    let gap_style = space_style(texts, styles, prev_end, *span, TextStyle::default());
-                    items.push(Item::Space {
-                        style: gap_style,
-                        factor,
-                        no_break: false,
-                    });
-                }
+                let gap = space_between(prev_end, prev_span, *span, None);
+                let gap_style = space_style(texts, styles, prev_end, *span, TextStyle::default());
+                push_gap(&mut items, gap, gap_style, factor);
                 for row in rows {
                     items.push(Item::Math {
                         list: math_row_list(row),
@@ -1384,15 +1688,10 @@ fn items_from_inlines(texts: &[&str], inlines: &[Inline], styles: &[Styles], lab
                 factor = 1000;
             }
             Inline::Math { list, span, .. } => {
-                if space_between(prev_end, prev_span, *span) {
-                    // The glue is the current font's where the space sits.
-                    let gap_style = space_style(texts, styles, prev_end, *span, TextStyle::default());
-                    items.push(Item::Space {
-                        style: gap_style,
-                        factor,
-                        no_break: false,
-                    });
-                }
+                // The glue is the current font's where the space sits.
+                let gap = space_between(prev_end, prev_span, *span, None);
+                let gap_style = space_style(texts, styles, prev_end, *span, TextStyle::default());
+                push_gap(&mut items, gap, gap_style, factor);
                 items.push(Item::Math {
                     list: list.clone(),
                     span: *span,
@@ -1421,19 +1720,24 @@ fn items_from_inlines(texts: &[&str], inlines: &[Inline], styles: &[Styles], lab
                     None
                 };
                 let is_accent = accent_char.is_some();
-                let style = style_at(styles_of(span.document), span.start);
-                let has_space = space_between(prev_end, prev_span, *span);
+                let mut style = style_at(styles_of(span.document), span.start);
+                if heading {
+                    // `\@startsection` sets `\bfseries`; the compiler's
+                    // heading styles start bold and `\normalfont`/
+                    // `\mdseries` in the title clears it.
+                    let Inline::Text { style: cs, .. } = &**inline else { unreachable!() };
+                    style.medium = !cs.bold;
+                    style.italic |= cs.italic;
+                }
+                let gap = space_between(prev_end, prev_span, *span, Some(text));
+                let has_space = gap.0 || !gap.1.is_empty();
                 if has_space {
                     // TeX sizes an interword space with the font current
                     // where the space token is read ("Plain, \textbf{bold}"
                     // gets a regular space, "\textbf{bold words}" a bold one,
                     // "\textbf{\emph{x}} y" a regular one).
                     let gap_style = space_style(texts, styles, prev_end, *span, style);
-                    items.push(Item::Space {
-                        style: gap_style,
-                        factor,
-                        no_break: false,
-                    });
+                    push_gap(&mut items, gap, gap_style, factor);
                     pending_accent = None;
                 }
                 if let Some(mark) = accent_char {
