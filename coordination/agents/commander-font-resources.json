@@ -13,7 +13,7 @@
   "capabilities": [
     "rust-font-resources"
   ],
-  "code_revision": "9335f3de0fdbb02e766390472ac45f1497fcc6c5",
+  "code_revision": "cf427f963ac94896d1f2c67bff7258111cbdf8e0",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
@@ -21,13 +21,13 @@
   },
   "machine": "linux-primary",
   "main_integrated_through": "4b4647e399349c46d5cd0f146f5c0997cd111ac2",
-  "next_action": "Renderer handoff sent; registry CFF and mixedgeneration/cache invalidation followup complete. Ready next assigned product task.",
+  "next_action": "Renderer handoff sent; transport and boundednative metadata followup complete. Ready next assigned product stage.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "Published9335f3d rooted CFF registry extension.92tests/clippy and pinned mixedSTIX/Liberation registry replay pass. Typed backend resources preserve fullfont/CFFtable/face/license identity via existing engine/CFF parser; generation invalidates license-provenance changes and heldgeometry survives externalfont edits unchanged. No peer edits/fonts vendored/visualparity claim.",
+  "summary": "Publishedcf427f9 bounded registry transportv2 and metadata pagination.92tests/clippy plus pinned mixedTTF/CFF deterministic roundtrip pass. Strict duplicate/unknown JSON keys, exact CFFtable claims, generation mismatch, exportbyte/page/filter limits tested. Rooted schema1/2imports reuse validators; resource API/generation unchanged. No discovery/fallback/wireactivation.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T07:46:22Z",
+  "updated_utc": "2026-09-12T07:51:41Z",
   "usage": {
     "evidence": "crates/font-resources/README.md; test suite; installed font SHA pinned.",
     "status": "Hosted allocation; no external provider calls; account remainder unknown."
