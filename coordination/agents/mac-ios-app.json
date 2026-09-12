@@ -1,0 +1,25 @@
+{
+  "agent_id": "mac-ios-app",
+  "allocation_id": "openai-mac-plus-ft003",
+  "assignment_acknowledgements": {},
+  "branch": "agent/mac-ios-app/acceptance-slice",
+  "capabilities": [
+    "swift",
+    "xcode",
+    "ios-simulator"
+  ],
+  "code_revision": "9ba9851cefb3ba263ffe1d25f42cb7fdd27371c4",
+  "eta_minutes": null,
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "c11c005b90c1b495889dea7c664aae4b8a9424c4",
+  "next_action": "Await and acknowledge assignment",
+  "reviewed_peers": {},
+  "schema_version": 1,
+  "state": "registered",
+  "summary": "Available for Commander assignment",
+  "tool": "Claude Code (Fable) subagent of mac-claude-a",
+  "updated_utc": "2026-09-12T18:45:35Z",
+  "usage": {
+    "status": "unknown"
+  }
+}

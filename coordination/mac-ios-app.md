@@ -1,0 +1,16 @@
+# mac-ios-app handoff
+
+## Durable checkpoint — 2026-09-12T18:47Z (actual `date -u`)
+
+- Task: issue #51 / issue #2 comment 5647841253 — two-hour iPad acceptance slice (deadline 20:28Z from the user's 18:28Z request). Parent mac-claude-a; Fable subagent; iPad SIMULATOR ONLY.
+- Branch `agent/mac-ios-app/acceptance-slice` from origin/agent/mac-claude-a/mac-shell 9ba9851c; worktree `/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-ac31e4eddb346a6d2`. Owned paths: `apps/ios/**`, `coordination/mac-ios-app.md`, `coordination/agents/mac-ios-app.json`, `docs/evidence/ios-acceptance-2026-09-12/`. Never edits apps/mac, apps/companion, crates.
+- Build: `cd apps/ios && xcodebuild -project FlashTeXPad.xcodeproj -scheme FlashTeXPad -destination 'platform=iOS Simulator,name=iPad Air 11-inch (M3)' build` → BUILD SUCCEEDED (18:42Z, Xcode 26.3 17C529, iOS 26.3 runtime 23D8133). Test run: see "Evidence" below.
+- Simulator booted by this lane: iPad Air 11-inch (M3) udid 82FE2469-DE41-450C-95EF-36E6FB94D6B7 (shut down at the end of the lane; the pre-booted iPad Pro 13-inch (M5) belongs to someone else and was not touched).
+- Architecture (truthful): iPad is a client of the Mac over nearby-v1/transfer-v1 using the reference client's code by symlink (`apps/mac/tools/nearby-client/Sources/NearbyClient`) and `FlashTeXProtocol` by symlink. Real on the wire: pair (code → HKDF → TLS-PSK → hello/hello_ack + pair_psk), destination_query, capture_submit → capture_received. Not carried by transfer-v1 (nearby-v1 proposal §6): compile results, diagnostics, completions, proposals, insertion receipts — panels are banner-labelled; the reviewed-proposal gate runs locally over the assistant-context `proposal_review`/`approved_group` shapes using the recorded fixture `crates/assistant-context/examples/review-workflow.json` (synthetic, provider_called:false). No new protocol.
+- Next: read test-3 result → screenshots via `xcrun simctl io 82FE2469-… screenshot` into docs/evidence/ios-acceptance-2026-09-12/ → evidence README → commit + push → report.
+- Rules in force: author jay3332 (repo config); trailers `Implementation-Agent: Claude Code subagent mac-ios-app (parent mac-claude-a, Fable)`, `Commit-Executor: git via Claude Code`, `Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>`, `Claude-Session: https://claude.ai/code/session_01Y1nAv4pEnmMYXgteBoadHn`. No purchases; no Rust edits; kill only pids I launched. Resource: parent's Claude Max 20x allowance (shared quota; usage unknown to this lane).
+
+Agent / task / branch: mac-ios-app (Claude Code Fable subagent of mac-claude-a on mac-m1max-a) / iPad acceptance slice (#51) / `agent/mac-ios-app/acceptance-slice`
+State: in_progress — app + package + tests written, app builds for the iPad simulator; test run in progress at this checkpoint.
+Deliverable: `apps/ios/` (README.md has the real-vs-local table, build/test commands, gaps).
+Contract note for the Commander: nearby-v1 §6 leaves no path for proposals, diagnostics or completions to reach a companion. If the iPad is to review Mac-side proposals, that is a contract addition (e.g. carrying `capture_proposal`/`capture_edit`/`capture_application_received` over the nearby session) — not invented here.

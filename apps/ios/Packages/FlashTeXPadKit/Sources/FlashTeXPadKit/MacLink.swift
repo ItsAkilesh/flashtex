@@ -1,0 +1,108 @@
+import Foundation
+import Network
+import NearbyClient
+
+/// The iPad's link to a Mac over the EXISTING nearby-v1 / transfer-v1
+/// contract (apps/mac/docs/nearby-v1-proposal.md §4). Every request below is
+/// one the reference client already speaks; this file adds no message type.
+///
+/// What the transport carries to a companion, and therefore what this link
+/// can truthfully do:
+///   hello → hello_ack {mac_name, destination, pair_psk?}     (pairing, current pin)
+///   destination_query → destination {destination | null}    (re-read the pin)
+///   capture_submit → capture_received {capture_id, durable, has_proposal, applied}
+/// What it does NOT carry (proposal §6 "Not provided in v1"): compile results,
+/// diagnostics, completions, proposals or insertion results. Those stay on the
+/// Mac; the app labels every such panel "not carried by transfer-v1".
+public final class MacLink: @unchecked Sendable {
+    public struct TranscriptLine: Identifiable, Equatable {
+        public enum Direction: String { case sent, received, note }
+        public let id = UUID()
+        public let at: Date
+        public let direction: Direction
+        public let text: String
+        public init(at: Date = Date(), direction: Direction, text: String) { self.at = at; self.direction = direction; self.text = text }
+    }
+
+    private let lock = NSLock()
+    private var _session: NearbySession?
+    private var _pair: PairedMac?
+    private var _transcript: [TranscriptLine] = []
+    /// Called on an arbitrary queue whenever the transcript grows.
+    public var onTranscript: (@Sendable (TranscriptLine) -> Void)?
+    public let store: PairFile?
+
+    public init(store: PairFile? = nil) { self.store = store }
+
+    public var session: NearbySession? { lock.withLock { _session } }
+    public var pair: PairedMac? { lock.withLock { _pair } }
+    public var transcript: [TranscriptLine] { lock.withLock { _transcript } }
+    public var isConnected: Bool { session?.isOpen ?? false }
+    public var destination: NearbyWire.Destination? { session?.destination }
+
+    private func log(_ d: TranscriptLine.Direction, _ text: String) {
+        let line = TranscriptLine(direction: d, text: text)
+        lock.withLock { _transcript.append(line); if _transcript.count > 200 { _transcript.removeFirst() } }
+        onTranscript?(line)
+    }
+
+    private func onLine(_ dir: NearbyConnection.Direction, _ data: Data) {
+        // The bootstrap hello_ack carries pair_psk; never echo key material.
+        var s = String(decoding: data, as: UTF8.self).trimmingCharacters(in: .newlines)
+        if s.contains("\"pair_psk\"") { s = s.replacingOccurrences(of: #""pair_psk":"[^"]*""#, with: #""pair_psk":"<redacted>""#, options: .regularExpression) }
+        if s.contains("\"data_base64\"") { s = s.replacingOccurrences(of: #""data_base64":"[^"]*""#, with: #""data_base64":"<image bytes>""#, options: .regularExpression) }
+        log(dir == .sent ? .sent : .received, s)
+    }
+
+    /// Pairing-code bootstrap (proposal §2/§7 step 2): derive pair_id/psk_boot
+    /// from (code, salt), TLS-PSK, `hello`, keep `hello_ack.pair_psk`.
+    /// `salt` is the Mac's TXT `salt` (16 bytes hex) and `fingerprint` its `fp`.
+    @discardableResult
+    public func pair(host: String, port: UInt16, saltHex: String, fingerprint: String, macName: String,
+                     code: String, companionName: String) async throws -> PairedMac {
+        guard let salt = NearbyCrypto.data(hex: saltHex) else { throw NearbyError.invalidInput("salt is not hex") }
+        let endpoint = NWEndpoint.hostPort(host: NWEndpoint.Host(host), port: NWEndpoint.Port(rawValue: port)!)
+        log(.note, "pairing with \(macName) at \(host):\(port) fp=\(fingerprint)")
+        let (pair, session) = try await NearbyClient.pair(endpoint: endpoint, salt: salt, fingerprint: fingerprint, macName: macName,
+                                                          code: code, companionName: companionName, onLine: { [weak self] in self?.onLine($0, $1) })
+        session.connection.onClose = { [weak self] why in self?.log(.note, "closed: \(why)") }
+        lock.withLock { _session = session; _pair = pair }
+        try? store?.upsert(pair)
+        log(.note, "paired: \(pair.macName) pair_id=\(pair.pairId) destination=\(session.destination.map { $0.destinationId } ?? "null")")
+        return pair
+    }
+
+    /// Every later connection (proposal §7 step 3) with the stored `pair_psk`.
+    public func connect(host: String, port: UInt16, pair: PairedMac) async throws {
+        let endpoint = NWEndpoint.hostPort(host: NWEndpoint.Host(host), port: NWEndpoint.Port(rawValue: port)!)
+        log(.note, "connecting to \(pair.macName) at \(host):\(port)")
+        let session = try await NearbyClient.connect(endpoint: endpoint, pair: pair, onLine: { [weak self] in self?.onLine($0, $1) })
+        session.connection.onClose = { [weak self] why in self?.log(.note, "closed: \(why)") }
+        lock.withLock { _session = session; _pair = pair }
+    }
+
+    public func destinationQuery() async throws -> NearbyWire.Destination? {
+        guard let s = session else { throw NearbyError.closed("not connected") }
+        return try await s.destinationQuery()
+    }
+
+    /// transfer-v1 `capture_submit` → `capture_received`. The Mac converts and
+    /// reviews on its side; the receipt is all the companion learns.
+    public func submitCapture(image: Data, mimeType: String, instructions: String,
+                              captureId: String = "cap-" + UUID().uuidString.lowercased()) async throws -> NearbyWire.CaptureReceived {
+        guard let s = session else { throw NearbyError.closed("not connected") }
+        let dest = try await s.destinationQuery()
+        guard dest != nil else {
+            throw NearbyError.invalidInput("the Mac has no pinned insertion point (Edit > Pin Insertion Point on the Mac)")
+        }
+        let cap = try s.makeCapture(captureId: captureId, image: image, mimeType: mimeType, instructions: instructions, destination: dest)
+        let r = try await s.submitCapture(cap)
+        log(.note, "capture_received \(r.captureId) durable=\(r.durable) has_proposal=\(r.hasProposal) applied=\(r.applied)")
+        return r
+    }
+
+    public func disconnect() {
+        let s = lock.withLock { () -> NearbySession? in let s = _session; _session = nil; return s }
+        s?.close()
+    }
+}
