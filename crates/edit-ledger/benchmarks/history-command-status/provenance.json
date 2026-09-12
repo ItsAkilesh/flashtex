@@ -1,0 +1,20 @@
+{
+  "action": "durable undo",
+  "full": {
+    "allocation_calls": 31,
+    "requested_bytes": 5002401
+  },
+  "saved_requested_bytes": 500073,
+  "scope": "single pair, counting allocation/reallocation requests during existing full API and status API; excludes setup, response encoding, native IO and paint; not peak memory or elapsed time",
+  "source_bytes": 500000,
+  "status": {
+    "allocation_calls": 27,
+    "requested_bytes": 4502328
+  },
+  "source_base": "3a660762e517b00dc263c129793c624a9ed6bdf1",
+  "profile": "debug; allocation counts only",
+  "sha256": {
+    "crates/edit-ledger/examples/history_status_probe.rs": "99f09df429e8fdbc140df0a31e46422cfaaeb9614108b2e672341fc974c83275",
+    "crates/edit-ledger/target/debug/examples/history_status_probe": "2023ac7f659c6ca8bc4f1b3df3d1234491ac88337ebec4a2e7e592ab505b8384"
+  }
+}

@@ -50,5 +50,13 @@
     },
     "accepted_retained_stems": 455,
     "scope": "First failing operation; decimal/rational divisions outside dyadic Coordinate refused, callothersubr unsupported. No visual parity."
+  },
+  "rational_unhinted_exact_division": {
+    "outcomes": {
+      "Unsupported(272)": 502,
+      "accepted": 320
+    },
+    "exact_dyadic_pairs": 171,
+    "scope": "Raw exact rational geometry only; all remaining glyphs first refuse callothersubr. Context gate closed."
   }
 }

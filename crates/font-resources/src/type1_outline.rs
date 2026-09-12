@@ -1,6 +1,6 @@
 //! Original bounded Type1 charstring subset. No hints, PostScript or FontMatrix application.
 use crate::{
-    cff::{CubicCommand, CubicPoint, HintPolicy, Rational},
+    cff::{CubicCommand, CubicPoint, HintPolicy, MatrixCommand, Rational, RationalPoint},
     pfb::Identity,
     sha256,
     type1_records::Records,
@@ -58,23 +58,50 @@ pub struct Outline {
     pub policy: Policy,
     pub stems: Vec<Stem>,
 }
-fn point(x: i32, y: i32) -> CubicPoint {
-    CubicPoint {
-        x: Coordinate::from_integer(x),
-        y: Coordinate::from_integer(y),
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RationalStem {
+    pub vertical: bool,
+    pub relative_position: Rational,
+    pub position: Rational,
+    pub width: Rational,
+    pub triple: bool,
+    pub source: CommandSource,
+}
+pub struct RationalOutline {
+    pub identity: Identity,
+    pub glyph_name: String,
+    pub charstring_sha256: String,
+    pub sidebearing: RationalPoint,
+    pub advance: RationalPoint,
+    pub commands: Vec<MatrixCommand>,
+    pub sources: Vec<CommandSource>,
+    pub policy: Policy,
+    pub stems: Vec<RationalStem>,
+}
+impl RationalOutline {
+    /// Explicit exact-only conversion. Never rounds non-dyadic geometry.
+    pub fn try_into_dyadic(self) -> Result<Outline, Error> {
+        convert(self)
+    }
+}
+fn point(x: i32, y: i32) -> RationalPoint {
+    RationalPoint {
+        x: integer(x),
+        y: integer(y),
     }
 }
 struct Decoder<F> {
     lookup: F,
-    stack: Vec<Coordinate>,
+    stack: Vec<Rational>,
     policy: Policy,
-    stems: Vec<Stem>,
-    at: CubicPoint,
-    bearing: CubicPoint,
-    advance: CubicPoint,
+    rational_division: bool,
+    stems: Vec<RationalStem>,
+    at: RationalPoint,
+    bearing: RationalPoint,
+    advance: RationalPoint,
     width: bool,
     open: bool,
-    commands: Vec<CubicCommand>,
+    commands: Vec<MatrixCommand>,
     sources: Vec<CommandSource>,
     calls: Vec<usize>,
     steps: usize,
@@ -86,18 +113,22 @@ enum Flow {
     Return,
 }
 impl<F: FnMut(usize) -> Result<Vec<u8>, Error>> Decoder<F> {
-    fn args(&mut self, n: usize) -> Result<Vec<Coordinate>, Error> {
+    fn args(&mut self, n: usize) -> Result<Vec<Rational>, Error> {
         if self.stack.len() != n {
             return Err(Error::Stack);
         }
         Ok(std::mem::take(&mut self.stack))
     }
-    fn delta(&mut self, x: Coordinate, y: Coordinate) -> Result<CubicPoint, Error> {
-        self.at.x = self.at.x.add(x).map_err(|_| Error::Arithmetic)?;
-        self.at.y = self.at.y.add(y).map_err(|_| Error::Arithmetic)?;
+    fn delta(&mut self, x: Rational, y: Rational) -> Result<RationalPoint, Error> {
+        self.at.x = self.at.x.checked_add(x).map_err(|_| Error::Arithmetic)?;
+        self.at.y = self.at.y.checked_add(y).map_err(|_| Error::Arithmetic)?;
+        if !self.rational_division {
+            to_coordinate(self.at.x)?;
+            to_coordinate(self.at.y)?;
+        }
         Ok(self.at)
     }
-    fn emit(&mut self, command: CubicCommand, offset: usize) -> Result<(), Error> {
+    fn emit(&mut self, command: MatrixCommand, offset: usize) -> Result<(), Error> {
         if self.commands.len() == 16384 {
             return Err(Error::Budget);
         }
@@ -138,7 +169,7 @@ impl<F: FnMut(usize) -> Result<Vec<u8>, Error>> Decoder<F> {
                 if self.stack.len() == 24 {
                     return Err(Error::Stack);
                 }
-                self.stack.push(Coordinate::from_integer(n));
+                self.stack.push(integer(n));
                 continue;
             }
             let op = if op == 12 {
@@ -153,7 +184,11 @@ impl<F: FnMut(usize) -> Result<Vec<u8>, Error>> Decoder<F> {
                 0x10c if self.policy.exact_division => {
                     let denominator = self.stack.pop().ok_or(Error::Stack)?;
                     let numerator = self.stack.pop().ok_or(Error::Stack)?;
-                    self.stack.push(divide(numerator, denominator)?);
+                    let quotient = rational_divide(numerator, denominator)?;
+                    if !self.rational_division {
+                        to_coordinate(quotient)?;
+                    }
+                    self.stack.push(quotient);
                 }
                 1 | 3 | 0x101 | 0x102 if self.policy.hints == HintPolicy::Unhinted => {
                     if !self.width {
@@ -171,10 +206,12 @@ impl<F: FnMut(usize) -> Result<Vec<u8>, Error>> Decoder<F> {
                         self.bearing.y
                     };
                     for pair in a.as_chunks::<2>().0 {
-                        self.stems.push(Stem {
+                        self.stems.push(RationalStem {
                             vertical,
                             relative_position: pair[0],
-                            position: pair[0].add(bearing).map_err(|_| Error::Arithmetic)?,
+                            position: pair[0]
+                                .checked_add(bearing)
+                                .map_err(|_| Error::Arithmetic)?,
                             width: pair[1],
                             triple,
                             source: CommandSource {
@@ -191,12 +228,12 @@ impl<F: FnMut(usize) -> Result<Vec<u8>, Error>> Decoder<F> {
                     }
                     let a = self.args(if op == 13 { 2 } else { 4 })?;
                     self.bearing = if op == 13 {
-                        cpoint(a[0], Coordinate::from_integer(0))
+                        cpoint(a[0], integer(0))
                     } else {
                         cpoint(a[0], a[1])
                     };
                     self.advance = if op == 13 {
-                        cpoint(a[1], Coordinate::from_integer(0))
+                        cpoint(a[1], integer(0))
                     } else {
                         cpoint(a[2], a[3])
                     };
@@ -209,12 +246,12 @@ impl<F: FnMut(usize) -> Result<Vec<u8>, Error>> Decoder<F> {
                     }
                     let a = self.args(if op == 21 { 2 } else { 1 })?;
                     let (x, y) = match op {
-                        4 => (Coordinate::from_integer(0), a[0]),
-                        22 => (a[0], Coordinate::from_integer(0)),
+                        4 => (integer(0), a[0]),
+                        22 => (a[0], integer(0)),
                         _ => (a[0], a[1]),
                     };
                     let p = self.delta(x, y)?;
-                    self.emit(CubicCommand::MoveTo(p), offset)?;
+                    self.emit(MatrixCommand::MoveTo(p), offset)?;
                     self.open = true;
                 }
                 5..=7 => {
@@ -223,12 +260,12 @@ impl<F: FnMut(usize) -> Result<Vec<u8>, Error>> Decoder<F> {
                     }
                     let a = self.args(if op == 5 { 2 } else { 1 })?;
                     let (x, y) = match op {
-                        6 => (a[0], Coordinate::from_integer(0)),
-                        7 => (Coordinate::from_integer(0), a[0]),
+                        6 => (a[0], integer(0)),
+                        7 => (integer(0), a[0]),
                         _ => (a[0], a[1]),
                     };
                     let p = self.delta(x, y)?;
-                    self.emit(CubicCommand::LineTo(p), offset)?;
+                    self.emit(MatrixCommand::LineTo(p), offset)?;
                 }
                 8 | 30 | 31 => {
                     if !self.open {
@@ -236,29 +273,15 @@ impl<F: FnMut(usize) -> Result<Vec<u8>, Error>> Decoder<F> {
                     }
                     let a = self.args(if op == 8 { 6 } else { 4 })?;
                     let d = match op {
-                        30 => [
-                            Coordinate::from_integer(0),
-                            a[0],
-                            a[1],
-                            a[2],
-                            a[3],
-                            Coordinate::from_integer(0),
-                        ],
-                        31 => [
-                            a[0],
-                            Coordinate::from_integer(0),
-                            a[1],
-                            a[2],
-                            Coordinate::from_integer(0),
-                            a[3],
-                        ],
+                        30 => [integer(0), a[0], a[1], a[2], a[3], integer(0)],
+                        31 => [a[0], integer(0), a[1], a[2], integer(0), a[3]],
                         _ => [a[0], a[1], a[2], a[3], a[4], a[5]],
                     };
                     let control1 = self.delta(d[0], d[1])?;
                     let control2 = self.delta(d[2], d[3])?;
                     let end = self.delta(d[4], d[5])?;
                     self.emit(
-                        CubicCommand::CurveTo {
+                        MatrixCommand::CurveTo {
                             control1,
                             control2,
                             end,
@@ -271,12 +294,12 @@ impl<F: FnMut(usize) -> Result<Vec<u8>, Error>> Decoder<F> {
                     if !self.open {
                         return Err(Error::Path);
                     }
-                    self.emit(CubicCommand::Close, offset)?;
+                    self.emit(MatrixCommand::Close, offset)?;
                     self.open = false;
                 }
                 10 => {
                     let operand = self.stack.pop().ok_or(Error::Stack)?;
-                    if operand.shift() != 0 {
+                    if operand.denominator() != 1 {
                         return Err(Error::Call);
                     }
                     let index = usize::try_from(operand.numerator()).map_err(|_| Error::Call)?;
@@ -327,13 +350,30 @@ pub fn interpret_with_policy(
     glyph_name: &str,
     policy: Policy,
 ) -> Result<Outline, Error> {
+    convert(run_records(records, glyph_name, policy, false)?)
+}
+/// Exact rational raw character-space API; no FontMatrix/PaintType or renderer activation.
+pub fn interpret_rational(
+    records: &Records<'_>,
+    glyph_name: &str,
+    policy: Policy,
+) -> Result<RationalOutline, Error> {
+    run_records(records, glyph_name, policy, true)
+}
+fn run_records(
+    records: &Records<'_>,
+    glyph_name: &str,
+    policy: Policy,
+    rational: bool,
+) -> Result<RationalOutline, Error> {
     let bytes = records.decrypted_glyph(glyph_name).map_err(Error::Record)?;
     let mut d = decoder(|i| records.decrypted_subr(i).map_err(Error::Record));
     d.policy = policy;
+    d.rational_division = rational;
     if d.run(&bytes, false)? != Flow::End {
         return Err(Error::Call);
     }
-    Ok(Outline {
+    Ok(RationalOutline {
         identity: records.identity().clone(),
         glyph_name: glyph_name.into(),
         charstring_sha256: sha256(&bytes),
@@ -345,11 +385,72 @@ pub fn interpret_with_policy(
         stems: d.stems,
     })
 }
+fn convert(raw: RationalOutline) -> Result<Outline, Error> {
+    if raw.commands.len() > 16384
+        || raw.commands.len() != raw.sources.len()
+        || raw.stems.len() > 4096
+        || raw.sources.iter().any(|s| s.subroutine_chain.len() > 16)
+    {
+        return Err(Error::Budget);
+    }
+    let cv = |p: RationalPoint| {
+        Ok::<_, Error>(CubicPoint {
+            x: to_coordinate(p.x)?,
+            y: to_coordinate(p.y)?,
+        })
+    };
+    let commands = raw
+        .commands
+        .into_iter()
+        .map(|c| {
+            Ok(match c {
+                MatrixCommand::MoveTo(p) => CubicCommand::MoveTo(cv(p)?),
+                MatrixCommand::LineTo(p) => CubicCommand::LineTo(cv(p)?),
+                MatrixCommand::CurveTo {
+                    control1,
+                    control2,
+                    end,
+                } => CubicCommand::CurveTo {
+                    control1: cv(control1)?,
+                    control2: cv(control2)?,
+                    end: cv(end)?,
+                },
+                MatrixCommand::Close => CubicCommand::Close,
+            })
+        })
+        .collect::<Result<Vec<_>, Error>>()?;
+    let stems = raw
+        .stems
+        .into_iter()
+        .map(|s| {
+            Ok(Stem {
+                vertical: s.vertical,
+                relative_position: to_coordinate(s.relative_position)?,
+                position: to_coordinate(s.position)?,
+                width: to_coordinate(s.width)?,
+                triple: s.triple,
+                source: s.source,
+            })
+        })
+        .collect::<Result<Vec<_>, Error>>()?;
+    Ok(Outline {
+        identity: raw.identity,
+        glyph_name: raw.glyph_name,
+        charstring_sha256: raw.charstring_sha256,
+        sidebearing: cv(raw.sidebearing)?,
+        advance: cv(raw.advance)?,
+        commands,
+        sources: raw.sources,
+        policy: raw.policy,
+        stems,
+    })
+}
 fn decoder<F: FnMut(usize) -> Result<Vec<u8>, Error>>(lookup: F) -> Decoder<F> {
     Decoder {
         lookup,
         stack: vec![],
         policy: Policy::default(),
+        rational_division: false,
         stems: vec![],
         at: point(0, 0),
         bearing: point(0, 0),
@@ -363,30 +464,38 @@ fn decoder<F: FnMut(usize) -> Result<Vec<u8>, Error>>(lookup: F) -> Decoder<F> {
         bytes: 0,
     }
 }
-fn cpoint(x: Coordinate, y: Coordinate) -> CubicPoint {
-    CubicPoint { x, y }
+fn integer(n: i32) -> Rational {
+    Rational::new(i128::from(n), 1).expect("integer denominator is positive")
 }
-fn divide(a: Coordinate, b: Coordinate) -> Result<Coordinate, Error> {
+fn cpoint(x: Rational, y: Rational) -> RationalPoint {
+    RationalPoint { x, y }
+}
+fn rational_divide(a: Rational, b: Rational) -> Result<Rational, Error> {
     if b.numerator() == 0 {
         return Err(Error::Arithmetic);
     }
     let sign = if b.numerator() < 0 { -1i128 } else { 1 };
-    let reciprocal = Rational::new(
-        (1i128 << b.shift())
-            .checked_mul(sign)
-            .ok_or(Error::Arithmetic)?,
+    let inverse = Rational::new(
+        b.denominator().checked_mul(sign).ok_or(Error::Arithmetic)?,
         b.numerator().checked_abs().ok_or(Error::Arithmetic)?,
     )
     .map_err(|_| Error::Arithmetic)?;
-    let ratio = Rational::new(a.numerator(), 1i128 << a.shift())
-        .and_then(|a| a.checked_mul(reciprocal))
-        .map_err(|_| Error::Arithmetic)?;
+    a.checked_mul(inverse).map_err(|_| Error::Arithmetic)
+}
+fn to_coordinate(ratio: Rational) -> Result<Coordinate, Error> {
     let denominator = ratio.denominator() as u128;
     if !denominator.is_power_of_two() {
         return Err(Error::UnrepresentableDivision);
     }
     Coordinate::new(ratio.numerator(), denominator.trailing_zeros())
         .map_err(|_| Error::UnrepresentableDivision)
+}
+#[cfg(test)]
+fn divide(a: Coordinate, b: Coordinate) -> Result<Coordinate, Error> {
+    to_coordinate(rational_divide(
+        Rational::new(a.numerator(), 1i128 << a.shift()).map_err(|_| Error::Arithmetic)?,
+        Rational::new(b.numerator(), 1i128 << b.shift()).map_err(|_| Error::Arithmetic)?,
+    )?)
 }
 #[cfg(test)]
 mod tests {
@@ -425,13 +534,13 @@ mod tests {
         assert_eq!(d.advance, point(500, 0));
         assert_eq!(
             d.commands[1],
-            CubicCommand::CurveTo {
+            MatrixCommand::CurveTo {
                 control1: point(11, 2),
                 control2: point(14, 6),
                 end: point(19, 12)
             }
         );
-        assert_eq!(d.commands[3], CubicCommand::MoveTo(point(20, 12)));
+        assert_eq!(d.commands[3], MatrixCommand::MoveTo(point(20, 12)));
         assert_eq!(d.sources[1].subroutine_chain, vec![0]);
     }
     #[test]
@@ -522,9 +631,9 @@ mod tests {
             exact_division: true,
         };
         assert!(d.run(&b, false) == Ok(Flow::End));
-        assert_eq!(d.stems[0].relative_position, Coordinate::new(3, 1).unwrap());
-        assert_eq!(d.stems[0].position, Coordinate::new(23, 1).unwrap());
-        assert_eq!(d.stems[0].width, Coordinate::from_integer(-20));
+        assert_eq!(d.stems[0].relative_position, Rational::new(3, 2).unwrap());
+        assert_eq!(d.stems[0].position, Rational::new(23, 2).unwrap());
+        assert_eq!(d.stems[0].width, integer(-20));
         assert!(d.commands.is_empty());
         assert_eq!(
             divide(Coordinate::from_integer(1), Coordinate::from_integer(3)),
@@ -544,5 +653,65 @@ mod tests {
         let mut d = decoder(|_| Err(Error::Call));
         d.policy.hints = HintPolicy::Unhinted;
         assert_eq!(d.run(&b, false).err(), Some(Error::Stack));
+    }
+    #[test]
+    fn rational_width_translation_curve_and_overflow() {
+        let mut bytes = Vec::new();
+        num(1, &mut bytes);
+        num(3, &mut bytes);
+        bytes.extend([12, 12]);
+        num(100, &mut bytes);
+        num(3, &mut bytes);
+        bytes.extend([12, 12, 13]);
+        for n in [1, 3] {
+            num(n, &mut bytes)
+        }
+        bytes.extend([12, 12]);
+        num(0, &mut bytes);
+        bytes.push(21);
+        for n in [1, 1, 1, 1, 1, 1] {
+            num(n, &mut bytes)
+        }
+        bytes.extend([8, 9, 14]);
+        let mut d = decoder(|_| Err(Error::Call));
+        d.policy = Policy {
+            hints: HintPolicy::Unhinted,
+            exact_division: true,
+        };
+        d.rational_division = true;
+        assert!(d.run(&bytes, false) == Ok(Flow::End));
+        assert_eq!(d.bearing.x, Rational::new(1, 3).unwrap());
+        assert_eq!(d.advance.x, Rational::new(100, 3).unwrap());
+        assert_eq!(
+            d.commands[0],
+            MatrixCommand::MoveTo(RationalPoint {
+                x: Rational::new(2, 3).unwrap(),
+                y: integer(0)
+            })
+        );
+        assert_eq!(
+            d.commands[1],
+            MatrixCommand::CurveTo {
+                control1: RationalPoint {
+                    x: Rational::new(5, 3).unwrap(),
+                    y: integer(1)
+                },
+                control2: RationalPoint {
+                    x: Rational::new(8, 3).unwrap(),
+                    y: integer(2)
+                },
+                end: RationalPoint {
+                    x: Rational::new(11, 3).unwrap(),
+                    y: integer(3)
+                }
+            }
+        );
+        assert_eq!(
+            rational_divide(
+                Rational::new(i128::MAX, 1).unwrap(),
+                Rational::new(1, 2).unwrap()
+            ),
+            Err(Error::Arithmetic)
+        );
     }
 }

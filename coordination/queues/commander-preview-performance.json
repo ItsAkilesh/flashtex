@@ -4,48 +4,48 @@
   "schema_version": 1,
   "steps": [
     {
+      "name": "Trace completed intermediate compiler generations to stale notifications in the existing sustained typing capture",
+      "objective": "Trace completed intermediate compiler generations to stale notifications in the existing sustained typing capture",
+      "owned_paths": [
+        "crates/preview-controller",
+        "crates/edit-ledger"
+      ],
       "acceptance": [
         "Preserve exact source revision/hash, durable approval and permanent-ID guarantees; history metadata is source-free and does not change retention",
         "Do not edit crates/document-runtime after published ecbaf7c handoff; consume FT049 reviewed API only",
         "Helper v2 forwarding remains default OFF, preserves required-output priority and complete frame limits, and never claims native rendering validation"
       ],
       "allocation_id": "hosted-openai-product",
-      "name": "Expose source-bound history metadata and consume the separately owned runtime display-list-v2 candidate interface through bounded opt-in helper forwarding",
-      "objective": "Expose source-bound history metadata and consume the separately owned runtime display-list-v2 candidate interface through bounded opt-in helper forwarding",
-      "owned_paths": [
-        "crates/preview-controller",
-        "crates/edit-ledger"
-      ],
       "timebox_minutes": 40
     },
     {
+      "name": "Measure one explicit completed-snapshots opt-in burst with exact origin tokens and separate historical and current counts",
+      "objective": "Measure one explicit completed-snapshots opt-in burst with exact origin tokens and separate historical and current counts",
+      "owned_paths": [
+        "crates/preview-controller",
+        "crates/edit-ledger"
+      ],
       "acceptance": [
         "Preserve exact source revision/hash, durable approval and permanent-ID guarantees; history metadata is source-free and does not change retention",
         "Do not edit crates/document-runtime after published ecbaf7c handoff; consume FT049 reviewed API only",
         "Helper v2 forwarding remains default OFF, preserves required-output priority and complete frame limits, and never claims native rendering validation"
       ],
       "allocation_id": "hosted-openai-product",
-      "name": "Wire the reviewed FT049 candidate API with exact session/project/source identity and bounded optional delivery; default legacy behavior unchanged",
-      "objective": "Wire the reviewed FT049 candidate API with exact session/project/source identity and bounded optional delivery; default legacy behavior unchanged",
-      "owned_paths": [
-        "crates/preview-controller",
-        "crates/edit-ledger"
-      ],
       "timebox_minutes": 40
     },
     {
+      "name": "Verify source authority final clean preview durable reopen and receipt retry while preserving default OFF and report limitations",
+      "objective": "Verify source authority final clean preview durable reopen and receipt retry while preserving default OFF and report limitations",
+      "owned_paths": [
+        "crates/preview-controller",
+        "crates/edit-ledger"
+      ],
       "acceptance": [
         "Preserve exact source revision/hash, durable approval and permanent-ID guarantees; history metadata is source-free and does not change retention",
         "Do not edit crates/document-runtime after published ecbaf7c handoff; consume FT049 reviewed API only",
         "Helper v2 forwarding remains default OFF, preserves required-output priority and complete frame limits, and never claims native rendering validation"
       ],
       "allocation_id": "hosted-openai-product",
-      "name": "Verify actual producer/helper v2 negotiation, stale/oversize/cancel/backpressure and native handoff without claiming native paint acceptance",
-      "objective": "Verify actual producer/helper v2 negotiation, stale/oversize/cancel/backpressure and native handoff without claiming native paint acceptance",
-      "owned_paths": [
-        "crates/preview-controller",
-        "crates/edit-ledger"
-      ],
       "timebox_minutes": 40
     }
   ],

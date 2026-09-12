@@ -21,6 +21,9 @@ fn caps() -> Vec<String> {
     vec!["display-list-v2".into()]
 }
 fn session(mode: &str) -> (tempfile::TempDir, Session) {
+    session_mode(mode, false)
+}
+fn session_mode(mode: &str, raw: bool) -> (tempfile::TempDir, Session) {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("worker.py");
     let script = format!(
@@ -38,6 +41,7 @@ for line in sys.stdin:
  if mode in ('declined','failed'):continue
  docs=[{{'path':d['path'],'revision':p['revision'],'sha256':hashlib.sha256(d['text'].encode()).hexdigest(),'byte_length':len(d['text'].encode())}} for d in p['documents']]
  v={{'protocol_version':2,'type':'display_list','id':r['id'],'payload':{{'project_id':p['project_id'],'revision':p['revision'],'render_format':'display-list-v2','documents':docs}}}}
+ if mode=='oversized':v['payload']['padding']='x'*4096
  if mode=='hash':docs[0]['sha256']='0'*64
  if mode=='length':docs[0]['byte_length']=len(p['documents'][0]['text'])
  if mode=='duplicate_doc':docs.append(docs[0])
@@ -53,6 +57,11 @@ for line in sys.stdin:
     std::fs::write(&path, script).unwrap();
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700)).unwrap();
     let limits = Limits {
+        max_frame: if mode == "oversized" {
+            1024
+        } else {
+            Limits::default().max_frame
+        },
         timeout: if mode == "missing" {
             Duration::from_secs(1)
         } else {
@@ -62,7 +71,12 @@ for line in sys.stdin:
     };
     let mut command = std::process::Command::new("/usr/bin/python3");
     command.arg(path);
-    let s = Session::spawn_command(command, limits).unwrap();
+    let s = if raw {
+        Session::spawn_command_raw_display_prototype(command, limits)
+    } else {
+        Session::spawn_command(command, limits)
+    }
+    .unwrap();
     (dir, s)
 }
 fn wait_until(s: &mut Session, condition: impl Fn(&Session, &[Event]) -> bool) -> Vec<Event> {
@@ -244,4 +258,128 @@ fn helper_can_defer_take_without_extra_pending_value_and_close_invalidates() {
     assert!(s
         .submit_with_snapshot_origin(request(3), vec![], "origin3".into())
         .is_ok());
+}
+
+#[test]
+fn display_profile_is_current_scalar_only_and_clears_on_invalidation() {
+    let (_d, mut s) = session("ok");
+    assert!(s.last_display_profile().is_none());
+    s.set_display_candidates_enabled(true).unwrap();
+    s.submit_with_capabilities(request(1), caps()).unwrap();
+    take_wait(&mut s);
+    let p = s.last_display_profile().unwrap();
+    assert_eq!((&*p.request_id, &*p.project_id, p.revision), ("r1", "p", 1));
+    assert!(p.response_bytes > 0);
+    for elapsed in [
+        p.parse_ms,
+        p.decode_queue_wait_ms,
+        p.reader_delivery_wait_ms,
+        p.source_binding_ms,
+    ] {
+        assert!(elapsed.is_finite() && elapsed >= 0.0);
+    }
+    let epoch = p.display_epoch;
+    let scalar = serde_json::to_value(p).unwrap();
+    assert!(!scalar.to_string().contains("東京"));
+    s.set_display_candidates_enabled(true).unwrap(); // same policy explicitly resets epoch
+    assert!(s.last_display_profile().is_none());
+    s.submit_with_capabilities(request(2), caps()).unwrap();
+    take_wait(&mut s);
+    assert!(s.last_display_profile().unwrap().display_epoch > epoch);
+    s.submit_with_capabilities(request(3), caps()).unwrap();
+    assert!(s.last_display_profile().is_none());
+    s.submit_with_capabilities(request(4), caps()).unwrap();
+    assert_eq!(take_wait(&mut s).revision(), 4);
+    assert_eq!(s.last_display_profile().unwrap().revision, 4);
+    s.close_project("p").unwrap();
+    assert!(s.last_display_profile().is_none());
+    let (_d, mut s) = session("duplicate");
+    s.set_display_candidates_enabled(true).unwrap();
+    s.submit_with_capabilities(request(1), caps()).unwrap();
+    wait_until(&mut s, |s, _| !s.is_alive());
+    assert!(s.last_display_profile().is_none());
+}
+
+#[test]
+fn raw_prototype_is_separate_current_only_and_preserves_failure_lifecycle() {
+    let (_d, mut s) = session_mode("ok", true);
+    assert!(s.submit_with_capabilities(request(1), caps()).is_err());
+    s.set_display_candidates_enabled(true).unwrap();
+    s.submit_with_capabilities(request(1), caps()).unwrap();
+    let start = Instant::now();
+    let candidate = loop {
+        s.poll();
+        if let Some(c) = s.take_current_raw_display_candidate() {
+            break c;
+        }
+        assert!(s.is_alive() && start.elapsed() < Duration::from_secs(7));
+        thread::sleep(Duration::from_millis(2));
+    };
+    assert_eq!(candidate.request_id(), "r1");
+    assert!(s.take_current_display_candidate().is_none());
+    assert_eq!(
+        candidate.sources()[0].sha256,
+        flashtex_project_files::sha256_hex("東京 α".as_bytes())
+    );
+    s.submit_with_capabilities(request(2), caps()).unwrap();
+    s.set_display_candidates_enabled(false).unwrap();
+    s.set_display_candidates_enabled(true).unwrap();
+    s.submit_with_capabilities(request(3), caps()).unwrap();
+    let start = Instant::now();
+    loop {
+        s.poll();
+        if let Some(c) = s.take_current_raw_display_candidate() {
+            assert_eq!(c.revision(), 3);
+            break;
+        }
+        assert!(s.is_alive() && start.elapsed() < Duration::from_secs(7));
+        thread::sleep(Duration::from_millis(2));
+    }
+    s.close_project("p").unwrap();
+    assert!(s.take_current_raw_display_candidate().is_none());
+    assert!(s.last_display_profile().is_none());
+    for mode in [
+        "hash",
+        "duplicate",
+        "malformed",
+        "interleaved",
+        "oversized",
+        "missing",
+    ] {
+        let (_d, mut s) = session_mode(mode, true);
+        s.set_display_candidates_enabled(true).unwrap();
+        s.submit_with_capabilities(request(1), caps()).unwrap();
+        wait_until(&mut s, |s, _| !s.is_alive());
+        assert!(s.take_current_raw_display_candidate().is_none());
+    }
+}
+
+#[test]
+fn raw_cancelled_sibling_retains_old_budget_then_dispatches_new_document_set() {
+    let (_dir, mut s) = session_mode("gap", true);
+    s.set_display_candidates_enabled(true).unwrap();
+    s.submit_with_capabilities(request(1), caps()).unwrap();
+    preview(&mut s, 1);
+    s.close_project("p").unwrap();
+    let mut next = request(2);
+    next.documents.push(Document {
+        path: "chapters/東京-long.tex".into(),
+        text: "next".into(),
+    });
+    s.submit_with_capabilities(next, caps()).unwrap();
+    let start = Instant::now();
+    loop {
+        let events = s.poll();
+        assert!(
+            !events.iter().any(|e| matches!(e, Event::Failed { .. })),
+            "{events:?}"
+        );
+        if let Some(c) = s.take_current_raw_display_candidate() {
+            assert_eq!(c.request_id(), "r2");
+            assert_eq!(c.sources().len(), 2);
+            break;
+        }
+        assert!(start.elapsed() < Duration::from_secs(7));
+        thread::sleep(Duration::from_millis(2));
+    }
 }

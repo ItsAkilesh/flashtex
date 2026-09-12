@@ -9,16 +9,16 @@
   "branch": "agent/commander-preview-performance/preview-performance",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "8a445525ec9d5b465ad08416a7047e461cd29fc3",
-  "objective": "Expose source-bound history metadata and consume the separately owned runtime display-list-v2 candidate interface through bounded opt-in helper forwarding",
+  "input_main_sha": "ff5e0cd7ddad4e8ca82977fb0bfee35309a48f58",
+  "objective": "Trace completed intermediate compiler generations to stale notifications in the existing sustained typing capture",
   "owned_paths": [
     "crates/preview-controller",
     "crates/edit-ledger"
   ],
-  "revision": 6,
+  "revision": 22,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-048",
   "timebox_minutes": 40,
-  "updated_utc": "2026-09-12T10:53:39.658079+00:00"
+  "updated_utc": "2026-09-12T13:24:35.346350+00:00"
 }
