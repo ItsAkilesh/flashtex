@@ -1,6 +1,6 @@
 # mac-completion handoff — revision-bound completion metadata
 
-- Updated UTC: 2026-09-12T08:50Z
+- Updated UTC: 2026-09-12T08:58Z
 - Agent / parent / machine alias: `mac-completion` (Claude Code subagent) /
   parent `mac-claude-a` / `mac-m1max-a`
 - Task / acceptance gate / owned paths: lane "Consume bounded revision-bound
@@ -16,8 +16,10 @@
   `coordination/agents/mac-completion.json` `code_revision` / branch base
   contains main through `2fd3026`; main `ad9fec2` reviewed (coordination-only
   commits since the base).
-- State: in progress (core lane and both follow-ups implemented and tested;
-  parent-side wiring reported, not applied)
+- State: ready for integration (core lane and both follow-ups implemented and
+  tested; parent-side wiring reported below, not applied). Context usage of
+  this session cannot be read exactly by the agent; it is well below the
+  compaction thresholds in docs/context-checkpoints.md at this checkpoint.
 - Ready behavior and evidence:
   - What main provides (read on `origin/main` `ad9fec2`): runtime-v1
     `compile_result` has no completion vocabulary — only `revision` and
@@ -81,44 +83,100 @@
     the running app `editorRevision` is nil and no compile-result metadata
     binds (candidates come from the document text alone; nothing stale is
     ever shown). Parent-retained diff below enables binding.
-  - No live project-index channel: the Mac shell does not spawn
-    `flashtex-preview-controller`; the decoder is exercised on the documented
-    wire shape only. Wiring the helper (spawn, `snapshot`, `complete` per
-    category, `accept(projectIndex:)` with the editor revision current at
-    that snapshot) is ShellModel work for the parent/Commander.
-  - Popup rows are keyboard-only (no click-to-accept yet); VoiceOver label
-    "Completions" is set on the table but not verified with VoiceOver.
+  - No live project-index channel yet: `ProjectIndexCompletionFetcher` is
+    exercised on the documented wire shape with a fake `send`; the helper
+    route exists in the parent's `ShellModel+Controller.swift` and the diff
+    below routes its frames through the fetcher. Not run against the real
+    helper from this lane (the ShellModel wiring is parent-owned).
+  - VoiceOver label "Completions" is set on the popup table but not verified
+    with VoiceOver.
   - No app screenshot evidence: opening the list needs keystrokes into the
     app, which would require stealing focus or Accessibility (not granted).
 - Interface changes / consumer actions:
   - `Completion.suggestions(in:caretUTF16:metadata:supported:cancelled:)` is
     the primary API; the `result:` overload remains and binds the result
     as-is (caller asserts it matches the text).
-  - `Completion.Kind.citation`, `Token.Context.citation`, `Completion.bibitems`.
-  - Exact diff needed in parent-retained files (not applied):
-    `SourceEditorView.swift`: add `var editorRevision: Int?` to
-    `SourceEditorView` and in `updateNSView` set
-    `(tv as? CompletingTextView)?.editorRevision = editorRevision` next to
-    the existing `compileResult = result` line. `ContentView.swift`: pass
-    `editorRevision: model.editorRevision,` in the `SourceEditorView(...)`
-    call after `result: model.result,`. (`ShellModel.editorRevision` already
-    increments on every text change, and `result.revision` is the compiled
-    revision, so binding is exact.)
+  - `Completion.Kind.citation`, `Token.Context.citation`, `Completion.bibitems`,
+    `CompletionScheduler`, `CompletionSession`, `CompletionPopup`,
+    `ProjectIndexCompletionFetcher` (drives the helper's `complete` op per
+    category and merges the bounded replies into one bound `Metadata`).
+  - Exact diffs needed in parent-retained files (not applied; branch tip
+    contains the merged `mac-shell` `b973b89` so line context is current):
+
+    `apps/mac/Sources/FlashTeXMac/ShellModel.swift` (class body, next to
+    `controllerState`):
+    ```swift
+    +    /// Project-index completion vocabulary bound to the editor revision of the
+    +    /// latest controller preview (Completion.swift); nil until the helper answered.
+    +    var completionMetadata: Completion.Metadata?
+    +    @ObservationIgnored let completionFetcher = ProjectIndexCompletionFetcher()
+    ```
+    `apps/mac/Sources/FlashTeXMac/ShellModel+Controller.swift`, in
+    `handleController`:
+    ```swift
+         case .result(let id, let payload):
+    +        switch completionFetcher.handle(resultID: id, payload: payload) {
+    +        case .notMine: break
+    +        case .pending: return
+    +        case .complete(let metadata): completionMetadata = metadata; return
+    +        case .refused(let why): log("completion metadata refused: \(why)"); return
+    +        }
+             if let doc = payload["document"] as? [String: Any] {
+    ...
+         case .error(let id, let message):
+    +        if case .refused(let why) = completionFetcher.handle(errorID: id, message: message) {
+    +            log("completion metadata refused: \(why)"); break
+    +        }
+             if let inFlight = controllerState.inFlight, inFlight.id == id {
+    ```
+    and at the end of `applyControllerPreview` (after `selection = nil`):
+    ```swift
+    +        // Ask the lexical index for this exact snapshot; replies bind to editorRev.
+    +        if let controller {
+    +            completionFetcher.request(sourceVersions: update.sourceVersions, editorRevision: editorRev) {
+    +                try controller.send($0, $1)
+    +            }
+    +        }
+    ```
+    `apps/mac/Sources/FlashTeXMac/SourceEditorView.swift`:
+    ```swift
+         var result: RuntimeV1.CompileResult? // for completion (Completion.swift)
+    +    var editorRevision: Int? // binds completion metadata to the buffer's revision
+    +    var projectIndexMetadata: Completion.Metadata?
+    ...
+             (tv as? CompletingTextView)?.compileResult = result
+    +        (tv as? CompletingTextView)?.editorRevision = editorRevision
+    +        if let m = projectIndexMetadata { (tv as? CompletingTextView)?.accept(projectIndex: m) }
+    ```
+    `apps/mac/Sources/FlashTeXMac/ContentView.swift`, in the
+    `SourceEditorView(...)` call:
+    ```swift
+                     result: model.result,
+    +                editorRevision: model.editorRevision,
+    +                projectIndexMetadata: model.completionMetadata,
+    ```
+    Notes: `ShellModel.editorRevision` increments on every text change and
+    `result.revision` is the compiled editor revision, so the binding is
+    exact. Under continuous typing the index metadata is always one preview
+    behind and is therefore refused until the next preview lands (by design:
+    refused, not shown). The direct-worker route has no index; only
+    compile-result diagnostics bind there.
 - Reviewed peer revisions / resulting adaptations: `origin/main` `ad9fec2`
   (coordination dispatch commits only since the branch base); STDIO contract
   and project-index README read on main and reflected in the decoder shape,
   bounds and the "lexical, not TeX semantics" wording of details.
 - Validation commands / results / artifact paths:
-  `cd apps/mac && swift test --filter CompletionTests` → 19/19;
+  `cd apps/mac && swift test --filter CompletionTests` → 20/20;
   `FLASHTEX_COMPILER=… FLASHTEX_PDF=… FLASHTEX_BRIDGE=… FLASHTEX_EDIT_LEDGER=…
-  swift test` (release worker binaries from the main checkout) → 195 tests,
-  0 failures, 31.5 s. Timing lines are printed by
+  FLASHTEX_PREVIEW_CONTROLLER=… swift test` (release worker binaries from the
+  main checkout) → 217 tests, 0 failures, 31.1 s (after merging mac-shell
+  `b973b89`). Timing lines are printed by
   `testCandidateComputationOnDemoTexStaysUnderTwoMilliseconds` and
   `testKeystrokeThroughOpenListOnDemoTexDoesNotScanOnMain`.
 - Exact deadline UTC / remaining time / integration reserve: per
   `coordination/PROJECT.md`; no stop condition other than user stop.
-- ETA remaining, optimistic / likely / pessimistic / confidence: 20 / 40 /
-  90 minutes for click-to-accept and evidence polish / medium.
+- ETA remaining, optimistic / likely / pessimistic / confidence: 0 / 0 / 30
+  minutes (only parent-side wiring and integration remain) / high.
 - Resource pool / allocation ID / maximum: shared Claude Max 20x quota on
   mac-m1max-a via parent `mac-claude-a` / `claude-mac20x-completion` /
   unknown (parent-owned).
@@ -135,8 +193,9 @@
     show kind/detail text.
   - Binding is exact-revision (`==`), not "not older": metadata newer than
     the text is not the text's either.
-- Exact next action or command: parent applies the two-line diff above;
-  optional click-to-accept; Commander integration of the branch.
+- Exact next action or command: parent applies the diffs above and runs
+  `swift test` with `FLASHTEX_PREVIEW_CONTROLLER` set to see index-backed
+  `\cite{`/`\ref{` items in the app; Commander integration of the branch.
 - Resume reading list: this file, `apps/mac/Sources/FlashTeXMac/Completion.swift`
   header comments, `crates/preview-controller/STDIO.md` (complete/navigate),
   `crates/project-index/README.md`.

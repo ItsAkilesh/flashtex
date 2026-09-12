@@ -8,29 +8,34 @@
     "appkit",
     "completion"
   ],
-  "code_revision": "5fc80d078e2e5bdc2ae759790fc453d8b2fe0812",
+  "code_revision": "2deb4a59e3fd6480ee8d121dbcfe1553a37ffcbf",
   "eta_minutes": {
-    "likely": 40,
-    "optimistic": 20,
-    "pessimistic": 90
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 30
   },
   "machine": "mac-m1max-a",
-  "main_integrated_through": "2fd302675040308c2b07d346c07389a051518979",
-  "next_action": "Follow-ups: double-click accept in popup, handoff doc, evidence; parent diff for SourceEditorView/ContentView to pass editorRevision",
+  "main_integrated_through": "c1baad1b6558888024c4153466646bebdf24f61c",
+  "next_action": "Parent applies the ShellModel/ShellModel+Controller/SourceEditorView/ContentView diffs in coordination/mac-completion.md; Commander integrates the branch",
   "reviewed_peers": {
+    "origin/agent/mac-claude-a/mac-shell": {
+      "adaptation": "Merged mac-shell b973b89 (PreviewControllerClient, ShellModel+Controller editorRevisionByDurable) and built the fetcher on its send(_:_:) and source_versions mapping; main has no runtime-v1 completion field, STDIO complete op is the documented channel",
+      "reviewed_utc": "2026-09-12T08:51:29Z",
+      "sha": "71675cd668b9116d8a1fb6cad0624dff7c2b3218"
+    },
     "origin/main": {
-      "adaptation": "origin/main has no runtime-v1 completion field; the preview-controller STDIO complete op is the only documented channel. Decoder targets that reply shape and its source_versions binding; app wiring of the helper is reported to the parent, not applied",
-      "reviewed_utc": "2026-09-12T08:45:37Z",
-      "sha": "b1f158c4a3ab1301fc9d2340b36705ab21432bbb"
+      "adaptation": "Merged mac-shell b973b89 (PreviewControllerClient, ShellModel+Controller editorRevisionByDurable) and built the fetcher on its send(_:_:) and source_versions mapping; main has no runtime-v1 completion field, STDIO complete op is the documented channel",
+      "reviewed_utc": "2026-09-12T08:51:29Z",
+      "sha": "e0887bcfd71749d35f4a1aa8c42d059599d5f88d"
     }
   },
   "schema_version": 1,
-  "state": "in_progress",
-  "summary": "Completion.swift: revision-bound Rust metadata (runtime-v1 result + preview-controller complete reply decoder, bounded), off-main CompletionScheduler with cancellation/stale refusal, owned keyboard-driven list; 19 CompletionTests incl. hosted-window keyboard acceptance; 195 Mac tests pass",
+  "state": "ready_for_integration",
+  "summary": "Completion.swift: revision-bound Rust metadata (runtime-v1 result + preview-controller complete reply, bounded), ProjectIndexCompletionFetcher for the helper route, off-main CompletionScheduler with cancellation/stale refusal, owned keyboard+mouse completion list; 20 CompletionTests incl. hosted-window keyboard acceptance; 217 Mac tests pass with real binaries incl. preview-controller",
   "tool": "Claude Code subagent (parent mac-claude-a)",
-  "updated_utc": "2026-09-12T08:45:37Z",
+  "updated_utc": "2026-09-12T08:51:29Z",
   "usage": {
-    "evidence": "apps/mac: swift test 195/195 with real worker binaries; demo.tex sync scan 0.024-0.031 ms; keystroke through open list max 1.96 ms",
+    "evidence": "apps/mac swift test 217/217 (FLASHTEX_COMPILER/PDF/BRIDGE/EDIT_LEDGER/PREVIEW_CONTROLLER set); demo.tex main-thread scan 0.012-0.031 ms; keystroke through open list max 2.0 ms; off-main scan ~0.95 ms",
     "status": "Shared Claude Max quota with parent mac-claude-a; no purchases"
   }
 }
