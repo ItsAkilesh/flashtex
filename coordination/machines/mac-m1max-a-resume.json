@@ -1,0 +1,191 @@
+{
+  "schema_version": 1,
+  "machine": "mac-m1max-a",
+  "not_before_utc": "2026-09-12T08:21:08Z",
+  "target_engineering_sessions": 15,
+  "supervisor": "mac-claude-a",
+  "active_count_verified": null,
+  "authorization": "Restore previous full engineering scale alongside Daniel after user42minute cooldown; no purchases. Verify usable reset/authorized route before launch. Existing available small-task credits authorization is confined to cooldown small work.",
+  "ownership_rule": "This is an explicit parent subdelegation plan under FT003/apps/mac and existing product owners. Parent retains ShellModel*, ContentView.swift, PreviewView.swift and FlashTeXMacApp.swift integration. Verify existing local owners before starting; no duplicate writers. Do not edit Daniel crates/font-engine,paragraph-layout,math-layout. Test additions should stay in each existing corresponding test file or parent-negotiated dedicated new test file.",
+  "lanes": [
+    {
+      "agent_id": "mac-render-pipeline",
+      "owned_paths": [
+        "crates/render-pipeline"
+      ],
+      "current": "Eliminate measured reference geometry mismatches using shared exact font/paragraph/math boxes",
+      "followups": [
+        "Measure persistent large-edit cost versus fresh",
+        "Emit consumer capability/provenance evidence"
+      ]
+    },
+    {
+      "agent_id": "mac-visual-oracle",
+      "owned_paths": [
+        "tests/visual-corpus/harness",
+        "tests/visual-corpus/evidence"
+      ],
+      "current": "Fix GH24 separate self-regression and actual established-engine raw-byte/zero-pixel gates",
+      "followups": [
+        "Pin all18fixtures to exact engines/fonts and rerun candidate closure matrix",
+        "Publish native capture versus export exact mismatch evidence"
+      ]
+    },
+    {
+      "agent_id": "mac-pdf",
+      "owned_paths": [
+        "crates/pdf"
+      ],
+      "current": "Exact original glyph/font/rule PDF export against declared reference profile",
+      "followups": [
+        "Bounded font subset identity and deterministic object serialization tests",
+        "Classify remaining raw-byte versus raster differences"
+      ]
+    },
+    {
+      "agent_id": "mac-validation",
+      "owned_paths": [
+        "tools/native-validation/mac-live"
+      ],
+      "current": "Native typing-to-paint and helper crash/restart acceptance on current integrated main",
+      "followups": [
+        "Full packaged app end-to-end capture/accept/export cycle",
+        "Record independent actual session/binary/source provenance"
+      ]
+    },
+    {
+      "agent_id": "mac-preview-v2",
+      "owned_paths": [
+        "apps/mac/Sources/FlashTeXMac/PreviewV2View.swift",
+        "apps/mac/Tests/FlashTeXMacTests/PreviewV2Tests.swift"
+      ],
+      "current": "Resume released bc28c59 preview renderer with exact GIDs and rules; parent integrates shared shell edits",
+      "followups": [
+        "Off-main immutable page preparation and stale paint suppression",
+        "Zero-pixel export/preview comparison without tolerance"
+      ]
+    },
+    {
+      "agent_id": "mac-nearby-client",
+      "owned_paths": [
+        "apps/mac/tools/nearby-client"
+      ],
+      "current": "Resume released80b5f84 nearby client and harden bounded disconnect/reconnect",
+      "followups": [
+        "Duplicate capture delivery and revoked destination integration tests",
+        "Document measured native pairing/recovery behavior"
+      ]
+    },
+    {
+      "agent_id": "mac-nearby-transport",
+      "owned_paths": [
+        "apps/mac/Sources/FlashTeXMac/NearbyListener.swift",
+        "apps/mac/Sources/FlashTeXMac/NearbyProtocol.swift",
+        "apps/mac/Sources/FlashTeXMac/NearbyState.swift"
+      ],
+      "current": "Bounded nearby receive and off-main decoding",
+      "followups": [
+        "Session/capture/revision dedup with explicit error state",
+        "Actual iPad or simulator transcript acceptance"
+      ]
+    },
+    {
+      "agent_id": "mac-pairing-ui",
+      "owned_paths": [
+        "apps/mac/Sources/FlashTeXMac/Pairing.swift",
+        "apps/mac/Sources/FlashTeXMac/NearbyView.swift"
+      ],
+      "current": "Native pairing state recovery and accessibility",
+      "followups": [
+        "Prevent stale reconnect state from overwriting current pairing",
+        "User-visible progress/cancel states with precise semantics"
+      ]
+    },
+    {
+      "agent_id": "mac-completion",
+      "owned_paths": [
+        "apps/mac/Sources/FlashTeXMac/Completion.swift"
+      ],
+      "current": "Consume bounded revision-bound Rust completion metadata",
+      "followups": [
+        "Cancellation and stale caret/context refusal",
+        "Keyboard responsiveness and acceptance tests"
+      ]
+    },
+    {
+      "agent_id": "mac-navigation",
+      "owned_paths": [
+        "apps/mac/Sources/FlashTeXMac/Navigation.swift",
+        "apps/mac/Sources/FlashTeXMac/CaretSync.swift"
+      ],
+      "current": "Exact source-to-preview and preview-to-source navigation",
+      "followups": [
+        "UTF8 cluster/ligature stale selection tests",
+        "Multi-file current revision navigation acceptance"
+      ]
+    },
+    {
+      "agent_id": "mac-editor-diagnostics",
+      "owned_paths": [
+        "apps/mac/Sources/FlashTeXMac/EditorDiagnostics.swift"
+      ],
+      "current": "Partial recovery error marks preserve exact source identity",
+      "followups": [
+        "Stale diagnostic invalidation without editor blocking",
+        "Accessible keyboard error navigation"
+      ]
+    },
+    {
+      "agent_id": "mac-ai-review",
+      "owned_paths": [
+        "apps/mac/Sources/FlashTeXMac/ProposalPreview.swift"
+      ],
+      "current": "Consume assistant-context helper with explicit proposal review boundary",
+      "followups": [
+        "Cancellation and out-of-order explanation response rejection",
+        "Never apply unreviewed model edits; native recovery test"
+      ]
+    },
+    {
+      "agent_id": "mac-document-files",
+      "owned_paths": [
+        "apps/mac/Sources/FlashTeXMac/DocumentFiles.swift"
+      ],
+      "current": "Consume rooted save/reload/status helper with explicit conflict state",
+      "followups": [
+        "Preserve dirty source across lost export/reload replies",
+        "Multi-file open/detach/reopen native acceptance"
+      ]
+    },
+    {
+      "agent_id": "mac-preview-cache",
+      "owned_paths": [
+        "apps/mac/Sources/FlashTeXMac/PreviewTextCache.swift",
+        "apps/mac/Sources/FlashTeXMac/Fonts.swift"
+      ],
+      "current": "Remove repeated text/font work from main-thread paint with immutable identity cache",
+      "followups": [
+        "Resource/source generation invalidation and bounded retention",
+        "Measure cold/warm paint workload without hiding latency"
+      ]
+    },
+    {
+      "agent_id": "mac-editor-accessibility",
+      "owned_paths": [
+        "apps/mac/Sources/FlashTeXMac/SourceEditorView.swift"
+      ],
+      "current": "Responsive native editor accessibility and selection semantics",
+      "followups": [
+        "Keyboard/edit undo integration through durable core",
+        "Large document interaction benchmark with correct source ranges"
+      ]
+    }
+  ],
+  "pickup_required": [
+    "Exact current main and lane ACK",
+    "Actual local parent/child session IDs and current count",
+    "Fresh usable billing/reset evidence; unknown capacity stays unknown",
+    "Publish own task branch after meaningful tested checkpoints; maintain current+2 work"
+  ],
+  "scope_note": "Prepared dispatch is not evidence of running sessions; supervisor may preserve equivalent existing worker IDs while keeping unique ownership and15target."
+}
