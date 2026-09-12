@@ -85,6 +85,16 @@ pub enum Block {
         style: ParagraphStyle,
         content: Vec<Inline>,
     },
+    /// `\vspace{<dimen>}`: additional vertical glue, in points.
+    VSpace {
+        pt: f64,
+    },
+    /// `\hrule`: a full-measure-width rule at the current line.
+    Rule {
+        span: Span,
+    },
+    /// `\newpage`: force the next block onto a fresh page.
+    PageBreak,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -147,7 +157,39 @@ const BUILT_INS: &[&str] = &[
     "hfill",
     "normalfont",
     "bfseries",
+    "vspace",
+    "hrule",
+    "newpage",
+    "pagestyle",
 ];
+
+/// Parses a LaTeX dimension (`12pt`, `1.5em`, `0.5in`, `2cm`, `10mm`) to points.
+/// `em` is relative to the compiler's fixed body size since there is no
+/// declaration-scoped font state to read a current size from (see the
+/// `hfill`/`normalfont`/`bfseries` comment below).
+pub(crate) fn parse_dimen_pt(text: &str) -> Option<f64> {
+    let text = text.trim();
+    let unit_len = text
+        .chars()
+        .rev()
+        .take_while(|c| c.is_ascii_alphabetic())
+        .count();
+    if unit_len == 0 || unit_len > text.len() {
+        return None;
+    }
+    let split = text.len() - unit_len;
+    let (number, unit) = text.split_at(split);
+    let value: f64 = number.trim().parse().ok()?;
+    let per_pt = match unit {
+        "pt" => 1.0,
+        "in" => 72.27,
+        "cm" => 72.27 / 2.54,
+        "mm" => 72.27 / 25.4,
+        "em" => crate::layout::BODY_SIZE_PT,
+        _ => return None,
+    };
+    Some(value * per_pt)
+}
 
 /// Project-relative paths only: no absolute paths or parent traversal.
 pub(crate) fn path_is_safe(path: &str) -> bool {
@@ -543,6 +585,42 @@ impl P<'_> {
             // they never consume or alter surrounding content.
             "hfill" | "normalfont" | "bfseries" => {}
             "par" => self.flush_paragraph(blocks, para),
+            "vspace" => {
+                let (tokens, argument_span) = self.required_group(name, span);
+                let raw = token_text(&tokens);
+                match parse_dimen_pt(&raw) {
+                    Some(pt) => {
+                        self.flush_paragraph(blocks, para);
+                        blocks.push(Block::VSpace { pt });
+                        self.finish_block_dependencies();
+                    }
+                    None => self.diags.push(Diagnostic::error(
+                        format!(
+                            "\\vspace requires a recognised dimension, got '{}'",
+                            raw.trim()
+                        ),
+                        Some(span.merge(argument_span)),
+                        Some("ignored the vertical space and continued".into()),
+                    )),
+                }
+            }
+            "hrule" => {
+                self.flush_paragraph(blocks, para);
+                blocks.push(Block::Rule { span });
+                self.finish_block_dependencies();
+            }
+            "newpage" => {
+                self.flush_paragraph(blocks, para);
+                blocks.push(Block::PageBreak);
+                self.finish_block_dependencies();
+            }
+            "pagestyle" => {
+                // No header/footer rendering exists yet, so every style is
+                // accepted with the same (honest) effect: none. `empty` and
+                // `plain` both describe "no footer content beyond a page
+                // number", which is already what happens.
+                let _ = self.required_group(name, span);
+            }
             "frac" | "sqrt" => self.diags.push(Diagnostic::error(
                 format!("\\{} requires math mode", name),
                 Some(span),
@@ -1675,6 +1753,10 @@ fn package_matches_layout(package: &str, options: &str) -> bool {
                     _ => false,
                 })
         }
+        // amsmath/amssymb/amsthm (math typesetting: \mathbb, \forall, gather,
+        // align, ...) and microtype (character protrusion/expansion kerning)
+        // are genuinely unimplemented and change real output; they must keep
+        // warning rather than being silently matched here.
         _ => false,
     }
 }
@@ -1909,6 +1991,77 @@ mod tests {
             .flat_map(|page| page.items)
             .collect();
         (parsed, items)
+    }
+
+    fn pages(source: &str) -> (Parsed, Vec<crate::layout::Page>) {
+        let parsed = parse(source);
+        let pages = layout::layout(&parsed.blocks);
+        (parsed, pages)
+    }
+
+    #[test]
+    fn dimen_parsing_supports_the_common_units() {
+        assert_eq!(parse_dimen_pt("12pt"), Some(12.0));
+        assert_eq!(parse_dimen_pt(" 1em "), Some(crate::layout::BODY_SIZE_PT));
+        assert_eq!(parse_dimen_pt("1in"), Some(72.27));
+        assert!(parse_dimen_pt("banana").is_none());
+        assert!(parse_dimen_pt("").is_none());
+    }
+
+    #[test]
+    fn newpage_forces_a_fresh_page_even_with_room_left() {
+        let (parsed, pages) = pages(r"First page\newpage Second page");
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        assert_eq!(pages.len(), 2, "expected exactly one forced page break");
+        assert!(pages[0].items.iter().any(|item| item.text == "First"));
+        assert!(pages[1].items.iter().any(|item| item.text == "Second"));
+    }
+
+    #[test]
+    fn hrule_emits_a_full_measure_rule_with_a_real_span() {
+        let source = r"Above\hrule Below";
+        let (parsed, items) = items(source);
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        let rule_item = items
+            .iter()
+            .find(|item| item.rule.is_some())
+            .expect("hrule must emit an item carrying rule geometry");
+        let rule = rule_item.rule.unwrap();
+        assert!(rule.width_pt > 0.0);
+        assert!(rule.height_pt > 0.0);
+        assert_eq!(
+            rule_item.span,
+            Span::new(
+                source.find("\\hrule").unwrap(),
+                source.find("\\hrule").unwrap() + "\\hrule".len()
+            )
+        );
+    }
+
+    #[test]
+    fn vspace_adds_extra_gap_beyond_the_ordinary_paragraph_gap() {
+        let baseline = items("One\n\nTwo").1;
+        let spaced = items(r"One\vspace{50pt}Two").1;
+        let one = baseline.iter().find(|i| i.text == "One").unwrap();
+        let two_baseline = baseline.iter().find(|i| i.text == "Two").unwrap();
+        let two_spaced = spaced.iter().find(|i| i.text == "Two").unwrap();
+        assert!(
+            two_spaced.baseline_y_pt - one.baseline_y_pt
+                > two_baseline.baseline_y_pt - one.baseline_y_pt,
+            "\\vspace{{50pt}} should push the following text further down than an ordinary paragraph break"
+        );
+    }
+
+    #[test]
+    fn pagestyle_is_accepted_without_a_diagnostic() {
+        for style in ["empty", "plain", "headings"] {
+            let parsed = parse(&format!(r"\pagestyle{{{style}}}Body text"));
+            assert!(
+                parsed.diagnostics.is_empty(),
+                "\\pagestyle{{{style}}}: {:?}",
+                parsed.diagnostics
+            );
+        }
     }
 
     #[test]
