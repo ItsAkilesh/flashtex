@@ -1,0 +1,76 @@
+{
+  "agent_id": "daniel-templates",
+  "archived_utc": "2026-09-12T09:48:23Z",
+  "assignment": {
+    "acceptance": [
+      "Meaningful tests and strict Rust lint pass with bounded malformed/Unicode inputs",
+      "Preserve exact source/revision and resource identities; no implicit approximation or parity claim",
+      "Do not edit peer compiler/native/layout files; publish typed adapter contract and exact tested SHA"
+    ],
+    "agent_id": "daniel-templates",
+    "allocation_id": "daniel-claude20x-shared",
+    "branch": "agent/daniel-templates/project-templates",
+    "deadline_utc": null,
+    "dependencies": [],
+    "input_main_sha": "83f65e08ae60b312609f49ec0a2b6cae25c8e353",
+    "objective": "Add explicit creation receipt and interrupted-write recovery around existing template preflight, using rooted filesystem APIs; never overwrite existing user files.",
+    "owned_paths": [
+      "crates/project-templates"
+    ],
+    "revision": 2,
+    "schema_version": 1,
+    "state": "assigned",
+    "task_id": "FT-040",
+    "timebox_minutes": 40,
+    "updated_utc": "2026-09-12T09:08:31.372212+00:00"
+  },
+  "report": {
+    "agent_id": "daniel-templates",
+    "allocation_id": "daniel-claude20x-shared",
+    "assignment_acknowledgements": {
+      "FT-040": {
+        "acknowledged_utc": "2026-09-12T09:46:23Z",
+        "adaptation": "Accepted FT-040 rev 2 as specified: layered flashtex-project-files' rooted ProjectRoot/ProjectLock under the existing preflight rather than replacing it, since ProjectPath::normalize resolves '..' instead of rejecting it outright and would have weakened the traversal guarantee rev 1's tests prove; kept crate::path::validate as the sole judge of raw declared paths. Added InstantiateReport.created (CreationRecord: path/sha256/bytes) as the requested creation receipt, and whole-batch rollback (restore-or-remove) on a mid-batch write failure, tested via a pub(crate) fault-injection hook mirroring project-files' own Hooks pattern. Kept all rev 1 tests passing unmodified.",
+        "main_sha": "18827dca98e78ca6aa3af9b3b80c4981bc109f68",
+        "revision": 2
+      }
+    },
+    "branch": "agent/daniel-templates/project-templates",
+    "capabilities": [
+      "rust",
+      "filesystem-security",
+      "project-templates"
+    ],
+    "code_revision": "752301411815e48c5c81c30ad23aaeb2e4aa785a",
+    "eta_minutes": {
+      "likely": 0,
+      "optimistic": 0,
+      "pessimistic": 0
+    },
+    "machine": "mac-m5pro-dq222",
+    "main_integrated_through": "18827dca98e78ca6aa3af9b3b80c4981bc109f68",
+    "next_action": "Await Commander integration of agent/daniel-templates/project-templates into main; no other crate depends on flashtex-project-templates yet, so no consumer follow-up is blocked.",
+    "reviewed_peers": {
+      "origin/main": "18827dca98e78ca6aa3af9b3b80c4981bc109f68"
+    },
+    "schema_version": 1,
+    "state": "ready_for_integration",
+    "summary": "FT-040 rev 2: crates/project-templates now reads/writes every declared file through flashtex-project-files' rooted, O_NOFOLLOW ProjectRoot/ProjectLock instead of raw fs calls, closing a symlink-follow-through gap rev 1 had; own path::validate (which refuses '..' outright, unlike ProjectPath's normalize-and-resolve) is kept as the sole judge of a raw declared path, so no rev 1 guarantee was traded away for the refactor. instantiate() now returns InstantiateReport.created: a CreationRecord (path, sha256, bytes) per file from the writer's own post-write verification. A mid-batch write failure now rolls back every file already written in that call (restore-to-original-bytes if it pre-existed, remove if newly created), proven by two tests that inject a failure via a pub(crate) test hook and assert no partial tree survives, including one proving overwritten files are restored to their original content rather than left half-replaced. Rev 1 preflight/overwrite-flag behavior and its tests are unchanged and still pass. 42 tests (34 unit + 7 integration + 1 doctest), clippy clean, fmt clean.",
+    "tool": "Claude Code on Claude Max 20x",
+    "updated_utc": "2026-09-12T09:46:23Z",
+    "usage": {
+      "evidence": "Runs on the user's Claude Max 20x subscription allowance for this session; no separate token/cost figure is exposed to this agent; no purchases or overages made.",
+      "status": "unknown"
+    }
+  },
+  "report_age_seconds": 120,
+  "report_path": "coordination/agents/daniel-templates.json",
+  "review_required": true,
+  "revision": 2,
+  "schema_version": 1,
+  "stale_completion": false,
+  "state": "reported_ready",
+  "task_id": "FT-040",
+  "worker_branch": "agent/daniel-templates/project-templates",
+  "worker_report_sha": "83bc75210de778af4e93542abf46a45bc1dca0e5"
+}

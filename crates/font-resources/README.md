@@ -641,3 +641,205 @@ records. Replay tests every exact boundary and half a unit below it. Synthetic
 fixtures cover negative values, missing corners, truncated prefixes, invalid GIDs,
 counts/offsets/heights, device-offset bounds and rational comparison overflow.
 This establishes data/lookup behavior, not a script-placement or visual oracle.
+
+`math_device::DeviceTable` decodes OpenType packed signed2/4/8-bit pixel deltas,
+validating the entire declared payload and zero padding before answering a query.
+VariationIndex0x8000 and unknown formats return typed unsupported errors, including
+when the requested ppem would otherwise lie outside the range. `DeviceContext`
+requires an explicit positive integer ppem. Out-of-range valid Device data gives
+zero as specified. No implicit point-size/axis/pixel conversion is performed.
+
+`BoundMathFont::constant_device(ConstantDeviceRecord,DeviceContext)` exposes this
+additively for the51 MathValueRecords in constants, reusing the peer's constants
+parser and original raw table selection. A result retains parent identity, record
+index, context, pixel delta and exact referenced device-table hash/offset. The
+unhinted API remains unchanged; other MATH value families are not automatically
+device-adjusted. Synthetic tests establish signed packing, word boundaries,
+truncation, padding, parent-relative offsets and variation rejection. Installed
+STIX/Noto Math constant inventory observes no positive device records; exact
+font/table/license hashes are in `fixtures/math-device-inventory.json`.
+OpenType contract: https://learn.microsoft.com/en-us/typography/opentype/spec/chapter2#device-and-variationindex-tables
+
+`glyph_device` and `kern_device` add identity-bound corrections for glyph italics,
+top accents and corner kerns. Raw design units remain separate from pixel deltas.
+Glyph value extraction is checked against the existing peer MATH parser. Kern
+queries reuse the original parsed corner records and Device decoder; horizontal
+and vertical ppem are explicit separately. Correction-height deltas are converted
+exactly into design units using vertical ppem/UPEM before upper-bound selection;
+selected kern deltas use horizontal ppem. Crossed corrected heights are refused,
+not sorted into a different font program. At most4096 correction heights are
+visited per query. VariationIndex remains unsupported even outside the size range.
+
+The expanded pinned STIX inventory finds four actual glyph device records: top
+accent GIDs3309/3316/3326 and italic GID4010. At12ppem, GID3326 has a +1pixel accent
+correction; all four exact device hashes are retained in the inventory manifest.
+All6760 glyph italic/accent values still match the peer's raw metrics. Synthetic
+fixtures additionally verify negative pixel deltas, corrected-height equality,
+outside-range zero, variation refusal and nonmonotone corrected-height refusal.
+This is metric correction only; it neither grid-fits outlines nor proves raster
+or TeX script-layout parity.
+
+`math_cache::MathQueryCache` borrows one immutable `BoundMathFont`. Its namespace
+is the complete registry/style/declaration/font/engine/MATH identity, checked on
+every call; query keys include record/GID/corner, rational height/target, ppem,
+strategy and fitting limits. Replies retain that identity and share immutable
+`Arc<Result<Value,QueryError>>`, including typed negative outcomes. Stale identity
+is refused before lookup. The caller must supply the new identity after a registry
+reload; this cache does not discover external file changes.
+
+Variants and kerns reuse one bounded parsed table per cache when budget allows.
+LRU query retention has separate entry/byte caps; oversized values bypass storage.
+Defaults are128 entries,8MiB query charge and8MiB parsed charge; hard limits4096
+entries/64MiB/16MiB. Conservative charges include preallocated queue storage,
+result payloads and parsed vector/tree storage. Borrowed font bytes and externally
+retained result Arcs are outside the cache's ownership/budget. These caches are
+process-local and cannot outlive their borrowed font or cross decoder builds.
+
+Pinned STIX GID3/TopRight height0 ppem12 replay observed100 identical queries
+reduce from100 kern parses to1 parse/99 hits, with exactly equal outputs. One Linux
+debug run measured56.27ms uncached versus0.618ms cached; host-load variation was
+substantial, so tests assert no timing threshold or native performance claim.
+`fixtures/math-cache-replay.json` preserves measured source/hash/context evidence.
+Tests also cover device-context changes, exact fitted-shape equality, stale
+identity, eviction, disabled budgets, and cached VariationIndex refusal.
+
+### Explicit collection consumer and remaining resolver dependency
+
+`registry::collections::CollectionRegistry::load` is a separate opt-in consumer
+requiring a `VerifiedCollectionResolver`. No built-in resolver is supplied and
+no existing rendering-v2 registry format is silently broadened. The resolver must
+provide a complete, structurally verified collection layout; completeness is a
+trusted parser contract, not something this consumer can infer from partial data.
+The consumer bounds128 faces/256 tables per face, validates supplied directory and
+table bounds/overlaps, permits exact same-tag shared tables across distinct faces,
+and compares every supplied selected-face table range with the existing peer
+accessor. Rooted reads, full collection SHA/face index, original engine ID, exact
+table SHA/ranges, descriptor, license and stale-generation gates are retained.
+
+Reviewed peer `8080c90` exposes `parse_with_source` and `table(tag)` but lacks
+complete validated directory enumeration (and does not reject duplicate tags or
+partial overlaps itself). Its `truetype.rs` is byte-identical to the currently
+linked original reader: SHA
+`2aca31389307f63cb8df88388dea0810b291d44ba0702b56fa5cbc0db78e0b77`.
+The concrete dependency is an original-engine API returning every face directory
+and table range after checking TTC header/version/counts, duplicate records and
+shared-table rules. This crate does not add another directory parser to fill it.
+Collection resources expose the original selected `TrueTypeFace`; existing
+single-face outline/cache adapters remain unchanged.
+
+Synthetic two-face fixtures establish explicit face identity, table matching,
+shared-table versus partial-overlap checks, bounds and immutable stale snapshots.
+The installed NotoSansCJK-VF.ttc inventory (font SHA
+`d3d8256cdec8dbcb3552284bc6b20c734dd60c2ee9df83b5758e34807c4bac32`)
+currently yields peer `MissingTable("CFF ")` for face0. Its license hash and exact
+refusal are pinned in `tests/collection_inventory.rs`; this is not successful
+collection-rendering evidence. Production collection activation awaits the
+verified resolver and downstream outline support.
+
+### Literal .enc files
+
+`enc_file::EncFile` parses one bounded declaration:
+`/EncodingName [ /glyph0 ... /glyph255 ] [readonly] def`, with ASCII whitespace
+and `%` line comments. The brackets around `readonly` here mean optional grammar,
+not extra file tokens. There must be exactly256 positional names; duplicate array
+definitions, extra/missing slots, numeric assignment, strings and unknown operators
+are rejected. Repeated names (especially `.notdef`) are valid and do not duplicate
+slots. Names are preserved literally; no escape decoding, execution or evaluation
+occurs. Input is capped at64KiB and names at256 bytes.
+
+`load` uses rooted no-symlink reads with an expected file SHA. Binding wrappers
+preserve the encoding-file SHA/name/project path alongside existing exact
+`BoundTfmFont` or `BoundCffTfmFont`. TrueType mappings still require explicit named
+GID declarations; CFF uses its already validated original-name index. Missing
+names and `.notdef` semantics come from those binders, with no Unicode casts or
+fallback. Consumers must include the wrapper's file identity in provenance/cache
+keys when source-file identity matters, even if two files declare equal slots.
+
+The peer has no runtime `.enc` parser; its fixture-generation Python utility has
+a narrow source-extraction helper. The published licensed `lm-ec.enc` (SHA
+`7f9932c402d22a937b853406cfdf4166b80260e3ff21a03fe9a4c05105a2918c`)
+is parsed as256 slots and compared against all253 mapped slots in the peer's
+encoding manifest. The existing GUST license is hash-verified by the test. No
+reference bytes are copied and no production PostScript engine is introduced.
+
+Rooted TFM/VF dependency schema2 adds `physical_encoding_asset` and
+`cff_physical_encoding_asset` node kinds. Each specifies the existing licensed
+`Asset { path, sha256, license }` as `encoding_asset`, plus TFM asset and explicit
+registry binding. TrueType also requires `declared_glyphs`; CFF uses its verified
+name index. Slot maps are loaded through `EncFile` and existing binders. Schema1
+inline nodes remain unchanged; new node kinds are rejected under schema1.
+Asset reads share existing byte/file/license budgets. Project generation includes
+the exact encoding asset path/SHA/license; ResourceKey variants are unchanged, so
+consumers must retain the project generation when caching across loaded projects.
+
+`ResolvedVfProject::physical_run` exposes the existing bounded TFM ligature/kern
+mapping for one loaded physical endpoint, returning project/registry generation,
+node ID, exact TFM words and original8bit input intervals. Virtual endpoints remain
+explicitly unsupported by this run API; their existing packet expansion is intact.
+Tests exercise both TT/CFF asset nodes, nested expansion, file-hash refusal and
+schema gating with synthetic fonts. Existing real Latin Modern TFM and encoding
+fixtures are hash-pinned, including `fi`->slot28 and AV kern-116509 evidence.
+
+The full matching-font test is deliberately opt-in:
+`FLASHTEX_LM_FONT=/exact/lmroman10-regular.otf cargo test --offline --manifest-path crates/font-resources/Cargo.toml --test rooted_lm_encoding -- --ignored`.
+It requires font SHA `1aa18cfefa58132c52ce5de70db1fd1154201c19cd2b2cdaffba4906a33e6852`
+and verifies exact TFM/encoding/license hashes, rooted loading, fi interval0..2,
+AV intervals0..1/1..2 and exact kern. The exact matching font was subsequently obtained from the official GUST
+distribution into a temporary evidence directory; the test now passes with the
+explicit declarations described below. No substitute font is used.
+
+
+CFF encoding-asset nodes may explicitly opt into `declarations`, binding the
+encoding-file/full-font/CFF hashes and face index. Each alias declares its literal
+source name, literal font target name and exact original GID. Duplicate, conflicting,
+unknown or `.notdef` aliases are refused. Explicit unavailable slots must match the
+literal vector and actually lack a font name; requesting one fails, never substitutes.
+The default without declarations remains strict. Resolved mappings retain literal
+source names; their semantic digest includes the declaration hash, and rooted
+project generation retains the entire declaration and licensed asset provenance.
+
+The official GUST archive supplied exact font SHA1aa18cf...; the initially failing
+full rooted test exposed the documented five LM ligature aliases and three missing
+slots. With those exact fixture-bound declarations it now passes fi->originalGID125,
+input0..2, AV kern-116509 with intervals0..1/1..2, and all three unavailable-slot
+refusals. `fixtures/rooted-lm-download.json` preserves official URLs, archive/font/
+license hashes and the initial failure. The freshly downloaded license differs in
+line endings/URL spelling/whitespace from the pinned fixture; its normalized terms
+agree, but the two raw hashes remain distinct in evidence. Assets are temporary,
+not installed or copied into the repository.
+
+The bounded `rooted-lm-replay.json` now records five real ligatures (`fi`, `ff`,
+`fl`, `ffi`, `ffl`), three signed kern pairs (`AV`, `To`, `WA`), exact metric
+fix-words, original GIDs, code intervals and rejected unavailable slots. The opt-in
+matching-font test compares the complete generated value against this artifact
+and checks identical repeated runs. `rooted-lm-replay-provenance.json` pins source
+and artifact hashes plus the reproduction command. Regeneration writes only to
+an explicitly supplied `FLASHTEX_LM_REPLAY_OUTPUT` path for review; ordinary replay
+never updates expectations. This measures actual resource mapping, not independent
+TeX layout agreement or visual fidelity.
+
+Collection API followup reviewed Daniel supervisor tip
+`e61c176dc71048e1fcbba2ae5df187f07cbd5ba4` and font-engine tip
+`73422451ec367269d8ce2ba4554ba5103224a262`: no complete layout resolver is published.
+Daniel's `src/truetype.rs` still hashes
+`2aca31389307f63cb8df88388dea0810b291d44ba0702b56fa5cbc0db78e0b77`, identical to the
+linked file. Lines 83–90 select one TTC directory, and lines 109–126 validate
+selected table ends then insert into a map; they do not enumerate every face,
+reject duplicate tags or establish collection-wide overlap safety. The explicit
+`VerifiedCollectionResolver::complete_layout` dependency remains necessary.
+A peer implementation must validate the full TTC header/face list and all directory
+and table ranges, distinguish allowed exact sharing from partial overlaps, and
+expose that verified layout without losing full collection identity. No second
+parser or unverified production adapter has been added.
+
+Fresh TTC review: `f2fdb08` (float-layout report `4422cff`) adds
+`collection_layout`, but the exact compiled peer accepts unsupported TTC/sfnt
+versions and table payloads overlapping the TTC header or face directory.
+`tools/ttc_peer_contract.rs` reproduces the five tiny directory probes; actual
+outcomes/source hashes are in `fixtures/ttc-peer-contract.json`. Consumer tests
+independently enforce header/directory/table separation, same-tag exact sharing
+and128face/256table caps. Those post-parse caps cannot bound the peer's prior work.
+The resolver gate therefore remains: the peer must return a validated header range
+and directory ranges, reject unsupported versions/DSIG as appropriate, and enforce
+hard caller-supplied face/table/work caps before allocation and cross-face scans.
+No header decoder was duplicated and no peer dependency was activated prematurely.

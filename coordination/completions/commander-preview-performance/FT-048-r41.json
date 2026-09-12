@@ -1,0 +1,73 @@
+{
+  "agent_id": "commander-preview-performance",
+  "archived_utc": "2026-09-12T15:41:41Z",
+  "assignment": {
+    "acceptance": [
+      "Preserve exact source revision/hash, durable approval and permanent-ID guarantees; history metadata is source-free and does not change retention",
+      "Do not edit crates/document-runtime after published ecbaf7c handoff; consume FT049 reviewed API only",
+      "Helper v2 forwarding remains default OFF, preserves required-output priority and complete frame limits, and never claims native rendering validation"
+    ],
+    "agent_id": "commander-preview-performance",
+    "allocation_id": "hosted-openai-product",
+    "branch": "agent/commander-preview-performance/preview-performance",
+    "deadline_utc": null,
+    "dependencies": [],
+    "input_main_sha": "904197db20de983f10b0f3ef049ac8f20822bdc2",
+    "objective": "Prepare isolated literal Text math AST using existing token stream and explicit Roman intent through compiler layout/export; no second parser or mathbb substitution",
+    "owned_paths": [
+      "crates/preview-controller",
+      "crates/edit-ledger"
+    ],
+    "revision": 41,
+    "schema_version": 1,
+    "state": "assigned",
+    "task_id": "FT-048",
+    "timebox_minutes": 40,
+    "updated_utc": "2026-09-12T15:32:47.359100+00:00"
+  },
+  "report": {
+    "agent_id": "commander-preview-performance",
+    "allocation_id": "hosted-openai-product",
+    "assignment_acknowledgements": {
+      "FT-048": {
+        "acknowledged_utc": "2026-09-12T15:41:30Z",
+        "adaptation": "Read formal r41 after Commander verbal dispatch. Implemented isolated Text AST and Roman font intent only, published 3024b8d4 with navigation f464c6d6 and comment correction 61bd63f7. Authoritative compiler and producer remain untouched; producer spacing/encoding adoption gate remains open.",
+        "main_sha": "84ed6a9dbad284e028d4ae2f4966c8f77ac99103",
+        "revision": 41
+      }
+    },
+    "branch": "agent/commander-preview-performance/preview-performance",
+    "capabilities": [
+      "Preview helper serialization and latency"
+    ],
+    "code_revision": "61bd63f713267bd786e620d0ce470754f8eda4e2",
+    "eta_minutes": {
+      "likely": 15,
+      "optimistic": 5,
+      "pessimistic": 30
+    },
+    "machine": "linux-primary",
+    "main_integrated_through": "3d3909ce828b4de34d67f8a22feb6cb369232af3",
+    "next_action": "Independent candidate review and producer character/spacing contract closure; request next compiler construct scope from Commander. No authoritative compiler edits or repin.",
+    "reviewed_peers": {},
+    "schema_version": 1,
+    "state": "ready_for_integration",
+    "summary": "Text candidate cumulative f464c6d6 plus required comment delta 61bd63f7 are published. Prior 103 distinct tests covered; correction reruns 48 library/text tests and strict lint. Exact corrected binary retains identical 72-diagnostic HW1 payload and five text groups; exact macro and multi-document navigation tests pass.",
+    "tool": "Codex GPT-6 Astra",
+    "updated_utc": "2026-09-12T15:41:30Z",
+    "usage": {
+      "evidence": "crates/preview-controller/docs/handoffs/hw1-text-candidate/evidence.json; crates/preview-controller/docs/handoffs/hw1-text-comment-fix/evidence.json",
+      "status": "Existing hosted allocation, no paid CLI/API calls; remaining quota unknown."
+    }
+  },
+  "report_age_seconds": 11,
+  "report_path": "coordination/agents/commander-preview-performance.json",
+  "review_required": true,
+  "revision": 41,
+  "schema_version": 1,
+  "stale_completion": false,
+  "state": "reported_ready",
+  "task_id": "FT-048",
+  "worker_branch": "agent/commander-preview-performance/preview-performance",
+  "worker_report_sha": "be2f8108d6211a15c95ba898ec00bcb093321a79"
+}

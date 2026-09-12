@@ -1,23 +1,23 @@
 {
-  "schema_version": 1,
-  "task_id": "FT-044",
-  "agent_id": "daniel-collaboration",
-  "branch": "agent/daniel-collaboration/collaboration-core",
-  "revision": 2,
-  "state": "assigned",
-  "objective": "Add bounded durable collaborative-operation replay checkpoints and interrupted delivery recovery; preserve convergence, causal IDs and explicit source ownership without network activation.",
-  "owned_paths": [
-    "crates/collaboration-core"
-  ],
-  "dependencies": [],
   "acceptance": [
     "Meaningful tests and strict Rust lint pass with bounded malformed/Unicode inputs",
     "Preserve exact source/revision and resource identities; no implicit approximation or parity claim",
     "Do not edit peer compiler/native/layout files; publish typed adapter contract and exact tested SHA"
   ],
+  "agent_id": "daniel-collaboration",
   "allocation_id": "daniel-claude20x-shared",
-  "timebox_minutes": 40,
+  "branch": "agent/daniel-collaboration/collaboration-core",
   "deadline_utc": null,
-  "input_main_sha": "cb9556c2ba00ec3d6b692439ac28719c9f6532a2",
-  "updated_utc": "2026-09-12T09:15:38.612288+00:00"
+  "dependencies": [],
+  "input_main_sha": "6c89f26ff65929428ae9fb1e0dd670318159b0f6",
+  "objective": "Offline bounded collaborative text operation core with stable IDs, causal/replay dedup and convergence fixtures; no network or ledger replacement. Integrate an explicit published consumer adapter without peer ownership edits",
+  "owned_paths": [
+    "crates/collaboration-core"
+  ],
+  "revision": 3,
+  "schema_version": 1,
+  "state": "assigned",
+  "task_id": "FT-044",
+  "timebox_minutes": 40,
+  "updated_utc": "2026-09-12T09:44:37Z"
 }

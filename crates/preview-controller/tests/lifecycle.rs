@@ -628,3 +628,305 @@ fn compiler_restart_never_revalidates_older_index_snapshot() {
         .unwrap();
     assert!(controller.index().snapshot().generation > restarted.generation);
 }
+
+fn historical_fixture(dir: &std::path::Path) -> Controller {
+    let body = format!("import pathlib\n{}", ECHO.replace("time.sleep(.02)",
+        "\n while p['revision'] > 1 and not pathlib.Path(__file__).with_name('release').exists(): time.sleep(.001)"));
+    let mut controller = Controller::new(
+        "p".into(),
+        "main.tex".into(),
+        vec![store(dir)],
+        command(dir, &body),
+        Limits::default(),
+    )
+    .unwrap();
+    controller.configure_completed_snapshots(true).unwrap();
+    controller.compile_current().unwrap();
+    let before = controller.document("main.tex").unwrap().clone();
+    controller
+        .replace_document(
+            "main.tex",
+            before.revision,
+            &before.source_sha256,
+            "new source with changed offsets".into(),
+        )
+        .unwrap();
+    wait(&mut controller, |events| {
+        events
+            .iter()
+            .any(|event| matches!(event, Update::Runtime(Event::Stale { revision: 1, .. })))
+    });
+    controller
+}
+
+#[test]
+fn historical_preview_binds_original_versions_and_cannot_regress_after_current_output() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut controller = historical_fixture(dir.path());
+    let historical = controller.take_completed_snapshot().unwrap();
+    assert_eq!(historical.source_versions().documents["main.tex"], 1);
+    assert_eq!(controller.index().snapshot().documents["main.tex"], 2);
+    assert_eq!(historical.request_id(), "preview-1");
+    assert_eq!(historical.result()["payload"]["revision"], 1);
+    assert!(controller.claim_historical_display(&historical));
+    assert!(!controller.claim_historical_display(&historical));
+    std::fs::write(dir.path().join("release"), b"ok").unwrap();
+    let events = wait(&mut controller, |events| {
+        events
+            .iter()
+            .any(|event| matches!(event, Update::Preview(_)))
+    });
+    let current = events
+        .into_iter()
+        .find_map(|event| match event {
+            Update::Preview(p) => Some(p),
+            _ => None,
+        })
+        .unwrap();
+    assert!(controller.is_current_preview(&current));
+    assert!(!controller.claim_historical_display(&historical));
+    assert!(controller.take_completed_snapshot().is_none());
+}
+
+#[test]
+fn historical_callbacks_are_invalid_after_policy_layout_restart_close_or_other_controller() {
+    for transition in ["policy", "layout", "restart", "close", "other"] {
+        let dir = tempfile::tempdir().unwrap();
+        let mut controller = historical_fixture(dir.path());
+        let historical = controller.take_completed_snapshot().unwrap();
+        match transition {
+            "policy" => {
+                controller.configure_completed_snapshots(false).unwrap();
+                controller.configure_completed_snapshots(true).unwrap();
+            }
+            "layout" => {
+                controller.configure_layout(vec![]).unwrap();
+            }
+            "restart" => {
+                controller
+                    .restart(command(dir.path(), ECHO), Limits::default())
+                    .unwrap();
+            }
+            "close" => {
+                controller.close().unwrap();
+            }
+            "other" => {
+                let other_dir = tempfile::tempdir().unwrap();
+                let mut other = historical_fixture(other_dir.path());
+                assert!(!other.claim_historical_display(&historical));
+                continue;
+            }
+            _ => unreachable!(),
+        }
+        assert!(!controller.claim_historical_display(&historical));
+    }
+}
+
+#[test]
+fn optional_historical_metadata_eviction_never_rejects_a_durable_edit() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut controller = Controller::new(
+        "p".into(),
+        "main.tex".into(),
+        vec![store(dir.path())],
+        command(dir.path(), ECHO),
+        Limits::default(),
+    )
+    .unwrap();
+    controller.configure_completed_snapshots(true).unwrap();
+    for index in 0..80 {
+        let previous = controller.document("main.tex").unwrap().clone();
+        let outcome = controller
+            .replace_document(
+                "main.tex",
+                previous.revision,
+                &previous.source_sha256,
+                format!("durable edit {index}"),
+            )
+            .unwrap();
+        assert!(outcome.preview_error.is_none());
+        assert!(controller.historical_binding_count() <= 64);
+    }
+    assert_eq!(
+        controller.document("main.tex").unwrap().text,
+        "durable edit 79"
+    );
+    drop(controller);
+    assert_eq!(
+        store(dir.path()).document().unwrap().unwrap().text,
+        "durable edit 79"
+    );
+}
+
+#[test]
+fn preview_currentness_checks_compile_generation_even_with_matching_id_and_source() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut controller = Controller::new(
+        "p".into(),
+        "main.tex".into(),
+        vec![store(dir.path())],
+        command(dir.path(), ECHO),
+        Limits::default(),
+    )
+    .unwrap();
+    controller.compile_current().unwrap();
+    let mut preview = wait(&mut controller, |events| {
+        events.iter().any(|e| matches!(e, Update::Preview(_)))
+    })
+    .into_iter()
+    .find_map(|event| match event {
+        Update::Preview(p) => Some(p),
+        _ => None,
+    })
+    .unwrap();
+    assert!(controller.is_current_preview(&preview));
+    let generation = preview.compile_revision;
+    // Keep the real request ID and complete source snapshot unchanged.
+    preview.compile_revision = generation.checked_add(1).unwrap();
+    assert!(!controller.is_current_preview(&preview));
+    preview.compile_revision = generation.saturating_sub(1);
+    assert!(!controller.is_current_preview(&preview));
+    preview.compile_revision = generation;
+    assert!(controller.is_current_preview(&preview));
+    controller
+        .restart(command(dir.path(), ECHO), Limits::default())
+        .unwrap();
+    assert!(!controller.is_current_preview(&preview));
+    let current = wait(&mut controller, |events| {
+        events.iter().any(|e| matches!(e, Update::Preview(_)))
+    })
+    .into_iter()
+    .find_map(|event| match event {
+        Update::Preview(p) => Some(p),
+        _ => None,
+    })
+    .unwrap();
+    assert_eq!(
+        current.source_versions.documents,
+        preview.source_versions.documents
+    );
+    assert_ne!(current.compile_revision, generation);
+    assert!(controller.is_current_preview(&current));
+    assert!(!controller.is_current_preview(&preview));
+}
+
+#[test]
+fn edit_admission_tracks_queued_supersession_and_failed_admission() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut controller =
+        Controller::open_without_compiler("p".into(), "main.tex".into(), vec![store(dir.path())])
+            .unwrap();
+    let old = controller.document("main.tex").unwrap().clone();
+    let saved = controller
+        .replace_document(
+            "main.tex",
+            old.revision,
+            &old.source_sha256,
+            "saved offline".into(),
+        )
+        .unwrap();
+    assert!(saved.compile_admission.is_none());
+    assert!(saved.preview_error.is_some());
+    let gated = "import json,sys,pathlib,time\nroot=pathlib.Path(__file__).parent\nfor line in sys.stdin:\n r=json.loads(line);p=r['payload'];(root/'started').touch()\n while not (root/'release').exists(): time.sleep(.001)\n print(json.dumps({'protocol_version':1,'type':'compile_result','id':r['id'],'payload':{'project_id':p['project_id'],'revision':p['revision'],'status':'ok','pages':[],'diagnostics':[]}}),flush=True)\n";
+    controller
+        .restart(command(dir.path(), gated), Limits::default())
+        .unwrap();
+    let deadline = Instant::now() + Duration::from_secs(3);
+    while !dir.path().join("started").exists() {
+        assert!(Instant::now() < deadline);
+        thread::sleep(Duration::from_millis(2));
+    }
+    let mut admissions = Vec::new();
+    for text in ["queued first", "queued second"] {
+        let doc = controller.document("main.tex").unwrap().clone();
+        let result = controller
+            .replace_document_metadata("main.tex", doc.revision, &doc.source_sha256, text.into())
+            .unwrap();
+        assert!(result.preview_error.is_none());
+        let admission = result.compile_admission.unwrap();
+        assert_ne!(admission.compile_revision, result.document.revision);
+        admissions.push(admission);
+    }
+    std::fs::write(dir.path().join("release"), "").unwrap();
+    let events = wait(&mut controller, |events| {
+        events.iter().any(
+            |event| matches!(event, Update::Preview(p) if p.request_id == admissions[1].request_id),
+        )
+    });
+    assert!(events.iter().any(|event| matches!(event, Update::Runtime(Event::Superseded {id,by_id}) if id == &admissions[0].request_id && by_id == &admissions[1].request_id)));
+    let limits = Limits {
+        max_frame: 512,
+        ..Limits::default()
+    };
+    controller
+        .restart(command(dir.path(), ECHO), limits)
+        .unwrap();
+    let doc = controller.document("main.tex").unwrap().clone();
+    let rejected = controller
+        .replace_document(
+            "main.tex",
+            doc.revision,
+            &doc.source_sha256,
+            "x".repeat(2048),
+        )
+        .unwrap();
+    assert!(rejected.preview_error.is_some());
+    assert!(rejected.compile_admission.is_none());
+    assert_eq!(
+        controller.document("main.tex").unwrap().text,
+        "x".repeat(2048)
+    );
+    controller.close().unwrap();
+}
+
+#[test]
+fn grouped_encoding_refusal_preserves_source_and_permanent_retry() {
+    use flashtex_preview_controller::HistoryAction;
+    for metadata in [false, true] {
+        let dir = tempfile::tempdir().unwrap();
+        let limits = Limits {
+            max_frame: 512,
+            ..Limits::default()
+        };
+        let mut controller = Controller::new(
+            "p".into(),
+            "main.tex".into(),
+            vec![store(dir.path())],
+            command(dir.path(), ECHO),
+            limits,
+        )
+        .unwrap();
+        let doc = controller.document("main.tex").unwrap().clone();
+        let command: flashtex_edit_ledger::history::GroupedEdit = serde_json::from_value(serde_json::json!({"command_id":"large-group","expected_revision":doc.revision,"expected_sha256":doc.source_sha256,"label":"large replacement","edits":[{"start_byte":0,"end_byte":doc.text.len(),"removed_text":doc.text,"replacement":"x".repeat(2048)}]})).unwrap();
+        for replayed in [false, true] {
+            if metadata {
+                let result = controller
+                    .apply_group_metadata("main.tex", command.clone())
+                    .unwrap();
+                assert!(result.compile_admission.is_none());
+                assert!(result.preview_error.is_some());
+                assert_eq!(result.history.command_revision, 2);
+                assert_eq!(result.history.replayed_command, replayed);
+            } else {
+                let result = controller
+                    .apply_history("main.tex", HistoryAction::Group(command.clone()))
+                    .unwrap();
+                assert!(result.source.compile_admission.is_none());
+                assert!(result.source.preview_error.is_some());
+                assert_eq!(result.history.command_revision, 2);
+                assert_eq!(result.history.replayed_command, replayed);
+            }
+            assert_eq!(controller.document("main.tex").unwrap().revision, 2);
+            assert_eq!(
+                controller.document("main.tex").unwrap().text,
+                "x".repeat(2048)
+            );
+        }
+        controller.close().unwrap();
+        drop(controller);
+        assert_eq!(
+            store(dir.path()).document().unwrap().unwrap().text,
+            "x".repeat(2048)
+        );
+    }
+}

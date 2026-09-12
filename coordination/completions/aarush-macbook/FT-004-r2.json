@@ -1,0 +1,75 @@
+{
+  "agent_id": "aarush-macbook",
+  "archived_utc": "2026-09-12T15:22:31Z",
+  "assignment": {
+    "acceptance": [
+      "xcodebuild -list parses the project; unsigned generic iOS Simulator build succeeds on an Xcode Mac",
+      "The committed test target runs payload, deduplication, image-size/orientation, cancellation, and retry tests",
+      "PNG/JPEG bytes match declared MIME type and base64 decodes; report physical Pencil/camera evidence or exact device-only gap",
+      "Publish an exact rev 2 ACK plus actual local worker PID/session and current non-secret quota/auth evidence; use central Cursor broker if local Cursor remains unavailable"
+    ],
+    "agent_id": "aarush-macbook",
+    "allocation_id": "openai-aarush-plus-ft004",
+    "branch": "agent/aarush-macbook/companion-capture",
+    "deadline_utc": null,
+    "dependencies": [],
+    "input_main_sha": "7a1760114a706e8f76f17b957af84921be832340",
+    "objective": "Repair the committed iOS companion project so native build and tests run, then finish capture payload correctness. Regenerate malformed project.pbxproj, add the real test target and scheme, use an available or generic simulator destination, and ensure declared MIME type matches encoded image bytes. Preserve user work and runtime-v1 capture_submit.",
+    "owned_paths": [
+      "apps/companion"
+    ],
+    "revision": 2,
+    "schema_version": 1,
+    "state": "assigned",
+    "task_id": "FT-004",
+    "timebox_minutes": 45,
+    "updated_utc": "2026-09-12T04:41:56Z"
+  },
+  "report": {
+    "agent_id": "aarush-macbook",
+    "allocation_id": "openai-aarush-plus-ft004",
+    "assignment_acknowledgements": {
+      "FT-004": {
+        "acknowledged_utc": "2026-09-12T15:21:54Z",
+        "adaptation": "Accepted FT-004 rev 2. pbxproj fully rewritten at a96df663: BonjourTransport.swift registered in all phases, duplicate Services group removed, FlashTeXCompanionTests target added with BUNDLE_LOADER/TEST_HOST. xcodebuild verification requires physical macOS \u2014 device bridge runs Linux VM. Capture payload tests (MIME, base64, dedup, cancellation, retry) in CompanionTests.swift. Session: Claude Cowork claude-sonnet-4-6; protected allowance maintained; commits via git with Cursor identity per convention; no local Cursor.",
+        "main_sha": "a744cd869544dcdb91b87d11381c8c82aabac684",
+        "revision": 2
+      }
+    },
+    "branch": "agent/aarush-macbook/companion-capture",
+    "capabilities": [
+      "rust",
+      "swift",
+      "xcode",
+      "coordination"
+    ],
+    "code_revision": "c1f1cf723e9a5ab9a74db297986810d9bb317bb6",
+    "eta_minutes": {
+      "likely": 0,
+      "optimistic": 0,
+      "pessimistic": 0
+    },
+    "machine": "mac-m5pro-aarush",
+    "main_integrated_through": "d6858792737c0980cccaec5db835075e94a1ebc9",
+    "next_action": "Await xcodebuild -list verification on macOS from chatgpt-a (FT-014) or user. Available for new assignments.",
+    "reviewed_peers": {},
+    "schema_version": 1,
+    "state": "ready_for_integration",
+    "summary": "FT-004 rev 2: pbxproj repaired (a96df663), BonjourTransport.swift registered, FlashTeXCompanionTests target added. FT-005/006 bonus: PDF output + incremental LRU cache on agent/aarush-macbook/incremental-reuse (0236aa0a), 125 compiler tests passing.",
+    "tool": "Claude Cowork",
+    "updated_utc": "2026-09-12T15:22:02Z",
+    "usage": {
+      "status": "unknown"
+    }
+  },
+  "report_age_seconds": 29,
+  "report_path": "coordination/agents/aarush-macbook.json",
+  "review_required": true,
+  "revision": 2,
+  "schema_version": 1,
+  "stale_completion": false,
+  "state": "reported_ready",
+  "task_id": "FT-004",
+  "worker_branch": "agent/aarush-macbook/companion-capture",
+  "worker_report_sha": "16496db49cdc51d67e41f5ee05a32650cadf975d"
+}

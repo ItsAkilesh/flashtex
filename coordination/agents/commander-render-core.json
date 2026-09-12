@@ -3,10 +3,10 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-023": {
-      "acknowledged_utc": "2026-09-12T08:50:08Z",
-      "adaptation": "Read exact published FT023 revision5. Current MathKernInfo exact source-bound replay implemented; synthetic tie/budget/tamper tests pass. Finish pinned boundary replay then device-context and cached/direct mixed-math followups; no script layout or wire activation.",
-      "main_sha": "e0887bcfd71749d35f4a1aa8c42d059599d5f88d",
-      "revision": 5
+      "acknowledged_utc": "2026-09-12T14:14:35Z",
+      "adaptation": "Read exact assignment at 228c5fa1. Source-pinned rendering invariants and bounded reconstruction handoff only; no wire/native activation.",
+      "main_sha": "228c5fa11b892bf74e5ed5aad86a2013e930e988",
+      "revision": 23
     }
   },
   "branch": "agent/commander-render-core/rendering-core",
@@ -14,23 +14,23 @@
     "rust",
     "rendering"
   ],
-  "code_revision": "fce561571abb1aa8c1b8b2edc4dd8c5ea63286a5",
+  "code_revision": "f261b36cc2895edb641d6683ed0f19df2d21fb58",
   "eta_minutes": {
-    "likely": 15,
-    "optimistic": 5,
-    "pessimistic": 25
+    "likely": 3,
+    "optimistic": 1,
+    "pessimistic": 5
   },
   "machine": "linux-primary",
-  "main_integrated_through": "84d581168eed75caa620f66350d629a23b0ce538",
-  "next_action": "Publish kern checkpoint then consume additive published device context in same owned crate; retain raw design values and pixel corrections separately, preserve unhinted default. Follow with bounded cached/direct mixed-math replay. Worktree /home/natkarri/flashtex-rendering-core branch agent/commander-render-core/rendering-core; no exposed native context telemetry/control.",
+  "main_integrated_through": "f261b36cc2895edb641d6683ed0f19df2d21fb58",
+  "next_action": "Review published owner candidate; actual delta C3 accounting/residency gates remain pending",
   "reviewed_peers": {},
   "schema_version": 1,
-  "state": "in_progress",
-  "summary": "FT023r5 exact MathKern consumer complete, unchanged peer1fc71f3. 135 ordinary tests and strict clippy pass; pinned STIX293 boundary replays across219 tables plus66 assembly replays pass. Explicit query heights, original GIDs, raw/scaled kerns, device flags and immutable source/registry/MATH identity. No script layout.",
+  "state": "ready_for_integration",
+  "summary": "Prepared existing-owner Text acceptance packet; r5 removes prior heuristic and names preraster residency",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T08:50:57Z",
+  "updated_utc": "2026-09-12T16:08:52Z",
   "usage": {
-    "evidence": "cargo test135 pass; cargo clippy all-targets -D warnings pass; pinned STIXMath source/license hashes checked,293 lookup cases/219 tables; synthetic negative/tie/absence/invalid GID/tamper/duplicate/stale/budget cases. No pending test process.",
-    "status": "Hosted OpenAI only; no providers or descendants."
+    "evidence": "Pinned delta77477b70 source reviewed; Text owner branch absent, session ACK preserved",
+    "status": "Existing session, read-only peer review; no builds/providers/descendants"
   }
 }
