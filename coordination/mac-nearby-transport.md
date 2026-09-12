@@ -1,6 +1,6 @@
 # mac-nearby-transport handoff
 
-- Updated UTC: 2026-09-12T08:50Z
+- Updated UTC: 2026-09-12T08:57Z
 - Agent / parent / machine alias: mac-nearby-transport (Claude Code subagent) /
   mac-claude-a / mac-m1max-a
 - Task / acceptance gate / owned paths: lane "Bounded nearby receive and
@@ -10,12 +10,14 @@
   full `swift test` in apps/mac green /
   `apps/mac/Sources/FlashTeXMac/{NearbyListener,NearbyProtocol,NearbyState}.swift`,
   `apps/mac/Tests/FlashTeXMacTests/NearbyListenerTests.swift`,
+  `apps/mac/Tests/FlashTeXMacTests/Fixtures/nearby-companion-session.jsonl`,
   `coordination/mac-nearby-transport.md`, `coordination/agents/mac-nearby-transport.json`
   (plus a documentation-only edit to `apps/mac/docs/nearby-v1-proposal.md` §4/§5)
 - Branch / code revision / main integrated through:
   `agent/mac-nearby-transport/bounded` (from origin/agent/mac-claude-a/mac-shell
-  6b43a3a) / see JSON / origin/main as contained in mac-shell 6b43a3a
-- State: in progress (lane + dedup follow-up ready; transcript follow-up next)
+  6b43a3a, merged mac-shell b973b89) / see JSON / origin/main as contained in
+  mac-shell b973b89
+- State: ready for integration (lane + both follow-ups)
 - Ready behavior and evidence:
   - `NearbyReceiveLimits` (frame 12 MiB, image 8 MiB / 8192² / 64 MiB decoded,
     per-session in-flight 24 MiB, listener-wide in-flight 64 MiB, 4 sessions
@@ -40,6 +42,12 @@
     `lastDuplicateCaptureId` / `clearReceiveErrors()` plus log lines
     (`refused …`, `duplicate …`) from new listener events `.captureRefused` /
     `.captureDuplicate`.
+  - Transcript acceptance: `Fixtures/nearby-companion-session.jsonl`
+    (recorded-shape companion session, see test doc comment for provenance)
+    replayed on loopback by `NearbyTranscriptAcceptanceTests`: hello_ack, four
+    capture_received with duplicates absorbed, two inbox entries, verbatim
+    replay refused at hello (stale nonce), reconnect retry acknowledged
+    without re-storing.
 - Incomplete behavior / blockers / needs from others:
   - `NearbyInbox` (parent-retained `ShellModel+Nearby.swift`) still bounds by
     count (50), not bytes; see suggested diff in the final report.
@@ -47,7 +55,11 @@
     `lastReceiveError`/`duplicateCaptureCount`; suggested diff in the report.
   - JPEG entropy data is not decoded (structure only); the bridge's full decode
     remains authoritative.
-  - Transcript acceptance test not yet written (next).
+  - The iPad simulator was not driven: the companion on every published
+    branch still connects with plain `NWParameters.tcp` (no TLS-PSK, no v1
+    hello), so a live run can only reproduce the handshake refusal already
+    covered by `NearbyPlaintextTests`; the fixture is re-synthesized to the
+    recorded shape because the original stdout log was never committed.
 - Interface changes / consumer actions: wire version unchanged (nearby v1);
   new additive error codes documented in `nearby-v1-proposal.md` §4. The
   reference client (mac-nearby-client) should treat `too_many_in_flight` and
@@ -62,11 +74,12 @@
   follow-up will replay a recorded-shape transcript on loopback.
 - Validation commands / results / artifact paths:
   `cd apps/mac && swift build` clean; `swift test --filter 'Nearby|Pairing'`
-  28 tests pass (3 consecutive runs); full `swift test` with
-  FLASHTEX_COMPILER/PDF/BRIDGE/EDIT_LEDGER real binaries: 198 tests, 0 failures.
+  30 tests pass; full `swift test` with FLASHTEX_COMPILER/PDF/BRIDGE/
+  EDIT_LEDGER/PREVIEW_CONTROLLER real binaries after merging mac-shell
+  b973b89: 221 tests, 0 failures, 0 skipped.
 - Exact deadline UTC / remaining time / integration reserve: no fixed deadline
   (continuous authorization); 20% reserve kept for integration.
-- ETA remaining: transcript follow-up 30 / 45 / 90 min, confidence medium.
+- ETA remaining: 0 / 0 / 0 (lane and follow-ups done; awaiting review).
 - Resource pool / allocation ID / maximum: Claude Max 20x on mac-m1max-a
   (shared account quota) / claude-mac20x-nearby-transport / parent's allowance;
   quota not visible to the subagent.
@@ -80,9 +93,9 @@
   hand-written structural check (probe in scratchpad, not committed).
   Cancelling an accepted `NWConnection` before `start()` does release it (the
   client sees a reset in `.waiting`, never `.ready`).
-- Exact next action or command: write the transcript acceptance test
-  (recorded-shape companion session replayed against the listener on loopback)
-  in `NearbyListenerTests.swift`, then `swift test`, commit, push.
+- Exact next action or command: none pending; parent to review the branch,
+  apply the suggested `NearbyInbox` byte bound and `NearbyView` error rows
+  (diffs in the final report), and integrate into mac-shell.
 - Resume reading list: this file, `apps/mac/docs/nearby-v1-proposal.md` §4–5,
   `docs/evidence/companion-simulator/README.md` §5 (the recorded companion
   output shape).

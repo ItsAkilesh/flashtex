@@ -413,3 +413,16 @@ over the Mac's own interfaces (loopback included) with no extra setup.
 Without the companion, the same path is exercised by
 `swift test --filter NearbyStateTests` (a Network.framework client in the
 test process pairs, sends the fixture capture, is forgotten, and is refused).
+
+`swift test --filter NearbyTranscriptAcceptanceTests` replays
+`apps/mac/Tests/FlashTeXMacTests/Fixtures/nearby-companion-session.jsonl` on
+loopback: a recorded-shape companion session (the simulator run's envelope
+ordering, `\/` escaping, `capture-<hex>` ids, 400×300 photo and 1408×1510
+RGBA pencil PNGs, each capture line emitted twice as that build did) with a
+§8 `hello`. Expected: `hello_ack`, four `capture_received` (the two
+duplicates acknowledged, not re-delivered), two captures in the inbox; a
+verbatim replay on a second connection is refused at `hello` (stale nonce);
+a reconnect with a fresh `hello` re-sending the same captures is
+acknowledged again without storing them twice. The original simulator
+stdout was not committed and the companion still speaks plaintext, so this
+fixture is re-synthesized to the recorded shape, not the original bytes.

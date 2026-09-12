@@ -1390,3 +1390,162 @@ final class NearbyStateErrorTests: XCTestCase {
         XCTFail("timed out waiting for \(what)")
     }
 }
+
+// MARK: - transcript acceptance (mac-nearby-transport)
+
+/// Replays a companion session transcript against the listener on loopback.
+///
+/// Provenance of `Fixtures/nearby-companion-session.jsonl`: the shape of the
+/// iPad Pro 13" (M5) simulator run recorded in
+/// `docs/evidence/companion-simulator/README.md` §5 — runtime-v1
+/// `capture_submit` envelopes with `.sortedKeys` ordering and `/` escaped as
+/// `\/`, `capture-<8 hex>` ids, `default-anchor` / revision 1, the companion's
+/// default instructions, a 400×300 opaque photo-library PNG and a 1408×1510
+/// RGBA pencil drawing with a transparent background, **each line emitted
+/// twice byte-identically** (the double-print bug in that run). The captured
+/// `launch-1-stdout.log` was not committed and the companion still connects
+/// in plaintext (no TLS-PSK, no v1 `hello`), so the images were re-drawn with
+/// ImageIO and the `hello` line is the §8 shape with the pinned pairing vector
+/// (code 123456, salt 00…0f) and a proof computed independently in Python.
+/// This is therefore a recorded-shape transcript, not the original bytes.
+@MainActor
+final class NearbyTranscriptAcceptanceTests: XCTestCase {
+    static let transcriptURL = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        .appendingPathComponent("Fixtures/nearby-companion-session.jsonl")
+    static let vectorPSK = Pairing.data(hex: Pairing.vectorPSKHex)!
+
+    struct Transcript {
+        var lines: [Data]
+        var hello: RuntimeV1.Envelope<NearbyV1.Hello>
+        var captures: [RuntimeV1.Envelope<RuntimeV1.CaptureSubmit>]
+    }
+
+    func load() throws -> Transcript {
+        let raw = try Data(contentsOf: Self.transcriptURL)
+        var splitter = LineSplitter()
+        let lines = splitter.append(raw)
+        XCTAssertEqual(splitter.pendingBytes, 0, "transcript ends with a newline")
+        let hello = try JSONDecoder().decode(RuntimeV1.Envelope<NearbyV1.Hello>.self, from: lines[0])
+        let captures = try lines.dropFirst().map { try RuntimeV1.decodeCaptureSubmit($0) }
+        return Transcript(lines: lines, hello: hello, captures: captures)
+    }
+
+    /// Sends one line the way a companion's socket delivers it: in chunks.
+    func stream(_ line: Data, to client: NearbyTestClient) async throws {
+        var i = 0
+        while i < line.count {
+            let end = min(i + 16 * 1024, line.count)
+            client.send(line[i..<end])
+            i = end
+            try await Task.sleep(nanoseconds: 1_000_000)
+        }
+    }
+
+    func testTranscriptMatchesTheRecordedSessionShape() throws {
+        let t = try load()
+        XCTAssertEqual(t.lines.count, 5, "hello + 2 captures × 2 (double emission)")
+        XCTAssertEqual(t.hello.type, "hello")
+        XCTAssertEqual(t.hello.payload.pairId, Pairing.vectorPairID)
+        XCTAssertEqual(t.hello.payload.protocolVersion, 1)
+        XCTAssertTrue(String(decoding: t.lines[0], as: UTF8.self).contains("\"role\":\"companion\""), "the companion's extra key is kept")
+        XCTAssertTrue(Pairing.verifyHelloProof(t.hello.payload.proof, psk: Self.vectorPSK, nonce: t.hello.payload.nonce),
+                      "the Python-computed proof verifies against the Swift vector")
+        XCTAssertEqual(t.lines[1], t.lines[2]); XCTAssertEqual(t.lines[3], t.lines[4])
+        XCTAssertNotEqual(t.lines[1], t.lines[3])
+        XCTAssertEqual(t.captures.map(\.payload.captureId), ["capture-3A2F48D1", "capture-3A2F48D1", "capture-23361924", "capture-23361924"])
+        XCTAssertEqual(Set(t.captures.map(\.payload.destinationId)), ["default-anchor"])
+        XCTAssertEqual(Set(t.captures.map(\.payload.baseRevision)), [1])
+        for l in t.lines.dropFirst() {
+            let s = String(decoding: l, as: UTF8.self)
+            XCTAssertTrue(s.hasPrefix("{\"id\":\""), "sorted keys as the companion's encoder emits them")
+            XCTAssertTrue(s.contains("\\/"), "slashes escaped as the companion's encoder emits them")
+        }
+        let limits = NearbyReceiveLimits()
+        let photo = try NearbyImageCheck.validate(base64: t.captures[0].payload.image.dataBase64, mimeType: "image/png", limits: limits).get()
+        XCTAssertEqual(photo.width, 400); XCTAssertEqual(photo.height, 300)
+        XCTAssertEqual(photo.decodedBytes, 400 * 300 * 3, "opaque RGB")
+        let drawing = try NearbyImageCheck.validate(base64: t.captures[2].payload.image.dataBase64, mimeType: "image/png", limits: limits).get()
+        XCTAssertEqual(drawing.width, 1408); XCTAssertEqual(drawing.height, 1510)
+        XCTAssertEqual(drawing.decodedBytes, 1408 * 1510 * 4, "RGBA, as PKDrawing.image exports")
+        XCTAssertLessThan(t.lines.map(\.count).max()!, NearbyV1.maxLineBytes)
+    }
+
+    func testRecordedSessionIsAcceptedOnLoopbackWithDuplicatesAbsorbed() async throws {
+        let t = try load()
+        let model = ShellModel()
+        model.autoCompile = false
+        let h = ListenerHarness(psks: [.init(identity: Pairing.vectorPairID, key: Self.vectorPSK, isBootstrap: false)],
+                                sink: model, destinations: FixedDestinations(nil))
+        try h.listener.start()
+        try await waitUntil("ready") { h.port != 0 }
+        defer { h.stop() }
+
+        // Connection 1: the transcript, verbatim, line by line.
+        let c1 = NearbyTestClient(port: h.port, identity: Pairing.vectorPairID, psk: Self.vectorPSK)
+        try await waitUntil("client ready (\(String(describing: c1.failure)))") { c1.isReady }
+        for line in t.lines { try await stream(line + [0x0A], to: c1) }
+        try await waitUntil("five replies", timeout: 20) { c1.lineCount >= 5 }
+        let replies = c1.allLines
+        let ack = try JSONDecoder().decode(RuntimeV1.Envelope<NearbyV1.HelloAck>.self, from: replies[0])
+        XCTAssertEqual(ack.type, "hello_ack")
+        XCTAssertEqual(ack.id, t.hello.id)
+        XCTAssertEqual(ack.payload.nonce, t.hello.payload.nonce)
+        XCTAssertNil(ack.payload.pairPsk, "a stored pairing gets no new key")
+        XCTAssertTrue(String(decoding: replies[0], as: UTF8.self).contains("\"destination\":null"))
+        let received = try replies[1...4].map { try JSONDecoder().decode(RuntimeV1.Envelope<NearbyV1.CaptureReceived>.self, from: $0) }
+        XCTAssertEqual(received.map(\.type), Array(repeating: "capture_received", count: 4))
+        XCTAssertEqual(received.map(\.id), t.captures.map(\.id), "every line, including the duplicates, is acknowledged with its own id")
+        XCTAssertEqual(received.map(\.payload.captureId), t.captures.map(\.payload.captureId))
+        XCTAssertEqual(received.map(\.payload.durable), [false, false, false, false], "no bridge attached")
+        XCTAssertEqual(model.nearbyInbox.received.count, 2, "each capture reached the main-actor inbox once")
+        XCTAssertEqual(model.nearbyInbox.received.map(\.captureId), ["capture-3A2F48D1", "capture-23361924"])
+        XCTAssertEqual(model.nearbyInbox.received[1].image.dataBase64, t.captures[2].payload.image.dataBase64, "payload delivered unchanged")
+        let events = h.snapshot
+        XCTAssertTrue(events.contains(.hello(pairId: Pairing.vectorPairID, companionName: "iPad Pro 13-inch (M5)", bootstrap: false)), "\(events)")
+        XCTAssertEqual(events.filter { if case .capture = $0 { return true }; return false }.count, 2)
+        XCTAssertEqual(events.filter { $0 == .captureDuplicate(identity: Pairing.vectorPairID, captureId: "capture-3A2F48D1") }.count, 1)
+        XCTAssertEqual(events.filter { $0 == .captureDuplicate(identity: Pairing.vectorPairID, captureId: "capture-23361924") }.count, 1)
+        XCTAssertFalse(events.contains { if case .captureRefused = $0 { return true }; return false }, "nothing refused: \(events)")
+        XCTAssertEqual(h.listener.inboxBytesInFlight, 0)
+        XCTAssertFalse(c1.isClosed, "the session stays open")
+
+        // Connection 2: the identical transcript again (a naive replay). The
+        // hello nonce was already used, so the Mac refuses before any capture.
+        let c2 = NearbyTestClient(port: h.port, identity: Pairing.vectorPairID, psk: Self.vectorPSK)
+        try await waitUntil("client 2 ready") { c2.isReady }
+        for line in t.lines { try await stream(line + [0x0A], to: c2) }
+        try await waitUntil("replay refused") { c2.lineCount >= 1 }
+        let err = try JSONDecoder().decode(RuntimeV1.Envelope<NearbyV1.ErrorPayload>.self, from: c2.allLines[0])
+        XCTAssertEqual(err.payload.code, "bad_request")
+        XCTAssertTrue(err.payload.message.contains("nonce"))
+        try await waitUntil("replay closed") { c2.isClosed }
+        XCTAssertEqual(c2.lineCount, 1)
+        XCTAssertEqual(model.nearbyInbox.received.count, 2)
+
+        // Connection 3: reconnect with a fresh hello and retry the same
+        // captures (§7.4). The session is new, so the retries reach the
+        // inbox, which acknowledges identical payloads without storing again.
+        let c3 = NearbyTestClient(port: h.port, identity: Pairing.vectorPairID, psk: Self.vectorPSK)
+        try await waitUntil("client 3 ready") { c3.isReady }
+        let nonce = UUID().uuidString
+        c3.send(id: "h3", type: "hello", NearbyV1.Hello(pairId: Pairing.vectorPairID, companionName: "iPad Pro 13-inch (M5)", nonce: nonce,
+                                                        proof: Pairing.helloProof(psk: Self.vectorPSK, nonce: nonce)))
+        try await waitUntil("hello 3") { c3.lineCount >= 1 }
+        for line in t.lines.dropFirst() { try await stream(line + [0x0A], to: c3) }
+        try await waitUntil("retries acknowledged", timeout: 20) { c3.lineCount >= 5 }
+        let again = try c3.allLines[1...4].map { try JSONDecoder().decode(RuntimeV1.Envelope<NearbyV1.CaptureReceived>.self, from: $0) }
+        XCTAssertEqual(again.map(\.payload.captureId), t.captures.map(\.payload.captureId))
+        XCTAssertEqual(model.nearbyInbox.received.count, 2, "identical retries after a reconnect are not stored twice")
+        XCTAssertEqual(model.nearbyInbox.lastNote, "Duplicate capture-23361924 acknowledged again.")
+        c1.cancel(); c3.cancel()
+    }
+
+    private func waitUntil(_ what: String, timeout: TimeInterval = 5, _ cond: @escaping @MainActor () -> Bool) async throws {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if cond() { return }
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+        XCTFail("timed out waiting for \(what)")
+    }
+}
