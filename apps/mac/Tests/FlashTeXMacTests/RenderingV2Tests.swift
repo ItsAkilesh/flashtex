@@ -307,6 +307,46 @@ final class RenderingV2Tests: XCTestCase {
         }, "invalid_display_list")
     }
 
+    /// The typed fast reader yields exactly the `Codable` values for every
+    /// real fixture and for escapes, and refuses to guess: anything it does
+    /// not accept goes to `JSONDecoder`, whose diagnostics stand.
+    func testFastReaderMatchesCodableAndFallsBack() throws {
+        for name in ["display-list-v2-text.json", "display-list-v2-math.json", "display-list-v2-math-rules.json"] {
+            let data = try Self.fixture(name)
+            XCTAssertEqual(try RenderingV2Fast.envelope(data), try JSONDecoder().decode(RenderingV2.Envelope.self, from: data), name)
+        }
+        // Escapes, surrogate pairs, unicode and null optionals decode identically.
+        var o = Self.minimal()
+        Self.setItem(&o, 0) { run in
+            run["text"] = "a\"b\\c/é😀\n" // JSONSerialization escapes these; the reader must decode \\uXXXX pairs
+
+            run["clusters"] = [["text_start_byte": 0, "text_end_byte": 13, "hit_rects": [["x": 0, "top": 0, "width": 1, "height": 1]], "carets": [], "sources": [["path": "main.tex", "start_byte": 0, "end_byte": 2]], "synthetic_reason": NSNull()]]
+        }
+        let data = Self.data(o)
+        let fast = try RenderingV2Fast.envelope(data)
+        XCTAssertEqual(fast, try JSONDecoder().decode(RenderingV2.Envelope.self, from: data))
+        guard case .glyphRun(let run) = fast.payload.pages[0].items[0] else { return XCTFail() }
+        XCTAssertEqual(run.text, "a\"b\\c/é😀\n")
+        XCTAssertNil(run.clusters[0].syntheticReason)
+        // Not accepted by the fast reader → JSONDecoder decides (same public errors as before).
+        XCTAssertThrowsError(try RenderingV2Fast.envelope(Data("{\"protocol_version\": 2.0}".utf8))) { XCTAssertTrue($0 is RenderingV2Fast.Error) }
+        XCTAssertThrowsError(try RenderingV2Fast.envelope(Data("[1]".utf8))) { XCTAssertTrue($0 is RenderingV2Fast.Error) }
+        XCTAssertEqual(Self.code { Self.setItem(&$0, 0) { $0["kind"] = "image" } }, "unknown_item_kind")
+        XCTAssertEqual(Self.code { Self.setPayload(&$0, "revision", 1.5) }, "malformed_payload")
+        // Exponent form: not an integer literal for the fast reader (falls back);
+        // the Codable path decides, and `decode` returns whatever it returns.
+        let exponent = Data(String(decoding: data, as: UTF8.self).replacingOccurrences(of: "\"origin_x\":1048576", with: "\"origin_x\":1.048576e6").utf8)
+        XCTAssertNotEqual(exponent, data, "the fixture carries the literal to rewrite")
+        XCTAssertThrowsError(try RenderingV2Fast.envelope(exponent)) { XCTAssertTrue($0 is RenderingV2Fast.Error) }
+        XCTAssertEqual(try? RenderingV2.decode(exponent), try? JSONDecoder().decode(RenderingV2.Envelope.self, from: exponent))
+        // Explicit \\u escapes with a surrogate pair decode to the same scalar.
+        let escaped = String(decoding: data, as: UTF8.self).replacingOccurrences(of: "é😀", with: "\\u00e9\\ud83d\\ude00")
+        XCTAssertEqual(try RenderingV2Fast.envelope(Data(escaped.utf8)), fast)
+        // Whitespace and key order do not matter.
+        let reordered = Data("{ \"payload\": \(String(decoding: Self.data(o["payload"] as! [String: Any]), as: UTF8.self)) , \"type\":\"display_list\", \"id\":\"r1\", \"protocol_version\" : 2 }".utf8)
+        XCTAssertEqual(try RenderingV2Fast.envelope(reordered), fast)
+    }
+
     func testValidationErrorCarriesADiagnostic() {
         var o = Self.minimal()
         Self.setCluster(&o) { $0["sources"] = [["path": "missing.tex", "start_byte": 4, "end_byte": 9]] }

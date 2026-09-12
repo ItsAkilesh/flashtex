@@ -356,7 +356,7 @@ final class PreviewV2ShellTests: XCTestCase {
         // A second load: the first frame stays paintable, explicitly stale.
         let done = expectation(description: "reload")
         model.loadDisplayListV2(url: text) { done.fulfill() }
-        guard case .loading(let source, let ticket, let previous) = model.displayListV2 else { return XCTFail("expected .loading, got \(String(describing: model.displayListV2))") }
+        guard case .loading(let source, let ticket, let previous, _) = model.displayListV2 else { return XCTFail("expected .loading, got \(String(describing: model.displayListV2))") }
         XCTAssertEqual(source, .file(text))
         XCTAssertEqual(previous?.preparedNonce, first.preparedNonce, "the previous verified frame is retained while loading")
         XCTAssertEqual(model.displayListV2?.frame?.preparedNonce, first.preparedNonce)
@@ -384,21 +384,25 @@ final class PreviewV2ShellTests: XCTestCase {
         XCTAssertEqual(still.preparedNonce, frame.preparedNonce)
         XCTAssertFalse(model.deliverDisplayListV2(ticket: -2, source: .file(text), outcome: .loaded(frame)))
         XCTAssertEqual(V2Loader.staleResultsDropped, dropped + 2)
-        // Two loads back to back: the first result is superseded by the second
-        // ticket and dropped; only the second is published.
-        let published = V2Loader.resultsPublished
-        let a = expectation(description: "a"), b = expectation(description: "b")
+        // Three loads back to back: one preparation in flight (a), the newest
+        // arrival waits (c), the one in between is dropped undecoded (b, coalesced).
+        // a publishes (it is newer than what is on screen), then c; the final
+        // state is c's refusal.
+        let published = V2Loader.resultsPublished, coalesced = V2Loader.coalescedLoads
+        let a = expectation(description: "a"), b = expectation(description: "b"), c = expectation(description: "c")
         model.loadDisplayListV2(url: text) { a.fulfill() }
         let ticketA = model.displayListV2?.ticket
-        model.loadDisplayListV2(url: Self.fixtures.appendingPathComponent("display-list-v2-math.json")) { b.fulfill() }
-        let ticketB = model.displayListV2?.ticket
-        XCTAssertNotEqual(ticketA, ticketB)
-        wait(for: [a, b], timeout: 20, enforceOrder: true)
-        guard case .failed(let error, let source) = model.displayListV2 else { return XCTFail("the newer load (a refusal) is the final state") }
+        model.loadDisplayListV2(url: text) { b.fulfill() }
+        XCTAssertEqual(model.displayListV2?.ticket, ticketA, "b waits behind a; no new ticket yet")
+        XCTAssertNotNil(model.displayListV2?.queued)
+        model.loadDisplayListV2(url: Self.fixtures.appendingPathComponent("display-list-v2-math.json")) { c.fulfill() }
+        XCTAssertEqual(V2Loader.coalescedLoads, coalesced + 1, "b was dropped undecoded")
+        wait(for: [b, a, c], timeout: 20, enforceOrder: true)
+        guard case .failed(let error, let source) = model.displayListV2 else { return XCTFail("the newest load (a refusal) is the final state") }
         XCTAssertEqual(source.url?.lastPathComponent, "display-list-v2-math.json")
         XCTAssertEqual(error.code, "font_resource_unavailable")
-        XCTAssertEqual(V2Loader.staleResultsDropped, dropped + 3, "the superseded text load was dropped on arrival")
-        XCTAssertEqual(V2Loader.resultsPublished, published + 1)
+        XCTAssertEqual(V2Loader.staleResultsDropped, dropped + 2, "nothing prepared was dropped after preparation")
+        XCTAssertEqual(V2Loader.resultsPublished, published + 2, "a and c were published, b never prepared")
     }
 
     func testPreparedPagesCarryPDFSpaceGeometryForEveryItem() throws {

@@ -141,6 +141,9 @@ struct V2PreparedPage: @unchecked Sendable {
         items.reserveCapacity(page.items.count)
         var glyphs = 0
         let q = V2PreparedPage.serialized
+        // One CTFont per (font, size) on this page: CTFontCreateWithGraphicsFont
+        // per run cost ~20 µs × 973 runs on a two-page document.
+        var ctFonts: [String: CTFont] = [:]
         for item in page.items {
             switch item {
             case .rule(let r):
@@ -150,7 +153,10 @@ struct V2PreparedPage: @unchecked Sendable {
                 guard let font = fonts[run.fontId] else {
                     throw RenderingV2.ValidationError(code: "invalid_resource", message: "page \(page.number): font resource '\(run.fontId)' did not resolve")
                 }
-                let ct = font.ctFont(size: q(RenderingV2.points(run.fontSize)))
+                let size = q(RenderingV2.points(run.fontSize))
+                let key = "\(run.fontId)@\(size)"
+                let ct: CTFont
+                if let cached = ctFonts[key] { ct = cached } else { ct = font.ctFont(size: size); ctFonts[key] = ct }
                 items.append(.run(Run(font: ct,
                                       glyphs: run.glyphs.map { CGGlyph($0.gid) },
                                       positions: run.glyphs.map { CGPoint(x: q(RenderingV2.points($0.originX)), y: q(heightPt - RenderingV2.points($0.baselineY))) },
@@ -170,7 +176,13 @@ struct V2PreparedPage: @unchecked Sendable {
     /// half a unit in the 7th digit (5e-5 pt for coordinates below 1000 pt).
     static func serialized(_ v: Double) -> Double {
         guard v != 0, v.isFinite else { return v }
-        return Double(String(format: "%.7g", v)) ?? v
+        // Round to 7 significant digits arithmetically (String(format:) per
+        // coordinate cost ~15 ms on a two-page document). The result is the
+        // nearest double to a ≤7-digit decimal, which the writer's `%.7g`
+        // reproduces exactly, so preview and export still share the numbers.
+        let e = floor(log10(abs(v)))
+        let scale = pow(10.0, 6 - e)
+        return (v * scale).rounded() / scale
     }
 }
 

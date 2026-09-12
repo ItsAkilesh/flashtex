@@ -51,32 +51,44 @@ enum V2Live {
     }
 }
 
+/// The newest list that arrived while another was being prepared: it starts
+/// when the in-flight preparation delivers. Lists that arrived in between
+/// are dropped undecoded (coalesced), so visible progress keeps up with
+/// preparation instead of being starved by strict supersession.
+struct V2QueuedLoad {
+    var source: V2Source
+    var prepare: @Sendable () -> V2Loader.Outcome
+    var completion: (() -> Void)?
+}
+
 /// What the shell holds for the v2 pane.
 enum V2PreviewState {
     /// A load is in flight. `previous` is the frame still on screen, shown
     /// with an explicit stale indicator until the new one is verified
     /// (rendering-v2 proposal: retain the old frame, label it stale).
-    case loading(V2Source, ticket: Int, previous: V2Frame?)
+    /// `queued` is the newest list waiting for this preparation to finish.
+    case loading(V2Source, ticket: Int, previous: V2Frame?, queued: V2QueuedLoad? = nil)
     case loaded(V2Frame, V2Source)
     case failed(RenderingV2.ValidationError, V2Source)
 
     var source: V2Source {
         switch self {
-        case .loading(let s, _, _), .loaded(_, let s), .failed(_, let s): s
+        case .loading(let s, _, _, _), .loaded(_, let s), .failed(_, let s): s
         }
     }
+    var queued: V2QueuedLoad? { if case .loading(_, _, _, let q) = self { q } else { nil } }
     /// The file URL when the list came from a file (tests, evidence hook).
     var url: URL? { source.url }
     /// The verified frame the pane may paint (a stale one while loading).
     var frame: V2Frame? {
         switch self {
         case .loaded(let f, _): f
-        case .loading(_, _, let previous): previous
+        case .loading(_, _, let previous, _): previous
         case .failed: nil
         }
     }
     var isLoading: Bool { if case .loading = self { true } else { false } }
-    var ticket: Int? { if case .loading(_, let t, _) = self { t } else { nil } }
+    var ticket: Int? { if case .loading(_, let t, _, _) = self { t } else { nil } }
 }
 
 /// Off-main preparation of display lists with monotonically increasing load
@@ -91,14 +103,31 @@ enum V2Loader {
     /// Results dropped because a newer load superseded them (tests/evidence).
     private(set) static var staleResultsDropped = 0
     private(set) static var resultsPublished = 0
+    /// Lists dropped undecoded because a newer one arrived while one was in flight.
+    private(set) static var coalescedLoads = 0
 
     static func issueTicket() -> Int { lock.lock(); defer { lock.unlock() }; let t = nextTicket; nextTicket += 1; return t }
     static func noteDropped() { lock.lock(); staleResultsDropped += 1; lock.unlock() }
     static func notePublished() { lock.lock(); resultsPublished += 1; lock.unlock() }
+    static func noteCoalesced() { lock.lock(); coalescedLoads += 1; lock.unlock() }
 
     enum Outcome {
         case loaded(V2Frame)
         case failed(RenderingV2.ValidationError)
+    }
+
+    /// Bitmaps rasterized in the same off-main job as the preparation, at the
+    /// pane's last requested pixels-per-point/appearance, so the publish and
+    /// the first blit happen in one main-thread pass instead of three.
+    struct Prerastered {
+        var pixelsPerPoint: Double
+        var dark: Bool
+        var images: [(page: Int, image: CGImage)]
+    }
+
+    static func preraster(_ frame: V2Frame, pixelsPerPoint: Double, dark: Bool) -> Prerastered {
+        Prerastered(pixelsPerPoint: pixelsPerPoint, dark: dark,
+                    images: frame.prepared.compactMap { page in GlyphRunRenderer.rasterize(page, scale: pixelsPerPoint, dark: dark).map { (page.number, $0) } })
     }
 
     /// Pure preparation: file → decoded, validated, font-resolved, page-prepared frame.
@@ -199,15 +228,34 @@ extension ShellModel {
     /// whose ticket is no longer current is dropped. `completion` runs on the
     /// main thread after the state was (or was not) published.
     private func startDisplayListV2(source: V2Source, completion: (() -> Void)?, prepare: @escaping @Sendable () -> V2Loader.Outcome) {
+        // One preparation in flight; the newest arrival waits, older waiting ones are dropped undecoded.
+        if case .loading(let inFlight, let ticket, let previous, let queued) = displayListV2 {
+            if let queued {
+                V2Loader.noteCoalesced()
+                if TypingBench.isBenchActive { FlashTeXLog.write("preview-v2: coalesced \(queued.source.label) behind \(source.label) at \(MonotonicClock.nowNs())") }
+                queued.completion?()
+            }
+            displayListV2 = .loading(inFlight, ticket: ticket, previous: previous, queued: V2QueuedLoad(source: source, prepare: prepare, completion: completion))
+            return
+        }
         let ticket = V2Loader.issueTicket()
         displayListV2 = .loading(source, ticket: ticket, previous: displayListV2?.frame)
         if !source.isLive { captureNote = "Loading display list \(source.label)…" }
-        if TypingBench.isBenchActive { FlashTeXLog.write("preview-v2: preparing \(source.label) ticket \(ticket) at \(MonotonicClock.nowNs())") }
+        let t0 = MonotonicClock.nowNs()
+        if TypingBench.isBenchActive { FlashTeXLog.write("preview-v2: preparing \(source.label) ticket \(ticket) at \(t0)") }
+        let rasterHint = V2PageRasterizer.shared.lastRequest
         V2Loader.queue.async {
             let outcome = prepare()
+            let t1 = MonotonicClock.nowNs()
+            var prerastered: V2Loader.Prerastered?
+            if case .loaded(let frame) = outcome, let hint = rasterHint {
+                prerastered = V2Loader.preraster(frame, pixelsPerPoint: hint.pixelsPerPoint, dark: hint.dark)
+            }
+            let t2 = MonotonicClock.nowNs()
             V2Loader.deliverOnMain {
                 MainActor.assumeIsolated {
-                    self.deliverDisplayListV2(ticket: ticket, source: source, outcome: outcome)
+                    if TypingBench.isBenchActive { FlashTeXLog.write("preview-v2: prepared \(source.label) in \(Double(t1 &- t0) / 1e6) ms, prerastered \(prerastered?.images.count ?? 0) page(s) in \(Double(t2 &- t1) / 1e6) ms, delivered \(Double(MonotonicClock.nowNs() &- t2) / 1e6) ms later") }
+                    self.deliverDisplayListV2(ticket: ticket, source: source, outcome: outcome, prerastered: prerastered)
                     completion?()
                 }
             }
@@ -219,15 +267,22 @@ extension ShellModel {
     /// reset) is dropped: a stale frame never overwrites a newer state.
     /// Returns whether the result was published.
     @discardableResult
-    func deliverDisplayListV2(ticket: Int, source: V2Source, outcome: V2Loader.Outcome) -> Bool {
+    func deliverDisplayListV2(ticket: Int, source: V2Source, outcome: V2Loader.Outcome, prerastered: V2Loader.Prerastered? = nil) -> Bool {
         guard displayListV2?.ticket == ticket else {
             V2Loader.noteDropped()
             FlashTeXLog.write("preview-v2: dropped stale load result ticket \(ticket) for \(source.label) (current: \(displayListV2?.ticket.map(String.init) ?? "none"))")
             return false
         }
+        let queued = displayListV2?.queued
+        defer {
+            // The newest list that arrived meanwhile starts now, over the frame just published.
+            if let queued { startDisplayListV2(source: queued.source, completion: queued.completion, prepare: queued.prepare) }
+        }
         V2Loader.notePublished()
         switch outcome {
         case .loaded(let frame):
+            // Bitmaps first, so the render pass this publish triggers blits them.
+            if let prerastered { V2PageRasterizer.shared.preinstall(prerastered, frame: frame) }
             displayListV2 = .loaded(frame, source)
             if TypingBench.isBenchActive { FlashTeXLog.write("preview-v2: published \(source.label) revision \(frame.list.revision) at \(MonotonicClock.nowNs())") }
             captureNote = "\(source.isLive ? "Live display list" : "Loaded display list") \(source.label): \(frame.list.pages.count) page(s), \(frame.fonts.count) font(s) resolved by content hash, \(frame.prepared.reduce(0) { $0 + $1.glyphCount }) glyphs prepared"
@@ -314,8 +369,12 @@ final class V2PageRasterizer {
     static let shared = V2PageRasterizer()
     static let queue = DispatchQueue(label: "flashtex.preview-v2.raster", qos: .userInteractive)
 
-    /// Ready bitmaps; reading this from a view body subscribes it to arrivals.
-    private(set) var images: [Key: CGImage] = [:]
+    /// One observable slot per key: a page body reads its own slot's `image`,
+    /// so a bitmap arriving for page 3 re-evaluates page 3 only.
+    @Observable final class Slot { var image: CGImage? }
+    @ObservationIgnored private var slots: [Key: Slot] = [:]
+    /// Ready bitmaps (bookkeeping/tests; views observe their slot, not this).
+    @ObservationIgnored private(set) var images: [Key: CGImage] = [:]
     @ObservationIgnored private var order: [Key] = []
     @ObservationIgnored private var inFlight: Set<Key> = []
     /// Observed: a page body that asked before the frame became current
@@ -325,6 +384,10 @@ final class V2PageRasterizer {
     @ObservationIgnored let maxBytes: Int
     @ObservationIgnored private(set) var staleBitmapsDropped = 0
     @ObservationIgnored private(set) var rasterizations = 0
+    /// The pane's most recent pixels-per-point/appearance: the loader
+    /// pre-rasterizes new frames with it off-main.
+    @ObservationIgnored private(set) var lastRequest: (pixelsPerPoint: Double, dark: Bool)?
+    @ObservationIgnored private(set) var preinstalled = 0
 
     init(maxBytes: Int = 192 << 20) { self.maxBytes = maxBytes }
 
@@ -342,16 +405,27 @@ final class V2PageRasterizer {
     /// bitmap arrives on the next run-loop turn).
     func image(for page: V2PreparedPage, frameToken: String, pixelsPerPoint: Double, dark: Bool) -> CGImage? {
         let key = Key(frameToken: frameToken, page: page.number, pixelsPerPoint: pixelsPerPoint, dark: dark)
-        if let image = images[key] {
+        lastRequest = (pixelsPerPoint, dark)
+        let slot: Slot
+        if let existing = slots[key] { slot = existing } else { slot = Slot(); slots[key] = slot }
+        if let image = slot.image { // observed read: this body follows this page's bitmap only
             touch(key)
             return image
         }
         guard frameToken == currentFrameToken, !inFlight.contains(key) else { return nil }
         inFlight.insert(key)
+        let t0 = MonotonicClock.nowNs()
         Self.queue.async {
+            let t1 = MonotonicClock.nowNs()
             let image = GlyphRunRenderer.rasterize(page, scale: pixelsPerPoint, dark: dark)
+            let t2 = MonotonicClock.nowNs()
             V2Loader.deliverOnMain {
-                MainActor.assumeIsolated { self.install(image, for: key) }
+                MainActor.assumeIsolated {
+                    if TypingBench.isBenchActive {
+                        FlashTeXLog.write("preview-v2: raster page \(key.page) of \(key.frameToken.prefix(24)): queued \(Double(t1 &- t0) / 1e6) ms, drew \(Double(t2 &- t1) / 1e6) ms, delivered \(Double(MonotonicClock.nowNs() &- t2) / 1e6) ms later at \(MonotonicClock.nowNs())")
+                    }
+                    self.install(image, for: key)
+                }
             }
         }
         return nil
@@ -367,12 +441,25 @@ final class V2PageRasterizer {
             return
         }
         images[key] = image
+        (slots[key] ?? { let s = Slot(); slots[key] = s; return s }()).image = image
         order.removeAll { $0 == key }
         order.append(key)
         retainedBytes += image.bytesPerRow * image.height
         while retainedBytes > maxBytes, let oldest = order.first, oldest != key {
             order.removeFirst()
             drop(oldest)
+        }
+    }
+
+    /// Installs bitmaps rasterized off-main together with `frame` and makes it
+    /// current (evicting the previous frame's), immediately before the frame is
+    /// published — the pass that shows the frame finds its bitmaps ready.
+    func preinstall(_ prerastered: V2Loader.Prerastered, frame: V2Frame) {
+        let token = V2FrameIdentity.token(frame)
+        setCurrent(frameToken: token)
+        for (page, image) in prerastered.images {
+            install(image, for: Key(frameToken: token, page: page, pixelsPerPoint: prerastered.pixelsPerPoint, dark: prerastered.dark))
+            preinstalled += 1
         }
     }
 
@@ -384,6 +471,8 @@ final class V2PageRasterizer {
 
     private func drop(_ key: Key) {
         if let image = images.removeValue(forKey: key) { retainedBytes -= image.bytesPerRow * image.height }
+        slots[key]?.image = nil
+        slots.removeValue(forKey: key)
     }
 }
 
@@ -436,7 +525,7 @@ struct PreviewV2Pane: View {
             case .loaded(let frame, _):
                 pages(frame, stale: false)
                 diagnostics(frame)
-            case .loading(_, _, let previous):
+            case .loading(_, _, let previous, _):
                 if let previous {
                     pages(previous, stale: true)
                 } else {
@@ -494,7 +583,15 @@ struct PreviewV2Pane: View {
         }
     }
 
-    private var header: some View {
+    private var header: some View { V2PaneHeader() }
+}
+
+/// The pane header is its own view: it reads the applied result, worker and
+/// negotiation state, so those changes re-evaluate the header, not the pages.
+private struct V2PaneHeader: View {
+    @Environment(ShellModel.self) var model
+
+    var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 8) {
                 Text("V2").font(.caption.bold()).padding(.horizontal, 6).padding(.vertical, 2).background(Color.purple.opacity(0.25), in: Capsule())
@@ -513,7 +610,7 @@ struct PreviewV2Pane: View {
                         .font(.caption.bold()).foregroundStyle(.orange).lineLimit(1)
                         .accessibilityIdentifier("v2-behind")
                 }
-                if case .loading(let source, _, let previous) = model.displayListV2 {
+                if case .loading(let source, _, let previous, _) = model.displayListV2 {
                     ProgressView().controlSize(.small)
                     Text(previous == nil ? "loading \(source.label)…" : "STALE — showing the previous frame while \(source.label) is verified")
                         .font(.caption.bold()).foregroundStyle(.orange).lineLimit(1)
@@ -562,6 +659,7 @@ struct PreviewV2View: View {
                                        dark: dark, stale: stale, scale: scale, displayScale: displayScale,
                                        caretMatches: caretByte.map { V2Geometry.clusters(containing: $0, path: caretPath, in: page) } ?? [],
                                        onSelect: onSelect)
+                                .equatable()
                                 .id(page.number)
                         }
                     }
@@ -582,7 +680,7 @@ enum V2FrameIdentity {
     static func token(_ frame: V2Frame) -> String { "\(frame.id)#r\(frame.list.revision)#\(frame.preparedNonce)" }
 }
 
-private struct PageV2View: View {
+private struct PageV2View: View, Equatable {
     let page: RenderingV2.Page
     let prepared: V2PreparedPage
     let frameToken: String
@@ -596,6 +694,14 @@ private struct PageV2View: View {
     let caretMatches: [V2Geometry.CaretMatch]
     let onSelect: (V2Geometry.Hit) -> Void
     @State private var hover: V2Geometry.Hit?
+
+    /// Everything that affects the drawing except the bitmap (observed through
+    /// its slot) and hover (local state): a pane re-evaluation for another
+    /// page's bitmap, a caret move elsewhere or a header change skips this page.
+    static func == (a: PageV2View, b: PageV2View) -> Bool {
+        a.frameToken == b.frameToken && a.page.number == b.page.number && a.frameRevision == b.frameRevision && a.pageCount == b.pageCount
+            && a.dark == b.dark && a.stale == b.stale && a.scale == b.scale && a.displayScale == b.displayScale && a.caretMatches == b.caretMatches
+    }
 
     private func viewRect(_ r: RenderingV2.Rect) -> CGRect {
         CGRect(x: RenderingV2.points(r.x) * scale, y: RenderingV2.points(r.top) * scale,
@@ -614,6 +720,7 @@ private struct PageV2View: View {
         Canvas(rendersAsynchronously: false) { context, _ in
             if let bitmap {
                 TypingBench.shared.didDraw(page: page.number) // paint instrumentation
+                if TypingBench.isBenchActive { FlashTeXLog.write("preview-v2: blit page \(page.number) of \(frameToken.prefix(24)) at \(MonotonicClock.nowNs())") }
                 // The off-main raster of this page, blitted 1:1 onto device
                 // pixels (no resampling): the same bitmap the parity check compares.
                 context.withCGContext { cg in
