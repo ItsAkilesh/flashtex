@@ -42,6 +42,14 @@ struct ReferenceValue {
 pub struct LayoutConstraints {
     pub font_size_pt: f64,
     pub measure_pt: f64,
+    /// `\setlength{\parindent}{..}` from the preamble. `None` keeps this
+    /// layout engine's existing behaviour: no first-line indent at all
+    /// (unlike real LaTeX's nonzero default), so documents that never touch
+    /// `\parindent` typeset exactly as before this option existed.
+    pub parindent_pt: Option<f64>,
+    /// `\setlength{\parskip}{..}` from the preamble. `None` keeps the
+    /// existing fixed `PARAGRAPH_GAP_PT` between paragraphs.
+    pub parskip_pt: Option<f64>,
 }
 
 impl Default for LayoutConstraints {
@@ -49,6 +57,8 @@ impl Default for LayoutConstraints {
         Self {
             font_size_pt: BODY_SIZE_PT,
             measure_pt: PAGE_WIDTH_PT - 2.0 * MARGIN_PT,
+            parindent_pt: None,
+            parskip_pt: None,
         }
     }
 }
@@ -444,8 +454,12 @@ impl LayoutCursor {
             Block::Paragraph(_) => {
                 if !self.first_block {
                     self.newline(body_size);
-                    self.vertical_gap(PARAGRAPH_GAP_PT);
+                    self.vertical_gap(self.constraints.parskip_pt.unwrap_or(PARAGRAPH_GAP_PT));
                 }
+                // Only the paragraph's first line gets the indent: later
+                // wrapped lines go through `newline`, which always resets to
+                // `MARGIN_PT`.
+                self.x = MARGIN_PT + self.constraints.parindent_pt.unwrap_or(0.0);
             }
             Block::Heading { level, .. } => {
                 let size = heading_size(*level, body_size);
@@ -725,7 +739,11 @@ fn visit_references(blocks: &[Block], visitor: &mut impl FnMut(&str, Span)) {
 fn emit(c: &mut LayoutCursor, inlines: &[Inline], size: f64, font: Font) {
     for inline in inlines {
         match inline {
-            Inline::Text { text, span } => c.place(text.clone(), size, *span, font),
+            Inline::Text {
+                text,
+                span,
+                size_scale,
+            } => c.place(text.clone(), size * size_scale, *span, font),
             Inline::LineBreak { .. } => c.newline(size),
             Inline::Math {
                 list,
@@ -932,7 +950,7 @@ mod tests {
             &parsed.blocks,
             LayoutConstraints {
                 font_size_pt: 11.0,
-                measure_pt: LayoutConstraints::default().measure_pt,
+                ..LayoutConstraints::default()
             },
         );
         let body = pages

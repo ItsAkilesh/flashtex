@@ -29,6 +29,9 @@ pub enum Inline {
     Text {
         text: String,
         span: Span,
+        /// The `\tiny`..`\Huge` scale active where this run was produced,
+        /// relative to `\normalsize` (1.0). See `size_declaration_scale`.
+        size_scale: f64,
     },
     LineBreak {
         span: Span,
@@ -100,6 +103,10 @@ pub struct Parsed {
     pub incremental_safe: bool,
     /// True when counters or the label table make layout document-global.
     pub document_global_state: bool,
+    /// `\setlength{\parindent}{..}`, in points, if the preamble set one.
+    pub parindent_pt: Option<f64>,
+    /// `\setlength{\parskip}{..}`, in points, if the preamble set one.
+    pub parskip_pt: Option<f64>,
 }
 
 const BUILT_INS: &[&str] = &[
@@ -130,7 +137,36 @@ const BUILT_INS: &[&str] = &[
     "hrule",
     "newpage",
     "pagestyle",
+    "tiny",
+    "scriptsize",
+    "footnotesize",
+    "small",
+    "normalsize",
+    "large",
+    "Large",
+    "LARGE",
+    "huge",
+    "Huge",
+    "setlength",
 ];
+
+/// `\tiny`..`\Huge`, as a scale relative to `\normalsize` (1.0). Ratios match
+/// the standard LaTeX class files' 10pt option (`tiny`=5pt, ..., `Huge`=25pt).
+fn size_declaration_scale(name: &str) -> Option<f64> {
+    Some(match name {
+        "tiny" => 0.5,
+        "scriptsize" => 0.7,
+        "footnotesize" => 0.8,
+        "small" => 0.9,
+        "normalsize" => 1.0,
+        "large" => 1.2,
+        "Large" => 1.44,
+        "LARGE" => 1.728,
+        "huge" => 2.074,
+        "Huge" => 2.488,
+        _ => return None,
+    })
+}
 
 /// Parses a LaTeX dimension (`12pt`, `1.5em`, `0.5in`, `2cm`, `10mm`) to points.
 /// `em` is relative to the compiler's fixed body size since there is no
@@ -237,6 +273,10 @@ pub fn parse_project(documents: &[SourceDocument<'_>], entry_path: &str) -> Pars
         seen_labels: HashMap::new(),
         list_stack: Vec::new(),
         document_global_state: false,
+        size_scale: 1.0,
+        size_scale_stack: Vec::new(),
+        parindent_pt: None,
+        parskip_pt: None,
     };
     let blocks = p.document();
 
@@ -265,6 +305,8 @@ pub fn parse_project(documents: &[SourceDocument<'_>], entry_path: &str) -> Pars
         preamble_source: preamble_source(entry_document.text, has_document),
         incremental_safe,
         document_global_state: p.document_global_state,
+        parindent_pt: p.parindent_pt,
+        parskip_pt: p.parskip_pt,
     }
 }
 
@@ -294,6 +336,17 @@ struct P<'a> {
     seen_labels: HashMap<String, Span>,
     list_stack: Vec<(String, u32)>,
     document_global_state: bool,
+    /// The active `\tiny`..`\Huge` scale, relative to `normalsize` (1.0).
+    /// A size declaration is in effect until the end of its enclosing group
+    /// (restored via `size_scale_stack`, alongside `macro_scopes`) or until
+    /// another size declaration overrides it, matching LaTeX's declaration
+    /// scoping without modelling category codes or general local assignment.
+    size_scale: f64,
+    size_scale_stack: Vec<f64>,
+    /// `\setlength{\parindent}{..}` / `\setlength{\parskip}{..}` from the
+    /// preamble, in points. `None` keeps the layout engine's own default.
+    parindent_pt: Option<f64>,
+    parskip_pt: Option<f64>,
 }
 
 impl P<'_> {
@@ -329,6 +382,7 @@ impl P<'_> {
                         para.push(Inline::Text {
                             text: word,
                             span: tok.span,
+                            size_scale: self.size_scale,
                         });
                     }
                 }
@@ -342,6 +396,7 @@ impl P<'_> {
                     self.i += 1;
                     self.brace_stack.push(tok.span);
                     self.macro_scopes.push(HashMap::new());
+                    self.size_scale_stack.push(self.size_scale);
                 }
                 TokenKind::RBrace => {
                     self.i += 1;
@@ -355,6 +410,9 @@ impl P<'_> {
                         }
                     } else {
                         self.restore_scope();
+                        if let Some(scale) = self.size_scale_stack.pop() {
+                            self.size_scale = scale;
+                        }
                     }
                 }
                 TokenKind::MathShift if render => self.dollar_math(tok.span, para),
@@ -415,6 +473,35 @@ impl P<'_> {
             "newcommand" | "renewcommand" => self.define_macro(name, span),
             "begin" | "end" => self.environment(name, span, blocks, para),
             "input" | "include" => self.include(name, span, blocks, para),
+            // `\setlength{\parindent}{..}`/`{\parskip}{..}` are normally set
+            // in the preamble (as in HW1.tex), so this has to be recognised
+            // before the preamble catch-all below, not alongside the other
+            // body-only layout commands further down.
+            "setlength" => {
+                let (target_tokens, target_span) = self.required_group(name, span);
+                let (value_tokens, value_span) = self.required_group(name, span);
+                let target = token_text(&target_tokens).trim().to_string();
+                let raw = token_text(&value_tokens);
+                match (target.as_str(), parse_dimen_pt(&raw)) {
+                    ("parindent", Some(pt)) => self.parindent_pt = Some(pt),
+                    ("parskip", Some(pt)) => self.parskip_pt = Some(pt),
+                    ("parindent" | "parskip", None) => self.diags.push(Diagnostic::error(
+                        format!(
+                            "\\setlength{{\\{target}}} requires a recognised dimension, got '{}'",
+                            raw.trim()
+                        ),
+                        Some(span.merge(value_span)),
+                        Some("kept the previous value and continued".into()),
+                    )),
+                    _ => self.diags.push(Diagnostic::warning(
+                        format!(
+                            "\\setlength{{\\{target}}} is not supported; only \\parindent and \\parskip are"
+                        ),
+                        Some(span.merge(target_span)),
+                        Some("ignored the length assignment and continued".into()),
+                    )),
+                }
+            }
             _ if self.has_document && !self.in_body => self.unsupported_preamble(name, span),
             "section" | "subsection" => {
                 let level = if name == "section" { 1 } else { 2 };
@@ -501,6 +588,7 @@ impl P<'_> {
                     let mut content = vec![Inline::Text {
                         text: format!("Figure {}:", self.figure_counter),
                         span,
+                        size_scale: self.size_scale,
                     }];
                     content.extend(self.inlines_from_tokens(tokens));
                     blocks.push(Block::FigureCaption { content });
@@ -517,7 +605,11 @@ impl P<'_> {
                         } else {
                             "•".to_string()
                         };
-                        para.push(Inline::Text { text: marker, span });
+                        para.push(Inline::Text {
+                            text: marker,
+                            span,
+                            size_scale: self.size_scale,
+                        });
                     }
                     None => self.diags.push(Diagnostic::error(
                         "\\item is only supported inside itemize or enumerate",
@@ -579,6 +671,14 @@ impl P<'_> {
                 // `plain` both describe "no footer content beyond a page
                 // number", which is already what happens.
                 let _ = self.required_group(name, span);
+            }
+            "tiny" | "scriptsize" | "footnotesize" | "small" | "normalsize" | "large" | "Large"
+            | "LARGE" | "huge" | "Huge" => {
+                // A declaration, not a text-producing command: it takes no
+                // argument and stays in effect until the enclosing group
+                // closes (see the `size_scale_stack` push/pop above) or
+                // another size declaration overrides it.
+                self.size_scale = size_declaration_scale(name).expect("listed in BUILT_INS above");
             }
             "frac" | "sqrt" => self.diags.push(Diagnostic::error(
                 format!("\\{} requires math mode", name),
@@ -1352,6 +1452,7 @@ impl P<'_> {
                 TokenKind::Word(text) => content.push(Inline::Text {
                     text,
                     span: input.token.span,
+                    size_scale: self.size_scale,
                 }),
                 TokenKind::LineBreak => content.push(Inline::LineBreak {
                     span: input.token.span,
@@ -1639,6 +1740,93 @@ mod tests {
                 > two_baseline.baseline_y_pt - one.baseline_y_pt,
             "\\vspace{{50pt}} should push the following text further down than an ordinary paragraph break"
         );
+    }
+
+    #[test]
+    fn large_scales_text_until_its_group_closes() {
+        let (parsed, items) = items(r"Normal {\Large Big text} After");
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        let size = |word: &str| {
+            items
+                .iter()
+                .find(|i| i.text == word)
+                .unwrap_or_else(|| panic!("missing {word:?} in {items:?}"))
+                .font_size_pt
+        };
+        assert_eq!(size("Normal"), crate::layout::BODY_SIZE_PT);
+        assert_eq!(size("Big"), crate::layout::BODY_SIZE_PT * 1.44);
+        assert_eq!(size("text"), crate::layout::BODY_SIZE_PT * 1.44);
+        assert_eq!(size("After"), crate::layout::BODY_SIZE_PT);
+    }
+
+    #[test]
+    fn tiny_through_huge_scale_relative_to_normalsize() {
+        for (name, scale) in [
+            ("tiny", 0.5),
+            ("scriptsize", 0.7),
+            ("footnotesize", 0.8),
+            ("small", 0.9),
+            ("normalsize", 1.0),
+            ("large", 1.2),
+            ("Large", 1.44),
+            ("LARGE", 1.728),
+            ("huge", 2.074),
+            ("Huge", 2.488),
+        ] {
+            let (parsed, items) = items(&format!(r"\{name} Word"));
+            assert!(
+                parsed.diagnostics.is_empty(),
+                "\\{name}: {:?}",
+                parsed.diagnostics
+            );
+            let word = items.iter().find(|i| i.text == "Word").unwrap();
+            assert_eq!(
+                word.font_size_pt,
+                crate::layout::BODY_SIZE_PT * scale,
+                "\\{name}"
+            );
+        }
+    }
+
+    #[test]
+    fn setlength_parindent_and_parskip_thread_into_paragraph_layout() {
+        // `layout::layout` (the `items`/`pages` test helpers above) takes only
+        // blocks, with no way to carry `\setlength` values through — that's
+        // the real entry point's job (`incremental::compile_full`, which is
+        // what `protocol::compile_project` actually calls), so this test goes
+        // through it instead.
+        let source = r"\setlength{\parindent}{20pt}\setlength{\parskip}{30pt}First\par Second";
+        let parsed = parse(source);
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        assert_eq!(parsed.parindent_pt, Some(20.0));
+        assert_eq!(parsed.parskip_pt, Some(30.0));
+
+        let output = crate::incremental::compile_full(source, layout::LayoutConstraints::default());
+        let first = output.pages[0]
+            .items
+            .iter()
+            .find(|i| i.text == "First")
+            .unwrap();
+        let second = output.pages[0]
+            .items
+            .iter()
+            .find(|i| i.text == "Second")
+            .unwrap();
+        assert_eq!(first.x_pt, crate::layout::MARGIN_PT + 20.0);
+        assert_eq!(second.x_pt, crate::layout::MARGIN_PT + 20.0);
+        assert!(
+            second.baseline_y_pt - first.baseline_y_pt > 30.0,
+            "expected the 30pt \\parskip to widen the paragraph gap: {} -> {}",
+            first.baseline_y_pt,
+            second.baseline_y_pt
+        );
+    }
+
+    #[test]
+    fn setlength_on_an_unsupported_target_is_diagnosed_not_silently_dropped() {
+        let parsed = parse(r"\setlength{\textwidth}{5in}Body");
+        assert_eq!(parsed.diagnostics.len(), 1);
+        assert!(parsed.diagnostics[0].message.contains("textwidth"));
     }
 
     #[test]
