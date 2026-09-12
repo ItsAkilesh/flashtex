@@ -109,11 +109,14 @@ def detected_mime(data: bytes) -> str | None:
     return None
 
 
-def source_mime_findings(payload_source: str, validator_source: str) -> list[str]:
+def source_mime_findings(payload_source: str, validator_source: str, store_source: str = "") -> list[str]:
     findings: list[str] = []
     payload_png = "pngData()" in payload_source and 'mimeType: "image/png"' in payload_source
     validator_can_jpeg = "jpegData(" in validator_source
-    if validator_can_jpeg and payload_png:
+    store_preserves_validated_encoding = (
+        "imageData: encodedData" in store_source and "mimeType: mimeType" in store_source
+    )
+    if validator_can_jpeg and payload_png and not store_preserves_validated_encoding:
         findings.append("validator may produce JPEG but envelope always serializes PNG with image/png")
     if "acceptedMIMETypes" in validator_source and "image/jpeg" in validator_source and not validator_can_jpeg:
         findings.append("JPEG declared accepted but no JPEG encoding path found")
@@ -258,7 +261,9 @@ def validate_tree(source: Path, xcodebuild: str, build: bool) -> dict[str, Any]:
     result["test_target_findings"] = target_findings(project_text)
     if payload.exists() and validator.exists():
         result["mime_findings"] = source_mime_findings(
-            payload.read_text(encoding="utf-8"), validator.read_text(encoding="utf-8")
+            payload.read_text(encoding="utf-8"),
+            validator.read_text(encoding="utf-8"),
+            store.read_text(encoding="utf-8") if store.exists() else "",
         )
     if store.exists() and transport.exists():
         result["delivery_findings"] = delivery_findings(

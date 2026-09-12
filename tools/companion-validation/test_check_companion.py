@@ -43,6 +43,16 @@ class CompanionValidationTests(unittest.TestCase):
         )
         self.assertEqual(findings, ["validator may produce JPEG but envelope always serializes PNG with image/png"])
 
+    def test_accepts_store_that_preserves_validated_jpeg_bytes(self):
+        self.assertEqual(
+            check_companion.source_mime_findings(
+                'image.pngData()\n mimeType: "image/png"',
+                "image.jpegData(compressionQuality: 0.85)",
+                "imageData: encodedData\n mimeType: mimeType",
+            ),
+            [],
+        )
+
     def test_requires_cancellation_retry_and_safe_retry_id(self):
         findings = check_companion.delivery_findings(
             "func addCapture() {}",
