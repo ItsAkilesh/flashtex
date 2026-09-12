@@ -59,7 +59,7 @@ impl FontMetricsSource for TestFont {
 
 fn items(font: &dyn FontMetricsSource, hyph: &dyn Hyphenator, text: &str) -> Vec<Item> {
     let mut b = ParagraphBuilder::new(hyph);
-    b.text(font, 10.0, text, 0);
+    b.text(font, 10.0, text, 0).unwrap();
     b.finish(Glue::fil())
 }
 
@@ -105,7 +105,7 @@ const EIGHT_WORDS: &str = "aaaa bbbb cccc dddd eeee ffff gggg hhhh";
 #[test]
 fn justified_stretch_uses_total_fit_numbers() {
     let it = items(&TestFont::TIMES_LIKE, &NoHyphenation, EIGHT_WORDS);
-    let out = layout_paragraph(&it, &params(91.0));
+    let out = layout_paragraph(&it, &params(91.0)).unwrap();
     assert_eq!(out.lines.len(), 2);
     assert_eq!(out.stats.pass, 1);
     let l0 = &out.lines[0];
@@ -136,7 +136,7 @@ fn justified_stretch_uses_total_fit_numbers() {
 #[test]
 fn justified_shrink_uses_total_fit_numbers() {
     let it = items(&TestFont::TIMES_LIKE, &NoHyphenation, EIGHT_WORDS);
-    let out = layout_paragraph(&it, &params(109.0));
+    let out = layout_paragraph(&it, &params(109.0)).unwrap();
     assert_eq!(out.lines.len(), 2);
     let l0 = &out.lines[0];
     assert!(close(l0.natural_width, 110.0));
@@ -156,7 +156,7 @@ fn justified_shrink_uses_total_fit_numbers() {
 #[test]
 fn ragged_right_keeps_natural_spaces() {
     let it = items(&TestFont::TIMES_LIKE, &NoHyphenation, EIGHT_WORDS);
-    let out = layout_paragraph(&it, &params(91.0).ragged());
+    let out = layout_paragraph(&it, &params(91.0).ragged()).unwrap();
     assert_eq!(out.lines.len(), 2);
     for (l, b) in out.lines.iter().zip(&out.breaks) {
         assert_eq!(l.badness, 0.0);
@@ -194,12 +194,12 @@ fn first_fit_and_total_fit_differ_on_a_loose_line() {
     };
     let text = "aaaaaa bbbbbb cc dddddd eeeeee ffffff gggggg";
     let it = items(&font, &NoHyphenation, text);
-    let greedy = layout_paragraph(&it, &params(75.0).first_fit());
+    let greedy = layout_paragraph(&it, &params(75.0).first_fit()).unwrap();
     let counts = |l: &Lines| l.lines.iter().map(|x| x.runs.len()).collect::<Vec<_>>();
     assert_eq!(counts(&greedy), vec![3, 2, 2]);
     assert_eq!(greedy.stats.pass, 0);
     assert_eq!(greedy.lines[1].badness, 195.0);
-    let total = layout_paragraph(&it, &params(75.0));
+    let total = layout_paragraph(&it, &params(75.0)).unwrap();
     assert_eq!(counts(&total), vec![2, 3, 2]);
     assert_eq!(total.stats.pass, 2);
     assert_eq!(total.lines[0].badness, 195.0);
@@ -220,7 +220,7 @@ fn first_fit_and_total_fit_differ_on_a_loose_line() {
 fn explicit_discretionary_produces_hyphen_run_with_marker_cluster() {
     let text = "xxxx yyyy\\-zzzz";
     let it = items(&TestFont::TIMES_LIKE, &ExplicitDiscretionary, text);
-    let out = layout_paragraph(&it, &params(35.0).ragged());
+    let out = layout_paragraph(&it, &params(35.0).ragged()).unwrap();
     assert_eq!(out.lines.len(), 3);
     assert_eq!(out.stats.pass, 1);
     assert_eq!(out.stats.hyphenated_lines, 1);
@@ -252,7 +252,7 @@ fn explicit_discretionary_produces_hyphen_run_with_marker_cluster() {
 #[test]
 fn overfull_line_is_reported_not_dropped() {
     let it = items(&TestFont::TIMES_LIKE, &NoHyphenation, "xxxx yyyyzzzz");
-    let out = layout_paragraph(&it, &params(35.0).ragged());
+    let out = layout_paragraph(&it, &params(35.0).ragged()).unwrap();
     assert_eq!(out.lines.len(), 2);
     assert_eq!(out.stats.pass, 2);
     assert_eq!(out.stats.overfull.len(), 1);
@@ -261,7 +261,7 @@ fn overfull_line_is_reported_not_dropped() {
     assert_eq!(out.lines[1].runs[0].source, 5..13);
     assert!(close(out.lines[1].set_width, 40.0));
     // First-fit reports the same overfull line.
-    let greedy = layout_paragraph(&it, &params(35.0).ragged().first_fit());
+    let greedy = layout_paragraph(&it, &params(35.0).ragged().first_fit()).unwrap();
     assert_eq!(greedy.stats.overfull, out.stats.overfull);
 }
 
@@ -316,7 +316,7 @@ fn kerning_changes_the_break() {
     assert_eq!(Core14Times::ROMAN.kern('A', 'V'), -135.0);
     assert_eq!(Core14Times::ROMAN.kern('V', 'A'), -135.0);
     let kerned = items(&Core14Times::ROMAN, &NoHyphenation, text);
-    let out = layout_paragraph(&kerned, &params(100.0).ragged());
+    let out = layout_paragraph(&kerned, &params(100.0).ragged()).unwrap();
     assert_eq!(out.lines.len(), 1);
     assert!(close(out.lines[0].runs[0].width, 48.31));
     assert!(close(out.lines[0].natural_width, 99.12));
@@ -326,7 +326,7 @@ fn kerning_changes_the_break() {
     assert!(close(g[1].x_offset, 7.22 - 1.35));
     assert!(close(g[0].advance, 5.87));
     let unkerned = items(&NoKern(&Core14Times::ROMAN), &NoHyphenation, text);
-    let out = layout_paragraph(&unkerned, &params(100.0).ragged());
+    let out = layout_paragraph(&unkerned, &params(100.0).ragged()).unwrap();
     assert_eq!(out.lines.len(), 2);
     assert!(close(out.lines[0].runs[0].width, 57.76));
 }
@@ -338,17 +338,17 @@ fn explicit_kern_is_discarded_at_a_break() {
     let font = TestFont::TIMES_LIKE;
     let h = NoHyphenation;
     let mut b = ParagraphBuilder::new(&h);
-    b.word(&font, 10.0, "aaaa", 0);
+    b.word(&font, 10.0, "aaaa", 0).unwrap();
     b.kern(4.0);
     b.space(&font, 10.0, 4..5);
-    b.word(&font, 10.0, "bbbb", 5);
+    b.word(&font, 10.0, "bbbb", 5).unwrap();
     let it = b.finish(Glue::fil());
     // Wide measure: kern kept, "bbbb" at 20 + 4 + 2.5 = 26.5.
-    let out = layout_paragraph(&it, &params(100.0).ragged());
+    let out = layout_paragraph(&it, &params(100.0).ragged()).unwrap();
     assert_eq!(out.lines.len(), 1);
     assert_xs(&out.lines[0], &[0.0, 26.5]);
     // Narrow measure: break at the kern; line 1 is exactly "aaaa" = 20pt.
-    let out = layout_paragraph(&it, &params(21.0).ragged());
+    let out = layout_paragraph(&it, &params(21.0).ragged()).unwrap();
     assert_eq!(out.lines.len(), 2);
     assert!(close(out.lines[0].natural_width, 20.0));
     assert_xs(&out.lines[1], &[0.0]);
@@ -384,13 +384,13 @@ fn lines_para(n: usize, size: f64) -> Lines {
     let h = NoHyphenation;
     let mut b = ParagraphBuilder::new(&h);
     for i in 0..n {
-        b.word(&font, size, "w", i);
+        b.word(&font, size, "w", i).unwrap();
         if i + 1 < n {
             b.line_break();
         }
     }
     let it = b.finish(Glue::fil());
-    let out = layout_paragraph(&it, &params(200.0));
+    let out = layout_paragraph(&it, &params(200.0)).unwrap();
     assert_eq!(out.lines.len(), n);
     out
 }
@@ -497,15 +497,16 @@ fn page_overflow_is_reported_and_content_kept() {
 fn baseline_grid_snaps_every_baseline() {
     let h = NoHyphenation;
     let mut b = ParagraphBuilder::new(&h);
-    b.text(&Core14Times::BOLD, 17.28, "Heading", 0);
+    b.text(&Core14Times::BOLD, 17.28, "Heading", 0).unwrap();
     let heading = layout_paragraph(
         &b.finish(Glue::fil()),
         &LineBreakParams::article_12pt_letter_1in(),
-    );
+    )
+    .unwrap();
     // Three body lines via explicit line breaks.
     let mut b2 = ParagraphBuilder::new(&h);
     for (i, w) in ["one", "two", "three"].iter().enumerate() {
-        b2.word(&Core14Times::ROMAN, 12.0, w, i * 6);
+        b2.word(&Core14Times::ROMAN, 12.0, w, i * 6).unwrap();
         if i < 2 {
             b2.line_break();
         }
@@ -513,7 +514,8 @@ fn baseline_grid_snaps_every_baseline() {
     let body = layout_paragraph(
         &b2.finish(Glue::fil()),
         &LineBreakParams::article_12pt_letter_1in(),
-    );
+    )
+    .unwrap();
     let blocks = vec![
         ParagraphBlock::section_heading_12pt(heading),
         ParagraphBlock::body(body),
@@ -602,7 +604,7 @@ impl FontMetricsSource for BoxTestFont {
 #[test]
 fn glyph_height_and_depth_change_baseline_placement() {
     let it = items(&BoxTestFont, &NoHyphenation, "Ty aaaa");
-    let out = layout_paragraph(&it, &params(10.0));
+    let out = layout_paragraph(&it, &params(10.0)).unwrap();
     assert_eq!(out.lines.len(), 2);
     let l0 = &out.lines[0];
     assert!(close(l0.natural_width, 10.0));
@@ -633,8 +635,8 @@ fn layout_is_deterministic() {
         "The quick brown fox jumps over the lazy dog and keeps re\\-run\\-ning until the para\\-graph wraps several times.",
     );
     let p = params(120.0);
-    let a = layout_paragraph(&it, &p);
-    let b = layout_paragraph(&it, &p);
+    let a = layout_paragraph(&it, &p).unwrap();
+    let b = layout_paragraph(&it, &p).unwrap();
     assert_eq!(a, b);
     assert_eq!(format!("{a:?}"), format!("{b:?}"));
     let pa = layout_pages(&[ParagraphBlock::body(a.clone())], &small_page());
