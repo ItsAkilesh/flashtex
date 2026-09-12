@@ -13,21 +13,21 @@
   "capabilities": [
     "rust-font-resources"
   ],
-  "code_revision": "bea66c762860dbab23616c43b1f1a65b1235717e",
+  "code_revision": "026c945a9c1bad71038fb7d5554bd550ab245128",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
     "pessimistic": 0
   },
   "machine": "linux-primary",
-  "main_integrated_through": "d643b6ec5aa63a1ce2b9ce97ab5292baf5205b5c",
-  "next_action": "Mac font-engine supplies real licensed TFM/encoding/font-name mapping evidence; integrate adapter without Unicode/GID casts.",
+  "main_integrated_through": "9d69d6ed0b2a3300fb3fd5351af150707f062824",
+  "next_action": "Renderer consumer integration and real licensed VF fixture; nested virtual resource resolver remains unsupported.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "Explicit TFM encoding map and original-GID/metrics run adapter published; 49 tests and strict clippy pass. Hash/face-bound declarations, explicit Notdef and missing mapping errors.",
+  "summary": "VF parser and physical-bound packet expansion published; 56 tests and clippy pass. Exact coordinates, original GIDs/font+TFM hashes, explicit specials/missing-resource failures.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T06:11:55Z",
+  "updated_utc": "2026-09-12T06:17:19Z",
   "usage": {
     "evidence": "crates/font-resources/README.md; test suite; installed font SHA pinned.",
     "status": "Hosted allocation; no external provider calls; account remainder unknown."
