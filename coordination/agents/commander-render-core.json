@@ -14,23 +14,23 @@
     "rust",
     "rendering"
   ],
-  "code_revision": "95c908166abb645e6e5f8b0ac495c7bc01bf001b",
+  "code_revision": "9ce5e9e04ae3a4733e2cc19853eef7712f5102e2",
   "eta_minutes": {
     "likely": 3,
     "optimistic": 1,
     "pessimistic": 5
   },
   "machine": "linux-primary",
-  "main_integrated_through": "5e5665137abd30bcd74b013191656f3513b78f68",
-  "next_action": "Commander/compiler owner isolates useful tests and resolves cache/output contract blockers; no duplicate exporter.",
+  "main_integrated_through": "b14d242804e11b1b27eccf5f1857921a3c21a99f",
+  "next_action": "Owner review of exact text spacing and encoding limitations; no authoritative repin",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "Reviewed Aarush0236 exact old-base diff: cache drops diagnostics/status, PDF substitutes Unicode/Helvetica and mutable temp paths; no wholesale uptake recommended.",
+  "summary": "Modified 9aa plus cumulative Text builds; six actual probes expose silent spacing/ligature profile gaps",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T15:28:32Z",
+  "updated_utc": "2026-09-12T15:49:47Z",
   "usage": {
-    "evidence": "crates/rendering-core/docs/handoffs/peer-aarush-0236aa0a/source-pins.json",
-    "status": "Existing OpenAI; read-only peer source, no builds/merge/native/providers/descendants."
+    "evidence": "Offline release build passed; six original source/GID/span assertions passed; exact outputs and source hashes retained",
+    "status": "Existing OpenAI session; no paid tools or descendants"
   }
 }

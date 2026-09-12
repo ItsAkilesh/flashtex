@@ -3,33 +3,33 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-048": {
-      "acknowledged_utc": "2026-09-12T14:15:29Z",
-      "adaptation": "Pausedtelemetrycandidate preserved outsideworktree; helperpage/delta reviewonly with exactinstalledbase, fullresync and boundedcost constraints.",
-      "main_sha": "c364f838c8dc783064ae489e2bcf2c69172a1871",
-      "revision": 32
+      "acknowledged_utc": "2026-09-12T15:57:55Z",
+      "adaptation": "Read r42 and completed live compiler protocol, source navigation, malformed-input and performance acceptance; current single cumulative patch is be426cb8 under hw1-current-compiler. Producer fidelity gaps remain explicit.",
+      "main_sha": "62da4b3d6f8e18cd7f78900c9339ef8438f0a835",
+      "revision": 42
     }
   },
   "branch": "agent/commander-preview-performance/preview-performance",
   "capabilities": [
     "Preview helper serialization and latency"
   ],
-  "code_revision": "8d613c6247cfc5e9b15c8baf8aaea28dd3d980c3",
+  "code_revision": "be426cb85f16e88d145c2c0295a33c76e6b9bf1c",
   "eta_minutes": {
     "likely": 15,
     "optimistic": 5,
     "pessimistic": 30
   },
   "machine": "linux-primary",
-  "main_integrated_through": "0abadb9f8c27e0640b3e41ed5a54ea811fb96a35",
-  "next_action": "Commander review/adoption of combined candidate; agree explicit Text AST producer and legacy font contract before isolated implementation. Preserve compiler owner fence.",
+  "main_integrated_through": "3d3909ce828b4de34d67f8a22feb6cb369232af3",
+  "next_action": "Commander independent review and owner adoption; producer Text spacing/encoding/ligature fixes remain required. Await next product scope without authoritative compiler or control-file edits.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "Published combined HW1 four-candidate handoff 1cf2fae7: 97 tests, three existing ignored, strict Clippy, 77 diagnostics and 35 exact symbol spans; eight clean-applied source hashes match. Published read-only Text AST/consumer contract 3a1e3203 and actual ten-case lexer probe 8d613c62. No authoritative compiler edits or rendering-parity claim.",
+  "summary": "Single cumulative compiler handoff be426cb8 supersedes prior patch chains: 104 final tests and strict lint pass, clean apply matches ten sources, actual optimized HW1 reply retains 72 diagnostics. Text allocation optimization eaba97d5 preserves 207 complete replies and improves alternating synthetic 500KB median about 14 percent.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T15:29:03Z",
+  "updated_utc": "2026-09-12T15:57:55Z",
   "usage": {
-    "evidence": "crates/preview-controller/docs/handoffs/hw1-logical-candidate/combined-evidence.json; hw1-text-contract.md; hw1-text-token-probe/evidence.json",
-    "status": "Existing hosted engineer allocation; no provider CLI/API calls; remaining quota unknown."
+    "evidence": "crates/preview-controller/docs/handoffs/hw1-current-compiler/evidence.json; crates/preview-controller/docs/handoffs/hw1-text-runs/evidence.json",
+    "status": "Existing hosted allocation; no paid CLI/API calls, remaining quota unknown."
   }
 }
