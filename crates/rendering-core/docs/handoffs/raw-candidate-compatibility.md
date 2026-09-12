@@ -38,10 +38,13 @@ Helper whole-event Value validation preserves the old finite-number and depth
 checks even in ignored extension fields; it is never serialized or used for
 binding. The wire module retains its existing Value inspection only to produce unsupported
 primitive diagnostics; final acceptance decodes the original RawValue payload.
-This work makes no parser-speed or native paint claim. Existing five-fixture
-reference mismatches and ToUnicode oracle limitations remain unchanged until the
-pinned regression runner is deliberately rebased and rerun.
+This work makes no parser-speed or native paint claim. The pinned runner was deliberately rebased to b797b21a and rerun on all five
+existing fixtures. Original PDF hashes and raster/text metrics exactly match the
+previous subset20 baseline; reference pixel mismatches remain 0/602/1244/979/337.
+The display-math reference ToUnicode limitation remains explicit. Evidence:
+`../../tools/evidence/raw-payload-five-fixtures.json` (relative to crate root: `tools/evidence/`).
 
 Validation checkpoint: 169 rendering tests passed (2 explicitly ignored); strict
-all-target Clippy passed. After its borrow-only lint correction, focused helper
-and wire regression tests are rerun before publication.
+all-target Clippy passed. After its borrow-only lint correction, focused helper7
+and wire6 regression tests passed before publication. Runner exit3 is the expected
+existing reference mismatch, not a newly failed duplicate-field correction.
