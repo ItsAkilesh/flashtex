@@ -380,6 +380,69 @@ final class DocumentFilesTests: XCTestCase {
         XCTAssertFalse(model.isDirty)
     }
 
+    // MARK: reviewed reload (direct / project-files route)
+
+    func testLineChangeSummaryCountsAddedAndRemovedLines() {
+        XCTAssertEqual(ShellModel.lineChanges(from: "a\nb\nc\n", to: "a\nc\nd\n").added, 1)
+        XCTAssertEqual(ShellModel.lineChanges(from: "a\nb\nc\n", to: "a\nc\nd\n").removed, 1)
+        XCTAssertEqual(ShellModel.lineChanges(from: "x\n", to: "x\n").added, 0)
+        XCTAssertEqual(ShellModel.lineChanges(from: "", to: "one\ntwo\n").added, 2)
+        XCTAssertEqual(ShellModel.lineChanges(from: "one\none\n", to: "one\n").removed, 1)
+    }
+
+    func testReloadIsReviewedAndPinnedToTheReviewedSnapshot() async throws {
+        let dir = try tempDir("review")
+        let url = dir.appendingPathComponent("paper.tex")
+        try "line 1\nline 2\nline 3\n".write(to: url, atomically: true, encoding: .utf8)
+        let model = ShellModel()
+        model.files.policy = fake([])
+        XCTAssertEqual(model.openTex(at: url), .opened)
+        model.updateActiveText("line 1\nline 2 (edited)\nline 3\n")
+
+        // Review: what the disk snapshot would change, without touching the buffer.
+        try "line 1\nline 3\nline 4\nline 5\n".write(to: url, atomically: true, encoding: .utf8)
+        XCTAssertEqual(model.checkDiskStatus(), .modified)
+        let review = try XCTUnwrap(model.prepareReload())
+        XCTAssertFalse(review.viaController)
+        XCTAssertTrue(review.bufferDirty)
+        XCTAssertEqual(review.diskText, "line 1\nline 3\nline 4\nline 5\n")
+        XCTAssertEqual(review.diskSha256, SourceDigest.sha256Hex(review.diskText))
+        XCTAssertEqual(review.bytesBefore, 30); XCTAssertEqual(review.bytesAfter, 28)
+        XCTAssertEqual(review.linesAdded, 2, "line 4, line 5")
+        XCTAssertEqual(review.linesRemoved, 1, "line 2 (edited); the trailing empty line stays")
+        XCTAssertTrue(review.summary.contains("30 → 28 bytes") && review.summary.contains("+2 / −1 lines"), review.summary)
+        XCTAssertTrue(review.summary.contains("unsaved edits are replaced"), review.summary)
+        XCTAssertEqual(model.activeText, "line 1\nline 2 (edited)\nline 3\n", "review changes nothing")
+
+        // Confirmation is gated on the dirty decision and pinned to the reviewed hash.
+        do { let got = await model.confirmReload(review); XCTAssertEqual(got, .blockedByUnsavedEdits) }
+        do { let got = await model.confirmReload(review, dirty: .saveFirst); XCTAssertEqual(got, .saveFailed) }
+        try "changed after review\n".write(to: url, atomically: true, encoding: .utf8)
+        do { let got = await model.confirmReload(review, dirty: .discard); XCTAssertEqual(got, .readFailed) }
+        XCTAssertTrue(model.captureNote?.contains("changed again") == true, model.captureNote ?? "")
+        XCTAssertEqual(model.activeText, "line 1\nline 2 (edited)\nline 3\n")
+        XCTAssertNil(model.recoverableBuffer, "a refused reload does not consume the discard")
+        XCTAssertEqual(model.files.lastDiskState, .modified)
+
+        // A fresh review of the current snapshot imports it; the edits stay recoverable.
+        do { let got = await model.reloadFromDiskReviewed(dirty: .discard); XCTAssertEqual(got, .opened) }
+        XCTAssertEqual(model.activeText, "changed after review\n")
+        XCTAssertFalse(model.isDirty)
+        XCTAssertNil(model.files.conflict)
+        XCTAssertEqual(model.recoverableBuffer, .init(url: url, text: "line 1\nline 2 (edited)\nline 3\n"))
+        let identical = try XCTUnwrap(model.prepareReload())
+        XCTAssertTrue(identical.identical)
+        XCTAssertTrue(identical.summary.contains("identical"), identical.summary)
+
+        // The synchronous direct reload is the same reviewed path.
+        try "sync reload\n".write(to: url, atomically: true, encoding: .utf8)
+        XCTAssertEqual(model.reloadFromDisk(), .opened)
+        XCTAssertEqual(model.activeText, "sync reload\n")
+        try FileManager.default.removeItem(at: url)
+        XCTAssertNil(model.prepareReload())
+        XCTAssertTrue(model.captureNote?.contains("does not exist") == true, model.captureNote ?? "")
+    }
+
     // MARK: multi-file open / detach / reopen (real helper, real files)
 
     func testMultiFileOpenDetachReopenAcrossProjectRoots() throws {
@@ -439,5 +502,109 @@ final class DocumentFilesTests: XCTestCase {
         XCTAssertEqual(try disk(a), "A3b\n")
         XCTAssertFalse(model.isDirty)
         XCTAssertEqual(try disk(b), "B3\n")
+    }
+}
+
+/// The reviewed reload and disk status through the real
+/// `flashtex-preview-controller` (`reload {…, user_approved:true}` and
+/// `file_status`, STDIO.md) with the real compiler. Skipped unless
+/// `FLASHTEX_PREVIEW_CONTROLLER` and `FLASHTEX_COMPILER` point at built binaries.
+@MainActor
+final class DocumentFilesControllerTests: XCTestCase {
+    static var helper: URL? {
+        ProcessInfo.processInfo.environment["FLASHTEX_PREVIEW_CONTROLLER"].map { URL(fileURLWithPath: $0) }
+    }
+
+    private func waitUntil(_ what: String, timeout: TimeInterval = 15, _ cond: () -> Bool) async throws {
+        let start = Date()
+        while !cond() {
+            if Date().timeIntervalSince(start) > timeout { XCTFail("timed out waiting for \(what)"); throw XCTSkip("timeout: \(what)") }
+            try await Task.sleep(nanoseconds: 30_000_000)
+        }
+    }
+
+    func testControllerReloadIsReviewedPinnedAndImportedIntoTheDurableSource() async throws {
+        guard let helper = Self.helper, FileManager.default.isExecutableFile(atPath: helper.path),
+              ShellModel.locateCompiler() != nil else {
+            throw XCTSkip("set FLASHTEX_PREVIEW_CONTROLLER and FLASHTEX_COMPILER to built binaries")
+        }
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("pc-reload-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root.appendingPathComponent("project"), withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let tex = root.appendingPathComponent("project/main.tex")
+        let v1 = "\\begin{document}\nReload me.\n\\end{document}\n"
+        try v1.write(to: tex, atomically: true, encoding: .utf8)
+        setenv("FLASHTEX_CONTROLLER_LEDGER_ROOT", root.appendingPathComponent("ledger").path, 1)
+        defer { unsetenv("FLASHTEX_CONTROLLER_LEDGER_ROOT") }
+        let model = ShellModel()
+        model.autoCompile = true
+        XCTAssertEqual(model.openTex(at: tex), .opened)
+        model.attachController(at: helper)
+        try await waitUntil("initial preview") { model.result?.revision == model.editorRevision && model.controllerState.durable["main.tex"] != nil }
+        XCTAssertTrue(model.controllerRoutesFiles)
+
+        // Disk status through the helper: unchanged, then an external write is a conflict.
+        do { let got = await model.refreshDiskStatus(); XCTAssertEqual(got, .unchanged) }
+        let v2 = "\\begin{document}\nReloaded from disk.\nSecond line.\n\\end{document}\n"
+        try v2.write(to: tex, atomically: true, encoding: .utf8)
+        do { let got = await model.refreshDiskStatus(); XCTAssertEqual(got, .modified) }
+        let conflict = try XCTUnwrap(model.files.conflict)
+        XCTAssertTrue(conflict.viaHelper)
+        XCTAssertEqual(conflict.kind, .modifiedExternally)
+        XCTAssertEqual(conflict.theirs, SourceDigest.sha256Hex(v2))
+
+        // Typed edits are durable in the ledger but not on disk: still not an external change.
+        model.updateActiveText("\\begin{document}\nReload me, edited.\n\\end{document}\n")
+        try await waitUntil("edit durable") { model.inFlightRevision == nil && model.controllerState.textByDurable["main.tex"]?.values.contains { $0 == model.activeText } == true }
+        do { let got = await model.refreshDiskStatus(); XCTAssertEqual(got, .modified, "disk still differs from the baseline, not from the typed text") }
+
+        // Review: pinned to the durable identity and the disk hash; nothing changes yet.
+        let review = try XCTUnwrap(model.prepareReload())
+        XCTAssertTrue(review.viaController)
+        XCTAssertEqual(review.durable?.revision, model.controllerState.durable["main.tex"]?.revision)
+        XCTAssertEqual(review.diskText, v2)
+        XCTAssertTrue(review.bufferDirty)
+        XCTAssertTrue(review.summary.contains("preview controller") && review.summary.contains("lines"), review.summary)
+        XCTAssertEqual(model.activeText, "\\begin{document}\nReload me, edited.\n\\end{document}\n")
+
+        // The file changes again after the review: the helper refuses, nothing replaced.
+        let v3 = "\\begin{document}\nChanged after review.\n\\end{document}\n"
+        try v3.write(to: tex, atomically: true, encoding: .utf8)
+        do { let got = await model.confirmReload(review, dirty: .discard); XCTAssertEqual(got, .readFailed) }
+        XCTAssertTrue(model.captureNote?.contains("refused") == true, model.captureNote ?? "")
+        XCTAssertEqual(model.activeText, "\\begin{document}\nReload me, edited.\n\\end{document}\n")
+        XCTAssertTrue(model.isDirty)
+        XCTAssertNil(model.recoverableBuffer)
+        XCTAssertEqual(model.reloadFromDisk(dirty: .discard), .readFailed, "the synchronous direct reload never bypasses the controller")
+
+        // Reviewed again and confirmed: the ledger holds v3, the buffer shows it, the
+        // preview binds to the new revision, and the previous text stays recoverable.
+        let before = model.activeText
+        let durableBefore = try XCTUnwrap(model.controllerState.durable["main.tex"]).revision
+        let fresh = try XCTUnwrap(model.prepareReload())
+        XCTAssertEqual(fresh.diskText, v3)
+        do { let got = await model.confirmReload(fresh); XCTAssertEqual(got, .blockedByUnsavedEdits) }
+        do { let got = await model.confirmReload(fresh, dirty: .discard); XCTAssertEqual(got, .opened) }
+        XCTAssertEqual(model.activeText, v3)
+        XCTAssertEqual(model.savedText, v3)
+        XCTAssertFalse(model.isDirty)
+        XCTAssertNil(model.files.conflict)
+        XCTAssertEqual(model.files.lastDiskState, .unchanged)
+        XCTAssertEqual(model.recoverableBuffer, .init(url: tex, text: before))
+        let durableAfter = try XCTUnwrap(model.controllerState.durable["main.tex"]).revision
+        XCTAssertGreaterThan(durableAfter, durableBefore)
+        XCTAssertEqual(model.controllerState.textByDurable["main.tex"]?[durableAfter], v3)
+        XCTAssertEqual(try String(contentsOf: tex, encoding: .utf8), v3, "reload never writes disk")
+        try await waitUntil("preview for the reloaded revision") { model.result?.revision == model.editorRevision && model.inFlightRevision == nil }
+        do { let got = await model.refreshDiskStatus(); XCTAssertEqual(got, .unchanged) }
+        let status = await model.controllerFileStatus(path: "main.tex")
+        XCTAssertEqual(status?.state, "matches_source")
+
+        // Deleted on disk: a notice through the helper, and nothing to review.
+        try FileManager.default.removeItem(at: tex)
+        do { let got = await model.refreshDiskStatus(); XCTAssertEqual(got, .deleted) }
+        XCTAssertNil(model.files.conflict)
+        XCTAssertNil(model.prepareReload())
+        model.detachController()
     }
 }

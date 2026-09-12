@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "agent_id": "daniel-color",
+  "machine": "mac-m5pro-dq222",
+  "tool": "Claude Code on Claude Max 20x",
+  "capabilities": ["rust", "parsing", "color"],
+  "branch": "agent/daniel-color/color-expressions",
+  "state": "ready_for_integration",
+  "summary": "crates/color-expressions rev2: added gray:/rgb:/cmyk: literal colour syntax (typed UnsupportedColorModel/InvalidComponentCount/ComponentOutOfRange errors, no invented colour space, no silent default) and independently hand-derived CMYK-CMYK/CMYK-RGB/CMYK-Gray mixing fixtures citing vector-graphics's documented naive to_rgb formula instead of asserting the resolver's own output. 63 unit tests + 1 doctest pass; cargo clippy --all-targets -- -D warnings clean.",
+  "next_action": "Await Commander integration; no further work planned this revision",
+  "eta_minutes": {
+    "optimistic": 0,
+    "likely": 0,
+    "pessimistic": 0
+  },
+  "allocation_id": "daniel-claude20x-shared",
+  "usage": {
+    "status": "unknown",
+    "evidence": "Shared Claude Max 20x subscription quota on mac-m5pro-dq222; no purchases or overages made or requested"
+  },
+  "reviewed_peers": {
+    "origin/main": "2fc45df69f0d397706174117116777f19619dfe2"
+  },
+  "assignment_acknowledgements": {
+    "FT-035": {
+      "acknowledged_utc": "2026-09-12T09:23:26Z",
+      "revision": 2,
+      "main_sha": "2fc45df69f0d397706174117116777f19619dfe2",
+      "adaptation": "Interpreted 'expand exact supported color model/mix evaluation' as adding a model:components literal atom (gray/rgb/cmyk only, matching vector-graphics::Color exactly) alongside named-palette lookup, and 'independently specified fixtures' as expected values worked out by hand in comments from documented formulas (this crate's own lerp rule and vector-graphics's documented naive to_rgb conversion), never by calling this crate's own resolve()/mix(). Did not add CMYK entries to base_palette since the new literal syntax already gives exact CMYK access; did not attempt to re-derive vector-graphics's to_rgb formula's own design choice, since that is documented, not independently specifiable, and said so explicitly in coordination/daniel-color.md."
+    }
+  },
+  "updated_utc": "2026-09-12T09:23:26Z",
+  "code_revision": "b9ea73f8940b66a8dcdb853aa40f56b207c46210",
+  "main_integrated_through": "2fc45df69f0d397706174117116777f19619dfe2"
+}

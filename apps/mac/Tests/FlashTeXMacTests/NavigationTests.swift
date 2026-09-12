@@ -684,3 +684,216 @@ final class NavigationRealCompilerTests: XCTestCase {
         model.detachWorker()
     }
 }
+
+// MARK: - helper (project index) navigation
+
+final class NavigationHelperProbeTests: XCTestCase {
+    func testProbeMovesCaretOntoTheIndexedName() {
+        let text = "\\newcommand{\\mycmd}[1]{#1}\nSee \\ref{sec:b} and \\cite{a, b} and \\mycmd{x} \\pageref*[opt]{sec:a}\n\\begin{itemize}\\end{itemize}"
+        func byte(_ needle: String, _ delta: Int = 0) -> Int { text.utf8.distance(from: text.startIndex, to: text.range(of: needle)!.lowerBound) + delta }
+        let secB = byte("sec:b")
+        // Caret on the backslash, on the name, or just after `\ref`: the argument start.
+        XCTAssertEqual(Navigation.helperProbeOffset(in: text, caretByte: byte("\\ref{")), secB)
+        XCTAssertEqual(Navigation.helperProbeOffset(in: text, caretByte: byte("\\ref{", 2)), secB)
+        XCTAssertEqual(Navigation.helperProbeOffset(in: text, caretByte: byte("\\ref{", 4)), secB)
+        // Inside the argument: the caret itself (the helper picks the item); on the closing brace: the argument start.
+        XCTAssertEqual(Navigation.helperProbeOffset(in: text, caretByte: secB + 3), secB + 3)
+        XCTAssertEqual(Navigation.helperProbeOffset(in: text, caretByte: byte("sec:b}", 5)), secB)
+        // `\cite{a, b}` with the caret on the space after the comma: the argument start (a), not the space.
+        XCTAssertEqual(Navigation.helperProbeOffset(in: text, caretByte: byte("a, b", 2)), byte("a, b"))
+        XCTAssertEqual(Navigation.helperProbeOffset(in: text, caretByte: byte("a, b", 3)), byte("a, b", 3))
+        // A user command: the name after the backslash, whether the caret is on `\` or in the letters.
+        let mycmdUse = byte("\\mycmd{x}")
+        XCTAssertEqual(Navigation.helperProbeOffset(in: text, caretByte: mycmdUse), mycmdUse + 1)
+        XCTAssertEqual(Navigation.helperProbeOffset(in: text, caretByte: mycmdUse + 3), mycmdUse + 1)
+        XCTAssertEqual(Navigation.helperProbeOffset(in: text, caretByte: mycmdUse + 6), mycmdUse + 1)
+        // The definition's name inside `\newcommand{\mycmd}` is a command token too.
+        let mycmdDef = byte("\\mycmd}")
+        XCTAssertEqual(Navigation.helperProbeOffset(in: text, caretByte: mycmdDef + 2), mycmdDef + 1)
+        // Star and optional argument are skipped on the way to the braced name.
+        XCTAssertEqual(Navigation.helperProbeOffset(in: text, caretByte: byte("\\pageref")), byte("sec:a"))
+        // Environments are matched in the buffer: nil.
+        XCTAssertNil(Navigation.helperProbeOffset(in: text, caretByte: byte("\\begin")))
+        XCTAssertNil(Navigation.helperProbeOffset(in: text, caretByte: byte("itemize}\\end") + 3))
+        XCTAssertNil(Navigation.helperProbeOffset(in: text, caretByte: byte("\\end{") + 1))
+        // Plain text and the end of the buffer: the caret byte, unchanged.
+        XCTAssertEqual(Navigation.helperProbeOffset(in: text, caretByte: byte("See ")), byte("See "))
+        XCTAssertEqual(Navigation.helperProbeOffset(in: text, caretByte: text.utf8.count), text.utf8.count)
+        XCTAssertEqual(Navigation.helperProbeOffset(in: "\\\\x", caretByte: 0), 0)
+        XCTAssertEqual(Navigation.helperProbeOffset(in: "", caretByte: 0), 0)
+    }
+
+    func testRebaseExactlyMapsRefusesAndVerifies() {
+        let base = "abc \u{FB01}le xyz"
+        XCTAssertEqual(Navigation.rebaseExactly(start: 4, end: 9, from: base, to: base, path: "p"), .mapped(start: 4, end: 9, note: nil))
+        XCTAssertEqual(Navigation.rebaseExactly(start: 4, end: 9, from: base, to: "Q" + base, path: "p"),
+                       .mapped(start: 5, end: 10, note: "rebased from 4..<9 across edits"))
+        XCTAssertEqual(Navigation.rebaseExactly(start: 4, end: 9, from: base, to: base + "!", path: "p"), .mapped(start: 4, end: 9, note: nil))
+        guard case .refused(let why) = Navigation.rebaseExactly(start: 4, end: 9, from: base, to: "abc file xyz", path: "p") else { return XCTFail() }
+        XCTAssertEqual(why, "bytes 4..<9 of p overlap the edit at 4..<7, now 4..<6")
+    }
+}
+
+/// Against the real `flashtex-preview-controller` helper with the real
+/// compiler: a two-file project (`main.tex` + `\input{chapter}`), lexical
+/// navigation project-wide, stale-version refusal, in-buffer fallback.
+@MainActor
+final class NavigationHelperTests: XCTestCase {
+    static let main = "\\documentclass{article}\n\\newcommand{\\mycmd}[1]{#1}\n\\begin{document}\n\\section{Intro}\\label{sec:a}\nSee \\ref{sec:b} and \\cite{knuth84} and \\mycmd{x}.\n\\input{chapter}\n\\end{document}\n"
+    static let chapter = "\\section{Chapter}\\label{sec:b}\nBack to \\pageref{sec:a}.\n\\begin{thebibliography}{9}\n\\bibitem{knuth84} Knuth.\n\\end{thebibliography}\n"
+
+    private func byte(_ needle: String, in text: String, _ delta: Int = 0) -> Int {
+        text.utf8.distance(from: text.startIndex, to: text.range(of: needle)!.lowerBound) + delta
+    }
+
+    private func selected(_ model: ShellModel) -> String { (model.activeText as NSString).substring(with: model.selection!.nsRange) }
+
+    private func waitUntil(timeout: TimeInterval = 15, _ cond: () -> Bool) async throws {
+        let start = Date()
+        while !cond() {
+            if Date().timeIntervalSince(start) > timeout { throw XCTSkip("timeout") }
+            try await Task.sleep(nanoseconds: 30_000_000)
+        }
+    }
+
+    private func attachedModel() async throws -> (ShellModel, URL) {
+        guard let helper = PreviewControllerTests.helper, FileManager.default.isExecutableFile(atPath: helper.path),
+              ShellModel.locateCompiler() != nil else {
+            throw XCTSkip("set FLASHTEX_PREVIEW_CONTROLLER and FLASHTEX_COMPILER to built binaries")
+        }
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("nav-helper-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root.appendingPathComponent("project"), withIntermediateDirectories: true)
+        try Self.main.write(to: root.appendingPathComponent("project/main.tex"), atomically: true, encoding: .utf8)
+        try Self.chapter.write(to: root.appendingPathComponent("project/chapter.tex"), atomically: true, encoding: .utf8)
+        setenv("FLASHTEX_CONTROLLER_LEDGER_ROOT", root.appendingPathComponent("ledger").path, 1)
+        let model = ShellModel()
+        model.autoCompile = true
+        XCTAssertEqual(model.openTex(at: root.appendingPathComponent("project/main.tex")), .opened)
+        model.attachController(at: helper)
+        XCTAssertTrue(model.controllerAttached)
+        try await waitUntil { model.controllerState.durable["main.tex"] != nil && model.result?.revision == model.editorRevision && model.inFlightRevision == nil }
+        XCTAssertEqual(model.documents.map(\.path), ["main.tex"], "only the entry document is open in the window")
+        return (model, root)
+    }
+
+    func testHelperResolvesLabelsCitationsAndCommandsProjectWide() async throws {
+        let (model, root) = try await attachedModel()
+        defer { unsetenv("FLASHTEX_CONTROLLER_LEDGER_ROOT"); model.detachController(); try? FileManager.default.removeItem(at: root) }
+        let main = Self.main
+
+        // \ref{sec:b} → \label{sec:b} in chapter.tex, which is opened in this window and made active.
+        model.caretUTF16 = (main as NSString).range(of: "\\ref{sec:b}").location
+        model.goToMatching()
+        XCTAssertEqual(model.navigationNote, "Looking up the project index…")
+        try await waitUntil { model.navigationNote != "Looking up the project index…" }
+        XCTAssertEqual(model.activePath, "chapter.tex", model.navigationNote ?? "nil")
+        XCTAssertEqual(model.documents.map(\.path), ["main.tex", "chapter.tex"])
+        XCTAssertEqual(selected(model), "sec:b")
+        XCTAssertEqual(model.activeText.utf8ByteRange(of: model.selection!.nsRange)?.start, byte("sec:b", in: Self.chapter))
+        XCTAssertEqual(model.caretUTF16, model.selection!.nsRange.location)
+        XCTAssertEqual(model.navigationNote, "Definition of sec:b: chapter.tex bytes 24..<29 (project index, durable r1) (opened chapter.tex at durable r1; switched to chapter.tex)")
+
+        // From chapter.tex, \pageref{sec:a} → \label{sec:a} back in main.tex.
+        model.caretUTF16 = (Self.chapter as NSString).range(of: "pageref").location + 3
+        await model.goToMatchingViaHelper(path: "chapter.tex", byteOffset: Navigation.helperProbeOffset(in: model.activeText, caretByte: byte("pageref", in: Self.chapter, 3))!, text: model.activeText)
+        XCTAssertEqual(model.activePath, "main.tex", model.navigationNote ?? "nil")
+        XCTAssertEqual(selected(model), "sec:a")
+        XCTAssertEqual(model.activeText.utf8ByteRange(of: model.selection!.nsRange)?.start, byte("sec:a}", in: main))
+        XCTAssertTrue(model.navigationNote?.hasPrefix("Definition of sec:a: main.tex bytes") == true, model.navigationNote ?? "nil")
+
+        // A citation resolves to its \bibitem in chapter.tex.
+        await model.goToMatchingViaHelper(path: "main.tex", byteOffset: byte("knuth84}", in: main), text: model.activeText)
+        XCTAssertEqual(model.activePath, "chapter.tex")
+        XCTAssertEqual(selected(model), "knuth84")
+        XCTAssertEqual(model.activeText.utf8ByteRange(of: model.selection!.nsRange)?.start, byte("knuth84} Knuth", in: Self.chapter))
+
+        // A user command use resolves to its \newcommand in main.tex.
+        model.activePath = "main.tex"
+        await model.goToMatchingViaHelper(path: "main.tex", byteOffset: byte("\\mycmd{x}", in: main, 1), text: model.activeText)
+        XCTAssertEqual(model.activePath, "main.tex")
+        XCTAssertEqual(selected(model), "mycmd")
+        XCTAssertEqual(model.activeText.utf8ByteRange(of: model.selection!.nsRange)?.start, byte("\\mycmd}", in: main, 1))
+        XCTAssertTrue(model.navigationNote?.hasPrefix("Definition of mycmd: main.tex bytes") == true, model.navigationNote ?? "nil")
+
+        // From a definition (\label{sec:a}): its reference in chapter.tex.
+        await model.goToMatchingViaHelper(path: "main.tex", byteOffset: byte("sec:a}", in: main), text: model.activeText)
+        XCTAssertEqual(model.activePath, "chapter.tex", model.navigationNote ?? "nil")
+        XCTAssertEqual(selected(model), "sec:a")
+        XCTAssertEqual(model.activeText.utf8ByteRange(of: model.selection!.nsRange)?.start, byte("sec:a}", in: Self.chapter))
+        XCTAssertTrue(model.navigationNote?.hasPrefix("Reference 1 of 1 to sec:a: chapter.tex bytes") == true, model.navigationNote ?? "nil")
+
+        // Plain text: the index knows nothing there; nothing selected.
+        let before = model.selection
+        await model.goToMatchingViaHelper(path: "chapter.tex", byteOffset: byte("Back", in: Self.chapter), text: model.activeText)
+        XCTAssertEqual(model.selection, before)
+        XCTAssertTrue(model.navigationNote?.contains("on no label, citation or command") == true, model.navigationNote ?? "nil")
+
+        // Environments never go to the helper: \begin{document} matches in the buffer.
+        model.activePath = "main.tex"
+        model.caretUTF16 = (main as NSString).range(of: "\\begin{document}").location + 3
+        model.goToMatching()
+        XCTAssertEqual(selected(model), "\\end{document}")
+        XCTAssertTrue(model.navigationNote?.hasPrefix("Matched \\begin{document}") == true, model.navigationNote ?? "nil")
+    }
+
+    func testHelperRefusesStaleVersionsAndUnindexedBuffers() async throws {
+        let (model, root) = try await attachedModel()
+        defer { unsetenv("FLASHTEX_CONTROLLER_LEDGER_ROOT"); model.detachController(); try? FileManager.default.removeItem(at: root) }
+        let main = Self.main
+        guard case .success(let versions) = await model.controllerSourceVersions() else { return XCTFail("no snapshot") }
+        XCTAssertEqual(versions.keys.sorted(), ["chapter.tex", "main.tex"], "\\input{chapter} is discovered by the helper")
+
+        // A version map that is not the helper's snapshot: refused as stale, never answered.
+        var stale = versions
+        stale["main.tex"] = versions["main.tex"]! + 1
+        let reply = await model.controllerNavigate(sourceVersions: stale, path: "main.tex", byteOffset: byte("sec:b", in: main))
+        guard case .staleVersions(let why) = reply else { return XCTFail("\(String(describing: reply))") }
+        XCTAssertTrue(why.contains("source versions changed"), why)
+        // With the exact map the same query answers.
+        guard case .found(let name, let origin, let defs, _) = await model.controllerNavigate(sourceVersions: versions, path: "main.tex", byteOffset: byte("sec:b", in: main)) else { return XCTFail() }
+        XCTAssertEqual(name, "sec:b")
+        XCTAssertEqual(origin, ShellModel.IndexLocation(["path": "main.tex", "revision": versions["main.tex"]!, "start_byte": byte("sec:b", in: main), "end_byte": byte("sec:b", in: main) + 5])!)
+        XCTAssertEqual(defs.map(\.path), ["chapter.tex"])
+
+        // A buffer the helper has not indexed yet (autoCompile off: nothing is submitted): refused, selection untouched.
+        model.autoCompile = false
+        model.updateActiveText(main.replacingOccurrences(of: "See ", with: "Look: "))
+        let before = model.selection
+        await model.goToMatchingViaHelper(path: "main.tex", byteOffset: byte("sec:b", in: model.activeText), text: model.activeText)
+        XCTAssertEqual(model.selection, before)
+        XCTAssertTrue(model.navigationNote?.contains("has edits the helper has not indexed yet") == true, model.navigationNote ?? "nil")
+        // Once the edit is durable, the same lookup works and the definition is selected exactly.
+        model.autoCompile = true
+        model.controllerSubmitEdit()
+        try await waitUntil { model.controllerState.textByDurable["main.tex"]?.values.contains { $0.sameBytes(as: model.activeText) } == true && model.inFlightRevision == nil }
+        await model.goToMatchingViaHelper(path: "main.tex", byteOffset: byte("sec:b", in: model.activeText), text: model.activeText)
+        XCTAssertEqual(model.activePath, "chapter.tex", model.navigationNote ?? "nil")
+        XCTAssertEqual(selected(model), "sec:b")
+
+        // A location whose durable revision moved on (a forged reply) is refused, not guessed.
+        let ghost = ShellModel.IndexLocation(["path": "chapter.tex", "revision": 99, "start_byte": 0, "end_byte": 1])!
+        let before2 = model.selection
+        await model.selectIndexLocation(ghost, versions: versions, label: "Ghost")
+        XCTAssertEqual(model.selection, before2)
+        XCTAssertTrue(model.navigationNote?.contains("is not the current durable revision") == true, model.navigationNote ?? "nil")
+    }
+
+    func testWithoutHelperGoToMatchingStaysInBuffer() {
+        let model = ShellModel()
+        model.documents = [.init(path: "main.tex", text: Self.main), .init(path: "chapter.tex", text: Self.chapter)]
+        model.activePath = "main.tex"
+        XCTAssertFalse(model.controllerAttached)
+        model.caretUTF16 = (Self.main as NSString).range(of: "\\ref{sec:b}").location + 2
+        model.goToMatching()
+        XCTAssertEqual(model.activePath, "chapter.tex")
+        XCTAssertEqual(selected(model), "\\label{sec:b}")
+        XCTAssertTrue(model.navigationNote?.hasPrefix("Definition of sec:b: \\label at byte") == true, model.navigationNote ?? "nil")
+        // \cite has no in-buffer resolver: explained, nothing selected.
+        model.activePath = "main.tex"
+        model.caretUTF16 = (Self.main as NSString).range(of: "\\cite").location + 1
+        let before = model.selection
+        model.goToMatching()
+        XCTAssertEqual(model.selection, before)
+        XCTAssertTrue(model.navigationNote?.contains("not inside") == true, model.navigationNote ?? "nil")
+    }
+}

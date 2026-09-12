@@ -103,11 +103,86 @@ final class RealBridgeTests: XCTestCase {
         XCTAssertFalse(model.bridgeAttached)
     }
 
+    /// The real bridge killed mid-session (SIGKILL, as a crash would): relaunched
+    /// with the same store, the durable journal still answers for the earlier
+    /// capture, the pinned destination is restored identically, and an identical
+    /// resubmission is idempotent. Needs the real edit-ledger too when
+    /// `FLASHTEX_EDIT_LEDGER` is set (discovered); otherwise insertion is disabled
+    /// but the relaunch path is the same.
+    func testKilledBridgeIsRelaunchedWithJournalAndDestinationIntact() async throws {
+        guard let binary = Self.binary, FileManager.default.isExecutableFile(atPath: binary.path) else {
+            throw XCTSkip("set FLASHTEX_BRIDGE to the built flashtex-bridge binary")
+        }
+        let store = try BridgeClientTests.tempStore()
+        defer { try? FileManager.default.removeItem(at: store) }
+        let model = ShellModel()
+        model.autoCompile = false
+        let attached = await model.attachBridgeAndWait(executable: binary, storeDirectory: store)
+        XCTAssertTrue(attached, model.captureNote ?? model.bridgeStatus)
+        let bridge = try XCTUnwrap(model.bridge)
+        var notes: [String] = []
+        bridge.onRelaunched = { notes.append($1) }
+        model.caretUTF16 = 5
+        model.pinAnchorAtCaret()
+        try await waitUntil { model.bridgeDestination != nil }
+        let pinned = try XCTUnwrap(model.bridgeDestination)
+        let image = RuntimeV1.CaptureImage(mimeType: "image/png", dataBase64: Self.decodablePNGBase64)
+        let received = await model.submitCapture(image: image, captureId: "real-capture-1", instructions: "Transcribe.")
+        XCTAssertEqual(received?.durable, true, model.captureNote ?? "")
+
+        let pid = try XCTUnwrap(RealHelperProcess.pid(commandLineContaining: "flashtex-bridge --store \(store.path)"), "bridge pid")
+        XCTAssertEqual(kill(pid, SIGKILL), 0)
+        try await waitUntil { !bridge.running }
+        XCTAssertTrue(bridge.status.contains("bridge exited (9); relaunching in 0.2 s"), bridge.status)
+        try await waitUntil { bridge.relaunchCount[.bridge] == 1 && bridge.relaunching == nil }
+        XCTAssertTrue(bridge.running)
+        XCTAssertTrue(bridge.status.contains("relaunched 1×") && bridge.status.contains("open at revision \(model.editorRevision)"), bridge.status)
+        XCTAssertNotEqual(RealHelperProcess.pid(commandLineContaining: "flashtex-bridge --store \(store.path)"), pid, "a new process")
+        XCTAssertEqual(model.bridgeDestination, pinned, notes.first ?? "")
+        XCTAssertTrue(notes.first?.contains("pinned destination \(pinned.destinationId) restored") == true, notes.first ?? "")
+        // The journal in `store` survived the crash; the identical resubmission returns the same record.
+        let status = try await bridge.status(captureId: "real-capture-1")
+        XCTAssertFalse(status.rejected)
+        XCTAssertNil(status.applied)
+        let again = await model.submitCapture(image: image, captureId: "real-capture-1", instructions: "Transcribe.")
+        XCTAssertEqual(again, received)
+        XCTAssertEqual(model.bridgeCaptures.first { $0.captureId == "real-capture-1" }?.state, .received)
+        // A pin after the relaunch binds to the live snapshot (documents are in memory; reopened).
+        model.updateActiveText("Hello naïve FlashTeX.\n")
+        model.caretUTF16 = 12
+        model.pinAnchorAtCaret()
+        try await waitUntil { model.bridgeDestination?.startByte == 13 || model.captureNote?.contains("pin failed") == true }
+        XCTAssertEqual(model.bridgeDestination?.pinnedRevision, model.editorRevision, model.captureNote ?? "")
+        XCTAssertNil(bridge.ledgerError, bridge.ledgerError ?? "")
+        model.detachBridge()
+        XCTAssertFalse(model.bridgeAttached)
+        try await Task.sleep(nanoseconds: 300_000_000)
+        XCTAssertNil(RealHelperProcess.pid(commandLineContaining: "flashtex-bridge --store \(store.path)"), "detach leaves no bridge process")
+    }
+
     private func waitUntil(timeout: TimeInterval = 10, _ cond: () -> Bool) async throws {
         let start = Date()
         while !cond() {
             if Date().timeIntervalSince(start) > timeout { throw XCTSkip("timeout") }
             try await Task.sleep(nanoseconds: 30_000_000)
         }
+    }
+}
+
+/// Finds a helper process launched by these tests by its command line (the
+/// store directory is unique per test), so a real crash can be simulated.
+enum RealHelperProcess {
+    static func pid(commandLineContaining needle: String) -> pid_t? {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
+        p.arguments = ["-f", needle]
+        let out = Pipe()
+        p.standardOutput = out
+        p.standardError = Pipe()
+        guard (try? p.run()) != nil else { return nil }
+        let data = out.fileHandleForReading.readDataToEndOfFile()
+        p.waitUntilExit()
+        let ids = String(decoding: data, as: UTF8.self).split(whereSeparator: \.isNewline).compactMap { pid_t($0) }
+        return ids.count == 1 ? ids.first : nil
     }
 }

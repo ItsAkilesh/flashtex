@@ -1,15 +1,4 @@
 {
-  "schema_version": 1,
-  "task_id": "FT-031",
-  "agent_id": "daniel-floats",
-  "branch": "agent/daniel-floats/float-layout",
-  "revision": 3,
-  "state": "assigned",
-  "objective": "Expose bounded validated TTC face/table directory ranges and duplicate-tag/overlap checks using existing parser, preserving legitimate shared tables; coordinate font-resources resolver.",
-  "owned_paths": [
-    "crates/font-engine"
-  ],
-  "dependencies": [],
   "acceptance": [
     "Meaningful tests and strict Rust lint pass with bounded malformed/Unicode inputs",
     "Preserve exact source/revision and resource identities; no implicit approximation or parity claim",
@@ -17,9 +6,20 @@
     "Register Daniel machine and exact assignment ACK/session before working",
     "Preserve old WIP and test before publication; no automatic return of paths at cooldown end"
   ],
+  "agent_id": "daniel-floats",
   "allocation_id": "daniel-claude20x-shared",
-  "timebox_minutes": 40,
+  "branch": "agent/daniel-floats/float-layout",
   "deadline_utc": null,
-  "input_main_sha": "5499e419b09868e2e248c413351a5646db74fac1",
-  "updated_utc": "2026-09-12T09:02:36.189558+00:00"
+  "dependencies": [],
+  "input_main_sha": "18827dca98e78ca6aa3af9b3b80c4981bc109f68",
+  "objective": "Verified collection face/table descriptor: adversarial bounds and exact identity regressions",
+  "owned_paths": [
+    "crates/font-engine"
+  ],
+  "revision": 4,
+  "schema_version": 1,
+  "state": "assigned",
+  "task_id": "FT-031",
+  "timebox_minutes": 30,
+  "updated_utc": "2026-09-12T09:46:48Z"
 }

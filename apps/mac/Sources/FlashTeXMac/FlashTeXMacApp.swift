@@ -9,19 +9,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     weak var model: ShellModel?
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        guard let model, model.isDirty, model.documentURL != nil || !model.activeText.isEmpty else { return .terminateNow }
+        guard let model, model.project.anyDirty, model.documentURL != nil || !model.activeText.isEmpty else { return .terminateNow }
+        let dirty = model.project.listing.filter(\.isDirty).map(\.path)
         let alert = NSAlert()
-        alert.messageText = "Save changes to \(model.documentURL?.lastPathComponent ?? "the unsaved buffer")?"
+        alert.messageText = "Save changes to \(model.documentURL == nil ? "the unsaved buffer" : dirty.joined(separator: ", "))?"
         alert.informativeText = "Your edits since the last save will be lost if you don't save."
         alert.addButton(withTitle: "Save")
         alert.addButton(withTitle: "Don't Save")
         alert.addButton(withTitle: "Cancel")
         switch alert.runModal() {
         case .alertFirstButtonReturn:
-            if model.saveTex() { return .terminateNow }
-            // The rooted save helper reported an on-disk conflict: resolve it first.
-            if model.files.conflict != nil { model.resolveConflictPanel() }
-            return model.isDirty ? .terminateCancel : .terminateNow
+            // Non-entry members first (their own rooted files, synchronous
+            // compare-and-replace like saveTex), then the entry.
+            var allSaved = true
+            for path in dirty where path != model.project.entryPath {
+                switch model.project.saveDocumentNow(path) {
+                case .saved: continue
+                case .conflict(let c): allSaved = false; model.captureNote = c.summary
+                case .failed(let why): allSaved = false; model.captureNote = why
+                }
+            }
+            if model.project.isDirty(model.project.entryPath) {
+                if model.activePath != model.project.entryPath { model.project.switchDocument(to: model.project.entryPath) }
+                if !model.saveTex() {
+                    allSaved = false
+                    // The rooted save helper reported an on-disk conflict: resolve it first.
+                    if model.files.conflict != nil { model.resolveConflictPanel() }
+                }
+            }
+            return allSaved && !model.project.anyDirty ? .terminateNow : .terminateCancel
         case .alertSecondButtonReturn: return .terminateNow
         default: return .terminateCancel
         }
@@ -35,7 +51,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Coming back to the app rechecks the document on disk (external edits
     /// become an explicit conflict state, never a silent overwrite).
-    func applicationDidBecomeActive(_ notification: Notification) { _ = model?.checkDiskStatus() }
+    func applicationDidBecomeActive(_ notification: Notification) {
+        if let model { Task { @MainActor in await model.refreshDiskStatus() } } // helper route when attached
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
@@ -108,6 +126,8 @@ struct FlashTeXMacApp: App {
                     .keyboardShortcut("s")
                 Button("Resolve On-Disk Conflict…") { model.resolveConflictPanel() }
                     .disabled(model.files.conflict == nil)
+                Button("Reload From Disk…") { model.reloadFromDiskInteractive() }
+                    .disabled(model.documentURL == nil)
                 Button("Save As…") { model.saveTexAs() }
                     .keyboardShortcut("s", modifiers: [.command, .shift])
                 Divider()

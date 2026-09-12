@@ -1,6 +1,6 @@
 # mac-editor-accessibility (Claude Code subagent, parent mac-claude-a)
 
-- Updated UTC: 2026-09-12T05:20Z
+- Updated UTC: 2026-09-12T06:05Z
 - Agent / parent / machine alias: mac-editor-accessibility / mac-claude-a / mac-m1max-a
 - Task / acceptance gate / owned paths: lane "Responsive native editor
   accessibility and selection semantics" plus its follow-ups "Keyboard/edit
@@ -13,12 +13,57 @@
   see below). Transferred crates (font-engine, paragraph-layout, math-layout)
   untouched.
 - Branch / code revision / main integrated through:
-  `agent/mac-editor-accessibility/responsive`, based on
-  `origin/agent/mac-claude-a/mac-shell` d8baed6 (merged after it advanced past
-  6b43a3a; `EditorDiagnostics.Mark` gained identity/resultStatus, tests adapted)
-  and merged with `origin/main` 780f145 (no apps/mac changes came from main).
+  refill task on `agent/mac-editor-accessibility/ime`, based on
+  `origin/agent/mac-claude-a/mac-shell` 40d53b7 (my first lane,
+  `agent/mac-editor-accessibility/responsive` 1643f86, is merged there).
   Worktree: `.claude/worktrees/agent-ac192954cb317fe5e`.
-- State: ready for integration (parent review). All three lane items done.
+- State: ready for integration (parent review). Lane items and the refill
+  task (input-method correctness) done; one diff needed in Completion.swift
+  (other lane's file) is listed below, not applied.
+
+## Refill: input-method correctness (marked text)
+
+Observed AppKit behaviour (hosted real `NSTextView`, `NSTextInputClient` calls):
+`setMarkedText` posts no `textDidChange`, only selection changes (one or two
+per step); `insertText` over marked text and `unmarkText` with marked text
+left post one text change; `setMarkedText("")` (IME cancel) removes the
+composition silently. A synthesized `NSEvent` cannot drive a real input
+source in a test process (an Option-e key event inserts its `characters`
+literally: no dead-key state, no candidate window), so the sequences are
+replayed at the client API — the path the input context takes.
+
+`SourceEditorView` now:
+- pushes nothing to the binding while marked text exists (a text change that
+  leaves marked text behind is held back), so no revision and no compile per
+  composition step; the commit is one text change, one revision, one compile
+  (`testCompositionReachesTheModelOnlyWhenCommitted`, fake worker: recorder
+  sees exactly the committed revision compiled);
+- reports the caret at the composition start (a position of the model's
+  text) during composition, so `caretByte` stays exact; composition steps are
+  never announced; composing counts as typing for the navigation guard, and
+  the view is not re-synced from the model (text/marks/selection) until the
+  composition ends — a navigation issued mid-composition applies after the
+  commit and the typing pause (or is dropped by the model when a compile
+  result lands, its own rule);
+- closes the completion list and cancels its pending scan at the head of the
+  next run-loop turn when a composition step is observed (after the keystroke
+  that started it has enqueued the list's re-scan), through the public
+  `CompletingTextView.scheduler.cancel()` / `close(.textChanged)`; IME cancel
+  (`setMarkedText("")` + `unmarkText`) leaves the buffer, model and revision
+  untouched and the list closed; a dead-key sequence under the open list
+  (mark "´", replace with "é") is not swallowed: the model sees the accent
+  once (`testCompositionCancelDropsTheStepsAndClosesTheCompletionList`);
+- byte offsets across composed characters: e + U+0301 (2 UTF-16 units,
+  3 bytes) vs precomposed é (1 unit, 2 bytes) vs the dead-key composed é all
+  give exact `caretByte`, the reverse `nsRange(utf8Bytes:)` mapping, one
+  column, one announced character, and a cluster-aligned mark range; the
+  decomposed bytes are kept as typed (Swift `==` calls them equal, the model
+  compares bytes) (`testCaretBytesAreExactAcrossComposedAndDecomposedCharacters`).
+
+Not drivable here: real IME candidate windows, dead-key state machines and
+VoiceOver output need an input source / Accessibility permission this test
+process does not have; `interpretKeyEvents` with synthesized events was
+tried and inserts the literal characters.
 
 ## Ready behavior and evidence
 
@@ -89,11 +134,15 @@
   (AppKit setup + layout), not repeated; the round trip never includes it.
 
 Validation: `swift test` in apps/mac with the four real worker binaries
-(FLASHTEX_COMPILER/PDF/BRIDGE/EDIT_LEDGER): 320 tests, 0 failures, 5
-pre-existing skips (PreviewController, DocumentFiles helper, NearbyView screenshots need env).
-`SourceEditorViewTests` 14/14, repeated 3× consecutively without failure
-after the CPU-time budgets; before them, wall-clock budgets flaked under
-concurrent builds (max 6.9 ms wall for one preempted keystroke).
+(FLASHTEX_COMPILER/PDF/BRIDGE/EDIT_LEDGER) on the ime branch: 384 tests,
+0 failures, 12 pre-existing env-gated skips. `SourceEditorViewTests` 17/17,
+repeated 6× consecutively without failure. Under a heavy concurrent load
+burst (full suite at 103 s instead of 33 s) one run of the keystroke bench
+exceeded the whole-keystroke CPU budget (TextKit layout inflates under
+contention), and another lane's wall-clock bench (`CompletionTests`
+1 MB, 42 ms vs 20 ms) failed in the same run; the keystroke budget now
+compares the round trip's own CPU time (p50 0.11 ms, max 0.22 ms), which is
+what the assertion is about.
 
 ## Incomplete behavior / limitations / needs from others
 
@@ -115,10 +164,28 @@ concurrent builds (max 6.9 ms wall for one preempted keystroke).
 
 ## Diffs needed in parent-retained files
 
-None. ContentView's existing `SourceEditorView(...)` call is unchanged and the
-model API is used as is. Optional follow-up for the parent: nothing in
-ShellModel needs to change for the native string; it simply stores what the
-binding hands it.
+Parent-retained (ShellModel/ContentView/PreviewView/App): none.
+
+Completion.swift (mac-completion lane, not edited): `CompletingTextView.keyDown`
+never hands Esc to `super` — with no list open it calls `requestCompletion()`
+and returns — so while an input method has marked text, Esc cannot cancel the
+composition (the input context never sees the event) and a scan is enqueued
+mid-composition; the list's key path also re-scans after every keystroke while
+marked text exists. Exact minimal diff for that lane:
+
+```
+     override func keyDown(with event: NSEvent) {
++        if hasMarkedText() { super.keyDown(with: event); return } // the input method owns every key of a composition
+         if event.modifierFlags.contains(.control), event.charactersIgnoringModifiers == " " {
+ ...
+     func requestCompletion() {
+         observeStorageIfNeeded()
+         let caret = selectedRange()
+-        guard caret.length == 0 else { return }
++        guard caret.length == 0, !hasMarkedText() else { return }
+```
+
+With those two lines the editor-side close/cancel becomes belt and braces.
 
 ## Resources / rules
 
