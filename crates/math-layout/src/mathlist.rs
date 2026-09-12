@@ -52,8 +52,25 @@ pub enum Nucleus {
         denominator: MathList,
         thickness: Option<f64>,
     },
-    /// `\sqrt{radicand}`.
-    Radical(MathList),
+    /// `\sqrt{radicand}` or `\sqrt[degree]{radicand}`.
+    Radical {
+        radicand: MathList,
+        degree: Option<MathList>,
+    },
+    /// Upright operator text such as `\lim` or `\sin` (`\operator@font`):
+    /// each character is a text glyph of the roman font, no italic correction.
+    Text(String),
+    /// `\overline{body}`: body under a rule (Rule 9).
+    Overline(MathList),
+    /// `\underline{body}`: body over a rule (Rule 10).
+    Underline(MathList),
+    /// `{\displaystyle body}` and friends: an explicit style override for the
+    /// body, boxed as an ordinary atom. This is the `\mathchoice`-free way to
+    /// force a style; the body's own sub-formulas derive from it as usual.
+    Styled {
+        style: crate::style::Style,
+        body: MathList,
+    },
     /// `\hat{base}` and friends; `accent` is the accent symbol.
     Accent { accent: char, base: MathList },
     /// `\left l body \right r`. `None` is a null delimiter.
@@ -139,7 +156,44 @@ impl Atom {
     }
 
     pub fn sqrt(radicand: MathList) -> Atom {
-        Atom::new(AtomClass::Ord, Nucleus::Radical(radicand))
+        Atom::new(
+            AtomClass::Ord,
+            Nucleus::Radical {
+                radicand,
+                degree: None,
+            },
+        )
+    }
+
+    /// `\sqrt[degree]{radicand}`.
+    pub fn root(degree: MathList, radicand: MathList) -> Atom {
+        Atom::new(
+            AtomClass::Ord,
+            Nucleus::Radical {
+                radicand,
+                degree: Some(degree),
+            },
+        )
+    }
+
+    /// `\lim`, `\sin`, …: an `Op` atom whose nucleus is upright text.
+    /// `\lim`-style operators take limits in display style by default; pass
+    /// `Limits::NoLimits` (as LaTeX does for `\sin`) with [`Atom::with_limits`].
+    pub fn text_op(text: &str) -> Atom {
+        Atom::new(AtomClass::Op, Nucleus::Text(text.to_string()))
+    }
+
+    pub fn overline(body: MathList) -> Atom {
+        Atom::new(AtomClass::Ord, Nucleus::Overline(body))
+    }
+
+    pub fn underline(body: MathList) -> Atom {
+        Atom::new(AtomClass::Ord, Nucleus::Underline(body))
+    }
+
+    /// `{\displaystyle body}` etc.
+    pub fn styled(style: crate::style::Style, body: MathList) -> Atom {
+        Atom::new(AtomClass::Ord, Nucleus::Styled { style, body })
     }
 
     pub fn accent(accent: char, base: MathList) -> Atom {
