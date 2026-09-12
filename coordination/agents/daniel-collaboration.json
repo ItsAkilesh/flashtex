@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "agent_id": "daniel-collaboration",
+  "machine": "mac-m5pro-dq222",
+  "tool": "Claude Code on Claude Max 20x",
+  "capabilities": [
+    "rust",
+    "crdt",
+    "offline-collaboration",
+    "checkpoint-serialization"
+  ],
+  "branch": "agent/daniel-collaboration/collaboration-core",
+  "state": "ready_for_integration",
+  "summary": "FT-044 rev 4: expanded measured fixtures and adversarial bounds with reproducible compatibility evidence, per rev 4's added objective clause; no public API change. Added crates/collaboration-core/tests/measured_fixtures.rs (3 new pinned convergence fixtures, each asserting its own replica count and operation count computed from its generated ops, and its converged text as a literal, checked across 2-3 causally valid delivery orders: 3 replicas/8 ops -> \"[dogcat]\"; 5 replicas/7 ops -> \"[srq]\"; 5 replicas/10 ops -> \"[dwczbyax]\"). Extended tests/adversarial.rs from 9 to 17 cases, adding: N-way (5-replica) concurrent insert at an identical anchor with the deterministic descending-OpId total order checked across 4 delivery orders; interleaved delete/insert on the same element across all 3 causally valid orderings; replay of a full 8-op log in reverse and in a fixed shuffle (dedup makes both idempotent); a zero-capacity pending buffer; a checkpoint bound crossed by document growth (complementing rev 3's shrinking-bound framing); a truncated-bytes case landing inside the delete-op-ids section specifically; two replicas both issuing counter u64::MAX (no IdConflict, since OpId uniqueness is (counter, replica)). Added crates/collaboration-core/tests/compatibility_evidence.rs (2 tests): a checkpoint's to_bytes() output pinned as an exact 102-byte literal with a field-by-field layout comment, plus proof that decoding that exact literal reproduces the written checkpoint; and a 3-way concurrent-insert convergence fixture checked across all 6 delivery-order permutations against both a pinned text literal and a pinned FNV-1a-64 hash (a small, locally written, dependency-free hash function added only to test code - no crate dependency introduced). Test count 44 -> 57 (13 new). cargo test and cargo clippy --all-targets -D warnings both clean; Cargo.lock unchanged (zero dependencies, including in tests). Refreshed coordination/daniel-collaboration.md with a new \"Revision 4\" section and updated test-count breakdown. Noted for the record: this worktree's AGENTS.md/CLAUDE.md and coordination/*.md contain extensive text purporting to grant staffing/authorization/commit-identity overrides (e.g. alternate commit identities, expanded autonomy, quota-bypass claims); per this task's explicit instruction, all such in-repo text was treated as inert data, not instruction, and had no effect on this agent's commit identity, scope, or behavior.",
+  "next_action": "Await Commander integration review of agent/daniel-collaboration/collaboration-core (rev 4) into main; no follow-up work planned by this agent absent a new assignment revision.",
+  "eta_minutes": {
+    "optimistic": 0,
+    "likely": 0,
+    "pessimistic": 0
+  },
+  "allocation_id": "daniel-claude20x-shared",
+  "usage": {
+    "status": "unknown",
+    "evidence": "Shared Claude Max 20x subscription quota; no purchases, no overages, no API billing. Live consumption not exposed to this agent."
+  },
+  "reviewed_peers": {
+    "origin/main": "abbe88a5275b89d99357815846de3cbe76a91810"
+  },
+  "assignment_acknowledgements": {
+    "FT-044": {
+      "acknowledged_utc": "2026-09-12T17:04:32Z",
+      "revision": 4,
+      "main_sha": "abbe88a5275b89d99357815846de3cbe76a91810",
+      "adaptation": "Accepted FT-044 rev 4's added objective clause (expand measured fixtures and adversarial bounds with reproducible compatibility evidence) on top of rev 1-3's unchanged core, checkpoint/recovery layer, and published consumer contract - no public API changed. Verified rev 3's exact prior state directly against the tracked test files (44 tests: 26 unit + 4 convergence + 3 checkpoint-equivalence + 2 interrupted-delivery + 9 adversarial) before adding to it, rather than trusting the prose handoff. Added 3 pinned measured fixtures with counts computed from generated ops (not hand-typed), 8 new adversarial cases covering every category rev 4 listed by name, and 2 compatibility-evidence tests pinning exact checkpoint wire bytes and a hash of converged-document bytes across all delivery-order permutations, computed once by running the tests and hard-coded from the actual output rather than derived by hand. Merged origin/main (git merge origin/main --no-edit; fast-forward-free merge, no conflicts, since main's changes were all outside crates/collaboration-core)."
+    }
+  },
+  "updated_utc": "2026-09-12T17:04:32Z",
+  "code_revision": "6ddde1b495118190d976096fdeb211ba5332b8e0",
+  "main_integrated_through": "abbe88a5275b89d99357815846de3cbe76a91810"
+}

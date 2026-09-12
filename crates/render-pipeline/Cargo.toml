@@ -1,0 +1,38 @@
+[package]
+name = "flashtex-render-pipeline"
+version = "0.1.0"
+edition = "2021"
+description = "Original FlashTeX rendering pipeline: compiler parse tree -> styled blocks -> font-engine shaping -> Knuth-Plass line breaking (paragraph-layout) -> Appendix G math boxes (math-layout) -> pages -> display list v2 + runtime-v1 fallback."
+publish = false
+
+[lib]
+name = "flashtex_render_pipeline"
+path = "src/lib.rs"
+
+[[bin]]
+name = "flashtex-render"
+path = "src/bin/flashtex-render.rs"
+
+# Every sibling dependency is a pinned mirror under vendor/ (see
+# vendor/VENDORING.md) so this crate builds from a `git archive` of this
+# directory alone, which is how the visual-oracle harness builds it; the only
+# registry crates are font-resources' serde/serde_json/sha2. Repoint these at
+# ../<name> once the siblings merge.
+[features]
+# The compiler's `Nucleus::Text` (`\text{...}` in math) is an isolated
+# candidate (crates/preview-controller/docs/handoffs/hw1-text-candidate/
+# candidate.patch on compiler base 1c02a2bc, not on main nor in
+# vendor/compiler). This feature enables the pipeline's conversion arm for
+# it; it builds only against a compiler that carries the variant. Off by
+# default so the crate builds against the pinned vendor.
+compiler-text-nucleus = []
+
+[dependencies]
+flashtex-compiler = { path = "vendor/compiler" }
+flashtex-font-engine = { path = "vendor/font-engine" }
+flashtex-paragraph-layout = { path = "vendor/paragraph-layout" }
+flashtex-math-layout = { path = "vendor/math-layout" }
+flashtex-document-style = { path = "vendor/document-style" }
+flashtex-pdf = { path = "vendor/pdf" }
+flashtex-font-resources = { path = "vendor/font-resources" }
+flashtex-project-files = { path = "vendor/project-files" }

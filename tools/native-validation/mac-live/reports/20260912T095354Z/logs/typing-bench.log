@@ -1,0 +1,12 @@
+==> building FlashTeXMac (release)
+Build complete! (0.74s)
+    seed demo       5909 bytes
+    seed body60k   63899 bytes
+    seed fixture      16 bytes
+==> run compiler-fixture-30ms
+    2026-09-12T09:57:28Z	bench: done (all keystrokes painted); keystrokes 200, painted 200, coalesced 0, p50 21.820167 ms
+==> run compiler-fixture-0ms
+    2026-09-12T09:57:34Z	bench: done (all keystrokes painted); keystrokes 200, painted 200, coalesced 5, p50 20.055083 ms
+==> run compiler-demo-30ms
+    2026-09-12T09:57:41Z	bench: done (all keystrokes painted); keystrokes 200, painted 200, coalesced 0, p50 22.691083 ms
+==> run compiler-demo-0ms

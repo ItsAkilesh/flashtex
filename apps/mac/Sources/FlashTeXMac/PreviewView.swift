@@ -25,6 +25,10 @@ struct PreviewView: View {
             let widest = result.pages.map(\.widthPt).max() ?? 612
             // Fit the widest page to the pane (never upscale past 100%).
             let scale = min(1, max(0.2, (geo.size.width - 48) / widest))
+            // Scroll anchoring (PreviewAnchor.swift): the (page, fraction) under the
+            // viewport's top edge survives a result with another page count and a
+            // pane resize; a result with the same page geometry never moves the scroll.
+            let layout = PreviewPageLayout(pages: result.pages.map { PreviewPageLayout.Page(number: $0.number, widthPt: $0.widthPt, heightPt: $0.heightPt) }, scale: scale)
             ScrollView([.vertical, .horizontal]) {
                 // Lazy: only pages near the viewport are laid out and drawn;
                 // `.equatable()`: a page whose items, caret set and scale did not
@@ -32,7 +36,7 @@ struct PreviewView: View {
                 // pages whose layout (or source offsets) actually moved.
                 VStack(spacing: 24) {
                     ForEach(result.pages, id: \.number) { page in
-                        PageView(page: page, dark: dark, caretItems: caretItems[page.number] ?? [], scale: scale,
+                        PageView(page: page, totalPages: result.pages.count, dark: dark, caretItems: caretItems[page.number] ?? [], scale: scale,
                                  rulesNegotiated: result.layoutCapabilities?.contains(RuntimeV1.LayoutCapabilities.rulesV1) == true,
                                  onSelect: onSelect)
                             .equatable()
@@ -40,11 +44,12 @@ struct PreviewView: View {
                     }
                 }
                 .padding(24)
+                .background(PreviewAnchorKeeper(layout: layout))
             }
             .onChange(of: caretPage) { _, page in
                 // Page-level only: keeps the page under the caret in view when the
                 // editor moves across pages; no scrolling within a page.
-                if let page { withAnimation { proxy.scrollTo(page, anchor: .top) } }
+                if let page { ReduceMotion.animate { proxy.scrollTo(page, anchor: .top) } }
             }
         }
         }
@@ -54,6 +59,7 @@ struct PreviewView: View {
 
 private struct PageView: View, Equatable {
     let page: RuntimeV1.Page
+    let totalPages: Int
     let dark: Bool
     var caretItems: Set<Int> = []
     /// Display scale (1 = 1pt per screen point); the preview fits pages to width.
@@ -64,14 +70,14 @@ private struct PageView: View, Equatable {
     /// Everything that affects the drawing; `onSelect` is the same closure for
     /// every page and revision, so it is not part of identity.
     static func == (a: PageView, b: PageView) -> Bool {
-        a.page == b.page && a.dark == b.dark && a.caretItems == b.caretItems && a.scale == b.scale && a.rulesNegotiated == b.rulesNegotiated
+        a.page == b.page && a.totalPages == b.totalPages && a.dark == b.dark && a.caretItems == b.caretItems && a.scale == b.scale && a.rulesNegotiated == b.rulesNegotiated
     }
 
     var body: some View {
         let size = CGSize(width: page.widthPt * scale, height: page.heightPt * scale)
         HitTestCanvas(page: page, dark: dark, scale: scale, caretItems: caretItems, rulesNegotiated: rulesNegotiated, onSelect: onSelect)
             .frame(width: size.width, height: size.height)
-            .overlay(alignment: .topLeading) { AccessibilityOverlay(page: page, scale: scale, fontName: { PreviewFonts.postScriptName(size: $0) }, onSelect: onSelect) } // FlashTeXAccessibility
+            .overlay(alignment: .topLeading) { AccessibilityOverlay(page: page, totalPages: totalPages, scale: scale, fontName: { PreviewFonts.postScriptName(size: $0) }, onSelect: onSelect) } // FlashTeXAccessibility
             .background(dark ? Color(white: 0.16) : .white)
             .shadow(radius: 4)
             .overlay(alignment: .bottomTrailing) {

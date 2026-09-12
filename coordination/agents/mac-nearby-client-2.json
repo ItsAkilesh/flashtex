@@ -1,0 +1,37 @@
+{
+  "agent_id": "mac-nearby-client-2",
+  "allocation_id": "claude-mac20x-nearby-client-2",
+  "assignment_acknowledgements": {
+    "issue-2-comment-5646989044-item-13": "acknowledged 2026-09-12T16:05Z; current task + follow-up 1 + follow-up 2 delivered"
+  },
+  "branch": "agent/mac-nearby-client-2/fixtures",
+  "capabilities": [
+    "swift",
+    "network-framework"
+  ],
+  "code_revision": "ec026d4d (d436438 current task, 9e3a5e78 follow-up 1, ec026d4d follow-up 2)",
+  "eta_minutes": {
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 20
+  },
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "c11c005",
+  "next_action": "Parent reviews the branch against origin/agent/mac-claude-a/mac-shell and merges; no parent-retained file diffs requested. Optional: full apps/mac swift test with real helpers when 1-min load < 15.",
+  "reviewed_peers": {
+    "origin/agent/mac-claude-a/mac-shell": {
+      "adaptation": "Base cd58fc2e; coverage audit of mac-nearby-client / mac-nearby-transport tests (coordination/mac-nearby-client-2.md); only the uncovered part implemented: client-side JSONL transcript fixtures, revocation between drop and reconnect, capture_list stub, doctor",
+      "reviewed_utc": "2026-09-12T16:10:00Z",
+      "sha": "cd58fc2e790f29bff50a5af7b4127027e841078a"
+    }
+  },
+  "schema_version": 1,
+  "state": "ready_for_integration",
+  "summary": "Nearby client item 13. Current task: four captured client-side JSONL transcripts (tools/nearby-client/Tests/Fixtures) via TranscriptRecorder + NearbyTranscriptFixtureTests (5), incl. revocation between an unacknowledged capture and the reconnect (TLS refusal via same-port FakeMac restart; pair_mismatch at hello): typed terminal error, no re-send. Follow-up 1: CaptureList.swift stub behind CaptureListFeature (off by default) with §3 shapes, §6 outcomes/merge/pager/restore gate, CaptureListTests (8), no bridge call. Follow-up 2: `nearby-client doctor` (NearbyDoctor.swift) with exact codes per check and exit 0/1/2/3/4, NearbyDoctorTests (7) and a real-listener case in NearbyReferenceClientTests. Package 47/47; CaptureListTests 8/8; real-listener doctor 1/1.",
+  "tool": "Claude Code subagent (parent mac-claude-a)",
+  "updated_utc": "2026-09-12T16:30:00Z",
+  "usage": {
+    "evidence": "cd apps/mac/tools/nearby-client && swift test -> 47 tests, 0 failures (load avg 26); cd apps/mac && swift test --filter CaptureListTests -> 8/8; --filter NearbyReferenceClientTests/testDoctorReportsExactCodesAgainstNearbyState -> 1/1 (3.26 s); --filter 'Nearby|Pairing|CaptureList' -> see coordination/mac-nearby-client-2.md",
+    "status": "Shared Claude Max 20x quota with parent mac-claude-a; no purchases; usage unknown to the subagent"
+  }
+}

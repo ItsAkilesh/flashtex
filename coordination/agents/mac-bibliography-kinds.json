@@ -1,0 +1,36 @@
+{
+  "agent_id": "mac-bibliography-kinds",
+  "allocation_id": "claude-mac20x-bibliography-kinds",
+  "assignment_acknowledgements": {},
+  "branch": "agent/mac-bibliography-kinds/bibkinds",
+  "capabilities": [
+    "swift",
+    "appkit",
+    "swiftui"
+  ],
+  "code_revision": "b5f29671 (bibkinds); applied hooks 0b0c3719 (bibkinds-applied)",
+  "eta_minutes": {
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 10
+  },
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "6472a5d2 (helper contract read-only; branch base is origin/agent/mac-claude-a/mac-shell 5bc3fc0f)",
+  "next_action": "Parent applies the 3-line hook diff (ShellModel+Controller attachController bibliographyPaths; ContentView DocumentKindIndicator + DocumentKindsMenuSection) on mac-shell and merges agent/mac-bibliography-kinds/bibkinds; full swift test at load < 15",
+  "reviewed_peers": {
+    "origin/main": {
+      "adaptation": "Consumed crates/preview-controller/docs/source-plans.md + STDIO.md + src/file_project.rs: bibliography_paths at startup, open_document document_kind, snapshot document_kinds; application owns persistence; no extension inference; ledger binding mirrored for the launch filter",
+      "reviewed_utc": "2026-09-12T13:35:00Z",
+      "sha": "6472a5d2"
+    }
+  },
+  "schema_version": 1,
+  "state": "ready_for_integration",
+  "summary": "agent/mac-bibliography-kinds/bibkinds: DocumentKinds.swift (explicit bibliography declaration via open_document document_kind, document_kinds from snapshot, entry-keyed persistence in <ledger root>/document-kinds.json, launch-time filter mirroring the helper's ledger binding, undeclare via typed detach, read-only indicator + Project menu section) + Config.bibliographyPaths; DocumentKindsTests 8 tests with the real helper: declare, close, delete refs.bib, reopen -> bibliography persists; control reopen without declarations -> latex (gap reproduced). Hook diff for parent-retained files in the handoff; applied branch passes 8/8.",
+  "tool": "Claude Code subagent (parent mac-claude-a)",
+  "updated_utc": "2026-09-12T13:47:00Z",
+  "usage": {
+    "evidence": "swift build OK both branches; DocumentKindsTests on bibkinds: 8 executed / 1 skipped (hook absent) / 0 failures; on bibkinds-applied: 8/8; real compiler+preview-controller; load 11-24 under the parent's heavy-build window (no full swift test); ProjectDocumentsTests|PreviewControllerTests 20/20",
+    "status": "Shared Claude Max quota with parent mac-claude-a; no purchases"
+  }
+}

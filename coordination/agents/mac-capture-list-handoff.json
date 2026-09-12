@@ -1,0 +1,41 @@
+{
+  "agent_id": "mac-capture-list-handoff",
+  "allocation_id": "claude-mac20x-capture-list-handoff",
+  "assignment_acknowledgements": {},
+  "branch": "agent/mac-capture-list-handoff/capture-list",
+  "capabilities": [
+    "contract-review",
+    "bridge-transfer-v1",
+    "swift"
+  ],
+  "code_revision": "4da26cec",
+  "eta_minutes": {
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 5
+  },
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "ffe199d",
+  "next_action": "Parent merges the document-only branch and relays apps/mac/docs/handoffs/transfer-v1-capture-list.md to the Commander (bridge owner, issue #2) for the transfer-v1 capture_list decision; no parent-retained file diffs, no tests to run",
+  "reviewed_peers": {
+    "origin/agent/mac-claude-a/mac-shell": {
+      "adaptation": "Branched from 6fb77efd; audited the bridge dispatch table, journal store, TransferV1.swift, BridgeSession reconcile, ShellModel+Bridge attach path, CaptureAcceptanceTests line 229 reproduction and the capture-acceptance evidence before writing the contract handoff; no code touched",
+      "reviewed_utc": "2026-09-12T14:20:00Z",
+      "sha": "6fb77efd"
+    },
+    "origin/agent/mac-nearby-errors/nearby-errors": {
+      "adaptation": "Cross-referenced only: that lane owns the NearbyWire.captureInputErrorCodes / destination_reselection_required fix; the handoff assumes the same bridge code for stale bindings",
+      "reviewed_utc": "2026-09-12T14:20:00Z",
+      "sha": "unreviewed (branch existence checked only)"
+    }
+  },
+  "schema_version": 1,
+  "state": "ready_for_integration",
+  "summary": "Owner-scoped contract handoff for the transfer-v1 capture-list gap (Commander ruling issue #2 comment 5646362851): apps/mac/docs/handoffs/transfer-v1-capture-list.md documents the relaunch reproduction (CaptureAcceptanceTests line 229), the consumer requirement, a proposed additive capture_list request/reply with receipt ordering, refusals, idempotence with capture_status/recovery_import, the Mac state-machine sketch (pending rows, explicit restore/review/insert, never auto-insert), and bounded acceptance plans for the bridge owner and the Mac side. Coverage audit in coordination/mac-capture-list-handoff.md. Document-only; no code changes.",
+  "tool": "Claude Code subagent (parent mac-claude-a)",
+  "updated_utc": "2026-09-12T14:22:00Z",
+  "usage": {
+    "evidence": "Document-only lane: no build or test run (nothing compiled changed). Reproduction cited from docs/evidence/capture-acceptance-2026-09-12T1340Z.md (real helpers, 4/4).",
+    "status": "Shared Claude Max quota with parent mac-claude-a; no purchases; no provider calls"
+  }
+}

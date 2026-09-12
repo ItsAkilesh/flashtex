@@ -1,0 +1,41 @@
+{
+  "agent_id": "mac-editor-accessibility",
+  "allocation_id": "claude-mac20x-shared",
+  "assignment_acknowledgements": {},
+  "branch": "agent/mac-editor-accessibility/braces",
+  "capabilities": [
+    "swift",
+    "appkit",
+    "accessibility"
+  ],
+  "code_revision": "dbcf9c3eff78420404c7a1b07e8e4e606d186d21",
+  "eta_minutes": {
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 30
+  },
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "3ac69c3ed109fa0902af39f4e2187d572a61c075",
+  "next_action": "Parent mac-claude-a reviews/merges agent/mac-editor-accessibility/braces and applies the autoClosePairs model/ContentView lines",
+  "reviewed_peers": {
+    "origin/agent/mac-claude-a/mac-shell": {
+      "adaptation": "Based on mac-shell 3f74326 and fast-forwarded to dbcf9c3 (completion snippets, ai-review, multi-file includes; my files untouched there). The completion lane's \\\\end snippet is the boundary documented for hand-typed \\\\begin{env}",
+      "reviewed_utc": "2026-09-12T10:53:49Z",
+      "sha": "dbcf9c3eff78420404c7a1b07e8e4e606d186d21"
+    },
+    "origin/main": {
+      "adaptation": "Merged mac-shell d8baed6 (Mark identity/resultStatus; completion lane's editorRevision/projectIndexMetadata hook kept in updateNSView) and main 5499e41; main 780f145 adds no apps/mac changes (preview helper envelopes, dispatch); kept the lastKnownText instance contract",
+      "reviewed_utc": "2026-09-12T09:05:12Z",
+      "sha": "780f1458c125d9702b994ab9df377aed96a1113f"
+    }
+  },
+  "schema_version": 1,
+  "state": "ready_for_integration",
+  "summary": "Refill 2: LaTeX-aware delimiter pairs in SourceEditorView. BraceMatcher (pure, bounded byte scan; escapes/comments/verb skipped; $ and $$ by paragraph parity) drives a two-range temporary-attribute highlight and VoiceOver 'matches line L column C'; auto-close (default { only; [ and $ via the owner's autoClosePairs), type-over and empty-pair backspace are exact, one binding push each, undo-correct (Cmd-Z after {} leaves nothing; backspace pair removal is its own step), never during compositions/comments/verb/escapes/selections. swift test 459/459 (21 env skips) with real workers; SourceEditorViewTests 20/20 x3. Two-line ShellModel/ContentView diff for the setting requested in the handoff.",
+  "tool": "Claude Code subagent (parent mac-claude-a)",
+  "updated_utc": "2026-09-12T10:53:49Z",
+  "usage": {
+    "evidence": "SourceEditorViewTests 20/20 (matcher table, hosted auto-close/type-over/backspace undo, hosted highlight+announcements); full suite 459 tests 0 failures",
+    "status": "shared Claude Max 20x quota of parent; figure unknown"
+  }
+}

@@ -1,0 +1,148 @@
+{
+ "app_exit": 0,
+ "bench": {
+  "document_bytes_after": 62,
+  "document_bytes_before": 139,
+  "keystrokes": 16,
+  "painted": 16,
+  "producer": "flashtex-preview-controller",
+  "unpainted": 0
+ },
+ "checks": [
+  {
+   "detail": "{\"keystrokes\": 16, \"painted\": 16, \"unpainted\": 0, \"producer\": \"flashtex-preview-controller\", \"document_bytes_before\": 139, \"document_bytes_after\": 62}",
+   "name": "bench summary written (app typed and exited on its own)",
+   "ok": true
+  },
+  {
+   "detail": "2026-09-12T11:18:16Z\tproject: opened chapter.tex (46 bytes, helper) \u2014 2 documents",
+   "name": "chapter.tex opened through the helper (log 'project: opened chapter.tex')",
+   "ok": true
+  },
+  {
+   "detail": "2026-09-12T11:18:16Z\tlaunched /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/helpers/1884986fe54ba3ff8f602b1e7711c9cee324cd25/src/cra",
+   "name": "helper route attached (flashtex-preview-controller launched)",
+   "ok": true
+  },
+  {
+   "detail": "{\"keystrokes\": 16, \"painted\": 16, \"unpainted\": 0, \"producer\": \"flashtex-preview-controller\", \"document_bytes_before\": 139, \"document_bytes_after\": 62}",
+   "name": "every typed keystroke painted",
+   "ok": true
+  },
+  {
+   "detail": "4f28fdf072db",
+   "name": "main.tex on disk untouched",
+   "ok": true
+  },
+  {
+   "detail": "8d27ac2ed71c",
+   "name": "chapter.tex on disk untouched (no save was issued; the edit is durable in the helper's ledger only)",
+   "ok": true
+  },
+  {
+   "detail": "{\"revision\": 17, \"bytes\": 62, \"contains_typed\": true, \"file\": \"/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/reports/20260912T110944Z/multifile/ledgers/project-e5e15cca7a6fcdbc8a02378dce41af138c598026613be8cb77331ba28ae738c7/0f1d3200c0420c7fcded86dc1397452fdd832222652ebaeef292dee71a8dce36/document.json\"}",
+   "name": "helper ledger: chapter.tex durable document contains the typed text",
+   "ok": true
+  },
+  {
+   "detail": "{\"revision\": 1, \"bytes\": 139, \"contains_typed\": false, \"file\": \"/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/reports/20260912T110944Z/multifile/ledgers/project-e5e15cca7a6fcdbc8a02378dce41af138c598026613be8cb77331ba28ae738c7/f67098301b6788c19af2853a0e5ad776fda05572b1b1224df46c42d1ad323cbb/document.json\"}",
+   "name": "helper ledger: main.tex durable document does not contain the typed text",
+   "ok": true
+  }
+ ],
+ "disk": {
+  "after": {
+   "chapter.tex": "8d27ac2ed71ccc996ad2a41cca3a57819ffa81c4d5973fa563dd3ab6ff3b1f05",
+   "main.tex": "4f28fdf072db29fffc278e820201aa83cb832afb193a1801ec8c90ea704aef4c"
+  },
+  "before": {
+   "chapter.tex": "8d27ac2ed71ccc996ad2a41cca3a57819ffa81c4d5973fa563dd3ab6ff3b1f05",
+   "main.tex": "4f28fdf072db29fffc278e820201aa83cb832afb193a1801ec8c90ea704aef4c"
+  }
+ },
+ "env": {
+  "FLASHTEX_ACTIVE_PATH": "chapter.tex",
+  "FLASHTEX_AUTOATTACH": "1",
+  "FLASHTEX_COMPILER": "/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/build/FlashTeX.app/Contents/MacOS/flashtex-compiler",
+  "FLASHTEX_CONTROLLER_LEDGER_ROOT": "/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/reports/20260912T110944Z/multifile/ledgers",
+  "FLASHTEX_OPEN_INCLUDES": "1",
+  "FLASHTEX_PREVIEW_CONTROLLER": "/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/helpers/1884986fe54ba3ff8f602b1e7711c9cee324cd25/src/crates/preview-controller/target/release/flashtex-preview-controller",
+  "FLASHTEX_PROJECT_FILES": "/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/project-files/7ccbd7e9d330479b3f35927bbf968316270b7495/src/crates/project-files/target/release/flashtex-project-files",
+  "FLASHTEX_SEED_FILE": "/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/reports/20260912T110944Z/multifile/project/main.tex",
+  "FLASHTEX_TYPING_BENCH": "/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/reports/20260912T110944Z/multifile/typed.txt",
+  "FLASHTEX_TYPING_BENCH_APPEND": "1",
+  "FLASHTEX_TYPING_BENCH_MAX_MS": "60000",
+  "FLASHTEX_TYPING_BENCH_MS": "30",
+  "FLASHTEX_TYPING_BENCH_OUT": "/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/reports/20260912T110944Z/multifile/bench.json",
+  "FLASHTEX_TYPING_BENCH_SETTLE_MS": "20000"
+ },
+ "failed": 0,
+ "ledger_documents": {
+  "chapter.tex": {
+   "bytes": 62,
+   "contains_typed": true,
+   "file": "/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/reports/20260912T110944Z/multifile/ledgers/project-e5e15cca7a6fcdbc8a02378dce41af138c598026613be8cb77331ba28ae738c7/0f1d3200c0420c7fcded86dc1397452fdd832222652ebaeef292dee71a8dce36/document.json",
+   "revision": 17
+  },
+  "main.tex": {
+   "bytes": 139,
+   "contains_typed": false,
+   "file": "/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/reports/20260912T110944Z/multifile/ledgers/project-e5e15cca7a6fcdbc8a02378dce41af138c598026613be8cb77331ba28ae738c7/f67098301b6788c19af2853a0e5ad776fda05572b1b1224df46c42d1ad323cbb/document.json",
+   "revision": 1
+  }
+ },
+ "log_excerpt": [
+  "2026-09-12T11:18:16Z\tstatus: attached: flashtex-preview-controller",
+  "2026-09-12T11:18:16Z\tlaunched /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/helpers/1884986fe54ba3ff8f602b1e7711c9cee324cd25/src/crates/preview-controller/target/release/flashtex-preview-controller for /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/reports/20260912T110944Z/multifile/project (ledger /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/reports/20260912T110944Z/multifile/ledgers)",
+  "2026-09-12T11:18:16Z\tbench: waiting for attach + first paint (16 keystrokes, 30.0 ms)",
+  "2026-09-12T11:18:16Z\tcontroller ready: compiler frames \u2264 8 MiB, helper output \u2264 16 MiB",
+  "2026-09-12T11:18:16Z\tignored controller preview preview-1: versions [\"main.tex\": 1, \"chapter.tex\": 1] unknown to this session",
+  "2026-09-12T11:18:16Z\tstatus: revision 2: ok, 0 diagnostics in 3 ms (durable r1)",
+  "2026-09-12T11:18:16Z\tstatus: revision 2: ok, 0 diagnostics in 0 ms (durable r1)",
+  "2026-09-12T11:18:16Z\tcontroller result pc-5: completions,source_versions",
+  "2026-09-12T11:18:16Z\tcontroller result pc-6: completions,source_versions",
+  "2026-09-12T11:18:16Z\tbench: typing 16 keystrokes at UTF-16 offset 139 every 30.0 ms",
+  "2026-09-12T11:18:16Z\tproject: opened chapter.tex (46 bytes, helper) \u2014 2 documents",
+  "2026-09-12T11:18:16Z\tproject: opened chapter.tex (durable r1, membership g3)",
+  "2026-09-12T11:18:16Z\tproject: open all includes: opened 1 (chapter.tex)",
+  "2026-09-12T11:18:16Z\tdurable: r2 for revision 3 at 88133984478791",
+  "2026-09-12T11:18:16Z\tstatus: revision 3: ok, 0 diagnostics in 13 ms (durable r2)",
+  "2026-09-12T11:18:16Z\tdurable: r3 for revision 4 at 88134029823916",
+  "2026-09-12T11:18:16Z\tstatus: revision 4: ok, 0 diagnostics in 12 ms (durable r3)",
+  "2026-09-12T11:18:16Z\tdurable: r4 for revision 5 at 88134069987708",
+  "2026-09-12T11:18:16Z\tstatus: revision 5: ok, 0 diagnostics in 13 ms (durable r4)",
+  "2026-09-12T11:18:16Z\tdurable: r5 for revision 6 at 88134110522083",
+  "2026-09-12T11:18:16Z\tstatus: revision 6: ok, 0 diagnostics in 12 ms (durable r5)",
+  "2026-09-12T11:18:17Z\tdurable: r6 for revision 7 at 88134154324000",
+  "2026-09-12T11:18:17Z\tstatus: revision 7: ok, 0 diagnostics in 13 ms (durable r6)",
+  "2026-09-12T11:18:17Z\tdurable: r7 for revision 8 at 88134185456166",
+  "2026-09-12T11:18:17Z\tstatus: revision 8: ok, 0 diagnostics in 13 ms (durable r7)",
+  "2026-09-12T11:18:17Z\tdurable: r8 for revision 9 at 88134228680458",
+  "2026-09-12T11:18:17Z\tstatus: revision 9: ok, 0 diagnostics in 13 ms (durable r8)",
+  "2026-09-12T11:18:17Z\tdurable: r9 for revision 10 at 88134276954333",
+  "2026-09-12T11:18:17Z\tstatus: revision 10: ok, 0 diagnostics in 12 ms (durable r9)",
+  "2026-09-12T11:18:17Z\tdurable: r10 for revision 11 at 88134318735375",
+  "2026-09-12T11:18:17Z\tstatus: revision 11: ok, 0 diagnostics in 13 ms (durable r10)",
+  "2026-09-12T11:18:17Z\tdurable: r11 for revision 12 at 88134365711625",
+  "2026-09-12T11:18:17Z\tstatus: revision 12: ok, 0 diagnostics in 16 ms (durable r11)",
+  "2026-09-12T11:18:17Z\tdurable: r12 for revision 13 at 88134417255750",
+  "2026-09-12T11:18:17Z\tstatus: revision 13: ok, 0 diagnostics in 15 ms (durable r12)",
+  "2026-09-12T11:18:17Z\tdurable: r13 for revision 14 at 88134467066958",
+  "2026-09-12T11:18:17Z\tstatus: revision 14: ok, 0 diagnostics in 12 ms (durable r13)",
+  "2026-09-12T11:18:17Z\tdurable: r14 for revision 15 at 88134498089500",
+  "2026-09-12T11:18:17Z\tstatus: revision 15: ok, 0 diagnostics in 13 ms (durable r14)",
+  "2026-09-12T11:18:17Z\tdurable: r15 for revision 16 at 88134525505083",
+  "2026-09-12T11:18:17Z\tcontroller error pc-64: source versions changed; refresh snapshot before querying",
+  "2026-09-12T11:18:17Z\tcontroller error pc-65: source versions changed; refresh snapshot before querying",
+  "2026-09-12T11:18:17Z\tstatus: revision 16: ok, 0 diagnostics in 13 ms (durable r15)",
+  "2026-09-12T11:18:17Z\tdurable: r16 for revision 17 at 88134562971250",
+  "2026-09-12T11:18:17Z\tstatus: revision 17: ok, 0 diagnostics in 13 ms (durable r16)",
+  "2026-09-12T11:18:17Z\tdurable: r17 for revision 18 at 88134596216375",
+  "2026-09-12T11:18:17Z\tstatus: revision 18: ok, 0 diagnostics in 13 ms (durable r17)",
+  "2026-09-12T11:18:17Z\tbench: done (all keystrokes painted); keystrokes 16, painted 16, coalesced 1, p50 41.654 ms"
+ ],
+ "passed": 8,
+ "pid": 18535,
+ "project": "/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/reports/20260912T110944Z/multifile/project",
+ "typed": "TYPEDINTOCHAPTER"
+}

@@ -16,6 +16,21 @@ pub struct DisplayList {
     pub items: Vec<Item>,
 }
 
+/// Maximum number of nested groups a display list may contain; the JSON
+/// reader refuses deeper documents and [`DisplayList::validate`] reports
+/// deeper in-memory trees (GH46).
+///
+/// Rationale: the display-list contract states no nesting bound, so this is
+/// the crate's own. Every recursive walker here (validate, flatten, the PDF
+/// and JSON writers, the schema reader) spends one frame per group level, and
+/// the schema reader's frame is the heaviest: in a debug `cargo test` worker
+/// thread (2 MiB stack) 190 nested groups read successfully and 200 overflowed
+/// on mac-m1max-a (d-q222 measured 175 safe / 200 overflow independently on
+/// GH46; release builds reach 1000). 64 keeps ~3x headroom under the tightest
+/// measurement, and no authored tree (TikZ scopes, nested `pgfpicture`s)
+/// approaches it.
+pub const MAX_GROUP_DEPTH: usize = 64;
+
 /// A structural problem found by [`DisplayList::validate`].
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ValidationError {
@@ -25,6 +40,13 @@ pub enum ValidationError {
     SingularTransform(ItemId),
     DuplicateId(ItemId),
     InvalidSourceRange(ItemId),
+    /// Group `id` sits `depth` groups deep (itself included), over
+    /// [`MAX_GROUP_DEPTH`]; its children were not examined.
+    NestingTooDeep {
+        id: ItemId,
+        depth: usize,
+        limit: usize,
+    },
 }
 
 impl std::fmt::Display for ValidationError {
@@ -44,6 +66,11 @@ impl std::fmt::Display for ValidationError {
             ValidationError::InvalidSourceRange(id) => {
                 write!(f, "item {} has end_byte < start_byte", id.0)
             }
+            ValidationError::NestingTooDeep { id, depth, limit } => write!(
+                f,
+                "item {} is nested {depth} groups deep, over the limit of {limit}",
+                id.0
+            ),
         }
     }
 }
@@ -63,7 +90,10 @@ impl DisplayList {
     }
 
     /// Checks finiteness, positive page size, invertible transforms, unique
-    /// ids, and well-formed source ranges. Returns every problem found.
+    /// ids, well-formed source ranges, and group nesting within
+    /// [`MAX_GROUP_DEPTH`]. Returns every problem found; a group over the
+    /// nesting limit is reported once and its subtree is not entered, so this
+    /// walk itself never recurses past the limit.
     pub fn validate(&self) -> Vec<ValidationError> {
         let mut errors = Vec::new();
         if !(self.page_size.width.is_finite() && self.page_size.height.is_finite()) {
@@ -74,6 +104,7 @@ impl DisplayList {
         let mut seen = std::collections::BTreeSet::new();
         fn walk(
             items: &[Item],
+            group_depth: usize,
             seen: &mut std::collections::BTreeSet<ItemId>,
             errors: &mut Vec<ValidationError>,
         ) {
@@ -114,13 +145,22 @@ impl DisplayList {
                         if g.transform.invert().is_none() {
                             errors.push(ValidationError::SingularTransform(id));
                         }
-                        walk(&g.items, seen, errors);
+                        let depth = group_depth + 1;
+                        if depth > MAX_GROUP_DEPTH {
+                            errors.push(ValidationError::NestingTooDeep {
+                                id,
+                                depth,
+                                limit: MAX_GROUP_DEPTH,
+                            });
+                        } else {
+                            walk(&g.items, depth, seen, errors);
+                        }
                     }
                     _ => {}
                 }
             }
         }
-        walk(&self.items, &mut seen, &mut errors);
+        walk(&self.items, 0, &mut seen, &mut errors);
         errors
     }
 

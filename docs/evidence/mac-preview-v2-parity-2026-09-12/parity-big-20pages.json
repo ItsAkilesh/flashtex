@@ -1,0 +1,173 @@
+{
+  "frameId" : "v2-big",
+  "identical" : true,
+  "pages" : [
+    {
+      "differingPixels" : 0,
+      "exportSha256" : "8861d01fb8fa3e919cc412de9d21890957305321ad2f1f4f0698979affdd06f4",
+      "heightPx" : 1584,
+      "page" : 1,
+      "previewSha256" : "8861d01fb8fa3e919cc412de9d21890957305321ad2f1f4f0698979affdd06f4",
+      "widthPx" : 1224
+    },
+    {
+      "differingPixels" : 0,
+      "exportSha256" : "6dc3264b59f5156a1f1326fcc78ff0bd5002d3fd3c943e7f4f80d9291ef1625b",
+      "heightPx" : 1584,
+      "page" : 2,
+      "previewSha256" : "6dc3264b59f5156a1f1326fcc78ff0bd5002d3fd3c943e7f4f80d9291ef1625b",
+      "widthPx" : 1224
+    },
+    {
+      "differingPixels" : 0,
+      "exportSha256" : "6640fd5e10f7b9e1085750aa7b466cbf9cbdd45e05cd1fe2506c715ee634e8b9",
+      "heightPx" : 1584,
+      "page" : 3,
+      "previewSha256" : "6640fd5e10f7b9e1085750aa7b466cbf9cbdd45e05cd1fe2506c715ee634e8b9",
+      "widthPx" : 1224
+    },
+    {
+      "differingPixels" : 0,
+      "exportSha256" : "38b0b8eb420ae28a19d3a8ecaa9aaf821756034ff934a18d542307f494c9eabf",
+      "heightPx" : 1584,
+      "page" : 4,
+      "previewSha256" : "38b0b8eb420ae28a19d3a8ecaa9aaf821756034ff934a18d542307f494c9eabf",
+      "widthPx" : 1224
+    },
+    {
+      "differingPixels" : 0,
+      "exportSha256" : "a2de0d7d5f939cb426af27fa421f04976ed8197e858670673d3a852cd546d243",
+      "heightPx" : 1584,
+      "page" : 5,
+      "previewSha256" : "a2de0d7d5f939cb426af27fa421f04976ed8197e858670673d3a852cd546d243",
+      "widthPx" : 1224
+    },
+    {
+      "differingPixels" : 0,
+      "exportSha256" : "cc4af236230905ecb24b35c284d0700e76008cd6bdf1eff801845053c718f6fc",
+      "heightPx" : 1584,
+      "page" : 6,
+      "previewSha256" : "cc4af236230905ecb24b35c284d0700e76008cd6bdf1eff801845053c718f6fc",
+      "widthPx" : 1224
+    },
+    {
+      "differingPixels" : 0,
+      "exportSha256" : "f8e2ffe05556707232e4b33c6fc8c51dad23efccad015e5ba0bfac7ba23c53fa",
+      "heightPx" : 1584,
+      "page" : 7,
+      "previewSha256" : "f8e2ffe05556707232e4b33c6fc8c51dad23efccad015e5ba0bfac7ba23c53fa",
+      "widthPx" : 1224
+    },
+    {
+      "differingPixels" : 0,
+      "exportSha256" : "87e9b61e76c3f3ad6b50433b9f4f29d57f7dd57801662df33b40a40345788df0",
+      "heightPx" : 1584,
+      "page" : 8,
+      "previewSha256" : "87e9b61e76c3f3ad6b50433b9f4f29d57f7dd57801662df33b40a40345788df0",
+      "widthPx" : 1224
+    },
+    {
+      "differingPixels" : 0,
+      "exportSha256" : "2e0fc9d08646769ce42170fbafba113005020c8e1583f56562530e63923ecb01",
+      "heightPx" : 1584,
+      "page" : 9,
+      "previewSha256" : "2e0fc9d08646769ce42170fbafba113005020c8e1583f56562530e63923ecb01",
+      "widthPx" : 1224
+    },
+    {
+      "differingPixels" : 0,
+      "exportSha256" : "b57cd8f59963d55e3c80ce676c50b2ca1fbe25b3fa85e05999cd976b22f5f139",
+      "heightPx" : 1584,
+      "page" : 10,
+      "previewSha256" : "b57cd8f59963d55e3c80ce676c50b2ca1fbe25b3fa85e05999cd976b22f5f139",
+      "widthPx" : 1224
+    },
+    {
+      "differingPixels" : 0,
+      "exportSha256" : "6e34262e9ec886202ba5da27d4697d2b897e2cdc7122989a8b818501e473c07e",
+      "heightPx" : 1584,
+      "page" : 11,
+      "previewSha256" : "6e34262e9ec886202ba5da27d4697d2b897e2cdc7122989a8b818501e473c07e",
+      "widthPx" : 1224
+    },
+    {
+      "differingPixels" : 0,
+      "exportSha256" : "54893a16d0022a18f3cee4c420492702d7d0b2200929a51e92dbdeba39cc656b",
+      "heightPx" : 1584,
+      "page" : 12,
+      "previewSha256" : "54893a16d0022a18f3cee4c420492702d7d0b2200929a51e92dbdeba39cc656b",
+      "widthPx" : 1224
+    },
+    {
+      "differingPixels" : 0,
+      "exportSha256" : "94c8ca6ff81594e6c25f18311eee55a85f2ac0aba7d84c73431583194f91d1c8",
+      "heightPx" : 1584,
+      "page" : 13,
+      "previewSha256" : "94c8ca6ff81594e6c25f18311eee55a85f2ac0aba7d84c73431583194f91d1c8",
+      "widthPx" : 1224
+    },
+    {
+      "differingPixels" : 0,
+      "exportSha256" : "fa2b22d7db736338e19e37071abc8d3c63576de732363184352263eb88a2391a",
+      "heightPx" : 1584,
+      "page" : 14,
+      "previewSha256" : "fa2b22d7db736338e19e37071abc8d3c63576de732363184352263eb88a2391a",
+      "widthPx" : 1224
+    },
+    {
+      "differingPixels" : 0,
+      "exportSha256" : "75557a11d51b7874bfda0f3b4acf8bf4933547e9c9414184e7df24b496cb3fb4",
+      "heightPx" : 1584,
+      "page" : 15,
+      "previewSha256" : "75557a11d51b7874bfda0f3b4acf8bf4933547e9c9414184e7df24b496cb3fb4",
+      "widthPx" : 1224
+    },
+    {
+      "differingPixels" : 0,
+      "exportSha256" : "3181c16547242cee620e5f997189b7d34780bd2c7867fae0a687aa1dce9d3297",
+      "heightPx" : 1584,
+      "page" : 16,
+      "previewSha256" : "3181c16547242cee620e5f997189b7d34780bd2c7867fae0a687aa1dce9d3297",
+      "widthPx" : 1224
+    },
+    {
+      "differingPixels" : 0,
+      "exportSha256" : "8dff8000d180501cf7e253d0373aad9b995c6a39bd20ce90dc2cc0e6a5f4991f",
+      "heightPx" : 1584,
+      "page" : 17,
+      "previewSha256" : "8dff8000d180501cf7e253d0373aad9b995c6a39bd20ce90dc2cc0e6a5f4991f",
+      "widthPx" : 1224
+    },
+    {
+      "differingPixels" : 0,
+      "exportSha256" : "0f9196b5313e1ce5e1869fd17ad2965d0eb053e93c69c3dbf0596d23c92e8913",
+      "heightPx" : 1584,
+      "page" : 18,
+      "previewSha256" : "0f9196b5313e1ce5e1869fd17ad2965d0eb053e93c69c3dbf0596d23c92e8913",
+      "widthPx" : 1224
+    },
+    {
+      "differingPixels" : 0,
+      "exportSha256" : "6569fd52ac79ae2164ceca38f34b8999fa4714a08b782dc54371ffe25753b473",
+      "heightPx" : 1584,
+      "page" : 19,
+      "previewSha256" : "6569fd52ac79ae2164ceca38f34b8999fa4714a08b782dc54371ffe25753b473",
+      "widthPx" : 1224
+    },
+    {
+      "differingPixels" : 0,
+      "exportSha256" : "4fb0a80929f6b9915357a2456cf28ba9821655d70a3a0d8142f138e427b535ae",
+      "heightPx" : 1584,
+      "page" : 20,
+      "previewSha256" : "4fb0a80929f6b9915357a2456cf28ba9821655d70a3a0d8142f138e427b535ae",
+      "widthPx" : 1224
+    }
+  ],
+  "pdfBytes" : 231774,
+  "projectId" : "preview-v2",
+  "revision" : 3,
+  "scale" : 2,
+  "source" : "\/private\/tmp\/claude-501\/-Users-jay3332-Projects-flashtex\/e30fd4a4-f46a-4c3f-a28c-cbb8617b4425\/scratchpad\/pv2\/big.v2.json",
+  "tolerance" : 0,
+  "total_differing_pixels" : 0
+}

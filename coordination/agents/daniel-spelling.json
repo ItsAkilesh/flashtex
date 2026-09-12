@@ -1,0 +1,38 @@
+{
+  "agent_id": "daniel-spelling",
+  "allocation_id": "daniel-claude20x-shared",
+  "assignment_acknowledgements": {
+    "FT-039": {
+      "acknowledged_utc": "2026-09-12T17:00:20Z",
+      "adaptation": "Accepted FT-039 rev 3 as specified. Found the branch's prior uncommitted work (is_stale_for + fingerprint in lib.rs, plus the two new test files) structurally sound but never verified; running it surfaced 4 real test failures, 2 of which were genuine product bugs (a quadratic per-token exclusion-range rescan causing ~5min on adversarial nested-delimiter input, and uncached repeated suggestion generation causing ~17s on a megabyte document with one repeated typo) and 2 of which were incorrect test assertions (a generated dictionary that accidentally contained the word under test; a command-exclusion test with the wrong expected outcome). Fixed the two product bugs (two-pointer merge over sorted exclusion/token ranges; per-call suggestion cache keyed by word) and the two test bugs, then verified 62/62 tests pass and clippy is clean before committing. Modeled is_stale_for as an additive method next to is_stale (not a replacement) with a private, non-cryptographic text_fingerprint on CheckResult, keeping the crate's zero-dependency, zero-I/O stance. No workspace root Cargo.toml, no other crate, and no coordination file outside my own were touched.",
+      "main_sha": "486b759ce906cf987e4d7ebba9033c56b15a499b",
+      "revision": 3
+    }
+  },
+  "branch": "agent/daniel-spelling/spellcheck",
+  "capabilities": [
+    "rust",
+    "spellcheck"
+  ],
+  "code_revision": "9ba0dd7fb5cd9e1b89eeb5588f1b6ba915e7f4cd",
+  "eta_minutes": {
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 0
+  },
+  "machine": "mac-m5pro-dq222",
+  "main_integrated_through": "486b759ce906cf987e4d7ebba9033c56b15a499b",
+  "next_action": "Await Commander review/ack; no consumer wiring in scope for this crate.",
+  "reviewed_peers": {
+    "origin/main": "486b759ce906cf987e4d7ebba9033c56b15a499b"
+  },
+  "schema_version": 1,
+  "state": "ready_for_integration",
+  "summary": "crates/spellcheck rev 3: CheckResult::is_stale_for(revision, text) added alongside rev-2's is_stale(revision), backed by a private text_fingerprint, so a same-revision-changed-text caller bug (missed revision bump) is also caught, not just a revision mismatch. Added tests/adversarial_bounds.rs (21 tests: megabyte-scale document, single enormous word, math-delimiter-only text, unbalanced/nested delimiters, unterminated command, enormous command name, user dictionary at/past capacity, empty and very long dictionary entries, combining-marks/zero-width/RTL-override-only text, always-true cancellation callback proven to poll exactly once) and tests/stale_identity_acceptance.rs (6 tests, written as a spec: later revision is stale; same revision+same text is fresh; same revision+changed text is still stale). That suite caught two real bugs in the pre-existing implementation, now fixed: check_impl's per-token exclusion check rescanned the full excluded-ranges list per token (O(tokens*excluded), ~5 minutes on adversarial nested-delimiter input) -- replaced with a two-pointer merge over the two already-sorted, non-overlapping range lists (O(tokens+excluded)); and suggest() recomputed the full edit-distance search per occurrence of a repeated misspelling (~17s on a megabyte document with one typo repeated throughout) -- fixed with a per-call cache keyed by word. Also fixed two incorrect assertions in the adversarial suite itself (a generated dictionary that accidentally included the word under test; a command-exclusion test that asserted the wrong outcome for a word actually in the dictionary). cargo test: 62/62 passed (35 lib + 21 adversarial_bounds + 6 stale_identity, up from 35 in rev 2). cargo clippy --all-targets -- -D warnings: clean. Still zero dependencies, zero I/O, no source mutation.",
+  "tool": "Claude Code on Claude Max 20x",
+  "updated_utc": "2026-09-12T17:00:20Z",
+  "usage": {
+    "evidence": "Shared Claude Max 20x subscription quota; no separate usage metering available to this agent; no purchases or overages made.",
+    "status": "unknown"
+  }
+}

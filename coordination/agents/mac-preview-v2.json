@@ -1,0 +1,41 @@
+{
+  "agent_id": "mac-preview-v2",
+  "allocation_id": "claude-mac20x-preview-v2",
+  "assignment_acknowledgements": {},
+  "branch": "agent/mac-preview-v2/live",
+  "capabilities": [
+    "swift",
+    "coregraphics",
+    "rendering-v2"
+  ],
+  "code_revision": "72f37394a8a8342e5f91801e52c48712db073604",
+  "eta_minutes": {
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 0
+  },
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "c35ca8bc4e3801fbbe308ee731d718af7ebe78eb",
+  "next_action": "Parent integrates the shared edits and records the contract; re-measure on a quiet machine; leaner sibling line with the producer lane; preview-controller route forwarding; hover/caret repaint timing.",
+  "reviewed_peers": {
+    "origin/agent/mac-render-pipeline/unified": {
+      "adaptation": "Consumed the producer's sibling-line implementation as proposed (4888a67; c4848b2 only rewrites the compile_result serializer, extra_lines unchanged) and noted its two additions in the contract (status recovered + code display_list_declined on decline; 16 MiB limit); main advanced 164 commits since dd75e15 with no changes to docs/contracts, protocol or apps/mac that touch this lane (mac-shell 04a4eaa carries main and is merged); adapted the parent's new ExactPDFExport to V2Source so live frames export too",
+      "reviewed_utc": "2026-09-12T10:35:56Z",
+      "sha": "c4848b2c19297375ecd5cda99ddf17267931ac6d"
+    },
+    "origin/main": {
+      "adaptation": "Consumed the producer's sibling-line implementation as proposed (4888a67; c4848b2 only rewrites the compile_result serializer, extra_lines unchanged) and noted its two additions in the contract (status recovered + code display_list_declined on decline; 16 MiB limit); main advanced 164 commits since dd75e15 with no changes to docs/contracts, protocol or apps/mac that touch this lane (mac-shell 04a4eaa carries main and is merged); adapted the parent's new ExactPDFExport to V2Source so live frames export too",
+      "reviewed_utc": "2026-09-12T10:35:56Z",
+      "sha": "60c40c12f3c8db2050694c9f76817db909853338"
+    }
+  },
+  "schema_version": 1,
+  "state": "ready_for_integration",
+  "summary": "agent/mac-preview-v2/live tip 72f3739 (mac-shell 04a4eaa merged, 449/449 native tests, 20 skipped for other lanes' helpers): v2 pane LIVE while typing via the per-request layout capability display-list-v2 (docs/contracts/runtime-v1-display-list-v2.md; ACKed+implemented by mac-render-pipeline at 4888a67); sibling display_list line applied only for the applied result's id, stale/unsolicited dropped; coalescing + typed fast reader (75->9 ms) + pre-rasterized publish keep every frame painted: keystroke->paint p50 89 ms (p95 116) through the v2 pane vs 40 ms v1 pane with the same producer, 200/200 painted; six consecutive live frames 0 differing pixels vs the CG export after making PDF glyph positions exact under TFM-metric layout (444 -> 0). Shared edits isolated in 6a9bb15/fea1ef1 + ExactPDFExport adaptation in 72f3739.",
+  "tool": "Claude Code subagent (parent mac-claude-a)",
+  "updated_utc": "2026-09-12T10:35:56Z",
+  "usage": {
+    "evidence": "docs/evidence/mac-preview-v2-live-2026-09-12.md (+ directory: bench summaries, six live parity reports, window capture by id, keystroke timeline, input SHA-256s); docs/evidence/mac-preview-v2-parity-2026-09-12.md; full swift test 449/449 at 72f3739",
+    "status": "Shared Claude Max 20x quota with parent mac-claude-a; no purchases; no paid network calls"
+  }
+}

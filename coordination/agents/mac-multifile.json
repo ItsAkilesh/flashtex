@@ -1,0 +1,40 @@
+{
+  "agent_id": "mac-multifile",
+  "allocation_id": "claude-mac20x-multifile",
+  "assignment_acknowledgements": {},
+  "branch": "agent/mac-multifile/transitive",
+  "capabilities": [
+    "swift",
+    "macos"
+  ],
+  "code_revision": "67d25211b028e56ce4b085774c3028e514e12a75",
+  "eta_minutes": {
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 20
+  },
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "3ac69c3ed109fa0902af39f4e2187d572a61c075",
+  "next_action": "Parent: cherry-pick or drop the last commit 'requested parent diffs' (ContentView ProjectMenu: closure listing indented by depth, Open All report, Detach '(this session)' with the scope note); merge into mac-shell. Possible follow-ups: persistent exclusions need a helper feature; live menu click evidence needs Accessibility.",
+  "reviewed_peers": {
+    "origin/agent/mac-claude-a/mac-shell": {
+      "adaptation": "Refill based on mac-shell 6f4ee94 (first lane + diffs integrated); mac-shell since advanced to f4c8aeacbbc1b9656095a60ccabc95ef39777428 (live display-list-v2) \u2014 no overlap with ProjectDocuments; ProjectMenu diff rewritten on top of the integrated version",
+      "reviewed_utc": "2026-09-12T10:48:59Z",
+      "sha": "f4c8aeacbbc1b9656095a60ccabc95ef39777428"
+    },
+    "origin/main": {
+      "adaptation": "main 7802c9af4728a2dcf86541fb86f0468c69be039e fetched; no assignment naming mac-multifile; no contract change",
+      "reviewed_utc": "2026-09-12T10:48:59Z",
+      "sha": "7802c9af4728a2dcf86541fb86f0468c69be039e"
+    }
+  },
+  "schema_version": 1,
+  "state": "ready_for_integration",
+  "summary": "Refill on agent/mac-multifile/transitive (from mac-shell 6f4ee94): transitive include closure (discoverClosure, depth 8, cycle refusal, diamonds once, 256-doc bound) on both routes; Open All opens the closure in stable order and reports unresolvable references (lastOpenReport); \u2318S routing verified end to end on both routes (chapter.tex active \u2192 only chapter.tex written, main.tex bytes unchanged); committed evidence docs/evidence/multifile-project-2026-09-12 (3-file project, real helper, window by id); detach documented as session-only (helper has no persistent exclusion) with the picker note. Full suite with real workers: 461 tests, 8 env-gated skips, 0 failures (third run; runs 1-2 at load 47-78 hit load-sensitive failures in other lanes, listed in the handoff). Lane file 18/18.",
+  "tool": "Claude Code subagent (parent mac-claude-a)",
+  "updated_utc": "2026-09-12T10:48:59Z",
+  "usage": {
+    "evidence": "coordination/mac-multifile.md refill validation; docs/evidence/multifile-project-2026-09-12/README.md",
+    "status": "shared Claude Max 20x quota with parent mac-claude-a; no purchases; totals unknown"
+  }
+}

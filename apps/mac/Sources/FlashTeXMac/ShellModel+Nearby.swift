@@ -12,6 +12,8 @@ final class NearbyInbox: ObservableObject {
     private(set) var lastCaptureId: String?
     private(set) var lastNote: String?
     static let maxRetained = 50
+    /// Retained base64 bytes across `received`; oldest captures are dropped first.
+    static let maxRetainedBytes = 64 * 1024 * 1024
 
     /// Stores a capture; a repeated `capture_id` with an identical payload is
     /// acknowledged again, a different payload for a known id is refused.
@@ -25,6 +27,9 @@ final class NearbyInbox: ObservableObject {
         } else {
             received.append(submit)
             if received.count > Self.maxRetained { received.removeFirst(received.count - Self.maxRetained) }
+            while received.count > 1, received.reduce(0, { $0 + $1.image.dataBase64.utf8.count }) > Self.maxRetainedBytes {
+                received.removeFirst()
+            }
             lastNote = "Received \(submit.captureId) (\(submit.image.mimeType), \(submit.image.dataBase64.utf8.count) base64 bytes); not journaled."
         }
         lastCaptureId = submit.captureId
@@ -66,13 +71,11 @@ extension ShellModel: CaptureSink, DestinationProvider {
 
     /// The pinned anchor as the companion sees it, or nil when nothing is
     /// pinned. With a bridge attached the bridge's anchor is authoritative
-    /// (`base_revision` = its pinned revision); otherwise the local anchor.
+    /// (`base_revision` = its pinned revision; `nil` once an edit dropped it —
+    /// the bridge would refuse the local anchor's id); otherwise the local
+    /// anchor. See `NearbyDestination.swift`.
     var nearbyDestination: NearbyV1.Destination? {
-        if let a = bridgeDestination, a.valid {
-            return .init(destinationId: a.destinationId, projectId: a.projectId, path: a.path, baseRevision: a.pinnedRevision)
-        }
-        guard let anchor else { return nil }
-        return .init(destinationId: anchor.id, projectId: projectId, path: anchor.path, baseRevision: anchor.revision)
+        announcedNearbyDestination(bridgeAttached: bridgeAttached, bridgeAnchor: bridgeDestination, localAnchor: anchor)
     }
 
     // MARK: CaptureSink / DestinationProvider (called from the listener queue)

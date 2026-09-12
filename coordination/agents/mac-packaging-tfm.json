@@ -1,0 +1,39 @@
+{
+  "agent_id": "mac-packaging-tfm",
+  "allocation_id": "claude-mac20x-packaging-tfm",
+  "assignment_acknowledgements": {
+    "GH36": "acknowledged 2026-09-12T13:29Z from the parent brief; Commander scope clarification (issue #2 5646221443: the FLASHTEX_TFM_DIRS env route must suffice alone; producer-discovery.patch is owned by the render-pipeline lane) acknowledged 2026-09-12T13:38Z"
+  },
+  "branch": "agent/mac-packaging-tfm/texmf",
+  "capabilities": [
+    "swift",
+    "bash",
+    "python",
+    "macos-packaging"
+  ],
+  "code_revision": "b50ad59c7806002f9100faac2703b063873b855f",
+  "eta_minutes": {
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 15
+  },
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "ffe199d89302a4353f621923c0914707b5611a80",
+  "next_action": "Parent reviews and merges agent/mac-packaging-tfm/texmf into mac-shell (no parent-retained diffs needed); decides whether to keep the supplementary TFM tier (in-repo pin, not verified against the 2.004 archive) or drop it; repackages the shell app with --render from render-pipeline >= 421a2049 so both the discovery and env routes hold.",
+  "reviewed_peers": {
+    "origin/main": {
+      "adaptation": "Merged ffe199d8 cleanly (no apps/mac changes) to obtain crates/rendering-core/tools/verify_bundle_resources.py and the native-assets handoff; bundle-texmf.py reuses the verifier's pinned_manifest/check_resource/verify instead of re-implementing hashing; the Commander's packaging.patch idea (explicit root + verifier before signing) was adopted with a vendored default root and a pre-build refusal; producer-discovery.patch was deliberately not applied",
+      "reviewed_utc": "2026-09-12T13:47:02Z",
+      "sha": "ffe199d89302a4353f621923c0914707b5611a80"
+    }
+  },
+  "schema_version": 1,
+  "state": "ready_for_integration",
+  "summary": "GH36: five pinned LM 2.004 TFMs + rooted GUST license vendored under apps/mac/Fonts/texmf (hashes matched the manifest from MacTeX 2026); make-app.sh verifies pre-build, stages Contents/Resources/texmf/..., verifies 9 pinned resources before signing, records hashes in components.json/resource-coverage.json (scripts/bundle-texmf.py); BundledMetrics.swift prepends the bundled dir to FLASHTEX_TFM_DIRS for WorkerClient and PreviewControllerClient (user entries preserved); texmf-acceptance.sh app-only run with host TeX denied by sandbox-exec: env route 0 missing-metric diagnostics on direct/user/helper routes, control 9, removal explicit, verifier exit 0. Second pass with producer 98e829bf (discovery 421a2049) and third pass with tip 9aaec57a (components.json git_sha 9aaec57a declared, sha256 79c2be4c...): discovery route 6/6 with 0 missing-metric diagnostics, env routes 0, helper 0; 23 supplementary LM TFMs (5-17 pt regular, 5-12 pt bold, 7-12 pt italic, bxi10, rm 5-10) pinned in-repo (SUPPLEMENTARY-METRICS.json; not verified against the 2.004 archive, stated) and recorded in components.json; BundledMetricsTests 8/8; packaging-selftest 25 ok",
+  "tool": "Claude Code subagent (parent mac-claude-a)",
+  "updated_utc": "2026-09-12T13:59:30Z",
+  "usage": {
+    "evidence": "docs/evidence/mac-bundle-texmf-20260912T134120Z (f762f82a producer, env route: tests 7/7 load 21-27, acceptance 7 ok load 5.6) docs/evidence/mac-bundle-texmf-20260912T135157Z (98e829bf producer, discovery + env: tests 8/8 load 7.4, acceptance 8 ok load 6.7-8.7) and docs/evidence/mac-bundle-texmf-20260912T135718Z (9aaec57a producer: tests 8/8 load 6.7, acceptance 8 ok load 8.75); packaging-selftest fast 25 ok both times; full swift test not run under load 80-120 per parent instruction",
+    "status": "Shared Claude Max quota with parent mac-claude-a; no purchases; no paid calls; no background processes left"
+  }
+}

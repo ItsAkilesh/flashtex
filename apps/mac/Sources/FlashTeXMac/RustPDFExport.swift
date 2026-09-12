@@ -117,6 +117,7 @@ extension ShellModel {
 
     /// `File > Export PDF via Rust Writer…`
     func exportPDFViaRust() {
+        if let why = historicalRefusal(of: "export") { captureNote = why; return }
         guard let result else { captureNote = "Nothing to export: no compile result loaded."; return }
         guard let writer = RustPDFExport.locateWriter() else {
             captureNote = "No built flashtex-pdf found (cargo build --release in crates/pdf, or set FLASHTEX_PDF)."

@@ -23,6 +23,7 @@ font-hints-v1 was accepted. Optional flags after a colon, comma-separated:
 writing `%caps` first. Test double only, not a compiler.
 """
 import json
+import os
 import re
 import sys
 import time
@@ -42,6 +43,10 @@ for raw in sys.stdin:
     p = env["payload"]
     entry = next((d for d in p["documents"] if d["path"] == p["entry_path"]), None)
     text = entry["text"] if entry else ""
+    if text.startswith("%crash"):
+        # Simulates a worker crash mid-request: no reply, abnormal exit status.
+        sys.stdout.flush()
+        os._exit(3)
     if text.startswith("%error"):
         print(json.dumps({"protocol_version": 1, "id": env["id"], "type": "error",
                           "payload": {"message": "requested failure"}}), flush=True)

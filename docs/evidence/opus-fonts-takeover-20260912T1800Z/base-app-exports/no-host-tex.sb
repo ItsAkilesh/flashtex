@@ -1,0 +1,7 @@
+(version 1)
+(allow default)
+(deny file-read* (subpath "/usr/local/texlive"))
+(deny file-read* (subpath "/Library/TeX"))
+(deny file-read* (subpath "/usr/share/texmf"))
+(deny file-read* (subpath "/usr/share/texlive"))
+(deny file-read* (subpath "/private/tmp/flashtex-opus-fonts-takeover/apps/mac/Fonts"))

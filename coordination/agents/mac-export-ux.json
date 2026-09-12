@@ -1,0 +1,37 @@
+{
+  "agent_id": "mac-export-ux",
+  "allocation_id": "claude-mac20x-export-ux",
+  "assignment_acknowledgements": {},
+  "branch": "agent/mac-export-ux/export-ux",
+  "capabilities": [
+    "swift",
+    "appkit",
+    "swiftui",
+    "xctest"
+  ],
+  "code_revision": "26a72a02",
+  "eta_minutes": {
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 10
+  },
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "527ae54100de636b264fbbc2a2ac30e2f5a02388",
+  "next_action": "Parent applies the ContentView Footer diff (progress + Cancel reading model.exportSession / cancelExactExport) from coordination/mac-export-ux.md and merges the branch; full swift test with real helpers at load < 15 by the parent",
+  "reviewed_peers": {
+    "origin/agent/mac-claude-a/mac-shell": {
+      "adaptation": "Branched from 5bc3fc0f; ExactPDFExport.swift (not parent-retained) rewired to ExportSession keeping the Outcome-shaped entry point so ExactPDFExportTests still passes; DocumentConflict/ProjectFilesV1.ConflictKind reused with export wording",
+      "reviewed_utc": "2026-09-12T13:39:08Z",
+      "sha": "5bc3fc0f"
+    }
+  },
+  "schema_version": 1,
+  "state": "ready_for_integration",
+  "summary": "agent/mac-export-ux/export-ux: ExportSession (@Observable idle/running(pid,started)/cancelled/failed/succeeded(bytes,sha256)) runs flashtex-pdf-exact against a sibling temp file with rename(2) on success only; cancel/timeout terminate only the launched Process; destination disk SHA recorded at choice is re-checked before launch and before replace (DocumentConflict, existing file kept); ShellModel+ExportSession (associated object, cancelExactExport, destination-aware exportPDFExact); 6 ExportSessionTests with the real tool + FIFO blocking; ContentView Cancel affordance is a diff request (applied on agent/mac-export-ux/export-ux-applied)",
+  "tool": "Claude Code subagent (parent mac-claude-a)",
+  "updated_utc": "2026-09-12T13:39:08Z",
+  "usage": {
+    "evidence": "swift build clean for the three lane files; swift test --filter 'ExportSessionTests|ExactPDFExportTests' with FLASHTEX_PDF_EXACT (release build in this worktree): 7/7 passed, 0 skipped (uptime 09:37 load 33.82/45.33/28.70 - under shared load, not an isolated result; measured cancel 0.35 s, timeout path 1.04 s, timing bounds skipped by the >20 load gate); without the env var 6 tests: 2 passed, 4 skipped cleanly. Full swift test NOT run (parent heavy-build window notice).",
+    "status": "Shared Claude Max quota with parent mac-claude-a; no purchases"
+  }
+}

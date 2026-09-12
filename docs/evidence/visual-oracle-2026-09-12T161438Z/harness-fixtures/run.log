@@ -1,0 +1,55 @@
+  reference 01-plain-paragraph: pdflatex exit 0
+  reference 02-wrapping-paragraph: pdflatex exit 0
+  reference 03-section-heading: pdflatex exit 0
+  reference 04-bold-emph: pdflatex exit 0
+  reference 05-unicode: pdflatex exit 0
+  reference 06-math-inline: pdflatex exit 0
+  reference 07-math-display: pdflatex exit 0
+  reference 08-two-page: pdflatex exit 0
+  reference 09-mixed-document: pdflatex exit 0
+  reference 10-unicode-paragraph: pdflatex exit 0
+  reference 11-nested-lists: pdflatex exit 0
+  reference 12-justified-paragraphs: pdflatex exit 0
+  reference 13-math-display-rich: pdflatex exit 0
+  reference 14-math-inline-dense: pdflatex exit 0
+  reference 15-three-page-sections: pdflatex exit 0
+  reference 16-heading-page-break: pdflatex exit 0
+  reference 17-apostrophes: pdflatex exit 0
+  reference 18-ligatures: pdflatex exit 0
+01-plain-paragraph
+  render 01-plain-paragraph: recovered exit 0 0.009s; from-v2 exit 0
+02-wrapping-paragraph
+  render 02-wrapping-paragraph: recovered exit 0 0.014s; from-v2 exit 0
+03-section-heading
+  render 03-section-heading: recovered exit 0 0.011s; from-v2 exit 0
+04-bold-emph
+  render 04-bold-emph: recovered exit 0 0.015s; from-v2 exit 0
+05-unicode
+  render 05-unicode: recovered exit 0 0.009s; from-v2 exit 0
+06-math-inline
+  render 06-math-inline: recovered exit 0 0.025s; from-v2 exit 0
+07-math-display
+  render 07-math-display: recovered exit 0 0.024s; from-v2 exit 0
+08-two-page
+  render 08-two-page: recovered exit 0 0.043s; from-v2 exit 0
+09-mixed-document
+  render 09-mixed-document: recovered exit 0 0.029s; from-v2 exit 0
+10-unicode-paragraph
+  render 10-unicode-paragraph: recovered exit 0 0.012s; from-v2 exit 0
+11-nested-lists
+  render 11-nested-lists: recovered exit 0 0.011s; from-v2 exit 0
+12-justified-paragraphs
+  render 12-justified-paragraphs: recovered exit 0 0.017s; from-v2 exit 0
+13-math-display-rich
+  render 13-math-display-rich: recovered exit 0 0.026s; from-v2 exit 0
+14-math-inline-dense
+  render 14-math-inline-dense: recovered exit 0 0.025s; from-v2 exit 0
+15-three-page-sections
+  render 15-three-page-sections: recovered exit 0 0.046s; from-v2 exit 0
+16-heading-page-break
+  render 16-heading-page-break: recovered exit 0 0.031s; from-v2 exit 0
+17-apostrophes
+  render 17-apostrophes: recovered exit 0 0.011s; from-v2 exit 0
+18-ligatures
+  render 18-ligatures: recovered exit 0 0.01s; from-v2 exit 0
+report: docs/evidence/visual-oracle-2026-09-12T161438Z/harness-fixtures/report.md

@@ -1,0 +1,41 @@
+{
+  "agent_id": "mac-paste-recovery",
+  "allocation_id": "claude-mac20x-paste-recovery",
+  "assignment_acknowledgements": {},
+  "branch": "agent/mac-paste-recovery/paste",
+  "capabilities": [
+    "swift",
+    "xctest",
+    "preview-controller-route"
+  ],
+  "code_revision": "5bc3fc0facfba950eb3c8762c0f2e878a1afaec0",
+  "eta_minutes": {
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 5
+  },
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "527ae54100de636b264fbbc2a2ac30e2f5a02388",
+  "next_action": "Parent merges agent/mac-paste-recovery/paste (tests + evidence only; no retained-file diffs) and reruns PasteRecoveryTests in the integration suite under load < 15 for isolated timings",
+  "reviewed_peers": {
+    "origin/agent/mac-claude-a/mac-shell": {
+      "adaptation": "Branch cut from the parent's mac-shell tip; PreviewControllerTests/EditHistoryTests/ControllerReleaseTests/RealEditLedgerTests audited for existing paste/kill/hold coverage (table in coordination/mac-paste-recovery.md); no parent-retained file changed",
+      "reviewed_utc": "2026-09-12T13:40:00Z",
+      "sha": "5bc3fc0facfba950eb3c8762c0f2e878a1afaec0"
+    },
+    "origin/agent/mac-search/panel": {
+      "adaptation": "Read ProjectSearchTests.testRetryingAnUncertainCommandReplaysExactly (apply_group replay with a fixed id) so the group test here asserts the uncovered half: buffer adoption, exact text, preview binding, one history step",
+      "reviewed_utc": "2026-09-12T13:40:00Z",
+      "sha": "00e7b0987620a7822d27dbcec185b4ae7d58f38b"
+    }
+  },
+  "schema_version": 1,
+  "state": "ready_for_integration",
+  "summary": "Gap 2: PasteRecoveryTests.swift — 500 KB paste into 60 KB document is one durable edit with byte-identical text and a bound preview; 3-range apply_group is one group with exact adopted text; SIGKILL of the preview-controller by pid after/before the paste ACK recovers exactly r2 after reopen (no duplicate, no lost bytes); an edit typed before the paste's preview is held and both end durable in order. Tests only; no source or crate change.",
+  "tool": "Claude Code subagent (parent mac-claude-a)",
+  "updated_utc": "2026-09-12T13:46:00Z",
+  "usage": {
+    "evidence": "swift build --build-tests exit 0; swift test --filter PasteRecoveryTests with real preview-controller + compiler: run 1 4/5 (test bug fixed), run 2 5/5 passed in 19.7 s; 1-min load 10-13 / 5-min 33-35 during the run (labelled under shared load); evidence docs/evidence/mac-paste-recovery-2026-09-12.md",
+    "status": "Shared Claude Max quota with parent mac-claude-a; no purchases"
+  }
+}

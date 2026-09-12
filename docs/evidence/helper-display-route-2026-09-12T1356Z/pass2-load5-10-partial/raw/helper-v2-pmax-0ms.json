@@ -1,0 +1,54 @@
+{
+  "candidate_counters": {
+    "candidates_admitted": 0,
+    "candidates_dropped_at_paint": 0,
+    "candidates_invalid": 0,
+    "candidates_painted": 0,
+    "candidates_refused": 0,
+    "declined_display_list_v2": 0,
+    "v1_previews_applied": 1
+  },
+  "coalesced": 0,
+  "compile_ms": {
+    "count": 1,
+    "max_ms": 167.615041,
+    "mean_ms": 167.615041,
+    "min_ms": 167.615041,
+    "p50_ms": 167.615041,
+    "p95_ms": 167.615041,
+    "p99_ms": 167.615041
+  },
+  "compiles": 1,
+  "debounce_ms": 0,
+  "document_bytes_after": 0,
+  "document_bytes_before": 0,
+  "elapsed_ms": 98975420.905833,
+  "interval_ms": 0,
+  "keystroke_to_paint_ms": {
+    "count": 0
+  },
+  "keystrokes": 0,
+  "load_avg_after": 5.11,
+  "load_avg_before": 6.95,
+  "load_note": "load < 8 during the cell",
+  "paint_point": "first main-queue turn after the run-loop iteration whose SwiftUI render pass evaluated PreviewView for the revision (Canvas draw closures of every page ran inside that pass); the CoreAnimation commit has completed, the display's next vsync scan-out is not observed",
+  "painted": 0,
+  "paints": 0,
+  "paints_without_redraw": 0,
+  "per_keystroke": [],
+  "producer": "flashtex-preview-controller",
+  "render_pass_ms": {
+    "count": 0
+  },
+  "result_to_paint_ms": {
+    "count": 0
+  },
+  "route": "helper-v2",
+  "script": "/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-ae7ddcfb739815fac/tools/typing-bench/typed-200.txt",
+  "script_keystrokes": 200,
+  "seed": "pmax",
+  "started_at": "2026-09-12T14:17:58Z",
+  "typed": 0,
+  "typing_budget_exhausted": false,
+  "unpainted": 0
+}

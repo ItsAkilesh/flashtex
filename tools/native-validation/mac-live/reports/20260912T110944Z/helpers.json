@@ -1,0 +1,61 @@
+{
+ "binaries": {
+  "flashtex-bridge": {
+   "bytes": 5185312,
+   "crate": "crates/bridge",
+   "git_sha": "1884986fe54ba3ff8f602b1e7711c9cee324cd25",
+   "path": "/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/helpers/1884986fe54ba3ff8f602b1e7711c9cee324cd25/src/crates/bridge/target/release/flashtex-bridge",
+   "sha256": "b91c19010c2f98483d1a6759bd9974c6b13aae4c0af2e540c2796fd9c01153d6",
+   "sha256_content": "225f63e784f07acff94a202ac0cd3b0a19afc7991a020a2ee9afc659945d6692",
+   "sha256_unsigned": "0bfd46078aa20b95647e6da701b435acc8228d4da27af2efc0cffe1733415692",
+   "signature": "Signature=adhoc"
+  },
+  "flashtex-compiler": {
+   "bytes": 955584,
+   "crate": "crates/compiler",
+   "git_sha": "1884986fe54ba3ff8f602b1e7711c9cee324cd25",
+   "path": "/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/helpers/1884986fe54ba3ff8f602b1e7711c9cee324cd25/src/crates/compiler/target/release/flashtex-compiler",
+   "sha256": "bf6c844842e3988021375f8add674a4932620d6c577bd9e2690a57c3c782f0d8",
+   "sha256_content": "36d4d3a732e6181a3f58b7c43ddf9870299ab00c9f3f08c0d515494a3239897c",
+   "sha256_unsigned": "df36d3d4f0dd341a202424d888c840b303c4aeec178ece727ac6c6daa68c7b8d",
+   "signature": "Signature=adhoc"
+  },
+  "flashtex-edit-ledger": {
+   "bytes": 1727392,
+   "crate": "crates/edit-ledger",
+   "git_sha": "1884986fe54ba3ff8f602b1e7711c9cee324cd25",
+   "path": "/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/helpers/1884986fe54ba3ff8f602b1e7711c9cee324cd25/src/crates/edit-ledger/target/release/flashtex-edit-ledger",
+   "sha256": "d8307094ec3c7c975e2f2a70b4d1730b4743fe95a94d8bb8b84a3c9e9d5f2acd",
+   "sha256_content": "a87a3ac0889a5b2fd6bfff58934ffae6ce401c43795873227f25d2732c1a2f3e",
+   "sha256_unsigned": "5d02caded148f511cdf58d9ab4114ae8f6d57b176f0a38b4bf78d053dfad11ec",
+   "signature": "Signature=adhoc"
+  },
+  "flashtex-pdf": {
+   "bytes": 760000,
+   "crate": "crates/pdf",
+   "git_sha": "1884986fe54ba3ff8f602b1e7711c9cee324cd25",
+   "path": "/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/helpers/1884986fe54ba3ff8f602b1e7711c9cee324cd25/src/crates/pdf/target/release/flashtex-pdf",
+   "sha256": "3767bdbc28056aed8540d01d976af2a5788bd5062cf5badaf9767c7c23333705",
+   "sha256_content": "227a4c0c3a9e73bcc3c431c6c4f57b6f90a80b4ab80aa20fa3598f73da55e825",
+   "sha256_unsigned": "b797e291dc5d87f7acd04c68e2142279a96bbb1a48e1e5b2109d067001a78618",
+   "signature": "Signature=adhoc"
+  },
+  "flashtex-preview-controller": {
+   "bytes": 2435680,
+   "crate": "crates/preview-controller",
+   "git_sha": "1884986fe54ba3ff8f602b1e7711c9cee324cd25",
+   "path": "/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/helpers/1884986fe54ba3ff8f602b1e7711c9cee324cd25/src/crates/preview-controller/target/release/flashtex-preview-controller",
+   "sha256": "0b580b9fbe53e19343d2eb9ac5589be2708f48ac7140b3c51002e7bf5de902ff",
+   "sha256_content": "806502fc2ba573b341739ac2187fafbd00b3fbab032338ebaa9e8940f9e5b2ae",
+   "sha256_unsigned": "9bb052729c79df52061afa333e5fe8cfa8e6730e050575b31e10fba0b47164ec",
+   "signature": "Signature=adhoc"
+  }
+ },
+ "built_ok": true,
+ "ref": "origin/main",
+ "scratch_clone": "/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/helpers/1884986fe54ba3ff8f602b1e7711c9cee324cd25/src",
+ "scratch_dirty_entries": 0,
+ "scratch_dirty_status": [],
+ "scratch_head": "1884986fe54ba3ff8f602b1e7711c9cee324cd25",
+ "sha": "1884986fe54ba3ff8f602b1e7711c9cee324cd25"
+}

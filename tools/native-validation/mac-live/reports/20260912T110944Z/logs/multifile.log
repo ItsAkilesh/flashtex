@@ -1,0 +1,9 @@
+    PASS bench summary written (app typed and exited on its own) -- {"keystrokes": 16, "painted": 16, "unpainted": 0, "producer": "flashtex-preview-controller", "document_bytes_before": 139, "document_bytes_after": 62}
+    PASS chapter.tex opened through the helper (log 'project: opened chapter.tex') -- 2026-09-12T11:18:16Z	project: opened chapter.tex (46 bytes, helper) — 2 documents
+    PASS helper route attached (flashtex-preview-controller launched) -- 2026-09-12T11:18:16Z	launched /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/helpers/1884986f
+    PASS every typed keystroke painted -- {"keystrokes": 16, "painted": 16, "unpainted": 0, "producer": "flashtex-preview-controller", "document_bytes_before": 139, "document_bytes_after": 62}
+    PASS main.tex on disk untouched -- 4f28fdf072db
+    PASS chapter.tex on disk untouched (no save was issued; the edit is durable in the helper's ledger only) -- 8d27ac2ed71c
+    PASS helper ledger: chapter.tex durable document contains the typed text -- {"revision": 17, "bytes": 62, "contains_typed": true, "file": "/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validatio
+    PASS helper ledger: main.tex durable document does not contain the typed text -- {"revision": 1, "bytes": 139, "contains_typed": false, "file": "/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validati
+multifile: 8 passed, 0 failed

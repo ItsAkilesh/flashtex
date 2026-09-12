@@ -1,0 +1,19 @@
+==> App: /private/tmp/flashtex-opus-fonts-takeover/apps/mac/build/FlashTeX.app
+    producer sha256 59ca1ad82067eaf3f212976ce77ac910ad5be9a3d8a34b59091c27f6a1bb73f6
+    14:08  up 1 day, 13 hrs, 3 users, load averages: 9.08 5.89 4.17
+==> control: bundled producer, host TeX denied, no FLASHTEX_TFM_DIRS
+  FAIL control/discovery route: 6/6 results, 23 missing-metric diagnostics
+==> env-direct: FLASHTEX_TFM_DIRS=/private/tmp/flashtex-opus-fonts-takeover/apps/mac/build/FlashTeX.app/Contents/Resources/texmf/fonts/tfm/public/lm
+  ok   env-direct: 6/6 compile results, 0 missing-metric diagnostics
+==> env-user: bundled directory first, explicit user entry preserved after it
+  ok   env-user: 6/6 compile results, 0 missing-metric diagnostics
+==> env-helper: bundled flashtex-preview-controller spawning the bundled producer
+  ok   env-helper: preview update received, 0 missing-metric diagnostics
+==> removed: ec-lmr10.tfm deleted from a copy of the bundle
+  ok   removed: 7 explicit missing-metric diagnostics naming ec-lmr10.tfm
+  ok   removed: verifier refuses the copy (exit 1, ec-lmr10.tfm missing)
+==> verifier on the real bundle
+  ok   verify_bundle_resources.py /private/tmp/flashtex-opus-fonts-takeover/apps/mac/build/FlashTeX.app/Contents/Resources: exit 0 (9 pinned resources verified)
+  ok   components.json carries the 9 verified resource hashes + 42 supplementary
+==> texmf-acceptance: 7 ok, 1 failed
+==> Evidence in /private/tmp/flashtex-opus-fonts-takeover/docs/evidence/opus-fonts-takeover-20260912T1800Z/optical-app-metrics

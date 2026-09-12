@@ -54,7 +54,15 @@ fn real_pipeline_envelope_exports_glyphs_by_original_gid_at_exact_positions() {
         HashForm::Bytes,
         "flashtex-render d556519 emits SHA-256 of the raw font bytes"
     );
-    assert!(report.notes.is_empty(), "{:?}", report.notes);
+    // The producer's advances are TFM widths; where they differ from hmtx
+    // the /W entry follows the producer (word boundaries in text extraction).
+    assert!(report.display_widths > 0, "{report:?}");
+    assert_eq!(report.notes.len(), 1, "{:?}", report.notes);
+    assert!(
+        report.notes[0].contains("/W width(s) taken from the display list's advances"),
+        "{:?}",
+        report.notes
+    );
     assert!(report.diagnostics.is_empty());
 
     let out = exact::render_exact(&doc).unwrap();
@@ -138,6 +146,9 @@ fn hand_built_envelope_joins_by_hmtx_advance_and_converts_rules_and_colour() {
     assert_eq!(font.units_per_em, 1000);
     let adv_ticks = adv_h * size / 1000;
     assert_eq!(adv_ticks * 1000, adv_h * size, "exact");
+    let adv_e = font.advance(gid_e) as i64;
+    let adv_e_ticks = adv_e * size / 1000;
+    assert_eq!(adv_e_ticks * 1000, adv_e * size, "exact");
     let x0: i64 = 72 << 20;
     let y: i64 = 100 << 20;
     let envelope = format!(
@@ -149,12 +160,12 @@ fn hand_built_envelope_joins_by_hmtx_advance_and_converts_rules_and_colour() {
           {{"kind":"glyph_run","font_id":"{sha}","font_size":{size},"text":"HeH","paint":{{"r":0,"g":0,"b":0,"a":1}},
            "glyphs":[
              {{"gid":{gh},"origin_x":{x0},"baseline_y":{y},"advance_x":{adv},"advance_y":0,"cluster":0}},
-             {{"gid":{ge},"origin_x":{x1},"baseline_y":{y},"advance_x":1000,"advance_y":0,"cluster":1}},
+             {{"gid":{ge},"origin_x":{x1},"baseline_y":{y},"advance_x":{adv_e},"advance_y":0,"cluster":1}},
              {{"gid":{gh},"origin_x":{x2},"baseline_y":{y},"advance_x":{adv},"advance_y":0,"cluster":2}}],
            "clusters":[{{"text_start_byte":0,"text_end_byte":1}},{{"text_start_byte":1,"text_end_byte":2}},{{"text_start_byte":2,"text_end_byte":3}}]}},
           {{"kind":"rule","x":{x0},"top":{rt},"width":{rw},"height":{rh},"paint":{{"r":0,"g":0,"b":0,"a":1}}}},
           {{"kind":"glyph_run","font_id":"{sha}","font_size":{size},"text":"e","paint":{{"r":0.5,"g":0,"b":1,"a":1}},
-           "glyphs":[{{"gid":{ge},"origin_x":{x0},"baseline_y":{y2},"advance_x":0,"advance_y":0,"cluster":0}}],
+           "glyphs":[{{"gid":{ge},"origin_x":{x0},"baseline_y":{y2},"advance_x":{adv_e},"advance_y":0,"cluster":0}}],
            "clusters":[{{"text_start_byte":0,"text_end_byte":1}}]}}
         ]}}],"diagnostics":[]}}}}"#,
         len = bytes.len(),
@@ -164,6 +175,7 @@ fn hand_built_envelope_joins_by_hmtx_advance_and_converts_rules_and_colour() {
         gh = gid_h,
         ge = gid_e,
         adv = adv_ticks,
+        adv_e = adv_e_ticks,
         x1 = x0 + adv_ticks,
         x2 = x0 + adv_ticks + 1000 + 5, // not hmtx-continued
         rt = 110i64 << 20,
@@ -181,6 +193,10 @@ fn hand_built_envelope_joins_by_hmtx_advance_and_converts_rules_and_colour() {
     assert_eq!(report.fonts[0].hash_form, HashForm::Bytes);
     assert_eq!(report.fonts[0].path, dir.join("lm.otf"));
     assert!(report.notes.is_empty(), "{:?}", report.notes);
+    assert_eq!(
+        report.display_widths, 0,
+        "advances equal hmtx: /W untouched"
+    );
     assert_eq!(
         (report.joined_glyphs, report.kerned_glyphs),
         (1, 1),
@@ -211,6 +227,107 @@ fn hand_built_envelope_joins_by_hmtx_advance_and_converts_rules_and_colour() {
     assert_positions_round_trip(&got, &doc, dir.join("list.json").to_str().unwrap());
     // Deterministic bytes.
     assert_eq!(exact::render_exact(&doc).unwrap().bytes, out.bytes);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// The producer lays out with TFM metrics, and for a handful of Latin Modern
+/// glyphs (bold `W`: 1093/1000 em in the TFM, 1189 in hmtx) the next glyph
+/// starts well before the hmtx pen. With hmtx `/W` widths a viewer's text
+/// extraction reads that as a word break ("W ednesday ,"), so `/W` follows
+/// the producer's most frequent kern-free advance; painting is unchanged
+/// (every glyph keeps its envelope origin) and joins use the written width.
+#[test]
+fn display_list_advances_become_the_w_widths_where_hmtx_differs() {
+    let Some(font_path) = lm12() else {
+        eprintln!("skipped: Latin Modern 12 not installed");
+        return;
+    };
+    let bytes = std::fs::read(&font_path).unwrap();
+    let font = TrueTypeFont::load(&font_path).unwrap();
+    let sha = sha256::hex(&bytes);
+    let gid_w = font.glyph_id('W').unwrap();
+    let gid_e = font.glyph_id('e').unwrap();
+    let hmtx_w = font.advance(gid_w) as i64;
+    let hmtx_e = font.advance(gid_e) as i64;
+    let size: i64 = 12_500_000; // 2,5-smooth: 1000/em widths are whole ticks
+    // The producer's W is 100/1000 em narrower than hmtx; e follows at exactly
+    // that advance. A second W carries a kern to a comma (advance 20 less),
+    // the minority value, so the mode is the kern-free width.
+    let tfm_w = hmtx_w - 100;
+    let adv_w = tfm_w * size / 1000;
+    let adv_w_kerned = (tfm_w - 20) * size / 1000;
+    let adv_e = hmtx_e * size / 1000;
+    let x0: i64 = 72 << 20;
+    let y: i64 = 100 << 20;
+    let envelope = format!(
+        r#"{{"protocol_version":2,"id":"t","type":"display_list","payload":{{
+        "render_format":"display-list-v2","coordinate_unit":"bp_2pow20","color_space":"srgb","text_extraction":"cluster-actualtext",
+        "project_id":"t","revision":1,"required_features":["glyph_run"],"documents":[],
+        "fonts":[{{"font_id":"{sha}","sha256":"{sha}","byte_length":{len},"format":"opentype-cff","face_index":0,"units_per_em":1000,"glyph_count":{gc},"postscript_name":"LMRoman12-Regular"}}],
+        "pages":[{{"number":1,"width":{pw},"height":{ph},"items":[
+          {{"kind":"glyph_run","font_id":"{sha}","font_size":{size},"text":"WeW","paint":{{"r":0,"g":0,"b":0,"a":1}},
+           "glyphs":[
+             {{"gid":{gw},"origin_x":{x0},"baseline_y":{y},"advance_x":{adv_w},"advance_y":0,"cluster":0}},
+             {{"gid":{ge},"origin_x":{x1},"baseline_y":{y},"advance_x":{adv_e},"advance_y":0,"cluster":1}},
+             {{"gid":{gw},"origin_x":{x2},"baseline_y":{y},"advance_x":{adv_w},"advance_y":0,"cluster":2}}],
+           "clusters":[{{"text_start_byte":0,"text_end_byte":1}},{{"text_start_byte":1,"text_end_byte":2}},{{"text_start_byte":2,"text_end_byte":3}}]}},
+          {{"kind":"glyph_run","font_id":"{sha}","font_size":{size},"text":"W","paint":{{"r":0,"g":0,"b":0,"a":1}},
+           "glyphs":[{{"gid":{gw},"origin_x":{x0},"baseline_y":{y2},"advance_x":{adv_w_kerned},"advance_y":0,"cluster":0}}],
+           "clusters":[{{"text_start_byte":0,"text_end_byte":1}}]}}
+        ]}}],"diagnostics":[]}}}}"#,
+        len = bytes.len(),
+        gc = font.num_glyphs(),
+        pw = 612i64 << 20,
+        ph = 792i64 << 20,
+        gw = gid_w,
+        ge = gid_e,
+        x1 = x0 + adv_w,
+        x2 = x0 + adv_w + adv_e,
+        y2 = 200i64 << 20,
+    );
+    let dir = std::env::temp_dir().join(format!("flashtex-pdf-v2w-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::copy(&font_path, dir.join("lm.otf")).unwrap();
+    let options = V2Options {
+        font_dirs: vec![dir.clone()],
+    };
+    let (doc, report) = v2::from_v2(&envelope, &options).unwrap();
+    assert_eq!(report.display_widths, 1, "{report:?}");
+    assert_eq!(report.notes.len(), 1, "{:?}", report.notes);
+    assert!(
+        report.notes[0].contains("1 /W width(s)"),
+        "{:?}",
+        report.notes
+    );
+    let exact::ExactFont::CidCff(cid) = &doc.fonts["F1"] else {
+        panic!("expected CIDFontType0C")
+    };
+    assert_eq!(cid.widths[&gid_w], exact::Decimal::from_i64(tfm_w));
+    assert_eq!(cid.widths[&gid_e], exact::Decimal::from_i64(hmtx_e));
+    // Both continuations are exact at the written widths: one string.
+    assert_eq!((report.joined_glyphs, report.kerned_glyphs), (2, 0));
+    let out = exact::render_exact(&doc).unwrap();
+    verify::check_structure(&out.bytes).unwrap();
+    let content = ops_text(&out.bytes, 5);
+    let ops = exact::parse(content.as_bytes()).unwrap();
+    assert_eq!(
+        ops.iter()
+            .filter(|o| matches!(o, Op::ShowText(t) if t.len() == 6))
+            .count(),
+        1,
+        "WeW is one three-glyph string: {content}"
+    );
+    std::fs::write(dir.join("list.json"), &envelope).unwrap();
+    assert_positions_round_trip(&ops, &doc, dir.join("list.json").to_str().unwrap());
+    // The written /W is what the file carries.
+    let file = PdfFile::parse(&out.bytes).unwrap();
+    let page = file.pages().unwrap()[0];
+    let fonts = file.page_fonts(page);
+    let re = flashtex_pdf::compare::font_from_dict(&file, fonts["F1"]).unwrap();
+    let exact::ExactFont::CidCff(read_back) = re else {
+        panic!("expected CIDFontType0C")
+    };
+    assert_eq!(read_back.widths[&gid_w], exact::Decimal::from_i64(tfm_w));
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -337,4 +454,134 @@ fn content_hash_with_face_index_is_still_accepted_and_reported() {
         "{:?}",
         report.notes
     );
+}
+
+/// The searchable-text contract (`docs/proposals/pdf-searchable-text.md`):
+/// word boundaries are the producer's own inter-glyph gaps, replayed exactly
+/// (pen after the written `/W` width → next origin), and the report counts
+/// them. `v2-text-a-b.json` is the published `\text{a b}` display list from
+/// GH48 (rendering-core handoff 647c50c5: two one-glyph runs with glue
+/// between them and no space cluster); `v2-searchable-mixed.json` is the
+/// bundled producer's list for `The AV office fixed a b: $\forall x\, f(x)$
+/// and ffi.` (kerned `AV`, `ffi`/`fi` ligatures, math italic corrections).
+/// Fonts come from `apps/mac/Fonts` or an installed Latin Modern; skipped
+/// otherwise.
+#[test]
+fn searchable_text_word_gaps_are_the_producers_and_are_counted() {
+    use exact::{ExactFont, Ratio};
+    let options = V2Options {
+        font_dirs: vec![PathBuf::from(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../apps/mac/Fonts"
+        ))],
+    };
+    let ab = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/v2-text-a-b.json"
+    );
+    let (doc, report) = match v2::from_v2_file(Path::new(ab), &options) {
+        Ok(x) => x,
+        Err(e) if e.contains("was not found") => {
+            eprintln!("skipped: {e}");
+            return;
+        }
+        Err(e) => panic!("{e}"),
+    };
+    assert_eq!((report.runs, report.glyphs), (2, 2));
+    // One word gap (cmr12's word space, 0.326 em), nothing ambiguous.
+    assert_eq!(
+        (report.word_gaps, report.ambiguous_gaps),
+        (1, 0),
+        "{report:?}"
+    );
+    let out = exact::render_exact(&doc).unwrap();
+    let content = ops_text(&out.bytes, 5);
+    let ops = exact::parse(content.as_bytes()).unwrap();
+    // Both glyphs replay to their envelope origins.
+    assert_positions_round_trip(&ops, &doc, ab);
+    // The pen after `a` (its written /W width) lands 0.326 em before `b`:
+    // the boundary is geometry only — no space glyph, ActualText or Tw.
+    let ExactFont::CidCff(cid) = &doc.fonts["F1"] else {
+        panic!("expected CIDFontType0C")
+    };
+    let (a_origin, b_origin, size) = (134_651_073i128, 144_879_963i128, 12_535_902i128);
+    let w_a = Ratio::from_decimal(&cid.widths[&28]);
+    let gap = b_origin - (a_origin + w_a.num * size / (1000 * w_a.den));
+    assert!(
+        gap * 1000 >= v2::WORD_GAP_EM * size && gap * 1000 < 330 * size,
+        "gap {gap} ticks is {}/1000 em",
+        gap * 1000 / size
+    );
+    assert_eq!(
+        cid.widths.len(),
+        2,
+        "only a and b are embedded: {:?}",
+        cid.widths
+    );
+    assert!(!content.contains("Tw"), "{content}");
+    assert!(!content.contains("ActualText"), "{content}");
+    // ToUnicode as written (parsed back from the PDF bytes).
+    let file = PdfFile::parse(&out.bytes).unwrap();
+    let page = file.pages().unwrap()[0];
+    let fonts = file.page_fonts(page);
+    let ExactFont::CidCff(re) = flashtex_pdf::compare::font_from_dict(&file, fonts["F1"]).unwrap()
+    else {
+        panic!("expected CIDFontType0C")
+    };
+    let tu = exact::parse_to_unicode(re.to_unicode_verbatim.as_deref().unwrap()).unwrap();
+    assert_eq!(tu.get(&28).map(String::as_str), Some("a"));
+    assert_eq!(tu.get(&35).map(String::as_str), Some("b"));
+    assert_eq!(tu.len(), 2);
+
+    let mixed = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/v2-searchable-mixed.json"
+    );
+    let (doc, report) = match v2::from_v2_file(Path::new(mixed), &options) {
+        Ok(x) => x,
+        Err(e) if e.contains("was not found") => {
+            eprintln!("skipped (mixed): {e}");
+            return;
+        }
+        Err(e) => panic!("{e}"),
+    };
+    // Nine word gaps (The|AV|office|fixed|a|b:|∀…, `\,` at 0.161 em, )|and,
+    // and|ffi.) and two ambiguous ones: the 0.099 em italic correction after
+    // math `f` before `o` and before `(`. Kerns inside `AVAV` are below 30.
+    assert_eq!(
+        (report.word_gaps, report.ambiguous_gaps),
+        (9, 2),
+        "{report:?}"
+    );
+    let named: Vec<&String> = report
+        .notes
+        .iter()
+        .filter(|n| n.contains("gap of 99/1000 em"))
+        .collect();
+    assert_eq!(named.len(), 2, "{:?}", report.notes);
+    assert!(named[0].contains("between \"f\" and \"o\""), "{}", named[0]);
+    assert!(named[1].contains("between \"f\" and \"(\""), "{}", named[1]);
+    // Ligatures and every other cluster reach ToUnicode as their text.
+    let out = exact::render_exact(&doc).unwrap();
+    let file = PdfFile::parse(&out.bytes).unwrap();
+    let page = file.pages().unwrap()[0];
+    let fonts = file.page_fonts(page);
+    let mut texts = Vec::new();
+    for obj in fonts.values() {
+        let ExactFont::CidCff(cid) = flashtex_pdf::compare::font_from_dict(&file, obj).unwrap()
+        else {
+            panic!("expected CIDFontType0C")
+        };
+        let tu = exact::parse_to_unicode(cid.to_unicode_verbatim.as_deref().unwrap()).unwrap();
+        texts.extend(tu.into_values());
+    }
+    for t in ["ffi", "fi", "A", "V", "\\", "(", "x"] {
+        assert!(
+            texts.iter().any(|x| x == t),
+            "{t:?} missing from ToUnicode: {texts:?}"
+        );
+    }
+    let content = ops_text(&out.bytes, 5);
+    let ops = exact::parse(content.as_bytes()).unwrap();
+    assert_positions_round_trip(&ops, &doc, mixed);
 }

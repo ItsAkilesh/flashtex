@@ -1,0 +1,14 @@
+{"fixture":"duplicate-delivery.jsonl","provenance":"captured from the reference client (apps/mac/tools/nearby-client, NearbyConnection.onLine + NearbyReconnector events) against the loopback FakeMac in NearbyTranscriptFixtureTests; ids/nonce/proof normalised; not an iPad simulator run (the companion app cannot authenticate yet)","recorded_utc":"2026-09-12T16:11:00Z","scenario":"capture_submit swallowed and connection cut before the ack; reconnect after 0.25s backoff; identical re-send acknowledged"}
+{"conn":1,"event":"attempt","of":4}
+{"conn":1,"dir":"sent","line":{"id":"<id-1>","payload":{"companion_name":"Transcript iPad","nonce":"<nonce>","pair_id":"00112233aabbccdd","proof":"<proof>","protocol_version":1,"role":"companion"},"protocol_version":1,"type":"hello"}}
+{"conn":1,"dir":"received","line":{"id":"<id-1>","payload":{"destination":{"base_revision":3,"destination_id":"anchor-7","path":"main.tex","project_id":"demo"},"mac_name":"Fake Mac","nonce":"<nonce>"},"protocol_version":1,"type":"hello_ack"}}
+{"conn":1,"destination":"anchor-7 @ rev 3","event":"connected","mac_name":"Fake Mac"}
+{"conn":1,"dir":"sent","line":{"id":"<id-2>","payload":{"base_revision":3,"capture_id":"cap-dup-1","destination_id":"anchor-7","image":{"data_base64":"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4//8/AAX+Av4N70a4AAAAAElFTkSuQmCC","mime_type":"image/png"},"instructions":"from the transcript test"},"protocol_version":1,"type":"capture_submit"}}
+{"conn":1,"event":"disconnected","reason":"peer_closed"}
+{"conn":1,"error":"closed","event":"failed","retry_in":0.25}
+{"conn":2,"event":"attempt","of":4}
+{"conn":2,"dir":"sent","line":{"id":"<id-3>","payload":{"companion_name":"Transcript iPad","nonce":"<nonce>","pair_id":"00112233aabbccdd","proof":"<proof>","protocol_version":1,"role":"companion"},"protocol_version":1,"type":"hello"}}
+{"conn":2,"dir":"received","line":{"id":"<id-3>","payload":{"destination":{"base_revision":3,"destination_id":"anchor-7","path":"main.tex","project_id":"demo"},"mac_name":"Fake Mac","nonce":"<nonce>"},"protocol_version":1,"type":"hello_ack"}}
+{"conn":2,"destination":"anchor-7 @ rev 3","event":"connected","mac_name":"Fake Mac"}
+{"conn":2,"dir":"sent","line":{"id":"<id-4>","payload":{"base_revision":3,"capture_id":"cap-dup-1","destination_id":"anchor-7","image":{"data_base64":"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4//8/AAX+Av4N70a4AAAAAElFTkSuQmCC","mime_type":"image/png"},"instructions":"from the transcript test"},"protocol_version":1,"type":"capture_submit"}}
+{"conn":2,"dir":"received","line":{"id":"<id-4>","payload":{"applied":false,"capture_id":"cap-dup-1","durable":false,"has_proposal":false},"protocol_version":1,"type":"capture_received"}}
