@@ -14,7 +14,7 @@
     "rust",
     "rendering"
   ],
-  "code_revision": "2d589b20b9d29af812e72e889a2e41cbe9739904",
+  "code_revision": "73af4b8e7816c4c895b9fcddf278757276aa6feb",
   "eta_minutes": {
     "likely": 15,
     "optimistic": 5,
@@ -22,15 +22,15 @@
   },
   "machine": "linux-primary",
   "main_integrated_through": "dd09e2352ef85ab3769858dc23461a3caeb13b69",
-  "next_action": "Send producer owner patch and await publishedSHA before original/reference acceptance; no authoritative producer edits.",
+  "next_action": "Continue math/escaped-control text semantics audit; retain source provenance separately and no visual parity claim.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "Prepared minimal wire-only rawSHA patch against4888a67; disposable patched producer changes exactly one outputleaf and unmodified exact adapter succeeds.",
+  "summary": "Published producer65dbe7d now passes raw resource/source binding and exports real searchable original PDF; byte-for-byte regression added, no metadata repair.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T10:01:49Z",
+  "updated_utc": "2026-09-12T10:06:58Z",
   "usage": {
-    "evidence": "156 coretests and strictclippy pass. Scratch producer fulltests pass with existing shape.rs unused-variable warning. Candidate output hashes and one-leaf equality pinned. Candidate exactPDF65d9bc38; no published-original/visual claim.",
-    "status": "Hosted OpenAI only; no providers or descendants. Context telemetry/native compaction unavailable."
+    "evidence": "156tests and strictclippy pass. OriginalPDF005e999bc16a49b88b341627a9a6afbd82768e3caba0f78a0d537f5ae63f60ff. Poppler26.01 text equals establishedpdfTeX reference;144DPI1224x1584 RGB differs211pixels.13wordstrings match; boxes notbaselineevidence. Full source/resource/reference/measurement hashes pinned.",
+    "status": "Hosted OpenAI only; no providers or descendants. Native context telemetry/control unavailable."
   }
 }

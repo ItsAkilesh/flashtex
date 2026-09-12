@@ -136,3 +136,32 @@ Actual producer4888a67 remains refused until it publishes its raw SHA correctly.
 
 PDF classifier fix654f626 is merged unchanged. The existing independent
 unsupported-identical guard and all seven PDF comparison tests continue to pass.
+
+## Published producer65dbe7d: first verified searchable original export
+
+The owner published the raw digest correction in919ad8b, followed by65dbe7d.
+An untouched archived build of65dbe7d now emits valid raw font identities and
+passes PipelineCff with the actual font/source snapshots. No producer output was
+rewritten. The regression recreates `65dbe7d-searchable.pdf` byte-for-byte through
+the existing owner subsetter/writer. Earlier refusal and scratch-candidate records
+remain historical evidence, not current blockers.
+
+`65dbe7d-measurement.json` pins the published commit, resources and every output.
+The same request, recorded preamble transformation and established pdfTeX reference
+are used. Poppler26.01.0 extracts identical UTF-8 text from the original PDF and
+reference. At144DPI both rasterizations are1224×1584 RGB and211 pixels differ.
+Thus text extraction equality is observed, visual equality is false at that
+configuration, and raw bytes/parsed operators differ. No threshold was relaxed.
+
+Poppler reports13 equal word strings in order. Maximum xMin/xMax box differences
+are0.064160/0.064083bp. yMin/yMax differ5.236173/1.028306bp; these are extractor
+font-metric boxes, not verified glyph baselines or outline distances. Raster
+and box evidence must not be substituted for each other. The existing PDF
+comparison preserves unknown cross-producer operator/source correspondence.
+
+Reproduce export by passing `65dbe7d-v2.json`, unchanged `request.jsonl`, the
+pinned font/license and an output prefix to `pipeline_cff_probe --searchable`.
+This mode emits the owner's CID-CFF PDF and a separate verified-input evidence
+sidecar. It does not use the outline-only exporter. Run `pdf_compare` without
+passing that sidecar (the comparison's outline-span evidence format is distinct),
+then `pdftotext -enc UTF-8` and `pdftoppm -r 144 -singlefile -png` on both PDFs.

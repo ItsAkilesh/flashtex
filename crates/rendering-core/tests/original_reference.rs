@@ -195,6 +195,17 @@ fn explicit_cff_contract_binds_bytes_and_budgets_atomically() {
         flashtex_pdf::exact::parse_to_unicode(cid.to_unicode_verbatim.as_deref().unwrap()).unwrap();
     assert_eq!(unicode.get(&62).map(String::as_str), Some("H"));
     assert!(unicode.values().any(|s| s == "fi"));
+    // Published producer65dbe7d, without JSON repair, is now accepted end to end.
+    let published = include_bytes!("fixtures/original-reference/65dbe7d-v2.json");
+    let published_resources =
+        BTreeMap::from([(digest(font), resources.values().next().unwrap().clone())]);
+    let published = PipelineCff::bind(published, &caps, &docs, &published_resources).unwrap();
+    let original_pdf = published.export_searchable(8 * 1024 * 1024).unwrap();
+    assert_eq!(
+        original_pdf.bytes,
+        include_bytes!("fixtures/original-reference/65dbe7d-searchable.pdf")
+    );
+
     // Explicit consumer extraction fixture with a real empty-outline space,
     // repeated original GIDs, and a single-glyph multi-character ligature.
     use flashtex_font_engine::Face;
