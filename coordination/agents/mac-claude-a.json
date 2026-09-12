@@ -16,15 +16,15 @@
     "rust",
     "macos-simulators"
   ],
-  "code_revision": "fc90200c5fed291ebb6eb3e94b907e01ab0f04cc",
+  "code_revision": "40d53b784876d128b7d54f5a10438c71d7b1b756",
   "eta_minutes": {
     "likely": 120,
     "optimistic": 60,
     "pessimistic": 240
   },
   "machine": "mac-m1max-a",
-  "main_integrated_through": "780f1458c125d9702b994ab9df377aed96a1113f",
-  "next_action": "Integrate render-pipeline/nearby-client/mac-pdf as they land; queue step 2 (exact PDF export in app) via preview-v2 display lists + crates/pdf exact API from-v2; keep evidence current",
+  "main_integrated_through": "277a0910811fdb27bd156ecd92b92b50f277c750",
+  "next_action": "Integrate lanes as they land; native historical consumer when the helper publishes; unblock live exact export on the producer raw-sha256 fix",
   "reviewed_peers": {
     "origin/agent/aarush-macbook/companion-capture": {
       "adaptation": "Peer cannot run xcodebuild; will verify their branch from this Mac. No contract change.",
@@ -47,18 +47,18 @@
       "sha": "25a92a9c591a92a3d49071e536ecf8f129112c24"
     },
     "origin/main": {
-      "adaptation": "main through 2fc45df read: FT-048 completed-snapshot prototype assigned to root (reviewed, ACKed with fields); helper frame fix cb9556c consumed; no apps/mac interface change",
-      "reviewed_utc": "2026-09-12T09:25:18Z",
-      "sha": "2fc45df69f0d397706174117116777f19619dfe2"
+      "adaptation": "main through f0f4877 read (compiler e75741e serializer, helper 4db4a7a, font-resources TTC/required_tfm notes for other lanes); rebuilt helpers and re-measured; no apps/mac interface change",
+      "reviewed_utc": "2026-09-12T09:51:52Z",
+      "sha": "f0f48776d82c7f410b02305429047a7fd3bf0ce6"
     }
   },
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "FT-003 rev 7: mac-shell fc90200 \u2014 369/369 native tests with seven real helpers; 13 of 15 lanes integrated (latest: nearby events + pairs.json v2, preview-v2 exact-glyph pane with zero-pixel export parity on 22 real pages); helper-route save (export); FastJSON; quiet-machine direct route 60 KB p50 163 ms (30 ms typing) / 118 ms burst, demo 31, fixture 22. Completed-snapshot proposal reviewed/ACKed with required fields (issue #2 5644981151). Running: render-pipeline, nearby-client, mac-pdf (#28 then from-v2).",
+  "summary": "FT-003 rev 7: mac-shell 40d53b7 \u2014 381/381 native tests with eight real helpers; 15 lane deliveries integrated; exact PDF export (File > Export PDF (exact, v2)) wired; direct route 60 KB 96/113/119 ms p50/p95/p99 with compiler e75741e; helper 191/262/273; completed-snapshot contract ACCEPTED with conditions (5645120420); census 16 running child sessions (5645147878).",
   "tool": "Claude Code",
-  "updated_utc": "2026-09-12T09:25:18Z",
+  "updated_utc": "2026-09-12T09:51:52Z",
   "usage": {
-    "evidence": "docs/evidence/typing-bench-2026-09-12T091914Z.md; tools/native-validation/mac-live/reports/20260912T090452Z.md; docs/evidence/mac-preview-v2-parity-2026-09-12.md",
-    "status": "Claude Max 20x usable; 3 subagents + parent active; no overage"
+    "evidence": "docs/evidence/typing-bench-2026-09-12T094500Z.md, T094540Z.md; issue #2 5645120420, 5645147878",
+    "status": "Claude Max 20x usable; 16 subagents + parent; no overage"
   }
 }
