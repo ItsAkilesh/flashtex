@@ -601,6 +601,75 @@ fn checkpoint_bytes_truncated_inside_the_delete_op_ids_section_is_rejected() {
     );
 }
 
+// --- Truncated and corrupted v2 checkpoint bytes (delete target field) ---
+
+/// The real v2 magic prefix, read off a freshly produced checkpoint rather
+/// than hard-coded, so this stays correct even if the exact magic bytes
+/// ever change.
+fn v2_magic() -> [u8; 8] {
+    let bytes = Document::new().checkpoint(0).unwrap().to_bytes();
+    bytes[..8].try_into().unwrap()
+}
+
+#[test]
+fn checkpoint_bytes_truncated_inside_the_v2_delete_target_field_is_rejected() {
+    // A delete with a *known* target (an ordinary applied delete, not one
+    // restored from a legacy checkpoint), so the v2 encoding actually
+    // contains a target to truncate into: id(16) + flag(1) + target(16).
+    let mut doc = Document::new();
+    let mut b = OpBuilder::new(r(1));
+    for (i, ch) in "abc".chars().enumerate() {
+        doc.apply(b.insert_at(&doc, i, ch).unwrap()).unwrap();
+    }
+    doc.apply(b.delete_at(&doc, 0).unwrap()).unwrap();
+    let cp = doc.checkpoint(100).unwrap();
+    let mut bytes = cp.to_bytes();
+    // Cut off the last 4 bytes: with a known target present this lands
+    // inside the *target*'s bytes specifically, not the id or the flag.
+    bytes.truncate(bytes.len() - 4);
+    assert_eq!(
+        Checkpoint::from_bytes(&bytes),
+        Err(CheckpointDecodeError::Truncated)
+    );
+}
+
+#[test]
+fn checkpoint_bytes_v2_magic_present_with_declared_counts_far_exceeding_actual_data_is_rejected() {
+    // Same shape as the v1 "huge lying element_count" case, but with the v2
+    // magic prefix present, so this exercises the v2 decode path
+    // specifically rather than falling back to v1.
+    let mut bytes = Vec::new();
+    bytes.extend_from_slice(&v2_magic());
+    bytes.extend_from_slice(&0u64.to_le_bytes()); // max_elements
+    bytes.extend_from_slice(&u64::MAX.to_le_bytes()); // "element_count": huge lie
+    assert_eq!(
+        Checkpoint::from_bytes(&bytes),
+        Err(CheckpointDecodeError::Truncated)
+    );
+}
+
+#[test]
+fn checkpoint_bytes_v2_corrupted_with_arbitrary_patterns_never_panics() {
+    let magic = v2_magic();
+    let bodies: &[&[u8]] = &[
+        &[],
+        &[0x00],
+        &[0xFF],
+        &[0xFF; 7],
+        &[0xFF; 40],
+        &[0x00; 40],
+        &[0xAB, 0xCD, 0xEF, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07],
+    ];
+    for body in bodies {
+        let mut pattern = magic.to_vec();
+        pattern.extend_from_slice(body);
+        // As with the v1 fuzz case above: the only contract under test is
+        // that decoding never panics, whatever `Result` comes back.
+        let result = std::panic::catch_unwind(|| Checkpoint::from_bytes(&pattern));
+        assert!(result.is_ok(), "from_bytes panicked on pattern {pattern:?}");
+    }
+}
+
 // --- Counter at u64::MAX across two different replicas ---------------------
 
 #[test]

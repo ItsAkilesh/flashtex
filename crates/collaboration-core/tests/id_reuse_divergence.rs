@@ -10,7 +10,7 @@
 //! that is the worst possible failure mode.
 
 use flashtex_collaboration_core::{
-    ApplyOutcome, CrdtError, Document, Op, OpId, OpPayload, ReplicaId,
+    ApplyOutcome, Checkpoint, CrdtError, Document, Op, OpId, OpPayload, ReplicaId,
 };
 
 fn r(n: u8) -> ReplicaId {
@@ -103,17 +103,15 @@ fn insert_then_delete_reusing_the_id_is_a_conflict_not_a_duplicate() {
 
 /// Two Deletes sharing an ID but naming different targets.
 ///
-/// KNOWN GAP, deliberately not fixed here. Detecting this requires storing
-/// each applied delete's target, and the checkpoint wire format currently
-/// serializes `delete_op_ids` as bare ids with no target. Adding targets is a
-/// serialization-compatibility change: it would alter the pinned byte layout
-/// that `compatibility_evidence.rs` asserts, and any checkpoint written by an
-/// older build would no longer round-trip. That decision belongs to the
-/// Commander, not to this lane, so the gap is pinned as an ignored test rather
-/// than silently omitted - the test documents the exact behaviour and will
-/// start failing the moment someone closes it.
+/// Previously a KNOWN GAP, pinned as an ignored test rather than silently
+/// omitted: closing it needed each applied delete's target stored somewhere,
+/// and the checkpoint wire format used to serialize deletes as bare ids with
+/// no target. GH#23 approved a v2 wire-format bump (see `src/checkpoint.rs`)
+/// that pairs each delete-operation id with its target, and `Document` now
+/// tracks that same target in memory independent of any checkpoint, so this
+/// is closed for good: two deletes sharing an id with different targets is
+/// now a conflict, not a silent duplicate.
 #[test]
-#[ignore = "needs delete targets in the checkpoint wire format; see coordination/daniel-collaboration.md"]
 fn delete_then_different_delete_reusing_the_id_is_a_conflict() {
     let first = oid(1, 1);
     let second = oid(2, 1);
@@ -125,6 +123,70 @@ fn delete_then_different_delete_reusing_the_id_is_a_conflict() {
     assert_eq!(
         doc.apply(del(reused, second)),
         Err(CrdtError::IdConflict(reused))
+    );
+}
+
+/// The same conflict must still be detected after a round trip through the
+/// v2 checkpoint wire format: the known target has to survive
+/// serialization, not just live in the original `Document`'s in-memory map.
+#[test]
+fn delete_target_mismatch_is_still_a_conflict_after_a_checkpoint_round_trip() {
+    let first = oid(1, 1);
+    let second = oid(2, 1);
+    let reused = oid(3, 1);
+    let mut doc = Document::new();
+    doc.apply(ins(first, None, None, 'a')).unwrap();
+    doc.apply(ins(second, Some(first), None, 'b')).unwrap();
+    doc.apply(del(reused, first)).unwrap();
+
+    let bytes = doc.checkpoint(10).unwrap().to_bytes();
+    let mut restored = Document::from(Checkpoint::from_bytes(&bytes).unwrap());
+
+    assert_eq!(
+        restored.apply(del(reused, second)),
+        Err(CrdtError::IdConflict(reused)),
+        "the v2 checkpoint must carry the known target through the round trip"
+    );
+}
+
+/// A delete restored from a *legacy* v1 checkpoint has an unknown target -
+/// v1 never carried one - so it cannot be proven to conflict with a
+/// same-id delete naming a different target. That must still behave as an
+/// idempotent replay rather than erroring, exactly as it did before v2
+/// existed.
+#[test]
+fn delete_with_unknown_target_from_a_legacy_checkpoint_stays_idempotent() {
+    // Hand-assembled v1 bytes (no v2 magic prefix, bare delete ids): one
+    // element 'x' (already tombstoned, standing in for a document that
+    // applied and then serialized a delete before v2 existed), plus that
+    // delete's bare id in the frontier.
+    let el_id = oid(1, 1);
+    let del_id = oid(2, 1);
+    let mut v1_bytes = Vec::new();
+    v1_bytes.extend_from_slice(&100u64.to_le_bytes()); // max_elements
+    v1_bytes.extend_from_slice(&1u64.to_le_bytes()); // element_count
+    v1_bytes.extend_from_slice(&el_id.counter.to_le_bytes());
+    v1_bytes.extend_from_slice(&el_id.replica.0.to_le_bytes());
+    v1_bytes.push(0); // left = None
+    v1_bytes.push(0); // right = None
+    v1_bytes.extend_from_slice(&('x' as u32).to_le_bytes());
+    v1_bytes.push(1); // deleted = true
+    v1_bytes.extend_from_slice(&1u64.to_le_bytes()); // delete_count
+    v1_bytes.extend_from_slice(&del_id.counter.to_le_bytes());
+    v1_bytes.extend_from_slice(&del_id.replica.0.to_le_bytes());
+
+    let cp = Checkpoint::from_bytes(&v1_bytes).expect("legacy v1 bytes must still decode");
+    let mut restored = Document::from(cp);
+    assert_eq!(restored.text(), "");
+
+    // Re-applying `del_id` with a target that does not match what actually
+    // deleted 'x' must NOT error: the restored document never learned the
+    // original target, so it cannot prove a conflict.
+    let different_target = oid(99, 5);
+    assert_eq!(
+        restored.apply(del(del_id, different_target)),
+        Ok(ApplyOutcome::Duplicate),
+        "an unknown (legacy) delete target must be treated as a wildcard, not a conflict"
     );
 }
 

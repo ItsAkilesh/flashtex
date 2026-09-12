@@ -28,8 +28,23 @@
 //! plus delete-operation ids). Exceeding it returns
 //! [`CheckpointError::TooLarge`] instead of producing an unboundedly large
 //! snapshot.
+//!
+//! # Wire format versions
+//!
+//! [`Checkpoint::to_bytes`] always writes the current (v2) layout, which
+//! pairs each delete-operation id with its target (see
+//! `OpPayload::Delete`'s own `target` field) so that two `Delete`s sharing
+//! an id but naming different targets can be told apart from a legitimate
+//! idempotent replay - see [`crate::Document::apply`]'s `IdConflict`
+//! handling. [`Checkpoint::from_bytes`] still accepts the older v1 layout
+//! (no target field, identified by the absence of the v2 magic prefix): a
+//! delete decoded from v1 bytes simply has an unknown target, which
+//! [`crate::Document::apply`] treats as a wildcard rather than ever
+//! reporting a conflict for it. Old checkpoints therefore keep decoding and
+//! restoring exactly as before; they just cannot participate in the new
+//! conflict detection until they are produced fresh by this build.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 
 use crate::{Document, Element, OpId, ReplicaId};
@@ -40,13 +55,17 @@ use crate::{Document, Element, OpId, ReplicaId};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Checkpoint {
     elements: Vec<Element>,
-    /// Ids of `Delete` operations that have been applied. An insert's own
-    /// id already appears in `elements`, so only delete-operation ids
-    /// (which never appear there) need to be stored separately to fully
-    /// reconstruct the causal frontier. Kept sorted so two checkpoints of
-    /// documents that applied the same operation set always compare equal
-    /// regardless of internal hash-set iteration order.
-    delete_op_ids: Vec<OpId>,
+    /// Ids of `Delete` operations that have been applied, each paired with
+    /// its target when known. An insert's own id already appears in
+    /// `elements`, so only delete-operation ids (which never appear there)
+    /// need to be stored separately to fully reconstruct the causal
+    /// frontier. The paired target is `None` when it is unknown - decoded
+    /// from a v1 byte stream (see the module docs), or inherited from a
+    /// `Document` that was itself restored from one - and `Some` otherwise.
+    /// Kept sorted by id so two checkpoints of documents that applied the
+    /// same operation set always compare equal regardless of internal
+    /// hash-map iteration order.
+    deletes: Vec<(OpId, Option<OpId>)>,
     max_elements: usize,
 }
 
@@ -55,7 +74,7 @@ impl Checkpoint {
     /// This is exactly the quantity [`Document::checkpoint`]'s `max_entries`
     /// bounds.
     pub fn entry_count(&self) -> usize {
-        self.elements.len() + self.delete_op_ids.len()
+        self.elements.len() + self.deletes.len()
     }
 
     /// Number of currently visible (non-tombstoned) characters captured by
@@ -68,8 +87,19 @@ impl Checkpoint {
     /// (little-endian fixed-width fields; see [`Checkpoint::from_bytes`]
     /// for the exact layout via its bounded reader). Round-trips exactly
     /// through [`Checkpoint::from_bytes`].
+    ///
+    /// Always writes the current v2 layout: an 8-byte magic prefix
+    /// ([`WIRE_MAGIC_V2`]) that legacy v1 bytes never carry, then
+    /// `max_elements`, the elements (unchanged from v1), a delete count, and
+    /// finally, per delete, its id followed by its target encoded the same
+    /// way an optional `left`/`right` anchor is (`0`, or `1` then the
+    /// `OpId`) — `0` for a delete whose target this checkpoint does not
+    /// know (see the module docs).
     pub fn to_bytes(&self) -> Vec<u8> {
-        let mut out = Vec::with_capacity(16 + self.entry_count() * 24);
+        let mut out = Vec::with_capacity(
+            WIRE_MAGIC_V2.len() + 16 + self.elements.len() * 24 + self.deletes.len() * 33,
+        );
+        out.extend_from_slice(&WIRE_MAGIC_V2);
         out.extend_from_slice(&(self.max_elements as u64).to_le_bytes());
         out.extend_from_slice(&(self.elements.len() as u64).to_le_bytes());
         for e in &self.elements {
@@ -79,25 +109,40 @@ impl Checkpoint {
             out.extend_from_slice(&(e.value as u32).to_le_bytes());
             out.push(e.deleted as u8);
         }
-        out.extend_from_slice(&(self.delete_op_ids.len() as u64).to_le_bytes());
-        for id in &self.delete_op_ids {
+        out.extend_from_slice(&(self.deletes.len() as u64).to_le_bytes());
+        for (id, target) in &self.deletes {
             write_opid(&mut out, *id);
+            write_opt_opid(&mut out, *target);
         }
         out
     }
 
-    /// Decode a checkpoint previously produced by [`Checkpoint::to_bytes`].
-    /// Bounded and non-panicking on malformed or truncated input: every
-    /// field is read through a length-checked cursor, an out-of-range
-    /// Unicode scalar value is rejected rather than producing an invalid
-    /// `char`, and — via an internal `validate` step — the decoded
-    /// structure's referential integrity is checked before it is ever
-    /// handed back as a `Checkpoint`. `bytes` is untrusted input (from a
-    /// peer or from disk), so this is the boundary where it must be fully
-    /// validated: nothing downstream (in particular `From<Checkpoint> for
-    /// Document`, and the restored `Document`'s own `apply`) re-checks it.
+    /// Decode a checkpoint previously produced by [`Checkpoint::to_bytes`],
+    /// from either wire format version. Bounded and non-panicking on
+    /// malformed or truncated input: every field is read through a
+    /// length-checked cursor, an out-of-range Unicode scalar value is
+    /// rejected rather than producing an invalid `char`, and — via an
+    /// internal `validate` step — the decoded structure's referential
+    /// integrity is checked before it is ever handed back as a
+    /// `Checkpoint`. `bytes` is untrusted input (from a peer or from disk),
+    /// so this is the boundary where it must be fully validated: nothing
+    /// downstream (in particular `From<Checkpoint> for Document`, and the
+    /// restored `Document`'s own `apply`) re-checks it.
+    ///
+    /// Version is detected by the presence of the v2 magic prefix
+    /// ([`WIRE_MAGIC_V2`]): bytes starting with it are read as v2 (each
+    /// delete carries an optional target); anything else is read as the
+    /// original v1 layout (bare delete ids, target always unknown). Every
+    /// v1 checkpoint ever produced by this crate decodes and restores
+    /// exactly as it always has - see `tests/compatibility_evidence.rs` for
+    /// the pinned v1 literal this is checked against.
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, CheckpointDecodeError> {
-        let mut r = Reader::new(bytes);
+        let is_v2 = bytes.starts_with(&WIRE_MAGIC_V2);
+        let mut r = Reader::new(if is_v2 {
+            &bytes[WIRE_MAGIC_V2.len()..]
+        } else {
+            bytes
+        });
         let max_elements = r.read_u64()? as usize;
         let element_count = r.read_u64()?;
         let mut elements = Vec::new();
@@ -118,13 +163,15 @@ impl Checkpoint {
             });
         }
         let delete_count = r.read_u64()?;
-        let mut delete_op_ids = Vec::new();
+        let mut deletes = Vec::new();
         for _ in 0..delete_count {
-            delete_op_ids.push(read_opid(&mut r)?);
+            let id = read_opid(&mut r)?;
+            let target = if is_v2 { read_opt_opid(&mut r)? } else { None };
+            deletes.push((id, target));
         }
         let checkpoint = Checkpoint {
             elements,
-            delete_op_ids,
+            deletes,
             max_elements,
         };
         checkpoint.validate()?;
@@ -166,7 +213,14 @@ impl Checkpoint {
     /// - no delete-operation id may collide with an element id
     ///   ([`CheckpointDecodeError::DeleteIdReusedAsElementId`]) — the same
     ///   id-reused-across-payload-kinds shape `CrdtError::IdConflict`
-    ///   rejects in `apply`, checked here for the checkpoint's frontier.
+    ///   rejects in `apply`, checked here for the checkpoint's frontier,
+    /// - a delete's target, when known (v2 only - see the module docs), must
+    ///   name an element actually present in this checkpoint
+    ///   ([`CheckpointDecodeError::DanglingDeleteTarget`]) — the same
+    ///   dangling-reference shape as a `left`/`right` anchor, checked here
+    ///   for the target field a v2 delete carries. A delete's target being
+    ///   unknown is not itself a defect (see the module docs), so this only
+    ///   fires when a target is present and wrong.
     fn validate(&self) -> Result<(), CheckpointDecodeError> {
         let mut element_ids = HashSet::with_capacity(self.elements.len());
         for e in &self.elements {
@@ -184,14 +238,28 @@ impl Checkpoint {
                 }
             }
         }
-        for id in &self.delete_op_ids {
+        for (id, target) in &self.deletes {
             if element_ids.contains(id) {
                 return Err(CheckpointDecodeError::DeleteIdReusedAsElementId(*id));
+            }
+            if let Some(target) = target {
+                if !element_ids.contains(target) {
+                    return Err(CheckpointDecodeError::DanglingDeleteTarget(*target));
+                }
             }
         }
         Ok(())
     }
 }
+
+/// 8-byte prefix identifying the v2 checkpoint wire format (the revision
+/// that added per-delete targets; see the module docs). Chosen as bytes
+/// that a v1 checkpoint's leading `max_elements: u64` field — a plain
+/// element-count bound, always small in any real use of this crate — could
+/// never plausibly equal, so [`Checkpoint::from_bytes`] can tell the two
+/// apart by checking for it rather than needing a reserved field v1 never
+/// had room for.
+const WIRE_MAGIC_V2: [u8; 8] = *b"FTCPKV2\0";
 
 /// Failure modes of [`Document::checkpoint`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -250,6 +318,13 @@ pub enum CheckpointDecodeError {
     /// reused across payload kinds (see `CrdtError::IdConflict`); this is
     /// the same shape of defect, checked for the checkpoint's frontier.
     DeleteIdReusedAsElementId(OpId),
+    /// A v2 delete's target is known but names an id that does not belong
+    /// to any element in this checkpoint. Only possible for a v2 checkpoint,
+    /// since a v1 delete's target is always unknown and so has nothing to
+    /// check; the same referential-integrity gap as
+    /// [`Self::DanglingAnchor`], checked for the target field a v2 delete
+    /// carries.
+    DanglingDeleteTarget(OpId),
 }
 
 impl fmt::Display for CheckpointDecodeError {
@@ -275,6 +350,10 @@ impl fmt::Display for CheckpointDecodeError {
                 f,
                 "checkpoint delete-operation id {id:?} is reused as an element id"
             ),
+            CheckpointDecodeError::DanglingDeleteTarget(id) => write!(
+                f,
+                "checkpoint delete target references id {id:?}, which names no element"
+            ),
         }
     }
 }
@@ -291,15 +370,16 @@ impl Document {
     pub fn checkpoint(&self, max_entries: usize) -> Result<Checkpoint, CheckpointError> {
         let element_ids: std::collections::HashSet<OpId> =
             self.elements_slice().iter().map(|e| e.id).collect();
-        let mut delete_op_ids: Vec<OpId> = self
+        let mut deletes: Vec<(OpId, Option<OpId>)> = self
             .applied_set()
             .iter()
             .copied()
             .filter(|id| !element_ids.contains(id))
+            .map(|id| (id, self.delete_target_of(id)))
             .collect();
-        delete_op_ids.sort();
+        deletes.sort_by_key(|(id, _)| *id);
 
-        let entries = self.elements_slice().len() + delete_op_ids.len();
+        let entries = self.elements_slice().len() + deletes.len();
         if entries > max_entries {
             return Err(CheckpointError::TooLarge {
                 entries,
@@ -309,7 +389,7 @@ impl Document {
 
         Ok(Checkpoint {
             elements: self.elements_slice().to_vec(),
-            delete_op_ids,
+            deletes,
             max_elements: self.max_elements_bound(),
         })
     }
@@ -324,16 +404,31 @@ impl From<Checkpoint> for Document {
     /// enforces) and [`Checkpoint::from_bytes`] (which rejects a decoded
     /// structure that doesn't satisfy them, via an internal `validate`
     /// step). There is no third, unvalidated path. Given that, reconstructing is
-    /// simply reinstating the stored element order and applied-id set
-    /// verbatim (see the module docs for why this is exactly what
-    /// checkpoint equivalence requires). If this crate ever grows another
-    /// way to construct a `Checkpoint`, that constructor — not this `From`
-    /// impl — is responsible for upholding the same invariant.
+    /// simply reinstating the stored element order, applied-id set, and known
+    /// delete targets verbatim (see the module docs for why this is exactly
+    /// what checkpoint equivalence requires). A delete whose target this
+    /// checkpoint does not know (a v1-decoded, or v1-descended, delete)
+    /// simply gets no entry in the restored `Document`'s target map, which
+    /// is exactly the "unknown target" state `Document::apply` already
+    /// treats as a wildcard. If this crate ever grows another way to
+    /// construct a `Checkpoint`, that constructor — not this `From` impl —
+    /// is responsible for upholding the same invariant.
     fn from(checkpoint: Checkpoint) -> Self {
         let mut applied: std::collections::HashSet<OpId> =
             checkpoint.elements.iter().map(|e| e.id).collect();
-        applied.extend(checkpoint.delete_op_ids.iter().copied());
-        Document::from_parts(checkpoint.elements, applied, checkpoint.max_elements)
+        let mut delete_targets = HashMap::with_capacity(checkpoint.deletes.len());
+        for (id, target) in &checkpoint.deletes {
+            applied.insert(*id);
+            if let Some(target) = target {
+                delete_targets.insert(*id, *target);
+            }
+        }
+        Document::from_parts(
+            checkpoint.elements,
+            applied,
+            delete_targets,
+            checkpoint.max_elements,
+        )
     }
 }
 
@@ -489,10 +584,11 @@ mod tests {
         doc.apply(b.insert_at(&doc, 0, 'x').unwrap()).unwrap();
         let cp = doc.checkpoint(10).unwrap();
         let mut bytes = cp.to_bytes();
-        // Layout: max_elements(8) + element_count(8) + id.counter(8) +
-        // id.replica(8) + left flag(1) + right flag(1) = offset 34, then the
-        // 4-byte char code. 0x110000 is one past the last valid scalar value.
-        let char_offset = 8 + 8 + 8 + 8 + 1 + 1;
+        // Layout: magic(8) + max_elements(8) + element_count(8) +
+        // id.counter(8) + id.replica(8) + left flag(1) + right flag(1) =
+        // offset 42, then the 4-byte char code. 0x110000 is one past the
+        // last valid scalar value.
+        let char_offset = 8 + 8 + 8 + 8 + 8 + 1 + 1;
         bytes[char_offset..char_offset + 4].copy_from_slice(&0x0011_0000u32.to_le_bytes());
         assert_eq!(
             Checkpoint::from_bytes(&bytes),
@@ -565,7 +661,7 @@ mod tests {
                     deleted: false,
                 },
             ],
-            delete_op_ids: vec![],
+            deletes: vec![],
             max_elements: crate::DEFAULT_MAX_ELEMENTS,
         };
         let bytes = malicious.to_bytes();
@@ -588,7 +684,7 @@ mod tests {
                 value: 'a',
                 deleted: false,
             }],
-            delete_op_ids: vec![],
+            deletes: vec![],
             max_elements: crate::DEFAULT_MAX_ELEMENTS,
         };
         let bytes = malicious.to_bytes();
@@ -609,7 +705,7 @@ mod tests {
                 value: 'a',
                 deleted: false,
             }],
-            delete_op_ids: vec![],
+            deletes: vec![],
             max_elements: crate::DEFAULT_MAX_ELEMENTS,
         };
         let bytes = malicious.to_bytes();
@@ -639,7 +735,7 @@ mod tests {
                     deleted: false,
                 },
             ],
-            delete_op_ids: vec![],
+            deletes: vec![],
             max_elements: crate::DEFAULT_MAX_ELEMENTS,
         };
         let bytes = malicious.to_bytes();
@@ -662,13 +758,39 @@ mod tests {
             }],
             // `shared` also claims to be a Delete operation's id: an id
             // `apply` would never let be reused across payload kinds.
-            delete_op_ids: vec![shared],
+            deletes: vec![(shared, None)],
             max_elements: crate::DEFAULT_MAX_ELEMENTS,
         };
         let bytes = malicious.to_bytes();
         assert_eq!(
             Checkpoint::from_bytes(&bytes),
             Err(CheckpointDecodeError::DeleteIdReusedAsElementId(shared))
+        );
+    }
+
+    #[test]
+    fn checkpoint_with_a_known_delete_target_naming_no_element_is_rejected() {
+        // v2-only: a delete whose target is *known* but does not name any
+        // element in this checkpoint. Same dangling-reference shape as a
+        // `left`/`right` anchor, but for the new target field.
+        let real = id(1, 1);
+        let del = id(2, 1);
+        let ghost = id(99, 9); // names no element
+        let malicious = Checkpoint {
+            elements: vec![Element {
+                id: real,
+                left: None,
+                right: None,
+                value: 'a',
+                deleted: false,
+            }],
+            deletes: vec![(del, Some(ghost))],
+            max_elements: crate::DEFAULT_MAX_ELEMENTS,
+        };
+        let bytes = malicious.to_bytes();
+        assert_eq!(
+            Checkpoint::from_bytes(&bytes),
+            Err(CheckpointDecodeError::DanglingDeleteTarget(ghost))
         );
     }
 

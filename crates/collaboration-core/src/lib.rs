@@ -50,6 +50,7 @@
 //! dependency (e.g. a reordered backlog after a reconnect) instead of
 //! rejecting them; see it for the chosen recovery strategy.
 
+use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt;
 
@@ -123,10 +124,15 @@ pub enum CrdtError {
     /// operations in causal order: an operation's dependencies must be
     /// applied before the operation itself.
     MissingDependency(OpId),
-    /// This `OpId` was already used by a *different* insert (different
-    /// `value`). IDs must be unique per originating replica/counter pair;
-    /// reusing one with different content is rejected rather than silently
-    /// accepted or overwritten.
+    /// This `OpId` was already used by different content: a different
+    /// insert `value`, a different payload kind entirely (an `Insert` and a
+    /// `Delete` sharing an id), or - when both targets are known - a
+    /// `Delete` naming a different `target`. IDs must be unique per
+    /// originating replica/counter pair; reusing one with different content
+    /// is rejected rather than silently accepted, overwritten, or treated
+    /// as a duplicate. A `Delete` reusing an id whose previously recorded
+    /// target is *unknown* (see `Checkpoint`'s v1/v2 wire formats) cannot be
+    /// proven to conflict and is instead treated as an idempotent replay.
     IdConflict(OpId),
     /// The document is already at its configured element bound
     /// ([`Document::with_max_elements`]); the insert was rejected instead of
@@ -183,6 +189,17 @@ pub(crate) struct Element {
 pub struct Document {
     elements: Vec<Element>,
     applied: HashSet<OpId>,
+    /// Known target of each applied `Delete` operation, keyed by the
+    /// delete's own id. An id present in `applied` (and absent from
+    /// `elements`, i.e. a delete) but *absent* here means its target is
+    /// unknown — either this `Document` was restored from a v1 checkpoint
+    /// (whose wire format carried no target field, see `checkpoint.rs`), or
+    /// from a v2 checkpoint that itself inherited that unknown state. An
+    /// unknown target is treated as a wildcard: it can never be *proven* to
+    /// conflict with a same-id delete naming a different target, so
+    /// [`Document::apply`] treats that case as an idempotent replay rather
+    /// than an error. See [`Document::apply`]'s `IdConflict` handling.
+    delete_targets: HashMap<OpId, OpId>,
     max_elements: usize,
 }
 
@@ -205,6 +222,7 @@ impl Document {
         Self {
             elements: Vec::new(),
             applied: HashSet::new(),
+            delete_targets: HashMap::new(),
             max_elements,
         }
     }
@@ -245,6 +263,16 @@ impl Document {
         &self.applied
     }
 
+    /// Crate-internal: the known target of the delete operation `id`, if
+    /// any. `None` covers both "not a delete" and "a delete whose target is
+    /// unknown" (a legacy/wildcard delete inherited from a v1 checkpoint);
+    /// [`checkpoint`] only calls this for ids it already knows are deletes,
+    /// where the distinction collapses to exactly the wire format's own
+    /// "target field present or not" question.
+    pub(crate) fn delete_target_of(&self, id: OpId) -> Option<OpId> {
+        self.delete_targets.get(&id).copied()
+    }
+
     /// Crate-internal: this document's configured element bound.
     pub(crate) fn max_elements_bound(&self) -> usize {
         self.max_elements
@@ -253,15 +281,20 @@ impl Document {
     /// Crate-internal: reconstruct a document directly from its parts
     /// (used by [`checkpoint`] to restore from a [`Checkpoint`] without
     /// re-running integration - the stored element order already *is* the
-    /// integrated structural order).
+    /// integrated structural order). `delete_targets` carries only the
+    /// deletes whose target is known; a delete id present in `applied` but
+    /// absent from both `elements` and `delete_targets` is a legacy/wildcard
+    /// delete restored from a v1 checkpoint.
     pub(crate) fn from_parts(
         elements: Vec<Element>,
         applied: HashSet<OpId>,
+        delete_targets: HashMap<OpId, OpId>,
         max_elements: usize,
     ) -> Self {
         Self {
             elements,
             applied,
+            delete_targets,
             max_elements,
         }
     }
@@ -388,13 +421,22 @@ impl Document {
                 (OpPayload::Delete { .. }, Some(_)) => {
                     return Err(CrdtError::IdConflict(op.id));
                 }
-                // Delete re-applied over a Delete. Distinguishing an
-                // idempotent replay from a conflicting different target would
-                // require storing each delete's target, which the checkpoint
-                // wire format does not currently carry. Treated as an
-                // idempotent replay, as before. See
-                // coordination/daniel-collaboration.md for the open item.
-                (OpPayload::Delete { .. }, None) => {}
+                // Delete re-applied over a Delete. Only a conflict if both
+                // targets are known and differ: `self.delete_targets` records
+                // the target every delete resolved through this method's own
+                // `OpPayload::Delete` arm below, so a *known* mismatch here
+                // is exactly the same shape of defect as the other arms. A
+                // delete id with no entry in `delete_targets` (its target is
+                // unknown — inherited from a v1 checkpoint, which carried no
+                // target field) cannot be proven to conflict, so it is still
+                // treated as an idempotent replay, as before.
+                (OpPayload::Delete { target }, None) => {
+                    if let Some(previous_target) = self.delete_targets.get(&op.id) {
+                        if previous_target != target {
+                            return Err(CrdtError::IdConflict(op.id));
+                        }
+                    }
+                }
             }
             return Ok(ApplyOutcome::Duplicate);
         }
@@ -427,6 +469,7 @@ impl Document {
                     .position_of(target)
                     .ok_or(CrdtError::MissingDependency(target))?;
                 self.elements[pos].deleted = true;
+                self.delete_targets.insert(op.id, target);
             }
         }
 
