@@ -1,16 +1,145 @@
 # daniel-title handoff
 
-Agent / task / branch: daniel-title / FT-033 revision 3 (original article
-title/author/date/abstract measured layout adapter: adversarial bounds on
-the revision-2 metrics-bound layout, plus exact identity regressions) /
-`agent/daniel-title/title-layout`
-State: ready for integration (standalone, unwired — see "Consumer
-integration" below)
+Agent / task / branch: daniel-title / FT-033 revision 4 (original article
+title/author/date/abstract measured layout adapter: a consumer-integration
+fixture over the most faithful real callers in the repo, plus a measured
+count of how often the corpus would actually hit this crate's documented
+unsupported gaps) / `agent/daniel-title/title-layout`
+State: ready for integration (no real consumer exists to wire into yet —
+see "Revision 4" below for the search and the fixture built instead)
 Owned paths: `crates/title-layout/**`, `coordination/daniel-title.md`
-Tested commit SHA: see commit on `agent/daniel-title/title-layout` (main
-integrated through `967703ebb4e8140feaf4db02d27cb3ac63c573f6`)
+Tested commit SHA: see commit `158a024b` on `agent/daniel-title/title-layout`
+(main integrated through `abbe88a5275b89d99357815846de3cbe76a91810`)
 
-## Revision 3 (this revision)
+## Revision 4 (this revision)
+
+Objective: rev 3 correctly reported no consumer exists; rev 4 asked to look
+harder and wider anyway, and to measure (not just list) the three
+unsupported gaps rev 3 named, against the repo's real `.tex` corpus.
+
+### Consumer search (still none — searched wider than revision 3)
+
+Revision 3 checked from this crate outward. Revision 4 checked from the
+other side too — every place the assignment named, plus a repo-wide grep:
+
+```sh
+grep -rn 'title-layout\|title_layout' --include='*.toml' --include='*.rs' . \
+  | grep -v '/target/' | grep -v '^crates/title-layout/'
+# (no output)
+```
+
+- `crates/document-runtime`: its own module doc says what it is —
+  "Persistent original-compiler transport." It shells out to the compiler
+  binary and decodes a JSON-Lines protocol (`decode_lane`, `blocked_writer`,
+  `queue_accounting`, ...). No document layout, title, or metrics concern
+  anywhere in it.
+- `crates/compiler`: `src/parser.rs` records `Parsed::document_class:
+  Option<String>` from a real `\documentclass{...}` (the bracket options
+  are read and discarded — `document_class`'s body only keeps the trimmed
+  class-name group). But `grep -n '"title"\|"author"\|"date"\|"maketitle"'
+  crates/compiler/src/*.rs` returns nothing: its built-in command table
+  (`BUILT_INS`) has no entry for any of the four, so it does not parse a
+  title block, an author, a date, or `\maketitle` at all, in any form.
+- `apps/mac`: a Swift client of the compiler's JSON protocol
+  (`Sources/FlashTeXProtocol`, `FlashTeXMac`). No Rust code to integrate
+  against, and no title/author/date handling visible in its sources.
+
+So the search is wider and the conclusion is the same: **no consumer of
+this crate's title/author/date or abstract layout exists anywhere in the
+repo.** Per FT-033's standing instruction not to invent a consumer or edit
+another crate, this revision does not wire one up.
+
+### Consumer-integration fixture (built anyway, against the closest real callers)
+
+New file: `crates/title-layout/tests/consumer_integration.rs` (4 tests,
+full rationale in its module doc comment). Rather than the hand-made
+`TestMetrics`/one-off `Stylesheet` pairing `tests/metrics.rs` already uses
+to cover the binding/rejection/Unicode contract, this fixture drives
+`layout_title_block_with_metrics` from two real, in-repo types, added as
+**dev-dependencies only** (this crate's library code still depends on
+nothing but `flashtex-document-style`):
+
+- **`flashtex-compiler`** (`flashtex_compiler::parser::parse`): the real
+  preamble parser, run over an actual corpus document
+  (`tests/tex-corpus/cases/plain-paragraphs/main.tex`); its
+  `Parsed::document_class` is fed straight into `DocumentClass::parse`.
+  `document_class_from_real_compiler_parser_selects_article` checks the
+  accept path this way; `document_class_from_real_compiler_parser_rejects_report`
+  checks the reject path the same way, against a minimal document shaped
+  like a real one (no corpus case declares `report` — see the gap table
+  below), confirming `layout_title_block` still returns
+  `UnsupportedDocumentClass` when the class comes from the real parser
+  instead of a literal `DocumentClass::Report`.
+- **`flashtex-font-engine`** (`default-features = false`, so no
+  `paragraph`/`math`/`pdf` sibling crates are pulled in): a new
+  `RealFaceMetrics` in the test file implements this crate's own
+  `GlyphMetrics` over `flashtex_font_engine::Face`, mirroring the shape of
+  font-engine's own `adapters::paragraph::FaceMetrics` (advance width via
+  `Face::glyph_id` + `Face::advance`, converted font-units-to-points with
+  `Face::to_points`) — font-engine has no title-layout adapter to reuse,
+  since nothing calls this crate, so this builds the equivalent from
+  title-layout's side without editing font-engine. It loads the real Latin
+  Modern Roman OTF from the local BasicTeX install, the same file and path
+  `flashtex-font-engine/tests/latin_modern.rs` already uses, and skips
+  (message, not failure) if that install is absent, matching that test's
+  convention. `layout_with_real_font_engine_metrics_matches_hand_computed_width`
+  lays out a real title/author/date block and cross-checks the crate's
+  computed title width against an independent sum of the same real face's
+  own advances (not a literal this fixture invented).
+  `missing_real_glyph_is_rejected_not_fabricated` confirms a real font gap
+  (Latin Modern has no CJK glyphs — `尾`, taken from
+  `tests/tex-corpus/cases/literal-source-map/main.tex`) still produces
+  `MissingGlyphMetric`, never a substituted width, when the metrics come
+  from a real font instead of a hand-made stub.
+
+One real caller gap surfaced by building this: since `document_class`
+discards `\documentclass[options]`'s bracket argument, no real caller in
+this repo can yet tell `Stylesheet::article` anything but `article.cls`'s
+own default paper/size. The fixture's `sheet()` uses that default rather
+than inventing a caller-chosen one — not a limitation of this crate, but
+worth naming for whoever eventually wires a consumer up.
+
+### Measured unsupported gaps (rev 3 listed three; rev 4 counts them)
+
+Rev 3 named three unmeasured gaps: no two-column handling, no `\lineskip`
+fallback, no `\listparindent`. Measured against `tests/tex-corpus` — the
+repository's only real `.tex` corpus (14 original small compiler-compatibility
+projects, 16 `.tex` files counting `\input`-ed fragments; see
+`tests/tex-corpus/README.md`) — with the exact commands below:
+
+| Metric | Count | Command |
+|---|---|---|
+| `.tex` files total | 16 | `find tests/tex-corpus/cases -name '*.tex' \| wc -l` |
+| Files declaring a `\documentclass` | 14 (the other 2 are `\input`-ed fragments with none of their own) | `grep -rl '\\documentclass' tests/tex-corpus/cases --include='*.tex' \| wc -l` |
+| ...declaring a class this crate **supports** (`article`) | 14 / 14 | `grep -rhoE '\\documentclass(\[[^]]*\])?\{[^}]*\}' tests/tex-corpus/cases --include='*.tex' \| sort \| uniq -c` → `14 \documentclass{article}` |
+| ...declaring a class this crate **rejects** (`report`/`book`/`letter`) | 0 / 14 | (same command — no other class name appears) |
+| Documents that use a title block at all (`\title`/`\author`/`\date`/`\maketitle`) | 0 / 14 | `grep -rlE '\\(title\|author\|date\|maketitle)\b' tests/tex-corpus/cases --include='*.tex' \| wc -l` |
+| ...of those, hitting **two-column** (`twocolumn` option or `\twocolumn`) | 0 / 0 | `grep -rlE 'twocolumn' tests/tex-corpus/cases --include='*.tex' \| wc -l` → 0 corpus-wide |
+| ...of those, hitting **`\lineskip` fallback** (explicit `\lineskip`) | 0 / 0 | `grep -rl '\\lineskip' tests/tex-corpus/cases --include='*.tex' \| wc -l` → 0 corpus-wide |
+| ...of those, hitting **`\listparindent`** (via `\begin{abstract}`) | 0 / 0 | `grep -rl '\\begin{abstract}' tests/tex-corpus/cases --include='*.tex' \| wc -l` → 0 corpus-wide |
+
+**Top cause, stated plainly: it is not any of the three named gaps.** All
+14 corpus documents declare a class this crate supports (100%), so class
+support is not where this corpus would fail. But **0 of those 14 documents
+use `\maketitle`, `\title`, `\author`, `\date`, or `\begin{abstract}` at
+all** — the corpus (built for `FT-011`'s compiler-compatibility purposes:
+paragraphs, macros, includes, Unicode, math, TikZ, recovery — see its
+README) simply never exercises the surface this crate measures. With that
+denominator at zero, the two-column/`\lineskip`/`\listparindent` gaps rev 3
+named cannot manifest even once against this corpus; they remain real,
+documented limitations (see "Deliberately unmeasured" below, unchanged
+from rev 3), but this measurement's honest top finding is that the
+project's own corpus currently has no title-block coverage to hit them
+with, not that any one gap dominates.
+
+New tests: 4, all in `crates/title-layout/tests/consumer_integration.rs`
+(2 always run; 2 skip with a message, not a failure, if this machine has
+no BasicTeX Latin Modern install at the fixed path). Total: 50 tests + 1
+doctest, all passing; `cargo clippy --all-targets -- -D warnings` clean.
+Rev 3's adversarial (17), exact-identity (3), and page-bounds/non-finite
+rejection tests are unmodified and still pass.
+
+## Revision 3
 
 Objective: attack the revision-2 metrics-bound layout with hostile inputs
 (each must come back a typed error or a bounded result, never a panic or a
@@ -296,26 +425,46 @@ one sanctioned way to omit the date line.
 
 `cd crates/title-layout && export PATH="/opt/homebrew/opt/rustup/bin:$PATH"`:
 - `cargo build`: clean.
-- `cargo test`: 46 tests + 1 doctest, all pass — 4 `abstract_block.rs` +
-  10 `title.rs` + 12 `metrics.rs` (all unchanged from revisions 1/2), plus
-  revision 3's 17 new in `tests/adversarial.rs` (enormous title, thousands
-  of authors, whitespace-only author line, mid-string `None`, non-finite/
-  negative glyph and em metrics, degenerate page area, combining marks and
-  zero-width characters) and 3 new in `tests/exact_identity.rs` (exact
-  literal geometry pins).
+- `cargo test`: 50 tests + 1 doctest, all pass — 4 `abstract_block.rs` +
+  10 `title.rs` + 12 `metrics.rs` (all unchanged from revisions 1/2), rev
+  3's 17 in `tests/adversarial.rs` and 3 in `tests/exact_identity.rs`
+  (unchanged), plus rev 4's 4 new in `tests/consumer_integration.rs` (2
+  always run; 2 skip with a message, not a failure, on a machine without a
+  BasicTeX Latin Modern install at the fixed path both this crate's new
+  fixture and `flashtex-font-engine/tests/latin_modern.rs` already use).
 - `cargo clippy --all-targets -- -D warnings`: 0 warnings.
 - `cargo fmt --check`: clean.
 
 No workspace root `Cargo.toml` was added (repo convention); each crate is
-built from its own directory, per `crates/title-layout/Cargo.lock` locking
-`flashtex-document-style` as a path dependency.
+built from its own directory. `crates/title-layout/Cargo.lock` now also
+locks `flashtex-compiler` and `flashtex-font-engine` (`default-features =
+false`) as **dev-dependencies** (rev 4's consumer-integration fixture only
+— see above); the crate's own library code still depends on nothing but
+`flashtex-document-style`, unchanged since revision 1.
 
 ## Needs from others / integration notes
 
-- **Still not wired into any consumer** (verified again this revision by
-  `grep -rln "flashtex_title_layout\|flashtex-title-layout" crates`,
-  excluding this crate's own directory: zero hits). Standalone per
-  FT-033's own instruction not to invent a consumer or edit another crate.
+- **Still not wired into any consumer** (verified again this revision, wider
+  than before: repo-wide grep plus manual review of `document-runtime`,
+  `compiler`, and `apps/mac` specifically — see "Revision 4" above).
+  Standalone per FT-033's own instruction not to invent a consumer or edit
+  another crate.
+- Whoever does wire a real consumer up should expect two gaps this
+  revision's fixture found, not fabricated ones: (1) `Parsed::document_class`
+  currently only carries the bare class name, so `Stylesheet::article`'s
+  `ClassOptions` (paper/size) cannot yet be driven from a real
+  `\documentclass[options]{...}` anywhere in this repo; (2) nothing in the
+  repo extracts `\title`/`\author`/`\date` bodies at all, so a real caller
+  still has to build `TitleBlockInput` from its own text, exactly as this
+  fixture does. Neither is a `flashtex-title-layout` limitation — both are
+  upstream of it.
+- Corpus-measured priority for future work (see the gap table above): the
+  project's own `.tex` corpus doesn't exercise a title block at all yet
+  (0/14 documents), so two-column/`\lineskip`/`\listparindent` support
+  would currently be unverifiable against it regardless of effort spent;
+  growing the corpus with at least one `\maketitle`/`abstract` case would
+  make future gap measurements (and any future consumer's tests) meaningful
+  where today they can only report zero by construction.
 - A consumer that wants horizontal placement must implement `GlyphMetrics`
   itself, typically backed by `flashtex-font-engine`'s `Face::advance`
   (converted from font units to points at the queried size) or an
@@ -336,5 +485,11 @@ built from its own directory, per `crates/title-layout/Cargo.lock` locking
   `Stylesheet` API rather than requiring a hand-crafted internal state. No
   peer compiler/native/layout files were modified; only
   `crates/title-layout/**` and this handoff.
+- Revision 4 read (not edited) `crates/compiler/src/parser.rs`,
+  `crates/document-runtime/src/lib.rs`, `apps/mac/Sources/**`, and
+  `crates/font-engine/src/adapters/paragraph.rs` while searching for a
+  consumer and designing the fixture's `RealFaceMetrics`. Only
+  `crates/title-layout/**` (adds two dev-dependencies, one new test file)
+  and this handoff changed.
 
 Updated: 2026-09-12

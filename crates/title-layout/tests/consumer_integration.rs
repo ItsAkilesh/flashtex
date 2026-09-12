@@ -73,8 +73,8 @@ use std::path::Path;
 use flashtex_document_style::{BaseSize, ClassOptions, Paper, Pt, SizeName, Stylesheet, font_size};
 use flashtex_font_engine::{Face, TrueTypeFace, load_from_path};
 use flashtex_title_layout::{
-    DateField, DocumentClass, GlyphMetrics, TitleBlockInput, TitleLayoutError,
-    layout_title_block, layout_title_block_with_metrics,
+    DateField, DocumentClass, GlyphMetrics, TitleBlockInput, TitleLayoutError, layout_title_block,
+    layout_title_block_with_metrics,
 };
 
 /// Same file, same path, as `flashtex-font-engine/tests/latin_modern.rs`.

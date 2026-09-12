@@ -10,8 +10,8 @@
   ],
   "branch": "agent/daniel-title/title-layout",
   "state": "ready_for_integration",
-  "summary": "FT-033 rev 3: adversarial bounds on the rev-2 metrics-bound title/author/date layout, plus exact identity regressions. Validated GlyphMetrics::advance_width/em values as finite and non-negative before they reach layout arithmetic (new TitleLayoutError::InvalidGlyphMetric/InvalidEmMetric); a NaN width previously compared false against every page-fit `>` check and could have silently produced a NaN baseline. Added TitleLayoutError::InvalidPageArea, checked once against sheet.page_layout().text_area before the existing BlockTallerThanPage comparison, reachable via Stylesheet::with_geometry (oversized margin or explicit zero/negative textwidth/textheight), not a hand-crafted internal state. tests/adversarial.rs (17 tests): enormous title (500k chars), 5000 authors, whitespace-only author line, mid-string None, non-finite/negative glyph and em metrics, degenerate page area, combining marks and zero-width text -- every case a typed error or a bounded Ok, never a panic or hang. tests/exact_identity.rs (3 tests): literal exact-equality pins (assert_eq!, no epsilon) of computed row font sizes, baselines, total heights, and horizontal extents for representative 10pt/12pt inputs. Consumer check: grep -rln 'flashtex_title_layout|flashtex-title-layout' crates outside crates/title-layout finds nothing -- no consumer exists yet; adapter contract documented in coordination/daniel-title.md rather than inventing one. cargo test: 46 tests + 1 doctest, all pass. cargo clippy --all-targets -- -D warnings: clean. cargo fmt --check: clean.",
-  "next_action": "Await Commander integration; no consumer wiring in this revision. A future consumer implementing GlyphMetrics must only return None or a finite, non-negative Pt.",
+  "summary": "FT-033 rev 4: searched wider than rev 3 for a consumer (repo-wide grep plus crates/document-runtime, crates/compiler, apps/mac by hand) -- still none; document-runtime is a JSON-Lines compiler transport with no layout concern, compiler's parser records Parsed::document_class but has no title/author/date/maketitle handling at all (not in its BUILT_INS table), apps/mac is a Swift protocol client with no Rust to integrate against. Built a consumer-integration fixture anyway (crates/title-layout/tests/consumer_integration.rs, 4 tests) against the closest real callers, as dev-dependencies only: flashtex_compiler::parser::parse run over a real tests/tex-corpus fixture feeds DocumentClass::parse with the real Parsed::document_class string (accept-article and reject-report paths, both through the real parser); a new RealFaceMetrics implements GlyphMetrics over a real flashtex_font_engine::Face (Latin Modern Roman OTF loaded from the local BasicTeX install, skipped not failed if absent -- same file/path as font-engine's own tests/latin_modern.rs), mirroring font-engine's own adapters::paragraph::FaceMetrics pattern since font-engine has no title-layout adapter to reuse. Cross-checked the crate's computed title width against an independent sum of the same real face's advances, and confirmed a real missing glyph (Latin Modern has no CJK) still produces MissingGlyphMetric, never a substituted width. Measured rev 3's three named gaps against tests/tex-corpus (the repo's only real .tex corpus, 14 documents/16 files): 14/14 declare a supported class (article), 0/14 declare an unsupported one, and 0/14 use a title block at all (no \\title/\\author/\\date/\\maketitle anywhere in the corpus) -- so two-column/lineskip/listparindent hit-counts are all 0/0 by construction; the corpus has no title-block coverage to hit those gaps with, which is the real top finding, not any one named gap dominating. Full table and exact grep commands in coordination/daniel-title.md. cargo test: 50 tests + 1 doctest, all pass (2 of the 4 new tests skip with a message on a machine without the BasicTeX font install). cargo clippy --all-targets -- -D warnings: clean. cargo fmt --check: clean.",
+  "next_action": "Await Commander integration; still no consumer wiring (none exists). A future consumer needs: (1) compiler's document_class to carry \\documentclass[options] through if it wants non-default ClassOptions, (2) something to extract \\title/\\author/\\date bodies (nothing in the repo does today), and (3) a GlyphMetrics impl returning only None or a finite non-negative Pt.",
   "eta_minutes": {
     "optimistic": 0,
     "likely": 0,
@@ -23,17 +23,17 @@
     "evidence": "Shared Claude Max 20x subscription quota; no purchases or overages"
   },
   "reviewed_peers": {
-    "origin/main": "967703ebb4e8140feaf4db02d27cb3ac63c573f6"
+    "origin/main": "abbe88a5275b89d99357815846de3cbe76a91810"
   },
   "assignment_acknowledgements": {
     "FT-033": {
-      "acknowledged_utc": "2026-09-12T16:30:27Z",
-      "revision": 3,
-      "main_sha": "967703ebb4e8140feaf4db02d27cb3ac63c573f6",
-      "adaptation": "Read src/title.rs, src/error.rs, src/metrics.rs and both existing test files before changing anything. Validated advance_width/em outputs (finite, non-negative) at the point measure_line and the em-gap computation receive them, rather than trusting Some() to mean usable -- the sharp case the objective named. Added InvalidPageArea by reading document-style's Geometry/apply_geometry to confirm a degenerate text_area is reachable through the existing public Stylesheet API (with_geometry) instead of poking at private fields. Grepped the whole repo for any flashtex_title_layout/flashtex-title-layout consumer before writing the report: none found, so no consumer was invented and no other crate was edited, per the assignment's own acceptance criterion."
+      "acknowledged_utc": "2026-09-12T16:57:05Z",
+      "revision": 4,
+      "main_sha": "abbe88a5275b89d99357815846de3cbe76a91810",
+      "adaptation": "Searched crates/document-runtime, crates/compiler, apps/mac by hand (not just a repo grep) before concluding again that no consumer exists, per the revision's explicit instruction to look harder and wider. Since no real consumer exists to integrate against, built the fixture against the most faithful real callers available instead: flashtex-compiler's real parser output and a real flashtex-font-engine::Face, added as dev-dependencies only (library code unchanged, still depends on nothing but flashtex-document-style), following font-engine's own adapters::paragraph::FaceMetrics pattern from title-layout's side without editing font-engine. Measured the three gaps rev 3 only listed against tests/tex-corpus with exact grep-based counts rather than restating them qualitatively, and reported the corpus's actual top finding (no title-block usage at all, so the three gaps can't manifest against it) rather than forcing one of the three named gaps to look dominant."
     }
   },
-  "updated_utc": "2026-09-12T16:30:27Z",
-  "code_revision": "3356d659c0b56e7de41d9c30b35de75956834b55",
-  "main_integrated_through": "967703ebb4e8140feaf4db02d27cb3ac63c573f6"
+  "updated_utc": "2026-09-12T16:57:05Z",
+  "code_revision": "158a024babb86fdac8c18147c73bf3cfe0c5318a",
+  "main_integrated_through": "abbe88a5275b89d99357815846de3cbe76a91810"
 }
