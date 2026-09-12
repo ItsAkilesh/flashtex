@@ -14,15 +14,15 @@
     "rust",
     "math"
   ],
-  "code_revision": "9da7e48148d91872dc0514119e1a04568ebfcb51",
+  "code_revision": "207965097cd91cfdc86f7fe9311a785487768be7",
   "eta_minutes": {
-    "likely": 10,
-    "optimistic": 5,
-    "pessimistic": 20
+    "likely": 5,
+    "optimistic": 0,
+    "pessimistic": 10
   },
   "machine": "mac-m1max-a",
   "main_integrated_through": "9da7e48148d91872dc0514119e1a04568ebfcb51",
-  "next_action": "Write docs/comparison.md; add OpenType MATH -> TeX parameter mapping for FT-018",
+  "next_action": "Final report to parent; implement MathFontMetrics on FT-018 Face when merged",
   "reviewed_peers": {
     "origin/agent/mac-font-engine/tex-fonts": {
       "adaptation": "FT-018 font engine landed with OpenType MATH constants, FontId content hash and GlyphId; MathFontMetrics can be implemented on its Face via the LuaTeX OpenType->TeX parameter mapping (to be added as MathParams::from_opentype)",
@@ -30,18 +30,18 @@
       "sha": "bd60519138bf3f99bd05a44b1a65e16bc660669d"
     },
     "origin/main": {
-      "adaptation": "Reviewed main 9da7e48..a77e697: no overlap with crates/math-layout; README cites rendering-v2 proposal coordinate conventions",
-      "reviewed_utc": "2026-09-12T06:03:54Z",
-      "sha": "a77e697faa51866607f8c9cf9f5d2a65a63e1521"
+      "adaptation": "main through 0a3d8e2 has no math-layout files; FT-020 still rev 1",
+      "reviewed_utc": "2026-09-12T06:11:59Z",
+      "sha": "0a3d8e22fe4abc5cf15c39cce889aaa125f38bb6"
     }
   },
   "schema_version": 1,
-  "state": "in_progress",
-  "summary": "crates/math-layout: TeX Appendix G layout with explicit glyph/rule boxes; CM TFM metrics reproduce pdfTeX showbox to 1sp; 24 tests pass",
+  "state": "ready_for_integration",
+  "summary": "crates/math-layout complete for FT-020 rev 1: Appendix G boxes, CM metrics matching pdfTeX to 1sp, OpenType MATH mapping, oracle comparison within 0.003bp; 25 tests",
   "tool": "Claude Code subagent (parent mac-claude-a)",
-  "updated_utc": "2026-09-12T06:04:19Z",
+  "updated_utc": "2026-09-12T06:11:59Z",
   "usage": {
-    "evidence": "cargo test 24 passed",
+    "evidence": "cargo test 25 passed; docs/comparison.md max deviation 0.003 bp vs pdfTeX 1.40.29",
     "status": "unknown"
   }
 }

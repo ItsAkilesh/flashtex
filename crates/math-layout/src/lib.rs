@@ -28,7 +28,7 @@ pub use boxes::{
 pub use cm::CmMathMetrics;
 pub use layout::{Layout, Limitation, layout, layout_with_report};
 pub use mathlist::{Atom, AtomClass, Limits, MathList, Nucleus};
-pub use metrics::{FontId, Glyph, MathFontMetrics, MathParams, SizeClass};
+pub use metrics::{FontId, Glyph, MathFontMetrics, MathParams, OpenTypeMathConstants, SizeClass};
 pub use spacing::{Space, between};
 pub use style::{Style, StyleLevel};
 pub use times::TimesApproxMetrics;

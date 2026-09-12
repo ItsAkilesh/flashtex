@@ -3,13 +3,14 @@
 - Agent / task / branch: `mac-math-layout` (Claude Code subagent, parent
   `mac-claude-a`, machine `mac-m1max-a`) / FT-020 rev 1 "original Rust TeX-style
   math layout crate" / `agent/mac-math-layout/math-boxes`
-- State: in progress — first checkpoint pushed (model, spacing table, fractions,
-  scripts, radicals, delimiters, operators, accents, golden tests); oracle
-  comparison document is the next checkpoint.
+- State: ready for integration — second checkpoint: model, spacing table,
+  fractions, scripts, radicals, delimiters, operators, accents, golden tests,
+  OpenType MATH parameter mapping for FT-018, and the pdfTeX oracle comparison
+  (`crates/math-layout/docs/comparison.md`).
 - Owned paths: `crates/math-layout/**`, `coordination/mac-math-layout.md`,
   `coordination/agents/mac-math-layout.json`.
 - Main integrated through: branched from `9da7e48`; reviewed `origin/main`
-  through `9b27f1f` (no overlap with owned paths; see below).
+  through `0a3d8e2` (no file under `crates/math-layout`; no overlap).
 - Ready behavior: `crates/math-layout` (`flashtex-math-layout`, edition 2024,
   zero dependencies). `layout(list, style, metrics) -> MathBox` and
   `positioned_runs(box, origin) -> {glyphs, rules}` implement TeXbook Appendix G
@@ -22,7 +23,8 @@
   stretchy accents beyond the cmex `\widehat`/`\widetilde` chains, extensible
   delimiters/radicals (largest size used and reported as a `Limitation`),
   inter-character kerns/ligatures, or accent lift over scripted bases.
-  `docs/comparison.md` (PDFKit glyph-box comparison) not yet written.
+  No implementation of `MathFontMetrics` on the FT-018 `Face` yet (that crate
+  is unmerged); `MathParams::from_opentype` is the bridge for its owner.
 - Interface changes and required consumer actions: none to existing crates.
   The compiler's `math.rs` was not edited. Integration note for the compiler
   lead is in `crates/math-layout/README.md`; no new runtime-v1 item kinds are
@@ -30,19 +32,26 @@
   is Commander's call, and the output already follows the conventions of
   `docs/contracts/rendering-v2-proposal.md`: absolute baseline origins,
   `font_id` + original gid, filled rules, y-down page points).
-- Validation: `cargo test` in `crates/math-layout` — 24 passed (6 unit, 18
+- Validation: `cargo test` in `crates/math-layout` — 25 passed (7 unit, 18
   golden), `cargo clippy --all-targets` clean, `cargo fmt --check` clean.
+  Oracle comparison (`docs/comparison.md`): pdfTeX 1.40.29 (TeX Live 2026
+  BasicTeX) compiled `docs/oracle/compare.tex` in a scratch directory; the
+  page content stream and Apple PDFKit (macOS 26.3.1) per-character boxes were
+  extracted; all 20 glyph origins and 4 rules of `\frac{\frac{a}{b}}{c}=1`,
+  `\sqrt{x}+\left(\frac{a}{b}\right)`, `\sum_{i=1}^{n}x_i^2` match ours
+  within 0.003 bp (the reference's 3-decimal rounding).
   Golden numbers cross-checked against pdfTeX 1.40.29 (TeX Live 2026 BasicTeX)
   `\showbox` dumps for `x^2`, `x_i^2`, `x^{y^z}`, `\frac{\frac{a}{b}}{c}` (T/D),
   `\sqrt{x}`, `\sqrt{\frac{a}{b}}`, `\left(\frac{a}{b}\right)`, `\sum_{i=1}^n`
   (T/D), `\int_0^1` (D), `\hat{x}`, `a+b`, `a=b`, `f(x)`, `a,b`: box
   dimensions agree to 1sp; pdfTeX used only as an oracle in a scratch dir.
-- Needs from others: FT-018 font engine (`agent/mac-font-engine/tex-fonts`,
-  not yet on the remote) to implement `MathFontMetrics` with content-addressed
-  font ids; Commander decision on how rules travel in the runtime contract.
-- Next action: write `crates/math-layout/docs/comparison.md` with PDFKit
-  glyph-box extraction for three expressions (engine/font/version declared),
-  then final report.
+- Needs from others: FT-018 font engine owner to implement `MathFontMetrics`
+  on `crates/font-engine`'s `Face` (content-addressed `FontId`, original
+  `GlyphId`) via `MathParams::from_opentype` once merged; Commander decision on
+  how rules travel in the runtime contract.
+- Next action: final report to parent; on request, implement
+  `MathFontMetrics` for the FT-018 `Face` once that crate is on main, and
+  extensible delimiters/radicals.
 - Peer revisions reviewed and adaptations:
   - `origin/agent/claude/compiler-foundation` `math.rs` (branch tip `3ae7d9b`,
     read at `6b13034`): constants FRACTION_RULE_EM=0.06, MATH_AXIS_EM=0.25,
@@ -55,8 +64,16 @@
     `crates/math-layout`. Adaptation: README coordinate conversion now cites
     the v2 proposal's PDF conversion and TeX-pt vs PDF-pt distinction.
   - `origin/agent/mac-validation/native-verification`
-    `tools/native-validation/oracle_extract.swift`: reused as the model for the
-    PDFKit extractor in the comparison step.
+    `tools/native-validation/oracle_extract.swift`: reused as the model for
+    `crates/math-layout/tools/oracle_glyphs.swift` (per-character boxes).
+  - `origin/agent/mac-font-engine/tex-fonts` `bd60519` (FT-018): original
+    TrueType/CFF engine with `FontId` (content hash), `GlyphId`, and an
+    OpenType `MATH` parser (`MathConstants`, italics correction, top accent).
+    Adaptation: added `OpenTypeMathConstants` + `MathParams::from_opentype`
+    (LuaTeX's OpenType→TeX correspondence) so its owner can implement
+    `MathFontMetrics` without changing this crate; no dependency taken.
+  - `origin/main` `a77e697..0a3d8e2`: integration/coordination commits, no
+    math-layout files, FT-020 still rev 1. No adaptation needed.
 - Resource state: Claude Max 20x plan on `mac-m1max-a` (allocation
   `claude-mac20x-math-layout`); quota/usage unknown from this session.
-- Updated: 2026-09-12T06:05Z
+- Updated: 2026-09-12T06:40Z

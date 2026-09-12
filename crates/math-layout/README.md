@@ -5,7 +5,7 @@ Appendix G, `tex.web` §§720–767) that turns a math list into explicit boxes
 carrying glyph identity and rule geometry. No TeX engine runs at runtime and
 no external crates are used (edition 2024).
 
-Owner: FT-020 (`mac-math-layout`). Status: first checkpoint — model, spacing,
+Owner: FT-020 (`mac-math-layout`). Status: second checkpoint — model, spacing,
 fractions, scripts, radicals, delimiters, operators, accents, oracle
 comparison. See "Unsupported" for the honest scope.
 
@@ -69,9 +69,12 @@ let runs = positioned_runs(&root, (72.0, 700.0));         // glyphs + rules in p
 | `accent_sizes(ch, size)` | accent variants, narrowest first (Rule 12) |
 | `font_name(id)` | human-readable identity for reports and renderers |
 
-`FontId` is opaque and provider-defined; once the FT-018 font engine is the
+`FontId` is opaque and provider-defined; once the FT-018 font engine
+(`crates/font-engine` on `agent/mac-font-engine/tex-fonts`, which parses the
+OpenType `MATH` table) is the
 provider, it maps to a content-addressed font handle and `gid` to the font's
-own glyph id. Until then two adapters ship:
+own glyph id; `MathParams::from_opentype` maps its `MathConstants` to the
+TeX parameters with the LuaTeX correspondence. Until then two adapters ship:
 
 - **`CmMathMetrics`** (`cm.rs`, `cm_tfm.rs`) — Computer Modern. The σ
   parameters are `\fontdimen` 5–22 of `cmsy10/7/5.tfm`, the ξ parameters
@@ -117,7 +120,8 @@ own glyph id. Until then two adapters ship:
 
 ## Validation
 
-`cargo test` (24 tests): unit tests for styles, spacing and parameters, and
+`cargo test` (25 tests): unit tests for styles, spacing, parameters, the
+OpenType MATH mapping, and
 `tests/golden.rs` — nested scripts, stacked fractions in text and display,
 radical overbar geometry and sign selection, `\left(\frac{a}{b}\right)`
 sizing, the largest-available fallback with a reported limitation, `\sum`
@@ -130,7 +134,9 @@ precision and its derivation is written next to it.
 trees and flattened runs for the fixtures in `src/fixtures.rs`.
 
 `docs/comparison.md` compares three expressions against pdfTeX (the oracle,
-never in the product path).
+never in the product path): every glyph origin and rule matches within
+0.003 bp, the reference's own output rounding. `tools/oracle_compare.py` and
+`tools/oracle_glyphs.swift` regenerate it; `examples/emit_runs.rs` feeds it.
 
 ## Unsupported / limitations
 

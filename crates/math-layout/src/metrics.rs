@@ -125,3 +125,125 @@ pub trait MathFontMetrics {
     /// Accent glyph variants, narrowest first (Rule 12).
     fn accent_sizes(&self, ch: char, size: SizeClass) -> Vec<Glyph>;
 }
+
+/// The subset of OpenType `MathConstants` (font units) needed to derive TeX's
+/// parameters. Field names follow the OpenType specification so a font
+/// engine that parses the `MATH` table (FT-018) can fill this directly.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct OpenTypeMathConstants {
+    pub units_per_em: u16,
+    pub axis_height: i16,
+    pub fraction_numerator_display_style_shift_up: i16,
+    pub fraction_numerator_shift_up: i16,
+    pub stack_top_shift_up: i16,
+    pub fraction_denominator_display_style_shift_down: i16,
+    pub fraction_denominator_shift_down: i16,
+    pub superscript_shift_up: i16,
+    pub superscript_shift_up_cramped: i16,
+    pub subscript_shift_down: i16,
+    pub superscript_baseline_drop_max: i16,
+    pub subscript_baseline_drop_min: i16,
+    pub fraction_rule_thickness: i16,
+    pub upper_limit_gap_min: i16,
+    pub lower_limit_gap_min: i16,
+    pub upper_limit_baseline_rise_min: i16,
+    pub lower_limit_baseline_drop_min: i16,
+    pub delimited_sub_formula_min_height: u16,
+}
+
+impl MathParams {
+    /// Derives TeX's parameters from OpenType `MATH` constants at `size` pt,
+    /// using the correspondence LuaTeX documents in its manual ("Math
+    /// parameters", the OpenType-to-TeX table): axis_height ← AxisHeight;
+    /// num1/num2/num3 ← FractionNumeratorDisplayStyleShiftUp /
+    /// FractionNumeratorShiftUp / StackTopShiftUp; denom1/denom2 ←
+    /// FractionDenominatorDisplayStyleShiftDown / FractionDenominatorShiftDown;
+    /// sup1 = sup2 ← SuperscriptShiftUp, sup3 ← SuperscriptShiftUpCramped;
+    /// sub1 = sub2 ← SubscriptShiftDown; sup_drop ← SuperscriptBaselineDropMax;
+    /// sub_drop ← SubscriptBaselineDropMin; default_rule_thickness ←
+    /// FractionRuleThickness; big_op_spacing1..4 ← UpperLimitGapMin,
+    /// LowerLimitGapMin, UpperLimitBaselineRiseMin, LowerLimitBaselineDropMin;
+    /// big_op_spacing5 = 0; delim1 = delim2 ← DelimitedSubFormulaMinHeight.
+    /// `x_height` and `quad` come from the text font, in font units. Fixed
+    /// registers keep the plain.tex values.
+    pub fn from_opentype(
+        c: &OpenTypeMathConstants,
+        x_height_units: i16,
+        quad_units: u16,
+        size: f64,
+    ) -> MathParams {
+        let upem = f64::from(c.units_per_em.max(1));
+        let u = |v: i16| f64::from(v) * size / upem;
+        let delim = f64::from(c.delimited_sub_formula_min_height) * size / upem;
+        MathParams {
+            size,
+            x_height: u(x_height_units),
+            quad: f64::from(quad_units) * size / upem,
+            num1: u(c.fraction_numerator_display_style_shift_up),
+            num2: u(c.fraction_numerator_shift_up),
+            num3: u(c.stack_top_shift_up),
+            denom1: u(c.fraction_denominator_display_style_shift_down),
+            denom2: u(c.fraction_denominator_shift_down),
+            sup1: u(c.superscript_shift_up),
+            sup2: u(c.superscript_shift_up),
+            sup3: u(c.superscript_shift_up_cramped),
+            sub1: u(c.subscript_shift_down),
+            sub2: u(c.subscript_shift_down),
+            sup_drop: u(c.superscript_baseline_drop_max),
+            sub_drop: u(c.subscript_baseline_drop_min),
+            delim1: delim,
+            delim2: delim,
+            axis_height: u(c.axis_height),
+            default_rule_thickness: u(c.fraction_rule_thickness),
+            big_op_spacing1: u(c.upper_limit_gap_min),
+            big_op_spacing2: u(c.lower_limit_gap_min),
+            big_op_spacing3: u(c.upper_limit_baseline_rise_min),
+            big_op_spacing4: u(c.lower_limit_baseline_drop_min),
+            big_op_spacing5: 0.0,
+            script_space: 0.5,
+            null_delimiter_space: 1.2,
+            delimiter_factor: 0.901,
+            delimiter_shortfall: 5.0,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn opentype_constants_map_to_tex_parameters() {
+        // Illustrative constants in a 1000-upem font chosen to equal Computer
+        // Modern's fontdimens (the values Latin Modern Math was designed to
+        // reproduce); the test checks the mapping, not any particular font.
+        let c = OpenTypeMathConstants {
+            units_per_em: 1000,
+            axis_height: 250,
+            fraction_numerator_display_style_shift_up: 677,
+            fraction_numerator_shift_up: 394,
+            stack_top_shift_up: 444,
+            fraction_denominator_display_style_shift_down: 686,
+            fraction_denominator_shift_down: 345,
+            superscript_shift_up: 363,
+            superscript_shift_up_cramped: 289,
+            subscript_shift_down: 247,
+            superscript_baseline_drop_max: 386,
+            subscript_baseline_drop_min: 50,
+            fraction_rule_thickness: 40,
+            upper_limit_gap_min: 111,
+            lower_limit_gap_min: 167,
+            upper_limit_baseline_rise_min: 200,
+            lower_limit_baseline_drop_min: 600,
+            delimited_sub_formula_min_height: 1300,
+        };
+        let p = MathParams::from_opentype(&c, 431, 1000, 10.0);
+        assert!((p.axis_height - 2.5).abs() < 1e-9);
+        assert!((p.num1 - 6.77).abs() < 1e-9);
+        assert!((p.sup3 - 2.89).abs() < 1e-9);
+        assert!((p.default_rule_thickness - 0.4).abs() < 1e-9);
+        assert!((p.big_op_spacing4 - 6.0).abs() < 1e-9);
+        assert_eq!(p.big_op_spacing5, 0.0);
+        assert!((p.mu() - 10.0 / 18.0).abs() < 1e-4);
+    }
+}
