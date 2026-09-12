@@ -2,34 +2,34 @@
   "agent_id": "mac-nearby-transport",
   "allocation_id": "claude-mac20x-nearby-transport",
   "assignment_acknowledgements": {},
-  "branch": "agent/mac-nearby-transport/bounded",
+  "branch": "agent/mac-nearby-transport/events",
   "capabilities": [
     "swift",
     "network-framework"
   ],
-  "code_revision": "5722cbe59aafcade2be5a88ad6aad7dfd89dcac2",
+  "code_revision": "03f4328bb39f2084e09c9b9753d481e5ea85467a",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
     "pessimistic": 0
   },
   "machine": "mac-m1max-a",
-  "main_integrated_through": "c1baad1b6558888024c4153466646bebdf24f61c",
-  "next_action": "Parent review; apply suggested NearbyInbox byte bound and NearbyView error rows; integrate into mac-shell",
+  "main_integrated_through": "780f1458c125d9702b994ab9df377aed96a1113f",
+  "next_action": "Parent review/integration of agent/mac-nearby-transport/events; mac-pairing-ui applies pairs.json v2 diff and reviews the observe arm",
   "reviewed_peers": {
     "origin/agent/mac-claude-a/mac-shell": {
-      "adaptation": "Merged mac-shell 71675cd (preview-cache, editor-diagnostics, preview-controller lanes, parent checkpoint); no Nearby files touched there; suite re-run green",
-      "reviewed_utc": "2026-09-12T08:56:30Z",
-      "sha": "71675cd668b9116d8a1fb6cad0624dff7c2b3218"
+      "adaptation": "Merged mac-shell 7a316e6 (validation, accessibility, ai-review, completion lanes); no Nearby conflicts; suite re-run green",
+      "reviewed_utc": "2026-09-12T09:19:42Z",
+      "sha": "7a316e6f293548cfc287ee5dc6af61b5ceaa4a9a"
     }
   },
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "Bounded nearby receive done: NearbyReceiveLimits/Budget (frame, image, per-session and listener-wide in-flight bytes, sessions per peer, connections) with explicit error codes; off-queue JSON+image validation (NearbyImageCheck PNG chunk CRC + streaming inflate, JPEG SOF/EOI) before main-actor delivery; per-session (capture_id, base_revision, digest) dedup with revision_mismatch/capture_id_conflict; NearbyState error state; transcript acceptance test replaying a recorded-shape companion session on loopback. Wire version unchanged.",
+  "summary": "Events follow-up for mac-pairing-ui done on agent/mac-nearby-transport/events: NearbyState.onEvent, Event.receiving byte progress (64 KiB-bounded, on completion), closeConnection(pairId:), beginPairing(resuming:expiresAt:generation:), PairingCoordinator generation on bootstrap keys refusing replaced attempts. pairs.json v2 left as a requested Pairing.swift diff; one .receiving arm added to NearbyView.observe to keep the switch exhaustive.",
   "tool": "Claude Code subagent (parent mac-claude-a)",
-  "updated_utc": "2026-09-12T08:56:30Z",
+  "updated_utc": "2026-09-12T09:19:42Z",
   "usage": {
-    "evidence": "apps/mac full swift test with real worker binaries after merging mac-shell 71675cd: 221 tests, 0 failures, 0 skipped",
+    "evidence": "apps/mac full swift test with all helper binaries after merging mac-shell 7a316e6: 336 tests, 0 failures, 4 env-gated skips of other lanes",
     "status": "Claude Max 20x shared quota; subagent cannot read usage"
   }
 }

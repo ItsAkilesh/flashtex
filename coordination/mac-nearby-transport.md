@@ -16,7 +16,7 @@
 - Branch / code revision / main integrated through:
   `agent/mac-nearby-transport/events` (from origin/agent/mac-claude-a/mac-shell
   d8baed6, which integrated the first lane at 1d76c2e; merged mac-shell
-  691d68a) / see JSON / origin/main as contained in mac-shell 691d68a. Earlier branch
+  691d68a) / see JSON / origin/main as contained in mac-shell 7a316e6. Earlier branch
   `agent/mac-nearby-transport/bounded` (b3baa25) is merged.
 - State: ready for integration (events follow-up requested by mac-pairing-ui)
 - Ready behavior and evidence:
@@ -99,7 +99,7 @@
   79 tests pass (3 consecutive runs, 1 opt-in screenshot test skipped); full
   `swift test` with FLASHTEX_COMPILER/PDF/BRIDGE/EDIT_LEDGER/
   PREVIEW_CONTROLLER/PROJECT_FILES real binaries after merging mac-shell
-  691d68a: 334 tests, 0 failures, 4 skipped (all env opt-ins of other lanes:
+  7a316e6: 336 tests, 0 failures, 4 skipped (all env opt-ins of other lanes:
   nearby screenshot dir, assistant-context helper ×2, evidence dir).
 - Exact deadline UTC / remaining time / integration reserve: no fixed deadline
   (continuous authorization); 20% reserve kept for integration.
@@ -126,7 +126,7 @@
 - Context checkpoint (docs/context-checkpoints.md): worktree
   `/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-ac78436e7821c1d3e`,
   branch `agent/mac-nearby-transport/events`, HEAD = the commit carrying this
-  file, base d8baed6, merged 691d68a. Context usage at this checkpoint is roughly a quarter of
+  file, base d8baed6, merged 7a316e6. Context usage at this checkpoint is roughly a quarter of
   the 1M window (counted from the session's token budget; no exact percentage
   is exposed to the subagent). Rules carried: no purchases/overages,
   transferred crates (font-engine, paragraph-layout, math-layout) untouched,
