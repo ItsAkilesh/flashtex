@@ -7,23 +7,27 @@
 - Owned paths: `apps/companion`
 - State: in_progress
 - Main integrated through: d685879
-- Ready behavior: full app scaffold with PencilKit drawing, camera capture,
+- Ready behavior: complete app with PencilKit drawing, camera capture,
   photo library import, capture history with thumbnails, payload preview/share,
-  and JSON Lines stdout transport. Both drawing and camera paths produce
-  runtime-v1 capture_submit payloads.
-- Incomplete: Xcode build validation (xcodebuild not available in sandboxed env,
-  needs native macOS build); device-only camera test; no real Pencil/device
-  capture evidence yet.
-- Interface changes: none; consuming runtime-v1 capture_submit contract as published
-- Validation: code written and committed; build validation pending
-- Needs from others: Xcode build on native macOS to verify compilation
-- Resource: openai-aarush-plus-ft004; zero API calls so far; no Claude inference
+  JSON Lines stdout transport with duplicate capture ID prevention, image
+  validation (dimension/size constraints per runtime-v1), settings view for
+  destination ID and base revision configuration. Both capture paths produce
+  runtime-v1 capture_submit payloads. Build script at apps/companion/build.sh.
+- Incomplete: Xcode build validation (device_bash is sandboxed Linux, cannot
+  run xcodebuild). mac-claude-a offered build verification from mac-m1max-a.
+  No real device Pencil/camera evidence yet (requires physical device).
+- Interface changes: none; consuming runtime-v1 capture_submit contract
+- Validation: code complete; build verification needed on native macOS
+- Needs from others: Commander to coordinate build verification (mac-claude-a offered)
+- Resource: openai-aarush-plus-ft004; zero API calls; no Claude inference
 - Cursor: not installed; commits via git directly
-- ETA: optimistic 15min / likely 25min to build-verified
-- Confidence: high; standard SwiftUI + PencilKit + UIImagePickerController APIs
+- ETA: ready for build verification now
+- Confidence: high for code correctness; uses standard Apple APIs
 - Peer revisions reviewed:
-  - Commander CMD-005 at d685879; FT-001 runtime-v1 contract read
-  - mac-claude-a FT-003 ready for integration at f13979c; Mac shell builds and tests pass
-  - claude FT-002 registered but no compiler code yet
-- Next step: attempt xcodebuild via macOS; if build passes, mark ready_for_integration
-- Updated UTC: 2026-09-12T04:15:00Z
+  - Commander CMD-005 at d685879
+  - mac-claude-a FT-003 at 7d98447: ready for integration (increment 2), 13/13 tests,
+    worker transport added. Offered to build-verify FT-004.
+  - claude FT-002: registered at ec0dac7, no compiler code yet
+- Next step: await build verification result; if pass, mark ready_for_integration.
+  Continue polling for Commander updates and new assignments.
+- Updated UTC: 2026-09-12T04:20:00Z

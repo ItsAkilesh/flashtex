@@ -2,8 +2,8 @@ import Foundation
 import SwiftUI
 
 /// Manages capture state and history for the companion app.
-/// On each capture, outputs the payload via CaptureTransport (JSON Lines to stdout)
-/// and stores it locally for UI review.
+/// On each capture, validates the image, outputs the payload via CaptureTransport
+/// (JSON Lines to stdout), and stores it locally for UI review.
 @Observable
 final class CaptureStore {
     var captures: [CaptureRecord] = []
@@ -11,6 +11,7 @@ final class CaptureStore {
     var currentBaseRevision: Int = 1
     var lastPayloadJSON: String?
     var showPayloadPreview: Bool = false
+    var lastError: String?
 
     struct CaptureRecord: Identifiable {
         let id: String
@@ -27,24 +28,40 @@ final class CaptureStore {
     }
 
     func addCapture(source: CaptureRecord.CaptureSource, image: UIImage, instructions: String = "Faithfully transcribe the selected handwriting; preserve notation.") {
+        lastError = nil
+
+        // Validate and constrain image
+        let validation = ImageValidator.validate(image)
+        guard validation.isValid, let validImage = validation.image else {
+            lastError = validation.error ?? "Image validation failed"
+            return
+        }
+
         let captureID = "capture-\(UUID().uuidString.prefix(8))"
         guard let envelope = CaptureEnvelope.create(
             captureID: captureID,
             destinationID: currentDestinationID,
             baseRevision: currentBaseRevision,
-            image: image,
+            image: validImage,
             instructions: instructions
-        ) else { return }
+        ) else {
+            lastError = "Failed to create capture envelope"
+            return
+        }
 
-        // Send via transport (JSON Lines to stdout)
-        CaptureTransport.shared.send(envelope)
+        // Send via transport (JSON Lines to stdout) with duplicate prevention
+        let sent = CaptureTransport.shared.send(envelope)
+        if !sent {
+            lastError = "Duplicate capture ID (already sent)"
+            return
+        }
 
         guard let json = envelope.toJSONString() else { return }
 
         // Generate thumbnail for history list
         let thumbSize = CGSize(width: 60, height: 60)
         let thumbnail = UIGraphicsImageRenderer(size: thumbSize).image { _ in
-            image.draw(in: CGRect(origin: .zero, size: thumbSize))
+            validImage.draw(in: CGRect(origin: .zero, size: thumbSize))
         }
 
         let record = CaptureRecord(

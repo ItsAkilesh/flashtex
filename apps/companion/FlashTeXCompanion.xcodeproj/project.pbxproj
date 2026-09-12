@@ -15,6 +15,8 @@
 		A1000006 /* CaptureStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000006; };
 		A1000007 /* PayloadPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000007; };
 		A1000008 /* CaptureHistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000008; };
+		A100000C /* ImageValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000D; };
+		A100000B /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000C; };
 		A100000A /* CaptureTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000B; };
 		A1000009 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A2000009; };
 /* End PBXBuildFile section */
@@ -29,6 +31,8 @@
 		A2000007 /* PayloadPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PayloadPreviewView.swift; sourceTree = "<group>"; };
 		A2000008 /* CaptureHistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureHistoryView.swift; sourceTree = "<group>"; };
 		A2000009 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		A200000D /* ImageValidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageValidator.swift; sourceTree = "<group>"; };
+		A200000C /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		A200000B /* CaptureTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureTransport.swift; sourceTree = "<group>"; };
 		A200000A /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A3000001 /* FlashTeXCompanion.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = FlashTeXCompanion.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -52,7 +56,10 @@
 				A5000006 /* Services */ = {
 			isa = PBXGroup;
 			children = (
-				A200000B /* CaptureTransport.swift */,
+				A200000D /* ImageValidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageValidator.swift; sourceTree = "<group>"; };
+		A200000C /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		A200000B /* CaptureTransport.swift */,
+				A200000D /* ImageValidator.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -69,7 +76,9 @@
 				A5000004 /* Models */,
 				A5000006 /* Services */,
 				A2000009 /* Assets.xcassets */,
-				A200000B /* CaptureTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureTransport.swift; sourceTree = "<group>"; };
+				A200000D /* ImageValidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageValidator.swift; sourceTree = "<group>"; };
+		A200000C /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		A200000B /* CaptureTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureTransport.swift; sourceTree = "<group>"; };
 		A200000A /* Info.plist */,
 			);
 			path = FlashTeXCompanion;
@@ -83,6 +92,8 @@
 				A2000004 /* CameraCaptureView.swift */,
 				A2000007 /* PayloadPreviewView.swift */,
 				A2000008 /* CaptureHistoryView.swift */,
+				A200000D /* ImageValidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageValidator.swift; sourceTree = "<group>"; };
+		A200000C /* SettingsView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -99,7 +110,10 @@
 		A5000006 /* Services */ = {
 			isa = PBXGroup;
 			children = (
-				A200000B /* CaptureTransport.swift */,
+				A200000D /* ImageValidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageValidator.swift; sourceTree = "<group>"; };
+		A200000C /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		A200000B /* CaptureTransport.swift */,
+				A200000D /* ImageValidator.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -159,7 +173,10 @@
 			productRefGroup = A5000006 /* Services */ = {
 			isa = PBXGroup;
 			children = (
-				A200000B /* CaptureTransport.swift */,
+				A200000D /* ImageValidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageValidator.swift; sourceTree = "<group>"; };
+		A200000C /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		A200000B /* CaptureTransport.swift */,
+				A200000D /* ImageValidator.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -178,7 +195,9 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				A100000A /* CaptureTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000B; };
+				A100000C /* ImageValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000D; };
+		A100000B /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000C; };
+		A100000A /* CaptureTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000B; };
 		A1000009 /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -198,7 +217,12 @@
 				A1000006 /* CaptureStore.swift in Sources */,
 				A1000007 /* PayloadPreviewView.swift in Sources */,
 				A1000008 /* CaptureHistoryView.swift in Sources */,
-				A100000A /* CaptureTransport.swift in Sources */,
+				A100000C /* ImageValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000D; };
+		A100000B /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000C; };
+		A100000A /* CaptureTransport.swift in Sources */,
+				A100000C /* ImageValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000D; };
+		A100000B /* SettingsView.swift in Sources */,
+				A100000C /* ImageValidator.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

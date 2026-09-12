@@ -26,6 +26,13 @@ struct ContentView: View {
             .tabItem {
                 Label("History", systemImage: "clock")
             }
+
+            NavigationStack {
+                SettingsView()
+            }
+            .tabItem {
+                Label("Settings", systemImage: "gear")
+            }
         }
         .environment(store)
         .sheet(isPresented: Binding(
