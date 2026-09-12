@@ -14,23 +14,23 @@
     "rust",
     "rendering"
   ],
-  "code_revision": "9cadc6f11fbcc143a7b8af5d3054fc7888836638",
+  "code_revision": "5c5e3f89dd51cc0c1517b915b95c9a65a654bd89",
   "eta_minutes": {
-    "likely": 15,
-    "optimistic": 5,
-    "pessimistic": 25
+    "likely": 20,
+    "optimistic": 10,
+    "pessimistic": 30
   },
   "machine": "linux-primary",
   "main_integrated_through": "84d581168eed75caa620f66350d629a23b0ce538",
-  "next_action": "Next rendering-core product assignment after this tested checkpoint.",
+  "next_action": "Consume font6404ea6 CFF physical VF endpoints and adapt owned exhaustive matches, then nested consumer acceptance.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "Published selection gates; renderer manifest export/discovery and rooted roundtrip now complete.",
+  "summary": "Exact bounded PDF operator-stream fallback implemented; original backend API gap tracked in GH25.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T08:02:13Z",
+  "updated_utc": "2026-09-12T08:13:11Z",
   "usage": {
-    "evidence": "127 ordinary tests and strict all-target clippy pass. Separate pinned mixed backend/fi-ligature test passes. cf427f9 merged unchanged; generation-pinned export/discovery and rooted version2 import preserve active leases and exact CFF table identity. No native activation.",
-    "status": "Existing hosted OpenAI allocation only; no paid providers or descendants."
+    "evidence": "131 ordinary tests and strict clippy pass. Actual CLI emits32 operators/694 content bytes from pinned synthetic sourceSHAabfb227dafe89962540936529bdd8244a6b6201160f7ed491529fc924797f1a5. Real pinned STIX emits247 operators/3649 bytes SHA b5c42ae77008a3823076688513d636925c8c86dfdc5223f00ad481083b87bb42. Nonterminating decimals and alpha reject. PDF4bd8c2e readonly API cannot accept paths and rounds3decimals; no standalone PDF/native parity claim.",
+    "status": "Hosted OpenAI only; no paid providers or descendants."
   }
 }

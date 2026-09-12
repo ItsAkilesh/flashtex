@@ -452,3 +452,9 @@ explicit user choice. Importing the exported manifest through the rooted registr
 loader preserves the semantic generation and active rendering leases. Saving is
 left to the caller's existing rooted file layer. No system discovery or native
 protocol change is introduced.
+
+The opt-in `pdf_stream` adapter emits validated exact PDF path operators and a
+provenance sidecar. It refuses unsupported decimal rounding/transparency and does
+not write another PDF container. See [PDF-INTEGRATION.md](PDF-INTEGRATION.md) for
+the reviewed backend limitation, missing owner API, exact geometry gates and
+executable synthetic/real-font stream checks.
