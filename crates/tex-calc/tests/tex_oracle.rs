@@ -12,6 +12,18 @@
 //! font-presence checks): a short list of well-known absolute paths, and an
 //! `eprintln!("skipped: ...")` + early `return` when none exist.
 //!
+//! That runtime `return` alone is not enough to keep a skip from being
+//! *counted* as a pass, though: a `#[test]` fn that returns normally without
+//! asserting anything is reported by cargo's test harness as "ok" --
+//! text-identical, in the summary, to one that actually ran the comparison.
+//! Every test here that needs a real `tex` is therefore also tagged
+//! `#[cfg_attr(not(tex_oracle_available), ignore = "...")]`, where
+//! `tex_oracle_available` is a cfg this crate's `build.rs` sets after running
+//! the same binary probe at build time. On a machine with no `tex`, these
+//! tests show up in the summary as `ignored`, never silently folded into
+//! `passed`. (`didot_and_font_relative_units_are_rejected_not_approximated`
+//! needs no `tex` binary at all and is never ignored.)
+//!
 //! ## Extracting TeX's *exact* internal value
 //!
 //! `\showthe\dimen0` prints a decimal rounded to 5 places (the famous
@@ -178,6 +190,10 @@ fn compare_ok(tex: &Path, cases: &[(&str, &str)]) {
 }
 
 #[test]
+#[cfg_attr(
+    not(tex_oracle_available),
+    ignore = "no real tex binary found on this machine at build time (see find_tex's candidate list); reported as ignored, not passed, so a missing oracle can never be mistaken for one that ran"
+)]
 fn every_supported_unit_matches_real_tex_for_one_whole_unit() {
     let Some(tex) = find_tex() else {
         eprintln!("skipped: no `tex` binary found on this machine (see find_tex's candidate list)");
@@ -207,6 +223,10 @@ fn every_supported_unit_matches_real_tex_for_one_whole_unit() {
 }
 
 #[test]
+#[cfg_attr(
+    not(tex_oracle_available),
+    ignore = "no real tex binary found on this machine at build time (see find_tex's candidate list); reported as ignored, not passed, so a missing oracle can never be mistaken for one that ran"
+)]
 fn negative_and_dyadic_fractional_literals_match_real_tex_exactly() {
     let Some(tex) = find_tex() else {
         eprintln!("skipped: no `tex` binary found on this machine");
@@ -237,6 +257,10 @@ fn negative_and_dyadic_fractional_literals_match_real_tex_exactly() {
 }
 
 #[test]
+#[cfg_attr(
+    not(tex_oracle_available),
+    ignore = "no real tex binary found on this machine at build time (see find_tex's candidate list); reported as ignored, not passed, so a missing oracle can never be mistaken for one that ran"
+)]
 fn nonzero_non_dyadic_fractions_diverge_from_tex_rounding() {
     let Some(tex) = find_tex() else {
         eprintln!("skipped: no `tex` binary found on this machine");
@@ -281,6 +305,10 @@ fn nonzero_non_dyadic_fractions_diverge_from_tex_rounding() {
 }
 
 #[test]
+#[cfg_attr(
+    not(tex_oracle_available),
+    ignore = "no real tex binary found on this machine at build time (see find_tex's candidate list); reported as ignored, not passed, so a missing oracle can never be mistaken for one that ran"
+)]
 fn max_dimen_boundary_matches_tex_for_pt_and_sp_literals() {
     let Some(tex) = find_tex() else {
         eprintln!("skipped: no `tex` binary found on this machine");
@@ -345,6 +373,10 @@ fn max_dimen_boundary_matches_tex_for_pt_and_sp_literals() {
 }
 
 #[test]
+#[cfg_attr(
+    not(tex_oracle_available),
+    ignore = "no real tex binary found on this machine at build time (see find_tex's candidate list); reported as ignored, not passed, so a missing oracle can never be mistaken for one that ran"
+)]
 fn max_dimen_boundary_diverges_from_tex_for_a_converted_unit() {
     let Some(tex) = find_tex() else {
         eprintln!("skipped: no `tex` binary found on this machine");
@@ -417,6 +449,10 @@ fn max_dimen_boundary_diverges_from_tex_for_a_converted_unit() {
 }
 
 #[test]
+#[cfg_attr(
+    not(tex_oracle_available),
+    ignore = "no real tex binary found on this machine at build time (see find_tex's candidate list); reported as ignored, not passed, so a missing oracle can never be mistaken for one that ran"
+)]
 fn tex_advance_and_multiply_do_not_bound_check_against_max_dimen_but_this_crate_always_does() {
     let Some(tex) = find_tex() else {
         eprintln!("skipped: no `tex` binary found on this machine");
@@ -466,6 +502,10 @@ fn tex_advance_and_multiply_do_not_bound_check_against_max_dimen_but_this_crate_
 }
 
 #[test]
+#[cfg_attr(
+    not(tex_oracle_available),
+    ignore = "no real tex binary found on this machine at build time (see find_tex's candidate list); reported as ignored, not passed, so a missing oracle can never be mistaken for one that ran"
+)]
 fn integer_multiply_and_divide_truncation_matches_tex() {
     let Some(tex) = find_tex() else {
         eprintln!("skipped: no `tex` binary found on this machine");

@@ -84,6 +84,40 @@ impl Unit {
     /// TeX does. Returns a typed overflow error if the magnitude exceeds
     /// [`MAX_DIMEN_SP`], and a typed [`CalcError::DivisionByZero`] if
     /// `denominator` is not positive.
+    ///
+    /// # Divergence from real TeX on non-dyadic fractional literals
+    ///
+    /// This function computes **one exact rational** from `numerator` and
+    /// `denominator` and truncates it toward zero a single time at the end.
+    /// Real TeX instead works in two stages (tex.web `round_decimals` then
+    /// `scan_dimen`): it first **rounds** the written fractional decimal
+    /// digits to the nearest 1/65536 of the *stated* unit (ties round up),
+    /// and only then applies the unit-to-point ratio. The two algorithms are
+    /// mathematically different operations, not just different
+    /// implementations of the same one.
+    ///
+    /// They agree exactly whenever `Sp`'s truncation has nothing to disagree
+    /// about: for `Unit::Sp` (already an integer) or `Unit::Pt` with an
+    /// integer literal, and for any literal whose fractional part is an
+    /// exact dyadic fraction representable in 16 bits (`.5`, `.25`, `.125`,
+    /// ... or no fraction at all) -- which is every hand-checked literal in
+    /// this module's own tests, including the well-known `1in` =
+    /// `72.26999pt` quirk. For a literal with a *non*-dyadic fractional part
+    /// (e.g. `.1`, `.3`), in any unit including plain `pt`, the two can
+    /// differ by a handful of `sp` (well under a thousandth of a point):
+    /// concretely, `evaluate("3.1pt")` here gives `203161sp`, while real TeX
+    /// gives `203162sp`. This also shifts the `MAX_DIMEN` overflow boundary
+    /// for converted units by a similarly tiny amount.
+    ///
+    /// This is a deliberate, documented finding, not something fixed here --
+    /// replicating tex.web's exact two-stage round-then-floor algorithm
+    /// would be a rewrite of this crate's central arithmetic, and that
+    /// tradeoff belongs to this crate's owner, not this function. See the
+    /// live-TeX-checked regression in
+    /// `tests/tex_oracle.rs::nonzero_non_dyadic_fractions_diverge_from_tex_rounding`
+    /// (and the fuller writeup in that file's module doc comment) for the
+    /// exact reproducible numbers and every other case this was checked
+    /// against.
     pub fn to_sp(self, numerator: i128, denominator: i128) -> Result<Sp, CalcError> {
         if denominator <= 0 {
             return Err(CalcError::DivisionByZero);
