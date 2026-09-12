@@ -52,21 +52,67 @@ Grep targets: `apps/mac/Tests/FlashTeXMacTests/*`, `apps/mac/Tests/FlashTeXAcces
   UNCOVERED: any bound on the announcement work for large selections and a
   before/after measurement of that lever.
 
+## Results (final, 2026-09-12T18:40Z)
+
+Branch `agent/mac-editor-a11y-3/rotor-motion` @ c7efc09b (pushed), on mac-shell 9ba9851c.
+
+1. Rotor (974e765a): `EditorRotor.swift` + `Completion.swift` (+10 lines,
+   `accessibilityCustomRotors()` on `CompletingTextView`): Headings (built-in
+   type) and Environments rotors over `AccessibleEditorModel.rotorItems`, AppKit
+   SearchParameters contract (ends when no current item, strictly after/before
+   the caret VoiceOver passes, filter string, no wrap), results carry the text
+   view + UTF-16 range; items cached per storage edit generation.
+   `EditorRotorTests.swift`: 7 tests pass (forward/backward, from caret, empty
+   document, off-screen headings, filter, cache invalidation on edit; 560 KB
+   rebuild 80–130 ms once per edit, printed). No window activated.
+2. Reduce motion (7cdc5d7a): `ReduceMotion.swift` (`isEnabled` reads
+   `NSWorkspace.shared.accessibilityDisplayShouldReduceMotion` each use,
+   `override` for tests, `animate(_:_:)` = `withAnimation` or immediate);
+   `PreviewAnchor.swift` probe keeps synchronous corrections, skips the
+   deferred settle-timer scroll under reduce motion (drift counted in
+   `driftsLeftUncorrected`, anchor re-captured). `PreviewV2View.swift` has no
+   animated site (grep). `ReduceMotionTests.swift`: 3 tests pass (hosted,
+   never key). `PreviewAnchoringTests` 8 pass + 1 helper skip unchanged.
+3. Selection lever (c7efc09b): `SourceEditorView+LargeDocument.swift`
+   `boundedSelectionAnnouncement` (limit 65 536 UTF-16 units → exact line-span
+   form). `LargeDocumentEditorTests`: +2 tests pass (unit; load-aware bench).
+   Measured 560 KB, debug, FLASHTEX_BENCH_FORCE (1-min load 196–299 from other
+   agents' builds — wall figures unreliable, CPU figures quoted): select-all
+   through the hosted editor 35.09 ms CPU p50 (wall 245 / 109 ms in two runs);
+   announcement alone 2.58 ms CPU unbounded → 0.27 ms bounded. With the
+   `announceNow` hook applied locally (labelled `-applied` branch, discarded):
+   coordinator announced "Selected 10316 lines, line 1 column 1 to line 10317
+   column 1"; select-all CPU p50 35.09 ms — no measurable change at the
+   operation level; the remaining cost is TextKit 1 selection layout.
+   25/25 tests passed on the applied branch (SourceEditorViewTests 20,
+   ReduceMotion 3, LargeDocument 2).
+
+### Diff requests for parent-retained files (both compiled and tested on the applied branch)
+
+```diff
+--- a/apps/mac/Sources/FlashTeXMac/PreviewView.swift
++++ b/apps/mac/Sources/FlashTeXMac/PreviewView.swift
+@@ -49,7 +49,7 @@ struct PreviewView: View {
+             .onChange(of: caretPage) { _, page in
+                 // Page-level only: keeps the page under the caret in view when the
+                 // editor moves across pages; no scrolling within a page.
+-                if let page { withAnimation { proxy.scrollTo(page, anchor: .top) } }
++                if let page { ReduceMotion.animate { proxy.scrollTo(page, anchor: .top) } }
+             }
+--- a/apps/mac/Sources/FlashTeXMac/SourceEditorView.swift
++++ b/apps/mac/Sources/FlashTeXMac/SourceEditorView.swift
+@@ -981,7 +981,7 @@ struct SourceEditorView: NSViewRepresentable {
+         func announceNow(text: String, range: NSRange, prefix: String, suffix: String = "") {
+-            guard let message = SourceEditorView.selectionAnnouncement(text: text, range: range) else { return }
++            guard let message = SourceEditorView.boundedSelectionAnnouncement(text: text, range: range) else { return }
+```
+
+Limitations: no VoiceOver end-to-end run (Accessibility permission not granted);
+the system reduce-motion setting itself was never toggled (injected flag only);
+full `swift test` not run (1-min load never below 20 during the resumed session).
+
 ## Checkpoint
 
-- Updated UTC: 2026-09-12T18:34Z (resumed after quota cut ~17:25Z).
-- Branch/SHA: `agent/mac-editor-a11y-3/rotor-motion` @ 7cdc5d7a (pushed):
-  22bbe3c8 registration/audit, 974e765a rotor (follow-up 1, 7 tests),
-  b57a0a32 merge of mac-shell 9ba9851c, 7cdc5d7a reduce motion (follow-up 2, 3 tests).
-- Dirty: `SourceEditorView+LargeDocument.swift` (bounded selection announcement),
-  `LargeDocumentEditorTests.swift` (+2 tests), this handoff.
-- Next: run `LargeDocumentEditorTests/testWholeDocumentSelectionCostAndBoundedAnnouncement`
-  when 1-min load < 20 (`FLASHTEX_NO_ACTIVATE=1 swift test --filter ...`), commit
-  follow-up 3, push; apply the one-line `announceNow` hook on a local
-  `…-applied` branch for the select-all after-figure; final report with the
-  `PreviewView.swift` + `SourceEditorView.swift` diff requests.
-- Decisions: reduce motion keeps synchronous anchor corrections, drops only the
-  deferred settle-timer scroll (drift counted + anchor re-captured); the
-  selection lever is the announcement grapheme walk only (highlight already
-  skips non-empty selections); limit 65 536 UTF-16 units → line-span form.
+- Branch/SHA: `agent/mac-editor-a11y-3/rotor-motion` @ c7efc09b (pushed). Lane DONE.
+- Dirty: this handoff, `coordination/agents/mac-editor-a11y-3.json` (final commit pending).
 - Consumed: mac-shell 9ba9851c. Resource: parent's shared Claude Max 20x; no purchases.
