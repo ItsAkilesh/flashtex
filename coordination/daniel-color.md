@@ -160,7 +160,7 @@ correct byte offset, never a panic — see `unicode_symbol_is_a_typed_error_not_
 
 Exact tested commit SHA (this branch, `crates/color-expressions/**` +
 this file, on top of input main SHA `53fee3012b2902ca05bd31766defa515b3044cec`):
-`PENDING_SHA`
+`c72af8637d0907b1ba43b4c462ddb091d23c3c76`
 
 ## Incomplete / not attempted
 
