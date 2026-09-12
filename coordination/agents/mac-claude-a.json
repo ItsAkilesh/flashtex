@@ -3,10 +3,10 @@
   "allocation_id": "openai-mac-plus-ft003",
   "assignment_acknowledgements": {
     "FT-003": {
-      "acknowledged_utc": "2026-09-12T05:20:43Z",
-      "adaptation": "Accepted FT-003 rev 4 (integrate six child streams) at input main 6096405. Running children: mac-bridge-client (transfer-v1 vs bridge b5ca96b), mac-nearby (TLS-PSK pairing listener), mac-pdf-unicode (crates/pdf 1ea4261 opt-in TrueType embedding), mac-completion, mac-packaging (ec94f89/983b627/99c805a merged), mac-native-e2e (oracle d3754f9 done; e2e running). Parent merges only after reviewing diffs and running swift test / xcodebuild.",
-      "main_sha": "998e566c3a23bffeca141c0ce6688c217655b87a",
-      "revision": 4
+      "acknowledged_utc": "2026-09-12T06:17:21Z",
+      "adaptation": "Accepted FT-003 rev 5 (packaged recovery/responsiveness) at input main 2d67b0d; rev 4 delivered at b18ed2f (136/136 with real compiler/pdf/bridge/edit-ledger). Plan: packaging worker bundles bridge + edit-ledger helper into FlashTeX.app and reruns install/update/launch-check; native-e2e worker runs the pinned packaged demo with measured edit/capture/export latency, crash/restart, disconnect/retry, stale-preview and accessibility evidence using exact component SHAs; gaps stay explicit.",
+      "main_sha": "87d20e8fa3c80bffcb223a503dc5da0f4784eb58",
+      "revision": 5
     }
   },
   "branch": "agent/mac-claude-a/mac-shell",
@@ -16,15 +16,15 @@
     "rust",
     "macos-simulators"
   ],
-  "code_revision": "b18ed2f8d311ee92820e99d042f8966bbcfc6b50",
+  "code_revision": "abccbd6c92b3c27e8d48a50cb89174f8b02eddb1",
   "eta_minutes": {
-    "likely": 0,
-    "optimistic": 0,
-    "pessimistic": 0
+    "likely": 60,
+    "optimistic": 30,
+    "pessimistic": 120
   },
   "machine": "mac-m1max-a",
-  "main_integrated_through": "ae3f4de96282e7ea2c60aa268ed5f0b09c664e06",
-  "next_action": "Forward FT-020 r2; integrate render-pipeline (Opus) and font-engine/paragraph r2; re-merge main on Commander baseline",
+  "main_integrated_through": "87d20e8fa3c80bffcb223a503dc5da0f4784eb58",
+  "next_action": "Packaged demo evidence run; bundle bridge+ledger",
   "reviewed_peers": {
     "origin/agent/aarush-macbook/companion-capture": {
       "adaptation": "Peer cannot run xcodebuild; will verify their branch from this Mac. No contract change.",
@@ -47,18 +47,18 @@
       "sha": "25a92a9c591a92a3d49071e536ecf8f129112c24"
     },
     "origin/main": {
-      "adaptation": "Coordination-only merges; FT-019/020 rev 2 forwarded",
-      "reviewed_utc": "2026-09-12T06:16:25Z",
-      "sha": "928595ecbd1cf63af5924c7a4df76f12350b52af"
+      "adaptation": "rev 5 dispatched; children assigned",
+      "reviewed_utc": "2026-09-12T06:17:21Z",
+      "sha": "87d20e8fa3c80bffcb223a503dc5da0f4784eb58"
     }
   },
   "schema_version": 1,
-  "state": "ready_for_integration",
-  "summary": "FT-003 rev 4 ready at b18ed2f: 136/136 tests with real compiler/pdf/bridge/edit-ledger; bridge defects fixed; LM default face; 11 child crates/streams ready",
+  "state": "in_progress",
+  "summary": "FT-003 rev 5 accepted; rev 4 ready at b18ed2f (136/136)",
   "tool": "Claude Code",
-  "updated_utc": "2026-09-12T06:16:25Z",
+  "updated_utc": "2026-09-12T06:17:21Z",
   "usage": {
-    "evidence": "Claude Max 20x; Fable agent stopped at user request, replaced by Opus; no purchases",
+    "evidence": "Claude Max 20x; no purchases",
     "status": "unknown"
   }
 }
