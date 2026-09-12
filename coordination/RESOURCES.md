@@ -203,3 +203,23 @@ Hosted Commander grants `openai-commander-corpus` (FT-011) and
 `openai-commander-protocol` (FT-012): two independent 30-minute product-validation
 subtasks in isolated worktrees, no descendants or additional external model calls.
 These share the already-authorized Commander account; usage/cost unknown.
+
+## Current additional worker evidence — September 12, 04:42 UTC
+
+`chatgpt-a` on `aarush-macbook-chatgpt` reports Codex CLI, Xcode 26.6, Swift,
+Python, and Git push capability at registration `1d34323`; quota remains unknown.
+Grant `openai-aarush-chatgpt-ft014` authorizes the independent FT-014 companion
+validation harness under `tools/companion-validation`, using existing OpenAI
+subscription access only. It does not authorize API purchases or overlapping
+writes to FT-004's `apps/companion` ownership.
+
+The Linux Claude credential metadata reports subscription type Max and tier
+`default_claude_max_20x`, matching the user's authorization, but the CLI reports
+logged out with no access or refresh token and no eligible API environment key.
+Pool `claude-linux-max20x` is user-authorized for substantial project work after
+login; usable quota is unknown. API-credit fallback is authorized only when an
+actually funded existing API route is verified. New charges, purchases, and
+overages remain prohibited. Grant `claude-linux-max20x-ft015` and its queued stages
+reserve the existing plan route for FT-015 after successful login; they authorize
+no inference while authentication is absent. No inference has run. The worker must
+open/reconcile its auth recovery issue before reporting active execution.
