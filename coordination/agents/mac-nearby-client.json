@@ -1,0 +1,45 @@
+{
+  "agent_id": "mac-nearby-client",
+  "allocation_id": "claude-mac20x-nearby-client",
+  "assignment_acknowledgements": {},
+  "branch": "agent/mac-nearby-client/reconnect",
+  "capabilities": [
+    "swift",
+    "network-framework"
+  ],
+  "code_revision": "d1da72cc74343cdba2d02430eb02bb1c884e6521",
+  "eta_minutes": {
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 30
+  },
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "780f1458c125d9702b994ab9df377aed96a1113f",
+  "next_action": "Parent to merge agent/mac-nearby-client/reconnect into mac-shell (Package.swift test-only path dependency on tools/nearby-client carried from 80b5f84)",
+  "reviewed_peers": {
+    "origin/agent/mac-claude-a/mac-shell": {
+      "adaptation": "Merged mac-shell 45c60e2 (mac-nearby-transport bounded receive 1d76c2e); every new error code handled as proposal \u00a74 specifies, with tests against the real listener using lowered NearbyReceiveLimits",
+      "reviewed_utc": "2026-09-12T09:32:22Z",
+      "sha": "7161a26cde7c7870d3dc57083a6a871b182e81e9"
+    },
+    "origin/agent/mac-claude-a/nearby-client": {
+      "adaptation": "Previous worker's 80b5f84 (tip 6e15104 merges mac-shell) resumed on the mac-shell base with its tests kept; FakeMac and NearbyState tests now bind loopback only. origin/main 1457db4 read: no apps/mac/tools overlap, not merged.",
+      "reviewed_utc": "2026-09-12T08:48:19Z",
+      "sha": "6e1510404eb14905fd5aa89c954ac14a2a582630"
+    },
+    "origin/main": {
+      "adaptation": "Previous worker's 80b5f84 (tip 6e15104 merges mac-shell) resumed on the mac-shell base with its tests kept; FakeMac and NearbyState tests now bind loopback only. origin/main 1457db4 read: no apps/mac/tools overlap, not merged.",
+      "reviewed_utc": "2026-09-12T08:48:19Z",
+      "sha": "1457db4f7a35a604c95c3e049df45fbceecac582"
+    }
+  },
+  "schema_version": 1,
+  "state": "ready_for_integration",
+  "summary": "Nearby reference client on mac-shell 45c60e2 (incl. mac-nearby-transport 1d76c2e): NearbyReconnector with bounded attempts/deadline, backoff+jitter, identical capture_id re-send, current-destination check; explicit terminal errors (needsRepair / needsNewCapture / destinationChanged / attemptsExhausted / cancelled); connection bounds; receive-cap codes handled per proposal \u00a74 (too_many_in_flight/inbox_full: wait for acks on the same session then re-send; too_many_sessions: drop own session, back off, reconnect; image_too_large/invalid_image/revision_mismatch/capture_id_conflict terminal; client-side image checks); CLI exit 3/4/5 with per-code hints. Fixed a Swift 6.2.4 abort on task cancellation (async-closure default argument). Tests: tools/nearby-client 35/35; apps/mac 316 tests 0 failures (real binaries); 9 real-listener e2e incl. duplicate delivery across a same-port restart, revoked pairing, revoked destination, backpressure, too_many_sessions, image refusals, same-session dedup/revision mismatch. Native evidence docs/evidence/nearby-client-recovery-2026-09-12T092814Z.md (17/17 at d1da72c). Loopback only everywhere.",
+  "tool": "Claude Code subagent (parent mac-claude-a)",
+  "updated_utc": "2026-09-12T09:32:22Z",
+  "usage": {
+    "evidence": "docs/evidence/nearby-client-recovery-2026-09-12T092814Z.md; coordination/mac-nearby-client.md",
+    "status": "Shared Claude Max 20x quota with parent mac-claude-a; no purchases; usage unknown"
+  }
+}

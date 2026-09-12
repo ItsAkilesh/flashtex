@@ -261,3 +261,19 @@ pub fn math_kern_fixture() -> Vec<u8> {
     be32(&mut b, record + 12, 300);
     b
 }
+
+#[allow(dead_code)]
+pub fn math_device_fixture() -> Vec<u8> {
+    let mut b = math_kern_fixture();
+    let count = u16::from_be_bytes(b[4..6].try_into().unwrap()) as usize;
+    let record = 12 + (count - 1) * 16;
+    let offset = u32::from_be_bytes(b[record + 8..record + 12].try_into().unwrap()) as usize;
+    for (at, n) in [(24, 290), (238, 68), (252, 54), (298, 22)] {
+        be16(&mut b, offset + at, n)
+    }
+    for n in [12u16, 12, 1, 0x4000] {
+        b.extend(n.to_be_bytes())
+    }
+    be32(&mut b, record + 12, 308);
+    b
+}

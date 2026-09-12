@@ -545,6 +545,7 @@ mod path;
 pub use path::{PathCommand, QuadraticPath};
 
 pub mod tfm;
+pub mod tfm_run;
 
 pub mod encoding;
 
@@ -567,3 +568,9 @@ pub mod math_variants;
 pub mod math_fit;
 
 pub mod math_kern;
+
+pub mod math_device;
+
+pub mod math_cache;
+
+pub mod enc_file;

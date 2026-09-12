@@ -1,0 +1,14 @@
+This is TeX, Version 3.141592653 (TeX Live 2026) (preloaded format=tex 2026.3.22)  12 SEP 2026 05:54
+**oracle.tex
+(./oracle.tex
+> \box0=
+\hbox(0.0+0.0)x10.0
+.\probe A
+.\probe B (ligature |)
+
+! OK.
+l.5 \showbox0
+             
+
+ )
+No pages of output.

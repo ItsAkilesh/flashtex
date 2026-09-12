@@ -18,7 +18,10 @@ use std::{
     thread,
     time::Duration,
 };
+mod output_buffer;
 mod wire;
+use output_buffer::OutputBuffer;
+const MAX_OUTPUT_BYTES: usize = 16 * 1024 * 1024;
 
 const MAX_FRAME: usize = 1024 * 1024;
 // Leave four MiB below the helper frame bound for its wrapping metadata.
@@ -40,23 +43,10 @@ fn string<'a>(v: &'a Value, name: &str) -> Result<&'a str, String> {
 fn number(v: &Value, name: &str) -> Result<u64, String> {
     v[name].as_u64().ok_or(format!("missing integer {name}"))
 }
-struct OutputBuffer(Vec<u8>);
-impl Write for OutputBuffer {
-    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
-        if self.0.len().saturating_add(bytes.len()) > 16 * 1024 * 1024 {
-            return Err(io::Error::other("output frame exceeds 16 MiB"));
-        }
-        self.0.extend_from_slice(bytes);
-        Ok(bytes.len())
-    }
-    fn flush(&mut self) -> io::Result<()> {
-        Ok(())
-    }
-}
 fn emit(tx: &SyncSender<Vec<u8>>, stopped: &AtomicBool, value: Value) {
-    let mut buffer = OutputBuffer(Vec::new());
+    let mut buffer = OutputBuffer::new(MAX_OUTPUT_BYTES);
     if serde_json::to_writer(&mut buffer, &value).is_err() {
-        buffer.0.clear();
+        buffer = OutputBuffer::new(MAX_OUTPUT_BYTES);
         let error = failure(
             value["session_id"].as_str().unwrap_or(""),
             value["id"].clone(),
@@ -67,8 +57,11 @@ fn emit(tx: &SyncSender<Vec<u8>>, stopped: &AtomicBool, value: Value) {
             return;
         }
     }
-    buffer.0.push(b'\n');
-    if tx.try_send(buffer.0).is_err() {
+    let Ok(bytes) = buffer.finish() else {
+        stopped.store(true, Ordering::SeqCst);
+        return;
+    };
+    if tx.try_send(bytes).is_err() {
         stopped.store(true, Ordering::SeqCst);
     }
 }
@@ -597,6 +590,23 @@ fn main() {
 #[cfg(test)]
 mod configuration_tests {
     use super::*;
+    #[test]
+    fn oversized_result_error_does_not_retain_large_output_allocation() {
+        let (tx, rx) = mpsc::sync_channel(1);
+        let stopped = AtomicBool::new(false);
+        emit(&tx, &stopped, Value::String("x".repeat(MAX_OUTPUT_BYTES)));
+        let bytes = rx.try_recv().unwrap();
+        assert!(!stopped.load(Ordering::SeqCst));
+        assert!(bytes.capacity() < 4096);
+        assert_eq!(bytes.last(), Some(&b'\n'));
+        let error: Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(error["type"], "error");
+        assert!(error["payload"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("durable"));
+    }
+
     #[test]
     fn compiler_frame_configuration_preserves_helper_headroom() {
         assert_eq!(
