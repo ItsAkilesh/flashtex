@@ -17,6 +17,13 @@
 //!   same string; non-zero: a `TJ` number, the pdfTeX shape); otherwise it
 //!   gets its own `Tm`. Either way the replayed position is the envelope's
 //!   origin exactly (`exact::glyph_positions`, tested).
+//! - `/W` widths are the producer's own kern-free advances (the most
+//!   frequent `advance_x / font_size` per glyph) wherever they differ from
+//!   the font's hmtx. Painting does not change (origins are absolute), but a
+//!   viewer's text extraction decides word boundaries from where the pen
+//!   lands after each glyph: with hmtx widths, Latin Modern's bold `W`
+//!   (TFM 1093/1000 em, hmtx 1189) made PDFKit read "Wednesday," as
+//!   "W ednesday ,". The report counts the replaced entries.
 //! - Fonts are content-addressed (`font_id` = SHA-256 of the program) and
 //!   the envelope carries no path, so the bytes are resolved by hashing
 //!   candidate files (`--font-dir`, `FLASHTEX_FONT_DIRS`, `FLASHTEX_LM_DIR`,
@@ -36,7 +43,8 @@
 //! Everything unsupported is an error naming the item; nothing is dropped.
 
 use crate::exact::{
-    Content, Decimal, ExactDocument, ExactFont, ExactPage, GlyphRun, Op, PlacedGlyph, SubsetOutcome,
+    Content, Decimal, ExactDocument, ExactFont, ExactPage, GlyphRun, Op, PlacedGlyph, Ratio,
+    SubsetOutcome,
 };
 use crate::json::{self, Value};
 use crate::sha256;
@@ -97,6 +105,11 @@ pub struct V2Report {
     /// Glyphs that continued the previous segment with an exact `TJ`
     /// adjustment.
     pub kerned_glyphs: usize,
+    /// `/W` entries written from the display list's own advances because
+    /// they differ from the font's hmtx (the producer's TFM metrics; a
+    /// viewer's text extraction keeps word boundaries only when the pen
+    /// after a glyph lands where the next glyph actually starts).
+    pub display_widths: usize,
     pub diagnostics: Vec<String>,
     pub notes: Vec<String>,
 }
@@ -339,6 +352,10 @@ pub fn from_v2(envelope: &str, options: &V2Options) -> Result<(ExactDocument, V2
         gids: BTreeSet<u16>,
         to_unicode: BTreeMap<u16, String>,
         conflicts: usize,
+        /// Observed `advance_x` per glyph as a reduced ratio in 1000/em
+        /// (`advance_x * 1000 / font_size`), with occurrence counts. The
+        /// most frequent value is the producer's kern-free width.
+        advances: BTreeMap<u16, BTreeMap<(i128, i128), usize>>,
     }
     let mut used: BTreeMap<String, Used> = BTreeMap::new();
     // A pending glyph run before joining decisions (needs font metrics).
@@ -350,7 +367,6 @@ pub fn from_v2(envelope: &str, options: &V2Options) -> Result<(ExactDocument, V2
     }
     enum Pending {
         Run {
-            font_id: String,
             resource: String,
             size_ticks: i128,
             rgb: Option<[Decimal; 3]>,
@@ -399,6 +415,7 @@ pub fn from_v2(envelope: &str, options: &V2Options) -> Result<(ExactDocument, V2
                         gids: BTreeSet::new(),
                         to_unicode: BTreeMap::new(),
                         conflicts: 0,
+                        advances: BTreeMap::new(),
                     });
                     let mut glyphs = Vec::new();
                     for (gi, gv) in arr(iv.get("glyphs"), &format!("{iw}.glyphs"))?
@@ -442,9 +459,16 @@ pub fn from_v2(envelope: &str, options: &V2Options) -> Result<(ExactDocument, V2
                             }
                         }
                         u.gids.insert(gid);
-                        // advance_x is validated but not used: absolute origins are
-                        // authoritative and advances must not be added again.
-                        let _ = advance_x;
+                        // Absolute origins are authoritative and advances are never
+                        // added to them; advance_x only informs the /W width (below).
+                        if advance_x >= 0 {
+                            let r = Ratio::new(advance_x * 1000, size);
+                            *u.advances
+                                .entry(gid)
+                                .or_default()
+                                .entry((r.num, r.den))
+                                .or_default() += 1;
+                        }
                         glyphs.push(Glyph {
                             gid,
                             origin_x,
@@ -459,7 +483,6 @@ pub fn from_v2(envelope: &str, options: &V2Options) -> Result<(ExactDocument, V2
                     report.runs += 1;
                     page_fonts.insert(entry.resource.clone());
                     items.push(Pending::Run {
-                        font_id: font_id.to_string(),
                         resource: entry.resource.clone(),
                         size_ticks: size,
                         rgb: pt.rgb,
@@ -500,7 +523,6 @@ pub fn from_v2(envelope: &str, options: &V2Options) -> Result<(ExactDocument, V2
     // Pass 2: resolve and embed the fonts that are used.
     let dirs = font_dirs(options);
     let mut exact_fonts: BTreeMap<String, ExactFont> = BTreeMap::new();
-    let mut loaded: BTreeMap<String, TrueTypeFont> = BTreeMap::new();
     for font_id in &order {
         let Some(u) = used.get(font_id) else {
             continue;
@@ -574,9 +596,17 @@ pub fn from_v2(envelope: &str, options: &V2Options) -> Result<(ExactDocument, V2
                 entry.postscript_name, entry.format
             ));
         }
-        let (exact, outcome, note) =
+        let (mut exact, outcome, note) =
             ExactFont::cid_from_opentype(&font, &u.gids, u.to_unicode.clone())
                 .map_err(|e| e.to_string())?;
+        let replaced = apply_display_widths(&mut exact, &u.advances);
+        if replaced > 0 {
+            report.display_widths += replaced;
+            report.notes.push(format!(
+                "font {}: {replaced} /W width(s) taken from the display list's advances where they differ from hmtx (producer metrics; keeps word boundaries in text extraction)",
+                entry.postscript_name
+            ));
+        }
         if u.conflicts > 0 {
             report.notes.push(format!(
                 "font {}: {} glyph occurrence(s) with a different cluster text than the first; ToUnicode keeps the first mapping (cluster ActualText needs marked content, outside the bounded set)",
@@ -595,7 +625,6 @@ pub fn from_v2(envelope: &str, options: &V2Options) -> Result<(ExactDocument, V2
             note,
         });
         exact_fonts.insert(entry.resource.clone(), exact);
-        loaded.insert(font_id.clone(), font);
     }
 
     // Pass 3: finish the glyph runs now that advances are known.
@@ -603,38 +632,38 @@ pub fn from_v2(envelope: &str, options: &V2Options) -> Result<(ExactDocument, V2
     for (width, height, items, page_fonts) in pages_ops {
         let mut ops = Vec::new();
         for item in items {
-            let (font_id, resource, size_ticks, rgb, glyphs) = match item {
+            let (resource, size_ticks, rgb, glyphs) = match item {
                 Pending::Ops(o) => {
                     ops.extend(o);
                     continue;
                 }
                 Pending::Run {
-                    font_id,
                     resource,
                     size_ticks,
                     rgb,
                     glyphs,
-                } => (font_id, resource, size_ticks, rgb, glyphs),
+                } => (resource, size_ticks, rgb, glyphs),
             };
-            let font = &loaded[&font_id];
-            let upem = font.units_per_em as i128;
+            let widths = cid_widths(&exact_fonts[&resource]);
             let mut placed = Vec::with_capacity(glyphs.len());
             let mut prev: Option<&Glyph> = None;
             for g in &glyphs {
                 // Continue the previous glyph's segment when the gap between
                 // the envelope origin and the natural advance is an exactly
-                // representable TJ adjustment: with `w` the /W width
-                // (adv*1000/upem) the viewer places this glyph at
+                // representable TJ adjustment: with `w` the written /W width
+                // (wn/wd in 1000/em) the viewer places this glyph at
                 // prev + (w - n)/1000 * size, so n = w - 1000*delta/size.
                 let adjust: Option<Option<Decimal>> = prev.and_then(|p| {
                     if p.y_pdf != g.y_pdf || p.advance_y != 0 {
                         return None;
                     }
-                    let adv = font.advance(p.gid) as i128;
+                    let w = widths
+                        .get(&p.gid)
+                        .map_or(Ratio::int(1000), Ratio::from_decimal);
                     let delta = g.origin_x - p.origin_x;
-                    // n = (adv*1000*size - 1000*delta*upem) / (upem*size)
-                    let num = adv * 1000 * size_ticks - 1000 * delta * upem;
-                    let den = (upem * size_ticks) as u128;
+                    // n = (wn*size - 1000*delta*wd) / (wd*size)
+                    let num = w.num * size_ticks - 1000 * delta * w.den;
+                    let den = (w.den * size_ticks) as u128;
                     if num == 0 {
                         return Some(None);
                     }
@@ -688,6 +717,62 @@ pub fn from_v2(envelope: &str, options: &V2Options) -> Result<(ExactDocument, V2
         },
         report,
     ))
+}
+
+/// The `/W` map of a CID font (empty for simple fonts).
+fn cid_widths(font: &ExactFont) -> BTreeMap<u16, Decimal> {
+    match font {
+        ExactFont::CidCff(c) | ExactFont::CidTrueType(c) => c.widths.clone(),
+        ExactFont::Simple(_) => BTreeMap::new(),
+    }
+}
+
+/// Writes the producer's own kern-free advance as the `/W` width of every
+/// glyph whose observed advance differs from the hmtx value. Positions are
+/// unaffected (every glyph is placed by its envelope origin); what changes
+/// is where a viewer believes the pen is after the glyph, which is what
+/// text extraction uses to decide word boundaries: Latin Modern's OpenType
+/// hmtx gives `W` in the bold face 1189/1000 em while the TFM metrics the
+/// producer laid out with give 1093, so with hmtx widths PDFKit read
+/// "Wednesday," as "W ednesday ,". The most frequent observed ratio per
+/// glyph is taken (kerns to a following glyph are folded into `advance_x`
+/// by the producer and are the minority); ties go to the larger width.
+/// Returns how many entries were replaced.
+fn apply_display_widths(
+    font: &mut ExactFont,
+    advances: &BTreeMap<u16, BTreeMap<(i128, i128), usize>>,
+) -> usize {
+    let cid = match font {
+        ExactFont::CidCff(c) | ExactFont::CidTrueType(c) => c,
+        ExactFont::Simple(_) => return 0,
+    };
+    let mut replaced = 0;
+    for (gid, seen) in advances {
+        let Some(((num, den), _)) = seen.iter().max_by(|((an, ad), ac), ((bn, bd), bc)| {
+            ac.cmp(bc).then_with(|| (an * bd).cmp(&(bn * ad)))
+        }) else {
+            continue;
+        };
+        let value = match Decimal::from_ratio(*num, *den as u128, 12) {
+            Some(d) => d,
+            None => {
+                let rounded = (*num as f64 / *den as f64 * 10000.0).round() / 10000.0;
+                match Decimal::new(&format!("{rounded}")) {
+                    Ok(d) => d,
+                    Err(_) => continue,
+                }
+            }
+        };
+        match cid.widths.get(gid) {
+            Some(current) if Ratio::from_decimal(current) == Ratio::from_decimal(&value) => {}
+            Some(_) => {
+                cid.widths.insert(*gid, value);
+                replaced += 1;
+            }
+            None => {}
+        }
+    }
+    replaced
 }
 
 /// Convenience for callers with a path.
