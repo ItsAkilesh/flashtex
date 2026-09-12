@@ -27,6 +27,31 @@ and transactionally apply a validated plan, in reverse byte order within each fi
 against the same revisions. This library never applies edits. Validation establishes
 consistency, not user approval or authentication of the caller's intended query.
 
+`serialize_literal_replacement_plan(&plan, max_bytes)` validates the plan and
+returns standalone UTF8 JSON conforming to `replacement-plan.schema.json`.
+Output never exceeds the caller's byte limit or the 32 MiB hard ceiling; failure
+returns `SerializationLimit` with no partial output. Decimal strings encode all
+revisions, generation, offsets, and work/match counts exactly; native consumers
+must parse them with checked integer conversion. Offsets are half-open UTF8 byte
+positions, not UTF16 indices. Snapshot documents, selected paths, and edits have
+deterministic order. The full project snapshot is included even for selected-file
+searches. JSON escapes control characters, quotes, and backslashes, preserving
+other Unicode characters without normalization.
+
+The schema describes wire structure only. A consumer must independently enforce
+integer ranges, byte limits, project identity, the complete snapshot, exact expected
+UTF8 slices, nonoverlap, consistent replacements, and user approval before applying.
+Schema conformance alone proves neither source consistency nor user authorization.
+There is no deserialization/application endpoint in this crate. For a standalone
+native-consumable example, run:
+
+```sh
+cargo run --offline --manifest-path crates/project-index/Cargo.toml --example replacement_wire
+```
+
+The example prints a deterministic proposal with Unicode text, escaped controls,
+and a maximum u64 document revision; it does not write or modify documents.
+
 `citation_metadata(snapshot, key)` inspects bounded bibliography values locally.
 Records retain entry/key, field-name/expression, and atom UTF8 source spans.
 Braced and quoted literals preserve internal braces and TeX text; decimal atoms
