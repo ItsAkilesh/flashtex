@@ -1,0 +1,23 @@
+{
+  "acceptance": [
+    "cargo test passes including Unicode UTF-8 source spans, malformed-input diagnostics and recovery, and JSONLines request/result roundtrip. Show a minimal document producing positioned text and a second edited revision. Keep Cargo.toml and Cargo.lock within crates/compiler; do not create root workspace files. Read docs/contracts/runtime-v1.md and ack before editing; first evidence in 45 minutes. Cursor CLI executes commits."
+  ],
+  "agent_id": "claude",
+  "allocation_id": "openai-kabir-plus-ft002",
+  "branch": "agent/claude/compiler-foundation",
+  "deadline_utc": "2026-09-12T14:00:00Z",
+  "dependencies": [
+    "FT-001"
+  ],
+  "input_main_sha": "6d096a32a3d0a18b619f52099433afadb3962154",
+  "objective": "Use the authenticated Codex account on mac-m5pro-kabir to implement an original Rust compiler foundation; retain agent ID claude only as registration identity. Implement runtime-v1 JSONLines compile requests and text layout/source diagnostics without invoking an existing TeX engine. Report unsupported commands honestly.",
+  "owned_paths": [
+    "crates/compiler"
+  ],
+  "revision": 1,
+  "schema_version": 1,
+  "state": "assigned",
+  "task_id": "FT-002",
+  "timebox_minutes": 45,
+  "updated_utc": "2026-09-12T03:49:50Z"
+}

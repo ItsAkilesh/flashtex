@@ -9,6 +9,8 @@ Owner: Commander, designated by the user. Updated: 2026-09-12T03:43:54Z.
 | mac-claude-a | mac-m1max-a | Registration from Claude; Codex Plus also available | Reported M1 Max, Xcode 26.3, Swift, Rust, simulators; paired devices offline | openai-mac-plus-ft003; included Claude not allocated | Registered via 431889c; FT-003 assigned, acceptance pending |
 | aarush-macbook | aarush-macbook | Registration from Cowork; ChatGPT Plus available | Reported M5, Xcode 26.6, Swift, Python; no simulators installed | openai-aarush-plus-ft004; tool readiness must be confirmed | Registered via 5db9d2c; FT-004 assigned, acceptance pending |
 
+| claude | mac-m5pro-kabir | Codex Plus for implementation; authenticated Cursor for commits | Reported M5 Pro, Rust ready; no full Xcode | openai-kabir-plus-ft002; protected Claude excluded | Registered ec0dac7; FT-002 assigned, acceptance pending |
+
 Two Mac registrations were read directly from their remote branches. These are
 capability reports, not proof of active implementation. Their prior registration
 commits were not executed by Cursor; do not merge/rewrite those commits to hide

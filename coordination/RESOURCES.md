@@ -73,11 +73,11 @@ Reserve 20% of confirmed allocatable funds for integration unless directed other
 |---|---|---|---|---|---|---|
 | cursor-docs-commit-001 | cursor-project | Cursor CLI / linux-primary | One bounded documentation commit session; monetary cost unknown | One completed session; monetary cost unknown | Charge unresolved; no inference in flight | Completed: b37237b committed by Cursor and pushed by Commander; zero Claude calls |
 | cursor-orchestration-commit-002 | cursor-project | Cursor CLI / linux-primary | One bounded orchestration-docs commit session; monetary cost unknown | One completed session; monetary cost unknown | Charge unresolved; no inference in flight | Completed: 567d84b committed by Cursor and pushed to main; zero Claude calls |
-| cursor-registration-commit-003 | cursor-project | Cursor CLI / linux-primary | One bounded self-registration clarification commit session | Pending; monetary cost unknown | One session | Authorized follow-up commit; no nested calls |
+| cursor-registration-commit-003 | cursor-project | Cursor CLI / linux-primary | One bounded self-registration clarification commit session | Completed 276bb1c; monetary cost unknown | No call in flight | Actual Cursor commit verified |
 | commander-orch-001 | openai-commander | commander / linux-primary | Current orchestration task under user's account authorization | Usage unknown to repository | Unknown | Active; no delegated development agents started |
 | commander-orch-002 | openai-commander | commander / linux-primary | Coordination CLI, shared contracts, and dispatch implementation | Usage unknown | Unknown | Active; no new API funding inferred |
 | ORCH-002-R1 | openai-commander | coordination_review / linux-primary | One hosted read-only review, 5-minute timebox; no descendants | One completed review; quota/cost unknown | No model call in flight | Completed; findings incorporated; no external model/Claude/Cursor calls |
-| cursor-protocol-commit-004 | cursor-project | Cursor CLI / linux-primary | One bounded tooling/dispatch commit session | Pending; monetary cost unknown | One session | Authorized Cursor publish workflow; no nested calls |
+| cursor-protocol-commit-004 | cursor-project | Cursor CLI / linux-primary | One bounded tooling/dispatch commit session | Completed 6d096a3; monetary cost unknown | No call in flight | Actual Cursor commit verified and integrated |
 | openai-mac-plus-ft003 | openai-mac-plus | mac-claude-a / mac-m1max-a | One 45-minute native-shell task; no descendants or paid API calls | Unknown | Awaiting acceptance | Use available user-provided OpenAI subscription access; do not consume protected Claude allowance |
 | openai-aarush-plus-ft004 | openai-aarush-plus | aarush-macbook | One 45-minute capture task; no descendants or paid API calls | Unknown | Awaiting tool readiness/acceptance | No Claude fallback; report unavailable OpenAI tooling instead of purchasing |
 
@@ -112,3 +112,21 @@ credentials; use non-sensitive pool and machine aliases.
 
 Do not purchase credits, enable auto-recharge, enable overages, or change account
 plans without explicit user authorization.
+
+## Kabir registration reconciliation — September 12, 03:48 UTC
+
+Source: origin/agent/claude/machine-resource-inventory at ec0dac7c535d3de55dbc0b51694f30608717f5f0.
+Worker reports ChatGPT **Plus**, not a 20x Codex plan, on mac-m5pro-kabir.
+Pool `openai-kabir-plus` is subscription access, with no API balance. The worker
+measured 4% weekly usage at 03:18Z; this is a historical snapshot, not live quota.
+Three weekly resets are worker-reported user authorization, unverified; none
+allocated or consumed by Commander. Do not assume resets are available or trigger
+one automatically. Preserve the protected Claude restriction.
+
+Grant `openai-kabir-plus-ft002`: one 45-minute original Rust compiler foundation
+task for agent `claude` using **Codex**, no descendants, API purchases, or overages.
+Acknowledgement pending; usage unknown. Authenticated Cursor may execute coherent
+checkpoint commits under the user's existing commit authorization; report usage.
+
+Grant `cursor-dispatch-commit-005`: one bounded Cursor session to commit this
+registration/dispatch follow-up. Monetary cost unknown; no nested agents.

@@ -1,11 +1,11 @@
 # Commander bulletin and recovery packet
 
 Owner: primary Codex agent on linux-primary, appointed by the user.
-Update ID: CMD-003. Updated: 2026-09-12T03:43:54Z.
+Update ID: CMD-004. Updated: 2026-09-12T03:43:54Z.
 
 - Objective: execute coordination and shared-interface work while dispatching Mac tasks.
-- Current integrated baseline: `276bb1c`; this batch contains real coordination
-  code, tests, runtime contract fixtures, roster updates, and first assignments.
+- Current integrated baseline: `6d096a3`; coordination code, tests, runtime
+  fixtures, and first native assignments are published on main.
 - ORCH-002: Commander built `scripts/coord.py`; 12 isolated Git integration tests
   pass. A 60-second discovery service runs locally until the deadline; it performs
   no model calls, commits, merges, or pushes.
@@ -32,7 +32,7 @@ Update ID: CMD-003. Updated: 2026-09-12T03:43:54Z.
 - Registration: agents populate the system themselves. No user-supplied machine
   list is needed. Discover registration branches, record capabilities, dispatch,
   and wait for task acknowledgements before counting implementation as active.
-- Pending integrations: coordination CLI/runtime contract/assignments batch.
+- Pending integrations: third-machine compiler dispatch follow-up.
   No cancellations pending.
 - Last worker review: aarush-macbook 5db9d2ca61d29e0d4e3b60a8be2cbc3f204a6630;
   mac-claude-a 431889cbb426f320e7080601eb8e9cbaeb3bfdca. Adaptation: assign native
@@ -42,3 +42,10 @@ Update ID: CMD-003. Updated: 2026-09-12T03:43:54Z.
 - Next action: verify Cursor publication, review worker ACKs and issue submissions,
   keep main integrated. Stop discovery service early with
   `systemctl --user stop flashtex-coordination-watch.service` if needed.
+
+- Third registration reviewed: ec0dac7c535d3de55dbc0b51694f30608717f5f0.
+  Adaptation: Kabir Mac has Rust but no Xcode; assign FT-002 under crates/compiler
+  using its available Codex Plus account, with actual Cursor commits. No Xcode
+  installation needed for this task. Assignment acknowledgement remains pending.
+- Local working branch: agent/commander/coordination-tools. Watcher and temporary
+  sleep inhibitor active; neither runs model sessions or wakes remote agents.
