@@ -1,0 +1,40 @@
+{
+  "agent_id": "mac-multifile",
+  "allocation_id": "claude-mac20x-multifile",
+  "assignment_acknowledgements": {},
+  "branch": "agent/mac-multifile/project-documents",
+  "capabilities": [
+    "swift",
+    "macos"
+  ],
+  "code_revision": "beedc99ff4f3ebde85d3372b3a98c987ba747fd1",
+  "eta_minutes": {
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 20
+  },
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "277a0910811fdb27bd156ecd92b92b50f277c750",
+  "next_action": "Parent: review/cherry-pick or drop the last commit 'requested parent diffs' (ContentView picker+ProjectMenu, compile/attach entryPath, in-flight release by path, isDirty/saveTexInteractive routing, quit flow); merge into mac-shell. Follow-ups if wanted: transitive include discovery, persistent detach when the helper offers it, resolve-conflict UI for per-document saves.",
+  "reviewed_peers": {
+    "origin/agent/mac-claude-a/mac-shell": {
+      "adaptation": "Merged mac-shell 271a366 (Export PDF exact, render pipeline attach, main merges) at a clean checkpoint; no interface overlap with ProjectDocuments; parent diffs re-applied on the merged tree and rebuilt",
+      "reviewed_utc": "2026-09-12T09:57:38Z",
+      "sha": "271a3663789222b134151ece31b90dc8a56d23bf"
+    },
+    "origin/main": {
+      "adaptation": "main d2ba37a read via the mac-shell merge; no assignment naming mac-multifile; no contract change",
+      "reviewed_utc": "2026-09-12T09:57:38Z",
+      "sha": "d2ba37a16e18160868122dbf59906e70bceb1284"
+    }
+  },
+  "schema_version": 1,
+  "state": "ready_for_integration",
+  "summary": "Multi-file projects model layer on agent/mac-multifile/project-documents (merged mac-shell 271a366): ProjectIncludes lexical \\input/\\include scan (bounded, UTF-8 byte spans, rooted normalization mirroring ProjectPath), ProjectDocuments (model.project): helper opens with exact snapshot versions+membership generation (stale refused, reported), direct rooted reads (no symlink/escape), documents entry-first stable order with per-document durable revisions, explicit detach via detach_document, caret-preserving switchDocument (pending-edit refusal, navigation switches recorded), per-document save (helper export with disk expectation / rooted compare-and-replace), flush-on-switch durability, helper sync on attach. swift test with real workers: owned files only 380 tests / 4 skipped (assistant-context env) / 0 failures on base 92a052c; with the labelled 'requested parent diffs' commit applied 383 / 4 skipped / 0 failures; final merged-tree count in coordination/mac-multifile.md; lane file 13/13 across six runs. Evidence screenshot (helper route, chapter.tex active, preview from both files) at /tmp/flashtex-multifile-evidence.png (not committed).",
+  "tool": "Claude Code subagent (parent mac-claude-a)",
+  "updated_utc": "2026-09-12T09:57:38Z",
+  "usage": {
+    "evidence": "coordination/mac-multifile.md validation section; final full-suite line recorded there",
+    "status": "shared Claude Max 20x quota with parent mac-claude-a; no purchases; totals unknown"
+  }
+}
