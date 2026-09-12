@@ -35,7 +35,7 @@
     "pessimistic": 0
   },
   "machine": "mac-m1max-a",
-  "main_integrated_through": "27437b9",
+  "main_integrated_through": "9e05acd",
   "next_action": "Commander merges agent/mac-pdf/v2-adapter; render-pipeline to emit SHA-256(bytes) for fonts[].sha256 and decide Times bytes; rendering-core to accept opentype-cff",
   "reviewed_peers": {
     "origin/agent/commander-render-core/rendering-core": {
@@ -61,9 +61,9 @@
   },
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "crates/pdf: issue #28 classifier fix (both sides always parsed); from-v2 adapter feeds the exact route from rendering-v2 display lists (original GIDs at exact tick positions, fonts by content hash as GID-preserving CFF subsets, typed rules, ToUnicode); 18 corpus fixtures flashtex-render --v2 -> from-v2 vs pdflatex-lmodern measured per category in docs/v2-adapter-gap.md (text-only fixtures: 0 ink-only pixels on 01/04/05/17, <=240/page elsewhere; math/lists differ where the pipeline reports limits). Rebased on origin/main 27437b9 incl. Commander's b587385 integration. cargo test 78/78, clippy clean.",
+  "summary": "crates/pdf v2-adapter: from-v2 feeds the exact route from rendering-v2 display lists; exact TJ kerning when representable (never on the producer's 12 TeX pt tick sizes, reported) with exact position replay tests; CFF Subr/String INDEX pruning (LM Math 7 glyphs 109,797 -> 1,753 B) with inlined-charstring identity; 18-fixture rerun 3.07 MB -> 2.01 MB, categories and rasters unchanged; issue #28 fixed. Rebased on origin/main 9e05acd. cargo test 80/80, clippy clean.",
   "tool": "Claude Code subagent (parent mac-claude-a)",
-  "updated_utc": "2026-09-12T10:05:00Z",
+  "updated_utc": "2026-09-12T10:40:00Z",
   "usage": {
     "evidence": "Shared Claude Max quota with parent mac-claude-a; no purchases; context about 4% of session budget at this checkpoint",
     "status": "unknown"

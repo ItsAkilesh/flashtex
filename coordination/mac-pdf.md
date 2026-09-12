@@ -1,6 +1,7 @@
 # mac-pdf handoff — v2-adapter follow-up (from-v2 feeds the exact route) and issue #28
 
-- Updated UTC: 2026-09-12T10:05Z
+- Updated UTC: 2026-09-12T10:40Z (follow-up 2 below added; branch merged
+  with origin/main `9e05acd`)
 - Agent / parent / machine: `mac-pdf` (Claude Code subagent) / parent
   `mac-claude-a` / `mac-m1max-a`. Context usage at this checkpoint: about 4%
   of the session budget (14.39 M of 15 M tokens remaining per the runtime
@@ -20,6 +21,22 @@
   `agent/mac-pdf/exact-export` is superseded by this branch for everything
   after `d25a647`.
 - State: ready for integration.
+- Follow-up 2 (coordinator, after the Mac app adopted from-v2): (1) exact
+  `TJ` kerning — `PlacedGlyph.adjust`, `GlyphRun::to_ops` emits `TJ`
+  segments, `exact::Ratio` + `glyph_positions` replay text operators
+  exactly; `from-v2` kerns when `n = (adv·1000·size − 1000·Δ·upem)/(upem·size)`
+  terminates, else `Tm`; positions asserted to round-trip on the real
+  fixture (55 glyphs) and a hand-built one with a kern (`c7135e5`). On the
+  corpus the kern path never fires: 12 TeX pt = 12,535,902 ticks has a
+  factor 3, so no gap is a terminating thousandth of the size — reported,
+  not worked around. (2) CFF Subr + String INDEX pruning with call-operand
+  rewriting; identity now checked on inlined charstrings; LM Math 7-glyph
+  subset 109,797 → 1,753 B, LM Roman 12 23,130 → 2,634 B; raster
+  pixel-identical to unpruned (`5c4edb5`). (3) 18-fixture rerun: total
+  output 3,071,763 → 2,009,504 B (8–32% on small documents, 89–97% on the
+  multi-page ones dominated by per-glyph `Tm` content), categories and
+  rasters unchanged on all 18; before/after table in
+  `docs/v2-adapter-gap.md`. 80 tests, clippy clean.
 - Ready behavior and evidence:
   - Issue #28 fixed (`f4ad92e`): `compare::classify` parses both sides even
     when decoded bytes are identical; unsupported streams are
@@ -63,11 +80,9 @@
     (`tests/fixtures/v2-plain-paragraph.json`) with Latin Modern resolved by
     hash (skips loudly if absent; ran here).
 - Incomplete behavior / limits:
-  - Streams carry one `Tm` per glyph on real pipeline output (TFM-based
-    advances never match hmtx exactly), so files are larger than pdfTeX's;
-    fidelity is unaffected.
-  - `latinmodern-math.otf` subsets are ~110 KB for 7–39 glyphs (bounded
-    subsetter keeps subr INDEXes whole); pruning is a size follow-up.
+  - Streams still carry one `Tm` per glyph on real pipeline output because
+    the producer's tick sizes make exact `TJ` kerns non-terminating (see
+    follow-up 2); files are larger than pdfTeX's, fidelity is unaffected.
   - Cluster ActualText reduced to per-glyph ToUnicode (no `BDC`/`EMC` in the
     bounded set); no conflicts observed on the corpus.
   - Parity not claimed anywhere; measured with CoreGraphics only.
