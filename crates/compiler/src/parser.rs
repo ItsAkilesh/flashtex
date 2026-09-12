@@ -1006,7 +1006,16 @@ impl P<'_> {
             }
             if matches!(
                 environment.as_str(),
-                "gather" | "gather*" | "align" | "align*"
+                "gather"
+                    | "gather*"
+                    | "align"
+                    | "align*"
+                    | "alignat"
+                    | "alignat*"
+                    | "flalign"
+                    | "flalign*"
+                    | "multline"
+                    | "multline*"
             ) && self.in_body
             {
                 self.multirow_environment(span, &environment, blocks, para);
@@ -1156,7 +1165,11 @@ impl P<'_> {
     ) {
         self.flush_paragraph(blocks, para);
         let numbered = !name.ends_with('*');
-        let aligned = name.starts_with("align");
+        let aligned = name.starts_with("align") || name.starts_with("flalign");
+        if name.starts_with("alignat") {
+            // The column-pair count; cells are split on `&` regardless.
+            let _ = self.required_group("alignat", open);
+        }
         // Per row: (cells of raw tokens, unnumbered flag, labels).
         type RawRow = (Vec<Vec<Token>>, bool, Vec<(String, Span)>);
         let mut rows: Vec<RawRow> = vec![(vec![Vec::new()], false, Vec::new())];
@@ -1261,6 +1274,13 @@ impl P<'_> {
             })
         {
             rows.pop();
+        }
+        if name == "multline" {
+            // One multline display carries a single number, on its last line.
+            let last = rows.len().saturating_sub(1);
+            for (index, row) in rows.iter_mut().enumerate() {
+                row.1 |= index != last;
+            }
         }
 
         let mut math_rows = Vec::new();

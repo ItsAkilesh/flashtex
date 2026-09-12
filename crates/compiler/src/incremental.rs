@@ -496,6 +496,11 @@ fn shift_math_list(
                         Nucleus::Radical(list) => {
                             Nucleus::Radical(shift_math_list(list, changes, deltas)?)
                         }
+                        Nucleus::Bold(text) => Nucleus::Bold(text.clone()),
+                        Nucleus::Framed { body, frame } => Nucleus::Framed {
+                            body: shift_math_list(body, changes, deltas)?,
+                            frame: *frame,
+                        },
                         Nucleus::Matrix {
                             rows,
                             columns,

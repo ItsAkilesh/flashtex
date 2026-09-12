@@ -120,7 +120,9 @@ Required, outstanding — this is a foundation, not a LaTeX implementation:
 `\section{...}`, `\subsection{...}`, `\label{key}`, `\ref{key}`,
 `\pageref{key}`, `\caption{...}`, `\textbf`, `\emph`, `\textit`,
 `\begin`/`\end` for `document`, `equation`, `figure`, `itemize`, and
-`enumerate`, `\item`, `\par`, and `\\`. Macro
+`enumerate` (plus the amsmath displays `alignat`, `flalign` and `multline`,
+starred or not; `multline` numbers only its last line), `\item`, `\par`, and
+`\\`. Macro
 argument counts are decimal integers from 0 through 9, and replacement
 parameters are `#1` through `#9`. Paragraphs are separated by blank lines.
 `%` begins a comment. Any other command produces an explicit "not supported by
@@ -183,6 +185,14 @@ their argument in the current math face (no distinct face yet). `\displaystyle`,
 `\textstyle`, `\limits` and `\nolimits` are accepted without changing size.
 `\,` `\:` `\>` `\;` `\ ` and `\!` are math spaces. The math environments
 `split`, `aligned`, `alignedat` and `gathered` lay out as grids.
+
+`\binom{n}{k}` (and `\dbinom`, `\tbinom`) is a two-row grid in parentheses.
+`\sqrt[n]{x}` raises the index as a script ahead of the radical sign.
+`\mathbf{text}` typesets literal text in Times-Bold. `\boxed{...}`,
+`\overline{...}` and `\underline{...}` draw real rules around, over or under
+their math list. `\tag{x}` places `(x)` two quads after the display content
+(`\tag*{x}` without parentheses); it is not right-aligned yet. `\pmod{n}`
+typesets `(mod n)`.
 The corresponding Unicode glyph must exist in the Symbol face selected by the
 export mapping; ordinary math letters and digits use Times-Roman. Unknown math
 commands produce an explicit diagnostic naming the command and are rendered
