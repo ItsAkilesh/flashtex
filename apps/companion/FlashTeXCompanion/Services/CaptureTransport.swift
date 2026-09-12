@@ -19,17 +19,19 @@ final class CaptureTransport {
     func send(_ envelope: CaptureEnvelope) -> Bool {
         let captureID = envelope.payload.captureID
 
+        // Serialize before reserving the ID. A serialization failure must not
+        // turn a retryable capture into a permanently suppressed duplicate.
+        guard let json = envelope.toJSONString() else {
+            fputs("error: failed to serialize capture envelope \(captureID)\n", stderr)
+            return false
+        }
+
         lock.lock()
         let isNew = sentCaptureIDs.insert(captureID).inserted
         lock.unlock()
 
         guard isNew else {
             fputs("warning: duplicate capture_id \(captureID) suppressed\n", stderr)
-            return false
-        }
-
-        guard let json = envelope.toJSONString() else {
-            fputs("error: failed to serialize capture envelope \(captureID)\n", stderr)
             return false
         }
 
