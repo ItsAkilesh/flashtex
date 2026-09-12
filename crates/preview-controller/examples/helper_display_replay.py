@@ -22,6 +22,7 @@ def main():
         parser.add_argument('--' + name, required=True)
     parser.add_argument('--repeat', type=int, default=1)
     parser.add_argument('--reply-limit', type=int)
+    parser.add_argument('--compiler-max-frame-bytes', type=int)
     parser.add_argument('--helper-source-sha')
     parser.add_argument('--compress-artifacts', action='store_true')
     parser.add_argument('--display-transport', choices=('value', 'raw-prototype'), default='value')
@@ -64,6 +65,8 @@ def main():
         settings = dict(session_id='benchmark', project_id='p', entry_path='main.tex',
             project_root=str(root/'project'), private_ledger_root=str(root/'private'),
             compiler_path=str(Path(args.producer).resolve()), diagnostic_timings=True)
+        if args.compiler_max_frame_bytes is not None:
+            settings['compiler_max_frame_bytes'] = args.compiler_max_frame_bytes
         if args.display_transport == 'raw-prototype':
             settings['display_transport'] = 'raw-prototype'
         capability = ('display-candidates-raw-v1' if args.display_transport == 'raw-prototype'
@@ -128,7 +131,13 @@ def main():
                 request = dict(protocol_version=1, type='compile', id=current['request_id'], payload=dict(
                     project_id='p', revision=current['compile_revision'], entry_path='main.tex',
                     documents=[dict(path='main.tex', text=source)], layout_capabilities=['display-list-v2']))
-                direct = subprocess.run([args.producer], input=(json.dumps(request)+'\n').encode(),
+                direct_env = os.environ.copy()
+                if args.compiler_max_frame_bytes is not None:
+                    budget = args.compiler_max_frame_bytes - 1
+                    if args.reply_limit is not None and args.reply_limit > 0:
+                        budget = min(budget, args.reply_limit)
+                    direct_env['FLASHTEX_MAX_REPLY_BYTES'] = str(budget)
+                direct = subprocess.run([args.producer], env=direct_env, input=(json.dumps(request)+'\n').encode(),
                     capture_output=True, check=True, timeout=20)
                 lines = [json.loads(line) for line in direct.stdout.splitlines()]
                 assert current is not None
@@ -168,15 +177,17 @@ def main():
         try:
             recovered = snapshot_after_initial_preview(client)
             assert recovered == document, 'durable source changed on reopen'
+            (output/'reopened-document.json').write_text(json.dumps(recovered, indent=2)+'\n')
         finally:
             client.stop()
     evidence = dict(cases=cases, exact_reopen=True, helper_sha256=digest(args.helper),
         producer_sha256=digest(args.producer), producer_source_sha=expected['producer_sha'],
         producer_evidence_sha256=digest(args.producer_evidence), fixture_sha256=digest(args.fixture),
         assets=expected['assets'], diagnostics=diagnostics, diagnostic_capture_status=diagnostic_capture_status,
-        repeat=args.repeat, reply_limit=args.reply_limit,
+        repeat=args.repeat, reply_limit=args.reply_limit, compiler_max_frame_bytes=args.compiler_max_frame_bytes,
         display_transport=args.display_transport, negotiated_capability=capability,
         native_rendering='not performed', native_latency='not measured')
+    evidence['reopened_document_sha256'] = digest(output/'reopened-document.json')
     evidence['helper_source_sha'] = args.helper_source_sha
     evidence['replay_script_sha256'] = digest(__file__)
     evidence['replay_client_sha256'] = digest(Path(__file__).with_name('helper_replay.py'))
