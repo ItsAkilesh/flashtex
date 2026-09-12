@@ -45,6 +45,7 @@ struct FlashTeXMacApp: App {
                 .onAppear { appDelegate.model = model }
         }
         .commands {
+            NavigationCommands(model: model) // Navigation.swift
             CommandGroup(after: .pasteboard) {
                 Divider()
                 Button("Pin Insertion Point") { model.pinAnchorAtCaret() }

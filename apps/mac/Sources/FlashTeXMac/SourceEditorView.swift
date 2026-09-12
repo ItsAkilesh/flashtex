@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import FlashTeXProtocol
 
 /// NSTextView wrapper. Uses a monospaced font, reports edits, applies UTF-16
 /// selections requested by preview navigation, and underlines diagnostic marks
@@ -10,13 +11,14 @@ struct SourceEditorView: NSViewRepresentable {
     var selection: ShellModel.Selection?
     var pendingEdit: ShellModel.PendingEdit?
     var marks: [EditorDiagnostics.Mark] = []
+    var result: RuntimeV1.CompileResult? // for completion (Completion.swift)
     var onCaretChange: (Int) -> Void = { _ in }
     var onEditApplied: (ShellModel.PendingEdit, String) -> Void = { _, _ in }
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
     func makeNSView(context: Context) -> NSScrollView {
-        let scroll = NSTextView.scrollableTextView()
+        let scroll = CompletingTextView.scrollable() // Completion.swift
         let tv = scroll.documentView as! NSTextView
         tv.delegate = context.coordinator
         tv.font = .monospacedSystemFont(ofSize: 13, weight: .regular)
@@ -33,6 +35,7 @@ struct SourceEditorView: NSViewRepresentable {
     func updateNSView(_ scroll: NSScrollView, context: Context) {
         let tv = scroll.documentView as! NSTextView
         context.coordinator.parent = self
+        (tv as? CompletingTextView)?.compileResult = result
         if let edit = pendingEdit, edit.token != context.coordinator.appliedEditToken {
             context.coordinator.appliedEditToken = edit.token
             let ns = edit.nsRange

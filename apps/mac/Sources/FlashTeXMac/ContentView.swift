@@ -124,6 +124,7 @@ struct ContentView: View {
                 selection: model.selection,
                 pendingEdit: model.pendingEdit,
                 marks: model.editorMarks,
+                result: model.result,
                 onCaretChange: { model.caretUTF16 = $0 },
                 onEditApplied: { model.editApplied($0, newText: $1) }
             )
