@@ -175,8 +175,10 @@ Operator names typeset as upright roman words: `\sin`, `\cos`, `\tan`, `\cot`,
 `\coth`, `\log`, `\ln`, `\lg`, `\exp`, `\lim`, `\liminf`, `\limsup`, `\max`,
 `\min`, `\sup`, `\inf`, `\det`, `\gcd`, `\deg`, `\dim`, `\ker`, `\arg`, `\hom`,
 `\Pr`, `\sgn`, `\bmod`, `\mod`, and `\operatorname{name}` (starred form too).
-Their scripts attach beside the operator; display limits stacked under `\lim`
-are not implemented yet. `\dfrac`, `\tfrac` and `\cfrac` lay out as `\frac`.
+In displays, scripts on `\lim`, `\liminf`, `\limsup`, `\max`, `\min`, `\sup`,
+`\inf`, `\det`, `\gcd`, `\Pr`, `\sum` and `\prod` stack centred above and
+below the operator (top level of the display only); inline and on other atoms,
+including integrals, they stay beside it. `\dfrac`, `\tfrac` and `\cfrac` lay out as `\frac`.
 `\ldots`/`\dots` are three periods and `\cdots` three math dots. `\left`,
 `\right`, `\big`, `\Big`, `\bigg`, `\Bigg` and their `l`/`r`/`m` forms keep the
 requested delimiter at ordinary size (`.` is the invisible null delimiter).

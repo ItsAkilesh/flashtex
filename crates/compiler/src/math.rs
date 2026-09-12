@@ -1100,11 +1100,40 @@ pub fn layout(list: &MathList, size: f64, diagnostics: &mut Vec<Diagnostic>) -> 
     layout_list(list, size, size, 0, diagnostics)
 }
 
+/// Display-style layout: scripts on `\lim`-like operators, `\sum` and `\prod`
+/// at the top level stack centred above and below the operator, as in TeX.
+pub fn layout_display(list: &MathList, size: f64, diagnostics: &mut Vec<Diagnostic>) -> MathBox {
+    layout_list_with(list, size, size, 0, true, diagnostics)
+}
+
+/// Operators whose display-style scripts become limits.
+fn takes_display_limits(nucleus: &Nucleus) -> bool {
+    match nucleus {
+        Nucleus::Text(name) => matches!(
+            name.as_str(),
+            "lim" | "liminf" | "limsup" | "max" | "min" | "sup" | "inf" | "det" | "gcd" | "Pr"
+        ),
+        Nucleus::Symbol(glyph) => matches!(glyph.as_str(), "∑" | "∏"),
+        _ => false,
+    }
+}
+
 fn layout_list(
     list: &MathList,
     size: f64,
     root_size: f64,
     level: usize,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> MathBox {
+    layout_list_with(list, size, root_size, level, false, diagnostics)
+}
+
+fn layout_list_with(
+    list: &MathList,
+    size: f64,
+    root_size: f64,
+    level: usize,
+    display: bool,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> MathBox {
     let mut out = MathBox {
@@ -1115,6 +1144,50 @@ fn layout_list(
     };
     for atom in &list.atoms {
         let mut nucleus = layout_nucleus(atom, size, root_size, level, diagnostics);
+        if display
+            && level == 0
+            && (atom.superscript.is_some() || atom.subscript.is_some())
+            && takes_display_limits(&atom.nucleus)
+        {
+            let script_size = root_size * SCRIPT_SCALE;
+            let sup = atom
+                .superscript
+                .as_ref()
+                .map(|l| layout_list(l, script_size, root_size, level + 1, diagnostics));
+            let sub = atom
+                .subscript
+                .as_ref()
+                .map(|l| layout_list(l, script_size, root_size, level + 1, diagnostics));
+            let width = [Some(&nucleus), sup.as_ref(), sub.as_ref()]
+                .into_iter()
+                .flatten()
+                .map(|b| b.width)
+                .fold(0.0, f64::max);
+            offset_items(
+                &mut nucleus.items,
+                out.width + (width - nucleus.width) / 2.0,
+                0.0,
+            );
+            out.ascent = out.ascent.max(nucleus.ascent);
+            out.descent = out.descent.max(nucleus.descent);
+            out.items.extend(nucleus.items);
+            // Limit baselines clear the operator's cap height / descender by
+            // a small gap; box ascents include font-size headroom.
+            if let Some(mut b) = sup {
+                let dy = -0.8 * size - 0.12 * size - b.descent;
+                offset_items(&mut b.items, out.width + (width - b.width) / 2.0, dy);
+                out.ascent = out.ascent.max(b.ascent - dy);
+                out.items.extend(b.items);
+            }
+            if let Some(mut b) = sub {
+                let dy = 0.2 * size + 0.12 * size + 0.75 * script_size;
+                offset_items(&mut b.items, out.width + (width - b.width) / 2.0, dy);
+                out.descent = out.descent.max(b.descent + dy);
+                out.items.extend(b.items);
+            }
+            out.width += width;
+            continue;
+        }
         let nucleus_width = nucleus.width;
         offset_items(&mut nucleus.items, out.width, 0.0);
         out.ascent = out.ascent.max(nucleus.ascent);
@@ -1585,6 +1658,43 @@ mod parse_tests {
         assert_eq!(glyphs, ["∈", "∀", "∃", "∨", "⇒", "∣"]);
         let _ = layout(&list, 12.0, &mut diagnostics);
         assert!(diagnostics.is_empty(), "{diagnostics:?}");
+    }
+
+    #[test]
+    fn display_limits_stack_under_lim_but_stay_beside_inline_and_on_integrals() {
+        let mut diagnostics = Vec::new();
+        let tokens = crate::lexer::tokenize(r"\lim_{x\to 0} f \int_0^1 g");
+        let list = parse_tokens(&tokens, &mut diagnostics);
+        let x_of = |b: &MathBox, text: &str| {
+            b.items
+                .iter()
+                .find(|item| item.text == text)
+                .map(|item| (item.x, item.baseline))
+                .unwrap()
+        };
+        let display = layout_display(&list, 12.0, &mut diagnostics);
+        let inline = layout(&list, 12.0, &mut diagnostics);
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
+        let (lim_x, _) = x_of(&display, "lim");
+        let (sub_x, sub_y) = x_of(&display, "x");
+        // Stacked: the limit starts under the operator, not after it.
+        assert!(
+            sub_x <= lim_x + 1.0 && sub_y > 0.5 * 12.0,
+            "{lim_x} {sub_x} {sub_y}"
+        );
+        let (_, inline_sub_y) = x_of(&inline, "x");
+        assert!(inline_sub_y < sub_y);
+        // Integrals keep side scripts in display style.
+        let (int_x, _) = x_of(&display, "∫");
+        let zero_x = display
+            .items
+            .iter()
+            .rev()
+            .find(|item| item.text == "0")
+            .unwrap()
+            .x;
+        assert!(zero_x > int_x);
+        assert!(display.width < inline.width);
     }
 
     #[test]
