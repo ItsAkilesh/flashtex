@@ -54,9 +54,19 @@ Implemented and tested:
 - A finite parser for the subset listed below, with error recovery.
 - LaTeX preamble recognition: `\documentclass[options]{class}` records the
   class, and `\usepackage[options]{a,b,c}` records the package names and emits
-  one warning listing exactly those unimplemented packages. When a document
-  environment exists, only its body is typeset; bare fragments retain the
-  previous typeset-everything behavior.
+  one warning listing exactly those unimplemented packages — except an option
+  combination that already matches the fixed layout exactly (for example
+  `fontenc[T1]`, `inputenc[utf8]`, `enumitem[shortlabels]`, or
+  `geometry[margin=1in]`, since text is UTF-8 already, glyphs map from Unicode,
+  and the page margin is already 1in), which is silently accepted instead of
+  warned about. When a document environment exists, only its body is typeset;
+  bare fragments retain the previous typeset-everything behavior.
+- `\setlist[type]{...}` is consumed without error; it emits its own
+  "list spacing is recognised but not implemented" warning, since leftmargin,
+  itemsep, and topsep are not applied. `\begin{itemize}`/`\begin{enumerate}`
+  accept an optional `[...]` label template (enumitem `shortlabels`, e.g.
+  `[(a)]`, or a `label=` key using `\alph*`/`\Alph*`/`\roman*`/`\Roman*`/
+  `\arabic*`) instead of typesetting it as literal text.
 - Scoped `\newcommand` and `\renewcommand` expansion, with zero through nine
   required arguments, nested expansion, and an explicit recursion limit.
 - Project-relative `\input` expansion across supplied documents, with included
