@@ -1,0 +1,69 @@
+{
+  "agent_id": "commander-runtime-display",
+  "archived_utc": "2026-09-12T12:17:09Z",
+  "assignment": {
+    "acceptance": [
+      "Start from integrated decoder ecbaf7c on main; preserve four raw frames plus one decoded permit and joined shutdown",
+      "Exactly one contiguous sibling only after requested and accepted nonfailed result; bind ID/project/revision/document hashes and reject malformed, unsolicited, missing or out-of-order frames",
+      "Default legacy requests unchanged; preserve line limits and source epochs, no duplicate renderer parser or automatic native activation",
+      "Use corrected actual producer65dbe7d or later raw-byte font hashes; old contract SHA-bytes-plus-face deviation is historical, not accepted resource evidence",
+      "Publish bounded candidate API for existing helper owner; if deep validation is deferred, the type and contract must remain explicitly untrusted until existing native/core validator accepts it"
+    ],
+    "agent_id": "commander-runtime-display",
+    "allocation_id": "hosted-openai-product",
+    "branch": "agent/commander-runtime-display/display-runtime",
+    "deadline_utc": null,
+    "dependencies": [],
+    "input_main_sha": "6c73664d7453deea3e44fe220754db43f35c0482",
+    "objective": "Implement justified opt-in metadata bounds or request-aware validation with exact refusal and queue lifecycle tests",
+    "owned_paths": [
+      "crates/document-runtime"
+    ],
+    "revision": 9,
+    "schema_version": 1,
+    "state": "assigned",
+    "task_id": "FT-049",
+    "timebox_minutes": 40,
+    "updated_utc": "2026-09-12T12:07:56Z"
+  },
+  "report": {
+    "agent_id": "commander-runtime-display",
+    "allocation_id": "hosted-openai-product",
+    "assignment_acknowledgements": {
+      "FT-049": {
+        "acknowledged_utc": "2026-09-12T12:15:42Z",
+        "adaptation": "Implement exact request-derived raw metadata capture bounds; preserve v1 overflow semantics and existing single-permit lifecycle. Full tests and strict lint pass.",
+        "main_sha": "ecb70205a806bbe6fc10c3697879ba9536cb3593",
+        "revision": 9
+      }
+    },
+    "branch": "agent/commander-runtime-display/display-runtime",
+    "capabilities": [
+      "rust-runtime"
+    ],
+    "code_revision": "00490d569502bd0eb03749c08c95be7ed64d2224",
+    "eta_minutes": null,
+    "machine": "linux-primary",
+    "main_integrated_through": "217ec7dfc7ff586c90e5211039229589e461699e",
+    "next_action": "Commander integration and helper consumer review. Preserve default Value route, raw opt-in, raw4/decoded1, source/epoch gates. Current branch clean after report publication; no pending processes.",
+    "reviewed_peers": {},
+    "schema_version": 1,
+    "state": "ready_for_integration",
+    "summary": "FT049 r9 product 00490d56: request-derived raw metadata bounds, unchanged v1 semantics, full tests 48 passed plus 4 explicitly ignored; strict Clippy passes. Same-frame 50000-empty-doc process peak 7528 to 3784 KiB; no native speed claim.",
+    "tool": "codex",
+    "updated_utc": "2026-09-12T12:16:50Z",
+    "usage": {
+      "status": "unknown"
+    }
+  },
+  "report_age_seconds": 19,
+  "report_path": "coordination/agents/commander-runtime-display.json",
+  "review_required": true,
+  "revision": 9,
+  "schema_version": 1,
+  "stale_completion": false,
+  "state": "reported_ready",
+  "task_id": "FT-049",
+  "worker_branch": "agent/commander-runtime-display/display-runtime",
+  "worker_report_sha": "fa6de37fb3d2bb76eb930a0accce5029bee5b840"
+}

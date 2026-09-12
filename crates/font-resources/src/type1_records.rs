@@ -81,11 +81,11 @@ fn decode(bytes: &[u8], record: &Record, len_iv: u8) -> Result<Vec<u8>, Error> {
     }
     Ok(out)
 }
-struct Parser<'a> {
-    bytes: &'a [u8],
-    at: usize,
-    start: usize,
-    tokens: usize,
+pub(crate) struct Parser<'a> {
+    pub(crate) bytes: &'a [u8],
+    pub(crate) at: usize,
+    pub(crate) start: usize,
+    pub(crate) tokens: usize,
 }
 fn white(c: u8) -> bool {
     matches!(c, 0 | 9 | 10 | 12 | 13 | 32)
@@ -94,7 +94,7 @@ fn delimiter(c: u8) -> bool {
     white(c) || b"[]{}()<>/%".contains(&c)
 }
 impl<'a> Parser<'a> {
-    fn token(&mut self) -> Result<&'a [u8], Error> {
+    pub(crate) fn token(&mut self) -> Result<&'a [u8], Error> {
         loop {
             while self.bytes.get(self.at).is_some_and(|c| white(*c)) {
                 self.at += 1
@@ -131,20 +131,20 @@ impl<'a> Parser<'a> {
         }
         Ok(&self.bytes[self.start..self.at])
     }
-    fn expect(&mut self, value: &[u8]) -> Result<(), Error> {
+    pub(crate) fn expect(&mut self, value: &[u8]) -> Result<(), Error> {
         if self.token()? != value {
             Err(Error::Unsupported("dictionary grammar"))
         } else {
             Ok(())
         }
     }
-    fn words(&mut self, words: &[&[u8]]) -> Result<(), Error> {
+    pub(crate) fn words(&mut self, words: &[&[u8]]) -> Result<(), Error> {
         for w in words {
             self.expect(w)?
         }
         Ok(())
     }
-    fn integer(&mut self, cap: usize) -> Result<usize, Error> {
+    pub(crate) fn integer(&mut self, cap: usize) -> Result<usize, Error> {
         let t = self.token()?;
         if t.is_empty() || !t.iter().all(u8::is_ascii_digit) {
             return Err(Error::Unsupported("literal nonnegative integer required"));
@@ -176,7 +176,7 @@ impl<'a> Parser<'a> {
         })
     }
 }
-fn number(t: &[u8]) -> bool {
+pub(crate) fn number(t: &[u8]) -> bool {
     let t = if matches!(t.first(), Some(b'+' | b'-')) {
         &t[1..]
     } else {

@@ -3,7 +3,10 @@ use serde_json::{json, Value};
 use std::{
     io::{BufRead, BufReader, Write},
     process::{Child, ChildStdin, Command, Stdio},
-    sync::mpsc::{self, Receiver},
+    sync::{
+        mpsc::{self, Receiver},
+        Arc, Mutex,
+    },
     thread,
     time::Duration,
 };
@@ -11,12 +14,347 @@ struct Client {
     child: Child,
     input: Option<ChildStdin>,
     output: Receiver<Value>,
+    reader_progress: Arc<Mutex<ReaderProgress>>,
+    reader_thread: Option<thread::JoinHandle<()>>,
+}
+#[derive(Debug, Default)]
+struct ReaderProgress {
+    phase: &'static str,
+    frames: usize,
+    last_frame_bytes: usize,
+    last_decode_ms: f64,
+}
+#[test]
+fn metadata_undo_redo_unread_ack_retry_and_later_edit() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut client = Client::start(dir.path());
+    client.send("doc", "document", json!({"path":"main.tex"}));
+    let original = client.reply("doc")["payload"]["document"].clone();
+    let text = "β".repeat(250_000);
+    client.send(
+        "edit",
+        "edit",
+        json!({"path":"main.tex","expected_revision":1,
+        "expected_sha256":original["source_sha256"],"text":text,"response_mode":"metadata"}),
+    );
+    let edited = client.reply("edit")["payload"]["document"].clone();
+    let mut undo = json!({"path":"main.tex","response_mode":"invalid",
+        "command":{"command_id":"undo-compact","expected_revision":2,
+        "expected_sha256":edited["source_sha256"]}});
+    client.send("invalid", "undo", undo.clone());
+    assert_eq!(client.reply("invalid")["type"], "error");
+    undo["response_mode"] = json!("metadata");
+    client.send("undo", "undo", undo.clone());
+    let result = client.reply("undo");
+    assert_eq!(result["type"], "result");
+    let restored = &result["payload"]["history"]["document"];
+    assert_eq!(restored["revision"], 3);
+    assert_eq!(restored["source_sha256"], original["source_sha256"]);
+    assert!(restored.get("text").is_none());
+    let redo = json!({"path":"main.tex","response_mode":"metadata",
+        "command":{"command_id":"redo-compact","expected_revision":3,
+        "expected_sha256":restored["source_sha256"]}});
+    client.send("redo", "redo", redo.clone());
+    let deadline = std::time::Instant::now() + Duration::from_secs(3);
+    loop {
+        let persisted: Value =
+            serde_json::from_slice(&std::fs::read(dir.path().join("store/document.json")).unwrap())
+                .unwrap();
+        if persisted["document"]["revision"] == 4 {
+            break;
+        }
+        assert!(std::time::Instant::now() < deadline);
+        thread::sleep(Duration::from_millis(2));
+    }
+    drop(client); // Redo is durable but its acknowledgement was not consumed.
+    let mut client = Client::start(dir.path());
+    client.send("redo", "redo", redo.clone());
+    let replay = client.reply("redo");
+    assert_eq!(replay["type"], "result");
+    assert!(serde_json::to_vec(&replay).unwrap().len() < 1024);
+    let history = &replay["payload"]["history"];
+    assert_eq!(history["command_revision"], 4);
+    assert_eq!(history["replayed_command"], true);
+    assert_eq!(
+        history["document"]["source_sha256"],
+        edited["source_sha256"]
+    );
+    assert_eq!(history["document"]["byte_length"], 500000);
+    assert!(history["document"].get("text").is_none());
+    client.send("doc", "document", json!({"path":"main.tex"}));
+    assert_eq!(client.reply("doc")["payload"]["document"]["text"], text);
+    let mut conflict = redo.clone();
+    conflict["command"]["expected_revision"] = json!(4);
+    client.send("conflict", "redo", conflict);
+    assert_eq!(client.reply("conflict")["type"], "error");
+    let mut stale = undo.clone();
+    stale["command"]["command_id"] = json!("new-stale-undo");
+    client.send("stale", "undo", stale);
+    assert_eq!(client.reply("stale")["type"], "error");
+    client.send(
+        "later",
+        "edit",
+        json!({"path":"main.tex","expected_revision":4,
+        "expected_sha256":edited["source_sha256"],"text":"later source"}),
+    );
+    assert_eq!(client.reply("later")["payload"]["document"]["revision"], 5);
+    for (kind, request, revision) in [("undo", undo, 3), ("redo", redo, 4)] {
+        client.send("retry", kind, request.clone());
+        let compact = client.reply("retry");
+        let h = &compact["payload"]["history"];
+        assert_eq!(h["command_revision"], revision);
+        assert_eq!(h["document"]["revision"], 5);
+        assert_eq!(h["replayed_command"], true);
+        assert_eq!(h["can_redo"], false);
+        let mut full = request;
+        full.as_object_mut().unwrap().remove("response_mode");
+        client.send("full", kind, full);
+        let result = client.reply("full");
+        let f = &result["payload"]["history"];
+        assert_eq!(f["document"]["text"], "later source");
+        assert_eq!(
+            f["document"]["source_sha256"],
+            h["document"]["source_sha256"]
+        );
+        for key in [
+            "command_revision",
+            "replayed_command",
+            "can_undo",
+            "can_redo",
+        ] {
+            assert_eq!(f[key], h[key]);
+        }
+    }
+}
+#[test]
+fn metadata_group_ack_recovers_unread_reply_and_preserves_command_and_undo_identity() {
+    let dir = tempfile::tempdir().unwrap();
+    let source = "α".repeat(250_000);
+    let original = Document::new("p".into(), "main.tex".into(), 1, source.clone()).unwrap();
+    {
+        let mut store = Store::open(dir.path().join("store")).unwrap();
+        store.initialize(original.clone()).unwrap();
+    }
+    let mut client = Client::start(dir.path());
+    let command = json!({"command_id":"unicode-group", "expected_revision":1,
+        "expected_sha256":original.source_sha256,"label":"Two Unicode edits",
+        "edits":[{"start_byte":0,"end_byte":2,"removed_text":"α","replacement":"β"},
+        {"start_byte":499998,"end_byte":500000,"removed_text":"α","replacement":"γ"}]});
+    let mut request = json!({"path":"main.tex","command":command,"response_mode":"bogus"});
+    client.send("bad", "apply_group", request.clone());
+    assert_eq!(client.reply("bad")["type"], "error");
+    client.send("check", "document", json!({"path":"main.tex"}));
+    assert_eq!(client.reply("check")["payload"]["document"]["revision"], 1);
+    request["response_mode"] = json!("metadata");
+    client.send("group", "apply_group", request.clone());
+    let deadline = std::time::Instant::now() + Duration::from_secs(3);
+    loop {
+        let persisted: Value =
+            serde_json::from_slice(&std::fs::read(dir.path().join("store/document.json")).unwrap())
+                .unwrap();
+        if persisted["document"]["revision"] == 2 {
+            break;
+        }
+        assert!(std::time::Instant::now() < deadline);
+        thread::sleep(Duration::from_millis(2));
+    }
+    drop(client); // Application never consumed the first grouped-edit ACK.
+    let mut client = Client::start(dir.path());
+    client.send("group", "apply_group", request.clone());
+    let compact = client.reply("group");
+    assert_eq!(compact["type"], "result");
+    assert!(serde_json::to_vec(&compact).unwrap().len() < 1024);
+    let history = &compact["payload"]["history"];
+    assert_eq!(history["replayed_command"], true);
+    assert_eq!(history["command_revision"], 2);
+    assert_eq!(history["document"]["revision"], 2);
+    assert_eq!(history["document"]["byte_length"], 500000);
+    assert!(history["document"].get("text").is_none());
+    let mut full_request = request.clone();
+    full_request
+        .as_object_mut()
+        .unwrap()
+        .remove("response_mode");
+    client.send("full", "apply_group", full_request);
+    let full = client.reply("full");
+    let full_history = &full["payload"]["history"];
+    for field in [
+        "command_revision",
+        "replayed_command",
+        "can_undo",
+        "can_redo",
+    ] {
+        assert_eq!(history[field], full_history[field]);
+    }
+    assert_eq!(
+        history["document"]["source_sha256"],
+        full_history["document"]["source_sha256"]
+    );
+    assert_eq!(
+        full_history["document"]["text"],
+        format!("β{}γ", "α".repeat(249_998))
+    );
+    let mut conflict = request.clone();
+    conflict["command"]["label"] = json!("Different command");
+    client.send("conflict", "apply_group", conflict);
+    assert_eq!(client.reply("conflict")["type"], "error");
+    client.send(
+        "undo",
+        "undo",
+        json!({"path":"main.tex","command":{"command_id":"undo-group",
+        "expected_revision":2,"expected_sha256":history["document"]["source_sha256"]}}),
+    );
+    let undo = client.reply("undo");
+    assert_eq!(undo["payload"]["history"]["document"]["text"], source);
+    client.send("group", "apply_group", request);
+    let after = client.reply("group");
+    assert_eq!(after["payload"]["history"]["command_revision"], 2);
+    assert_eq!(after["payload"]["history"]["document"]["revision"], 3);
+    assert_eq!(
+        after["payload"]["history"]["document"]["source_sha256"],
+        original.source_sha256
+    );
+    assert_eq!(after["payload"]["history"]["replayed_command"], true);
+    assert_eq!(after["payload"]["history"]["can_redo"], true);
+}
+#[test]
+fn metadata_edit_ack_preserves_large_source_recovery_and_default_response() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut client = Client::start(dir.path());
+    client.send("before", "document", json!({"path":"main.tex"}));
+    let before = client.reply("before")["payload"]["document"].clone();
+    client.send(
+        "invalid",
+        "edit",
+        json!({"path":"main.tex","expected_revision":1,
+        "expected_sha256":before["source_sha256"],"text":"must not save","response_mode":true}),
+    );
+    assert_eq!(client.reply("invalid")["type"], "error");
+    client.send("unchanged", "document", json!({"path":"main.tex"}));
+    assert_eq!(client.reply("unchanged")["payload"]["document"], before);
+    let text = "α".repeat(250_000);
+    let request = json!({"path":"main.tex","expected_revision":1,
+        "expected_sha256":before["source_sha256"],"text":text,"response_mode":"metadata"});
+    client.send("save", "edit", request.clone());
+    let ack = client.reply("save");
+    assert_eq!(ack["type"], "result");
+    assert_eq!(ack["payload"]["response_mode"], "metadata");
+    let metadata = ack["payload"]["document"].clone();
+    assert!(metadata.get("text").is_none());
+    assert_eq!(metadata["project_id"], "p");
+    assert_eq!(metadata["path"], "main.tex");
+    assert_eq!(metadata["revision"], 2);
+    assert_eq!(metadata["byte_length"], 500_000);
+    assert!(serde_json::to_vec(&ack).unwrap().len() < 1024);
+    drop(client);
+    let mut client = Client::start(dir.path());
+    client.send("recovered", "document", json!({"path":"main.tex"}));
+    let recovered = client.reply("recovered")["payload"]["document"].clone();
+    assert_eq!(recovered["text"], text);
+    assert_eq!(recovered["source_sha256"], metadata["source_sha256"]);
+    assert_eq!(recovered["revision"], 2);
+    client.send("save", "edit", request);
+    assert_eq!(client.reply("save")["type"], "error");
+    client.send(
+        "full",
+        "edit",
+        json!({"path":"main.tex","expected_revision":2,
+        "expected_sha256":metadata["source_sha256"],"text":"default full response"}),
+    );
+    let full = client.reply("full");
+    assert_eq!(full["payload"]["document"]["text"], "default full response");
+    assert_eq!(full["payload"]["document"]["revision"], 3);
+}
+#[test]
+fn unread_metadata_ack_reopens_source_and_stale_retry_does_not_apply_twice() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut client = Client::start(dir.path());
+    client.send("before", "document", json!({"path":"main.tex"}));
+    let before = client.reply("before")["payload"]["document"].clone();
+    let request = json!({"path":"main.tex","expected_revision":1,
+        "expected_sha256":before["source_sha256"],"text":"metadata acknowledgement not consumed",
+        "response_mode":"metadata"});
+    client.send("unread", "edit", request.clone());
+    let deadline = std::time::Instant::now() + Duration::from_secs(3);
+    loop {
+        let persisted: Value =
+            serde_json::from_slice(&std::fs::read(dir.path().join("store/document.json")).unwrap())
+                .unwrap();
+        if persisted["document"]["revision"] == 2 {
+            break;
+        }
+        assert!(std::time::Instant::now() < deadline);
+        thread::sleep(Duration::from_millis(2));
+    }
+    // The application's reply receiver has deliberately not consumed the ACK.
+    drop(client);
+    let mut client = Client::start(dir.path());
+    client.send("recovered", "document", json!({"path":"main.tex"}));
+    let recovered = client.reply("recovered")["payload"]["document"].clone();
+    assert_eq!(recovered["revision"], 2);
+    assert_eq!(recovered["text"], request["text"]);
+    client.send("unread", "edit", request);
+    assert_eq!(client.reply("unread")["type"], "error");
+    client.send("after", "document", json!({"path":"main.tex"}));
+    assert_eq!(client.reply("after")["payload"]["document"], recovered);
+}
+#[test]
+fn invalid_display_transport_is_rejected_before_source_import() {
+    let dir = tempfile::tempdir().unwrap();
+    let private = dir.path().join("must-not-be-created");
+    for mode in [json!("unknown"), Value::Null, json!(true)] {
+        let config = dir.path().join("bad-startup.json");
+        std::fs::write(
+            &config,
+            serde_json::to_vec(&json!({
+                "session_id":"session1", "display_transport":mode,
+                "project_id":"p", "entry_path":"main.tex",
+                "project_root":dir.path(), "private_ledger_root":private
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        let output = Command::new(env!("CARGO_BIN_EXE_flashtex-preview-controller"))
+            .arg(&config)
+            .output()
+            .unwrap();
+        assert!(!output.status.success());
+        assert!(String::from_utf8_lossy(&output.stderr)
+            .contains("display_transport must be value or raw-prototype"));
+        assert!(!private.exists());
+    }
+}
+fn bounded_diagnostics(path: &std::path::Path) -> String {
+    use std::io::{Read, Seek, SeekFrom};
+    let Ok(mut file) = std::fs::File::open(path) else {
+        return "unavailable".into();
+    };
+    let length = file.metadata().map(|m| m.len()).unwrap_or(0);
+    let _ = file.seek(SeekFrom::Start(length.saturating_sub(8192)));
+    let mut bytes = Vec::new();
+    let _ = file.take(8192).read_to_end(&mut bytes);
+    String::from_utf8_lossy(&bytes).into_owned()
 }
 impl Client {
+    fn reader_snapshot(&self) -> String {
+        format!(
+            "{:?}",
+            self.reader_progress
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+        )
+    }
     fn start(root: &std::path::Path) -> Self {
         Self::with_compiler(root, None)
     }
     fn with_compiler(root: &std::path::Path, compiler: Option<&std::path::Path>) -> Self {
+        Self::with_transport(root, compiler, false)
+    }
+    fn with_transport(
+        root: &std::path::Path,
+        compiler: Option<&std::path::Path>,
+        raw: bool,
+    ) -> Self {
         let path = root.join("store");
         {
             let mut store = Store::open(&path).unwrap();
@@ -31,7 +369,7 @@ impl Client {
         }
         Self::configured(
             root,
-            json!({"session_id":"session1","project_id":"p","entry_path":"main.tex","store_paths":[path],"compiler_path":compiler}),
+            json!({"session_id":"session1","project_id":"p","entry_path":"main.tex","store_paths":[path],"compiler_path":compiler,"display_transport":if raw {"raw-prototype"} else {"value"}}),
         )
     }
     fn configured(root: &std::path::Path, value: Value) -> Self {
@@ -50,20 +388,47 @@ impl Client {
         let stdout = child.stdout.take().unwrap();
         let input = child.stdin.take();
         let (tx, output) = mpsc::channel();
-        thread::spawn(move || {
+        let reader_progress = Arc::new(Mutex::new(ReaderProgress::default()));
+        let progress = Arc::clone(&reader_progress);
+        let reader_thread = thread::spawn(move || {
+            progress.lock().unwrap().phase = "reading";
             for line in BufReader::new(stdout).lines() {
                 let Ok(line) = line else {
-                    break;
+                    progress.lock().unwrap().phase = "io_error";
+                    return;
                 };
-                if tx.send(serde_json::from_str(&line).unwrap()).is_err() {
+                {
+                    let mut p = progress.lock().unwrap();
+                    p.phase = "decoding";
+                    p.last_frame_bytes = line.len();
+                }
+                let started = std::time::Instant::now();
+                let value = match serde_json::from_str(&line) {
+                    Ok(value) => value,
+                    Err(_) => {
+                        progress.lock().unwrap().phase = "json_error";
+                        return;
+                    }
+                };
+                {
+                    let mut p = progress.lock().unwrap();
+                    p.frames += 1;
+                    p.last_decode_ms = started.elapsed().as_secs_f64() * 1000.0;
+                    p.phase = "delivering";
+                }
+                if tx.send(value).is_err() {
                     break;
                 }
+                progress.lock().unwrap().phase = "reading";
             }
+            progress.lock().unwrap().phase = "finished";
         });
         let client = Self {
             child,
             input,
             output,
+            reader_progress,
+            reader_thread: Some(reader_thread),
         };
         assert_eq!(
             client.output.recv_timeout(Duration::from_secs(3)).unwrap()["type"],
@@ -89,6 +454,30 @@ impl Drop for Client {
     fn drop(&mut self) {
         let _ = self.child.kill();
         let _ = self.child.wait();
+        if let Some(reader) = self.reader_thread.take() {
+            // Do not let a previous test's JSON decode continue into the next test.
+            // A descendant retaining stdout must not cause an unbounded join.
+            let deadline = std::time::Instant::now() + Duration::from_secs(3);
+            while !reader.is_finished() && std::time::Instant::now() < deadline {
+                thread::sleep(Duration::from_millis(2));
+            }
+            if reader.is_finished() {
+                let result = reader.join();
+                if !thread::panicking() {
+                    assert!(result.is_ok(), "helper reader panicked");
+                }
+            } else if thread::panicking() {
+                eprintln!(
+                    "helper reader did not terminate after kill/reap: {:?}",
+                    self.reader_snapshot()
+                );
+            } else {
+                panic!(
+                    "helper reader did not terminate after kill/reap: {:?}",
+                    self.reader_snapshot()
+                );
+            }
+        }
     }
 }
 #[test]
@@ -161,20 +550,41 @@ fn review_token_requires_explicit_approval_and_kill_preserves_receipt() {
 #[ignore = "requires explicitly configured original compiler"]
 fn helper_streams_original_compiler_result_for_latest_durable_edit() {
     let binary = std::env::var_os("FLASHTEX_TEST_COMPILER").expect("original compiler required");
-    let dir = tempfile::tempdir().unwrap();
-    let mut client = Client::with_compiler(dir.path(), Some(std::path::Path::new(&binary)));
-    client.send("get", "document", json!({"path":"main.tex"}));
-    let doc = client.reply("get")["payload"]["document"].clone();
-    client.send("edit","edit",json!({"path":"main.tex","expected_revision":1,"expected_sha256":doc["source_sha256"],"text":"Actual streamed compiler preview"}));
-    assert!(client.reply("edit")["payload"]["preview_error"].is_null());
-    loop {
-        let event = client.output.recv_timeout(Duration::from_secs(3)).unwrap();
-        if event["type"] == "update"
-            && event["payload"]["kind"] == "preview"
-            && event["payload"]["source_versions"]["main.tex"] == 2
-        {
-            assert_eq!(event["payload"]["result"]["payload"]["status"], "ok");
-            break;
+    for metadata_only in [false, true] {
+        let dir = tempfile::tempdir().unwrap();
+        let mut client = Client::with_compiler(dir.path(), Some(std::path::Path::new(&binary)));
+        client.send("get", "document", json!({"path":"main.tex"}));
+        let doc = client.reply("get")["payload"]["document"].clone();
+        let source = "Actual streamed compiler preview";
+        let mut request = json!({"path":"main.tex","expected_revision":1,
+            "expected_sha256":doc["source_sha256"],"text":source});
+        if metadata_only {
+            request["response_mode"] = json!("metadata");
+        }
+        client.send("edit", "edit", request);
+        let ack = client.reply("edit");
+        assert!(ack["payload"]["preview_error"].is_null());
+        assert_eq!(ack["payload"]["document"]["revision"], 2);
+        assert_eq!(
+            ack["payload"]["document"]["source_sha256"],
+            flashtex_project_files::sha256_hex(source.as_bytes())
+        );
+        if metadata_only {
+            assert_eq!(ack["payload"]["response_mode"], "metadata");
+            assert!(ack["payload"]["document"].get("text").is_none());
+            assert_eq!(ack["payload"]["document"]["byte_length"], source.len());
+        } else {
+            assert_eq!(ack["payload"]["document"]["text"], source);
+        }
+        loop {
+            let event = client.output.recv_timeout(Duration::from_secs(3)).unwrap();
+            if event["type"] == "update"
+                && event["payload"]["kind"] == "preview"
+                && event["payload"]["source_versions"]["main.tex"] == 2
+            {
+                assert_eq!(event["payload"]["result"]["payload"]["status"], "ok");
+                break;
+            }
         }
     }
 }
@@ -283,6 +693,11 @@ fn stalled_reader(requests: usize) {
         child,
         input,
         output,
+        reader_progress: Arc::new(Mutex::new(ReaderProgress {
+            phase: "intentionally_unread",
+            ..ReaderProgress::default()
+        })),
+        reader_thread: None,
     };
     let mut ready = String::new();
     unread_output.read_line(&mut ready).unwrap();
@@ -504,14 +919,25 @@ fn configured_large_result_reaches_real_helper_without_dropping_pages() {
     let config_dir = tempfile::tempdir().unwrap();
     let text = "Measured paragraph with ordinary words and spaces.\n\n".repeat(9804);
     std::fs::write(root.path().join("main.tex"), &text).unwrap();
-    let config = json!({"session_id":"session1","project_id":"p","entry_path":"main.tex","project_root":root.path(),"private_ledger_root":private.path(),"compiler_path":compiler,"compiler_max_frame_bytes":12*1024*1024});
-    let client = Client::configured(config_dir.path(), config);
+    let config = json!({"session_id":"session1","project_id":"p","entry_path":"main.tex","project_root":root.path(),"private_ledger_root":private.path(),"compiler_path":compiler,"compiler_max_frame_bytes":12*1024*1024,"diagnostic_timings":true});
+    let diagnostic_path = config_dir.path().join("diagnostics.jsonl");
+    let client = Client::configured_stderr(
+        config_dir.path(),
+        config,
+        Stdio::from(std::fs::File::create(&diagnostic_path).unwrap()),
+    );
     let deadline = std::time::Instant::now() + Duration::from_secs(10);
     loop {
         let event = client
             .output
             .recv_timeout(deadline.saturating_duration_since(std::time::Instant::now()))
-            .unwrap();
+            .unwrap_or_else(|error| {
+                panic!(
+                    "large preview receive {error:?}; reader={:?}; helper={}",
+                    client.reader_snapshot(),
+                    bounded_diagnostics(&diagnostic_path)
+                )
+            });
         assert_ne!(event["type"], "error", "{event}");
         if event["type"] != "update" {
             continue;
@@ -893,6 +1319,20 @@ fn history_status_binds_labels_and_limits_to_current_source_without_text() {
 #[test]
 #[cfg(unix)]
 fn display_candidate_opt_in_preserves_v1_and_individual_source_versions() {
+    display_candidate_lifecycle(false);
+}
+#[test]
+#[cfg(unix)]
+fn raw_display_candidate_lifecycle_preserves_default_fallback_and_restart_strategy() {
+    display_candidate_lifecycle(true);
+}
+#[cfg(unix)]
+fn display_candidate_lifecycle(raw: bool) {
+    let capability = if raw {
+        "display-candidates-raw-v1"
+    } else {
+        "display-candidates-v1"
+    };
     use std::os::unix::fs::PermissionsExt;
     let dir = tempfile::tempdir().unwrap();
     let compiler = dir.path().join("display-fixture.py");
@@ -907,14 +1347,20 @@ for line in sys.stdin:
   print(json.dumps({'protocol_version':2,'type':'display_list','id':r['id'],'payload':{'project_id':p['project_id'],'revision':p['revision'],'render_format':'display-list-v2','documents':docs}}),flush=True)
 "#).unwrap();
     std::fs::set_permissions(&compiler, std::fs::Permissions::from_mode(0o700)).unwrap();
-    let mut client = Client::with_compiler(dir.path(), Some(&compiler));
+    let mut client = Client::with_transport(dir.path(), Some(&compiler), raw);
+    client.send("wrong-mode", "configure_display_candidates", json!({"capability":if raw {"display-candidates-v1"} else {"display-candidates-raw-v1"},"enabled":true,"renderer_support_confirmed":true}));
+    assert_eq!(client.reply("wrong-mode")["type"], "error");
     client.send(
         "unconfirmed",
         "configure_display_candidates",
-        json!({"capability":"display-candidates-v1","enabled":true}),
+        json!({"capability":capability,"enabled":true}),
     );
     assert_eq!(client.reply("unconfirmed")["type"], "error");
-    client.send("enable", "configure_display_candidates", json!({"capability":"display-candidates-v1","enabled":true,"renderer_support_confirmed":true}));
+    client.send(
+        "enable",
+        "configure_display_candidates",
+        json!({"capability":capability,"enabled":true,"renderer_support_confirmed":true}),
+    );
     assert_eq!(client.reply("enable")["payload"]["enabled"], true);
     let mut seen_v1 = Vec::new();
     loop {
@@ -952,7 +1398,7 @@ for line in sys.stdin:
     client.send(
         "disable",
         "configure_display_candidates",
-        json!({"capability":"display-candidates-v1","enabled":false}),
+        json!({"capability":capability,"enabled":false}),
     );
     assert_eq!(client.reply("disable")["payload"]["enabled"], false);
     client.send(
@@ -961,7 +1407,11 @@ for line in sys.stdin:
         json!({"capability":"completed-snapshots-v1","enabled":true}),
     );
     assert_eq!(client.reply("history")["payload"]["enabled"], true);
-    client.send("conflict2", "configure_display_candidates", json!({"capability":"display-candidates-v1","enabled":true,"renderer_support_confirmed":true}));
+    client.send(
+        "conflict2",
+        "configure_display_candidates",
+        json!({"capability":capability,"enabled":true,"renderer_support_confirmed":true}),
+    );
     assert_eq!(client.reply("conflict2")["type"], "error");
     client.send("restart", "restart", json!({}));
     assert_eq!(client.reply("restart")["type"], "result");
@@ -970,6 +1420,28 @@ for line in sys.stdin:
         let event = client.output.recv_timeout(Duration::from_secs(3)).unwrap();
         assert_ne!(event["payload"]["kind"], "display_candidate");
         if event["payload"]["kind"] == "preview" {
+            break;
+        }
+    }
+    client.send(
+        "history-off",
+        "configure_completed_snapshots",
+        json!({"capability":"completed-snapshots-v1","enabled":false}),
+    );
+    assert_eq!(client.reply("history-off")["type"], "result");
+    client.send(
+        "reenable",
+        "configure_display_candidates",
+        json!({"capability":capability,"enabled":true,"renderer_support_confirmed":true}),
+    );
+    assert_eq!(
+        client.reply("reenable")["payload"]["capability"],
+        capability
+    );
+    loop {
+        let event = client.output.recv_timeout(Duration::from_secs(3)).unwrap();
+        assert_ne!(event["payload"]["kind"], "failed");
+        if event["payload"]["kind"] == "display_candidate" {
             break;
         }
     }
@@ -1004,50 +1476,65 @@ for line in sys.stdin:
 }
 #[cfg(unix)]
 fn enable_display(client: &mut Client) {
-    client.send("enable", "configure_display_candidates", json!({"capability":"display-candidates-v1","enabled":true,"renderer_support_confirmed":true}));
+    enable_display_transport(client, false);
+}
+#[cfg(unix)]
+fn enable_display_transport(client: &mut Client, raw: bool) {
+    let capability = if raw {
+        "display-candidates-raw-v1"
+    } else {
+        "display-candidates-v1"
+    };
+    client.send(
+        "enable",
+        "configure_display_candidates",
+        json!({"capability":capability,"enabled":true,"renderer_support_confirmed":true}),
+    );
     assert_eq!(client.reply("enable")["payload"]["enabled"], true);
 }
 
 #[test]
 #[cfg(unix)]
 fn stale_display_sibling_after_durable_edit_never_reaches_optional_output() {
-    let dir = tempfile::tempdir().unwrap();
-    let compiler = display_failure_fixture(dir.path(), "hold");
-    let mut client = Client::with_compiler(dir.path(), Some(&compiler));
-    enable_display(&mut client);
-    let old_generation = loop {
-        let event = client.output.recv_timeout(Duration::from_secs(3)).unwrap();
-        let p = &event["payload"];
-        if p["kind"] == "preview"
-            && p["result"]["payload"]["layout_capabilities"]
-                .as_array()
-                .is_some_and(|caps| caps.iter().any(|cap| cap == "display-list-v2"))
-        {
-            break p["compile_revision"].as_u64().unwrap();
-        }
-    };
-    client.send("doc", "document", json!({"path":"main.tex"}));
-    let doc = client.reply("doc")["payload"]["document"].clone();
-    client.send("edit", "edit", json!({"path":"main.tex","expected_revision":doc["revision"],"expected_sha256":doc["source_sha256"],"text":"β current"}));
-    let edited = client.reply("edit")["payload"]["document"].clone();
-    assert_eq!(edited["revision"], 2);
-    std::fs::write(
-        compiler.with_file_name("display-failure.py.release"),
-        "release",
-    )
-    .unwrap();
-    loop {
-        let event = client.output.recv_timeout(Duration::from_secs(3)).unwrap();
-        let p = &event["payload"];
-        assert_ne!(p["kind"], "failed", "{event}");
-        if p["kind"] == "display_candidate" {
-            assert!(p["compile_revision"].as_u64().unwrap() > old_generation);
-            assert_eq!(p["source_versions"]["main.tex"], 2);
-            assert_eq!(
-                p["display_list"]["payload"]["documents"][0]["sha256"],
-                edited["source_sha256"]
-            );
-            break;
+    for raw in [false, true] {
+        let dir = tempfile::tempdir().unwrap();
+        let compiler = display_failure_fixture(dir.path(), "hold");
+        let mut client = Client::with_transport(dir.path(), Some(&compiler), raw);
+        enable_display_transport(&mut client, raw);
+        let old_generation = loop {
+            let event = client.output.recv_timeout(Duration::from_secs(3)).unwrap();
+            let p = &event["payload"];
+            if p["kind"] == "preview"
+                && p["result"]["payload"]["layout_capabilities"]
+                    .as_array()
+                    .is_some_and(|caps| caps.iter().any(|cap| cap == "display-list-v2"))
+            {
+                break p["compile_revision"].as_u64().unwrap();
+            }
+        };
+        client.send("doc", "document", json!({"path":"main.tex"}));
+        let doc = client.reply("doc")["payload"]["document"].clone();
+        client.send("edit", "edit", json!({"path":"main.tex","expected_revision":doc["revision"],"expected_sha256":doc["source_sha256"],"text":"β current"}));
+        let edited = client.reply("edit")["payload"]["document"].clone();
+        assert_eq!(edited["revision"], 2);
+        std::fs::write(
+            compiler.with_file_name("display-failure.py.release"),
+            "release",
+        )
+        .unwrap();
+        loop {
+            let event = client.output.recv_timeout(Duration::from_secs(3)).unwrap();
+            let p = &event["payload"];
+            assert_ne!(p["kind"], "failed", "{event}");
+            if p["kind"] == "display_candidate" {
+                assert!(p["compile_revision"].as_u64().unwrap() > old_generation);
+                assert_eq!(p["source_versions"]["main.tex"], 2);
+                assert_eq!(
+                    p["display_list"]["payload"]["documents"][0]["sha256"],
+                    edited["source_sha256"]
+                );
+                break;
+            }
         }
     }
 }
@@ -1055,30 +1542,32 @@ fn stale_display_sibling_after_durable_edit_never_reaches_optional_output() {
 #[test]
 #[cfg(unix)]
 fn corrupt_display_hash_fails_preview_but_preserves_durable_edit_and_reopen() {
-    let dir = tempfile::tempdir().unwrap();
-    let compiler = display_failure_fixture(dir.path(), "hash");
-    let mut client = Client::with_compiler(dir.path(), Some(&compiler));
-    enable_display(&mut client);
-    loop {
-        let event = client.output.recv_timeout(Duration::from_secs(3)).unwrap();
-        assert_ne!(event["payload"]["kind"], "display_candidate");
-        if event["payload"]["kind"] == "failed" {
-            break;
+    for raw in [false, true] {
+        let dir = tempfile::tempdir().unwrap();
+        let compiler = display_failure_fixture(dir.path(), "hash");
+        let mut client = Client::with_transport(dir.path(), Some(&compiler), raw);
+        enable_display_transport(&mut client, raw);
+        loop {
+            let event = client.output.recv_timeout(Duration::from_secs(3)).unwrap();
+            assert_ne!(event["payload"]["kind"], "display_candidate");
+            if event["payload"]["kind"] == "failed" {
+                break;
+            }
         }
+        client.send("doc", "document", json!({"path":"main.tex"}));
+        let doc = client.reply("doc")["payload"]["document"].clone();
+        client.send("edit", "edit", json!({"path":"main.tex","expected_revision":doc["revision"],"expected_sha256":doc["source_sha256"],"text":"durable despite compiler failure"}));
+        let response = client.reply("edit");
+        assert_eq!(response["type"], "result");
+        assert!(response["payload"]["preview_error"].is_string());
+        drop(client);
+        let mut reopened = Client::start(dir.path());
+        reopened.send("doc", "document", json!({"path":"main.tex"}));
+        assert_eq!(
+            reopened.reply("doc")["payload"]["document"]["text"],
+            "durable despite compiler failure"
+        );
     }
-    client.send("doc", "document", json!({"path":"main.tex"}));
-    let doc = client.reply("doc")["payload"]["document"].clone();
-    client.send("edit", "edit", json!({"path":"main.tex","expected_revision":doc["revision"],"expected_sha256":doc["source_sha256"],"text":"durable despite compiler failure"}));
-    let response = client.reply("edit");
-    assert_eq!(response["type"], "result");
-    assert!(response["payload"]["preview_error"].is_string());
-    drop(client);
-    let mut reopened = Client::start(dir.path());
-    reopened.send("doc", "document", json!({"path":"main.tex"}));
-    assert_eq!(
-        reopened.reply("doc")["payload"]["document"]["text"],
-        "durable despite compiler failure"
-    );
 }
 
 #[test]
@@ -1116,7 +1605,9 @@ fn full_size_optional_expansion_drops_candidate_and_keeps_edit_ack_and_reopen() 
         );
         assert!(
             std::time::Instant::now() < deadline,
-            "no full-size serialization refusal: {diagnostics}"
+            "no full-size serialization refusal; reader={:?}; helper={} ",
+            client.reader_snapshot(),
+            bounded_diagnostics(&diagnostic_path)
         );
         thread::sleep(Duration::from_millis(2));
     }
@@ -1126,6 +1617,28 @@ fn full_size_optional_expansion_drops_candidate_and_keeps_edit_ack_and_reopen() 
     }
     client.send("doc", "document", json!({"path":"main.tex"}));
     let doc = client.reply("doc")["payload"]["document"].clone();
+    let log = std::fs::read_to_string(&diagnostic_path).unwrap();
+    let profiles: Vec<Value> = log
+        .lines()
+        .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+        .filter(|event| event["phase"] == "display_transport")
+        .collect();
+    assert_eq!(
+        profiles.len(),
+        1,
+        "unchanged profile repeated on idle/document polls"
+    );
+    let profile = &profiles[0]["profile"];
+    assert!(profile["response_bytes"].as_u64().unwrap() > 5_000_000);
+    for field in [
+        "parse_ms",
+        "decode_queue_wait_ms",
+        "reader_delivery_wait_ms",
+        "source_binding_ms",
+    ] {
+        let duration = profile[field].as_f64().unwrap();
+        assert!(duration.is_finite() && duration >= 0.0);
+    }
     client.send(
         "edit",
         "edit",
@@ -1174,6 +1687,11 @@ fn stalled_optional_display_write_triggers_watchdog_with_no_source_loss() {
         child,
         input,
         output,
+        reader_progress: Arc::new(Mutex::new(ReaderProgress {
+            phase: "intentionally_unread",
+            ..ReaderProgress::default()
+        })),
+        reader_thread: None,
     };
     let mut line = String::new();
     unread.read_line(&mut line).unwrap();

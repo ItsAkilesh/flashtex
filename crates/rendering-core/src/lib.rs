@@ -350,10 +350,10 @@ struct RawEnvelope {
     id: String,
     #[serde(rename = "type")]
     kind: String,
-    payload: serde_json::Value,
+    payload: Box<serde_json::value::RawValue>,
 }
-fn decode<T: serde::de::DeserializeOwned>(value: serde_json::Value) -> Result<T> {
-    serde_json::from_value(value)
+fn decode<T: serde::de::DeserializeOwned>(value: &serde_json::value::RawValue) -> Result<T> {
+    serde_json::from_str(value.get())
         .map_err(|error| ValidationError(format!("invalid typed payload: {error}")))
 }
 /// Parse bounded JSON. No unknown item or message is silently skipped.
@@ -367,10 +367,10 @@ pub fn parse(bytes: &[u8]) -> Result<Envelope> {
     )?;
     id(&raw.id)?;
     let message = match raw.kind.as_str() {
-        "render_capabilities" => Message::Offer(decode(raw.payload)?),
-        "render_format_selected" => Message::Selected(decode(raw.payload)?),
-        "render_format_rejected" => Message::Rejected(decode(raw.payload)?),
-        "display_list" => Message::DisplayList(decode(raw.payload)?),
+        "render_capabilities" => Message::Offer(decode(&raw.payload)?),
+        "render_format_selected" => Message::Selected(decode(&raw.payload)?),
+        "render_format_rejected" => Message::Rejected(decode(&raw.payload)?),
+        "display_list" => Message::DisplayList(decode(&raw.payload)?),
         _ => return Err(ValidationError("unsupported message type".into())),
     };
     Ok(Envelope {
@@ -794,3 +794,5 @@ pub mod pdf_stream;
 pub mod pipeline_cff;
 
 pub mod pipeline_frame;
+
+pub mod helper_candidate;

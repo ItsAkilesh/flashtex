@@ -57,7 +57,11 @@ pub fn parse_validated(bytes: &[u8], offer: Option<&Envelope>) -> WireResult<Env
         });
     }
     if raw.kind == "display_list" {
-        if let Some(pages) = raw.payload.get("pages").and_then(|p| p.as_array()) {
+        // Diagnostic-only inspection; typed decoding below still reads ORIGINAL
+        // raw payload bytes, so this Value never erases validation evidence.
+        let diagnostic: serde_json::Value =
+            serde_json::from_str(raw.payload.get()).map_err(malformed)?;
+        if let Some(pages) = diagnostic.get("pages").and_then(|p| p.as_array()) {
             for (page_index, page) in pages.iter().enumerate() {
                 if let Some(items) = page.get("items").and_then(|i| i.as_array()) {
                     for (item_index, item) in items.iter().enumerate() {
@@ -76,10 +80,10 @@ pub fn parse_validated(bytes: &[u8], offer: Option<&Envelope>) -> WireResult<Env
         }
     }
     let message = match raw.kind.as_str() {
-        "render_capabilities" => Message::Offer(decode(raw.payload).map_err(malformed)?),
-        "render_format_selected" => Message::Selected(decode(raw.payload).map_err(malformed)?),
-        "render_format_rejected" => Message::Rejected(decode(raw.payload).map_err(malformed)?),
-        "display_list" => Message::DisplayList(decode(raw.payload).map_err(malformed)?),
+        "render_capabilities" => Message::Offer(decode(&raw.payload).map_err(malformed)?),
+        "render_format_selected" => Message::Selected(decode(&raw.payload).map_err(malformed)?),
+        "render_format_rejected" => Message::Rejected(decode(&raw.payload).map_err(malformed)?),
+        "display_list" => Message::DisplayList(decode(&raw.payload).map_err(malformed)?),
         _ => return Err(WireError::UnsupportedMessage { kind: raw.kind }),
     };
     let envelope = Envelope {
