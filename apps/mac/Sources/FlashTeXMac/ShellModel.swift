@@ -37,7 +37,7 @@ final class ShellModel: ObservableObject {
     @Published var captureNote: String?
     private(set) var appliedCaptureIDs: Set<String> = []
     private var nextAnchorNumber = 1
-    @Published var workerStatus: String = "no worker attached"
+    @Published var workerStatus: String = "no worker attached" { didSet { FlashTeXLog.write("status: " + workerStatus) } }
     @Published var workerLog: [String] = []
     private var worker: WorkerClient?
     private var nextRequestID = 1
@@ -416,6 +416,7 @@ final class ShellModel: ObservableObject {
     }
 
     private func log(_ line: String) {
+        FlashTeXLog.write(line)
         workerLog.append(line)
         if workerLog.count > 200 { workerLog.removeFirst(workerLog.count - 200) }
     }

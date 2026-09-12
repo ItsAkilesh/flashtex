@@ -128,6 +128,8 @@ diagnostics checks beyond the one-line contract fixture.
 
 ## Launch hooks and evidence
 
+`FLASHTEX_LOG=<path>` appends timestamped worker/bridge status lines (e.g.
+`status: worker exited (9)`) for automation such as `scripts/launch-check.sh`.
 `FLASHTEX_AUTOATTACH=1` attaches the discovered compiler at launch and compiles
 (a compiler bundled inside `FlashTeX.app` attaches by default; `=0` disables);
 `FLASHTEX_SEED_FILE=<path.tex>` seeds the editor. Example (from `apps/mac`):
