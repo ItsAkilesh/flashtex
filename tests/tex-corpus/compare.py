@@ -106,7 +106,7 @@ def compare(before, after):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--baseline', type=Path, default=ROOT / 'evidence/compiler-9f1033b.json')
+    parser.add_argument('--baseline', type=Path, default=ROOT / 'evidence/compiler-9f1033b-included-source.json')
     parser.add_argument('--baseline-sha', default=BASELINE_SHA)
     parser.add_argument('--baseline-build-command', required=True)
     parser.add_argument('--candidate', type=Path, required=True)

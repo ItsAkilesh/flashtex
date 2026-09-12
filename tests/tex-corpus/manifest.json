@@ -184,12 +184,12 @@
         {
           "kind": "visible_text",
           "source": {
-            "path": "main.tex",
-            "start_byte": 49,
-            "end_byte": 70,
-            "text": "\\input{parts/section}"
+            "path": "parts/section.tex",
+            "start_byte": 0,
+            "end_byte": 15,
+            "text": "Included café."
           },
-          "detail": "Expand project-relative parts/section.tex between Before. and After.; resolve omitted .tex extension."
+          "detail": "Render included literal between Before. and After.; visible output retains actual included source identity. Input invocation is expansion ancestry, not the glyph source range."
         },
         {
           "kind": "source_navigation",
