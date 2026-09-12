@@ -1,5 +1,29 @@
 # mac-reference-corpus — user-assigned reference testing
 
+## Current checkpoint: HW1 isolated probes
+
+- Direct user reference-test role; no new Commander assignment/ACK invented.
+- Branch `agent/mac-reference-corpus/hw1-probes`, worktree
+  `/private/tmp/flashtex-hw1-reference-probes`, tested code
+  `e35a0281b31321073e313f9f830b8b39ca43a3ef` (pushed), stacked on PR42.
+- Six original TeX probes and six inspected one-page MacTeX PDFs; no reference
+  warnings. Corpus now 55 projects, 48 PDFs/57 pages, seven errors, eight edits.
+- Seven existing integrity/profile/request/byte-edit/timeout tests passed;
+  all new source/PDF hashes match provenance; old sources/PDFs unchanged.
+- Evidence `docs/evidence/hw1-reference-probes-20260912/README.md`. Local compiler
+  hash pinned, build source unknown; six recovered outputs/173 diagnostics.
+  No current-main support, PDF parity, or application performance claim.
+- Ownership: own corpus and evidence/report only. Root app checkout and Opus
+  iPad/Grok WIP untouched. Opus PID43863 last confirmed live this cycle.
+- Staffing/resources: current Codex only, no children, Claude calls, paid AI,
+  purchases or altered allocations. Monetary allowance unknown. Continuous
+  user-authorized light/medium work; no automatic deadline/completion stop.
+- Pending: this report publication and stacked PR; no in-flight model calls.
+  Next: Commander review, then validate Opus's published outcome/migration fixes
+  or continue another disjoint reference increment. No main/control writes.
+
+## Historical checkpoints below
+
 State: local reference increment ready; publication/notification blocked.
 Agent: Codex on mac-m1max-a. Assignment: direct user request 2026-09-12;
 no Commander task/revision issued, no ACK invented.

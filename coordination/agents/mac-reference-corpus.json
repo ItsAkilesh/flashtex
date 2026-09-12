@@ -2,28 +2,28 @@
   "agent_id": "mac-reference-corpus",
   "allocation_id": "user-direct-reference-suite",
   "assignment_acknowledgements": {},
-  "branch": "agent/mac-reference-corpus/extended-suite",
+  "branch": "agent/mac-reference-corpus/hw1-probes",
   "capabilities": [
     "tex-reference-corpus",
     "mactex"
   ],
-  "code_revision": "6b8628ba0752f0c46a3926eb481cde9d8fd10758",
+  "code_revision": "e35a0281b31321073e313f9f830b8b39ca43a3ef",
   "eta_minutes": {
-    "likely": 25,
-    "optimistic": 10,
-    "pessimistic": 45
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 0
   },
   "machine": "mac-m1max-a",
   "main_integrated_through": "a91fc1015e6884ab4a451d5d32a626271edacbd4",
-  "next_action": "Commander integration review and pinned-compiler acceptance scope",
+  "next_action": "Commander review stacked HW1 probe increment after PR42; continue disjoint light/medium app acceptance or reference tasks while Opus implements active iPad/Grok lanes.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "49 reference projects published; 42 PDFs/51 pages, seven negative cases, eight edit scenarios; draft PR42, role issue41",
+  "summary": "Six isolated HW1 reference projects and inspected MacTeX PDFs added at e35a0281; 55 total cases, 48 PDFs/57 pages, seven expected errors. Integrity suite 7/7. Local parser baseline recovered all six with 173 diagnostics; no support/parity claim.",
   "tool": "Codex",
-  "updated_utc": "2026-09-12T16:25:49Z",
+  "updated_utc": "2026-09-12T21:11:35Z",
   "usage": {
-    "evidence": "Seven tests passed; source/PDF hashes validated; no external inference",
-    "status": "unknown"
+    "evidence": "docs/evidence/hw1-reference-probes-20260912/README.md",
+    "status": "Current authorized Codex route; no paid provider/Claude calls, purchases, or subagents; monetary balance unknown."
   }
 }
