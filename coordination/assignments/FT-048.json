@@ -9,16 +9,16 @@
   "branch": "agent/commander-preview-performance/preview-performance",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "ad922ea13be340f48af110f11d393c6e53afa605",
-  "objective": "Finish queued existing three-state helper acceptance against verified unchanged9aa producer with exact source and direct output gates",
+  "input_main_sha": "64a92dd7f8a8b3d74fe42fbb58bb3de51fc66187",
+  "objective": "Align child producer reply cap with runtime frame capacity at startup and restart using existing env policy, preserving stricter valid cap and newline headroom",
   "owned_paths": [
     "crates/preview-controller",
     "crates/edit-ledger"
   ],
-  "revision": 34,
+  "revision": 35,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-048",
   "timebox_minutes": 40,
-  "updated_utc": "2026-09-12T14:31:37.368113+00:00"
+  "updated_utc": "2026-09-12T14:46:03.348225+00:00"
 }
