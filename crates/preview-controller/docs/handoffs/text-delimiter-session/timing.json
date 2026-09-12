@@ -1,0 +1,62 @@
+[
+  {
+    "elapsed_ms": 0.687519001075998,
+    "request_bytes": 224,
+    "reply_bytes": 630
+  },
+  {
+    "elapsed_ms": 0.1105090050259605,
+    "request_bytes": 216,
+    "reply_bytes": 698
+  },
+  {
+    "elapsed_ms": 0.11021801037713885,
+    "request_bytes": 224,
+    "reply_bytes": 630
+  },
+  {
+    "elapsed_ms": 0.10036799358204007,
+    "request_bytes": 228,
+    "reply_bytes": 840
+  },
+  {
+    "elapsed_ms": 0.09302499529439956,
+    "request_bytes": 238,
+    "reply_bytes": 629
+  },
+  {
+    "elapsed_ms": 0.1393249985994771,
+    "request_bytes": 249,
+    "reply_bytes": 1455
+  },
+  {
+    "elapsed_ms": 0.10627100709825754,
+    "request_bytes": 228,
+    "reply_bytes": 830
+  },
+  {
+    "elapsed_ms": 0.09063500328920782,
+    "request_bytes": 224,
+    "reply_bytes": 630
+  },
+  {
+    "elapsed_ms": 0.09577399760019034,
+    "request_bytes": 228,
+    "reply_bytes": 630
+  },
+  {
+    "elapsed_ms": 0.09680099901743233,
+    "request_bytes": 225,
+    "reply_bytes": 630
+  },
+  {
+    "elapsed_ms": 0.12169100227765739,
+    "request_bytes": 256,
+    "reply_bytes": 635
+  },
+  {
+    "elapsed_ms": 0.09947799844667315,
+    "request_bytes": 231,
+    "reply_bytes": 775
+  }
+]

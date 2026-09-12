@@ -1,0 +1,70 @@
+[
+  {
+    "case": "paired",
+    "status": "ok",
+    "diagnostics": []
+  },
+  {
+    "case": "missing_right",
+    "status": "recovered",
+    "diagnostics": [
+      "1 \\left delimiter(s) without a matching \\right"
+    ]
+  },
+  {
+    "case": "repair",
+    "status": "ok",
+    "diagnostics": []
+  },
+  {
+    "case": "unknown_delimiter",
+    "status": "recovered",
+    "diagnostics": [
+      "\\foo is not a delimiter this compiler recognises"
+    ]
+  },
+  {
+    "case": "comment",
+    "status": "ok",
+    "diagnostics": []
+  },
+  {
+    "case": "scripts",
+    "status": "ok",
+    "diagnostics": [
+      "'\u2500' (U+2500) will not survive PDF export: fraction rules are drawn with a box-drawing character as a stand-in; runtime-v1 has no rule item type yet, so they cannot be exported faithfully"
+    ]
+  },
+  {
+    "case": "unsupported_text",
+    "status": "recovered",
+    "diagnostics": [
+      "unsupported construct inside \\text"
+    ]
+  },
+  {
+    "case": "repair_again",
+    "status": "ok",
+    "diagnostics": []
+  },
+  {
+    "case": "literal_escaped",
+    "status": "ok",
+    "diagnostics": []
+  },
+  {
+    "case": "null_delimiter",
+    "status": "ok",
+    "diagnostics": []
+  },
+  {
+    "case": "macro",
+    "status": "ok",
+    "diagnostics": []
+  },
+  {
+    "case": "unicode_prefix",
+    "status": "ok",
+    "diagnostics": []
+  }
+]
