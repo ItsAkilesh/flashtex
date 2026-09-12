@@ -1,0 +1,44 @@
+{
+  "agent_id": "mac-visual-oracle-2",
+  "allocation_id": "claude-mac20x-visual-oracle-2",
+  "assignment_acknowledgements": {
+    "issue-2-comment-5646989044-item-5": "acked 2026-09-12T16:03Z (current task + follow-up 1 + follow-up 2)"
+  },
+  "branch": "agent/mac-visual-oracle-2/corpus-rank",
+  "capabilities": [
+    "python",
+    "pdf-content-stream",
+    "raster-compare",
+    "oracle-evidence"
+  ],
+  "code_revision": "PENDING",
+  "eta_minutes": {
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 5
+  },
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "c11c005",
+  "next_action": "Parent merges agent/mac-visual-oracle-2/corpus-rank into mac-shell (tools/visual-oracle, docs/evidence/visual-oracle-2026-09-12T161438Z, coordination files only); owners triage the ranked report",
+  "reviewed_peers": {
+    "origin/agent/mac-claude-a/mac-shell": {
+      "adaptation": "Built on cd58fc2e; reused tools/real-world-corpus/run.py (fixture discovery, producer run, gs raster, pixel comparator, owner table) instead of duplicating it; the unmerged visual-oracle branch's PDFKit word-box approach replaced by a stdlib content-stream reader so the harness runs on mac-shell without Swift",
+      "reviewed_utc": "2026-09-12T16:05:00Z",
+      "sha": "cd58fc2e"
+    },
+    "origin/agent/mac-visual-oracle/reference-raster": {
+      "adaptation": "Audited (not merged): its 18 harness fixtures are the set the 9aaec57a 0.00/0.01 pt claim was measured on; follow-up 1 reruns exactly those via git archive dda82001",
+      "reviewed_utc": "2026-09-12T16:05:00Z",
+      "sha": "dda82001"
+    }
+  },
+  "schema_version": 1,
+  "state": "ready_for_integration",
+  "summary": "tools/visual-oracle/rank.py: per-page geometry (v2 glyph_run word origins vs stdlib-decoded reference word positions, aligned by text; median shift, max |dx|/|dy| in bp, reflowed words, top deltas with source spans and owner heuristic) + 144 dpi pixel ranking of HW1 and the corpus against the pinned MacTeX references, producer flashtex-render 9aaec57a via flashtex-pdf-exact from-v2; evidence docs/evidence/visual-oracle-2026-09-12T161438Z (14 corpus pages ranked; 9 thumbnail diff sheets); follow-up 1 on the 18 harness fixtures: 17/23 pages at max 0.01 bp dx, 0.00 dy; 8 pure-python tests",
+  "tool": "Claude Code subagent (parent mac-claude-a)",
+  "updated_utc": "2026-09-12T16:25:00Z",
+  "usage": {
+    "evidence": "python3 -m unittest discover -s tools/visual-oracle 8/8 OK; corpus run load avg 46->37, harness run 26->18; swift not run (no Swift changes; load > 15)",
+    "status": "Shared Claude Max quota with parent mac-claude-a; no purchases"
+  }
+}
