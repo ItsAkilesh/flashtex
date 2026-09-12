@@ -3,10 +3,10 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-029": {
-      "acknowledged_utc": "2026-09-12T07:57:06Z",
-      "adaptation": "Added Unix bounded pipe client in owned crate, no shell or retries; deadline covers writes and reads, inherited descriptors cannot retain reader threads.",
-      "main_sha": "dae486e9449f30a7050886d7d3a7306c212b97f4",
-      "revision": 3
+      "acknowledged_utc": "2026-09-12T08:02:50Z",
+      "adaptation": "Reviewed current assignment and commander followup authorizing optional Grok transport in same crate; no live inference or credentials accessed.",
+      "main_sha": "64c7b8965f5a1dd3ba7ccbb35780195edfd37bd6",
+      "revision": 4
     }
   },
   "branch": "agent/commander/assistant-context",
@@ -14,23 +14,23 @@
     "rust",
     "diagnostic-context"
   ],
-  "code_revision": "7469b2ad4804a87be4436159a05a83063e67adec",
+  "code_revision": "7ebd242d100256f5de1749c1a058d1c586f17e43",
   "eta_minutes": {
-    "likely": 30,
-    "optimistic": 15,
-    "pessimistic": 50
+    "likely": 20,
+    "optimistic": 10,
+    "pessimistic": 35
   },
   "machine": "linux-primary",
   "main_integrated_through": "94c76ee510e7bf043ef6e9a02ffc287581dd921e",
-  "next_action": "Implement explicitly configured optional Grok text transport with fake HTTP tests and no actual inference.",
+  "next_action": "Add delayed/chunked HTTP and cancellation-flight tests; native consumption remains unimplemented.",
   "reviewed_peers": {},
   "schema_version": 1,
-  "state": "in_progress",
-  "summary": "Added repeatable local helper latency benchmark. Conditional-sleep experiment did not demonstrate benefit and was reverted; production7469b2a client preserved.",
+  "state": "ready_for_integration",
+  "summary": "Optional Grok Responses text transport with explicit caller key/model, bounded HTTP, no retries/proxies/redirects and untrusted reply validation.16 tests incl local HTTP and real compiler; strict all-feature clippy pass.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T07:59:18Z",
+  "updated_utc": "2026-09-12T08:02:50Z",
   "usage": {
-    "evidence": "Baseline5KB/50KB/500KB/1MB medians1.06/1.10/12.99/26.22ms; experiment noisy/slower; strict clippy passed.",
-    "status": "Hosted OpenAI only; no provider calls."
+    "evidence": "cargo test features grok include-ignored16passed; all-features all-targets clippy passed",
+    "status": "Hosted OpenAI; local dummy HTTP only; no paid inference."
   }
 }

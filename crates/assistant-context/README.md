@@ -138,3 +138,25 @@ that slept only when IO made no progress measured2.66/9.40/90.78/149.42ms, with
 substantial variation on repeat. The experiment was reverted: these observations
 do not establish a speedup or a stable regression cause under concurrent builds.
 Use controlled repeated comparisons before changing scheduling behavior.
+
+Optional feature `grok` exposes a Rust-only `grok::GrokClient`. The caller supplies
+an authorized key, explicit model ID and timeout; construction reads no environment
+or keychain and performs no calls. Only an explicit `request(context,current)`
+sends HTTPS to `https://api.x.ai/v1/responses`. Redirects, automatic retries and
+inherited proxies are disabled. Requests set `store:false`, nonstreaming structured
+JSON output and8192 max output tokens, with256KiB request/512KiB response limits.
+No tools or billing fallback are configured. Errors never include provider bodies,
+request source, or the credential. Run blocking HTTP off the UI thread.
+
+The returned `ProviderReply` remains untrusted: validate it with a fresh source
+snapshot after the request, or pass its bytes to the owning registry's `receive`
+method to enforce cancellation/expiry too. No edit is applied. Blocking transport
+cannot be interrupted through registry cancellation; the response is rejected and
+the configured HTTP timeout bounds the outstanding call. API availability, selected
+model access, actual provider schema behavior and live latency remain unverified.
+The existing JSON helper does not accept credentials or initiate network requests.
+
+Contract references checked September12,2026:
+[xAI Responses](https://docs.x.ai/developers/rest-api-reference/inference/responses),
+[structured outputs](https://docs.x.ai/developers/model-capabilities/text/structured-outputs).
+Local HTTP fixtures use dummy credentials and are not evidence of live Grok success.

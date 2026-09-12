@@ -511,3 +511,5 @@ pub use registry::ExplanationRegistry;
 mod client;
 #[cfg(unix)]
 pub use client::SessionClient;
+#[cfg(feature = "grok")]
+pub mod grok;
