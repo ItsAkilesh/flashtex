@@ -376,12 +376,28 @@ impl<'a> Parser<'a> {
         }
     }
 
+    /// Parses the 4 hex digits of a `\uXXXX` escape directly from the byte
+    /// slice, never through a `&str` slice of `self.text`. A valid escape is
+    /// always 4 single-byte ASCII hex digits, so operating byte-by-byte on
+    /// `self.s` is both sufficient and immune to the window landing "mid
+    /// codepoint": there is no `&str` boundary to violate when nothing is
+    /// ever sliced as a string. Any byte that isn't an ASCII hex digit
+    /// (including a UTF-8 continuation/lead byte of a multi-byte codepoint)
+    /// is simply rejected as `JsonError`, never panics (issue #45 finding 2).
     fn hex4(&mut self) -> Result<u32, JsonError> {
         if self.pos + 4 > self.s.len() {
             return Err(self.err("short \\u escape"));
         }
-        let v = u32::from_str_radix(&self.text[self.pos..self.pos + 4], 16)
-            .map_err(|_| self.err("invalid \\u escape"))?;
+        let mut v: u32 = 0;
+        for i in 0..4 {
+            let digit = match self.s[self.pos + i] {
+                b @ b'0'..=b'9' => b - b'0',
+                b @ b'a'..=b'f' => b - b'a' + 10,
+                b @ b'A'..=b'F' => b - b'A' + 10,
+                _ => return Err(self.err("invalid \\u escape")),
+            };
+            v = (v << 4) | u32::from(digit);
+        }
         self.pos += 4;
         Ok(v)
     }
@@ -410,5 +426,27 @@ mod tests {
         assert!(Json::parse("{\"a\":1,}").is_err());
         assert!(Json::parse("[1] x").is_err());
         assert!(Json::parse("\"\\ud83d\"").is_err());
+    }
+
+    /// Issue #45 finding 2: a `\u` escape whose 4-byte hex window lands
+    /// mid-codepoint used to slice `&str` on a non-char-boundary and panic,
+    /// reachable from any corrupted `.flashtex/recovery/*.json` file. This
+    /// must be a typed `JsonError`, never a panic: recovery code panicking
+    /// on untrusted on-disk input turns a recoverable state into a lost one.
+    #[test]
+    fn hex_escape_landing_mid_codepoint_is_a_typed_error_not_a_panic() {
+        // `\u` + "ab" + the 3-byte UTF-8 encoding of '€': the 4-byte hex
+        // window ends 2 bytes into '€', which is not a char boundary.
+        let input = "\"\\uab€\"";
+        let err = Json::parse(input).unwrap_err();
+        assert!(err.message.contains("\\u"), "{err:?}");
+    }
+
+    /// Same class of input, but the split lands inside a 4-byte codepoint
+    /// (an emoji), and also exercises the low-surrogate half of a pair.
+    #[test]
+    fn hex_escape_landing_mid_codepoint_variants_never_panic() {
+        assert!(Json::parse("\"\\u00😀\"").is_err());
+        assert!(Json::parse("\"\\ud83d\\u00😀\"").is_err());
     }
 }
