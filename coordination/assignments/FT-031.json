@@ -11,15 +11,15 @@
   "branch": "agent/daniel-floats/float-layout",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "18827dca98e78ca6aa3af9b3b80c4981bc109f68",
-  "objective": "Verified collection face/table descriptor: adversarial bounds and exact identity regressions",
+  "input_main_sha": "376a264baa7775e0de7f1ed71406a300d3129ac9",
+  "objective": "Verified collection face/table descriptor: existing consumer integration fixture and measured unsupported gaps",
   "owned_paths": [
     "crates/font-engine"
   ],
-  "revision": 4,
+  "revision": 5,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-031",
   "timebox_minutes": 30,
-  "updated_utc": "2026-09-12T09:46:48Z"
+  "updated_utc": "2026-09-12T16:38:51Z"
 }
