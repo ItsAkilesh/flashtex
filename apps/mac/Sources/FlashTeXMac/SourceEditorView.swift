@@ -52,12 +52,18 @@ struct SourceEditorView: NSViewRepresentable {
                 tv.showFindIndicator(for: inserted)
                 tv.window?.makeFirstResponder(tv)
             }
+            context.coordinator.lastKnownText = tv.string
             DispatchQueue.main.async { onEditApplied(edit, tv.string) }
             return
         }
+        // `tv.string` bridges a fresh copy and compares it character by character
+        // (Unicode-normalized) on every update. The coordinator keeps the exact
+        // String instance last exchanged with the text view; when the binding
+        // still holds that instance the comparison is a pointer check.
         var textReset = false
-        if tv.string != text {
+        if text != context.coordinator.lastKnownText {
             tv.string = text // drops temporary attributes; reapply marks below
+            context.coordinator.lastKnownText = text
             textReset = true
         }
         if textReset || marks != context.coordinator.lastMarks {
@@ -104,11 +110,16 @@ struct SourceEditorView: NSViewRepresentable {
         var appliedToken = 0
         var appliedEditToken = 0
         var lastMarks: [EditorDiagnostics.Mark] = []
-        init(_ parent: SourceEditorView) { self.parent = parent }
+        /// The String instance last set on, or read from, the text view.
+        var lastKnownText: String
+        init(_ parent: SourceEditorView) { self.parent = parent; lastKnownText = parent.text }
 
         func textDidChange(_ notification: Notification) {
             guard let tv = notification.object as? NSTextView else { return }
-            parent.text = tv.string
+            TypingBench.shared.textViewDidChange() // stamps the delegate time for keystroke -> paint
+            let s = tv.string
+            lastKnownText = s
+            parent.text = s
         }
 
         func textViewDidChangeSelection(_ notification: Notification) {
