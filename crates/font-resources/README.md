@@ -116,3 +116,19 @@ Acceptance tests cover transformed attachment, byte/word indices, malformed
 indices, exact scaled versus unscaled offsets and refusal to guess grid rounding.
 No ppem, device grid or hint state is represented here, so grid-rounded nonzero
 offsets remain unsupported. Real-font smoke remains 1679 accepted / 941 unsupported.
+
+## Exact TeX font metrics
+
+`tfm::Tfm::parse` is an original bounded parser for the documented TFM format.
+It checks exact file/table lengths, dimensions, character indices, next-larger
+cycles, extensible pieces and ligature/kern program targets and actions. Checksum
+is retained as an external font identity value, not recomputed from TFM contents;
+source_sha256 binds the actual bytes. `FixWord(i32)` preserves signed 12.20 values;
+`at_design_size` returns an exact numerator over 2^40 in TeX points, without
+pretending that this implements TeX's separate scaled-point rounding algorithm.
+`char_metrics`, one-based `parameter`, and bounded `pair_action` expose typed
+values and ligature retention/advance semantics. TFM codes are 8-bit encoding
+slots, not Unicode or TrueType GIDs; consumers need an explicit encoding binding.
+Specification reference: [TeX Live tex.web TFM format documentation](https://github.com/TeX-Live/texlive-source/blob/trunk/texk/web2c/tex.web).
+No existing TeX engine is linked or invoked. No installed TFM oracle was found;
+current tests use declared synthetic format fixtures, not measured font parity.

@@ -534,3 +534,5 @@ pub use expansion::{Coordinate, ExactPoint, ExpandedOutline, GlyphInstance};
 
 mod path;
 pub use path::{PathCommand, QuadraticPath};
+
+pub mod tfm;
