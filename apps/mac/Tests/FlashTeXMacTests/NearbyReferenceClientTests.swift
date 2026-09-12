@@ -101,7 +101,7 @@ final class NearbyReferenceClientTests: XCTestCase {
         state.forget(pairId: stored.pairId)
         try await waitUntil("restarted without the key") { state.log.filter { $0.hasPrefix("ready on port") }.count >= 4 }
         let refused = await cli(["send", "--image", png.path, "--mac", fp, "--store", clientStore])
-        XCTAssertEqual(refused.code, 2)
+        XCTAssertEqual(refused.code, 3, "refused key → re-pair exit code: \(refused.out)")
         XCTAssertTrue(refused.out.contains { $0.hasPrefix("error: TLS-PSK handshake failed") }, "\(refused.out)")
         XCTAssertEqual(model.nearbyInbox.received.count, 1)
         state.stopAdvertising()
@@ -166,6 +166,244 @@ final class NearbyReferenceClientTests: XCTestCase {
             XCTAssertEqual(e, .remote(code: "pairing_expired", message: "pairing code is no longer valid"))
         }
         liar.close(); eager.close(); again.close()
+    }
+
+    // MARK: bounded reconnect against the real listener
+
+    /// Forwards to the ShellModel inbox but swallows the first acknowledgement
+    /// and cuts the listener instead: the capture *was* delivered, the
+    /// companion never learns it. The retry must carry the same capture_id.
+    final class AckDroppingSink: CaptureSink {
+        let inner: CaptureSink
+        let onDrop: () -> Void
+        private let lock = NSLock()
+        private var dropped = false
+        private(set) var deliveries = 0
+        private(set) var droppedAt: Date?
+        init(_ inner: CaptureSink, onDrop: @escaping () -> Void) { self.inner = inner; self.onDrop = onDrop }
+        func submit(_ envelope: RuntimeV1.Envelope<RuntimeV1.CaptureSubmit>, reply: @escaping (Data) -> Void) {
+            let first: Bool = lock.withLock { deliveries += 1; if dropped { return false }; dropped = true; droppedAt = Date(); return true }
+            if first {
+                inner.submit(envelope) { _ in self.onDrop() } // stored on the Mac; ack thrown away
+            } else {
+                inner.submit(envelope, reply: reply)
+            }
+        }
+    }
+
+    final class EventLog: @unchecked Sendable {
+        private let lock = NSLock()
+        private(set) var events: [(Date, NearbyReconnector.Event)] = []
+        func record(_ e: NearbyReconnector.Event) { lock.withLock { events.append((Date(), e)) } }
+        var list: [NearbyReconnector.Event] { lock.withLock { events.map(\.1) } }
+        var attempts: [Int] { list.compactMap { if case .attempt(let n, _) = $0 { return n }; return nil } }
+    }
+
+    static let longTermPSK = Data(repeating: 0x3C, count: 32)
+    static let longTermPairId = "feedfacefeedface"
+    func longTermPair(macName: String = "Test Mac") -> PairedMac {
+        PairedMac(fingerprint: "test-fp", macName: macName, pairId: Self.longTermPairId,
+                  pairPsk: Self.longTermPSK.base64EncodedString(), companionName: "Reconnecting iPad")
+    }
+    var longTermEntry: NearbyListener.PSKEntry { .init(identity: Self.longTermPairId, key: Self.longTermPSK, isBootstrap: false) }
+
+    /// Duplicate capture delivery: the listener drops mid-capture after the
+    /// ShellModel inbox stored it; the companion reconnects (bounded backoff)
+    /// to a listener restarted on the same port and re-sends the identical
+    /// capture_id; the inbox acknowledges the duplicate and keeps one copy.
+    func testReconnectorResendsSameCaptureAfterListenerDropAndSamePortRestart() async throws {
+        let model = ShellModel()
+        model.caretUTF16 = 6
+        model.pinAnchorAtCaret()
+        let anchor = try XCTUnwrap(model.nearbyDestination)
+        let restarted = XCTestExpectation(description: "listener restarted")
+        var h1: ListenerHarness!
+        var h2: ListenerHarness?
+        let sink = AckDroppingSink(model) {
+            // The listener goes away with the ack still unsent; bring a new one up on
+            // the same port (what NearbyState does after a key-table change/restart).
+            h1.listener.stop { DispatchQueue.main.async { restarted.fulfill() } }
+        }
+        h1 = ListenerHarness(psks: [longTermEntry], sink: sink, destinations: model)
+        try h1.start()
+        let port = h1.port
+
+        let log = EventLog()
+        let policy = ReconnectPolicy(maxAttempts: 6, initialDelay: 0.2, maxDelay: 1, jitter: 0, connectTimeout: 3, requestTimeout: 10)
+        let reconnector = NearbyReconnector(pair: longTermPair(), policy: policy,
+                                            endpoints: { .hostPort(host: "127.0.0.1", port: NWEndpoint.Port(rawValue: port)!) },
+                                            onEvent: log.record)
+        let session = try await reconnector.connect()
+        XCTAssertEqual(session.destination?.destinationId, anchor.destinationId)
+        let capture = try session.makeCapture(captureId: "ref-dup-1", image: Self.fixturePNG, mimeType: "image/png", instructions: "once, please")
+        let started = Date()
+        let submitTask = Task { try await reconnector.submit(capture) }
+        // Restart the listener on the same port once the first delivery was swallowed.
+        await fulfillment(of: [restarted], timeout: 10)
+        h2 = ListenerHarness(psks: [longTermEntry], sink: model, destinations: model, port: port)
+        try h2!.start()
+        let restartedAt = Date()
+        let ack = try await submitTask.value
+        let elapsed = Date().timeIntervalSince(started)
+        defer { h2?.stop() }
+
+        XCTAssertEqual(ack.captureId, "ref-dup-1")
+        XCTAssertFalse(ack.durable)
+        XCTAssertEqual(sink.deliveries, 1, "the first listener saw exactly one delivery")
+        XCTAssertEqual(model.nearbyInbox.received.count, 1, "delivered twice, stored once")
+        XCTAssertEqual(model.nearbyInbox.received.first?.captureId, "ref-dup-1")
+        XCTAssertEqual(model.nearbyInbox.received.first?.instructions, "once, please")
+        XCTAssertEqual(model.nearbyInbox.lastNote, "Duplicate ref-dup-1 acknowledged again.")
+        let attempts = await reconnector.attemptsMade
+        XCTAssertEqual(attempts, 2, "one reconnect: \(log.list)")
+        XCTAssertEqual(log.attempts, [1, 2])
+        XCTAssertTrue(log.list.contains { if case .failed(1, let why, let wait) = $0 { return why.hasPrefix("connection closed:") && wait == 0.2 }; return false }, "\(log.list)")
+        XCTAssertTrue(log.list.contains { if case .connected("Test Mac", 2, let d) = $0 { return d?.destinationId == anchor.destinationId }; return false }, "\(log.list)")
+        XCTAssertTrue(h2!.snapshot.contains(.capture(captureId: "ref-dup-1")))
+        XCTAssertTrue(h1.snapshot.contains { if case .connectionClosed(Self.longTermPairId?, "listener stopped") = $0 { return true }; return false }, "\(h1.snapshot)")
+        let sinceRestart = Date().timeIntervalSince(restartedAt)
+        print("measured: real-listener drop→duplicate-ack in \(String(format: "%.3f", elapsed))s total; listener back at +\(String(format: "%.3f", restartedAt.timeIntervalSince(started)))s; ack \(String(format: "%.3f", sinceRestart))s after restart; backoff 0.2s")
+        XCTAssertLessThan(elapsed, 8)
+        await reconnector.shutdown()
+    }
+
+    /// Revoked pairing: the Mac forgets the companion (NearbyState.forget)
+    /// while a session is live. The live session is closed by the Mac, the
+    /// reconnect is refused at the TLS handshake, and the client stops after
+    /// that single retry with a terminal, re-pair error — no retry storm.
+    func testRevokedPairingIsTerminalAfterOneRefusedReconnect() async throws {
+        let store = PairStore(url: tmp.appendingPathComponent("mac-pairs.json"))
+        let model = ShellModel()
+        model.caretUTF16 = 6
+        model.pinAnchorAtCaret()
+        let state = NearbyState(store: store, macName: "FlashTeX Revoke", loopbackOnly: true)
+        state.attach(sink: model, destinations: model)
+        state.startAdvertising()
+        try await waitUntil("advertising") { state.isAdvertising && state.port != nil }
+        state.beginPairing()
+        let code = try XCTUnwrap(state.pairingCode)
+        try await waitUntil("restarted with bootstrap key") { state.log.filter { $0.hasPrefix("ready on port") }.count >= 2 }
+        let port = try XCTUnwrap(state.port)
+        let ep = NWEndpoint.hostPort(host: "127.0.0.1", port: NWEndpoint.Port(rawValue: port)!)
+        let (pair, boot) = try await NearbyClient.pair(endpoint: ep, salt: store.salt, fingerprint: state.fingerprint, macName: state.macName,
+                                                       code: code, companionName: "Revoked iPad")
+        boot.close()
+        try await waitUntil("pair stored") { state.pairs.count == 1 && state.pairingCode == nil }
+        try await waitUntil("restarted with long-term key") { state.log.filter { $0.hasPrefix("ready on port") }.count >= 3 }
+        XCTAssertEqual(state.port, port, "same port across the key-table restart")
+
+        let log = EventLog()
+        let policy = ReconnectPolicy(maxAttempts: 5, initialDelay: 0.1, maxDelay: 0.1, jitter: 0, connectTimeout: 3, requestTimeout: 10)
+        let reconnector = NearbyReconnector(pair: pair, policy: policy, endpoints: { ep }, onEvent: log.record)
+        let session = try await reconnector.connect()
+        try await waitUntil("hello seen") { state.connectedPairIds == [pair.pairId] }
+        let capture = try session.makeCapture(captureId: "ref-revoked-1", image: Self.fixturePNG, mimeType: "image/png", instructions: "")
+        _ = try await reconnector.submit(capture)
+        XCTAssertEqual(model.nearbyInbox.received.count, 1)
+
+        // Forget on the Mac: the live session is dropped and the key is gone.
+        state.forget(pairId: pair.pairId)
+        try await waitUntil("restarted without the key") { state.log.filter { $0.hasPrefix("ready on port") }.count >= 4 }
+        try await waitUntil("session closed by the Mac") { !session.isOpen }
+        XCTAssertTrue(state.log.contains("closed \(pair.pairId): pairing forgotten"), "\(state.log)")
+        let started = Date()
+        do {
+            _ = try await reconnector.submit(capture)
+            XCTFail("a forgotten pairing must not deliver")
+        } catch let e as NearbyError {
+            guard case .handshakeFailed = e else { return XCTFail("unexpected \(e)") }
+            XCTAssertTrue(e.needsRepair)
+            XCTAssertFalse(e.isRetryable)
+        }
+        let elapsed = Date().timeIntervalSince(started)
+        let attempts = await reconnector.attemptsMade
+        XCTAssertEqual(attempts, 2, "initial dial + exactly one refused reconnect: \(log.list)")
+        XCTAssertEqual(log.attempts, [1, 2])
+        XCTAssertEqual(log.list.filter { if case .failed = $0 { return true }; return false }.count, 0,
+                       "the dead session is replaced without a backoff wait, and the refusal is terminal: \(log.list)")
+        XCTAssertTrue(log.list.contains { if case .gaveUp(let why) = $0 { return why.hasPrefix("TLS-PSK handshake failed") }; return false }, "\(log.list)")
+        XCTAssertEqual(model.nearbyInbox.received.count, 1, "nothing new reached the inbox")
+        print("measured: revoked pairing reported terminal \(String(format: "%.3f", elapsed))s after the retry began (1 refused handshake)")
+
+        // The CLI says the same, with exit 3 and no second attempt.
+        let clientStore = tmp.appendingPathComponent("client-pairs.json").path
+        try PairFile(url: URL(fileURLWithPath: clientStore)).upsert(pair)
+        let png = tmp.appendingPathComponent("dot.png")
+        try Self.fixturePNG.write(to: png)
+        let refused = await cli(["send", "--image", png.path, "--host", "127.0.0.1", "--port", "\(port)", "--attempts", "5", "--retry-delay", "0",
+                                 "--store", clientStore])
+        XCTAssertEqual(refused.code, 3, refused.out.joined(separator: "\n"))
+        XCTAssertFalse(refused.out.contains { $0.hasPrefix("attempt 2") }, "\(refused.out)")
+        XCTAssertTrue(refused.out.contains { $0.contains("run `nearby-client pair` again (exit 3)") }, "\(refused.out)")
+        await reconnector.shutdown()
+        state.stopAdvertising()
+    }
+
+    /// Revoked destination: the Mac's pinned insertion point disappears
+    /// (project replaced) or moves (re-pinned) between building a capture and
+    /// delivering it. The client refuses with `destinationChanged` — on a
+    /// reused session via `destination_query`, on a fresh one via `hello_ack`
+    /// — and nothing lands in the inbox until a capture is rebuilt for the
+    /// current anchor.
+    func testRevokedDestinationIsTerminalAgainstShellModel() async throws {
+        let model = ShellModel()
+        model.caretUTF16 = 6
+        model.pinAnchorAtCaret()
+        let first = try XCTUnwrap(model.nearbyDestination)
+        let h = ListenerHarness(psks: [longTermEntry], sink: model, destinations: model)
+        try h.start()
+        defer { h.stop() }
+        let port = h.port
+        let log = EventLog()
+        let reconnector = NearbyReconnector(pair: longTermPair(), policy: .immediate,
+                                            endpoints: { .hostPort(host: "127.0.0.1", port: NWEndpoint.Port(rawValue: port)!) },
+                                            onEvent: log.record)
+        let session = try await reconnector.connect()
+        XCTAssertEqual(session.destination, NearbyWire.Destination(destinationId: first.destinationId, projectId: first.projectId, path: first.path, baseRevision: first.baseRevision))
+        let stale = try session.makeCapture(captureId: "ref-stale-1", image: Self.fixturePNG, mimeType: "image/png", instructions: "stale")
+
+        // Unpinned: the project is replaced, the anchor is gone.
+        model.replaceProject(entryText: "\\documentclass{article}\\begin{document}Replaced.\\end{document}")
+        XCTAssertNil(model.nearbyDestination)
+        do { _ = try await reconnector.submit(stale); XCTFail() } catch let e as NearbyError {
+            XCTAssertEqual(e, .destinationChanged(captureDestination: "\(first.destinationId) @ rev \(first.baseRevision)", current: nil))
+        }
+        XCTAssertEqual(model.nearbyInbox.received.count, 0)
+        XCTAssertTrue(session.isOpen, "checked with destination_query on the live session")
+
+        // Re-pinned elsewhere: a different destination id and revision.
+        model.caretUTF16 = 3
+        model.pinAnchorAtCaret()
+        let second = try XCTUnwrap(model.nearbyDestination)
+        XCTAssertNotEqual(second.destinationId, first.destinationId)
+        do { _ = try await reconnector.submit(stale); XCTFail() } catch let e as NearbyError {
+            XCTAssertEqual(e, .destinationChanged(captureDestination: "\(first.destinationId) @ rev \(first.baseRevision)",
+                                                  current: "\(second.destinationId) @ rev \(second.baseRevision)"))
+        }
+        XCTAssertEqual(model.nearbyInbox.received.count, 0)
+
+        // Same check on a fresh connection (hello_ack path): drop the session first.
+        await reconnector.close()
+        do { _ = try await reconnector.submit(stale); XCTFail() } catch let e as NearbyError {
+            guard case .destinationChanged(_, let current) = e else { return XCTFail("unexpected \(e)") }
+            XCTAssertEqual(current, "\(second.destinationId) @ rev \(second.baseRevision)")
+        }
+        XCTAssertEqual(log.attempts, [1, 2])
+        XCTAssertEqual(model.nearbyInbox.received.count, 0)
+
+        // Rebuilt for the current anchor: delivered.
+        let current = await reconnector.currentSession
+        let fresh = try XCTUnwrap(current)
+        let rebuilt = try fresh.makeCapture(captureId: "ref-fresh-1", image: Self.fixturePNG, mimeType: "image/png", instructions: "fresh")
+        XCTAssertEqual(rebuilt.destinationId, second.destinationId)
+        let ack = try await reconnector.submit(rebuilt)
+        XCTAssertEqual(ack.captureId, "ref-fresh-1")
+        XCTAssertEqual(model.nearbyInbox.received.map(\.captureId), ["ref-fresh-1"])
+        XCTAssertEqual(model.nearbyInbox.received.first?.destinationId, second.destinationId)
+        // The user can still force a destination (CLI --destination-id): the inbox takes it.
+        _ = try await reconnector.submit(stale, requireCurrentDestination: false)
+        XCTAssertEqual(model.nearbyInbox.received.map(\.captureId), ["ref-fresh-1", "ref-stale-1"])
+        await reconnector.shutdown()
     }
 
     /// Manual/live harness, skipped unless `FLASHTEX_NEARBY_SERVE_INFO=<path>` is
