@@ -2,66 +2,69 @@
 
 Agent / task / branch: mac-render-pipeline (Claude Code subagent Opus, parent mac-claude-a,
 mac-m1max-a) / lane "Eliminate measured reference geometry mismatches using shared exact
-font/paragraph/math boxes" (coordination/machines/mac-m1max-a-resume.json) /
+font/paragraph/math boxes" + follow-ups (large-edit cost, capability/provenance evidence) /
 `agent/mac-render-pipeline/unified`
 Worktree: `/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a1798a96df2c0bacc`
 (local branch `rp/resume`, pushed as `agent/mac-render-pipeline/unified`)
-State: in progress; every pushed SHA is a tested checkpoint
+State: lane objectives met for the text and math fixtures the compiler can parse; follow-ups
+measured; every pushed SHA is a tested checkpoint (`cargo test --release`: 39 passed at
+919ad8b)
 Owned paths: `crates/render-pipeline/**` (this lane), plus `docs/proposals/rendering-abi.md`,
 `coordination/mac-render-pipeline.md`, `coordination/agents/mac-render-pipeline.json`
 Rules in force: no purchases; crates/font-engine, crates/paragraph-layout, crates/math-layout
 are transferred to another machine and are NOT edited (consumed as vendored pins; gaps go to
 issue #2 with fixture + numbers); commits by the implementing agent with truthful trailers,
 jay3332 as primary author on this machine.
-Main integrated through: merged origin/main ddc5bc6 into the branch (79ba728); reviewed
-compiler/rendering-core/font-resources changes on main up to 8e2c70a.
+Main integrated through: merged origin/main ddc5bc6 (79ba728); compiler re-vendored from
+main 745f327; reviewed rendering-core/font-resources on main through 8e2c70a and the
+font-resources branch through cb4ff5f (pinned).
 
 ## Completed behavior (all on the branch)
-- Runtime-v1 worker `flashtex-render` with layout-capability negotiation; v2 display list;
-  TeX page builder; LaTeX structure (numbering, refs, eqno, display skips, `\newpage`).
-- TFM-exact text metrics (`src/tfm.rs`, `src/shape.rs`, `src/ids.rs`): widths/kerns/ligatures/
-  heights/depths and `\fontdimen`s from `ec-lm*.tfm`; interword glue from the font at the space
-  token; `\/` italic correction per LaTeX's `\maybe@ic`; space factor per TeX §1034.
-- Oracle table (fresh MacTeX 2026 pdflatex, oracle only): every text fixture (01-05, 08, 12,
-  15-18) at word-box dx 0.00 mean / 0.01 max pt; 09 0.05/0.38; 06 0.12/0.28; math 07/13/14
-  and lists 11 still open (see below).
+- TFM-exact text metrics through the shared font-resources reader (cb4ff5f): widths, kerns,
+  ligatures, heights/depths, `\fontdimen`s; glue by the font at the space token; `\/`
+  italic correction; TeX space factor. 12 pt set digest-bound to LM 2.004 via
+  `RequiredMetrics` (blocking `required_metrics_unavailable` when absent).
+- Math laid out with TeX's metrics (CM-identical lm TFMs embedded in math-layout + rm-lmr*),
+  painted with Latin Modern Math glyphs (`src/mathtex.rs`); `\frac` rule 0.4 pt etc.
+- Oracle table (fresh MacTeX 2026 pdflatex, oracle only): 01–05, 08, 12, 15–18 and
+  06/07 at word-box dx 0.00/0.01 pt; 09 0.01/0.06; 13/14 blocked by the compiler math parser
+  (`\left`/`\right`, `\nu`); 11 lists unsupported; dy 1.15 pt = PDFKit font-box artefact.
+- `display-list-v2` producer (mac-preview-v2 proposal ACKed): sibling `display_list` line,
+  per-request decline over the 16 MiB reply limit; cli_e2e gate.
+- `fonts[].sha256` = raw file digest (FT-023 blocker), engine id kept private.
+- Reply limit 16 MiB (explicit failure), Core 14 lookup fix, per-stage timing example.
 
 ## Tests (exact evidence)
-`cd crates/render-pipeline && cargo test --release`: 36 passed (unit 20 incl. tfm/ids/space
-factor; golden v1 3; v2/math/page 5; latex_structure 6; cli_e2e 2). Fonts resolved from
-MacTeX 2026 by default; without Latin Modern the font tests skip loudly.
-Oracle run: `scratchpad/run_oracle.sh` (harness export from
-origin/agent/mac-visual-oracle/reference-raster 63f0cf5; references rendered fresh with
-/usr/local/texlive/2026/bin/universal-darwin/pdflatex, pdfTeX 1.40.29); table via
-`scratchpad/table.py pdflatex-lm`; per-word compare via `scratchpad/words.py <fixture>`.
+`cd crates/render-pipeline && cargo test --release`: 39 passed (unit 20; cli_e2e 3; golden v1 3;
+latex_structure 6; metrics_provenance 2; v2_and_math 5). Oracle harness:
+`scratchpad/run_oracle.sh` → `scratchpad/table.py pdflatex-lm`; per-word `scratchpad/words.py`.
+Edit cost: `scratchpad/rp/editcost.py <reps> <edits>`; stages: `cargo run --release --example
+stages -- file.tex 2`.
 
-## Known limitations / open residuals
-- Math fixtures: 07-math-display dx 1.86/3.91, 13 8.9/27, 14 30/283, 09 0.05/0.38: math
-  boxes come from math-layout db90047 with Latin Modern Math (OTF MATH table) while pdflatex
-  uses lmsy/lmmi/lmex TFMs (Appendix G with TFM params); `\left`/`\right`, `\nu` etc. are
-  rejected by the compiler's math parser (13/14). NEXT STEP.
-- 11-nested-lists: list environments unsupported (compiler gives marker words only).
-- 10-unicode-paragraph: `ǅ` has no T1 slot/glyph (diagnostic); pdflatex drops it differently.
-- dy 1.15pt constant on every text word is PDFKit's font-box (Type 1 vs CFF descent); ink
-  registration is 0pt. Not a layout error.
-- `\emph{\textbf{x}} y` (outer group closing after an inner one) gets no italic correction yet.
-- TFM boundary-character programs are reported, not run (none of the ec-lm faces has one).
+## Known limitations / open items
+- 13/14 need compiler math parser support for `\left`/`\right` and Greek control words.
+- Lists (11), `ǅ` (10), extensible delimiter assemblies (no OTF mapping → `math_glyph_unmapped`),
+  `\emph{\textbf{x}} y` outer-group italic correction.
+- No incremental reuse: 27 pages ≈ 95 ms per edit warm; 107 pages exceed the 16 MiB v1 reply.
+- Provenance pins exist only for the 12 pt set; other sizes' TFMs warn (`tfm_missing`).
 
-## Pending / next steps
-1. Math: compare math-layout boxes against pdflatex for 07/09/13/14 (positions of glyphs,
-   fraction rules, scripts, `\sum` limits); report exact gaps to math-layout on issue #2.
-2. Then the follow-ups: measure persistent large-edit cost vs fresh compile; emit consumer
-   capability/provenance evidence.
-3. Keep `docs/oracle-evidence.md` and the README in step with the numbers.
+## Next steps (in order)
+1. Per-paragraph shaping/line-break cache keyed by (text, style, measure) to cut the
+   per-edit cost on large documents (typeset 23 ms + assemble/v1/json ~50 ms at 27 pages).
+2. Extensible delimiter/radical assemblies → LM Math glyph assemblies (math-layout API ask).
+3. When the compiler adds `\left`/`\right`/Greek, re-run 13/14 and update the evidence table.
+4. Keep `docs/oracle-evidence.md` and README in step; un-vendor siblings as they merge.
 
 ## Dependency SHAs (vendored under crates/render-pipeline/vendor, PIN files)
-compiler main 7adb021 (crates/compiler 9026d8a), font-engine f418238, paragraph-layout
-70209e2, math-layout db90047, pdf 4bd8c2e, document-style bfc980d.
+compiler main 745f327 (crates/compiler 75c8018), font-engine f418238, paragraph-layout
+70209e2, math-layout db90047, pdf 4bd8c2e, document-style bfc980d, font-resources cb4ff5f,
+project-files cb4ff5f.
 
 ## Running commands / messages
-No background jobs. Pending coordinator messages: none unanswered (cooldown-lift resume and
-context-checkpoint policy both acted on).
+No background jobs. Coordinator items answered on issue #2: geometry report (9bb7b27),
+display-list-v2 ACK + tfm_missing (4888a67), font-resources adoption + raw digests + blocking
+required metrics (919ad8b).
 
 Attach to the Mac app: `FLASHTEX_COMPILER=<repo>/crates/render-pipeline/target/release/flashtex-render`.
 Resource state: shared 20x Max quota on mac-m1max-a; usage not observable from a subagent.
-Updated: 2026-09-12T09:05:00Z
+Updated: 2026-09-12T10:05:00Z

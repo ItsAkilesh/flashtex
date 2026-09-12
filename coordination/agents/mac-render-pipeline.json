@@ -15,7 +15,7 @@
   },
   "machine": "mac-m1max-a",
   "main_integrated_through": "7fea005b0611e2cc565ec38b9a705eff7cc4532c",
-  "next_action": "math fixtures 07/09/13/14 vs pdflatex (math-layout gaps to issue #2); then large-edit cost and provenance evidence",
+  "next_action": "per-paragraph shaping/line-break cache for large-edit cost; extensible delimiter assemblies; re-run 13/14 when the compiler parses \\left/\\right and Greek",
   "reviewed_peers": {
     "main": "7fea005b0611e2cc565ec38b9a705eff7cc4532c",
     "agent/mac-font-engine/tex-fonts": "f418238",
@@ -27,9 +27,9 @@
   },
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "render-pipeline: TFM-exact text metrics; all text fixtures at 0.00/0.01pt vs MacTeX 2026 pdflatex; 36 tests; math fixtures next",
+  "summary": "render-pipeline: TFM-exact text+math via shared font-resources reader (cb4ff5f), digest-bound 12pt metrics with blocking diagnostic, raw font digests, display-list-v2 producer; all parseable fixtures at 0.00/0.01pt vs MacTeX 2026 pdflatex; 39 tests",
   "tool": "Claude Code subagent Opus (parent mac-claude-a)",
-  "updated_utc": "2026-09-12T09:05:00Z",
+  "updated_utc": "2026-09-12T10:05:00Z",
   "usage": {
     "evidence": "shared 20x Max quota; not observable from a subagent",
     "status": "unknown"

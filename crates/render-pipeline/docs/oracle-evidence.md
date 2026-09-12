@@ -150,6 +150,39 @@ line's natural width — the lines of 14 without those constructs are at
 absent from T1/Latin Modern; the constant dy 1.15 pt is the PDFKit font-box
 descent difference (Type 1 vs CFF) — ink registration stays at 0 pt.
 
+## Metric provenance (what a clean compile guarantees)
+
+Since `919ad8b` a compile's diagnostics state which metrics were used:
+
+| metrics | source | when absent |
+|---|---|---|
+| `ec-lmr12`, `rm-lmr12/8/6` (12 pt text and math roman) | font-resources `required_tfm::RequiredMetrics` over the `texmf-dist` root, digest-bound to Latin Modern 2.004 (`REQUIRED_TFMS`: ec-lmr12 `29902112…`, rm-lmr12 `9d4e3d8e…`, rm-lmr8 `80bcbfd8…`, rm-lmr6 `eb0bfdf8…`, GUST licence `49ea6cb9…`) | **error** `required_metrics_unavailable` (text face and math roman); layout continues on OpenType metrics but is flagged as not the reference geometry |
+| other `ec-lm*` text TFMs (10/17 pt, bold, italic) | shared parser from the TFM search dirs | warning `tfm_missing` naming the face |
+| `lmmi`/`lmsy`/`lmex` (math families 1–3) | math-layout's embedded CM tables (byte-identical metrics to the LM 2.004 files, verified on lmmi12/lmsy10/lmex10/lmmi8/lmsy8) | n/a (embedded) |
+| glyph programs | Latin Modern OTFs; `fonts[].sha256` = SHA-256 of the raw file (`lmroman12-regular.otf` `e6be218a…`) | error `font_unavailable`, `math_font_unavailable` |
+
+An empty diagnostics list therefore means: pinned 12 pt TFM metrics, TeX
+page builder, Latin Modern glyphs — the configuration the tables above were
+measured in. The MacTeX 2026 files on this machine match the 2.004 digests.
+
+## Large-edit cost: persistent worker vs fresh process (M1 Max, `4888a67`)
+
+One-word edits in the middle of a document, Latin Modern, request and reply
+over stdin/stdout including JSON; "fresh" spawns a new process per compile.
+
+| document | pages | v1 items | persistent worker (median of edits) | fresh process |
+|---|---|---|---|---|
+| 08+09 bodies ×1 | 3 | 1 864 | 9.7 ms (first request 22.8 ms) | 27.0 ms |
+| ×10 | 27 | 18 631 | 95 ms (first 125 ms) | 148 ms |
+| ×40 | 107 | 74 841 | reply refused: 17.2 MB > 16 MiB line limit (explicit `failed`) | — |
+
+Stage split at 27 pages (`examples/stages.rs`): parse 3.5 ms, adapt 12,
+typeset (shape + break + pages) 23, assemble v2 14, v1 22, JSON 12. No
+incremental reuse exists yet: every paragraph is re-shaped and re-broken
+per request; a per-paragraph cache keyed by (text, style, measure) is the
+next step. Found while measuring: `FontSet::core14` re-hashed the AFM per
+lookup (Times documents: 25 pages 620 ms → 116 ms).
+
 ## rendering-v2 validation against main's `rendering-core`
 
 `flashtex-render --v2` envelopes for all 18 fixtures (with `rules-v1` +
