@@ -144,6 +144,7 @@ pub struct FontResource {
     license_text: Arc<[u8]>,
     tables: BTreeMap<[u8; 4], Range<usize>>,
     embedding_flags: Option<u16>,
+    cmap: Arc<std::sync::OnceLock<Result<mapping::Cmap>>>,
 }
 impl FontResource {
     /// Copies and verifies supplied bytes; later caller/file mutations cannot change this resource.
@@ -186,6 +187,7 @@ impl FontResource {
             license_text: Arc::from(license_text),
             tables: parsed.tables,
             embedding_flags: parsed.embedding_flags,
+            cmap: Arc::new(std::sync::OnceLock::new()),
         })
     }
     pub fn descriptor(&self) -> &FontDescriptor {
@@ -523,3 +525,6 @@ pub use mapping::HorizontalMetrics;
 
 mod composite;
 pub use composite::MAX_COMPOSITE_DEPTH;
+
+mod outline;
+pub use outline::{OutlinePoint, SimpleOutline};
