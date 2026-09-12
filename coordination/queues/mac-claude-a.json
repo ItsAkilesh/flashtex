@@ -1,6 +1,6 @@
 {
   "agent_id": "mac-claude-a",
-  "next_index": 2,
+  "next_index": 3,
   "schema_version": 1,
   "steps": [
     {
@@ -41,7 +41,9 @@
       "allocation_id": "claude-mac20x-shell-stage4",
       "name": "Bridge, nearby transport, and Unicode export",
       "objective": "Integrate the six Jaysen child streams for durable bridge insertion, authenticated nearby transport, Unicode PDF output, source-aware completion/navigation, packaging, and native end-to-end validation. Preserve exact child file ownership and test before merging.",
-      "owned_paths": ["apps/mac"],
+      "owned_paths": [
+        "apps/mac"
+      ],
       "timebox_minutes": 45
     },
     {
@@ -53,7 +55,9 @@
       "allocation_id": "claude-mac20x-shell-stage5",
       "name": "Packaged native recovery and responsiveness",
       "objective": "Harden the packaged Mac workflow and repeat native recovery, accessibility, nearby-device, responsiveness, and non-regression gates using exact integrated component SHAs.",
-      "owned_paths": ["apps/mac"],
+      "owned_paths": [
+        "apps/mac"
+      ],
       "timebox_minutes": 45
     }
   ],
