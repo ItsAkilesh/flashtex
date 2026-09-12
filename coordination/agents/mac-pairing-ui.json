@@ -1,0 +1,36 @@
+{
+  "agent_id": "mac-pairing-ui",
+  "allocation_id": "claude-mac20x-pairing-ui",
+  "assignment_acknowledgements": {},
+  "branch": "agent/mac-pairing-ui/recovery",
+  "capabilities": [
+    "swift",
+    "swiftui",
+    "xctest"
+  ],
+  "code_revision": "6b43a3a1ae8697697a3fb338909bc973db0c1e02",
+  "eta_minutes": {
+    "likely": 40,
+    "optimistic": 20,
+    "pessimistic": 90
+  },
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "2fd302675040308c2b07d346c07389a051518979",
+  "next_action": "Run full swift test with worker binaries, merge origin/main at clean checkpoint, push branch",
+  "reviewed_peers": {
+    "origin/agent/mac-claude-a/mac-shell": {
+      "adaptation": "consumed NearbyState/PairingCoordinator APIs as-is; resume goes through coordinator.begin(code:lifetime:)",
+      "reviewed_utc": "2026-09-12T08:48:22Z",
+      "sha": "71675cd668b9116d8a1fb6cad0624dff7c2b3218"
+    }
+  },
+  "schema_version": 1,
+  "state": "in_progress",
+  "summary": "Pairing flow state machine (PairingFlow) with generation-tagged stale rejection, durable PairingJournal + PairStore schema handling, PairingFlowController driving NearbyView with VoiceOver labels/values, keyboard cancel/resume/dismiss; 36 unit + 8 loopback controller tests; 8 window screenshots",
+  "tool": "Claude Code subagent (parent mac-claude-a)",
+  "updated_utc": "2026-09-12T08:48:22Z",
+  "usage": {
+    "evidence": "swift test --filter PairingFlowMachineTests|PairingPersistenceTests 36/36; --filter NearbyViewControllerTests 8/8; docs/evidence/nearby-pairing-2026-09-12/*.png",
+    "status": "unknown (subagent cannot read Max plan usage); no purchases"
+  }
+}
