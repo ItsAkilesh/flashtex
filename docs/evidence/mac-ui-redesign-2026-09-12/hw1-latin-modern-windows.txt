@@ -1,0 +1,10 @@
+16112		layer=0	onscreen=false	1920x30
+16111		layer=0	onscreen=false	1920x30
+16110		layer=0	onscreen=false	1920x30
+16108		layer=0	onscreen=false	1512x33
+16107		layer=0	onscreen=false	1512x33
+16106		layer=0	onscreen=false	1512x33
+16105		layer=0	onscreen=false	1512x33
+16103	FlashTeX	layer=0	onscreen=true	1200x1049
+16104		layer=0	onscreen=false	500x500
+16109		layer=0	onscreen=false	1920x30

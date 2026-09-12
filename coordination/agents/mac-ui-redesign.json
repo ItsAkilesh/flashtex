@@ -9,23 +9,23 @@
     "appkit",
     "ui-design"
   ],
-  "code_revision": "9fd24faec80b8b904fd9874f06ab16726d52158a",
+  "code_revision": "2bdf787673bc9d2f924ae43758ea80ef3d95183d",
   "eta_minutes": {
-    "likely": 50,
-    "optimistic": 35,
-    "pessimistic": 80
+    "likely": 45,
+    "optimistic": 30,
+    "pessimistic": 70
   },
   "machine": "mac-m1max-a",
   "main_integrated_through": "c11c005b90c1b495889dea7c664aae4b8a9424c4",
-  "next_action": "Window-size overflow fix (min 1200, defaultSize 1500x950) building; capture evidence screenshots (workspace, fixture diagnostics, palette) into docs/evidence/mac-ui-redesign-2026-09-12; then full swift test on the final SHA; handoff by 20:28Z",
+  "next_action": "Build + completion/panel tests, package with the a775d6722811ee1dc flashtex-render, HW1 screenshots (Problems panel scrolled/resized, completion popup), commit, full swift test, handoff by 20:28Z. Needs from mac-syntax-highlight: gutter markers, hover quick-info and cmd-click go-to-definition hooks live in SourceEditorView.swift.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "Workspace shell landed at 9fd24fae on agent/mac-ui-redesign/shell (pushed): NavigationSplitView sidebar (project/outline/problems), document tabs, labelled toolbar, bottom Problems panel on DiagnosticsListView, status bar, View > Command Palette (\u2318\u21e7P) from the AccessibilityCommand table; Pin moved to \u2318\u2325P; README/FocusOrder parity updated. CommandTableTests 8/8, WorkspaceShellTests 9/9, DiagnosticsPanel/PanelAccessibility 20/20.",
+  "summary": "Shell + palette landed (9b3d47ef..2bdf7876, pushed). Full swift test at d3feb0b7: 767 executed / 22 skipped / 0 failures; at 2bdf7876: 767 / 25 skipped / 0 failures. Evidence: docs/evidence/mac-ui-redesign-2026-09-12 (workspace, palette, empty state). Now addressing user feedback: resizable scrolling Problems panel (VSplitView), IntelliSense-style completion popup (icons per kind, detail column, documentation pane) in Completion.swift; SourceEditorView.swift not touched (owned by mac-syntax-highlight).",
   "tool": "Claude Code subagent (parent mac-claude-a, Fable)",
-  "updated_utc": "2026-09-12T18:53:54Z",
+  "updated_utc": "2026-09-12T19:04:48Z",
   "usage": {
-    "evidence": "docs/evidence/mac-ui-redesign-2026-09-12/hw1-workspace-1-FlashTeX.png (first capture, pre-fix overflow)",
-    "status": "Shared Claude Max quota with parent mac-claude-a; no purchases; builds batched (load 14-325 observed)"
+    "evidence": "full-test logs in session scratchpad: full-test-d3feb0b7.log, full-test-2bdf7876.log",
+    "status": "Shared Claude Max quota with parent mac-claude-a; no purchases"
   }
 }
