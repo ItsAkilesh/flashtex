@@ -2,7 +2,7 @@
   "schema_version": 1,
   "predecessor_id": "orchestrator-astra",
   "predecessor_handle": "/root/runtime_validator",
-  "successor_id": "dynamic-resource-selection",
+  "successor_id": "claude",
   "process": {
     "pid": 268514,
     "start_ticks": 30612338,
@@ -11,13 +11,13 @@
   "publisher_services": [
     "flashtex-dispatch.service"
   ],
-  "mode": "read_only_standby",
+  "mode": "retired_after_explicit_handoff",
   "quota_terminal_adapter": "unverified",
   "remote_witness_transport": "implemented terminal-only Git branch publication; end-to-end Mac claim unverified",
   "mac_standby_ack": "4a46225 implementation reported; dynamic-selection adaptation pending",
   "billing": "Only existing machine-scoped authorized routes; no purchases or unknown balances. Jaysen small-task existing usage credits additionally authorized during cooldown.",
-  "allow_dispatcher_stop_after_process_exit": true,
-  "publish_terminal_receipt": true,
+  "allow_dispatcher_stop_after_process_exit": false,
+  "publish_terminal_receipt": false,
   "witness_branch": "agent/orchestrator-witness/astra-30612338",
   "witness_coauthor": "sixnat <266300832+sixnat@users.noreply.github.com>",
   "selection": {
