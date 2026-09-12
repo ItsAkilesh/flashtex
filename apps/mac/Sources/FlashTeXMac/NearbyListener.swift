@@ -19,6 +19,11 @@ final class NearbyListener {
         let key: Data
         /// Code-derived key that only authenticates the pairing connection.
         let isBootstrap: Bool
+        /// Pairing attempt a bootstrap key belongs to; nil for long-term keys.
+        var generation: Int? = nil
+        init(identity: String, key: Data, isBootstrap: Bool, generation: Int? = nil) {
+            self.identity = identity; self.key = key; self.isBootstrap = isBootstrap; self.generation = generation
+        }
     }
 
     struct Advertisement: Equatable {
@@ -52,8 +57,14 @@ final class NearbyListener {
         case captureRefused(identity: String?, captureId: String?, code: String, message: String)
         /// A retry of an accepted capture: acknowledged again, not re-delivered.
         case captureDuplicate(identity: String?, captureId: String)
+        /// Byte progress of the line being received on one connection: at most
+        /// once per `receivingReportInterval` of growth and once when the line
+        /// completes (`bytes` is then the whole line). `expected` stays nil:
+        /// JSON Lines carry no length hint.
+        case receiving(identity: String?, bytes: Int, expected: Int?)
         case connectionClosed(identity: String?, reason: String)
     }
+    static let receivingReportInterval = 64 * 1024
 
     static let cipherSuite = tls_ciphersuite_t(rawValue: UInt16(TLS_PSK_WITH_AES_128_GCM_SHA256))!
     static let cipherSuiteName = "TLS_PSK_WITH_AES_128_GCM_SHA256"
@@ -248,6 +259,15 @@ final class NearbyListener {
     /// Bytes accepted from every session and not yet acknowledged.
     var inboxBytesInFlight: Int { budget.inboxBytesInFlight }
 
+    /// Closes every live session of one pairing (the Mac cancelling a receive
+    /// or dropping a companion). The `.connectionClosed` events follow on
+    /// `queue`; a session mid-line stops reading and releases its budget.
+    func closeConnections(identity: String, reason: String = "closed by the Mac") {
+        queue.async {
+            for c in self.connections.values where c.identity == identity { c.close(reason: reason) }
+        }
+    }
+
     fileprivate func forget(_ c: Connection) { connections.removeValue(forKey: ObjectIdentifier(c)) }
 
     /// On `queue`. Nonces survive a restart only through `adoptConnections`.
@@ -267,6 +287,8 @@ final class NearbyListener {
         private var splitter = LineSplitter()
         private var session: NearbySession?
         private var closing = false
+        /// Pending bytes at the last `.receiving` report.
+        private var reportedPending = 0
         private(set) var identity: String?
         private let maxLineBytes: Int
         private let queue: DispatchQueue
@@ -343,6 +365,7 @@ final class NearbyListener {
         private func consume(_ data: Data) {
             guard let session else { return }
             let lines = splitter.append(data)
+            reportProgress(completedLines: lines)
             for line in lines {
                 if line.count + 1 > maxLineBytes {
                     send(NearbyV1.errorLine(id: nil, code: "line_too_long", message: "line exceeds \(maxLineBytes) bytes"))
@@ -361,6 +384,24 @@ final class NearbyListener {
             if splitter.pendingBytes >= maxLineBytes {
                 send(NearbyV1.errorLine(id: nil, code: "line_too_long", message: "unterminated line exceeds \(maxLineBytes) bytes"))
                 closeAfterFlush(reason: "unterminated line too long")
+            }
+        }
+
+        /// Emits `.receiving` for completed lines and for an unterminated line
+        /// that grew by at least `receivingReportInterval` since the last report.
+        private func reportProgress(completedLines: [Data]) {
+            guard let owner else { return }
+            for line in completedLines {
+                let size = line.count + 1
+                if size >= NearbyListener.receivingReportInterval || reportedPending > 0 {
+                    owner.emitEvent(.receiving(identity: identity, bytes: size, expected: nil))
+                }
+                reportedPending = 0
+            }
+            let pending = splitter.pendingBytes
+            if pending >= reportedPending + NearbyListener.receivingReportInterval {
+                reportedPending = pending
+                owner.emitEvent(.receiving(identity: identity, bytes: pending, expected: nil))
             }
         }
 
