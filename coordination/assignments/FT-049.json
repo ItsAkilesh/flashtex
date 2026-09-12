@@ -11,15 +11,15 @@
   "branch": "agent/commander-runtime-display/display-runtime",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "7d8f323aeb09636abfc0ea30dc36915fa171e2de",
-  "objective": "Review typed grouped edit compile admission and permanent retry identities against published helper candidate",
+  "input_main_sha": "1193bc5c1e2963da2269cee592d618f268681453",
+  "objective": "Audit isolated HW1 combined and quantifier candidate artifact provenance and exact diagnostic source-span changes",
   "owned_paths": [
     "crates/document-runtime"
   ],
-  "revision": 46,
+  "revision": 47,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-049",
   "timebox_minutes": 40,
-  "updated_utc": "2026-09-12T15:01:59.128533+00:00"
+  "updated_utc": "2026-09-12T15:10:47.807597+00:00"
 }

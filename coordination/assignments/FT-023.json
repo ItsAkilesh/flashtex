@@ -8,15 +8,15 @@
   "branch": "agent/commander-render-core/rendering-core",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "7d8f323aeb09636abfc0ea30dc36915fa171e2de",
-  "objective": "Trace actual HW1 set membership command through existing compiler Symbol export and producer math glyph path",
+  "input_main_sha": "1193bc5c1e2963da2269cee592d618f268681453",
+  "objective": "Review actual published native conformance8844fb59 and delta r4 0569b74 with explicit request-versus-current authority and allocation bounds",
   "owned_paths": [
     "crates/rendering-core"
   ],
-  "revision": 27,
+  "revision": 28,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-023",
   "timebox_minutes": 40,
-  "updated_utc": "2026-09-12T15:01:59.128533+00:00"
+  "updated_utc": "2026-09-12T15:10:47.807597+00:00"
 }
