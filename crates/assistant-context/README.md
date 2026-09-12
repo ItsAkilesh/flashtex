@@ -196,3 +196,10 @@ explicitly to reclaim retention. Shutdown prevents new work but cannot forcibly
 interrupt an already-running HTTP call; that call retains its configured timeout.
 The API is Rust-only pending native binding/integration, and no live provider call
 has been used in its tests.
+
+`ProviderQueue::snapshot()` exports bounded JSON-serializable job identities,
+allocation labels and lowercase states plus queued/executing/retained counts.
+`scheduler_tasks_started` counts scheduler starts, including preflight rejection;
+it is not a count of HTTP requests or billable calls. Provider billing remains
+explicitly unknown. Snapshots exclude source text, proposals, credentials and
+provider error bodies. Polling propagates expired requests to scheduler cancellation.

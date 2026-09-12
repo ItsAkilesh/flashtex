@@ -8,7 +8,8 @@ use flashtex_edit_ledger::Document;
 use flashtex_project_files::sha256_hex;
 use std::{collections::BTreeMap, sync::Arc, time::Duration};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum JobStatus {
     Queued,
     Running,
@@ -23,6 +24,22 @@ pub enum JobStatus {
 pub struct UsageIntent {
     pub user_requested: bool,
     pub allocation: String,
+}
+#[derive(serde::Serialize)]
+pub struct QueueEntry {
+    pub request_id: String,
+    pub state: JobStatus,
+    pub allocation: String,
+}
+#[derive(serde::Serialize)]
+pub struct QueueSnapshot {
+    pub jobs: Vec<QueueEntry>,
+    pub queued: usize,
+    pub executing: usize,
+    pub retained: usize,
+    /// Scheduler task starts, including preflight rejection; not HTTP attempts.
+    pub scheduler_tasks_started: u64,
+    pub provider_billing_known: bool,
 }
 pub struct ProviderQueue {
     registry: ExplanationRegistry,
@@ -201,6 +218,29 @@ impl ProviderQueue {
         self.records.remove(id);
         Ok(())
     }
+    /// Bounded native-facing status with no source, proposals, keys or provider
+    /// error bodies. Polling also propagates expired registry jobs to scheduler.
+    pub fn snapshot(&mut self) -> Result<QueueSnapshot, String> {
+        let ids: Vec<_> = self.records.keys().cloned().collect();
+        let mut jobs = Vec::with_capacity(ids.len());
+        for id in ids {
+            let state = self.status(&id)?;
+            jobs.push(QueueEntry {
+                allocation: self.records[&id].1.clone(),
+                request_id: id,
+                state,
+            });
+        }
+        let usage = self.scheduler.usage();
+        Ok(QueueSnapshot {
+            jobs,
+            queued: usage.queued,
+            executing: usage.executing,
+            retained: usage.retained,
+            scheduler_tasks_started: usage.calls_started,
+            provider_billing_known: false,
+        })
+    }
     pub fn usage(&self) -> flashtex_conversion_jobs::events::UsageEvidence {
         self.scheduler.usage()
     }
@@ -340,5 +380,50 @@ mod tests {
             std::thread::sleep(Duration::from_millis(1));
         }
         assert_eq!(calls.load(Ordering::SeqCst), 0);
+    }
+    #[test]
+    fn terminal_failures_and_stale_revocation_release_only_finished_jobs() {
+        let docs = source();
+        let mut queue = ProviderQueue::new("failures".into(), 1, 2, 2).unwrap();
+        let id = queue
+            .submit_with(
+                context(&docs),
+                &docs,
+                Duration::from_secs(2),
+                intent(),
+                |_| Err("private provider detail".into()),
+            )
+            .unwrap();
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while queue.status(&id).unwrap() != JobStatus::Failed {
+            assert!(Instant::now() < deadline);
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        let snapshot = queue.snapshot().unwrap();
+        assert_eq!(snapshot.jobs.len(), 1);
+        assert!(!snapshot.provider_billing_known);
+        assert_eq!(snapshot.scheduler_tasks_started, 1);
+        let serialized = serde_json::to_string(&snapshot).unwrap();
+        assert!(!serialized.contains("private provider detail"));
+        assert!(!serialized.contains("hello"));
+        assert!(queue.receive(&id, &docs).is_err());
+        queue.retire(&id).unwrap();
+        let id = queue
+            .submit_with(
+                context(&docs),
+                &docs,
+                Duration::from_secs(2),
+                intent(),
+                reply,
+            )
+            .unwrap();
+        ready(&mut queue, &id);
+        let changed =
+            vec![Document::new("p".into(), "main.tex".into(), 2, "changed".into()).unwrap()];
+        assert_eq!(queue.revoke_stale("p", &changed), vec![id.clone()]);
+        assert_eq!(queue.status(&id).unwrap(), JobStatus::Cancelled);
+        assert!(queue.receive(&id, &changed).is_err());
+        queue.retire(&id).unwrap();
+        assert!(queue.snapshot().unwrap().jobs.is_empty());
     }
 }
