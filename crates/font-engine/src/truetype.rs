@@ -876,9 +876,7 @@ fn parse_cmap(cmap: &[u8]) -> Result<BTreeMap<u32, u16>, Error> {
                     // small, wrong-but-plausible glyph id (release) that
                     // would silently render the wrong glyph for `c`.
                     let g = start_gid.checked_add(c - start).ok_or_else(|| {
-                        Error::Malformed(
-                            "cmap format 12 group glyph id overflows u32".into(),
-                        )
+                        Error::Malformed("cmap format 12 group glyph id overflows u32".into())
                     })?;
                     if g != 0 && g <= 0xFFFF {
                         map.entry(c).or_insert(g as u16);
