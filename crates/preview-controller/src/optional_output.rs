@@ -1,6 +1,7 @@
 //! Complete-frame optional admission. Never changes required source-delivery state.
 use crate::{output_buffer::OutputBuffer, output_delivery::Sender};
 use serde_json::Value;
+use std::io::BufWriter;
 #[derive(Debug, PartialEq, Eq)]
 pub enum Outcome {
     Admitted,
@@ -20,10 +21,15 @@ pub fn offer(sender: &Sender, epoch: u64, value: &Value, limit: usize) -> Outcom
     if !sender.can_offer(epoch) {
         return Outcome::BusyOrObsolete;
     }
-    let mut buffer = OutputBuffer::new(limit);
-    if serde_json::to_writer(&mut buffer, value).is_err() {
+    // Batch serde's tiny writes while keeping the complete frame private until
+    // the bounded destination has accepted every byte, including the newline.
+    let mut writer = BufWriter::with_capacity(8192, OutputBuffer::new(limit));
+    if serde_json::to_writer(&mut writer, value).is_err() {
         return Outcome::SerializationRefused;
     }
+    let Ok(buffer) = writer.into_inner() else {
+        return Outcome::SerializationRefused;
+    };
     let Ok(bytes) = buffer.finish() else {
         return Outcome::SerializationRefused;
     };
