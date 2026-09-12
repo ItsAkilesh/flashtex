@@ -6,9 +6,10 @@ import FlashTeXProtocol
 /// plus the edit-ledger adoption addendum): receipt only after the helper's
 /// durable commit (and the .tex export when file-backed), a corrupt/unreadable
 /// durable store disables application, transient status failures keep
-/// evidence, bridge writes never block the main thread, and a detached session
-/// cannot overwrite its successor. Runs against `Fixtures/fake_bridge.py` and
-/// `Fixtures/fake_edit_ledger.py`.
+/// evidence, bridge writes never block the main thread, a detached session
+/// cannot overwrite its successor, and (section 6) a crashed bridge or helper
+/// is relaunched with bounded backoff and reconciled exactly once. Runs
+/// against `Fixtures/fake_bridge.py` and `Fixtures/fake_edit_ledger.py`.
 @MainActor
 final class BridgeRecoveryTests: XCTestCase {
     typealias T = ShellModelBridgeTests
@@ -458,5 +459,421 @@ final class BridgeRecoveryTests: XCTestCase {
         XCTAssertEqual(model.bridgeDestination?.pinnedRevision, revisionDuring)
         XCTAssertEqual(model.bridgeDestination?.binding.sourceSha256, SourceDigest.sha256Hex("edited twice while reconciling\n"))
         model.detachBridge()
+    }
+
+    // MARK: 6. automatic relaunch of the bridge and edit-ledger helpers
+
+    private struct LedgerCrashRequest: Encodable { var id: String; var operation = "crash" }
+
+    /// Waits for `child`'s n-th automatic relaunch and its reconciliation to finish.
+    private func waitForRelaunch(_ bridge: BridgeSession, _ child: BridgeSession.Child, count: Int, timeout: TimeInterval = 10) async throws {
+        try await T.waitUntil(timeout: timeout) { bridge.relaunchCount[child] == count && bridge.relaunching == nil }
+    }
+
+    private func journaledCaptureIDs(store: URL) throws -> [String] {
+        let data = try Data(contentsOf: store.appendingPathComponent("fake_journal.json"))
+        return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any]).keys.sorted()
+    }
+
+    func testBridgeCrashIsRelaunchedAndStateReconciled() async throws {
+        let store = try BridgeClientTests.tempStore()
+        let model = ShellModel()
+        model.autoCompile = false
+        var notes: [(BridgeSession.Child, String)] = []
+        let proposal = try await stage(model, store: store)
+        let bridge = try XCTUnwrap(model.bridge)
+        bridge.onRelaunched = { notes.append(($0, $1)) }
+        // One full insertion, then a second capture pinned and received but not yet converted.
+        let awaited1 = await model.approveBridgeProposal(proposal, latex: proposal.latex)
+        XCTAssertEqual(awaited1, .inserted(byteOffset: 5))
+        model.editApplied(try XCTUnwrap(model.pendingEdit), newText: "Hello\\fakecapture{fixture-capture-1} FlashTeX.\n")
+        try await T.waitUntil { model.bridgeCaptures.first?.state == .confirmed }
+        model.caretUTF16 = 0
+        model.pinAnchorAtCaret()
+        try await T.waitUntil { model.bridgeDestination != nil }
+        let pinned = try XCTUnwrap(model.bridgeDestination)
+        let r2 = await model.submitCapture(image: try BridgeClientTests.fixtureCapture().image, captureId: "fixture-capture-2", instructions: "t")
+        XCTAssertNotNil(r2, model.captureNote ?? "")
+        let revisionBefore = model.editorRevision
+
+        // Abnormal exit (status 3) mid-request: the request fails, the session reports the exit
+        // with the relaunch delay, and relaunches the same executable/arguments/store.
+        do { _ = try await bridge.status(captureId: "crash-status-1"); XCTFail("the fake bridge must have exited") }
+        catch let f as BridgeClient.Failure { XCTAssertTrue(f.isTransient, f.text) }
+        try await T.waitUntil { !bridge.running }
+        XCTAssertTrue(bridge.status.contains("bridge exited (3); relaunching in 0.2 s"), bridge.status)
+        XCTAssertTrue(model.bridgeStatus.contains("relaunching"), model.bridgeStatus)
+        try await waitForRelaunch(bridge, .bridge, count: 1)
+        XCTAssertTrue(bridge.running)
+        XCTAssertTrue(model.bridgeAttached)
+        XCTAssertTrue(bridge.client.isRunning)
+        XCTAssertEqual(bridge.client.storeDirectory, store, "same store")
+        XCTAssertTrue(bridge.status.contains("relaunched 1×") && bridge.status.contains("open at revision \(revisionBefore)"), bridge.status)
+        XCTAssertEqual(model.editorRevision, revisionBefore, "no phantom revision")
+        // The pinned destination was restored identically (document still at the pinned revision).
+        XCTAssertEqual(model.bridgeDestination, pinned)
+        XCTAssertEqual(notes.count, 1)
+        XCTAssertEqual(notes.first?.0, .bridge)
+        XCTAssertTrue(notes.first?.1.contains("pinned destination \(pinned.destinationId) restored") == true, notes.first?.1 ?? "")
+        XCTAssertFalse(bridge.reconciliationIncomplete)
+        XCTAssertNil(bridge.ledgerError)
+        // The confirmed transaction stays confirmed (nothing re-inserted); the ledger holds no pending receipt.
+        let awaited2 = try await bridge.ledger!.status().pendingReceipts
+        XCTAssertEqual(awaited2, [])
+        XCTAssertEqual(model.activeText, "Hello\\fakecapture{fixture-capture-1} FlashTeX.\n")
+        // The earlier capture is still in the (durable) journal; the pending one converts and inserts
+        // against the restored destination, exactly once.
+        let st1 = try await bridge.status(captureId: "fixture-capture-1")
+        XCTAssertEqual(st1.applied?.editId, "capture-fixture-capture-1")
+        let maybe_p2 = await model.convertCapture(captureId: "fixture-capture-2")
+        let p2 = try XCTUnwrap(maybe_p2, model.captureNote ?? "")
+        let awaited4 = await model.approveBridgeProposal(p2, latex: p2.latex)
+        XCTAssertEqual(awaited4, .inserted(byteOffset: 0), model.captureNote ?? "")
+        let after2 = "\\fakecapture{fixture-capture-2}Hello\\fakecapture{fixture-capture-1} FlashTeX.\n"
+        model.editApplied(try XCTUnwrap(model.pendingEdit), newText: after2)
+        try await T.waitUntil { model.bridgeCaptures.first { $0.captureId == "fixture-capture-2" }?.state == .confirmed }
+        XCTAssertEqual(model.activeText.components(separatedBy: "\\fakecapture{fixture-capture-2}").count, 2)
+        // Typing after the relaunch still streams to both children.
+        model.updateActiveText(after2 + "more\n")
+        try await T.waitUntil { bridge.durable?.revision == model.editorRevision }
+        model.caretUTF16 = 0
+        model.pinAnchorAtCaret()
+        try await T.waitUntil { model.bridgeDestination != nil }
+        XCTAssertEqual(model.bridgeDestination?.pinnedRevision, model.editorRevision)
+        XCTAssertFalse(bridge.log.contains { $0.contains("refused") }, bridge.log.joined(separator: "\n"))
+        model.detachBridge()
+    }
+
+    func testDestinationLostWhenSourceMovedPastThePinIsReported() async throws {
+        let store = try BridgeClientTests.tempStore()
+        let model = ShellModel()
+        model.autoCompile = false
+        var notes: [String] = []
+        let ok = await attach(model, store: store)
+        XCTAssertTrue(ok)
+        let bridge = try XCTUnwrap(model.bridge)
+        bridge.onRelaunched = { notes.append($1) }
+        model.caretUTF16 = 5
+        model.pinAnchorAtCaret()
+        try await T.waitUntil { model.bridgeDestination != nil }
+        model.updateActiveText("Hello FlashTeX. typed\n") // the pin's revision is now in the past
+        try await T.waitUntil { bridge.durable?.revision == model.editorRevision }
+        _ = try? await bridge.status(captureId: "crash-status-1")
+        try await waitForRelaunch(bridge, .bridge, count: 1)
+        XCTAssertNil(model.bridgeDestination, "a destination that cannot be restored identically is dropped")
+        XCTAssertTrue(notes.first?.contains("was lost with the bridge") == true, notes.first ?? "")
+        XCTAssertTrue(bridge.status.contains("open at revision \(model.editorRevision)"), bridge.status)
+        model.detachBridge()
+    }
+
+    func testReceiptInFlightAtBridgeCrashIsSettledFromTheLedgerExactlyOnce() async throws {
+        for (captureId, expected) in [("crash-applied-once-1", "confirmed by the bridge"), ("crash-applied-before-once-1", "replayed receipt")] {
+            let store = try BridgeClientTests.tempStore()
+            let model = ShellModel()
+            model.autoCompile = false
+            var notes: [String] = []
+            let proposal = try await stage(model, store: store, captureId: captureId)
+            let bridge = try XCTUnwrap(model.bridge)
+            bridge.onRelaunched = { notes.append($1) }
+            let awaited5 = await model.approveBridgeProposal(proposal, latex: proposal.latex)
+            XCTAssertEqual(awaited5, .inserted(byteOffset: 5), model.captureNote ?? "")
+            let after = "Hello\\fakecapture{\(captureId)} FlashTeX.\n"
+            // Adoption sends capture_applied; the fake bridge exits while it is in flight.
+            model.editApplied(try XCTUnwrap(model.pendingEdit), newText: after)
+            XCTAssertEqual(bridge.transactionTrace, ["ledger", "receipt"])
+            try await T.waitUntil { !bridge.running }
+            try await waitForRelaunch(bridge, .bridge, count: 1)
+            // Reported uncertain at the relaunch, then settled through the ledger-guarded reconciliation.
+            XCTAssertTrue(bridge.log.contains { $0.contains("receipt for capture-\(captureId) was") && $0.contains("when the bridge exited") }, bridge.log.joined(separator: "\n"))
+            XCTAssertTrue(notes.first?.contains(expected) == true, "\(captureId): \(notes.first ?? "")")
+            let capture = try XCTUnwrap(bridge.capture(captureId))
+            XCTAssertEqual(capture.state, .confirmed, "\(captureId): \(capture.note)")
+            XCTAssertNil(bridge.pendingTransaction)
+            XCTAssertEqual(bridge.transactions["capture-\(captureId)"]?.confirmed, true)
+            let awaited6 = try await bridge.ledger!.status().pendingReceipts
+            XCTAssertEqual(awaited6, [], captureId)
+            XCTAssertEqual(model.activeText, after, "inserted exactly once")
+            XCTAssertEqual(bridge.durable?.text, after)
+            let st = try await bridge.status(captureId: captureId)
+            XCTAssertEqual(st.applied?.newRevision, model.editorRevision, captureId)
+            // The bridge snapshot is current again: a pin at the live revision succeeds.
+            model.caretUTF16 = 0
+            model.pinAnchorAtCaret()
+            try await T.waitUntil { model.bridgeDestination != nil }
+            XCTAssertEqual(model.bridgeDestination?.pinnedRevision, model.editorRevision)
+            model.detachBridge()
+        }
+    }
+
+    func testDurableEditAwaitingAdoptionSurvivesABridgeRelaunch() async throws {
+        let store = try BridgeClientTests.tempStore()
+        let model = ShellModel()
+        model.autoCompile = false
+        var notes: [String] = []
+        let proposal = try await stage(model, store: store)
+        let bridge = try XCTUnwrap(model.bridge)
+        bridge.onRelaunched = { notes.append($1) }
+        let awaited7 = await model.approveBridgeProposal(proposal, latex: proposal.latex)
+        XCTAssertEqual(awaited7, .inserted(byteOffset: 5))
+        let pending = try XCTUnwrap(model.pendingEdit)
+        XCTAssertNotNil(bridge.expectedApplication)
+        // The bridge dies before the editor adopts the durable edit.
+        _ = try? await bridge.status(captureId: "crash-status-1")
+        try await waitForRelaunch(bridge, .bridge, count: 1)
+        XCTAssertNotNil(bridge.expectedApplication, "the adoption is still expected")
+        XCTAssertNotNil(bridge.pendingTransaction)
+        XCTAssertTrue(notes.first?.contains("awaits adoption") == true, notes.first ?? "")
+        // Adoption now: recognized (no document_edit), receipt accepted by the relaunched bridge.
+        let after = "Hello\\fakecapture{fixture-capture-1} FlashTeX.\n"
+        model.editApplied(pending, newText: after)
+        try await T.waitUntil { model.bridgeCaptures.last?.state == .confirmed }
+        XCTAssertEqual(bridge.transactionTrace, ["ledger", "receipt", "confirmed"])
+        XCTAssertEqual(model.activeText, after)
+        XCTAssertFalse(bridge.log.contains { $0.contains("refused") }, bridge.log.joined(separator: "\n"))
+        model.detachBridge()
+    }
+
+    func testLedgerCrashDuringApplyInsertsExactlyOnce() async throws {
+        // Crash after the durable commit (reply lost): the relaunched helper reports the
+        // transaction; the edit is adopted once. Crash before the commit: nothing inserted,
+        // the approval is retried and inserts once.
+        for captureId in ["crash-after-commit-1", "crash-before-commit-1"] {
+            let store = try BridgeClientTests.tempStore()
+            let model = ShellModel()
+            model.autoCompile = false
+            let proposal = try await stage(model, store: store, captureId: captureId)
+            let bridge = try XCTUnwrap(model.bridge)
+            let after = "Hello\\fakecapture{\(captureId)} FlashTeX.\n"
+            var outcome = await model.approveBridgeProposal(proposal, latex: proposal.latex)
+            if captureId.hasPrefix("crash-before-commit") {
+                XCTAssertEqual(outcome, .refused("ledger"), model.captureNote ?? "")
+                XCTAssertNil(model.pendingEdit)
+                XCTAssertEqual(bridge.capture(captureId)?.state, .proposed, bridge.capture(captureId)?.note ?? "")
+                XCTAssertTrue(bridge.ledgerUsable, bridge.ledgerStatus)
+                let awaited8 = try await bridge.ledger!.status().pendingReceipts
+                XCTAssertEqual(awaited8, [], "nothing committed")
+                model.enqueue(proposal)
+                outcome = await model.approveBridgeProposal(proposal, latex: proposal.latex)
+            }
+            XCTAssertEqual(outcome, .inserted(byteOffset: 5), "\(captureId): \(model.captureNote ?? "")")
+            XCTAssertTrue(bridge.ledgerUsable, bridge.ledgerStatus)
+            XCTAssertEqual(bridge.transactionTrace, ["ledger"])
+            XCTAssertEqual(bridge.durable?.text, after)
+            model.editApplied(try XCTUnwrap(model.pendingEdit), newText: after)
+            try await T.waitUntil { model.bridgeCaptures.last?.state == .confirmed }
+            try await T.waitUntil { bridge.transactions["capture-\(captureId)"]?.confirmed == true }
+            XCTAssertEqual(model.activeText, after, "\(captureId): inserted exactly once")
+            let awaited9 = try await bridge.ledger!.status().pendingReceipts
+            XCTAssertEqual(awaited9, [])
+            // A repeat approval is a duplicate on every path.
+            model.enqueue(proposal)
+            let awaited10 = await model.approveBridgeProposal(proposal, latex: proposal.latex)
+            XCTAssertEqual(awaited10, .duplicate)
+            XCTAssertEqual(model.activeText, after)
+            // The dead helper's queued exit never reaches the session (identity-guarded): no error, no second relaunch.
+            try await Task.sleep(nanoseconds: 400_000_000)
+            XCTAssertNil(bridge.ledgerError, bridge.ledgerError ?? "")
+            XCTAssertTrue(bridge.ledgerUsable)
+            model.detachBridge()
+        }
+    }
+
+    func testLedgerCrashIsRelaunchedAndRealignedWithTheEditor() async throws {
+        let store = try BridgeClientTests.tempStore()
+        let model = ShellModel()
+        model.autoCompile = false
+        var notes: [(BridgeSession.Child, String)] = []
+        let ok = await attach(model, store: store)
+        XCTAssertTrue(ok)
+        let bridge = try XCTUnwrap(model.bridge)
+        bridge.onRelaunched = { notes.append(($0, $1)) }
+        model.updateActiveText("Hello FlashTeX. typed\n")
+        try await T.waitUntil { bridge.durable?.revision == model.editorRevision }
+
+        // Idle crash: exit 3 with no request outstanding.
+        let dead = try XCTUnwrap(bridge.ledger)
+        var reply: Result<EditLedgerV1.Status, LineProcessFailure>?
+        dead.send({ LedgerCrashRequest(id: $0) }, as: EditLedgerV1.Status.self) { reply = $0 }
+        try await T.waitUntil { reply != nil }
+        try await T.waitUntil { !bridge.ledgerUsable }
+        XCTAssertTrue(bridge.ledgerStatus.contains("relaunching in 0.2 s"), bridge.ledgerStatus)
+        XCTAssertTrue(model.bridgeStatus.contains("edit ledger exited (3)"), model.bridgeStatus)
+        // Typing while the helper is down is not lost: the relaunch realigns the store with the
+        // live buffer (no pending receipts → the buffer replaces the stored text).
+        model.updateActiveText("Hello FlashTeX. typed more\n")
+        try await waitForRelaunch(bridge, .ledger, count: 1)
+        XCTAssertTrue(bridge.ledgerUsable, bridge.ledgerStatus)
+        XCTAssertFalse(bridge.ledger === dead)
+        XCTAssertTrue(bridge.ledgerStatus.hasPrefix("relaunched: "), bridge.ledgerStatus)
+        XCTAssertEqual(bridge.durable?.text, "Hello FlashTeX. typed more\n")
+        XCTAssertEqual(bridge.durable?.revision, model.editorRevision)
+        XCTAssertEqual(notes.map(\.0), [.ledger])
+        XCTAssertTrue(bridge.running, "the bridge was untouched")
+        XCTAssertNil(bridge.ledgerError)
+        let relaunchedStatus = try await bridge.ledger!.status()
+        XCTAssertEqual(relaunchedStatus.document?.text, "Hello FlashTeX. typed more\n")
+
+        // Crash during replace_document (typing): the transient failure does not poison the
+        // session; after the relaunch the store follows the editor again.
+        model.updateActiveText("Hello %ledger-crash-once\n")
+        try await waitForRelaunch(bridge, .ledger, count: 2)
+        XCTAssertNil(bridge.ledgerError, bridge.ledgerError ?? "")
+        XCTAssertEqual(bridge.durable?.text, "Hello %ledger-crash-once\n")
+        XCTAssertEqual(bridge.durable?.revision, model.editorRevision)
+        model.updateActiveText("Hello again\n")
+        try await T.waitUntil { bridge.durable?.revision == model.editorRevision && bridge.durable?.text == "Hello again\n" }
+        let awaited11 = try await bridge.ledger!.status().document?.revision
+        XCTAssertEqual(awaited11, model.editorRevision)
+
+        // A full insertion works on the relaunched helper.
+        model.caretUTF16 = 5
+        model.pinAnchorAtCaret()
+        try await T.waitUntil { model.bridgeDestination != nil }
+        _ = await model.submitCapture(image: try BridgeClientTests.fixtureCapture().image, captureId: "fixture-capture-1", instructions: "t")
+        let maybe_proposal = await model.convertCapture(captureId: "fixture-capture-1")
+        let proposal = try XCTUnwrap(maybe_proposal, model.captureNote ?? "")
+        let awaited13 = await model.approveBridgeProposal(proposal, latex: proposal.latex)
+        XCTAssertEqual(awaited13, .inserted(byteOffset: 5), model.captureNote ?? "")
+        model.editApplied(try XCTUnwrap(model.pendingEdit), newText: "Hello\\fakecapture{fixture-capture-1} again\n")
+        try await T.waitUntil { model.bridgeCaptures.last?.state == .confirmed }
+        model.detachBridge()
+    }
+
+    func testLedgerCrashWithPendingReceiptKeepsTheEvidence() async throws {
+        let store = try BridgeClientTests.tempStore()
+        let model = ShellModel()
+        model.autoCompile = false
+        let proposal = try await stage(model, store: store)
+        let bridge = try XCTUnwrap(model.bridge)
+        model.documentURL = store.appendingPathComponent("missing-dir/doc.tex") // export fails → receipt withheld
+        model.savedText = model.activeText
+        let awaited14 = await model.approveBridgeProposal(proposal, latex: proposal.latex)
+        XCTAssertEqual(awaited14, .inserted(byteOffset: 5))
+        let after = "Hello\\fakecapture{fixture-capture-1} FlashTeX.\n"
+        model.editApplied(try XCTUnwrap(model.pendingEdit), newText: after)
+        XCTAssertEqual(bridge.transactionTrace, ["ledger"])
+        // Undo in the editor (durable store keeps the tombstone + pending receipt), then the helper dies.
+        model.updateActiveText("Hello FlashTeX.\n")
+        try await T.waitUntil { bridge.durable?.revision == model.editorRevision }
+        var reply: Result<EditLedgerV1.Status, LineProcessFailure>?
+        bridge.ledger!.send({ LedgerCrashRequest(id: $0) }, as: EditLedgerV1.Status.self) { reply = $0 }
+        try await T.waitUntil { reply != nil }
+        try await waitForRelaunch(bridge, .ledger, count: 1)
+        // Store text == buffer (the undo was persisted): aligned, no adoption; the receipt is still owed.
+        XCTAssertTrue(bridge.ledgerUsable, bridge.ledgerStatus)
+        XCTAssertEqual(bridge.durable?.text, model.activeText)
+        XCTAssertNil(model.pendingEdit)
+        let kept = try await bridge.ledger!.status()
+        XCTAssertEqual(kept.pendingReceipts.count, 1, "evidence kept across the relaunch")
+        XCTAssertNotNil(bridge.pendingTransaction, "the live transaction still owes its receipt")
+        model.detachBridge()
+    }
+
+    func testRelaunchLimitPerMinuteLeavesTheExitVisible() async throws {
+        let store = try BridgeClientTests.tempStore()
+        let model = ShellModel()
+        model.autoCompile = false
+        let ok = await attach(model, store: store)
+        XCTAssertTrue(ok)
+        let bridge = try XCTUnwrap(model.bridge)
+        for n in 1...BridgeSession.maxRelaunches {
+            _ = try? await bridge.status(captureId: "crash-status-\(n)")
+            try await T.waitUntil { !bridge.running }
+            let delay = BridgeSession.relaunchDelays[n - 1]
+            XCTAssertTrue(bridge.status.contains(String(format: "relaunching in %.1f s", delay)), bridge.status)
+            try await waitForRelaunch(bridge, .bridge, count: n)
+            XCTAssertTrue(bridge.running)
+        }
+        _ = try? await bridge.status(captureId: "crash-status-4")
+        try await T.waitUntil { !bridge.running }
+        try await Task.sleep(nanoseconds: 600_000_000)
+        XCTAssertFalse(bridge.running)
+        XCTAssertEqual(bridge.relaunchCount[.bridge], BridgeSession.maxRelaunches)
+        XCTAssertTrue(bridge.status.contains("not relaunched") && bridge.status.contains("Attach Capture Bridge"), bridge.status)
+        XCTAssertTrue(model.bridgeStatus.contains("not relaunched"), model.bridgeStatus)
+        XCTAssertFalse(model.bridgeAttached)
+        XCTAssertTrue(bridge.ledgerUsable, "the ledger is independent of the bridge's fate")
+        model.detachBridge()
+    }
+
+    func testExplicitDetachCancelsAPendingRelaunchAndCleanExitNeverRelaunches() async throws {
+        let store = try BridgeClientTests.tempStore()
+        let model = ShellModel()
+        model.autoCompile = false
+        let ok = await attach(model, store: store)
+        XCTAssertTrue(ok)
+        let session = try XCTUnwrap(model.bridge)
+        _ = try? await session.status(captureId: "crash-status-1")
+        try await T.waitUntil { !session.running }
+        XCTAssertTrue(session.status.contains("relaunching"), session.status)
+        model.detachBridge()
+        XCTAssertTrue(session.detached)
+        try await Task.sleep(nanoseconds: 700_000_000)
+        XCTAssertFalse(session.running)
+        XCTAssertNil(session.relaunchCount[.bridge], "detach cancelled the pending relaunch")
+        XCTAssertFalse(session.client.isRunning)
+        XCTAssertEqual(session.status, "bridge detached")
+        XCTAssertFalse(model.bridgeAttached)
+
+        // A clean exit (status 0) is not a crash: no relaunch.
+        let model2 = ShellModel()
+        model2.autoCompile = false
+        let ok2 = await attach(model2, store: try BridgeClientTests.tempStore())
+        XCTAssertTrue(ok2)
+        let clean = try XCTUnwrap(model2.bridge)
+        model2.caretUTF16 = 0
+        model2.pinAnchorAtCaret()
+        try await T.waitUntil { model2.bridgeDestination != nil }
+        _ = await model2.submitCapture(image: try BridgeClientTests.fixtureCapture().image, captureId: "fixture-capture-1", instructions: "%exit")
+        try await T.waitUntil { !clean.running }
+        try await Task.sleep(nanoseconds: 700_000_000)
+        XCTAssertEqual(clean.status, "bridge exited (0)")
+        XCTAssertNil(clean.relaunchCount[.bridge])
+        XCTAssertFalse(clean.running)
+        model2.detachBridge()
+    }
+
+    func testCrashDuringCaptureSubmitLeavesTheCaptureUncertainAndRetryable() async throws {
+        // Journaled before the crash (the retry returns the same record) and not journaled
+        // (the retry creates it): both end with exactly one journal entry.
+        for directive in ["%crash-once-journaled", "%crash-once"] {
+            let store = try BridgeClientTests.tempStore()
+            let model = ShellModel()
+            model.autoCompile = false
+            let ok = await attach(model, store: store)
+            XCTAssertTrue(ok)
+            let bridge = try XCTUnwrap(model.bridge)
+            model.caretUTF16 = 5
+            model.pinAnchorAtCaret()
+            try await T.waitUntil { model.bridgeDestination != nil }
+            let pinned = try XCTUnwrap(model.bridgeDestination)
+            let image = try BridgeClientTests.fixtureCapture().image
+            let r1 = await model.submitCapture(image: image, captureId: "fixture-capture-1", instructions: directive)
+            XCTAssertNil(r1)
+            let uncertain = try XCTUnwrap(bridge.capture("fixture-capture-1"))
+            XCTAssertEqual(uncertain.state, .uncertain, uncertain.note)
+            XCTAssertTrue(uncertain.note.contains("resubmit with the same capture ID"), uncertain.note)
+            XCTAssertEqual(model.bridgeCaptures.last?.state, .uncertain, "visible to the shell")
+            XCTAssertTrue(model.captureNote?.contains("Capture submit failed") == true, model.captureNote ?? "")
+            try await waitForRelaunch(bridge, .bridge, count: 1)
+            XCTAssertEqual(model.bridgeDestination, pinned, "destination restored: the resubmission binds to the same target")
+            XCTAssertEqual(bridge.capture("fixture-capture-1")?.state, .uncertain, "the relaunch does not guess")
+            // Identical resubmission: idempotent on the bridge; exactly one journal record.
+            let r2 = await model.submitCapture(image: image, captureId: "fixture-capture-1", instructions: directive)
+            XCTAssertEqual(r2?.durable, true, "\(directive): \(model.captureNote ?? "")")
+            XCTAssertEqual(bridge.capture("fixture-capture-1")?.state, .received)
+            XCTAssertEqual(try journaledCaptureIDs(store: store), ["fixture-capture-1"])
+            // …and it inserts once against the restored destination.
+            let maybe_proposal = await model.convertCapture(captureId: "fixture-capture-1")
+            let proposal = try XCTUnwrap(maybe_proposal, model.captureNote ?? "")
+            let awaited16 = await model.approveBridgeProposal(proposal, latex: proposal.latex)
+            XCTAssertEqual(awaited16, .inserted(byteOffset: 5), model.captureNote ?? "")
+            let after = "Hello\\fakecapture{fixture-capture-1} FlashTeX.\n"
+            model.editApplied(try XCTUnwrap(model.pendingEdit), newText: after)
+            try await T.waitUntil { model.bridgeCaptures.last?.state == .confirmed }
+            XCTAssertEqual(model.activeText, after)
+            XCTAssertEqual(try journaledCaptureIDs(store: store), ["fixture-capture-1"])
+            model.detachBridge()
+        }
     }
 }
