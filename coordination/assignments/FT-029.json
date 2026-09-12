@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "task_id": "FT-029",
+  "agent_id": "commander-assistant-context",
+  "branch": "agent/commander/assistant-context",
+  "revision": 1,
+  "state": "assigned",
+  "objective": "Implement bounded revision/digest-bound compiler diagnostic and user-instruction context for native Grok assistance, with UTF8 source snippets and validated explanatory proposals; no provider call or automatic source edit.",
+  "owned_paths": [
+    "crates/assistant-context"
+  ],
+  "dependencies": [],
+  "acceptance": [
+    "Exact source revision/digest and UTF8 range guards reject stale context",
+    "Bounded multi-document prompt and response proposals preserve explicit user intent",
+    "No credentials, model calls or automatic edits; meaningful tests and strict lint pass"
+  ],
+  "allocation_id": "hosted-openai-product",
+  "timebox_minutes": 30,
+  "deadline_utc": null,
+  "input_main_sha": "f522cf185f93e67e350ad4590d58afd6c66bc1e7",
+  "updated_utc": "2026-09-12T07:26:21.086531+00:00"
+}

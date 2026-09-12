@@ -8,7 +8,9 @@
   "objective": "Prepare the explicitly requested Jaysen Opus standby. Implement/test local deterministic witness-branch monitor and one-shot guarded revival invocation; remain read-only for global authority/control until independently verified Astra termination and stopped publishers. Publish actual session/PID/auth route and end-to-end synthetic handoff evidence.",
   "owned_paths": [
     "tools/commander-standby",
-    "coordination/agents/orchestrator-jaysen-opus.json"
+    "coordination/agents/orchestrator-jaysen-opus.json",
+    "tools/standby",
+    "coordination/orchestrator-jaysen-opus.md"
   ],
   "dependencies": [],
   "acceptance": [
@@ -21,5 +23,5 @@
   "timebox_minutes": 30,
   "deadline_utc": null,
   "input_main_sha": "d128b48b839263b723794384dc16741d9d8cebe8",
-  "updated_utc": "2026-09-12T07:12:41.734519+00:00"
+  "updated_utc": "2026-09-12T07:26:21.086531+00:00"
 }
