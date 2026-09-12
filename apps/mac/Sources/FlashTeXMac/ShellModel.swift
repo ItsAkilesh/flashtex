@@ -87,8 +87,9 @@ final class ShellModel: ObservableObject {
         negotiation.missing.map { "capability \($0) not accepted by the worker" } + fontSubstitutions.map(\.description)
     }
 
-    // Gate 3 (contract): stays empty until the consumer tests pass.
-    static let builtInLayoutCapabilities: [String] = []
+    /// Gate 3 (contract): requested by default now that the consumer tests
+    /// (LayoutCapabilityTests, LayoutCapabilityConsumerTests) pass.
+    static let builtInLayoutCapabilities = RuntimeV1.LayoutCapabilities.supported
 
     /// `FLASHTEX_LAYOUT_CAPABILITIES` (unset → built-in default; "" → none).
     static func defaultLayoutCapabilities(environment: [String: String] = ProcessInfo.processInfo.environment) -> [String] {

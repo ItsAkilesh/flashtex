@@ -57,7 +57,9 @@ update-path and launch-recovery evidence (`scripts/launch-check.sh`).
 - Navigation converts the contract's zero-based end-exclusive UTF-8 byte offsets to
   a UTF-16 `NSRange` (`String.nsRange(utf8Bytes:)`). Offsets that are out of range,
   reversed, or inside a multi-byte scalar are rejected with a footer message rather
-  than applied. Unknown item `kind`s decode as `.unknown` and are skipped.
+  than applied. Unknown item `kind`s decode as `.unknown`; on the legacy route
+  they are skipped, on a negotiated route they are reported (see "Negotiated
+  layout capabilities").
 - Caret sync (source→preview): text items whose `source` range contains the
   editor caret (UTF-16 caret → UTF-8 byte via `String.utf8ByteRange(of:)`,
   `CaretSync.itemsContaining`) get a secondary highlight (15% accent fill +
@@ -106,11 +108,13 @@ update-path and launch-recovery evidence (`scripts/launch-check.sh`).
   See `Samples/capture-proposal.json`. No network or Grok call is involved here.
 - PDF export: `File > Export PDF…` (⌘⇧E) writes the current preview with
   CoreGraphics/CoreText (`PDFExport.swift`): one PDF page per `pages` entry at
-  `width_pt` × `height_pt`, each text item in Times at `font_size_pt` with its
-  baseline exactly `baseline_y_pt` from the top (flipped to PDF's bottom-left
-  origin). It exports the layout the Rust compiler reported, not a TeX-engine
-  PDF: no fonts beyond Times, no images/lines, no links or metadata. The dark
-  toggle only changes page/text colors. Disabled when no result is loaded.
+  `width_pt` × `height_pt`, each text item in its resolved face at `font_size_pt`
+  with its baseline exactly `baseline_y_pt` from the top (flipped to PDF's
+  bottom-left origin), and each typed `rule` item as a filled rectangle
+  (`RuleGeometry.pdfRect`). It exports the layout the Rust compiler reported,
+  not a TeX-engine PDF: no fonts beyond Latin Modern/Times, no images, no links
+  or metadata. The dark toggle only changes page/text colors. Disabled when no
+  result is loaded.
 
 ## Capture bridge (transfer-v1)
 
@@ -355,11 +359,81 @@ preview drew with the system serif (New York) instead of Times-Roman. With
 compiler de1020c the preview now matches: `docs/evidence/mac-shell-math-times-2026-09-12.png`
 (inline fractions with rules, Greek, radicals, sum limits).
 
-Rules: text items consisting only of U+2500 are the compiler's fraction bars and
-are drawn as filled rectangles (`RuleConvention`: 0.5 em per character, 0.0857 em
-thick, hugging the baseline) in the preview and both PDF paths, so bars never
-depend on font glyph coverage. Heading weight (Times-Bold in the compiler) is not
-reproducible until runtime-v1 carries a font field; the preview draws Times-Roman.
+Rules on the legacy route (no `rules-v1` accepted): text items consisting only
+of U+2500 are taken to be the compiler's fraction bars and are **approximated**
+as filled rectangles (`RuleConvention`: 0.5 em per character, 0.0857 em thick,
+hugging the baseline) in the preview and both PDF paths, so bars never depend on
+font glyph coverage. This is a convention, not contract geometry, and cannot
+establish exact rule fidelity; typed rules replace it once `rules-v1` is
+negotiated (next section). Heading weight is honored only through a negotiated
+`font-hints-v1` hint; without one the preview draws the regular face.
+
+## Negotiated layout capabilities
+
+Contract: `docs/contracts/runtime-v1-layout-capabilities.md` (additive to
+runtime-v1). Every compile request carries `layout_capabilities`, by default
+`["rules-v1", "font-hints-v1"]` (`ShellModel.requestedLayoutCapabilities`;
+gate 3 of the contract — the consumer tests below passed first). Override with
+`FLASHTEX_LAYOUT_CAPABILITIES` (comma-separated; an empty string sends no field
+at all, i.e. the legacy request). The result's accepted set is bound to that
+result: the banner shows `layout: legacy` or `layout: rules-v1, font-hints-v1`
+for the preview currently on screen, never for the request in flight.
+
+- Per-request binding. Each in-flight request records its capability set; a
+  reply is correlated by `id` + `project_id` + `revision` *and* checked against
+  that request's set, so a late reply for an older request never changes the
+  renderer mode, and rapid legacy↔extended switching binds each preview to its
+  own request (`ShellLayoutNegotiationTests`).
+- Protocol violations (result rejected, banner `protocol violation: …`, log):
+  an accepted capability that was not requested; a `rule` item without accepted
+  `rules-v1`; a `font` hint without accepted `font-hints-v1` — including when the
+  client asked but the worker did not echo acceptance (support is never guessed).
+  A fixture loaded with ⌘O is checked the same way against its sibling request
+  or, failing that, the set it declares itself.
+- Not accepted: when the worker does not echo a requested capability the banner
+  says `capability rules-v1 not accepted by the worker` (one note per missing
+  capability) and the legacy rendering applies. Main's `flashtex-compiler`
+  ignores the field today, so this is what the shell shows against it
+  (`RealCompilerTests.testLayoutCapabilityNegotiationAgainstRealWorkerIsExplicit`
+  prints `REAL-COMPILER CAPABILITIES: … accepted=["<none>"]`).
+- Typed rules (`rules-v1`): `{"kind":"rule","x_pt","y_pt","width_pt","height_pt","source"}`
+  decodes only as a typed rule — top-left corner at `(x_pt, y_pt)`, positive
+  finite dimensions, magnitudes ≤ 1e6; anything else is a decode error, never
+  downgraded to an unknown item. Preview and CoreGraphics export fill the
+  rectangle (`RuleGeometry`; dark preview only recolors, export is opaque black
+  on white); `y_pt` is never reinterpreted as a baseline. Clicking a rule
+  navigates to its `source`. Once `rules-v1` is accepted the U+2500
+  approximation is off for that result.
+- Font hints (`font-hints-v1`): `{"family","weight":normal|bold,"style":normal|italic}`
+  on text items (family 1–128 UTF-8 bytes, no control characters). Resolution
+  (`PreviewFonts.resolve`): `Latin Modern*`/`lmroman*`/`Computer Modern` → the
+  registered LM masters at the requested weight/style (`LMRoman10-BoldItalic`
+  etc., optical size as before); `Times`/`Times New Roman`/`Times-Roman` →
+  the Core-14 Times faces; anything else — or Latin Modern when it is not
+  registered on this machine — → Times at the requested weight/style **and**
+  a banner note `font substituted: <family> [bold] [italic] → <face>`. A hint
+  fixes style intent only; the shell never claims the requested metrics were
+  preserved. Absent hint = legacy face selection, never a substitution.
+- Unknown primitive kinds: on a negotiated route (at least one capability
+  accepted) every unknown `kind` becomes an error diagnostic in the diagnostics
+  list — `unsupported layout primitive 'X' at main.tex bytes a..<b on page n`
+  (with "Go to source" when the item carried a `source`) — so nothing is
+  silently dropped. On the legacy route unknown kinds are still skipped
+  silently, as before.
+- Not covered: the accessibility overlay (`FlashTeXAccessibility`, owner
+  mac-accessibility) still reads only text items and the legacy U+2500 bars;
+  typed rules and font hints are not yet exposed to VoiceOver. The Rust writer
+  export (⌘⌥E) forwards the result envelope unchanged, including `rule` items
+  and `layout_capabilities`; whether `flashtex-pdf` on main understands them is
+  its owner's call and is not verified here.
+- Tests: `LayoutCapabilityTests` (protocol: field round trip and limits, rule
+  and font-hint validation, negotiation checks), `RuleGeometryTests`,
+  `FontHintResolutionTests`, `LayoutCapabilityPDFExportTests`,
+  `ShellLayoutNegotiationTests` (fake worker `%caps` directive: negotiated
+  compile, requested-but-not-accepted, substitution, unknown-kind diagnostic vs
+  legacy skip, unrequested-shape and false-claim rejection, rapid switching,
+  late/out-of-order replies, fixture rejection). The test double only *echoes*
+  capabilities; passing tests prove the consumer, not the compiler.
 
 ## Completion and navigation
 
@@ -522,7 +596,9 @@ spans are exact. Reported to the fixture owner (Commander, FT-001).
 - PDF export draws only what the contract's text items describe; it is not a
   TeX-engine PDF and has no compiler-produced `pdf_path` behind it. A result with
   zero pages exports one blank page (a PDF must have at least one).
-- No image/line items (not in v1). Caret sync highlights items and scrolls to
-  the page under the caret, not to the item within the page.
+- No image items. Typed rules exist only through negotiated `rules-v1`, which
+  main's compiler does not yet accept (checked with `RealCompilerTests`). Caret
+  sync highlights items and scrolls to the page under the caret, not to the
+  item within the page.
 - Screen capture of the running app was not possible from the agent's terminal
   (no Screen Recording permission); visual click behavior needs a human check.

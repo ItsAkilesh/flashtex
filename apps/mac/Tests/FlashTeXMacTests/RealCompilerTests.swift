@@ -87,6 +87,65 @@ final class RealCompilerTests: XCTestCase {
         model.detachWorker()
     }
 
+    /// Gate 3 evidence: the shell requests `rules-v1`/`font-hints-v1` by default.
+    /// Whether the real compiler accepts them is observed, never assumed — if it
+    /// does not, the shell must say so explicitly and still render legacy output.
+    func testLayoutCapabilityNegotiationAgainstRealWorkerIsExplicit() async throws {
+        guard let binary = Self.binary, FileManager.default.isExecutableFile(atPath: binary.path) else {
+            throw XCTSkip("set FLASHTEX_COMPILER to the built flashtex-compiler binary")
+        }
+        let model = ShellModel()
+        model.attachWorker(at: binary)
+        model.autoCompile = false
+        let requested = model.requestedLayoutCapabilities
+        XCTAssertEqual(requested, ShellModel.defaultLayoutCapabilities())
+        XCTAssertFalse(requested.isEmpty, "gate 3: capabilities are requested by default (override with FLASHTEX_LAYOUT_CAPABILITIES)")
+
+        model.updateActiveText("\\section{Caps}\nInline $\\frac{1}{2}$ fraction and \\textbf{bold}.\n")
+        model.compile()
+        try await waitUntil { model.inFlightRevision == nil }
+        let result = try XCTUnwrap(model.result)
+        XCTAssertFalse(model.isFixture)
+        XCTAssertFalse(model.workerStatus.contains("protocol violation"), model.workerStatus)
+        XCTAssertEqual(model.negotiation.requested, requested, "bound to the request that produced it")
+        let accepted = model.negotiation.accepted
+        print("REAL-COMPILER CAPABILITIES: requested=\(requested) accepted=\(accepted.isEmpty ? ["<none>"] : accepted) notes=\(model.capabilityNotes)")
+
+        let hasRule = result.pages.flatMap(\.items).contains { if case .rule = $0 { true } else { false } }
+        let hasHint = result.pages.flatMap(\.items).contains { if case .text(let t) = $0 { t.font != nil } else { false } }
+        for cap in requested {
+            if accepted.contains(cap) {
+                XCTAssertFalse(model.capabilityNotes.contains("capability \(cap) not accepted by the worker"))
+            } else {
+                XCTAssertTrue(model.capabilityNotes.contains("capability \(cap) not accepted by the worker"),
+                              "non-acceptance of \(cap) must be reported explicitly: \(model.capabilityNotes)")
+            }
+        }
+        if !accepted.contains(RuntimeV1.LayoutCapabilities.rulesV1) {
+            XCTAssertFalse(hasRule, "a worker that did not accept rules-v1 may not emit rules (the shell would have rejected it)")
+        }
+        if !accepted.contains(RuntimeV1.LayoutCapabilities.fontHintsV1) {
+            XCTAssertFalse(hasHint)
+        }
+        if accepted.isEmpty {
+            // Legacy route: the fraction bar arrives as a U+2500 text run and is
+            // approximated; unknown kinds would be skipped silently.
+            XCTAssertEqual(model.negotiation.isNegotiated, false)
+            XCTAssertTrue(model.layoutDiagnostics.isEmpty)
+        }
+        // Either way the result still exports.
+        XCTAssertTrue(PDFExport.render(result).starts(with: Array("%PDF".utf8)))
+
+        // Opting out sends no field and yields the legacy negotiation with no notes.
+        model.requestedLayoutCapabilities = []
+        model.updateActiveText("Legacy request.\n")
+        model.compile()
+        try await waitUntil { model.inFlightRevision == nil }
+        XCTAssertEqual(model.negotiation, .legacy)
+        XCTAssertTrue(model.capabilityNotes.isEmpty, "\(model.capabilityNotes)")
+        model.detachWorker()
+    }
+
     private func waitUntil(timeout: TimeInterval = 15, _ cond: () -> Bool) async throws {
         let start = Date()
         while !cond() {
