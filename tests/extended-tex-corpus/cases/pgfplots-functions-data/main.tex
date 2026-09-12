@@ -1,0 +1,10 @@
+\documentclass{article}
+\listfiles
+\usepackage{pgfplots}\pgfplotsset{compat=1.18}
+
+\begin{document}
+\begin{tikzpicture}\begin{axis}[width=10cm,height=6cm,xlabel={$x$},ylabel={$f(x)$},legend pos=north west,grid=major]
+\addplot[blue,domain=-2:2,samples=41]{x^2};\addlegendentry{$x^2$}
+\addplot[red,only marks] table[x=x,y=y]{data.tsv};\addlegendentry{Measurements}
+\end{axis}\end{tikzpicture}
+\end{document}

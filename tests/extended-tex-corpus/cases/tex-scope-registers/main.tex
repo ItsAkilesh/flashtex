@@ -1,0 +1,16 @@
+\documentclass{article}
+\listfiles
+
+
+\begin{document}
+\newcount\counter\counter=7
+\newdimen\measure\measure=10pt
+\def\name{OUTER}\name: \the\counter.
+{\def\name{INNER}\advance\counter by 3 \name: \the\counter.}
+\name: \the\counter.
+{\global\advance\counter by 2}\the\counter.
+\multiply\counter by 3 \divide\counter by 2 \the\counter.
+\advance\measure by 2pt \the\measure.
+\ifnum\counter=13 TRUE\else FALSE\fi.
+\ifdim\measure>11pt WIDE\else NARROW\fi.
+\end{document}

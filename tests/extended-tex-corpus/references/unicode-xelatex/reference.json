@@ -1,0 +1,180 @@
+{
+  "id": "unicode-xelatex",
+  "engine": "xelatex",
+  "expected": "success",
+  "source_hashes": {
+    "main.tex": "7b33322cca70ac330b6608eb2eff16a87f6fd73f3f187150f4b21f92204df784"
+  },
+  "steps": [
+    {
+      "argv": [
+        "/Library/TeX/texbin/xelatex",
+        "-interaction=nonstopmode",
+        "-halt-on-error",
+        "-no-shell-escape",
+        "-recorder",
+        "main.tex"
+      ],
+      "returncode": 0,
+      "seconds": 2.642
+    },
+    {
+      "argv": [
+        "/Library/TeX/texbin/xelatex",
+        "-interaction=nonstopmode",
+        "-halt-on-error",
+        "-no-shell-escape",
+        "-recorder",
+        "main.tex"
+      ],
+      "returncode": 0,
+      "seconds": 2.871
+    },
+    {
+      "argv": [
+        "/Library/TeX/texbin/xelatex",
+        "-interaction=nonstopmode",
+        "-halt-on-error",
+        "-no-shell-escape",
+        "-recorder",
+        "main.tex"
+      ],
+      "returncode": 0,
+      "seconds": 1.769
+    }
+  ],
+  "engine_version": "XeTeX 3.141592653-2.6-0.999998 (TeX Live 2026)\nkpathsea version 6.4.2\nCopyright 2026 SIL International, Jonathan Kew and Khaled Hosny.\nThere is NO warranty.  Redistribution of this software is\ncovered by the terms of both the XeTeX copyright and\nthe Lesser GNU General Public License.\nFor more information about these matters, see the file\nnamed COPYING and the XeTeX source.\nPrimary author of XeTeX: Jonathan Kew.\nCompiled with ICU version 78.2; using 78.2\nCompiled with zlib version 1.3.2; using 1.3.2\nCompiled with FreeType2 version 2.14.1; using 2.14.1\nCompiled with Graphite2 version 1.3.14; using 1.3.14\nCompiled with HarfBuzz version 12.3.2; using 12.3.2\nCompiled with libpng version 1.6.55; using 1.6.55\nCompiled with pplib version v2.2\nUsing Mac OS X Core Text and Cocoa frameworks\n",
+  "engine_sha256": "593df4b2c196aa1cdeabcb6b4fafd20af3b182e05a3cee030418f14707597f0e",
+  "warnings": [],
+  "diagnostic_observed": null,
+  "dependencies": [
+    {
+      "path": "/usr/local/texlive/2026/texmf.cnf",
+      "sha256": "8f18efc5eaa079308b683ff618fae1df128e04bb0f5ab7876dddd279dd643073"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/web2c/texmf.cnf",
+      "sha256": "a2e9447fc8b6dfa407fa8d0d710e59b039e22598e3f17de0bdf54daba478742c"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-var/web2c/xetex/xelatex.fmt",
+      "sha256": "6752d3ae03f5685e778fd55a8f9807af11d92147931c6d8c5359d7ee13f71cf5"
+    },
+    {
+      "path": "/private/tmp/flashtex-extended-reference-v2/unicode-xelatex/main.tex",
+      "sha256": "7b33322cca70ac330b6608eb2eff16a87f6fd73f3f187150f4b21f92204df784"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/base/article.cls",
+      "sha256": "f9c8770a909e5b6526eb72284e457cd379b9bedbf3b508a96bd7f922d4cb24ec"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/base/size10.clo",
+      "sha256": "2896162dd5ed894689ca1f336fe2e084007114dc07f8ab17203281911479548f"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/fontspec/fontspec.sty",
+      "sha256": "14fdcaeea0c2f2278c03ecf0ccea5dc383a045b3d60cb4373ff2bbd800771fe6"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/l3packages/xparse/xparse.sty",
+      "sha256": "0280c6a086e4fc115c66589db0c5883a3e2eded2e2e2bfdd73d947a5b8092933"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/l3kernel/expl3.sty",
+      "sha256": "5d07bdcf246af2e85f4d6e64a0889e18ce1bb75a3c7e2af936f7222bbac75d05"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/l3backend/l3backend-xetex.def",
+      "sha256": "760955e68d0cc81842936802b967b2ecd41824327837143c44cd6cc5013a1cb7"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/fontspec/fontspec-xetex.sty",
+      "sha256": "8af8f4ba9a24ca38688ae3000ee1fbefd62aa4b04c9f1b3debcf01341fbde259"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/base/fontenc.sty",
+      "sha256": "9ac0a88ddda40526aa1ec403c27a6325d3723c14fa9f02918011a79f93a72ef0"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/fontspec/fontspec.cfg",
+      "sha256": "f31d038ca5322ef4fc3fbe391f42695bf1305567a04b6ac1005964703dd1232a"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/unicode-math/unicode-math.sty",
+      "sha256": "91388a2e1332388bcf8393d79a9fb67f4bd197f982503297dbf971f5f7cec111"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/unicode-math/unicode-math-xetex.sty",
+      "sha256": "781280efb4189e99402625c648b28503f1f5261fa266f29ad3fbe97ad1de8b58"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/l3packages/l3keys2e/l3keys2e.sty",
+      "sha256": "b3959f34308f3edc6ee9656d0e8825b2f77ada1fb14ab11b82b796317fc52e56"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/base/fix-cm.sty",
+      "sha256": "949e8687cc220e1ca35fe50f9acbe5c6a6d1661b186ce2ca147ab668d34f3662"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/base/ts1enc.def",
+      "sha256": "4f69a99eeffa5ac70ec245672756e47870b88b7be9cd1a48bc575bdbc2acef16"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/amsmath/amsmath.sty",
+      "sha256": "4c0bfd7d67ea18214810a21244f8426da40d04af5bb90ed201b85cc5e211d321"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/amsmath/amsopn.sty",
+      "sha256": "c50239a5acc1037ff4df482878e5546be3cd9b8ac725151bc14748a103d800a8"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/amsmath/amstext.sty",
+      "sha256": "7a6d33e95e168f90cec6d4172aeae7da885924a8f587ccc11817e1dab4d50ba9"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/amsmath/amsgen.sty",
+      "sha256": "e7ef677a56e22d8da915e613c65fe2d4c2fe8744ffb283c2ccfdfc066e45e158"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/amsmath/amsbsy.sty",
+      "sha256": "c09b1b14dfe8a81b6791673b3bc5a7fd8b794fb063b6e8b5ce79fc28c7e59c8c"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/unicode-math/unicode-math-table.tex",
+      "sha256": "3976ff8f39c84b61055b1cb6851a1b2cfdefa918a2a642c954e6ceafdca7277e"
+    },
+    {
+      "path": "/private/tmp/flashtex-extended-reference-v2/unicode-xelatex/main.aux",
+      "sha256": "fbabe80c887f95a1ede6847f22dd91b380bda9d17ae8bfaa72e1741b16aa41e9"
+    }
+  ],
+  "pdf_sha256": "7e85d2f8faca6a4540a09567c2ef5fd72a13d8f1dc78bc0a30d94874d494f169",
+  "pdf_bytes": 13865,
+  "status": "reference-built",
+  "raster": {
+    "argv": [
+      "/opt/homebrew/bin/gs",
+      "-dSAFER",
+      "-dBATCH",
+      "-dNOPAUSE",
+      "-sDEVICE=png16m",
+      "-r96",
+      "-dTextAlphaBits=4",
+      "-dGraphicsAlphaBits=4",
+      "-sOutputFile=page-%03d.png",
+      "main.pdf"
+    ],
+    "returncode": 0,
+    "seconds": 0.075
+  },
+  "rasterizer_version": "10.08.0",
+  "rasterizer_sha256": "d57bb373324bf7e72c5b3fb1a6cc8a9f876eb6f8d2eec23a5a3809a8a108bf9e",
+  "pages": [
+    {
+      "file": "page-001.png",
+      "sha256": "8015bf050260a892a3af8ecb844328ad402345a2569c18dc6d3ebeed1d3d6c5d"
+    }
+  ],
+  "raster_status": "rendered"
+}

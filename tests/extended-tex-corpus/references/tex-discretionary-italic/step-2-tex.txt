@@ -1,0 +1,30 @@
+This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026) (preloaded format=pdflatex)
+entering extended mode
+(./main.tex
+LaTeX2e <2025-11-01>
+L3 programming layer <2026-01-19>
+(/usr/local/texlive/2026/texmf-dist/tex/latex/base/article.cls
+Document Class: article 2025/01/22 v1.4n Standard LaTeX document class
+(/usr/local/texlive/2026/texmf-dist/tex/latex/base/size10.clo))
+(/usr/local/texlive/2026/texmf-dist/tex/latex/l3backend/l3backend-pdftex.def)
+(./main.aux)
+Underfull \hbox (badness 2653) in paragraph at lines 2--2
+\OT1/cmr/m/n/10 word fol-lowed
+
+Underfull \hbox (badness 10000) in paragraph at lines 2--2
+\OT1/cmr/m/n/10 by or-di-nary
+[1{/usr/local/texlive/2026/texmf-var/fonts/map/pdftex/updmap/pdftex.map}]
+(./main.aux)
+
+ *File List*
+ article.cls    2025/01/22 v1.4n Standard LaTeX document class
+  size10.clo    2025/01/22 v1.4n Standard LaTeX file (size option)
+l3backend-pdftex.def    2025-10-09 L3 backend support: PDF output (pdfTeX)
+ ***********
+
+ )
+(see the transcript file for additional information)</usr/local/texlive/2026/te
+xmf-dist/fonts/type1/public/amsfonts/cm/cmr10.pfb></usr/local/texlive/2026/texm
+f-dist/fonts/type1/public/amsfonts/cm/cmti10.pfb>
+Output written on main.pdf (1 page, 24631 bytes).
+Transcript written on main.log.

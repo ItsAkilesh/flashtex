@@ -1,0 +1,24 @@
+{
+  "agent_id": "mac-reference-corpus",
+  "allocation_id": "user-direct-reference-suite",
+  "assignment_acknowledgements": {},
+  "branch": "agent/mac-reference-corpus/extended-suite",
+  "capabilities": [
+    "tex-reference-corpus",
+    "mactex"
+  ],
+  "code_revision": "a91fc1015e6884ab4a451d5d32a626271edacbd4",
+  "eta_minutes": null,
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "a91fc1015e6884ab4a451d5d32a626271edacbd4",
+  "next_action": "Await and acknowledge assignment",
+  "reviewed_peers": {},
+  "schema_version": 1,
+  "state": "registered",
+  "summary": "Available for Commander assignment",
+  "tool": "Codex",
+  "updated_utc": "2026-09-12T16:24:22Z",
+  "usage": {
+    "status": "unknown"
+  }
+}

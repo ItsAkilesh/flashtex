@@ -1,0 +1,16 @@
+\documentclass{article}
+\listfiles
+\usepackage{listings}
+
+\begin{document}
+\begin{verbatim}
+% no comment here: \foo{a_b} & $x$ #1
+  spaces preserved
+\end{verbatim}
+\begin{lstlisting}[language=Python,numbers=left,frame=single]
+def square(x):
+    # a comment
+    return x ** 2
+\end{lstlisting}
+Inline \verb|a_b%#$&{}|.
+\end{document}

@@ -1,0 +1,11 @@
+\documentclass{article}
+\listfiles
+
+
+\begin{document}
+\def\pair#1,#2;{[#2:#1]}\pair alpha,beta;
+\def\word{OLD}\edef\frozen{\word}\def\word{NEW}\frozen/\word.
+\expandafter\def\csname dynamic\endcsname{BUILT}\dynamic.
+\def\literal{\word}\edef\held{\noexpand\literal}\held.
+\newcommand{\opt}[2][DEFAULT]{(#1,#2)}\opt{X}\opt[Y]{Z}.
+\end{document}

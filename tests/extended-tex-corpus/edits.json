@@ -1,0 +1,85 @@
+{
+  "offset_unit": "utf8_bytes",
+  "edits": [
+    {
+      "case": "tex-expansion-arguments",
+      "path": "main.tex",
+      "old": "\\def\\word{NEW}",
+      "new": "\\def\\word{UPDATED}",
+      "start_byte": 129,
+      "end_byte": 143,
+      "purpose": "Earlier macro change must affect dynamic expansion but preserve edef snapshot.",
+      "gate": "Compare original-compiler incremental result to clean compile of identical edited project; independently compare edited output to a newly generated reference."
+    },
+    {
+      "case": "tex-scope-registers",
+      "path": "main.tex",
+      "old": "\\counter=7",
+      "new": "\\counter=9",
+      "start_byte": 71,
+      "end_byte": 81,
+      "purpose": "Initial register mutation changes later arithmetic and branch selection.",
+      "gate": "Compare original-compiler incremental result to clean compile of identical edited project; independently compare edited output to a newly generated reference."
+    },
+    {
+      "case": "math-align-points",
+      "path": "main.tex",
+      "old": "a+b&=c+d",
+      "new": "a+b+c+d+e&=c+d",
+      "start_byte": 95,
+      "end_byte": 103,
+      "purpose": "Longer left-hand side shifts a shared alignment column.",
+      "gate": "Compare original-compiler incremental result to clean compile of identical edited project; independently compare edited output to a newly generated reference."
+    },
+    {
+      "case": "project-input-package",
+      "path": "chapters/one.tex",
+      "old": "{CHILD}",
+      "new": "{CHANGED CHILD}",
+      "start_byte": 61,
+      "end_byte": 68,
+      "purpose": "Included definition invalidates later consuming file.",
+      "gate": "Compare original-compiler incremental result to clean compile of identical edited project; independently compare edited output to a newly generated reference."
+    },
+    {
+      "case": "pgfplots-functions-data",
+      "path": "data.tsv",
+      "old": "2 3.9",
+      "new": "2 2.5",
+      "start_byte": 30,
+      "end_byte": 35,
+      "purpose": "Non-TeX data edit invalidates graph geometry.",
+      "gate": "Compare original-compiler incremental result to clean compile of identical edited project; independently compare edited output to a newly generated reference."
+    },
+    {
+      "case": "math-radicals-delimiters",
+      "path": "main.tex",
+      "old": "\\sqrt[3]{x^2+1}",
+      "new": "\\sqrt[5]{\\frac{x^2+1}{y}}",
+      "start_byte": 97,
+      "end_byte": 112,
+      "purpose": "Taller radicand changes radical sizing and positioning.",
+      "gate": "Compare original-compiler incremental result to clean compile of identical edited project; independently compare edited output to a newly generated reference."
+    },
+    {
+      "case": "project-book-include",
+      "path": "main.tex",
+      "old": "\\includeonly{chapters/one,chapters/two}",
+      "new": "\\includeonly{chapters/one}",
+      "start_byte": 50,
+      "end_byte": 89,
+      "purpose": "Include selection changes pages; warm aux-state and clean builds must be distinguished.",
+      "gate": "Compare original-compiler incremental result to clean compile of identical edited project; independently compare edited output to a newly generated reference."
+    },
+    {
+      "case": "error-double-superscript",
+      "path": "main.tex",
+      "old": "$x^2^3$",
+      "new": "$x^{2^3}$",
+      "start_byte": 82,
+      "end_byte": 89,
+      "purpose": "Repair must clear stale diagnostic and render valid nested script.",
+      "gate": "Compare original-compiler incremental result to clean compile of identical edited project; independently compare edited output to a newly generated reference."
+    }
+  ]
+}

@@ -1,0 +1,258 @@
+{
+  "id": "project-biblatex-biber",
+  "engine": "pdflatex",
+  "expected": "success",
+  "source_hashes": {
+    "main.tex": "4ebc258e835d7654cfd978b79ddce3d81570e7bcbe90660f4324fae75063f831",
+    "references.bib": "a7a75fe1c344fd807f93285a148a38ddf19fa7bc0d27cb1fdad838bdeea77177"
+  },
+  "steps": [
+    {
+      "argv": [
+        "/Library/TeX/texbin/pdflatex",
+        "-interaction=nonstopmode",
+        "-halt-on-error",
+        "-no-shell-escape",
+        "-recorder",
+        "main.tex"
+      ],
+      "returncode": 0,
+      "seconds": 0.855
+    },
+    {
+      "argv": [
+        "/Library/TeX/texbin/biber",
+        "main"
+      ],
+      "returncode": 0,
+      "seconds": 16.748
+    },
+    {
+      "argv": [
+        "/Library/TeX/texbin/pdflatex",
+        "-interaction=nonstopmode",
+        "-halt-on-error",
+        "-no-shell-escape",
+        "-recorder",
+        "main.tex"
+      ],
+      "returncode": 0,
+      "seconds": 2.253
+    },
+    {
+      "argv": [
+        "/Library/TeX/texbin/pdflatex",
+        "-interaction=nonstopmode",
+        "-halt-on-error",
+        "-no-shell-escape",
+        "-recorder",
+        "main.tex"
+      ],
+      "returncode": 0,
+      "seconds": 1.437
+    }
+  ],
+  "engine_version": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)\nkpathsea version 6.4.2\nCopyright 2026 Han The Thanh (pdfTeX) et al.\nThere is NO warranty.  Redistribution of this software is\ncovered by the terms of both the pdfTeX copyright and\nthe Lesser GNU General Public License.\nFor more information about these matters, see the file\nnamed COPYING and the pdfTeX source.\nPrimary author of pdfTeX: Han The Thanh (pdfTeX) et al.\nCompiled with libpng 1.6.55; using libpng 1.6.55\nCompiled with zlib 1.3.2; using zlib 1.3.2\nCompiled with xpdf version 4.06\n",
+  "engine_sha256": "3ead7baeffb81c638fe75599602278566370e6319c0469f6ab00ff62bff4b0eb",
+  "biber_version": "",
+  "warnings": [],
+  "diagnostic_observed": null,
+  "dependencies": [
+    {
+      "path": "/usr/local/texlive/2026/texmf.cnf",
+      "sha256": "8f18efc5eaa079308b683ff618fae1df128e04bb0f5ab7876dddd279dd643073"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/web2c/texmf.cnf",
+      "sha256": "a2e9447fc8b6dfa407fa8d0d710e59b039e22598e3f17de0bdf54daba478742c"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-var/web2c/pdftex/pdflatex.fmt",
+      "sha256": "1b2ced0851d3937a631123edcd524e79fd0632b6638f56cf997b5e358ed9f393"
+    },
+    {
+      "path": "/private/tmp/flashtex-extended-reference-v1/project-biblatex-biber/main.tex",
+      "sha256": "4ebc258e835d7654cfd978b79ddce3d81570e7bcbe90660f4324fae75063f831"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/base/article.cls",
+      "sha256": "f9c8770a909e5b6526eb72284e457cd379b9bedbf3b508a96bd7f922d4cb24ec"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/base/size10.clo",
+      "sha256": "2896162dd5ed894689ca1f336fe2e084007114dc07f8ab17203281911479548f"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/biblatex/biblatex.sty",
+      "sha256": "6124a851489d7a73b935019d6cd7dd31be30561fe5ab1a2eaa62f2de29016d16"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/generic/pdftexcmds/pdftexcmds.sty",
+      "sha256": "2df7e0bd148c99d8097352b8ac9948dccf91d61ba360dcf43f82206933b6045b"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/generic/infwarerr/infwarerr.sty",
+      "sha256": "8c3e23b8bb7d940ff26cb0cf96e0151f540acf55020dc3c1aa8bcdb2eb66305c"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/generic/iftex/iftex.sty",
+      "sha256": "0dc0cefe2131f82330a3b8e62034c184455329d7d9bb94abe21e740821630381"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/generic/ltxcmds/ltxcmds.sty",
+      "sha256": "8fea89995d37ba4c69137186faafc589c470edcc5026d8a31aadbe5cef47dcb4"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/etoolbox/etoolbox.sty",
+      "sha256": "e48026fcea59b4906d1fd47bde658cb5caf0a7928c45a45ea563b18d5b40ebd4"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/graphics/keyval.sty",
+      "sha256": "d3faa310a1e4485b8efb1ed3ae8b11f9552e70b630dc35290a7aabdcd064b09a"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/kvoptions/kvoptions.sty",
+      "sha256": "70595629ec990ba8c0b6e6a54afcff2603464e6fce380a54a98549a78d2fc74a"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/kvsetkeys/kvsetkeys.sty",
+      "sha256": "e3fcf7f3372a27bb478eb9488eca1e25ed382480d02a6898f190bd955388e055"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/logreq/logreq.sty",
+      "sha256": "e52f653389f5ee50c05ea2361822e4edf994f2829a0bac26d3764eeb675bb8a9"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/logreq/logreq.def",
+      "sha256": "2ccca8b208712b148c6edd438c52acf7cc821f90cb546321bdd5d491cf5e668f"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/base/ifthen.sty",
+      "sha256": "5cf8d0558b78d60e2fac171d6e3486f44d500974214ab9ad95e33ffb47fbb717"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/url/url.sty",
+      "sha256": "2373f56849ac606473e77053e5c1d14c92aba312b3f684e02a130eaf36f2de47"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/biblatex/blx-dm.def",
+      "sha256": "caa6b7c0c6db33402fd93d00c01e9f99717f5e80fdf8be2a841c4a987771b115"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/biblatex/blx-compat.def",
+      "sha256": "c1c50e4da35cbe865379e2084f65d5cb705759520f1c213329330fc67b604389"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/biblatex/biblatex.def",
+      "sha256": "b1dcce79043ccb1a161f5f932b49fbf6168db5ac6e769cd55d7240df6075a203"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/biblatex/bbx/authoryear.bbx",
+      "sha256": "07b1c6843d8f8e1adc742fa51e5d3c8f0d00cfc6d680b7d07fa05ef065e5ec62"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/biblatex/bbx/standard.bbx",
+      "sha256": "ad4af059ea275ff4f8a82328b6390ef7ab9fddd97376e1d1abb08cc2fb9477ed"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/biblatex/cbx/authoryear.cbx",
+      "sha256": "c2e27c28efcf7a854e34d97968ece8aadd261e546894c20ad7449fc6046f2f9e"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/biblatex/biblatex.cfg",
+      "sha256": "2f6e01efbb466a252120f07c8e12d38a34e747b01ba0b9ba2b7d66b4386bb5b4"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/l3kernel/expl3.sty",
+      "sha256": "5d07bdcf246af2e85f4d6e64a0889e18ce1bb75a3c7e2af936f7222bbac75d05"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/l3backend/l3backend-pdftex.def",
+      "sha256": "24c194c31928335f4e29eee52bd200efac11263d4b69ef7350ef989e55ffe111"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/biblatex/blx-case-expl3.sty",
+      "sha256": "35a9fcb0f0620ddf7202917911e1f7dd21a20e20b32180d1c273ee3fbc859772"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/l3packages/xparse/xparse.sty",
+      "sha256": "0280c6a086e4fc115c66589db0c5883a3e2eded2e2e2bfdd73d947a5b8092933"
+    },
+    {
+      "path": "/private/tmp/flashtex-extended-reference-v1/project-biblatex-biber/main.aux",
+      "sha256": "bcb8c8a80c19d358b2a2f16dd3fc354c2c3626ab6eba0809fa205a5e6d384f6e"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/biblatex/lbx/english.lbx",
+      "sha256": "e9997cc6ad9c21b7ba6835cd5b6b9c9cb7b318ef7a628eb38c28afba42ad822d"
+    },
+    {
+      "path": "/private/tmp/flashtex-extended-reference-v1/project-biblatex-biber/main.bbl",
+      "sha256": "91b3234b8fc915f37ff952a269db67c08e582066695a0bc091225ffdde279aa3"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/fonts/map/fontname/texfonts.map",
+      "sha256": "d9693993efdc7d0b9ab3df777589995d43e24eeae95f12b6a230a19caadeaa42"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/fonts/tfm/public/cm/cmr12.tfm",
+      "sha256": "1ce8af37ed38e93940829d3540e494eaaddc5201758d036b9074467e70a738dc"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/fonts/tfm/public/cm/cmbx12.tfm",
+      "sha256": "0eb2f13840155007c2d3c59b074322a3aa7358b9643aa314f3146468ae7f0806"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/fonts/tfm/public/cm/cmti10.tfm",
+      "sha256": "46a66e937f809c4fbe317947b583a14b408aca41ecb835eca3be46391190432a"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-var/fonts/map/pdftex/updmap/pdftex.map",
+      "sha256": "3b3a9fab7102732cb18465ce673ac3f3a5e70f205eaa53f8f1e9972ad761b67b"
+    },
+    {
+      "path": "/private/tmp/flashtex-extended-reference-v1/project-biblatex-biber/main.run.xml",
+      "sha256": "ca6b4d730291b22f531f28e569c97133b3b6a0f493dcc88eb3f8457abcb91082"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx12.pfb",
+      "sha256": "c838238f31d86a9f198873dfaf501601a4fc966845b9c59e7dc251c4e85d1f1f"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmr10.pfb",
+      "sha256": "fdcede8794018df5f2b58f0905fb20a2b418ed8f67b73ee12445855dfbe5b1be"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmti10.pfb",
+      "sha256": "b6f162e1549a649c7e9b2edfb77306f60e1b0da74547f33cba39ff6ba0bdd473"
+    }
+  ],
+  "pdf_sha256": "16721a722f269e089583e7214ac00887817cae23a29ed5c782f64364b1fbe5b6",
+  "pdf_bytes": 37842,
+  "status": "reference-built",
+  "raster": {
+    "argv": [
+      "/opt/homebrew/bin/gs",
+      "-dSAFER",
+      "-dBATCH",
+      "-dNOPAUSE",
+      "-sDEVICE=png16m",
+      "-r96",
+      "-dTextAlphaBits=4",
+      "-dGraphicsAlphaBits=4",
+      "-sOutputFile=page-%03d.png",
+      "main.pdf"
+    ],
+    "returncode": 0,
+    "seconds": 0.189
+  },
+  "rasterizer_version": "10.08.0",
+  "rasterizer_sha256": "d57bb373324bf7e72c5b3fb1a6cc8a9f876eb6f8d2eec23a5a3809a8a108bf9e",
+  "pages": [
+    {
+      "file": "page-001.png",
+      "sha256": "1441d9e1218fd86f9872b25d7c2b61f9f86107fe7691bfee4cd9972b1b64f7b4"
+    }
+  ],
+  "raster_status": "rendered"
+}

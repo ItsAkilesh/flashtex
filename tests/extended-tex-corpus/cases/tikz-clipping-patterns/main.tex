@@ -1,0 +1,12 @@
+\documentclass{article}
+\listfiles
+\usepackage{tikz}\usetikzlibrary{patterns}
+
+\begin{document}
+\begin{tikzpicture}
+\begin{scope}\clip (0,0) circle (1);\fill[blue!20] (-2,-2) rectangle (2,2);\draw[red,line width=5pt] (-2,-1)--(2,1);\end{scope}
+\fill[pattern=north east lines] (2,-1) rectangle (4,1);
+\shade[left color=red,right color=blue] (0,-3) rectangle (4,-2);
+\fill[red,opacity=.4] (1,2) circle (.8);\fill[blue,opacity=.4] (2,2) circle (.8);
+\end{tikzpicture}
+\end{document}

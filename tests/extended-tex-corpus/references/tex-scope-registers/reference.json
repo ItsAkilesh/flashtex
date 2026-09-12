@@ -1,0 +1,120 @@
+{
+  "id": "tex-scope-registers",
+  "engine": "pdflatex",
+  "expected": "success",
+  "source_hashes": {
+    "main.tex": "753b30af0b348c7e967dfa255218359abdc83b8ce21921c782a89b257de3ff96"
+  },
+  "steps": [
+    {
+      "argv": [
+        "/Library/TeX/texbin/pdflatex",
+        "-interaction=nonstopmode",
+        "-halt-on-error",
+        "-no-shell-escape",
+        "-recorder",
+        "main.tex"
+      ],
+      "returncode": 0,
+      "seconds": 0.39
+    },
+    {
+      "argv": [
+        "/Library/TeX/texbin/pdflatex",
+        "-interaction=nonstopmode",
+        "-halt-on-error",
+        "-no-shell-escape",
+        "-recorder",
+        "main.tex"
+      ],
+      "returncode": 0,
+      "seconds": 0.413
+    },
+    {
+      "argv": [
+        "/Library/TeX/texbin/pdflatex",
+        "-interaction=nonstopmode",
+        "-halt-on-error",
+        "-no-shell-escape",
+        "-recorder",
+        "main.tex"
+      ],
+      "returncode": 0,
+      "seconds": 0.384
+    }
+  ],
+  "engine_version": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)\nkpathsea version 6.4.2\nCopyright 2026 Han The Thanh (pdfTeX) et al.\nThere is NO warranty.  Redistribution of this software is\ncovered by the terms of both the pdfTeX copyright and\nthe Lesser GNU General Public License.\nFor more information about these matters, see the file\nnamed COPYING and the pdfTeX source.\nPrimary author of pdfTeX: Han The Thanh (pdfTeX) et al.\nCompiled with libpng 1.6.55; using libpng 1.6.55\nCompiled with zlib 1.3.2; using zlib 1.3.2\nCompiled with xpdf version 4.06\n",
+  "engine_sha256": "3ead7baeffb81c638fe75599602278566370e6319c0469f6ab00ff62bff4b0eb",
+  "warnings": [],
+  "diagnostic_observed": null,
+  "dependencies": [
+    {
+      "path": "/usr/local/texlive/2026/texmf.cnf",
+      "sha256": "8f18efc5eaa079308b683ff618fae1df128e04bb0f5ab7876dddd279dd643073"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/web2c/texmf.cnf",
+      "sha256": "a2e9447fc8b6dfa407fa8d0d710e59b039e22598e3f17de0bdf54daba478742c"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-var/web2c/pdftex/pdflatex.fmt",
+      "sha256": "1b2ced0851d3937a631123edcd524e79fd0632b6638f56cf997b5e358ed9f393"
+    },
+    {
+      "path": "/private/tmp/flashtex-extended-reference-v1/tex-scope-registers/main.tex",
+      "sha256": "753b30af0b348c7e967dfa255218359abdc83b8ce21921c782a89b257de3ff96"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/base/article.cls",
+      "sha256": "f9c8770a909e5b6526eb72284e457cd379b9bedbf3b508a96bd7f922d4cb24ec"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/base/size10.clo",
+      "sha256": "2896162dd5ed894689ca1f336fe2e084007114dc07f8ab17203281911479548f"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/l3backend/l3backend-pdftex.def",
+      "sha256": "24c194c31928335f4e29eee52bd200efac11263d4b69ef7350ef989e55ffe111"
+    },
+    {
+      "path": "/private/tmp/flashtex-extended-reference-v1/tex-scope-registers/main.aux",
+      "sha256": "fbabe80c887f95a1ede6847f22dd91b380bda9d17ae8bfaa72e1741b16aa41e9"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-var/fonts/map/pdftex/updmap/pdftex.map",
+      "sha256": "3b3a9fab7102732cb18465ce673ac3f3a5e70f205eaa53f8f1e9972ad761b67b"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmr10.pfb",
+      "sha256": "fdcede8794018df5f2b58f0905fb20a2b418ed8f67b73ee12445855dfbe5b1be"
+    }
+  ],
+  "pdf_sha256": "3d79a6bf9b30914b90e22b7ea22dd2ab60050bf8b515e5fda326e233b42de8c2",
+  "pdf_bytes": 14467,
+  "status": "reference-built",
+  "raster": {
+    "argv": [
+      "/opt/homebrew/bin/gs",
+      "-dSAFER",
+      "-dBATCH",
+      "-dNOPAUSE",
+      "-sDEVICE=png16m",
+      "-r96",
+      "-dTextAlphaBits=4",
+      "-dGraphicsAlphaBits=4",
+      "-sOutputFile=page-%03d.png",
+      "main.pdf"
+    ],
+    "returncode": 0,
+    "seconds": 0.089
+  },
+  "rasterizer_version": "10.08.0",
+  "rasterizer_sha256": "d57bb373324bf7e72c5b3fb1a6cc8a9f876eb6f8d2eec23a5a3809a8a108bf9e",
+  "pages": [
+    {
+      "file": "page-001.png",
+      "sha256": "44e4207d383f30d6ea6feae64a88ab09eee3d307168914e1a8329dcd122a781a"
+    }
+  ],
+  "raster_status": "rendered"
+}

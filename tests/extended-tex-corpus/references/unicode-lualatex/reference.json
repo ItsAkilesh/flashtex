@@ -1,0 +1,452 @@
+{
+  "id": "unicode-lualatex",
+  "engine": "lualatex",
+  "expected": "success",
+  "source_hashes": {
+    "main.tex": "1b9f2a12cce0a3d14c9530b0968fc8effdd0f762048d3143524e0e469b423863"
+  },
+  "steps": [
+    {
+      "argv": [
+        "/Library/TeX/texbin/lualatex",
+        "-interaction=nonstopmode",
+        "-halt-on-error",
+        "-no-shell-escape",
+        "-recorder",
+        "main.tex"
+      ],
+      "returncode": 0,
+      "seconds": 28.051
+    },
+    {
+      "argv": [
+        "/Library/TeX/texbin/lualatex",
+        "-interaction=nonstopmode",
+        "-halt-on-error",
+        "-no-shell-escape",
+        "-recorder",
+        "main.tex"
+      ],
+      "returncode": 0,
+      "seconds": 4.06
+    },
+    {
+      "argv": [
+        "/Library/TeX/texbin/lualatex",
+        "-interaction=nonstopmode",
+        "-halt-on-error",
+        "-no-shell-escape",
+        "-recorder",
+        "main.tex"
+      ],
+      "returncode": 0,
+      "seconds": 3.433
+    }
+  ],
+  "engine_version": "This is LuaHBTeX, Version 1.24.0 (TeX Live 2026)\nDevelopment id: 7724\n\nExecute  'luahbtex --credits'  for credits and version details.\n\nThere is NO warranty. Redistribution of this software is covered by\nthe terms of the GNU General Public License, version 2 or (at your option)\nany later version. For more information about these matters, see the file\nnamed COPYING and the LuaTeX source.\n\nLuaTeX is Copyright 2025 Taco Hoekwater and the LuaTeX Team.\n\n",
+  "engine_sha256": "0abc5faeb56c8439d3d20d732b25681a0574d51280c26488b46e080f8b47508e",
+  "warnings": [],
+  "diagnostic_observed": null,
+  "dependencies": [
+    {
+      "path": "/usr/local/texlive/2026/texmf-var/web2c/luahbtex/lualatex.fmt",
+      "sha256": "1c7c46483757c5c6d1a7afd595e656ff9ec576e8a7e23aa682763e7cd9600b2f"
+    },
+    {
+      "path": "/private/tmp/flashtex-extended-reference-v2/unicode-lualatex/main.tex",
+      "sha256": "1b9f2a12cce0a3d14c9530b0968fc8effdd0f762048d3143524e0e469b423863"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/tex-ini-files/lualatexquotejobname.lua",
+      "sha256": "424a47cf7ae84ddd4ef4ffd1f9ae6a4529deaec5fafc9bfa3e58417aa3dfc456"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/base/ltluatex.lua",
+      "sha256": "198f940a84f322b81d04bfcaa458977330cd34f0ae2efbf0eafeef76a8453027"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/luatex/luaotfload/luaotfload-main.lua",
+      "sha256": "a288ce8b68e2acbbc18bb67c2f8bdefd6a4dbf692fb68f756f2b4db56c3d0ab2"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/luatex/luaotfload/luaotfload.lua",
+      "sha256": "33adcff01fe3c655eb7acb476fcb91171e4f6bf394bda3eecac68682634d6128"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/luatex/luaotfload/luaotfload-init.lua",
+      "sha256": "c2946e42dbb539ba61c5ea381b4c8f2a351397aa41294992c7899b8df7e6f552"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/luatex/lualibs/lualibs.lua",
+      "sha256": "c64ac1bf3b572279d4ff6d44addfa4873c123759c021bbc23edc562c800adc2e"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/luatex/lualibs/lualibs-basic.lua",
+      "sha256": "937cf2975b322e3b2dd342ddd93e722a6b51c08d196e0af5bbed07b95219510c"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/luatex/lualibs/lualibs-basic-merged.lua",
+      "sha256": "a7970784ab066597d5003ac0e35cecae64784a0e3056aed034ed22397e580c59"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/luatex/lualibs/lualibs-compat.lua",
+      "sha256": "93c0a38d03278e68fb2aa3f7a1cea090555ddb981225a5771530e678d28301ba"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/luatex/lualibs/lualibs-extended.lua",
+      "sha256": "805bebd2d9063fd3103e98e764b3ed4eb3d3368d22c8fa2e15375a59d3ae07b1"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/luatex/lualibs/lualibs-extended-merged.lua",
+      "sha256": "ada22ed59f683cfc3a645830201f77c2a3d4d06aaca2924297cef7192b0a9e13"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/luatex/luaotfload/luaotfload-log.lua",
+      "sha256": "129ec03517e625392724083a602b9023a601749dcd35235e083bcd8873c579b5"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/luatex/luaotfload/fontloader-basics-gen.lua",
+      "sha256": "4edd18bc02449161027855499a96f1e044cb029cf1d62cc95ea958216ab7b430"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/luatex/luaotfload/luaotfload-parsers.lua",
+      "sha256": "d20a610d1e7c0b55e5cf1a2cae9c468971b94346a6b578ff83fd17accb65f0c0"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/luatex/luaotfload/luaotfload-configuration.lua",
+      "sha256": "fb81488992c9a23c66c5f4e589cd5ab934d7e748ceb955188bf69dded3f4b56d"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/luatex/luaotfload/luaotfload-status.lua",
+      "sha256": "7ab746ef65ad8292b5fd2bf603cfaa5239a317e6afb8d1f7caac89dde36f54b6"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/luatex/luaotfload/fontloader-2023-12-28.lua",
+      "sha256": "02226780693404d7c80cd363c971082b3f56e27a255d47b17afeb8d97c140ab4"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/luatex/luaotfload/luaotfload-fallback.lua",
+      "sha256": "6c7c7964eff4e1a4840b90216499d4946a24aab4d7acbb27c785d8e209f1111e"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/luatex/luaotfload/luaotfload-multiscript.lua",
+      "sha256": "5c2ddb0ca04537c754496c3cd4ef3c00cc53bb329c3e56d1833d19b8b7a75792"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/luatex/luaotfload/luaotfload-scripts.lua",
+      "sha256": "0dd54d6c16f4760348fdb69481a7dff14e8c9c9866ceba75109ec90ada8d1c62"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/generic/unicode-data/ScriptExtensions.txt",
+      "sha256": "ec2107e58825a1586acee8e0911ce18260394ac8b87e535ca325f1ccbeb06bc6"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/generic/unicode-data/Scripts.txt",
+      "sha256": "9f5e50d3abaee7d6ce09480f325c706f485ae3240912527e651954d2d6b035bf"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/luatex/luaotfload/luaotfload-loaders.lua",
+      "sha256": "d8ee364a95311c33f91932f35fb92713e77ff1e896581402162576b49eb94039"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/luatex/luaotfload/luaotfload-database.lua",
+      "sha256": "9fb4c512243d7886c873785d1126498e7cfcfc395969593660b211d63707561a"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/luatex/luaotfload/luaotfload-unicode.lua",
+      "sha256": "53f2e6f79279364a8749fc64b2d542f6d831ae3eae1ad800899bcf9b87f3d4a5"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/generic/unicode-data/UnicodeData.txt",
+      "sha256": "2e1efc1dcb59c575eedf5ccae60f95229f706ee6d031835247d843c11d96470c"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/generic/unicode-data/PropList.txt",
+      "sha256": "130dcddcaadaf071008bdfce1e7743e04fdfbc910886f017d9f9ac931d8c64dd"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/generic/unicode-data/WordBreakProperty.txt",
+      "sha256": "72274cac1e6b919507db35655c3e175aa27274668a1ece95c28d2069f2ad9852"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/generic/unicode-data/SpecialCasing.txt",
+      "sha256": "efc25faf19de21b92c1194c111c932e03d2a5eaf18194e33f1156e96de4c9588"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/luatex/lua-uni-algos/lua-uni-case.lua",
+      "sha256": "0c55c6f21798aa474070a6117ed45703f30eea7f7514138e5f64e90be09139f8"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/luatex/lua-uni-algos/lua-uni-parse.lua",
+      "sha256": "2fab16ae6bdfef52b77b5d640f9a7debc075f5c97d251c9dccc24f8974f1db1b"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/generic/unicode-data/CaseFolding.txt",
+      "sha256": "ff8d8fefbf123574205085d6714c36149eb946d717a0c585c27f0f4ef58c4183"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/luatex/luaotfload/luaotfload-realpath.lua",
+      "sha256": "720e7e8ff2c8ffbc8d980f718038a07679e39df176d410f8b86bc0da1e78d559"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/luatex/luaotfload/luaotfload-colors.lua",
+      "sha256": "a564d0ef3b9abd494e77c253ee6dbb532d568878b226b4f8f15ffff6cacfc2b5"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/luatex/luaotfload/luaotfload-resolvers.lua",
+      "sha256": "24e3d5289b3de153358c51a7787a5be45495c2bb3d38d8c7c97685bad682ae57"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/luatex/luaotfload/luaotfload-features.lua",
+      "sha256": "35b4fef439e5cc6e9d7a9dfecce0b422f1cdab2d19f8258b907e0b2ec4de3b87"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/luatex/lua-uni-algos/lua-uni-normalize.lua",
+      "sha256": "c4ba2d9ea36980a8e9ef19e2dae069e6d10722a1c9bbfe9a48808006530dff3c"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/luatex/luaotfload/luaotfload-arabic.lua",
+      "sha256": "4199a1409668abfa6d1219f19c8007d7ac89a9407cb99cd66d2e2c755e0b62e5"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/luatex/luaotfload/luaotfload-harf-define.lua",
+      "sha256": "8459cb1749c853d68e4cd98fa4b4ae287c3bfdcaae9ef1eec48f656595086420"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/luatex/luaotfload/luaotfload-harf-var-cff2.lua",
+      "sha256": "dee45277c6ea8da59792091a6b275eb6d13941d3b8ef4636672b2cf6cebf8021"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/luatex/luaotfload/luaotfload-harf-var-t2-writer.lua",
+      "sha256": "fe54ff36fe6c14a0eb38334269a902f73501d9506ee11ea5416d266db59480e6"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/luatex/luaotfload/luaotfload-harf-var-ttf.lua",
+      "sha256": "4857ec528bc9ec308e5c3fd75c9e50123128f765beb7fbb626605ba8038b06e4"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/luatex/luaotfload/luaotfload-harf-plug.lua",
+      "sha256": "4bc58e29dac3788900404097c7fc374f462d450133b57252b2da499896f07efe"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/luatex/luaotfload/luaotfload-letterspace.lua",
+      "sha256": "7a51031d7698ba4408221751688c6363c743cc58f17522ce309b34416a353aa2"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/luatex/luaotfload/luaotfload-embolden.lua",
+      "sha256": "f9f757abfe98513dda9fde79098c9d4f67a60b6c155307664a5845c2daaa090b"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/luatex/luaotfload/luaotfload-notdef.lua",
+      "sha256": "357b38767fd2a00bf7105b04ae1019c12662643eaa4cef1098556c7bd98df462"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/luatex/luaotfload/luaotfload-suppress.lua",
+      "sha256": "b2cce5bc790c5666595b09112f3eac7c597e017b20609bbaeeb09c2fce697d27"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/luatex/luaotfload/luaotfload-szss.lua",
+      "sha256": "357d81680d2d58f687c9bc25539382dcc962d21642056108f6232e2b6b5faf55"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/luatex/luaotfload/luaotfload-auxiliary.lua",
+      "sha256": "f5348e65ebc5092cc9a9987d430ee7cd621791462d8e853cc3616c63ce495b27"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/luatex/luaotfload/luaotfload-tounicode.lua",
+      "sha256": "2ef62facf487caf703e12e0a8884dff599c1d055731ae5cbcdf37157764c8ea7"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/luatex/luaotfload/luaotfload-case.lua",
+      "sha256": "8d6028c760e0fa3a251427f991fffcbf5bc1b649dee0e6cc925375f0733d7d1e"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/luatex/luaotfload/luaotfload-bcp47.lua",
+      "sha256": "a0f34ad794bbe70304b56e558f396e5e27322ec6625532658423c45791151275"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/l3kernel/expl3.lua",
+      "sha256": "236915d5c91d3bb2d3b5129e9971591a56b137e671ba34b6b753d22c8604e932"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/luatex/lua-uni-algos/lua-uni-stage-tables.lua",
+      "sha256": "fec274b96e20bf8300b955f34638d99119bb9a829520c978ef9c8afc24e98725"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/base/article.cls",
+      "sha256": "f9c8770a909e5b6526eb72284e457cd379b9bedbf3b508a96bd7f922d4cb24ec"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/base/size10.clo",
+      "sha256": "2896162dd5ed894689ca1f336fe2e084007114dc07f8ab17203281911479548f"
+    },
+    {
+      "path": "/private/tmp/flashtex-extended-reference-v2/tex-cache/luatex-cache/generic/names/luaotfload-names.luc.gz",
+      "sha256": "be7f7c80fdac169cff0aea2dc1f6d88f11f31a83bf05bf5b4c02884f6ac409b9"
+    },
+    {
+      "path": "/private/tmp/flashtex-extended-reference-v2/tex-cache/luatex-cache/generic/fonts/otl/lmroman10-regular.luc",
+      "sha256": "cfe197cc5cc190ade711fde74bfa1c87fca479e8e9eeadaffd2a0890e31105c3"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/fontspec/fontspec.sty",
+      "sha256": "14fdcaeea0c2f2278c03ecf0ccea5dc383a045b3d60cb4373ff2bbd800771fe6"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/l3packages/xparse/xparse.sty",
+      "sha256": "0280c6a086e4fc115c66589db0c5883a3e2eded2e2e2bfdd73d947a5b8092933"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/l3kernel/expl3.sty",
+      "sha256": "5d07bdcf246af2e85f4d6e64a0889e18ce1bb75a3c7e2af936f7222bbac75d05"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/l3backend/l3backend-luatex.def",
+      "sha256": "59a73c125655c97d1169c0cf252cabbacf62ff25f6afe185ca82bb4fa390995f"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/l3backend/l3backend-luatex.lua",
+      "sha256": "f21dcf8426a1d8797ccfdb7bb378289e21ece291bc49990d8ba47705ed4336cd"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/fontspec/fontspec.lua",
+      "sha256": "5bc51ce944431e87d9f5f0a753bc9efa673803cd19136f2c95538e69c6fefe90"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/fontspec/fontspec-luatex.sty",
+      "sha256": "beceaaba2b84dd57ced7aa4422175d055a75dc7ecb6f88a426938f60230b17c7"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/base/fontenc.sty",
+      "sha256": "9ac0a88ddda40526aa1ec403c27a6325d3723c14fa9f02918011a79f93a72ef0"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/fontspec/fontspec.cfg",
+      "sha256": "f31d038ca5322ef4fc3fbe391f42695bf1305567a04b6ac1005964703dd1232a"
+    },
+    {
+      "path": "/private/tmp/flashtex-extended-reference-v2/tex-cache/luatex-cache/generic/fonts/otl/lmroman10-bold.luc",
+      "sha256": "cb420b1e7fff133756530f02a3bae11062ff9eae0b24457db179cdf59f8a7191"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/unicode-math/unicode-math.sty",
+      "sha256": "91388a2e1332388bcf8393d79a9fb67f4bd197f982503297dbf971f5f7cec111"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/unicode-math/unicode-math-luatex.sty",
+      "sha256": "b901badb8469dc6b004d51e5fd5706f761d000972ade219b57ac01731504a94f"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/l3packages/l3keys2e/l3keys2e.sty",
+      "sha256": "b3959f34308f3edc6ee9656d0e8825b2f77ada1fb14ab11b82b796317fc52e56"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/base/fix-cm.sty",
+      "sha256": "949e8687cc220e1ca35fe50f9acbe5c6a6d1661b186ce2ca147ab668d34f3662"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/base/ts1enc.def",
+      "sha256": "4f69a99eeffa5ac70ec245672756e47870b88b7be9cd1a48bc575bdbc2acef16"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/amsmath/amsmath.sty",
+      "sha256": "4c0bfd7d67ea18214810a21244f8426da40d04af5bb90ed201b85cc5e211d321"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/amsmath/amstext.sty",
+      "sha256": "7a6d33e95e168f90cec6d4172aeae7da885924a8f587ccc11817e1dab4d50ba9"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/amsmath/amsgen.sty",
+      "sha256": "e7ef677a56e22d8da915e613c65fe2d4c2fe8744ffb283c2ccfdfc066e45e158"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/amsmath/amsbsy.sty",
+      "sha256": "c09b1b14dfe8a81b6791673b3bc5a7fd8b794fb063b6e8b5ce79fc28c7e59c8c"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/amsmath/amsopn.sty",
+      "sha256": "c50239a5acc1037ff4df482878e5546be3cd9b8ac725151bc14748a103d800a8"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/lualatex/lualatex-math/lualatex-math.sty",
+      "sha256": "5054a75bee5ac0800110168a4df57a089969b14f883d161a1e83726021d6511d"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/etoolbox/etoolbox.sty",
+      "sha256": "e48026fcea59b4906d1fd47bde658cb5caf0a7928c45a45ea563b18d5b40ebd4"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/lualatex/lualatex-math/lualatex-math.lua",
+      "sha256": "5b9ef1ab7eea2544accb2653c45839540ed8761d384ca00aa806293018654ea5"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/unicode-math/unicode-math-table.tex",
+      "sha256": "3976ff8f39c84b61055b1cb6851a1b2cfdefa918a2a642c954e6ceafdca7277e"
+    },
+    {
+      "path": "/private/tmp/flashtex-extended-reference-v2/tex-cache/luatex-cache/generic/fonts/otl/libertinusserif-regular.luc",
+      "sha256": "458c807671b4d7149533f294765859bc5bf9024b5a40c4850ed1d23cf438db30"
+    },
+    {
+      "path": "/private/tmp/flashtex-extended-reference-v2/tex-cache/luatex-cache/generic/fonts/otl/libertinusserif-bold.luc",
+      "sha256": "d4c194921ced148e77a8b880ea4541a2d755ea978a2f7ebefeec565496a24342"
+    },
+    {
+      "path": "/private/tmp/flashtex-extended-reference-v2/tex-cache/luatex-cache/generic/fonts/otl/libertinusserif-italic.luc",
+      "sha256": "7914165ad233920ac7325fed213e0ced13d1c065ca90e3bc077edfc90cc9df81"
+    },
+    {
+      "path": "/private/tmp/flashtex-extended-reference-v2/tex-cache/luatex-cache/generic/fonts/otl/latinmodern-math.luc",
+      "sha256": "1d1e7e049a4549fbead093db76aca79b74ac3044b06f49b9a1227c887de5586e"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/fonts/tfm/public/cm/cmmi10.tfm",
+      "sha256": "e442c5487f84df70218ff37f775c87060856f5b6e04c011b6cadbbadfcf46645"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/fonts/tfm/public/cm/cmmi7.tfm",
+      "sha256": "ce55681703aae565f17286d800ea9780223132589bdbaeda1751b869aba26a38"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/fonts/tfm/public/cm/cmmi5.tfm",
+      "sha256": "8839e40838381a0a3c976bdd5becf72afd60bde5a965c3d9b985c3479c6cf75e"
+    },
+    {
+      "path": "/private/tmp/flashtex-extended-reference-v2/unicode-lualatex/main.aux",
+      "sha256": "fbabe80c887f95a1ede6847f22dd91b380bda9d17ae8bfaa72e1741b16aa41e9"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-var/fonts/map/pdftex/updmap/pdftex.map",
+      "sha256": "3b3a9fab7102732cb18465ce673ac3f3a5e70f205eaa53f8f1e9972ad761b67b"
+    }
+  ],
+  "pdf_sha256": "459271951aed758ba6bc7dc7523259f9e83bbea201fd8450f6b51585a3026adb",
+  "pdf_bytes": 17556,
+  "status": "reference-built",
+  "raster": {
+    "argv": [
+      "/opt/homebrew/bin/gs",
+      "-dSAFER",
+      "-dBATCH",
+      "-dNOPAUSE",
+      "-sDEVICE=png16m",
+      "-r96",
+      "-dTextAlphaBits=4",
+      "-dGraphicsAlphaBits=4",
+      "-sOutputFile=page-%03d.png",
+      "main.pdf"
+    ],
+    "returncode": 0,
+    "seconds": 0.29
+  },
+  "rasterizer_version": "10.08.0",
+  "rasterizer_sha256": "d57bb373324bf7e72c5b3fb1a6cc8a9f876eb6f8d2eec23a5a3809a8a108bf9e",
+  "pages": [
+    {
+      "file": "page-001.png",
+      "sha256": "572a8d2770ecf487aa5bc6c7b87caf28f1b08aae8e46a00c66409135955f7f95"
+    }
+  ],
+  "raster_status": "rendered"
+}

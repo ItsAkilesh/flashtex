@@ -1,0 +1,266 @@
+{
+  "id": "packages-siunitx-chemistry",
+  "engine": "pdflatex",
+  "expected": "success",
+  "source_hashes": {
+    "main.tex": "58cad942feab5731aa5331ca00a092a9d0924047f8699933306d1de9fd531c5b"
+  },
+  "steps": [
+    {
+      "argv": [
+        "/Library/TeX/texbin/pdflatex",
+        "-interaction=nonstopmode",
+        "-halt-on-error",
+        "-no-shell-escape",
+        "-recorder",
+        "main.tex"
+      ],
+      "returncode": 0,
+      "seconds": 0.949
+    },
+    {
+      "argv": [
+        "/Library/TeX/texbin/pdflatex",
+        "-interaction=nonstopmode",
+        "-halt-on-error",
+        "-no-shell-escape",
+        "-recorder",
+        "main.tex"
+      ],
+      "returncode": 0,
+      "seconds": 0.864
+    },
+    {
+      "argv": [
+        "/Library/TeX/texbin/pdflatex",
+        "-interaction=nonstopmode",
+        "-halt-on-error",
+        "-no-shell-escape",
+        "-recorder",
+        "main.tex"
+      ],
+      "returncode": 0,
+      "seconds": 0.831
+    }
+  ],
+  "engine_version": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)\nkpathsea version 6.4.2\nCopyright 2026 Han The Thanh (pdfTeX) et al.\nThere is NO warranty.  Redistribution of this software is\ncovered by the terms of both the pdfTeX copyright and\nthe Lesser GNU General Public License.\nFor more information about these matters, see the file\nnamed COPYING and the pdfTeX source.\nPrimary author of pdfTeX: Han The Thanh (pdfTeX) et al.\nCompiled with libpng 1.6.55; using libpng 1.6.55\nCompiled with zlib 1.3.2; using zlib 1.3.2\nCompiled with xpdf version 4.06\n",
+  "engine_sha256": "3ead7baeffb81c638fe75599602278566370e6319c0469f6ab00ff62bff4b0eb",
+  "warnings": [
+    "Package epstopdf Warning: Shell escape feature is not enabled."
+  ],
+  "diagnostic_observed": null,
+  "dependencies": [
+    {
+      "path": "/usr/local/texlive/2026/texmf.cnf",
+      "sha256": "8f18efc5eaa079308b683ff618fae1df128e04bb0f5ab7876dddd279dd643073"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/web2c/texmf.cnf",
+      "sha256": "a2e9447fc8b6dfa407fa8d0d710e59b039e22598e3f17de0bdf54daba478742c"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-var/web2c/pdftex/pdflatex.fmt",
+      "sha256": "1b2ced0851d3937a631123edcd524e79fd0632b6638f56cf997b5e358ed9f393"
+    },
+    {
+      "path": "/private/tmp/flashtex-extended-reference-v1/packages-siunitx-chemistry/main.tex",
+      "sha256": "58cad942feab5731aa5331ca00a092a9d0924047f8699933306d1de9fd531c5b"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/base/article.cls",
+      "sha256": "f9c8770a909e5b6526eb72284e457cd379b9bedbf3b508a96bd7f922d4cb24ec"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/base/size10.clo",
+      "sha256": "2896162dd5ed894689ca1f336fe2e084007114dc07f8ab17203281911479548f"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/siunitx/siunitx.sty",
+      "sha256": "a27b92e649d442933c6442a1da2eb01589545108d77bea758d12ea8d6f25eba7"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/translations/translations.sty",
+      "sha256": "a19cfaa9a53ed715098609223708c9a34f9ed9b8ed726740c907d58c7015d5a0"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/etoolbox/etoolbox.sty",
+      "sha256": "e48026fcea59b4906d1fd47bde658cb5caf0a7928c45a45ea563b18d5b40ebd4"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/generic/pdftexcmds/pdftexcmds.sty",
+      "sha256": "2df7e0bd148c99d8097352b8ac9948dccf91d61ba360dcf43f82206933b6045b"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/generic/infwarerr/infwarerr.sty",
+      "sha256": "8c3e23b8bb7d940ff26cb0cf96e0151f540acf55020dc3c1aa8bcdb2eb66305c"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/generic/iftex/iftex.sty",
+      "sha256": "0dc0cefe2131f82330a3b8e62034c184455329d7d9bb94abe21e740821630381"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/generic/ltxcmds/ltxcmds.sty",
+      "sha256": "8fea89995d37ba4c69137186faafc589c470edcc5026d8a31aadbe5cef47dcb4"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/amsmath/amstext.sty",
+      "sha256": "7a6d33e95e168f90cec6d4172aeae7da885924a8f587ccc11817e1dab4d50ba9"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/amsmath/amsgen.sty",
+      "sha256": "e7ef677a56e22d8da915e613c65fe2d4c2fe8744ffb283c2ccfdfc066e45e158"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/tools/array.sty",
+      "sha256": "537013de60c6606caecfc2eee9b81cd95f093ebb0f99b43277775073f00d9160"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/mhchem/mhchem.sty",
+      "sha256": "ab1e2c5a3dae5735ee084cdd31209ac9ea4a3ad528d6a15e3595d99b2a2812d6"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/l3kernel/expl3.sty",
+      "sha256": "5d07bdcf246af2e85f4d6e64a0889e18ce1bb75a3c7e2af936f7222bbac75d05"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/l3backend/l3backend-pdftex.def",
+      "sha256": "24c194c31928335f4e29eee52bd200efac11263d4b69ef7350ef989e55ffe111"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/l3packages/l3keys2e/l3keys2e.sty",
+      "sha256": "b3959f34308f3edc6ee9656d0e8825b2f77ada1fb14ab11b82b796317fc52e56"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/tools/calc.sty",
+      "sha256": "662f4630feb4206cfd75524b46875f58bc247d1e7df6d242424fb3977b70a5ea"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/amsmath/amsmath.sty",
+      "sha256": "4c0bfd7d67ea18214810a21244f8426da40d04af5bb90ed201b85cc5e211d321"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/amsmath/amsopn.sty",
+      "sha256": "c50239a5acc1037ff4df482878e5546be3cd9b8ac725151bc14748a103d800a8"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/amsmath/amsbsy.sty",
+      "sha256": "c09b1b14dfe8a81b6791673b3bc5a7fd8b794fb063b6e8b5ce79fc28c7e59c8c"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/chemgreek/chemgreek.sty",
+      "sha256": "76e6544581be92c080a9c5d0ebe0e4ec875f107e558b630130e9989c02898cb5"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/l3packages/xparse/xparse.sty",
+      "sha256": "0280c6a086e4fc115c66589db0c5883a3e2eded2e2e2bfdd73d947a5b8092933"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/graphics/graphics.sty",
+      "sha256": "979abfd05c3f5453ebdc2683f2e2e1a24600255c7246e3708b5670168c7259c4"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/graphics/trig.sty",
+      "sha256": "3c1add9bf649d1bee7db64bae800afb3dfac21b793afbbe2263553e0de66c450"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/graphics-cfg/graphics.cfg",
+      "sha256": "feb91e48789a21e4acced98e952c77a2e2cf4a77e01bf147b59fa56a1b3f2008"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/graphics-def/pdftex.def",
+      "sha256": "38361aed5c3534a46d63cd3cfd5cbb6367645c1d9b095cd2e45fd922ce821853"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/graphics/color.sty",
+      "sha256": "96ce1dd3c3b57440c5a040f3ee31b2741d29fed7cd1c388b49cf5a5c668abb4a"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/graphics-cfg/color.cfg",
+      "sha256": "a3529ccdadc8248b4c5d7c34ceea53bdc1509b54f18a192ad51b924bd297d8df"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/graphics/mathcolor.ltx",
+      "sha256": "0804bb6e9e1eeeaeda861f29206d308194ea7cc846e38abaa344cdefa1d408cd"
+    },
+    {
+      "path": "/private/tmp/flashtex-extended-reference-v1/packages-siunitx-chemistry/main.aux",
+      "sha256": "fbabe80c887f95a1ede6847f22dd91b380bda9d17ae8bfaa72e1741b16aa41e9"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/translations/translations-basic-dictionary-english.trsl",
+      "sha256": "26be1ea694482f1090ce60202899ddd0f971ff13e7d29616a6b2f103605d68f4"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/context/base/mkii/supp-pdf.mkii",
+      "sha256": "5dd3675b88c7b61d3703e6bf35ed75623acc6b163dff7b1477b485cee8ad71cb"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/epstopdf-pkg/epstopdf-base.sty",
+      "sha256": "3d2226e3d68b4255061baa496cc9cbc107816a7d364720c1bd8c83dccb047b64"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/latexconfig/epstopdf-sys.cfg",
+      "sha256": "10db2171b6e267720299c10b9e84f92c5cf069941dbfe3760e198304e49d5324"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/fonts/map/fontname/texfonts.map",
+      "sha256": "d9693993efdc7d0b9ab3df777589995d43e24eeae95f12b6a230a19caadeaa42"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/fonts/tfm/public/amsfonts/cmextra/cmex7.tfm",
+      "sha256": "373172fe340e4aede5129b89d65f576bfb1fe6932bd55c38f60bcaa84f3d1188"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-var/fonts/map/pdftex/updmap/pdftex.map",
+      "sha256": "3b3a9fab7102732cb18465ce673ac3f3a5e70f205eaa53f8f1e9972ad761b67b"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi10.pfb",
+      "sha256": "e3661061e8aa474d6de5ffa916edceb0e3d8b998862018c147f0357fce00bcd7"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmr10.pfb",
+      "sha256": "fdcede8794018df5f2b58f0905fb20a2b418ed8f67b73ee12445855dfbe5b1be"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmr7.pfb",
+      "sha256": "b37e8671820b0753c6e233eaa3230c6ab9cff04e6c4baee312d60ae261e5aba1"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy10.pfb",
+      "sha256": "62ee8cef552017551cd3e026a483e700730103eceaad959c87b7730017f59cff"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy7.pfb",
+      "sha256": "583b65bd1857bffc2ab184fcb4aad4e70e12eb05c9ca9f1c58c9a00a86c8bccf"
+    }
+  ],
+  "pdf_sha256": "02f636f24db5382b04b9dd4d4f983a95d1540861b908726a910c6aa06251b481",
+  "pdf_bytes": 48242,
+  "status": "reference-built",
+  "raster": {
+    "argv": [
+      "/opt/homebrew/bin/gs",
+      "-dSAFER",
+      "-dBATCH",
+      "-dNOPAUSE",
+      "-sDEVICE=png16m",
+      "-r96",
+      "-dTextAlphaBits=4",
+      "-dGraphicsAlphaBits=4",
+      "-sOutputFile=page-%03d.png",
+      "main.pdf"
+    ],
+    "returncode": 0,
+    "seconds": 0.08
+  },
+  "rasterizer_version": "10.08.0",
+  "rasterizer_sha256": "d57bb373324bf7e72c5b3fb1a6cc8a9f876eb6f8d2eec23a5a3809a8a108bf9e",
+  "pages": [
+    {
+      "file": "page-001.png",
+      "sha256": "5b54c282da4715ab0c09d0804ed4a1e7c89136f1127180e355d9bc3fcebbdac6"
+    }
+  ],
+  "raster_status": "rendered"
+}

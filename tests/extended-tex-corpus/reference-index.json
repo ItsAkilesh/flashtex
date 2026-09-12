@@ -1,0 +1,564 @@
+{
+  "manifest_sha256": "89b48cef2683675d26d5c2834ed813b60239bfb6d6e5489d661e60510caef62e",
+  "generation": "MacTeX 2026; engine and dependency versions/hashes in references/<id>/reference.json",
+  "visual_review": "All 51 positive pages inspected as contact sheets; full-size spot checks for align, radicals and TikZ clipping. Expected book blank verso pages preserved. Underfull boxes intentional in narrow/glue fixtures. No product rendering claim.",
+  "results": [
+    {
+      "id": "math-atom-classes",
+      "status": "reference-built",
+      "engine": "pdflatex",
+      "pages": 1,
+      "source_hashes": {
+        "main.tex": "3c4dcdc22624825f00acd03cac9c72f8328a57de65a6d82e7555a5484411418c"
+      },
+      "pdf_sha256": "c72d36a2ca966679261d258d9d672d67f9fedaf1328ba24eed250d7545013bd6",
+      "warnings": []
+    },
+    {
+      "id": "math-greek-alphabets",
+      "status": "reference-built",
+      "engine": "pdflatex",
+      "pages": 1,
+      "source_hashes": {
+        "main.tex": "88f419adb8888772198921f6e34f918d83d84eedb364d340d6b0cca4146ffaa5"
+      },
+      "pdf_sha256": "d05bf6fc91b6c13ee5fca5ada00c657cf78e9f436a4af618cb95d39ef145bffe",
+      "warnings": []
+    },
+    {
+      "id": "math-fractions-styles",
+      "status": "reference-built",
+      "engine": "pdflatex",
+      "pages": 1,
+      "source_hashes": {
+        "main.tex": "46656202c87c05b3b317b341e0d219945a2e3e83ff895d2533fdfc106a538dea"
+      },
+      "pdf_sha256": "7f0f056f693155e1958c4fdf27c6f8db281697572cd6f1a517fd1c6a34f0bf0f",
+      "warnings": []
+    },
+    {
+      "id": "math-scripts-limits",
+      "status": "reference-built",
+      "engine": "pdflatex",
+      "pages": 1,
+      "source_hashes": {
+        "main.tex": "505bd9d91815cab4739137b825541e09b4beb0f395a2813173a5f9125af10f11"
+      },
+      "pdf_sha256": "b65f2903c315e21f6a7e622042df561a3943ad702dd8c2203c5bb1087562cd3d",
+      "warnings": []
+    },
+    {
+      "id": "math-radicals-delimiters",
+      "status": "reference-built",
+      "engine": "pdflatex",
+      "pages": 1,
+      "source_hashes": {
+        "main.tex": "26d066f4f32809fff2524972d93fe63d9086cd246c381cafa64a55cd3e987e3d"
+      },
+      "pdf_sha256": "02e09b06204faa3f1f72c254bbd0c803de824d3cf82aa471b676acf2873fab3b",
+      "warnings": []
+    },
+    {
+      "id": "math-accents-overlays",
+      "status": "reference-built",
+      "engine": "pdflatex",
+      "pages": 1,
+      "source_hashes": {
+        "main.tex": "f41b61ecfc0f78cb7ecaf064cea3aba611bb77d24b020e6657d06d1b3fa75825"
+      },
+      "pdf_sha256": "996c0a492dd10f21856ccb08c959e7d29cd77ea92cebb0852b6690bbebaf87e7",
+      "warnings": []
+    },
+    {
+      "id": "math-matrices-cases",
+      "status": "reference-built",
+      "engine": "pdflatex",
+      "pages": 1,
+      "source_hashes": {
+        "main.tex": "9d4cfe3213f8ab89240ada914f5478f3a62108029bbafae0acfe831b93bc8fc0"
+      },
+      "pdf_sha256": "ae2e6adea25fb38f16da882f820cc502571daa5fbf274082c0dce1eed81ff2fc",
+      "warnings": []
+    },
+    {
+      "id": "math-align-points",
+      "status": "reference-built",
+      "engine": "pdflatex",
+      "pages": 1,
+      "source_hashes": {
+        "main.tex": "07fda2a1316d73d6c449e1fc854a588c182c8eec997017513b1b4bdbdf887c70"
+      },
+      "pdf_sha256": "1fe0270e116a134ae6746fd3cc9ec115c3bbe0785131c98a25c4655c4157ca19",
+      "warnings": []
+    },
+    {
+      "id": "math-split-gather-multline",
+      "status": "reference-built",
+      "engine": "pdflatex",
+      "pages": 1,
+      "source_hashes": {
+        "main.tex": "e6975d56d7bea9fff02323fa02282e96445aa6fa9a8d5ac3103182ab1ae5b9ef"
+      },
+      "pdf_sha256": "870a99b606232847c18d3b3fcaf4ee2bb5527dee0746b9f2a2243eb533acc77d",
+      "warnings": []
+    },
+    {
+      "id": "math-mathtools",
+      "status": "reference-built",
+      "engine": "pdflatex",
+      "pages": 1,
+      "source_hashes": {
+        "main.tex": "477cc08d4ad44f5965fcae4d76fa5bc296fc7fc1244181a53751554ba2359669"
+      },
+      "pdf_sha256": "52f0a682845c283bbb12b2a4c4745858fb2b16787e3a3aa67eabceff17ff3aad",
+      "warnings": []
+    },
+    {
+      "id": "tex-expansion-arguments",
+      "status": "reference-built",
+      "engine": "pdflatex",
+      "pages": 1,
+      "source_hashes": {
+        "main.tex": "884356ead9cc328cf4e79594555896aa3274039410af7eb81bfbf2e69f2859b7"
+      },
+      "pdf_sha256": "b2e6a0ee8fe71e4edf885003b235832957fbe91e50cdbe0f303e0f6f45f947ed",
+      "warnings": []
+    },
+    {
+      "id": "tex-scope-registers",
+      "status": "reference-built",
+      "engine": "pdflatex",
+      "pages": 1,
+      "source_hashes": {
+        "main.tex": "753b30af0b348c7e967dfa255218359abdc83b8ce21921c782a89b257de3ff96"
+      },
+      "pdf_sha256": "3d79a6bf9b30914b90e22b7ea22dd2ab60050bf8b515e5fda326e233b42de8c2",
+      "warnings": []
+    },
+    {
+      "id": "tex-catcodes-active",
+      "status": "reference-built",
+      "engine": "pdflatex",
+      "pages": 1,
+      "source_hashes": {
+        "main.tex": "75d69f04d355cf9643e8f4b7b3e756305f5713e0c6c2a0702acbe6f82a1b36a4"
+      },
+      "pdf_sha256": "c6ec6942510983ca9d1617b2800e018a3b749717fccc6dd4409492de634a7d05",
+      "warnings": []
+    },
+    {
+      "id": "tex-token-registers-conditionals",
+      "status": "reference-built",
+      "engine": "pdflatex",
+      "pages": 1,
+      "source_hashes": {
+        "main.tex": "0a9ec1e1662c0977cf1a7cbcbdb2cfe955487a827aeebe15bc03f4e63e8ae572"
+      },
+      "pdf_sha256": "0f72bf425217ee06e21dd2f14b87c341470323837b46cdffa26114e0ab2ef452",
+      "warnings": []
+    },
+    {
+      "id": "plain-tex-halign",
+      "status": "reference-built",
+      "engine": "pdftex",
+      "pages": 1,
+      "source_hashes": {
+        "main.tex": "3597c1d07fcb4023a5cb0c9f374a4fd3b49bbe3b3e8ac4e0cc1c7008d0dcb1fd"
+      },
+      "pdf_sha256": "a29249e016d3dd93dbd880caed0419fcd1e7e79c48e2e9d1df2157352d70d266",
+      "warnings": []
+    },
+    {
+      "id": "text-ligatures-accents",
+      "status": "reference-built",
+      "engine": "pdflatex",
+      "pages": 1,
+      "source_hashes": {
+        "main.tex": "523d7c1598e8bfc577a23b55cdd18b15a5a9b61406a0d05f0bce59ed7de3da68"
+      },
+      "pdf_sha256": "333ba98f40a38ce6551a6ea9559fc4046d41b705723c9f9de2b79abcc8621cdc",
+      "warnings": []
+    },
+    {
+      "id": "paragraph-glue-penalties",
+      "status": "reference-built",
+      "engine": "pdflatex",
+      "pages": 1,
+      "source_hashes": {
+        "main.tex": "1163b8317ac7ad38a2daa8dfa1496bde881479119d1a7655956953cb938f2523"
+      },
+      "pdf_sha256": "447a1bdb3a39e3eea691125e45c68516141b306b8d16ee0ea41c3a4c2f0ae04f",
+      "warnings": [
+        "Underfull \\hbox (badness 10000) detected at line 13",
+        "Underfull \\hbox (badness 7888) in paragraph at lines 7--8"
+      ]
+    },
+    {
+      "id": "tables-spans-rules",
+      "status": "reference-built",
+      "engine": "pdflatex",
+      "pages": 1,
+      "source_hashes": {
+        "main.tex": "dad98bc00594c449b5c565e2d5ce3cb7c8c6dd8d744ad642296042955f57f6ab"
+      },
+      "pdf_sha256": "4a1f256c4b6f5ed7a9a57b4aee9d0304cf4a6a1413ff1de7d923c59513de6017",
+      "warnings": []
+    },
+    {
+      "id": "tables-longtable",
+      "status": "reference-built",
+      "engine": "pdflatex",
+      "pages": 3,
+      "source_hashes": {
+        "main.tex": "6c2ef39777243356d6cd5ec34dcdcf8ff525b258dfba0f5873ff13f3e4dde445"
+      },
+      "pdf_sha256": "ad6e939aedbd2eacf859eb4187d817bc0730419a7d211406a47ecca5b4297dac",
+      "warnings": []
+    },
+    {
+      "id": "lists-theorems-proofs",
+      "status": "reference-built",
+      "engine": "pdflatex",
+      "pages": 1,
+      "source_hashes": {
+        "main.tex": "a53bcfe5a73a11f6085bea8294731ce24b7c7e94a836e340cd0dbb58ef48a705"
+      },
+      "pdf_sha256": "f6923b2c29246b740205a8ae1a377f656ef3a38593c322ae5b039a04879f0aca",
+      "warnings": []
+    },
+    {
+      "id": "document-floats-footnotes",
+      "status": "reference-built",
+      "engine": "pdflatex",
+      "pages": 2,
+      "source_hashes": {
+        "main.tex": "1fb224b21f2b5418db82f4164be475fd3c2f217015a01b15ebc9c1677caf2d5b"
+      },
+      "pdf_sha256": "cfdfbe62aeb282f92e348024d3097238b07ddce2cec9021d34d41f61ccd1ab1e",
+      "warnings": []
+    },
+    {
+      "id": "graphics-transform-color",
+      "status": "reference-built",
+      "engine": "pdflatex",
+      "pages": 1,
+      "source_hashes": {
+        "main.tex": "a718504e71206045eb52adf8a18eb4a138a7022b76faefbdc6e378515d6b0fdf"
+      },
+      "pdf_sha256": "f5cd20bf05c2116474da629f332db4c402d9dc828f6aabb39675e60eab603977",
+      "warnings": []
+    },
+    {
+      "id": "tikz-paths-transforms",
+      "status": "reference-built",
+      "engine": "pdflatex",
+      "pages": 1,
+      "source_hashes": {
+        "main.tex": "9c6ed56eeafe5b75bcbfb025db22560e4df0446903ad28d8d1b5d600109a718e"
+      },
+      "pdf_sha256": "8818e203251713ff1af8b81b34335a9f54bc1f25f17785dfa45b2f07b89ba8d3",
+      "warnings": []
+    },
+    {
+      "id": "tikz-nodes-graphs",
+      "status": "reference-built",
+      "engine": "pdflatex",
+      "pages": 1,
+      "source_hashes": {
+        "main.tex": "f98d0dd0e1f22f4bcdafbf8d40eab5eed5ff7a04aec2235f450f36c9d3782aaa"
+      },
+      "pdf_sha256": "a4225e8224127acf761dc6178bda0ebcee0f4dff8948b66426b77d538e1d8320",
+      "warnings": []
+    },
+    {
+      "id": "tikz-clipping-patterns",
+      "status": "reference-built",
+      "engine": "pdflatex",
+      "pages": 1,
+      "source_hashes": {
+        "main.tex": "76415632e39626b9fe94b540cb354e9067da6d735a8cdf8c08e4efbe80d15996"
+      },
+      "pdf_sha256": "6838654b1850f90cf5f3e7eaabe2fb504639ae007d32f354a6e71216fa38dd08",
+      "warnings": []
+    },
+    {
+      "id": "pgfplots-functions-data",
+      "status": "reference-built",
+      "engine": "pdflatex",
+      "pages": 1,
+      "source_hashes": {
+        "data.tsv": "d49000fbc771648a58f5c31eb17cc5570cd56471d82745b677bc2d871fa26ce4",
+        "main.tex": "acb71da135e5d5f9e9729c16adff405498f09a33a8d20549bed4099174036ff6"
+      },
+      "pdf_sha256": "25c54abcaf65639ab97cf294c4f9a950811192173acea870fce62487986fa47f",
+      "warnings": []
+    },
+    {
+      "id": "packages-siunitx-chemistry",
+      "status": "reference-built",
+      "engine": "pdflatex",
+      "pages": 1,
+      "source_hashes": {
+        "main.tex": "58cad942feab5731aa5331ca00a092a9d0924047f8699933306d1de9fd531c5b"
+      },
+      "pdf_sha256": "02f636f24db5382b04b9dd4d4f983a95d1540861b908726a910c6aa06251b481",
+      "warnings": [
+        "Package epstopdf Warning: Shell escape feature is not enabled."
+      ]
+    },
+    {
+      "id": "packages-listings-verbatim",
+      "status": "reference-built",
+      "engine": "pdflatex",
+      "pages": 1,
+      "source_hashes": {
+        "main.tex": "3999a1859ce0374a48110f59b3c065ffdccf33023a85038ff0f8099be92a129f"
+      },
+      "pdf_sha256": "9949dcc5884119ac25c2d34c356d07ee7fddc32bbd37ba3171ee9e365fa0952c",
+      "warnings": []
+    },
+    {
+      "id": "project-input-package",
+      "status": "reference-built",
+      "engine": "pdflatex",
+      "pages": 1,
+      "source_hashes": {
+        "chapters/one.tex": "f9753498a8dc07ac28288f5833f5ea722cc84ef7812d1a017051abf87090c2ae",
+        "chapters/two.tex": "51f0418e2cce806d3a876646d135865aa0cf7955e8fc09fe4a431ed6c929be3d",
+        "localstyle.sty": "3fa85c0ba0ba3a5b86255feebbad3b1f2bd3de166028363f404ff40fb805d502",
+        "main.tex": "a474d836aa98229a132e27fb983dc639c92e6864895b2a7b25a974dd638de659"
+      },
+      "pdf_sha256": "0c6d05f4923b675df4c462ce4c7ca2b0aa528cb16343dc7dc7341efa1d7292a2",
+      "warnings": []
+    },
+    {
+      "id": "project-bibtex",
+      "status": "reference-built",
+      "engine": "pdflatex",
+      "pages": 1,
+      "source_hashes": {
+        "main.tex": "9d703ee21f6a7a81fa05754d2894e8a1a262f5154faee006e5a6dcd51e222c1a",
+        "references.bib": "3f8df152b37362574a1ee192edeed1fdf71bb5c82ce7d6597decff996eee5f33"
+      },
+      "pdf_sha256": "2b78814f88dc9b65f66d4d9b790fa52b180f804a63ddd8fcaa380c3d2390110c",
+      "warnings": []
+    },
+    {
+      "id": "project-biblatex-biber",
+      "status": "reference-built",
+      "engine": "pdflatex",
+      "pages": 1,
+      "source_hashes": {
+        "main.tex": "4ebc258e835d7654cfd978b79ddce3d81570e7bcbe90660f4324fae75063f831",
+        "references.bib": "a7a75fe1c344fd807f93285a148a38ddf19fa7bc0d27cb1fdad838bdeea77177"
+      },
+      "pdf_sha256": "16721a722f269e089583e7214ac00887817cae23a29ed5c782f64364b1fbe5b6",
+      "warnings": []
+    },
+    {
+      "id": "unicode-lualatex",
+      "status": "reference-built",
+      "engine": "lualatex",
+      "pages": 1,
+      "source_hashes": {
+        "main.tex": "1b9f2a12cce0a3d14c9530b0968fc8effdd0f762048d3143524e0e469b423863"
+      },
+      "pdf_sha256": "459271951aed758ba6bc7dc7523259f9e83bbea201fd8450f6b51585a3026adb",
+      "warnings": []
+    },
+    {
+      "id": "unicode-xelatex",
+      "status": "reference-built",
+      "engine": "xelatex",
+      "pages": 1,
+      "source_hashes": {
+        "main.tex": "7b33322cca70ac330b6608eb2eff16a87f6fd73f3f187150f4b21f92204df784"
+      },
+      "pdf_sha256": "7e85d2f8faca6a4540a09567c2ef5fd72a13d8f1dc78bc0a30d94874d494f169",
+      "warnings": []
+    },
+    {
+      "id": "hyperref-bookmarks",
+      "status": "reference-built",
+      "engine": "pdflatex",
+      "pages": 1,
+      "source_hashes": {
+        "main.tex": "671846abb1656f9fd7f9908d4b04cdb47ecbafa581c438cef416438960bc66fe"
+      },
+      "pdf_sha256": "104fcf72225f1fc146b32ff585fc968e8fac5d93194f726ac337a3232dc8872a",
+      "warnings": []
+    },
+    {
+      "id": "boxes-rules-leaders",
+      "status": "reference-built",
+      "engine": "pdflatex",
+      "pages": 1,
+      "source_hashes": {
+        "main.tex": "351119358b0d3d9e6024641943b5390b8378c4558eb85d21d207653829b14751"
+      },
+      "pdf_sha256": "2193003560bfc87a6b77ea5cd5a8d141e6250b8cd47b108c8daa49c0992d15b1",
+      "warnings": []
+    },
+    {
+      "id": "math-array-spacing",
+      "status": "reference-built",
+      "engine": "pdflatex",
+      "pages": 1,
+      "source_hashes": {
+        "main.tex": "b0673e43ba6606104917d8e4ef4ee9107c63f49551d10cbc8acfbaab893300b7"
+      },
+      "pdf_sha256": "a121f0580b7f2e4187d461660d75a54faa0cbe5bcf44be8c5e81e92973096069",
+      "warnings": []
+    },
+    {
+      "id": "error-unknown-command",
+      "status": "expected-error",
+      "engine": "pdflatex",
+      "pages": null,
+      "source_hashes": {
+        "main.tex": "aefc2b3a54e773fbbba44065df9d5242fbbebe8db36c3eba245313ef5351e078"
+      },
+      "pdf_sha256": null,
+      "warnings": []
+    },
+    {
+      "id": "error-unclosed-group",
+      "status": "expected-error",
+      "engine": "pdflatex",
+      "pages": null,
+      "source_hashes": {
+        "main.tex": "d5d2737ae6b37d7b41fd09fcdc356fbfa4d7445e51c2c52fe8047002ed02c965"
+      },
+      "pdf_sha256": null,
+      "warnings": []
+    },
+    {
+      "id": "error-extra-math-align",
+      "status": "expected-error",
+      "engine": "pdflatex",
+      "pages": null,
+      "source_hashes": {
+        "main.tex": "83a70426b627bb43c31230e0121fe2b7becf6df73cb2c50116875655aa1da47d"
+      },
+      "pdf_sha256": null,
+      "warnings": []
+    },
+    {
+      "id": "error-missing-input",
+      "status": "expected-error",
+      "engine": "pdflatex",
+      "pages": null,
+      "source_hashes": {
+        "main.tex": "6966ecb2ebe5aae7df6167dd7e3005909933be317b37ada471e1e2453ecde083"
+      },
+      "pdf_sha256": null,
+      "warnings": []
+    },
+    {
+      "id": "error-double-superscript",
+      "status": "expected-error",
+      "engine": "pdflatex",
+      "pages": null,
+      "source_hashes": {
+        "main.tex": "99e7b51092b597570da105c970358f12403f70ab41a0ff9909a2a95fd8005af0"
+      },
+      "pdf_sha256": null,
+      "warnings": []
+    },
+    {
+      "id": "error-mismatched-environment",
+      "status": "expected-error",
+      "engine": "pdflatex",
+      "pages": null,
+      "source_hashes": {
+        "main.tex": "e6df5da333993ed13d6a71e4d7bb092e561a3b453a060dfddd774e9f1e8f6e95"
+      },
+      "pdf_sha256": null,
+      "warnings": []
+    },
+    {
+      "id": "error-missing-math-delimiter",
+      "status": "expected-error",
+      "engine": "pdflatex",
+      "pages": null,
+      "source_hashes": {
+        "main.tex": "85490939cd5688c9bef6228127af3b0ea7c63dda302c107f46cf04aa7321f476"
+      },
+      "pdf_sha256": null,
+      "warnings": []
+    },
+    {
+      "id": "project-book-include",
+      "status": "reference-built",
+      "engine": "pdflatex",
+      "pages": 7,
+      "source_hashes": {
+        "chapters/one.tex": "662ec4b02a5639e1f9382b2eed4ac6ddf7f1b50777cfb217ce769717db3cfbce",
+        "chapters/two.tex": "bec7236f521db3940cd73352833e3c34ab0c97694350d19ad1637e9ae5b33c7d",
+        "main.tex": "96fa84d3e4130e855f02469e2f1834ba273c86b84d9fbed43a25bde787c86771"
+      },
+      "pdf_sha256": "6392c92b023ca0d757570198cf6f1eaad304e184a2b69fc9a5cae2daac4f0530",
+      "warnings": []
+    },
+    {
+      "id": "packages-local-class",
+      "status": "reference-built",
+      "engine": "pdflatex",
+      "pages": 1,
+      "source_hashes": {
+        "fixtureclass.cls": "c7e60b4632cf5f348063f7f9d47791d659eefcbbe106dd06b579fb970b23697b",
+        "main.tex": "7a390dca9bca62918c0d99a47e461e04aa6a89082b447a0dafd928f753eaaaf6"
+      },
+      "pdf_sha256": "0fc50b65a10165e725d72b0f6085d507440e11efde223d627d426fc15c328f09",
+      "warnings": []
+    },
+    {
+      "id": "math-numbering-subequations",
+      "status": "reference-built",
+      "engine": "pdflatex",
+      "pages": 1,
+      "source_hashes": {
+        "main.tex": "cddd4bac31a596884ab00a79c5cb01137a625706f87dc4745572a7bc6a1b9654"
+      },
+      "pdf_sha256": "84901ff35be414022a7d65c73677e715bae1f6e47256b314bd65ef31e81f1a4c",
+      "warnings": []
+    },
+    {
+      "id": "text-microtype-multicol",
+      "status": "reference-built",
+      "engine": "pdflatex",
+      "pages": 1,
+      "source_hashes": {
+        "main.tex": "150d5627995ae185a8070d1c051904b96b326e1e7589ec526d2583ddd6efc2cb"
+      },
+      "pdf_sha256": "62942c88c0a0fd7f8335df359243518cae58337f038188fcef317d879fefd390",
+      "warnings": []
+    },
+    {
+      "id": "tex-discretionary-italic",
+      "status": "reference-built",
+      "engine": "pdflatex",
+      "pages": 1,
+      "source_hashes": {
+        "main.tex": "dc2ea84cba3dc0304ecca109090bce335500338e7cf61799b2bbe1cb3316abdf"
+      },
+      "pdf_sha256": "eda471080dbd149dfe0da174b4e454ca69b708e8acfedd49a2a8bcee6d686085",
+      "warnings": [
+        "Underfull \\hbox (badness 10000) in paragraph at lines 2--2",
+        "Underfull \\hbox (badness 2653) in paragraph at lines 2--2"
+      ]
+    },
+    {
+      "id": "graphics-included-raster",
+      "status": "reference-built",
+      "engine": "pdflatex",
+      "pages": 1,
+      "source_hashes": {
+        "assets/quadrants.png": "7dca4d12516e5a4c8b14cba836ce8fac73d58b9e2791ed927447ccd53871a109",
+        "main.tex": "2a8a8c4ba1a709e4b33b00401636e3962754d1ced5761654c7a497e556b8695a"
+      },
+      "pdf_sha256": "bdea0f3713956bf2b59f8993b6a695a3de2005c8c429e8e543761a3b28bc8f6e",
+      "warnings": []
+    }
+  ]
+}

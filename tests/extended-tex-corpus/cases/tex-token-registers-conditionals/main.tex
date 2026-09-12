@@ -1,0 +1,11 @@
+\documentclass{article}
+\listfiles
+
+
+\begin{document}
+\newtoks\tokens\tokens={alpha {beta} gamma}\the\tokens.
+\def\a{same}\def\b{same}\ifx\a\b SAME\else DIFFERENT\fi.
+\ifcase2 ZERO\or ONE\or TWO\else OTHER\fi.
+\newcount\n\n=0\loop\advance\n by1 [\the\n]\ifnum\n<4\repeat
+\begingroup\aftergroup A\aftergroup B INSIDE\endgroup.
+\end{document}

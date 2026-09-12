@@ -1,0 +1,11 @@
+PWD /private/tmp/flashtex-extended-reference-v1/plain-tex-halign
+INPUT /usr/local/texlive/2026/texmf.cnf
+INPUT /usr/local/texlive/2026/texmf-dist/web2c/texmf.cnf
+INPUT /usr/local/texlive/2026/texmf-var/web2c/pdftex/pdftex.fmt
+INPUT main.tex
+OUTPUT main.log
+OUTPUT main.pdf
+INPUT /usr/local/texlive/2026/texmf-var/fonts/map/pdftex/updmap/pdftex.map
+INPUT /usr/local/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi10.pfb
+INPUT /usr/local/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmr10.pfb
+INPUT /usr/local/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy10.pfb

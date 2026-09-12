@@ -1,0 +1,12 @@
+\documentclass{article}
+\listfiles
+
+
+\begin{document}
+\tableofcontents\listoffigures
+\section{First section}\label{sec:first}Text\footnote{A footnote containing $x^2$.} continues.
+\begin{figure}[tbp]\centering\rule{100pt}{40pt}\caption{Rule figure}\label{fig:rule}\end{figure}
+\subsection{Child}Figure~\ref{fig:rule}, Section~\ref{sec:first}, page~\pageref{fig:rule}.
+\begin{minipage}{200pt}Local note\footnote{Minipage footnote.}\end{minipage}
+\clearpage\section{Second}Final page.
+\end{document}

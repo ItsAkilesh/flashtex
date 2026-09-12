@@ -1,0 +1,158 @@
+{
+  "id": "project-bibtex",
+  "engine": "pdflatex",
+  "expected": "success",
+  "source_hashes": {
+    "main.tex": "9d703ee21f6a7a81fa05754d2894e8a1a262f5154faee006e5a6dcd51e222c1a",
+    "references.bib": "3f8df152b37362574a1ee192edeed1fdf71bb5c82ce7d6597decff996eee5f33"
+  },
+  "steps": [
+    {
+      "argv": [
+        "/Library/TeX/texbin/pdflatex",
+        "-interaction=nonstopmode",
+        "-halt-on-error",
+        "-no-shell-escape",
+        "-recorder",
+        "main.tex"
+      ],
+      "returncode": 0,
+      "seconds": 0.398
+    },
+    {
+      "argv": [
+        "/Library/TeX/texbin/bibtex",
+        "main"
+      ],
+      "returncode": 0,
+      "seconds": 0.145
+    },
+    {
+      "argv": [
+        "/Library/TeX/texbin/pdflatex",
+        "-interaction=nonstopmode",
+        "-halt-on-error",
+        "-no-shell-escape",
+        "-recorder",
+        "main.tex"
+      ],
+      "returncode": 0,
+      "seconds": 0.416
+    },
+    {
+      "argv": [
+        "/Library/TeX/texbin/pdflatex",
+        "-interaction=nonstopmode",
+        "-halt-on-error",
+        "-no-shell-escape",
+        "-recorder",
+        "main.tex"
+      ],
+      "returncode": 0,
+      "seconds": 0.401
+    }
+  ],
+  "engine_version": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)\nkpathsea version 6.4.2\nCopyright 2026 Han The Thanh (pdfTeX) et al.\nThere is NO warranty.  Redistribution of this software is\ncovered by the terms of both the pdfTeX copyright and\nthe Lesser GNU General Public License.\nFor more information about these matters, see the file\nnamed COPYING and the pdfTeX source.\nPrimary author of pdfTeX: Han The Thanh (pdfTeX) et al.\nCompiled with libpng 1.6.55; using libpng 1.6.55\nCompiled with zlib 1.3.2; using zlib 1.3.2\nCompiled with xpdf version 4.06\n",
+  "engine_sha256": "3ead7baeffb81c638fe75599602278566370e6319c0469f6ab00ff62bff4b0eb",
+  "bibtex_version": "BibTeX 0.99e (TeX Live 2026)\nkpathsea version 6.4.2\nCopyright 2026 Oren Patashnik.\nThere is NO warranty.  Redistribution of this software is\ncovered by the terms of both the BibTeX copyright and\nthe Lesser GNU General Public License.\nFor more information about these matters, see the file\nnamed COPYING and the BibTeX source.\nPrimary author of BibTeX: Oren Patashnik.\n",
+  "warnings": [],
+  "diagnostic_observed": null,
+  "dependencies": [
+    {
+      "path": "/usr/local/texlive/2026/texmf.cnf",
+      "sha256": "8f18efc5eaa079308b683ff618fae1df128e04bb0f5ab7876dddd279dd643073"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/web2c/texmf.cnf",
+      "sha256": "a2e9447fc8b6dfa407fa8d0d710e59b039e22598e3f17de0bdf54daba478742c"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-var/web2c/pdftex/pdflatex.fmt",
+      "sha256": "1b2ced0851d3937a631123edcd524e79fd0632b6638f56cf997b5e358ed9f393"
+    },
+    {
+      "path": "/private/tmp/flashtex-extended-reference-v1/project-bibtex/main.tex",
+      "sha256": "9d703ee21f6a7a81fa05754d2894e8a1a262f5154faee006e5a6dcd51e222c1a"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/base/article.cls",
+      "sha256": "f9c8770a909e5b6526eb72284e457cd379b9bedbf3b508a96bd7f922d4cb24ec"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/base/size10.clo",
+      "sha256": "2896162dd5ed894689ca1f336fe2e084007114dc07f8ab17203281911479548f"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/l3backend/l3backend-pdftex.def",
+      "sha256": "24c194c31928335f4e29eee52bd200efac11263d4b69ef7350ef989e55ffe111"
+    },
+    {
+      "path": "/private/tmp/flashtex-extended-reference-v1/project-bibtex/main.aux",
+      "sha256": "cfbad81c12b09ce3b90302c53c8f2ccd54e5580ea4851ccbf78f3513e05a0e8d"
+    },
+    {
+      "path": "/private/tmp/flashtex-extended-reference-v1/project-bibtex/main.bbl",
+      "sha256": "3a9927cd208471512f960385698960400bd9c621628e90d1b00f252ccafa8050"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/fonts/map/fontname/texfonts.map",
+      "sha256": "d9693993efdc7d0b9ab3df777589995d43e24eeae95f12b6a230a19caadeaa42"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/fonts/tfm/public/cm/cmr12.tfm",
+      "sha256": "1ce8af37ed38e93940829d3540e494eaaddc5201758d036b9074467e70a738dc"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/fonts/tfm/public/cm/cmbx12.tfm",
+      "sha256": "0eb2f13840155007c2d3c59b074322a3aa7358b9643aa314f3146468ae7f0806"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/fonts/tfm/public/cm/cmti10.tfm",
+      "sha256": "46a66e937f809c4fbe317947b583a14b408aca41ecb835eca3be46391190432a"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-var/fonts/map/pdftex/updmap/pdftex.map",
+      "sha256": "3b3a9fab7102732cb18465ce673ac3f3a5e70f205eaa53f8f1e9972ad761b67b"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx12.pfb",
+      "sha256": "c838238f31d86a9f198873dfaf501601a4fc966845b9c59e7dc251c4e85d1f1f"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmr10.pfb",
+      "sha256": "fdcede8794018df5f2b58f0905fb20a2b418ed8f67b73ee12445855dfbe5b1be"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmti10.pfb",
+      "sha256": "b6f162e1549a649c7e9b2edfb77306f60e1b0da74547f33cba39ff6ba0bdd473"
+    }
+  ],
+  "pdf_sha256": "2b78814f88dc9b65f66d4d9b790fa52b180f804a63ddd8fcaa380c3d2390110c",
+  "pdf_bytes": 38407,
+  "status": "reference-built",
+  "raster": {
+    "argv": [
+      "/opt/homebrew/bin/gs",
+      "-dSAFER",
+      "-dBATCH",
+      "-dNOPAUSE",
+      "-sDEVICE=png16m",
+      "-r96",
+      "-dTextAlphaBits=4",
+      "-dGraphicsAlphaBits=4",
+      "-sOutputFile=page-%03d.png",
+      "main.pdf"
+    ],
+    "returncode": 0,
+    "seconds": 0.074
+  },
+  "rasterizer_version": "10.08.0",
+  "rasterizer_sha256": "d57bb373324bf7e72c5b3fb1a6cc8a9f876eb6f8d2eec23a5a3809a8a108bf9e",
+  "pages": [
+    {
+      "file": "page-001.png",
+      "sha256": "06623be1e0f1409dd886822679c5dccbef41daf88d384f1e0f5ae9c15916029e"
+    }
+  ],
+  "raster_status": "rendered"
+}

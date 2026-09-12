@@ -1,0 +1,95 @@
+This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026) (preloaded format=pdflatex)
+entering extended mode
+(./main.tex
+LaTeX2e <2025-11-01>
+L3 programming layer <2026-01-19>
+(/usr/local/texlive/2026/texmf-dist/tex/latex/base/article.cls
+Document Class: article 2025/01/22 v1.4n Standard LaTeX document class
+(/usr/local/texlive/2026/texmf-dist/tex/latex/base/size10.clo))
+(/usr/local/texlive/2026/texmf-dist/tex/latex/siunitx/siunitx.sty
+(/usr/local/texlive/2026/texmf-dist/tex/latex/translations/translations.sty
+(/usr/local/texlive/2026/texmf-dist/tex/latex/etoolbox/etoolbox.sty)
+(/usr/local/texlive/2026/texmf-dist/tex/generic/pdftexcmds/pdftexcmds.sty
+(/usr/local/texlive/2026/texmf-dist/tex/generic/infwarerr/infwarerr.sty)
+(/usr/local/texlive/2026/texmf-dist/tex/generic/iftex/iftex.sty)
+(/usr/local/texlive/2026/texmf-dist/tex/generic/ltxcmds/ltxcmds.sty)))
+(/usr/local/texlive/2026/texmf-dist/tex/latex/amsmath/amstext.sty
+(/usr/local/texlive/2026/texmf-dist/tex/latex/amsmath/amsgen.sty))
+(/usr/local/texlive/2026/texmf-dist/tex/latex/tools/array.sty))
+(/usr/local/texlive/2026/texmf-dist/tex/latex/mhchem/mhchem.sty
+(/usr/local/texlive/2026/texmf-dist/tex/latex/l3kernel/expl3.sty
+(/usr/local/texlive/2026/texmf-dist/tex/latex/l3backend/l3backend-pdftex.def))
+(/usr/local/texlive/2026/texmf-dist/tex/latex/l3packages/l3keys2e/l3keys2e.sty)
+ (/usr/local/texlive/2026/texmf-dist/tex/latex/tools/calc.sty)
+(/usr/local/texlive/2026/texmf-dist/tex/latex/amsmath/amsmath.sty
+For additional information on amsmath, use the `?' option.
+(/usr/local/texlive/2026/texmf-dist/tex/latex/amsmath/amsbsy.sty)
+(/usr/local/texlive/2026/texmf-dist/tex/latex/amsmath/amsopn.sty))
+(/usr/local/texlive/2026/texmf-dist/tex/latex/chemgreek/chemgreek.sty
+(/usr/local/texlive/2026/texmf-dist/tex/latex/l3packages/xparse/xparse.sty))
+(/usr/local/texlive/2026/texmf-dist/tex/latex/graphics/graphics.sty
+(/usr/local/texlive/2026/texmf-dist/tex/latex/graphics/trig.sty)
+(/usr/local/texlive/2026/texmf-dist/tex/latex/graphics-cfg/graphics.cfg)
+(/usr/local/texlive/2026/texmf-dist/tex/latex/graphics-def/pdftex.def)))
+(/usr/local/texlive/2026/texmf-dist/tex/latex/graphics/color.sty
+(/usr/local/texlive/2026/texmf-dist/tex/latex/graphics-cfg/color.cfg)
+(/usr/local/texlive/2026/texmf-dist/tex/latex/graphics/mathcolor.ltx))
+(./main.aux)
+(/usr/local/texlive/2026/texmf-dist/tex/latex/translations/translations-basic-d
+ictionary-english.trsl)
+(/usr/local/texlive/2026/texmf-dist/tex/context/base/mkii/supp-pdf.mkii
+[Loading MPS to PDF converter (version 2006.09.02).]
+) (/usr/local/texlive/2026/texmf-dist/tex/latex/epstopdf-pkg/epstopdf-base.sty
+
+Package epstopdf Warning: Shell escape feature is not enabled.
+
+(/usr/local/texlive/2026/texmf-dist/tex/latex/latexconfig/epstopdf-sys.cfg))
+[1{/usr/local/texlive/2026/texmf-var/fonts/map/pdftex/updmap/pdftex.map}]
+(./main.aux)
+
+ *File List*
+ article.cls    2025/01/22 v1.4n Standard LaTeX document class
+  size10.clo    2025/01/22 v1.4n Standard LaTeX file (size option)
+ siunitx.sty    2025-07-09 v3.4.14 A comprehensive (SI) units package
+translations.sty    2022/02/05 v1.12 internationalization of LaTeX2e packages (
+CN)
+etoolbox.sty    2025/10/02 v2.5m e-TeX tools for LaTeX (JAW)
+pdftexcmds.sty    2020-06-27 v0.33 Utility functions of pdfTeX for LuaTeX (HO)
+infwarerr.sty    2019/12/03 v1.5 Providing info/warning/error messages (HO)
+   iftex.sty    2024/12/12 v1.0g TeX engine tests
+ ltxcmds.sty    2023-12-04 v1.26 LaTeX kernel commands for general use (HO)
+ amstext.sty    2024/11/17 v2.01 AMS text
+  amsgen.sty    1999/11/30 v2.0 generic functions
+   array.sty    2025/09/25 v2.6n Tabular extension package (FMi)
+  mhchem.sty    2024/01/29 v4.10 for typesetting chemical formulae
+   expl3.sty    2026-01-19 L3 programming layer (loader) 
+l3backend-pdftex.def    2025-10-09 L3 backend support: PDF output (pdfTeX)
+l3keys2e.sty    2025-10-09 LaTeX2e option processing using LaTeX3 keys
+    calc.sty    2025/03/01 v4.3b Infix arithmetic (KKT,FJ)
+ amsmath.sty    2025/07/09 v2.17z AMS math features
+  amsbsy.sty    1999/11/29 v1.2d Bold Symbols
+  amsopn.sty    2022/04/08 v2.04 operator names
+chemgreek.sty    2020/01/16 v1.1a interface for upright Greek letters for use i
+n chemistry (CN)
+  xparse.sty    2025-10-09 L3 Experimental document command parser
+graphics.sty    2024/08/06 v1.4g Standard LaTeX Graphics (DPC,SPQR)
+    trig.sty    2023/12/02 v1.11 sin cos tan (DPC)
+graphics.cfg    2016/06/04 v1.11 sample graphics configuration
+  pdftex.def    2025/09/29 v1.2d Graphics/color driver for pdftex
+   color.sty    2025/01/14 v1.3e Standard LaTeX Color (DPC)
+   color.cfg    2016/01/02 v1.6 sample color configuration
+mathcolor.ltx
+translations-basic-dictionary-english.trsl    (english translation file `transl
+ations-basic-dictionary')
+supp-pdf.mkii
+epstopdf-base.sty    2020-01-24 v2.11 Base part for package epstopdf
+epstopdf-sys.cfg    2010/07/13 v1.3 Configuration of (r)epstopdf for TeX Live
+ ***********
+
+ )</usr/local/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi10.pfb
+></usr/local/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmr10.pfb><
+/usr/local/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmr7.pfb></us
+r/local/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy10.pfb></usr
+/local/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy7.pfb>
+Output written on main.pdf (1 page, 48242 bytes).
+Transcript written on main.log.

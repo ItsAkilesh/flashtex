@@ -1,0 +1,33 @@
+This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026) (preloaded format=pdflatex)
+entering extended mode
+(./main.tex
+LaTeX2e <2025-11-01>
+L3 programming layer <2026-01-19>
+(/usr/local/texlive/2026/texmf-dist/tex/latex/base/book.cls
+Document Class: book 2025/01/22 v1.4n Standard LaTeX document class
+(/usr/local/texlive/2026/texmf-dist/tex/latex/base/bk10.clo))
+(/usr/local/texlive/2026/texmf-dist/tex/latex/l3backend/l3backend-pdftex.def)
+(./main.aux (./chapters/one.aux) (./chapters/two.aux)) (./main.toc) [1{/usr/loc
+al/texlive/2026/texmf-var/fonts/map/pdftex/updmap/pdftex.map}] [2]
+(./chapters/one.tex
+Chapter 1.
+) [1] (./chapters/two.tex [2]
+Chapter 2.
+) [3] [4]
+Appendix A.
+[5] (./main.aux (./chapters/one.aux) (./chapters/two.aux))
+
+ *File List*
+    book.cls    2025/01/22 v1.4n Standard LaTeX document class
+    bk10.clo    2025/01/22 v1.4n Standard LaTeX file (size option)
+l3backend-pdftex.def    2025-10-09 L3 backend support: PDF output (pdfTeX)
+chapters/one.tex
+chapters/two.tex
+ ***********
+
+ )</usr/local/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx10.pfb
+></usr/local/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx12.pfb>
+</usr/local/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmr10.pfb></
+usr/local/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmsl10.pfb>
+Output written on main.pdf (7 pages, 52620 bytes).
+Transcript written on main.log.

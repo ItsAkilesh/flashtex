@@ -1,0 +1,1293 @@
+{
+  "schema_version": 1,
+  "owner": "mac-reference-corpus",
+  "scope": "Finite original compatibility requirements; not exhaustive TeX or math coverage. No product support asserted.",
+  "cases": [
+    {
+      "id": "math-atom-classes",
+      "entry": "main.tex",
+      "engine": "pdflatex",
+      "features": [
+        "math",
+        "atom-spacing",
+        "binary",
+        "relations",
+        "logic"
+      ],
+      "expect": "success",
+      "diagnostic": null,
+      "workflow": [
+        "tex",
+        "tex",
+        "tex"
+      ],
+      "files": [
+        "main.tex"
+      ],
+      "authorship": "Original fixture authored by Codex for FlashTeX; repository license applies.",
+      "assertions": [
+        "Compare complete page count, geometry, text order, fonts and rendered pixels against the pinned reference."
+      ]
+    },
+    {
+      "id": "math-greek-alphabets",
+      "entry": "main.tex",
+      "engine": "pdflatex",
+      "features": [
+        "math",
+        "greek",
+        "math-fonts",
+        "variants"
+      ],
+      "expect": "success",
+      "diagnostic": null,
+      "workflow": [
+        "tex",
+        "tex",
+        "tex"
+      ],
+      "files": [
+        "main.tex"
+      ],
+      "authorship": "Original fixture authored by Codex for FlashTeX; repository license applies.",
+      "assertions": [
+        "Compare complete page count, geometry, text order, fonts and rendered pixels against the pinned reference."
+      ]
+    },
+    {
+      "id": "math-fractions-styles",
+      "entry": "main.tex",
+      "engine": "pdflatex",
+      "features": [
+        "math",
+        "fraction",
+        "binomial",
+        "styles",
+        "nesting"
+      ],
+      "expect": "success",
+      "diagnostic": null,
+      "workflow": [
+        "tex",
+        "tex",
+        "tex"
+      ],
+      "files": [
+        "main.tex"
+      ],
+      "authorship": "Original fixture authored by Codex for FlashTeX; repository license applies.",
+      "assertions": [
+        "Compare complete page count, geometry, text order, fonts and rendered pixels against the pinned reference."
+      ]
+    },
+    {
+      "id": "math-scripts-limits",
+      "entry": "main.tex",
+      "engine": "pdflatex",
+      "features": [
+        "math",
+        "scripts",
+        "primes",
+        "operators",
+        "limits",
+        "integrals"
+      ],
+      "expect": "success",
+      "diagnostic": null,
+      "workflow": [
+        "tex",
+        "tex",
+        "tex"
+      ],
+      "files": [
+        "main.tex"
+      ],
+      "authorship": "Original fixture authored by Codex for FlashTeX; repository license applies.",
+      "assertions": [
+        "Compare complete page count, geometry, text order, fonts and rendered pixels against the pinned reference."
+      ]
+    },
+    {
+      "id": "math-radicals-delimiters",
+      "entry": "main.tex",
+      "engine": "pdflatex",
+      "features": [
+        "math",
+        "radicals",
+        "delimiter-sizing",
+        "null-delimiter",
+        "middle"
+      ],
+      "expect": "success",
+      "diagnostic": null,
+      "workflow": [
+        "tex",
+        "tex",
+        "tex"
+      ],
+      "files": [
+        "main.tex"
+      ],
+      "authorship": "Original fixture authored by Codex for FlashTeX; repository license applies.",
+      "assertions": [
+        "Compare complete page count, geometry, text order, fonts and rendered pixels against the pinned reference."
+      ]
+    },
+    {
+      "id": "math-accents-overlays",
+      "entry": "main.tex",
+      "engine": "pdflatex",
+      "features": [
+        "math",
+        "accents",
+        "braces",
+        "phantom",
+        "smash",
+        "overlays"
+      ],
+      "expect": "success",
+      "diagnostic": null,
+      "workflow": [
+        "tex",
+        "tex",
+        "tex"
+      ],
+      "files": [
+        "main.tex"
+      ],
+      "authorship": "Original fixture authored by Codex for FlashTeX; repository license applies.",
+      "assertions": [
+        "Compare complete page count, geometry, text order, fonts and rendered pixels against the pinned reference."
+      ]
+    },
+    {
+      "id": "math-matrices-cases",
+      "entry": "main.tex",
+      "engine": "pdflatex",
+      "features": [
+        "math",
+        "matrix",
+        "cases",
+        "dots",
+        "smallmatrix"
+      ],
+      "expect": "success",
+      "diagnostic": null,
+      "workflow": [
+        "tex",
+        "tex",
+        "tex"
+      ],
+      "files": [
+        "main.tex"
+      ],
+      "authorship": "Original fixture authored by Codex for FlashTeX; repository license applies.",
+      "assertions": [
+        "Compare complete page count, geometry, text order, fonts and rendered pixels against the pinned reference."
+      ]
+    },
+    {
+      "id": "math-align-points",
+      "entry": "main.tex",
+      "engine": "pdflatex",
+      "features": [
+        "math",
+        "align",
+        "alignat",
+        "flalign",
+        "tags",
+        "labels",
+        "multiple-align-points"
+      ],
+      "expect": "success",
+      "diagnostic": null,
+      "workflow": [
+        "tex",
+        "tex",
+        "tex"
+      ],
+      "files": [
+        "main.tex"
+      ],
+      "authorship": "Original fixture authored by Codex for FlashTeX; repository license applies.",
+      "assertions": [
+        "Compare complete page count, geometry, text order, fonts and rendered pixels against the pinned reference."
+      ]
+    },
+    {
+      "id": "math-split-gather-multline",
+      "entry": "main.tex",
+      "engine": "pdflatex",
+      "features": [
+        "math",
+        "split",
+        "gather",
+        "multline",
+        "aligned",
+        "intertext"
+      ],
+      "expect": "success",
+      "diagnostic": null,
+      "workflow": [
+        "tex",
+        "tex",
+        "tex"
+      ],
+      "files": [
+        "main.tex"
+      ],
+      "authorship": "Original fixture authored by Codex for FlashTeX; repository license applies.",
+      "assertions": [
+        "Compare complete page count, geometry, text order, fonts and rendered pixels against the pinned reference."
+      ]
+    },
+    {
+      "id": "math-mathtools",
+      "entry": "main.tex",
+      "engine": "pdflatex",
+      "features": [
+        "math",
+        "mathtools",
+        "paired-delimiters",
+        "arrows",
+        "prescripts"
+      ],
+      "expect": "success",
+      "diagnostic": null,
+      "workflow": [
+        "tex",
+        "tex",
+        "tex"
+      ],
+      "files": [
+        "main.tex"
+      ],
+      "authorship": "Original fixture authored by Codex for FlashTeX; repository license applies.",
+      "assertions": [
+        "Compare complete page count, geometry, text order, fonts and rendered pixels against the pinned reference."
+      ]
+    },
+    {
+      "id": "tex-expansion-arguments",
+      "entry": "main.tex",
+      "engine": "pdflatex",
+      "features": [
+        "tex",
+        "expansion",
+        "delimited-arguments",
+        "edef",
+        "noexpand",
+        "csname",
+        "optional-arguments"
+      ],
+      "expect": "success",
+      "diagnostic": null,
+      "workflow": [
+        "tex",
+        "tex",
+        "tex"
+      ],
+      "files": [
+        "main.tex"
+      ],
+      "authorship": "Original fixture authored by Codex for FlashTeX; repository license applies.",
+      "assertions": [
+        "Compare complete page count, geometry, text order, fonts and rendered pixels against the pinned reference."
+      ]
+    },
+    {
+      "id": "tex-scope-registers",
+      "entry": "main.tex",
+      "engine": "pdflatex",
+      "features": [
+        "tex",
+        "grouping",
+        "global",
+        "registers",
+        "arithmetic",
+        "conditionals"
+      ],
+      "expect": "success",
+      "diagnostic": null,
+      "workflow": [
+        "tex",
+        "tex",
+        "tex"
+      ],
+      "files": [
+        "main.tex"
+      ],
+      "authorship": "Original fixture authored by Codex for FlashTeX; repository license applies.",
+      "assertions": [
+        "Compare complete page count, geometry, text order, fonts and rendered pixels against the pinned reference."
+      ]
+    },
+    {
+      "id": "tex-catcodes-active",
+      "entry": "main.tex",
+      "engine": "pdflatex",
+      "features": [
+        "tex",
+        "catcodes",
+        "active-character",
+        "escape-character",
+        "comments",
+        "verbatim"
+      ],
+      "expect": "success",
+      "diagnostic": null,
+      "workflow": [
+        "tex",
+        "tex",
+        "tex"
+      ],
+      "files": [
+        "main.tex"
+      ],
+      "authorship": "Original fixture authored by Codex for FlashTeX; repository license applies.",
+      "assertions": [
+        "Compare complete page count, geometry, text order, fonts and rendered pixels against the pinned reference."
+      ]
+    },
+    {
+      "id": "tex-token-registers-conditionals",
+      "entry": "main.tex",
+      "engine": "pdflatex",
+      "features": [
+        "tex",
+        "toks",
+        "ifx",
+        "ifcase",
+        "loop",
+        "aftergroup"
+      ],
+      "expect": "success",
+      "diagnostic": null,
+      "workflow": [
+        "tex",
+        "tex",
+        "tex"
+      ],
+      "files": [
+        "main.tex"
+      ],
+      "authorship": "Original fixture authored by Codex for FlashTeX; repository license applies.",
+      "assertions": [
+        "Compare complete page count, geometry, text order, fonts and rendered pixels against the pinned reference."
+      ]
+    },
+    {
+      "id": "plain-tex-halign",
+      "entry": "main.tex",
+      "engine": "pdftex",
+      "features": [
+        "plain-tex",
+        "halign",
+        "noalign",
+        "eqalign",
+        "box-registers"
+      ],
+      "expect": "success",
+      "diagnostic": null,
+      "workflow": [
+        "tex"
+      ],
+      "files": [
+        "main.tex"
+      ],
+      "authorship": "Original fixture authored by Codex for FlashTeX; repository license applies.",
+      "assertions": [
+        "Compare complete page count, geometry, text order, fonts and rendered pixels against the pinned reference."
+      ]
+    },
+    {
+      "id": "text-ligatures-accents",
+      "entry": "main.tex",
+      "engine": "pdflatex",
+      "features": [
+        "text",
+        "ligatures",
+        "kerning",
+        "accents",
+        "fonts",
+        "sizes"
+      ],
+      "expect": "success",
+      "diagnostic": null,
+      "workflow": [
+        "tex",
+        "tex",
+        "tex"
+      ],
+      "files": [
+        "main.tex"
+      ],
+      "authorship": "Original fixture authored by Codex for FlashTeX; repository license applies.",
+      "assertions": [
+        "Compare complete page count, geometry, text order, fonts and rendered pixels against the pinned reference."
+      ]
+    },
+    {
+      "id": "paragraph-glue-penalties",
+      "entry": "main.tex",
+      "engine": "pdflatex",
+      "features": [
+        "layout",
+        "hyphenation",
+        "glue",
+        "penalties",
+        "minipage",
+        "parbox",
+        "raisebox"
+      ],
+      "expect": "success",
+      "diagnostic": null,
+      "workflow": [
+        "tex",
+        "tex",
+        "tex"
+      ],
+      "files": [
+        "main.tex"
+      ],
+      "authorship": "Original fixture authored by Codex for FlashTeX; repository license applies.",
+      "assertions": [
+        "Compare complete page count, geometry, text order, fonts and rendered pixels against the pinned reference."
+      ]
+    },
+    {
+      "id": "tables-spans-rules",
+      "entry": "main.tex",
+      "engine": "pdflatex",
+      "features": [
+        "tables",
+        "multicolumn",
+        "multirow",
+        "p-columns",
+        "cline",
+        "booktabs"
+      ],
+      "expect": "success",
+      "diagnostic": null,
+      "workflow": [
+        "tex",
+        "tex",
+        "tex"
+      ],
+      "files": [
+        "main.tex"
+      ],
+      "authorship": "Original fixture authored by Codex for FlashTeX; repository license applies.",
+      "assertions": [
+        "Compare complete page count, geometry, text order, fonts and rendered pixels against the pinned reference."
+      ]
+    },
+    {
+      "id": "tables-longtable",
+      "entry": "main.tex",
+      "engine": "pdflatex",
+      "features": [
+        "tables",
+        "longtable",
+        "page-breaks",
+        "repeated-headings"
+      ],
+      "expect": "success",
+      "diagnostic": null,
+      "workflow": [
+        "tex",
+        "tex",
+        "tex"
+      ],
+      "files": [
+        "main.tex"
+      ],
+      "authorship": "Original fixture authored by Codex for FlashTeX; repository license applies.",
+      "assertions": [
+        "Compare complete page count, geometry, text order, fonts and rendered pixels against the pinned reference."
+      ]
+    },
+    {
+      "id": "lists-theorems-proofs",
+      "entry": "main.tex",
+      "engine": "pdflatex",
+      "features": [
+        "lists",
+        "enumitem",
+        "theorem",
+        "proof",
+        "qed",
+        "crossrefs"
+      ],
+      "expect": "success",
+      "diagnostic": null,
+      "workflow": [
+        "tex",
+        "tex",
+        "tex"
+      ],
+      "files": [
+        "main.tex"
+      ],
+      "authorship": "Original fixture authored by Codex for FlashTeX; repository license applies.",
+      "assertions": [
+        "Compare complete page count, geometry, text order, fonts and rendered pixels against the pinned reference."
+      ]
+    },
+    {
+      "id": "document-floats-footnotes",
+      "entry": "main.tex",
+      "engine": "pdflatex",
+      "features": [
+        "document",
+        "toc",
+        "floats",
+        "captions",
+        "footnotes",
+        "pagination",
+        "crossrefs"
+      ],
+      "expect": "success",
+      "diagnostic": null,
+      "workflow": [
+        "tex",
+        "tex",
+        "tex"
+      ],
+      "files": [
+        "main.tex"
+      ],
+      "authorship": "Original fixture authored by Codex for FlashTeX; repository license applies.",
+      "assertions": [
+        "Compare complete page count, geometry, text order, fonts and rendered pixels against the pinned reference."
+      ]
+    },
+    {
+      "id": "graphics-transform-color",
+      "entry": "main.tex",
+      "engine": "pdflatex",
+      "features": [
+        "graphics",
+        "color",
+        "rotation",
+        "scaling",
+        "reflection",
+        "picture"
+      ],
+      "expect": "success",
+      "diagnostic": null,
+      "workflow": [
+        "tex",
+        "tex",
+        "tex"
+      ],
+      "files": [
+        "main.tex"
+      ],
+      "authorship": "Original fixture authored by Codex for FlashTeX; repository license applies.",
+      "assertions": [
+        "Compare complete page count, geometry, text order, fonts and rendered pixels against the pinned reference."
+      ]
+    },
+    {
+      "id": "tikz-paths-transforms",
+      "entry": "main.tex",
+      "engine": "pdflatex",
+      "features": [
+        "tikz",
+        "paths",
+        "bezier",
+        "arrows",
+        "transforms",
+        "fill",
+        "grid"
+      ],
+      "expect": "success",
+      "diagnostic": null,
+      "workflow": [
+        "tex",
+        "tex",
+        "tex"
+      ],
+      "files": [
+        "main.tex"
+      ],
+      "authorship": "Original fixture authored by Codex for FlashTeX; repository license applies.",
+      "assertions": [
+        "Compare complete page count, geometry, text order, fonts and rendered pixels against the pinned reference."
+      ]
+    },
+    {
+      "id": "tikz-nodes-graphs",
+      "entry": "main.tex",
+      "engine": "pdflatex",
+      "features": [
+        "tikz",
+        "nodes",
+        "positioning",
+        "fit",
+        "foreach",
+        "styles",
+        "arrows.meta"
+      ],
+      "expect": "success",
+      "diagnostic": null,
+      "workflow": [
+        "tex",
+        "tex",
+        "tex"
+      ],
+      "files": [
+        "main.tex"
+      ],
+      "authorship": "Original fixture authored by Codex for FlashTeX; repository license applies.",
+      "assertions": [
+        "Compare complete page count, geometry, text order, fonts and rendered pixels against the pinned reference."
+      ]
+    },
+    {
+      "id": "tikz-clipping-patterns",
+      "entry": "main.tex",
+      "engine": "pdflatex",
+      "features": [
+        "tikz",
+        "clipping",
+        "patterns",
+        "shading",
+        "opacity"
+      ],
+      "expect": "success",
+      "diagnostic": null,
+      "workflow": [
+        "tex",
+        "tex",
+        "tex"
+      ],
+      "files": [
+        "main.tex"
+      ],
+      "authorship": "Original fixture authored by Codex for FlashTeX; repository license applies.",
+      "assertions": [
+        "Compare complete page count, geometry, text order, fonts and rendered pixels against the pinned reference."
+      ]
+    },
+    {
+      "id": "pgfplots-functions-data",
+      "entry": "main.tex",
+      "engine": "pdflatex",
+      "features": [
+        "pgfplots",
+        "functions",
+        "data-files",
+        "axes",
+        "legend"
+      ],
+      "expect": "success",
+      "diagnostic": null,
+      "workflow": [
+        "tex",
+        "tex",
+        "tex"
+      ],
+      "files": [
+        "data.tsv",
+        "main.tex"
+      ],
+      "authorship": "Original fixture authored by Codex for FlashTeX; repository license applies.",
+      "assertions": [
+        "Compare complete page count, geometry, text order, fonts and rendered pixels against the pinned reference."
+      ]
+    },
+    {
+      "id": "packages-siunitx-chemistry",
+      "entry": "main.tex",
+      "engine": "pdflatex",
+      "features": [
+        "packages",
+        "siunitx",
+        "mhchem",
+        "units",
+        "numeric-alignment",
+        "chemistry"
+      ],
+      "expect": "success",
+      "diagnostic": null,
+      "workflow": [
+        "tex",
+        "tex",
+        "tex"
+      ],
+      "files": [
+        "main.tex"
+      ],
+      "authorship": "Original fixture authored by Codex for FlashTeX; repository license applies.",
+      "assertions": [
+        "Compare complete page count, geometry, text order, fonts and rendered pixels against the pinned reference."
+      ]
+    },
+    {
+      "id": "packages-listings-verbatim",
+      "entry": "main.tex",
+      "engine": "pdflatex",
+      "features": [
+        "packages",
+        "listings",
+        "verbatim",
+        "whitespace",
+        "literal-specials"
+      ],
+      "expect": "success",
+      "diagnostic": null,
+      "workflow": [
+        "tex",
+        "tex",
+        "tex"
+      ],
+      "files": [
+        "main.tex"
+      ],
+      "authorship": "Original fixture authored by Codex for FlashTeX; repository license applies.",
+      "assertions": [
+        "Compare complete page count, geometry, text order, fonts and rendered pixels against the pinned reference."
+      ]
+    },
+    {
+      "id": "project-input-package",
+      "entry": "main.tex",
+      "engine": "pdflatex",
+      "features": [
+        "project",
+        "input",
+        "local-package",
+        "macro-scope",
+        "cross-file-labels"
+      ],
+      "expect": "success",
+      "diagnostic": null,
+      "workflow": [
+        "tex",
+        "tex",
+        "tex"
+      ],
+      "files": [
+        "chapters/one.tex",
+        "chapters/two.tex",
+        "localstyle.sty",
+        "main.tex"
+      ],
+      "authorship": "Original fixture authored by Codex for FlashTeX; repository license applies.",
+      "assertions": [
+        "Compare complete page count, geometry, text order, fonts and rendered pixels against the pinned reference."
+      ]
+    },
+    {
+      "id": "project-bibtex",
+      "entry": "main.tex",
+      "engine": "pdflatex",
+      "features": [
+        "project",
+        "bibtex",
+        "bibliography",
+        "citations",
+        "auxiliary-files"
+      ],
+      "expect": "success",
+      "diagnostic": null,
+      "workflow": [
+        "tex",
+        "bibtex",
+        "tex",
+        "tex"
+      ],
+      "files": [
+        "main.tex",
+        "references.bib"
+      ],
+      "authorship": "Original fixture authored by Codex for FlashTeX; repository license applies.",
+      "assertions": [
+        "Compare complete page count, geometry, text order, fonts and rendered pixels against the pinned reference."
+      ]
+    },
+    {
+      "id": "project-biblatex-biber",
+      "entry": "main.tex",
+      "engine": "pdflatex",
+      "features": [
+        "project",
+        "biblatex",
+        "biber",
+        "author-year",
+        "citations"
+      ],
+      "expect": "success",
+      "diagnostic": null,
+      "workflow": [
+        "tex",
+        "biber",
+        "tex",
+        "tex"
+      ],
+      "files": [
+        "main.tex",
+        "references.bib"
+      ],
+      "authorship": "Original fixture authored by Codex for FlashTeX; repository license applies.",
+      "assertions": [
+        "Compare complete page count, geometry, text order, fonts and rendered pixels against the pinned reference."
+      ]
+    },
+    {
+      "id": "unicode-lualatex",
+      "entry": "main.tex",
+      "engine": "lualatex",
+      "features": [
+        "unicode",
+        "lualatex",
+        "fontspec",
+        "unicode-math",
+        "opentype"
+      ],
+      "expect": "success",
+      "diagnostic": null,
+      "workflow": [
+        "tex",
+        "tex",
+        "tex"
+      ],
+      "files": [
+        "main.tex"
+      ],
+      "authorship": "Original fixture authored by Codex for FlashTeX; repository license applies.",
+      "assertions": [
+        "Compare complete page count, geometry, text order, fonts and rendered pixels against the pinned reference."
+      ]
+    },
+    {
+      "id": "unicode-xelatex",
+      "entry": "main.tex",
+      "engine": "xelatex",
+      "features": [
+        "unicode",
+        "xelatex",
+        "fontspec",
+        "unicode-math",
+        "opentype"
+      ],
+      "expect": "success",
+      "diagnostic": null,
+      "workflow": [
+        "tex",
+        "tex",
+        "tex"
+      ],
+      "files": [
+        "main.tex"
+      ],
+      "authorship": "Original fixture authored by Codex for FlashTeX; repository license applies.",
+      "assertions": [
+        "Compare complete page count, geometry, text order, fonts and rendered pixels against the pinned reference."
+      ]
+    },
+    {
+      "id": "hyperref-bookmarks",
+      "entry": "main.tex",
+      "engine": "pdflatex",
+      "features": [
+        "packages",
+        "hyperref",
+        "bookmarks",
+        "links",
+        "pdf-strings"
+      ],
+      "expect": "success",
+      "diagnostic": null,
+      "workflow": [
+        "tex",
+        "tex",
+        "tex"
+      ],
+      "files": [
+        "main.tex"
+      ],
+      "authorship": "Original fixture authored by Codex for FlashTeX; repository license applies.",
+      "assertions": [
+        "Compare complete page count, geometry, text order, fonts and rendered pixels against the pinned reference."
+      ]
+    },
+    {
+      "id": "boxes-rules-leaders",
+      "entry": "main.tex",
+      "engine": "pdflatex",
+      "features": [
+        "tex",
+        "boxes",
+        "leaders",
+        "rules",
+        "kern",
+        "dimensions",
+        "baseline"
+      ],
+      "expect": "success",
+      "diagnostic": null,
+      "workflow": [
+        "tex",
+        "tex",
+        "tex"
+      ],
+      "files": [
+        "main.tex"
+      ],
+      "authorship": "Original fixture authored by Codex for FlashTeX; repository license applies.",
+      "assertions": [
+        "Compare complete page count, geometry, text order, fonts and rendered pixels against the pinned reference."
+      ]
+    },
+    {
+      "id": "math-array-spacing",
+      "entry": "main.tex",
+      "engine": "pdflatex",
+      "features": [
+        "math",
+        "array",
+        "column-spacing",
+        "row-spacing",
+        "math-glue",
+        "mathchoice"
+      ],
+      "expect": "success",
+      "diagnostic": null,
+      "workflow": [
+        "tex",
+        "tex",
+        "tex"
+      ],
+      "files": [
+        "main.tex"
+      ],
+      "authorship": "Original fixture authored by Codex for FlashTeX; repository license applies.",
+      "assertions": [
+        "Compare complete page count, geometry, text order, fonts and rendered pixels against the pinned reference."
+      ]
+    },
+    {
+      "id": "error-unknown-command",
+      "entry": "main.tex",
+      "engine": "pdflatex",
+      "features": [
+        "invalid",
+        "diagnostics",
+        "recovery"
+      ],
+      "expect": "error",
+      "diagnostic": "Undefined control sequence",
+      "workflow": [
+        "tex"
+      ],
+      "files": [
+        "main.tex"
+      ],
+      "authorship": "Original fixture authored by Codex for FlashTeX; repository license applies.",
+      "assertions": [
+        "Require explicit error; no successful compatibility claim. Recovery policy is product-specific."
+      ]
+    },
+    {
+      "id": "error-unclosed-group",
+      "entry": "main.tex",
+      "engine": "pdflatex",
+      "features": [
+        "invalid",
+        "diagnostics",
+        "recovery"
+      ],
+      "expect": "error",
+      "diagnostic": "end occurred inside a group",
+      "workflow": [
+        "tex"
+      ],
+      "files": [
+        "main.tex"
+      ],
+      "authorship": "Original fixture authored by Codex for FlashTeX; repository license applies.",
+      "assertions": [
+        "Require explicit error; no successful compatibility claim. Recovery policy is product-specific."
+      ]
+    },
+    {
+      "id": "error-extra-math-align",
+      "entry": "main.tex",
+      "engine": "pdflatex",
+      "features": [
+        "invalid",
+        "diagnostics",
+        "recovery"
+      ],
+      "expect": "error",
+      "diagnostic": "Misplaced alignment tab character",
+      "workflow": [
+        "tex"
+      ],
+      "files": [
+        "main.tex"
+      ],
+      "authorship": "Original fixture authored by Codex for FlashTeX; repository license applies.",
+      "assertions": [
+        "Require explicit error; no successful compatibility claim. Recovery policy is product-specific."
+      ]
+    },
+    {
+      "id": "error-missing-input",
+      "entry": "main.tex",
+      "engine": "pdflatex",
+      "features": [
+        "invalid",
+        "diagnostics",
+        "recovery"
+      ],
+      "expect": "error",
+      "diagnostic": "not found",
+      "workflow": [
+        "tex"
+      ],
+      "files": [
+        "main.tex"
+      ],
+      "authorship": "Original fixture authored by Codex for FlashTeX; repository license applies.",
+      "assertions": [
+        "Require explicit error; no successful compatibility claim. Recovery policy is product-specific."
+      ]
+    },
+    {
+      "id": "error-double-superscript",
+      "entry": "main.tex",
+      "engine": "pdflatex",
+      "features": [
+        "invalid",
+        "diagnostics",
+        "recovery"
+      ],
+      "expect": "error",
+      "diagnostic": "Double superscript",
+      "workflow": [
+        "tex"
+      ],
+      "files": [
+        "main.tex"
+      ],
+      "authorship": "Original fixture authored by Codex for FlashTeX; repository license applies.",
+      "assertions": [
+        "Require explicit error; no successful compatibility claim. Recovery policy is product-specific."
+      ]
+    },
+    {
+      "id": "error-mismatched-environment",
+      "entry": "main.tex",
+      "engine": "pdflatex",
+      "features": [
+        "invalid",
+        "diagnostics",
+        "recovery"
+      ],
+      "expect": "error",
+      "diagnostic": "ended by",
+      "workflow": [
+        "tex"
+      ],
+      "files": [
+        "main.tex"
+      ],
+      "authorship": "Original fixture authored by Codex for FlashTeX; repository license applies.",
+      "assertions": [
+        "Require explicit error; no successful compatibility claim. Recovery policy is product-specific."
+      ]
+    },
+    {
+      "id": "error-missing-math-delimiter",
+      "entry": "main.tex",
+      "engine": "pdflatex",
+      "features": [
+        "invalid",
+        "diagnostics",
+        "recovery"
+      ],
+      "expect": "error",
+      "diagnostic": "Missing \\right.",
+      "workflow": [
+        "tex"
+      ],
+      "files": [
+        "main.tex"
+      ],
+      "authorship": "Original fixture authored by Codex for FlashTeX; repository license applies.",
+      "assertions": [
+        "Require explicit error; no successful compatibility claim. Recovery policy is product-specific."
+      ]
+    },
+    {
+      "id": "project-book-include",
+      "entry": "main.tex",
+      "engine": "pdflatex",
+      "features": [
+        "project",
+        "book",
+        "chapter",
+        "include",
+        "includeonly",
+        "frontmatter",
+        "twoside",
+        "blank-pages"
+      ],
+      "expect": "success",
+      "diagnostic": null,
+      "workflow": [
+        "tex",
+        "tex",
+        "tex"
+      ],
+      "files": [
+        "chapters/one.tex",
+        "chapters/two.tex",
+        "main.tex"
+      ],
+      "authorship": "Original fixture authored by Codex for FlashTeX; repository license applies.",
+      "assertions": [
+        "Compare complete page count, geometry, text order, fonts and rendered pixels against the pinned reference."
+      ]
+    },
+    {
+      "id": "packages-local-class",
+      "entry": "main.tex",
+      "engine": "pdflatex",
+      "features": [
+        "project",
+        "local-class",
+        "class-options",
+        "title"
+      ],
+      "expect": "success",
+      "diagnostic": null,
+      "workflow": [
+        "tex",
+        "tex",
+        "tex"
+      ],
+      "files": [
+        "fixtureclass.cls",
+        "main.tex"
+      ],
+      "authorship": "Original fixture authored by Codex for FlashTeX; repository license applies.",
+      "assertions": [
+        "Compare complete page count, geometry, text order, fonts and rendered pixels against the pinned reference."
+      ]
+    },
+    {
+      "id": "math-numbering-subequations",
+      "entry": "main.tex",
+      "engine": "pdflatex",
+      "features": [
+        "math",
+        "subequations",
+        "numberwithin",
+        "counters",
+        "references"
+      ],
+      "expect": "success",
+      "diagnostic": null,
+      "workflow": [
+        "tex",
+        "tex",
+        "tex"
+      ],
+      "files": [
+        "main.tex"
+      ],
+      "authorship": "Original fixture authored by Codex for FlashTeX; repository license applies.",
+      "assertions": [
+        "Compare complete page count, geometry, text order, fonts and rendered pixels against the pinned reference."
+      ]
+    },
+    {
+      "id": "text-microtype-multicol",
+      "entry": "main.tex",
+      "engine": "pdflatex",
+      "features": [
+        "packages",
+        "microtype",
+        "multicol",
+        "columns",
+        "protrusion",
+        "expansion"
+      ],
+      "expect": "success",
+      "diagnostic": null,
+      "workflow": [
+        "tex",
+        "tex",
+        "tex"
+      ],
+      "files": [
+        "main.tex"
+      ],
+      "authorship": "Original fixture authored by Codex for FlashTeX; repository license applies.",
+      "assertions": [
+        "Compare complete page count, geometry, text order, fonts and rendered pixels against the pinned reference."
+      ]
+    },
+    {
+      "id": "tex-discretionary-italic",
+      "entry": "main.tex",
+      "engine": "pdflatex",
+      "features": [
+        "tex",
+        "discretionary",
+        "italic-correction",
+        "ligature-boundaries",
+        "glue-orders"
+      ],
+      "expect": "success",
+      "diagnostic": null,
+      "workflow": [
+        "tex",
+        "tex",
+        "tex"
+      ],
+      "files": [
+        "main.tex"
+      ],
+      "authorship": "Original fixture authored by Codex for FlashTeX; repository license applies.",
+      "assertions": [
+        "Compare complete page count, geometry, text order, fonts and rendered pixels against the pinned reference."
+      ]
+    },
+    {
+      "id": "graphics-included-raster",
+      "entry": "main.tex",
+      "engine": "pdflatex",
+      "features": [
+        "graphics",
+        "includegraphics",
+        "png",
+        "asset-resolution",
+        "clip",
+        "trim",
+        "rotation",
+        "aspect-ratio"
+      ],
+      "expect": "success",
+      "diagnostic": null,
+      "workflow": [
+        "tex",
+        "tex",
+        "tex"
+      ],
+      "files": [
+        "assets/quadrants.png",
+        "main.tex"
+      ],
+      "authorship": "Original fixture authored by Codex for FlashTeX; repository license applies.",
+      "assertions": [
+        "Compare complete page count, geometry, text order, fonts and rendered pixels against the pinned reference."
+      ]
+    }
+  ]
+}

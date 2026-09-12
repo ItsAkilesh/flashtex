@@ -1,0 +1,58 @@
+This is XeTeX, Version 3.141592653-2.6-0.999998 (TeX Live 2026) (preloaded format=xelatex)
+entering extended mode
+(./main.tex
+LaTeX2e <2025-11-01>
+L3 programming layer <2026-01-19>
+(/usr/local/texlive/2026/texmf-dist/tex/latex/base/article.cls
+Document Class: article 2025/01/22 v1.4n Standard LaTeX document class
+(/usr/local/texlive/2026/texmf-dist/tex/latex/base/size10.clo))
+(/usr/local/texlive/2026/texmf-dist/tex/latex/fontspec/fontspec.sty
+(/usr/local/texlive/2026/texmf-dist/tex/latex/l3packages/xparse/xparse.sty
+(/usr/local/texlive/2026/texmf-dist/tex/latex/l3kernel/expl3.sty
+(/usr/local/texlive/2026/texmf-dist/tex/latex/l3backend/l3backend-xetex.def)))
+(/usr/local/texlive/2026/texmf-dist/tex/latex/fontspec/fontspec-xetex.sty
+(/usr/local/texlive/2026/texmf-dist/tex/latex/base/fontenc.sty)
+(/usr/local/texlive/2026/texmf-dist/tex/latex/fontspec/fontspec.cfg)))
+(/usr/local/texlive/2026/texmf-dist/tex/latex/unicode-math/unicode-math.sty
+(/usr/local/texlive/2026/texmf-dist/tex/latex/unicode-math/unicode-math-xetex.s
+ty
+(/usr/local/texlive/2026/texmf-dist/tex/latex/l3packages/l3keys2e/l3keys2e.sty)
+ (/usr/local/texlive/2026/texmf-dist/tex/latex/base/fix-cm.sty
+(/usr/local/texlive/2026/texmf-dist/tex/latex/base/ts1enc.def))
+(/usr/local/texlive/2026/texmf-dist/tex/latex/amsmath/amsmath.sty
+For additional information on amsmath, use the `?' option.
+(/usr/local/texlive/2026/texmf-dist/tex/latex/amsmath/amstext.sty
+(/usr/local/texlive/2026/texmf-dist/tex/latex/amsmath/amsgen.sty))
+(/usr/local/texlive/2026/texmf-dist/tex/latex/amsmath/amsbsy.sty)
+(/usr/local/texlive/2026/texmf-dist/tex/latex/amsmath/amsopn.sty))
+(/usr/local/texlive/2026/texmf-dist/tex/latex/unicode-math/unicode-math-table.t
+ex)))
+No file main.aux.
+[1] (./main.aux)
+
+ *File List*
+ article.cls    2025/01/22 v1.4n Standard LaTeX document class
+  size10.clo    2025/01/22 v1.4n Standard LaTeX file (size option)
+fontspec.sty    2025/09/29 v2.9g Font selection for XeLaTeX and LuaLaTeX
+  xparse.sty    2025-10-09 L3 Experimental document command parser
+   expl3.sty    2026-01-19 L3 programming layer (loader) 
+l3backend-xetex.def    2025-10-09 L3 backend support: XeTeX
+fontspec-xetex.sty    2025/09/29 v2.9g Font selection for XeLaTeX and LuaLaTeX
+ fontenc.sty    2025/07/18 v2.1d Standard LaTeX package
+fontspec.cfg
+unicode-math.sty    2023/08/13 v0.8r Unicode maths in XeLaTeX and LuaLaTeX
+unicode-math-xetex.sty    2023/08/13 v0.8r Unicode maths in XeLaTeX and LuaLaTe
+X
+l3keys2e.sty    2025-10-09 LaTeX2e option processing using LaTeX3 keys
+  fix-cm.sty    2020/11/24 v1.1t fixes to LaTeX
+  ts1enc.def    2001/06/05 v3.0e (jk/car/fm) Standard LaTeX file
+ amsmath.sty    2025/07/09 v2.17z AMS math features
+ amstext.sty    2024/11/17 v2.01 AMS text
+  amsgen.sty    1999/11/30 v2.0 generic functions
+  amsbsy.sty    1999/11/29 v1.2d Bold Symbols
+  amsopn.sty    2022/04/08 v2.04 operator names
+ ***********
+
+ )
+Output written on main.pdf (1 page).
+Transcript written on main.log.

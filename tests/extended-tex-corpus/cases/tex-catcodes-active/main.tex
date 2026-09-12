@@ -1,0 +1,13 @@
+\documentclass{article}
+\listfiles
+
+
+\begin{document}
+{\catcode`\!=13 \def!{ACTIVE}!}
+An ordinary ! follows.
+{\catcode`\|=0 |def|foo{ESCAPE}|foo}
+\makeatletter\def\internal@name{INTERNAL}\internal@name\makeatother
+\verb|% { } $ & _ # \|.
+A% comment removes the newline
+B versus A B.
+\end{document}

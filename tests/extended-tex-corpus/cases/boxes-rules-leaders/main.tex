@@ -1,0 +1,11 @@
+\documentclass{article}
+\listfiles
+
+
+\begin{document}
+\noindent\fbox{\vbox{\hbox{First}\kern4pt\hbox{Second}}}
+\par\noindent\hbox to 220pt{Left\leaders\hbox{.}\hfill Right}
+\par\noindent\vrule width2pt height20pt depth5pt\kern10pt\rule[-3pt]{100pt}{2pt}
+\setbox0=\hbox{Measured}\the\wd0, \the\ht0, \the\dp0.
+\par\noindent\vtop{\hbox{top}\hbox{next}}\quad\vbox{\hbox{bottom}\hbox{next}}
+\end{document}

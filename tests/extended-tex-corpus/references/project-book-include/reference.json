@@ -1,0 +1,198 @@
+{
+  "id": "project-book-include",
+  "engine": "pdflatex",
+  "expected": "success",
+  "source_hashes": {
+    "chapters/one.tex": "662ec4b02a5639e1f9382b2eed4ac6ddf7f1b50777cfb217ce769717db3cfbce",
+    "chapters/two.tex": "bec7236f521db3940cd73352833e3c34ab0c97694350d19ad1637e9ae5b33c7d",
+    "main.tex": "96fa84d3e4130e855f02469e2f1834ba273c86b84d9fbed43a25bde787c86771"
+  },
+  "steps": [
+    {
+      "argv": [
+        "/Library/TeX/texbin/pdflatex",
+        "-interaction=nonstopmode",
+        "-halt-on-error",
+        "-no-shell-escape",
+        "-recorder",
+        "main.tex"
+      ],
+      "returncode": 0,
+      "seconds": 0.46
+    },
+    {
+      "argv": [
+        "/Library/TeX/texbin/pdflatex",
+        "-interaction=nonstopmode",
+        "-halt-on-error",
+        "-no-shell-escape",
+        "-recorder",
+        "main.tex"
+      ],
+      "returncode": 0,
+      "seconds": 0.423
+    },
+    {
+      "argv": [
+        "/Library/TeX/texbin/pdflatex",
+        "-interaction=nonstopmode",
+        "-halt-on-error",
+        "-no-shell-escape",
+        "-recorder",
+        "main.tex"
+      ],
+      "returncode": 0,
+      "seconds": 0.445
+    }
+  ],
+  "engine_version": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)\nkpathsea version 6.4.2\nCopyright 2026 Han The Thanh (pdfTeX) et al.\nThere is NO warranty.  Redistribution of this software is\ncovered by the terms of both the pdfTeX copyright and\nthe Lesser GNU General Public License.\nFor more information about these matters, see the file\nnamed COPYING and the pdfTeX source.\nPrimary author of pdfTeX: Han The Thanh (pdfTeX) et al.\nCompiled with libpng 1.6.55; using libpng 1.6.55\nCompiled with zlib 1.3.2; using zlib 1.3.2\nCompiled with xpdf version 4.06\n",
+  "engine_sha256": "3ead7baeffb81c638fe75599602278566370e6319c0469f6ab00ff62bff4b0eb",
+  "warnings": [],
+  "diagnostic_observed": null,
+  "dependencies": [
+    {
+      "path": "/usr/local/texlive/2026/texmf.cnf",
+      "sha256": "8f18efc5eaa079308b683ff618fae1df128e04bb0f5ab7876dddd279dd643073"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/web2c/texmf.cnf",
+      "sha256": "a2e9447fc8b6dfa407fa8d0d710e59b039e22598e3f17de0bdf54daba478742c"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-var/web2c/pdftex/pdflatex.fmt",
+      "sha256": "1b2ced0851d3937a631123edcd524e79fd0632b6638f56cf997b5e358ed9f393"
+    },
+    {
+      "path": "/private/tmp/flashtex-extended-reference-v3/project-book-include/main.tex",
+      "sha256": "96fa84d3e4130e855f02469e2f1834ba273c86b84d9fbed43a25bde787c86771"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/base/book.cls",
+      "sha256": "b7d17b9b72b75bbb797c8e46871dabca156492ed6e4515c7bb86e573f1208a91"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/base/bk10.clo",
+      "sha256": "48f2efca47a5bc27a525299b43932f7efec6a612142415fee0f4e6312ae9314d"
+    },
+    {
+      "path": "/private/tmp/flashtex-extended-reference-v3/project-book-include/chapters/one.tex",
+      "sha256": "662ec4b02a5639e1f9382b2eed4ac6ddf7f1b50777cfb217ce769717db3cfbce"
+    },
+    {
+      "path": "/private/tmp/flashtex-extended-reference-v3/project-book-include/chapters/two.tex",
+      "sha256": "bec7236f521db3940cd73352833e3c34ab0c97694350d19ad1637e9ae5b33c7d"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/l3backend/l3backend-pdftex.def",
+      "sha256": "24c194c31928335f4e29eee52bd200efac11263d4b69ef7350ef989e55ffe111"
+    },
+    {
+      "path": "/private/tmp/flashtex-extended-reference-v3/project-book-include/main.aux",
+      "sha256": "a234ca5c7975fac85de39f5ab2710ab8d0411adbeea17e6865aa040e208d7527"
+    },
+    {
+      "path": "/private/tmp/flashtex-extended-reference-v3/project-book-include/chapters/one.aux",
+      "sha256": "5f764c733cce0b4dd1cdbbf8c13d605f8ee7329e0cc06b20b69f064e1e53f20d"
+    },
+    {
+      "path": "/private/tmp/flashtex-extended-reference-v3/project-book-include/chapters/two.aux",
+      "sha256": "7fe9af904776b0014e376da3a988453c0bc59e079c5d606fe3067f2010f97ba5"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/fonts/map/fontname/texfonts.map",
+      "sha256": "d9693993efdc7d0b9ab3df777589995d43e24eeae95f12b6a230a19caadeaa42"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/fonts/tfm/public/cm/cmr17.tfm",
+      "sha256": "86b6e8a52aae6ad1655e32099e12bd2904b158aba4c8afb74143266d2d9cd18f"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/fonts/tfm/public/cm/cmbx12.tfm",
+      "sha256": "0eb2f13840155007c2d3c59b074322a3aa7358b9643aa314f3146468ae7f0806"
+    },
+    {
+      "path": "/private/tmp/flashtex-extended-reference-v3/project-book-include/main.toc",
+      "sha256": "75ae14c7f1e35371810317ea8831dd0e492dc9d447ad94945670e723b2544ee3"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/fonts/tfm/public/cm/cmbx10.tfm",
+      "sha256": "ae296e8e41b2b0f73e9a17fdc42c743b9ddcc58d23c30acaa3411206f7824780"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-var/fonts/map/pdftex/updmap/pdftex.map",
+      "sha256": "3b3a9fab7102732cb18465ce673ac3f3a5e70f205eaa53f8f1e9972ad761b67b"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/fonts/tfm/public/cm/cmsl10.tfm",
+      "sha256": "dcbfc25c5aac16dc2b820e089a00aedef20a1af6d8d3c2efa54f6f17a985d33f"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx10.pfb",
+      "sha256": "ca41102968b817bf6e8b22fd6de205ca23bf5088218511cce0c8129e1577cb70"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx12.pfb",
+      "sha256": "c838238f31d86a9f198873dfaf501601a4fc966845b9c59e7dc251c4e85d1f1f"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmr10.pfb",
+      "sha256": "fdcede8794018df5f2b58f0905fb20a2b418ed8f67b73ee12445855dfbe5b1be"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmsl10.pfb",
+      "sha256": "2f7889c542b515c31c533f278b20aeee3cc963d1dff8bf6f83d5710c91890823"
+    }
+  ],
+  "pdf_sha256": "6392c92b023ca0d757570198cf6f1eaad304e184a2b69fc9a5cae2daac4f0530",
+  "pdf_bytes": 52620,
+  "status": "reference-built",
+  "raster": {
+    "argv": [
+      "/opt/homebrew/bin/gs",
+      "-dSAFER",
+      "-dBATCH",
+      "-dNOPAUSE",
+      "-sDEVICE=png16m",
+      "-r96",
+      "-dTextAlphaBits=4",
+      "-dGraphicsAlphaBits=4",
+      "-sOutputFile=page-%03d.png",
+      "main.pdf"
+    ],
+    "returncode": 0,
+    "seconds": 0.239
+  },
+  "rasterizer_version": "10.08.0",
+  "rasterizer_sha256": "d57bb373324bf7e72c5b3fb1a6cc8a9f876eb6f8d2eec23a5a3809a8a108bf9e",
+  "pages": [
+    {
+      "file": "page-001.png",
+      "sha256": "1dcccd3885b71eeca029bfb324eda809d7c244b551bba7131b4bb4090be3f191"
+    },
+    {
+      "file": "page-002.png",
+      "sha256": "36acbc5bbef6f74e015d5462435a8574caf136f98777c109ab914a21780b983d"
+    },
+    {
+      "file": "page-003.png",
+      "sha256": "eb2b3a0d3588d941c97ef8ac0730f15dc671e0893d6298ba0fc31552e4e479aa"
+    },
+    {
+      "file": "page-004.png",
+      "sha256": "cbf101156abff34e94bc0a9ccda783305a957459988aa3ca616983b4a6706b6e"
+    },
+    {
+      "file": "page-005.png",
+      "sha256": "70da1e380a58ee942fbeb55e9035ea08dbf0c70f32a6c25abb4968d4d46bab1e"
+    },
+    {
+      "file": "page-006.png",
+      "sha256": "511f062283aed6f941aa88a059f480bc9451849510ec0705bfc2736f86deec5c"
+    },
+    {
+      "file": "page-007.png",
+      "sha256": "ab1a59d086c79d50fe2665eebca5277986e28b0ad37f7d3ca9a5995c6e71de18"
+    }
+  ],
+  "raster_status": "rendered"
+}

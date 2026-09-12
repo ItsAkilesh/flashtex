@@ -1,0 +1,73 @@
+This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026) (preloaded format=pdflatex)
+entering extended mode
+(./main.tex
+LaTeX2e <2025-11-01>
+L3 programming layer <2026-01-19>
+(/usr/local/texlive/2026/texmf-dist/tex/latex/base/article.cls
+Document Class: article 2025/01/22 v1.4n Standard LaTeX document class
+(/usr/local/texlive/2026/texmf-dist/tex/latex/base/size10.clo))
+(/usr/local/texlive/2026/texmf-dist/tex/latex/biblatex/biblatex.sty
+(/usr/local/texlive/2026/texmf-dist/tex/generic/pdftexcmds/pdftexcmds.sty
+(/usr/local/texlive/2026/texmf-dist/tex/generic/infwarerr/infwarerr.sty)
+(/usr/local/texlive/2026/texmf-dist/tex/generic/iftex/iftex.sty)
+(/usr/local/texlive/2026/texmf-dist/tex/generic/ltxcmds/ltxcmds.sty))
+(/usr/local/texlive/2026/texmf-dist/tex/latex/etoolbox/etoolbox.sty)
+(/usr/local/texlive/2026/texmf-dist/tex/latex/graphics/keyval.sty)
+(/usr/local/texlive/2026/texmf-dist/tex/latex/kvoptions/kvoptions.sty
+(/usr/local/texlive/2026/texmf-dist/tex/latex/kvsetkeys/kvsetkeys.sty))
+(/usr/local/texlive/2026/texmf-dist/tex/latex/logreq/logreq.sty
+(/usr/local/texlive/2026/texmf-dist/tex/latex/logreq/logreq.def))
+(/usr/local/texlive/2026/texmf-dist/tex/latex/base/ifthen.sty)
+(/usr/local/texlive/2026/texmf-dist/tex/latex/url/url.sty)
+(/usr/local/texlive/2026/texmf-dist/tex/latex/biblatex/blx-dm.def)
+(/usr/local/texlive/2026/texmf-dist/tex/latex/biblatex/blx-compat.def)
+(/usr/local/texlive/2026/texmf-dist/tex/latex/biblatex/biblatex.def)
+(/usr/local/texlive/2026/texmf-dist/tex/latex/biblatex/bbx/authoryear.bbx
+(/usr/local/texlive/2026/texmf-dist/tex/latex/biblatex/bbx/standard.bbx))
+(/usr/local/texlive/2026/texmf-dist/tex/latex/biblatex/cbx/authoryear.cbx)
+(/usr/local/texlive/2026/texmf-dist/tex/latex/biblatex/biblatex.cfg)
+(/usr/local/texlive/2026/texmf-dist/tex/latex/l3kernel/expl3.sty
+(/usr/local/texlive/2026/texmf-dist/tex/latex/l3backend/l3backend-pdftex.def))
+(/usr/local/texlive/2026/texmf-dist/tex/latex/biblatex/blx-case-expl3.sty
+(/usr/local/texlive/2026/texmf-dist/tex/latex/l3packages/xparse/xparse.sty)))
+(./main.aux)
+(/usr/local/texlive/2026/texmf-dist/tex/latex/biblatex/lbx/english.lbx)
+(./main.bbl) [1{/usr/local/texlive/2026/texmf-var/fonts/map/pdftex/updmap/pdfte
+x.map}] (./main.aux)
+
+ *File List*
+ article.cls    2025/01/22 v1.4n Standard LaTeX document class
+  size10.clo    2025/01/22 v1.4n Standard LaTeX file (size option)
+biblatex.sty    2025/07/10 v3.21 programmable bibliographies (PK/MW)
+pdftexcmds.sty    2020-06-27 v0.33 Utility functions of pdfTeX for LuaTeX (HO)
+infwarerr.sty    2019/12/03 v1.5 Providing info/warning/error messages (HO)
+   iftex.sty    2024/12/12 v1.0g TeX engine tests
+ ltxcmds.sty    2023-12-04 v1.26 LaTeX kernel commands for general use (HO)
+etoolbox.sty    2025/10/02 v2.5m e-TeX tools for LaTeX (JAW)
+  keyval.sty    2022/05/29 v1.15 key=value parser (DPC)
+kvoptions.sty    2022-06-15 v3.15 Key value format for package options (HO)
+kvsetkeys.sty    2022-10-05 v1.19 Key value parser (HO)
+  logreq.sty    2010/08/04 v1.0 xml request logger
+  logreq.def    2010/08/04 v1.0 logreq spec v1.0
+  ifthen.sty    2024/03/16 v1.1e Standard LaTeX ifthen package (DPC)
+     url.sty    2013/09/16  ver 3.4  Verb mode for urls, etc.
+  blx-dm.def    2025/07/10 v3.21 biblatex datamodel (PK/MW)
+blx-compat.def    2025/07/10 v3.21 biblatex compatibility (PK/MW)
+biblatex.def    2025/07/10 v3.21 biblatex compatibility (PK/MW)
+standard.bbx    2025/07/10 v3.21 biblatex bibliography style (PK/MW)
+authoryear.bbx    2025/07/10 v3.21 biblatex bibliography style (PK/MW)
+authoryear.cbx    2025/07/10 v3.21 biblatex citation style (PK/MW)
+biblatex.cfg    
+   expl3.sty    2026-01-19 L3 programming layer (loader) 
+l3backend-pdftex.def    2025-10-09 L3 backend support: PDF output (pdfTeX)
+blx-case-expl3.sty    2025/07/10 v3.21 expl3 case changing code for biblatex
+  xparse.sty    2025-10-09 L3 Experimental document command parser
+ english.lbx    2025/07/10 v3.21 biblatex localization (PK/MW)
+    main.bbl
+ ***********
+
+ )</usr/local/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx12.pfb
+></usr/local/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmr10.pfb><
+/usr/local/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmti10.pfb>
+Output written on main.pdf (1 page, 37842 bytes).
+Transcript written on main.log.

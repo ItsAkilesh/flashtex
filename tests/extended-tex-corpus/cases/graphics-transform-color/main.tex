@@ -1,0 +1,10 @@
+\documentclass{article}
+\listfiles
+\usepackage{xcolor,graphicx}
+
+\begin{document}
+\definecolor{brand}{RGB}{20,80,170}
+\textcolor{brand}{Blue text} \colorbox{yellow}{Highlighted} \fcolorbox{red}{white}{Border}.
+\par\medskip\noindent\rotatebox{30}{Rotated text}\quad\scalebox{1.5}[0.8]{Scaled}\quad\reflectbox{Mirror}.
+\par\medskip\noindent\begin{picture}(180,70)\put(0,0){\framebox(180,70){}}\put(10,10){\vector(2,1){100}}\put(40,40){\circle{30}}\put(100,50){Label}\end{picture}
+\end{document}

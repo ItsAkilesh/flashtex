@@ -1,0 +1,11 @@
+\documentclass{article}
+\listfiles
+\usepackage{array,multirow,booktabs}
+
+\begin{document}
+\begin{tabular}{|l|r|p{90pt}|}\hline Name&Value&Description\\\hline
+\multicolumn{2}{|c|}{Merged}&A wrapping cell with multiple words.\\\cline{1-2}
+\multirow{2}{*}{Two}&1&First\\&2&Second\\\hline\end{tabular}
+\bigskip
+\begin{tabular}{@{}lcr@{}}\toprule Left&Center&Right\\\midrule a&b&c\\\bottomrule\end{tabular}
+\end{document}

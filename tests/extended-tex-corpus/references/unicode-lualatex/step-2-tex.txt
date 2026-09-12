@@ -1,0 +1,71 @@
+This is LuaHBTeX, Version 1.24.0 (TeX Live 2026) 
+(./main.tex
+LaTeX2e <2025-11-01>
+L3 programming layer <2026-01-19>
+ (/usr/local/texlive/2026/texmf-dist/tex/latex/base/article.cls
+Document Class: article 2025/01/22 v1.4n Standard LaTeX document class
+(/usr/local/texlive/2026/texmf-dist/tex/latex/base/size10.clo))
+(/usr/local/texlive/2026/texmf-dist/tex/latex/fontspec/fontspec.sty
+(/usr/local/texlive/2026/texmf-dist/tex/latex/l3packages/xparse/xparse.sty
+(/usr/local/texlive/2026/texmf-dist/tex/latex/l3kernel/expl3.sty
+(/usr/local/texlive/2026/texmf-dist/tex/latex/l3backend/l3backend-luatex.def)))
+ (/usr/local/texlive/2026/texmf-dist/tex/latex/fontspec/fontspec-luatex.sty
+(/usr/local/texlive/2026/texmf-dist/tex/latex/base/fontenc.sty)
+(/usr/local/texlive/2026/texmf-dist/tex/latex/fontspec/fontspec.cfg)))
+(/usr/local/texlive/2026/texmf-dist/tex/latex/unicode-math/unicode-math.sty
+(/usr/local/texlive/2026/texmf-dist/tex/latex/unicode-math/unicode-math-luatex.
+sty
+(/usr/local/texlive/2026/texmf-dist/tex/latex/l3packages/l3keys2e/l3keys2e.sty)
+ (/usr/local/texlive/2026/texmf-dist/tex/latex/base/fix-cm.sty
+(/usr/local/texlive/2026/texmf-dist/tex/latex/base/ts1enc.def))
+(/usr/local/texlive/2026/texmf-dist/tex/latex/amsmath/amsmath.sty
+For additional information on amsmath, use the `?' option.
+(/usr/local/texlive/2026/texmf-dist/tex/latex/amsmath/amstext.sty
+(/usr/local/texlive/2026/texmf-dist/tex/latex/amsmath/amsgen.sty))
+(/usr/local/texlive/2026/texmf-dist/tex/latex/amsmath/amsbsy.sty)
+(/usr/local/texlive/2026/texmf-dist/tex/latex/amsmath/amsopn.sty))
+(/usr/local/texlive/2026/texmf-dist/tex/lualatex/lualatex-math/lualatex-math.st
+y (/usr/local/texlive/2026/texmf-dist/tex/latex/etoolbox/etoolbox.sty))
+(/usr/local/texlive/2026/texmf-dist/tex/latex/unicode-math/unicode-math-table.t
+ex))) (./main.aux) [1{/usr/local/texlive/2026/texmf-var/fonts/map/pdftex/updmap
+/pdftex.map}] (./main.aux)
+
+ *File List*
+ article.cls    2025/01/22 v1.4n Standard LaTeX document class
+  size10.clo    2025/01/22 v1.4n Standard LaTeX file (size option)
+fontspec.sty    2025/09/29 v2.9g Font selection for XeLaTeX and LuaLaTeX
+  xparse.sty    2025-10-09 L3 Experimental document command parser
+   expl3.sty    2026-01-19 L3 programming layer (loader) 
+l3backend-luatex.def    2025-10-09 L3 backend support: PDF output (LuaTeX)
+fontspec-luatex.sty    2025/09/29 v2.9g Font selection for XeLaTeX and LuaLaTeX
+
+ fontenc.sty    2025/07/18 v2.1d Standard LaTeX package
+fontspec.cfg
+unicode-math.sty    2023/08/13 v0.8r Unicode maths in XeLaTeX and LuaLaTeX
+unicode-math-luatex.sty    2023/08/13 v0.8r Unicode maths in XeLaTeX and LuaLaT
+eX
+l3keys2e.sty    2025-10-09 LaTeX2e option processing using LaTeX3 keys
+  fix-cm.sty    2020/11/24 v1.1t fixes to LaTeX
+  ts1enc.def    2001/06/05 v3.0e (jk/car/fm) Standard LaTeX file
+ amsmath.sty    2025/07/09 v2.17z AMS math features
+ amstext.sty    2024/11/17 v2.01 AMS text
+  amsgen.sty    1999/11/30 v2.0 generic functions
+  amsbsy.sty    1999/11/29 v1.2d Bold Symbols
+  amsopn.sty    2022/04/08 v2.04 operator names
+lualatex-math.sty    2022/01/01 v1.12 Patches for mathematics typesetting with 
+LuaLaTeX
+etoolbox.sty    2025/10/02 v2.5m e-TeX tools for LaTeX (JAW)
+ ***********
+
+)
+ 488 words of node memory still in use:
+   6 hlist, 2 vlist, 2 rule, 2 glue, 4 kern, 1 glyph, 7 attribute, 52 glue_spec
+, 7 attribute_list, 1 write nodes
+   avail lists: 2:46,3:31,4:1,5:34,6:4,7:314,8:25,9:56,11:4
+</Users/jay3332/Library/Fonts/LibertinusSerif-Italic.otf></Users/jay3332/Librar
+y/Fonts/LibertinusSerif-Bold.otf></usr/local/texlive/2026/texmf-dist/fonts/open
+type/public/lm-math/latinmodern-math.otf></usr/local/texlive/2026/texmf-dist/fo
+nts/opentype/public/lm-math/latinmodern-math.otf></Users/jay3332/Library/Fonts/
+LibertinusSerif-Regular.otf>
+Output written on main.pdf (1 page, 17556 bytes).
+Transcript written on main.log.

@@ -1,0 +1,208 @@
+{
+  "id": "text-ligatures-accents",
+  "engine": "pdflatex",
+  "expected": "success",
+  "source_hashes": {
+    "main.tex": "523d7c1598e8bfc577a23b55cdd18b15a5a9b61406a0d05f0bce59ed7de3da68"
+  },
+  "steps": [
+    {
+      "argv": [
+        "/Library/TeX/texbin/pdflatex",
+        "-interaction=nonstopmode",
+        "-halt-on-error",
+        "-no-shell-escape",
+        "-recorder",
+        "main.tex"
+      ],
+      "returncode": 0,
+      "seconds": 0.53
+    },
+    {
+      "argv": [
+        "/Library/TeX/texbin/pdflatex",
+        "-interaction=nonstopmode",
+        "-halt-on-error",
+        "-no-shell-escape",
+        "-recorder",
+        "main.tex"
+      ],
+      "returncode": 0,
+      "seconds": 0.483
+    },
+    {
+      "argv": [
+        "/Library/TeX/texbin/pdflatex",
+        "-interaction=nonstopmode",
+        "-halt-on-error",
+        "-no-shell-escape",
+        "-recorder",
+        "main.tex"
+      ],
+      "returncode": 0,
+      "seconds": 0.466
+    }
+  ],
+  "engine_version": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)\nkpathsea version 6.4.2\nCopyright 2026 Han The Thanh (pdfTeX) et al.\nThere is NO warranty.  Redistribution of this software is\ncovered by the terms of both the pdfTeX copyright and\nthe Lesser GNU General Public License.\nFor more information about these matters, see the file\nnamed COPYING and the pdfTeX source.\nPrimary author of pdfTeX: Han The Thanh (pdfTeX) et al.\nCompiled with libpng 1.6.55; using libpng 1.6.55\nCompiled with zlib 1.3.2; using zlib 1.3.2\nCompiled with xpdf version 4.06\n",
+  "engine_sha256": "3ead7baeffb81c638fe75599602278566370e6319c0469f6ab00ff62bff4b0eb",
+  "warnings": [],
+  "diagnostic_observed": null,
+  "dependencies": [
+    {
+      "path": "/usr/local/texlive/2026/texmf.cnf",
+      "sha256": "8f18efc5eaa079308b683ff618fae1df128e04bb0f5ab7876dddd279dd643073"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/web2c/texmf.cnf",
+      "sha256": "a2e9447fc8b6dfa407fa8d0d710e59b039e22598e3f17de0bdf54daba478742c"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-var/web2c/pdftex/pdflatex.fmt",
+      "sha256": "1b2ced0851d3937a631123edcd524e79fd0632b6638f56cf997b5e358ed9f393"
+    },
+    {
+      "path": "/private/tmp/flashtex-extended-reference-v1/text-ligatures-accents/main.tex",
+      "sha256": "523d7c1598e8bfc577a23b55cdd18b15a5a9b61406a0d05f0bce59ed7de3da68"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/base/article.cls",
+      "sha256": "f9c8770a909e5b6526eb72284e457cd379b9bedbf3b508a96bd7f922d4cb24ec"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/base/size10.clo",
+      "sha256": "2896162dd5ed894689ca1f336fe2e084007114dc07f8ab17203281911479548f"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/base/fontenc.sty",
+      "sha256": "9ac0a88ddda40526aa1ec403c27a6325d3723c14fa9f02918011a79f93a72ef0"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/fonts/map/fontname/texfonts.map",
+      "sha256": "d9693993efdc7d0b9ab3df777589995d43e24eeae95f12b6a230a19caadeaa42"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/fonts/tfm/jknappen/ec/ecrm1000.tfm",
+      "sha256": "6538d396bf70b360a36c6af2ba424f1f25ecb1700fda4a22462a3044e1bce5b4"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/tex/latex/l3backend/l3backend-pdftex.def",
+      "sha256": "24c194c31928335f4e29eee52bd200efac11263d4b69ef7350ef989e55ffe111"
+    },
+    {
+      "path": "/private/tmp/flashtex-extended-reference-v1/text-ligatures-accents/main.aux",
+      "sha256": "fbabe80c887f95a1ede6847f22dd91b380bda9d17ae8bfaa72e1741b16aa41e9"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/fonts/tfm/jknappen/ec/ecbx1000.tfm",
+      "sha256": "18c7720bc3890f9494ed0380ca977359c530264e900595a3e46f0e056534044a"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/fonts/tfm/jknappen/ec/ecbi1000.tfm",
+      "sha256": "ba0a0a534d4ee7dda6407d6cb37da1430b18cdd0042572651f2c51fb9bbd9e6b"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/fonts/tfm/jknappen/ec/eccc1000.tfm",
+      "sha256": "31ab27eb5674cf070c18a589cf1b5b1f73dcb9758e66776cc664a9401d8f8c17"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/fonts/tfm/jknappen/ec/ecss1000.tfm",
+      "sha256": "1bb9c017447c763488fc2dcf555e4ff8329e6610a579fa71269af3704c91e8f9"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/fonts/tfm/jknappen/ec/ectt1000.tfm",
+      "sha256": "365b93b6dbeaa38c5e16d4951c35e66c15b200cb245b0259ade6181201bd54ec"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/fonts/tfm/jknappen/ec/ecrm0500.tfm",
+      "sha256": "41717c7a6ec80a839b5e6153d29bd409484f348cafae621683b174f3a8f7c472"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/fonts/tfm/jknappen/ec/ecrm0900.tfm",
+      "sha256": "4a86b13c9e8f8da06df815a7b16c7a93a7965a49116d0cf499b5bfec72267af4"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/fonts/tfm/jknappen/ec/ecrm1440.tfm",
+      "sha256": "17c318f2a78564b462f9a4fa207e4edea2b2f89ee229aa0363860c481260a2d7"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/fonts/tfm/jknappen/ec/ecrm2488.tfm",
+      "sha256": "ce64f4545f2bdd23f4fd2fa4eb78876911a3c6c65fdac1c40f0c12141d475805"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-var/fonts/map/pdftex/updmap/pdftex.map",
+      "sha256": "3b3a9fab7102732cb18465ce673ac3f3a5e70f205eaa53f8f1e9972ad761b67b"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/fonts/enc/dvips/cm-super/cm-super-t1.enc",
+      "sha256": "0b8a4865363ad2acb3718af53a43a8b1a16a143900bba8e672813d4a6e07b4fc"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/fonts/type1/public/cm-super/sfbi1000.pfb",
+      "sha256": "2a0e3ba0c956e26332c931dc912c92c8517a64c6a9c25125f051d2d24606ef9e"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/fonts/type1/public/cm-super/sfbx1000.pfb",
+      "sha256": "b6ef43f479c1e94d1414ecd09246af4ee082444deed96a82cd4b6b8cd8fb4566"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/fonts/type1/public/cm-super/sfcc1000.pfb",
+      "sha256": "7f888fd9b073bdaa0d7ea56f32af739be288b2c43ff5fd54396643498c88452c"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/fonts/type1/public/cm-super/sfrm0500.pfb",
+      "sha256": "a7a5ed67531839023ff40dee0539a3e4695c99694505b1eaea06de9acda6e0c3"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/fonts/type1/public/cm-super/sfrm0900.pfb",
+      "sha256": "6a3f330d545e05894601f1afef093c0d8f4efbdecafa8ab7e62104182f9715a8"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/fonts/type1/public/cm-super/sfrm1000.pfb",
+      "sha256": "650a5428cc0729742dcf1935dba1f504e27bbb5ec5936aeaf5f4955909a0f540"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/fonts/type1/public/cm-super/sfrm1440.pfb",
+      "sha256": "9185cda42b8e32d3b1805ddebca4549e66244929038e2393f458a3aaca801e46"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/fonts/type1/public/cm-super/sfrm2488.pfb",
+      "sha256": "c7aae69dae36cc9a504fd07b493b8069f1c7fae779f233b55011cfbfe5d48c09"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/fonts/type1/public/cm-super/sfss1000.pfb",
+      "sha256": "088f76ec4f6238eae8e274eb018ba1318992a110430c1a091d78e9c7ad1d57e7"
+    },
+    {
+      "path": "/usr/local/texlive/2026/texmf-dist/fonts/type1/public/cm-super/sftt1000.pfb",
+      "sha256": "22b23a4adbb01d3be113f5479aac7c44b3a4920e6d939029b99967355506e8e7"
+    }
+  ],
+  "pdf_sha256": "333ba98f40a38ce6551a6ea9559fc4046d41b705723c9f9de2b79abcc8621cdc",
+  "pdf_bytes": 129181,
+  "status": "reference-built",
+  "raster": {
+    "argv": [
+      "/opt/homebrew/bin/gs",
+      "-dSAFER",
+      "-dBATCH",
+      "-dNOPAUSE",
+      "-sDEVICE=png16m",
+      "-r96",
+      "-dTextAlphaBits=4",
+      "-dGraphicsAlphaBits=4",
+      "-sOutputFile=page-%03d.png",
+      "main.pdf"
+    ],
+    "returncode": 0,
+    "seconds": 0.084
+  },
+  "rasterizer_version": "10.08.0",
+  "rasterizer_sha256": "d57bb373324bf7e72c5b3fb1a6cc8a9f876eb6f8d2eec23a5a3809a8a108bf9e",
+  "pages": [
+    {
+      "file": "page-001.png",
+      "sha256": "52d9e830f677db473a61d16c4372c579bfc9e9c0144ce7774f18a6374f0f898e"
+    }
+  ],
+  "raster_status": "rendered"
+}
