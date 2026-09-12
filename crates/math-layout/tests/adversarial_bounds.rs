@@ -64,7 +64,10 @@ fn assert_bounded_layout(list: &MathList, m: &CmMathMetrics, expected_limitation
     );
     for lim in &report.limitations {
         assert!(
-            matches!(lim, Limitation::MissingGlyph(_) | Limitation::MissingAccent(_)),
+            matches!(
+                lim,
+                Limitation::MissingGlyph(_) | Limitation::MissingAccent(_)
+            ),
             "unexpected limitation kind: {lim:?}"
         );
     }
@@ -147,10 +150,18 @@ fn enormous_flat_list_completes_without_hanging() {
     let (tx, rx) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
         let m = CmMathMetrics::latex_10pt();
-        let list = MathList::new(std::iter::repeat_with(|| Atom::symbol('x')).take(ATOM_COUNT).collect());
+        let list = MathList::new(
+            std::iter::repeat_with(|| Atom::symbol('x'))
+                .take(ATOM_COUNT)
+                .collect(),
+        );
         let report = layout_with_report(&list, Style::TEXT, &m);
         let runs = positioned_runs(&report.root, (0.0, 0.0));
-        let _ = tx.send((report.root.width, report.limitations.len(), runs.glyphs.len()));
+        let _ = tx.send((
+            report.root.width,
+            report.limitations.len(),
+            runs.glyphs.len(),
+        ));
     });
     let (width, limitations, glyphs) = rx
         .recv_timeout(std::time::Duration::from_secs(30))
@@ -216,7 +227,11 @@ fn delimiters_with_empty_size_chain_become_a_typed_limitation_not_a_panic() {
         inner_width + 2.0 * p.null_delimiter_space
     );
     let runs = positioned_runs(&report.root, (0.0, 0.0));
-    assert_eq!(runs.glyphs.len(), 1, "only \"a\"; no delimiter glyph exists to place");
+    assert_eq!(
+        runs.glyphs.len(),
+        1,
+        "only \"a\"; no delimiter glyph exists to place"
+    );
 }
 
 #[test]
@@ -238,7 +253,11 @@ fn scripts_on_an_empty_nucleus_produce_a_bounded_box_not_a_panic() {
     assert!(report.root.height.is_finite());
     assert!(report.root.depth.is_finite());
     let runs = positioned_runs(&report.root, (0.0, 0.0));
-    assert_eq!(runs.glyphs.len(), 2, "\"2\" and \"i\"; nothing for the empty nucleus itself");
+    assert_eq!(
+        runs.glyphs.len(),
+        2,
+        "\"2\" and \"i\"; nothing for the empty nucleus itself"
+    );
     assert_eq!(runs.rules.len(), 0);
 }
 
@@ -421,7 +440,12 @@ fn assert_finite_box(b: &MathBox) {
 #[test]
 fn zero_and_negative_metric_values_never_produce_nan_or_a_panic() {
     let m = ZeroNegativeMetrics;
-    for style in [Style::DISPLAY, Style::TEXT, Style::SCRIPT, Style::SCRIPT_SCRIPT] {
+    for style in [
+        Style::DISPLAY,
+        Style::TEXT,
+        Style::SCRIPT,
+        Style::SCRIPT_SCRIPT,
+    ] {
         let report = layout_with_report(&kitchen_sink(), style, &m);
         assert_finite_box(&report.root);
         let runs = positioned_runs(&report.root, (0.0, 0.0));
@@ -437,7 +461,12 @@ fn zero_and_negative_metric_values_never_produce_nan_or_a_panic() {
 #[test]
 fn metrics_provider_returning_none_for_everything_is_bounded_not_a_panic() {
     let m = NoneMetrics;
-    for style in [Style::DISPLAY, Style::TEXT, Style::SCRIPT, Style::SCRIPT_SCRIPT] {
+    for style in [
+        Style::DISPLAY,
+        Style::TEXT,
+        Style::SCRIPT,
+        Style::SCRIPT_SCRIPT,
+    ] {
         let report = layout_with_report(&kitchen_sink(), style, &m);
         assert_finite_box(&report.root);
         // Every symbol/text character, the accent, the radical sign, and
@@ -447,7 +476,10 @@ fn metrics_provider_returning_none_for_everything_is_bounded_not_a_panic() {
         assert!(!report.limitations.is_empty());
         for lim in &report.limitations {
             assert!(
-                matches!(lim, Limitation::MissingGlyph(_) | Limitation::MissingAccent(_)),
+                matches!(
+                    lim,
+                    Limitation::MissingGlyph(_) | Limitation::MissingAccent(_)
+                ),
                 "unexpected limitation kind: {lim:?}"
             );
         }
@@ -505,12 +537,16 @@ fn non_nfc_combining_sequences_are_bounded_not_a_panic() {
     let non_nfc_report = layout_with_report(&non_nfc, Style::TEXT, &m);
     let precomposed_report = layout_with_report(&precomposed, Style::TEXT, &m);
     assert_eq!(
-        positioned_runs(&non_nfc_report.root, (0.0, 0.0)).glyphs.len(),
+        positioned_runs(&non_nfc_report.root, (0.0, 0.0))
+            .glyphs
+            .len(),
         1,
         "only 'e' has a glyph; the combining mark does not"
     );
     assert_eq!(
-        positioned_runs(&precomposed_report.root, (0.0, 0.0)).glyphs.len(),
+        positioned_runs(&precomposed_report.root, (0.0, 0.0))
+            .glyphs
+            .len(),
         0,
         "'\\u{{00E9}}' has no glyph at all in this table"
     );
@@ -575,13 +611,20 @@ fn absurdly_long_text_op_string_completes_without_hanging() {
         let list: MathList = Atom::text_op(&text).into();
         let report = layout_with_report(&list, Style::TEXT, &m);
         let runs = positioned_runs(&report.root, (0.0, 0.0));
-        let _ = tx.send((report.root.width, report.limitations.len(), runs.glyphs.len()));
+        let _ = tx.send((
+            report.root.width,
+            report.limitations.len(),
+            runs.glyphs.len(),
+        ));
     });
     let (width, limitations, glyphs) = rx
         .recv_timeout(std::time::Duration::from_secs(30))
         .expect("layout of a 1_000_000-char text_op must complete well within 30s, not hang");
     assert!(width.is_finite());
     assert!(width > 0.0);
-    assert_eq!(limitations, 0, "plain.tex upright text has a CM roman glyph for 'a'");
+    assert_eq!(
+        limitations, 0,
+        "plain.tex upright text has a CM roman glyph for 'a'"
+    );
     assert_eq!(glyphs, CHAR_COUNT);
 }

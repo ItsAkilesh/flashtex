@@ -36,10 +36,12 @@ fn same_identity_font_id_resolves_to_its_own_font_name() {
             continue;
         };
         let name = cm.font_name(g.font_id);
-        assert_ne!(name, "unknown", "a FontId this provider just issued must resolve");
+        assert_ne!(
+            name, "unknown",
+            "a FontId this provider just issued must resolve"
+        );
         assert_eq!(
-            name,
-            ALL_FONTS[g.font_id.0 as usize].name,
+            name, ALL_FONTS[g.font_id.0 as usize].name,
             "must be exactly the font this id was assigned from, not a lookalike"
         );
     }

@@ -69,7 +69,12 @@ fn real_opentype_math_adapter_lays_out_through_this_crate_without_panicking() {
         OpenTypeMathFace::new(&face, 10.0, FontId(7)).expect("Latin Modern Math has a MATH table");
 
     let list = kitchen_sink_list();
-    for style in [Style::DISPLAY, Style::TEXT, Style::SCRIPT, Style::SCRIPT_SCRIPT] {
+    for style in [
+        Style::DISPLAY,
+        Style::TEXT,
+        Style::SCRIPT,
+        Style::SCRIPT_SCRIPT,
+    ] {
         let report = layout_with_report(&list, style, &math_face);
         assert!(report.root.width.is_finite() && report.root.width > 0.0);
         assert!(report.root.height.is_finite());
@@ -114,7 +119,10 @@ fn real_adapter_preserves_the_exact_caller_supplied_font_identity_never_a_differ
         .glyph('x', SizeClass::Text)
         .expect("Latin Modern Math has 'x'");
 
-    assert_eq!(g_a.font_id, id_a, "adapter must stamp exactly its own identity, not invent one");
+    assert_eq!(
+        g_a.font_id, id_a,
+        "adapter must stamp exactly its own identity, not invent one"
+    );
     assert_eq!(g_b.font_id, id_b);
     assert_ne!(
         g_a.font_id, g_b.font_id,

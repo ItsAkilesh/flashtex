@@ -284,7 +284,10 @@ fn indexed_root_degree_and_rule_geometry_from_explicit_metrics() {
     let b = layout(&list, Style::DISPLAY, &m);
     assert_eq!(dims(&b), "(7.70000+2.30000)x3.00000");
 
-    let r = positioned_runs(&layout_with_report(&list, Style::DISPLAY, &m).root, (0.0, 0.0));
+    let r = positioned_runs(
+        &layout_with_report(&list, Style::DISPLAY, &m).root,
+        (0.0, 0.0),
+    );
     let find = |ch: char| r.glyphs.iter().find(|glyph| glyph.ch == ch).unwrap();
     let n = find('n');
     let sign = find('\u{221A}');

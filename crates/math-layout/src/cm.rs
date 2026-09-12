@@ -609,7 +609,10 @@ mod tests {
                 "control character {code:#04x} must have no text glyph"
             );
         }
-        assert!(m.text_glyph('\u{7F}', SizeClass::Text).is_none(), "DEL must have no text glyph");
+        assert!(
+            m.text_glyph('\u{7F}', SizeClass::Text).is_none(),
+            "DEL must have no text glyph"
+        );
         // The printable boundary right next to the fix must still resolve:
         // space (0x20) and '~' (0x7E) are the printable range's own edges.
         assert!(m.text_glyph(' ', SizeClass::Text).is_some());
