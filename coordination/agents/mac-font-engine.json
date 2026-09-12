@@ -1,0 +1,36 @@
+{
+  "agent_id": "mac-font-engine",
+  "allocation_id": "claude-mac20x-font-engine",
+  "assignment_acknowledgements": {
+    "FT-018": {
+      "acknowledged_utc": "2026-09-12T05:25:01Z",
+      "adaptation": "Accepted FT-018 rev 1: new crate crates/font-engine (TrueType parsing, base-14 widths, shaping with clusters/missing glyphs, subsetting, ToUnicode). No compiler files edited; compiler may adopt later.",
+      "main_sha": "984fa28f2537feadb9f848eb90f69de0327d1fa5",
+      "revision": 1
+    }
+  },
+  "branch": "agent/mac-font-engine/tex-fonts",
+  "capabilities": [
+    "rust",
+    "fonts"
+  ],
+  "code_revision": "984fa28f2537feadb9f848eb90f69de0327d1fa5",
+  "eta_minutes": {
+    "likely": 15,
+    "optimistic": 10,
+    "pessimistic": 25
+  },
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "984fa28f2537feadb9f848eb90f69de0327d1fa5",
+  "next_action": "CoreText comparison example, README (provenance, ABI, unsupported), clippy",
+  "reviewed_peers": {},
+  "schema_version": 1,
+  "state": "in_progress",
+  "summary": "font-engine crate: TrueType parsing, Core14 tables, shaping with clusters/missing, subsetting, ToUnicode; 30 tests pass",
+  "tool": "Claude Code subagent (parent mac-claude-a)",
+  "updated_utc": "2026-09-12T05:39:59Z",
+  "usage": {
+    "evidence": "Shared Max quota not observable from subagent",
+    "status": "unknown"
+  }
+}
