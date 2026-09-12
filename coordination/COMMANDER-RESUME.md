@@ -39,3 +39,9 @@ Original compiler /tmp/flashtex-direct-json-target/release/flashtex-compiler (fa
 Untouched producer65dbe7d /tmp/flashtex-pipeline-65dbe7d/crates/render-pipeline/target/debug/flashtex-render (4341bc53e6c16d3930266bc1c59c1fb93d7739f29390a3bf5879381e6ae30780). Runtime owner retains compact6e69661 binary/provenance. Preserve binaries/assets and peer caches. Actual26page v1 complete; exact optional v2 artifact25,120,854bytes exceeds unchanged caps, so decline is valid. No cap lift, page truncation or universal200ms/native paint claim.
 
 No context telemetry/native compaction control exposed; durable checkpoint used without invented percentage or forced restart.
+
+## Latest integration superseding stage status above
+
+1699357c compact apply_group ACK and renderer02da0568/6c22fe80 allocation-free syntax preflight integrated after three metadata tests, full rendering suite and both strict lints passed (63797 terminal, /tmp/flashtex-group-syntax-integration.log). Existing five-fixture PDF/raster/text hashes unchanged in owner replay. Runtime shutdown ca7727c5/d8c21bdb is evidence-only pending integration. Current assignments from837db900: FT048r12 undo/redo compact ACK plus GH33 existing deadline resolver; FT049r13 accepted request capacity compaction; FT023r14 private paired-token duplicate parse removal. Same retained handles active.
+
+Root21813 broader helper run hit two deadlines during integration build (configured_large_result and full_size_optional_expansion); GH33 open, root assigned isolated reruns, no inferred cause or relaxed limits. Commander builds now terminal; runtime timing held for those reruns. Remote census refresh issue2comment5645891597 published, no new reply yet.
