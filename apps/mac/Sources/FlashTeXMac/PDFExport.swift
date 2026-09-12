@@ -46,7 +46,7 @@ enum PDFExport {
                 ctx.fill(CGRect(x: r.x, y: page.heightPt - r.y - r.height, width: r.width, height: r.height))
                 continue
             }
-            let font = CTFontCreateWithName(fontName as CFString, t.fontSizePt, nil)
+            let font = PreviewFonts.ctFont(size: t.fontSizePt)
             let attributed = NSAttributedString(string: t.text, attributes: [
                 .font: font,
                 .foregroundColor: NSColor(cgColor: foreground) ?? .black,

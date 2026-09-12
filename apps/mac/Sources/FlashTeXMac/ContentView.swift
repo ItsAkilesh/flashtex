@@ -264,6 +264,7 @@ private struct ProposalReviewSheet: View {
     @Environment(\.dismiss) private var dismiss
     let proposal: RuntimeV1.CaptureProposal
     @State private var latex: String = ""
+    @StateObject private var preview = ProposalPreview(executable: ShellModel.locateCompiler()) // shadow compile (ProposalPreview.swift)
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -288,6 +289,7 @@ private struct ProposalReviewSheet: View {
                 .font(.system(.body, design: .monospaced))
                 .frame(minHeight: 140)
                 .border(.separator)
+            ProposalPreviewView(preview: preview)
             if !proposal.ambiguities.isEmpty {
                 Text("Ambiguities").font(.subheadline.bold())
                 ForEach(proposal.ambiguities, id: \.self) { Text("• \($0)").font(.caption) }
@@ -298,6 +300,7 @@ private struct ProposalReviewSheet: View {
             HStack {
                 Button("Reject", role: .destructive) { model.rejectProposal(proposal); dismiss() }
                 Spacer()
+                ProposalApproveWarning(preview: preview)
                 Button("Approve and insert") {
                     if model.isBridgeCapture(proposal.captureId) {
                         Task { if case .inserted = await model.approveBridgeProposal(proposal, latex: latex) { dismiss() } }
@@ -309,6 +312,10 @@ private struct ProposalReviewSheet: View {
         }
         .padding(16)
         .frame(width: 520)
-        .onAppear { latex = proposal.latex }
+        .onAppear { latex = proposal.latex; preview.update(from: model, latex: proposal.latex) }
+        .onChange(of: latex) { _, new in preview.update(from: model, latex: new) }
+        .onChange(of: model.editorRevision) { _, _ in preview.update(from: model, latex: latex) }
+        .onChange(of: model.anchor) { _, _ in preview.update(from: model, latex: latex) }
+        .onDisappear { preview.close() }
     }
 }

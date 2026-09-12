@@ -87,9 +87,9 @@ private struct HitTestCanvas: View {
                     rects.append((index, rect, t.source, t.text))
                     continue
                 }
-                // Times-Roman: the face the compiler measured with. `.serif` design
-                // would be New York, which is wider and made words run together.
-                let font = Font.custom("Times-Roman", size: t.fontSizePt * scale)
+                // Draw with the face the layout was measured with (Latin Modern by
+                // default, Times fallback); `.serif` would be New York, which is wider.
+                let font = Font.custom(PreviewFonts.postScriptName(size: t.fontSizePt), size: t.fontSizePt * scale)
                 var text = Text(t.text).font(font)
                 text = text.foregroundColor(dark ? .white : .black)
                 let resolved = context.resolve(text)
