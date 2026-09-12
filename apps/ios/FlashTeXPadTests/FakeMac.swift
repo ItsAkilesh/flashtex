@@ -18,6 +18,17 @@ final class FakeMac {
     let longTermPSK = Data((0..<32).map { _ in UInt8.random(in: 0...255) })
     private var _destination: NearbyWire.Destination?
     private var _captures: [NearbyWire.CaptureSubmit] = []
+    /// Scripted `capture_status_ack` payloads per capture_id (nearby-v1 §4,
+    /// additive). A capture this instance received but has no script for is
+    /// answered `received` / `durable:false` (inbox); an id it never received
+    /// is `unknown_capture` — so `FakeMac.restart` (fresh instance) models a
+    /// Mac whose acknowledgement memory lost the capture.
+    private var _status: [String: [String: Any]] = [:]
+    private var _statusRequests: [String] = []
+    /// Knobs: `answersStatus == false` → `unknown_type` (a Mac that predates
+    /// the message); `statusEchoWrongId` → an ack naming another capture.
+    var answersStatus = true
+    var statusEchoWrongId = false
     private var _hellos: [NearbyWire.Hello] = []
     private var listener: NWListener!
     private let queue = DispatchQueue(label: "fake.mac")
@@ -77,20 +88,17 @@ final class FakeMac {
     /// Stops `previous` and starts a replacement on its port with `keys` — the
     /// Mac after pairing, whose key table now holds the long-term `pair_psk`
     /// under the same `pair_id` (retrying the bind while the socket is released).
+    /// The replacement listens on a fresh ephemeral port (the old socket may
+    /// linger in the kernel; rebinding the same port raced `bind` with
+    /// EADDRINUSE and crashed the test host). Callers reconnect to `port`
+    /// after the bounded readiness check here; the pairing (`pair_id`, PSK)
+    /// is what carries over, the acknowledgement memory is deliberately lost.
     static func restart(_ previous: FakeMac, keys: [Key]) throws -> FakeMac {
-        let port = previous.port
         previous.stop()
-        var last: Error?
-        for _ in 0..<50 {
-            do {
-                let m = try FakeMac(keys: keys, macName: previous.macName, destination: previous.destination, port: port)
-                m.start()
-                if m.port == port { return m }
-                m.stop()
-            } catch { last = error }
-            Thread.sleep(forTimeInterval: 0.05)
-        }
-        throw last ?? NearbyError.unreachable("could not rebind FakeMac on port \(port)")
+        let m = try FakeMac(keys: keys, macName: previous.macName, destination: previous.destination, port: 0)
+        m.start() // waits up to 5 s for `.ready`
+        guard m.port != 0 else { throw NearbyError.unreachable("restarted FakeMac did not become ready on an ephemeral port") }
+        return m
     }
 
     var destination: NearbyWire.Destination? {
@@ -98,6 +106,14 @@ final class FakeMac {
         set { queue.sync { _destination = newValue } }
     }
     var captures: [NearbyWire.CaptureSubmit] { queue.sync { _captures } }
+    var statusRequests: [String] { queue.sync { _statusRequests } }
+    func setStatus(_ captureId: String, state: String, durable: Bool = true, latex: String? = nil, note: String? = nil, newRevision: Int? = nil) {
+        var j: [String: Any] = ["capture_id": captureId, "state": state, "durable": durable]
+        if let latex { j["latex"] = latex }
+        if let note { j["note"] = note }
+        if let newRevision { j["new_revision"] = newRevision }
+        queue.sync { _status[captureId] = j }
+    }
     var hellos: [NearbyWire.Hello] { queue.sync { _hellos } }
 
     private func accept(_ c: NWConnection) {
@@ -137,6 +153,15 @@ final class FakeMac {
                             guard let cap = try? NearbyWire.decode(line, as: NearbyWire.CaptureSubmit.self).payload else { fail("bad_request", "undecodable capture_submit"); continue }
                             self._captures.append(cap)
                             reply("capture_received", FakeMac.wire(["capture_id": cap.captureId, "durable": false, "has_proposal": false, "applied": false]) as NearbyWire.CaptureReceived)
+                        case "capture_status" where self.answersStatus:
+                            guard let req = try? NearbyWire.decode(line, as: NearbyWire.CaptureStatusRequest.self).payload else { fail("bad_request", "undecodable capture_status"); continue }
+                            self._statusRequests.append(req.captureId)
+                            guard self._captures.contains(where: { $0.captureId == req.captureId }) else {
+                                fail("unknown_capture", "capture \(req.captureId) was not accepted on this pairing"); continue
+                            }
+                            var j = self._status[req.captureId] ?? ["capture_id": req.captureId, "state": "received", "durable": false, "note": "FakeMac inbox"]
+                            if self.statusEchoWrongId { j["capture_id"] = "someone-else" }
+                            reply("capture_status_ack", FakeMac.wire(j) as NearbyWire.CaptureStatus)
                         default:
                             fail("unknown_type", "unknown message type \(header.type)")
                         }

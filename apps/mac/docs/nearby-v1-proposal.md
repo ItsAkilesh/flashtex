@@ -141,6 +141,7 @@ The first line **must** be `hello`; anything else is answered with
 | `hello` | `pair_id`, `companion_name` (≤ 64 chars kept), `protocol_version: 1` (nearby version, not the envelope's), `nonce` (1–128 bytes, fresh per connection), `proof` | `hello_ack` `{mac_name, nonce (echoed), destination, pair_psk?}` |
 | `destination_query` | `{}` | `destination` `{destination: … \| null}` |
 | `capture_submit` | unchanged runtime-v1 payload | `capture_received` `{capture_id, durable, has_proposal, applied}` or `error` |
+| `capture_status` (additive, §6a) | `{capture_id}` | `capture_status_ack` `{capture_id, state, durable, latex?, note?, new_revision?}` or `error` (`unknown_capture`, `bad_request`, `unavailable`) |
 
 `proof` = base64(HMAC-SHA256(key = the PSK used for this connection, data =
 `"flashtex-nearby-v1 hello"` ‖ nonce)). The Mac looks the claimed `pair_id` up
@@ -285,14 +286,65 @@ rules).
   (plain 0600 file; Keychain migration is a follow-up and changes no wire byte).
 - No remote or cloud relay; same-LAN only (no AWDL peer-to-peer either).
 - No forward secrecy; no TLS 1.3.
-- No companion → Mac notification of proposals or insertion results; the
-  companion only learns `capture_received`. Proposal review stays on the Mac.
+- ~~No companion → Mac notification of proposals or insertion results; the
+  companion only learns `capture_received`.~~ Closed by §6a (`capture_status`,
+  additive, companion-initiated polling). Proposal review and approval still
+  stay on the Mac; the companion sees the outcome and the proposal text
+  read-only. There is still no Mac → companion push.
 - No multi-Mac routing on the companion beyond "pick a service".
 - Local Network privacy: a bundled `FlashTeX.app` will trigger macOS's Local
   Network prompt the first time it advertises; the bare SwiftPM executable and
   `swift test` did not prompt on the development Mac (macOS 26). The .app needs
   `NSLocalNetworkUsageDescription` and `NSBonjourServices = [_flashtex._tcp]`
   in its Info.plist (not yet added to `scripts/make-app.sh`).
+
+### 6a. `capture_status` (additive; nearby `protocol_version` stays 1)
+
+A companion that submitted a capture may ask, on the same authenticated
+session (or any later session of the same pairing), what became of it:
+
+```
+→ {"protocol_version":1,"id":"s1","type":"capture_status","payload":{"capture_id":"cap-…"}}
+← {"protocol_version":1,"id":"s1","type":"capture_status_ack","payload":
+     {"capture_id":"cap-…","state":"proposal_ready","durable":true,
+      "latex":"\\begin{tikzpicture}…","note":"proposal ready (context revision 3)"}}
+```
+
+`state` (additive vocabulary — a companion shows an unknown value verbatim):
+
+| `state` | Meaning on the Mac | `latex` |
+|---|---|---|
+| `received` | in the in-memory inbox, no bridge attached (`durable:false`), or the delivery is still pending in the sink (`note` says so) | — |
+| `journaled` | bridge journal has it; `Edit > Convert Capture` not run yet | — |
+| `converting` | `capture_convert` in flight | — |
+| `proposal_ready` | a proposal exists (queued or prepared for review on the Mac) | proposal text |
+| `inserted` | applied / confirmed; `new_revision` set | proposal text |
+| `rejected` | `capture_reject` | proposal text |
+| `failed` | conversion failed (provider error in `note`) or the pinned destination changed (reselect on the Mac) | maybe |
+| `uncertain` | the bridge relaunched with the submit in flight; a resubmission with the same id is safe | — |
+
+Sources on the Mac (`ShellModel+Nearby.swift`): the bridge's `capture_status`
+row (transfer-v1: `proposal`, `prepared`, `applied`, `rejected`) is
+authoritative for the text, insertion and rejection; the `BridgeSession`
+capture state supplies `converting` / `failed` / `uncertain`, which the row
+does not carry; without a bridge the inbox answers `received`.
+
+Authorisation: the session answers only for a `capture_id` in the pairing's
+acknowledgement memory (`NearbyAckMemory`, the same bounded, `pairs.json`-
+persisted memory that answers duplicate deliveries); any other id is
+`unknown_capture`, so a companion learns nothing about another pairing's
+captures. Because that memory is bounded (256 per pairing) and process-local
+until persisted, a capture can be `unknown_capture` while the bridge journal
+still holds it: the companion then re-delivers its saved envelope (same
+`capture_id`, `destination_id`, `base_revision`, bytes — idempotent on the Mac
+and the bridge, never a second insertion) and asks again. A status probe is
+never a delivery; a resend is never a status probe.
+
+The reference client (`NearbyConnection.captureStatus`) refuses an ack whose
+`capture_id` differs from the request's as `protocolViolation`. A Mac that
+predates this section answers `unknown_type`; the companion stops polling and
+says the outcome is unavailable. Errors: `bad_request` (id shape),
+`unknown_capture`, `unavailable` (no sink / bridge transport failure).
 
 ## 7. Companion checklist (FT-004)
 

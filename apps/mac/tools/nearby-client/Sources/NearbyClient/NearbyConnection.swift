@@ -459,4 +459,18 @@ public final class NearbyConnection: @unchecked Sendable { // all mutable state 
             try await request(type: "capture_submit", capture, expecting: "capture_received", id: requestID, timeout: timeout)
         return r.payload
     }
+
+    /// `capture_status` → `capture_status_ack` (additive; nearby-v1 §4). A
+    /// status probe, never a re-delivery: the Mac answers from its bridge /
+    /// inbox for a capture it acknowledged on this pairing.
+    public func captureStatus(captureId: String, requestID: String? = nil, timeout: TimeInterval = 30) async throws -> NearbyWire.CaptureStatus {
+        guard NearbyWire.isValidID(captureId) else { throw NearbyError.invalidInput("capture_id must be 1–128 ASCII [A-Za-z0-9_-]") }
+        let r: NearbyWire.Envelope<NearbyWire.CaptureStatus> =
+            try await request(type: "capture_status", NearbyWire.CaptureStatusRequest(captureId: captureId),
+                              expecting: "capture_status_ack", id: requestID, timeout: timeout)
+        guard r.payload.captureId == captureId else {
+            throw NearbyError.protocolViolation("capture_status_ack for \(captureId) names capture \(r.payload.captureId)")
+        }
+        return r.payload
+    }
 }

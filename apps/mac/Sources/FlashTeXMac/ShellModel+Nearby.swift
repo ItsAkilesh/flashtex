@@ -92,4 +92,74 @@ extension ShellModel: CaptureSink, DestinationProvider {
     nonisolated func currentDestination(_ reply: @escaping (NearbyV1.Destination?) -> Void) {
         Task { @MainActor in reply(self.nearbyDestination) }
     }
+
+    nonisolated func captureStatus(_ envelope: RuntimeV1.Envelope<NearbyV1.CaptureStatusRequest>, reply: @escaping (Data) -> Void) {
+        Task { @MainActor in
+            switch await self.nearbyCaptureStatus(captureId: envelope.payload.captureId) {
+            case .success(let ack): reply(NearbyV1.line(id: envelope.id, type: "capture_status_ack", ack))
+            case .failure(let err): reply(NearbyV1.errorLine(id: envelope.id, code: err.code, message: err.message))
+            }
+        }
+    }
+
+    /// nearby-v1 `capture_status` (additive): what the Mac knows about one
+    /// companion capture. With a bridge attached the bridge's `capture_status`
+    /// row is authoritative for the proposal text, insertion and rejection;
+    /// the session's live state supplies `converting` / `failed` / `uncertain`,
+    /// which the bridge row does not carry. Without a bridge the in-memory
+    /// inbox answers `received`. Nothing is inferred: a capture neither knows
+    /// is `unknown_capture`.
+    func nearbyCaptureStatus(captureId: String) async -> Result<NearbyV1.CaptureStatusAck, NearbyV1.ErrorPayload> {
+        if let bridge, bridge.running {
+            let local = bridge.capture(captureId)
+            var row: TransferV1.CaptureStatus?
+            do { row = try await bridge.status(captureId: captureId) } catch let f as BridgeClient.Failure {
+                // A bridge that does not know the id (or a transient failure)
+                // leaves only the local state; an inbox-only capture falls through.
+                if local == nil, !f.isTransient, nearbyInbox.received.contains(where: { $0.captureId == captureId }) {
+                    return .success(.init(captureId: captureId, state: .received, durable: false, note: "in the Mac's inbox; not journaled by the bridge"))
+                }
+                if local == nil { return .failure(.init(code: "unknown_capture", message: "bridge: \(f.text)")) }
+            } catch {
+                if local == nil { return .failure(.init(code: "unavailable", message: "bridge: \(error)")) }
+            }
+            return .success(Self.captureStatusAck(captureId: captureId, local: local, row: row))
+        }
+        if nearbyInbox.received.contains(where: { $0.captureId == captureId }) {
+            return .success(.init(captureId: captureId, state: .received, durable: false,
+                                  note: "in the Mac's in-memory inbox; attach a capture bridge on the Mac (Edit > Attach Capture Bridge) to convert it"))
+        }
+        return .failure(.init(code: "unknown_capture", message: "capture \(captureId) is not known to this Mac"))
+    }
+
+    /// Pure mapping (tested): bridge row first (`applied` → inserted,
+    /// `rejected`, `proposal` → proposal_ready), then the live session state
+    /// for the phases the row cannot show.
+    static func captureStatusAck(captureId: String, local: BridgeSession.Capture?, row: TransferV1.CaptureStatus?) -> NearbyV1.CaptureStatusAck {
+        let latex = row?.proposal?.latex
+        if let a = row?.applied {
+            return .init(captureId: captureId, state: .inserted, durable: true, latex: latex,
+                         note: local?.note ?? "inserted on the Mac (edit \(a.editId))", newRevision: a.newRevision)
+        }
+        if row?.rejected == true {
+            return .init(captureId: captureId, state: .rejected, durable: true, latex: latex, note: local?.note ?? "rejected on the Mac")
+        }
+        switch local?.state {
+        case .converting: return .init(captureId: captureId, state: .converting, durable: true, note: local?.note)
+        case .failed: return .init(captureId: captureId, state: .failed, durable: true, latex: latex, note: local?.note)
+        case .needsReselection:
+            return .init(captureId: captureId, state: .failed, durable: true, latex: latex,
+                         note: local?.note ?? "the pinned destination changed; reselect on the Mac")
+        case .uncertain: return .init(captureId: captureId, state: .uncertain, durable: false, note: local?.note)
+        case .applied, .confirmed:
+            return .init(captureId: captureId, state: .inserted, durable: true, latex: latex, note: local?.note)
+        case .rejected: return .init(captureId: captureId, state: .rejected, durable: true, latex: latex, note: local?.note)
+        default: break
+        }
+        if latex != nil || local?.state == .proposed || local?.state == .prepared {
+            return .init(captureId: captureId, state: .proposalReady, durable: true, latex: latex,
+                         note: local?.note ?? "proposal awaiting review on the Mac")
+        }
+        return .init(captureId: captureId, state: .journaled, durable: true, note: local?.note ?? "journaled by the bridge; not converted yet (Edit > Convert Capture on the Mac)")
+    }
 }

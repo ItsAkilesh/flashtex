@@ -22,6 +22,8 @@ let package = Package(
         .target(name: "FlashTeXProtocol"),
         .target(name: "NearbyClient"),
         .target(name: "FlashTeXPadKit", dependencies: ["FlashTeXProtocol", "NearbyClient"]),
-        .testTarget(name: "FlashTeXPadKitTests", dependencies: ["FlashTeXPadKit"]),
+        // XCTest is hosted by the generated iOS project (FlashTeXPadTests).
+        // Keeping a second SwiftPM test target here makes Xcode discover the
+        // symlinked protocol/client sources as overlapping test sources.
     ]
 )

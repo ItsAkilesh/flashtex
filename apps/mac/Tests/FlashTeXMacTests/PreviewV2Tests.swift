@@ -293,7 +293,7 @@ final class PreviewV2ShellTests: XCTestCase {
 
     func testOpeningTheRealDisplayListNavigatesLigatureClustersToSourceBytes() throws {
         let model = try model()
-        XCTAssertFalse(model.previewV2, "v1 stays the default")
+        XCTAssertEqual(model.previewV2, ProcessInfo.processInfo.environment["FLASHTEX_PREVIEW_V2"] != "0", "the v2 pane is the default; FLASHTEX_PREVIEW_V2=0 opts out")
         load(model, Self.fixtures.appendingPathComponent("display-list-v2-text.json"))
         guard case .loaded(let frame, _) = model.displayListV2 else { return XCTFail("expected a prepared frame: \(String(describing: model.displayListV2))") }
         XCTAssertTrue(model.previewV2)
