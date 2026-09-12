@@ -260,3 +260,43 @@ by `PanelAccessibilityTests.testGrokPreferencesSectionControlsTakeKeyboardFocus`
 (11 controls: secure key field, Save/Remove, provider switch, model field, Use,
 Test connection). Adding them to the table needs `Control` markers that can
 point at `GrokPreferencesView.swift` (the table is per-file today).
+
+## Ask Grok on the live document (lane mac-grok-assistant)
+
+`agent/mac-grok-assistant/ask` adds the first editor AI surface: Edit › Ask
+Grok… (⌘⌥G — ⌘⇧G is Convert Capture), the toolbar's Ask Grok button, the
+command palette, and "Fix with Grok" on a Problems row (button + context menu,
+which selects the whole line(s) of the diagnostic's span and pre-fills "Fix
+this: <message>"). `GrokAssistant` (GrokAssistant.swift; `ShellModel.grokAssistant`,
+`ShellModel+GrokAssistant.swift`; sheet `GrokAssistantView.swift`) binds the
+helper to the LAST REAL COMPILE (`resultID`, project, revision, `compiledDocuments`)
+and runs the review sheet's stages with its decoders: probe `prepare` →
+`prepare` with `destinations` → provider session → `review`/`validate`; on
+**Apply** only, `approve` of the exact review id, the approved group checked
+against the compiled text, then ONE `pendingEdit` through
+`EditorDiagnostics.QuickFix` (byte exact, rebased across later typing, refused
+on overlap) which the editor applies as one undo step.
+
+Request shape: `related_paths = [active document]` (its head, 2 KiB, is the
+helper's snippet); `selected_diagnostics` = those whose span intersects the
+selection (≤16, plus the pinned one), none without a selection;
+`user_instruction` = a one-line frame (bytes, lines, editor revision, "propose
+edits only inside the selection") + the user's text, ≤ 8 KiB. Destinations are
+the selection clipped to each supplied snippet (or every snippet without one);
+a selection outside every snippet is said in the panel (`coverageNote`) and the
+request becomes explanation-only — never silently truncated. The buffer must
+equal the compiled text (else the panel says to wait for the compile / ⌘B).
+
+Model: `GrokCredential.askModel` — `FLASHTEX_GROK_ASK_MODEL`, else
+`FLASHTEX_GROK_MODEL`, else the preference, else the fast
+`grok-4.20-0309-non-reasoning`. The fast model returns wrong byte offsets
+(3/3 live), which the helper on `agent/mac-assistant-context/relocate-edits`
+now repairs by locating the unique `removed_text` inside the supplied snippets
+(`relocated:true`) or drops that edit with a `notes` line instead of refusing
+the proposal. Live evidence (`docs/evidence/grok-assistant-20260912T221011Z/INDEX.md`):
+align* conversion 5.9 s, relocated, applied; Fix with Grok 2.9 s, relocated,
+`\frac{1}{2$` → `\frac{1}{2}$`. The review sheet keeps `grok-4.6`.
+
+Tests: `GrokAssistantTests` (11, hermetic on the doubles; the doubles now
+honour `related_paths`, `%grokmisplaced`, `%groknoedit`) and
+`GrokAssistantLiveTests` (opt-in `FLASHTEX_GROK_LIVE=1` / `FLASHTEX_GROK_LIVE_FIX=1`).
