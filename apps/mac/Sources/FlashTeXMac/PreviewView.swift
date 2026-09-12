@@ -15,11 +15,15 @@ struct PreviewView: View {
     private var caretPage: Int? { caretItems.filter { !$0.value.isEmpty }.keys.min() }
 
     var body: some View {
+        GeometryReader { geo in
         ScrollViewReader { proxy in
+            let widest = result.pages.map(\.widthPt).max() ?? 612
+            // Fit the widest page to the pane (never upscale past 100%).
+            let scale = min(1, max(0.2, (geo.size.width - 48) / widest))
             ScrollView([.vertical, .horizontal]) {
                 VStack(spacing: 24) {
                     ForEach(result.pages, id: \.number) { page in
-                        PageView(page: page, dark: dark, caretItems: caretItems[page.number] ?? [], onSelect: onSelect)
+                        PageView(page: page, dark: dark, caretItems: caretItems[page.number] ?? [], scale: scale, onSelect: onSelect)
                             .id(page.number)
                     }
                 }
@@ -31,6 +35,7 @@ struct PreviewView: View {
                 if let page { withAnimation { proxy.scrollTo(page, anchor: .top) } }
             }
         }
+        }
         .background(dark ? Color(white: 0.12) : Color(nsColor: .windowBackgroundColor))
     }
 }
@@ -39,10 +44,9 @@ private struct PageView: View {
     let page: RuntimeV1.Page
     let dark: Bool
     var caretItems: Set<Int> = []
+    /// Display scale (1 = 1pt per screen point); the preview fits pages to width.
+    var scale: CGFloat = 1.0
     let onSelect: (RuntimeV1.SourceRange?, String?) -> Void
-
-    /// Fixed display scale: 1pt = 1 screen point at 100%.
-    private let scale: CGFloat = 1.0
 
     var body: some View {
         let size = CGSize(width: page.widthPt * scale, height: page.heightPt * scale)
