@@ -1,24 +1,138 @@
 # mac-editor-diagnostics (Claude Code subagent, parent mac-claude-a)
 
-- Updated UTC: 2026-09-12T10:20Z
+- Updated UTC: 2026-09-12T10:55Z
 - Agent / parent / machine alias: mac-editor-diagnostics / mac-claude-a / mac-m1max-a
-- Task / acceptance gate / owned paths: lane "Partial recovery error marks
-  preserve exact source identity" (+ stale invalidation, keyboard error
-  navigation — merged into mac-shell) and refill "consume
-  crates/diagnostic-explanations" (gate 3: error recovery and source
-  navigation). Owned: `apps/mac/Sources/FlashTeXMac/EditorDiagnostics.swift`,
+- Task / acceptance gate / owned paths: lanes "exact source identity" and
+  "consume crates/diagnostic-explanations" (merged into mac-shell 6f4ee94) and
+  refill "reviewed quick fix from explanation edits" (gate 3: error recovery
+  and source navigation). Owned: `apps/mac/Sources/FlashTeXMac/EditorDiagnostics.swift`,
   `apps/mac/Sources/FlashTeXAccessibility/EditorDiagnosticsAccessibility.swift`,
   `apps/mac/Tests/FlashTeXMacTests/EditorDiagnosticsTests.swift`,
-  `apps/mac/Tests/FlashTeXMacTests/EditorDiagnosticsExplanationsTests.swift` (new),
+  `apps/mac/Tests/FlashTeXMacTests/EditorDiagnosticsExplanationsTests.swift`,
+  `apps/mac/Tests/FlashTeXMacTests/EditorDiagnosticsQuickFixTests.swift` (new),
   `apps/mac/Tests/FlashTeXAccessibilityTests/EditorDiagnosticsAccessibilityTests.swift`,
   this handoff and `coordination/agents/mac-editor-diagnostics.json`.
 - Branch / code revision / main integrated through:
-  `agent/mac-editor-diagnostics/explanations` from
-  `origin/agent/mac-claude-a/mac-shell` 271a366 (≥ 40d53b7; my first lane and
-  the parent diffs are in). Previous branch
-  `agent/mac-editor-diagnostics/exact-marks` (ef4ea4c) is superseded.
-- State: ready for integration (parent review; consumer diffs below not
-  applied; the crate owner needs to add the helper binary, see below).
+  `agent/mac-editor-diagnostics/quick-fix` from
+  `origin/agent/mac-claude-a/mac-shell` 6f4ee94 (both earlier lanes and the
+  parent's ShellModel/ContentView diffs are in). Earlier branches
+  `…/exact-marks` (ef4ea4c) and `…/explanations` (f252f92) are superseded.
+- State: ready for integration (parent review; the "Fix…" UI diff below is
+  requested, not applied; the crate owner still needs to add the helper
+  binary, see section 1 further down).
+
+## Ready behavior and evidence (quick fix)
+
+- `EditorDiagnostics.QuickFix.prepare(explanation, suggestion:, path:, in: currentText, compiledText:)
+  -> Result<Preview, Refusal>`: every `edits[]` entry (compiled-text byte
+  range + replacement) is validated as a scalar-aligned in-bounds range of the
+  compiled text, checked against the explanation's own `context` excerpt
+  (what the crate saw), rebased byte-exactly through
+  `SourceMapping.changedRegion/rebase`, checked again against the bytes now
+  in the buffer, converted to UTF-16, sorted ascending (insertions at one
+  offset keep suggestion order), and refused when any two overlap.
+  Refusals are typed and worded for the footer:
+  `noEdits / otherDocument / noCompiledText / invalidRange(edit) /
+  overlapsEdit(edit) / bytesChanged(edit, expected, actual) / editsOverlap(a, b)`.
+- `Preview`: `replacements` (byte + `NSRange` in the current text, per edit),
+  whole-line `before`/`after` snippets with `snippetRange` (UTF-16 in the
+  current text), `summary` ("<suggestion> (<confidence> confidence, n edits)"),
+  and `grouped` / `apply()`: **one** covering replacement
+  (`Grouped { path, nsRange, byteRange, before, text, replacements }`) whose
+  application is byte-identical to applying every edit — the editor applies
+  it as a single undoable `pendingEdit`. `Grouped.matches(text)` /
+  `applied(to:)` refuse a buffer that changed since preparation (nil, never a
+  guess). Nothing is applied by these APIs.
+- Tests (`EditorDiagnosticsQuickFixTests`, 4): real crate on the `\foo`
+  catalogue case (skips loudly without `FLASHTEX_EXPLAIN`): `181..<190 →
+  "bar"` previews `\foo{bar}` → `bar` on line 5 (UTF-16 ≠ bytes because of
+  `naïve`/`café` before it), one grouped edit, rebases across a multi-byte
+  prefix insertion, `.overlapsEdit` after an edit inside the span,
+  `.bytesChanged` when the buffer reads `\bar{bar}`, `.noEdits` for the
+  advice-only suggestion, `.noCompiledText`; synthetic multi-edit
+  (preamble delete + insert after `\begin{document}`, given out of order)
+  grouping equal to sequential application; refusals for overlapping /
+  other-document / inside-a-scalar / reversed / out-of-range edits, stale
+  disjoint edits shifting exactly, context-excerpt disagreement; multi-byte
+  ranges with a ZWJ emoji and a multi-byte replacement.
+- Validation: see "Validation" below.
+
+## Requested diff: "Fix…" on the diagnostics row (parent-owned files, not applied)
+
+`apps/mac/Sources/FlashTeXMac/ShellModel.swift` — next to `explanations` (line ~238 at 6f4ee94):
+
+```swift
+    /// A reviewed quick fix being previewed (sheet); nil when none.
+    var quickFix: EditorDiagnostics.QuickFix.Preview?
+    var quickFixIndex: Int?   // diagnostic index the preview belongs to
+
+    /// "Fix…" on a diagnostics row: prepare the suggestion against the current
+    /// buffer and show the preview; refusals go to the footer.
+    func previewQuickFix(diagnosticIndex: Int, suggestion: Int = 0) {
+        guard let x = explanations.explanation(resultID: resultID, index: diagnosticIndex) else {
+            navigationNote = "No explanation for this diagnostic yet."; return
+        }
+        switch EditorDiagnostics.QuickFix.prepare(x, suggestion: suggestion, path: activePath,
+                                                  in: activeText, compiledText: compiledDocuments[activePath]) {
+        case .success(let preview): quickFix = preview; quickFixIndex = diagnosticIndex; navigationNote = nil
+        case .failure(let why): quickFix = nil; navigationNote = "Fix not applied: " + why.text
+        }
+    }
+
+    /// "Apply" in the preview sheet: one grouped replacement through the
+    /// existing pendingEdit path (single undoable edit, never automatic).
+    func applyQuickFix() {
+        guard let preview = quickFix else { return }
+        let grouped = preview.apply()
+        guard grouped.path == activePath, grouped.matches(activeText) else {
+            navigationNote = "Fix not applied: the document changed since the preview; open Fix… again."
+            quickFix = nil; return
+        }
+        pendingEdit = .init(path: grouped.path, nsRange: grouped.nsRange, text: grouped.text,
+                            token: (pendingEdit?.token ?? 0) + 1)
+        navigationNote = "Applied: \(preview.summary) (undo with ⌘Z)"
+        quickFix = nil
+    }
+```
+
+(`editApplied` already feeds the new text back through `updateActiveText`, so
+the revision advances and marks/explanations rebase as for a capture insert.
+`SourceEditorView` sets the undo action name to "Insert Capture"; a parent
+may want `pendingEdit` to carry an action name — optional.)
+
+`apps/mac/Sources/FlashTeXMac/ContentView.swift` — diagnostics row, next to
+"Go to source" (line ~340):
+
+```swift
+                    if let x = model.explanations.explanation(resultID: model.resultID, index: i),
+                       x.suggestions.contains(where: { !$0.edits.isEmpty }) {
+                        Button("Fix…") { model.previewQuickFix(diagnosticIndex: i) }
+                            .help(x.suggestions.first { !$0.edits.isEmpty }?.text ?? "Preview a suggested fix")
+                    }
+```
+
+and a sheet on `PreviewPane` (beside the existing `.sheet(item:)` for review):
+
+```swift
+        .sheet(isPresented: Binding(get: { model.quickFix != nil }, set: { if !$0 { model.quickFix = nil } })) {
+            if let p = model.quickFix {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Suggested fix").font(.headline)
+                    Text(p.summary).font(.caption).foregroundStyle(.secondary)
+                    Text("Before").font(.caption.bold())
+                    Text(p.before).font(.system(.body, design: .monospaced)).textSelection(.enabled)
+                    Text("After").font(.caption.bold())
+                    Text(p.after).font(.system(.body, design: .monospaced)).textSelection(.enabled)
+                    Text("Heuristic suggestion from the explanation catalogue; applied as one undoable edit only when you choose Apply.")
+                        .font(.caption2).foregroundStyle(.tertiary)
+                    HStack { Spacer(); Button("Cancel") { model.quickFix = nil }.keyboardShortcut(.cancelAction)
+                             Button("Apply") { model.applyQuickFix() }.keyboardShortcut(.defaultAction) }
+                }
+                .padding(16).frame(minWidth: 480)
+                .accessibilityElement(children: .contain).accessibilityLabel("Suggested fix preview")
+            }
+        }
+```
 
 ## Finding: where the crate actually is and what it offers
 
@@ -36,7 +150,7 @@
   it in the scratch archive against the crate at 2bf14cd; it is not in the
   repository yet because `crates/diagnostic-explanations/**` is not mine.
 
-## Ready behavior and evidence (this refill)
+## Ready behavior and evidence (explanations refill, merged in 6f4ee94)
 
 - `EditorDiagnostics.Explanation` (+ `Suggestion`, `Edit`, `Context`):
   `Decodable` for the crate's fixed keys (`catalog_id, title, category,
@@ -84,7 +198,7 @@
   0.83 ms on an idle machine earlier today; release 0.245 ms).
 - Validation: see "Validation" below.
 
-## Exact diffs needed in files I do not own (not applied)
+## Diffs for files I do not own (1 still pending; 2–3 applied by the parent)
 
 ### 1. `crates/diagnostic-explanations` (owner mac-diagnostic-explanations) — add the helper binary
 
@@ -201,7 +315,7 @@ Until that lands: build the same file in a scratch crate depending on the
 crate by path (as I did) and export `FLASHTEX_EXPLAIN=<path>` for the test.
 The app bundle should ship it beside `flashtex-compiler` (packaging owner).
 
-### 2. `apps/mac/Sources/FlashTeXMac/ShellModel.swift` (parent)
+### 2. `apps/mac/Sources/FlashTeXMac/ShellModel.swift` (parent) — APPLIED in mac-shell 6f4ee94, kept for the record
 
 Add next to `editorMarkReport` (line ~212 at 271a366):
 
@@ -257,7 +371,7 @@ line ~621):
 
 `terminate` the client where the worker is torn down (`setBridge`/deinit).
 
-### 3. `apps/mac/Sources/FlashTeXMac/ContentView.swift` (parent)
+### 3. `apps/mac/Sources/FlashTeXMac/ContentView.swift` (parent) — APPLIED in mac-shell 6f4ee94, kept for the record
 
 Diagnostics list row, after the recovery `Text`:
 
@@ -285,18 +399,18 @@ its `accessibilityValue`; the mark's `spokenDescription` already has it.
 
 ## Validation
 
-- `swift test` in `apps/mac` with `FLASHTEX_EXPLAIN` (scratch helper over
-  crate 2bf14cd), `FLASHTEX_COMPILER/PDF/BRIDGE/EDIT_LEDGER` (main checkout
-  release builds), `FLASHTEX_NO_ACTIVATE=1`: see the agent record for the
-  exact totals at the tested SHA (recorded after the run).
-- `EditorDiagnosticsExplanationsTests` 6/6 with the helper; 5 pass + 1 loud
-  skip without it (verified both ways).
+- `swift test` in `apps/mac` at the tested SHA (see the agent record) with
+  `FLASHTEX_EXPLAIN` (scratch helper over crate 2bf14cd),
+  `FLASHTEX_COMPILER/PDF/BRIDGE/EDIT_LEDGER` (main checkout release builds),
+  `FLASHTEX_NO_ACTIVATE=1`: totals in the agent record `usage.evidence`.
+- `EditorDiagnosticsQuickFixTests` 4/4 with the helper; 3 pass + 1 loud skip
+  without it. `EditorDiagnosticsExplanationsTests` 6/6 (5 + 1 loud skip).
 
 ## Reviewed peer revisions / adaptations
 
-- `origin/agent/mac-claude-a/mac-shell` 271a366: base; my previous lane and
-  the ShellModel/Navigation/ContentView diffs are applied there — no change
-  to them from this refill beyond the diffs above.
+- `origin/agent/mac-claude-a/mac-shell` 6f4ee94: base; both earlier lanes and
+  the ShellModel/ContentView diffs are applied there (explanations fetched
+  per result, footer status, list-row line, accessibility value).
 - `origin/agent/mac-diagnostic-explanations/explain` 2bf14cd: crate read in
   full (README, lib.rs, json.rs); adaptation: JSON Lines helper over its
   public API instead of FFI, fixed-key `Decodable` mirror, index-matched
@@ -309,6 +423,6 @@ its `accessibilityValue`; the mark's `spokenDescription` already has it.
   purchases; totals unknown to this worker.
 - Dirty files / running jobs: none after commit; helper binary and crate
   export live only in the session scratch archive.
-- Exact next action: parent applies diffs 2–3; crate owner adds diff 1;
-  packaging ships `flashtex-explain`; re-run `swift test` with
-  `FLASHTEX_EXPLAIN` set.
+- Exact next action: parent applies the "Fix…" diff; crate owner adds the
+  helper binary (section 1); packaging ships `flashtex-explain`; re-run
+  `swift test` with `FLASHTEX_EXPLAIN` set.

@@ -31,6 +31,16 @@ struct ControllerState {
     var inFlight: (id: String, path: String, editorRevision: Int, sentAt: Date, text: String, durableRevision: Int?)?
     /// Newest buffer changed while an edit was in flight.
     var queued = false
+    /// How the next edit is released behind the one in flight
+    /// (ControllerRelease.swift); read from the environment once per attach.
+    var releasePolicy = ControllerReleasePolicy.fromEnvironment()
+    /// Last observed edit → preview round trip, the hybrid bound's input.
+    var lastEditToPreviewMs: Double?
+    /// When the edit that produced each durable revision was sent (per path);
+    /// pruned with `textByDurable`.
+    var sentAtByDurable: [String: [Int: Date]] = [:]
+    /// The scheduled hybrid bound check, if any.
+    var hybridRelease: DispatchWorkItem?
     var ready = false
     var compilerError: String?
     var lastPreviewRequestID: String?
@@ -120,7 +130,11 @@ extension ShellModel {
     /// revision and, separately, any preview error.
     func controllerSubmitEdit() {
         guard let controller, controller.isRunning, controllerState.ready else { return }
-        if controllerState.inFlight != nil { controllerState.queued = true; return }
+        if controllerState.inFlight != nil {
+            controllerState.queued = true
+            controllerHybridCheck() // hybrid: release now if the in-flight edit is past its bound
+            return
+        }
         guard let durable = controllerState.durable[activePath] else { return }
         let text = activeText
         if let last = controllerState.textByDurable[activePath]?[durable.revision], last.sameBytes(as: text) {
@@ -258,6 +272,11 @@ extension ShellModel {
         }
         if let inFlight = controllerState.inFlight, inFlight.id == requestID {
             controllerState.editorRevisionByDurable[path, default: [:]][revision] = inFlight.editorRevision
+            controllerState.sentAtByDurable[path, default: [:]][revision] = inFlight.sentAt
+            if let old = controllerState.sentAtByDurable[path], old.count > 8 {
+                for key in old.keys.sorted().dropLast(8) { controllerState.sentAtByDurable[path]?.removeValue(forKey: key) }
+            }
+            if TypingBench.isBenchActive { FlashTeXLog.write("durable: r\(revision) for revision \(inFlight.editorRevision) at \(MonotonicClock.nowNs())") }
             if let e = payload["preview_error"] as? String {
                 // Durable, but no preview will follow: release the pipeline now.
                 controllerState.inFlight = nil
@@ -266,11 +285,17 @@ extension ShellModel {
             } else {
                 controllerState.inFlight?.durableRevision = revision
                 if let ms = payload["save_and_submit_ms"] as? Double { controllerStatus = String(format: "durable r%d in %.1f ms", revision, ms) }
-                // Negotiated historical mode (HistoricalPreview.swift): every
-                // keystroke is its own durable edit and completed older compiles
-                // arrive as labelled historical frames, so the pipeline does not
-                // hold the next edit for this one's preview.
-                if historicalNegotiated { controllerState.inFlight = nil }
+                switch controllerState.releasePolicy {
+                case .hybrid:
+                    // Hold for the preview, but not past the bound (ControllerRelease.swift).
+                    controllerScheduleHybridRelease()
+                case .holdUntilPreview:
+                    // Negotiated historical mode (HistoricalPreview.swift): every
+                    // keystroke is its own durable edit and completed older compiles
+                    // arrive as labelled historical frames, so the pipeline does not
+                    // hold the next edit for this one's preview.
+                    if historicalNegotiated { controllerState.inFlight = nil }
+                }
             }
         } else {
             // Initial `document` (or a re-read after a conflict): the ledger is
@@ -319,9 +344,37 @@ extension ShellModel {
         applyDurableDocument(doc, requestID: requestID, payload: payload)
     }
 
+    /// Hybrid policy: arms a check for when the in-flight (durable) edit has
+    /// been in flight for the bound; a keystroke meanwhile checks immediately.
+    private func controllerScheduleHybridRelease() {
+        guard let inFlight = controllerState.inFlight, inFlight.durableRevision != nil else { return }
+        controllerState.hybridRelease?.cancel()
+        let elapsed = Date().timeIntervalSince(inFlight.sentAt) * 1000
+        let delay = ReleaseBound.remainingMs(inFlightMs: elapsed, lastEditToPreviewMs: controllerState.lastEditToPreviewMs)
+        let item = DispatchWorkItem { [weak self] in self?.controllerHybridCheck() }
+        controllerState.hybridRelease = item
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay / 1000, execute: item)
+    }
+
+    /// Hybrid policy: releases the in-flight edit when it is durable, newer
+    /// text is waiting and the bound elapsed. Logged under the bench.
+    func controllerHybridCheck() {
+        guard let inFlight = controllerState.inFlight else { return }
+        let elapsed = Date().timeIntervalSince(inFlight.sentAt) * 1000
+        guard ReleaseBound.shouldRelease(policy: controllerState.releasePolicy, durable: inFlight.durableRevision != nil,
+                                         queued: controllerState.queued, inFlightMs: elapsed,
+                                         lastEditToPreviewMs: controllerState.lastEditToPreviewMs) else { return }
+        let bound = ReleaseBound.boundMs(lastEditToPreviewMs: controllerState.lastEditToPreviewMs)
+        log(String(format: "controller hybrid release: revision %d durable r%d after %.1f ms (bound %.0f ms)", inFlight.editorRevision, inFlight.durableRevision ?? 0, elapsed, bound))
+        if TypingBench.isBenchActive { FlashTeXLog.write(String(format: "release: hybrid revision %d after %.1f ms (bound %.0f ms) at %llu", inFlight.editorRevision, elapsed, bound, MonotonicClock.nowNs())) }
+        controllerReleaseInFlight()
+    }
+
     /// The preview for the in-flight edit arrived (or was dropped): release the
     /// pipeline and send the newest buffer if it changed meanwhile.
     private func controllerReleaseInFlight() {
+        controllerState.hybridRelease?.cancel()
+        controllerState.hybridRelease = nil
         controllerState.inFlight = nil
         inFlightRevision = nil
         if controllerState.queued {
@@ -335,6 +388,9 @@ extension ShellModel {
     /// preview already shown.
     private func applyControllerPreview(_ update: PreviewControllerClient.PreviewUpdate) {
         let versionForActive = update.sourceVersions[activePath]
+        if let rev = versionForActive, let sent = controllerState.sentAtByDurable[activePath]?[rev] {
+            controllerState.lastEditToPreviewMs = Date().timeIntervalSince(sent) * 1000 // the hybrid bound's input
+        }
         // The in-flight edit names its own path: after a document switch the
         // active path's version says nothing about it.
         if let inFlight = controllerState.inFlight, let want = inFlight.durableRevision,

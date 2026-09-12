@@ -16,7 +16,7 @@
     "rust",
     "macos-simulators"
   ],
-  "code_revision": "6f4ee944051ffb2346fe0724532b95dc03607eb2",
+  "code_revision": "dbcf9c3eff78420404c7a1b07e8e4e606d186d21",
   "eta_minutes": {
     "likely": 120,
     "optimistic": 60,
@@ -24,7 +24,7 @@
   },
   "machine": "mac-m1max-a",
   "main_integrated_through": "3ac69c3ed109fa0902af39f4e2187d572a61c075",
-  "next_action": "Integrate lanes as they land; hybrid release policy measurement; render-pipeline incremental cache; packaging signing groundwork",
+  "next_action": "Integrate remaining lanes (hybrid release policy, validation-3, packaging signing, search/history/preferences panels, braces, nearby generation API, render incremental cache); post census",
   "reviewed_peers": {
     "origin/agent/aarush-macbook/companion-capture": {
       "adaptation": "Peer cannot run xcodebuild; will verify their branch from this Mac. No contract change.",
@@ -47,18 +47,18 @@
       "sha": "25a92a9c591a92a3d49071e536ecf8f129112c24"
     },
     "origin/main": {
-      "adaptation": "main through 60c40c1 read: 2f2605d history cache consumed and re-measured; #29 (helper frame ceiling) is runtime-owned \u2014 the native FastJSON/16 MiB client bound is unaffected; no apps/mac interface change",
-      "reviewed_utc": "2026-09-12T10:37:00Z",
-      "sha": "60c40c12f3c8db2050694c9f76817db909853338"
+      "adaptation": "main through eed1847 read (one-permit JSON decoder 8a44552, v2-consumption fencing to Commander slots); no apps/mac interface change; FT-048/049 are Linux slots",
+      "reviewed_utc": "2026-09-12T10:55:23Z",
+      "sha": "eed1847e923b42dbbc02d25309e9e432bd6e3aa0"
     }
   },
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "FT-003 rev 7: mac-shell 6f4ee94 \u2014 456/456 native tests with eight real helpers; 21 lane deliveries integrated (latest: bridge/ledger relaunch, multi-file projects, reviewed reload, helper navigation, completion vocabulary, IME, explanations, historical consumer OFF by default, accessibility help/landmarks, typing-bench all routes); render-pipeline geometry 0.00/0.01 pt vs MacTeX on text+math; helper 2f2605d re-measured (historical mode still starves current paints on 60 KB: 2.9 s p50 \u2192 OFF); LM Math vendored; boundary oracle run matched 5/5.",
+  "summary": "FT-003 rev 7: mac-shell dbcf9c3 \u2014 481/481 native tests (6 opt-in skips) with eight real helpers at load 12; 26 lane deliveries integrated incl. live display-list-v2 preview (p50 89 ms on demo via flashtex-render, 0 px vs CG export), quick-fix from explanations, completion snippets, transitive includes, bundled assistant helper. Rust deliveries ready for Commander: mac-pdf 20e5277 (Type 1 subsetting charstring-identical to pdfTeX, 86 tests), render-pipeline d556519, visual-oracle dda8200. 9 lanes running.",
   "tool": "Claude Code",
-  "updated_utc": "2026-09-12T10:37:00Z",
+  "updated_utc": "2026-09-12T10:55:23Z",
   "usage": {
-    "evidence": "docs/evidence/historical-preview-2026-09-12T1029Z/README.md; docs/evidence/typing-bench-2026-09-12T102033Z.md; tools/native-validation/mac-live/reports/20260912T095354Z.md",
-    "status": "Claude Max 20x usable; 11 subagents + parent; no overage"
+    "evidence": "issue #2 comments 5645364728, 5645396898",
+    "status": "Claude Max 20x usable; 9 subagents + parent; no overage"
   }
 }

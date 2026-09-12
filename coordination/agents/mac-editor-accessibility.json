@@ -2,26 +2,26 @@
   "agent_id": "mac-editor-accessibility",
   "allocation_id": "claude-mac20x-shared",
   "assignment_acknowledgements": {},
-  "branch": "agent/mac-editor-accessibility/ime",
+  "branch": "agent/mac-editor-accessibility/braces",
   "capabilities": [
     "swift",
     "appkit",
     "accessibility"
   ],
-  "code_revision": "271a3663789222b134151ece31b90dc8a56d23bf",
+  "code_revision": "dbcf9c3eff78420404c7a1b07e8e4e606d186d21",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
     "pessimistic": 30
   },
   "machine": "mac-m1max-a",
-  "main_integrated_through": "277a0910811fdb27bd156ecd92b92b50f277c750",
-  "next_action": "Parent mac-claude-a reviews/merges agent/mac-editor-accessibility/ime; mac-completion lane applies the two-line Esc/marked-text guard from the handoff",
+  "main_integrated_through": "3ac69c3ed109fa0902af39f4e2187d572a61c075",
+  "next_action": "Parent mac-claude-a reviews/merges agent/mac-editor-accessibility/braces and applies the autoClosePairs model/ContentView lines",
   "reviewed_peers": {
     "origin/agent/mac-claude-a/mac-shell": {
-      "adaptation": "Based on mac-shell 40d53b7 where lane 1 is merged; merged 271a366 (evidence/coord only, no apps/mac changes). Completion.swift untouched: the keyDown Esc/marked-text guard is reported as a diff for that lane",
-      "reviewed_utc": "2026-09-12T10:07:08Z",
-      "sha": "271a3663789222b134151ece31b90dc8a56d23bf"
+      "adaptation": "Based on mac-shell 3f74326 and fast-forwarded to dbcf9c3 (completion snippets, ai-review, multi-file includes; my files untouched there). The completion lane's \\\\end snippet is the boundary documented for hand-typed \\\\begin{env}",
+      "reviewed_utc": "2026-09-12T10:53:49Z",
+      "sha": "dbcf9c3eff78420404c7a1b07e8e4e606d186d21"
     },
     "origin/main": {
       "adaptation": "Merged mac-shell d8baed6 (Mark identity/resultStatus; completion lane's editorRevision/projectIndexMetadata hook kept in updateNSView) and main 5499e41; main 780f145 adds no apps/mac changes (preview helper envelopes, dispatch); kept the lastKnownText instance contract",
@@ -31,11 +31,11 @@
   },
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "Refill: input-method correctness in SourceEditorView. Marked text never reaches the binding (no revision/compile per composition step; commit = one change/revision/compile); caret reported at the composition start (exact caretByte); composition steps not announced; navigation deferred through the composition; completion list closed + scan cancelled at composition start via CompletingTextView public API; IME cancel leaves buffer/model/revision untouched; dead-key sequence not swallowed; e+U+0301 vs precomposed \u00e9 vs dead-key \u00e9 all give exact bytes and reverse mapping. swift test 384/384 (12 env skips) with real workers; SourceEditorViewTests 17/17 x6. One Completion.swift diff (Esc during composition) listed in handoff.",
+  "summary": "Refill 2: LaTeX-aware delimiter pairs in SourceEditorView. BraceMatcher (pure, bounded byte scan; escapes/comments/verb skipped; $ and $$ by paragraph parity) drives a two-range temporary-attribute highlight and VoiceOver 'matches line L column C'; auto-close (default { only; [ and $ via the owner's autoClosePairs), type-over and empty-pair backspace are exact, one binding push each, undo-correct (Cmd-Z after {} leaves nothing; backspace pair removal is its own step), never during compositions/comments/verb/escapes/selections. swift test 459/459 (21 env skips) with real workers; SourceEditorViewTests 20/20 x3. Two-line ShellModel/ContentView diff for the setting requested in the handoff.",
   "tool": "Claude Code subagent (parent mac-claude-a)",
-  "updated_utc": "2026-09-12T10:07:08Z",
+  "updated_utc": "2026-09-12T10:53:49Z",
   "usage": {
-    "evidence": "SourceEditorViewTests 17/17 (three IME tests: composition, cancel+completion list, composed bytes); full suite 384 tests 0 failures",
+    "evidence": "SourceEditorViewTests 20/20 (matcher table, hosted auto-close/type-over/backspace undo, hosted highlight+announcements); full suite 459 tests 0 failures",
     "status": "shared Claude Max 20x quota of parent; figure unknown"
   }
 }
