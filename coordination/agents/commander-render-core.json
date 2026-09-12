@@ -22,15 +22,15 @@
   },
   "machine": "linux-primary",
   "main_integrated_through": "6c22fe809178c26b947f322c7a475f1e0db3bacd",
-  "next_action": "Existing five-fixture source-guard replay27855 running; then publish evidence. GH34 existing official10pt asset hash verified; root owns separately labeled rerun.",
+  "next_action": "Commander integration of fce554f1 plus evidence. Root owns separately labeled GH34 replay using verified official10pt asset; await actual multi-document capture for bounded hit/source acceptance.",
   "reviewed_peers": {},
   "schema_version": 1,
-  "state": "in_progress",
+  "state": "accepted",
   "summary": "Hit query product fce554f1:175Rusttests/2ignored and strictClippy pass; actual ffi/full escaped spans and stale guards covered.",
   "tool": "Codex Astra",
   "updated_utc": "2026-09-12T12:41:45Z",
   "usage": {
-    "evidence": "173 Rust tests/2ignored, strictClippy and6Python tests pass. Same-process alternating one-capture experiment92bindings; resource phase21.00\u21922.04ms instrumented only, other allocation medians unchanged. All five original PDF/raster/text/validity results unchanged; prior reference gaps remain.",
-    "status": "Hosted OpenAI only; no descendants/providers. Context telemetry/native compaction unavailable; durable checkpoint records active27855 and exact branch."
+    "evidence": "175Rusttests/2ignored, strictClippy,6Python pass. Replay27855 terminal expectedexit3: allfive exactPDF/raster/text/validity unchanged; existing602/1244/979/337pixel reference gaps preserved. No paid calls.",
+    "status": "Hosted OpenAI only; no descendants/providers. Context telemetry/native compaction unavailable; durable checkpoint records exact branch and terminal checks."
   }
 }
