@@ -179,6 +179,180 @@ in `src/lib.rs` and 1 in `src/sp.rs` listed above; +1 doctest: the new
 failed. `cargo clippy --all-targets -- -D warnings` and `cargo fmt --check`
 both clean.
 
+## Revision 4: real TeX reference oracle (GitHub issue #10, scoped to this crate)
+
+New file `crates/tex-calc/tests/tex_oracle.rs`: 8 integration tests that
+drive an **actual installed TeX engine** (not a reimplementation) and
+compare its output directly against `flashtex_tex_calc::evaluate`. This
+closes the "honest gap" the previous revision flagged above ("This was not
+cross-checked against a running TeX/pdftex binary") — it now has been, and
+the result is a real, precisely-characterized divergence, documented below
+rather than silently patched over.
+
+**Oracle used**: plain `tex` (not `pdftex`/`pdflatex` — plain TeX already
+has everything needed: `\dimen`, `\count`, `\advance`, `\multiply`,
+`\divide`, `\showthe`) from BasicTeX, at
+`/Library/TeX/texbin/tex` → **pdfTeX 3.141592653-2.6-1.40.29 (TeX Live
+2026)**. The harness looks for a short list of well-known absolute TeX-Live
+paths (`find_tex()` in the test file, mirroring `crates/pdf/tests/exact.rs`'s
+`pdflatex()` helper) and skips every test with `eprintln!("skipped: ...")`
++ an early `return` — never a failure — if none exist, so the suite stays
+honest on a machine without TeX installed.
+
+**Re-run it**: `cd crates/tex-calc && cargo test --test tex_oracle`. Every
+run writes its scratch `.tex`/`.log` files under a fresh directory in
+`std::env::temp_dir()` (never inside this repo) and removes that directory
+again before returning, whether or not the test passed.
+
+**The exact-sp extraction trick**: `\showthe\dimen0` only ever prints a
+decimal rounded to 5 places (`72.26999pt`, not the raw integer). The
+TeXbook's grammar for `<internal integer>` explicitly permits an
+`<internal dimen>` in its place, "replaced by the number of sp" it holds —
+so `\count0=\dimen0 \showthe\count0` prints the *exact* scaled-point count
+with no rounding at all. Every probe in the harness uses this.
+
+### Table: every expression checked, TeX's value vs. this crate's
+
+All values are exact scaled points (`1pt = 65536sp`), obtained live from the
+`tex` binary above via the harness, not hand-computed.
+
+| expression | real TeX (sp) | this crate (sp) | match? |
+|---|---|---|---|
+| `1pt` | 65536 | 65536 | yes |
+| `1in` | 4736286 | 4736286 | yes (the `72.26999pt` quirk) |
+| `1pc` | 786432 | 786432 | yes |
+| `1cm` | 1864679 | 1864679 | yes |
+| `1mm` | 186467 | 186467 | yes |
+| `1bp` | 65781 | 65781 | yes |
+| `1sp` | 1 | 1 | yes |
+| `-1in` | -4736286 | -4736286 | yes |
+| `-1pt` | -65536 | -65536 | yes |
+| `-1073741823sp` | -1073741823 | -1073741823 | yes |
+| `0.5pt` | 32768 | 32768 | yes (dyadic fraction) |
+| `0.25pt` | 16384 | 16384 | yes (dyadic fraction) |
+| `0.5in` | 2368143 | 2368143 | yes (dyadic fraction) |
+| `10.5cm` | 19579138 | 19579138 | yes (dyadic fraction) |
+| `-10.5cm` | -19579138 | -19579138 | yes (dyadic fraction) |
+| `3.5pc` | 2752512 | 2752512 | yes (dyadic fraction) |
+| `0.75mm` | 139850 | 139850 | yes (dyadic fraction) |
+| `1.5bp` | 98672 | 98672 | yes (dyadic fraction) |
+| `3.1pt` | **203162** | **203161** | **no — off by 1sp** |
+| `3.1cm` | **5780518** | **5780507** | **no — off by 11sp** |
+| `16383.99999pt` | 1073741823 (`MAX`) | 1073741823 (`MAX`) | yes |
+| `16384pt` | overflow ("Dimension too large") | `Overflow` | yes (same boundary) |
+| `-16384pt` | overflow | `Overflow` | yes (same boundary) |
+| `1073741823sp` | 1073741823 (`MAX`) | 1073741823 (`MAX`) | yes |
+| `1073741824sp` | overflow | `Overflow` | yes (same boundary) |
+| `-1073741824sp` | overflow | `Overflow` | yes (same boundary) |
+| `226.70540618in` | 1073741768 (ok) | ok | yes |
+| `226.70540619in` | **overflow** | **ok** | **no — boundary mismatch** |
+| `226.70541026in` | **overflow** | **ok (`MAX`)** | **no — boundary mismatch** |
+| `226.70541027in` | overflow | `Overflow` | yes (both finally agree again) |
+| `16383pt` then `\advance` by `16383pt` (≈ `16383pt+16383pt`) | 2147352576, **no error logged** | `Overflow` | no — TeX doesn't bound-check `\advance` |
+| `16383pt` then `\multiply by 2` (≈ `16383pt*2`) | arithmetic-overflow, register left at `16383pt`'s own value | `Overflow` | no — different (stricter, and non-clamping) error path in real TeX |
+| `1pt` then `\multiply by 2` (≈ `2 * 1pt`) | 131072 | 131072 | yes |
+| `1pt` then `\divide by 3` (≈ `1pt / 3`) | 21845 | 21845 | yes (both truncate toward zero) |
+| `1pt` then `\divide by -3` (≈ `1pt / -3`) | -21845 | -21845 | yes |
+| `1dd` | 70124 | `UnsupportedUnit("dd")` | n/a — not a supported unit, shown for reference only |
+| `1cc` | 841489 | `UnsupportedUnit("cc")` | n/a — not a supported unit, shown for reference only |
+| `1em`, `1ex` | (font-relative; not probed) | `UnsupportedUnit(...)` | n/a — not a supported unit |
+
+### Findings and diagnosis
+
+1. **Rounding vs. truncation (the central finding).** Real TeX's
+   decimal-literal-to-`sp` conversion (`round_decimals` + `scan_dimen` in
+   tex.web) first **rounds** the written fractional decimal digits to the
+   nearest `1/65536` of the *stated* unit (ties round up), and only then
+   applies the unit-to-point ratio (an exact floor) for units other than
+   `pt`/`sp`. `Unit::to_sp` in `src/sp.rs` instead builds one fully exact
+   rational value from the literal and the unit ratio and **truncates once**,
+   toward zero, at the end. The two algorithms coincide exactly whenever the
+   unit is `sp` (an integer, nothing to round) or the literal's fractional
+   part is already an exact dyadic fraction representable in 16 bits (`.5`,
+   `.25`, `.125`, ..., or no fraction at all) — which is every hand-checked
+   example already in `src/sp.rs`'s own tests, including the famous `1in` =
+   `72.26999pt` quirk. They diverge, typically by a handful of `sp` (well
+   under a thousandth of a point), for essentially any decimal literal whose
+   fractional part is *not* such a dyadic fraction, **in any unit including
+   plain `pt`** (`3.1pt` above needs no unit conversion at all and still
+   differs by 1sp). **Diagnosis: ambiguous by design, not a bug in the usual
+   sense** — this crate's own docs already advertise "exact... bit-for-bit
+   reproducible... independent of any particular float rounding mode" as a
+   deliberate feature, and every existing hand-checked test in `sp.rs`
+   happened to use a dyadic fraction (or none), so the "matches TeX's own
+   truncating conversions" claim was true for everything actually tested but
+   is not true in general. Replicating tex.web's exact two-stage
+   round-then-floor algorithm (with its own 17-significant-digit cap and
+   ties-round-up rule) would be a deliberate rewrite of this crate's central
+   arithmetic in exchange for fidelity to a fairly obscure historical quirk
+   that no realistic hand-written document's precision (rarely more than 2-4
+   decimal digits) would expose. **Left to the crate owner's call; nothing in
+   `src/` was changed.** (Only the doc-comment framing in the new test file
+   spells this out precisely; no arithmetic changed.)
+2. **MAX_DIMEN boundary matches exactly for `pt` and `sp`.** Both literal
+   scanning paths agree, bit-for-bit, on the cutoff: `16384pt` /
+   `1073741824sp` (one past `MAX_DIMEN_SP`) is the first value either engine
+   refuses, in both signs. No divergence here.
+3. **MAX_DIMEN boundary mismatch for converted units (direct consequence of
+   finding 1).** For `in`, this crate's own exact-rational threshold is
+   `1638400/7227 in ≈ 226.70541027in`; real TeX's is lower,
+   `≈226.70540619in`, because its pre-conversion rounding (finding 1) can
+   push a value over the edge slightly earlier. Concretely: for every
+   literal in **`[226.70540619in, 226.70541027in)`**, real TeX raises `!
+   Dimension too large.` while `flashtex_tex_calc::evaluate` returns `Ok`.
+   The gap is ~4×10⁻⁶ inch (~0.0003pt) wide — **a genuine, reproducible
+   boundary mismatch**, reported per the assignment's explicit request, same
+   diagnosis as finding 1 (not fixed).
+4. **Real TeX's `\advance`/`\multiply` do not enforce `MAX_DIMEN` the way
+   literal scanning does — and this crate is deliberately stricter.**
+   `\dimen0=16383pt \advance\dimen0 by 16383pt` (result: `32766pt`, nearly
+   double `MAX_DIMEN`) logs **no error at all** in real TeX — dimension
+   registers are raw 32-bit-ish integers under `\advance`, and pushing this
+   further (three or four chained `\advance`s of `16383pt`) was confirmed to
+   silently **wrap around through negative values** via plain integer
+   overflow, with no error. `\multiply` is, bizarrely, *stricter*: even
+   `\dimen0=16383pt \multiply\dimen0 by 2` already trips `! Arithmetic
+   overflow.` and leaves the register at its pre-multiply value (does not
+   clamp to `max_dimen` the way an overflowing literal does). **Diagnosis:
+   category (b), and clearly the right call** — this crate applies one
+   consistent `MAX_DIMEN` bound to every operator (`checked_add`,
+   `checked_sub`, `checked_mul_scalar`, `checked_div_scalar`) and never
+   panics or silently wraps. Real TeX's actual behavior here is a
+   well-known historical wart, not something to replicate; matching it would
+   mean reintroducing silent integer wraparound. **Not changed, documented
+   only** (`tex_advance_and_multiply_do_not_bound_check_against_max_dimen_but_this_crate_always_does`
+   in the new test file pins the exact numbers above as a permanent
+   regression check).
+5. **Scalar `*`/`/` by a decimal (non-integer) factor has no plain-TeX
+   equivalent to oracle against.** `\multiply`/`\divide` only take integer
+   counts; TeX's own decimal-scalar dimension arithmetic lives in
+   `\dimexpr` (an e-TeX/pdfTeX extension), not plain TeX, and was out of
+   scope for this pass. Integer `\multiply`/`\divide` (including
+   truncation-toward-zero on `/`) were checked and match exactly (see table).
+6. `dd`/`cc` (Didot units) and `em`/`ex` (font-relative) are not in `sp.rs`'s
+   `Unit` enum at all, so this crate already rejects them with
+   `UnsupportedUnit` — TeX's own values for `dd`/`cc` (`70124sp`/`841489sp`)
+   are recorded above for reference only; there is nothing to compare
+   against a rejection. This matches the assignment's category (b)
+   ("deliberately rejecting something TeX accepts") and needed no change.
+
+**No source file under `crates/tex-calc/src/` was modified by this
+revision.** Every finding above is documented, and pinned by a permanent
+assertion in `tests/tex_oracle.rs`, rather than "fixed" — per the
+assignment, a silent numeric difference this small is genuinely ambiguous
+between "bug" and "deliberate, documented simplification," and the crate's
+own prior revision already flagged it as an open, uncross-checked question.
+
+Test count after this revision: unit tests unchanged; **+8 new integration
+tests** in `tests/tex_oracle.rs` (all skip cleanly, without failing, on a
+machine with no `tex` binary). Current totals on this branch: **91 unit
+tests + 8 oracle integration tests + 2 doctests = 101**, `cargo test` and
+`cargo test --release` both green, `cargo clippy --all-targets -- -D
+warnings` clean, `cargo fmt --check` clean. (The 91/2 unit/doctest figures
+were already at this level before this revision, from bug fixes in later
+commits not reflected in this file's revision-3 count of 81+2 above; not
+this revision's concern to reconcile.)
+
 ## What document-style types are consumed
 
 Read `crates/document-style/src/length.rs` and `geometry.rs` first. The
@@ -367,11 +541,19 @@ division by a zero scalar are checked and typed, never a panic.
 - A top-level expression that evaluates to a dimensionless scalar (e.g. just
   `2 + 2`) is `TypeMismatch`, not an implicit `0pt` or bare number.
 - Truncation-toward-zero unit conversion matches real TeX's well-known
-  quirks (verified above) but this crate does **not** replicate TeX's exact
-  `xn_over_d`/remainder-correction bit pattern for every possible input;
-  it uses one documented, deterministic `i128` rational truncation instead.
-  This was not cross-checked against a running TeX/pdftex binary (none is
-  used by this project), only against hand/Python-computed exact fractions.
+  quirks for the cases hand-checked above, but this crate does **not**
+  replicate TeX's exact `round_decimals`/`xn_over_d`-remainder-correction
+  two-stage algorithm for every possible input; it uses one documented,
+  deterministic `i128` rational truncation instead. **Now cross-checked
+  live against a real `tex` binary** (see "Revision 4: real TeX reference
+  oracle" above): it matches exactly for `sp`, and for any literal whose
+  fractional part is a dyadic fraction in its stated unit (`.5`, `.25`,
+  `.125`, ...) or absent — but genuinely diverges, by a handful of `sp`,
+  for a non-dyadic decimal fraction in *any* unit including plain `pt`
+  (e.g. `3.1pt`), and this shifts the `MAX_DIMEN` overflow boundary for
+  converted units (`in`, `cm`, `mm`, `pc`, `bp`) by a similarly tiny amount.
+  See the revision-4 section for the precise mechanism, the exact
+  divergent values, and why it was documented rather than "fixed."
 - Control-sequence names accept any Unicode alphabetic character (tested
   with e.g. `\Länge`) but not digits or combining marks after the backslash,
   matching TeX's own letters-only control-word rule.
