@@ -40,3 +40,35 @@ Reproduce with `FLASHTEX_LM_TFM_DIR` pointing there and run
 Synthetic tests cover every truncation boundary, encoded little-endian lengths,
 wrong phase order, payload marker bytes, caps, immutable copies and hash/license
 mismatch. Neither synthetic nor real container acceptance is an outline claim.
+
+## Explicit passive binary eexec inspection
+
+Additive `eexec::inspect_binary_eexec(&Resource, max_plaintext_bytes)` implements
+the byte recurrence in Adobe Type1 specification sections7.1–7.2 (printed pages
+62–64): fixed seed55665, constants52845/22719, unsigned16bit modular state updated
+from ciphertext. Exactly four decrypted prefix bytes are retained separately and
+excluded from returned plaintext/hash. State continues across adjacent PFB binary
+records, including a prefix split across records; ASCII header/trailer is excluded.
+No existing decryption utility was present in the linked crates.
+
+The API is an explicit caller assertion that these records contain binary eexec;
+container framing cannot prove that semantic role. First ciphertext cannot be one
+of the four specified whitespace characters and at least one of its first four
+bytes must be non-hex; otherwise a typed unsupported-prefix error refuses ambiguous
+ASCII-hex input. Fewer than four encrypted bytes and exceeded caller/hard output
+caps fail before plaintext allocation. The immutable result borrows the full PFB
+resource identity/license and retains original ciphertext ranges/digest, prefix,
+and decrypted bytes/digest. No PostScript is evaluated or decrypted payload dumped.
+Decryption is not authentication or proof of valid font dictionaries.
+
+Pinned real lmr10 evidence: ciphertext range5730..118683,
+SHA02262ab31d397263650f1ec77c7bef04d0720419f69aa9e6562a52b2ddc85c62;
+decrypted prefix00000000;112949remaining bytes,
+SHAbd88b12233faf829fbf86770638e4aec367847bcdb06e285b75e2381787af9a4.
+The existing real PFB test now verifies these exact observations. Synthetic vector
+`d9d73f4a50b9fa428d59a36bd8f46f9cb9c47adfb0f3297e` decodes to prefix00010203 then
+`/Private 1 dict def` followed by newline; every possible binary-record split
+produces the same result. This vector is a synthetic arithmetic check, not an
+independent rendering oracle. Charstring seed4330/lenIV, encrypted dictionary
+interpretation, glyph identity, shaping and outlines remain unsupported. The
+existing `require_outlines` gate is unchanged.

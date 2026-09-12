@@ -544,6 +544,7 @@ pub use expansion::{
 mod path;
 pub use path::{PathCommand, QuadraticPath};
 
+pub mod eexec;
 pub mod pfb;
 pub mod required_tfm;
 pub mod tfm;

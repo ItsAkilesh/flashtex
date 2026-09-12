@@ -35,6 +35,19 @@ fn pinned_official_type1_container_only() {
     for s in resource.segments() {
         println!("{:?} {:?}", s.kind, s.payload);
     }
+    let inspection =
+        flashtex_font_resources::eexec::inspect_binary_eexec(&resource, 112949).unwrap();
+    assert_eq!(inspection.random_prefix(), [0; 4]);
+    assert_eq!(inspection.plaintext().len(), 112949);
+    assert_eq!(
+        inspection.plaintext_sha256(),
+        "bd88b12233faf829fbf86770638e4aec367847bcdb06e285b75e2381787af9a4"
+    );
+    assert_eq!(
+        inspection.encrypted_sha256(),
+        "02262ab31d397263650f1ec77c7bef04d0720419f69aa9e6562a52b2ddc85c62"
+    );
+    assert_eq!(inspection.resource_identity(), resource.identity());
     assert_eq!(
         resource.require_outlines(),
         Err(Error::EncryptedOutlinesUnsupported)
