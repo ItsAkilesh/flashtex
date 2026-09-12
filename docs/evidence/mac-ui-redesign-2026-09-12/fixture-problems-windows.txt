@@ -1,0 +1,2 @@
+15815	FlashTeX	layer=0	onscreen=true	1200x1049
+15816		layer=0	onscreen=false	500x500

@@ -9,18 +9,23 @@
     "appkit",
     "ui-design"
   ],
-  "code_revision": "9ba9851cefb3ba263ffe1d25f42cb7fdd27371c4",
-  "eta_minutes": null,
+  "code_revision": "9fd24faec80b8b904fd9874f06ab16726d52158a",
+  "eta_minutes": {
+    "likely": 50,
+    "optimistic": 35,
+    "pessimistic": 80
+  },
   "machine": "mac-m1max-a",
   "main_integrated_through": "c11c005b90c1b495889dea7c664aae4b8a9424c4",
-  "next_action": "Await and acknowledge assignment",
+  "next_action": "Window-size overflow fix (min 1200, defaultSize 1500x950) building; capture evidence screenshots (workspace, fixture diagnostics, palette) into docs/evidence/mac-ui-redesign-2026-09-12; then full swift test on the final SHA; handoff by 20:28Z",
   "reviewed_peers": {},
   "schema_version": 1,
-  "state": "registered",
-  "summary": "Available for Commander assignment",
+  "state": "in_progress",
+  "summary": "Workspace shell landed at 9fd24fae on agent/mac-ui-redesign/shell (pushed): NavigationSplitView sidebar (project/outline/problems), document tabs, labelled toolbar, bottom Problems panel on DiagnosticsListView, status bar, View > Command Palette (\u2318\u21e7P) from the AccessibilityCommand table; Pin moved to \u2318\u2325P; README/FocusOrder parity updated. CommandTableTests 8/8, WorkspaceShellTests 9/9, DiagnosticsPanel/PanelAccessibility 20/20.",
   "tool": "Claude Code subagent (parent mac-claude-a, Fable)",
-  "updated_utc": "2026-09-12T18:35:24Z",
+  "updated_utc": "2026-09-12T18:53:54Z",
   "usage": {
-    "status": "unknown"
+    "evidence": "docs/evidence/mac-ui-redesign-2026-09-12/hw1-workspace-1-FlashTeX.png (first capture, pre-fix overflow)",
+    "status": "Shared Claude Max quota with parent mac-claude-a; no purchases; builds batched (load 14-325 observed)"
   }
 }
