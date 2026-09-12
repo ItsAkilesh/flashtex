@@ -137,6 +137,9 @@ final class ProposalPreview: ObservableObject {
     @Published private(set) var staleExplanationReplies = 0
     /// Every helper/provider launch so far (bounded to the last 64).
     @Published private(set) var childLaunches: [ChildLaunch] = []
+    /// Why requests ended without output (AssistantRequestState.swift): the
+    /// sheet shows the latest note next to a cancelled/failed state.
+    @Published private(set) var recoveryLog = AssistantRecoveryLog()
     private var explanationProcess: OneShotProcess?
     private var explanationJob: ExplanationJob?
     private var explained: (input: Input, latex: String)?
@@ -189,6 +192,9 @@ final class ProposalPreview: ObservableObject {
         // An explanation is bound to one (documents, anchor, revision, proposal)
         // tuple; any change makes it stale, so it is cancelled or cleared.
         if let e = explained, e.input != input || e.latex != latex {
+            if let job = explanationJob {
+                recoveryLog.record(.forChange(requestId: job.id, old: e, new: (input, latex)))
+            }
             cancelExplanation(reason: "proposal or document changed")
         }
         guard executable != nil else { state = .noCompiler; return }
@@ -812,6 +818,21 @@ extension ProposalPreview {
     }
 
     var explanationAvailable: Bool { explanationConfiguration.helper != nil }
+    /// Pid of the helper/provider child currently running for the explanation,
+    /// nil when none is (introspection for tests; the app never signals it).
+    var runningChildProcessIdentifier: Int32? {
+        guard let p = explanationProcess, p.isRunning else { return nil }
+        return p.processIdentifier
+    }
+    /// The exact JSON request the current job last sent (or will send) to the
+    /// helper; introspection so a test can replay it against the real helper
+    /// with a moved snapshot. Nil when no request is current.
+    var currentHelperRequest: [String: Any]? { explanationJob?.request }
+    /// Note for the latest recovery event while the sheet shows no output.
+    var recoveryNoteText: String? {
+        guard explanationState.isIdleForReviewer, let last = recoveryLog.last else { return nil }
+        return last.note
+    }
     var explanationProviderEnabled: Bool { explanationConfiguration.provider != nil }
     var explanationInFlight: Bool { explanationState.isInFlight }
     /// True when the current shadow result can be explained right now.
@@ -932,6 +953,15 @@ extension ProposalPreview {
         runHelper(helper, job: job)
     }
 
+    /// The sheet's Cancel button: records the reviewer's cancellation for the
+    /// running request, then cancels like any other cancellation.
+    func cancelExplanationByReviewer() {
+        if let job = explanationJob, explanationState.isInFlight {
+            recoveryLog.record(.cancelledByReviewer(requestId: job.id, stage: job.stage))
+        }
+        cancelExplanation(reason: "cancelled by reviewer")
+    }
+
     /// Cancels any in-flight helper/provider process and clears the state.
     /// A reply that still arrives for the old request is discarded.
     func cancelExplanation(reason: String) {
@@ -991,13 +1021,16 @@ extension ProposalPreview {
     func handleExplanationReply(id: String, stage: ExplanationStage, result: Result<OneShotProcess.Output, OneShotProcess.Failure>) {
         guard var job = explanationJob, job.id == id, job.stage == stage, stage != .done else {
             staleExplanationReplies += 1
+            recoveryLog.record(.lateReplyDiscarded(requestId: id, stage: stage))
             return
         }
         explanationProcess = nil
         let output: OneShotProcess.Output
         switch result {
         case .success(let o): output = o
-        case .failure(let f): fail(id, Self.describe(f, stage: stage)); return
+        case .failure(let f):
+            if let event = AssistantRecoveryEvent.classify(f, requestId: id, stage: stage) { recoveryLog.record(event) }
+            fail(id, Self.describe(f, stage: stage)); return
         }
         do {
             switch stage {
@@ -1321,13 +1354,16 @@ struct ProposalExplanationView: View {
                 Spacer()
                 if preview.explanationInFlight {
                     ProgressView().controlSize(.mini)
-                    Button("Cancel") { preview.cancelExplanation(reason: "cancelled by reviewer") }.controlSize(.mini)
+                    Button("Cancel") { preview.cancelExplanationByReviewer() }.controlSize(.mini)
                 } else if preview.explanationAvailable {
                     Button(explainTitle) { preview.explain() }.controlSize(.mini).disabled(!preview.canExplain)
                 }
             }
             .help("Runs the local flashtex-assistant-context helper as a child process on the shadow compile (offline: no network, no credentials in its environment): bounded bytes, bound to this proposal's revision. A provider command runs only when you enabled one with FLASHTEX_ASSISTANT_PROVIDER; nothing is applied without your approval.")
             Text(preview.explanationStatusText).font(.caption2).foregroundStyle(.secondary).lineLimit(3)
+            if let note = preview.recoveryNoteText {
+                Text(note).font(.caption2).foregroundStyle(.tertiary).lineLimit(2)
+            }
             switch preview.explanationState {
             case .ready(let e), .approving(let e):
                 explanationBody(e)

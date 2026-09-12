@@ -1,0 +1,37 @@
+{
+  "agent_id": "mac-assistant-recovery",
+  "allocation_id": "claude-mac20x-assistant-recovery",
+  "assignment_acknowledgements": {},
+  "branch": "agent/mac-assistant-recovery/assistant-recovery",
+  "capabilities": [
+    "swift",
+    "appkit",
+    "swiftui",
+    "process-recovery-tests"
+  ],
+  "code_revision": "PENDING",
+  "eta_minutes": {
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 5
+  },
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "dda0b62",
+  "next_action": "Parent merges the branch (no parent-retained file touched; ProposalPreview.swift edits are additive); full swift test with real helpers at integration under load < 15",
+  "reviewed_peers": {
+    "origin/agent/mac-claude-a/mac-shell": {
+      "adaptation": "Based on 5bc3fc0f; ProposalPreview.swift edited additively (recoveryLog, cancelExplanationByReviewer, runningChildProcessIdentifier, currentHelperRequest, recoveryNoteText, one caption in ProposalExplanationView); existing ProposalPreviewTests 25/25 (1 env-gated skip) unchanged",
+      "reviewed_utc": "2026-09-12T13:43:00Z",
+      "sha": "5bc3fc0f"
+    }
+  },
+  "schema_version": 1,
+  "state": "ready_for_integration",
+  "summary": "Gap 8 assistant cancellation/expiry/timeout/helper-exit recovery: coverage audit in coordination/mac-assistant-recovery.md; new AssistantRequestState.swift (AssistantRecoveryEvent classifier + bounded AssistantRecoveryLog + ExplanationState.isIdleForReviewer); additive ProposalPreview hooks; deterministic control-file provider fixture; AssistantRecoveryTests 6/6 with the real flashtex-assistant-context helper (5 XCTSkip cleanly without it), incl. the helper's own 'source snapshot is stale' refusal of a moved snapshot and a SIGTERM-ignoring provider whose late valid reply is never accepted; approval boundary asserted in every case",
+  "tool": "Claude Code subagent (parent mac-claude-a)",
+  "updated_utc": "2026-09-12T13:43:00Z",
+  "usage": {
+    "evidence": "swift build OK; swift test --filter AssistantRecoveryTests 6/6 in 8.5 s with FLASHTEX_ASSISTANT_CONTEXT=<worktree>/crates/assistant-context/target/release/flashtex-assistant-context (sha256 a638cbdf...), 1-min load 7-11 under shared load (not an isolated result); without helper 1 passed + 5 skipped; swift test --filter ProposalPreviewTests 25/25 (1 skip) 26.5 s; full swift test NOT run (parent heavy-build window)",
+    "status": "Shared Claude Max quota with parent mac-claude-a; no purchases"
+  }
+}
