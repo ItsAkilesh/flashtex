@@ -86,4 +86,20 @@ final class CaptureStore {
         lastPayloadJSON = json
         showPayloadPreview = true
     }
+
+    /// Retry a locally saved capture over Bonjour using its original ID and
+    /// payload. Reusing the ID makes this safe against receiver-side retries.
+    func retryNetworkDelivery(captureID: String) {
+        guard let index = captures.firstIndex(where: { $0.id == captureID }) else {
+            lastError = "Capture is no longer available for retry"
+            return
+        }
+        guard !captures[index].networkSent else { return }
+        guard BonjourTransport.shared.send(captures[index].payloadJSON) else {
+            lastError = "Mac is not connected; capture remains saved locally"
+            return
+        }
+        captures[index].networkSent = true
+        lastError = nil
+    }
 }

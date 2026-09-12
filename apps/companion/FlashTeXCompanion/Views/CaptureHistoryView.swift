@@ -58,6 +58,15 @@ struct CaptureHistoryView: View {
                             ))
                         }
                     }
+                    .contextMenu {
+                        if !capture.networkSent {
+                            Button {
+                                store.retryNetworkDelivery(captureID: capture.id)
+                            } label: {
+                                Label("Retry delivery", systemImage: "arrow.clockwise")
+                            }
+                        }
+                    }
                 }
             }
         }
