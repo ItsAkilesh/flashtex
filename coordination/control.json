@@ -1,22 +1,23 @@
 {
-  "schema_version": 1,
-  "state": "running",
-  "stop_at_utc": null,
-  "stop_condition": "explicit user stop only; verified completion starts another improvement cycle",
   "authorization": "Latest explicit user instruction: continue improvements even after verified completion until the user explicitly stops work. Existing billing and authentication restrictions remain.",
   "completion_evidence": [],
   "local_max_active_agents": 4,
-  "paused_agents": [
-    "bridge-context-jobs",
-    "commander-project-index",
-    "commander-edit-ledger"
-  ],
+  "no_compensating_reallocation": true,
   "paused_agent_handles": [
     "/root/bridge_context",
     "/root/orchestrator_sol/corpus_continuation",
     "/root/orchestrator_sol/mac_integration_review"
   ],
+  "paused_agents": [
+    "bridge-context-jobs",
+    "commander-project-index",
+    "commander-edit-ledger",
+    "commander-font-resources"
+  ],
+  "schema_version": 1,
   "staffing_authorization": "Latest user: retain three Astra engineers plus Commander; discontinued three may finish current task only, then stop. No followups, replacements or compensating remote expansion.",
-  "no_compensating_reallocation": true,
-  "updated_utc": "2026-09-12T08:35:11.897361+00:00"
+  "state": "running",
+  "stop_at_utc": null,
+  "stop_condition": "explicit user stop only; verified completion starts another improvement cycle",
+  "updated_utc": "2026-09-12T10:53:39.658079+00:00"
 }

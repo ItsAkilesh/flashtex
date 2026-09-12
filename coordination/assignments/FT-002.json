@@ -1,23 +1,23 @@
 {
   "acceptance": [
-    "Pinned input/binary hashes and p50/p95/p99 measurements",
-    "Exact incremental-clean equality and no lost corpus checks",
-    "Native paint and raw PDF byte equality remain separate gates"
+    "Reproduce actual reference fixtures13/14 from render-pipeline evidence and remove only demonstrated parser blockers",
+    "Bound nesting and malformed delimiter recovery; preserve UTF8 source ranges and original font/glyph mapping gates",
+    "Full compiler tests and strict lint; no transferred math/paragraph/font edits, no raw PDF or native parity assertion"
   ],
   "agent_id": "claude",
   "allocation_id": "openai-kabir-plus-ft002-stage6",
   "branch": "agent/claude/compiler-foundation",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "155e6ff84c60353aeab1422a0b86897d5fd17fd7",
-  "objective": "Implement one measured compiler output allocation or reuse improvement with exact clean equivalence",
+  "input_main_sha": "f1f1f21e69d06877ddb200fd983f133924f490ac",
+  "objective": "URGENT user-designated Kabir CLAUDE Commander successor readiness. Read coordination/kabir-transfer-pending.md and GH1#5647020028; publish exact Claude parent identity/session/PID, actual route/capacity, supervised watcher/publisher readiness and read-only standby ACK. Do NOT claim authority yet. Astra remains active until explicit named quiesced handoff. Preserve compiler bc737126 work and existing engineering ownership; latest cumulative Text be426 remains separately reviewable.",
   "owned_paths": [
     "crates/compiler"
   ],
-  "revision": 11,
+  "revision": 18,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-002",
   "timebox_minutes": 45,
-  "updated_utc": "2026-09-12T09:45:11Z"
+  "updated_utc": "2026-09-12T16:11:31.063859+00:00"
 }

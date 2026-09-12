@@ -3,28 +3,33 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-048": {
-      "acknowledged_utc": "2026-09-12T09:18:15Z",
-      "adaptation": "Current main merged; exclusive document-runtime and preview-controller scope. Prototype bounded opt-in historical completion side channel with immutable identity; no Event::Preview semantics or native wire activation change.",
-      "main_sha": "e5901797e8a7ebdd8d714ecdee6793e1097515a9",
-      "revision": 3
+      "acknowledged_utc": "2026-09-12T15:57:55Z",
+      "adaptation": "Read r42 and completed live compiler protocol, source navigation, malformed-input and performance acceptance; current single cumulative patch is be426cb8 under hw1-current-compiler. Producer fidelity gaps remain explicit.",
+      "main_sha": "62da4b3d6f8e18cd7f78900c9339ef8438f0a835",
+      "revision": 42
     }
   },
   "branch": "agent/commander-preview-performance/preview-performance",
   "capabilities": [
     "Preview helper serialization and latency"
   ],
-  "code_revision": "c07f7ba69f18038821c406309e99080675c33b78",
-  "eta_minutes": null,
+  "code_revision": "be426cb85f16e88d145c2c0295a33c76e6b9bf1c",
+  "eta_minutes": {
+    "likely": 15,
+    "optimistic": 5,
+    "pessimistic": 30
+  },
   "machine": "linux-primary",
-  "main_integrated_through": "e5901797e8a7ebdd8d714ecdee6793e1097515a9",
-  "next_action": "Native parent remeasure integratedcompiler/helper on sameMac; await snapshot protocol agreement while maintainingstrictdefault.",
+  "main_integrated_through": "3d3909ce828b4de34d67f8a22feb6cb369232af3",
+  "next_action": "Commander independent review and owner adoption; producer Text spacing/encoding/ligature fixes remain required. Await next product scope without authoritative compiler or control-file edits.",
   "reviewed_peers": {},
   "schema_version": 1,
-  "state": "in_progress",
-  "summary": "Samehelper50KB30msburst serializerbaseline1currentpreview\u2192candidate12,40/40durableACKs,2exactcleanfinals/reopens. Final90.477\u219243.166ms;8stale candidateframes remain,no perkeystroke/nativeclaim.",
+  "state": "ready_for_integration",
+  "summary": "Single cumulative compiler handoff be426cb8 supersedes prior patch chains: 104 final tests and strict lint pass, clean apply matches ten sources, actual optimized HW1 reply retains 72 diagnostics. Text allocation optimization eaba97d5 preserves 207 complete replies and improves alternating synthetic 500KB median about 14 percent.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T09:37:15Z",
+  "updated_utc": "2026-09-12T15:57:55Z",
   "usage": {
-    "status": "unknown"
+    "evidence": "crates/preview-controller/docs/handoffs/hw1-current-compiler/evidence.json; crates/preview-controller/docs/handoffs/hw1-text-runs/evidence.json",
+    "status": "Existing hosted allocation; no paid CLI/API calls, remaining quota unknown."
   }
 }

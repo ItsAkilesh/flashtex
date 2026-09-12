@@ -510,6 +510,19 @@ impl Store {
         expected_sha256: &str,
         text: String,
     ) -> Result<Document> {
+        self.replace_document_in_place(expected_revision, expected_sha256, text)?;
+        Ok(self
+            .document()?
+            .ok_or_else(|| Error::new("document_missing", "saved source missing"))?
+            .clone())
+    }
+    /// Same durable edit as replace_document, without cloning a response document.
+    pub fn replace_document_in_place(
+        &mut self,
+        expected_revision: u64,
+        expected_sha256: &str,
+        text: String,
+    ) -> Result<()> {
         self.ready()?;
         let mut next = self
             .state
@@ -533,10 +546,9 @@ impl Store {
             revision,
             text,
         )?;
-        let result = next.document.clone();
         history::record(&mut next, &before, "Source edit".into())?;
         self.commit(next)?;
-        Ok(result)
+        Ok(())
     }
     /// Keep a recovery snapshot until an exactly matching bridge acknowledgement.
     pub fn confirm(&mut self, receipt: &AppliedReceipt) -> Result<()> {

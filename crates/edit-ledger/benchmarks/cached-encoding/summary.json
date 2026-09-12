@@ -1,0 +1,23 @@
+[
+  {
+    "entries": 5,
+    "bytes": 5219067,
+    "cached_median_us": 6376.5,
+    "legacy_median_us": 15687.5,
+    "exact_pairs": 6
+  },
+  {
+    "entries": 10,
+    "bytes": 10438097,
+    "cached_median_us": 14920.5,
+    "legacy_median_us": 35658.5,
+    "exact_pairs": 6
+  },
+  {
+    "entries": 20,
+    "bytes": 20876157,
+    "cached_median_us": 41026.0,
+    "legacy_median_us": 93684.5,
+    "exact_pairs": 6
+  }
+]

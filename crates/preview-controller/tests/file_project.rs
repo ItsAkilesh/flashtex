@@ -262,3 +262,43 @@ fn dynamic_open_detach_and_reopen_preserve_source_and_navigation() {
     assert!(controller.index().symbols(&added).is_err());
     assert!(!root.path().join("chapter.tex").exists());
 }
+
+#[test]
+fn bibliography_declarations_refuse_escape_and_do_not_infer_extensions() {
+    let root = tempfile::tempdir().unwrap();
+    let private = tempfile::tempdir().unwrap();
+    std::fs::write(root.path().join("main.tex"), "\\cite{old}").unwrap();
+    std::fs::write(root.path().join("refs.bib"), "@article{old,title={T}}").unwrap();
+    for paths in [
+        vec!["../outside".into()],
+        vec!["main.tex".into()],
+        vec!["refs.bib".into(), "refs.bib".into()],
+    ] {
+        assert!(FileProject::open_with_bibliography(
+            root.path(),
+            private.path(),
+            "p",
+            "main.tex",
+            &paths
+        )
+        .is_err());
+    }
+    let (files, mut controller) =
+        FileProject::open(root.path(), private.path(), "p", "main.tex").unwrap();
+    let snapshot = controller.index().snapshot();
+    files
+        .open_document(&mut controller, &snapshot, "refs.bib")
+        .unwrap();
+    let snapshot = controller.index().snapshot();
+    assert_eq!(
+        controller
+            .index()
+            .document_kind(&snapshot, "refs.bib")
+            .unwrap(),
+        flashtex_project_index::DocumentKind::Latex
+    );
+    assert!(controller
+        .index()
+        .plan_citation_rename(&snapshot, "old", "new")
+        .is_err());
+}

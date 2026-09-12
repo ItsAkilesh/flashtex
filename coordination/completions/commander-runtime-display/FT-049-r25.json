@@ -1,0 +1,69 @@
+{
+  "agent_id": "commander-runtime-display",
+  "archived_utc": "2026-09-12T13:29:00Z",
+  "assignment": {
+    "acceptance": [
+      "Start from integrated decoder ecbaf7c on main; preserve four raw frames plus one decoded permit and joined shutdown",
+      "Exactly one contiguous sibling only after requested and accepted nonfailed result; bind ID/project/revision/document hashes and reject malformed, unsolicited, missing or out-of-order frames",
+      "Default legacy requests unchanged; preserve line limits and source epochs, no duplicate renderer parser or automatic native activation",
+      "Use corrected actual producer65dbe7d or later raw-byte font hashes; old contract SHA-bytes-plus-face deviation is historical, not accepted resource evidence",
+      "Publish bounded candidate API for existing helper owner; if deep validation is deferred, the type and contract must remain explicitly untrusted until existing native/core validator accepts it"
+    ],
+    "agent_id": "commander-runtime-display",
+    "allocation_id": "hosted-openai-product",
+    "branch": "agent/commander-runtime-display/display-runtime",
+    "deadline_utc": null,
+    "dependencies": [],
+    "input_main_sha": "291849d7d5ab67781d1c681f50ebc328fd8a996c",
+    "objective": "Independently audit actual sustained grouped typing request ordering revision hashes and permanent receipts from published helper capture",
+    "owned_paths": [
+      "crates/document-runtime"
+    ],
+    "revision": 25,
+    "schema_version": 1,
+    "state": "assigned",
+    "task_id": "FT-049",
+    "timebox_minutes": 40,
+    "updated_utc": "2026-09-12T13:15:49.023748+00:00"
+  },
+  "report": {
+    "agent_id": "commander-runtime-display",
+    "allocation_id": "hosted-openai-product",
+    "assignment_acknowledgements": {
+      "FT-049": {
+        "acknowledged_utc": "2026-09-12T13:17:35Z",
+        "adaptation": "Read-only new typing_burst.py review: source/revision/hash/permanent-ID sequence sound; current-preview monotonic/latest-ACK assertion gap sent root before attribution. Await published capture for independent exact snapshot audit; no throughput rerun.",
+        "main_sha": "367aba68e2ee689cca8db4da2a8427d82f3de72b",
+        "revision": 25
+      }
+    },
+    "branch": "agent/commander-runtime-display/display-runtime",
+    "capabilities": [
+      "rust-runtime"
+    ],
+    "code_revision": "9d03bbe28ffabd863e9c2a882df2a80034792ea1",
+    "eta_minutes": null,
+    "machine": "linux-primary",
+    "main_integrated_through": "31f62559f2ed154b3c93e8bc2240690a565da672",
+    "next_action": "Commander review/integration; existing root historical opt-in harness read-only review if assigned. No active jobs, no native or continuous-preview claim.",
+    "reviewed_peers": {},
+    "schema_version": 1,
+    "state": "ready_for_integration",
+    "summary": "FT049r25: 9d03bbe2 independently audits pinned06b2f7a8 checked capture. All artifact/assets verified;20 UTF8 guarded edits and ACKs,11 actual intermediate results map stale,8 missing map superseded,only current21. Exact final captured request/clean result equality and old command2/current21 retry verified. No workload rerun or production change.",
+    "tool": "codex",
+    "updated_utc": "2026-09-12T13:28:56Z",
+    "usage": {
+      "status": "unknown"
+    }
+  },
+  "report_age_seconds": 4,
+  "report_path": "coordination/agents/commander-runtime-display.json",
+  "review_required": true,
+  "revision": 25,
+  "schema_version": 1,
+  "stale_completion": false,
+  "state": "reported_ready",
+  "task_id": "FT-049",
+  "worker_branch": "agent/commander-runtime-display/display-runtime",
+  "worker_report_sha": "974756a3db3169faa544bd65f91d040085387e1d"
+}

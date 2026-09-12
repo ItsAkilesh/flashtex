@@ -39,3 +39,35 @@ in `fixtures/pipeline-tfm-replay.json`. rm-lmr fixtures were not found locally a
 are not claimed equivalent. The enclosing crate still has serde/sha2 dependencies;
 this is separate from parser compatibility. No pipeline files or CM/MATH glyph
 mapping were modified.
+
+## Required metric failure contract and 12pt evidence
+
+`required_tfm::RequiredMetrics::load(root, &Manifest)` loads at most16 explicitly
+named assets atomically (128KiB/TFM,16KiB/license). The version1 typed manifest
+example is `fixtures/lm-required-metrics.json`. Each path and license is rooted and
+SHA-bound; duplicate declarations, invalid/noncanonical paths, absent files,
+changed bytes and malformed TFMs fail. `get` also refuses an undeclared name.
+This is a required-metrics mode: propagate its typed `Missing`/`Digest`/`Read`/
+`Parse` result as a blocking layout diagnostic. Do not convert it into `tfm: None`
+and then use OTF widths. A separate explicitly selected OTF layout mode is outside
+this contract; resource failure never implicitly selects it. The immutable result
+retains each exact asset declaration; file changes require reloading/revalidation.
+
+The official `lm2.004bas.zip` supplied ec-lmr12 and rm-lmr12/8/6; all four were
+actually replayed against the pinned pipeline reader, covering every present
+metric, parameters1..32 and ten ligature/kern inputs. Its ec-lmr10 SHA matches our
+existing fixture. The current official2.007 release has different metric hashes
+and is explicitly excluded from this replay. Archive/file/license/output hashes
+and the temporary directory are recorded in `lm-required-metrics-provenance.json`.
+No metric or font bytes were installed or copied into this repository.
+
+Run the peer reproduction tool and shared test with
+`FLASHTEX_LM_TFM_DIR=/path/to/extracted2.004metrics` (including the declared LICENSE):
+
+```
+python3 crates/font-resources/tools/replay_pipeline_tfm.py
+cargo test --offline --manifest-path crates/font-resources/Cargo.toml --test required_tfm -- --include-ignored
+```
+
+Set that environment variable for both commands. This verifies metrics and encoded
+code intervals; rm-lmr code-to-MATH-GID mapping and visual parity remain separate.

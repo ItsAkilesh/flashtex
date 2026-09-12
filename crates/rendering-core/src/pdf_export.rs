@@ -102,6 +102,7 @@ pub fn export(
             width,
             height,
             content: Content::Verbatim(content),
+            fonts: None,
         });
     }
     let output = exact::render_exact(&doc)?;

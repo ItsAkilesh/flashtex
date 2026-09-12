@@ -1,0 +1,69 @@
+{
+  "agent_id": "commander-runtime-display",
+  "archived_utc": "2026-09-12T14:13:36Z",
+  "assignment": {
+    "acceptance": [
+      "Start from integrated decoder ecbaf7c on main; preserve four raw frames plus one decoded permit and joined shutdown",
+      "Exactly one contiguous sibling only after requested and accepted nonfailed result; bind ID/project/revision/document hashes and reject malformed, unsolicited, missing or out-of-order frames",
+      "Default legacy requests unchanged; preserve line limits and source epochs, no duplicate renderer parser or automatic native activation",
+      "Use corrected actual producer65dbe7d or later raw-byte font hashes; old contract SHA-bytes-plus-face deviation is historical, not accepted resource evidence",
+      "Publish bounded candidate API for existing helper owner; if deep validation is deferred, the type and contract must remain explicitly untrusted until existing native/core validator accepts it"
+    ],
+    "agent_id": "commander-runtime-display",
+    "allocation_id": "hosted-openai-product",
+    "branch": "agent/commander-runtime-display/display-runtime",
+    "deadline_utc": null,
+    "dependencies": [],
+    "input_main_sha": "764d57655aa7c87c02b9c33ea8b43b1211244885",
+    "objective": "Review exact positional-read repair and unobserved partial truncated diagnostic states",
+    "owned_paths": [
+      "crates/document-runtime"
+    ],
+    "revision": 39,
+    "schema_version": 1,
+    "state": "assigned",
+    "task_id": "FT-049",
+    "timebox_minutes": 40,
+    "updated_utc": "2026-09-12T14:07:28.282919+00:00"
+  },
+  "report": {
+    "agent_id": "commander-runtime-display",
+    "allocation_id": "hosted-openai-product",
+    "assignment_acknowledgements": {
+      "FT-049": {
+        "acknowledged_utc": "2026-09-12T14:08:05Z",
+        "adaptation": "Read FT049r39; e2072fe3 capturedfalse/true followup reviewed readonly. Await one approved /home same298helper/158producer correctnesscapture, artifactaudit only, no speed/causecomparison or ownrun.",
+        "main_sha": "d923951262af359cee6018ca6c834c1d63698b3b",
+        "revision": 39
+      }
+    },
+    "branch": "agent/commander-runtime-display/display-runtime",
+    "capabilities": [
+      "rust-runtime"
+    ],
+    "code_revision": "33238d636c5c9bc6f216961a38a2916641238413",
+    "eta_minutes": null,
+    "machine": "linux-primary",
+    "main_integrated_through": "ff1e8dd62661c44db634363ddee9630b9368afad",
+    "next_action": "Commander integration/next productassignment; furthertelemetry paused, no poststopimplementation. No activejobs or runtimeproductionchanges.",
+    "reviewed_peers": {},
+    "schema_version": 1,
+    "state": "ready_for_integration",
+    "summary": "FT049r39 exact7a7fd4f2 correctnessauditPASS:24archive/78asset hashes+actual298helper/158producer rehashed,20source/ACK,5historical/current21,receipts/reopen/clean verified. TraceINCOMPLETE partialtail/missingterminal preserved. Bothartifactmodes pass,oldfailedJSON unchanged; no workload/perf/causeclaim.",
+    "tool": "codex",
+    "updated_utc": "2026-09-12T14:13:31Z",
+    "usage": {
+      "status": "unknown"
+    }
+  },
+  "report_age_seconds": 5,
+  "report_path": "coordination/agents/commander-runtime-display.json",
+  "review_required": true,
+  "revision": 39,
+  "schema_version": 1,
+  "stale_completion": false,
+  "state": "reported_ready",
+  "task_id": "FT-049",
+  "worker_branch": "agent/commander-runtime-display/display-runtime",
+  "worker_report_sha": "4da0f772cf8f30259b502af09bfe2fa701c699af"
+}

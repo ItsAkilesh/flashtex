@@ -1,0 +1,78 @@
+{
+  "agent_id": "daniel-footnotes",
+  "archived_utc": "2026-09-12T09:56:20Z",
+  "assignment": {
+    "acceptance": [
+      "Meaningful tests and strict Rust lint pass with bounded malformed/Unicode inputs",
+      "Preserve exact source/revision and resource identities; no implicit approximation or parity claim",
+      "Do not edit peer compiler/native/layout files; publish typed adapter contract and exact tested SHA",
+      "Register Daniel machine and exact assignment ACK/session before working",
+      "Preserve old WIP and test before publication; no automatic return of paths at cooldown end"
+    ],
+    "agent_id": "daniel-footnotes",
+    "allocation_id": "daniel-claude20x-shared",
+    "branch": "agent/daniel-footnotes/footnote-layout",
+    "deadline_utc": null,
+    "dependencies": [],
+    "input_main_sha": "5499e419b09868e2e248c413351a5646db74fac1",
+    "objective": "Exercise indexed roots, delimiters and script geometry with explicit metric inputs and clean-rebuild equivalence; coordinate source-breaking radical API consumers.",
+    "owned_paths": [
+      "crates/math-layout"
+    ],
+    "revision": 3,
+    "schema_version": 1,
+    "state": "assigned",
+    "task_id": "FT-032",
+    "timebox_minutes": 40,
+    "updated_utc": "2026-09-12T09:02:36.189558+00:00"
+  },
+  "report": {
+    "agent_id": "daniel-footnotes",
+    "allocation_id": "daniel-claude20x-shared",
+    "assignment_acknowledgements": {
+      "FT-032": {
+        "acknowledged_utc": "2026-09-12T09:53:08Z",
+        "adaptation": "Coordinated (not edited) the revision-1 source-breaking Nucleus::Radical struct-variant change: repo-wide grep for every consumer (font-engine, rendering-core, apps/mac, and crates/compiler's coincidentally-named but unrelated local Nucleus enum) found none actually affected; documented before/after shape and exact call sites in coordination/daniel-footnotes.md in case compiler is ever integrated with this crate. Added tests/explicit_metrics.rs exercising indexed-root degree/rule geometry, Rule 19 delimiter sizing, and Rule 18d/e both-scripts placement, all against a from-scratch literal MathFontMetrics (explicit metric inputs, not engine-computed values), plus a clean-rebuild equivalence test comparing two independently-built MathLists/providers by f64 bit pattern across all four styles. Preserved and passed the existing 34 tests (38 total).",
+        "main_sha": "8e7546dfb4721c780036f03c21b14e6002062142",
+        "revision": 3
+      }
+    },
+    "branch": "agent/daniel-footnotes/footnote-layout",
+    "capabilities": [
+      "rust",
+      "math-layout",
+      "tex-geometry"
+    ],
+    "code_revision": "cd666391a15797854262ee65eb6a81bb5bebbb13",
+    "eta_minutes": {
+      "likely": 0,
+      "optimistic": 0,
+      "pessimistic": 0
+    },
+    "machine": "mac-m5pro-dq222",
+    "main_integrated_through": "8e7546dfb4721c780036f03c21b14e6002062142",
+    "next_action": "Await Commander integration. No blockers; no peer edits requested.",
+    "reviewed_peers": {
+      "origin/main": "8e7546dfb4721c780036f03c21b14e6002062142"
+    },
+    "schema_version": 1,
+    "state": "ready_for_integration",
+    "summary": "crates/math-layout FT-032 rev3: added tests/explicit_metrics.rs (4 tests, fully-literal synthetic MathFontMetrics, no CM/TFM or engine-computed values) covering \\sqrt[n]{} degree/rule geometry (Rule 11 + \\r@@t), Rule 19 delimiter sizing against an explicit too-small/large-enough size chain, superscript+subscript on a non-bare-character nucleus exercising both stages of the Rule 18e clearance correction, and clean-rebuild equivalence via two independently-built MathLists/providers compared by f64 bit pattern. Repo-wide consumer-impact analysis for the revision-1 Nucleus::Radical struct-variant change: font-engine (the only Cargo dependent) only implements MathFontMetrics and never touches Nucleus/Atom/MathList; rendering-core has no math-layout dependency and its font-engine dev-dependency usage is shaping-only; crates/compiler has its own independently-defined, unrelated Nucleus enum (name collision only, no Cargo dependency on this crate); apps/mac has no coupling beyond an unrelated macro-name string. No in-repo consumer requires any change; no peer file edited. cargo test: 38 passed (previous 34 + 4 new), 0 failed. cargo clippy --all-targets -- -D warnings: clean.",
+    "tool": "Claude Code on Claude Max 20x",
+    "updated_utc": "2026-09-12T09:53:08Z",
+    "usage": {
+      "evidence": "Shared Claude Max 20x subscription quota; no purchases, no overages, no separate metering exposed to this agent.",
+      "status": "unknown"
+    }
+  },
+  "report_age_seconds": 192,
+  "report_path": "coordination/agents/daniel-footnotes.json",
+  "review_required": true,
+  "revision": 3,
+  "schema_version": 1,
+  "stale_completion": false,
+  "state": "reported_ready",
+  "task_id": "FT-032",
+  "worker_branch": "agent/daniel-footnotes/footnote-layout",
+  "worker_report_sha": "9bbdd74a33cb6d5d465141b2cbfc38c53cc874fd"
+}

@@ -59,6 +59,14 @@ pub struct PageIndex {
 impl PageIndex {
     pub fn build(list: &DisplayList, capabilities: &Capabilities) -> Result<Self> {
         list.validate(capabilities)?;
+        Ok(Self::build_validated(list))
+    }
+    /// Private validated CFF path: PipelineCff cannot be constructed without
+    /// complete profile/source/resource validation and exposes no mutable list.
+    pub(crate) fn from_pipeline(pipeline: &crate::pipeline_cff::PipelineCff) -> Self {
+        Self::build_validated(pipeline.display())
+    }
+    fn build_validated(list: &DisplayList) -> Self {
         let mut pages = BTreeMap::new();
         for page in &list.pages {
             let mut entries = Vec::new();
@@ -132,11 +140,11 @@ impl PageIndex {
                 },
             );
         }
-        Ok(Self {
+        Self {
             project_id: list.project_id.clone(),
             revision: list.revision,
             pages,
-        })
+        }
     }
     /// Half-open rectangles and page bounds; later paint order wins overlaps.
     /// An absent caret list selects the entire cluster, never an invented caret.

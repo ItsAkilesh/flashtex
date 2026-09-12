@@ -139,3 +139,44 @@ fn durable_cost_matrix() {
         );
     }
 }
+
+#[test]
+#[ignore = "explicit release-mode growing-history attribution"]
+fn growing_source_history_cost() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut store = Store::open(dir.path()).unwrap();
+    let original = "x".repeat(521792);
+    store
+        .initialize(Document::new("cost".into(), "main.tex".into(), 1, original.clone()).unwrap())
+        .unwrap();
+    for index in 0..20 {
+        let doc = store.document().unwrap().unwrap().clone();
+        let mut source = original.clone();
+        source.replace_range(0..3, &format!("{index:03}"));
+        let started = Instant::now();
+        store
+            .replace_document(doc.revision, &doc.source_sha256, source)
+            .unwrap();
+        let edit_us = started.elapsed().as_micros();
+        let state = store.state.as_ref().unwrap();
+        let mut samples = BTreeMap::new();
+        measure(&mut samples, "clone", || black_box(state.clone()));
+        measure(&mut samples, "validate", || state.validate().unwrap());
+        let bytes = measure(&mut samples, "serialize", || {
+            serde_json::to_vec(state).unwrap()
+        });
+        measure(&mut samples, "persist", || store.persist(&bytes).unwrap());
+        println!(
+            "GROWING {}",
+            json!({"edit":index+1,"edit_us":edit_us,"store_bytes":bytes.len(),"phases_ns":samples})
+        );
+    }
+    let exact = serde_json::to_vec(store.state.as_ref().unwrap()).unwrap();
+    drop(store);
+    let reopened = Store::open(dir.path()).unwrap();
+    assert_eq!(
+        serde_json::to_vec(reopened.state.as_ref().unwrap()).unwrap(),
+        exact
+    );
+    println!("GROWING_REOPEN_EXACT true");
+}
