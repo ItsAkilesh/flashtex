@@ -1,4 +1,5 @@
-//! Bounded background conversion. No provider, transport or retry policy is hidden here.
+pub mod snapshot;
+use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, VecDeque},
     panic::{catch_unwind, AssertUnwindSafe},
@@ -9,19 +10,19 @@ use std::{
     thread,
 };
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ContextFingerprint {
     pub revision: u64,
     pub sha256: String,
 }
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum FailureKind {
     Provider,
     AmbiguousProvider,
     StaleContext,
     Panicked,
 }
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Failure {
     pub kind: FailureKind,
     pub message: String,
@@ -41,6 +42,7 @@ pub enum State<T> {
     Completed(Arc<T>),
     Failed(Failure),
     Cancelled,
+    RecoveryRequired(snapshot::RecoveryReason),
 }
 impl<T> Clone for State<T> {
     fn clone(&self) -> Self {
@@ -50,6 +52,7 @@ impl<T> Clone for State<T> {
             Self::Completed(v) => Self::Completed(v.clone()),
             Self::Failed(v) => Self::Failed(v.clone()),
             Self::Cancelled => Self::Cancelled,
+            Self::RecoveryRequired(reason) => Self::RecoveryRequired(reason.clone()),
         }
     }
 }
@@ -66,6 +69,7 @@ pub enum Error {
     StillExecuting,
     NotTerminal,
     Stopped,
+    RecoveryAuthorizationRequired,
 }
 #[derive(Clone)]
 pub struct CancellationToken(Arc<AtomicBool>);

@@ -43,3 +43,25 @@ Verification: `cargo test --manifest-path crates/conversion-jobs/Cargo.toml` and
 Eight deterministic channel-controlled tests exercise duplicate rejection, bounded
 queue/retention, cancellation, stale revisions/hashes, concurrent workers, panic
 recovery and nonblocking shutdown. No Grok or other provider calls occur.
+
+## Durable recovery
+
+`save_snapshot(path, Limits, encode)` captures coherent metadata, then invokes the
+caller codec outside the scheduler lock. It atomically replaces and fsyncs a file
+in an existing caller-owned private directory. Individual result and aggregate
+JSON byte limits are checked before publication. Existing checkpoints survive a
+codec/size failure. The caller serializes writers and validates allocation limits
+inside its codec; snapshot generation cannot bound arbitrary codec allocations.
+
+`restore_snapshot(..., decode)` checks version, identities, digests and limits.
+Restoration never schedules closures. Former queued jobs become
+`RecoveryRequired(QueuedAwaitingAuthorization)`; running, cancelled-but-executing,
+ambiguous-failure and panicked calls become `ProviderMayHaveCompleted`.
+`authorize_resume` requires an explicit caller decision and new closure; queued-only
+authorization cannot restart a possibly completed call. Confirm the previous
+process is terminal and reconcile provider/journal evidence first. A snapshot is
+not a distributed lease or exactly-once billing guarantee. This metadata checkpoint
+must be coordinated with the capture journal by the eventual bridge adapter.
+
+Twelve tests now pass, including atomic old-file preservation, bounded codecs,
+malformed snapshots, duplicate identities and explicit recovery authorization.
