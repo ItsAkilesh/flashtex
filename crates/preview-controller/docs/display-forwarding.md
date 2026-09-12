@@ -111,3 +111,11 @@ stdout open but unread after startup, admits a 1 MiB optional display frame, and
 verifies the existing stalled-writer watchdog terminates the helper while source
 remains intact. These use transport fixtures and do not establish native paint
 performance or renderer validity.
+
+Timing interpretation: `compiler_poll` diagnostics include every eventful owner
+poll and eventless polls lasting at least 1 ms. Candidate-only processing or
+stale-value destruction can occur without a v1 event; older eventful-only traces
+must not be summed as complete owner CPU/wall time. Ordinary fast idle polls stay
+unlogged. Poll duration includes scheduling and owner work, not just source hashing,
+and does not include all background decoder CPU. Fine-grained candidate timing is
+owned by the runtime and remains separate from native renderer timing.

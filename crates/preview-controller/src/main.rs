@@ -318,11 +318,14 @@ fn run(config: Value) -> Result<(), String> {
         }
         let poll_started = std::time::Instant::now();
         let updates = controller.poll();
-        if diagnostic_timings && !updates.is_empty() {
+        let poll_ms = poll_started.elapsed().as_secs_f64() * 1000.0;
+        // Candidate-only processing and discarded-value destruction may produce
+        // no events. Capture slow owner turns without logging every idle poll.
+        if diagnostic_timings && (!updates.is_empty() || poll_ms >= 1.0) {
             eprintln!(
                 "{}",
                 json!({"phase":"compiler_poll","events":updates.len(),
-                "duration_ms":poll_started.elapsed().as_secs_f64()*1000.0})
+                "duration_ms":poll_ms})
             );
         }
         let historical = controller.take_completed_snapshot().and_then(|snapshot| {
