@@ -1,37 +1,52 @@
 {
   "agent_id": "commander-preview-performance",
-  "next_index": 0,
+  "next_index": 3,
   "schema_version": 1,
   "steps": [
     {
-      "name": "Exact immutable-origin snapshot identity and bounded retention/cancellation tests",
-      "objective": "Exact immutable-origin snapshot identity and bounded retention/cancellation tests",
-      "owned_paths": [
-        "crates/preview-controller",
-        "crates/document-runtime"
-      ],
       "acceptance": [
-        "Meaningful tests and strict lint pass",
-        "Publish truthful execution provenance and exact tested SHA",
-        "No native integration or PDF parity claim without measured evidence"
+        "Preserve exact source revision/hash, durable approval and permanent-ID guarantees; history metadata is source-free and does not change retention",
+        "Do not edit crates/document-runtime after published ecbaf7c handoff; consume FT049 reviewed API only",
+        "Helper v2 forwarding remains default OFF, preserves required-output priority and complete frame limits, and never claims native rendering validation"
       ],
       "allocation_id": "hosted-openai-product",
-      "timebox_minutes": 30
+      "name": "Prepare isolated literal Text math AST using existing token stream and explicit Roman intent through compiler layout/export; no second parser or mathbb substitution",
+      "objective": "Prepare isolated literal Text math AST using existing token stream and explicit Roman intent through compiler layout/export; no second parser or mathbb substitution",
+      "owned_paths": [
+        "crates/preview-controller",
+        "crates/edit-ledger"
+      ],
+      "timebox_minutes": 40
     },
     {
-      "name": "Opt-in controller consumption and burst-progress evidence with strict default and source-action refusal",
-      "objective": "Opt-in controller consumption and burst-progress evidence with strict default and source-action refusal",
-      "owned_paths": [
-        "crates/preview-controller",
-        "crates/document-runtime"
-      ],
       "acceptance": [
-        "Meaningful tests and strict lint pass",
-        "Publish truthful execution provenance and exact tested SHA",
-        "No native integration or PDF parity claim without measured evidence"
+        "Preserve exact source revision/hash, durable approval and permanent-ID guarantees; history metadata is source-free and does not change retention",
+        "Do not edit crates/document-runtime after published ecbaf7c handoff; consume FT049 reviewed API only",
+        "Helper v2 forwarding remains default OFF, preserves required-output priority and complete frame limits, and never claims native rendering validation"
       ],
       "allocation_id": "hosted-openai-product",
-      "timebox_minutes": 30
+      "name": "Verify actual five HW1 groups plus spaces comments escapes scripts and Text versus Symbol identity with explicit unsupported recovery",
+      "objective": "Verify actual five HW1 groups plus spaces comments escapes scripts and Text versus Symbol identity with explicit unsupported recovery",
+      "owned_paths": [
+        "crates/preview-controller",
+        "crates/edit-ledger"
+      ],
+      "timebox_minutes": 40
+    },
+    {
+      "acceptance": [
+        "Preserve exact source revision/hash, durable approval and permanent-ID guarantees; history metadata is source-free and does not change retention",
+        "Do not edit crates/document-runtime after published ecbaf7c handoff; consume FT049 reviewed API only",
+        "Helper v2 forwarding remains default OFF, preserves required-output priority and complete frame limits, and never claims native rendering validation"
+      ],
+      "allocation_id": "hosted-openai-product",
+      "name": "Publish exact compiler candidate and reviewed producer hash shift Ord Text adapter handoff; no authoritative compiler producer or native adoption",
+      "objective": "Publish exact compiler candidate and reviewed producer hash shift Ord Text adapter handoff; no authoritative compiler producer or native adoption",
+      "owned_paths": [
+        "crates/preview-controller",
+        "crates/edit-ledger"
+      ],
+      "timebox_minutes": 40
     }
   ],
   "task_id": "FT-048"

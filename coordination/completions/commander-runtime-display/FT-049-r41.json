@@ -1,0 +1,69 @@
+{
+  "agent_id": "commander-runtime-display",
+  "archived_utc": "2026-09-12T14:32:18Z",
+  "assignment": {
+    "acceptance": [
+      "Start from integrated decoder ecbaf7c on main; preserve four raw frames plus one decoded permit and joined shutdown",
+      "Exactly one contiguous sibling only after requested and accepted nonfailed result; bind ID/project/revision/document hashes and reject malformed, unsolicited, missing or out-of-order frames",
+      "Default legacy requests unchanged; preserve line limits and source epochs, no duplicate renderer parser or automatic native activation",
+      "Use corrected actual producer65dbe7d or later raw-byte font hashes; old contract SHA-bytes-plus-face deviation is historical, not accepted resource evidence",
+      "Publish bounded candidate API for existing helper owner; if deep validation is deferred, the type and contract must remain explicitly untrusted until existing native/core validator accepts it"
+    ],
+    "agent_id": "commander-runtime-display",
+    "allocation_id": "hosted-openai-product",
+    "branch": "agent/commander-runtime-display/display-runtime",
+    "deadline_utc": null,
+    "dependencies": [],
+    "input_main_sha": "02a9858dd15aebcb62879a2577467e207a203348",
+    "objective": "Verify exact9aa unchanged producer archive and full-output fresh persistent equality on existing large and multidocument cases",
+    "owned_paths": [
+      "crates/document-runtime"
+    ],
+    "revision": 41,
+    "schema_version": 1,
+    "state": "assigned",
+    "task_id": "FT-049",
+    "timebox_minutes": 40,
+    "updated_utc": "2026-09-12T14:23:56.570752+00:00"
+  },
+  "report": {
+    "agent_id": "commander-runtime-display",
+    "allocation_id": "hosted-openai-product",
+    "assignment_acknowledgements": {
+      "FT-049": {
+        "acknowledged_utc": "2026-09-12T14:25:11Z",
+        "adaptation": "Read FT049r41; exact9aa unchangedarchive offlinebuildPASS347429f4,18fullruntimepairsPASS, rawbyte3+6comparisonPASS andcap1explicitfailed verified. Completing resource/source/hash evidence+publication, no timing or oldgeometryoracle.",
+        "main_sha": "ad922ea13be340f48af110f11d393c6e53afa605",
+        "revision": 41
+      }
+    },
+    "branch": "agent/commander-runtime-display/display-runtime",
+    "capabilities": [
+      "rust-runtime"
+    ],
+    "code_revision": "e0554929c164a76ba98bc082e5c021c5fd8c6d66",
+    "eta_minutes": null,
+    "machine": "linux-primary",
+    "main_integrated_through": "4da0f772cf8f30259b502af09bfe2fa701c699af",
+    "next_action": "Commander integrate e0554929; root may consume exact published binary/manifest for authorized small three-state helper replay. No active jobs; await next bounded product assignment.",
+    "reviewed_peers": {},
+    "schema_version": 1,
+    "state": "ready_for_integration",
+    "summary": "FT049r41 e0554929 complete: unchanged 9aaec57a offline release binary 347429f4; 18 existing large/multidoc fresh-persistent runtime pairs plus 2 cap1 failure/control pairs pass. Nine direct requests have byte-identical stdout; 33429 UTF8 spans and 4 delivered font bindings verified; 61 hash-bound evidence files. Focused clippy and diff check pass. No timing/native/old-geometry parity claim.",
+    "tool": "codex",
+    "updated_utc": "2026-09-12T14:32:01Z",
+    "usage": {
+      "status": "unknown"
+    }
+  },
+  "report_age_seconds": 17,
+  "report_path": "coordination/agents/commander-runtime-display.json",
+  "review_required": true,
+  "revision": 41,
+  "schema_version": 1,
+  "stale_completion": false,
+  "state": "reported_ready",
+  "task_id": "FT-049",
+  "worker_branch": "agent/commander-runtime-display/display-runtime",
+  "worker_report_sha": "cf7650cbf0ad6dc56884fa6942c757418004f24a"
+}

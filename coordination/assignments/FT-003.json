@@ -9,15 +9,15 @@
   "branch": "agent/mac-claude-a/mac-shell",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "60a498aff541e6ff982086c522877ef36f5c42dd",
-  "objective": "IMMEDIATE full-scale restart: verify usable Jaysen route and launch15 disjoint engineering lanes from coordination/machines/mac-m1max-a-resume.json; publish actual session/count ACK. Native parent retains shared shell integration, fix GH26 exact size cache, preserve Daniel transferred ownership. Do not wait for old cooldown.",
+  "input_main_sha": "4b1850a13fc100bfb58fa8b1efa9127832792b3b",
+  "objective": "User reconfirmed standing approximately15 engineering subagents until further instruction. Replenish eligible disjoint lanes immediately, count current existing child within15, preserve Daniel ownership and no duplicate sessions. Publish exact assignment ACK/running session IDs and waiting/completed counts separately; report actual route/quota blockers. Do not await integration to refill. Contact GH2#5646989044.",
   "owned_paths": [
     "apps/mac"
   ],
-  "revision": 7,
+  "revision": 8,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-003",
   "timebox_minutes": 45,
-  "updated_utc": "2026-09-12T08:26:53.728263+00:00"
+  "updated_utc": "2026-09-12T16:04:47.315263+00:00"
 }

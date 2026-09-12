@@ -1,0 +1,69 @@
+{
+  "agent_id": "commander-runtime-display",
+  "archived_utc": "2026-09-12T14:01:46Z",
+  "assignment": {
+    "acceptance": [
+      "Start from integrated decoder ecbaf7c on main; preserve four raw frames plus one decoded permit and joined shutdown",
+      "Exactly one contiguous sibling only after requested and accepted nonfailed result; bind ID/project/revision/document hashes and reject malformed, unsolicited, missing or out-of-order frames",
+      "Default legacy requests unchanged; preserve line limits and source epochs, no duplicate renderer parser or automatic native activation",
+      "Use corrected actual producer65dbe7d or later raw-byte font hashes; old contract SHA-bytes-plus-face deviation is historical, not accepted resource evidence",
+      "Publish bounded candidate API for existing helper owner; if deep validation is deferred, the type and contract must remain explicitly untrusted until existing native/core validator accepts it"
+    ],
+    "agent_id": "commander-runtime-display",
+    "allocation_id": "hosted-openai-product",
+    "branch": "agent/commander-runtime-display/display-runtime",
+    "deadline_utc": null,
+    "dependencies": [],
+    "input_main_sha": "6bd43ca976bb9b1af5f0856ca861727b32868a50",
+    "objective": "Independently verify failed capture prefix and missing reopen acceptance from immutable archived artifacts",
+    "owned_paths": [
+      "crates/document-runtime"
+    ],
+    "revision": 35,
+    "schema_version": 1,
+    "state": "assigned",
+    "task_id": "FT-049",
+    "timebox_minutes": 40,
+    "updated_utc": "2026-09-12T13:57:42.777424+00:00"
+  },
+  "report": {
+    "agent_id": "commander-runtime-display",
+    "allocation_id": "hosted-openai-product",
+    "assignment_acknowledgements": {
+      "FT-049": {
+        "acknowledged_utc": "2026-09-12T14:00:04Z",
+        "adaptation": "Read published FT049r35 failed-prefix acceptance; already satisfied by4052d311/e2eee183 exact9f4a3105 audit, no rerun. Continuing Commander-authorized readonly proxy failure/reopen evidence review; no peer writes.",
+        "main_sha": "ae37bf0d75687005621c9899d8e66c637ed202f6",
+        "revision": 35
+      }
+    },
+    "branch": "agent/commander-runtime-display/display-runtime",
+    "capabilities": [
+      "rust-runtime"
+    ],
+    "code_revision": "c29d4e95505a0f600a6ba8d1cd3e4a3067358f05",
+    "eta_minutes": null,
+    "machine": "linux-primary",
+    "main_integrated_through": "e2eee183edc911298ece75c6de1310e042fe1a79",
+    "next_action": "Commander integration/next bounded assignment; no activejobs or remaining concrete review blocker for proxyfix. Preserve no cause/native/fullterminalcoverage claims.",
+    "reviewed_peers": {},
+    "schema_version": 1,
+    "state": "ready_for_integration",
+    "summary": "FT049r35 followup readonly77c8cab1 proxy review complete: source-free exception stage/type/errno,exit126/PDEATH,independentnonblocking FIFOdiagnostics and explicitprestopstderrcoverage. Owner5testsPASS attributed; no own tests/workloadrerun. Original68918failure unresolved.",
+    "tool": "codex",
+    "updated_utc": "2026-09-12T14:01:40Z",
+    "usage": {
+      "status": "unknown"
+    }
+  },
+  "report_age_seconds": 6,
+  "report_path": "coordination/agents/commander-runtime-display.json",
+  "review_required": true,
+  "revision": 35,
+  "schema_version": 1,
+  "stale_completion": false,
+  "state": "reported_ready",
+  "task_id": "FT-049",
+  "worker_branch": "agent/commander-runtime-display/display-runtime",
+  "worker_report_sha": "ff1e8dd62661c44db634363ddee9630b9368afad"
+}

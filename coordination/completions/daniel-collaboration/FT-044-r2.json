@@ -1,0 +1,77 @@
+{
+  "agent_id": "daniel-collaboration",
+  "archived_utc": "2026-09-12T09:44:37Z",
+  "assignment": {
+    "acceptance": [
+      "Meaningful tests and strict Rust lint pass with bounded malformed/Unicode inputs",
+      "Preserve exact source/revision and resource identities; no implicit approximation or parity claim",
+      "Do not edit peer compiler/native/layout files; publish typed adapter contract and exact tested SHA"
+    ],
+    "agent_id": "daniel-collaboration",
+    "allocation_id": "daniel-claude20x-shared",
+    "branch": "agent/daniel-collaboration/collaboration-core",
+    "deadline_utc": null,
+    "dependencies": [],
+    "input_main_sha": "cb9556c2ba00ec3d6b692439ac28719c9f6532a2",
+    "objective": "Add bounded durable collaborative-operation replay checkpoints and interrupted delivery recovery; preserve convergence, causal IDs and explicit source ownership without network activation.",
+    "owned_paths": [
+      "crates/collaboration-core"
+    ],
+    "revision": 2,
+    "schema_version": 1,
+    "state": "assigned",
+    "task_id": "FT-044",
+    "timebox_minutes": 40,
+    "updated_utc": "2026-09-12T09:15:38.612288+00:00"
+  },
+  "report": {
+    "agent_id": "daniel-collaboration",
+    "allocation_id": "daniel-claude20x-shared",
+    "assignment_acknowledgements": {
+      "FT-044": {
+        "acknowledged_utc": "2026-09-12T09:42:30Z",
+        "adaptation": "Accepted FT-044 rev 2 objective as stated: added bounded durable checkpoints and interrupted-delivery recovery on top of rev-1's convergence/dedup/causal-id core without changing Document::apply's semantics. Chose buffering (PendingOps) over exposure-only for interrupted delivery, while also exposing missing_dependencies() as a complementary, non-primary capability. Checkpoint equivalence checked structurally (via Checkpoint equality itself), not just via visible text, across 3 independent operation sequences including an exhaustive (ordering x cut-point) sweep. No changes to crates/edit-ledger or any other crate; owned paths only.",
+        "main_sha": "745f32736134583f72ac830453a46abd02994a73",
+        "revision": 2
+      }
+    },
+    "branch": "agent/daniel-collaboration/collaboration-core",
+    "capabilities": [
+      "rust",
+      "crdt",
+      "offline-collaboration",
+      "checkpoint-serialization"
+    ],
+    "code_revision": "3520284775b919bb87a5178411bee5f1cf931000",
+    "eta_minutes": {
+      "likely": 0,
+      "optimistic": 0,
+      "pessimistic": 0
+    },
+    "machine": "mac-m5pro-dq222",
+    "main_integrated_through": "745f32736134583f72ac830453a46abd02994a73",
+    "next_action": "Await Commander integration review of agent/daniel-collaboration/collaboration-core into main; no follow-up work planned by this agent absent a new assignment revision.",
+    "reviewed_peers": {
+      "origin/main": "745f32736134583f72ac830453a46abd02994a73"
+    },
+    "schema_version": 1,
+    "state": "ready_for_integration",
+    "summary": "FT-044 rev 2: crates/collaboration-core adds Document::checkpoint()/From<Checkpoint> (bounded serializable snapshot of structure + causal frontier, typed TooLarge error past bound) with checkpoint equivalence proven across 3 scenarios (sequential build, Unicode, every causally valid ordering of a 5-op concurrent scenario at every cut point); and PendingOps, an additive buffering layer for interrupted/out-of-order delivery recovery (bounded, PendingBufferFull past bound, missing_dependencies() exposes what to re-request). Document::apply is unchanged from rev 1. 33/33 tests pass, clippy -D warnings clean, zero dependencies.",
+    "tool": "Claude Code on Claude Max 20x",
+    "updated_utc": "2026-09-12T09:42:30Z",
+    "usage": {
+      "evidence": "Shared Claude Max 20x subscription quota; no purchases, no overages, no API billing. Live consumption not exposed to this agent.",
+      "status": "unknown"
+    }
+  },
+  "report_age_seconds": 127,
+  "report_path": "coordination/agents/daniel-collaboration.json",
+  "review_required": true,
+  "revision": 2,
+  "schema_version": 1,
+  "stale_completion": false,
+  "state": "reported_ready",
+  "task_id": "FT-044",
+  "worker_branch": "agent/daniel-collaboration/collaboration-core",
+  "worker_report_sha": "4bd36de6d273d6b7ca4b122d663ce616a96781cc"
+}

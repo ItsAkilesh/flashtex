@@ -16,5 +16,18 @@
   "model": "Astra",
   "handoff_evidence": "Sol explicitly named this successor and quiesced all global writes; independent inspection confirmed dispatcher inactive/dead PID0, no active Cursor/integration/global publisher; root FT016056170d publication finished and clean.",
   "claim_commit_executor": "git via Codex Astra, explicit user-authorized Cursor-limit fallback",
-  "cursor_quota_state": "terminal usage limit observed; no purchase or retry"
+  "cursor_quota_state": "terminal usage limit observed; no purchase or retry",
+  "pending_transfer": {
+    "successor_machine": "mac-m5pro-kabir",
+    "successor_role": "Claude parent Commander; exact identity awaiting ACK",
+    "state": "identity_and_publisher_ready_awaiting_independent_supervisor",
+    "request_url": "https://github.com/flash-tex/flashtex/issues/1#issuecomment-5647020028",
+    "handoff_path": "coordination/kabir-transfer-pending.md",
+    "updated_utc": "2026-09-12T16:03:58.315308+00:00",
+    "successor_identity": "claude",
+    "successor_session": "session_01Xd5Hmwh5GHNTiAmHUJ1MZu",
+    "successor_pid_reported": 55790,
+    "readiness_url": "https://github.com/flash-tex/flashtex/issues/1#issuecomment-5647078578",
+    "supervisor_authorization_url": "https://github.com/flash-tex/flashtex/issues/1#issuecomment-5647097898"
+  }
 }
