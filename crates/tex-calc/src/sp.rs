@@ -90,13 +90,32 @@ impl Unit {
         } else {
             (numerator, 1)
         };
+        let overflow = || {
+            CalcError::Overflow(OverflowInfo {
+                op: "literal".to_string(),
+                operands: vec![format!("{numerator}/{denominator}{}", self.name())],
+            })
+        };
         let magnitude: i128 = match self {
             Unit::Sp => mag_num / denominator,
             other => {
                 let (un, ud) = other.pt_ratio();
                 // exact rational: mag_num/denominator * un/ud * SP_PER_PT,
                 // truncated toward zero (floor of a non-negative value).
-                (mag_num * un * SP_PER_PT as i128) / (denominator * ud)
+                // Each multiplication is checked: a plausible user-typed
+                // literal (an astronomically large point count, or one in a
+                // unit whose ratio has a large numerator) can overflow
+                // `i128` right here, well before the final `MAX_DIMEN_SP`
+                // bounds check below ever runs. Left unchecked, that
+                // overflow silently wraps in a release build instead of
+                // panicking as it does in debug -- see
+                // `literal_overflows_i128_during_unit_scaling_not_after`.
+                let scaled_num = mag_num
+                    .checked_mul(un)
+                    .and_then(|v| v.checked_mul(SP_PER_PT as i128))
+                    .ok_or_else(overflow)?;
+                let scaled_den = denominator.checked_mul(ud).ok_or_else(overflow)?;
+                scaled_num / scaled_den
             }
         };
         let signed = magnitude * sign;
@@ -158,7 +177,19 @@ impl Sp {
     /// Multiply by an exact dimensionless scalar `numerator/denominator`.
     pub fn checked_mul_scalar(self, numerator: i128, denominator: i128) -> Result<Sp, CalcError> {
         debug_assert!(denominator > 0);
-        let scaled = (self.0 as i128 * numerator) / denominator;
+        // `self.0 * numerator` can overflow i128 for a scalar literal large
+        // enough (this dimension is already bounded to +/-MAX_DIMEN_SP, but
+        // the scalar operand is not bounded at all before this multiply) --
+        // unchecked, that silently wraps to an unrelated in-range value in
+        // release instead of the typed overflow this is. See
+        // `checked_mul_scalar_overflow_is_typed_not_a_wrapped_value`.
+        let product = (self.0 as i128).checked_mul(numerator).ok_or_else(|| {
+            CalcError::Overflow(OverflowInfo {
+                op: "*".to_string(),
+                operands: vec![self.to_string(), format!("{numerator}/{denominator}")],
+            })
+        })?;
+        let scaled = product / denominator;
         Sp::from_i128(
             scaled,
             "*",
@@ -173,7 +204,18 @@ impl Sp {
         if numerator == 0 {
             return Err(CalcError::DivisionByZero);
         }
-        let scaled = (self.0 as i128 * denominator) / numerator;
+        // `self.0 * denominator` can overflow i128 when the scalar divisor's
+        // own denominator (from a many-fractional-digit literal like
+        // `0.000...1`) is large -- unchecked, that silently wraps to an
+        // unrelated in-range value in release instead of the typed overflow
+        // this is. See `checked_div_scalar_overflow_is_typed_not_a_wrapped_value`.
+        let product = (self.0 as i128).checked_mul(denominator).ok_or_else(|| {
+            CalcError::Overflow(OverflowInfo {
+                op: "/".to_string(),
+                operands: vec![self.to_string(), format!("{numerator}/{denominator}")],
+            })
+        })?;
+        let scaled = product / numerator;
         Sp::from_i128(
             scaled,
             "/",
@@ -301,6 +343,36 @@ mod tests {
     #[test]
     fn pt_is_exact() {
         assert_eq!(Unit::Pt.to_sp(1, 1).unwrap(), Sp(65536));
+    }
+
+    #[test]
+    fn probe_huge_pt_literal() {
+        let r = std::panic::catch_unwind(|| Unit::Pt.to_sp(1i128 << 120, 1));
+        match r {
+            Ok(v) => eprintln!("PROBE: to_sp returned {v:?}"),
+            Err(_) => eprintln!("PROBE: to_sp panicked"),
+        }
+    }
+
+    #[test]
+    fn probe_huge_mul_scalar() {
+        let one_pt = Sp(65536);
+        let r = std::panic::catch_unwind(|| one_pt.checked_mul_scalar(1i128 << 112, 1));
+        match r {
+            Ok(v) => eprintln!("PROBE: checked_mul_scalar returned {v:?}"),
+            Err(_) => eprintln!("PROBE: checked_mul_scalar panicked"),
+        }
+    }
+
+    #[test]
+    fn probe_huge_div_scalar_denominator() {
+        let one_pt = Sp(65536);
+        // scalar = 1 / 10^37 (huge denominator from many fractional digits)
+        let r = std::panic::catch_unwind(|| one_pt.checked_div_scalar(1, 10i128.pow(37)));
+        match r {
+            Ok(v) => eprintln!("PROBE: checked_div_scalar returned {v:?}"),
+            Err(_) => eprintln!("PROBE: checked_div_scalar panicked"),
+        }
     }
 
     #[test]
@@ -480,5 +552,61 @@ mod tests {
             Sp::try_from_style_pt(nan),
             Err(CalcError::Overflow(_))
         ));
+    }
+
+    #[test]
+    fn to_sp_overflow_in_unit_scaling_is_typed_not_a_wrapped_value() {
+        // `mag_num * un * SP_PER_PT` overflows i128 for this magnitude
+        // (`2^112 * 1 * 2^16 == 2^128`, which wraps to exactly 0 modulo
+        // 2^128 on an unchecked multiply) well before the final
+        // `MAX_DIMEN_SP` bounds check ever runs. Direct regression for the
+        // site fixed in `Unit::to_sp`; see `lib.rs` for the same case driven
+        // through the public `evaluate` entry point.
+        let numerator: i128 = 5_192_296_858_534_827_628_530_496_329_220_096; // 2^112
+        assert!(matches!(
+            Unit::Pt.to_sp(numerator, 1),
+            Err(CalcError::Overflow(_))
+        ));
+    }
+
+    #[test]
+    fn checked_mul_scalar_overflow_is_typed_not_a_wrapped_value() {
+        // `self.0 * numerator` overflows i128 for this pair (`2^29 * 2^99 ==
+        // 2^128`, wraps to exactly 0 on an unchecked multiply) before the
+        // final bounds check. Direct regression for the site fixed in
+        // `Sp::checked_mul_scalar`.
+        let sp = Sp(536_870_912); // 8192pt exactly, 2^29
+        let numerator: i128 = 633_825_300_114_114_700_748_351_602_688; // 2^99
+        assert!(matches!(
+            sp.checked_mul_scalar(numerator, 1),
+            Err(CalcError::Overflow(_))
+        ));
+    }
+
+    #[test]
+    fn checked_div_scalar_overflow_is_typed_not_a_wrapped_value() {
+        // `self.0 * denominator` overflows i128 (`2^29 * 10^38`) before the
+        // final bounds check; dividing the wrapped product by this specific
+        // numerator used to land back in-range as `Ok(Sp(1))` instead of the
+        // true (and correct) overflow. Direct regression for the site fixed
+        // in `Sp::checked_div_scalar`.
+        let sp = Sp(536_870_912); // 8192pt exactly, 2^29
+        let numerator: i128 = 15_041_284_052_594_574_565_471_120_592_117_694_464;
+        let denominator: i128 = 100_000_000_000_000_000_000_000_000_000_000_000_000; // 10^38
+        assert!(matches!(
+            sp.checked_div_scalar(numerator, denominator),
+            Err(CalcError::Overflow(_))
+        ));
+    }
+
+    #[test]
+    fn checked_mul_and_div_scalar_near_max_dimen_still_succeed() {
+        // The fix must not reject ordinary in-range scalar arithmetic.
+        assert_eq!(Sp::MAX.checked_mul_scalar(1, 1).unwrap(), Sp::MAX);
+        assert_eq!(
+            Sp(8191 * 65536).checked_mul_scalar(2, 1).unwrap(),
+            Sp(16382 * 65536)
+        );
+        assert_eq!(Sp::MAX.checked_div_scalar(1, 1).unwrap(), Sp::MAX);
     }
 }

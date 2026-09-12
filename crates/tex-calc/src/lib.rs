@@ -572,4 +572,66 @@ mod tests {
             Err(CalcError::Overflow(_))
         ));
     }
+
+    // ---- Rev 4: unit-scaling / scalar-multiply / scalar-divide i128
+    // overflow ("wraps in release, panics in debug") --------------------
+    //
+    // `Unit::to_sp`, `Sp::checked_mul_scalar`, and `Sp::checked_div_scalar`
+    // each computed an intermediate product on plain `i128` values before
+    // ever comparing the result against `MAX_DIMEN_SP`. `i128::MAX` is
+    // ~1.7e38, and each site multiplies a parsed value by a unit ratio, a
+    // scalar numerator, or a scalar denominator that a valid (if absurd)
+    // literal can make large enough to overflow that multiplication itself
+    // -- long before the final bounds check ever runs. In a debug build
+    // `overflow-checks` turns that into a panic; in `--release` it silently
+    // wraps modulo 2^128, so a wildly out-of-range literal can come back as
+    // `Ok(Sp(0))`, `Ok(Sp(1))`, or any other in-range value that has nothing
+    // to do with the input. Each case below is a real literal/expression the
+    // public parser accepts, hand-picked so the i128 wraparound lands
+    // in-range instead of merely landing on a different, still-out-of-range
+    // number (which would still error, just for the wrong reason).
+
+    #[test]
+    fn literal_overflows_i128_during_unit_scaling_not_after() {
+        // `2^112 pt`: `mag_num * un * SP_PER_PT` (un=1 for `pt`) is
+        // `2^112 * 2^16 = 2^128`, which wraps to exactly 0 modulo 2^128
+        // before this fix -- i.e. an astronomically large literal silently
+        // became `0sp` in release instead of a typed overflow.
+        let src = "5192296858534827628530496329220096pt";
+        assert!(matches!(evaluate(src), Err(CalcError::Overflow(_))));
+    }
+
+    #[test]
+    fn scalar_multiply_overflows_i128_before_bounds_check() {
+        // `8192pt` is `Sp(2^29)`; multiplying by the scalar `2^99` is
+        // `2^29 * 2^99 = 2^128`, which wraps to exactly 0 modulo 2^128
+        // before this fix, instead of the typed overflow this dimension
+        // truly is.
+        let src = "8192pt * 633825300114114700748351602688";
+        assert!(matches!(evaluate(src), Err(CalcError::Overflow(_))));
+    }
+
+    #[test]
+    fn scalar_divide_overflows_i128_before_bounds_check() {
+        // `8192pt / 0.15041284052594574565471120592117694464` is really
+        // `8192pt` divided by a scalar just over 0.15, i.e. about 54465pt
+        // -- clearly past `MAX_DIMEN_SP` and a typed overflow. Before this
+        // fix, `self.0 * denominator` (2^29 * 10^38) overflowed i128 and
+        // wrapped to a value that, divided by this specific numerator,
+        // silently produced `Ok(Sp(1))` instead.
+        let src = "8192pt / 0.15041284052594574565471120592117694464";
+        assert!(matches!(evaluate(src), Err(CalcError::Overflow(_))));
+    }
+
+    #[test]
+    fn near_max_dimen_literal_and_scalar_ops_still_succeed() {
+        // A fix for the above must not start rejecting ordinary large-but-
+        // legal dimensions and scalar arithmetic near the real MAX_DIMEN
+        // boundary. `16383.99999pt` (not `...998`) is the hand-checked exact
+        // boundary literal also used in `sp::tests::boundary_exactly_at_max_dimen_via_pt`.
+        assert_eq!(evaluate("16383.99999pt").unwrap(), Sp::MAX);
+        assert_eq!(evaluate("-16383.99999pt").unwrap(), Sp::MIN);
+        assert_eq!(evaluate("8191.5pt * 2").unwrap(), Sp(16383 * 65536));
+        assert_eq!(evaluate("16383pt / 1").unwrap(), Sp(16383 * 65536));
+    }
 }
