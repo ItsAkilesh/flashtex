@@ -3,27 +3,27 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-048": {
-      "acknowledged_utc": "2026-09-12T13:07:58Z",
-      "adaptation": "Releasehelper built from58d27314 Rusttree, olddebug/release preserved. Same50KBfixture and pinneddebugproducer; optional transparent capture supplies actualstdin for independentproducer releaseverification. Preserve diagnosticphase vs native/captureoverhead distinction.",
-      "main_sha": "ef1a964ecf851c10ffb44f16d212de21e0e1675e",
-      "revision": 20
+      "acknowledged_utc": "2026-09-12T13:25:05Z",
+      "adaptation": "Published d6b3df2b source-bound disposition audit first. Now one --historical20@30ms explicitcompleted-snapshot opt-in, tokens/stale/sourceactionsfalse and separatecounts, samebinaries/source, defaultunchanged. Disableaftermeasurement beforeoldreceiptchecks.",
+      "main_sha": "dda0b624bf5505b2db81a932c0f0d707f42295c0",
+      "revision": 22
     }
   },
   "branch": "agent/commander-preview-performance/preview-performance",
   "capabilities": [
     "Preview helper serialization and latency"
   ],
-  "code_revision": "53c0c71d1fc35e8bafe0473c60f4eaf277833482",
+  "code_revision": "d6b3df2b567a2cb9593a6c13abcf7f9ca6215db0",
   "eta_minutes": null,
   "machine": "linux-primary",
-  "main_integrated_through": "58d27314c83cbc62fa20e81dd1f5532a82849fef",
-  "next_action": "Commander integrate with runtimeproducerreleaseverification; nativepackaging and widerlatencyacceptance remain separate.",
+  "main_integrated_through": "de574ec71b4f918388ff588d32b83a44ac84e4b3",
+  "next_action": "Independent artifactreview; nextboundedsenderprocess implementation beforefuturecadencecomparisons, noadditionalrun now.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "FT048r20 releasehelper+independentlyverifiedreleaseproducer50KBpair delivers currentframes77.53/80.33ms with exactprioroutputs/source.",
+  "summary": "FT048r22 historicalopt-in observation delivers6historicalsnapshotsduringburst+1after, then current21; defaults/sourceguards unchanged.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T13:12:54Z",
+  "updated_utc": "2026-09-12T13:27:30Z",
   "usage": {
     "status": "unknown"
   }
