@@ -671,4 +671,28 @@ mod tests {
         );
         assert_eq!(crate::eval::eval(&expr), Err(CalcError::DivisionByZero));
     }
+
+    #[test]
+    fn zero_denominator_scalar_divisor_in_scalar_division_is_a_typed_error_not_a_silent_wrong_value()
+     {
+        use crate::ast::Expr;
+        use crate::sp::Unit;
+        // `5pt * ((1/1) / (1/0))`: the inner `Scalar / Scalar` divides by
+        // the malformed scalar `1/0`. Unlike `Sp::checked_div_scalar` (the
+        // `Dim / Scalar` path), the hand-rolled `Scalar / Scalar` arithmetic
+        // in `eval::div` only checked the divisor's numerator for zero, not
+        // its denominator: `1 * 0 = 0` makes the quotient's numerator zero,
+        // silently producing the scalar `0` instead of erroring. That wrong
+        // scalar then scales `5pt` down to `Ok(Sp(0))` in release -- a
+        // plausible-looking but wrong answer, not a panic and not a typed
+        // error.
+        let expr = Expr::Mul(
+            Box::new(Expr::Dim(5, 1, Unit::Pt)),
+            Box::new(Expr::Div(
+                Box::new(Expr::Scalar(1, 1)),
+                Box::new(Expr::Scalar(1, 0)),
+            )),
+        );
+        assert_eq!(crate::eval::eval(&expr), Err(CalcError::DivisionByZero));
+    }
 }

@@ -296,7 +296,17 @@ fn div(a: Value, b: Value) -> Result<Value, CalcError> {
     match (a, b) {
         (Value::Dim(x), Value::Scalar(n, d)) => Ok(Value::Dim(x.checked_div_scalar(n, d)?)),
         (Value::Scalar(n1, d1), Value::Scalar(n2, d2)) => {
-            if n2 == 0 {
+            // Same contract as `Sp::checked_div_scalar`'s two checks,
+            // applied to the divisor `n2/d2` here: a zero-valued divisor
+            // (`n2 == 0`) is a typed error, and so is a non-positive `d2` --
+            // the public `Expr::Scalar` constructor is not restricted to
+            // what the parser would produce, so a caller can build a
+            // divisor like `1/0` directly. Unlike `checked_div_scalar`,
+            // `d2` here is a multiplicand (`d1.checked_mul(n2)`), not a
+            // literal divisor, so left unchecked it never panics -- it
+            // silently zeroes out the numerator (`n1 * d2 = n1 * 0 = 0`)
+            // and returns the wrong `Ok` scalar `0` instead of erroring.
+            if d2 <= 0 || n2 == 0 {
                 return Err(CalcError::DivisionByZero);
             }
             // (n1/d1) / (n2/d2) = (n1*d2) / (d1*n2), sign normalized so the
