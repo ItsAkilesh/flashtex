@@ -412,7 +412,8 @@ fn shift_inlines(
     inlines
         .iter()
         .map(|inline| match inline {
-            Inline::Text { text, span } => Some(Inline::Text {
+            Inline::Text { text, span, style } => Some(Inline::Text {
+                style: *style,
                 text: text.clone(),
                 span: mapped_span(*span, changes, deltas)?,
             }),
