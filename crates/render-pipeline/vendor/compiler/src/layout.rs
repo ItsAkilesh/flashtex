@@ -11,7 +11,7 @@
 use crate::diagnostics::Diagnostic;
 use crate::export::{self, ExportFont};
 use crate::math::{self, MathBox};
-use crate::parser::{Block, Inline, MathRow, ParagraphStyle, TextFamily, TextStyle};
+use crate::parser::{Block, FontSizeLevel, Inline, MathRow, ParagraphStyle, TextFamily, TextStyle};
 use crate::Span;
 use flashtex_font_engine::core14::Core14;
 use flashtex_font_engine::shape::{shape, ShapeOptions, Shaped};
@@ -668,6 +668,15 @@ impl LayoutCursor {
                     self.vertical_gap(self.constraints.parskip_pt.unwrap_or(PARAGRAPH_GAP_PT));
                 }
             }
+            Block::ListItem {
+                extra_gap_before_pt,
+                ..
+            } => {
+                if !self.first_block {
+                    self.newline(body_size);
+                    self.vertical_gap(PARAGRAPH_GAP_PT + extra_gap_before_pt);
+                }
+            }
             Block::Heading { level, .. } => {
                 let size = heading_size(*level, body_size);
                 if !self.first_block {
@@ -682,7 +691,10 @@ impl LayoutCursor {
                 }
             }
             Block::VSpace { pt } => {
-                if !self.first_block {
+                // Only end a line that has content: after a rule or another
+                // vertical block there is no text line to finish, and TeX adds
+                // no interline glue there either.
+                if !self.first_block && self.state().trailing_line_items > 0 {
                     self.newline(body_size);
                 }
                 self.vertical_gap(*pt);
@@ -709,6 +721,16 @@ impl LayoutCursor {
         let body_size = self.constraints.font_size_pt;
         match block {
             Block::Paragraph(inlines) => emit(self, inlines, body_size, Font::TimesRoman),
+            Block::ListItem {
+                content,
+                extra_gap_after_pt,
+                ..
+            } => {
+                emit(self, content, body_size, Font::TimesRoman);
+                if *extra_gap_after_pt != 0.0 {
+                    self.vertical_gap(*extra_gap_after_pt);
+                }
+            }
             Block::Styled { style, content } => {
                 self.style = Some(*style);
                 self.x = self.left_edge();
@@ -777,7 +799,8 @@ impl LayoutCursor {
                     .expect("at least one page")
                     .items
                     .push(item);
-                self.newline(body_size);
+                // A rule has no depth: end its line without adding a text line.
+                self.newline(0.0);
             }
         }
         // A block is the incremental cache unit. Resolve its final line before
@@ -878,6 +901,46 @@ fn heading_size(level: u8, body_size: f64) -> f64 {
         }
 }
 
+/// Absolute point size for one `\tiny`..`\Huge` declaration, from the real
+/// LaTeX class files' own tables (`size10.clo`/`size11.clo`/`size12.clo`),
+/// selected by the document's body size (`\documentclass[10pt|11pt|12pt]`;
+/// see `parser::Parsed::class_size_pt`). The three tables are not a uniform
+/// scale of each other — e.g. `\large` is 12pt in the 10pt and 11pt classes
+/// but 14.4pt in the 12pt class — so the whole table is picked by class
+/// rather than computed from one ratio.
+///
+/// `\normalsize` is deliberately not looked up here: it is always exactly
+/// `body_size_pt` itself, so text with no size declaration in effect renders
+/// identically to before this existed, even for the 11pt class, where this
+/// compiler's own body size is a literal 11pt rather than real LaTeX's
+/// 10.95pt normalsize (`class_size_pt`'s documented approximation).
+fn size_declaration_pt(level: FontSizeLevel, body_size_pt: f64) -> f64 {
+    // tiny, scriptsize, footnotesize, small, large, Large, LARGE, huge, Huge
+    // (normalsize is handled by the caller before reaching here).
+    const SIZE_10PT: [f64; 9] = [5.0, 7.0, 8.0, 9.0, 12.0, 14.4, 17.28, 20.74, 24.88];
+    const SIZE_11PT: [f64; 9] = [6.0, 8.0, 9.0, 10.0, 12.0, 14.4, 17.28, 20.74, 24.88];
+    const SIZE_12PT: [f64; 9] = [6.0, 8.0, 10.0, 10.95, 14.4, 17.28, 20.74, 24.88, 24.88];
+    let table = if body_size_pt <= 10.5 {
+        SIZE_10PT
+    } else if body_size_pt <= 11.5 {
+        SIZE_11PT
+    } else {
+        SIZE_12PT
+    };
+    let index = match level {
+        FontSizeLevel::Tiny => 0,
+        FontSizeLevel::ScriptSize => 1,
+        FontSizeLevel::FootnoteSize => 2,
+        FontSizeLevel::Small => 3,
+        FontSizeLevel::Large1 => 4,
+        FontSizeLevel::Large2 => 5,
+        FontSizeLevel::Large3 => 6,
+        FontSizeLevel::Huge1 => 7,
+        FontSizeLevel::Huge2 => 8,
+    };
+    table[index]
+}
+
 fn round2(v: f64) -> f64 {
     (v * 100.0).round() / 100.0
 }
@@ -951,7 +1014,8 @@ fn visit_references(blocks: &[Block], visitor: &mut impl FnMut(&str, Span)) {
     for block in blocks {
         let inlines: &[Inline] = match block {
             Block::Paragraph(inlines) => inlines,
-            Block::Heading { content, .. }
+            Block::ListItem { content, .. }
+            | Block::Heading { content, .. }
             | Block::FigureCaption { content }
             | Block::Styled { content, .. } => content,
             Block::VSpace { .. } | Block::Rule { .. } | Block::PageBreak => &[],
@@ -982,7 +1046,13 @@ fn emit(c: &mut LayoutCursor, inlines: &[Inline], size: f64, font: Font) {
     for inline in inlines {
         match inline {
             Inline::Text { text, span, style } => {
-                c.place(text.clone(), size, *span, style_font(*style))
+                // A `\tiny`..`\Huge` declaration is always relative to the
+                // document's own body size, not to `size` (which can already
+                // be a heading's or a math script's own scaled context).
+                let text_size = style.size.map_or(size, |level| {
+                    size_declaration_pt(level, c.constraints.font_size_pt)
+                });
+                c.place(text.clone(), text_size, *span, style_font(*style))
             }
             Inline::LineBreak { .. } => c.newline(size),
             Inline::TextGlue { em, .. } => c.text_glue(*em, size),

@@ -226,7 +226,7 @@ pub struct Labels {
 fn inlines_of(block: &CBlock) -> &[Inline] {
     match block {
         CBlock::Paragraph(i) => i,
-        CBlock::Heading { content, .. } | CBlock::FigureCaption { content } | CBlock::Styled { content, .. } => content,
+        CBlock::ListItem { content, .. } | CBlock::Heading { content, .. } | CBlock::FigureCaption { content } | CBlock::Styled { content, .. } => content,
         CBlock::VSpace { .. } | CBlock::Rule { .. } | CBlock::PageBreak => &[],
     }
 }
@@ -303,7 +303,7 @@ pub fn adapt_cached(
         style.parskip = crate::style::Skip::fixed(pt);
     }
     let secnumdepth = counter(source, "secnumdepth").unwrap_or(options.default_secnumdepth);
-    let styles: Vec<Styles> = texts.iter().map(|t| Styles::new(style_intervals(t, size))).collect();
+    let styles: Vec<Styles> = texts.iter().map(|t| Styles::new(style_intervals(t))).collect();
     let labels_fp = {
         use std::hash::{Hash, Hasher};
         let mut h = std::collections::hash_map::DefaultHasher::new();
@@ -577,6 +577,24 @@ fn split_at_page_breaks<'p>(texts: &[&str], parsed: &'p Parsed, size: u32) -> Ve
                 }
             }
         }
+        // The compiler's list model (pin `b38e1884`): an `\item` of a list
+        // under a `\setlist{itemsep=..,topsep=..}` override carries the
+        // extra gap due before it (`topsep` for the first item, `itemsep`
+        // for the rest) and, on the last item, after it. The pipeline has
+        // no list scan of its own, so the compiler's gaps are the only
+        // list spacing applied: before as `\addvspace` glue on the item,
+        // after as pending space for the next unit. (`em` in `\setlist` is
+        // the compiler's fixed 12pt body, like its `\vspace`; unlike
+        // `\vspace` the source is not re-read here.)
+        if let CBlock::ListItem {
+            extra_gap_before_pt,
+            extra_gap_after_pt,
+            ..
+        } = block
+        {
+            vspace_before += extra_gap_before_pt;
+            pending_vspace += extra_gap_after_pt;
+        }
         let limitations = std::mem::take(&mut pending_limitations);
         let styled = match block {
             CBlock::Styled { style, .. } => Some(ParaStyle::of(*style)),
@@ -633,7 +651,7 @@ fn split_at_page_breaks<'p>(texts: &[&str], parsed: &'p Parsed, size: u32) -> Ve
                     limitations,
                 });
             }
-            CBlock::Paragraph(inlines) | CBlock::FigureCaption { content: inlines } | CBlock::Styled { content: inlines, .. } => {
+            CBlock::Paragraph(inlines) | CBlock::ListItem { content: inlines, .. } | CBlock::FigureCaption { content: inlines } | CBlock::Styled { content: inlines, .. } => {
                 let caption = matches!(block, CBlock::FigureCaption { .. });
                 let mut env_open = env_open;
                 let mut start = 0usize;
@@ -926,36 +944,56 @@ enum StyleKind {
     Bold,
     Emph,
     Italic,
-    /// A size declaration, in hundredths of a point.
-    Size(u16),
 }
 
-/// The point size a LaTeX size declaration selects at a class base size
-/// (size10/11/12.clo), in hundredths of a point.
-fn declared_size(name: &str, base: u32) -> Option<u16> {
-    let table: [(&str, [u16; 3]); 10] = [
-        ("tiny", [500, 600, 600]),
-        ("scriptsize", [700, 800, 800]),
-        ("footnotesize", [800, 900, 1000]),
-        ("small", [900, 1000, 1095]),
-        ("normalsize", [1000, 1095, 1200]),
-        ("large", [1200, 1200, 1440]),
-        ("Large", [1440, 1440, 1728]),
-        ("LARGE", [1728, 1728, 2074]),
-        ("huge", [2074, 2074, 2488]),
-        ("Huge", [2488, 2488, 2488]),
+/// The point size a `\tiny`..`\Huge` declaration selects at a class base
+/// size (size10/11/12.clo), in hundredths of a point; 0 for `\normalsize`
+/// (the paragraph's own size). The declaration in force comes from the
+/// compiler's `TextStyle::size` (pin `b38e1884`, declaration-scoped like
+/// bold/italic); the source scan below no longer reads size declarations,
+/// so a size is never applied twice. The compiler's own table is the same
+/// one, but it resolves against its integer class size where the pipeline
+/// sets `\normalsize` at the class's real `\normalsize` (10.95pt at 11pt).
+fn declared_size(level: Option<flashtex_compiler::parser::FontSizeLevel>, base: u32) -> u16 {
+    use flashtex_compiler::parser::FontSizeLevel as L;
+    let Some(level) = level else { return 0 };
+    // tiny, scriptsize, footnotesize, small, large, Large, LARGE, huge, Huge
+    let table: [[u16; 3]; 9] = [
+        [500, 600, 600],
+        [700, 800, 800],
+        [800, 900, 1000],
+        [900, 1000, 1095],
+        [1200, 1200, 1440],
+        [1440, 1440, 1728],
+        [1728, 1728, 2074],
+        [2074, 2074, 2488],
+        [2488, 2488, 2488],
     ];
     let col = match base {
         11 => 1,
         12 => 2,
         _ => 0,
     };
-    table.iter().find(|(n, _)| *n == name).map(|(_, sizes)| sizes[col])
+    let row = match level {
+        L::Tiny => 0,
+        L::ScriptSize => 1,
+        L::FootnoteSize => 2,
+        L::Small => 3,
+        L::Large1 => 4,
+        L::Large2 => 5,
+        L::Large3 => 6,
+        L::Huge1 => 7,
+        L::Huge2 => 8,
+    };
+    table[row][col]
 }
 
 /// Brace-group intervals of `\textbf{}`, `\emph{}`, `\textit{}` in source
-/// byte offsets (content only), in document order.
-fn style_intervals(source: &str, base: u32) -> Vec<(usize, usize, StyleKind)> {
+/// byte offsets (content only), in document order. Weight and shape only:
+/// the compiler carries no `\bfseries`/`\itshape` scoping for body text
+/// the pipeline could use, while size declarations are read from the
+/// compiler's `TextStyle::size` (see [`declared_size`]).
+fn style_intervals(source: &str) -> Vec<(usize, usize, StyleKind)> {
     let mut out = Vec::new();
     let bytes = source.as_bytes();
     let mut i = 0;
@@ -1020,7 +1058,7 @@ fn style_intervals(source: &str, base: u32) -> Vec<(usize, usize, StyleKind)> {
                     "bfseries" => Some(StyleKind::Bold),
                     "itshape" | "slshape" => Some(StyleKind::Italic),
                     "em" => Some(StyleKind::Emph),
-                    _ => declared_size(name, base).map(StyleKind::Size),
+                    _ => None,
                 };
                 if let Some(k) = decl {
                     let end = match groups.last() {
@@ -1352,12 +1390,6 @@ impl Styles {
                     StyleKind::Bold => s.bold = true,
                     StyleKind::Italic => s.italic = true,
                     StyleKind::Emph => s.italic = !s.italic,
-                    // Innermost (nearest start) declaration wins.
-                    StyleKind::Size(cpt) => {
-                        if s.size_cpt == 0 {
-                            s.size_cpt = cpt;
-                        }
-                    }
                 }
             }
         }
@@ -1614,6 +1646,9 @@ fn items_from_inlines(texts: &[&str], inlines: &[Inline], styles: &[Styles], lab
     let mut prev_span: Option<Span> = None;
     let mut factor = 1000u32;
     let mut pending_accent: Option<(char, CharSrc)> = None;
+    // The compiler's size declaration in force at the previous text
+    // inline, for the interword space read after it.
+    let mut prev_size_cpt = 0u16;
     let text_of = |d: DocumentId| -> &str { texts.get(d.0).copied().unwrap_or("") };
     let no_styles = Styles::default();
     let styles_of = |d: DocumentId| -> &Styles { styles.get(d.0).unwrap_or(&no_styles) };
@@ -1675,7 +1710,8 @@ fn items_from_inlines(texts: &[&str], inlines: &[Inline], styles: &[Styles], lab
                     }
                 };
                 let gap = space_between(prev_end, prev_span, *span, Some(word), after_control_word);
-                let gap_style = space_style(texts, styles, prev_end, *span, TextStyle::default());
+                let mut gap_style = space_style(texts, styles, prev_end, *span, TextStyle::default());
+                gap_style.size_cpt = space_size(texts, prev_end, *span, prev_size_cpt, 0);
                 push_gap(&mut items, gap, gap_style, factor);
                 items.push(item);
                 prev_end = Some(span.end);
@@ -1689,7 +1725,8 @@ fn items_from_inlines(texts: &[&str], inlines: &[Inline], styles: &[Styles], lab
                 // recognises the row spans); the environment's span ends
                 // the preceding text like `\[`.
                 let gap = space_between(prev_end, prev_span, *span, None, after_control_word);
-                let gap_style = space_style(texts, styles, prev_end, *span, TextStyle::default());
+                let mut gap_style = space_style(texts, styles, prev_end, *span, TextStyle::default());
+                gap_style.size_cpt = space_size(texts, prev_end, *span, prev_size_cpt, 0);
                 push_gap(&mut items, gap, gap_style, factor);
                 after_control_word = false;
                 for row in rows {
@@ -1705,7 +1742,8 @@ fn items_from_inlines(texts: &[&str], inlines: &[Inline], styles: &[Styles], lab
             Inline::Math { list, span, .. } => {
                 // The glue is the current font's where the space sits.
                 let gap = space_between(prev_end, prev_span, *span, None, after_control_word);
-                let gap_style = space_style(texts, styles, prev_end, *span, TextStyle::default());
+                let mut gap_style = space_style(texts, styles, prev_end, *span, TextStyle::default());
+                gap_style.size_cpt = space_size(texts, prev_end, *span, prev_size_cpt, 0);
                 push_gap(&mut items, gap, gap_style, factor);
                 after_control_word = false;
                 items.push(Item::Math {
@@ -1736,6 +1774,9 @@ fn items_from_inlines(texts: &[&str], inlines: &[Inline], styles: &[Styles], lab
                     None
                 };
                 let mut style = style_at(styles_of(span.document), span.start);
+                // `\tiny`..`\Huge` come from the compiler's scoping.
+                let Inline::Text { style: compiler_style, .. } = &**inline else { unreachable!() };
+                style.size_cpt = declared_size(compiler_style.size, size);
                 if heading {
                     // `\@startsection` sets `\bfseries`; the compiler's
                     // heading styles start bold and `\normalfont`/
@@ -1751,10 +1792,12 @@ fn items_from_inlines(texts: &[&str], inlines: &[Inline], styles: &[Styles], lab
                     // where the space token is read ("Plain, \textbf{bold}"
                     // gets a regular space, "\textbf{bold words}" a bold one,
                     // "\textbf{\emph{x}} y" a regular one).
-                    let gap_style = space_style(texts, styles, prev_end, *span, style);
+                    let mut gap_style = space_style(texts, styles, prev_end, *span, style);
+                    gap_style.size_cpt = space_size(texts, prev_end, *span, prev_size_cpt, style.size_cpt);
                     push_gap(&mut items, has_space, gap_style, factor);
                     pending_accent = None;
                 }
+                prev_size_cpt = style.size_cpt;
                 if let Some(mark) = accent_char {
                     pending_accent = Some((
                         mark,
@@ -1849,6 +1892,25 @@ fn items_from_inlines(texts: &[&str], inlines: &[Inline], styles: &[Styles], lab
         }
     }
     items
+}
+
+/// The size declaration in force where TeX reads the space token between
+/// the previous inline (ending at `prev_end`) and `span`, from the
+/// compiler's sizes of the two neighbours: the previous inline's unless a
+/// closing brace precedes the gap's first whitespace (`{\Large x} y`: the
+/// group has ended, so the space is read at the next inline's size).
+fn space_size(texts: &[&str], prev_end: Option<usize>, span: Span, prev_cpt: u16, next_cpt: u16) -> u16 {
+    if prev_cpt == next_cpt {
+        return prev_cpt;
+    }
+    let Some(pe) = prev_end else { return next_cpt };
+    let Some(gap) = texts.get(span.document.0).and_then(|t| t.get(pe..span.start)) else { return next_cpt };
+    let ws = gap.find(|c: char| c.is_whitespace()).unwrap_or(gap.len());
+    if gap[..ws].contains('}') {
+        next_cpt
+    } else {
+        prev_cpt
+    }
 }
 
 /// The style in force where TeX reads the space token between the previous

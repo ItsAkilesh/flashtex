@@ -107,6 +107,10 @@ Implemented and tested:
   and math, but this milestone does not load images or place floating objects.
 - `\begin{itemize}...\item...\end{itemize}` and
   `\begin{enumerate}...\item...\end{enumerate}` with bullet and decimal markers.
+  `\setlist[<env>]{itemsep=<dimen>,topsep=<dimen>}` changes the vertical gap
+  between items and around the list; other enumitem keys (`leftmargin`,
+  `label`, `parsep`, `partopsep`, ...) have no layout equivalent yet and are
+  named in a diagnostic instead.
 - `compile` → `compile_result`, and `error` envelopes for unknown protocol
   versions, unknown message types, and malformed JSON.
 - Rejection of absolute paths and parent traversal in document paths.
@@ -117,8 +121,8 @@ Required, outstanding — this is a foundation, not a LaTeX implementation:
 
 - No `\def`, `\let`, mutable category codes, registers, or conditionals.
 - Math remains a declared subset: matrices, alignment environments,
-  `\left`/`\right` delimiter sizing, real math-font parameters, and operator
-  spacing classes are not implemented.
+  `\left`/`\right` delimiter sizing and real math-font parameters are not
+  implemented.
 - Package declarations are recognised but packages are not loaded: package
   commands, TikZ, bibliographies, and `\cite` remain missing.
 - Image loading (`\includegraphics`), tables, and float placement remain
@@ -146,7 +150,9 @@ Required, outstanding — this is a foundation, not a LaTeX implementation:
 `\textnormal`, the group- and environment-scoped declarations `\bfseries`,
 `\mdseries`, `\itshape`, `\slshape`, `\upshape`, `\ttfamily`, `\rmfamily`,
 `\sffamily`, `\normalfont`, `\em`, and the LaTeX 2.09 forms `\bf`, `\it`,
-`\sl`, `\tt`, `\rm`, `\sf`,
+`\sl`, `\tt`, `\rm`, `\sf`, the group- and environment-scoped size
+declarations `\tiny`, `\scriptsize`, `\footnotesize`, `\small`,
+`\normalsize`, `\large`, `\Large`, `\LARGE`, `\huge`, and `\Huge`,
 `\begin`/`\end` for `document`, `equation`, `figure`, `itemize`, and
 `enumerate` (plus the amsmath displays `alignat`, `flalign` and `multline`,
 starred or not; `multline` numbers only its last line), `\item`, `\par`,
@@ -163,6 +169,22 @@ package version banners, and this compiler has no log stream to write them to,
 so silently doing nothing is the honest behaviour rather than a fabricated log.
 `\noindent` is likewise always a no-op: no paragraph in this layout model is
 ever given a first-line indent, so there is no indent for it to suppress.
+
+`\tiny` through `\Huge` scale text relative to `\normalsize` using the real
+LaTeX class files' own tables (`size10.clo`/`size11.clo`/`size12.clo`),
+selected by the active `10pt`/`11pt`/`12pt` class option (default 12pt); the
+three tables are not a uniform scale of each other (e.g. `\large` is the same
+absolute size as `\Large` in the 10pt/11pt classes, but the 12pt class's own
+`\normalsize`-plus-one-step). `\normalsize` always resolves to exactly the
+active body size rather than the class table's own value, so text with no
+size declaration in effect is unaffected by this feature existing at all,
+including for the 11pt class, where this compiler's body size is a literal
+11pt rather than real LaTeX's 10.95pt `\normalsize`. Like `\bfseries` and
+friends, a size
+declaration stays in effect until its enclosing group or environment closes;
+`\Large{...}` (a common `\textbf{...}`-style misuse) is a declaration, not an
+argument-taking command, so its size stays active past the immediate group,
+matching real LaTeX.
 
 `\hfill`/`\hfil` are real infinite-stretch horizontal glue: they push the rest
 of the current line to the right margin, and multiple fills on one line share
@@ -256,7 +278,13 @@ requested delimiter at ordinary size (`.` is the invisible null delimiter).
 `\mathrm`, `\mathit`, `\mathsf`, `\mathtt`, `\boldsymbol` and `\mbox` typeset
 their argument in the current math face (no distinct face yet). `\displaystyle`,
 `\textstyle`, `\limits` and `\nolimits` are accepted without changing size.
-`\,` `\:` `\>` `\;` `\ ` and `\!` are math spaces. The math environments
+`\,` `\:` `\>` `\;` `\ ` and `\!` are math spaces, added to TeX's
+inter-atom spacing: atoms are classed ord/op/bin/rel/open/close/punct/inner
+and spaced by the TeXbook Chapter 18 table (thin 3mu, medium 4mu, thick 5mu
+of the current math size; scripts keep only the unparenthesised thin
+entries), and a binary operator with no left operand is ordinary. Fences are
+classed by glyph as open/close rather than inner, `\operatorname{name}` is
+ordinary, and a math `-` is the minus sign U+2212. The math environments
 `split`, `aligned`, `alignedat` and `gathered` lay out as grids.
 
 `\binom{n}{k}` (and `\dbinom`, `\tbinom`) is a two-row grid in parentheses.
