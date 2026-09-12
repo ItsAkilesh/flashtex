@@ -1,6 +1,6 @@
 # mac-pairing-ui handoff
 
-- Updated UTC: 2026-09-12T08:53Z
+- Updated UTC: 2026-09-12T08:58Z
 - Agent / parent / machine alias: `mac-pairing-ui` (Claude Code subagent) /
   `mac-claude-a` / `mac-m1max-a`
 - Task / acceptance gate / owned paths: lane "Native pairing state recovery and
@@ -17,11 +17,10 @@
   `FlashTeXMacApp.swift`, transferred crates.
 - Branch / code revision / main integrated through:
   `agent/mac-pairing-ui/recovery` from `origin/agent/mac-claude-a/mac-shell`
-  6b43a3a, merged up to 71675cd (worktree
-  `.claude/worktrees/agent-a4c2724311989ec2b`); that base already carries
-  `origin/main` through 2fd3026.
-- State: in progress (lane + both follow-ups implemented and tested; see
-  incomplete list for what still needs transport-owner APIs)
+  6b43a3a, merged up to 71675cd, then `origin/main` 254f662 merged (worktree
+  `.claude/worktrees/agent-a4c2724311989ec2b`).
+- State: ready for integration (lane + both follow-ups implemented and tested;
+  the incomplete list names what still needs transport-owner APIs)
 
 ## Ready behavior and evidence
 
@@ -81,6 +80,13 @@ pre-existing skip). One earlier run had `CompletionTests.
 testCompletionOnOneMegabyteBufferIsFast` at 41 ms vs its 20 ms wall-clock limit
 with load average 15 from other agents; it passes in isolation (0.7 s) and in
 the repeated full run — a timing test outside this lane, not a regression.
+After merging `origin/main` 254f662: `swift test` again 251 tests, 0 failures,
+2 skipped. Smoke launch of `.build/debug/FlashTeXMac` with
+`FLASHTEX_NO_ACTIVATE=1 FLASHTEX_AUTOATTACH=0 FLASHTEX_PAIR_STORE=<tmp>
+FLASHTEX_PAIRING_JOURNAL=<tmp>` for 6 s: starts, creates the redirected
+`pairs.json` (0600, version 1), no crash; the Nearby window itself cannot be
+opened from outside without the requested app hook (Accessibility is not
+granted), so window evidence comes from the test-hosted view.
 
 ## Incomplete behavior / blockers / needs from others
 
@@ -138,9 +144,10 @@ thresholds in `docs/context-checkpoints.md`.
 
 ## Dirty files / running jobs / next action
 
-Committed at each checkpoint; no background jobs. Next: run the full
-`swift test` with worker binaries, merge `origin/main` at a clean checkpoint,
-push, then apply the parent's review.
+Everything committed and pushed; no background jobs. Next: parent review;
+if mac-nearby-transport adds `onEvent`/`receiving`/`closeConnection`/
+`beginPairing(resuming:)`, wire them in `PairingFlowController` (consumer side
+is already written and tested through `observe(_:)`).
 
 ## Resume reading list
 
