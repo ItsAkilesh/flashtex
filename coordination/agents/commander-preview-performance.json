@@ -13,17 +13,17 @@
   "capabilities": [
     "Preview helper serialization and latency"
   ],
-  "code_revision": "40a1178c606f3ef672a4bd9ca27bbf6b465f466d",
+  "code_revision": "b5ec8e4270dcd2beb47967a3bad788233a3a3b22",
   "eta_minutes": null,
   "machine": "linux-primary",
   "main_integrated_through": "7d69a543bd3d5d975d40eefa2b7a30b3dfb359f2",
-  "next_action": "Consume tested runtime fixed-strategy constructor; implement startup selector/restart persistence and separately negotiated candidate take.",
+  "next_action": "Await tested raw runtime publication then wire startup-only helper strategy and lifecycle tests.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "Prepared startup raw replay contract with exact capability ACK and current v1/candidate generation checks; raw helper not activated.",
+  "summary": "Read-only raw Syntax Unicode-key suspicion disproved by actual paired probe; no speculative owner change.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T11:42:57Z",
+  "updated_utc": "2026-09-12T11:44:42Z",
   "usage": {
     "status": "unknown"
   }
