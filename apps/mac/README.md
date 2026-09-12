@@ -643,7 +643,16 @@ not replace, negotiate, or change the v1 path.
   message `type`, item `kind`, `required_features`, font `format`, or an undeclared
   font/document reference, a glyph ID outside `1..<glyph_count`, a cluster that does
   not partition the run text on UTF-8 boundaries, malformed carets/rects/paint, or
-  non-integer geometry is a diagnostic-bearing `ValidationError`. The pane then
+  non-integer geometry is a diagnostic-bearing `ValidationError`. The validator also
+  applies crates/rendering-core's `DisplayList::validate` structural rules: every
+  feature the list uses must be declared in `required_features` (`glyph_run`, `rule`,
+  and always `rgba-srgb`/`cluster-actualtext`; `static-truetype` is deliberately not
+  derived from glyph runs because the pipeline paints Latin Modern as `opentype-cff`),
+  every cluster is referenced by at least one glyph, source ranges lie within the
+  declared document `byte_length`, every tick and tick sum stays within ±(2^53−1),
+  document paths follow rendering-core's `path` rule, and collection sizes are
+  bounded (`RenderingV2.Bounds`: documents 1…4096, fonts ≤256, pages ≤10000, items
+  ≤100000, glyphs/clusters 1…65536, hit rects 1…128, carets ≤128). The pane then
   shows the code and message and NO page: a refused list never renders partially.
 - Fonts by content hash only (`GlyphRunRenderer.swift`, `V2FontStore`): every
   `.otf`/`.ttf` in the existing `PreviewFonts.latinModernSearchPaths` directories
@@ -653,12 +662,48 @@ not replace, negotiate, or change the v1 path.
   manifest. A run whose font is not bundled refuses the whole frame with
   `font_resource_unavailable: font resource <sha256> (<name>) unavailable`. Platform
   font names are never an identity; nothing is substituted.
+- Preparation, off-main and immutable (`V2Frame.prepare` → `V2PreparedPage`): each
+  page is converted ONCE into what CoreGraphics consumes — the exact `CTFont` per run
+  (from the hash-resolved `CGFont`), `CGGlyph` IDs, absolute baseline origins in PDF
+  space, rule `CGRect`s — on `V2Loader.queue` (serial, `userInitiated`), together with
+  decoding, validation and font resolution. A frame is a value over immutable
+  CoreFoundation fonts and carries a per-preparation nonce. Every load takes a
+  monotonically increasing ticket; the result reaches the main run loop as a
+  run-loop block plus wake-up (as `WorkerClient` delivers worker events) and is
+  published only if its ticket is still the one the shell is waiting for — a
+  superseded result is dropped and counted (`V2Loader.staleResultsDropped`). While a
+  load is in flight the previous verified frame stays on screen with an explicit
+  STALE indicator (header + page label, `v2-stale`), as the rendering-v2 proposal
+  asks; a refusal drops it (nothing unverified stays visible).
 - Drawing: one CoreGraphics routine (`GlyphRunRenderer.draw`) in PDF space (y up,
-  1 unit = 1 pt) paints items in list order — rules as filled rectangles, glyph runs
-  with `CTFontDrawGlyphs` by ORIGINAL glyph ID at the absolute origins (advances are
-  never re-added, no reshaping/kerning). The SwiftUI canvas flips into that space
-  and calls it; `Export PDF (v2)…` in the pane calls it on a PDF context, so preview
-  and export agree by construction. Dark preview inverts paint on screen only.
+  1 unit = 1 pt) paints a prepared page's items in list order — rules as path fills,
+  glyph runs with `CTFontDrawGlyphs` by ORIGINAL glyph ID at the absolute origins
+  (advances are never re-added, no reshaping/kerning). `Export PDF (v2)…` calls it on
+  a PDF context; the pane does not draw glyphs on the main thread at all: `V2PageRasterizer`
+  (`@Observable`, bounded bytes, LRU) rasterizes each page once through
+  `GlyphRunRenderer.rasterize` at the pane's pixels-per-point on its own queue and the
+  canvas blits that bitmap 1:1 (device pixels) under the hover/caret overlays, so a
+  hover or caret change costs a blit. Bitmaps of a frame that is no longer current are
+  dropped on arrival and evicted on frame change (`staleBitmapsDropped`). Dark
+  preview inverts paint in the bitmap only; export keeps the list's colors.
+- Export/preview parity, tolerance 0 (`V2Parity`): every page's preview raster
+  (the bitmap above) is compared byte-for-byte with the CG PDF export rasterized
+  back by CoreGraphics into the same bitmap configuration (sRGB premultiplied RGBA,
+  antialiased, font smoothing off, subpixel positioning on). Two measured causes of
+  disagreement are fixed in the shared routine: CG's fast `fill(rect)` computes edge
+  coverage differently from the scan converter that replays `re f` (one gray level
+  along every rule row), so rules are path fills; and CG's PDF writer serializes
+  numbers at 7 significant digits, so prepared coordinates and font sizes are
+  quantized through the same `%.7g` (≤5e-5 pt from the tick geometry) and both
+  sides start from identical numbers. Measured: 0 differing pixels at 1 and 2 px/pt
+  on 22 real pipeline pages (text fixture, math+rules fixture, a 20-page/47k-glyph
+  document) and at every scale tried on the two fixtures; at some fractional
+  scales CoreGraphics rasterizes thin glyph stems differently through a `CTFont`
+  than through the PDF-embedded font (e.g. one 0.7 px en dash at 1.37 px/pt), so the
+  gate pins 1 and 2 px/pt (display scales) and reports other scales. Evidence and
+  numbers: `docs/evidence/mac-preview-v2-parity-2026-09-12.md`.
+  `FLASHTEX_V2_PARITY_OUT=<dir>` (and `FLASHTEX_V2_PARITY_SCALE`, default 2) makes the
+  app write `parity.json`, `export.pdf` and per-page preview/export PNGs after each load.
 - Hit/caret geometry (`V2Geometry`): click → the cluster whose `hit_rects` contain
   the point (half-open, in ticks, later-painted wins) → its `sources`; the shell
   checks the display list's document `sha256` against the current buffer and then
@@ -676,20 +721,27 @@ not replace, negotiate, or change the v1 path.
   JSON keys are ignored by `Codable` where the schema says `additionalProperties:
   false`; clusters must partition the run and source paths must name a declared
   document (stricter than the schema, as crates/rendering-core requires).
-- Tests (`RenderingV2Tests`, `PreviewV2Tests`, `PreviewV2ShellTests`): real
-  `flashtex-render --v2` fixtures (`Tests/FlashTeXMacTests/Fixtures/display-list-v2-*.json`,
-  pipeline 7094ef7, `apps/mac/Fonts` as the only font directory) decode, resolve by
+- Tests (`RenderingV2Tests`, `PreviewV2Tests`, `PreviewV2ShellTests`,
+  `PreviewV2ParityTests`): real `flashtex-render --v2` fixtures
+  (`Tests/FlashTeXMacTests/Fixtures/display-list-v2-*.json`: text and math from
+  pipeline 7094ef7 with `apps/mac/Fonts` only; `display-list-v2-math-rules.json` from
+  79ba728 with three typed fraction rules and Latin Modern Math) decode, resolve by
   hash and navigate ligature clusters (`ffi` = one glyph, three source bytes; `é`
   from `\'e`); the math fixture fails closed on the unbundled `latinmodern-math.otf`
-  hash; every fail-closed rule above has a negative case; the shared routine drawing a
-  run built from CoreText's own glyph positions matches `CTLineDraw` with 0 differing
-  pixels; the PDF export rasterized with PDFKit matches the preview raster with
-  0 differing pixels. Evidence: `docs/evidence/mac-preview-v2-latin-modern-2026-09-12.png`.
+  hash (the rules parity case resolves it from MacTeX's `lm-math` directory and skips
+  without it); every fail-closed rule above has a negative case; the shared routine
+  drawing a run built from CoreText's own glyph positions matches `CTLineDraw` with 0
+  differing pixels; export equals preview with 0 differing pixels at the pinned
+  scales; prepared geometry is verified against the tick geometry; stale load results
+  and stale page bitmaps are dropped; retention is bounded. Evidence:
+  `docs/evidence/mac-preview-v2-latin-modern-2026-09-12.png`,
+  `docs/evidence/mac-preview-v2-parity-2026-09-12.md`.
 - Not done: no negotiation (`render_capabilities`/`render_format_selected`) — the list
-  is opened from a file, not received from the worker; no page cache/ticket model
-  (crates/rendering-core `cache`); no clip/rotation/image primitives (rejected as
-  unknown kinds/features); v1 → v2 caret sync uses the v2 clusters only while the
-  pane is visible.
+  is opened from a file, not received from the worker; no clip/rotation/image
+  primitives (rejected as unknown kinds/features); v1 → v2 caret sync uses the v2
+  clusters only while the pane is visible; the pipeline's own `--pdf` is still the
+  legacy v1 writer, so parity is against the Mac CoreGraphics export (the product
+  exporter is crates/pdf).
 
 ## Known upstream issue
 

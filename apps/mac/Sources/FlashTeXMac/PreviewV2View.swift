@@ -215,7 +215,9 @@ final class V2PageRasterizer {
     private(set) var images: [Key: CGImage] = [:]
     @ObservationIgnored private var order: [Key] = []
     @ObservationIgnored private var inFlight: Set<Key> = []
-    @ObservationIgnored private(set) var currentFrameToken: String?
+    /// Observed: a page body that asked before the frame became current
+    /// re-evaluates (and re-requests) when `setCurrent` runs.
+    private(set) var currentFrameToken: String?
     @ObservationIgnored private(set) var retainedBytes = 0
     @ObservationIgnored let maxBytes: Int
     @ObservationIgnored private(set) var staleBitmapsDropped = 0
@@ -483,8 +485,13 @@ private struct PageV2View: View {
                 // The off-main raster of this page, blitted 1:1 onto device
                 // pixels (no resampling): the same bitmap the parity check compares.
                 context.withCGContext { cg in
+                    // The canvas is y-down; CGImage drawing is y-up. Flip once.
+                    cg.saveGState()
+                    cg.translateBy(x: 0, y: size.height)
+                    cg.scaleBy(x: 1, y: -1)
                     cg.interpolationQuality = .none
                     cg.draw(bitmap, in: CGRect(origin: .zero, size: size))
+                    cg.restoreGState()
                 }
             }
             // Caret highlight: exact caret bar when the compiler supplied one for
@@ -517,8 +524,9 @@ private struct PageV2View: View {
             if let hit = V2Geometry.hit(page: page, atPointX: location.x / scale, y: location.y / scale) { onSelect(hit) }
         }
         .overlay(alignment: .bottomTrailing) {
+            // Colored for the PAGE background (white or dark), not the window appearance.
             Text(bitmap == nil ? "page \(page.number) · v2 · rasterizing…" : (stale ? "page \(page.number) · v2 · STALE" : "page \(page.number) · v2"))
-                .font(.caption2).foregroundStyle(stale ? .orange : .secondary).padding(4)
+                .font(.caption2).foregroundStyle(stale ? Color.orange : (dark ? Color(white: 0.7) : Color(white: 0.35))).padding(4)
         }
         .help(hover.map { h in
             (h.text.map { "“\($0)” → " } ?? "rule → ") + (h.syntheticReason.map { "generated: \($0)" }
