@@ -10,9 +10,13 @@ import SwiftUI
 /// alive across window open/close so an attempt is tracked (and journaled)
 /// even while the window is closed.
 ///
-/// Inputs the transport does not publish yet (a bootstrap session opening,
-/// per-connection close reasons, byte progress) can be fed through
-/// `observe(_:)`; the machine and its tests already cover them.
+/// Listener events (`NearbyState.onEvent`: sessions opening and closing, hello,
+/// byte progress, captures, refusals) drive the finer states; the published
+/// values cover advertising, the transport's own code, and the pair list.
+/// Attempt generations come from the journal and are handed to the transport
+/// (`beginPairing(resuming:expiresAt:generation:)`), so the generation a stored
+/// pairing carries (`PairRecord.generation`, pairs.json v2) is the one the
+/// window showed; a hello for another generation is stale.
 @MainActor
 final class PairingFlowController: ObservableObject {
     @Published private(set) var machine: PairingFlow.Machine
@@ -36,7 +40,6 @@ final class PairingFlowController: ObservableObject {
     private var expectingWithdrawal = false
     private var knownPairIds: Set<String>
     private var lastStatus: String?
-    private var lastCaptureId: String?
 
     private static let shared = NSMapTable<NearbyState, PairingFlowController>.weakToStrongObjects()
 
@@ -56,7 +59,6 @@ final class PairingFlowController: ObservableObject {
                                       generation: journal.generation, isAdvertising: nearby.isAdvertising)
         knownPairIds = Set(nearby.pairs.map(\.pairId))
         lastStatus = nearby.status
-        lastCaptureId = nearby.lastReceivedCaptureId
         if let e = journal.loadError { announce(e) }
         subscribe(nearby)
         if let pending = journal.pending {
@@ -70,7 +72,11 @@ final class PairingFlowController: ObservableObject {
 
     func showCode() {
         guard phase.canShowCode(), let nearby else { return }
-        nearby.beginPairing() // → $pairingCode → .codeIssued
+        // Issue the code with the journal's generation so the transport, the
+        // stored record and the window agree on which attempt confirmed.
+        let generation = journal.nextGeneration()
+        nearby.beginPairing(resuming: Pairing.generateCode(), expiresAt: Date().addingTimeInterval(Pairing.codeLifetime),
+                            generation: generation) // → $pairingCode → .codeIssued
     }
 
     func cancel() { apply(.cancel) }
@@ -91,33 +97,49 @@ final class PairingFlowController: ObservableObject {
         nearby?.forget(pairId: pairId) // → $pairs → .forgotten
     }
 
-    /// Listener events (when the transport owner wires them through).
+    /// Listener events, delivered by `NearbyState.onEvent` on the main actor
+    /// before `NearbyState` itself acts on them.
     func observe(_ event: NearbyListener.Event) {
         let g = machine.generation
         switch event {
-        case .connectionOpened: apply(.bootstrapSessionOpened(generation: g))
+        case .connectionOpened:
+            apply(.bootstrapSessionOpened(generation: g))
         case .hello(let id, let name, let bootstrap):
-            apply(bootstrap ? .confirmed(pairId: id, companionName: name, generation: g) : .otherCompanionConnected(generation: g))
-        case .connectionClosed(let id, let reason): apply(.peerGone(pairId: id, reason: reason, generation: g))
-        case .capture(let id): apply(.captureReceived(pairId: nil, captureId: id))
+            guard bootstrap else { apply(.otherCompanionConnected(generation: g)); return }
+            // The generation that confirmed is persisted with the record
+            // (pairs.json v2); a stored value from another attempt is stale.
+            let confirmed = nearby?.store.pair(id: id)?.generation
+                ?? nearby?.coordinator.confirmedGeneration(pairId: id) ?? g
+            apply(.confirmed(pairId: id, companionName: name, generation: confirmed))
+        case .connectionClosed(let id, let reason):
+            apply(.peerGone(pairId: id, reason: reason, generation: g))
         case .receiving(let id, let bytes, let expected):
-            // Byte progress from the transport (mac-nearby-transport); unauthenticated peers have no pairId.
-            if let id { observeProgress(pairId: id, companionName: nil, captureId: nil, bytes: bytes, total: expected) }
-        case .failed(let why): apply(.listenerFailed(why))
-        // Refusals and acknowledged duplicates are shown by NearbyState's error
-        // state (mac-nearby-transport); they do not move the pairing flow.
-        case .ready, .stopped, .captureRefused, .captureDuplicate: break
+            // Unauthenticated peers (before hello) have no identity and no row.
+            guard let id else { return }
+            apply(.receiving(pairId: id, companionName: nearby?.store.pair(id: id)?.companionName,
+                             captureId: nil, bytes: bytes, total: expected))
+        case .capture(let id):
+            apply(.captureReceived(pairId: nil, captureId: id))
+        case .captureDuplicate(let pairId, let captureId):
+            apply(.captureReceived(pairId: pairId, captureId: captureId))
+        case .captureRefused(let pairId, let captureId, let code, _):
+            apply(.captureRefused(pairId: pairId, captureId: captureId, code: code))
+        case .failed(let why):
+            apply(.listenerFailed("listener error: \(why)"))
+        case .ready, .stopped:
+            break
         }
-    }
-
-    /// Byte progress for an in-flight line (no transport source yet; see handoff).
-    func observeProgress(pairId: String, companionName: String?, captureId: String?, bytes: Int, total: Int?) {
-        apply(.receiving(pairId: pairId, companionName: companionName, captureId: captureId, bytes: bytes, total: total))
     }
 
     // MARK: transport observation
 
     private func subscribe(_ nearby: NearbyState) {
+        // Raw listener events first (chained after any earlier consumer).
+        let previous = nearby.onEvent
+        nearby.onEvent = { [weak self] event in
+            previous?(event)
+            self?.observe(event)
+        }
         // `@Published` publishers fire on willSet with the new value; the
         // store and coordinator are already current at that point.
         nearby.$isAdvertising.dropFirst().removeDuplicates().sink { [weak self] on in
@@ -139,18 +161,11 @@ final class PairingFlowController: ObservableObject {
             self.knownPairIds = ids
         }.store(in: &cancellables)
 
+        // `listener failed:` (start() threw) has no event; `.failed` events do.
         nearby.$status.dropFirst().sink { [weak self] status in
             guard let self, status != self.lastStatus else { return }
             self.lastStatus = status
-            if status.hasPrefix("listener error") || status.hasPrefix("listener failed") {
-                self.apply(.listenerFailed(status))
-            }
-        }.store(in: &cancellables)
-
-        nearby.$lastReceivedCaptureId.dropFirst().sink { [weak self] id in
-            guard let self, let id, id != self.lastCaptureId else { return }
-            self.lastCaptureId = id
-            self.apply(.captureReceived(pairId: nil, captureId: id))
+            if status.hasPrefix("listener failed") { self.apply(.listenerFailed(status)) }
         }.store(in: &cancellables)
     }
 
@@ -159,13 +174,19 @@ final class PairingFlowController: ObservableObject {
         let previous = transportCode
         transportCode = code
         if let code {
+            // A resumed attempt is already the machine's; only a new code is issued.
+            if let a = machine.attempt, a.code == code { return }
             let now = Date()
-            let generation = journal.nextGeneration()
+            let pending = nearby.coordinator.current
+            // `showCode()` hands the journal's generation to the transport; a
+            // code minted elsewhere (`beginPairing()`) carries the coordinator's
+            // own counter and gets the next journal generation instead.
+            let generation = (pending?.generation).flatMap { $0 > machine.generation ? $0 : nil } ?? journal.nextGeneration()
             let attempt = PairingFlow.Attempt(
                 generation: generation, code: code,
                 pairId: Pairing.derive(code: code, salt: nearby.store.salt).pairId,
                 startedAt: now,
-                expiresAt: nearby.coordinator.current?.expiresAt ?? now.addingTimeInterval(Pairing.codeLifetime))
+                expiresAt: pending?.expiresAt ?? now.addingTimeInterval(Pairing.codeLifetime))
             apply(.codeIssued(attempt), now: now)
             return
         }
@@ -210,18 +231,19 @@ final class PairingFlowController: ObservableObject {
                 expectingWithdrawal = true
                 nearby.cancelPairing() // restarts the listener without the bootstrap key
             } else if nearby.coordinator.current?.code == a.code {
-                // Resumed attempt: the transport's own code state is nil.
                 nearby.coordinator.cancel()
                 if nearby.isAdvertising { nearby.startAdvertising() }
             }
         case .resumeTransport(let a):
             guard let nearby else { return }
-            // `NearbyState.beginPairing()` only mints fresh codes; resume through
-            // the coordinator it exposes and rebuild the listener's key table.
-            _ = nearby.coordinator.begin(code: a.code, lifetime: a.remaining(at: now))
-            nearby.startAdvertising()
+            // Serves the same code with the journal's generation and expiry; the
+            // transport publishes it like a fresh code (`transportCodeChanged`
+            // recognises the attempt) and runs its own expiry timer.
+            nearby.beginPairing(resuming: a.code, expiresAt: a.expiresAt, generation: a.generation)
             journal.setPending(a)
             scheduleExpiry(a)
+        case .closeSession(let pairId):
+            nearby?.closeConnection(pairId: pairId)
         case .announce(let text):
             announce(text)
         }
@@ -240,8 +262,9 @@ final class PairingFlowController: ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + a.remaining(at: Date()) + 0.25, execute: item)
     }
 
-    /// The transport expires its own codes (and restarts without the key); a
-    /// resumed attempt lives only in the coordinator, so drop it here too.
+    /// The transport expires its own codes (and restarts without the key);
+    /// this timer is the belt to that suspender, and drops an attempt that
+    /// only the coordinator still holds.
     private func expired(_ a: PairingFlow.Attempt) {
         apply(.codeExpired(generation: a.generation))
         guard let nearby, nearby.pairingCode == nil, nearby.coordinator.current?.code == a.code else { return }
@@ -260,6 +283,7 @@ struct NearbyView: View {
     @EnvironmentObject private var nearby: NearbyState
     @Environment(ShellModel.self) private var model
     @State private var controller: PairingFlowController?
+    private static var autostarted = false
 
     var body: some View {
         Group {
@@ -269,7 +293,17 @@ struct NearbyView: View {
                 ProgressView().padding()
             }
         }
-        .onAppear { if controller == nil { controller = PairingFlowController.controller(for: nearby) } }
+        .onAppear {
+            guard controller == nil else { return }
+            let c = PairingFlowController.controller(for: nearby)
+            controller = c
+            // Automation (evidence runs): `FLASHTEX_NEARBY_AUTOSTART=code` shows a
+            // pairing code as soon as the window opens, once per launch.
+            if ProcessInfo.processInfo.environment["FLASHTEX_NEARBY_AUTOSTART"] == "code", !Self.autostarted {
+                Self.autostarted = true
+                c.showCode()
+            }
+        }
     }
 }
 
@@ -296,11 +330,16 @@ struct NearbyFlowView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Refused capture").font(.headline).foregroundStyle(.red)
                     Text(e.summary).font(.system(.callout, design: .monospaced)).textSelection(.enabled)
+                        .accessibilityLabel("Last refused capture")
+                        .accessibilityValue(e.summary)
+                        .accessibilityIdentifier("nearby.refused.last")
                     HStack {
                         Text("\(nearby.receiveErrors.count) refusal(s), \(nearby.duplicateCaptureCount) duplicate(s) acknowledged")
                             .font(.caption).foregroundStyle(.secondary)
                         Spacer()
                         Button("Clear") { nearby.clearReceiveErrors() }
+                            .accessibilityLabel("Clear refused captures")
+                            .accessibilityIdentifier("nearby.refused.clear")
                     }
                 }
             }
@@ -317,7 +356,8 @@ struct NearbyFlowView: View {
         case .codeShown, .verifying: focus = .code
         case .interrupted(let a, _, _): focus = a.isExpired(at: Date()) ? .dismiss : .resume
         case .failed, .paired: focus = .dismiss
-        case .off, .advertising, .receiving: focus = .showCode
+        case .receiving: focus = .cancel
+        case .off, .advertising: focus = .showCode
         }
     }
 
@@ -398,8 +438,16 @@ struct NearbyFlowView: View {
                 .accessibilityLabel("Receiving capture")
                 .accessibilityValue(controller.phase.accessibilityValue())
                 .accessibilityIdentifier("nearby.pairing.receiving")
-                Text("Receiving cannot be cancelled from the Mac in v1; the companion's send controls it.")
-                    .font(.caption2).foregroundStyle(.secondary)
+                HStack {
+                    Text("Cancel closes the companion's session; it can resend with the same capture_id.")
+                        .font(.caption2).foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Cancel") { controller.cancel() }
+                        .keyboardShortcut(.cancelAction)
+                        .focused($focus, equals: .cancel)
+                        .accessibilityLabel("Cancel receiving")
+                        .accessibilityIdentifier("nearby.pairing.cancel")
+                }
             case .off, .advertising:
                 HStack {
                     showCodeButton(title: "Show Pairing Code")

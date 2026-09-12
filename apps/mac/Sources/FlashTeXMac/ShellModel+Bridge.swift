@@ -76,6 +76,16 @@ extension ShellModel {
             guard let self, let session, self.bridge === session else { return }
             self.adoptDurableDocument(text, session: session)
         }
+        // Relaunch after an abnormal helper exit (mac-bridge-recovery): the
+        // reconciled ledger may raise the revision floor; the user is told.
+        session.onRevisionFloor = { [weak self, weak session] revision in
+            guard let self, let session, self.bridge === session else { return }
+            self.advanceEditorRevision(atLeast: revision)
+        }
+        session.onRelaunched = { [weak self, weak session] child, summary in
+            guard let self, let session, self.bridge === session else { return }
+            self.captureNote = "\(child == .bridge ? "Bridge" : "Edit ledger") relaunched after an abnormal exit: \(summary)"
+        }
         // Durable ledger first: the helper's document is the authoritative source.
         if let ledger {
             let store = ledgerStore ?? EditLedgerClient.storeDirectory(under: storeDirectory, documentURL: documentURL)
@@ -164,7 +174,7 @@ extension ShellModel {
     // MARK: document synchronization
 
     func bridgeTextChanged(path: String, old: String, new: String, base: Int, revision: Int) {
-        guard let bridge, bridge.running else { return }
+        guard let bridge, !bridge.detached, bridge.running || bridge.ledgerUsable else { return } // ledger keeps following typing while the bridge relaunches
         if let expected = bridge.expectedApplication, expected.edit.path == path {
             if new == expected.afterText {
                 // Contract step 4: the editor adopted the durable document; export, receipt. No document_edit.

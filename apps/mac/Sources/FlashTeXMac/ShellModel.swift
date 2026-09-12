@@ -545,7 +545,7 @@ final class ShellModel {
         let request = RuntimeV1.CompileRequest(
             projectId: result?.projectId ?? "demo",
             revision: editorRevision,
-            entryPath: activePath,
+            entryPath: project.entryPath, // the entry stays first whichever document is being edited
             documents: documents,
             layoutCapabilities: capabilities.isEmpty ? nil : capabilities)
         do {

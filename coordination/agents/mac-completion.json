@@ -2,40 +2,40 @@
   "agent_id": "mac-completion",
   "allocation_id": "claude-mac20x-completion",
   "assignment_acknowledgements": {},
-  "branch": "agent/mac-completion/live-helper",
+  "branch": "agent/mac-completion/vocabulary",
   "capabilities": [
     "swift",
     "appkit",
     "completion"
   ],
-  "code_revision": "e1238b3bd34848bedfa7ed3448665bbf43746e55",
+  "code_revision": "22c8f33f9459c0487accac8a2ae4154fbcc60d6c",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
     "pessimistic": 15
   },
   "machine": "mac-m1max-a",
-  "main_integrated_through": "c9f1b9edbc872085949da89a7d3e4875ce17cd54",
-  "next_action": "Parent merges agent/mac-completion/live-helper into mac-shell; Commander integration",
+  "main_integrated_through": "277a0910811fdb27bd156ecd92b92b50f277c750",
+  "next_action": "Parent merges agent/mac-completion/vocabulary into mac-shell; Commander integration",
   "reviewed_peers": {
     "origin/agent/mac-claude-a/mac-shell": {
-      "adaptation": "Based on mac-shell d8baed6 which merged the first lane (4d358e5) with the parent diffs applied; the test drives the parent's fetcher wiring unchanged",
-      "reviewed_utc": "2026-09-12T09:16:38Z",
-      "sha": "691d68a8ddb9dd2c3a9c0e49f1fd3074a109072d"
+      "adaptation": "Vocabulary generated from crates/compiler README/UNSUPPORTED/parser/math on main (identical on mac-shell); no crate edits",
+      "reviewed_utc": "2026-09-12T10:03:29Z",
+      "sha": "271a3663789222b134151ece31b90dc8a56d23bf"
     },
     "origin/main": {
-      "adaptation": "Based on mac-shell d8baed6 which merged the first lane (4d358e5) with the parent diffs applied; the test drives the parent's fetcher wiring unchanged",
-      "reviewed_utc": "2026-09-12T09:16:38Z",
-      "sha": "da9dc355a6fab08ac53812c8a04042781d9d9dc4"
+      "adaptation": "Vocabulary generated from crates/compiler README/UNSUPPORTED/parser/math on main (identical on mac-shell); no crate edits",
+      "reviewed_utc": "2026-09-12T10:03:29Z",
+      "sha": "c35ca8bc4e3801fbbe308ee731d718af7ebe78eb"
     }
   },
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "Live-helper end-to-end completion test on agent/mac-completion/live-helper: real preview-controller + compiler behind ShellModel, hosted SourceEditorView, real CompletingTextView list shows index labels/citations/declared commands bound to the editor revision; stale queries refused both helper- and editor-side; request->metadata 22-24 ms first snapshot, 1.1-1.3 ms after an edit; 307 Mac tests pass",
+  "summary": "agent/mac-completion/vocabulary: popup backslash list is the compiler's documented command set (README Supported commands/math + COMMAND_GLYPHS + input/include parser arm) with argument shapes and descriptions; drift test parses the compiler docs/sources; project newcommands override builtins; absent commands say not supported by the compiler with the bound diagnostic; 382 Mac tests pass",
   "tool": "Claude Code subagent (parent mac-claude-a)",
-  "updated_utc": "2026-09-12T09:16:38Z",
+  "updated_utc": "2026-09-12T10:03:29Z",
   "usage": {
-    "evidence": "swift test 307/307 (4 env-gated skips from other lanes) with real compiler/pdf/bridge/edit-ledger/preview-controller; CompletionLiveHelperTests 5 consecutive passes",
+    "evidence": "swift test 382/382 (9 env-gated skips from other lanes) with real compiler/pdf/bridge/edit-ledger/preview-controller under load avg ~60; CompletionTests 21/21",
     "status": "Shared Claude Max quota with parent mac-claude-a; no purchases"
   }
 }

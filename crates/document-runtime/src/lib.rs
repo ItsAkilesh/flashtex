@@ -80,7 +80,18 @@ pub struct ResponseProfile {
     pub parse_ms: f64,
     pub validation_ms: f64,
 }
+/// Optional historical display data. This is never a current-preview/source-action grant.
+/// `origin` is opaque caller metadata captured with the original submitted request.
+#[derive(Debug)]
+pub struct CompletedSnapshot {
+    pub request_id: String,
+    pub project_id: String,
+    pub revision: u64,
+    pub origin: String,
+    pub result: Value,
+}
 struct Pending {
+    snapshot_origin: Option<(u64, String)>,
     encode_ms: f64,
     capabilities: Vec<String>,
     cancelled: bool,
@@ -186,6 +197,9 @@ pub struct Session {
     latest: BTreeMap<String, (u64, String)>,
     events: VecDeque<Event>,
     last_profile: Option<ResponseProfile>,
+    snapshot_epoch: u64,
+    completed_snapshots_enabled: bool,
+    completed_snapshot: Option<CompletedSnapshot>,
 }
 impl Session {
     pub fn spawn(executable: impl AsRef<Path>, limits: Limits) -> Result<Self, String> {
@@ -210,6 +224,9 @@ impl Session {
             latest: BTreeMap::new(),
             events: VecDeque::new(),
             last_profile: None,
+            snapshot_epoch: 0,
+            completed_snapshots_enabled: false,
+            completed_snapshot: None,
         })
     }
     pub fn submit(&mut self, request: Request) -> Result<(), String> {
@@ -219,6 +236,50 @@ impl Session {
         &mut self,
         request: Request,
         capabilities: Vec<String>,
+    ) -> Result<(), String> {
+        self.submit_internal(request, capabilities, None)
+    }
+    /// Enable historical completion retention explicitly. Toggling invalidates old origins.
+    /// Disabled by default; at most one completed result is retained across all projects.
+    pub fn set_completed_snapshots_enabled(&mut self, enabled: bool) -> Result<(), String> {
+        if self.completed_snapshots_enabled != enabled {
+            self.completed_snapshot = None;
+            self.completed_snapshots_enabled = false;
+            self.snapshot_epoch = self
+                .snapshot_epoch
+                .checked_add(1)
+                .ok_or("snapshot epoch exhausted")?;
+            self.completed_snapshots_enabled = enabled;
+        }
+        Ok(())
+    }
+    /// Caller must bind this token to immutable source versions and its session incarnation.
+    /// Existing submit APIs never opt a request into historical completion retention.
+    pub fn submit_with_snapshot_origin(
+        &mut self,
+        request: Request,
+        capabilities: Vec<String>,
+        origin: String,
+    ) -> Result<(), String> {
+        if !self.completed_snapshots_enabled
+            || origin.is_empty()
+            || origin.len() > 1024
+            || origin.chars().any(char::is_control)
+        {
+            return Err("historical snapshots disabled or invalid origin token".into());
+        }
+        self.submit_internal(request, capabilities, Some((self.snapshot_epoch, origin)))
+    }
+    /// Move the last validated historical completion out. Poll first; no cloning or recompile.
+    /// Consumers still must reject obsolete session/project/display generations.
+    pub fn take_completed_snapshot(&mut self) -> Option<CompletedSnapshot> {
+        self.completed_snapshot.take()
+    }
+    fn submit_internal(
+        &mut self,
+        request: Request,
+        capabilities: Vec<String>,
+        snapshot_origin: Option<(u64, String)>,
     ) -> Result<(), String> {
         validate_layout_capabilities(&capabilities)?;
         if self.events.len() >= self.limits.max_pending_events {
@@ -264,6 +325,7 @@ impl Session {
             (request.revision, request.id.clone()),
         );
         self.queue.push_back(Pending {
+            snapshot_origin,
             encode_ms,
             capabilities,
             cancelled: false,
@@ -280,6 +342,13 @@ impl Session {
     pub fn close_project(&mut self, project_id: &str) -> Result<(), String> {
         if self.events.len() >= self.limits.max_pending_events {
             return Err("poll pending events before closing projects".into());
+        }
+        if self
+            .completed_snapshot
+            .as_ref()
+            .is_some_and(|snapshot| snapshot.project_id == project_id)
+        {
+            self.completed_snapshot = None;
         }
         self.latest.remove(project_id);
         if let Some(active) = self.active.as_mut() {
@@ -324,6 +393,7 @@ impl Session {
         }
     }
     fn fail(&mut self, reason: &str) {
+        self.completed_snapshot = None;
         self.process.take();
         if let Some(p) = self.active.take().filter(|p| !p.cancelled) {
             self.events.push_back(Event::Failed {
@@ -406,6 +476,11 @@ impl Session {
                             *rev == pending.request.revision && id == &pending.request.id
                         })
                     {
+                        if self.completed_snapshot.as_ref().is_some_and(|snapshot| {
+                            snapshot.project_id == pending.request.project_id
+                        }) {
+                            self.completed_snapshot = None;
+                        }
                         self.events.push_back(Event::Preview {
                             id: pending.request.id,
                             project_id: pending.request.project_id,
@@ -416,6 +491,17 @@ impl Session {
                             total_ms: now.duration_since(pending.queued).as_secs_f64() * 1000.0,
                         });
                     } else {
+                        if let Some((epoch, origin)) = pending.snapshot_origin {
+                            if self.completed_snapshots_enabled && epoch == self.snapshot_epoch {
+                                self.completed_snapshot = Some(CompletedSnapshot {
+                                    request_id: pending.request.id.clone(),
+                                    project_id: pending.request.project_id.clone(),
+                                    revision: pending.request.revision,
+                                    origin,
+                                    result,
+                                });
+                            }
+                        }
                         self.events.push_back(Event::Stale {
                             id: pending.request.id,
                             revision: pending.request.revision,

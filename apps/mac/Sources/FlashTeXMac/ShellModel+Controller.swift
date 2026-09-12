@@ -63,7 +63,10 @@ extension ShellModel {
         detachController()
         let projectRoot: URL
         let entryPath: String
-        if let documentURL, documentURL.lastPathComponent == activePath {
+        // The entry document is the first member, not necessarily the one
+        // being edited (ProjectDocuments keeps it first).
+        let entry = documents.first ?? .init(path: activePath, text: activeText)
+        if let documentURL, documentURL.lastPathComponent == entry.path {
             // The helper names documents by their rooted path; the project's
             // paths and the editor's must agree (a seeded buffer whose file name
             // differs from the entry path uses a session project instead).
@@ -72,8 +75,8 @@ extension ShellModel {
         } else {
             projectRoot = FileManager.default.temporaryDirectory.appendingPathComponent("flashtex-project-\(UUID().uuidString)")
             try? FileManager.default.createDirectory(at: projectRoot, withIntermediateDirectories: true)
-            entryPath = activePath
-            try? activeText.write(to: projectRoot.appendingPathComponent(entryPath), atomically: true, encoding: .utf8)
+            entryPath = entry.path
+            try? entry.text.write(to: projectRoot.appendingPathComponent(entryPath), atomically: true, encoding: .utf8)
         }
         let ledgerRoot = Self.controllerLedgerRoot(for: projectRoot)
         try? FileManager.default.createDirectory(at: ledgerRoot, withIntermediateDirectories: true)
@@ -305,7 +308,10 @@ extension ShellModel {
     /// preview already shown.
     private func applyControllerPreview(_ update: PreviewControllerClient.PreviewUpdate) {
         let versionForActive = update.sourceVersions[activePath]
-        if let inFlight = controllerState.inFlight, let want = inFlight.durableRevision, let got = versionForActive, got >= want {
+        // The in-flight edit names its own path: after a document switch the
+        // active path's version says nothing about it.
+        if let inFlight = controllerState.inFlight, let want = inFlight.durableRevision,
+           let got = update.sourceVersions[inFlight.path], got >= want {
             controllerReleaseInFlight()
         }
         guard let durableRevision = versionForActive,
@@ -429,6 +435,7 @@ extension ShellModel {
         }
         guard case .success(let payload) = reply, let disk = payload["disk"] as? [String: Any],
               let state = disk["state"] as? String else { return nil }
-        return ControllerDiskStatus(state: state, diskSHA256: disk["disk_sha256"] as? String, reason: disk["reason"] as? String)
+        // `matches_source` replies carry `sha256`; the others `disk_sha256`.
+        return ControllerDiskStatus(state: state, diskSHA256: (disk["disk_sha256"] ?? disk["sha256"]) as? String, reason: disk["reason"] as? String)
     }
 }

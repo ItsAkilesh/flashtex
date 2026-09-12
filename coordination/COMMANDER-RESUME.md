@@ -1,3 +1,41 @@
+# Current override checkpoint — 2026-09-12 09:50Z
+
+This section supersedes older pending/status wording below. Main52344d3 integrated
+full-output serializer e75741e; root c07f7ba/0154d27 evidence and internal historical
+prototype integrated6c89f26. All301pages byte-identical20/20; actual50KB30ms helper
+burst1→12current previews,20durableACKs both, exactreopen. Median500KB278→153ms;
+tail remains>200, no native guarantee. Main d8d96a4 integrates font03cdc27 real LM
+aliases/sharedTFM and PDFcompare9d09582, tests/lint+actualLM gate pass. Main18827dc
+integrates Daniel title2869f1a, TOCf8870c8, color1c75fce tested/linted.
+
+Dispatcher race e1b372b reconciled ONCE via8e7546d. Permanent shared Git-common
+publication_lock installedad4d89c,28tests pass. Service activePID1099831; witness
+correctly blocks takeover on livehostingprocess/newpublisherPID, no journalblockers.
+ALL Commander mainwrites now hold dispatch_loop.publication_lock across fresh
+fetch/authority check/reconcile/nonforcepush. No active Commander build/merge now.
+
+Root ff5fb39 internal optionalqueue complete; NEGOTIATED helper implementation now
+explicitly authorized after verified nativeACK issue2comment5644981151(09:21:01).
+Required project/session/source_versions/compile_revision/current_compile_revision,
+is_current:false,source_actions_enabled:false,echoed source_binding_token<=128;
+configACK first/resetonrestart,requiredACK/current priority,max1historical slot.
+No defaultnativeactivation. Earlier claim noMacACK was incomplete and corrected.
+
+Font activeFT024r14 main277a091: matching12TFM evidence cb4ff5f/578ac0c ready;
+now reviewing DanielTTCf2fdb08/4422cff. Descriptor lacks header/version overlap and
+hard workcaps; no unsafe resolver activation, concreteprobes underway. Renderer
+8131778 exactCFFv2adapter ready; actual pipeline9bb7b27 emits engineSHA as rawSHA,
+strict DigestMismatch retained. Latestpipeline4888a67/1a8e748 fixesmissingTFMdiag;
+renderer rechecksoriginal/reference andrawSHA, no rewrittenfixtureasproof.
+
+Danielparent5cae50809:31 remains7round2done/6runningreported/3notstarted, noIDs/r4ACK;
+laterownbranchescollaboration/mathaccess/fontadvanceprove ownwork, not16active.
+JaysenJSON09:25 names3activechildren, not15. Freshcensusrequested2/23comments
+5645125440/5645125550. KabirFT002r12 main58d83a5 prioritizes measuredleft/right+nu
+parsergaps; issue1comment5645129701 requestsACK/session, preservesinflightwork.
+Aarush/companions remainstale/unverified. Local3engineers+Commander intact; drained3
+staystopped. No newstaffing/purchases. Older historical details follow.
+
 # Commander checkpoint — 2026-09-12 09:30Z
 
 Read fresh origin/main authority/control before writing. Sole Commander is

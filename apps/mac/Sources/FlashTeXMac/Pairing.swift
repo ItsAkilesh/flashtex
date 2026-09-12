@@ -101,10 +101,10 @@ struct PairRecord: Codable, Equatable, Identifiable, CustomStringConvertible, Cu
     var companionName: String
     var createdAt: Date
     var lastSeenAt: Date?
-        /// Pairing attempt (`PairingCoordinator.Pending.generation`) that confirmed
-        /// this record; nil for records written by schema v1 files.
-        var generation: Int? = nil
-        
+    /// Pairing attempt (`PairingCoordinator.Pending.generation`, journaled by
+    /// `PairingJournal`) that confirmed this record; nil for records written
+    /// by schema v1 files.
+    var generation: Int? = nil
     var id: String { pairId }
     enum CodingKeys: String, CodingKey {
         case pairId = "pair_id", psk, companionName = "companion_name"
@@ -372,6 +372,9 @@ enum PairingFlow {
         case otherCompanionConnected(generation: Int)
         case receiving(pairId: String, companionName: String?, captureId: String?, bytes: Int, total: Int?)
         case captureReceived(pairId: String?, captureId: String)
+        /// The transport refused a capture with an `error` reply (or the Mac
+        /// closed the session while receiving it).
+        case captureRefused(pairId: String?, captureId: String?, code: String)
         case forgotten(pairId: String)
         /// User actions.
         case cancel
@@ -388,6 +391,8 @@ enum PairingFlow {
         case cancelTransport(Attempt)
         /// Tell the transport to accept this attempt's bootstrap key again.
         case resumeTransport(Attempt)
+        /// Close every live session of one pairing (cancels a receive).
+        case closeSession(pairId: String)
         /// Post an accessibility announcement.
         case announce(String)
     }
@@ -551,7 +556,7 @@ enum PairingFlow {
 
             case .receiving(let pairId, let name, let captureId, let bytes, let total):
                 switch phase {
-                case .advertising, .paired, .receiving:
+                case .advertising, .paired, .receiving, .failed:
                     phase = .receiving(Receiving(pairId: pairId, companionName: name, captureId: captureId, bytes: bytes, total: total))
                     return .none
                 default:
@@ -566,6 +571,18 @@ enum PairingFlow {
                     return Outcome(effects: [.announce("Received capture \(captureId) from \(r.companionName ?? r.pairId).")])
                 case .paired, .advertising:
                     return Outcome(effects: [.announce("Received capture \(captureId).")])
+                default:
+                    return .ignoredInput
+                }
+
+            case .captureRefused(let pairId, let captureId, let code):
+                switch phase {
+                case .receiving(let r):
+                    guard pairId == nil || pairId == r.pairId else { return .staleInput }
+                    phase = rest
+                    return Outcome(effects: [.announce("Capture \(captureId ?? "?") from \(r.companionName ?? r.pairId) refused: \(code).")])
+                case .paired, .advertising:
+                    return Outcome(effects: [.announce("Capture \(captureId ?? "?") refused: \(code).")])
                 default:
                     return .ignoredInput
                 }
@@ -595,9 +612,11 @@ enum PairingFlow {
                 case .failed:
                     phase = rest
                     return .none
-                case .receiving:
-                    // Needs a transport API to close one session; not cancellable in v1.
-                    return .ignoredInput
+                case .receiving(let r):
+                    // The Mac closes the session; the companion may resend with the same capture_id.
+                    phase = .failed(reason: "Receive from \(r.companionName ?? r.pairId) cancelled after \(r.bytes) bytes; the companion can resend it with the same capture_id.",
+                                    generation: generation)
+                    return Outcome(effects: [.closeSession(pairId: r.pairId), .announce("Receive cancelled.")])
                 default:
                     return .ignoredInput
                 }
@@ -638,7 +657,7 @@ extension PairingFlow.Phase {
     /// terminal banner; `resume` re-serves an interrupted code.
     func canCancel(now: Date = Date()) -> Bool {
         switch self {
-        case .codeShown, .verifying: return true
+        case .codeShown, .verifying, .receiving: return true
         case .interrupted(let a, _, _): return !a.isExpired(at: now)
         default: return false
         }
@@ -689,7 +708,7 @@ extension PairingFlow.Phase {
         case .receiving(let r):
             let who = r.companionName ?? r.pairId
             if let total = r.total { return "Receiving \(r.bytes) of \(total) bytes from \(who)." }
-            return "Receiving \(r.bytes) bytes from \(who) (size unknown until the line ends)."
+            return "Receiving \(r.bytes) bytes from \(who); total unknown until the line ends."
         case .interrupted(let a, let why, let detail):
             let base: String
             switch why {

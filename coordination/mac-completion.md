@@ -1,6 +1,6 @@
 # mac-completion handoff — revision-bound completion metadata
 
-- Updated UTC: 2026-09-12T09:16Z
+- Updated UTC: 2026-09-12T10:02Z
 - Agent / parent / machine alias: `mac-completion` (Claude Code subagent) /
   parent `mac-claude-a` / `mac-m1max-a`
 - Task / acceptance gate / owned paths: lane "Consume bounded revision-bound
@@ -11,16 +11,34 @@
   `apps/mac/Tests/FlashTeXMacTests/CompletionTests.swift`, this handoff and
   `coordination/agents/mac-completion.json`.
 - Branch / code revision / main integrated through:
-  `agent/mac-completion/live-helper` (from `origin/agent/mac-claude-a/mac-shell`
-  `d8baed6`, which already merged the first lane branch
-  `agent/mac-completion/revision-bound` at `4d358e5` with the parent diffs
-  applied) / see `coordination/agents/mac-completion.json` `code_revision` /
-  main as merged into mac-shell.
+  `agent/mac-completion/vocabulary` (from `origin/agent/mac-claude-a/mac-shell`
+  `40d53b7`; earlier lane branches `revision-bound` and `live-helper` are
+  merged there) / see `coordination/agents/mac-completion.json`
+  `code_revision` / main as merged into mac-shell.
 - State: ready for integration (core lane and both follow-ups implemented and
   tested; parent-side wiring reported below, not applied). Context usage of
   this session cannot be read exactly by the agent; it is well below the
   compaction thresholds in docs/context-checkpoints.md at this checkpoint.
 - Ready behavior and evidence:
+  - Static vocabulary (`Completion.Vocabulary`): the `\` list is exactly the
+    compiler's documented set on main — 18 commands from
+    `crates/compiler/README.md` "Supported commands", `\frac`/`\sqrt` and the
+    22 symbols of "Supported math" (glyphs from `src/math.rs`
+    `COMMAND_GLYPHS`), plus `\input`/`\include` from the parser dispatch arm
+    (source `.parserArm`, not in the README paragraph). Each entry shows its
+    argument shape in the label (`\section{...}`, `\newcommand{\name}[n]{body}`,
+    `\documentclass[options]{class}`; inserted text stays `\name`) and a
+    one-line description ("math · symbol α" for symbols). README environment
+    list (document, equation, figure, itemize, enumerate) replaces the old
+    `document`-only set. `testStaticVocabularyMatchesTheCompilerDocs` parses
+    README.md, src/math.rs, src/parser.rs and UNSUPPORTED.md from the repo
+    and fails on drift (parser arms not in the table, symbol names/glyphs or
+    order, README command/math/environment sets, `\includegraphics` must stay
+    unsupported). Project `\newcommand`s win over a same-named static entry
+    ("declared in main.tex · … · overrides the builtin", no builtin argument
+    shape); typed commands absent from both say "not supported by the
+    compiler" plus the bound compile diagnostic. Keyboard/mouse acceptance
+    tests updated for the new labels.
   - Live helper end-to-end (`CompletionLiveHelperTests`, env-gated like
     `PreviewControllerTests`): real `flashtex-preview-controller` + compiler
     behind `ShellModel`, `SourceEditorView` hosted in a window, real
@@ -176,12 +194,16 @@
   and project-index README read on main and reflected in the decoder shape,
   bounds and the "lexical, not TeX semantics" wording of details.
 - Validation commands / results / artifact paths:
-  `cd apps/mac && swift test --filter CompletionTests` → 20/20;
+  `cd apps/mac && swift test --filter CompletionTests` → 21/21;
   `FLASHTEX_COMPILER=… FLASHTEX_PREVIEW_CONTROLLER=… swift test --filter
   CompletionLiveHelperTests` → 1/1 (5 consecutive runs); full suite with
-  `FLASHTEX_COMPILER/PDF/BRIDGE/EDIT_LEDGER/PREVIEW_CONTROLLER` set → 307
-  tests, 0 failures, 4 env-gated skips from other lanes (DocumentFiles helper,
-  NearbyView screenshots), 51 s. Timing lines are printed by
+  `FLASHTEX_COMPILER/PDF/BRIDGE/EDIT_LEDGER/PREVIEW_CONTROLLER` set → 382
+  tests, 0 failures, 9 env-gated skips from other lanes (DocumentFiles helper
+  ×3, ExactPDFExport, NearbyReferenceClient, NearbyView screenshots,
+  ProposalPreview ×3), 109 s under load average ~60 from other lanes. The
+  pre-existing 1 MB-buffer timing test (bound 20 ms) failed twice under that
+  load (26–47 ms) and passed in the full run (9.0/5.5 ms); it is unchanged by
+  this lane. Timing lines are printed by
   `testCandidateComputationOnDemoTexStaysUnderTwoMilliseconds` and
   `testKeystrokeThroughOpenListOnDemoTexDoesNotScanOnMain`.
 - Exact deadline UTC / remaining time / integration reserve: per
@@ -205,7 +227,7 @@
   - Binding is exact-revision (`==`), not "not older": metadata newer than
     the text is not the text's either.
 - Exact next action or command: parent merges
-  `agent/mac-completion/live-helper` into mac-shell; Commander integration.
+  `agent/mac-completion/vocabulary` into mac-shell; Commander integration.
 - Resume reading list: this file, `apps/mac/Sources/FlashTeXMac/Completion.swift`
   header comments, `crates/preview-controller/STDIO.md` (complete/navigate),
   `crates/project-index/README.md`.

@@ -112,6 +112,58 @@ final class RealEditLedgerTests: XCTestCase {
         catch let f as LineProcessFailure { XCTAssertTrue(f.code == "store_in_use" || f.isTransient, f.text) }
     }
 
+    /// The real helper killed mid-session (SIGKILL): its flock is released with the
+    /// process, the relaunch reopens the same store, realigns it with the buffer
+    /// (typing while it was down is not lost), and insertion works afterwards.
+    func testKilledHelperIsRelaunchedAndTheStoreReopens() async throws {
+        let binary = try requireBinary()
+        let store = try BridgeClientTests.tempStore()
+        let ledgerStore = store.appendingPathComponent("documents/doc")
+        let model = ShellModel()
+        model.autoCompile = false
+        let attached = await model.attachBridgeAndWait(executable: BridgeClientTests.python, arguments: [BridgeClientTests.fakeBridge.path],
+                                                       storeDirectory: store, ledger: .init(executable: binary), discoverLedger: false, ledgerStore: ledgerStore)
+        XCTAssertTrue(attached, model.captureNote ?? model.bridgeStatus)
+        let bridge = try XCTUnwrap(model.bridge)
+        XCTAssertTrue(bridge.ledgerUsable, bridge.ledgerStatus)
+        let firstSession = bridge.ledger?.ledgerSessionId
+        model.updateActiveText("Hello naïve FlashTeX.\n")
+        try await ShellModelBridgeTests.waitUntil { bridge.durable?.revision == model.editorRevision }
+        let pid = try XCTUnwrap(RealHelperProcess.pid(commandLineContaining: "flashtex-edit-ledger --store \(ledgerStore.path)"), "helper pid")
+        XCTAssertEqual(kill(pid, SIGKILL), 0)
+        try await ShellModelBridgeTests.waitUntil { !bridge.ledgerUsable }
+        XCTAssertTrue(bridge.ledgerStatus.contains("edit ledger exited (9); relaunching in 0.2 s"), bridge.ledgerStatus)
+        model.updateActiveText("Hello naïve FlashTeX. typed while down\n")
+        try await ShellModelBridgeTests.waitUntil { bridge.relaunchCount[.ledger] == 1 && bridge.relaunching == nil }
+        XCTAssertTrue(bridge.ledgerUsable, bridge.ledgerStatus)
+        XCTAssertTrue(bridge.ledgerStatus.hasPrefix("relaunched: "), bridge.ledgerStatus)
+        XCTAssertNotEqual(bridge.ledger?.ledgerSessionId, firstSession, "a new helper session")
+        XCTAssertEqual(bridge.durable?.text, "Hello naïve FlashTeX. typed while down\n")
+        XCTAssertEqual(bridge.durable?.revision, model.editorRevision)
+        XCTAssertEqual(try onDisk(ledgerStore).document.text, "Hello naïve FlashTeX. typed while down\n")
+        XCTAssertEqual(try onDisk(ledgerStore).document.revision, model.editorRevision)
+        XCTAssertTrue(bridge.running, "the bridge was untouched")
+        // Insertion on the relaunched helper.
+        model.caretUTF16 = 12
+        model.pinAnchorAtCaret()
+        try await ShellModelBridgeTests.waitUntil { model.bridgeDestination != nil }
+        let received = await model.submitCapture(image: try BridgeClientTests.fixtureCapture().image, captureId: "fixture-capture-1", instructions: "t")
+        XCTAssertNotNil(received, model.captureNote ?? "")
+        let maybeProposal = await model.convertCapture(captureId: "fixture-capture-1")
+        let proposal = try XCTUnwrap(maybeProposal, model.captureNote ?? "")
+        let outcome = await model.approveBridgeProposal(proposal, latex: proposal.latex)
+        XCTAssertEqual(outcome, .inserted(byteOffset: 13), model.captureNote ?? "")
+        let after = "Hello naïve \\fakecapture{fixture-capture-1}FlashTeX. typed while down\n"
+        model.editApplied(try XCTUnwrap(model.pendingEdit), newText: after)
+        try await ShellModelBridgeTests.waitUntil { model.bridgeCaptures.last?.state == .confirmed }
+        try await ShellModelBridgeTests.waitUntil { bridge.transactions["capture-fixture-capture-1"]?.confirmed == true }
+        XCTAssertEqual(try onDisk(ledgerStore).document.text, after)
+        XCTAssertEqual(try onDisk(ledgerStore).transactions["capture-fixture-capture-1"]?.confirmed, true)
+        model.detachBridge()
+        try await Task.sleep(nanoseconds: 300_000_000)
+        XCTAssertNil(RealHelperProcess.pid(commandLineContaining: "flashtex-edit-ledger --store \(ledgerStore.path)"), "detach leaves no helper process")
+    }
+
     func testShellFlowWithRealHelperAndFakeBridge() async throws {
         let binary = try requireBinary()
         let store = try BridgeClientTests.tempStore()

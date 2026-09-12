@@ -21,9 +21,24 @@ enum SourceDigest {
 /// verification → helper `apply` (durable source + ledger, receipt returned) →
 /// adopt the durable document in the editor as one undoable edit → export the
 /// `.tex` when file-backed → `capture_applied` → helper `confirm`.
+///
+/// Both children are relaunched after an abnormal exit (same executable,
+/// arguments and store) with the shell's worker policy — 0.2 / 1 / 3 s backoff,
+/// at most `maxRelaunches` per minute per child, never after a clean exit or an
+/// explicit `terminate()` — followed by the existing reconciliation: the ledger
+/// is reopened and realigned (`openLedger`), pending receipts go through
+/// `reconcile`, the document is reopened on the bridge and an exactly
+/// restorable pinned destination is re-pinned (else reported). A capture whose
+/// request was in flight at the crash is shown as `uncertain`, never dropped
+/// or duplicated: the same capture ID is safe to resubmit.
 @MainActor
 final class BridgeSession {
-    enum CaptureState: String { case received, converting, proposed, prepared, applied, confirmed, rejected, needsReselection, failed }
+    enum CaptureState: String {
+        case received, converting, proposed, prepared, applied, confirmed, rejected, needsReselection, failed
+        /// The bridge exited while the request was in flight: not known whether it
+        /// was journaled. An identical resubmission is idempotent on the bridge.
+        case uncertain
+    }
     struct Capture: Equatable {
         var captureId: String
         var destinationId: String
@@ -31,11 +46,43 @@ final class BridgeSession {
         var note: String
     }
 
-    let client: BridgeClient
+    /// Replaced by an automatic relaunch; callbacks compare identity before touching state.
+    private(set) var client: BridgeClient
     let projectId: String
     let storeDirectory: URL
     private(set) var status: String
     private(set) var running = true
+    private let bridgeLaunch: (executable: URL, arguments: [String], enableGrok: Bool)
+
+    // MARK: automatic relaunch (policy mirrors ShellModel's worker relaunch)
+
+    enum Child: String { case bridge, ledger }
+    static let maxRelaunches = 3
+    /// Relaunch delays after the 1st, 2nd, 3rd abnormal exit within a minute.
+    static let relaunchDelays: [TimeInterval] = [0.2, 1.0, 3.0]
+    /// Automatic relaunches performed so far, per child (status/tests).
+    private(set) var relaunchCount: [Child: Int] = [:]
+    /// A relaunch (launch + reconciliation) is in progress for this child.
+    private(set) var relaunching: Child?
+    private var relaunchTimes: [Child: [Date]] = [:]
+    private var relaunchWork: [Child: DispatchWorkItem] = [:]
+    /// `terminate()` was called: no child is relaunched afterwards.
+    private(set) var detached = false
+    /// After an automatic relaunch and its reconciliation: which child, and a
+    /// one-line summary the shell may show (captures reported uncertain,
+    /// destination restored or lost, reconciliation actions).
+    var onRelaunched: (Child, String) -> Void = { _, _ in }
+    /// Reconciliation after a relaunch may need the editor revision to pass a
+    /// revision the ledger/bridge already confirmed (`advanceEditorRevision`).
+    var onRevisionFloor: (Int) -> Void = { _ in }
+    /// How the shell reads the live source, remembered from `reconcile`/`open`
+    /// so a relaunch can reconcile and resynchronize without the shell.
+    struct DocumentContext {
+        var path: String
+        var currentSource: () -> (text: String, revision: Int)
+        var statusTimeout: TimeInterval
+    }
+    private var documentContext: DocumentContext?
     private(set) var destination: TransferV1.Anchor?
     private(set) var captures: [Capture] = []
     private(set) var log: [String] = []
@@ -71,18 +118,37 @@ final class BridgeSession {
          projectId: String) throws {
         self.projectId = projectId
         self.storeDirectory = storeDirectory
+        bridgeLaunch = (executable, arguments, enableGrok)
         status = "launching \(executable.lastPathComponent)"
-        var events: ((BridgeClient.Event) -> Void)?
-        client = try BridgeClient(executable: executable, arguments: arguments, storeDirectory: storeDirectory,
-                                  enableGrok: enableGrok) { events?($0) }
-        events = { [weak self] event in
-            guard let self else { return }
-            Task { @MainActor in self.handle(event) }
-        }
+        let (c, bind) = try Self.makeBridgeClient(bridgeLaunch, storeDirectory: storeDirectory)
+        client = c
+        bind(self)
         status = "attached: \(executable.lastPathComponent)"
     }
 
+    /// Launches the bridge and returns it with a binder: once bound, its events
+    /// reach the session only while it is still `session.client` (a replaced
+    /// process's queued exit never overwrites the relaunched one).
+    private static func makeBridgeClient(_ launch: (executable: URL, arguments: [String], enableGrok: Bool),
+                                         storeDirectory: URL) throws -> (BridgeClient, (BridgeSession) -> Void) {
+        var events: ((BridgeClient.Event) -> Void)?
+        let c = try BridgeClient(executable: launch.executable, arguments: launch.arguments, storeDirectory: storeDirectory,
+                                 enableGrok: launch.enableGrok) { events?($0) }
+        return (c, { session in
+            events = { [weak session, weak c] event in
+                Task { @MainActor in
+                    guard let session, let c, session.client === c else { return }
+                    session.handle(event)
+                }
+            }
+        })
+    }
+
     func terminate() {
+        detached = true
+        for item in relaunchWork.values { item.cancel() }
+        relaunchWork.removeAll()
+        relaunching = nil
         client.terminate()
         ledger?.terminate()
         running = false
@@ -98,8 +164,10 @@ final class BridgeSession {
         case .exited(let code):
             running = false
             status = "bridge exited (\(code))"
-            expectedApplication = nil
             note(status)
+            // `expectedApplication` is kept: an adoption the editor performs while
+            // the bridge is down is recognized after the relaunch, not sent as an edit.
+            scheduleRelaunch(.bridge, afterExit: code)
         }
         onChange()
     }
@@ -113,8 +181,215 @@ final class BridgeSession {
             if ledgerError == nil { ledgerError = "edit ledger exited (\(code))" }
             ledgerStatus = ledgerError!
             note(ledgerStatus)
+            scheduleRelaunch(.ledger, afterExit: code)
         }
         onChange()
+    }
+
+    /// An abnormal exit of a child we launched relaunches it after a short
+    /// backoff, at most `maxRelaunches` times per minute; beyond that the exit
+    /// stays visible with a re-attach hint. A clean exit (0) or an explicit
+    /// `terminate()` never relaunches. Nothing is relaunched twice: the work
+    /// item checks that the exited process is still the current one.
+    private func scheduleRelaunch(_ child: Child, afterExit code: Int32) {
+        guard code != 0, !detached else { return }
+        if child == .ledger, ledgerLaunch == nil { return }
+        let now = Date()
+        var times = (relaunchTimes[child] ?? []).filter { now.timeIntervalSince($0) < 60 }
+        let name = child == .bridge ? bridgeLaunch.executable.lastPathComponent : ledgerLaunch!.executable.lastPathComponent
+        guard times.count < Self.maxRelaunches else {
+            let hint = "\(Self.maxRelaunches) relaunches in the last minute — Edit > Attach Capture Bridge to retry"
+            if child == .bridge {
+                status = "bridge exited (\(code)); not relaunched: \(hint)"
+            } else {
+                ledgerError = "edit ledger exited (\(code)); not relaunched: \(hint)"
+                ledgerStatus = ledgerError!
+            }
+            relaunchTimes[child] = times
+            note("\(child.rawValue) relaunch limit reached")
+            return
+        }
+        let delay = Self.relaunchDelays[min(times.count, Self.relaunchDelays.count - 1)]
+        times.append(now)
+        relaunchTimes[child] = times
+        let attempt = times.count
+        if child == .bridge {
+            status = String(format: "bridge exited (%d); relaunching in %.1f s", code, delay)
+        } else {
+            ledgerStatus = String(format: "edit ledger exited (%d); relaunching in %.1f s", code, delay)
+        }
+        note("relaunching \(name) in \(delay) s (attempt \(attempt) this minute)")
+        armRelaunch(child, exitedBridge: child == .bridge ? client : nil, exitedLedger: child == .ledger ? ledger : nil, after: delay)
+    }
+
+    private func armRelaunch(_ child: Child, exitedBridge: BridgeClient?, exitedLedger: EditLedgerClient?, after delay: TimeInterval) {
+        relaunchWork[child]?.cancel()
+        let item = DispatchWorkItem { [weak self] in
+            guard let self, !self.detached else { return }
+            // Only the process that exited is replaced; a client someone else already
+            // replaced (`reopenLedger` after a poisoned handle) is left alone.
+            switch child {
+            case .bridge: guard self.client === exitedBridge, !self.client.isRunning else { return }
+            case .ledger: guard self.ledger === exitedLedger, self.ledger?.isRunning != true else { return }
+            }
+            if self.relaunching != nil { // the other child is mid-relaunch: wait for it
+                self.armRelaunch(child, exitedBridge: exitedBridge, exitedLedger: exitedLedger, after: 0.1)
+                return
+            }
+            self.relaunchWork[child] = nil
+            Task { @MainActor in await self.relaunch(child) }
+        }
+        relaunchWork[child] = item
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: item)
+    }
+
+    /// Relaunches `child` and runs the reconciliation that a fresh attach runs,
+    /// against the live source: ledger → `openLedger` (realign/adopt), then
+    /// `reconcile` for pending receipts, then the bridge document is reopened
+    /// and an exactly restorable destination re-pinned.
+    private func relaunch(_ child: Child) async {
+        guard !detached else { return }
+        relaunching = child
+        defer { relaunching = nil }
+        var summary: [String] = []
+        switch child {
+        case .bridge:
+            do {
+                let (c, bind) = try Self.makeBridgeClient(bridgeLaunch, storeDirectory: storeDirectory)
+                client = c
+                bind(self)
+            } catch {
+                status = "bridge relaunch failed: \(error.localizedDescription) — Edit > Attach Capture Bridge to retry"
+                note(status)
+                onChange()
+                onRelaunched(.bridge, status)
+                return
+            }
+            relaunchCount[.bridge, default: 0] += 1
+            running = true
+            openPaths = [] // the bridge's documents and anchors were in memory
+            status = "relaunched \(bridgeLaunch.executable.lastPathComponent); reconciling…"
+            note("relaunched \(bridgeLaunch.executable.lastPathComponent) (relaunch \(relaunchCount[.bridge]!))")
+            summary += markInFlightUncertain()
+        case .ledger:
+            guard let launch = ledgerLaunch, let context = documentContext ?? shadowContext() else { return }
+            let source = context.currentSource()
+            let outcome = await openLedger(executable: launch.executable, arguments: launch.arguments, store: launch.store,
+                                           path: context.path, currentText: source.text, currentRevision: source.revision)
+            guard !detached else { return }
+            relaunchCount[.ledger, default: 0] += 1
+            note("relaunched \(launch.executable.lastPathComponent) (relaunch \(relaunchCount[.ledger]!)): \(ledgerStatus)")
+            switch outcome {
+            case .fresh(let r), .aligned(let r), .bufferReplacedStore(let r):
+                onRevisionFloor(r)
+                summary.append("edit ledger relaunched; \(ledgerStatus)")
+            case .adoptDurable(let text, let r):
+                onRevisionFloor(r)
+                summary.append("edit ledger relaunched; the durable document (with unconfirmed insertions) replaces the buffer")
+                onAdoptDocument(text)
+            case .unavailable(let why):
+                summary.append("edit ledger relaunched but unusable: \(why)")
+            }
+            ledgerStatus = "relaunched: " + ledgerStatus
+        }
+        onChange()
+        // Pending receipts (a receipt in flight at the crash, or older ones) go through the
+        // ledger-guarded reconciliation; the live source is then reopened on the bridge.
+        if running, let context = documentContext ?? shadowContext() {
+            if ledgerUsable, durable != nil {
+                let (actions, minimum) = await reconcile(path: context.path, currentSource: context.currentSource, statusTimeout: context.statusTimeout)
+                guard !detached else { return }
+                onRevisionFloor(minimum)
+                for action in actions {
+                    switch action {
+                    case .confirmed(let id): summary.append("\(id) confirmed by the bridge")
+                    case .replayedReceipt(let id, let rev): summary.append("replayed receipt for \(id) (revision \(rev))")
+                    case .needsReconciliation(let id, let why), .retryLater(let id, let why): summary.append("\(id): \(why)")
+                    }
+                }
+                if reconciliationIncomplete { summary.append("reconciliation incomplete; use Edit > Retry Bridge Reconciliation") }
+            } else if child == .bridge, ledger != nil {
+                summary.append("pending receipts not reconciled: \(ledgerError ?? ledgerStatus)")
+            }
+            let source = context.currentSource()
+            do {
+                try await open(path: context.path, revision: source.revision, text: source.text)
+                guard !detached else { return }
+                if child == .bridge { summary.append(await restoreDestination(path: context.path, source: source)) }
+            } catch {
+                summary.append("could not reopen \(context.path) after the relaunch: \((error as? BridgeClient.Failure)?.text ?? "\(error)")")
+            }
+        }
+        let line = summary.joined(separator: "; ")
+        note("\(child.rawValue) relaunch: \(line)")
+        onChange()
+        onRelaunched(child, line)
+    }
+
+    /// Fallback document context when the shell never called `reconcile`: the
+    /// bridge's shadow of the last opened path.
+    private func shadowContext() -> DocumentContext? {
+        guard let (path, _) = shadow.first else { return nil }
+        return .init(path: path, currentSource: { [weak self] in
+            let s = self?.shadow[path]
+            return (s?.text ?? "", s?.revision ?? 0)
+        }, statusTimeout: 15)
+    }
+
+    /// A transaction whose receipt was in flight (or owed) when the bridge exited
+    /// is uncertain: it leaves live tracking and is settled from the ledger by
+    /// `reconcile` (confirmed, replayed from the pre-edit snapshot, or held as
+    /// evidence). A durable edit the editor has not adopted yet stays live: its
+    /// receipt follows the adoption, on the relaunched bridge. Deferred edits
+    /// are dropped — the reopen carries the newest text.
+    private func markInFlightUncertain() -> [String] {
+        var lines: [String] = []
+        deferredEdits.removeAll()
+        if let expected = expectedApplication {
+            let current = (documentContext ?? shadowContext())?.currentSource().text
+            if current == expected.afterText {
+                expectedApplication = nil // adopted while the bridge was down; the receipt is owed
+            } else {
+                lines.append("edit \(expected.edit.editId) awaits adoption in the editor; its receipt follows")
+                return lines
+            }
+        }
+        if let tx = pendingTransaction {
+            pendingTransaction = nil
+            let why = tx.receiptSent ? "receipt for \(tx.edit.editId) was in flight when the bridge exited" : "receipt for \(tx.edit.editId) was owed when the bridge exited"
+            setCapture(tx.edit.captureId, .uncertain, "\(why); settling from the edit ledger")
+            lines.append(why)
+        }
+        return lines
+    }
+
+    /// After a bridge relaunch its anchors are gone. The pinned destination is
+    /// re-pinned identically when the document is still at the pinned revision
+    /// (same ID, range and source hash: captures bound to it stay valid);
+    /// otherwise it is dropped and reported, and a new pin is required.
+    private func restoreDestination(path: String, source: (text: String, revision: Int)) async -> String {
+        guard let d = destination else { return "no pinned destination" }
+        guard d.path == path, d.pinnedRevision == source.revision, d.binding.sourceSha256 == SourceDigest.sha256Hex(source.text) else {
+            destination = nil
+            onChange()
+            return "pinned destination \(d.destinationId) was lost with the bridge (source moved past revision \(d.pinnedRevision)); pin again"
+        }
+        do {
+            let attached = status
+            let a = try await pin(destinationId: d.destinationId, path: d.path, revision: d.pinnedRevision,
+                                  startByte: d.binding.startByte, endByte: d.binding.endByte)
+            status = attached // the pin is a restoration, not news
+            guard a.binding == d.binding else {
+                destination = nil
+                onChange()
+                return "pinned destination \(d.destinationId) could not be restored identically; pin again"
+            }
+            return "pinned destination \(d.destinationId) restored"
+        } catch {
+            destination = nil
+            onChange()
+            return "pinned destination \(d.destinationId) could not be restored (\((error as? BridgeClient.Failure)?.text ?? "\(error)")); pin again"
+        }
     }
 
     private func note(_ line: String) {
@@ -124,8 +399,14 @@ final class BridgeSession {
 
     private func fail(_ what: String, _ error: Error) -> BridgeClient.Failure {
         let f = (error as? BridgeClient.Failure) ?? .undecodable("\(error)")
-        status = "\(what) failed — \(f.text)"
-        note(status)
+        if f.isTransient, !running {
+            // The process is gone: the exit (and its relaunch schedule) is the status; the
+            // failed request is only logged.
+            note("\(what) failed — \(f.text)")
+        } else {
+            status = "\(what) failed — \(f.text)"
+            note(status)
+        }
         onChange()
         return f
     }
@@ -270,7 +551,9 @@ final class BridgeSession {
                                          as: TransferV1.Empty.self)
             shadow[path] = (revision, text)
             openPaths.insert(path)
-            status = "attached: \(client.executable.lastPathComponent) · \(path) open at revision \(revision)"
+            documentContext?.path = path
+            let relaunched = relaunchCount[.bridge].map { $0 > 0 ? " · relaunched \($0)×" : "" } ?? ""
+            status = "attached: \(client.executable.lastPathComponent)\(relaunched) · \(path) open at revision \(revision)"
             onChange()
         } catch { throw fail("document_open", error) }
     }
@@ -279,9 +562,11 @@ final class BridgeSession {
     /// tombstones kept) and sent to the bridge as one `document_edit` (byte
     /// range + replacement). Fire-and-forget: a refused bridge edit triggers a
     /// `document_open` resynchronization; a refused durable replace means the
-    /// store diverged and application is disabled until the next attach.
+    /// store diverged and application is disabled until the next attach. The
+    /// durable store follows the editor even while the bridge is down (awaiting
+    /// relaunch): the relaunch reopens the newest text.
     func edited(path: String, oldText: String, newText: String, base: Int, revision: Int) {
-        guard running else { return }
+        guard !detached else { return }
         let region = SourceMapping.changedRegion(from: oldText, to: newText)
         let edit = TransferV1.DocumentEdit(projectId: projectId, path: path, baseRevision: base, revision: revision,
                                            startByte: region.startByte, endByte: region.oldEndByte, replacement: region.replacement)
@@ -296,9 +581,16 @@ final class BridgeSession {
                        as: EditLedgerV1.DocumentReply.self) { [weak self] result in
                     guard let self, self.ledger === l else { return } // a replaced helper's late reply is not ours
                     if case .failure(let f) = result {
-                        self.ledgerError = "durable document diverged from the editor (\(f.text)); reattach to reconcile"
-                        self.ledgerStatus = self.ledgerError!
-                        self.note(self.ledgerStatus)
+                        if f.isTransient {
+                            // The helper did not answer (exited mid-request): the relaunch reopens the
+                            // store and realigns it with the buffer; nothing is concluded here.
+                            self.ledgerStatus = "edit ledger did not acknowledge replace_document (\(f.text)); realigning after relaunch"
+                            self.note(self.ledgerStatus)
+                        } else {
+                            self.ledgerError = "durable document diverged from the editor (\(f.text)); reattach to reconcile"
+                            self.ledgerStatus = self.ledgerError!
+                            self.note(self.ledgerStatus)
+                        }
                         self.onChange()
                     }
                 }
@@ -309,7 +601,7 @@ final class BridgeSession {
                 onChange()
             }
         }
-        guard openPaths.contains(path) else { return } // the initial document_open will carry this text
+        guard running, openPaths.contains(path) else { return } // the (re)open will carry this text
         if let tx = pendingTransaction, tx.edit.path == path {
             // The bridge must apply the receipt before edits based on the post-edit revision.
             deferredEdits.append(edit)
@@ -365,8 +657,15 @@ final class BridgeSession {
             return received
         } catch {
             let f = fail("capture_submit", error)
-            // A conflicting retry does not change the state of the capture already journaled.
-            setCapture(capture.captureId, destination: capture.destinationId, self.capture(capture.captureId)?.state ?? .failed, f.text)
+            if f.isTransient, self.capture(capture.captureId).map({ $0.state == .uncertain || $0.state == .failed }) ?? true {
+                // The bridge did not answer: the capture may or may not be journaled. It is
+                // never dropped; the same capture ID can be resubmitted (idempotent on the bridge).
+                setCapture(capture.captureId, destination: capture.destinationId, .uncertain,
+                           "bridge did not acknowledge capture_submit (\(f.text)); not known whether it was journaled — resubmit with the same capture ID")
+            } else {
+                // A conflicting retry does not change the state of the capture already journaled.
+                setCapture(capture.captureId, destination: capture.destinationId, self.capture(capture.captureId)?.state ?? .failed, f.text)
+            }
             throw f
         }
     }
@@ -680,11 +979,12 @@ final class BridgeSession {
     /// bounded number of times. Missing/conflicting bridge records are reported
     /// as `needsReconciliation` (explicit resolution), transport failures as
     /// `retryLater`. Returns the actions and the minimum editor revision.
-    func reconcile(path: String, currentSource: () -> (text: String, revision: Int),
+    func reconcile(path: String, currentSource: @escaping () -> (text: String, revision: Int),
                    statusTimeout: TimeInterval = 15, maxRounds: Int = 3) async -> (actions: [ReconcileAction], minimumRevision: Int) {
         var actions: [ReconcileAction] = []
         var minimum = currentSource().revision
         reconciliationIncomplete = false
+        documentContext = .init(path: path, currentSource: currentSource, statusTimeout: statusTimeout)
         guard ledgerUsable, let l = ledger, durable != nil else {
             status = "edit ledger unavailable (\(ledgerError ?? ledgerStatus)); capture insertion disabled until it is repaired"
             reconciliationIncomplete = true
@@ -761,6 +1061,9 @@ final class BridgeSession {
                     transactions[receipt.editId]?.documentBefore = nil
                     needsReconciliation[receipt.editId] = nil
                     minimum = max(minimum, receipt.newRevision + 1)
+                    if capture(receipt.captureId) != nil { // a capture of this session (e.g. uncertain after a relaunch)
+                        setCapture(receipt.captureId, .confirmed, "insertion confirmed by the bridge (edit \(receipt.editId), revision \(receipt.newRevision))")
+                    }
                     actions.append(.confirmed(editId: receipt.editId))
                 case .replayReceipt(let before, let receipt):
                     // Reopen the pre-edit snapshot on the bridge, replay the receipt, confirm locally on an

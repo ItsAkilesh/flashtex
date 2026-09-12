@@ -438,3 +438,134 @@ sys.stdout.buffer.flush()
         .any(|event| matches!(event, Event::Preview { .. })));
     assert!(!session.is_alive());
 }
+
+#[cfg(unix)]
+fn historical_compiler() -> (tempfile::TempDir, std::path::PathBuf) {
+    let body = format!("import pathlib\n{}", ECHO.replace("time.sleep(0.03)",
+        "\n while p['revision'] > 1 and not pathlib.Path(__file__).with_name('release').exists(): time.sleep(0.001)"));
+    executable(&body)
+}
+
+#[test]
+#[cfg(unix)]
+fn historical_snapshot_is_opt_in_and_preserves_original_identity() {
+    let (dir, path) = historical_compiler();
+    let mut session = fake_session(path, Limits::default()).unwrap();
+    assert!(session
+        .submit_with_snapshot_origin(request(1), vec![], "session-a/source-1".into())
+        .is_err());
+    session.set_completed_snapshots_enabled(true).unwrap();
+    session
+        .submit_with_snapshot_origin(request(1), vec![], "session-a/source-1".into())
+        .unwrap();
+    session.submit(request(2)).unwrap();
+    let events = collect_until(&mut session, |events| {
+        events
+            .iter()
+            .any(|event| matches!(event, Event::Stale { revision: 1, .. }))
+    });
+    assert!(!events
+        .iter()
+        .any(|event| matches!(event, Event::Preview { revision: 1, .. })));
+    let snapshot = session.take_completed_snapshot().unwrap();
+    assert_eq!(snapshot.origin, "session-a/source-1");
+    assert_eq!(snapshot.request_id, "r1");
+    assert_eq!(snapshot.project_id, "p");
+    assert_eq!(snapshot.revision, 1);
+    assert_eq!(snapshot.result["id"], "r1");
+    assert_eq!(snapshot.result["payload"]["revision"], 1);
+    assert!(session.take_completed_snapshot().is_none());
+    std::fs::write(dir.path().join("release"), b"ok").unwrap();
+    collect_until(&mut session, |events| {
+        events
+            .iter()
+            .any(|event| matches!(event, Event::Preview { revision: 2, .. }))
+    });
+    assert!(session.take_completed_snapshot().is_none());
+}
+
+#[test]
+#[cfg(unix)]
+fn ordinary_submissions_never_retain_historical_results() {
+    for enabled in [false, true] {
+        let (_dir, path) = historical_compiler();
+        let mut session = fake_session(path, Limits::default()).unwrap();
+        session.set_completed_snapshots_enabled(enabled).unwrap();
+        session.submit(request(1)).unwrap();
+        session.submit(request(2)).unwrap();
+        collect_until(&mut session, |events| {
+            events
+                .iter()
+                .any(|event| matches!(event, Event::Stale { .. }))
+        });
+        assert!(session.take_completed_snapshot().is_none());
+    }
+}
+
+#[test]
+#[cfg(unix)]
+fn policy_toggle_invalidates_inflight_snapshot_origins() {
+    let (_dir, path) = historical_compiler();
+    let mut session = fake_session(path, Limits::default()).unwrap();
+    session.set_completed_snapshots_enabled(true).unwrap();
+    session
+        .submit_with_snapshot_origin(request(1), vec![], "old-epoch".into())
+        .unwrap();
+    session.submit(request(2)).unwrap();
+    session.set_completed_snapshots_enabled(false).unwrap();
+    session.set_completed_snapshots_enabled(true).unwrap();
+    collect_until(&mut session, |events| {
+        events
+            .iter()
+            .any(|event| matches!(event, Event::Stale { .. }))
+    });
+    assert!(session.take_completed_snapshot().is_none());
+}
+
+#[test]
+#[cfg(unix)]
+fn fresh_result_and_project_close_clear_retained_snapshots() {
+    for close in [false, true] {
+        let (dir, path) = historical_compiler();
+        let mut session = fake_session(path, Limits::default()).unwrap();
+        session.set_completed_snapshots_enabled(true).unwrap();
+        session
+            .submit_with_snapshot_origin(request(1), vec![], "origin".into())
+            .unwrap();
+        session.submit(request(2)).unwrap();
+        collect_until(&mut session, |events| {
+            events
+                .iter()
+                .any(|event| matches!(event, Event::Stale { .. }))
+        });
+        if close {
+            session.close_project("p").unwrap();
+        } else {
+            std::fs::write(dir.path().join("release"), b"ok").unwrap();
+            collect_until(&mut session, |events| {
+                events
+                    .iter()
+                    .any(|event| matches!(event, Event::Preview { revision: 2, .. }))
+            });
+        }
+        assert!(session.take_completed_snapshot().is_none());
+    }
+}
+
+#[test]
+#[cfg(unix)]
+fn malformed_historical_result_never_enters_snapshot_slot() {
+    let (_dir, path) = executable(&ECHO.replace("'pages':[]", "'pages':False"));
+    let mut session = fake_session(path, Limits::default()).unwrap();
+    session.set_completed_snapshots_enabled(true).unwrap();
+    session
+        .submit_with_snapshot_origin(request(1), vec![], "origin".into())
+        .unwrap();
+    session.submit(request(2)).unwrap();
+    collect_until(&mut session, |events| {
+        events
+            .iter()
+            .any(|event| matches!(event, Event::Failed { .. }))
+    });
+    assert!(session.take_completed_snapshot().is_none());
+}

@@ -22,9 +22,23 @@
           "_comment": "durable helper route (FLASHTEX_PREVIEW_CONTROLLER); correctness gates only, latency reported against the project target (route measured ~2x the direct worker by its owner)",
           "expected_producer": "flashtex-preview-controller",
           "per_seed_p50_ms_max": {}
+        },
+        "render": {
+          "_comment": "flashtex-render (crates/render-pipeline branch) as a second direct producer; correctness gates only, latency reported",
+          "expected_producer": "flashtex-render",
+          "per_seed_p50_ms_max": {}
         }
       },
-      "required_cells": ["fixture-30ms", "fixture-0ms", "demo-30ms", "demo-0ms", "body60k-30ms", "body60k-0ms"]
+      "required_cells": [
+        "fixture-30ms",
+        "fixture-0ms",
+        "demo-30ms",
+        "demo-0ms",
+        "body60k-30ms",
+        "body60k-0ms"
+      ],
+      "latency_gate_max_load_average_1min": 10,
+      "_load_comment": "p50 gates apply only when the 1-minute load average sampled right before a bench pass is <= this; above it, latencies are reported and the gate row says it was not applied (shared machine)"
     },
     "targets": {
       "project_typing_to_visible_p50_ms": 200,
@@ -56,7 +70,18 @@
   "bundle": {
     "gates": {
       "bundled_helper_sha256_equals_built_helper_sha256": true,
-      "required_binaries": ["FlashTeX", "flashtex-compiler", "flashtex-pdf", "flashtex-bridge", "flashtex-edit-ledger"]
+      "required_binaries": [
+        "FlashTeX",
+        "flashtex-compiler",
+        "flashtex-pdf",
+        "flashtex-bridge",
+        "flashtex-edit-ledger"
+      ],
+      "optional_binaries": [
+        "flashtex-render",
+        "flashtex-pdf-exact"
+      ],
+      "components_json_git_sha_equals_source_sha": true
     }
   },
   "capture_cycle": {
@@ -69,11 +94,39 @@
       "ledger_apply_receipt": true,
       "ledger_retry_returns_same_receipt": true,
       "ledger_document_survives_sigkill": true,
-      "compiler_status_in": ["ok", "recovered"],
+      "compiler_status_in": [
+        "ok",
+        "recovered"
+      ],
       "compiled_pages_min": 1,
       "pdf_verify_exit_code": 0,
       "pdf_page_count_equals_compiled_pages": true,
       "no_network_provider_call": true
+    }
+  },
+  "render_attach": {
+    "gates": {
+      "no_activate_env_required": true,
+      "required": [
+        "bundled flashtex-render present",
+        "preview face: latin-modern in FLASHTEX_LOG",
+        "status: attached:",
+        "revision 1: ok",
+        "flashtex-render child under the app pid",
+        "app alive after the wait"
+      ]
+    }
+  },
+  "exact_export": {
+    "gates": {
+      "tool_exit_code": 0,
+      "pdfkit_page_count_equals_fixture_pages": true,
+      "pdfkit_text_contains": [
+        "Office fixtures",
+        "office",
+        "bold",
+        "caf"
+      ]
     }
   }
 }
