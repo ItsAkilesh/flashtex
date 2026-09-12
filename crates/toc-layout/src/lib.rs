@@ -35,6 +35,7 @@ pub mod converge;
 pub mod entry;
 pub mod leader;
 pub mod measure;
+pub mod stabilize;
 
 pub use converge::{
     ConvergenceError, FrontMatterModel, MAX_CONVERGENCE_ITERATIONS, converge_front_matter_pages,
@@ -42,3 +43,6 @@ pub use converge::{
 pub use entry::{EntryError, EntryRecord, MAX_LEVEL, PageNumber, RelativeEntry};
 pub use leader::{LaidOutEntry, LayoutError, LineBox, LineBoxError, layout_entries, layout_entry};
 pub use measure::{CharWidthMeasure, InvalidWidth, TextMeasure};
+pub use stabilize::{
+    SourceId, SourcedEntry, StabilizationError, StabilizedEntry, StabilizedToc, stabilize_toc,
+};

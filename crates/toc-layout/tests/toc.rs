@@ -312,19 +312,69 @@ impl FrontMatterModel for OscillatingModel {
 }
 
 #[test]
-fn convergence_terminates_with_typed_error_when_it_never_settles() {
+fn convergence_classifies_oscillation_as_a_cycle_not_generic_non_convergence() {
     let model = OscillatingModel { a: 2, b: 5 };
     let result = converge_front_matter_pages(&model, 2);
     match result {
-        Err(ConvergenceError { bound, history }) => {
+        Err(ConvergenceError::Cycle {
+            bound,
+            history,
+            cycle_start,
+            cycle,
+        }) => {
             assert_eq!(bound, MAX_CONVERGENCE_ITERATIONS);
-            // Bounded: exactly bound + 1 candidates were ever tried, never more.
+            // Bounded: exactly bound + 1 candidates were ever tried, never
+            // more, even though the cycle itself is provably closed after
+            // only 2 of them.
             assert_eq!(history.len(), MAX_CONVERGENCE_ITERATIONS + 1);
             assert_eq!(history[0], 2);
             assert!(history.iter().all(|&v| v == 2 || v == 5));
+            // The oscillation is A -> B -> A -> ... starting immediately.
+            assert_eq!(cycle_start, 0);
+            assert_eq!(cycle, vec![2, 5]);
         }
-        Ok(v) => panic!("expected non-convergence, got Ok({v})"),
+        other => panic!("expected Cycle, got {other:?}"),
     }
+}
+
+/// A model whose real requirement keeps growing with the candidate and
+/// never repeats a prior value within the bound: the page count never
+/// settles, but it is also never proven to loop — a distinct failure from
+/// [`OscillatingModel`]'s cycle.
+struct EverIncreasingModel;
+impl FrontMatterModel for EverIncreasingModel {
+    fn pages_for(&self, candidate: u32) -> u32 {
+        candidate + 1
+    }
+}
+
+#[test]
+fn convergence_classifies_non_repeating_growth_as_unresolved_not_a_cycle() {
+    let result = converge_front_matter_pages(&EverIncreasingModel, 0);
+    match result {
+        Err(ConvergenceError::Unresolved { bound, history }) => {
+            assert_eq!(bound, MAX_CONVERGENCE_ITERATIONS);
+            assert_eq!(history.len(), MAX_CONVERGENCE_ITERATIONS + 1);
+            assert_eq!(history, vec![0, 1, 2, 3, 4, 5, 6, 7, 8]);
+            // Every candidate is distinct: nothing here is a proven cycle.
+            let mut sorted = history.clone();
+            sorted.sort_unstable();
+            sorted.dedup();
+            assert_eq!(sorted.len(), history.len());
+        }
+        other => panic!("expected Unresolved, got {other:?}"),
+    }
+}
+
+#[test]
+fn convergence_error_bound_and_history_accessors_agree_for_both_variants() {
+    let cycle = converge_front_matter_pages(&OscillatingModel { a: 2, b: 5 }, 2).unwrap_err();
+    assert_eq!(cycle.bound(), MAX_CONVERGENCE_ITERATIONS);
+    assert_eq!(cycle.history().len(), MAX_CONVERGENCE_ITERATIONS + 1);
+
+    let unresolved = converge_front_matter_pages(&EverIncreasingModel, 0).unwrap_err();
+    assert_eq!(unresolved.bound(), MAX_CONVERGENCE_ITERATIONS);
+    assert_eq!(unresolved.history().len(), MAX_CONVERGENCE_ITERATIONS + 1);
 }
 
 #[test]
@@ -342,5 +392,146 @@ fn full_pipeline_relative_entry_through_converged_front_matter_to_layout() {
     let measure = CharWidthMeasure::new(1.0, 1.0);
     let line = LineBox::new(30.0, 0.0).unwrap();
     let laid_out = layout_entry(&resolved, line, &measure).unwrap();
+    assert_eq!(laid_out.page_label, "12");
+}
+
+// ---------------------------------------------------------------------
+// Whole-list page-reference stabilization: bounded, deterministic,
+// source-identity-stamped, distinguishing unresolved from cycle failures.
+// ---------------------------------------------------------------------
+
+#[test]
+fn stabilize_toc_resolves_every_entry_against_one_converged_front_matter_count() {
+    let model = FixedNeedModel { needed: 2 };
+    let entries = vec![
+        SourcedEntry {
+            source: SourceId::new("doc.tex", "rev-A"),
+            sequence: 0,
+            entry: RelativeEntry::new("Introduction", 0, 1).unwrap(),
+        },
+        SourcedEntry {
+            source: SourceId::new("doc.tex", "rev-A"),
+            sequence: 1,
+            entry: RelativeEntry::new("Conclusion", 0, 10).unwrap(),
+        },
+    ];
+
+    let toc = stabilize_toc(&entries, &model, 0).unwrap();
+    assert_eq!(toc.front_matter_pages, 2);
+    assert_eq!(toc.entries.len(), 2);
+    assert_eq!(toc.entries[0].record.page, 3); // 2 + 1
+    assert_eq!(toc.entries[1].record.page, 12); // 2 + 10
+}
+
+#[test]
+fn stabilize_toc_reports_convergence_failure_as_cycle_or_unresolved() {
+    let entries = vec![SourcedEntry {
+        source: SourceId::new("doc.tex", "rev-A"),
+        sequence: 0,
+        entry: RelativeEntry::new("Chapter 1", 0, 1).unwrap(),
+    }];
+
+    let cycling = stabilize_toc(&entries, &OscillatingModel { a: 2, b: 5 }, 2);
+    match cycling {
+        Err(StabilizationError::Convergence(ConvergenceError::Cycle { .. })) => {}
+        other => panic!("expected a Cycle convergence failure, got {other:?}"),
+    }
+
+    let growing = stabilize_toc(&entries, &EverIncreasingModel, 0);
+    match growing {
+        Err(StabilizationError::Convergence(ConvergenceError::Unresolved { .. })) => {}
+        other => panic!("expected an Unresolved convergence failure, got {other:?}"),
+    }
+}
+
+#[test]
+fn stabilized_entry_source_identity_detects_staleness_across_revisions() {
+    let model = FixedNeedModel { needed: 1 };
+    let entries = vec![SourcedEntry {
+        source: SourceId::new("doc.tex", "rev-A"),
+        sequence: 0,
+        entry: RelativeEntry::new("Chapter 1", 0, 3).unwrap(),
+    }];
+    let toc = stabilize_toc(&entries, &model, 0).unwrap();
+
+    let same_revision = SourceId::new("doc.tex", "rev-A");
+    let different_revision = SourceId::new("doc.tex", "rev-B");
+    let different_document = SourceId::new("other.tex", "rev-A");
+
+    assert!(!toc.entries[0].is_stale(&same_revision));
+    assert!(toc.entries[0].is_stale(&different_revision));
+    assert!(toc.entries[0].is_stale(&different_document));
+}
+
+#[test]
+fn stabilize_toc_is_deterministic_independent_of_input_order() {
+    // Same content as three `SourcedEntry`s, but supplied to `stabilize_toc`
+    // in two different orders: a plain forward `Vec`, and a `Vec` drained
+    // from a `HashMap` (whose iteration order is unspecified and must not
+    // be relied on). Both must produce byte-identical results, ordered by
+    // `sequence`, not by whichever order they arrived in.
+    let model = FixedNeedModel { needed: 2 };
+    let a = SourcedEntry {
+        source: SourceId::new("doc.tex", "rev-A"),
+        sequence: 0,
+        entry: RelativeEntry::new("Introduction", 0, 1).unwrap(),
+    };
+    let b = SourcedEntry {
+        source: SourceId::new("doc.tex", "rev-A"),
+        sequence: 1,
+        entry: RelativeEntry::new("Body", 0, 5).unwrap(),
+    };
+    let c = SourcedEntry {
+        source: SourceId::new("doc.tex", "rev-A"),
+        sequence: 2,
+        entry: RelativeEntry::new("Appendix", 0, 9).unwrap(),
+    };
+
+    let forward = vec![a.clone(), b.clone(), c.clone()];
+
+    let mut map: std::collections::HashMap<&str, SourcedEntry> = std::collections::HashMap::new();
+    map.insert("appendix", c.clone());
+    map.insert("introduction", a.clone());
+    map.insert("body", b.clone());
+    let from_hash_map: Vec<SourcedEntry> = map.into_values().collect();
+
+    let reversed: Vec<SourcedEntry> = forward.iter().cloned().rev().collect();
+
+    let result_forward = stabilize_toc(&forward, &model, 0).unwrap();
+    let result_from_hash_map = stabilize_toc(&from_hash_map, &model, 0).unwrap();
+    let result_reversed = stabilize_toc(&reversed, &model, 0).unwrap();
+
+    assert_eq!(result_forward, result_from_hash_map);
+    assert_eq!(result_forward, result_reversed);
+    assert_eq!(
+        result_forward
+            .entries
+            .iter()
+            .map(|e| e.sequence)
+            .collect::<Vec<_>>(),
+        vec![0, 1, 2]
+    );
+}
+
+#[test]
+fn full_pipeline_source_stamped_stabilize_toc_through_converge_to_layout() {
+    // The realistic end-to-end shape: source-stamped relative entries ->
+    // whole-list stabilization (front matter fixed point + per-entry
+    // resolution) -> measured leader layout.
+    let model = FixedNeedModel { needed: 3 };
+    let entries = vec![SourcedEntry {
+        source: SourceId::new("thesis.tex", "rev-7"),
+        sequence: 0,
+        entry: RelativeEntry::new("Results", 0, 9).unwrap(),
+    }];
+
+    let toc = stabilize_toc(&entries, &model, 1).unwrap();
+    assert_eq!(toc.front_matter_pages, 3);
+    assert_eq!(toc.entries[0].record.page, 12);
+    assert!(!toc.entries[0].is_stale(&SourceId::new("thesis.tex", "rev-7")));
+
+    let measure = CharWidthMeasure::new(1.0, 1.0);
+    let line = LineBox::new(30.0, 0.0).unwrap();
+    let laid_out = layout_entry(&toc.entries[0].record, line, &measure).unwrap();
     assert_eq!(laid_out.page_label, "12");
 }
