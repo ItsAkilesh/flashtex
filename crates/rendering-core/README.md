@@ -49,3 +49,17 @@ fixed-point rectangles clipped to page bounds, and resolve overlaps in paint ord
 Caret selection uses only supplied caret positions; absent carets return a whole
 logical cluster. TeX source ranges and synthetic provenance remain unchanged. Shared
 cluster metadata avoids copying caret/source arrays for every rectangle.
+
+`cache::DisplayCache` accepts an authoritative `RenderIdentity` before work starts.
+The identity includes project revision, source digests/revisions, font manifests
+and a compiler/configuration digest. A `RenderTicket` binds that expectation to a
+cache generation. Source/font/config changes invalidate prior tickets immediately;
+late frames cannot replace a newer expectation. Installation verifies exact source
+and font bytes, keeps immutable font bytes alongside the complete display list,
+and rejects conflicting geometry for one immutable identity. It never combines
+pages from different revisions. Identical completed installs reuse one `Arc`.
+
+Callers must obtain the current frame through its ticket before painting or querying
+its index. Previously borrowed Arcs remain readable but are no longer current after
+invalidation. Cache accounting limits retained serialized payload/font bytes;
+allocator/index overhead and Arcs retained externally are additional memory.

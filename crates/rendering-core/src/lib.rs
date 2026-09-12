@@ -3,6 +3,7 @@
 //! establish font outline safety, shaping correctness, visual parity or permission
 //! to paint. The caller must negotiate/integrate actual consumers separately.
 
+pub mod cache;
 pub mod hit_test;
 
 use serde::{Deserialize, Serialize};
