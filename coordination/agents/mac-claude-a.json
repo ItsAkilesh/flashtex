@@ -3,10 +3,10 @@
   "allocation_id": "openai-mac-plus-ft003",
   "assignment_acknowledgements": {
     "FT-003": {
-      "acknowledged_utc": "2026-09-12T08:29:09Z",
-      "adaptation": "rev 7 (main 5b6911090e2dcbe807c6fb4d9e75cd4f214a2440): route verified usable at 08:22-08:27Z (new Opus subagents progress, no 429); 15 disjoint lanes launched per mac-m1max-a-resume.json \u2014 session ids and count posted on issue #2 comment 5644730841; GH26 fixed in 6b43a3a; transferred crates untouched.",
-      "main_sha": "5b6911090e2dcbe807c6fb4d9e75cd4f214a2440",
-      "revision": 7
+      "acknowledged_utc": "2026-09-12T16:05:42Z",
+      "adaptation": "Rev 8 ACK: 14 children + parent = 15 launched 15:59\u201316:04Z per GH2#5646989044 (session ids in GH2#5647033583); Daniel's crates untouched; no duplicates; route Claude Max 20x (user: 41% of 5h at 14:47Z, Fable authorized to 85%); no blockers",
+      "main_sha": "3377748c907ec60d6867ebb5eb9f1a2d2d554568",
+      "revision": 8
     }
   },
   "branch": "agent/mac-claude-a/mac-shell",
@@ -16,7 +16,7 @@
     "rust",
     "macos-simulators"
   ],
-  "code_revision": "f01b56ffdbe15ad644d40bece26be428a37d9787",
+  "code_revision": "cd58fc2e790f29bff50a5af7b4127027e841078a",
   "eta_minutes": {
     "likely": 60,
     "optimistic": 30,
@@ -53,10 +53,10 @@
     }
   },
   "schema_version": 1,
-  "state": "in_progress",
+  "state": "accepted",
   "summary": "53 lanes integrated today; tip f01b56f full suite 660/660 with every helper; helper display route + GH31, GH36 packaging, GH39, HW1 corpus harness, v2 conformance, admission correlation, page/delta proposal r5 delivered",
   "tool": "Claude Code",
-  "updated_utc": "2026-09-12T15:35:45Z",
+  "updated_utc": "2026-09-12T16:05:42Z",
   "usage": {
     "evidence": "unknown",
     "status": "Claude Max 20x; user-reported 41% of 5h window at 14:47Z; Fable used to 14:59Z within the 60% authorization; no overage"
