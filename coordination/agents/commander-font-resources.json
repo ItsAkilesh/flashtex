@@ -13,7 +13,7 @@
   "capabilities": [
     "rust-font-resources"
   ],
-  "code_revision": "0fd86db430108e41fe2449ae5c5fd21776ed7a87",
+  "code_revision": "a71ce7378f9613851d2370552d80f24ee9cbd4ff",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
@@ -21,13 +21,13 @@
   },
   "machine": "linux-primary",
   "main_integrated_through": "89629b712a30f9afe82115e923c47ce05d2be1fe",
-  "next_action": "Renderer may consume additive constant_device; other MATH value families remain unhinted until explicitly bound. Await next task; no providers or descendants.",
+  "next_action": "Current dispatch completed. Fetched structured FT024r9 still describes old completed TFM boundary objective; Commander messages authorize current MATH stage. Worktree clean after report publication; renderer API handoff next. No paid calls/descendants. Context telemetry/native compaction control unavailable; durable branch/report preserve state.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "MATH Device formats1/2/3 plus identity-bound constants adapter complete;111 ordinary tests/clippy pass. Explicit ppem/pixel delta, variation indices unsupported. Pinned STIX and Noto Math51 constants each have0device records; positive packed correction evidence synthetic, inventory hashes preserved.",
+  "summary": "Glyph italic/top-accent and MathKern device bindings complete:113 ordinary tests/clippy plus2 pinned inventory tests pass. STIX4 actual device records, GID3326 accent+1px at12ppem. Exact horizontal/vertical contexts, corrected-height ties, nonmonotone/variation refusals; no peer edits.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T08:40:31Z",
+  "updated_utc": "2026-09-12T08:48:05Z",
   "usage": {
     "evidence": "crates/font-resources/README.md; test suite; installed font SHA pinned.",
     "status": "Hosted allocation; no external provider calls; account remainder unknown."
