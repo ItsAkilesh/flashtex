@@ -629,3 +629,11 @@ Nonterminating decimals and alpha remain explicit unsupported conversions.
 an optional output directory after its font/license arguments. Checked-in
 synthetic and STIX PDF fixtures support deterministic byte/operator replay.
 See `PDF-INTEGRATION.md` for hashes, limits and remaining text/native/oracle gaps.
+
+`pdf_compare` and its matching CLI now compare actual candidate/reference PDF
+bytes through the owner's reader/classifier. Reports separate raw equality,
+parsed operator equality and unknown visual equality; exact geometry/paint
+changes can carry regenerated candidate primitive/font/source provenance.
+Reference correspondence stays unknown unless independently established. Limits,
+unsupported operators and truncated reports cannot produce an equality claim.
+See `PDF-INTEGRATION.md` for the explicit evidence and reference-fixture scope.
