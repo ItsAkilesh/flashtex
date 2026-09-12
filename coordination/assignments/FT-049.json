@@ -11,15 +11,15 @@
   "branch": "agent/commander-runtime-display/display-runtime",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "02a9858dd15aebcb62879a2577467e207a203348",
-  "objective": "Verify exact9aa unchanged producer archive and full-output fresh persistent equality on existing large and multidocument cases",
+  "input_main_sha": "eeabbb6671b3552c5ea91dc9c818cfca8736934f",
+  "objective": "Preserve full pages source resources and raw sibling bytes with distinct accepted declined and failed cap outcomes",
   "owned_paths": [
     "crates/document-runtime"
   ],
-  "revision": 41,
+  "revision": 42,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-049",
   "timebox_minutes": 40,
-  "updated_utc": "2026-09-12T14:23:56.570752+00:00"
+  "updated_utc": "2026-09-12T14:32:18Z"
 }
