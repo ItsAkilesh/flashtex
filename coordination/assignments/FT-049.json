@@ -11,15 +11,15 @@
   "branch": "agent/commander-runtime-display/display-runtime",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "8a445525ec9d5b465ad08416a7047e461cd29fc3",
-  "objective": "Implement bounded opt-in runtime-v1 display-list-v2 sibling consumption with exact request/source correlation and explicit downstream rendering-validation boundary",
+  "input_main_sha": "eed1847e923b42dbbc02d25309e9e432bd6e3aa0",
+  "objective": "Validate actual published producer and legacy compiler negotiation/correlation with exact source identity and explicit refusal cases",
   "owned_paths": [
     "crates/document-runtime"
   ],
-  "revision": 1,
+  "revision": 2,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-049",
   "timebox_minutes": 40,
-  "updated_utc": "2026-09-12T10:53:39.658079+00:00"
+  "updated_utc": "2026-09-12T10:59:12Z"
 }
