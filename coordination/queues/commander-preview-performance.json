@@ -1,41 +1,55 @@
 {
   "agent_id": "commander-preview-performance",
-  "next_index": 0,
+  "next_index": 1,
   "schema_version": 1,
   "steps": [
     {
-      "name": "Verify measured ledger optimization through actual helper with exact ACK/restart/undo/receipt and full-output gates",
-      "objective": "Verify measured ledger optimization through actual helper with exact ACK/restart/undo/receipt and full-output gates",
+      "acceptance": [
+        "Consume already-published index APIs without duplicate parser or index implementation",
+        "Actual helper tests cover Unicode, comments/verbatim, multiple documents, stale version maps, bounded output and malformed requests",
+        "No automatic source edits or project-wide atomicity claim; existing approval and permanent-ID ledger guards remain authoritative"
+      ],
+      "allocation_id": "hosted-openai-product",
+      "name": "Expose existing project-index literal replacement and citation rename plans through exact-version guarded bounded native helper commands; preserve separate explicit durable application",
+      "objective": "Expose existing project-index literal replacement and citation rename plans through exact-version guarded bounded native helper commands; preserve separate explicit durable application",
       "owned_paths": [
         "crates/preview-controller",
         "crates/document-runtime",
         "crates/edit-ledger"
       ],
-      "acceptance": [
-        "Measure request/ledger/serialization/compiler phases on unchanged500KB workload before selecting optimization",
-        "Preserve source/history/receipt/dedup/undo/reopen and I/O uncertainty semantics; no dropped pages or hidden fallback",
-        "Full relevant tests and strict lint, exact persistent snapshot compatibility; retain default8MiB unless separately justified",
-        "Root retained engineer only; drained ledger worker stays stopped, no new worker or native default switch"
-      ],
-      "allocation_id": "hosted-openai-product",
-      "timebox_minutes": 45
+      "timebox_minutes": 40
     },
     {
-      "name": "Provide native negotiated-history and large-project acceptance evidence; repair only measured integration regressions",
-      "objective": "Provide native negotiated-history and large-project acceptance evidence; repair only measured integration regressions",
+      "acceptance": [
+        "Consume already-published index APIs without duplicate parser or index implementation",
+        "Actual helper tests cover Unicode, comments/verbatim, multiple documents, stale version maps, bounded output and malformed requests",
+        "No automatic source edits or project-wide atomicity claim; existing approval and permanent-ID ledger guards remain authoritative"
+      ],
+      "allocation_id": "hosted-openai-product",
+      "name": "Apply explicitly reviewed per-document plans through existing durable grouped edits, with permanent request IDs and exact current source guards; report per-document outcomes without project-wide atomicity",
+      "objective": "Apply explicitly reviewed per-document plans through existing durable grouped edits, with permanent request IDs and exact current source guards; report per-document outcomes without project-wide atomicity",
       "owned_paths": [
         "crates/preview-controller",
         "crates/document-runtime",
         "crates/edit-ledger"
       ],
+      "timebox_minutes": 40
+    },
+    {
       "acceptance": [
-        "Measure request/ledger/serialization/compiler phases on unchanged500KB workload before selecting optimization",
-        "Preserve source/history/receipt/dedup/undo/reopen and I/O uncertainty semantics; no dropped pages or hidden fallback",
-        "Full relevant tests and strict lint, exact persistent snapshot compatibility; retain default8MiB unless separately justified",
-        "Root retained engineer only; drained ledger worker stays stopped, no new worker or native default switch"
+        "Consume already-published index APIs without duplicate parser or index implementation",
+        "Actual helper tests cover Unicode, comments/verbatim, multiple documents, stale version maps, bounded output and malformed requests",
+        "No automatic source edits or project-wide atomicity claim; existing approval and permanent-ID ledger guards remain authoritative"
       ],
       "allocation_id": "hosted-openai-product",
-      "timebox_minutes": 45
+      "name": "Verify subprocess kill/retry/stale-plan recovery and publish exact native search/history consumer handoff using existing helper boundaries",
+      "objective": "Verify subprocess kill/retry/stale-plan recovery and publish exact native search/history consumer handoff using existing helper boundaries",
+      "owned_paths": [
+        "crates/preview-controller",
+        "crates/document-runtime",
+        "crates/edit-ledger"
+      ],
+      "timebox_minutes": 40
     }
   ],
   "task_id": "FT-048"

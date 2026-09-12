@@ -1,23 +1,22 @@
 {
-  "schema_version": 1,
-  "task_id": "FT-023",
+  "acceptance": [
+    "Meaningful bounded tests and strict lint pass; exact identities and typed unsupported outcomes preserved",
+    "No new worker/provider/native activation, copied reference implementation or unsupported parity claim"
+  ],
   "agent_id": "commander-render-core",
+  "allocation_id": "hosted-openai-product",
   "branch": "agent/commander-render-core/rendering-core",
-  "revision": 7,
-  "state": "assigned",
-  "objective": "Produce original compiler-to-renderer versus established LaTeX reference evidence for one pinned source; if original font/GID binding is missing, publish the exact reproducible consumer gate instead of substituting reference geometry.",
+  "deadline_utc": null,
+  "dependencies": [],
+  "input_main_sha": "60c40c12f3c8db2050694c9f76817db909853338",
+  "objective": "Classify the actual pinned 602-pixel math mismatch using existing original/reference glyph, rule and resource evidence without invented correspondence",
   "owned_paths": [
     "crates/rendering-core"
   ],
-  "acceptance": [
-    "Pin source/compiler/font/reference hashes and preserve original provenance",
-    "Separate raw bytes, parsed geometry and visual evidence; unknown correspondence is explicit",
-    "No duplicate parser, compiler edits, provider calls or native activation; meaningful tests and strict lint"
-  ],
-  "dependencies": [],
-  "allocation_id": "hosted-openai-product",
-  "timebox_minutes": 30,
-  "deadline_utc": null,
-  "input_main_sha": "27437b99a6923bfad6be1e212e79e5f4e9c67def",
-  "updated_utc": "2026-09-12T09:30:51.309960+00:00"
+  "revision": 8,
+  "schema_version": 1,
+  "state": "assigned",
+  "task_id": "FT-023",
+  "timebox_minutes": 40,
+  "updated_utc": "2026-09-12T10:37:24.803475+00:00"
 }
