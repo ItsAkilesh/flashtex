@@ -1,0 +1,24 @@
+{
+  "acceptance": [
+    "Meaningful tests and strict lint pass",
+    "Publish truthful execution provenance and exact tested SHA",
+    "No native integration or PDF parity claim without measured evidence"
+  ],
+  "agent_id": "commander-preview-performance",
+  "allocation_id": "hosted-openai-product",
+  "branch": "agent/commander-preview-performance/preview-performance",
+  "deadline_utc": null,
+  "dependencies": [],
+  "input_main_sha": "da9dc355a6fab08ac53812c8a04042781d9d9dc4",
+  "objective": "Prototype opt-in bounded completed-snapshot progress with immutable original source identity; strict current-preview default unchanged, no native activation before consumer gates",
+  "owned_paths": [
+    "crates/preview-controller",
+    "crates/document-runtime"
+  ],
+  "revision": 3,
+  "schema_version": 1,
+  "state": "assigned",
+  "task_id": "FT-048",
+  "timebox_minutes": 30,
+  "updated_utc": "2026-09-12T09:17:16.587022+00:00"
+}

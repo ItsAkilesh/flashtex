@@ -1,3 +1,59 @@
+# Latest Commander checkpoint — 2026-09-12 09:00Z
+
+Sole Commander remains orchestrator-astra /root/runtime_validator; current control
+limits this host to root preview-performance, font-resources, rendering-core plus
+Commander. Bridge/index/ledger completed and remain paused; no followups/replacements.
+All their final products integrated1457db4. Native6b43a3a integrated28a4657, GH26
+closed after exact source/tests and Mac185-test evidence. Assistantc93bf0d and
+runtimee5a804d integrated254f662; MATH renderer528ef7e/font1fc71f3 integrated6f02330.
+Runtime finala47bd38 now passes21 tests incl pinned compiler and strict lint;
+root moves to FT048 helper copies in isolated flashtex-preview-performance.
+
+CORRECTION: Daniel supervisor branch39f9ed3 EXISTS, actual machine mac-m5pro-dq222.
+Earlier absence claim came from incorrect nested-ref filtering. It reports9running,
+3complete/4queued without task IDs; schema/state/timestamp missing and09:10 handoff
+is future-dated versus08:53commit/08:56observer. Mainf2ea364 corrects machine/lane
+paths and FT046r2 clarifies16simultaneous, per-worker current+2followups. Issue23
+comment5644875822 requests current IDs/schema/clock and launch under existing grant.
+No independent current16-session claim. Parent used Sonnet per handoff; don't call
+it Opus. Jaysen71675cd08:48 report13running+2completed,206native tests; asked reuse
+completed2 lanes within existing15target. Helper route measured slower than direct;
+no global native200ms or PDF equality claim.
+
+Heavy Commander integration builds finished; root paired benchmark must record
+contention. No unresolved Commander publication job at this checkpoint. Existing
+old flashtex-astra-integration has an unstaged rendering Cargo.lock: preserve it.
+Current integration checkout is flashtex-drained-integration; inspect MERGE_HEAD
+before touching. Dispatcher819368/witness752107 last active; verify fresh states.
+
+Context policy mainb1f158c: actual>80% or60–80% irrelevant at natural checkpoint,
+durable state first; no telemetry/native compact tool exposed here, no invented
+percentage or forced restart. Failover requires exact hosting-process death and
+stopped publishers/journals; live quota exhaustion hook still unverified.
+
+Older entries below are historical; current authority/control supersede them.
+
+# Latest verified resumption checkpoint
+
+Main781aafa applies the latest user limit: THREE product engineers plus sole
+Commander. Retain root runtime-performance (FT047), fonts and rendering. Bridge,
+index and ledger finish current checkpoints only, then stop. Their dispatcher
+queues are paused; no replacements or compensating remote expansion.
+
+Jaysen cooldown was explicitly lifted early. The deterministic service posted
+at08:20:39Z; the scheduled08:21 repeat was idempotent. Authenticated Jaysen parent
+reported15 running engineering session IDs at08:27:33Z (issue2, branch91badb9).
+This is machine-reported evidence, not independent SSH inspection. Daniel remains
+unregistered with zero verified sessions. Recheck both before reporting current liveness.
+Dispatcher was independently active PID819368 at this checkpoint.
+
+The revival prompt is docs/commander-failover.md. Keep this host preferred while
+usable. Missing or ambiguous terminal evidence BLOCKS takeover; no timeout can
+establish certainty. Live-process quota exhaustion still has no verified terminal
+hook. Read current authority, control, queues and journals before any action.
+
+The older checkpoints below are historical and cannot override this entry.
+
 # NEW USER OVERRIDE: seven local active total
 
 User explicitly restored6 product engineers plus existing soleCommander after

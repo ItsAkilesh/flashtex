@@ -5,8 +5,8 @@
   "next_index": 0,
   "steps": [
     {
-      "name": "Multi-font generation replacement invalidates stale leases while retained frames stay immutable",
-      "objective": "Multi-font generation replacement invalidates stale leases while retained frames stay immutable",
+      "name": "Exact PDF consumer integration: bounded adversarial and stale-identity acceptance tests",
+      "objective": "Exact PDF consumer integration: bounded adversarial and stale-identity acceptance tests",
       "owned_paths": [
         "crates/rendering-core"
       ],
@@ -19,8 +19,8 @@
       "timebox_minutes": 30
     },
     {
-      "name": "Bounded source-aware hit testing across shaped font changes with exact cluster provenance",
-      "objective": "Bounded source-aware hit testing across shaped font changes with exact cluster provenance",
+      "name": "Exact PDF consumer integration: actual existing consumer fixture and exact measured limitations",
+      "objective": "Exact PDF consumer integration: actual existing consumer fixture and exact measured limitations",
       "owned_paths": [
         "crates/rendering-core"
       ],

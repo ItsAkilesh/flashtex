@@ -286,3 +286,495 @@ fn tampered_source_hash_and_outside_context_edits_are_refused() {
         .validate_response(&serde_json::to_vec(&response).unwrap(), &docs)
         .is_err());
 }
+
+#[test]
+fn registry_interleaves_routes_cancels_and_bounds_terminal_retention() {
+    use flashtex_assistant_context::{ExplanationRegistry, FlightState};
+    use std::time::Duration;
+    let docs = vec![source()];
+    let mut registry = ExplanationRegistry::new("session_a".into(), 2, 1).unwrap();
+    let first = registry
+        .submit(build(&docs), &docs, Duration::from_secs(10))
+        .unwrap();
+    let context = Context::build(
+        CompileBinding::capture("r", "p", 7, &docs).unwrap(),
+        &docs,
+        &result(),
+        "different request",
+        &[],
+    )
+    .unwrap();
+    let second = registry
+        .submit(context, &docs, Duration::from_secs(10))
+        .unwrap();
+    assert!(registry
+        .submit(build(&docs), &docs, Duration::from_secs(10))
+        .is_err());
+    let first_context = registry.payload(&first).unwrap().context_id.clone();
+    let second_context = registry.payload(&second).unwrap().context_id.clone();
+    let response = serde_json::to_vec(
+        &json!({"context_id":second_context,"explanation":"Explain","edits":[]}),
+    )
+    .unwrap();
+    assert!(registry
+        .receive(&first, &second_context, &response, &docs)
+        .is_err());
+    assert_eq!(registry.state(&first), Some(FlightState::AwaitingResponse));
+    assert!(registry
+        .receive(&second, &second_context, &response, &docs)
+        .is_ok());
+    assert!(registry
+        .receive(&second, &second_context, &response, &docs)
+        .is_err());
+    assert!(registry.cancel(&first));
+    assert!(registry
+        .receive(&first, &first_context, &response, &docs)
+        .is_err());
+    assert_eq!(registry.state(&second), None); // bounded tombstone eviction
+    let third = registry
+        .submit(build(&docs), &docs, Duration::from_secs(10))
+        .unwrap();
+    assert_ne!(first, third);
+    assert_ne!(second, third);
+    assert_eq!(registry.retained_counts(), (1, 1));
+    let changed = vec![Document::new("p".into(), "main.tex".into(), 2, "changed".into()).unwrap()];
+    assert!(registry
+        .revoke_stale("another-project", &changed)
+        .is_empty());
+    assert_eq!(registry.revoke_stale("p", &changed), vec![third.clone()]);
+    assert_eq!(registry.state(&third), Some(FlightState::Cancelled));
+    assert_eq!(docs[0].text, "α \\bad");
+}
+
+#[test]
+fn registry_expiry_reclaims_capacity_and_bad_responses_are_terminal() {
+    use flashtex_assistant_context::{ExplanationRegistry, FlightState};
+    use std::time::Duration;
+    let docs = vec![source()];
+    let mut registry = ExplanationRegistry::new("session_b".into(), 1, 2).unwrap();
+    let expired = registry
+        .submit(build(&docs), &docs, Duration::from_nanos(1))
+        .unwrap();
+    std::thread::sleep(Duration::from_millis(1));
+    assert_eq!(registry.sweep(), vec![expired.clone()]);
+    assert_eq!(registry.state(&expired), Some(FlightState::Expired));
+    let next = registry
+        .submit(build(&docs), &docs, Duration::from_secs(10))
+        .unwrap();
+    let context_id = registry.payload(&next).unwrap().context_id.clone();
+    assert!(registry
+        .receive(&next, &context_id, b"invalid", &docs)
+        .is_err());
+    assert_eq!(registry.state(&next), Some(FlightState::Failed));
+    assert_eq!(registry.retained_counts(), (0, 2));
+    assert!(ExplanationRegistry::new("".into(), 1, 1).is_err());
+    assert!(ExplanationRegistry::new("ok".into(), 33, 1).is_err());
+}
+
+#[test]
+fn persistent_helper_interleaves_requests_and_rejects_cancelled_callbacks() {
+    use std::io::{BufRead, BufReader, Write};
+    use std::process::{Command, Stdio};
+    let docs = vec![source()];
+    let mut child = Command::new(env!("CARGO_BIN_EXE_flashtex-assistant-context"))
+        .args(["--session", "test_session"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut input = child.stdin.take().unwrap();
+    let mut output = BufReader::new(child.stdout.take().unwrap());
+    let mut exchange = |mut value: Value| -> Value {
+        let id = value.as_object_mut().unwrap().remove("id").unwrap();
+        let value = json!({"id":id,"action":value});
+        writeln!(input, "{}", value).unwrap();
+        input.flush().unwrap();
+        let mut line = String::new();
+        assert!(output.read_line(&mut line).unwrap() > 0);
+        serde_json::from_str(&line).unwrap()
+    };
+    let prepare = json!({"operation":"prepare","binding":CompileBinding::capture("r","p",7,&docs).unwrap(),"sources":docs,"compiler_result":result(),"user_instruction":"Explain"});
+    let first =
+        exchange(json!({"id":"one","operation":"submit","input":prepare,"timeout_ms":10000}));
+    assert_eq!(first["result"]["type"], "submitted", "{first}");
+    let second =
+        exchange(json!({"id":"two","operation":"submit","input":prepare,"timeout_ms":10000}));
+    let a = first["result"]["request_id"].clone();
+    let b = second["result"]["request_id"].clone();
+    assert_ne!(a, b);
+    assert_eq!(
+        exchange(json!({"id":"cancel","operation":"cancel","request_id":a}))["result"]["changed"],
+        true
+    );
+    let context_id = first["result"]["payload"]["context_id"].clone();
+    let response = json!({"context_id":context_id,"explanation":"Explanation","edits":[]});
+    assert!(exchange(json!({"id":"late","operation":"receive","request_id":a,"context_id":context_id,"response":response,"current_sources":docs}))["error"].is_string());
+    let valid = exchange(
+        json!({"id":"valid","operation":"receive","request_id":b,"context_id":context_id,"response":response,"current_sources":docs}),
+    );
+    assert_eq!(valid["result"]["type"], "validated_proposal", "{valid}");
+    assert_eq!(valid["result"]["applied"], false);
+    assert!(
+        exchange(json!({"id":"invalid","operation":"sweep","unexpected":true}))["error"]
+            .is_string()
+    );
+    assert_eq!(
+        exchange(json!({"id":"still_alive","operation":"status","request_id":b}))["result"]
+            ["state"],
+        "Completed"
+    );
+    drop(input);
+    assert!(child.wait().unwrap().success());
+}
+
+#[cfg(unix)]
+#[test]
+fn supervised_client_handles_real_helper_and_bounds_stalled_pipes() {
+    use flashtex_assistant_context::SessionClient;
+    use std::{
+        os::unix::fs::PermissionsExt,
+        time::{Duration, Instant},
+    };
+    let mut client = SessionClient::spawn(
+        std::path::Path::new(env!("CARGO_BIN_EXE_flashtex-assistant-context")),
+        "client_test",
+    )
+    .unwrap();
+    assert_eq!(
+        client
+            .call(json!({"operation":"sweep"}), Duration::from_secs(2))
+            .unwrap()["result"]["type"],
+        "expired"
+    );
+    assert_eq!(
+        client
+            .call(
+                json!({"operation":"cancel","request_id":"missing"}),
+                Duration::from_secs(2)
+            )
+            .unwrap()["result"]["changed"],
+        false
+    );
+    drop(client);
+    let root =
+        std::env::temp_dir().join(format!("flashtex-assistant-client-{}", std::process::id()));
+    std::fs::create_dir_all(&root).unwrap();
+    // No reads: command exceeds pipe capacity. Client must time out the write too.
+    let fixtures = [
+        ("stalled", "#!/bin/sh\nexec sleep 3\n"),
+        ("eof", "#!/bin/sh\nexit 0\n"),
+        ("stdout_stalled", "#!/bin/sh\nread line\nexec sleep 3\n"),
+        (
+            "late",
+            "#!/bin/sh\nread line\nsleep 0.3\nprintf '%s\\n' '{\"id\":\"1\",\"result\":{}}'\n",
+        ),
+        (
+            "oversized",
+            "#!/bin/sh\nread line\nhead -c 140000 /dev/zero\n",
+        ),
+        (
+            "wrong",
+            "#!/bin/sh\nread line\nprintf '%s\\n' '{\"id\":\"wrong\",\"result\":{}}'\n",
+        ),
+        // Descendant retains stdout after direct child exit. No reader thread
+        // may remain blocked; descendant exits itself after a bounded lifetime.
+        ("inherited", "#!/bin/sh\nsleep 1 &\nexit 0\n"),
+    ];
+    for (name, script) in fixtures {
+        let path = root.join(name);
+        std::fs::write(&path, script).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let mut client = SessionClient::spawn(&path, "fixture").unwrap();
+        let start = Instant::now();
+        let action = if name == "stalled" {
+            json!({"operation":"fake","padding":"x".repeat(1024*1024)})
+        } else {
+            json!({"operation":"sweep"})
+        };
+        assert!(
+            client.call(action, Duration::from_millis(100)).is_err(),
+            "{name}"
+        );
+        assert!(start.elapsed() < Duration::from_secs(2), "{name}");
+        assert!(client.is_stopped());
+        assert!(client
+            .call(json!({"operation":"sweep"}), Duration::from_secs(1))
+            .is_err());
+    }
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn dispatch_lease_is_single_use_shared_and_revoked_with_owner() {
+    use flashtex_assistant_context::ExplanationRegistry;
+    use std::time::Duration;
+    let docs = vec![source()];
+    let mut registry = ExplanationRegistry::new("lease_test".into(), 2, 2).unwrap();
+    let id = registry
+        .submit(build(&docs), &docs, Duration::from_secs(5))
+        .unwrap();
+    let lease = registry.lease(&id, &docs).unwrap();
+    assert!(std::ptr::eq(
+        lease.payload(),
+        registry.payload(&id).unwrap()
+    ));
+    assert!(registry.lease(&id, &docs).is_err());
+    assert!(lease.check_current(&docs).is_ok());
+    assert!(registry.cancel(&id));
+    assert!(lease.check_current(&docs).is_err());
+    let id = registry
+        .submit(build(&docs), &docs, Duration::from_secs(5))
+        .unwrap();
+    let lease = registry.lease(&id, &docs).unwrap();
+    drop(registry);
+    assert!(lease.check_current(&docs).is_err());
+}
+
+#[cfg(feature = "grok")]
+#[test]
+fn provider_helper_requires_explicit_startup_and_admission() {
+    use std::{
+        io::Write,
+        process::{Command, Stdio},
+    };
+    let binary = env!("CARGO_BIN_EXE_flashtex-assistant-context");
+    let missing = Command::new(binary)
+        .args(["--provider-session", "test", "model"])
+        .env_remove("FLASHTEX_GROK_API_KEY")
+        .output()
+        .unwrap();
+    assert!(!missing.status.success());
+    assert!(String::from_utf8_lossy(&missing.stderr).contains("credential missing"));
+    let docs = vec![source()];
+    let input = json!({"operation":"prepare","binding":CompileBinding::capture("r","p",7,&docs).unwrap(),"sources":docs,"compiler_result":result(),"user_instruction":"Explain"});
+    let commands = [
+        json!({"id":"snapshot","action":{"operation":"provider","command":{"operation":"snapshot"}}}),
+        json!({"id":"no_consent","action":{"operation":"provider","command":{"operation":"admit","input":input,"timeout_ms":1000,"user_requested":false,"allocation":"dummy-test"}}}),
+    ];
+    for enabled in [false, true] {
+        let mut command = Command::new(binary);
+        if enabled {
+            command.args(["--provider-session", "fixture", "model"]);
+        } else {
+            command.args(["--session", "fixture"]);
+        }
+        let mut child = command
+            .env("FLASHTEX_GROK_API_KEY", "dummy-no-inference-secret")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let mut stdin = child.stdin.take().unwrap();
+        for value in &commands {
+            writeln!(stdin, "{value}").unwrap();
+        }
+        drop(stdin);
+        let output = child.wait_with_output().unwrap();
+        assert!(output.status.success());
+        let text = String::from_utf8(output.stdout).unwrap();
+        assert!(!text.contains("dummy-no-inference-secret"));
+        assert!(output.stderr.is_empty());
+        let replies: Vec<Value> = text
+            .lines()
+            .map(|s| serde_json::from_str(s).unwrap())
+            .collect();
+        if enabled {
+            assert_eq!(
+                replies[0]["result"]["payload"]["scheduler_tasks_started"],
+                0
+            );
+        } else {
+            assert!(replies[0]["error"].as_str().unwrap().contains("disabled"));
+        }
+        assert!(replies[1]["error"].is_string());
+    }
+}
+
+#[cfg(all(unix, feature = "grok"))]
+#[test]
+fn supervised_provider_startup_is_explicit_and_does_not_start_calls() {
+    use flashtex_assistant_context::SessionClient;
+    use std::{path::Path, time::Duration};
+    let binary = Path::new(env!("CARGO_BIN_EXE_flashtex-assistant-context"));
+    let mut client = SessionClient::spawn_provider(
+        binary,
+        "native_client",
+        "explicit-model",
+        "dummy-local-secret",
+    )
+    .unwrap();
+    let snapshot = client
+        .call(
+            json!({"operation":"provider","command":{"operation":"snapshot"}}),
+            Duration::from_secs(2),
+        )
+        .unwrap();
+    assert_eq!(snapshot["result"]["payload"]["scheduler_tasks_started"], 0);
+    assert_eq!(
+        snapshot["result"]["payload"]["provider_billing_known"],
+        false
+    );
+    assert!(!snapshot.to_string().contains("dummy-local-secret"));
+    assert!(SessionClient::spawn_provider(binary, "native_client", "model", "bad\nkey").is_err());
+    assert!(SessionClient::spawn_provider(binary, "native_client", "", "dummy").is_err());
+}
+
+#[test]
+fn exact_review_groups_apply_retry_undo_and_reopen_through_real_ledger() {
+    use flashtex_assistant_context::ProposalReview;
+    use flashtex_edit_ledger::{history::HistoryMove, Store};
+    let docs = vec![source()];
+    let context = build(&docs);
+    let response=serde_json::to_vec(&json!({"context_id":context.payload().context_id,"explanation":"Replace unknown command","edits":[{"location":{"path":"main.tex","start_byte":3,"end_byte":7},"removed_text":"\\bad","replacement":"good"}]})).unwrap();
+    let review = ProposalReview::prepare("request-1", &context, &response, &docs).unwrap();
+    assert!(review.approve(false, review.review_id(), &docs).is_err());
+    assert!(review.approve(true, "another-review", &docs).is_err());
+    let approved = review.approve(true, review.review_id(), &docs).unwrap();
+    let root = tempfile::tempdir().unwrap();
+    let path = root.path().join("source.ledger");
+    let mut ledger = Store::open(&path).unwrap();
+    ledger.initialize(docs[0].clone()).unwrap();
+    approved
+        .check_target(ledger.document().unwrap().unwrap())
+        .unwrap();
+    let result = ledger.apply_group(approved.group.clone()).unwrap();
+    assert_eq!(result.document.text, "α good");
+    assert!(!result.replayed_command);
+    assert!(
+        ledger
+            .apply_group(approved.group.clone())
+            .unwrap()
+            .replayed_command
+    );
+    assert!(review
+        .approve(
+            true,
+            review.review_id(),
+            std::slice::from_ref(&result.document)
+        )
+        .is_err());
+    drop(ledger);
+    let mut ledger = Store::open(&path).unwrap();
+    assert!(
+        ledger
+            .apply_group(approved.group.clone())
+            .unwrap()
+            .replayed_command
+    );
+    let undo = ledger
+        .undo(HistoryMove {
+            command_id: "undo-reviewed".into(),
+            expected_revision: result.document.revision,
+            expected_sha256: result.document.source_sha256,
+        })
+        .unwrap();
+    assert_eq!(undo.document.text, docs[0].text);
+    drop(ledger);
+    let mut ledger = Store::open(&path).unwrap();
+    assert_eq!(ledger.document().unwrap().unwrap().text, docs[0].text);
+    assert!(ledger.apply_group(approved.group).unwrap().replayed_command);
+    assert_eq!(ledger.document().unwrap().unwrap().text, docs[0].text);
+}
+
+#[test]
+fn review_refuses_multidocument_partial_application_and_changed_approval() {
+    use flashtex_assistant_context::ProposalReview;
+    let docs = vec![
+        source(),
+        Document::new("p".into(), "chapter.tex".into(), 1, "abc".into()).unwrap(),
+    ];
+    let context = Context::build(
+        CompileBinding::capture("r", "p", 7, &docs).unwrap(),
+        &docs,
+        &result(),
+        "Explain",
+        &["chapter.tex".into()],
+    )
+    .unwrap();
+    let mut response = json!({"context_id":context.payload().context_id,"explanation":"Fix","edits":[{"location":{"path":"main.tex","start_byte":3,"end_byte":7},"removed_text":"\\bad","replacement":"good"},{"location":{"path":"chapter.tex","start_byte":0,"end_byte":3},"removed_text":"abc","replacement":"def"}]});
+    assert!(ProposalReview::prepare(
+        "r1",
+        &context,
+        &serde_json::to_vec(&response).unwrap(),
+        &docs
+    )
+    .err()
+    .unwrap()
+    .contains("multi-document"));
+    response["edits"].as_array_mut().unwrap().pop();
+    let first = ProposalReview::prepare(
+        "r1",
+        &context,
+        &serde_json::to_vec(&response).unwrap(),
+        &docs,
+    )
+    .unwrap();
+    response["edits"][0]["replacement"] = json!("different");
+    let second = ProposalReview::prepare(
+        "r1",
+        &context,
+        &serde_json::to_vec(&response).unwrap(),
+        &docs,
+    )
+    .unwrap();
+    assert_ne!(first.review_id(), second.review_id());
+    assert!(second.approve(true, first.review_id(), &docs).is_err());
+    let approved = first.approve(true, first.review_id(), &docs).unwrap();
+    assert!(approved.check_target(&docs[1]).is_err());
+    response["edits"] = json!([]);
+    assert!(ProposalReview::prepare(
+        "r1",
+        &context,
+        &serde_json::to_vec(&response).unwrap(),
+        &docs
+    )
+    .is_err());
+}
+
+#[cfg(unix)]
+#[test]
+fn helper_review_requires_exact_approval_and_returns_ledger_request_without_apply() {
+    use flashtex_assistant_context::SessionClient;
+    use std::{path::Path, time::Duration};
+    let docs = vec![source()];
+    let context = build(&docs);
+    let response = json!({"context_id":context.payload().context_id,"explanation":"Fix","edits":[{"location":{"path":"main.tex","start_byte":3,"end_byte":7},"removed_text":"\\bad","replacement":"good"}]});
+    let mut input = json!({"operation":"review","binding":CompileBinding::capture("r","p",7,&docs).unwrap(),"sources":docs,"compiler_result":result(),"user_instruction":"Explain simply","response":response,"current_sources":docs,"explanation_request_id":"provider-session:1"});
+    let mut client = SessionClient::spawn(
+        Path::new(env!("CARGO_BIN_EXE_flashtex-assistant-context")),
+        "review_session",
+    )
+    .unwrap();
+    let review = client
+        .call(
+            json!({"operation":"review","input":input}),
+            Duration::from_secs(2),
+        )
+        .unwrap();
+    assert_eq!(review["result"]["type"], "proposal_review", "{review}");
+    input["operation"] = json!("approve");
+    input["approved_review_id"] = review["result"]["review_id"].clone();
+    let rejected = client
+        .call(
+            json!({"operation":"review","input":input}),
+            Duration::from_secs(2),
+        )
+        .unwrap();
+    assert!(rejected["error"].is_string());
+    input["user_approved"] = json!(true);
+    let approved = client
+        .call(
+            json!({"operation":"review","input":input}),
+            Duration::from_secs(2),
+        )
+        .unwrap();
+    assert_eq!(approved["result"]["type"], "approved_group");
+    assert_eq!(approved["result"]["applied"], false);
+    assert_eq!(
+        approved["result"]["payload"]["group"]["edits"][0]["removed_text"],
+        "\\bad"
+    );
+    assert_eq!(approved["result"]["payload"]["path"], "main.tex");
+    assert_eq!(docs[0].text, "α \\bad");
+}

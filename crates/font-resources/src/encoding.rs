@@ -168,8 +168,15 @@ impl<'a> BoundTfmFont<'a> {
         ))
     }
     pub fn map_run(&self, input: &[u8]) -> Result<Vec<MappedItem>> {
+        self.map_run_with_boundaries(input, crate::tfm::BoundaryOptions::default())
+    }
+    pub fn map_run_with_boundaries(
+        &self,
+        input: &[u8],
+        boundaries: crate::tfm::BoundaryOptions,
+    ) -> Result<Vec<MappedItem>> {
         self.tfm
-            .apply_ligatures_kerns(input)?
+            .apply_ligatures_kerns_with_boundaries(input, boundaries)?
             .into_iter()
             .map(|item| match item {
                 TfmItem::Kern(kern) => Ok(MappedItem::Kern(kern)),

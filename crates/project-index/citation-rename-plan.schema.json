@@ -1,0 +1,134 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "FlashTeX citation key rename proposal v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "proposal_only",
+    "requires_user_approval",
+    "application_order",
+    "snapshot",
+    "replacement",
+    "edits",
+    "kind",
+    "rename"
+  ],
+  "properties": {
+    "schema": {
+      "const": "flashtex.citation-rename-plan.v1"
+    },
+    "proposal_only": {
+      "const": true
+    },
+    "requires_user_approval": {
+      "const": true
+    },
+    "application_order": {
+      "const": "reverse_byte_offset_per_document"
+    },
+    "snapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "project_id",
+        "generation",
+        "documents"
+      ],
+      "properties": {
+        "project_id": {
+          "type": "string"
+        },
+        "generation": {
+          "$ref": "#/$defs/decimal"
+        },
+        "documents": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "file",
+              "revision"
+            ],
+            "properties": {
+              "file": {
+                "type": "string"
+              },
+              "revision": {
+                "$ref": "#/$defs/decimal"
+              }
+            }
+          }
+        }
+      }
+    },
+    "replacement": {
+      "type": "string"
+    },
+    "edits": {
+      "type": "array",
+      "maxItems": 100000,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "file",
+          "revision",
+          "start_byte",
+          "end_byte",
+          "expected_text",
+          "replacement"
+        ],
+        "properties": {
+          "file": {
+            "type": "string"
+          },
+          "revision": {
+            "$ref": "#/$defs/decimal"
+          },
+          "start_byte": {
+            "$ref": "#/$defs/decimal"
+          },
+          "end_byte": {
+            "$ref": "#/$defs/decimal"
+          },
+          "expected_text": {
+            "type": "string",
+            "minLength": 1
+          },
+          "replacement": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "kind": {
+      "const": "citation_key_rename"
+    },
+    "rename": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "old_name",
+        "new_name"
+      ],
+      "properties": {
+        "old_name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "new_name": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  },
+  "$defs": {
+    "decimal": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)$"
+    }
+  }
+}

@@ -355,6 +355,9 @@ fn horizontal_metrics_keep_original_units_and_trailing_bearings() {
 }
 
 fn tfm_for_encoding() -> flashtex_font_resources::tfm::Tfm {
+    flashtex_font_resources::tfm::Tfm::parse(&tfm_bytes_for_encoding()).unwrap()
+}
+fn tfm_bytes_for_encoding() -> Vec<u8> {
     let mut bytes = [16u16, 2, 65, 66, 2, 1, 1, 1, 0, 0, 0, 1]
         .into_iter()
         .flat_map(u16::to_be_bytes)
@@ -373,7 +376,7 @@ fn tfm_for_encoding() -> flashtex_font_resources::tfm::Tfm {
     ] {
         bytes.extend(word.to_be_bytes());
     }
-    flashtex_font_resources::tfm::Tfm::parse(&bytes).unwrap()
+    bytes
 }
 fn encoding_manifest(
     font: &FontResource,
@@ -564,6 +567,10 @@ fn virtual_packet_put_rule_and_reused_register_have_exact_units() {
 }
 
 fn graph_vf(commands: &[u8], scale: u32, comment: u8) -> flashtex_font_resources::vf::VirtualFont {
+    flashtex_font_resources::vf::VirtualFont::parse(&graph_vf_bytes(commands, scale, comment))
+        .unwrap()
+}
+fn graph_vf_bytes(commands: &[u8], scale: u32, comment: u8) -> Vec<u8> {
     let mut b = vec![247, 202, 1, comment];
     for n in [0u32, 10 << 20] {
         b.extend(n.to_be_bytes());
@@ -578,7 +585,7 @@ fn graph_vf(commands: &[u8], scale: u32, comment: u8) -> flashtex_font_resources
     }
     b.extend(commands);
     b.push(248);
-    flashtex_font_resources::vf::VirtualFont::parse(&b).unwrap()
+    b
 }
 #[test]
 fn nested_and_flat_vf_geometry_are_exactly_equivalent_with_distinct_provenance() {
@@ -1058,6 +1065,58 @@ fn project_registry_snapshots_generation_and_budgets() {
     manifest.entries.push(alias);
     write(&manifest);
     let two = load().unwrap();
+    let page = two
+        .enumerate(two.generation(), MetadataFilter::default(), 0, 1)
+        .unwrap();
+    assert_eq!(page.total_matches, 2);
+    assert_eq!(page.next_offset, Some(1));
+    let last = two
+        .enumerate(two.generation(), MetadataFilter::default(), 1, 1)
+        .unwrap();
+    assert_eq!(last.next_offset, None);
+    let filtered = two
+        .enumerate(
+            two.generation(),
+            MetadataFilter {
+                weight: Some(600),
+                ..Default::default()
+            },
+            0,
+            64,
+        )
+        .unwrap();
+    assert_eq!(filtered.entries.len(), 1);
+    assert!(two
+        .enumerate(first.generation(), MetadataFilter::default(), 0, 1)
+        .is_err());
+    assert!(two
+        .enumerate(two.generation(), MetadataFilter::default(), 0, 65)
+        .is_err());
+    assert!(two
+        .enumerate(two.generation(), MetadataFilter::default(), 129, 1)
+        .is_err());
+    let exported = two.export_json(1024 * 1024).unwrap();
+    std::fs::write(dir.path().join("fonts.json"), &exported).unwrap();
+    assert_eq!(load().unwrap().export_json(1024 * 1024).unwrap(), exported);
+    assert!(two.export_json(1).is_err());
+    for malformed in [
+        String::from_utf8(exported.clone()).unwrap().replacen(
+            "\"schema_version\":2",
+            "\"schema_version\":2,\"schema_version\":2",
+            1,
+        ),
+        String::from_utf8(exported.clone()).unwrap().replacen(
+            "\"weight\":400",
+            "\"weight\":400,\"weight\":400",
+            1,
+        ),
+        String::from_utf8(exported.clone())
+            .unwrap()
+            .replacen("{", "{\"unknown\":true,", 1),
+    ] {
+        std::fs::write(dir.path().join("fonts.json"), malformed).unwrap();
+        assert!(load().is_err());
+    }
     manifest.entries.reverse();
     write(&manifest);
     assert_eq!(load().unwrap().generation(), two.generation());
@@ -1222,6 +1281,103 @@ fn synthetic_cff_registry_reuses_peer_parser_and_validates_declared_identity() {
     );
     assert!(font.shape_adapter().is_ok());
     assert!(registry.get(&binding).is_err());
+    {
+        use flashtex_font_resources::registry::vf_project::*;
+        let tfmbytes = tfm_bytes_for_encoding();
+        let vfbytes = graph_vf_bytes(&[65], 1 << 20, b'c');
+        std::fs::write(dir.path().join("cff.tfm"), &tfmbytes).unwrap();
+        std::fs::write(dir.path().join("cff.vf"), &vfbytes).unwrap();
+        let tfm_asset = Asset {
+            path: "cff.tfm".into(),
+            sha256: sha256(&tfmbytes),
+            license: resource.license.clone(),
+        };
+        let encoding = cff::CffEncodingManifest {
+            font_sha256: font.identity().font_sha256.clone(),
+            cff_sha256: font.identity().cff_sha256.clone(),
+            tfm_sha256: sha256(&tfmbytes),
+            face_index: 0,
+            encoding: vec![encoding::EncodingEntry {
+                code: 65,
+                glyph_name: "space".into(),
+            }],
+        };
+        let mut dependencies = DependencyManifest {
+            schema_version: 1,
+            registry_generation: registry.generation().into(),
+            root: "root".into(),
+            nodes: vec![
+                Node::CffPhysical {
+                    id: "cff".into(),
+                    tfm: tfm_asset.clone(),
+                    binding: binding.clone(),
+                    encoding,
+                },
+                Node::Virtual {
+                    id: "root".into(),
+                    tfm: tfm_asset,
+                    vf: Asset {
+                        path: "cff.vf".into(),
+                        sha256: sha256(&vfbytes),
+                        license: resource.license.clone(),
+                    },
+                    fonts: vec![LocalFont {
+                        id: 0,
+                        target: "cff".into(),
+                    }],
+                },
+            ],
+        };
+        let write = |m: &DependencyManifest| {
+            std::fs::write(
+                dir.path().join("cff-deps.json"),
+                serde_json::to_vec(m).unwrap(),
+            )
+            .unwrap()
+        };
+        write(&dependencies);
+        let project =
+            ResolvedVfProject::load(&root, "cff-deps.json", &registry, Default::default()).unwrap();
+        let result = project.expand(65, registry.generation()).unwrap();
+        assert!(
+            matches!(&result.placements[0],vf_graph::NestedPlacement::Glyph{resource:vf_graph::ResourceKey::CffPhysical{..},glyph_id:1,source,..} if source.len()==2)
+        );
+        let Node::CffPhysical { encoding, .. } = &mut dependencies.nodes[0] else {
+            panic!()
+        };
+        encoding.cff_sha256 = "0".repeat(64);
+        write(&dependencies);
+        assert!(
+            ResolvedVfProject::load(&root, "cff-deps.json", &registry, Default::default()).is_err()
+        );
+    }
+    let exported = registry.export_json(1024 * 1024).unwrap();
+    std::fs::write(dir.path().join("fonts.json"), &exported).unwrap();
+    assert_eq!(load().unwrap().export_json(1024 * 1024).unwrap(), exported);
+    let mut wrong = registry.export_manifest();
+    wrong.entries[0].cff_table.as_mut().unwrap().offset += 1;
+    std::fs::write(
+        dir.path().join("fonts.json"),
+        serde_json::to_vec(&wrong).unwrap(),
+    )
+    .unwrap();
+    assert!(load().is_err());
+    wrong = registry.export_manifest();
+    wrong.entries[0].cff_table = None;
+    std::fs::write(
+        dir.path().join("fonts.json"),
+        serde_json::to_vec(&wrong).unwrap(),
+    )
+    .unwrap();
+    assert!(load().is_err());
+    wrong = registry.export_manifest();
+    wrong.generation = "0".repeat(64);
+    std::fs::write(
+        dir.path().join("fonts.json"),
+        serde_json::to_vec(&wrong).unwrap(),
+    )
+    .unwrap();
+    assert!(matches!(load(), Err(RegistryError::StaleGeneration { .. })));
     for case in 0..5 {
         manifest.entries[0].resource = resource.clone();
         let item = &mut manifest.entries[0].resource;
@@ -1238,4 +1394,472 @@ fn synthetic_cff_registry_reuses_peer_parser_and_validates_declared_identity() {
             Err(RegistryError::ResourceMismatch { .. })
         ));
     }
+}
+
+#[test]
+fn tfm_boundary_run_maps_explicit_glyphs_and_input_intervals() {
+    use flashtex_font_resources::{encoding::*, tfm::*};
+    let mut data = [20u16, 2, 65, 66, 2, 1, 1, 1, 4, 1, 0, 0]
+        .into_iter()
+        .flat_map(u16::to_be_bytes)
+        .collect::<Vec<_>>();
+    for word in [
+        0u32,
+        10 << 20,
+        0x01000101,
+        0x01000000,
+        0,
+        1 << 19,
+        0,
+        0,
+        0,
+        0xfffa0000,
+        0x80fa8000,
+        0x80410042,
+        0xff000002,
+        (-131072i32) as u32,
+    ] {
+        data.extend(word.to_be_bytes());
+    }
+    let tfm = Tfm::parse(&data).unwrap();
+    let bytes = fixture();
+    let font = FontResource::from_bytes(&entry(&bytes), &bytes, b"test license").unwrap();
+    let manifest = encoding_manifest(&font, &tfm);
+    let bound = BoundTfmFont::new(&tfm, &font, &manifest).unwrap();
+    let run = bound.map_run(b"A").unwrap();
+    assert!(matches!(
+        run.as_slice(),
+        [MappedItem::Glyph {
+            tfm_code: 66,
+            identity: GlyphIdentity::Notdef,
+            input_start: 0,
+            input_end: 1,
+            ..
+        }]
+    ));
+    let suppressed = bound
+        .map_run_with_boundaries(
+            b"A",
+            BoundaryOptions {
+                left: false,
+                right: true,
+            },
+        )
+        .unwrap();
+    assert!(matches!(
+        suppressed.as_slice(),
+        [
+            MappedItem::Glyph {
+                tfm_code: 65,
+                identity: GlyphIdentity::Original(2),
+                input_start: 0,
+                input_end: 1,
+                ..
+            },
+            MappedItem::Kern(FixWord(-131072))
+        ]
+    ));
+    let mut incomplete = manifest.clone();
+    incomplete.encoding.retain(|entry| entry.code != 66);
+    assert!(BoundTfmFont::new(&tfm, &font, &incomplete)
+        .unwrap()
+        .map_run(b"A")
+        .is_err());
+}
+
+#[test]
+fn rooted_vf_dependencies_bind_licenses_graph_identity_and_reject_specials() {
+    use flashtex_font_resources::{
+        registry::{vf_project::*, *},
+        vf_graph::*,
+    };
+    use flashtex_project_files::ProjectRoot;
+    let dir = tempfile::tempdir().unwrap();
+    let root = ProjectRoot::open(dir.path()).unwrap();
+    let bytes = fixture();
+    let resource = entry(&bytes);
+    let font = FontResource::from_bytes(&resource, &bytes, b"test license").unwrap();
+    std::fs::write(dir.path().join(&resource.path), &bytes).unwrap();
+    std::fs::write(
+        dir.path().join(&resource.license.text_path),
+        b"test license",
+    )
+    .unwrap();
+    let binding = StyleBinding {
+        family: "Synthetic".into(),
+        weight: 400,
+        style: FontStyle::Upright,
+    };
+    let registry_manifest = RegistryManifest {
+        schema_version: 1,
+        entries: vec![RegistryEntry {
+            binding: binding.clone(),
+            resource: resource.clone(),
+        }],
+    };
+    std::fs::write(
+        dir.path().join("fonts.json"),
+        serde_json::to_vec(&registry_manifest).unwrap(),
+    )
+    .unwrap();
+    let registry = ProjectFontRegistry::load(&root, "fonts.json", Default::default()).unwrap();
+    let tfm_bytes = tfm_bytes_for_encoding();
+    let tfm = tfm_for_encoding();
+    let vf_bytes = graph_vf_bytes(&[65], 1 << 20, b'r');
+    std::fs::write(dir.path().join("test.tfm"), &tfm_bytes).unwrap();
+    std::fs::write(dir.path().join("test.vf"), &vf_bytes).unwrap();
+    let tfm_asset = Asset {
+        path: "test.tfm".into(),
+        sha256: sha256(&tfm_bytes),
+        license: resource.license.clone(),
+    };
+    let vf_asset = Asset {
+        path: "test.vf".into(),
+        sha256: sha256(&vf_bytes),
+        license: resource.license.clone(),
+    };
+    let mut manifest = DependencyManifest {
+        schema_version: 1,
+        registry_generation: registry.generation().into(),
+        root: "root".into(),
+        nodes: vec![
+            Node::Physical {
+                id: "physical".into(),
+                tfm: tfm_asset.clone(),
+                binding,
+                encoding: encoding_manifest(&font, &tfm),
+            },
+            Node::Virtual {
+                id: "root".into(),
+                tfm: tfm_asset,
+                vf: vf_asset,
+                fonts: vec![LocalFont {
+                    id: 0,
+                    target: "physical".into(),
+                }],
+            },
+        ],
+    };
+    let write = |m: &DependencyManifest| {
+        std::fs::write(dir.path().join("vf.json"), serde_json::to_vec(m).unwrap()).unwrap()
+    };
+    write(&manifest);
+    let load = || ResolvedVfProject::load(&root, "vf.json", &registry, Default::default());
+    let resolved = load().unwrap();
+    let packet = resolved.expand(65, registry.generation()).unwrap();
+    assert_eq!(packet.placements.len(), 1);
+    match &packet.placements[0] {
+        NestedPlacement::Glyph {
+            glyph_id, source, ..
+        } => {
+            assert_eq!(*glyph_id, 2);
+            assert_eq!(source.len(), 2)
+        }
+        _ => panic!("glyph"),
+    }
+    assert_eq!(resolved.license_texts().len(), 3);
+    assert!(resolved.expand(65, &"0".repeat(64)).is_err());
+    manifest.nodes.reverse();
+    write(&manifest);
+    assert_eq!(load().unwrap().generation(), resolved.generation());
+    for target in ["missing", "root"] {
+        let mut wrong = manifest.clone();
+        let Node::Virtual { fonts, .. } = &mut wrong.nodes[0] else {
+            panic!()
+        };
+        fonts[0].target = target.into();
+        write(&wrong);
+        assert!(load().is_err());
+    }
+    let mut wrong = manifest.clone();
+    let Node::Virtual { fonts, .. } = &mut wrong.nodes[0] else {
+        panic!()
+    };
+    fonts.push(fonts[0].clone());
+    write(&wrong);
+    assert!(load().is_err());
+    write(&manifest);
+    assert!(ResolvedVfProject::load(
+        &root,
+        "vf.json",
+        &registry,
+        RegistryLimits {
+            max_files: 2,
+            ..Default::default()
+        }
+    )
+    .is_err());
+    let special = graph_vf_bytes(&[239, 2, b'p', b's'], 1 << 20, b's');
+    std::fs::write(dir.path().join("test.vf"), &special).unwrap();
+    let Node::Virtual { vf, .. } = &mut manifest.nodes[0] else {
+        panic!()
+    };
+    vf.sha256 = sha256(&special);
+    write(&manifest);
+    assert!(matches!(
+        load().unwrap().expand(65, registry.generation()),
+        Err(RegistryError::ResourceMismatch {
+            error: Error::UnsupportedFont(_),
+            ..
+        })
+    ));
+    assert_eq!(resolved.expand(65, registry.generation()).unwrap(), packet);
+    std::fs::write(dir.path().join("test.tfm"), b"changed").unwrap();
+    assert!(matches!(
+        load(),
+        Err(RegistryError::ResourceMismatch {
+            error: Error::DigestMismatch,
+            ..
+        })
+    ));
+    std::fs::write(dir.path().join("test.tfm"), &tfm_bytes).unwrap();
+    std::fs::remove_file(dir.path().join(&resource.license.text_path)).unwrap();
+    assert!(matches!(load(), Err(RegistryError::Missing { .. })));
+    #[cfg(unix)]
+    {
+        std::fs::write(
+            dir.path().join(&resource.license.text_path),
+            b"test license",
+        )
+        .unwrap();
+        std::fs::remove_file(dir.path().join("test.tfm")).unwrap();
+        std::os::unix::fs::symlink("test.vf", dir.path().join("test.tfm")).unwrap();
+        assert!(matches!(load(), Err(RegistryError::RootedRead { .. })));
+    }
+}
+
+#[test]
+fn cff_vf_flat_nested_and_mixed_original_identity() {
+    use flashtex_font_resources::{cff::*, encoding::*, vf_graph::*};
+    let mut cff_bytes = b"OTTOxxxx".to_vec();
+    cff_bytes.extend([
+        1, 0, 4, 4, 0, 1, 1, 1, 2, b'F', 0, 1, 1, 1, 3, 160, 17, 0, 0, 0, 0, 0, 2, 1, 1, 2, 3, 14,
+        14,
+    ]);
+    let cache = CffOutlineCache::from_font_table(
+        &cff_bytes,
+        0,
+        8..cff_bytes.len(),
+        CacheLimits {
+            max_entries: 0,
+            max_bytes: 0,
+        },
+    )
+    .unwrap();
+    let tfm = tfm_for_encoding();
+    let manifest = CffEncodingManifest {
+        font_sha256: cache.identity().font_sha256.clone(),
+        cff_sha256: cache.identity().cff_sha256.clone(),
+        tfm_sha256: tfm.source_sha256.clone(),
+        face_index: 0,
+        encoding: vec![EncodingEntry {
+            code: 65,
+            glyph_name: "space".into(),
+        }],
+    };
+    let bound = BoundCffTfmFont::new(&tfm, &cache, &manifest).unwrap();
+    let child = graph_vf(&[65], 1 << 19, b'c');
+    let root = graph_vf(&[65], 1 << 19, b'r');
+    let flat = graph_vf(&[65], 1 << 18, b'f');
+    let mut graph = ResourceGraph::new();
+    let physical = graph.insert(Resource::CffPhysical(&bound)).unwrap();
+    assert!(
+        matches!(&physical,ResourceKey::CffPhysical{cff_sha256,encoding_sha256,..} if cff_sha256==&cache.identity().cff_sha256 && encoding_sha256==bound.encoding().encoding_sha256())
+    );
+    let childkey = graph
+        .insert(Resource::Virtual {
+            vf: &child,
+            tfm: &tfm,
+            fonts: BTreeMap::from([(0, physical.clone())]),
+        })
+        .unwrap();
+    let rootkey = graph
+        .insert(Resource::Virtual {
+            vf: &root,
+            tfm: &tfm,
+            fonts: BTreeMap::from([(0, childkey)]),
+        })
+        .unwrap();
+    let flatkey = graph
+        .insert(Resource::Virtual {
+            vf: &flat,
+            tfm: &tfm,
+            fonts: BTreeMap::from([(0, physical.clone())]),
+        })
+        .unwrap();
+    let nested = graph.expand(&rootkey, 65).unwrap();
+    let flat = graph.expand(&flatkey, 65).unwrap();
+    match (&nested.placements[0], &flat.placements[0]) {
+        (
+            NestedPlacement::Glyph {
+                resource: a,
+                glyph_id: ag,
+                x: ax,
+                y: ay,
+                scale: as_,
+                source: ap,
+                ..
+            },
+            NestedPlacement::Glyph {
+                resource: b,
+                glyph_id: bg,
+                x: bx,
+                y: by,
+                scale: bs,
+                source: bp,
+                ..
+            },
+        ) => {
+            assert_eq!((a, ag, ax, ay, as_), (b, bg, bx, by, bs));
+            assert_eq!(*ag, 1);
+            assert_eq!((ap.len(), bp.len()), (3, 2));
+        }
+        _ => panic!("glyph"),
+    }
+    let ttbytes = fixture();
+    let tt = FontResource::from_bytes(&entry(&ttbytes), &ttbytes, b"test license").unwrap();
+    let ttmanifest = encoding_manifest(&tt, &tfm);
+    let ttbound = BoundTfmFont::new(&tfm, &tt, &ttmanifest).unwrap();
+    let ttkey = graph.insert(Resource::Physical(&ttbound)).unwrap();
+    let mut mixedbytes = graph_vf_bytes(&[65, 172, 65], 1 << 20, b'm');
+    let mut second = vec![243, 1];
+    for n in [0u32, 1 << 20, 10 << 20] {
+        second.extend(n.to_be_bytes());
+    }
+    second.extend([0, 1, b'g']);
+    mixedbytes.splice(29..29, second);
+    let mixed = flashtex_font_resources::vf::VirtualFont::parse(&mixedbytes).unwrap();
+    let mixedkey = graph
+        .insert(Resource::Virtual {
+            vf: &mixed,
+            tfm: &tfm,
+            fonts: BTreeMap::from([(0, physical), (1, ttkey)]),
+        })
+        .unwrap();
+    let result = graph.expand(&mixedkey, 65).unwrap();
+    assert_eq!(result.placements.len(), 2);
+    assert!(matches!(
+        result.placements[0],
+        NestedPlacement::Glyph {
+            resource: ResourceKey::CffPhysical { .. },
+            glyph_id: 1,
+            ..
+        }
+    ));
+    assert!(matches!(
+        result.placements[1],
+        NestedPlacement::Glyph {
+            resource: ResourceKey::Physical { .. },
+            glyph_id: 2,
+            ..
+        }
+    ));
+    for name in [Some(".notdef"), None] {
+        let mut bad = manifest.clone();
+        bad.encoding = name
+            .into_iter()
+            .map(|n| EncodingEntry {
+                code: 65,
+                glyph_name: n.into(),
+            })
+            .collect();
+        let binding = BoundCffTfmFont::new(&tfm, &cache, &bad).unwrap();
+        let mut g = ResourceGraph::new();
+        let key = g.insert(Resource::CffPhysical(&binding)).unwrap();
+        assert!(g.expand(&key, 65).is_err());
+    }
+}
+
+#[test]
+fn math_binding_synthetic_limits_and_missing_table() {
+    use math_adapter::*;
+    use registry::*;
+    let dir = tempfile::tempdir().unwrap();
+    let root = flashtex_project_files::ProjectRoot::open(dir.path()).unwrap();
+    let binding = StyleBinding {
+        family: "Synthetic".into(),
+        weight: 400,
+        style: FontStyle::Upright,
+    };
+    let load = |bytes: &[u8]| {
+        let resource = entry(bytes);
+        std::fs::write(dir.path().join(&resource.path), bytes).unwrap();
+        std::fs::write(
+            dir.path().join(&resource.license.text_path),
+            b"test license",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.path().join("fonts.json"),
+            serde_json::to_vec(&RegistryManifest {
+                schema_version: 1,
+                entries: vec![RegistryEntry {
+                    binding: binding.clone(),
+                    resource,
+                }],
+            })
+            .unwrap(),
+        )
+        .unwrap();
+        ProjectFontRegistry::load(&root, "fonts.json", RegistryLimits::default()).unwrap()
+    };
+    let original = fixture();
+    let absent = load(&original);
+    assert!(matches!(
+        BoundMathFont::from_registry(
+            &absent,
+            &binding,
+            absent.generation(),
+            MathPolicy::UnhintedDesignUnits
+        ),
+        Err(MathError::MissingMathTable)
+    ));
+    // Insert one directory record, relocating existing table offsets by16.
+    let n = u16::from_be_bytes(original[4..6].try_into().unwrap()) as usize;
+    let end = 12 + n * 16;
+    let mut bytes = original[..end].to_vec();
+    bytes.extend([0; 16]);
+    bytes.extend_from_slice(&original[end..]);
+    be16(&mut bytes, 4, (n + 1) as u16);
+    for i in 0..n {
+        let at = 12 + i * 16 + 8;
+        let old = u32::from_be_bytes(bytes[at..at + 4].try_into().unwrap());
+        be32(&mut bytes, at, old + 16);
+    }
+    let mut math = vec![0; 224];
+    be32(&mut math, 0, 0x00010000);
+    be16(&mut math, 4, 10);
+    be16(&mut math, 10, 80);
+    be16(&mut math, 14, u16::MAX);
+    be16(&mut math, 22, i16::MIN as u16); // axis-height signed boundary
+    while !bytes.len().is_multiple_of(4) {
+        bytes.push(0);
+    }
+    let off = bytes.len();
+    bytes.extend(&math);
+    bytes[end..end + 4].copy_from_slice(b"MATH");
+    be32(&mut bytes, end + 8, off as u32);
+    be32(&mut bytes, end + 12, math.len() as u32);
+    let registry = load(&bytes);
+    let bound = BoundMathFont::from_registry(
+        &registry,
+        &binding,
+        registry.generation(),
+        MathPolicy::UnhintedDesignUnits,
+    )
+    .unwrap();
+    assert_eq!(bound.constants().axis_height, i16::MIN);
+    assert_eq!(bound.constants().delimited_sub_formula_min_height, u16::MAX);
+    assert_eq!(
+        bound.glyphs(&[0, 2]).unwrap()[1].top_accent_attachment,
+        None
+    );
+    assert!(matches!(
+        bound.glyphs(&[3]),
+        Err(MathError::GlyphOutOfBounds(3))
+    ));
+    assert!(matches!(
+        bound.glyphs(&[0; 257]),
+        Err(MathError::LookupBudget)
+    ));
 }
