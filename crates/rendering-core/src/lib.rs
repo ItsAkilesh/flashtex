@@ -765,3 +765,5 @@ pub mod cubic;
 pub mod mixed;
 
 pub mod mixed_replay;
+
+pub mod residency;

@@ -259,3 +259,18 @@ optional full-font identity and reject provider results that change GID, hint po
 or claim applied hinting. Replay validates the optional identity while accepting
 earlier fixtures without it. The merged loader also explicitly rejects stroked CFF
 PaintType, which this fill-path consumer cannot implement.
+
+`residency::MixedResidency` keeps immutable prepared pages under explicit total
+page, encoded-byte and command budgets. `begin` verifies and captures source
+snapshots plus resource/configuration identities in a generation-bound lease;
+compile from `lease.snapshots()` and prepare through that same lease. Any changed
+source, resource or configuration invalidates prior jobs, even at the same project
+revision. Revision rollback is rejected. Preparation checks source UTF-8 boundaries
+and requires every retained font identity in the declared resource set.
+
+Installation rejects superseded work, conflicting outputs for one identity and
+oversized pages without replacing a good frame. LRU eviction removes residency
+while existing caller-held Arcs remain immutable. Encoded-byte and command limits
+do not claim to bound all allocator overhead, captured source snapshots or external
+Arcs. Source snapshots have their own 32 MiB input cap. A caller must capture its
+lease before compilation; a fresh lease cannot prove old output used new sources.

@@ -14,23 +14,23 @@
     "rust",
     "rendering"
   ],
-  "code_revision": "938d504efd321f59a1835baf1e21fd414040e360",
+  "code_revision": "f2a839aa85a41de9388586743a36dfb1cd538a94",
   "eta_minutes": {
     "likely": 20,
     "optimistic": 10,
     "pessimistic": 30
   },
   "machine": "linux-primary",
-  "main_integrated_through": "b18285ce3091cb7549558cf9078d277ba2f392b5",
-  "next_action": "Implement bounded mixed residency with generation/source/resource stale-result rejection.",
+  "main_integrated_through": "63a93717865920014d15fa113102698572494976",
+  "next_action": "Publish residency checkpoint; continue next assigned product increment.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "Full-font CFF cache integrated through shared immutable cubic provider; exact placement and resource identity preserved in mixed replay. 95 Rust tests pass.",
+  "summary": "Bounded mixed page residency implemented with captured source/resource/configuration leases, stale completion rejection and immutable LRU frames. 100 Rust tests pass.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T06:58:26Z",
+  "updated_utc": "2026-09-12T07:02:37Z",
   "usage": {
-    "evidence": "95 Rust tests and strict all-target clippy pass. Cache hit/bypass/direct equality, full-font identity replay and wrong hint claims tested. Peer63a9371 merged unchanged.",
+    "evidence": "100 Rust tests and strict all-target clippy pass. Source/resource/config changes, revision rollback, UTF8 source gates, budget/conflict atomicity and external Arc survival covered.",
     "status": "Hosted OpenAI authorized; no external provider calls or purchases."
   }
 }

@@ -429,3 +429,259 @@ fn provider_cannot_silently_change_hint_policy_or_claim_grid_fitting() {
         Err(MixedError::Identity)
     ));
 }
+fn residency_inputs(
+    text: &str,
+    config: &str,
+) -> flashtex_rendering_core::residency::ResidencyInputs {
+    use flashtex_rendering_core::residency::*;
+    use std::collections::{BTreeMap, BTreeSet};
+    ResidencyInputs::new(
+        "test",
+        1,
+        config,
+        vec![DocumentResource {
+            path: "main.tex".into(),
+            revision: 1,
+            sha256: digest(text.as_bytes()),
+            byte_length: text.len() as u64,
+        }],
+        BTreeMap::from([(
+            "main.tex".into(),
+            SourceSnapshot {
+                revision: 1,
+                text: text.into(),
+            },
+        )]),
+        BTreeSet::from([
+            ResourceIdentity::TrueType {
+                sha256: "1".repeat(64),
+            },
+            ResourceIdentity::CffTable {
+                sha256: digest(&cff_bytes()),
+            },
+        ]),
+    )
+    .unwrap()
+}
+fn residency_limits() -> flashtex_rendering_core::residency::ResidencyLimits {
+    flashtex_rendering_core::residency::ResidencyLimits {
+        max_pages: 2,
+        max_encoded_bytes: 100000,
+        max_commands: 100,
+    }
+}
+#[test]
+fn source_or_configuration_change_rejects_already_prepared_completion() {
+    use flashtex_rendering_core::residency::*;
+    let source = fixture();
+    let c = cff();
+    let mut cache = MixedResidency::new("test", residency_limits()).unwrap();
+    let first = cache
+        .begin(residency_inputs("old", &"3".repeat(64)))
+        .unwrap();
+    let pending = first
+        .build(context(), &inputs(&source, &c), MixedLimits::default())
+        .unwrap();
+    let next = cache
+        .begin(residency_inputs("new", &"3".repeat(64)))
+        .unwrap();
+    assert_eq!(next.snapshots()["main.tex"].text, "new");
+    assert!(cache.install(pending).is_err());
+    assert!(cache.page(&first, 1).is_err());
+    let ready = next
+        .build(context(), &inputs(&source, &c), MixedLimits::default())
+        .unwrap();
+    let held = cache.install(ready).unwrap();
+    assert_eq!(cache.stats().pages, 1);
+    let changed = cache
+        .begin(residency_inputs("new", &"4".repeat(64)))
+        .unwrap();
+    assert_eq!(cache.stats().pages, 0);
+    assert!(cache.page(&next, 1).is_err());
+    assert!(cache.page(&changed, 1).unwrap().is_none());
+    assert_eq!(held.primitives().len(), 3);
+}
+#[test]
+fn residency_checks_source_utf8_and_resource_binding_before_publication() {
+    use flashtex_rendering_core::residency::*;
+    use std::collections::{BTreeMap, BTreeSet};
+    let mut source = fixture();
+    let c = cff();
+    let DrawOperation::Glyph { path, .. } = &mut source.primitives[0].operation else {
+        panic!()
+    };
+    path.sources = vec![SourceRange {
+        path: "main.tex".into(),
+        start_byte: 0,
+        end_byte: 1,
+    }];
+    let mut cache = MixedResidency::new("test", residency_limits()).unwrap();
+    let lease = cache.begin(residency_inputs("é", &"3".repeat(64))).unwrap();
+    assert!(lease
+        .build(context(), &inputs(&source, &c), MixedLimits::default())
+        .is_err());
+    let empty = ResidencyInputs::new(
+        "test",
+        1,
+        &"3".repeat(64),
+        vec![],
+        BTreeMap::new(),
+        BTreeSet::new(),
+    )
+    .unwrap();
+    let empty = cache.begin(empty).unwrap();
+    assert!(empty
+        .build(context(), &inputs(&fixture(), &c), MixedLimits::default())
+        .is_err());
+    assert!(cache.page(&lease, 1).is_err());
+    let wrong = ResidencyInputs::new(
+        "test",
+        1,
+        &"3".repeat(64),
+        vec![DocumentResource {
+            path: "main.tex".into(),
+            revision: 1,
+            sha256: "0".repeat(64),
+            byte_length: 1,
+        }],
+        BTreeMap::from([(
+            "main.tex".into(),
+            SourceSnapshot {
+                revision: 1,
+                text: "x".into(),
+            },
+        )]),
+        BTreeSet::new(),
+    );
+    assert!(wrong.is_err());
+}
+#[test]
+fn residency_lru_eviction_keeps_external_immutable_frame_alive() {
+    use flashtex_rendering_core::residency::*;
+    let source = fixture();
+    let c = cff();
+    let mut cache = MixedResidency::new(
+        "test",
+        ResidencyLimits {
+            max_pages: 1,
+            ..residency_limits()
+        },
+    )
+    .unwrap();
+    let lease = cache.begin(residency_inputs("x", &"3".repeat(64))).unwrap();
+    let first = cache
+        .install(
+            lease
+                .build(context(), &inputs(&source, &c), MixedLimits::default())
+                .unwrap(),
+        )
+        .unwrap();
+    let mut second = fixture();
+    second.page = 2;
+    for primitive in &mut second.primitives {
+        if let DrawOperation::Glyph { path, .. } = &mut primitive.operation {
+            path.page = 2;
+        }
+    }
+    let mut ctx = context();
+    ctx.page = 2;
+    cache
+        .install(
+            lease
+                .build(ctx, &inputs(&second, &c), MixedLimits::default())
+                .unwrap(),
+        )
+        .unwrap();
+    assert!(cache.page(&lease, 1).unwrap().is_none());
+    assert!(cache.page(&lease, 2).unwrap().is_some());
+    assert_eq!(cache.stats().evictions, 1);
+    assert_eq!(cache.stats().pages, 1);
+    assert_eq!(first.identity(), ("test", 1, 1));
+    assert_eq!(first.command_count(), 5);
+}
+#[test]
+fn residency_rejects_conflicting_same_identity_and_oversize_without_replacing_frame() {
+    use flashtex_rendering_core::residency::*;
+    let source = fixture();
+    let c = cff();
+    let mut cache = MixedResidency::new("test", residency_limits()).unwrap();
+    let lease = cache.begin(residency_inputs("x", &"3".repeat(64))).unwrap();
+    let original = cache
+        .install(
+            lease
+                .build(context(), &inputs(&source, &c), MixedLimits::default())
+                .unwrap(),
+        )
+        .unwrap();
+    let mut reordered = inputs(&source, &c);
+    reordered.swap(0, 1);
+    assert!(cache
+        .install(
+            lease
+                .build(context(), &reordered, MixedLimits::default())
+                .unwrap()
+        )
+        .is_err());
+    assert!(std::sync::Arc::ptr_eq(
+        &original,
+        &cache.page(&lease, 1).unwrap().unwrap()
+    ));
+    let mut tiny = MixedResidency::new(
+        "test",
+        ResidencyLimits {
+            max_encoded_bytes: 1,
+            ..residency_limits()
+        },
+    )
+    .unwrap();
+    let lease = tiny.begin(residency_inputs("x", &"3".repeat(64))).unwrap();
+    assert!(tiny
+        .install(
+            lease
+                .build(context(), &inputs(&source, &c), MixedLimits::default())
+                .unwrap()
+        )
+        .is_err());
+    assert_eq!(tiny.stats().pages, 0);
+}
+#[test]
+fn resource_only_generation_change_and_revision_rollback_are_rejected() {
+    use flashtex_rendering_core::residency::*;
+    use std::collections::BTreeSet;
+    let source = fixture();
+    let c = cff();
+    let mut cache = MixedResidency::new("test", residency_limits()).unwrap();
+    let old = cache.begin(residency_inputs("x", &"3".repeat(64))).unwrap();
+    let pending = old
+        .build(context(), &inputs(&source, &c), MixedLimits::default())
+        .unwrap();
+    let make = |revision| {
+        ResidencyInputs::new(
+            "test",
+            revision,
+            &"3".repeat(64),
+            vec![DocumentResource {
+                path: "main.tex".into(),
+                revision: 1,
+                sha256: digest(b"x"),
+                byte_length: 1,
+            }],
+            old.snapshots().clone(),
+            BTreeSet::from([
+                ResourceIdentity::TrueType {
+                    sha256: "9".repeat(64),
+                },
+                ResourceIdentity::CffTable {
+                    sha256: digest(&cff_bytes()),
+                },
+            ]),
+        )
+        .unwrap()
+    };
+    let fresh = cache.begin(make(1)).unwrap();
+    assert!(cache.install(pending).is_err());
+    assert!(fresh
+        .build(context(), &inputs(&source, &c), MixedLimits::default())
+        .is_err());
+    assert!(cache.begin(make(0)).is_err());
+}

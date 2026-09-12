@@ -100,6 +100,9 @@ pub struct MixedBatch {
     encoded: Vec<u8>,
 }
 impl MixedBatch {
+    pub fn identity(&self) -> (&str, u64, u32) {
+        (&self.project_id, self.revision, self.page)
+    }
     pub fn primitives(&self) -> &[MixedPrimitive] {
         &self.primitives
     }
