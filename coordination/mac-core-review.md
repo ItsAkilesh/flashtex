@@ -6,29 +6,71 @@ reproduced defects. Never edits `crates/*`; helper defects are reported with rep
 
 ## Durable checkpoint
 
-- Branch: `agent/mac-core-review/pipeline` (from `origin/agent/mac-claude-a/mac-shell` @ 6fb77efd)
+- Branch: `agent/mac-core-review/pipeline` (from `origin/agent/mac-claude-a/mac-shell` @ 6fb77efd);
+  pushed through d1828e6a (three defect commits, see below).
 - Worktree: `/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a07346630f0c4534d`
-- HEAD: see `git log -1`; dirty files: this file, `coordination/agents/mac-core-review.json`,
-  new `apps/mac/Tests/FlashTeXMacTests/ControllerPipelineReviewTests.swift` (in progress)
+- Dirty files at this checkpoint: this file and `coordination/agents/mac-core-review.json` only.
 - Helpers built (release): compiler, preview-controller, pdf, bridge, edit-ledger,
   project-files, assistant-context under `crates/<c>/target/release/`.
-- Next commands: `swift build --build-tests` (running), then
-  `swift test --filter ControllerPipelineReviewTests` with FLASHTEX_* exports.
-- Load at start: 1-min 11.4 (other lanes running).
+- Test command: `swift test` in `apps/mac` with `FLASHTEX_NO_ACTIVATE=1` and the seven
+  `FLASHTEX_*` helper paths exported (runner kept in the session scratchpad).
+- Full-suite run started at 1-min load 5.5 (other lanes running); result recorded below.
 
-## Findings so far
+## Fixed (test + fix, one commit each)
 
-1. **`failed`/`cancelled` helper updates never release the in-flight edit** (default
-   hold-until-preview policy): `handleController(.update)` only handles `stale`/`discarded`,
-   and its guard compares the helper's global compile *generation* (`compile_revision`)
-   with the document's durable revision; `discarded` frames carry no `compile_revision`
-   at all (crates/preview-controller/src/main.rs:383-394). After a compiler failure the
-   in-flight edit stays set forever: every later keystroke is queued and never sent
-   (typing stall until app restart). Reproduction in progress with the real helper and a
-   compiler wrapper that dies on its second request.
-2. (reported only, so far) `controllerSave`/`controllerFileStatus` continuations are dropped
-   without resuming when `detachController()` resets `controllerState` while an
-   `export`/`file_status` is awaiting (`.exited` fails them first; explicit detach does not).
-3. (reported only, so far) `completionFetcher` is not reset on helper exit/relaunch; request ids
-   restart at `pc-1` on the new client, so a stale outstanding completion id can swallow a
-   `document`/`edit` reply of the relaunched helper (`.refused` → `return`).
+| # | Defect | Reproduction | Test | Fix |
+|---|--------|--------------|------|-----|
+| 1 | `failed`/`cancelled` helper updates never released the in-flight edit (default hold-until-preview policy): after a compiler crash the edit stayed in flight, every keystroke queued forever, nothing durable until relaunch. The existing `stale`/`discarded` guard also compares the helper's global compile *generation* with the document's durable revision, and `discarded` frames carry no `compile_revision` at all. | Real helper + compiler wrapper that dies on a marked request → helper emits `update {kind:"failed", reason:"compiler output closed"}`; `inFlight` stuck, durable stuck at r2. | `ControllerPipelineReviewTests.testCompilerFailureReleasesTheInFlightEditSoTypingStaysDurable` | fc89836b — release a durable in-flight edit on `failed`/`cancelled`, surface the reason. |
+| 2 | ⌘S with the helper attached for a file not named `main.tex` exported the helper's *session temp copy*, reported "Saved paper.tex", cleared the dirty flag; the real file was never written (data loss). `saveTexInteractive` gated on `controllerAttached` instead of `controllerRoutesFiles`. | Real helper; open `paper.tex`, edit, `saveTexInteractive()` → disk unchanged, `isDirty == false`. | `…testSaveOfAFileNotNamedMainTexWritesThatFileNotTheHelpersSessionCopy` | a7fea28f — use `controllerRoutesFiles`; falls back to the direct SHA-guarded write. |
+| 3 | `ProjectDocuments` `unowned model` read after awaits (`flushToHelper`/`awaitInFlight` polling ≤10 s, `syncWithHelper`, `openDiscoveredIncludes`, `helperRequest` timeout) from Tasks that hold ProjectDocuments strongly (`switchDocument`, `armControllerTracking`, `init`): a model torn down mid-wait → fatal unowned read (SIGABRT, kills the test process). | Fake helper; in-flight slot held; `Task { flushToHelper }`; release the model → `Fatal error: Attempted to read an unowned reference…`. | `…testProjectDocumentsFlushSurvivesTheModelBeingReleasedMidWait` | d1828e6a — strong local for the call's duration (as `DocumentKinds.refresh`); timeout block captures weakly. |
+
+## Reported only (not fixed; reproductions)
+
+4. `stale` release guard compares units that do not correspond: `compile_revision` is the
+   helper's compile generation (crates/preview-controller/src/lib.rs `compile_revision()` =
+   `generation`, counts every admitted compile incl. `compile`/`configure_layout`), the guard's
+   `want` is the document's durable revision (persisted ledger; can be far larger). Under
+   hybrid, a stale for an OLDER compile can release the in-flight edit early when
+   generation ≥ durable revision (fresh ledger), and never release it when the ledger's
+   revision is high (a later preview then releases). Policy-timing only, no stall found;
+   the edit reply does not name its compile request id, so exact correlation needs a
+   helper-side field (`compile_request_id` on the `edit` result) — helper owners.
+5. `controllerSave` / `controllerFileStatus` register `awaiting` continuations without a
+   timeout; `detachController()` resets `controllerState` without resuming them
+   (`.exited` fails them first; an explicit detach does not). Only reachable today from
+   `attachController` (init/relaunch) and tests; would hang the save Task forever.
+   Reproduction: attach real helper, start `controllerSave()` then `detachController()`
+   before the export reply → the await never returns.
+6. `completionFetcher` is not reset on helper exit/relaunch; request ids restart at `pc-1`
+   on the new client. An outstanding completion id from the old session that collides with
+   a new `edit`/`document` id makes `handleController` return `.refused` before
+   `applyDurableDocument`, swallowing the durable reply (pipeline stalls until the next
+   preview). Needs the relaunched helper's first edit to fail to preview; narrow.
+7. `ProjectSearchPanel.reconcile` replaces the active buffer with the helper's post-apply
+   text after an await; keystrokes typed in the editor during the `apply_group` round trip
+   (ms window; the buffer-equals-durable check is before the send) are overwritten.
+8. `SourceEditorView.updateNSView` applies a `pendingEdit` before the `hasMarkedText()`
+   guard: a capture approved during an IME composition uses a UTF-16 range computed from
+   the model text (behind the storage by the marked text), and an out-of-range edit is
+   still reported through `onEditApplied` so `appliedCaptureIDs` marks a capture inserted
+   that was never inserted (duplicate refusal on retry). Reproduction outline: IMEHarness
+   with marked text before the anchor, then `approveProposal`.
+9. Worker path: an `error` envelope for the latest request clears `compileQueued`, so a
+   keystroke coalesced behind that request is not recompiled until the next keystroke
+   (`ShellModel.handle(.error)`); the direct compiler never emits `error` for well-formed
+   requests, so not reproduced with a real helper.
+10. `TypingBenchDriver` has the same `unowned model` + Timer pattern (`pollReady`); the
+    driver is retained by `TypingBench.shared` while the model is app-lifetime, so not
+    reproducible in the app; tests keep the driver local.
+
+## Verification
+
+Full `swift test` (apps/mac) at d1828e6a with FLASHTEX_NO_ACTIVATE=1 and the seven helper
+paths exported: **601 tests, 13 skipped, 0 failures**, 174.7 s; load averages at finish
+4.84 / 6.53 / 12.01 (started at ~5.5 1-min, other lanes running). All 13 skips are
+env-gated (FLASHTEX_RENDER, FLASHTEX_EXPLAIN, FLASHTEX_PDF_EXACT ×5, FLASHTEX_PREFS_EVIDENCE,
+FLASHTEX_EVIDENCE_DIR, FLASHTEX_NEARBY_*, one OverlayTests NSAccessibility-environment skip).
+Baseline for comparison: 590 / 7 skips / 0 failures at c60abba (the parent's tip added
+tests since; this lane added 3). Note: `flashtex-pdf-exact` is built at
+`crates/pdf/target/release/flashtex-pdf-exact` but was not in the requested env list, so
+the five ExportSession/ExactPDF tests were not exercised here.
