@@ -1,0 +1,25 @@
+{
+  "observed_utc": "2026-09-12T16:48:53.421996+00:00",
+  "baseline_main": "c5279d0a2a333b60d932221bae3b2b55f126d0ac",
+  "services": {
+    "flashtex-dispatch.service": "ActiveState=inactive\nSubState=dead\nMainPID=0",
+    "flashtex-commander-witness.service": "ActiveState=inactive\nSubState=dead\nMainPID=0",
+    "flashtex-coordination-watch.service": "ActiveState=inactive\nSubState=dead\nMainPID=0"
+  },
+  "journals": [
+    {
+      "path": "/home/natkarri/flashtex/.git/worktrees/flashtex-dispatch/flashtex/dispatcher-publication.json",
+      "state": "published",
+      "commit": "c5279d0a2a333b60d932221bae3b2b55f126d0ac"
+    }
+  ],
+  "root_engineer": "ff7273f6 clean; all jobs/calls/publications terminal per exact owner report",
+  "successor": "claude",
+  "successor_machine": "mac-m5pro-kabir",
+  "successor_session": "session_01Xd5Hmwh5GHNTiAmHUJ1MZu",
+  "successor_parent_pid_reported": 55790,
+  "readiness_commit": "99d690450f7f904bfc6c6ab498a06b04bca558ac",
+  "model_revival": "not available; persistent deterministic monitoring does not revive Claude",
+  "standby_ack": "GH1#5647226771",
+  "quiescence": "All Astra global publication/dispatch/integration services stopped; this final handoff publication is sole remaining write. No further Astra global writes after successful push."
+}
