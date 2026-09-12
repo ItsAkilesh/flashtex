@@ -226,3 +226,26 @@ priority, disabled diagnostics, sequence exhaustion, and actual unread-output
 watchdog correlation with no false write_finished record. Receiver order and
 record bounds were checked without a compiler timing run. Defaults and wire bytes
 remain unchanged. A measured diagnostic capture is still a separate future gate.
+
+## Failed instrumented capture retained
+
+`benchmarks/typing-burst-instrumented-failed` records the single approved diagnostic
+run with helper e8b5a6fa / binary29810763 and the unchanged release producer1587245d.
+The burst and receipt checks reached current21, but the subsequent reopened preview
+failed with `compiler response timeout`. Its producer request was captured; the
+output contains only an incomplete94,208-byte JSON prefix. Both original producer
+PIDs were absent after cleanup. No rerun occurred. GH33 tracks this failure.
+
+Normal successful-run provenance and clean-final direct compile comparison were
+not reached. The archive explicitly says failed_post_measurement_reopen and retains
+all original bytes, including the partial frame; no complete-run acceptance is
+claimed. Source/config timing scripts are hashed separately in failure.json.
+
+The offline transport reviewer checks all numeric frame lifecycles for immutable
+metadata, duplicate/contradictory outcomes and missing coverage, then maps writer
+order to full-session receiver ordinal, exact length and historical generation.
+For the measured prefix, optional writes total17.95ms and receiver JSON decoding
+169.44ms. These are separate within-process intervals, not an additive latency
+model or a native paint measurement. The reopened timeout cause remains unknown;
+these prefix timings do not explain it. The original partial output must be
+investigated before calling the full experiment successful.
