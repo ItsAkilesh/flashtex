@@ -88,7 +88,7 @@ struct FlashTeXMacApp: App {
         WindowGroup("FlashTeX") {
             ContentView()
                 .environment(model)
-                .frame(minWidth: 1100, minHeight: 640) // sidebar + editor + preview + Problems panel
+                .frame(minWidth: 1200, minHeight: 640) // sidebar + editor + preview + Problems panel
                 .onAppear {
                     appDelegate.model = model; nearby.attach(sink: model, destinations: model); TypingBench.shared.install(model: model)
                     // Automation: open a secondary window at launch for evidence captures.
@@ -96,6 +96,7 @@ struct FlashTeXMacApp: App {
                     if let id = ProcessInfo.processInfo.environment["FLASHTEX_OPEN_WINDOW"], ["nearby", AccessibilityHelpView.windowID, EditHistoryPanel.windowID, ProjectSearch.windowID, CitationRename.windowID].contains(id) { openWindow(id: id) }
                 }
         }
+        .defaultSize(width: 1500, height: 950) // first launch; the saved frame wins afterwards
         .commands {
             NavigationCommands(model: model) // Navigation.swift
             DiagnosticsCommands(model: model) // DiagnosticsPanel.swift: Edit > Copy Diagnostics as Text (⌘⌥C)

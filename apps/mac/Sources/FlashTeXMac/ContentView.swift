@@ -19,12 +19,12 @@ struct ContentView: View {
         @Bindable var model = model
         NavigationSplitView(columnVisibility: $columns) {
             WorkspaceSidebar()
-                .navigationSplitViewColumnWidth(min: 180, ideal: 240, max: 420)
+                .navigationSplitViewColumnWidth(min: 200, ideal: 240, max: 360)
         } detail: {
             VStack(spacing: 0) {
                 HSplitView {
-                    EditorPane().frame(minWidth: 360)
-                    PreviewPane().frame(minWidth: 380)
+                    EditorPane().frame(minWidth: 340, maxWidth: .infinity)
+                    PreviewPane().frame(minWidth: 380, maxWidth: .infinity)
                 }
                 if model.problemsVisible {
                     Divider()
