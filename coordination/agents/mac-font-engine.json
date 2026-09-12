@@ -3,10 +3,10 @@
   "allocation_id": "claude-mac20x-font-engine",
   "assignment_acknowledgements": {
     "FT-018": {
-      "acknowledged_utc": "2026-09-12T05:25:01Z",
-      "adaptation": "Accepted FT-018 rev 1: new crate crates/font-engine (TrueType parsing, base-14 widths, shaping with clusters/missing glyphs, subsetting, ToUnicode). No compiler files edited; compiler may adopt later.",
-      "main_sha": "984fa28f2537feadb9f848eb90f69de0327d1fa5",
-      "revision": 1
+      "acknowledged_utc": "2026-09-12T06:06:29Z",
+      "adaptation": "Accepted rev 2: pinned Latin Modern manifest (descriptor fields aligned with crates/font-resources; CFF is outside its static-truetype profile so font-engine validates the same fields itself), explicit ordered fallback with per-cluster FontId, GPOS MarkToBase, CoreText render + PDFKit extraction checks under tools/, reproducible subset+ToUnicode test, CIDFontType0C subtype.",
+      "main_sha": "ae3f4de96282e7ea2c60aa268ed5f0b09c664e06",
+      "revision": 2
     }
   },
   "branch": "agent/mac-font-engine/tex-fonts",
@@ -14,14 +14,14 @@
     "rust",
     "fonts"
   ],
-  "code_revision": "16c6d35860861162910020782cef3af73c5aef62",
+  "code_revision": "4c29b3ac6d89cf9c27347078e429d793c76ab329",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
     "pessimistic": 0
   },
   "machine": "mac-m1max-a",
-  "main_integrated_through": "984fa28f2537feadb9f848eb90f69de0327d1fa5",
+  "main_integrated_through": "36e501e18bf173e116390c5f33182596e6124064",
   "next_action": "Await Commander ABI review; follow-ups: CFF subsetting, MathVariants",
   "reviewed_peers": {
     "origin/main": {
@@ -31,10 +31,10 @@
     }
   },
   "schema_version": 1,
-  "state": "ready_for_integration",
+  "state": "accepted",
   "summary": "font-engine crate complete for FT-018 rev 1: TrueType+OTTO parsing, Core14 tables, GPOS/kern/GSUB shaping with source clusters, subsetting, ToUnicode, MATH; 45 tests; CoreText-exact",
   "tool": "Claude Code subagent (parent mac-claude-a)",
-  "updated_utc": "2026-09-12T06:03:32Z",
+  "updated_utc": "2026-09-12T06:06:29Z",
   "usage": {
     "evidence": "Shared Max quota not observable from subagent",
     "status": "unknown"
