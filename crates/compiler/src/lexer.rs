@@ -61,7 +61,11 @@ pub fn tokenize(text: &str) -> Vec<Token> {
                 it.next();
             }
             tokens.push(Token {
-                kind: if newlines >= 2 { TokenKind::ParBreak } else { TokenKind::Space },
+                kind: if newlines >= 2 {
+                    TokenKind::ParBreak
+                } else {
+                    TokenKind::Space
+                },
                 span: Span::new(start, end),
             });
             continue;
@@ -119,7 +123,10 @@ pub fn tokenize(text: &str) -> Vec<Token> {
                     '}' => TokenKind::RBrace,
                     _ => TokenKind::MathShift,
                 };
-                tokens.push(Token { kind, span: Span::new(i, i + c.len_utf8()) });
+                tokens.push(Token {
+                    kind,
+                    span: Span::new(i, i + c.len_utf8()),
+                });
             }
             '%' => {
                 let start = i;
@@ -132,7 +139,10 @@ pub fn tokenize(text: &str) -> Vec<Token> {
                     end = j + ch.len_utf8();
                     it.next();
                 }
-                tokens.push(Token { kind: TokenKind::Comment, span: Span::new(start, end) });
+                tokens.push(Token {
+                    kind: TokenKind::Comment,
+                    span: Span::new(start, end),
+                });
             }
             _ => {
                 let start = i;
@@ -146,7 +156,10 @@ pub fn tokenize(text: &str) -> Vec<Token> {
                     end = j + ch.len_utf8();
                     it.next();
                 }
-                tokens.push(Token { kind: TokenKind::Word(word), span: Span::new(start, end) });
+                tokens.push(Token {
+                    kind: TokenKind::Word(word),
+                    span: Span::new(start, end),
+                });
             }
         }
     }

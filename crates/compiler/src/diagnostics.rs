@@ -30,11 +30,25 @@ pub struct Diagnostic {
 
 impl Diagnostic {
     pub fn error(message: impl Into<String>, span: Option<Span>, recovery: Option<String>) -> Self {
-        Diagnostic { severity: Severity::Error, message: message.into(), span, recovery }
+        Diagnostic {
+            severity: Severity::Error,
+            message: message.into(),
+            span,
+            recovery,
+        }
     }
 
-    pub fn warning(message: impl Into<String>, span: Option<Span>, recovery: Option<String>) -> Self {
-        Diagnostic { severity: Severity::Warning, message: message.into(), span, recovery }
+    pub fn warning(
+        message: impl Into<String>,
+        span: Option<Span>,
+        recovery: Option<String>,
+    ) -> Self {
+        Diagnostic {
+            severity: Severity::Warning,
+            message: message.into(),
+            span,
+            recovery,
+        }
     }
 
     pub fn to_json(&self, path: &str) -> Value {

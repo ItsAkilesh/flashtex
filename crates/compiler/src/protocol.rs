@@ -108,7 +108,11 @@ pub fn handle_line(line: &str) -> String {
         }
     };
 
-    let id = value.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+    let id = value
+        .get("id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
 
     match value.get("protocol_version").and_then(|v| v.as_i64()) {
         Some(PROTOCOL_VERSION) => {}
@@ -116,18 +120,29 @@ pub fn handle_line(line: &str) -> String {
             return json::write(&error_envelope(
                 &id,
                 "unsupported_protocol_version",
-                &format!("protocol version {} is not supported; this build speaks version {}", other, PROTOCOL_VERSION),
+                &format!(
+                    "protocol version {} is not supported; this build speaks version {}",
+                    other, PROTOCOL_VERSION
+                ),
             ));
         }
         None => {
-            return json::write(&error_envelope(&id, "missing_protocol_version", "protocol_version is required"));
+            return json::write(&error_envelope(
+                &id,
+                "missing_protocol_version",
+                "protocol_version is required",
+            ));
         }
     }
 
     match value.get("type").and_then(|v| v.as_str()) {
         Some("compile") => match value.get("payload") {
             Some(p) => json::write(&compile(&id, p)),
-            None => json::write(&error_envelope(&id, "missing_payload", "compile requires a payload")),
+            None => json::write(&error_envelope(
+                &id,
+                "missing_payload",
+                "compile requires a payload",
+            )),
         },
         Some(other) => json::write(&error_envelope(
             &id,
@@ -190,18 +205,35 @@ fn failed(id: &str, project_id: &str, revision: i64, diags: Vec<Diagnostic>, pat
     payload.set("revision", Value::Num(revision as f64));
     payload.set("status", str_("failed"));
     payload.set("pages", Value::Arr(Vec::new()));
-    payload.set("diagnostics", Value::Arr(diags.iter().map(|d| d.to_json(path)).collect()));
+    payload.set(
+        "diagnostics",
+        Value::Arr(diags.iter().map(|d| d.to_json(path)).collect()),
+    );
     payload.set("pdf_path", Value::Null);
     result_envelope(id, payload)
 }
 
 fn compile(id: &str, payload: &Value) -> Value {
-    let project_id = payload.get("project_id").and_then(|v| v.as_str()).unwrap_or("").to_string();
-    let revision = payload.get("revision").and_then(|v| v.as_i64()).unwrap_or(0);
-    let entry = payload.get("entry_path").and_then(|v| v.as_str()).unwrap_or("").to_string();
+    let project_id = payload
+        .get("project_id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let revision = payload
+        .get("revision")
+        .and_then(|v| v.as_i64())
+        .unwrap_or(0);
+    let entry = payload
+        .get("entry_path")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
 
     let empty = Vec::new();
-    let docs = payload.get("documents").and_then(|v| v.as_arr()).unwrap_or(&empty);
+    let docs = payload
+        .get("documents")
+        .and_then(|v| v.as_arr())
+        .unwrap_or(&empty);
 
     // Validate every supplied path before compiling anything.
     for d in docs {
@@ -219,7 +251,10 @@ fn compile(id: &str, payload: &Value) -> Value {
     if !entry.is_empty() && !path_is_safe(&entry) {
         let diag = Diagnostic {
             severity: Severity::Error,
-            message: format!("rejected entry_path '{}': paths must be project-relative with no parent traversal", entry),
+            message: format!(
+                "rejected entry_path '{}': paths must be project-relative with no parent traversal",
+                entry
+            ),
             span: None,
             recovery: None,
         };
@@ -235,8 +270,14 @@ fn compile(id: &str, payload: &Value) -> Value {
 
     let (path, text) = match entry_doc {
         Some(d) => (
-            d.get("path").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-            d.get("text").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            d.get("path")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+            d.get("text")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
         ),
         None => {
             let diag = Diagnostic {
@@ -255,7 +296,10 @@ fn compile(id: &str, payload: &Value) -> Value {
     let mut diags = parsed.diagnostics;
     if docs.len() > 1 {
         diags.push(Diagnostic::warning(
-            format!("{} documents were supplied; this version compiles only the entry document", docs.len()),
+            format!(
+                "{} documents were supplied; this version compiles only the entry document",
+                docs.len()
+            ),
             None,
             Some("compiled the entry document alone".into()),
         ));
@@ -275,7 +319,10 @@ fn compile(id: &str, payload: &Value) -> Value {
     p.set("revision", Value::Num(revision as f64));
     p.set("status", str_(status));
     p.set("pages", pages_json(&pages, &path));
-    p.set("diagnostics", Value::Arr(diags.iter().map(|d| d.to_json(&path)).collect()));
+    p.set(
+        "diagnostics",
+        Value::Arr(diags.iter().map(|d| d.to_json(&path)).collect()),
+    );
     p.set("pdf_path", Value::Null);
     result_envelope(id, p)
 }

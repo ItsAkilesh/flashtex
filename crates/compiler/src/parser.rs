@@ -30,7 +30,14 @@ pub struct Parsed {
 
 /// Commands this version actually implements.
 const SUPPORTED: &[&str] = &[
-    "section", "subsection", "textbf", "emph", "textit", "begin", "end", "par",
+    "section",
+    "subsection",
+    "textbf",
+    "emph",
+    "textit",
+    "begin",
+    "end",
+    "par",
 ];
 
 pub fn parse(text: &str) -> Parsed {
@@ -60,7 +67,10 @@ pub fn parse(text: &str) -> Parsed {
         ));
     }
 
-    Parsed { blocks, diagnostics: p.diags }
+    Parsed {
+        blocks,
+        diagnostics: p.diags,
+    }
 }
 
 struct P {
@@ -94,7 +104,10 @@ impl P {
                 }
                 TokenKind::Word(w) => {
                     self.i += 1;
-                    para.push(Inline::Text { text: w, span: tok.span });
+                    para.push(Inline::Text {
+                        text: w,
+                        span: tok.span,
+                    });
                 }
                 TokenKind::LineBreak => {
                     self.i += 1;
@@ -135,13 +148,7 @@ impl P {
         blocks
     }
 
-    fn command(
-        &mut self,
-        name: &str,
-        span: Span,
-        blocks: &mut Vec<Block>,
-        para: &mut Vec<Inline>,
-    ) {
+    fn command(&mut self, name: &str, span: Span, blocks: &mut Vec<Block>, para: &mut Vec<Inline>) {
         match name {
             "section" | "subsection" => {
                 let level = if name == "section" { 1 } else { 2 };
@@ -204,7 +211,9 @@ impl P {
                 self.diags.push(Diagnostic::error(
                     format!("\\{} is not supported by this compiler version", other),
                     Some(span),
-                    Some("skipped the command; any braced argument was typeset as plain text".into()),
+                    Some(
+                        "skipped the command; any braced argument was typeset as plain text".into(),
+                    ),
                 ));
             }
         }
@@ -251,7 +260,10 @@ impl P {
                 TokenKind::Word(w) => {
                     self.i += 1;
                     end = tok.span.end;
-                    content.push(Inline::Text { text: w, span: tok.span });
+                    content.push(Inline::Text {
+                        text: w,
+                        span: tok.span,
+                    });
                 }
                 TokenKind::Space => {
                     self.i += 1;

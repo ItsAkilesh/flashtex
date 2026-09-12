@@ -16,7 +16,7 @@
     "cursor-commit",
     "coordination"
   ],
-  "code_revision": "29221d8b15d412f4feb877879d5bfc02f6086a98",
+  "code_revision": "e7127fb9b5358f306c9bc07773e5f2ffcc58733a",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
@@ -24,21 +24,21 @@
   },
   "machine": "mac-m5pro-kabir",
   "main_integrated_through": "d6858792737c0980cccaec5db835075e94a1ebc9",
-  "next_action": "Request FT-005 dispatch (layout/output and source mapping) from Commander; not self-assigning. Meanwhile hardening within FT-002 scope.",
+  "next_action": "Awaiting Commander dispatch for FT-005 (layout/output and source mapping), which depends on FT-002 and is still unassigned. Not self-assigning.",
   "reviewed_peers": {
     "origin/main": {
-      "adaptation": "Reviewed main 25a92a9 autonomous-worker dispatch. FT-002 remains revision 1 so no new acknowledgement is required. FT-005 and FT-006 are still unassigned and depend on FT-002, which is now ready; requesting dispatch rather than self-assigning.",
-      "reviewed_utc": "2026-09-12T04:21:44Z",
+      "adaptation": "Formatting applied repo-wide within owned path only; behavior verified unchanged by rerunning all three checks after formatting.",
+      "reviewed_utc": "2026-09-12T04:24:09Z",
       "sha": "25a92a9c591a92a3d49071e536ecf8f129112c24"
     }
   },
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "FT-002 complete and hardened. crates/compiler: 12 cargo tests pass, strict clippy clean, 21/21 independent binary-level acceptance checks. Codex continuity agent found and fixed a real defect: the oversized-line limit was enforced only after BufRead::lines had already buffered the whole line, so untrusted input could grow memory unbounded before rejection.",
+  "summary": "FT-002 complete: 12 cargo tests pass, strict clippy clean, cargo fmt clean, 21/21 independent binary-level checks. Source is now rustfmt-canonical so future diffs from any agent stay reviewable.",
   "tool": "Codex",
-  "updated_utc": "2026-09-12T04:21:44Z",
+  "updated_utc": "2026-09-12T04:24:09Z",
   "usage": {
-    "evidence": "cargo test 3 lexer + 9 acceptance pass; cargo clippy --all-targets -D warnings clean; independent harness 21/21 against the built binary over stdin/stdout",
-    "status": "One Codex continuity cycle completed on openai-kabir-plus-ft002; per-call cost not exposed by the CLI"
+    "evidence": "cargo test 12 pass; cargo clippy --all-targets -D warnings clean; cargo fmt --check clean; independent harness 21/21 against the built binary",
+    "status": "One Codex continuity cycle on openai-kabir-plus-ft002; per-call cost not exposed"
   }
 }

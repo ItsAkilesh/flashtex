@@ -32,7 +32,12 @@ fn items(v: &Value) -> Vec<Value> {
         .map(|pages| {
             pages
                 .iter()
-                .flat_map(|pg| pg.get("items").and_then(|i| i.as_arr()).cloned().unwrap_or_default())
+                .flat_map(|pg| {
+                    pg.get("items")
+                        .and_then(|i| i.as_arr())
+                        .cloned()
+                        .unwrap_or_default()
+                })
                 .collect()
         })
         .unwrap_or_default()
@@ -70,9 +75,19 @@ fn unicode_spans_are_utf8_bytes_that_slice_back_exactly() {
         .iter()
         .find(|i| i.get("text").unwrap().as_str() == Some("café"))
         .expect("café must be typeset");
-    let start = cafe.get("source").unwrap().get("start_byte").unwrap().as_i64().unwrap() as usize;
+    let start = cafe
+        .get("source")
+        .unwrap()
+        .get("start_byte")
+        .unwrap()
+        .as_i64()
+        .unwrap() as usize;
     assert_eq!(start, text.find("café").unwrap());
-    assert_ne!(start, text.chars().position(|c| c == 'c').unwrap(), "byte offset must differ from char index here");
+    assert_ne!(
+        start,
+        text.chars().position(|c| c == 'c').unwrap(),
+        "byte offset must differ from char index here"
+    );
 }
 
 #[test]
@@ -81,36 +96,67 @@ fn malformed_input_recovers_with_diagnostics_and_still_produces_output() {
     let r = reply(&compile_line("m1", 1, "main.tex", text));
     assert_eq!(status(&r), "recovered");
 
-    let diags = r.get("payload").unwrap().get("diagnostics").unwrap().as_arr().unwrap().clone();
+    let diags = r
+        .get("payload")
+        .unwrap()
+        .get("diagnostics")
+        .unwrap()
+        .as_arr()
+        .unwrap()
+        .clone();
     assert!(!diags.is_empty(), "malformed input must be reported");
 
     let messages: Vec<String> = diags
         .iter()
         .map(|d| d.get("message").unwrap().as_str().unwrap().to_string())
         .collect();
-    assert!(messages.iter().any(|m| m.contains("unmatched '{'")), "got {:?}", messages);
-    assert!(messages.iter().any(|m| m.contains("nosuchcommand")), "got {:?}", messages);
+    assert!(
+        messages.iter().any(|m| m.contains("unmatched '{'")),
+        "got {:?}",
+        messages
+    );
+    assert!(
+        messages.iter().any(|m| m.contains("nosuchcommand")),
+        "got {:?}",
+        messages
+    );
 
     for d in &diags {
         assert!(d.get("recovery").is_some(), "recovery field is required");
         assert!(d.get("severity").is_some());
     }
-    assert!(!items(&r).is_empty(), "recovery must still typeset the readable text");
+    assert!(
+        !items(&r).is_empty(),
+        "recovery must still typeset the readable text"
+    );
 }
 
 #[test]
 fn stray_closing_brace_is_reported_not_swallowed() {
     let r = reply(&compile_line("m2", 1, "main.tex", "text } more\n"));
-    let diags = r.get("payload").unwrap().get("diagnostics").unwrap().as_arr().unwrap().clone();
-    assert!(diags
-        .iter()
-        .any(|d| d.get("message").unwrap().as_str().unwrap().contains("unmatched '}'")));
+    let diags = r
+        .get("payload")
+        .unwrap()
+        .get("diagnostics")
+        .unwrap()
+        .as_arr()
+        .unwrap()
+        .clone();
+    assert!(diags.iter().any(|d| d
+        .get("message")
+        .unwrap()
+        .as_str()
+        .unwrap()
+        .contains("unmatched '}'")));
     assert_eq!(status(&r), "recovered");
 }
 
 #[test]
 fn repository_fixture_roundtrips() {
-    let fixture = concat!(env!("CARGO_MANIFEST_DIR"), "/../../protocol/fixtures/compile-request.json");
+    let fixture = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../protocol/fixtures/compile-request.json"
+    );
     let line = std::fs::read_to_string(fixture).expect("fixture must exist");
     let out = handle_line(line.trim());
 
@@ -119,7 +165,10 @@ fn repository_fixture_roundtrips() {
     let reparsed = json::parse(&json::write(&parsed)).expect("reply reparses");
     assert_eq!(parsed, reparsed);
 
-    assert_eq!(parsed.get("id").unwrap().as_str(), Some("fixture-compile-1"));
+    assert_eq!(
+        parsed.get("id").unwrap().as_str(),
+        Some("fixture-compile-1")
+    );
     assert_eq!(parsed.get("type").unwrap().as_str(), Some("compile_result"));
     let payload = parsed.get("payload").unwrap();
     assert_eq!(payload.get("project_id").unwrap().as_str(), Some("demo"));
@@ -128,9 +177,18 @@ fn repository_fixture_roundtrips() {
     assert_eq!(status(&parsed), "ok");
 
     let its = items(&parsed);
-    assert!(its.iter().any(|i| i.get("text").unwrap().as_str() == Some("Hello")));
+    assert!(its
+        .iter()
+        .any(|i| i.get("text").unwrap().as_str() == Some("Hello")));
     for it in &its {
-        for key in ["kind", "text", "x_pt", "baseline_y_pt", "font_size_pt", "source"] {
+        for key in [
+            "kind",
+            "text",
+            "x_pt",
+            "baseline_y_pt",
+            "font_size_pt",
+            "source",
+        ] {
             assert!(it.get(key).is_some(), "item is missing {}", key);
         }
     }
@@ -144,13 +202,22 @@ fn a_minimal_document_and_a_second_edited_revision_both_lay_out() {
     let r1 = reply(&compile_line("r1", 1, "main.tex", v1));
     let r2 = reply(&compile_line("r2", 2, "main.tex", v2));
 
-    assert_eq!(r1.get("payload").unwrap().get("revision").unwrap().as_i64(), Some(1));
-    assert_eq!(r2.get("payload").unwrap().get("revision").unwrap().as_i64(), Some(2));
+    assert_eq!(
+        r1.get("payload").unwrap().get("revision").unwrap().as_i64(),
+        Some(1)
+    );
+    assert_eq!(
+        r2.get("payload").unwrap().get("revision").unwrap().as_i64(),
+        Some(2)
+    );
 
     let i1 = items(&r1);
     let i2 = items(&r2);
     assert!(!i1.is_empty() && !i2.is_empty());
-    assert!(i2.len() > i1.len(), "the longer revision should place more words");
+    assert!(
+        i2.len() > i1.len(),
+        "the longer revision should place more words"
+    );
 
     // Spans must track the edited text, not the old text.
     for (r, text) in [(&r1, v1), (&r2, v2)] {
@@ -163,8 +230,14 @@ fn a_minimal_document_and_a_second_edited_revision_both_lay_out() {
     }
 
     // The heading is typeset larger than body text.
-    let heading = i2.iter().find(|i| i.get("text").unwrap().as_str() == Some("Intro")).unwrap();
-    let body = i2.iter().find(|i| i.get("text").unwrap().as_str() == Some("First")).unwrap();
+    let heading = i2
+        .iter()
+        .find(|i| i.get("text").unwrap().as_str() == Some("Intro"))
+        .unwrap();
+    let body = i2
+        .iter()
+        .find(|i| i.get("text").unwrap().as_str() == Some("First"))
+        .unwrap();
     assert!(
         heading.get("font_size_pt").unwrap().as_i64().unwrap()
             > body.get("font_size_pt").unwrap().as_i64().unwrap()
@@ -192,23 +265,57 @@ fn unsafe_paths_are_rejected() {
     for path in ["/etc/passwd", "../outside.tex", "a/../../b.tex"] {
         let r = reply(&compile_line("p", 1, path, "x\n"));
         assert_eq!(status(&r), "failed", "path {} must be rejected", path);
-        let diags = r.get("payload").unwrap().get("diagnostics").unwrap().as_arr().unwrap().clone();
-        assert!(diags
-            .iter()
-            .any(|d| d.get("message").unwrap().as_str().unwrap().contains("rejected")));
+        let diags = r
+            .get("payload")
+            .unwrap()
+            .get("diagnostics")
+            .unwrap()
+            .as_arr()
+            .unwrap()
+            .clone();
+        assert!(diags.iter().any(|d| d
+            .get("message")
+            .unwrap()
+            .as_str()
+            .unwrap()
+            .contains("rejected")));
     }
 }
 
 #[test]
 fn math_and_unsupported_commands_are_reported_never_silent() {
-    let r = reply(&compile_line("x1", 1, "main.tex", "text $x^2$ and \\tikz{a}\n"));
-    let diags = r.get("payload").unwrap().get("diagnostics").unwrap().as_arr().unwrap().clone();
+    let r = reply(&compile_line(
+        "x1",
+        1,
+        "main.tex",
+        "text $x^2$ and \\tikz{a}\n",
+    ));
+    let diags = r
+        .get("payload")
+        .unwrap()
+        .get("diagnostics")
+        .unwrap()
+        .as_arr()
+        .unwrap()
+        .clone();
     let messages: Vec<String> = diags
         .iter()
         .map(|d| d.get("message").unwrap().as_str().unwrap().to_string())
         .collect();
-    assert!(messages.iter().any(|m| m.contains("math mode is not implemented")), "got {:?}", messages);
-    assert!(messages.iter().any(|m| m.contains("\\tikz is not supported")), "got {:?}", messages);
+    assert!(
+        messages
+            .iter()
+            .any(|m| m.contains("math mode is not implemented")),
+        "got {:?}",
+        messages
+    );
+    assert!(
+        messages
+            .iter()
+            .any(|m| m.contains("\\tikz is not supported")),
+        "got {:?}",
+        messages
+    );
 }
 
 #[test]
@@ -222,15 +329,31 @@ fn bounded_reader_rejects_an_oversized_line_and_recovers_for_the_next_request() 
     // A deliberately small BufReader exercises the chunked path rather than
     // exposing the whole test input in one fill_buf call.
     let mut reader = BufReader::with_capacity(31, Cursor::new(input));
-    assert_eq!(read_request_line(&mut reader).unwrap(), Some(RequestLine::TooLarge));
+    assert_eq!(
+        read_request_line(&mut reader).unwrap(),
+        Some(RequestLine::TooLarge)
+    );
 
-    let next = read_request_line(&mut reader).unwrap().expect("next request remains readable");
+    let next = read_request_line(&mut reader)
+        .unwrap()
+        .expect("next request remains readable");
     let bytes = match next {
         RequestLine::Data(bytes) => bytes,
         RequestLine::TooLarge => panic!("valid request was incorrectly rejected"),
     };
     let response = reply(std::str::from_utf8(&bytes).unwrap());
     assert_eq!(response.get("id").unwrap().as_str(), Some("after-large"));
-    assert_eq!(response.get("type").unwrap().as_str(), Some("compile_result"));
-    assert_eq!(response.get("payload").unwrap().get("revision").unwrap().as_i64(), Some(7));
+    assert_eq!(
+        response.get("type").unwrap().as_str(),
+        Some("compile_result")
+    );
+    assert_eq!(
+        response
+            .get("payload")
+            .unwrap()
+            .get("revision")
+            .unwrap()
+            .as_i64(),
+        Some(7)
+    );
 }

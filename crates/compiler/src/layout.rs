@@ -107,7 +107,11 @@ impl Cursor {
             font_size_pt: size,
             span,
         };
-        self.pages.last_mut().expect("at least one page").items.push(item);
+        self.pages
+            .last_mut()
+            .expect("at least one page")
+            .items
+            .push(item);
         self.x += w + SPACE_RATIO * size;
     }
 }

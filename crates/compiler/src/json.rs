@@ -96,7 +96,10 @@ impl Parser {
     }
 
     fn ws(&mut self) {
-        while matches!(self.peek(), Some(' ') | Some('\t') | Some('\n') | Some('\r')) {
+        while matches!(
+            self.peek(),
+            Some(' ') | Some('\t') | Some('\n') | Some('\r')
+        ) {
             self.i += 1;
         }
     }
@@ -106,7 +109,10 @@ impl Parser {
             self.i += 1;
             Ok(())
         } else {
-            Err(JsonError(format!("expected '{}' at position {}", c, self.i)))
+            Err(JsonError(format!(
+                "expected '{}' at position {}",
+                c, self.i
+            )))
         }
     }
 
@@ -190,12 +196,16 @@ impl Parser {
         self.eat('"')?;
         let mut s = String::new();
         loop {
-            let c = self.peek().ok_or_else(|| JsonError("unterminated string".into()))?;
+            let c = self
+                .peek()
+                .ok_or_else(|| JsonError("unterminated string".into()))?;
             self.i += 1;
             match c {
                 '"' => return Ok(s),
                 '\\' => {
-                    let e = self.peek().ok_or_else(|| JsonError("unterminated escape".into()))?;
+                    let e = self
+                        .peek()
+                        .ok_or_else(|| JsonError("unterminated escape".into()))?;
                     self.i += 1;
                     match e {
                         '"' => s.push('"'),
@@ -218,9 +228,13 @@ impl Parser {
     fn hex4(&mut self) -> Result<u32, JsonError> {
         let mut v = 0u32;
         for _ in 0..4 {
-            let c = self.peek().ok_or_else(|| JsonError("short \\u escape".into()))?;
+            let c = self
+                .peek()
+                .ok_or_else(|| JsonError("short \\u escape".into()))?;
             self.i += 1;
-            let d = c.to_digit(16).ok_or_else(|| JsonError("bad hex digit".into()))?;
+            let d = c
+                .to_digit(16)
+                .ok_or_else(|| JsonError("bad hex digit".into()))?;
             v = v * 16 + d;
         }
         Ok(v)
