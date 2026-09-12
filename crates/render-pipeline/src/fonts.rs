@@ -44,10 +44,47 @@ pub enum Role {
 
 /// Default search directories, probed in order for explicit file names.
 /// `FLASHTEX_FONT_DIRS` (colon separated) is prepended when set.
-pub const DEFAULT_FONT_DIRS: [&str; 2] = [
+pub const DEFAULT_FONT_DIRS: [&str; 12] = [
+    // MacTeX / BasicTeX (TeX Live 2026, 2025).
+    "/usr/local/texlive/2026/texmf-dist/fonts/opentype/public/lm",
+    "/usr/local/texlive/2026/texmf-dist/fonts/opentype/public/lm-math",
     "/usr/local/texlive/2026basic/texmf-dist/fonts/opentype/public/lm",
     "/usr/local/texlive/2026basic/texmf-dist/fonts/opentype/public/lm-math",
+    "/usr/local/texlive/2025/texmf-dist/fonts/opentype/public/lm",
+    "/usr/local/texlive/2025/texmf-dist/fonts/opentype/public/lm-math",
+    "/usr/local/texlive/2025basic/texmf-dist/fonts/opentype/public/lm",
+    "/usr/local/texlive/2025basic/texmf-dist/fonts/opentype/public/lm-math",
+    // Debian/Ubuntu `fonts-lmodern` and TeX Live packages.
+    "/usr/share/texmf/fonts/opentype/public/lm",
+    "/usr/share/texmf/fonts/opentype/public/lm-math",
+    "/usr/share/texlive/texmf-dist/fonts/opentype/public/lm",
+    "/usr/share/texlive/texmf-dist/fonts/opentype/public/lm-math",
 ];
+
+/// Directories probed by default, in order: `FLASHTEX_FONT_DIRS` (colon
+/// separated), `FLASHTEX_LM_DIR` (the pdf sibling's variable), a `Fonts`
+/// directory next to the executable or in the enclosing app bundle's
+/// `Resources`, then [`DEFAULT_FONT_DIRS`]. Nothing is scanned outside this
+/// list.
+pub fn default_font_dirs() -> Vec<PathBuf> {
+    let mut dirs: Vec<PathBuf> = Vec::new();
+    if let Ok(v) = std::env::var("FLASHTEX_FONT_DIRS") {
+        dirs.extend(v.split(':').filter(|s| !s.is_empty()).map(PathBuf::from));
+    }
+    if let Ok(v) = std::env::var("FLASHTEX_LM_DIR") {
+        if !v.is_empty() {
+            dirs.push(PathBuf::from(v));
+        }
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            dirs.push(dir.join("Fonts"));
+            dirs.push(dir.join("../Resources/Fonts"));
+        }
+    }
+    dirs.extend(DEFAULT_FONT_DIRS.iter().map(PathBuf::from));
+    dirs
+}
 
 /// Glyph extents in font units: `[x_min, y_min, x_max, y_max]`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -195,15 +232,22 @@ pub struct Resolved {
 
 impl FontSet {
     /// Bounded search list: `FLASHTEX_FONT_DIRS` entries first, then any
-    /// explicit extra directories, then the TeX Live defaults.
+    /// explicit extra directories, then [`default_font_dirs`].
     pub fn with_default_dirs(extra: &[PathBuf]) -> FontSet {
         let mut dirs: Vec<PathBuf> = Vec::new();
         if let Ok(v) = std::env::var("FLASHTEX_FONT_DIRS") {
             dirs.extend(v.split(':').filter(|s| !s.is_empty()).map(PathBuf::from));
         }
         dirs.extend(extra.iter().cloned());
-        dirs.extend(DEFAULT_FONT_DIRS.iter().map(PathBuf::from));
+        dirs.extend(default_font_dirs());
         FontSet::new(dirs)
+    }
+
+    /// Whether the Latin Modern text and math faces the tests and the
+    /// default document need are reachable through this set's directories.
+    pub fn latin_modern_available(&self) -> bool {
+        let has = |file: &str| self.dirs().iter().any(|d| d.join(file).is_file());
+        has("lmroman12-regular.otf") && has("lmroman10-regular.otf") && has("latinmodern-math.otf")
     }
 
     pub fn new(dirs: Vec<PathBuf>) -> FontSet {
@@ -432,7 +476,7 @@ mod tests {
     use super::*;
 
     pub fn lm_available() -> bool {
-        DEFAULT_FONT_DIRS.iter().any(|d| std::path::Path::new(d).join("lmroman10-regular.otf").is_file())
+        FontSet::with_default_dirs(&[]).latin_modern_available()
     }
 
     #[test]

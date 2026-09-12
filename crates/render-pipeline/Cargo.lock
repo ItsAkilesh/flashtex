@@ -13,6 +13,11 @@ version = "0.1.0"
 [[package]]
 name = "flashtex-font-engine"
 version = "0.1.0"
+dependencies = [
+ "flashtex-math-layout",
+ "flashtex-paragraph-layout",
+ "flashtex-pdf",
+]
 
 [[package]]
 name = "flashtex-math-layout"
@@ -21,6 +26,9 @@ version = "0.1.0"
 [[package]]
 name = "flashtex-paragraph-layout"
 version = "0.1.0"
+dependencies = [
+ "flashtex-document-style",
+]
 
 [[package]]
 name = "flashtex-pdf"

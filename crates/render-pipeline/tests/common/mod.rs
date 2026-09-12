@@ -4,12 +4,7 @@ use flashtex_render_pipeline::v1::{self, Capabilities, V1Payload};
 use flashtex_render_pipeline::{render, FontSet, RenderOptions, Rendered};
 
 pub fn lm_available() -> bool {
-    flashtex_render_pipeline::fonts::DEFAULT_FONT_DIRS
-        .iter()
-        .any(|d| std::path::Path::new(d).join("lmroman12-regular.otf").is_file())
-        && flashtex_render_pipeline::fonts::DEFAULT_FONT_DIRS
-            .iter()
-            .any(|d| std::path::Path::new(d).join("latinmodern-math.otf").is_file())
+    FontSet::with_default_dirs(&[]).latin_modern_available()
 }
 
 pub fn render_docs(docs: &[(&str, &str)], entry: &str) -> Rendered {

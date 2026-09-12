@@ -10,6 +10,8 @@
 //! to expose instead is listed in docs/proposals/rendering-abi.md
 //! ("Requested compiler API").
 
+use std::collections::BTreeMap;
+
 use flashtex_compiler::math::MathList;
 use flashtex_compiler::parser::{Block as CBlock, Inline, Parsed};
 use flashtex_compiler::{DocumentId, Span};
@@ -77,12 +79,23 @@ pub enum Item {
     Math { list: MathList, span: Span },
     /// `\\`
     LineBreak,
+    /// Fixed horizontal glue of `em` ems of the current font (`\quad`
+    /// after a section number).
+    Quad { em: f64 },
+    /// `\label{key}`: no material; records where the key's page is.
+    Label { key: String },
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ParaPart {
     Lines(Vec<Item>),
-    Display { list: MathList, span: Span },
+    /// A display; `number` is the `equation` counter text and the
+    /// environment's source span (`\eqno` at the right margin).
+    Display {
+        list: MathList,
+        span: Span,
+        number: Option<(String, Span)>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -98,9 +111,49 @@ pub struct Doc {
     pub diagnostics: Vec<Diagnostic>,
 }
 
+/// Label values (`\ref`) and the pages they fell on in a previous layout
+/// pass (`\pageref`); a key absent from `pages` renders as `??`.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Labels {
+    pub values: BTreeMap<String, String>,
+    pub pages: BTreeMap<String, u32>,
+}
+
+fn inlines_of(block: &CBlock) -> &[Inline] {
+    match block {
+        CBlock::Paragraph(i) => i,
+        CBlock::Heading { content, .. } | CBlock::FigureCaption { content } => content,
+    }
+}
+
+impl Labels {
+    /// The `\ref` values of every `\label` in the parse (known before layout).
+    pub fn from_parsed(parsed: &Parsed) -> Labels {
+        let mut values = BTreeMap::new();
+        for inline in parsed.blocks.iter().flat_map(inlines_of) {
+            if let Inline::Label { key, value, .. } = inline {
+                values.insert(key.clone(), value.clone());
+            }
+        }
+        Labels {
+            values,
+            pages: BTreeMap::new(),
+        }
+    }
+
+    /// Whether any `\pageref` in the parse needs a page number.
+    pub fn needs_pages(parsed: &Parsed) -> bool {
+        parsed
+            .blocks
+            .iter()
+            .flat_map(inlines_of)
+            .any(|i| matches!(i, Inline::Reference { page: true, .. }))
+    }
+}
+
 /// Builds the block model from the compiler's parse result. `texts` is
 /// indexed by `DocumentId`; `entry` is the root document's index.
-pub fn adapt(texts: &[&str], entry: usize, parsed: &Parsed, options: &RenderOptions) -> Doc {
+pub fn adapt(texts: &[&str], entry: usize, parsed: &Parsed, options: &RenderOptions, labels: &Labels) -> Doc {
     let source = texts.get(entry).copied().unwrap_or("");
     let explicit_class = class_options(source);
     let class_options = explicit_class.clone().unwrap_or_else(|| options.default_class_options.clone());
@@ -130,16 +183,36 @@ pub fn adapt(texts: &[&str], entry: usize, parsed: &Parsed, options: &RenderOpti
     let mut after_heading = false;
     for block in &parsed.blocks {
         match block {
-            CBlock::Heading { level, content } => {
-                let items = items_from_inlines(texts, content, &styles);
+            CBlock::Heading {
+                level,
+                number,
+                number_span,
+                content,
+            } => {
+                // LaTeX `\@seccntformat`: the counter, then `\quad`, then the
+                // title; the number's bytes are the `\section` command's.
+                let mut items = Vec::new();
+                if !number.is_empty() {
+                    let chars = number
+                        .chars()
+                        .map(|_| CharSrc {
+                            document: number_span.document,
+                            start: number_span.start,
+                            end: number_span.end,
+                        })
+                        .collect();
+                    push_segment(&mut items, number.clone(), chars, TextStyle::default());
+                    items.push(Item::Quad { em: 1.0 });
+                }
+                items.extend(items_from_inlines(texts, content, &styles, labels));
                 blocks.push(Block::Heading {
                     level: *level,
                     items,
                 });
                 after_heading = true;
             }
-            CBlock::Paragraph(inlines) => {
-                let items = items_from_inlines(texts, inlines, &styles);
+            CBlock::Paragraph(inlines) | CBlock::FigureCaption { content: inlines } => {
+                let items = items_from_inlines(texts, inlines, &styles, labels);
                 let mut parts = Vec::new();
                 let mut current = Vec::new();
                 for item in items {
@@ -148,7 +221,8 @@ pub fn adapt(texts: &[&str], entry: usize, parsed: &Parsed, options: &RenderOpti
                             if !current.is_empty() {
                                 parts.push(ParaPart::Lines(std::mem::take(&mut current)));
                             }
-                            parts.push(ParaPart::Display { list, span });
+                            let number = display_number(inlines, span);
+                            parts.push(ParaPart::Display { list, span, number });
                         }
                         other => current.push(other),
                     }
@@ -156,12 +230,16 @@ pub fn adapt(texts: &[&str], entry: usize, parsed: &Parsed, options: &RenderOpti
                 if !current.is_empty() {
                     parts.push(ParaPart::Lines(current));
                 }
-                if parts.is_empty() {
+                let only_labels = parts
+                    .iter()
+                    .all(|p| matches!(p, ParaPart::Lines(items) if items.iter().all(|i| matches!(i, Item::Label { .. }))));
+                if parts.is_empty() || only_labels {
                     continue;
                 }
+                let caption = matches!(block, CBlock::FigureCaption { .. });
                 blocks.push(Block::Paragraph {
                     parts,
-                    indent: !after_heading,
+                    indent: !after_heading && !caption,
                 });
                 after_heading = false;
             }
@@ -176,6 +254,19 @@ pub fn adapt(texts: &[&str], entry: usize, parsed: &Parsed, options: &RenderOpti
 
 fn is_display(inlines: &[Inline], span: Span) -> bool {
     inlines.iter().any(|i| matches!(i, Inline::Math { display: true, span: s, .. } if *s == span))
+}
+
+fn display_number(inlines: &[Inline], span: Span) -> Option<(String, Span)> {
+    inlines.iter().find_map(|i| match i {
+        Inline::Math {
+            display: true,
+            span: s,
+            number: Some(n),
+            number_span,
+            ..
+        } if *s == span => Some((n.clone(), number_span.unwrap_or(span))),
+        _ => None,
+    })
 }
 
 /// Options of `\usepackage[opts]{name}`, if the package is loaded.
@@ -468,7 +559,27 @@ fn accent(mark: char, base: char) -> Option<char> {
 
 /// Converts the compiler inlines into words, spaces, math and line breaks.
 /// `texts` and `styles` are indexed by `DocumentId`.
-fn items_from_inlines(texts: &[&str], inlines: &[Inline], styles: &[Vec<(usize, usize, StyleKind)>]) -> Vec<Item> {
+fn items_from_inlines(texts: &[&str], inlines: &[Inline], styles: &[Vec<(usize, usize, StyleKind)>], labels: &Labels) -> Vec<Item> {
+    // `\ref`/`\pageref` become ordinary text attributed to the command's
+    // bytes; `\label` becomes a zero-width marker.
+    let mut resolved: Vec<Inline> = Vec::with_capacity(inlines.len());
+    let mut reference_spans: Vec<Span> = Vec::new();
+    for inline in inlines {
+        match inline {
+            Inline::Reference { key, page, span } => {
+                let text = if *page {
+                    labels.pages.get(key).map(|p| p.to_string())
+                } else {
+                    labels.values.get(key).cloned()
+                }
+                .unwrap_or_else(|| "??".to_string());
+                reference_spans.push(*span);
+                resolved.push(Inline::Text { text, span: *span });
+            }
+            other => resolved.push(other.clone()),
+        }
+    }
+    let inlines = &resolved[..];
     let mut items: Vec<Item> = Vec::new();
     let mut prev_end: Option<usize> = None;
     let mut prev_span: Option<Span> = None;
@@ -504,6 +615,8 @@ fn items_from_inlines(texts: &[&str], inlines: &[Inline], styles: &[Vec<(usize, 
 
     for inline in inlines {
         match inline {
+            Inline::Label { key, .. } => items.push(Item::Label { key: key.clone() }),
+            Inline::Reference { .. } => unreachable!("references were resolved above"),
             Inline::LineBreak { span } => {
                 items.push(Item::LineBreak);
                 prev_end = Some(span.end);
@@ -557,7 +670,7 @@ fn items_from_inlines(texts: &[&str], inlines: &[Inline], styles: &[Vec<(usize, 
                 }
                 // Per-character sources. Macro replacement text shares the
                 // invocation span; keep that attribution for every char.
-                let exact = span.end - span.start == text.len();
+                let exact = span.end - span.start == text.len() && !reference_spans.contains(span);
                 let mut chars: Vec<(char, CharSrc)> = Vec::new();
                 for (offset, ch) in text.char_indices() {
                     let src = if exact {
@@ -700,7 +813,7 @@ mod tests {
 
     fn items(src: &str) -> Vec<Item> {
         let parsed = flashtex_compiler::parser::parse(src);
-        let doc = adapt(&[src], 0, &parsed, &RenderOptions::default());
+        let doc = adapt(&[src], 0, &parsed, &RenderOptions::default(), &Labels::default());
         match &doc.blocks[0] {
             Block::Paragraph { parts, .. } => match &parts[0] {
                 ParaPart::Lines(items) => items.clone(),
@@ -772,11 +885,11 @@ mod tests {
         let src = "\\documentclass[12pt]{article}\n\\setlength{\\parindent}{0pt}\n\\begin{document}x\\end{document}";
         assert_eq!(class_options(src).as_deref(), Some("12pt"));
         assert_eq!(parindent(src, 12), Some(0.0));
-        let doc = adapt(&[src], 0, &flashtex_compiler::parser::parse(src), &RenderOptions::default());
+        let doc = adapt(&[src], 0, &flashtex_compiler::parser::parse(src), &RenderOptions::default(), &Labels::default());
         assert_eq!(doc.style.body_size_pt, 12.0);
         assert_eq!(doc.style.parindent_pt, 0.0);
         let src2 = "\\documentclass{article}\n\\begin{document}x\\end{document}";
-        let doc2 = adapt(&[src2], 0, &flashtex_compiler::parser::parse(src2), &RenderOptions::default());
+        let doc2 = adapt(&[src2], 0, &flashtex_compiler::parser::parse(src2), &RenderOptions::default(), &Labels::default());
         assert_eq!(doc2.style.body_size_pt, 10.0);
         assert_eq!(doc2.style.parindent_pt, 15.0);
     }

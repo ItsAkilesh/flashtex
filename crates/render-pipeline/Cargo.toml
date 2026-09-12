@@ -18,9 +18,9 @@ path = "src/bin/flashtex-render.rs"
 # `git archive` of this directory alone, which is how the visual-oracle
 # harness builds it. Repoint these at ../<name> once the siblings merge.
 [dependencies]
-flashtex-compiler = { path = "vendor/compiler@3ae7d9b" }
-flashtex-font-engine = { path = "vendor/font-engine@d0c64cf" }
-flashtex-paragraph-layout = { path = "vendor/paragraph-layout@7af5c05" }
-flashtex-math-layout = { path = "vendor/math-layout@2b7c7d5" }
-flashtex-document-style = { path = "vendor/document-style@bfc980d" }
-flashtex-pdf = { path = "vendor/pdf@52b3711" }
+flashtex-compiler = { path = "vendor/compiler" }
+flashtex-font-engine = { path = "vendor/font-engine" }
+flashtex-paragraph-layout = { path = "vendor/paragraph-layout" }
+flashtex-math-layout = { path = "vendor/math-layout" }
+flashtex-document-style = { path = "vendor/document-style" }
+flashtex-pdf = { path = "vendor/pdf" }

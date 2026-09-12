@@ -5,7 +5,7 @@
 //! hard minimums, while LaTeX's `\clubpenalty`/`\widowpenalty` (150) are
 //! costs weighed against page badness. pdflatex ends a page with the first
 //! line of a paragraph when the alternative page is a whole line short (cost
-//! 150 versus badness 418 on the 08-two-page fixture); this builder makes
+//! 150 versus badness 417 on the 08-two-page fixture); this builder makes
 //! the same choice. The interline-glue rule (`\baselineskip`,
 //! `\lineskip`, `\lineskiplimit`), `\topskip`, `\maxdepth`, discarding of
 //! glue and penalties at a page top and `\raggedbottom` (natural glue) are
@@ -412,7 +412,7 @@ mod tests {
         assert_eq!(badness(1.0, 0.0), INF_BAD);
         assert_eq!(badness(1.0, 1.0), 100);
         assert_eq!(badness(0.5, 1.0), 12);
-        assert_eq!(badness(14.5, 9.0), 418);
+        assert_eq!(badness(14.5, 9.0), 417); // 100(14.5/9)^3 = 418.1; TeX's integer arithmetic gives 417
     }
 
     #[test]

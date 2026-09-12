@@ -1,33 +1,46 @@
-//! `--pdf` output through the `pdf` sibling (52b3711).
+//! `--pdf` output through the `pdf` sibling (4bd8c2e).
 //!
-//! That crate accepts runtime-v1 text items only (one `Tj` per item, one
-//! embedded document face, U+2500 runs drawn as rules); it has no glyph-run
-//! or multi-font API yet. So this is a SHIM: the v2 display list is reduced
-//! to the legacy v1 items (no typed rules, no font hints) and the body
-//! Latin Modern face the pipeline actually used is embedded as the document
-//! face. Consequences, stated rather than hidden: bold/italic/math glyphs
-//! are drawn in the regular face by the PDF writer, and positions are the
-//! pipeline's but advances are the writer's. Requested pdf API: accept v2
-//! glyph runs (font id + original GIDs + positions) — see
-//! docs/proposals/rendering-abi.md.
+//! That crate consumes runtime-v1 pages on the negotiated route
+//! (`rules-v1`, `font-hints-v1`): typed rules are drawn as filled
+//! rectangles from their real geometry, and font hints pick the Latin
+//! Modern regular/bold/italic faces (each embedded whole from the local
+//! Latin Modern directory). It has no glyph-run API yet, so this is still a
+//! SHIM over the v1 fallback: positions are the pipeline's, but the writer
+//! re-encodes text by character and advances with its own widths, and math
+//! glyphs are drawn from Latin Modern Roman/Symbol rather than Latin Modern
+//! Math. Requested pdf API: accept v2 glyph runs (font id + original GIDs +
+//! positions) — see docs/proposals/rendering-abi.md.
 
 use std::path::Path;
 
 use flashtex_pdf::embed::EmbedFont;
-use flashtex_pdf::{CompileResult, Item, Page, RenderOptions as PdfOptions};
+use flashtex_pdf::{CompileResult, FontHint, Item, Page, RenderOptions as PdfOptions, RuleItem, Style, TextItem, Weight};
 
 use crate::display::DisplayList;
-use crate::v1::{self, Capabilities, V1Item};
+use crate::v1::{self, Capabilities, V1Item, CAP_FONT_HINTS, CAP_RULES};
 
 pub struct PdfOut {
     pub bytes: Vec<u8>,
     pub warnings: Vec<String>,
-    /// PostScript name of the embedded face, if any.
+    /// PostScript name of the embedded document face, if any.
     pub embedded: Option<String>,
 }
 
+fn hint(h: &v1::FontHint) -> FontHint {
+    FontHint {
+        family: h.family.clone(),
+        weight: if h.weight == "bold" { Weight::Bold } else { Weight::Normal },
+        style: if h.style == "italic" { Style::Italic } else { Style::Normal },
+    }
+}
+
 pub fn write_pdf(v2: &DisplayList) -> Result<PdfOut, String> {
-    let v1 = v1::fallback(v2, Capabilities::default(), None);
+    let caps = Capabilities {
+        rules: true,
+        font_hints: true,
+    };
+    let accepted = vec![CAP_RULES.to_string(), CAP_FONT_HINTS.to_string()];
+    let v1 = v1::fallback(v2, caps, Some(accepted.clone()));
     let pages = v1
         .pages
         .iter()
@@ -38,26 +51,43 @@ pub fn write_pdf(v2: &DisplayList) -> Result<PdfOut, String> {
             items: p
                 .items
                 .iter()
-                .filter_map(|it| match it {
+                .map(|it| match it {
                     V1Item::Text {
                         text,
                         x_pt,
                         baseline_y_pt,
                         font_size_pt,
+                        font,
                         ..
-                    } => Some(Item {
+                    } => Item::Text(TextItem {
                         text: text.clone(),
                         x_pt: *x_pt,
                         baseline_y_pt: *baseline_y_pt,
                         font_size_pt: *font_size_pt,
+                        font: font.as_ref().map(hint),
                     }),
-                    V1Item::Rule { .. } => None,
+                    V1Item::Rule {
+                        x_pt,
+                        y_pt,
+                        width_pt,
+                        height_pt,
+                        ..
+                    } => Item::Rule(RuleItem {
+                        x_pt: *x_pt,
+                        y_pt: *y_pt,
+                        width_pt: *width_pt,
+                        height_pt: *height_pt,
+                    }),
                 })
                 .collect(),
         })
         .collect();
-    let result = CompileResult { pages };
-    // Embed the regular Latin Modern text face the document used, if any.
+    let result = CompileResult {
+        pages,
+        capabilities: Some(accepted),
+    };
+    // Embed the regular Latin Modern text face the document used as the
+    // document face; the hints select bold/italic siblings from its directory.
     let face = v2
         .fonts
         .iter()

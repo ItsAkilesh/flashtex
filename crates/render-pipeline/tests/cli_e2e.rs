@@ -8,9 +8,7 @@ use std::process::{Command, Stdio};
 use flashtex_compiler::json;
 
 fn lm_available() -> bool {
-    flashtex_render_pipeline::fonts::DEFAULT_FONT_DIRS
-        .iter()
-        .any(|d| std::path::Path::new(d).join("lmroman12-regular.otf").is_file())
+    flashtex_render_pipeline::FontSet::with_default_dirs(&[]).latin_modern_available()
 }
 
 fn run(args: &[&str], input: &str) -> (Vec<json::Value>, String) {

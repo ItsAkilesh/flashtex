@@ -6,9 +6,11 @@
 //! Interword glue follows TeX's space factor and the face's `\fontdimen`s.
 //! Inline math is laid out by `math-layout` (Appendix G) and enters the
 //! horizontal list as one unbreakable box; a display equation is a
-//! one-line block between `\abovedisplayskip`/`\belowdisplayskip`. Line
+//! one-line block between `\abovedisplayskip`/`\belowdisplayskip` (the
+//! short variants when the preceding line leaves room, TeX §1199). Line
 //! breaking is `paragraph-layout`'s total-fit Knuth–Plass; page breaking is
-//! its `layout_pages` (TeX interline glue, `\topskip`, club/widow lines,
+//! `pagebuild` (TeX's page builder: interline glue, `\topskip`, penalty
+//! costs for club/widow lines and `\nobreak` after headings,
 //! `\raggedbottom`). This module keeps a record per box so every placed run
 //! maps back to its document, bytes, glyph extents and math box.
 
@@ -29,6 +31,7 @@ use crate::display::{
 };
 use crate::fonts::{Family, FontSet, LoadedFace, Role};
 use crate::mathfont::{MathFonts, MathSizes};
+use crate::pagebuild::{self, VBlock};
 use crate::params;
 use crate::shape::Shaper;
 use crate::style::Stylesheet;
@@ -77,13 +80,54 @@ pub struct MathRec {
     pub face: Rc<LoadedFace>,
 }
 
-/// One vertical-list block as given to paragraph-layout, plus the map from
-/// its item indices to box records.
+/// One vertical-list block: its broken lines, the horizontal list they
+/// index into, the map from item indices to box records, and how it enters
+/// the page builder's vertical list.
 pub struct BuiltBlock {
     pub block: pl::ParagraphBlock,
     /// The horizontal list the block's lines index into.
     pub items: Vec<pl::Item>,
     pub recs: Vec<Option<usize>>,
+    /// Penalties and skips around and inside the block (lines filled).
+    pub vertical: VBlock,
+    /// `\label` keys and the item index they precede.
+    pub labels: Vec<(String, usize)>,
+}
+
+/// LaTeX/plain penalties (article defaults).
+const CLUB_PENALTY: i32 = 150;
+const WIDOW_PENALTY: i32 = 150;
+const SEC_PENALTY: i32 = -300;
+const PREDISPLAY_PENALTY: i32 = pagebuild::INF_PENALTY;
+
+/// Sets `run`'s glyphs at `x` on a line (what `layout_paragraph` does for
+/// broken lines; used for the single-line display block).
+fn position_run(run: &pl::GlyphRun, x: f64, baseline_y: f64) -> pl::PositionedRun {
+    let mut off = 0.0;
+    let glyphs = run
+        .glyphs
+        .iter()
+        .map(|g| {
+            let pg = pl::PositionedGlyph {
+                gid: g.gid,
+                x_offset: off,
+                advance: g.advance + g.kern,
+                cluster: g.cluster.clone(),
+            };
+            off += g.advance + g.kern;
+            pg
+        })
+        .collect();
+    pl::PositionedRun {
+        x,
+        baseline_y,
+        width: run.width,
+        font: run.font,
+        size: run.size,
+        glyphs,
+        source: run.source.clone(),
+        is_hyphen: false,
+    }
 }
 
 pub struct Laid {
@@ -333,11 +377,12 @@ impl<'a> Context<'a> {
         Some(self.recs.len() - 1)
     }
 
-    /// Builds a horizontal list. Returns paragraph-layout items and the
-    /// per-item box record.
-    fn hlist(&mut self, items: &[AItem], size: f64, base: TextStyle) -> (Vec<pl::Item>, Vec<Option<usize>>) {
+    /// Builds a horizontal list. Returns paragraph-layout items, the
+    /// per-item box record and the `\label` keys with the item they precede.
+    fn hlist(&mut self, items: &[AItem], size: f64, base: TextStyle) -> (Vec<pl::Item>, Vec<Option<usize>>, Vec<(String, usize)>) {
         let mut out: Vec<pl::Item> = Vec::new();
         let mut recs: Vec<Option<usize>> = Vec::new();
+        let mut labels: Vec<(String, usize)> = Vec::new();
         let push = |out: &mut Vec<pl::Item>, recs: &mut Vec<Option<usize>>, item: pl::Item, rec: Option<usize>| {
             out.push(item);
             recs.push(rec);
@@ -382,6 +427,13 @@ impl<'a> Context<'a> {
                     push(&mut out, &mut recs, pl::Item::Glue(pl::Glue::fil()), None);
                     push(&mut out, &mut recs, pl::Item::penalty(pl::FORCED_BREAK), None);
                 }
+                AItem::Quad { em } => {
+                    let quad = params::text_params(self.style.family, base.bold, base.italic, design_size(self.style.family, size))
+                        .at(size)
+                        .quad;
+                    push(&mut out, &mut recs, pl::Item::Glue(pl::Glue::fixed(em * quad)), None);
+                }
+                AItem::Label { key } => labels.push((key.clone(), out.len())),
             }
         }
         // TeX's paragraph end: drop trailing glue, then
@@ -393,7 +445,7 @@ impl<'a> Context<'a> {
         push(&mut out, &mut recs, pl::Item::penalty(pl::INFINITE_PENALTY), None);
         push(&mut out, &mut recs, pl::Item::Glue(pl::Glue::fil()), None);
         push(&mut out, &mut recs, pl::Item::penalty(pl::FORCED_BREAK), None);
-        (out, recs)
+        (out, recs, labels)
     }
 
     fn line_params(&self, indent: bool, baselineskip: f64) -> pl::LineBreakParams {
@@ -415,27 +467,45 @@ impl<'a> Context<'a> {
             baselineskip,
             lineskip: s.lineskip_pt,
             lineskiplimit: s.lineskiplimit_pt,
+            hfuzz: 0.1,
+            hbadness: 1000.0,
         }
     }
 
-    fn paragraph_block(&mut self, items: &[AItem], indent: bool) -> Option<BuiltBlock> {
+    /// A body paragraph (or the part of one before/after a display).
+    /// `starts_paragraph` adds `\parskip`; `after_heading` is LaTeX's
+    /// `\@afterheading` (`\clubpenalty 10000`).
+    fn paragraph_block(&mut self, items: &[AItem], indent: bool, starts_paragraph: bool, after_heading: bool) -> Option<BuiltBlock> {
         let size = self.style.body_size_pt;
-        let (list, recs) = self.hlist(items, size, TextStyle::default());
+        let (list, recs, labels) = self.hlist(items, size, TextStyle::default());
         if !list.iter().any(|i| matches!(i, pl::Item::Box(_))) {
             return None;
         }
         let lines = pl::layout_paragraph(&list, &self.line_params(indent, self.style.baselineskip_pt));
         self.report_overfull(&lines, &list, &recs);
+        let vertical = VBlock {
+            lines: line_extents(&lines),
+            penalty_before: None,
+            space_before: None,
+            parskip: starts_paragraph.then(|| skip_tuple(self.style.parskip)),
+            interline_penalty: 0,
+            club_penalty: if after_heading { pagebuild::INF_PENALTY } else { CLUB_PENALTY },
+            widow_penalty: WIDOW_PENALTY,
+            penalty_after: None,
+            space_after: None,
+        };
         Some(BuiltBlock {
             block: pl::ParagraphBlock::body(lines),
             items: list,
             recs,
+            vertical,
+            labels,
         })
     }
 
     fn heading_block(&mut self, level: u8, items: &[AItem]) -> Option<BuiltBlock> {
         let h = self.style.heading(level);
-        let (list, recs) = self.hlist(
+        let (list, recs, labels) = self.hlist(
             items,
             h.size_pt,
             TextStyle {
@@ -454,6 +524,19 @@ impl<'a> Context<'a> {
         // API: per-block baselineskip.
         let mut before = h.before;
         before.natural += h.baselineskip_pt - self.style.baselineskip_pt;
+        // \@startsection: \addpenalty\@secpenalty, \addvspace{before},
+        // the title with \interlinepenalty\@M, \nobreak, \vskip{after}.
+        let vertical = VBlock {
+            lines: line_extents(&lines),
+            penalty_before: Some(SEC_PENALTY),
+            space_before: Some(skip_tuple(before)),
+            parskip: Some(skip_tuple(self.style.parskip)),
+            interline_penalty: pagebuild::INF_PENALTY,
+            club_penalty: 0,
+            widow_penalty: 0,
+            penalty_after: Some(pagebuild::INF_PENALTY),
+            space_after: Some(skip_tuple(h.after)),
+        };
         Some(BuiltBlock {
             block: pl::ParagraphBlock {
                 lines,
@@ -463,19 +546,78 @@ impl<'a> Context<'a> {
             },
             items: list,
             recs,
+            vertical,
+            labels,
         })
     }
 
-    fn display_block(&mut self, list: &flashtex_compiler::math::MathList, span: Span) -> Option<BuiltBlock> {
+    /// A display equation. `pre_display_size` is TeX's measure of the line
+    /// before it (its material width plus 2em, or `None` when the display
+    /// starts the paragraph); `number` is the `equation` counter set flush
+    /// right (`\eqno`).
+    fn display_block(
+        &mut self,
+        list: &flashtex_compiler::math::MathList,
+        span: Span,
+        pre_display_size: Option<f64>,
+        number: Option<&(String, Span)>,
+    ) -> Option<BuiltBlock> {
         let rec = self.math_box(list, span, true)?;
         let BoxRec::Math(mi) = &self.recs[rec] else { unreachable!() };
         let root = &self.maths[*mi].root;
         let size = self.style.body_size_pt;
         let run = math_run(root, size, span);
         let width = run.width;
-        let (height, depth) = (run.height, run.depth);
-        let x = ((self.style.text_width_pt - width) / 2.0).max(0.0);
-        let positioned = pl::PositionedRun {
+        let (mut height, mut depth) = (run.height, run.depth);
+        let z = self.style.text_width_pt;
+        // \eqno: the number's box (§1202) reduces the room for the formula.
+        let mut eqno: Option<(pl::GlyphRun, usize)> = None;
+        let mut e = 0.0;
+        let mut q = 0.0;
+        if let Some((text, nspan)) = number {
+            let seg = adapter::Segment {
+                text: format!("({text})"),
+                chars: format!("({text})")
+                    .chars()
+                    .map(|_| adapter::CharSrc {
+                        document: nspan.document,
+                        start: nspan.start,
+                        end: nspan.end,
+                    })
+                    .collect(),
+                style: TextStyle::default(),
+            };
+            if let Some((nrun, nrec)) = self.text_box(&seg, size) {
+                e = nrun.width;
+                q = e + params::text_params(self.style.family, false, false, design_size(self.style.family, size)).at(size).quad;
+                height = height.max(nrun.height);
+                depth = depth.max(nrun.depth);
+                eqno = Some((nrun, nrec));
+            }
+        }
+        // §1199: centre the formula in the measure; if it would collide with
+        // the number, shift it (d) so both fit; `l` marks a display wider
+        // than the room left.
+        let mut w = width;
+        let l = w + q > z;
+        if l {
+            w = (z - q).max(0.0);
+        }
+        let mut d = (z - w) / 2.0;
+        if e > 0.0 && d < 2.0 * e {
+            d = (z - w - e) / 2.0;
+            if d < 0.0 {
+                d = 0.0;
+            }
+        }
+        let x = d.max(0.0);
+        let long = pre_display_size.is_some_and(|p| x <= p) || l;
+        let (above, below) = if long {
+            (self.style.abovedisplayskip, self.style.belowdisplayskip)
+        } else {
+            (self.style.abovedisplayshortskip, self.style.belowdisplayshortskip)
+        };
+        let mut runs = vec![pl::PositionedRun {
             x,
             baseline_y: height,
             width,
@@ -484,18 +626,26 @@ impl<'a> Context<'a> {
             glyphs: Vec::new(),
             source: run.source.clone(),
             is_hyphen: false,
-        };
+        }];
+        let mut items = vec![pl::Item::Box(run)];
+        let mut recs = vec![Some(rec)];
+        if let Some((nrun, nrec)) = eqno {
+            runs.push(position_run(&nrun, z - e, height));
+            items.push(pl::Item::Box(nrun));
+            recs.push(Some(nrec));
+        }
+        let n = items.len();
         let line = pl::Line {
             index: 0,
-            runs: vec![positioned],
+            runs,
             baseline_y: height,
             height,
             depth,
             natural_width: width,
-            set_width: self.style.text_width_pt,
+            set_width: z,
             ratio: 0.0,
             badness: 0.0,
-            items: 0..1,
+            items: 0..n,
             hyphenated: false,
         };
         let lines = pl::Lines {
@@ -509,26 +659,43 @@ impl<'a> Context<'a> {
                 overfull: Vec::new(),
                 underfull: Vec::new(),
                 hyphenated_lines: 0,
+                emergency_pass_used: false,
             },
+            diagnostics: Vec::new(),
             height: height + depth,
         };
-        if width > self.style.text_width_pt + 1e-6 {
+        if width > z + 1e-6 {
             let src = self.source(span);
             self.diagnostics.push(Diagnostic::warning(
                 "overfull_display",
-                format!("display is {:.2}pt wider than the text width", width - self.style.text_width_pt),
+                format!("display is {:.2}pt wider than the text width", width - z),
                 vec![src],
             ));
         }
+        // $$: \penalty\predisplaypenalty, \abovedisplayskip, the display,
+        // \penalty\postdisplaypenalty (0), \belowdisplayskip.
+        let vertical = VBlock {
+            lines: vec![(height, depth)],
+            penalty_before: Some(PREDISPLAY_PENALTY),
+            space_before: Some(skip_tuple(above)),
+            parskip: None,
+            interline_penalty: 0,
+            club_penalty: 0,
+            widow_penalty: 0,
+            penalty_after: None,
+            space_after: Some(skip_tuple(below)),
+        };
         Some(BuiltBlock {
             block: pl::ParagraphBlock {
                 lines,
-                space_before: self.style.abovedisplayskip.glue(),
-                space_after: self.style.belowdisplayskip.glue(),
+                space_before: above.glue(),
+                space_after: below.glue(),
                 keep_with_next: false,
             },
-            items: vec![pl::Item::Box(run)],
-            recs: vec![Some(rec)],
+            items,
+            recs,
+            vertical,
+            labels: Vec::new(),
         })
     }
 
@@ -553,6 +720,14 @@ impl<'a> Context<'a> {
             ));
         }
     }
+}
+
+fn skip_tuple(s: crate::style::Skip) -> (f64, f64, f64) {
+    (s.natural, s.stretch, s.shrink)
+}
+
+fn line_extents(lines: &pl::Lines) -> Vec<(f64, f64)> {
+    lines.lines.iter().map(|l| (l.height, l.depth)).collect()
 }
 
 fn design_size(family: Family, size: f64) -> u32 {
@@ -629,53 +804,102 @@ pub fn convert_math(list: &flashtex_compiler::math::MathList) -> ml::MathList {
 /// Lays out every block of `doc` onto pages.
 pub fn build(ctx: &mut Context, doc: &Doc) -> Laid {
     let mut blocks: Vec<BuiltBlock> = Vec::new();
+    let mut after_heading = false;
+    let quad = params::text_params(ctx.style.family, false, false, design_size(ctx.style.family, ctx.style.body_size_pt))
+        .at(ctx.style.body_size_pt)
+        .quad;
     for block in &doc.blocks {
         match block {
             Block::Heading { level, items } => {
                 if let Some(b) = ctx.heading_block(*level, items) {
                     blocks.push(b);
+                    after_heading = true;
                 }
             }
             Block::Paragraph { parts, indent } => {
                 let mut first = true;
+                // TeX's pre_display_size: the width of the line before a
+                // display plus 2em; -infinity when nothing precedes it.
+                let mut pre_display: Option<f64> = None;
                 for part in parts {
                     match part {
                         ParaPart::Lines(items) => {
-                            if let Some(b) = ctx.paragraph_block(items, *indent && first) {
+                            if let Some(b) = ctx.paragraph_block(items, *indent && first, first, after_heading && first) {
+                                pre_display = b.block.lines.lines.last().map(|l| l.natural_width + 2.0 * quad);
                                 blocks.push(b);
                             }
                         }
-                        ParaPart::Display { list, span } => {
-                            if let Some(b) = ctx.display_block(list, *span) {
+                        ParaPart::Display { list, span, number } => {
+                            if let Some(b) = ctx.display_block(list, *span, pre_display, number.as_ref()) {
                                 blocks.push(b);
                             }
+                            pre_display = None;
                         }
                     }
                     first = false;
                 }
+                after_heading = false;
             }
         }
     }
     let s = ctx.style;
-    let params = pl::PageParams {
-        page_width: s.page_width_pt,
-        page_height: s.page_height_pt,
-        margin_top: s.text_y_pt,
-        margin_bottom: s.page_height_pt - s.text_y_pt - s.text_height_pt,
-        margin_left: s.text_x_pt,
-        margin_right: s.page_width_pt - s.text_x_pt - s.text_width_pt,
+    let params = pagebuild::PageParams {
+        vsize: s.text_height_pt,
         topskip: s.topskip_pt,
-        max_depth: s.maxdepth_pt,
-        parskip: s.parskip.glue(),
+        maxdepth: s.maxdepth_pt,
         baselineskip: s.baselineskip_pt,
         lineskip: s.lineskip_pt,
         lineskiplimit: s.lineskiplimit_pt,
-        baseline_grid: None,
-        club_lines: 2,
-        widow_lines: 2,
     };
-    let pl_blocks: Vec<pl::ParagraphBlock> = blocks.iter().map(|b| b.block.clone()).collect();
-    let pages = pl::layout_pages(&pl_blocks, &params);
+    let vblocks: Vec<VBlock> = blocks.iter().map(|b| b.vertical.clone()).collect();
+    let list = pagebuild::vlist(&params, &vblocks);
+    let built = pagebuild::break_pages(&params, &list);
+    let mut pages = pl::Pages {
+        pages: Vec::with_capacity(built.len()),
+        overflow: Vec::new(),
+        text_height: s.text_height_pt,
+    };
+    for (pi, bp) in built.iter().enumerate() {
+        let number = pi as u32 + 1;
+        let mut page = pl::Page {
+            number,
+            width: s.page_width_pt,
+            height: s.page_height_pt,
+            lines: Vec::with_capacity(bp.lines.len()),
+            runs: Vec::new(),
+        };
+        for placed in &bp.lines {
+            let (bi, li) = placed.payload;
+            let line = &blocks[bi].block.lines.lines[li];
+            let y = s.text_y_pt + placed.baseline;
+            page.lines.push(pl::PlacedLine {
+                paragraph: bi,
+                line: li,
+                baseline_y: y,
+                height: line.height,
+                depth: line.depth,
+            });
+            for r in &line.runs {
+                let mut r = r.clone();
+                r.x += s.text_x_pt;
+                r.baseline_y = y;
+                page.runs.push(r);
+            }
+        }
+        if bp.overfull_by > 0.0 {
+            if let Some(last) = bp.lines.last() {
+                let (bi, li) = last.payload;
+                pages.overflow.push(pl::PageOverflow {
+                    page: number,
+                    paragraph: bi,
+                    line: li,
+                    bottom: s.text_y_pt + last.baseline + last.depth,
+                    limit: s.text_y_pt + s.text_height_pt,
+                });
+            }
+        }
+        pages.pages.push(page);
+    }
     for o in &pages.overflow {
         let span = blocks
             .get(o.paragraph)
@@ -697,6 +921,30 @@ pub fn build(ctx: &mut Context, doc: &Doc) -> Laid {
         recs: std::mem::take(&mut ctx.recs),
         maths: std::mem::take(&mut ctx.maths),
     }
+}
+
+/// The page each `\label` landed on (the page of the line holding the item
+/// it precedes, or the block's last line when it ends the block).
+pub fn label_pages(laid: &Laid) -> BTreeMap<String, u32> {
+    let mut out = BTreeMap::new();
+    for (bi, block) in laid.blocks.iter().enumerate() {
+        for (key, item) in &block.labels {
+            let lines = &block.block.lines.lines;
+            let li = lines
+                .iter()
+                .position(|l| l.items.contains(item))
+                .unwrap_or(lines.len().saturating_sub(1));
+            let page = laid
+                .pages
+                .pages
+                .iter()
+                .find(|p| p.lines.iter().any(|pl| pl.paragraph == bi && pl.line == li))
+                .map(|p| p.number)
+                .unwrap_or(1);
+            out.insert(key.clone(), page);
+        }
+    }
+    out
 }
 
 /// Converts the placed pages into the display list.

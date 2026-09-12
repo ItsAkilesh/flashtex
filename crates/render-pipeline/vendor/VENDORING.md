@@ -1,26 +1,31 @@
 # Vendored sibling crates (pinned mirrors)
 
-These directories are byte-for-byte copies (`git archive <sha> crates/<name>`)
-of sibling task branches that are **not yet merged to `main`**. They exist only
-so `crates/render-pipeline` builds standalone on its own branch. They are
+These directories are byte-for-byte copies (`git archive <sha>:crates/<name>`)
+of sibling crates at the revisions the pipeline is built against. Most are
+task-branch tips that are **ahead of `main`**; they exist only so
+`crates/render-pipeline` builds standalone from a `git archive` of this
+directory alone (which is how the visual-oracle harness builds it). They are
 read-only here: no edits, no fixes; requested API changes go to the owning
 agent through `docs/proposals/rendering-abi.md` and are listed in the
-render-pipeline README.
+render-pipeline README. Each directory carries a `PIN` file with the full
+commit SHA it was exported from. Directory names are the plain crate names
+because the siblings depend on each other by `../<name>` path.
 
 | Directory | Branch | Commit | Owner |
 | --- | --- | --- | --- |
-| `font-engine@d0c64cf` | `agent/mac-font-engine/tex-fonts` | `d0c64cf` | mac-font-engine |
-| `paragraph-layout@7af5c05` | `agent/mac-paragraph-layout/linebreak` | `7af5c05` | mac-paragraph-layout |
-| `math-layout@2b7c7d5` | `agent/mac-math-layout/math-boxes` | `2b7c7d5` | mac-math-layout |
-| `document-style@bfc980d` | `agent/mac-document-style/style-model` | `bfc980d` | mac-document-style |
-| `pdf@52b3711` | `agent/mac-pdf/pdf-output` | `52b3711` | mac-pdf |
+| `compiler` | `main` | `7adb021` (crates/compiler last changed by `9026d8a`) | compiler lead |
+| `font-engine` | `agent/mac-font-engine/tex-fonts` | `f418238` | mac-font-engine |
+| `paragraph-layout` | `agent/mac-paragraph-layout/linebreak` | `70209e2` | mac-paragraph-layout |
+| `math-layout` | `agent/mac-math-layout/math-boxes` | `db90047` | mac-math-layout |
+| `pdf` | `agent/mac-pdf/pdf-output` | `4bd8c2e` | mac-pdf |
+| `document-style` | `agent/mac-document-style/style-model` (= main) | `bfc980d` | mac-document-style |
 
-The assignment named font-engine `c25b516`; `d0c64cf` is that branch's tip at
-vendoring time (adds GPOS MarkToBase, no API removals) and is what the
-pipeline is built against.
+`font-engine` enables its `paragraph`/`math`/`pdf` adapter features by
+default, which is why those three siblings must be present under their plain
+names next to it.
 
 **Delete this directory and point `Cargo.toml` path dependencies at
-`../<name>` once the siblings are integrated on `main`.** Each pinned copy
-keeps its own README with provenance and licence notes. Nothing binary is
-vendored; Latin Modern is read from the local TeX Live installation at run
-time, never committed.
+`../<name>` once the siblings are integrated on `main`** (`main` currently
+carries older revisions of font-engine, paragraph-layout, math-layout and
+pdf than the pins above). Nothing binary is vendored; Latin Modern is read
+from the local TeX Live installation at run time, never committed.

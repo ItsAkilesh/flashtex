@@ -1,0 +1,68 @@
+//! FlashTeX compiler foundation.
+//!
+//! This is an original implementation. No existing TeX engine is invoked, linked,
+//! or shelled out to. It implements a deliberately finite, documented subset of
+//! LaTeX (see `README.md`); anything outside that subset produces an explicit
+//! diagnostic rather than silently rendering or silently vanishing.
+//!
+//! Byte offsets are the contract's currency: every span is a zero-based,
+//! end-exclusive UTF-8 byte range into the exact input text of the stated
+//! revision, per `docs/contracts/runtime-v1.md`.
+
+pub mod diagnostics;
+pub mod export;
+pub mod incremental;
+pub mod json;
+pub mod layout;
+pub mod lexer;
+pub mod math;
+pub mod metrics;
+pub mod parser;
+pub mod protocol;
+
+/// Stable identity of one document in a compile request.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct DocumentId(pub usize);
+
+/// A zero-based, end-exclusive UTF-8 byte range into a source document.
+///
+/// Invariant: `start <= end`, both land on UTF-8 character boundaries of the
+/// document they refer to, so `&text[start..end]` never panics.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Span {
+    pub document: DocumentId,
+    pub start: usize,
+    pub end: usize,
+}
+
+impl Span {
+    pub fn new(start: usize, end: usize) -> Self {
+        Self::in_document(DocumentId::default(), start, end)
+    }
+
+    pub fn in_document(document: DocumentId, start: usize, end: usize) -> Self {
+        debug_assert!(start <= end, "span start must not exceed end");
+        Span {
+            document,
+            start,
+            end,
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.start == self.end
+    }
+
+    /// Smallest span covering both inputs.
+    pub fn merge(self, other: Span) -> Span {
+        debug_assert_eq!(
+            self.document, other.document,
+            "cannot merge spans from different documents"
+        );
+        Span::in_document(
+            self.document,
+            self.start.min(other.start),
+            self.end.max(other.end),
+        )
+    }
+}

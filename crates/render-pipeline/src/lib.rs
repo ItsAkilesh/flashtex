@@ -3,10 +3,11 @@
 //! Original Rust implementation: compiler parse tree -> styled blocks ->
 //! font-engine shaping (kerning + ligatures, source-byte clusters) ->
 //! paragraph-layout Knuth–Plass line breaking and page breaking ->
-//! math-layout Appendix G boxes with explicit rules -> display list v2
-//! (glyph runs + rules, content-addressed fonts, original glyph ids) ->
-//! runtime-v1 `compile_result` fallback. No TeX engine is invoked at any
-//! point. See README.md for scope, sibling pins and limitations.
+//! math-layout Appendix G boxes with explicit rules -> TeX page builder
+//! (`pagebuild`) -> display list v2 (glyph runs + rules, content-addressed
+//! fonts, original glyph ids) -> runtime-v1 `compile_result` fallback. No
+//! TeX engine is invoked at any point. See README.md for scope, sibling
+//! pins and limitations.
 
 pub mod adapter;
 pub mod cff;
@@ -14,6 +15,7 @@ pub mod display;
 pub mod fonts;
 pub mod ids;
 pub mod mathfont;
+pub mod pagebuild;
 pub mod params;
 pub mod pdf;
 pub mod protocol;
@@ -35,7 +37,13 @@ pub struct Rendered {
     pub v2: DisplayList,
     /// Wall-clock milliseconds spent in `render` (parse + layout + output).
     pub elapsed_ms: f64,
+    /// Layout passes run (1 unless `\pageref` needed page numbers).
+    pub passes: u32,
 }
+
+/// `\pageref` values converge in two passes in practice; the cap bounds a
+/// document whose page numbers oscillate (reported, not looped forever).
+pub const MAX_LABEL_PASSES: u32 = 3;
 
 /// Options that runtime-v1 cannot carry and the compiler does not expose.
 #[derive(Debug, Clone)]
@@ -74,19 +82,42 @@ pub fn render(
     let texts: Vec<&str> = documents.iter().map(|d| d.text).collect();
     let paths: Vec<&str> = documents.iter().map(|d| d.path).collect();
     let entry_index = documents.iter().position(|d| d.path == entry_path).unwrap_or(0);
-    let doc = adapter::adapt(&texts, entry_index, &parsed, options);
-    let mut diagnostics: Vec<display::Diagnostic> = parsed
-        .diagnostics
-        .iter()
-        .map(|d| display::Diagnostic::from_compiler(d, &paths))
-        .collect();
-    diagnostics.extend(doc.diagnostics.iter().cloned());
-    let mut ctx = typeset::Context::new(fonts, &doc.style, &paths);
-    let laid = typeset::build(&mut ctx, &doc);
-    diagnostics.extend(ctx.take_diagnostics());
-    let v2 = typeset::assemble(project_id, revision, documents, &doc.style, fonts, laid, diagnostics);
-    Rendered {
-        v2,
-        elapsed_ms: started.elapsed().as_secs_f64() * 1000.0,
+    let mut labels = adapter::Labels::from_parsed(&parsed);
+    let max_passes = if adapter::Labels::needs_pages(&parsed) { MAX_LABEL_PASSES } else { 1 };
+    let mut passes = 0;
+    loop {
+        passes += 1;
+        let doc = adapter::adapt(&texts, entry_index, &parsed, options, &labels);
+        let mut diagnostics: Vec<display::Diagnostic> = parsed
+            .diagnostics
+            .iter()
+            .map(|d| display::Diagnostic::from_compiler(d, &paths))
+            .collect();
+        diagnostics.extend(doc.diagnostics.iter().cloned());
+        let mut ctx = typeset::Context::new(fonts, &doc.style, &paths);
+        let laid = typeset::build(&mut ctx, &doc);
+        diagnostics.extend(ctx.take_diagnostics());
+        if max_passes > 1 {
+            let pages = typeset::label_pages(&laid);
+            if pages == labels.pages {
+                // Converged: the numbers shown are the pages they sit on.
+            } else if passes < max_passes {
+                labels.pages = pages;
+                continue;
+            } else {
+                labels.pages = pages;
+                diagnostics.push(display::Diagnostic::warning(
+                    "labels_unstable",
+                    format!("\\pageref values did not converge after {max_passes} layout passes; the last pass is shown"),
+                    Vec::new(),
+                ));
+            }
+        }
+        let v2 = typeset::assemble(project_id, revision, documents, &doc.style, fonts, laid, diagnostics);
+        return Rendered {
+            v2,
+            elapsed_ms: started.elapsed().as_secs_f64() * 1000.0,
+            passes,
+        };
     }
 }
