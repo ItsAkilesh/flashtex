@@ -88,20 +88,17 @@ final class FakeMac {
     /// Stops `previous` and starts a replacement on its port with `keys` — the
     /// Mac after pairing, whose key table now holds the long-term `pair_psk`
     /// under the same `pair_id` (retrying the bind while the socket is released).
+    /// The replacement listens on a fresh ephemeral port (the old socket may
+    /// linger in the kernel; rebinding the same port raced `bind` with
+    /// EADDRINUSE and crashed the test host). Callers reconnect to `port`
+    /// after the bounded readiness check here; the pairing (`pair_id`, PSK)
+    /// is what carries over, the acknowledgement memory is deliberately lost.
     static func restart(_ previous: FakeMac, keys: [Key]) throws -> FakeMac {
-        let port = previous.port
         previous.stop()
-        var last: Error?
-        for _ in 0..<50 {
-            do {
-                let m = try FakeMac(keys: keys, macName: previous.macName, destination: previous.destination, port: port)
-                m.start()
-                if m.port == port { return m }
-                m.stop()
-            } catch { last = error }
-            Thread.sleep(forTimeInterval: 0.05)
-        }
-        throw last ?? NearbyError.unreachable("could not rebind FakeMac on port \(port)")
+        let m = try FakeMac(keys: keys, macName: previous.macName, destination: previous.destination, port: 0)
+        m.start() // waits up to 5 s for `.ready`
+        guard m.port != 0 else { throw NearbyError.unreachable("restarted FakeMac did not become ready on an ephemeral port") }
+        return m
     }
 
     var destination: NearbyWire.Destination? {

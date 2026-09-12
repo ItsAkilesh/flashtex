@@ -109,6 +109,7 @@ final class FinishTests: XCTestCase {
         let pairId = try XCTUnwrap(model.pairedMac?.pairId)
         model.maxPolls = 0 // the explicit probe below is the only one
         mac = try FakeMac.restart(mac, keys: [.init(identity: pairId, psk: mac.longTermPSK, bootstrap: false)])
+        XCTAssertNotEqual(mac.port, 0, "restarted FakeMac is listening on a fresh port")
         mac.destination = NearbyWire.Destination(destinationId: "dest-2", projectId: "demo", path: "main.tex", baseRevision: 9) // the pin moved meanwhile
         mac.setStatus(r.id, state: "proposal_ready", latex: "\\alpha")
         await model.reconnect(host: "127.0.0.1", port: String(mac.port))
@@ -260,6 +261,7 @@ final class FinishTests: XCTestCase {
         // Reconnect with the restored key → the draft can still be sent; polling resumes for the received one.
         let pairId = try XCTUnwrap(again.pairedMac?.pairId)
         mac = try FakeMac.restart(mac, keys: [.init(identity: pairId, psk: mac.longTermPSK, bootstrap: false)])
+        XCTAssertNotEqual(mac.port, 0, "restarted FakeMac is listening on a fresh port")
         again.pollInterval = 0.05
         await again.reconnect(host: "127.0.0.1", port: String(mac.port))
         XCTAssertNil(again.linkError)
