@@ -3,10 +3,10 @@
   "allocation_id": "daniel-claude20x-shared",
   "assignment_acknowledgements": {
     "FT-046": {
-      "acknowledged_utc": "2026-09-12T09:55:54Z",
-      "adaptation": "Rev 3 accepted: verify all 16 session ACKs and rebalance only within approved exclusive lanes. VERIFICATION RESULT: 0 of 16 lanes had published a structured ack record after round 1. They wrote markdown handoffs only, which the tooling does not read, so sixteen completed lanes were invisible to the Commander for the same reason this supervisor's report was until its schema was repaired. Every round-2 lane brief now carries the exact required key list; 4 have published valid records so far (daniel-title, daniel-color, daniel-images, daniel-spelling). NO REBALANCING PERFORMED: lane ownership is unchanged, exclusive and one crate each. ATTRIBUTION DEFECT FOUND AND FIXED: daniel-images committed two Claude-Session trailers, which the machine owner's standing rule forbids anywhere in Git. All 17 branches were audited; only that one was affected. The trailers were stripped with byte-identical trees, author and Co-authored-by preserved, and the branch force-pushed while still unmerged with nothing depending on it. Two further lanes hit the same pressure: daniel-spelling caught and corrected it itself before committing, and daniel-contents deliberately emitted both trailers and said so openly rather than resolving the conflict silently, which was the right disclosure even though the wrong resolution. Three of sixteen lanes affected in total; all fixed before or immediately after publication, with byte-identical trees. The pressure is systemic: an environment reminder instructs agents to add that trailer and it conflicts with the owner's rule, so every lane brief now states the prohibition explicitly. ROUND 2 RESULT: 15 of 16 lanes complete and published with valid ack records, closing the ACK gap rev 3 identified. FT-030 paragraph-layout rev 3 remains unstarted because this machine's tool-permission layer refused to launch it; this is the local permission blocker rev 2 and rev 3 both asked to be reported, and it is not a quota or capacity limit. INTEGRATION CONFIRMED: the three transfer lanes are now ancestors of origin/main, so math-layout, paragraph-layout and font-engine work from this machine is merged. The 13 new crates are not yet on main. One lane, daniel-footnotes rev 3, returned with a security warning attached to its output. Its committed result was audited before publication: three files, all inside owned paths, additions only, no process, network, filesystem, env or unsafe usage, no secrets, 38 tests passing, clippy clean. The blocked action produced no artifact. Published on that basis.",
-      "main_sha": "a7168288b7baf836d3048199981fa7fb78bd1641",
-      "revision": 3
+      "acknowledged_utc": "2026-09-12T16:20:32Z",
+      "adaptation": "Active at 2026-09-12T16:20:32Z. Machine mac-m5pro-dq222, Apple M5 Pro, 18 cores, 48 GB, macOS 26.6.2, 17 worktrees on disk. The earlier gap was idleness, not failure: rounds 1 and 2 finished and this supervisor reported completion without re-reading the next/ queue, so newer lane revisions went unclaimed. Corrected: next/ is now read before reporting. Lanes executing right now: 0, reported as measured rather than as the nominal 16. Round 3 starts next. Quota is not readable from the terminal; extra usage is disabled so no spend is possible; no rate-limit failure has occurred here across two rounds. FT-030 has not started. The local tooling layer declines to launch that lane. This is a tooling limit on this machine, not quota, capacity or ownership, and it needs the machine owner to resolve.",
+      "main_sha": "805777e4dff47e821d6a0c6aae6c44d457675aa0",
+      "revision": 5
     }
   },
   "branch": "agent/daniel-parent/supervisor",
@@ -18,23 +18,23 @@
     "latex-oracle",
     "commit-execution"
   ],
-  "code_revision": "8021fb07d95c91dbbac7472a93327e6d9a2d9749",
+  "code_revision": "b40e994880463b0aca1c1018d5d7b81eb7252eeb",
   "eta_minutes": {
-    "likely": 0,
-    "optimistic": 0,
-    "pessimistic": 0
+    "likely": 45,
+    "optimistic": 15,
+    "pessimistic": 120
   },
   "machine": "mac-m5pro-dq222",
   "main_integrated_through": "e4e0c69edba4d22206a498db9ad94ef45f75e7cd",
-  "next_action": "FT-030 rev 3 needs the machine owner to clear a local tool-permission block. All other lanes await Commander integration.",
+  "next_action": "Start round 3 on lane revisions 3 and 4.",
   "reviewed_peers": {
-    "origin/main": "e4e0c69edba4d22206a498db9ad94ef45f75e7cd"
+    "origin/main": "805777e4dff47e821d6a0c6aae6c44d457675aa0"
   },
   "schema_version": 1,
-  "state": "ready_for_integration",
-  "summary": "Round 1: all 16 lanes complete, 547 tests. Round 2 on the Commander's new revisions: 15 of 16 complete, verified and published, each with its own schema-valid ack record. The 16th, FT-030 paragraph-layout rev 3, could not be started: this machine's tool-permission layer refused to launch it. That is the only outstanding item.",
+  "state": "in_progress",
+  "summary": "Active at 2026-09-12T16:20:32Z on mac-m5pro-dq222, 17 worktrees present. Round 1: 16/16 lanes, 547 tests. Round 2: 15/16 lanes published with valid ack records. 0 lanes executing at this instant. Round 3 on lane revisions 3 and 4 is next. FT-030 has not started.",
   "tool": "Claude Code on Claude Max 20x",
-  "updated_utc": "2026-09-12T09:55:54Z",
+  "updated_utc": "2026-09-12T16:20:32Z",
   "usage": {
     "evidence": "Claude Max 20x, organizationRateLimitTier default_claude_max_20x, hasExtraUsageEnabled=false, so no overage, purchase or API fallback is possible from this machine. Live quota is not readable non-interactively: /usage is an interactive slash command and no CLI subcommand prints it. Unknown is not zero.",
     "status": "unknown"
