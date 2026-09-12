@@ -33,9 +33,11 @@ struct ContentView: View {
                     if model.problemsVisible {
                         // Drag the handle to give the diagnostics list more or less
                         // room; the list scrolls within whatever height it has.
-                        PanelResizeHandle(height: $problemsHeight,
-                                          range: ProblemsPanel.minHeight...max(ProblemsPanel.minHeight, geo.size.height - 240))
-                        ProblemsPanel().frame(height: min(problemsHeight, max(ProblemsPanel.minHeight, geo.size.height - 240)))
+                        // Never more than 40 % of the window: at 1000×640 the
+                        // editor keeps ~15 lines instead of 10 (daniel-fable-ui-qa #3).
+                        let panelCap = max(ProblemsPanel.minHeight, min(geo.size.height - 240, geo.size.height * 0.4))
+                        PanelResizeHandle(height: $problemsHeight, range: ProblemsPanel.minHeight...panelCap)
+                        ProblemsPanel().frame(height: min(problemsHeight, panelCap))
                     }
                     Divider()
                     StatusBar()
@@ -183,7 +185,10 @@ private struct EditorPane: View {
                 }
             )
             CaptureBar()
-            BridgeBar()
+            // The bridge line is lifecycle telemetry: shown once a bridge is
+            // attached or a capture exists, not as a permanent orange
+            // "no bridge attached" strip under the editor (daniel-fable-ui-qa #5).
+            if model.bridgeStatus != "no bridge attached" || !model.bridgeCaptures.isEmpty || model.bridgeDestination != nil { BridgeBar() }
         }
     }
 }
@@ -309,7 +314,7 @@ private struct PreviewHeader: View {
                     .help("result id \(model.resultID ?? "?") · project \(r.projectId) · revision \(r.revision) · pdf: \(r.pdfPath ?? "none")")
                 Text(r.status.rawValue).font(.caption.bold()).foregroundStyle(statusColor(r.status))
                 if r.status == .recovered {
-                    Text("provisional rendering").font(.caption).foregroundStyle(.orange)
+                    Text("provisional rendering").font(.caption).foregroundStyle(.orange).lineLimit(1).fixedSize()
                         .help("recovered: preview shown with provisional rendering")
                 }
                 if model.inFlightRevision != nil { ProgressView().controlSize(.mini) }
