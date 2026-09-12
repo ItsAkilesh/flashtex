@@ -175,10 +175,14 @@ impl RequestLease {
         self.context.payload()
     }
     pub fn check_current(&self, current: &[Document]) -> Result<(), String> {
+        self.check_live()?;
+        self.context.check_current(current)
+    }
+    pub(crate) fn check_live(&self) -> Result<(), String> {
         if !self.active.load(Ordering::Acquire) || Instant::now() >= self.deadline {
             return Err("transport lease revoked or expired".into());
         }
-        self.context.check_current(current)
+        Ok(())
     }
     #[cfg(feature = "grok")]
     pub(crate) fn context(&self) -> &Context {

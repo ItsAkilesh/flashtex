@@ -513,3 +513,6 @@ mod client;
 pub use client::SessionClient;
 #[cfg(feature = "grok")]
 pub mod grok;
+
+#[cfg(feature = "grok")]
+pub mod provider_queue;

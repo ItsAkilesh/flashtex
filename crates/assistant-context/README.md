@@ -176,3 +176,23 @@ the registry. Call `registry.fail(id)` on a terminal provider error. No retry is
 implied by failure. Cancellation can race network dispatch; late successful HTTP
 results still cannot revive the registry flight. Held leases retain their bounded
 context until dropped, so the host must bound queued/in-flight provider workers.
+
+`provider_queue::ProviderQueue` (feature `grok`) reuses conversion-jobs' bounded
+scheduler:1..8workers,1..32queued and1..32retained jobs. It owns the explanation
+registry and maps its exact request IDs to SHA256 scheduler IDs (scheduler IDs
+cannot contain colons). `submit` requires `UsageIntent { user_requested:true,
+allocation }` and an explicitly configured `Arc<GrokClient>`. The intent is an
+accounting label supplied after host authorization; it cannot verify a balance or
+enforce a dollar cap. `usage` reports scheduler evidence, not provider token/dollar
+usage. No automatic retry, purchase, credential discovery, or edit is performed.
+
+Source validation occurs during admission; workers share only the bounded immutable
+Context. The host must call `revoke_stale` on source changes and refresh/poll status
+to cancel expired queued work. `receive` always validates fresh source before
+returning a proposal. `cancel` does not release a running HTTP slot prematurely;
+`retire` fails until that call actually returns. Ready results are consumed once,
+and the record is released on consumption. Retire failed/cancelled records
+explicitly to reclaim retention. Shutdown prevents new work but cannot forcibly
+interrupt an already-running HTTP call; that call retains its configured timeout.
+The API is Rust-only pending native binding/integration, and no live provider call
+has been used in its tests.

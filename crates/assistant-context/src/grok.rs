@@ -120,6 +120,9 @@ impl GrokClient {
         current: &[Document],
     ) -> Result<ProviderReply, String> {
         context.check_current(current)?;
+        self.send_at(endpoint, context)
+    }
+    fn send_at(&self, endpoint: &str, context: &Context) -> Result<ProviderReply, String> {
         let bytes = serde_json::to_vec(&body(&self.model, context))
             .map_err(|_| "provider request encoding failed")?;
         if bytes.len() > 256 * 1024 {
@@ -190,6 +193,18 @@ impl GrokClient {
     ) -> Result<RoutedReply, String> {
         self.request_lease_at(ENDPOINT, lease, current)
     }
+    pub(crate) fn request_admitted_lease(
+        &self,
+        lease: crate::RequestLease,
+    ) -> Result<RoutedReply, String> {
+        lease.check_live()?;
+        let reply = self.send_at(ENDPOINT, lease.context())?;
+        Ok(RoutedReply {
+            request_id: lease.request_id().to_owned(),
+            context_id: lease.payload().context_id.clone(),
+            reply,
+        })
+    }
     fn request_lease_at(
         &self,
         endpoint: &str,
@@ -203,6 +218,17 @@ impl GrokClient {
             context_id: lease.payload().context_id.clone(),
             reply,
         })
+    }
+}
+
+#[cfg(test)]
+impl RoutedReply {
+    pub(crate) fn fixture(lease: crate::RequestLease, bytes: Vec<u8>) -> Self {
+        Self {
+            request_id: lease.request_id().to_owned(),
+            context_id: lease.payload().context_id.clone(),
+            reply: ProviderReply { bytes },
+        }
     }
 }
 

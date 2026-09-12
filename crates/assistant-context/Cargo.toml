@@ -15,10 +15,14 @@ libc = "0.2"
 
 [features]
 default = []
-grok = ["dep:reqwest"]
+grok = ["dep:reqwest", "dep:flashtex-conversion-jobs"]
 
 [dependencies.reqwest]
 version = "0.12.28"
 default-features = false
 features = ["blocking", "json", "rustls-tls"]
+optional = true
+
+[dependencies.flashtex-conversion-jobs]
+path = "../conversion-jobs"
 optional = true

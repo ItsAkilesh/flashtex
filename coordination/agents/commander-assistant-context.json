@@ -14,7 +14,7 @@
     "rust",
     "diagnostic-context"
   ],
-  "code_revision": "2c50e7d8030f1a6683d1dbeadc335783a8f0e282",
+  "code_revision": "715fed261c744eb210110c0d060d9883efe00d49",
   "eta_minutes": {
     "likely": 30,
     "optimistic": 15,
@@ -22,15 +22,15 @@
   },
   "machine": "linux-primary",
   "main_integrated_through": "94c76ee510e7bf043ef6e9a02ffc287581dd921e",
-  "next_action": "Commander to route GH21 total latency/output transport work; resume bounded assistant background provider integration.",
+  "next_action": "Native binding/integration or next commander-owned acceptance gate; no live inference.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "Independent4425 compiler scaling:all60explicit16MiB samples exactclean;500KB p95305.180ms. Default8MiB still rejects500KB result. Evidence committed under owned crate.",
+  "summary": "Bounded background provider queue reuses conversion-jobs, exact hashed/original ID mapping, explicit usage intent, one-shot source-validated consumption, cancelledrunning slots retained.21tests and strictlint pass.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T08:11:15Z",
+  "updated_utc": "2026-09-12T08:15:02Z",
   "usage": {
-    "evidence": "crates/assistant-context/evidence/compiler-scaling-4425; binary554c9e054f9159c01f8ec184d85dec86b83bcd5da7d69ea99a7bdb6416108322",
-    "status": "Hosted OpenAI; deterministic local compiler only."
+    "evidence": "allfeatures include-ignored21passed using4425compiler; strict alltarget/allfeature clippy pass",
+    "status": "Hosted OpenAI; local fixtures only; no provider usage."
   }
 }
