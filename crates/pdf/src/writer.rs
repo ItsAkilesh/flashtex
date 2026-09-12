@@ -14,7 +14,8 @@
 //!
 //! When a font is embedded (opt-in, see `crate::embed`), five more objects
 //! follow the last page, starting at `6 + 2 × pages`: the Type0 font `/F3`,
-//! its CIDFontType2 descendant, the font descriptor, the `/FontFile2` stream,
+//! its CIDFontType2 (TrueType subset) or CIDFontType0 (whole CFF)
+//! descendant, the font descriptor, the `/FontFile2` or `/FontFile3` stream,
 //! and the ToUnicode CMap. Page numbering is unchanged either way.
 //!
 //! Every text item is emitted as its own `BT … ET` block with an absolute `Td`,
@@ -210,10 +211,27 @@ pub fn render(result: &CompileResult, options: &RenderOptions) -> Result<PdfOutp
             )
             .as_bytes(),
         );
+        // TrueType subsets go through CIDFontType2 with an identity GID map;
+        // a whole CFF goes through CIDFontType0, where a non-CID-keyed CFF
+        // program already selects glyphs by CID = GID.
+        let (cid_subtype, gid_map, file_key, stream_extra) = match &e.program {
+            crate::embed::Program::TrueType(subset) => (
+                "CIDFontType2",
+                " /CIDToGIDMap /Identity",
+                "FontFile2",
+                format!("/Length1 {}", subset.bytes.len()),
+            ),
+            crate::embed::Program::Cff { .. } => (
+                "CIDFontType0",
+                "",
+                "FontFile3",
+                "/Subtype /CIDFontType0C".to_string(),
+            ),
+        };
         doc.object(
             cid_obj,
             format!(
-                "<< /Type /Font /Subtype /CIDFontType2 /BaseFont /{} /CIDSystemInfo << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >> /FontDescriptor {desc_obj} 0 R /DW 1000 /W {} /CIDToGIDMap /Identity >>",
+                "<< /Type /Font /Subtype /{cid_subtype} /BaseFont /{} /CIDSystemInfo << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >> /FontDescriptor {desc_obj} 0 R /DW 1000 /W {}{gid_map} >>",
                 e.base_font,
                 e.widths_array()
             )
@@ -221,12 +239,12 @@ pub fn render(result: &CompileResult, options: &RenderOptions) -> Result<PdfOutp
         );
         let d = &e.descriptor;
         // Flags 4 = Symbolic: the font is used through glyph ids, not a
-        // standard Latin encoding. StemV is a nominal value; TrueType fonts
+        // standard Latin encoding. StemV is a nominal value; these fonts
         // carry no stem width and viewers do not rely on it for rendering.
         doc.object(
             desc_obj,
             format!(
-                "<< /Type /FontDescriptor /FontName /{} /Flags 4 /FontBBox [ {} {} {} {} ] /ItalicAngle {} /Ascent {} /Descent {} /CapHeight {} /StemV 80 /FontFile2 {file_obj} 0 R >>",
+                "<< /Type /FontDescriptor /FontName /{} /Flags 4 /FontBBox [ {} {} {} {} ] /ItalicAngle {} /Ascent {} /Descent {} /CapHeight {} /StemV 80 /{file_key} {file_obj} 0 R >>",
                 e.base_font,
                 d.bbox[0],
                 d.bbox[1],
@@ -239,11 +257,7 @@ pub fn render(result: &CompileResult, options: &RenderOptions) -> Result<PdfOutp
             )
             .as_bytes(),
         );
-        doc.stream_with(
-            file_obj,
-            &format!("/Length1 {}", e.subset.bytes.len()),
-            &e.subset.bytes,
-        );
+        doc.stream_with(file_obj, &stream_extra, e.program_bytes());
         doc.stream(tounicode_obj, &e.to_unicode_cmap());
     }
 

@@ -1,6 +1,6 @@
 # mac-pdf handoff — FT-009 PDF output
 
-- Updated UTC: 2026-09-12T05:50Z
+- Updated UTC: 2026-09-12T06:20Z
 - Agent / parent / machine alias: `mac-pdf` (Claude Code subagent; issue #2
   follow-up dispatched as worker `mac-pdf-unicode`, same agent and branch) /
   parent `mac-claude-a` / `mac-m1max-a`
@@ -29,6 +29,17 @@
     lacks stay `?` with warnings; CLI prints a `note: N warning(s)` summary,
     exit 0. Verified on this Mac with both system fonts: rasterised output
     shows Cyrillic/CJK/ℝ and composite glyphs; `?` only where warned.
+  - CFF OpenType (Latin Modern, `OTTO`) embedding: the whole `CFF ` table
+    verbatim as `/FontFile3 /Subtype /CIDFontType0C` under CIDFontType0 +
+    Identity-H + sparse `/W` + ToUnicode. `/Type1C` was rejected by
+    CoreGraphics ("unsupported CIDFontType0 subtype"); `/OpenType` also
+    works but is 50 KB larger. `--embed-font auto` now prefers Latin Modern
+    (`FLASHTEX_LM_DIR`, TeX Live roots newest-first, Linux TeX dirs) before
+    Times New Roman / Arial Unicode. Verified: sips rasterises with no
+    CoreGraphics font error, PDFKit `page.string` returns the input text.
+    One-line PDF with LM embedded: 63,228 bytes (CFF table 61,140). No CFF
+    subsetting yet; non-CID-keyed CFF relies on CID = GID (CoreGraphics does
+    this; CID-keyed conversion is the robust follow-up).
   - Corpus regression (`crates/pdf/docs/corpus-report.md`, runner
     `crates/pdf/scripts/corpus_report.py`): all 14 `tests/tex-corpus` cases
     through compiler origin/main 342e1e0 → flashtex-pdf: 14/14 verify and open
@@ -41,7 +52,7 @@
     `unicode-literals` because the compiler assumes 0.5 em for glyphs it has
     no metrics for (`DEFAULT_ADVANCE_UNITS`); real ideographs are 1 em. The
     PDF writer places items where told and does not re-flow.
-  - `cargo test`: 32/32 pass (18 unit, 14 integration). Covers fixture page count
+  - `cargo test`: 35/35 pass (18 unit, 17 integration). Covers fixture page count
     and MediaBox, a 2-page synthetic result, multiline baselines, WinAnsi
     encoding (`é` → `0xE9`), unrepresentable chars (`中`, `😀`, `ℝ`) → `?` +
     warning, delimiter escaping, unsupported item kinds, bad envelopes,
@@ -61,7 +72,9 @@
   - `cargo build --release` and `cargo clippy --all-targets` clean.
 - Incomplete behavior / blockers / needs from others:
   - Embedding is opt-in; default output remains base-14 Times-Roman (WinAnsi)
-    and Symbol. No shaping, no colour emoji, no CFF/.ttc, no Flate. Heading
+    and Symbol. No shaping, no colour emoji, no .ttc, no Flate, no CFF
+    subsetting (whole CFF per document). Latin Modern Roman covers Latin only,
+    so Greek/Cyrillic/CJK still warn under `auto`. Heading
     weight is not reproduced: the compiler sets headings in Times-Bold but
     runtime-v1 carries no font field, and per issue #9 bold is not inferred from
     size. Needs a runtime-v1 font/weight field (proposed to Commander).
@@ -93,7 +106,7 @@
   (500-unit fallback for non-Latin glyphs) plus GitHub issue #9 — adapted by
   rendering U+2500 runs as rules and adding the Symbol font.
 - Validation commands / results / artifact paths:
-  `cd crates/pdf && cargo test` (32 passed);
+  `cd crates/pdf && cargo test` (35 passed);
   `cargo run --bin flashtex-pdf -- in.json --out out.pdf --embed-font auto` (prints which font was embedded);
   `cargo run --bin flashtex-pdf -- tests/fixtures/math-compile-result.json --out math.pdf --verify` (exit 0, no warnings);
   `cargo run --bin flashtex-pdf -- --out out.pdf --verify < ../../protocol/fixtures/compile-result.json`;

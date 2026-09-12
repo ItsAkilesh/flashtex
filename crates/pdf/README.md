@@ -60,17 +60,38 @@ open out.pdf
 ## Font embedding
 
 Off by default. When enabled, every character that WinAnsi and Symbol cannot
-show is looked up in the supplied `.ttf`; the glyphs used (plus `.notdef` and
-the parts of any composite glyph) are copied into a new, densely renumbered
-TrueType program and embedded as `/FontFile2` under a Type0 font with a
-CIDFontType2 descendant, `Identity-H` encoding (two bytes per glyph, written as
-hex strings), `/CIDToGIDMap /Identity`, a `/W` widths array, and a `ToUnicode`
-CMap so text extraction and search return the original characters. The subset
-carries `head`, `hhea`, `maxp`, `hmtx`, `loca`, `glyf`, and, if present,
-`cvt `, `fpgm`, `prep`; table checksums and `head.checkSumAdjustment` are
-computed and `truetype::verify_checksums` reads them back in tests. The parser,
+show is looked up in the supplied OpenType font and written through a Type0
+font with `Identity-H` encoding (two bytes per glyph, written as hex strings),
+a `/W` widths array, and a `ToUnicode` CMap so text extraction and search
+return the original characters. Two outline formats are handled; the parser,
 subsetter, and CMap writer are hand-written (`src/truetype.rs`,
-`src/embed.rs`); the crate still has no dependencies.
+`src/embed.rs`) and the crate still has no dependencies.
+
+- **TrueType (`.ttf`, `glyf` outlines): subset.** The glyphs used (plus
+  `.notdef` and the parts of any composite glyph) are copied into a new,
+  densely renumbered TrueType program and embedded as `/FontFile2` under a
+  CIDFontType2 descendant with `/CIDToGIDMap /Identity`. The subset carries
+  `head`, `hhea`, `maxp`, `hmtx`, `loca`, `glyf`, and, if present, `cvt `,
+  `fpgm`, `prep`; table checksums and `head.checkSumAdjustment` are computed
+  and `truetype::verify_checksums` reads them back in tests. A one-line
+  document costs a few KB.
+- **CFF OpenType (`.otf`, `OTTO`, e.g. Latin Modern): embedded whole, no
+  subsetting yet.** The raw `CFF ` table is copied byte for byte into a
+  `/FontFile3` `/Subtype /CIDFontType0C` stream under a CIDFontType0
+  descendant; glyph ids are the font's own, and `/W` lists only the glyphs
+  used. **Size cost: every document that uses the font carries the entire
+  CFF table** — 61,140 bytes for `lmroman10-regular.otf`, so a one-line PDF
+  is about 63 KB (measured: 63,228 bytes), and `latinmodern-math.otf` would
+  add 652 KB per document. CFF subsetting (and conversion to a CID-keyed
+  CFF, see below) is the planned follow-up. `/Subtype /Type1C` was tried
+  first: CoreGraphics rejects it for a CIDFontType0 ("unsupported
+  CIDFontType0 subtype 'Type1C'") and falls back to Helvetica; `/OpenType`
+  with the whole `.otf` also renders but is ~50 KB larger per document, so
+  `CIDFontType0C` is what is written. Latin Modern's CFF is not CID-keyed;
+  CoreGraphics (Preview, PDFKit, `sips`) selects glyphs by CID = GID for such
+  a program and both the raster and PDFKit text extraction were verified. PDF
+  32000 §9.7.4.2 words the non-CID-keyed case in terms of the CFF charset, so
+  other viewers may differ until the program is rewritten as CID-keyed.
 
 Characters the embedded font also lacks still become `?` and are named in
 `warnings` (one font-level warning listing them, plus the per-item warning).
@@ -79,27 +100,39 @@ Nothing is ever dropped silently. The CLI prints every warning and a final
 
 **Which font.** `--embed-font PATH` uses that file. `--embed-font auto` (or
 setting `FLASHTEX_UNICODE_FONT` alone) uses `FLASHTEX_UNICODE_FONT` if set,
-otherwise, on macOS only, the first of these that exists:
+otherwise the first of these that exists (`embed::candidate_paths()` lists
+them in order):
 
-1. `/System/Library/Fonts/Supplemental/Times New Roman.ttf` — serif, matches
-   the base-14 Times visually; covers Latin, Greek, Cyrillic, but **not** CJK,
-   `ℝ`, or emoji.
-2. `/System/Library/Fonts/Supplemental/Arial Unicode.ttf` — sans, ~50 000
-   glyphs including CJK and most symbols; no emoji outlines.
+1. `$FLASHTEX_LM_DIR/lmroman10-regular.otf` if `FLASHTEX_LM_DIR` is set.
+2. `<root>/<release>/texmf-dist/fonts/opentype/public/lm/lmroman10-regular.otf`
+   for each root in `/usr/local/texlive`, `/opt/texlive`, `/usr/share/texlive`,
+   newest release directory first (e.g. `/usr/local/texlive/2026basic/…`).
+3. `/usr/share/texlive/texmf-dist/fonts/opentype/public/lm/` and
+   `/usr/share/texmf/fonts/opentype/public/lm/` (Linux distribution TeX).
+4. macOS only: `/System/Library/Fonts/Supplemental/Times New Roman.ttf`
+   (serif, TrueType; Latin, Greek, Cyrillic; no CJK, `ℝ`, or emoji), then
+   `/System/Library/Fonts/Supplemental/Arial Unicode.ttf` (sans, ~50 000
+   glyphs incl. CJK; no emoji outlines).
 
-Both are Apple-supplied system fonts. Their licences permit use on the Mac;
-**embedding a subset into a PDF you redistribute is a licensing question the
-user must answer for themselves.** This crate does not choose a font unless
-asked, and it prints which one it embedded. No font is committed to this
-repository. Only TrueType outlines (`glyf`) are supported: CFF/OpenType
-(`OTTO`) and `.ttc` collections are rejected with a message, not guessed at.
+**Provenance and licences.** Latin Modern (`lmroman10-regular.otf`, GUST
+e-foundry, the OpenType form of LaTeX's default Computer Modern-derived
+face) is distributed under the GUST Font License, which permits embedding and
+redistribution in documents; the copy used here comes from the local TeX
+Live installation, and its coverage is Latin (incl. Latin Extended) only —
+no Greek, Cyrillic, or CJK, so those still warn. Times New Roman and Arial
+Unicode are Apple-supplied system fonts: their licences permit use on the
+Mac, but **embedding them into a PDF you redistribute is a licensing question
+the user must answer for themselves.** This crate does not choose a font
+unless asked, and it prints which one it embedded (`note: embedding subset
+of …`). No font is committed to this repository. `.ttc` collections are
+rejected with a message, not guessed at.
 
 **Limits of the embedded route.** Glyph advances come from the font, so text
 spacing inside a run is right, but the *positions* of items still come from
 the compiler's own metrics, which do not know about this font. There is no
 shaping: combining marks, ligature substitution, and complex scripts are
 written glyph-by-glyph from the `cmap`. Emoji fonts with colour tables
-(`sbix`, `COLR`) are not supported. The subset is uncompressed (no Flate).
+(`sbix`, `COLR`) are not supported. Programs are uncompressed (no Flate).
 
 ## Limitations, stated plainly
 
@@ -155,7 +188,7 @@ dark mode. `tests/render.rs::export_is_white_and_theme_independent` guards this.
 
 ## Verification performed
 
-- `cargo test`: 32 tests (18 unit, 14 integration) covering the fixture's page
+- `cargo test`: 35 tests (18 unit, 17 integration) covering the fixture's page
   count and MediaBox, a two-page synthetic result with distinct page sizes,
   multiline placement (every `Td` equals `(x_pt, height_pt - baseline_y_pt)`),
   WinAnsi encoding (`é` is byte `0xE9`, `—` is `0x97`), unrepresentable
@@ -180,6 +213,17 @@ dark mode. `tests/render.rs::export_is_white_and_theme_independent` guards this.
   subset's map (used glyphs + `.notdef` + composite parts), that advances
   survive subsetting, and that `sips` opens the CLI's output. Off by default
   and bad font files are errors, not silent fallbacks.
+- CFF embedding: with Latin Modern found by the same search (skipped with a
+  message otherwise), `ŵŷ ő 中` is rendered; the test asserts the
+  Type0 / CIDFontType0 / `FontFile3 CIDFontType0C` chain with no
+  `CIDToGIDMap` and no subset tag, that the embedded stream equals the
+  font's `CFF ` table byte for byte (length and content), that every CID
+  written is the font's own GID with a ToUnicode entry, sparse `/W` entries,
+  the `中` warning, and that `auto` ranks Latin Modern before Times New
+  Roman. A macOS test runs the CLI, rasterises with `CG_PDF_VERBOSE=1 sips`
+  and fails if CoreGraphics reports an unsupported font program, then
+  extracts the page text with PDFKit (`PDFPage.string` via PyObjC, skipped
+  if PyObjC is absent) and asserts it equals the input `Latin Modern ŵŷ ő`.
 - Manual: the fixture and a two-page Unicode sample were rendered, opened by
   `sips` (`format: pdf`, `pixelWidth: 612.000`, `pixelHeight: 792.000`), and
   rasterised to PNG; the heading, three baselines, accented characters, escaped

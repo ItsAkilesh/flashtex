@@ -432,18 +432,38 @@ fn macos_sips_opens_the_fixture_pdf() {
 // same discovery as the CLI (`FLASHTEX_UNICODE_FONT`, then macOS system fonts)
 // and skip with a message when none exists.
 
-fn embed_font_or_skip(test: &str) -> Option<flashtex_pdf::embed::EmbedFont> {
-    match flashtex_pdf::embed::EmbedFont::discover() {
-        Ok(Some(f)) => Some(f),
-        Ok(None) => {
-            eprintln!(
-                "SKIPPED {test}: no TrueType font found (set {} or run on macOS)",
-                flashtex_pdf::embed::ENV_VAR
-            );
-            None
-        }
-        Err(e) => panic!("font discovery failed: {e}"),
+/// First candidate on this machine with the requested outline format, using
+/// the same search list as `--embed-font auto` (Latin Modern first, then the
+/// macOS system TrueType fonts); `FLASHTEX_UNICODE_FONT` is tried first.
+fn font_with_outlines_or_skip(
+    test: &str,
+    outlines: flashtex_pdf::truetype::Outlines,
+) -> Option<flashtex_pdf::embed::EmbedFont> {
+    let mut candidates = Vec::new();
+    if let Some(p) = std::env::var_os(flashtex_pdf::embed::ENV_VAR) {
+        candidates.push(std::path::PathBuf::from(p));
     }
+    candidates.extend(flashtex_pdf::embed::candidate_paths());
+    for path in candidates {
+        if !path.is_file() {
+            continue;
+        }
+        let font = flashtex_pdf::embed::EmbedFont::load(&path)
+            .unwrap_or_else(|e| panic!("candidate font failed to parse: {e}"));
+        if font.font.outlines == outlines {
+            return Some(font);
+        }
+    }
+    eprintln!(
+        "SKIPPED {test}: no {outlines:?} font found (set {} or install one of {:?})",
+        flashtex_pdf::embed::ENV_VAR,
+        flashtex_pdf::embed::candidate_paths()
+    );
+    None
+}
+
+fn embed_font_or_skip(test: &str) -> Option<flashtex_pdf::embed::EmbedFont> {
+    font_with_outlines_or_skip(test, flashtex_pdf::truetype::Outlines::TrueType)
 }
 
 /// Characters outside WinAnsi and Symbol: Cyrillic (in every candidate
@@ -540,8 +560,11 @@ fn embedded_subset_font_covers_unicode_and_reports_the_rest() {
     verify_checksums(&program).unwrap();
     let parsed = TrueTypeFont::parse(program.clone()).unwrap();
     let subset = font.subset_for(EMBED_TEXT.chars()).unwrap();
-    assert_eq!(program, subset.subset.bytes, "deterministic subset");
-    assert_eq!(parsed.num_glyphs(), subset.subset.num_glyphs());
+    let flashtex_pdf::embed::Program::TrueType(tt) = &subset.program else {
+        panic!("expected a TrueType subset");
+    };
+    assert_eq!(program, tt.bytes, "deterministic subset");
+    assert_eq!(parsed.num_glyphs(), tt.num_glyphs());
     assert_eq!(subset.chars.len(), embedded_chars.len());
     assert!(parsed.num_glyphs() as usize > embedded_chars.len());
     assert_eq!(parsed.units_per_em, font.font.units_per_em);
@@ -582,9 +605,12 @@ fn embedding_is_off_by_default_and_a_bad_font_path_is_an_error() {
     assert!(missing.is_err());
     let not_a_font =
         std::env::temp_dir().join(format!("flashtex-pdf-notafont-{}.ttf", std::process::id()));
-    std::fs::write(&not_a_font, b"OTTO this is not really a font").unwrap();
+    std::fs::write(&not_a_font, b"ttcf this is not really a font").unwrap();
     let err = flashtex_pdf::embed::EmbedFont::load(&not_a_font).unwrap_err();
-    assert!(err.contains("OTTO"), "{err}");
+    assert!(err.contains("collection"), "{err}");
+    std::fs::write(&not_a_font, b"OTTO\0\0\0\0\0\0\0\0").unwrap();
+    let err = flashtex_pdf::embed::EmbedFont::load(&not_a_font).unwrap_err();
+    assert!(err.contains("missing required table"), "{err}");
     let _ = std::fs::remove_file(&not_a_font);
 }
 
@@ -636,5 +662,233 @@ fn cli_embed_font_writes_a_pdf_that_sips_opens() {
         String::from_utf8_lossy(&sips.stderr)
     );
     assert!(stdout.contains("pixelWidth: 612"), "{stdout}");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+// ---------------------------------------------------------------------------
+// CFF OpenType (Latin Modern) embedding: the whole `CFF ` table, verbatim.
+
+/// Characters Latin Modern Roman has beyond WinAnsi/Symbol (Latin Extended),
+/// plus one it lacks (CJK) that must be warned about.
+const CFF_TEXT: &str = "ŵŷ ő 中";
+
+#[test]
+fn latin_modern_cff_is_embedded_whole_and_verbatim() {
+    use flashtex_pdf::embed::{Program, parse_to_unicode};
+    use flashtex_pdf::truetype::Outlines;
+    let Some(font) = font_with_outlines_or_skip(
+        "latin_modern_cff_is_embedded_whole_and_verbatim",
+        Outlines::Cff,
+    ) else {
+        return;
+    };
+    let cff = font
+        .font
+        .cff_table()
+        .expect("OTTO has a CFF table")
+        .to_vec();
+    assert_eq!(cff[0], 1, "CFF major version");
+    let result = CompileResult {
+        pages: vec![page(
+            1,
+            612.0,
+            792.0,
+            vec![item(CFF_TEXT, 72.0, 84.0, 14.0)],
+        )],
+    };
+    let options = flashtex_pdf::RenderOptions {
+        embed_font: Some(font.clone()),
+    };
+    let out = flashtex_pdf::render_pdf_with(&result, &options).unwrap();
+    let s = check_structure(&out.bytes).unwrap();
+    assert_eq!(s.object_count, 12);
+    assert_eq!(s.stream_objects, vec![7, 11, 12]);
+
+    // Font object chain for a whole CFF: CIDFontType0, FontFile3/CIDFontType0C,
+    // no CIDToGIDMap, no subset tag on the name.
+    let name = format!("/BaseFont /{}", font.font.postscript_name);
+    assert!(find(&out.bytes, name.as_bytes()).is_some());
+    assert!(find(&out.bytes, b"/Subtype /Type0").is_some());
+    assert!(find(&out.bytes, b"/Encoding /Identity-H").is_some());
+    assert!(find(&out.bytes, b"/Subtype /CIDFontType0 ").is_some());
+    assert!(find(&out.bytes, b"/CIDToGIDMap").is_none());
+    assert!(find(&out.bytes, b"/FontFile3 11 0 R").is_some());
+    assert!(find(&out.bytes, b"/Subtype /CIDFontType0C").is_some());
+    assert!(find(&out.bytes, b"/FontFile2").is_none());
+    let tagged = format!("+{}", font.font.postscript_name);
+    assert!(
+        find(&out.bytes, tagged.as_bytes()).is_none(),
+        "whole font carries no subset tag"
+    );
+
+    // The embedded program is the CFF table, byte for byte.
+    let program = stream_data(&out.bytes, 11).unwrap();
+    assert_eq!(program.len(), cff.len());
+    assert_eq!(program, cff, "CFF table must be embedded verbatim");
+    assert!(
+        out.bytes.len() > cff.len() && out.bytes.len() < cff.len() + 4096,
+        "one-line PDF is the CFF plus a little structure, got {} bytes",
+        out.bytes.len()
+    );
+
+    // Glyph ids are the original font's; ToUnicode maps them back.
+    let subset = font.subset_for(CFF_TEXT.chars()).unwrap();
+    let Program::Cff {
+        bytes,
+        used_advances,
+    } = &subset.program
+    else {
+        panic!("expected a whole-CFF program");
+    };
+    assert_eq!(bytes, &cff);
+    let to_unicode = parse_to_unicode(&stream_data(&out.bytes, 12).unwrap()).unwrap();
+    let placed = placements(&stream_data(&out.bytes, 7).unwrap()).unwrap();
+    let mut embedded_chars = Vec::new();
+    for p in placed.iter().filter(|p| p.font == "F3") {
+        for gid in p.bytes.chunks(2) {
+            let gid = u16::from_be_bytes([gid[0], gid[1]]);
+            let c = *to_unicode.get(&gid).expect("ToUnicode entry");
+            assert_eq!(
+                font.font.glyph_id(c),
+                Some(gid),
+                "CID must be the font's own GID"
+            );
+            assert!(used_advances.contains_key(&gid));
+            embedded_chars.push(c);
+        }
+    }
+    assert_eq!(embedded_chars, vec!['ŵ', 'ŷ', 'ő']);
+    let warned = out.warnings.join("\n");
+    assert!(warned.contains("U+4E2D"), "{warned}");
+    assert!(warned.contains(&font.font.postscript_name), "{warned}");
+    // Sparse /W with one entry per used glyph.
+    for gid in embedded_chars
+        .iter()
+        .map(|&c| font.font.glyph_id(c).unwrap())
+    {
+        let w = (font.font.advance(gid) as f64 * 1000.0 / font.font.units_per_em as f64).round();
+        assert!(
+            find(&out.bytes, format!("{gid} [ {w} ]").as_bytes()).is_some(),
+            "/W entry for {gid}"
+        );
+    }
+}
+
+#[test]
+fn auto_discovery_prefers_latin_modern_when_present() {
+    let paths = flashtex_pdf::embed::candidate_paths();
+    let first_existing = paths.iter().find(|p| p.is_file());
+    let Some(first) = first_existing else {
+        eprintln!(
+            "SKIPPED auto_discovery_prefers_latin_modern_when_present: no candidate font exists"
+        );
+        return;
+    };
+    let lm_exists = paths
+        .iter()
+        .any(|p| p.is_file() && p.ends_with(flashtex_pdf::embed::LATIN_MODERN_FILE));
+    if lm_exists {
+        assert!(
+            first.ends_with(flashtex_pdf::embed::LATIN_MODERN_FILE),
+            "{first:?}"
+        );
+    }
+    let lm_index = paths
+        .iter()
+        .position(|p| p.ends_with(flashtex_pdf::embed::LATIN_MODERN_FILE));
+    let tnr_index = paths
+        .iter()
+        .position(|p| p.ends_with("Times New Roman.ttf"));
+    if let (Some(l), Some(t)) = (lm_index, tnr_index) {
+        assert!(
+            l < t,
+            "Latin Modern must be searched before Times New Roman"
+        );
+    }
+    if std::env::var_os(flashtex_pdf::embed::ENV_VAR).is_none() {
+        let discovered = flashtex_pdf::embed::EmbedFont::discover().unwrap().unwrap();
+        assert_eq!(&discovered.source, first);
+    }
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn latin_modern_pdf_renders_in_sips_and_round_trips_through_pdfkit() {
+    let Some(font) = font_with_outlines_or_skip(
+        "latin_modern_pdf_renders_in_sips_and_round_trips_through_pdfkit",
+        flashtex_pdf::truetype::Outlines::Cff,
+    ) else {
+        return;
+    };
+    let exe = env!("CARGO_BIN_EXE_flashtex-pdf");
+    let dir = std::env::temp_dir().join(format!("flashtex-pdf-lm-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let input = dir.join("lm.json");
+    let text = "Latin Modern ŵŷ ő";
+    let json = format!(
+        r#"{{"protocol_version":1,"id":"lm","type":"compile_result","payload":{{"pages":[{{"number":1,"width_pt":612,"height_pt":792,"items":[{{"kind":"text","text":"{text}","x_pt":72,"baseline_y_pt":84,"font_size_pt":14}}]}}]}}}}"#
+    );
+    std::fs::write(&input, json).unwrap();
+    let out = dir.join("lm.pdf");
+    let output = std::process::Command::new(exe)
+        .arg(&input)
+        .arg("--out")
+        .arg(&out)
+        .arg("--verify")
+        .arg("--embed-font")
+        .arg(&font.source)
+        .output()
+        .unwrap();
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(output.status.success(), "{stderr}");
+    assert!(
+        !stderr.contains("warning:"),
+        "all characters are in Latin Modern: {stderr}"
+    );
+    let size = std::fs::metadata(&out).unwrap().len();
+    eprintln!(
+        "one-line PDF with {} embedded whole: {size} bytes",
+        font.font.postscript_name
+    );
+
+    // CoreGraphics must accept the font program: with CG_PDF_VERBOSE it
+    // reports unsupported font programs on stderr while still rasterising.
+    let sips = std::process::Command::new("/usr/bin/sips")
+        .env("CG_PDF_VERBOSE", "1")
+        .args(["-s", "format", "png"])
+        .arg(&out)
+        .arg("--out")
+        .arg(dir.join("lm.png"))
+        .output()
+        .unwrap();
+    let sips_err = String::from_utf8_lossy(&sips.stderr);
+    assert!(sips.status.success(), "{sips_err}");
+    assert!(
+        !sips_err.contains("unsupported") && !sips_err.contains("Replacing"),
+        "CoreGraphics did not accept the embedded program: {sips_err}"
+    );
+    assert!(dir.join("lm.png").is_file());
+
+    // PDFKit text extraction round-trips the characters through ToUnicode.
+    let script = "import sys\nfrom Quartz import PDFDocument\nfrom Foundation import NSURL\n\
+                  d = PDFDocument.alloc().initWithURL_(NSURL.fileURLWithPath_(sys.argv[1]))\n\
+                  print(d.pageAtIndex_(0).string())\n";
+    let py = std::process::Command::new("python3")
+        .arg("-c")
+        .arg(script)
+        .arg(&out)
+        .output()
+        .unwrap();
+    let py_err = String::from_utf8_lossy(&py.stderr);
+    if !py.status.success() && py_err.contains("No module named") {
+        eprintln!(
+            "SKIPPED PDFKit round-trip: PyObjC Quartz not available ({})",
+            py_err.trim()
+        );
+    } else {
+        assert!(py.status.success(), "{py_err}");
+        let extracted = String::from_utf8_lossy(&py.stdout);
+        assert_eq!(extracted.trim(), text, "PDFKit page.string round-trip");
+    }
     let _ = std::fs::remove_dir_all(&dir);
 }

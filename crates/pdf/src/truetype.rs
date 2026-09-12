@@ -1,19 +1,35 @@
-//! Minimal TrueType reader and subsetter, written by hand so the crate keeps
-//! its zero-dependency, offline build.
+//! Minimal OpenType reader and TrueType subsetter, written by hand so the
+//! crate keeps its zero-dependency, offline build.
 //!
-//! Reads `head`, `hhea`, `hmtx`, `maxp`, `loca`, `glyf`, `cmap` (formats 4 and
-//! 12), and, when present, `OS/2`, `post`, and `name`. Writes a subset font
-//! containing only the requested glyphs plus `.notdef` and every glyph a
-//! composite refers to, renumbered densely, with `cvt `, `fpgm`, and `prep`
-//! copied so hinting instructions stay valid. Table checksums and the `head`
-//! checksum adjustment are computed, and [`verify_checksums`] reads them back.
+//! Reads `head`, `hhea`, `hmtx`, `maxp`, `cmap` (formats 4 and 12), and, when
+//! present, `OS/2`, `post`, and `name`, for both flavours of OpenType:
 //!
-//! Not supported, and reported rather than guessed: CFF/OpenType (`OTTO`),
-//! TrueType collections (`ttcf`), and fonts missing any required table.
+//! - **TrueType outlines** (`glyf`/`loca`, sfnt version 1.0 or `true`): the
+//!   font can be subset. The subset contains the requested glyphs plus
+//!   `.notdef` and every glyph a composite refers to, renumbered densely,
+//!   with `cvt `, `fpgm`, and `prep` copied so hinting stays valid. Table
+//!   checksums and `head.checkSumAdjustment` are computed and
+//!   [`verify_checksums`] reads them back.
+//! - **CFF outlines** (`CFF ` table, sfnt version `OTTO`), e.g. Latin Modern:
+//!   the raw `CFF ` table is exposed by [`TrueTypeFont::cff_table`] for
+//!   embedding whole. CFF subsetting is not implemented yet, so
+//!   [`TrueTypeFont::subset`] reports that rather than guessing.
+//!
+//! TrueType collections (`ttcf`) and fonts missing a required table are
+//! rejected with a message.
 
 use std::collections::BTreeMap;
 
-const REQUIRED: [&[u8; 4]; 6] = [b"head", b"hhea", b"hmtx", b"maxp", b"loca", b"glyf"];
+const REQUIRED: [&[u8; 4]; 4] = [b"head", b"hhea", b"hmtx", b"maxp"];
+
+/// Which outline format the font carries.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Outlines {
+    /// `glyf`/`loca`; subsettable.
+    TrueType,
+    /// `CFF ` table; embedded whole.
+    Cff,
+}
 const COPIED_IF_PRESENT: [&[u8; 4]; 3] = [b"cvt ", b"fpgm", b"prep"];
 
 #[derive(Debug, Clone)]
@@ -22,7 +38,8 @@ pub struct TrueTypeFont {
     tables: BTreeMap<[u8; 4], (usize, usize)>,
     pub units_per_em: u16,
     num_glyphs: u16,
-    /// Glyph data offsets into `glyf`, `num_glyphs + 1` entries.
+    pub outlines: Outlines,
+    /// Glyph data offsets into `glyf`, `num_glyphs + 1` entries; empty for CFF.
     loca: Vec<u32>,
     /// (advance width, left side bearing) per glyph, expanded.
     metrics: Vec<(u16, i16)>,
@@ -79,21 +96,16 @@ impl TrueTypeFont {
 
     pub fn parse(data: Vec<u8>) -> Result<Self, String> {
         let tag = rd_u32(&data, 0)?;
-        match tag {
-            0x0001_0000 | 0x7472_7565 => {} // 1.0 or 'true'
-            0x4F54_544F => {
-                return Err(
-                    "CFF-based OpenType (OTTO) is not supported; use a .ttf with glyf outlines"
-                        .into(),
-                );
-            }
+        let outlines = match tag {
+            0x0001_0000 | 0x7472_7565 => Outlines::TrueType, // 1.0 or 'true'
+            0x4F54_544F => Outlines::Cff,                    // 'OTTO'
             0x7474_6366 => {
                 return Err(
                     "TrueType collections (.ttc) are not supported; extract one face".into(),
                 );
             }
-            other => return Err(format!("not a TrueType font (sfnt version {other:#010x})")),
-        }
+            other => return Err(format!("not an OpenType font (sfnt version {other:#010x})")),
+        };
         let num_tables = rd_u16(&data, 4)? as usize;
         let mut tables = BTreeMap::new();
         for i in 0..num_tables {
@@ -116,7 +128,15 @@ impl TrueTypeFont {
             }
             tables.insert(tag, (offset, length));
         }
-        for req in REQUIRED {
+        let required: Vec<&[u8; 4]> = match outlines {
+            Outlines::TrueType => REQUIRED
+                .iter()
+                .chain([b"loca", b"glyf"].iter())
+                .copied()
+                .collect(),
+            Outlines::Cff => REQUIRED.iter().chain([b"CFF "].iter()).copied().collect(),
+        };
+        for req in required {
             if !tables.contains_key(req) {
                 return Err(format!(
                     "missing required table {:?}",
@@ -172,18 +192,28 @@ impl TrueTypeFont {
             }
         }
 
-        let loca_tbl = table(b"loca");
-        let mut loca = Vec::with_capacity(num_glyphs as usize + 1);
-        for g in 0..=num_glyphs as usize {
-            loca.push(if long_loca {
-                rd_u32(loca_tbl, 4 * g)?
-            } else {
-                rd_u16(loca_tbl, 2 * g)? as u32 * 2
-            });
-        }
-        let glyf_len = tables[b"glyf"].1 as u32;
-        if loca.windows(2).any(|w| w[0] > w[1]) || loca.last().is_some_and(|&end| end > glyf_len) {
-            return Err("loca offsets are not monotonic or exceed glyf".into());
+        let mut loca = Vec::new();
+        if outlines == Outlines::TrueType {
+            let loca_tbl = table(b"loca");
+            loca.reserve(num_glyphs as usize + 1);
+            for g in 0..=num_glyphs as usize {
+                loca.push(if long_loca {
+                    rd_u32(loca_tbl, 4 * g)?
+                } else {
+                    rd_u16(loca_tbl, 2 * g)? as u32 * 2
+                });
+            }
+            let glyf_len = tables[b"glyf"].1 as u32;
+            if loca.windows(2).any(|w| w[0] > w[1])
+                || loca.last().is_some_and(|&end| end > glyf_len)
+            {
+                return Err("loca offsets are not monotonic or exceed glyf".into());
+            }
+        } else {
+            let cff = table(b"CFF ");
+            if cff.len() < 4 || cff[0] != 1 {
+                return Err("CFF table is not a version 1 CFF".into());
+            }
         }
 
         let cmap = match tables.get(b"cmap") {
@@ -208,6 +238,7 @@ impl TrueTypeFont {
             .unwrap_or_else(|| "TrueTypeFont".into());
 
         Ok(TrueTypeFont {
+            outlines,
             tables,
             units_per_em,
             num_glyphs,
@@ -226,6 +257,12 @@ impl TrueTypeFont {
 
     pub fn num_glyphs(&self) -> u16 {
         self.num_glyphs
+    }
+
+    /// The raw `CFF ` table for a CFF-flavoured font, `None` for TrueType.
+    pub fn cff_table(&self) -> Option<&[u8]> {
+        let (o, l) = *self.tables.get(b"CFF ")?;
+        Some(&self.data[o..o + l])
     }
 
     /// Glyph id for a character, or `None` when the font has no glyph for it
@@ -251,6 +288,9 @@ impl TrueTypeFont {
     /// Builds a subset containing `gids` (in any order, duplicates allowed),
     /// `.notdef`, and every component of every composite glyph reached.
     pub fn subset(&self, gids: &[u16]) -> Result<Subset, String> {
+        if self.outlines != Outlines::TrueType {
+            return Err("CFF outlines cannot be subset yet; embed the CFF table whole".into());
+        }
         let mut wanted = std::collections::BTreeSet::new();
         wanted.insert(0u16);
         let mut stack: Vec<u16> = gids.to_vec();
@@ -595,7 +635,7 @@ mod tests {
         assert!(
             TrueTypeFont::parse(b"OTTO\0\0\0\0\0\0\0\0".to_vec())
                 .unwrap_err()
-                .contains("OTTO")
+                .contains("head")
         );
         assert!(
             TrueTypeFont::parse(b"ttcf\0\0\0\0\0\0\0\0".to_vec())

@@ -1,25 +1,54 @@
-//! Opt-in embedding of a Unicode TrueType font for characters that neither
+//! Opt-in embedding of a Unicode OpenType font for characters that neither
 //! WinAnsi Times-Roman nor Symbol can show.
 //!
-//! The font is subset to the glyphs actually used and embedded as
-//! `/FontFile2` under a Type0 / CIDFontType2 font with `Identity-H` encoding:
-//! each character is written as its two-byte subset glyph id, `/CIDToGIDMap`
-//! is `/Identity`, and a `ToUnicode` CMap maps every glyph id back to its code
-//! point so text extraction and search still work.
+//! Two font programs are handled, both under a Type0 font with `Identity-H`
+//! encoding (two bytes per glyph), a `/W` widths array, and a `ToUnicode`
+//! CMap so text extraction and search return the original characters:
+//!
+//! - **TrueType** (`glyf`): subset to the glyphs used and embedded as
+//!   `/FontFile2` under a `CIDFontType2` with `/CIDToGIDMap /Identity`.
+//! - **CFF OpenType** (`OTTO`, e.g. Latin Modern): the raw `CFF ` table is
+//!   embedded **whole** as `/FontFile3` `/Subtype /CIDFontType0C` under a
+//!   `CIDFontType0`. Latin Modern's CFF is not CID-keyed; CoreGraphics
+//!   (Preview, PDFKit, `sips`) selects glyphs by CID = GID for such a
+//!   program, so the OpenType `cmap` lookup gives the codes to write and the
+//!   raster and text extraction were verified. PDF 32000 §9.7.4.2 words the
+//!   non-CID-keyed case in terms of the CFF charset, so other viewers may
+//!   differ; converting the program to a CID-keyed CFF (as dvipdfmx does) is
+//!   the robust follow-up and will come with CFF subsetting. `/Type1C` was
+//!   tried first and CoreGraphics rejects it for a CIDFontType0
+//!   ("unsupported CIDFontType0 subtype"); `/OpenType` with the whole file
+//!   also works but is 50 KB larger per document. No subsetting yet: every
+//!   document carries the full CFF table.
 //!
 //! Nothing here is on by default. Callers opt in with a path or with
-//! [`discover`], which honours `FLASHTEX_UNICODE_FONT` and then, on macOS,
+//! [`EmbedFont::discover`], which honours `FLASHTEX_UNICODE_FONT`, then looks
+//! for Latin Modern (`FLASHTEX_LM_DIR`, TeX Live), then, on macOS,
 //! Apple-supplied system fonts. Embedding a system font into a PDF that is
 //! redistributed has licence implications the user must weigh; the README
 //! says so, and this crate does not decide for them.
 
-use crate::truetype::{Subset, TrueTypeFont};
+use crate::truetype::{Outlines, Subset, TrueTypeFont};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 pub const ENV_VAR: &str = "FLASHTEX_UNICODE_FONT";
+/// Directory containing `lmroman10-regular.otf` (Latin Modern), checked
+/// before the TeX Live locations below.
+pub const LM_DIR_ENV_VAR: &str = "FLASHTEX_LM_DIR";
+/// The Latin Modern face `auto` prefers: LaTeX's default text font, GUST
+/// Font License.
+pub const LATIN_MODERN_FILE: &str = "lmroman10-regular.otf";
+/// Roots under which `<root>/<release>/texmf-dist/fonts/opentype/public/lm/`
+/// is searched, newest release first.
+pub const TEXLIVE_ROOTS: [&str; 3] = ["/usr/local/texlive", "/opt/texlive", "/usr/share/texlive"];
+/// Fixed Latin Modern locations tried after the TeX Live roots.
+pub const LATIN_MODERN_FIXED: [&str; 2] = [
+    "/usr/share/texlive/texmf-dist/fonts/opentype/public/lm",
+    "/usr/share/texmf/fonts/opentype/public/lm",
+];
 
-/// macOS system fonts tried, in order, when no path is supplied. These are
+/// macOS system fonts tried, in order, after Latin Modern. These are
 /// Apple-supplied; see the module docs about redistribution.
 pub const MACOS_FALLBACKS: [&str; 2] = [
     "/System/Library/Fonts/Supplemental/Times New Roman.ttf",
@@ -41,7 +70,8 @@ impl EmbedFont {
         })
     }
 
-    /// `FLASHTEX_UNICODE_FONT` if set, else the first existing macOS fallback.
+    /// `FLASHTEX_UNICODE_FONT` if set, else the first existing entry of
+    /// [`candidate_paths`] (Latin Modern, then macOS system fonts).
     /// `Ok(None)` means no candidate exists; a candidate that exists but fails
     /// to parse is an error, not silently skipped.
     pub fn discover() -> Result<Option<Self>, String> {
@@ -60,24 +90,63 @@ impl EmbedFont {
     }
 }
 
-/// The fallback paths that apply on this platform (empty off macOS).
+/// The search list for `auto`, in order: `$FLASHTEX_LM_DIR/lmroman10-regular.otf`,
+/// Latin Modern under each TeX Live root (newest release directory first),
+/// the fixed Linux TeX locations, then on macOS the Apple system fonts.
+/// Paths are listed whether or not they exist; [`EmbedFont::discover`]
+/// takes the first that does.
 pub fn candidate_paths() -> Vec<PathBuf> {
-    if cfg!(target_os = "macos") {
-        MACOS_FALLBACKS.iter().map(PathBuf::from).collect()
-    } else {
-        Vec::new()
+    let mut out = Vec::new();
+    if let Some(dir) = std::env::var_os(LM_DIR_ENV_VAR) {
+        out.push(PathBuf::from(dir).join(LATIN_MODERN_FILE));
     }
+    for root in TEXLIVE_ROOTS {
+        if let Ok(entries) = std::fs::read_dir(root) {
+            let mut releases: Vec<PathBuf> = entries.flatten().map(|e| e.path()).collect();
+            releases.sort();
+            releases.reverse();
+            for release in releases {
+                out.push(
+                    release
+                        .join("texmf-dist/fonts/opentype/public/lm")
+                        .join(LATIN_MODERN_FILE),
+                );
+            }
+        }
+    }
+    for dir in LATIN_MODERN_FIXED {
+        out.push(PathBuf::from(dir).join(LATIN_MODERN_FILE));
+    }
+    if cfg!(target_os = "macos") {
+        out.extend(MACOS_FALLBACKS.iter().map(PathBuf::from));
+    }
+    out
 }
 
-/// The per-document subset: which characters map to which subset glyph ids.
+/// The glyph program to embed.
+#[derive(Debug, Clone)]
+pub enum Program {
+    /// A subset TrueType font: `/FontFile2`, `CIDFontType2`.
+    TrueType(Subset),
+    /// The font's whole `CFF ` table: `/FontFile3` `/Subtype /CIDFontType0C`,
+    /// `CIDFontType0`. Glyph ids are the original font's.
+    Cff {
+        bytes: Vec<u8>,
+        /// Advance widths in font units for every glyph id used, for `/W`.
+        used_advances: BTreeMap<u16, u16>,
+    },
+}
+
+/// The per-document embedded program: which characters map to which glyph
+/// ids in it.
 #[derive(Debug, Clone)]
 pub struct EmbeddedSubset {
-    pub subset: Subset,
+    pub program: Program,
     pub units_per_em: u16,
     /// Character to subset glyph id, for every character the font covers
     /// among those requested.
     pub chars: BTreeMap<char, u16>,
-    /// `/BaseFont` name with the six-letter subset tag.
+    /// `/BaseFont` name, with the six-letter subset tag when subset.
     pub base_font: String,
     pub descriptor: Descriptor,
 }
@@ -105,11 +174,34 @@ impl EmbedFont {
             }
         }
         let gids: Vec<u16> = old_gids.values().copied().collect();
-        let subset = self.font.subset(&gids)?;
-        let chars = old_gids
-            .iter()
-            .map(|(&c, old)| (c, subset.glyph_map[old]))
-            .collect();
+        let (program, chars, base_font): (Program, BTreeMap<char, u16>, String) =
+            match self.font.outlines {
+                Outlines::TrueType => {
+                    let subset = self.font.subset(&gids)?;
+                    let chars = old_gids
+                        .iter()
+                        .map(|(&c, old)| (c, subset.glyph_map[old]))
+                        .collect();
+                    let name = format!("{}+{}", subset_tag(&gids), self.font.postscript_name);
+                    (Program::TrueType(subset), chars, name)
+                }
+                Outlines::Cff => {
+                    let bytes = self
+                        .font
+                        .cff_table()
+                        .ok_or("OTTO font without a CFF table")?
+                        .to_vec();
+                    let used_advances = gids.iter().map(|&g| (g, self.font.advance(g))).collect();
+                    (
+                        Program::Cff {
+                            bytes,
+                            used_advances,
+                        },
+                        old_gids,
+                        self.font.postscript_name.clone(),
+                    )
+                }
+            };
         let scale =
             |v: i16| -> i32 { (v as f64 * 1000.0 / self.font.units_per_em as f64).round() as i32 };
         let f = &self.font;
@@ -125,10 +217,9 @@ impl EmbedFont {
             cap_height: scale(f.cap_height.unwrap_or(f.ascender)),
             italic_angle: f.italic_angle,
         };
-        let base_font = format!("{}+{}", subset_tag(&gids), f.postscript_name);
         Ok(EmbeddedSubset {
             units_per_em: f.units_per_em,
-            subset,
+            program,
             chars,
             base_font,
             descriptor,
@@ -150,16 +241,32 @@ fn subset_tag(gids: &[u16]) -> String {
 }
 
 impl EmbeddedSubset {
-    /// `/W` array: every glyph's width in 1000/em units, as one run from 0.
+    /// `/W` array in 1000/em units: one dense run from glyph 0 for a subset,
+    /// or one entry per used glyph id for a whole CFF.
     pub fn widths_array(&self) -> String {
         let scale = 1000.0 / self.units_per_em as f64;
-        let widths: Vec<String> = self
-            .subset
-            .advances
-            .iter()
-            .map(|&a| ((a as f64 * scale).round() as i64).to_string())
-            .collect();
-        format!("[ 0 [ {} ] ]", widths.join(" "))
+        let w = |a: u16| ((a as f64 * scale).round() as i64).to_string();
+        match &self.program {
+            Program::TrueType(subset) => {
+                let widths: Vec<String> = subset.advances.iter().map(|&a| w(a)).collect();
+                format!("[ 0 [ {} ] ]", widths.join(" "))
+            }
+            Program::Cff { used_advances, .. } => {
+                let entries: Vec<String> = used_advances
+                    .iter()
+                    .map(|(&gid, &a)| format!("{gid} [ {} ]", w(a)))
+                    .collect();
+                format!("[ {} ]", entries.join(" "))
+            }
+        }
+    }
+
+    /// Bytes of the program that will be written to the font file stream.
+    pub fn program_bytes(&self) -> &[u8] {
+        match &self.program {
+            Program::TrueType(subset) => &subset.bytes,
+            Program::Cff { bytes, .. } => bytes,
+        }
     }
 
     /// The ToUnicode CMap stream body.
