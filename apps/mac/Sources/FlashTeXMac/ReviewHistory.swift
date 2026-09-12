@@ -100,11 +100,19 @@ struct ReviewHistory: Codable, Equatable {
     // MARK: persistence
 
     /// `~/Library/Application Support/FlashTeX/review-history/<project>.json`
-    /// (`project` sanitized to a file name). nil when no Application Support
-    /// directory exists (never the case on macOS; tests pass explicit URLs).
+    /// (`project` sanitized to a file name). `FLASHTEX_REVIEW_HISTORY_DIR`
+    /// replaces the Application Support base (test runs, sandboxes); the
+    /// value `off` keeps the history in memory only. nil when no base exists.
     static func defaultURL(projectId: String,
-                           applicationSupport: URL? = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first) -> URL? {
-        guard let base = applicationSupport else { return nil }
+                           applicationSupport: URL? = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first,
+                           environment: [String: String] = ProcessInfo.processInfo.environment) -> URL? {
+        let base: URL?
+        if let dir = environment["FLASHTEX_REVIEW_HISTORY_DIR"] {
+            base = dir == "off" ? nil : URL(fileURLWithPath: dir)
+        } else {
+            base = applicationSupport
+        }
+        guard let base else { return nil }
         let safe = projectId.map { $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" || $0 == "." ? $0 : "_" }
         let name = String(safe).isEmpty ? "project" : String(safe)
         return base.appendingPathComponent("FlashTeX/review-history/\(name).json")
