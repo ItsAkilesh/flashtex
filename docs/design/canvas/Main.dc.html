@@ -1,0 +1,171 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    body { margin:0; font-family:-apple-system,"SF Pro Text",system-ui,sans-serif;
+           color:#1D1D1F; background:#E8E8EC; -webkit-font-smoothing:antialiased; }
+    a { color:#3A5BD9; } a:hover { color:#2B47B5; }
+    .mono { font-family:"SF Mono",ui-monospace,Menlo,monospace; }
+    .bar { background:#F4F4F6; border-color:#D6D6DB; }
+    .cap { font-size:11px; color:#6E6E73; }
+    .badge { font-size:10px; font-weight:700; letter-spacing:.04em; padding:2px 7px;
+             border-radius:999px; }
+  </style>
+</helmet>
+
+<div style="width:1440px;height:900px;display:flex;flex-direction:column;background:#E8E8EC;overflow:hidden">
+
+  <!-- title bar + toolbar -->
+  <div class="bar" style="display:flex;align-items:center;gap:14px;padding:10px 14px;border-bottom:1px solid #D6D6DB">
+    <div style="display:flex;gap:8px;align-items:center">
+      <span style="width:12px;height:12px;border-radius:999px;background:#FF5F57"></span>
+      <span style="width:12px;height:12px;border-radius:999px;background:#FEBC2E"></span>
+      <span style="width:12px;height:12px;border-radius:999px;background:#28C840"></span>
+    </div>
+    <div style="font-size:13px;font-weight:600">thermo-pset.tex — Problem Set 4</div>
+    <div style="flex-grow:1"></div>
+    <div style="display:flex;align-items:center;gap:16px">
+      <label style="display:flex;align-items:center;gap:6px" class="cap">Dark preview
+        <span style="width:30px;height:18px;border-radius:999px;background:#C9C9CF;position:relative;display:inline-block">
+          <span style="position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:999px;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.25)"></span>
+        </span>
+      </label>
+      <label style="display:flex;align-items:center;gap:6px" class="cap">Auto-compile
+        <span style="width:30px;height:18px;border-radius:999px;background:{{accent}};position:relative;display:inline-block">
+          <span style="position:absolute;top:2px;right:2px;width:14px;height:14px;border-radius:999px;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.25)"></span>
+        </span>
+      </label>
+      <button style="font:inherit;font-size:12px;display:flex;align-items:center;gap:5px;padding:4px 11px;border:1px solid #C6C6CC;border-radius:6px;background:#FCFCFD;color:#1D1D1F">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 12l-8.5 8.5a2.1 2.1 0 0 1-3-3L12 9"/><path d="M17.6 11.4 21 8a3 3 0 0 0-4-4l-3.4 3.4"/><path d="m11 7 6 6"/></svg>
+        Compile <span class="cap" style="color:#9A9AA0">⌘B</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- status banner -->
+  <div class="bar" style="display:flex;align-items:center;gap:12px;padding:7px 14px;border-bottom:1px solid #D6D6DB;font-size:12px">
+    <span class="badge" style="background:rgba(44,138,75,.18);color:#1F6B39">WORKER</span>
+    <span class="mono cap">thermo-pset.tex · id c-2291 · project pset4 · revision 87</span>
+    <span style="font-weight:700;color:#2C8A4B">status: ok</span>
+    <span class="cap">pdf: build/pset4.pdf</span>
+    <div style="flex-grow:1"></div>
+    <span class="mono" style="font-size:11px;color:#2C8A4B;background:rgba(44,138,75,.12);padding:2px 8px;border-radius:5px">
+      latency 41 ms · median 58 ms over 124
+    </span>
+  </div>
+
+  <!-- body -->
+  <div style="flex-grow:1;display:flex;min-height:0">
+
+    <!-- navigator -->
+    <div style="width:212px;flex-shrink:0;background:#EFEFF2;border-right:1px solid #D6D6DB;display:flex;flex-direction:column">
+      <div style="padding:9px 12px;font-size:11px;font-weight:700;letter-spacing:.05em;color:#8A8F98">PROJECT</div>
+      <div style="display:flex;flex-direction:column;gap:1px;padding:0 6px">
+        <div style="display:flex;align-items:center;gap:7px;padding:5px 8px;border-radius:6px;background:{{accent}};color:#fff;font-size:12.5px">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+          thermo-pset.tex
+        </div>
+        <div style="display:flex;align-items:center;gap:7px;padding:5px 8px;border-radius:6px;font-size:12.5px;color:#3C3C43">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+          refs.bib
+        </div>
+        <div style="display:flex;align-items:center;gap:7px;padding:5px 8px;border-radius:6px;font-size:12.5px;color:#3C3C43">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+          figures
+        </div>
+      </div>
+      <div style="flex-grow:1"></div>
+      <div style="padding:10px 12px;border-top:1px solid #D6D6DB">
+        <div class="cap" style="font-weight:700;letter-spacing:.04em;margin-bottom:5px">COMPANION</div>
+        <div style="display:flex;align-items:center;gap:7px;font-size:12px;color:#2C8A4B">
+          <span style="width:7px;height:7px;border-radius:999px;background:#2C8A4B"></span>
+          iPad Pro — nearby
+        </div>
+      </div>
+    </div>
+
+    <!-- editor -->
+    <div style="flex-grow:1;min-width:0;display:flex;flex-direction:column;background:#FDFDFE;border-right:1px solid #D6D6DB">
+      <div style="display:flex;align-items:center;gap:10px;padding:7px 12px;border-bottom:1px solid #E4E4E9">
+        <span style="font-size:12px;padding:3px 9px;border:1px solid #C6C6CC;border-radius:6px;background:#F7F7F9">thermo-pset.tex ⌄</span>
+        <div style="flex-grow:1"></div>
+        <span class="mono cap">2 184 UTF-8 bytes · 2 176 UTF-16 units</span>
+      </div>
+      <div style="flex-grow:1;display:flex;font-size:12.5px;line-height:1.85;overflow:hidden">
+        <div class="mono" style="width:46px;flex-shrink:0;text-align:right;padding:12px 9px 0 0;color:#B0B0B8;background:#F5F5F8;border-right:1px solid #E9E9EE">
+          <div>12</div><div>13</div><div>14</div><div>15</div><div>16</div><div>17</div><div>18</div><div>19</div><div>20</div><div>21</div>
+        </div>
+        <div class="mono" style="padding:12px 14px 0;flex-grow:1;white-space:pre">
+<span style="color:#7B3FA0">\section</span>{<span style="color:#1D1D1F">Carnot efficiency</span>}
+
+The maximum efficiency of a heat engine
+operating between <span style="color:#0B6E99">$T_H$</span> and <span style="color:#0B6E99">$T_C$</span> is
+
+<span style="color:#7B3FA0">\begin</span>{<span style="color:#0B6E99">equation</span>}
+  <span style="color:#0B6E99">\eta = 1 - \frac{T_C}{T_H}</span>
+<span style="color:#7B3FA0">\end</span>{<span style="color:#0B6E99">equation</span>}<span style="background:{{accent}};width:1.5px;display:inline-block;height:14px;vertical-align:-2px"></span>
+
+<span style="color:#8A8F98">% derivation continues below</span></div>
+      </div>
+      <!-- capture bar -->
+      <div class="bar" style="display:flex;align-items:center;gap:10px;padding:7px 12px;border-top:1px solid #D6D6DB">
+        <button style="font:inherit;font-size:12px;padding:4px 10px;border:1px solid #C6C6CC;border-radius:6px;background:#FCFCFD">Pin insertion point <span class="cap" style="color:#9A9AA0">⌘⇧P</span></button>
+        <span class="mono cap">anchor a-7 · thermo-pset.tex byte 1 902 @ rev 87</span>
+        <div style="flex-grow:1"></div>
+        <button style="font:inherit;font-size:12px;padding:4px 10px;border:1px solid {{accent}};border-radius:6px;background:{{accent}};color:#fff;font-weight:600">Review 1 proposal</button>
+      </div>
+    </div>
+
+    <!-- preview -->
+    <div style="width:498px;flex-shrink:0;display:flex;flex-direction:column;background:#DFDFE4">
+      <div style="flex-grow:1;padding:20px;display:flex;justify-content:center;overflow:hidden">
+        <div style="width:398px;background:#fff;box-shadow:0 2px 12px rgba(0,0,0,.14);padding:40px 42px;font-family:'Times New Roman',Times,serif">
+          <div style="font-size:19px;font-weight:700;margin-bottom:14px">1  Carnot efficiency</div>
+          <div style="font-size:13.5px;line-height:1.65;color:#1D1D1F">
+            The maximum efficiency of a heat engine operating between
+            <em>T<sub style="font-size:9px">H</sub></em> and <em>T<sub style="font-size:9px">C</sub></em> is
+          </div>
+          <div style="text-align:center;margin:22px 0;font-size:16px">
+            <em>η</em> = 1 −
+            <span style="display:inline-block;vertical-align:middle;text-align:center">
+              <span style="display:block;padding:0 5px"><em>T</em><sub style="font-size:9px">C</sub></span>
+              <span style="display:block;border-top:1px solid #1D1D1F;padding:0 5px"><em>T</em><sub style="font-size:9px">H</sub></span>
+            </span>
+            <span style="float:right;font-size:12px;color:#6E6E73">(1)</span>
+          </div>
+          <div style="clear:both;font-size:13.5px;line-height:1.65;color:#3C3C43">
+            Equality holds only for a reversible cycle.
+          </div>
+        </div>
+      </div>
+      <div class="bar" style="display:flex;align-items:center;gap:8px;padding:6px 12px;border-top:1px solid #D6D6DB">
+        <span class="cap">Page 1 of 3</span>
+        <div style="flex-grow:1"></div>
+        <span class="cap">Click any element to jump to its source</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- footer -->
+  <div class="bar" style="display:flex;align-items:center;gap:14px;padding:6px 14px;border-top:1px solid #D6D6DB">
+    <span class="cap">Ln 19, Col 24</span>
+    <span class="cap">byte 1 902</span>
+    <div style="flex-grow:1"></div>
+    <span class="cap">No diagnostics</span>
+  </div>
+</div>
+
+</x-dc>
+<script data-dc-script data-props='{"accent":{"editor":"color","default":"#3A5BD9","options":["#3A5BD9","#0B6E99","#7B3FA0","#2C8A4B"]}}'>
+class Component extends DCLogic {
+  renderVals() { return { accent: this.props.accent ?? '#3A5BD9' }; }
+}
+</script>
+</body>
+</html>
