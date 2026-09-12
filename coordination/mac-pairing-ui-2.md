@@ -113,7 +113,15 @@ runs at load 24–44), `CommandTableTests` 8/8, `OverlayTests` 10 (1 env skip),
 listener/state/reference-client suites 26 (1 env skip) — all 0 failures.
 Evidence: `docs/evidence/nearby-pairing-2026-09-12/ui-2/` (6 real-app window
 captures through a loopback pairing, `FLASHTEX_NO_ACTIVATE=1`, never activated).
-Full `swift test` with real helpers: see the final report / registration usage field.
+Full `swift test` at 1e436184 with the seven release helper binaries from the
+main checkout (`/Users/jay3332/Projects/flashtex/crates/*/target/release`,
+built earlier by the parent; not rebuilt in this worktree): 664 tests, 30
+env-gated skips, 1 failure, 200 s, 1-min load 10.6 at start / 23–30 during.
+The failure is `DocumentKindsTests.testUndeclareDetachesAndForgetsTheDeclaration`
+("helper snapshot failed: helper exited (detached)" vs "no preview controller
+attached") — outside this lane (preview-controller detach ordering); it passes
+3/3 in isolation with the same helpers (8/8 twice with both env vars, load
+18–20). Not a regression from this branch, which touches no controller code.
 
 Follow-up 1 (QR/code display + copyable fallback) and follow-up 2
 (per-companion permissions) — NOT started inside the ~75 min bound; the
@@ -121,7 +129,7 @@ Follow-up 1 (QR/code display + copyable fallback) and follow-up 2
 
 ## Checkpoint
 
-- Branch `agent/mac-pairing-ui-2/pairing-gaps` @ 1e436184, pushed. Dirty: this file, registration.
+- Branch `agent/mac-pairing-ui-2/pairing-gaps` @ 1e436184 (+ coord commits), pushed. Dirty: none.
 - No parent-retained files changed; no diffs requested from the parent.
 - Consumed main: c11c005 (via mac-shell cd58fc2e).
 - Billing: shared Claude Max quota via parent; no purchases.
