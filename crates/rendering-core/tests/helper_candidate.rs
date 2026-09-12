@@ -289,3 +289,137 @@ fn native_migration_cases_reuse_actual_helper_envelope_and_existing_binder() {
         );
     }
 }
+
+#[test]
+fn actual_raw_normalized_and_escaped_json_preserve_bound_pdf_identity() {
+    let lines = include_bytes!("fixtures/runtime-candidates/requested.stdout.jsonl")
+        .split(|b| *b == b'\n')
+        .filter(|s| !s.is_empty())
+        .collect::<Vec<_>>();
+    let value: Value = serde_json::from_slice(lines[1]).unwrap();
+    let request: Value = serde_json::from_slice(include_bytes!(
+        "fixtures/runtime-candidates/requested.request.jsonl"
+    ))
+    .unwrap();
+    let resources = resources(&value);
+    let docs = BTreeMap::from([(
+        "main.tex".into(),
+        SourceSnapshot {
+            revision: 1,
+            text: request["payload"]["documents"][0]["text"]
+                .as_str()
+                .unwrap()
+                .into(),
+        },
+    )]);
+    let normalized = serde_json::to_vec(&value).unwrap();
+    let escaped = String::from_utf8(normalized.clone())
+        .unwrap()
+        .replace("main.tex", "main\\u002etex")
+        .replace("Office", "Off\\u0069ce");
+    let original = PipelineCff::bind(lines[1], &caps(), &docs, &resources)
+        .unwrap()
+        .export_searchable(8 * 1024 * 1024)
+        .unwrap();
+    for bytes in [normalized.as_slice(), escaped.as_bytes()] {
+        let pdf = PipelineCff::bind(bytes, &caps(), &docs, &resources)
+            .unwrap()
+            .export_searchable(8 * 1024 * 1024)
+            .unwrap();
+        assert_eq!(pdf.bytes, original.bytes);
+    }
+    let mut exact = value.clone();
+    exact["payload"]["revision"] = json!(MAX_EXACT_INTEGER);
+    exact["payload"]["documents"][0]["revision"] = json!(MAX_EXACT_INTEGER);
+    let mut current = docs.clone();
+    current.get_mut("main.tex").unwrap().revision = MAX_EXACT_INTEGER as u64;
+    assert!(PipelineCff::bind(
+        &serde_json::to_vec(&exact).unwrap(),
+        &caps(),
+        &current,
+        &resources
+    )
+    .is_ok());
+    exact["payload"]["revision"] = json!(MAX_EXACT_INTEGER as u64 + 1);
+    assert!(PipelineCff::bind(
+        &serde_json::to_vec(&exact).unwrap(),
+        &caps(),
+        &current,
+        &resources
+    )
+    .is_err());
+    for token in ["1.0", "1e0", "9007199254740993", "18446744073709551616"] {
+        let altered = String::from_utf8(normalized.clone()).unwrap().replacen(
+            "\"revision\":1",
+            &format!("\"revision\":{token}"),
+            1,
+        );
+        assert!(
+            PipelineCff::bind(altered.as_bytes(), &caps(), &docs, &resources).is_err(),
+            "{token}"
+        );
+    }
+}
+
+#[test]
+fn duplicate_field_representation_gap_is_explicit_before_raw_transport_activation() {
+    let lines = include_bytes!("fixtures/runtime-candidates/requested.stdout.jsonl")
+        .split(|b| *b == b'\n')
+        .filter(|s| !s.is_empty())
+        .collect::<Vec<_>>();
+    let raw = std::str::from_utf8(lines[1]).unwrap();
+    let duplicate = raw.replacen("\"id\":", "\"id\":\"conflicting\",\"id\":", 1);
+    assert!(parse(duplicate.as_bytes()).is_err());
+    let normalized =
+        serde_json::to_vec(&serde_json::from_str::<Value>(&duplicate).unwrap()).unwrap();
+    assert!(
+        parse(&normalized).is_ok(),
+        "known normalization erases duplicate envelope field"
+    );
+    let nested = raw.replacen("\"glyph_count\":", "\"glyph_count\":0,\"glyph_count\":", 1);
+    assert!(
+        parse(nested.as_bytes()).is_err(),
+        "nested duplicate must be refused before normalization"
+    );
+}
+
+#[test]
+fn raw_helper_preserves_nested_duplicate_evidence_and_strict_source_map() {
+    let (event, result, current, _) =
+        fixture(include_bytes!("fixtures/runtime-candidates/step-1.json"));
+    let resources = resources(&event["payload"]["display_list"]);
+    let raw = serde_json::to_string(&event).unwrap();
+    for (field, prefix) in [
+        ("\"glyph_count\":", "\"glyph_count\":0,\"glyph_count\":"),
+        (
+            "\"glyph_count\":",
+            "\"glyph_\\u0063ount\":0,\"glyph_count\":",
+        ),
+        ("\"origin_x\":", "\"origin_x\":0,\"origin_x\":"),
+        (
+            "\"source_actions_enabled\":",
+            "\"source_actions_enabled\":true,\"source_actions_enabled\":",
+        ),
+        ("\"main.tex\":2", "\"main\\u002etex\":999,\"main.tex\":2"),
+    ] {
+        let invalid = raw.replacen(field, prefix, 1);
+        assert!(invalid != raw, "mutation must change the actual fixture");
+        assert!(
+            bind(invalid.as_bytes(), &result, &current, &caps(), &resources).is_err(),
+            "{field}"
+        );
+    }
+    for invalid in [
+        raw.replacen('{', "{\"extension\":1e400,", 1),
+        raw.replacen(
+            '{',
+            &format!("{{\"extension\":{}0{},", "[".repeat(130), "]".repeat(130)),
+            1,
+        ),
+        raw.replace("main.tex", "main\\ud800.tex"),
+        raw.replacen("\"origin_x\":134651073", "\"origin_x\":1e400", 1),
+    ] {
+        assert!(invalid != raw, "mutation must change the actual fixture");
+        assert!(bind(invalid.as_bytes(), &result, &current, &caps(), &resources).is_err());
+    }
+}

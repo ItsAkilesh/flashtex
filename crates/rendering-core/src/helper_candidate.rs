@@ -7,7 +7,7 @@ use crate::{
     *,
 };
 use flashtex_font_resources::registry::CffFontResource;
-use serde_json::Value;
+use serde::{Deserialize, Deserializer};
 use std::sync::Arc;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -55,28 +55,31 @@ pub fn bind(
         !current.sources.is_empty() && current.sources.len() <= 256,
         "helper source count",
     )?;
-    let value: Value =
+    // Preserve the previous whole-event finite-number/depth syntax gate, including
+    // ignored extension fields. This Value is never serialized or used for binding;
+    // typed decoding below reads ORIGINAL bytes and detects known duplicates.
+    let _: serde_json::Value =
         serde_json::from_slice(event).map_err(|e| ValidationError(format!("helper JSON: {e}")))?;
-    let p = &value["payload"];
+    let value: RawHelperEvent =
+        serde_json::from_slice(event).map_err(|e| ValidationError(format!("helper JSON: {e}")))?;
+    let p = &value.payload;
     require(
-        value["protocol_version"] == 1
-            && value["type"] == "update"
-            && value["session_id"].as_str() == Some(current.session_id.as_str())
-            && p["kind"] == "display_candidate"
-            && p["untrusted"] == true
-            && p["source_actions_enabled"] == false,
+        value.protocol_version == 1
+            && value.kind == "update"
+            && value.session_id == current.session_id
+            && p.kind == "display_candidate"
+            && p.untrusted
+            && !p.source_actions_enabled,
         "helper envelope/policy mismatch",
     )?;
     require(
-        p["project_id"].as_str() == Some(current.project_id.as_str())
-            && p["request_id"].as_str() == Some(current.request_id.as_str())
-            && p["compile_revision"].as_u64() == Some(current.compile_revision)
-            && p["membership_generation"].as_u64() == Some(current.membership_generation),
+        p.project_id == current.project_id
+            && p.request_id == current.request_id
+            && p.compile_revision == current.compile_revision
+            && p.membership_generation == current.membership_generation,
         "stale helper identity",
     )?;
-    let versions = p["source_versions"]
-        .as_object()
-        .ok_or_else(|| ValidationError("missing helper source versions".into()))?;
+    let versions = &p.source_versions;
     require(
         versions.len() == current.sources.len(),
         "helper source membership mismatch",
@@ -84,7 +87,7 @@ pub fn bind(
     let mut documents = BTreeMap::new();
     for (path, source) in &current.sources {
         require(
-            versions.get(path).and_then(Value::as_u64) == Some(source.editor_revision),
+            versions.get(path).copied() == Some(source.editor_revision),
             "stale editor source version",
         )?;
         documents.insert(
@@ -95,9 +98,8 @@ pub fn bind(
             },
         );
     }
-    let bytes =
-        serde_json::to_vec(&p["display_list"]).map_err(|e| ValidationError(e.to_string()))?;
-    let paired = pipeline_frame::pair(result, Some(&bytes), true)?
+    let bytes = p.display_list.get().as_bytes();
+    let paired = pipeline_frame::pair(result, Some(bytes), true)?
         .ok_or_else(|| ValidationError("missing paired display".into()))?;
     require(
         paired.id == current.request_id,
@@ -110,9 +112,57 @@ pub fn bind(
         list.project_id == current.project_id && list.revision == current.compile_revision,
         "helper display identity mismatch",
     )?;
-    let display = PipelineCff::bind(&bytes, capabilities, &documents, resources)?;
+    let display = PipelineCff::bind(bytes, capabilities, &documents, resources)?;
     Ok(BoundHelperCandidate {
         current: current.clone(),
         display,
     })
+}
+
+// Existing serde decoding keeps opaque display bytes until typed rendering
+// validation; this adds no JSON syntax parser.
+#[derive(Deserialize)]
+struct RawHelperEvent {
+    protocol_version: u8,
+    #[serde(rename = "type")]
+    kind: String,
+    session_id: String,
+    payload: RawHelperPayload,
+}
+#[derive(Deserialize)]
+struct RawHelperPayload {
+    kind: String,
+    untrusted: bool,
+    source_actions_enabled: bool,
+    project_id: String,
+    request_id: String,
+    compile_revision: u64,
+    membership_generation: u64,
+    #[serde(deserialize_with = "unique_versions")]
+    source_versions: BTreeMap<String, u64>,
+    display_list: Box<serde_json::value::RawValue>,
+}
+fn unique_versions<'de, D: Deserializer<'de>>(
+    decoder: D,
+) -> std::result::Result<BTreeMap<String, u64>, D::Error> {
+    struct Unique;
+    impl<'de> serde::de::Visitor<'de> for Unique {
+        type Value = BTreeMap<String, u64>;
+        fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str("unique source-version map")
+        }
+        fn visit_map<A: serde::de::MapAccess<'de>>(
+            self,
+            mut map: A,
+        ) -> std::result::Result<Self::Value, A::Error> {
+            let mut out = BTreeMap::new();
+            while let Some((key, value)) = map.next_entry::<String, u64>()? {
+                if out.len() >= 256 || out.insert(key, value).is_some() {
+                    return Err(serde::de::Error::custom("duplicate/excess source version"));
+                }
+            }
+            Ok(out)
+        }
+    }
+    decoder.deserialize_map(Unique)
 }
