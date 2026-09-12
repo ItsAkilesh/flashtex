@@ -26,8 +26,11 @@ import FlashTeXProtocol
 /// then one guarded `apply_group` per file with a fresh retained command id
 /// (`citation-rename-<UUID>`), byte-verified ranges and per-file outcomes;
 /// an uncertain reply is retried with the identical id and payload; the
-/// shell's durable state and buffers are reconciled with the helper's
-/// returned documents. Nothing here claims an all-or-nothing project edit.
+/// shell's durable state is reconciled with the helper's returned documents
+/// and a buffer takes the returned text only while it is still exactly the
+/// editor snapshot the command was sent against — text typed during the
+/// round trip is kept and resubmitted on top (GH39). Nothing here claims an
+/// all-or-nothing project edit.
 enum CitationRename {
     static let windowID = "citation-rename"
     static let planSchema = "flashtex.citation-rename-plan.v1"

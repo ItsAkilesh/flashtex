@@ -791,7 +791,8 @@ extension ProjectSearchClient {
     }
 
     /// One document's guarded `apply_group`, then reconciliation of the
-    /// shell's durable state and buffer with the helper's returned document.
+    /// shell's durable state and buffer with the helper's returned document
+    /// (validated against the editor snapshot taken at the send: `reconcile`).
     private func applyGroup(path: String, revision: Int, edits: [ProjectSearch.ReplacementEdit], label: String, commandPrefix: String) async -> ProjectSearch.FileOutcome {
         func refused(_ why: String) -> ProjectSearch.FileOutcome { .init(path: path, state: .refused(why)) }
         // An edit still in flight for this path would make the reviewed hash stale: wait, bounded.
@@ -813,8 +814,48 @@ extension ProjectSearchClient {
         return await sendApplyGroup(path: path, commandID: commandID, payload: payload, edits: edits)
     }
 
+    /// The exact editor state an `apply_group` is sent against (GH39): the
+    /// editor revision and the byte-exact buffer of `path` at the send. The
+    /// reply is reconciled against THIS, never against the helper's command
+    /// revision, the returned document revision/hash or a compile admission —
+    /// those are different authorities and none of them can say whether the
+    /// user typed meanwhile.
+    @MainActor
+    struct EditorSnapshot: Equatable {
+        var editorRevision: Int
+        var text: String
+
+        /// Whether the open buffer of `path` (the active buffer, or an open
+        /// non-active document) still equals this snapshot.
+        func stillCurrent(in model: ShellModel, path: String) -> Bool {
+            if path == model.activePath {
+                return model.editorRevision == editorRevision && model.activeText.sameBytes(as: text)
+            }
+            guard let open = model.documents.first(where: { $0.path == path }) else { return true } // not open: nothing local to protect
+            return open.text.sameBytes(as: text)
+        }
+
+        static func take(_ model: ShellModel, path: String) -> EditorSnapshot {
+            let text = path == model.activePath ? model.activeText : (model.documents.first(where: { $0.path == path })?.text ?? "")
+            return .init(editorRevision: model.editorRevision, text: text)
+        }
+    }
+
+    /// `controllerRequest` (Navigation.swift) that also yields the request id,
+    /// so the adopted history result can be recorded as the in-flight edit its
+    /// follow-up preview binds to (exactly what the history panel does).
+    private func controllerRequestTracked(_ type: String, _ payload: PreviewControllerClient.JSONObject) async -> (id: String, reply: Result<[String: Any], ControllerError>)? {
+        guard let controller = model.controller, controller.isRunning, model.controllerState.ready else { return nil }
+        let id: String
+        do { id = try controller.send(type, payload) } catch { return ("", .failure(.init(message: "\(type) failed to send: \(error.localizedDescription)"))) } // nothing was sent: no id
+        return await withCheckedContinuation { cont in
+            model.controllerState.awaiting[id] = { cont.resume(returning: (id, $0)) }
+        }
+    }
+
     private func sendApplyGroup(path: String, commandID: String, payload: PreviewControllerClient.JSONObject, edits: [ProjectSearch.ReplacementEdit]) async -> ProjectSearch.FileOutcome {
-        guard let reply = await model.controllerRequest("apply_group", payload) else {
+        let snapshot = EditorSnapshot.take(model, path: path) // recorded BEFORE the send; the await below is the GH39 window
+        guard let (requestID, reply) = await controllerRequestTracked("apply_group", payload) else {
             return .init(path: path, state: .uncertain("helper detached before the reply", commandID: commandID))
         }
         switch reply {
@@ -826,7 +867,7 @@ extension ProjectSearchClient {
         case .success(let dict):
             guard let history = dict["history"] as? [String: Any], let doc = history["document"] as? [String: Any],
                   doc["path"] as? String == path, let newRevision = doc["revision"] as? Int,
-                  let text = doc["text"] as? String, let sha = doc["source_sha256"] as? String else {
+                  let text = doc["text"] as? String, doc["source_sha256"] is String else {
                 return .init(path: path, state: .uncertain("apply_group reply has no history.document for \(path)", commandID: commandID))
             }
             retainedCommands.removeValue(forKey: commandID)
@@ -837,26 +878,49 @@ extension ProjectSearchClient {
             }
             if history["replayed_command"] as? Bool == true { note += " (replayed: the ledger had already applied this command)" }
             if let e = dict["preview_error"] as? String { note += " (preview error: \(e))" }
-            reconcile(path: path, revision: newRevision, sha256: sha, text: text)
+            if !reconcile(path: path, document: doc, requestID: requestID, payload: dict, snapshot: snapshot) {
+                note += " (the editor moved during the apply: your newer text is kept, not overwritten, and is resubmitted on top of durable r\(newRevision))"
+            }
             return .init(path: path, state: .applied(revision: newRevision, commandID: commandID, note: note))
         }
     }
 
-    /// Records the helper's post-apply document exactly as `document`/`edit`
-    /// results are recorded (durable revision/hash/text, editor mapping) and
-    /// replaces the open buffer — which equalled the previous durable text —
-    /// with the new durable text. The active document goes through
-    /// `updateActiveText` (editor revision, bridge, auto-compile: the buffer
-    /// is already durable, so no edit is sent).
-    private func reconcile(path: String, revision: Int, sha256: String, text: String) {
-        model.controllerState.durable[path] = (revision, sha256)
-        model.controllerState.textByDurable[path, default: [:]][revision] = text
-        if path == model.activePath {
-            model.updateActiveText(text)
-        } else if let i = model.documents.firstIndex(where: { $0.path == path }) {
-            model.documents[i].text = text
+    /// Reconciles the shell with the helper's post-apply document (GH39).
+    /// The durable identity (revision/hash/text) is recorded FIRST and
+    /// unconditionally through `controllerAdoptHistoryResult` — the same
+    /// single writer the history panel uses, so `document`/`edit` results,
+    /// undo/redo and grouped applies record durability identically. The
+    /// buffer is replaced with the returned text ONLY when it is still exactly
+    /// the `snapshot` the command was sent against (same editor revision and
+    /// bytes; the active document then goes through `updateActiveText` —
+    /// editor revision, bridge, auto-compile — and no edit is sent because the
+    /// buffer is already durable). When the editor moved during the round trip
+    /// the local text is kept and the normal `controllerSubmitEdit` path
+    /// resubmits it on top of the new durable revision: the helper's command
+    /// revision, the returned document revision/hash and any compile admission
+    /// are never permission to overwrite newer local text. Returns false when
+    /// the editor had moved (the buffer was kept).
+    private func reconcile(path: String, document: [String: Any], requestID: String, payload: [String: Any], snapshot: EditorSnapshot) -> Bool {
+        let current = snapshot.stillCurrent(in: model, path: path)
+        let revision = document["revision"] as? Int ?? -1
+        // `Int.min` never equals an editor revision, so the buffer is kept even
+        // if the revision matched but the bytes did not (never observed; the
+        // byte check is the belt to the revision's braces).
+        model.controllerAdoptHistoryResult(document, requestID: requestID, payload: payload,
+                                           issuedAtEditorRevision: current ? snapshot.editorRevision : Int.min)
+        if current, path != model.activePath, let i = model.documents.firstIndex(where: { $0.path == path }),
+           let text = document["text"] as? String, !model.documents[i].text.sameBytes(as: text) {
+            model.documents[i].text = text // an open non-active document that still equals the snapshot
         }
-        model.controllerState.editorRevisionByDurable[path, default: [:]][revision] = model.editorRevision
+        if !current {
+            // The returned document derives from the editor state at the send
+            // plus the reviewed replacement, not from the current buffer: bind
+            // its preview to the send-time editor revision so it is shown as
+            // stale until the resubmitted buffer's own preview arrives.
+            model.controllerState.editorRevisionByDurable[path, default: [:]][revision] = snapshot.editorRevision
+            model.log("\(path): editor moved during apply_group (editor revision \(snapshot.editorRevision) → \(model.editorRevision)); durable r\(revision) recorded, local text kept and resubmitted")
+        }
+        return current
     }
 
     /// Retries an uncertain file with its retained command id and payload

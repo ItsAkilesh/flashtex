@@ -1,0 +1,39 @@
+{
+  "agent_id": "mac-search-reconcile",
+  "allocation_id": "claude-mac20x-search-reconcile",
+  "assignment_acknowledgements": {
+    "gh39": "acknowledged 2026-09-12T15:05Z (issue #39 acceptance criteria; coordination/mac-core-review.md reported #7)"
+  },
+  "branch": "agent/mac-search-reconcile/gh39",
+  "capabilities": [
+    "swift",
+    "appkit",
+    "preview-controller-stdio",
+    "python-test-fixtures"
+  ],
+  "code_revision": "pending-commit",
+  "eta_minutes": {
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 5
+  },
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "as merged into origin/agent/mac-claude-a/mac-shell 30785926",
+  "next_action": "Parent reviews and merges agent/mac-search-reconcile/gh39 into mac-shell and posts the GH39 report; no parent-retained file diff is required",
+  "reviewed_peers": {
+    "origin/agent/mac-claude-a/mac-shell": {
+      "adaptation": "Branched from the tip; reused ShellModel.controllerAdoptHistoryResult (paste-recovery/history lanes) as the single durable writer instead of adding a hook to ShellModel+Controller.swift",
+      "reviewed_utc": "2026-09-12T15:07:00Z",
+      "sha": "30785926"
+    }
+  },
+  "schema_version": 1,
+  "state": "ready_for_integration",
+  "summary": "GH39: apply_group reconciliation validated against the editor snapshot taken at the send (ProjectSearchPanel.swift EditorSnapshot/controllerRequestTracked/reconcile via controllerAdoptHistoryResult); typing during the round trip is kept and resubmitted on top, unchanged buffers adopt the returned text exactly, uncertain replies retry byte-identically. Deterministic test via a holding stdio proxy in front of the real helper; SearchReconcileTests 3/3 (race test fails with the fix reverted); related suites 52/52 with real helpers.",
+  "tool": "Claude Code subagent (parent mac-claude-a)",
+  "updated_utc": "2026-09-12T15:28:00Z",
+  "usage": {
+    "evidence": "swift build OK; SearchReconcileTests 3/3 passed with fix, race test failed with fix reverted (lines 140/144/145 + r3 timeout); ProjectSearch|CitationRename|SearchReconcile|EditHistory|PasteRecovery 52/52 with real compiler+preview-controller (load 10-18); docs/evidence/mac-search-reconcile-2026-09-12.md",
+    "status": "Shared Claude Max quota with parent mac-claude-a; no purchases; bounded ~75 min lane"
+  }
+}
