@@ -22,12 +22,14 @@ const PINNED: &[(&str, &str, bool)] = &[
     ("plain-paragraphs", "ok", true),
     ("macro-arguments", "ok", true),
     ("macro-scope", "ok", true),
-    ("unicode-literals", "ok", true),
+    // Times-Roman has no Japanese glyphs; shaping now reports that explicitly.
+    ("unicode-literals", "recovered", true),
     ("math-inline-display", "ok", true),
     ("included-file", "ok", true),
     ("include-scope", "ok", true),
     ("comments-escapes", "ok", true),
-    ("literal-source-map", "ok", true),
+    // The literal CJK glyph is absent from Times-Roman and is now diagnosed.
+    ("literal-source-map", "recovered", true),
     ("unknown-command", "recovered", true),
     ("unclosed-group", "recovered", true),
     ("extra-closing-group", "recovered", true),
@@ -65,7 +67,14 @@ fn compile_case(case: &Value) -> Value {
         .iter()
         .map(|d| {
             let rel = d.as_str().expect("document path");
-            let text = std::fs::read_to_string(dir.join(rel)).unwrap_or_default();
+            // Never default to empty: a gate that silently compiles an empty
+            // document passes every assertion while testing nothing. This bit
+            // me — two cases were reported ok while their real text was never
+            // read, because the entry path and the document path differ.
+            let full = dir.join(rel);
+            let text = std::fs::read_to_string(&full).unwrap_or_else(|e| {
+                panic!("corpus case {id}: cannot read {}: {e}", full.display())
+            });
             let mut doc = Value::obj();
             doc.set("path", json::str_(rel));
             doc.set("text", json::str_(text));
@@ -175,7 +184,8 @@ fn every_corpus_case_span_slices_its_own_document() {
                 let path = src.get("path").and_then(|v| v.as_str()).unwrap();
                 let a = src.get("start_byte").unwrap().as_i64().unwrap() as usize;
                 let b = src.get("end_byte").unwrap().as_i64().unwrap() as usize;
-                let text = std::fs::read_to_string(dir.join(path)).unwrap_or_default();
+                let text = std::fs::read_to_string(dir.join(path))
+                    .unwrap_or_else(|e| panic!("{id}: cannot read {path} to verify a span: {e}"));
                 assert!(
                     text.get(a..b).is_some(),
                     "{id}: span {a}..{b} in {path} does not slice that document"
