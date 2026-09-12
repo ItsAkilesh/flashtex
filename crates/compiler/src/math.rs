@@ -918,6 +918,12 @@ pub const COMMAND_GLYPHS: &[(&str, &str)] = &[
     ("vee", "∨"),
     ("Rightarrow", "⇒"),
     ("mid", "∣"),
+    // Symbol.afm has no 0x27F8..0x27FF long-arrow range, only the shorter
+    // 0x21D2 double-arrow already used for `\Rightarrow`. Reusing that real
+    // glyph loses only the extra stroke length — the same approximation
+    // class `take_delimiter` already makes for `\bigl`/`\bigr` (real parens,
+    // no size scaling).
+    ("Longrightarrow", "⇒"),
 ];
 
 /// Named operators typeset as upright roman words (`\\sin x`, `\\lim_{x\\to 0}`).

@@ -1,0 +1,30 @@
+{
+  "agent_id": "mac-ios-app",
+  "allocation_id": "openai-mac-plus-ft003",
+  "assignment_acknowledgements": {},
+  "branch": "agent/mac-ios-app/acceptance-slice",
+  "capabilities": [
+    "swift",
+    "xcode",
+    "ios-simulator"
+  ],
+  "code_revision": "925acba64e9af8a7a740d8efa782a19971e515ef",
+  "eta_minutes": {
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 0
+  },
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "9ba9851cefb3ba263ffe1d25f42cb7fdd27371c4",
+  "next_action": "parent review; Commander decision on carrying capture_status over the nearby session if the iPad must show proposal/insertion outcome",
+  "reviewed_peers": {},
+  "schema_version": 1,
+  "state": "ready_for_integration",
+  "summary": "iPad capture companion slice (#51) delivered on agent/mac-ios-app/acceptance-slice: apps/ios FlashTeXPad (PencilKit canvas/photo/sample -> transfer-v1 capture_submit over the reference NearbyClient TLS-PSK, per-capture receipt/error/retry status); iPad Air 11-inch (M3) iOS 26.3 simulator; hosted unit tests 12/12, XCUITests 4/4 on the last complete runs (results-13/14); conversion outcome not carried by nearby-v1 \u00a76, labelled not faked",
+  "tool": "Claude Code (Fable) subagent of mac-claude-a",
+  "updated_utc": "2026-09-12T19:13:38Z",
+  "usage": {
+    "evidence": "docs/evidence/ios-acceptance-2026-09-12/",
+    "status": "parent's Claude Max 20x shared quota; not measurable from this lane"
+  }
+}

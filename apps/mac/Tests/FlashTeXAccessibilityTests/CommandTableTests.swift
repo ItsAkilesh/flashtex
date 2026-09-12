@@ -85,7 +85,7 @@ final class CommandTableTests: XCTestCase {
     /// (`ProjectSearchCommands`, Edit = `after: .textEditing`). In the panel
     /// file only the text from its `Commands` type on is read, so the
     /// window's own buttons (Search, Next Match ⌘G) are not menu items.
-    static let commandFiles = ["FlashTeXMacApp.swift", "Navigation.swift", "ProjectSearchPanel.swift", "DiagnosticsPanel.swift"]
+    static let commandFiles = ["FlashTeXMacApp.swift", "Navigation.swift", "ProjectSearchPanel.swift", "DiagnosticsPanel.swift", "CitationRename.swift"]
 
     /// `Button("Title")` items with their `keyboardShortcut` and enclosing
     /// menu from `FlashTeXMacApp.swift` (File = `replacing: .newItem`,
@@ -104,6 +104,7 @@ final class CommandTableTests: XCTestCase {
                 if line.contains("CommandGroup(replacing: .newItem)") { menu = "File" }
                 else if line.contains("CommandGroup(after: .pasteboard)") || line.contains("CommandGroup(after: .textEditing)") { menu = "Edit" }
                 else if line.contains("CommandMenu(\"Navigate\")") { menu = "Navigate" }
+                else if line.contains("CommandGroup(after: .sidebar)") || line.contains("CommandGroup(after: .toolbar)") { menu = "View" }
                 else if line.contains("CommandGroup(replacing: .help)") || line.contains("CommandGroup(after: .help)") { menu = "Help" }
                 else if line.contains(" Window(\"") || line.contains("WindowGroup(\"") { menu = "?" }
                 if let r = line.range(of: "Button(\""), let end = line.range(of: "\")", range: r.upperBound..<line.endIndex) {
@@ -206,20 +207,29 @@ final class CommandTableTests: XCTestCase {
 
     func testFocusOrderMatchesContentViewPaneOrder() throws {
         let text = try String(contentsOf: Self.shellSources.appendingPathComponent("ContentView.swift"), encoding: .utf8)
-        // 1. The split view places the editor column before the preview column.
+        // 1. The window is a NavigationSplitView: the sidebar column first, then
+        //    the detail's HSplitView places the editor column before the preview
+        //    column, and the Problems panel follows both.
         let root = try Self.structBody("ContentView", in: text)
+        let sidebar = try XCTUnwrap(root.range(of: "WorkspaceSidebar()"))
         let editor = try XCTUnwrap(root.range(of: "EditorPane()"))
         let preview = try XCTUnwrap(root.range(of: "PreviewPane()"))
+        let problems = try XCTUnwrap(root.range(of: "ProblemsPanel()"))
+        XCTAssertLessThan(sidebar.lowerBound, editor.lowerBound)
         XCTAssertLessThan(editor.lowerBound, preview.lowerBound)
-        XCTAssertTrue(root[..<editor.lowerBound].contains("HSplitView"))
-        // 2. Within each column the markers appear in the table's order, and
-        //    the table lists the columns in the split view's order.
-        let containers = ["EditorPane", "PreviewPane"]
+        XCTAssertLessThan(preview.lowerBound, problems.lowerBound)
+        XCTAssertTrue(root[..<sidebar.lowerBound].contains("NavigationSplitView"))
+        XCTAssertTrue(root[sidebar.upperBound..<editor.lowerBound].contains("HSplitView"))
+        // 2. Within each container the markers appear in the table's order, and
+        //    the table lists the containers in the window's order.
+        let containers = ["WorkspaceSidebar", "EditorPane", "PreviewPane", "ProblemsPanel"]
         var flattened: [String] = []
         for c in containers {
-            let body = try Self.structBody(c, in: text)
             let panes = FocusOrder.panes.filter { $0.container == c }
             XCTAssertFalse(panes.isEmpty, c)
+            let file = try XCTUnwrap(Set(panes.map(\.sourceFile)).count == 1 ? panes[0].sourceFile : nil, "\(c): one source file")
+            let source = try String(contentsOf: Self.shellSources.appendingPathComponent(file), encoding: .utf8)
+            let body = try Self.structBody(c, in: source)
             var cursor = body.startIndex
             for p in panes {
                 let r = try XCTUnwrap(body.range(of: p.sourceMarker, range: cursor..<body.endIndex),
@@ -231,28 +241,42 @@ final class CommandTableTests: XCTestCase {
         XCTAssertEqual(flattened, FocusOrder.panes.map(\.name), "table order is the view order")
         XCTAssertEqual(Set(FocusOrder.panes.map(\.container)), Set(containers))
         // 3. No focusable pane in the source is missing from the table.
-        for marker in ["SourceEditorView(", "CaptureBar()", "BridgeBar()", "PreviewView(", "diagnosticsList("] {
+        for marker in ["ProjectSection()", "DocumentTabBar()", "SourceEditorView(", "CaptureBar()", "BridgeBar()", "PreviewView(", "problemsList("] {
             XCTAssertTrue(FocusOrder.panes.contains { $0.sourceMarker == marker }, marker)
         }
-        XCTAssertEqual(FocusOrder.description, "Editor → Capture bar → Bridge bar → Preview → Diagnostics")
+        XCTAssertEqual(FocusOrder.description, "Sidebar → Tabs → Editor → Capture bar → Bridge bar → Preview → Problems")
+        // The sidebar's three sections are in the sidebar source in that order
+        // and the Problems panel hosts the shared diagnostics list.
+        let sidebarSource = try String(contentsOf: Self.shellSources.appendingPathComponent("WorkspaceSidebar.swift"), encoding: .utf8)
+        let sidebarBody = try Self.structBody("WorkspaceSidebar", in: sidebarSource)
+        var cursor = sidebarBody.startIndex
+        for section in ["ProjectSection()", "OutlineSection(", "ProblemsSection()"] {
+            let r = try XCTUnwrap(sidebarBody.range(of: section, range: cursor..<sidebarBody.endIndex), section)
+            cursor = r.upperBound
+        }
+        let problemsSource = try String(contentsOf: Self.shellSources.appendingPathComponent("ProblemsPanel.swift"), encoding: .utf8)
+        XCTAssertTrue(problemsSource.contains("DiagnosticsListView(diagnostics: diags, panel: model.problemsPanel"), "the Problems panel hosts the diagnostics list")
     }
 
     func testFocusOrderHelpText() {
-        XCTAssertEqual(FocusOrder.panes.count, 5)
+        XCTAssertEqual(FocusOrder.panes.count, 7)
         for p in FocusOrder.panes {
             XCTAssertGreaterThan(p.rationale.count, 30, p.name)
             XCTAssertGreaterThan(p.contents.count, 20, p.name)
         }
-        XCTAssertTrue(FocusOrder.helpLines[0].hasPrefix("1. Editor: "))
-        XCTAssertTrue(FocusOrder.helpLines[4].hasPrefix("5. Diagnostics: "))
+        XCTAssertTrue(FocusOrder.helpLines[0].hasPrefix("1. Sidebar: "))
+        XCTAssertTrue(FocusOrder.helpLines[2].hasPrefix("3. Editor: "))
+        XCTAssertTrue(FocusOrder.helpLines[6].hasPrefix("7. Problems: "))
         XCTAssertEqual(FocusOrder.statusLines.count, 3)
+        XCTAssertTrue(FocusOrder.statusLines[0].hasPrefix("Toolbar: "))
+        XCTAssertTrue(FocusOrder.statusLines[0].contains("⌘⇧P"), "the palette is discoverable from the toolbar line")
     }
 
     // MARK: help window
 
     func testHelpViewCoversEveryCommandAndMenu() {
         let menus = AccessibilityHelpView.menus
-        XCTAssertEqual(menus.map(\.menu), ["FlashTeX", "File", "File / toolbar", "Edit", "Editor", "Navigate", "Preview", "Help", "Find in Project window"])
+        XCTAssertEqual(menus.map(\.menu), ["FlashTeX", "File", "File / toolbar", "Edit", "View", "Editor", "Navigate", "Preview", "Help", "Find in Project window"])
         XCTAssertEqual(menus.flatMap(\.entries).count, AccessibilityCommand.allCases.count)
         XCTAssertEqual(AccessibilityHelpView.windowID, "a11y-help")
         XCTAssertEqual(AccessibilityHelpView.menuItem, "FlashTeX Accessibility Help")
@@ -260,6 +284,7 @@ final class CommandTableTests: XCTestCase {
         let notes = AccessibilityHelpView.voiceOverNotes.joined(separator: "\n")
         for p in FocusOrder.panes where p.name != "Bridge bar" { XCTAssertTrue(notes.contains(p.name + ":"), p.name) }
         XCTAssertTrue(notes.contains("Completion popup"))
+        XCTAssertTrue(notes.contains("Command palette (⌘⇧P)"))
         XCTAssertTrue(notes.contains(CompletionAccessibility.listLabel))
         XCTAssertTrue(notes.contains(PreviewAccessibility.goToSourceAction))
         XCTAssertTrue(notes.contains(DiagnosticRowAccessibility.noSourceHint))

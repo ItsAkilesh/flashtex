@@ -196,7 +196,7 @@ established fixtures need (`ec-lmr10`, `ec-lmr12`, `rm-lmr12`, `rm-lmr8`,
   results are logged and never shown.
 
 - Capture review and insertion (contract "Capture and insertion", Mac side):
-  `Edit > Pin Insertion Point` (⌘⇧P) records the caret as a `destination_id`
+  `Edit > Pin Insertion Point` (⌘⌥P) records the caret as a `destination_id`
   anchor (UTF-8 byte offset + revision + following context). `Edit > Open Capture
   Proposal…` (⌘⇧I) queues a `capture_proposal`; a review sheet shows editable
   LaTeX, ambiguities, and required packages. Approve applies exactly one edit
@@ -237,7 +237,7 @@ What works offline (no key, no network — verified with `RealBridgeTests`):
   + replacement, derived from the common prefix/suffix of old and new text and
   widened to UTF-8 scalar boundaries); a refused edit triggers a `document_open`
   resynchronization. `File > Open` re-opens the new document.
-- `Pin Insertion Point` (⌘⇧P) also sends `destination_pin` for the caret (or
+- `Pin Insertion Point` (⌘⌥P) also sends `destination_pin` for the caret (or
   selection) byte range and stores the returned anchor with its immutable
   binding. The local context anchor remains for offline review.
 - `Edit > Submit Sample Capture…` (⌘⇧U) sends `capture_submit` for a chosen
@@ -332,9 +332,9 @@ timeout; (2) `replace_document` bumps exactly one revision, so aligning an
 older store to a newer editor revision takes one round trip per step (bounded
 at 10 000 here); a `set_revision`-style alignment would remove that loop.
 
-Not implemented here: the Mac credential adapter that would run the bridge with
-`--enable-grok` and supply the authorized `XAI_API_KEY` (so no real conversion
-happens from this shell), the companion network transport (captures come from
+Implemented in `GrokCredential.swift` (see `docs/grok-live.md`): the Mac credential adapter runs the bridge with
+`--enable-grok` and supplies the authorized `XAI_API_KEY` from the Keychain or the environment. Not implemented here:
+the companion network transport (captures come from
 a file picker), compiler validation of proposals before review, and ledger
 compaction.
 
@@ -411,7 +411,7 @@ FT-004's. What is implemented here (Mac side only):
   Network.framework does not say which table PSK a session used. Reply
   `hello_ack {mac_name, nonce, destination, pair_psk?}`; `destination_query` →
   `destination {destination: {destination_id, project_id, path, base_revision} | null}`
-  from the pinned anchor (⌘⇧P), so the companion never types IDs.
+  from the pinned anchor (⌘⌥P), so the companion never types IDs.
 - Captures: `capture_submit` is validated (ids, MIME, instructions ≤ 4096 B)
   and handed to a `CaptureSink` (`ShellModel+Nearby.swift`). With a capture
   bridge attached the capture is forwarded through `BridgeSession.submit`
@@ -573,7 +573,7 @@ is a stand-in, the real listener is only exercised from `apps/mac`.
 
 ## Launch hooks and evidence
 
-Assistant: `FLASHTEX_ASSISTANT_CONTEXT` (helper, offline), `FLASHTEX_ASSISTANT_PROVIDER` (optional local provider command — the only thing that may reach a network, by the user's choice).
+Assistant: `FLASHTEX_ASSISTANT_CONTEXT` (helper, offline), `FLASHTEX_ASSISTANT_PROVIDER` (`grok` for live xAI through the helper's `--provider-session`, or a local provider command — the only things that may reach a network, by the user's choice), `FLASHTEX_ASSISTANT_CONTEXT_GROK` (a `--features grok` helper build), `FLASHTEX_GROK_MODEL`, `XAI_API_KEY`/`FLASHTEX_GROK_API_KEY` (after the Keychain), `FLASHTEX_KEYCHAIN_OFF=1`, `FLASHTEX_GROK_BASE_URL` (probe only, loopback/https). See `docs/grok-live.md`.
 
 `FLASHTEX_NO_ACTIVATE=1` launches without activating/focusing the window (for
 automation; never steals keyboard focus). `FLASHTEX_DEBOUNCE_MS` sets the
@@ -797,11 +797,14 @@ explain that nothing is loaded.
 | ⌘B | Compile now (auto-compile also runs 250 ms after edits) |
 | ⌘⇧E | Export PDF… (CoreGraphics, always white) |
 | ⌘⌥E | Export PDF via Rust writer… (`flashtex-pdf --verify`, always white) |
-| ⌘⇧P | Pin insertion point at caret (capture destination anchor) |
+| ⌘⌥P | Pin insertion point at caret (capture destination anchor) |
 | ⌘⇧I | Open capture proposal… (review sheet; ⏎ approves, inserts one undoable edit) |
 | ⌘⇧U | Submit sample capture… (PNG/JPEG → `capture_submit` through the attached bridge) |
 | ⌘⇧G | Convert capture (`capture_convert` for the latest received capture) |
 | ⌘⇧N | Nearby Companion… (advertise, pairing code, paired devices, received captures; Return shows or resumes a pairing code, Esc cancels it or dismisses a banner, Tab walks Advertise → pairing controls → Forget → Clear; the step indicator, status row and every transition are VoiceOver text) |
+| Edit > Rename Citation… | Rename citation window (reviewed `plan_citation_rename` across the project → one `apply_group`; also in the toolbar) |
+| ⌘⇧P | Command palette (View; also the toolbar's Commands button): every command in this table with its menu and shortcut; type to filter, ↑/↓ choose, Return runs, Esc closes |
+| ⌘⇧M | Toggle Problems panel (View): the grouped diagnostics list under the editor and preview with a severity filter, jump, explanations and Fix…; the sidebar's Problems rows and the status bar counts open it too |
 | Edit > Durable History… | Durable History window (undo/redo on the helper's edit ledger: Refresh, Undo, Redo, Retry/Discard after an uncertain reply, retention gauge, both stacks) |
 | ⌘⇧F | Find in Project… window (case-sensitive literal search of the durable project source; Return searches or goes to the selected match, ↑/↓ move the selection, Esc closes; Plan Replacement / Apply for reviewed replacement) |
 | ⌘G | Next match (while the Find in Project window is key: selects the next match, wrapping, and goes there) |

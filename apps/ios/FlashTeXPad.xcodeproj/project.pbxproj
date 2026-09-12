@@ -1,0 +1,774 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 60;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		E61ADC75D2613BC05A89C79F /* CaptureView.swift in Sources */ = {
+			isa = PBXBuildFile;
+			fileRef = DAB5331096CACE1D1611C89C;
+		};
+		09CB227A124543638E92BA22 /* ContentView.swift in Sources */ = {
+			isa = PBXBuildFile;
+			fileRef = 4FDDBCFB400C1F50ACD45711;
+		};
+		045BB3308B2C5DD1D387C7D2 /* FlashTeXPadApp.swift in Sources */ = {
+			isa = PBXBuildFile;
+			fileRef = 8154323B8EA2D5445564B276;
+		};
+		01A4FCBFEF9A261F77159BC4 /* PadModel.swift in Sources */ = {
+			isa = PBXBuildFile;
+			fileRef = 3CCE5357B9F6A9468F70115A;
+		};
+		A87D4C8E0CAD968374E177C5 /* compile-result.json in Resources */ = {
+			isa = PBXBuildFile;
+			fileRef = B814BF36B6E3FFF2A9D456D9;
+		};
+		BC0A22AF45038EEAE34C7CD7 /* demo.tex in Resources */ = {
+			isa = PBXBuildFile;
+			fileRef = 696D572EB552F1B485EC7FD4;
+		};
+		BD32D5321034B632D5392E0B /* review-workflow.json in Resources */ = {
+			isa = PBXBuildFile;
+			fileRef = DF516A2769098DAFFC545638;
+		};
+		7B96FABAB641BC15070A5149 /* sample-capture.png in Resources */ = {
+			isa = PBXBuildFile;
+			fileRef = B06BAEBE69778185CEF5702F;
+		};
+		BCD3BDDACBAEF96A6285F2EC /* FlashTeXPadKit in Frameworks */ = {
+			isa = PBXBuildFile;
+			productRef = 85E6D96FADC9313C36D00656 /* FlashTeXPadKit */;
+		};
+		A100103B7F504A91A951AB15 /* NearbyClient in Frameworks */ = {
+			isa = PBXBuildFile;
+			productRef = 49D3CBD738C0F617AF6861F6 /* NearbyClient */;
+		};
+		9A3F727C304DB6C49671A74B /* FlashTeXProtocol in Frameworks */ = {
+			isa = PBXBuildFile;
+			productRef = D5BA7FCD01AB119B8650B1DC /* FlashTeXProtocol */;
+		};
+		8852E4C9E3130B7E00B73EA9 /* AcceptanceSliceTests.swift in Sources */ = {
+			isa = PBXBuildFile;
+			fileRef = 9350128EF36336405FA0A78F;
+		};
+		5D3BA29BB7D8E223A38ED5BC /* CaptureQueueTests.swift in Sources */ = {
+			isa = PBXBuildFile;
+			fileRef = 61E5796C7F96C2C8B3E99B01;
+		};
+		72B8562FE1F50D30C56A9348 /* FakeMac.swift in Sources */ = {
+			isa = PBXBuildFile;
+			fileRef = 8EA2299F037B17191402BB8E;
+		};
+		53C0190BDFB8EEED4C6E1598 /* FlashTeXPadKit in Frameworks */ = {
+			isa = PBXBuildFile;
+			productRef = 6DAF713200557312FB0DE2B8 /* FlashTeXPadKit */;
+		};
+		05E5D02A6DD9BC0E136FFC25 /* NearbyClient in Frameworks */ = {
+			isa = PBXBuildFile;
+			productRef = E61641E4AB94203613BDBF6B /* NearbyClient */;
+		};
+		08E99B881C98B2D8077CD6F7 /* FlashTeXProtocol in Frameworks */ = {
+			isa = PBXBuildFile;
+			productRef = 58EED07B157162499BC602AE /* FlashTeXProtocol */;
+		};
+		C7C127377FB47913308A63AC /* CaptureFlowUITests.swift in Sources */ = {
+			isa = PBXBuildFile;
+			fileRef = 350C61371C77C7DF6188D8F9;
+		};
+		B8893983D5B15983E38B2BD0 /* FakeMac.swift in Sources */ = {
+			isa = PBXBuildFile;
+			fileRef = 52C5885AA93684C7DAB7FFF8;
+		};
+		3D8DF49128A8BFCD6B6033DF /* FlashTeXPadUITests.swift in Sources */ = {
+			isa = PBXBuildFile;
+			fileRef = 7ED15C813756AF08F402B731;
+		};
+		240B28C2CC7B927EFF347587 /* NearbyClient in Frameworks */ = {
+			isa = PBXBuildFile;
+			productRef = E1D1674AC7999CBBDA3ADA3F /* NearbyClient */;
+		};
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		6E66CB6898E35B022307D001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 98F54143AB4E86B28C3AFEE0 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 411DE64E7332A08E1DF7D714;
+			remoteInfo = FlashTeXPad;
+		};
+		67C43FB487D0CBDCF3101A33 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 98F54143AB4E86B28C3AFEE0 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 411DE64E7332A08E1DF7D714;
+			remoteInfo = FlashTeXPad;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		DAB5331096CACE1D1611C89C /* CaptureView.swift */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.swift;
+			path = "CaptureView.swift";
+			sourceTree = "<group>";
+		};
+		4FDDBCFB400C1F50ACD45711 /* ContentView.swift */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.swift;
+			path = "ContentView.swift";
+			sourceTree = "<group>";
+		};
+		8154323B8EA2D5445564B276 /* FlashTeXPadApp.swift */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.swift;
+			path = "FlashTeXPadApp.swift";
+			sourceTree = "<group>";
+		};
+		3CCE5357B9F6A9468F70115A /* PadModel.swift */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.swift;
+			path = "PadModel.swift";
+			sourceTree = "<group>";
+		};
+		B814BF36B6E3FFF2A9D456D9 /* Resources/compile-result.json */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = text.json;
+			path = "Resources/compile-result.json";
+			sourceTree = "<group>";
+		};
+		696D572EB552F1B485EC7FD4 /* Resources/demo.tex */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = text;
+			path = "Resources/demo.tex";
+			sourceTree = "<group>";
+		};
+		DF516A2769098DAFFC545638 /* Resources/review-workflow.json */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = text.json;
+			path = "Resources/review-workflow.json";
+			sourceTree = "<group>";
+		};
+		B06BAEBE69778185CEF5702F /* Resources/sample-capture.png */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = text;
+			path = "Resources/sample-capture.png";
+			sourceTree = "<group>";
+		};
+		B5A6CD6B3CE7282A17A0900C /* Info.plist */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = text.plist.xml;
+			path = "Info.plist";
+			sourceTree = "<group>";
+		};
+		F2B89058EBCD583C85703A57 /* FlashTeXPad.app */ = {
+			isa = PBXFileReference;
+			explicitFileType = "wrapper.application";
+			includeInIndex = 0;
+			path = "FlashTeXPad.app";
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		9350128EF36336405FA0A78F /* AcceptanceSliceTests.swift */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.swift;
+			path = "AcceptanceSliceTests.swift";
+			sourceTree = "<group>";
+		};
+		61E5796C7F96C2C8B3E99B01 /* CaptureQueueTests.swift */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.swift;
+			path = "CaptureQueueTests.swift";
+			sourceTree = "<group>";
+		};
+		8EA2299F037B17191402BB8E /* FakeMac.swift */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.swift;
+			path = "FakeMac.swift";
+			sourceTree = "<group>";
+		};
+		F02BF388111682C7C305DDC3 /* FlashTeXPadTests.xctest */ = {
+			isa = PBXFileReference;
+			explicitFileType = "wrapper.cfbundle";
+			includeInIndex = 0;
+			path = "FlashTeXPadTests.xctest";
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		350C61371C77C7DF6188D8F9 /* CaptureFlowUITests.swift */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.swift;
+			path = "CaptureFlowUITests.swift";
+			sourceTree = "<group>";
+		};
+		52C5885AA93684C7DAB7FFF8 /* FakeMac.swift */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.swift;
+			path = "FakeMac.swift";
+			sourceTree = "<group>";
+		};
+		7ED15C813756AF08F402B731 /* FlashTeXPadUITests.swift */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.swift;
+			path = "FlashTeXPadUITests.swift";
+			sourceTree = "<group>";
+		};
+		0A12BEB07D79164C6E0CDDD0 /* FlashTeXPadUITests.xctest */ = {
+			isa = PBXFileReference;
+			explicitFileType = "wrapper.cfbundle";
+			includeInIndex = 0;
+			path = "FlashTeXPadUITests.xctest";
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		74904BE237DB999268FD5BE5 /* Packages/FlashTeXPadKit */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = folder;
+			path = "Packages/FlashTeXPadKit";
+			sourceTree = "<group>";
+		};
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		294234BDC302EB2C37709823 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				BCD3BDDACBAEF96A6285F2EC,
+				A100103B7F504A91A951AB15,
+				9A3F727C304DB6C49671A74B,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A99FCE56623CCBE7D5CB81E3 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				53C0190BDFB8EEED4C6E1598,
+				05E5D02A6DD9BC0E136FFC25,
+				08E99B881C98B2D8077CD6F7,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D4A6B49B65272BAD7494849A /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				240B28C2CC7B927EFF347587,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		93831774EC18A36A0D602512 /* FlashTeXPad */ = {
+			isa = PBXGroup;
+			children = (
+				DAB5331096CACE1D1611C89C,
+				4FDDBCFB400C1F50ACD45711,
+				8154323B8EA2D5445564B276,
+				3CCE5357B9F6A9468F70115A,
+				B814BF36B6E3FFF2A9D456D9,
+				696D572EB552F1B485EC7FD4,
+				DF516A2769098DAFFC545638,
+				B06BAEBE69778185CEF5702F,
+				B5A6CD6B3CE7282A17A0900C,
+			);
+			path = "FlashTeXPad";
+			sourceTree = "<group>";
+		};
+		A366E6E79B2F8E5F3757615C /* FlashTeXPadTests */ = {
+			isa = PBXGroup;
+			children = (
+				9350128EF36336405FA0A78F,
+				61E5796C7F96C2C8B3E99B01,
+				8EA2299F037B17191402BB8E,
+			);
+			path = "FlashTeXPadTests";
+			sourceTree = "<group>";
+		};
+		F6DACFB5EF322A77BC9A2FCB /* FlashTeXPadUITests */ = {
+			isa = PBXGroup;
+			children = (
+				350C61371C77C7DF6188D8F9,
+				52C5885AA93684C7DAB7FFF8,
+				7ED15C813756AF08F402B731,
+			);
+			path = "FlashTeXPadUITests";
+			sourceTree = "<group>";
+		};
+		5151B46607EBC8890D8DFCC2 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				F2B89058EBCD583C85703A57,
+				F02BF388111682C7C305DDC3,
+				0A12BEB07D79164C6E0CDDD0,
+			);
+			sourceTree = "<group>";
+		};
+		ADCF10F76EBF2A74473E9DC4 = {
+			isa = PBXGroup;
+			children = (
+				93831774EC18A36A0D602512,
+				A366E6E79B2F8E5F3757615C,
+				F6DACFB5EF322A77BC9A2FCB,
+				74904BE237DB999268FD5BE5,
+				5151B46607EBC8890D8DFCC2,
+			);
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		411DE64E7332A08E1DF7D714 /* FlashTeXPad */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C4C5B38C253564CEE97F2450 /* Build configuration list for PBXNativeTarget "FlashTeXPad" */;
+			buildPhases = (
+				AB4A3C81F6CCE20DBD54BA64 /* Sources */,
+				294234BDC302EB2C37709823 /* Frameworks */,
+				B9755B089721E7830D7C2F14 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = FlashTeXPad;
+			packageProductDependencies = (
+				85E6D96FADC9313C36D00656 /* FlashTeXPadKit */,
+				49D3CBD738C0F617AF6861F6 /* NearbyClient */,
+				D5BA7FCD01AB119B8650B1DC /* FlashTeXProtocol */,
+			);
+			productName = FlashTeXPad;
+			productReference = F2B89058EBCD583C85703A57 /* FlashTeXPad.app */;
+			productType = "com.apple.product-type.application";
+		};
+		4A6F7A244E61DD017733261A /* FlashTeXPadTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 012876664AEDAF24759C52E2 /* Build configuration list for PBXNativeTarget "FlashTeXPadTests" */;
+			buildPhases = (
+				2C1892077599F1D56466C4EA /* Sources */,
+				A99FCE56623CCBE7D5CB81E3 /* Frameworks */,
+				2D8ACA4F3AC1B0D4BE2F9001 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				6F98B6915BEA4E922649144C,
+			);
+			name = FlashTeXPadTests;
+			packageProductDependencies = (
+				6DAF713200557312FB0DE2B8 /* FlashTeXPadKit */,
+				E61641E4AB94203613BDBF6B /* NearbyClient */,
+				58EED07B157162499BC602AE /* FlashTeXProtocol */,
+			);
+			productName = FlashTeXPadTests;
+			productReference = F02BF388111682C7C305DDC3 /* FlashTeXPadTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		CFD327A2627D7A6047AF8BB6 /* FlashTeXPadUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 1E2E153DCC6A21E2553BF75A /* Build configuration list for PBXNativeTarget "FlashTeXPadUITests" */;
+			buildPhases = (
+				9C481A06D09B6DA6EA6C0449 /* Sources */,
+				D4A6B49B65272BAD7494849A /* Frameworks */,
+				EB74B7F22ECA0DD31B60A4A3 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				FCC25D5B546F25DCAA746E12,
+			);
+			name = FlashTeXPadUITests;
+			packageProductDependencies = (
+				E1D1674AC7999CBBDA3ADA3F /* NearbyClient */,
+			);
+			productName = FlashTeXPadUITests;
+			productReference = 0A12BEB07D79164C6E0CDDD0 /* FlashTeXPadUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		98F54143AB4E86B28C3AFEE0 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1630;
+				LastUpgradeCheck = 1630;
+				TargetAttributes = {
+					4A6F7A244E61DD017733261A = {
+						TestTargetID = 411DE64E7332A08E1DF7D714;
+					};
+					CFD327A2627D7A6047AF8BB6 = {
+						TestTargetID = 411DE64E7332A08E1DF7D714;
+					};
+				};
+			};
+			buildConfigurationList = 7198B1A165AEE41CD0DEE38D;
+			compatibilityVersion = "Xcode 15.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = ADCF10F76EBF2A74473E9DC4;
+			packageReferences = (
+				BBC34697956E0474D55D9DCE /* XCLocalSwiftPackageReference "Packages/FlashTeXPadKit" */,
+			);
+			productRefGroup = 5151B46607EBC8890D8DFCC2 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				411DE64E7332A08E1DF7D714 /* FlashTeXPad */,
+				4A6F7A244E61DD017733261A /* FlashTeXPadTests */,
+				CFD327A2627D7A6047AF8BB6 /* FlashTeXPadUITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		B9755B089721E7830D7C2F14 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A87D4C8E0CAD968374E177C5,
+				BC0A22AF45038EEAE34C7CD7,
+				BD32D5321034B632D5392E0B,
+				7B96FABAB641BC15070A5149,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		2D8ACA4F3AC1B0D4BE2F9001 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		EB74B7F22ECA0DD31B60A4A3 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		AB4A3C81F6CCE20DBD54BA64 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E61ADC75D2613BC05A89C79F,
+				09CB227A124543638E92BA22,
+				045BB3308B2C5DD1D387C7D2,
+				01A4FCBFEF9A261F77159BC4,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		2C1892077599F1D56466C4EA /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				8852E4C9E3130B7E00B73EA9,
+				5D3BA29BB7D8E223A38ED5BC,
+				72B8562FE1F50D30C56A9348,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		9C481A06D09B6DA6EA6C0449 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C7C127377FB47913308A63AC,
+				B8893983D5B15983E38B2BD0,
+				3D8DF49128A8BFCD6B6033DF,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		6F98B6915BEA4E922649144C /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 411DE64E7332A08E1DF7D714 /* FlashTeXPad */;
+			targetProxy = 6E66CB6898E35B022307D001 /* PBXContainerItemProxy */;
+		};
+		FCC25D5B546F25DCAA746E12 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 411DE64E7332A08E1DF7D714 /* FlashTeXPad */;
+			targetProxy = 67C43FB487D0CBDCF3101A33 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		7579E75001A57E624A17EFE3 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = FlashTeXPad/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				MARKETING_VERSION = 0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = tech.jay3332.flashtex.FlashTeXPad;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_STRICT_CONCURRENCY = minimal;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "2";
+			};
+			name = Debug;
+		};
+		0B5C1A5BCA027DEEFDCA546F /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = FlashTeXPad/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				MARKETING_VERSION = 0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = tech.jay3332.flashtex.FlashTeXPad;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_STRICT_CONCURRENCY = minimal;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "2";
+			};
+			name = Release;
+		};
+		FE651F6C68F343820B8E2CB5 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @loader_path/Frameworks";
+				MARKETING_VERSION = 0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = tech.jay3332.flashtex.FlashTeXPadTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_STRICT_CONCURRENCY = minimal;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/FlashTeXPad.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/FlashTeXPad";
+			};
+			name = Debug;
+		};
+		C35165D9B5A6B3CD4C35897B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @loader_path/Frameworks";
+				MARKETING_VERSION = 0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = tech.jay3332.flashtex.FlashTeXPadTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_STRICT_CONCURRENCY = minimal;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/FlashTeXPad.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/FlashTeXPad";
+			};
+			name = Release;
+		};
+		CC0768DA50F8D8685F62279F /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @loader_path/Frameworks";
+				MARKETING_VERSION = 0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = tech.jay3332.flashtex.FlashTeXPadUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_STRICT_CONCURRENCY = minimal;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "2";
+				TEST_TARGET_NAME = FlashTeXPad;
+			};
+			name = Debug;
+		};
+		6E388790D894CA25C38B3A60 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @loader_path/Frameworks";
+				MARKETING_VERSION = 0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = tech.jay3332.flashtex.FlashTeXPadUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_STRICT_CONCURRENCY = minimal;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "2";
+				TEST_TARGET_NAME = FlashTeXPad;
+			};
+			name = Release;
+		};
+		882E21E0BAAE9C222F3E0941 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_TESTABILITY = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				ONLY_ACTIVE_ARCH = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		236F7CEDA2999EE9EC2F49AC /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_TESTABILITY = NO;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				ONLY_ACTIVE_ARCH = NO;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "";
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		C4C5B38C253564CEE97F2450 /* Build configuration list for PBXNativeTarget "FlashTeXPad" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				7579E75001A57E624A17EFE3,
+				0B5C1A5BCA027DEEFDCA546F,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		012876664AEDAF24759C52E2 /* Build configuration list for PBXNativeTarget "FlashTeXPadTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				FE651F6C68F343820B8E2CB5,
+				C35165D9B5A6B3CD4C35897B,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		1E2E153DCC6A21E2553BF75A /* Build configuration list for PBXNativeTarget "FlashTeXPadUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				CC0768DA50F8D8685F62279F,
+				6E388790D894CA25C38B3A60,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		7198B1A165AEE41CD0DEE38D /* Build configuration list for PBXProject "FlashTeXPad" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				882E21E0BAAE9C222F3E0941,
+				236F7CEDA2999EE9EC2F49AC,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		BBC34697956E0474D55D9DCE /* XCLocalSwiftPackageReference "Packages/FlashTeXPadKit" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/FlashTeXPadKit;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		85E6D96FADC9313C36D00656 /* FlashTeXPadKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BBC34697956E0474D55D9DCE /* XCLocalSwiftPackageReference "Packages/FlashTeXPadKit" */;
+			productName = FlashTeXPadKit;
+		};
+		49D3CBD738C0F617AF6861F6 /* NearbyClient */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BBC34697956E0474D55D9DCE /* XCLocalSwiftPackageReference "Packages/FlashTeXPadKit" */;
+			productName = NearbyClient;
+		};
+		D5BA7FCD01AB119B8650B1DC /* FlashTeXProtocol */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BBC34697956E0474D55D9DCE /* XCLocalSwiftPackageReference "Packages/FlashTeXPadKit" */;
+			productName = FlashTeXProtocol;
+		};
+		6DAF713200557312FB0DE2B8 /* FlashTeXPadKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BBC34697956E0474D55D9DCE /* XCLocalSwiftPackageReference "Packages/FlashTeXPadKit" */;
+			productName = FlashTeXPadKit;
+		};
+		E61641E4AB94203613BDBF6B /* NearbyClient */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BBC34697956E0474D55D9DCE /* XCLocalSwiftPackageReference "Packages/FlashTeXPadKit" */;
+			productName = NearbyClient;
+		};
+		58EED07B157162499BC602AE /* FlashTeXProtocol */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BBC34697956E0474D55D9DCE /* XCLocalSwiftPackageReference "Packages/FlashTeXPadKit" */;
+			productName = FlashTeXProtocol;
+		};
+		E1D1674AC7999CBBDA3ADA3F /* NearbyClient */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BBC34697956E0474D55D9DCE /* XCLocalSwiftPackageReference "Packages/FlashTeXPadKit" */;
+			productName = NearbyClient;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 98F54143AB4E86B28C3AFEE0 /* Project object */;
+}

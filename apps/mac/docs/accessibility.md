@@ -43,7 +43,10 @@ visible behavior changed.
   (`helpLines` for an "Accessibility help" list; `AccessibilityHelpView`
   renders it but is not yet attached — that needs a menu line in
   `FlashTeXMacApp.swift`, owned elsewhere). Pane focus order
-  `Editor → Preview → Diagnostics → Capture bar` with rationale.
+  `Sidebar → Tabs → Editor → Capture bar → Bridge bar → Preview → Problems` with rationale
+  (the main window is a `NavigationSplitView`: WorkspaceSidebar.swift,
+  ContentView.swift, ProblemsPanel.swift; View > Command Palette… ⌘⇧P lists
+  every command of the table, CommandPalette.swift).
 
 ## What is attached in the UI
 
@@ -90,7 +93,7 @@ Fixture…` (⌘⇧O) → `apps/mac/Samples/multipage-result.json`. Turn VoiceOv
 | 2 | In the editor, VO-Down twice; VO-Right by word | Line 3 `\section{Introduction}`; words read as AppKit does (`section`, `Introduction`). Native text navigation; no FlashTeX strings here |
 | 3 | Place the caret in `oops` (line 8) with arrows | The dotted red underline is under `\textbf{oops`; hovering with the mouse shows the diagnostic tooltip (VoiceOver has no caret-diagnostic announcement yet — see Not done) |
 | 4 | VO-Right past the capture bar | `Capture bar, group` then value `No insertion point pinned; 0 proposals to review`; inside: `Pin insertion point, button` |
-| 5 | ⌘⇧P, then VO-Left back to the group | Value now `Insertion point pinned: a1 at main.tex byte <n>, revision <r>; 0 proposals to review` |
+| 5 | ⌘⌥P, then VO-Left back to the group | Value now `Insertion point pinned: a1 at main.tex byte <n>, revision <r>; 0 proposals to review` |
 | 6 | VO-Right into the preview; VO-Shift-Down to interact with the scroll area, then the page | `Page 1, 2 lines, group` (page count is not passed to the overlay yet, so `of 2` is absent) |
 | 7 | VO-Right through the page | `Introduction`, value `17 point` (hint `Page 1, line 1`), then `A`, `naïve`, `approach`, `fails.` (each `12 point`) — in that order; no staleness note, since the overlay has no document text |
 | 8 | On `naïve`, VO-Command-Space (actions menu) | Menu shows `Go to source`; choosing it selects `naïve` in the editor and the footer reads `Selected main.tex bytes 66..<72 …` |

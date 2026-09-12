@@ -54,7 +54,7 @@ final class PanelAccessibilityTests: XCTestCase {
             descendants(root).filter { v in
                 guard v.acceptsFirstResponder, !v.isHiddenOrHasHiddenAncestor else { return false }
                 if let c = v as? NSControl, !c.isEnabled { return false }
-                if v is NSScrollView || v is NSClipView { return false }
+                if v is NSScrollView || v is NSClipView || v is NSScroller { return false } // scrollers are not Tab stops
                 if let tv = v as? NSTextView, tv.isFieldEditor { return false } // the focused field's editor, not a control
                 return true
             }
@@ -183,6 +183,23 @@ final class PanelAccessibilityTests: XCTestCase {
     }
 
     // MARK: Settings (⌘,)
+
+    /// The Grok (xAI) section (GrokPreferencesView.swift, shown in the app's
+    /// Settings after the editor sections): its AppKit-backed controls — secure
+    /// key field, provider switch, model field — take keyboard focus in reading
+    /// order; the window is taller, so it is hosted at its own size. The key
+    /// field is never given a value here.
+    func testGrokPreferencesSectionControlsTakeKeyboardFocus() async throws {
+        let defaults = UserDefaults(suiteName: "PanelAccessibilityTests.grok.\(UUID().uuidString)")!
+        let prefs = EditorPreferences(defaults: defaults)
+        let window = try await host(EditorPreferencesView(preferences: prefs, showGrok: true), title: "Editor Preferences", size: NSSize(width: 480, height: 900))
+        let controls = assertControlsTakeKeyboardFocus(in: window, panel: "Settings+Grok", atLeast: 11)
+        let kinds = controls.map { String(describing: type(of: $0)) }
+        XCTAssertEqual(kinds.filter { $0.contains("Switch") }.count, 4, kinds.description)
+        XCTAssertTrue(kinds.contains { $0.contains("SecureTextField") }, kinds.description)
+        XCTAssertGreaterThanOrEqual(kinds.filter { $0.contains("TextField") }.count, 2, "key + model fields: \(kinds)")
+        window.close()
+    }
 
     func testPreferencesPanelControlsTakeKeyboardFocusAndTheEditorKeepsIt() async throws {
         let defaults = UserDefaults(suiteName: "PanelAccessibilityTests.prefs.\(UUID().uuidString)")!

@@ -450,8 +450,14 @@ struct EditorPreferencesView: View {
     @Bindable private var prefs: EditorPreferences
     @State private var families: [String] = []
 
-    @MainActor init() { prefs = .shared }
-    init(preferences: EditorPreferences) { prefs = preferences }
+    /// `showGrok`: the Grok (xAI) section (GrokPreferencesView.swift) — on in
+    /// the app; the editor-table accessibility tests host the editor controls
+    /// alone (`PanelFocusOrder.panels[0]` enumerates only those; see
+    /// apps/mac/docs/grok-live.md, accessibility note).
+    private let showGrok: Bool
+
+    @MainActor init() { prefs = .shared; showGrok = true }
+    init(preferences: EditorPreferences, showGrok: Bool = false) { prefs = preferences; self.showGrok = showGrok }
 
     var body: some View {
         Form {
@@ -506,6 +512,7 @@ struct EditorPreferencesView: View {
                 Toggle("Show completion list", isOn: $prefs.completionPopup)
                     .accessibilityHint("When off, the list never opens; Control-Space and Escape do nothing.")
             }
+            if showGrok { GrokPreferencesSection() } // xAI key (Keychain), provider toggle, model, Test connection (GrokPreferencesView.swift)
             Section {
                 Button("Restore Defaults") { prefs.resetToDefaults() }
                     .accessibilityHint("Resets every editor preference to its default value.")
