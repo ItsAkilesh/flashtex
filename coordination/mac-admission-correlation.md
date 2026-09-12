@@ -90,7 +90,10 @@ that a forged/mismatched `stale` id does not release; no test of the
   the main checkout's release builds): 63 tests, 5 skipped, 0 failures (23.6 s,
   load 9.5–10.5). The 5 skips are DisplayCandidateTests helper cases requiring
   FLASHTEX_RENDER (no flashtex-render binary exists on this Mac; pre-existing).
-- Full `swift test`: see "Full suite" below.
+- Full `swift test` (apps/mac, same real-helper environment, FLASHTEX_NO_ACTIVATE=1)
+  at ae0226a0: 647 tests, 19 skipped, 0 failures in 184 s; load 6.4 at start,
+  5.5 at end (`uptime` recorded). Skips are the pre-existing env gates
+  (FLASHTEX_RENDER, bundled fonts, capture/nearby hardware), none in this lane's file.
 
 ## Limitations
 - The `superseded` rebinding is covered by the decision test and the log path of
@@ -106,6 +109,6 @@ that a forged/mismatched `stale` id does not release; no test of the
 ## Checkpoint
 - branch `agent/mac-admission-correlation/compile-id` @ ae0226a0 (pushed), base
   644fcc9e = mac-shell 3a3a6f21 + main 55bcf124
-- dirty: coordination/agents/mac-admission-correlation.json, this file
+- dirty: none after this commit
 - consumed main SHA: 55bcf124
-- next: record full-suite result, commit coordination files, push, final report
+- next: parent merges; nothing pending on this lane
