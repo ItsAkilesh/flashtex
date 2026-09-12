@@ -16,7 +16,7 @@
     "rust",
     "macos-simulators"
   ],
-  "code_revision": "ab835e0cf5d805c9b33191aa1128c1141d06b9a6",
+  "code_revision": "5cec270849ad9046cc9aaa73ccfbd30697e48dec",
   "eta_minutes": {
     "likely": 120,
     "optimistic": 60,
@@ -24,7 +24,7 @@
   },
   "machine": "mac-m1max-a",
   "main_integrated_through": "9da7e48148d91872dc0514119e1a04568ebfcb51",
-  "next_action": "Merge bridge defect fixes; integrate FT-017..020 + 6 new crates as they land; report rev 4 ready",
+  "next_action": "Merge bridge defect fixes; integrate font-engine OTTO, render-pipeline; report rev 4 ready",
   "reviewed_peers": {
     "origin/agent/aarush-macbook/companion-capture": {
       "adaptation": "Peer cannot run xcodebuild; will verify their branch from this Mac. No contract change.",
@@ -47,18 +47,18 @@
       "sha": "25a92a9c591a92a3d49071e536ecf8f129112c24"
     },
     "origin/main": {
-      "adaptation": "Astra authority activated on main 1dd26c5; broker #15 declined for lack of Cursor login",
-      "reviewed_utc": "2026-09-12T05:39:54Z",
-      "sha": "1dd26c5e0dd5e04a39f0b8e55c90abebf635c863"
+      "adaptation": "Commander crates rendering-core/font-resources/edit-ledger/project-index/document-runtime on main; relayed alignment to pipeline/bridge workers; no duplication with project-files",
+      "reviewed_utc": "2026-09-12T05:57:33Z",
+      "sha": "18ba1b3d33e1e0bb0eb54aebf381310ca14b5fbd"
     }
   },
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "FT-003 rev 4: nearby TLS-PSK listener merged (90/90 tests w/ real compiler+pdf+bridge); e2e suite PASS; 13 child workers live per user doubling override",
+  "summary": "FT-003 rev 4 at 5cec270: 122/122 tests (real compiler+pdf+bridge); merged nearby, proposal-preview, accessibility, Latin Modern face; crates document-style/project-files/vector-graphics ready; 15 workers dispatched",
   "tool": "Claude Code",
-  "updated_utc": "2026-09-12T05:39:54Z",
+  "updated_utc": "2026-09-12T05:57:33Z",
   "usage": {
-    "evidence": "Claude Max 20x; 13 live workers; no purchases; Cursor not logged in here",
+    "evidence": "Claude Max 20x + one Fable agent; no purchases",
     "status": "unknown"
   }
 }
