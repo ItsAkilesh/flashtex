@@ -30,6 +30,20 @@
         "tools/companion-validation"
       ],
       "timebox_minutes": 45
+    },
+    {
+      "acceptance": [
+        "Exact SHAs and Xcode/device/simulator environment are recorded",
+        "Duplicate capture, disconnect/retry, stale destination, and reviewed insertion paths are verified",
+        "Missing device, permission, signing, or network evidence fails closed"
+      ],
+      "allocation_id": "openai-aarush-chatgpt-ft014-stage3",
+      "name": "Continuous product integration and measured improvement",
+      "objective": "Expand independent native long-session regression and cancellation/retry stress with exact device evidence.",
+      "owned_paths": [
+        "tools/companion-validation"
+      ],
+      "timebox_minutes": 45
     }
   ],
   "task_id": "FT-014"

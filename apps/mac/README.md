@@ -30,7 +30,7 @@ and macOS cannot grant it per-app permissions (e.g. local network, later).
 `scripts/make-app.sh` wraps the built executable in a minimal `FlashTeX.app`:
 
 ```sh
-apps/mac/scripts/make-app.sh [--debug] [--compiler <path>] [--pdf <path>] [--open]
+apps/mac/scripts/make-app.sh [--debug] [--compiler <path>] [--pdf <path>] [--open] [--install] [--dmg]
 ```
 
 It builds `FlashTeXMac` (release by default), assembles
@@ -41,7 +41,11 @@ copies `protocol/fixtures/compile-{request,result}.json` and `Samples/*` into
 `Contents/MacOS` when built at `crates/{compiler,pdf}/target/release/…` under
 the repo root (or passed via `--compiler`/`--pdf`), and ad-hoc codesigns the
 result. Launch with `open apps/mac/build/FlashTeX.app` or pass `--open`.
-`apps/mac/build/` is gitignored.
+`apps/mac/build/` is gitignored. `--install` atomically replaces
+`~/Applications/FlashTeX.app` (verified to launch before the previous bundle
+is discarded) and `--dmg` produces a compressed disk image; see
+`apps/mac/docs/packaging.md` for signing/notarization status and the
+update-path and launch-recovery evidence (`scripts/launch-check.sh`).
 
 ## Behavior
 
@@ -198,6 +202,9 @@ bridge still attaches but capture insertion is disabled (fail closed); the
 same when its store is corrupt/unreadable (`invalid_store`), in use by another
 process (`store_in_use`), or bound to another document.
 
+`Edit > Retry Bridge Receipt` (withheld export/receipt) and `Edit > Retry
+Bridge Reconciliation` (incomplete reconciliation) have no shortcuts.
+
 The Swift side (`EditLedgerClient`, `BridgeSession`) keeps only an in-memory
 mirror of the helper's document and transactions. Ordinary typing and undo go
 through `replace_document` (expected revision + source hash; applied-ID
@@ -245,6 +252,13 @@ plus one error diagnostic with a source range and recovery text and one warning
 with null source/recovery. Use it for manual click-to-source, caret-sync, and
 diagnostics checks beyond the one-line contract fixture.
 
+- Faces: LaTeX's default is Computer Modern, so the preview and CoreGraphics
+  export use **Latin Modern** (GUST FL; registered at launch from `FLASHTEX_LM_DIR`,
+  a bundled `Resources/Fonts`, or BasicTeX's `fonts/opentype/public/lm`) when the
+  attached producer is the new `flashtex-render` pipeline or `FLASHTEX_PREVIEW_FACE=latin-modern`
+  is set; when attached to today's `flashtex-compiler` (Core-14 Times metrics) they
+  draw Times-Roman so glyph widths match the positions. Optical masters follow
+  LaTeX (lmroman5/7/8/9/10/12/17).
 - Export is always white: dark preview is a viewing mode only. `File > Export
   PDF…` (⌘⇧E) uses CoreGraphics; `File > Export PDF via Rust Writer…` (⌘⌥E) pipes
   the current `compile_result` envelope to the FT-009 `flashtex-pdf --verify`
@@ -253,6 +267,62 @@ diagnostics checks beyond the one-line contract fixture.
 - Diagnostics panel under the preview is never hidden when diagnostics exist; each
   entry shows severity, message, recovery note (or "no provisional rendering"),
   and source bytes; the banner shows error/warning counts and a `recovered` note.
+
+## Nearby companion (proposal nearby-v1)
+
+`Edit > Nearby Companion…` (⌘⇧N) opens a window that advertises this Mac to a
+paired iPad/iPhone companion and receives its `capture_submit` messages over an
+authenticated, encrypted connection. **This is a proposal until the Commander
+publishes `docs/contracts/nearby-v1.md`**; the full text, threat model and
+companion checklist are in `docs/nearby-v1-proposal.md`. The companion side is
+FT-004's. What is implemented here (Mac side only):
+
+- Discovery: Bonjour `_flashtex._tcp`, instance name = the Mac's name, TXT
+  `v=1`, `name=<Mac name>`, `fp=<16 hex, SHA-256 of "flashtex-nearby-v1 mac-id"‖salt>`,
+  `salt=<32 hex>`. Discovery only; nothing in TXT is trusted.
+- Pairing: "Show Pairing Code" displays a 6-digit CSPRNG code for 120 s. Both
+  sides derive a bootstrap PSK and `pair_id` with HKDF-SHA256 from
+  (code, salt) (`Pairing.derive`; pinned vector in `PairingTests`). The first
+  `hello` over that key returns a random 32-byte long-term `pair_psk`; the
+  bootstrap key is then dropped. Pairings persist in
+  `~/Library/Application Support/FlashTeX/pairs.json` (mode 0600, atomic
+  writes, **not the Keychain**); "Forget" removes one and closes its session.
+- Transport (`NearbyListener`): Network.framework `NWListener`, TLS **1.2
+  only**, cipher suite **`TLS_PSK_WITH_AES_128_GCM_SHA256` (0x00A8)** only,
+  PSK identity = `pair_id`, one key per pairing plus the pending bootstrap key,
+  **TLS resumption and tickets disabled** (with resumption on, a removed key
+  could still resume — caught by the tests). Ephemeral port; the listener is
+  rebuilt on the same port when the key table changes and live sessions are
+  adopted, not dropped. An unpaired peer fails the handshake: no line is parsed.
+- Framing: runtime-v1 JSON Lines like the bridge; 12 MiB per line including
+  the newline, oversized complete or unterminated lines get `error
+  line_too_long` and a close. First line must be `hello {pair_id,
+  companion_name, protocol_version:1, nonce, proof}` where `proof` is
+  HMAC-SHA256(PSK, "flashtex-nearby-v1 hello"‖nonce) — needed because
+  Network.framework does not say which table PSK a session used. Reply
+  `hello_ack {mac_name, nonce, destination, pair_psk?}`; `destination_query` →
+  `destination {destination: {destination_id, project_id, path, base_revision} | null}`
+  from the pinned anchor (⌘⇧P), so the companion never types IDs.
+- Captures: `capture_submit` is validated (ids, MIME, instructions ≤ 4096 B)
+  and handed to a `CaptureSink` (`ShellModel+Nearby.swift`). With a capture
+  bridge attached the capture is forwarded through `BridgeSession.submit`
+  and the bridge's `capture_received` (durable) or `error` code is returned
+  to the companion, and it then appears in the bridge capture list for
+  `Convert Capture`. Without a bridge, `receiveNearbyCapture` keeps the last
+  50 captures in an in-memory `NearbyInbox` and answers `capture_received
+  {capture_id, durable:false, has_proposal:false, applied:false}`; identical
+  retries are acknowledged again, a different payload for a known id is
+  `capture_id_conflict`. `hello_ack.destination` is the bridge's valid anchor
+  when attached, else the local pinned anchor. A plaintext (non-TLS) peer —
+  the companion's current `NWParameters.tcp` client — fails the handshake,
+  is logged once, and nothing it sent is parsed.
+- Threat model and gaps (see the proposal): the 6-digit code is ~20 bits and
+  the PSK suite has no forward secrecy, so a passive capture of the pairing
+  window can be brute-forced offline — the window is short and one code pairs
+  one device; no certificate PKI, no cloud relay, no Keychain, no peer-to-peer
+  (AWDL), no companion notification beyond `capture_received`. A bundled
+  `.app` will need `NSLocalNetworkUsageDescription`/`NSBonjourServices`; the
+  bare executable and `swift test` did not prompt on macOS 26.3.
 
 ## Launch hooks and evidence
 
@@ -354,7 +424,7 @@ explain that nothing is loaded.
 | ⌘⇧I | Open capture proposal… (review sheet; ⏎ approves, inserts one undoable edit) |
 | ⌘⇧U | Submit sample capture… (PNG/JPEG → `capture_submit` through the attached bridge) |
 | ⌘⇧G | Convert capture (`capture_convert` for the latest received capture) |
-| — | Edit > Retry Bridge Receipt / Retry Bridge Reconciliation (withheld receipt export, incomplete reconciliation) |
+| ⌘⇧N | Nearby Companion… (advertise, pairing code, paired devices, received captures) |
 | ⌘Z | Undo (including an approved capture insertion) |
 | Esc / ⌃Space | Completion popup (supported commands, `\end{…}` for open environments, labels, document words) |
 | ⌘⇧D | Go to matching `\begin`/`\end` or `\label`/`\ref` |
@@ -374,7 +444,7 @@ banner shows; the shell rejects response lines over 16 MiB.
   destination, captures, edit ledger, reconciliation), `ShellModel+Bridge`.
 - `FlashTeXMac` also holds `LineProcessClient` (shared bounded JSON Lines
   process transport) and `EditLedgerClient` (edit-ledger helper protocol).
-- Tests (85, of which `RealCompilerTests`, `RustPDFExportTests`,
+- Tests (136 across all targets, of which `RealCompilerTests`, `RustPDFExportTests`,
   `RealBridgeTests` and `RealEditLedgerTests` are gated on `FLASHTEX_COMPILER`,
   `FLASHTEX_PDF`, `FLASHTEX_BRIDGE` and `FLASHTEX_EDIT_LEDGER`): completion
   (prefix/trigger rules, unclosed `\end{}`, unsupported marks, non-ASCII and
@@ -398,8 +468,20 @@ banner shows; the shell rejects response lines over 16 MiB.
   duplicate/conflict, `provider_disabled`, `proposal_missing`, reject,
   `capture_missing`); real edit ledger (durable apply with on-disk hash check,
   duplicate edit ID refused, recovery export/import incl. stale token, undo
-  keeps dedup, session metadata, second writer refused, full shell flow); plus
-  the earlier: oversized complete line, trailing bytes at EOF, unsolicited/mismatched result correlation; inline diagnostic marks (byte→UTF-16, rebase/drop, path filter,
+  keeps dedup, session metadata, second writer refused, full shell flow);
+  nearby listener (TLS-PSK round trip of `hello` /
+  fixture `capture_submit` / `destination_query` through an `NWConnection`
+  client with the same PSK, wrong key and unknown identity refused before any
+  line is parsed, oversized complete and unterminated lines close, message
+  before `hello`, cross-pairing `hello` with the wrong proof, nonce reuse,
+  bootstrap → long-term PSK hand-over with the old key refused after a
+  same-port restart while the live session survives, Bonjour advertising
+  reaches `.ready`, pure session validation), HKDF/proof vectors, pair store
+  round trip with 0600 and corrupt-file handling, `ShellModel` inbox and
+  destination, `NearbyState` pair → capture → forget → same-port restart
+  flow, plaintext peer refused without parsing while TLS peers keep working,
+  nearby capture forwarded through the fake bridge (durable ack, error
+  pass-through, inbox fallback after detach); plus the earlier: oversized complete line, trailing bytes at EOF, unsolicited/mismatched result correlation; inline diagnostic marks (byte→UTF-16, rebase/drop, path filter,
   sample slice, temporary-attribute-only); Rust-writer export (gated on
   `FLASHTEX_PDF`), missing-binary error; source mapping (shift/refuse/multi-byte/expected-text), stale
   navigation refusal and rebase, auto-compile debounce/coalescing, latency; PDF export (fixture → 612×792 page containing the item text,

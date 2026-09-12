@@ -1,5 +1,6 @@
 import SwiftUI
 import FlashTeXProtocol
+import FlashTeXAccessibility
 
 struct ContentView: View {
     @EnvironmentObject var model: ShellModel
@@ -153,6 +154,7 @@ struct ContentView: View {
         }
         .padding(.horizontal, 8).padding(.vertical, 4)
         .background(.bar)
+        .accessibleCaptureBar(anchor: model.anchor.map { "\($0.id) at \($0.path) byte \($0.byteOffset), revision \($0.revision)" }, proposals: model.proposals.count) // FlashTeXAccessibility
         .sheet(item: Binding(get: { model.reviewing.map { ReviewItem(proposal: $0) } },
                              set: { model.reviewing = $0?.proposal })) { item in
             ProposalReviewSheet(proposal: item.proposal)
@@ -206,7 +208,7 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: 0) {
             Text("Diagnostics (\(diags.count)) — the preview above is still shown; errors are not hidden")
                 .font(.caption.bold()).padding(.horizontal, 8).padding(.vertical, 4)
-            List(Array(diags.enumerated()), id: \.offset) { _, d in
+            List(Array(diags.enumerated()), id: \.offset) { i, d in
                 HStack(alignment: .top) {
                     Image(systemName: d.severity == .error ? "xmark.octagon.fill" : "exclamationmark.triangle.fill")
                         .foregroundStyle(d.severity == .error ? .red : .orange)
@@ -226,6 +228,7 @@ struct ContentView: View {
                     Spacer()
                     if d.source != nil { Button("Go to source") { model.navigate(to: d.source) } }
                 }
+                .accessibleDiagnostic(d, index: i, total: diags.count) { model.navigate(to: d.source) } // FlashTeXAccessibility
             }
             .frame(minHeight: 80, maxHeight: 180)
         }
@@ -261,6 +264,7 @@ private struct ProposalReviewSheet: View {
     @Environment(\.dismiss) private var dismiss
     let proposal: RuntimeV1.CaptureProposal
     @State private var latex: String = ""
+    @StateObject private var preview = ProposalPreview(executable: ShellModel.locateCompiler()) // shadow compile (ProposalPreview.swift)
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -285,6 +289,7 @@ private struct ProposalReviewSheet: View {
                 .font(.system(.body, design: .monospaced))
                 .frame(minHeight: 140)
                 .border(.separator)
+            ProposalPreviewView(preview: preview)
             if !proposal.ambiguities.isEmpty {
                 Text("Ambiguities").font(.subheadline.bold())
                 ForEach(proposal.ambiguities, id: \.self) { Text("• \($0)").font(.caption) }
@@ -295,6 +300,7 @@ private struct ProposalReviewSheet: View {
             HStack {
                 Button("Reject", role: .destructive) { model.rejectProposal(proposal); dismiss() }
                 Spacer()
+                ProposalApproveWarning(preview: preview)
                 Button("Approve and insert") {
                     if model.isBridgeCapture(proposal.captureId) {
                         Task { if case .inserted = await model.approveBridgeProposal(proposal, latex: latex) { dismiss() } }
@@ -306,6 +312,10 @@ private struct ProposalReviewSheet: View {
         }
         .padding(16)
         .frame(width: 520)
-        .onAppear { latex = proposal.latex }
+        .onAppear { latex = proposal.latex; preview.update(from: model, latex: proposal.latex) }
+        .onChange(of: latex) { _, new in preview.update(from: model, latex: new) }
+        .onChange(of: model.editorRevision) { _, _ in preview.update(from: model, latex: latex) }
+        .onChange(of: model.anchor) { _, _ in preview.update(from: model, latex: latex) }
+        .onDisappear { preview.close() }
     }
 }

@@ -29,6 +29,7 @@ struct SourceEditorView: NSViewRepresentable {
         tv.isAutomaticTextReplacementEnabled = false
         tv.allowsUndo = true
         tv.textContainerInset = NSSize(width: 8, height: 8)
+        tv.setAccessibilityLabel("LaTeX source") // FlashTeXAccessibility: VoiceOver names the editor
         tv.string = text
         return scroll
     }

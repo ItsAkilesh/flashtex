@@ -1,3 +1,38 @@
-{"schema_version":1,"agent_id":"mac-visual-oracle","task_id":"FT-017","next_index":0,"steps":[
-{"name":"Oracle expansion and alignment diagnostics","objective":"Expand declared visual fixtures across text, Unicode, paragraphs, math and multipage cases; add page registration, crop/alignment diagnostics and region metrics.","acceptance":["Every artifact pins engine/font/version/DPI/color profile","Registration error is separated from rendering error","Overlays retain fixture and component SHAs"],"owned_paths":["tests/visual-corpus/harness","tests/visual-corpus/evidence"],"timebox_minutes":45,"allocation_id":"claude-mac20x-visual-oracle-stage2"},
-{"name":"Preview-export visual non-regression","objective":"Gate native preview and exported PDF raster consistency against pinned references with explicit tolerances and visual review artifacts.","acceptance":["Per-region thresholds cover glyphs, rules, baselines and page geometry","Native preview/export differences are classified","Narrow corpus scope remains explicit"],"owned_paths":["tests/visual-corpus/harness","tests/visual-corpus/evidence"],"timebox_minutes":45,"allocation_id":"claude-mac20x-visual-oracle-stage3"}]}
+{
+  "schema_version": 1,
+  "agent_id": "mac-visual-oracle",
+  "task_id": "FT-017",
+  "next_index": 0,
+  "steps": [
+    {
+      "name": "Oracle expansion and alignment diagnostics",
+      "objective": "Expand declared visual fixtures across text, Unicode, paragraphs, math and multipage cases; add page registration, crop/alignment diagnostics and region metrics.",
+      "acceptance": [
+        "Every artifact pins engine/font/version/DPI/color profile",
+        "Registration error is separated from rendering error",
+        "Overlays retain fixture and component SHAs"
+      ],
+      "owned_paths": [
+        "tests/visual-corpus/harness",
+        "tests/visual-corpus/evidence"
+      ],
+      "timebox_minutes": 45,
+      "allocation_id": "claude-mac20x-visual-oracle-stage2"
+    },
+    {
+      "name": "Preview-export visual non-regression",
+      "objective": "Gate exact native preview/export raster equality and separate raw PDF byte identity against pinned reference profile. Diagnostic tolerances or registration never count as acceptance.",
+      "acceptance": [
+        "Exact zero pixel difference and separate raw PDF byte equality; report mismatches honestly without normalization",
+        "Native preview/export differences are classified",
+        "Narrow corpus scope remains explicit"
+      ],
+      "owned_paths": [
+        "tests/visual-corpus/harness",
+        "tests/visual-corpus/evidence"
+      ],
+      "timebox_minutes": 45,
+      "allocation_id": "claude-mac20x-visual-oracle-stage3"
+    }
+  ]
+}

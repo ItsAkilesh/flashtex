@@ -47,6 +47,7 @@ final class ShellModel: ObservableObject {
     /// Deadline for each `capture_status` during restart reconciliation.
     var bridgeStatusTimeout: TimeInterval = 15
     @Published var workerStatus: String = "no worker attached" { didSet { FlashTeXLog.write("status: " + workerStatus) } }
+    let nearbyInbox = NearbyInbox() // captures from paired companions (ShellModel+Nearby.swift)
     @Published var workerLog: [String] = []
     private var worker: WorkerClient?
     private var nextRequestID = 1
@@ -341,7 +342,8 @@ final class ShellModel: ObservableObject {
                 self?.handle(event)
             }
             workerStatus = "attached: \(url.lastPathComponent)"
-            log("launched \(url.path)")
+            PreviewFonts.producerFace = PreviewFonts.face(forProducer: url.lastPathComponent)
+            log("launched \(url.path) (preview face: \(PreviewFonts.active.rawValue))")
         } catch {
             workerStatus = "launch failed: \(error.localizedDescription)"
         }

@@ -16,15 +16,15 @@
     "rust",
     "macos-simulators"
   ],
-  "code_revision": "48780a88fda46ea7be7e600fd2af663890b9ca41",
+  "code_revision": "5cec270849ad9046cc9aaa73ccfbd30697e48dec",
   "eta_minutes": {
-    "likely": 60,
-    "optimistic": 30,
-    "pessimistic": 120
+    "likely": 120,
+    "optimistic": 60,
+    "pessimistic": 240
   },
   "machine": "mac-m1max-a",
-  "main_integrated_through": "998e566c3a23bffeca141c0ce6688c217655b87a",
-  "next_action": "Merge nearby + completion; spawn FT-019/020 after two completions; rev 4 ready report",
+  "main_integrated_through": "9da7e48148d91872dc0514119e1a04568ebfcb51",
+  "next_action": "Merge bridge defect fixes; integrate font-engine OTTO, render-pipeline; report rev 4 ready",
   "reviewed_peers": {
     "origin/agent/aarush-macbook/companion-capture": {
       "adaptation": "Peer cannot run xcodebuild; will verify their branch from this Mac. No contract change.",
@@ -47,18 +47,18 @@
       "sha": "25a92a9c591a92a3d49071e536ecf8f129112c24"
     },
     "origin/main": {
-      "adaptation": "FT-017..020 assignments read; rendering-v2 constraints relayed; two spawned, two queued per cap",
-      "reviewed_utc": "2026-09-12T05:26:42Z",
-      "sha": "984fa28f2537feadb9f848eb90f69de0327d1fa5"
+      "adaptation": "Commander crates rendering-core/font-resources/edit-ledger/project-index/document-runtime on main; relayed alignment to pipeline/bridge workers; no duplication with project-files",
+      "reviewed_utc": "2026-09-12T05:57:33Z",
+      "sha": "18ba1b3d33e1e0bb0eb54aebf381310ca14b5fbd"
     }
   },
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "FT-003 rev 4: bridge integration merged at 48780a8 (59/59 w/ real compiler+pdf+bridge); packaging + pdf-unicode + oracle done; nearby/completion/e2e/sim-companion running; FT-017/018 spawned, FT-019/020 queued",
+  "summary": "FT-003 rev 4 at 5cec270: 122/122 tests (real compiler+pdf+bridge); merged nearby, proposal-preview, accessibility, Latin Modern face; crates document-style/project-files/vector-graphics ready; 15 workers dispatched",
   "tool": "Claude Code",
-  "updated_utc": "2026-09-12T05:26:42Z",
+  "updated_utc": "2026-09-12T05:57:33Z",
   "usage": {
-    "evidence": "Claude Max 20x; 9 workers live; no purchases",
+    "evidence": "Claude Max 20x + one Fable agent; no purchases",
     "status": "unknown"
   }
 }
