@@ -1,3 +1,121 @@
+# mac-pdf handoff — exact export lane (issue #25) on top of FT-009
+
+- Updated UTC: 2026-09-12T09:15Z
+- Agent / parent / machine: `mac-pdf` (Claude Code subagent) / parent
+  `mac-claude-a` / `mac-m1max-a`. Context usage at this checkpoint: about 3%
+  of the session budget (14.55 M of 15 M tokens remaining per the runtime
+  counter), far below the 80% compaction threshold in the user policy.
+- Lane: "Exact original glyph/font/rule PDF export against declared reference
+  profile"; follow-ups "Bounded font subset identity and deterministic object
+  serialization tests" and "Classify remaining raw-byte versus raster
+  differences". Owned paths: `crates/pdf/`, `coordination/mac-pdf.md`,
+  `coordination/agents/mac-pdf.json`. Transferred crates
+  (`font-engine`, `paragraph-layout`, `math-layout`) untouched.
+- Branch / HEAD / worktree: `agent/mac-pdf/exact-export` /
+  `528d52b` (merge of origin/main `b1cf8b9`; product commits `e481f01`,
+  `d25a647`, `b075468`, docs commit after) / worktree
+  `.claude/worktrees/agent-a665565ecb0f11ace` on mac-m1max-a. Pushed.
+- State: ready for integration (all three lane items done; see limits).
+- Ready behavior and evidence:
+  - `crates/pdf/src/exact.rs`: additive exact API for issue #25. `Decimal`
+    validated PDF numeric token written verbatim (no f64 round trip);
+    bounded typed operator set `Op` (q Q cm w J j d g G rg RG m l c h re S f
+    f* n W W* BT ET Tf Td Tm Tj TJ) with `Op::rule`; `parse` validates
+    verbatim content into the same set; `GlyphRun`/`PlacedGlyph` by original
+    glyph id (Type0/Identity-H, two-byte codes = GIDs); `ExactFont::{CidCff,
+    CidTrueType, Simple}` with programs embedded byte for byte (Type 1
+    `FontFile` Length1/2/3, `FontFile3` CIDFontType0C/Type1C, `FontFile2`),
+    descriptors with verbatim extras, `/Differences` encodings, ToUnicode
+    and CIDSet carried verbatim, per-page `/Resources`; `render_exact`
+    through the crate's single `Document` container, deterministic (no /ID,
+    no dates). Errors name page and operator index; nothing is dropped.
+  - `crates/pdf/src/cff.rs`: CFF parser + GID-preserving subsetter: output is
+    CID-keyed (charset CID = original GID, one FD with the original Private
+    DICT and local subrs verbatim, charstrings byte-identical). Refuses
+    CID-keyed sources, Type 1 charstrings and `seac` glyphs explicitly;
+    `ExactFont::cid_from_opentype` then embeds whole and reports it. Latin
+    Modern: 821 glyphs, no seac; 9-glyph subset 22,557 B vs 61,140 B whole;
+    CoreGraphics renders it (test + raster inspected).
+  - `truetype.rs::subset_keep_gids` (glyph order preserved for
+    `/CIDToGIDMap /Identity`); `inflate.rs` (RFC 1950/1951, bounded) and
+    `sha256.rs`, both in-tree, zero dependencies kept.
+  - `reader.rs` (bounded PDF object reader: xref/object streams, Flate),
+    `compare.rs` (`reemit` any read PDF as an `ExactDocument`; `classify`
+    with categories PageGeometry, ContentFormatting/Operands/Operators/
+    Unsupported, FontProgram, FontMetadata, FontResources, ObjectLayout,
+    Compression, DocumentIdentity), bin `flashtex-pdf-exact reemit|classify|dump`.
+  - Reference-profile evidence (`crates/pdf/docs/exact-export-classification.md`,
+    oracle only, MacTeX 2026 never in the product path): all 18 visual-corpus
+    fixtures × {pdflatex times, pdflatex lmodern, xelatex Times New Roman,
+    xelatex Latin Modern OTF} = 72 references, 92 pages, 234 embedded
+    programs re-emitted through the exact API: content streams byte-identical
+    on every page, every font program SHA-256-identical, no font metadata
+    differences, CoreGraphics 144 dpi rasters pixel-identical on all 92
+    pages; remaining differences exactly ObjectLayout (PDF 1.7 xref/object
+    streams vs 1.4 table, object order), Compression (Flate vs none),
+    DocumentIdentity (/ID, dates, producer). This establishes what the
+    container preserves, not what FlashTeX's compiler emits.
+  - Tests: `cd crates/pdf && cargo test` → 71 passed (35 unit, 11
+    `tests/exact.rs`, 25 `tests/render.rs`); `cargo clippy --all-targets`
+    clean; `cargo build --release` clean. `tests/exact.rs` covers:
+    byte-identical output for the same input twice + xref self-check + no
+    /ID/dates; verbatim decimals (`12.000`, `700.12345`, `216.00000000001`)
+    and two-byte codes re-parsing to the same ops; CFF subset identity
+    (CID = original GID, charstring bytes equal, deterministic, out-of-range
+    and CID-keyed refused); codes outside the declared glyph set rejected;
+    validation errors (q/Q, BT/ET, path state, undeclared font, page
+    resources, `gs`/`sc`, exponents); pdfTeX-style Type 1 simple font round
+    trip through the reader and reemit as a fixed point; PFB parsing;
+    classifier categories; skipped-when-absent: Latin Modern CFF subset in
+    CoreGraphics, pdflatex and xelatex oracle round trips asserting the
+    three remaining categories. All ran (not skipped) on this Mac.
+  - runtime-v1 route (`flashtex-pdf … --verify`) untouched: `tests/render.rs`
+    25/25 unchanged.
+- Incomplete behavior / limits (stated, not hidden):
+  - The exact route is a library API plus the audit binary; nothing feeds it
+    yet. rendering-core's `pdf_stream::PdfCommandStream` (branch
+    `agent/commander-render-core/rendering-core`) emits operator bytes in
+    exactly the bounded set (`q re W n rg m l c h f Q`); its `content_bytes`
+    can be handed to `Content::Verbatim` today, and its glyph GIDs to
+    `GlyphRun` once it exposes them per run. Not wired by me (not my path).
+  - Alpha, shading, images, inline images, `gs`, `sc/scn` are outside the
+    bounded set and error (as issue #25 requests). No writer-side Flate.
+  - CFF subsetting keeps whole global/local subr INDEXes (bounded, simpler;
+    sizes above). CID-keyed source CFFs and seac glyphs embed whole. Type 1
+    programs are embedded whole by `FontProgram::type1_from_pfb` (pdfTeX
+    subsets them); no fixture here exercises that since re-emit reuses
+    pdfTeX's own subset bytes.
+  - Parity was measured with CoreGraphics only.
+- Needs from others: Commander to review/merge `agent/mac-pdf/exact-export`
+  and close or update issue #25; rendering-core owner to route its stream
+  through `Content::Verbatim` / `GlyphRun` and report anything the bounded
+  set refuses.
+- Interface changes / consumer actions: additive only. New public modules
+  `exact`, `cff`, `reader`, `compare`, `inflate`, `sha256`; new bin
+  `flashtex-pdf-exact`; `TrueTypeFont::subset_keep_gids`. No contract change.
+- Reviewed peer revisions / adaptations: GitHub issue #25 and
+  `crates/rendering-core/PDF-INTEGRATION.md` + `src/pdf_stream.rs` on
+  `origin/agent/commander-render-core/rendering-core` (operator set and
+  exact-decimal requirement adopted verbatim); `docs/contracts/
+  rendering-v2-proposal.md` (original-GID → subset mapping, CID/GID
+  namespaces: satisfied by CID = original GID); `tests/visual-corpus/harness/
+  render_reference.sh` and `reference-profile.json` on
+  `origin/agent/mac-visual-oracle/reference-raster` (preambles reproduced
+  exactly for the oracle run; read only). origin/main `b1cf8b9` merged; no
+  crates/pdf changes upstream.
+- Validation commands: `cd crates/pdf && cargo test && cargo clippy
+  --all-targets`; `cargo run --release --bin flashtex-pdf-exact -- classify
+  REF.pdf OUT.pdf` (exit 0 iff content ops and programs identical).
+- Resource pool / allocation: parent `mac-claude-a`'s Claude Max allocation
+  on mac-m1max-a (shared quota, no purchases). No paid API calls.
+- Dirty files / unpushed work / running jobs: none after this push.
+- Exact next action: Commander integration of the branch; then rendering-core
+  hand-off through the exact API (their side).
+
+---
+
+Previous handoff (FT-009 runtime-v1 route, still accurate for that route):
+
 # mac-pdf handoff — FT-009 PDF output
 
 - Updated UTC: 2026-09-12T07:40Z
