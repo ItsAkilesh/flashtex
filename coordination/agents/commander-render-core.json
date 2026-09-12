@@ -14,23 +14,23 @@
     "rust",
     "rendering"
   ],
-  "code_revision": "616ca60a1a14452e70cce3acdf067b3781c7b42c",
+  "code_revision": "95c908166abb645e6e5f8b0ac495c7bc01bf001b",
   "eta_minutes": {
     "likely": 3,
     "optimistic": 1,
     "pessimistic": 5
   },
   "machine": "linux-primary",
-  "main_integrated_through": "6367ac344eab893b9830347a28bf6e14dfef6bb1",
-  "next_action": "Root implements only verified vee/Rightarrow tables; preserve mid refusal pending explicit export semantics.",
+  "main_integrated_through": "5e5665137abd30bcd74b013191656f3513b78f68",
+  "next_action": "Commander/compiler owner isolates useful tests and resolves cache/output contract blockers; no duplicate exporter.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "Independent combined97a audit: mid4/vee4/Rightarrow3; safe SymbolDA/DE candidates verified; mid absent direct mapping remains blocked despite CM/cmap support.",
+  "summary": "Reviewed Aarush0236 exact old-base diff: cache drops diagnostics/status, PDF substitutes Unicode/Helvetica and mutable temp paths; no wholesale uptake recommended.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T15:17:43Z",
+  "updated_utc": "2026-09-12T15:28:32Z",
   "usage": {
-    "evidence": "crates/rendering-core/docs/handoffs/hw1-logical/independent-pins.json",
-    "status": "Existing OpenAI; primary mapping/read-only output+AFM+cmap checks, no builds/native/providers/descendants."
+    "evidence": "crates/rendering-core/docs/handoffs/peer-aarush-0236aa0a/source-pins.json",
+    "status": "Existing OpenAI; read-only peer source, no builds/merge/native/providers/descendants."
   }
 }
