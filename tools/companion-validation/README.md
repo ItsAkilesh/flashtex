@@ -12,7 +12,9 @@ python3 tools/companion-validation/check_companion.py \
   --output /tmp/flashtex-companion-evidence
 ```
 
-The output directory receives `report.json` and the binary-safe Git diff
+The output directory receives `report.json` and the binary-safe Git diff.
+`report.json` resolves and records the immutable source and repair commit SHAs, so
+branch movement cannot change what the evidence describes. The output also receives
 `companion-project-repair.patch`. The report records the exact command and exit
 code for Xcode project loading and the optional unsigned simulator-SDK build. It
 also detects PBX object definitions that were inserted into reference lists, the

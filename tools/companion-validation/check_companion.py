@@ -66,6 +66,15 @@ def export_revision(repo: Path, revision: str, destination: Path) -> None:
         tar.extractall(destination / "source")
 
 
+def resolve_revision(repo: Path, revision: str) -> str:
+    return subprocess.run(
+        ["git", "-C", str(repo), "rev-parse", f"{revision}^{{commit}}"],
+        text=True,
+        capture_output=True,
+        check=True,
+    ).stdout.strip()
+
+
 def pbx_findings(project_text: str) -> list[str]:
     """Detect object definitions incorrectly spliced into PBX reference lists."""
     findings: list[str] = []
@@ -204,7 +213,9 @@ def main(argv: list[str] | None = None) -> int:
     report: dict[str, Any] = {
         "schema_version": 1,
         "bad_ref": args.bad_ref,
+        "bad_sha": resolve_revision(repo, args.bad_ref),
         "repair_ref": args.repair_ref,
+        "repair_sha": resolve_revision(repo, args.repair_ref) if args.repair_ref else None,
         "repo": str(repo),
         "xcodebuild": shutil.which(args.xcodebuild) or args.xcodebuild,
         "toolchain": {
