@@ -458,3 +458,72 @@ fn helper_reload_requires_approval_and_preserves_disk() {
         "external"
     );
 }
+
+#[test]
+fn helper_membership_and_bounded_status_preserve_detached_source() {
+    let root = tempfile::tempdir().unwrap();
+    let private = tempfile::tempdir().unwrap();
+    let config_dir = tempfile::tempdir().unwrap();
+    std::fs::write(root.path().join("main.tex"), "initial").unwrap();
+    std::fs::write(root.path().join("extra.tex"), "extra α").unwrap();
+    let config = json!({"session_id":"session1","project_id":"p","entry_path":"main.tex","project_root":root.path(),"private_ledger_root":private.path()});
+    let mut client = Client::configured(config_dir.path(), config);
+    client.send("snapshot", "snapshot", json!({}));
+    let initial = client.reply("snapshot")["payload"].clone();
+    let request = json!({"path":"extra.tex","source_versions":initial["source_versions"],"membership_generation":initial["membership_generation"]});
+    client.send("open", "open_document", request.clone());
+    let added = client.reply("open")["payload"].clone();
+    assert_eq!(added["document"]["text"], "extra α");
+    client.send("stale", "detach_document", request);
+    assert_eq!(client.reply("stale")["type"], "error");
+    client.send("status", "project_status", json!({"max_documents":1}));
+    let status = client.reply("status")["payload"].clone();
+    assert_eq!(status["documents"].as_array().unwrap().len(), 1);
+    assert_eq!(status["total_documents"], 2);
+    assert_eq!(status["truncated"], true);
+    client.send("detach", "detach_document", json!({"path":"extra.tex","source_versions":added["source_versions"],"membership_generation":added["membership_generation"]}));
+    let removed = client.reply("detach")["payload"].clone();
+    std::fs::remove_file(root.path().join("extra.tex")).unwrap();
+    client.send("reopen", "open_document", json!({"path":"extra.tex","source_versions":removed["source_versions"],"membership_generation":removed["membership_generation"]}));
+    assert_eq!(
+        client.reply("reopen")["payload"]["document"]["text"],
+        "extra α"
+    );
+    assert!(!root.path().join("extra.tex").exists());
+}
+
+#[test]
+#[ignore = "requires explicitly configured original compiler"]
+fn configured_large_result_reaches_real_helper_without_dropping_pages() {
+    let compiler = std::env::var("FLASHTEX_TEST_COMPILER").unwrap();
+    let root = tempfile::tempdir().unwrap();
+    let private = tempfile::tempdir().unwrap();
+    let config_dir = tempfile::tempdir().unwrap();
+    let text = "Measured paragraph with ordinary words and spaces.\n\n".repeat(9804);
+    std::fs::write(root.path().join("main.tex"), &text).unwrap();
+    let config = json!({"session_id":"session1","project_id":"p","entry_path":"main.tex","project_root":root.path(),"private_ledger_root":private.path(),"compiler_path":compiler,"compiler_max_frame_bytes":12*1024*1024});
+    let client = Client::configured(config_dir.path(), config);
+    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    loop {
+        let event = client
+            .output
+            .recv_timeout(deadline.saturating_duration_since(std::time::Instant::now()))
+            .unwrap();
+        assert_ne!(event["type"], "error", "{event}");
+        if event["type"] != "update" {
+            continue;
+        }
+        assert_ne!(event["payload"]["kind"], "failed");
+        if event["payload"]["kind"] == "preview" {
+            let result = &event["payload"]["result"];
+            assert_eq!(result["payload"]["status"], "ok");
+            assert!(serde_json::to_vec(result).unwrap().len() > 8 * 1024 * 1024);
+            let pages = result["payload"]["pages"].as_array().unwrap();
+            assert!(pages.len() > 250);
+            for (index, page) in pages.iter().enumerate() {
+                assert_eq!(page["number"], index + 1);
+            }
+            break;
+        }
+    }
+}

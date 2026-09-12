@@ -111,6 +111,12 @@ pub struct RunScale {
     policy: MetricPolicy,
 }
 impl RunScale {
+    pub fn exact_size(self) -> OutlineCoordinate {
+        self.size.0
+    }
+    pub fn policy(self) -> MetricPolicy {
+        self.policy
+    }
     pub fn canonical(size: Tick, policy: MetricPolicy) -> Result<Self> {
         size.positive()?;
         Ok(Self {

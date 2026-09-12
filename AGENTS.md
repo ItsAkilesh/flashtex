@@ -1,3 +1,51 @@
+## Context compaction at natural checkpoints
+
+Latest explicit user policy: at a natural checkpoint, compact when actual context
+usage exceeds 80%; at 60–80%, compact when much of the retained context is irrelevant.
+Use reliable runtime telemetry and supported native compaction controls. If usage
+telemetry or a compaction command is unavailable, state that limitation; never
+invent percentages, force a session restart, or treat compaction as agent failure.
+
+Before compaction save a durable checkpoint containing task ID/revision, exact
+branch and worktree, current changes and dirty files, tested SHAs and evidence,
+pending commands/publication journals/messages, next steps, ownership boundaries,
+current staffing and billing restrictions. After compaction read that checkpoint,
+current authority and assignments, reconcile any pending operation, and continue
+without replaying uncertain paid calls or publications. Leads must propagate this
+policy to their existing children. Do not reactivate drained workers just to compact.
+
+> LATEST USER STAFFING OVERRIDE: retain THREE Astra engineers (root runtime
+> performance, font-resources, rendering-core) plus the sole Commander. Bridge,
+> project-index and edit-ledger may finish their current task, then STOP. Their
+> queues are paused; do not restart, replace or reallocate them. This supersedes
+> every older local seven-agent reset below. Remote staffing remains unchanged.
+
+> LATEST USER OVERRIDE: Jaysen cooldown is lifted immediately. Restore the
+> prepared15 independent engineering lanes NOW after verifying usable route.
+> Daniel retains transferred heavy paths. Old08:21 wait instructions below are
+> superseded. Never duplicate an already running session or purchase usage.
+
+> LATEST USER STAFFING RESET: this host now has SEVEN active total: sole Astra
+> Commander plus SIX product engineers (root assistant-context, font-resources,
+> rendering-core, conversion-jobs, project-index, edit-ledger). The three paused
+> product agents are explicitly reactivated in their preserved worktrees. This
+> supersedes all older local4/paused3 wording below. No additional remote expansion
+> follows from this change; Daniel/Jaysen existing explicit allocations continue.
+> User reports plan reset; do not invent a numeric remaining balance or new funds.
+
+> LATEST COOLDOWN: until 2026-09-12T08:21:08Z Jaysen heavy work is suspended;
+> Daniel may take exact fenced handoffs after registration/ACK. Jaysen small tasks
+> may use his existing remaining usage credits, explicitly authorized for this
+> machine only. At that time both machines receive independent full queues,
+> subject to verified usable routes/reset; no purchases or duplicate ownership.
+> Commander remains linux-primary while usable; fallback is dynamically selected
+> from fresh verified comparable remaining capacity, never fixed to Jaysen.
+
+> ADDITIONAL USER AUTHORIZATION: Daniel's new Claude20x machine is allocated16
+> engineering lanes FT030–045 (registration pending), without reducing other
+> staffing. This is the explicit Daniel-only remote expansion exception. Existing
+> billing restrictions, local4 cap and paused workers remain unchanged.
+
 > LATEST STAFFING OVERRIDE: this computer has FOUR active agents total: sole
 > commander orchestrator-astra, root preview-controller, compiler_corpus fonts,
 > supervisor_api_review rendering. Bridge-context, project-index and edit-ledger
@@ -29,7 +77,7 @@ Read `docs/autonomous-workers.md` for the executable startup and task loop.
 ## Designated standby exception
 
 The user additionally authorized ONE NEW Opus standby on Jaysen mac-m1max-a,
-`orchestrator-jaysen-opus`, solely for eventual Commander takeover after verified
+`orchestrator-jaysen-opus`, as a candidate for eventual Commander takeover after verified
 termination and stopped publishers. It stays read-only while Astra is active;
 this does not increase engineering staffing or revive paused agents. Read
 [the exact revival prompt and operational gaps](docs/commander-failover.md).

@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "agent_id": "daniel-parent",
+  "task_id": "FT-046",
+  "revision": 1,
+  "branch": "agent/daniel-parent/supervisor",
+  "assignment_path": "coordination/assignments/FT-046.json",
+  "updated_utc": "2026-09-12T08:26:53.728263+00:00"
+}

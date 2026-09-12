@@ -16,7 +16,6 @@ pub mod json;
 pub mod layout;
 pub mod lexer;
 pub mod math;
-pub mod metrics;
 pub mod parser;
 pub mod protocol;
 
