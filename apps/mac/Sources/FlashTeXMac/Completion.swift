@@ -129,6 +129,9 @@ enum Completion {
             Entry(name: "usepackage", arguments: "[options]{a,b,c}", description: "records package names; packages are recognised but not implemented", mode: .text, source: .readmeCommands),
             Entry(name: "input", arguments: "{path}", description: "expands a project-relative document in place", mode: .text, source: .parserArm),
             Entry(name: "include", arguments: "{path}", description: "expands a project-relative document in place", mode: .text, source: .parserArm),
+            Entry(name: "hfill", arguments: "", description: "accepted; no stretchable glue, so nothing is inserted", mode: .text, source: .parserArm),
+            Entry(name: "normalfont", arguments: "", description: "accepted; text already uses the normal font", mode: .text, source: .parserArm),
+            Entry(name: "bfseries", arguments: "", description: "accepted; font switches are not applied", mode: .text, source: .parserArm),
             Entry(name: "frac", arguments: "{num}{den}", description: "fraction; math mode only", mode: .math, source: .readmeMath),
             Entry(name: "sqrt", arguments: "{x}", description: "square root; math mode only", mode: .math, source: .readmeMath),
         ] + symbols.map { name, glyph in
@@ -140,6 +143,7 @@ enum Completion {
             ("alpha", "α"), ("beta", "β"), ("gamma", "γ"), ("delta", "δ"), ("theta", "θ"), ("lambda", "λ"), ("mu", "μ"),
             ("pi", "π"), ("sigma", "σ"), ("phi", "φ"), ("omega", "ω"), ("times", "×"), ("div", "÷"), ("pm", "±"),
             ("leq", "≤"), ("geq", "≥"), ("neq", "≠"), ("approx", "≈"), ("cdot", "·"), ("infty", "∞"), ("sum", "∑"), ("int", "∫"),
+            ("in", "∈"), ("forall", "∀"), ("exists", "∃"), ("vee", "∨"), ("Rightarrow", "⇒"), ("mid", "∣"),
         ]
 
         /// Environments the README names for `\begin`/`\end`.
