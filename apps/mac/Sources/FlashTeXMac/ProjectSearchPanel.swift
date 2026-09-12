@@ -720,52 +720,79 @@ extension ProjectSearchClient {
         isApplying = true
         defer { isApplying = false }
         applyOutcomes = []
-        guard helperAvailable, let snapReply = await controllerSnapshot() else { planStatus = ProjectSearch.noHelperMessage; return }
-        switch snapReply {
-        case .failure(let e): planStatus = "Snapshot refused: \(e.message); nothing applied."; return
-        case .success(let snap):
-            guard snap.versions == plan.sourceVersions, snap.generation == plan.membershipGeneration else {
-                let changed = ProjectSearch.changedVersions(from: plan.sourceVersions, to: snap.versions).joined(separator: ", ")
-                planStatus = "Project changed since this proposal (\(changed.isEmpty ? "membership generation \(plan.membershipGeneration)→\(snap.generation)" : changed)); nothing applied — plan again."
-                self.plan = nil; planPreviews = []
-                return
-            }
-        }
         let label = "Replace “\(plan.literal)” with “\(plan.replacement)”"
-        var applied = 0
-        for path in plan.paths {
-            let edits = plan.edits(in: path)
-            let revision = plan.sourceVersions[path]!
-            let outcome = await applyGroup(path: path, revision: revision, edits: edits, label: label + " (\(edits.count) in \(path))")
-            applyOutcomes.append(outcome)
-            if case .applied = outcome.state { applied += 1 }
+        switch await applyReviewedEdits(plan.edits, sourceVersions: plan.sourceVersions, membershipGeneration: plan.membershipGeneration,
+                                        label: label, commandPrefix: "search-replace") {
+        case .failure(let why):
+            planStatus = why.message
+            if why.message.hasPrefix("Project changed") { self.plan = nil; planPreviews = [] }
+            return
+        case .success(let outcomes):
+            applyOutcomes = outcomes
         }
+        let applied = applyOutcomes.filter { if case .applied = $0.state { return true } else { return false } }.count
         let refused = applyOutcomes.count - applied
         planStatus = "\(label): \(applied) of \(applyOutcomes.count) file\(applyOutcomes.count == 1 ? "" : "s") applied"
             + (refused > 0 ? ", \(refused) not applied (see below; files are applied one by one, never all-or-nothing)" : "")
             + ". Undo is the ledger's grouped undo per file."
         self.plan = nil; planPreviews = []
         if applied > 0 {
-            // The durable text moved: let the preview catch up (a preview for
-            // the applied revision may have raced the buffer update), then show
-            // what is left of the literal.
-            let deadline = Date().addingTimeInterval(1)
-            while model.result?.revision != model.editorRevision, Date() < deadline, model.controllerAttached {
-                try? await Task.sleep(nanoseconds: 20_000_000)
-            }
-            // Only when the active buffer is exactly durable: a `compile`, never
-            // a submission of the user's pending edits.
-            if model.result?.revision != model.editorRevision, model.autoCompile, let d = model.controllerState.durable[model.activePath],
-               model.controllerState.textByDurable[model.activePath]?[d.revision]?.sameBytes(as: model.activeText) == true {
-                model.controllerCompile()
-            }
+            await settleAfterApply()
             await search()
+        }
+    }
+
+    // MARK: reusable reviewed-application core (search replace and citation rename)
+
+    /// The reviewed-application contract shared by every helper plan
+    /// (source-plans.md "Applying a reviewed proposal in a native client"):
+    /// the fresh `snapshot` must equal the plan's full version map and
+    /// membership generation (else the whole plan is refused with a
+    /// "Project changed since this proposal …" message and nothing is sent),
+    /// then one guarded `apply_group` per file in path order, each with a
+    /// fresh retained command id `<commandPrefix>-<UUID>`, the reviewed
+    /// revision/hash, byte-verified ranges and `removed_text = expected_text`.
+    /// Returns the per-file outcomes; never an all-or-nothing verdict.
+    func applyReviewedEdits(_ edits: [ProjectSearch.ReplacementEdit], sourceVersions: [String: Int], membershipGeneration: Int,
+                            label: String, commandPrefix: String) async -> Result<[ProjectSearch.FileOutcome], ControllerError> {
+        guard !edits.isEmpty else { return .failure(.init(message: "No proposal to apply.")) }
+        guard helperAvailable, let snapReply = await controllerSnapshot() else { return .failure(.init(message: ProjectSearch.noHelperMessage)) }
+        switch snapReply {
+        case .failure(let e): return .failure(.init(message: "Snapshot refused: \(e.message); nothing applied."))
+        case .success(let snap):
+            guard snap.versions == sourceVersions, snap.generation == membershipGeneration else {
+                let changed = ProjectSearch.changedVersions(from: sourceVersions, to: snap.versions).joined(separator: ", ")
+                return .failure(.init(message: "Project changed since this proposal (\(changed.isEmpty ? "membership generation \(membershipGeneration)→\(snap.generation)" : changed)); nothing applied — plan again."))
+            }
+        }
+        var outcomes: [ProjectSearch.FileOutcome] = []
+        for path in Array(Set(edits.map(\.path))).sorted() {
+            let fileEdits = edits.filter { $0.path == path }
+            let revision = sourceVersions[path] ?? -1
+            outcomes.append(await applyGroup(path: path, revision: revision, edits: fileEdits,
+                                             label: label + " (\(fileEdits.count) in \(path))", commandPrefix: commandPrefix))
+        }
+        return .success(outcomes)
+    }
+
+    /// After at least one file applied: let the preview catch up with the
+    /// moved durable text (a preview for the applied revision may have raced
+    /// the buffer update) and, only when the active buffer is exactly
+    /// durable, `compile` — never a submission of the user's pending edits.
+    func settleAfterApply() async {
+        let deadline = Date().addingTimeInterval(1)
+        while model.result?.revision != model.editorRevision, Date() < deadline, model.controllerAttached {
+            try? await Task.sleep(nanoseconds: 20_000_000)
+        }
+        if model.result?.revision != model.editorRevision, model.autoCompile, let d = model.controllerState.durable[model.activePath],
+           model.controllerState.textByDurable[model.activePath]?[d.revision]?.sameBytes(as: model.activeText) == true {
+            model.controllerCompile()
         }
     }
 
     /// One document's guarded `apply_group`, then reconciliation of the
     /// shell's durable state and buffer with the helper's returned document.
-    private func applyGroup(path: String, revision: Int, edits: [ProjectSearch.ReplacementEdit], label: String) async -> ProjectSearch.FileOutcome {
+    private func applyGroup(path: String, revision: Int, edits: [ProjectSearch.ReplacementEdit], label: String, commandPrefix: String) async -> ProjectSearch.FileOutcome {
         func refused(_ why: String) -> ProjectSearch.FileOutcome { .init(path: path, state: .refused(why)) }
         // An edit still in flight for this path would make the reviewed hash stale: wait, bounded.
         let flightDeadline = Date().addingTimeInterval(2)
@@ -779,7 +806,7 @@ extension ProjectSearchClient {
         if let open = model.documents.first(where: { $0.path == path }), !open.text.sameBytes(as: durableText) {
             return refused("the open buffer has edits that are not durable yet (durable r\(revision)); wait, then plan again")
         }
-        let commandID = "search-replace-\(UUID().uuidString)"
+        let commandID = "\(commandPrefix)-\(UUID().uuidString)"
         let payload = ProjectSearch.applyGroupPayload(path: path, commandID: commandID, expectedRevision: revision,
                                                       expectedSHA256: durable.sha256, label: label, edits: edits)
         retainedCommands[commandID] = payload
@@ -835,17 +862,26 @@ extension ProjectSearchClient {
     /// Retries an uncertain file with its retained command id and payload
     /// (never a new id): the ledger replays or refuses it exactly.
     func retryUncertain(commandID: String) async {
-        guard let payload = retainedCommands[commandID], let path = payload["path"] as? String,
-              let command = payload["command"] as? [String: Any], let rawEdits = command["edits"] as? [[String: Any]] else { return }
+        guard retainedCommands[commandID] != nil else { return }
         guard helperAvailable else { planStatus = ProjectSearch.noHelperMessage; return }
+        guard let outcome = await retryRetained(commandID: commandID) else { return }
+        if let i = applyOutcomes.firstIndex(where: { $0.path == outcome.path }) { applyOutcomes[i] = outcome } else { applyOutcomes.append(outcome) }
+        planStatus = outcome.description
+    }
+
+    /// Re-sends the retained `apply_group` payload under `commandID` exactly
+    /// (identical id and payload); nil when no such command is retained or
+    /// the helper is unavailable. Shared with the citation rename client.
+    func retryRetained(commandID: String) async -> ProjectSearch.FileOutcome? {
+        guard let payload = retainedCommands[commandID], let path = payload["path"] as? String,
+              let command = payload["command"] as? [String: Any], let rawEdits = command["edits"] as? [[String: Any]] else { return nil }
+        guard helperAvailable else { return nil }
         let revision = command["expected_revision"] as? Int ?? -1
         let edits = rawEdits.compactMap { e -> ProjectSearch.ReplacementEdit? in
             guard let s = e["start_byte"] as? Int, let en = e["end_byte"] as? Int, let r = e["removed_text"] as? String, let rp = e["replacement"] as? String else { return nil }
             return .init(path: path, revision: revision, start: s, end: en, expectedText: r, replacement: rp)
         }
-        let outcome = await sendApplyGroup(path: path, commandID: commandID, payload: payload, edits: edits)
-        if let i = applyOutcomes.firstIndex(where: { $0.path == path }) { applyOutcomes[i] = outcome } else { applyOutcomes.append(outcome) }
-        planStatus = outcome.description
+        return await sendApplyGroup(path: path, commandID: commandID, payload: payload, edits: edits)
     }
 }
 
