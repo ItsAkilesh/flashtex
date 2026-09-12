@@ -31,7 +31,8 @@ below are historical. Sol explicitly handed over after stopping publication jobs
 
 The user designated the primary Codex agent on `linux-primary` as **Commander**,
 responsible for orchestration, task/resource assignment, and integration of main.
-Read `ORCHESTRATION.md` and `coordination/COMMANDER.md` at startup and after
+Read `ORCHESTRATION.md`, `coordination/COMMANDER.md`, and
+`coordination/COMMANDER-RESUME.md` at startup and after
 compaction. Register capabilities in your own handoff; the Commander maintains
 `coordination/ROSTER.md` and `coordination/TASKS.md`. Acknowledge your assignment
 revision before implementation and publish changes, evidence, ETA, resource
