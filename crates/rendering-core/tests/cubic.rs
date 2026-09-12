@@ -174,3 +174,69 @@ fn fractional_clip_is_attached_without_curve_approximation() {
     assert_eq!(clipped.clip, clip);
     assert_eq!(clipped.outline.commands, original);
 }
+#[test]
+fn full_font_cache_identity_and_exact_geometry_survive_shared_hits() {
+    use flashtex_font_resources::cff::{CacheLimits, CacheStatus, CffOutlineCache};
+    let bytes = fixture(&program(), false);
+    let mut full = b"OTTO-original-fixture".to_vec();
+    let start = full.len();
+    full.extend(&bytes);
+    let cache = CffOutlineCache::from_font_table(
+        &full,
+        0,
+        start..full.len(),
+        CacheLimits {
+            max_entries: 4,
+            max_bytes: 100000,
+        },
+    )
+    .unwrap();
+    let consumer = CachedCffConsumer::new(cache);
+    let a = consumer
+        .place_cached(1, HintPolicy::Unhinted, r(1, 3), origin(), 100)
+        .unwrap();
+    assert_eq!(a.cache_status, CacheStatus::Stored);
+    let b = consumer
+        .clone()
+        .place_cached(1, HintPolicy::Unhinted, r(1, 3), origin(), 100)
+        .unwrap();
+    assert_eq!(b.cache_status, CacheStatus::Hit);
+    assert_eq!(a.outline.commands, b.outline.commands);
+    assert_eq!(
+        b.outline.full_font_identity.as_ref().unwrap().font_sha256,
+        digest(&full)
+    );
+    assert_eq!(
+        b.outline.full_font_identity.as_ref().unwrap().table_range,
+        start..full.len()
+    );
+    let direct = CffConsumer::from_table(&bytes, &digest(&bytes))
+        .unwrap()
+        .place_glyph(1, HintPolicy::Unhinted, r(1, 3), origin(), 100)
+        .unwrap();
+    assert_eq!(direct.commands, b.outline.commands);
+    assert_eq!(direct.advance, b.outline.advance);
+}
+#[test]
+fn oversize_cache_bypass_is_explicit_without_geometry_loss() {
+    use flashtex_font_resources::cff::{CacheLimits, CacheStatus, CffOutlineCache};
+    let bytes = fixture(&program(), false);
+    let mut full = b"OTTO".to_vec();
+    full.extend(bytes);
+    let cache = CffOutlineCache::from_font_table(
+        &full,
+        0,
+        4..full.len(),
+        CacheLimits {
+            max_entries: 0,
+            max_bytes: 0,
+        },
+    )
+    .unwrap();
+    let consumer = CachedCffConsumer::new(cache);
+    let placed = consumer
+        .place_cached(1, HintPolicy::Unhinted, r(1, 3), origin(), 100)
+        .unwrap();
+    assert_eq!(placed.cache_status, CacheStatus::BypassedOversize);
+    assert_eq!(placed.outline.commands.len(), 3);
+}

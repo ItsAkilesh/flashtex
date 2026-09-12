@@ -249,3 +249,13 @@ canonical output is 1,932 bytes with SHA256
 `aaa78b395c8740a53bb4c363076b0b4263c159287097f943c61591def2f8e7ff`.
 Tests also roundtrip numerators beyond 2^100 through typed geometry without float
 conversion, retaining exact source metadata and primitive identity.
+
+`CachedCffConsumer` shares the loader's immutable full-font cache behind a mutex.
+Its identity retains containing font SHA256, CFF table SHA256, face and validated
+range; the existing OpenType reader remains responsible for selecting that range.
+Direct and cached providers share exact placement code. Cache status explicitly
+distinguishes stored, hit and oversized bypass outcomes. Mixed batches retain the
+optional full-font identity and reject provider results that change GID, hint policy
+or claim applied hinting. Replay validates the optional identity while accepting
+earlier fixtures without it. The merged loader also explicitly rejects stroked CFF
+PaintType, which this fill-path consumer cannot implement.

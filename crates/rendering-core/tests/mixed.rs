@@ -124,12 +124,16 @@ fn fixture() -> TracedBatch {
         hinting_applied: false,
     }
 }
-fn cff() -> CffConsumer {
+fn cff_bytes() -> Vec<u8> {
     let program = [139, 139, 21, 239, 139, 139, 239, 39, 139, 8, 14];
     let mut b = vec![
         1, 0, 4, 4, 0, 1, 1, 1, 2, b'F', 0, 1, 1, 1, 3, 160, 17, 0, 0, 0, 0, 0, 2, 1, 1, 2, 13, 14,
     ];
     b.extend(program);
+    b
+}
+fn cff() -> CffConsumer {
+    let b = cff_bytes();
     CffConsumer::from_table(&b, &digest(&b)).unwrap()
 }
 fn context() -> MixedContext<'static> {
@@ -142,7 +146,10 @@ fn context() -> MixedContext<'static> {
         clip: clip(),
     }
 }
-fn inputs<'a>(s: &'a TracedBatch, c: &'a CffConsumer) -> Vec<MixedInput<'a>> {
+fn inputs<'a>(
+    s: &'a TracedBatch,
+    c: &'a dyn flashtex_rendering_core::cubic::CubicProvider,
+) -> Vec<MixedInput<'a>> {
     vec![
         MixedInput {
             source: s,
@@ -369,4 +376,56 @@ fn checked_in_illustrative_mixed_fixture_replays_all_primitive_types() {
     let next = ReplayBatch::parse(&canonical, MixedLimits::default()).unwrap();
     assert_eq!(replay.primitives(), next.primitives());
     assert_eq!(replay.metadata(), next.metadata());
+}
+#[test]
+fn cached_cubic_mixed_replay_retains_full_font_and_table_identity() {
+    use flashtex_font_resources::cff::{CacheLimits, CffOutlineCache};
+    use flashtex_rendering_core::{cubic::CachedCffConsumer, mixed_replay::ReplayBatch};
+    let mut bytes = b"OTTO".to_vec();
+    bytes.extend(cff_bytes());
+    let cache = CffOutlineCache::from_font_table(
+        &bytes,
+        0,
+        4..bytes.len(),
+        CacheLimits {
+            max_entries: 4,
+            max_bytes: 100000,
+        },
+    )
+    .unwrap();
+    let c = CachedCffConsumer::new(cache);
+    let s = fixture();
+    let batch = MixedBatch::build(context(), &inputs(&s, &c), MixedLimits::default()).unwrap();
+    let replay = ReplayBatch::parse(batch.fixture_bytes(), MixedLimits::default()).unwrap();
+    let identity = &replay.metadata()["primitives"][1]["geometry"]["full_font_identity"];
+    assert_eq!(identity["font_sha256"], digest(&bytes));
+    assert_eq!(identity["cff_sha256"], digest(&bytes[4..]));
+    assert_eq!(identity["table_range"], serde_json::json!([4, bytes.len()]));
+}
+#[test]
+fn provider_cannot_silently_change_hint_policy_or_claim_grid_fitting() {
+    use flashtex_rendering_core::cubic::*;
+    struct Wrong(CffConsumer);
+    impl CubicProvider for Wrong {
+        fn place_glyph(
+            &self,
+            gid: u16,
+            policy: HintPolicy,
+            size: OutlineCoordinate,
+            origin: OutlinePoint,
+            max_commands: usize,
+        ) -> CubicResult<PositionedCubic> {
+            let mut result = self
+                .0
+                .place_glyph(gid, policy, size, origin, max_commands)?;
+            result.hinting_applied = true;
+            Ok(result)
+        }
+    }
+    let c = Wrong(cff());
+    let s = fixture();
+    assert!(matches!(
+        MixedBatch::build(context(), &inputs(&s, &c), MixedLimits::default()),
+        Err(MixedError::Identity)
+    ));
 }

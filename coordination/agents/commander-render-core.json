@@ -14,23 +14,23 @@
     "rust",
     "rendering"
   ],
-  "code_revision": "b18285ce3091cb7549558cf9078d277ba2f392b5",
+  "code_revision": "938d504efd321f59a1835baf1e21fd414040e360",
   "eta_minutes": {
     "likely": 20,
     "optimistic": 10,
     "pessimistic": 30
   },
   "machine": "linux-primary",
-  "main_integrated_through": "410a5b102546397caf7b8a86151bfdcc74d285c9",
-  "next_action": "Integrate immutable full-font CFF cache and bounded mixed residency/stale-source gates.",
+  "main_integrated_through": "b18285ce3091cb7549558cf9078d277ba2f392b5",
+  "next_action": "Implement bounded mixed residency with generation/source/resource stale-result rejection.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "Bounded exact mixed fixture replay and standalone harness implemented; duplicate/unknown/noncanonical inputs rejected. 91 Rust tests pass.",
+  "summary": "Full-font CFF cache integrated through shared immutable cubic provider; exact placement and resource identity preserved in mixed replay. 95 Rust tests pass.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T06:54:25Z",
+  "updated_utc": "2026-09-12T06:58:26Z",
   "usage": {
-    "evidence": "91 Rust tests and strict all-target clippy pass. Standalone fixture: 3 primitives,5 commands,1932 canonical bytes SHA aaa78b395c8740a53bb4c363076b0b4263c159287097f943c61591def2f8e7ff; resources unverified/native not painted.",
+    "evidence": "95 Rust tests and strict all-target clippy pass. Cache hit/bypass/direct equality, full-font identity replay and wrong hint claims tested. Peer63a9371 merged unchanged.",
     "status": "Hosted OpenAI authorized; no external provider calls or purchases."
   }
 }

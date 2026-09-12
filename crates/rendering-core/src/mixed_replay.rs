@@ -190,20 +190,36 @@ impl ReplayBatch {
                         object(g, &["kind", "commands"])?;
                         hash(string(&p["font_sha256"])?)?;
                     } else {
-                        object(
-                            g,
-                            &[
-                                "kind",
-                                "cff_table_sha256",
-                                "font_matrix",
-                                "advance",
-                                "commands",
-                                "hint_policy",
-                                "stems",
-                                "masks",
-                                "flex_depths",
-                            ],
-                        )?;
+                        let mut fields = vec![
+                            "kind",
+                            "cff_table_sha256",
+                            "font_matrix",
+                            "advance",
+                            "commands",
+                            "hint_policy",
+                            "stems",
+                            "masks",
+                            "flex_depths",
+                        ];
+                        if g.get("full_font_identity").is_some() {
+                            fields.push("full_font_identity");
+                        }
+                        object(g, &fields)?;
+                        if let Some(identity) = g.get("full_font_identity").filter(|v| !v.is_null())
+                        {
+                            object(
+                                identity,
+                                &["font_sha256", "cff_sha256", "face_index", "table_range"],
+                            )?;
+                            hash(string(&identity["font_sha256"])?)?;
+                            require(
+                                identity["cff_sha256"] == g["cff_table_sha256"]
+                                    && integer(&identity["face_index"])? == 0,
+                                "CFF full resource identity",
+                            )?;
+                            let range = array(&identity["table_range"], Some(2))?;
+                            require(integer(&range[0])? < integer(&range[1])?, "CFF table range")?;
+                        }
                         hash(string(&g["cff_table_sha256"])?)?;
                         for m in array(&g["font_matrix"], Some(6))? {
                             scalar(m)?;

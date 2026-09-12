@@ -16,7 +16,7 @@ pub enum CubicCommand {
     },
     Close,
 }
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum HintPolicy {
     Reject,
     Unhinted,

@@ -172,6 +172,11 @@ impl Cff {
     }
     /// Applies FontMatrix exactly into font/text space; no ppem scaling or grid fitting.
     pub fn matrix_outline(&self, gid: u16, policy: HintPolicy) -> Result<MatrixOutline> {
+        if super::number(&self.top, 0x0c05, Some(0))? != 0 {
+            return Err(super::unsupported(
+                "CFF stroked PaintType is not represented by filled cubic output",
+            ));
+        }
         let raw = self.cubic_outline_with_policy(gid, policy)?;
         let matrix = self.font_matrix()?;
         let point = |p: CubicPoint| -> Result<RationalPoint> {
@@ -246,6 +251,35 @@ mod tests {
             .checked_mul(Rational::new(2, 1).unwrap())
             .is_err());
         assert!(Rational::operand(&DictNumber::Decimal("1E100".into())).is_err());
+    }
+    #[test]
+    fn matrix_api_preserves_mask_cycle_and_arithmetic_failures() {
+        let malformed = super::super::type2::tests::font(&[139, 149, 18, 19], None);
+        assert!(malformed.matrix_outline(0, HintPolicy::Unhinted).is_err());
+        let recursive = super::super::type2::tests::font(&[32, 29, 14], Some(&[32, 29, 11]));
+        assert!(recursive.matrix_outline(0, HintPolicy::Unhinted).is_err());
+        let mut huge = super::super::type2::tests::font(&[149, 139, 21, 14], None);
+        huge.top.insert(
+            0x0c07,
+            vec![
+                DictNumber::Decimal("1E38".into()),
+                DictNumber::Integer(0),
+                DictNumber::Integer(0),
+                DictNumber::Integer(1),
+                DictNumber::Integer(0),
+                DictNumber::Integer(0),
+            ],
+        );
+        assert!(huge.matrix_outline(0, HintPolicy::Unhinted).is_err());
+    }
+    #[test]
+    fn stroked_paint_type_is_not_silently_filled() {
+        let mut c = super::super::type2::tests::font(&[139, 139, 21, 14], None);
+        c.top.insert(0x0c05, vec![DictNumber::Integer(2)]);
+        assert!(matches!(
+            c.matrix_outline(0, HintPolicy::Unhinted),
+            Err(crate::Error::UnsupportedFont(_))
+        ));
     }
     #[test]
     fn affine_translation_does_not_translate_advance() {

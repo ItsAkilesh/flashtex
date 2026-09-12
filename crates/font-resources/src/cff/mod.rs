@@ -425,3 +425,6 @@ pub use type2::{
 
 mod matrix;
 pub use matrix::{MatrixCommand, MatrixOutline, Rational, RationalPoint};
+
+mod cache;
+pub use cache::{CacheLimits, CacheOutcome, CacheStatus, CffIdentity, CffOutlineCache};
