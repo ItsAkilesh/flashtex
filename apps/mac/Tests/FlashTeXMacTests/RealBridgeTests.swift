@@ -42,11 +42,12 @@ final class RealBridgeTests: XCTestCase {
         XCTAssertEqual(destination.binding.sourceSha256, SourceDigest.sha256Hex(model.activeText))
         XCTAssertTrue(destination.valid)
 
-        // The fixture on main does not decode: an error, never an acknowledgement.
+        // main 9da7e48 corrected protocol/fixtures/capture-submission.json (the earlier
+        // 1×1 PNG did not decode): the shared fixture must now be accepted durably.
         let mainFixture = try BridgeClientTests.fixtureCapture().image
         let result1 = await model.submitCapture(image: mainFixture, captureId: "real-capture-main-fixture", instructions: "t")
-        XCTAssertNil(result1)
-        XCTAssertTrue(model.captureNote?.contains("invalid_image") == true, model.captureNote ?? "")
+        XCTAssertEqual(result1?.durable, true, model.captureNote ?? "")
+        XCTAssertEqual(model.bridgeCaptures.first { $0.captureId == "real-capture-main-fixture" }?.state, .received)
 
         // Durable receipt with a decodable PNG; the journal file exists in the store.
         let image = RuntimeV1.CaptureImage(mimeType: "image/png", dataBase64: Self.decodablePNGBase64)
@@ -91,7 +92,8 @@ final class RealBridgeTests: XCTestCase {
         // not capture_rejected; either way it fails and the capture stays rejected.
         XCTAssertTrue(model.captureNote?.contains("provider_disabled") == true || model.captureNote?.contains("capture_rejected") == true, model.captureNote ?? "")
         XCTAssertEqual(model.bridgeCaptures.first { $0.captureId == "real-capture-1" }?.state, .rejected)
-        XCTAssertNil(model.latestConvertibleCapture)
+        // The accepted main-fixture capture is still convertible; the rejected one is not.
+        XCTAssertEqual(model.latestConvertibleCapture?.captureId, "real-capture-main-fixture")
         do { _ = try await model.bridge!.prepare(captureId: "real-capture-1", expectedRevision: model.editorRevision); XCTFail() }
         catch let f as BridgeClient.Failure { XCTAssertEqual(f.code, "capture_rejected", f.text) }
         // Unknown capture: capture_missing.
