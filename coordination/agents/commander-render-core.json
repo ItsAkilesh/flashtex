@@ -14,7 +14,7 @@
     "rust",
     "rendering"
   ],
-  "code_revision": "b14d242804e11b1b27eccf5f1857921a3c21a99f",
+  "code_revision": "9ce5e9e04ae3a4733e2cc19853eef7712f5102e2",
   "eta_minutes": {
     "likely": 3,
     "optimistic": 1,
@@ -22,15 +22,15 @@
   },
   "machine": "linux-primary",
   "main_integrated_through": "b14d242804e11b1b27eccf5f1857921a3c21a99f",
-  "next_action": "Producer owner repins only approved compiler and validates five literal groups plus explicit unsupported broader text handling.",
+  "next_action": "Owner review of exact text spacing and encoding limitations; no authoritative repin",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "Prepared exact9aa mechanical Text adapter patch for fixed root enum; apply-check passes; hash/shift/Ord Roman conversion and broader-space/encoding gates documented.",
+  "summary": "Modified 9aa plus cumulative Text builds; six actual probes expose silent spacing/ligature profile gaps",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T15:34:20Z",
+  "updated_utc": "2026-09-12T15:49:47Z",
   "usage": {
-    "evidence": "crates/rendering-core/docs/handoffs/hw1-text-producer/source-pins.json",
-    "status": "Existing OpenAI; isolated two-file patch apply-check only, no builds/native/providers/descendants."
+    "evidence": "Offline release build passed; six original source/GID/span assertions passed; exact outputs and source hashes retained",
+    "status": "Existing OpenAI session; no paid tools or descendants"
   }
 }
