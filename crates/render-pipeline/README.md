@@ -53,10 +53,22 @@ metrics are used and a `math_metrics_opentype` / `tfm_missing` diagnostic
 says so (`tfm_missing` is a warning per face).
 Times is used only when the document selects it (`\usepackage{times}`) and is
 metric-only (`core14-afm`, no bytes). Fonts are read at run time from, in
-order: `FLASHTEX_FONT_DIRS` (colon separated), `--font-dir`, `FLASHTEX_LM_DIR`,
-a `Fonts` directory next to the executable or in the app bundle's
-`Resources`, then MacTeX/BasicTeX 2025/2026 and Debian TeX Live paths
-(`fonts::DEFAULT_FONT_DIRS`). A missing Latin Modern face is an **error
+order (`fonts::Discovery`): `FLASHTEX_FONT_DIRS` (colon separated),
+`--font-dir`, `FLASHTEX_LM_DIR`, the bundled texmf trees
+`<exe>/../Resources/texmf` (an app bundle's `Contents/Resources/texmf`) and
+`<exe>/texmf` (`fonts/opentype/public/{lm,lm-math}`), a flat `Fonts`
+directory next to the executable or in the bundle's `Resources`, then
+MacTeX/BasicTeX 2025/2026 and Debian TeX Live paths
+(`fonts::DEFAULT_FONT_DIRS`). TFMs: `FLASHTEX_TFM_DIRS`, the bundled trees'
+`fonts/tfm/public/lm`, then each font directory's `/tfm/` sibling and the
+directory itself. The pinned LM 2.004 set (`ec-lmr12`, `rm-lmr12/8/6`,
+`GUST-FONT-LICENSE.TXT`) loads digest-bound from a texmf root
+(`<root>/fonts/tfm/public/lm` + `<root>/doc/fonts/lm/GUST-FONT-LICENSE.TXT`)
+or from a flat directory holding the four TFMs and the licence; a missing or
+mismatched asset is the blocking `required_metrics_unavailable` diagnostic,
+never a silent host-TeX or OpenType fallback. Explicit overrides always
+precede the bundle; no environment variable is written.
+A missing Latin Modern face is an **error
 diagnostic** with Times metrics substituted, never a silent fallback; a
 missing math face reports `math_font_unavailable` and typesets no math.
 

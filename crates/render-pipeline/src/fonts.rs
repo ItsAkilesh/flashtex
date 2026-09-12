@@ -13,7 +13,7 @@
 
 use std::cell::RefCell;
 use std::collections::BTreeMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use flashtex_font_engine::core14::{Core14, Core14Face};
@@ -130,59 +130,102 @@ pub const DEFAULT_FONT_DIRS: [&str; 12] = [
     "/usr/share/texlive/texmf-dist/fonts/opentype/public/lm-math",
 ];
 
-/// Directories probed by default, in order: `FLASHTEX_FONT_DIRS` (colon
-/// separated), `FLASHTEX_LM_DIR` (the pdf sibling's variable), a `Fonts`
-/// directory next to the executable or in the enclosing app bundle's
-/// `Resources`, then [`DEFAULT_FONT_DIRS`]. Nothing is scanned outside this
-/// list.
-pub fn default_font_dirs() -> Vec<PathBuf> {
-    let mut dirs: Vec<PathBuf> = Vec::new();
-    if let Ok(v) = std::env::var("FLASHTEX_FONT_DIRS") {
-        dirs.extend(v.split(':').filter(|s| !s.is_empty()).map(PathBuf::from));
-    }
-    if let Ok(v) = std::env::var("FLASHTEX_LM_DIR") {
-        if !v.is_empty() {
-            dirs.push(PathBuf::from(v));
+/// What font discovery reads from the process: the three override
+/// variables and where the executable lives. [`Discovery::from_process`]
+/// samples the real process; tests build one by hand so the bundle-relative
+/// rules are checked without a host TeX installation and without touching
+/// the environment.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Discovery {
+    /// `FLASHTEX_FONT_DIRS` (colon separated).
+    pub font_dirs: Option<String>,
+    /// `FLASHTEX_LM_DIR` (the pdf sibling's variable).
+    pub lm_dir: Option<String>,
+    /// `FLASHTEX_TFM_DIRS` (colon separated).
+    pub tfm_dirs: Option<String>,
+    /// The directory holding the executable (`Contents/MacOS` in an app
+    /// bundle); `None` when the process cannot tell.
+    pub exe_dir: Option<PathBuf>,
+}
+
+impl Discovery {
+    pub fn from_process() -> Discovery {
+        let var = |k: &str| std::env::var(k).ok().filter(|v| !v.is_empty());
+        Discovery {
+            font_dirs: var("FLASHTEX_FONT_DIRS"),
+            lm_dir: var("FLASHTEX_LM_DIR"),
+            tfm_dirs: var("FLASHTEX_TFM_DIRS"),
+            exe_dir: std::env::current_exe().ok().and_then(|e| e.parent().map(Path::to_path_buf)),
         }
     }
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(dir) = exe.parent() {
-            // A bundled texmf tree (OTFs, TFMs and the GUST licence in the
-            // TeX Live layout) or a flat Fonts directory next to the
-            // executable / in the app bundle's Resources.
-            for root in [dir.join("../Resources/texmf"), dir.join("texmf")] {
-                dirs.push(root.join("fonts/opentype/public/lm"));
-                dirs.push(root.join("fonts/opentype/public/lm-math"));
-            }
+
+    fn split(v: &Option<String>) -> Vec<PathBuf> {
+        v.iter().flat_map(|v| v.split(':')).filter(|s| !s.is_empty()).map(PathBuf::from).collect()
+    }
+
+    /// The texmf trees an app bundle or a sibling directory can ship,
+    /// relative to the executable: `<exe>/../Resources/texmf` (the bundle's
+    /// `Contents/Resources/texmf`, sealed with the app) then `<exe>/texmf`.
+    /// Under each: `fonts/opentype/public/{lm,lm-math}`,
+    /// `fonts/tfm/public/lm` and `doc/fonts/lm/GUST-FONT-LICENSE.TXT`.
+    pub fn bundle_texmf_roots(&self) -> Vec<PathBuf> {
+        self.exe_dir.iter().flat_map(|d| [d.join("../Resources/texmf"), d.join("texmf")]).collect()
+    }
+
+    /// Font directories, in order: `FLASHTEX_FONT_DIRS`, `FLASHTEX_LM_DIR`,
+    /// the bundled texmf trees' OpenType directories, a flat `Fonts`
+    /// directory next to the executable or in the bundle's `Resources`,
+    /// then [`DEFAULT_FONT_DIRS`] (host TeX). Nothing is scanned outside
+    /// this list; explicit overrides always come first.
+    pub fn font_dirs(&self) -> Vec<PathBuf> {
+        let mut dirs = Discovery::split(&self.font_dirs);
+        dirs.extend(self.lm_dir.iter().map(PathBuf::from));
+        for root in self.bundle_texmf_roots() {
+            dirs.push(root.join("fonts/opentype/public/lm"));
+            dirs.push(root.join("fonts/opentype/public/lm-math"));
+        }
+        if let Some(dir) = &self.exe_dir {
             dirs.push(dir.join("Fonts"));
             dirs.push(dir.join("../Resources/Fonts"));
         }
+        dirs.extend(DEFAULT_FONT_DIRS.iter().map(PathBuf::from));
+        dirs
     }
-    dirs.extend(DEFAULT_FONT_DIRS.iter().map(PathBuf::from));
-    dirs
+
+    /// TFM directories, in order: `FLASHTEX_TFM_DIRS`, the bundled texmf
+    /// trees' `fonts/tfm/public/lm`, then for every font directory its
+    /// `/opentype/` → `/tfm/` sibling (the TeX Live layout) and the
+    /// directory itself (the flat layout). Duplicates are dropped, first
+    /// occurrence wins, so an explicit override keeps precedence over the
+    /// same path discovered later.
+    pub fn tfm_dirs_for(&self, font_dirs: &[PathBuf]) -> Vec<PathBuf> {
+        let mut dirs = Discovery::split(&self.tfm_dirs);
+        let mut push = |p: PathBuf| {
+            if !dirs.contains(&p) {
+                dirs.push(p);
+            }
+        };
+        for root in self.bundle_texmf_roots() {
+            push(root.join(REQUIRED_TFM_DIR));
+        }
+        for d in font_dirs {
+            push(PathBuf::from(d.to_string_lossy().replace("/opentype/", "/tfm/")));
+            push(d.clone());
+        }
+        dirs
+    }
 }
 
-/// Where the `.tfm` metrics of the text faces are looked for:
-/// `FLASHTEX_TFM_DIRS` (colon separated), then every font directory with
-/// `/opentype/` replaced by `/tfm/` (the TeX Live layout:
-/// `fonts/opentype/public/lm` ↔ `fonts/tfm/public/lm`), then the font
-/// directories themselves.
+/// [`Discovery::font_dirs`] for the running process.
+pub fn default_font_dirs() -> Vec<PathBuf> {
+    Discovery::from_process().font_dirs()
+}
+
+/// [`Discovery::tfm_dirs_for`] over [`default_font_dirs`] for the running
+/// process.
 pub fn default_tfm_dirs() -> Vec<PathBuf> {
-    let mut dirs: Vec<PathBuf> = Vec::new();
-    if let Ok(v) = std::env::var("FLASHTEX_TFM_DIRS") {
-        dirs.extend(v.split(':').filter(|s| !s.is_empty()).map(PathBuf::from));
-    }
-    for d in default_font_dirs() {
-        let text = d.to_string_lossy().replace("/opentype/", "/tfm/");
-        let p = PathBuf::from(text);
-        if !dirs.contains(&p) {
-            dirs.push(p);
-        }
-        if !dirs.contains(&d) {
-            dirs.push(d);
-        }
-    }
-    dirs
+    let d = Discovery::from_process();
+    d.tfm_dirs_for(&d.font_dirs())
 }
 
 /// The `ec-lm*` TFM that `t1lm*.fd` pairs with a Latin Modern text file:
@@ -372,13 +415,20 @@ impl FontSet {
     /// Bounded search list: `FLASHTEX_FONT_DIRS` entries first, then any
     /// explicit extra directories, then [`default_font_dirs`].
     pub fn with_default_dirs(extra: &[PathBuf]) -> FontSet {
-        let mut dirs: Vec<PathBuf> = Vec::new();
-        if let Ok(v) = std::env::var("FLASHTEX_FONT_DIRS") {
-            dirs.extend(v.split(':').filter(|s| !s.is_empty()).map(PathBuf::from));
-        }
+        let d = Discovery::from_process();
+        let mut dirs = Discovery::split(&d.font_dirs);
         dirs.extend(extra.iter().cloned());
-        dirs.extend(default_font_dirs());
-        FontSet::new(dirs)
+        dirs.extend(d.font_dirs());
+        let tfm_dirs = d.tfm_dirs_for(&dirs);
+        FontSet::with_dirs(dirs, tfm_dirs)
+    }
+
+    /// Everything [`Discovery`] finds, and nothing else: the set the
+    /// packaged helper runs with.
+    pub fn from_discovery(d: &Discovery) -> FontSet {
+        let dirs = d.font_dirs();
+        let tfm_dirs = d.tfm_dirs_for(&dirs);
+        FontSet::with_dirs(dirs, tfm_dirs)
     }
 
     /// Whether the Latin Modern text and math faces the tests and the
@@ -388,19 +438,18 @@ impl FontSet {
         has("lmroman12-regular.otf") && has("lmroman10-regular.otf") && has("latinmodern-math.otf")
     }
 
+    /// Explicit font directories; TFMs come from `FLASHTEX_TFM_DIRS` and
+    /// the directories' TeX Live / flat siblings (no bundle probing).
     pub fn new(dirs: Vec<PathBuf>) -> FontSet {
+        let d = Discovery { tfm_dirs: std::env::var("FLASHTEX_TFM_DIRS").ok(), ..Discovery::default() };
+        let tfm_dirs = d.tfm_dirs_for(&dirs);
+        FontSet::with_dirs(dirs, tfm_dirs)
+    }
+
+    /// Explicit font and TFM directories, both searched in the given order.
+    pub fn with_dirs(dirs: Vec<PathBuf>, tfm_dirs: Vec<PathBuf>) -> FontSet {
         let mut search = FontSearch::new();
-        let mut tfm_dirs: Vec<PathBuf> = Vec::new();
-        if let Ok(v) = std::env::var("FLASHTEX_TFM_DIRS") {
-            tfm_dirs.extend(v.split(':').filter(|s| !s.is_empty()).map(PathBuf::from));
-        }
         for d in dirs {
-            let sibling = PathBuf::from(d.to_string_lossy().replace("/opentype/", "/tfm/"));
-            for p in [sibling, d.clone()] {
-                if !tfm_dirs.contains(&p) {
-                    tfm_dirs.push(p);
-                }
-            }
             search = search.with_dir(d);
         }
         FontSet {
