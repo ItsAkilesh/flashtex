@@ -1,6 +1,6 @@
 # mac-pdf handoff — FT-009 PDF output
 
-- Updated UTC: 2026-09-12T04:30Z
+- Updated UTC: 2026-09-12T04:55Z
 - Agent / parent / machine alias: `mac-pdf` (Claude Code subagent) / parent
   `mac-claude-a` / `mac-m1max-a`
 - Task / acceptance gate / owned paths: FT-009 rev 1, "original Rust PDF output
@@ -12,16 +12,24 @@
 - Ready behavior and evidence:
   - `crates/pdf` (`flashtex-pdf`, edition 2024, zero dependencies) writes PDF 1.4
     by hand from a runtime-v1 `compile_result`: one page object per page with
-    the page's own `MediaBox`, one `BT … Tj … ET` per text item at
-    `(x_pt, height_pt - baseline_y_pt)`, xref table, trailer. Library API
+    the page's own `MediaBox`, one `BT … ET` per text item at
+    `(x_pt, height_pt - baseline_y_pt)` with `/F1` Times-Roman (WinAnsi) and
+    `/F2` Symbol runs switched inside the block, U+2500-only items drawn as
+    `re f` fraction rules, xref table, trailer. Library API
     `render_pdf` / `render_envelope` returning `{ bytes, warnings }`; CLI
     `flashtex-pdf [in.json] --out out.pdf [--verify]`.
-  - `cargo test`: 20/20 pass (11 unit, 9 integration). Covers fixture page count
+  - `cargo test`: 24/24 pass (13 unit, 11 integration). Covers fixture page count
     and MediaBox, a 2-page synthetic result, multiline baselines, WinAnsi
-    encoding (`é` → `0xE9`), unrepresentable chars (`∫`, `😀`) → `?` + warning,
-    delimiter escaping, unsupported item kinds, bad envelopes, determinism, the
-    CLI, an independent xref self-check, and (macOS) `sips` opening the fixture
-    PDF and reporting 612 × 792.
+    encoding (`é` → `0xE9`), unrepresentable chars (`中`, `😀`, `ℝ`) → `?` +
+    warning, delimiter escaping, unsupported item kinds, bad envelopes,
+    determinism, the CLI, an independent xref self-check, and (macOS) `sips`
+    opening the fixture PDF and reporting 612 × 792.
+  - Issue #9 follow-up: the exact compiler (de1020c) output for
+    `$\frac{a}{b}+\alpha+\sqrt{x}$` is checked in as
+    `crates/pdf/tests/fixtures/math-compile-result.json`; the test asserts zero
+    warnings, one `re f` rule 8.4 × 0.72pt at x=72 on baseline 84.72, `α` via
+    `/F2` byte `0x61`, `√` via `/F2` byte `0xD6`, both fonts in `/Resources`.
+    Rasterised by macOS the PDF shows a/b with a drawn bar, α, and √x, no `?`.
   - Manual on mac-m1max-a: `/usr/bin/sips -g pixelWidth -g pixelHeight -g format`
     on the generated fixture PDF → `pixelWidth: 612.000`, `pixelHeight: 792.000`,
     `format: pdf`, exit 0. A two-page Unicode sample rasterised to PNG showed the
@@ -29,24 +37,37 @@
     and page two on a white page.
   - `cargo build --release` and `cargo clippy --all-targets` clean.
 - Incomplete behavior / blockers / needs from others:
-  - Base-14 Times-Roman with WinAnsiEncoding only; no font embedding, no bold/
-    italic/math font selection. Non-WinAnsi characters become `?` with a warning.
-  - Text items only; other kinds are skipped with a warning. No images/rules.
+  - Base-14 Times-Roman (WinAnsi) and Symbol only; no font embedding. Heading
+    weight is not reproduced: the compiler sets headings in Times-Bold but
+    runtime-v1 carries no font field, and per issue #9 bold is not inferred from
+    size. Needs a runtime-v1 font/weight field (proposed to Commander).
+  - Characters outside WinAnsi and Symbol become `?` with a warning. Symbol has
+    no bold/italic and no stretchy delimiters; the radical has no overbar.
+  - Text items and U+2500 rule items only; other kinds are skipped with a
+    warning. No images or general paths. A real rule item type in runtime-v1
+    would replace the U+2500 convention (Commander's call).
   - Word spacing in the PDF reflects the FT-002 compiler's placeholder glyph
     widths; this crate does not re-measure text.
   - Not wired into `crates/compiler` or `apps/mac` yet (`pdf_path` still null).
     Integration steps are in `crates/pdf/README.md`; wiring belongs to the
     compiler/Mac owners, not this task.
 - Interface changes / consumer actions: none. Consumes runtime-v1 `compile_result`
-  unchanged. Surfacing PDF warnings in the UI would need a contract addition
+  unchanged. Relies on the compiler's convention that fraction rules are text
+  items consisting only of U+2500 (0.5 em per dash, baseline at the bar's
+  bottom edge, thickness 0.06/0.7 em of the item size); documented in README. Surfacing PDF warnings in the UI would need a contract addition
   (Commander's call); until then the worker can emit them as `warning` diagnostics.
 - Reviewed peer revisions / resulting adaptations: `origin/main` 25a92a9 (branch
   base); `origin/agent/claude/compiler-foundation` 29221d8 `crates/compiler`
   README and `src/layout.rs` for the emitted item shape (one item per word,
   612×792, top-left origin, `round2` coordinates) — matched by writing absolute
-  `Td` per item and formatting numbers to three decimals.
+  `Td` per item and formatting numbers to three decimals. Follow-up: compiler
+  de1020c `src/math.rs` (fraction rule construction, `SCRIPT_SCALE` 0.7,
+  `FRACTION_RULE_EM` 0.06, Greek/radical as Unicode text) and `src/metrics.rs`
+  (500-unit fallback for non-Latin glyphs) plus GitHub issue #9 — adapted by
+  rendering U+2500 runs as rules and adding the Symbol font.
 - Validation commands / results / artifact paths:
-  `cd crates/pdf && cargo test` (20 passed);
+  `cd crates/pdf && cargo test` (24 passed);
+  `cargo run --bin flashtex-pdf -- tests/fixtures/math-compile-result.json --out math.pdf --verify` (exit 0, no warnings);
   `cargo run --bin flashtex-pdf -- --out out.pdf --verify < ../../protocol/fixtures/compile-result.json`;
   `/usr/bin/sips -g pixelWidth -g pixelHeight out.pdf`.
 - Resource pool / allocation: parent `mac-claude-a`'s Claude Max allocation on
@@ -56,6 +77,8 @@
 - Decisions: hand-written JSON reader instead of serde so the crate builds
   offline with no dependencies, matching `crates/compiler`; no background fill
   so export is white regardless of preview theme; one `BT/ET` per item so the
-  content stream is trivially verifiable.
+  content stream is trivially verifiable; font runs switched with `Tf` inside
+  one text object so the viewer's real base-14 advances position them and no
+  width tables are needed in this crate.
 - Exact next action: Commander/integrator merges `agent/mac-pdf/pdf-output`;
   compiler or Mac owner wires `pdf_path` per `crates/pdf/README.md`.

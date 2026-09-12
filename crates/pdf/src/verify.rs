@@ -17,13 +17,28 @@ pub struct Structure {
 }
 
 /// One `Tj` as written by this crate's writer, recovered from a content stream.
+///
+/// An item with several font runs yields several placements sharing the same
+/// `x`/`y` (the item's `Td`); `continues` is true for every run after the first.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Placement {
+    /// Font resource name without the slash, e.g. `F1` or `F2`.
+    pub font: String,
     pub font_size: f64,
     pub x: f64,
     pub y: f64,
+    pub continues: bool,
     /// Raw string bytes after undoing the writer's escapes.
     pub bytes: Vec<u8>,
+}
+
+/// One filled rectangle (`x y w h re f`) in PDF space.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Rule {
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
 }
 
 /// Checks header, trailer, and that every xref entry points at its object.
@@ -136,8 +151,9 @@ pub fn stream_data(pdf: &[u8], object: usize) -> Result<Vec<u8>, String> {
 /// Recovers each `Tj` from a content stream written by [`crate::writer`].
 pub fn placements(content: &[u8]) -> Result<Vec<Placement>, String> {
     let mut out = Vec::new();
-    let mut font_size = None;
+    let mut font: Option<(String, f64)> = None;
     let mut td = None;
+    let mut continues = false;
     let mut pos = 0;
     while pos < content.len() {
         let end = content[pos..]
@@ -149,17 +165,20 @@ pub fn placements(content: &[u8]) -> Result<Vec<Placement>, String> {
         if line.ends_with(b" Tf") {
             let s = std::str::from_utf8(line).map_err(|_| "Tf line not ASCII")?;
             let mut parts = s.split(' ');
-            let font = parts.next().unwrap_or("");
-            if font != "/F1" {
-                return Err(format!("unexpected font resource {font}"));
-            }
-            font_size = Some(
-                parts
-                    .next()
-                    .unwrap_or("")
-                    .parse::<f64>()
-                    .map_err(|_| "Tf size")?,
-            );
+            let name = parts.next().unwrap_or("");
+            let name = name
+                .strip_prefix('/')
+                .filter(|n| *n == "F1" || *n == "F2")
+                .ok_or_else(|| format!("unexpected font resource {name}"))?;
+            let size = parts
+                .next()
+                .unwrap_or("")
+                .parse::<f64>()
+                .map_err(|_| "Tf size")?;
+            font = Some((name.to_string(), size));
+        } else if line == b"BT" {
+            font = None;
+            continues = false;
         } else if line.ends_with(b" Td") {
             let s = std::str::from_utf8(line).map_err(|_| "Td line not ASCII")?;
             let mut parts = s.split(' ');
@@ -175,15 +194,48 @@ pub fn placements(content: &[u8]) -> Result<Vec<Placement>, String> {
                 .map_err(|_| "Td y")?;
             td = Some((x, y));
         } else if line.starts_with(b"(") && line.ends_with(b") Tj") {
-            let (x, y) = td.take().ok_or("Tj without preceding Td")?;
-            let font_size = font_size.ok_or("Tj without Tf")?;
+            let (x, y) = td.ok_or("Tj without preceding Td")?;
+            let (name, font_size) = font.clone().ok_or("Tj without Tf")?;
             out.push(Placement {
+                font: name,
                 font_size,
                 x,
                 y,
+                continues,
                 bytes: unescape(&line[1..line.len() - 4]),
             });
+            continues = true;
+        } else if line == b"ET" {
+            td = None;
         }
+    }
+    Ok(out)
+}
+
+/// Recovers each `re f` rectangle from a content stream written by
+/// [`crate::writer`].
+pub fn rules(content: &[u8]) -> Result<Vec<Rule>, String> {
+    let mut out = Vec::new();
+    for line in content.split(|&b| b == b'\n') {
+        if !line.ends_with(b" re f") {
+            continue;
+        }
+        let s = std::str::from_utf8(line).map_err(|_| "re line not ASCII")?;
+        let nums: Vec<f64> = s
+            .split(' ')
+            .take(4)
+            .map(|n| n.parse::<f64>())
+            .collect::<Result<_, _>>()
+            .map_err(|_| format!("malformed rectangle line {s:?}"))?;
+        if nums.len() != 4 {
+            return Err(format!("malformed rectangle line {s:?}"));
+        }
+        out.push(Rule {
+            x: nums[0],
+            y: nums[1],
+            width: nums[2],
+            height: nums[3],
+        });
     }
     Ok(out)
 }

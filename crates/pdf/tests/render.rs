@@ -2,10 +2,14 @@
 //! output, Unicode/font behaviour, structural validity, and (on macOS) that the
 //! system's own PDF reader opens the fixture output.
 
-use flashtex_pdf::verify::{check_structure, placements, stream_data};
+use flashtex_pdf::verify::{check_structure, placements, rules, stream_data};
 use flashtex_pdf::{CompileResult, Item, Page, PdfError, render_envelope, render_pdf};
 
 const FIXTURE: &str = include_str!("../../../protocol/fixtures/compile-result.json");
+/// Exact output of `flashtex-compiler` at de1020c for
+/// `tests/fixtures/math-compile-request.json` (`$\\frac{a}{b}+\\alpha+\\sqrt{x}$`),
+/// the reproduction from GitHub issue #9.
+const MATH_RESULT: &str = include_str!("fixtures/math-compile-result.json");
 
 fn item(text: &str, x: f64, baseline: f64, size: f64) -> Item {
     Item {
@@ -45,9 +49,9 @@ fn fixture_renders_one_letter_page_with_valid_structure() {
     assert!(out.bytes.ends_with(b"%%EOF\n"));
 
     let s = check_structure(&out.bytes).expect("xref offsets point at their objects");
-    // catalog, pages, font, info, one page, one content stream
-    assert_eq!(s.object_count, 6);
-    assert_eq!(s.stream_objects, vec![6]);
+    // catalog, pages, two fonts, info, one page, one content stream
+    assert_eq!(s.object_count, 7);
+    assert_eq!(s.stream_objects, vec![7]);
 
     assert_eq!(
         count(&out.bytes, b"/Type /Page\n"),
@@ -64,10 +68,13 @@ fn fixture_renders_one_letter_page_with_valid_structure() {
         )
         .is_some()
     );
+    assert!(find(&out.bytes, b"/BaseFont /Symbol >>").is_some());
+    assert!(find(&out.bytes, b"/Font << /F1 3 0 R /F2 4 0 R >>").is_some());
 
-    let content = stream_data(&out.bytes, 6).unwrap();
+    let content = stream_data(&out.bytes, 7).unwrap();
     let placed = placements(&content).unwrap();
     assert_eq!(placed.len(), 1);
+    assert_eq!(placed[0].font, "F1");
     assert_eq!(placed[0].font_size, 12.0);
     assert_eq!((placed[0].x, placed[0].y), (72.0, 792.0 - 84.0));
     assert_eq!(placed[0].bytes, b"Hello FlashTeX.");
@@ -83,21 +90,21 @@ fn two_synthetic_pages_get_their_own_mediabox_and_content() {
     };
     let out = render_pdf(&result).unwrap();
     let s = check_structure(&out.bytes).unwrap();
-    assert_eq!(s.object_count, 8);
-    assert_eq!(s.stream_objects, vec![6, 8]);
+    assert_eq!(s.object_count, 9);
+    assert_eq!(s.stream_objects, vec![7, 9]);
     assert!(find(&out.bytes, b"/Count 2 ").is_some());
-    assert!(find(&out.bytes, b"/Kids [ 5 0 R 7 0 R ]").is_some());
+    assert!(find(&out.bytes, b"/Kids [ 6 0 R 8 0 R ]").is_some());
 
-    let p5 = find(&out.bytes, b"\n5 0 obj\n").unwrap();
-    let p7 = find(&out.bytes, b"\n7 0 obj\n").unwrap();
-    let obj5 = &out.bytes[p5..p7];
-    assert!(find(obj5, b"/MediaBox [ 0 0 612 792 ]").is_some());
-    assert!(find(obj5, b"/Contents 6 0 R").is_some());
-    let obj7 = &out.bytes[p7..];
-    assert!(find(obj7, b"/MediaBox [ 0 0 595.28 841.89 ]").is_some());
-    assert!(find(obj7, b"/Contents 8 0 R").is_some());
+    let p6 = find(&out.bytes, b"\n6 0 obj\n").unwrap();
+    let p8 = find(&out.bytes, b"\n8 0 obj\n").unwrap();
+    let obj6 = &out.bytes[p6..p8];
+    assert!(find(obj6, b"/MediaBox [ 0 0 612 792 ]").is_some());
+    assert!(find(obj6, b"/Contents 7 0 R").is_some());
+    let obj8 = &out.bytes[p8..];
+    assert!(find(obj8, b"/MediaBox [ 0 0 595.28 841.89 ]").is_some());
+    assert!(find(obj8, b"/Contents 9 0 R").is_some());
 
-    let second = placements(&stream_data(&out.bytes, 8).unwrap()).unwrap();
+    let second = placements(&stream_data(&out.bytes, 9).unwrap()).unwrap();
     assert_eq!(second.len(), 1);
     assert_eq!(second[0].font_size, 10.5);
     assert_eq!(second[0].x, 56.7);
@@ -122,7 +129,7 @@ fn multiline_placement_maps_every_baseline_to_pdf_space() {
     };
     let out = render_pdf(&result).unwrap();
     check_structure(&out.bytes).unwrap();
-    let placed = placements(&stream_data(&out.bytes, 6).unwrap()).unwrap();
+    let placed = placements(&stream_data(&out.bytes, 7).unwrap()).unwrap();
     assert_eq!(placed.len(), items.len());
     for (p, i) in placed.iter().zip(&items) {
         assert_eq!(p.font_size, i.font_size_pt, "{}", i.text);
@@ -148,14 +155,14 @@ fn winansi_characters_are_encoded_and_others_warn() {
             792.0,
             vec![
                 item("café — naïve", 72.0, 84.0, 12.0),
-                item("∫ x dx 😀", 72.0, 100.0, 12.0),
+                item("中 x dx 😀", 72.0, 100.0, 12.0),
                 item("(paren) back\\slash", 72.0, 120.0, 12.0),
             ],
         )],
     };
     let out = render_pdf(&result).unwrap();
     check_structure(&out.bytes).unwrap();
-    let placed = placements(&stream_data(&out.bytes, 6).unwrap()).unwrap();
+    let placed = placements(&stream_data(&out.bytes, 7).unwrap()).unwrap();
     assert_eq!(placed.len(), 3);
 
     // é -> 0xE9, — -> 0x97, ï -> 0xEF: WinAnsi bytes, not UTF-8 sequences.
@@ -175,9 +182,10 @@ fn winansi_characters_are_encoded_and_others_warn() {
     let w = &out.warnings[0];
     assert!(w.contains("page 1"), "{w}");
     assert!(w.contains("item 1"), "{w}");
-    assert!(w.contains("U+222B"), "{w}");
+    assert!(w.contains("U+4E2D"), "{w}");
     assert!(w.contains("U+1F600"), "{w}");
     assert!(w.contains("WinAnsi"), "{w}");
+    assert!(w.contains("Symbol"), "{w}");
 
     // Delimiters are escaped in the file and round-trip through the reader.
     assert_eq!(placed[2].bytes, b"(paren) back\\slash");
@@ -230,7 +238,7 @@ fn export_is_white_and_theme_independent() {
     // The writer has no theme input at all; the only colour operator it emits
     // is black text, and it never paints a background rectangle.
     let out = render_envelope(FIXTURE).unwrap();
-    let content = stream_data(&out.bytes, 6).unwrap();
+    let content = stream_data(&out.bytes, 7).unwrap();
     assert!(
         content.starts_with(b"0 g\n"),
         "black non-stroking colour set explicitly"
@@ -244,6 +252,107 @@ fn export_is_white_and_theme_independent() {
         );
     }
     assert!(find(&out.bytes, b"/Group").is_none());
+}
+
+#[test]
+fn issue_9_math_repro_renders_rule_greek_and_radical_without_warnings() {
+    let out = render_envelope(MATH_RESULT).expect("math result renders");
+    assert!(out.warnings.is_empty(), "{:?}", out.warnings);
+    check_structure(&out.bytes).unwrap();
+    let content = stream_data(&out.bytes, 7).unwrap();
+
+    // The fraction bar "──" (2 × U+2500 at 8.4pt, x=72, baseline 84.72) is a
+    // filled rectangle, not glyphs: width 2 × 0.5 × 8.4 = 8.4pt, thickness
+    // 0.06/0.7 × 8.4 = 0.72pt, bottom edge on the baseline.
+    let bars = rules(&content).unwrap();
+    assert_eq!(bars.len(), 1, "{bars:?}");
+    let bar = &bars[0];
+    assert_eq!(bar.x, 72.0);
+    assert!((bar.width - 8.4).abs() < 0.0005, "{bar:?}");
+    assert!((bar.height - 0.72).abs() < 0.0005, "{bar:?}");
+    assert!((bar.y - (792.0 - 84.72)).abs() < 0.0005, "{bar:?}");
+    assert!(find(&content, "─".as_bytes()).is_none(), "no U+2500 glyphs");
+    assert!(find(&content, b"?").is_none(), "nothing substituted");
+
+    // Text items, in compiler order, minus the rule: a b + α + √ x.
+    let placed = placements(&content).unwrap();
+    let summary: Vec<(&str, Vec<u8>)> = placed
+        .iter()
+        .map(|p| (p.font.as_str(), p.bytes.clone()))
+        .collect();
+    assert_eq!(
+        summary,
+        vec![
+            ("F1", b"a".to_vec()),
+            ("F1", b"b".to_vec()),
+            ("F1", b"+".to_vec()),
+            ("F2", vec![0x61]), // alpha in Symbol
+            ("F1", b"+".to_vec()),
+            ("F2", vec![0xD6]), // radical in Symbol
+            ("F1", b"x".to_vec()),
+        ]
+    );
+    let alpha = &placed[3];
+    assert_eq!(alpha.font_size, 12.0);
+    assert_eq!(alpha.x, 87.17);
+    assert!((alpha.y - (792.0 - 87.36)).abs() < 0.0005);
+    let radical = &placed[5];
+    assert_eq!(radical.x, 99.94);
+    assert!(placed.iter().all(|p| !p.continues));
+    assert!(
+        placed
+            .iter()
+            .filter(|p| p.font == "F1")
+            .all(|p| p.font_size == 12.0 || (p.font_size - 8.4).abs() < 1e-9)
+    );
+}
+
+#[test]
+fn mixed_item_switches_fonts_inside_one_text_object() {
+    let result = CompileResult {
+        pages: vec![page(
+            1,
+            612.0,
+            792.0,
+            vec![
+                item("x∈ℝ→∞", 72.0, 84.0, 12.0),
+                item("─", 72.0, 100.0, 10.0),
+            ],
+        )],
+    };
+    let out = render_pdf(&result).unwrap();
+    check_structure(&out.bytes).unwrap();
+    assert!(find(&out.bytes, b"/Font << /F1 3 0 R /F2 4 0 R >>").is_some());
+    let content = stream_data(&out.bytes, 7).unwrap();
+
+    // ℝ (U+211D) is in neither font: substituted and reported; the rest of
+    // the item still switches between Times and Symbol within one BT block.
+    assert_eq!(out.warnings.len(), 1, "{:?}", out.warnings);
+    assert!(out.warnings[0].contains("U+211D"));
+    let placed = placements(&content).unwrap();
+    let runs: Vec<(&str, bool, Vec<u8>)> = placed
+        .iter()
+        .map(|p| (p.font.as_str(), p.continues, p.bytes.clone()))
+        .collect();
+    assert_eq!(
+        runs,
+        vec![
+            ("F1", false, b"x".to_vec()),
+            ("F2", true, vec![0xCE]),
+            ("F1", true, b"?".to_vec()),
+            ("F2", true, vec![0xAE, 0xA5]),
+        ]
+    );
+    assert!(placed.iter().all(|p| p.x == 72.0 && p.y == 708.0));
+    assert_eq!(count(&content, b"BT\n"), 1);
+    assert_eq!(count(&content, b" Tf\n"), 4);
+
+    // A single dash is still a rule: 0.5 em wide, 0.06/0.7 em thick.
+    let bars = rules(&content).unwrap();
+    assert_eq!(bars.len(), 1);
+    assert!((bars[0].width - 5.0).abs() < 0.0005);
+    assert!((bars[0].height - 10.0 * 0.06 / 0.7).abs() < 0.0005);
+    assert_eq!(bars[0].y, 692.0);
 }
 
 #[test]

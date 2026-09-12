@@ -6,22 +6,36 @@
 //! |--------|-------------------------------------------|
 //! | 1      | catalog                                   |
 //! | 2      | page tree                                 |
-//! | 3      | the one font resource (Times-Roman)       |
-//! | 4      | document information                      |
-//! | 5+2i   | page `i` (zero-based)                     |
-//! | 6+2i   | content stream of page `i`                |
+//! | 3      | font resource /F1 (Times-Roman, WinAnsi)  |
+//! | 4      | font resource /F2 (Symbol, built-in)      |
+//! | 5      | document information                      |
+//! | 6+2i   | page `i` (zero-based)                     |
+//! | 7+2i   | content stream of page `i`                |
 //!
 //! Every text item is emitted as its own `BT … ET` block with an absolute `Td`,
 //! so the content stream is trivially checkable: each `Td` carries exactly the
-//! item's PDF-space coordinates `(x_pt, height_pt - baseline_y_pt)`.
+//! item's PDF-space coordinates `(x_pt, height_pt - baseline_y_pt)`. Inside the
+//! block the item's font runs are written as alternating `Tf`/`Tj` pairs; the
+//! viewer advances between runs using the real base-14 widths, so this crate
+//! carries no width tables of its own.
+//!
+//! Fraction rules: the FT-002 compiler (`crates/compiler/src/math.rs`) has no
+//! rule primitive in runtime-v1, so it emits a fraction bar as a text item made
+//! only of U+2500 BOX DRAWINGS LIGHT HORIZONTAL, N characters wide at 0.5 em
+//! each, with the item's baseline at the bottom edge of the bar. Such items are
+//! drawn here as filled rectangles (`re f`), never as glyphs.
 
 use crate::encoding;
 use crate::{CompileResult, PdfError, PdfOutput};
 use std::io::Write;
 
 pub const PDF_HEADER: &[u8] = b"%PDF-1.4\n";
-pub const FONT_RESOURCE_NAME: &str = "F1";
-pub const BASE_FONT: &str = "Times-Roman";
+pub const FIRST_PAGE_OBJECT: usize = 6;
+/// Width the compiler assumes for one U+2500 in a rule item, in em.
+pub const RULE_DASH_EM: f64 = 0.5;
+/// Fraction rule thickness in em of the *rule item's* font size: the compiler
+/// uses 0.06 em of the parent size and sets the rule item at 0.7 of that size.
+pub const RULE_THICKNESS_EM: f64 = 0.06 / 0.7;
 pub const PRODUCER: &str = "FlashTeX flashtex-pdf 0.1.0";
 
 pub fn render(result: &CompileResult) -> Result<PdfOutput, PdfError> {
@@ -67,7 +81,7 @@ pub fn render(result: &CompileResult) -> Result<PdfOutput, PdfError> {
     let page_count = result.pages.len();
     let mut kids = String::new();
     for i in 0..page_count {
-        kids.push_str(&format!("{} 0 R ", 5 + 2 * i));
+        kids.push_str(&format!("{} 0 R ", FIRST_PAGE_OBJECT + 2 * i));
     }
     doc.object(
         2,
@@ -77,13 +91,23 @@ pub fn render(result: &CompileResult) -> Result<PdfOutput, PdfError> {
     doc.object(
         3,
         format!(
-            "<< /Type /Font /Subtype /Type1 /BaseFont /{BASE_FONT} /Encoding /WinAnsiEncoding >>"
+            "<< /Type /Font /Subtype /Type1 /BaseFont /{} /Encoding /WinAnsiEncoding >>",
+            encoding::Font::Times.base_font()
+        )
+        .as_bytes(),
+    );
+    // Symbol uses its built-in encoding; naming one would remap its glyphs.
+    doc.object(
+        4,
+        format!(
+            "<< /Type /Font /Subtype /Type1 /BaseFont /{} >>",
+            encoding::Font::Symbol.base_font()
         )
         .as_bytes(),
     );
 
     doc.object(
-        4,
+        5,
         format!(
             "<< /Producer ({}) /Creator (FlashTeX) >>",
             escape_ascii(PRODUCER)
@@ -92,16 +116,18 @@ pub fn render(result: &CompileResult) -> Result<PdfOutput, PdfError> {
     );
 
     for (i, page) in result.pages.iter().enumerate() {
-        let page_obj = 5 + 2 * i;
+        let page_obj = FIRST_PAGE_OBJECT + 2 * i;
         let content_obj = page_obj + 1;
         let content = page_content(page, &mut warnings);
 
         doc.object(
             page_obj,
             format!(
-                "<< /Type /Page /Parent 2 0 R /MediaBox [ 0 0 {} {} ] /Resources << /Font << /{FONT_RESOURCE_NAME} 3 0 R >> >> /Contents {content_obj} 0 R >>",
+                "<< /Type /Page /Parent 2 0 R /MediaBox [ 0 0 {} {} ] /Resources << /Font << /{} 3 0 R /{} 4 0 R >> >> /Contents {content_obj} 0 R >>",
                 num(page.width_pt),
-                num(page.height_pt)
+                num(page.height_pt),
+                encoding::Font::Times.resource_name(),
+                encoding::Font::Symbol.resource_name()
             )
             .as_bytes(),
         );
@@ -114,14 +140,39 @@ pub fn render(result: &CompileResult) -> Result<PdfOutput, PdfError> {
     })
 }
 
+/// True when the compiler meant this item as a fraction rule, not text.
+pub fn is_rule_item(text: &str) -> bool {
+    !text.is_empty() && text.chars().all(|c| c == '\u{2500}')
+}
+
 /// Builds one page's content stream. The page is left untouched (white) apart
-/// from black text; there is deliberately no background fill and no theme input.
+/// from black text and rules; there is deliberately no background fill and no
+/// theme input.
 fn page_content(page: &crate::Page, warnings: &mut Vec<String>) -> Vec<u8> {
     let mut out = Vec::new();
     // Non-stroking colour: black in DeviceGray. Set explicitly so output never
     // depends on viewer defaults.
     out.extend_from_slice(b"0 g\n");
     for (i, item) in page.items.iter().enumerate() {
+        if is_rule_item(&item.text) {
+            // The bar occupies [baseline - thickness, baseline] in top-left
+            // space; in PDF space its bottom edge is at height - baseline.
+            let dashes = item.text.chars().count() as f64;
+            let width = dashes * RULE_DASH_EM * item.font_size_pt;
+            let thickness = RULE_THICKNESS_EM * item.font_size_pt;
+            let x = item.x_pt;
+            let y = page.height_pt - item.baseline_y_pt;
+            writeln!(
+                out,
+                "{} {} {} {} re f",
+                num(x),
+                num(y),
+                num(width),
+                num(thickness)
+            )
+            .expect("writing to Vec cannot fail");
+            continue;
+        }
         let encoded = encoding::encode(&item.text);
         if !encoded.unrepresentable.is_empty() {
             let listed: Vec<String> = encoded
@@ -130,7 +181,7 @@ fn page_content(page: &crate::Page, warnings: &mut Vec<String>) -> Vec<u8> {
                 .map(|c| format!("{c:?} (U+{:04X})", *c as u32))
                 .collect();
             warnings.push(format!(
-                "page {}: item {i} {:?}: {} not representable in WinAnsiEncoding; written as '{}'",
+                "page {}: item {i} {:?}: {} not representable in WinAnsiEncoding or Symbol; written as '{}'",
                 page.number,
                 item.text,
                 listed.join(", "),
@@ -139,16 +190,19 @@ fn page_content(page: &crate::Page, warnings: &mut Vec<String>) -> Vec<u8> {
         }
         let x = item.x_pt;
         let y = page.height_pt - item.baseline_y_pt;
-        write!(
-            out,
-            "BT\n/{FONT_RESOURCE_NAME} {} Tf\n{} {} Td\n(",
-            num(item.font_size_pt),
-            num(x),
-            num(y)
-        )
-        .expect("writing to Vec cannot fail");
-        out.extend_from_slice(&escape_string(&encoded.bytes));
-        out.extend_from_slice(b") Tj\nET\n");
+        writeln!(out, "BT\n{} {} Td", num(x), num(y)).expect("writing to Vec cannot fail");
+        for run in &encoded.runs {
+            write!(
+                out,
+                "/{} {} Tf\n(",
+                run.font.resource_name(),
+                num(item.font_size_pt)
+            )
+            .expect("writing to Vec cannot fail");
+            out.extend_from_slice(&escape_string(&run.bytes));
+            out.extend_from_slice(b") Tj\n");
+        }
+        out.extend_from_slice(b"ET\n");
     }
     out
 }
@@ -234,7 +288,7 @@ impl Document {
         }
         write!(
             self.bytes,
-            "trailer\n<< /Size {size} /Root 1 0 R /Info 4 0 R >>\nstartxref\n{xref_offset}\n%%EOF\n"
+            "trailer\n<< /Size {size} /Root 1 0 R /Info 5 0 R >>\nstartxref\n{xref_offset}\n%%EOF\n"
         )
         .expect("Vec write");
         self.bytes
