@@ -16,6 +16,7 @@ Full process: [orchestration master plan](../ORCHESTRATION.md).
 | FT-007 / 1 | Rust bridge: Grok/transfer and reviewed insertion | commander | assigned; begins after loop publication | FT-001/003/004, Grok funding |
 | FT-008 / 1 | Integrated demo verification | commander + future Mac worker | unassigned | FT-003/005/006/007 |
 | FT-014 / 1 | Independent companion native validation and repair broker | chatgpt-a | assigned; ACK/PID pending | FT-004 branch, Xcode 26.6; no overlapping writes |
+| FT-015 / 1 | Linux end-to-end demo, recovery, and regression harness | local-claude-opus | assigned; blocked on execution login | Compiler/bridge/PDF exact SHAs; offline fixtures required |
 
 ## Dispatch record required before changing a task to assigned
 

@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "agent_id": "local-claude-opus",
+  "task_id": "FT-015",
+  "revision": 1,
+  "branch": "agent/local-claude-opus/e2e-harness",
+  "action": "await_auth_then_work",
+  "assignment_path": "coordination/assignments/FT-015.json",
+  "issue_number": 6
+}

@@ -219,5 +219,7 @@ logged out with no access or refresh token and no eligible API environment key.
 Pool `claude-linux-max20x` is user-authorized for substantial project work after
 login; usable quota is unknown. API-credit fallback is authorized only when an
 actually funded existing API route is verified. New charges, purchases, and
-overages remain prohibited. No inference has run and no grant is active while
-authentication is absent.
+overages remain prohibited. Grant `claude-linux-max20x-ft015` and its queued stages
+reserve the existing plan route for FT-015 after successful login; they authorize
+no inference while authentication is absent. No inference has run. The worker must
+open/reconcile its auth recovery issue before reporting active execution.
