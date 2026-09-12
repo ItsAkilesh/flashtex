@@ -202,14 +202,24 @@ Fifty samples produced these actual compiler-only measurements:
 
 | Case | Actual latency | Reuse |
 |---|---:|---:|
-| First cold compile | 35.522 ms | 0 / 500 blocks |
-| Cold compile | median 20.034 ms, p95 21.518 ms | 0 / 500 blocks |
-| Warm unchanged | median 0.639 ms, p95 0.710 ms | 500 / 500 blocks |
-| One-word edit in paragraph 250 | median 21.079 ms, p95 22.578 ms | 499 / 500 blocks |
-| Global macro-definition edit | median 21.219 ms, p95 22.682 ms | 0 / 500 blocks |
+| First cold compile | 37.490 ms | 0 / 500 blocks |
+| Cold compile | median 26.613 ms, p95 27.366 ms | 0 / 500 blocks |
+| Warm unchanged | median 0.784 ms, p95 0.933 ms | 500 / 500 blocks |
+| One-word edit in paragraph 250 | median 29.092 ms, p95 29.678 ms | 499 / 500 blocks |
+| Global macro-definition edit | median 29.014 ms, p95 29.643 ms | 0 / 500 blocks |
+
+These numbers were re-measured after cross-references, figures and multi-file
+support landed. The earlier figures in this table were stale, and re-measuring
+caught a real regression: the reuse lookup shifted a cached block once per
+comparison rather than once, which is quadratic, and a one-word edit had reached
+178 ms p95 — six times slower than a full cold compile despite reusing 499 of 500
+blocks. Hoisting the shift out of the inner scan restored it to 29.678 ms.
+
+Cold compilation is genuinely slower than before (27 ms against 21 ms); that is
+the real cost of the convergence pass and multi-file handling, not a regression.
 
 The measured compiler work is below the 200 ms ordinary warm-edit target; the
-one-word edit p95 is 22.578 ms, leaving 177.422 ms of that budget. This is not an
+one-word edit p95 is 29.678 ms, leaving 170.322 ms of that budget. This is not an
 end-to-end keystroke-to-visible measurement: scheduling, JSON transfer, native UI
 drawing, and artifact publication are excluded, so the full product target still
 requires integration measurement. The benchmark intentionally does not claim a

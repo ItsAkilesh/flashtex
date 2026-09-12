@@ -16,7 +16,7 @@
     "cursor-commit",
     "coordination"
   ],
-  "code_revision": "c14866252e255c5949565cd14af32106fe8ac92d",
+  "code_revision": "3aa33304c937749276c7c1fdbb1afa431004540b",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
@@ -24,21 +24,21 @@
   },
   "machine": "mac-m5pro-kabir",
   "main_integrated_through": "5a30ec12700dee17f074459cc89ddc8de4b9153d",
-  "next_action": "Awaiting the two contract decisions asked for on issue #9: a rule item type and an optional font field. Available for dispatch.",
+  "next_action": "Awaiting the two contract decisions on issue #9 and integration of this branch. Available for dispatch.",
   "reviewed_peers": {
     "origin/main": {
-      "adaptation": "Caught and fixed a regression I introduced: the new export warning was downgrading valid documents to status recovered, dropping the corpus from 9 ok to 6. recovered means the compiler recovered from a source error, and a document containing a fraction is not malformed, so export warnings are now added after status is computed and do not affect it.",
-      "reviewed_utc": "2026-09-12T06:26:33Z",
+      "adaptation": "The README numbers predated cross-references and multi-file support, so they were quietly wrong. Re-measuring rather than trusting them is what exposed the regression; the README now records both the corrected numbers and the fact that cold compilation is genuinely 6 ms slower as the honest cost of the convergence pass, which is not a regression.",
+      "reviewed_utc": "2026-09-12T06:30:27Z",
       "sha": "1befb923fb8c248a704a1ff5148d77b5f581130f"
     }
   },
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "Issue #8 verified fixed and closed on GitHub with its own reproductions. Issue #9 half resolved on my side: deleted the duplicate lossy PDF writer, added a tested export glyph adapter, and added a diagnostic so authors learn before exporting. 72 tests pass, corpus back to 9 ok.",
+  "summary": "Found and fixed a 6x performance regression by re-measuring my own stale published numbers. The reuse lookup was quadratic: it shifted a cached block once per comparison, so a one-word edit reached 178 ms p95 against a 200 ms target despite reusing 499 of 500 blocks. Now 29.678 ms. 72 tests pass.",
   "tool": "Codex",
-  "updated_utc": "2026-09-12T06:26:33Z",
+  "updated_utc": "2026-09-12T06:30:27Z",
   "usage": {
-    "evidence": "cargo test 72 pass across 8 suites; clippy -D warnings clean; fmt clean; harness 21/21; corpus 9 ok / 5 recovered; issue #9 exact input now warns about the fraction rule only, with alpha and radical mapping to the Symbol font",
-    "status": "Codex used for cross-references; export adapter written directly"
+    "evidence": "Benchmark rerun before and after on the same 118700-byte 500-paragraph fixture: one-word edit p95 178.760 ms then 29.678 ms; cold 27.366 ms; warm unchanged 0.933 ms. cargo test 72 pass; clippy clean; fmt clean; harness 21/21; corpus 9 ok",
+    "status": "No Codex worker; diagnosis and fix written directly"
   }
 }

@@ -214,15 +214,41 @@ impl Session {
             return IncrementalResult { output, stats };
         }
 
+        // Shift each cached block ONCE, not once per comparison.
+        //
+        // This lookup used to shift a cached block inside the inner scan, so a
+        // 500-block document performed 500 x 500 deep clone-and-shift operations
+        // per edit. That made a one-word edit six times slower than a full cold
+        // compile despite reusing 499 of 500 blocks, and pushed the measured
+        // warm-edit p95 from 21 ms to 177 ms against a 200 ms target.
+        let shifted_cache: Vec<Option<Block>> = if can_reuse {
+            self.previous
+                .as_ref()
+                .map(|previous| {
+                    previous
+                        .blocks
+                        .iter()
+                        .map(|cached| shift_block(&cached.block, &changes, &deltas))
+                        .collect()
+                })
+                .unwrap_or_default()
+        } else {
+            Vec::new()
+        };
+
         for (index, block) in parsed.blocks.iter().enumerate() {
             let dependencies = parsed.block_dependencies[index].clone();
             let prepared_state = cursor.prepare_block(block);
             let candidate = if can_reuse {
                 self.previous.as_ref().and_then(|previous| {
-                    previous.blocks.iter().find(|cached| {
-                        cached.dependencies == dependencies
-                            && shift_block(&cached.block, &changes, &deltas).as_ref() == Some(block)
-                    })
+                    previous
+                        .blocks
+                        .iter()
+                        .zip(shifted_cache.iter())
+                        .find(|(cached, shifted)| {
+                            cached.dependencies == dependencies && shifted.as_ref() == Some(block)
+                        })
+                        .map(|(cached, _)| cached)
                 })
             } else {
                 None
