@@ -1,0 +1,73 @@
+{
+  "agent_id": "commander-preview-performance",
+  "archived_utc": "2026-09-12T15:58:04Z",
+  "assignment": {
+    "acceptance": [
+      "Preserve exact source revision/hash, durable approval and permanent-ID guarantees; history metadata is source-free and does not change retention",
+      "Do not edit crates/document-runtime after published ecbaf7c handoff; consume FT049 reviewed API only",
+      "Helper v2 forwarding remains default OFF, preserves required-output priority and complete frame limits, and never claims native rendering validation"
+    ],
+    "agent_id": "commander-preview-performance",
+    "allocation_id": "hosted-openai-product",
+    "branch": "agent/commander-preview-performance/preview-performance",
+    "deadline_utc": null,
+    "dependencies": [],
+    "input_main_sha": "84ed6a9dbad284e028d4ae2f4966c8f77ac99103",
+    "objective": "Verify actual five HW1 groups plus spaces comments escapes scripts and Text versus Symbol identity with explicit unsupported recovery",
+    "owned_paths": [
+      "crates/preview-controller",
+      "crates/edit-ledger"
+    ],
+    "revision": 42,
+    "schema_version": 1,
+    "state": "assigned",
+    "task_id": "FT-048",
+    "timebox_minutes": 40,
+    "updated_utc": "2026-09-12T15:41:42Z"
+  },
+  "report": {
+    "agent_id": "commander-preview-performance",
+    "allocation_id": "hosted-openai-product",
+    "assignment_acknowledgements": {
+      "FT-048": {
+        "acknowledged_utc": "2026-09-12T15:57:55Z",
+        "adaptation": "Read r42 and completed live compiler protocol, source navigation, malformed-input and performance acceptance; current single cumulative patch is be426cb8 under hw1-current-compiler. Producer fidelity gaps remain explicit.",
+        "main_sha": "62da4b3d6f8e18cd7f78900c9339ef8438f0a835",
+        "revision": 42
+      }
+    },
+    "branch": "agent/commander-preview-performance/preview-performance",
+    "capabilities": [
+      "Preview helper serialization and latency"
+    ],
+    "code_revision": "be426cb85f16e88d145c2c0295a33c76e6b9bf1c",
+    "eta_minutes": {
+      "likely": 15,
+      "optimistic": 5,
+      "pessimistic": 30
+    },
+    "machine": "linux-primary",
+    "main_integrated_through": "3d3909ce828b4de34d67f8a22feb6cb369232af3",
+    "next_action": "Commander independent review and owner adoption; producer Text spacing/encoding/ligature fixes remain required. Await next product scope without authoritative compiler or control-file edits.",
+    "reviewed_peers": {},
+    "schema_version": 1,
+    "state": "ready_for_integration",
+    "summary": "Single cumulative compiler handoff be426cb8 supersedes prior patch chains: 104 final tests and strict lint pass, clean apply matches ten sources, actual optimized HW1 reply retains 72 diagnostics. Text allocation optimization eaba97d5 preserves 207 complete replies and improves alternating synthetic 500KB median about 14 percent.",
+    "tool": "Codex GPT-6 Astra",
+    "updated_utc": "2026-09-12T15:57:55Z",
+    "usage": {
+      "evidence": "crates/preview-controller/docs/handoffs/hw1-current-compiler/evidence.json; crates/preview-controller/docs/handoffs/hw1-text-runs/evidence.json",
+      "status": "Existing hosted allocation; no paid CLI/API calls, remaining quota unknown."
+    }
+  },
+  "report_age_seconds": 9,
+  "report_path": "coordination/agents/commander-preview-performance.json",
+  "review_required": true,
+  "revision": 42,
+  "schema_version": 1,
+  "stale_completion": false,
+  "state": "reported_ready",
+  "task_id": "FT-048",
+  "worker_branch": "agent/commander-preview-performance/preview-performance",
+  "worker_report_sha": "b07dfea59afc153abcf4cda646525d5a71641379"
+}
