@@ -29,3 +29,18 @@ reply, crash, timeout, raw-byte difference or changed compiler artifact fails.
 Unsupported features may still produce consistent recovered output: this gate
 does not treat consistency as feature support. Compiler source revision remains
 unknown unless the caller supplies independently verified build provenance.
+
+`edited_reference.py` applies a validated exact edit before invoking the case's
+declared TeX workflow from clean auxiliary state. This keeps original fixtures
+and PDFs intact. It requires explicit `--only CASE_ID` selections and rejects
+negative fixtures until an edited expectation profile is specified. The six HW1
+edited PDFs, sources, logs and hashes live in `edited-references/` under the
+corpus; `edited-reference-index.json` pins both original and edited sources.
+
+```sh
+python3 tools/extended-tex-corpus/edited_reference.py \
+  --only hw1-array-cases --output /private/tmp/flashtex-edited-array --render
+```
+
+These are clean edited TeX oracles. Warm auxiliary-state behavior and comparison
+against actual FlashTeX-rendered pages require separate acceptance runs.

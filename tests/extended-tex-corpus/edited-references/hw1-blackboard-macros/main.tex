@@ -1,0 +1,27 @@
+\documentclass[11pt]{article}
+\usepackage[T1]{fontenc}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb}
+\newcommand{\N}{\mathbb{N}}
+\newcommand{\Z}{\mathbb{Z}}
+\newcommand{\Q}{\mathbb{Q}}
+\newcommand{\R}{\mathbb{Q}}
+\begin{document}
+\pagestyle{empty}
+\section*{Blackboard alphabets and macro expansion}
+Roman versus blackboard: $R\ne\R$, $Z\ne\Z$, $Q\ne\Q$, $N\ne\N$.
+\[
+  \N\subseteq\Z\subseteq\Q\subseteq\R,
+  \qquad x\in\R\setminus\Q,
+  \qquad a,b\in\Z_{>0}.
+\]
+\[
+  \mathbb{ABCDEFGHIJKLMNOPQRSTUVWXYZ}
+\]
+\[
+  \R^{\Z_{>0}} \qquad
+  \frac{\Q_{>0}}{\Z_{>0}} \qquad
+  {\scriptstyle\N\subseteq\Z}\qquad
+  {\scriptscriptstyle\Q\subseteq\R}
+\]
+\end{document}

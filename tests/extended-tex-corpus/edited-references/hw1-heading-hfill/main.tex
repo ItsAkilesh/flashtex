@@ -1,0 +1,21 @@
+\documentclass[11pt]{article}
+\usepackage[T1]{fontenc}
+\usepackage[margin=1in]{geometry}
+\newcommand{\problem}[2]{\subsection*{Problem #1\quad\normalfont[#2 points]}}
+\begin{document}
+\pagestyle{empty}
+\problem{1}{4}
+The problem label is bold on the left; the points label is normal weight
+and reaches the right edge of the same heading line.
+\problem{12}{15}
+Different label lengths must still produce the same right edge.
+
+\noindent Left edge\hfill Middle\hfill Right edge\par
+\noindent Left edge\hspace{1em}Fixed gap\hfill Right edge\par
+\begin{quote}
+Quoted left\hfill Quoted right\par
+The quote narrows both margins; the fill uses this narrower line width.
+\end{quote}
+\noindent Full-width left\hfill Full-width right\par
+\hrule
+\end{document}

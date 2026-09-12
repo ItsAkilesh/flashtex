@@ -1,0 +1,34 @@
+\documentclass[11pt]{article}
+\usepackage[T1]{fontenc}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb}
+\begin{document}
+\pagestyle{empty}
+\section*{Array alignment and cases}
+\[
+\begin{array}{ll}
+\text{(a)} & \forall m\,\exists n\;D(m,n),\\[2pt]
+\text{(b)} & \exists n\,\forall m\;D(m,n),\\[2pt]
+\text{(c)} & \forall n\,\exists m\;D(m,n),\\[2pt]
+\text{(d)} & \exists m\,\forall n\;D(m,n).
+\end{array}
+\]
+\[
+\begin{array}{l|cr}
+1 & = & 1\\
+12 & = & 3\cdot4\\[5pt]
+123 & = & 100+20+3
+\end{array}
+\qquad
+f(x)=\begin{cases}
+x^2, & x\geq0,\\[3pt]
+-x, & x<0.
+\end{cases}
+\]
+\[
+\left[\begin{array}{@{}cc@{}}
+\frac{1}{2} & \sqrt{3}\\[4pt]
+0 & \frac{4}{5}
+\end{array}\right]
+\]
+\end{document}

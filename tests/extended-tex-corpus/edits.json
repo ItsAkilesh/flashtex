@@ -26,7 +26,7 @@
       "case": "hw1-title-size-scope", "path": "main.tex",
       "old": "{\\LARGE\\bfseries Problem Sheet: Size Scope}", "new": "{\\small\\bfseries Problem Sheet: Size Scope}",
       "start_byte": 189, "end_byte": 232,
-      "purpose": "A scoped title size edit invalidates its geometry and downstream vertical positions without leaking small size into body text.",
+      "purpose": "A scoped title size edit changes its glyph geometry and centered width; the explicit row spacing preserves the following lines and body text.",
       "gate": "Compare original-compiler incremental result to clean compile of identical edited project; independently compare edited output to a newly generated reference."
     },
     {

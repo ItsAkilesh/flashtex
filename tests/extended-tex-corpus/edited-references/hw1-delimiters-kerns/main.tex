@@ -1,0 +1,28 @@
+\documentclass[11pt]{article}
+\usepackage[T1]{fontenc}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb}
+\begin{document}
+\pagestyle{empty}
+\section*{Sized delimiters and explicit math space}
+\[
+(x)\quad\bigl(x\bigr)\quad\Bigl(x\Bigr)\quad
+\biggl(x\biggr)\quad\Biggl(x\Biggr)
+\]
+\[
+\bigl(\forall x\in S\;P(x)\bigr)\vee
+\bigl(\forall x\in S\;Q(x)\bigr)
+\quad\Longrightarrow\quad
+\forall x\in S\;\bigl(P(x)\vee Q(x)\bigr).
+\]
+\[
+A B\qquad A\,B\qquad A\;B\qquad A\qquad B\qquad
+A\qquad B\qquad A\!B
+\]
+\[
+\left\{x\in\mathbb{R}\;\middle|\;
+\left|\frac{x}{1+x^2}\right|<1\right\}
+\qquad
+\left.\frac{d}{dx}x^2\right|_{x=1}
+\]
+\end{document}

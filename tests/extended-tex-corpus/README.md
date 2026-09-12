@@ -92,6 +92,16 @@ its PDF. [The recorded local compiler baseline](../../docs/evidence/hw1-referenc
 contains recovered results and 173 diagnostics; these references add requirements,
 not a support claim. Run any one with `--only hw1-array-cases`, for example.
 
+Six clean edited HW1 variants are separately accepted in `edited-references/`
+and `edited-reference-index.json`; they add six one-page PDFs to the 48 original
+positive references. Every edited page was individually inspected and produced
+an actual full-page raster change relative to its original oracle. See
+[edited-oracle evidence](../../docs/evidence/edited-hw1-oracles-20260912/README.md)
+and `tools/extended-tex-corpus/edited_reference.py` for exact regeneration.
+Original versus edited oracle differences are not candidate-renderer parity.
+The bounded `incremental.py` runner exercises all 14 edits, undo and reapply in
+both legacy and typed capability modes, with complete raw warm/clean replies.
+
 ## Coverage map
 
 | Area | Cases / distinguishing checks |

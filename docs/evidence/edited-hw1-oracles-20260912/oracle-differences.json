@@ -1,0 +1,273 @@
+{
+  "scope": "difference between original and edited MacTeX oracles only; not product parity",
+  "rasterizer": "/opt/homebrew/bin/gs",
+  "rasterizer_sha256": "d57bb373324bf7e72c5b3fb1a6cc8a9f876eb6f8d2eec23a5a3809a8a108bf9e",
+  "rasterizer_version": "10.08.0",
+  "settings": "96 DPI raw RGB; TextAlphaBits=4 GraphicsAlphaBits=4; no normalization or tolerance",
+  "results": [
+    {
+      "case": "hw1-blackboard-macros",
+      "pixels": [
+        816,
+        1056
+      ],
+      "changed_pixels": 1947,
+      "difference_bbox_xyxy": [
+        257,
+        132,
+        558,
+        244
+      ],
+      "original_pdf_sha256": "94bfb14e7de4217f554e673bdfc4e2287d70ac42695faf6109b1fe34b70e2cb4",
+      "edited_pdf_sha256": "204cdbc0856cf14e71b36102f1dc968876bffa5ed2c564acc93f47edce5dbfa1",
+      "original_ppm_sha256": "f95f1daef44f0acae90c9b9d595068cec0d2f0f4b1d27c280c65bf5dc49d9126",
+      "edited_ppm_sha256": "c5a7e05a07b9f5c9dc3140794c9ae9bcb0b80516ea9bde9fea879ad7aa8b7744",
+      "raster_argv": [
+        [
+          "/opt/homebrew/bin/gs",
+          "-dSAFER",
+          "-dBATCH",
+          "-dNOPAUSE",
+          "-sDEVICE=ppmraw",
+          "-r96",
+          "-dTextAlphaBits=4",
+          "-dGraphicsAlphaBits=4",
+          "-sOutputFile=/private/tmp/flashtex-hw1-original-comparison-20260912/hw1-blackboard-macros/original.ppm",
+          "/private/tmp/flashtex-hw1-reference-probes/tests/extended-tex-corpus/references/hw1-blackboard-macros/main.pdf"
+        ],
+        [
+          "/opt/homebrew/bin/gs",
+          "-dSAFER",
+          "-dBATCH",
+          "-dNOPAUSE",
+          "-sDEVICE=ppmraw",
+          "-r96",
+          "-dTextAlphaBits=4",
+          "-dGraphicsAlphaBits=4",
+          "-sOutputFile=/private/tmp/flashtex-hw1-original-comparison-20260912/hw1-blackboard-macros/edited.ppm",
+          "/private/tmp/flashtex-hw1-reference-probes/tests/extended-tex-corpus/edited-references/hw1-blackboard-macros/main.pdf"
+        ]
+      ]
+    },
+    {
+      "case": "hw1-array-cases",
+      "pixels": [
+        816,
+        1056
+      ],
+      "changed_pixels": 389,
+      "difference_bbox_xyxy": [
+        256,
+        223,
+        394,
+        252
+      ],
+      "original_pdf_sha256": "6ea22eea5c71928f04873de20a855f3324f5d76168bddf3bc9d89878c144f975",
+      "edited_pdf_sha256": "ecd680f4714c9b07a8eb137f0dfc75a7a801edf1e15e0c6a62c5afa783d48a95",
+      "original_ppm_sha256": "1b1e6bbdc8e62e1faef6e4347848e70974ef91b84933838bf745af9866b1740f",
+      "edited_ppm_sha256": "b0a4aa8015aa0d14f8d8bcac282e6da232048bce5823af0106399ec1aa6cb2cc",
+      "raster_argv": [
+        [
+          "/opt/homebrew/bin/gs",
+          "-dSAFER",
+          "-dBATCH",
+          "-dNOPAUSE",
+          "-sDEVICE=ppmraw",
+          "-r96",
+          "-dTextAlphaBits=4",
+          "-dGraphicsAlphaBits=4",
+          "-sOutputFile=/private/tmp/flashtex-hw1-original-comparison-20260912/hw1-array-cases/original.ppm",
+          "/private/tmp/flashtex-hw1-reference-probes/tests/extended-tex-corpus/references/hw1-array-cases/main.pdf"
+        ],
+        [
+          "/opt/homebrew/bin/gs",
+          "-dSAFER",
+          "-dBATCH",
+          "-dNOPAUSE",
+          "-sDEVICE=ppmraw",
+          "-r96",
+          "-dTextAlphaBits=4",
+          "-dGraphicsAlphaBits=4",
+          "-sOutputFile=/private/tmp/flashtex-hw1-original-comparison-20260912/hw1-array-cases/edited.ppm",
+          "/private/tmp/flashtex-hw1-reference-probes/tests/extended-tex-corpus/edited-references/hw1-array-cases/main.pdf"
+        ]
+      ]
+    },
+    {
+      "case": "hw1-delimiters-kerns",
+      "pixels": [
+        816,
+        1056
+      ],
+      "changed_pixels": 1081,
+      "difference_bbox_xyxy": [
+        237,
+        212,
+        578,
+        223
+      ],
+      "original_pdf_sha256": "65354882c5348c2d07f4c080b84d35c5f1e75514d78639c4abb0a0f79d439246",
+      "edited_pdf_sha256": "e301ff5f3b0ac3871fa4ff2c9bfd0fedd52017ae9a51ee3f3311576a58eca577",
+      "original_ppm_sha256": "43566e5092604b3cb4152df5a0dc5a89a05728ae74a64651a3f7440153d8f496",
+      "edited_ppm_sha256": "611df060fa23cd18c692c5823935a1427f256082df02079e0ca5e7bd1565b920",
+      "raster_argv": [
+        [
+          "/opt/homebrew/bin/gs",
+          "-dSAFER",
+          "-dBATCH",
+          "-dNOPAUSE",
+          "-sDEVICE=ppmraw",
+          "-r96",
+          "-dTextAlphaBits=4",
+          "-dGraphicsAlphaBits=4",
+          "-sOutputFile=/private/tmp/flashtex-hw1-original-comparison-20260912/hw1-delimiters-kerns/original.ppm",
+          "/private/tmp/flashtex-hw1-reference-probes/tests/extended-tex-corpus/references/hw1-delimiters-kerns/main.pdf"
+        ],
+        [
+          "/opt/homebrew/bin/gs",
+          "-dSAFER",
+          "-dBATCH",
+          "-dNOPAUSE",
+          "-sDEVICE=ppmraw",
+          "-r96",
+          "-dTextAlphaBits=4",
+          "-dGraphicsAlphaBits=4",
+          "-sOutputFile=/private/tmp/flashtex-hw1-original-comparison-20260912/hw1-delimiters-kerns/edited.ppm",
+          "/private/tmp/flashtex-hw1-reference-probes/tests/extended-tex-corpus/edited-references/hw1-delimiters-kerns/main.pdf"
+        ]
+      ]
+    },
+    {
+      "case": "hw1-title-size-scope",
+      "pixels": [
+        816,
+        1056
+      ],
+      "changed_pixels": 2155,
+      "difference_bbox_xyxy": [
+        262,
+        117,
+        554,
+        138
+      ],
+      "original_pdf_sha256": "a1710c8959bf735e40d91c8f589c407e359a3eb63da067c9dad258bce7e5feed",
+      "edited_pdf_sha256": "060c695ce179a56206f4e95aee360858535db7c9635eb03d062d41314a02d275",
+      "original_ppm_sha256": "0ed070645c4619fdb4f4de9e50ec6953cecc978743c5b55daeaea0df488ab278",
+      "edited_ppm_sha256": "c2bd25e94cee0845cbfc701a05e4b5d0e9f9d8e4671b09a8c236f719e1446447",
+      "raster_argv": [
+        [
+          "/opt/homebrew/bin/gs",
+          "-dSAFER",
+          "-dBATCH",
+          "-dNOPAUSE",
+          "-sDEVICE=ppmraw",
+          "-r96",
+          "-dTextAlphaBits=4",
+          "-dGraphicsAlphaBits=4",
+          "-sOutputFile=/private/tmp/flashtex-hw1-original-comparison-20260912/hw1-title-size-scope/original.ppm",
+          "/private/tmp/flashtex-hw1-reference-probes/tests/extended-tex-corpus/references/hw1-title-size-scope/main.pdf"
+        ],
+        [
+          "/opt/homebrew/bin/gs",
+          "-dSAFER",
+          "-dBATCH",
+          "-dNOPAUSE",
+          "-sDEVICE=ppmraw",
+          "-r96",
+          "-dTextAlphaBits=4",
+          "-dGraphicsAlphaBits=4",
+          "-sOutputFile=/private/tmp/flashtex-hw1-original-comparison-20260912/hw1-title-size-scope/edited.ppm",
+          "/private/tmp/flashtex-hw1-reference-probes/tests/extended-tex-corpus/edited-references/hw1-title-size-scope/main.pdf"
+        ]
+      ]
+    },
+    {
+      "case": "hw1-paragraph-registers",
+      "pixels": [
+        816,
+        1056
+      ],
+      "changed_pixels": 22658,
+      "difference_bbox_xyxy": [
+        96,
+        127,
+        601,
+        399
+      ],
+      "original_pdf_sha256": "228ed3cd34ef6656ff183259d2ec3f4a7699132979253a11075ab9e720e6549c",
+      "edited_pdf_sha256": "a4138bc64d283606d3e8253628b4e15ebe5300924eba80daf50edcae83bb9c3a",
+      "original_ppm_sha256": "f53bdff115c9f2e9f34491006bfa56a8880e1f2f3631db9c7f434ec2973d4a26",
+      "edited_ppm_sha256": "5e7ee602ed66ebabc03d91395620a614d9cd2455419a7cc9ace24d29d628ab3b",
+      "raster_argv": [
+        [
+          "/opt/homebrew/bin/gs",
+          "-dSAFER",
+          "-dBATCH",
+          "-dNOPAUSE",
+          "-sDEVICE=ppmraw",
+          "-r96",
+          "-dTextAlphaBits=4",
+          "-dGraphicsAlphaBits=4",
+          "-sOutputFile=/private/tmp/flashtex-hw1-original-comparison-20260912/hw1-paragraph-registers/original.ppm",
+          "/private/tmp/flashtex-hw1-reference-probes/tests/extended-tex-corpus/references/hw1-paragraph-registers/main.pdf"
+        ],
+        [
+          "/opt/homebrew/bin/gs",
+          "-dSAFER",
+          "-dBATCH",
+          "-dNOPAUSE",
+          "-sDEVICE=ppmraw",
+          "-r96",
+          "-dTextAlphaBits=4",
+          "-dGraphicsAlphaBits=4",
+          "-sOutputFile=/private/tmp/flashtex-hw1-original-comparison-20260912/hw1-paragraph-registers/edited.ppm",
+          "/private/tmp/flashtex-hw1-reference-probes/tests/extended-tex-corpus/edited-references/hw1-paragraph-registers/main.pdf"
+        ]
+      ]
+    },
+    {
+      "case": "hw1-heading-hfill",
+      "pixels": [
+        816,
+        1056
+      ],
+      "changed_pixels": 1290,
+      "difference_bbox_xyxy": [
+        196,
+        99,
+        719,
+        199
+      ],
+      "original_pdf_sha256": "1c09204799e807fd975363d481827c863f30863e54906adc79abfd1b695efc51",
+      "edited_pdf_sha256": "89f221ba6c97764fbd49a927cbd7468385592976939d51dfb30181ecab68e175",
+      "original_ppm_sha256": "a13834f402fc910c8fa640f6e4493d65bcf1786ff0fbf6b2adeeeb00809dfefe",
+      "edited_ppm_sha256": "ae15d7d02b78ff1c90016b961580c6d21fecd2cf3e8479d489e5ef3e52bc152e",
+      "raster_argv": [
+        [
+          "/opt/homebrew/bin/gs",
+          "-dSAFER",
+          "-dBATCH",
+          "-dNOPAUSE",
+          "-sDEVICE=ppmraw",
+          "-r96",
+          "-dTextAlphaBits=4",
+          "-dGraphicsAlphaBits=4",
+          "-sOutputFile=/private/tmp/flashtex-hw1-original-comparison-20260912/hw1-heading-hfill/original.ppm",
+          "/private/tmp/flashtex-hw1-reference-probes/tests/extended-tex-corpus/references/hw1-heading-hfill/main.pdf"
+        ],
+        [
+          "/opt/homebrew/bin/gs",
+          "-dSAFER",
+          "-dBATCH",
+          "-dNOPAUSE",
+          "-sDEVICE=ppmraw",
+          "-r96",
+          "-dTextAlphaBits=4",
+          "-dGraphicsAlphaBits=4",
+          "-sOutputFile=/private/tmp/flashtex-hw1-original-comparison-20260912/hw1-heading-hfill/edited.ppm",
+          "/private/tmp/flashtex-hw1-reference-probes/tests/extended-tex-corpus/edited-references/hw1-heading-hfill/main.pdf"
+        ]
+      ]
+    }
+  ]
+}
