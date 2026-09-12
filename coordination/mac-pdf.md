@@ -1,3 +1,105 @@
+# mac-pdf handoff — v2-adapter follow-up (from-v2 feeds the exact route) and issue #28
+
+- Updated UTC: 2026-09-12T10:05Z
+- Agent / parent / machine: `mac-pdf` (Claude Code subagent) / parent
+  `mac-claude-a` / `mac-m1max-a`. Context usage at this checkpoint: about 4%
+  of the session budget (14.39 M of 15 M tokens remaining per the runtime
+  counter); below the compaction policy thresholds.
+- Lane: coordinator follow-up "make something actually feed the exact route
+  end to end" plus GitHub issue #28 (classifier fast path). Owned paths:
+  `crates/pdf/`, `coordination/mac-pdf.md`, `coordination/agents/mac-pdf.json`.
+  `crates/render-pipeline` and `crates/rendering-core` untouched (needs listed
+  below); transferred crates untouched.
+- Branch / HEAD / worktree: `agent/mac-pdf/v2-adapter`, rebuilt on
+  `origin/main` `27437b9` (which contains the Commander's integration of the
+  exact-export lane at `b587385`, through my `d25a647`) with my later
+  exact-export commits cherry-picked (`c2a8117` per-page resources/CID
+  carry-over/xelatex test, `0a102f4` + `1ebd3db` docs, `9259fb6` handoff),
+  then `f4ad92e` (issue #28), `5906045` (from-v2 adapter), and the docs/
+  handoff commit after. Worktree `.claude/worktrees/agent-a665565ecb0f11ace`.
+  `agent/mac-pdf/exact-export` is superseded by this branch for everything
+  after `d25a647`.
+- State: ready for integration.
+- Ready behavior and evidence:
+  - Issue #28 fixed (`f4ad92e`): `compare::classify` parses both sides even
+    when decoded bytes are identical; unsupported streams are
+    `ContentUnsupported` with `content_ops_identical=false`, and the CLI
+    predicate reads the parsed result. Regression test in `tests/exact.rs`.
+    Re-ran the 72-reference classification: no category changes (all exit 0,
+    ObjectLayout/Compression/DocumentIdentity only). Commented on #28 with
+    the SHA.
+  - `crates/pdf/src/v2.rs` + `flashtex-pdf-exact from-v2 LIST.json --out
+    OUT.pdf [--font-dir DIR]` (`5906045`): rendering-v2 `display_list`
+    (`bp_2pow20`) → `ExactDocument`. Exact tick→decimal conversion with an
+    integer y flip; every glyph by original GID at its absolute origin (own
+    `Tm`; joins the previous string only when origin == previous + hmtx
+    advance exactly); rules → `Op::rule`; opaque colour → exact `rg`; fonts
+    resolved by content hash in the pipeline's font directories and embedded
+    through the GID-preserving CFF subsetter; cluster text → ToUnicode.
+    Refuses `core14-afm`, alpha, image items, non-integer ticks,
+    non-terminating colours, unknown/missing fonts, with the item named.
+  - Classifier pairs fonts left unmatched by resource name by base font name
+    (subset tag / `-Identity-H` stripped), so program/metadata gaps are
+    measured; 72-reference result unchanged.
+  - Evidence (`crates/pdf/docs/v2-adapter-gap.md`): `flashtex-render`
+    (`origin/agent/mac-render-pipeline/unified` `ba5611f`, scratch
+    `git archive` build) → `from-v2` on all 18 corpus fixtures vs the
+    MacTeX 2026 pdflatex-lmodern references: all 18 export (31 CFF subsets),
+    self-check passes, page geometry identical, PDFKit text identical (01,
+    18). Categories: ContentOperators on all (per-glyph `Tm` with the
+    pipeline's exact ticks vs pdfTeX `TJ`; upstream layout where it differs),
+    FontProgram/FontMetadata on all (OTF CFF subset vs Type 1 subset, by
+    design), FontResources on math fixtures (LM Math vs Computer Modern) and
+    on 10/11 (pdfTeX's second dictionary per 8-bit encoding). CoreGraphics
+    144 dpi: 01/04/05/17 0 ink-only pixels; 02/03/08/12/15/16/18 ≤ 240
+    ink-only pixels per page out of 9k–255k; math 162–6.2k (different math
+    fonts + pipeline `\left`/`\right`/`\nu` limits); 11 lists 9.4k (lists
+    not implemented upstream). The pipeline's earlier 13.5% "ink weight"
+    attribution through the v1 route does not hold on this route (ink counts
+    within 6 px of the reference).
+  - Tests: `cd crates/pdf && cargo test` → 78 passed (38 unit, 12 exact, 3
+    v2, 25 render); clippy clean; release build clean. `tests/v2.rs` uses the
+    checked-in unmodified `flashtex-render` envelope
+    (`tests/fixtures/v2-plain-paragraph.json`) with Latin Modern resolved by
+    hash (skips loudly if absent; ran here).
+- Incomplete behavior / limits:
+  - Streams carry one `Tm` per glyph on real pipeline output (TFM-based
+    advances never match hmtx exactly), so files are larger than pdfTeX's;
+    fidelity is unaffected.
+  - `latinmodern-math.otf` subsets are ~110 KB for 7–39 glyphs (bounded
+    subsetter keeps subr INDEXes whole); pruning is a size follow-up.
+  - Cluster ActualText reduced to per-glyph ToUnicode (no `BDC`/`EMC` in the
+    bounded set); no conflicts observed on the corpus.
+  - Parity not claimed anywhere; measured with CoreGraphics only.
+- Needs from others (not edited by me):
+  - render-pipeline: `fonts[].sha256` is SHA-256(bytes ‖ face_index) (font-
+    engine content hash), not SHA-256(bytes) as the contract and
+    rendering-core's validator require; `from-v2` accepts both and reports it.
+    `core14-afm` Times carries no bytes; the exact route refuses it.
+  - rendering-core/schema: accept `format: "opentype-cff"` (pipeline's
+    documented deviation); a marked-content ActualText contract if wanted.
+  - Commander: merge `agent/mac-pdf/v2-adapter`; #25 thread updated (this
+    route = glyph runs + embedded fonts + searchable text, complementary to
+    rendering-core's outline route `pdf_export.rs`, not a duplicate).
+- Reviewed peer revisions / adaptations: `origin/main` `27437b9` (rebased
+  onto it; `crates/rendering-core/PDF-INTEGRATION.md`, `src/pdf_export.rs`
+  read: outline route, paths only); `origin/agent/mac-render-pipeline/unified`
+  `ba5611f` (`src/display.rs`, `src/fonts.rs`, `src/bin/flashtex-render.rs`,
+  README, `docs/oracle-evidence.md`; vendored font-engine `truetype.rs` for
+  the hash definition); `protocol/rendering-v2.schema.json` and
+  `crates/rendering-core/src/lib.rs` validator (font digest rule); GitHub
+  issues #25 and #28.
+- Validation commands: `cd crates/pdf && cargo test && cargo clippy
+  --all-targets`; `cargo run --release --bin flashtex-pdf-exact -- from-v2
+  tests/fixtures/v2-plain-paragraph.json --out /tmp/x.pdf`.
+- Resource pool / allocation: parent `mac-claude-a`'s Claude Max allocation
+  on mac-m1max-a (shared quota, no purchases). No paid API calls.
+- Dirty files / unpushed work / running jobs: none after this push.
+- Exact next action: Commander integration; render-pipeline owner to emit
+  SHA-256(bytes) and decide on Times bytes.
+
+---
+
 # mac-pdf handoff — exact export lane (issue #25) on top of FT-009
 
 - Updated UTC: 2026-09-12T09:15Z

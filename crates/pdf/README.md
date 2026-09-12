@@ -196,11 +196,34 @@ and the per-fixture table: `docs/exact-export-classification.md`. This
 establishes what the container preserves, not what FlashTeX's compiler
 emits.
 
+**Feeding it from rendering-v2.** `flashtex-pdf-exact from-v2 LIST.json --out
+OUT.pdf [--font-dir DIR]` (`crate::v2`) consumes the `display_list` envelope
+of `flashtex-render --v2`: ticks (`bp_2pow20`) become exact decimals after an
+integer y flip, every glyph is placed by original GID at its absolute origin
+(its own `Tm`, joining the previous string only when the origin equals the
+previous origin plus the `hmtx` advance exactly), rules become `re f`, fonts
+are resolved by content hash from `--font-dir`/`FLASHTEX_FONT_DIRS`/
+`FLASHTEX_LM_DIR`/the TeX Live Latin Modern directories and embedded as
+GID-preserving subsets, cluster text becomes ToUnicode. `opentype-cff` and
+`static-truetype` are accepted; `core14-afm`, alpha, image items, non-integer
+ticks and non-terminating colours are errors. Both SHA-256(bytes) and
+font-engine's SHA-256(bytes ‖ face index) are accepted as `sha256` (the
+latter is reported as a deviation). The measured gap between
+`flashtex-render --v2 → from-v2` and pdflatex-lmodern on the 18 corpus
+fixtures is in `docs/v2-adapter-gap.md`: text-only fixtures differ at the
+anti-aliasing level only (0 ink-only pixels on 01/04/05/17), math and lists
+differ where the pipeline's own diagnostics say they do. This glyph-run route
+(embedded fonts, searchable text) is complementary to rendering-core's
+outline route (`pdf_export.rs`, paths only).
+
 Tests: `tests/exact.rs` (deterministic serialisation, verbatim decimals and
 codes, CFF subset identity, bounded glyph sets, validation errors, Type 1
 round trip through the reader, PFB parsing, classifier categories, and,
 skipped when the tool is absent, Latin Modern rendering in CoreGraphics and
-the pdflatex/xelatex oracle round trips).
+the pdflatex/xelatex oracle round trips); `tests/v2.rs` (the checked-in
+`flashtex-render` envelope for fixture 01 resolved against the installed
+Latin Modern, a hand-built envelope with hmtx joining, rules and colour, and
+the refusals).
 
 ## Font embedding
 
