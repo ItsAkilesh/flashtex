@@ -53,6 +53,14 @@ impl Coordinate {
             shift,
         )
     }
+    fn subtract(self, rhs: Self) -> Result<Self> {
+        self.add(Self::new(
+            rhs.numerator
+                .checked_neg()
+                .ok_or_else(|| invalid("coordinate negation overflow"))?,
+            rhs.shift,
+        )?)
+    }
     fn scale(self, n: i16) -> Result<Self> {
         Self::new(
             self.numerator
@@ -176,22 +184,26 @@ fn expand<'a>(
         let flags = u16_at(data, at)?;
         let child = u16_at(data, at + 2)?;
         at += 4;
-        if flags & 2 == 0 {
-            return Err(Error::UnsupportedFont(
-                "composite point attachment unsupported".into(),
-            ));
-        }
+        let xy = flags & 2 != 0;
         let (x, y) = if flags & 1 != 0 {
-            let x = u16_at(data, at)? as i16 as i32;
-            let y = u16_at(data, at + 2)? as i16 as i32;
+            let a = u16_at(data, at)?;
+            let b = u16_at(data, at + 2)?;
             at += 4;
-            (x, y)
+            if xy {
+                (a as i16 as i32, b as i16 as i32)
+            } else {
+                (a as i32, b as i32)
+            }
         } else {
             let args = data
                 .get(at..at + 2)
                 .ok_or_else(|| invalid("composite arguments"))?;
             at += 2;
-            (args[0] as i8 as i32, args[1] as i8 as i32)
+            if xy {
+                (args[0] as i8 as i32, args[1] as i8 as i32)
+            } else {
+                (args[0] as i32, args[1] as i32)
+            }
         };
         let mut m = [16384i16, 0, 0, 16384];
         if flags & 8 != 0 {
@@ -215,24 +227,43 @@ fn expand<'a>(
                 on_curve: p.on_curve,
             })
         };
-        let mut offset = ExactPoint {
-            x: Coordinate::from_integer(x),
-            y: Coordinate::from_integer(y),
-            on_curve: true,
-        };
-        if flags & 4 != 0 && (x != 0 || y != 0) {
-            return Err(Error::UnsupportedFont(
-                "grid-rounded composite offsets require hinting policy".into(),
-            ));
-        }
-        if flags & 0x800 != 0 {
-            offset = transform(offset)?;
-        } else if flags & 0x1000 == 0 && m != [16384, 0, 0, 16384] && (x != 0 || y != 0) {
-            return Err(Error::UnsupportedFont(
-                "ambiguous default scaled composite offset".into(),
-            ));
-        }
         let child = expand(child, fetch, stack, nodes, total_points)?;
+        let offset = if xy {
+            let mut offset = ExactPoint {
+                x: Coordinate::from_integer(x),
+                y: Coordinate::from_integer(y),
+                on_curve: true,
+            };
+            if flags & 4 != 0 && (x != 0 || y != 0) {
+                return Err(Error::UnsupportedFont(
+                    "grid-rounded composite offsets require hinting policy".into(),
+                ));
+            }
+            if flags & 0x800 != 0 {
+                offset = transform(offset)?;
+            } else if flags & 0x1000 == 0 && m != [16384, 0, 0, 16384] && (x != 0 || y != 0) {
+                return Err(Error::UnsupportedFont(
+                    "ambiguous default scaled composite offset".into(),
+                ));
+            }
+            offset
+        } else {
+            // Only actual contour points exist in this unhinted design-space API.
+            let parent = out.points.get(x as usize).ok_or_else(|| {
+                invalid("composite parent attachment index outside existing outline")
+            })?;
+            let attached = child.points.get(y as usize).ok_or_else(|| {
+                invalid(
+                    "composite child attachment index outside outline; phantom points unavailable",
+                )
+            })?;
+            let attached = transform(*attached)?;
+            ExactPoint {
+                x: parent.x.subtract(attached.x)?,
+                y: parent.y.subtract(attached.y)?,
+                on_curve: true,
+            }
+        };
         let start = out.points.len() as u32;
         for p in child.points {
             let mut p = transform(p)?;
@@ -354,12 +385,46 @@ mod tests {
         assert!(run(&glyphs, 13).is_err());
     }
     #[test]
-    fn cycles_and_attachment_explicit() {
-        assert!(run(&[component(0, 3, 0, 0, &[])], 0).is_err());
+    fn point_attachment_after_affine_transform_is_exact() {
+        let two = vec![
+            0, 1, 0, 1, 0, 2, 0, 3, 0, 2, 0, 1, 0, 0, 0x37, 0x33, 1, 2, 2,
+        ];
+        let mut composite = component(0, 35, 10, 20, &[]);
+        composite.extend(&component(1, 9, 0, 1, &[8192])[10..]);
+        let out = run(&[simple(), two, composite], 2).unwrap();
+        assert_eq!(out.points[2].x, out.points[0].x);
+        assert_eq!(out.points[2].y, out.points[0].y);
+        assert_eq!(out.points[1].x, Coordinate::from_integer(10));
+        assert_eq!(out.instances[2].glyph_id, 1);
+    }
+    #[test]
+    fn invalid_parent_child_attachment_indices_fail() {
+        for (parent, child) in [(1, 0), (0, 1), (0, -1)] {
+            let mut composite = component(0, 35, 0, 0, &[]);
+            composite.extend(&component(0, 1, parent, child, &[])[10..]);
+            assert!(run(&[simple(), composite], 1).is_err());
+        }
+        let mut composite = component(0, 35, 0, 0, &[]);
+        let mut byte_attachment = vec![0, 0, 0, 0, 0, 0];
+        composite.append(&mut byte_attachment);
+        let out = run(&[simple(), composite], 1).unwrap();
+        assert_eq!(out.points[0], out.points[1]);
+    }
+    #[test]
+    fn explicit_offset_policy_is_retained_and_rounding_not_guessed() {
+        let scaled = run(&[simple(), component(0, 0x80b, 10, 0, &[8192])], 1).unwrap();
+        let unscaled = run(&[simple(), component(0, 0x100b, 10, 0, &[8192])], 1).unwrap();
+        assert_eq!(scaled.points[0].x, Coordinate::new(11, 1).unwrap());
+        assert_eq!(unscaled.points[0].x, Coordinate::new(21, 1).unwrap());
         assert!(matches!(
-            run(&[simple(), component(0, 1, 0, 0, &[])], 1),
+            run(&[simple(), component(0, 7, 10, 0, &[])], 1),
             Err(Error::UnsupportedFont(_))
         ));
+    }
+    #[test]
+    fn cycles_and_attachment_explicit() {
+        assert!(run(&[component(0, 3, 0, 0, &[])], 0).is_err());
+        assert!(run(&[simple(), component(0, 1, 0, 0, &[])], 1).is_err());
     }
     #[test]
     fn checked_overflow_and_precision() {

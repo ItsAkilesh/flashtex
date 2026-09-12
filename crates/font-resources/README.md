@@ -92,8 +92,7 @@ and explicit XY translations, retaining root font SHA/face/ID and each original
 component GID plus point range. Coordinates are normalized exact dyadic rationals
 (numerator / 2^shift, accessed through methods), checked within i128 and at most
 96 fractional bits. No floating rounding occurs. Expansion caps 4096 visited
-instances, 1000000 leaf points and 32 dependency edges. Point attachment,
-nonzero grid-rounded offsets and transformed nonzero offsets without an explicit
+instances, 1000000 leaf points and 32 dependency edges. Nonzero grid-rounded offsets and transformed nonzero offsets without an explicit
 scaled/unscaled policy return unsupported. Instructions remain unexecuted.
 
 Composite smoke on the pinned LiberationSans font accepted 1679 glyphs and
@@ -105,3 +104,15 @@ and handles contours whose first/last points are off-curve. Original root/font
 identity remains on the owning ExpandedOutline. The iterator validates contour
 coverage and materializes a bounded command stream; it does not execute hints,
 choose fill/rasterization rules or assert output parity.
+
+Point-attachment placement now supports existing parent/child contour-point
+indices, decoded as unsigned byte/word values. The child affine transform is
+applied before computing the exact translation that makes the points coincide.
+First-component attachment, missing indices and phantom-point references fail;
+this API does not synthesize phantom points or execute child/parent instructions.
+The semantics are explicitly unhinted design-space geometry, not the rasterizer's
+post-hint placement. Source: [OpenType glyf specification](https://learn.microsoft.com/en-us/typography/opentype/spec/glyf).
+Acceptance tests cover transformed attachment, byte/word indices, malformed
+indices, exact scaled versus unscaled offsets and refusal to guess grid rounding.
+No ppem, device grid or hint state is represented here, so grid-rounded nonzero
+offsets remain unsupported. Real-font smoke remains 1679 accepted / 941 unsupported.
