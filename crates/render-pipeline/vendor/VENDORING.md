@@ -14,8 +14,8 @@ because the siblings depend on each other by `../<name>` path.
 | Directory | Branch | Commit | Owner |
 | --- | --- | --- | --- |
 | `compiler` | `main` | `745f327` (crates/compiler last changed by `75c8018`) | compiler lead |
-| `font-resources` | `agent/commander-corpus/font-resources` | `cb4ff5f` (shared TFM reader `tfm.rs`/`tfm_run.rs`, `required_tfm.rs`) | commander-corpus |
-| `project-files` | same as font-resources | `cb4ff5f` (`ProjectRoot` for the rooted TFM reads) | project-files owner |
+| `font-resources` | `main` | `60c40c1` (crates/font-resources last changed by `79bdada`; shared TFM reader `tfm.rs`/`tfm_run.rs`, `required_tfm.rs`) | commander-corpus |
+| `project-files` | `main` | `60c40c1` (last changed by `d92db37`; `ProjectRoot` for the rooted TFM reads) | project-files owner |
 | `font-engine` | `agent/mac-font-engine/tex-fonts` | `f418238` | mac-font-engine |
 | `paragraph-layout` | `agent/mac-paragraph-layout/linebreak` | `70209e2` | mac-paragraph-layout |
 | `math-layout` | `agent/mac-math-layout/math-boxes` | `db90047` | mac-math-layout |
