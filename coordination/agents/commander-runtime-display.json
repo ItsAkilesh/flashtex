@@ -1,0 +1,30 @@
+{
+  "agent_id": "commander-runtime-display",
+  "allocation_id": "hosted-openai-product",
+  "assignment_acknowledgements": {
+    "FT-049": {
+      "acknowledged_utc": "2026-09-12T10:54:24Z",
+      "adaptation": "Read exact fence eed1847 and FT049r1. Own only document-runtime; preserve decoder raw4/decoded1/joined shutdown. Add default-off sibling correlation with explicitly untrusted candidate boundary and exact source hashes, no renderer parser duplication.",
+      "main_sha": "eed1847e923b42dbbc02d25309e9e432bd6e3aa0",
+      "revision": 1
+    }
+  },
+  "branch": "agent/commander-runtime-display/display-runtime",
+  "capabilities": [
+    "rust-runtime"
+  ],
+  "code_revision": "eed1847e923b42dbbc02d25309e9e432bd6e3aa0",
+  "eta_minutes": null,
+  "machine": "linux-primary",
+  "main_integrated_through": "eed1847e923b42dbbc02d25309e9e432bd6e3aa0",
+  "next_action": "Await and acknowledge assignment",
+  "reviewed_peers": {},
+  "schema_version": 1,
+  "state": "accepted",
+  "summary": "Available for Commander assignment",
+  "tool": "codex",
+  "updated_utc": "2026-09-12T10:54:24Z",
+  "usage": {
+    "status": "unknown"
+  }
+}
