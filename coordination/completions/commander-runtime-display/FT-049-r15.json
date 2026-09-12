@@ -1,0 +1,69 @@
+{
+  "agent_id": "commander-runtime-display",
+  "archived_utc": "2026-09-12T12:39:53Z",
+  "assignment": {
+    "acceptance": [
+      "Start from integrated decoder ecbaf7c on main; preserve four raw frames plus one decoded permit and joined shutdown",
+      "Exactly one contiguous sibling only after requested and accepted nonfailed result; bind ID/project/revision/document hashes and reject malformed, unsolicited, missing or out-of-order frames",
+      "Default legacy requests unchanged; preserve line limits and source epochs, no duplicate renderer parser or automatic native activation",
+      "Use corrected actual producer65dbe7d or later raw-byte font hashes; old contract SHA-bytes-plus-face deviation is historical, not accepted resource evidence",
+      "Publish bounded candidate API for existing helper owner; if deep validation is deferred, the type and contract must remain explicitly untrusted until existing native/core validator accepts it"
+    ],
+    "agent_id": "commander-runtime-display",
+    "allocation_id": "hosted-openai-product",
+    "branch": "agent/commander-runtime-display/display-runtime",
+    "deadline_utc": null,
+    "dependencies": [],
+    "input_main_sha": "2bdee9e7d9ec9d7283f75c05bb1bd7f63e30e6d5",
+    "objective": "Inspect and deterministically verify timeout close and joined shutdown when child stops reading admitted request stdin",
+    "owned_paths": [
+      "crates/document-runtime"
+    ],
+    "revision": 15,
+    "schema_version": 1,
+    "state": "assigned",
+    "task_id": "FT-049",
+    "timebox_minutes": 40,
+    "updated_utc": "2026-09-12T12:34:42.495086+00:00"
+  },
+  "report": {
+    "agent_id": "commander-runtime-display",
+    "allocation_id": "hosted-openai-product",
+    "assignment_acknowledgements": {
+      "FT-049": {
+        "acknowledged_utc": "2026-09-12T12:37:33Z",
+        "adaptation": "Stopped-stdin acceptance passes three direct-child cases with one-byte datagram handshake, kill/reap and separately observed writer exit. Production unchanged. Final ordinary suite/lint held for rendering paired measurement window; exact evidence already preserved.",
+        "main_sha": "d4ee54f9687d11d194d8063ea916b7ef9c00befe",
+        "revision": 15
+      }
+    },
+    "branch": "agent/commander-runtime-display/display-runtime",
+    "capabilities": [
+      "rust-runtime"
+    ],
+    "code_revision": "91f1764b4f48f420ab7e06b15cccf439d6e18def",
+    "eta_minutes": null,
+    "machine": "linux-primary",
+    "main_integrated_through": "0333be37e546273b6bcbe30a1f0745ad8a5e93c5",
+    "next_action": "Commander integration review. All test/build/timing handles terminal; clean checkpoint after report publication. Preserve distinction between joined decoder and separately witnessed detached writer exit; no all-thread or worst-case deadline claim. Docs/evidence blocked-writer preserved.",
+    "reviewed_peers": {},
+    "schema_version": 1,
+    "state": "ready_for_integration",
+    "summary": "FT049 r15 product91f1764b: deterministic stopped-stdin one-byte handshake; timeout/close-drop/direct-drop all reap direct child, separately witness writer exit, and emit no preview.49 ordinary tests pass/9 opt-in ignored; three-case probe and strict lint pass. Only Linux test instrumentation, no production defect demonstrated.",
+    "tool": "codex",
+    "updated_utc": "2026-09-12T12:39:33Z",
+    "usage": {
+      "status": "unknown"
+    }
+  },
+  "report_age_seconds": 20,
+  "report_path": "coordination/agents/commander-runtime-display.json",
+  "review_required": true,
+  "revision": 15,
+  "schema_version": 1,
+  "stale_completion": false,
+  "state": "reported_ready",
+  "task_id": "FT-049",
+  "worker_branch": "agent/commander-runtime-display/display-runtime",
+  "worker_report_sha": "47754ff6f8b6c81eebcfccfbb6582e0a8ea98179"
+}

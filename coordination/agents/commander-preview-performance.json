@@ -3,28 +3,33 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-048": {
-      "acknowledged_utc": "2026-09-12T08:58:02Z",
-      "adaptation": "Isolated preview-controller ownership; remove verified nested Value copies preserving exact wire shape, durability and bounded backpressure.",
-      "main_sha": "f2ea364efc4329512dc143ad9d7eab89d833604c",
-      "revision": 1
+      "acknowledged_utc": "2026-09-12T15:57:55Z",
+      "adaptation": "Read r42 and completed live compiler protocol, source navigation, malformed-input and performance acceptance; current single cumulative patch is be426cb8 under hw1-current-compiler. Producer fidelity gaps remain explicit.",
+      "main_sha": "62da4b3d6f8e18cd7f78900c9339ef8438f0a835",
+      "revision": 42
     }
   },
   "branch": "agent/commander-preview-performance/preview-performance",
   "capabilities": [
     "Preview helper serialization and latency"
   ],
-  "code_revision": "3a0c8e90c28ede52a8f80962656ebec784f3d9ab",
-  "eta_minutes": null,
+  "code_revision": "be426cb85f16e88d145c2c0295a33c76e6b9bf1c",
+  "eta_minutes": {
+    "likely": 15,
+    "optimistic": 5,
+    "pessimistic": 30
+  },
   "machine": "linux-primary",
-  "main_integrated_through": "7956d37b7be6c5dc2ba28dfcc8ad56b60e5c9b4c",
-  "next_action": "Commander integrate output-bound fix; request native helper remeasurement and continue measured pipeline improvement.",
+  "main_integrated_through": "3d3909ce828b4de34d67f8a22feb6cb369232af3",
+  "next_action": "Commander independent review and owner adoption; producer Text spacing/encoding/ligature fixes remain required. Await next product scope without authoritative compiler or control-file edits.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "FT048 fixes16MiB JSONL newline overrun and oversized-error allocation retention; boundedrequestedbuffer growth.37suite tests plus new fallbackallocation test pass(38totalcoverage),strictalltargetlint.",
+  "summary": "Single cumulative compiler handoff be426cb8 supersedes prior patch chains: 104 final tests and strict lint pass, clean apply matches ten sources, actual optimized HW1 reply retains 72 diagnostics. Text allocation optimization eaba97d5 preserves 207 complete replies and improves alternating synthetic 500KB median about 14 percent.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T09:09:53Z",
+  "updated_utc": "2026-09-12T15:57:55Z",
   "usage": {
-    "status": "unknown"
+    "evidence": "crates/preview-controller/docs/handoffs/hw1-current-compiler/evidence.json; crates/preview-controller/docs/handoffs/hw1-text-runs/evidence.json",
+    "status": "Existing hosted allocation; no paid CLI/API calls, remaining quota unknown."
   }
 }

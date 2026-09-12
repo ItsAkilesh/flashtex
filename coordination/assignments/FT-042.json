@@ -1,23 +1,23 @@
 {
-  "schema_version": 1,
-  "task_id": "FT-042",
-  "agent_id": "daniel-statistics",
-  "branch": "agent/daniel-statistics/document-statistics",
-  "revision": 2,
-  "state": "assigned",
-  "objective": "Cache document statistics by exact source identity with dependency-aware project aggregation; prove incremental equals fresh and bound scanned bytes.",
-  "owned_paths": [
-    "crates/document-statistics"
-  ],
-  "dependencies": [],
   "acceptance": [
     "Meaningful tests and strict Rust lint pass with bounded malformed/Unicode inputs",
     "Preserve exact source/revision and resource identities; no implicit approximation or parity claim",
     "Do not edit peer compiler/native/layout files; publish typed adapter contract and exact tested SHA"
   ],
+  "agent_id": "daniel-statistics",
   "allocation_id": "daniel-claude20x-shared",
-  "timebox_minutes": 40,
+  "branch": "agent/daniel-statistics/document-statistics",
   "deadline_utc": null,
-  "input_main_sha": "83f65e08ae60b312609f49ec0a2b6cae25c8e353",
-  "updated_utc": "2026-09-12T09:08:31.372212+00:00"
+  "dependencies": [],
+  "input_main_sha": "8e7546dfb4721c780036f03c21b14e6002062142",
+  "objective": "Incremental document statistics: bounded adversarial and stale-identity acceptance tests",
+  "owned_paths": [
+    "crates/document-statistics"
+  ],
+  "revision": 3,
+  "schema_version": 1,
+  "state": "assigned",
+  "task_id": "FT-042",
+  "timebox_minutes": 30,
+  "updated_utc": "2026-09-12T09:36:00Z"
 }

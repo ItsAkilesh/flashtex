@@ -1,15 +1,25 @@
 {
-  "schema_version": 1,
   "agent_id": "daniel-footnotes",
-  "task_id": "FT-032",
-  "next_index": 0,
+  "next_index": 1,
+  "schema_version": 1,
   "steps": [
     {
+      "acceptance": [
+        "Meaningful tests and strict Rust lint pass with bounded malformed/Unicode inputs",
+        "Preserve exact source/revision and resource identities; no implicit approximation or parity claim",
+        "Do not edit peer compiler/native/layout files; publish typed adapter contract and exact tested SHA",
+        "Register Daniel machine and exact assignment ACK/session before working",
+        "Preserve old WIP and test before publication; no automatic return of paths at cooldown end"
+      ],
+      "allocation_id": "daniel-claude20x-shared",
       "name": "Math layout consumer regressions: adversarial bounds and exact identity regressions",
       "objective": "Math layout consumer regressions: adversarial bounds and exact identity regressions",
       "owned_paths": [
         "crates/math-layout"
       ],
+      "timebox_minutes": 30
+    },
+    {
       "acceptance": [
         "Meaningful tests and strict Rust lint pass with bounded malformed/Unicode inputs",
         "Preserve exact source/revision and resource identities; no implicit approximation or parity claim",
@@ -18,23 +28,13 @@
         "Preserve old WIP and test before publication; no automatic return of paths at cooldown end"
       ],
       "allocation_id": "daniel-claude20x-shared",
-      "timebox_minutes": 30
-    },
-    {
       "name": "Math layout consumer regressions: existing consumer integration fixture and measured unsupported gaps",
       "objective": "Math layout consumer regressions: existing consumer integration fixture and measured unsupported gaps",
       "owned_paths": [
         "crates/math-layout"
       ],
-      "acceptance": [
-        "Meaningful tests and strict Rust lint pass with bounded malformed/Unicode inputs",
-        "Preserve exact source/revision and resource identities; no implicit approximation or parity claim",
-        "Do not edit peer compiler/native/layout files; publish typed adapter contract and exact tested SHA",
-        "Register Daniel machine and exact assignment ACK/session before working",
-        "Preserve old WIP and test before publication; no automatic return of paths at cooldown end"
-      ],
-      "allocation_id": "daniel-claude20x-shared",
       "timebox_minutes": 30
     }
-  ]
+  ],
+  "task_id": "FT-032"
 }

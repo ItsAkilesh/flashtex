@@ -1,0 +1,30 @@
+{
+  "agent_id": "commander-runtime-display",
+  "allocation_id": "hosted-openai-product",
+  "assignment_acknowledgements": {
+    "FT-049": {
+      "acknowledged_utc": "2026-09-12T14:51:23Z",
+      "adaptation": "Read r44 cap audit objective; independently verified f8bb2389 six-state Value capture and reopened documents, no rerun. Full source/body comparisons and decline-before-acceptance pass; wrapper boundary remains separate.",
+      "main_sha": "6b69149c2922b043aafd0e11c2cd1320506b0c74",
+      "revision": 44
+    }
+  },
+  "branch": "agent/commander-runtime-display/display-runtime",
+  "capabilities": [
+    "rust-runtime"
+  ],
+  "code_revision": "2006af19e89ac5c666cbf8bbe4184797162adca5",
+  "eta_minutes": null,
+  "machine": "linux-primary",
+  "main_integrated_through": "a8790ce1616921c478c5c84fb988eb6fc66a5e25",
+  "next_action": "Commander integrate bounded capture audit; helper optional serialization remains separate boundary. No active jobs; await next assigned work.",
+  "reviewed_peers": {},
+  "schema_version": 1,
+  "state": "ready_for_integration",
+  "summary": "FT049r44 audit2006af19 PASS:15 compressed artifacts, original hashes,78 assets per capture, exact six v1/accepted v2 Value bodies and source revisions.6000-byte frames;5999JSON decline before acceptance; accepted-declined-accepted recovery and archived reopened documents equal final ACK. No rerun/raw spelling/native claim.",
+  "tool": "codex",
+  "updated_utc": "2026-09-12T14:51:35Z",
+  "usage": {
+    "status": "unknown"
+  }
+}

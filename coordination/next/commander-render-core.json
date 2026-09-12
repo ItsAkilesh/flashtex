@@ -1,9 +1,10 @@
 {
-  "schema_version": 1,
   "agent_id": "commander-render-core",
-  "task_id": "FT-023",
-  "revision": 7,
-  "branch": "agent/commander-render-core/rendering-core",
   "assignment_path": "coordination/assignments/FT-023.json",
-  "updated_utc": "2026-09-12T09:30:51.309960+00:00"
+  "branch": "agent/commander-render-core/rendering-core",
+  "previous_report_sha": "bba26e82de5a55dc78a45870d0d73bec6ffadea8",
+  "revision": 28,
+  "schema_version": 1,
+  "task_id": "FT-023",
+  "updated_utc": "2026-09-12T15:10:47.807597+00:00"
 }

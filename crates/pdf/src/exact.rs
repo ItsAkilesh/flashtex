@@ -33,6 +33,7 @@
 use crate::cff::{CffError, CffFont};
 use crate::sha256;
 use crate::truetype::{Outlines, TrueTypeFont};
+use crate::type1::Type1Font;
 use crate::writer::Document;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
@@ -862,6 +863,11 @@ pub struct FontDescriptor {
     pub x_height: Option<Decimal>,
     /// `/CharSet` string for Type 1 subsets, written verbatim when present.
     pub char_set: Option<String>,
+    /// Further descriptor entries carried verbatim as `(key, value)` where
+    /// the value is direct-object PDF syntax (`/AvgWidth 537`,
+    /// `/Style << /Panose (...) >>`). Keys the struct already covers and
+    /// stream references are refused by [`render_exact`].
+    pub extra: Vec<(String, String)>,
 }
 
 /// A simple font's encoding.
@@ -898,7 +904,12 @@ pub struct SimpleFont {
 /// source font's glyph ids.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CidFont {
+    /// `/BaseFont` of the Type0 font.
     pub base_font: String,
+    /// `/BaseFont` of the descendant CID font and `/FontName` of its
+    /// descriptor when they differ from `base_font` (xdvipdfmx appends
+    /// `-Identity-H` to the Type0 name only).
+    pub descendant_base_font: Option<String>,
     pub program: FontProgram,
     /// `/W` entries per CID (1000/em units, verbatim). CIDs absent here use
     /// `default_width`.
@@ -906,11 +917,25 @@ pub struct CidFont {
     pub default_width: Decimal,
     pub descriptor: FontDescriptor,
     /// Unicode text for CIDs, for `ToUnicode`; a CID may map to several
-    /// scalars (ligatures). Empty means no ToUnicode stream.
+    /// scalars (ligatures). Empty means no ToUnicode stream unless
+    /// `to_unicode_verbatim` is set.
     pub to_unicode: BTreeMap<u16, String>,
+    /// A complete ToUnicode CMap stream body written unchanged; takes
+    /// precedence over `to_unicode`.
+    pub to_unicode_verbatim: Option<Vec<u8>>,
+    /// `/CIDSet` stream bytes (one bit per CID), written unchanged when
+    /// present and referenced from the descriptor.
+    pub cid_set: Option<Vec<u8>>,
     /// Glyph ids the caller may show; a code outside this set is an error.
-    /// Empty means "any CID with a width".
+    /// Empty means unconstrained (a program carried over from another
+    /// producer, whose `/W` may omit CIDs at the default width).
     pub glyphs: BTreeSet<u16>,
+}
+
+impl CidFont {
+    fn has_to_unicode(&self) -> bool {
+        self.to_unicode_verbatim.is_some() || !self.to_unicode.is_empty()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -924,7 +949,7 @@ impl ExactFont {
     fn object_count(&self) -> usize {
         match self {
             ExactFont::CidCff(c) | ExactFont::CidTrueType(c) => {
-                4 + usize::from(!c.to_unicode.is_empty())
+                4 + usize::from(c.has_to_unicode()) + usize::from(c.cid_set.is_some())
             }
             ExactFont::Simple(s) => {
                 1 + usize::from(s.descriptor.is_some())
@@ -960,6 +985,99 @@ pub fn subset_tag(gids: &BTreeSet<u16>, program_sha256: &str) -> String {
     (0..6)
         .map(|i| (b'A' + ((h >> (8 * i)) % 26) as u8) as char)
         .collect()
+}
+
+impl ExactFont {
+    /// A simple Type 1 font over a subset of `font` (`crate::type1`): one
+    /// byte per code, `/Differences` from `encoding` (code → glyph name),
+    /// `/Widths` from `width(name)` in thousandths of text space (the
+    /// caller chooses the source: TFM values as pdfTeX does, or
+    /// [`Type1Font::advance_width`] rounded as it sees fit), descriptor
+    /// from the font's clear text (`FontBBox`, `ItalicAngle`, `StdVW`) with
+    /// `/CharSet` listing the retained glyphs. Only the charstrings the
+    /// encoding names (plus `.notdef` and `seac` components) are embedded;
+    /// retained charstrings are byte-identical to the source.
+    pub fn type1_subset(
+        font: &Type1Font,
+        encoding: &[(u8, String)],
+        width: &dyn Fn(&str) -> Option<Decimal>,
+    ) -> Result<(ExactFont, crate::type1::Type1Subset), ExactError> {
+        let resource = font.font_name().unwrap_or("Type1").to_string();
+        let err = |m: String| ExactError::Font {
+            resource: resource.clone(),
+            message: m,
+        };
+        if encoding.is_empty() {
+            return Err(err("no codes to embed".into()));
+        }
+        let names: BTreeSet<String> = encoding.iter().map(|(_, n)| n.clone()).collect();
+        let subset = font.subset(&names).map_err(|e| err(e.to_string()))?;
+        let first = encoding.iter().map(|(c, _)| *c).min().unwrap_or(0);
+        let last = encoding.iter().map(|(c, _)| *c).max().unwrap_or(0);
+        let mut widths = Vec::with_capacity((last - first) as usize + 1);
+        for code in first..=last {
+            let w = match encoding.iter().find(|(c, _)| *c == code) {
+                Some((_, name)) => {
+                    width(name).ok_or_else(|| err(format!("no width for /{name} (code {code})")))?
+                }
+                None => Decimal::from_i64(0),
+            };
+            widths.push(w);
+        }
+        let mut differences: Vec<(u8, String)> = encoding.to_vec();
+        differences.sort_by_key(|(c, _)| *c);
+        let bbox = font
+            .font_bbox()
+            .ok_or_else(|| err("clear text has no /FontBBox".into()))?;
+        let tag = subset_tag(
+            &subset
+                .glyphs
+                .iter()
+                .enumerate()
+                .map(|(i, _)| i as u16)
+                .collect(),
+            &sha256::hex(subset.program.bytes()),
+        );
+        let base_font = format!("{tag}+{}", font.font_name().unwrap_or("Type1"));
+        let mut char_set = String::new();
+        for g in &subset.glyphs {
+            char_set.push('/');
+            char_set.push_str(g);
+        }
+        let simple = SimpleFont {
+            subtype: "Type1".into(),
+            base_font: base_font.clone(),
+            program: Some(subset.program.clone()),
+            first_char: first,
+            widths,
+            encoding: Some(Encoding::Differences {
+                base: None,
+                differences,
+            }),
+            descriptor: Some(FontDescriptor {
+                flags: 4,
+                bbox: [
+                    Decimal::from_i64(bbox[0] as i64),
+                    Decimal::from_i64(bbox[1] as i64),
+                    Decimal::from_i64(bbox[2] as i64),
+                    Decimal::from_i64(bbox[3] as i64),
+                ],
+                italic_angle: font
+                    .italic_angle()
+                    .and_then(|a| Decimal::new(a).ok())
+                    .unwrap_or_else(|| Decimal::from_i64(0)),
+                ascent: Decimal::from_i64(bbox[3] as i64),
+                descent: Decimal::from_i64(bbox[1] as i64),
+                cap_height: Decimal::from_i64(bbox[3] as i64),
+                stem_v: Decimal::from_i64(font.std_vw().unwrap_or(80) as i64),
+                x_height: None,
+                char_set: Some(char_set),
+                extra: Vec::new(),
+            }),
+            to_unicode: None,
+        };
+        Ok((ExactFont::Simple(simple), subset))
+    }
 }
 
 /// What [`ExactFont::cid_from_opentype`] did to the program.
@@ -1047,6 +1165,7 @@ impl ExactFont {
             stem_v: Decimal::from_i64(80),
             x_height: None,
             char_set: None,
+            extra: Vec::new(),
         };
         let (program, outcome, base_font) = match font.outlines {
             Outlines::Cff => {
@@ -1089,11 +1208,14 @@ impl ExactFont {
         }
         let cid = CidFont {
             base_font,
+            descendant_base_font: None,
             program,
             widths,
             default_width: Decimal::from_i64(1000),
             descriptor,
             to_unicode,
+            to_unicode_verbatim: None,
+            cid_set: None,
             glyphs: gids.clone(),
         };
         let font = match outcome {
@@ -1119,6 +1241,11 @@ pub struct ExactPage {
     pub width: Decimal,
     pub height: Decimal,
     pub content: Content,
+    /// Font resource names this page declares in its `/Resources`. `None`
+    /// declares every document font (convenient for hand-built documents);
+    /// `Some` lists exactly these, the way pdfTeX writes per-page
+    /// resources, and each must exist in [`ExactDocument::fonts`].
+    pub fonts: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -1133,9 +1260,13 @@ pub struct ExactDocument {
 pub struct PlacedGlyph {
     /// Two-byte code = original glyph id for CID fonts.
     pub gid: u16,
-    /// Absolute origin in PDF user space; `None` continues at the previous
-    /// glyph's natural advance (same string).
+    /// Absolute origin in PDF user space; `None` continues after the
+    /// previous glyph (its natural advance, or `adjust`).
     pub origin: Option<(Decimal, Decimal)>,
+    /// A `TJ` adjustment in thousandths of text space applied before this
+    /// glyph (positive moves it left, as in PDF), exact and verbatim. Only
+    /// meaningful with `origin: None`.
+    pub adjust: Option<Decimal>,
 }
 
 /// A typed glyph run: font resource, size, and glyphs by original id.
@@ -1149,21 +1280,40 @@ pub struct GlyphRun {
 impl GlyphRun {
     /// Expands to `BT … ET`: each glyph with an explicit origin starts a new
     /// `1 0 0 1 x y Tm` + string; glyphs without one join the current
-    /// string. The first glyph must carry an origin.
+    /// string, and a glyph with an `adjust` turns the segment into a `TJ`
+    /// array with that exact number before its code (the pdfTeX shape).
+    /// The first glyph must carry an origin.
     pub fn to_ops(&self) -> Result<Vec<Op>, ExactError> {
         let mut ops = vec![
             Op::BeginText,
             Op::Font(self.font.clone(), self.size.clone()),
         ];
-        let mut current: Vec<u8> = Vec::new();
         let one = Decimal::from_i64(1);
         let zero = Decimal::from_i64(0);
+        // The current Tm segment: strings interleaved with adjustments.
+        let mut segment: Vec<TjElement> = Vec::new();
+        let flush = |segment: &mut Vec<TjElement>, ops: &mut Vec<Op>| {
+            if segment.is_empty() {
+                return;
+            }
+            let elements = std::mem::take(segment);
+            if elements.len() == 1
+                && let TjElement::Text(t) = &elements[0]
+            {
+                ops.push(Op::ShowText(t.clone()));
+            } else {
+                ops.push(Op::ShowTextArray(elements));
+            }
+        };
         for (i, g) in self.glyphs.iter().enumerate() {
             match &g.origin {
                 Some((x, y)) => {
-                    if !current.is_empty() {
-                        ops.push(Op::ShowText(std::mem::take(&mut current)));
+                    if g.adjust.is_some() {
+                        return Err(ExactError::Invalid(format!(
+                            "glyph {i}: an origin and an adjustment cannot both be given"
+                        )));
                     }
+                    flush(&mut segment, &mut ops);
                     ops.push(Op::TextMatrix([
                         one.clone(),
                         zero.clone(),
@@ -1180,11 +1330,15 @@ impl GlyphRun {
                 }
                 None => {}
             }
-            current.extend_from_slice(&g.gid.to_be_bytes());
+            if let Some(a) = &g.adjust {
+                segment.push(TjElement::Adjust(a.clone()));
+            }
+            match segment.last_mut() {
+                Some(TjElement::Text(t)) => t.extend_from_slice(&g.gid.to_be_bytes()),
+                _ => segment.push(TjElement::Text(g.gid.to_be_bytes().to_vec())),
+            }
         }
-        if !current.is_empty() {
-            ops.push(Op::ShowText(current));
-        }
+        flush(&mut segment, &mut ops);
         ops.push(Op::EndText);
         Ok(ops)
     }
@@ -1196,6 +1350,7 @@ fn validate(
     page_index: usize,
     ops: &[Op],
     fonts: &BTreeMap<String, ExactFont>,
+    page_fonts: Option<&[String]>,
 ) -> Result<(), ExactError> {
     let err = |op: usize, m: String| ExactError::Content {
         page: page_index + 1,
@@ -1233,14 +1388,12 @@ fn validate(
                     if !bytes.len().is_multiple_of(2) {
                         return Err(err(i, "odd byte count for a two-byte CID font".into()));
                     }
+                    if c.glyphs.is_empty() {
+                        return Ok(());
+                    }
                     for pair in bytes.chunks(2) {
                         let cid = u16::from_be_bytes([pair[0], pair[1]]);
-                        let known = if c.glyphs.is_empty() {
-                            c.widths.contains_key(&cid)
-                        } else {
-                            c.glyphs.contains(&cid)
-                        };
-                        if !known {
+                        if !c.glyphs.contains(&cid) {
                             return Err(err(
                                 i,
                                 format!("glyph id {cid} is not in the font's subset"),
@@ -1276,6 +1429,12 @@ fn validate(
                 let f = fonts
                     .get(name)
                     .ok_or_else(|| err(i, format!("font resource /{name} is not declared")))?;
+                if page_fonts.is_some_and(|list| !list.iter().any(|n| n == name)) {
+                    return Err(err(
+                        i,
+                        format!("font resource /{name} is not in this page's resources"),
+                    ));
+                }
                 if size.approx() == 0.0 || !size.approx().is_finite() {
                     return Err(err(i, format!("font size {size} is zero or not finite")));
                 }
@@ -1395,6 +1554,16 @@ pub fn render_exact(doc: &ExactDocument) -> Result<crate::PdfOutput, ExactError>
         if program_len > MAX_FONT_BYTES {
             return Err(ExactError::Limit("font program bytes"));
         }
+        match f {
+            ExactFont::CidCff(c) | ExactFont::CidTrueType(c) => {
+                check_descriptor(name, &c.descriptor)?;
+            }
+            ExactFont::Simple(s) => {
+                if let Some(desc) = &s.descriptor {
+                    check_descriptor(name, desc)?;
+                }
+            }
+        }
         if let ExactFont::Simple(s) = f
             && s.first_char as usize + s.widths.len() > 256
         {
@@ -1409,6 +1578,44 @@ pub fn render_exact(doc: &ExactDocument) -> Result<crate::PdfOutput, ExactError>
         }
     }
 
+    // Object numbering: 1 catalog, 2 pages, 3 info, then page/content pairs,
+    // then fonts in resource-name order.
+    let page_count = doc.pages.len();
+    let first_page = 4;
+    let mut next = first_page + 2 * page_count;
+    let mut font_objects: BTreeMap<&str, usize> = BTreeMap::new();
+    for (name, f) in &doc.fonts {
+        font_objects.insert(name, next);
+        next += f.object_count();
+    }
+    let mut page_resources: Vec<String> = Vec::with_capacity(page_count);
+    for (i, page) in doc.pages.iter().enumerate() {
+        let mut resources = String::from("/Font <<");
+        match &page.fonts {
+            None => {
+                for (name, obj) in &font_objects {
+                    let _ = write!(resources, " /{name} {obj} 0 R");
+                }
+            }
+            Some(names) => {
+                let mut seen = BTreeSet::new();
+                for name in names {
+                    let obj = font_objects.get(name.as_str()).ok_or_else(|| {
+                        ExactError::Invalid(format!(
+                            "page {}: font resource /{name} is not declared in the document",
+                            i + 1
+                        ))
+                    })?;
+                    if seen.insert(name) {
+                        let _ = write!(resources, " /{name} {obj} 0 R");
+                    }
+                }
+            }
+        }
+        resources.push_str(" >>");
+        page_resources.push(resources);
+    }
+
     // Validate and serialise each page's content first so errors surface
     // before any object is written.
     let mut contents: Vec<Vec<u8>> = Vec::with_capacity(doc.pages.len());
@@ -1418,7 +1625,7 @@ pub fn render_exact(doc: &ExactDocument) -> Result<crate::PdfOutput, ExactError>
                 if ops.len() > MAX_OPERATORS {
                     return Err(ExactError::Limit("operators per page"));
                 }
-                validate(i, ops, &doc.fonts)?;
+                validate(i, ops, &doc.fonts, page.fonts.as_deref())?;
                 serialize(ops)
             }
             Content::Verbatim(bytes) => {
@@ -1430,28 +1637,12 @@ pub fn render_exact(doc: &ExactDocument) -> Result<crate::PdfOutput, ExactError>
                     },
                     other => other,
                 })?;
-                validate(i, &ops, &doc.fonts)?;
+                validate(i, &ops, &doc.fonts, page.fonts.as_deref())?;
                 bytes.clone()
             }
         };
         contents.push(bytes);
     }
-
-    // Object numbering: 1 catalog, 2 pages, 3 info, then page/content pairs,
-    // then fonts in resource-name order.
-    let page_count = doc.pages.len();
-    let first_page = 4;
-    let mut next = first_page + 2 * page_count;
-    let mut font_objects: BTreeMap<&str, usize> = BTreeMap::new();
-    for (name, f) in &doc.fonts {
-        font_objects.insert(name, next);
-        next += f.object_count();
-    }
-    let mut resources = String::from("/Font <<");
-    for (name, obj) in &font_objects {
-        let _ = write!(resources, " /{name} {obj} 0 R");
-    }
-    resources.push_str(" >>");
 
     let mut d = Document::new();
     d.object(1, b"<< /Type /Catalog /Pages 2 0 R >>");
@@ -1472,9 +1663,10 @@ pub fn render_exact(doc: &ExactDocument) -> Result<crate::PdfOutput, ExactError>
         d.object(
             page_obj,
             format!(
-                "<< /Type /Page /Parent 2 0 R /MediaBox [ 0 0 {} {} ] /Resources << {resources} >> /Contents {} 0 R >>",
+                "<< /Type /Page /Parent 2 0 R /MediaBox [ 0 0 {} {} ] /Resources << {} >> /Contents {} 0 R >>",
                 page.width,
                 page.height,
+                page_resources[i],
                 page_obj + 1
             )
             .as_bytes(),
@@ -1510,9 +1702,53 @@ fn descriptor_body(d: &FontDescriptor, name: &str, file_entry: &str) -> String {
     if let Some(c) = &d.char_set {
         let _ = write!(s, " /CharSet ({})", escape_pdf_string(c));
     }
+    for (k, v) in &d.extra {
+        let _ = write!(s, " /{k} {v}");
+    }
     s.push_str(file_entry);
     s.push_str(" >>");
     s
+}
+
+/// Keys [`FontDescriptor`] writes itself; `extra` may not repeat them.
+const DESCRIPTOR_KEYS: [&str; 13] = [
+    "Type",
+    "FontName",
+    "Flags",
+    "FontBBox",
+    "ItalicAngle",
+    "Ascent",
+    "Descent",
+    "CapHeight",
+    "StemV",
+    "XHeight",
+    "CharSet",
+    "FontFile",
+    "FontFile2",
+];
+
+fn check_descriptor(resource: &str, d: &FontDescriptor) -> Result<(), ExactError> {
+    for (k, v) in &d.extra {
+        let bad = DESCRIPTOR_KEYS.contains(&k.as_str())
+            || k == "FontFile3"
+            || k == "CIDSet"
+            || k.is_empty()
+            || !k
+                .bytes()
+                .all(|b| b.is_ascii_graphic() && b != b'/' && b != b'#')
+            || v.is_empty()
+            || v.contains(" R")
+            || v.contains("stream");
+        if bad {
+            return Err(ExactError::Font {
+                resource: resource.to_string(),
+                message: format!(
+                    "descriptor extra /{k} {v}: keys the descriptor already writes and indirect references are not accepted"
+                ),
+            });
+        }
+    }
+    Ok(())
 }
 
 fn escape_pdf_string(s: &str) -> String {
@@ -1570,11 +1806,17 @@ fn write_font(d: &mut Document, obj: usize, f: &ExactFont) {
             let cid_obj = obj + 1;
             let desc_obj = obj + 2;
             let file_obj = obj + 3;
-            let tounicode = if c.to_unicode.is_empty() {
-                String::new()
-            } else {
-                format!(" /ToUnicode {} 0 R", obj + 4)
-            };
+            let mut next = obj + 4;
+            let tounicode_obj = c.has_to_unicode().then(|| {
+                next += 1;
+                next - 1
+            });
+            let cidset_obj = c.cid_set.is_some().then(|| {
+                next += 1;
+                next - 1
+            });
+            let tounicode = tounicode_obj.map_or(String::new(), |n| format!(" /ToUnicode {n} 0 R"));
+            let descendant = c.descendant_base_font.as_deref().unwrap_or(&c.base_font);
             d.object(
                 obj,
                 format!(
@@ -1596,8 +1838,8 @@ fn write_font(d: &mut Document, obj: usize, f: &ExactFont) {
             d.object(
                 cid_obj,
                 format!(
-                    "<< /Type /Font /Subtype /{subtype} /BaseFont /{} /CIDSystemInfo << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >> /FontDescriptor {desc_obj} 0 R /DW {} /W {w}{gid_map} >>",
-                    c.base_font, c.default_width
+                    "<< /Type /Font /Subtype /{subtype} /BaseFont /{descendant} /CIDSystemInfo << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >> /FontDescriptor {desc_obj} 0 R /DW {} /W {w}{gid_map} >>",
+                    c.default_width
                 )
                 .as_bytes(),
             );
@@ -1608,19 +1850,24 @@ fn write_font(d: &mut Document, obj: usize, f: &ExactFont) {
                 FontProgram::Cff(_) => "FontFile3",
                 FontProgram::TrueType(_) => "FontFile2",
             };
+            let mut file_entry = format!(" /{file_key} {file_obj} 0 R");
+            if let Some(n) = cidset_obj {
+                let _ = write!(file_entry, " /CIDSet {n} 0 R");
+            }
             d.object(
                 desc_obj,
-                descriptor_body(
-                    &c.descriptor,
-                    &c.base_font,
-                    &format!(" /{file_key} {file_obj} 0 R"),
-                )
-                .as_bytes(),
+                descriptor_body(&c.descriptor, descendant, &file_entry).as_bytes(),
             );
             let written = program_stream(d, file_obj, &c.program, true);
             debug_assert_eq!(written, file_key);
-            if !c.to_unicode.is_empty() {
-                d.stream(obj + 4, &to_unicode_cmap(&c.to_unicode));
+            if let Some(n) = tounicode_obj {
+                match &c.to_unicode_verbatim {
+                    Some(bytes) => d.stream(n, bytes),
+                    None => d.stream(n, &to_unicode_cmap(&c.to_unicode)),
+                }
+            }
+            if let (Some(n), Some(bytes)) = (cidset_obj, &c.cid_set) {
+                d.stream(n, bytes);
             }
         }
         ExactFont::Simple(s) => {
@@ -1715,6 +1962,43 @@ fn write_font(d: &mut Document, obj: usize, f: &ExactFont) {
     }
 }
 
+/// Reads the `bfchar` entries of a ToUnicode CMap written by
+/// [`to_unicode_cmap`] back into CID → text (multi-scalar values allowed).
+pub fn parse_to_unicode(cmap: &[u8]) -> Result<BTreeMap<u16, String>, String> {
+    let text = std::str::from_utf8(cmap).map_err(|_| "CMap is not UTF-8")?;
+    let mut map = BTreeMap::new();
+    let mut in_bfchar = false;
+    for line in text.lines() {
+        if line.ends_with("beginbfchar") {
+            in_bfchar = true;
+            continue;
+        }
+        if line == "endbfchar" {
+            in_bfchar = false;
+            continue;
+        }
+        if !in_bfchar {
+            continue;
+        }
+        let (src, dst) = line
+            .split_once("> <")
+            .ok_or_else(|| format!("malformed bfchar line {line:?}"))?;
+        let cid = u16::from_str_radix(src.trim_start_matches('<'), 16).map_err(|_| "bad CID")?;
+        let dst = dst.trim_end_matches('>');
+        let units: Vec<u16> = dst
+            .as_bytes()
+            .chunks(4)
+            .map(|c| u16::from_str_radix(std::str::from_utf8(c).unwrap_or("zz"), 16))
+            .collect::<Result<_, _>>()
+            .map_err(|_| "bad UTF-16")?;
+        map.insert(
+            cid,
+            String::from_utf16(&units).map_err(|_| "bad UTF-16 sequence")?,
+        );
+    }
+    Ok(map)
+}
+
 /// A ToUnicode CMap mapping two-byte CIDs to UTF-16BE strings (`bfchar`,
 /// so a CID may expand to several scalars).
 pub fn to_unicode_cmap(map: &BTreeMap<u16, String>) -> Vec<u8> {
@@ -1737,9 +2021,247 @@ pub fn to_unicode_cmap(map: &BTreeMap<u16, String>) -> Vec<u8> {
     s.into_bytes()
 }
 
+// ---------------------------------------------------------------------------
+// Exact replay of text positions, for round-trip checks.
+
+/// A rational number with an `i128` numerator and a positive denominator,
+/// always reduced. Enough for replaying text positioning exactly.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Ratio {
+    pub num: i128,
+    pub den: i128,
+}
+
+fn gcd(a: i128, b: i128) -> i128 {
+    let (mut a, mut b) = (a.abs(), b.abs());
+    while b != 0 {
+        let t = a % b;
+        a = b;
+        b = t;
+    }
+    a.max(1)
+}
+
+impl Ratio {
+    pub fn new(num: i128, den: i128) -> Ratio {
+        assert!(den != 0, "zero denominator");
+        let g = gcd(num, den);
+        let sign = if den < 0 { -1 } else { 1 };
+        Ratio {
+            num: sign * num / g,
+            den: sign * den / g,
+        }
+    }
+
+    pub fn int(v: i128) -> Ratio {
+        Ratio { num: v, den: 1 }
+    }
+
+    /// The exact value of a [`Decimal`].
+    pub fn from_decimal(d: &Decimal) -> Ratio {
+        let s = d.as_str();
+        let (neg, body) = match s.strip_prefix('-') {
+            Some(b) => (true, b),
+            None => (false, s.strip_prefix('+').unwrap_or(s)),
+        };
+        let (int, frac) = body.split_once('.').unwrap_or((body, ""));
+        let mut num: i128 = 0;
+        for c in int.bytes().chain(frac.bytes()) {
+            num = num * 10 + (c - b'0') as i128;
+        }
+        let den = 10i128.pow(frac.len() as u32);
+        Ratio::new(if neg { -num } else { num }, den)
+    }
+}
+
+impl std::ops::Add for Ratio {
+    type Output = Ratio;
+    fn add(self, o: Ratio) -> Ratio {
+        Ratio::new(self.num * o.den + o.num * self.den, self.den * o.den)
+    }
+}
+
+impl std::ops::Sub for Ratio {
+    type Output = Ratio;
+    fn sub(self, o: Ratio) -> Ratio {
+        Ratio::new(self.num * o.den - o.num * self.den, self.den * o.den)
+    }
+}
+
+impl std::ops::Mul for Ratio {
+    type Output = Ratio;
+    fn mul(self, o: Ratio) -> Ratio {
+        Ratio::new(self.num * o.num, self.den * o.den)
+    }
+}
+
+impl std::ops::Div for Ratio {
+    type Output = Ratio;
+    fn div(self, o: Ratio) -> Ratio {
+        Ratio::new(self.num * o.den, self.den * o.num)
+    }
+}
+
+/// One shown glyph with its exact origin in user space.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GlyphPosition {
+    pub font: String,
+    pub code: u16,
+    pub x: Ratio,
+    pub y: Ratio,
+}
+
+/// Replays the text operators of a page exactly and returns every shown
+/// glyph's origin. Supported: `Tf`, `Tm` of the form `1 0 0 1 x y`, `Td`,
+/// `Tj`, `TJ` (adjustments in thousandths of text space, `Tc`/`Tw`/`Tz`
+/// at their defaults). `two_byte(font)` says whether codes are two bytes;
+/// `width(font, code)` gives the glyph width in thousandths of text space.
+pub fn glyph_positions(
+    ops: &[Op],
+    two_byte: &dyn Fn(&str) -> bool,
+    width: &dyn Fn(&str, u16) -> Option<Ratio>,
+) -> Result<Vec<GlyphPosition>, String> {
+    let mut out = Vec::new();
+    let mut font: Option<(String, Ratio)> = None;
+    let (mut line_x, mut line_y) = (Ratio::int(0), Ratio::int(0));
+    let (mut x, mut y) = (Ratio::int(0), Ratio::int(0));
+    let show = |bytes: &[u8],
+                font: &Option<(String, Ratio)>,
+                x: &mut Ratio,
+                y: &Ratio,
+                out: &mut Vec<GlyphPosition>|
+     -> Result<(), String> {
+        let (name, size) = font.as_ref().ok_or("text shown before Tf")?;
+        let wide = two_byte(name);
+        let codes: Vec<u16> = if wide {
+            if !bytes.len().is_multiple_of(2) {
+                return Err("odd byte count for a two-byte font".into());
+            }
+            bytes
+                .chunks(2)
+                .map(|p| u16::from_be_bytes([p[0], p[1]]))
+                .collect()
+        } else {
+            bytes.iter().map(|&b| b as u16).collect()
+        };
+        for code in codes {
+            out.push(GlyphPosition {
+                font: name.clone(),
+                code,
+                x: *x,
+                y: *y,
+            });
+            let w = width(name, code).ok_or_else(|| format!("no width for /{name} code {code}"))?;
+            *x = *x + w / Ratio::int(1000) * *size;
+        }
+        Ok(())
+    };
+    for (i, op) in ops.iter().enumerate() {
+        match op {
+            Op::Font(name, size) => font = Some((name.clone(), Ratio::from_decimal(size))),
+            Op::TextMatrix(m) => {
+                let ident = [&m[0], &m[1], &m[2], &m[3]]
+                    .iter()
+                    .map(|d| Ratio::from_decimal(d))
+                    .collect::<Vec<_>>();
+                if ident != [Ratio::int(1), Ratio::int(0), Ratio::int(0), Ratio::int(1)] {
+                    return Err(format!(
+                        "op {i}: only translation text matrices are replayed"
+                    ));
+                }
+                line_x = Ratio::from_decimal(&m[4]);
+                line_y = Ratio::from_decimal(&m[5]);
+                x = line_x;
+                y = line_y;
+            }
+            Op::TextMove(dx, dy) => {
+                line_x = line_x + Ratio::from_decimal(dx);
+                line_y = line_y + Ratio::from_decimal(dy);
+                x = line_x;
+                y = line_y;
+            }
+            Op::BeginText => {
+                line_x = Ratio::int(0);
+                line_y = Ratio::int(0);
+                x = line_x;
+                y = line_y;
+            }
+            Op::ShowText(bytes) => show(bytes, &font, &mut x, &y, &mut out)?,
+            Op::ShowTextArray(elements) => {
+                for e in elements {
+                    match e {
+                        TjElement::Text(bytes) => show(bytes, &font, &mut x, &y, &mut out)?,
+                        TjElement::Adjust(n) => {
+                            let (_, size) = font.as_ref().ok_or("TJ before Tf")?;
+                            x = x - Ratio::from_decimal(n) / Ratio::int(1000) * *size;
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ratio_arithmetic_and_decimal_values() {
+        assert_eq!(
+            Ratio::from_decimal(&Decimal::new("-0.125").unwrap()),
+            Ratio::new(-1, 8)
+        );
+        assert_eq!(
+            Ratio::from_decimal(&Decimal::new("12.000").unwrap()),
+            Ratio::int(12)
+        );
+        assert_eq!(Ratio::new(2, 4) + Ratio::new(1, 4), Ratio::new(3, 4));
+        assert_eq!(Ratio::new(1, 3) * Ratio::int(3), Ratio::int(1));
+    }
+
+    #[test]
+    fn tj_adjustments_replay_to_exact_positions() {
+        let run = GlyphRun {
+            font: "F1".into(),
+            size: Decimal::new("10").unwrap(),
+            glyphs: vec![
+                PlacedGlyph {
+                    gid: 1,
+                    origin: Some((Decimal::new("72").unwrap(), Decimal::new("700").unwrap())),
+                    adjust: None,
+                },
+                PlacedGlyph {
+                    gid: 2,
+                    origin: None,
+                    adjust: Some(Decimal::new("-25.5").unwrap()),
+                },
+                PlacedGlyph {
+                    gid: 3,
+                    origin: None,
+                    adjust: None,
+                },
+            ],
+        };
+        let ops = run.to_ops().unwrap();
+        assert!(matches!(&ops[3], Op::ShowTextArray(e) if e.len() == 3));
+        let s = String::from_utf8(serialize(&ops)).unwrap();
+        assert!(
+            s.contains("[(\\000\\001)-25.5(\\000\\002\\000\\003)] TJ\n"),
+            "{s}"
+        );
+        let pos = glyph_positions(&ops, &|_| true, &|_, code| {
+            Some(Ratio::int(500 + code as i128))
+        })
+        .unwrap();
+        // glyph 1 at 72; glyph 2 at 72 + 501/1000*10 + 25.5/1000*10 = 77.265; glyph 3 at 77.265 + 5.02
+        assert_eq!(pos[0].x, Ratio::int(72));
+        assert_eq!(pos[1].x, Ratio::new(77265, 1000));
+        assert_eq!(pos[2].x, Ratio::new(82285, 1000));
+        assert_eq!(pos[2].y, Ratio::int(700));
+    }
 
     #[test]
     fn decimal_syntax() {
@@ -1834,10 +2356,12 @@ mod tests {
                 PlacedGlyph {
                     gid: 47,
                     origin: Some((Decimal::new("72").unwrap(), Decimal::new("700.5").unwrap())),
+                    adjust: None,
                 },
                 PlacedGlyph {
                     gid: 72,
                     origin: None,
+                    adjust: None,
                 },
                 PlacedGlyph {
                     gid: 1,
@@ -1845,6 +2369,7 @@ mod tests {
                         Decimal::new("100.25").unwrap(),
                         Decimal::new("700.5").unwrap(),
                     )),
+                    adjust: None,
                 },
             ],
         };

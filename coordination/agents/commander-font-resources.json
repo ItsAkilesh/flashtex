@@ -3,31 +3,31 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-024": {
-      "acknowledged_utc": "2026-09-12T08:50:11Z",
-      "adaptation": "Reviewed r10 objective and unchanged owned crate. Measure repeated pinned STIX kern/device/fit queries, retain only bounded exact-identity cache with demonstrated parse reduction.",
-      "main_sha": "e0887bcfd71749d35f4a1aa8c42d059599d5f88d",
-      "revision": 10
+      "acknowledged_utc": "2026-09-12T10:38:29Z",
+      "adaptation": "Read current16; shared rational interpreter now preserves legacy default/dyadic outcomes and exact171paired LM results, additive rational accepts320 with502OtherSubrs refusals. Matrix/context gate remains closed; no new workers/providers.",
+      "main_sha": "ca3f9e8e7931245cc3d9d407069a63ae634e1a50",
+      "revision": 16
     }
   },
   "branch": "agent/commander-corpus/font-resources",
   "capabilities": [
     "rust-font-resources"
   ],
-  "code_revision": "7812318964aa575406da88818e99a2bd9b480639",
+  "code_revision": "43b343e25b2d1522517443c2bc1e34936fb60c72",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
     "pessimistic": 0
   },
   "machine": "linux-primary",
-  "main_integrated_through": "1fc71f31ee1e23eff0f3ab2fa1b04964b776594c",
-  "next_action": "Current task complete; consumer API and exact evidence handoff. Branch/worktree remain font-resources only; report commits preserve ACKr10 and resume state. No providers/descendants or pending tool sessions. Await next assigned correctness followup.",
+  "main_integrated_through": "79bdadafab843c86525ad85f5c86742783cb5ad3",
+  "next_action": "Next queued bounded rational matrix adapter then standardflex only under explicit profile; preserve actual LM context refusal. No peerwrites/providers/pending commands, product checkpoint clean.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "FT024r10 MATH cache implemented after measurement:113 ordinary tests/clippy+STIX paired query replay pass.100 identical queries reduce100 kern parses to1/99hits;56.27ms versus0.618ms observed locally, no threshold/native claim. Full identity/ppem/fit keys, bounded retention, negative/stale/eviction tests.",
+  "summary": "FT024r16 ACK; published exact-rational Type1 raw API sharing existing bounded interpreter. Legacy default/dyadic inventories unchanged; real LM320accepted/502callothersubr refused, all171prior dyadic results exact across commands/widths/stems/source/identity. Rational thirds/overflow tests, fullsuite/clippy/pinnedreplay pass. Conditional matrixcontext and PS/OtherSubrs gates unchanged.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T08:55:39Z",
+  "updated_utc": "2026-09-12T10:39:12Z",
   "usage": {
     "evidence": "crates/font-resources/README.md; test suite; installed font SHA pinned.",
     "status": "Hosted allocation; no external provider calls; account remainder unknown."

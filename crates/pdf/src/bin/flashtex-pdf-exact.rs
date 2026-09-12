@@ -4,7 +4,15 @@
 //! flashtex-pdf-exact reemit REF.pdf OUT.pdf      # rebuild REF through the exact API
 //! flashtex-pdf-exact classify A.pdf B.pdf        # classify every difference
 //! flashtex-pdf-exact dump X.pdf                  # pages, fonts, content operators
+//! flashtex-pdf-exact from-v2 LIST.json --out OUT.pdf [--font-dir DIR]...
+//!                                                # rendering-v2 display list -> exact PDF
 //! ```
+//!
+//! `from-v2` consumes the `display_list` envelope of `flashtex-render --v2`
+//! (see `crate::v2`): glyph runs by original glyph id at exact tick
+//! positions, fonts resolved by content hash and embedded as GID-preserving
+//! subsets, typed rules. It prints one `note:` line per font and a summary,
+//! runs the structural self-check, and exits 1 on any unsupported input.
 //!
 //! `reemit` reads a finished PDF (this crate's or pdfTeX's), carries its
 //! page sizes, decoded content streams, and font resources into an
@@ -18,8 +26,7 @@ use flashtex_pdf::compare;
 use flashtex_pdf::reader::PdfFile;
 use std::process::ExitCode;
 
-const USAGE: &str =
-    "usage: flashtex-pdf-exact reemit REF.pdf OUT.pdf | classify A.pdf B.pdf | dump X.pdf";
+const USAGE: &str = "usage: flashtex-pdf-exact reemit REF.pdf OUT.pdf | classify A.pdf B.pdf | dump X.pdf | from-v2 LIST.json --out OUT.pdf [--font-dir DIR]...";
 
 fn read_pdf(path: &str) -> Result<PdfFile, String> {
     let bytes = std::fs::read(path).map_err(|e| format!("{path}: {e}"))?;
@@ -37,6 +44,7 @@ fn main() -> ExitCode {
         ["reemit", reference, out] => reemit(reference, out),
         ["classify", a, b] => classify(a, b),
         ["dump", x] => dump(x),
+        ["from-v2", rest @ ..] => from_v2(rest),
         _ => {
             eprintln!("{USAGE}");
             return ExitCode::from(2);
@@ -49,6 +57,76 @@ fn main() -> ExitCode {
             ExitCode::from(1)
         }
     }
+}
+
+fn from_v2(args: &[&str]) -> Result<u8, String> {
+    let mut input = None;
+    let mut out = None;
+    let mut options = flashtex_pdf::v2::V2Options::default();
+    let mut i = 0;
+    while i < args.len() {
+        match args[i] {
+            "--out" => {
+                out = args.get(i + 1).map(|s| s.to_string());
+                i += 2;
+            }
+            "--font-dir" => {
+                options.font_dirs.push(std::path::PathBuf::from(
+                    args.get(i + 1).ok_or("--font-dir needs a path")?,
+                ));
+                i += 2;
+            }
+            a if a.starts_with('-') => return Err(format!("unknown option {a}\n{USAGE}")),
+            a => {
+                if input.replace(a.to_string()).is_some() {
+                    return Err(format!("only one display list is accepted\n{USAGE}"));
+                }
+                i += 1;
+            }
+        }
+    }
+    let (Some(input), Some(out)) = (input, out) else {
+        return Err(format!(
+            "from-v2 needs LIST.json and --out OUT.pdf\n{USAGE}"
+        ));
+    };
+    let (doc, report) = flashtex_pdf::v2::from_v2_file(std::path::Path::new(&input), &options)?;
+    let rendered = flashtex_pdf::exact::render_exact(&doc).map_err(|e| e.to_string())?;
+    flashtex_pdf::verify::check_structure(&rendered.bytes)
+        .map_err(|e| format!("generated PDF failed self-check: {e}"))?;
+    std::fs::write(&out, &rendered.bytes).map_err(|e| format!("{out}: {e}"))?;
+    for fnote in &report.fonts {
+        eprintln!(
+            "note: /{} {} from {}: {} glyph(s), {:?}, program {} bytes{}",
+            fnote.resource,
+            fnote.postscript_name,
+            fnote.path.display(),
+            fnote.glyphs,
+            fnote.outcome,
+            fnote.program_bytes,
+            fnote
+                .note
+                .as_deref()
+                .map_or(String::new(), |n| format!(" ({n})"))
+        );
+    }
+    for n in &report.notes {
+        eprintln!("note: {n}");
+    }
+    for d in &report.diagnostics {
+        eprintln!("diagnostic (from the display list): {d}");
+    }
+    eprintln!(
+        "note: {} page(s), {} glyph run(s), {} glyph(s) ({} continued at the natural advance, {} with an exact TJ kern), {} rule(s), {} bytes -> {out}",
+        report.pages,
+        report.runs,
+        report.glyphs,
+        report.joined_glyphs,
+        report.kerned_glyphs,
+        report.rules,
+        rendered.bytes.len()
+    );
+    Ok(0)
 }
 
 fn reemit(reference: &str, out: &str) -> Result<u8, String> {
