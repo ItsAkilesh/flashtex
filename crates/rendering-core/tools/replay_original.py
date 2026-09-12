@@ -16,7 +16,7 @@ import tarfile
 import tempfile
 
 PRODUCER = "65dbe7da7a182e99322070e2c9763cc3b69a342b"
-CONSUMER = "cdd5e979e87327ba4313b9a7bd8f1479bfb0ec5d"
+CONSUMER = "f0e5a7d8b9c5daacf67516a14dc0ee2a1aafaa59"
 FIXTURE_MANIFEST_SHA256 = "4cb8dec58408efa560288adfe848f3d7fedf6bb0967a6b2160f633f89df4a412"
 ASSETS = {
     "fonts/tfm/public/lm/ec-lmr12.tfm": "299021120f0a29ef61278a2363903bd8defbb8faaade458eb79067342aecb56f",
@@ -101,7 +101,7 @@ def run(args, report):
     report.update(producer_commit=PRODUCER, consumer_baseline=CONSUMER,
                   fixture_manifest_sha256=FIXTURE_MANIFEST_SHA256,
                   runner_sha256=sha(Path(__file__).read_bytes()),
-                  pdf_backend_commit="654f626658ddf5d1c2ca4c2db63c3b4c87172e51",
+                  pdf_backend_commit="20e5277857b2cd37f102fb07acdd164f82bb49db",
                   metric_assets=ASSETS, fixtures={},
                   source_transformation="requests strip fixture preambles; references use recorded LM preambles")
     build_area=root/"crates/rendering-core/target/replays"

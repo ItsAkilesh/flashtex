@@ -73,5 +73,59 @@
     "report": "evidence/helper-baseline-five-fixtures.json",
     "report_sha256": "d6f9c43b63c81f958292842ee7e1a0c38f10dab6faef54844be07be327f18a84",
     "result": "All five exact original PDF hashes, raster counts and extracted-text equality values match prior actual checkpoints. Existing mismatches remain mismatches."
+  },
+  "subset_rebaseline": {
+    "consumer_commit": "f0e5a7d8b9c5daacf67516a14dc0ee2a1aafaa59",
+    "pdf_backend_commit": "20e5277857b2cd37f102fb07acdd164f82bb49db",
+    "report": "evidence/subset20-five-fixtures.json",
+    "report_sha256": "2567741415912fa1e271752b7128def743e9ce38fe6db8e09de4c762bc3dc8de",
+    "rows": [
+      {
+        "fixture": "plain",
+        "status": "accepted",
+        "pdf_sha256": "fdaf6f847e78fa6de55a6a9b2108987ea8af6a58e4c432ecf4a70b5223243f92",
+        "pdf_bytes": 9595,
+        "different_pixels": 0,
+        "extracted_text_equal": true,
+        "text_comparison_validity": "limited_linear_text"
+      },
+      {
+        "fixture": "inline-math",
+        "status": "mismatch",
+        "pdf_sha256": "5983a7f211fdc99dc230af58b8fa0cf543b7c5929f2af01dd0dfb0230de0abcb",
+        "pdf_bytes": 11694,
+        "different_pixels": 602,
+        "extracted_text_equal": true,
+        "text_comparison_validity": "limited_linear_text"
+      },
+      {
+        "fixture": "display-math",
+        "status": "mismatch",
+        "pdf_sha256": "88e82f56bbcbccede596374cd0ac235ab5392c44b17fc0dd54d4188c7cfd7abd",
+        "pdf_bytes": 11536,
+        "different_pixels": 1244,
+        "extracted_text_equal": false,
+        "text_comparison_validity": "oracle_limitation"
+      },
+      {
+        "fixture": "wrapping",
+        "status": "mismatch",
+        "pdf_sha256": "60b05c16de97fcae11f39ec5bb815c74552edf215910dfdb8024f2984a3344a5",
+        "pdf_bytes": 76903,
+        "different_pixels": 979,
+        "extracted_text_equal": true,
+        "text_comparison_validity": "limited_linear_text"
+      },
+      {
+        "fixture": "ligatures",
+        "status": "mismatch",
+        "pdf_sha256": "a6bcd0e2aabef5a68f20acee302a5ff38229acf52c9c89e274d2ee50912000c7",
+        "pdf_bytes": 19958,
+        "different_pixels": 337,
+        "extracted_text_equal": true,
+        "text_comparison_validity": "limited_linear_text"
+      }
+    ],
+    "result": "New subset PDF hashes match tested artifacts; all five previous raster counts and extracted-text validity/outcomes unchanged. Prior rows are retained historical evidence."
   }
 }

@@ -14,23 +14,23 @@
     "rust",
     "rendering"
   ],
-  "code_revision": "4ca51d941a2ab871696ca35cbf57adc01097016a",
+  "code_revision": "f0e5a7d8b9c5daacf67516a14dc0ee2a1aafaa59",
   "eta_minutes": {
-    "likely": 8,
-    "optimistic": 3,
-    "pessimistic": 15
+    "likely": 3,
+    "optimistic": 1,
+    "pessimistic": 5
   },
   "machine": "linux-primary",
   "main_integrated_through": "4ca51d941a2ab871696ca35cbf57adc01097016a",
-  "next_action": "Publish tested peer import and consumer comparisons; then deliberately rebaseline existing five-fixture runner to new PDF hashes while retaining historical artifacts.",
+  "next_action": "Publish final tool/aggregate evidence, then next bounded product dispatch; no new corpus.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "FT023r10 unchanged PDF20e5277 subtree passes uptake: exact original glyph positions/Unicode/expanded programs and raster/text preserved, measured substantial subset reduction.",
+  "summary": "FT023r10 unchanged subsetter uptake f0e5a7d8 and fresh five-fixture rebaseline verified: new smaller PDF hashes match tested artifacts, all prior raster/text outcomes unchanged.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T11:25:26Z",
+  "updated_utc": "2026-09-12T11:28:06Z",
   "usage": {
-    "evidence": "165rendering tests +82upstream PDF tests pass; rendering strict Clippy pass. Six existing export pairs have identical raster/text; inline math PDF140238\u219211694bytes, embeddedmath109797\u21921753bytes. Unchanged upstream tree proof recorded.",
-    "status": "Hosted OpenAI only, no providers/descendants/native switch; quota telemetry unavailable."
+    "evidence": "165rendering+82PDF tests and both strictClippy pass;6Python gates pass. Fresh all-five runner matches new PDF snapshots and0/602/1244/979/337pixels. GH2comment5645596949.",
+    "status": "Hosted OpenAI only; no providers/descendants/native activation; quota telemetry unavailable."
   }
 }
