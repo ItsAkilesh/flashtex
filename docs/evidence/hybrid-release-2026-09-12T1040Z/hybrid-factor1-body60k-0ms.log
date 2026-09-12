@@ -1,0 +1,338 @@
+2026-09-12T10:47:52Z	status: no worker attached
+2026-09-12T10:47:52Z	status: attached: flashtex-preview-controller
+2026-09-12T10:47:52Z	launched /private/tmp/claude-501/-Users-jay3332-Projects-flashtex/e30fd4a4-f46a-4c3f-a28c-cbb8617b4425/scratchpad/helper-main-60c40c1/crates/preview-controller/target/release/flashtex-preview-controller for /var/folders/_0/d71mvr2d4_177qkm0506xl200000gn/T/flashtex-project-E0CA9427-3ED4-4F9F-A418-C8AB80101BFC (ledger /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a25f8f8ba4a279a48/apps/mac/build/typing-bench/2026-09-12T104723Z/controller-body60k-0ms/ledger)
+2026-09-12T10:47:52Z	controller ready: compiler frames ≤ 8 MiB, helper output ≤ 16 MiB
+2026-09-12T10:47:52Z	ignored controller preview preview-1: versions ["main.tex": 1] unknown to this session
+2026-09-12T10:47:54Z	bench: waiting for attach + first paint (200 keystrokes, 0.0 ms)
+2026-09-12T10:47:54Z	status: revision 2: ok, 0 diagnostics in 166 ms (durable r1)
+2026-09-12T10:47:54Z	paint: revision 2 at 86311496434875 (covers 0 keystrokes, redrawn true)
+2026-09-12T10:47:54Z	bench: typing 200 keystrokes at UTF-16 offset 63719 every 0.0 ms
+2026-09-12T10:47:54Z	paint: revision 2 needed 2 extra turn(s); drew 0/23 pages
+2026-09-12T10:47:54Z	paint: revision 2 at 86311533360166 (covers 0 keystrokes, redrawn false)
+2026-09-12T10:47:54Z	keystroke: revision 3 at 86311535619291 (delegate 86311565964750, revision 86311566231625)
+2026-09-12T10:47:54Z	compile: sending revision 3 at 86311566320333
+2026-09-12T10:47:54Z	durable: r2 for revision 3 at 86311605339041
+2026-09-12T10:47:54Z	keystroke: revision 4 at 86311617482250 (delegate 86311618087791, revision 86311618318125)
+2026-09-12T10:47:54Z	controller hybrid release: revision 3 durable r2 after 51.2 ms (bound 40 ms)
+2026-09-12T10:47:54Z	release: hybrid revision 3 after 51.2 ms (bound 40 ms) at 86311618409166
+2026-09-12T10:47:54Z	compile: sending revision 4 at 86311618452291
+2026-09-12T10:47:54Z	keystroke: revision 5 at 86311636681333 (delegate 86311637315833, revision 86311637558125)
+2026-09-12T10:47:54Z	durable: r3 for revision 4 at 86311643186208
+2026-09-12T10:47:54Z	keystroke: revision 6 at 86311655197083 (delegate 86311655745666, revision 86311655966458)
+2026-09-12T10:47:54Z	keystroke: revision 7 at 86311669263500 (delegate 86311669840916, revision 86311670054791)
+2026-09-12T10:47:54Z	controller hybrid release: revision 4 durable r3 after 50.9 ms (bound 40 ms)
+2026-09-12T10:47:54Z	release: hybrid revision 4 after 50.9 ms (bound 40 ms) at 86311670147666
+2026-09-12T10:47:54Z	compile: sending revision 7 at 86311670169666
+2026-09-12T10:47:54Z	keystroke: revision 8 at 86311683001250 (delegate 86311683566000, revision 86311683777208)
+2026-09-12T10:47:54Z	keystroke: revision 9 at 86311689430333 (delegate 86311689910791, revision 86311690115583)
+2026-09-12T10:47:54Z	keystroke: revision 10 at 86311696158875 (delegate 86311696669375, revision 86311696882458)
+2026-09-12T10:47:54Z	durable: r4 for revision 7 at 86311702150833
+2026-09-12T10:47:54Z	controller update superseded: by_id,kind,request_id
+2026-09-12T10:47:54Z	keystroke: revision 11 at 86311708224291 (delegate 86311708812875, revision 86311709030958)
+2026-09-12T10:47:54Z	keystroke: revision 12 at 86311723844875 (delegate 86311724329041, revision 86311724543541)
+2026-09-12T10:47:54Z	controller hybrid release: revision 7 durable r4 after 53.8 ms (bound 40 ms)
+2026-09-12T10:47:54Z	release: hybrid revision 7 after 53.8 ms (bound 40 ms) at 86311724634500
+2026-09-12T10:47:54Z	compile: sending revision 12 at 86311724656416
+2026-09-12T10:47:54Z	keystroke: revision 13 at 86311730210666 (delegate 86311730703833, revision 86311730902125)
+2026-09-12T10:47:54Z	keystroke: revision 14 at 86311735921041 (delegate 86311736387458, revision 86311736597291)
+2026-09-12T10:47:54Z	keystroke: revision 15 at 86311748575708 (delegate 86311749250875, revision 86311749491041)
+2026-09-12T10:47:54Z	durable: r5 for revision 12 at 86311754318750
+2026-09-12T10:47:54Z	keystroke: revision 16 at 86311759527000 (delegate 86311760057250, revision 86311760267083)
+2026-09-12T10:47:54Z	keystroke: revision 17 at 86311774628041 (delegate 86311775212375, revision 86311775450041)
+2026-09-12T10:47:54Z	controller hybrid release: revision 12 durable r5 after 50.2 ms (bound 40 ms)
+2026-09-12T10:47:54Z	release: hybrid revision 12 after 50.2 ms (bound 40 ms) at 86311775545375
+2026-09-12T10:47:54Z	compile: sending revision 17 at 86311775570208
+2026-09-12T10:47:54Z	keystroke: revision 18 at 86311786700458 (delegate 86311787306583, revision 86311787521875)
+2026-09-12T10:47:54Z	controller update superseded: by_id,kind,request_id
+2026-09-12T10:47:54Z	keystroke: revision 19 at 86311796995083 (delegate 86311797584791, revision 86311797794916)
+2026-09-12T10:47:54Z	keystroke: revision 20 at 86311805618125 (delegate 86311806126750, revision 86311806337791)
+2026-09-12T10:47:54Z	keystroke: revision 21 at 86311817336291 (delegate 86311817879500, revision 86311818108875)
+2026-09-12T10:47:54Z	durable: r6 for revision 17 at 86311818342083
+2026-09-12T10:47:54Z	keystroke: revision 22 at 86311833553250 (delegate 86311834101708, revision 86311834313500)
+2026-09-12T10:47:54Z	controller hybrid release: revision 17 durable r6 after 58.1 ms (bound 40 ms)
+2026-09-12T10:47:54Z	release: hybrid revision 17 after 58.1 ms (bound 40 ms) at 86311834400250
+2026-09-12T10:47:54Z	compile: sending revision 22 at 86311834422708
+2026-09-12T10:47:54Z	keystroke: revision 23 at 86311839821083 (delegate 86311840278916, revision 86311840478958)
+2026-09-12T10:47:54Z	keystroke: revision 24 at 86311845640833 (delegate 86311846110333, revision 86311846327083)
+2026-09-12T10:47:54Z	keystroke: revision 25 at 86311855311375 (delegate 86311855867208, revision 86311856079125)
+2026-09-12T10:47:54Z	durable: r7 for revision 22 at 86311867325958
+2026-09-12T10:47:54Z	controller update superseded: by_id,kind,request_id
+2026-09-12T10:47:54Z	keystroke: revision 26 at 86311867490166 (delegate 86311867994833, revision 86311868205125)
+2026-09-12T10:47:54Z	controller hybrid release: revision 22 durable r7 after 49.7 ms (bound 40 ms)
+2026-09-12T10:47:54Z	release: hybrid revision 22 after 49.7 ms (bound 40 ms) at 86311884855083
+2026-09-12T10:47:54Z	compile: sending revision 26 at 86311884922333
+2026-09-12T10:47:54Z	keystroke: revision 27 at 86311885928208 (delegate 86311886425583, revision 86311886631750)
+2026-09-12T10:47:54Z	keystroke: revision 28 at 86311894463166 (delegate 86311894984333, revision 86311895223166)
+2026-09-12T10:47:54Z	keystroke: revision 29 at 86311904399750 (delegate 86311905055083, revision 86311905293250)
+2026-09-12T10:47:54Z	keystroke: revision 30 at 86311913605333 (delegate 86311914143916, revision 86311914361083)
+2026-09-12T10:47:54Z	keystroke: revision 31 at 86311925148750 (delegate 86311925689166, revision 86311925900750)
+2026-09-12T10:47:54Z	keystroke: revision 32 at 86311931361750 (delegate 86311931876166, revision 86311932560166)
+2026-09-12T10:47:54Z	keystroke: revision 33 at 86311938435000 (delegate 86311938950916, revision 86311939180291)
+2026-09-12T10:47:54Z	durable: r8 for revision 26 at 86311944860666
+2026-09-12T10:47:54Z	keystroke: revision 34 at 86311951246500 (delegate 86311951789000, revision 86311952000416)
+2026-09-12T10:47:54Z	controller hybrid release: revision 26 durable r8 after 66.6 ms (bound 40 ms)
+2026-09-12T10:47:54Z	release: hybrid revision 26 after 66.6 ms (bound 40 ms) at 86311952076416
+2026-09-12T10:47:54Z	compile: sending revision 34 at 86311952101541
+2026-09-12T10:47:54Z	keystroke: revision 35 at 86311967797625 (delegate 86311968353166, revision 86311968564125)
+2026-09-12T10:47:54Z	keystroke: revision 36 at 86311982491625 (delegate 86311983118000, revision 86311983329208)
+2026-09-12T10:47:54Z	keystroke: revision 37 at 86311988831791 (delegate 86311989344791, revision 86311989577750)
+2026-09-12T10:47:54Z	keystroke: revision 38 at 86311994996458 (delegate 86311995656833, revision 86311995892250)
+2026-09-12T10:47:54Z	keystroke: revision 39 at 86312003808208 (delegate 86312004540083, revision 86312004738958)
+2026-09-12T10:47:54Z	keystroke: revision 40 at 86312014765458 (delegate 86312015470166, revision 86312015709291)
+2026-09-12T10:47:54Z	keystroke: revision 41 at 86312028138875 (delegate 86312028839333, revision 86312029055291)
+2026-09-12T10:47:54Z	keystroke: revision 42 at 86312039830333 (delegate 86312040583666, revision 86312040822666)
+2026-09-12T10:47:54Z	keystroke: revision 43 at 86312050303250 (delegate 86312050986583, revision 86312051194500)
+2026-09-12T10:47:54Z	keystroke: revision 44 at 86312056222333 (delegate 86312057027875, revision 86312057252791)
+2026-09-12T10:47:54Z	durable: r9 for revision 34 at 86312062488750
+2026-09-12T10:47:54Z	keystroke: revision 45 at 86312062603166 (delegate 86312063236583, revision 86312063464416)
+2026-09-12T10:47:54Z	controller hybrid release: revision 34 durable r9 after 110.8 ms (bound 40 ms)
+2026-09-12T10:47:54Z	release: hybrid revision 34 after 110.8 ms (bound 40 ms) at 86312063522166
+2026-09-12T10:47:54Z	compile: sending revision 45 at 86312063543375
+2026-09-12T10:47:54Z	keystroke: revision 46 at 86312076951208 (delegate 86312077616291, revision 86312077852916)
+2026-09-12T10:47:54Z	keystroke: revision 47 at 86312092025250 (delegate 86312092698625, revision 86312092936500)
+2026-09-12T10:47:54Z	keystroke: revision 48 at 86312103018166 (delegate 86312103629458, revision 86312103836291)
+2026-09-12T10:47:54Z	durable: r10 for revision 45 at 86312104090625
+2026-09-12T10:47:54Z	keystroke: revision 49 at 86312118740333 (delegate 86312119389166, revision 86312119620958)
+2026-09-12T10:47:54Z	controller hybrid release: revision 45 durable r10 after 55.4 ms (bound 40 ms)
+2026-09-12T10:47:54Z	release: hybrid revision 45 after 55.4 ms (bound 40 ms) at 86312119706125
+2026-09-12T10:47:54Z	compile: sending revision 49 at 86312119730250
+2026-09-12T10:47:55Z	keystroke: revision 50 at 86312132347875 (delegate 86312133018458, revision 86312133251375)
+2026-09-12T10:47:55Z	durable: r11 for revision 49 at 86312138600500
+2026-09-12T10:47:55Z	controller update superseded: by_id,kind,request_id
+2026-09-12T10:47:55Z	keystroke: revision 51 at 86312138731458 (delegate 86312139281958, revision 86312139498041)
+2026-09-12T10:47:55Z	keystroke: revision 52 at 86312149031250 (delegate 86312149687041, revision 86312149907125)
+2026-09-12T10:47:55Z	keystroke: revision 53 at 86312158334208 (delegate 86312158938708, revision 86312159145458)
+2026-09-12T10:47:55Z	keystroke: revision 54 at 86312171433083 (delegate 86312174921125, revision 86312175162250)
+2026-09-12T10:47:55Z	controller hybrid release: revision 49 durable r11 after 54.8 ms (bound 40 ms)
+2026-09-12T10:47:55Z	release: hybrid revision 49 after 54.8 ms (bound 40 ms) at 86312175263875
+2026-09-12T10:47:55Z	compile: sending revision 54 at 86312175288916
+2026-09-12T10:47:55Z	keystroke: revision 55 at 86312187729250 (delegate 86312188379375, revision 86312188608541)
+2026-09-12T10:47:55Z	keystroke: revision 56 at 86312202976041 (delegate 86312203694583, revision 86312203935625)
+2026-09-12T10:47:55Z	keystroke: revision 57 at 86312216339875 (delegate 86312217148958, revision 86312217382041)
+2026-09-12T10:47:55Z	keystroke: revision 58 at 86312222879416 (delegate 86312223485083, revision 86312223726125)
+2026-09-12T10:47:55Z	keystroke: revision 59 at 86312229353250 (delegate 86312229984500, revision 86312230205875)
+2026-09-12T10:47:55Z	durable: r12 for revision 54 at 86312235340375
+2026-09-12T10:47:55Z	keystroke: revision 60 at 86312238214833 (delegate 86312238877916, revision 86312239093416)
+2026-09-12T10:47:55Z	controller hybrid release: revision 54 durable r12 after 63.1 ms (bound 40 ms)
+2026-09-12T10:47:55Z	release: hybrid revision 54 after 63.1 ms (bound 40 ms) at 86312239171833
+2026-09-12T10:47:55Z	compile: sending revision 60 at 86312239193416
+2026-09-12T10:47:55Z	keystroke: revision 61 at 86312255328333 (delegate 86312256024666, revision 86312256254291)
+2026-09-12T10:47:55Z	durable: r13 for revision 60 at 86312269656541
+2026-09-12T10:47:55Z	keystroke: revision 62 at 86312269863541 (delegate 86312270509666, revision 86312270743208)
+2026-09-12T10:47:55Z	keystroke: revision 63 at 86312280292416 (delegate 86312281042583, revision 86312281268958)
+2026-09-12T10:47:55Z	controller hybrid release: revision 60 durable r13 after 41.5 ms (bound 40 ms)
+2026-09-12T10:47:55Z	release: hybrid revision 60 after 41.5 ms (bound 40 ms) at 86312281364875
+2026-09-12T10:47:55Z	compile: sending revision 63 at 86312281388208
+2026-09-12T10:47:55Z	keystroke: revision 64 at 86312287523708 (delegate 86312288132958, revision 86312288351291)
+2026-09-12T10:47:55Z	controller update superseded: by_id,kind,request_id
+2026-09-12T10:47:55Z	keystroke: revision 65 at 86312300212833 (delegate 86312300932000, revision 86312301168458)
+2026-09-12T10:47:55Z	keystroke: revision 66 at 86312306508708 (delegate 86312307083583, revision 86312307306833)
+2026-09-12T10:47:55Z	durable: r14 for revision 63 at 86312314552500
+2026-09-12T10:47:55Z	keystroke: revision 67 at 86312314682541 (delegate 86312315313166, revision 86312315512375)
+2026-09-12T10:47:55Z	keystroke: revision 68 at 86312331134500 (delegate 86312331804333, revision 86312332040583)
+2026-09-12T10:47:55Z	controller hybrid release: revision 63 durable r14 after 50.0 ms (bound 40 ms)
+2026-09-12T10:47:55Z	release: hybrid revision 63 after 50.0 ms (bound 40 ms) at 86312332129958
+2026-09-12T10:47:55Z	compile: sending revision 68 at 86312332153875
+2026-09-12T10:47:55Z	keystroke: revision 69 at 86312338503916 (delegate 86312339095208, revision 86312339328125)
+2026-09-12T10:47:55Z	keystroke: revision 70 at 86312352283458 (delegate 86312352935125, revision 86312353163416)
+2026-09-12T10:47:55Z	keystroke: revision 71 at 86312365525541 (delegate 86312366220375, revision 86312366457208)
+2026-09-12T10:47:55Z	keystroke: revision 72 at 86312372031666 (delegate 86312372567541, revision 86312372787166)
+2026-09-12T10:47:55Z	keystroke: revision 73 at 86312377826583 (delegate 86312378376000, revision 86312378569250)
+2026-09-12T10:47:55Z	keystroke: revision 74 at 86312390078041 (delegate 86312390772083, revision 86312391014750)
+2026-09-12T10:47:55Z	keystroke: revision 75 at 86312397010416 (delegate 86312397645541, revision 86312397868875)
+2026-09-12T10:47:55Z	keystroke: revision 76 at 86312403369208 (delegate 86312403970375, revision 86312404189416)
+2026-09-12T10:47:55Z	keystroke: revision 77 at 86312412275208 (delegate 86312413139333, revision 86312413376625)
+2026-09-12T10:47:55Z	keystroke: revision 78 at 86312421297125 (delegate 86312421948166, revision 86312422153625)
+2026-09-12T10:47:55Z	keystroke: revision 79 at 86312431514041 (delegate 86312432319875, revision 86312432557291)
+2026-09-12T10:47:55Z	keystroke: revision 80 at 86312443876291 (delegate 86312444503750, revision 86312444707958)
+2026-09-12T10:47:55Z	durable: r15 for revision 68 at 86312444967250
+2026-09-12T10:47:55Z	keystroke: revision 81 at 86312460025000 (delegate 86312460686666, revision 86312460919875)
+2026-09-12T10:47:55Z	controller hybrid release: revision 68 durable r15 after 128.0 ms (bound 40 ms)
+2026-09-12T10:47:55Z	release: hybrid revision 68 after 128.0 ms (bound 40 ms) at 86312461017833
+2026-09-12T10:47:55Z	compile: sending revision 81 at 86312461041791
+2026-09-12T10:47:55Z	keystroke: revision 82 at 86312473175583 (delegate 86312473934583, revision 86312474168500)
+2026-09-12T10:47:55Z	keystroke: revision 83 at 86312483283958 (delegate 86312484093208, revision 86312484337916)
+2026-09-12T10:47:55Z	keystroke: revision 84 at 86312496467458 (delegate 86312497190833, revision 86312497418708)
+2026-09-12T10:47:55Z	keystroke: revision 85 at 86312507908541 (delegate 86312508592916, revision 86312508825666)
+2026-09-12T10:47:55Z	keystroke: revision 86 at 86312522498458 (delegate 86312523257583, revision 86312523494750)
+2026-09-12T10:47:55Z	controller update superseded: by_id,kind,request_id
+2026-09-12T10:47:55Z	keystroke: revision 87 at 86312533372125 (delegate 86312534180416, revision 86312534376625)
+2026-09-12T10:47:55Z	keystroke: revision 88 at 86312539925458 (delegate 86312540458333, revision 86312540656166)
+2026-09-12T10:47:55Z	keystroke: revision 89 at 86312546264625 (delegate 86312546992833, revision 86312547219125)
+2026-09-12T10:47:55Z	durable: r16 for revision 81 at 86312553055333
+2026-09-12T10:47:55Z	keystroke: revision 90 at 86312559945166 (delegate 86312560644333, revision 86312560886458)
+2026-09-12T10:47:55Z	controller hybrid release: revision 81 durable r16 after 99.2 ms (bound 40 ms)
+2026-09-12T10:47:55Z	release: hybrid revision 81 after 99.2 ms (bound 40 ms) at 86312560981375
+2026-09-12T10:47:55Z	compile: sending revision 90 at 86312561005166
+2026-09-12T10:47:55Z	keystroke: revision 91 at 86312577573208 (delegate 86312578272166, revision 86312578506041)
+2026-09-12T10:47:55Z	keystroke: revision 92 at 86312591024791 (delegate 86312591658416, revision 86312591888875)
+2026-09-12T10:47:55Z	keystroke: revision 93 at 86312597740833 (delegate 86312598377500, revision 86312598596208)
+2026-09-12T10:47:55Z	keystroke: revision 94 at 86312604212208 (delegate 86312604861333, revision 86312605082666)
+2026-09-12T10:47:55Z	keystroke: revision 95 at 86312617580458 (delegate 86312618318500, revision 86312618554166)
+2026-09-12T10:47:55Z	keystroke: revision 96 at 86312630367541 (delegate 86312631283875, revision 86312631516791)
+2026-09-12T10:47:55Z	durable: r17 for revision 90 at 86312631783125
+2026-09-12T10:47:55Z	keystroke: revision 97 at 86312644115708 (delegate 86312644765375, revision 86312644977208)
+2026-09-12T10:47:55Z	controller hybrid release: revision 90 durable r17 after 83.4 ms (bound 40 ms)
+2026-09-12T10:47:55Z	release: hybrid revision 90 after 83.4 ms (bound 40 ms) at 86312645162958
+2026-09-12T10:47:55Z	compile: sending revision 97 at 86312645197666
+2026-09-12T10:47:55Z	keystroke: revision 98 at 86312657233000 (delegate 86312657923125, revision 86312658156541)
+2026-09-12T10:47:55Z	keystroke: revision 99 at 86312663936625 (delegate 86312664529291, revision 86312664725916)
+2026-09-12T10:47:55Z	durable: r18 for revision 97 at 86312669809791
+2026-09-12T10:47:55Z	keystroke: revision 100 at 86312669893750 (delegate 86312670826500, revision 86312671029125)
+2026-09-12T10:47:55Z	keystroke: revision 101 at 86312686694375 (delegate 86312687430541, revision 86312687670708)
+2026-09-12T10:47:55Z	controller hybrid release: revision 97 durable r18 after 41.9 ms (bound 40 ms)
+2026-09-12T10:47:55Z	release: hybrid revision 97 after 41.9 ms (bound 40 ms) at 86312687760250
+2026-09-12T10:47:55Z	compile: sending revision 101 at 86312687785500
+2026-09-12T10:47:55Z	keystroke: revision 102 at 86312697455500 (delegate 86312698209708, revision 86312698446125)
+2026-09-12T10:47:55Z	keystroke: revision 103 at 86312706459250 (delegate 86312707136833, revision 86312707348375)
+2026-09-12T10:47:55Z	keystroke: revision 104 at 86312719082041 (delegate 86312719765708, revision 86312720000875)
+2026-09-12T10:47:55Z	keystroke: revision 105 at 86312732401000 (delegate 86312733087875, revision 86312733321458)
+2026-09-12T10:47:55Z	keystroke: revision 106 at 86312738950791 (delegate 86312739539375, revision 86312739760541)
+2026-09-12T10:47:55Z	keystroke: revision 107 at 86312744977625 (delegate 86312745583041, revision 86312746188083)
+2026-09-12T10:47:55Z	keystroke: revision 108 at 86312758258250 (delegate 86312758877791, revision 86312759089958)
+2026-09-12T10:47:55Z	keystroke: revision 109 at 86312764796375 (delegate 86312765398333, revision 86312765604708)
+2026-09-12T10:47:55Z	keystroke: revision 110 at 86312771297291 (delegate 86312771955125, revision 86312772176583)
+2026-09-12T10:47:55Z	keystroke: revision 111 at 86312781334291 (delegate 86312782035916, revision 86312782249791)
+2026-09-12T10:47:55Z	keystroke: revision 112 at 86312793188458 (delegate 86312793910125, revision 86312794145458)
+2026-09-12T10:47:55Z	keystroke: revision 113 at 86312806094250 (delegate 86312806778208, revision 86312807010958)
+2026-09-12T10:47:55Z	keystroke: revision 114 at 86312819704541 (delegate 86312820377666, revision 86312820588958)
+2026-09-12T10:47:55Z	controller update superseded: by_id,kind,request_id
+2026-09-12T10:47:55Z	keystroke: revision 115 at 86312828431625 (delegate 86312829198458, revision 86312829413083)
+2026-09-12T10:47:55Z	keystroke: revision 116 at 86312840935750 (delegate 86312841707458, revision 86312841946333)
+2026-09-12T10:47:55Z	keystroke: revision 117 at 86312854307375 (delegate 86312854952333, revision 86312855167708)
+2026-09-12T10:47:55Z	keystroke: revision 118 at 86312867133875 (delegate 86312867894125, revision 86312868129791)
+2026-09-12T10:47:55Z	keystroke: revision 119 at 86312879475041 (delegate 86312880251541, revision 86312880468000)
+2026-09-12T10:47:55Z	keystroke: revision 120 at 86312891793708 (delegate 86312892476375, revision 86312892710708)
+2026-09-12T10:47:55Z	keystroke: revision 121 at 86312901653750 (delegate 86312902317875, revision 86312902524291)
+2026-09-12T10:47:55Z	keystroke: revision 122 at 86312914873500 (delegate 86312915609541, revision 86312915843916)
+2026-09-12T10:47:55Z	keystroke: revision 123 at 86312924767500 (delegate 86312925467041, revision 86312925681416)
+2026-09-12T10:47:55Z	keystroke: revision 124 at 86312931269458 (delegate 86312931905500, revision 86312932111458)
+2026-09-12T10:47:55Z	keystroke: revision 125 at 86312937495875 (delegate 86312938174333, revision 86312938398333)
+2026-09-12T10:47:55Z	keystroke: revision 126 at 86312947577833 (delegate 86312948389333, revision 86312948631750)
+2026-09-12T10:47:55Z	keystroke: revision 127 at 86312960179166 (delegate 86312960810666, revision 86312961021375)
+2026-09-12T10:47:55Z	keystroke: revision 128 at 86312972285958 (delegate 86312972929208, revision 86312973149541)
+2026-09-12T10:47:55Z	keystroke: revision 129 at 86312981773291 (delegate 86312983184458, revision 86312983412208)
+2026-09-12T10:47:55Z	compile: applied revision 97 at 86313002066666
+2026-09-12T10:47:55Z	status: revision 97: ok, 0 diagnostics in 174 ms (durable r18)
+2026-09-12T10:47:55Z	durable: r19 for revision 101 at 86313026091916
+2026-09-12T10:47:55Z	completion metadata refused: helper error for pc-25: source versions changed; refresh snapshot before querying
+2026-09-12T10:47:55Z	controller error pc-26: source versions changed; refresh snapshot before querying
+2026-09-12T10:47:55Z	controller error pc-27: source versions changed; refresh snapshot before querying
+2026-09-12T10:47:55Z	paint: revision 97 needed 1 extra turn(s); drew 1/23 pages
+2026-09-12T10:47:55Z	paint: revision 97 at 86313036523125 (covers 95 keystrokes, redrawn true)
+2026-09-12T10:47:55Z	keystroke: revision 130 at 86313036567041 (delegate 86313037340458, revision 86313037566250)
+2026-09-12T10:47:55Z	controller hybrid release: revision 101 durable r19 after 349.1 ms (bound 250 ms)
+2026-09-12T10:47:55Z	release: hybrid revision 101 after 349.1 ms (bound 250 ms) at 86313037631833
+2026-09-12T10:47:55Z	compile: sending revision 130 at 86313037653375
+2026-09-12T10:47:55Z	keystroke: revision 131 at 86313046979000 (delegate 86313047717375, revision 86313047920041)
+2026-09-12T10:47:55Z	keystroke: revision 132 at 86313053191708 (delegate 86313053760541, revision 86313053964666)
+2026-09-12T10:47:55Z	keystroke: revision 133 at 86313066804041 (delegate 86313067575541, revision 86313067813958)
+2026-09-12T10:47:55Z	keystroke: revision 134 at 86313078214625 (delegate 86313079139166, revision 86313079353958)
+2026-09-12T10:47:55Z	durable: r20 for revision 130 at 86313086899500
+2026-09-12T10:47:55Z	keystroke: revision 135 at 86313094642833 (delegate 86313095351166, revision 86313095743583)
+2026-09-12T10:47:55Z	keystroke: revision 136 at 86313112211666 (delegate 86313112966458, revision 86313113187541)
+2026-09-12T10:47:56Z	keystroke: revision 137 at 86313125218125 (delegate 86313125956708, revision 86313126200166)
+2026-09-12T10:47:56Z	keystroke: revision 138 at 86313138370000 (delegate 86313139037583, revision 86313139250916)
+2026-09-12T10:47:56Z	keystroke: revision 139 at 86313148164208 (delegate 86313148897708, revision 86313149111083)
+2026-09-12T10:47:56Z	keystroke: revision 140 at 86313156924833 (delegate 86313157589208, revision 86313157800708)
+2026-09-12T10:47:56Z	keystroke: revision 141 at 86313164271666 (delegate 86313164966333, revision 86313165188541)
+2026-09-12T10:47:56Z	keystroke: revision 142 at 86313170908625 (delegate 86313171560208, revision 86313171782708)
+2026-09-12T10:47:56Z	keystroke: revision 143 at 86313181728000 (delegate 86313182506041, revision 86313182745125)
+2026-09-12T10:47:56Z	keystroke: revision 144 at 86313188286208 (delegate 86313188884791, revision 86313189093125)
+2026-09-12T10:47:56Z	controller stale preview for durable r21 (in flight r20)
+2026-09-12T10:47:56Z	compile: sending revision 144 at 86313189334916
+2026-09-12T10:47:56Z	keystroke: revision 145 at 86313194809500 (delegate 86313195462583, revision 86313195662500)
+2026-09-12T10:47:56Z	keystroke: revision 146 at 86313203707708 (delegate 86313204503791, revision 86313204741958)
+2026-09-12T10:47:56Z	keystroke: revision 147 at 86313216701333 (delegate 86313217396416, revision 86313217604958)
+2026-09-12T10:47:56Z	durable: r21 for revision 144 at 86313228107166
+2026-09-12T10:47:56Z	keystroke: revision 148 at 86313228382041 (delegate 86313229200291, revision 86313229415666)
+2026-09-12T10:47:56Z	keystroke: revision 149 at 86313242855750 (delegate 86313243629458, revision 86313243872166)
+2026-09-12T10:47:56Z	keystroke: revision 150 at 86313256433625 (delegate 86313257076208, revision 86313257289666)
+2026-09-12T10:47:56Z	controller stale preview for durable r22 (in flight r21)
+2026-09-12T10:47:56Z	compile: sending revision 150 at 86313262650333
+2026-09-12T10:47:56Z	keystroke: revision 151 at 86313263588250 (delegate 86313264358125, revision 86313264592041)
+2026-09-12T10:47:56Z	keystroke: revision 152 at 86313274027166 (delegate 86313274808416, revision 86313275044791)
+2026-09-12T10:47:56Z	keystroke: revision 153 at 86313280418041 (delegate 86313281046250, revision 86313281251958)
+2026-09-12T10:47:56Z	keystroke: revision 154 at 86313286522583 (delegate 86313287172750, revision 86313287379458)
+2026-09-12T10:47:56Z	keystroke: revision 155 at 86313295251416 (delegate 86313297483541, revision 86313297726416)
+2026-09-12T10:47:56Z	keystroke: revision 156 at 86313305934208 (delegate 86313306709583, revision 86313306940833)
+2026-09-12T10:47:56Z	keystroke: revision 157 at 86313318741875 (delegate 86313319423791, revision 86313319630041)
+2026-09-12T10:47:56Z	keystroke: revision 158 at 86313331682000 (delegate 86313332511583, revision 86313332757791)
+2026-09-12T10:47:56Z	keystroke: revision 159 at 86313344447333 (delegate 86313345130791, revision 86313345349333)
+2026-09-12T10:47:56Z	durable: r22 for revision 150 at 86313352474000
+2026-09-12T10:47:56Z	keystroke: revision 160 at 86313358711500 (delegate 86313359484375, revision 86313359724416)
+2026-09-12T10:47:56Z	keystroke: revision 161 at 86313375936875 (delegate 86313376637875, revision 86313376847208)
+2026-09-12T10:47:56Z	keystroke: revision 162 at 86313389340791 (delegate 86313390138333, revision 86313390374750)
+2026-09-12T10:47:56Z	keystroke: revision 163 at 86313402319750 (delegate 86313403015416, revision 86313403223791)
+2026-09-12T10:47:56Z	keystroke: revision 164 at 86313411212458 (delegate 86313411888291, revision 86313412114916)
+2026-09-12T10:47:56Z	controller stale preview for durable r23 (in flight r22)
+2026-09-12T10:47:56Z	compile: sending revision 164 at 86313412521208
+2026-09-12T10:47:56Z	keystroke: revision 165 at 86313423903250 (delegate 86313424621250, revision 86313424839041)
+2026-09-12T10:47:56Z	keystroke: revision 166 at 86313430608541 (delegate 86313431261125, revision 86313431461541)
+2026-09-12T10:47:56Z	keystroke: revision 167 at 86313437203333 (delegate 86313437928625, revision 86313438153375)
+2026-09-12T10:47:56Z	keystroke: revision 168 at 86313453568791 (delegate 86313454296500, revision 86313454511083)
+2026-09-12T10:47:56Z	keystroke: revision 169 at 86313463471541 (delegate 86313464357416, revision 86313464612000)
+2026-09-12T10:47:56Z	keystroke: revision 170 at 86313477306250 (delegate 86313478015000, revision 86313478240208)
+2026-09-12T10:47:56Z	durable: r23 for revision 164 at 86313491763000
+2026-09-12T10:47:56Z	keystroke: revision 171 at 86313491997833 (delegate 86313492813541, revision 86313493050083)
+2026-09-12T10:47:56Z	keystroke: revision 172 at 86313508738125 (delegate 86313509447375, revision 86313509684083)
+2026-09-12T10:47:56Z	controller stale preview for durable r24 (in flight r23)
+2026-09-12T10:47:56Z	compile: sending revision 172 at 86313523560041
+2026-09-12T10:47:56Z	keystroke: revision 173 at 86313524640291 (delegate 86313525366208, revision 86313525574291)
+2026-09-12T10:47:56Z	keystroke: revision 174 at 86313531073083 (delegate 86313531742208, revision 86313531941250)
+2026-09-12T10:47:56Z	keystroke: revision 175 at 86313537295916 (delegate 86313537985500, revision 86313538183416)
+2026-09-12T10:47:56Z	keystroke: revision 176 at 86313546819250 (delegate 86313547559458, revision 86313547775458)
+2026-09-12T10:47:56Z	keystroke: revision 177 at 86313559960291 (delegate 86313560713375, revision 86313560953750)
+2026-09-12T10:47:56Z	durable: r24 for revision 172 at 86313571901125
+2026-09-12T10:47:56Z	keystroke: revision 178 at 86313572069666 (delegate 86313572749375, revision 86313572956625)
+2026-09-12T10:47:56Z	keystroke: revision 179 at 86313587195333 (delegate 86313587988833, revision 86313588239750)
+2026-09-12T10:47:56Z	keystroke: revision 180 at 86313600833625 (delegate 86313601617166, revision 86313601856083)
+2026-09-12T10:47:56Z	controller stale preview for durable r25 (in flight r24)
+2026-09-12T10:47:56Z	compile: sending revision 180 at 86313602178041
+2026-09-12T10:47:56Z	keystroke: revision 181 at 86313614833708 (delegate 86313615860791, revision 86313616081791)
+2026-09-12T10:47:56Z	keystroke: revision 182 at 86313628404250 (delegate 86313629330708, revision 86313629566875)
+2026-09-12T10:47:56Z	durable: r25 for revision 180 at 86313635297791
+2026-09-12T10:47:56Z	keystroke: revision 183 at 86313641785875 (delegate 86313642519875, revision 86313642750416)
+2026-09-12T10:47:56Z	keystroke: revision 184 at 86313657534166 (delegate 86313658342041, revision 86313658579166)
+2026-09-12T10:47:56Z	keystroke: revision 185 at 86313664778375 (delegate 86313665473250, revision 86313665691791)
+2026-09-12T10:47:56Z	keystroke: revision 186 at 86313671100041 (delegate 86313671790958, revision 86313672010333)
+2026-09-12T10:47:56Z	keystroke: revision 187 at 86313684334375 (delegate 86313685119291, revision 86313685356625)
+2026-09-12T10:47:56Z	keystroke: revision 188 at 86313698346916 (delegate 86313701256583, revision 86313701467583)
+2026-09-12T10:47:56Z	keystroke: revision 189 at 86313709547625 (delegate 86313710603000, revision 86313710835875)
+2026-09-12T10:47:56Z	keystroke: revision 190 at 86313719042916 (delegate 86313719835625, revision 86313720069000)
+2026-09-12T10:47:56Z	keystroke: revision 191 at 86313732331333 (delegate 86313733024041, revision 86313733232500)
+2026-09-12T10:47:56Z	keystroke: revision 192 at 86313738585791 (delegate 86313739215083, revision 86313739416416)
+2026-09-12T10:47:56Z	keystroke: revision 193 at 86313744432750 (delegate 86313746921250, revision 86313747195583)
+2026-09-12T10:47:56Z	keystroke: revision 194 at 86313758531000 (delegate 86313759234625, revision 86313759446250)
+2026-09-12T10:47:56Z	keystroke: revision 195 at 86313764931291 (delegate 86313765563250, revision 86313765758750)
+2026-09-12T10:47:56Z	keystroke: revision 196 at 86313770790000 (delegate 86313771481375, revision 86313771700625)
+2026-09-12T10:47:56Z	keystroke: revision 197 at 86313784069541 (delegate 86313784814708, revision 86313785025958)
+2026-09-12T10:47:56Z	keystroke: revision 198 at 86313790079333 (delegate 86313790784083, revision 86313790983333)
+2026-09-12T10:47:56Z	keystroke: revision 199 at 86313797220833 (delegate 86313797944041, revision 86313798163208)
+2026-09-12T10:47:56Z	keystroke: revision 200 at 86313809514250 (delegate 86313810239916, revision 86313810455125)
+2026-09-12T10:47:56Z	keystroke: revision 201 at 86313821187333 (delegate 86313821901000, revision 86313822130583)
+2026-09-12T10:47:56Z	controller stale preview for durable r26 (in flight r25)
+2026-09-12T10:47:56Z	compile: sending revision 201 at 86313836860875
+2026-09-12T10:47:56Z	keystroke: revision 202 at 86313838081041 (delegate 86313838942250, revision 86313839157208)
+2026-09-12T10:47:56Z	compile: applied revision 180 at 86313909466666
+2026-09-12T10:47:56Z	status: revision 180: ok, 0 diagnostics in 231 ms (durable r25)
+2026-09-12T10:47:56Z	durable: r26 for revision 201 at 86313928397000
+2026-09-12T10:47:56Z	completion metadata refused: helper error for pc-35: source versions changed; refresh snapshot before querying
+2026-09-12T10:47:56Z	controller error pc-36: source versions changed; refresh snapshot before querying
+2026-09-12T10:47:56Z	controller error pc-37: source versions changed; refresh snapshot before querying
+2026-09-12T10:47:56Z	paint: revision 180 redrew 1/23 pages
+2026-09-12T10:47:56Z	paint: revision 180 at 86313928536750 (covers 83 keystrokes, redrawn true)
+2026-09-12T10:47:56Z	compile: sending revision 202 at 86314059414625
+2026-09-12T10:47:56Z	compile: applied revision 201 at 86314067220958
+2026-09-12T10:47:56Z	status: revision 201: ok, 0 diagnostics in 110 ms (durable r26)
+2026-09-12T10:47:56Z	paint: revision 201 redrew 1/23 pages
+2026-09-12T10:47:56Z	paint: revision 201 at 86314089003458 (covers 21 keystrokes, redrawn true)
+2026-09-12T10:47:56Z	durable: r27 for revision 202 at 86314089040041
+2026-09-12T10:47:56Z	completion metadata refused: helper error for pc-39: source versions changed; refresh snapshot before querying
+2026-09-12T10:47:56Z	controller error pc-40: source versions changed; refresh snapshot before querying
+2026-09-12T10:47:56Z	controller error pc-41: source versions changed; refresh snapshot before querying
+2026-09-12T10:47:57Z	compile: applied revision 202 at 86314206941125
+2026-09-12T10:47:57Z	status: revision 202: ok, 0 diagnostics in 67 ms (durable r27)
+2026-09-12T10:47:57Z	paint: revision 202 needed 2 extra turn(s); drew 0/23 pages
+2026-09-12T10:47:57Z	paint: revision 202 at 86314252725708 (covers 1 keystrokes, redrawn false)
+2026-09-12T10:47:57Z	bench: done (all keystrokes painted); keystrokes 200, painted 200, coalesced 196, p50 780.372542 ms

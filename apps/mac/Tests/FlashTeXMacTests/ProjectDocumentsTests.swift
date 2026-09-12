@@ -482,6 +482,138 @@ final class ProjectDocumentsTests: XCTestCase {
         model.detachController()
     }
 
+    // MARK: transitive discovery
+
+    func testClosureIsDepthFirstRefusesCyclesAndListsDiamondsOnce() async throws {
+        let project = try TempProject(main: "\\input{chapter}\n\\input{appendix}\n",
+                                      chapter: "\\input{ch/section}\n\\input{missing}\n",
+                                      extra: ["ch/section.tex": "\\input{main}\n\\input{appendix}\n", "appendix.tex": "Appendix.\n"])
+        defer { project.remove() }
+        let model = ShellModel()
+        model.detachWorker()
+        XCTAssertEqual(model.openTex(at: project.main), .opened)
+        let p = model.project
+        let closure = p.discoverClosure()
+        XCTAssertEqual(closure.paths, ["chapter.tex", "ch/section.tex", "appendix.tex"], "depth-first, source order, first-reached")
+        XCTAssertEqual(closure.nodes.map(\.from), ["main.tex", "chapter.tex", "ch/section.tex", "ch/section.tex", "chapter.tex", "main.tex"])
+        XCTAssertEqual(closure.nodes.map(\.depth), [0, 1, 2, 2, 1, 0])
+        XCTAssertEqual(closure.nodes.map(\.resolvedPath), ["chapter.tex", "ch/section.tex", "main.tex", "appendix.tex", nil, "appendix.tex"])
+        XCTAssertEqual(closure.nodes[2].state, .unresolvable("\\input{main} closes an include cycle: main.tex → chapter.tex → ch/section.tex → main.tex"))
+        XCTAssertEqual(closure.nodes[4].state, .unresolvable("no such file under the project root"))
+        XCTAssertTrue(closure.nodes[5].duplicate, "appendix reached again from main.tex is a diamond, not a cycle")
+        XCTAssertEqual(closure.nodes[5].state, .available)
+        XCTAssertFalse(closure.truncated)
+        XCTAssertEqual(closure.unresolvable.count, 2)
+        XCTAssertEqual(p.discoverIncludes().map(\.resolvedPath), ["chapter.tex", "appendix.tex"], "single-level discovery is unchanged")
+
+        // Open All: the closure in stable order; unresolvable ones reported.
+        let outcomes = await p.openDiscoveredIncludes()
+        XCTAssertEqual(outcomes, [.opened(path: "chapter.tex"), .opened(path: "ch/section.tex"), .opened(path: "appendix.tex")])
+        XCTAssertEqual(model.documents.map(\.path), ["main.tex", "chapter.tex", "ch/section.tex", "appendix.tex"])
+        XCTAssertEqual(p.listing.map(\.role), [.entry, .included(from: "main.tex"), .included(from: "chapter.tex"), .included(from: "ch/section.tex")])
+        let report = try XCTUnwrap(p.lastOpenReport)
+        XCTAssertEqual(report.opened, ["chapter.tex", "ch/section.tex", "appendix.tex"])
+        XCTAssertEqual(report.unresolvable, [
+            "\\input{main} in ch/section.tex: \\input{main} closes an include cycle: main.tex → chapter.tex → ch/section.tex → main.tex",
+            "\\input{missing} in chapter.tex: no such file under the project root",
+        ])
+        XCTAssertTrue(p.status.hasPrefix("open all includes: opened 3"), p.status)
+        // A second Open All opens nothing new and keeps reporting.
+        let again = await p.openDiscoveredIncludes()
+        XCTAssertEqual(again, [])
+        XCTAssertEqual(p.lastOpenReport?.opened, [])
+        XCTAssertEqual(p.lastOpenReport?.unresolvable.count, 2)
+        XCTAssertEqual(p.discoverClosure().nodes.map(\.state).filter { $0 == .open }.count, 4, "three members plus the diamond")
+    }
+
+    func testClosureDepthIsBounded() throws {
+        var extra: [String: String] = [:]
+        for i in 1...10 { extra["d\(i).tex"] = i < 10 ? "\\input{d\(i + 1)}\n" : "leaf\n" }
+        let project = try TempProject(main: "\\input{d1}\n", extra: extra)
+        defer { project.remove() }
+        let model = ShellModel()
+        model.detachWorker()
+        XCTAssertEqual(model.openTex(at: project.main), .opened)
+        let closure = model.project.discoverClosure()
+        XCTAssertEqual(closure.paths, (1...8).map { "d\($0).tex" })
+        XCTAssertEqual(closure.nodes.count, 9)
+        XCTAssertEqual(closure.nodes.last?.from, "d8.tex")
+        XCTAssertEqual(closure.nodes.last?.state, .unresolvable("nested deeper than 8 levels; not discovered"))
+        XCTAssertEqual(model.project.discoverClosure(maxDepth: 2).paths, ["d1.tex", "d2.tex"])
+    }
+
+    func testClosureRefusesSelfInclude() throws {
+        let project = try TempProject(main: "\\input{main}\n\\input{chapter}\n", chapter: "\\input{chapter.tex}\n")
+        defer { project.remove() }
+        let model = ShellModel()
+        model.detachWorker()
+        XCTAssertEqual(model.openTex(at: project.main), .opened)
+        let closure = model.project.discoverClosure()
+        XCTAssertEqual(closure.paths, ["chapter.tex"])
+        XCTAssertEqual(closure.nodes[0].state, .unresolvable("\\input{main} closes an include cycle: main.tex → main.tex"))
+        XCTAssertEqual(closure.nodes[2].state, .unresolvable("\\input{chapter.tex} closes an include cycle: main.tex → chapter.tex → chapter.tex"))
+    }
+
+    // MARK: ⌘S routing (parent-applied saveTexInteractive)
+
+    func testSaveCommandWritesOnlyTheActiveNonEntryDocumentDirectly() async throws {
+        let project = try TempProject(main: "\\begin{document}\nMain.\n\\input{chapter}\n\\end{document}\n", chapter: "Chapter.\n")
+        defer { project.remove() }
+        let mainBytes = try Data(contentsOf: project.main)
+        let model = ShellModel()
+        model.detachWorker()
+        XCTAssertEqual(model.openTex(at: project.main), .opened)
+        let opened = await model.project.openDiscoveredIncludes()
+        XCTAssertEqual(opened, [.opened(path: "chapter.tex")])
+        model.project.switchDocument(to: "chapter.tex")
+        model.updateActiveText("Chapter, saved with the Save command.\n")
+        XCTAssertTrue(model.isDirty, "parent isDirty follows the active document")
+        model.saveTexInteractive() // ⌘S
+        let chapterURL = project.root.appendingPathComponent("project/chapter.tex")
+        try await waitUntil { (try? String(contentsOf: chapterURL, encoding: .utf8)) == "Chapter, saved with the Save command.\n" }
+        XCTAssertEqual(try Data(contentsOf: project.main), mainBytes, "main.tex bytes unchanged")
+        try await waitUntil { model.captureNote == "Saved chapter.tex" }
+        XCTAssertFalse(model.isDirty)
+        XCTAssertFalse(model.project.isDirty("chapter.tex"))
+        XCTAssertEqual(model.savedText, "\\begin{document}\nMain.\n\\input{chapter}\n\\end{document}\n", "the entry baseline is untouched")
+    }
+
+    func testSaveCommandWritesOnlyTheActiveNonEntryDocumentThroughTheHelper() async throws {
+        guard let helper = Self.helper, FileManager.default.isExecutableFile(atPath: helper.path),
+              ShellModel.locateCompiler() != nil else {
+            throw XCTSkip("set FLASHTEX_PREVIEW_CONTROLLER and FLASHTEX_COMPILER to built binaries")
+        }
+        let project = try TempProject(main: "\\begin{document}\nMain.\n\\input{chapter}\n\\end{document}\n",
+                                      chapter: "\\input{ch/section}\nChapter.\n", extra: ["ch/section.tex": "Section.\n"])
+        defer { project.remove() }
+        setenv("FLASHTEX_CONTROLLER_LEDGER_ROOT", project.root.appendingPathComponent("ledger").path, 1)
+        defer { unsetenv("FLASHTEX_CONTROLLER_LEDGER_ROOT") }
+        let mainBytes = try Data(contentsOf: project.main)
+        let model = ShellModel()
+        model.autoCompile = true
+        XCTAssertEqual(model.openTex(at: project.main), .opened)
+        model.attachController(at: helper)
+        try await waitUntil { model.result?.revision == model.editorRevision && model.controllerState.durable["main.tex"] != nil }
+        let p = model.project
+        // The helper discovered the whole closure at startup; Open All reads each ledger document.
+        let opened = await p.openDiscoveredIncludes()
+        XCTAssertEqual(opened, [.opened(path: "chapter.tex"), .opened(path: "ch/section.tex")])
+        XCTAssertEqual(p.listing.map(\.origin), [.disk, .helper, .helper])
+        XCTAssertEqual(p.lastOpenReport?.unresolvable, [])
+        p.switchDocument(to: "chapter.tex")
+        model.updateActiveText("\\input{ch/section}\nChapter, saved through the helper.\n")
+        model.saveTexInteractive() // ⌘S → project.saveDocument → export
+        let chapterURL = project.root.appendingPathComponent("project/chapter.tex")
+        try await waitUntil { (try? String(contentsOf: chapterURL, encoding: .utf8)) == "\\input{ch/section}\nChapter, saved through the helper.\n" }
+        XCTAssertEqual(try Data(contentsOf: project.main), mainBytes, "main.tex bytes unchanged")
+        try await waitUntil { model.captureNote == "Saved chapter.tex" }
+        XCTAssertFalse(model.project.isDirty("chapter.tex"))
+        XCTAssertEqual(try String(contentsOf: project.root.appendingPathComponent("project/ch/section.tex"), encoding: .utf8), "Section.\n")
+        let disk = await model.controllerFileStatus(path: "chapter.tex")
+        XCTAssertEqual(disk?.state, "matches_source")
+        model.detachController()
+    }
+
     private func waitUntil(timeout: TimeInterval = 15, _ cond: () -> Bool) async throws {
         let start = Date()
         while !cond() {
