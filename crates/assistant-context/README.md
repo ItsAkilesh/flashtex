@@ -264,3 +264,11 @@ handoff described above. Persistent envelope:
 `{"id":"command-id","action":{"operation":"review","input":{...}}}`.
 The helper never opens a ledger or writes source; the native host chooses the
 matching project/path ledger and performs the explicitly approved operation.
+
+`examples/review-workflow.json` is a recorded four-step compiler→prepare→review→
+approve fixture for native integration. Its proposed text is explicitly synthetic;
+no provider call or source edit occurred. Each request/response and the executable
+hashes are included. Regenerate using `python3 examples/review_fixture.py --compiler
+PATH --helper PATH --output examples/review-workflow.json` from this crate directory.
+The approved group is input to the existing ledger API, not evidence that a ledger
+has applied it. Real apply/retry/undo/reopen is covered separately by the Rust test.
