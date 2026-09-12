@@ -1,3 +1,9 @@
+> LATEST USER STAFFING OVERRIDE: retain THREE Astra engineers (root runtime
+> performance, font-resources, rendering-core) plus the sole Commander. Bridge,
+> project-index and edit-ledger may finish their current task, then STOP. Their
+> queues are paused; do not restart, replace or reallocate them. This supersedes
+> every older local seven-agent reset below. Remote staffing remains unchanged.
+
 > LATEST USER OVERRIDE: Jaysen cooldown is lifted immediately. Restore the
 > prepared15 independent engineering lanes NOW after verifying usable route.
 > Daniel retains transferred heavy paths. Old08:21 wait instructions below are
