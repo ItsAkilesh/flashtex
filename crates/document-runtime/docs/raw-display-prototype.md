@@ -48,10 +48,39 @@ process high-water memory about18.2–18.4MB versus6.9–7.0MB before verificati
 in `benchmarks/raw-display-prototype`. This demonstrates a concrete memory reduction
 but a parse-time regression, not native responsiveness or a reason to enable by default.
 
-The raw implementation currently makes multiple full serde passes (discriminator,
+The first published raw implementation made four full serde passes (discriminator,
 syntax, typed metadata and RawValue construction). It retains raw bytes plus typed
 metadata instead of a large Value tree. Original input storage and RawValue conversion
 can coexist transiently; four queued raw frames and one retained candidate are extra.
 No claim of one-buffer total memory, strict RSS cap or allocation-count measurement
 is made. A future pass reduction needs the same syntax/duplicate/numeric/refusal gates;
 unsafe unchecked JSON construction or a custom parser is not an acceptable shortcut.
+
+
+## Two-pass internal refinement
+
+The current implementation combines typed metadata extraction, duplicate checks,
+full opaque-value syntax/finite/depth validation and envelope classification in one
+existing-serde MapAccess traversal. It decides the route only after the complete
+object is read; payload-before-type and escaped field names are supported. Unknown
+values are traversed by the same checked Syntax visitor, never skipped through a
+weaker JSON-number or depth gate. Required display fields are checked afterward.
+Safe RawValue construction remains a second pass. V1 results are decoded as Value
+on their established path after classification; default constructors are unchanged.
+This is a serde visitor, not a custom JSON tokenizer, unsafe constructor or private
+serializer-token shortcut. The public raw candidate API is unchanged.
+
+In the paired fixture replay recorded in `benchmarks/raw-display-two-pass`, raw
+parsing took41.6/39.5ms versus Value52.4/59.9ms; process peaks were6.8–6.9MB versus
+18.2MB. This pair was run after the Commander measurement window cleared. It shows
+a concrete benefit on this fixture while retaining exact bytes and semantic equality.
+It is not a calibrated native latency result, and absolute times from the earlier
+loaded-host four-pass experiment are not directly comparable. The fixture is still
+producer-derived normalized JSON, not a claim of preserved original producer wire.
+
+Refusal tests also cover payload-first field ordering, exact maximum interoperable
+revision2^53−1, incorrect source lengths, unknown nested surrogate keys and existing
+duplicate/numeric/depth/lifecycle/budget gates. In raw sessions, recognized metadata
+keys are checked even on v1 classification; this stricter experimental behavior does
+not change the default Value session. Downstream helper/render/native integration
+must preserve original raw bytes and all current-source gates before activation.

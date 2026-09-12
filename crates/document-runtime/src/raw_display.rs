@@ -53,33 +53,85 @@ impl<'de> Deserialize<'de> for Syntax {
         d.deserialize_any(Check)
     }
 }
-#[derive(Deserialize)]
-struct Header {
-    protocol_version: u64,
-    #[serde(rename = "type")]
-    kind: String,
+// Deserialize recognized metadata and validate all opaque values in one serde pass.
+// Field order is unrestricted. Serde owns JSON tokenization and recursion limits.
+macro_rules! checked_object {
+    ($name:ident { $($field:ident : $ty:ty => $key:literal),* $(,)? }) => {
+        struct $name { $( $field: Option<$ty> ),* }
+        impl<'de> Deserialize<'de> for $name {
+            fn deserialize<D:Deserializer<'de>>(deserializer:D)->Result<Self,D::Error>{
+                struct Object;
+                impl<'de> Visitor<'de> for Object {
+                    type Value=$name;
+                    fn expecting(&self,f:&mut fmt::Formatter)->fmt::Result { f.write_str(stringify!($name)) }
+                    fn visit_map<A:MapAccess<'de>>(self,mut map:A)->Result<$name,A::Error>{
+                        $(let mut $field=None;)*
+                        while let Some(key)=map.next_key::<String>()? {
+                            match key.as_str() {
+                                $($key => {
+                                    if $field.is_some(){return Err(serde::de::Error::duplicate_field($key));}
+                                    $field=Some(map.next_value::<$ty>()?);
+                                },)*
+                                _=>{map.next_value::<Syntax>()?;}
+                            }
+                        }
+                        Ok($name{$($field),*})
+                    }
+                }
+                deserializer.deserialize_map(Object)
+            }
+        }
+    }
 }
-#[derive(Deserialize)]
+checked_object!(WireEnvelope { protocol_version:u64=>"protocol_version", id:String=>"id", kind:String=>"type", payload:WirePayload=>"payload" });
+checked_object!(WirePayload { project_id:String=>"project_id", revision:u64=>"revision", render_format:String=>"render_format", documents:Vec<WireDocument> =>"documents" });
+checked_object!(WireDocument { path:String=>"path", revision:u64=>"revision", sha256:String=>"sha256", byte_length:u64=>"byte_length" });
 struct Envelope {
     protocol_version: u64,
     id: String,
-    #[serde(rename = "type")]
     kind: String,
     payload: Payload,
 }
-#[derive(Deserialize)]
 struct Payload {
     project_id: String,
     revision: u64,
     render_format: String,
     documents: Vec<Document>,
 }
-#[derive(Deserialize)]
 struct Document {
     path: String,
     revision: u64,
     sha256: String,
     byte_length: u64,
+}
+impl WireEnvelope {
+    fn required(self) -> Result<Envelope, String> {
+        let p = self.payload.ok_or("missing raw payload")?;
+        let documents = p
+            .documents
+            .ok_or("missing raw documents")?
+            .into_iter()
+            .map(|d| {
+                Ok(Document {
+                    path: d.path.ok_or("missing raw path")?,
+                    revision: d.revision.ok_or("missing raw document revision")?,
+                    sha256: d.sha256.ok_or("missing raw sha256")?,
+                    byte_length: d.byte_length.ok_or("missing raw byte_length")?,
+                })
+            })
+            .collect::<Result<Vec<_>, String>>()?;
+        Ok(Envelope {
+            protocol_version: self.protocol_version.ok_or("missing raw protocol")?,
+            id: self.id.ok_or("missing raw id")?,
+            kind: self.kind.ok_or("missing raw type")?,
+            payload: Payload {
+                project_id: p.project_id.ok_or("missing raw project")?,
+                revision: p.revision.ok_or("missing raw revision")?,
+                render_format: p.render_format.ok_or("missing raw format")?,
+                documents,
+            },
+        })
+    }
 }
 #[derive(Debug)]
 pub struct UntrustedRawDisplayCandidate {
@@ -113,19 +165,34 @@ pub(crate) struct Parsed {
     envelope: Envelope,
     raw: Box<RawValue>,
 }
+#[cfg(test)]
 pub(crate) fn is_display(bytes: &[u8]) -> Result<bool, String> {
-    serde_json::from_slice::<Header>(bytes)
-        .map(|h| h.protocol_version == 2 && h.kind == "display_list")
-        .map_err(|e| format!("raw envelope discriminator: {e}"))
+    serde_json::from_slice::<WireEnvelope>(bytes)
+        .map(|e| e.protocol_version == Some(2) && e.kind.as_deref() == Some("display_list"))
+        .map_err(|e| e.to_string())
+}
+pub(crate) type Decoded = (Option<serde_json::Value>, Option<Box<Parsed>>);
+pub(crate) fn decode(bytes: Vec<u8>) -> Result<Decoded, String> {
+    let text = String::from_utf8(bytes).map_err(|_| "invalid UTF8")?;
+    let wire: WireEnvelope =
+        serde_json::from_str(&text).map_err(|e| format!("raw syntax and metadata: {e}"))?;
+    if wire.protocol_version == Some(2) && wire.kind.as_deref() == Some("display_list") {
+        let envelope = wire.required()?;
+        let raw = RawValue::from_string(text).map_err(|e| e.to_string())?;
+        Ok((None, Some(Box::new(Parsed { envelope, raw }))))
+    } else {
+        serde_json::from_str(&text)
+            .map(|v| (Some(v), None))
+            .map_err(|e| e.to_string())
+    }
 }
 impl Parsed {
+    #[cfg(test)]
     pub fn parse(bytes: Vec<u8>) -> Result<Self, String> {
-        let text = String::from_utf8(bytes).map_err(|_| "invalid UTF8")?;
-        serde_json::from_str::<Syntax>(&text).map_err(|e| format!("raw JSON syntax: {e}"))?;
-        let envelope = serde_json::from_str::<Envelope>(&text)
-            .map_err(|e| format!("raw binding metadata: {e}"))?;
-        let raw = RawValue::from_string(text).map_err(|e| e.to_string())?;
-        Ok(Self { envelope, raw })
+        decode(bytes)?
+            .1
+            .map(|p| *p)
+            .ok_or("not a raw display envelope".into())
     }
     pub fn validate(self, request: &Request) -> Result<UntrustedRawDisplayCandidate, String> {
         let e = self.envelope;
@@ -310,5 +377,34 @@ mod tests {
                 );
             }
         }
+    }
+    #[test]
+    fn payload_first_order_and_max_exact_revision_preserve_bindings() {
+        let (bytes, mut request) = fixture();
+        let mut v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        let maximum = 9_007_199_254_740_991u64;
+        request.revision = maximum;
+        v["payload"]["revision"] = maximum.into();
+        v["payload"]["documents"][0]["revision"] = maximum.into();
+        let input = format!(
+            "{{\"payload\":{},\"id\":{},\"type\":\"display_list\",\"protocol_version\":2}}",
+            v["payload"], v["id"]
+        );
+        let candidate = Parsed::parse(input.as_bytes().to_vec())
+            .unwrap()
+            .validate(&request)
+            .unwrap();
+        assert_eq!(candidate.revision(), maximum);
+        assert_eq!(candidate.raw().get(), input);
+        let invalid = input.replacen(
+            &format!("\"byte_length\":{}", request.documents[0].text.len()),
+            "\"byte_length\":1",
+            1,
+        );
+        assert_ne!(invalid, input);
+        assert!(Parsed::parse(invalid.into_bytes())
+            .unwrap()
+            .validate(&request)
+            .is_err());
     }
 }
