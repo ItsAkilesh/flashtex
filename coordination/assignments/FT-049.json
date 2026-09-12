@@ -11,15 +11,15 @@
   "branch": "agent/commander-runtime-display/display-runtime",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "ee5c1fd072bb3a96a1e194f484a941ced871c0c2",
-  "objective": "Independently consume published actual multi-document bibliography helper capture with exact source and compile identity checks",
+  "input_main_sha": "a8cf488fc46546e3f0ef4d72de3559e67c7d5b4b",
+  "objective": "Verify actual transport cancellation restart and renegotiation against pinned producer without modeled helper evidence",
   "owned_paths": [
     "crates/document-runtime"
   ],
-  "revision": 19,
+  "revision": 20,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-049",
   "timebox_minutes": 40,
-  "updated_utc": "2026-09-12T12:47:39.532752+00:00"
+  "updated_utc": "2026-09-12T12:57:19Z"
 }
