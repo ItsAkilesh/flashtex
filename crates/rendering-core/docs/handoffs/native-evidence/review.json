@@ -52,5 +52,29 @@
     "claimed_observed_utc": "2026-09-12T13:40:00Z",
     "worker_activity_verified_from_comment": false
   },
-  "native_execution_by_reviewer": false
+  "native_execution_by_reviewer": false,
+  "followup": {
+    "timestamp_correction_comment": 5646213168,
+    "scope_correction_comment": 5646221443,
+    "corrected_census_interval_utc": [
+      "2026-09-12T13:25:11Z",
+      "2026-09-12T13:30:18Z"
+    ],
+    "reported_host_clock_utc": "2026-09-12T13:34:55Z",
+    "original_comment_preserved": true,
+    "native_load_report": {
+      "first_run_load": 121,
+      "helper_timeouts": 4,
+      "rerun_pass_load_range": [
+        80,
+        94
+      ],
+      "isolated_latency_evidence": false
+    },
+    "producer_current_tip": "7ca34cec09bc4b06714f7cc58720a5b24923cafa",
+    "authoritative_discovery_commit": "0b09be57963d297e6bc8d0f130d9eb2fae15a14c",
+    "authoritative_fonts_rs_sha256": "d0ca702ff73e6926631fd656435072aa862e971d39fc2de3600150289d5994f5",
+    "packaging_tfm_ref_still_absent": true,
+    "native_bundle_discovery_executed_by_reviewer": false
+  }
 }

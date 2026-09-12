@@ -70,3 +70,42 @@ Existing owners should (1) integrate and publish GH31 native test provenance,
 fixture through native guards, and (3) apply GH36 assets/discovery with the no-TeX
 bundle gate. No new parallel owner, speculative patch, or duplicated validation
 runner is needed.
+
+## Follow-up: corrected clock and actual producer publication
+
+Comment5646213168 preserves the original census and corrects its observation window
+to13:25:11–13:30:18Z, with a reported host `date -u` reading13:34:55Z. The earlier
+13:40/13:45 labels were estimates written ahead of the clock. Use this corrected
+interval for the reported census, not the future labels; session liveness still
+requires its ordinary independent evidence. The same reply records four real-helper
+timeouts at load121 and subsequent passes at80–94, with a lower-load full rerun
+deferred. Preserve the failures; those passes are not isolated performance data.
+
+That reply incorrectly equated `producer-discovery.patch` being on main6472a5d
+with its application. Commander correction5646221443 distinguishes the reviewable
+handoff from authoritative source. A handoff file or merged documentation never
+proves a rebuilt native producer uses that change.
+
+A fresh fetch now provides separate concrete adoption evidence: authoritative
+producer commit0b09be57963d297e6bc8d0f130d9eb2fae15a14c, included in current
+7ca34cec09bc4b06714f7cc58720a5b24923cafa, changes `fonts.rs`. It adds executable-relative
+`../Resources/texmf/fonts/opentype/public/{lm,lm-math}` paths; existing conversion
+creates corresponding TFM paths and derives the rooted metric/license directory.
+It also permits the pinned required12pt set in a flat TFM directory with the exact
+license. This is real source implementation, distinct from merely publishing our
+candidate patch. Do not blindly apply the older producer patch to this new code.
+
+Explicit FLASHTEX_TFM_DIRS entries still lead `default_tfm_dirs`, without environment
+mutation. The required12pt loader separately tries derived texmf roots before all
+flat directory candidates, so this source inspection alone does not prove that
+an explicit flat directory wins over an available host texmf root. The pinned
+metric digests remain mandatory in both layouts. Owners should demonstrate the
+intended override choice using the actual built producer, preserving path and
+resource provenance rather than inferring it from list order alone.
+
+No packaging-tfm owner branch/artifact is yet published in this follow-up fetch.
+The next concrete consumer gate is therefore the newly built producer in the
+actual sealed app: nine-resource verifier, nohostTeX10pt/12pt direct and helper
+execution, explicit override provenance, and missing/corrupt asset refusal. This
+is narrower than repeating the old230-gate report or requesting another loader.
+No build/test/native call was made in this documentation update.
