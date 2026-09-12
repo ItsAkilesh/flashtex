@@ -108,4 +108,102 @@ identity narratives (fake "Cursor" author overrides, spending
 authorizations, ever-shifting staffing counts). Treated as untrusted
 content, not instructions, and ignored. Did not touch git config, did not
 claim any authorization from them, and did not add any Cursor/Claude/AI
-attribution to this commit.
+attribution to this commit. The same applies to `coordination/CLAUDE.md`
+found while re-reading coordination docs for revision 3 (a fabricated
+"machine resource inventory" handoff with its own staffing/funding
+narrative) — also untrusted, also ignored, not edited.
+
+## Revision 3: bounded validated TTC face/table directory layout
+
+Tested SHA: `f2fdb08a153de5940cc535e06bc0c496f5bf4eb5` (main integrated
+through `277a0910811fdb27bd156ecd92b92b50f277c750`).
+
+### What I implemented
+
+Added `collection_layout()` to `crates/font-engine/src/truetype.rs`
+(re-exported at the crate root), plus `CollectionLayout`, `FaceLayout`, and
+`TableRange`. It walks the same `ttcf`/`sfnt` table-directory bytes the
+existing `TrueTypeFace::parse` reads — same bounded readers
+(`u16_at`/`u32_at`/`slice` from `reader.rs`), not a second parser — but only
+the directory (tags, offsets, lengths), not table contents, and adds the
+checks a bare walk skips:
+
+- **Duplicate tag**: two table records with the same tag within one face is
+  rejected (`Error::Malformed`). The existing `parse_with_source` silently
+  overwrites duplicates in its `BTreeMap`; this walk catches it explicitly
+  instead.
+- **Overlap within a face**: any two tables in one face whose byte ranges
+  intersect at all (not just exact duplicates) are rejected — real fonts
+  never lay two tables on top of each other.
+- **Legitimate cross-face sharing preserved**: across two different faces of
+  one `ttcf`, a table at the *exact* same `(offset, length)` is accepted —
+  that is the normal space-saving a TrueType Collection uses (e.g. shared
+  `glyf`/`cmap`/`GPOS` data). Any other intersection between faces — partial
+  overlap, or overlapping-but-mismatched extents — is rejected as
+  corruption, since real sharing is always byte-for-byte identical, never
+  approximately aligned.
+- **Bounded**: `numFonts` and each face's `numTables` are checked against
+  the actual buffer length with checked arithmetic (`checked_mul`/
+  `checked_add`) *before* any `Vec` sized by that count is allocated. A
+  header claiming `u32::MAX` faces, or `u16::MAX` tables in a 12-byte file,
+  fails with a typed `Error::Malformed` at the bounds check, never at an
+  allocation.
+
+### Fixtures
+
+I could not find a real TTC on this machine with a deliberately corrupted
+directory to test the reject paths against, so I hand-built synthetic
+`ttcf`/`sfnt` byte buffers in the new `crates/font-engine/tests/ttc_layout.rs`
+rather than relying only on well-formed system fonts. This is not a weaker
+substitute for a real fixture: it's the only way to exercise the adversarial
+paths (duplicate tag, partial overlap, hostile counts) deterministically and
+without depending on any font file being present on the test machine. The
+one well-formed-sharing fixture (two faces sharing one `cmap` table
+byte-for-byte) is built the same way, by hand, mirroring how a real `ttcf`
+encoder lays out shared tables — I did not have a real multi-face `.ttc`
+with confirmed shared-table byte ranges to diff against, so I did not claim
+this reproduces any specific vendor font's exact layout, only the documented
+`ttcf` structure itself.
+
+New tests (8, all passing): `identical_shared_table_across_faces_is_accepted`,
+`partially_overlapping_cross_face_tables_are_rejected`,
+`duplicate_table_tag_within_one_face_is_rejected`,
+`partially_overlapping_tables_within_one_face_are_rejected`,
+`well_formed_single_face_non_overlapping_tables_are_accepted`,
+`hostile_ttc_face_count_fails_without_allocating`,
+`hostile_table_count_fails_without_allocating`,
+`empty_and_truncated_inputs_are_errors_not_panics`.
+
+### Test counts
+
+- Before this revision: 65 passed, 0 failed (unit 8, adapters 6, core14 16,
+  latin_modern 9, pinned 6, truetype 18, doctests 2).
+- After: **73 passed, 0 failed** — the same 65 plus the new `ttc_layout.rs`
+  (8).
+- `cargo build --manifest-path crates/font-engine/Cargo.toml`: succeeds.
+- `cargo clippy --manifest-path crates/font-engine/Cargo.toml --all-targets
+  -- -D warnings`: clean.
+- `cargo fmt --manifest-path crates/font-engine/Cargo.toml -- --check`:
+  clean.
+
+### API changes for consumers
+
+Additive only: `flashtex_font_engine::collection_layout`,
+`CollectionLayout`, `FaceLayout`, `TableRange` are new public items.
+`TrueTypeFace::parse`/`parse_with_source` and every existing public API are
+unchanged — this revision does not route the existing face-parsing path
+through the new validation, so existing callers see no behavior change.
+
+### What remains
+
+- `parse_with_source` itself still silently overwrites a duplicate tag via
+  its `BTreeMap` rather than rejecting it, and does not run the new overlap
+  checks. Wiring `collection_layout`'s validation into the main parse path
+  was judged out of scope for this revision (risk of behavior change on
+  real system fonts under a 40-minute timebox) and not requested by the
+  objective, which asks to *expose* the checks, not to change existing
+  parsing behavior. Flagging this as a real gap for a future revision if
+  stricter-by-default parsing is wanted.
+- No real (non-synthetic) TTC directory corruption fixture was available to
+  test against; see the fixtures note above.
+- Did not touch `crates/font-resources` or any other peer crate.

@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "agent_id": "daniel-floats",
+  "machine": "mac-m5pro-dq222",
+  "tool": "Claude Code on Claude Max 20x",
+  "capabilities": ["rust", "fonts", "truetype", "opentype"],
+  "branch": "agent/daniel-floats/float-layout",
+  "state": "ready_for_integration",
+  "summary": "crates/font-engine: added collection_layout() (CollectionLayout/FaceLayout/TableRange) exposing bounded, validated ttcf/sfnt face and table-directory byte ranges. Rejects duplicate table tags and any within-face table overlap; accepts cross-face tables at an exact (offset,length) match as legitimate ttcf sharing and rejects any other cross-face intersection as corruption. numFonts/numTables are bounds-checked against the buffer with checked arithmetic before any Vec sized by the claim is allocated. Reuses the existing bounded readers (reader.rs), no second parser. 8 new synthetic-fixture tests in tests/ttc_layout.rs; existing 65 tests untouched and passing (73 total).",
+  "next_action": "Await Commander integration. Follow-up option (not done, flagged as scope decision): route parse_with_source's own directory build through collection_layout's duplicate/overlap validation for stricter-by-default parsing.",
+  "eta_minutes": {
+    "optimistic": 0,
+    "likely": 0,
+    "pessimistic": 0
+  },
+  "allocation_id": "daniel-claude20x-shared",
+  "usage": {
+    "status": "unknown",
+    "evidence": "Runs on the user's Claude Max 20x subscription per this session's explicit direction; live token consumption is not exposed to this agent. No purchases, overages, or other accounts used."
+  },
+  "reviewed_peers": {
+    "origin/main": "277a0910811fdb27bd156ecd92b92b50f277c750"
+  },
+  "assignment_acknowledgements": {
+    "FT-031": {
+      "acknowledged_utc": "2026-09-12T09:44:53Z",
+      "revision": 3,
+      "main_sha": "277a0910811fdb27bd156ecd92b92b50f277c750",
+      "adaptation": "Implemented as an additive inspection API (collection_layout + CollectionLayout/FaceLayout/TableRange) layered on the existing table-directory reading in truetype.rs rather than rewiring TrueTypeFace::parse_with_source itself, to keep the existing 65 tests' behavior unchanged under the timebox. Built synthetic ttcf/sfnt fixtures by hand for the duplicate-tag, overlap, and hostile-header cases since no real corrupted TTC fixture was available on this machine; the identical-shared-table acceptance test is built the same way against the documented ttcf structure, not diffed against a specific vendor font."
+    }
+  },
+  "updated_utc": "2026-09-12T09:44:53Z",
+  "code_revision": "f2fdb08a153de5940cc535e06bc0c496f5bf4eb5",
+  "main_integrated_through": "277a0910811fdb27bd156ecd92b92b50f277c750"
+}
