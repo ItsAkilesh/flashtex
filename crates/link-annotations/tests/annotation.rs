@@ -19,7 +19,7 @@ fn external_link_carries_real_rect_source_identity_and_uri() {
 
     let link = LinkAnnotation::external(rect, identity, uri);
 
-    assert_eq!(link.rect.origin, Point::new(100.0, 500.0));
+    assert_eq!(link.rect.origin(), Point::new(100.0, 500.0));
     assert_eq!(link.rect.max_x(), 300.0);
     assert_eq!(link.rect.max_y(), 514.0);
     assert_eq!(link.source.span().start().line, 5);

@@ -46,7 +46,7 @@ mod tests {
         let rect = Rect::new(Point::new(72.0, 640.0), 200.0, 40.0).unwrap();
         let target = PageTarget::new(PageIndex::new(3), rect);
         assert_eq!(target.page.value(), 3);
-        assert_eq!(target.rect.origin.x, 72.0);
+        assert_eq!(target.rect.origin().x(), 72.0);
         assert_eq!(target.rect.max_y(), 680.0);
     }
 
