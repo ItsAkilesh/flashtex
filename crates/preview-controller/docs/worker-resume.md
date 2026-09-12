@@ -1,38 +1,59 @@
-# Preview performance worker checkpoint
+# Retained root engineer resume checkpoint
 
-Owner /root, product engineer; sole Commander /root/runtime_validator. Current task FT048revision3 acknowledged after reading remote assignment; scope crates/preview-controller and crates/document-runtime plus own report. Branch agent/commander-preview-performance/preview-performance, worktree /home/natkarri/flashtex-preview-performance. Latest product checkpoint ff5fb39: internal optional delivery queue. Includes runtime150f9f0/controllerf72c44c historical prototypes, c07f7ba full serializer equality evidence and0154d27 actual helper burst evidence. Main now integrates through0154d27; queue awaits integration. Check current Git and newer assignments before continuation.
+Root is product engineer, not Commander. Sole Commander handle:
+`/root/runtime_validator`; resume that same handle if terminal, never take over
+from silence. Retained runtime engineer `/root/compiler_corpus` owns
+`crates/document-runtime` under FT049. Renderer `/root/supervisor_api_review` owns
+rendering work. Keep the user cap: three retained engineers plus Commander.
 
-No active tool jobs, no uncommitted product edits at this checkpoint. Release helper target was rebuilt from4db4a7a for burst evidence; exact artifact hashes are committed. Temporary baseline binaries /tmp/flashtex-helper-legacy-binary (legacy main.rs on same deps) and /tmp/flashtex-helper-owned-binary (7956d37) remain for comparisons. Do not confuse either with latest target. Compiler pin/hash and all limitations are in benchmarks/helper-delivery and helper-burst.
+Owned worktree: /home/natkarri/flashtex-preview-performance
+Branch: agent/commander-preview-performance/preview-performance
+Assignment: FT048r6, preview-controller/edit-ledger only. No runtime edits after
+unchanged dependency f58b656 was consumed as854b041. Read current main assignment
+and resource reports before changing scope. No paid local Claude route verified.
 
-Results: paired10MBwrapping221ms→0.006ms; finalserialization~28ms. Real50KBsequential141ms→95ms (smallsharedLinuxsample). Thirty sequential exact-clean samples/four acknowledged killreopens; added5/50KBlostack scenarios recoveredexactsource, rejectedstaleretry. At30ms typing5KBproduced20previews,50KBonly1; all60durableACKs across3burstcases correct, finalclean and reopenexact. Continuous50KBlivepreview remains unfulfilled. Native painting/referencePDF parity are not measured here.
+Published product/evidence chain:
+- ecbaf7c: one-permit background JSON decoder, now integrated on main.
+- b4802cf /3db162f /8374bff: bounded source proposals, explicit bibliography
+  lifecycle, generated-plan grouped application/retry tests.
+-64829a0 /6e515be: source-bound history limits and explicit document kinds.
+- e764d2a /e5a894b /42425a5: default-OFF display forwarding, stale/hash recovery,
+  bounded optional output and source-free admission diagnostics.
+-8876279: exact actual65dbe7d producer/helper values across3source states and reopen.
+-ccd474f4: full-sized optional expansion refusal and optional write watchdog tests.
+-34742219: larger actual producer receipt scaling and explicit1500budget declines.
 
-Next: implement explicitly negotiated helper protocol, authorized by Commander after native agreement issue2 comment5644981151. Default off; negotiate completed-snapshots-v1 and ACK before emitting; reset on helper/compiler restart. Wire historical project/session, original source_versions, compile_revision/current_compile_revision, is_current:false, source_actions_enabled:false, original submission source_binding_token<=128bytes. Drop optional before admission when required output pending, maxone historical/session. main.rs currently has multiproducer required SyncSender (reader failures plus main responses) and writer watchdog2seconds; preserve those semantics while adding scheduling. HistoricalPreview needs consuming result access to avoid cloning; token binding must capture at original compilation, never delayed completion. Read exact native comment before edits. Queue tests5pass; previousfull41+initial4queue tests and finalalltargetlint passed. No active tool handles.
+Main e4c9252d integrated runtime/helper correctness chain with runtime test timing
+fix c47139ff; main0aac2b7f also integrates actual helper candidate rendering adapter.
+Read latest remote before relying on these tips. Rendering adapter uses exact caller
+session/source guards; no native UI activation or universal pixel parity claim.
 
-Historical context: Original runtime discarded stale Value before controller received it; do not fake this insidecontroller or weaken is_current_preview. Runtime ownership expansion granted revision3; runtime and internal controller prototypes now implemented and tested; native negotiation/display wiring pending. Proposedsidechannel must be explicitly opt-in, bounded, origin/session-bound, historicalonly, and give no source-action authority. Publish agreement before parallel edits. Compiler throughput remainsindependentrequiredwork.
+Most recent local change: diagnostic polling also reports eventless owner turns
+>=1ms, since candidate-only processing can emit no ordinary event. This is opt-in
+observability, not a performance claim. See Git for exact committed/dirty state.
 
-Staffing: root+font+renderer and soleCommander; drainedbridge/index/ledger remainstopped. No localClaude subscription: API-only withverifiedfundedgrant, noneassumed. Use truthful Codex directGit under authorizedCursor-quota fallback and coauthor authenticatedlocaluser. Root doesnotwrite main/globalcontrol or dispatchremoteagents independently. Allcrossmachineupdates go throughCommander. Do not claimremoteagentsrunning fromqueuesalone.
+Next: runtime owner is verifying actual newer producer6e69661. Commander asked to
+queue separate scalar candidate profile (parse/sourcehash validation) after that
+checkpoint; avoid duplicate runtime implementation. Consume evidence and choose
+next helper optimization from actual measurements. Native helper-route paint gate
+is still open. Avoid calibrated timing while Commander/peer correctness builds run.
 
-Compaction: save exactcheckpoint first, useactualtelemetry/nativecontrols; no exposedmanualcompacttool inthisruntime and no guessedpercentages. Never restartCommander or replayuncertainoperations tocompact. Goalcontinuesuntilexplicituserstop.
+Validation:63-test complete helper gate passed through optional-boundary checkpoint;
+subsequent full-size/stall tests individually passed, then Commander combined gate
+passed.34742219 harness cases are exact direct/helper JSON and durable reopen;
+35/66/132ms are single uncontrolled Python receipt samples, NOT native paint or
+continuous typing percentiles. Two1500budgetcases declined v2 and one failed v1;
+none count as successful full rendering. Keep display/history opt-ins default OFF.
 
+All source/history/receipt/permanent-ID semantics remain unchanged. No page dropping,
+metadata repair or silent fallback to reference compiler. Preserve direct Git
+Cursor-quota exception and truthful implementation/executor/coauthor trailers.
 
-Latest continuation: negotiated stdio path implemented after b04237d; exact code SHA in next commit. Main.rs integrates output_delivery required FIFO plus single optional frame; completed_protocol token bindings capture generation after synchronous request handling. Protocol example and limits in completed-snapshot-proposal.md. Full52 tests with explicit original compiler and strict lint pass. No outstanding tool jobs. Next publish native handoff through Commander and extend helper_burst.py for opt-in historical counts, original-token checking and lag separate from current latency. Existing strictdefault remains off.
-
-
-FT048 revision4 now ACKed from main0dc50da, extends ownership to crates/edit-ledger.
-Current candidate: Arc immutable history entries, serde rc, nonserialized OnceLock
-content-validation cache. No schema or retention change. Ledger66 tests/lint pass;
-benchmark raw evidence in edit-ledger/benchmarks/growing-history. Helper integration
-first52/53pass + unchanged isolated307page testlaterpass9.56s aftertwo10stimeouts;
-actualdebughelper directprobe1.42s. Preserve this qualification. No active tooljobs.
-Next improve serialization only with measured semantics-preserving design; receipts,
-snapshot imports, backup/undo/redo and I/O uncertainty remain hard gates. Root remains
-productengineer; runtime_validator soleCommander. Drainedworkersstaystopped.
-
-Next checkpoint after397bff7: bounded Entry raw-JSON cache implemented, serde_json
-raw_value enabled. Perentry min(1MiB, before+after bytes+512), escaped/oversize
-fallback; cache absent on disk and cold on deserialize.67ledger tests/lint and
-all53serial helper tests (explicit originalcompiler) pass.18paired history encodings
-byte-identical, cached faster eachpair; component medians20entries41.026vs93.685ms.
-Actual native/save effect unmeasured. No active jobs. Root resumed sameCommander
-handle after its natural final response; live census confirmedroot/font/render plus
-Commander. New remote census corrections belong toCommander, not this report.
+Disk-quota recovery checkpoint: after verifying no cargo/rustc process in this
+worktree, removed only generated target/debug/incremental directories for
+preview-controller (766 MiB), document-runtime (141 MiB), and edit-ledger (465 MiB).
+All executable artifacts, source and benchmark evidence remain. Runtime owner and
+Commander were notified. Use CARGO_INCREMENTAL=0 for subsequent local verification
+builds while quota pressure persists; do not change global Cargo settings. Do not
+infer witness recovery from free-space reports: Commander must verify its exact
+service/process and journal after the observed OSError122 failure.

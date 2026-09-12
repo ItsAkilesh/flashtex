@@ -3,27 +3,27 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-048": {
-      "acknowledged_utc": "2026-09-12T10:54:16Z",
-      "adaptation": "Runtime ownership released to FT049; only helper and ledger edits. History metadata64829a0 published. Adding explicit snapshot document_kinds for native project-settings persistence.",
-      "main_sha": "eed1847e923b42dbbc02d25309e9e432bd6e3aa0",
-      "revision": 6
+      "acknowledged_utc": "2026-09-12T11:26:20Z",
+      "adaptation": "Consuming FT0492f2a78e7/5d12255f unchanged; add bounded profile diagnostics and same-input attribution under helper ownership only.",
+      "main_sha": "7af10301cee94abdb263f868dfa5bf99a4b181c1",
+      "revision": 7
     }
   },
   "branch": "agent/commander-preview-performance/preview-performance",
   "capabilities": [
     "Preview helper serialization and latency"
   ],
-  "code_revision": "ccd474f46061e73555cef6ea814f457663be8d91",
+  "code_revision": "db2d2ce4da64f9354e932b820b4906d9b6e8b91f",
   "eta_minutes": null,
   "machine": "linux-primary",
-  "main_integrated_through": "ccd474f46061e73555cef6ea814f457663be8d91",
-  "next_action": "Await native helper paint gate and integration review; select next optimization from measured actual producer/helper phases, not receipt timing alone.",
+  "main_integrated_through": "7af10301cee94abdb263f868dfa5bf99a4b181c1",
+  "next_action": "One same-input scale100 phase attribution after Commander correctness gates terminate; choose optimization from stage evidence, not aggregate receipts.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "Measured actual helper scale100 at1462/2562/3762bytes: exactdirectv1/display, receipt35/66/132ms singlehost samples. Explicit1500producerbudget gives2recovered v2declines+1failedv1, no missing-sibling wait; exactsource/reopen allcases.",
+  "summary": "FT048r7: consumed unchanged2f2a78e7/5d12255f runtime profile; helper exposes source-bound scalar display_transport diagnostics once per request/revision/epoch. Large-frame real helper test verifies single profile,finite stage timings and intact edit recovery; strictlintpass.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T11:17:47Z",
+  "updated_utc": "2026-09-12T11:28:14Z",
   "usage": {
     "status": "unknown"
   }

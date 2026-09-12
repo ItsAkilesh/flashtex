@@ -211,6 +211,7 @@ fn run(config: Value) -> Result<(), String> {
     );
     let mut reviews: BTreeMap<String, PreparedEdit> = BTreeMap::new();
     let mut bindings = SubmissionBindings::default();
+    let mut last_display_profile_key = None;
     let mut output_epoch = output_tx.reset_optional();
     while !stopped.load(Ordering::SeqCst) {
         if writing_since
@@ -318,11 +319,29 @@ fn run(config: Value) -> Result<(), String> {
         }
         let poll_started = std::time::Instant::now();
         let updates = controller.poll();
-        if diagnostic_timings && !updates.is_empty() {
+        let poll_ms = poll_started.elapsed().as_secs_f64() * 1000.0;
+        if diagnostic_timings {
+            if let Some(profile) = controller.last_display_profile() {
+                let key = (
+                    profile.request_id.clone(),
+                    profile.revision,
+                    profile.display_epoch,
+                );
+                if last_display_profile_key.as_ref() != Some(&key) {
+                    eprintln!("{}", json!({"phase":"display_transport","profile":profile}));
+                    last_display_profile_key = Some(key);
+                }
+            } else {
+                last_display_profile_key = None;
+            }
+        }
+        // Candidate-only processing and discarded-value destruction may produce
+        // no events. Capture slow owner turns without logging every idle poll.
+        if diagnostic_timings && (!updates.is_empty() || poll_ms >= 1.0) {
             eprintln!(
                 "{}",
                 json!({"phase":"compiler_poll","events":updates.len(),
-                "duration_ms":poll_started.elapsed().as_secs_f64()*1000.0})
+                "duration_ms":poll_ms})
             );
         }
         let historical = controller.take_completed_snapshot().and_then(|snapshot| {

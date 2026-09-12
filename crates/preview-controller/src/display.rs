@@ -3,6 +3,15 @@ use crate::Controller;
 use serde_json::{json, Value};
 
 impl Controller {
+    /// Transport timing only; source text and renderer validation are excluded.
+    pub fn last_display_profile(
+        &self,
+    ) -> Option<&flashtex_document_runtime::DisplayResponseProfile> {
+        if self.closed || !self.display_enabled {
+            return None;
+        }
+        self.runtime.as_ref()?.last_display_profile()
+    }
     /// Returns a separate compile error after successful policy negotiation.
     /// No already-submitted work is retroactively enrolled.
     pub fn configure_display_candidates(
