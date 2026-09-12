@@ -67,7 +67,9 @@ cargo clippy --manifest-path crates/edit-ledger/Cargo.toml --all-targets --offli
 cargo build --manifest-path crates/edit-ledger/Cargo.toml --release --offline
 ```
 
-Validation: 55 library tests and eight integration tests pass on Linux. They
+Validation: 55 library tests and nine integration tests pass on Linux, plus an
+explicit opt-in release benchmark. See [measured costs](benchmarks/README.md) for
+5/50/500 KB persistent-disk results and exact restart checks. They
 exercise UTF-8 interiors and bad ranges, all snapshot guards, persisted replay,
 undo with durable deduplication, before/after-rename I/O failures, failed receipt
 confirmation, corrupted/unreadable journals, competing handles, stale snapshots,

@@ -629,4 +629,6 @@ impl Store {
 }
 
 #[cfg(test)]
+mod cost_benchmark;
+#[cfg(test)]
 mod tests;

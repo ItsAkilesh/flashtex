@@ -54,6 +54,11 @@ impl Checkpoint {
         ))
     }
     pub fn validate(&self) -> Result<()> {
+        self.validated_encoding().map(|_| ())
+    }
+    // Reuse the exact bytes checked against the size limit. Encoding used to
+    // allocate/serialize once for validation and again for the return value.
+    fn validated_encoding(&self) -> Result<Vec<u8>> {
         if self.format_version != 1 {
             return Err(Error::new(
                 "checkpoint_version",
@@ -70,17 +75,15 @@ impl Checkpoint {
                 "checkpoint identity or digest mismatch",
             ));
         }
-        if serde_json::to_vec(self)
-            .map_err(|e| Error::new("invalid_checkpoint", e.to_string()))?
-            .len()
-            > MAX_CHECKPOINT_BYTES
-        {
+        let bytes = serde_json::to_vec(self)
+            .map_err(|e| Error::new("invalid_checkpoint", e.to_string()))?;
+        if bytes.len() > MAX_CHECKPOINT_BYTES {
             return Err(Error::new(
                 "checkpoint_too_large",
                 "checkpoint size limit exceeded",
             ));
         }
-        Ok(())
+        Ok(bytes)
     }
     pub fn decode(bytes: &[u8]) -> Result<Self> {
         if bytes.len() > MAX_CHECKPOINT_BYTES {
@@ -95,8 +98,7 @@ impl Checkpoint {
         Ok(value)
     }
     pub fn encode(&self) -> Result<Vec<u8>> {
-        self.validate()?;
-        serde_json::to_vec(self).map_err(|e| Error::new("invalid_checkpoint", e.to_string()))
+        self.validated_encoding()
     }
     pub fn document(&self) -> &Document {
         &self.state.document
