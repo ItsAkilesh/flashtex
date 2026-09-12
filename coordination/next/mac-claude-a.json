@@ -3,8 +3,8 @@
   "assignment_path": "coordination/assignments/FT-003.json",
   "branch": "agent/mac-claude-a/mac-shell",
   "previous_report_sha": "552a67a9e49035bb20d9c090bddade6121986a41",
-  "revision": 7,
+  "revision": 8,
   "schema_version": 1,
   "task_id": "FT-003",
-  "updated_utc": "2026-09-12T08:26:53.728263+00:00"
+  "updated_utc": "2026-09-12T16:04:47.315263+00:00"
 }

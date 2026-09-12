@@ -544,7 +544,14 @@ pub use expansion::{
 mod path;
 pub use path::{PathCommand, QuadraticPath};
 
+pub mod eexec;
+pub mod pfb;
+pub mod required_tfm;
 pub mod tfm;
+pub mod tfm_run;
+pub mod type1_matrix;
+pub mod type1_outline;
+pub mod type1_records;
 
 pub mod encoding;
 
@@ -567,3 +574,9 @@ pub mod math_variants;
 pub mod math_fit;
 
 pub mod math_kern;
+
+pub mod math_device;
+
+pub mod math_cache;
+
+pub mod enc_file;

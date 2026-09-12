@@ -1,24 +1,24 @@
 {
   "acceptance": [
-    "xcodebuild -list parses the project; unsigned generic iOS Simulator build succeeds on an Xcode Mac",
-    "The committed test target runs payload, deduplication, image-size/orientation, cancellation, and retry tests",
-    "PNG/JPEG bytes match declared MIME type and base64 decodes; report physical Pencil/camera evidence or exact device-only gap",
-    "Publish an exact rev 2 ACK plus actual local worker PID/session and current non-secret quota/auth evidence; use central Cursor broker if local Cursor remains unavailable"
+    "All project references resolve to exact existing source/test/resource paths; test host and shared scheme are explicit",
+    "Retain real xcodebuild list/build/test commands and distinguish not-run physical Mac gates",
+    "MIME and encoded PNG/JPEG payload agreement dedup cancellation retry evidence stays explicit",
+    "Report actual session/tool executor and non-secret capacity; no unavailable Cursor retry or funding expansion; compiler bonus remains separate unadopted proposal"
   ],
   "agent_id": "aarush-macbook",
-  "allocation_id": "openai-aarush-plus-ft004",
+  "allocation_id": "openai-aarush-plus-ft004-stage2",
   "branch": "agent/aarush-macbook/companion-capture",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "7a1760114a706e8f76f17b957af84921be832340",
-  "objective": "Repair the committed iOS companion project so native build and tests run, then finish capture payload correctness. Regenerate malformed project.pbxproj, add the real test target and scheme, use an available or generic simulator destination, and ensure declared MIME type matches encoded image bytes. Preserve user work and runtime-v1 capture_submit.",
+  "input_main_sha": "904197db20de983f10b0f3ef049ac8f20822bdc2",
+  "objective": "Audit exact repaired companion project file graph test target scheme and capture MIME payload gates within apps/companion; prepare precise physical-Mac validation handoff",
   "owned_paths": [
     "apps/companion"
   ],
-  "revision": 2,
+  "revision": 4,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-004",
   "timebox_minutes": 45,
-  "updated_utc": "2026-09-12T04:41:56Z"
+  "updated_utc": "2026-09-12T15:32:47.359100+00:00"
 }
