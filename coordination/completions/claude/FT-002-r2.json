@@ -1,0 +1,81 @@
+{
+  "agent_id": "claude",
+  "archived_utc": "2026-09-12T04:49:19Z",
+  "assignment": {
+    "acceptance": [
+      "cargo test passes with Unicode source offsets and math fixtures",
+      "Positioned output reflects actual source edits; no existing TeX engine is invoked",
+      "Publish supported constructs and reproducible rendering evidence"
+    ],
+    "agent_id": "claude",
+    "allocation_id": "openai-kabir-plus-ft002-stage2",
+    "branch": "agent/claude/compiler-foundation",
+    "deadline_utc": null,
+    "dependencies": [],
+    "input_main_sha": "25a92a9c591a92a3d49071e536ecf8f129112c24",
+    "objective": "Extend the original Rust compiler with displayed and inline math, fractions, superscripts/subscripts, multiline layout, and source mapping. Preserve runtime-v1 and document unsupported TeX honestly.",
+    "owned_paths": [
+      "crates/compiler"
+    ],
+    "revision": 2,
+    "schema_version": 1,
+    "state": "assigned",
+    "task_id": "FT-002",
+    "timebox_minutes": 45,
+    "updated_utc": "2026-09-12T04:21:55Z"
+  },
+  "report": {
+    "agent_id": "claude",
+    "allocation_id": "openai-kabir-plus-ft002",
+    "assignment_acknowledgements": {
+      "FT-002": {
+        "acknowledged_utc": "2026-09-12T04:26:54Z",
+        "adaptation": "Accepted FT-002 revision 2 (stage 2: math) at input main 25a92a9, allocation openai-kabir-plus-ft002-stage2. Revision 1 shipped at 9f1033b: lexer with exact UTF-8 spans, finite-subset parser with recovery, layout, runtime-v1 JSONLines, 12 cargo tests, clippy and fmt clean, 21/21 independent binary checks. Stage 2 adds math within the same owned path and preserves runtime-v1 unchanged; math items reuse the existing text item shape and exact source spans so FT-003 source navigation keeps working.",
+        "main_sha": "09031efa9feca80d7a34e29b0b6fc41d43c509c4",
+        "revision": 2
+      }
+    },
+    "branch": "agent/claude/compiler-foundation",
+    "capabilities": [
+      "rust",
+      "cargo",
+      "cursor-commit",
+      "coordination"
+    ],
+    "code_revision": "3fd72c2aeb62a37614e67fb66b2b85816a7a3e0e",
+    "eta_minutes": {
+      "likely": 0,
+      "optimistic": 0,
+      "pessimistic": 0
+    },
+    "machine": "mac-m5pro-kabir",
+    "main_integrated_through": "09031efa9feca80d7a34e29b0b6fc41d43c509c4",
+    "next_action": "BLOCKED on publication: coord.py publish requires gh api user for the verified coauthor trailer and gh is not authenticated on this machine. Needs the user to run gh auth login. All work is staged and verified.",
+    "reviewed_peers": {
+      "origin/main": {
+        "adaptation": "Integrated three parallel worker outputs. Deferred the incremental-reuse worker: its equivalence test caught real drift between its private layout copy and the real engine after math landed, so shipping it would have meant two diverging layout engines. It is held at /Users/kubar/code/ft-wt-incremental for FT-006, pending a refactor of layout.rs into a resumable cursor.",
+        "reviewed_utc": "2026-09-12T04:41:14Z",
+        "sha": "09031efa9feca80d7a34e29b0b6fc41d43c509c4"
+      }
+    },
+    "schema_version": 1,
+    "state": "ready_for_integration",
+    "summary": "FT-002 rev 2 (math) complete and integrated with real font metrics. 27 tests pass (18 lib + 9 acceptance), clippy -D warnings clean, fmt clean, 21/21 independent binary checks. Inline and displayed math, \\frac with stacked numerator/rule/denominator, nested super/subscripts at 8.4pt and 6pt, \\sqrt and Greek symbols. Placeholder glyph ratios replaced by Adobe Core 14 advance widths in both text and math. Original PDF serializer added.",
+    "tool": "Codex",
+    "updated_utc": "2026-09-12T04:41:14Z",
+    "usage": {
+      "evidence": "cargo test 27 pass; cargo clippy --all-targets -D warnings clean; cargo fmt --check clean; independent stdin/stdout harness 21/21; manual math render verified item positions, script sizes and byte spans",
+      "status": "Three concurrent Codex workers on openai-kabir-plus-ft002-stage2; per-call cost not exposed"
+    }
+  },
+  "report_age_seconds": 485,
+  "report_path": "coordination/agents/claude.json",
+  "review_required": true,
+  "revision": 2,
+  "schema_version": 1,
+  "stale_completion": false,
+  "state": "reported_ready",
+  "task_id": "FT-002",
+  "worker_branch": "agent/claude/compiler-foundation",
+  "worker_report_sha": "de1020cd0be7cede11be2691e00e7f5b15cb2224"
+}

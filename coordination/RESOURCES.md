@@ -223,3 +223,8 @@ overages remain prohibited. Grant `claude-linux-max20x-ft015` and its queued sta
 reserve the existing plan route for FT-015 after successful login; they authorize
 no inference while authentication is absent. No inference has run. The worker must
 open/reconcile its auth recovery issue before reporting active execution.
+
+Grant `openai-commander-supervisor` covers one bounded hosted OpenAI engineering
+task, FT-016, to implement and test the deterministic Claude supervisor. It does
+not authorize Claude inference; all supervisor tests use isolated test doubles.
+Usage/cost is unknown under the existing Commander account authorization.
