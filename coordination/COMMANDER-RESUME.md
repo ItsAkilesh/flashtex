@@ -10,7 +10,7 @@ Dispatcher PID1099831 and witness PID1405586 independently active at this checkp
 
 ## Retained staffing and active work
 
-Exactly Commander plus three retained engineers; no new workers. Root /root owns preview-controller/edit-ledger, FT048 r11 grouped metadata ACK. /root/compiler_corpus is runtime-display owner of document-runtime, FT049 dispatcher r10; former font ID is paused, handle is active. /root/supervisor_api_review owns rendering-core, FT023 r13 measured finite/depth preflight visitor. Read exact assignment revision again because dispatcher advances on completion.
+Exactly Commander plus three retained engineers; no new workers. Root /root owns preview-controller/edit-ledger, FT048 r11 grouped metadata ACK. /root/compiler_corpus is runtime-display owner of document-runtime, FT049 r11 cancellation/shutdown acceptance; former font ID is paused, handle is active. /root/supervisor_api_review owns rendering-core, FT023 r13 measured finite/depth preflight visitor. Read exact assignment revision again because dispatcher advances on completion.
 
 Three drained handles bridge_context, orchestrator_sol/corpus_continuation and orchestrator_sol/mac_integration_review stay completed with no followups. Sol remains quiesced. No funded API grants, purchases, overages or local subscription use; remote existing authorization unchanged.
 
@@ -18,9 +18,9 @@ Three drained handles bridge_context, orchestrator_sol/corpus_continuation and o
 
 Main10ddbacc integrates dd2ff70f metadata-only edit ACK, default full unchanged, premutation policy validation and no response text clone. Two focused stdio recovery gates and strict helper lint passed. Main ecb70205 integrated6874316e bounded8KiB required serialization and3040a0ce actual raw helper strict export acceptance;11 helper binary tests,9 renderer tests and helper lint passed. Experimental raw transport remains explicit startup opt-in, not native activation.
 
-Integration worktree has an additional clean merge of fc262c46 real-compiler full/metadata acknowledgement test, not yet pushed at this checkpoint. Explicit actual compiler test passed in /tmp/flashtex-metadata-original-integration.log; preserve and publish next under lock. No active command handle for that gate.
+This integration includes fc262c46 real-compiler full/metadata acknowledgement acceptance; explicit actual compiler test passed in /tmp/flashtex-metadata-original-integration.log. No pending handle.
 
-Runtime00490d56/reportfa6de37 newly published request-derived raw metadata capture bounds, not integrated yet. Review immutable dispatch budget/permit/cancellation semantics, run combined runtime gates and actual producer acceptance. Owner has same-frame allocation evidence (50k empty documents7528 to3784KiB peak) with full validation maintained; no arbitrary4096 cap or native speed claim. Owner asked to run actual requested/declined source transitions using pinned binaries without rebuild.
+Runtime00490d56 plus actual producer9db02332/reporte307eb42 integrated at this checkpoint. Reviewed immutable dispatch budget/permit/cancellation semantics; combined runtime suite, strict lint, helper display tests and actual6e producer cancellation-to-changed-source acceptance pass (/tmp/flashtex-bounded-runtime-integration.log and /tmp/flashtex-bounded-runtime-actual.log). Owner has same-frame allocation evidence (50k empty documents7528 to3784KiB peak) with full validation maintained; no arbitrary4096 cap or native speed claim. Owner asked to run actual requested/declined source transitions using pinned binaries without rebuild.
 
 Renderer0d7db229 attribution complete: Value preflight allocates3.69/7.53/11.85MB on three actual captures; typed wrapper10 allocations. Pairing plus resource binding also material. Equivalent existing-serde visitor candidate underway, preserve ignored-extension finite/depth and all duplicate/source checks. No measurement window currently reserved by Commander.
 
