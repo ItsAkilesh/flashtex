@@ -1285,12 +1285,19 @@ struct CompletionSession: Equatable {
 /// keyboard focus from the editor (or from another app in tests).
 final class CompletionPopup: NSPanel, NSTableViewDataSource, NSTableViewDelegate {
     private let table = NSTableView()
+    /// Documentation pane under the list: the selected candidate's kind,
+    /// origin and — for commands/environments — its syntax (IntelliSense style).
+    private let docTitle = NSTextField(labelWithString: "")
+    private let docBody = NSTextField(wrappingLabelWithString: "")
+    private let docHint = NSTextField(labelWithString: "↑↓ choose · ⏎ insert · esc close")
+    private let docSeparator = NSBox()
     private(set) var items: [Completion.Suggestion] = []
-    static let rowHeight: CGFloat = 22
-    static let width: CGFloat = 420
+    static let rowHeight: CGFloat = 24
+    static let width: CGFloat = 480
+    static let docHeight: CGFloat = 58
 
     init() {
-        super.init(contentRect: NSRect(x: 0, y: 0, width: Self.width, height: Self.rowHeight * 4),
+        super.init(contentRect: NSRect(x: 0, y: 0, width: Self.width, height: Self.rowHeight * 4 + Self.docHeight),
                    styleMask: [.nonactivatingPanel, .borderless], backing: .buffered, defer: false)
         isFloatingPanel = true
         hidesOnDeactivate = false
@@ -1304,6 +1311,9 @@ final class CompletionPopup: NSPanel, NSTableViewDataSource, NSTableViewDelegate
         table.addTableColumn(column)
         table.headerView = nil
         table.rowHeight = Self.rowHeight
+        table.intercellSpacing = NSSize(width: 0, height: 0)
+        table.style = .plain
+        table.selectionHighlightStyle = .regular
         table.allowsEmptySelection = false
         table.allowsMultipleSelection = false
         table.refusesFirstResponder = true
@@ -1315,17 +1325,50 @@ final class CompletionPopup: NSPanel, NSTableViewDataSource, NSTableViewDelegate
         table.doubleAction = #selector(rowDoubleClicked(_:))
         table.setAccessibilityLabel(CompletionAccessibility.listLabel) // FlashTeXAccessibility
         table.setAccessibilityHelp(CompletionAccessibility.listHelp)
-        let scroll = NSScrollView(frame: contentView!.bounds)
+        let scroll = NSScrollView(frame: NSRect(x: 0, y: Self.docHeight, width: Self.width, height: Self.rowHeight * 4))
         scroll.documentView = table
         scroll.hasVerticalScroller = true
+        scroll.autohidesScrollers = true
         scroll.autoresizingMask = [.width, .height]
         scroll.borderType = .noBorder
+        scroll.drawsBackground = false
         contentView?.addSubview(scroll)
+        // Documentation pane (fixed height, pinned to the bottom).
+        let doc = NSView(frame: NSRect(x: 0, y: 0, width: Self.width, height: Self.docHeight))
+        doc.autoresizingMask = [.width, .maxYMargin]
+        docSeparator.boxType = .separator
+        docSeparator.frame = NSRect(x: 0, y: Self.docHeight - 1, width: Self.width, height: 1)
+        docSeparator.autoresizingMask = [.width, .minYMargin]
+        doc.addSubview(docSeparator)
+        docTitle.font = NSFont.systemFont(ofSize: 11, weight: .semibold)
+        docTitle.textColor = .labelColor
+        docTitle.lineBreakMode = .byTruncatingTail
+        docTitle.frame = NSRect(x: 10, y: Self.docHeight - 20, width: Self.width - 20, height: 15)
+        docTitle.autoresizingMask = [.width, .minYMargin]
+        doc.addSubview(docTitle)
+        docBody.font = NSFont.systemFont(ofSize: 11)
+        docBody.textColor = .secondaryLabelColor
+        docBody.maximumNumberOfLines = 2
+        docBody.lineBreakMode = .byTruncatingTail
+        docBody.frame = NSRect(x: 10, y: 15, width: Self.width - 20, height: 24)
+        docBody.autoresizingMask = [.width, .minYMargin]
+        doc.addSubview(docBody)
+        docHint.font = NSFont.systemFont(ofSize: 10)
+        docHint.textColor = .tertiaryLabelColor
+        docHint.frame = NSRect(x: 10, y: 2, width: Self.width - 20, height: 13)
+        docHint.autoresizingMask = [.width, .minYMargin]
+        doc.addSubview(docHint)
+        doc.setAccessibilityElement(true)
+        doc.setAccessibilityRole(.group)
+        doc.setAccessibilityLabel("Completion documentation")
+        contentView?.addSubview(doc)
         contentView?.wantsLayer = true
-        contentView?.layer?.cornerRadius = 6
+        contentView?.layer?.cornerRadius = 8
         contentView?.layer?.borderWidth = 1
         contentView?.layer?.borderColor = NSColor.separatorColor.cgColor
-        backgroundColor = .windowBackgroundColor
+        backgroundColor = .clear
+        isOpaque = false
+        contentView?.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
     }
 
     override var canBecomeKey: Bool { false }
@@ -1335,6 +1378,8 @@ final class CompletionPopup: NSPanel, NSTableViewDataSource, NSTableViewDelegate
     var selectedRow: Int { table.selectedRow }
     /// The list's table, for accessibility read-back in tests.
     var accessibilityTable: NSTableView { table }
+    /// The documentation pane's current title/body, for tests.
+    var documentation: (title: String, body: String) { (docTitle.stringValue, docBody.stringValue) }
 
     /// Shows (or refreshes) the list under `caretRect`. While the panel is
     /// already on screen for the same parent, only what changed is touched:
@@ -1345,7 +1390,7 @@ final class CompletionPopup: NSPanel, NSTableViewDataSource, NSTableViewDelegate
     func show(items: [Completion.Suggestion], selected: Int, below caretRect: NSRect, parent: NSWindow) {
         update(items: items, selected: selected)
         let rows = CGFloat(min(items.count, Completion.maxSuggestions))
-        let height = rows * Self.rowHeight + 4
+        let height = rows * Self.rowHeight + 4 + Self.docHeight
         var origin = NSPoint(x: caretRect.minX, y: caretRect.minY - height - 2)
         if let screen = parent.screen ?? NSScreen.main {
             let visible = screen.visibleFrame
@@ -1375,6 +1420,7 @@ final class CompletionPopup: NSPanel, NSTableViewDataSource, NSTableViewDelegate
                 table.selectRowIndexes(IndexSet(integer: selected), byExtendingSelection: false)
             }
             table.scrollRowToVisible(selected)
+            showDocumentation(for: items[selected])
             announceSelection(items[selected], index: selected, total: items.count)
         }
         updatingSelection = false
@@ -1422,16 +1468,13 @@ final class CompletionPopup: NSPanel, NSTableViewDataSource, NSTableViewDelegate
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         let id = NSUserInterfaceItemIdentifier("row")
-        let field = (tableView.makeView(withIdentifier: id, owner: nil) as? NSTextField) ?? {
-            let f = NSTextField(labelWithString: "")
-            f.identifier = id
-            f.lineBreakMode = .byTruncatingTail
-            f.allowsDefaultTighteningForTruncation = true
-            return f
+        let view = (tableView.makeView(withIdentifier: id, owner: nil) as? CompletionRowView) ?? {
+            let v = CompletionRowView(frame: NSRect(x: 0, y: 0, width: Self.width, height: Self.rowHeight))
+            v.identifier = id
+            return v
         }()
-        field.attributedStringValue = Self.attributed(items[row])
-        field.setAccessibilityLabel(Self.spokenLabel(items[row])) // FlashTeXAccessibility
-        return field
+        view.configure(items[row])
+        return view
     }
 
     /// "\section, command, supported by this compiler" — what VoiceOver reads for a row.
@@ -1448,16 +1491,115 @@ final class CompletionPopup: NSPanel, NSTableViewDataSource, NSTableViewDelegate
         ])
     }
 
+    private func showDocumentation(for s: Completion.Suggestion) {
+        var doc = Self.documentationPane(for: s)
+        if let line = Self.documentation(for: s) { doc.body = line + " " + doc.body } // CommandDocs (mac-syntax-highlight)
+        docTitle.stringValue = doc.title
+        docBody.stringValue = doc.body
+    }
+
+    /// The documentation pane's text for a candidate: its syntax as inserted
+    /// and a sentence built from the kind and the candidate's origin (`detail`).
+    static func documentationPane(for s: Completion.Suggestion) -> (title: String, body: String) {
+        switch s.kind {
+        case .command: return (s.label + "{…}", "Command · \(s.detail). Inserted over the typed token; braces are completed by the editor when auto-close is on.")
+        case .environment: return (s.label, "Environment · \(s.detail). Completes the \\end for an open \\begin.")
+        case .reference: return ("\\ref{\(s.label)}", "Label · \(s.detail). Defined in this project; Go to Matching (⌘⇧D) jumps between \\label and \\ref.")
+        case .citation: return ("\\cite{\(s.label)}", "Citation key · \(s.detail). From the declared bibliography sources.")
+        case .word: return (s.label, "Word · \(s.detail). A word already used in the document.")
+        }
+    }
+
     /// `\section  cmd · supported by this compiler` — label in the editor's
-    /// monospaced font, kind and detail in the secondary colour.
+    /// monospaced font, kind and detail in the secondary colour (kept for
+    /// tests and the accessibility layer; the rows draw the same parts).
+    /// `[icon] \section  cmd · supported by this compiler — a numbered section
+    /// heading` — a kind icon (SF Symbol tinted like the token's syntax
+    /// colour), the label in the editor's monospaced font, kind and detail in
+    /// the secondary colour, then the documentation line (EditorIntelligence's
+    /// CommandDocs) in the tertiary colour, truncated by the row. One text
+    /// field per row: the accessibility tree keeps a single cell.
     static func attributed(_ s: Completion.Suggestion) -> NSAttributedString {
-        let out = NSMutableAttributedString(string: s.label, attributes: [
+        let out = NSMutableAttributedString()
+        if let image = s.kind.icon {
+            let attachment = NSTextAttachment()
+            attachment.image = image
+            attachment.bounds = NSRect(x: 0, y: -3, width: 14, height: 14)
+            out.append(NSAttributedString(attachment: attachment))
+            out.append(NSAttributedString(string: " "))
+        }
+        out.append(NSAttributedString(string: s.label, attributes: [
             .font: NSFont.monospacedSystemFont(ofSize: 12, weight: .medium), .foregroundColor: NSColor.labelColor,
-        ])
+        ]))
         out.append(NSAttributedString(string: "  \(s.kind.badge) · \(s.detail)", attributes: [
             .font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.secondaryLabelColor,
         ]))
+        if let doc = documentation(for: s) {
+            out.append(NSAttributedString(string: " — \(doc)", attributes: [
+                .font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.tertiaryLabelColor,
+            ]))
+        }
         return out
+    }
+
+    /// One documentation line for a command or environment suggestion (nil when unknown).
+    static func documentation(for s: Completion.Suggestion) -> String? {
+        switch s.kind {
+        case .command:
+            let name = s.label.hasPrefix("\\") ? String(s.label.dropFirst()) : s.label
+            return EditorIntelligence.CommandDocs.documentation(for: name)
+        case .environment:
+            let name = s.label.replacingOccurrences(of: "\\begin{", with: "").replacingOccurrences(of: "\\end{", with: "")
+                .replacingOccurrences(of: "}", with: "")
+            return EditorIntelligence.CommandDocs.environmentDocumentation(for: name)
+        case .reference, .citation, .word:
+            return nil
+        }
+    }
+}
+
+/// One completion row: a tinted SF Symbol for the kind, the candidate in the
+/// editor's monospaced font, and the origin/detail column on the right — one
+/// accessibility element whose description is `CompletionPopup.spokenLabel`.
+final class CompletionRowView: NSView {
+    private let icon = NSImageView()
+    private let label = NSTextField(labelWithString: "")
+    private let detail = NSTextField(labelWithString: "")
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        icon.imageScaling = .scaleProportionallyDown
+        icon.frame = NSRect(x: 8, y: 4, width: 16, height: 16)
+        icon.autoresizingMask = [.maxXMargin]
+        addSubview(icon)
+        label.font = NSFont.monospacedSystemFont(ofSize: 12, weight: .medium)
+        label.textColor = .labelColor
+        label.lineBreakMode = .byTruncatingTail
+        label.frame = NSRect(x: 30, y: 4, width: 220, height: 16)
+        label.autoresizingMask = [.maxXMargin]
+        addSubview(label)
+        detail.font = NSFont.systemFont(ofSize: 11)
+        detail.textColor = .secondaryLabelColor
+        detail.alignment = .right
+        detail.lineBreakMode = .byTruncatingMiddle
+        detail.frame = NSRect(x: 254, y: 4, width: frame.width - 264, height: 16)
+        detail.autoresizingMask = [.width]
+        addSubview(detail)
+        setAccessibilityElement(true)
+        setAccessibilityRole(.staticText)
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+
+    override func accessibilityChildren() -> [Any]? { nil }
+    override func isAccessibilityElement() -> Bool { true }
+
+    func configure(_ s: Completion.Suggestion) {
+        icon.image = NSImage(systemSymbolName: s.kind.symbolName, accessibilityDescription: nil)
+        icon.contentTintColor = s.kind.tint
+        label.stringValue = s.label
+        detail.stringValue = "\(s.kind.badge) · \(s.detail)"
+        setAccessibilityLabel(CompletionPopup.spokenLabel(s)) // FlashTeXAccessibility
     }
 }
 
@@ -1481,6 +1623,40 @@ extension Completion.Kind {
         case .citation: return "cite"
         case .word: return "word"
         }
+    }
+
+    /// SF Symbol and tint the completion rows draw for the kind.
+    var symbolName: String {
+        switch self {
+        case .command: return "chevron.left.forwardslash.chevron.right"
+        case .environment: return "curlybraces"
+        case .reference: return "tag"
+        case .citation: return "quote.bubble"
+        case .word: return "textformat.abc"
+        }
+    }
+
+    var tint: NSColor {
+        switch self {
+        case .command: return .systemPurple
+        case .environment: return .systemOrange
+        case .reference: return .systemTeal
+        case .citation: return .systemGreen
+        case .word: return .secondaryLabelColor
+        }
+    }
+
+    /// SF Symbol per kind, tinted like the token's syntax colour (SyntaxTheme).
+    var icon: NSImage? {
+        let (symbol, color): (String, NSColor) = switch self {
+        case .command: ("chevron.left.forwardslash.chevron.right", SyntaxTheme.command)
+        case .environment: ("curlybraces", SyntaxTheme.environment)
+        case .reference: ("tag", SyntaxTheme.reference)
+        case .citation: ("book.closed", SyntaxTheme.reference)
+        case .word: ("textformat.abc", NSColor.secondaryLabelColor)
+        }
+        let config = NSImage.SymbolConfiguration(pointSize: 11, weight: .medium).applying(.init(paletteColors: [color]))
+        return NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?.withSymbolConfiguration(config)
     }
 }
 
@@ -1559,6 +1735,27 @@ final class CompletingTextView: NSTextView {
     private var applyingCompletion = false
     private var lastCaret: NSRange?
     private var storageObserver: NSObjectProtocol?
+
+    // Editor-intelligence hooks (SourceEditorView's coordinator sets them; EditorIntelligence.swift).
+    /// ⌘-click on a character index; return true to consume the click.
+    var commandClickHandler: ((Int) -> Bool)?
+    /// Draws under the text (current-line band) after the background.
+    var backgroundDecorator: ((NSRect) -> Void)?
+
+    override func mouseDown(with event: NSEvent) {
+        if event.modifierFlags.contains(.command), !event.modifierFlags.contains(.shift), event.clickCount == 1,
+           let handler = commandClickHandler, !hasMarkedText() {
+            let point = convert(event.locationInWindow, from: nil)
+            let index = characterIndexForInsertion(at: point)
+            if index >= 0, index < (textStorage?.length ?? 0), handler(index) { return }
+        }
+        super.mouseDown(with: event)
+    }
+
+    override func drawBackground(in rect: NSRect) {
+        super.drawBackground(in: rect)
+        backgroundDecorator?(rect)
+    }
 
     /// Scroll view + text view pair, like `NSTextView.scrollableTextView()`
     /// but with this subclass as the document view.

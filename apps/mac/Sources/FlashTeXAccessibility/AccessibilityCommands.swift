@@ -11,11 +11,13 @@ public enum AccessibilityCommand: String, CaseIterable, Equatable {
     case exportPDF, exportPDFViaRust, exportPDFExact
     case pinInsertionPoint, openCaptureProposal, submitSampleCapture, convertCapture, nearbyCompanion
     case restoreDiscardedBuffer
-    case undo, completion, completionList
+    case undo
+    case commandPalette, toggleProblems
+    case completion, completionList
     case goToMatching, nextDiagnostic, previousDiagnostic, nextOccurrence, previousOccurrence, copyDiagnosticsAsText, revealCaretInPreview
     case selectPreviewItemSource
     case accessibilityHelp
-    case durableHistory, findInProject, nextSearchMatch
+    case durableHistory, findInProject, nextSearchMatch, renameCitation
 
     public struct Entry: Equatable {
         public var command: AccessibilityCommand
@@ -100,7 +102,7 @@ public enum AccessibilityCommand: String, CaseIterable, Equatable {
                          requires: "a loaded v2 display list and a built flashtex-pdf-exact",
                          menuItem: "Export PDF (exact, v2)…")
         case .pinInsertionPoint:
-            return Entry(command: self, title: "Pin insertion point", shortcuts: ["⌘⇧P"], menu: "Edit",
+            return Entry(command: self, title: "Pin insertion point", shortcuts: ["⌘⌥P"], menu: "Edit",
                          description: "Records the caret as the destination anchor for capture proposals; the capture bar reads it back.",
                          menuItem: "Pin Insertion Point")
         case .openCaptureProposal:
@@ -124,6 +126,14 @@ public enum AccessibilityCommand: String, CaseIterable, Equatable {
         case .undo:
             return Entry(command: self, title: "Undo", shortcuts: ["⌘Z"], menu: "Edit",
                          description: "Undoes the last edit, including an approved capture insertion.")
+        case .commandPalette:
+            return Entry(command: self, title: "Command palette", shortcuts: ["⌘⇧P"], menu: "View",
+                         description: "Opens a searchable list of every command in this table with its menu and shortcut; type to filter, ↑/↓ choose, Return runs it, Esc closes. Editor keys and the preview click are listed as hints only.",
+                         menuItem: "Command Palette…")
+        case .toggleProblems:
+            return Entry(command: self, title: "Toggle Problems panel", shortcuts: ["⌘⇧M"], menu: "View",
+                         description: "Shows or hides the Problems panel under the editor and preview: the grouped diagnostics list with a severity filter, jump, explanation lines and Fix…; the sidebar's Problems rows and the status bar counts open it too.",
+                         menuItem: "Toggle Problems")
         case .completion:
             return Entry(command: self, title: "Completion popup", shortcuts: ["Esc", "⌃Space"], menu: "Editor",
                          description: "Lists supported commands, \\end{…} for open environments, labels, citation keys and document words for the token at the caret; the list never takes the keyboard from the editor.")
@@ -193,6 +203,10 @@ public enum AccessibilityCommand: String, CaseIterable, Equatable {
             return Entry(command: self, title: "Next match", shortcuts: ["⌘G"], menu: "Find in Project window",
                          description: "Selects the next search match (wrapping) and goes to it in the editor; only while the Find in Project window is key.",
                          requires: "a search with matches")
+        case .renameCitation:
+            return Entry(command: self, title: "Rename citation window", shortcuts: ["Edit > Rename Citation…"], menu: "Edit",
+                         description: "Opens the reviewed citation rename: the helper plans every \\cite occurrence across the project (plan_citation_rename), the plan is shown for review, and Apply sends one apply_group; also in the toolbar.",
+                         menuItem: "Rename Citation…")
         }
     }
 
@@ -207,26 +221,45 @@ public enum AccessibilityCommand: String, CaseIterable, Equatable {
 
 /// Keyboard focus order of the main window's panes and why it is that way.
 ///
-/// The order is the view order of `ContentView.swift`: an `HSplitView` of
-/// `EditorPane` (source text view, then the capture bar, then the bridge bar)
-/// and `PreviewPane` (pages, then the diagnostics list). SwiftUI's Tab cycle
-/// and VoiceOver's VO-Right follow that tree, so each pane names the source
-/// marker that places it; the test target reads `ContentView.swift` and fails
-/// when the panes are reordered without updating this table.
+/// The order is the view order of the main window (mac-ui-redesign): a
+/// `NavigationSplitView` whose sidebar is `WorkspaceSidebar`
+/// (WorkspaceSidebar.swift: Project, Outline, Problems sections) and whose
+/// detail is an `HSplitView` of `EditorPane` (document tabs, source text
+/// view, capture bar, bridge bar) and `PreviewPane` (pages), then the
+/// `ProblemsPanel` (ProblemsPanel.swift: grouped diagnostics) under both.
+/// SwiftUI's Tab cycle and VoiceOver's VO-Right follow that tree, so each
+/// pane names the container and the source marker that places it; the test
+/// target reads those files and fails when the panes are reordered without
+/// updating this table.
 public enum FocusOrder {
     public struct Pane: Equatable {
         public var name: String
         public var contents: String
         public var rationale: String
-        /// The `ContentView.swift` type the pane lives in (`EditorPane` / `PreviewPane`).
+        /// The view type the pane lives in (`WorkspaceSidebar`, `EditorPane`, `PreviewPane`, `ProblemsPanel`).
         public var container: String
         /// Text that places the pane inside `container`'s body, in order.
         public var sourceMarker: String
+        /// File under `apps/mac/Sources/FlashTeXMac` that declares `container`.
+        public var sourceFile: String
+
+        public init(name: String, contents: String, rationale: String, container: String, sourceMarker: String, sourceFile: String = "ContentView.swift") {
+            self.name = name; self.contents = contents; self.rationale = rationale
+            self.container = container; self.sourceMarker = sourceMarker; self.sourceFile = sourceFile
+        }
     }
 
     public static let panes: [Pane] = [
+        Pane(name: "Sidebar",
+             contents: "Project: every open member as a row (“main.tex, entry, edited, active”; bibliography members say so) plus not-yet-open \\input/\\include targets (“chapter1.tex, not open, included from main.tex; activate to open”); Outline: Sections, Environments and Labels of the active buffer as disclosure groups, each row “section Title, line n” and activation selects it in the editor; Problems: error/warning counts whose activation shows the Problems panel filtered to that severity.",
+             rationale: "Leads the window because it answers “where am I in the project” before editing; every row is a button that drives an existing operation (switch, open include, select, show problems) so nothing is reachable only by mouse.",
+             container: "WorkspaceSidebar", sourceMarker: "ProjectSection()", sourceFile: "WorkspaceSidebar.swift"),
+        Pane(name: "Tabs",
+             contents: "One tab per open document (“main.tex, entry, edited”), the active one selected; a Detach button on non-entry members; then the Project menu (open \\input/\\include targets, save or detach a member, bibliography kinds), the kind indicator and the byte/UTF-16 counts.",
+             rationale: "Directly above the editor because a tab changes what the editor shows; switching goes through ProjectDocuments so each document keeps its caret.",
+             container: "EditorPane", sourceMarker: "DocumentTabBar()"),
         Pane(name: "Editor",
-             contents: "Source text view, labelled “LaTeX source”; the document picker, the Project menu (open \\input/\\include targets, save or detach a member) and the byte/UTF-16 counts sit above it. Caret moves announce line and column.",
+             contents: "Source text view, labelled “LaTeX source”. Caret moves announce line and column.",
              rationale: "Editing is the primary task; the caret drives caret sync, diagnostics at caret, and every Navigate command.",
              container: "EditorPane", sourceMarker: "SourceEditorView("),
         Pane(name: "Capture bar",
@@ -238,24 +271,24 @@ public enum FocusOrder {
              rationale: "Status text with at most one button; it follows the capture bar because a received capture is converted, then reviewed, from the same place.",
              container: "EditorPane", sourceMarker: "BridgeBar()"),
         Pane(name: "Preview",
-             contents: "Pages in reading order; each page is a landmark (“Page n of m, k lines”), each line a group, each item static text with a “Go to source” action.",
+             contents: "A header line (source badge, compile status, freshness, layout capabilities), then pages in reading order; each page is a landmark (“Page n of m, k lines”), each line a group, each item static text with a “Go to source” action.",
              rationale: "Follows the editor column so a user can check what the last edit produced, page by page, without leaving the keyboard.",
              container: "PreviewPane", sourceMarker: "PreviewView("),
-        Pane(name: "Diagnostics",
-             contents: "List of the compile result's diagnostics, identical ones folded into one row: “Diagnostic n of m: Error/Warning: message, 12 places, 3 of 12, main.tex line 41”, the recovery note as the value, “Go to source” when it has a source. ↑/↓ select a row, Return jumps to its current occurrence, Esc returns the keyboard to the editor, ⌘C copies the selection as path:line: message lines.",
-             rationale: "Comes after the preview because the preview is still shown when errors exist; diagnostics refine, not replace, it.",
-             container: "PreviewPane", sourceMarker: "diagnosticsList("),
+        Pane(name: "Problems",
+             contents: "Header with counts, a severity filter (All / Errors / Warnings) and Hide; then the list of the compile result's diagnostics, identical ones folded into one row: “Diagnostic n of m: Error/Warning: message, 12 places, 3 of 12, main.tex line 41”, the recovery note as the value, “Go to source” when it has a source. ↑/↓ select a row, Return jumps to its current occurrence, Esc returns the keyboard to the editor, ⌘C copies the selection as path:line: message lines.",
+             rationale: "Comes after the preview because the preview is still shown when errors exist; diagnostics refine, not replace, it. View > Toggle Problems (⌘⇧M) hides and shows it.",
+             container: "ProblemsPanel", sourceMarker: "problemsList(", sourceFile: "ProblemsPanel.swift"),
     ]
 
     /// Non-focusable status text around the panes, in view order, so the help
     /// can say what VoiceOver reads when it walks the whole window.
     public static let statusLines: [String] = [
-        "Toolbar: Dark preview, Auto-compile and v2 preview switches, Reload fixture, Compile (⌘B).",
-        "Status banner (top): preview source badge, compile status, error and warning counts, latency, and whether the editor is ahead of the preview.",
-        "Footer (bottom): the last navigation note, the stale-diagnostics note, or the preview-click hint; capture notes on the right.",
+        "Toolbar: Compile (⌘B), the Producer menu (attach the built compiler ⌘⇧K, the Latin Modern render pipeline ⌘⇧R, any executable ⌘K, auto-compile, detach), v2 pane and Dark preview switches, Find in Project (⌘⇧F), Rename Citation, Durable History, the Export menu (⌘⇧E, ⌘⌥E, exact v2), Nearby (⌘⇧N), the Problems toggle with its count (⌘⇧M) and Commands (the palette, ⌘⇧P); every tooltip names the menu shortcut.",
+        "Preview header: preview source badge, compile status, whether the editor is ahead of the preview, and the accepted layout capabilities.",
+        "Status bar (bottom): editor revision, the active document's durable revision, compile latency, the route (fixture / worker / controller), error and warning counts (a button that shows the Problems panel), then the last navigation note, the stale-diagnostics note, or the preview-click hint; capture notes and the exact-export progress on the right.",
     ]
 
-    /// "Editor → Capture bar → Bridge bar → Preview → Diagnostics"
+    /// "Sidebar → Tabs → Editor → Capture bar → Bridge bar → Preview → Problems"
     public static var description: String { panes.map(\.name).joined(separator: " → ") }
 
     /// Full help text: order plus rationale for each pane.

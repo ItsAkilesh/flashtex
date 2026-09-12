@@ -272,12 +272,23 @@ def dispatch(kind, p):
             raise Err("provider_disabled", "Grok conversion requires explicitly enabled provider configuration")
         if rec["capture"].get("instructions", "").startswith("%provider_auth_missing"):
             raise Err("provider_auth_missing", "Supply the Mac's authorized Grok key through its credential adapter")
+        # `%grokgate`: the real bridge's gates (main.rs capture_convert): --enable-grok
+        # then XAI_API_KEY in the environment; the proposal then names the model
+        # and the key's presence (never its value).
+        grok_gate = rec["capture"].get("instructions", "").startswith("%grokgate")
+        if grok_gate and not enable_grok:
+            raise Err("provider_disabled", "Grok conversion requires explicitly enabled provider configuration")
+        if grok_gate and not os.environ.get("XAI_API_KEY"):
+            raise Err("provider_auth_missing", "Supply the Mac's authorized Grok key through its credential adapter")
         if rec["proposal"] is None:
             a = capture_anchor(rec["capture"])
             doc = document(a["project_id"], a["path"])
             rec["context"] = {"revision": doc["revision"]}
+            ambiguities = ["fake bridge: deterministic transcription, not a real conversion"]
+            if grok_gate:
+                ambiguities.append("model:%s key:present" % os.environ.get("FLASHTEX_GROK_MODEL", "grok-4.6"))
             rec["proposal"] = {"latex": "\\fakecapture{%s}" % p["capture_id"],
-                               "ambiguities": ["fake bridge: deterministic transcription, not a real conversion"],
+                               "ambiguities": ambiguities,
                                "required_dependencies": []}
             persist_journal()
         pr = rec["proposal"]

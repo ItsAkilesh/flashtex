@@ -1,0 +1,31 @@
+{
+  "applied" : false,
+  "context_id" : "47acb1dfa9218bf01e4c326f66f5d146c22cc90278a8d7cab011954eb4742d79",
+  "edits" : 1,
+  "explanation_bytes" : 570,
+  "helper" : "\/Users\/jay3332\/Projects\/flashtex\/.claude\/worktrees\/agent-a2b5f9da704bfbf4b\/crates\/assistant-context\/target\/release\/flashtex-assistant-context",
+  "key_source" : "Keychain",
+  "launches" : [
+    "helper:probe",
+    "helper:prepare",
+    "grok:provider",
+    "helper:review"
+  ],
+  "model" : "grok-4.6",
+  "note" : "xAI response id\/model\/usage are not surfaced by the helper's provider session (helper request R4 in apps\/mac\/docs\/grok-live.md)",
+  "outcome" : "ready",
+  "recorded_utc" : "2026-09-12T19:13:25Z",
+  "review_id" : "abd1e3b59186124c4e33a282dce56d90283dcae59e67102ef832b1fe96a71de7",
+  "seconds" : 69.710759043693542,
+  "session_argv_has_key" : false,
+  "session_env_keys" : [
+    "FLASHTEX_GROK_API_KEY",
+    "HOME",
+    "LANG",
+    "PATH",
+    "SHELL",
+    "TMPDIR",
+    "USER"
+  ],
+  "session_id" : "mac-explain-1-27cbf45d"
+}
