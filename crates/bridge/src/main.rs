@@ -31,7 +31,12 @@ struct Pin {
 #[serde(deny_unknown_fields)]
 struct Convert {
     capture_id: String,
+    // Accepted for wire compatibility but intentionally unused: the honest
+    // supported-feature list is derived from the compiler's own tables
+    // (`features::supported_features`) rather than trusted from the caller,
+    // so it cannot drift into a hand-maintained overstatement (issues #51/#23).
     #[serde(default)]
+    #[allow(dead_code)]
     supported_features: Vec<String>,
 }
 #[derive(Deserialize)]
@@ -143,13 +148,14 @@ fn dispatch(
                 std::env::var("FLASHTEX_GROK_MODEL").unwrap_or_else(|_| DEFAULT_MODEL.into());
             let record = bridge.convert(
                 &request.capture_id,
-                request.supported_features,
+                features::supported_features(),
                 &GrokClient::new(key, model)?,
             )?;
             let proposal = record.proposal.unwrap();
+            let insertion_blocked = proposal.blocks_direct_insertion();
             Ok((
                 "capture_proposal",
-                json!({"capture_id":request.capture_id,"latex":proposal.latex,"ambiguities":proposal.ambiguities,"required_dependencies":proposal.required_dependencies,"context_revision":record.context.map(|c|c.revision)}),
+                json!({"capture_id":request.capture_id,"latex":proposal.latex,"ambiguities":proposal.ambiguities,"required_dependencies":proposal.required_dependencies,"context_revision":record.context.map(|c|c.revision),"insertion_blocked":insertion_blocked}),
             ))
         }
         "capture_prepare_insert" => {
