@@ -1,36 +1,78 @@
 {
-  "schema_version": 1,
   "agent_id": "commander-font-resources",
-  "task_id": "FT-024",
-  "next_index": 0,
+  "next_index": 3,
+  "schema_version": 1,
   "steps": [
     {
+      "acceptance": [
+        "Meaningful tests and strict lint pass",
+        "Publish truthful execution provenance and exact tested SHA",
+        "No native integration or PDF parity claim without measured evidence"
+      ],
+      "allocation_id": "hosted-openai-product",
       "name": "Simple glyph outline decoding",
       "objective": "Simple glyph outline decoding",
       "owned_paths": [
         "crates/font-resources"
       ],
+      "timebox_minutes": 30
+    },
+    {
       "acceptance": [
         "Meaningful tests and strict lint pass",
         "Publish truthful execution provenance and exact tested SHA",
         "No native integration or PDF parity claim without measured evidence"
       ],
-      "timebox_minutes": 30,
-      "allocation_id": "hosted-openai-product"
-    },
-    {
+      "allocation_id": "hosted-openai-product",
       "name": "Composite transform geometry and exact bounds",
       "objective": "Composite transform geometry and exact bounds",
       "owned_paths": [
         "crates/font-resources"
       ],
+      "timebox_minutes": 30
+    },
+    {
       "acceptance": [
         "Meaningful tests and strict lint pass",
         "Publish truthful execution provenance and exact tested SHA",
         "No native integration or PDF parity claim without measured evidence"
       ],
-      "timebox_minutes": 30,
-      "allocation_id": "hosted-openai-product"
+      "allocation_id": "hosted-openai-product",
+      "name": "Exact TeX encoding to font-resource mapping",
+      "objective": "Exact TeX encoding to font-resource mapping",
+      "owned_paths": [
+        "crates/font-resources"
+      ],
+      "timebox_minutes": 30
+    },
+    {
+      "acceptance": [
+        "Meaningful tests and strict lint pass",
+        "Publish truthful execution provenance and exact tested SHA",
+        "No native integration or PDF parity claim without measured evidence"
+      ],
+      "allocation_id": "hosted-openai-product",
+      "name": "TFM metric and glyph binding consumer adapter",
+      "objective": "TFM metric and glyph binding consumer adapter",
+      "owned_paths": [
+        "crates/font-resources"
+      ],
+      "timebox_minutes": 30
+    },
+    {
+      "acceptance": [
+        "Meaningful tests and strict lint pass",
+        "Publish truthful execution provenance and exact tested SHA",
+        "No native integration or PDF parity claim without measured evidence"
+      ],
+      "allocation_id": "hosted-openai-product",
+      "name": "Real licensed font metric equivalence fixtures",
+      "objective": "Real licensed font metric equivalence fixtures",
+      "owned_paths": [
+        "crates/font-resources"
+      ],
+      "timebox_minutes": 30
     }
-  ]
+  ],
+  "task_id": "FT-024"
 }

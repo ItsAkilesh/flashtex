@@ -4,7 +4,7 @@
   "agent_id": "commander-document-runtime",
   "branch": "agent/commander/document-runtime",
   "revision": 1,
-  "state": "assigned",
+  "state": "integrated",
   "objective": "Bounded persistent compiler sessions and exact replay equivalence",
   "owned_paths": [
     "crates/document-runtime"
@@ -19,5 +19,6 @@
   "timebox_minutes": 30,
   "deadline_utc": null,
   "input_main_sha": "b87334038ee33c78d2eee67b66eac562768a9798",
-  "updated_utc": "2026-09-12T05:53:31.661939+00:00"
+  "updated_utc": "2026-09-12T06:09:29.165922+00:00",
+  "integration_evidence": "Maind9dd2d2 includes runtime90b6b46, focused suites passed; engineer now FT027 preview-controller."
 }

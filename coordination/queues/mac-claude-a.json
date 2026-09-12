@@ -1,6 +1,6 @@
 {
   "agent_id": "mac-claude-a",
-  "next_index": 3,
+  "next_index": 4,
   "schema_version": 1,
   "steps": [
     {
@@ -55,6 +55,20 @@
       "allocation_id": "claude-mac20x-shell-stage5",
       "name": "Packaged native recovery and responsiveness",
       "objective": "Harden the packaged Mac workflow and repeat native recovery, accessibility, nearby-device, responsiveness, and non-regression gates using exact integrated component SHAs.",
+      "owned_paths": [
+        "apps/mac"
+      ],
+      "timebox_minutes": 45
+    },
+    {
+      "acceptance": [
+        "Packaged app launches and completes the pinned demo with measured edit/capture/export latency",
+        "Crash/restart, disconnect/retry, stale preview, accessibility, and update paths have reproducible evidence",
+        "Device, signing, notarization, provider, and visual gaps remain explicit"
+      ],
+      "allocation_id": "claude-mac20x-shell-stage5",
+      "name": "Continuous product integration and measured improvement",
+      "objective": "Integrate original Rust preview-controller and document/runtime/ledger/font pipeline behind background adapters; measure typing-to-visible p95/p99 including actual native paint, and exact PDF byte/pixel gaps.",
       "owned_paths": [
         "apps/mac"
       ],

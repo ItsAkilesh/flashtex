@@ -67,7 +67,7 @@ cargo clippy --manifest-path crates/edit-ledger/Cargo.toml --all-targets --offli
 cargo build --manifest-path crates/edit-ledger/Cargo.toml --release --offline
 ```
 
-Validation: 16 library tests and three subprocess tests pass on Linux. They
+Validation: 40 library tests and three subprocess tests pass on Linux. They
 exercise UTF-8 interiors and bad ranges, all snapshot guards, persisted replay,
 undo with durable deduplication, before/after-rename I/O failures, failed receipt
 confirmation, corrupted/unreadable journals, competing handles, stale snapshots,
@@ -76,6 +76,73 @@ Clippy passes with warnings denied. No Xcode/device test or physical power-loss
 claim is made; durability relies on the host filesystem honoring sync and atomic
 same-directory rename. Linux and macOS filesystems are the intended targets.
 
+## Background service adapter
+
+`service::BackgroundService::start` spawns a worker that opens and exclusively
+owns the store. Native library callers use `try_submit(frame)` and
+`PendingReply::try_recv()`; these methods never open/sync files or write pipes.
+Reply serialization, JSON decoding, document hashing and filesystem transactions run
+on the worker. Do not use the blocking `wait()` convenience on MainActor.
+The executable hosts the same service; its stdin/stdout host may block, so a
+native Process adapter must keep pipe I/O on its own serial background queue.
+No Swift/FFI binding or native integration is claimed by this Rust crate.
+
+Admission accepts exactly one newline-terminated request of at most 12 MiB.
+Default capacity is four outstanding commands including undrained replies;
+`busy` is returned immediately before accepting excess work. Each command has
+one reply slot, so a stalled/dropped reply reader cannot block other admitted
+commands. Dropping a reply does not cancel an accepted transaction: export and
+reconcile durable state before retrying. Dropping the last service handle closes
+admission; its worker finishes accepted work and releases the store lock.
+
+Replies include ledger-local `session_id`, monotonic execution `sequence`,
+`document_revision`, `document_sha256`, and `command_succeeded`. Native consumers
+must compare the current session identity before updating UI and reject older
+sequence/revision observations. These fields do not alter transfer-v1 bridge
+messages. Startup lock/storage errors arrive as asynchronous request error events.
+
+Reply size defaults to 16 MiB (configurable up to 128 MiB); oversized payloads are
+omitted with `reply_too_large`. `command_succeeded: true` and the durable revision
+still report a completed operation, so never interpret omitted output as rollback.
+Use a sufficiently bounded background recovery consumer for large documents.
+The library caps capacity at 16 and retains at most the configured outstanding
+request/reply count internally. Caller-owned collected replies are the caller's
+responsibility. Tests cover capacity, frames, omitted payloads, startup errors,
+distinct sessions, and competing stale edits with revision-aware replies.
+
+## Durable grouped editing and undo/redo
+
+`apply_group` accepts a unique `command_id`, exact `expected_revision` and
+`expected_sha256`, a label of at most 256 bytes, and 1–64 source edits. Each
+edit carries `start_byte`, `end_byte`, `removed_text`, and `replacement` against
+the same original source snapshot. Ranges must be scalar-aligned and nonoverlapping;
+ambiguous insertion boundaries are rejected. All replacements form one atomic
+source transaction and one undo unit, applied from the last byte range backwards.
+
+Capture insertion and `replace_document` also record durable history. `undo` and
+`redo` accept a fresh `command_id` plus exact revision/hash guards, advance the
+document revision, and move one whole history entry. They never clear capture
+receipts or release applied IDs. Identical retries of group/undo/redo commands
+return their original command revision without moving history again, even after
+restart or payload retention. Reusing the command ID with different fields or
+another operation fails. `history_status` exposes retained undo/redo labels and
+payload size; source and stacks recover together from `document.json`.
+
+`retain_history` requires the current recovery `snapshot_token`, explicit
+`acknowledge_undo_redo_loss: true`, and `keep_latest_undo`/`keep_latest_redo` counts.
+It discards only excess history payloads. Capture IDs, pending receipt snapshots,
+and permanent group/undo/redo command IDs remain. New edits conventionally
+invalidate the redo branch but never its command IDs. Limits are 256 retained
+entries, 32 MiB of before/after text and 4096 permanent history command IDs.
+Exceeding a bound returns an error before mutation; no oldest-entry pruning is
+implicit. Stores with history use schema 3 and are rejected by older readers;
+payload compaction preserves the newer schema instead of downgrading it.
+Legacy stores gain history for subsequent edits, not invented historical undo.
+
+These commands and fields are ledger-local, not transfer-v1 additions. The native
+adapter adopts returned durable source rather than independently applying a
+second edit. AppKit grouping and keyboard actions remain native integration work.
+
 ## Private JSON Lines helper
 
 Launch `flashtex-edit-ledger --store /private/existing-parent/document-store`.
@@ -83,8 +150,8 @@ Use private stdin/stdout pipes from a serial background adapter. Each request is
 one newline-terminated UTF-8 JSON object, at most 12 MiB, with a nonempty `id` of
 at most 128 bytes. This is a local storage protocol, not a replacement for the
 bridge's runtime envelopes. Responses preserve valid IDs and contain either
-`payload` or structured `error: {code,message}`. Fatal framing/startup errors
-terminate the helper. Request operations:
+`payload` or structured `error: {code,message}`. Fatal framing errors terminate
+the helper; startup errors arrive as service error replies. Request operations:
 
 | Operation | Fields | Successful payload |
 |---|---|---|
@@ -93,6 +160,36 @@ terminate the helper. Request operations:
 | `apply` | `edit: PreparedEdit` | durable `receipt`, current `document` |
 | `replace_document` | `expected_revision`, `expected_sha256`, `text` | `document` |
 | `confirm` | `receipt: {capture_id,edit_id,new_revision}` | `confirmed` |
+| `recovery_export` | none | `snapshot_token`, `current_document`, `pending_receipts` |
+| `recovery_import` | `recovery: {snapshot_token,observations}` | `actions`, fresh `recovery` export |
+| `compact` | `policy: {snapshot_token,acknowledge_permanent_id_retention,acknowledged_through_revision,keep_latest_confirmed}` | compaction counts, sizes and fresh token |
+| `apply_group` | `group: {command_id,expected_revision,expected_sha256,label,edits}` | current document, original command revision, replay flag, undo/redo availability |
+| `undo`, `redo` | `command: {command_id,expected_revision,expected_sha256}` | current document, original command revision, replay flag, undo/redo availability |
+| `history_status` | none | undo/redo labels, permanent command count, payload bytes |
+| `retain_history` | `policy: {snapshot_token,acknowledge_undo_redo_loss,keep_latest_undo,keep_latest_redo}` | retained counts, dropped payload count, permanent command count |
+
+Recovery export/import is a ledger-local API; it does not add bridge wire fields.
+After export, query the bridge for each pending capture. Import observations
+tagged `status: applied` with the exact `receipt`, `status: prepared` with the
+exact `edit`, or `status: unavailable` with `capture_id` and a bounded `reason`.
+An applied observation durably confirms that receipt. A prepared observation
+returns a `replay_receipt` action with original source and receipt; it does not
+reapply or replace the current document. Unavailable observations return a retry
+action and retain all recovery evidence. Any conflict rejects the entire batch.
+If source or ledger changed during the bridge round trip, the snapshot token is
+stale and import is refused. Re-export and query again. Imported data never
+contains document text to overwrite the authoritative source.
+
+Compaction is explicit and only removes full prepared-edit payloads already
+acknowledged by the bridge, at or below the supplied revision cutoff, after
+preserving the requested number of latest confirmed payloads. The acknowledgement
+flag must be true and the snapshot token must still match. Every edit/capture ID,
+original receipt, and SHA-256 binding of all prepared fields remains permanent.
+An identical replay still returns the original receipt after compaction and undo;
+a changed payload remains a conflict. Pending receipt snapshots are never
+compacted. Compacted files use at least schema 2 so an older schema-1 reader refuses them
+instead of ignoring retained IDs. This is payload compaction, never ID garbage
+collection; the 4096-ID bound remains explicit and non-evicting.
 
 `pending_receipts` entries include prepared edit, receipt, original document,
 after-source hash and confirmation flag. They retain original source until the
@@ -102,7 +199,7 @@ because a network request fails.
 Bounds: document 8 MiB, replacement 64 KiB, store 128 MiB, 4096 applied IDs.
 The ledger fails explicitly when full; it never silently evicts IDs. Unconfirmed
 edits retain a complete original document, so timely receipt reconciliation
-matters for storage size. No history compaction, encryption, native FFI, document
+matters for storage size. No ID garbage collection, encryption, native FFI, document
 export UI or automatic bridge reconciliation is implemented here.
 
 Resumption: branch `agent/mac-contract-review/edit-ledger`, worktree

@@ -144,6 +144,7 @@ pub struct FontResource {
     license_text: Arc<[u8]>,
     tables: BTreeMap<[u8; 4], Range<usize>>,
     embedding_flags: Option<u16>,
+    cmap: Arc<std::sync::OnceLock<Result<mapping::Cmap>>>,
 }
 impl FontResource {
     /// Copies and verifies supplied bytes; later caller/file mutations cannot change this resource.
@@ -186,6 +187,7 @@ impl FontResource {
             license_text: Arc::from(license_text),
             tables: parsed.tables,
             embedding_flags: parsed.embedding_flags,
+            cmap: Arc::new(std::sync::OnceLock::new()),
         })
     }
     pub fn descriptor(&self) -> &FontDescriptor {
@@ -455,6 +457,7 @@ fn parse(bytes: &[u8]) -> Result<Parsed> {
     {
         return Err(invalid("invalid horizontal metrics bounds"));
     }
+    composite::validate(head, loca, glyf, glyphs as usize)?;
     let names = parse_names(table(b"name")?)?;
     let embedding_flags = match tables.get(b"OS/2") {
         Some(r) => Some(u16_at(&bytes[r.clone()], 8)?),
@@ -516,3 +519,22 @@ fn parse_names(bytes: &[u8]) -> Result<Vec<String>> {
     }
     Ok(names)
 }
+
+mod mapping;
+pub use mapping::HorizontalMetrics;
+
+mod composite;
+pub use composite::MAX_COMPOSITE_DEPTH;
+
+mod outline;
+pub use outline::{OutlinePoint, SimpleOutline};
+
+mod expansion;
+pub use expansion::{Coordinate, ExactPoint, ExpandedOutline, GlyphInstance};
+
+mod path;
+pub use path::{PathCommand, QuadraticPath};
+
+pub mod tfm;
+
+pub mod encoding;

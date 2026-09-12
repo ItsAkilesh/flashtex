@@ -1,6 +1,7 @@
 //! Exact fixed-point hit testing of compiler-supplied cluster/rule geometry.
 //! No font measurement or glyph-width division is performed. Source ranges stay
 //! intact when a caret's logical text offset has no one-to-one TeX mapping.
+use crate::transform::ExactPoint;
 use crate::*;
 use std::sync::Arc;
 
@@ -146,6 +147,16 @@ impl PageIndex {
         page: u32,
         point: Point,
     ) -> Result<Option<Hit>> {
+        self.hit_test_exact(project_id, revision, page, ExactPoint::from_point(point)?)
+    }
+    pub fn hit_test_exact(
+        &self,
+        project_id: &str,
+        revision: u64,
+        page: u32,
+        exact: ExactPoint,
+    ) -> Result<Option<Hit>> {
+        let point = exact.floor();
         require(
             project_id == self.project_id && revision == self.revision,
             "stale hit-test index",
@@ -182,14 +193,18 @@ impl PageIndex {
                 winner = Some(entry);
             }
         }
-        Ok(winner.map(|entry| Hit {
-            page,
-            item_index: entry.item_index,
-            cluster_index: entry.cluster_index,
-            selection: selection(entry, point),
-            sources: entry.details.sources.clone(),
-            synthetic_reason: entry.details.synthetic_reason.clone(),
-        }))
+        winner
+            .map(|entry| {
+                Ok(Hit {
+                    page,
+                    item_index: entry.item_index,
+                    cluster_index: entry.cluster_index,
+                    selection: selection(entry, exact)?,
+                    sources: entry.details.sources.clone(),
+                    synthetic_reason: entry.details.synthetic_reason.clone(),
+                })
+            })
+            .transpose()
     }
 }
 fn clipped(rect: &HitRect, page: &Page) -> Option<(i64, i64, i64, i64)> {
@@ -200,22 +215,22 @@ fn clipped(rect: &HitRect, page: &Page) -> Option<(i64, i64, i64, i64)> {
     let bottom = (rect.top.0 + rect.height.0).min(page.height.0);
     (left < right && top < bottom).then_some((left, top, right, bottom))
 }
-fn selection(entry: &Entry, point: Point) -> LogicalSelection {
-    if let Some(caret) = entry.details.carets.iter().min_by_key(|caret| {
-        let dx = i128::from(point.x.0) - i128::from(caret.x.0);
-        let nearest = point.y.0.clamp(caret.top.0, caret.top.0 + caret.height.0);
-        let dy = i128::from(point.y.0) - i128::from(nearest);
-        (dx * dx + dy * dy, caret.text_byte)
-    }) {
-        return LogicalSelection::Caret {
-            text_byte: caret.text_byte,
-        };
+fn selection(entry: &Entry, point: ExactPoint) -> Result<LogicalSelection> {
+    let mut nearest: Option<(i128, u64)> = None;
+    for caret in &entry.details.carets {
+        let candidate = (point.caret_distance(caret)?, caret.text_byte);
+        if nearest.is_none_or(|old| candidate < old) {
+            nearest = Some(candidate);
+        }
     }
-    match entry.details.text_range {
+    if let Some((_, text_byte)) = nearest {
+        return Ok(LogicalSelection::Caret { text_byte });
+    }
+    Ok(match entry.details.text_range {
         Some((start_byte, end_byte)) => LogicalSelection::WholeCluster {
             start_byte,
             end_byte,
         },
         None => LogicalSelection::Rule,
-    }
+    })
 }

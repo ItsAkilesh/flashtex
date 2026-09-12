@@ -1,0 +1,72 @@
+{
+  "agent_id": "bridge-context-jobs",
+  "archived_utc": "2026-09-12T06:01:54Z",
+  "assignment": {
+    "acceptance": [
+      "Meaningful tests and strict lint pass",
+      "Publish truthful execution provenance and exact tested SHA",
+      "No native integration or PDF parity claim without measured evidence"
+    ],
+    "agent_id": "bridge-context-jobs",
+    "allocation_id": "hosted-openai-product",
+    "branch": "agent/bridge-context/conversion-jobs",
+    "deadline_utc": null,
+    "dependencies": [],
+    "input_main_sha": "b87334038ee33c78d2eee67b66eac562768a9798",
+    "objective": "Durable bounded conversion scheduling without duplicate provider retries",
+    "owned_paths": [
+      "crates/conversion-jobs"
+    ],
+    "revision": 1,
+    "schema_version": 1,
+    "state": "assigned",
+    "task_id": "FT-022",
+    "timebox_minutes": 30,
+    "updated_utc": "2026-09-12T05:53:31.661939+00:00"
+  },
+  "report": {
+    "agent_id": "bridge-context-jobs",
+    "allocation_id": "hosted-openai-product",
+    "assignment_acknowledgements": {
+      "FT-022": {
+        "acknowledged_utc": "2026-09-12T05:55:46.584469+00:00",
+        "adaptation": "Exact assignment pair manually acknowledged under orchestrator authorization while coord.py branch-alias check is fixed. Own optional async bridge adapter only inside conversion-jobs; no global/core edits.",
+        "main_sha": "254193c175534e78bfd9e5206b4850b86123cbe6",
+        "revision": 1
+      }
+    },
+    "branch": "agent/bridge-context/conversion-jobs",
+    "capabilities": [
+      "rust",
+      "conversion-jobs",
+      "bridge-journal"
+    ],
+    "code_revision": "296f16efeb69fd386a80fd25a7d2010b7977d402",
+    "eta_minutes": {
+      "likely": 0,
+      "optimistic": 0,
+      "pessimistic": 0
+    },
+    "machine": "linux-primary",
+    "next_action": "Orchestrator integrates exact code_revision; native adapter integration must keep document/journal actor separate from UI status. Await next product task.",
+    "schema_version": 1,
+    "state": "ready_for_integration",
+    "summary": "FT-022 optional reusable async bridge adapter complete: durable single-attempt intents, nonblocking status handles, exact source context check before journal promotion; 22 tests, strict clippy, fmt pass.",
+    "tool": "Codex Astra hosted /root/bridge_context",
+    "updated_utc": "2026-09-12T06:01:44.129548+00:00",
+    "usage": {
+      "evidence": "cargo test --all-features --all-targets:22 pass; cargo clippy same flags -D warnings:pass; cargo fmt --check:pass. No provider calls.",
+      "status": "Hosted OpenAI quota unknown; no paid provider calls or Cursor retry. Direct Git fallback authorized."
+    }
+  },
+  "report_age_seconds": 9,
+  "report_path": "coordination/agents/bridge-context-jobs.json",
+  "review_required": true,
+  "revision": 1,
+  "schema_version": 1,
+  "stale_completion": false,
+  "state": "reported_ready",
+  "task_id": "FT-022",
+  "worker_branch": "agent/bridge-context/conversion-jobs",
+  "worker_report_sha": "b937d32477cb2595cb72591c0f4c553be8cfb4bf"
+}

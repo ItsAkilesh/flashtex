@@ -1,23 +1,23 @@
 {
-  "schema_version": 1,
-  "task_id": "FT-022",
-  "agent_id": "bridge-context-jobs",
-  "branch": "agent/bridge-context/conversion-jobs",
-  "revision": 1,
-  "state": "assigned",
-  "objective": "Durable bounded conversion scheduling without duplicate provider retries",
-  "owned_paths": [
-    "crates/conversion-jobs"
-  ],
   "acceptance": [
     "Meaningful tests and strict lint pass",
     "Publish truthful execution provenance and exact tested SHA",
     "No native integration or PDF parity claim without measured evidence"
   ],
-  "dependencies": [],
+  "agent_id": "bridge-context-jobs",
   "allocation_id": "hosted-openai-product",
-  "timebox_minutes": 30,
+  "branch": "agent/bridge-context/conversion-jobs",
   "deadline_utc": null,
-  "input_main_sha": "b87334038ee33c78d2eee67b66eac562768a9798",
-  "updated_utc": "2026-09-12T05:53:31.661939+00:00"
+  "dependencies": [],
+  "input_main_sha": "0a3d8e22fe4abc5cf15c39cce889aaa125f38bb6",
+  "objective": "Bridge adapter with durable intent and stale context guards",
+  "owned_paths": [
+    "crates/conversion-jobs"
+  ],
+  "revision": 3,
+  "schema_version": 1,
+  "state": "assigned",
+  "task_id": "FT-022",
+  "timebox_minutes": 30,
+  "updated_utc": "2026-09-12T06:12:26Z"
 }

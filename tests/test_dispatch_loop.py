@@ -255,6 +255,30 @@ class DispatcherTests(unittest.TestCase):
             self.assertFalse(result['prepared'])
             self.assertFalse(self.run_git(self.root, 'status', '--porcelain'))
 
+    def test_published_legacy_owner_branch_remains_dispatchable(self):
+        assignment_path = self.root / 'coordination/assignments/TASK.json'
+        assignment = json.loads(assignment_path.read_text())
+        assignment['agent_id'] = 'legacy-worker'
+        assignment_path.write_text(json.dumps(assignment))
+        self.commit(self.root)
+        self.run_git(self.root, 'push', 'origin', 'HEAD:main')
+        queue = dict(self.queue, agent_id='legacy-worker')
+        plan, reason = loop.plan_step(self.root, 'coordination/queues/legacy-worker.json', queue, {'TASK': assignment}, datetime.now(timezone.utc), 600)
+        self.assertIsNone(plan)
+        self.assertEqual(reason, 'worker branch not published')
+        self.assertTrue(coord.published_branch_assignment(self.root, 'legacy-worker', assignment['branch']))
+        self.assertFalse(coord.published_branch_assignment(self.root, 'other-worker', assignment['branch']))
+
+    def test_malformed_queue_does_not_stop_other_workers(self):
+        self.write(self.root, 'coordination/queues/bad-worker.json', {'schema_version': 1, 'agent_id': 'bad-worker', 'steps': None})
+        self.commit(self.root)
+        self.run_git(self.root, 'push', 'origin', 'HEAD:main')
+        result = loop.scan_once(self.root, self.args)
+        self.assertEqual(result['prepared'], ['TASK'])
+        bad = next(item for item in result['skipped'] if item['queue'].endswith('bad-worker.json'))
+        self.assertTrue(bad['needs_commander_review'])
+        self.assertIn('invalid queue', bad['reason'])
+
     def test_verified_milestone_continues_dispatch(self):
         self.write(self.root, 'coordination/control.json', {'schema_version': 1, 'state': 'verified_complete'})
         self.commit(self.root)

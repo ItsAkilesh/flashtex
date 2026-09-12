@@ -1,0 +1,113 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    body { margin:0; font-family:-apple-system,"SF Pro Text",system-ui,sans-serif;
+           color:#1D1D1F; background:#E8E8EC; -webkit-font-smoothing:antialiased; }
+    a { color:#3A5BD9; } a:hover { color:#2B47B5; }
+    .mono { font-family:"SF Mono",ui-monospace,Menlo,monospace; }
+    .cap { font-size:11px; color:#6E6E73; }
+  </style>
+</helmet>
+
+<div style="width:760px;height:880px;background:#F7F7F9;display:flex;flex-direction:column;
+            border-radius:12px;overflow:hidden;box-shadow:0 18px 50px rgba(0,0,0,.22)">
+
+  <div style="padding:18px 22px 14px;border-bottom:1px solid #E1E1E6;background:#FCFCFD">
+    <div style="font-size:16px;font-weight:700">Review handwriting conversion</div>
+    <div class="cap" style="margin-top:3px">
+      Nothing is inserted until you approve it. One undoable edit.
+    </div>
+  </div>
+
+  <div style="flex-grow:1;overflow:hidden;display:flex;flex-direction:column;gap:16px;padding:18px 22px">
+
+    <!-- source capture -->
+    <div>
+      <div class="cap" style="font-weight:700;letter-spacing:.04em;margin-bottom:7px">CAPTURED FROM IPAD PRO · PENCIL</div>
+      <div style="background:#fff;border:1px solid #E1E1E6;border-radius:9px;padding:18px 20px;display:flex;align-items:center;justify-content:center">
+        <svg width="300" height="74" viewBox="0 0 300 74" fill="none" stroke="#1D1D1F" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 46c0-16 5-26 11-26s7 9 3 17-12 12-14 3"/>
+          <path d="M34 20v34"/>
+          <path d="M46 37h26"/>
+          <path d="M86 22c8-4 16-2 16 6 0 9-16 10-16 19 0 7 9 9 17 5"/>
+          <path d="M120 18v38"/>
+          <path d="M132 30h22M132 44h22"/>
+          <path d="M172 24l14 26M186 24l-14 26"/>
+          <path d="M206 20c10 0 16 6 16 17s-6 17-16 17-16-6-16-17 6-17 16-17"/>
+          <path d="M238 54V20l20 34V20"/>
+          <path d="M274 34h16"/>
+        </svg>
+      </div>
+    </div>
+
+    <!-- proposal -->
+    <div style="flex-grow:1;display:flex;flex-direction:column;min-height:0">
+      <div class="cap" style="font-weight:700;letter-spacing:.04em;margin-bottom:7px">PROPOSED LATEX</div>
+      <div class="mono" style="background:#FDFDFE;border:1px solid #E1E1E6;border-radius:9px;padding:14px 16px;
+                  font-size:12.5px;line-height:1.85;white-space:pre;flex-grow:1;overflow:hidden">
+<span style="color:#7B3FA0">\begin</span>{<span style="color:#0B6E99">equation</span>}
+  <span style="color:#0B6E99">\int_0^1 x^2 \, dx = \frac{1}{3}</span>
+<span style="color:#7B3FA0">\end</span>{<span style="color:#0B6E99">equation</span>}</div>
+    </div>
+
+    <!-- ambiguities -->
+    <div>
+      <div class="cap" style="font-weight:700;letter-spacing:.04em;margin-bottom:7px">AMBIGUITIES — 1</div>
+      <div style="background:rgba(199,119,0,.08);border:1px solid rgba(199,119,0,.3);border-radius:9px;padding:11px 14px;display:flex;gap:9px">
+        <svg width="15" height="15" style="flex-shrink:0;margin-top:1px" viewBox="0 0 24 24" fill="#C77700"><path d="M12 3 23 20H1z"/><path d="M12 9v5M12 16.5v1.5" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg>
+        <div style="flex-grow:1">
+          <div style="font-size:12.5px">The upper limit could be <span class="mono">1</span> or <span class="mono">l</span>.</div>
+          <div style="display:flex;gap:7px;margin-top:8px">
+            <button style="font:inherit;font-size:11.5px;padding:3px 11px;border:1px solid #C77700;border-radius:5px;background:#C77700;color:#fff;font-weight:600">Use 1</button>
+            <button style="font:inherit;font-size:11.5px;padding:3px 11px;border:1px solid #C6C6CC;border-radius:5px;background:#FCFCFD">Use l</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- dependencies -->
+    <div>
+      <div class="cap" style="font-weight:700;letter-spacing:.04em;margin-bottom:7px">REQUIRED DEPENDENCIES</div>
+      <div style="display:flex;gap:7px;align-items:center">
+        <span class="mono" style="font-size:11.5px;padding:3px 10px;border-radius:999px;background:#EDEDF1;border:1px solid #DCDCE2">amsmath</span>
+        <span class="cap">not yet in your preamble — adding it is part of this edit</span>
+      </div>
+    </div>
+
+    <!-- destination -->
+    <div>
+      <div class="cap" style="font-weight:700;letter-spacing:.04em;margin-bottom:7px">DESTINATION</div>
+      <div style="background:#fff;border:1px solid #E1E1E6;border-radius:9px;padding:11px 14px;display:flex;align-items:center;gap:10px">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="{{accent}}" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s7-6.3 7-11a7 7 0 1 0-14 0c0 4.7 7 11 7 11"/><circle cx="12" cy="10" r="2.6"/></svg>
+        <div style="flex-grow:1">
+          <div style="font-size:12.5px">after equation (1), <span class="mono">thermo-pset.tex</span></div>
+          <div class="mono cap" style="margin-top:1px">anchor a-7 · byte 1 902 · pinned at revision 87</div>
+        </div>
+        <button style="font:inherit;font-size:11.5px;padding:3px 10px;border:1px solid #C6C6CC;border-radius:5px;background:#FCFCFD">Change</button>
+      </div>
+    </div>
+  </div>
+
+  <div style="padding:14px 22px;border-top:1px solid #E1E1E6;background:#FCFCFD;display:flex;align-items:center;gap:10px">
+    <span class="cap">Document has advanced to revision 91 — the anchor still resolves.</span>
+    <div style="flex-grow:1"></div>
+    <button style="font:inherit;font-size:12.5px;padding:6px 14px;border:1px solid #C6C6CC;border-radius:7px;background:#FCFCFD">Discard</button>
+    <button style="font:inherit;font-size:12.5px;padding:6px 16px;border:1px solid {{accent}};border-radius:7px;background:{{accent}};color:#fff;font-weight:600">Insert</button>
+  </div>
+</div>
+
+</x-dc>
+<script data-dc-script data-props='{"accent":{"editor":"color","default":"#3A5BD9","options":["#3A5BD9","#0B6E99","#7B3FA0","#2C8A4B"]}}'>
+class Component extends DCLogic {
+  renderVals() { return { accent: this.props.accent ?? '#3A5BD9' }; }
+}
+</script>
+</body>
+</html>

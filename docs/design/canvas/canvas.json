@@ -1,0 +1,16 @@
+{
+  "artboards": [
+    { "file": "Main.dc.html", "x": 0, "y": 0, "w": 1440, "h": 900, "title": "Main window — compiled cleanly" },
+    { "file": "Recovery.dc.html", "x": 1560, "y": 0, "w": 1440, "h": 900, "title": "Error recovery — preview never hidden" },
+    { "file": "DarkPreview.dc.html", "x": 3120, "y": 0, "w": 1440, "h": 900, "title": "Dark preview — screen only" },
+    { "file": "CaptureReview.dc.html", "x": 0, "y": 1060, "w": 760, "h": 880, "title": "Capture review — approve before insert" },
+    { "file": "Companion.dc.html", "x": 880, "y": 1060, "w": 820, "h": 1060, "title": "iPad companion — draw or photograph" },
+    { "file": "Tokens.dc.html", "x": 1820, "y": 1060, "w": 1200, "h": 1000, "title": "Tokens and components" }
+  ],
+  "annotations": [
+    { "id": "brief", "x": 0, "y": -150, "w": 460, "text": "FlashTeX — Mac LaTeX IDE\nUndergraduates first, advanced authors eventually.\n\nMatches the vocabulary already in apps/mac: .bar chrome, source badges, SF Symbol diagnostic semantics, UTF-8 byte readouts." },
+    { "id": "honesty", "x": 1560, "y": -150, "w": 460, "text": "Recovery is a first-class state, not an error screen. The preview stays visible, recovered regions are marked as provisional, and every diagnostic says what was rendered instead." },
+    { "id": "consent", "x": 0, "y": 2000, "w": 700, "text": "Capture never auto-inserts. The Mac shows the proposal, its ambiguities and its required packages, and applies one undoable edit only after approval." }
+  ],
+  "launch": { "view": "canvas" }
+}
