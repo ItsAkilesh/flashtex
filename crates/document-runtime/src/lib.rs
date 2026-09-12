@@ -385,6 +385,18 @@ impl Session {
         } else if self.latest.len() >= self.limits.max_projects {
             return Err("project capacity reached".into());
         }
+        // Admission is complete. Do not retain caller reserve capacity or serializer
+        // growth slack alongside immutable snapshots for the lifetime of the queue.
+        let request = compact_request(request);
+        let bytes = bytes.into_boxed_slice().into_vec();
+        let capabilities = capabilities
+            .into_iter()
+            .map(compact_string)
+            .collect::<Vec<_>>()
+            .into_boxed_slice()
+            .into_vec();
+        let snapshot_origin =
+            snapshot_origin.map(|(epoch, origin)| (epoch, compact_string(origin)));
         if let Some(index) = self
             .queue
             .iter()
@@ -681,6 +693,20 @@ impl Session {
     pub fn is_alive(&self) -> bool {
         self.process.is_some()
     }
+}
+fn compact_string(value: String) -> String {
+    value.into_boxed_str().into_string()
+}
+fn compact_request(mut request: Request) -> Request {
+    request.id = compact_string(request.id);
+    request.project_id = compact_string(request.project_id);
+    request.entry_path = compact_string(request.entry_path);
+    for document in &mut request.documents {
+        document.path = compact_string(std::mem::take(&mut document.path));
+        document.text = compact_string(std::mem::take(&mut document.text));
+    }
+    request.documents = request.documents.into_boxed_slice().into_vec();
+    request
 }
 fn safe_path(p: &str) -> bool {
     !p.is_empty()
@@ -1006,3 +1032,6 @@ s=json.dumps(v,separators=(',',':'));v['opaque'][0]='x'*(8388608-1-len(s));print
         );
     }
 }
+
+#[cfg(test)]
+mod queue_accounting;
