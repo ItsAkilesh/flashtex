@@ -5,10 +5,18 @@
   "stop_condition": "explicit user stop only; verified completion starts another improvement cycle",
   "authorization": "Latest explicit user instruction: continue improvements even after verified completion until the user explicitly stops work. Existing billing and authentication restrictions remain.",
   "completion_evidence": [],
-  "local_max_active_agents": 7,
-  "paused_agents": [],
-  "paused_agent_handles": [],
-  "staffing_authorization": "Latest user explicitly reports plan reset and requests6 Astra product engineers plus unchanged soleCommander. Existing3 pausedproduct handles reactivated, no descendants or unrelated remote expansion.",
+  "local_max_active_agents": 4,
+  "paused_agents": [
+    "bridge-context-jobs",
+    "commander-project-index",
+    "commander-edit-ledger"
+  ],
+  "paused_agent_handles": [
+    "/root/bridge_context",
+    "/root/orchestrator_sol/corpus_continuation",
+    "/root/orchestrator_sol/mac_integration_review"
+  ],
+  "staffing_authorization": "Latest user: retain three Astra engineers plus Commander; discontinued three may finish current task only, then stop. No followups, replacements or compensating remote expansion.",
   "no_compensating_reallocation": true,
-  "updated_utc": "2026-09-12T08:18:56.142617+00:00"
+  "updated_utc": "2026-09-12T08:35:11.897361+00:00"
 }

@@ -1,4 +1,4 @@
-//! One bounded request per process. Native callers must run IO off the UI thread.
+//! Bounded single-request or JSONL session helper. Run IO off the UI thread.
 use flashtex_assistant_context::{CompileBinding, Context, Location};
 use flashtex_edit_ledger::Document;
 use serde::Deserialize;
@@ -18,6 +18,32 @@ struct Input {
     destinations: Option<Vec<Location>>,
     response: Option<Value>,
     current_sources: Option<Vec<Document>>,
+    explanation_request_id: Option<String>,
+    approved_review_id: Option<String>,
+    user_approved: Option<bool>,
+}
+fn build_context(request: &Input) -> Result<Context, String> {
+    let mut context = match &request.selected_diagnostics {
+        Some(indices) => Context::build_selected(
+            request.binding.clone(),
+            &request.sources,
+            &request.compiler_result,
+            &request.user_instruction,
+            &request.related_paths,
+            indices,
+        )?,
+        None => Context::build(
+            request.binding.clone(),
+            &request.sources,
+            &request.compiler_result,
+            &request.user_instruction,
+            &request.related_paths,
+        )?,
+    };
+    if let Some(destinations) = &request.destinations {
+        context = context.restrict_edits(destinations.clone(), &request.sources)?;
+    }
+    Ok(context)
 }
 fn run() -> Result<Value, String> {
     let mut bytes = Vec::new();
@@ -29,26 +55,10 @@ fn run() -> Result<Value, String> {
         return Err("input exceeds16MiB".into());
     }
     let request: Input = serde_json::from_slice(&bytes).map_err(|e| e.to_string())?;
-    let mut context = match request.selected_diagnostics {
-        Some(indices) => Context::build_selected(
-            request.binding,
-            &request.sources,
-            &request.compiler_result,
-            &request.user_instruction,
-            &request.related_paths,
-            &indices,
-        )?,
-        None => Context::build(
-            request.binding,
-            &request.sources,
-            &request.compiler_result,
-            &request.user_instruction,
-            &request.related_paths,
-        )?,
-    };
-    if let Some(destinations) = request.destinations {
-        context = context.restrict_edits(destinations, &request.sources)?;
-    }
+    process(request)
+}
+fn process(request: Input) -> Result<Value, String> {
+    let context = build_context(&request)?;
     match request.operation.as_str() {
         "prepare" => Ok(json!({"type":"prepared_context","payload":context.payload()})),
         "validate" => {
@@ -60,10 +70,69 @@ fn run() -> Result<Value, String> {
             )?;
             Ok(json!({"type":"validated_proposal","payload":proposal,"applied":false}))
         }
-        _ => Err("operation must be prepare or validate".into()),
+        "review" | "approve" => {
+            let response =
+                serde_json::to_vec(request.response.as_ref().ok_or("response required")?)
+                    .map_err(|e| e.to_string())?;
+            let current = request
+                .current_sources
+                .as_ref()
+                .ok_or("current_sources required")?;
+            let review = flashtex_assistant_context::ProposalReview::prepare(
+                request
+                    .explanation_request_id
+                    .as_deref()
+                    .ok_or("explanation_request_id required")?,
+                &context,
+                &response,
+                current,
+            )?;
+            if request.operation == "review" {
+                Ok(
+                    json!({"type":"proposal_review","review_id":review.review_id(),"payload":review.proposal(),"requires_user_approval":true,"applied":false}),
+                )
+            } else {
+                let approved = review.approve(
+                    request.user_approved == Some(true),
+                    request
+                        .approved_review_id
+                        .as_deref()
+                        .ok_or("approved_review_id required")?,
+                    current,
+                )?;
+                Ok(json!({"type":"approved_group","payload":approved,"applied":false}))
+            }
+        }
+        _ => Err("operation must be prepare, validate, review or approve".into()),
     }
 }
+#[cfg(feature = "grok")]
+mod provider_session;
+mod session;
 fn main() {
+    let args: Vec<_> = std::env::args().skip(1).collect();
+    #[cfg(feature = "grok")]
+    if args.first().map(String::as_str) == Some("--provider-session") && args.len() == 3 {
+        let result = std::env::var("FLASHTEX_GROK_API_KEY")
+            .map_err(|_| "explicit provider credential missing".to_owned())
+            .and_then(|key| session::run_provider(&args[1], &args[2], key));
+        if let Err(error) = result {
+            eprintln!("{error}");
+            std::process::exit(2);
+        }
+        return;
+    }
+    if args.first().map(String::as_str) == Some("--session") && args.len() == 2 {
+        if let Err(error) = session::run(&args[1]) {
+            eprintln!("{error}");
+            std::process::exit(2);
+        }
+        return;
+    }
+    if !args.is_empty() {
+        eprintln!("usage: flashtex-assistant-context [--session FRESH_SESSION_ID]");
+        std::process::exit(2);
+    }
     let (value, failed) = match run() {
         Ok(value) => (value, false),
         Err(error) => (json!({"type":"error","message":error}), true),
