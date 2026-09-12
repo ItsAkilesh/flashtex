@@ -418,13 +418,22 @@ def registration_diagnostics(ref, ours, dpi, max_shift_pt=60):
     m = int(round(max_shift_pt * dpi / 72))
     dx = best_shift(rc, oc, m)
     dy = best_shift(rr, orr, m)
-    reg = shifted(ours, -dx, -dy)
-    after = pair_metrics(ref, reg)
-    return {"available": True, "method": "1-D ink projection cross-correlation (dx from columns, dy from rows), search ±%d pt; scale assumed 1" % max_shift_pt,
-            "shift_px": [dx, dy], "shift_pt": [round(dx * 72 / dpi, 2), round(dy * 72 / dpi, 2)],
-            "centroid_shift_pt": [round((co[0] - cr[0]) * 72 / dpi, 2), round((co[1] - cr[1]) * 72 / dpi, 2)],
-            "registered_diff_mean": after["diff_mean"], "registered_differing_fraction": after["differing_fraction"],
-            "registered_ssim_8x8_mean": after["ssim_8x8_mean"]}
+    raw = pair_metrics(ref, ours)
+    out = {"available": True, "method": "1-D ink projection cross-correlation (dx from columns, dy from rows), search ±%d pt; scale assumed 1; "
+                                        "a candidate shift counts as registration error only if undoing it lowers mean|Δ| (else rejected, shift 0)" % max_shift_pt,
+           "centroid_shift_pt": [round((co[0] - cr[0]) * 72 / dpi, 2), round((co[1] - cr[1]) * 72 / dpi, 2)],
+           "candidate_shift_pt": [round(dx * 72 / dpi, 2), round(dy * 72 / dpi, 2)]}
+    after = pair_metrics(ref, shifted(ours, -dx, -dy)) if (dx or dy) else raw
+    if (dx or dy) and after["diff_mean"] >= raw["diff_mean"]:
+        # The projections correlate best at an offset that does not explain the difference
+        # (typically different line breaks): not a registration error, so report none.
+        out["candidate_rejected"] = {"shift_pt": out["candidate_shift_pt"], "diff_mean_if_applied": after["diff_mean"],
+                                     "ssim_8x8_mean_if_applied": after["ssim_8x8_mean"]}
+        dx, dy, after = 0, 0, raw
+    out.update({"shift_px": [dx, dy], "shift_pt": [round(dx * 72 / dpi, 2), round(dy * 72 / dpi, 2)],
+                "registered_diff_mean": after["diff_mean"], "registered_differing_fraction": after["differing_fraction"],
+                "registered_ssim_8x8_mean": after["ssim_8x8_mean"]})
+    return out
 
 
 def display_boxes_from_words(words, page, dpi, left_pt=72, right_pt=540):
@@ -609,6 +618,9 @@ def compare_pages(ref_prefixes, our_prefixes, out_dir, tag, threshold, dpi, max_
                     best = {"dist_pt": round(dist, 2), "dx_pt": round(dxc, 2), "dy_pt": round(dyc, 2),
                             "ref_len_pt": round((q["x1"] - q["x0"]) * 72 / dpi, 2), "ours_len_pt": round((r["x1"] - r["x0"]) * 72 / dpi, 2),
                             "ref_thick_px": q["y1"] - q["y0"] + 1, "ours_thick_px": r["y1"] - r["y0"] + 1}
+            if best is None:  # FlashTeX drew a rule where the reference has none on this page
+                best = {"unmatched": True, "ours_len_pt": round((r["x1"] - r["x0"]) * 72 / dpi, 2),
+                        "ours_y_pt": round((r["y0"] + r["y1"]) / 2 * 72 / dpi, 2), "ours_thick_px": r["y1"] - r["y0"] + 1}
             matched.append(best)
         pages.append({
             "page": n + 1, "width_px": w1, "height_px": h1,
@@ -912,8 +924,11 @@ def build_report(entries, prov, evidence, thresholds_result, regress_result, arg
                         f"[heatmap]({p['heatmap']}) ({p['heatmap_bytes']} B, ÷{p['heatmap_downscale']})" if p.get("overlay") else "; images not emitted for this engine"))
             reg = p.get("registration") or {}
             if reg.get("available"):
+                rej = reg.get("candidate_rejected")
                 L.append(f"  - registration error (diagnostic): global shift {reg['shift_pt']} pt by ink-projection correlation "
-                         f"(centroid estimate {reg['centroid_shift_pt']} pt); rendering error after undoing it: mean|Δ| "
+                         + (f"(correlation candidate {rej['shift_pt']} pt REJECTED: applying it gives mean|Δ| {rej['diff_mean_if_applied']}, not lower; "
+                            f"centroid estimate {reg['centroid_shift_pt']} pt); " if rej else f"(centroid estimate {reg['centroid_shift_pt']} pt); ")
+                         + f"rendering error after undoing it: mean|Δ| "
                          f"{reg['registered_diff_mean']}, differing {reg['registered_differing_fraction']}, SSIM₈ {reg['registered_ssim_8x8_mean']} "
                          f"(raw {p['diff_mean']}, {p['differing_fraction']}, {p['ssim_8x8_mean']})")
             if p.get("regions"):
@@ -923,7 +938,9 @@ def build_report(entries, prov, evidence, thresholds_result, regress_result, arg
                     for rg in p["regions"] if "raw" in rg))
             if p["rule_matches"]:
                 L.append("  - rules (FlashTeX → nearest reference ink row, pt): " + "; ".join(
-                    f"Δx {m['dx_pt']} Δy {m['dy_pt']} len {m['ours_len_pt']} vs {m['ref_len_pt']}, thickness px {m['ours_thick_px']} vs {m['ref_thick_px']}"
+                    (f"Δx {m['dx_pt']} Δy {m['dy_pt']} len {m['ours_len_pt']} vs {m['ref_len_pt']}, thickness px {m['ours_thick_px']} vs {m['ref_thick_px']}"
+                     if m and not m.get("unmatched") else
+                     f"FlashTeX rule len {m['ours_len_pt']} at y {m['ours_y_pt']} pt with NO reference rule on this page" if m else "unmatched")
                     for m in p["rule_matches"][:3]))
         w = e.get("words") or {}
         if w.get("largest"):
@@ -992,11 +1009,19 @@ def main():
                     help="comma-separated sides (export, preview, native) whose PNGs are written; metrics are computed for all")
     ap.add_argument("--images-for-engines", default="pdflatex,pdflatex-lm",
                     help="comma-separated engines whose overlay/heatmap PNGs are written (metrics are computed for all); 'all' for every engine")
+    ap.add_argument("--from-metrics", default=None, help="rebuild report.md only, from this metrics.json (no comparison is recomputed)")
     args = ap.parse_args()
 
     os.makedirs(args.evidence, exist_ok=True)
     prov = json.load(open(args.provenance)) if args.provenance else {}
     thresholds = json.load(open(args.thresholds)) if args.thresholds else None
+    if args.from_metrics:
+        m = json.load(open(args.from_metrics))
+        entries, gates = m["entries"], m.get("gates", [])
+        tr = [e for e in entries if e.get("thresholds", {}).get("failures")] if thresholds is not None else None
+        open(os.path.join(args.evidence, "report.md"), "w", encoding="utf-8").write(
+            build_report(entries, prov, args.evidence, tr, m.get("regress"), args, gates))
+        return 0
     fixtures = sorted(d for d in os.listdir(args.reference) if os.path.isdir(os.path.join(args.reference, d)))
     entries = []
     for fx in fixtures:
