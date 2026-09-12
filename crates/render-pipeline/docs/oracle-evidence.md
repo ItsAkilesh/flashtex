@@ -188,6 +188,43 @@ a per-paragraph cache keyed by (text, style, measure) is the next step
 620 ms → 116 ms). Measurements were taken with other agents loading the
 machine (load average 35–45); treat them as upper bounds.
 
+## Incremental layout reuse (`a8e39c1`)
+
+Per-block cache across requests (`src/incremental.rs`): an edit inside one
+paragraph retypesets that paragraph only; every other block's lines, box
+records and math boxes are cloned back with their source offsets relocated
+and their diagnostics replayed. `tests/incremental.rs` compares the
+`compile_result` and `display_list` lines of the caching path with a fresh
+compile after each edit of a script (insert/delete words at moving
+positions, change every display, delete a paragraph so later blocks shift):
+**200 edits over a 27-page document (111 325 block hits / 597 misses) and 30
+edits over a 107-page document (65 711 / 1 479): byte-identical throughout.**
+
+Warm per-edit cost, one-word edit in the middle of the document, Latin
+Modern, M1 Max (other agents loading the machine; the CPU column is
+user+sys time of the worker per request and is load-independent):
+
+| document | pages | before this lane (`4888a67`) | `1ade215` | **`a8e39c1`** (incremental) | worker CPU / request | fresh process |
+|---|---|---|---|---|---|---|
+| 08+09 ×1 | 3 | 9.7 ms | — | **7.4 ms** wall | 5.4 ms | 42 ms |
+| ×10 | 27 | 95 ms | 71 ms | **~38 ms in-process** (wall medians 56–123 ms under load 13–60) | 45.6 ms (incl. request parse + 4.3 MB reply write) | 90–120 ms |
+
+Stage split at 27 pages after the change: parse 3.4 ms, adapt 9.1, typeset
+(shape + break + pages, all blocks cached) 5.4 (was 21), assemble v2 8.6
+(was 13), v1 4.8, JSON 6.9. What remains is mostly output construction
+for a 4.3 MB reply (assemble + v1 + JSON ≈ 20 ms) and the adapter's
+per-character source records (9 ms); the target of "well under 30 ms" at
+27 pages is not met yet — the next levers are caching assembled display
+items per block (needs tick-exact relocation) and a per-block adapter
+cache keyed by the compiler's block dependencies.
+
+Independent check (Commander, rendering-core `ef350d2`, issue #2 11:00Z):
+02-wrapping-paragraph rendered from `65dbe7d` with rooted LM 2.004 assets
+and compared with Poppler at 144 DPI: all 13 line memberships and the
+210-word sequence match; the earliest horizontal difference inside the
+first word is +0.0054 bp, attributed to pdfTeX's `TJ`/`Tf` rounding versus
+the pipeline's exact ticks (84362432 / 2^20 bp), not a layout displacement.
+
 ## rendering-v2 validation against main's `rendering-core`
 
 `flashtex-render --v2` envelopes for all 18 fixtures (with `rules-v1` +

@@ -6,18 +6,18 @@ font/paragraph/math boxes" + follow-ups (large-edit cost, capability/provenance 
 `agent/mac-render-pipeline/unified`
 Worktree: `/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a1798a96df2c0bacc`
 (local branch `rp/resume`, pushed as `agent/mac-render-pipeline/unified`)
-State: lane objectives met for the text and math fixtures the compiler can parse; follow-ups
-measured; every pushed SHA is a tested checkpoint (`cargo test --release`: 39 passed at
-1ade215)
+State: geometry lane done for every fixture the compiler can parse; incremental reuse
+shipped (byte-identical); every pushed SHA is a tested checkpoint (`cargo test --release`:
+42 passed + 1 ignored slow test at a8e39c1)
 Owned paths: `crates/render-pipeline/**` (this lane), plus `docs/proposals/rendering-abi.md`,
 `coordination/mac-render-pipeline.md`, `coordination/agents/mac-render-pipeline.json`
 Rules in force: no purchases; crates/font-engine, crates/paragraph-layout, crates/math-layout
 are transferred to another machine and are NOT edited (consumed as vendored pins; gaps go to
 issue #2 with fixture + numbers); commits by the implementing agent with truthful trailers,
 jay3332 as primary author on this machine.
-Main integrated through: merged origin/main ddc5bc6 (79ba728); compiler re-vendored from
-main 745f327; reviewed rendering-core/font-resources on main through 8e2c70a and the
-font-resources branch through cb4ff5f (pinned).
+Main integrated through: merged origin/main 60c40c1 (d556519); compiler vendored from main
+745f327; font-resources and project-files pinned at main 60c40c1 (crates last changed by
+79bdada / d92db37).
 
 ## Completed behavior (all on the branch)
 - TFM-exact text metrics through the shared font-resources reader (cb4ff5f): widths, kerns,
@@ -33,10 +33,14 @@ font-resources branch through cb4ff5f (pinned).
   per-request decline over the 16 MiB reply limit; cli_e2e gate.
 - `fonts[].sha256` = raw file digest (FT-023 blocker), engine id kept private.
 - Reply limit 16 MiB (explicit failure), Core 14 lookup fix, per-stage timing example.
+- Incremental layout reuse (a8e39c1): per-block cache keyed by relative-offset items + flags +
+  style fingerprint; relocation + diagnostic replay; 200-edit/27-page and 30-edit/107-page
+  scripts byte-identical vs fresh; display-list-v2 declined from a size estimate.
 
 ## Tests (exact evidence)
-`cd crates/render-pipeline && cargo test --release`: 39 passed (unit 20; cli_e2e 3; golden v1 3;
-latex_structure 6; metrics_provenance 2; v2_and_math 5). Oracle harness:
+`cd crates/render-pipeline && cargo test --release`: 42 passed (unit 21; cli_e2e 3; golden v1 3;
+incremental 1 (+1 ignored: 107 pages, run with `--ignored`); latex_structure 6;
+metrics_provenance 2; v2_and_math 5). Oracle harness:
 `scratchpad/run_oracle.sh` → `scratchpad/table.py pdflatex-lm`; per-word `scratchpad/words.py`.
 Edit cost: `scratchpad/rp/editcost.py <reps> <edits>`; stages: `cargo run --release --example
 stages -- file.tex 2`.
@@ -45,26 +49,30 @@ stages -- file.tex 2`.
 - 13/14 need compiler math parser support for `\left`/`\right` and Greek control words.
 - Lists (11), `ǅ` (10), extensible delimiter assemblies (no OTF mapping → `math_glyph_unmapped`),
   `\emph{\textbf{x}} y` outer-group italic correction.
-- No incremental layout reuse: 27 pages ≈ 71 ms per edit warm (1ade215); 107 pages exceed the 16 MiB v1 reply.
+- 27 pages ≈ 38 ms in-process / 45 ms worker CPU per edit (a8e39c1; target "well under 30" not
+  yet met: output construction ≈ 20 ms, adapter 9 ms); 107 pages exceed the 16 MiB v1 reply.
 - Provenance pins exist only for the 12 pt set; other sizes' TFMs warn (`tfm_missing`).
 
 ## Next steps (in order)
-1. Per-paragraph shaping/line-break cache keyed by (text, style, measure) to cut the
-   per-edit cost on large documents (typeset 23 ms + assemble/v1/json ~50 ms at 27 pages).
+1. Cut the remaining per-edit cost at 27 pages: cache assembled display items per block
+   (tick-exact relocation) and a per-block adapter cache keyed by the compiler's block
+   dependencies; measure on a quiet machine.
 2. Extensible delimiter/radical assemblies → LM Math glyph assemblies (math-layout API ask).
 3. When the compiler adds `\left`/`\right`/Greek, re-run 13/14 and update the evidence table.
 4. Keep `docs/oracle-evidence.md` and README in step; un-vendor siblings as they merge.
 
 ## Dependency SHAs (vendored under crates/render-pipeline/vendor, PIN files)
 compiler main 745f327 (crates/compiler 75c8018), font-engine f418238, paragraph-layout
-70209e2, math-layout db90047, pdf 4bd8c2e, document-style bfc980d, font-resources cb4ff5f,
-project-files cb4ff5f.
+70209e2, math-layout db90047, pdf 4bd8c2e, document-style bfc980d, font-resources main
+60c40c1 (79bdada), project-files main 60c40c1 (d92db37).
 
 ## Running commands / messages
 No background jobs. Coordinator items answered on issue #2: geometry report (9bb7b27),
 display-list-v2 ACK + tfm_missing (4888a67), font-resources adoption + raw digests + blocking
-required metrics (919ad8b).
+required metrics (919ad8b), incremental reuse (a8e39c1). Commander's rendering-core ef350d2
+check of 02-wrapping-paragraph (+0.0054 bp = pdfTeX TJ/Tf rounding, no layout displacement)
+is recorded in docs/oracle-evidence.md.
 
 Attach to the Mac app: `FLASHTEX_COMPILER=<repo>/crates/render-pipeline/target/release/flashtex-render`.
 Resource state: shared 20x Max quota on mac-m1max-a; usage not observable from a subagent.
-Updated: 2026-09-12T10:20:00Z
+Updated: 2026-09-12T11:15:00Z

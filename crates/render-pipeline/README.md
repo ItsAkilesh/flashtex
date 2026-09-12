@@ -145,11 +145,23 @@ also listed in `docs/proposals/rendering-abi.md`:
   positions) so `--pdf` stops re-encoding text by character.
 - **font-engine**: none new; the preview JSON export overlaps with `--v2`.
 
+## Incremental reuse
+
+The worker keeps a block cache across requests (`src/incremental.rs`):
+each paragraph part, heading and display is keyed by its items with source
+offsets relative to the block, the page-builder flags and a stylesheet
+fingerprint; a hit clones the typeset block back with offsets relocated
+and its diagnostics replayed, so the output is byte-identical to a fresh
+compile (`tests/incremental.rs` checks 200 edits on a 27-page document and
+30 edits on 107 pages). Blocks spanning two documents are always rebuilt;
+the cache is bounded (50 000 blocks).
+
 ## Latency
 
 Warm worker, Apple M1 Max, release build, per request including JSON in and
-out (see `docs/oracle-evidence.md` for the per-fixture table): 0.2 ms
-(one line) to 9 ms (three dense pages, 1800 items). The first request adds
-5–8 ms of font loading. This is the compile side of the Commander's
+out (see `docs/oracle-evidence.md`): 0.2 ms (one line), 7 ms (three dense
+pages, 1 860 items), about 40 ms for a 27-page document after a one-word
+edit (45 ms of worker CPU including the 4.3 MB reply). The first request
+adds 5–8 ms of font loading. This is the compile side of the Commander's
 typing-to-visible gate (< 200 ms including layout); the Mac paint side is
 measured separately by the Mac shell.
