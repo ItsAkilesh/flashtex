@@ -321,7 +321,8 @@ public enum RenderingV2 {
         return envelope
     }
 
-    private static func checkHeader(version: Int, type: String) throws {
+    /// Version/type refusal shared by every decoding path.
+    public static func checkHeader(version: Int, type: String) throws {
         guard version == protocolVersion else {
             throw ValidationError(code: "unsupported_protocol_version", message: "protocol version \(version) is not supported; this consumer speaks rendering-v2 (protocol_version 2)")
         }

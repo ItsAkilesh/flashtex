@@ -175,16 +175,35 @@ enum V2Loader {
 
     /// Bitmaps rasterized in the same off-main job as the preparation, at the
     /// pane's last requested pixels-per-point/appearance, so the publish and
-    /// the first blit happen in one main-thread pass instead of three.
+    /// the first blit happen in one main-thread pass instead of three. Keyed
+    /// by page content token (`V2Frame.pageTokens`).
     struct Prerastered {
         var pixelsPerPoint: Double
         var dark: Bool
-        var images: [(page: Int, image: CGImage)]
+        var images: [(token: String, image: CGImage)]
     }
 
-    static func preraster(_ frame: V2Frame, pixelsPerPoint: Double, dark: Bool) -> Prerastered {
-        Prerastered(pixelsPerPoint: pixelsPerPoint, dark: dark,
-                    images: frame.prepared.compactMap { page in GlyphRunRenderer.rasterize(page, scale: pixelsPerPoint, dark: dark).map { (page.number, $0) } })
+    /// What the pane last asked for and which page tokens it already holds at
+    /// that scale/appearance: the loader pre-rasterizes only the pages whose
+    /// content is new. Captured on the main thread before the off-main job.
+    struct RasterHint {
+        var pixelsPerPoint: Double
+        var dark: Bool
+        var cachedTokens: Set<String> = []
+    }
+
+    static func preraster(_ frame: V2Frame, pixelsPerPoint: Double, dark: Bool, skipping cached: Set<String> = []) -> Prerastered {
+        var images: [(token: String, image: CGImage)] = []
+        for (index, page) in frame.prepared.enumerated() {
+            let token = frame.pageToken(at: index)
+            if cached.contains(token) { continue }
+            if let image = GlyphRunRenderer.rasterize(page, scale: pixelsPerPoint, dark: dark) { images.append((token, image)) }
+        }
+        return Prerastered(pixelsPerPoint: pixelsPerPoint, dark: dark, images: images)
+    }
+
+    static func preraster(_ frame: V2Frame, hint: RasterHint) -> Prerastered {
+        preraster(frame, pixelsPerPoint: hint.pixelsPerPoint, dark: hint.dark, skipping: hint.cachedTokens)
     }
 
     /// Pure preparation: file → decoded, validated, font-resolved, page-prepared frame.
@@ -197,11 +216,12 @@ enum V2Loader {
     }
 
     /// Pure preparation of one `display_list` envelope's bytes (a file or the
-    /// worker's sibling line).
-    static func prepare(data: Data, store: V2FontStore = .shared) -> Outcome {
+    /// worker's sibling line). Pages whose raw bytes were prepared before
+    /// under the same font manifest are reused from `cache` (V2PageCache.swift);
+    /// decoding, validation and font resolution are otherwise unchanged.
+    static func prepare(data: Data, store: V2FontStore = .shared, cache: V2PageCache? = .shared) -> Outcome {
         do {
-            let envelope = try RenderingV2.decode(data)
-            return .loaded(try V2Frame.prepare(envelope, store: store))
+            return .loaded(try V2Frame.prepare(data: data, store: store, cache: cache))
         } catch let error as RenderingV2.ValidationError {
             return .failed(error)
         } catch {
@@ -308,19 +328,22 @@ extension ShellModel {
         if !source.isLive { captureNote = "Loading display list \(source.label)…" }
         let t0 = MonotonicClock.nowNs()
         if TypingBench.isBenchActive { FlashTeXLog.write("preview-v2: preparing \(source.label) ticket \(ticket) at \(t0)") }
-        let rasterHint = V2PageRasterizer.shared.lastRequest
+        let rasterHint = V2PageRasterizer.shared.rasterHint
         V2Loader.queue.async {
             let outcome = prepare()
             let t1 = MonotonicClock.nowNs()
             var prerastered: V2Loader.Prerastered?
             if case .loaded(let frame) = outcome, let hint = rasterHint {
-                prerastered = V2Loader.preraster(frame, pixelsPerPoint: hint.pixelsPerPoint, dark: hint.dark)
+                prerastered = V2Loader.preraster(frame, hint: hint)
             }
             let t2 = MonotonicClock.nowNs()
             let prerasteredResult = prerastered // immutable copy for the Sendable delivery closure
             V2Loader.deliverOnMain {
                 MainActor.assumeIsolated {
-                    if TypingBench.isBenchActive { FlashTeXLog.write("preview-v2: prepared \(source.label) in \(Double(t1 &- t0) / 1e6) ms, prerastered \(prerasteredResult?.images.count ?? 0) page(s) in \(Double(t2 &- t1) / 1e6) ms, delivered \(Double(MonotonicClock.nowNs() &- t2) / 1e6) ms later") }
+                    if TypingBench.isBenchActive {
+                        let reused = { if case .loaded(let f) = outcome { "\(f.reusedPages)/\(f.prepared.count)" } else { "-" } }()
+                        FlashTeXLog.write("preview-v2: prepared \(source.label) in \(Double(t1 &- t0) / 1e6) ms (reused pages \(reused)), prerastered \(prerasteredResult?.images.count ?? 0) page(s) in \(Double(t2 &- t1) / 1e6) ms, delivered \(Double(MonotonicClock.nowNs() &- t2) / 1e6) ms later")
+                    }
                     self.deliverDisplayListV2(ticket: ticket, source: source, outcome: outcome, prerastered: prerasteredResult)
                     completion?()
                 }
@@ -424,20 +447,22 @@ extension ShellModel {
     }
 }
 
-/// Off-main page bitmaps for the pane, keyed by frame identity, page, scale
-/// and appearance. A page is rasterized once through
+/// Off-main page bitmaps for the pane, keyed by page content identity
+/// (`V2Frame.pageTokens`: the page bytes' hash, length and font manifest
+/// digest), scale and appearance. A page is rasterized once through
 /// `GlyphRunRenderer.rasterize` (the same routine and bitmap configuration
 /// the export parity check compares) and then only blitted, so hover/caret
-/// repaints never re-run glyph drawing on the main thread. Bitmaps for a
-/// frame that is no longer current are dropped when they arrive (stale paint
-/// suppression) and evicted when the frame changes. Retention is bounded in
-/// bytes; the least recently requested pages go first.
+/// repaints never re-run glyph drawing on the main thread, and a frame that
+/// carries a page with the same bytes as the frame before it keeps that
+/// page's bitmap. Bitmaps whose page is not in the current frame are dropped
+/// when they arrive (stale paint suppression) and evicted when the frame
+/// changes. Retention is bounded in bytes; the least recently requested
+/// pages go first.
 @MainActor
 @Observable
 final class V2PageRasterizer {
     struct Key: Hashable {
-        var frameToken: String
-        var page: Int
+        var pageToken: String
         /// Pixels per PDF point (display scale × backing scale).
         var pixelsPerPoint: Double
         var dark: Bool
@@ -454,9 +479,9 @@ final class V2PageRasterizer {
     @ObservationIgnored private(set) var images: [Key: CGImage] = [:]
     @ObservationIgnored private var order: [Key] = []
     @ObservationIgnored private var inFlight: Set<Key> = []
-    /// Observed: a page body that asked before the frame became current
+    /// Observed: a page body that asked before its frame became current
     /// re-evaluates (and re-requests) when `setCurrent` runs.
-    private(set) var currentFrameToken: String?
+    private(set) var currentTokens: Set<String> = []
     @ObservationIgnored private(set) var retainedBytes = 0
     @ObservationIgnored let maxBytes: Int
     @ObservationIgnored private(set) var staleBitmapsDropped = 0
@@ -468,20 +493,33 @@ final class V2PageRasterizer {
 
     init(maxBytes: Int = 192 << 20) { self.maxBytes = maxBytes }
 
-    /// Marks `frame` as the one on screen; bitmaps of any other frame are
-    /// evicted now and dropped if still in flight.
-    func setCurrent(frameToken: String?) {
-        guard currentFrameToken != frameToken else { return }
-        currentFrameToken = frameToken
-        for key in order where key.frameToken != frameToken { drop(key) }
-        order.removeAll { $0.frameToken != frameToken }
+    /// Marks the pages of `frame` as the ones on screen; bitmaps of any other
+    /// page are evicted now and dropped if still in flight.
+    func setCurrent(frame: V2Frame?) { setCurrent(pageTokens: frame.map { Set($0.pageTokens.indices.map($0.pageToken(at:))) } ?? []) }
+
+    func setCurrent(pageTokens: Set<String>) {
+        guard currentTokens != pageTokens else { return }
+        currentTokens = pageTokens
+        for key in order where !pageTokens.contains(key.pageToken) { drop(key) }
+        order.removeAll { !pageTokens.contains($0.pageToken) }
+    }
+
+    /// The loader's pre-raster hint: the last requested scale/appearance and
+    /// the page tokens already held at it (nil before the pane asked once).
+    var rasterHint: V2Loader.RasterHint? {
+        guard let last = lastRequest else { return nil }
+        return V2Loader.RasterHint(pixelsPerPoint: last.pixelsPerPoint, dark: last.dark, cachedTokens: cachedTokens(pixelsPerPoint: last.pixelsPerPoint, dark: last.dark))
+    }
+
+    func cachedTokens(pixelsPerPoint: Double, dark: Bool) -> Set<String> {
+        Set(images.keys.filter { $0.pixelsPerPoint == pixelsPerPoint && $0.dark == dark }.map(\.pageToken))
     }
 
     /// The bitmap for `page` if ready; otherwise starts rasterizing it
     /// off-main and returns nil (the page paints its background until the
     /// bitmap arrives on the next run-loop turn).
-    func image(for page: V2PreparedPage, frameToken: String, pixelsPerPoint: Double, dark: Bool) -> CGImage? {
-        let key = Key(frameToken: frameToken, page: page.number, pixelsPerPoint: pixelsPerPoint, dark: dark)
+    func image(for page: V2PreparedPage, pageToken: String, pixelsPerPoint: Double, dark: Bool) -> CGImage? {
+        let key = Key(pageToken: pageToken, pixelsPerPoint: pixelsPerPoint, dark: dark)
         lastRequest = (pixelsPerPoint, dark)
         let slot: Slot
         if let existing = slots[key] { slot = existing } else { slot = Slot(); slots[key] = slot }
@@ -489,7 +527,7 @@ final class V2PageRasterizer {
             touch(key)
             return image
         }
-        guard frameToken == currentFrameToken, !inFlight.contains(key) else { return nil }
+        guard currentTokens.contains(pageToken), !inFlight.contains(key) else { return nil }
         inFlight.insert(key)
         let t0 = MonotonicClock.nowNs()
         Self.queue.async {
@@ -499,7 +537,7 @@ final class V2PageRasterizer {
             V2Loader.deliverOnMain {
                 MainActor.assumeIsolated {
                     if TypingBench.isBenchActive {
-                        FlashTeXLog.write("preview-v2: raster page \(key.page) of \(key.frameToken.prefix(24)): queued \(Double(t1 &- t0) / 1e6) ms, drew \(Double(t2 &- t1) / 1e6) ms, delivered \(Double(MonotonicClock.nowNs() &- t2) / 1e6) ms later at \(MonotonicClock.nowNs())")
+                        FlashTeXLog.write("preview-v2: raster page \(page.number) \(key.pageToken.prefix(24)): queued \(Double(t1 &- t0) / 1e6) ms, drew \(Double(t2 &- t1) / 1e6) ms, delivered \(Double(MonotonicClock.nowNs() &- t2) / 1e6) ms later at \(MonotonicClock.nowNs())")
                     }
                     self.install(image, for: key)
                 }
@@ -508,13 +546,13 @@ final class V2PageRasterizer {
         return nil
     }
 
-    /// Installs an arrived bitmap unless its frame is no longer current.
+    /// Installs an arrived bitmap unless its page is no longer current.
     func install(_ image: CGImage?, for key: Key) {
         inFlight.remove(key)
         rasterizations += 1
-        guard key.frameToken == currentFrameToken, let image else {
+        guard currentTokens.contains(key.pageToken), let image else {
             staleBitmapsDropped += 1
-            FlashTeXLog.write("preview-v2: dropped stale page bitmap \(key.page) of frame \(key.frameToken.prefix(24)) (current: \(currentFrameToken?.prefix(24) ?? "none"))")
+            FlashTeXLog.write("preview-v2: dropped stale page bitmap \(key.pageToken.prefix(24)) (not in the current frame)")
             return
         }
         images[key] = image
@@ -528,14 +566,15 @@ final class V2PageRasterizer {
         }
     }
 
-    /// Installs bitmaps rasterized off-main together with `frame` and makes it
-    /// current (evicting the previous frame's), immediately before the frame is
-    /// published — the pass that shows the frame finds its bitmaps ready.
+    /// Installs bitmaps rasterized off-main together with `frame` and makes
+    /// its pages current (evicting other pages' bitmaps; pages the new frame
+    /// shares with the previous one keep theirs), immediately before the
+    /// frame is published — the pass that shows the frame finds its bitmaps
+    /// ready.
     func preinstall(_ prerastered: V2Loader.Prerastered, frame: V2Frame) {
-        let token = V2FrameIdentity.token(frame)
-        setCurrent(frameToken: token)
-        for (page, image) in prerastered.images {
-            install(image, for: Key(frameToken: token, page: page, pixelsPerPoint: prerastered.pixelsPerPoint, dark: prerastered.dark))
+        setCurrent(frame: frame)
+        for (token, image) in prerastered.images {
+            install(image, for: Key(pageToken: token, pixelsPerPoint: prerastered.pixelsPerPoint, dark: prerastered.dark))
             preinstalled += 1
         }
     }
@@ -720,10 +759,6 @@ struct PreviewV2View: View {
     let onSelect: (V2Geometry.Hit) -> Void
     @Environment(\.displayScale) private var displayScale
 
-    /// Unique per prepared frame instance: a reload of the same file makes a
-    /// new frame whose bitmaps must not be confused with the old one's.
-    private var frameToken: String { V2FrameIdentity.token(frame) }
-
     var body: some View {
         GeometryReader { geo in
             let widest = frame.list.pages.map(\.widthPt).max() ?? 612
@@ -732,13 +767,19 @@ struct PreviewV2View: View {
             // viewport's top edge survives a frame with another page count and a
             // pane resize; a frame with the same page geometry never moves the scroll.
             let layout = PreviewPageLayout(pages: frame.prepared.map { PreviewPageLayout.Page(number: $0.number, widthPt: $0.widthPt, heightPt: $0.heightPt) }, scale: scale)
+            // Paint instrumentation (TypingBench.swift): the pages whose content
+            // changed since the last rendered frame are the ones expected to blit
+            // for this revision; a frame that changed no page paints nothing new.
+            let expectedDraws = V2RenderTracker.shared.changedPages(frame: frame)
+            let _ = expectedDraws == 0 ? TypingBench.shared.willRender(revision: frame.list.revision, pages: 0) : ()
             ScrollView([.vertical, .horizontal]) {
                 LazyVStack(spacing: 24) {
-                    ForEach(frame.prepared, id: \.number) { prepared in
+                    ForEach(Array(frame.prepared.enumerated()), id: \.element.number) { index, prepared in
                         if let page = frame.page(number: prepared.number) {
-                            PageV2View(page: page, prepared: prepared, frameToken: frameToken, frameRevision: frame.list.revision, pageCount: frame.prepared.count,
+                            PageV2View(page: page, prepared: prepared, pageToken: frame.pageToken(at: index), frameRevision: frame.list.revision, expectedDraws: expectedDraws,
                                        dark: dark, stale: stale, scale: scale, displayScale: displayScale,
-                                       caretMatches: caretByte.map { V2Geometry.clusters(containing: $0, path: caretPath, in: page) } ?? [],
+                                       // Only pages whose cluster sources can contain the caret walk their clusters.
+                                       caretMatches: caretByte.flatMap { prepared.mayContain(byte: $0, path: caretPath) ? V2Geometry.clusters(containing: $0, path: caretPath, in: page) : nil } ?? [],
                                        onSelect: onSelect)
                                 .equatable()
                                 .id(page.number)
@@ -750,25 +791,60 @@ struct PreviewV2View: View {
             }
         }
         .background(dark ? Color(white: 0.12) : Color(nsColor: .windowBackgroundColor))
-        .onAppear { V2PageRasterizer.shared.setCurrent(frameToken: frameToken) }
-        .onChange(of: frameToken) { _, new in V2PageRasterizer.shared.setCurrent(frameToken: new) }
+        .onAppear { V2PageRasterizer.shared.setCurrent(frame: frame) }
+        .onChange(of: frame.pageTokens) { _, _ in V2PageRasterizer.shared.setCurrent(frame: frame) }
     }
 }
 
-/// Identity of a prepared frame instance for bitmap keys: the envelope id
-/// plus the per-preparation nonce, so a reload of the same file (a new
-/// frame) never reuses the previous frame's bitmaps.
+/// Which pages of the frame being rendered differ (by content token) from the
+/// frame rendered before it. Main thread (SwiftUI render pass) only.
+@MainActor
+final class V2RenderTracker {
+    static let shared = V2RenderTracker()
+    private var lastTokens: [Int: String] = [:]
+    private var lastRevision: Int?
+
+    /// Number of pages whose token is new for this frame's revision. Repeated
+    /// evaluations for the same revision return the count of the first.
+    private var lastCount = 0
+    func changedPages(frame: V2Frame) -> Int {
+        if lastRevision == frame.list.revision, lastTokens.count == frame.prepared.count { return lastCount }
+        var tokens: [Int: String] = [:]
+        var changed = 0
+        for (index, page) in frame.prepared.enumerated() {
+            let token = frame.pageToken(at: index)
+            tokens[page.number] = token
+            if lastTokens[page.number] != token { changed += 1 }
+        }
+        lastTokens = tokens
+        lastRevision = frame.list.revision
+        lastCount = changed
+        return changed
+    }
+
+    func reset() { lastTokens = [:]; lastRevision = nil; lastCount = 0 }
+}
+
+/// Identity of a prepared frame instance: the envelope id, revision and the
+/// per-preparation nonce (header/evidence; bitmaps key on page tokens).
 enum V2FrameIdentity {
     static func token(_ frame: V2Frame) -> String { "\(frame.id)#r\(frame.list.revision)#\(frame.preparedNonce)" }
 }
 
+/// One page: bitmap lookup, hover/tap geometry and the stale/label overlays.
+/// Equatable on everything that changes what is drawn, so a pane
+/// re-evaluation for another page's bitmap, a caret move elsewhere or a
+/// header change skips this page; the blit itself lives in `PageV2Canvas`,
+/// which redraws only when its bitmap, caret or hover changes (a stale
+/// toggle or a new frame with the same page bytes never re-blits).
 private struct PageV2View: View, Equatable {
     let page: RenderingV2.Page
     let prepared: V2PreparedPage
-    let frameToken: String
-    /// Display-list revision and page count, for the typing bench's paint point.
+    let pageToken: String
+    /// Display-list revision and expected page draws, for the typing bench's
+    /// paint point (not part of the equality: they do not change the pixels).
     var frameRevision = 0
-    var pageCount = 1
+    var expectedDraws = 1
     let dark: Bool
     let stale: Bool
     let scale: CGFloat
@@ -777,12 +853,66 @@ private struct PageV2View: View, Equatable {
     let onSelect: (V2Geometry.Hit) -> Void
     @State private var hover: V2Geometry.Hit?
 
-    /// Everything that affects the drawing except the bitmap (observed through
-    /// its slot) and hover (local state): a pane re-evaluation for another
-    /// page's bitmap, a caret move elsewhere or a header change skips this page.
     static func == (a: PageV2View, b: PageV2View) -> Bool {
-        a.frameToken == b.frameToken && a.page.number == b.page.number && a.frameRevision == b.frameRevision && a.pageCount == b.pageCount
+        a.pageToken == b.pageToken && a.page.number == b.page.number
             && a.dark == b.dark && a.stale == b.stale && a.scale == b.scale && a.displayScale == b.displayScale && a.caretMatches == b.caretMatches
+    }
+
+    var body: some View {
+        let size = CGSize(width: page.widthPt * scale, height: page.heightPt * scale)
+        // Reading the slot through `image(for:)` subscribes this page to its bitmap's arrival.
+        let bitmap = V2PageRasterizer.shared.image(for: prepared, pageToken: pageToken, pixelsPerPoint: Double(scale * displayScale), dark: dark)
+        let label = bitmap == nil ? "page \(page.number) · v2 · rasterizing…" : (stale ? "page \(page.number) · v2 · STALE" : "page \(page.number) · v2")
+        let labelColor: Color = stale ? .orange : (dark ? Color(white: 0.7) : Color(white: 0.35))
+        let pageBackground: Color = dark ? Color(white: 0.16) : .white
+        let canvas = PageV2Canvas(bitmap: bitmap, pageToken: pageToken, pageNumber: page.number, frameRevision: frameRevision, expectedDraws: expectedDraws,
+                                  size: size, scale: scale, caretMatches: caretMatches, hover: hover)
+            .equatable()
+            .frame(width: size.width, height: size.height)
+            .background(pageBackground)
+            .shadow(radius: 4)
+        canvas
+            .overlay { if stale { Color.orange.opacity(0.08).allowsHitTesting(false) } }
+            .contentShape(Rectangle())
+            .onContinuousHover { phase in
+                switch phase {
+                case .active(let p): hover = V2Geometry.hit(page: page, atPointX: p.x / scale, y: p.y / scale)
+                case .ended: hover = nil
+                }
+            }
+            .onTapGesture { location in
+                if let hit = V2Geometry.hit(page: page, atPointX: location.x / scale, y: location.y / scale) { onSelect(hit) }
+            }
+            .overlay(alignment: .bottomTrailing) {
+                // Colored for the PAGE background (white or dark), not the window appearance.
+                Text(label).font(.caption2).foregroundStyle(labelColor).padding(4)
+            }
+            .help(helpText)
+    }
+
+    private var helpText: String {
+        guard let h = hover else { return "" }
+        let what = h.text.map { "“\($0)” → " } ?? "rule → "
+        let target = h.syntheticReason.map { "generated: \($0)" } ?? h.sources.map { "\($0.path) \($0.startByte)..<\($0.endByte)" }.joined(separator: ", ")
+        return what + target
+    }
+}
+
+/// The blit of one page bitmap plus caret/hover marks. Redraws only when the
+/// bitmap object, caret matches or hover change.
+private struct PageV2Canvas: View, Equatable {
+    let bitmap: CGImage?
+    let pageToken: String
+    let pageNumber: Int
+    var frameRevision = 0
+    var expectedDraws = 1
+    let size: CGSize
+    let scale: CGFloat
+    let caretMatches: [V2Geometry.CaretMatch]
+    let hover: V2Geometry.Hit?
+
+    static func == (a: PageV2Canvas, b: PageV2Canvas) -> Bool {
+        a.bitmap === b.bitmap && a.pageToken == b.pageToken && a.size == b.size && a.scale == b.scale && a.caretMatches == b.caretMatches && a.hover == b.hover
     }
 
     private func viewRect(_ r: RenderingV2.Rect) -> CGRect {
@@ -791,18 +921,14 @@ private struct PageV2View: View, Equatable {
     }
 
     var body: some View {
-        let size = CGSize(width: page.widthPt * scale, height: page.heightPt * scale)
-        let rasterizer = V2PageRasterizer.shared
-        // Reading `images` through `image(for:)` subscribes this page to bitmap arrivals.
-        let bitmap = rasterizer.image(for: prepared, frameToken: frameToken, pixelsPerPoint: Double(scale * displayScale), dark: dark)
         // Paint instrumentation (TypingBench.swift): the v2 paint point is the render
         // pass that blits a page bitmap of the frame's revision; pages whose bitmap is
         // still rasterizing do not count as drawn (finishPaint logs drew n/expected).
-        let _ = bitmap == nil ? () : TypingBench.shared.willRender(revision: frameRevision, pages: pageCount)
+        let _ = bitmap == nil ? () : TypingBench.shared.willRender(revision: frameRevision, pages: expectedDraws)
         Canvas(rendersAsynchronously: false) { context, _ in
             if let bitmap {
-                TypingBench.shared.didDraw(page: page.number) // paint instrumentation
-                if TypingBench.isBenchActive { FlashTeXLog.write("preview-v2: blit page \(page.number) of \(frameToken.prefix(24)) at \(MonotonicClock.nowNs())") }
+                TypingBench.shared.didDraw(page: pageNumber) // paint instrumentation
+                if TypingBench.isBenchActive { FlashTeXLog.write("preview-v2: blit page \(pageNumber) \(pageToken.prefix(24)) at \(MonotonicClock.nowNs())") }
                 // The off-main raster of this page, blitted 1:1 onto device
                 // pixels (no resampling): the same bitmap the parity check compares.
                 context.withCGContext { cg in
@@ -827,31 +953,6 @@ private struct PageV2View: View, Equatable {
                 }
             }
             if let hover { context.fill(Path(viewRect(hover.rect).insetBy(dx: -1, dy: -1)), with: .color(Color.accentColor.opacity(0.25))) }
-            if stale {
-                context.fill(Path(CGRect(origin: .zero, size: size)), with: .color(Color.orange.opacity(0.08)))
-            }
         }
-        .frame(width: size.width, height: size.height)
-        .background(dark ? Color(white: 0.16) : .white)
-        .shadow(radius: 4)
-        .contentShape(Rectangle())
-        .onContinuousHover { phase in
-            switch phase {
-            case .active(let p): hover = V2Geometry.hit(page: page, atPointX: p.x / scale, y: p.y / scale)
-            case .ended: hover = nil
-            }
-        }
-        .onTapGesture { location in
-            if let hit = V2Geometry.hit(page: page, atPointX: location.x / scale, y: location.y / scale) { onSelect(hit) }
-        }
-        .overlay(alignment: .bottomTrailing) {
-            // Colored for the PAGE background (white or dark), not the window appearance.
-            Text(bitmap == nil ? "page \(page.number) · v2 · rasterizing…" : (stale ? "page \(page.number) · v2 · STALE" : "page \(page.number) · v2"))
-                .font(.caption2).foregroundStyle(stale ? Color.orange : (dark ? Color(white: 0.7) : Color(white: 0.35))).padding(4)
-        }
-        .help(hover.map { h in
-            (h.text.map { "“\($0)” → " } ?? "rule → ") + (h.syntheticReason.map { "generated: \($0)" }
-                ?? h.sources.map { "\($0.path) \($0.startByte)..<\($0.endByte)" }.joined(separator: ", "))
-        } ?? "")
     }
 }

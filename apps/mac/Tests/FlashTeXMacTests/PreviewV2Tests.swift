@@ -448,30 +448,31 @@ final class PreviewV2ShellTests: XCTestCase {
         guard case .loaded(let frame, _) = model.displayListV2 else { return XCTFail() }
         let page = frame.prepared[0]
         let rasterizer = V2PageRasterizer(maxBytes: 64 << 20)
-        let token = V2FrameIdentity.token(frame)
-        rasterizer.setCurrent(frameToken: token)
+        let token = frame.pageToken(at: 0)
+        rasterizer.setCurrent(frame: frame)
         // First request: nothing yet, rasterization starts off-main.
-        XCTAssertNil(rasterizer.image(for: page, frameToken: token, pixelsPerPoint: 1, dark: false))
-        XCTAssertNil(rasterizer.image(for: page, frameToken: token, pixelsPerPoint: 1, dark: false), "a second request while in flight does not start another")
+        XCTAssertNil(rasterizer.image(for: page, pageToken: token, pixelsPerPoint: 1, dark: false))
+        XCTAssertNil(rasterizer.image(for: page, pageToken: token, pixelsPerPoint: 1, dark: false), "a second request while in flight does not start another")
         let deadline = Date().addingTimeInterval(20)
         while rasterizer.images.isEmpty, Date() < deadline { RunLoop.main.run(until: Date().addingTimeInterval(0.01)) }
-        let bitmap = try XCTUnwrap(rasterizer.image(for: page, frameToken: token, pixelsPerPoint: 1, dark: false), "bitmap arrived on the main run loop")
+        let bitmap = try XCTUnwrap(rasterizer.image(for: page, pageToken: token, pixelsPerPoint: 1, dark: false), "bitmap arrived on the main run loop")
         XCTAssertEqual(rasterizer.rasterizations, 1)
         // Exactly the bytes of the shared routine: what the pane blits is what parity compares.
         let direct = try XCTUnwrap(GlyphRunRenderer.rasterize(page, scale: 1))
         XCTAssertEqual(V2Parity.rgba(bitmap), V2Parity.rgba(direct))
         XCTAssertGreaterThan(PreviewV2Tests.inkPixels(bitmap), 500)
         // A different appearance/scale is a different key.
-        XCTAssertNil(rasterizer.image(for: page, frameToken: token, pixelsPerPoint: 2, dark: true))
-        // Frame changes before that bitmap arrives: it is dropped, never installed.
-        rasterizer.setCurrent(frameToken: "other-frame")
-        XCTAssertTrue(rasterizer.images.isEmpty, "bitmaps of the previous frame are evicted")
+        XCTAssertNil(rasterizer.image(for: page, pageToken: token, pixelsPerPoint: 2, dark: true))
+        // The current frame changes to one without this page before that bitmap
+        // arrives: it is dropped, never installed.
+        rasterizer.setCurrent(pageTokens: ["other-page"])
+        XCTAssertTrue(rasterizer.images.isEmpty, "bitmaps of pages not in the current frame are evicted")
         while rasterizer.rasterizations < 2, Date() < deadline { RunLoop.main.run(until: Date().addingTimeInterval(0.01)) }
         XCTAssertEqual(rasterizer.staleBitmapsDropped, 1)
         XCTAssertTrue(rasterizer.images.isEmpty)
         XCTAssertEqual(rasterizer.retainedBytes, 0)
-        // Requests for a frame that is not current never start work.
-        XCTAssertNil(rasterizer.image(for: page, frameToken: token, pixelsPerPoint: 1, dark: false))
+        // Requests for a page that is not current never start work.
+        XCTAssertNil(rasterizer.image(for: page, pageToken: token, pixelsPerPoint: 1, dark: false))
         let settle = Date().addingTimeInterval(0.1)
         while Date() < settle { RunLoop.main.run(until: Date().addingTimeInterval(0.01)) }
         XCTAssertEqual(rasterizer.rasterizations, 2)
@@ -488,20 +489,20 @@ final class PreviewV2ShellTests: XCTestCase {
         let quarterPage = half.bytesPerRow * half.height
         // Room for one full bitmap at 1 px/pt plus a small one, not two full ones.
         let rasterizer = V2PageRasterizer(maxBytes: onePage + onePage / 2)
-        let token = V2FrameIdentity.token(frame)
-        rasterizer.setCurrent(frameToken: token)
+        let token = frame.pageToken(at: 0)
+        rasterizer.setCurrent(frame: frame)
         let deadline = Date().addingTimeInterval(20)
         for dark in [false, true, false] {
-            _ = rasterizer.image(for: page, frameToken: token, pixelsPerPoint: 1, dark: dark)
+            _ = rasterizer.image(for: page, pageToken: token, pixelsPerPoint: 1, dark: dark)
         }
         while rasterizer.rasterizations < 2, Date() < deadline { RunLoop.main.run(until: Date().addingTimeInterval(0.01)) }
         // The second full bitmap evicted the first (least recently used); the newest is kept.
         XCTAssertEqual(rasterizer.images.count, 1)
         XCTAssertEqual(rasterizer.retainedBytes, onePage)
-        XCTAssertNotNil(rasterizer.images[V2PageRasterizer.Key(frameToken: token, page: 1, pixelsPerPoint: 1, dark: true)], "the newest bitmap is kept")
-        XCTAssertNil(rasterizer.images[V2PageRasterizer.Key(frameToken: token, page: 1, pixelsPerPoint: 1, dark: false)], "the oldest was evicted")
+        XCTAssertNotNil(rasterizer.images[V2PageRasterizer.Key(pageToken: token, pixelsPerPoint: 1, dark: true)], "the newest bitmap is kept")
+        XCTAssertNil(rasterizer.images[V2PageRasterizer.Key(pageToken: token, pixelsPerPoint: 1, dark: false)], "the oldest was evicted")
         // A small bitmap fits next to it.
-        _ = rasterizer.image(for: page, frameToken: token, pixelsPerPoint: 0.5, dark: false)
+        _ = rasterizer.image(for: page, pageToken: token, pixelsPerPoint: 0.5, dark: false)
         while rasterizer.rasterizations < 3, Date() < deadline { RunLoop.main.run(until: Date().addingTimeInterval(0.01)) }
         XCTAssertLessThanOrEqual(rasterizer.retainedBytes, rasterizer.maxBytes)
         XCTAssertEqual(rasterizer.images.count, 2)

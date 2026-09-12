@@ -23,6 +23,11 @@ public struct RenderingV2Fast {
 
     private let b: UnsafeBufferPointer<UInt8>
     private var i = 0
+    /// Page-reuse hook and the byte ranges recorded while reading (`envelope(_:reuse:)`).
+    private var pageReuse: ((Int, UnsafeRawBufferPointer) -> RenderingV2.Page?)?
+    private var pageRanges: [Range<Int>] = []
+    private var fontsRange: Range<Int>?
+    private var reusedPages: [Int] = []
 
     private init(_ bytes: UnsafeBufferPointer<UInt8>) { b = bytes }
 
@@ -37,6 +42,52 @@ public struct RenderingV2Fast {
             p.ws()
             guard p.i == p.b.count else { throw p.err("trailing characters") }
             return env
+        }
+    }
+
+    /// `envelope(_:)` plus the byte range of every `payload.pages[i]` object
+    /// and of the `payload.fonts` array in the input, with page-level reuse:
+    /// before a page object is decoded, `reuse` sees its exact bytes (index in
+    /// `pages`, raw object bytes) and may return an already decoded `Page` for
+    /// them — identical bytes decode to identical values, so the returned page
+    /// is what decoding would have produced. Pages taken from `reuse` are
+    /// listed in `reusedPages`; every other page is decoded exactly as by
+    /// `envelope(_:)`. Validation (`RenderingV2.validate`) is the caller's, as
+    /// on the plain path.
+    public struct Decoded {
+        public var envelope: RenderingV2.Envelope
+        public var pageRanges: [Range<Int>]
+        public var fontsRange: Range<Int>?
+        public var reusedPages: [Int]
+    }
+
+    public static func envelope(_ data: Data, reuse: (Int, UnsafeRawBufferPointer) -> RenderingV2.Page?) throws -> Decoded {
+        try withoutActuallyEscaping(reuse) { reuse in
+            try data.withUnsafeBytes { raw -> Decoded in
+                var p = RenderingV2Fast(raw.bindMemory(to: UInt8.self))
+                p.pageReuse = reuse
+                p.ws()
+                let env = try p.envelope()
+                p.ws()
+                guard p.i == p.b.count else { throw p.err("trailing characters") }
+                return Decoded(envelope: env, pageRanges: p.pageRanges, fontsRange: p.fontsRange, reusedPages: p.reusedPages)
+            }
+        }
+    }
+
+    /// Decodes one page object from `range` of `data` (a range reported by
+    /// `envelope(_:reuse:)`), exactly as the envelope reader would.
+    public static func page(_ data: Data, range: Range<Int>) throws -> RenderingV2.Page {
+        try data.withUnsafeBytes { raw -> RenderingV2.Page in
+            let all = raw.bindMemory(to: UInt8.self)
+            guard range.lowerBound >= 0, range.upperBound <= all.count, let base = all.baseAddress else {
+                throw Error(offset: range.lowerBound, message: "page range outside the data")
+            }
+            var p = RenderingV2Fast(UnsafeBufferPointer(start: base + range.lowerBound, count: range.count))
+            let page = try p.page()
+            p.ws()
+            guard p.i == p.b.count else { throw p.err("trailing characters after the page object") }
+            return page
         }
     }
 
@@ -128,8 +179,12 @@ public struct RenderingV2Fast {
             case "revision": revision = try p.int()
             case "required_features": features = try p.array { try $0.string() }
             case "documents": documents = try p.array { try $0.document() }
-            case "fonts": fonts = try p.array { try $0.font() }
-            case "pages": pages = try p.array { try $0.page() }
+            case "fonts":
+                p.ws()
+                let start = p.i
+                fonts = try p.array { try $0.font() }
+                p.fontsRange = start..<p.i
+            case "pages": pages = try p.pages()
             case "diagnostics": diagnostics = try p.array { try $0.diagnostic() }
             default: try p.skip(depth: 2)
             }
@@ -207,6 +262,60 @@ public struct RenderingV2Fast {
         }
         guard let number, let width, let height, let items else { throw err("missing page field") }
         return RenderingV2.Page(number: number, width: width, height: height, items: items)
+    }
+
+    /// `pages` array: each element's byte range is recorded; with a reuse hook
+    /// installed, the element's exact bytes are offered before decoding.
+    private mutating func pages() throws -> [RenderingV2.Page] {
+        ws(); try expect(0x5B) // [
+        var out: [RenderingV2.Page] = []
+        ws()
+        if i < b.count, b[i] == 0x5D { i += 1; return out }
+        while true {
+            ws()
+            let start = i
+            let end = try skipObject()
+            pageRanges.append(start..<end)
+            var reused: RenderingV2.Page?
+            if let pageReuse, let base = b.baseAddress {
+                reused = pageReuse(out.count, UnsafeRawBufferPointer(start: base + start, count: end - start))
+            }
+            if let reused {
+                reusedPages.append(out.count)
+                out.append(reused)
+            } else {
+                i = start
+                out.append(try page())
+                guard i == end else { throw err("page object range mismatch") }
+            }
+            ws()
+            guard i < b.count else { throw err("unterminated array") }
+            if b[i] == 0x2C { i += 1; continue }
+            if b[i] == 0x5D { i += 1; return out }
+            throw err("expected ',' or ']'")
+        }
+    }
+
+    /// Skips one object by bracket depth and string boundaries; returns the
+    /// offset just past its closing brace (`i` is left there too).
+    private mutating func skipObject() throws -> Int {
+        guard i < b.count, b[i] == 0x7B else { throw err("expected '{'") }
+        var depth = 0
+        repeat {
+            let c = b[i]
+            switch c {
+            case 0x22:
+                i += 1
+                while i < b.count, b[i] != 0x22 { i += b[i] == 0x5C ? 2 : 1 }
+                guard i < b.count else { throw err("unterminated string") }
+                i += 1
+            case 0x7B, 0x5B: depth += 1; i += 1
+            case 0x7D, 0x5D: depth -= 1; i += 1
+            default: i += 1
+            }
+        } while depth > 0 && i < b.count
+        guard depth == 0 else { throw err("unbalanced object") }
+        return i
     }
 
     private mutating func item() throws -> RenderingV2.Item {

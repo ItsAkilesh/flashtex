@@ -148,6 +148,11 @@ struct V2PreparedPage: @unchecked Sendable {
     var heightPt: Double
     var items: [Item]
     var glyphCount: Int
+    /// Per source path, the lowest `start_byte` and highest `end_byte` over
+    /// every cluster source on the page: a caret byte outside this range
+    /// matches no cluster (`V2Geometry.clusters(containing:)`), so the pane
+    /// skips the cluster walk for pages that cannot contain it.
+    var sourceBounds: [String: ClosedRange<Int>]
 
     init(page: RenderingV2.Page, fonts: [String: V2FontStore.ResolvedFont]) throws {
         let heightPt = page.heightPt
@@ -161,6 +166,7 @@ struct V2PreparedPage: @unchecked Sendable {
         // One CTFont per (font, size) on this page: CTFontCreateWithGraphicsFont
         // per run cost ~20 µs × 973 runs on a two-page document.
         var ctFonts: [String: CTFont] = [:]
+        var bounds: [String: ClosedRange<Int>] = [:]
         for item in page.items {
             switch item {
             case .rule(let r):
@@ -179,11 +185,21 @@ struct V2PreparedPage: @unchecked Sendable {
                                       positions: run.glyphs.map { CGPoint(x: q(RenderingV2.points($0.originX)), y: q(heightPt - RenderingV2.points($0.baselineY))) },
                                       paint: run.paint)))
                 glyphs += run.glyphs.count
+                for c in run.clusters {
+                    for s in c.sources ?? [] {
+                        if let b = bounds[s.path] { bounds[s.path] = min(b.lowerBound, s.startByte)...max(b.upperBound, s.endByte) }
+                        else { bounds[s.path] = min(s.startByte, s.endByte)...max(s.startByte, s.endByte) }
+                    }
+                }
             }
         }
         self.items = items
         glyphCount = glyphs
+        sourceBounds = bounds
     }
+
+    /// Whether `byte` of `path` can match a cluster on this page.
+    func mayContain(byte: Int, path: String) -> Bool { sourceBounds[path]?.contains(byte) ?? false }
 
     /// The value CoreGraphics' PDF writer serializes for `v`: 7 significant
     /// digits (`%.7g`, measured on its content streams: `637.706`,
@@ -215,8 +231,16 @@ struct V2Frame: @unchecked Sendable {
     var fonts: [String: V2FontStore.ResolvedFont]
     /// One entry per `list.pages`, same order.
     var prepared: [V2PreparedPage]
-    /// Distinct for every `prepare` call: identifies this frame instance
-    /// (bitmap cache keys), independent of the envelope id or file.
+    /// Content identity per page (same order as `prepared`): the page bytes'
+    /// SHA-256 and length plus the font manifest digest when prepared through
+    /// `V2PageCache`, else unique per preparation. Bitmaps and page views key
+    /// on it, so a page whose bytes did not change keeps its bitmap and its
+    /// view across frames.
+    var pageTokens: [String] = []
+    /// Pages taken from `V2PageCache` instead of being decoded and prepared.
+    var reusedPages = 0
+    /// Distinct for every `prepare` call: identifies this frame instance,
+    /// independent of the envelope id or file.
     var preparedNonce: UInt64 = V2Frame.nextNonce()
 
     private static let nonceLock = NSLock()
@@ -238,8 +262,13 @@ struct V2Frame: @unchecked Sendable {
             fonts[id] = try store.resolve(resource)
         }
         let prepared = try envelope.payload.pages.map { try V2PreparedPage(page: $0, fonts: fonts) }
-        return V2Frame(id: envelope.id, list: envelope.payload, fonts: fonts, prepared: prepared)
+        let nonce = V2Frame.nextNonce()
+        return V2Frame(id: envelope.id, list: envelope.payload, fonts: fonts, prepared: prepared,
+                       pageTokens: prepared.map { "page\($0.number)#\(nonce)" }, preparedNonce: nonce)
     }
+
+    /// Content identity of the page at `index` of `prepared`.
+    func pageToken(at index: Int) -> String { index < pageTokens.count ? pageTokens[index] : "page\(prepared[index].number)#\(preparedNonce)" }
 
     func page(number: Int) -> RenderingV2.Page? { list.pages.first { $0.number == number } }
     func preparedPage(number: Int) -> V2PreparedPage? { prepared.first { $0.number == number } }

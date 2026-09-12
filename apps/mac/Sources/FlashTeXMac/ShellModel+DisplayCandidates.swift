@@ -601,7 +601,7 @@ extension ShellModel {
         displayListV2 = .loading(source, ticket: ticket, previous: displayListV2?.frame, previousSource: previousSource)
         let t0 = MonotonicClock.nowNs()
         if TypingBench.isBenchActive { FlashTeXLog.write("display-candidate: validating \(frame.requestID) as revision \(editorRev) ticket \(ticket) at \(t0)") }
-        let rasterHint = V2PageRasterizer.shared.lastRequest
+        let rasterHint = V2PageRasterizer.shared.rasterHint
         V2Loader.queue.async {
             let validated = DisplayCandidateValidator.validate(frame, texts: texts)
             let t1 = MonotonicClock.nowNs()
@@ -613,7 +613,7 @@ extension ShellModel {
                 // applyControllerPreview); the compile generation stays in the log.
                 verified.list.revision = editorRev
                 outcome = .verified(verified)
-                if let hint = rasterHint { prerastered = V2Loader.preraster(verified, pixelsPerPoint: hint.pixelsPerPoint, dark: hint.dark) }
+                if let hint = rasterHint { prerastered = V2Loader.preraster(verified, hint: hint) }
             } else {
                 outcome = validated
             }
@@ -622,7 +622,10 @@ extension ShellModel {
             let prerasteredResult = prerastered
             V2Loader.deliverOnMain {
                 MainActor.assumeIsolated {
-                    if TypingBench.isBenchActive { FlashTeXLog.write("display-candidate: validated \(frame.requestID) in \(validationMs) ms, prerastered \(prerasteredResult?.images.count ?? 0) page(s) in \(Double(t2 &- t1) / 1e6) ms, delivered \(Double(MonotonicClock.nowNs() &- t2) / 1e6) ms later") }
+                    if TypingBench.isBenchActive {
+                        let reused = { if case .verified(let f) = outcome { "\(f.reusedPages)/\(f.prepared.count)" } else { "-" } }()
+                        FlashTeXLog.write("display-candidate: validated \(frame.requestID) in \(validationMs) ms (reused pages \(reused)), prerastered \(prerasteredResult?.images.count ?? 0) page(s) in \(Double(t2 &- t1) / 1e6) ms, delivered \(Double(MonotonicClock.nowNs() &- t2) / 1e6) ms later")
+                    }
                     self.displayCandidatesDeliver(ticket: ticket, frame: frame, editorRevision: editorRev, source: source,
                                                   previousSource: previousSource, outcome: outcome, prerastered: prerasteredResult, validationMs: validationMs)
                 }
