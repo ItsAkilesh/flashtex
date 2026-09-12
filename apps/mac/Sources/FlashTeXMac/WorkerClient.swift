@@ -6,6 +6,9 @@ import FlashTeXProtocol
 final class WorkerClient {
     enum Event {
         case result(RuntimeV1.Envelope<RuntimeV1.CompileResult>)
+        /// Negotiated `display-list-v2` sibling line (protocol_version 2, type
+        /// display_list) for request `id`; decoded off-main by V2Loader (PreviewV2View.swift).
+        case displayList(id: String, line: Data)
         case error(id: String, message: String)
         case protocolViolation(String)
         case stderr(String)
@@ -93,10 +96,12 @@ final class WorkerClient {
             return
         }
         for line in lines where !line.isEmpty {
-            transcript?.record(line)
             let t0 = MonotonicClock.nowNs()
             let event = Self.decode(line)
             let t1 = MonotonicClock.nowNs()
+            // The runtime-v1 transcript (check_runtime.py) records v1 lines only; a
+            // negotiated v2 display_list line is not part of that contract's record.
+            if case .displayList = event {} else { transcript?.record(line) }
             if TypingBench.isBenchActive { FlashTeXLog.write("worker: line \(line.count) B decoded in \(Double(t1 - t0) / 1e6) ms at \(t1)") }
             deliver {
                 if TypingBench.isBenchActive { FlashTeXLog.write("worker: event on main at \(MonotonicClock.nowNs())") }
@@ -130,6 +135,9 @@ final class WorkerClient {
     static func decode(_ line: Data) -> Event {
         do {
             let header = try RuntimeV1.header(of: line)
+            if header.protocolVersion == 2, header.type == "display_list" {
+                return .displayList(id: header.id, line: line) // runtime-v1-display-list-v2.md
+            }
             guard header.protocolVersion == RuntimeV1.protocolVersion else {
                 return .protocolViolation("unsupported protocol_version \(header.protocolVersion)")
             }

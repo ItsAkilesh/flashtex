@@ -599,6 +599,8 @@ final class ShellModel {
                 compileQueued = false
                 compile() // no-op when buffers and capability set are unchanged
             }
+        case .displayList(let id, let line):
+            receiveDisplayListV2(id: id, line: line) // negotiated live v2 frame (PreviewV2View.swift)
         case .error(let id, let message):
             inFlightRequests.removeValue(forKey: id)
             refreshInFlightRevision()
