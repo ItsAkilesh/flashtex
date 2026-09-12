@@ -148,8 +148,42 @@ impl ProjectRoot {
     /// the specific reason.
     pub(crate) fn normalized_identity(relative: &str) -> Option<String> {
         let normalized = Self::normalize(relative).ok()?;
-        Some(normalized.as_str().nfc().collect())
+        Some(nfc_form(normalized.as_str()))
     }
+}
+
+/// NFC-normalize `s`. The pure string transform behind
+/// [`ProjectRoot::normalized_identity`], factored out so [`is_reserved`]'s
+/// case-folded identity can build on the exact same normalization step
+/// rather than a second, independently-written one.
+fn nfc_form(s: &str) -> String {
+    s.nfc().collect()
+}
+
+/// Case-folded, Unicode-canonical identity of an already-[`ProjectRoot::normalize`]d
+/// path, used only by [`is_reserved`].
+///
+/// NFC-normalizes with the same [`nfc_form`] step [`ProjectRoot::normalized_identity`]
+/// uses for [`crate::error::BundleError::AmbiguousPath`], then additionally
+/// case-folds with `char::to_lowercase` — Rust's Unicode-aware case
+/// conversion (the Unicode Derived Core Property `Lowercase`, plus the
+/// multi-character mappings in `SpecialCasing.txt`), never the ASCII-only
+/// `to_ascii_lowercase`, which touches only `A`-`Z` and would leave every
+/// non-ASCII upper/lower pair unfolded.
+///
+/// This is deliberately *not* the same key [`ProjectRoot::normalized_identity`]
+/// produces: two different bundle-declared paths differing only by case are
+/// not [`crate::error::BundleError::AmbiguousPath`] (a case-sensitive
+/// filesystem keeps them genuinely distinct files, so folding case there
+/// would flag harmless imports as colliding). But a path that reaches
+/// `.flashtex` is reserved regardless of the *target* filesystem's own
+/// case sensitivity — the risk (stranding the project lock, see
+/// [`crate::error::BundleError::ReservedPath`]) exists the moment the
+/// filesystem *might* fold two spellings together, and this crate has no
+/// reliable way to ask a given target root whether it does.
+fn caseless_identity(s: &str) -> String {
+    let folded: String = s.chars().flat_map(char::to_lowercase).collect();
+    nfc_form(&folded)
 }
 
 /// Syntactic validation of a caller-declared bundle path, independent of
@@ -169,9 +203,19 @@ pub fn validate_relative_path(path: &str) -> Result<(), BundleError> {
 pub(crate) const CONTROL_DIR: &str = ".flashtex";
 
 /// Whether a normalized project path lands inside [`CONTROL_DIR`].
+///
+/// Compared on [`caseless_identity`] rather than the raw string: `.flashtex`
+/// must be unreachable by any bundle-declared path on every filesystem this
+/// crate might run against, including one that is case-insensitive and/or
+/// normalization-insensitive (default macOS APFS is both). A byte-exact
+/// comparison alone lets a spelling such as `.FlashTeX/Project.Lock` sail
+/// past this check while the underlying rooted writer's write-then-`rename`
+/// still lands on the very same directory entry as the real
+/// `.flashtex/project.lock` once such a filesystem folds the two spellings
+/// together.
 pub(crate) fn is_reserved(path: &ProjectPath) -> bool {
-    let p = path.as_str();
-    p == CONTROL_DIR || p.starts_with(concat!(".flashtex", "/"))
+    let folded = caseless_identity(path.as_str());
+    folded == CONTROL_DIR || folded.starts_with(concat!(".flashtex", "/"))
 }
 
 /// Whether a rooted-read failure is really "nothing is there": the walk to

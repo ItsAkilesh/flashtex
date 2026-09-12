@@ -56,6 +56,13 @@ pub enum BundleError {
     /// and interleave with the rest of this same batch. The batch would
     /// then return `Ok` having silently voided the mutual exclusion its own
     /// documentation promises.
+    ///
+    /// Detected on a case-folded, Unicode-canonical (NFC) key rather than
+    /// an exact byte match (see `root::is_reserved`), so a spelling such as
+    /// `.FlashTeX/Project.Lock` is refused too — not just the exact
+    /// `.flashtex/project.lock` spelling — since a case-insensitive and/or
+    /// normalization-insensitive filesystem (default macOS APFS is both)
+    /// would fold either onto the very same directory entry.
     ReservedPath(String),
     /// [`crate::apply_import`] was given an [`crate::ImportPreview`] that
     /// names a path the supplied [`crate::Bundle`] does not contain — the
