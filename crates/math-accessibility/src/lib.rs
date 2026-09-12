@@ -1236,4 +1236,407 @@ mod tests {
             .expect("numerator leaf node must be recorded with this exact id");
         assert_eq!(numerator_leaf.readable, "1");
     }
+
+    // =========================================================================
+    // FT-038 rev3: bounded adversarial acceptance suite.
+    //
+    // Each case below attacks `describe` with a malformed, oversized, or
+    // hostile input and asserts the *outcome type*: either a typed
+    // `AccessibilityError` at an exact, predetermined boundary, or a
+    // `Description` whose `mathml` is provably well-formed and cannot be
+    // broken out of. None of these may panic, hang, or overflow the stack.
+    // =========================================================================
+
+    /// The only element tags this crate ever emits. Used by
+    /// `assert_no_foreign_markup` to prove hostile input cannot inject a
+    /// foreign tag, attribute, comment, CDATA section, or processing
+    /// instruction into the output.
+    const KNOWN_TAGS: &[&str] = &[
+        "math", "mrow", "mi", "mo", "mn", "mtext", "mfrac", "msqrt", "mroot", "msup", "msub",
+        "msubsup", "mover", "munder", "mstyle", "merror",
+    ];
+
+    /// Walks `mathml` byte-by-byte and panics if any literal `<` does not
+    /// begin one of `KNOWN_TAGS` (as an opening or closing tag). This is the
+    /// proof that hostile text can never break out of the document
+    /// structure: `escape_xml_text` guarantees every `<` that comes from
+    /// *content* is rewritten to `&lt;` before it ever reaches the output,
+    /// so the only literal `<` bytes that can survive are the ones this
+    /// crate's own renderer writes as markup.
+    fn assert_no_foreign_markup(mathml: &str) {
+        let bytes = mathml.as_bytes();
+        let mut i = 0;
+        while i < bytes.len() {
+            if bytes[i] == b'<' {
+                let mut j = i + 1;
+                if j < bytes.len() && bytes[j] == b'/' {
+                    j += 1;
+                }
+                let rest = &mathml[j..];
+                let matched = KNOWN_TAGS.iter().any(|tag| {
+                    rest.starts_with(tag)
+                        && matches!(rest[tag.len()..].chars().next(), Some('>') | Some(' '))
+                });
+                assert!(
+                    matched,
+                    "found a '<' at byte {i} not starting a known element tag: {:?}",
+                    &mathml[i..(i + 20).min(mathml.len())]
+                );
+            }
+            i += 1;
+        }
+    }
+
+    /// Wraps `leaf` in `n` nested single-atom braced groups
+    /// (`Nucleus::List`), so that rendering `leaf` itself happens at
+    /// exactly nesting depth `n`.
+    fn nested_single_atom_groups(n: usize, leaf: MathList) -> MathList {
+        let mut list = leaf;
+        for _ in 0..n {
+            list = MathList::from(Atom::group(list));
+        }
+        list
+    }
+
+    /// Like `nested_single_atom_groups`, but returns the single wrapping
+    /// `Atom` instead of the one-atom `MathList` that contains it, so it can
+    /// be embedded as one sibling among other atoms (for "wide and deep"
+    /// fixtures). Requires `n >= 1`.
+    fn deep_group_atom(n: usize, leaf: MathList) -> Atom {
+        assert!(n >= 1);
+        nested_single_atom_groups(n, leaf)
+            .atoms
+            .into_iter()
+            .next()
+            .expect("n >= 1 wraps produce exactly one atom")
+    }
+
+    #[test]
+    fn depth_exactly_at_bound_succeeds() {
+        let list = nested_single_atom_groups(50, MathList::symbols("x"));
+        let desc = MathAccessibility::with_max_depth(50)
+            .describe(&list)
+            .unwrap();
+        assert_eq!(desc.readable, "x");
+    }
+
+    #[test]
+    fn depth_one_past_bound_fails() {
+        let list = nested_single_atom_groups(51, MathList::symbols("x"));
+        let result = MathAccessibility::with_max_depth(50).describe(&list);
+        match result {
+            Err(AccessibilityError::RecursionLimitExceeded { max_depth, .. }) => {
+                assert_eq!(max_depth, 50);
+            }
+            other => panic!("expected RecursionLimitExceeded, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn node_count_exactly_at_bound_succeeds() {
+        let list = MathList::symbols(&"x".repeat(100));
+        let desc = MathAccessibility::with_max_nodes(100)
+            .describe(&list)
+            .unwrap();
+        assert_eq!(desc.nodes.len(), 100);
+    }
+
+    #[test]
+    fn node_count_one_past_bound_fails() {
+        let list = MathList::symbols(&"x".repeat(101));
+        let result = MathAccessibility::with_max_nodes(100).describe(&list);
+        match result {
+            Err(AccessibilityError::NodeCountExceeded { max_nodes, id }) => {
+                assert_eq!(max_nodes, 100);
+                assert_eq!(id.path(), &[PathStep::Atom(100)]);
+            }
+            other => panic!("expected NodeCountExceeded, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn wide_and_deep_tree_trips_depth_bound_before_node_count_bound() {
+        // 40 wide siblings at the top level (cheap against a node-count
+        // budget of 1000), plus one branch nested far past a depth budget
+        // of 5. Node count at the moment of failure is nowhere near 1000 --
+        // only the depth bound can be responsible.
+        let mut atoms: Vec<Atom> = (0..40).map(|_| Atom::ord('x')).collect();
+        atoms.push(deep_group_atom(20, MathList::symbols("y")));
+        let list = MathList::new(atoms);
+        let result = MathAccessibility::with_bounds(5, 1000).describe(&list);
+        match result {
+            Err(AccessibilityError::RecursionLimitExceeded { max_depth, .. }) => {
+                assert_eq!(max_depth, 5);
+            }
+            other => panic!("expected RecursionLimitExceeded, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn wide_and_deep_tree_trips_node_count_bound_before_depth_bound() {
+        // 49 wide siblings followed by one branch nested 10 levels deep --
+        // far under a depth budget of 1000. Node count exceeds its budget
+        // of 30 while still walking the wide prefix, long before traversal
+        // ever reaches the deep branch.
+        let mut atoms: Vec<Atom> = (0..49).map(|_| Atom::ord('x')).collect();
+        atoms.push(deep_group_atom(10, MathList::symbols("y")));
+        let list = MathList::new(atoms);
+        let result = MathAccessibility::with_bounds(1000, 30).describe(&list);
+        match result {
+            Err(AccessibilityError::NodeCountExceeded { max_nodes, id }) => {
+                assert_eq!(max_nodes, 30);
+                // Tripped on the 31st top-level atom; traversal never even
+                // reached the deep branch at index 49.
+                assert_eq!(id.path(), &[PathStep::Atom(30)]);
+            }
+            other => panic!("expected NodeCountExceeded, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn empty_document_succeeds_even_with_zero_bounds() {
+        let empty = MathList::new(vec![]);
+        let desc = MathAccessibility::with_bounds(0, 0)
+            .describe(&empty)
+            .unwrap();
+        assert_eq!(desc.readable, "");
+        assert_eq!(
+            desc.mathml,
+            "<math xmlns=\"http://www.w3.org/1998/Math/MathML\"><mrow></mrow></math>"
+        );
+        assert!(desc.nodes.is_empty());
+        assert!(desc.unsupported.is_empty());
+        assert_no_foreign_markup(&desc.mathml);
+    }
+
+    #[test]
+    fn node_with_all_empty_children_does_not_panic_and_stays_well_formed() {
+        // A fraction whose numerator AND denominator are both empty lists:
+        // a node whose children are all empty.
+        let atom = Atom::frac(MathList::new(vec![]), MathList::new(vec![]));
+        let desc = MathAccessibility::new()
+            .describe(&MathList::from(atom))
+            .unwrap();
+        assert_eq!(desc.readable, "start fraction, , over, , end fraction");
+        assert!(
+            desc.mathml
+                .contains("<mfrac><mrow></mrow><mrow></mrow></mfrac>")
+        );
+        assert_no_foreign_markup(&desc.mathml);
+    }
+
+    #[test]
+    fn assorted_control_characters_degrade_to_merror_not_a_raw_byte() {
+        // NUL, other C0 controls, DEL, and a C1 control all take the same
+        // safe path as the BEL case covered above: an explicit <merror>
+        // marker, never a literal control byte in the output.
+        for ch in ['\u{0000}', '\u{0001}', '\u{001B}', '\u{007F}', '\u{0080}'] {
+            assert!(ch.is_control());
+            let list = MathList::from(Atom::ord(ch));
+            let desc = MathAccessibility::new().describe(&list).unwrap();
+            assert!(!desc.mathml.chars().any(|c| c.is_control()));
+            assert_eq!(desc.unsupported.len(), 1);
+            assert_eq!(
+                desc.unsupported[0].reason,
+                UnsupportedReason::ControlCharacter(ch)
+            );
+            assert_no_foreign_markup(&desc.mathml);
+        }
+    }
+
+    #[test]
+    fn right_to_left_override_is_not_treated_as_a_control_character() {
+        // U+202E RIGHT-TO-LEFT OVERRIDE is a Unicode formatting character
+        // (general category Cf), not a control character (Cc): it must not
+        // be silently swallowed by the control-character path. It also has
+        // no spoken name, so it must not be guessed at -- it becomes an
+        // explicit unsupported marker, with its exact glyph preserved
+        // (never stripped) in the MathML.
+        let rlo = '\u{202E}';
+        assert!(!rlo.is_control());
+        let list = MathList::from(Atom::ord(rlo));
+        let desc = MathAccessibility::new().describe(&list).unwrap();
+        assert_eq!(desc.readable, "[unsupported symbol U+202E]");
+        assert!(desc.mathml.contains(&format!("<mo>{rlo}</mo>")));
+        assert_eq!(desc.unsupported.len(), 1);
+        assert_eq!(
+            desc.unsupported[0].reason,
+            UnsupportedReason::UnknownSymbolName(rlo)
+        );
+        assert_no_foreign_markup(&desc.mathml);
+    }
+
+    #[test]
+    fn unpaired_surrogate_code_points_cannot_be_constructed_as_a_char() {
+        // Rust's `char` type statically excludes the UTF-16 surrogate range
+        // (U+D800..=U+DFFF); there is no way to hand this crate an
+        // "unpaired surrogate" in the first place -- the type system is the
+        // bound. We prove the fence exists, and that the legal values on
+        // either side of it are ordinary, safely handled symbols.
+        assert!(char::from_u32(0xD800).is_none());
+        assert!(char::from_u32(0xDFFF).is_none());
+
+        let just_below = char::from_u32(0xD7FF).unwrap();
+        let just_above = char::from_u32(0xE000).unwrap();
+        let list = MathList::new(vec![Atom::ord(just_below), Atom::ord(just_above)]);
+        let desc = MathAccessibility::new().describe(&list).unwrap();
+        assert_no_foreign_markup(&desc.mathml);
+        // Neither is ASCII alphanumeric nor in the named-symbol table, so
+        // both are explicit unsupported markers -- never a guess, never a
+        // panic.
+        assert_eq!(desc.unsupported.len(), 2);
+    }
+
+    #[test]
+    fn assorted_unknown_symbols_are_reported_not_guessed() {
+        let unknowns = ['\u{1F600}', '\u{2603}', '\u{E000}', '\u{FFFD}'];
+        for ch in unknowns {
+            let list = MathList::from(Atom::ord(ch));
+            let desc = MathAccessibility::new().describe(&list).unwrap();
+            assert_eq!(desc.unsupported.len(), 1);
+            assert_eq!(
+                desc.unsupported[0].reason,
+                UnsupportedReason::UnknownSymbolName(ch)
+            );
+            assert_no_foreign_markup(&desc.mathml);
+        }
+    }
+
+    #[test]
+    fn hostile_text_with_full_tag_injection_cannot_break_out_of_mathml() {
+        // Each payload is a classic XML/HTML injection attempt: closing the
+        // enclosing element early, opening a new element, a comment, a
+        // CDATA section, a processing instruction, and a DOCTYPE with an
+        // external entity. None of these may produce foreign markup, and
+        // none may be silently dropped -- decoding the entities back out
+        // must recover the payload byte-for-byte.
+        let payloads = [
+            "</mtext></mrow></math><script>alert(1)</script>",
+            "\"><img src=x onerror=alert(1)>",
+            "<!--",
+            "-->",
+            "<![CDATA[",
+            "]]>",
+            "<?xml version=\"1.0\"?>",
+            "<!DOCTYPE math [<!ENTITY x SYSTEM \"file:///etc/passwd\">]>",
+            "</math><math>injected</math><math>",
+        ];
+        for payload in payloads {
+            let list = MathList::from(Atom::text_op(payload));
+            let desc = MathAccessibility::new().describe(&list).unwrap();
+            assert_no_foreign_markup(&desc.mathml);
+            let escaped = escape_xml_text(payload);
+            assert!(
+                desc.mathml.contains(&format!("<mtext>{escaped}</mtext>")),
+                "payload {payload:?} must be preserved, only escaped: {}",
+                desc.mathml
+            );
+            let decoded = decode_xml_entities(&desc.mathml);
+            assert!(decoded.contains(payload));
+        }
+    }
+
+    #[test]
+    fn control_character_mixed_into_hostile_text_still_degrades_safely() {
+        // When a control character appears anywhere in an upright-text
+        // nucleus the whole node degrades to a single <merror> marker (see
+        // `render_text`) -- a stricter degradation than symbol-by-symbol
+        // escaping, but still bounded and typed: never a panic, never a raw
+        // control byte or an unescaped tag fragment in the output.
+        let hostile = "<script>\u{0}</script>";
+        let list = MathList::from(Atom::text_op(hostile));
+        let desc = MathAccessibility::new().describe(&list).unwrap();
+        assert_no_foreign_markup(&desc.mathml);
+        assert!(!desc.mathml.chars().any(|c| c.is_control()));
+        assert_eq!(desc.unsupported.len(), 1);
+    }
+
+    // =========================================================================
+    // FT-038 rev3: node-identity acceptance suite.
+    //
+    // A specification of the identity contract: `NodeId` is derived purely
+    // from a node's structural position in the input tree, so --
+    //   1. identical structures, rebuilt independently, get identical ids;
+    //   2. a structurally different tree gets a different id at the node
+    //      whose position changed;
+    //   3. reordering siblings changes the ids of exactly the moved nodes
+    //      (identity tracks position, not content).
+    // =========================================================================
+
+    #[test]
+    fn identity_spec_identical_structures_produce_identical_ids() {
+        let build = || MathList::new(vec![Atom::ord('a'), Atom::bin('+'), Atom::ord('b')]);
+        let a = MathAccessibility::new().describe(&build()).unwrap();
+        let b = MathAccessibility::new().describe(&build()).unwrap();
+        let ids_a: Vec<_> = a.nodes.iter().map(|n| n.id.clone()).collect();
+        let ids_b: Vec<_> = b.nodes.iter().map(|n| n.id.clone()).collect();
+        assert_eq!(ids_a, ids_b);
+        assert!(!ids_a.is_empty());
+    }
+
+    #[test]
+    fn identity_spec_structurally_different_tree_produces_different_ids() {
+        let flat = MathList::new(vec![Atom::ord('a'), Atom::ord('b')]);
+        let nested = MathList::new(vec![
+            Atom::group(MathList::from(Atom::ord('a'))),
+            Atom::ord('b'),
+        ]);
+
+        let flat_desc = MathAccessibility::new().describe(&flat).unwrap();
+        let nested_desc = MathAccessibility::new().describe(&nested).unwrap();
+
+        // 'a' sits at atom0 in the flat tree, but at atom0/group/atom0 once
+        // wrapped in a group: same content, different structural identity.
+        let flat_a_id = flat_desc
+            .nodes
+            .iter()
+            .find(|n| n.readable == "a")
+            .unwrap()
+            .id
+            .to_string();
+        let nested_a_id = nested_desc
+            .nodes
+            .iter()
+            .find(|n| n.readable == "a")
+            .unwrap()
+            .id
+            .to_string();
+        assert_eq!(flat_a_id, "atom0");
+        assert_eq!(nested_a_id, "atom0/group/atom0");
+        assert_ne!(flat_a_id, nested_a_id);
+    }
+
+    #[test]
+    fn identity_spec_reordering_siblings_changes_the_moved_nodes_ids() {
+        let original = MathList::new(vec![Atom::ord('a'), Atom::ord('b'), Atom::ord('c')]);
+        let reordered = MathList::new(vec![Atom::ord('c'), Atom::ord('a'), Atom::ord('b')]);
+
+        let d1 = MathAccessibility::new().describe(&original).unwrap();
+        let d2 = MathAccessibility::new().describe(&reordered).unwrap();
+
+        let id_of = |desc: &Description, readable: &str| {
+            desc.nodes
+                .iter()
+                .find(|n| n.readable == readable)
+                .unwrap()
+                .id
+                .to_string()
+        };
+
+        // 'a' moves from position 0 to position 1: its id must move with it.
+        assert_eq!(id_of(&d1, "a"), "atom0");
+        assert_eq!(id_of(&d2, "a"), "atom1");
+        assert_ne!(id_of(&d1, "a"), id_of(&d2, "a"));
+
+        // 'c' moves from position 2 to position 0.
+        assert_eq!(id_of(&d1, "c"), "atom2");
+        assert_eq!(id_of(&d2, "c"), "atom0");
+        assert_ne!(id_of(&d1, "c"), id_of(&d2, "c"));
+
+        // 'b' stays put at position 1... except position 1 is now occupied
+        // by 'a', so 'b' itself moved to position 2 -- confirming identity
+        // tracks the slot's occupant, not a fixed label.
+        assert_eq!(id_of(&d1, "b"), "atom1");
+        assert_eq!(id_of(&d2, "b"), "atom2");
+    }
 }
