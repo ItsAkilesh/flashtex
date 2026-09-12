@@ -31,7 +31,8 @@ This revision supports:
   Body text reports the face its text style selects (Times-Roman by default;
   Times-Bold, Times-Italic, Times-BoldItalic, Helvetica or Courier under the
   style commands), headings start in Times-Bold, and supported mathematical
-  symbols report Symbol.
+  symbols report Symbol, except blackboard bold, `\setminus` and
+  `\Longrightarrow`, which report `Latin Modern Math` (`src/lm_math.rs`).
 
 This additive extension is not rendering-v2 activation or a claim of exact
 LaTeX PDF identity. Font hints do not identify font bytes, glyph IDs, shaping,
