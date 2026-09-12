@@ -33,6 +33,10 @@ pub struct KernTable {
     kerns: Vec<Value>,
 }
 impl KernTable {
+    pub(crate) fn retained_value_bytes(&self) -> usize {
+        (self.heights.capacity() + self.kerns.capacity()) * std::mem::size_of::<Value>()
+    }
+
     pub fn correction_heights(&self) -> &[Value] {
         &self.heights
     }

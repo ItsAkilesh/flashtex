@@ -121,6 +121,9 @@ impl BoundMathFont {
         };
         Ok(Self { engine, identity })
     }
+    pub(crate) fn raw_math(&self) -> &[u8] {
+        self.engine.face().table(b"MATH").expect("bound MATH table")
+    }
     pub fn glyph_device(
         &self,
         glyph_id: u16,
