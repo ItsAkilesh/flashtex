@@ -33,3 +33,25 @@ but does not prove immediate parent-death termination or an elapsed-time guarant
 
 This document records the reviewed candidate and requested changes. It does not
 assert that later owner fixes have been reviewed or authorize a throughput run.
+
+## Published correction reviewed
+
+Read-only review of `dfa69e19` confirms both requested corrections: checks before,
+after and on exceptions from receiver reads surface a recorded sender failure;
+nested cleanup attempts helper stop and event close even if sender stop raises.
+Config/result evidence is retained under output `sender/`, including failure cases.
+No independent executable test or measured burst was run by this reviewer.
+
+Failure does not interrupt a `Client.read()` already blocked in its existing15s
+select deadline. The saved child error is surfaced when that bounded read returns
+or times out. This is eventual error reporting, not immediate child-death wakeup.
+Successful finish reaps before parent writes; child closes only its inherited pipe
+handle, leaving the parent descriptor available. Parent flush before spawn avoids
+buffered interleaving under the exclusive-writer assumption.
+
+The existing `Client.stop()` closes descriptors only after successful kill/wait;
+a helper reap failure can therefore skip those closes, though the new outer cleanup
+still closes events. No guarantee that every resource closes under every OS failure,
+or that abrupt parent death immediately terminates the sender, is asserted. These
+limits do not invalidate the captured source/result audit or create a new runtime
+production requirement.
