@@ -66,6 +66,23 @@ class CompanionValidationTests(unittest.TestCase):
         )
         self.assertEqual(findings, [])
 
+    def test_requires_atomic_capture_id_deduplication(self):
+        self.assertEqual(
+            check_companion.deduplication_findings("func send() { print(\"sent\") }"),
+            [
+                "no sent capture-ID registry found for deduplication",
+                "capture ID is not atomically inserted for duplicate suppression",
+                "duplicate capture IDs are not explicitly rejected",
+            ],
+        )
+        self.assertEqual(
+            check_companion.deduplication_findings(
+                "sentCaptureIDs.insert(captureID).inserted\n"
+                "warning: duplicate capture_id\nreturn false"
+            ),
+            [],
+        )
+
     def test_validates_declared_fixture_mime_against_bytes(self):
         with tempfile.TemporaryDirectory() as temporary:
             fixture = Path(temporary) / "capture.json"

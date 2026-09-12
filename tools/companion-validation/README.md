@@ -25,6 +25,8 @@ enabled), and reports conservative source-level recovery gates for cancellation,
 retry, and capture-ID consumption before serialization. A missing simulator
 runtime is recorded as a runtime-test limitation rather than being misreported as
 an XCTest pass.
+The report also checks that the stdout transport has an atomic capture-ID registry
+and explicitly rejects duplicates.
 
 Run the harness unit tests with:
 

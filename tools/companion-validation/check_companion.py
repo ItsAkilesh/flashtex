@@ -139,6 +139,18 @@ def delivery_findings(store_source: str, transport_source: str) -> list[str]:
     return findings
 
 
+def deduplication_findings(transport_source: str) -> list[str]:
+    """Check that duplicate capture identifiers are rejected at the transport edge."""
+    findings: list[str] = []
+    if "sentCaptureIDs" not in transport_source:
+        findings.append("no sent capture-ID registry found for deduplication")
+    if "sentCaptureIDs.insert(captureID).inserted" not in transport_source:
+        findings.append("capture ID is not atomically inserted for duplicate suppression")
+    if "return false" not in transport_source or "duplicate capture_id" not in transport_source:
+        findings.append("duplicate capture IDs are not explicitly rejected")
+    return findings
+
+
 def fixture_mime_findings(fixture: Path) -> list[str]:
     """Validate declared MIME type against decoded bytes in a capture fixture."""
     try:
@@ -168,6 +180,7 @@ def validate_tree(source: Path, xcodebuild: str, build: bool) -> dict[str, Any]:
         "test_target_findings": [],
         "mime_findings": [],
         "delivery_findings": [],
+        "deduplication_findings": [],
         "fixture_mime_findings": [],
         "commands": [],
     }
@@ -185,8 +198,12 @@ def validate_tree(source: Path, xcodebuild: str, build: bool) -> dict[str, Any]:
         result["delivery_findings"] = delivery_findings(
             store.read_text(encoding="utf-8"), transport.read_text(encoding="utf-8")
         )
+        result["deduplication_findings"] = deduplication_findings(
+            transport.read_text(encoding="utf-8")
+        )
     else:
         result["delivery_findings"] = ["capture delivery sources missing"]
+        result["deduplication_findings"] = ["capture delivery sources missing"]
     fixture = source / CAPTURE_FIXTURE
     if fixture.exists():
         result["fixture_mime_findings"] = fixture_mime_findings(fixture)
