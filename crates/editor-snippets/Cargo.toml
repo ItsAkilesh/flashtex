@@ -1,0 +1,14 @@
+[package]
+name = "flashtex-editor-snippets"
+version = "0.1.0"
+edition = "2024"
+description = "Bounded, UTF-8-safe editor snippet expansion: numbered placeholders, linked edits, guarded tab navigation. Computes edits only; never mutates a source buffer."
+publish = false
+
+[lib]
+name = "flashtex_editor_snippets"
+path = "src/lib.rs"
+
+[dependencies]
+
+[dev-dependencies]
