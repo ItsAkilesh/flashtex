@@ -121,6 +121,79 @@ impl BoundMathFont {
         };
         Ok(Self { engine, identity })
     }
+    pub(crate) fn raw_math(&self) -> &[u8] {
+        self.engine.face().table(b"MATH").expect("bound MATH table")
+    }
+    pub fn glyph_device(
+        &self,
+        glyph_id: u16,
+        kind: crate::math_device::GlyphDeviceKind,
+        context: crate::math_device::DeviceContext,
+    ) -> Result<BoundGlyphDevice, crate::math_device::DeviceError> {
+        use crate::math_device::*;
+        let raw = crate::math_device::glyph_record(
+            self.engine.face().table(b"MATH").expect("bound MATH table"),
+            glyph_id,
+            self.glyph_count(),
+            kind,
+            context,
+        )?;
+        let math = self.engine.face().math().expect("bound MATH table");
+        let expected = match kind {
+            GlyphDeviceKind::ItalicCorrection => Some(math.italics_correction(GlyphId(glyph_id))),
+            GlyphDeviceKind::TopAccentAttachment => math.top_accent_attachment(GlyphId(glyph_id)),
+        };
+        let design_units = raw.as_ref().map(|r| r.design_units).or(match kind {
+            GlyphDeviceKind::ItalicCorrection => Some(0),
+            GlyphDeviceKind::TopAccentAttachment => None,
+        });
+        if expected != design_units {
+            return Err(DeviceError::InvalidRecord);
+        }
+        Ok(BoundGlyphDevice {
+            identity: self.identity.clone(),
+            glyph_id,
+            kind,
+            context,
+            design_units,
+            correction: raw,
+        })
+    }
+    pub fn kern_device(
+        &self,
+        glyph_id: u16,
+        corner: crate::math_kern::Corner,
+        height: Rational,
+        context: crate::math_device::KernDeviceContext,
+    ) -> Result<BoundKernDevice, crate::math_device::DeviceError> {
+        let math = self.engine.face().table(b"MATH").expect("bound MATH table");
+        let kerns = crate::math_kern::MathKern::parse(math, self.glyph_count())?;
+        Ok(BoundKernDevice {
+            identity: self.identity.clone(),
+            correction: kerns.device_lookup(
+                math,
+                glyph_id,
+                corner,
+                height,
+                self.units_per_em(),
+                context,
+            )?,
+        })
+    }
+    pub fn constant_device(
+        &self,
+        record: crate::math_device::ConstantDeviceRecord,
+        context: crate::math_device::DeviceContext,
+    ) -> Result<BoundConstantDevice, crate::math_device::DeviceError> {
+        Ok(BoundConstantDevice {
+            identity: self.identity.clone(),
+            correction: crate::math_device::constant_correction(
+                self.engine.face().table(b"MATH").expect("bound MATH table"),
+                record,
+                context,
+            )?,
+        })
+    }
     pub fn kerns(&self) -> Result<BoundMathKern, MathError> {
         Ok(BoundMathKern {
             identity: self.identity.clone(),
@@ -257,6 +330,58 @@ impl BoundMathKern {
     }
     pub fn data(&self) -> &crate::math_kern::MathKern {
         &self.data
+    }
+}
+pub struct BoundConstantDevice {
+    identity: MathIdentity,
+    correction: crate::math_device::ConstantCorrection,
+}
+impl BoundConstantDevice {
+    pub fn identity(&self) -> &MathIdentity {
+        &self.identity
+    }
+    pub fn correction(&self) -> &crate::math_device::ConstantCorrection {
+        &self.correction
+    }
+}
+pub struct BoundGlyphDevice {
+    identity: MathIdentity,
+    glyph_id: u16,
+    kind: crate::math_device::GlyphDeviceKind,
+    context: crate::math_device::DeviceContext,
+    design_units: Option<i16>,
+    correction: Option<crate::math_device::RecordCorrection>,
+}
+impl BoundGlyphDevice {
+    pub fn identity(&self) -> &MathIdentity {
+        &self.identity
+    }
+    pub fn glyph_id(&self) -> u16 {
+        self.glyph_id
+    }
+    pub fn kind(&self) -> crate::math_device::GlyphDeviceKind {
+        self.kind
+    }
+    pub fn context(&self) -> crate::math_device::DeviceContext {
+        self.context
+    }
+    pub fn design_units(&self) -> Option<i16> {
+        self.design_units
+    }
+    pub fn correction(&self) -> Option<&crate::math_device::RecordCorrection> {
+        self.correction.as_ref()
+    }
+}
+pub struct BoundKernDevice {
+    identity: MathIdentity,
+    correction: crate::math_device::KernCorrection,
+}
+impl BoundKernDevice {
+    pub fn identity(&self) -> &MathIdentity {
+        &self.identity
+    }
+    pub fn correction(&self) -> &crate::math_device::KernCorrection {
+        &self.correction
     }
 }
 #[cfg(test)]

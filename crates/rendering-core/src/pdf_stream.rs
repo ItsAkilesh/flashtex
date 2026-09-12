@@ -1,6 +1,6 @@
 //! Exact PDF path operator handoff, not another PDF object/xref writer.
-//! The current original backend lacks path/content input (issue #25). Decimal
-//! output rejects nonterminating rationals and never routes through f64 rounding.
+//! The additive pdf_export module sends this handoff to the original backend.
+//! Decimal output rejects nonterminating rationals and never uses f64 rounding.
 use crate::{
     batch::{ExactClip, PrimitiveId},
     mixed::{BoundedOutput, MixedBatch, MixedLimits},
@@ -376,7 +376,14 @@ impl PdfCommandStream {
                 }
             }
         }
-        self.push(PdfOperator::FillNonZero)?;
+        // Empty original glyphs (e.g. spaces) retain provenance but have no paint path.
+        let has_path = match geometry {
+            ReplayGeometry::Rule(_) => true,
+            ReplayGeometry::Quadratic(v) | ReplayGeometry::Cubic(v) => !v.is_empty(),
+        };
+        if has_path {
+            self.push(PdfOperator::FillNonZero)?;
+        }
         self.push(PdfOperator::Restore)?;
         self.spans.push(OperatorSpan {
             primitive: id,

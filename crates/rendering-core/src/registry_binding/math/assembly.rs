@@ -10,8 +10,7 @@ use crate::{
 };
 use flashtex_font_resources::{
     cff::HintPolicy,
-    math_adapter::BoundMathFit,
-    math_fit::{FitError, FitLimits, FitStrategy, FittedShape},
+    math_fit::{FitError, FitLimits, FitStrategy, FittedShape, MathFit},
     math_variants::Direction,
 };
 #[derive(Debug)]
@@ -44,16 +43,31 @@ pub struct AssemblyRequest<'a> {
     pub paint: Paint,
     pub hint_policy: HintPolicy,
 }
+pub struct AssemblyFit {
+    identity: MathIdentity,
+    fit: MathFit,
+}
+impl AssemblyFit {
+    pub fn identity(&self) -> &MathIdentity {
+        &self.identity
+    }
+    pub fn fit(&self) -> &MathFit {
+        &self.fit
+    }
+}
 pub struct MathAssemblyFrame {
     metrics: MathMetricsSnapshot,
-    fit: BoundMathFit,
+    fit: AssemblyFit,
     batch: MixedBatch,
+    origin: P,
+    hint_policy: HintPolicy,
+    fit_limits: FitLimits,
 }
 impl MathAssemblyFrame {
     pub fn metrics(&self) -> &MathMetricsSnapshot {
         &self.metrics
     }
-    pub fn fit(&self) -> &BoundMathFit {
+    pub fn fit(&self) -> &AssemblyFit {
         &self.fit
     }
     pub fn batch(&self) -> &MixedBatch {
@@ -75,6 +89,15 @@ impl RegistryRenderer {
         request: AssemblyRequest<'_>,
         limits: MixedLimits,
     ) -> std::result::Result<MathAssemblyFrame, AssemblyError> {
+        self.math_assembly_with_fit(lease, request, limits, None)
+    }
+    pub(super) fn math_assembly_with_fit(
+        &self,
+        lease: &MathLease,
+        request: AssemblyRequest<'_>,
+        limits: MixedLimits,
+        cached: Option<MathFit>,
+    ) -> std::result::Result<MathAssemblyFrame, AssemblyError> {
         if !(1..=100000).contains(&limits.max_primitives)
             || !(1..=2_000_000).contains(&limits.max_commands)
             || !(1..=MAX_MESSAGE_BYTES).contains(&limits.max_serialized_bytes)
@@ -88,16 +111,28 @@ impl RegistryRenderer {
         )?;
         request.paint.validate()?;
         request.page.clip.validate()?;
-        let variants = lease.font.variants().map_err(MathConsumerError::from)?;
-        let fit = variants
-            .fit(
-                request.direction,
-                request.original_gid,
-                request.target,
-                request.strategy,
-                request.fit_limits,
-            )
-            .map_err(AssemblyError::Fit)?;
+        let fit = if let Some(fit) = cached {
+            fit
+        } else {
+            lease
+                .font
+                .variants()
+                .map_err(MathConsumerError::from)?
+                .fit(
+                    request.direction,
+                    request.original_gid,
+                    request.target,
+                    request.strategy,
+                    request.fit_limits,
+                )
+                .map_err(AssemblyError::Fit)?
+                .fit()
+                .clone()
+        };
+        let fit = AssemblyFit {
+            identity: lease.identity().clone(),
+            fit,
+        };
         let parts: Vec<_> = match &fit.fit().shape {
             FittedShape::Variant(v) => vec![(v.glyph_id, Rational::new(0, 1).expect("zero"))],
             FittedShape::Assembly(a) => {
@@ -208,6 +243,65 @@ impl RegistryRenderer {
             metrics,
             fit,
             batch,
+            origin: request.origin,
+            hint_policy: request.hint_policy,
+            fit_limits: request.fit_limits,
         })
+    }
+}
+
+impl MathAssemblyFrame {
+    /// Bounded internal evidence joins fit provenance to exact geometry. No wire switch.
+    pub fn replay_bytes(&self, max_bytes: usize) -> MathResult<Vec<u8>> {
+        if !(1..=MAX_MESSAGE_BYTES).contains(&max_bytes) {
+            return Err(MathConsumerError::Budget);
+        }
+        let metrics: serde_json::Value =
+            serde_json::from_slice(&self.metrics.replay_bytes(max_bytes)?)
+                .map_err(|e| ValidationError(e.to_string()))?;
+        if self.batch.fixture_bytes().len() > max_bytes {
+            return Err(MathConsumerError::Budget);
+        }
+        let batch: serde_json::Value = serde_json::from_slice(self.batch.fixture_bytes())
+            .map_err(|e| ValidationError(e.to_string()))?;
+        let scalar = |v: Rational| {
+            serde_json::json!([v.numerator().to_string(), v.denominator().to_string()])
+        };
+        let q = |v: Q| serde_json::json!([v.numerator().to_string(), v.denominator().to_string()]);
+        let fit = self.fit.fit();
+        let shape = match &fit.shape {
+            FittedShape::Variant(v) => {
+                serde_json::json!({"kind":"variant","original_gid":v.glyph_id,"advance_design_units":v.advance})
+            }
+            FittedShape::Assembly(a) => {
+                serde_json::json!({"kind":"assembly","parts":a.parts.iter().enumerate().map(|(primitive,p)|serde_json::json!({"primitive_index":primitive,"original_gid":p.glyph_id,"part_index":p.part_index,"instance":p.instance,"offset_design_units":scalar(p.offset)})).collect::<Vec<_>>(),"overlaps_design_units":a.overlaps.iter().copied().map(scalar).collect::<Vec<_>>(),"advance_design_units":scalar(a.advance),"italic_design_units":a.italic_correction,"device_adjustment_present":a.device_adjustment_present,"extender_repetitions":a.extender_repetitions})
+            }
+        };
+        let value = serde_json::json!({"format":"flashtex-internal-math-assembly-v1","consumer_source_sha256":digest(include_bytes!("assembly.rs")),"metrics":metrics,"geometry":batch,"geometry_sha256":digest(self.batch.fixture_bytes()),"origin":[q(self.origin.x),q(self.origin.y)],"cff_hint_policy":format!("{:?}",self.hint_policy),"fit":{"direction":format!("{:?}",fit.direction),"original_gid":fit.original_glyph_id,"target_design_units":scalar(fit.target),"strategy":format!("{:?}",fit.strategy),"max_repetitions":self.fit_limits.max_repetitions,"max_parts":self.fit_limits.max_parts,"shape":shape},"automatic_baseline_alignment":false,"tex_layout_parity":false});
+        let mut out = crate::mixed::BoundedOutput {
+            bytes: vec![],
+            limit: max_bytes,
+        };
+        serde_json::to_writer(&mut out, &value).map_err(|_| MathConsumerError::Budget)?;
+        Ok(out.bytes)
+    }
+    pub fn verify_replay(
+        &self,
+        r: &RegistryRenderer,
+        path: &str,
+        s: &SourceSnapshot,
+        bytes: &[u8],
+    ) -> MathResult<()> {
+        self.require_current(r, path, s)?;
+        if bytes.len() > MAX_MESSAGE_BYTES {
+            return Err(MathConsumerError::Budget);
+        }
+        let actual =
+            crate::mixed_replay::parse_unique(bytes).map_err(|e| ValidationError(e.to_string()))?;
+        let expected: serde_json::Value =
+            serde_json::from_slice(&self.replay_bytes(MAX_MESSAGE_BYTES)?)
+                .map_err(|e| ValidationError(e.to_string()))?;
+        require(actual == expected, "MATH assembly replay mismatch")?;
+        Ok(())
     }
 }
