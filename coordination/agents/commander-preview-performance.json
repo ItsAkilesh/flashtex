@@ -13,17 +13,17 @@
   "capabilities": [
     "Preview helper serialization and latency"
   ],
-  "code_revision": "42425a521336221766addd6dce4a9b8dd33da790",
+  "code_revision": "8876279e278581c1401f046ef73ac36ec1c113ae",
   "eta_minutes": null,
   "machine": "linux-primary",
   "main_integrated_through": "6e515bef475f14d51a736c94ba4e0adc943d0dc8",
-  "next_action": "Native helper-route consumer validation and full-size optional oversize/stall evidence; preserve defaultOFF.",
+  "next_action": "Coordinate native helper rendering and measured responsiveness; watch integration runtime parallel-test fix without changing peer ownership.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "Actual65dbe7d producer\u2192helper replay passes original+2durable edits: exact direct/helper v1 and display JSON equality, exactsource hashes, matching v1 precedes candidate, finaldocument exact afterkill/reopen. Binary/font/TFM/license hashes checked; no nativepaint or latency claim.",
+  "summary": "Full-size optional output gates pass:5.6MB compact sibling exceeds16MiB only on reserialization, is refused, then edit ACK/reopen remain exact.1MiB admitted optional frame with unreadstdout triggerswatchdog ~2s and source survives. Strictlint pass; no production changes.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T11:10:00Z",
+  "updated_utc": "2026-09-12T11:13:19Z",
   "usage": {
     "status": "unknown"
   }
