@@ -103,9 +103,20 @@ pub struct ImportOutcome {
 /// silently left inconsistent without saying so).
 ///
 /// Either way, this function never partially applies a batch without
-/// reporting it: the only two outcomes are "every write in this call is
-/// gone, target exactly as before" (the typed cause is returned directly)
-/// or "here is exactly what could not be undone" ([`BundleError::RollbackIncomplete`]).
+/// reporting it: the only two outcomes are "every file this call wrote is
+/// back to its pre-call content or absence" (the typed cause is returned
+/// directly) or "here is exactly what could not be undone"
+/// ([`BundleError::RollbackIncomplete`]).
+///
+/// One documented exception, which rollback does **not** undo: writing a
+/// new file under a directory the target did not have yet creates that
+/// directory (the rooted writer creates missing parents). Rollback removes
+/// the file but leaves the now-empty directory in place, and does not
+/// report it as a rollback failure. No file content is affected — an empty
+/// directory is not a write this call can distinguish from one a
+/// concurrent in-contract writer made — so "target exactly as before" is
+/// true of file contents, not of the directory tree. See
+/// `tests/recovery.rs::rollback_removes_the_file_but_leaves_the_directory_it_created`.
 pub fn apply_import(
     bundle: &Bundle,
     preview: &ImportPreview,

@@ -83,6 +83,18 @@ impl ProjectRoot {
     /// Read `relative`'s bytes, size and SHA-256, rooted and bounded at this
     /// root's file limit. `Ok(None)` when the file does not exist under the
     /// root; never performs a write.
+    ///
+    /// "Does not exist" covers both a missing leaf *and* a missing parent
+    /// directory. The underlying rooted reader reports the first as
+    /// `Ok(None)` but the second as a raw `ENOENT` from the component walk
+    /// (it opens each directory in turn and never has to distinguish "no
+    /// such directory" from "no such file"); both mean the declared path is
+    /// not present under the root, so both are `Ok(None)` here. Without
+    /// this, previewing a bundle entry such as `chapters/intro.tex` into a
+    /// target that does not have a `chapters/` directory yet failed with an
+    /// untyped [`BundleError::Io`] instead of classifying it as
+    /// [`crate::FileOutcome::New`] — even though `apply_import`'s writer
+    /// creates missing parent directories.
     pub fn read_rooted_optional(&self, relative: &str) -> Result<Option<RootedFile>, BundleError> {
         let path = Self::normalize(relative)?;
         match self.inner.read(&path, self.file_limit) {
@@ -92,6 +104,7 @@ impl ProjectRoot {
                 sha256: read.sha256,
             })),
             Ok(None) => Ok(None),
+            Err(e) if is_missing_component(&e) => Ok(None),
             Err(e) => Err(map_save_error(relative, e)),
         }
     }
@@ -137,6 +150,14 @@ impl ProjectRoot {
 /// this way and it needs no root to run.
 pub fn validate_relative_path(path: &str) -> Result<(), BundleError> {
     ProjectRoot::normalize(path).map(|_| ())
+}
+
+/// Whether a rooted-read failure is really "nothing is there": the walk to
+/// the parent directory hit a component that does not exist. The rooted
+/// reader already turns a missing *leaf* into `Ok(None)`, so an `ENOENT`
+/// surfacing as an I/O error can only have come from the directory walk.
+fn is_missing_component(err: &SaveError) -> bool {
+    matches!(err, SaveError::Io(e) if e.kind() == std::io::ErrorKind::NotFound)
 }
 
 fn map_path_error(raw: &str, err: PathError) -> BundleError {

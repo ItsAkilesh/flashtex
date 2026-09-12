@@ -192,3 +192,57 @@ fn rollback_restores_overwritten_conflicts_not_just_removes_new_files() {
     // "z.tex" was never attempted.
     assert_eq!(std::fs::read(dst.path().join("z.tex")).unwrap(), b"old z");
 }
+
+#[test]
+fn rollback_removes_the_file_but_leaves_the_directory_it_created() {
+    // Characterization, not a guarantee being added: the rooted writer
+    // creates missing parent directories for a new file, and rollback has
+    // no record of that — it removes the file it wrote and leaves the
+    // now-empty directory behind, without reporting a rollback failure.
+    //
+    // This pins the real boundary of the batch-recovery promise: file
+    // *content* is restored exactly, the directory tree is not. It is
+    // pinned here so the crate docs (see `apply_import`'s "Batch recovery"
+    // section) cannot drift back into claiming the target is left exactly
+    // as it was in every respect.
+    let src = TempDir::new("recovery-dirs-src");
+    src.write("chapters/a.tex", b"content a");
+    src.write("z.tex", b"content z");
+    let src_root = ProjectRoot::new(src.path()).unwrap();
+
+    let dst = TempDir::new("recovery-dirs-dst");
+    let dst_root = ProjectRoot::new(dst.path()).unwrap();
+
+    let bundle = build_bundle(
+        &src_root,
+        &[BundleEntry::new("chapters/a.tex"), BundleEntry::new("z.tex")],
+    )
+    .unwrap();
+    let preview = preview_import(&bundle, &dst_root).unwrap();
+
+    // Race "z.tex" in so the second write fails and the first is rolled back.
+    dst.write("z.tex", b"raced in");
+
+    let err = apply_import(&bundle, &preview, &dst_root, &HashMap::new()).unwrap_err();
+    assert!(
+        matches!(err, BundleError::ConcurrentModification { ref path, .. } if path == "z.tex"),
+        "{err:?}"
+    );
+
+    // The written file is gone...
+    assert!(
+        !dst.path().join("chapters/a.tex").exists(),
+        "the file this call wrote must be rolled back"
+    );
+    // ...and the directory created to hold it remains, empty. Not reported
+    // as a failure, because no file content is wrong.
+    assert!(
+        dst.path().join("chapters").is_dir(),
+        "documented residue: the created directory is not removed"
+    );
+    assert_eq!(
+        std::fs::read_dir(dst.path().join("chapters")).unwrap().count(),
+        0,
+        "and it is empty"
+    );
+}
