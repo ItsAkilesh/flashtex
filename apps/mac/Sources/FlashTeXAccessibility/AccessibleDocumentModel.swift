@@ -104,7 +104,7 @@ public struct AccessibleDocumentModel: Equatable {
         public var lines: [Line]
         public var totalPages: Int
         public var label: String {
-            "Page \(number) of \(totalPages), \(lines.count) line\(lines.count == 1 ? "" : "s")"
+            "Page \(number)\(totalPages > 0 ? " of \(totalPages)" : ""), \(lines.count) line\(lines.count == 1 ? "" : "s")"
         }
     }
 
