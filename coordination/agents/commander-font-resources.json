@@ -13,7 +13,7 @@
   "capabilities": [
     "rust-font-resources"
   ],
-  "code_revision": "1b60dd3e197994d118720b2bcbdf805ffc0add3c",
+  "code_revision": "01acbb10d76bb136985927e968a4b97bd6fae94e",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
@@ -21,13 +21,13 @@
   },
   "machine": "linux-primary",
   "main_integrated_through": "1fc71f31ee1e23eff0f3ab2fa1b04964b776594c",
-  "next_action": "Consumer handoff EncFile::load/parse,bind_truetype,bind_cff with EncodingSource provenance. Same owned crate and branch clean after publication; no providers/descendants/peer edits. Await next assignment.",
+  "next_action": "Mac matching-font verification pending exact LM fontSHA1aa18cf...; compiled tests/rooted_lm_encoding.rs opt-in via FLASHTEX_LM_FONT. Request sent Commander; no substitute evidence. Same owned crate, clean branch after publication, no providers/descendants.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "Literal .enc loader complete:120 ordinary tests/clippy pass.256-slot declarative array only, rooted SHA binding, no executable PostScript. Existing exact TTF/CFF binders reused, file identity wrapper retained. Real published licensed lm-ec.enc256slots matches253mapped peer records; no missing Mac fixture request needed.",
+  "summary": "Rooted .enc asset integration complete: schema2 TT/CFF physical asset nodes, schema1 unchanged,120 ordinary tests/clippy pass. Project generation binds encoding SHA/path/license; existing graph expansion and new exact physical_run preserve intervals. Synthetic end-to-end proofs pass; real TFM/enc metrics pinned.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T09:12:19Z",
+  "updated_utc": "2026-09-12T09:19:18Z",
   "usage": {
     "evidence": "crates/font-resources/README.md; test suite; installed font SHA pinned.",
     "status": "Hosted allocation; no external provider calls; account remainder unknown."
