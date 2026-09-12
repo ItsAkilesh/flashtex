@@ -14,23 +14,23 @@
     "rust",
     "rendering"
   ],
-  "code_revision": "f1a802ceba5107097da0bb78ca2cf2866f1e5fbd",
+  "code_revision": "0de9a9617c8ba6c5529c30b24e0d6e644f2e500d",
   "eta_minutes": {
     "likely": 20,
     "optimistic": 10,
     "pessimistic": 30
   },
   "machine": "linux-primary",
-  "main_integrated_through": "ebca91b3df41f736d351803d58a2bd78bf907e97",
-  "next_action": "Implement bounded immutable resource graph cache with exact binding identity and negative outcomes.",
+  "main_integrated_through": "9d69d6ed0b2a3300fb3fd5351af150707f062824",
+  "next_action": "Publish graph cache checkpoint and continue next assigned rendering product increment.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "Explicit TFM/VF exact positioning and bound-font draw batch adapter implemented. 66 Rust tests pass, including flat/virtual equivalence and source UTF8 gates.",
+  "summary": "Immutable scoped nested resource graph cache added with LRU, payload budget and cached failures. 69 Rust tests pass; identical file hashes with different encodings remain isolated.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T06:27:22Z",
+  "updated_utc": "2026-09-12T06:29:29Z",
   "usage": {
-    "evidence": "66 Rust tests and strict clippy pass. Synthetic TFM/VF equivalence only; nonintegral canonical batch coordinates explicitly rejected without rounding. Peer font-resources d8e8d6b merged unchanged.",
+    "evidence": "69 Rust tests and strict clippy pass; peer font-resources 7bc9906 merged unchanged. No native paint or TeX oracle parity claim.",
     "status": "Hosted OpenAI authorized; no external provider calls or purchases."
   }
 }

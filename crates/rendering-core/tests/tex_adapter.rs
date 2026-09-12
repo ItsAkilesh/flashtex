@@ -350,3 +350,104 @@ fn explicit_source_identity_and_utf8_boundaries_gate_batches() {
     docs[0].revision = 2;
     assert!(check(&mapping, &docs, &mut cache).is_err());
 }
+#[test]
+fn graph_cache_is_immutable_scoped_and_preserves_exact_source_chain() {
+    use flashtex_font_resources::vf_graph::*;
+    use flashtex_rendering_core::graph_cache::*;
+    let f = font(true);
+    let t = tfm();
+    let m = manifest(&f, &t);
+    let b = BoundTfmFont::new(&t, &f, &m).unwrap();
+    let v = vf(&[65]);
+    let mut graph = ResourceGraph::new();
+    let p = graph.insert(Resource::Physical(&b)).unwrap();
+    let root = graph
+        .insert(Resource::Virtual {
+            vf: &v,
+            tfm: &t,
+            fonts: BTreeMap::from([(0, p)]),
+        })
+        .unwrap();
+    let mut cache = GraphCache::new(&graph, 4, 10000).unwrap();
+    let Outcome::Ready(a) = cache.lookup(&root, 65).unwrap().outcome else {
+        panic!()
+    };
+    let hit = cache.lookup(&root, 65).unwrap();
+    assert!(hit.cache_hit);
+    let Outcome::Ready(b) = hit.outcome else {
+        panic!()
+    };
+    assert!(std::sync::Arc::ptr_eq(&a, &b));
+    let NestedPlacement::Glyph {
+        source, glyph_id, ..
+    } = &a.placements[0]
+    else {
+        panic!()
+    };
+    assert_eq!(*glyph_id, 1);
+    assert_eq!(source.len(), 2);
+    assert_eq!(cache.stats().expansions, 1);
+    cache.clear();
+    assert_eq!(cache.stats().entries, 0);
+    assert_eq!(a.placements.len(), 1);
+}
+#[test]
+fn graph_cache_negative_outcomes_lru_and_payload_caps() {
+    use flashtex_font_resources::vf_graph::*;
+    use flashtex_rendering_core::graph_cache::*;
+    let f = font(false);
+    let t = tfm();
+    let b = BoundTfmFont::new(&t, &f, &manifest(&f, &t)).unwrap();
+    let mut graph = ResourceGraph::new();
+    let root = graph.insert(Resource::Physical(&b)).unwrap();
+    let mut cache = GraphCache::new(&graph, 1, 1024).unwrap();
+    let Outcome::Unavailable(reason) = cache.lookup(&root, 65).unwrap().outcome else {
+        panic!()
+    };
+    assert!(matches!(*reason, Failure::PayloadBudget { .. }));
+    assert!(cache.lookup(&root, 65).unwrap().cache_hit);
+    let Outcome::Unavailable(reason) = cache.lookup(&root, 66).unwrap().outcome else {
+        panic!()
+    };
+    assert!(matches!(*reason, Failure::Resource(_)));
+    assert_eq!(cache.stats().evictions, 1);
+    assert!(!cache.lookup(&root, 65).unwrap().cache_hit);
+    assert!(cache.stats().retained_payload_bytes <= 1024);
+    let invalid = ResourceKey::Physical {
+        font_sha256: "invalid".into(),
+        tfm_sha256: "0".repeat(64),
+        face_index: 0,
+    };
+    assert!(cache.lookup(&invalid, 65).is_err());
+}
+#[test]
+fn identical_file_hashes_with_different_encoding_do_not_share_cache() {
+    use flashtex_font_resources::vf_graph::*;
+    use flashtex_rendering_core::graph_cache::*;
+    let f = font(false);
+    let t = tfm();
+    let mut m = manifest(&f, &t);
+    let a = BoundTfmFont::new(&t, &f, &m).unwrap();
+    m.declared_glyphs[0].glyph_id = 2;
+    let b = BoundTfmFont::new(&t, &f, &m).unwrap();
+    let mut ga = ResourceGraph::new();
+    let ka = ga.insert(Resource::Physical(&a)).unwrap();
+    let mut gb = ResourceGraph::new();
+    let kb = gb.insert(Resource::Physical(&b)).unwrap();
+    assert_eq!(ka, kb);
+    let mut ca = GraphCache::new(&ga, 4, 10000).unwrap();
+    let mut cb = GraphCache::new(&gb, 4, 10000).unwrap();
+    let Outcome::Ready(a) = ca.lookup(&ka, 65).unwrap().outcome else {
+        panic!()
+    };
+    let Outcome::Ready(b) = cb.lookup(&kb, 65).unwrap().outcome else {
+        panic!()
+    };
+    let NestedPlacement::Glyph { glyph_id: a, .. } = a.placements[0] else {
+        panic!()
+    };
+    let NestedPlacement::Glyph { glyph_id: b, .. } = b.placements[0] else {
+        panic!()
+    };
+    assert_eq!((a, b), (1, 2));
+}

@@ -160,3 +160,12 @@ requires integral canonical origins/sizes and returns `NonIntegralTicks` otherwi
 the original run retains its exact fractions. No Unicode inference, interval
 interpolation, implicit rounding or production runtime activation occurs. Flat/VF
 equivalence fixtures are original synthetic data, not a reference-TeX oracle.
+
+`graph_cache::GraphCache` immutably borrows one fully declared resource graph and
+caches exact nested packets by resource hash key and encoded character. A cache
+cannot be reassigned to another graph: file hashes alone do not identify encoding
+declarations or virtual local-font bindings. Cached packets retain the complete
+root-to-leaf source chain. LRU entry/payload limits and explicit cached unsupported
+resource or oversize outcomes bound retained work; loader limits bound expansion
+separately. Payload figures exclude map/allocator overhead and externally held Arcs.
+Tests explicitly distinguish identical font/TFM hashes with different encodings.

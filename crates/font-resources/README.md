@@ -187,3 +187,24 @@ reshaping inside packets or silent substitution occurs. Current packet limits
 bound execution and output; actual nested resource recursion is not implemented.
 Synthetic integration tests establish arithmetic/binding behavior only, not
 real-VF/font visual parity.
+
+## Explicit nested VF graph
+
+`vf_graph::ResourceGraph` extends the single-packet API with recursive virtual
+resources and explicit local-font edges. Physical keys bind font SHA/face plus
+TFM SHA; virtual keys bind VF SHA plus TFM SHA. Duplicate identities and malformed
+or undeclared local edges fail; no pathname lookup or recursive fallback occurs.
+One explicit encoding binding is accepted per physical key (conflicting duplicate
+bindings are rejected). Each output preserves the root-to-leaf resource/code and
+command-index chain, original physical GID, exact dyadic position and composed
+scale. Child glyph advances use the child's TFM packet width at the declared
+local scale; rules scale and translate through the same exact arithmetic.
+
+Graph bounds are 4096 resources, 4096 expanded nodes, 32 nested edges, 1000000
+executed commands and 100000 output placements across the whole expansion.
+Repeated (resource,character) on the active stack is a cycle; acyclic reuse is
+allowed. Precision/overflow errors propagate without partial output. Specials
+remain explicitly unsupported. Flat-versus-nested synthetic glyph and rule
+fixtures compare exact geometry and retain intentionally distinct provenance;
+cycle, missing-resource, depth, node and global-output cap tests also pass.
+Real licensed VF/TFM/outline oracle agreement remains pending.

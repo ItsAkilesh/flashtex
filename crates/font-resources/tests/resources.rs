@@ -562,3 +562,209 @@ fn virtual_packet_put_rule_and_reused_register_have_exact_units() {
         _ => panic!("expected glyph"),
     }
 }
+
+fn graph_vf(commands: &[u8], scale: u32, comment: u8) -> flashtex_font_resources::vf::VirtualFont {
+    let mut b = vec![247, 202, 1, comment];
+    for n in [0u32, 10 << 20] {
+        b.extend(n.to_be_bytes());
+    }
+    b.extend([243, 0]);
+    for n in [0u32, scale, 10 << 20] {
+        b.extend(n.to_be_bytes());
+    }
+    b.extend([0, 1, b'f', 242]);
+    for n in [commands.len() as u32, 65, 1 << 19] {
+        b.extend(n.to_be_bytes());
+    }
+    b.extend(commands);
+    b.push(248);
+    flashtex_font_resources::vf::VirtualFont::parse(&b).unwrap()
+}
+#[test]
+fn nested_and_flat_vf_geometry_are_exactly_equivalent_with_distinct_provenance() {
+    use flashtex_font_resources::{encoding::*, vf_graph::*};
+    let bytes = fixture();
+    let font = FontResource::from_bytes(&entry(&bytes), &bytes, b"test license").unwrap();
+    let tfm = tfm_for_encoding();
+    let manifest = encoding_manifest(&font, &tfm);
+    let binding = BoundTfmFont::new(&tfm, &font, &manifest).unwrap();
+    let child = graph_vf(
+        &[146, 0, 4, 0, 0, 65, 137, 0, 8, 0, 0, 0, 4, 0, 0],
+        1 << 19,
+        b'c',
+    );
+    let root = graph_vf(&[146, 0, 8, 0, 0, 65], 1 << 19, b'r');
+    let flat = graph_vf(
+        &[146, 0, 10, 0, 0, 65, 137, 0, 4, 0, 0, 0, 2, 0, 0],
+        1 << 18,
+        b'f',
+    );
+    let mut graph = ResourceGraph::new();
+    let physical = graph.insert(Resource::Physical(&binding)).unwrap();
+    let child_key = graph
+        .insert(Resource::Virtual {
+            vf: &child,
+            tfm: &tfm,
+            fonts: BTreeMap::from([(0, physical.clone())]),
+        })
+        .unwrap();
+    let root_key = graph
+        .insert(Resource::Virtual {
+            vf: &root,
+            tfm: &tfm,
+            fonts: BTreeMap::from([(0, child_key)]),
+        })
+        .unwrap();
+    let flat_key = graph
+        .insert(Resource::Virtual {
+            vf: &flat,
+            tfm: &tfm,
+            fonts: BTreeMap::from([(0, physical)]),
+        })
+        .unwrap();
+    let nested = graph.expand(&root_key, 65).unwrap();
+    let direct = graph.expand(&flat_key, 65).unwrap();
+    let geometry = |p: &NestedPlacement| match p {
+        NestedPlacement::Glyph {
+            resource,
+            glyph_id,
+            x,
+            y,
+            scale,
+            ..
+        } => (resource.clone(), *glyph_id, *x, *y, *scale),
+        _ => panic!("glyph expected"),
+    };
+    assert_eq!(
+        geometry(&nested.placements[0]),
+        geometry(&direct.placements[0])
+    );
+    let rule_geometry = |p: &NestedPlacement| match p {
+        NestedPlacement::Rule {
+            x,
+            y,
+            width,
+            height,
+            ..
+        } => (*x, *y, *width, *height),
+        _ => panic!("expected rule"),
+    };
+    assert_eq!(
+        rule_geometry(&nested.placements[1]),
+        rule_geometry(&direct.placements[1])
+    );
+    match &nested.placements[0] {
+        NestedPlacement::Glyph {
+            x, scale, source, ..
+        } => {
+            assert_eq!((x.numerator(), x.shift()), (5, 3));
+            assert_eq!((scale.numerator(), scale.shift()), (1, 2));
+            assert_eq!(source.len(), 3);
+            assert_eq!(source[0].command_index, Some(1));
+        }
+        _ => unreachable!(),
+    }
+}
+#[test]
+fn nested_vf_cycles_missing_keys_and_specials_fail() {
+    use flashtex_font_resources::{encoding::*, vf_graph::*};
+    let bytes = fixture();
+    let font = FontResource::from_bytes(&entry(&bytes), &bytes, b"test license").unwrap();
+    let tfm = tfm_for_encoding();
+    let manifest = encoding_manifest(&font, &tfm);
+    let binding = BoundTfmFont::new(&tfm, &font, &manifest).unwrap();
+    let root = graph_vf(&[65], 1 << 20, b'r');
+    let key = ResourceKey::Virtual {
+        vf_sha256: root.source_sha256.clone(),
+        tfm_sha256: tfm.source_sha256.clone(),
+    };
+    let mut graph = ResourceGraph::new();
+    graph
+        .insert(Resource::Virtual {
+            vf: &root,
+            tfm: &tfm,
+            fonts: BTreeMap::from([(0, key.clone())]),
+        })
+        .unwrap();
+    assert!(graph.expand(&key, 65).is_err());
+    let mut graph = ResourceGraph::new();
+    assert!(graph.expand(&key, 65).is_err());
+    let physical = graph.insert(Resource::Physical(&binding)).unwrap();
+    assert!(graph.insert(Resource::Physical(&binding)).is_err());
+    let special = graph_vf(&[239, 1, 0], 1 << 20, b's');
+    let key = graph
+        .insert(Resource::Virtual {
+            vf: &special,
+            tfm: &tfm,
+            fonts: BTreeMap::from([(0, physical)]),
+        })
+        .unwrap();
+    assert!(matches!(
+        graph.expand(&key, 65),
+        Err(Error::UnsupportedFont(_))
+    ));
+}
+#[test]
+fn nested_vf_depth_and_node_caps_fail_without_partial_output() {
+    use flashtex_font_resources::{encoding::*, vf_graph::*};
+    let bytes = fixture();
+    let font = FontResource::from_bytes(&entry(&bytes), &bytes, b"test license").unwrap();
+    let tfm = tfm_for_encoding();
+    let manifest = encoding_manifest(&font, &tfm);
+    let binding = BoundTfmFont::new(&tfm, &font, &manifest).unwrap();
+    for branch in [false, true] {
+        let fonts = (0..34)
+            .map(|i| graph_vf(if branch { &[65, 65] } else { &[65] }, 1 << 20, i))
+            .collect::<Vec<_>>();
+        let mut graph = ResourceGraph::new();
+        let mut key = graph.insert(Resource::Physical(&binding)).unwrap();
+        for vf in &fonts {
+            key = graph
+                .insert(Resource::Virtual {
+                    vf,
+                    tfm: &tfm,
+                    fonts: BTreeMap::from([(0, key)]),
+                })
+                .unwrap();
+            if branch && vf.comment[0] == 12 {
+                break;
+            }
+        }
+        assert!(graph.expand(&key, 65).is_err());
+    }
+}
+
+#[test]
+fn nested_vf_output_cap_is_global_across_packets() {
+    use flashtex_font_resources::{encoding::*, vf_graph::*};
+    let bytes = fixture();
+    let font = FontResource::from_bytes(&entry(&bytes), &bytes, b"test license").unwrap();
+    let tfm = tfm_for_encoding();
+    let manifest = encoding_manifest(&font, &tfm);
+    let binding = BoundTfmFont::new(&tfm, &font, &manifest).unwrap();
+    let rule = [137, 0, 0, 0, 1, 0, 0, 0, 1];
+    let commands = rule.repeat(60000);
+    let child = graph_vf(&commands, 1 << 20, b'c');
+    let root = graph_vf(&[65, 65], 1 << 20, b'r');
+    let mut graph = ResourceGraph::new();
+    let physical = graph.insert(Resource::Physical(&binding)).unwrap();
+    let child = graph
+        .insert(Resource::Virtual {
+            vf: &child,
+            tfm: &tfm,
+            fonts: BTreeMap::from([(0, physical)]),
+        })
+        .unwrap();
+    let root = graph
+        .insert(Resource::Virtual {
+            vf: &root,
+            tfm: &tfm,
+            fonts: BTreeMap::from([(0, child)]),
+        })
+        .unwrap();
+    assert!(graph
+        .expand(&root, 65)
+        .unwrap_err()
+        .to_string()
+        .contains("output budget"));
+}

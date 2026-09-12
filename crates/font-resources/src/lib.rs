@@ -540,3 +540,5 @@ pub mod tfm;
 pub mod encoding;
 
 pub mod vf;
+
+pub mod vf_graph;
