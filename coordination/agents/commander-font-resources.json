@@ -13,7 +13,7 @@
   "capabilities": [
     "rust-font-resources"
   ],
-  "code_revision": "00d62a9cb9c6071160477d8674402420ed61658a",
+  "code_revision": "0ef4037e3927aa0132e6f892239a8d496803cf64",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
@@ -21,13 +21,13 @@
   },
   "machine": "linux-primary",
   "main_integrated_through": "1b53ec22cb376309e868962fcf2604263cdb3016",
-  "next_action": "Existing TTC owner adds validated header/directory ranges and hard preallocation/work caps; then rerun probe and integrate unchanged. No pending commands/peer edits; await bounded next assignment.",
+  "next_action": "Existing Mac lane runs node-list oracle and adjudicates raw results; do not infer parity from shared selftests. Await repaired TTC peer or next bounded task. No paid calls/install/newworkers or pending processes.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "TTC exact peer f2fdb08/4422cff reviewed and compiled readonly: descriptor now exists but accepts malformed TTC/sfnt versions and header/directory payload overlaps. Published owned synthetic probes/evidence and two passing consumer contract tests, clippy clean. Explicit resolver gate retained; no duplicate parser or peer dependency merge. Issue2 comment5645127215 gives precise owner fixes. Prior cb4ff5f/578ac0c real matching12pt metrics complete and renderer informed.",
+  "summary": "Published0ef4037: five exact synthetic boundary font programs/SHA/input intervals/actions plus bounded existing-TeX node-list oracle harness and local missing-tool evidence. Strengthened precise retained-boundary expectations; test/clippy pass. Independent oracle remains pending because no TeX tooling installed; existing Mac request issue2 comment5645161706. Prior TTC gate unchanged.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T09:49:33Z",
+  "updated_utc": "2026-09-12T09:54:08Z",
   "usage": {
     "evidence": "crates/font-resources/README.md; test suite; installed font SHA pinned.",
     "status": "Hosted allocation; no external provider calls; account remainder unknown."
