@@ -44,9 +44,8 @@ final class V2FontStoreIdentityTests: XCTestCase {
         let file = try XCTUnwrap(store.fonts.first)
         XCTAssertEqual(file.bytesSha256, V2FontStore.hex(SHA256.hash(data: staged.original)))
         XCTAssertEqual(file.byteLength, Int64(staged.original.count))
-        // Both hash spellings look up the same discovery record; identity is the raw bytes.
+        // The raw-byte digest is the only lookup key; identity is the raw bytes.
         let resourceRaw = try manifest(for: file, bytes: staged.original, sha256: file.bytesSha256)
-        let resourceFace0 = try manifest(for: file, bytes: staged.original, sha256: file.face0Sha256)
 
         var altered = staged.original
         altered.append(0)
@@ -58,7 +57,7 @@ final class V2FontStoreIdentityTests: XCTestCase {
         XCTAssertEqual(Int(alteredCG.unitsPerEm), resourceRaw.unitsPerEm)
         XCTAssertEqual((alteredCG.postScriptName as String?) ?? "", resourceRaw.postscriptName)
 
-        for resource in [resourceRaw, resourceFace0] {
+        for resource in [resourceRaw] {
             XCTAssertThrowsError(try store.resolve(resource), "sha \(resource.sha256.prefix(12))") { error in
                 let v = error as? RenderingV2.ValidationError
                 XCTAssertEqual(v?.code, "font_resource_mismatch")
@@ -68,7 +67,7 @@ final class V2FontStoreIdentityTests: XCTestCase {
         // Nothing was cached from the refused bytes: restoring the original bytes resolves.
         try staged.original.write(to: staged.file)
         let resolved = try store.resolve(resourceRaw)
-        XCTAssertEqual(resolved.hashConvention, "bytes")
+        XCTAssertEqual(resolved.file.bytesSha256, resourceRaw.sha256)
         XCTAssertEqual(Int(resolved.cgFont.numberOfGlyphs), resourceRaw.glyphCount)
     }
 
@@ -89,9 +88,12 @@ final class V2FontStoreIdentityTests: XCTestCase {
         try altered.write(to: staged.file)
         let second = try store.resolve(resource) // cached: no reread of the changed path
         XCTAssertTrue(first.cgFont === second.cgFont, "the verified CGFont is reused as the same immutable object")
-        XCTAssertEqual(second.hashConvention, "bytes")
-        let viaFace0 = try store.resolve(try manifest(for: file, bytes: staged.original, sha256: file.face0Sha256))
-        XCTAssertTrue(viaFace0.cgFont === first.cgFont, "the bytes+face0 lookup key resolves to the same verified bytes, never to the changed file")
+        XCTAssertEqual(second.file.bytesSha256, resource.sha256)
+        // D3: the obsolete bytes+face0 spelling is no lookup key at all — unknown, never the changed file.
+        var face0 = staged.original; face0.append(contentsOf: [0, 0, 0, 0])
+        XCTAssertThrowsError(try store.resolve(try manifest(for: file, bytes: staged.original, sha256: V2FontStore.hex(SHA256.hash(data: face0))))) {
+            XCTAssertEqual(($0 as? RenderingV2.ValidationError)?.code, "font_resource_unavailable")
+        }
     }
 
     /// The manifest's byte length must equal the discovered file's, and a

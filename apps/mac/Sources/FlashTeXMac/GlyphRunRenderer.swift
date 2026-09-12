@@ -18,12 +18,12 @@ import FlashTeXProtocol
 final class V2FontStore {
     struct BundledFont {
         var url: URL
-        /// SHA-256 of the file bytes (the schema's reading of `sha256`).
+        /// SHA-256 of the raw file bytes: the ONLY identity a display list's
+        /// `fonts[].sha256` may name (draft contract L55–57; the producer
+        /// emits raw-byte digests since font-engine's raw-OTF identity, and
+        /// the historical SHA-256(bytes ‖ face-index) engine identifier is
+        /// not a resource digest and is refused as unknown).
         var bytesSha256: String
-        /// SHA-256 of the file bytes followed by face index 0 as a 4-byte
-        /// big-endian integer: what `flashtex-render` puts on the wire
-        /// (font-engine's `content_sha256`). Documented deviation.
-        var face0Sha256: String
         var byteLength: Int64
     }
 
@@ -31,8 +31,6 @@ final class V2FontStore {
         var resource: RenderingV2.FontResource
         var file: BundledFont
         var cgFont: CGFont
-        /// Which hash convention matched: `bytes` or `bytes+face0`.
-        var hashConvention: String
         func ctFont(size: Double) -> CTFont { CTFontCreateWithGraphicsFont(cgFont, size, nil, nil) }
     }
 
@@ -51,10 +49,9 @@ final class V2FontStore {
             where ["otf", "ttf"].contains(file.pathExtension.lowercased()) {
                 guard let data = try? Data(contentsOf: file) else { continue }
                 let bytes = Self.hex(SHA256.hash(data: data))
-                var face0 = data; face0.append(contentsOf: [0, 0, 0, 0])
-                let entry = BundledFont(url: file, bytesSha256: bytes, face0Sha256: Self.hex(SHA256.hash(data: face0)), byteLength: Int64(data.count))
+                let entry = BundledFont(url: file, bytesSha256: bytes, byteLength: Int64(data.count))
                 // First directory wins for duplicate bytes (identical content anyway).
-                if byHash[bytes] == nil { byHash[bytes] = entry; byHash[entry.face0Sha256] = entry; fonts.append(entry) }
+                if byHash[bytes] == nil { byHash[bytes] = entry; fonts.append(entry) }
             }
         }
     }
@@ -66,11 +63,10 @@ final class V2FontStore {
     /// `font_resource_mismatch`). The loaded font's glyph count, units per em
     /// and PostScript name must agree with the manifest.
     ///
-    /// Identity is the raw bytes: `byHash` is only a lookup key (either hash
-    /// spelling of the same bytes); the bytes actually handed to CoreGraphics
-    /// are re-hashed at load time and must equal the discovered raw SHA-256
-    /// and length (GH31). A bytes+face0 match therefore never admits a file
-    /// whose raw bytes changed since discovery.
+    /// Identity is the raw bytes: `byHash` is keyed by the raw SHA-256 only,
+    /// and the bytes actually handed to CoreGraphics are re-hashed at load
+    /// time and must equal the discovered raw SHA-256 and length (GH31), so
+    /// a file whose bytes changed since discovery is never admitted.
     func resolve(_ resource: RenderingV2.FontResource) throws -> ResolvedFont {
         let short = String(resource.sha256.prefix(12))
         guard resource.isPaintable else {
@@ -125,8 +121,7 @@ final class V2FontStore {
             throw RenderingV2.ValidationError(code: "font_resource_mismatch",
                                               message: "font resource \(short)… postscript_name '\(resource.postscriptName)' differs from the loaded font ('\(psName)')")
         }
-        return ResolvedFont(resource: resource, file: file, cgFont: cg,
-                            hashConvention: file.bytesSha256 == resource.sha256 ? "bytes" : "bytes+face0")
+        return ResolvedFont(resource: resource, file: file, cgFont: cg)
     }
 }
 

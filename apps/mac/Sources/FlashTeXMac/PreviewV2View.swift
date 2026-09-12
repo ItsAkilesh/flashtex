@@ -642,7 +642,7 @@ private struct V2PaneHeader: View {
                 let fonts = frame.fonts.values.map { "\($0.resource.postscriptName) \($0.resource.sha256.prefix(8))" }.sorted().joined(separator: ", ")
                 Text("\(model.displayListV2?.source.label ?? "") · id \(frame.id) · project \(frame.list.projectId) · revision \(frame.list.revision) · \(frame.list.pages.count) page(s) · fonts by hash: \(fonts)")
                     .font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
-                    .help(frame.fonts.values.map { "\($0.resource.postscriptName): \($0.resource.sha256) → \($0.file.url.lastPathComponent) (\($0.hashConvention))" }.sorted().joined(separator: "\n"))
+                    .help(frame.fonts.values.map { "\($0.resource.postscriptName): \($0.resource.sha256) → \($0.file.url.lastPathComponent)" }.sorted().joined(separator: "\n"))
             }
         }
         .padding(.horizontal, 8).padding(.vertical, 4)
