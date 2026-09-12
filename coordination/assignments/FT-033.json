@@ -1,23 +1,23 @@
 {
-  "schema_version": 1,
-  "task_id": "FT-033",
-  "agent_id": "daniel-title",
-  "branch": "agent/daniel-title/title-layout",
-  "revision": 1,
-  "state": "assigned",
-  "objective": "Original article title/author/date/abstract measured layout adapter consuming document-style metrics, explicit unsupported class behavior. Standalone additive crate only; coordinate consumer contract before integration.",
-  "owned_paths": [
-    "crates/title-layout"
-  ],
-  "dependencies": [],
   "acceptance": [
     "Meaningful tests and strict Rust lint pass with bounded malformed/Unicode inputs",
     "Preserve exact source/revision and resource identities; no implicit approximation or parity claim",
     "Do not edit peer compiler/native/layout files; publish typed adapter contract and exact tested SHA"
   ],
+  "agent_id": "daniel-title",
   "allocation_id": "daniel-claude20x-shared",
-  "timebox_minutes": 40,
+  "branch": "agent/daniel-title/title-layout",
   "deadline_utc": null,
-  "input_main_sha": "53fee3012b2902ca05bd31766defa515b3044cec",
-  "updated_utc": "2026-09-12T07:35:07.367827+00:00"
+  "dependencies": [],
+  "input_main_sha": "2fc45df69f0d397706174117116777f19619dfe2",
+  "objective": "Title geometry consumer integration: adversarial bounds and exact identity regressions",
+  "owned_paths": [
+    "crates/title-layout"
+  ],
+  "revision": 3,
+  "schema_version": 1,
+  "state": "assigned",
+  "task_id": "FT-033",
+  "timebox_minutes": 30,
+  "updated_utc": "2026-09-12T09:26:03Z"
 }

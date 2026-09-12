@@ -3,9 +3,9 @@
   "task_id": "FT-043",
   "agent_id": "daniel-bundle",
   "branch": "agent/daniel-bundle/project-bundle",
-  "revision": 1,
+  "revision": 2,
   "state": "assigned",
-  "objective": "Deterministic explicit project export bundle with rooted dependency reads, SHA manifest, reproducible ordering and no implicit filesystem discovery. Standalone additive crate only; coordinate consumer contract before integration.",
+  "objective": "Implement bounded manifest/import preview with full content hashes and explicit conflict/no-clobber behavior using existing rooted reader; no silent overwrite.",
   "owned_paths": [
     "crates/project-bundle"
   ],
@@ -18,6 +18,6 @@
   "allocation_id": "daniel-claude20x-shared",
   "timebox_minutes": 40,
   "deadline_utc": null,
-  "input_main_sha": "53fee3012b2902ca05bd31766defa515b3044cec",
-  "updated_utc": "2026-09-12T07:35:07.367827+00:00"
+  "input_main_sha": "83f65e08ae60b312609f49ec0a2b6cae25c8e353",
+  "updated_utc": "2026-09-12T09:08:31.372212+00:00"
 }

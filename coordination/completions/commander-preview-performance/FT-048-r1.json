@@ -1,0 +1,67 @@
+{
+  "agent_id": "commander-preview-performance",
+  "archived_utc": "2026-09-12T09:00:59Z",
+  "assignment": {
+    "acceptance": [
+      "Meaningful tests and strict lint pass",
+      "Publish truthful execution provenance and exact tested SHA",
+      "No native integration or PDF parity claim without measured evidence"
+    ],
+    "agent_id": "commander-preview-performance",
+    "allocation_id": "hosted-openai-product",
+    "branch": "agent/commander-preview-performance/preview-performance",
+    "deadline_utc": null,
+    "dependencies": [],
+    "input_main_sha": "c9f1b9edbc872085949da89a7d3e4875ce17cd54",
+    "objective": "Measure and remove redundant native helper JSON result copies while preserving exact wire values, durability, ordering and backpressure",
+    "owned_paths": [
+      "crates/preview-controller"
+    ],
+    "revision": 1,
+    "schema_version": 1,
+    "state": "assigned",
+    "task_id": "FT-048",
+    "timebox_minutes": 30,
+    "updated_utc": "2026-09-12T08:57:30.114547+00:00"
+  },
+  "report": {
+    "agent_id": "commander-preview-performance",
+    "allocation_id": "hosted-openai-product",
+    "assignment_acknowledgements": {
+      "FT-048": {
+        "acknowledged_utc": "2026-09-12T08:58:02Z",
+        "adaptation": "Isolated preview-controller ownership; remove verified nested Value copies preserving exact wire shape, durability and bounded backpressure.",
+        "main_sha": "f2ea364efc4329512dc143ad9d7eab89d833604c",
+        "revision": 1
+      }
+    },
+    "branch": "agent/commander-preview-performance/preview-performance",
+    "capabilities": [
+      "Preview helper serialization and latency"
+    ],
+    "code_revision": "f2ea364efc4329512dc143ad9d7eab89d833604c",
+    "eta_minutes": null,
+    "machine": "linux-primary",
+    "main_integrated_through": "f2ea364efc4329512dc143ad9d7eab89d833604c",
+    "next_action": "Commander integrate and request Jaysen real Mac bridge remeasurement; continue measured helper pacing followup.",
+    "reviewed_peers": {},
+    "schema_version": 1,
+    "state": "ready_for_integration",
+    "summary": "FT048 removes2nestedValue copies;40pairedexact-wire samples.10MBwrapping median221.452ms to0.006284ms,serialization still~28ms.35controller tests and strictlint pass; no native performance claim.",
+    "tool": "Codex GPT-6 Astra",
+    "updated_utc": "2026-09-12T09:00:32Z",
+    "usage": {
+      "status": "unknown"
+    }
+  },
+  "report_age_seconds": 27,
+  "report_path": "coordination/agents/commander-preview-performance.json",
+  "review_required": true,
+  "revision": 1,
+  "schema_version": 1,
+  "stale_completion": false,
+  "state": "reported_ready",
+  "task_id": "FT-048",
+  "worker_branch": "agent/commander-preview-performance/preview-performance",
+  "worker_report_sha": "7956d37b7be6c5dc2ba28dfcc8ad56b60e5c9b4c"
+}

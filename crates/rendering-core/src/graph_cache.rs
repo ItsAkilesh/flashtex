@@ -156,6 +156,18 @@ fn validate_key(key: &ResourceKey) -> Result<()> {
             crate::hash(tfm_sha256)?;
             require(*face_index == 0, "unsupported graph face")
         }
+        ResourceKey::CffPhysical {
+            font_sha256,
+            cff_sha256,
+            tfm_sha256,
+            encoding_sha256,
+            face_index,
+        } => {
+            for value in [font_sha256, cff_sha256, tfm_sha256, encoding_sha256] {
+                crate::hash(value)?;
+            }
+            require(*face_index == 0, "unsupported CFF graph face")
+        }
         ResourceKey::Virtual {
             vf_sha256,
             tfm_sha256,
@@ -175,7 +187,7 @@ fn estimate(packet: &NestedPacket) -> usize {
         };
         bytes = bytes
             .saturating_add(512)
-            .saturating_add(source.len().saturating_mul(384));
+            .saturating_add(source.len().saturating_mul(640));
     }
     bytes
 }

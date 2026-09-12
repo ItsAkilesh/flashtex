@@ -1,77 +1,34 @@
 {
   "agent_id": "mac-claude-a",
-  "next_index": 5,
+  "next_index": 0,
   "schema_version": 1,
   "steps": [
     {
-      "acceptance": [
-        "Prove actual Rust output changes when source changes",
-        "Delayed older responses cannot replace newer output",
-        "Report measured edit-to-preview latency and native build command",
-        "After source edits, do not navigate with stale byte offsets unless a validated edit mapping rebases them; cover this in tests"
-      ],
-      "allocation_id": "claude-mac20x-shell-stage2",
-      "name": "Live compiler integration",
-      "objective": "Connect the Mac app to the original Rust runtime over runtime-v1 JSONLines. Add debounced edits, revision ordering, cancellation/coalescing, and clear build status. Original compiler arrival may lag: implement and test the real subprocess transport now using a clearly labeled protocol test child; switch to crates/compiler when available. Preserve existing dark preview and Unicode navigation.",
+      "name": "Remeasure integrated preview helper owned-wire and runtime improvements on same native app/compiler/input",
+      "objective": "Remeasure integrated preview helper owned-wire and runtime improvements on same native app/compiler/input",
       "owned_paths": [
         "apps/mac"
       ],
-      "timebox_minutes": 45
-    },
-    {
-      "acceptance": [
-        "Build with Xcode and test Unicode click-to-source navigation",
-        "Dark preview changes viewing only; document export appearance remains controlled by LaTeX",
-        "Show recovery diagnostics alongside available preview without hiding errors"
-      ],
-      "allocation_id": "claude-mac20x-shell-stage3",
-      "name": "Native editor and preview quality",
-      "objective": "Improve native source editing, UTF-8 navigation, dark preview with white exported document, keyboard shortcuts, and diagnostic presentation. Use real Rust output when available; label fixtures explicitly.",
-      "owned_paths": [
-        "apps/mac"
-      ],
-      "timebox_minutes": 45
-    },
-    {
-      "acceptance": [
-        "Transfer-v1 bridge client authenticates pairing and persists exactly-once native apply receipts across restart",
-        "PDF export preserves supported Unicode or emits an explicit faithful fallback without silent question-mark loss",
-        "Native end-to-end suite covers capture receipt/retry, reviewed accept/reject, stale context, and document recompile"
-      ],
-      "allocation_id": "claude-mac20x-shell-stage4",
-      "name": "Bridge, nearby transport, and Unicode export",
-      "objective": "Integrate the six Jaysen child streams for durable bridge insertion, authenticated nearby transport, Unicode PDF output, source-aware completion/navigation, packaging, and native end-to-end validation. Preserve exact child file ownership and test before merging.",
-      "owned_paths": [
-        "apps/mac"
-      ],
-      "timebox_minutes": 45
-    },
-    {
       "acceptance": [
         "Packaged app launches and completes the pinned demo with measured edit/capture/export latency",
         "Crash/restart, disconnect/retry, stale preview, accessibility, and update paths have reproducible evidence",
         "Device, signing, notarization, provider, and visual gaps remain explicit"
       ],
       "allocation_id": "claude-mac20x-shell-stage5",
-      "name": "Packaged native recovery and responsiveness",
-      "objective": "Harden the packaged Mac workflow and repeat native recovery, accessibility, nearby-device, responsiveness, and non-regression gates using exact integrated component SHAs.",
-      "owned_paths": [
-        "apps/mac"
-      ],
       "timebox_minutes": 45
     },
     {
+      "name": "Integrate exact PDF path export and compare original output with established-engine reference under pinned geometry/font/resource identities",
+      "objective": "Integrate exact PDF path export and compare original output with established-engine reference under pinned geometry/font/resource identities",
+      "owned_paths": [
+        "apps/mac"
+      ],
       "acceptance": [
         "Packaged app launches and completes the pinned demo with measured edit/capture/export latency",
         "Crash/restart, disconnect/retry, stale preview, accessibility, and update paths have reproducible evidence",
         "Device, signing, notarization, provider, and visual gaps remain explicit"
       ],
       "allocation_id": "claude-mac20x-shell-stage5",
-      "name": "Continuous product integration and measured improvement",
-      "objective": "Integrate original Rust preview-controller and document/runtime/ledger/font pipeline behind background adapters; measure typing-to-visible p95/p99 including actual native paint, and exact PDF byte/pixel gaps.",
-      "owned_paths": [
-        "apps/mac"
-      ],
       "timebox_minutes": 45
     }
   ],
