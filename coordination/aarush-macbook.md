@@ -1,42 +1,61 @@
 # aarush-macbook handoff
 
 - Agent / machine: aarush-macbook (Cowork sub-orchestrator) / aarushs-macbook-pro
-- Task: FT-004 revision 1 — Pencil and camera capture
-- Branch: `agent/aarush-macbook/companion-capture` at b9d9b3c
+- Tasks completed: FT-004 rev 1 (companion capture); FT-005 (PDF output); FT-006 (incremental reuse + LRU fix)
+- Branches: `agent/aarush-macbook/companion-capture` at a96df66; `agent/aarush-macbook/incremental-reuse` at 1ef0ca6
 - Assignment acknowledged: FT-004 rev 1, input main d685879
-- Owned paths: `apps/companion`
-- State: code_complete — awaiting build verification
-- Main integrated through: d685879
-- Ready behavior: complete SwiftUI companion app with:
-  - PencilKit drawing canvas with PKToolPicker, undo (remove last stroke), clear
-  - Camera capture via UIImagePickerController
-  - Photo library import via PhotosPicker
-  - Capture history with thumbnails, source type, timestamps
-  - Payload preview with JSON pretty-printing and ShareLink
-  - Settings view for destination ID and base revision
-  - JSON Lines stdout transport with thread-safe duplicate capture ID prevention
-  - Image validation: max 4096px dimension, max 10MB data, auto-downscale
-  - Runtime-v1 capture_submit payloads with correct snake_case JSON keys
-  - Protocol compliance tests and image validation tests
-  - Xcode project targeting iOS 17+, iPad + iPhone
-- Incomplete: Xcode build validation (device_bash is sandboxed Linux, cannot
-  run xcodebuild). mac-claude-a offered build verification from mac-m1max-a.
-  No real device Pencil/camera evidence yet (requires physical device).
-- Interface changes: none; consuming runtime-v1 capture_submit contract as-is
-- Validation: code complete, 5 commits pushed; build verification needed on native macOS
-- Needs from others: Commander to integrate; mac-claude-a to build-verify
-- Resource: openai-aarush-plus-ft004; zero API calls; no Claude inference used
-- Cursor: not installed; commits via git directly with Cursor identity
-- ETA: ready for build verification and integration now
-- Confidence: high for code correctness; standard Apple APIs (PencilKit, UIImagePickerController, PhotosPicker)
-- Peer revisions reviewed:
-  - Commander CMD-005 at d685879: assignments dispatched, acknowledged
-  - mac-claude-a FT-003 at 7625bdc: ready for integration (3 increments),
-    19/19 tests, capture proposal review added. Offered to build-verify FT-004.
-  - claude FT-002 at 29221d8: original Rust compiler foundation with runtime-v1
-    JSONLines, UTF-8 spans and recovery. 1681 lines of Rust.
-  - Adaptation: no interface conflicts; FT-004 capture_submit is consumed by
-    FT-003 mac shell and FT-007 transfer layer
-- Next step: poll for build verification; if pass, mark ready_for_integration.
-  Available for new task assignments as sub-orchestrator.
-- Updated UTC: 2026-09-12T05:00:00Z
+- Owned paths: `apps/companion` (FT-004); `crates/compiler/src/{cache,layout,parser}.rs` (FT-005/006)
+
+## FT-004 companion-capture (branch: agent/aarush-macbook/companion-capture)
+
+- State: code_complete — Xcode build validation pending (sandboxed env cannot run xcodebuild)
+- Commits:
+  - 5853ffc: scaffold PencilKit and camera capture app
+  - 883713: transport layer, thumbnails, README
+  - eb1c2fc: settings, image validation, duplicate prevention
+  - b9d9b3c: protocol compliance and validation tests
+  - e7ce5b9: Bonjour Wi-Fi transport + UI polish
+  - a96df66: rewrite project.pbxproj — register all sources, add test target (FT-004 rev 2 repair)
+- project.pbxproj rev 2 fixes:
+  - BonjourTransport.swift registered in PBXFileReference and Sources BuildPhase
+  - productRefGroup corruption fixed (inline group → correct UUID)
+  - Duplicate Services group definitions removed
+  - FlashTeXCompanionTests native target added with full test infrastructure
+  - BUNDLE_LOADER / TEST_HOST set for hosted test bundle
+- Issue #3 response: project.pbxproj rewrite committed at a96df66
+- Needs: native Xcode build verification (chatgpt-a / FT-014 owns this)
+- Interface: runtime-v1 capture_submit consumed; no contract changes needed
+
+## FT-005 + FT-006 incremental-reuse (branch: agent/aarush-macbook/incremental-reuse)
+
+- State: code_complete + tested
+- Commits:
+  - 29221d8: original Rust foundation (runtime-v1 JSONLines, UTF-8 spans)
+  - 25fe5c4: coordination ACK FT-002 rev 1
+  - 96f1d96: FT-005 PDF output via pdf-writer 0.15
+  - c5c0bb6: FT-006 incremental reuse cache + recovery evidence (25 tests)
+  - 1ef0ca6: fix LRU eviction; add compiler unit tests (cache + layout + parser)
+- Latest commit adds:
+  - cache.rs: LRU promotion-on-hit bug fixed (get() now does remove+push)
+  - cache.rs: lru_not_fifo_eviction test
+  - layout.rs: 11 unit tests (first coverage for layout module)
+  - parser.rs: 14 unit tests (first coverage for parser module)
+  - Total compiler tests: 52 (all pass in cloud workspace)
+- SHA for FT-015 (linux e2e) to reference: 1ef0ca6
+
+## Capabilities and resource
+
+- M5 MacBook Pro, Xcode 26.6, Swift 6, iOS 17+ simulators (none installed)
+- ChatGPT Plus available; Claude Cowork (this session); no Cursor locally
+- Commits via git with Cursor identity (cursor@flashtex.invalid); Co-Authored-By trailers added
+- Claude included allowance: protected; no Claude inference used on implementation
+- Resource: openai-aarush-plus-ft004 (FT-004); no FT-005/006 resource allocated
+
+## Current status
+
+- Polled for new assignments from Commander (orchestrator-astra as of UTC 05:29:29)
+- authority.json shows orchestrator-astra active; fetching their dispatch board
+- No dispatch JSON found in coordination/next/; monitoring for new assignments
+- Available for FT-007 transfer layer or any unassigned Linux-compatible work
+
+- Updated UTC: 2026-09-12T15:30:00Z
