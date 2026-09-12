@@ -3,27 +3,27 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-049": {
-      "acknowledged_utc": "2026-09-12T11:17:19Z",
-      "adaptation": "Read exact r4. Adapt runtime-owned bounded fresh/persistent actual producer replay; wait for Commander build window clearance before untouched6e69661 archive build. No peer writes or benchmark sweep.",
-      "main_sha": "527ae54100de636b264fbbc2a2ac30e2f5a02388",
-      "revision": 4
+      "acknowledged_utc": "2026-09-12T11:37:39Z",
+      "adaptation": "Read exactr5. Separate opt-in raw sibling prototype, preserve legacy default and decoder queue invariant; coordinate duplicate-field/source identity semantics before activation. No peer parser duplication or concurrency changes.",
+      "main_sha": "36c062924dd56ad15a0ddc5772cb262e84113541",
+      "revision": 5
     }
   },
   "branch": "agent/commander-runtime-display/display-runtime",
   "capabilities": [
     "rust-runtime"
   ],
-  "code_revision": "72672e6781405de152f2c59ff72130c316fb268a",
+  "code_revision": "217ec7dfc7ff586c90e5211039229589e461699e",
   "eta_minutes": null,
   "machine": "linux-primary",
-  "main_integrated_through": "5d12255f26c07de0bef07dced4bb89c3bcf84cd9",
-  "next_action": "After root measurement release, optional single unchanged --v2 artifact size check can distinguish conservative estimate from actual oversized envelope. No builds/replays started during window; preserve current runtime boundary and pinned binaries.",
+  "main_integrated_through": "551371625898078095046ea82dcbe0e29007f5d0",
+  "next_action": "Authorized bounded existing-serde scan reduction next; currently four passes. Coordinate helper/core raw API and preserve duplicate/numeric/source/epoch policies; no custom tokenizer/unsafe RawValue/private serializer tokens. Native integration remains separate gate.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "Read-only size contract checkpoint72672e6: exact6e69661 independently caps estimated/exact v2 and exact v1, removes v2 acceptance on decline/failed fallback. Runtime default8MiB includes newline versus producer16MiB excludes newline.27MB is preflight estimate only; no exact serialized size inferred. No cap/source/build changes.",
+  "summary": "FT049r5 raw prototype complete: fixed-session opt-in constructor, exact raw getters/move, typed duplicate-safe identity/source metadata, full serde syntax/finite/depth checks. Raw4/decoded1/joined shutdown unchanged, default Value unchanged. Full tests8unit/6chunks/9sibling/19session and strict lint pass. Final loaded-host replay Value652/974ms peak18.2-18.4MB vs raw1359/1615ms peak6.9-7.0MB: memory benefit but parse regression, no default promotion.",
   "tool": "codex",
-  "updated_utc": "2026-09-12T11:33:17Z",
+  "updated_utc": "2026-09-12T11:48:11Z",
   "usage": {
     "status": "unknown"
   }
