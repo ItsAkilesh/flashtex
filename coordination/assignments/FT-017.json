@@ -1,24 +1,24 @@
 {
   "acceptance": [
-    "Every artifact pins engine/font/version/DPI/color profile",
-    "Registration error is separated from rendering error",
-    "Overlays retain fixture and component SHAs"
+    "Exact zero pixel difference and separate raw PDF byte equality; report mismatches honestly without normalization",
+    "Native preview/export differences are classified",
+    "Narrow corpus scope remains explicit"
   ],
   "agent_id": "mac-visual-oracle",
-  "allocation_id": "claude-mac20x-visual-oracle-stage2",
+  "allocation_id": "claude-mac20x-visual-oracle-stage3",
   "branch": "agent/mac-visual-oracle/reference-raster",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "41c461612a49931815849552b470231dda4ab1e4",
-  "objective": "Expand declared visual fixtures across text, Unicode, paragraphs, math and multipage cases; add page registration, crop/alignment diagnostics and region metrics.",
+  "input_main_sha": "59a49ab895df3598b3f5d895b593b4fbd3dd7972",
+  "objective": "Gate exact native preview/export raster equality and separate raw PDF byte identity against pinned reference profile. Diagnostic tolerances or registration never count as acceptance.",
   "owned_paths": [
     "tests/visual-corpus/harness",
     "tests/visual-corpus/evidence"
   ],
-  "revision": 2,
+  "revision": 3,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-017",
   "timebox_minutes": 45,
-  "updated_utc": "2026-09-12T06:13:32Z"
+  "updated_utc": "2026-09-12T08:21:08Z"
 }
