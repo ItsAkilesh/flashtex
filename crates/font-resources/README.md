@@ -358,3 +358,30 @@ The existing Coordinate profile remains unchanged. Checked numeric overflow,
 invalid indices, zero division, operand underflow, 48-stack and 100000-instruction
 budgets fail explicitly. Subroutine cycle/depth limits remain active. This is not
 an emulation of device arithmetic rounding, hinting, or a raster-fidelity claim.
+
+`FontResource::expanded_outline_with_grid(gid, CompositeDeviceGrid { ppem_x,
+ppem_y, tie_rule })` adds explicit device-context rounding of composite XY offsets.
+It returns `DeviceExpandedOutline { outline, grid, units_per_em }`; the inner
+outline retains original font SHA, GIDs and component point provenance and can
+produce its existing quadratic path. The default `expanded_outline` retains its
+unsupported outcome when nonzero rounded offsets lack context.
+
+The official glyf specification requires offset transformation before nearest-pixel
+rounding: https://learn.microsoft.com/en-us/typography/opentype/spec/glyf .
+This implementation assembles children before applying the parent component
+transform, and ignores the round flag on point attachments. Callers explicitly
+choose `AwayFromZero` or `TowardPositive` half ties; neither is advertised as a
+complete rasterizer's instruction-controlled rounding state. Integer ppem values
+1..65536 are supported per axis. Exact rational scaling/rounding is converted back
+to the existing dyadic design-coordinate API; a non-dyadic final offset is explicit
+`UnsupportedFont`, never approximated. Ambiguous default scaled-offset policy stays
+unsupported. No TrueType instruction interpreter, phantom-point generation, or
+hinted/visual parity is implied.
+
+A device outline cache MUST bind font SHA/face, GID, units-per-em, both ppem values,
+tie rule, offset policy and decoder build/profile identity. Do not place this
+output into a size-independent outline cache. Preserve the wrapper until the
+consumer checks context; `outline.quadratic_path()` alone intentionally carries no
+device-context field. Current font caches are process-local; persistent artifacts
+also need exact build identity. A pinned LiberationSans replay at ppem16 accepts
+2620 glyphs versus default1679 plus941 explicit grid-context rejections.
