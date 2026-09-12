@@ -807,3 +807,27 @@ license hashes and the initial failure. The freshly downloaded license differs i
 line endings/URL spelling/whitespace from the pinned fixture; its normalized terms
 agree, but the two raw hashes remain distinct in evidence. Assets are temporary,
 not installed or copied into the repository.
+
+The bounded `rooted-lm-replay.json` now records five real ligatures (`fi`, `ff`,
+`fl`, `ffi`, `ffl`), three signed kern pairs (`AV`, `To`, `WA`), exact metric
+fix-words, original GIDs, code intervals and rejected unavailable slots. The opt-in
+matching-font test compares the complete generated value against this artifact
+and checks identical repeated runs. `rooted-lm-replay-provenance.json` pins source
+and artifact hashes plus the reproduction command. Regeneration writes only to
+an explicitly supplied `FLASHTEX_LM_REPLAY_OUTPUT` path for review; ordinary replay
+never updates expectations. This measures actual resource mapping, not independent
+TeX layout agreement or visual fidelity.
+
+Collection API followup reviewed Daniel supervisor tip
+`e61c176dc71048e1fcbba2ae5df187f07cbd5ba4` and font-engine tip
+`73422451ec367269d8ce2ba4554ba5103224a262`: no complete layout resolver is published.
+Daniel's `src/truetype.rs` still hashes
+`2aca31389307f63cb8df88388dea0810b291d44ba0702b56fa5cbc0db78e0b77`, identical to the
+linked file. Lines 83–90 select one TTC directory, and lines 109–126 validate
+selected table ends then insert into a map; they do not enumerate every face,
+reject duplicate tags or establish collection-wide overlap safety. The explicit
+`VerifiedCollectionResolver::complete_layout` dependency remains necessary.
+A peer implementation must validate the full TTC header/face list and all directory
+and table ranges, distinguish allowed exact sharing from partial overlaps, and
+expose that verified layout without losing full collection identity. No second
+parser or unverified production adapter has been added.
