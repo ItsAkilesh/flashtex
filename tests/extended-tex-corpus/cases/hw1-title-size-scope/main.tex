@@ -1,0 +1,23 @@
+\documentclass[11pt]{article}
+\usepackage[T1]{fontenc}
+\usepackage[margin=1in]{geometry}
+\begin{document}
+\pagestyle{empty}
+\begin{center}
+{\Large\bfseries Course 21-128 and 15-151}\\[3pt]
+{\LARGE\bfseries Problem Sheet: Size Scope}\\[7pt]
+This sentence must be normal-sized and centered.\\[2pt]
+\textbf{A normal-sized bold deadline.}
+\end{center}
+\hrule
+\vspace{0.6em}
+Normal body size after the center environment.
+
+{\Large Large local text; {\small small nested text;} large restored.}
+
+Normal body size after the local group.
+
+{\bfseries Bold local text; {\normalfont normal nested text;} bold restored.}
+
+Normal weight after the local group.
+\end{document}

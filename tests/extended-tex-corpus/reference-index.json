@@ -1,8 +1,74 @@
 {
-  "manifest_sha256": "89b48cef2683675d26d5c2834ed813b60239bfb6d6e5489d661e60510caef62e",
+  "manifest_sha256": "0e7321eaf71e94d329cf0b2ce7decd58ee1be01d19d3aa65a39738caa48d231a",
   "generation": "MacTeX 2026; engine and dependency versions/hashes in references/<id>/reference.json",
-  "visual_review": "All 51 positive pages inspected as contact sheets; full-size spot checks for align, radicals and TikZ clipping. Expected book blank verso pages preserved. Underfull boxes intentional in narrow/glue fixtures. No product rendering claim.",
+  "visual_review": "All 51 positive pages inspected as contact sheets; full-size spot checks for align, radicals and TikZ clipping. Expected book blank verso pages preserved. Underfull boxes intentional in narrow/glue fixtures. No product rendering claim. Six added HW1 probe pages individually inspected at 96 DPI; heading hfill paragraph boundary corrected and rebuilt before acceptance.",
   "results": [
+    {
+      "id": "hw1-blackboard-macros",
+      "status": "reference-built",
+      "engine": "pdflatex",
+      "pages": 1,
+      "source_hashes": {
+        "main.tex": "f12a58284dade0aa1410d1f357c0abc480d4acea61b66762a6c9929620ca2766"
+      },
+      "pdf_sha256": "94bfb14e7de4217f554e673bdfc4e2287d70ac42695faf6109b1fe34b70e2cb4",
+      "warnings": []
+    },
+    {
+      "id": "hw1-array-cases",
+      "status": "reference-built",
+      "engine": "pdflatex",
+      "pages": 1,
+      "source_hashes": {
+        "main.tex": "9d8127eecf56471bc660133547c2c7072f60d3e5014a864397e7f5a0b69d1fb5"
+      },
+      "pdf_sha256": "6ea22eea5c71928f04873de20a855f3324f5d76168bddf3bc9d89878c144f975",
+      "warnings": []
+    },
+    {
+      "id": "hw1-delimiters-kerns",
+      "status": "reference-built",
+      "engine": "pdflatex",
+      "pages": 1,
+      "source_hashes": {
+        "main.tex": "e2a7151d24e66b22b4b85e322a4dcf676d9715a3b07b2efbbd60d8c82852d26d"
+      },
+      "pdf_sha256": "65354882c5348c2d07f4c080b84d35c5f1e75514d78639c4abb0a0f79d439246",
+      "warnings": []
+    },
+    {
+      "id": "hw1-title-size-scope",
+      "status": "reference-built",
+      "engine": "pdflatex",
+      "pages": 1,
+      "source_hashes": {
+        "main.tex": "bf1a5cfea78e102a377851063a3ed38f1ce2075d2508b3f0faae360587ee6360"
+      },
+      "pdf_sha256": "a1710c8959bf735e40d91c8f589c407e359a3eb63da067c9dad258bce7e5feed",
+      "warnings": []
+    },
+    {
+      "id": "hw1-paragraph-registers",
+      "status": "reference-built",
+      "engine": "pdflatex",
+      "pages": 1,
+      "source_hashes": {
+        "main.tex": "092eed611741250a55360bdea7785a22badf9bff5bb7fa66ebf13cc500b0e7f1"
+      },
+      "pdf_sha256": "228ed3cd34ef6656ff183259d2ec3f4a7699132979253a11075ab9e720e6549c",
+      "warnings": []
+    },
+    {
+      "id": "hw1-heading-hfill",
+      "status": "reference-built",
+      "engine": "pdflatex",
+      "pages": 1,
+      "source_hashes": {
+        "main.tex": "2b5bdf77ec86f538ddaedffba6a647f16939dbfcbfd2c8c20e809aaee10b1abd"
+      },
+      "pdf_sha256": "1c09204799e807fd975363d481827c863f30863e54906adc79abfd1b695efc51",
+      "warnings": []
+    },
     {
       "id": "math-atom-classes",
       "status": "reference-built",

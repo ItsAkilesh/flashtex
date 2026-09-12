@@ -4,6 +4,48 @@
   "scope": "Finite original compatibility requirements; not exhaustive TeX or math coverage. No product support asserted.",
   "cases": [
     {
+      "id": "hw1-blackboard-macros", "entry": "main.tex", "engine": "pdflatex",
+      "features": ["hw1", "mathbb", "macro-expansion", "blackboard-alphabet", "setminus", "math-styles"],
+      "expect": "success", "diagnostic": null, "workflow": ["tex", "tex", "tex"], "files": ["main.tex"],
+      "authorship": "Original fixture authored by Codex for FlashTeX; repository license applies.",
+      "assertions": ["Blackboard glyphs differ from Roman; all 26 capitals resolve; macros preserve scripts, math style, and setminus spacing."]
+    },
+    {
+      "id": "hw1-array-cases", "entry": "main.tex", "engine": "pdflatex",
+      "features": ["hw1", "array", "cases", "alignment", "row-spacing", "column-preamble"],
+      "expect": "success", "diagnostic": null, "workflow": ["tex", "tex", "tex"], "files": ["main.tex"],
+      "authorship": "Original fixture authored by Codex for FlashTeX; repository license applies.",
+      "assertions": ["Each l/c/r column aligns independently; row gaps, vertical rules, cases brace, and suppressed outer column padding match the reference."]
+    },
+    {
+      "id": "hw1-delimiters-kerns", "entry": "main.tex", "engine": "pdflatex",
+      "features": ["hw1", "bigl", "bigr", "quad", "qquad", "negative-kern", "middle", "null-delimiter"],
+      "expect": "success", "diagnostic": null, "workflow": ["tex", "tex", "tex"], "files": ["main.tex"],
+      "authorship": "Original fixture authored by Codex for FlashTeX; repository license applies.",
+      "assertions": ["Manual delimiter sizes increase monotonically; automatic and null delimiters work; thin/medium/quad/qquad/negative spaces retain their distinct widths."]
+    },
+    {
+      "id": "hw1-title-size-scope", "entry": "main.tex", "engine": "pdflatex",
+      "features": ["hw1", "Large", "LARGE", "center", "font-size", "group-scope", "hrule", "vspace"],
+      "expect": "success", "diagnostic": null, "workflow": ["tex", "tex", "tex"], "files": ["main.tex"],
+      "authorship": "Original fixture authored by Codex for FlashTeX; repository license applies.",
+      "assertions": ["Title sizes and explicit line gaps match; size/weight switches restore after nested groups; center and rule do not leak formatting into body text."]
+    },
+    {
+      "id": "hw1-paragraph-registers", "entry": "main.tex", "engine": "pdflatex",
+      "features": ["hw1", "setlength", "parindent", "parskip", "register-scope", "heading-spacing"],
+      "expect": "success", "diagnostic": null, "workflow": ["tex", "tex", "tex"], "files": ["main.tex"],
+      "authorship": "Original fixture authored by Codex for FlashTeX; repository license applies.",
+      "assertions": ["Zero indentation and 0.65em paragraph gaps apply; local 2em indentation/1.3em gaps restore after group; heading spacing composes with paragraph glue."]
+    },
+    {
+      "id": "hw1-heading-hfill", "entry": "main.tex", "engine": "pdflatex",
+      "features": ["hw1", "starred-section", "hfill", "normalfont", "macro-arguments", "quote", "hrule"],
+      "expect": "success", "diagnostic": null, "workflow": ["tex", "tex", "tex"], "files": ["main.tex"],
+      "authorship": "Original fixture authored by Codex for FlashTeX; repository license applies.",
+      "assertions": ["Points labels share a right edge and normal weight; two hfill glues divide available space equally; quote uses its narrowed width and restores body width."]
+    },
+    {
       "id": "math-atom-classes",
       "entry": "main.tex",
       "engine": "pdflatex",

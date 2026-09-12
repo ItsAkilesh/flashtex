@@ -1,0 +1,1792 @@
+{
+  "compiler_path": "/Users/jay3332/Projects/flashtex/crates/compiler/target/release/flashtex-compiler",
+  "compiler_sha256": "1d615ef71e59435a45846aaf5b763d4e17589e6ce5ee1b55d4a47859c1c98238",
+  "build_source_revision": "not independently verified",
+  "scope": "Parser/runtime-v1 diagnostics only, no rendering or PDF parity claim",
+  "results": [
+    {
+      "id": "hw1-blackboard-macros",
+      "returncode": 0,
+      "status": "recovered",
+      "pages": 1,
+      "diagnostic_count": 45,
+      "diagnostics": [
+        {
+          "message": "packages fontenc are recognised but not implemented",
+          "recovery": "continued without package-specific commands or formatting",
+          "severity": "warning",
+          "source": {
+            "end_byte": 54,
+            "path": "main.tex",
+            "start_byte": 30
+          }
+        },
+        {
+          "message": "packages geometry are recognised but not implemented",
+          "recovery": "continued without package-specific commands or formatting",
+          "severity": "warning",
+          "source": {
+            "end_byte": 88,
+            "path": "main.tex",
+            "start_byte": 55
+          }
+        },
+        {
+          "message": "packages amsmath, amssymb are recognised but not implemented",
+          "recovery": "continued without package-specific commands or formatting",
+          "severity": "warning",
+          "source": {
+            "end_byte": 117,
+            "path": "main.tex",
+            "start_byte": 89
+          }
+        },
+        {
+          "message": "\\pagestyle is not supported by this compiler version; unrestricted TeX math mode is not implemented",
+          "recovery": "skipped the command; any braced argument was typeset as plain text",
+          "severity": "error",
+          "source": {
+            "end_byte": 257,
+            "path": "main.tex",
+            "start_byte": 247
+          }
+        },
+        {
+          "message": "\\section requires a braced argument",
+          "recovery": "used an empty argument and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 273,
+            "path": "main.tex",
+            "start_byte": 265
+          }
+        },
+        {
+          "message": "\\ne is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 347,
+            "path": "main.tex",
+            "start_byte": 344
+          }
+        },
+        {
+          "message": "\\mathbb is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 349,
+            "path": "main.tex",
+            "start_byte": 347
+          }
+        },
+        {
+          "message": "\\ne is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 357,
+            "path": "main.tex",
+            "start_byte": 354
+          }
+        },
+        {
+          "message": "\\mathbb is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 359,
+            "path": "main.tex",
+            "start_byte": 357
+          }
+        },
+        {
+          "message": "\\ne is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 367,
+            "path": "main.tex",
+            "start_byte": 364
+          }
+        },
+        {
+          "message": "\\mathbb is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 369,
+            "path": "main.tex",
+            "start_byte": 367
+          }
+        },
+        {
+          "message": "\\ne is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 377,
+            "path": "main.tex",
+            "start_byte": 374
+          }
+        },
+        {
+          "message": "\\mathbb is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 379,
+            "path": "main.tex",
+            "start_byte": 377
+          }
+        },
+        {
+          "message": "\\mathbb is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 389,
+            "path": "main.tex",
+            "start_byte": 387
+          }
+        },
+        {
+          "message": "\\subseteq is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 398,
+            "path": "main.tex",
+            "start_byte": 389
+          }
+        },
+        {
+          "message": "\\mathbb is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 400,
+            "path": "main.tex",
+            "start_byte": 398
+          }
+        },
+        {
+          "message": "\\subseteq is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 409,
+            "path": "main.tex",
+            "start_byte": 400
+          }
+        },
+        {
+          "message": "\\mathbb is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 411,
+            "path": "main.tex",
+            "start_byte": 409
+          }
+        },
+        {
+          "message": "\\subseteq is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 420,
+            "path": "main.tex",
+            "start_byte": 411
+          }
+        },
+        {
+          "message": "\\mathbb is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 422,
+            "path": "main.tex",
+            "start_byte": 420
+          }
+        },
+        {
+          "message": "\\qquad is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 432,
+            "path": "main.tex",
+            "start_byte": 426
+          }
+        },
+        {
+          "message": "\\in is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 437,
+            "path": "main.tex",
+            "start_byte": 434
+          }
+        },
+        {
+          "message": "\\mathbb is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 439,
+            "path": "main.tex",
+            "start_byte": 437
+          }
+        },
+        {
+          "message": "\\setminus is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 448,
+            "path": "main.tex",
+            "start_byte": 439
+          }
+        },
+        {
+          "message": "\\mathbb is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 450,
+            "path": "main.tex",
+            "start_byte": 448
+          }
+        },
+        {
+          "message": "\\qquad is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 460,
+            "path": "main.tex",
+            "start_byte": 454
+          }
+        },
+        {
+          "message": "\\in is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 467,
+            "path": "main.tex",
+            "start_byte": 464
+          }
+        },
+        {
+          "message": "\\mathbb is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 469,
+            "path": "main.tex",
+            "start_byte": 467
+          }
+        },
+        {
+          "message": "\\mathbb is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 491,
+            "path": "main.tex",
+            "start_byte": 484
+          }
+        },
+        {
+          "message": "\\mathbb is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 530,
+            "path": "main.tex",
+            "start_byte": 528
+          }
+        },
+        {
+          "message": "\\mathbb is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 534,
+            "path": "main.tex",
+            "start_byte": 532
+          }
+        },
+        {
+          "message": "\\qquad is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 547,
+            "path": "main.tex",
+            "start_byte": 541
+          }
+        },
+        {
+          "message": "\\mathbb is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 558,
+            "path": "main.tex",
+            "start_byte": 556
+          }
+        },
+        {
+          "message": "\\mathbb is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 567,
+            "path": "main.tex",
+            "start_byte": 565
+          }
+        },
+        {
+          "message": "\\qquad is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 580,
+            "path": "main.tex",
+            "start_byte": 574
+          }
+        },
+        {
+          "message": "\\scriptstyle is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 596,
+            "path": "main.tex",
+            "start_byte": 584
+          }
+        },
+        {
+          "message": "\\mathbb is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 598,
+            "path": "main.tex",
+            "start_byte": 596
+          }
+        },
+        {
+          "message": "\\subseteq is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 607,
+            "path": "main.tex",
+            "start_byte": 598
+          }
+        },
+        {
+          "message": "\\mathbb is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 609,
+            "path": "main.tex",
+            "start_byte": 607
+          }
+        },
+        {
+          "message": "\\qquad is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 616,
+            "path": "main.tex",
+            "start_byte": 610
+          }
+        },
+        {
+          "message": "\\scriptscriptstyle is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 638,
+            "path": "main.tex",
+            "start_byte": 620
+          }
+        },
+        {
+          "message": "\\mathbb is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 640,
+            "path": "main.tex",
+            "start_byte": 638
+          }
+        },
+        {
+          "message": "\\subseteq is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 649,
+            "path": "main.tex",
+            "start_byte": 640
+          }
+        },
+        {
+          "message": "\\mathbb is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 651,
+            "path": "main.tex",
+            "start_byte": 649
+          }
+        },
+        {
+          "message": "'\u2500' (U+2500) will not survive PDF export: fraction rules are drawn with a box-drawing character as a stand-in; runtime-v1 has no rule item type yet, so they cannot be exported faithfully",
+          "recovery": "the preview shows it correctly; the exported PDF will not",
+          "severity": "warning",
+          "source": {
+            "end_byte": 555,
+            "path": "main.tex",
+            "start_byte": 550
+          }
+        }
+      ]
+    },
+    {
+      "id": "hw1-array-cases",
+      "returncode": 0,
+      "status": "recovered",
+      "pages": 1,
+      "diagnostic_count": 30,
+      "diagnostics": [
+        {
+          "message": "packages fontenc are recognised but not implemented",
+          "recovery": "continued without package-specific commands or formatting",
+          "severity": "warning",
+          "source": {
+            "end_byte": 54,
+            "path": "main.tex",
+            "start_byte": 30
+          }
+        },
+        {
+          "message": "packages geometry are recognised but not implemented",
+          "recovery": "continued without package-specific commands or formatting",
+          "severity": "warning",
+          "source": {
+            "end_byte": 88,
+            "path": "main.tex",
+            "start_byte": 55
+          }
+        },
+        {
+          "message": "packages amsmath, amssymb are recognised but not implemented",
+          "recovery": "continued without package-specific commands or formatting",
+          "severity": "warning",
+          "source": {
+            "end_byte": 117,
+            "path": "main.tex",
+            "start_byte": 89
+          }
+        },
+        {
+          "message": "\\pagestyle is not supported by this compiler version; unrestricted TeX math mode is not implemented",
+          "recovery": "skipped the command; any braced argument was typeset as plain text",
+          "severity": "error",
+          "source": {
+            "end_byte": 145,
+            "path": "main.tex",
+            "start_byte": 135
+          }
+        },
+        {
+          "message": "\\section requires a braced argument",
+          "recovery": "used an empty argument and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 161,
+            "path": "main.tex",
+            "start_byte": 153
+          }
+        },
+        {
+          "message": "\\begin is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 199,
+            "path": "main.tex",
+            "start_byte": 193
+          }
+        },
+        {
+          "message": "\\text is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 216,
+            "path": "main.tex",
+            "start_byte": 211
+          }
+        },
+        {
+          "message": "\\forall is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 231,
+            "path": "main.tex",
+            "start_byte": 224
+          }
+        },
+        {
+          "message": "\\exists is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 242,
+            "path": "main.tex",
+            "start_byte": 235
+          }
+        },
+        {
+          "message": "\\text is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 266,
+            "path": "main.tex",
+            "start_byte": 261
+          }
+        },
+        {
+          "message": "\\exists is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 281,
+            "path": "main.tex",
+            "start_byte": 274
+          }
+        },
+        {
+          "message": "\\forall is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 292,
+            "path": "main.tex",
+            "start_byte": 285
+          }
+        },
+        {
+          "message": "\\text is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 316,
+            "path": "main.tex",
+            "start_byte": 311
+          }
+        },
+        {
+          "message": "\\forall is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 331,
+            "path": "main.tex",
+            "start_byte": 324
+          }
+        },
+        {
+          "message": "\\exists is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 342,
+            "path": "main.tex",
+            "start_byte": 335
+          }
+        },
+        {
+          "message": "\\text is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 366,
+            "path": "main.tex",
+            "start_byte": 361
+          }
+        },
+        {
+          "message": "\\exists is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 381,
+            "path": "main.tex",
+            "start_byte": 374
+          }
+        },
+        {
+          "message": "\\forall is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 392,
+            "path": "main.tex",
+            "start_byte": 385
+          }
+        },
+        {
+          "message": "\\end is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 408,
+            "path": "main.tex",
+            "start_byte": 404
+          }
+        },
+        {
+          "message": "\\begin is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 428,
+            "path": "main.tex",
+            "start_byte": 422
+          }
+        },
+        {
+          "message": "\\end is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 501,
+            "path": "main.tex",
+            "start_byte": 497
+          }
+        },
+        {
+          "message": "\\qquad is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 515,
+            "path": "main.tex",
+            "start_byte": 509
+          }
+        },
+        {
+          "message": "\\begin is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 527,
+            "path": "main.tex",
+            "start_byte": 521
+          }
+        },
+        {
+          "message": "\\end is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 572,
+            "path": "main.tex",
+            "start_byte": 568
+          }
+        },
+        {
+          "message": "\\left is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 591,
+            "path": "main.tex",
+            "start_byte": 586
+          }
+        },
+        {
+          "message": "\\begin is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 598,
+            "path": "main.tex",
+            "start_byte": 592
+          }
+        },
+        {
+          "message": "\\end is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 666,
+            "path": "main.tex",
+            "start_byte": 662
+          }
+        },
+        {
+          "message": "\\right is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 679,
+            "path": "main.tex",
+            "start_byte": 673
+          }
+        },
+        {
+          "message": "Symbol has no glyph for '\u00b7' (U+00B7)",
+          "recovery": "emitted the face's explicit .notdef glyph and continued",
+          "severity": "warning",
+          "source": {
+            "end_byte": 469,
+            "path": "main.tex",
+            "start_byte": 464
+          }
+        },
+        {
+          "message": "'\u2500' (U+2500) will not survive PDF export: fraction rules are drawn with a box-drawing character as a stand-in; runtime-v1 has no rule item type yet, so they cannot be exported faithfully",
+          "recovery": "the preview shows it correctly; the exported PDF will not",
+          "severity": "warning",
+          "source": {
+            "end_byte": 621,
+            "path": "main.tex",
+            "start_byte": 616
+          }
+        }
+      ]
+    },
+    {
+      "id": "hw1-delimiters-kerns",
+      "returncode": 0,
+      "status": "recovered",
+      "pages": 1,
+      "diagnostic_count": 52,
+      "diagnostics": [
+        {
+          "message": "packages fontenc are recognised but not implemented",
+          "recovery": "continued without package-specific commands or formatting",
+          "severity": "warning",
+          "source": {
+            "end_byte": 54,
+            "path": "main.tex",
+            "start_byte": 30
+          }
+        },
+        {
+          "message": "packages geometry are recognised but not implemented",
+          "recovery": "continued without package-specific commands or formatting",
+          "severity": "warning",
+          "source": {
+            "end_byte": 88,
+            "path": "main.tex",
+            "start_byte": 55
+          }
+        },
+        {
+          "message": "packages amsmath, amssymb are recognised but not implemented",
+          "recovery": "continued without package-specific commands or formatting",
+          "severity": "warning",
+          "source": {
+            "end_byte": 117,
+            "path": "main.tex",
+            "start_byte": 89
+          }
+        },
+        {
+          "message": "\\pagestyle is not supported by this compiler version; unrestricted TeX math mode is not implemented",
+          "recovery": "skipped the command; any braced argument was typeset as plain text",
+          "severity": "error",
+          "source": {
+            "end_byte": 145,
+            "path": "main.tex",
+            "start_byte": 135
+          }
+        },
+        {
+          "message": "\\section requires a braced argument",
+          "recovery": "used an empty argument and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 161,
+            "path": "main.tex",
+            "start_byte": 153
+          }
+        },
+        {
+          "message": "\\quad is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 216,
+            "path": "main.tex",
+            "start_byte": 211
+          }
+        },
+        {
+          "message": "\\bigl is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 221,
+            "path": "main.tex",
+            "start_byte": 216
+          }
+        },
+        {
+          "message": "\\bigr is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 228,
+            "path": "main.tex",
+            "start_byte": 223
+          }
+        },
+        {
+          "message": "\\quad is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 234,
+            "path": "main.tex",
+            "start_byte": 229
+          }
+        },
+        {
+          "message": "\\Bigl is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 239,
+            "path": "main.tex",
+            "start_byte": 234
+          }
+        },
+        {
+          "message": "\\Bigr is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 246,
+            "path": "main.tex",
+            "start_byte": 241
+          }
+        },
+        {
+          "message": "\\quad is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 252,
+            "path": "main.tex",
+            "start_byte": 247
+          }
+        },
+        {
+          "message": "\\biggl is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 259,
+            "path": "main.tex",
+            "start_byte": 253
+          }
+        },
+        {
+          "message": "\\biggr is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 267,
+            "path": "main.tex",
+            "start_byte": 261
+          }
+        },
+        {
+          "message": "\\quad is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 273,
+            "path": "main.tex",
+            "start_byte": 268
+          }
+        },
+        {
+          "message": "\\Biggl is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 279,
+            "path": "main.tex",
+            "start_byte": 273
+          }
+        },
+        {
+          "message": "\\Biggr is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 287,
+            "path": "main.tex",
+            "start_byte": 281
+          }
+        },
+        {
+          "message": "\\bigl is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 300,
+            "path": "main.tex",
+            "start_byte": 295
+          }
+        },
+        {
+          "message": "\\forall is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 308,
+            "path": "main.tex",
+            "start_byte": 301
+          }
+        },
+        {
+          "message": "\\in is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 313,
+            "path": "main.tex",
+            "start_byte": 310
+          }
+        },
+        {
+          "message": "\\bigr is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 326,
+            "path": "main.tex",
+            "start_byte": 321
+          }
+        },
+        {
+          "message": "\\vee is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 331,
+            "path": "main.tex",
+            "start_byte": 327
+          }
+        },
+        {
+          "message": "\\bigl is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 337,
+            "path": "main.tex",
+            "start_byte": 332
+          }
+        },
+        {
+          "message": "\\forall is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 345,
+            "path": "main.tex",
+            "start_byte": 338
+          }
+        },
+        {
+          "message": "\\in is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 350,
+            "path": "main.tex",
+            "start_byte": 347
+          }
+        },
+        {
+          "message": "\\bigr is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 363,
+            "path": "main.tex",
+            "start_byte": 358
+          }
+        },
+        {
+          "message": "\\quad is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 370,
+            "path": "main.tex",
+            "start_byte": 365
+          }
+        },
+        {
+          "message": "\\Longrightarrow is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 385,
+            "path": "main.tex",
+            "start_byte": 370
+          }
+        },
+        {
+          "message": "\\quad is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 390,
+            "path": "main.tex",
+            "start_byte": 385
+          }
+        },
+        {
+          "message": "\\forall is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 398,
+            "path": "main.tex",
+            "start_byte": 391
+          }
+        },
+        {
+          "message": "\\in is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 403,
+            "path": "main.tex",
+            "start_byte": 400
+          }
+        },
+        {
+          "message": "\\bigl is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 412,
+            "path": "main.tex",
+            "start_byte": 407
+          }
+        },
+        {
+          "message": "\\vee is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 421,
+            "path": "main.tex",
+            "start_byte": 417
+          }
+        },
+        {
+          "message": "\\bigr is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 431,
+            "path": "main.tex",
+            "start_byte": 426
+          }
+        },
+        {
+          "message": "\\qquad is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 449,
+            "path": "main.tex",
+            "start_byte": 443
+          }
+        },
+        {
+          "message": "\\qquad is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 460,
+            "path": "main.tex",
+            "start_byte": 454
+          }
+        },
+        {
+          "message": "\\qquad is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 471,
+            "path": "main.tex",
+            "start_byte": 465
+          }
+        },
+        {
+          "message": "\\quad is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 478,
+            "path": "main.tex",
+            "start_byte": 473
+          }
+        },
+        {
+          "message": "\\qquad is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 486,
+            "path": "main.tex",
+            "start_byte": 480
+          }
+        },
+        {
+          "message": "\\qquad is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 494,
+            "path": "main.tex",
+            "start_byte": 488
+          }
+        },
+        {
+          "message": "\\qquad is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 502,
+            "path": "main.tex",
+            "start_byte": 496
+          }
+        },
+        {
+          "message": "\\left is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 519,
+            "path": "main.tex",
+            "start_byte": 514
+          }
+        },
+        {
+          "message": "\\in is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 525,
+            "path": "main.tex",
+            "start_byte": 522
+          }
+        },
+        {
+          "message": "\\mathbb is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 532,
+            "path": "main.tex",
+            "start_byte": 525
+          }
+        },
+        {
+          "message": "\\middle is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 544,
+            "path": "main.tex",
+            "start_byte": 537
+          }
+        },
+        {
+          "message": "\\left is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 553,
+            "path": "main.tex",
+            "start_byte": 548
+          }
+        },
+        {
+          "message": "\\right is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 575,
+            "path": "main.tex",
+            "start_byte": 569
+          }
+        },
+        {
+          "message": "\\right is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 584,
+            "path": "main.tex",
+            "start_byte": 578
+          }
+        },
+        {
+          "message": "\\qquad is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 593,
+            "path": "main.tex",
+            "start_byte": 587
+          }
+        },
+        {
+          "message": "\\left is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 599,
+            "path": "main.tex",
+            "start_byte": 594
+          }
+        },
+        {
+          "message": "\\right is not supported in math mode",
+          "recovery": "typeset the command literally and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 621,
+            "path": "main.tex",
+            "start_byte": 615
+          }
+        },
+        {
+          "message": "'\u2500' (U+2500) will not survive PDF export: fraction rules are drawn with a box-drawing character as a stand-in; runtime-v1 has no rule item type yet, so they cannot be exported faithfully",
+          "recovery": "the preview shows it correctly; the exported PDF will not",
+          "severity": "warning",
+          "source": {
+            "end_byte": 559,
+            "path": "main.tex",
+            "start_byte": 554
+          }
+        }
+      ]
+    },
+    {
+      "id": "hw1-title-size-scope",
+      "returncode": 0,
+      "status": "recovered",
+      "pages": 1,
+      "diagnostic_count": 14,
+      "diagnostics": [
+        {
+          "message": "packages fontenc are recognised but not implemented",
+          "recovery": "continued without package-specific commands or formatting",
+          "severity": "warning",
+          "source": {
+            "end_byte": 54,
+            "path": "main.tex",
+            "start_byte": 30
+          }
+        },
+        {
+          "message": "packages geometry are recognised but not implemented",
+          "recovery": "continued without package-specific commands or formatting",
+          "severity": "warning",
+          "source": {
+            "end_byte": 88,
+            "path": "main.tex",
+            "start_byte": 55
+          }
+        },
+        {
+          "message": "\\pagestyle is not supported by this compiler version; unrestricted TeX math mode is not implemented",
+          "recovery": "skipped the command; any braced argument was typeset as plain text",
+          "severity": "error",
+          "source": {
+            "end_byte": 116,
+            "path": "main.tex",
+            "start_byte": 106
+          }
+        },
+        {
+          "message": "environment 'center' is not implemented; its body is typeset as plain text",
+          "recovery": "typeset the body without the environment's formatting",
+          "severity": "warning",
+          "source": {
+            "end_byte": 130,
+            "path": "main.tex",
+            "start_byte": 124
+          }
+        },
+        {
+          "message": "\\Large is not supported by this compiler version; unrestricted TeX math mode is not implemented",
+          "recovery": "skipped the command; any braced argument was typeset as plain text",
+          "severity": "error",
+          "source": {
+            "end_byte": 146,
+            "path": "main.tex",
+            "start_byte": 140
+          }
+        },
+        {
+          "message": "\\bfseries is not supported by this compiler version; unrestricted TeX math mode is not implemented",
+          "recovery": "skipped the command; any braced argument was typeset as plain text",
+          "severity": "error",
+          "source": {
+            "end_byte": 155,
+            "path": "main.tex",
+            "start_byte": 146
+          }
+        },
+        {
+          "message": "\\LARGE is not supported by this compiler version; unrestricted TeX math mode is not implemented",
+          "recovery": "skipped the command; any braced argument was typeset as plain text",
+          "severity": "error",
+          "source": {
+            "end_byte": 196,
+            "path": "main.tex",
+            "start_byte": 190
+          }
+        },
+        {
+          "message": "\\bfseries is not supported by this compiler version; unrestricted TeX math mode is not implemented",
+          "recovery": "skipped the command; any braced argument was typeset as plain text",
+          "severity": "error",
+          "source": {
+            "end_byte": 205,
+            "path": "main.tex",
+            "start_byte": 196
+          }
+        },
+        {
+          "message": "\\hrule is not supported by this compiler version; unrestricted TeX math mode is not implemented",
+          "recovery": "skipped the command; any braced argument was typeset as plain text",
+          "severity": "error",
+          "source": {
+            "end_byte": 354,
+            "path": "main.tex",
+            "start_byte": 348
+          }
+        },
+        {
+          "message": "\\vspace is not supported by this compiler version; unrestricted TeX math mode is not implemented",
+          "recovery": "skipped the command; any braced argument was typeset as plain text",
+          "severity": "error",
+          "source": {
+            "end_byte": 362,
+            "path": "main.tex",
+            "start_byte": 355
+          }
+        },
+        {
+          "message": "\\Large is not supported by this compiler version; unrestricted TeX math mode is not implemented",
+          "recovery": "skipped the command; any braced argument was typeset as plain text",
+          "severity": "error",
+          "source": {
+            "end_byte": 425,
+            "path": "main.tex",
+            "start_byte": 419
+          }
+        },
+        {
+          "message": "\\small is not supported by this compiler version; unrestricted TeX math mode is not implemented",
+          "recovery": "skipped the command; any braced argument was typeset as plain text",
+          "severity": "error",
+          "source": {
+            "end_byte": 451,
+            "path": "main.tex",
+            "start_byte": 445
+          }
+        },
+        {
+          "message": "\\bfseries is not supported by this compiler version; unrestricted TeX math mode is not implemented",
+          "recovery": "skipped the command; any braced argument was typeset as plain text",
+          "severity": "error",
+          "source": {
+            "end_byte": 541,
+            "path": "main.tex",
+            "start_byte": 532
+          }
+        },
+        {
+          "message": "\\normalfont is not supported by this compiler version; unrestricted TeX math mode is not implemented",
+          "recovery": "skipped the command; any braced argument was typeset as plain text",
+          "severity": "error",
+          "source": {
+            "end_byte": 571,
+            "path": "main.tex",
+            "start_byte": 560
+          }
+        }
+      ]
+    },
+    {
+      "id": "hw1-paragraph-registers",
+      "returncode": 0,
+      "status": "recovered",
+      "pages": 1,
+      "diagnostic_count": 12,
+      "diagnostics": [
+        {
+          "message": "packages fontenc are recognised but not implemented",
+          "recovery": "continued without package-specific commands or formatting",
+          "severity": "warning",
+          "source": {
+            "end_byte": 54,
+            "path": "main.tex",
+            "start_byte": 30
+          }
+        },
+        {
+          "message": "packages geometry are recognised but not implemented",
+          "recovery": "continued without package-specific commands or formatting",
+          "severity": "warning",
+          "source": {
+            "end_byte": 88,
+            "path": "main.tex",
+            "start_byte": 55
+          }
+        },
+        {
+          "message": "\\setlength is not supported in the document preamble",
+          "recovery": "skipped the command and did not typeset preamble content",
+          "severity": "error",
+          "source": {
+            "end_byte": 99,
+            "path": "main.tex",
+            "start_byte": 89
+          }
+        },
+        {
+          "message": "\\parindent is not supported in the document preamble",
+          "recovery": "skipped the command and did not typeset preamble content",
+          "severity": "error",
+          "source": {
+            "end_byte": 110,
+            "path": "main.tex",
+            "start_byte": 100
+          }
+        },
+        {
+          "message": "\\setlength is not supported in the document preamble",
+          "recovery": "skipped the command and did not typeset preamble content",
+          "severity": "error",
+          "source": {
+            "end_byte": 127,
+            "path": "main.tex",
+            "start_byte": 117
+          }
+        },
+        {
+          "message": "\\parskip is not supported in the document preamble",
+          "recovery": "skipped the command and did not typeset preamble content",
+          "severity": "error",
+          "source": {
+            "end_byte": 136,
+            "path": "main.tex",
+            "start_byte": 128
+          }
+        },
+        {
+          "message": "\\pagestyle is not supported by this compiler version; unrestricted TeX math mode is not implemented",
+          "recovery": "skipped the command; any braced argument was typeset as plain text",
+          "severity": "error",
+          "source": {
+            "end_byte": 173,
+            "path": "main.tex",
+            "start_byte": 163
+          }
+        },
+        {
+          "message": "\\setlength is not supported by this compiler version; unrestricted TeX math mode is not implemented",
+          "recovery": "skipped the command; any braced argument was typeset as plain text",
+          "severity": "error",
+          "source": {
+            "end_byte": 303,
+            "path": "main.tex",
+            "start_byte": 293
+          }
+        },
+        {
+          "message": "\\parindent is not supported by this compiler version; unrestricted TeX math mode is not implemented",
+          "recovery": "skipped the command; any braced argument was typeset as plain text",
+          "severity": "error",
+          "source": {
+            "end_byte": 314,
+            "path": "main.tex",
+            "start_byte": 304
+          }
+        },
+        {
+          "message": "\\setlength is not supported by this compiler version; unrestricted TeX math mode is not implemented",
+          "recovery": "skipped the command; any braced argument was typeset as plain text",
+          "severity": "error",
+          "source": {
+            "end_byte": 330,
+            "path": "main.tex",
+            "start_byte": 320
+          }
+        },
+        {
+          "message": "\\parskip is not supported by this compiler version; unrestricted TeX math mode is not implemented",
+          "recovery": "skipped the command; any braced argument was typeset as plain text",
+          "severity": "error",
+          "source": {
+            "end_byte": 339,
+            "path": "main.tex",
+            "start_byte": 331
+          }
+        },
+        {
+          "message": "\\section requires a braced argument",
+          "recovery": "used an empty argument and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 553,
+            "path": "main.tex",
+            "start_byte": 545
+          }
+        }
+      ]
+    },
+    {
+      "id": "hw1-heading-hfill",
+      "returncode": 0,
+      "status": "recovered",
+      "pages": 1,
+      "diagnostic_count": 20,
+      "diagnostics": [
+        {
+          "message": "packages fontenc are recognised but not implemented",
+          "recovery": "continued without package-specific commands or formatting",
+          "severity": "warning",
+          "source": {
+            "end_byte": 54,
+            "path": "main.tex",
+            "start_byte": 30
+          }
+        },
+        {
+          "message": "packages geometry are recognised but not implemented",
+          "recovery": "continued without package-specific commands or formatting",
+          "severity": "warning",
+          "source": {
+            "end_byte": 88,
+            "path": "main.tex",
+            "start_byte": 55
+          }
+        },
+        {
+          "message": "\\pagestyle is not supported by this compiler version; unrestricted TeX math mode is not implemented",
+          "recovery": "skipped the command; any braced argument was typeset as plain text",
+          "severity": "error",
+          "source": {
+            "end_byte": 195,
+            "path": "main.tex",
+            "start_byte": 185
+          }
+        },
+        {
+          "message": "\\subsection requires a braced argument",
+          "recovery": "used an empty argument and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 211,
+            "path": "main.tex",
+            "start_byte": 203
+          }
+        },
+        {
+          "message": "\\hfill is not supported by this compiler version; unrestricted TeX math mode is not implemented",
+          "recovery": "skipped the command; any braced argument was typeset as plain text",
+          "severity": "error",
+          "source": {
+            "end_byte": 211,
+            "path": "main.tex",
+            "start_byte": 203
+          }
+        },
+        {
+          "message": "\\normalfont is not supported by this compiler version; unrestricted TeX math mode is not implemented",
+          "recovery": "skipped the command; any braced argument was typeset as plain text",
+          "severity": "error",
+          "source": {
+            "end_byte": 211,
+            "path": "main.tex",
+            "start_byte": 203
+          }
+        },
+        {
+          "message": "\\subsection requires a braced argument",
+          "recovery": "used an empty argument and continued",
+          "severity": "error",
+          "source": {
+            "end_byte": 352,
+            "path": "main.tex",
+            "start_byte": 344
+          }
+        },
+        {
+          "message": "\\hfill is not supported by this compiler version; unrestricted TeX math mode is not implemented",
+          "recovery": "skipped the command; any braced argument was typeset as plain text",
+          "severity": "error",
+          "source": {
+            "end_byte": 352,
+            "path": "main.tex",
+            "start_byte": 344
+          }
+        },
+        {
+          "message": "\\normalfont is not supported by this compiler version; unrestricted TeX math mode is not implemented",
+          "recovery": "skipped the command; any braced argument was typeset as plain text",
+          "severity": "error",
+          "source": {
+            "end_byte": 352,
+            "path": "main.tex",
+            "start_byte": 344
+          }
+        },
+        {
+          "message": "\\noindent is not supported by this compiler version; unrestricted TeX math mode is not implemented",
+          "recovery": "skipped the command; any braced argument was typeset as plain text",
+          "severity": "error",
+          "source": {
+            "end_byte": 435,
+            "path": "main.tex",
+            "start_byte": 426
+          }
+        },
+        {
+          "message": "\\hfill is not supported by this compiler version; unrestricted TeX math mode is not implemented",
+          "recovery": "skipped the command; any braced argument was typeset as plain text",
+          "severity": "error",
+          "source": {
+            "end_byte": 451,
+            "path": "main.tex",
+            "start_byte": 445
+          }
+        },
+        {
+          "message": "\\hfill is not supported by this compiler version; unrestricted TeX math mode is not implemented",
+          "recovery": "skipped the command; any braced argument was typeset as plain text",
+          "severity": "error",
+          "source": {
+            "end_byte": 464,
+            "path": "main.tex",
+            "start_byte": 458
+          }
+        },
+        {
+          "message": "\\noindent is not supported by this compiler version; unrestricted TeX math mode is not implemented",
+          "recovery": "skipped the command; any braced argument was typeset as plain text",
+          "severity": "error",
+          "source": {
+            "end_byte": 489,
+            "path": "main.tex",
+            "start_byte": 480
+          }
+        },
+        {
+          "message": "\\hspace is not supported by this compiler version; unrestricted TeX math mode is not implemented",
+          "recovery": "skipped the command; any braced argument was typeset as plain text",
+          "severity": "error",
+          "source": {
+            "end_byte": 506,
+            "path": "main.tex",
+            "start_byte": 499
+          }
+        },
+        {
+          "message": "\\hfill is not supported by this compiler version; unrestricted TeX math mode is not implemented",
+          "recovery": "skipped the command; any braced argument was typeset as plain text",
+          "severity": "error",
+          "source": {
+            "end_byte": 526,
+            "path": "main.tex",
+            "start_byte": 520
+          }
+        },
+        {
+          "message": "environment 'quote' is not implemented; its body is typeset as plain text",
+          "recovery": "typeset the body without the environment's formatting",
+          "severity": "warning",
+          "source": {
+            "end_byte": 548,
+            "path": "main.tex",
+            "start_byte": 542
+          }
+        },
+        {
+          "message": "\\hfill is not supported by this compiler version; unrestricted TeX math mode is not implemented",
+          "recovery": "skipped the command; any braced argument was typeset as plain text",
+          "severity": "error",
+          "source": {
+            "end_byte": 573,
+            "path": "main.tex",
+            "start_byte": 567
+          }
+        },
+        {
+          "message": "\\noindent is not supported by this compiler version; unrestricted TeX math mode is not implemented",
+          "recovery": "skipped the command; any braced argument was typeset as plain text",
+          "severity": "error",
+          "source": {
+            "end_byte": 684,
+            "path": "main.tex",
+            "start_byte": 675
+          }
+        },
+        {
+          "message": "\\hfill is not supported by this compiler version; unrestricted TeX math mode is not implemented",
+          "recovery": "skipped the command; any braced argument was typeset as plain text",
+          "severity": "error",
+          "source": {
+            "end_byte": 706,
+            "path": "main.tex",
+            "start_byte": 700
+          }
+        },
+        {
+          "message": "\\hrule is not supported by this compiler version; unrestricted TeX math mode is not implemented",
+          "recovery": "skipped the command; any braced argument was typeset as plain text",
+          "severity": "error",
+          "source": {
+            "end_byte": 734,
+            "path": "main.tex",
+            "start_byte": 728
+          }
+        }
+      ]
+    }
+  ]
+}

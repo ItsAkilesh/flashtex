@@ -1,7 +1,7 @@
 # Extended TeX/LaTeX reference corpus
 
 Owner: `mac-reference-corpus`, directly assigned by the user on 2026-09-12.
-Status: 49 original projects, 42 positive reference PDFs (51 pages), seven expected
+Status: 55 original projects, 48 positive reference PDFs (57 pages), seven expected
 error cases, and eight incremental edit scenarios. No FlashTeX compatibility claim.
 This is an independent extension of `tests/tex-corpus`, `tests/visual-corpus`, and
 `fixtures/real-world`; it does not replace their manifests or their owners.
@@ -53,7 +53,7 @@ FlashTeX's compilation or preview path.
   diagnostics, resolved files and build evidence. Original generation paths in the
   recorder/provenance files are historical evidence, not portable lookup paths.
 - `reference-index.json`: final source/PDF hashes and observed page counts for all
-  49 cases. Integrity tests reject stale sources or PDFs.
+  55 cases. Integrity tests reject stale sources or PDFs.
 - `edits.json`: eight exact UTF-8 byte replacements and their expected dependency
   effects. Feed baseline then edited project to an incremental compiler; compare
   the edited result against a clean build of identical edited bytes. Compare warm
@@ -77,12 +77,20 @@ explicit recovery policy. Require a correctly located diagnostic and validate
 recovered output separately. Unsupported is an outstanding feature, even when
 honestly diagnosed. Timeout/crash is never an expected-error pass.
 
-The 51 positive pages were inspected in contact sheets, with full-size spot checks
+The original 51 positive pages were inspected in contact sheets, with full-size spot checks
 of alignment, delimiter sizing and clipping. Book verso pages are intentionally
 blank; narrow-paragraph/discretionary underfull warnings are intentional probes.
 The `epstopdf` shell-disabled warning in the units/chemistry case does not invoke
 conversion. Initial font/cache failures and accidental graphic/link overflow were
 fixed and rerun; only matching final source hashes are accepted in the index.
+
+Six added HW1 probes were individually inspected at 96 DPI. They isolate
+blackboard alphabets and macro expansion, arrays/cases, delimiter/kern widths,
+title size/weight scoping, paragraph registers, and heading hfill/quote widths.
+The hfill fixture's paragraph boundary was corrected and rebuilt before accepting
+its PDF. [The recorded local compiler baseline](../../docs/evidence/hw1-reference-probes-20260912/README.md)
+contains recovered results and 173 diagnostics; these references add requirements,
+not a support claim. Run any one with `--only hw1-array-cases`, for example.
 
 ## Coverage map
 
