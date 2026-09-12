@@ -210,3 +210,29 @@ fn native_queries_check_versions_and_return_utf8_source_navigation() {
     );
     assert_eq!(client.reply("badutf8")["type"], "error");
 }
+
+#[test]
+fn undo_retry_after_helper_kill_is_idempotent_and_redo_remains_available() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut client = Client::start(dir.path());
+    client.send("get", "document", json!({"path":"main.tex"}));
+    let doc = client.reply("get")["payload"]["document"].clone();
+    client.send("edit","edit",json!({"path":"main.tex","expected_revision":1,"expected_sha256":doc["source_sha256"],"text":"typed"}));
+    let edited = client.reply("edit")["payload"]["document"].clone();
+    let undo = json!({"command_id":"undo1","expected_revision":2,"expected_sha256":edited["source_sha256"]});
+    client.send("undo", "undo", json!({"path":"main.tex","command":undo}));
+    let undone = client.reply("undo")["payload"]["history"].clone();
+    assert_eq!(undone["document"]["text"], "α original");
+    assert_eq!(undone["document"]["revision"], 3);
+    drop(client);
+    let mut reopened = Client::start(dir.path());
+    reopened.send("retry", "undo", json!({"path":"main.tex","command":undo}));
+    let replayed = reopened.reply("retry")["payload"]["history"].clone();
+    assert_eq!(replayed["replayed_command"], true);
+    assert_eq!(replayed["document"]["revision"], 3);
+    reopened.send("redo","redo",json!({"path":"main.tex","command":{"command_id":"redo1","expected_revision":3,"expected_sha256":undone["document"]["source_sha256"]}}));
+    assert_eq!(
+        reopened.reply("redo")["payload"]["history"]["document"]["text"],
+        "typed"
+    );
+}

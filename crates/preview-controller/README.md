@@ -23,7 +23,7 @@ compiler failure; it cannot repair a poisoned persistence handle in place.
 This is not a cross-crate transaction. A crash between the durable edit and cache
 update is recovered by rebuilding caches, with source remaining authoritative.
 The controller does not write exported `.tex` files, invoke a provider, approve a
-capture, implement UI undo, or render PDF. Store membership is fixed for this first
+capture, implement native keyboard bindings, or render PDF. Store membership is fixed for this first
 API; callers reopen with the intended set of initialized stores to change it.
 
 `save_and_submit_ms` includes persistence/index/submission. Preview

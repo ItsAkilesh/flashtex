@@ -64,3 +64,20 @@ results. Refresh after a stale-version error and recheck current editor versions
 before applying a result. Definition/occurrence locations are capped at 100 with
 explicit truncation flags. This interface does not supply every package's built-in
 completion vocabulary yet.
+
+Durable editor history uses the shared ledger implementation:
+
+- `history_status`: `{path}` returns undo/redo labels and retention usage.
+- `undo` / `redo`: `{path, command:{command_id, expected_revision,
+  expected_sha256}}`. Command IDs must be unique for a new action and reused
+  unchanged when retrying that same action after uncertain delivery.
+- `apply_group`: `{path, command:{command_id, expected_revision, expected_sha256,
+  label, edits:[{start_byte,end_byte,removed_text,replacement}]}}`. Ranges refer to
+  the same original snapshot and must not overlap; this is ordinary user editing,
+  not a substitute for the reviewed capture approval boundary.
+
+Responses contain the ledger `history` result, including current durable document,
+command revision, retry flag and undo/redo availability, plus separate preview
+status. Undo advances source revision; it does not rewrite old revision numbers.
+Source, history and permanent retry IDs persist together. History capacity errors
+are explicit; native retention UI is still required before history is full.

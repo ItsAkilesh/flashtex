@@ -1,5 +1,6 @@
 //! Worker-thread editor controller. Durable source precedes disposable caches.
 use flashtex_document_runtime::{Document as InputDocument, Event, Limits, Request, Session};
+use flashtex_edit_ledger::history::{GroupedEdit, HistoryMove, HistoryResult, HistoryStatus};
 use flashtex_edit_ledger::{AppliedReceipt, AppliedTransaction, Document, PreparedEdit, Store};
 use flashtex_project_index::{ProjectIndex, VersionSnapshot};
 use serde_json::Value;
@@ -21,6 +22,16 @@ impl ApprovedEdit {
     pub fn from_explicit_user_approval(edit: PreparedEdit) -> Self {
         Self(edit)
     }
+}
+pub enum HistoryAction {
+    Group(GroupedEdit),
+    Undo(HistoryMove),
+    Redo(HistoryMove),
+}
+#[derive(Debug)]
+pub struct HistoryOutcome {
+    pub history: HistoryResult,
+    pub source: EditOutcome,
 }
 #[derive(Debug)]
 pub struct AppliedOutcome {
@@ -198,6 +209,35 @@ impl Controller {
             .ok_or("unknown document")?
             .confirm(receipt)
             .map_err(|e| e.to_string())
+    }
+    pub fn history_status(&self, path: &str) -> Result<HistoryStatus, String> {
+        self.stores
+            .get(path)
+            .ok_or("unknown document")?
+            .history_status()
+            .map_err(|e| e.to_string())
+    }
+    /// Ordinary explicitly requested editor history operations. Permanent command
+    /// IDs and source changes are committed by the authoritative ledger together.
+    pub fn apply_history(
+        &mut self,
+        path: &str,
+        action: HistoryAction,
+    ) -> Result<HistoryOutcome, String> {
+        if self.closed {
+            return Err("project closed".into());
+        }
+        let started = Instant::now();
+        self.submitted = None;
+        let store = self.stores.get_mut(path).ok_or("unknown document")?;
+        let history = match action {
+            HistoryAction::Group(group) => store.apply_group(group),
+            HistoryAction::Undo(command) => store.undo(command),
+            HistoryAction::Redo(command) => store.redo(command),
+        }
+        .map_err(|e| e.to_string())?;
+        let source = self.after_save(history.document.clone(), started);
+        Ok(HistoryOutcome { history, source })
     }
     pub fn compile_current(&mut self) -> Result<(), String> {
         let started = Instant::now();

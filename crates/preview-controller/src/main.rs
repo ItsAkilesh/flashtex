@@ -1,7 +1,7 @@
 //! Local stdio adapter. Native callers must put pipe IO on a dedicated worker.
 use flashtex_document_runtime::{Event, Limits};
 use flashtex_edit_ledger::{AppliedReceipt, PreparedEdit, Store};
-use flashtex_preview_controller::{ApprovedEdit, Controller, Update};
+use flashtex_preview_controller::{ApprovedEdit, Controller, HistoryAction, Update};
 use flashtex_project_index::{Category, SourceSpan};
 use serde_json::{json, Value};
 use std::{
@@ -288,6 +288,25 @@ fn handle(
             )?;
             Ok(
                 json!({"document":result.document,"preview_error":result.preview_error,"save_and_submit_ms":result.save_and_submit_ms}),
+            )
+        }
+        "history_status" => Ok(json!({"history":controller.history_status(string(p,"path")?)?})),
+        "apply_group" | "undo" | "redo" => {
+            let command = p["command"].clone();
+            let action = match request["type"].as_str().unwrap() {
+                "apply_group" => HistoryAction::Group(
+                    serde_json::from_value(command).map_err(|e| e.to_string())?,
+                ),
+                "undo" => {
+                    HistoryAction::Undo(serde_json::from_value(command).map_err(|e| e.to_string())?)
+                }
+                _ => {
+                    HistoryAction::Redo(serde_json::from_value(command).map_err(|e| e.to_string())?)
+                }
+            };
+            let outcome = controller.apply_history(string(p, "path")?, action)?;
+            Ok(
+                json!({"history":outcome.history,"preview_error":outcome.source.preview_error,"save_and_submit_ms":outcome.source.save_and_submit_ms}),
             )
         }
         "compile" => {
