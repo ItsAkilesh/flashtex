@@ -146,6 +146,7 @@ const BUILT_INS: &[&str] = &[
     "hfill",
     "normalfont",
     "bfseries",
+    "listfiles",
 ];
 
 /// Project-relative paths only: no absolute paths or parent traversal.
@@ -408,6 +409,11 @@ impl P<'_> {
             "newcommand" | "renewcommand" => self.define_macro(name, span),
             "begin" | "end" => self.environment(name, span, blocks, para),
             "input" | "include" => self.include(name, span, blocks, para),
+            // MacTeX writes package-version banners to the log for `\listfiles`;
+            // this compiler has no log stream to write them to, so the honest
+            // behaviour is a documented no-op rather than an "unsupported"
+            // diagnostic for a command every corpus fixture's preamble carries.
+            "listfiles" => {}
             _ if self.has_document && !self.in_body => self.unsupported_preamble(name, span),
             "section" | "subsection" => {
                 let level = if name == "section" { 1 } else { 2 };

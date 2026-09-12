@@ -120,11 +120,15 @@ Required, outstanding — this is a foundation, not a LaTeX implementation:
 `\section{...}`, `\subsection{...}`, `\label{key}`, `\ref{key}`,
 `\pageref{key}`, `\caption{...}`, `\textbf`, `\emph`, `\textit`,
 `\begin`/`\end` for `document`, `equation`, `figure`, `itemize`, and
-`enumerate`, `\item`, `\par`, and `\\`. Macro
+`enumerate`, `\item`, `\par`, `\\`, and `\listfiles`. Macro
 argument counts are decimal integers from 0 through 9, and replacement
 parameters are `#1` through `#9`. Paragraphs are separated by blank lines.
 `%` begins a comment. Any other command produces an explicit "not supported by
 this compiler version" diagnostic — never silent output.
+
+`\listfiles` is accepted anywhere and is always a no-op: MacTeX uses it to log
+package version banners, and this compiler has no log stream to write them to,
+so silently doing nothing is the honest behaviour rather than a fabricated log.
 
 ## Macro expansion and source mapping
 
