@@ -28,10 +28,15 @@ pub struct Value {
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct KernTable {
+    parent_offset: usize,
     heights: Vec<Value>,
     kerns: Vec<Value>,
 }
 impl KernTable {
+    pub(crate) fn retained_value_bytes(&self) -> usize {
+        (self.heights.capacity() + self.kerns.capacity()) * std::mem::size_of::<Value>()
+    }
+
     pub fn correction_heights(&self) -> &[Value] {
         &self.heights
     }
@@ -127,12 +132,103 @@ impl MathKern {
                 let kerns = (0..=n)
                     .map(|k| value(math, at, at + 2 + n * 4 + k * 4))
                     .collect::<Result<Vec<_>>>()?;
-                result
-                    .records
-                    .insert((gid, corner), KernTable { heights, kerns });
+                result.records.insert(
+                    (gid, corner),
+                    KernTable {
+                        parent_offset: at,
+                        heights,
+                        kerns,
+                    },
+                );
             }
         }
         Ok(result)
+    }
+    pub(crate) fn device_lookup(
+        &self,
+        math: &[u8],
+        gid: u16,
+        corner: Corner,
+        height: Rational,
+        units_per_em: u16,
+        context: crate::math_device::KernDeviceContext,
+    ) -> std::result::Result<crate::math_device::KernCorrection, crate::math_device::DeviceError>
+    {
+        use crate::math_device::*;
+        if gid >= self.glyph_count || units_per_em == 0 {
+            return Err(DeviceError::InvalidRecord);
+        }
+        let Some(table) = self.records.get(&(gid, corner)) else {
+            return Ok(KernCorrection {
+                glyph_id: gid,
+                corner,
+                query_height: height,
+                context,
+                selected_interval: 0,
+                correction: RecordCorrection {
+                    design_units: 0,
+                    delta_pixels: 0,
+                    context: context.horizontal,
+                    device_table_offset: None,
+                    device_table_sha256: None,
+                },
+            });
+        };
+        if table.heights.len() > 4096 {
+            return Err(DeviceError::Bounds);
+        }
+        let mut selected = 0;
+        let mut previous = None;
+        for i in 0..table.heights.len() {
+            let correction = record_correction(
+                math,
+                table.parent_offset,
+                table.parent_offset + 2 + i * 4,
+                context.vertical,
+            )?;
+            let boundary = Rational::new(i128::from(correction.design_units), 1)?.checked_add(
+                Rational::new(
+                    i128::from(correction.delta_pixels) * i128::from(units_per_em),
+                    i128::from(context.vertical.ppem()),
+                )?,
+            )?;
+            let compare = |a: Rational,
+                           b: Rational|
+             -> std::result::Result<std::cmp::Ordering, DeviceError> {
+                let l = a
+                    .numerator()
+                    .checked_mul(b.denominator())
+                    .ok_or(DeviceError::Bounds)?;
+                let r = b
+                    .numerator()
+                    .checked_mul(a.denominator())
+                    .ok_or(DeviceError::Bounds)?;
+                Ok(l.cmp(&r))
+            };
+            if let Some(p) = previous {
+                if compare(boundary, p)?.is_lt() {
+                    return Err(DeviceError::NonMonotoneHeights);
+                }
+            }
+            if !compare(height, boundary)?.is_lt() {
+                selected = i + 1;
+            }
+            previous = Some(boundary);
+        }
+        let correction = record_correction(
+            math,
+            table.parent_offset,
+            table.parent_offset + 2 + table.heights.len() * 4 + selected * 4,
+            context.horizontal,
+        )?;
+        Ok(KernCorrection {
+            glyph_id: gid,
+            corner,
+            query_height: height,
+            context,
+            selected_interval: selected,
+            correction,
+        })
     }
     pub fn records(&self) -> &BTreeMap<(u16, Corner), KernTable> {
         &self.records
@@ -206,6 +302,99 @@ mod tests {
         assert!(k
             .lookup(5, Corner::TopLeft, Rational::new(0, 1).unwrap())
             .is_err());
+    }
+    #[test]
+    fn device_height_ties_and_kern_pixels() {
+        use crate::math_device::*;
+        let mut b = fixture();
+        b.extend([0; 16]);
+        for (at, n) in [
+            (40, 22),
+            (52, 30),
+            (58, 100),
+            (60, 100),
+            (62, 1),
+            (64, 0x4000),
+            (66, 100),
+            (68, 100),
+            (70, 1),
+            (72, 0x8000),
+        ] {
+            put(&mut b, at, n)
+        }
+        let k = MathKern::parse(&b, 5).unwrap();
+        let context = KernDeviceContext {
+            horizontal: DeviceContext::new(100).unwrap(),
+            vertical: DeviceContext::new(100).unwrap(),
+        };
+        let before = k
+            .device_lookup(
+                &b,
+                2,
+                Corner::TopRight,
+                Rational::new(-1, 1).unwrap(),
+                1000,
+                context,
+            )
+            .unwrap();
+        assert_eq!(before.correction.design_units, -3);
+        let tie = k
+            .device_lookup(
+                &b,
+                2,
+                Corner::TopRight,
+                Rational::new(0, 1).unwrap(),
+                1000,
+                context,
+            )
+            .unwrap();
+        assert_eq!(tie.selected_interval, 1);
+        assert_eq!(tie.correction.design_units, 5);
+        assert_eq!(tie.correction.delta_pixels, -2);
+        let outside = KernDeviceContext {
+            horizontal: DeviceContext::new(101).unwrap(),
+            vertical: DeviceContext::new(101).unwrap(),
+        };
+        assert_eq!(
+            k.device_lookup(
+                &b,
+                2,
+                Corner::TopRight,
+                Rational::new(0, 1).unwrap(),
+                1000,
+                outside
+            )
+            .unwrap()
+            .correction
+            .delta_pixels,
+            0
+        );
+        let mut variation = b.clone();
+        put(&mut variation, 70, 0x8000);
+        assert!(matches!(
+            k.device_lookup(
+                &variation,
+                2,
+                Corner::TopRight,
+                Rational::new(0, 1).unwrap(),
+                1000,
+                outside
+            ),
+            Err(DeviceError::UnsupportedVariationIndex)
+        ));
+        put(&mut b, 62, 3);
+        put(&mut b, 64, 0x0800);
+        assert!(matches!(
+            k.device_lookup(
+                &b,
+                2,
+                Corner::TopRight,
+                Rational::new(0, 1).unwrap(),
+                1000,
+                context
+            ),
+            Err(DeviceError::NonMonotoneHeights)
+        ));
     }
     #[test]
     fn malformed_and_device_limits() {

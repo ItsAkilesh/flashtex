@@ -13,8 +13,8 @@ fn r(n: i128, d: u128) -> OutlineCoordinate {
 }
 fn main() -> Result<(), Box<dyn Error>> {
     let args: Vec<_> = std::env::args().skip(1).collect();
-    if args.len() != 2 {
-        return Err("usage: shaped_run_probe PINNED_STIX_OTF LICENSE".into());
+    if args.len() != 2 && args.len() != 3 {
+        return Err("usage: shaped_run_probe PINNED_STIX_OTF LICENSE [OUTPUT_DIRECTORY]".into());
     }
     let spec: serde_json::Value =
         serde_json::from_str(include_str!("../tests/fixtures/stix-cff-tfm.json"))?;
@@ -145,7 +145,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
     println!("glyphs={} clusters={} commands={} advance={}/{} source={} original_engine_id={} font_sha256={} cached_direct_equal=true hinting=false native_painted=false",a.glyphs().len(),run.shaped().clusters.len(),a.command_count(),a.advance().numerator(),a.advance().denominator(),run.source().source_sha256,run.identity().engine_font_id.content_hex(),run.identity().font_sha256);
     // Exact integral-em placement gives a finite decimal CFF content stream.
-    // This is a real outline stream, not a PDF container or native paint test.
+    // Export through the original exact PDF container API; no native paint oracle.
     let unit = flashtex_rendering_core::TICKS_PER_BP as i128;
     let pdf_placement = Placement {
         item_index: 9,
@@ -193,5 +193,19 @@ fn main() -> Result<(), Box<dyn Error>> {
     .map_err(|e| format!("{e:?}"))?;
     let content = stream.content_bytes().map_err(|e| format!("{e:?}"))?;
     println!("pdf_operators={} pdf_content_bytes={} pdf_content_sha256={} source_fixture_sha256={} standalone_pdf=false",stream.operators().len(),content.len(),digest(&content),stream.source_sha256());
+    let source_hash = stream.source_sha256().to_string();
+    let output = flashtex_rendering_core::pdf_export::export(&[stream], Default::default())
+        .map_err(|e| format!("{e:?}"))?;
+    let parsed = flashtex_pdf::reader::PdfFile::parse(output.bytes())?;
+    assert_eq!(parsed.page_content(parsed.pages()?[0])?, content);
+    if let Some(directory) = args.get(2) {
+        let directory = std::path::Path::new(&directory);
+        std::fs::write(directory.join("stix-exact-export.pdf"), output.bytes())?;
+        std::fs::write(
+            directory.join("stix-exact-export.evidence.json"),
+            output.evidence_bytes(),
+        )?;
+    }
+    println!("real_pdf_bytes={} real_pdf_sha256={} source_fixture_sha256={} exact_content_readback=true outline_only=true visual_oracle=false",output.bytes().len(),digest(output.bytes()),source_hash);
     Ok(())
 }

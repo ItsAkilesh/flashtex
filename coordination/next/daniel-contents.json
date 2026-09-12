@@ -1,9 +1,10 @@
 {
-  "schema_version": 1,
   "agent_id": "daniel-contents",
-  "task_id": "FT-034",
-  "revision": 2,
-  "branch": "agent/daniel-contents/toc-layout",
   "assignment_path": "coordination/assignments/FT-034.json",
-  "updated_utc": "2026-09-12T09:02:36.189558+00:00"
+  "branch": "agent/daniel-contents/toc-layout",
+  "previous_report_sha": "f8870c89128bc69a967b99ddd87f066c592b577b",
+  "revision": 3,
+  "schema_version": 1,
+  "task_id": "FT-034",
+  "updated_utc": "2026-09-12T09:36:00Z"
 }
