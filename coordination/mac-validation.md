@@ -13,9 +13,9 @@
   runner builds helpers from `origin/main` at run time (SHA recorded in each report)
 - State: ready for integration (runner + first evidence run); see "Incomplete".
 - Ready behavior and evidence: `tools/native-validation/mac-live/run.sh` (bash + python3,
-  stdlib) builds the four helpers from a `git archive` of current `origin/main`, the Mac
-  app (release) from the branch under test, runs the unmodified `tools/typing-bench/run.sh`
-  (fixture/demo/body60k × 30 ms/0 ms), packages `FlashTeX.app` with `make-app.sh`, runs
+  stdlib) builds five helpers in a shared clone pinned at current `origin/main`, the Mac
+  app (release) from a clone pinned at the branch under test, runs the unmodified `tools/typing-bench/run.sh`
+  (fixture/demo/body60k × 30 ms/0 ms; direct worker and preview-controller routes), packages `FlashTeX.app` with `make-app.sh`, runs
   the unmodified `launch-check.sh` with `FLASHTEX_NO_ACTIVATE=1` through a PATH `open`
   shim (private bridge store, transcript), drives the bundled helpers through the capture
   cycle (submit -> `provider_disabled` -> offline fixture proposal review -> durable
@@ -53,8 +53,8 @@
   edited (parent-owned), so `FLASHTEX_NO_ACTIVATE=1` is injected via a PATH shim on
   `open`; (2) the UI capture flow needs `NSOpenPanel`/pairing confirmation, both
   impossible without Accessibility, so the cycle targets the bundled helpers with the
-  shell's exact message order; (3) `components.json` from `make-app.sh` reports helper
-  SHAs `unknown` for non-git scratch sources — the report carries real SHAs.
+  shell's exact message order; (3) `git archive` scratch trees broke the bench script's
+  `git rev-parse` (set -e) and misattributed SHAs, so pinned shared clones are used instead; (4) bundled binaries are compared by a signature-masked Mach-O content hash because `make-app.sh` re-signs ad hoc.
 - Exact next action or command: re-run `tools/native-validation/mac-live/run.sh` after
   each integration of `apps/mac` or the helper crates; compare `reports/`.
 - Resume reading list: `tools/native-validation/mac-live/README.md`, latest report,
