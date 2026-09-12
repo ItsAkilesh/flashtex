@@ -3,11 +3,47 @@
 use flashtex_compiler::json;
 use flashtex_render_pipeline::{delta, protocol, FontSet, RenderCache, RenderOptions};
 
+fn req_text(id: &str, rev: f64, text: &str, ack: Option<&delta::BaseAck>) -> String {
+    let mut payload = json::Value::obj();
+    payload.set("project_id", json::str_("delta-gate"));
+    payload.set("revision", json::num(rev));
+    payload.set("entry_path", json::str_("main.tex"));
+    let mut doc = json::Value::obj();
+    doc.set("path", json::str_("main.tex"));
+    doc.set("text", json::str_(text));
+    payload.set("documents", json::Value::Arr(vec![doc]));
+    payload.set(
+        "layout_capabilities",
+        json::Value::Arr(["rules-v1", "font-hints-v1", "display-list-v2", delta::CAP_DELTA].into_iter().map(json::str_).collect()),
+    );
+    let _ = ack;
+    let mut v = json::Value::obj();
+    v.set("protocol_version", json::num(1.0));
+    v.set("id", json::str_(id));
+    v.set("type", json::str_("compile"));
+    v.set("payload", payload);
+    json::write(&v)
+}
+
 fn main() {
     let fonts = FontSet::with_default_dirs(&[]);
     let options = RenderOptions::default();
     let cache = RenderCache::new();
     let sections: usize = std::env::args().nth(1).and_then(|a| a.parse().ok()).unwrap_or(3);
+    if let Some(path) = std::env::args().nth(2) {
+        // digest probe for a text file: print the snapshot digests the producer computes
+        let text = std::fs::read_to_string(&path).expect("text file");
+        let r0 = protocol::handle_line(&req_text("probe-1", 1.0, &text, None), &fonts, &options, Some(&cache));
+        let _ = r0;
+        let s = cache.delta_snapshot().expect("snapshot");
+        println!("list_digest {}", flashtex_font_engine::sha256::hex(&s.list_digest));
+        for (i, d) in s.page_digests.iter().enumerate() {
+            println!("page {} digest {} bytes {}", i + 1, flashtex_font_engine::sha256::hex(d), s.page_bytes[i]);
+        }
+        println!("header_digest {}", flashtex_font_engine::sha256::hex(&delta::header_digest(&s.list)));
+        println!("header_canon {}", flashtex_font_engine::sha256::hex(&delta::header_canon(&s.list)));
+        return;
+    }
     let mut t0 = String::from("\\begin{document}\n");
     for i in 0..sections {
         t0.push_str(&format!("\\section{{Part {i}}}\n"));

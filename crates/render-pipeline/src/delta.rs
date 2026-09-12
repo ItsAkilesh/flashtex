@@ -188,6 +188,11 @@ pub fn page_digest(p: &Page) -> [u8; 32] {
 }
 
 pub fn header_digest(l: &DisplayList) -> [u8; 32] {
+    sha256::digest(&header_canon(l))
+}
+
+/// The canonical header bytes (exposed for cross-implementation debugging).
+pub fn header_canon(l: &DisplayList) -> Vec<u8> {
     let mut c = Canon(b"flashtex:dl2:header:1\0".to_vec());
     for s in ["display-list-v2", "bp_2pow20", "srgb", "cluster-actualtext"] {
         c.s(s);
@@ -227,7 +232,7 @@ pub fn header_digest(l: &DisplayList) -> [u8; 32] {
         });
         c.ranges(&d.sources);
     }
-    sha256::digest(&c.0)
+    c.0
 }
 
 pub fn list_digest(l: &DisplayList, page_digests: &[[u8; 32]]) -> [u8; 32] {
