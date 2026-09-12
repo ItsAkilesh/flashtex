@@ -1366,8 +1366,22 @@ struct Word {
     text: String,
     page: u32,
     x_bp: f64,
+    /// Right edge of the word's last run (advances + kerns), bp.
+    right_bp: f64,
     bottom_bp: f64,
     line_start: bool,
+    /// (paragraph, line) the word sits on.
+    line_id: (usize, usize),
+}
+
+/// One set line: glue ratio and widths as the breaker chose them (TeX pt).
+#[derive(Clone, Copy)]
+struct LineInfo {
+    ratio: f64,
+    natural: f64,
+    set: f64,
+    /// Last line of its paragraph: set by `\parfillskip` (fil), no finite ratio.
+    last: bool,
 }
 
 struct Report {
@@ -1375,6 +1389,7 @@ struct Report {
     /// Per page: (line count, first baseline pt, last baseline pt).
     pages: Vec<(usize, f64, f64)>,
     overfull_lines: usize,
+    lines: std::collections::BTreeMap<(usize, usize), LineInfo>,
 }
 
 fn ours(article: &ArticleLayout) -> Report {
@@ -1395,6 +1410,21 @@ fn ours(article: &ArticleLayout) -> Report {
         .sum();
     let mut words: Vec<Word> = Vec::new();
     let mut pages: Vec<(usize, f64, f64)> = Vec::new();
+    let mut lines = std::collections::BTreeMap::new();
+    for (pi, p) in doc.paragraphs.iter().enumerate() {
+        let n = p.lines.lines.len();
+        for (li, l) in p.lines.lines.iter().enumerate() {
+            lines.insert(
+                (pi, li),
+                LineInfo {
+                    ratio: l.ratio,
+                    natural: l.natural_width,
+                    set: l.set_width,
+                    last: li + 1 == n,
+                },
+            );
+        }
+    }
     for page in &doc.pages.pages {
         let mut last_line: Option<f64> = None;
         let mut last_end: Option<usize> = None;
@@ -1402,6 +1432,11 @@ fn ours(article: &ArticleLayout) -> Report {
         pages.push((baselines.len(), baselines[0], *baselines.last().unwrap()));
         for r in &page.runs {
             let line_start = last_line != Some(r.baseline_y);
+            let placed = page
+                .lines
+                .iter()
+                .find(|l| l.baseline_y == r.baseline_y)
+                .expect("run baseline belongs to a placed line");
             let text = if r.is_hyphen {
                 "-".to_string()
             } else {
@@ -1409,14 +1444,18 @@ fn ours(article: &ArticleLayout) -> Report {
             };
             let glued = !line_start && last_end == Some(r.source.start);
             if (glued || r.is_hyphen) && !line_start {
-                words.last_mut().unwrap().text.push_str(&text);
+                let w = words.last_mut().unwrap();
+                w.text.push_str(&text);
+                w.right_bp = tex_pt_to_bp(r.x + r.width);
             } else {
                 words.push(Word {
                     text,
                     page: page.number,
                     x_bp: tex_pt_to_bp(r.x),
+                    right_bp: tex_pt_to_bp(r.x + r.width),
                     bottom_bp: tex_pt_to_bp(r.baseline_y + 217.0 * r.size / 1000.0),
                     line_start,
+                    line_id: (placed.paragraph, placed.line),
                 });
             }
             last_line = Some(r.baseline_y);
@@ -1427,6 +1466,120 @@ fn ours(article: &ArticleLayout) -> Report {
         words,
         pages,
         overfull_lines,
+        lines,
+    }
+}
+
+/// Distribution of one absolute-delta series.
+struct Dist {
+    n: usize,
+    mean: f64,
+    p50: f64,
+    p90: f64,
+    max: f64,
+    /// Count within the acceptance bound.
+    within: usize,
+    bound: f64,
+}
+
+fn dist(mut v: Vec<f64>, bound: f64) -> Dist {
+    v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    let n = v.len();
+    let pct = |q: f64| v[(((n as f64) * q) as usize).min(n.saturating_sub(1))];
+    Dist {
+        n,
+        mean: v.iter().sum::<f64>() / n.max(1) as f64,
+        p50: pct(0.5),
+        p90: pct(0.9),
+        max: v.last().copied().unwrap_or(0.0),
+        within: v.iter().filter(|d| **d <= bound).count(),
+        bound,
+    }
+}
+
+impl std::fmt::Display for Dist {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "n {}; mean {:.4}; p50 {:.4}; p90 {:.4}; max {:.4}; within {:.3}: {}/{}",
+            self.n, self.mean, self.p50, self.p90, self.max, self.bound, self.within, self.n
+        )
+    }
+}
+
+/// Exact glue set (FT-019 rev 4): every inter-word space width the oracle
+/// set, recovered from consecutive word origins on the same line, against the
+/// width our breaker set for the same gap; and per line the adjustment ratio
+/// the oracle's spaces imply against the one we chose.
+///
+/// The oracle records only word origins (3 decimals, bp), so an oracle gap is
+/// `x[next] - x[word] - width(word)` with *our* run width; the gap delta is
+/// therefore exactly `dx[next] - dx[word]` and its floor is the PDF's 0.0005 bp
+/// coordinate rounding on each end. The implied ratio uses the line's total
+/// finite stretch (or shrink) recovered from `set - natural` and our ratio.
+struct GlueReport {
+    gap_bp: Dist,
+    ratio: Dist,
+    /// (line, ours ratio, implied oracle ratio) for the largest ratio delta.
+    worst_line: ((usize, usize), f64, f64),
+    gaps_per_line: Vec<(f64, f64)>,
+    /// The 12 largest signed gap deltas: (oracle - ours bp, word before, word after, line).
+    largest: Vec<(f64, String, String, (usize, usize))>,
+}
+
+fn glue_set(r: &Report, oracle: &[(&str, u32, f64, f64, bool)]) -> GlueReport {
+    let mut gap_deltas = Vec::new();
+    let mut largest: Vec<(f64, String, String, (usize, usize))> = Vec::new();
+    // Per line: (sum of gap deltas in bp, number of gaps).
+    let mut per_line: std::collections::BTreeMap<(usize, usize), (f64, usize)> = Default::default();
+    for (i, pair) in r.words.windows(2).enumerate() {
+        let (a, b) = (&pair[0], &pair[1]);
+        if b.line_start || a.line_id != b.line_id {
+            continue;
+        }
+        let ours_gap = b.x_bp - a.right_bp;
+        let oracle_gap = oracle[i + 1].2 - oracle[i].2 - (a.right_bp - a.x_bp);
+        let d = oracle_gap - ours_gap;
+        gap_deltas.push(d.abs());
+        largest.push((d, a.text.clone(), b.text.clone(), a.line_id));
+        let e = per_line.entry(a.line_id).or_insert((0.0, 0));
+        e.0 += d;
+        e.1 += 1;
+    }
+    let mut ratio_deltas = Vec::new();
+    let mut worst = ((0, 0), 0.0, 0.0);
+    let mut worst_d = -1.0;
+    let mut gaps_per_line = Vec::new();
+    for (id, (sum_bp, _n)) in &per_line {
+        let li = r.lines[id];
+        if li.last {
+            // \parfillskip absorbs the slack: the finite glue sits at natural
+            // width in both engines; the gap deltas above already cover it.
+            continue;
+        }
+        let adjust = li.set - li.natural; // = ratio * total stretch (or -shrink)
+        if adjust.abs() < 1e-9 || li.ratio == 0.0 {
+            continue;
+        }
+        let total = adjust / li.ratio; // total finite stretch or shrink, pt
+        let sum_pt = sum_bp / BP_PER_TEX_PT;
+        let implied = li.ratio + sum_pt / total;
+        let d = (implied - li.ratio).abs();
+        if d > worst_d {
+            worst_d = d;
+            worst = (*id, li.ratio, implied);
+        }
+        ratio_deltas.push(d);
+        gaps_per_line.push((li.ratio, implied));
+    }
+    largest.sort_by(|a, b| b.0.abs().partial_cmp(&a.0.abs()).unwrap());
+    largest.truncate(12);
+    GlueReport {
+        gap_bp: dist(gap_deltas, 0.01),
+        ratio: dist(ratio_deltas, 0.01),
+        worst_line: worst,
+        gaps_per_line,
+        largest,
     }
 }
 
@@ -1566,4 +1719,65 @@ fn page_geometry_1in_matches_pdflatex() {
     assert!(s.dy_max < 0.05, "max|dy| {}", s.dy_max);
     assert!(s.dx_max < 0.05, "max|dx| {}", s.dx_max);
     assert_eq!(r.overfull_lines, 0);
+}
+
+/// (word, page, oracle x, oracle bottom, starts a line).
+type OracleWord = (&'static str, u32, f64, f64, bool);
+
+/// FT-019 rev 4 (a): exact glue set. Every interword space pdflatex set on
+/// the two-page justified document (both geometries) against ours, and the
+/// per-line adjustment ratio its spaces imply against the one we chose.
+/// Acceptance: every gap within the oracle's 1/1000 em quantum (0.012 bp) and
+/// 98% within 0.01 bp; every implied ratio within 0.001.
+#[test]
+fn interword_glue_set_matches_pdflatex_within_the_oracle_quantum() {
+    let variants: [(&str, Option<Geometry>, &[OracleWord]); 2] = [
+        ("default", None, ORACLE_DEFAULT),
+        (
+            "geometry1in",
+            Some(Geometry::margin(Pt::inches(1.0))),
+            ORACLE_GEOMETRY_1IN,
+        ),
+    ];
+    for (label, geometry, oracle) in variants {
+        let article = ArticleLayout::new(
+            ClassOptions {
+                paper: Paper::Letter,
+                size: BaseSize::Pt12,
+            },
+            geometry,
+        );
+        let r = ours(&article);
+        let g = glue_set(&r, oracle);
+        let stretched = g.gaps_per_line.iter().filter(|(o, _)| *o > 0.0).count();
+        let shrunk = g.gaps_per_line.iter().filter(|(o, _)| *o < 0.0).count();
+        println!(
+            "{label}: interword gaps |oracle - ours| bp: {}\n{label}: line ratios |implied - ours|: {} (lines stretched {stretched}, shrunk {shrunk}); worst line {:?} ours {:.4} implied {:.4}",
+            g.gap_bp, g.ratio, g.worst_line.0, g.worst_line.1, g.worst_line.2
+        );
+        for (d, a, b, line) in &g.largest {
+            println!("{label}:   gap {d:+.4} bp after {a:?} before {b:?} (line {line:?})");
+        }
+        assert!(g.gap_bp.n > 500, "{label}: gaps counted {}", g.gap_bp.n);
+        // pdfTeX positions glyphs inside a line with integer thousandths of
+        // the em in `TJ` arrays (error-compensated, never accumulating), so
+        // one oracle gap can be off by up to 1/1000 em = 0.012 pt at 12 pt;
+        // that is the floor of the oracle format, not of the glue set.
+        let quantum = tex_pt_to_bp(12.0 / 1000.0);
+        assert!(
+            g.gap_bp.max <= quantum,
+            "{label}: gap max {} bp exceeds the 1/1000 em quantum {quantum}",
+            g.gap_bp.max
+        );
+        assert!(
+            g.gap_bp.within * 100 >= g.gap_bp.n * 98,
+            "{label}: only {}/{} gaps within 0.01 bp",
+            g.gap_bp.within,
+            g.gap_bp.n
+        );
+        // Ratios average the quantisation out: every line's implied ratio is
+        // within 0.001 of ours.
+        assert!(g.ratio.max < 0.001, "{label}: ratio max {}", g.ratio.max);
+        assert_eq!(g.ratio.within, g.ratio.n);
+    }
 }
