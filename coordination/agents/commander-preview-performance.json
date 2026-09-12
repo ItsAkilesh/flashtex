@@ -13,17 +13,17 @@
   "capabilities": [
     "Preview helper serialization and latency"
   ],
-  "code_revision": "e5a894bcb0685380f8feb0e8253dca579e411b5f",
+  "code_revision": "42425a521336221766addd6dce4a9b8dd33da790",
   "eta_minutes": null,
   "machine": "linux-primary",
   "main_integrated_through": "6e515bef475f14d51a736c94ba4e0adc943d0dc8",
-  "next_action": "Use FT049 real65dbe7d producer replay inputs to verify actual helper forwarding and native consumer contract; full-sized optional oversize/stall remains a separate gate.",
+  "next_action": "Native helper-route consumer validation and full-size optional oversize/stall evidence; preserve defaultOFF.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "Shared optional frame admission with sourcefree outcome/timing diagnostics. Compact JSON numeric expansion refuses oversized optional output without partial frame or lost required ACK.63 helper tests all real compiler gates and strictlint pass.",
+  "summary": "Actual65dbe7d producer\u2192helper replay passes original+2durable edits: exact direct/helper v1 and display JSON equality, exactsource hashes, matching v1 precedes candidate, finaldocument exact afterkill/reopen. Binary/font/TFM/license hashes checked; no nativepaint or latency claim.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T11:06:43Z",
+  "updated_utc": "2026-09-12T11:10:00Z",
   "usage": {
     "status": "unknown"
   }
