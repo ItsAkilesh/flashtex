@@ -34,3 +34,7 @@ docs/design/canvas/*.html
 # Never commit provider credentials
 .env
 .env.*
+
+# macOS Finder metadata
+.DS_Store
+**/.DS_Store

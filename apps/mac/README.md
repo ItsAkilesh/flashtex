@@ -422,7 +422,6 @@ explain that nothing is loaded.
 |---|---|
 | ⌘O | Open LaTeX file… (becomes the `main.tex` entry document; compiles if a worker is attached) |
 | ⌘S / ⌘⇧S | Save / Save As… (UTF-8; header shows "— edited" when dirty) |
-| Edit > Restore Discarded Buffer | Brings back the unsaved text replaced by a "Discard" decision when opening another file |
 | ⌘⇧O | Open compile result fixture… (sibling `-request.json` seeds the editor) |
 | ⌘R | Reload fixture |
 | ⌘⇧K | Attach built compiler (`$FLASHTEX_COMPILER` or `crates/compiler/target/…`) |
@@ -441,6 +440,12 @@ explain that nothing is loaded.
 | ⌘⇧] / ⌘⇧[ | Next / previous diagnostic (refused if its span was edited since the compile) |
 | ⌘⇧J | Reveal caret in preview (selects the item's source span) |
 | Click preview text | Select its source (UTF-8 span → UTF-16; refused if edited since compile) |
+
+**Edit > Restore Discarded Buffer** has no keyboard shortcut. It brings back the
+unsaved text replaced by a "Discard" decision when opening another file, and is
+reachable from the Edit menu only. It is listed here rather than in the table
+above because that table pairs shortcuts with actions, and this command has no
+shortcut to pair.
 
 The compiler rejects request lines over 8 MiB with an `error` envelope, which the
 banner shows; the shell rejects response lines over 16 MiB.
