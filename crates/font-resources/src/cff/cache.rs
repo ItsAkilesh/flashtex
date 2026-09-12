@@ -77,6 +77,9 @@ impl CffOutlineCache {
             names: std::sync::OnceLock::new(),
         })
     }
+    pub fn glyph_count(&self) -> usize {
+        self.cff.glyph_count()
+    }
     pub fn glyph_names(&self) -> Result<Arc<super::CffGlyphNames>> {
         self.names
             .get_or_init(|| self.cff.glyph_names().map(Arc::new))

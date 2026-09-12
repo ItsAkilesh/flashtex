@@ -402,3 +402,30 @@ status and 100 identical placement/serialization repetitions. Timings are labell
 as local debug measurements; they exclude native painting and are not a preview
 latency claim. Replay includes the shaping implementation cache key, so a source
 revision may legitimately change the replay hash without changing geometry.
+
+`registry_binding::RegistryRenderer` binds explicit family/weight/style choices
+from an immutable `ProjectFontRegistry`. Every lease retains the project instance,
+registry generation, full resource declaration (including file and licensing
+provenance), verified engine identity and exact CFF table identity when applicable.
+Shaping and placement check the active lease; no nearest-style or system-font
+fallback occurs. Per-binding cache allocations share the configured total charged
+cache payload budget. Verified font storage, engine copies and caller-held frames
+or leases are outside that cache budget.
+
+Replacing a registry with a different semantic generation clears active bindings
+and rejects prior leases, even if a later replacement returns to an earlier
+hash. Existing frames and their exact paths remain immutable. Identical semantic
+generations preserve active caches. Renderer instances have separate local lease
+identities even when their caller-supplied project labels match.
+
+Registry frame replay wraps shaped evidence with the complete binding.
+`verify_replay` checks the current lease, source snapshot, exact declaration,
+engine/raw font identities, backend and CFF table range/hash. This establishes
+resource provenance, not that arbitrary externally supplied outline commands
+match the font; it does not grant painting or activate a native wire.
+
+Synthetic tests exercise replacement and retained-frame behavior. Run the separate
+pinned TTF/CFF acceptance when those licensed installed resources are available:
+`cargo test --offline --manifest-path crates/rendering-core/Cargo.toml --test
+registry_binding pinned_mixed_backend_registry_replay_and_replacement -- --ignored
+--nocapture`. It pins both fonts/licenses before creating a temporary project.

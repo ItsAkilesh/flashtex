@@ -14,23 +14,23 @@
     "rust",
     "rendering"
   ],
-  "code_revision": "4d1248237fc9883c5edc61dc2cf98a5c90d62eb8",
+  "code_revision": "84d581168eed75caa620f66350d629a23b0ce538",
   "eta_minutes": {
     "likely": 15,
     "optimistic": 5,
     "pessimistic": 25
   },
   "machine": "linux-primary",
-  "main_integrated_through": "cb19024b34762f82c1ed609ff740bb880040139a",
-  "next_action": "Next rendering-core product assignment after published replay checkpoint.",
+  "main_integrated_through": "84d581168eed75caa620f66350d629a23b0ce538",
+  "next_action": "Next rendering-core product assignment after registry binding checkpoint; font-owner additive manifest export cf427f9 available.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "Exact shaped-run replay and geometry-diff integration complete; malformed and stale fixtures reject.",
+  "summary": "Immutable registry-to-render binding adapter complete for explicit TTF/CFF styles, generation leases and provenance-bound replay.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T07:48:21Z",
+  "updated_utc": "2026-09-12T07:55:14Z",
   "usage": {
-    "evidence": "123 Rust tests, strict all-target clippy and actual geometry-diff CLI pass. Pinned STIX replay 27951 bytes SHA 19d16580b3342bc1af03c44a4bc9046c529b3e74c29fb1fa0af9f5d46b320234; 11 verified warm hits and 100 identical replays. Debug sample cold placement 757121ns, warm 324294ns, 100 placement+serialization iterations 152082236ns; not paint latency. Font/source evidence boundaries remain explicit.",
-    "status": "Hosted OpenAI allocation only; no auxiliary paid calls or new agents."
+    "evidence": "125 ordinary tests and strict all-target clippy pass. Separate pinned mixed registry acceptance explicitly run and passes: STIX48 commands replaySHA9de5690675bb84381c937c2ab350f591e0dcfd8ba7eaa53a98f2736ae6693503; Liberation34 commands SHA1a4413fc598a0daa541d4b0d1e5e44affd9461475d096b1a0624e56b1e2c4acd. Font-byte/license changes invalidate caches and old epochs; retained frames byte-identical. Peer89629b7 merged unchanged; no native activation.",
+    "status": "Hosted OpenAI allocation only. No paid providers, descendants, or purchases."
   }
 }
