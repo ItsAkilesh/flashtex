@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "font_sha256": "84eb01245abb17c0530ca3909427256d73df8bed2d7243b9f2717ca08c010ac8",
+  "header_range": [
+    6,
+    5724
+  ],
+  "header_sha256": "4cd2014dc9675171409f32e34376290ae23f2030426f91aabb181621a036f12d",
+  "observed_literal_lines": [
+    "/PaintType 0 def",
+    "/FontType 1 def",
+    "/FontMatrix[0.001 0 0 0.001 0 0]readonly def"
+  ],
+  "active_context_status": "refused: unsupported conditional FontDirectory/findfont prologue before dictionary",
+  "scope": "Lines are observations only; not a parsed active font context. No transformation/render claim for this real asset."
+}

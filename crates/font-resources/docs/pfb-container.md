@@ -165,3 +165,31 @@ Pinned real LM comparison: default6accepted unchanged; explicit policy171accepte
 with455retained stem records.455glyphs refuse non-dyadic division and196reach
 callothersubr (escaped16). This records the first refusal per glyph only. FontMatrix,
 PaintType, flex/OtherSubrs/seac, hint application and renderer activation stay gated.
+
+## Literal FontMatrix/PaintType context and separate transformed output
+
+`type1_matrix::Context::from_resource` reuses the bounded private-record lexer and
+existing exact Rational decimal parser. Its supported clear header is deliberately
+small: literal dictionary begin, one each FontName/FontType/PaintType/FontMatrix,
+then currentdict/end/currentfile/eexec. FontType must be1, PaintType0; no default
+matrix or paint is invented. Duplicate/unknown/executable forms, stroked paint,
+missing context, singular matrices and arithmetic overflow refuse. Only initial
+ASCII PFB records are read, capped64KiB, with full header SHA retained.
+
+`transform(raw, &context)` is distinct from the raw decoder and checks the complete
+font/license identity. It reuses rational matrix geometry: points/control points
+and sidebearings receive translation; widths remain vectors without translation.
+Negative/nonidentity matrices and fractional coefficients remain exact. Raw glyph
+name/charstring digest/stems/policy/source chains are retained alongside transformed
+commands. The result is eligible geometry for further validation, NOT automatic
+render-ready output or native/PDF activation.
+
+Actual pinned lmr10 header has literal PaintType0 and FontMatrix[.001 0 0 .001 0 0],
+but begins with conditional FontDirectory/findfont logic and includes executable
+encoding construction. The strict passive parser refuses before assigning an
+active context; observed declarations alone do not authorize transformation.
+`pfb-matrix-context.json` pins exact header/fullfont hashes and the refusal. A future
+explicitly supported declarative interpretation of that prologue is required; no
+heuristic token search, guessed defaults or PostScript execution was introduced.
+Synthetic tests cover nonidentity/negative/translation, width-vector behavior,
+identity mismatch, singular/stroked/missing/executable context and overflow.

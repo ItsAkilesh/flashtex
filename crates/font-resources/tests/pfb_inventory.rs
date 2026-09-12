@@ -132,6 +132,10 @@ fn pinned_official_type1_container_only() {
         "Unhinted inventory {:?}, retained stems {}",
         unhinted, stem_count
     );
+    assert!(matches!(
+        flashtex_font_resources::type1_matrix::Context::from_resource(&resource),
+        Err(flashtex_font_resources::type1_matrix::Error::Header(_))
+    ));
     assert_eq!(
         resource.require_outlines(),
         Err(Error::EncryptedOutlinesUnsupported)
