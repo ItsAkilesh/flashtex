@@ -528,3 +528,6 @@ pub use composite::MAX_COMPOSITE_DEPTH;
 
 mod outline;
 pub use outline::{OutlinePoint, SimpleOutline};
+
+mod expansion;
+pub use expansion::{Coordinate, ExactPoint, ExpandedOutline, GlyphInstance};

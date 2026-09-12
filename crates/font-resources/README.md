@@ -86,3 +86,12 @@ Real-font smoke decoded all 1544 simple/empty glyphs of the LiberationSans diges
 above, explicitly skipping 1076 composites. This proves decoder acceptance, not
 visual/byte parity. Reproduce by setting FLASHTEX_SMOKE_FONT to that explicit font
 path and running the ignored installed_simple_glyph_smoke test with --nocapture.
+
+`expanded_outline(gid)` recursively expands supported composite affine transforms
+and explicit XY translations, retaining root font SHA/face/ID and each original
+component GID plus point range. Coordinates are normalized exact dyadic rationals
+(numerator / 2^shift, accessed through methods), checked within i128 and at most
+96 fractional bits. No floating rounding occurs. Expansion caps 4096 visited
+instances, 1000000 leaf points and 32 dependency edges. Point attachment,
+nonzero grid-rounded offsets and transformed nonzero offsets without an explicit
+scaled/unscaled policy return unsupported. Instructions remain unexecuted.
