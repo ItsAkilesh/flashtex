@@ -13,17 +13,17 @@
   "capabilities": [
     "Preview helper serialization and latency"
   ],
-  "code_revision": "e874c1353f1d1524ba01591f3ae7ede42fbb2534",
+  "code_revision": "f8177134d4f3d869bc4d6e6c4f76d5d2d2f45b21",
   "eta_minutes": null,
   "machine": "linux-primary",
   "main_integrated_through": "7a7fd4f26290c2ee41115734631991d2557672bd",
-  "next_action": "Publish for Commander integration and GH37 closure; review reconciledfullsnapshot contract next.",
+  "next_action": "Commander reconcile draft corrections and integrate GH37 guard; next independent helper product work.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "Commander-approved GH37 compilegeneration guard fixed in publiccurrentness and poll; red-before/greenafter regression plus47integrationchecksPASS.",
+  "summary": "Fullsnapshotcontract draftreview completed: configurealreadyenrolls/submits; enabled/preview_error/produceracceptance distinct; precise layerframebounds required.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T14:19:54Z",
+  "updated_utc": "2026-09-12T14:22:24Z",
   "usage": {
     "status": "unknown"
   }
