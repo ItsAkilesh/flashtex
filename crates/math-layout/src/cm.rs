@@ -17,6 +17,7 @@
 //! `\mathcode`/`\mathchardef`/`\delcode` assignments of `plain.tex`
 //! (LaTeX's `fontmath.ltx` uses the same slots for these symbols).
 
+use crate::Error;
 use crate::cm_tfm::*;
 use crate::metrics::{Extensible, FontId, Glyph, MathFontMetrics, MathParams, SizeClass};
 use crate::tfm::{TfmChar, TfmFont, scale};
@@ -51,12 +52,17 @@ pub static ALL_FONTS: [&TfmFont; 18] = [
     &CMR6, &CMMI12, &CMMI8, &CMMI6, &CMSY8, &CMSY6,
 ];
 
-fn font_id_of(font: &'static TfmFont) -> FontId {
-    let i = ALL_FONTS
+/// # Errors
+///
+/// Returns [`Error::UnknownFont`] when `font` is not one of [`ALL_FONTS`]
+/// (e.g. a caller-supplied `families` override pointing at a foreign
+/// `TfmFont`), rather than panicking.
+fn font_id_of(font: &'static TfmFont) -> Result<FontId, Error> {
+    ALL_FONTS
         .iter()
         .position(|f| std::ptr::eq(*f, font))
-        .expect("font is in ALL_FONTS");
-    FontId(i as u32)
+        .map(|i| FontId(i as u32))
+        .ok_or(Error::UnknownFont { name: font.name })
 }
 
 #[derive(Debug, Clone)]
@@ -128,7 +134,15 @@ impl CmMathMetrics {
         self.sizes[Self::size_index(size)]
     }
 
-    fn font(&self, family: Family, size: SizeClass) -> (&'static TfmFont, FontId, f64) {
+    /// # Errors
+    ///
+    /// Returns [`Error::UnknownFont`] when the resolved font is not one of
+    /// [`ALL_FONTS`] (a caller-supplied `families` override).
+    fn font(
+        &self,
+        family: Family,
+        size: SizeClass,
+    ) -> Result<(&'static TfmFont, FontId, f64), Error> {
         let i = Self::size_index(size);
         let fam = match family {
             Family::Roman => 0,
@@ -140,29 +154,42 @@ impl CmMathMetrics {
                     ExtensionSizing::Fixed => CMEX10.design_size,
                     ExtensionSizing::Scaled => self.sizes[i],
                 };
-                return (&CMEX10, font_id_of(&CMEX10), at);
+                return Ok((&CMEX10, font_id_of(&CMEX10)?, at));
             }
         };
         let font = self.families[fam][i];
-        (font, font_id_of(font), self.sizes[i])
+        Ok((font, font_id_of(font)?, self.sizes[i]))
     }
 
     /// The roman text font at text size with its interword space (fontdimen
     /// 2), for setting words of a mixed text/math line.
-    pub fn text_space(&self) -> f64 {
-        let (font, _, at) = self.font(Family::Roman, SizeClass::Text);
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::UnknownFont`] for a foreign `families` override, or
+    /// [`Error::PointSizeTooLarge`] when `sizes`' text size is too large for
+    /// [`crate::tfm::scale`] to compute.
+    pub fn text_space(&self) -> Result<f64, Error> {
+        let (font, _, at) = self.font(Family::Roman, SizeClass::Text)?;
         font.fontdimen(2, at)
     }
 
+    /// Looks up a glyph, reporting `None` (rather than propagating a
+    /// [`Error`]) when `family`/`size` resolves to a font this provider
+    /// can't identify or a size [`crate::tfm::scale`] can't compute:
+    /// [`MathFontMetrics::glyph`] and friends are a fixed, external
+    /// contract (implemented outside this crate too, e.g. by
+    /// `flashtex-font-engine`'s OpenType adapter) that reports an
+    /// unavailable glyph as `None`, the same as an unmapped character.
     fn make_glyph(&self, family: Family, code: u8, ch: char, size: SizeClass) -> Option<Glyph> {
-        let (font, font_id, at) = self.font(family, size);
+        let (font, font_id, at) = self.font(family, size).ok()?;
         let c = font.char(code)?;
-        Some(glyph_from(c, font_id, ch, at))
+        glyph_from(c, font_id, ch, at).ok()
     }
 
     /// The extensible recipe at the end of the family-3 chain from `code`.
     fn extension_recipe(&self, code: u8, ch: char, size: SizeClass) -> Option<Extensible> {
-        let (font, font_id, at) = self.font(Family::Extension, size);
+        let (font, font_id, at) = self.font(Family::Extension, size).ok()?;
         let mut cur = font.char(code)?;
         let mut guard = 0;
         while !font.is_extensible(cur) {
@@ -177,7 +204,8 @@ impl CmMathMetrics {
             if c == 0 || c == u8::MAX {
                 None
             } else {
-                font.char(c).map(|p| glyph_from(p, font_id, ch, at))
+                font.char(c)
+                    .and_then(|p| glyph_from(p, font_id, ch, at).ok())
             }
         };
         let [top, mid, bot, rep] = cur.extensible;
@@ -190,16 +218,24 @@ impl CmMathMetrics {
     }
 
     /// Follows the `next_larger` chain in family 3 starting at `code`,
-    /// stopping before the extensible recipe.
+    /// stopping before the extensible recipe. Stops silently (nothing more
+    /// added to `out`) if the family-3 font can't be identified or a piece
+    /// can't be scaled; see [`Self::make_glyph`] for why that's `None`/no-op
+    /// rather than a propagated [`Error`].
     fn extension_chain(&self, code: u8, ch: char, size: SizeClass, out: &mut Vec<Glyph>) {
-        let (font, font_id, at) = self.font(Family::Extension, size);
+        let Ok((font, font_id, at)) = self.font(Family::Extension, size) else {
+            return;
+        };
         let mut cur = font.char(code);
         let mut guard = 0;
         while let Some(c) = cur {
             if font.is_extensible(c) {
                 break;
             }
-            out.push(glyph_from(c, font_id, ch, at));
+            let Ok(g) = glyph_from(c, font_id, ch, at) else {
+                break;
+            };
+            out.push(g);
             cur = font.next_larger(c);
             guard += 1;
             if guard > 8 {
@@ -209,18 +245,18 @@ impl CmMathMetrics {
     }
 }
 
-fn glyph_from(c: &TfmChar, font_id: FontId, ch: char, at: f64) -> Glyph {
-    Glyph {
+fn glyph_from(c: &TfmChar, font_id: FontId, ch: char, at: f64) -> Result<Glyph, Error> {
+    Ok(Glyph {
         font_id,
         gid: c.code as u16,
         ch,
         size: at,
-        width: scale(c.width, at),
-        height: scale(c.height, at),
-        depth: scale(c.depth, at),
-        italic: scale(c.italic, at),
-        skew: scale(c.skew_kern, at),
-    }
+        width: scale(c.width, at)?,
+        height: scale(c.height, at)?,
+        depth: scale(c.depth, at)?,
+        italic: scale(c.italic, at)?,
+        skew: scale(c.skew_kern, at)?,
+    })
 }
 
 /// plain.tex `\mathcode` / `\mathchardef` slot of a symbol.
@@ -388,13 +424,32 @@ pub fn delimiter_slot(ch: char) -> Option<((Family, u8), u8)> {
 }
 
 impl MathFontMetrics for CmMathMetrics {
+    /// # Panics / errors
+    ///
+    /// [`MathFontMetrics::params`] has no `Result` to report through — its
+    /// signature is a fixed external contract other crates implement too
+    /// (e.g. `flashtex-font-engine`'s OpenType adapter) — so a `families`
+    /// override pointing at a foreign font, or a `sizes` entry too large for
+    /// [`crate::tfm::scale`], falls back field-by-field to
+    /// [`crate::tfm::TfmFont::fontdimen`]'s own existing "0 when absent"
+    /// value below instead of propagating an [`Error`] or panicking. A
+    /// caller that needs the typed error for either condition has a
+    /// panic-free path to it through [`crate::tfm::scale`],
+    /// [`crate::tfm::TfmFont::fontdimen`], or [`CmMathMetrics::text_space`]
+    /// directly.
     fn params(&self, size: SizeClass) -> MathParams {
-        let (sy, _, at) = self.font(Family::Symbol, size);
-        let (ex, _, ex_at) = self.font(Family::Extension, size);
-        let s = |n: usize| sy.fontdimen(n, at);
-        let x = |n: usize| ex.fontdimen(n, ex_at);
+        let sy = self.font(Family::Symbol, size).ok();
+        let ex = self.font(Family::Extension, size).ok();
+        let s = |n: usize| {
+            sy.and_then(|(f, _, at)| f.fontdimen(n, at).ok())
+                .unwrap_or(0.0)
+        };
+        let x = |n: usize| {
+            ex.and_then(|(f, _, at)| f.fontdimen(n, at).ok())
+                .unwrap_or(0.0)
+        };
         MathParams {
-            size: at,
+            size: sy.map(|(_, _, at)| at).unwrap_or(0.0),
             x_height: s(5),
             quad: s(6),
             num1: s(8),
@@ -440,10 +495,10 @@ impl MathFontMetrics for CmMathMetrics {
 
     fn large_operator(&self, ch: char, size: SizeClass) -> Option<Glyph> {
         let (family, code) = symbol_slot(ch)?;
-        let (font, font_id, at) = self.font(family, size);
+        let (font, font_id, at) = self.font(family, size).ok()?;
         let c = font.char(code)?;
         let larger = font.next_larger(c)?;
-        Some(glyph_from(larger, font_id, ch, at))
+        glyph_from(larger, font_id, ch, at).ok()
     }
 
     fn delimiter_sizes(&self, ch: char, size: SizeClass) -> Vec<Glyph> {
@@ -507,10 +562,15 @@ impl MathFontMetrics for CmMathMetrics {
                 let Some((family, code)) = symbol_slot(ch) else {
                     return out;
                 };
-                let (font, font_id, at) = self.font(family, size);
+                let Ok((font, font_id, at)) = self.font(family, size) else {
+                    return out;
+                };
                 let mut cur = font.char(code);
                 while let Some(c) = cur {
-                    out.push(glyph_from(c, font_id, ch, at));
+                    let Ok(g) = glyph_from(c, font_id, ch, at) else {
+                        break;
+                    };
+                    out.push(g);
                     cur = font.next_larger(c);
                     if out.len() > 8 {
                         break;
@@ -619,5 +679,31 @@ mod tests {
         assert!(m.text_glyph('~', SizeClass::Text).is_some());
         // And an ordinary letter is unaffected by the tightened range.
         assert!(m.text_glyph('a', SizeClass::Text).is_some());
+    }
+
+    /// Minimized repro: `families` is `pub`, so nothing stops a caller from
+    /// pointing it at a `&'static TfmFont` that isn't one of `ALL_FONTS`.
+    /// Before the fix, `font_id_of` couldn't find it and panicked via
+    /// `.expect("font is in ALL_FONTS")` at src/cm.rs:58 the next time any
+    /// glyph/parameter was requested for that family; it must now be a
+    /// typed error instead.
+    #[test]
+    fn text_space_rejects_a_font_foreign_to_all_fonts() {
+        static FOREIGN: TfmFont = TfmFont {
+            name: "foreign-test-font",
+            design_size: 10.0,
+            skew_char: 0,
+            params: &[],
+            chars: &[],
+        };
+        let mut m = CmMathMetrics::latex_10pt();
+        m.families[0] = [&FOREIGN, &FOREIGN, &FOREIGN];
+        let err = m.text_space().unwrap_err();
+        assert_eq!(
+            err,
+            Error::UnknownFont {
+                name: "foreign-test-font"
+            }
+        );
     }
 }
