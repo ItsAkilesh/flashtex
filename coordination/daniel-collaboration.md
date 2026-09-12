@@ -10,7 +10,7 @@ No other crate is touched, in particular `crates/edit-ledger` is untouched.
 
 Tested commit (this branch, HEAD at the time `cargo build`, `cargo test`, and
 `cargo clippy --all-targets -- -D warnings` were all run clean):
-`<TESTED_SHA>`
+`1989b17dc37348077e88e4a0fcd6b3d01f0823f2`
 
 ## What this is, and what it explicitly is not
 
